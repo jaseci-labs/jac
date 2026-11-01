@@ -48,6 +48,8 @@ from jaclang.compiler.backends.native.llvm.binding.value import Linkage, Visibil
 # object also defines memset, memcpy, memmove, memcmp, bcmp, strlen and the
 # libm functions; the executable would then bind every C and Jac call to those
 # simple loops instead of glibc's. Defining the two helpers keeps compiler-rt out.
+# The IR is x86_64 code (it divides with divq), so an aarch64 link still takes
+# the helpers, and with them those copies, from compiler-rt.
 INT128_DIVISION_IR = r"""
 define { i64, i64 } @__udivti3(i64 noundef %0, i64 noundef %1, i64 noundef %2, i64 noundef %3) local_unnamed_addr #0 {
   %5 = zext i64 %1 to i128
