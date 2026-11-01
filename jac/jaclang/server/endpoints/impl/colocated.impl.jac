@@ -29,7 +29,11 @@ impl _fail(code: str, message: str, status: int) -> TransportResponse {
 }
 
 impl _unit_failed(result: any) -> bool {
-    return isinstance(result, dict) and 'error' in result;
+    if not isinstance(result, dict) {
+        return False;
+    }
+    outcome: dict[str, any] = result;
+    return 'error' in outcome;
 }
 
 impl _outcome(result: any, fallback: str) -> (TransportResponse | Response) {

@@ -942,7 +942,10 @@ impl _prepare_revision(
             candidate = marshal.load(stream);
         }
     } except (OSError, ValueError, EOFError, TypeError) {}
-    stamps = candidate if isinstance(candidate, dict) else {};
+    stamps: dict[str, any] = {};
+    if isinstance(candidate, dict) {
+        stamps = candidate;
+    }
     client_dirs: list[str] = [];
     if client {
         import from jaclang.client.config_loader { JacClientConfig }
@@ -1045,16 +1048,12 @@ impl _prepare_revision(
     before = len(program.errors_had);
     import copy;
     modules: dict[str, uni.Module] = {};
-    previous_rows: dict[str, dict[str, any]] = candidate.get('unit_rows') or {}
-        if isinstance(candidate, dict)
-        else {};
+    previous_rows: dict[str, dict[str, any]] = stamps.get('unit_rows') or {};
     unit_rows: dict[str, dict[str, any]] = {};
-    recorded_specs: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]] = candidate.get(
+    recorded_specs: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]] = stamps.get(
         'import_specs'
     )
-        or {}
-        if isinstance(candidate, dict)
-        else {};
+        or {};
     units: (dict[str, ManifestSource] | None) = _kernel_units(
         program,
         entries,
@@ -1064,7 +1063,7 @@ impl _prepare_revision(
         previous_rows,
         unit_rows,
         recorded_specs,
-        candidate.get('dependencies') or {} if isinstance(candidate, dict) else {}
+        stamps.get('dependencies') or {}
     );
     if units is None {
         import from jaclang.compiler.driver.pipeline_runner { compile_application }
@@ -1123,15 +1122,11 @@ impl _prepare_revision(
         resolve_imports
     }
     sections = {};
-    previous_code: dict[str, any] = candidate.get('code') or {}
-        if isinstance(candidate, dict)
-        else {};
-    previous_specs: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]] = candidate.get(
+    previous_code: dict[str, any] = stamps.get('code') or {};
+    previous_specs: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]] = stamps.get(
         'import_specs'
     )
-        or {}
-        if isinstance(candidate, dict)
-        else {};
+        or {};
     specs_of: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]] = {};
     pending = `set(entries);
     for path in entries {

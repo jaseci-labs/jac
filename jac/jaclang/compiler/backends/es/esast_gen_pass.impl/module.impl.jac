@@ -80,14 +80,16 @@ impl EsastGenPass.populate_client_manifest(nd: uni.Module) -> None {
 
 impl EsastGenPass._es_json_literal(value: any) -> any {
     if isinstance(value, list) {
-        return es.ArrayExpression(elements=[self._es_json_literal(v) for v in value]);
+        items: list[any] = value;
+        return es.ArrayExpression(elements=[self._es_json_literal(v) for v in items]);
     }
     if isinstance(value, dict) {
+        entries: dict[str, any] = value;
         return es.ObjectExpression(
             properties=[
                 es.Property(
                     key=es.Literal(value=k), value=self._es_json_literal(v), kind='init'
-                ) for (k, v) in value.items()
+                ) for (k, v) in entries.items()
             ]
         );
     }

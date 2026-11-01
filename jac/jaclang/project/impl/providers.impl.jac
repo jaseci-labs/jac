@@ -100,8 +100,9 @@ impl manifest_plugin_deps(
     dev_section = raw.get("dev", {});
     dev_deps: dict[str, str] = {};
     if isinstance(dev_section, dict) {
-        for (k, v) in dev_section.items() {
-            if isinstance(k, str) and isinstance(v, str) {
+        dev_entries: dict[str, any] = dev_section;
+        for (k, v) in dev_entries.items() {
+            if isinstance(v, str) {
                 dev_deps[k] = v;
             }
         }
@@ -116,8 +117,9 @@ impl manifest_plugin_subdeps(
     sub = raw.get(section, {});
     out: dict[str, str] = {};
     if isinstance(sub, dict) {
-        for (k, v) in sub.items() {
-            if isinstance(k, str) and isinstance(v, str) {
+        entries: dict[str, any] = sub;
+        for (k, v) in entries.items() {
+            if isinstance(v, str) {
                 out[k] = v;
             }
         }
@@ -616,7 +618,7 @@ impl initialize_provider_registry -> None {
         if result is None {
             continue;
         }
-        providers = result if isinstance(result, list) else [result];
+        providers: list[any] = result if isinstance(result, list) else [result];
         for provider in providers {
             if isinstance(provider, EcosystemProvider) {
                 registry.register(provider);

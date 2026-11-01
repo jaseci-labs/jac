@@ -438,8 +438,9 @@ impl tool_to_schema(
     required: list[str] = schema.get("required", []);
     for (param_name, param_info) in properties.items() {
         if isinstance(param_info, dict) {
-            param_info["description"] = params_desc.get(param_name, "");
-            param_info.pop("title", None);
+            info_map: dict[str, any] = param_info;
+            info_map["description"] = params_desc.get(param_name, "");
+            info_map.pop("title", None);
         }
     }
     return {
@@ -515,7 +516,8 @@ impl _hints_from_schema(name: str, prop: dict[str, any]) -> list[str] {
     if prop.get("type") == "object" {
         nested = prop.get("properties");
         if isinstance(nested, dict) {
-            for (sub, sub_prop) in nested.items() {
+            nested_props: dict[str, any] = nested;
+            for (sub, sub_prop) in nested_props.items() {
                 if sub != name {
                     out.extend(_hints_from_schema(sub, sub_prop));
                 }
@@ -535,7 +537,8 @@ impl schema_to_hint_text(rf: dict[str, any] | None) -> str {
     if rf_type == "json_schema" {
         js = rf.get("json_schema");
         if isinstance(js, dict) {
-            inner = js.get("schema");
+            js_map: dict[str, any] = js;
+            inner = js_map.get("schema");
             if isinstance(inner, dict) {
                 schema = inner;
             }
@@ -554,8 +557,9 @@ impl schema_to_hint_text(rf: dict[str, any] | None) -> str {
     if not isinstance(props, dict) {
         return lead;
     }
+    prop_map: dict[str, any] = props;
     lines: list[str] = [];
-    for (name, prop) in props.items() {
+    for (name, prop) in prop_map.items() {
         if isinstance(prop, dict) {
             lines.extend(_hints_from_schema(name, prop));
         }
@@ -574,7 +578,8 @@ impl attach_schema_hint(messages: list[any], rf: dict[str, any] | None) -> list[
     last_user_idx: int = -1;
     for (i, m) in enumerate(messages) {
         if isinstance(m, dict) {
-            if m.get("role") == "user" {
+            msg: dict[str, any] = m;
+            if msg.get("role") == "user" {
                 last_user_idx = i;
             }
         }
@@ -596,14 +601,16 @@ impl attach_schema_hint(messages: list[any], rf: dict[str, any] | None) -> list[
         }
         target["content"] = body_str.rstrip() + "\n\n" + hint;
     } elif isinstance(body, list) {
-        for part in body {
-            if isinstance(part, dict) and part.get("type") == "text" {
-                if hint in str(part.get("text", "")) {
+        blocks: list[any] = body;
+        for part in blocks {
+            if isinstance(part, dict) {
+                block: dict[str, any] = part;
+                if block.get("type") == "text" and hint in str(block.get("text", "")) {
                     return messages;
                 }
             }
         }
-        target["content"] = body + [{"type": "text", "text": hint}];
+        target["content"] = blocks + [{"type": "text", "text": hint}];
     } else {
         return messages;
     }

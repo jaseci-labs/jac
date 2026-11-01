@@ -40,7 +40,8 @@ impl config_fingerprint(config: any, lintfix: bool) -> str {
     }
     raw_plugins = config?.plugin_dependencies;
     if isinstance(raw_plugins, dict) and raw_plugins {
-        items = sorted([f"{kv[0]}={kv[1]}" for kv in raw_plugins.items()]);
+        plugin_deps: dict[str, any] = raw_plugins;
+        items = sorted([f"{kv[0]}={kv[1]}" for kv in plugin_deps.items()]);
         parts.append("plugins=" + "|".join(items));
     }
     return hashlib.sha256("\n".join(parts).encode()).hexdigest();

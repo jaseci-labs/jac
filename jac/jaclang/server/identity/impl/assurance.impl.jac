@@ -15,7 +15,8 @@ impl carried_claims(claims: (dict[str, any] | None)) -> dict[str, any] {
     carried: dict[str, any] = {'aal': AAL2};
     methods = claims.get('amr');
     if isinstance(methods, list) {
-        carried['amr'] = [str(m) for m in methods];
+        method_items: list[any] = methods;
+        carried['amr'] = [str(m) for m in method_items];
     }
     moment = claims.get('auth_time');
     if isinstance(moment, (int, float)) and not isinstance(moment, bool) {

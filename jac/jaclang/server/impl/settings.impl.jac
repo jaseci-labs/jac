@@ -555,11 +555,14 @@ impl table_value(current: any, raw: any, label: str) -> any {
         return float(raw);
     }
     if isinstance(current, list) {
-        if not isinstance(raw, list)
-            or not all(isinstance(item, str) for item in raw) {
+        if not isinstance(raw, list) {
             raise ServeConfigError(f"{label} must be a list of strings, got {raw!r}");
         }
-        return list(raw);
+        items: list[any] = raw;
+        if not all(isinstance(item, str) for item in items) {
+            raise ServeConfigError(f"{label} must be a list of strings, got {raw!r}");
+        }
+        return list(items);
     }
     if not isinstance(raw, str) {
         raise ServeConfigError(f"{label} must be a string, got {raw!r}");

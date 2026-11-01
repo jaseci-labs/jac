@@ -195,6 +195,10 @@ impl HostServices.native_dep_discovery_open(program: JacProgram) -> bool {
     return False;
 }
 
+impl HostServices.native_dep_unlowerable(program: JacProgram, path: str) -> bool {
+    return False;
+}
+
 impl HostServices.native_deps_deferred(program: JacProgram) -> bool {
     return False;
 }

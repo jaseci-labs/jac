@@ -720,7 +720,7 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
             self.emit(
                 E5092,
                 node_override=nd,
-                kind="function reference",
+                kind=f"function reference ({_why})",
                 name=var_name,
                 help_text=f"'{var_name}' (from {_where}) has no native definition here: {_why}. A function used as a value must lower to a native function."
             );

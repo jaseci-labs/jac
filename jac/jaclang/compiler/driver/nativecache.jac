@@ -121,6 +121,8 @@ obj NativeUnitRegistry {
         path: str, options: CompileOptions, products: bool = True
     ) -> (NativeIface | None);
 
+    def is_not_native(path: str) -> bool;
+    def dep_unlowerable(path: str) -> bool;
     def dep_discovery_open -> bool;
     def close_dep_deferral -> bool;
     def known_native_deps(path: str, options: CompileOptions) -> list[str];

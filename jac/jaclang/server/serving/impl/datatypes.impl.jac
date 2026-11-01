@@ -177,7 +177,8 @@ impl _normalize_headers(headers: any) -> Headers {
             result.append(str(k), str(v));
         }
     } elif isinstance(headers, list) {
-        for (k, v) in headers {
+        header_pairs: list[any] = headers;
+        for (k, v) in header_pairs {
             result.append(str(k), str(v));
         }
     }

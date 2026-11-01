@@ -32,12 +32,11 @@ impl as_media_list(value: any) -> list[Media] | None {
     if isinstance(value, Media) {
         return [value];
     }
-    if (
-        isinstance(value, list)
-        and value
-        and all(isinstance(elem, Media) for elem in value)
-    ) {
-        return value;
+    if isinstance(value, list) and value {
+        items: list[any] = value;
+        if all(isinstance(elem, Media) for elem in items) {
+            return items;
+        }
     }
     return None;
 }
@@ -56,7 +55,8 @@ impl content_preview(content: any, max_len: int) -> str {
         return str(content)[:max_len];
     }
     parts: list[str] = [];
-    for item in content {
+    items: list[any] = content;
+    for item in items {
         if isinstance(item, str) {
             parts.append(item);
         } elif isinstance(item, Text) {
@@ -106,20 +106,32 @@ impl reroute_tool_images_to_user_message(
 }
 
 impl _is_tool_msg(msg: object) -> bool {
-    return isinstance(msg, dict) and msg.get("role") == "tool";
+    if not isinstance(msg, dict) {
+        return False;
+    }
+    fields: dict[str, any] = msg;
+    return fields.get("role") == "tool";
 }
 
 impl _tool_msg_has_image(msg: object) -> bool {
-    if not (isinstance(msg, dict) and msg.get("role") == "tool") {
+    if not isinstance(msg, dict) {
         return False;
     }
-    content = msg.get("content");
+    fields: dict[str, any] = msg;
+    if fields.get("role") != "tool" {
+        return False;
+    }
+    content = fields.get("content");
     if not isinstance(content, list) {
         return False;
     }
-    for block in content {
-        if isinstance(block, dict) and block.get("type") in TOOL_MEDIA_BLOCKS {
-            return True;
+    blocks: list[any] = content;
+    for block in blocks {
+        if isinstance(block, dict) {
+            block_map: dict[str, any] = block;
+            if block_map.get("type") in TOOL_MEDIA_BLOCKS {
+                return True;
+            }
         }
     }
     return False;
@@ -134,12 +146,16 @@ impl _split_tool_msg_images(
     }
     text_blocks: list[dict[str, any]] = [];
     media_blocks: list[dict[str, any]] = [];
-    for block in content {
-        if isinstance(block, dict) and block.get("type") in TOOL_MEDIA_BLOCKS {
-            media_blocks.append(block);
-        } else {
-            text_blocks.append(block);
+    blocks: list[any] = content;
+    for block in blocks {
+        if isinstance(block, dict) {
+            block_map: dict[str, any] = block;
+            if block_map.get("type") in TOOL_MEDIA_BLOCKS {
+                media_blocks.append(block_map);
+                continue;
+            }
         }
+        text_blocks.append(block);
     }
     if not media_blocks {
         return (msg, []);

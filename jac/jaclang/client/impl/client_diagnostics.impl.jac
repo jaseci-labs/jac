@@ -533,8 +533,9 @@ impl _raw_location(payload: dict[str, any]) -> str {
     column = _number(payload.get("column"));
     loc = payload.get("loc");
     if isinstance(loc, dict) {
-        line = line or _number(loc.get("line"));
-        column = column or _number(loc.get("column"));
+        loc_record: dict[str, any] = loc;
+        line = line or _number(loc_record.get("line"));
+        column = column or _number(loc_record.get("column"));
     }
     if where and line {
         return f"{where}:{line}:{column}" if column else f"{where}:{line}";
@@ -547,8 +548,9 @@ impl _payload_position(payload: dict[str, any]) -> tuple[int, int] {
     column = _number(payload.get("column"));
     loc = payload.get("loc");
     if isinstance(loc, dict) {
-        line = line or _number(loc.get("line"));
-        column = column or _number(loc.get("column"));
+        loc_record: dict[str, any] = loc;
+        line = line or _number(loc_record.get("line"));
+        column = column or _number(loc_record.get("column"));
     }
     return (line, column);
 }

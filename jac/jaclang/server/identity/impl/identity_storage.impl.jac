@@ -512,10 +512,13 @@ impl decoy_hash -> str {
 
 impl primary_username(user: dict[str, any]) -> str {
     for identity in (user.get('identities') or []) {
-        if isinstance(identity, dict) and identity.get('type') == 'username' {
-            return str(
-                identity.get('value_raw') or identity.get('value_normalized') or ''
-            );
+        if isinstance(identity, dict) {
+            record: dict[str, any] = identity;
+            if record.get('type') == 'username' {
+                return str(
+                    record.get('value_raw') or record.get('value_normalized') or ''
+                );
+            }
         }
     }
     return '';

@@ -207,13 +207,17 @@ impl _mock_takes_string(response_format: object) -> bool {
     if not isinstance(response_format, dict) {
         return False;
     }
-    spec = response_format.get("json_schema");
+    rf_map: dict[str, any] = response_format;
+    spec = rf_map.get("json_schema");
     schema = spec.get("schema") if isinstance(spec, dict) else None;
     props = schema.get("properties") if isinstance(schema, dict) else None;
-    answer = props.get("schema_object_wrapper") if isinstance(props, dict) else None;
-    if not isinstance(answer, dict) {
+    raw_answer = props.get("schema_object_wrapper")
+        if isinstance(props, dict)
+        else None;
+    if not isinstance(raw_answer, dict) {
         return False;
     }
+    answer: dict[str, any] = raw_answer;
     options = answer.get("anyOf");
     choices: list[any] = options if isinstance(options, list) else [answer];
     return any(isinstance(c, dict) and c.get("type") == "string" for c in choices);
@@ -263,10 +267,11 @@ impl _mock_turn(
     if isinstance(output, MockToolCall) {
         return MockRawResponse(tool_calls=[output], usage=usage);
     }
-    if isinstance(output, list)
-        and output
-        and all(isinstance(c, MockToolCall) for c in output) {
-        return MockRawResponse(tool_calls=list(output), usage=usage);
+    if isinstance(output, list) and output {
+        calls: list[any] = output;
+        if all(isinstance(c, MockToolCall) for c in calls) {
+            return MockRawResponse(tool_calls=list(calls), usage=usage);
+        }
     }
     if isinstance(output, str) {
         content = json.dumps({"schema_object_wrapper": output})

@@ -80,8 +80,11 @@ impl from_dict(data: any, cls: any) -> any {
             TextDocumentContentChangeEvent_Type1 in args
             and TextDocumentContentChangeEvent in args
         ) {
-            if isinstance(data, dict) and "range" in data {
-                return from_dict(data, TextDocumentContentChangeEvent_Type1);
+            if isinstance(data, dict) {
+                change_map: dict[str, any] = data;
+                if "range" in change_map {
+                    return from_dict(change_map, TextDocumentContentChangeEvent_Type1);
+                }
             }
             return from_dict(data, TextDocumentContentChangeEvent);
         }
@@ -98,8 +101,9 @@ impl from_dict(data: any, cls: any) -> any {
         return data;
     }
 
+    fields: dict[str, any] = data;
     snake_data: dict[str, any] = {};
-    for (key, value) in data.items() {
+    for (key, value) in fields.items() {
         snake_data[_to_snake_case(key)] = value;
     }
 
@@ -208,10 +212,11 @@ impl TextDocument.lines.getter -> list[str] {
 }
 
 impl TextDocument.apply_change(change: any) -> None {
+    change_map: dict[str, any] = change if isinstance(change, dict) else {};
     if isinstance(change, TextDocumentContentChangeEvent_Type1) {
         self._apply_incremental_change(change);
-    } elif isinstance(change, dict) and "range" in change {
-        range_data = change["range"];
+    } elif "range" in change_map {
+        range_data = change_map["range"];
         range_obj = Range(
             start=Position(
                 line=range_data["start"]["line"],
@@ -222,7 +227,7 @@ impl TextDocument.apply_change(change: any) -> None {
             )
         );
         typed_change = TextDocumentContentChangeEvent_Type1(
-            range=range_obj, text=change["text"]
+            range=range_obj, text=change_map["text"]
         );
         self._apply_incremental_change(typed_change);
     } else {
@@ -268,7 +273,8 @@ impl TextDocument._apply_incremental_change(
 
 impl TextDocument._apply_full_change(change: any) -> None {
     if isinstance(change, dict) {
-        self._source = change.get("text", "");
+        change_map: dict[str, any] = change;
+        self._source = change_map.get("text", "");
     } else {
         self._source = change.text;
     }

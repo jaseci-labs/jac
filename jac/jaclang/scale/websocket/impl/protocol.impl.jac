@@ -63,8 +63,9 @@ impl ws_authenticate(
     if not isinstance(first_data, dict) {
         return (_auth_fail('invalid', 'Handshake payload must be a JSON object'), None);
     }
-    token = first_data.pop('token', None);
-    return (user_manager.validate_jwt_token_detail(token), first_data);
+    handshake: dict[str, any] = first_data;
+    token = handshake.pop('token', None);
+    return (user_manager.validate_jwt_token_detail(token), handshake);
 }
 
 impl ws_heartbeat_loop(

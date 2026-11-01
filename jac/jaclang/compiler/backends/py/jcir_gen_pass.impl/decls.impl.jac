@@ -640,7 +640,8 @@ impl JcirGenPass._recipe_ambient_names(v: any) -> list[str] {
             }
         }
     } elif isinstance(v, list) {
-        for item in v {
+        elems: list[any] = v;
+        for item in elems {
             for name in self._recipe_ambient_names(item) {
                 if name not in found {
                     found.append(name);

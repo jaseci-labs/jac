@@ -60,10 +60,11 @@ impl scheduler_job_cap(raw: any) -> int | None {
 }
 
 impl _scheduler_bound_findings(raw: dict[str, any]) -> list[str] {
-    cfg = raw.get("scheduler");
-    if not isinstance(cfg, dict) {
+    raw_cfg = raw.get("scheduler");
+    if not isinstance(raw_cfg, dict) {
         return [];
     }
+    cfg: dict[str, any] = raw_cfg;
     out: list[str] = [];
     if "min_interval" in cfg
         and scheduler_min_interval(cfg.get("min_interval")) is None {
@@ -85,10 +86,11 @@ impl _scheduler_bound_findings(raw: dict[str, any]) -> list[str] {
 }
 
 impl _declared_target_findings(raw: dict[str, any]) -> list[str] {
-    deploy_cfg = raw.get("deploy");
-    if not isinstance(deploy_cfg, dict) {
+    raw_deploy = raw.get("deploy");
+    if not isinstance(raw_deploy, dict) {
         return [];
     }
+    deploy_cfg: dict[str, any] = raw_deploy;
     target = deploy_cfg.get("target");
     if not isinstance(target, str) or not target {
         return [];

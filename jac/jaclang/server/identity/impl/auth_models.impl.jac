@@ -69,20 +69,22 @@ impl RegisterRequest.from_dict(data: any) -> RegisterRequest {
     if not isinstance(data, dict) {
         raise ValueError('request body must be an object');
     }
+    body: dict[str, any] = data;
 
-    raw_identities = data.get('identities');
+    raw_identities = body.get('identities');
     if not isinstance(raw_identities, list) or len(raw_identities) == 0 {
         raise ValueError('identities must be a non-empty list');
     }
-    if 'credential' not in data {
+    identity_items: list[any] = raw_identities;
+    if 'credential' not in body {
         raise ValueError('credential is required');
     }
     return RegisterRequest(
-        identities=[IdentityInputModel.from_dict(item) for item in raw_identities],
-        credential=CredentialInput.from_dict(data.get('credential')),
-        profile=validate_profile(data.get('profile')),
-        challenge=data.get('challenge')
-            if isinstance(data.get('challenge'), dict)
+        identities=[IdentityInputModel.from_dict(item) for item in identity_items],
+        credential=CredentialInput.from_dict(body.get('credential')),
+        profile=validate_profile(body.get('profile')),
+        challenge=body.get('challenge')
+            if isinstance(body.get('challenge'), dict)
             else None
     );
 }
@@ -91,15 +93,16 @@ impl LoginRequest.from_dict(data: any) -> LoginRequest {
     if not isinstance(data, dict) {
         raise ValueError('request body must be an object');
     }
-    if 'identity' not in data {
+    body: dict[str, any] = data;
+    if 'identity' not in body {
         raise ValueError('identity is required');
     }
-    if 'credential' not in data {
+    if 'credential' not in body {
         raise ValueError('credential is required');
     }
     return LoginRequest(
-        identity=IdentityInputModel.from_dict(data.get('identity')),
-        credential=CredentialInput.from_dict(data.get('credential'))
+        identity=IdentityInputModel.from_dict(body.get('identity')),
+        credential=CredentialInput.from_dict(body.get('credential'))
     );
 }
 
@@ -114,10 +117,11 @@ impl UpdatePasswordRequest.from_dict(data: any) -> UpdatePasswordRequest {
     if not isinstance(data, dict) {
         raise ValueError('request body must be an object');
     }
+    body: dict[str, any] = data;
     return UpdatePasswordRequest(
-        current_password=require_str(data, 'current_password'),
-        new_password=require_str(data, 'new_password'),
-        username=str(data.get('username') or '')
+        current_password=require_str(body, 'current_password'),
+        new_password=require_str(body, 'new_password'),
+        username=str(body.get('username') or '')
     );
 }
 
@@ -125,9 +129,10 @@ impl UpdateUsernameRequest.from_dict(data: any) -> UpdateUsernameRequest {
     if not isinstance(data, dict) {
         raise ValueError('request body must be an object');
     }
+    body: dict[str, any] = data;
     return UpdateUsernameRequest(
-        new_username=require_str(data, 'new_username'),
-        current_username=str(data.get('current_username') or '')
+        new_username=require_str(body, 'new_username'),
+        current_username=str(body.get('current_username') or '')
     );
 }
 
@@ -135,12 +140,13 @@ impl AddIdentityRequest.from_dict(data: any) -> AddIdentityRequest {
     if not isinstance(data, dict) {
         raise ValueError('request body must be an object');
     }
-    if 'identity' not in data {
+    body: dict[str, any] = data;
+    if 'identity' not in body {
         raise ValueError('identity is required');
     }
     return AddIdentityRequest(
-        identity=IdentityInputModel.from_dict(data.get('identity')),
-        is_recovery=bool(data.get('is_recovery', False))
+        identity=IdentityInputModel.from_dict(body.get('identity')),
+        is_recovery=bool(body.get('is_recovery', False))
     );
 }
 
@@ -155,11 +161,12 @@ impl SendVerificationRequest.from_dict(data: any) -> SendVerificationRequest {
     if not isinstance(data, dict) {
         raise ValueError('request body must be an object');
     }
-    if 'identity' not in data {
+    body: dict[str, any] = data;
+    if 'identity' not in body {
         raise ValueError('identity is required');
     }
     return SendVerificationRequest(
-        identity=IdentityInputModel.from_dict(data.get('identity'))
+        identity=IdentityInputModel.from_dict(body.get('identity'))
     );
 }
 
@@ -167,11 +174,12 @@ impl ForgotPasswordRequest.from_dict(data: any) -> ForgotPasswordRequest {
     if not isinstance(data, dict) {
         raise ValueError('request body must be an object');
     }
-    if 'identity' not in data {
+    body: dict[str, any] = data;
+    if 'identity' not in body {
         raise ValueError('identity is required');
     }
     return ForgotPasswordRequest(
-        identity=IdentityInputModel.from_dict(data.get('identity'))
+        identity=IdentityInputModel.from_dict(body.get('identity'))
     );
 }
 
@@ -243,8 +251,9 @@ impl UpdateProfileRequest.from_dict(data: any) -> UpdateProfileRequest {
     if not isinstance(data, dict) {
         raise ValueError('request body must be an object');
     }
+    body: dict[str, any] = data;
 
-    raw_profile = data.get('profile');
+    raw_profile = body.get('profile');
     if raw_profile is None {
         raise ValueError('profile is required and must not be null');
     }

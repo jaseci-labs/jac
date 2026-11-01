@@ -235,7 +235,8 @@ impl literal_to_json(value: any) -> dict[str, any] {
         return {"l": items};
     }
     if isinstance(value, list) {
-        for item in value {
+        elements: list[any] = value;
+        for item in elements {
             items.append(literal_to_json(item));
         }
         return {"l": items};
@@ -353,7 +354,8 @@ impl source_segment(raw: any) -> (tuple[int, int, int, int, str] | None) {
     if not isinstance(raw, list) or len(raw) != 5 {
         return None;
     }
-    return (int(raw[0]), int(raw[1]), int(raw[2]), int(raw[3]), str(raw[4]));
+    row: list[any] = raw;
+    return (int(row[0]), int(row[1]), int(row[2]), int(row[3]), str(row[4]));
 }
 
 impl client_artifact_from_json(text: str) -> (ClientArtifact | None) {
@@ -372,7 +374,8 @@ impl client_artifact_from_json(text: str) -> (ClientArtifact | None) {
     segments: list[tuple[int, int, int, int, str]] = [];
     raw_map = raw.get("source_map");
     if isinstance(raw_map, list) {
-        for item in raw_map {
+        map_rows: list[any] = raw_map;
+        for item in map_rows {
             segment = source_segment(item);
             if segment is not None {
                 segments.append(segment);
@@ -382,7 +385,8 @@ impl client_artifact_from_json(text: str) -> (ClientArtifact | None) {
     pulled: list[int] = [];
     raw_pulled = raw.get("pulled");
     if isinstance(raw_pulled, list) {
-        for index in raw_pulled {
+        pulled_rows: list[any] = raw_pulled;
+        for index in pulled_rows {
             pulled.append(int(index));
         }
     }

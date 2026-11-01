@@ -62,20 +62,24 @@ impl LocalLLM.model_call_no_stream(params: dict[str, any]) -> dict[str, any] {
     resp = engine.create_chat_completion(**call_params);
 
     if isinstance(resp, dict) {
-        choices = resp.get("choices", []);
+        resp_map: dict[str, any] = resp;
+        choices = resp_map.get("choices", []);
         for choice in choices {
             if isinstance(choice, dict) {
-                msg = choice.get("message");
+                choice_map: dict[str, any] = choice;
+                msg = choice_map.get("message");
                 if isinstance(msg, dict) {
-                    tcs = msg.get("tool_calls");
+                    msg_map: dict[str, any] = msg;
+                    tcs = msg_map.get("tool_calls");
                     if isinstance(tcs, list) and tcs {
-                        msg["tool_calls"] = [wrap_tool_call(tc) for tc in tcs];
+                        calls: list[any] = tcs;
+                        msg_map["tool_calls"] = [wrap_tool_call(tc) for tc in calls];
                     }
                 }
             }
         }
-        if "model" not in resp {
-            resp["model"] = self.model_name;
+        if "model" not in resp_map {
+            resp_map["model"] = self.model_name;
         }
     }
     return resp;

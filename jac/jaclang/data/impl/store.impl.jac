@@ -1645,12 +1645,16 @@ impl _channel_envelope(payload: str) -> (ChannelMessage | None) {
     } except Exception {
         return None;
     }
-    if not isinstance(data, dict)
-        or data.get(_CHANNEL_ENVELOPE_KEY) != _CHANNEL_ENVELOPE_VERSION {
+    if not isinstance(data, dict) {
+        return None;
+    }
+    envelope: dict[str, any] = data;
+    if envelope.get(_CHANNEL_ENVELOPE_KEY) != _CHANNEL_ENVELOPE_VERSION {
         return None;
     }
     return ChannelMessage(
-        channel=str(data.get('channel', '')), payload=str(data.get('payload', ''))
+        channel=str(envelope.get('channel', '')),
+        payload=str(envelope.get('payload', ''))
     );
 }
 
@@ -1685,8 +1689,11 @@ impl _schema_lock_key -> int {
 
 impl _sqlstate(e: Exception) -> str {
     for arg in getattr(e, 'args', ()) {
-        if isinstance(arg, dict) and 'C' in arg {
-            return str(arg.get('C') or '');
+        if isinstance(arg, dict) {
+            fields: dict[str, any] = arg;
+            if 'C' in fields {
+                return str(fields.get('C') or '');
+            }
         }
     }
     return '';
@@ -1753,9 +1760,11 @@ impl _conn_dead(e: Exception) -> bool {
         return True;
     }
     for arg in getattr(e, 'args', ()) {
-        if isinstance(arg, dict)
-            and arg.get('C') in ('08006', '08003', '57P01', '57P03', '25P03') {
-            return True;
+        if isinstance(arg, dict) {
+            fields: dict[str, any] = arg;
+            if fields.get('C') in ('08006', '08003', '57P01', '57P03', '25P03') {
+                return True;
+            }
         }
     }
     return False;

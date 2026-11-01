@@ -2,10 +2,12 @@ impl _render_tool(tool: object) -> str {
     if not isinstance(tool, dict) {
         return "";
     }
-    fn = tool.get("function", {});
-    if not isinstance(fn, dict) {
+    tool_map: dict[str, any] = tool;
+    fn_raw = tool_map.get("function", {});
+    if not isinstance(fn_raw, dict) {
         return "";
     }
+    fn: dict[str, any] = fn_raw;
 
     name = str(fn.get("name", "") or "");
     if not name {
@@ -13,21 +15,27 @@ impl _render_tool(tool: object) -> str {
     }
     desc = str(fn.get("description", "") or "");
     params: any = fn.get("parameters", {}) or {};
-    props = params.get("properties", {}) if isinstance(params, dict) else {};
-    required = params.get("required", []) if isinstance(params, dict) else [];
-    if not isinstance(props, dict) {
-        props = {};
-    }
-    if not isinstance(required, list) {
-        required = [];
+    props: dict[str, any] = {};
+    required: list[any] = [];
+    if isinstance(params, dict) {
+        param_map: dict[str, any] = params;
+        raw_props = param_map.get("properties", {});
+        raw_required = param_map.get("required", []);
+        if isinstance(raw_props, dict) {
+            props = raw_props;
+        }
+        if isinstance(raw_required, list) {
+            required = raw_required;
+        }
     }
     lines: list[str] = [f"- {name}: {desc}"];
     for (pname, pinfo) in props.items() {
         ptype = "any";
         pdesc = "";
         if isinstance(pinfo, dict) {
-            ptype = str(pinfo.get("type", "any") or "any");
-            pdesc = str(pinfo.get("description", "") or "");
+            info: dict[str, any] = pinfo;
+            ptype = str(info.get("type", "any") or "any");
+            pdesc = str(info.get("description", "") or "");
         }
         flag = " (required)" if pname in required else "";
         lines.append(f"    - {pname} [{ptype}]{flag}: {pdesc}");
@@ -103,7 +111,8 @@ impl attach_tool_hint(
 
 impl response_field(val: object, key: str) -> object {
     if isinstance(val, dict) {
-        return val.get(key);
+        fields: dict[str, any] = val;
+        return fields.get(key);
     }
     return getattr(val, key, None);
 }
@@ -147,7 +156,8 @@ impl linearize_tool_messages(messages: list[dict[str, any]]) -> list[dict[str, a
             if text {
                 parts.append(text);
             }
-            for tc in tool_calls {
+            calls: list[any] = tool_calls;
+            for tc in calls {
                 (name, args) = _tool_call_name_args(tc);
                 if not name {
                     continue;
@@ -197,7 +207,8 @@ impl _merge_stop(existing: object, extra: list[str]) -> list[str] {
     if isinstance(existing, str) and existing {
         out.append(existing);
     } elif isinstance(existing, list) {
-        for s in existing {
+        items: list[any] = existing;
+        for s in items {
             if isinstance(s, str) and s {
                 out.append(s);
             }
@@ -249,20 +260,25 @@ impl _call_fields(cobj: object) -> dict[str, any] | None {
     if not isinstance(cobj, dict) {
         return None;
     }
-    func = cobj.get("function");
-    name: object = cobj.get("name") or cobj.get("tool") or cobj.get("tool_name");
+    call: dict[str, any] = cobj;
+    func = call.get("function");
+    name: object = call.get("name") or call.get("tool") or call.get("tool_name");
     args: object = (
-        cobj.get("arguments")
-        or cobj.get("parameters")
-        or cobj.get("args")
-        or cobj.get("tool_args")
-        or cobj.get("input")
+        call.get("arguments")
+        or call.get("parameters")
+        or call.get("args")
+        or call.get("tool_args")
+        or call.get("input")
     );
 
     if isinstance(func, dict) {
-        name = name or func.get("name");
+        func_map: dict[str, any] = func;
+        name = name or func_map.get("name");
         args = (
-            args or func.get("arguments") or func.get("args") or func.get("parameters")
+            args
+            or func_map.get("arguments")
+            or func_map.get("args")
+            or func_map.get("parameters")
         );
     } elif isinstance(func, str) {
         name = name or func;
@@ -288,7 +304,8 @@ impl _extract_json_call(content: str, tool_names: list[str]) -> dict[str, any] |
                 parsed = None;
             }
             if isinstance(parsed, dict) {
-                wrapped = parsed.get("tool_calls") or parsed.get("tool_call");
+                parsed_map: dict[str, any] = parsed;
+                wrapped = parsed_map.get("tool_calls") or parsed_map.get("tool_call");
                 candidates: list[any] = [];
                 if isinstance(wrapped, list) {
                     candidates = wrapped;
@@ -446,7 +463,8 @@ impl coerce_message_dict(message: object) -> dict[str, any] {
     out.setdefault("content", response_field(message, "content"));
     extra = out.pop("provider_specific_fields", None);
     if isinstance(extra, dict) {
-        for (key, value) in extra.items() {
+        extras: dict[str, any] = extra;
+        for (key, value) in extras.items() {
             if value is not None and key not in out {
                 out[key] = value;
             }

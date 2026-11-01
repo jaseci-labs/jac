@@ -393,7 +393,7 @@ impl _build_link_plan(
         if path in units {
             return;
         }
-        if path in stack {
+        if path in stack or (stack and registry.is_not_native(path)) {
             return;
         }
         for dep in registry.known_native_deps(path, opts) {

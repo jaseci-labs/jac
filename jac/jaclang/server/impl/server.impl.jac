@@ -1774,17 +1774,28 @@ impl _abegin_user_request_context(
 
 impl _deserialize_wire_args(args: dict[(str, any)]) {
     for (k, v) in list(args.items()) {
-        if isinstance(v, dict) and '__type__' in v {
-            deserialized = Serializer.deserialize(v);
-            if deserialized is not None {
-                args[k] = deserialized;
+        if isinstance(v, dict) {
+            record: dict[str, any] = v;
+            if '__type__' in record {
+                deserialized = Serializer.deserialize(record);
+                if deserialized is not None {
+                    args[k] = deserialized;
+                }
             }
         } elif isinstance(v, list) {
-            args[k] = [
-                Serializer.deserialize(item)
-                    if isinstance(item, dict) and '__type__' in item
-                    else item for item in v
-            ];
+            items: list[any] = v;
+            decoded: list[any] = [];
+            for item in items {
+                if isinstance(item, dict) {
+                    item_record: dict[str, any] = item;
+                    if '__type__' in item_record {
+                        decoded.append(Serializer.deserialize(item_record));
+                        continue;
+                    }
+                }
+                decoded.append(item);
+            }
+            args[k] = decoded;
         }
     }
 }

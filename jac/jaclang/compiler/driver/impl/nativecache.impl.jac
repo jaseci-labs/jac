@@ -466,6 +466,18 @@ impl NativeUnitRegistry.ensure(
     return self.compile_unit(resolved, options, products=products);
 }
 
+impl NativeUnitRegistry.is_not_native(path: str) -> bool {
+    resolved = os.path.realpath(path);
+    return self.not_native.get(resolved) == NativeUnitRegistry._source_key(resolved);
+}
+
+impl NativeUnitRegistry.dep_unlowerable(path: str) -> bool {
+    resolved = os.path.realpath(path);
+    return resolved in self.failures
+        or (self.session is not None and resolved in self.session.unlowerable)
+        or self.is_not_native(resolved);
+}
+
 impl NativeUnitRegistry.dep_iface(
     path: str, options: CompileOptions, products: bool = True
 ) -> (NativeIface | None) {
@@ -986,11 +998,9 @@ impl NativeBuildSession.lower(
                 or unavailable(CompilationProduct.NATIVE_LOWER);
             if refusal {
                 self.registry.failures[resolved] = refusal;
-            } elif mod.gen.native_iface is None {
-                self.registry.failures[resolved] = (
-                    "lowering produced no native interface: the module has "
-                    "no native code of its own, so it is not a link unit"
-                );
+            } elif mod.gen.native_iface is None
+                and (key := NativeUnitRegistry._source_key(resolved)) is not None {
+                self.registry.not_native[resolved] = key;
             }
             return None;
         }
@@ -1229,14 +1239,16 @@ impl _interface_changes(before: any, after: any, path: str, out: list[str]) {
         return;
     }
     if isinstance(before, dict) and isinstance(after, dict) {
-        for key in sorted(set(before.keys()) | set(after.keys()), key=str) {
-            where = f"{path}.{key}" if path else str(key);
-            if key not in before {
+        old_map: dict[str, any] = before;
+        new_map: dict[str, any] = after;
+        for key in sorted(set(old_map.keys()) | set(new_map.keys())) {
+            where = f"{path}.{key}" if path else key;
+            if key not in old_map {
                 out.append(f"{where}: added");
-            } elif key not in after {
+            } elif key not in new_map {
                 out.append(f"{where}: removed");
             } else {
-                _interface_changes(before[key], after[key], where, out);
+                _interface_changes(old_map[key], new_map[key], where, out);
             }
         }
         return;
@@ -1244,7 +1256,11 @@ impl _interface_changes(before: any, after: any, path: str, out: list[str]) {
     if isinstance(before, list)
         and isinstance(after, list)
         and len(before) == len(after) {
-        for (index, (item_before, item_after)) in enumerate(zip(before, after)) {
+        old_items: list[any] = before;
+        new_items: list[any] = after;
+        for (index, (item_before, item_after)) in enumerate(
+            zip(old_items, new_items)
+        ) {
             _interface_changes(item_before, item_after, f"{path}[{index}]", out);
         }
         return;

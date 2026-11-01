@@ -109,8 +109,9 @@ impl _jaclang_manifest_version(start: Path) -> (str | None) {
             continue;
         }
         project = data.get('project', {});
-        if isinstance(project, dict) and project.get('name') == 'jaclang' {
-            ver = project.get('version');
+        project_table: dict[str, any] = project if isinstance(project, dict) else {};
+        if project_table.get('name') == 'jaclang' {
+            ver = project_table.get('version');
             if isinstance(ver, str) and ver {
                 return ver;
             }
@@ -144,7 +145,11 @@ impl _workspace_app_names -> set[str] {
         } except Exception {
             return set();
         }
-        return set(apps.keys()) if isinstance(apps, dict) else set();
+        if not isinstance(apps, dict) {
+            return set();
+        }
+        app_tables: dict[str, any] = apps;
+        return set(app_tables.keys());
     }
     return set();
 }

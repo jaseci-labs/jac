@@ -36,8 +36,11 @@ impl account_label(user: dict[str, any]) -> str {
         return username;
     }
     for identity in (user.get('identities') or []) {
-        if isinstance(identity, dict) and identity.get('value_raw') {
-            return str(identity.get('value_raw'));
+        if isinstance(identity, dict) {
+            record: dict[str, any] = identity;
+            if record.get('value_raw') {
+                return str(record.get('value_raw'));
+            }
         }
     }
     return str(user.get('user_id') or '');

@@ -150,7 +150,8 @@ impl InfoGraphReader.shell(record: dict[str, any]) -> (Info | TypeForm) {
 
 impl InfoGraphReader.find(raw: any) -> (Info | TypeForm | None) {
     if isinstance(raw, dict) {
-        slot = raw.get("n");
+        record: dict[str, any] = raw;
+        slot = record.get("n");
         if isinstance(slot, int) and 0 <= slot < len(self.built) {
             return self.built[slot];
         }
@@ -162,7 +163,8 @@ impl InfoGraphReader.find_all(raw: any) -> list[(Info | TypeForm | None)] {
     if not isinstance(raw, list) {
         return [];
     }
-    return [self.find(item) for item in raw];
+    items: list[any] = raw;
+    return [self.find(item) for item in items];
 }
 
 impl InfoGraphReader.type_ref(
@@ -184,7 +186,8 @@ impl InfoGraphReader.type_refs(
     if not isinstance(raw, list) {
         return [];
     }
-    return [self.type_ref(item) for item in raw];
+    items: list[any] = raw;
+    return [self.type_ref(item) for item in items];
 }
 
 impl InfoGraphReader.fields(raw: any) -> list[FieldInfo] {
@@ -281,13 +284,18 @@ impl info_graph_from_json(text: str) -> dict[str, Info] {
     import json;
     raw = json.loads(text);
     out: dict[str, Info] = {};
-    if not isinstance(raw, dict) or raw.get("version") != INFO_GRAPH_VERSION {
+    if not isinstance(raw, dict) {
+        return out;
+    }
+    info_graph: dict[str, any] = raw;
+    if info_graph.get("version") != INFO_GRAPH_VERSION {
         return out;
     }
     records: list[dict[str, any]] = [];
-    raw_nodes = raw.get("nodes");
+    raw_nodes = info_graph.get("nodes");
     if isinstance(raw_nodes, list) {
-        for record in raw_nodes {
+        node_items: list[any] = raw_nodes;
+        for record in node_items {
             if isinstance(record, dict) {
                 records.append(record);
             }
@@ -295,12 +303,13 @@ impl info_graph_from_json(text: str) -> dict[str, Info] {
     }
     reader = InfoGraphReader(records=records);
     reader.build();
-    raw_entries = raw.get("entries");
+    raw_entries = info_graph.get("entries");
     if isinstance(raw_entries, dict) {
-        for (key, ref) in raw_entries.items() {
+        entries: dict[str, any] = raw_entries;
+        for (key, ref) in entries.items() {
             found = reader.find(ref);
             if isinstance(found, Info) {
-                out[str(key)] = found;
+                out[key] = found;
             }
         }
     }

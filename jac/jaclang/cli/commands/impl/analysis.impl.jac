@@ -316,8 +316,9 @@ impl check(
             prefix = f"[{res['label']}] ";
             for d in errs + warns {
                 if isinstance(d, dict) {
-                    d['pretty'] = prefix + str(d.get('pretty') or '');
-                    d['text'] = prefix + str(d.get('text') or '');
+                    diag: dict[str, any] = d;
+                    diag['pretty'] = prefix + str(diag.get('pretty') or '');
+                    diag['text'] = prefix + str(diag.get('text') or '');
                 }
             }
         }

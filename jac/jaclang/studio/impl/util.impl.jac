@@ -39,10 +39,14 @@ impl permission_diffs(
     prior = known or {};
     contents = tool_call.get("content") or prior.get("content") or [];
     for c in contents {
-        if isinstance(c, dict) and c.get("type") == "diff" {
-            path = str(c.get("path", ""));
-            old = str(c.get("oldText") or "");
-            new = str(c.get("newText") or "");
+        if not isinstance(c, dict) {
+            continue;
+        }
+        block: dict[str, any] = c;
+        if block.get("type") == "diff" {
+            path = str(block.get("path", ""));
+            old = str(block.get("oldText") or "");
+            new = str(block.get("newText") or "");
             whole = read_or_empty(path);
             if whole and old and old != whole and old in whole {
                 (old, new) = (whole, whole.replace(old, new, 1));
@@ -50,10 +54,9 @@ impl permission_diffs(
             diffs.append(unified_diff(path, old, new, root_dir));
         }
     }
-    raw = tool_call.get("rawInput") or prior.get("raw_input") or {};
-    path = str(raw.get("file_path") or raw.get("path") or "")
-        if isinstance(raw, dict)
-        else "";
+    raw_input = tool_call.get("rawInput") or prior.get("raw_input") or {};
+    raw: dict[str, any] = raw_input if isinstance(raw_input, dict) else {};
+    path = str(raw.get("file_path") or raw.get("path") or "");
     if diffs or not path {
         return diffs;
     }

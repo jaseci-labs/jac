@@ -208,7 +208,8 @@ impl _asdict_value(value: object) -> object {
         return asdict(value);
     }
     if isinstance(value, list) {
-        return [_asdict_value(item) for item in value];
+        elems: list[any] = value;
+        return [_asdict_value(item) for item in elems];
     }
     if isinstance(value, tuple) {
         items = [_asdict_value(item) for item in value];

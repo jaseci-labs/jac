@@ -296,7 +296,11 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
         } except ValueError {
             return False;
         }
-        return isinstance(answer, dict) and answer.get("code") == "unknown_type";
+        if not isinstance(answer, dict) {
+            return False;
+        }
+        reply: dict[str, any] = answer;
+        return reply.get("code") == "unknown_type";
     }
     for result in answers {
         if result is None {

@@ -655,8 +655,11 @@ impl Scheduler._execute(task: ScheduledTask) -> str {
     } finally {
         ctx.call_state.reset(token);
     }
-    if isinstance(result, dict) and 'error' in result {
-        return str(result['error'] or result.get('error_code') or 'failed');
+    if isinstance(result, dict) {
+        outcome: dict[str, any] = result;
+        if 'error' in outcome {
+            return str(outcome['error'] or outcome.get('error_code') or 'failed');
+        }
     }
     return "";
 }

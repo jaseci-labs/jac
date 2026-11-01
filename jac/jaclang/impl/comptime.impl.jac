@@ -70,7 +70,8 @@ impl semstr(t: any, field: str = "") -> (str | None) {
     }
     inner = t?._jac_semstr_inner;
     if isinstance(inner, dict) {
-        got = inner.get(field);
+        sems: dict[str, any] = inner;
+        got = sems.get(field);
         if isinstance(got, str) and got {
             return got;
         }

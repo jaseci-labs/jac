@@ -328,8 +328,11 @@ impl _spec_scalar_elem(spec: any) -> (str | None) {
     if isinstance(spec, str) {
         spec = json.loads(spec);
     }
-    if isinstance(spec, list) and spec and spec[0] == "s" {
-        return spec[1];
+    if isinstance(spec, list) and spec {
+        parts: list[any] = spec;
+        if parts[0] == "s" {
+            return parts[1];
+        }
     }
     return None;
 }

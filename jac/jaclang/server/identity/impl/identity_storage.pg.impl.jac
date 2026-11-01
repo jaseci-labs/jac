@@ -401,8 +401,11 @@ impl _pg_json_default(o: object) -> str {
 
 impl _pg_unique_violation(e: Exception) -> bool {
     for arg in getattr(e, 'args', ()) {
-        if isinstance(arg, dict) and arg.get('C') == '23505' {
-            return True;
+        if isinstance(arg, dict) {
+            fields: dict[str, any] = arg;
+            if fields.get('C') == '23505' {
+                return True;
+            }
         }
     }
     return False;

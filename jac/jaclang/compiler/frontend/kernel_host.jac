@@ -107,6 +107,7 @@ obj KernelHost(HostServices) {
         source_reads: dict[str, str] = {},
         _native_ifaces: dict[str, NativeIface] = {},
         _lowering: set[str] = set(),
+        _unlowerable: set[str] = set(),
         _lowered: dict[str, Module] = {},
         _indexed: list[int] = [0, 0, 0, 0, 0],
         _session: (KernelSession | None) = None;
@@ -201,6 +202,7 @@ obj KernelHost(HostServices) {
     ) -> (NativeIface | None);
 
     def native_dep_discovery_open(program: JacProgram) -> bool;
+    def native_dep_unlowerable(program: JacProgram, path: str) -> bool;
     def native_deps_deferred(program: JacProgram) -> bool;
     def lower_dependency(
         program: JacProgram, real: str, options: CompileOptions

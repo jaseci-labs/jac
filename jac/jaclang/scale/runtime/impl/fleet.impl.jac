@@ -84,9 +84,13 @@ impl FleetSpec.from_dict(raw: dict[str, any]) -> FleetSpec {
     fleet = FleetSpec();
     members = raw.get("members", []);
     if isinstance(members, list) {
-        for item in members {
-            if isinstance(item, dict) and item.get("app") {
-                fleet.add(FleetMember.from_dict(item));
+        entries: list[any] = members;
+        for item in entries {
+            if isinstance(item, dict) {
+                member: dict[str, any] = item;
+                if member.get("app") {
+                    fleet.add(FleetMember.from_dict(member));
+                }
             }
         }
     }

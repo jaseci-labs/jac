@@ -420,7 +420,8 @@ impl TelemetryStore.record_llm_event(event: dict[str, any]) {
         trace = self._traces[inv_id];
         _raw_msgs = event.get("messages");
         if isinstance(_raw_msgs, list) and len(_raw_msgs) > 20 {
-            _raw_msgs = _raw_msgs[-20:];
+            recent_msgs: list[any] = _raw_msgs;
+            _raw_msgs = recent_msgs[-20:];
         }
         _raw_resp = event.get("response");
         try {

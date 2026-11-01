@@ -2,7 +2,8 @@ impl dget(blob: any, key: str) -> dict[str, any] {
     if not isinstance(blob, dict) {
         return {};
     }
-    val = blob.get(key);
+    record: dict[str, any] = blob;
+    val = record.get(key);
     return val if isinstance(val, dict) else {};
 }
 
@@ -10,7 +11,8 @@ impl lget(blob: any, key: str) -> list[any] {
     if not isinstance(blob, dict) {
         return [];
     }
-    val = blob.get(key);
+    record: dict[str, any] = blob;
+    val = record.get(key);
     return val if isinstance(val, list) else [];
 }
 
@@ -18,7 +20,8 @@ impl sget(blob: any, key: str) -> str | None {
     if not isinstance(blob, dict) {
         return None;
     }
-    val = blob.get(key);
+    record: dict[str, any] = blob;
+    val = record.get(key);
     return str(val) if val is not None else None;
 }
 
@@ -26,7 +29,8 @@ impl bget(blob: any, key: str, fallback: bool) -> bool {
     if not isinstance(blob, dict) {
         return fallback;
     }
-    val = blob.get(key);
+    record: dict[str, any] = blob;
+    val = record.get(key);
     return bool(val) if val is not None else fallback;
 }
 
@@ -34,7 +38,8 @@ impl iget(blob: any, key: str, fallback: int) -> int {
     if not isinstance(blob, dict) {
         return fallback;
     }
-    val = blob.get(key);
+    record: dict[str, any] = blob;
+    val = record.get(key);
     if val is None {
         return fallback;
     }
@@ -49,7 +54,8 @@ impl fget(blob: any, key: str, fallback: float) -> float {
     if not isinstance(blob, dict) {
         return fallback;
     }
-    val = blob.get(key);
+    record: dict[str, any] = blob;
+    val = record.get(key);
     if val is None {
         return fallback;
     }

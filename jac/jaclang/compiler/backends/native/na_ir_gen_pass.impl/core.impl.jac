@@ -1382,6 +1382,9 @@ impl NaIRGenPass._native_imports(
             _dep_todo.extend(dep_edges.get(_direct, []));
             continue;
         }
+        if active_host().native_dep_unlowerable(self.prog, _direct) {
+            continue;
+        }
         if typed_only.get(_direct, False) {
             import from jaclang.compiler.placement.placement_facts {
                 native_unit as _typed_native_unit
@@ -2079,7 +2082,31 @@ impl NaIRGenPass._imported_function_demotions(
     if iface is not None {
         return set(iface.demoted);
     }
+    if imported_mod?.loc
+        and imported_mod.loc.mod_path
+        and active_host().native_dep_unlowerable(
+            self.prog, imported_mod.loc.mod_path
+        ) {
+        return self._module_callable_names(imported_mod);
+    }
     return None;
+}
+
+impl NaIRGenPass._module_callable_names(mod: uni.Module) -> set[str] {
+    names: set[str] = set();
+    for stmt in ModuleFacts.iter_context_stmts(mod) {
+        if isinstance(stmt, uni.Ability) and stmt.name_ref is not None {
+            names.add(stmt.name_ref.sym_name);
+        } elif isinstance(stmt, uni.Archetype) and stmt.name is not None {
+            arch = self._arch_key(stmt);
+            for member in (ModuleFacts.unwrap_body(stmt) or []) {
+                if isinstance(member, uni.Ability) and member.name_ref is not None {
+                    names.add(f"{arch}.{member.name_ref.sym_name}");
+                }
+            }
+        }
+    }
+    return names;
 }
 
 impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {

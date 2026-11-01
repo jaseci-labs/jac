@@ -239,14 +239,19 @@ impl BridgeServer._dispatch(conn: BridgeConn, line: bytes) {
         conn.send({"id": None, "error": {"message": "malformed request"}});
         return;
     }
-    if not isinstance(msg, dict) or not isinstance(msg.get("method"), str) {
+    if not isinstance(msg, dict) {
         conn.send({"id": None, "error": {"message": "request needs a method"}});
         return;
     }
-    params = msg.get("params");
+    request: dict[str, any] = msg;
+    if not isinstance(request.get("method"), str) {
+        conn.send({"id": None, "error": {"message": "request needs a method"}});
+        return;
+    }
+    params = request.get("params");
     req = BridgeRequest(
-        id=msg.get("id"),
-        method=msg["method"],
+        id=request.get("id"),
+        method=request["method"],
         params=params if isinstance(params, dict) else {},
         conn=conn
     );
@@ -323,7 +328,11 @@ impl BridgeClient.call(
     msg = json.loads(buf.split(b"\n", 1)[0].decode("utf-8", "replace"));
     if "error" in msg and msg["error"] is not None {
         e = msg["error"];
-        raise BridgeError(str(e.get("message", e)) if isinstance(e, dict) else str(e));
+        if isinstance(e, dict) {
+            failure: dict[str, any] = e;
+            raise BridgeError(str(failure.get("message", e)));
+        }
+        raise BridgeError(str(e));
     }
     return msg.get("result");
 }

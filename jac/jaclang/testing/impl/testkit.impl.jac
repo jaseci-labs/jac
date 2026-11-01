@@ -272,7 +272,13 @@ impl dispatch_and_collect(app: any, request: any) -> tuple[any, bytes] {
 impl _build_multipart(files: any, data: any = None) -> tuple[bytes, str] {
     boundary = f"jactest{secrets.token_hex(16)}";
     parts: list[bytes] = [];
-    pairs = list(files.items()) if isinstance(files, dict) else list(files);
+    pairs: list[any] = [];
+    if isinstance(files, dict) {
+        file_fields: dict[str, any] = files;
+        pairs = list(file_fields.items());
+    } else {
+        pairs = list(files);
+    }
     for (field, spec) in pairs {
         filename = str(field);
         content: bytes = b'';
@@ -310,7 +316,8 @@ impl _build_multipart(files: any, data: any = None) -> tuple[bytes, str] {
         parts.append(head + content + b'\r\n');
     }
     if isinstance(data, dict) {
-        for (field, value) in data.items() {
+        form_fields: dict[str, any] = data;
+        for (field, value) in form_fields.items() {
             head = (
                 f"--{boundary}\r\n"
                 f'Content-Disposition: form-data; name="{field}"\r\n\r\n'

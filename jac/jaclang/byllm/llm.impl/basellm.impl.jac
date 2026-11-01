@@ -1058,7 +1058,8 @@ impl BaseLLM.format_prompt(params: dict[str, any]) -> str {
     }
     def _msg_content(m: object) -> object {
         if isinstance(m, dict) {
-            return m.get("content");
+            fields: dict[str, any] = m;
+            return fields.get("content");
         }
         return m?.content;
     }
@@ -1337,7 +1338,8 @@ impl BaseLLM.dispatch_streaming_with_tools(
                 if chunk?.choices and chunk?.choices?[0]?.delta {
                     delta_content = chunk?.choices?[0]?.delta?.content or "";
                 } elif isinstance(chunk, dict) {
-                    _choices: any = chunk.get("choices") or [];
+                    chunk_map: dict[str, any] = chunk;
+                    _choices: any = chunk_map.get("choices") or [];
                     if _choices {
                         delta_content = str(
                             (_choices[0].get("delta") or {}).get("content") or ""
@@ -2190,7 +2192,8 @@ impl _tool_call_fragments(chunk: object) -> list[dict[str, any]] {
         if chunk?.choices and chunk?.choices?[0]?.delta {
             raw = chunk?.choices?[0]?.delta?.tool_calls;
         } elif isinstance(chunk, dict) {
-            _choices: any = chunk.get("choices") or [];
+            chunk_map: dict[str, any] = chunk;
+            _choices: any = chunk_map.get("choices") or [];
             if _choices {
                 _tcs = (_choices[0].get("delta") or {}).get("tool_calls");
                 raw = _tcs if isinstance(_tcs, list) else None;
@@ -2206,12 +2209,13 @@ impl _tool_call_fragments(chunk: object) -> list[dict[str, any]] {
     for (pos, tc) in enumerate(raw) {
         try {
             if isinstance(tc, dict) {
-                fn: any = tc.get("function") or {};
-                idx = tc.get("index");
+                call: dict[str, any] = tc;
+                fn: any = call.get("function") or {};
+                idx = call.get("index");
                 out.append(
                     {
                         "index": int(idx) if idx is not None else pos,
-                        "id": tc.get("id") or "",
+                        "id": call.get("id") or "",
                         "name": (fn.get("name") if isinstance(fn, dict) else "") or "",
                         "fragment": (
                             fn.get("arguments") if isinstance(fn, dict) else ""
@@ -2389,9 +2393,10 @@ impl _without_cache_control(block: dict[str, any]) -> dict[str, any] {
     };
     content = out.get("content");
     if isinstance(content, list) {
+        parts: list[any] = content;
         out["content"] = [
             _without_cache_control(part) if isinstance(part, dict) else part
-            for part in content
+            for part in parts
         ];
     }
     return out;
@@ -2402,8 +2407,13 @@ impl _mark_message_for_caching(msg: dict[str, any]) {
     content = msg.get("content");
     if isinstance(content, str) {
         msg["cache_control"] = dict(_CACHE_CONTROL_EPHEMERAL);
-    } elif isinstance(content, list) and content and isinstance(content[-1], dict) {
-        content[-1]["cache_control"] = dict(_CACHE_CONTROL_EPHEMERAL);
+    } elif isinstance(content, list) and content {
+        blocks: list[any] = content;
+        last = blocks[-1];
+        if isinstance(last, dict) {
+            last_block: dict[str, any] = last;
+            last_block["cache_control"] = dict(_CACHE_CONTROL_EPHEMERAL);
+        }
     }
 }
 
@@ -2459,10 +2469,11 @@ impl _apply_prompt_caching(
     last_nonsys: dict[str, any] | None = None;
     for msg in out_msgs {
         if isinstance(msg, dict) {
-            if msg.get("role") == "system" {
-                last_sys = msg;
+            msg_map: dict[str, any] = msg;
+            if msg_map.get("role") == "system" {
+                last_sys = msg_map;
             } else {
-                last_nonsys = msg;
+                last_nonsys = msg_map;
             }
         }
     }
@@ -2543,7 +2554,8 @@ impl _attach_call_cost(
         return;
     }
     if isinstance(usage_obj, dict) {
-        usage_obj["cost"] = cost;
+        usage_map: dict[str, any] = usage_obj;
+        usage_map["cost"] = cost;
     } else {
         try {
             setattr(usage_obj, "cost", cost);
@@ -2641,15 +2653,17 @@ impl _compaction_line(msg: any) -> str {
     if not isinstance(msg, dict) {
         return str(msg);
     }
-    role = msg.get("role", "");
-    content = msg.get("content") or "";
+    msg_map: dict[str, any] = msg;
+    role = msg_map.get("role", "");
+    content = msg_map.get("content") or "";
     if isinstance(content, list) {
+        parts: list[any] = content;
         content = " ".join(
-            p.get("text", "") if isinstance(p, dict) else str(p) for p in content
+            p.get("text", "") if isinstance(p, dict) else str(p) for p in parts
         );
     }
     if str(role) == "assistant" {
-        tool_calls: any = msg.get("tool_calls") or [];
+        tool_calls: any = msg_map.get("tool_calls") or [];
         if tool_calls {
             descs: list[str] = [];
             for tc in tool_calls {
@@ -2682,10 +2696,12 @@ impl _reasoning_chars(msg: any) -> int {
     if not isinstance(msg, dict) {
         return 0;
     }
-    total = len(str(msg.get("reasoning_content") or ""));
-    for block in msg.get("thinking_blocks") or [] {
+    msg_map: dict[str, any] = msg;
+    total = len(str(msg_map.get("reasoning_content") or ""));
+    for block in msg_map.get("thinking_blocks") or [] {
         if isinstance(block, dict) {
-            total += len(str(block.get("thinking") or ""));
+            block_map: dict[str, any] = block;
+            total += len(str(block_map.get("thinking") or ""));
         }
     }
     return total;
@@ -2694,7 +2710,8 @@ impl _reasoning_chars(msg: any) -> int {
 
 impl _delta_reasoning(chunk: object) -> str {
     if isinstance(chunk, dict) {
-        choices: any = chunk.get("choices") or [];
+        chunk_map: dict[str, any] = chunk;
+        choices: any = chunk_map.get("choices") or [];
         delta: any = (choices[0].get("delta") or {}) if choices else {};
         return str(delta.get("reasoning_content") or "");
     }
@@ -2960,7 +2977,8 @@ impl _sanitize_tool_calls(message: dict[str, any]) -> set[str] {
                 damaged.add(str(response_field(tc, "id") or ""));
             }
             if isinstance(fn, dict) {
-                fn["arguments"] = "{}";
+                fn_map: dict[str, any] = fn;
+                fn_map["arguments"] = "{}";
             } else {
                 setattr(fn, "arguments", "{}");
             }

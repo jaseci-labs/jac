@@ -207,7 +207,8 @@ impl JacConfig.apply_profile(
         check_data: dict[str, any] = profile["check"];
         for (key, value) in check_data.items() {
             if key == "lint" and isinstance(value, dict) {
-                for (lk, lv) in value.items() {
+                lint_data: dict[str, any] = value;
+                for (lk, lv) in lint_data.items() {
                     if hasattr(self.check.lint, lk) {
                         setattr(self.check.lint, lk, lv);
                     }
@@ -323,7 +324,8 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
         check_data: dict[str, any] = data["check"];
         for (key, value) in check_data.items() {
             if key == "lint" and isinstance(value, dict) {
-                for (lk, lv) in value.items() {
+                lint_data: dict[str, any] = value;
+                for (lk, lv) in lint_data.items() {
                     if hasattr(self.check.lint, lk) {
                         setattr(self.check.lint, lk, lv);
                     }
@@ -370,10 +372,10 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
     }
 
     for (key, value) in data.items() {
-        if key in self._raw_data
-            and isinstance(self._raw_data[key], dict)
-            and isinstance(value, dict) {
-            self._raw_data[key].update(value);
+        existing = self._raw_data.get(key);
+        if isinstance(existing, dict) and isinstance(value, dict) {
+            existing_table: dict[str, any] = existing;
+            existing_table.update(value);
         } else {
             self._raw_data[key] = value;
         }
@@ -690,13 +692,15 @@ impl toml_value(value: any) -> str {
         escaped = value.replace("\\", "\\\\").replace('"', '\\"');
         return f'"{escaped}"';
     } elif isinstance(value, list) {
-        items = [toml_value(item) for item in value];
+        elements: list[any] = value;
+        items = [toml_value(item) for item in elements];
         return f"[{', '.join(items)}]";
     } elif isinstance(value, dict) {
-        if not value {
+        table: dict[str, any] = value;
+        if not table {
             return "{}";
         }
-        pairs = [f"{_quote_key(k)} = {toml_value(v)}" for (k, v) in value.items()];
+        pairs = [f"{_quote_key(k)} = {toml_value(v)}" for (k, v) in table.items()];
         return "{ " + ", ".join(pairs) + " }";
     } else {
         return f'"{value}"';
@@ -706,9 +710,11 @@ impl toml_value(value: any) -> str {
 impl JacConfig.merge_dependency_tables(
     data: dict[str, any], section_prefix: str = ""
 ) -> None {
-    if isinstance(data.get("registries"), dict) {
-        for (name, url) in data["registries"].items() {
-            self.registries[str(name)] = str(url);
+    registries = data.get("registries");
+    if isinstance(registries, dict) {
+        registry_urls: dict[str, any] = registries;
+        for (name, url) in registry_urls.items() {
+            self.registries[name] = str(url);
         }
     }
     for (section, dev) in (("dependencies", False), ("dev-dependencies", True)) {
@@ -801,8 +807,9 @@ impl _parse_persons(raw: list[object]) -> list[PersonConfig] {
     result: list[PersonConfig] = [];
     for item in raw {
         if isinstance(item, dict) {
+            person: dict[str, any] = item;
             result.append(
-                PersonConfig(name=item.get("name", ""), email=item.get("email", ""))
+                PersonConfig(name=person.get("name", ""), email=person.get("email", ""))
             );
         } elif isinstance(item, str) {
             result.append(PersonConfig(name=item, email=""));
@@ -911,6 +918,7 @@ impl _parse_toml_data(
             );
         }
         cors_raw = serve_data.get("cors_origins", ["*"]);
+        cors_list: list[any] = cors_raw if isinstance(cors_raw, list) else [cors_raw];
         config.serve = ServeConfig(
             host=str(serve_data.get("host", "0.0.0.0")),
             port=serve_data.get("port", 8000),
@@ -918,9 +926,7 @@ impl _parse_toml_data(
             main=serve_data.get("main", True),
             docs_enabled=bool(serve_data.get("docs_enabled", True)),
             graph_enabled=bool(serve_data.get("graph_enabled", True)),
-            cors_origins=[str(_o) for _o in cors_raw]
-                if isinstance(cors_raw, list)
-                else [str(cors_raw)],
+            cors_origins=[str(_o) for _o in cors_list],
             public_origin=str(serve_data.get("public_origin", "")),
             on_conflict=on_conflict,
             conflict_max_attempts=serve_data.get("conflict_max_attempts", 5),
@@ -1050,26 +1056,30 @@ impl _parse_toml_data(
     if isinstance(data.get("database"), dict) {
         db_data: dict[str, any] = data["database"];
         indexes = db_data.get("indexes");
+        index_table: dict[str, any] = indexes if isinstance(indexes, dict) else {};
+        index_fields: dict[str, list[str]] = {};
+        for (arch, fields) in index_table.items() {
+            if isinstance(fields, list) {
+                field_list: list[any] = fields;
+                index_fields[arch] = [str(field) for field in field_list];
+            }
+        }
         days = str(db_data.get("retention_days") or "0").strip();
         config.database = DatabaseConfig(
-            indexes={
-                str(arch): [str(field) for field in fields]
-                for (arch, fields) in (
-                    indexes.items() if isinstance(indexes, dict) else []
-                )
-                if isinstance(fields, list)
-            },
+            indexes=index_fields,
             retention_days=int(days) if days.isdigit() else 0,
             postgres_dist=str(db_data.get("postgres_dist") or ""),
             postgres_version=str(db_data.get("postgres_version") or "")
         );
     }
     if isinstance(data.get("network"), dict) {
-        config.network = NetworkConfig(offline=data["network"].get("offline") is True);
+        network_data: dict[str, any] = data["network"];
+        config.network = NetworkConfig(offline=network_data.get("offline") is True);
     }
     if isinstance(data.get("toolchains"), dict) {
+        toolchains_data: dict[str, any] = data["toolchains"];
         config.toolchains = ToolchainsConfig(
-            system=data["toolchains"].get("system", True) is not False
+            system=toolchains_data.get("system", True) is not False
         );
     }
     if "dev" in data {
@@ -1086,7 +1096,8 @@ impl _parse_toml_data(
         );
     }
     _scale_raw = data.get("scale");
-    if isinstance(_scale_raw, dict) and "microservices" in _scale_raw {
+    scale_table: dict[str, any] = _scale_raw if isinstance(_scale_raw, dict) else {};
+    if "microservices" in scale_table {
         raise ValueError(
             "jac.toml [scale.microservices] was removed: declare each service as "
             "an [apps.<name>] table (kind = \"service\", entry-point, route) and "
@@ -1163,11 +1174,11 @@ impl resolve_env_refs(
             }
             return resolved;
         } elif isinstance(item, dict) {
-            return {
-                k: walk(v, f"{at}.{k}" if at else str(k)) for (k, v) in item.items()
-            };
+            entries: dict[str, any] = item;
+            return {k: walk(v, f"{at}.{k}" if at else k) for (k, v) in entries.items()};
         } elif isinstance(item, list) {
-            return [walk(v, f"{at}[{i}]") for (i, v) in enumerate(item)];
+            elements: list[any] = item;
+            return [walk(v, f"{at}[{i}]") for (i, v) in enumerate(elements)];
         }
         return item;
     }
@@ -1721,7 +1732,7 @@ impl _apply_build_section(cfg: JacConfig, data: dict[str, any]) -> None {
         return;
     }
 
-    build_data = data["build"];
+    build_data: dict[str, any] = data["build"];
     for (_old_key, _new_home) in [
         ("default_codespace", "[placement] default"),
         ("native", "[native]")
@@ -1748,7 +1759,7 @@ impl _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]) {
         }
     }
     if "memory" in data and isinstance(data["memory"], dict) {
-        mem = data["memory"];
+        mem: dict[str, any] = data["memory"];
         if "profile" in mem {
             _prof = str(mem["profile"]).strip().lower();
             if _prof in ("managed", "rc", "nogc") {
@@ -1774,18 +1785,22 @@ impl _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]) {
         }
     }
     if "native" in data and isinstance(data["native"], dict) {
-        nat = data["native"];
+        nat: dict[str, any] = data["native"];
         _link_mode = str(nat.get("link_mode", cfg.native.link_mode));
         if _link_mode not in ("objects", "bitcode") {
             raise ValueError("[native] link_mode must be objects or bitcode");
         }
         cfg.native.link_mode = _link_mode;
         if "require" in nat {
-            if not isinstance(nat["require"], list)
-                or not all(isinstance(pattern, str) for pattern in nat["require"]) {
+            require = nat["require"];
+            if not isinstance(require, list) {
                 raise ValueError("[native] require must be a list of module patterns");
             }
-            cfg.native.require = list(nat["require"]);
+            patterns: list[any] = require;
+            if not all(isinstance(pattern, str) for pattern in patterns) {
+                raise ValueError("[native] require must be a list of module patterns");
+            }
+            cfg.native.require = [str(pattern) for pattern in patterns];
         }
         cfg.native.target = str(nat.get("target", cfg.native.target));
         try {
@@ -1815,11 +1830,13 @@ impl _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]) {
             " each directory it closed."
         );
     }
-    if "placement" in data
-        and isinstance(data["placement"], dict)
-        and "default" in data["placement"] {
+    placement_raw = data.get("placement");
+    placement_data: dict[str, any] = placement_raw
+        if isinstance(placement_raw, dict)
+        else {};
+    if "default" in placement_data {
         _cs_aliases = {"sv": "server", "na": "native"};
-        _raw = data["placement"]["default"];
+        _raw = placement_data["default"];
         _cs = _cs_aliases.get(str(_raw).strip().lower(), str(_raw).strip().lower());
         if _cs in ("server", "native") {
             cfg.placement.default_codespace = _cs;

@@ -1,9 +1,10 @@
 impl _migrate_scope(scope: dict[str, any], prefix: str, moved: list[str]) {
     for table_name in DEP_TABLES {
-        table = scope.get(table_name);
-        if not isinstance(table, dict) {
+        raw_table = scope.get(table_name);
+        if not isinstance(raw_table, dict) {
             continue;
         }
+        table: dict[str, any] = raw_table;
         migrated = migrate_dependency_table(table);
         if migrated != table {
             before = set(table.keys()) - {"pypi"};
@@ -25,7 +26,8 @@ impl migrate_manifest(path: Path) -> ManifestMigration {
     for (group, prefix) in (("environments", "environments."), ("apps", "apps.")) {
         section = new_doc.get(group);
         if isinstance(section, dict) {
-            for (name, scope) in section.items() {
+            scopes: dict[str, any] = section;
+            for (name, scope) in scopes.items() {
                 if isinstance(scope, dict) {
                     _migrate_scope(scope, f"{prefix}{name}.", result.moved);
                 }

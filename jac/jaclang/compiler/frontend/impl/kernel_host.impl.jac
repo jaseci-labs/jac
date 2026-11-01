@@ -950,8 +950,20 @@ impl KernelHost.native_dep_iface(
     }
     if found is not None {
         self._native_ifaces[real] = found;
+    } else {
+        self._unlowerable.add(real);
     }
     return found;
+}
+
+impl KernelHost.native_dep_unlowerable(program: JacProgram, path: str) -> bool {
+    if self.fallback is not None {
+        with self.delegating("native_dep_unlowerable") as host {
+            answer = host.native_dep_unlowerable(program, path);
+        }
+        return answer;
+    }
+    return os.path.realpath(path) in self._unlowerable;
 }
 
 impl KernelHost.native_dep_discovery_open(program: JacProgram) -> bool {

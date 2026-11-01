@@ -384,8 +384,11 @@ impl PlanValidator._check_resources(
 
 impl PlanValidator._check_image(svc_name: str, deployment: any, out: list[Diagnostic]) {
     for c in lget(pod_spec(deployment), "containers") {
-        if isinstance(c, dict) and c.get("image") {
-            return;
+        if isinstance(c, dict) {
+            container: dict[str, any] = c;
+            if container.get("image") {
+                return;
+            }
         }
     }
     out.append(

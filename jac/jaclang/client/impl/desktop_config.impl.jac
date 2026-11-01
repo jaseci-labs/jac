@@ -103,9 +103,10 @@ impl JacDesktopConfig.get_backends(self: JacDesktopConfig) -> dict[str, str] {
             "Desktop configuration error: set either backend (one backend) or backends (a choice), not both"
         );
     }
+    backend_table: dict[str, any] = raw;
     backends: dict[str, str] = {};
-    for (key, raw_value) in raw.items() {
-        name = str(key).strip();
+    for (key, raw_value) in backend_table.items() {
+        name = key.strip();
         value = str(raw_value or '').strip();
         if not re.fullmatch(r'[A-Za-z0-9_-]+', name) or name == 'ask' {
             raise ValueError(
@@ -236,8 +237,9 @@ impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
     }
     dispatch = config.get('dispatch', {});
     if isinstance(dispatch, dict) {
-        timeout_s = float(dispatch.get('timeout_s', 30.0));
-        max_queue = int(dispatch.get('max_queue', 128));
+        dispatch_table: dict[str, any] = dispatch;
+        timeout_s = float(dispatch_table.get('timeout_s', 30.0));
+        max_queue = int(dispatch_table.get('max_queue', 128));
         if timeout_s <= 0 {
             raise ValueError(
                 f"Desktop configuration error: dispatch.timeout_s ({timeout_s}) "
@@ -296,7 +298,8 @@ impl _validate_plugin_keys(plugins: dict[str, any]) -> None {
         }
         sub_schema = known[plugin_name].nested;
         if isinstance(value, dict) and sub_schema {
-            for sub_key in value.keys() {
+            plugin_table: dict[str, any] = value;
+            for sub_key in plugin_table.keys() {
                 if sub_key not in sub_schema {
                     valid = ", ".join(sorted(sub_schema.keys()));
                     raise ValueError(
