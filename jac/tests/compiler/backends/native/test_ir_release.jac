@@ -35,12 +35,12 @@ test "text snapshots preserve bitcode, symbols, and function counts" {
     _ = ir.Function(module, ir.FunctionType(i64, []), name="declared");
     expected_bitcode = unit_bitcode(module);
 
-    (bitcode, definitions, declarations, counts) = unit_snapshot_text(str(module));
-    assert bitcode == expected_bitcode;
-    assert definitions == {"defined"};
-    assert declarations == {"declared"};
-    assert counts == (1, 1);
-    restored = llvm.parse_bitcode(bitcode);
+    snapshot = unit_snapshot_text(str(module));
+    assert snapshot.bitcode == expected_bitcode;
+    assert snapshot.defined == {"defined"};
+    assert snapshot.declared == {"declared"};
+    assert snapshot.function_counts == (1, 1);
+    restored = llvm.parse_bitcode(snapshot.bitcode);
     restored.verify();
     module.release();
 }

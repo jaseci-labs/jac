@@ -156,12 +156,12 @@ test "the plan drops lowered LLVM modules before optimizing bitcode" {
     assert optimized_count and optimized_count[0] >= len(UNITS);
 }
 
-test "a pending snapshot overlaps an independent lower and finish collects both" {
+test "a pending snapshot overlaps an independent lower and persists both products" {
     import threading;
-    import jaclang.compiler.driver.nativecache as nativecache;
-    import from jaclang.compiler.driver.nativecache {
-        NativeBuildSession,
-        NativeIRSnapshot
+    import jaclang.compiler.driver.native_snapshot_pipeline as snapshot_pipeline;
+    import from jaclang.compiler.driver.nativecache { NativeBuildSession }
+    import from jaclang.compiler.driver.native_snapshot_pipeline {
+        NativeSnapshotResult
     }
     with tempfile.TemporaryDirectory() as work {
         first = str(Path(work) / "first.jac");
@@ -173,19 +173,16 @@ test "a pending snapshot overlaps an independent lower and finish collects both"
         prog = JacProgram();
         opts = _opts();
         prog.options = opts;
+        registry = prog.native_units();
         snapshot_started = threading.Event();
         release_snapshot = threading.Event();
         snapshot_finished = threading.Event();
         first_snapshot_path: list[str] = [];
         overlap_paths: list[str] = [];
-        finished_paths: list[str] = [];
         snapshot_calls = [0];
-        original_snapshot = nativecache._snapshot_ir_text;
+        original_snapshot = snapshot_pipeline._snapshot_ir_text;
         original_enqueue = NativeBuildSession.enqueue_snapshot;
-        original_finish = NativeBuildSession._finish;
-        def hold_first_snapshot(
-            ir_text: str
-        ) -> tuple[NativeIRSnapshot, tuple[int, int]] {
+        def hold_first_snapshot(path: str, ir_text: str) -> NativeSnapshotResult {
             snapshot_calls[0] += 1;
             if snapshot_calls[0] == 1 {
                 snapshot_started.set();
@@ -193,12 +190,12 @@ test "a pending snapshot overlaps an independent lower and finish collects both"
                     raise RuntimeError("test timed out waiting to release snapshot");
                 }
                 try {
-                    return original_snapshot(ir_text);
+                    return original_snapshot(path, ir_text);
                 } finally {
                     snapshot_finished.set();
                 }
             }
-            return original_snapshot(ir_text);
+            return original_snapshot(path, ir_text);
         }
         def observe_enqueue(self: NativeBuildSession, path: str) {
             resolved = os.path.realpath(path);
@@ -213,42 +210,34 @@ test "a pending snapshot overlaps an independent lower and finish collects both"
             }
             original_enqueue(self, path);
         }
-        def inspect_finish(self: NativeBuildSession, paths: list[str]) {
-            original_finish(self, paths);
-            for path in (first_path, second_path) {
-                assert path in self.ir_snapshots , f"missing snapshot for {path}";
-                assert path in self.optimized_units , f"missing optimized result for {path}";
-                mod = self.lowered.get(path);
-                assert mod is not None and mod.gen.native_bitcode is not None , (
-                    f"finish did not collect native bitcode for {path}"
-                );
-                finished_paths.append(path);
-            }
-        }
-        nativecache._snapshot_ir_text = hold_first_snapshot;
+        snapshot_pipeline._snapshot_ir_text = hold_first_snapshot;
         NativeBuildSession.enqueue_snapshot = observe_enqueue;
-        NativeBuildSession._finish = inspect_finish;
         try {
             plan = build_link_plan(prog, [first, second], opts);
         } finally {
             release_snapshot.set();
-            nativecache._snapshot_ir_text = original_snapshot;
+            snapshot_pipeline._snapshot_ir_text = original_snapshot;
             NativeBuildSession.enqueue_snapshot = original_enqueue;
-            NativeBuildSession._finish = original_finish;
         }
         assert plan.unit(first_path) is not None;
         assert plan.unit(second_path) is not None;
         assert overlap_paths == [second_path] , overlap_paths;
-        assert sorted(finished_paths) == sorted([first_path, second_path]);
+        for path in (first_path, second_path) {
+            cached_unit = registry.entries.get(path);
+            assert cached_unit is not None and cached_unit.bitcode is not None , (
+                f"build did not persist native bitcode for {path}"
+            );
+        }
     }
 }
 
 test "worker failures still release session state" {
     import from concurrent.futures { Future, ThreadPoolExecutor }
-    import from jaclang.compiler.driver.nativecache {
-        NativeBuildSession,
-        NativeIRSnapshot
+    import from jaclang.compiler.driver.nativecache { NativeBuildSession }
+    import from jaclang.compiler.driver.native_snapshot_pipeline {
+        NativeOptimizationInput
     }
+    import from jaclang.compiler.backends.native.na_compile_pass { UnitIRSnapshot }
     prog = JacProgram();
     registry = prog.native_units();
     session = NativeBuildSession(registry=registry, options=_opts());
@@ -258,18 +247,18 @@ test "worker failures still release session state" {
     snapshot_failure.set_exception(RuntimeError("snapshot worker failed"));
     optimizer_failure = Future();
     optimizer_failure.set_exception(RuntimeError("optimizer worker failed"));
-    session.snapshot_future = snapshot_failure;
-    session.snapshot_path = path;
-    session.optimizer_future = optimizer_failure;
-    session.optimizer_paths = [path];
-    session.snapshot_executor = ThreadPoolExecutor(max_workers=1);
-    session.optimizer_executor = ThreadPoolExecutor(max_workers=1);
+    session.snapshot_pipeline.snapshot_future = snapshot_failure;
+    session.snapshot_pipeline.snapshot_path = path;
+    session.snapshot_pipeline.optimizer_future = optimizer_failure;
+    session.snapshot_pipeline.snapshot_executor = ThreadPoolExecutor(max_workers=1);
+    session.snapshot_pipeline.optimizer_executor = ThreadPoolExecutor(max_workers=1);
     session.source_keys[path] = "source";
-    session.ir_snapshots[path] = NativeIRSnapshot(
-        bitcode=b"bitcode", defined=set(), declared=set()
+    session.ir_snapshots[path] = UnitIRSnapshot(
+        bitcode=b"bitcode", defined=set(), declared=set(), function_counts=(0, 0)
     );
-    session.pending_opt_paths = [path];
-    session.pending_opt_bitcodes = [b"pending"];
+    session.snapshot_pipeline.pending_optimization = [
+        NativeOptimizationInput(path=path, bitcode=b"pending")
+    ];
     original_release = JacProgram.release_compile_closure;
     released_closures: list[bool] = [];
     def observe_release(
@@ -293,13 +282,15 @@ test "worker failures still release session state" {
     assert session.lowered == {};
     assert session.ir_snapshots == {};
     assert session.source_keys == {};
-    assert session.snapshot_future is None and session.snapshot_path is None;
-    assert session.optimizer_future is None and session.optimizer_paths == [];
-    assert session.pending_opt_paths == [] and session.pending_opt_bitcodes == [];
+    assert session.snapshot_pipeline.snapshot_future is None;
+    assert session.snapshot_pipeline.snapshot_path is None;
+    assert session.snapshot_pipeline.optimizer_future is None;
+    assert session.snapshot_pipeline.pending_optimization == [];
     assert session.optimized_units == set();
     assert session.deferred == [] and session.discovery_open == [];
     assert session.unlowerable == set();
-    assert session.snapshot_executor is None and session.optimizer_executor is None;
+    assert session.snapshot_pipeline.snapshot_executor is None;
+    assert session.snapshot_pipeline.optimizer_executor is None;
     assert registry.session is None;
     assert session.prog._natives is None;
 }

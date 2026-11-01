@@ -881,6 +881,9 @@ impl NativeBuildSession.close_discovery -> bool {
 
 impl NativeBuildSession.postinit {
     self.async_snapshots = os.environ.get("JAC_NATIVE_SNAPSHOT_ASYNC", "1") != "0";
+    self.snapshot_pipeline = NativeSnapshotPipeline(
+        options=self.options.clone_for_native_import()
+    );
     self.prog = JacProgram();
     self.prog.options = self.options.clone_for_native_import();
     self.prog._natives = self.registry;
@@ -1060,8 +1063,8 @@ impl NativeBuildSession.compact_ir(paths: list[str]) {
     }
     self.await_snapshot();
     import from jaclang.compiler.backends.native.na_compile_pass {
-        unit_bitcode,
-        unit_fallbacks
+        unit_fallbacks,
+        unit_snapshot_module
     }
     for path in paths {
         resolved = os.path.realpath(path);
@@ -1075,9 +1078,7 @@ impl NativeBuildSession.compact_ir(paths: list[str]) {
             continue;
         }
         _ = unit_fallbacks(mod.gen);
-        snapshot = NativeIRSnapshot(
-            bitcode=unit_bitcode(ir), defined=symbols[0], declared=symbols[1]
-        );
+        snapshot = unit_snapshot_module(ir);
         self.ir_snapshots[resolved] = snapshot;
         mod.gen.ir_module = None;
         mod.gen.llvm_ir = None;
@@ -1091,12 +1092,8 @@ impl NativeBuildSession.enqueue_snapshot(path: str) {
     if mod is None or mod.gen.llvm_ir is None {
         return;
     }
-    import concurrent.futures;
     import jaclang.compiler.backends.native.llvm.binding as llvm_snapshot;
     import from jaclang.compiler.backends.native.na_compile_pass { unit_fallbacks }
-    if self.snapshot_executor is None {
-        self.snapshot_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1);
-    }
     ir = mod.gen.llvm_ir;
     ir_text = str(ir);
     _ = unit_fallbacks(mod.gen, ir_text);
@@ -1105,37 +1102,28 @@ impl NativeBuildSession.enqueue_snapshot(path: str) {
     }
     mod.gen.ir_module = None;
     mod.gen.llvm_ir = ir_text;
-    self.snapshot_path = resolved;
-    self.snapshot_future = self.snapshot_executor.submit(_snapshot_ir_text, ir_text);
+    self.snapshot_pipeline.enqueue_snapshot(resolved, ir_text);
 }
 
 impl NativeBuildSession.await_snapshot(path: (str | None) = None) {
-    if self.snapshot_future is None
-        or (path is not None and self.snapshot_path != os.path.realpath(path)) {
+    result = self.snapshot_pipeline.take_snapshot(path);
+    if result is None {
         return;
     }
-    future = self.snapshot_future;
-    resolved = self.snapshot_path;
-    self.snapshot_future = None;
-    self.snapshot_path = None;
-    result = future.result();
-    if result is not None and resolved is not None {
-        (snapshot, counts) = result;
-        self.registry.unit_functions[resolved] = counts;
-        if snapshot is not None {
-            mod = self.lowered.get(resolved);
-            if mod is not None {
-                mod.gen.ir_module = None;
-                mod.gen.llvm_ir = None;
-            }
-            self.ir_snapshots[resolved] = snapshot;
-            self.schedule_snapshot_optimization(resolved, snapshot);
-        }
+    resolved = result.path;
+    snapshot = result.snapshot;
+    self.registry.unit_functions[resolved] = snapshot.function_counts;
+    mod = self.lowered.get(resolved);
+    if mod is not None {
+        mod.gen.ir_module = None;
+        mod.gen.llvm_ir = None;
     }
+    self.ir_snapshots[resolved] = snapshot;
+    self.schedule_snapshot_optimization(resolved, snapshot);
 }
 
 impl NativeBuildSession.schedule_snapshot_optimization(
-    path: str, snapshot: NativeIRSnapshot
+    path: str, snapshot: UnitIRSnapshot
 ) {
     mod = self.lowered.get(path);
     if mod is None {
@@ -1152,52 +1140,21 @@ impl NativeBuildSession.schedule_snapshot_optimization(
         self.optimized_units.add(path);
         return;
     }
-    self.pending_opt_paths.append(path);
-    self.pending_opt_bitcodes.append(snapshot.bitcode);
-    if len(self.pending_opt_paths) >= ASYNC_OPTIMIZE_BATCH_SIZE {
-        self.flush_optimization_batch();
-    }
-}
-
-impl NativeBuildSession.flush_optimization_batch(force: bool = False) {
-    if not self.pending_opt_paths
-        or (not force and len(self.pending_opt_paths) < ASYNC_OPTIMIZE_BATCH_SIZE) {
-        return;
-    }
-    self.await_optimization();
-    import concurrent.futures;
-    if self.optimizer_executor is None {
-        self.optimizer_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1);
-    }
-    paths = self.pending_opt_paths;
-    bitcodes = self.pending_opt_bitcodes;
-    self.pending_opt_paths = [];
-    self.pending_opt_bitcodes = [];
-    options = self.options.clone_for_native_import();
-    self.optimizer_paths = paths;
-    self.optimizer_future = self.optimizer_executor.submit(
-        _optimize_snapshot_batch, bitcodes, options, int(options.opt_level or 0)
+    self.snapshot_pipeline.queue_optimization(
+        path, snapshot.bitcode, self.record_snapshot_optimization
     );
 }
 
-impl NativeBuildSession.await_optimization {
-    if self.optimizer_future is None {
-        return;
-    }
-    future = self.optimizer_future;
-    paths = self.optimizer_paths;
-    self.optimizer_future = None;
-    self.optimizer_paths = [];
-    (bitcodes, elapsed) = future.result();
-    for (path, bitcode) in zip(paths, bitcodes) {
-        mod = self.lowered.get(path);
+impl NativeBuildSession.record_snapshot_optimization(batch: NativeOptimizationBatch) {
+    for unit in batch.units {
+        mod = self.lowered.get(unit.path);
         if mod is not None {
-            mod.gen.native_bitcode = bitcode;
-            self.registry.note_codegen(path, False);
-            self.optimized_units.add(path);
+            mod.gen.native_bitcode = unit.bitcode;
+            self.registry.note_codegen(unit.path, False);
+            self.optimized_units.add(unit.path);
         }
     }
-    self.registry._add_time("NATIVE_OPTIMIZE", elapsed);
+    self.registry._add_time("NATIVE_OPTIMIZE", batch.elapsed);
 }
 
 impl NativeBuildSession.unbound_symbols(
@@ -1280,8 +1237,7 @@ impl NativeBuildSession.finish(paths: list[str]) {
 
 impl NativeBuildSession._optimize_in_parallel(paths: list[str]) -> set[str] {
     self.await_snapshot();
-    self.flush_optimization_batch(True);
-    self.await_optimization();
+    self.snapshot_pipeline.finish_optimization(self.record_snapshot_optimization);
     opts = self.prog.options;
     if opts.native_debug
         or opts.dump_ir_path
@@ -1398,32 +1354,10 @@ impl NativeBuildSession.close {
         failure = err;
     }
     try {
-        self.await_optimization();
+        self.snapshot_pipeline.close();
     } except Exception as err {
         if failure is None {
             failure = err;
-        }
-    }
-    if self.snapshot_executor is not None {
-        executor = self.snapshot_executor;
-        self.snapshot_executor = None;
-        try {
-            executor.shutdown(True);
-        } except Exception as err {
-            if failure is None {
-                failure = err;
-            }
-        }
-    }
-    if self.optimizer_executor is not None {
-        executor = self.optimizer_executor;
-        self.optimizer_executor = None;
-        try {
-            executor.shutdown(True);
-        } except Exception as err {
-            if failure is None {
-                failure = err;
-            }
         }
     }
     try {
@@ -1438,9 +1372,6 @@ impl NativeBuildSession.close {
     self.lowered.clear();
     self.ir_snapshots.clear();
     self.source_keys.clear();
-    self.pending_opt_paths.clear();
-    self.pending_opt_bitcodes.clear();
-    self.optimizer_paths.clear();
     self.optimized_units.clear();
     self.deferred.clear();
     self.discovery_open.clear();
@@ -1484,23 +1415,6 @@ impl _ir_symbols(unit_ir: any) -> (tuple[set[str], set[str]] | None) {
         }
     }
     return (defined, declared);
-}
-
-impl _snapshot_ir_text(ir_text: str) -> tuple[NativeIRSnapshot, tuple[int, int]] {
-    (bitcode, defined, declared, counts) = unit_snapshot_text(ir_text);
-    return (
-        NativeIRSnapshot(bitcode=bitcode, defined=defined, declared=declared),
-        counts
-    );
-}
-
-
-impl _optimize_snapshot_batch(
-    bitcodes: list[bytes], options: CompileOptions, opt_level: int
-) -> tuple[list[bytes], float] {
-    started = time.perf_counter();
-    optimized = optimize_unit_bitcodes(bitcodes, options, opt_level);
-    return (optimized, time.perf_counter() - started);
 }
 
 impl _ir_referenced_symbols(unit_ir: any) -> set[str] {

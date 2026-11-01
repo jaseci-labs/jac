@@ -5609,6 +5609,7 @@ graph import compiler {
     ]
     type backends.native.lowering ++> frontend.codeinfo { NativeFallbacks }
     backends.native.na_compile_pass ++> [
+        driver.native_snapshot_pipeline { optimize_unit_bitcodes, unit_snapshot_text },
         driver.nativecache.NativeBuildSession._optimize_in_parallel {
             optimize_unit_bitcodes,
             unit_bitcode,
@@ -5618,14 +5619,12 @@ graph import compiler {
             emit_unit_object,
             optimize_unit_ir
         },
-        driver.nativecache._optimize_snapshot_batch { optimize_unit_bitcodes },
-        driver.nativecache._snapshot_ir_text { unit_snapshot_text },
         driver.pipeline.native_object_passes { NativeCompilePass },
     ]
     backends.native.na_compile_pass --> [
         driver.nativecache.NativeBuildSession.compact_ir {
-            unit_bitcode,
-            unit_fallbacks
+            unit_fallbacks,
+            unit_snapshot_module
         },
         driver.nativecache.NativeBuildSession.enqueue_snapshot { unit_fallbacks },
         driver.nativecache.NativeBuildSession.lower {
@@ -5638,6 +5637,8 @@ graph import compiler {
         driver.nativecache.NativeUnitRegistry.emit_objects { emit_unit_objects },
         driver.nativecache.NativeUnitRegistry.object_for { emit_unit_object },
     ]
+    type backends.native.na_compile_pass ++> driver.native_snapshot_pipeline
+        | driver.nativecache { UnitIRSnapshot }
     backends.native.na_constants --> driver.native_iface.resolve_native_unit_ref {
         FACT_IMPORT_PATHS,
         FACT_PACKAGE_STORE,
@@ -12041,7 +12042,10 @@ graph import compiler.driver {
         nativecache.NativeUnitRegistry.known_digest { env_na_debug },
         nativecache.NativeUnitRegistry.record_module { env_na_debug },
     ]
-    type compile_options ++> pipeline | program { CancelToken }
+    type compile_options ++> [
+        native_snapshot_pipeline { CompileOptions },
+        pipeline | program { CancelToken },
+    ]
     compiler ++> build_services.CompilerBuildServices.compiler
         | program.JacProgram._get_compiler { JacCompiler }
     compiler --> nativecache.SessionHeap.take { COMPILE_GC_THRESHOLDS }
@@ -12217,6 +12221,11 @@ graph import compiler.driver {
         nativecache.NativeUnitRegistry.adopt_lowered { native_layout_from_dict },
         unit_products.native_products { native_layout_to_dict },
     ]
+    native_snapshot_pipeline ++> nativecache { NativeSnapshotPipeline }
+    type native_snapshot_pipeline ++> nativecache {
+        NativeOptimizationBatch,
+        NativeSnapshotPipeline
+    }
     nativecache ++> program.JacProgram.native_units { NativeUnitRegistry }
     type nativecache ++> program { NativeUnitRegistry }
     pass_driver ++> [
