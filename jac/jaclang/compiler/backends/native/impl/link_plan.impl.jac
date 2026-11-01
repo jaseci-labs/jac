@@ -953,7 +953,7 @@ impl optimize_merged_program(plan: LinkPlan, merged: ModuleRef, kind: ArtifactKi
             main_fn = None;
         }
         if main_fn is not None and not main_fn.is_declaration {
-            main_fn.linkage = "external";
+            main_fn.linkage = llvm.Linkage.external;
         }
     }
 }
@@ -1617,8 +1617,7 @@ impl jit_engine(plan: LinkPlan) -> ExecutionEngine {
         symbols[symbol] = address;
     }
     has_rc_flag = _has_global(merged, RC_THREADED_SYMBOL);
-    engine = llvm.create_mcjit_compiler(merged, tm);
-    assert isinstance(engine, llvm.ExecutionEngine);
+    engine = create_mcjit_compiler(merged, tm);
     for (symbol, address) in symbols.items() {
         engine.add_global_mapping(merged.get_function(symbol), address);
     }
@@ -1671,6 +1670,6 @@ impl internalize_native_implementation(module: ModuleRef, exports: list[str]) {
         if value.visibility == Visibility.hidden {
             continue;
         }
-        value.linkage = "internal";
+        value.linkage = llvm.Linkage.internal;
     }
 }

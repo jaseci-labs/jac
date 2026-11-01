@@ -333,6 +333,10 @@ impl ProjectHost.native_fact(kind: str, key: str) -> str {
     if kind == HOST_FACT_GIT_IGNORED {
         return HOST_FACT_SEP.join(_git_ignored_under(key));
     }
+    if kind == FACT_TARGET {
+        import from jaclang.compiler.backends.native.target_facts { target_fact_text }
+        return target_fact_text(key);
+    }
     import from jaclang.compiler.backends.native.host_facts { host_native_fact }
     return host_native_fact(kind, key);
 }

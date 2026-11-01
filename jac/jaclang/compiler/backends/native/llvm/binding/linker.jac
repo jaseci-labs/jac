@@ -1,19 +1,10 @@
-import from ctypes { c_int, c_char_p, POINTER }
-def link_modules(dst: any, src: any) -> object {
-    with ffi.OutputString() as outerr {
-        err = ffi.lib.LLVMPY_LinkModules(dst, src, outerr);
-        src.detach();
-        if err {
-            raise RuntimeError(str(outerr));
-        }
+"""Link `source` into `target`; `source` is consumed either way."""
+def link_modules(target: ModuleRef, source: ModuleRef) {
+    err: ptr[u8] = ptr[u8]();
+    failed = LLVMPY_LinkModules(target.live(), source.live(), &mut err);
+    source.detach();
+    message = take_text(err);
+    if failed != 0 {
+        raise RuntimeError(message);
     }
-}
-
-with entry {
-    ffi.lib.LLVMPY_LinkModules.argtypes = [
-        ffi.LLVMModuleRef,
-        ffi.LLVMModuleRef,
-        POINTER(c_char_p)
-    ];
-    ffi.lib.LLVMPY_LinkModules.restype = c_int;
 }

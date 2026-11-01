@@ -555,6 +555,12 @@ graph import {
         emit_c
     }
     compiler.backends.native.floors ++> dist.payload.vendor { WASM_FLOOR_MANIFEST }
+    compiler.backends.native.na_constants ++> project.compiler_host.ProjectHost.native_fact {
+        FACT_TARGET
+    }
+    compiler.backends.native.target_facts --> project.compiler_host.ProjectHost.native_fact {
+        target_fact_text
+    }
     compiler.backends.native.host_facts --> project.compiler_host.ProjectHost.native_fact {
         host_native_fact
     }
@@ -610,9 +616,7 @@ graph import {
     compiler.backends.native.llvm.binding as llvm ++> cli.commands.native_build._application_ir;
     compiler.backends.native.llvm.binding as llvm --> cli.commands.execution._jab_native_bin
         | dist.seal.bake_native_payloads;
-    type compiler.backends.native.llvm.binding.executionengine ++> cli.commands.execution {
-        ExecutionEngine
-    }
+    type compiler.backends.native.llvm.jit ++> cli.commands.execution { ExecutionEngine }
     compiler.backends.native.llvm.shim_path ++> dist.payload.assemble.assemble_site {
         write_shim_record
     }
@@ -5652,9 +5656,11 @@ graph import compiler {
         driver.nativecache.NativeUnitRegistry.compile_unit { build_link_plan },
         driver.pipeline_runner.wasm_ir_units { build_link_plan, wasm_program_ir },
     ]
-    backends.native.llvm.binding as llvm --> driver.compiler.JacCompiler._load_native_from_cache
-        | driver.nativecache.NativeBuildSession.unbound_symbols;
-    type backends.native.llvm.binding ++> driver.compiler.JacCompiler._load_native_from_cache
+    backends.native.llvm.binding as llvm --> driver.nativecache.NativeBuildSession.unbound_symbols;
+    backends.native.llvm.jit --> driver.compiler.JacCompiler._load_native_from_cache {
+        add_symbol
+    }
+    type backends.native.llvm.jit ++> driver.compiler.JacCompiler._load_native_from_cache
         | frontend.codeinfo { ExecutionEngine }
     type backends.native.llvm.ir ++> frontend.codeinfo { Module as IRModule }
     backends.native.lowering ++> [
@@ -5691,6 +5697,12 @@ graph import compiler {
         driver.nativecache.NativeUnitRegistry.emit_objects { emit_unit_objects },
         driver.nativecache.NativeUnitRegistry.object_for { emit_unit_object },
     ]
+    backends.native.na_constants ++> frontend.kernel_host.KernelHost.native_fact {
+        FACT_TARGET
+    }
+    backends.native.target_facts --> frontend.kernel_host.KernelHost.native_fact {
+        target_fact_text
+    }
     backends.native.na_constants --> driver.native_iface.resolve_native_unit_ref {
         FACT_IMPORT_PATHS,
         FACT_PACKAGE_STORE,
@@ -7611,7 +7623,6 @@ graph import compiler {
             | backends.es.esast_gen_pass
             | backends.es.free_ident_audit.client_ambient_globals
             | backends.es.jac_runtime_js.build_osp_core_js
-            | backends.native.abi.struct_layouts
             | backends.native.na_ir_gen_pass
             | backends.py.artifact_imports
             | driver.application._kernel_units
@@ -11425,24 +11436,30 @@ graph import compiler.backends.native {
         kernel_stage0 { LinkResult },
     ]
     llvm.binding as llvm ++> [
-        host_facts.struct_layouts_fact
-            | kernel_stage0.unit_issue_details
+        kernel_stage0.unit_issue_details
+            | target_facts
             | link_glue.bind_shared_callbacks
             | link_plan
             | na_compile_pass
             | native_link
             | wasm_build._exported_functions,
-        host_facts.target_fact
-            | link_glue.init_object_codegen
-            | wasm_build._load_libc_module,
+        link_glue.init_object_codegen | wasm_build._load_libc_module,
         wasm_build.prepare_wasm_module,
     ]
+    llvm.jit ++> [
+        link_plan { ExecutionEngine, create_mcjit_compiler },
+        na_compile_pass { add_symbol },
+    ]
     type llvm.binding ++> [
-        link_plan { ExecutionEngine, ModuleRef, TargetMachine },
+        link_plan { ModuleRef, TargetMachine },
         na_compile_pass { ModuleRef, TargetMachine },
         wasm_build { ModuleRef, TargetMachine, ValueRef },
     ]
-    llvm.binding.value ++> link_plan.internalize_native_implementation { Visibility }
+    llvm.binding.value ++> [
+        link_plan.internalize_native_implementation { Visibility },
+        wasm_build._internalize_late_bound { Linkage },
+        wasm_build._link_wasm_libc { Linkage },
+    ]
     type llvm.binding.value ++> link_plan { ValueRef }
     llvm.ir as ir ++> abi
         | lexical_scope
@@ -11476,7 +11493,7 @@ graph import compiler.backends.native {
         wasm_build.prepare_wasm_module { optimize_unit },
     ]
     na_constants ++> [
-        abi.struct_layouts { FACT_SEP, FACT_STRUCT_LAYOUTS },
+        target_facts { FACT_SEP },
         host_facts {
             FACT_CODEC_NAME,
             FACT_CODEC_TABLES,
@@ -11484,9 +11501,7 @@ graph import compiler.backends.native {
             FACT_PACKAGE_STORE,
             FACT_PRIMITIVE_METHODS,
             FACT_SEALED_RUNTIME,
-            FACT_SEP,
-            FACT_STRUCT_LAYOUTS,
-            FACT_TARGET
+            FACT_SEP
         },
         na_ir_gen_pass {
             ALLOC_ID_MASK,
@@ -11566,6 +11581,7 @@ graph import compiler.backends.native {
     ]
     primitives_native as emitters ++> host_facts.primitive_methods_fact;
     region_abi ++> na_ir_gen_pass { REGION_KERNEL_ABI }
+    target_facts ++> abi.struct_layouts { measure_struct_layouts }
     wasm_artifact ++> [
         native_link { wasm_ld_args, write_allowed_imports },
         wasm_build { rename_wasm_imports },
@@ -11588,31 +11604,120 @@ graph import compiler.backends.native {
 }
 
 graph import compiler.backends.native.llvm {
-    binding ++> [
-        binding.config
-            | binding.context
-            | binding.dylib
-            | binding.initfini
-            | binding.linker
-            | binding.lld
-            | binding.module
-            | binding.newpassmanagers
-            | binding.object_file
-            | binding.options
-            | binding.targets
-            | binding.value { ffi },
-        binding.executionengine { ffi, object_file, targets },
+    capi ++> [
+        binding.context {
+            LLVMPY_ContextCreate,
+            LLVMPY_ContextDispose,
+            LLVMPY_GetGlobalContext
+        },
+        binding.ffi { LLVMPY_DisposeString, free, malloc, memcpy, strlen },
+        binding.initfini {
+            LLVMPY_InitializeAllAsmParsers,
+            LLVMPY_InitializeAllAsmPrinters,
+            LLVMPY_InitializeAllTargetInfos,
+            LLVMPY_InitializeAllTargetMCs,
+            LLVMPY_InitializeAllTargets,
+            LLVMPY_InitializeNativeAsmParser,
+            LLVMPY_InitializeNativeAsmPrinter,
+            LLVMPY_InitializeNativeTarget
+        },
+        binding.linker { LLVMPY_LinkModules },
+        binding.lld { LLVMPY_LldLink, LLVMPY_ObjectSymbols, LLVMPY_WriteImportLibrary },
+        binding.module {
+            LLVMPY_CloneModule,
+            LLVMPY_DisposeFunctionsIter,
+            LLVMPY_DisposeGlobalsIter,
+            LLVMPY_DisposeModule,
+            LLVMPY_FunctionsIterNext,
+            LLVMPY_GetDataLayout,
+            LLVMPY_GetModuleName,
+            LLVMPY_GetNamedFunction,
+            LLVMPY_GetNamedGlobalVariable,
+            LLVMPY_GetTarget,
+            LLVMPY_GlobalsIterNext,
+            LLVMPY_ModuleFunctionsIter,
+            LLVMPY_ModuleGlobalsIter,
+            LLVMPY_ParseAssembly,
+            LLVMPY_ParseBitcode,
+            LLVMPY_PrintModuleToString,
+            LLVMPY_SetDataLayout,
+            LLVMPY_SetModuleName,
+            LLVMPY_SetTarget,
+            LLVMPY_SplitModuleBitcode,
+            LLVMPY_VerifyModule,
+            LLVMPY_WriteBitcodeToString,
+            free,
+            malloc
+        },
+        binding.newpassmanagers {
+            LLVMPY_CreateNewModulePassManager,
+            LLVMPY_CreatePassBuilder,
+            LLVMPY_CreatePipelineTuningOptions,
+            LLVMPY_DisposeNewModulePassManger,
+            LLVMPY_DisposePassBuilder,
+            LLVMPY_DisposePipelineTuningOptions,
+            LLVMPY_PTOGetInlinerThreshold,
+            LLVMPY_PTOGetLoopInterleaving,
+            LLVMPY_PTOGetLoopUnrolling,
+            LLVMPY_PTOGetLoopVectorization,
+            LLVMPY_PTOGetSLPVectorization,
+            LLVMPY_PTOSetInlinerThreshold,
+            LLVMPY_PTOSetLoopInterleaving,
+            LLVMPY_PTOSetLoopUnrolling,
+            LLVMPY_PTOSetLoopVectorization,
+            LLVMPY_PTOSetSLPVectorization,
+            LLVMPY_RunNewModulePassManager,
+            LLVMPY_buildPerModuleDefaultPipeline,
+            LLVMPY_module_AddVerifierPass
+        },
+        binding.options { LLVMPY_SetCommandLine },
+        binding.targets {
+            LLVMPY_ABIAlignmentOfType,
+            LLVMPY_ABISizeOfType,
+            LLVMPY_CopyStringRepOfTargetData,
+            LLVMPY_CreateTargetData,
+            LLVMPY_CreateTargetMachine,
+            LLVMPY_CreateTargetMachineData,
+            LLVMPY_DisposeMemoryBuffer,
+            LLVMPY_DisposeTargetData,
+            LLVMPY_DisposeTargetMachine,
+            LLVMPY_GetBufferSize,
+            LLVMPY_GetBufferStart,
+            LLVMPY_GetDefaultTargetTriple,
+            LLVMPY_GetTargetDescription,
+            LLVMPY_GetTargetFromTriple,
+            LLVMPY_GetTargetMachineTriple,
+            LLVMPY_GetTargetName,
+            LLVMPY_GlobalGetValueType,
+            LLVMPY_OffsetOfElement,
+            LLVMPY_SetTargetMachineAsmVerbosity,
+            LLVMPY_TargetMachineEmitToMemory
+        },
+        binding.value {
+            LLVMPY_CountParamTypes,
+            LLVMPY_GetLinkage,
+            LLVMPY_GetParamTypes,
+            LLVMPY_GetReturnType,
+            LLVMPY_GetValueName,
+            LLVMPY_GetVisibility,
+            LLVMPY_GlobalGetValueType,
+            LLVMPY_IsDeclaration,
+            LLVMPY_IsFunctionVararg,
+            LLVMPY_PrintType,
+            LLVMPY_PrintValueToString,
+            LLVMPY_SetLinkage,
+            LLVMPY_SetValueName,
+            LLVMPY_SetVisibility,
+            free,
+            malloc
+        },
     ]
-    include binding.config ++> binding;
     include binding.context ++> binding;
-    include binding.dylib ++> binding;
-    include binding.executionengine ++> binding;
     include binding.initfini ++> binding;
     include binding.linker ++> binding;
     include binding.lld ++> binding;
     include binding.module ++> binding;
     include binding.newpassmanagers ++> binding;
-    include binding.object_file ++> binding;
     include binding.options ++> binding;
     include binding.targets ++> binding;
     include binding.value ++> binding;
@@ -11622,20 +11727,26 @@ graph import compiler.backends.native.llvm {
     include ir.module ++> ir;
     include ir.types ++> ir;
     include ir.values ++> ir;
-    shim_path ++> binding.ffi { shim_path }
+    shim_path ++> jit { shim_path }
+    type binding ++> jit { ModuleRef, TargetMachine, ValueRef }
 }
 
 graph import compiler.backends.native.llvm.binding {
-    common ++> [
-        dylib | options { _encode_string },
-        ffi { _is_shutting_down },
-        module | targets | value { _decode_string, _encode_string },
+    context ++> module { ContextRef, get_global_context }
+    ffi ++> [
+        context | newpassmanagers { ObjectRef },
+        lld { c_text_array, free_text_array, take_text },
+        linker { take_text },
+        module { ObjectRef, c_text, take_bytes, take_text },
+        targets { ObjectRef, c_bytes, c_text, take_text },
+        value { ObjectRef, c_text, take_text },
     ]
-    context ++> module { get_global_context }
     linker ++> module { link_modules }
+    type module ++> linker | newpassmanagers | targets { ModuleRef }
+    type targets ++> newpassmanagers { TargetMachine }
     value ++> [
         module { ValueRef },
-        targets.TargetMachine.emit_object { Linkage },
+        targets { Linkage },
     ]
     type value ++> targets { ValueRef }
 }

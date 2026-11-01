@@ -162,6 +162,35 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
              module="jaclang.compiler.backends.native.llvm.ir.instructions"
          ),
          NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.ir.builder"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.capi"),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.__init__"
+         ),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.binding.ffi"),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.context"
+         ),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.binding.value"),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.module"
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.linker"
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.targets"
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.newpassmanagers"
+         ),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.binding.lld"),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.initfini"
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.options"
+         ),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.target_facts"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.lowering"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.lexical_scope"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.na_constants"),
