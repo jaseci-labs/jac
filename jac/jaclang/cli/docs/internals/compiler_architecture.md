@@ -7,7 +7,7 @@ targets, called **codespaces**:
 
 | Codespace | Selector | Backend output | Runs on |
 |-----------|----------|----------------|---------|
-| **Server** | Inferred; the default, anchored by python imports, graph archetypes, `::py::` blocks, and typed context blocks; `[placement.pins]` override | Python AST → CPython bytecode | CPython |
+| **Server** | Inferred; the default, anchored by python imports, graph archetypes, and typed context blocks; `[placement.pins]` override | Python AST → CPython bytecode | CPython |
 | **Client** | **Inferred** from client-only syntax (JSX, browser globals, string-path npm imports) and symbol references; `[placement.pins]` override or a `.jac` implementation-variant file | ESTree → JavaScript | Browsers / Node |
 | **Native** | **Inferred** -- whole modules by the placement solver's verdict under the native default codespace, elements from extern-decl (C-ABI FFI) imports and their users; `[placement.pins]` override, or forced module-wide by `jac build <file> --native` / `CompileOptions(force_codespace='native')` | LLVM IR → object code → executable | Bare machine (Linux / macOS, x86_64 / arm64) |
 
@@ -286,7 +286,7 @@ tree every backend reads.
    stricter or the native library lacks a member it recorded a *refusal*
    (the same table, and `compiler/native_bindings.jac`). The legality table
    adds what the tree shows (`native_blocker_scan`): an async or `by llm`
-   ability, inline Python, an endpoint, a pin to another codespace, an
+   ability, an endpoint, a pin to another codespace, an
    import with no native form, or access to the persistent graph (`root`)
    closes the module's native preference, as the parse-time scan did on
    `main`. These are syntactic facts, so `PlacementApplyPass` reads them

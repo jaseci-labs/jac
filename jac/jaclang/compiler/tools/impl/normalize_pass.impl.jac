@@ -162,15 +162,6 @@ impl NormalizePass.enter_module_code with uni.ModuleCode entry {
     here.set_kids(nodes=new_kid);
 }
 
-impl NormalizePass.enter_py_inline_code with uni.PyInlineCode entry {
-    new_kid: list[uni.UniNode] = [];
-    if here.doc {
-        new_kid.append(here.doc);
-    }
-    new_kid.append(here.code);
-    here.set_kids(nodes=new_kid);
-}
-
 impl NormalizePass.enter_import with uni.Import entry {
     new_kid: list[uni.UniNode] = [];
     if here.doc {

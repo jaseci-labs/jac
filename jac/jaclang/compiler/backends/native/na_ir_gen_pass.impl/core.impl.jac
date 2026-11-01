@@ -1624,7 +1624,7 @@ impl NaIRGenPass._walk_imported_module_abilities(
             _wl_internal = bool(active_host().native_fact(FACT_SEALED_RUNTIME, ""));
         }
     }
-    _imp_fn_unavail: (set | None) = None;
+    _imp_fn_unavail: (set[str] | None) = None;
     if with_fn_verdicts {
         _imp_fn_unavail = self._imported_function_demotions(imported_mod);
     }
@@ -1863,7 +1863,7 @@ impl NaIRGenPass._register_imported_globals(
                 ) {
                     continue;
                 }
-                var_type = self._resolve_jac_type(assign.type_tag.tag);
+                var_type = self._resolve_decl_type(assign.type_tag, assign.value);
             } elif assign.value is not None {
                 inferred = self._infer_global_init_type(assign.value);
                 if inferred is not None {
@@ -1891,7 +1891,7 @@ impl NaIRGenPass._register_imported_globals(
 }
 
 impl NaIRGenPass._forward_declare_imported_ability(
-    nd: uni.Ability, unavailable: (set | None) = None, imp_layout: any = None
+    nd: uni.Ability, unavailable: (set[str] | None) = None, imp_layout: any = None
 ) -> None {
     name = nd.name_ref.sym_name if nd.name_ref else None;
     if name is None {
@@ -2074,7 +2074,7 @@ impl NaIRGenPass._ensure_dep_inference(dep_mod: uni.Module) -> None {
 
 impl NaIRGenPass._imported_function_demotions(
     imported_mod: uni.Module
-) -> (set | None) {
+) -> (set[str] | None) {
     if imported_mod.gen.native_iface is not None {
         return set(imported_mod.gen.native_iface.demoted);
     }

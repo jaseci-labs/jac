@@ -142,6 +142,7 @@ glob IR_LOADS: list[str] = [
          'jaclang.project.config',
          'jaclang.compiler.passes.static_analysis_pass',
          'jaclang.compiler.passes.access_check_pass',
+         'jaclang.compiler.passes.flow_check_pass',
          'jaclang.compiler.passes.variant_agreement_pass',
          'jaclang.compiler.passes.capability_check_pass',
          'jaclang.compiler.capability_notes',

@@ -661,21 +661,6 @@ node ModuleCode(ContextAwareNode, ElementStmt, ArchBlockStmt, EnumBlockStmt, Cod
     def __repr__ -> str;
 }
 
-node PyInlineCode(ElementStmt, ArchBlockStmt, EnumBlockStmt, CodeBlockStmt) {
-    has code: Token { getter; }
-
-    def init(
-        *,
-        is_enum_stmt: bool = False,
-        doc: (String | None) = None,
-        code: Token,
-        kid: Sequence[UniNode] = []
-    ) -> None;
-
-    def postinit -> None;
-    def __repr__ -> str;
-}
-
 obj ImportBoundaryFacts {
     has native_from_path: (str | None) = None,
         from_loc_resolved: (str | None) = None,

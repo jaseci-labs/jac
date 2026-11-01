@@ -512,6 +512,9 @@ impl NativeUnitRegistry.dep_iface(
         check_deps=False,
         products=products
     );
+    if ent is None and session is not None and resolved not in self.building {
+        session.unlowerable.add(resolved);
+    }
     return ent.iface if ent is not None else None;
 }
 
@@ -1011,8 +1014,12 @@ impl NativeBuildSession.lower(
         settle_unit_ir(mod);
         self.registry.unit_functions[resolved] = unit_function_counts(mod.gen.llvm_ir);
         self.lowered[resolved] = mod;
+        self.unlowerable.discard(resolved);
         ent = self.registry.record_module(mod, opts);
         self.registry._stash_products(resolved, mod.gen);
+        if self.compact_on_lower {
+            self.compact_ir([resolved]);
+        }
         self.settle_heap();
         self.registry.lowered_units += 1;
         if 0 < self.registry.stop_after <= self.registry.lowered_units {
@@ -1042,14 +1049,51 @@ impl NativeBuildSession.lower(
     }
 }
 
+impl NativeBuildSession.compact_ir(paths: list[str]) {
+    if self.options.native_debug
+        or self.options.dump_ir_path
+        or not (self.options.aot_mode or self.options.skip_native_engine) {
+        return;
+    }
+    import from jaclang.compiler.backends.native.na_compile_pass {
+        unit_bitcode,
+        unit_fallbacks
+    }
+    for path in paths {
+        resolved = os.path.realpath(path);
+        mod = self.lowered.get(resolved);
+        if mod is None or mod.gen.llvm_ir is None {
+            continue;
+        }
+        ir = mod.gen.llvm_ir;
+        symbols = _ir_symbols(ir);
+        if symbols is None {
+            continue;
+        }
+        _ = unit_fallbacks(mod.gen);
+        snapshot = NativeIRSnapshot(
+            bitcode=unit_bitcode(ir), defined=symbols[0], declared=symbols[1]
+        );
+        self.ir_snapshots[resolved] = snapshot;
+        mod.gen.ir_module = None;
+        mod.gen.llvm_ir = None;
+    }
+}
+
 impl NativeBuildSession.unbound_symbols(
     path: str, deps: list[str]
 ) -> (list[str] | None) {
-    consumer = self.lowered.get(os.path.realpath(path));
+    resolved_path = os.path.realpath(path);
+    consumer = self.lowered.get(resolved_path);
     if consumer is None {
         return None;
     }
-    bound = _ir_symbols(consumer.gen.llvm_ir);
+    consumer_snapshot = self.ir_snapshots.get(resolved_path);
+    bound = (
+        (consumer_snapshot.defined, consumer_snapshot.declared)
+            if consumer_snapshot is not None
+            else _ir_symbols(consumer.gen.llvm_ir)
+    );
     if bound is None {
         return None;
     }
@@ -1059,7 +1103,12 @@ impl NativeBuildSession.unbound_symbols(
         real = os.path.realpath(dep);
         provider = self.lowered.get(real);
         ent = self.registry.entries.get(real);
-        provided = _ir_symbols(provider.gen.llvm_ir if provider is not None else None);
+        provider_snapshot = self.ir_snapshots.get(real);
+        provided = (
+            (provider_snapshot.defined, provider_snapshot.declared)
+                if provider_snapshot is not None
+                else _ir_symbols(provider.gen.llvm_ir if provider is not None else None)
+        );
         if provided is None or ent is None {
             return None;
         }
@@ -1076,7 +1125,18 @@ impl NativeBuildSession.unbound_symbols(
         }
     }
     if unbound {
-        used = _ir_referenced_symbols(consumer.gen.llvm_ir);
+        used = (
+            consumer_snapshot.referenced
+                if consumer_snapshot is not None
+                else _ir_referenced_symbols(consumer.gen.llvm_ir)
+        );
+        if consumer_snapshot is not None and used is None {
+            import jaclang.compiler.backends.native.llvm.binding as llvm;
+            used = _ir_referenced_symbols(
+                llvm.parse_bitcode(consumer_snapshot.bitcode)
+            );
+            consumer_snapshot.referenced = used;
+        }
         unbound = {
             symbol
             for symbol in unbound
@@ -1089,6 +1149,7 @@ impl NativeBuildSession.unbound_symbols(
 impl NativeBuildSession.finish(paths: list[str]) {
     token = push_native_target(self.options.native_target or "");
     try {
+        self.compact_ir(paths);
         self._finish(paths);
     } finally {
         pop_native_target(token);
@@ -1103,38 +1164,51 @@ impl NativeBuildSession._optimize_in_parallel(paths: list[str]) -> set[str] {
         return set();
     }
     todo: list[tuple[str, Module]] = [];
+    optimized: set[str] = set();
     for path in paths {
         mod = self.lowered.get(path);
-        if mod is None or mod.gen.llvm_ir is None {
-            continue;
-        }
-        cached = self.registry.ensure(path, compile_on_miss=False, options=opts);
-        if cached is not None and cached.bitcode is not None {
+        if mod is None or (mod.gen.llvm_ir is None and path not in self.ir_snapshots) {
             continue;
         }
         if opts.native_required_for(path) {
             unit_fallbacks(mod.gen).require();
         }
+        cached = self.registry.ensure(path, compile_on_miss=False, options=opts);
+        if cached is not None and cached.bitcode is not None {
+            mod.gen.native_bitcode = cached.bitcode;
+            mod.gen.native_object = cached.object_bytes;
+            if path in self.ir_snapshots {
+                optimized.add(path);
+            }
+            continue;
+        }
         todo.append((path, mod));
     }
-    if len(todo) < 2 {
+    if not todo {
+        return optimized;
+    }
+    if len(todo) < 2 and not self.ir_snapshots {
         return set();
     }
     started = self.registry.note_step(
         "optimize", detail=f"{len(todo)} units in parallel"
     );
-    bitcodes = optimize_unit_bitcodes(
-        [unit_bitcode(mod.gen.llvm_ir) for (_, mod) in todo],
-        opts,
-        int(opts.opt_level or 0)
-    );
+    bitcodes: list[bytes] = [];
+    for (path, mod) in todo {
+        snapshot = self.ir_snapshots.get(path);
+        bitcodes.append(
+            snapshot.bitcode if snapshot is not None else unit_bitcode(mod.gen.llvm_ir)
+        );
+    }
+    bitcodes = optimize_unit_bitcodes(bitcodes, opts, int(opts.opt_level or 0));
     self.registry._timed("NATIVE_OPTIMIZE", started);
     self.registry.note_slow_step("optimizing", "", started);
     for ((path, mod), bitcode) in zip(todo, bitcodes) {
         mod.gen.native_bitcode = bitcode;
         self.registry.note_codegen(path, False);
+        optimized.add(path);
     }
-    return {path for (path, _) in todo};
+    return optimized;
 }
 
 impl NativeBuildSession._finish(paths: list[str]) {
@@ -1146,6 +1220,7 @@ impl NativeBuildSession._finish(paths: list[str]) {
         }
     }
     optimized = self._optimize_in_parallel(paths);
+    self.compact_on_lower = False;
     for path in paths {
         mod = self.lowered.get(path);
         if mod is None {
@@ -1192,6 +1267,7 @@ impl NativeBuildSession.close {
             self.registry._add_time("NATIVE_FRONTEND_" + phase, seconds);
         }
         self.lowered.clear();
+        self.ir_snapshots.clear();
         self.source_keys.clear();
         self.prog._natives = None;
         self.prog.release_compile_closure();

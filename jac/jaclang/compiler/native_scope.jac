@@ -73,6 +73,7 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.passes.dataflow"),
          NativeScopeEntry(module="jaclang.compiler.passes.endpoint_effect_pass"),
          NativeScopeEntry(module="jaclang.compiler.passes.execution"),
+         NativeScopeEntry(module="jaclang.compiler.passes.flow_check_pass"),
          NativeScopeEntry(module="jaclang.compiler.passes.import_wiring_pass"),
          NativeScopeEntry(module="jaclang.compiler.passes.layout_pass"),
          NativeScopeEntry(module="jaclang.compiler.passes.mtir_gen_pass"),

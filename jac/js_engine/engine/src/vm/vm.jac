@@ -359,7 +359,12 @@ import from engine.src.runtime.realm {
 }
 import from engine.src.builtins.regexp_type { JSRegExpState }
 import from engine.src.runtime.realm_bootstrap { realm_bootstrap_secondary }
-import from engine.src.runtime.gc { gc_tick, gc_collect, gc_time_ns, gc_last_young_sweep_ns }  # A2.4b: threshold-based GC auto-trigger
+import from engine.src.runtime.gc {
+    gc_tick,
+    gc_collect,
+    gc_time_ns,
+    gc_last_young_sweep_ns
+}  # A2.4b: threshold-based GC auto-trigger
 import from engine.src.runtime.gc_pin {
     gc_pin_value,
     gc_unpin_value,
@@ -1296,9 +1301,11 @@ glob:pub VM_IC_ENABLED: bool = False;
 def:pub vm_ic_enable {
     VM_IC_ENABLED = True;
 }
+
 def:pub vm_ic_disable {
     VM_IC_ENABLED = False;
 }
+
 """Whether the property ICs are on (read back by feature_gates_report)."""
 def:pub vm_ic_enabled -> bool {
     return VM_IC_ENABLED;
@@ -1533,7 +1540,8 @@ def _vm_mgc_fill(va: JSValue, key: int) {
         if fa_idx != fa_id and fa_raw.brand != 0 {
             return;
         }
-        if fa_raw.has_acc() and js_object_has_own_accessor(jsv_from_object_id(fa_idx), key) {
+        if fa_raw.has_acc()
+            and js_object_has_own_accessor(jsv_from_object_id(fa_idx), key) {
             return;
         }
         fa_pk: int = shape_lookup(fa_raw.shape_id, key);
@@ -3365,7 +3373,9 @@ def _bigint_shr_dec(a_dec: str, shift: int) -> str {
         return _limbs_to_dec(_limbs_shr(_dec_to_limbs(a_dec), shift));
     }
     m1: str = _limbs_to_dec(
-        _limbs_shr(_dec_to_limbs(_dec_str_sub_vm(str_bslice_from(a_dec, 1), "1")), shift)
+        _limbs_shr(
+            _dec_to_limbs(_dec_str_sub_vm(str_bslice_from(a_dec, 1), "1")), shift
+        )
     );
     return "-" + _bigint_str_add_dec(m1, "1");
 }
@@ -3822,7 +3832,8 @@ def const_to_jsval(s: str) -> JSValue {
                 bi_neg = True;
                 bi_start = 1;
             }
-            if str_nbytes(bi_rest) >= bi_start + 2 and byte_chr(str_byte(bi_rest, bi_start)) == "0" {
+            if str_nbytes(bi_rest) >= bi_start + 2
+                and byte_chr(str_byte(bi_rest, bi_start)) == "0" {
                 bi_pfx: str = byte_chr(str_byte(bi_rest, bi_start + 1));
                 if bi_pfx == "x" or bi_pfx == "X" {
                     bi_base = 16;
@@ -4495,6 +4506,7 @@ obj VM {
     def _push(v: JSValue) {
         self.stack.append(v);
     }
+
     def _pop -> JSValue {
         n: int = len(self.stack);
         if n == 0 {
@@ -5803,7 +5815,9 @@ obj VM {
         bs_n: int = len(args);
         if bs_n > 0 {
             bs_id: int = jsv_to_table_id(bs_obj);
-            js_object_table_get(bs_id).elems_kind = js_object_table_get(bs_id).einit_range(
+            js_object_table_get(bs_id).elems_kind = js_object_table_get(
+                bs_id
+            ).einit_range(
                 args, 0, bs_n
             );
         }
@@ -6705,8 +6719,9 @@ obj VM {
         # frame (new.target is lexical); any other function takes the pending value set
         # by a construct site (undefined for an ordinary call).  Consume it once.
         rn_is_arrow: bool = False;
+        rn_cl_idx: int = -1;
         if is_fn_val(closure_val) {
-            rn_cl_idx: int = get_fn_idx(closure_val);
+            rn_cl_idx = get_fn_idx(closure_val);
             if rn_cl_idx >= 0 and rn_cl_idx < len(self.realm.closures) {
                 rn_is_arrow = self.realm.closures[rn_cl_idx].is_arrow;
             }
@@ -7538,7 +7553,9 @@ obj VM {
     timers or web APIs — so the sandbox cannot reach the embedder.  Engine-internal
     `__*` bridges are excluded for the same reason."""
     def _ctx_global_is_host_only(name: str) -> bool {
-        if str_nbytes(name) >= 2 and byte_chr(str_byte(name, 0)) == "_" and byte_chr(str_byte(name, 1)) == "_" {
+        if str_nbytes(name) >= 2
+            and byte_chr(str_byte(name, 0)) == "_"
+            and byte_chr(str_byte(name, 1)) == "_" {
             return True;
         }
         # Node / CommonJS host surface
@@ -8614,7 +8631,8 @@ obj VM {
                         }
                     }
                     # Own accessor with [[Get]] undefined (setter-only) → undefined.
-                    if jsv_is_object_cell(fga_fp) and js_object_has_own_accessor(fga_fp, key) {
+                    if jsv_is_object_cell(fga_fp)
+                        and js_object_has_own_accessor(fga_fp, key) {
                         return js_undefined();
                     }
                 }
@@ -9670,7 +9688,10 @@ obj VM {
                 # Function.prototype in the chain.
                 fn_cproto_h: JSValue = self.realm.closures[fn_idx_h].object_proto;
                 if is_fn_val(fn_cproto_h)
-                    or (jsv_is_object_cell(fn_cproto_h) and jsv_to_table_id(fn_cproto_h) > 0) {
+                    or (
+                        jsv_is_object_cell(fn_cproto_h)
+                        and jsv_to_table_id(fn_cproto_h) > 0
+                    ) {
                     return self.obs_has(fn_cproto_h, key);
                 }
             }
@@ -11321,16 +11342,22 @@ obj VM {
         ri: int = 0;
         while ri < len(raw_e) {
             e: str = raw_e[ri];
-            if str_nbytes(e) >= 2 and (byte_chr(str_byte(e, 0)) == "L" or byte_chr(str_byte(e, 0)) == "T") and byte_chr(str_byte(e, 1)) == ":" {
+            if str_nbytes(e) >= 2
+                and (byte_chr(str_byte(e, 0)) == "L" or byte_chr(str_byte(e, 0)) == "T")
+                and byte_chr(str_byte(e, 1)) == ":" {
                 abs_e.append(e);
-            } elif str_nbytes(e) >= 2 and byte_chr(str_byte(e, 0)) == "S" and byte_chr(str_byte(e, 1)) == ":" {
+            } elif str_nbytes(e) >= 2
+                and byte_chr(str_byte(e, 0)) == "S"
+                and byte_chr(str_byte(e, 1)) == ":" {
                 spec: str = str_bslice_from(e, 2);
                 dep: str = module_resolve(spec, from_dir, resolved, 1);
                 if dep != "" {
                     self._esm_ensure_export_meta(dep);
                     abs_e.append("S:" + dep);
                 }
-            } elif str_nbytes(e) >= 2 and byte_chr(str_byte(e, 0)) == "I" and byte_chr(str_byte(e, 1)) == ":" {
+            } elif str_nbytes(e) >= 2
+                and byte_chr(str_byte(e, 0)) == "I"
+                and byte_chr(str_byte(e, 1)) == ":" {
                 rest: str = str_bslice_from(e, 2);
                 c1: int = -1;
                 c2: int = -1;
@@ -11504,7 +11531,10 @@ obj VM {
                     for dem in esm_export_meta_get(dep_s) {
                         if str_nbytes(dem) >= 2
                             and byte_chr(str_byte(dem, 1)) == ":"
-                            and (byte_chr(str_byte(dem, 0)) == "L" or byte_chr(str_byte(dem, 0)) == "T") {
+                            and (
+                                byte_chr(str_byte(dem, 0)) == "L"
+                                or byte_chr(str_byte(dem, 0)) == "T"
+                            ) {
                             dn: str = str_substr(dem, 2, str_nbytes(dem));
                             if dn != "" and dn != "default" {
                                 kid_s: int = str_intern(dn);
@@ -11968,7 +11998,9 @@ obj VM {
         # Extension loader routing (Vite §4.2 — custom require.extensions override)
         if not bi_packed
             and (
-                mod_format == "cjs-json" or mod_format == "napi" or mod_format == "cjs-js"
+                mod_format == "cjs-json"
+                or mod_format == "napi"
+                or mod_format == "cjs-js"
             ) {
             ext_loader: JSValue = _lookup_ext_loader(resolved);
             if _is_custom_ext_loader(ext_loader, mod_format) {
@@ -19220,7 +19252,8 @@ obj VM {
                 pks_j: int = 0;
                 _nb19164_pks_suf: int = str_nbytes(pks_suf);
                 while pks_j < _nb19164_pks_suf {
-                    if byte_chr(str_byte(pks_suf, pks_j)) < "0" or byte_chr(str_byte(pks_suf, pks_j)) > "9" {
+                    if byte_chr(str_byte(pks_suf, pks_j)) < "0"
+                        or byte_chr(str_byte(pks_suf, pks_j)) > "9" {
                         return -1;
                     }
                     pks_j = pks_j + 1;
@@ -20761,7 +20794,9 @@ obj VM {
                 );
                 return;
             }
-            coll: str = "-1" if (len(a_dec) > 0 and str_bslice(a_dec, 0, 1) == "-") else "0";
+            coll: str = "-1"
+                if (len(a_dec) > 0 and str_bslice(a_dec, 0, 1) == "-")
+                else "0";
             self._push(jsv_from_cell_kind(str_intern(coll), JS_CELL_KIND_BIGINT));
             return;
         }
@@ -24575,7 +24610,9 @@ obj VM {
                                     # miss the internal regexp marker: still exercise overridden exec().
                                     subj_len_fnm: int = str_nbytes(subj_fnm_s);
                                     if jsv_is_string_cell(subj_fnm) {
-                                        subj_len_fnm = str_nbytes(str_from_id(jsv_to_table_id(subj_fnm)));
+                                        subj_len_fnm = str_nbytes(
+                                            str_from_id(jsv_to_table_id(subj_fnm))
+                                        );
                                     }
                                     max_exec_fnm: int = subj_len_fnm + 1;
                                     ei_fnm: int = 0;
@@ -24797,7 +24834,8 @@ obj VM {
                                     if mend_rpf > pos_rpf {
                                         pos_rpf = mend_rpf;
                                         if asc_rpf {
-                                            pos_u_rpf = mstart_rpf + str_nbytes(mtxt_rpf);
+                                            pos_u_rpf = mstart_rpf
+                                                + str_nbytes(mtxt_rpf);
                                         } else {
                                             pos_u_rpf = mstart_rpf
                                                 + js_string_utf16_len(mtxt_rpf);
@@ -25348,7 +25386,9 @@ obj VM {
                                 is_bd_ts: bool = self.realm.closures[
                                     fi_ts
                                 ].func.is_bound;
-                                if is_bd_ts or nm_ts == "" or str_bfind(nm_ts, " ") >= 0 {
+                                if is_bd_ts
+                                    or nm_ts == ""
+                                    or str_bfind(nm_ts, " ") >= 0 {
                                     ts_s = "function () { [native code] }";
                                 } else {
                                     ts_s = "function " + nm_ts + "() { [native code] }";
@@ -25693,7 +25733,9 @@ obj VM {
                                     str_substr(subj_sr, 0, off_sr)
                                         + rep_sr_s
                                         + str_substr(
-                                            subj_sr, off_sr + str_nbytes(search_sr), slen_sr
+                                            subj_sr,
+                                            off_sr + str_nbytes(search_sr),
+                                            slen_sr
                                         )
                                 )
                             );  # G1.5: replace result
@@ -27637,7 +27679,8 @@ obj VM {
                                                                     }
                                                                     nm_iter_ok = False;
                                                                     if not self._unwind_in_frame(
-                                                                        frame, exc_ads
+                                                                        frame,
+                                                                        exc_ads
                                                                     ) {
                                                                         self.had_exception = True;
                                                                         self.pending_exc = exc_ads;
@@ -28171,7 +28214,8 @@ obj VM {
                                                                 } elif vm_has_native_exc() {
                                                                     exc_we1: JSValue = vm_take_native_exc();
                                                                     if not self._unwind_in_frame(
-                                                                        frame, exc_we1
+                                                                        frame,
+                                                                        exc_we1
                                                                     ) {
                                                                         self.had_exception = True;
                                                                         self.pending_exc = exc_we1;
@@ -28203,7 +28247,10 @@ obj VM {
                                                                             nwm_adder
                                                                         ),
                                                                         nwm_map,
-                                                                        [nwm_ek, nwm_ev]
+                                                                        [
+                                                                            nwm_ek,
+                                                                            nwm_ev
+                                                                        ]
                                                                     );
                                                                 } else {
                                                                     js_weakmap_set(
@@ -28228,7 +28275,8 @@ obj VM {
                                                                     }
                                                                     nwm_iok = False;
                                                                     if not self._unwind_in_frame(
-                                                                        frame, exc_wes
+                                                                        frame,
+                                                                        exc_wes
                                                                     ) {
                                                                         self.had_exception = True;
                                                                         self.pending_exc = exc_wes;
@@ -31586,7 +31634,10 @@ obj VM {
                     fv_id, _ITER_STD_J, js_int(jsv_to_int32(fv_j) + 1)
                 );
                 fv_val: JSValue = self._iter_std_elem(
-                    frame, st, js_object_slot_at_id(fv_id, _ITER_STD_I), jsv_to_int32(fv_j)
+                    frame,
+                    st,
+                    js_object_slot_at_id(fv_id, _ITER_STD_I),
+                    jsv_to_int32(fv_j)
                 );
                 if not jsv_is_hole(fv_val) {
                     self._push(fv_val);
@@ -31976,8 +32027,11 @@ obj VM {
                 os_ep_i: int = 0;
                 os_ep_n: int = str_nbytes(os_excl_s);
                 while os_ep_i <= os_ep_n {
-                    if os_ep_i == os_ep_n or byte_chr(str_byte(os_excl_s, os_ep_i)) == "\x1f" {
-                        os_excl[str_intern(str_bslice(os_excl_s, os_ep_start, os_ep_i))] = True;
+                    if os_ep_i == os_ep_n
+                        or byte_chr(str_byte(os_excl_s, os_ep_i)) == "\x1f" {
+                        os_excl[
+                            str_intern(str_bslice(os_excl_s, os_ep_start, os_ep_i))
+                        ] = True;
                         os_ep_start = os_ep_i + 1;
                     }
                     os_ep_i = os_ep_i + 1;
@@ -33141,10 +33195,17 @@ obj VM {
                         gr_nf = gr_nf + len(gr_f.locals);
                     }
                 }
-                gr_msg: str = "[GCROOTS] stack=0.." + str(len(self.stack)) + " regs="
-                    + str(len(self.stack)) + ".." + str(len(self.stack) + self.rtop)
-                    + " then frames (" + str(len(self.frames)) + " frames, "
-                    + str(gr_nf) + " non-window locals), globals, …\n";
+                gr_msg: str = "[GCROOTS] stack=0.."
+                    + str(len(self.stack))
+                    + " regs="
+                    + str(len(self.stack))
+                    + ".."
+                    + str(len(self.stack) + self.rtop)
+                    + " then frames ("
+                    + str(len(self.frames))
+                    + " frames, "
+                    + str(gr_nf)
+                    + " non-window locals), globals, …\n";
                 write(2, gr_msg, str_nbytes(gr_msg));
             }
             gc_sp_freed: int = gc_collect(self.realm, gc_roots_all);
@@ -33159,7 +33220,8 @@ obj VM {
             # "collect when the heap has grown by ~itself" policy), scaled by
             # _GC_GROWTH_PCT (JAC_GC_GROWTH).
             # The growth tapers for very large heaps (gc_growth_pct_for).
-            _gc_nlive: int = len(self.realm.objects) - len(self.realm.free_object_slots);
+            _gc_nlive: int = len(self.realm.objects)
+                - len(self.realm.free_object_slots);
             _gc_live: int = (_gc_nlive * gc_growth_pct_for(_gc_nlive)) // 100;
             if _gc_live > _GC_MIN_THRESHOLD {
                 self.realm.gc_threshold = _gc_live;
@@ -33747,7 +33809,8 @@ obj VM {
         orig: int,
         resume_pc: int
     ) -> int {
-        if cl.napi_cb_ptr != 0 or (cl.func.risa != 1 and not self._reg_ready(cl.func)) {
+        if cl.napi_cb_ptr != 0
+            or (cl.func.risa != 1 and not self._reg_ready(cl.func)) {
             return 0;
         }
         # (reg_simple, set with the translation: not a generator, async or
@@ -33801,7 +33864,10 @@ obj VM {
                 if (rc_w & 32768) != 0
                     and js_is_tdz(
                         __mem_load_i64(
-                            wrapping_add(rc_src, wrapping_mul(wrapping_add(frame.lb, rc_w & 32767), 8))
+                            wrapping_add(
+                                rc_src,
+                                wrapping_mul(wrapping_add(frame.lb, rc_w & 32767), 8)
+                            )
                         )
                     ) {
                     self._reg_tdz_throw(frame, st, rc_w & 32767, orig);
@@ -33846,7 +33912,10 @@ obj VM {
                         wrapping_add(
                             rc_lbp,
                             wrapping_mul(
-                                __mem_load_i64(wrapping_add(rc_rp, wrapping_mul(rc_k, 8))) & 32767,
+                                __mem_load_i64(
+                                    wrapping_add(rc_rp, wrapping_mul(rc_k, 8))
+                                )
+                                    & 32767,
                                 8
                             )
                         )
@@ -33857,7 +33926,10 @@ obj VM {
         } elif argpc == -1 {
             # list mode: self.reg_call_args
             while rc_k < np and rc_k < argc {
-                __mem_store_i64(wrapping_add(rc_dst, wrapping_mul(rc_k, 8)), self.reg_call_args[rc_k]);
+                __mem_store_i64(
+                    wrapping_add(rc_dst, wrapping_mul(rc_k, 8)),
+                    self.reg_call_args[rc_k]
+                );
                 rc_k = rc_k + 1;
             }
         } else {
@@ -33865,7 +33937,9 @@ obj VM {
             while rc_k < np and rc_k < argc {
                 __mem_store_i64(
                     wrapping_add(rc_dst, wrapping_mul(rc_k, 8)),
-                    __mem_load_i64(wrapping_add(rc_lbp, wrapping_mul(0 - argpc - 2 + rc_k, 8)))
+                    __mem_load_i64(
+                        wrapping_add(rc_lbp, wrapping_mul(0 - argpc - 2 + rc_k, 8))
+                    )
                 );
                 rc_k = rc_k + 1;
             }
@@ -35588,7 +35662,8 @@ obj VM {
                 # whole chain, cached as such (_vm_mgc_fill).
                 if not jsv_is_hole(gs_v) {
                     self._reg_getfield_fill(frame, c, va, gs_key, gs_v);
-                    if frame.func.code[c].ic_holder != 1 or frame.func.code[c].ic_obj < 0 {
+                    if frame.func.code[c].ic_holder != 1
+                        or frame.func.code[c].ic_obj < 0 {
                         _vm_mgc_fill(va, gs_key);
                     }
                 }
@@ -35875,7 +35950,10 @@ obj VM {
             # which then records where the key lives.
             gi_k: int = jsval_to_prop_key(vb);
             gi_sid: int = js_object_ic_shape(va);
-            if gi_sid >= 0 and gi_k != 0 and len(_MGC_SID) > 0 and _vm_ic_key_ok(gi_k) {
+            if gi_sid >= 0
+                and gi_k != 0
+                and len(_MGC_SID) > 0
+                and _vm_ic_key_ok(gi_k) {
                 gi_v = _vm_mgc_get_sid(gi_k, va, gi_sid);
             }
             if jsv_is_hole(gi_v) {
@@ -36511,9 +36589,9 @@ obj VM {
                     _rset(rb, lb, ((w >> 8) & 65535), frame.this_val);
                 } elif frame.this_binding_cell != 0
                     and not js_is_tdz(cell_get(frame.this_binding_cell)) {
-                    _rset(rb, lb, ((w >> 8) & 65535), cell_get(
-                        frame.this_binding_cell
-                    ));
+                    _rset(
+                        rb, lb, ((w >> 8) & 65535), cell_get(frame.this_binding_cell)
+                    );
                 } else {
                     self._reg_throw(
                         frame,
@@ -36526,9 +36604,9 @@ obj VM {
                 }
             } elif op == 3 {
                 # LOADI dst, imm
-                _rset(rb, lb, ((w >> 8) & 65535), js_int(
-                    ((w >> 40) & 8388607) - 4194304
-                ));
+                _rset(
+                    rb, lb, ((w >> 8) & 65535), js_int(((w >> 40) & 8388607) - 4194304)
+                );
             } elif op == 1 {
                 # MOVE dst, src
                 b = (w >> 24) & 65535;
@@ -36661,17 +36739,7 @@ obj VM {
                     # (a closure value is never a native, a proxy or
                     # [[IsHTMLDDA]]: is_fn_val excludes them)
                     if ok and len(frame.with_objs) == 0 and is_fn_val(va) {
-                        cr = self._reg_call_enter(
-                            frame,
-                            st,
-                            va,
-                            vb,
-                            a,
-                            xi,
-                            c,
-                            xo,
-                            yi
-                        );
+                        cr = self._reg_call_enter(frame, st, va, vb, a, xi, c, xo, yi);
                     } elif ok
                         and br >= 0
                         and is_native_val(va)
@@ -36694,24 +36762,10 @@ obj VM {
                         if ok
                             and is_native_val(va)
                             and self._reg_native_fast_call(
-                                frame,
-                                st,
-                                a,
-                                va,
-                                vb,
-                                xi,
-                                c,
-                                xo
+                                frame, st, a, va, vb, xi, c, xo
                             ) {} else {
                             self._reg_bridge_call(
-                                frame,
-                                st,
-                                xo,
-                                a,
-                                b & 32767,
-                                br,
-                                xi,
-                                c
+                                frame, st, xo, a, b & 32767, br, xi, c
                             );
                         }
                         pc = yi;
@@ -36763,7 +36817,10 @@ obj VM {
                         vb
                     ) {} elif _vm_set_ic_ok(frame.func.code[c])
                     and js_object_ic_set_hit(
-                        va, frame.func.code[c].ic_obj, frame.func.code[c].ic_ver // 16, vb
+                        va,
+                        frame.func.code[c].ic_obj,
+                        frame.func.code[c].ic_ver // 16,
+                        vb
                     ) {
                     # (the site's flat IC takes this entry for the next hit)
                     _ric_fill_set(ricp, c, frame.func.code[c]);
@@ -36804,7 +36861,9 @@ obj VM {
                 # CHECKTDZ slot
                 a = (w >> 8) & 65535;
                 if js_is_tdz(_rget(rb, lb, (a))) {
-                    self._reg_tdz_throw(frame, st, a, frame.func.rorig[wrapping_add(pc, -1)]);
+                    self._reg_tdz_throw(
+                        frame, st, a, frame.func.rorig[wrapping_add(pc, -1)]
+                    );
                 }
             } elif op == 33 {
                 # ADDI / SUBI dst, src, imm
@@ -36930,17 +36989,7 @@ obj VM {
                     # (a closure value is never a native, a proxy or
                     # [[IsHTMLDDA]]: is_fn_val excludes them)
                     if ok and len(frame.with_objs) == 0 and is_fn_val(va) {
-                        cr = self._reg_call_enter(
-                            frame,
-                            st,
-                            va,
-                            vb,
-                            a,
-                            xi,
-                            c,
-                            xo,
-                            yi
-                        );
+                        cr = self._reg_call_enter(frame, st, va, vb, a, xi, c, xo, yi);
                     } elif ok
                         and br >= 0
                         and is_native_val(va)
@@ -36963,24 +37012,10 @@ obj VM {
                         if ok
                             and is_native_val(va)
                             and self._reg_native_fast_call(
-                                frame,
-                                st,
-                                a,
-                                va,
-                                vb,
-                                xi,
-                                c,
-                                xo
+                                frame, st, a, va, vb, xi, c, xo
                             ) {} else {
                             self._reg_bridge_call(
-                                frame,
-                                st,
-                                xo,
-                                a,
-                                b & 32767,
-                                br,
-                                xi,
-                                c
+                                frame, st, xo, a, b & 32767, br, xi, c
                             );
                         }
                         pc = yi;
@@ -37071,9 +37106,12 @@ obj VM {
                         frame, st, b & 32767, frame.func.rorig[wrapping_add(pc, -1)]
                     );
                 } else {
-                    _rset(rb, lb, ((w >> 8) & 65535), js_boolean(
-                        not jsv_coerce_to_bool(_rget(rb, lb, (b & 32767)))
-                    ));
+                    _rset(
+                        rb,
+                        lb,
+                        ((w >> 8) & 65535),
+                        js_boolean(not jsv_coerce_to_bool(_rget(rb, lb, (b & 32767))))
+                    );
                 }
             } elif op == 57 {
                 # SEQ / SNEQ dst, a, b
@@ -37217,8 +37255,7 @@ obj VM {
                 b = (w >> 24) & 65535;
                 va = _rget(rb, lb, (b));
                 cr = -1;
-                if _ITER_STD_SHAPE > 0
-                    and js_object_ic_shape(va) == _ITER_STD_SHAPE {
+                if _ITER_STD_SHAPE > 0 and js_object_ic_shape(va) == _ITER_STD_SHAPE {
                     xi = jsv_to_table_id(va);
                     vb = js_object_slot_at_id(xi, _ITER_STD_J);
                     if jsv_is_int32(vb) {
@@ -37230,7 +37267,9 @@ obj VM {
                         if c >= 0 and yi >= c {
                             cr = 0;
                         } elif c >= 0 {
-                            vb = js_array_get_quiet(js_object_slot_at_id(xi, _ITER_STD_I), yi);
+                            vb = js_array_get_quiet(
+                                js_object_slot_at_id(xi, _ITER_STD_I), yi
+                            );
                             if not jsv_is_hole(vb) {
                                 js_object_slot_set_at_id(
                                     xi, _ITER_STD_J, js_int(yi + 1)
@@ -37243,7 +37282,11 @@ obj VM {
                 }
                 if cr < 0 {
                     cr = self._reg_iternext_slow(
-                        frame, st, (w >> 8) & 65535, b, frame.func.rorig[wrapping_add(pc, -1)]
+                        frame,
+                        st,
+                        (w >> 8) & 65535,
+                        b,
+                        frame.func.rorig[wrapping_add(pc, -1)]
                     );
                 }
                 if cr == 0 {
@@ -37254,24 +37297,14 @@ obj VM {
                 vr = _rget(rb, lb, ((w >> 24) & 65535));
                 if js_is_tdz(vr) {
                     self._reg_bridge(
-                        frame,
-                        st,
-                        (w >> 40) & 8388607,
-                        0,
-                        0,
-                        0,
-                        0,
-                        (w >> 8) & 65535,
-                        1
+                        frame, st, (w >> 40) & 8388607, 0, 0, 0, 0, (w >> 8) & 65535, 1
                     );
                 } else {
                     _rset(rb, lb, ((w >> 8) & 65535), cell_get(vr));
                 }
             } elif op == 8 {
                 # LOADGLOBAL dst, orig
-                self._reg_load_global(
-                    frame, st, (w >> 8) & 65535, (w >> 40) & 8388607
-                );
+                self._reg_load_global(frame, st, (w >> 8) & 65535, (w >> 40) & 8388607);
             } elif op == 43 {
                 # NEG (other operands) BNOT TYPEOF TONUM TOSTR dst, src
                 self._reg_op_unary(frame, st, w, op, pc);
@@ -37350,15 +37383,7 @@ obj VM {
                     _rset(rb, lb, ((w >> 8) & 65535), va);
                 } else {
                     self._reg_bridge(
-                        frame,
-                        st,
-                        (w >> 40) & 8388607,
-                        1,
-                        va,
-                        0,
-                        0,
-                        (w >> 8) & 65535,
-                        1
+                        frame, st, (w >> 40) & 8388607, 1, va, 0, 0, (w >> 8) & 65535, 1
                     );
                 }
             } elif op == 86 {
@@ -37575,10 +37600,7 @@ obj VM {
                 va = _rget(rb, lb, (b & 32767));
                 vb = _rget(rb, lb, (c & 32767));
                 vr = jsv_hole();
-                if jsv_is_int32(va)
-                    and jsv_is_int32(vb)
-                    and op != 23
-                    and op != 25 {
+                if jsv_is_int32(va) and jsv_is_int32(vb) and op != 23 and op != 25 {
                     xi = jsv_to_int32(va);
                     yi = jsv_to_int32(vb);
                     if op == 26 {
@@ -37793,18 +37815,24 @@ obj VM {
         res: bool = False;
         numeric: bool = False;
         ok: bool = False;
-        if op == 40 and jsv_is_int32(frame.locals[wrapping_add(lb, ((w >> 24) & 32767))]) and jsv_to_int32(frame.locals[wrapping_add(lb, ((w >> 24) & 32767))]) != 0 {
+        if op == 40
+            and jsv_is_int32(frame.locals[wrapping_add(lb, ((w >> 24) & 32767))])
+            and jsv_to_int32(frame.locals[wrapping_add(lb, ((w >> 24) & 32767))])
+                != 0 {
             # NEG dst, src (a non-zero int32; -0 and the rest: the helper)
             xi = 0 - jsv_to_int32(frame.locals[wrapping_add(lb, ((w >> 24) & 32767))]);
             if xi <= 2147483647 {
                 frame.locals[wrapping_add(lb, ((w >> 8) & 65535))] = js_int(xi);
             } else {
-                frame.locals[wrapping_add(lb, ((w >> 8) & 65535))] = js_number(float(xi));
+                frame.locals[wrapping_add(lb, ((w >> 8) & 65535))] = js_number(
+                    float(xi)
+                );
             }
         } elif op == 44 {
             # VOID dst, src (before the unary range below, which includes it)
             b = (w >> 24) & 65535;
-            if (b & 32768) != 0 and js_is_tdz(frame.locals[wrapping_add(lb, (b & 32767))]) {
+            if (b & 32768) != 0
+                and js_is_tdz(frame.locals[wrapping_add(lb, (b & 32767))]) {
                 self._reg_tdz_throw(
                     frame, st, b & 32767, frame.func.rorig[wrapping_add(pc, -1)]
                 );
@@ -37854,7 +37882,8 @@ obj VM {
                 res = jsv_coerce_to_bool(
                     frame.locals[wrapping_add(lb, (frame.func.num_locals - 1))]
                 );
-                if frame.func.code[frame.func.rorig[wrapping_add(pc, -1)]].opcode == Opcode.NEQ {
+                if frame.func.code[frame.func.rorig[wrapping_add(pc, -1)]].opcode
+                    == Opcode.NEQ {
                     res = not res;
                 }
                 if res == (op == 68) {
@@ -37910,13 +37939,17 @@ obj VM {
         } elif op == 105 {
             # THROW r
             a = (w >> 8) & 65535;
-            if (a & 32768) != 0 and js_is_tdz(frame.locals[wrapping_add(lb, (a & 32767))]) {
+            if (a & 32768) != 0
+                and js_is_tdz(frame.locals[wrapping_add(lb, (a & 32767))]) {
                 self._reg_tdz_throw(
                     frame, st, a & 32767, frame.func.rorig[wrapping_add(pc, -1)]
                 );
             } else {
                 self._reg_throw(
-                    frame, st, frame.locals[wrapping_add(lb, (a & 32767))], frame.func.rorig[wrapping_add(pc, -1)]
+                    frame,
+                    st,
+                    frame.locals[wrapping_add(lb, (a & 32767))],
+                    frame.func.rorig[wrapping_add(pc, -1)]
                 );
             }
         } elif op == 95 or op == 96 or op == 97 {
@@ -37934,15 +37967,7 @@ obj VM {
             } else {
                 frame.rpc = pc;
                 self._reg_bridge(
-                    frame,
-                    st,
-                    (w >> 40) & 8388607,
-                    1,
-                    va,
-                    0,
-                    0,
-                    (w >> 8) & 65535,
-                    1
+                    frame, st, (w >> 40) & 8388607, 1, va, 0, 0, (w >> 8) & 65535, 1
                 );
             }
         } elif op == 88 {
@@ -37955,7 +37980,8 @@ obj VM {
             # STOREFREE src, idx, orig
             a = (w >> 8) & 65535;
             b = (w >> 24) & 65535;
-            if (a & 32768) != 0 and js_is_tdz(frame.locals[wrapping_add(lb, (a & 32767))]) {
+            if (a & 32768) != 0
+                and js_is_tdz(frame.locals[wrapping_add(lb, (a & 32767))]) {
                 self._reg_tdz_throw(
                     frame, st, a & 32767, frame.func.rorig[wrapping_add(pc, -1)]
                 );
@@ -37973,29 +37999,36 @@ obj VM {
                         0
                     );
                 } else {
-                    cell_set(frame.free_vals[b], frame.locals[wrapping_add(lb, (a & 32767))]);
+                    cell_set(
+                        frame.free_vals[b], frame.locals[wrapping_add(lb, (a & 32767))]
+                    );
                 }
             }
         } elif op == 12 {
             # STOREDEREF src, slot
             a = (w >> 8) & 65535;
-            if (a & 32768) != 0 and js_is_tdz(frame.locals[wrapping_add(lb, (a & 32767))]) {
+            if (a & 32768) != 0
+                and js_is_tdz(frame.locals[wrapping_add(lb, (a & 32767))]) {
                 self._reg_tdz_throw(
                     frame, st, a & 32767, frame.func.rorig[wrapping_add(pc, -1)]
                 );
             } else {
                 cell_set(
-                    frame.locals[wrapping_add(lb, ((w >> 24) & 65535))], frame.locals[wrapping_add(lb, (a & 32767))]
+                    frame.locals[wrapping_add(lb, ((w >> 24) & 65535))],
+                    frame.locals[wrapping_add(lb, (a & 32767))]
                 );
             }
         } elif op == 13 {
             # MAKECELL slot
             a = (w >> 8) & 65535;
-            frame.locals[wrapping_add(lb, (a))] = make_cell(frame.locals[wrapping_add(lb, (a))]);
+            frame.locals[wrapping_add(lb, (a))] = make_cell(
+                frame.locals[wrapping_add(lb, (a))]
+            );
         } elif op == 14 {
             # STORENEWCELL src, slot
             a = (w >> 8) & 65535;
-            if (a & 32768) != 0 and js_is_tdz(frame.locals[wrapping_add(lb, (a & 32767))]) {
+            if (a & 32768) != 0
+                and js_is_tdz(frame.locals[wrapping_add(lb, (a & 32767))]) {
                 self._reg_tdz_throw(
                     frame, st, a & 32767, frame.func.rorig[wrapping_add(pc, -1)]
                 );
@@ -38065,7 +38098,9 @@ obj VM {
             if self._gen_ret_pending and len(self.frames) == self._gen_ret_depth {
                 frame.locals[wrapping_add(lb, ((w >> 8) & 65535))] = js_undefined();
             } else {
-                frame.locals[wrapping_add(lb, ((w >> 8) & 65535))] = frame.locals[wrapping_add(lb, ((w >> 24) & 65535))];
+                frame.locals[wrapping_add(lb, ((w >> 8) & 65535))] = frame.locals[
+                    wrapping_add(lb, ((w >> 24) & 65535))
+                ];
             }
         } elif op == 107 {
             # FINRETHROW slot
@@ -40461,7 +40496,8 @@ def _vm_object_integrity(
             fi_p: int = get_fn_idx(target_i);
             prevented = fi_p >= 0
                 and fi_p < len(vm.realm.closures)
-                and js_object_prevent_extensions(cl_props(vm.realm.closures[fi_p])) == 0;
+                and js_object_prevent_extensions(cl_props(vm.realm.closures[fi_p]))
+                    == 0;
         } elif is_native_val(target_i) {
             prevented = js_object_prevent_extensions(native_props_ensure(target_i))
                 == 0;
@@ -45457,14 +45493,11 @@ def _vm_array_push(vm: VM, this_val: JSValue, items: list[JSValue]) -> JSValue {
                     and (vp_pk & SHAPE_ATTR_ACCESSOR) == 0
                     and (vp_pk & 1) != 0 {
                     vp_lv: JSValue = vp_raw.sget(vp_pk // 16);
-                    if jsv_is_int32(vp_lv)
-                        and jsv_to_int32(vp_lv) == vp_raw.elen() {
+                    if jsv_is_int32(vp_lv) and jsv_to_int32(vp_lv) == vp_raw.elen() {
                         for vp_itm in items {
                             vp_raw.epush(vp_itm);
                         }
-                        vp_raw.sset(vp_pk // 16, js_array_len_value(
-                            vp_raw.elen()
-                        ));
+                        vp_raw.sset(vp_pk // 16, js_array_len_value(vp_raw.elen()));
                         return js_array_len_value(vp_raw.elen());
                     }
                 }
@@ -51547,7 +51580,9 @@ def:pub vm_dump_pair_stats -> None {
                 + ")"
         );
         rs_gkeys: list[str] = _reg_stats_sorted_names(_REG_BRIDGE_GPKEYS, 40);
-        print("register loop: bridged GET_PROP / SET_PROP by property name @ receiver kind");
+        print(
+            "register loop: bridged GET_PROP / SET_PROP by property name @ receiver kind"
+        );
         rs_i = 0;
         while rs_i < len(rs_gkeys) and rs_i < 40 {
             print(

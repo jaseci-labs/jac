@@ -1254,7 +1254,17 @@ impl NaIRGenPass._body_keeps_list_headers(body: list[uni.UniNode]) -> bool {
                 }
             } elif kind
                 in ("IfStmt", "ElseIf", "WhileStmt", "IfElseExpr", "AssertStmt") {
-                if not self._anchor_plain(nd?.condition) {
+                if isinstance(
+                    nd,
+                    (
+                        uni.IfStmt,
+                        uni.ElseIf,
+                        uni.WhileStmt,
+                        uni.IfElseExpr,
+                        uni.AssertStmt
+                    )
+                )
+                    and not self._anchor_plain(nd.condition) {
                     return False;
                 }
             } elif kind in ("DictVal", "SetVal") {

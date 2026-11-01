@@ -315,8 +315,8 @@ walker NaIRGenPass(CompilerPass) {
         _pub_symbols: set[str] = set(),
         _unit_exports: dict[str, NativeExport] = {},
         _demoted_names: set[str] = set(),
-        _demoted_stubs: dict[str, ir.Function] = {},
         _seam_stub_ids: set[int] = set(),
+        _seam_stubs: dict[str, ir.Function] = {},
         _native_test_nodes: dict[str, uni.Test] = {},
         _lowering_issues: list[NativeLoweringIssue] = [],
         tuple_types: dict[str, ir.LiteralStructType] = {},
@@ -1347,7 +1347,7 @@ walker NaIRGenPass(CompilerPass) {
     def _forward_declare_archetype_methods(arch: uni.Archetype) -> None;
     def _register_imported_globals(nd: uni.GlobalVars, source_path: str = "") -> None;
     def _forward_declare_imported_ability(
-        nd: uni.Ability, unavailable: (set | None) = None, imp_layout: any = None
+        nd: uni.Ability, unavailable: (set[str] | None) = None, imp_layout: any = None
     ) -> None;
 
     def _declares_lazily(nd: uni.Ability) -> bool;
@@ -1358,7 +1358,7 @@ walker NaIRGenPass(CompilerPass) {
     def _record_linked_decl(func: (ir.Function | None), decl: uni.Ability) -> None;
     def _ensure_dep_inference(dep_mod: uni.Module) -> None;
     def _module_callable_names(mod: uni.Module) -> set[str];
-    def _imported_function_demotions(imported_mod: uni.Module) -> (set | None);
+    def _imported_function_demotions(imported_mod: uni.Module) -> (set[str] | None);
     def _lower_module -> None;
     def _settle_module -> None;
     def _static_refusals(owner: uni.UniNode) -> (list[NativeRefusal] | None);

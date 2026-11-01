@@ -1,4 +1,3 @@
-import textwrap;
 import from collections.abc { Sequence }
 
 
@@ -361,7 +360,6 @@ walker JcirGenPass(TreePass) {
     can enter_test with Test entry;
     can exit_test with Test exit;
     can exit_module_code with ModuleCode exit;
-    can exit_py_inline_code with PyInlineCode exit;
     can exit_import with Import exit;
     can exit_module_path with ModulePath exit;
     can exit_module_item with ModuleItem exit;

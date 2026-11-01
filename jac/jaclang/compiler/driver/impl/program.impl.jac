@@ -112,6 +112,13 @@ impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None 
 }
 
 impl JacProgram.release_module(self: JacProgram, resolved_path: str) -> None {
+    if self.context_root is None {
+        for context in list(self.contexts.values()) {
+            if context is not self {
+                context.release_module(resolved_path);
+            }
+        }
+    }
     released = self.hub.mod.hub.get(resolved_path) or self.find_module(resolved_path);
     self.invalidate_module(resolved_path);
     self.drop_module_alerts(resolved_path);
@@ -1085,7 +1092,7 @@ impl JacProgram.ingest_comptime_producers(
                 );
             } except Exception as ct_ingest_err {
                 import logging as _ct_logging;
-                _ct_logging.getLogger(__name__).debug(
+                _ct_logging.getLogger("jaclang.compiler.driver.program").debug(
                     f"comptime producer {target} of {file_path} "
                     f"could not be ingested: {ct_ingest_err}"
                 );

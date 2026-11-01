@@ -349,6 +349,7 @@ impl build_link_plan(
         return _build_link_plan(prog, roots, opts, mode, native_unit);
     }
     session = NativeBuildSession(registry=registry, options=opts);
+    session.compact_on_lower = True;
     registry.session = session;
 
     target_token = push_native_target(opts.native_target or "");

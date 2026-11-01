@@ -210,13 +210,11 @@ impl OwnershipCheckPass._emit_flow_for_diagnostics -> None {
         _licensed = self._collect_flow_reductions(lp);
         _flagged: set[int] = set();
         for st in (lp.body or []) {
-            _subs: list[UniNode] = (
-                [st]
-                + list(st.get_all_sub_nodes(ReturnStmt))
-                + list(st.get_all_sub_nodes(DisengageStmt))
-                + list(st.get_all_sub_nodes(YieldExpr))
-                + list(st.get_all_sub_nodes(CtrlStmt))
-            );
+            _subs: list[UniNode] = [st];
+            _subs.extend(st.get_all_sub_nodes(ReturnStmt));
+            _subs.extend(st.get_all_sub_nodes(DisengageStmt));
+            _subs.extend(st.get_all_sub_nodes(YieldExpr));
+            _subs.extend(st.get_all_sub_nodes(CtrlStmt));
             for sub in _subs {
                 if isinstance(sub, ReturnStmt) {
                     self.ctx.emit(

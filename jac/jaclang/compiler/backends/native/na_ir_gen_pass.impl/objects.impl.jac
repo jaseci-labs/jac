@@ -698,7 +698,7 @@ impl NaIRGenPass._reject_scalar_type_args(nd: uni.UniNode, type_name: str) -> bo
     if not _params {
         return False;
     }
-    _args = self._container_type_args(nd?.type);
+    _args = self._container_type_args(nd.type) if isinstance(nd, uni.Expr) else None;
     if not _args {
         return False;
     }
@@ -1309,7 +1309,7 @@ impl NaIRGenPass._place_unit_python(
         b.call(self.extern_funcs["abort"], []);
         b.unreachable();
         self._seam_stub_ids.add(id(func));
-        self._demoted_stubs[full_name] = func;
+        self._seam_stubs[full_name] = func;
     }
     if not keep_func {
         self.method_funcs.pop(full_name, None);

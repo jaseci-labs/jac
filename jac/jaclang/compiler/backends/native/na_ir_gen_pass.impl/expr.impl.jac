@@ -702,8 +702,8 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     if JAC_TYPE_REGISTRY.is_sized(var_name) and not _is_call_target {
         return self._codegen_type_name_str(var_name);
     }
-    if not _is_call_target and var_name in self._demoted_stubs {
-        return self._demoted_stubs[var_name];
+    if not _is_call_target and var_name in self._seam_stubs {
+        return self._seam_stubs[var_name];
     }
     _ref = self._codegen_class_ref(nd);
     if _ref is None and nd.expr_ctx == ExprCtx.LOAD {
@@ -2242,7 +2242,7 @@ impl NaIRGenPass._codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None) {
             self._release_owned_args([result], op="bool_drop");
         }
         _bool_peer_saved = self._peer_container_ty;
-        self._peer_container_ty = self._opt_ptr_payload_of(result.type);
+        self._peer_container_ty = self._opt_ptr_payload_of(result.type) or result.type;
         rhs_val = self._str_norm_optional(self._codegen_expr(nd.values[i]));
         self._peer_container_ty = _bool_peer_saved;
         if rhs_val is None {

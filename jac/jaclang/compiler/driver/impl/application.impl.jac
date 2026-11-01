@@ -991,7 +991,9 @@ impl _prepare_revision(
             )
                 and all(
                     (ct_dep_digest(path, with_annexes=True) == digest)
-                    for (path, digest) in candidate['dependencies'].items()
+                    for (path, digest) in (
+                        candidate['dependencies'] | candidate['client_modules']
+                    ).items()
                 ) {
                 record = candidate;
                 if inventory != record['inventory'] or outputs != record['outputs'] {
@@ -1235,8 +1237,12 @@ impl _prepare_revision(
             );
         }
         read: dict[str, str] = {};
+        client_modules: dict[str, str] = {};
         if revision.client_compiler is not None {
             read = dict(revision.client_compiler.jac_client_compiler.input_files);
+            client_modules = dict(
+                revision.client_compiler.jac_client_compiler.client_modules
+            );
             client_files = sorted(read);
         }
         settled = _client_inventory(`root, client_dirs, client_files, inventory)
@@ -1250,6 +1256,10 @@ impl _prepare_revision(
             )
             or any(
                 current.get(path, '') != digest for (path, digest) in read.items()
+            )
+            or any(
+                ct_dep_digest(path, with_annexes=True) != digest
+                for (path, digest) in client_modules.items()
             ) {
             raise RuntimeError(
                 'Sources changed during preparation; retry with the new revision.'
@@ -1282,6 +1292,7 @@ impl _prepare_revision(
             inventory=inventory,
             client_dirs=client_dirs,
             client_files=client_files,
+            client_modules=client_modules,
             dependencies=inputs
         )
     );
