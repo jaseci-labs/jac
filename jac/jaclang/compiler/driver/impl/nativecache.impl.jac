@@ -1391,30 +1391,80 @@ impl NativeBuildSession._finish(paths: list[str]) {
 }
 
 impl NativeBuildSession.close {
+    failure: (Exception | None) = None;
     try {
+        self.await_snapshot();
+    } except Exception as err {
+        failure = err;
+    }
+    try {
+        self.await_optimization();
+    } except Exception as err {
+        if failure is None {
+            failure = err;
+        }
+    }
+    if self.snapshot_executor is not None {
+        executor = self.snapshot_executor;
+        self.snapshot_executor = None;
         try {
-            self.await_snapshot();
-            self.await_optimization();
-        } finally {
-            if self.snapshot_executor is not None {
-                self.snapshot_executor.shutdown(True);
-                self.snapshot_executor = None;
-            }
-            if self.optimizer_executor is not None {
-                self.optimizer_executor.shutdown(True);
-                self.optimizer_executor = None;
+            executor.shutdown(True);
+        } except Exception as err {
+            if failure is None {
+                failure = err;
             }
         }
+    }
+    if self.optimizer_executor is not None {
+        executor = self.optimizer_executor;
+        self.optimizer_executor = None;
+        try {
+            executor.shutdown(True);
+        } except Exception as err {
+            if failure is None {
+                failure = err;
+            }
+        }
+    }
+    try {
         for (phase, seconds) in self.prog.analysis.phase_time.items() {
             self.registry._add_time("NATIVE_FRONTEND_" + phase, seconds);
         }
-        self.lowered.clear();
-        self.ir_snapshots.clear();
-        self.source_keys.clear();
-        self.prog._natives = None;
+    } except Exception as err {
+        if failure is None {
+            failure = err;
+        }
+    }
+    self.lowered.clear();
+    self.ir_snapshots.clear();
+    self.source_keys.clear();
+    self.pending_opt_paths.clear();
+    self.pending_opt_bitcodes.clear();
+    self.optimizer_paths.clear();
+    self.optimized_units.clear();
+    self.deferred.clear();
+    self.discovery_open.clear();
+    self.unlowerable.clear();
+    if self.registry.session is self {
+        self.registry.session = None;
+    }
+    self.prog._natives = None;
+    try {
         self.prog.release_compile_closure();
-    } finally {
+    } except Exception as err {
+        if failure is None {
+            failure = err;
+        }
+    }
+    try {
         self.heap.release();
+    } except Exception as err {
+        if failure is None {
+            failure = err;
+        }
+    }
+    if failure is not None {
+        raise failure;
     }
 }
 
