@@ -97,6 +97,17 @@ def staged_sources(sources: Path, roots: list[str]) -> list[str] {
         for sibling in sorted(module.parent.glob(f"{stem}.*.jac")) {
             pending.append(str(sibling.relative_to(sources)));
         }
+        impl_root = module.parent / "impl";
+        impl_file = impl_root / f"{stem}.impl.jac";
+        if impl_file.is_file() {
+            pending.append(str(impl_file.relative_to(sources)));
+        }
+        impl_parts = impl_root / f"{stem}.impl";
+        if impl_parts.is_dir() {
+            for part in sorted(impl_parts.glob("*.jac")) {
+                pending.append(str(part.relative_to(sources)));
+            }
+        }
         impl_dir = module.parent / f"{stem}.impl";
         if impl_dir.is_dir() {
             for part in sorted(impl_dir.glob("*.jac")) {
