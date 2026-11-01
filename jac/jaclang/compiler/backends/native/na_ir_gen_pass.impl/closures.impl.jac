@@ -126,6 +126,71 @@ impl NaIRGenPass._static_fn_closure(closure_name: str, fn: ir.Function) -> ir.Va
     );
 }
 
+impl NaIRGenPass._fn_identity_struct -> str {
+    name = "JacFnIdentity";
+    if name not in self.struct_types {
+        self._register_iter_struct(name, ["id"], [ir.IntType(64)]);
+    }
+    return name;
+}
+
+impl NaIRGenPass._fn_identity_slot(fn: ir.Function) -> (str | None) {
+    if self._nogc_headerless()
+        or self._nested_fn_frames.get(fn.name) is not self.builder.function {
+        return None;
+    }
+    _gen = self._gen_ctx;
+    if _gen is not None and self.builder.function is _gen.resume_fn {
+        return None;
+    }
+    name = f"fn.identity.{fn.name}";
+    if name not in self.local_vars {
+        self.local_vars[name] = self._entry_alloca(
+            self.struct_types[self._fn_identity_struct()].as_pointer(), name
+        );
+    }
+    return name;
+}
+
+impl NaIRGenPass._fn_value_env(fn: ir.Function) -> (ir.Value | None) {
+    if fn.name not in self._fresh_fn_values {
+        return None;
+    }
+    i8p = ir.IntType(8).as_pointer();
+    if fn.name not in self._nested_fn_frames {
+        return self.builder.bitcast(
+            self._alloc_iter_struct(self._fn_identity_struct()),
+            i8p,
+            name="clos.wrap.id"
+        );
+    }
+    slot_name = self._fn_identity_slot(fn);
+    if slot_name is None {
+        return None;
+    }
+    slot = self.local_vars[slot_name];
+    func = self.builder.function;
+    open_bb = func.append_basic_block(name="fn.id.open");
+    ready_bb = func.append_basic_block(name="fn.id.ready");
+    self.builder.cbranch(
+        self.builder.icmp_unsigned(
+            "==",
+            self.builder.load(slot, name="fn.id.cur"),
+            ir.Constant(slot.pointee_type, None),
+            name="fn.id.unset"
+        ),
+        open_bb,
+        ready_bb
+    );
+    self.builder.position_at_end(open_bb);
+    self.builder.store(self._alloc_iter_struct(self._fn_identity_struct()), slot);
+    self.builder.branch(ready_bb);
+    self.builder.position_at_end(ready_bb);
+    env = self.builder.load(slot, name="fn.id");
+    self._emit_rc_retain(env, op="fn_identity", loc="");
+    return self.builder.bitcast(env, i8p, name="clos.wrap.id");
+}
+
 impl NaIRGenPass._callable_signature_of(val_type: ir.Type) -> (ir.FunctionType | None) {
     closure_name = self._closure_struct_of(val_type);
     if closure_name is not None {
@@ -413,11 +478,30 @@ impl NaIRGenPass._emit_closure_escape_error(var_name: str, nd: uni.UniNode) -> N
 }
 
 impl NaIRGenPass._codegen_closure_call(
-    nd: uni.FuncCall, clos_val: ir.Value, struct_name: str
+    nd: uni.FuncCall,
+    clos_val: ir.Value,
+    struct_name: str,
+    none_guard: (ir.Value | None) = None
 ) -> (ir.Value | None) {
     (_st, fnty_env) = self.closure_sig_registry[struct_name];
     i32 = ir.IntType(32);
     declared = list(fnty_env.args)[:-1];
+    held: (str | None) = None;
+    _gen = self._gen_ctx;
+    if isinstance(clos_val.type, ir.PointerType)
+        and self._is_owned(clos_val)
+        and not self._nogc_headerless()
+        and not (_gen is not None and self.builder.function is _gen.resume_fn) {
+        held = f"ccall.held.{self._loop_coll_seq}";
+        self._loop_coll_seq += 1;
+        held_slot = self._entry_alloca(clos_val.type, held);
+        self.local_vars[held] = held_slot;
+        self._emit_rc_release_simple(
+            self._mark_owned(self.builder.load(held_slot, name="ccall.held.old")),
+            op="ccall_target"
+        );
+        self.builder.store(clos_val, held_slot);
+    }
     by_slot: dict[int, uni.UniNode] = {};
     callee_sig = nd.callee_signature;
     shift = 1
@@ -463,6 +547,14 @@ impl NaIRGenPass._codegen_closure_call(
         raw_args.append(v);
         coerced.append(self._coerce_type(v, want));
     }
+    if none_guard is not None {
+        self._emit_runtime_raise(
+            none_guard,
+            "TypeError",
+            "'NoneType' object is not callable",
+            release_on_error=raw_args
+        );
+    }
     fn_slot = self.builder.gep(
         clos_val, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ccall.fn.slot"
     );
@@ -483,10 +575,51 @@ impl NaIRGenPass._codegen_closure_call(
             self._emit_rc_release_simple(a, op="ccall_arg", loc="");
         }
     }
-    if isinstance(clos_val.type, ir.PointerType) and self._is_owned(clos_val) {
+    if held is not None {
+        self._release_loop_coll_slot(held, op="ccall_target");
+    } elif isinstance(clos_val.type, ir.PointerType) and self._is_owned(clos_val) {
         self._emit_rc_release_simple(clos_val, op="ccall_target", loc="");
     }
     return result;
+}
+
+impl NaIRGenPass._bound_method_owner(
+    type_name: str, method_name: str, fnty: ir.FunctionType
+) -> str {
+    owner = type_name;
+    guard = 0;
+    while guard < 64 and self._arch_has_vtable(owner) {
+        guard += 1;
+        lay = self._arch_layout(owner);
+        if lay is None {
+            break;
+        }
+        if not lay.parents {
+            break;
+        }
+        up = lay.parents[0];
+        up_lay = self._arch_layout(up);
+        if up_lay is None {
+            break;
+        }
+        up_fn = self._resolve_method(up, method_name);
+        if up_fn is None {
+            break;
+        }
+        if up not in self.struct_types
+            or not up_lay.has_vtable
+            or method_name not in up_lay.method_index {
+            break;
+        }
+        up_ty = up_fn.function_type;
+        if self._is_static_method_func(up_fn)
+            or up_ty.return_type != fnty.return_type
+            or list(up_ty.args)[1:] != list(fnty.args)[1:] {
+            break;
+        }
+        owner = up;
+    }
+    return owner;
 }
 
 impl NaIRGenPass._emit_bound_method_value(
@@ -498,11 +631,19 @@ impl NaIRGenPass._emit_bound_method_value(
         return None;
     }
     if self._is_static_method_func(func) {
+        self._release_owned_args([receiver], op="bound_static_recv");
         return self._wrap_fn_as_closure_value(func);
     }
     if not isinstance(receiver.type, ir.PointerType) {
         return None;
     }
+    self._emit_runtime_raise(
+        self.builder.icmp_unsigned(
+            "==", receiver, ir.Constant(receiver.type, None), name="bound.recv.null"
+        ),
+        "AttributeError",
+        f"'NoneType' object has no attribute '{method_name}'"
+    );
     if self.rc_alloc_fn is None {
         self._emit_rc_helpers();
     }
@@ -512,6 +653,14 @@ impl NaIRGenPass._emit_bound_method_value(
     fnty = func.function_type;
     declared_fnty = ir.FunctionType(fnty.return_type, list(fnty.args)[1:]);
     (sig_name, _sig_st, fnty_env) = self._closure_sig_struct(declared_fnty);
+    owner = self._bound_method_owner(type_name, method_name, fnty);
+    owner_fn = self._resolve_method(owner, method_name);
+    owner_st = self.struct_types.get(owner);
+    if owner_fn is not None and owner_st is not None {
+        type_name = owner;
+        func = owner_fn;
+        struct_t = owner_st;
+    }
     thunk_key = f"__jac_bound.{type_name}.{method_name}";
     thunk: (ir.Function | None) = self.closure_thunks.get(thunk_key);
     if thunk is None {
@@ -553,7 +702,7 @@ impl NaIRGenPass._emit_bound_method_value(
     env_slot = self.builder.gep(
         clos, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="bound.env.slot"
     );
-    self._emit_rc_retain(receiver, op="bound_method", loc="");
+    self._emit_take_ref(receiver, op="bound_method");
     self.builder.store(self.builder.bitcast(receiver, i8p, name="bound.env"), env_slot);
     self._mark_owned(clos);
     return clos;
