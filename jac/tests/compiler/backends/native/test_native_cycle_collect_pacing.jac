@@ -16,8 +16,7 @@ counts (`__rc_roots_count`, `__rc_roots_threshold`, `__rc_traced`)."""
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { TESTS_DIR, compile_native, native_address }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR,
@@ -33,11 +32,7 @@ obj Collector {
     has eng: any = None;
 
     def postinit {
-        prog = JacProgram();
-        ir = prog.compile(file_path=FIXTURE, options=native_force_opts());
-        assert not prog.errors_had , [str(e) for e in prog.errors_had];
-        self.eng = ir.gen.native_engine;
-        assert self.eng is not None;
+        (self.eng, _fx) = compile_native(FIXTURE);
         self.global_word("__rc_cycles_enabled", ctypes.c_uint8)[0] = 1;
         self.call("collect");
     }

@@ -6,10 +6,7 @@ and release the converted temporary rather than freeing the source twice.
 """
 
 import ctypes;
-import from tests.support { native_address }
-import os;
-import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { JAC_ROOT, native_force_opts }
+import from tests.support { compile_native, native_address }
 
 glob _ENGINE: list[any] = [];
 
@@ -17,22 +14,7 @@ def engine -> any {
     if _ENGINE {
         return _ENGINE[0];
     }
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(
-            JAC_ROOT,
-            "tests",
-            "compiler",
-            "backends",
-            "native",
-            "fixtures",
-            "osp_visit_coercion.jac"
-        ),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , "visit coercion must compile natively";
+    (eng, _) = compile_native("osp_visit_coercion.jac");
     _ENGINE.append(eng);
     return eng;
 }

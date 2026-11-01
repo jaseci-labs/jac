@@ -8,8 +8,8 @@ machinery, and `self.value` had no lowering.
 
 These tests assert the methods are NOT demoted -- a demoted method still
 returns the right string through Python, so a value-only assertion would pass
-while the gap stayed open -- by requiring them in the module's native layout,
-and separately assert the values equal the sv results.
+while the gap stayed open -- by requiring them in the module's MIR and out of
+its demoted set, and separately assert the values equal the sv results.
 """
 
 import ctypes;
@@ -18,14 +18,12 @@ import os;
 import sys;
 import from tests.support {
     TESTS_DIR,
-    by_source_name,
+    compile_mir,
     compile_native,
     native_address,
-    native_force_opts,
-    native_str_func
+    native_str_func,
+    source_spelled
 }
-
-import jaclang.compiler.frontend.unitree as uni;
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -49,14 +47,14 @@ def sv_module(stem: str) -> any {
 }
 
 test "str dunders reading through a trailer are not demoted to Python" {
-    (_, ir) = compile_native("dunder_str_trailer.jac");
-    layout = ir.gen.native_layout;
-    assert layout is not None , "no native layout -- module-wide native compile failed";
+    fx = compile_mir("dunder_str_trailer.jac");
+    mir = source_spelled(fx.mir());
+    demoted = [source_spelled(symbol) for symbol in fx.demoted()];
     for want in ["Kind.__str__", "Outer.__str__", "Indexed.__str__"] {
-        assert want in by_source_name(layout.methods) , (
-            f"{want} was demoted or never emitted; native methods: "
-            f"{sorted(layout.methods)}"
+        assert not any(symbol.endswith("." + want) for symbol in demoted) , (
+            f"{want} was demoted: {fx.demoted()}"
         );
+        assert f".{want}(" in mir , f"{want} was never lowered; demoted: {demoted}";
     }
 }
 

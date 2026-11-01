@@ -2,10 +2,10 @@
 
 A native program is one flat link namespace. `import math` declares libm's
 `floor` through the bundled `_math_native` module, so a user `def floor` in the
-same module used to die in native lowering (`DuplicatedNameError: floor`) and
-fall back to the server codespace. Without the import the collision was
-silent instead: the backend's own `floor` extern (behind
-`float.as_integer_ratio`) bound to the user function. A module-local
+same module used to die in native lowering (a duplicated `floor`) and fall
+back to the server codespace. Without the import the collision was silent
+instead: the backend's own `floor` extern (behind `float.as_integer_ratio`)
+bound to the user function. A module-local
 definition is emitted under its module-qualified symbol, and a `:pub`
 definition named after a C symbol as `__jac_def_<name>`, beside the C one.
 """
@@ -34,7 +34,7 @@ glob FIXTURES = os.path.join(
      EXPECTED_LINES: list[str] = ["7 2 104.0 4.0", "3 8.0 99 3", "11 5"];
 
 test "a user floor, sqrt and glob pow coexist with the math module natively" {
-    (engine, _module) = compile_native("c_symbol_shadowing.jac");
+    (engine, _) = compile_native("c_symbol_shadowing.jac");
     assert get_func(engine, "user_floor_probe", ctypes.c_int64)() == 7;
     assert get_func(engine, "math_floor_probe", ctypes.c_int64)() == 2;
     assert get_func(engine, "user_sqrt_probe", ctypes.c_double)() == 104.0;
@@ -44,14 +44,13 @@ test "a user floor, sqrt and glob pow coexist with the math module natively" {
 }
 
 test "user strlen, puts and main do not replace the runtime's C symbols" {
-    (engine, _module) = compile_native("c_symbol_shadowing.jac");
+    (engine, _) = compile_native("c_symbol_shadowing.jac");
     assert get_func(engine, "strlen_probe", ctypes.c_int64)() == 11099;
     assert get_func(engine, "entry_names_probe", ctypes.c_int64)() == 1105;
 }
 
 test "C-named user definitions get Jac-owned symbols and C keeps its own" {
-    module = compile_native_ir("c_symbol_shadowing.jac");
-    text = str(module.gen.llvm_ir);
+    text = compile_native_ir("c_symbol_shadowing.jac").llvm_ir();
     for name in ["floor", "sqrt", "strlen", "puts", "main"] {
         assert re.search(rf'define [^\n]*@"[^"\n]*\.{name}"\(', text) , (
             f"user {name} was not emitted under its module-qualified symbol"
@@ -67,27 +66,26 @@ test "C-named user definitions get Jac-owned symbols and C keeps its own" {
 }
 
 test "a public C-named definition is emitted as __jac_def_ beside the C symbol" {
-    module = compile_native_ir("c_symbol_shadowing_pub.jac");
-    text = str(module.gen.llvm_ir);
+    text = compile_native_ir("c_symbol_shadowing_pub.jac").llvm_ir();
     assert re.search(r'define [^\n]*@"?__jac_def_floor"?\(', text) , (
         "a public floor was not emitted under its Jac-owned symbol"
     );
     assert not re.search(r'define [^\n]*@"?floor"?\(', text) , (
         "a public floor took over the C symbol"
     );
-    (engine, _module) = compile_native("c_symbol_shadowing_pub.jac");
+    (engine, _) = compile_native("c_symbol_shadowing_pub.jac");
     assert get_func(engine, "pub_floor_probe", ctypes.c_int64)() == 7;
     assert get_func(engine, "math_floor_probe", ctypes.c_int64)() == 2;
 }
 
 test "the backend's own floor extern does not bind to a user floor" {
-    (engine, _module) = compile_native("c_symbol_shadowing_ratio.jac");
+    (engine, _) = compile_native("c_symbol_shadowing_ratio.jac");
     assert get_func(engine, "ratio_probe", ctypes.c_int64)() == 52;
     assert get_func(engine, "user_floor_probe", ctypes.c_double)() == 1.5;
 }
 
 test "C-named definitions imported from a separately compiled module bind correctly" {
-    (engine, _module) = compile_native("c_symbol_shadowing_xmod.jac");
+    (engine, _) = compile_native("c_symbol_shadowing_xmod.jac");
     assert get_func(engine, "imported_floor_probe", ctypes.c_int64)() == 8;
     assert get_func(engine, "math_floor_probe", ctypes.c_int64)() == 3;
     assert get_func(engine, "imported_ceil_probe", ctypes.c_double)() == 15.0;
@@ -160,9 +158,7 @@ test "every C symbol the backend or a bundled module declares is reserved" {
             with open(path) as handle {
                 source = handle.read();
             }
-            for found in re.finditer(
-                r'_get_or_declare_extern\(\s*"([A-Za-z_]\w*)"', source
-            ) {
+            for found in re.finditer(r'\.extern\(\s*"([A-Za-z_]\w*)"', source) {
                 declared[found.group(1)] = path;
             }
         }

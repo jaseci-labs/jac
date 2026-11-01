@@ -1,19 +1,16 @@
-import from tests.support { native_address, native_force_opts }
+import from tests.support {
+    compile_native,
+    diagnostics_text,
+    error_codes,
+    kernel_compile_file,
+    native_address,
+    native_force_opts
+}
 import ctypes;
 import os;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
-
-"""Compile a .jac fixture; return (prog, ir) without asserting on errors."""
-def _compile(fixture: str) -> tuple[any, ...] {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
-    );
-    return (prog, ir);
-}
 
 """ctypes-callable JIT function by name."""
 def _getf(eng: any, name: str, restype: any, *argtypes: any) -> any {
@@ -24,12 +21,10 @@ def _getf(eng: any, name: str, restype: any, *argtypes: any) -> any {
 
 # ─── compile cleanliness ─────────────────────────────────────────────────────
 test "ptr subscript fixture compiles with no errors, no E9002 ICE (#6707, #6708)" {
-    (prog, _) = _compile("ptr_subscript.jac");
-    codes = [
-        e.code.code
-        for e in prog.errors_had
-        if e.code
-    ];
+    result = kernel_compile_file(
+        str(os.path.join(FIXTURES, "ptr_subscript.jac")), native_force_opts()
+    );
+    codes = error_codes(result);
     e9002 = [
         c
         for c in codes
@@ -37,21 +32,14 @@ test "ptr subscript fixture compiles with no errors, no E9002 ICE (#6707, #6708)
     ];
     assert not e9002 , f"E9002 ICE(s) emitted for clib subscript fixture (annotations not "
     f"stamped): {e9002}";
-    assert not prog.errors_had , f"unexpected compile errors: {[
-        str(e) for e in prog.errors_had
-    ]}";
+    assert not result.errors , f"unexpected compile errors: {diagnostics_text(result)}";
 }
 
 # ─── read path execution (#6708) ─────────────────────────────────────────────
 test "ptr subscript read returns correct field values (#6708)" {
-    (prog, ir) = _compile("ptr_subscript.jac");
-    # Guard: fail cleanly on a broken compile rather than calling garbage JIT
-    # code (which segfaults the worker).
-    assert not prog.errors_had , f"compile errors block execution: {[
-        str(e) for e in prog.errors_had
-    ]}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , "no native engine produced";
+    # compile_native fails cleanly on a broken compile rather than calling
+    # garbage JIT code (which segfaults the worker).
+    (eng, _fx) = compile_native("ptr_subscript.jac", FIXTURES);
 
     # Color[4] as raw bytes: element i .r at byte 4*i, .g at byte 4*i+1.
     cbuf = (ctypes.c_uint8 * 16)();
@@ -93,12 +81,7 @@ test "ptr subscript read returns correct field values (#6708)" {
 
 # ─── write path execution (#6707) ────────────────────────────────────────────
 test "ptr subscript write stores into the right element, neighbors intact (#6707)" {
-    (prog, ir) = _compile("ptr_subscript.jac");
-    assert not prog.errors_had , f"compile errors block execution: {[
-        str(e) for e in prog.errors_had
-    ]}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , "no native engine produced";
+    (eng, _fx) = compile_native("ptr_subscript.jac", FIXTURES);
 
     cbuf = (ctypes.c_uint8 * 16)();
     cptr = ctypes.cast(cbuf, ctypes.c_void_p);

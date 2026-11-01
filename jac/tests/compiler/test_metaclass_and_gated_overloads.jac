@@ -12,15 +12,15 @@ declarations merge across a guard: version-gated `__new__`/`__init__` pairs
 are alternatives, not additions, and merging those would break construction.
 """
 
+import from tests.support { kernel_check_source }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 def check_src(src: str) -> list[str] {
-    prog = JacProgram();
-    prog.compile(
-        file_path="meta.jac", use_str=src, options=CompileOptions(no_cgen=True)
-    );
-    return [str(e) for e in prog.errors_had];
+    return [
+        f"{diag.code}: {diag.message}"
+        for diag in kernel_check_source(src, "meta.jac").errors
+    ];
 }
 
 test "a class object exposes members its metaclass declares" {

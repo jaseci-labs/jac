@@ -1,129 +1,50 @@
-"""Lowering failures survive IR linking and retain ABI-preserving method names."""
-import from jaclang.compiler.backends.native.llvm { ir, binding as llvm }
-import from jaclang.compiler.backends.native.lowering {
-    NativeLoweringIssue,
-    NativeLoweringKind,
-    native_fallbacks_in_ir,
-    native_lowering_issues
+"""Lowering verdicts keep ABI-preserving method names and fail native-only builds."""
+import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support {
+    compile_mir,
+    compile_native_refused,
+    diagnostics_text,
+    fixture_path,
+    kernel_check_file,
+    source_spelled
 }
-import from tests.support { compile_native, native_arch }
 
 test "method demotion is visible without changing the method ABI name" {
-    (_, module) = compile_native("partial_native.jac");
-    text = str(module.gen.llvm_ir);
-    issues = native_lowering_issues(text);
-    symbol = f"{native_arch('partial_native.jac', 'Literal')}.evaluate";
-    assert any(issue.symbol == symbol for issue in issues);
-    assert symbol in native_fallbacks_in_ir(text).symbols;
-}
-
-test "lowering records retain details through bitcode and linking" {
-    left = ir.Module(name="left");
-    right = ir.Module(name="right");
-    NativeLoweringIssue(
-        symbol="Model.value",
-        kind=NativeLoweringKind.FIELD,
-        source="quoted\"/source.jac",
-        code="E5092",
-        detail="field\n☃"
-    ).record(
-        left
-    );
-    NativeLoweringIssue(
-        symbol="Model.run",
-        kind=NativeLoweringKind.CALLABLE,
-        source="other.jac",
-        code="E5090",
-        detail="unsupported call"
-    ).record(
-        right
-    );
-    linked = llvm.parse_assembly(str(left));
-    linked.link_in(llvm.parse_assembly(str(right)));
-    restored = llvm.parse_bitcode(linked.as_bitcode());
-    restored.verify();
-    issues = native_lowering_issues(str(restored));
-    assert len(issues) == 2;
-    fields = [
-        issue
-        for issue in issues
-        if issue.kind == NativeLoweringKind.FIELD
-    ];
-    assert len(fields) == 1;
-    assert fields[0].source == "quoted\"/source.jac";
-    assert fields[0].detail == "field\n☃";
-    assert native_fallbacks_in_ir(str(restored)).symbols
-        == ["Model.run", "Model.value"];
-}
-
-test "invalid lowering metadata cannot silently pass coverage" {
-    failed = False;
-    try {
-        native_lowering_issues("!jac.native.lowering.v1 = !{!12}\n");
-    } except (KeyError, ValueError) {
-        failed = True;
-    }
-    assert failed;
+    fx = compile_mir("partial_native.jac");
+    demoted = [source_spelled(symbol) for symbol in fx.demoted()];
+    assert any(symbol.endswith(".Literal.evaluate") for symbol in demoted) , demoted;
 }
 
 test "native-only checking rejects a method that mixed compilation demotes" {
-    import os;
-    import from tests.support { JAC_ROOT }
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    path = os.path.join(
-        JAC_ROOT, "tests/compiler/backends/native/fixtures/partial_native.jac"
+    checked = kernel_check_file(
+        fixture_path("partial_native.jac"),
+        CompileOptions(native_parity=True, native_required=True)
     );
-    for checking in (True, False) {
-        program = JacProgram();
-        module = program.compile(
-            path,
-            options=CompileOptions(
-                no_cgen=checking,
-                native_parity=checking,
-                aot_mode=not checking,
-                native_required=True,
-            )
-        );
-        assert program.errors_had , "Native-only compilation accepted eval fallback";
-        assert any("eval" in str(error) for error in program.errors_had);
-        assert module.gen.native_engine is None;
-    }
-}
-
-test "native-only output validation rejects erased fields and legacy demotions" {
-    module = ir.Module(name="erased");
-    NativeLoweringIssue(
-        symbol="Record.data",
-        kind=NativeLoweringKind.FIELD,
-        source="record.jac",
-        code="E5092",
-        detail="field has no native layout"
-    ).record(
-        module
+    assert not checked.ok() , "Native-only checking accepted eval fallback";
+    assert any("eval" in error.message for error in checked.errors) , diagnostics_text(
+        checked
     );
-    for text in (str(module), 'define i64 @"legacy.__jac_demoted"() { ret i64 0 }') {
-        failed = False;
-        try {
-            native_fallbacks_in_ir(text).require();
-        } except ValueError {
-            failed = True;
-        }
-        assert failed , "Native-only validation accepted an incomplete artifact";
-    }
+    built = compile_native_refused(
+        "partial_native.jac",
+        options=CompileOptions(aot_mode=True, native_required=True)
+    );
+    assert any("eval" in error.message for error in built.errors) , diagnostics_text(
+        built
+    );
 }
 
 test "native-only checks link providers outside the entry directory" {
     import tempfile;
     import from pathlib { Path }
     import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
     import from jaclang.compiler.backends.native.link_plan {
         ArtifactKind,
         build_link_plan,
         whole_program_module,
         _platform_of
     }
+    import from jaclang.compiler.backends.native.llvm.binding.value { ValueRef }
+    import from tests.support { adopt_native_units, kernel_compile_file, warning_codes }
     with tempfile.TemporaryDirectory() as directory {
         fixture_dir = Path(directory);
         (fixture_dir / "library").mkdir();
@@ -141,36 +62,29 @@ test "native-only checks link providers outside the entry directory" {
             "import from ..library.relay { relay }\n"
                 + "def answer -> int { return relay(41); }\n"
         );
-        for checking in (True, False) {
-            program = JacProgram();
-            module = program.compile(
-                str(entry_file),
-                options=CompileOptions(
-                    no_cgen=checking,
-                    native_parity=checking,
-                    aot_mode=not checking,
-                    native_required=True,
-                )
-            );
-            assert not program.errors_had , str(program.errors_had);
-            assert not any(
-                error.code is not None and error.code.code == "W5023"
-                for error in program.warnings_had
-            );
-            plan = build_link_plan(program, [str(entry_file)], program.options);
-            (linked, _) = whole_program_module(
-                plan,
-                plan.glue_spec(ArtifactKind.SHARED, _platform_of(plan.triple), False)
-            );
-            provider = next(
-                unit
-                for unit in plan.units
-                if unit.path.endswith("/nested/numbers.jac")
-            );
-            import from jaclang.compiler.backends.native.llvm.binding.value { ValueRef }
-            function = linked.get_function(provider.iface.exports["increment"].symbol);
-            assert isinstance(function, ValueRef);
-            assert not function.is_declaration;
-        }
+        checked = kernel_check_file(
+            str(entry_file), CompileOptions(native_parity=True, native_required=True)
+        );
+        assert checked.ok() , diagnostics_text(checked);
+        assert "W5023" not in warning_codes(checked) , diagnostics_text(checked);
+        options = CompileOptions(aot_mode=True, native_required=True);
+        built = kernel_compile_file(str(entry_file), options, ["mir"]);
+        assert built.ok() , diagnostics_text(built);
+        assert "W5023" not in warning_codes(built) , diagnostics_text(built);
+        program = JacProgram();
+        program.options = options;
+        adopt_native_units(program, built, options);
+        plan = build_link_plan(program, [str(entry_file)], options);
+        (linked, _) = whole_program_module(
+            plan, plan.glue_spec(ArtifactKind.SHARED, _platform_of(plan.triple), False)
+        );
+        provider = next(
+            unit
+            for unit in plan.units
+            if unit.path.endswith("/nested/numbers.jac")
+        );
+        function = linked.get_function(provider.iface.exports["increment"].symbol);
+        assert isinstance(function, ValueRef);
+        assert not function.is_declaration;
     }
 }

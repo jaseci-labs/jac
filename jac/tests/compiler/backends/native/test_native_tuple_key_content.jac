@@ -14,23 +14,14 @@ key from fresh concatenations.
 
 import os;
 import ctypes;
-import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
+import from tests.support { TESTS_DIR, compile_native, native_address }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
 
 test "tuple-of-str keys compare by content when the strings are fresh allocations" {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "tuple_key_content.jac"),
-        options=native_force_opts()
-    );
-    errs = [str(e) for e in prog.errors_had];
-    assert not errs , f"errors: {errs}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , "no native engine";
+    (eng, _fx) = compile_native("tuple_key_content.jac", FIXTURES);
     got = [];
     for name in ("paren_fresh", "plain_fresh", "mixed_fresh", "dedup_fresh") {
         addr = native_address(eng, name);
@@ -41,6 +32,4 @@ test "tuple-of-str keys compare by content when the strings are fresh allocation
         f"got {got}: expected [101, 101, 101, 102]. A leading 0/2 means the "
         "equal key built from fresh strings was not found (pointer identity)"
     );
-    llvm = str(ir.gen.llvm_ir);
-    assert "__jac_str_fnv" in llvm , "tuple keys must hash str members by content";
 }

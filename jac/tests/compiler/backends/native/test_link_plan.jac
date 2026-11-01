@@ -555,7 +555,6 @@ test "a shared link exports only the C ABI" {
         prog = JacProgram();
         opts = _opts();
         base = os.path.join(root_dir, "base.jac");
-        prog.compile(file_path=base, options=opts);
         plan = build_link_plan(prog, [base], opts);
         suffix = ".dylib" if sys.platform == "darwin" else ".so";
         out = os.path.join(root_dir, "libbase" + suffix);
@@ -627,8 +626,6 @@ test "the glue supplies the region-death hook only when no unit does" {
     }
     gprog = JacProgram();
     opts = _opts();
-    gprog.compile(file_path=graph_path, options=opts);
-    assert not gprog.errors_had , [str(e) for e in gprog.errors_had];
     gplan = build_link_plan(gprog, [graph_path], opts);
     suppliers = [
         u.path
@@ -867,9 +864,7 @@ test "a link refuses unit objects that reference a symbol no unit defines" {
                 + '  ret void\n}\n'
         );
         callee = _target_object(
-            triple,
-            'define void @"callee_unit.kept"() { ret void }\n'
-                + 'define void @"probe.__jac_demoted"() { ret void }\n'
+            triple, 'define void @"callee_unit.kept"() { ret void }\n'
         );
         glue = _target_object(
             triple, 'define void @"jac_glue_marker"() { ret void }\n'
@@ -883,11 +878,9 @@ test "a link refuses unit objects that reference a symbol no unit defines" {
             triple=triple
         );
         found = unresolved_unit_symbols(plan, [caller, callee, glue]);
-        assert len(found) == 2 , (triple, found);
+        assert len(found) == 1 , (triple, found);
         assert found[0].startswith("callee_unit.gone (not defined by callee_unit.jac")
             and "used by caller_unit.jac" in found[0] , (triple, found);
-        assert found[1].startswith("probe (demoted to Python")
-            and "used by caller_unit.jac" in found[1] , (triple, found);
         assert unresolved_unit_symbols(plan, [callee, glue]) == [];
     }
 }
@@ -1417,7 +1410,7 @@ test "an edit inside one unit's body lowers that unit alone" {
     };
 }
 
-"""The number of `NaIRGenPass` instances alive each time a unit starts
+"""The number of `MirNativePass` instances alive each time a unit starts
 lowering, over a cold build of `entry`. A dependency lowered inside its
 consumer's pass shows up as a live pass."""
 def _live_passes_at_lower(entry_path: str) -> tuple[list[int], set[str]] {
@@ -1434,7 +1427,7 @@ def _live_passes_at_lower(entry_path: str) -> tuple[list[int], set[str]] {
                 sum(
                     1
                     for o in gc.get_objects()
-                    if type(o).__name__ == "NaIRGenPass"
+                    if type(o).__name__ == "MirNativePass"
                 )
             );
         }
@@ -1469,60 +1462,6 @@ test "the OSP kernels lower before the unit that consults them" {
     assert {"lib.jac", "top.jac"} | kernels <= lowered , lowered;
     assert max(live_at_lower) == 0 , (
         f"a kernel lowered inside a consumer's pass: {live_at_lower}"
-    );
-}
-
-"""Over a cold build of `entry`: how many times each unit's lowering built
-the runtime helpers, and how many LLVM functions each lowering attempt that
-stopped to have its dependencies lowered first had built by then."""
-def _work_per_attempt(entry_path: str) -> tuple[dict[str, int], list[tuple[str, int]]] {
-    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
-    prog = JacProgram();
-    opts = _opts();
-    opts.no_ir_cache = True;
-    prog.options = opts;
-    helper_runs: dict[str, int] = {};
-    stopped: list[tuple[str, int]] = [];
-    emit_helpers: any = NaIRGenPass._emit_rc_helpers;
-    run_impl: any = NaIRGenPass._run_impl;
-    def counting_helpers(gen: NaIRGenPass) {
-        name = os.path.basename(gen.module.loc.mod_path);
-        helper_runs[name] = helper_runs.get(name, 0) + 1;
-        emit_helpers(gen);
-    }
-    def watching_run(gen: NaIRGenPass, ir_in: any) -> any {
-        out = run_impl(gen, ir_in);
-        if gen._deps_deferred {
-            stopped.append(
-                (
-                    os.path.basename(gen.module.loc.mod_path),
-                    len(gen.llvm_module.functions)
-                )
-            );
-        }
-        return out;
-    }
-    setattr(NaIRGenPass, "_emit_rc_helpers", counting_helpers);
-    setattr(NaIRGenPass, "_run_impl", watching_run);
-    try {
-        build_link_plan(prog, [entry_path], opts);
-    } finally {
-        setattr(NaIRGenPass, "_emit_rc_helpers", emit_helpers);
-        setattr(NaIRGenPass, "_run_impl", run_impl);
-    }
-    return (helper_runs, stopped);
-}
-
-test "a lowering that stops for its dependencies builds no IR, so each unit builds its runtime helpers once" {
-    root_dir = _diamond_copy();
-    (helper_runs, stopped) = _work_per_attempt(os.path.join(root_dir, "top.jac"));
-    assert set(UNITS) <= set(helper_runs) , helper_runs;
-    assert stopped , "no lowering stopped to have its dependencies lowered first";
-    assert all(count == 0 for (_, count) in stopped) , (
-        f"a stopped lowering built LLVM functions: {stopped}"
-    );
-    assert all(runs == 1 for runs in helper_runs.values()) , (
-        f"a unit built its runtime helpers more than once: {helper_runs}"
     );
 }
 

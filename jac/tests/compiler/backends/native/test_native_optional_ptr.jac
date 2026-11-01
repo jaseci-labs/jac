@@ -8,20 +8,19 @@ truthiness and f-strings follow Python (`None` renders, "" is falsy); explicit
 unwrap flows through the single coerce emitter. Un-narrowed use where the
 unwrapped value is required is an E1121 check-time diagnostic. On old main a
 None `str` used as a dict key or strcmp operand dereferenced NULL and
-segfaulted; these tests pin the diagnostic and the guard-free IR shape.
+segfaulted; these tests pin the diagnostic and the tagged MIR representation.
 """
 
 import ctypes;
 import os;
 import from tests.support {
     TESTS_DIR,
+    compile_mir,
     compile_native,
-    compile_native_ir,
     get_func,
+    kernel_compile_file,
     native_force_opts
 }
-
-import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -29,11 +28,10 @@ glob FIXTURES = os.path.join(
 
 """Compile a fixture expected to carry diagnostics; return error strings."""
 def compile_errors(fixture: str) -> list[str] {
-    prog = JacProgram();
-    prog.compile(
-        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
+    result = kernel_compile_file(
+        str(os.path.join(FIXTURES, fixture)), native_force_opts()
     );
-    return [str(e) for e in prog.errors_had];
+    return [f"{diag.code} {diag.message}" for diag in result.errors];
 }
 
 test "pointer optional: construct, narrow, and unwrap at every seam" {
@@ -141,21 +139,8 @@ test "un-narrowed optional use at strict sites is E1121, never runtime UB" {
     );
 }
 
-test "IR shape: tagged optionals, jacval slots, no NULL-guarded strcmp" {
-    ir = compile_native_ir("optional_ptr.jac");
-    text = str(ir.gen.llvm_ir);
-    assert "JacOpt." in text , "pointer optionals did not lower to JacOpt";
-    assert "List.jacval" in text , "optional elements did not lower to jacval slots";
-    for guard in (
-        "strcmp.lnull",
-        "strcmp.rnull",
-        "strcmp.anynull",
-        "strcmp.lsafe",
-        "strcmp.rsafe"
-    ) {
-        assert guard not in text , (
-            f"deleted #7851 NULL-guard '{guard}' reappeared at a strcmp site"
-        );
-    }
-    assert "tobool.str.null" not in text , ("deleted truthiness NULL-guard reappeared");
+test "MIR shape: pointer optionals lower to tagged optionals, natively" {
+    fx = compile_mir("optional_ptr.jac");
+    assert not fx.demoted() , f"an optional shape fell off native: {fx.demoted()}";
+    assert ": opt" in fx.mir() , "pointer optionals did not lower to a tagged optional";
 }

@@ -7,60 +7,30 @@ gate: decoration in a native context must either lower faithfully or be rejected
 with a structured error — never dropped.
 """
 
-import os;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
-import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-
-glob FIXTURES_DIR = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     );
-
-"""Compile a snippet through the native pipeline and return the program."""
-def compile_na_inline(label: str, code: str) -> JacProgram {
-    path = os.path.join(FIXTURES_DIR, f"_decorator_{label}.jac");
-    prog = JacProgram();
-    prog.compile(file_path=path, use_str=code, options=native_force_opts());
-    return prog;
+import from pathlib { Path }
+import from tests.support {
+    compile_mir,
+    compile_native,
+    compile_native_refused,
+    diagnostics_text,
+    error_codes,
+    kernel_compile_file,
+    native_address,
+    native_force_opts,
+    write_case
 }
 
-"""Like `compile_na_inline`, but also hand back the compiled module so a
-granular demotion (epic #8201) is observable through the native layout."""
-def compile_na_inline_ir(label: str, code: str) -> tuple[any, ...] {
-    path = os.path.join(FIXTURES_DIR, f"_decorator_{label}.jac");
-    prog = JacProgram();
-    ir = prog.compile(file_path=path, use_str=code, options=native_force_opts());
-    return (prog, ir, );
-}
-
-"""Return True if the program emitted at least one alert with the given code."""
-def has_error_code(prog: JacProgram, code: str) -> bool {
-    for alrt in prog.errors_had {
-        if alrt.code is not None and alrt.code.code == code {
-            return True;
-        }
-    }
-    return False;
-}
-
-"""Format errors for assertion messages."""
-def fmt_errors(prog: JacProgram) -> str {
-    return str([str(e) for e in prog.errors_had]);
+"""Write a snippet as its own module; return (file name, directory)."""
+def inline_case(label: str, code: str) -> tuple[str, str] {
+    path = Path(write_case(code, f"_decorator_{label}.jac"));
+    return (path.name, str(path.parent));
 }
 
 """Compile a .jac fixture, run module glob-init (as init_native_globals
 does in production), and return the JIT engine."""
 def compile_fixture(fixture: str) -> any {
     import ctypes;
-    import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES_DIR, fixture)), options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {fixture}";
+    (eng, _) = compile_native(fixture);
     gi_addr = native_address(eng, "__jac_glob_init");
     if gi_addr {
         ctypes.CFUNCTYPE(None)(gi_addr)();
@@ -105,45 +75,41 @@ test "decorator: stacked decorators apply and calls still resolve" {
 # A decorator whose native signature does not take exactly one argument
 # would emit a malformed call at glob-init; it must be a structured error.
 test "guardrail: multi-argument decorator is rejected at apply time" {
-    prog = compile_na_inline(
+    (name, where) = inline_case(
         "arity_dec",
         "def two(fn: any, extra: int) -> any { return fn; }\n"
         "@ two\n"
         "def val(x: int) -> int { return x; }\n"
     );
-    assert has_error_code(prog, "E5092") , (
-        f"Expected E5092 for a 2-arg decorator, got: {fmt_errors(prog)}"
+    result = compile_native_refused(name, where);
+    assert "E5092" in error_codes(result) , (
+        f"Expected E5092 for a 2-arg decorator, got: {diagnostics_text(result)}"
     );
 }
 
 # A decorator that is not statically resolvable (an arbitrary expression)
 # stays rejected: silent mis-binding is never acceptable.
 test "guardrail: non-static decorator expression demotes its function" {
-    (prog, ir) = compile_na_inline_ir(
+    (name, where) = inline_case(
         "dynamic_dec",
         "def pick(fn: any) -> any { return fn; }\n"
         "glob decs: list[any] = [];\n"
         "@ (decs[0])\n"
         "def val(x: int) -> int { return x; }\n"
     );
-    assert not has_error_code(prog, "E5090") , (
-        f"a dynamically-computed decorator must demote its function to the "
-        f"Python implementation (which applies it), got: {fmt_errors(prog)}"
-    );
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "val" not in layout.functions , (
-        "the dynamically-decorated function must be demoted out of the "
-        "native layout, never run undecorated"
+    fx = compile_mir(name, where);
+    assert fx.is_demoted("val") , (
+        "the dynamically-decorated function must be demoted to the Python "
+        f"implementation (which applies it), never run undecorated: {fx.demoted()}"
     );
 }
 
 # Method decorators interact with vtable layout, so a decorated method
 # demotes to its Python implementation (which applies the decorator) rather
 # than running undecorated -- and a native caller of the demoted method
-# demotes with it instead of silently binding its abort stub.
+# demotes with it.
 test "guardrail: decorated method demotes, native callers demote with it" {
-    (prog, ir) = compile_na_inline_ir(
+    (name, where) = inline_case(
         "method",
         "def ident(fn: any) -> any { return fn; }\n"
         "obj Box {\n"
@@ -153,24 +119,20 @@ test "guardrail: decorated method demotes, native callers demote with it" {
         "}\n"
         "def use_box -> int { b = Box(v=3); return b.get(); }\n"
     );
-    assert not has_error_code(prog, "E5090") , (
-        f"a decorated method must demote, not fail the module: {fmt_errors(prog)}"
+    fx = compile_mir(name, where);
+    assert fx.is_demoted("Box.get") , (
+        "the decorated method must be demoted, never run undecorated: "
+        f"{fx.demoted()}"
     );
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "Box.get" not in layout.methods , (
-        "the decorated method must be demoted out of the native layout, "
-        "never run undecorated"
-    );
-    assert "use_box" not in layout.functions , (
-        "a native caller of the demoted method must demote with it"
+    assert fx.is_demoted("use_box") , (
+        f"a native caller of the demoted method must demote with it: {fx.demoted()}"
     );
 }
 
 # Decorated archetypes (class decorators) are equally silently dropped today
 # and must be gated.
 test "guardrail: decorated archetype is rejected" {
-    prog = compile_na_inline(
+    (name, where) = inline_case(
         "arch",
         "def tag(cls: any) -> any { return cls; }\n"
         "@ tag\n"
@@ -179,7 +141,8 @@ test "guardrail: decorated archetype is rejected" {
         "}\n"
         "def mk -> int { m = Marked(v=1); return m.v; }\n"
     );
-    assert has_error_code(prog, "E5090") , (
-        f"Expected E5090 for a decorated native archetype, got: {fmt_errors(prog)}"
+    result = kernel_compile_file(str(Path(where) / name), native_force_opts());
+    assert "E5090" in error_codes(result) , (
+        f"Expected E5090 for a decorated native archetype, got: {diagnostics_text(result)}"
     );
 }

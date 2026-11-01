@@ -12,15 +12,15 @@ PredictableInstr declares no init, so the real C3 next-with-init is
 Terminator's three-parameter one, not Instruction's five.
 """
 
+import from tests.support { kernel_check_source }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 def check_src(src: str) -> list[str] {
-    prog = JacProgram();
-    prog.compile(
-        file_path="supermro.jac", use_str=src, options=CompileOptions(no_cgen=True)
-    );
-    return [str(e) for e in prog.errors_had];
+    return [
+        f"{diag.code}: {diag.message}"
+        for diag in kernel_check_source(src, "supermro.jac").errors
+    ];
 }
 
 test "super reaches a member declared on a later base" {

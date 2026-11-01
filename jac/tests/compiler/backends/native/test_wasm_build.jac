@@ -16,7 +16,7 @@ import subprocess;
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, adopt_native_units, compile_native_unit }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.backends.native.wasm_build {
@@ -30,6 +30,7 @@ import from jaclang.compiler.backends.native.wasm_host_abi {
 }
 import from jaclang.compiler.backends.native.wasm_build { app_declared_imports }
 import from jaclang.compiler.frontend.codeinfo { InteropBinding, InteropContext }
+import from types { SimpleNamespace }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -65,13 +66,12 @@ def fixture_ir -> str {
     }
     prev = push_native_target("wasm32-unknown-unknown");
     try {
+        opts = CompileOptions(aot_mode=True);
+        fx = compile_native_unit(FIXTURE, FIXTURES, opts, ["mir"]);
         prog = JacProgram();
-        ir = prog.compile(
-            file_path=os.path.join(FIXTURES, FIXTURE),
-            options=CompileOptions(aot_mode=True)
-        );
-        assert not prog.errors_had;
-        plan = build_link_plan(prog, [ir.loc.mod_path], prog.options);
+        prog.options = opts;
+        adopt_native_units(prog, fx.result, opts);
+        plan = build_link_plan(prog, [fx.path], opts);
         return wasm_program_ir(plan);
     } finally {
         pop_native_target(prev);
@@ -117,21 +117,26 @@ test "wasm links retain their target in a host application context" {
     }
 }
 
+"""A unit's interop manifest names the callback providers its native code
+imports; the wasm import check allows each provider's qualified symbol and
+never a local alias."""
 test "wasm app imports use the qualified interop provider symbol" {
-    prog = JacProgram();
-    mod = prog.compile(
-        file_path=os.path.join(FIXTURES, FIXTURE), options=CompileOptions()
-    );
-    assert not prog.errors_had , [str(e) for e in prog.errors_had];
     symbol = "__jac_na_import_pkg_helper_answer";
-    mod.gen.interop_manifest.bindings["local_alias"] = InteropBinding(
-        name="answer",
-        source_context=InteropContext.SERVER,
-        callers={InteropContext.NATIVE},
-        source_module="helper.jac",
-        symbol=symbol
+    bindings = {
+        "local_alias": InteropBinding(
+            name="answer",
+            source_context=InteropContext.SERVER,
+            callers={InteropContext.NATIVE},
+            source_module="helper.jac",
+            symbol=symbol
+        )
+    };
+    unit = SimpleNamespace(
+        gen=SimpleNamespace(
+            _clib_symbol_lib={}, interop_manifest=SimpleNamespace(bindings=bindings)
+        )
     );
-    imports = app_declared_imports(mod);
+    imports = app_declared_imports(unit);
     assert symbol in imports , f"the declared callback provider must be allowed: {imports}";
     assert "local_alias" not in imports , f"a local alias is not an import provider: {imports}";
 }

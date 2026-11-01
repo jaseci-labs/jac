@@ -1,9 +1,9 @@
 """Scheduling gate for the native LLVM backend (#7367).
 
-`NaIRGenPass` + `NativeCompilePass` -- and the ~130 MB `libjacllvm.so` ctypes
-binding they pull in -- are only scheduled when a module actually needs native
-codegen. These tests pin the two building blocks the compile scheduler relies
-on so the gate cannot silently drift from `NaIRGenPass.transform`'s own trigger:
+`MirNativePass` + `NativeCompilePass` -- and the LLVM binding they pull in --
+are only scheduled when a module actually needs native codegen. These tests
+pin the two building blocks the compile scheduler relies on so the gate cannot
+silently drift from the native lowering's own trigger:
 
 1. `codegen_lane(native=...)` includes the native passes iff `native=True`.
 2. `ModuleFacts.has_native_context_stmts` -- the shared predicate the gate
@@ -34,7 +34,7 @@ def codegen_lane(native: bool) -> list[type] {
 }
 
 import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+import from jaclang.compiler.backends.native.mir.backend { MirNativePass }
 import from jaclang.compiler.backends.native.na_compile_pass { NativeCompilePass }
 
 glob FIXTURES = os.path.join(
@@ -50,7 +50,7 @@ test "importing the native package does not initialize code generation" {
             "-c",
             "import sys; import jaclang.compiler.backends.native; "
             "assert 'jaclang.compiler.backends.native.na_compile_pass' not in sys.modules; "
-            "assert 'jaclang.compiler.backends.native.na_ir_gen_pass' not in sys.modules"
+            "assert 'jaclang.compiler.backends.native.mir.backend' not in sys.modules"
         ],
         capture_output=True,
         text=True
@@ -61,14 +61,14 @@ test "importing the native package does not initialize code generation" {
 
 test "the codegen lane omits the native passes when native=False" {
     without_native = codegen_lane(False);
-    assert NaIRGenPass not in without_native;
+    assert MirNativePass not in without_native;
     assert NativeCompilePass not in without_native;
 }
 
 
 test "the codegen lane schedules the native passes when native=True" {
     with_native = codegen_lane(True);
-    assert NaIRGenPass in with_native;
+    assert MirNativePass in with_native;
     assert NativeCompilePass not in with_native;
 }
 

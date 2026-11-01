@@ -4,8 +4,7 @@ import shutil;
 import subprocess;
 import tempfile;
 import from pathlib { Path }
-import from tests.support { get_func, jac_command, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { compile_native, get_func, jac_command }
 
 def prepare_collision(directory: str) -> str {
     cc = shutil.which("cc") or shutil.which("gcc");
@@ -77,11 +76,7 @@ with entry {
 test "foreign scalars preserve declared types beside equal width structs" {
     with tempfile.TemporaryDirectory() as directory {
         path = prepare_collision(directory);
-        program = JacProgram();
-        result = program.compile(file_path=path, options=native_force_opts());
-        assert not program.errors_had , str(program.errors_had);
-        engine = result.gen.native_engine;
-        assert engine is not None;
+        (engine, _) = compile_native("probe.jac", directory);
         for name in ["scalar_values", "struct_values"] {
             probe = get_func(engine, name, ctypes.c_bool);
             for _ in range(25) {

@@ -317,22 +317,34 @@ test "a prepare after an edit reads only the edited module's imports again" {
 }
 
 
-"""Prepare `app_entry` on the in-process kernel, recording the modules it analysed."""
-def kernel_prepare(app_entry: Path, `root: str, analysed: list[str]) -> any {
-    import jaclang.project.kernel_compile as kernel_compile;
-    real_compile = kernel_compile.kernel_compile_application;
-    def counting_compile(*args: any, **kwargs: any) -> any {
-        compiled = real_compile(*args, **kwargs);
-        if compiled is not None {
-            analysed.extend(
-                sorted(os.path.basename(mod.path) for mod in compiled.analysis.modules)
-            );
-        }
-        return compiled;
+"""Wrap the loaded kernel's compile entry: `after(record, raw)` sees every
+request record and the raw result the kernel returned for it."""
+def watched_kernel_compiles(after: any) -> any {
+    import from jaclang.compiler.backends.native.kernel_resolve { load_kernel }
+    kernel = load_kernel();
+    real_compile = kernel.compile;
+    def watched(record: dict[str, any]) -> dict[str, any] {
+        raw = real_compile(record);
+        after(record, raw);
+        return raw;
     }
-    with patch("jaclang.project.kernel_compile._IN_PROCESS", [True]), patch.object(
-        kernel_compile, "kernel_compile_application", counting_compile
-    ) {
+    return patch.object(kernel, "compile", watched);
+}
+
+"""Prepare `app_entry` through the kernel, recording the project modules each
+kernel compile analysed."""
+def kernel_prepare(app_entry: Path, `root: str, analysed: list[str]) -> any {
+    real_root = os.path.realpath(`root);
+    def record_reached(record: dict[str, any], raw: dict[str, any]) {
+        analysed.extend(
+            sorted(
+                os.path.basename(path)
+                for path in raw["reached"]
+                if os.path.realpath(path).startswith(real_root + os.sep)
+            )
+        );
+    }
+    with watched_kernel_compiles(record_reached) {
         return prepare_application(str(app_entry), JacProgram(), `root);
     }
 }
@@ -387,23 +399,10 @@ test "an edit prepare analyses only the edited module and matches a cold prepare
     }
 }
 
+"""A save that lands after the kernel read a source and before the prepare
+finishes: the kernel's result names every source it read with the digest of
+the text it read, and the save happens as soon as the kernel returns."""
 test "a source saved while the kernel compiles is rebuilt by the next prepare" {
-    import jaclang.compiler.frontend.kernel_host as kernel_host;
-    import jaclang.project.kernel_compile as kernel_compile;
-    import from jaclang.compiler.driver.pass_driver { compile_progress }
-    real_read = kernel_host.read_utf8_source;
-    real_compile = kernel_compile.kernel_compile_application;
-    # The native kernel runs its own runtime, so prepare's progress listener
-    # never hears its compiles; the in-process kernel must not either.
-    def unheard_compile(*args: any, **kwargs: any) -> any {
-        listeners = compile_progress._listeners;
-        compile_progress._listeners = [];
-        try {
-            return real_compile(*args, **kwargs);
-        } finally {
-            compile_progress._listeners = listeners;
-        }
-    }
     def parent(tag: str) -> str {
         return "import from .Child { Child }\n\ndef:pub Parent() -> JsxElement {\n"
             + f'    return <div><h1>{{"parent {tag}"}}</h1><Child/></div>;\n}}\n';
@@ -423,7 +422,7 @@ test "a source saved while the kernel compiles is rebuilt by the next prepare" {
             + "def:pub b_value -> int { return a_value(1) + Item(n=2).n; }\n"
     };
     # (case, client app, files, edit before the racing prepare, file whose read
-    # triggers the save, the save)
+    # by the kernel triggers the save, the save)
     cases = [
         (
             "a client module the kernel read",
@@ -451,13 +450,12 @@ test "a source saved while the kernel compiles is rebuilt by the next prepare" {
         base = Path(tmp);
         path = base / 'main.jac';
         saved: list[bool] = [];
-        def saving_read(source: str, *rest: any) -> (str | None) {
-            text = real_read(source, *rest);
-            if not saved and os.path.basename(source) == trigger {
+        def save_after_read(record: dict[str, any], raw: dict[str, any]) {
+            read = [os.path.basename(entry["path"]) for entry in raw["reads"]];
+            if not saved and trigger in read {
                 saved.append(True);
                 (base / save[0]).write_text(save[1]);
             }
-            return text;
         }
         def prepare -> any {
             try {
@@ -471,27 +469,23 @@ test "a source saved while the kernel compiles is rebuilt by the next prepare" {
                 (base / rel).parent.mkdir(parents=True, exist_ok=True);
                 (base / rel).write_text(text);
             }
-            with patch("jaclang.project.kernel_compile._IN_PROCESS", [True]) {
-                prepare();
-                (base / edit[0]).write_text(edit[1]);
-                raised = False;
-                try {
-                    with patch.object(kernel_host, 'read_utf8_source', saving_read), patch.object(
-                        kernel_compile, 'kernel_compile_application', unheard_compile
-                    ) {
-                        prepare();
-                    }
-                } except RuntimeError as error {
-                    raised = 'Sources changed during preparation' in str(error);
+            prepare();
+            (base / edit[0]).write_text(edit[1]);
+            raised = False;
+            try {
+                with watched_kernel_compiles(save_after_read) {
+                    prepare();
                 }
-                assert saved , f"{label}: the kernel never read {trigger}";
-                assert raised , f"{label}: a save during the compile did not fail the prepare";
-                followup = prepare();
-                built = base / '.jac/client/compiled/components/Parent.js';
-                rebuilt = 'parent v2' in built.read_text() if client else True;
-                shutil.rmtree(base / '.jac' / 'cache' / 'applications');
-                cold = prepare();
+            } except RuntimeError as error {
+                raised = 'Sources changed during preparation' in str(error);
             }
+            assert saved , f"{label}: the kernel never read {trigger}";
+            assert raised , f"{label}: a save during the compile did not fail the prepare";
+            followup = prepare();
+            built = base / '.jac/client/compiled/components/Parent.js';
+            rebuilt = 'parent v2' in built.read_text() if client else True;
+            shutil.rmtree(base / '.jac' / 'cache' / 'applications');
+            cold = prepare();
             assert rebuilt , f"{label}: Parent.js was not rebuilt from the saved Parent.jac";
             assert followup.manifests == cold.manifests , (
                 f"{label}: the next prepare kept metadata from before the save"
@@ -1271,9 +1265,8 @@ def _restored(path: Path, `root: str) -> bool {
     return 'Restoring prepared application' in err.getvalue();
 }
 
-test "an in-process prepare releases the compiler state it built" {
+test "a prepare releases the compiler state it built" {
     import from jaclang.project.kernel_compile { _APPLICATION_UNITS }
-    import from jaclang.project.kernel_snapshot { _IFACE_MEMO, _IFACE_REFUSED }
     with tempfile.TemporaryDirectory(prefix='jac-prepared-release-') as tmp {
         base = Path(tmp);
         path = base / 'main.jac';
@@ -1284,9 +1277,6 @@ test "an in-process prepare releases the compiler state it built" {
             "def:pub hello -> int { return twice(21); }\n"
         );
         program = JacProgram();
-        memo: any = _IFACE_MEMO;
-        memo[str(base / 'stale_iface.py')] = ([], [], None);
-        _IFACE_REFUSED[str(base / 'stale_refused.py')] = 'stamp';
         try {
             prepared = prepare_application(str(path), program, tmp);
             assert prepared.code , "the prepared application lost its code";
@@ -1306,9 +1296,6 @@ test "an in-process prepare releases the compiler state it built" {
                 for p in _APPLICATION_UNITS
                 if p.startswith(tmp)
             ] , "kernel unit products for the app survived the prepare";
-            assert not _IFACE_MEMO and not _IFACE_REFUSED , (
-                "the interface memo survived the prepare"
-            );
         } finally {
             forget(str(path));
         }
@@ -1355,7 +1342,7 @@ test "a dynamic import of the application's own entry restores the prepared appl
     }
 }
 
-test "a preparation on another thread neither breaks nor wedges an in-process prepare" {
+test "a preparation on another thread neither breaks nor wedges a prepare" {
     import threading;
     import jaclang.compiler.driver.application as application;
     tmp = tempfile.mkdtemp(prefix='jac-prepare-threads-');
@@ -1878,10 +1865,8 @@ test "a reload drops a restored module's errors from every app context" {
 """A prepare that failed leaves its analysed modules in the program, the broken
 one among them with its errors already on record. A retry with no edit must
 analyse that module again and fail with its errors, rather than reuse it as
-fresh and pass over it. The host compile path is pinned, since that is where
-the program's modules are reused."""
+fresh and pass over it."""
 test "a retried prepare fails again on a module whose earlier analysis failed" {
-    import jaclang.project.kernel_compile as kernel_compile;
     tmp = tempfile.mkdtemp(prefix="jac-prepared-retry-");
     base = Path(tmp);
     path = base / 'main.jac';
@@ -1900,21 +1885,17 @@ test "a retried prepare fails again on a module whose earlier analysis failed" {
         );
         program = JacProgram();
         recorded: list[int] = [];
-        with patch.object(
-            kernel_compile, 'kernel_route', return_value=(False, False)
-        ) {
-            for attempt in range(2) {
-                message = '';
-                try {
-                    prepare_application(str(path), program, tmp);
-                } except RuntimeError as err {
-                    message = str(err);
-                }
-                assert 'card.jac' in message , (
-                    f"attempt {attempt + 1} passed over the broken module"
-                );
-                recorded.append(len(program.errors_had));
+        for attempt in range(2) {
+            message = '';
+            try {
+                prepare_application(str(path), program, tmp);
+            } except RuntimeError as err {
+                message = str(err);
             }
+            assert 'card.jac' in message , (
+                f"attempt {attempt + 1} passed over the broken module"
+            );
+            recorded.append(len(program.errors_had));
         }
         assert recorded[0] == recorded[1] , (
             f"the retry kept the first attempt's errors: {recorded}"

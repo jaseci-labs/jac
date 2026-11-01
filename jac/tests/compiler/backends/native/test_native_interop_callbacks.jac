@@ -13,10 +13,17 @@ void and value-returning callbacks alike.
 """
 
 import ctypes;
+import json;
 import os;
 import subprocess;
 import tempfile;
-import from tests.support { get_func, jac_command }
+import from tests.support {
+    adopt_native_units,
+    compile_native_unit,
+    get_func,
+    jac_command,
+    remember_native_unit
+}
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.interop_bridge {
@@ -27,6 +34,27 @@ import from jaclang.runtime.interop_bridge {
 
 def _fake_register(name: str, address: int) {
     return;
+}
+
+"""Compile `fixture` in `fixture_dir` through the kernel under the project's
+own placement and JIT its native unit here; return the unit's code-gen
+carrier, which holds the engine, the interop manifest and the table of
+Python functions native code calls back into."""
+def _load_native_unit(fixture: str, fixture_dir: str) -> any {
+    options = CompileOptions();
+    fx = compile_native_unit(fixture, fixture_dir, options, ["bytecode"]);
+    prog = JacProgram();
+    prog.options = options;
+    adopt_native_units(prog, fx.result, options);
+    prog._get_compiler()._load_native_from_cache(
+        fx.path, prog, json.loads(fx.unit.interop) if fx.unit.interop else None
+    );
+    carrier = prog.hub.artifacts.get(fx.path);
+    assert carrier is not None and carrier.native_engine is not None , (
+        f"No JIT engine produced for {fixture}"
+    );
+    remember_native_unit(carrier.native_engine, fx);
+    return carrier;
 }
 
 test "callback ctypes follow the scalar shape" {
@@ -137,10 +165,8 @@ test "native code passes sized scalars to Python at their own width" {
             f.write(src);
         }
     }
-    prog = JacProgram();
-    mod = prog.compile(os.path.join(tmp, "main.jac"), options=CompileOptions());
-    assert not prog.errors_had , [str(e) for e in prog.errors_had];
-    bindings = mod.gen.interop_manifest.bindings;
+    carrier = _load_native_unit("main.jac", tmp);
+    bindings = carrier.interop_manifest.bindings;
     seen: list[tuple[any, ...]] = [];
     def mix(x: float, n: int, b: int, big: int) -> float {
         seen.append((x, n, b, big));
@@ -150,10 +176,10 @@ test "native code passes sized scalars to Python at their own width" {
         seen.append((x, ));
         return x / 2;
     }
-    table = mod.gen.interop_py_funcs;
+    table = carrier.interop_py_funcs;
     table[bindings["mix"].symbol] = mix;
     table[bindings["half"].symbol] = half;
-    sized = get_func(mod.gen.native_engine, "sized", ctypes.c_double);
+    sized = get_func(carrier.native_engine, "sized", ctypes.c_double);
     result = sized();
     assert (1.5, -3, 250, 9223372036854775808) in seen , (
         f"each argument must arrive at its declared width and sign: {seen}"

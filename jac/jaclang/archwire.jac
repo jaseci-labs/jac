@@ -4123,6 +4123,8 @@ graph import {
         CoverageRow,
         KernelDiagnostic,
         KernelError,
+        KernelTestCase,
+        KernelTestOutcome,
         NativeDemotion,
         PlacementRow,
         RelatedNote,
@@ -4146,6 +4148,9 @@ graph import {
         },
     ]
     type project.compiler_host ++> compiler.kernel_api { ProjectHost }
+    project.compiler_host ++> compiler.kernel_tests.kit { ProjectHost }
+    project.kernel_call --> compiler.tests.xbackend_equiv { call_compile }
+    project.kernel_compile --> compiler.tests.xbackend_equiv { compile_request_for }
     project.compiler_host ++> studio.gate | studio.model { ProjectHost }
     project.kernel_check --> cli.commands.analysis._check_file_job { kernel_check }
     project.kernel_compile ++> [
@@ -6041,11 +6046,9 @@ graph import compiler {
             | tests.test_native_kernel_cache
             | tests.test_pipeline_products
             | tests.test_subscript_assignment
-            | tests.test_tarfile_equivalence
             | tests.test_test_block_analysis
             | tests.test_unknown_cascade
             | tests.test_untyped_third_party
-            | tests.test_zstd_equivalence
             | tools.cfg_dot.cfg_dot_from_file
             | tools.code_intel
             | tools.jac_formatter_pass.format_module
@@ -6058,6 +6061,9 @@ graph import compiler {
     driver.program --> tests.test_graph_fragment_equivalence
         | tests.test_stubcat_roundtrip
         | tests.xbackend_equiv { JacProgram }
+    driver.compiler --> tests.xbackend_equiv { native_first }
+    driver.jir --> tests.xbackend_equiv { SEC_CTDEPS }
+    driver.native_iface --> tests.xbackend_equiv { NativeIface }
     type driver.program ++> backends.native.kernel_resolve
         | backends.native.kernel_stage0
         | backends.native.link_plan
@@ -9442,12 +9448,17 @@ graph import compiler {
         KernelDiagnostic,
         KernelError,
         KernelSession,
+        KernelTestCase,
+        KernelTestOutcome,
+        KernelTestRequest,
         NativeDemotion,
         SourceSpan,
         TextEdit,
         check_request,
         compile_request,
-        open_session
+        kernel_test_cases,
+        open_session,
+        run_kernel_tests
     }
     kernel_target ++> [
         backends.native.kernel_stage0 {
@@ -10283,6 +10294,42 @@ graph import compiler {
         OverloadedType,
         TypeBase
     }
+    kernel_testing --> kernel_api.kernel_test_cases { kernel_suites }
+    kernel_testing --> kernel_api.run_kernel_tests { find_suite, run_case }
+    backends.native.mir.ir --> kernel_api.native_decision { MirModule }
+    backends.native.mir.lower --> kernel_api.native_decision { MirLowering }
+    frontend.codeinfo --> kernel_api.native_decision { native_unit_prefix }
+    kernel_api ++> kernel_testing { KernelError }
+    frontend.host ++> kernel_testing { NeutralHost, install_host }
+    kernel_tests.context_bindings ++> kernel_testing { context_binding_cases }
+    kernel_tests.mir_decisions ++> kernel_testing { mir_decision_cases }
+    kernel_tests.scopes ++> kernel_testing { scope_cases }
+    kernel_tests.type_position ++> kernel_testing { type_position_cases }
+    kernel_testing ++> kernel_tests.context_bindings
+        | kernel_tests.mir_decisions
+        | kernel_tests.scopes
+        | kernel_tests.type_position { KernelCase }
+    kernel_testing ++> kernel_tests.kit { case_scratch }
+    backends.native.mir.ir ++> kernel_tests.kit { MirModule }
+    backends.native.mir.lower ++> kernel_tests.kit { MirLowering }
+    driver.compile_options ++> kernel_tests.context_bindings | kernel_tests.kit { CompileOptions }
+    driver.program ++> kernel_tests.kit { JacProgram }
+    frontend.codeinfo ++> kernel_tests.kit { native_unit_prefix }
+    frontend.host ++> kernel_tests.kit { install_host, package_root }
+    frontend.parser.frontend ++> kernel_tests.kit { parse }
+    frontend.unitree as uni ++> kernel_tests.kit;
+    frontend.relations ++> kernel_tests.scopes { ScopeChild }
+    frontend.roles ++> kernel_tests.scopes { Kid }
+    frontend.unitree ++> kernel_tests.context_bindings { Name, WithStmt }
+    frontend.unitree ++> kernel_tests.scopes { UniScopeNode }
+    frontend.unitree ++> kernel_tests.type_position { Name, in_type_position }
+    kernel_tests.kit ++> kernel_tests.context_bindings { Analysis, analyse }
+    kernel_tests.kit ++> kernel_tests.mir_decisions { lower_text }
+    kernel_tests.kit ++> kernel_tests.scopes { analyse, parse_text }
+    kernel_tests.kit ++> kernel_tests.type_position { parse_text }
+    passes.scope_walk ++> kernel_tests.scopes { ScopeWalker }
+    tools.code_intel ++> kernel_tests.scopes { SymbolCollector }
+    types.types ++> kernel_tests.context_bindings { ClassType }
 }
 
 graph import compiler.backends {
@@ -13536,14 +13583,14 @@ graph import compiler.tests {
         test_tarfile_equivalence {
             FIXTURES,
             get_func,
-            remember_engine_unit,
+            jit_through_kernel,
             run_py_fixture
         },
         test_xbackend_equiv { run_js_expr, run_js_function },
         test_zstd_equivalence {
             FIXTURES,
             compare_results,
-            remember_engine_unit,
+            jit_through_kernel,
             run_native_function,
             run_py_fixture
         },

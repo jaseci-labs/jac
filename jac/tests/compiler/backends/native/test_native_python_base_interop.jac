@@ -25,13 +25,7 @@ import ctypes;
 import importlib;
 import os;
 import sys;
-import from tests.support {
-    TESTS_DIR,
-    by_source_name,
-    compile_native,
-    get_func,
-    native_force_opts
-}
+import from tests.support { TESTS_DIR, compile_native, get_func, source_spelled }
 
 import from jaclang.runtime.interop_bridge { _pyb_shadows }
 
@@ -39,6 +33,16 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
      EXPECTED = 100 * 100000 + 100 * 10 + 11;
+
+"""The demoted symbols of a compiled fixture naming method `name`
+(`Class.method`), by source spelling."""
+def demoted_method(fx: any, name: str) -> list[str] {
+    return [
+        sym
+        for sym in fx.iface().demoted
+        if source_spelled(sym).endswith("." + name)
+    ];
+}
 
 """Run the fixture's function in the plain Python lane."""
 def run_py_lane(fixture_stem: str, func_name: str) -> any {
@@ -64,12 +68,10 @@ def run_py_lane(fixture_stem: str, func_name: str) -> any {
 }
 
 test "a native class over a Python-side base compiles with no seams" {
-    (_eng, ir) = compile_native("pyb_native_main.jac");
-    layout = ir.gen.native_layout;
-    assert layout is not None , "no native layout was exported";
-    for m in ["Kid.__post_init__", "Kid.poke", "Kid.read_back"] {
-        assert m in by_source_name(layout.methods) , (
-            f"{m} was demoted instead of lowering: {sorted(layout.methods)}"
+    (_eng, fx) = compile_native("pyb_native_main.jac");
+    for m in ["Kid.postinit", "Kid.__post_init__", "Kid.poke", "Kid.read_back"] {
+        assert not demoted_method(fx, m) , (
+            f"{m} was demoted instead of lowering: {fx.iface().demoted}"
         );
     }
 }
@@ -128,11 +130,9 @@ test "a subscripted generic Python-side base still bridges" {
     # compiler's own pass chain, which spelled `Transform[Module, Module]`
     # until the chain went monomorphic; user code still writes it, which is
     # why the fixture keeps measuring it.
-    (eng, ir) = compile_native("pyb_gen_base_main.jac");
-    layout = ir.gen.native_layout;
-    assert layout is not None , "no native layout was exported";
-    assert "Kid.poke" in by_source_name(layout.methods) , (
-        f"Kid.poke was demoted instead of bridging: {sorted(layout.methods)}"
+    (eng, fx) = compile_native("pyb_gen_base_main.jac");
+    assert not demoted_method(fx, "Kid.poke") , (
+        f"Kid.poke was demoted instead of bridging: {fx.iface().demoted}"
     );
     get_func(eng, "jac_entry", None)();
     native_val = get_func(eng, "run_all", ctypes.c_int64)();

@@ -15,28 +15,28 @@ how #8091 surfaced.
 
 import ctypes;
 import os;
-import jaclang;
-import from tests.support { TESTS_DIR, native_address }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { KernelFixture, TESTS_DIR, compile_native, native_address }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
      FIXTURE = "opt_tuple_payload.jac";
 
+"""`compile_native` under explicit options: kernel compile, then JIT the
+unit in this process."""
+def compile_native_with(
+    fixture: str, options: CompileOptions, fixture_dir: str = ""
+) -> tuple[any, KernelFixture] {
+    return compile_native(fixture, fixture_dir, options);
+}
+
 """Compile the optional-payload fixture natively and return the JIT engine."""
-def compile_fixture -> tuple[ExecutionEngine, uni.Module] {
-    prog = JacProgram();
-    opts = CompileOptions(force_codespace='native', memory_profile="managed");
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, FIXTURE)), options=opts);
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {FIXTURE}: {errors}";
-    eng = ir.gen.native_engine;
-    assert isinstance(eng, ExecutionEngine) , f"No native engine produced for {FIXTURE}";
-    return (eng, ir);
+def compile_fixture -> tuple[any, KernelFixture] {
+    return compile_native_with(
+        os.path.join(FIXTURES, FIXTURE),
+        CompileOptions(force_codespace="native", memory_profile="managed")
+    );
 }
 
 """Get a ctypes-callable function from the JIT engine."""

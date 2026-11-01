@@ -7,33 +7,16 @@ fixtures/fixed_width_unsigned.jac and is JIT-compiled once.
 """
 
 import ctypes;
-import os;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import from tests.support { compile_native, get_func, native_address }
 
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     ),
-     _ENG: (ExecutionEngine | None) = None;
+glob _ENG: list[any] = [];
 
-def engine -> ExecutionEngine {
-    if _ENG is None {
-        prog = JacProgram();
-        ir = prog.compile(
-            file_path=str(os.path.join(FIXTURES, "fixed_width_unsigned.jac")),
-            options=native_force_opts()
-        );
-        errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-        assert not prog.errors_had , f"Compilation errors: {errors}";
-        eng = ir.gen.native_engine;
-        assert isinstance(eng, ExecutionEngine) , "No native engine produced";
-        _ENG = eng;
+def engine -> any {
+    if not _ENG {
+        (eng, _) = compile_native("fixed_width_unsigned.jac");
+        _ENG.append(eng);
     }
-    out = _ENG;
-    assert out is not None;
-    return out;
+    return _ENG[0];
 }
 
 def probe(name: str) -> int {
@@ -127,7 +110,6 @@ test "plain int arithmetic traps on overflow and stays exact in range" {
 }
 
 test "sized casts unwrap narrowed optional fields" {
-    import from tests.support { compile_native, get_func }
     (eng, _) = compile_native("fixed_width_optional_fields.jac");
     assert get_func(eng, "present_end", ctypes.c_int64)() == 42;
     assert get_func(eng, "absent_end", ctypes.c_int64)() == -1;

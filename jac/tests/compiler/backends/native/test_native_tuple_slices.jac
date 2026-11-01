@@ -7,16 +7,9 @@ as an index read at the range's start.
 """
 
 import ctypes;
-import os;
-import from tests.support { TESTS_DIR, compile_native, get_func }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { compile_mir, compile_native, get_func }
 
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     ),
-     _ENG: list[any] = [];
+glob _ENG: list[any] = [];
 
 def _engine -> any {
     if not _ENG {
@@ -56,21 +49,7 @@ test "a slice of a None-narrowed optional string still lowers" {
 }
 
 test "a fixed tuple slice is refused rather than read as an index" {
-    path = os.path.join(FIXTURES, "tuple_slice_refusal.jac");
-    prog = JacProgram();
-    na_coverage_begin();
-    try {
-        prog.compile(file_path=path, options=CompileOptions(force_codespace='native'));
-    } finally {
-        coverage = na_coverage_end();
-    }
-    rec = coverage.get(os.path.realpath(path));
-    seams = [str(s) for s in ((rec.get("seams") or []) if rec is not None else [])];
-    owned = [
-        s
-        for s in seams
-        if s.startswith("tail_of_three: ")
-    ];
-    assert len(owned) == 1 , str(seams);
-    assert "slice" in owned[0] , owned[0];
+    fx = compile_mir("tuple_slice_refusal.jac");
+    assert fx.is_demoted("tail_of_three") , fx.demoted();
+    assert "slice" in fx.reason("tail_of_three") , fx.reason("tail_of_three");
 }

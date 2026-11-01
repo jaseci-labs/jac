@@ -11,9 +11,8 @@ must still fire on regular defs.
 """
 
 import os;
-import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from tests.support { JAC_ROOT }
+import from tests.support { JAC_ROOT, error_codes, kernel_compile_file }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures", "nogc_extern"
@@ -23,16 +22,10 @@ glob FIXTURES = os.path.join(
 sorted diagnostic codes."""
 def enforced_codes(fixture: str) -> list[str] {
     path = os.path.join(FIXTURES, fixture);
-    prog = JacProgram();
-    opts = CompileOptions(aot_mode=True, memory_profile="nogc");
-    prog.compile(file_path=path, options=opts);
-    codes: set[str] = set();
-    for alert in list(prog.errors_had) {
-        if alert.code is not None {
-            codes.add(alert.code.code);
-        }
-    }
-    return sorted(codes);
+    result = kernel_compile_file(
+        path, CompileOptions(aot_mode=True, memory_profile="nogc")
+    );
+    return sorted(set(code for code in error_codes(result) if code));
 }
 
 test "clib extern decls with width and str params are exempt from the fence" {

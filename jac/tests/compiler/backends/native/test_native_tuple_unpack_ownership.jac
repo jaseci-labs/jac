@@ -14,28 +14,29 @@ of reasoning about which retain the codegen happened to emit.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_address, compile_native_ir }
-import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { KernelFixture, TESTS_DIR, compile_native, native_address }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
      FIXTURE = "rc_tuple_unpack_ownership.jac";
 
+"""`compile_native` under explicit options: kernel compile, then JIT the
+unit in this process."""
+def compile_native_with(
+    fixture: str, options: CompileOptions, fixture_dir: str = ""
+) -> tuple[any, KernelFixture] {
+    return compile_native(fixture, fixture_dir, options);
+}
+
 """Compile the ownership fixture natively and return the JIT engine."""
-def compile_fixture -> tuple[ExecutionEngine, uni.Module] {
-    prog = JacProgram();
-    opts = CompileOptions(force_codespace='native', memory_profile="managed");
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, FIXTURE)), options=opts);
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {FIXTURE}: {errors}";
-    eng = ir.gen.native_engine;
-    assert isinstance(eng, ExecutionEngine) , f"No native engine produced for {FIXTURE}";
-    return (eng, ir);
+def compile_fixture -> tuple[any, KernelFixture] {
+    return compile_native_with(
+        FIXTURE,
+        CompileOptions(force_codespace="native", memory_profile="managed"),
+        FIXTURES
+    );
 }
 
 """Get a ctypes-callable function from the JIT engine."""
@@ -128,33 +129,4 @@ test "the same field bound twice is destroyed exactly once" {
     # as a move of the box's reference double-frees here.
     (eng, _) = compile_fixture();
     check(eng, "index_twice_into_optional", 33, 2);
-}
-
-# --- The box destructor is what makes the borrows balance ---
-test "a boxed tuple carries a destructor that releases its fields" {
-    ir = compile_native_ir(FIXTURE);
-    text = str(ir.gen.llvm_ir);
-    assert '__rc_release_tuple0' in text , (
-        "no tuple-box destructor was emitted; boxed tuple fields would be "
-        "abandoned when the box dies"
-    );
-    body: list[str] = [];
-    inside = False;
-    for ln in text.split("\n") {
-        if not inside
-            and ln.startswith("define")
-            and ('@"__rc_release_tuple0"' in ln) {
-            inside = True;
-        }
-        if inside {
-            body.append(ln);
-            if ln == "}" {
-                break;
-            }
-        }
-    }
-    joined = "\n".join(body);
-    assert joined.count('call void @"__rc_release_simple"') == 2 , (
-        f"tuple destructor should release both fields, IR was:\n{joined}"
-    );
 }

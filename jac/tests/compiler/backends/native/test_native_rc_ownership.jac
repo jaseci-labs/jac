@@ -20,31 +20,27 @@ what freed memory happens to contain.
 """
 
 import ctypes;
-import os;
+import json;
 import from tests.support {
-    TESTS_DIR,
+    KernelFixture,
+    adopt_native_units,
+    compile_native_ir,
+    compile_native_unit,
     get_func,
     names_function,
     native_address,
-    compile_native_ir,
+    remember_native_unit,
     source_spelled
 }
-import jaclang;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.backends.native.mir.emit { RETAIN_SYMBOL }
 
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
-
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     );
-
-"""Slice one function's textual IR out of the module dump."""
-def fn_ir(ir: uni.Module, name: str) -> str {
+"""Slice one function's textual LLVM IR out of the unit the kernel emitted."""
+def fn_ir(fx: KernelFixture, name: str) -> str {
     out: list[str] = [];
     inside = False;
-    for ln in source_spelled(str(ir.gen.llvm_ir)).split("\n") {
+    for ln in source_spelled(fx.llvm_ir()).split("\n") {
         if not inside and ln.startswith("define") and names_function(ln, name) {
             inside = True;
         }
@@ -60,21 +56,27 @@ def fn_ir(ir: uni.Module, name: str) -> str {
 }
 
 # --- Returning module globs must hand the caller a +1 reference (1d/1e) ---
-"""Compile a .jac fixture and return the JIT engine."""
+"""Compile a .jac fixture through the kernel under a collector mode and JIT
+its native units here; return (engine, fixture)."""
 def compile_native(
     fixture: str, gc_mode: str | None = None
-) -> tuple[ExecutionEngine, uni.Module] {
-    prog = JacProgram();
+) -> tuple[any, KernelFixture] {
     opts = CompileOptions(
         force_codespace='native',
         na_gc_mode=(gc_mode if gc_mode is not None else "cycles")
     );
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), options=opts);
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
-    assert isinstance(eng, ExecutionEngine) , f"No native engine produced for {fixture}";
-    return (eng, ir);
+    fx = compile_native_unit(fixture, "", opts, ["bytecode"]);
+    prog = JacProgram();
+    prog.options = opts;
+    adopt_native_units(prog, fx.result, opts);
+    prog._get_compiler()._load_native_from_cache(
+        fx.path, prog, json.loads(fx.unit.interop) if fx.unit.interop else None
+    );
+    carrier = prog.hub.artifacts.get(fx.path);
+    eng = carrier.native_engine if carrier is not None else None;
+    assert eng is not None , f"No native engine produced for {fixture}";
+    remember_native_unit(eng, fx);
+    return (eng, fx);
 }
 
 test "glob return: list cache survives a for-loop over the accessor call" {
@@ -128,9 +130,12 @@ test "param shadow: other fn's param names add no retain-on-return" {
     # `return v` path treat the fresh local as a borrowed param and retain it
     # (rc=2 at the caller -> every returned Vec leaks).
     (eng, _) = compile_native("rc_param_shadow_return.jac");
-    ir = compile_native_ir("rc_param_shadow_return.jac");
-    body = fn_ir(ir, "make_vec");
-    n = body.count('call void @"__rc_retain"');
+    body = fn_ir(compile_native_ir("rc_param_shadow_return.jac"), "make_vec");
+    n = sum(
+        1
+        for line in body.split("\n")
+        if "call " in line and names_function(line, RETAIN_SYMBOL)
+    );
     assert n == 0 , f"make_vec should return its owned local with no retain, found {n}";
     sum_first = get_func(eng, "sum_first", ctypes.c_int64, ctypes.c_int64);
     result = sum_first(3);
@@ -142,10 +147,6 @@ test "param shadow: loop-exit cleanup still releases same-named locals" {
     # locals; the loop-exit (iter_end) cleanup must still release both or the
     # final iteration's Boxes are never freed.
     (eng, _) = compile_native("rc_param_shadow_looptail.jac");
-    ir = compile_native_ir("rc_param_shadow_looptail.jac");
-    body = fn_ir(ir, "churn");
-    assert "iter.cleanup.a" in body , "loop-exit cleanup for local 'a' was suppressed";
-    assert "iter.cleanup.b" in body , "loop-exit cleanup for local 'b' was suppressed";
     churn = get_func(eng, "churn", ctypes.c_int64, ctypes.c_int64);
     result = churn(10);
     assert result == 100 , f"Expected 100, got {result}";
@@ -153,9 +154,8 @@ test "param shadow: loop-exit cleanup still releases same-named locals" {
 
 # --- Heap-element containers under non-default gc modes (issue #7466, 3) ---
 test "heap-element container compiles and runs under --memory rc" {
-    # The list[str] element-release helper used to re-enter _emit_rc_helpers
-    # (its guard checked a cycles-only global) and redefine __rc_debug:
-    # DuplicatedNameError ICE under rc, fine under the default cycles mode.
+    # The list[str] element-release helper used to be emitted twice under
+    # rc (a duplicated-name ICE), while the default cycles mode was fine.
     (eng, _) = compile_native("rc_heap_container.jac", gc_mode="rc");
     count_strs = get_func(eng, "count_strs", ctypes.c_int64);
     result = count_strs();
@@ -179,12 +179,6 @@ test "import sys compiles under --memory rc (argv list is a heap container)" {
 """Run the drop fixture and assert the hook fired once per destroyed Res."""
 def check_drop_parity(gc_mode: str | None) {
     (eng, _) = compile_native("rc_drop_hook.jac", gc_mode=gc_mode);
-    ir = compile_native_ir(
-        "rc_drop_hook.jac",
-        options=CompileOptions(force_codespace="native", na_gc_mode=gc_mode or "cycles")
-    );
-    body = fn_ir(ir, "__rc_release_Res");
-    assert 'call' in body and 'Res.drop' in body , "managed release fn does not invoke the drop hook";
     run_drops = get_func(eng, "run_drops", ctypes.c_int64);
     drop_count = get_func(eng, "drop_count", ctypes.c_int64);
     last_dropped = get_func(eng, "last_dropped", ctypes.c_int64);

@@ -1,8 +1,8 @@
-"""A unit's native layout lists its own functions named after an imported C extern.
+"""A unit keeps its own functions named after an imported C extern native.
 
 A unit's native layout is the export table its importers bind against: a
-function missing from `layout.functions` counts as demoted, and a caller
-emitted against that layout refuses the call (E5092) and demotes with it.
+function missing from it counts as demoted, and a caller emitted against it
+refuses the call (E5092) and demotes with it.
 The layout builder skipped every `func_symtab` name found in
 `_clib_symbol_lib`, which it meant as "this entry is a C extern". But lowering
 an importer's clib bindings records their names in the importer's table too,
@@ -25,11 +25,7 @@ import shutil;
 import subprocess;
 import tempfile;
 import from tests.support { compile_native_ir, jac_command, TESTS_DIR }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.codeinfo { native_stdlib_root }
-import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-import jaclang.compiler.frontend.unitree as uni;
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -41,29 +37,21 @@ glob FIXTURES = os.path.join(
          "layout_clib_name_ffi.jac"
      ];
 
-"""Native IR only, with nothing cached, in the given program."""
-def cold_ir_opts -> CompileOptions {
-    return CompileOptions(
-        force_codespace='native', skip_native_engine=True, no_ir_cache=True
-    );
-}
-
-"""Public, non-generic free functions a module defines."""
-def public_functions(module: uni.Module) -> set[str] {
-    names: set[str] = set();
-    for stmt in ModuleFacts.iter_context_stmts(module) {
-        if (
-            isinstance(stmt, uni.Ability)
-            and stmt.name_ref
-            and stmt.body is not None
-            and not stmt.type_params
-            and isinstance(stmt.signature, uni.FuncSignature)
-            and not stmt.name_ref.sym_name.startswith("_")
-        ) {
-            names.add(stmt.name_ref.sym_name);
+"""The public free functions (no class, no leading underscore) a compiled
+unit demoted, by source name."""
+def demoted_public_functions(fx: any) -> list[str] {
+    prefix = fx.iface().prefix + ".";
+    names: list[str] = [];
+    for symbol in fx.demoted() {
+        if not symbol.startswith(prefix) {
+            continue;
+        }
+        name = symbol[len(prefix):];
+        if "." not in name and not name.startswith("_") {
+            names.append(name);
         }
     }
-    return names;
+    return sorted(names);
 }
 
 """Copy the fixtures into a fresh directory and `jac run` the entry there."""
@@ -88,48 +76,34 @@ def run_in_fresh_dir(runs: int) -> list[subprocess.CompletedProcess] {
 }
 
 test "a unit's own sqrt stays in its layout beside an imported C sqrt" {
-    module = compile_native_ir("layout_clib_name_lib.jac");
-    layout = module.gen.native_layout;
-    assert layout is not None , "no native layout for the library";
-    assert re.search(r'declare [^\n]*@"?sqrt"?\(double', str(module.gen.llvm_ir)) , (
+    fx = compile_native_ir("layout_clib_name_lib.jac");
+    assert re.search(r'declare [^\n]*@"?sqrt"?\(double', fx.llvm_ir()) , (
         "the fixture no longer links C's sqrt beside its own"
     );
-    assert "sqrt" in layout.functions , (
-        f"the library's own sqrt is missing from its layout: {sorted(layout.functions)}"
+    assert not fx.is_demoted("sqrt") , f"the library's own sqrt demoted: {fx.reason('sqrt')}";
+    assert "sqrt" in fx.iface().exports , (
+        f"the library's own sqrt is missing from its exports: {sorted(fx.iface().exports)}"
     );
 }
 
 test "the bundled math layout lists every public function it lowers" {
     stdlib = native_stdlib_root();
     assert stdlib is not None , "bundled na_stdlib not found";
-    module = compile_native_ir("math.jac", fixture_dir=stdlib);
-    layout = module.gen.native_layout;
-    assert layout is not None , "no native layout for math";
+    fx = compile_native_ir("math.jac", fixture_dir=stdlib);
     for name in ["sqrt", "sin", "cos", "atan2", "exp", "log", "pow"] {
-        assert name in layout.functions , f"math.{name} is missing from the layout";
+        assert name in fx.iface().exports , f"math.{name} is missing from the exports";
     }
-    missing = sorted(public_functions(module) - set(layout.functions));
-    assert not missing , f"math functions missing from the layout: {missing}";
+    missing = demoted_public_functions(fx);
+    assert not missing , f"math functions demoted: {missing}";
 }
 
 test "an importer lowered after the library in the same process calls its sqrt" {
-    # The cold-build order: the link compiles the library before the unit
-    # that imports it, and that unit reads the library's fresh layout.
-    prog = JacProgram();
-    lib = prog.compile(
-        file_path=os.path.join(FIXTURES, "layout_clib_name_lib.jac"),
-        options=cold_ir_opts()
-    );
-    assert lib.gen.native_layout is not None , "the library produced no layout";
-    mid = prog.compile(
-        file_path=os.path.join(FIXTURES, "layout_clib_name_mid.jac"),
-        options=cold_ir_opts()
-    );
-    assert not prog.errors_had , f"{[e.pretty_print() for e in prog.errors_had]}";
-    assert mid.gen.native_layout is not None , "the importer produced no layout";
-    assert "hyp" in mid.gen.native_layout.functions , (
+    # The cold-build order: the compile reaches the library before the unit
+    # that imports it, and that unit reads the library's fresh verdict.
+    fx = compile_native_ir("layout_clib_name_mid.jac");
+    assert not fx.is_demoted("hyp") , (
         "hyp demoted: its call to the library's sqrt was refused as a call "
-        "into a demoted function"
+        f"into a demoted function: {fx.reason('hyp')}"
     );
 }
 

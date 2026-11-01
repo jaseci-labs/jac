@@ -14,7 +14,7 @@ something the compiler already knows.
 Exactly one name is erased, and the narrowness is the point. `abstractmethod`
 is deliberately absent: `test_native_method_kind_keywords` pins the contract
 that the keyword forms (`abst`, `class def`, `static def`) cross into native
-while the hand-written decorator spellings demote their method to a seam, and
+while the hand-written decorator spellings demote their method, and
 the compiler's own sources were migrated to the keywords for that reason
 (#8039). Waving the decorator's import through would have quietly argued the
 other side. `ABCMeta` is absent too, because `register` performs virtual
@@ -27,7 +27,7 @@ import os;
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
 import from jaclang.compiler.placement.placement { scan_native_blockers }
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { JAC_ROOT, native_address, native_force_opts }
+import from tests.support { JAC_ROOT, compile_mir, compile_native, get_func }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "native", "fixtures"
@@ -91,28 +91,14 @@ test "a bare abc module import still refuses" {
 
 
 test "an ABC base over an abst method lowers natively" {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "abc_marker_base.jac"),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for the abc fixture";
+    demoted = compile_mir("abc_marker_base.jac").demoted();
+    assert not demoted , f"the abc fixture demoted: {demoted}";
 }
 
 
 test "the erased base leaves the archetype's behavior intact" {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "abc_marker_base.jac"),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , "no native engine for the abc fixture";
-    addr = native_address(eng, "run");
-    assert addr != 0 , "'run' is absent from the JIT engine";
-    run = ctypes.CFUNCTYPE(ctypes.c_int64)(addr);
+    (eng, _) = compile_native("abc_marker_base.jac");
+    run = get_func(eng, "run", ctypes.c_int64);
     assert run() == 25 , (
         f"the concrete override did not run through the erased abstract "
         f"declaration: got {run()}, expected 25"

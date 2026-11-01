@@ -15,31 +15,16 @@ pattern.
 """
 
 import ctypes;
-import os;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
-import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import from tests.support { compile_native, native_address }
 
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     ),
-     _ENGINE: list[any] = [];
+glob _ENGINE: list[any] = [];
 
-def sorted_engine -> ExecutionEngine {
+def sorted_engine -> any {
     if _ENGINE {
         return _ENGINE[0];
     }
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, "sorted_empty.jac")),
-        options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not errors , f"sorted_empty.jac did not lower: {errors}";
-    assert ir.gen.llvm_ir , "no native IR for sorted_empty.jac";
-    eng = ir.gen.native_engine;
-    assert isinstance(eng, ExecutionEngine) , "no native engine for sorted_empty.jac";
+    (eng, fx) = compile_native("sorted_empty.jac");
+    assert fx.llvm_ir() , "no native IR for sorted_empty.jac";
     _ENGINE.append(eng);
     return eng;
 }

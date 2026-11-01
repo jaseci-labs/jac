@@ -18,13 +18,12 @@ fields on many edges.
 
 import ctypes;
 import os;
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
-import from jaclang.compiler.driver.program { JacProgram }
 import from tests.support {
     TESTS_DIR,
     assert_native_identity,
-    native_address,
-    native_force_opts
+    compile_mir,
+    compile_native,
+    native_address
 }
 
 glob FIXTURES = os.path.join(
@@ -32,27 +31,15 @@ glob FIXTURES = os.path.join(
      ),
      FIXTURE = "osp_connect_edge_attrs.jac";
 
-glob _MEMO: list[any] = [];
+glob _ENG: list[any] = [];
 
-"""Compile the fixture once and return (coverage record, errors, engine)."""
-def measured -> tuple[any, ...] {
-    if _MEMO {
-        return _MEMO[0];
+"""JIT the fixture once and return its engine."""
+def engine -> any {
+    if not _ENG {
+        (eng, _) = compile_native(FIXTURE);
+        _ENG.append(eng);
     }
-    path = os.path.join(FIXTURES, FIXTURE);
-    prog = JacProgram();
-    na_coverage_begin();
-    ir = None;
-    try {
-        ir = prog.compile(file_path=path, options=native_force_opts());
-    } finally {
-        coverage = na_coverage_end();
-    }
-    errors = [str(e) for e in (prog.errors_had or [])];
-    rec = coverage.get(os.path.realpath(path)) or coverage.get(path);
-    out = (rec, errors, (ir.gen.native_engine if ir is not None else None), );
-    _MEMO.append(out);
-    return out;
+    return _ENG[0];
 }
 
 """Call a no-argument fixture function through the JIT."""
@@ -62,59 +49,50 @@ def answer(eng: any, name: str) -> int {
     return ctypes.CFUNCTYPE(ctypes.c_int64)(addr)();
 }
 
-test "connects with edge attributes lower natively without seams" {
-    (rec, errors, eng) = measured();
-    assert not errors , f"the fixture must compile: {errors}";
-    assert rec is not None , "the fixture produced no native coverage record";
-    assert rec.get("outcome") == "native" , (
-        f"the fixture must lower natively, got {rec.get('outcome')}: "
-        f"{rec.get('code')} {rec.get('detail')}"
-    );
-    assert not (rec.get("seams") or []) , (
-        f"no seam is expected here: {[str(s) for s in (rec.get('seams') or [])]}"
-    );
-    assert eng is not None , "no JIT engine was produced for the fixture";
+test "connects with edge attributes lower natively with nothing demoted" {
+    demoted = compile_mir(FIXTURE).demoted();
+    assert not demoted , f"the fixture must lower natively: {demoted}";
 }
 
 test "literal, variable and computed values are assigned" {
-    (_rec, _errors, eng) = measured();
+    eng = engine();
     assert answer(eng, "literal_attrs") == 31;
     assert answer(eng, "variable_attrs") == 71;
     assert answer(eng, "expression_attrs") == 631;
 }
 
 test "fields left out keep their defaults" {
-    (_rec, _errors, eng) = measured();
+    eng = engine();
     assert answer(eng, "defaults_kept") == 501;
 }
 
 test "backward and undirected connects assign their edge" {
-    (_rec, _errors, eng) = measured();
+    eng = engine();
     assert answer(eng, "backward_attrs") == 61;
     assert answer(eng, "undirected_attrs") == 441;
 }
 
 test "connects inside functions, methods and abilities assign their edge" {
-    (_rec, _errors, eng) = measured();
+    eng = engine();
     assert answer(eng, "inside_function") == 41;
     assert answer(eng, "inside_method") == 421;
     assert answer(eng, "inside_walker_ability") == 61;
 }
 
 test "runtime edge types and subclasses receive the assignments" {
-    (_rec, _errors, eng) = measured();
+    eng = engine();
     assert answer(eng, "dynamic_type_attrs") == 21;
     assert answer(eng, "subclass_attrs") == 1025;
     assert answer(eng, "instance_with_attrs") == 91;
 }
 
 test "assignments land after postinit, as in the Python runtime" {
-    (_rec, _errors, eng) = measured();
+    eng = engine();
     assert answer(eng, "assigned_after_postinit") == 1100;
 }
 
 test "repeated connects replace string fields on every edge" {
-    (_rec, _errors, eng) = measured();
+    eng = engine();
     for _ in range(3) {
         assert answer(eng, "repeated_connects") == 500124751;
     }

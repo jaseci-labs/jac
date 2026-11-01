@@ -1,8 +1,7 @@
 """Native exponentiation (`**`) parity tests.
 
-Regression coverage for the power-lowering seam in
-`na_ir_gen_pass.impl/math.impl.jac` and the `int ** int` type contract in
-`compiler/types/operations.jac`. Each case compiles a fixture that
+Regression coverage for native power lowering and the `int ** int` type
+contract in `compiler/types/operations.jac`. Each case compiles a fixture that
 previously lowered to invalid/unsound IR and asserts the JIT result against
 CPython semantics: literal & dynamic exponents, builtin `pow`, `**=`, the
 fixed-width i32 kernel, float power, and the zero-base ZeroDivisionError.
@@ -10,13 +9,16 @@ fixed-width i32 kernel, float power, and the zero-base ZeroDivisionError.
 
 import ctypes;
 import os;
-import from tests.support { JAC_ROOT, TESTS_DIR, native_address, native_force_opts }
-import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
-import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from tests.support {
+    JAC_ROOT,
+    TESTS_DIR,
+    KernelFixture,
+    compile_native,
+    error_codes,
+    kernel_check_file,
+    native_address
+}
+import from jaclang.compiler.backends.native.llvm.jit { ExecutionEngine }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -25,27 +27,20 @@ glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures", "checker"
      ),
      _POW_SEMANTICS_ENG: (ExecutionEngine | None) = None,
-     _POW_SEMANTICS_IR: (uni.Module | None) = None;
+     _POW_SEMANTICS_FX: (KernelFixture | None) = None;
 
 """Compile pow_semantics.jac once and cache the JIT engine."""
-def pow_semantics_engine -> tuple[ExecutionEngine, uni.Module] {
+def pow_semantics_engine -> tuple[ExecutionEngine, KernelFixture] {
     if _POW_SEMANTICS_ENG is None {
-        prog = JacProgram();
-        ir = prog.compile(
-            file_path=str(os.path.join(FIXTURES, "pow_semantics.jac")),
-            options=native_force_opts()
-        );
-        errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-        assert not prog.errors_had , f"Compilation errors in pow_semantics.jac: {errors}";
-        eng = ir.gen.native_engine;
+        (eng, fx) = compile_native(os.path.join(FIXTURES, "pow_semantics.jac"));
         assert isinstance(eng, ExecutionEngine) , "No native engine produced for pow_semantics.jac";
         _POW_SEMANTICS_ENG = eng;
-        _POW_SEMANTICS_IR = ir;
+        _POW_SEMANTICS_FX = fx;
     }
     eng_out = _POW_SEMANTICS_ENG;
-    ir_out = _POW_SEMANTICS_IR;
-    assert eng_out is not None and ir_out is not None;
-    return (eng_out, ir_out);
+    fx_out = _POW_SEMANTICS_FX;
+    assert eng_out is not None and fx_out is not None;
+    return (eng_out, fx_out);
 }
 
 """Get a ctypes-callable function from the JIT engine."""
@@ -56,14 +51,6 @@ def get_func(
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     functype = ctypes.CFUNCTYPE(restype, *argtypes);
     return functype(addr);
-}
-
-"""Compile a checker fixture and run the type check pass."""
-def compile_and_check(fixture_name: str) -> JacProgram {
-    program = JacProgram();
-    mod = program.compile(os.path.join(CHECKER_FIXTURES, fixture_name));
-    run_pass(TypeCheckPass, mod, program);
-    return program;
 }
 
 # int ** non-negative literal stays int and matches CPython.
@@ -165,11 +152,9 @@ test "pow: zero base with negative exponent raises ZeroDivisionError" {
 
 # Invalid `**=` that would truncate float results is rejected at compile time.
 test "pow: negative **= on int rejects with E1001" {
-    program = compile_and_check("checker_pow_aug_type_errors.jac");
-    e1001 = [
-        e
-        for e in program.errors_had
-        if e.code and e.code.code == "E1001"
-    ];
+    result = kernel_check_file(
+        os.path.join(CHECKER_FIXTURES, "checker_pow_aug_type_errors.jac")
+    );
+    e1001 = [code for code in error_codes(result) if code == "E1001"];
     assert len(e1001) >= 2 , f"Expected >=2 E1001 for invalid **=, got {len(e1001)}";
 }

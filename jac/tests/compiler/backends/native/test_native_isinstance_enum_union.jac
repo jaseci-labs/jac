@@ -20,21 +20,7 @@ Refs #8067, #8039
 """
 
 import ctypes;
-import os;
-import from tests.support {
-    TESTS_DIR,
-    compile_native,
-    get_func,
-    has_error_code,
-    native_force_opts
-}
-import jaclang;
-
-import from jaclang.compiler.driver.program { JacProgram }
-
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     );
+import from tests.support { compile_mir, compile_native, get_func }
 
 test "an enum arm over an enum/object/None union answers by tag" {
     (eng, _) = compile_native("isinstance_enum_union.jac");
@@ -84,22 +70,13 @@ test "an enum against bool still owns the int tag alone" {
 }
 
 test "an enum sharing the int tag is refused, not answered by tag" {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, "isinstance_enum_tag_clash.jac")),
-        options=native_force_opts()
-    );
+    fx = compile_mir("isinstance_enum_tag_clash.jac");
     # `int` claims tag 0 as well, so a tag compare would report `True` for a
     # plain int. Refusing is the only correct answer until the enum ordinal
     # is discriminated some other way; the refusal demotes the asking
     # function to its Python implementation instead of failing the module.
-    assert not prog.errors_had , (
-        "the tag-clash refusal is owned by chk_enum_over_int(), which must "
-        f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
-    );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "chk_enum_over_int" not in ir.gen.native_layout.functions , (
+    assert fx.is_demoted("chk_enum_over_int") , (
         "isinstance against an enum that shares the int tag must demote the "
-        "asking function out of the native layout, never answer by tag"
+        f"asking function, never answer by tag; demoted: {fx.demoted()}"
     );
 }

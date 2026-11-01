@@ -108,13 +108,13 @@ test "each module keeps its own layout, dispatch and identity under the JIT" {
 }
 
 test "the defining modules and the importer agree on symbols compiled apart" {
-    main_ir = str(compile_native_ir("scoped_arch_main.jac").gen.llvm_ir);
+    main_ir = compile_native_ir("scoped_arch_main.jac").llvm_ir();
     symbols: list[str] = [];
     for (fixture, path) in [
         ("scoped_arch_routes.jac", ROUTES),
         ("scoped_arch_rooms.jac", ROOMS)
     ] {
-        own_ir = str(compile_native_ir(fixture).gen.llvm_ir);
+        own_ir = compile_native_ir(fixture).llvm_ir();
         info = native_arch_name(path, "Info");
         passage = native_arch_name(path, "Passage");
         symbol = f'@"{native_symbol_name(native_unit_prefix(path), "Info.total")}"(';
@@ -162,8 +162,8 @@ test "a module's archetype identity survives its package moving" {
 
 test "unit records name archetypes by source; the link keys a shared name by identity" {
     import from jaclang.compiler.driver.native_iface { merge_class_layouts }
-    routes = compile_native_ir("scoped_arch_routes.jac").gen.native_iface;
-    rooms = compile_native_ir("scoped_arch_rooms.jac").gen.native_iface;
+    routes = compile_native_ir("scoped_arch_routes.jac").iface();
+    rooms = compile_native_ir("scoped_arch_rooms.jac").iface();
     assert routes is not None and rooms is not None;
     for (iface, path) in [(routes, ROUTES), (rooms, ROOMS)] {
         prefix = native_unit_prefix(path);

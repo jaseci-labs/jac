@@ -1,22 +1,16 @@
 """Inferred move-in for container grow arguments (#7857 Phase E frontier).
 
 A named binding appended into a container while dead-after (the
-rc_last_use fact) moves in instead of copying: the strdup disappears and
-the local's slot is nulled so its release is a no-op. Bindings still
-live after the append keep copy-in semantics; output is byte-identical
-across gc modes either way.
+rc_last_use fact) moves in instead of copying, and the local's release
+becomes a no-op. Bindings still live after the append keep copy-in
+semantics, so a later write to one never reaches the container; output is
+byte-identical across gc modes either way.
 """
 
 import os;
-import from jaclang.compiler.driver.compile_options {
-    push_native_target,
-    pop_native_target
-}
 import subprocess;
 import tempfile;
 import from tests.support { jac_command, TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "move_in_infer.jac"
@@ -26,49 +20,6 @@ glob FIXTURE = os.path.join(
          "rc": ["--memory", "rc"],
          "cycles": ["--memory", "managed"]
      };
-
-def _compile_ir -> str {
-    prev = push_native_target("wasm32-unknown-unknown");
-    try {
-        prog = JacProgram();
-        ir = prog.compile(
-            file_path=FIXTURE,
-            options=CompileOptions(aot_mode=True, memory_profile="nogc")
-        );
-        assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-        return str(ir.gen.llvm_ir);
-    } finally {
-        pop_native_target(prev);
-    }
-}
-
-def _fn_ir(ir: str, name: str) -> str {
-    out: list[str] = [];
-    active = False;
-    for line in ir.split("\n") {
-        if line.startswith("define") and name in line {
-            active = True;
-        }
-        if active {
-            out.append(line);
-            if line == "}" {
-                break;
-            }
-        }
-    }
-    assert out , f"no function body found for {name}";
-    return "\n".join(out);
-}
-
-test "dead-after append moves in (no elem copy)" {
-    body = _fn_ir(_compile_ir(), "dead_after");
-    assert "rc.str.raw" not in body , body;
-}
-
-test "alive-after append still copies in" {
-    body = _fn_ir(_compile_ir(), "alive_after");
-    assert "rc.str.raw" in body , body;
-}
 
 test "move-in output is byte-identical across gc modes" {
     with tempfile.TemporaryDirectory() as tmp {

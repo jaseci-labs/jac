@@ -10,7 +10,10 @@ import os;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.dist.precompile_bytecode { adopt_kernel }
-import from jaclang.compiler.backends.native.kernel_resolve { kernel_lib_name }
+import from jaclang.compiler.backends.native.kernel_resolve {
+    kernel_lib_name,
+    source_tree_kernel_path
+}
 import from jaclang.compiler.target_spec { host_target_spec }
 
 def _pkg_root -> Path {
@@ -37,7 +40,7 @@ test "a directory without a kernel and its sidecar is refused" {
 }
 
 test "a kernel built from other sources is refused and not copied in" {
-    target = _pkg_root() / "compiler" / kernel_lib_name();
+    target = Path(source_tree_kernel_path());
     before = target.read_bytes() if target.is_file() else None;
     with tempfile.TemporaryDirectory(prefix="jac-adopt-") as kdir {
         lib = Path(kdir) / kernel_lib_name();
@@ -51,8 +54,7 @@ test "a kernel built from other sources is refused and not copied in" {
             "triple": host_target_spec().triple,
             "python": "3.14",
             "compiler_digest": "elsewhere",
-            "codegen_identity": "elsewhere",
-            "classes": {}
+            "codegen_identity": "elsewhere"
         };
         Path(str(lib) + ".layout.json").write_text(json.dumps(sidecar));
         told = _refusal(kdir);
@@ -71,8 +73,7 @@ test "a kernel naming units this tree lacks is refused" {
         sidecar = {
             "unit_ids": [ident],
             "units": [ident],
-            "unit_sources": {ident: "0" * 64},
-            "classes": {}
+            "unit_sources": {ident: "0" * 64}
         };
         Path(str(lib) + ".layout.json").write_text(json.dumps(sidecar));
         told = _refusal(kdir);

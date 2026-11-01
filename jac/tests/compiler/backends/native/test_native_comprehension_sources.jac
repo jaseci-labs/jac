@@ -1,30 +1,10 @@
 """Native comprehensions iterate every source a native for-loop iterates."""
 
 import ctypes;
-import from tests.support { native_address }
-import os;
-import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support { compile_native, native_address }
 
 test "comprehensions over ranges, strings, bytes, sets and adapters run natively" {
-    program = JacProgram();
-    module = program.compile(
-        os.path.join(
-            TESTS_DIR,
-            "compiler",
-            "backends",
-            "native",
-            "fixtures",
-            "comprehension_sources.jac"
-        ),
-        options=CompileOptions(
-            force_codespace="native", need_full_ast=True, no_ir_cache=True
-        )
-    );
-    assert not program.errors_had , str(program.errors_had);
-    engine = module.gen.native_engine;
-    assert engine is not None;
+    (engine, _) = compile_native("comprehension_sources.jac");
     expected = [
         ("stepped", 307),
         ("descending", 302),

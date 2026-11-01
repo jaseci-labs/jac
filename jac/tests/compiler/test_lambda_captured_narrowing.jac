@@ -12,9 +12,7 @@ a predecessor.
 """
 
 import os;
-import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support { TESTS_DIR, kernel_check_file }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "fixtures", "lambda_captured_narrowing.jac"
@@ -22,9 +20,7 @@ glob FIXTURE = os.path.join(
 
 """Type-check the fixture and return the lines its errors point at."""
 def error_lines -> list[int] {
-    prog = JacProgram();
-    prog.compile(file_path=FIXTURE, options=CompileOptions(no_cgen=True));
-    return sorted([e.loc.first_line for e in (prog.errors_had or [])]);
+    return sorted([diag.span.line for diag in kernel_check_file(FIXTURE).errors]);
 }
 
 test "a guarded lambda and a nested def both see the narrowed capture" {

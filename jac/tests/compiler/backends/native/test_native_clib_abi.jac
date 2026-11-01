@@ -15,17 +15,52 @@ import tempfile;
 import from tests.support {
     jac_command,
     TESTS_DIR,
+    adopt_native_units,
     compile_native,
+    compile_native_unit,
     get_func,
-    native_force_opts
+    native_force_opts,
+    remember_native_unit
 }
-import jaclang;
-
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
+
+"""Write `code` as `name` in `directory`; return its path."""
+def _write(directory: str, name: str, code: str) -> str {
+    path = os.path.join(directory, name);
+    with open(path, "w") as fh {
+        fh.write(code);
+    }
+    return path;
+}
+
+"""Compile `name` in `directory` through the kernel and JIT it in this process
+under `options` (forced native by default), as `compile_native` does; return
+(program, engine). The program carries any JIT-time diagnostic, and the engine
+is None when the JIT refused the unit."""
+def _jit(
+    name: str, directory: str, options: (CompileOptions | None) = None
+) -> tuple[any, any] {
+    import json;
+    opts = options if options is not None else native_force_opts();
+    fx = compile_native_unit(name, directory, opts, ["bytecode"]);
+    prog = JacProgram();
+    prog.options = opts;
+    adopt_native_units(prog, fx.result, opts);
+    prog._get_compiler()._load_native_from_cache(
+        fx.path, prog, json.loads(fx.unit.interop) if fx.unit.interop else None
+    );
+    carrier = prog.hub.artifacts.get(fx.path);
+    eng = carrier.native_engine if carrier is not None else None;
+    if eng is not None {
+        remember_native_unit(eng, fx);
+    }
+    return (prog, eng);
+}
 
 test "clib sext: negative C int return stays negative through int and any" {
     (eng, _) = compile_native("clib_sext.jac");
@@ -66,15 +101,8 @@ test "JIT C imports bind to their declared library despite a process symbol coll
         try {
             code = f'import from "{libpath}" {{ def {symbol}(x: i64) -> i64; }}\n'
                 + f'def value(x: int) -> int {{ return {symbol}(x); }}';
-            prog = JacProgram();
-            ir = prog.compile(
-                file_path=os.path.join(tmpdir, "main.jac"),
-                use_str=code,
-                options=native_force_opts()
-            );
-            assert not prog.errors_had , [str(e) for e in prog.errors_had];
-            eng = ir.gen.native_engine;
-            assert eng is not None;
+            _write(tmpdir, "main.jac", code);
+            (eng, _) = compile_native("main.jac", tmpdir);
             assert get_func(eng, "value", ctypes.c_int64, ctypes.c_int64)(39) == 42;
         } finally {
             llvm.add_symbol(symbol, 0);
@@ -87,13 +115,9 @@ test "JIT reports a missing C library before exposing an executable engine" {
         libpath = os.path.join(tmpdir, "libmissing.so");
         code = f'import from "{libpath}" {{ def jac_missing_library_value -> i64; }}\n'
             + 'def value -> int { return jac_missing_library_value(); }';
-        prog = JacProgram();
-        ir = prog.compile(
-            file_path=os.path.join(tmpdir, "main.jac"),
-            use_str=code,
-            options=native_force_opts()
-        );
-        assert ir.gen.native_engine is None;
+        _write(tmpdir, "main.jac", code);
+        (prog, eng) = _jit("main.jac", tmpdir);
+        assert eng is None;
         assert any("C library not found for JIT" in str(e) for e in prog.errors_had) , [
             str(e) for e in prog.errors_had
         ];
@@ -145,13 +169,8 @@ test "clib SysV: by-value float structs pass and return in SSE registers" {
             f"    return ptd_sum(p);\n"
             f"}}\n"
         );
-        path = os.path.join(FIXTURES, "_clib_sysv_float.jac");
-        prog = JacProgram();
-        ir = prog.compile(file_path=path, use_str=code, options=native_force_opts());
-        errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-        assert not prog.errors_had , f"Compilation errors: {errors}";
-        eng = ir.gen.native_engine;
-        assert eng is not None;
+        _write(tmpdir, "clib_sysv_float.jac", code);
+        (eng, _) = compile_native("clib_sysv_float.jac", tmpdir);
         f = get_func(eng, "use_ptd", ctypes.c_double, ctypes.c_double, ctypes.c_double);
         assert abs(f(1.5, 2.25) - 6.0) < 1e-9 , f"ptd_sum(1.5, 2.25) = {f(1.5, 2.25)}";
         g = get_func(eng, "use_ptf", ctypes.c_double, ctypes.c_double, ctypes.c_double);
@@ -234,16 +253,10 @@ test "clib imported record returns preserve inferred fields and ABI" {
             "pair = make_pair(n); record = make_record(n);\n"
             "return pair.x + pair.y + record.a + record.c + record.e;\n}\n"
         );
-        prog = JacProgram();
-        ir = prog.compile(
-            file_path=os.path.join(tmpdir, "consumer.jac"),
-            use_str=code,
-            options=native_force_opts()
-        );
-        assert not prog.errors_had , str(prog.errors_had);
-        assert ir.gen.native_engine is not None;
+        _write(tmpdir, "consumer.jac", code);
+        (eng, _) = compile_native("consumer.jac", tmpdir);
         fields = get_func(
-            ir.gen.native_engine, "fields", ctypes.c_int64, ctypes.c_int64
+            eng, "fields", ctypes.c_int64, ctypes.c_int64
         );
         assert fields(10) == 57;
         assert fields(-10) == -43;
@@ -313,16 +326,10 @@ test "clib record arguments read from an optional slot pass the record, not its 
             "}\n"
             "return -2;\n}\n"
         );
-        prog = JacProgram();
-        ir = prog.compile(
-            file_path=os.path.join(tmpdir, "consumer.jac"),
-            use_str=code,
-            options=native_force_opts()
-        );
-        assert not prog.errors_had , str(prog.errors_had);
-        assert ir.gen.native_engine is not None;
+        _write(tmpdir, "consumer.jac", code);
+        (eng, _) = compile_native("consumer.jac", tmpdir);
         sums = get_func(
-            ir.gen.native_engine, "sums", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+            eng, "sums", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
         );
         # held: (10+11) + (10+11+12+13+14); not held: (100+101) + (1000+...+1004).
         assert sums(10, 1) == 81;
@@ -331,7 +338,7 @@ test "clib record arguments read from an optional slot pass the record, not its 
         # the call is reached with nothing in the slot: it raises TypeError
         # before C is entered (-1 is "raised, and the call count did not move").
         absent = get_func(
-            ir.gen.native_engine,
+            eng,
             "absent",
             ctypes.c_int64,
             ctypes.c_int64,
@@ -392,22 +399,16 @@ test "clib record embedding another module's clib record lays the field out inli
             "def round_trip(n:i64) -> i64 {\n"
             "return sum_outer(make_outer(n));\n}\n"
         );
-        prog = JacProgram();
-        ir = prog.compile(
-            file_path=os.path.join(tmpdir, "consumer.jac"),
-            use_str=code,
-            options=native_force_opts()
-        );
-        assert not prog.errors_had , str(prog.errors_had);
-        assert ir.gen.native_engine is not None;
+        _write(tmpdir, "consumer.jac", code);
+        (eng, _) = compile_native("consumer.jac", tmpdir);
         fields = get_func(
-            ir.gen.native_engine, "fields", ctypes.c_int64, ctypes.c_int64
+            eng, "fields", ctypes.c_int64, ctypes.c_int64
         );
         # count n, inner.w n+2, tail n+4, make_inner(n).h n+2.
         assert fields(10) == 48;
         assert fields(-10) == -32;
         round_trip = get_func(
-            ir.gen.native_engine, "round_trip", ctypes.c_int64, ctypes.c_int64
+            eng, "round_trip", ctypes.c_int64, ctypes.c_int64
         );
         # n + (n+1) + (n+2) + (n+3) + (n+4).
         assert round_trip(10) == 60;
@@ -472,24 +473,19 @@ test "clib records of two imported modules embed one another in either walk orde
             "def round_trip(n:i64) -> i64 {\n"
             "return sum_outer(make_outer(n));\n}\n"
         );
+        _write(tmpdir, "consumer.jac", code);
         for walk_order in (None, "reverse") {
             options = native_force_opts();
             options.native_module_walk_order = walk_order;
-            prog = JacProgram();
-            ir = prog.compile(
-                file_path=os.path.join(tmpdir, "consumer.jac"),
-                use_str=code,
-                options=options
-            );
-            assert not prog.errors_had , f"{walk_order}: {prog.errors_had}";
-            assert ir.gen.native_engine is not None , walk_order;
+            (_prog, eng) = _jit("consumer.jac", tmpdir, options);
+            assert eng is not None , walk_order;
             fields = get_func(
-                ir.gen.native_engine, "fields", ctypes.c_int64, ctypes.c_int64
+                eng, "fields", ctypes.c_int64, ctypes.c_int64
             );
             assert fields(10) == 48 , walk_order;
             assert fields(-10) == -32 , walk_order;
             round_trip = get_func(
-                ir.gen.native_engine, "round_trip", ctypes.c_int64, ctypes.c_int64
+                eng, "round_trip", ctypes.c_int64, ctypes.c_int64
             );
             assert round_trip(10) == 60 , walk_order;
             assert round_trip(-3) == -5 , walk_order;

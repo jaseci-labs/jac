@@ -20,11 +20,11 @@ import ctypes;
 import os;
 import from tests.support {
     TESTS_DIR,
-    names_function,
-    native_address,
-    native_force_opts
+    KernelFixture,
+    compile_mir,
+    compile_native,
+    native_address
 }
-import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.frontend.codeinfo {
     get_effective_default_codespace_override,
@@ -47,25 +47,18 @@ glob FIXTURES = os.path.join(
      DECLARED_UNION_FNS = ["use_u_param", "use_u_return", "use_u_glob"];
 
 
-"""Compile the fixture natively, run its glob init, return (engine, module).
+"""Compile the fixture natively, run its glob init, return (engine, fixture).
 
 `__jac_glob_init` is what a real binary runs before anything else; the
 declared-union globals need it because a boxed initializer is a runtime
 store, not a constant.
 """
 def _compile(fixture: str) -> tuple[any, ...] {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine for {fixture}";
+    (eng, fx) = compile_native(fixture, FIXTURES);
     gi = native_address(eng, "__jac_glob_init");
     assert gi != 0 , "fixture emitted no __jac_glob_init";
     ctypes.CFUNCTYPE(None)(gi)();
-    return (eng, ir);
+    return (eng, fx);
 }
 
 
@@ -98,23 +91,15 @@ def _sv_module -> object {
 }
 
 
-"""LLVM IR text of a single `define ... @name(` function body."""
-def _fn_body(txt: str, name: str) -> str {
-    start = txt.find("define ");
-    while start != -1 {
-        end = txt.find("\n}", start);
-        if end == -1 {
-            break;
+"""The MIR text of `name`'s function in a compiled fixture."""
+def mir_function(fx: KernelFixture, name: str) -> str {
+    head = f"fn @{fx.symbol(name)}(";
+    for chunk in fx.mir().split("\n\n") {
+        if chunk.startswith(head) {
+            return chunk;
         }
-        block = txt[start:end + 2];
-        header_end = block.find("\n");
-        header = block[:header_end] if header_end != -1 else block;
-        if names_function(header, name) {
-            return block;
-        }
-        start = txt.find("define ", end);
     }
-    return "";
+    raise AssertionError(f"no MIR function {name} in {fx.path}: demoted {fx.demoted()}");
 }
 
 
@@ -190,26 +175,19 @@ test "declared union: mixed members round-trip in param, return and global" {
 
 
 test "ternary: a shared lowering and an all-pointer pair never box" {
-    (_, ir) = _compile(FIXTURE);
-    txt = str(ir.gen.llvm_ir);
+    fx = compile_mir(FIXTURE, FIXTURES);
+    same_rep = mir_function(fx, "same_rep");
+    all_ptr = mir_function(fx, "all_ptr");
 
-    same_rep = _fn_body(txt, "same_rep");
-    all_ptr = _fn_body(txt, "all_ptr");
-    assert same_rep , "same_rep was not emitted";
-    assert all_ptr , "all_ptr was not emitted";
-
-    # Two int branches keep the i64 phi they have always had.
-    assert "phi  i64 " in same_rep , (
-        "an int/int ternary must still phi on i64, not on a boxed value"
-    );
-    assert "jacval" not in same_rep , (
-        "an int/int ternary started boxing to jacval -- the unification rule "
+    # Two int branches keep their int representation.
+    assert ": any" not in same_rep , (
+        "an int/int ternary started boxing to any -- the unification rule "
         "must be free on branches that already share a lowering"
     );
 
     # Two list branches keep the first member's pointer layout.
-    assert "jacval" not in all_ptr , (
-        "an all-pointer ternary started boxing to jacval -- an all-pointer "
+    assert ": any" not in all_ptr , (
+        "an all-pointer ternary started boxing to any -- an all-pointer "
         "union keeps the first member's layout"
     );
 }

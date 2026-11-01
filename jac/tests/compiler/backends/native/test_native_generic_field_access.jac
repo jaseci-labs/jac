@@ -4,10 +4,10 @@ A generic archetype is laid out once, not once per instantiation, so a `has`
 slot typed by the class's type parameter lowers to a bare pointer carrying no
 class. The offset is not the problem -- it is the same slot for every
 instantiation -- but the load came back untyped, so the next `.field` off it
-had nothing to resolve against and the whole enclosing callable demoted to a
-Python-only seam. In the sealed parser that is `self.hint.tag.value` and
-`self.access.tag.name` through `SubTag[Token]`, which is seven of the twenty
-eight unitree seam waivers.
+had nothing to resolve against and the whole enclosing callable demoted. In
+the sealed parser that is `self.hint.tag.value` and `self.access.tag.name`
+through `SubTag[Token]`, which was seven of the twenty eight unitree
+demotions.
 
 The access site's static type argument is what names the value, so these read
 back through every shape that carries one: off a local, off a slot after the
@@ -25,11 +25,11 @@ import ctypes;
 import os;
 import from tests.support {
     TESTS_DIR,
+    compile_mir,
+    compile_native,
     native_address,
-    native_force_opts,
     native_str_func
 }
-import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.frontend.codeinfo {
     get_effective_default_codespace_override,
@@ -60,14 +60,7 @@ glob FIXTURES = os.path.join(
 
 """Compile a fixture natively; a demotion here is the bug, not a symptom."""
 def _compile(fixture: str) -> object {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {fixture}";
+    (eng, _) = compile_native(fixture);
     return eng;
 }
 
@@ -96,17 +89,9 @@ def _sv_module(fixture: str) -> object {
 }
 
 
-"""Every E5092 the native compile of a fixture reported."""
-def _demotions(fixture: str) -> list[str] {
-    prog = JacProgram();
-    prog.compile(
-        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
-    );
-    return [
-        d.pretty_print()
-        for d in (prog.errors_had or [])
-        if d.code is not None and d.code.code == "E5092"
-    ];
+"""Every function the decision step refused in a fixture, with its reason."""
+def _demotions(fixture: str) -> dict[str, str] {
+    return compile_mir(fixture).demoted();
 }
 
 

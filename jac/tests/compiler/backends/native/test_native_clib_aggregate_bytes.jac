@@ -5,8 +5,7 @@ import shutil;
 import subprocess;
 import tempfile;
 import from pathlib { Path }
-import from tests.support { get_func, jac_command, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { compile_native, get_func, jac_command }
 
 def prepare_probe(directory: str) -> str {
     cc = shutil.which("cc") or shutil.which("gcc");
@@ -72,12 +71,8 @@ with entry {
 
 test "aggregate C calls pass bytes payloads for register and indirect returns" {
     with tempfile.TemporaryDirectory() as directory {
-        path = prepare_probe(directory);
-        program = JacProgram();
-        result = program.compile(file_path=path, options=native_force_opts());
-        assert not program.errors_had , str(program.errors_had);
-        engine = result.gen.native_engine;
-        assert engine is not None;
+        prepare_probe(directory);
+        (engine, _) = compile_native("probe.jac", directory);
         for name in [
             "register_return",
             "indirect_return",

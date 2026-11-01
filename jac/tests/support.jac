@@ -8,14 +8,29 @@ instead of re-deriving it with a `Path(__file__).resolve().parents` walk.
 
 Imported as `from tests.support`, which resolves identically under the single
 `jac` binary and a source checkout (same mechanism as `tests.fixtures_list`).
+
+Every compile here goes through the kernel, the only compiler: a test that
+compiles and checks results uses the compile entry (`kernel_compile_file`,
+`kernel_compile_source`), the check entry (`kernel_check_file`,
+`kernel_check_source`) or a session (`project.kernel_call.open_kernel_session`);
+native tests JIT the kernel's products (`compile_native`) or read the decision
+step's MIR and demoted set (`compile_mir`). A test that inspects compiler
+internals (the tree, symbol tables, pass outputs) is not written here: it is a
+kernel test case in `jaclang/compiler/kernel_tests/`, run inside the kernel by
+`tests/compiler/test_kernel_suites.jac` (`kernel_cases`, `run_kernel_case`).
 """
 
 import ctypes;
 
 import from pathlib { Path }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
-import type from jaclang.compiler.frontend.unitree { Module }
-import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import type from jaclang.compiler.backends.native.llvm.jit { ExecutionEngine }
+import type from jaclang.compiler.kernel_api {
+    CheckResult,
+    CompileResult,
+    CompiledUnit,
+    KernelTestCase
+}
 
 # `tests/`: the directory holding this file.
 glob TESTS_DIR: str = str(Path(__file__).resolve().parent),
@@ -276,24 +291,225 @@ def iface_symbol(iface: any, name: str) -> (str | None) {
     return None;
 }
 
-"""Compile a .jac fixture into the native codespace and return (engine, module).
+"""The absolute path of `fixture`: a file in `fixture_dir`, which defaults to
+the native pass fixtures directory."""
+def fixture_path(fixture: str, fixture_dir: str = "") -> str {
+    return str(Path(fixture_dir or NATIVE_FIXTURES) / fixture);
+}
+
+"""Compile `path` through the kernel's compile entry, as `jac run` and the
+import hook do, and return the kernel's result untouched: units, errors and
+warnings as `KernelDiagnostic` records. `products` defaults to bytecode; name
+"mir" to get each unit's MIR and its demoted set."""
+def kernel_compile_file(
+    path: str,
+    options: (CompileOptions | None) = None,
+    products: (list[str] | None) = None,
+    sources: (dict[str, str] | None) = None
+) -> CompileResult {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.project.kernel_call { call_compile }
+    import from jaclang.project.kernel_compile { compile_request_for }
+    return call_compile(
+        compile_request_for(
+            [path],
+            options if options is not None else CompileOptions(),
+            sources or {},
+            products if products is not None else ["bytecode"]
+        )
+    );
+}
+
+"""Write `source` to a fresh directory as `name` and compile it through the
+kernel. The directory outlives the call, so diagnostics keep a real path."""
+def kernel_compile_source(
+    source: str,
+    name: str = "main.jac",
+    options: (CompileOptions | None) = None,
+    products: (list[str] | None) = None
+) -> CompileResult {
+    return kernel_compile_file(write_case(source, name), options, products);
+}
+
+"""Check `path` through the kernel's check entry (`jac check`)."""
+def kernel_check_file(
+    path: str,
+    options: (CompileOptions | None) = None,
+    native_coverage: bool = False,
+    placements: bool = False,
+    closure: bool = False,
+    sources: (dict[str, str] | None) = None
+) -> CheckResult {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.project.kernel_call { call_check }
+    import from jaclang.project.kernel_compile { check_request_for }
+    request = check_request_for(
+        [path],
+        options if options is not None else CompileOptions(),
+        native_coverage,
+        placements,
+        closure
+    );
+    request.sources = {
+        str(Path(key).resolve()): text
+        for (key, text) in (sources or {}).items()
+    };
+    return call_check(request);
+}
+
+"""Write `source` to a fresh directory as `name` and check it through the
+kernel."""
+def kernel_check_source(
+    source: str, name: str = "main.jac", options: (CompileOptions | None) = None
+) -> CheckResult {
+    return kernel_check_file(write_case(source, name), options);
+}
+
+"""Write `source` as `name` in a fresh directory; return its path."""
+def write_case(source: str, name: str = "main.jac") -> str {
+    import tempfile;
+    path = Path(tempfile.mkdtemp(prefix="jac-case-")) / name;
+    path.parent.mkdir(parents=True, exist_ok=True);
+    path.write_text(source, encoding="utf-8");
+    return str(path);
+}
+
+"""The codes of a kernel result's errors, in order."""
+def error_codes(result: (CompileResult | CheckResult)) -> list[str] {
+    return [diag.code for diag in result.errors];
+}
+
+"""The codes of a kernel result's warnings, in order."""
+def warning_codes(result: (CompileResult | CheckResult)) -> list[str] {
+    return [diag.code for diag in result.warnings];
+}
+
+"""A kernel result's diagnostics, one per line, for assertion messages."""
+def diagnostics_text(result: (CompileResult | CheckResult)) -> str {
+    return "\n".join(
+        f"{diag.severity} {diag.code} {Path(diag.span.path).name}:{diag.span.line}:{diag.span.col}: {diag.message}"
+        for diag in list(result.errors) + list(result.warnings)
+    );
+}
+
+"""What the kernel made of one fixture: the whole compile result, the
+fixture's own unit, and views over its native products. `llvm_ir()` is the
+LLVM IR the kernel emitted for the unit; `mir()` is its MIR, and `demoted()`
+the functions the decision step refused, by link symbol, with their reasons
+(both present when the compile named the "mir" product)."""
+obj KernelFixture {
+    has path: str,
+        result: CompileResult,
+        unit: CompiledUnit;
+
+    def llvm_ir -> str {
+        return self.unit.native_ir;
+    }
+
+    def mir -> str {
+        return self.unit.native_mir;
+    }
+
+    def demoted -> dict[str, str] {
+        return {demotion.symbol: demotion.reason for demotion in self.unit.demoted};
+    }
+
+    def iface -> any {
+        import from jaclang.compiler.driver.native_iface { NativeIface }
+        if not self.unit.native_iface {
+            return None;
+        }
+        return NativeIface.from_bytes(self.unit.native_iface.encode("utf-8"));
+    }
+
+    def symbol(name: str) -> str {
+        return unit_symbol(self, name);
+    }
+
+    def is_demoted(name: str) -> bool {
+        return self.symbol(name) in self.demoted();
+    }
+
+    def reason(name: str) -> str {
+        found = self.demoted().get(self.symbol(name));
+        assert found is not None , f"{name} was not demoted in {Path(self.path).name}: {self.demoted()}";
+        return found;
+    }
+}
+
+"""Compile a native fixture through the kernel and return what it made.
+
+Compile errors fail the calling test with the kernel's diagnostics. The
+default options force the fixture into the native codespace (see
+`native_force_opts`)."""
+def compile_native_unit(
+    fixture: str,
+    fixture_dir: str = "",
+    options: (CompileOptions | None) = None,
+    products: (list[str] | None) = None,
+    sources: (dict[str, str] | None) = None
+) -> KernelFixture {
+    path = str(Path(fixture_path(fixture, fixture_dir)).resolve());
+    result = kernel_compile_file(
+        path,
+        options if options is not None else native_force_opts(),
+        products if products is not None else ["bytecode", "mir"],
+        sources
+    );
+    assert result.ok() , f"Compilation errors in {fixture}:\n{diagnostics_text(result)}";
+    return KernelFixture(path=path, result=result, unit=result.unit(path));
+}
+
+"""Hand the native units of a kernel result to `prog`'s native unit registry,
+dependencies first, exactly as the compile entry adopts them for `jac run`."""
+def adopt_native_units(prog: any, result: CompileResult, options: CompileOptions) {
+    import from jaclang.compiler.driver.compiler { native_first }
+    import from jaclang.compiler.driver.jir { SEC_CTDEPS }
+    compiler = prog._get_compiler();
+    for unit in native_first(result.units) {
+        if unit.native_ir {
+            compiler._adopt_native_unit(
+                unit, prog, options, unit.sections.get(SEC_CTDEPS, b"")
+            );
+        }
+    }
+}
+
+"""Compile a .jac fixture into the native codespace through the kernel and
+JIT it in this process; return (engine, fixture).
 
 `fixture_dir` defaults to the native pass fixtures directory, which is where
 all but one caller looks; pass it explicitly for a fixture that lives
-elsewhere. The engine is NOT cached across calls -- a JIT engine owns the
+elsewhere. `options` defaults to `native_force_opts()`; `sources` overlays
+unsaved text by path. The fixture carries the unit's MIR and demoted set, so
+a JIT test can also assert a lowering decision. The engine is NOT cached across calls -- a JIT engine owns the
 module's mutable globals, so handing the same one to two tests would let the
 first test's writes reach the second. Tests that want a fixture compiled once
 should assert against it once, in a single test.
 """
 def compile_native(
-    fixture: str, fixture_dir: str = ""
-) -> tuple[ExecutionEngine, Module] {
-    ir = _compile_native_fixture(fixture, fixture_dir, native_force_opts());
-    import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
-    eng = ir.gen.native_engine;
-    assert isinstance(eng, ExecutionEngine) , f"No JIT engine produced for {fixture}";
-    remember_native_unit(eng, ir);
-    return (eng, ir);
+    fixture: str,
+    fixture_dir: str = "",
+    options: (CompileOptions | None) = None,
+    sources: (dict[str, str] | None) = None
+) -> tuple[ExecutionEngine, KernelFixture] {
+    import json;
+    import from jaclang.compiler.driver.program { JacProgram }
+    options = options if options is not None else native_force_opts();
+    fx = compile_native_unit(
+        fixture, fixture_dir, options, ["bytecode", "mir"], sources
+    );
+    prog = JacProgram();
+    prog.options = options;
+    adopt_native_units(prog, fx.result, options);
+    prog._get_compiler()._load_native_from_cache(
+        fx.path, prog, json.loads(fx.unit.interop) if fx.unit.interop else None
+    );
+    carrier = prog.hub.artifacts.get(fx.path);
+    eng = carrier.native_engine if carrier is not None else None;
+    assert eng is not None , f"No JIT engine produced for {fixture}";
+    remember_native_unit(eng, fx);
+    return (eng, fx);
 }
 
 """The whole-program LLVM IR of `fixture` linked for `triple`: its unit
@@ -315,15 +531,18 @@ def program_ir(fixture: str, triple: str, static_musl: bool = False) -> str {
     }
     prev = push_native_target(triple);
     try {
-        prog = JacProgram();
-        opts = CompileOptions(aot_mode=True, native_link_mode=NATIVE_LINK_MODE_BITCODE);
-        path = str(Path(NATIVE_FIXTURES) / fixture);
-        plan = build_link_plan(
-            prog, [path], options=opts, mode=NATIVE_LINK_MODE_BITCODE
+        opts = CompileOptions(
+            aot_mode=True,
+            native_link_mode=NATIVE_LINK_MODE_BITCODE,
+            native_target=triple
         );
-        assert not prog.errors_had , f"compile errors: {[
-            str(e) for e in prog.errors_had
-        ]}";
+        fx = compile_native_unit(fixture, "", opts, ["mir"]);
+        prog = JacProgram();
+        prog.options = opts;
+        adopt_native_units(prog, fx.result, opts);
+        plan = build_link_plan(
+            prog, [fx.path], options=opts, mode=NATIVE_LINK_MODE_BITCODE
+        );
         tl = triple.lower();
         platform = "elf";
         if "darwin" in tl or "apple" in tl {
@@ -341,13 +560,11 @@ def program_ir(fixture: str, triple: str, static_musl: bool = False) -> str {
     }
 }
 
-"""Pin the compiled module's unit path and native interface on its engine,
+"""Pin the compiled fixture's unit path and native interface on its engine,
 so `native_address` can map a Jac-level name to the unit's link symbol."""
-def remember_native_unit(eng: any, ir: any) {
-    try {
-        setattr(eng, "_jac_unit_path", ir.loc.mod_path if ir.loc else "");
-        setattr(eng, "_jac_native_iface", ir.gen.native_iface);
-    } except Exception {}
+def remember_native_unit(eng: any, fx: KernelFixture) {
+    setattr(eng, "_jac_unit_path", fx.path);
+    setattr(eng, "_jac_native_iface", fx.iface());
 }
 
 """The link symbol of a Jac-level name in the engine's root unit.
@@ -395,16 +612,15 @@ def native_symbol(eng: any, name: str) -> str {
     return native_symbol_name(native_unit_prefix(path), name);
 }
 
-"""The link symbol a compiled module gives a Jac-level name: the unit's
-interface record first, the mangling rule second. Tests that grep emitted
-IR for a function or global build their marker from this."""
-def unit_symbol(ir: any, name: str) -> str {
-    iface = ir.gen.native_iface if ir?.gen else None;
-    found = iface_symbol(iface, name);
+"""The link symbol a compiled fixture gives a Jac-level name: the unit's
+interface record first, the mangling rule second. Tests that read a demoted
+set or an emitted symbol build their key from this."""
+def unit_symbol(fx: KernelFixture, name: str) -> str {
+    found = iface_symbol(fx.iface(), name);
     if found is not None {
         return found;
     }
-    path = ir.loc.mod_path if ir?.loc else "";
+    path = fx.path;
     if not path {
         return name;
     }
@@ -439,33 +655,46 @@ def native_address(eng: any, name: str) -> int {
     return eng.get_function_address(symbol);
 }
 
-"""Inspect fresh lowering output before LLVM optimization removes layout types."""
+"""Compile a fixture through the kernel without a JIT engine and return what
+it made, for tests that read the unit's MIR, its demoted set or its emitted
+IR."""
 def compile_native_ir(
-    fixture: str, fixture_dir: str = "", options: CompileOptions | None = None
-) -> Module {
+    fixture: str, fixture_dir: str = "", options: (CompileOptions | None) = None
+) -> KernelFixture {
     options = options or native_force_opts();
     options.skip_native_engine = True;
     options.no_ir_cache = True;
-    return _compile_native_fixture(fixture, fixture_dir, options);
+    return compile_native_unit(fixture, fixture_dir, options, ["mir"]);
 }
 
-def _compile_native_fixture(
-    fixture: str, fixture_dir: str, options: CompileOptions
-) -> Module {
-    import from jaclang.compiler.driver.program { JacProgram }
-    base = fixture_dir or NATIVE_FIXTURES;
-    prog = JacProgram();
-    ir = prog.compile(file_path=str(Path(base) / fixture), options=options);
-    errors = [e.pretty_print() for e in prog.errors_had] if prog.errors_had else [];
-    if errors and ir is not None and ir.gen.llvm_ir is not None {
-        import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
-        errors.extend(
-            issue.detail for issue in native_lowering_issues(str(ir.gen.llvm_ir))
-        );
-    }
-    assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    assert ir is not None , f"No module produced for {fixture}";
-    return ir;
+"""The decision step's verdict on a fixture: its MIR and demoted set, with no
+bytecode and no JIT."""
+def compile_mir(
+    fixture: str, fixture_dir: str = "", options: (CompileOptions | None) = None
+) -> KernelFixture {
+    return compile_native_ir(fixture, fixture_dir, options);
+}
+
+"""Compile a fixture expecting the kernel to refuse it; return the result so
+the caller can pin the diagnostic (E5092 names the refused construct)."""
+def compile_native_refused(
+    fixture: str, fixture_dir: str = "", options: (CompileOptions | None) = None
+) -> CompileResult {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    opts = options or CompileOptions(force_codespace="native", native_required=True);
+    opts.skip_native_engine = True;
+    result = kernel_compile_file(
+        str(Path(fixture_path(fixture, fixture_dir)).resolve()), opts, ["mir"]
+    );
+    assert not result.ok() , f"{fixture} compiled although native was required";
+    return result;
+}
+
+"""`jac check --native-coverage` on one file: the decision step's coverage
+row for every module the check reached."""
+def native_coverage_rows(path: str) -> dict[str, any] {
+    result = kernel_check_file(path, native_coverage=True);
+    return {row.path: row for row in result.coverage};
 }
 
 """Get a ctypes-callable function from a JIT engine."""
@@ -476,14 +705,43 @@ def get_func(eng: any, name: str, restype: type | None, *argtypes: type) -> any 
     return functype(addr);
 }
 
-"""Return True if the program emitted at least one alert with the given code."""
-def has_error_code(prog: any, code: str) -> bool {
-    for alrt in prog.errors_had {
+"""Return True if a kernel result, or a program that adopted one, carries at
+least one error with the given code."""
+def has_error_code(target: any, code: str) -> bool {
+    if hasattr(target, "errors") {
+        return code in error_codes(target);
+    }
+    for alrt in target.errors_had {
         if alrt.code is not None and alrt.code.code == code {
             return True;
         }
     }
     return False;
+}
+
+"""Return True if a kernel result carries at least one warning with the code."""
+def has_warning_code(result: (CompileResult | CheckResult), code: str) -> bool {
+    return code in warning_codes(result);
+}
+
+"""Every test case compiled into the loaded kernel."""
+def kernel_cases -> list[KernelTestCase] {
+    import from jaclang.project.kernel_call { kernel_tests }
+    return kernel_tests();
+}
+
+"""Run one kernel test case inside the kernel; fail with its message."""
+def run_kernel_case(case: KernelTestCase) {
+    import tempfile;
+    import from jaclang.project.kernel_call { call_kernel_tests }
+    with tempfile.TemporaryDirectory(prefix="jac-kernel-case-") as scratch {
+        outcomes = call_kernel_tests(case.suite, scratch, [case.name]);
+    }
+    assert len(outcomes) == 1 , f"the kernel ran {len(outcomes)} cases for {case.name}";
+    outcome = outcomes[0];
+    if not outcome.passed {
+        raise AssertionError(f"{case.suite}: {case.name}: {outcome.message}");
+    }
 }
 
 """Memory profiles a native test can build under.

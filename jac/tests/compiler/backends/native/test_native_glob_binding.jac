@@ -7,29 +7,22 @@ module walk order, declare no global for the other module's TABLE, and still
 find a re-exported global at the module that defines it.
 """
 
-import os;
+import ctypes;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support { compile_native, compile_native_ir, get_func }
 
-glob FIXTURE: str = str(
-         Path(__file__).resolve().parent / "fixtures" / "glob_binding" / "main.jac"
-     );
+glob FIXTURE_DIR: str = str(Path(__file__).resolve().parent / "fixtures" / "glob_binding");
 
 def module_globals(walk_order: str | None, name: str) -> list[str] {
-    prog = JacProgram();
     opts = CompileOptions(
-        force_codespace='native',
-        skip_native_engine=True,
-        native_module_walk_order=walk_order
+        force_codespace='native', native_module_walk_order=walk_order
     );
-    mod = prog.compile(file_path=FIXTURE, options=opts);
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors: {errors}";
-    assert mod.gen.llvm_ir is not None , "No IR emitted";
+    fx = compile_native_ir("main.jac", FIXTURE_DIR, opts);
+    assert fx.llvm_ir() , "No IR emitted";
     return [
         line
-        for line in str(mod.gen.llvm_ir).splitlines()
+        for line in fx.llvm_ir().splitlines()
         if line.startswith("@") and f".{name}\"" in line.split("=")[0]
     ];
 }
@@ -64,13 +57,9 @@ with entry {
 }
 """
         );
-        prog = JacProgram();
-        mod = prog.compile(
-            file_path=str(main),
-            options=CompileOptions(force_codespace='native', skip_native_engine=True)
-        );
-        assert not prog.errors_had , [str(e) for e in prog.errors_had];
-        text = str(mod.gen.llvm_ir);
+        text = compile_native_ir(
+            main.name, directory, CompileOptions(force_codespace='native')
+        ).llvm_ir();
     }
     loads = [
         line
@@ -105,19 +94,12 @@ with entry {
 }
 """
         );
-        prog = JacProgram();
-        mod = prog.compile(
-            file_path=str(main),
-            options=CompileOptions(force_codespace='native', skip_native_engine=True)
+        (eng, _fx) = compile_native(main.name, directory);
+        state_of = get_func(eng, "state_of", ctypes.c_int64, ctypes.c_int64);
+        assert state_of(8) == 11872 , (
+            f"STATE_OFFSET must be the platform variant's 11864, got {state_of(8) - 8}"
         );
-        assert not prog.errors_had , [str(e) for e in prog.errors_had];
-        text = str(mod.gen.llvm_ir);
     }
-    start = text.index("define i64 @");
-    start = text.index("state_of", start);
-    body = text[text.rindex("define", 0, start):];
-    body = body[:body.index("\n}")];
-    assert "11864" in body , body;
 }
 
 test "a global imported under an alias reads the exporting module's value" {

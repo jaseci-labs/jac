@@ -14,11 +14,11 @@ magic check, the probe proceeds to load the tag offset and returns whatever is
 there **as a class name** -- a wrong answer with no diagnostic, which is the
 same shape as the two silent divergences #8148 already fixed.
 
-So under headerless mode the probe is not emitted at all, and a read that
-would need it is refused. `__jac_str_len` already draws the line in exactly
+So under headerless mode the probe is not lowered at all, and a read that
+would need it is refused: its function is demoted. `__jac_str_len` already draws the line in exactly
 this place: it branches on headerless and falls back to `strlen` rather than
 consulting the header. A class name has no such fallback, so the answer is
-E5092.
+E5092 (a demotion when native is not required).
 
 What survives headerless mode is everything the header was never needed for:
 the class-name constant in vtable slot 0 (a slot inside the struct) and the
@@ -37,8 +37,8 @@ Refs #8148
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { KernelFixture, TESTS_DIR, compile_mir, compile_native, native_address }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "nogc"
@@ -49,17 +49,17 @@ glob FIXTURES = os.path.join(
 
 
 """Headerless: `--memory nogc` with nogc enforced, the mode with no rc header."""
-def _headerless_opts -> any {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    return CompileOptions(force_codespace='native', memory_profile="nogc");
+def _headerless_opts -> CompileOptions {
+    return CompileOptions(force_codespace="native", memory_profile="nogc");
 }
 
 
-"""Compile a fixture and hand back the program and its module, errors and all."""
-def _compile(fixture: str, options: any) -> tuple[any, ...] {
-    prog = JacProgram();
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), options=options);
-    return (prog, ir);
+"""`compile_native` under explicit options: kernel compile, then JIT the
+unit in this process."""
+def compile_native_with(
+    fixture: str, options: CompileOptions, fixture_dir: str = ""
+) -> tuple[any, KernelFixture] {
+    return compile_native(fixture, fixture_dir, options);
 }
 
 
@@ -71,28 +71,8 @@ def _get(eng: any, name: str) -> any {
 }
 
 
-"""True if the program emitted at least one alert with the given code."""
-def _has_code(prog: any, code: str) -> bool {
-    for alrt in prog.errors_had {
-        if alrt.code is not None and alrt.code.code == code {
-            return True;
-        }
-    }
-    return False;
-}
-
-
-def _ir_text(ir: any) -> str {
-    return str(ir.gen.llvm_ir) if (ir is not None and ir.gen.llvm_ir) else "";
-}
-
-
 test "headerless mode keeps the class-name reads that need no header" {
-    (prog, ir) = _compile(STATIC_FIXTURE, _headerless_opts());
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {STATIC_FIXTURE}: {errors}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , "no native engine for the headerless fixture";
+    (eng, _fx) = compile_native_with(STATIC_FIXTURE, _headerless_opts(), FIXTURES);
 
     vt = _get(eng, "vtable_rank");
     assert vt(1) == 1 , (
@@ -103,42 +83,35 @@ test "headerless mode keeps the class-name reads that need no header" {
     assert _get(eng, "lone_rank")(0) == 3 , (
         "a class with no hierarchy has its name frozen at compile time"
     );
-    assert PROBE_SYMBOL not in _ir_text(ir) , (
-        f"'{PROBE_SYMBOL}' was emitted for reads that resolve statically; "
+    fx = compile_mir(STATIC_FIXTURE, FIXTURES, _headerless_opts());
+    assert not fx.demoted() , str(fx.demoted());
+    assert f"@{PROBE_SYMBOL}" not in fx.mir() , (
+        f"'{PROBE_SYMBOL}' was lowered for reads that resolve statically; "
         "neither of these may start depending on a header to answer"
     );
 }
 
 
 test "an open receiver is refused under headerless mode, not answered" {
-    (prog, ir) = _compile(OPEN_FIXTURE, _headerless_opts());
-    assert not prog.errors_had , (
-        "the refused read is owned by erased_rank, which must demote to a "
-        f"seam: got {[str(e) for e in prog.errors_had]}"
-    );
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "erased_rank" not in layout.functions , (
+    fx = compile_mir(OPEN_FIXTURE, FIXTURES, _headerless_opts());
+    assert fx.is_demoted("erased_rank") , (
         "a type-erased receiver's class name can only come from the header, "
         "which headerless mode does not have, so the reading function must "
-        "be demoted out of the native layout, never answered"
+        f"be demoted, never answered: demoted {fx.demoted()}"
     );
-    assert PROBE_SYMBOL not in _ir_text(ir) , (
-        f"'{PROBE_SYMBOL}' reached the IR for a refused read"
+    assert f"@{PROBE_SYMBOL}" not in fx.mir() , (
+        f"'{PROBE_SYMBOL}' reached the MIR for a refused read"
     );
 }
 
 
 test "the same open read answers under a gc mode that has headers" {
-    (prog, ir) = _compile(OPEN_FIXTURE, native_force_opts());
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , (
-        f"the open fixture must lower where a header exists: {errors}"
+    fx = compile_mir(OPEN_FIXTURE, FIXTURES);
+    assert not fx.is_demoted("erased_rank") , (
+        f"the open fixture must lower where a header exists: {fx.demoted()}"
     );
-    assert PROBE_SYMBOL in _ir_text(ir) , (
-        f"'{PROBE_SYMBOL}' is how this read is answered when a header exists"
-    );
-    assert _get(ir.gen.native_engine, "erased_rank")(0) == 1 , (
+    (eng, _jit) = compile_native(OPEN_FIXTURE, FIXTURES);
+    assert _get(eng, "erased_rank")(0) == 1 , (
         "the erased slot holds a Marked and the header stamp says so -- so "
         "the refusal above is specific to headerless mode, not a lowering gap"
     );

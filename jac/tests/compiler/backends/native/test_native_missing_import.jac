@@ -17,25 +17,14 @@ check reads the bound module's complete symbol table and does not.
 import subprocess;
 import from pathlib { Path }
 import tempfile;
-import from tests.support { jac_command }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support { error_codes, jac_command, kernel_check_file, warning_codes }
 
 glob FIXTURES: Path = Path(__file__).resolve().parent / "fixtures";
 
 """The diagnostic codes a check-only compile of `fixture` reports."""
 def check_codes(fixture: str) -> list[str] {
-    prog = JacProgram();
-    prog.compile(
-        file_path=str(FIXTURES / fixture), options=CompileOptions(no_cgen=True)
-    );
-    codes: list[str] = [];
-    for alert in list(prog.errors_had) + list(prog.warnings_had) {
-        if alert.code is not None {
-            codes.append(alert.code.code);
-        }
-    }
-    return codes;
+    result = kernel_check_file(str(FIXTURES / fixture));
+    return error_codes(result) + warning_codes(result);
 }
 
 test "the checker reports a missing imported name as a warning" {

@@ -12,7 +12,7 @@ import ctypes;
 import from tests.support { compile_native, get_func }
 
 test "int of an any-typed value follows Python" {
-    (eng, _ir) = compile_native("int_from_any.jac");
+    (eng, _fx) = compile_native("int_from_any.jac");
     assert get_func(eng, "int_of_boxed_int", ctypes.c_int64)() == 42;
     assert get_func(eng, "int_of_boxed_bool", ctypes.c_int64)() == 10;
     assert get_func(eng, "int_of_boxed_float", ctypes.c_int64)() == -697;

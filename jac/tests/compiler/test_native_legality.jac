@@ -6,8 +6,7 @@ codespace has is recorded on the typed module as a requirement or a refusal,
 and the placement pass reads those to place each top-level element. The tree
 it placed is the tree every backend reads: nothing types the module again. A
 refusal only the backend can see places the module on the server in place,
-before the Python backend runs. A backend crash is none of these: it is a
-compiler error."""
+before the Python backend runs."""
 
 import os;
 import tempfile;
@@ -498,39 +497,6 @@ test "a native-only construct in code that cannot be placed native is an error" 
         str(e) for e in prog.errors_had
     ]}";
     assert "cannot be placed native" in (unmet[0].help_text or "");
-}
-
-test "a backend crash is a compiler error, never a placement decision" {
-    import from unittest.mock { patch }
-    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
-    real_body: any = NaIRGenPass._codegen_body;
-    calls: list[int] = [];
-    def crash_once(this: NaIRGenPass, *args: any) {
-        calls.append(1);
-        if len(calls) == 1 {
-            raise RuntimeError("boom");
-        }
-        real_body(this, *args);
-    }
-    with patch.object(NaIRGenPass, "_codegen_body", crash_once) {
-        (prog, mod, path, parses) = compile_native_default(CLEAN_SRC);
-    }
-    crashes = [
-        e
-        for e in prog.errors_had
-        if e.code is not None and e.code.code == "E9003"
-    ];
-    assert crashes , f"a backend crash must surface as E9003: {[
-        str(e) for e in prog.errors_had
-    ]}";
-    assert "boom" in str(crashes[0]);
-    assert not [
-        e
-        for e in prog.errors_had
-        if e.code is not None and e.code.code == "E5092"
-    ] , "a crash must not read as a refusal";
-    assert mod.decided_codespace == 'native' , "a crash must not move the module";
-    assert mod.gen.py_recipe is None , "a crashed module must keep nothing to run";
 }
 
 test "a native type alias is something the native library provides" {

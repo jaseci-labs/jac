@@ -19,7 +19,7 @@ this object model, so the read found a real, deliberately stamped `TypeBase`,
 and the walk has been live and discriminating all along -- `Leaf` and `Pair`
 below were already acyclic, `SelfRef`, `RingA`, `RingB` and `BoxedRing`
 already cyclic. Correcting the walk therefore changes no verdict, and none of
-the three things `is_acyclic` gates in `na_ir_gen_pass` move: not
+the three things `is_acyclic` gated in the native code generator moved: not
 `_emit_trace_fn`'s collector registration, not stack promotion, and not
 by-value field inlining. The feared early free was not on the table.
 

@@ -19,8 +19,15 @@ The defining module's layout now replaces any copy that reached the consumer
 first, so adoption and emission agree on one object.
 """
 
+import ctypes;
 import os;
-import from tests.support { TESTS_DIR, by_source_name, native_force_opts }
+import from tests.support {
+    TESTS_DIR,
+    by_source_name,
+    compile_native,
+    get_func,
+    native_force_opts
+}
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.passes.layout_pass { get_layout_registry }
@@ -89,20 +96,11 @@ test "a consumer lays out a reloaded subclass with its base's slots" {
     assert slots_of(defining.fields) == SLOTS;
 }
 
-"""The body of `Pickup`'s struct type in `mod`'s lowered IR."""
-def pickup_struct(mod: uni.Module) -> str {
-    for line in str(mod.gen.llvm_ir or "").split("\n") {
-        if line.startswith('%"Pickup$') and " = type " in line {
-            return line.split(" = type ", 1)[1].strip();
-        }
-    }
-    return "";
-}
-
-test "the consumer emits the struct its sibling importer emits" {
-    (prog, level, save) = compile_after_reload();
-    sibling = pickup_struct(level);
-    consumer = pickup_struct(save);
-    assert sibling == "{i8**, i64, i64, double, i1, double, i8*}" , sibling;
-    assert consumer == sibling , f"consumer {consumer} vs sibling {sibling}";
+test "the consumer writes a reloaded subclass's own fields into its own slots" {
+    # Entity's pos=7 and yaw=1.5 must survive `deactivate` writing Pickup's
+    # `active` and `respawn`: a consumer laid out from a stale, unadopted
+    # layout writes them over the base's slots.
+    (eng, _fx) = compile_native(SAVE);
+    probe = get_func(eng, "deactivate_probe", ctypes.c_int64);
+    assert probe() == 7 * 10000 + 15 * 100 + 9 * 10 + 0;
 }

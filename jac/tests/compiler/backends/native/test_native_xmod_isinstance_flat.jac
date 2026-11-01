@@ -19,60 +19,17 @@ answers below are what proves the identity reaches the right class rather than
 merely existing.
 """
 
-import contextlib;
 import ctypes;
-import io;
-import os;
-import from tests.support { TESTS_DIR, get_func, native_force_opts }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
-
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     );
-
-"""Compile a .jac fixture and return the JIT engine plus the compiled module.
-
-`expect_demotions` frees the fixture that is supposed to refuse a site from the
-clean-compile assertion, so a refusal that ever starts riding on the program
-does not read as a broken fixture.
-"""
-def compile_native(
-    fixture: str, expect_demotions: bool = False
-) -> tuple[ExecutionEngine, uni.Module] {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    if not expect_demotions {
-        assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    }
-    eng = ir.gen.native_engine;
-    assert isinstance(eng, ExecutionEngine) , f"No native engine produced for {fixture}";
-    return (eng, ir);
-}
-
-"""What a fixture's compile reported about seams, as the developer sees it.
-
-Native seams are written to stderr as they are found rather than collected on
-the program, so this captures the stream the same way a build would show it.
-"""
-def seam_report(fixture: str) -> str {
-    buf = io.StringIO();
-    prog = JacProgram();
-    with contextlib.redirect_stderr(buf) {
-        prog.compile(
-            file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
-        );
-    }
-    return buf.getvalue();
-}
+import from tests.support { compile_mir, compile_native, get_func }
 
 test "isinstance against a vtable-less imported class lowers natively" {
-    seams = seam_report("xmod_isinstance_flat_main.jac");
-    assert "isinstance" not in seams , f"a flat imported class did not lower: {seams}";
+    fx = compile_mir("xmod_isinstance_flat_main.jac");
+    refused = {
+        symbol: reason
+        for (symbol, reason) in fx.demoted().items()
+        if "isinstance" in reason
+    };
+    assert not refused , f"a flat imported class did not lower: {refused}";
 }
 
 test "a flat imported class matches itself and nothing else" {
@@ -143,10 +100,10 @@ test "an ancestor chain that leaves the unit is continued, and the check answers
     # continues the recorded chain through `LibKid`'s own recorded chain
     # once the imported registry is merged, so the linearization is whole,
     # the check lowers, and the honest pin is the ANSWER, not the refusal.
-    seams = seam_report("xmod_isinstance_deep_main.jac");
-    assert "chk_deep" not in seams , (
+    verdict = compile_mir("xmod_isinstance_deep_main.jac");
+    assert not verdict.is_demoted("chk_deep") , (
         f"chk_deep refused again -- the linearization repair stopped "
-        f"continuing the chain: {seams}"
+        f"continuing the chain: {verdict.reason('chk_deep')}"
     );
     (eng, _) = compile_native("xmod_isinstance_deep_main.jac");
     f = get_func(eng, "chk_deep", ctypes.c_int64, ctypes.c_int64);

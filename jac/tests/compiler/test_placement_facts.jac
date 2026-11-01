@@ -130,7 +130,6 @@ test "placement_pins imports stay within the documented allowlist" {
         "jaclang/compiler/driver/impl/program.impl.jac",
         "jaclang/compiler/driver/jir.jac",
         "jaclang/compiler/driver/impl/jir.impl.jac",
-        "jaclang/compiler/driver/na_coverage.jac",
         "jaclang/compiler/native_scope.jac",
         "jaclang/project/modresolver.jac",
         "jaclang/compiler/passes/impl/boundary_analysis_pass.impl.jac",
@@ -205,7 +204,7 @@ test "native_only names the modules with no bytecode meaning" {
     # The kernel roots import C symbols; the native standard library lives
     # under runtime/na_stdlib. Neither is ever bytecoded.
     assert native_only(_pkg_path("compiler", "jc_unit.jac"));
-    assert native_only(_pkg_path("compiler", "jc_materialize.jac"));
+    assert native_only(_pkg_path("dist", "fused", "embed.jac"));
     assert native_only(_pkg_path("runtime", "na_stdlib", "_bz2_native.jac"));
     assert native_only(_pkg_path("runtime", "na_stdlib", "zlib.jac"));
     # A frontend module in the kernel's roster is bytecode and native at once,
@@ -221,7 +220,7 @@ test "native_only names the modules with no bytecode meaning" {
 test "native_unit follows native_only, the kernel roster and the native-unit compile" {
     # Native-only modules are native units under any compile.
     assert native_unit(_pkg_path("compiler", "jc_unit.jac"));
-    assert native_unit(_pkg_path("compiler", "jc_materialize.jac"));
+    assert native_unit(_pkg_path("dist", "fused", "embed.jac"));
     assert native_unit(_pkg_path("runtime", "na_stdlib", "_bz2_native.jac"));
     assert native_unit(_pkg_path("compiler", "jc_unit.jac"), native_unit_compile=False);
     # A NATIVE_SCOPE frontend module is a native unit only under a

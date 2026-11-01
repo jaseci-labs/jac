@@ -81,3 +81,9 @@ def call_compile(request: CompileRequest) -> CompileResult;
 def call_check(request: CheckRequest) -> CheckResult;
 
 def open_kernel_session(project_root: str) -> any;
+
+def kernel_tests -> list[KernelTestCase];
+
+def call_kernel_tests(
+    suite: str, scratch: str, names: (list[str] | None) = None
+) -> list[KernelTestOutcome];

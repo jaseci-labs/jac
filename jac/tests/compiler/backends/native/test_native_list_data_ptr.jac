@@ -10,57 +10,36 @@ non-list operand is a type error.
 """
 
 import ctypes;
-import os;
-import tempfile;
 import from tests.support {
+    compile_mir,
     compile_native,
-    compile_native_ir,
+    diagnostics_text,
+    error_codes,
     get_func,
-    NATIVE_FIXTURES
+    kernel_compile_source
 }
-import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
-import from jaclang.compiler.frontend.diagnostics { DiagnosticInfo, E1053 }
+import type from jaclang.compiler.kernel_api { NativeDemotion }
 
 glob FIXTURE: str = "list_data_ptr.jac",
      REFUSALS: str = "list_data_ptr_refusals.jac";
 
-"""Compile `source` in a tempdir; return the (code, message) of each error."""
-def compile_errors(source: str) -> list[tuple[DiagnosticInfo | None, str]] {
-    with tempfile.TemporaryDirectory() as tmp {
-        src = os.path.join(tmp, "list_data_probe.jac");
-        with open(src, "w") as f {
-            f.write(source);
+"""The refusal fixture's demotions, by Jac-level function name."""
+def refusals -> dict[str, NativeDemotion] {
+    fx = compile_mir(REFUSALS);
+    by_symbol = {demotion.symbol: demotion for demotion in fx.unit.demoted};
+    found: dict[str, NativeDemotion] = {};
+    for name in ["make", "objects_list", "str_list", "call_result", "literal_list"] {
+        demotion = by_symbol.get(fx.symbol(name));
+        if demotion is not None {
+            found[name] = demotion;
         }
-        prog = JacProgram();
-        prog.compile(file_path=src, options=CompileOptions(force_codespace="native"));
-        return [(e.code, str(e)) for e in prog.errors_had];
     }
-}
-
-"""The refusal fixture's demotion seams, by function."""
-def refusal_seams -> dict[str, str] {
-    path = os.path.join(NATIVE_FIXTURES, REFUSALS);
-    na_coverage_begin();
-    try {
-        JacProgram().compile(
-            file_path=path, options=CompileOptions(force_codespace="native")
-        );
-    } finally {
-        coverage = na_coverage_end();
-    }
-    rec = coverage.get(os.path.realpath(path));
-    seams: dict[str, str] = {};
-    for seam in ((rec.get("seams") or []) if rec is not None else []) {
-        text = str(seam);
-        seams[text.split(": ")[0]] = text;
-    }
-    return seams;
+    return found;
 }
 
 test "writes through the buffer are the list's elements, and the other way" {
-    (eng, _mod) = compile_native(FIXTURE);
+    (eng, _fx) = compile_native(FIXTURE);
     for (name, x, want) in [
         ("int_roundtrip", 4, 41),
         ("float_roundtrip", 4, 18),
@@ -74,42 +53,41 @@ test "writes through the buffer are the list's elements, and the other way" {
     }
 }
 
-test "the call lowers to a load of the list's data field" {
-    text = str(compile_native_ir(FIXTURE).gen.llvm_ir);
-    lines = [line.strip() for line in text.splitlines()];
-    # field 2 of `{ len, cap, data* }`, loaded and turned into an integer
-    assert any(
-        '%"list.data.pp" = getelementptr' in line and "i32 0, i32 2" in line
-        for line in lines
-    ) , "no GEP of the list's data field";
-    assert any(line.startswith('%"list.data.p" = load') for line in lines);
-    assert any(line.startswith('%"list.data.i64" = ptrtoint') for line in lines);
-    # the intrinsic is lowered, never called
-    assert not any("__list_data_ptr" in line for line in lines) , "a call of __list_data_ptr was left in the IR";
+test "the intrinsic lowers inline and is never called" {
+    fx = compile_mir(FIXTURE);
+    assert not fx.demoted() , str(fx.demoted());
+    assert "@__list_data_ptr" not in fx.mir() , "a call of __list_data_ptr was left in the MIR";
 }
 
 test "a list of objects or strings is refused: its elements are reference counted" {
-    seams = refusal_seams();
+    found = refusals();
     for name in ["objects_list", "str_list"] {
-        seam = seams.get(name, "");
-        assert "[E5095]" in seam and "holds managed elements" in seam , f"{name}: {seams}";
+        demotion = found.get(name);
+        assert demotion is not None , f"{name}: {found}";
+        assert demotion.code == "E5095" and "__list_data_ptr" in demotion.reason , (
+            f"{name}: {demotion.code} {demotion.reason}"
+        );
     }
 }
 
 test "a temporary list is refused: it is freed with the statement" {
-    seams = refusal_seams();
+    found = refusals();
     for name in ["call_result", "literal_list"] {
-        seam = seams.get(name, "");
-        assert "[E5095]" in seam
-            and "a temporary list is freed with the statement" in seam , f"{name}: {seams}";
+        demotion = found.get(name);
+        assert demotion is not None , f"{name}: {found}";
+        assert demotion.code == "E5095" and "__list_data_ptr" in demotion.reason , (
+            f"{name}: {demotion.code} {demotion.reason}"
+        );
     }
     # the function that makes the temporary lowers: only the call site is refused
-    assert "make" not in seams , seams;
+    assert "make" not in found , str(found);
 }
 
 test "a non-list operand is a type error" {
-    errors = compile_errors(
-        "def probe(x: int) -> int { return __list_data_ptr(x); }\n"
+    result = kernel_compile_source(
+        "def probe(x: int) -> int { return __list_data_ptr(x); }\n",
+        "list_data_probe.jac",
+        CompileOptions(force_codespace="native")
     );
-    assert any(code is E1053 for (code, _msg) in errors) , errors;
+    assert "E1053" in error_codes(result) , diagnostics_text(result);
 }
