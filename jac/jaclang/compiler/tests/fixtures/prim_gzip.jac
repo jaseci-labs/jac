@@ -1,6 +1,6 @@
 """Bundled native ``gzip`` cross-backend equivalence fixture (#6978 Phase 2).
 
-The SAME ``import from gzip { compress, decompress }`` binds CPython's ``gzip``
+The SAME ``import from gzip { compress, decompress }`` binds Python's ``gzip``
 on the sv (Python) backend and the bundled ``na_stdlib/gzip.jac`` Mechanism-B
 module -- a pure-Jac surface that frames the raw DEFLATE body of the existing
 ``zlib`` floor with the RFC 1952 gzip header/CRC-32/ISIZE wrapper (no new FFI) --
@@ -9,13 +9,13 @@ on the na (native LLVM) backend.
 ``mtime=0`` is pinned on both sides so the 10-byte header is deterministic and
 whole streams compare byte-for-byte (poly digest + exact length + XFL byte, at
 levels 0/1/6/9 and the default). ``decompress`` round-trips (including a
-level-0 stored-block stream), concatenates multi-member input like CPython
+level-0 stored-block stream), concatenates multi-member input like Python
 (a large leading member whose output far exceeds the last member's ISIZE
 hint exercises the streaming inflater's geometric growth path),
 handles empty and header-flagged (FEXTRA/FNAME/FCOMMENT/FHCRC) input
 identically, and the error paths agree -- bad magic, a truncated stream, a
 bare header glued onto a trailer, a corrupt body, a bad CRC, a bad ISIZE, and
-trailing garbage all raise on both backends (compared as flags: CPython raises
+trailing garbage all raise on both backends (compared as flags: Python raises
 ``gzip.BadGzipFile`` / ``EOFError`` / ``zlib.error`` where the native surface
 raises ``ValueError``, and native exception messages are not compared across
 the JIT boundary). The flagged inputs are hand-spliced the same way on both

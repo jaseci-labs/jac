@@ -274,8 +274,8 @@ test "MalformedJacTomlError keeps its identity and its tomllib base" {
 
 # Two passes asked the running interpreter what names exist -- `dir(builtins)`
 # for the undefined-name check, `dir(TestCase())` for the assert stubs a
-# `test` block gets. Both are now tables generated from CPython 3.14. These
-# are the drift alarms: if a CPython upgrade changes either surface, they
+# `test` block gets. Both are now tables generated from Python 3.14. These
+# are the drift alarms: if an interpreter upgrade changes either surface, they
 # fail here with the exact delta, and the tables get regenerated.
 test "the frozen builtins table matches the running interpreter" {
     import builtins;

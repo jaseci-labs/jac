@@ -2,7 +2,7 @@
 
 A negative repeat count fed a negative size to the allocator (heap
 corruption); counting an empty needle never advanced its scan (infinite
-hang). CPython: n <= 0 repeats give "", count("") gives len + 1.
+hang). Python: n <= 0 repeats give "", count("") gives len + 1.
 """
 
 def rep(n: int) -> str {

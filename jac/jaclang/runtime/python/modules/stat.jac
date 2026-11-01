@@ -1,6 +1,6 @@
 """File mode predicates, permission strings and stat constants.
 
-Derived from CPython 3.14.6 Modules/_stat.c; see ../LICENSE.cpython. File type
+Derived from Python 3.14.6 Modules/_stat.c; see ../LICENSE.cpython. File type
 and permission bits are POSIX and identical on every supported platform; the
 BSD file flags that differ live in stat_platform.jac and its per-OS variants.
 """

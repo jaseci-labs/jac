@@ -1,7 +1,7 @@
 """Cross-backend structural match pattern equivalence (#7593 item 7).
 
 Sequence, star, mapping, and class (MatchArch) patterns must produce
-CPython-identical results on the native backend. The py defs are the
+Python-identical results on the native backend. The py defs are the
 Python reference; both sides cast captures `(x as T)` because match
 captures type as Unknown in the checker and na-block modules run the
 strict native type schedule over the whole module. The cl defs mirror the
@@ -10,7 +10,7 @@ reference set now that the ecmascript backend lowers MatchStmt
 
 The `collections` import below is a deliberate server signal: it keeps
 the module out of whole-module native inference so the py defs stay a
-genuine CPython reference instead of coercing to native shims."""
+genuine Python reference instead of coercing to native shims."""
 
 import collections;
 

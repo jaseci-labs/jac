@@ -2,7 +2,7 @@
 
 Four layers: the fixture that pins every `del` form's graph and container
 effect, a differential harness that replays the Python-legal forms through
-CPython and asserts Jac agrees, the dead-anchor rules, and the backend-parity
+Python and asserts Jac agrees, the dead-anchor rules, and the backend-parity
 checks.
 """
 
@@ -48,7 +48,7 @@ test "del semantics fixture" {
 
 # ---------------------------------------------------------------------------
 # Differential harness: every Python-legal `del` form must observably agree
-# with CPython. The body of each case is one source text shared verbatim by
+# with Python. The body of each case is one source text shared verbatim by
 # both languages; only the import prelude and the `with entry` wrapper differ.
 # ---------------------------------------------------------------------------
 obj DelCase {
@@ -129,7 +129,7 @@ glob DEL_CASES: list[DelCase] = [
          )
      ];
 
-"""Run a snippet through CPython and return its stdout."""
+"""Run a snippet through Python and return its stdout."""
 def run_py_src(src: str) -> str {
     old = sys.stdout;
     buf = io.StringIO();
@@ -142,7 +142,7 @@ def run_py_src(src: str) -> str {
     return buf.getvalue();
 }
 
-test "del agrees with CPython on every Python-legal target" {
+test "del agrees with Python on every Python-legal target" {
     for dc in DEL_CASES {
         py_src = f"{dc.py_prelude}\n{dc.body}\nprint({dc.probe})\n";
         jac_src = f"{dc.jac_prelude}\nwith entry {{\n{dc.body}\n"
@@ -150,7 +150,7 @@ test "del agrees with CPython on every Python-legal target" {
         expected = run_py_src(py_src);
         (out, err, rc) = run_jac_src(jac_src);
         assert rc == 0 , f"[{dc.name}] jac run failed:\n{jac_src}\n{err}";
-        assert out == expected , f"[{dc.name}] jac {out!r} != cpython {expected!r}\n{jac_src}";
+        assert out == expected , f"[{dc.name}] jac {out!r} != python {expected!r}\n{jac_src}";
     }
 }
 

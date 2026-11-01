@@ -1,6 +1,6 @@
 """Bundled native `uuid` cross-backend equivalence fixture (#6978 Phase 1).
 
-The SAME `import uuid` binds CPython's `uuid` on the sv (Python) backend and the
+The SAME `import uuid` binds Python's `uuid` on the sv (Python) backend and the
 bundled `na_stdlib/uuid.jac` module -- a pure-Jac RFC 4122/9562 surface over
 OpenSSL's `RAND_bytes` (the `_csprng_native.jac` floor) and the bundled
 `hashlib` -- on the na (native LLVM) backend.

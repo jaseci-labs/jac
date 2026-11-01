@@ -1,6 +1,6 @@
 """Mixed complex-scalar operator equivalence fixture.
 
-CPython promotes a numeric operand against `complex` through the reflected
+Python promotes a numeric operand against `complex` through the reflected
 slot ((1+2j) + 1, 3 - 1j, ...); the native backend lowers the same shape by
 boxing the scalar operand into a complex first. ES/JS has no comparable
 lowering and opts out (returns {}).

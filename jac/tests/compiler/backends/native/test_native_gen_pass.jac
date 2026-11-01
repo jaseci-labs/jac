@@ -237,7 +237,7 @@ test "arithmetic" {
     _arithmetic__context_isolation_native_ir_contains_function(_eng, _ir);
 }
 
-# Regression: CPython floor semantics for negative //, %, and divmod on native.
+# Regression: Python floor semantics for negative //, %, and divmod on native.
 test "negative floor divmod" {
     (eng, _) = compile_native("neg_divmod.jac");
     fd = get_func(eng, "floordiv", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
@@ -893,11 +893,11 @@ test "strings" {
     _strings__strings_for_in_str_count(_eng, _ir);
 }
 
-# str(float) must be CPython's shortest round-trip repr, not %g (#6978 0.3).
+# str(float) must be Python's shortest round-trip repr, not %g (#6978 0.3).
 # Every value below is compared byte-for-byte against Python's own repr(), so
 # fixed vs. exponential notation, the trailing `.0`, -0.0, and inf/nan spelling
 # are all held to sv parity.
-test "float repr shortest round-trip matches CPython (na == sv) (#6978 0.3)" {
+test "float repr shortest round-trip matches Python (na == sv) (#6978 0.3)" {
     (eng, _) = compile_native("float_repr.jac");
     f = get_func(eng, "frepr", ctypes.c_char_p, ctypes.c_double);
     cases = [
@@ -5964,7 +5964,7 @@ test "cross-pathway: glob scoping is identical in the na and sv pathways" {
     sv_results = [int(tok) for tok in sv_out.split()];
 
     assert sv_results == [5, 0, 99, 99] , (
-        f"sv pathway diverged from CPython scoping: {sv_results}"
+        f"sv pathway diverged from Python scoping: {sv_results}"
     );
     assert na_results == sv_results , (
         f"native pathway diverges from sv: na={na_results} sv={sv_results}. "

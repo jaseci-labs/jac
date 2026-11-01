@@ -1,7 +1,7 @@
 """@contextlib.contextmanager on functions and on a decl/impl method.
 
 Each shape records what it saw in `EVENTS` and prints it, so the native
-binary's output is diffed line-for-line against CPython's `contextlib`:
+binary's output is diffed line-for-line against Python's `contextlib`:
 enter/exit around a plain body, a value bound by `as`, an exception from
 the body running the generator's `finally` and propagating, an `except` in
 the generator swallowing it (and not swallowing another type), early

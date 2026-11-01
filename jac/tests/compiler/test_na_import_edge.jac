@@ -5,7 +5,7 @@ to a generated `__na_bind` stub (lazy wasm instantiation via @jac/wasm_host),
 records a typed cl -> na InteropBinding in the interop manifest so the build
 emits /static/<stem>.wasm, and compiles to nothing on the Python side -- a
 plain import of a native module from server code is the sv -> na ctypes
-crossing and executes the module under CPython, which is exactly what the
+crossing and executes the module under Python, which is exactly what the
 client edge exists to avoid (jaclang.org DOGFOOD A2). The client side of the
 edge is placement-inferred; these tests pin the host module client via
 [placement.pins] the way a migrated project would.
@@ -132,7 +132,7 @@ test "native import records typed cl->na bindings in the interop manifest" {
 test "native import compiles to nothing on the python side" {
     mod = compile_host();
     assert "kernel" not in generated_python(mod.gen) , (
-        "the client->native import must be inert under CPython; only a plain"
+        "the client->native import must be inert under Python; only a plain"
         " server import of a native module means the ctypes crossing"
     );
 }
@@ -202,7 +202,7 @@ test "plain import of a native module from client code takes the na edge" {
         f"plain native import must drive wasm emission; got: {targets}"
     );
     assert "kernel" not in generated_python(mod.gen) , (
-        "the inferred na edge must be inert under CPython, exactly like the"
+        "the inferred na edge must be inert under Python, exactly like the"
         " server-pinned form"
     );
 }

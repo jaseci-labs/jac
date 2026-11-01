@@ -1,4 +1,4 @@
-"""The escape-warning inputs JacPython chooses, against CPython 3.14.
+"""The escape-warning inputs JacPython chooses, against Python 3.14.
 
 Two pieces are decided here rather than by the runtime: which escapes a
 bytes literal accepts, and which line the warning names. The warning
@@ -6,7 +6,7 @@ itself goes through the runtime's `warn` hook, so the wiring is covered
 by the JacPython oracle in the passes-native chunk; what is checked here
 is the arithmetic and the set.
 
-CPython 3.14 warns once per literal, at the line the first invalid
+Python 3.14 warns once per literal, at the line the first invalid
 escape sits on, not the line the literal opens on (3.12 named the
 opening line, so the reference has to be 3.14). A bytes literal takes
 the str escapes minus the three that name a code point.

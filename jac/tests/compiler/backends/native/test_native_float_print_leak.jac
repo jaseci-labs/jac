@@ -28,7 +28,7 @@ import from pathlib { Path }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
-test "floats render like CPython under every memory profile" {
+test "floats render like Python under every memory profile" {
     assert_native_identity(os.path.join(FIXTURES, "float_text_values.jac"));
 }
 

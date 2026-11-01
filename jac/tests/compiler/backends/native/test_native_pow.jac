@@ -4,7 +4,7 @@ Regression coverage for the power-lowering seam in
 `na_ir_gen_pass.impl/math.impl.jac` and the `int ** int` type contract in
 `compiler/types/operations.jac`. Each case compiles a fixture that
 previously lowered to invalid/unsound IR and asserts the JIT result against
-CPython semantics: literal & dynamic exponents, builtin `pow`, `**=`, the
+Python semantics: literal & dynamic exponents, builtin `pow`, `**=`, the
 fixed-width i32 kernel, float power, and the zero-base ZeroDivisionError.
 """
 
@@ -66,7 +66,7 @@ def compile_and_check(fixture_name: str) -> JacProgram {
     return program;
 }
 
-# int ** non-negative literal stays int and matches CPython.
+# int ** non-negative literal stays int and matches Python.
 test "pow: int ** non-negative literal is int" {
     (eng, _) = pow_semantics_engine();
     get_func(eng, "jac_entry", None)();

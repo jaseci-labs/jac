@@ -1,9 +1,8 @@
 """Generate the OpenSSL constants and error tables of the native _ssl and _hashlib.
 
-CPython's Modules/_ssl.c and Modules/_hashopenssl.c read OpenSSL's macros
-(SSL_OP_ALL, NID_sha256, SN_sha256, OPENSSL_VERSION_NUMBER, ...) and _ssl.c
-includes a generated error table, Modules/_ssl_data_<version>.h, chosen by
-OPENSSL_VERSION_NUMBER. The Jac ports read both from generated files:
+The native _ssl and _hashlib read OpenSSL's macros (SSL_OP_ALL, NID_sha256,
+SN_sha256, OPENSSL_VERSION_NUMBER, ...) and _ssl reads OpenSSL's error library
+and reason mnemonics. Both come from generated files:
 
     jac run scripts/jacpython/gen_openssl.jac            # rewrite both files
     jac run scripts/jacpython/gen_openssl.jac --check    # fail on drift
@@ -12,15 +11,16 @@ The script configures the pinned OpenSSL of sources.json (the archive a
 JacPython build downloads) to generate its public headers, then:
 
 - jaclang/runtime/python/modules/openssl_constants.jac: every object-like
-  OpenSSL macro the C sources name, as an i64 (an integer constant
+  OpenSSL macro the ports name (scripts/jacpython/openssl_facts.jac), as an i64 (an integer constant
   expression, folded by the compiler and read back from its assembly), a str
   (a string literal) or a bool (a feature macro such as OPENSSL_NO_SSL3, True
-  when defined). A name the sources test with #ifdef / defined() that the
+  when defined). A name the ports test with #ifdef / defined() that the
   headers leave undefined is declared 0 or False and listed in UNDEFINED.
 - jaclang/runtime/python/modules/ssl_errors.jac: LIBRARY_CODES and
-  ERROR_CODES, the library_codes and error_codes tables of the _ssl_data
-  header _ssl.c's own #if selects for these headers, preprocessed so every
-  entry carries the values these headers define (or the header's fallback).
+  ERROR_CODES, every error library of include/openssl/err.h.in and every
+  reason of crypto/err/openssl.txt and openssl.ec, sorted by reason macro and
+  code; an entry carries the values these headers define, or the source
+  file's own numbers for a reason the headers leave undefined.
 """
 import argparse;
 import ast;
@@ -36,30 +36,13 @@ import tarfile;
 import tempfile;
 import textwrap;
 import from pathlib { Path }
-import from common {
-    BOOTSTRAP,
-    JAC,
-    RUNTIME,
-    archive_texts,
-    extract_tree,
-    format_jac,
-    pin,
-    write_or_check
-}
+import from common { BOOTSTRAP, JAC, RUNTIME, format_jac, write_or_check }
+import from openssl_facts { SOURCE_LINES }
 
 glob CONSTANTS_OUTPUT: Path = RUNTIME / "modules/openssl_constants.jac",
      ERRORS_OUTPUT: Path = RUNTIME / "modules/ssl_errors.jac",
      COMMAND: str = "scripts/jacpython/gen_openssl.jac",
-     # The C sources whose OpenSSL names the ports need.
-     SOURCES: list[str] = [
-         "Modules/_ssl.c",
-         "Modules/_ssl.h",
-         "Modules/_ssl/cert.c",
-         "Modules/_ssl/debughelpers.c",
-         "Modules/_ssl/misc.c",
-         "Modules/_hashopenssl.c"
-     ],
-     # What _ssl.c and _hashopenssl.c define before including OpenSSL.
+     # What the ports' C counterparts define before including OpenSSL.
      DEFINES: list[str] = ["OPENSSL_API_COMPAT 0x10101000L", "OPENSSL_NO_DEPRECATED 1"],
      # The OpenSSL headers the two modules include, in their order.
      HEADERS: list[str] = [
@@ -112,7 +95,7 @@ glob CONSTANTS_OUTPUT: Path = RUNTIME / "modules/openssl_constants.jac",
 # The pinned OpenSSL archive, from the source cache a JacPython build fills.
 def openssl_archive -> Path {
     pinned = json.loads((BOOTSTRAP / "sources.json").read_text())["openssl"];
-    path = JAC / ".python-build/jacpython/sources" / f"{pinned['sha256']}.tar.gz";
+    path = JAC / ".python-build/sources" / f"{pinned['sha256']}.tar.gz";
     if not path.is_file() {
         sys.exit(
             f"Pinned OpenSSL archive not found: {path}; run a JacPython build once"
@@ -146,7 +129,7 @@ def configure_target -> str {
     return TARGETS[key];
 }
 
-# Configure the pinned OpenSSL in `scratch` as build.sh does and generate its
+# Configure the pinned OpenSSL in `scratch` as vendored.sh does and generate its
 # public headers; returns the include directory.
 def openssl_include(scratch: Path) -> Path {
     with tarfile.open(openssl_archive()) as bundle {
@@ -224,54 +207,11 @@ def header_macros(
     return (objects, functions);
 }
 
-# The expansions of the sources' own macros that paste tokens
-# (ADD_AD_CONSTANT(CLOSE_NOTIFY) is SSL_AD_CLOSE_NOTIFY, ADD_STATS(number, ...)
-# calls SSL_CTX_sess_number), one line per call, so the pasted names are read
-# like any other.
-def pasted_calls(text: str) -> list[str] {
-    joined = re.sub(r"\\\n", " ", text);
-    expansions: list[str] = [];
-    for definition in re.finditer(
-        r"^\s*#\s*define\s+(\w+)\(([^)]*)\)(.*)$", joined, re.M
-    ) {
-        (name, parameters, body) = (
-            definition.group(1),
-            definition.group(2),
-            definition.group(3)
-        );
-        if "##" not in body {
-            continue;
-        }
-        names = [
-            p.strip()
-            for p in parameters.split(",")
-            if p.strip()
-        ];
-        for call in re.finditer(rf"\b{name}\(([^()]*)\)", joined) {
-            if call.start() >= definition.start() and call.start() < definition.end() {
-                continue;
-            }
-            arguments = [a.strip() for a in call.group(1).split(",")];
-            expansion = body;
-            for (parameter, argument) in zip(names, arguments) {
-                expansion = re.sub(
-                    rf"(?<!#)#\s*{parameter}\b", '"' + argument + '"', expansion
-                );
-                expansion = re.sub(rf"\b{parameter}\b", argument, expansion);
-            }
-            expansions.append(re.sub(r"\s*##\s*", "", expansion));
-        }
-    }
-    return expansions;
-}
-
-# The OpenSSL names the sources use, and those they test in #if conditions.
-# A function-like macro the sources call (SSL_set_tlsext_host_name) is ported
+# The OpenSSL names the ports use, and those they test in #if conditions.
+# A function-like macro the ports call (SSL_set_tlsext_host_name) is ported
 # as the call it expands to, so the names of its expansion, and of the
 # function-like macros in it, are used too.
-def source_names(
-    texts: dict[str, str], functions: dict[str, str]
-) -> tuple[list[str], list[str]] {
+def source_names(functions: dict[str, str]) -> tuple[list[str], list[str]] {
     used: list[str] = [];
     tested: list[str] = [];
     expanded: set[str] = set();
@@ -289,22 +229,17 @@ def source_names(
             expand(word);
         }
     }
-    for source in SOURCES {
-        text = re.sub(r"/\*.*?\*/|//[^\n]*", "", texts[source], flags=re.S);
-        text += "\n" + "\n".join(pasted_calls(text));
-        for line in text.splitlines() {
-            conditional = re.match(r"\s*#\s*(?:if|ifdef|ifndef|elif)\b(.*)", line);
-            for name in re.findall(rf"\b{PREFIXES}\b", line) {
-                if name not in used {
-                    used.append(name);
-                }
-                if conditional and name not in tested {
-                    tested.append(name);
-                }
+    for (conditional, names, words) in SOURCE_LINES {
+        for name in names {
+            if name not in used {
+                used.append(name);
             }
-            for word in re.findall(r"\b[A-Za-z_]\w*\b", line) {
-                expand(word);
+            if conditional and name not in tested {
+                tested.append(name);
             }
+        }
+        for word in words {
+            expand(word);
         }
     }
     used += [
@@ -404,9 +339,9 @@ def render_constants(
     lines = [
         f'"""OpenSSL {version} macros the native _ssl and _hashlib read.',
         "",
-        f"Generated by {COMMAND} from the pinned OpenSSL headers and the",
-        f"CPython {pin()['version']} sources that name them; do not edit. UNDEFINED",
-        "lists the names the sources test that these headers do not define.",
+        f"Generated by {COMMAND} from the pinned OpenSSL headers, for the names",
+        "scripts/jacpython/openssl_facts.jac records; do not edit. UNDEFINED",
+        "lists the names the ports test that these headers do not define.",
         '"""',
         ""
     ];
@@ -428,106 +363,82 @@ def render_constants(
 }
 
 # ------------------------------------------------------------- error tables
-# The library_codes and error_codes entries of the _ssl_data header _ssl.c
-# selects, preprocessed against the OpenSSL headers.
+# The error libraries and reasons of the OpenSSL tree whose headers are in
+# `headers_dir`: [(library, ERR_LIB_* code)] and [(mnemonic, library code,
+# reason code)], each code as these headers define it.
 def error_tables(
-    texts: dict[str, str], headers_dir: Path, compiler: list[str], scratch: Path
-) -> tuple[list[tuple[str, int]], list[tuple[str, int, int]], str] {
-    source = texts["Modules/_ssl.c"];
-    selection = re.search(
-        r"^#if \(OPENSSL_VERSION_NUMBER.*?^#endif\n", source, re.M | re.S
-    );
-    structs = re.search(
-        r"^struct py_ssl_error_code \{.*?^struct py_ssl_library_code \{.*?^\};\n",
-        source,
-        re.M | re.S
-    );
-    if selection is None or structs is None {
-        sys.exit("Modules/_ssl.c no longer has the _ssl_data selection this reads");
-    }
-    modules = scratch / "Modules";
-    modules.mkdir(exist_ok=True);
-    for (path, text) in texts.items() {
-        if path.startswith("Modules/_ssl_data") {
-            (scratch / path).write_text(text);
+    headers_dir: Path, macros: dict[str, str], compiler: list[str], scratch: Path
+) -> tuple[list[tuple[str, int]], list[tuple[str, int, int]]] {
+    tree = headers_dir.parent;
+    numbers: dict[str, int] = {};
+    for line in (tree / "include/openssl/err.h.in").read_text().splitlines() {
+        hit = re.search(r"#\s*define\W+(ERR_LIB_(\w+))\s+(\d+)", line);
+        if hit and hit.group(1) not in ("ERR_LIB_OFFSET", "ERR_LIB_MASK") {
+            numbers.setdefault(hit.group(2), int(hit.group(3)));
         }
     }
-    probe = modules / "tables.c";
-    probe.write_text(
-        "\n".join(prologue()) + "\n" + structs.group(0) + selection.group(0)
-    );
-    expanded = run(
-        compiler, ["-E", "-P", f"-I{headers_dir}", f"-I{modules}", str(probe)]
-    );
-    libraries = re.search(r"library_codes\[\]\s*=\s*\{(.*?)\};", expanded, re.S);
-    errors = re.search(r"error_codes\[\]\s*=\s*\{(.*?)\};", expanded, re.S);
-    if libraries is None or errors is None {
-        sys.exit("the preprocessed _ssl_data header has no library_codes/error_codes");
+    reasons: list[tuple[str, str, str, int]] = [];
+    for line in (tree / "crypto/err/openssl.txt").read_text().splitlines() {
+        hit = re.match(r"^((\w+?)_R_(\w+)):(\d+):", line);
+        if hit and "_F_" not in hit.group(1) {
+            reasons.append(
+                (hit.group(1), hit.group(2), hit.group(3), int(hit.group(4)))
+            );
+        }
     }
-    library_codes = [
-        (name, evaluate(code))
-        for (name, code) in re.findall(
-            r'\{\s*"(\w+)"\s*,\s*([^{}]+?)\s*\}', libraries.group(1)
+    for line in (tree / "crypto/err/openssl.ec").read_text().splitlines() {
+        hit = re.match(r"^R\s+((\w+)_R_(\w+))\s+(\d+)", line);
+        if hit {
+            reasons.append(
+                (hit.group(1), hit.group(2), hit.group(3), int(hit.group(4)))
+            );
+        }
+    }
+    # By reason macro, then code; equal keys keep their file order.
+    reasons = [
+        ordered[3]
+        for ordered in sorted(
+            (reason[0], reason[3], index, reason)
+            for (index, reason) in enumerate(reasons)
         )
     ];
-    error_codes = [
-        (name, evaluate(library), evaluate(reason))
-        for (name, library, reason) in re.findall(
-            r'\{\s*"(\w+)"\s*,\s*([^{},]+?)\s*,\s*([^{}]+?)\s*\}', errors.group(1)
-        )
+    probed = [f"ERR_LIB_{library}" for library in numbers]
+        + [reason[0] for reason in reasons];
+    values = integer_values(
+        [
+            (name, name)
+            for name in probed
+            if name in macros
+        ],
+        headers_dir,
+        compiler,
+        scratch
+    );
+    libraries = [
+        (library, values[f"ERR_LIB_{library}"])
+        for library in sorted(numbers)
+        if f"ERR_LIB_{library}" in values
     ];
-    return (
-        library_codes,
-        error_codes,
-        selected_header(headers_dir, compiler, scratch, selection.group(0))
-    );
-}
-
-# Which _ssl_data header the selection includes for these headers.
-def selected_header(
-    headers_dir: Path, compiler: list[str], scratch: Path, selection: str
-) -> str {
-    marked = re.sub(
-        r'#include "(_ssl_data_\w+\.h)"',
-        r'const char *__jac_selected = "\1";',
-        selection
-    );
-    probe = scratch / "selected.c";
-    probe.write_text("\n".join(prologue()) + "\n" + marked);
-    expanded = run(compiler, ["-E", "-P", f"-I{headers_dir}", str(probe)]);
-    hit = re.search(r'__jac_selected = "(_ssl_data_\w+\.h)"', expanded);
-    if hit is None {
-        sys.exit("no _ssl_data header is selected for these OpenSSL headers");
-    }
-    return hit.group(1);
-}
-
-# An integer constant expression of the preprocessed table: literals with C
-# suffixes, casts to integer types, parentheses and | + << operators.
-def evaluate(expression: str) -> int {
-    text = re.sub(
-        r"\(\s*(?:unsigned\s+)?(?:long\s+long|long|int|short|char)\s*\)", "", expression
-    );
-    text = re.sub(r"\b(0[xX][0-9a-fA-F]+|\d+)[uUlL]+\b", r"\1", text);
-    if not re.fullmatch(r"[\s0-9a-fA-FxX()|+<>]*", text) {
-        sys.exit(f"unexpected expression in the _ssl_data table: {expression}");
-    }
-    return int(eval(text, {"__builtins__": {}}, {}));
+    errors = [
+        (mnemonic, values[f"ERR_LIB_{library}"], values[macro])
+            if macro in values
+            else (mnemonic, numbers[library], code)
+        for (macro, library, mnemonic, code) in reasons
+    ];
+    return (libraries, errors);
 }
 
 def render_errors(
-    libraries: list[tuple[str, int]], errors: list[tuple[str, int, int]], header: str
+    libraries: list[tuple[str, int]], errors: list[tuple[str, int, int]]
 ) -> str {
     version = openssl_version();
     lines = [
-        f'"""The OpenSSL error names of the native _ssl, from CPython {pin()[
-            "version"
-        ]}',
-        f"Modules/{header}, as _ssl.c selects and preprocesses it against the",
-        f"OpenSSL {version} headers.",
+        f'"""The OpenSSL {version} error names of the native _ssl, from its',
+        "include/openssl/err.h.in, crypto/err/openssl.txt and crypto/err/openssl.ec,",
+        "with the codes its headers define.",
         "",
-        "LIBRARY_CODES is library_codes, (library name, ERR_LIB_* code);",
-        "ERROR_CODES is error_codes, (mnemonic, library, reason).",
+        "LIBRARY_CODES is (library name, ERR_LIB_* code);",
+        "ERROR_CODES is (mnemonic, library, reason).",
         "",
         f"Generated by {COMMAND}; do not edit. See ../LICENSE.cpython.",
         '"""',
@@ -554,17 +465,11 @@ with entry:__main__ {
     parser.add_argument("--check", action="store_true");
     args = parser.parse_args();
     compiler = shlex.split(args.cc);
-    texts = archive_texts(tuple(SOURCES) + ("Modules/_ssl_data", ));
-    for source in SOURCES {
-        if source not in texts {
-            sys.exit(f"{source} is not in the pinned archive");
-        }
-    }
     with tempfile.TemporaryDirectory() as directory {
         scratch = Path(directory);
         headers_dir = openssl_include(scratch / "openssl");
         (macros, functions) = header_macros(headers_dir, compiler, scratch);
-        (used, tested) = source_names(texts, functions);
+        (used, tested) = source_names(functions);
         flags: dict[str, bool] = {};
         strings: dict[str, str] = {};
         numeric: list[str] = [];
@@ -611,9 +516,7 @@ with entry:__main__ {
                 flags[name] = False;
             }
         }
-        (libraries, errors, header) = error_tables(
-            texts, headers_dir, compiler, scratch
-        );
+        (libraries, errors) = error_tables(headers_dir, macros, compiler, scratch);
     }
     current = write_or_check(
         CONSTANTS_OUTPUT,
@@ -628,7 +531,7 @@ with entry:__main__ {
     );
     current = write_or_check(
         ERRORS_OUTPUT,
-        format_jac(render_errors(libraries, errors, header), ERRORS_OUTPUT),
+        format_jac(render_errors(libraries, errors), ERRORS_OUTPUT),
         args.check,
         COMMAND
     )

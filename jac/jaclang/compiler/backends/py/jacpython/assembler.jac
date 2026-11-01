@@ -2,7 +2,7 @@
 #
 # Turns a prepared_cfg (flat IR from flowgraph) into a native PyCode: EXTENDED_ARG
 # folding, mandatory CACHE padding, deterministic const/name tables, PEP 626 line
-# table (ported from CPython 3.14 Python/assemble.c), and exception-table
+# table (ported from 3.14's Python/assemble.c), and exception-table
 # encoding for comprehension cleanup regions.
 #
 # Product module: imports flowgraph + compiler_ir + opcode_meta + objects only.
@@ -33,7 +33,7 @@ def region_start_offset(reg: except_region, block_starts: list[int]) -> int {
     return block_starts[reg.start_block];
 }
 
-# CPython encodes co_exceptiontable entries sorted by protected-range start.
+# The C compiler encodes co_exceptiontable entries sorted by protected-range start.
 def sort_except_region_indices(
     regions: list[except_region], block_starts: list[int]
 ) -> list[int] {
@@ -153,7 +153,7 @@ def write_varint(out: list[int], val: int) {
 def write_signed_varint(out: list[int], val: int) {
     v = val;
     if v < 0 {
-        # (0 - val) << 1 | 1, matching CPython's unsigned conversion.
+        # (0 - val) << 1 | 1, matching the C compiler's unsigned conversion.
         write_varint(out, (((0 - v) << 1) | 1));
     } else {
         write_varint(out, v << 1);
@@ -187,7 +187,7 @@ def write_location_info_entry(out: list[int], st: lintable_state, lc: cloc) -> N
             column_group = column >> 3;
             write_entry_start(out, LI_SHORT0 + column_group, st.length);
             out.append(((column & 7) << 4) | (end_column - column));
-            # short form does NOT update a_lineno (matches CPython).
+            # short form does NOT update a_lineno (matches the C compiler).
             return;
         }
         if line_delta >= 0 and line_delta < 3 and column < 128 and end_column < 128 {
@@ -210,7 +210,7 @@ def write_location_info_entry(out: list[int], st: lintable_state, lc: cloc) -> N
     st.a_lineno = lc.lineno;
 }
 
-# Per-call mutable state threaded through the location encoder (CPython's
+# Per-call mutable state threaded through the location encoder (the C compiler's
 # `struct assembler` a_lineno + a_location_off).
 obj lintable_state {
     has a_lineno: int = 1,

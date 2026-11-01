@@ -22,7 +22,7 @@ git remote -v
 
 **Setting Up Your Dev Environment**
 
-`jaclang` ships as the single `jac` binary (a native Jac launcher + a private bundled CPython) -- there is no pip-installed jaclang. You build that binary once, then use the editable dev loop below so day-to-day edits to `jac/jaclang` run live without rebuilding.
+`jaclang` ships as the single `jac` binary (a native Jac launcher + the bundled JacPython runtime) -- there is no pip-installed jaclang. You build that binary once, then use the editable dev loop below so day-to-day edits to `jac/jaclang` run live without rebuilding.
 
 **1. Install Zig**
 
@@ -70,7 +70,7 @@ An edit recompiles what it touched, not the whole compiler. Every edit under jac
 
 The stanza is read from the **nearest ancestor `jac.toml`** (like every other config setting), so the single root `jac.toml` covers every directory in the repo -- the loop is active whether you work from the repo root or `cd jac` to run the suite. Other subprojects (`jac-byllm/`, `jac-mcp/`, ...) opt in by adding their own `[dev]` stanza. To run the shipped binary's bundled + precompiled jaclang instead of your edits, start it from outside the repo (`cd "$(mktemp -d)"`): a jac started where no `[dev]` stanza is in scope runs its bundled compiler, and every process it starts inherits that choice. CI's sealed lanes get the same effect by dropping the stanza from their checkout (`.github/actions/seal-checkout`).
 
-You still need to `zig build` again when you change the parts that live *inside* the binary rather than in jaclang source: the launcher (`jac/launcher/*.zig`, `jac/build.zig`), the payload bootstrap (`jac/sitecustomize.py`, `jac/_jac_finder.py`), or the bundled CPython version.
+You still need to `zig build` again when you change the parts that live *inside* the binary rather than in jaclang source: the launcher (`jac/launcher/*.zig`, `jac/build.zig`), the payload bootstrap (`jac/sitecustomize.py`, `jac/_jac_finder.py`), or the Python runtime (JacPython, see [The Python runtime](#the-python-runtime)).
 
 **Run Some Tests**
 
@@ -167,40 +167,19 @@ To skip this check, add the `skip-release-notes-check` label to your PR.
 
 **Example PR with a release note fragment**: [#5573](https://github.com/jaseci-labs/jaseci/pull/5573)
 
-## Building JacPython
+## The Python runtime
 
-Releases ship one configuration: stock CPython. JacPython (CPython with its C
-progressively replaced by native Jac, the Python compiler included) is an
-accelerator you build on request. From the repository, with Zig 0.16 and the
-LLVM shim in place (`zig build fetch-llvm` once):
-
-```bash
-jac native build jacpython
-```
-
-That builds a second jac, `jac/zig-out/jacpython/bin/jac`, whose bundled
-interpreter is JacPython; the jac you ran it with is unchanged. Use it like any
-jac. It reports the native compiler as active:
-
-```bash
-JACPYTHON_BIN="$PWD/jac/zig-out/jacpython/bin/jac"
-cd "$(mktemp -d)"   # outside the repo, so its [dev] stanza does not reroute the compiler
-"$JACPYTHON_BIN" -c '
-import ast, ctypes
-assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
-print("Python compiler: native JacPython")
-exec(compile(ast.parse("print(6 * 7)"), "<jacpython-trial>", "exec"))
-'
-"$JACPYTHON_BIN" native status jacpython
-```
-
-`jac native build jacpython --exact` rebuilds the runtime instead of reusing one
-whose lowered sources are unchanged. Its native compiler object is linked at
-build time, so editing compiler source through the dev loop does not change an
-existing JacPython binary: rebuild it. CI builds and tests JacPython in its own
-lane (`.github/workflows/_jacpython.yml`), on a pull request carrying the
-`native:jacpython` label and nightly on every supported platform. See
-[the build guide](jac/launcher/README.md#build) for cache details and
+The `jac` binary's Python is JacPython, Jac's own implementation of Python 3.14:
+its runtime is in `jac/jaclang/runtime/python` and its Python compiler in
+`jac/jaclang/compiler/backends/py/jacpython`. `zig build` builds it on the
+previous build's runtime, or on the checksum-pinned bootstrap seed when there
+is none; `zig build -Djacpython-host=seed` always uses the seed. The runtime is
+lowered to native code and linked at build time, so editing its sources through
+the dev loop does not change an existing binary: rebuild it. CI runs the
+conformance gates (`.github/workflows/_python-conformance.yml`) on every push to
+main, on a pull request that touches the runtime or what it is built from, and
+nightly on every supported platform. See
+[the build guide](jac/launcher/README.md#build) for the seed, caches and
 prerequisites.
 
 ## Code Rules and Guidelines

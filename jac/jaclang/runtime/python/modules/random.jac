@@ -1,6 +1,6 @@
 """MT19937 state and Python Random protocol implemented in native Jac.
 
-Derived from CPython's _randommodule and the MT2002 algorithm by Makoto
+Derived from Python's _randommodule and the MT2002 algorithm by Makoto
 Matsumoto and Takuji Nishimura. See the Mersenne Twister notice in
 ../LICENSE.cpython. No host random implementation is called.
 """

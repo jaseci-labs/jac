@@ -1,4 +1,4 @@
-"""Native bytes methods agree with CPython.
+"""Native bytes methods agree with Python.
 
 The kernel's compile-time evaluator folds these with the host's `bytes`;
 natively they run through the formatting kernel's bytes helpers.
@@ -6,7 +6,7 @@ natively they run through the formatting kernel's bytes helpers.
 import from pathlib { Path }
 import from tests.support { assert_native_identity }
 
-test "bytes methods match CPython" {
+test "bytes methods match Python" {
     source = str(
         Path(__file__).resolve().parent / "fixtures" / "bytes_methods_fidelity.jac"
     );

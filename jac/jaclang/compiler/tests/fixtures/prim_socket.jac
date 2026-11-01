@@ -2,7 +2,7 @@
 
 `import socket` binds the bundled `na_stdlib/socket.jac` Mechanism-A/F module
 (a pure-Jac client surface over the libc BSD-sockets FFI floor) on the na
-backend; the sv reference is CPython's real `socket`. There is no live network:
+backend; the sv reference is Python's real `socket`. There is no live network:
 the owning `test_socket_equivalence` suite stands up a loopback TCP/HTTP server
 on an ephemeral port, publishes it in `JAC_SOCKET_TEST_PORT`, and pins the two
 client implementations congruent on what a raw GET against the SAME server

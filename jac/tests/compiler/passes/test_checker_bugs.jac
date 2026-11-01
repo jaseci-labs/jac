@@ -738,7 +738,7 @@ test "bug_impl2_local_in_nested_block_of_impl_body" {
 # producing spurious E1030 errors on valid inherited attribute access.
 #
 # Real-world manifestation: `datetime.datetime.fromisoformat(...)` reported
-# "Type datetime has no attribute fromisoformat" because CPython's
+# "Type datetime has no attribute fromisoformat" because the stdlib's
 # `class datetime(date)` stub has a method `def date(self) -> _Date: ...`
 # that shadowed the outer `date` class.
 #

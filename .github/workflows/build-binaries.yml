@@ -1,9 +1,9 @@
 name: Build jac native binaries
 
 # Builds the self-contained `jac` binary per platform and attaches it to a
-# GitHub Release: one official configuration (CPython + bun) per target.
-# JacPython and js_engine are accelerators built only on request
-# (`jac native build`); a release ships their floors.
+# GitHub Release: one configuration (JacPython + bun) per target. js_engine is
+# an accelerator built only on request (`jac native build`); a release ships
+# its floor.
 # One parameterized workflow serves both channels:
 #   - channel=release (default): cold, glibc-2.17-pinned builds attached to a
 #     versioned release. Called by release.yml after it cuts the release (a
@@ -162,7 +162,7 @@ jobs:
           # an ARM leg no longer needs the 16-vCPU runner's memory.
           LEGS='[
             {"os": "blacksmith-8vcpu-ubuntu-2404", "platform": "linux-x86_64", "zig_target": "x86_64-linux-gnu.2.17"},
-            {"os": "blacksmith-8vcpu-ubuntu-2404-arm", "platform": "linux-aarch64", "zig_target": "aarch64-linux-gnu.2.17"},
+            {"os": "blacksmith-16vcpu-ubuntu-2404-arm", "platform": "linux-aarch64", "zig_target": "aarch64-linux-gnu.2.17"},
             {"os": "macos-14",         "platform": "macos-aarch64"},
             {"os": "macos-15-intel",   "platform": "macos-x86_64",  "zig_target": "x86_64-macos.12.0", "manual": true}
           ]'
@@ -315,12 +315,13 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.precompiled-build/cpython
-          key: jac-precompiled-cpython-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
+          path: jac/.precompiled-build
+          key: jac-precompiled-v2-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
           restore-keys: |
-            jac-precompiled-cpython-c${{ steps.inputs.outputs.compiler }}-
+            jac-precompiled-v2-c${{ steps.inputs.outputs.compiler }}-
 
-      # Cache the selected runtime and any build host. Release builds remain cold.
+      # Cache the runtime. Release builds remain cold: they build it on the
+      # pinned bootstrap seed.
       - name: Resolve Python SDK cache input
         id: python-sdk
         shell: bash
@@ -333,10 +334,10 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.python-build/cpython
-          key: python-build-v4-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.python_cpython }}
+          path: jac/.python-build
+          key: python-build-v5-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.python }}
           restore-keys: |
-            python-build-v4-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-
+            python-build-v5-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-
 
       - name: Restore cached bun runtime (dev channel)
         if: inputs.channel == 'dev'
@@ -353,10 +354,10 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.payload-layers/cpython
-          key: payload-layers-cpython-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
+          path: jac/.payload-layers
+          key: payload-layers-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
           restore-keys: |
-            payload-layers-cpython-${{ runner.os }}-${{ runner.arch }}-
+            payload-layers-v2-${{ runner.os }}-${{ runner.arch }}-
 
       # Release channel: fetch the prebuilt, target-pinned shim that
       # build-shims.yml publishes on the rolling `deps` prerelease instead of
@@ -503,7 +504,7 @@ jobs:
           printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
 
-      - name: Verify the shipped Python is stock CPython
+      - name: Verify the shipped Python is JacPython
         working-directory: jac
         run: |
           set -euo pipefail
@@ -513,7 +514,8 @@ jobs:
           import ctypes;
           import os;
           with entry {
-              assert not hasattr(ctypes.pythonapi, "_PyJac_CompilerRequired");
+              assert ctypes.pythonapi._PyJac_CompilerRequired() == 1;
+              assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4;
               assert not hasattr(sys, "_jacpython_compile");
               assert not hasattr(sys, "_jacpython_image");
               assert eval("6 * 7") == 42;
@@ -525,7 +527,7 @@ jobs:
           BIN="$PWD/zig-out/bin/jac"
           (cd "$WORK" && "$BIN" run "$WORK/native_compiler.jac")
           # A release never runs a required artifact on its floor, and ships
-          # every floor its policy names (CPython, bun).
+          # every floor its policy names (bun).
           (cd "$WORK" && "$BIN" native status && "$BIN" native status --require release)
 
       # Guards #7047: the binary must not leak PYTHONHOME/PYTHONPATH (or any

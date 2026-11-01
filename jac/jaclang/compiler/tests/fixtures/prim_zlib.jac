@@ -1,6 +1,6 @@
 """Bundled native `zlib` cross-backend equivalence fixture (#6940 Phase 2).
 
-The SAME `import from zlib { ... }` binds CPython's `zlib` on the sv (Python)
+The SAME `import from zlib { ... }` binds Python's `zlib` on the sv (Python)
 backend and the bundled `na_stdlib/zlib.jac` Mechanism-F module — a thin
 pure-Jac surface over the system `libz` (the FFI floor) — on the na (native
 LLVM) backend. This fixture pins the two implementations congruent on the
@@ -9,7 +9,7 @@ through `crc32` of the compressed stream), `decompress` round-trips (a large
 highly-compressible payload exercises the streaming inflater's geometric
 growth path), and the
 `crc32` / `adler32` checksums (with and without a continuation seed) match
-CPython exactly. ES/JS opts out.
+Python exactly. ES/JS opts out.
 """
 
 import from zlib { compress, decompress, crc32, adler32 }

@@ -1,11 +1,11 @@
 """Bundled native `gettext` cross-backend equivalence fixture (#6978).
 
-The same `import gettext` binds CPython's `gettext` on the sv backend and
+The same `import gettext` binds Python's `gettext` on the sv backend and
 `na_stdlib/gettext.jac` on the na (native LLVM) backend. No `.mo` catalogue is
 needed for the parts pinned here: the `NullTranslations` passthrough plus its
 fallback chain, `textdomain`/`bindtextdomain` state, the module-level
 `gettext`/`ngettext` (which fall back to the msgid when no catalogue is found),
-and the C plural-form expression engine -- CPython compiles it to a lambda via
+and the C plural-form expression engine -- Python compiles it to a lambda via
 `c2py`, the native module parses it to an AST and returns a closure over it,
 so both lanes call `c2py` and compare the resulting plural indices.
 Per-lane bodies (never a shared helper) because a dict cannot cross the

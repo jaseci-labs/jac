@@ -1,6 +1,6 @@
-"""MD5 hash objects over HACL*; derived from CPython 3.14.6 Modules/md5module.c.
+"""MD5 hash objects over HACL*; derived from Python 3.14.6 Modules/md5module.c.
 
-See ../LICENSE.cpython. The HACL* library stays C: CPython's
+See ../LICENSE.cpython. The HACL* library stays C: the vendored
 Modules/_hacl/libHacl_Hash_MD5.a, which the registry links for _md5.
 """
 

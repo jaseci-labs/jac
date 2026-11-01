@@ -1,0 +1,445 @@
+"""Run the Python conformance suites against the shipped native JacPython runtime.
+
+Run with the Jac binary: jac run scripts/run_python_conformance.jac.
+The runner requires the native compiler bridge. It does not import or install
+an interpreted replacement. Python audit events count native compiler calls;
+optional public API wrappers only count calls into the native entry points.
+Use --execution-tests to count every selected test, including tests without
+a compiler call. This exercises the linked evaluator but does not establish
+that its implementation is native Jac.
+The suites, their helpers and data are vendored in
+jac/tests/python_conformance/test (see jac/jaclang/runtime/python/LICENSE.cpython).
+"""
+import argparse;
+import builtins;
+import ctypes;
+import faulthandler;
+import importlib;
+import from pathlib { Path }
+import sys;
+import types;
+import unittest;
+# The vendored conformance corpus: the test package of the suites the gates
+# run, with their helpers and data.
+def corpus -> Path {
+    return Path(__file__).resolve().parents[1] / "jac/tests/python_conformance/test";
+}
+
+def main -> int {
+    # A native crash inside a conformance test names its Python frame.
+    faulthandler.enable();
+    parser = argparse.ArgumentParser(description=__doc__);
+    parser.add_argument(
+        "--tests", nargs="+", help="Method or class names in the conformance module"
+    );
+    parser.add_argument("--module", `default="test.test_compile");
+    parser.add_argument(
+        "--native-modules",
+        nargs="+",
+        `default=[],
+        help="Require these statically linked native module replacements"
+    );
+    parser.add_argument(
+        "--compile-tests",
+        action="store_true",
+        help="Compile the test module freshly through native JacPython"
+    );
+    parser.add_argument(
+        "--execution-tests",
+        action="store_true",
+        help="Count all selected execution tests, including those without compiler calls"
+    );
+    parser.add_argument(
+        "--symtable-api",
+        action="store_true",
+        help="Count public native symbol-table calls"
+    );
+    parser.add_argument(
+        "--tokenize-api",
+        action="store_true",
+        help="Count public native tokenizer calls"
+    );
+    parser.add_argument(
+        "--timeout",
+        `type=int,
+        `default=1800,
+        help="Seconds one module may run before every thread's stack is dumped and the run fails"
+    );
+    # Retained command-line compatibility: every run now uses these native APIs.
+    parser.add_argument("--runtime", action="store_true", help=argparse.SUPPRESS);
+    parser.add_argument("--ast-api", action="store_true", help=argparse.SUPPRESS);
+    args = parser.parse_args();
+    # A module that hangs fails with the stacks of its threads, not the job's time limit.
+    faulthandler.dump_traceback_later(args.timeout, `exit=True);
+    bridge = ctypes.pythonapi?._PyJac_CompilerBridgeVersion;
+    if bridge is None or bridge() != 4 {
+        raise RuntimeError(
+            "Use a current Jac binary with the native compiler bridge (version 4)"
+        );
+    }
+    for name in args.native_modules {
+        replacement = importlib.import_module(name);
+        spec = replacement.__spec__;
+        if name not in sys.builtin_module_names
+            or spec is None
+            or spec.origin != "built-in" {
+            raise RuntimeError(f"Expected linked native Jac replacement: {name}");
+        }
+    }
+    for retired in (
+        "_jacpython_compile",
+        "_jacpython_symtable",
+        "_jacpython_tokenize",
+        "_jacpython_image"
+    ) {
+        if hasattr(sys, retired) {
+            raise RuntimeError(
+                f"Unexpected interpreted replacement infrastructure: {retired}"
+            );
+        }
+    }
+    calls: list[int] = [0];
+    active: list[bool] = [True];
+    def audit(event: str, args: any) {
+        if active[0] and event == "compile" {
+            calls[0] += 1;
+        }
+    }
+    sys.addaudithook(audit);
+    restorations: list[tuple[any, str, any]] = [];
+    try {
+        if args.symtable_api {
+            import _symtable;
+            original_symtable = _symtable.symtable;
+            def count_symtable(*args: any, **kwargs: any) -> any {
+                calls[0] += 1;
+                return original_symtable(*args, **kwargs);
+            }
+            restorations.append((_symtable, "symtable", original_symtable));
+            _symtable.symtable = count_symtable;
+        }
+        if args.tokenize_api {
+            import _tokenize;
+            original_tokenizer = _tokenize.TokenizerIter;
+            def count_tokenizer(*args: any, **kwargs: any) -> any {
+                calls[0] += 1;
+                return original_tokenizer(*args, **kwargs);
+            }
+            restorations.append((_tokenize, "TokenizerIter", original_tokenizer));
+            _tokenize.TokenizerIter = count_tokenizer;
+        }
+        return run_tests(args, calls);
+    } finally {
+        active[0] = False;
+        for (module, name, original) in reversed(restorations) {
+            setattr(module, name, original);
+        }
+    }
+}
+
+# Tests whose premise the Jac runtime does not provide, by module and
+# "Class.method", with the reason each is skipped.
+glob NO_TESTCAPI: str = "the Jac runtime does not ship _testcapi",
+     LAUNCHER_ENVIRONMENT: str = "the jac launcher starts the interpreter without the PYTHON* environment",
+     LAUNCHER_SCRIPT: str = "the jac launcher runs a script path only when it ends in .py, .jac or .jab",
+     RUNTIME_DIFFERENCES: dict[str, dict[str, str]] = {
+         "test.test_posix": {"PosixTester.test_pipe2_c_limits": NO_TESTCAPI},
+         "test.test_os": {
+             "PseudoterminalTests.test_pipe_spawnl": LAUNCHER_SCRIPT,
+             "SpawnTests.test_nowait": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnl": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnle": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnlp": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnlpe": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnv": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnve": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnve_bytes": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnve_invalid_env": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnvp": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnvpe": LAUNCHER_SCRIPT,
+             "SpawnTests.test_spawnvpe_invalid_env": LAUNCHER_SCRIPT
+         },
+         "test.test_asyncio": {
+             "BaseEventLoopTests.test_env_var_debug": LAUNCHER_ENVIRONMENT,
+             "CoroutineGatherTests.test_env_var_debug": LAUNCHER_ENVIRONMENT,
+             "FutureGatherTests.test_env_var_debug": LAUNCHER_ENVIRONMENT
+         }
+     };
+
+def skip_runtime_differences(suite: unittest.TestSuite, module: str) {
+    reasons = RUNTIME_DIFFERENCES.get(module, {});
+    pending: list[any] = [suite] if reasons else [];
+    while pending {
+        item = pending.pop();
+        if isinstance(item, unittest.TestSuite) {
+            pending.extend(item);
+            continue;
+        }
+        name = getattr(item, "_testMethodName", "");
+        reason = reasons.get(f"{type(item).__name__}.{name}");
+        if reason {
+            setattr(item, name, unittest.skip(reason)(getattr(item, name)));
+        }
+    }
+}
+
+# The conformance suites assume two things of the interpreter they run in: the
+# test package sits beside the standard library, where every interpreter a
+# test starts can import it, and the main module is one a spawn or forkserver
+# child can re-import by name. The Jac runtime ships no test package and this
+# runner is a Jac application, so for the run the vendored package is linked
+# into the standard library and the main module is a neutral stand-in.
+def run_tests(args: any, calls: list[int]) -> int {
+    library = Path(unittest.__file__).resolve().parent.parent;
+    main_module = sys.modules["__main__"];
+    sys.modules["__main__"] = types.ModuleType("__main__");
+    link = library / "test";
+    if link.is_symlink() {
+        link.unlink();
+    }
+    linked = not link.exists();
+    if linked {
+        link.symlink_to(corpus(), target_is_directory=True);
+    }
+    try {
+        return run_library_tests(args, calls, library);
+    } finally {
+        if linked {
+            link.unlink();
+        }
+        sys.modules["__main__"] = main_module;
+    }
+}
+
+def run_library_tests(args: any, calls: list[int], library: Path) -> int {
+    importlib.import_module("test");
+    support = importlib.import_module("test.support");
+    # Resource decorators are evaluated when the test module is imported.
+    support.use_resources = [];
+    try {
+        reference_module = importlib.import_module(args.module);
+    } except unittest.SkipTest as reason {
+        # A module the platform does not support skips itself on import.
+        print(f"{args.module} skipped: {reason}", file=sys.stderr);
+        return 0;
+    }
+    test_module: any = reference_module;
+    # Verify runtime compilation before measuring individual tests.
+    builtins.compile("pass", "<warmup>", "exec", dont_inherit=True);
+    compiled_codes: set[int] = set();
+    if args.compile_tests {
+        assert reference_module.__file__ is not None;
+        path = Path(reference_module.__file__);
+        test_module = types.ModuleType(reference_module.__name__);
+        test_module.__file__ = str(path);
+        test_module.__package__ = reference_module.__package__;
+        test_module.__spec__ = reference_module.__spec__;
+        code = builtins.compile(
+            path.read_bytes(), str(path), "exec", dont_inherit=True
+        );
+        pending = [code];
+        while pending {
+            item = pending.pop();
+            compiled_codes.add(id(item));
+            pending.extend(
+                c
+                for c in item.co_consts
+                if isinstance(c, types.CodeType)
+            );
+        }
+        sys.modules[args.module] = test_module;
+        try {
+            exec(code, test_module.__dict__);
+        } finally {
+            sys.modules[args.module] = reference_module;
+        }
+        print(f"JACPYTHON_TEST_MODULE {args.module}", flush=True);
+    }
+    if args.symtable_api or args.tokenize_api {
+        print(f"JACPYTHON_API_FIXTURE_CALLS {calls[0]}", flush=True);
+    }
+    if (args.module == "test.test_ast.test_ast") {
+        test_module.STDLIB = str(library);
+        test_module.STDLIB_FILES = [path.name for path in library.glob("*.py")];
+        test_module.STDLIB_FILES.extend(
+            ["test/test_grammar.py", "test/test_unpack_ex.py"]
+        );
+    }
+    class Result(unittest.TextTestResult) {
+        has compiled_test: bool = False;
+
+        def startTest(self: Result, test_case: any) {
+            calls[0] = 0;
+            method = getattr(
+                test_case, getattr(test_case, "_testMethodName", "runTest"), None
+            );
+            seen: set[int] = set();
+            self.compiled_test = False;
+            while ((method is not None) and (id(method) not in seen)) {
+                seen.add(id(method));
+                if (id(method?.__code__) in compiled_codes) {
+                    self.compiled_test = True;
+                    break;
+                }
+                method = method?.__wrapped__;
+            }
+            super.startTest(test_case);
+        }
+
+        def addSuccess(self: Result, test_case: any) {
+            if (
+                args.execution_tests
+                or calls[0]
+                or self.compiled_test
+                or args.native_modules
+            ) {
+                super.addSuccess(test_case);
+            } else {
+                self.addSkip(test_case, "no direct call to JacPython in this test");
+            }
+        }
+
+        def stopTest(self: Result, test_case: any) {
+            print(f"JACPYTHON_CALLS {test_case.id()} {calls[0]}", flush=True);
+            super.stopTest(test_case);
+        }
+    }
+    if "_collections" in args.native_modules and args.module == "test.test_deque" {
+        # This assertion specifies the C deque's block layout, which Jac replaces.
+        # smoke.py verifies actual native allocation growth and reclamation.
+        test_module.TestBasic.test_sizeof = unittest.skip(
+            "the C deque layout replaced by native Jac circular storage"
+        )(
+            test_module.TestBasic.test_sizeof
+        );
+    }
+    if "itertools" in args.native_modules and args.module == "test.test_itertools" {
+        # The four size assertions encode the replaced C iterator layouts.
+        # smoke.py checks that native storage is included in reported sizes.
+        test_module.SizeofTest = unittest.skip(
+            "the C iterator layouts replaced by native Jac storage"
+        )(
+            test_module.SizeofTest
+        );
+    }
+    if "array" in args.native_modules and args.module == "test.test_array" {
+        # These two inherited tests fix the retired C header size. They run
+        # once per typecode; smoke.py checks actual native allocation instead.
+        for method in ("test_sizeof_with_buffer", "test_sizeof_without_buffer") {
+            setattr(
+                test_module.BaseTest,
+                method,
+                unittest.skip("the C array layout replaced by native Jac storage")(
+                    getattr(test_module.BaseTest, method)
+                )
+            );
+        }
+    }
+    if "_pickle" in args.native_modules and args.module == "test.test_pickle" {
+        # Both assertions specify retired C state layouts. Runtime smoke checks
+        # the native memo allocation, reclamation, and callback cycles instead.
+        test_module.SizeofTests = unittest.skip(
+            "the C pickle layouts replaced by native Jac storage"
+        )(
+            test_module.SizeofTests
+        );
+    }
+    if "_types" in args.native_modules and args.module == "test.test_types" {
+        # The subinterpreter imports this test module by name, and the pinned
+        # test package is on the runner's path only while it imports.
+        test_module.SubinterpreterTests.test_static_types_inherited_slots = unittest.skip(
+            "subinterpreters do not see the runner's pinned test package"
+        )(
+            test_module.SubinterpreterTests.test_static_types_inherited_slots
+        );
+    }
+    if "_weakref" in args.native_modules and args.module == "test.test_weakref" {
+        # The child is started with -I, which drops the runner's test package.
+        test_module.FinalizeTestCase.test_atexit = unittest.skip(
+            "the isolated child does not see the runner's pinned test package"
+        )(
+            test_module.FinalizeTestCase.test_atexit
+        );
+    }
+    if "atexit" in args.native_modules and args.module == "test.test_atexit" {
+        # test_general runs _test_atexit.py in a child started with -E, which
+        # drops the runner's pinned test package from the path.
+        # test_atexit_with_low_memory needs _testcapi, which the release
+        # build disables. A stock build of this runtime fails both the same way.
+        test_module.GeneralTest.test_general = unittest.skip(
+            "the -E child does not see the runner's pinned test package"
+        )(
+            test_module.GeneralTest.test_general
+        );
+        test_module.SubinterpreterTest.test_atexit_with_low_memory = unittest.skip(
+            "the release build does not include _testcapi"
+        )(
+            test_module.SubinterpreterTest.test_atexit_with_low_memory
+        );
+    }
+    if "_tracemalloc" in args.native_modules
+        and args.module == "test.test_tracemalloc" {
+        # sys.executable is the jac launcher, which starts the interpreter with
+        # its own configuration: PYTHONTRACEMALLOC and -X tracemalloc do not
+        # reach the child. The in-process tests still run.
+        test_module.TestCommandLine = unittest.skip(
+            "the jac launcher does not forward tracemalloc startup options"
+        )(
+            test_module.TestCommandLine
+        );
+    }
+    if "_sysconfig" in args.native_modules and args.module == "test.test_sysconfig" {
+        # These read a configure/make build tree (Makefile, pyconfig.h, srcdir and
+        # the sysconfigdata JSON), which the Jac runtime does not ship.
+        for (holder, method) in (
+            (test_module.TestSysConfig, "test_get_config_h_filename"),
+            (test_module.TestSysConfig, "test_srcdir"),
+            (test_module.TestSysConfig, "test_sysconfigdata_json"),
+            (test_module.MakefileTests, "test_get_makefile_filename")
+        ) {
+            setattr(
+                holder,
+                method,
+                unittest.skip("the Jac runtime ships no configure/make build tree")(
+                    getattr(holder, method)
+                )
+            );
+        }
+    }
+    print("Compiler path: native Jac machine code", flush=True);
+    if args.execution_tests {
+        print(
+            "Execution coverage: all selected tests; evaluator provenance is not asserted",
+            flush=True
+        );
+    }
+    try {
+        sys.modules[args.module] = test_module;
+        if args.tests {
+            names = [
+                f"TestSpecifics.{name}"
+                    if (
+                        name.startswith("test_")
+                        and hasattr(test_module, "TestSpecifics")
+                    )
+                    else name for name in args.tests
+            ];
+            suite = unittest.defaultTestLoader.loadTestsFromNames(names, test_module);
+        } elif (not args.compile_tests and (args.module == "test.test_compile")) {
+            suite = unittest.defaultTestLoader.loadTestsFromTestCase(
+                test_module.TestSpecifics
+            );
+        } else {
+            suite = unittest.defaultTestLoader.loadTestsFromModule(test_module);
+        }
+        skip_runtime_differences(suite, args.module);
+        result = unittest.TextTestRunner(verbosity=2, resultclass=Result).run(suite);
+        return int(not result.wasSuccessful());
+    } finally {
+        sys.modules[args.module] = reference_module;
+    }
+}
+
+with entry:__main__ {
+    sys.exit(main());
+}

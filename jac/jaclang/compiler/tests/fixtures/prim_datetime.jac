@@ -1,6 +1,6 @@
 """Bundled native `datetime` cross-backend equivalence fixture (#6940 / #6951).
 
-The SAME `import from datetime { datetime, timezone }` binds CPython's `datetime`
+The SAME `import from datetime { datetime, timezone }` binds Python's `datetime`
 on the sv (Python) backend and the bundled `na_stdlib/datetime.jac` Mechanism-B
 module on the na (native LLVM) backend. This is the consumer that exercises the
 static-method (`datetime.fromtimestamp` / `datetime.now`) + class-attribute

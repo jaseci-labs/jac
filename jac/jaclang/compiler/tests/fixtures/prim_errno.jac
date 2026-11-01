@@ -1,6 +1,6 @@
 """Bundled native ``errno`` cross-backend equivalence fixture.
 
-The SAME `import from errno { ... }` binds CPython's ``errno`` on the sv
+The SAME `import from errno { ... }` binds Python's ``errno`` on the sv
 (Python) backend and the bundled `na_stdlib/errno.<os>.jac` module on the na
 (native LLVM) backend. Pins a representative slice of the E* constants on the
 running host -- including the EAGAIN/EWOULDBLOCK alias and the extremes of

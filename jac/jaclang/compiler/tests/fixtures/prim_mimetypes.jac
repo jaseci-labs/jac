@@ -1,6 +1,6 @@
 """Bundled native `mimetypes` cross-backend equivalence fixture (#6978).
 
-The same `import mimetypes` binds CPython's pure-Python `mimetypes` on the sv
+The same `import mimetypes` binds Python's pure-Python `mimetypes` on the sv
 backend and `na_stdlib/mimetypes.jac` on the na (native LLVM) backend. Both
 lanes load the identical default tables AND read the same `knownfiles`
 (`/etc/mime.types` when present), so the guesses stay congruent on a

@@ -12,16 +12,15 @@ An entry is one of two kinds:
 
 | Kind | Rule | Examples |
 |---|---|---|
-| **Accelerator** | It has a floor that gives the same results, only slower. Use the artifact when it is built and current; otherwise run on the floor and say so. | the compiler kernel (floor: the bytecode compiler), the stub catalog (parsing typeshed), the precompiled bundle (compiling from source), JacPython (CPython), js_engine (bun) |
+| **Accelerator** | It has a floor that gives the same results, only slower. Use the artifact when it is built and current; otherwise run on the floor and say so. | the compiler kernel (floor: the bytecode compiler), the stub catalog (parsing typeshed), the precompiled bundle (compiling from source), js_engine (bun) |
 | **Capability** | It has no floor. Without it the feature does not exist, and asking for it fails with the command that builds it. | the LLVM shim, the C floor archives, musl, wasm libc, llvm-cbe, bun, Postgres, Node, the JDK |
 
 Separately, every entry declares a **release policy**:
 
 - `required`: a release carries the built artifact, and `jac native status
   --require release` fails without it.
-- `floor`: the release ships the floor on purpose. Today that is JacPython
-  (releases ship CPython) and js_engine (releases ship bun). Promoting one
-  flips it to `required`.
+- `floor`: the release ships the floor on purpose. Today that is js_engine
+  (releases ship bun). Promoting it flips it to `required`.
 - `on-demand`: not part of a release (llvm-cbe, and your app's Postgres and
   toolchains).
 

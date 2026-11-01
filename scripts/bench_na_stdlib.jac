@@ -1,7 +1,7 @@
 """Benchmark: bundled na_stdlib stat/glob/platform/errno vs sv bridge.
 
 Lanes: `jac run -b native` (na bundled module), `jac run -b python`
-(Jac over CPython), and `python3 scripts/bench_na_stdlib.py` (CPython
+(Jac over the interpreter), and `python3 scripts/bench_na_stdlib.py` (Python
 oracle). Identical loops and checksums across lanes. The ffi lane calls the
 module's C-floor wrapper directly where one exists.
 """

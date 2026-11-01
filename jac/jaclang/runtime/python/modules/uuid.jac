@@ -1,6 +1,6 @@
 """The system UUID generator.
 
-Derived from CPython 3.14.6 Modules/_uuidmodule.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/_uuidmodule.c; see ../LICENSE.cpython.
 The C library interface is uuid_library.<os>.jac: whether the target has
 <uuid/uuid.h>, uuid_generate_time_safe() and a stable MAC address source.
 """

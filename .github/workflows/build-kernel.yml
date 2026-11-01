@@ -87,10 +87,10 @@ jobs:
         if: steps.kernel-cache.outputs.cache-hit != 'true'
         uses: actions/cache@v4
         with:
-          path: jac/.python-build/cpython
-          key: python-build-v4-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdkzig-libc-${{ steps.inputs.outputs.python_cpython }}
+          path: jac/.python-build
+          key: python-build-v5-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdkzig-libc-${{ steps.inputs.outputs.python }}
           restore-keys: |
-            python-build-v4-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdkzig-libc-
+            python-build-v5-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdkzig-libc-
 
       - name: Cache the Zig package store
         if: steps.kernel-cache.outputs.cache-hit != 'true'

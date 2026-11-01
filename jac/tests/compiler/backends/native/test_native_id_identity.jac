@@ -10,12 +10,12 @@ Natively a value is either behind a pointer or is the word itself, and the two
 get different answers because they are different things:
 
   - Pointer-backed (archetype, str, list, set, dict): the identity is the
-    address. That is the same guarantee CPython gives, and it is what the
+    address. That is the same guarantee Python gives, and it is what the
     visited-set patterns above are actually asking for.
   - Unboxed scalar (int, bool, float): there is no object to take the address
     of, so the identity is the value's own bits. Two equal scalars are one
     value natively, so they answer alike -- which is what an `id()`-keyed dedup
-    wants of them, and what CPython's small-int interning does anyway.
+    wants of them, and what Python's small-int interning does anyway.
 
 Floats previously had no case at all and refused the whole compile; they now
 take the bit pattern, which is the scalar rule applied to a wider word.

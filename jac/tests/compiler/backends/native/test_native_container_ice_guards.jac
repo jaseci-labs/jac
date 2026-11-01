@@ -28,7 +28,7 @@ trading a loud compile-time crash for a silent miscompile. That fault has a
 cause of its own: `_to_bool` read the length field off a container pointer
 without checking it for null, so `x or []` over an absent list dereferenced
 address zero. A null container is falsy now, which is what `None` is in
-CPython, and both shapes answer correctly on both arms. The two tests below
+Python, and both shapes answer correctly on both arms. The two tests below
 pin the layout and the run-time answers together, so neither half can be
 reverted alone.
 """
@@ -140,7 +140,7 @@ test "an optional list held across a branch answers rather than dereferencing nu
     # `x or []` then asked whether it was truthy. Reading the length field off
     # a null container faulted at run time -- a silent miscompile in place of
     # the old loud refusal. A null container is falsy now, so the `or` takes
-    # its right arm and the answers match CPython on both arms.
+    # its right arm and the answers match Python on both arms.
     prog = JacProgram();
     ir = prog.compile(
         file_path=os.path.join(FIXTURES, "compr_or_erased.jac"),

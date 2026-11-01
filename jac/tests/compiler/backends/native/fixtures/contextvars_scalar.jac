@@ -4,7 +4,7 @@ Each group reads a variable through every rung of `get`'s ladder (a set value,
 the call's own default, the constructor default, `LookupError`) and through
 `set`/`reset`/`Token`. The awkward payloads are the point: `0`, `False`, `""`
 and `0.0` are the values a null-is-None erasure would confuse with an unset
-slot, and `default=None` / `get(None)` are the explicit Nones CPython tells
+slot, and `default=None` / `get(None)` are the explicit Nones Python tells
 apart from an omitted default. `INF` has no annotation, so its type argument
 is inferred from the constructor's `default=False`; `P` holds a by-value
 tuple, which boxes like a scalar.

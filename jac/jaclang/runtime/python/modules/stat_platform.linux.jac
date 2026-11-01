@@ -1,4 +1,4 @@
-"""BSD file flags and whiteouts as Linux lacks them: CPython's _stat.c fallbacks."""
+"""BSD file flags and whiteouts as Linux lacks them: Modules/_stat.c's fallbacks."""
 
 glob PLATFORM: str = "linux";
 

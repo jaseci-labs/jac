@@ -1,6 +1,6 @@
 """Compare execution of identical Python bytecode in two pinned runtimes.
 
-Run with any Python >= 3.11; both subjects must match bootstrap's CPython pin:
+Run with any Python >= 3.11; both subjects must match bootstrap's Python pin:
 
     python3 scripts/python_evaluator_bench.py \
         --baseline /path/to/host/python3.14 \
@@ -34,7 +34,7 @@ from typing import TypedDict, cast
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "jac/tests/compiler/fixtures/python_evaluator_workloads.py"
-PIN = ROOT / "jac/bootstrap/python/sources.json"
+PIN = ROOT / "jac/bootstrap/python/seed.json"
 
 
 class SampleRecord(TypedDict):
@@ -174,12 +174,12 @@ def run_worker(executable: Path, *arguments: str) -> dict[str, object]:
 
 
 def validate_runtimes(baseline: dict[str, object], candidate: dict[str, object]) -> None:
-    pin = json.loads(PIN.read_text())["cpython"]
-    version = [int(part) for part in pin["version"].split(".")]
+    pin = json.loads(PIN.read_text())["python"]
+    version = [int(part) for part in pin.split(".")]
     for name, runtime in (("baseline", baseline), ("candidate", candidate)):
-        if runtime["implementation"] != "cpython" or runtime["version"] != version:
-            raise ValueError(f"{name} must use the pinned CPython {pin['version']}")
-    for field in ("platform", "machine", "debug", "free_threaded", "jit_enabled"):
+        if runtime["version"] != version:
+            raise ValueError(f"{name} must use the pinned Python {pin}")
+    for field in ("implementation", "platform", "machine", "debug", "free_threaded", "jit_enabled"):
         if baseline[field] != candidate[field]:
             raise ValueError(f"incomparable runtime setting {field}: {baseline[field]} != {candidate[field]}")
 

@@ -5,7 +5,7 @@
 # if-chains (PLAN.md dispatch decision). Covers the expression slice only:
 # Constant, Name, BinOp, UnaryOp, Call, plus the eval/module wrapper.
 #
-# Location assignment matches CPython 3.14 exactly (verified per-instruction via
+# Location assignment matches Python 3.14 exactly (verified per-instruction via
 # code.co_positions()): RESUME -> (0, firstlineno, 0, 0); RETURN_VALUE -> the
 # top-level expression's span; PUSH_NULL -> the callable's span; every other
 # instruction -> its owning AST node's span.
@@ -17,7 +17,7 @@ def emit_name_store(g: cfg_builder, name: str, tloc: cloc) {
     name = codegen_mangle(g, name);
     # Cell/free scope FIRST (see emit_name_load in compiler_emit): a
     # STORE_FAST into a cellvar's converted localsplus slot would replace the
-    # cell object itself. CPython emits STORE_DEREF for CO_FAST_CELL params --
+    # cell object itself. The C compiler emits STORE_DEREF for CO_FAST_CELL params --
     # namedtuple rebinds field_names/typename and broke with "free variable is
     # not set" without this.
     if g.sym_top is not None and g.sym_top.kind != scope_kind.MODULE {
@@ -52,7 +52,7 @@ def emit_name_store(g: cfg_builder, name: str, tloc: cloc) {
 
 def emit_name_delete(g: cfg_builder, name: str, tloc: cloc) {
     name = codegen_mangle(g, name);
-    # Cell/free scope FIRST (see emit_name_load in compiler_emit): CPython
+    # Cell/free scope FIRST (see emit_name_load in compiler_emit): the C compiler
     # emits DELETE_DEREF for cell/free names, never DELETE_FAST.
     if g.sym_top is not None and g.sym_top.kind != scope_kind.MODULE {
         flags = sym_dict_get(g.sym_top.symbols, name, 0);
@@ -100,7 +100,7 @@ def emit_slice_store(g: cfg_builder, sl: Slice, lc: cloc) {
     g.emit_op(OP_STORE_SLICE, 0, lc);
 }
 
-# Non-constant slice DELETE (container just pushed). CPython has no fused
+# Non-constant slice DELETE (container just pushed). The C compiler has no fused
 # delete-slice: both 2- and 3-element forms use BUILD_SLICE (2 or 3) + DELETE_SUBSCR.
 def emit_slice_delete(g: cfg_builder, sl: Slice, lc: cloc) {
     emit_slice_bound(g, sl.lower, lc);
@@ -145,7 +145,7 @@ def compile_eval(
         u.flush_late_consts();
         return u;
     }
-    # CPython attributes the eval epilogue RETURN_VALUE to the location of the
+    # The C compiler attributes the eval epilogue RETURN_VALUE to the location of the
     # LAST EMITTED instruction, not the root expression span. The two coincide
     # for most roots (the final op carries the root span) but diverge for
     # f-strings: FORMAT_SIMPLE / FORMAT_WITH_SPEC / BUILD_STRING carry inner
@@ -170,13 +170,13 @@ def compile_eval(
 #
 # visit_stmt lowers the straight-line statement set (Assign / Expr / Pass) into
 # the current block. Returns the source location carried by the last instruction
-# it emitted -- CPython's implicit module return (LOAD_CONST None; RETURN_VALUE)
+# it emitted -- the C compiler's implicit module return (LOAD_CONST None; RETURN_VALUE)
 # is generated with NO_LOCATION and inherits the preceding instruction's
 # location, so compile_exec uses this return value for the epilogue. A statement
 # that emits no instructions (Pass) returns its own location so the epilogue
-# still lands on the statement's span (matches CPython's location fixup).
+# still lands on the statement's span (matches the C compiler's location fixup).
 
-# Store `value` into a target. CPython elides the sequence round-trip when both
+# Store `value` into a target. The C compiler elides the sequence round-trip when both
 # sides are same-arity sequence literals with no starred target: evaluate the
 # RHS elements in order, reorder (SWAP for n<=3, BUILD_TUPLE+UNPACK_SEQUENCE for
 # n>=4), then store each target left-to-right.
@@ -197,7 +197,7 @@ def visit_store_target(g: cfg_builder, t: expr, value: expr) -> stmt_cont {
 }
 
 # Store value already on the stack into an assignment target (name / attribute /
-# subscript). CPython stack layout before STORE_ATTR / STORE_SUBSCR: value below
+# subscript). Stack layout before STORE_ATTR / STORE_SUBSCR: value below
 # owner (and index for subscript), with owner/index on TOS.
 def visit_store_target_tos(g: cfg_builder, t: expr) -> stmt_cont {
     if codegen_busy(g) {
@@ -474,7 +474,7 @@ def visit_stmts(
         last = cont.loc;
         if cont.terminated {
             # Statements after an unconditional terminator (return/break/
-            # continue/raise) are unreachable: CPython compiles them and drops
+            # continue/raise) are unreachable: the C compiler compiles them and drops
             # the blocks (flowgraph remove_unreachable). Stop here so their
             # instructions never reach the layout.
             return stmt_cont(loc=last, terminated=True);
@@ -513,7 +513,7 @@ def visit_stmt_tail(
     return visit_stmts(g, tail, from_idx, more_follows_after, None, 0, None, ann_ctx);
 }
 
-# Emit tail suffix and finish the module when CPython duplicates it per branch.
+# Emit tail suffix and finish the module when the C compiler duplicates it per branch.
 def emit_tail_and_finish(
     g: cfg_builder,
     tail: list[stmt],
@@ -555,7 +555,7 @@ def visit_stmt(
         copy_loc = nloc(
             asgn.lineno, asgn.end_lineno, asgn.col_offset, asgn.end_col_offset
         );
-        # Same-arity, no-star sequence-literal elision: CPython avoids the
+        # Same-arity, no-star sequence-literal elision: the C compiler avoids the
         # build/unpack round-trip by evaluating the RHS elements and reordering
         # in place (SWAP for n<=3, BUILD_TUPLE+UNPACK_SEQUENCE for n>=4).
         if len(asgn.targets) == 1
@@ -757,7 +757,7 @@ def visit_stmt(
             return stmt_cont(loc=bloc, terminated=True);
         }
         if frame.break_is_stub {
-            # CPython codegen_break: unwind the loop (POP_TOP for the FOR
+            # The C compiler's codegen_break: unwind the loop (POP_TOP for the FOR
             # family, nothing for WHILE), then jump to the loop's exit anchor.
             if frame.pops_iter {
                 g.emit_op(OP_POP_TOP, 0, bloc);
@@ -873,7 +873,7 @@ def visit_stmt(
 def visit_return_stmt(
     g: cfg_builder, r: Return, check_fast: bool = False, borrow_fast: bool = False
 ) {
-    # CPython 3.14 return locations (codegen_return): value-expression
+    # Python 3.14 return locations (codegen_return): value-expression
     # instructions carry their own spans; RETURN_VALUE carries the statement
     # span -- except for Constant values, where the folded NOP/LOAD_CONST pair
     # pins BOTH the load and RETURN_VALUE to the value's span. Fast-local loads
@@ -911,7 +911,7 @@ def visit_return_stmt(
 # lineno 0), each statement, then the implicit LOAD_CONST None; RETURN_VALUE
 # epilogue. The epilogue carries the last-emitted instruction's location (or the
 # last statement's location when it emitted nothing, e.g. Pass), matching
-# CPython's NO_LOCATION inheritance at the end of _PyCodegen_AddReturnAtEnd.
+# the C compiler's NO_LOCATION inheritance at the end of _PyCodegen_AddReturnAtEnd.
 def compile_exec(
     body: list[stmt],
     filename: str,
@@ -978,13 +978,13 @@ def compile_exec(
         );
         last = cont.loc;
         if cont.terminated {
-            # CPython compiles the remaining statements and then drops them as
+            # The C compiler compiles the remaining statements and then drops them as
             # unreachable blocks (flowgraph remove_unreachable). Visiting them
             # here would append live bytes after a terminator, so stop now.
-            # The implicit-return None const is still interned by CPython's
+            # The implicit-return None const is still interned by the C compiler's
             # (dead) epilogue emission; remove_unused_consts keeps it only at
             # index 0, exactly like the host. Deferred comp cleanup handlers
-            # are emitted here too -- CPython lays them out after the (dead)
+            # are emitted here too -- the C compiler lays them out after the (dead)
             # epilogue regardless of how the body ended.
             if len(ann_plan.entries) > 0 {
                 finish_module_annotations(g, ann_plan);
@@ -1016,7 +1016,7 @@ def compile_exec(
         }
     }
     if terminated {
-        # Dead implicit-return None const, interned like CPython's unreachable
+        # Dead implicit-return None const, interned like the C compiler's unreachable
         # epilogue; kept by remove_unused_consts only at index 0.
         u.add_const(py_none());
         finish_source_scope(g, protect_start);

@@ -1,4 +1,4 @@
-"""`@contextlib.contextmanager` lowers natively, answering what CPython answers.
+"""`@contextlib.contextmanager` lowers natively, answering what Python answers.
 
 The decorated function is compiled as the generator it is, and the `with`
 that calls it drives `contextlib`'s protocol: advance to the first `yield`
@@ -74,7 +74,7 @@ test "native @contextmanager on functions and an annex method answers like conte
     _same_lines(py_out, _na_run("contextmanager_probe.jac"), "contextmanager");
 }
 
-test "native ContextVar-backed @contextmanager scopes answer like CPython" {
+test "native ContextVar-backed @contextmanager scopes answer like Python" {
     py_out = python_run(os.path.join(FIXTURES, "contextmanager_scopes.jac"));
     _same_lines(py_out, _na_run("contextmanager_scopes.jac"), "scopes");
 }

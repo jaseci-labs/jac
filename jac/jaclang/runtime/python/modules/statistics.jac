@@ -1,8 +1,8 @@
 """Inverse normal cumulative distribution for the statistics module.
 
-CPython supplies the Python values and their float conversion. The rational
-approximation evaluates natively over machine doubles.
-Derived from CPython 3.14.6; see ../LICENSE.cpython.
+The runtime supplies the Python values and their float conversion. The
+rational approximation evaluates natively over machine doubles.
+Derived from Python 3.14.6; see ../LICENSE.cpython.
 """
 
 # Wichura, M.J. (1988). "Algorithm AS241: The Percentage Points of the Normal

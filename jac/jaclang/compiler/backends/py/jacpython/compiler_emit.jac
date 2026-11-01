@@ -130,7 +130,7 @@ def varname_index(u: unverified_cfg, name: str) -> int {
     return u.varname_index(name);
 }
 
-# Merged locals-plus index for MAKE_CELL / LOAD_DEREF / LOAD_FAST_BORROW (CPython 3.11+).
+# Merged locals-plus index for MAKE_CELL / LOAD_DEREF / LOAD_FAST_BORROW (Python 3.11+).
 def localsplus_index_u(u: unverified_cfg, name: str) -> int {
     vi = varname_index(u, name);
     if vi >= 0 {
@@ -163,9 +163,9 @@ def localsplus_index(g: cfg_builder, name: str) -> int {
     return localsplus_index_u(g.u, g.scope_names.get(name, name));
 }
 
-# CPython emits MAKE_CELL(s), optional COPY_FREE_VARS, then RESUME. Generators
+# The C compiler emits MAKE_CELL(s), optional COPY_FREE_VARS, then RESUME. Generators
 # and coroutines prepend RETURN_GENERATOR; POP_TOP before RESUME (protect region
-# starts at the following block). Nested-scope locations (CPython 3.14):
+# starts at the following block). Nested-scope locations (Python 3.14):
 # MAKE_CELL / COPY_FREE_VARS carry NO_LOCATION; RETURN_GENERATOR / POP_TOP sit
 # on the def line with no columns (NO_COLUMNS linetable form); only RESUME
 # carries a full location -- the def line, full-width zero columns.
@@ -181,7 +181,7 @@ def emit_function_prologue(
     u.cellvars = cellvars_from_sym(sym_fn);
     u.freevars = freevars_from_sym(sym_fn);
     noloc = no_loc();
-    # CPython flowgraph order: COPY_FREE_VARS precedes the MAKE_CELLs
+    # flowgraph.c order: COPY_FREE_VARS precedes the MAKE_CELLs
     # (matches the annotation-format / generic-parameter scopes).
     if len(u.freevars) > 0 {
         g.emit_op(OP_COPY_FREE_VARS, len(u.freevars), noloc);
@@ -285,7 +285,7 @@ def emit_send_delegation_loop(
 }
 
 # Place every still-queued await CLEANUP_THROW footer after all warm code
-# (unit end, before the deferred comp / generator-except handlers). CPython
+# (unit end, before the deferred comp / generator-except handlers). The C compiler
 # keeps these cold blocks after the body's final RETURN, in queue order.
 def flush_pending_await_footers(g: cfg_builder) {
     fi = 0;
@@ -314,7 +314,7 @@ def flush_pending_await_footers(g: cfg_builder) {
 }
 
 # Trim every open generator-tail row at a new await's yield window: the row
-# up to the window becomes that await's generator region (the A row CPython
+# up to the window becomes that await's generator region (the A row the C compiler
 # closes/reopens per window), and the window's own B row plus the await's
 # post-resume rows cover everything after. Without the trim the stale row
 # would win find_handler's first match and misroute the yield window.
@@ -363,7 +363,7 @@ def emit_await_send_loop_header(
     g.emit_op(get_iter_op, get_iter_arg, yloc);
     none_idx = g.u.add_const(py_none());
     g.emit_op(OP_LOAD_CONST, none_idx, yloc);
-    # Defer layout until each label's first use (CPython USE_LABEL). Eager
+    # Defer layout until each label's first use (codegen.c USE_LABEL). Eager
     # add_block here placed yield/send fragments ahead of following loop
     # bodies (yield from then for in the same outer loop) and broke stackdepth.
     send_blk = g.new_deferred_block();
@@ -429,7 +429,7 @@ def emit_await_send_except_regions(
     if from_delegation and len(g.open_try_frames) > 0 {
         frame = g.open_try_frames[len(g.open_try_frames) - 1];
     }
-    # Generator-protect region A. CPython closes it at each construct
+    # Generator-protect region A. The C compiler closes it at each construct
     # boundary and reopens at the previous await's after-resume: the row
     # starts at the barrier (function entry until the first boundary), and
     # inside a try body it is trimmed to end at the try's opening NOP --
@@ -483,7 +483,7 @@ def emit_await_send_except_regions(
     }
     if frame is None {
         # Post-resume generator region. Following a previous delegation,
-        # CPython ends this row at the PREVIOUS cleanup jump (the CJ block
+        # the C compiler ends this row at the PREVIOUS cleanup jump (the CJ block
         # itself stays uncovered) and gives this pair its own [ct..cj) row
         # when the footers are placed; the first delegation's row runs to its
         # own CJ (coalesced with the CT coverage). Inside a try body this row
@@ -670,7 +670,7 @@ def emit_function_defaults(g: cfg_builder, defaults: list[expr], tloc: cloc) -> 
     if len(defaults) == 0 {
         return True;
     }
-    # CPython visits each default expr (interning every scalar leaf const in
+    # The C compiler visits each default expr (interning every scalar leaf const in
     # pre-order), then the optimizer folds the BUILD_TUPLE and appends the
     # folded tuple const AFTER all visit-time consts (stage_late_const). Dead
     # leaves are dropped later by remove_unused_consts (index 0 always kept).
@@ -751,7 +751,7 @@ def emit_make_function_with_closure(
 ) {
     has_defaults = args is not None and len(args.defaults) > 0;
     has_kwdefaults = args is not None and args_have_kw_defaults(args);
-    # CPython adds the code object const at MAKE_FUNCTION emission time, i.e.
+    # The C compiler adds the code object const at MAKE_FUNCTION emission time, i.e.
     # AFTER the defaults/kwdefaults visitors interned their consts.
     if has_defaults {
         fn_args = args as arguments;
@@ -799,7 +799,7 @@ def emit_local_or_cell_store(g: cfg_builder, name: str, tloc: cloc) -> bool {
     name = codegen_mangle(g, name);
     # Cell/free scope FIRST (see emit_name_load): a STORE_FAST into a
     # cellvar's converted slot would replace the cell object itself,
-    # desynchronizing every closure sharing it. CPython stores deref.
+    # desynchronizing every closure sharing it. The C compiler stores deref.
     if g.sym_top is not None and g.sym_top.kind != scope_kind.MODULE {
         flags = sym_dict_get(g.sym_top.symbols, name, 0);
         scope = sym_scope_of(flags);
@@ -821,11 +821,11 @@ def emit_name_load(
     g: cfg_builder, name: str, tloc: cloc, for_call: bool = False
 ) -> bool {
     # Returns True when a separate PUSH_NULL is required before CALL (LOAD_NAME
-    # and fast locals). LOAD_GLOBAL folds NULL into the oparg low bit (CPython 3.14).
+    # and fast locals). LOAD_GLOBAL folds NULL into the oparg low bit (Python 3.14).
     name = codegen_mangle(g, name);
     # Cell/free scope FIRST: a cellvar param shares the localsplus fast-slot
     # region, but its slot holds the raw PyCell (LOAD_FAST_BORROW's closure
-    # view). Reads must deref (LOAD_DEREF unwraps) exactly like CPython, which
+    # view). Reads must deref (LOAD_DEREF unwraps) exactly like the C compiler, which
     # never emits a fast load for a CO_FAST_CELL name -- a raw cell escaping
     # as a call argument crashed functools.wraps (wrapped=cell) and
     # recursive_repr (user_function=cell).
@@ -837,7 +837,7 @@ def emit_name_load(
             if g.sym_top.kind == scope_kind.CLASS and scope == SCOPE_FREE {
                 # Class bodies resolve free names through the class namespace
                 # first: LOAD_LOCALS + LOAD_FROM_DICT_OR_DEREF lets a same-named
-                # class attribute shadow the enclosing cell (CPython
+                # class attribute shadow the enclosing cell (the C compiler
                 # compile_name_op class-scope rule).
                 g.emit_op(OP_LOAD_LOCALS, 0, tloc);
                 g.emit_op(OP_LOAD_FROM_DICT_OR_DEREF, idx, tloc);
@@ -864,7 +864,7 @@ def emit_name_load(
         }
         # Inside a comprehension body, coalesce with an immediately preceding
         # borrow load into LOAD_FAST_BORROW_LOAD_FAST_BORROW, keeping the first
-        # load's position (CPython's superinstruction peephole).
+        # load's position (the C compiler's superinstruction peephole).
         if g.u.comp_depth > 0 and len(g.cur.instrs) > 0 {
             prev = g.cur.instrs[len(g.cur.instrs) - 1];
             if prev.opcode == OP_LOAD_FAST_BORROW {
@@ -881,8 +881,8 @@ def emit_name_load(
         } else {
             # Emit an owned load. flowgraph.insert_superinstructions fuses adjacent
             # owned pairs and flowgraph.optimize_load_fast downgrades every load
-            # whose borrow it can prove safe -- matching CPython, which emits owned
-            # loads and strength-reduces them after the CFG is built.
+            # whose borrow it can prove safe -- matching the C compiler, which emits
+            # owned loads and strength-reduces them after the CFG is built.
             g.emit_op(OP_LOAD_FAST, fi, tloc);
         }
         return True;
@@ -891,7 +891,7 @@ def emit_name_load(
     if g.u.classdict_names and sym_scope_of(flags) != SCOPE_GLOBAL_EXPLICIT {
         # Class-scope __annotate__ body: every free name resolves through the
         # class namespace first, then globals/builtins (PEP 649 classdict
-        # resolution; CPython emits the LOAD_DEREF/LOAD_FROM_DICT_OR_GLOBALS
+        # resolution; the C compiler emits the LOAD_DEREF/LOAD_FROM_DICT_OR_GLOBALS
         # pair per name -- the pair also (re-)seeds the __classdict__ cell
         # that stays on the value stack across entries).
         clp = localsplus_index_u(g.u, "__classdict__");
@@ -903,7 +903,7 @@ def emit_name_load(
     opc = name_load_opcode(g, name);
     idx = g.u.add_name(name);
     if opc == OP_LOAD_GLOBAL {
-        # CPython encodes LOAD_GLOBAL's oparg as (name_index << 1) | push_null,
+        # The C compiler encodes LOAD_GLOBAL's oparg as (name_index << 1) | push_null,
         # where the low bit requests the extra NULL for a following CALL. The VM
         # decodes name_index = arg >> 1, so the shift is required for every
         # LOAD_GLOBAL, not just the call form (idx==0 masked this before).
@@ -947,10 +947,10 @@ def name_load_opcode(g: cfg_builder, name: str) -> int {
 }
 
 # Emit the subscript key (index or constant slice) onto the stack.
-# register_small_int: CPython keeps small-index literals in co_consts for
+# register_small_int: the C compiler keeps small-index literals in co_consts for
 # BINARY_OP[] loads but not for STORE_SUBSCR stores (byte-exact parity).
 # Emit one slice bound: the expression, or LOAD_CONST None when the bound is
-# omitted (CPython fills missing lower/upper/step with None).
+# omitted (the C compiler fills missing lower/upper/step with None).
 def emit_slice_bound(g: cfg_builder, e: expr | None, lc: cloc) {
     if e is None {
         idx = g.u.add_const(py_none());
@@ -961,7 +961,7 @@ def emit_slice_bound(g: cfg_builder, e: expr | None, lc: cloc) {
 }
 
 # Push a non-constant slice's operands and the fused/build opcode for a LOAD.
-# CPython 3.14: a 2-element slice (no step) uses BINARY_SLICE (lower, upper on
+# Python 3.14: a 2-element slice (no step) uses BINARY_SLICE (lower, upper on
 # stack, receiver below); a 3-element slice uses BUILD_SLICE 3 + BINARY_OP []].
 # Constant slices are folded by the caller (fold_slice_const) and never reach here.
 def emit_slice_load(g: cfg_builder, sl: Slice, lc: cloc) {
@@ -994,7 +994,7 @@ def visit_subscript_index(
         if isinstance(cv, PyInt) {
             kloc = expr_loc(key);
             if register_small_int {
-                # CPython keeps the dead small-int slot ONLY when the pool is
+                # The C compiler keeps the dead small-int slot ONLY when the pool is
                 # still empty (index 0), mirroring register_int_literal_const;
                 # later subscript keys are pure LOAD_SMALL_INT with no entry.
                 in_class_body = g.sym_top is not None
@@ -1043,7 +1043,7 @@ def emit_cmp_link(g: cfg_builder, op: PyObj, lc: cloc, bool_context: bool) -> bo
     return True;
 }
 
-# CPython folds `x is None` / `x is not None` in bool (test/filter) context into
+# The C compiler folds `x is None` / `x is not None` in bool (test/filter) context into
 # POP_JUMP_IF_NONE / POP_JUMP_IF_NOT_NONE, dropping the LOAD_CONST None + IS_OP.
 # That jump peephole is a separate slice; until it lands, identity tests against
 # the None literal in bool context must fail loudly rather than emit
@@ -1128,7 +1128,7 @@ def emit_folded_int(g: cfg_builder, v: int, lc: cloc) {
     g.emit_op(OP_LOAD_CONST, idx, lc);
 }
 
-# Register literal int operands in co_consts without emitting (CPython dead
+# Register literal int operands in co_consts without emitting (the C compiler's dead
 # small-int slot + out-of-range LOAD_CONST operands). Used by Constant visit
 # and by peephole-folded BinOp so folded exprs keep the same const pool.
 def register_int_literal_const(g: cfg_builder, e: expr, register_int_const: bool) {
@@ -1152,7 +1152,7 @@ def register_int_literal_const(g: cfg_builder, e: expr, register_int_const: bool
         return;
     }
     if v >= 0 and v <= 255 {
-        # CPython keeps the dead small-int slot ONLY when it lands at const
+        # The C compiler keeps the dead small-int slot ONLY when it lands at const
         # index 0 (pool empty). Once a code object / string / other const has
         # been added, small ints are pure LOAD_SMALL_INT with no pool entry.
         if len(g.u.consts) == 0 {
@@ -1166,7 +1166,7 @@ def register_int_literal_const(g: cfg_builder, e: expr, register_int_const: bool
 
 # BoolOp lowering (compile.c): short-circuit and/or chains with COPY/TO_BOOL.
 # Returns the false-exit block when false_shortcircuit_returns so the caller
-# can place its RETURN after the true-path suffix (CPython block layout).
+# can place its RETURN after the true-path suffix (the C compiler's block layout).
 def visit_boolop(
     g: cfg_builder, b: BoolOp, false_shortcircuit_returns: bool
 ) -> basicblock | None {
@@ -1225,7 +1225,7 @@ def visit_boolop(
     return None;
 }
 
-# F-string lowering (CPython 3.14 shapes, pinned via host dis):
+# F-string lowering (Python 3.14 shapes, pinned via dis):
 #   text Constant part            -> LOAD_CONST
 #   FormattedValue                -> <value>
 #                                    [CONVERT_VALUE 1|2|3]  (!s/!r/!a)
@@ -1236,7 +1236,7 @@ def visit_boolop(
 # BUILD_STRING 1), so a lone part reduces to its own sequence.
 def fstring_conversion_oparg(conversion: int) -> int {
     # AST conversion codes: -1 none, 115 's', 114 'r', 97 'a' (PEP 501-era
-    # CPython convention); CONVERT_VALUE opargs: 0 none, 1 str, 2 repr,
+    # C compiler convention); CONVERT_VALUE opargs: 0 none, 1 str, 2 repr,
     # 3 ascii; -1 flags an unrecognized code (caller reports it).
     if conversion == -1 {
         return 0;
@@ -1425,7 +1425,7 @@ def visit_expr(
     }
     if isinstance(e, UnaryOp) {
         un = e as UnaryOp;
-        # CPython folds unary minus on int constants in its POST-visit
+        # The C compiler folds unary minus on int constants in its POST-visit
         # optimizer pass: the operand keeps its visit-time const slot (dead
         # small-int registration included) and the negated const is interned
         # AFTER every visit-time const (incl. the epilogue None), so -1
@@ -1444,7 +1444,7 @@ def visit_expr(
             }
             if isinstance(cv, (PyInt, PyBigInt)) {
                 uloc = nloc(un.lineno, un.end_lineno, un.col_offset, un.end_col_offset);
-                # The operand's own const is removed by CPython's optimizer
+                # The operand's own const is removed by the C compiler's optimizer
                 # unless it occupies the protected index-0 dead slot.
                 if len(g.u.consts) == 0 {
                     in_class_body = g.sym_top is not None
@@ -1550,10 +1550,10 @@ def visit_expr(
     }
     if isinstance(e, IfExp) {
         # Conditional expression `body if test else orelse`. Branch+join form,
-        # leaving the selected value on the stack (CPython's embedded shape):
+        # leaving the selected value on the stack (the C compiler's embedded shape):
         #   <test>; POP_JUMP_IF_FALSE else; <body>; JUMP_FORWARD join;
         #   else: <orelse>; join:
-        # At a statement tail CPython instead duplicates the suffix into both
+        # At a statement tail the C compiler instead duplicates the suffix into both
         # arms (no join); that tail-duplication is a separate slice, so a
         # top-level `x = a if c else b` compiles correctly but is not byte-exact.
         ie = e as IfExp;
@@ -1617,7 +1617,7 @@ def visit_expr(
             and isinstance(call_args[0], GeneratorExp)
             and len((call_args[0] as GeneratorExp).generators) > 0
         ) {
-            # Sole generator-expression argument: CPython lowers the genexp
+            # Sole generator-expression argument: the C compiler lowers the genexp
             # (nested function + outermost GET_ITER + hidden-argument CALL 0)
             # directly against the callee setup instead of pushing generic args,
             # then performs the enclosing call over the produced generator.
@@ -1831,7 +1831,7 @@ def visit_expr(
             emit_starred_list_build(g, lelts, dloc);
             return None;
         }
-        # CPython packs an all-constant list as an empty list extended by a
+        # The C compiler packs an all-constant list as an empty list extended by a
         # folded const tuple only from three elements up (compile.c packs when
         # the display is longer than the small-element fast path): shorter ones
         # load each element then BUILD_LIST n.
@@ -1841,7 +1841,7 @@ def visit_expr(
                 register_int_literal_const(g, lelts[li2], True);
                 li2 = li2 + 1;
             }
-            # CPython packs an all-constant list as an empty list extended by a
+            # The C compiler packs an all-constant list as an empty list extended by a
             # folded const tuple: BUILD_LIST 0; LOAD_CONST (tuple); LIST_EXTEND 1.
             g.emit_op(OP_BUILD_LIST, 0, dloc);
             cidx = g.u.stage_late_const(
@@ -1894,7 +1894,7 @@ def visit_expr(
                 register_int_literal_const(g, selts[si3], True);
                 si3 = si3 + 1;
             }
-            # CPython packs an all-constant set as an empty set extended by a
+            # The C compiler packs an all-constant set as an empty set extended by a
             # folded frozenset const: BUILD_SET 0; LOAD_CONST (frozenset);
             # SET_UPDATE 1. Mirrors the all-constant list path above.
             frozen = PySet(t="frozenset", items={}, frozen=True);
@@ -1954,7 +1954,7 @@ def visit_expr(
         # accumulating consecutive literal k:v pairs into `n`. When a `**x`
         # (key None) is reached, flush any pending pairs as BUILD_MAP n (which
         # DICT_UPDATEs onto the running base once one exists), then merge x with
-        # DICT_UPDATE 1. Mirrors CPython 3.14 codegen_dict.
+        # DICT_UPDATE 1. Mirrors Python 3.14 codegen_dict.
         map_pairs = 0;
         have_dict = False;
         di = 0;
@@ -2129,7 +2129,7 @@ def call_has_unpacking(ca: Call) -> bool {
 }
 
 # Emit the positional slot of a CALL_FUNCTION_EX site (below it: callable,
-# NULL; above it: the kwargs mapping when present). CPython shapes:
+# NULL; above it: the kwargs mapping when present). The C compiler's shapes:
 #   - single lone *x: evaluate x directly (the VM tuple-izes it),
 #   - otherwise BUILD_LIST over plain elements with LIST_EXTEND per *starred,
 #     closed by CALL_INTRINSIC_1(LIST_TO_TUPLE); a kwargs-only call uses an
@@ -2143,7 +2143,7 @@ def emit_call_ex_positional(
 ) -> None {
     args = call_effective_args(ca);
     if prefix_count == 0 and len(args) == 1 and isinstance(args[0], Starred) {
-        # Single lone *x: CPython evaluates x directly; the VM tuple-izes it.
+        # Single lone *x: the C compiler evaluates x directly; the VM tuple-izes it.
         visit_expr(g, (args[0] as Starred).value, False, False, register_int_const);
         return;
     }
@@ -2209,7 +2209,7 @@ def emit_call_instruction(
     args = call_effective_args(ca);
     kws = call_effective_keywords(ca);
     if call_has_unpacking(ca) {
-        # CPython 3.14's CALL_FUNCTION_EX takes no oparg: the kwargs slot above
+        # Python 3.14's CALL_FUNCTION_EX takes no oparg: the kwargs slot above
         # the positional tuple is either a mapping built by the keyword-side
         # emission or a NULL placeholder pushed here for pure *args calls.
         if len(kws) == 0 {
@@ -2225,7 +2225,7 @@ def emit_call_instruction(
     }
 }
 
-# CPython codegen.c can_optimize_super_call / load_args_for_super: an attribute
+# codegen.c can_optimize_super_call / load_args_for_super: an attribute
 # access through a direct super(...) call compiles to LOAD_SUPER_ATTR over
 # (global super, class-or-arg0, self-or-arg1) instead of calling super first.
 # Emits the whole operand sequence plus the opcode (+ trailing NOP) and returns
@@ -2252,7 +2252,7 @@ def try_load_super_attr(
     }
     # 'super' must resolve GLOBAL_IMPLICIT in this unit and be absent from the
     # module top (static shadowing detection); otherwise fall back to the
-    # generic call path like CPython.
+    # generic call path like the C compiler.
     if g.sym_top is None {
         return False;
     }
@@ -2354,7 +2354,7 @@ def fast_local_index(g: cfg_builder, name: str) -> int {
     return g.u.varname_index(name);
 }
 
-# CPython 3.14 fuses two fast-local loads for binops (e.g. `return x + y`).
+# Python 3.14 fuses two fast-local loads for binops (e.g. `return x + y`).
 def try_emit_fast_local_pair_load(
     g: cfg_builder, left: expr, right: expr, tloc: cloc
 ) -> bool {
@@ -2385,7 +2385,7 @@ def try_emit_fast_local_pair_load(
 
 # True when every bound name of the comprehension target is a cell variable of
 # the enclosing scope -- i.e. the loop variable is captured by an inner function
-# (lambda/nested def), so CPython runs the comprehension through the slot's live
+# (lambda/nested def), so the C compiler runs the comprehension through the slot's live
 # cell (LOAD_FAST_AND_CLEAR + MAKE_CELL + STORE_DEREF) instead of plain fasts.
 # Module scope is excluded to match emit_name_load's DEREF gating.
 def comp_name_is_cell(g: cfg_builder, name: str) -> bool {
@@ -2670,7 +2670,7 @@ def visit_comp_elt(
         }
         # Operands emit LOAD_FAST_BORROW individually; adjacent borrow loads are
         # coalesced into LOAD_FAST_BORROW_LOAD_FAST_BORROW by emit_name_load's
-        # in-comprehension fuse (CPython's superinstruction peephole).
+        # in-comprehension fuse (the C compiler's superinstruction peephole).
         visit_comp_elt(g, b.left, bound_names, filter_compare);
         if codegen_busy(g) {
             return;
@@ -2684,7 +2684,7 @@ def visit_comp_elt(
     }
     if isinstance(e, UnaryOp) {
         un = e as UnaryOp;
-        # Same negative-int fold as visit_expr (CPython's post-visit optimizer
+        # Same negative-int fold as visit_expr (the C compiler's post-visit optimizer
         # folds comprehension elements too; negated consts are interned late).
         if isinstance(un.op, USub) and isinstance(un.operand, Constant) {
             cv = (un.operand as Constant).value;
@@ -2736,7 +2736,7 @@ def visit_comp_elt(
 }
 
 # Bind the comprehension loop target. When `lead_slot` is the fast index of the
-# loop variable the body evaluates first, CPython fuses the final bind with that
+# loop variable the body evaluates first, the C compiler fuses the final bind with that
 # load via STORE_FAST_LOAD_FAST (odd arity) or leaves a borrow for LOAD_FAST_BORROW
 # (even arity after STORE_FAST_STORE_FAST pairs). emit_name_load consumes
 # comp_pending_borrow for the fused case.
@@ -2843,7 +2843,7 @@ def comp_emit_filters(
     ii = 0;
     while ii < len(ifs) {
         ife = ifs[ii];
-        # CPython lowers filters through codegen_jump_if: `not` folds into the
+        # The C compiler lowers filters through codegen_jump_if: `not` folds into the
         # branch polarity, a single comparison keeps its bool-oparg COMPARE_OP
         # (no TO_BOOL -- comparisons yield exact bools), and every other
         # expression gets TO_BOOL before the branch.
@@ -3235,8 +3235,8 @@ def visit_dict_comp(g: cfg_builder, dc: DictComp) {
 # visit_test_expr return kinds. NORMAL leaves a bool on the stack, consumed by a
 # POP_JUMP_IF_FALSE. IS_NONE / IS_NOT_NONE leave the bare operand on the stack;
 # the caller must consume it with POP_JUMP_IF_NOT_NONE / POP_JUMP_IF_NONE (the
-# CPython `x is None` jump peephole), via emit_branch_if_test_false.
-# The *_INV variants mean the test was compiled under a folded `not` (CPython's
+# the C compiler's `x is None` jump peephole), via emit_branch_if_test_false.
+# The *_INV variants mean the test was compiled under a folded `not` (the C compiler's
 # compiler_jump_if_not): same stack shape, branch polarity flipped.
 glob TEST_NORMAL: int = 0,
      TEST_IS_NONE: int = 1,
@@ -3253,7 +3253,7 @@ def visit_test_expr(
     invert: bool = False
 ) -> int {
     # Fold `not <test>` into an inverted branch instead of emitting UNARY_NOT
-    # (CPython never materializes `not` in jump context). Double negation
+    # (the C compiler never materializes `not` in jump context). Double negation
     # recurses naturally; value-context `not` still goes through visit_expr.
     if isinstance(e, UnaryOp) {
         un = e as UnaryOp;
@@ -3272,7 +3272,7 @@ def visit_test_expr(
                     # Emit only the left operand; the branch site folds the
                     # identity + jump into POP_JUMP_IF_NONE / _NOT_NONE.
                     visit_expr(g, c.left);
-                    # CPython compiles the None comparand's LOAD_CONST (adding
+                    # The C compiler compiles the None comparand's LOAD_CONST (adding
                     # None to co_consts) before the peephole removes the load, so
                     # None still occupies its const-pool slot. Register it here to
                     # match co_consts ordering (and suppress a spurious dead
@@ -3301,7 +3301,7 @@ def visit_test_expr(
 }
 
 # Emit the conditional branch taken when a visit_test_expr result is FALSE. For
-# the None-identity kinds this is the CPython jump peephole:
+# the None-identity kinds this is the C compiler's jump peephole:
 #   `x is None`     -> POP_JUMP_IF_NOT_NONE  (branch away when x is NOT None)
 #   `x is not None` -> POP_JUMP_IF_NONE      (branch away when x IS None)
 # Inverted kinds flip the opcode polarity for a folded `not`:
@@ -3324,7 +3324,7 @@ def emit_branch_if_test_false(g: cfg_builder, kind: int, target_id: int, loc: cl
 
 # Mirror of emit_branch_if_test_false branching on TRUE (e.g. assert jumps to
 # the raise path when the test is false, so its skip-jump branches on true).
-# CPython folds `assert not t` by double negation: the skip-jump keeps the
+# The C compiler folds `assert not t` by double negation: the skip-jump keeps the
 # plain-false polarity of the operand.
 def emit_branch_if_test_true(g: cfg_builder, kind: int, target_id: int, loc: cloc) {
     inv_kind = kind - 3 if kind >= 3 else kind + 3;
@@ -3402,7 +3402,7 @@ def compile_lambda_cfg(
         return u;
     }
     g.emit_op(OP_RETURN_VALUE, 0, bloc);
-    # CPython appends a dead implicit-return None epilogue to every function
+    # The C compiler appends a dead implicit-return None epilogue to every function
     # unit, interning the const after all body consts (kept at index 0 by
     # remove_unused_consts, dropped otherwise).
     u.add_const(py_none());
@@ -3433,7 +3433,7 @@ def emit_expr_name_store(g: cfg_builder, name: str, tloc: cloc) -> None {
 
 # Lower a generator expression: nested <genexpr> PyCode + MAKE_FUNCTION, then
 # evaluate the outermost iterable in the ENCLOSING frame and call the function
-# via CALL 0 -- CPython binds the function's `.0` parameter from CALL's hidden
+# via CALL 0 -- the C compiler binds the function's `.0` parameter from CALL's hidden
 # self_or_null slot (GET_ITER result lands directly under the callable).
 def visit_genexp(g: cfg_builder, ge: GeneratorExp) -> None {
     gloc = nloc(ge.lineno, ge.end_lineno, ge.col_offset, ge.end_col_offset);

@@ -68,7 +68,7 @@ def builtins_introspection_py() -> dict[any, any] {
         # emit_callable
         "callable_fn": 1 if callable(len) else 0,
         "callable_int": 1 if callable(42) else 0,
-        # emit_hash (CPython: hash(n) == n for small integers)
+        # emit_hash (Python: hash(n) == n for small integers)
         "hash_42": hash(42),
         "hash_0": hash(0),
         # emit_id (any object has a positive id)

@@ -1,6 +1,6 @@
 """File descriptor helpers the _posixsubprocess child runs between fork and exec.
 
-Derived from CPython 3.14.6 Modules/_posixsubprocess.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/_posixsubprocess.c; see ../LICENSE.cpython.
 Everything here is async-signal-safe: scalar and pointer arithmetic over
 memory the parent allocated, and plain C calls. Nothing allocates.
 """

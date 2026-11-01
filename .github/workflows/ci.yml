@@ -57,6 +57,7 @@ jobs:
       js_engine: ${{ steps.filter.outputs.js_engine }}
       pack_smoke: ${{ steps.filter.outputs.pack_smoke }}
       site_journey: ${{ steps.filter.outputs.site_journey }}
+      python_runtime: ${{ steps.filter.outputs.python_runtime }}
     steps:
       - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v3
@@ -66,7 +67,7 @@ jobs:
             core:
               - 'jac/**'
               - 'jac.toml'
-              - 'scripts/run_cpython_compiler_tests.jac'
+              - 'scripts/run_python_conformance.jac'
               - '.github/workflows/build-binaries.yml'
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
@@ -86,6 +87,19 @@ jobs:
               - 'jac/jaclang/cli/docs/**'
               - 'jac/jaclang/cli/skills/**'
               - 'release_notes/**'
+            # The JacPython runtime and everything it is built from or
+            # gated by: its sources, the bootstrap, the Python frontend and
+            # compiler it links, and the conformance suites.
+            python_runtime:
+              - 'jac/jaclang/runtime/python/**'
+              - 'jac/jaclang/compiler/backends/py/jacpython/**'
+              - 'jac/jaclang/compiler/frontend/python/**'
+              - 'jac/bootstrap/**'
+              - 'jac/tests/python_conformance/**'
+              - 'scripts/jacpython/**'
+              - 'scripts/run_python_conformance.jac'
+              - 'scripts/test_jacpython_native.jac'
+              - '.github/workflows/_python-conformance.yml'
             installer:
               - 'scripts/install.sh'
               # The lane's own definition lives here, so a change to what it
@@ -241,7 +255,7 @@ jobs:
       # cache hit does not, so leaving it implicit made the kit's contents a
       # function of cache state -- present on a miss, missing on a hit, with
       # if-no-files-found blind to it because the other paths matched.
-      # Every zig build here runs through the kit's own (CPython) runtime.
+      # Every zig build here runs through the kit's own JacPython runtime.
       - name: Materialize typeshed + vendored runtimes
         working-directory: jac
         run: |
@@ -260,9 +274,8 @@ jobs:
           WORK="$(mktemp -d)"; cd "$WORK"
           ldd "$BIN" || true
           ! ldd "$BIN" | grep -qi python
-          # The official configuration bundles stock CPython; JacPython is an
-          # accelerator its own lanes build (_jacpython.yml).
-          "$BIN" -c 'import ctypes; assert not hasattr(ctypes.pythonapi, "_PyJac_CompilerRequired")'
+          # The bundled runtime is JacPython: its compiler is the native Jac one.
+          "$BIN" -c 'import ast, ctypes; assert ctypes.pythonapi._PyJac_CompilerRequired() == 1; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4; assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42'
           # The kit carries every artifact a release does, less what its
           # manifest declares it leaves out -- only a pull request's kit may
           # (setup-jac asks through JAC_KIT_OMIT, artifacts/kit.jac pr_kit_omits).
@@ -341,9 +354,9 @@ jobs:
         working-directory: jac
         run: |
           set -euo pipefail
-          DIR="$(find .precompiled-build/cpython -maxdepth 1 -type d -name 'cpython-*' | head -1)"
-          [ -n "$DIR" ] || { echo "::error::no .precompiled-build/cpython/cpython-<ver> tree"; exit 1; }
-          [ -f .precompiled-build/cpython/MANIFEST.json ] || {
+          DIR="$(find .precompiled-build -mindepth 1 -maxdepth 1 -type d | head -1)"
+          [ -n "$DIR" ] || { echo "::error::no .precompiled-build/<python tag> tree"; exit 1; }
+          [ -f .precompiled-build/MANIFEST.json ] || {
             echo "::error::precompile tree has no MANIFEST.json, so the seal did not finish"; exit 1; }
           UNITS="$(find "$DIR" -name '*.jir' | wc -l | tr -d ' ')"
           [ "$UNITS" -ge 400 ] || { echo "::error::precompile tree has only $UNITS units"; exit 1; }
@@ -353,7 +366,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: jac-precompiled
-          path: jac/.precompiled-build/cpython
+          path: jac/.precompiled-build
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: error
@@ -599,6 +612,11 @@ jobs:
             echo "To skip this check, add the 'skip-no-python-check' label to your PR."
             exit 1
           fi
+
+      - name: Check Python runtime references
+        # Jac's Python runtime is JacPython; the script names what may stay
+        # (the Python ABI, the C API header layout, the PSF notice).
+        run: bash scripts/check_python_references.sh
 
       - name: Block duplicate diagnostic codes
         # Two branches each take the next free code and the merge keeps both;
@@ -1070,8 +1088,8 @@ jobs:
       - name: Fused-runtime boot of a fresh na host
         run: jac test jac/tests/client/test_fused_runtime_boot.jac
 
-  # Bootstrap unit tests: the Zig seed that fetches the pbs CPython before any
-  # Python exists (bootstrap/build_python.zig). Cross-platform on purpose. The
+  # Bootstrap unit tests: the Zig seed that builds the JacPython runtime before
+  # any Python exists (bootstrap/build_python.zig). Cross-platform on purpose. The
   # launcher itself is Jac; its trailer codec, payload tool and boot path are
   # covered by `jac test` in the kit lanes below.
   test-bootstrap:
@@ -1790,12 +1808,17 @@ jobs:
     needs: changes
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && (needs.changes.outputs.js_engine == 'true' || contains(github.event.pull_request.labels.*.name, 'native:js-engine'))) }}
     uses: ./.github/workflows/_js_engine.yml
-  # The JacPython accelerator's lane: its own kit and its upstream CPython
-  # gates. On request only -- the `native:jacpython` label or a manual run;
-  # nightly.yml runs it on every platform.
-  jacpython:
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'native:jacpython')) }}
-    uses: ./.github/workflows/_jacpython.yml
+  # The JacPython runtime's conformance gates on this run's kit: the native
+  # compiler is active, the code-object boundary holds, and every ported
+  # module and frontend suite passes its vendored conformance tests. Every
+  # push to main, and a pull request touching the runtime or what it is built
+  # from; nightly.yml runs it on every platform.
+  python-conformance:
+    needs: [changes, build-kit]
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.python_runtime == 'true' }}
+    uses: ./.github/workflows/_python-conformance.yml
+    with:
+      kit: true
 
   test-managed-android:
     needs: [changes, build-kit]
@@ -1843,7 +1866,7 @@ jobs:
       - build-kit
       - macos-native
       - js-engine
-      - jacpython
+      - python-conformance
       - jac-check
       - contribution-checks
       - test-compiler

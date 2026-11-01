@@ -265,7 +265,7 @@ glob FORBIDDEN: dict[str, str] = {
              1,
              "codecs.lookup on a literal bytes.decode encoding name, asked "
              "of the host because the generator runs in the kernel: it "
-             "asks CPython's codec registry for the canonical codec, the "
+             "asks the interpreter's codec registry for the canonical codec, the "
              "same registry the run-time alias table is built from. No "
              "scope table is read and no name is re-resolved"
          ),

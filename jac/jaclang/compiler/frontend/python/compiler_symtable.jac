@@ -1,10 +1,10 @@
 # Symbol table for the P4 front track (INTEGRATION_PLAN Phase 5).
 #
 # Two-pass scope analysis over validated AST: raw def/use collection, then
-# LOCAL/GLOBAL/FREE/CELL classification matching CPython 3.14 symtable.c.
+# LOCAL/GLOBAL/FREE/CELL classification matching Python 3.14 symtable.c.
 # Codegen consumes sym_facts; product_compile runs this after validation.
 
-# CPython symtable flag bits (Include/internal/pycore_symtable.h).
+# Symtable flag bits (Include/internal/pycore_symtable.h).
 glob DEF_GLOBAL: int = 1,
      DEF_LOCAL: int = 2,
      DEF_PARAM: int = 4,
@@ -25,7 +25,7 @@ enum scope_kind { MODULE = 0, CLASS = 1, FUNCTION = 2 }
 
 enum comprehension_kind { NONE = 0, GENERATOR = 1, LIST = 2, SET = 3, DICT = 4 }
 
-# Expression scopes that reject binding forms (CPython ste_scope_info).
+# Expression scopes that reject binding forms (symtable.c ste_scope_info).
 enum scope_info_kind {
     NONE = 0,
     ANNOTATION = 1,
@@ -38,7 +38,7 @@ enum scope_info_kind {
     TYPEVARTUPLE_DEFAULT = 8
 }
 
-# A scope is identified by the AST node that introduces it, as CPython keys
+# A scope is identified by the AST node that introduces it, as symtable.c keys
 # st_blocks by node address. One node can introduce several scopes.
 enum scope_role { BODY = 0, TYPE_PARAMETERS = 1, ANNOTATIONS = 2, DEFAULT_VALUE = 3 }
 
@@ -123,10 +123,10 @@ obj sym_block {
         can_see_class_scope: bool = False,
         # Class scopes only: a child scope referenced __class__ (directly or via
         # a super load), so the body needs the implicit __class__ cell
-        # (CPython symtable.c drop_class_free -> ste_needs_class_closure).
+        # (symtable.c drop_class_free -> ste_needs_class_closure).
         needs_class_closure: bool = False,
         needs_classdict_closure: bool = False,
-        # Any module-top symbol entry for "super" (CPython codegen.c checks
+        # Any module-top symbol entry for "super" (codegen.c checks
         # _PyST_GetScope(st_top, "super") != 0 before optimizing super calls).
         top_has_super: bool = False,
         comprehension: comprehension_kind = comprehension_kind.NONE,
@@ -245,7 +245,7 @@ def sym_block_tuple_names(d: dict[str, int], pred_scope: int) -> list[str] {
 }
 
 def mangle_name(private: str | None, name: str) -> str {
-    # CPython _Py_Mangle: only __spam forms (>=2 leading underscores, at most 1
+    # _Py_Mangle: only __spam forms (>=2 leading underscores, at most 1
     # trailing underscore) mangle inside a class scope; dunders (__x__) and
     # dotted names never do, and leading underscores are stripped from the
     # class name itself.
@@ -601,7 +601,7 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
         }
         ok = b.add_use((e as Name).id);
         # Special-case super: it counts as a use of __class__
-        # (CPython symtable.c Name_kind Load rule).
+        # (symtable.c Name_kind Load rule).
         if ok and (e as Name).id == "super" and sym_is_function_like(b.cur) {
             ok = b.add_use("__class__");
         }
@@ -1455,7 +1455,7 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
     s_kind = s.node_kind();
     if (s_kind == ast_kind.Assign and isinstance(s, Assign)) {
         a = s as Assign;
-        # CPython's symtable defines the value side before the assignment
+        # symtable.c defines the value side before the assignment
         # targets, so a PEP 572 walrus target inside the value lands in
         # co_varnames ahead of the statement's own targets.
         if not sym_visit_load_expr(b, a.value) {
@@ -1816,7 +1816,7 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         if not b.add_def(cd.name, DEF_LOCAL, cd.lineno, cd.col_offset) {
             return False;
         }
-        # Decorators evaluate in the ENCLOSING scope (CPython symtable.c
+        # Decorators evaluate in the ENCLOSING scope (symtable.c
         # ClassDef_kind visits decorator_list before entering the class block).
         decs = cd.decorator_list;
         if decs is None {
@@ -2179,11 +2179,11 @@ def sym_analyze_block(
         }
         ni = ni + 1;
     }
-    # Match CPython symtable.c analyze_block: only function-like blocks add their
+    # Match symtable.c analyze_block: only function-like blocks add their
     # locals to newbound; module/class locals are not closure parents for
     # top-level functions (self-recursion uses LOAD_GLOBAL, not LOAD_DEREF).
     # Class scopes additionally bind the implicit closure names so children
-    # resolve them FREE (CPython's special-case before analyzing children).
+    # resolve them FREE (symtable.c's special-case before analyzing children).
     newbound: dict[str, int] = {};
     if sym_is_function_like(block) {
         newbound = sym_set_union(newbound, local);
@@ -2232,7 +2232,7 @@ def sym_analyze_block(
     }
     child_free = sym_set_union(child_free, free);
     if block.kind == scope_kind.CLASS {
-        # CPython drop_class_free: the implicit class-scope names never pass a
+        # symtable.c drop_class_free: the implicit class-scope names never pass a
         # class boundary as free variables; __class__ instead becomes the
         # implicit cell (needs_class_closure) consumed by the body prologue and
         # returned as __classcell__. __classdict__/__conditional_annotations__
@@ -2331,7 +2331,7 @@ def build_module_symtable(
         return symtable_result(diag=sym_result[1]);
     }
     sym_assign_inline_aliases(top);
-    # CPython codegen.c super-call optimization requires 'super' to be unknown
+    # codegen.c's super-call optimization requires 'super' to be unknown
     # at the module top; record that fact on every block so nested units can
     # check it without parent links.
     if sym_dict_get(top.symbols, "super", 0) != 0 {

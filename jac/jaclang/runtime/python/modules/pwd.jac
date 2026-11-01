@@ -1,6 +1,6 @@
 """The Unix password database.
 
-Derived from CPython 3.14.6 Modules/pwdmodule.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/pwdmodule.c; see ../LICENSE.cpython.
 Lookups use the reentrant C library calls with the GIL released and a buffer
 that doubles on ERANGE, as the C module does.
 """

@@ -103,7 +103,7 @@ impl check_host_python {
     have = host_py_minor();
     if want != have {
         die(
-            f"mkpayload: must run on the bundled CPython {want} (this interpreter is {have}); invoke it with the source-built python"
+            f"mkpayload: must run on the bundled Python {want} (this interpreter is {have}); invoke it with the source-built JacPython"
         );
     }
 }

@@ -1,7 +1,7 @@
 """The socket layer of macOS: BSD address records with a length byte, 32-bit
 aligned ancillary data, the non-reentrant netdb lookups and PF_SYSTEM.
 
-Derived from CPython 3.14.6 Modules/socketmodule.c and socketmodule.h; see
+Derived from Python 3.14.6 Modules/socketmodule.c and socketmodule.h; see
 ../LICENSE.cpython. The records are laid out as <sys/socket.h> and <netdb.h>
 declare them, and CMSG_NXTHDR() as the <sys/socket.h> macro computes it.
 There is no gethostbyname_r(), so the module serializes the lookups under

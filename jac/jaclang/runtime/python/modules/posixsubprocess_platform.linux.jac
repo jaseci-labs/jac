@@ -1,6 +1,6 @@
 """The Linux side of the _posixsubprocess child.
 
-Derived from CPython 3.14.6 Modules/_posixsubprocess.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/_posixsubprocess.c; see ../LICENSE.cpython.
 Linux may start the child with vfork() (VFORK_USABLE), resetting handled
 signals to SIG_DFL before unblocking them, and lists open descriptors with
 getdents64() on /proc/self/fd into a buffer the parent allocated
@@ -11,7 +11,7 @@ sigaction 152 with the handler first, and struct linux_dirent64 has d_reclen
 at byte 16 and d_name at byte 19.
 """
 
-import from jaclang.runtime.python.cpython_api { _Py_open_noraise }
+import from jaclang.runtime.python.python_capi { _Py_open_noraise }
 import from jaclang.runtime.python.modules.posixsubprocess_constants {
     O_RDONLY,
     SIGKILL,

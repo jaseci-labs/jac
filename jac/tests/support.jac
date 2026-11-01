@@ -650,9 +650,9 @@ def assert_native_identity(
     return reference;
 }
 
-"""Run `src` on the sv lane (CPython is the oracle); return (stdout, stderr).
+"""Run `src` on the sv lane (the interpreter is the oracle); return (stdout, stderr).
 
-On this lane `import <mod>` binds CPython's own stdlib module, so sv output is
+On this lane `import <mod>` binds the interpreter's own stdlib module, so sv output is
 the reference every bundled-stdlib congruence probe compares against. Bare
 `jac run` is used deliberately: the explicit `--backend python` route installs
 jac's own logging config (INFO level, a `LEVEL - msg` format), which changes

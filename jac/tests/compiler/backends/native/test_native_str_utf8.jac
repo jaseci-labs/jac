@@ -1,5 +1,5 @@
 """UTF-8 codepoint semantics for native str (#9423): every op is swept
-against live CPython results on multibyte inputs."""
+against live Python results on multibyte inputs."""
 import ctypes;
 import from tests.support { compile_native, native_str_func as get_sfunc }
 

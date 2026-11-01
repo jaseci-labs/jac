@@ -8,7 +8,7 @@ range did not lower at all.
 import ctypes;
 import from tests.support { compile_native, native_address }
 
-test "a range in a variable iterates and measures like CPython" {
+test "a range in a variable iterates and measures like Python" {
     (eng, _) = compile_native("range_values.jac");
     cases = [("walk_up", 7, 1204), ("walk_down", 10, 2204), ("measure", 4, 4003)];
     for (name, arg, want) in cases {

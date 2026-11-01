@@ -1,5 +1,5 @@
 """A preserve_none handler that tail-calls handlers C defines, the way an
-instruction handler jumps to an interpreter label CPython still owns."""
+instruction handler jumps to an interpreter label the C side still owns."""
 import from c {
     @__preserve_none
     def c_handler(frame: ptr[u8], sp: ptr[u64], arg: i32) -> ptr[u8];  @__preserve_none

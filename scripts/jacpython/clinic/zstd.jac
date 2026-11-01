@@ -2,7 +2,8 @@
 
 scripts/jacpython/gen_clinic.jac generates
 jaclang/runtime/python/bindings/clinic/zstd.jac from them. Taken from
-CPython 3.14.6 Modules/_zstd/_zstdmodule.c, Modules/_zstd/zstddict.c, Modules/_zstd/compressor.c, Modules/_zstd/decompressor.c.
+the C sources it replaces (Modules/_zstd/_zstdmodule.c, Modules/_zstd/zstddict.c, Modules/_zstd/compressor.c, Modules/_zstd/decompressor.c); see
+jac/jaclang/runtime/python/LICENSE.cpython.
 """
 import from clinic_schema { Clinic, Function, Parameter }
 

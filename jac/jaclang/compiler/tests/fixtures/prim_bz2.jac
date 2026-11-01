@@ -1,6 +1,6 @@
 """Bundled native ``bz2`` cross-backend equivalence fixture (#6978 Phase 2).
 
-The SAME ``import from bz2 { compress, decompress }`` binds CPython's ``bz2`` on
+The SAME ``import from bz2 { compress, decompress }`` binds Python's ``bz2`` on
 the sv (Python) backend and the bundled ``na_stdlib/bz2.jac`` Mechanism-F
 module -- a thin pure-Jac surface over ``libbz2`` (the FFI floor) -- on the na
 (native LLVM) backend. Under this in-process JIT harness the floor dlopens the
@@ -13,7 +13,7 @@ surface: ``compress`` produces byte-identical output (poly digest + exact
 length, at the default and an explicit level), ``decompress`` round-trips,
 empty input is handled identically, and the error paths agree -- corrupt
 input, a truncated stream, and out-of-range compresslevels all raise on both
-backends (compared as flags: CPython raises OSError on corrupt data where the
+backends (compared as flags: Python raises OSError on corrupt data where the
 native surface raises ValueError, and native exception messages are not
 compared across the JIT boundary). The digest helper is duplicated inside the
 ``na`` block because a plain ``def`` is a Python symbol native code could only

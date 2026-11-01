@@ -596,7 +596,7 @@ impl JacCompiler._sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None
     import from pathlib { Path as _Path }
     norm_file = os.path.normpath(os.path.abspath(full_target));
     d = os.path.dirname(norm_file);
-    pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
+    pyver = sys.implementation.cache_tag;
     while True {
         bundle_dir = os.path.join(d, '_precompiled');
         if os.path.isdir(bundle_dir) {
@@ -645,7 +645,7 @@ impl JacCompiler._precompiled_jir_data(full_target: str) -> (tuple[bytes, str] |
     }
     norm_file = os.path.normpath(os.path.abspath(full_target));
     d = os.path.dirname(norm_file);
-    pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
+    pyver = sys.implementation.cache_tag;
     while True {
         bundle_dir = os.path.join(d, '_precompiled');
         if os.path.isdir(bundle_dir) {
@@ -691,7 +691,7 @@ impl JacCompiler._get_precompiled_jir_bytecode(
     }
     norm_file = os.path.normpath(os.path.abspath(full_target));
     d = os.path.dirname(norm_file);
-    pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
+    pyver = sys.implementation.cache_tag;
     while True {
         bundle_dir = os.path.join(d, '_precompiled');
         if os.path.isdir(bundle_dir) {

@@ -1,6 +1,6 @@
-"""Congruence probe: `import signal` must answer what CPython answers.
+"""Congruence probe: `import signal` must answer what Python answers.
 
-Runs on the sv pathway (CPython's signal) and the na pathway
+Runs on the sv pathway (Python's signal) and the na pathway
 (na_stdlib/signal.linux.jac). Only deterministic, lane-identical lines are
 printed; the handler frame argument is ignored because na delivers None.
 """

@@ -1,6 +1,6 @@
 """The macOS side of the posix file descriptor area.
 
-Derived from CPython 3.14.6 Modules/posixmodule.c and
+Derived from Python 3.14.6 Modules/posixmodule.c and
 Include/internal/pycore_fileutils.h; see ../LICENSE.cpython. sendfile() takes
 the BSD headers/trailers record, fcopyfile() and ctermid_r() are
 Apple-only, and read() is capped at INT_MAX bytes (_PY_READ_MAX). pipe2,
@@ -10,7 +10,7 @@ here are never reached, since the binding installs only the functions the
 target compiles.
 """
 
-import from jaclang.runtime.python.cpython_api { jacpy_set_errno }
+import from jaclang.runtime.python.python_capi { jacpy_set_errno }
 import from jaclang.runtime.python.modules.posix_constants { ENOSYS }
 import from jaclang.runtime.python.modules.time_records { timespec }
 

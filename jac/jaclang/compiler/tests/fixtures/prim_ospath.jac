@@ -1,7 +1,7 @@
 """Bundled native `os.path` (posixpath) cross-backend equivalence fixture
 (issues #6404 / #6940).
 
-The SAME `import from os.path { ... }` binds CPython's `posixpath` on the sv
+The SAME `import from os.path { ... }` binds Python's `posixpath` on the sv
 (Python) backend and the bundled `na_stdlib/os/path.jac` Mechanism-B module
 on the na (native LLVM) backend (the first module to ride the bundled native
 stdlib resolution keystone). This fixture pins the two implementations

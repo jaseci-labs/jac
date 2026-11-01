@@ -1,6 +1,6 @@
 """Bundled native ``stat`` cross-backend equivalence fixture.
 
-The SAME `import from stat { ... }` binds CPython's ``stat`` on the sv
+The SAME `import from stat { ... }` binds Python's ``stat`` on the sv
 (Python) backend and the bundled `na_stdlib/stat.jac` Mechanism-B module on
 the na (native LLVM) backend. Pure constant/predicate/string surface, so both
 lanes compute identical values with no filesystem access. Pins the mode-bit

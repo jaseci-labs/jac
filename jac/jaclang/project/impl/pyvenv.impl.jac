@@ -181,7 +181,7 @@ impl ensure_venv(venv_dir: Path, verbose: bool = False) {
             if verbose {
                 if _is_fused_venv(venv_dir) {
                     console.print(
-                        f"Recreating fused venv at {venv_dir} with bundled CPython"
+                        f"Recreating fused venv at {venv_dir} with the bundled Python runtime"
                     );
                 } else {
                     console.print(f"Recreating corrupted venv at {venv_dir}");

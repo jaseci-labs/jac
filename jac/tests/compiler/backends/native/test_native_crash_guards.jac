@@ -2,7 +2,7 @@
 Cluster 3).
 
 Each fixture exercises an idiom that previously segfaulted, corrupted
-the heap, hung, or returned garbage on na while working on sv/CPython.
+the heap, hung, or returned garbage on na while working on sv.
 Results encode multiple sub-cases into single i64s via the ctypes JIT
 harness.
 """
@@ -16,7 +16,7 @@ glob FIXTURES = os.path.join(
      );
 
 # --- Slice semantics: negative bounds, clamping, steps ---
-test "str slices: negative bounds, clamping, and steps match CPython" {
+test "str slices: negative bounds, clamping, and steps match Python" {
     (eng, _) = compile_native("py_slices.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "str_slices", ctypes.c_int64);
@@ -24,7 +24,7 @@ test "str slices: negative bounds, clamping, and steps match CPython" {
     assert result == 11111111 , f"Expected 11111111 (all 8 cases), got {result}";
 }
 
-test "list slices: negative bounds, clamping, and steps match CPython" {
+test "list slices: negative bounds, clamping, and steps match Python" {
     (eng, _) = compile_native("py_slices.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "list_slices", ctypes.c_int64);

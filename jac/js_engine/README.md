@@ -12,7 +12,7 @@ js_engine is an accelerator over bun: a release ships bun, and jac runs JavaScri
 
 | File | What it is |
 |------|------------|
-| `libjs_engine.so` | this project, linked by the in-repo compiler (`jac build --native --lib engine/src/main.jac`, run from here so [jac.toml](jac.toml) applies); OpenSSL, zlib and zstd are linked in statically from the source-built CPython's archives |
+| `libjs_engine.so` | this project, linked by the in-repo compiler (`jac build --native --lib engine/src/main.jac`, run from here so [jac.toml](jac.toml) applies); OpenSSL, zlib and zstd are linked in statically from the JacPython runtime's archives |
 | `libjs_native.so` | the foreign code, compiled by Zig from the `build.zig.zon` pins ([native/build_native.zig](native/build_native.zig)): the C shims under `napi/shim` and `native/`, PCRE2, libuv, nghttp2, llhttp, brotli and ICU with its data |
 | `libwasmtime.so` | the pinned upstream Wasmtime C API |
 | `builtins.jsbc` | every builtin under `engine/src/builtins/js/`, precompiled by [engine/src/js_compiler.jac](engine/src/js_compiler.jac) |

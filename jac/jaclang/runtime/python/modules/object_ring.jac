@@ -1,6 +1,6 @@
 """Circular storage shared by native Python queues and deques.
 
-Slots contain owned CPython handles. Push/pop transfer ownership without calling
+Slots contain owned Python handles. Push/pop transfer ownership without calling
 Python, so callers can publish complete mutations before releasing references.
 Borrowing and replacement also leave ownership decisions to the caller.
 """

@@ -1,6 +1,6 @@
 # P0.7 parser action helpers (PLAN.md).
 #
-# Lowers CPython grammar actions (_PyAST_*, _PyPegen_*) into ast_nodes.jac
+# Lowers Python grammar actions (_PyAST_*, _PyPegen_*) into ast_nodes.jac
 # objects. Generated parser rules call these helpers; this file is hand-written
 # and grows with each grammar profile.
 
@@ -114,7 +114,7 @@ def pa_warn_escape(escape: str, tok: peg_token | None, line_offset: int = 0) {
     );
 }
 
-# CPython reports the line the escape sits on, not the line the literal
+# Python reports the line the escape sits on, not the line the literal
 # opens on, so a triple-quoted body carries the newlines before the escape.
 # Counted only when a warning fires -- at most once per token -- so the
 # decode run loop pays nothing for it.
@@ -151,7 +151,7 @@ def pa_check_escape(
 }
 
 # Escape decoding uses the retained string/bytes object runtime, just as
-# CPython's string_parser.c does. No parser or compiler API is called here.
+# Parser/string_parser.c does. No parser or compiler API is called here.
 #
 # The body goes to the unicode-escape codec, which reproduces ASCII as written,
 # including a backslash escape of an ASCII character. That source is copied in
@@ -413,7 +413,7 @@ def pa_concatenate_strings(parts: list[expr]) -> expr | None {
         }
         i = i + 1;
     }
-    # Merge adjacent literal figures (CPython concatenates neighboring
+    # Merge adjacent literal figures (the C parser concatenates neighboring
     # Constants when gluing implicitly-joined strings into one JoinedStr).
     merged: list[expr] = [];
     k = 0;
@@ -2353,7 +2353,7 @@ def pa_function_def_decorators(decs: list[expr], stmt: stmt) -> stmt {
 def pa_class_def_decorators(decs: list[expr], stmt: stmt) -> stmt {
     # Mirrors _PyPegen_class_def_decorators: attach the decorators to the
     # ClassDef produced by class_def_raw. Node spans stay anchored on the
-    # `class` keyword (CPython never extends them over the decorator lines).
+    # `class` keyword (Python never extends them over the decorator lines).
     if isinstance(stmt, ClassDef) {
         cd = stmt as ClassDef;
         return ClassDef(

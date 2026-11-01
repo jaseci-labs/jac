@@ -14,7 +14,7 @@ its primary ancestor's slot assignment verbatim, so the ancestor's own methods
 and the consumer's reads agree about where a field lives.
 
 The subprocess pair is the contract: running the same fixture through the
-server pathway (CPython) and through a native binary must print identical
+server pathway (Python) and through a native binary must print identical
 lines, so the field *values* are pinned and not merely the fact that something
 lowered.
 

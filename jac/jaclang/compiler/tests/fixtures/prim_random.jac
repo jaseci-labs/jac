@@ -2,7 +2,7 @@
 congruence decision #1: MT19937 seed→sequence parity).
 
 Both backends seed(42) and draw the SAME ordered sequence; the native MT19937
-must reproduce CPython's stream bit-for-bit (ints exact, floats within ULP).
+must reproduce Python's stream bit-for-bit (ints exact, floats within ULP).
 ES/JS opts out.
 """
 

@@ -1,6 +1,6 @@
 """Per-method microbenchmark for the bundled native datetime/calendar/zoneinfo.
 
-Runs unchanged on both lanes: `jac run -b python` binds CPython's modules
+Runs unchanged on both lanes: `jac run -b python` binds the interpreter's modules
 (baseline) and `jac run -b native` binds na_stdlib. Each op is timed over a
 fixed iteration count with datetime.now() (microsecond resolution via
 clock_gettime on the native lane) and reported as us/op.

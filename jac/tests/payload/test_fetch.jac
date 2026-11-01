@@ -258,12 +258,12 @@ test "unzip_member_by_suffix finds bun inside its release zip" {
 }
 
 test "find_sum_line reads `<hex>  <filename>` lines" {
-    sums = "abc123  cpython-a.tar.zst\n"
+    sums = "abc123  python-a.tar.zst\n"
     "def456 *bun-linux-x64.zip\r\n"
     "\n"
     "bad-line\n"
     "777\tother.zip\n";
-    assert find_sum_line(sums, "cpython-a.tar.zst") == "abc123";
+    assert find_sum_line(sums, "python-a.tar.zst") == "abc123";
     assert find_sum_line(sums, "other.zip") == "777";
     assert find_sum_line(sums, "missing") is None;
     assert find_sum_line(sums, "*bun-linux-x64.zip") == "def456";

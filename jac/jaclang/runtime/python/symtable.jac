@@ -88,7 +88,7 @@ def _entry_from_block(b: sym_block, nested: bool = False) -> SymtableEntry {
             child.kind == scope_kind.FUNCTION
                 and child.scope_info == scope_info_kind.NONE for child in b.children
         ) {
-        # The public table includes CPython's generic-function defaults slot
+        # The public table includes Python's generic-function defaults slot
         # even when Jac's factory does not need to pass a defaults tuple.
         symbols = {".defaults": DEF_PARAM | (SCOPE_LOCAL << SCOPE_OFFSET), ** symbols};
         varnames.insert(0, ".defaults");

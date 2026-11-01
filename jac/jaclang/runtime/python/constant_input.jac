@@ -1,4 +1,4 @@
-"""Retained CPython constants become compiler-owned native values at the boundary."""
+"""Retained Python constants become compiler-owned native values at the boundary."""
 
 def read_constant(handle: ptr[PyObject], depth: int = 0) -> PyObj {
     if depth > 1000 {

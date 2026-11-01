@@ -151,8 +151,8 @@ def _read_section(data: bytes, want: int) -> bytes | None:
 
 
 def python_tag() -> str:
-    """Return the running interpreter's tag, e.g. ``cpython-314``."""
-    return f"cpython-{sys.version_info.major}{sys.version_info.minor}"
+    """Return the running interpreter's cache tag (``sys.implementation.cache_tag``)."""
+    return sys.implementation.cache_tag
 
 
 _ARCH_ALIASES = {

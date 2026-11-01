@@ -1,4 +1,4 @@
-"""Compiler constants and code objects become retained CPython values."""
+"""Compiler constants and code objects become retained Python values."""
 
 def constant_object(constant: PyObj) -> ptr[PyObject] {
     writer = constant_writer();
@@ -10,8 +10,8 @@ def constant_object(constant: PyObj) -> ptr[PyObject] {
 }
 
 # One conversion shares a filename object across its nested code objects, and
-# equal constants (by compiler constant key) become one CPython object, as
-# CPython's compiler merges them within a compilation unit.
+# equal constants (by compiler constant key) become one Python object, as
+# Python's compiler merges them within a compilation unit.
 obj constant_writer {
     has filename: str = "",
         filename_handle: ptr[PyObject] = NULL,
@@ -120,7 +120,7 @@ obj constant_writer {
         return self.filename_handle;
     }
 
-    # CPython merges argument cells into their local slots, then appends the
+    # Python merges argument cells into their local slots, then appends the
     # remaining cells and free variables in compiler-assigned order.
     def code_of(code: PyCode) -> ptr[PyObject] {
         names: list[str] = [];
@@ -211,7 +211,7 @@ def text_tuple(values: list[str]) -> ptr[PyObject] {
     return result;
 }
 
-# Compiler integers keep 15-bit digits; CPython reads the little-endian
+# Compiler integers keep 15-bit digits; the runtime reads the little-endian
 # magnitude and applies the sign.
 def big_integer_object(value: PyBigInt) -> ptr[PyObject] {
     magnitude: list[int] = [];

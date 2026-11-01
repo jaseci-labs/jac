@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="880" height="448" viewBox="0 0 880 448" role="img" aria-label="Anatomy of the jac binary: a native launcher stub with a runtime payload appended to it, carrying a private CPython, the precompiled Jac compiler and runtime, a statically linked LLVM, the Bun executable, vendored typeshed stubs, and static libc archives; it replaces the whole development toolchain">
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="448" viewBox="0 0 880 448" role="img" aria-label="Anatomy of the jac binary: a native launcher stub with a runtime payload appended to it, carrying the JacPython runtime, the precompiled Jac compiler and runtime, a statically linked LLVM, the Bun executable, vendored typeshed stubs, and static libc archives; it replaces the whole development toolchain">
   <style>
     .sans { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
     .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }
@@ -23,7 +23,7 @@
 
   <g font-size="11" class="sans">
     <rect x="44" y="168" width="324" height="30" rx="6" fill="#f6f8fa" stroke="#d0d7de"/>
-    <text class="fg" x="56" y="187">CPython 3.14</text><text class="dim" x="356" y="187" text-anchor="end">dlopened at boot</text>
+    <text class="fg" x="56" y="187">JacPython (Python 3.14)</text><text class="dim" x="356" y="187" text-anchor="end">dlopened at boot</text>
     <rect x="44" y="204" width="324" height="30" rx="6" fill="#f6f8fa" stroke="#d0d7de"/>
     <text class="fg" x="56" y="223">Jac compiler + runtime</text><text class="dim" x="356" y="223" text-anchor="end">precompiled JIR</text>
     <rect x="44" y="240" width="324" height="30" rx="6" fill="#f6f8fa" stroke="#d0d7de"/>

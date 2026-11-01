@@ -1,10 +1,10 @@
-"""The compile-time evaluator's typed value model matches CPython value for value.
+"""The compile-time evaluator's typed value model matches Python value for value.
 
 Compile-time results are written into generated code, so every operation the
 evaluator re-implements over its own value model (arbitrary-precision ints,
 float division and rounding, formatting, repr, hashing, container ordering
-and equality, exception messages) must agree exactly with the host CPython.
-These tests drive the typed operations and CPython over the same inputs and
+and equality, exception messages) must agree exactly with the host interpreter.
+These tests drive the typed operations and the interpreter over the same inputs and
 compare the observable outcome: the repr of the result, or the exception type
 and message.
 """
@@ -124,7 +124,7 @@ def ct_outcome(f: object) -> str {
 def same(label: str, py_f: object, ct_f: object) {
     want = py_outcome(py_f);
     got = ct_outcome(ct_f);
-    assert want == got , f"{label}: CPython {want!r} != comptime {got!r}";
+    assert want == got , f"{label}: Python {want!r} != comptime {got!r}";
 }
 
 def complex_pow(a: float, b: float) -> bool {
@@ -178,7 +178,7 @@ def sample_ints(rng: random.Random) -> list[int] {
     return base;
 }
 
-test "int arithmetic matches CPython across the small/big boundary" {
+test "int arithmetic matches Python across the small/big boundary" {
     rng = random.Random(8675309);
     vals = sample_ints(rng);
     ops = ["+", "-", "*", "//", "%", "&", "|", "^", "/"];
@@ -289,7 +289,7 @@ test "int and float comparisons are exact" {
     }
 }
 
-test "float division, modulo, powers, and rounding follow CPython" {
+test "float division, modulo, powers, and rounding follow Python" {
     vals = [
         0.0,
         -0.0,
@@ -371,7 +371,7 @@ def _call_builtin(name: str, args: list[CtValue]) -> CtValue {
     return _call_builtin_kw(name, args, {});
 }
 
-test "format specs, percent formatting, and str.format match CPython" {
+test "format specs, percent formatting, and str.format match Python" {
     for v in [0, 5, -5, 1234567, -1234567, 255, 2 ** 70, True, False] {
         for spec in [
             "",
@@ -500,7 +500,7 @@ test "format specs, percent formatting, and str.format match CPython" {
     }
 }
 
-test "containers keep CPython repr, equality, key identity, and ordering" {
+test "containers keep Python repr, equality, key identity, and ordering" {
     values = [
         [1, 2.5, "a", b"x'\"\x00\xff", None, True],
         (1, ),
@@ -653,7 +653,7 @@ def same_math(mname: str, margs: list[object]) {
     );
 }
 
-test "builtins and math agree with CPython on results and messages" {
+test "builtins and math agree with Python on results and messages" {
     cases: list[tuple[str, list[object], dict[str, object]]] = [
         ("sorted", [[3, 1, 2, 1]], {}),
         ("sorted", [[(1, "b"), (0, "a"), (1, "a")]], {"reverse": True}),
@@ -787,7 +787,7 @@ def same_method(ev: CtEvaluator, recv: object, mname: str, margs: list[object]) 
     );
 }
 
-test "methods on typed values match CPython" {
+test "methods on typed values match Python" {
     ev = _evaluator();
     method_cases: list[tuple[object, str, list[object]]] = [
         ("a,b,,c", "split", [","]),
@@ -870,7 +870,7 @@ def _check_program(label: str, src: str) {
         + "\n".join(error.pretty_print() for error in program.errors_had);
 }
 
-test "comptime programs fold to CPython's observable values" {
+test "comptime programs fold to Python's observable values" {
     _check_program(
         "ct_numbers",
         "comptime BIG: int = 2 ** 100 + 7;\n"

@@ -233,7 +233,7 @@ test "generator: yield inside try, exception raised and caught across resumes" {
 test "generator: yield inside finally resumes through both continuations" {
     # #7626 A6: the finally region records its pending continuation in a
     # frame slot, so suspending inside it is legal. Full iteration yields
-    # the try value then the finally value (CPython parity).
+    # the try value then the finally value (Python parity).
     (eng, _) = compile_native("generators_finally.jac");
     f = get_func(eng, "sum_yf", ctypes.c_int64, ctypes.c_int64);
     assert f(5) == 11 , "yields 5 then 6";

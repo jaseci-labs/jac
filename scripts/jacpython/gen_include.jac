@@ -2,10 +2,9 @@
 
 Every header under Include/ (the public ones a C extension compiles against
 through Python.h, Include/cpython/ and Include/internal/) is checked in as
-jac/bootstrap/python/generated/Include/<path>.in. cpython-sources.txt marks
-each one `generated`, so both builds stage these copies where the archive's
-were (a header the archive would supply fails the build), and `make install`
-puts them where `python3-config --includes` points:
+jac/bootstrap/python/generated/Include/<path>.in. build_python.zig stages
+each one at its path (a header under the vendored sources fails the build),
+and `make install` puts them where `python3-config --includes` points:
 
     jac run scripts/jacpython/gen_include.jac            # rewrite them
     jac run scripts/jacpython/gen_include.jac --check    # fail on drift
@@ -13,7 +12,7 @@ puts them where `python3-config --includes` points:
 The Jac definitions own what the runtime defines and reads in place:
 
 - Records. A struct a header defines for a record of
-  jaclang/runtime/python/layouts.jac (or a C-layout record of cpython_api.jac
+  jaclang/runtime/python/layouts.jac (or a C-layout record of python_capi.jac
   that gen_layouts.jac maps) has that record's members, in its order and of
   its types. A struct that disagrees is rewritten from the record: a member
   the record still has keeps its declaration (its typedef, const and
@@ -45,8 +44,8 @@ The Jac definitions own what the runtime defines and reads in place:
   and refcount checks) are written from them.
 
 Everything else in a header (macros, static inline functions, comments) is
-the checked-in text, which is CPython's for a header no Jac definition has
-changed. The opcode tables are gen_opcode_meta.jac's. build_jacpython.zig
+the checked-in text, which is the C API's own for a header no Jac definition
+has changed. The opcode tables are gen_opcode_meta.jac's. build_jacpython.zig
 compiles layouts_check.c against the staged headers in every JacPython
 build, so a header that disagrees with the Jac layouts fails the build.
 """
@@ -75,7 +74,7 @@ import from global_strings { IDENTIFIERS, STRINGS }
 
 glob COMMAND: str = "scripts/jacpython/gen_include.jac",
      LAYOUTS_JAC: Path = RUNTIME / "layouts.jac",
-     CAPI_JAC: Path = RUNTIME / "cpython_api.jac",
+     CAPI_JAC: Path = RUNTIME / "python_capi.jac",
      # Generated headers another script writes.
      OWNED_ELSEWHERE: set[str] = {
          "Include/opcode_ids.h",
@@ -1371,7 +1370,7 @@ with entry:__main__ {
     }
     records = jac_records(layouts_jac);
     computed = jac_layouts(layouts_jac);
-    # cpython_api.jac's C-layout records may rename a member C names after a
+    # python_capi.jac's C-layout records may rename a member C names after a
     # Jac keyword (Py_buffer's `obj` is `owner`), so only their types say
     # what the header declares.
     renamed = {
@@ -1415,7 +1414,7 @@ with entry:__main__ {
         if name in renamed {
             if [jt for (_, jt) in header] != [jt for (_, jt) in renamed[name]] {
                 sys.exit(
-                    f"gen_include: cpython_api.jac's {name} no longer matches {ctype} in {homes[
+                    f"gen_include: python_capi.jac's {name} no longer matches {ctype} in {homes[
                         0
                     ]}; change the header by hand"
                 );

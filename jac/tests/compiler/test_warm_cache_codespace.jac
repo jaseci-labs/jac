@@ -24,6 +24,7 @@ import order. When that tier cannot produce a module's bytecode, the retained
 failure names the dependency that was mid-import.
 """
 
+import importlib;
 import os;
 import sys;
 import types;
@@ -211,7 +212,7 @@ test "a prepare's key memo keeps each codespace and native target apart" {
 }
 
 test "the symtab-ir schedule pre-imports what its passes reach at run time" {
-    saved_mod = sys.modules.pop("jaclang.compiler.symbol_utils");
+    saved_mod = loaded("jaclang.compiler.symbol_utils");
     try {
         schedule_for(CompilationProduct.SYMBOLS);
         restored = sys.modules.get("jaclang.compiler.symbol_utils");
@@ -229,7 +230,7 @@ test "the symtab-ir schedule pre-imports what its passes reach at run time" {
 
 
 test "a symtab-only compile survives being the first to need symbol_utils" {
-    saved_mod = sys.modules.pop("jaclang.compiler.symbol_utils");
+    saved_mod = loaded("jaclang.compiler.symbol_utils");
     cache_path = get_module_cache_path(SYMBOL_UTILS);
     cached = cache_path.read_bytes() if cache_path.exists() else None;
     cache_path.unlink(missing_ok=True);
@@ -250,7 +251,7 @@ test "a symtab-only compile survives being the first to need symbol_utils" {
 
 
 test "the ir-gen schedule pre-imports the narrowing keys its passes reach" {
-    saved_mod = sys.modules.pop("jaclang.compiler.expr_keys");
+    saved_mod = loaded("jaclang.compiler.expr_keys");
     try {
         schedule_for(CompilationProduct.IR);
         restored = sys.modules.get("jaclang.compiler.expr_keys");
@@ -268,7 +269,15 @@ test "the ir-gen schedule pre-imports the narrowing keys its passes reach" {
 
 
 """Mark the real module `name` as mid-import, as the importer does while its body runs."""
+# Take `name` out of sys.modules, importing it first: whether an earlier compile
+# in this process already did depends on the tier that compiled the tests.
+def loaded(name: str) -> types.ModuleType {
+    importlib.import_module(name);
+    return sys.modules.pop(name);
+}
+
 def _with_in_flight(name: str, path: str) -> types.ModuleType {
+    importlib.import_module(name);
     saved = sys.modules[name];
     sys.modules[name] = initializing_stub(path);
     return saved;

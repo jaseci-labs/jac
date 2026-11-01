@@ -1,4 +1,4 @@
-"""Differential fuzz of the bundled native `re` against CPython's `re`.
+"""Differential fuzz of the bundled native `re` against Python's `re`.
 
 A fixed-seed generator (its own LCG, identical on both backends) builds random
 patterns from the grammar the native engine supports: literals, `.`, classes

@@ -1,9 +1,9 @@
 """The Expat library as pyexpat and _elementtree see it.
 
-Derived from CPython 3.14.6 Include/pyexpat.h and the parts of expat.h the
+Derived from Python 3.14.6 Include/pyexpat.h and the parts of expat.h the
 two modules use; see ../LICENSE.cpython. pyexpat calls the vendored libexpat
 directly and exports the PyExpat_CAPI record; _elementtree reaches Expat only
-through that record, as CPython's does.
+through that record, as the C version does.
 """
 
 import from c {

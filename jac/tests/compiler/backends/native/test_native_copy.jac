@@ -1,4 +1,4 @@
-"""`copy.copy` and `copy.deepcopy` lower natively, answering what CPython answers.
+"""`copy.copy` and `copy.deepcopy` lower natively, answering what Python answers.
 
 `import copy` (and `import from copy { copy, deepcopy }`) is a supported native
 stdlib import whose two functions are backend intrinsics: the argument's static
@@ -54,17 +54,17 @@ def _refusal(fixture: str) -> str {
     return combined;
 }
 
-test "native copy.copy of archetypes, containers and atomics answers like CPython" {
+test "native copy.copy of archetypes, containers and atomics answers like Python" {
     assert_native_identity(
         os.path.join(FIXTURES, "copy_shallow.jac"), profiles=PROFILES
     );
 }
 
-test "native copy.deepcopy keeps shared references and cycles like CPython" {
+test "native copy.deepcopy keeps shared references and cycles like Python" {
     assert_native_identity(os.path.join(FIXTURES, "copy_deep.jac"), profiles=PROFILES);
 }
 
-test "native copy.copy of a CompileOptions-shaped obj answers like CPython" {
+test "native copy.copy of a CompileOptions-shaped obj answers like Python" {
     assert_native_identity(
         os.path.join(FIXTURES, "copy_options_shape.jac"), profiles=PROFILES
     );

@@ -1,7 +1,7 @@
 """<time.h> records for a target with no time_records.<os>.jac: the LP64 POSIX layout.
 
 The time and select modules reject a target without generated constants, so
-these declarations only keep cpython_api.jac and those modules well typed.
+these declarations only keep python_capi.jac and those modules well typed.
 """
 import from c {
     obj timespec {

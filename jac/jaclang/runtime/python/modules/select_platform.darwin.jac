@@ -1,7 +1,7 @@
 """The I/O multiplexing calls of macOS: select(), poll() and kqueue(); no epoll.
 
 struct kevent is laid out as <sys/event.h> declares it; KEVENT_MEMBERS gives
-the offsets and structmember types CPython publishes its fields with.
+the offsets and structmember types Python publishes its fields with.
 """
 import from jaclang.runtime.python.bindings.members { MemberField }
 import from c {

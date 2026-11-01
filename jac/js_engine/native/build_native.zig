@@ -12,7 +12,7 @@
 //! the version script exports only the C APIs the engine imports plus the
 //! Node-API surface native addons resolve against, and keeps ICU and the C++
 //! runtime private. OpenSSL, zlib and zstd are not here: the engine links
-//! them statically from the source-built CPython's archives.
+//! them statically from the JacPython runtime's archives.
 
 const std = @import("std");
 

@@ -1,4 +1,4 @@
-"""Weak-reference support; derived from CPython 3.14.6 Modules/_weakref.c.
+"""Weak-reference support; derived from Python 3.14.6 Modules/_weakref.c.
 
 The weakref types and the per-object reference list belong to the object
 model (Objects/weakrefobject.c); this module only exposes them.

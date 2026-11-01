@@ -1,6 +1,6 @@
 """f-string !r conversions and dynamic format specs (#7593 item 6).
 
-Cross-backend equivalence fixture. The Python reference pins CPython
+Cross-backend equivalence fixture. The Python reference pins Python
 semantics; the test blocks pass require=["na"] so a native compile
 failure or value mismatch is a hard failure, not a silent skip.
 """

@@ -18,7 +18,7 @@ for config in (prefix / "lib/python3.14").glob("_sysconfigdata_*.py"):
             values[key] = value
     values.update(CC="cc", CXX="c++", AR="ar", RANLIB="ranlib")
     config.write_text(
-        "# Configuration of Jac's source-built CPython runtime.\n"
+        "# Configuration of Jac's source-built JacPython runtime.\n"
         "import sys as _sys\n"
         "build_time_vars = " + pprint.pformat(values, sort_dicts=True) + "\n"
         "for _key, _value in build_time_vars.items():\n"

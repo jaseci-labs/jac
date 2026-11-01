@@ -2,7 +2,8 @@
 
 scripts/jacpython/gen_clinic.jac generates
 jaclang/runtime/python/bindings/clinic/ssl.jac from them. Taken from
-CPython 3.14.6 Modules/_ssl.c, Modules/_ssl/debughelpers.c, Modules/_ssl/misc.c, Modules/_ssl/cert.c.
+the C sources it replaces (Modules/_ssl.c, Modules/_ssl/debughelpers.c, Modules/_ssl/misc.c, Modules/_ssl/cert.c); see
+jac/jaclang/runtime/python/LICENSE.cpython.
 """
 import from clinic_schema { Clinic, Function, Parameter }
 

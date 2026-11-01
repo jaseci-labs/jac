@@ -77,7 +77,7 @@ class File:
 
 class BinaryFile:
     # open(path, "rb"/"wb"/...) -> binary file: read()/readline() yield a
-    # length-aware bytes value, write() takes bytes (mirrors CPython's
+    # length-aware bytes value, write() takes bytes (mirrors Python's
     # BufferedReader/Writer split from TextIOWrapper).
     path: str
     mode: str
@@ -97,7 +97,7 @@ class BinaryFile:
 # a text File. The codegen reads the same literal to pick the struct, so the
 # static type and emitted object always agree (#6404).
 #
-# `encoding` is declared on the text overload because CPython accepts it there
+# `encoding` is declared on the text overload because Python accepts it there
 # and the emitter has to answer for it. It does not lower: `_emit_open` refuses
 # any keyword argument, which demotes the calling function to a Python-only
 # seam. Leaving the parameter off made the same call a type error instead, and

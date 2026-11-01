@@ -1,6 +1,6 @@
 """`or`/`and` as value expressions (issue #7320 Cluster 2, item 2b).
 
-CPython returns the deciding operand itself: `a or b` is a if truthy
+Python returns the deciding operand itself: `a or b` is a if truthy
 else b, `a and b` is b if a truthy else a. Before the fix na collapsed
 the expression to an i1 truth bit, so int operands came back 0/1 and a
 returned `s or "fallback"` was a garbage pointer (segfault).

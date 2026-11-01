@@ -22,7 +22,7 @@ def take_object(library: any, entry_name: str) -> any {
 
 def verify(library_path: Path) {
     if sys.version_info[:2] != (3, 14) {
-        raise RuntimeError("The JacPython output oracle requires CPython 3.14");
+        raise RuntimeError("The JacPython output oracle requires Python 3.14");
     }
     bridge = getattr(ctypes.pythonapi, "_PyJac_CompilerBridgeVersion", None);
     if bridge is None or bridge() != 4 {
@@ -133,7 +133,7 @@ def main -> int {
                 "runtime/python/objects.jac",
                 "runtime/python/compiler_integer.jac",
                 "runtime/python/opcode_meta.jac",
-                "runtime/python/cpython_api.jac",
+                "runtime/python/python_capi.jac",
                 "runtime/python/capi.jac",
                 "runtime/python/constant_keys.jac",
                 "runtime/python/constant_output.jac",

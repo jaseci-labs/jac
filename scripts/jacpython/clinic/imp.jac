@@ -2,7 +2,8 @@
 
 scripts/jacpython/gen_clinic.jac generates
 jaclang/runtime/python/bindings/clinic/imp.jac from them. Taken from
-CPython 3.14.6 Python/import.c.
+the C sources it replaces (Python/import.c); see
+jac/jaclang/runtime/python/LICENSE.cpython.
 """
 import from clinic_schema { Clinic, Function, Parameter }
 

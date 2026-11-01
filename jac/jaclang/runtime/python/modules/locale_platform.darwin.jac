@@ -1,6 +1,6 @@
 """macOS has no <libintl.h> in its C library and follows POSIX nl_langinfo.
 
-CPython's configure leaves HAVE_LIBINTL_H undefined there, so _locale has no
+Python's configure leaves HAVE_LIBINTL_H undefined there, so _locale has no
 gettext functions; the binding leaves them out and these are never called.
 """
 

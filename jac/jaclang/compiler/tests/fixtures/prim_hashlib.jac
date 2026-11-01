@@ -1,6 +1,6 @@
 """Bundled native `hashlib`/`hmac` cross-backend equivalence fixture (#6978 Phase 1).
 
-The SAME `import hashlib; import hmac;` binds CPython's `hashlib`/`hmac` on the sv
+The SAME `import hashlib; import hmac;` binds Python's `hashlib`/`hmac` on the sv
 (Python) backend and the bundled `na_stdlib/hashlib.jac` / `hmac.jac`
 Mechanism-F modules -- thin pure-Jac surfaces over OpenSSL's `libcrypto` (the FFI
 floor) -- on the na (native LLVM) backend. Module-qualified `hashlib.sha256(...)`
@@ -8,7 +8,7 @@ access on the native pathway is the whole-module-import support added in #6978
 (the bundled module links and `mod.func(...)` routes to its function exactly like
 `import from hashlib { sha256 }`); the sv side reads the same `hashlib` attribute,
 which `install_native_wrappers` never shadows (it only rebinds top-level names),
-pinning the reference to CPython.
+pinning the reference to Python.
 
 The message/key are function-LOCAL byte literals, not module `glob`s: a
 module-level `glob x: bytes = b"..."` is currently not initialized along the na
@@ -17,11 +17,11 @@ digests here -- tracked as a separate native-glob-init follow-up. Locals sideste
 it and keep the two backends fed identical input.
 
 The harness then asserts byte-for-byte: every algorithm's `hexdigest` matches
-CPython (md5/sha1/sha2/sha3/blake2), incremental `update` matches a one-shot
+Python (md5/sha1/sha2/sha3/blake2), incremental `update` matches a one-shot
 hash, `digest()` is non-consuming, `copy()` snapshots an independent state
 (hashlib and hmac alike), the `digest_size`/`block_size`/`name` attributes
 agree, `hashlib.new` round-trips and pins `ValueError` on a bogus name, HMAC
-matches CPython's `hmac` (including the required-`digestmod` `TypeError` and
+matches Python's `hmac` (including the required-`digestmod` `TypeError` and
 `msg=None`), and `compare_digest` agrees. ES/JS opts out.
 
 This is the first F-module over the large bundled `libcrypto.a` (staged into the

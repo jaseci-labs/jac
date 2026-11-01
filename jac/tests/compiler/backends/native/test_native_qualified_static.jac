@@ -13,6 +13,6 @@ import from pathlib { Path }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
-test "module-qualified static calls match CPython under every memory profile" {
+test "module-qualified static calls match Python under every memory profile" {
     assert_native_identity(os.path.join(FIXTURES, "qualified_static.jac"));
 }

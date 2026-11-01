@@ -2,19 +2,19 @@
 # compiler_codegen.jac. Pure mechanical move; see compiler_codegen.jac for the
 # module-initialization ordering contract.
 
-# ---------------- break-edge tail duplication (CPython parity) ----------------
+# ---------------- break-edge tail duplication (C compiler parity) -------------
 #
-# CPython lowers `break` as an unwind plus a jump to the loop's exit anchor,
+# The C compiler lowers `break` as an unwind plus a jump to the loop's exit anchor,
 # which sits AFTER orelse (codegen.c codegen_break / codegen_for). Its flowgraph
 # optimizer then tail-duplicates that anchor into each break edge when the
 # anchor ends up a small scope-exit block (flowgraph.c
 # inline_small_exit_blocks, MAX_COPY_SIZE) and prunes the artificial break NOP
 # per line-number rules. We emit the post-optimizer shape directly: break sites
 # record themselves in the loop frame, the shared continuation block is built
-# once, then finish_break_sites copies it over each break jump when CPython
+# once, then finish_break_sites copies it over each break jump when the C compiler
 # would have.
 
-# Does control fall out of the block (CPython BB_HAS_FALLTHROUGH)?
+# Does control fall out of the block (the C compiler's BB_HAS_FALLTHROUGH)?
 def block_is_terminated(b: basicblock) -> bool {
     n = len(b.instrs);
     if n == 0 {
@@ -51,7 +51,7 @@ def join_inlinable(join: basicblock, tail_terminated: bool) -> bool {
     ii = 0;
     while ii < len(join.instrs) {
         if has_target(join.instrs[ii].opcode) {
-            # A branch inside the continuation means CPython's block would have
+            # A branch inside the continuation means the C compiler's block would have
             # been split before the scope exit; no duplication happened there.
             return False;
         }
@@ -83,7 +83,7 @@ def join_artificial_tail(join: basicblock) -> bool {
     return True;
 }
 
-# Would CPython's remove_redundant_nops keep the artificial NOP emitted before
+# Would the C compiler's remove_redundant_nops keep the artificial NOP emitted before
 # a break jump that was tail-duplicated? It survives only when it differs in
 # line from both its predecessor and the first copied instruction.
 def break_nop_kept(site: break_site, first_copy_loc: cloc) -> bool {
@@ -109,7 +109,7 @@ def finish_break_sites(
     tail_terminated: bool,
     allow_nop: bool
 ) {
-    # CPython tries the small scope-exit copy first, then the artificial
+    # The C compiler tries the small scope-exit copy first, then the artificial
     # no-lineno copy (optimize_cfg runs inline_small_or_no_lineno_blocks).
     copies: list[cinstr] | None = None;
     if join_inlinable(join, tail_terminated) {
@@ -142,7 +142,7 @@ def finish_break_sites(
     if copies is None or len(copies) == 0 {
         return;
     }
-    # Exit-per-block invariant (mirrors CPython flowgraph.c structure):
+    # Exit-per-block invariant (mirrors flowgraph.c structure):
     # cfg_builder_maybe_start_new_block starts a fresh block after any
     # terminator, so a jump is always the LAST instruction of its block and
     # inline_small_or_no_lineno_blocks only ever rewrites

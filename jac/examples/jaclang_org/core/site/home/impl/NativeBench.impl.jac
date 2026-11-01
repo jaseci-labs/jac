@@ -121,7 +121,7 @@ impl NativeBench -> JsxElement {
             </SectionHead>
             <Figure
                 label="fig. 5"
-                caption="Average FPS over 8-second uncapped runs on an Apple M5 Max, where single runs vary by a few percent; Python is CPython 3.14.6 via `ctypes`."
+                caption="Average FPS over 8-second uncapped runs on an Apple M5 Max, where single runs vary by a few percent; the Python row is Python 3.14.6 via `ctypes`."
             >
                 <div
                     className="grid grid-cols-1 items-center gap-10 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)] lg:gap-14"

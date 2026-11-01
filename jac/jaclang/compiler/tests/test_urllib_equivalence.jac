@@ -5,7 +5,7 @@
 `na_stdlib/urllib/request.jac` module on the na backend -- now a pure-Jac
 surface over the bundled `socket` + `ssl` modules (no libcurl), parsing the URL,
 opening the connection (TLS-wrapped for https), sending an HTTP/1.0 GET, draining
-the response, and following redirects. The sv reference is CPython's real
+the response, and following redirects. The sv reference is Python's real
 `urllib.request`. There is no live network: a loopback `http.server` is stood up
 on an ephemeral port, its port published in `JAC_URLLIB_TEST_PORT`, and the two
 `urlopen` implementations are pinned congruent on HTTP status and received body
@@ -79,7 +79,7 @@ test "urllib.request.urlopen GET over the socket transport (sv<->na congruent)" 
     (srv, port) = _start_server();
     os.environ["JAC_URLLIB_TEST_PORT"] = str(port);
     try {
-        # Pin the canonical sv (CPython urllib) semantics as a hard guard.
+        # Pin the canonical sv (Python urllib) semantics as a hard guard.
         py = run_py_fixture("prim_urllib_host", "urllib_py");
         assert py["status"] == 200 , py;
         assert py["body"] == "hello world" , py;

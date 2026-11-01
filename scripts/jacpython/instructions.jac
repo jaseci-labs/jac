@@ -53,7 +53,7 @@ An op escapes when it can run arbitrary code (a call, a decref, an
 allocation). Before it runs, the frame's stack pointer is published so the
 garbage collector sees exactly the live stack. `escapes=False` skips that.
 
-FORMAT and PSEUDOS, at the end, are CPython's instruction set as the pinned
+FORMAT and PSEUDOS, at the end, are the instruction set as the pinned
 release's Python/bytecodes.c declares it: every `inst`, `op`, `macro` and
 `pseudo` with its caches and stack effect, in declaration order, without the C
 bodies. With FAMILIES and OPCODE_PINS they are the single source of the
@@ -70,7 +70,7 @@ frame_const HAS_CONST, reading a name through names_code_name or attr_name
 HAS_NAME, returning a jump HAS_JUMP, being a guard HAS_DEOPT, and reporting an
 error HAS_ERROR. A stack size in terms of oparg also gives HAS_ARG, and a uop
 name containing CHECK_PERIODIC HAS_EVAL_BREAK. `facts` records the rest:
-CPython's annotations (pure, no_save_ip, specializing, replaced, tier1, tier2,
+Python/bytecodes.c's annotations (pure, no_save_ip, specializing, replaced, tier1, tier2,
 replicate(N)) and, in capitals, the flags no op definition shows: ARG, CONST,
 NAME, JUMP, DEOPT and ERROR where there is no definition or it does not show
 them, EXIT for a guard that side-exits instead of deoptimizing, ERROR_NO_POP
@@ -100,10 +100,10 @@ obj Family {
         members: list[str];
 }
 
-# A CPython `inst`: an instruction that is a single uop of the same name
+# A Python/bytecodes.c `inst`: an instruction that is a single uop of the same name
 # (written `_NAME` in uop tables). `stack` is its declaration, caches and
 # stack items in order (`unused/N` caches become padding of the instruction);
-# `facts` lists CPython's annotations and the facts its op definition does
+# `facts` lists Python/bytecodes.c's annotations and the facts its op definition does
 # not show (see the docstring).
 obj Inst {
     has name: str,
@@ -111,7 +111,7 @@ obj Inst {
         facts: str = "";
 }
 
-# A CPython `op`: a uop that instructions are built from.
+# A Python/bytecodes.c `op`: a uop that instructions are built from.
 obj Uop {
     has name: str,
         stack: str,
@@ -1079,7 +1079,7 @@ glob OPS: list[Op] = [
              "unused/1 + _LOAD_SUPER_ATTR_INSTRUMENTED + _PUSH_NULL_CONDITIONAL"
          )
      ],
-     # Specialization families in CPython's declaration order (the order
+     # Specialization families in Python/bytecodes.c's declaration order (the order
      # _opcode_metadata._specializations lists them). BINARY_OP_INPLACE_ADD_UNICODE
      # comes last: it is the wrong size for a normal member and keeps its
      # historical opcode.
@@ -1186,7 +1186,7 @@ glob OPS: list[Op] = [
          Family("CALL_KW", ["CALL_KW_BOUND_METHOD", "CALL_KW_PY", "CALL_KW_NON_PY"])
      ];
 
-# CPython's instruction set, as Python/bytecodes.c of the pinned release
+# The instruction set, as Python/bytecodes.c of the pinned release
 # declares it, in declaration order (the order numbers the instrumented
 # instructions and lays out several published tables).
 glob FORMAT: list[Inst | Uop | Macro] = [
@@ -2219,7 +2219,7 @@ glob FORMAT: list[Inst | Uop | Macro] = [
          Uop("_ERROR_POP_N", "target/2 --", "tier2 ARG"),
          Uop("_TIER2_RESUME_CHECK", "--", "tier2 DEOPT")
      ],
-     # Opcodes CPython fixes before numbering the rest: CACHE marks inline
+     # Opcodes Python/bytecodes.c fixes before numbering the rest: CACHE marks inline
      # cache entries, RESERVED is the specializing counter's initial value,
      # RESUME is hard coded by the frozen-module builder, and
      # BINARY_OP_INPLACE_ADD_UNICODE keeps a historical number. The others

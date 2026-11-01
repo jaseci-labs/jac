@@ -31,7 +31,7 @@ import from pathlib { Path }
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
      PROFILES: list[str] = ["managed", "rc"];
 
-test "tuple locals holding references answer like CPython" {
+test "tuple locals holding references answer like Python" {
     assert_native_identity(
         os.path.join(FIXTURES, "tuple_slot_shapes.jac"), profiles=PROFILES
     );

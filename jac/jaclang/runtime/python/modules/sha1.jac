@@ -1,6 +1,6 @@
-"""SHA1 hash objects over HACL*; derived from CPython 3.14.6 Modules/sha1module.c.
+"""SHA1 hash objects over HACL*; derived from Python 3.14.6 Modules/sha1module.c.
 
-See ../LICENSE.cpython. The HACL* library stays C: CPython's
+See ../LICENSE.cpython. The HACL* library stays C: the vendored
 Modules/_hacl/libHacl_Hash_SHA1.a, which the registry links for _sha1.
 """
 

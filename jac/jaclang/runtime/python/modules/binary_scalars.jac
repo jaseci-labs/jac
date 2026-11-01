@@ -1,6 +1,6 @@
 """Endian-aware scalar storage shared by native binary formats and arrays.
 
-Derived from CPython 3.14.6; see ../LICENSE.cpython.
+Derived from Python 3.14.6; see ../LICENSE.cpython.
 """
 
 def read_bits(address: ptr, size: int, little: bool) -> u64 {

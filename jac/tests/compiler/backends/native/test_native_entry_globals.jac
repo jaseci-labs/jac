@@ -4,7 +4,7 @@ Python treats `with entry` assignments as module globals: a lambda or def
 reads them dynamically, late-bound at call time. These tests pin the native
 backend to the same semantics -- entry-block top-level assignments lower to
 native module globals initialized in jac_entry, so entry lambdas, stored
-closures, and free defs all observe the same module state as CPython.
+closures, and free defs all observe the same module state as Python.
 """
 
 import ctypes;

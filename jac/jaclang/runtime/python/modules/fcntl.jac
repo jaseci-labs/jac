@@ -1,6 +1,6 @@
 """File control and I/O control on file descriptors.
 
-Derived from CPython 3.14.6 Modules/fcntlmodule.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/fcntlmodule.c; see ../LICENSE.cpython.
 fcntl(2) and ioctl(2) are variadic; the third argument is an int or a
 pointer, depending on the command. The struct flock layout comes from
 fcntl_records.<os>.jac and the command constants from fcntl_constants.<os>.jac.

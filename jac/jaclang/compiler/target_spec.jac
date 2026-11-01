@@ -6,7 +6,7 @@ obj TargetSpec {
         osarch: str,
         os_family: str,
         arch: str,
-        cpython_platform: str,
+        sys_platform: str,
         object_format: str,
         shared_prefix: str,
         shared_suffix: str;
@@ -22,7 +22,7 @@ glob RELEASE_TARGETS: list[TargetSpec] = [
              osarch="linux-x86_64",
              os_family="linux",
              arch="x86_64",
-             cpython_platform="linux",
+             sys_platform="linux",
              object_format="elf",
              shared_prefix="lib",
              shared_suffix=".so"
@@ -32,7 +32,7 @@ glob RELEASE_TARGETS: list[TargetSpec] = [
              osarch="linux-aarch64",
              os_family="linux",
              arch="aarch64",
-             cpython_platform="linux",
+             sys_platform="linux",
              object_format="elf",
              shared_prefix="lib",
              shared_suffix=".so"
@@ -42,7 +42,7 @@ glob RELEASE_TARGETS: list[TargetSpec] = [
              osarch="macos-aarch64",
              os_family="darwin",
              arch="aarch64",
-             cpython_platform="darwin",
+             sys_platform="darwin",
              object_format="macho",
              shared_prefix="lib",
              shared_suffix=".dylib"
@@ -52,7 +52,7 @@ glob RELEASE_TARGETS: list[TargetSpec] = [
              osarch="macos-x86_64",
              os_family="darwin",
              arch="x86_64",
-             cpython_platform="darwin",
+             sys_platform="darwin",
              object_format="macho",
              shared_prefix="lib",
              shared_suffix=".dylib"
@@ -62,7 +62,7 @@ glob RELEASE_TARGETS: list[TargetSpec] = [
              osarch="windows-x86_64",
              os_family="windows",
              arch="x86_64",
-             cpython_platform="win32",
+             sys_platform="win32",
              object_format="pe",
              shared_prefix="",
              shared_suffix=".dll"

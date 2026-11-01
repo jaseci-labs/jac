@@ -9,7 +9,7 @@ the bubble sort's `len - 1` bound wraps unsigned for `len == 0` and the
 loop body reads index 0 of a zero-element store -- but nothing native
 had reached it before.
 
-Each entry point is executed in the JIT and compared with CPython's
+Each entry point is executed in the JIT and compared with Python's
 answer for the same program, following the isinstance-families harness
 pattern.
 """

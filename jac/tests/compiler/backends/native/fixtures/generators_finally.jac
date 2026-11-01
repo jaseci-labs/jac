@@ -4,9 +4,9 @@ A finally block runs exactly once but is reachable from two
 continuations (normal completion and the dispatch path), so a suspension
 point inside one records its pending continuation in a frame slot and
 the resume re-arm generalizes from the try machinery. Full iteration
-yields the try value then the finally value ([n, n+1], CPython parity).
+yields the try value then the finally value ([n, n+1], Python parity).
 Early abandonment simply drops the frame (native drop releases slots; it
-does not resume the finally, so no CPython-style "generator ignored
+does not resume the finally, so no Python-style "generator ignored
 GeneratorExit" noise).
 """
 

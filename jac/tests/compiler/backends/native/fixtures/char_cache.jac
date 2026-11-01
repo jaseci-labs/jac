@@ -3,7 +3,7 @@ heap-allocate a fresh string per character.
 
 `char_scan` iterates a string and `char_index` indexes it; both extract single
 characters. The native backend serves each character from a shared 256-entry
-static table (a CPython latin1-style cache), so neither function calls the RC
+static table (a latin1-style cache like Python's), so neither function calls the RC
 allocator for the character, and iterating a string never leaks. `combine`
 proves a cached character still behaves as a real string (concat / length)."""
 

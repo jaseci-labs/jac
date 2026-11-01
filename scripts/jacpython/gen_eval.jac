@@ -2,16 +2,15 @@
 
 instructions.jac lists the instructions, the ops each is made of and their
 stack effects; jac/jaclang/runtime/python/interpreter/ops*.jac hold the op
-bodies. Every instruction becomes a handler in the shape of CPython's
+bodies. Every instruction becomes a handler in the shape of Python/ceval.c's
 tail-call interpreter: a `@__preserve_none` C definition named
 `_TAIL_CALL_<NAME>` that runs the ops, keeps the value stack and the frame's
 published stack pointer exact at every point the garbage collector can run,
 and tail-calls the next instruction's handler through the dispatch table. A
 `raw` instruction's handler is written by hand in an op module.
 
-The interpreter's C handlers for the same instructions are left out of the
-build (bootstrap/python/build.sh reads the handler names from both files), so
-instructions move to Jac one table entry at a time.
+Every instruction's handler is one of these; the dispatch table
+(interpreter/dispatch.jac) names them.
 
     jac run scripts/jacpython/gen_eval.jac            # rewrite the handlers
     jac run scripts/jacpython/gen_eval.jac --check    # fail on drift

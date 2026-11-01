@@ -47,7 +47,7 @@ def try_unwind_stack_depth(g: cfg_builder) -> int {
 }
 
 # The try body's exception-table span, split around each await/yield-from
-# carve recorded while the body was visited. CPython's table has one row per
+# carve recorded while the body was visited. The C compiler's table has one row per
 # warm stretch between the CLEANUP_THROW windows; our find_handler takes the
 # first matching row, so the unsplit span would swallow the yield windows.
 def try_body_span_rows(
@@ -102,7 +102,7 @@ def try_body_span_rows(
 
 # Flush the CLEANUP_THROW footers queued by awaits inside this try body.
 # Each cold pair is placed after all warm body code (before the handler
-# blocks; CPython push_cold_blocks_to_end), every pair gets its own
+# blocks; the C compiler's push_cold_blocks_to_end), every pair gets its own
 # [ct..cj) -> handler row, and the generator region resumes after the try
 # span ([protect_end .. first CT), split around later await windows via the
 # open-tail list). With the async-with defer flag set the pairs were already
@@ -600,11 +600,11 @@ def emit_finally_inline_block(
 }
 
 # Lower flat try/except[/else]/finally by forward-nesting the finally around the
-# try/except (CPython compiles them identically). Multiple handlers chained after
+# try/except (the C compiler compiles them identically). Multiple handlers chained after
 # one try, optional else and finally. Handlers may bind via `except E as e`;
 # each bound handler gets its own as-cleanup unwind block.
 
-# Coalesce spans that share handler/depth/lasti into maximal runs (CPython's
+# Coalesce spans that share handler/depth/lasti into maximal runs (the C compiler's
 # exception-table builder merges contiguous same-target ranges; overlapping
 # spans with identical handler metadata also fold into the covering range).
 # Comparison is in LAYOUT position, not block id: deferred blocks are placed
@@ -904,7 +904,7 @@ def trystar_stmt_loc(t: TryStar) -> cloc {
 }
 
 # Lower try/except* (ExceptionGroup handlers). Dispatch + guards; the byte
-# layout lives in visit_try_star_except. CPython: codegen_try_star.
+# layout lives in visit_try_star_except. codegen.c: codegen_try_star.
 def visit_try_star(
     g: cfg_builder,
     t: TryStar,

@@ -8,7 +8,7 @@ with an index loop over the source dict, reusing the same len/get_key/
 get_val primitives dict iteration already uses.
 
 A spread key that names a *keyword-bindable declared parameter* follows
-CPython binding semantics at runtime: it binds the slot when unbound,
+Python binding semantics at runtime: it binds the slot when unbound,
 raises TypeError when the slot is already bound (positionally, by literal
 keyword, or by an earlier spread), and a required slot no spread supplies
 raises TypeError. Bound keys never reach the sink. Only the truly dynamic
@@ -168,7 +168,7 @@ test "a spread into a sink no longer trips the capability gate" {
 # Congruence with the Python backend on ordering and duplicates
 # ─────────────────────────────────────────────────────────────────────
 
-# CPython evaluates call arguments strictly left to right, spreads included.
+# Python evaluates call arguments strictly left to right, spreads included.
 # The first cut of this lowering emitted every literal keyword and only then
 # the spreads, so a spread appearing first in source ran second. `_SEQ`
 # records the order each operand fired as decimal digits.
@@ -184,7 +184,7 @@ test "a spread and a literal keyword evaluate in source order" {
     );
 }
 
-# CPython raises `TypeError: got multiple values for keyword argument` when a
+# Python raises `TypeError: got multiple values for keyword argument` when a
 # spread collides with an already-bound key. The keys of a spread are only
 # known at runtime, so the check is a guard emitted per inserted entry rather
 # than a compile-time diagnostic. Asserted on the emitted IR: executing the
@@ -203,10 +203,10 @@ test "a spread emits a duplicate-key guard for every entry it inserts" {
 }
 
 # ─────────────────────────────────────────────────────────────────────
-# Spread keys that name declared parameters bind them (CPython parity)
+# Spread keys that name declared parameters bind them (Python parity)
 # ─────────────────────────────────────────────────────────────────────
 
-# CPython binds a spread key naming a keyword-bindable declared parameter to
+# Python binds a spread key naming a keyword-bindable declared parameter to
 # that parameter, never to the **kwargs sink: `f(**{"a": 5})` against
 # `def f(a=0, **kw)` means a=5, kw={}. Each expectation below is chosen so
 # the sink-diversion wrong answer (a left at its default, the key landing in
@@ -254,7 +254,7 @@ test "the sink parameter's own name stays a sink key" {
     assert f() == 100 , f"got {f()}";
 }
 
-# CPython: TypeError "got multiple values for keyword argument 'a'" /
+# Python: TypeError "got multiple values for keyword argument 'a'" /
 # "... for argument 'a'". Each fixture returns 1 from the except arm and a
 # distinct sentinel when no raise fired.
 

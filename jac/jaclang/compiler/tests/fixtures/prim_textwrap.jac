@@ -1,6 +1,6 @@
 """Bundled native `textwrap` cross-backend equivalence fixture (#6978 Phase 3).
 
-The SAME `import from textwrap { wrap, fill, dedent, indent }` binds CPython's
+The SAME `import from textwrap { wrap, fill, dedent, indent }` binds Python's
 `textwrap` on the sv (Python) backend and the bundled `na_stdlib/textwrap.jac`
 Mechanism-B module on the na (native LLVM) backend. Inputs are whitespace-
 separated (no hyphenated words) and tab-free so the two are congruent under this
@@ -8,10 +8,10 @@ module's documented `break_on_hyphens=False` / "\n"-only-splitlines scope.
 
 `wrap` returns a list, which the cross-backend harness reads as raw i64; so it is
 probed via `len(...)` and through `fill` (the "\n"-joined wrap) compared as an
-exact string. The `lw*` keys pin CPython's `_handle_long_word` at
+exact string. The `lw*` keys pin Python's `_handle_long_word` at
 `space_left == 0`, where 3.14 changed behavior (>= 3.14 skips the break;
 <= 3.13 appended the empty slice, preserving a trailing-whitespace chunk) --
-the sv runtime is CPython 3.14, so these enforce the >= 3.14 semantics.
+the sv runtime is Python 3.14, so these enforce the >= 3.14 semantics.
 `werr*` pin the `width <= 0` ValueError. ES/JS opts out.
 """
 

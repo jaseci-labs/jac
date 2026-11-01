@@ -1,4 +1,4 @@
-"""Regression: CPython floor semantics for negative // and %."""
+"""Regression: Python floor semantics for negative // and %."""
 
 def floordiv(a: int, b: int) -> int {
     return a // b;

@@ -1,6 +1,6 @@
 """Chained-comparison cross-backend equivalence fixture (#7593 item 2).
 
-Pins CPython chain semantics for membership (in / not in) and identity
+Pins Python chain semantics for membership (in / not in) and identity
 (is / is not) links against the native lowering. ES/JS opts out.
 """
 

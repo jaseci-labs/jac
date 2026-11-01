@@ -1,12 +1,12 @@
 """The macOS side of the _posixsubprocess child.
 
-Derived from CPython 3.14.6 Modules/_posixsubprocess.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/_posixsubprocess.c; see ../LICENSE.cpython.
 There is no vfork() path (VFORK_USABLE is Linux-only), and open descriptors
 are listed with opendir() on /dev/fd, which the C module also accepts as not
 strictly async-signal-safe (_close_open_fds_maybe_unsafe).
 """
 
-import from jaclang.runtime.python.cpython_api {
+import from jaclang.runtime.python.python_capi {
     jacpy_closedir,
     jacpy_dirfd,
     jacpy_errno,

@@ -235,7 +235,7 @@ JAC_FLOOR int __jac_sockaddr_family(const void *address) {
 /* ---- clocks ---- */
 
 /* The runtime names a clock by its Jac id: 0 realtime, 1 monotonic, 2 process
- * CPU time, 3 thread CPU time, 4 raw monotonic, 5 the clock CPython's
+ * CPU time, 3 thread CPU time, 4 raw monotonic, 5 the clock Python's
  * time.monotonic() reads. The target's clockid_t for it, or -1. */
 JAC_FLOOR int64_t __jac_clock_id(int jac_clock) {
     switch (jac_clock) {
@@ -290,7 +290,7 @@ JAC_FLOOR size_t __jac_malloc_size(void *p) {
 #endif
 }
 
-/* a * b + c the way the target's own CPython computes it: fused on aarch64,
+/* a * b + c the way the target's own Python computes it: fused on aarch64,
  * where C compilers contract it by default, separate on x86-64. */
 JAC_FLOOR double __jac_fmadd(double a, double b, double c) {
 #if defined(__aarch64__)

@@ -3,8 +3,8 @@
 `_PyRuntime.static_objects.singletons.strings` holds one immortal str per
 entry, which the runtime and the remaining C reach as `_Py_ID(name)` (an
 identifier, the str of its own name) and `_Py_STR(name)` (a literal), and
-layouts.jac's `_Py_ID_<name>` offsets locate. CPython's
-Tools/build/generate_global_objects.py collected them from its C sources;
+layouts.jac's `_Py_ID_<name>` offsets locate.
+Tools/build/generate_global_objects.py collected them from the C sources;
 here they are the table. gen_include.jac writes from it the
 `_Py_global_strings` struct (pycore_global_strings.h), the runtime
 initializers (pycore_runtime_init_generated.h), the interning at startup

@@ -11,7 +11,7 @@ selects it with `[desktop] engine = "cef"` in `jac.toml`; `jac build <app>` and
 The `cef` host is a single `jac build --native` binary. There is **no C
 shim**: the CEF vtables and glue are written in Jac-native (`*.jac`) and
 compiled directly. libpython is **not** used to talk to Chromium; it only
-embeds a minimal CPython runtime for the loopback HTTP server.
+embeds the Python runtime for the loopback HTTP server.
 
 ### FFI layers
 
@@ -19,7 +19,7 @@ embeds a minimal CPython runtime for the loopback HTTP server.
 |---------|------------|---------|
 | **libcef** | `import from "libcef.so"` in `cef.jac` (AOT) | Browser window, rendering, message loop |
 | **libcef_dispatch** | `import from "libcef_dispatch.so"` in `cef.jac` (AOT) | Jac-native helper for the few things FFI can't express directly |
-| **libpython** | `import from "libpython…"` in generated `host.jac` (AOT) | Embed CPython: loopback server, `oauth_broker.py`, read `_port` |
+| **libpython** | `import from "libpython…"` in generated `host.jac` (AOT) | Embed the Python runtime: loopback server, `oauth_broker.py`, read `_port` |
 
 **CEF FFI**: CEF's C API requires client-side vtable structs with refcount
 callbacks and precise memory layout. `cef_dispatch.jac` (compiled to
@@ -61,7 +61,7 @@ this ordering.
 with entry {                       # generated host.jac
   ├─ cef_execute_subprocess()      # CEF subprocess? exit early
   ├─ cef_startup(cache_path, …)    # CEF init / dispatch bootstrap
-  ├─ Py_Initialize()               # embed CPython (AOT-linked)
+  ├─ Py_Initialize()               # embed the Python runtime (AOT-linked)
   ├─ PyRun_SimpleString(BOOT_PY)   # host_boot.boot(): plugins + in-process runtime + loopback server
   ├─ read _ctx.port → build URL
   ├─ cef_open_browser(url, …)      # create window + navigate

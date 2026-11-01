@@ -1,6 +1,6 @@
 """POSIX shared memory objects: shm_open() and shm_unlink().
 
-Derived from CPython 3.14.6 Modules/_multiprocessing/posixshmem.c; see
+Derived from Python 3.14.6 Modules/_multiprocessing/posixshmem.c; see
 ../LICENSE.cpython. Both calls run with the GIL released and are retried on
 EINTR unless a signal handler raises.
 """

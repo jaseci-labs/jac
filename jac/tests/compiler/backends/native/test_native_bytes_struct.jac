@@ -473,7 +473,7 @@ test "bytes truthiness is emptiness, not nullness (#6749)" {
     assert get_func(eng, "bool_nonempty", ctypes.c_int64)() == 1;
 }
 
-test "bytes repr matches CPython b'...' (#6749)" {
+test "bytes repr matches Python b'...' (#6749)" {
     (eng, _) = compile_native("bytes_ops.jac");
     assert get_func(eng, "repr_abc_ok", ctypes.c_int64)() == 1;
     assert get_func(eng, "repr_nul_ok", ctypes.c_int64)() == 1;
@@ -506,7 +506,7 @@ test "bytes ordering is lexicographic unsigned (#6749)" {
 
 test "bytes vs None comparison is null-safe (#6751)" {
     (eng, _) = compile_native("bytes_ops.jac");
-    # None operand: equal only to None (CPython identity), never deref null
+    # None operand: equal only to None (Python identity), never deref null
     assert get_func(eng, "none_eq_bytes", ctypes.c_int64)() == 0;
     assert get_func(eng, "bytes_eq_none", ctypes.c_int64)() == 0;
     assert get_func(eng, "none_ne_bytes", ctypes.c_int64)() == 1;

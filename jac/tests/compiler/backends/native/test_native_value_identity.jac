@@ -8,7 +8,7 @@ identical when every field is identical -- reference fields by address,
 scalar fields by bits, nested tuples field by field -- and a by-value tuple
 against a heap-boxed tuple of its shape compares against the box's contents
 (a null box is `None`). A by-value value is never identical to a reference
-or to `None`. This agrees with CPython wherever CPython's answer does not
+or to `None`. This agrees with Python wherever Python's answer does not
 depend on object caching: aliases of one tuple are identical, tuples with a
 differing field are not, and a tuple or scalar is never `None`. An option
 over a by-value payload (`bool | None`, `int | None`) follows the same rule
@@ -30,7 +30,7 @@ import from pathlib { Path }
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
      PROFILES: list[str] = ["managed", "rc"];
 
-test "is over tuples and scalars answers like CPython" {
+test "is over tuples and scalars answers like Python" {
     assert_native_identity(
         os.path.join(FIXTURES, "value_identity.jac"), profiles=PROFILES
     );

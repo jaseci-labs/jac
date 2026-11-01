@@ -4,7 +4,7 @@ The codegen string tests prove what the host SOURCE contains; this proves the
 whole chain RUNS in a real binary. Build a tiny na host over the fused runtime
 library (jaclang/dist/fused, staged beside it exactly as the desktop
 builder does), bundle THIS jac's runtime trailer onto it, run it, and confirm
-engine_boot() materialized the trailer payload, dlopened the bundled CPython,
+engine_boot() materialized the trailer payload, dlopened the bundled interpreter,
 initialized it, and imported jaclang + oauth_broker straight from the fused
 runtime -- with no webview, no display, and no system libpython (the
 interpreter is the one bundled in the payload). Same chain a desktop host runs,

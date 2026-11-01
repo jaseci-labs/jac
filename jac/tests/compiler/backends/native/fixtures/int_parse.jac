@@ -1,4 +1,4 @@
-"""int() over strings, with every base form CPython accepts or refuses."""
+"""int() over strings, with every base form Python accepts or refuses."""
 def parse(text: str, base: int) -> str {
     try {
         return str(int(text, base));

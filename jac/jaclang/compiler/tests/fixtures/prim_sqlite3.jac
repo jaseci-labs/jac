@@ -1,6 +1,6 @@
 """Bundled native `sqlite3` cross-backend equivalence fixture.
 
-The SAME `import sqlite3` binds CPython's `sqlite3` on the sv (Python)
+The SAME `import sqlite3` binds Python's `sqlite3` on the sv (Python)
 backend and the bundled `na_stdlib/sqlite3.jac` module -- a pure-Jac surface
 over the system `libsqlite3` via the `_sqlite3_native` FFI floor -- on the na
 (native LLVM) backend. Rows and description entries marshal as JacVal lists,

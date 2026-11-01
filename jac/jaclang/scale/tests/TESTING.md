@@ -25,7 +25,7 @@ cd jac && zig build -Ddev
 `-Ddev` links the compiler from the checkout instead of bundling it, so edits
 under `jac/jaclang/` take effect with no rebuild. Rebuild only when something
 inside the binary itself changes (the launcher, `sitecustomize.py`,
-`_jac_finder.py`, the bundled CPython).
+`_jac_finder.py`, the JacPython runtime).
 
 Do not validate a scale change against a released binary. A release binary
 carries the jaclang that shipped with it, so it will happily run your tests
@@ -86,7 +86,7 @@ is the one that gates merges.
 
 ### 1.4 Host requirements
 
-The build fetches an LLVM slice and a full CPython, and the compiler suite is
+The build fetches an LLVM slice and builds the JacPython runtime, and the compiler suite is
 memory-hungry enough that CI runs it in chunks. Budget several gigabytes of
 free disk before starting, and do not run the toolchain build on a small
 laptop VM. `ModuleNotFoundError`, `No bytecode found` and

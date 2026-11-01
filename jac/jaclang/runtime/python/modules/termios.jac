@@ -1,6 +1,6 @@
 """POSIX terminal I/O control.
 
-Derived from CPython 3.14.6 Modules/termios.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/termios.c; see ../LICENSE.cpython.
 struct termios is read and written in place in C memory: the flag words and
 speeds through termios_records.<os>.jac, the control characters at its c_cc
 offset. termios.error is module state slot 0. The constants come from

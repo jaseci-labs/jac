@@ -73,7 +73,7 @@ def test_close_idempotent() -> int {
 }
 
 # Test 6: open non-existent file for reading returns None
-# open() of a missing path raises FileNotFoundError (CPython-congruent, #6404)
+# open() of a missing path raises FileNotFoundError (Python-congruent, #6404)
 # rather than returning None. Returns 1 iff the correct exception is raised.
 def test_open_nonexistent() -> int {
     try {

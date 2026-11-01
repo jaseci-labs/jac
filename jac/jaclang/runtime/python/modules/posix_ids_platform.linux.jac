@@ -1,6 +1,6 @@
 """The Linux side of posix's process identity calls.
 
-Derived from CPython 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
 getgrouplist() and initgroups() take a gid_t, setgroups() counts with a
 size_t, struct utsname is six 65-byte fields (x86_64 and aarch64 alike),
 getlogin_r() fills a UT_NAMESIZE + 1 buffer, and os.getrandom() calls

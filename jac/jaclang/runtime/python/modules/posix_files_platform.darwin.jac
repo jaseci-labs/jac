@@ -1,6 +1,6 @@
 """The macOS side of the posix file functions.
 
-Derived from CPython 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
 mode_t is 16 bits and dev_t a signed 32-bit int. lchmod(), chflags() and
 lchflags() exist here only. mkfifoat() and mknodat() arrived in macOS 13, so
 they are looked up at run time (HAVE_MKFIFOAT_RUNTIME, HAVE_MKNODAT_RUNTIME).

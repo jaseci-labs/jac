@@ -1,6 +1,6 @@
 """math module cross-backend equivalence fixture (issue #6404, Mechanism B).
 
-The SAME `import from math { ... }` binds CPython's `math` on the sv
+The SAME `import from math { ... }` binds Python's `math` on the sv
 (Python) backend and the bundled `na_stdlib/math.jac` Mechanism-B module —
 a pure-Jac surface over the `_math_native` libm FFI floor — on the na
 (native LLVM) backend. Both must agree within ULP tolerance, including the
@@ -10,7 +10,7 @@ fallback arm so a differently-typed raise shows up as a value mismatch
 instead of an abort. The ES/JS backend opts out (returns {}) — this
 roadmap targets sv↔na congruence.
 
-Integer-result pins stay inside i64 range: CPython's bignum answers
+Integer-result pins stay inside i64 range: Python's bignum answers
 (factorial(21), comb(67, 33), ...) overflow the native fixed-width int, so
 they are intentionally absent. `inf`/`nan` constants are pinned through
 predicates rather than by value — abs(inf - inf) is nan, which never
@@ -192,7 +192,7 @@ def math_py -> dict[any, any] {
         "sumprod": sumprod([1.0, 2.0], [3.0, 4.0]),
 
     };
-    # error paths: pin "<ClassName>: <message>" per CPython 3.14
+    # error paths: pin "<ClassName>: <message>" per Python 3.14
     r["err_sqrt_neg"] = "no-raise";
     try {
         sqrt(-1.0);
@@ -410,7 +410,7 @@ def math_py -> dict[any, any] {
     r["hypot_one"] = hypot(-3.5);
     r["gcd_none"] = gcd();
     r["lcm_none"] = lcm();
-    # CPython's own Lanczos gamma/lgamma, away from the integer table
+    # Python's own Lanczos gamma/lgamma, away from the integer table
     r["gamma_frac"] = gamma(4.919272155929015);
     r["lgamma_neg"] = lgamma(-17.431905766684515);
     r["isqrt_max"] = isqrt(9223372036854775807);
@@ -767,7 +767,7 @@ def _congruence_na(r: dict[str, any]) {
     r["hypot_one"] = hypot(-3.5);
     r["gcd_none"] = gcd();
     r["lcm_none"] = lcm();
-    # CPython's own Lanczos gamma/lgamma, away from the integer table
+    # Python's own Lanczos gamma/lgamma, away from the integer table
     r["gamma_frac"] = gamma(4.919272155929015);
     r["lgamma_neg"] = lgamma(-17.431905766684515);
     r["isqrt_max"] = isqrt(9223372036854775807);

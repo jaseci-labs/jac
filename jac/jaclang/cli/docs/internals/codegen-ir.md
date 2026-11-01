@@ -4,7 +4,7 @@ Status: shipped. This format is the compiler's only Python codegen. The
 emitter (`compiler/backends/py/jcir_gen_pass.jac`) produces it from the
 annotated unitree for the whole language, the shim seat
 (`compiler/backends/py/jcir_bc_gen_pass.jac`) turns the bytes back into
-CPython code objects. The Python-AST emitter it was measured against
+Python code objects. The Python-AST emitter it was measured against
 (`pyast_gen_pass`), its bytecode pass, and the `JAC_CODEGEN` flag that
 chose between them were deleted at the cutover, which is where the
 two-codegen era ends. Sections 1 through 8 are the design record and
@@ -50,7 +50,7 @@ Today codegen is two passes at the end of the pipeline:
 
 - `compiler/passes/pyast_gen_pass.jac` (+impl, about 4,500 lines, 169
   methods; measured 2026-08-14: 137 of 169 methods are `ast3`-bound) walks the
-  annotated unitree and builds a CPython `ast` tree per module.
+  annotated unitree and builds a Python `ast` tree per module.
 - `compiler/passes/pybc_gen_pass.jac` (3 methods) calls `compile()` on each
   `ast.Module` and `marshal.dumps` the code object.
 
@@ -68,13 +68,13 @@ Today codegen is two passes at the end of the pipeline:
   lineno/col via `sync()`, and handing the tree to `compile()`.
 
 In the sealed pipeline the decisions run natively, but construction is
-CPython's business by definition. The compact codegen IR is the boundary
+the Python runtime's business by definition. The compact codegen IR is the boundary
 between them: **decisions happen in the sealed pipeline and are encoded;
 the shim only transcribes.** Every instruction has exactly one
 transcription. The shim makes no choices, so it can stay small, dumb, and
 version-tracking, exactly as the Step 4 shim principle from #8139 demands:
-the shim tracks CPython internals (builds `ast` objects and calls
-`compile()`) rather than owning `co_linetable`. CPython owns line tables.
+the shim tracks the runtime's internals (builds `ast` objects and calls
+`compile()`) rather than owning `co_linetable`. The runtime owns line tables.
 
 The production crossing then collapses to: IR bytes in, code objects plus
 diagnostics out. Full annotated trees never cross in production.
@@ -129,8 +129,8 @@ construction, with two deliberate simplifications:
    to them by index only.
 
 Why serialize at all if the native side could construct directly? Four
-reasons: the sealed producer stays free of libpython and CPython version
-churn (only the transcriber tracks CPython); the dev lane and the sealed
+reasons: the sealed producer stays free of libpython and Python version
+churn (only the transcriber tracks the Python version); the dev lane and the sealed
 lane produce the same bytes, so cross-lane byte equality is a cheap parity
 canary; the bytes are cacheable and dumpable for debugging; and the
 transcriber stays a bounded, generated, mechanically verifiable component
@@ -144,7 +144,7 @@ magic plus format version, refuse mismatched, no migration attempts.
 ```
 magic          4 bytes  b"JCIR"
 format_version u16 LE   CIR_FORMAT_VERSION (currently 1); exact match required
-python_version u16 LE   (major << 8) | minor of the producer's CPython;
+python_version u16 LE   (major << 8) | minor of the producer's Python;
                         exact match against the running interpreter required
 class table    varint count, then per entry: varint byte length + utf8
 key table      varint count, then per entry: varint byte length + utf8
@@ -161,9 +161,9 @@ terminator     1 byte 0xFE; trailing bytes after it are an error
 
 - The **class table** holds `ast` class names (`"Module"`,
   `"FunctionDef"`, `"Load"`, ...). The consumer resolves each against the
-  running CPython's `ast` module once per container; an unresolvable name
+  running interpreter's `ast` module once per container; an unresolvable name
   is a hard `CodegenIrVersionError` (the producer and the runtime disagree
-  about CPython), never a skip.
+  about the Python version), never a skip.
 - The **key table** holds field names (`"body"`, `"targets"`, ...),
   interned once at bind.
 - The **string pool** deduplicates every string operand: identifiers,
@@ -196,7 +196,7 @@ The instruction stream is a postfix stack machine that builds exactly one
 | Aggregate | `OP_TUPLE` | varint n | pop n values, build a tuple; a splice chunk here is a hard error |
 | Construction | `OP_NODE` | varint class ref, varint field count, that many varint key refs | pop the field values, call the bound class with those keyword arguments, stamp the location register onto the node, push it |
 | Location | `OP_LOC` | 4 zigzag varints, deltas against the previous `OP_LOC` | set the location register (first_line, col_start, last_line, col_end) |
-| CPython splice | `OP_PARSE_SPLICE` | varint source ref, varint line offset | `ast.parse` the source, add the offset to every `lineno`/`end_lineno` present (offset 0 means untouched), push an opaque splice chunk of the parsed statement list |
+| Python splice | `OP_PARSE_SPLICE` | varint source ref, varint line offset | `ast.parse` the source, add the offset to every `lineno`/`end_lineno` present (offset 0 means untouched), push an opaque splice chunk of the parsed statement list |
 | Framing | `OP_END` | none | stream ends; the stack must hold exactly one value and it must be an `ast.Module` |
 
 Rules that make the vocabulary total:
@@ -208,9 +208,9 @@ Rules that make the vocabulary total:
   module stream. The writer enforces this at emission and the shim
   enforces it again at transcription.
 - **Keyword construction only.** `OP_NODE` never relies on positional
-  `_fields` order, because CPython owns that order and changes it between
+  `_fields` order, because Python owns that order and changes it between
   versions (`type_params` appeared in 3.12). The producer emits every
-  field it wants set; missing-field defaulting is CPython's business.
+  field it wants set; missing-field defaulting is the `ast` module's business.
 - **Splice chunks flow only into `OP_LIST`.** The producer cannot know how
   many statements a spliced Python source parses to, so the list builder
   flattens chunks deterministically; a chunk reaching `OP_NODE` or
@@ -223,8 +223,8 @@ The constant domain of v1 is `None`/`True`/`False`/`Ellipsis`/int/float/
 str/bytes plus lists and tuples of those. Complex numbers, frozensets, and
 nested constant tuples produced by hypothetical future constant folding
 are not encodable in v1; adding them is a format version bump, not a
-special case. (Spliced Python source can still yield any constant CPython
-can parse, because CPython constructs those itself.)
+special case. (Spliced Python source can still yield any constant Python
+can parse, because the parser constructs those itself.)
 
 ## 5. Line mapping
 
@@ -243,7 +243,7 @@ parent's `OP_LOC` immediately before the parent's `OP_NODE`.
 The shim performs **no** `fix_missing_locations` pass: that function is a
 decision-hiding crutch that would mask producer bugs. A node constructed
 with the register unset is a hard error instead. Downstream of the shim,
-`compile()` turns these fields into `co_linetable`; CPython owns that
+`compile()` turns these fields into `co_linetable`; the runtime owns that
 format entirely, which is the whole point of the shim tier.
 
 Spliced statements keep the line numbers `ast.parse` gave them, shifted by
@@ -346,7 +346,7 @@ production:
 
 "IR emission" means the behavior becomes producer logic whose output is
 ordinary JCIR instructions. "Shim transcription" means the behavior is
-performed by the shim because it intrinsically requires CPython.
+performed by the shim because it intrinsically requires the Python runtime.
 
 | Behavior | Where | Notes |
 |---|---|---|
@@ -427,9 +427,9 @@ assumed away.
 10. **Interned keys and classes.** Binding once per container mirrors
     `mat_set_key`'s `sys.intern` discipline, keeping per-node kwarg
     construction allocation-free in the native transcriber.
-11. **Kwargs construction on future CPythons.** The reference shim calls
+11. **Kwargs construction on future Python versions.** The reference shim calls
     the bound class with the complete keyword set the producer emitted, so
-    the CPython 3.13+ deprecation of constructing ast nodes with missing
+    the Python 3.13+ deprecation of constructing ast nodes with missing
     required fields never fires as long as producers emit full field sets,
     which `pyast_gen` already does everywhere. The suite passes on the
     bundled 3.14.
@@ -481,9 +481,9 @@ assumed away.
   Relaxing the exact match to a range still waits on the native
   transcriber and a per-minor parity canary.
 - **Field-set completeness is not validated at bind time.** A producer
-  that omits a field CPython requires surfaces as a `compile()` error
+  that omits a field the `ast` class requires surfaces as a `compile()` error
   (E5043) rather than a bind error. Acceptable for now because the parity
-  canary compares final code objects per CPython minor; revisit if the
+  canary compares final code objects per Python minor version; revisit if the
   failure mode is ever observed in the wild.
 - **`OP_TUPLE` currently has no producer.** It exists because tuple-valued
   ast fields are a plausible near-term need and its transcription is
@@ -537,7 +537,7 @@ assumed away.
   first use. The generated native transcriber has no such constraint (it
   builds a kwargs dict through the C API).
 - `compiler/backends/py/jcir_gen_pass.jac` (+impl): the emitter pass.
-  Lane-portable jac with no CPython ast import anywhere; it ports
+  Lane-portable jac with no Python `ast` import anywhere; it ports
   `pyast_gen`'s decisions method by method into recipe construction
   (`CgNode` trees: class name, field names, field values, one normalized
   location per node, `CgSplice` markers for generated Python stub source) and
@@ -570,7 +570,7 @@ assumed away.
   set and the ambient typing names are baked into `jcir_facts.jac` and
   pinned against their sources by `test_jcir_facts_sync.jac`;
   `textwrap.dedent` lowers through the na_stdlib shim, which joins the
-  measured closure and contributes zero seams; the CPython minor joins
+  measured closure and contributes zero seams; the Python minor version joins
   the same baked facts (section 10). What remains is `html.unescape` for
   jsx text and string attributes, waived as
   `_JCIR_ENTITY_SEAM_WAIVERS`. It clears with an na_stdlib `html` shim
@@ -660,7 +660,7 @@ pass, and `PyJacAstLinkPass`. Two consequences are worth stating plainly
 rather than discovering:
 
 - `jac_link` back-references no longer exist anywhere. They were a
-  tooling-only handle from a CPython ast node back to the jac node that
+  tooling-only handle from a Python ast node back to the jac node that
   produced it (section 7), attached by the old emitter's `sync()`. The
   tree the shim seat builds dies inside the crossing after `compile()`,
   so nothing downstream held one in production; the micro suite's

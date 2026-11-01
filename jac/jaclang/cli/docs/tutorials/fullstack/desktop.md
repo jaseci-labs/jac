@@ -4,8 +4,8 @@ This tutorial walks you through building and running an existing Jac full-stack
 app as a native desktop app. The desktop targets turn your app into **one
 `jac build --native`d binary plus a web engine** - no Rust toolchain, no PyInstaller,
 and no separate backend process. They build the same `cl` frontend the web target
-produces, then compile a native host that embeds CPython to serve that bundle and
-renders it in either the OS-native webview (WebKitGTK on Linux, WKWebView on
+produces, then compile a native host that embeds the Python runtime to serve that
+bundle and renders it in either the OS-native webview (WebKitGTK on Linux, WKWebView on
 macOS, WebView2 on Windows) or Chromium Embedded Framework (CEF).
 
 !!! note "Status: beta 🧪"
@@ -70,8 +70,8 @@ jac build            # a desktop app builds its shell; `jac build <app>` in a wo
 This:
 
 1. builds your `cl` codespace with the standard Vite pipeline (`.jac/client/dist/`),
-2. generates a native host that embeds CPython to serve that bundle on a loopback
-   port and renders it in the OS webview,
+2. generates a native host that embeds the Python runtime to serve that bundle on a
+   loopback port and renders it in the OS webview,
 3. compiles the host with `jac build --native` into a single binary.
 
 The output lands in `.jac/client/desktop/`. On Linux:
@@ -184,6 +184,6 @@ JAC_CEF_DISABLE_GPU=1 OZONE_PLATFORM=x11 ./my-app
 |---|---|---|
 | output | bundle served by a host you run | one self-contained binary |
 | UI runtime | a browser you point at the server | OS-native webview or CEF Chromium |
-| backend transport | HTTP to a remote server | embedded CPython, in-process |
+| backend transport | HTTP to a remote server | embedded Python runtime, in-process |
 
 The same `cl`/`sv` source builds for both - only the kind changes.

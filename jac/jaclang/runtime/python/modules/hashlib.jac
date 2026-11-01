@@ -1,4 +1,4 @@
-"""The parts the HACL*-backed hash modules share; derived from CPython 3.14.6
+"""The parts the HACL*-backed hash modules share; derived from Python 3.14.6
 Modules/hashlib.h. See ../LICENSE.cpython.
 
 A hash object keeps its HACL* state as native state under a ClassToken.

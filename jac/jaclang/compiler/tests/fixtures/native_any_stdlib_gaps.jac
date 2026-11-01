@@ -3,7 +3,7 @@
 These are the produce/consume operations a pure-Jac `json` (the Mechanism-B
 tier) needs: code that produces `any` (loads -> dict/list/scalars boxed as
 `any`) and consumes `any` (dumps -> walk an arbitrary value, dispatch on runtime
-type). The Python reference pins CPython semantics; `require=["na"]` makes the
+type). The Python reference pins Python semantics; `require=["na"]` makes the
 native backend a hard regression guard (a backend that fails to compile/run or
 mismatches fails the test instead of being silently skipped).
 
@@ -24,7 +24,7 @@ the canonical heterogeneous layout `loads()` produces (`list[any]` /
   NA-11 None-valued `any` on consume: is None / truthiness / == None (#6957)
 """
 
-# --- NA-1 / NA-8 / NA-9 / NA-10: scalar + string congruence with CPython ---
+# --- NA-1 / NA-8 / NA-9 / NA-10: scalar + string congruence with Python ---
 def congruence_py(s: str) -> str {
     # NA-10 pins the ternary construct itself; `s or "EMPTY"` segfaults na.
     return s if s else "EMPTY";  # jac:ignore[simplify-ternary]

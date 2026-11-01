@@ -27,7 +27,7 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
 
-test "str() on an owned optional temp answers what CPython answers" {
+test "str() on an owned optional temp answers what Python answers" {
     out = assert_native_identity(os.path.join(FIXTURES, "optional_str_owned_temp.jac"));
     assert "a=signal 10" in out , out;
     assert "b=None" in out , out;

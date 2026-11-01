@@ -7,7 +7,7 @@ released after the call. The callee body needs no special lowering because
 the checker already types the parameter name as list[T] / dict[str, T].
 
 Every wrapper below returns an int so the ctypes harness reads a plain
-c_int64; expected values are pinned against CPython in
+c_int64; expected values are pinned against Python in
 test_native_varargs.jac. This absorbs the `total(*nums)` shape of the
 retired guardrail fixture py_varargs_err.jac (#7320), minus its def:pub
 caller (pub variadics stay a loud E5090).

@@ -1,8 +1,8 @@
-"""CPython-parity value-semantics tests for the native pathway (issue
+"""Python-parity value-semantics tests for the native pathway (issue
 #7320, Cluster 2 silent-wrong-value family).
 
 Each fixture exercises an idiom that previously compiled clean on na but
-returned a different value than CPython/sv, with results encoded into a
+returned a different value than Python/sv, with results encoded into a
 single i64 so a silent divergence fails an equality assert.
 """
 
@@ -179,7 +179,7 @@ test "str search methods honor start and end" {
     ];
     for (name, expected) in cases {
         got = get_func(eng, name, ctypes.c_int64)();
-        assert got == expected , f"{name}: native {got}, CPython {expected}";
+        assert got == expected , f"{name}: native {got}, Python {expected}";
     }
 }
 
@@ -201,7 +201,7 @@ test "fstring: output larger than 1024 bytes is not truncated" {
     assert result == 1204 , f"Expected 1204, got {result}";
 }
 
-test "fstring: numeric and string format specs render like CPython" {
+test "fstring: numeric and string format specs render like Python" {
     (eng, _) = compile_native("py_fstring.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "fstring_specs", ctypes.c_int64);
@@ -210,7 +210,7 @@ test "fstring: numeric and string format specs render like CPython" {
     assert result == 1111 , f"Expected 1111, got {result}";
 }
 
-test "fstring: !r conversion matches CPython repr" {
+test "fstring: !r conversion matches Python repr" {
     (eng, _) = compile_native("py_fstring.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "fstring_repr", ctypes.c_int64);
@@ -219,7 +219,7 @@ test "fstring: !r conversion matches CPython repr" {
     assert result == 11111 , f"Expected 11111, got {result}";
 }
 
-test "fstring: dynamic format specs render like CPython" {
+test "fstring: dynamic format specs render like Python" {
     (eng, _) = compile_native("py_fstring.jac");
     get_func(eng, "jac_entry", None)();
     fn = get_func(eng, "fstring_dynspec", ctypes.c_int64);

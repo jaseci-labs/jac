@@ -1,11 +1,11 @@
-"""Benchmark JacPython against the stock CPython the same recipe builds.
+"""Benchmark this checkout's JacPython build against a base interpreter.
 
-A JacPython build also produces a build-only stock CPython from the same
-configure flags (`<platform>.host`), so the two interpreters differ only in
-the C that JacPython replaces. Each benchmark runs on both at once, each
-pinned to its own physical core, so both see the same machine conditions.
+The base is any Python of the same version: an earlier JacPython build, or
+another implementation to measure against. Each benchmark runs on both at
+once, each pinned to its own physical core, so both see the same machine
+conditions.
 
-    jac run scripts/jacpython/bench.jac run --deps DEPS --out OUT
+    jac run scripts/jacpython/bench.jac run --base PYTHON --deps DEPS --out OUT
     jac run scripts/jacpython/bench.jac compare OUT
 
 `DEPS` holds pyperf and pyperformance, which the interpreters import (they
@@ -13,7 +13,7 @@ ship no pip): `uv pip install --target DEPS pyperf pyperformance`.
 
 Suites:
 - `modules`: the compiler frontend, the object types and the extension
-  modules JacPython replaces, one `pyperf timeit` case each, plus cold and
+  modules JacPython implements natively, one `pyperf timeit` case each, plus cold and
   warm import commands.
 - `pyperformance`: every pyperformance benchmark that needs no third-party
   package (2to3 is skipped: it installs a vendored package with pip).
@@ -33,7 +33,7 @@ import from common { JAC }
 glob PLATFORM: str = {"x86_64": "linux-x86_64", "aarch64": "linux-aarch64"}.get(
          os.uname().machine, "linux-x86_64"
      ),
-     BUILD: Path = JAC / ".python-build/jacpython",
+     BUILD: Path = JAC / ".python-build",
      IMPORTS: str = "argparse, json, typing, dataclasses, asyncio, email.message, http.client, decimal, pathlib",
      # Benchmarks that bind a fixed port run one interpreter at a time.
      SERIAL: set[str] = {"asyncio_tcp", "asyncio_tcp_ssl"},
@@ -345,8 +345,8 @@ obj Job {
         output: Path;
 }
 
-def interpreter_path(variant: str) -> str {
-    return str(BUILD / variant / "python/install/bin/python3.14");
+def interpreter_path(platform: str) -> str {
+    return str(BUILD / platform / "python/install/bin/python3.14");
 }
 
 # A setup line `|file.py` reads that stdlib file's source into `src`.
@@ -601,7 +601,7 @@ def compare(out: Path, base: str, new: str) {
 
 with entry {
     parser = argparse.ArgumentParser(
-        description="Benchmark JacPython against the stock CPython of the same recipe."
+        description="Benchmark this checkout's JacPython build against a base interpreter."
     );
     parser.add_argument("action", choices=["run", "compare"]);
     parser.add_argument("out", nargs="?", `default="");
@@ -613,19 +613,22 @@ with entry {
     parser.add_argument("--jobs", type=int, `default=8);
     parser.add_argument("--fast", action="store_true");
     parser.add_argument("--only", `default="");
-    parser.add_argument("--base", `default=interpreter_path(f"{PLATFORM}.host"));
+    parser.add_argument("--base", `default="", help="the interpreter to compare against");
     parser.add_argument("--new", `default=interpreter_path(PLATFORM));
     args = parser.parse_args();
     out = Path(args.out_option or args.out or "jacpython-bench").resolve();
     if args.action == "compare" {
-        compare(out, "cpython", "jacpython");
+        compare(out, "base", "new");
         sys.exit(0);
+    }
+    if not args.base {
+        sys.exit("run needs --base: the interpreter to compare against");
     }
     if not args.deps {
         sys.exit("run needs --deps: uv pip install --target DEPS pyperf pyperformance");
     }
     deps = Path(args.deps).resolve();
-    interpreters = {"cpython": args.base, "jacpython": args.new};
+    interpreters = {"base": args.base, "new": args.new};
     only = set(
         name
         for name in args.only.split(",")
@@ -673,7 +676,7 @@ with entry {
             if line.startswith("FAIL")
         ];
     }
-    compare(out, "cpython", "jacpython");
+    compare(out, "base", "new");
     if failures {
         print("\nfailed:\n" + "\n".join(failures));
         sys.exit(1);

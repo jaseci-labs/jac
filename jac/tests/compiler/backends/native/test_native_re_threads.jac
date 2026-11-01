@@ -20,11 +20,11 @@ test "flow workers share the re cache and a compiled pattern safely" {
 }
 
 
-"""A plain project's `jac run` checks `re.finditer` against CPython's stub, an
+"""A plain project's `jac run` checks `re.finditer` against the stdlib stub, an
 iterator, while the native `re` runs it, so the native one must hand back an
 iterator too: the run used to crash on the first step (#10373). The fixture is
 copied out of this directory first, because its jac.toml pins placements."""
-test "jac run steps re.finditer as an iterator, as CPython does" {
+test "jac run steps re.finditer as an iterator, as Python does" {
     work = os.path.realpath(tempfile.mkdtemp(prefix="jac_finditer_"));
     try {
         shutil.copy(fixture("re_finditer_iter.jac"), work);

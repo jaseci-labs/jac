@@ -7,7 +7,7 @@ impl bundle_root(pkg_dir: str) -> str {
 }
 
 impl _python_tag -> str {
-    return f"cpython-{sys.version_info.major}{sys.version_info.minor}";
+    return sys.implementation.cache_tag;
 }
 
 impl bundle_misses(pkg_dir: str) -> list[str] {

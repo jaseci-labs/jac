@@ -2,12 +2,12 @@
 
 Code the compiler kernel runs reads its inputs with `open(path, "r",
 encoding="utf-8")` and names scoped styles with `hashlib.blake2s`; both
-have to lower and agree with CPython byte for byte.
+have to lower and agree with Python byte for byte.
 """
 import from pathlib { Path }
 import from tests.support { assert_native_identity }
 
-test "open with a UTF-8 encoding and BLAKE2 digests match CPython" {
+test "open with a UTF-8 encoding and BLAKE2 digests match Python" {
     source = str(
         Path(__file__).resolve().parent / "fixtures" / "text_io_digest_fidelity.jac"
     );

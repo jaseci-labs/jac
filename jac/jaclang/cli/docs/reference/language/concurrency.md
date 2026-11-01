@@ -14,8 +14,8 @@ Most real-world applications need to do multiple things at once -- fetching data
 2. **`flow/wait`** -- thread-based concurrency, suited for overlapping *blocking* work (blocking I/O libraries that have no async API, or calls into C/native extensions that release the GIL). `flow` launches a function as a background task on a worker thread and immediately returns a future; `wait` blocks until the result is available. Think of it as structured, explicit concurrency -- you control exactly when work starts and when you synchronize.
 
 !!! warning "`flow` does not parallelize pure-Jac CPU work"
-    `flow` runs on real OS threads, but CPython's Global Interpreter Lock (which
-    is enabled in the shipped runtime) serializes pure-Jac/Python bytecode, so
+    `flow` runs on real OS threads, but the Python runtime's Global Interpreter Lock
+    (which is enabled in the shipped runtime) serializes pure-Jac/Python bytecode, so
     two `flow` tasks doing arithmetic in a loop run in *sequence*, not in
     parallel -- two CPU-bound tasks take the same wall-clock time whether you run
     them with `flow` or one after another. `flow` gives a real speedup only when
@@ -104,7 +104,7 @@ async def process_stream(stream: AsyncIterator) -> None {
 
 ## Concurrent Expressions
 
-The `flow/wait` pattern provides explicit concurrency control for running functions concurrently on worker threads. Unlike `async/await` (which is cooperative and single-threaded), `flow` dispatches work to separate threads, making it suitable for overlapping blocking calls that release the GIL (blocking I/O, native extensions). See the warning above: under CPython's GIL it does **not** speed up pure-Jac CPU-bound loops.
+The `flow/wait` pattern provides explicit concurrency control for running functions concurrently on worker threads. Unlike `async/await` (which is cooperative and single-threaded), `flow` dispatches work to separate threads, making it suitable for overlapping blocking calls that release the GIL (blocking I/O, native extensions). See the warning above: under the Python runtime's GIL it does **not** speed up pure-Jac CPU-bound loops.
 
 The mental model is simple: `flow` says "start this work now, in the background" and hands you a future (a handle to the pending result). `wait` says "I need the result now" and blocks until it's ready. Between `flow` and `wait`, you're free to do other work -- or launch more `flow` tasks -- making it easy to overlap independent operations.
 

@@ -47,7 +47,7 @@ test "a None argument prints None instead of segfaulting" {
 
 test "an argument that cannot lower declines the lowering" {
     # `bytes.upper` has no native emitter, so the module must demote and
-    # produce CPython's answer rather than silently printing nothing.
+    # produce Python's answer rather than silently printing nothing.
     ran = subprocess.run(
         jac_command("run", DEMOTE_FIXTURE), capture_output=True, text=True
     );

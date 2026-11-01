@@ -1,6 +1,6 @@
 """Bundled native `fcntl` cross-backend equivalence fixture.
 
-The SAME `import fcntl` binds CPython's `fcntl` on the sv (Python) backend
+The SAME `import fcntl` binds Python's `fcntl` on the sv (Python) backend
 and the bundled `na_stdlib/fcntl.jac` on the na (native LLVM) backend. Pipe
 fds: `os.pipe()` on sv, libc `pipe(2)` on na. Pins the F_GETFL/F_SETFL
 O_NONBLOCK round trip (toggle on, read back, restore, read back), the
@@ -9,7 +9,7 @@ floor -- same value on the host), an EBADF raise as raised/did-not-raise
 (the error TYPE diverges: OSError vs ValueError), and an
 `ioctl(TIOCGWINSZ)` probe on stdin fd 0 that degrades to zeros when fd 0
 is not a terminal (CI), so the key set never drifts. A pty slave (always a
-terminal) then pins CPython's `ioctl` buffer contract: the answer is fresh
+terminal) then pins Python's `ioctl` buffer contract: the answer is fresh
 `bytes` of `len(arg)` and the caller's `arg` is never written, a request
 that writes past a short `arg` raises (SystemError on sv, RuntimeError on
 na: raised/did-not-raise only), an `arg` over 1024 bytes raises

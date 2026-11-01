@@ -1,4 +1,4 @@
-"""Memory-allocation tracing; derived from CPython 3.14.6 Modules/_tracemalloc.c.
+"""Memory-allocation tracing; derived from Python 3.14.6 Modules/_tracemalloc.c.
 
 The tracer itself hooks the allocators in Python/tracemalloc.c.
 """

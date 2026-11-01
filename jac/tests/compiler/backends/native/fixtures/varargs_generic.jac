@@ -3,7 +3,7 @@
 `Cell[T]` is the shape the bundled `contextvars` shim wanted (#8247): the
 pack carries the *presence* of a fallback, which `(T | None) = None` cannot,
 because `None` is also a legal value there. Every answer below is pinned
-against CPython by running this same file on both pathways, so the precedence
+against Python by running this same file on both pathways, so the precedence
 ladder, the empty pack, and the multi-element pack all have to agree.
 """
 

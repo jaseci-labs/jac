@@ -2,7 +2,8 @@
 
 scripts/jacpython/gen_clinic.jac generates
 jaclang/runtime/python/bindings/clinic/io.jac from them. Taken from
-CPython 3.14.6 Modules/_io/_iomodule.c, Modules/_io/iobase.c, Modules/_io/fileio.c, Modules/_io/bytesio.c, Modules/_io/bufferedio.c, Modules/_io/textio.c, Modules/_io/stringio.c.
+the C sources it replaces (Modules/_io/_iomodule.c, Modules/_io/iobase.c, Modules/_io/fileio.c, Modules/_io/bytesio.c, Modules/_io/bufferedio.c, Modules/_io/textio.c, Modules/_io/stringio.c); see
+jac/jaclang/runtime/python/LICENSE.cpython.
 """
 import from clinic_schema { Clinic, Function, Parameter }
 

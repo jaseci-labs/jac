@@ -1,4 +1,4 @@
-"""`bytes` and `bytearray` over ranges and tuples of ints, as in CPython."""
+"""`bytes` and `bytearray` over ranges and tuples of ints, as in Python."""
 
 def from_range(count: int) -> list[int] {
     whole = bytes(range(count));

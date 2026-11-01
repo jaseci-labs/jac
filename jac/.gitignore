@@ -7,6 +7,7 @@ db.sqlite3
 media
 migrations
 venv
+!/bootstrap/python/src/Lib/venv/
 
 # Jac build & cache artifacts
 .jac/
@@ -37,6 +38,7 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+!/tests/python_conformance/test/test_importlib/metadata/data/*.egg
 MANIFEST
 
 # Others #

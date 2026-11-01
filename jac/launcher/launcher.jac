@@ -1,7 +1,7 @@
 """jac single-binary launcher: the headless CLI frontend over the fused
 runtime core (`_fused.*` in the bundled native stdlib).
 
-This executable carries the jaclang runtime + a private CPython as a
+This executable carries the jaclang runtime + the JacPython runtime as a
 zstd-compressed payload appended after the image. On first run it
 materializes that payload into a versioned cache dir, then dlopens the bundled
 libpython and drives it in-process. Nothing Python is linked at build time --
@@ -11,11 +11,11 @@ install or runtime.
 Dispatch, before any Python bring-up:
 
   * a trailing `.jab` overlay (a `jac build --as binary` app) exports its
-    [offset, len] so the CPython boot can mount the app image out of this
+    [offset, len] so the Python boot can mount the app image out of this
     binary, and the app then owns ALL of argv;
   * node mode: invoked as `node` (an engine's `bin/node` link, or a `node`
     on PATH that resolves here), run the JavaScript engine in-process -- no
-    CPython at all;
+    Python runtime at all;
   * worker mode: re-invoked as a Python interpreter (multiprocessing re-spawns
     `sys.executable` with `-u -c ...`), behave exactly like `python`;
   * otherwise boot the jaclang CLI.
@@ -89,7 +89,7 @@ with entry {
     argv = sys.argv;
     worker = len(argv) > 1 and is_python_first_arg(argv[1]);
     # A non-negative result means the interpreter handled a print-and-exit
-    # flag (worker mode -h/-V/--help): exit with the code CPython requested,
+    # flag (worker mode -h/-V/--help): exit with the code the interpreter requested,
     # never the boot path.
     requested = emb.init_interpreter(argv, worker);
     if requested >= 0 {

@@ -74,7 +74,7 @@ jobs:
           for p in ${PLATFORMS//,/ }; do
             case "$p" in
               linux/amd64) rows="${rows}{\"os\":\"ubuntu-latest\",\"platform\":\"amd64\"}," ;;
-              linux/arm64) rows="${rows}{\"os\":\"ubuntu-24.04-arm\",\"platform\":\"arm64\"}," ;;
+              linux/arm64) rows="${rows}{\"os\":\"blacksmith-16vcpu-ubuntu-2404-arm\",\"platform\":\"arm64\"}," ;;
               *) echo "::error::unsupported platform '$p'"; exit 1 ;;
             esac
           done

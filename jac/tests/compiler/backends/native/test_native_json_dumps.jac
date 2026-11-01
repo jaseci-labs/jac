@@ -1,7 +1,7 @@
-"""The native json.dumps writes what CPython writes.
+"""The native json.dumps writes what Python writes.
 
 Compile products cross the kernel boundary as JSON the host decodes, so the
-native encoder has to agree with CPython's on everything a record holds:
+native encoder has to agree with Python's on everything a record holds:
 `separators` and `ensure_ascii` behave as documented (non-ASCII text escapes
 by default, astral characters as surrogate pairs), non-finite floats spell
 NaN and Infinity, and a value JSON cannot hold raises instead of encoding
@@ -10,7 +10,7 @@ as null.
 import from pathlib { Path }
 import from tests.support { assert_native_identity }
 
-test "native json.dumps matches CPython on separators, escapes and floats" {
+test "native json.dumps matches Python on separators, escapes and floats" {
     source = str(
         Path(__file__).resolve().parent / "fixtures" / "json_dumps_fidelity.jac"
     );

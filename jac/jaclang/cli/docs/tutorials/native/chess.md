@@ -54,7 +54,7 @@ default = "server"
 jac run jac/examples/chess/chess.jac
 ```
 
-Setting the project's default codespace to server runs the same file on the Python backend -- full compatibility, familiar debugging tools, byte-identical behavior (the native stdlib is congruent with CPython by contract).
+Setting the project's default codespace to server runs the same file on the Python backend -- full compatibility, familiar debugging tools, byte-identical behavior (the native stdlib is congruent with Python by contract).
 
 !!! info "How native inference works"
     The compiler scans the module and its plain-`.jac` import closure for server-only constructs at parse time. If the closure is clean, the module is coerced native, lowered to LLVM IR, JIT-compiled, and executed natively. If it carries server signals -- or turns out not to lower yet -- it compiles in the server codespace instead (with a dim `note:` when a native preference could not be honored), so programs always run.

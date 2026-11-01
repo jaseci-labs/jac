@@ -1,7 +1,7 @@
 """The socket layer of Linux (glibc): address records without a length byte,
 size_t-wide ancillary-data fields, gethostbyname_r() and accept4().
 
-Derived from CPython 3.14.6 Modules/socketmodule.c and socketmodule.h; see
+Derived from Python 3.14.6 Modules/socketmodule.c and socketmodule.h; see
 ../LICENSE.cpython. The records are laid out as <sys/socket.h> and <netdb.h>
 declare them; CMSG_NXTHDR() follows glibc's __cmsg_nxthdr(), which a static
 musl link does not have, so it is computed here.

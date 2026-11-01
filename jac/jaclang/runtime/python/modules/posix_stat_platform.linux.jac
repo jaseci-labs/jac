@@ -1,10 +1,10 @@
 """The Linux side of the posix stat area: struct stat's field widths and
 struct statvfs, as the C library lays it out on x86_64 and aarch64.
 
-Derived from CPython 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api {
+import from jaclang.runtime.python.python_capi {
     PyLong_FromLong,
     PyLong_FromLongLong,
     PyLong_FromUnsignedLong,

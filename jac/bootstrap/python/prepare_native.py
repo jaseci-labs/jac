@@ -1,4 +1,4 @@
-"""Build JacPython's native object using the pinned build-time CPython.
+"""Build JacPython's native object on the host runtime.
 
 No compiler bytecode, request seed, or Python adapter is shipped. The output
 object contains the native Jac compiler and its native runtime support.
@@ -23,9 +23,9 @@ triple = {
 # gen_runtime_image.jac writes). They are lowered with the runtime
 # but are not sources: the build key covers their generators and inputs.
 generated = [Path(path).resolve() for path in sys.argv[4:]]
-pin = json.loads((root / "bootstrap/python/sources.json").read_text())["cpython"]
-if tuple(map(int, pin["version"].split("."))) != sys.version_info[:3]:
-    raise RuntimeError("Build JacPython with pinned CPython " + pin["version"])
+pin = json.loads((root / "bootstrap/python/seed.json").read_text())["python"]
+if tuple(map(int, pin.split("."))) != sys.version_info[:3]:
+    raise RuntimeError("Build JacPython on a host of the pinned Python " + pin)
 sys.path.insert(0, str(root))
 os.environ.pop("JAC_HANDOFF", None)
 output.mkdir(parents=True, exist_ok=True)
@@ -352,10 +352,20 @@ for symbol, option in (("@pthread_getspecific", "native_tls"), ("@_setjmp", "nat
             continue
         if name not in by_design:
             raise RuntimeError(f"a JacPython unit was lowered without {option} ({name})")
+# The Jac runtime's own symbols (regions, reference counts, the shared
+# initializer) stay linkable inside libpython but out of its dynamic symbol
+# table: every Jac native library carries its own copies, and one loaded after
+# libpython (the compiler kernel) would otherwise bind its calls to these. The
+# region entry points are `:pub` in jaclang/runtime/region_native.jac, so the
+# `__jac_` prefix names them along with the runtime's exports.
+runtime_private = set(runtime_exports) | {"__jac_shared_init"}
+
+def jac_runtime_symbol(name: str) -> bool:
+    return name in runtime_private or name.startswith("__jac_")
 internalize_native_implementation(
-    compiled, plan.pub_exports() + runtime_exports + ["__jac_shared_init"],
+    compiled, plan.pub_exports() + sorted(runtime_private),
 )
-# CPython compiles with -fno-semantic-interposition: libpython's own references
+# libpython compiles with -fno-semantic-interposition: libpython's own references
 # to its exported functions and data bind inside the library. Protected
 # visibility keeps a definition exported and makes it dso_local, so Jac code
 # reaches the instruction table and the C API without the GOT or the PLT.
@@ -365,7 +375,12 @@ internalize_native_implementation(
 for value in [*compiled.functions, *compiled.global_variables]:
     if value.name.startswith("llvm."):
         continue
-    if value.linkage in (Linkage.internal, Linkage.private) or value.visibility != Visibility.default:
+    if value.linkage in (Linkage.internal, Linkage.private):
+        continue
+    if not value.is_declaration and jac_runtime_symbol(value.name):
+        value.visibility = Visibility.hidden
+        continue
+    if value.visibility != Visibility.default:
         continue
     if value.is_declaration and not re.match(r"_?Py", value.name):
         continue
@@ -403,7 +418,7 @@ for function in compiled.functions:
         function.add_function_attribute("cold")
 # Units are optimized one at a time; the merged module is where bindings,
 # algorithms and object-API calls from different units can inline. The object
-# reaches the CPython link as machine code, so ThinLTO cannot do this later.
+# reaches the libpython link as machine code, so ThinLTO cannot do this later.
 builder = llvm.create_pass_builder(
     machine, llvm.create_pipeline_tuning_options(speed_level=2),
 )

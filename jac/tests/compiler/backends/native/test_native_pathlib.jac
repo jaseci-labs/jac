@@ -1,8 +1,8 @@
-"""The bundled `pathlib` shim must answer exactly what CPython's does.
+"""The bundled `pathlib` shim must answer exactly what Python's does.
 
-`import from pathlib { Path }` binds CPython's `pathlib` on the sv pathway and
+`import from pathlib { Path }` binds Python's `pathlib` on the sv pathway and
 `na_stdlib/pathlib.jac` on the na pathway, so running one fixture through both
-and demanding identical stdout *is* the congruence contract -- CPython is the
+and demanding identical stdout *is* the congruence contract -- Python is the
 oracle, not a hand-copied expectation table.
 
 `pathlib_probe.jac` exercises the whole provided surface: the constructor over
@@ -19,7 +19,7 @@ import from pathlib { Path }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
-test "the native Path answers what CPython's Path answers" {
+test "the native Path answers what Python's Path answers" {
     (sv_out, _sv_err) = sv_run(os.path.join(FIXTURES, "pathlib_probe.jac"));
     (na_out, _na_err) = na_run(os.path.join(FIXTURES, "pathlib_probe.jac"));
     same_lines(sv_out, na_out, "pathlib");

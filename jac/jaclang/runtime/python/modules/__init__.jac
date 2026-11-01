@@ -1,1 +1,1 @@
-"""Native standard-library modules over retained CPython objects."""
+"""Native standard-library modules over retained Python objects."""

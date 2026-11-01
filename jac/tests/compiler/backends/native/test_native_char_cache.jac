@@ -1,7 +1,7 @@
 """Single-character access is served from the immortal __jac_chars cache.
 
 `for c in str` and `s[i]` extract single characters. The native backend returns
-a pointer into a shared 256-entry static table (a CPython latin1-style cache)
+a pointer into a shared 256-entry static table (a latin1-style cache like Python's)
 instead of heap-allocating a fresh RC string per character. Regressing this made
 string iteration allocate (and leak) one string per character, blowing up memory
 on string-heavy workloads. These tests pin both the IR shape (uses __jac_chars,

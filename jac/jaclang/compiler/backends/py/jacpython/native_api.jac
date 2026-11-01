@@ -1,4 +1,4 @@
-"""Native compiler entry points: each request returns a retained CPython value
+"""Native compiler entry points: each request returns a retained Python value
 or zero with the Python exception set."""
 
 # Object-model ports define interpreter types and objects under their C names
@@ -7,7 +7,7 @@ glob PyCF_ONLY_AST: int = 1024;
 
 # A request runs its compiler work inside one region: the tokens, trees,
 # symbol tables and code units it builds are reclaimed together once the
-# CPython result exists. Streaming requests keep state across calls and run
+# Python result exists. Streaming requests keep state across calls and run
 # on the heap.
 obj native_request {
     has filename: str = "<string>",
@@ -98,7 +98,7 @@ def raise_failure(request: native_request, error: syntax_failure) {
                         PyExc_SystemError, "unknown native diagnostic " + error.kind
                     );
                 } elif location and PyObject_IsSubclass(kind, PyExc_SyntaxError) > 0 {
-                    # A SyntaxError subclass takes CPython's argument shape:
+                    # A SyntaxError subclass takes Python's argument shape:
                     # (message, (filename, lineno, offset, text, end_lineno, end_offset)).
                     args = PyTuple_Pack(2, message, location);
                     if args {

@@ -3,7 +3,7 @@ name: jac-desktop-app
 description: Build desktop apps and call desktop OS capabilities. Use for desktop configuration, webview engines, packaging, or platform-specific failures.
 ---
 
-The desktop target turns a full-stack Jac app into **one `jac build --native`d binary plus the OS's own web engine** - no Rust toolchain, no Electron, no PyInstaller, no separate backend process. It builds the same Vite client bundle the web target produces, then compiles a native host that embeds CPython to serve that bundle on a loopback port and renders it in the OS-native webview: WebKitGTK (Linux), WKWebView (macOS), WebView2 (Windows). Same client/server source as a web app - only the kind changes.
+The desktop target turns a full-stack Jac app into **one `jac build --native`d binary plus the OS's own web engine** - no Rust toolchain, no Electron, no PyInstaller, no separate backend process. It builds the same Vite client bundle the web target produces, then compiles a native host that embeds the Python runtime to serve that bundle on a loopback port and renders it in the OS-native webview: WebKitGTK (Linux), WKWebView (macOS), WebView2 (Windows). Same client/server source as a web app - only the kind changes.
 
 ## Build and run
 

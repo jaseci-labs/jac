@@ -1,6 +1,6 @@
 """Bundled native `ipaddress` cross-backend equivalence fixture (#6978).
 
-The same `import ipaddress` binds CPython's pure-Python `ipaddress` on the sv
+The same `import ipaddress` binds Python's pure-Python `ipaddress` on the sv
 backend and `na_stdlib/ipaddress.jac` on the na (native LLVM) backend. Pins the
 v4/v6 address and network surfaces that are representable on both: text round
 trips, ordering, netmask/hostmask/prefixlen/num_addresses, membership, the

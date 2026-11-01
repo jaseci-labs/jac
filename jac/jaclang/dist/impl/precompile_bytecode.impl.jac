@@ -1633,7 +1633,7 @@ impl run_precompile(
         );
         sys.`exit(1);
     }
-    pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
+    pyver = sys.implementation.cache_tag;
     precompiled_dir = Path(package_dir) / "_precompiled";
     skip_analysis = is_toolchain_package(package_dir);
 

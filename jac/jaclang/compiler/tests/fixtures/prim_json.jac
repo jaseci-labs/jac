@@ -1,6 +1,6 @@
 """Bundled native `json` cross-backend equivalence fixture (issues #6404 / #6940).
 
-The SAME `import from json { loads, dumps }` binds CPython's `json` on the sv
+The SAME `import from json { loads, dumps }` binds Python's `json` on the sv
 (Python) backend and the bundled `na_stdlib/json.jac` Mechanism-B module on
 the na (native LLVM) backend. This fixture pins the two congruent on:
 
@@ -8,9 +8,9 @@ the na (native LLVM) backend. This fixture pins the two congruent on:
     cross-backend harness marshals a returned dict[str, any] (and nested dicts)
     but reads a returned list as raw i64; so arrays are probed via len + indexed
     element reads rather than returned whole.
-  * dumps -- compared as exact strings (CPython default `(', ', ': ')` separators,
+  * dumps -- compared as exact strings (Python default `(', ', ': ')` separators,
     insertion-ordered keys). Floats are intentionally NOT dumps-tested: native
-    `str(float)` is `%g`, not CPython's shortest-round-trip repr (gated on #6940
+    `str(float)` is `%g`, not Python's shortest-round-trip repr (gated on #6940
     Phase 0.3 Ryu). Float PARSING is exact and is compared with a tolerance.
 
 ES/JS opts out.

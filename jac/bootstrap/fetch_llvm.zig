@@ -1,6 +1,6 @@
 //! Bootstrap seed: range-fetch the pinned LLVM slice the jacllvm shim needs.
 //! Pure Zig (std.http + zip central-directory parse + raw deflate) so
-//! `zig build fetch-llvm` never depends on the source-built CPython bootstrap.
+//! `zig build fetch-llvm` never depends on the JacPython bootstrap.
 //!
 //!     fetch_llvm <os-arch> <dest-dir> <pins.json>
 //!

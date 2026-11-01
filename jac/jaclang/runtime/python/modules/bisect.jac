@@ -1,8 +1,8 @@
 """Bisection over Python sequences, including key and comparison callbacks.
 
-CPython supplies values and their protocol operations. Search and insertion
+Python supplies values and their protocol operations. Search and insertion
 orchestration execute here, without converting the sequence to a Jac list.
-Derived from CPython 3.14.6; see ../LICENSE.cpython.
+Derived from Python 3.14.6; see ../LICENSE.cpython.
 """
 
 import from c { def Py_EnterRecursiveCall(where: ptr[u8]) -> i32;  }

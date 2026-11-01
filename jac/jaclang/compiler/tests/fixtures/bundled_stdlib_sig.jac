@@ -2,7 +2,7 @@
 
 A call to a bundled `na_stdlib` function from native code must type-check,
 keyword-bind, and default-fill against the bundled `.jac` signature (the one
-that is actually linked and run) -- NOT CPython's typeshed stub.
+that is actually linked and run) -- NOT the typeshed stub.
 
 The bundled `json.dumps` once named its first parameter `value` where typeshed
 says `obj`, and a keyword call resolved against the wrong one. The native

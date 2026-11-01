@@ -45,7 +45,7 @@ COPY ${TARGETARCH}/jac /usr/local/bin/jac
 # The seed project carries scale intent, so its `jac install` resolves the
 # serve capability closure via jac's own logic. The standalone binary installs
 # into the seed project's .jac/venv (created from the runtime's bundled
-# CPython - same interpreter, same ABI), so the venv's site-packages is then
+# Python - same interpreter, same ABI), so the venv's site-packages is then
 # promoted into the runtime site, where the embedded interpreter imports from
 # at serve time - pods pay no pip at boot. setuptools lands there too: the
 # seed declares it (>=75) - in-pod

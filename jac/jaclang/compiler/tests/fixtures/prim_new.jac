@@ -8,7 +8,7 @@ the native backend. No cl defs: the cl leg auto-skips.
 
 The `collections` import below is a deliberate server signal: it keeps the
 module out of whole-module native inference so the py defs stay a genuine
-CPython reference instead of coercing to native shims."""
+Python reference instead of coercing to native shims."""
 
 import collections;
 

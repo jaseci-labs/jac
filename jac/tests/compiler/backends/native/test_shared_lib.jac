@@ -723,7 +723,7 @@ test "jac build --native --lib initialises runtime globals via __jac_shared_init
 
 
 # ─── C imports of a shared library: process lookup on darwin ─────────────────
-# The compiler kernel (libjac_compiler) declares the CPython C API under
+# The compiler kernel (libjac_compiler) declares the Python C API under
 # `import from c` and is dlopened by a process that holds libpython
 # RTLD_GLOBAL. On darwin that path resolves to "libc.dylib", a library no macOS
 # has, and nacompile's link two-level-bound every one of those symbols to it
@@ -883,10 +883,10 @@ glob _CLI_PROCESS_EXTERN_FIXTURE = (
      );
 
 
-test "jac build --native --lib resolves a CPython C-API import from the host process (macOS host only)" {
-    # What the compiler kernel does, end to end: `import from c` a CPython
+test "jac build --native --lib resolves a Python C-API import from the host process (macOS host only)" {
+    # What the compiler kernel does, end to end: `import from c` a Python
     # C-API symbol and get called from Python through ctypes. This test process
-    # is CPython, so a correctly linked dylib finds PyDict_Size by flat lookup
+    # is the interpreter, so a correctly linked dylib finds PyDict_Size by flat lookup
     # and the call agrees with len(). On 0.37.3 dlopen itself failed here.
     triple = llvm.get_default_triple();
     if not (sys.platform == "darwin" and "apple" in triple) {

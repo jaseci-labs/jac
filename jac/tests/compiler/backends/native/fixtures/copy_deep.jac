@@ -1,4 +1,4 @@
-"""`copy.deepcopy` natively, with CPython's memo semantics.
+"""`copy.deepcopy` natively, with Python's memo semantics.
 
 Both backends print and the outputs are diffed. A value reached twice in the
 source is copied once (the two references in the copy are the same object), a

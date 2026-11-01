@@ -1,4 +1,4 @@
-"""Name suggestions for error messages; derived from CPython 3.14.6 Modules/_suggestions.c.
+"""Name suggestions for error messages; derived from Python 3.14.6 Modules/_suggestions.c.
 
 The Levenshtein search itself is Python/suggestions.c, which tracebacks share.
 """

@@ -176,7 +176,7 @@ test "un-inferable elem type: ordering a tagged element checks its tag at runtim
     sv = sv_funcs("container_elem_unknown.jac");
     # Ordering has no congruent answer the way equality does: boxing both sides
     # makes a tag mismatch compare unequal, which is what sv does for `==`, but
-    # `"seven" < 9` has no order at all. CPython raises TypeError, so native
+    # `"seven" < 9` has no order at all. Python raises TypeError, so native
     # must raise TypeError too rather than ordering on the payload bits.
     for fn in [
         "mixed_ord_str_vs_int",

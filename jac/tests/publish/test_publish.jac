@@ -299,12 +299,7 @@ test "collect_source_files gathers jac files and excludes build artifacts" {
         (pkg / "stale.pyc").write_bytes(bytes([0]));
         pycache = pkg / "__pycache__";
         pycache.mkdir();
-        (
-            pycache
-            / f"main.cpython-{sys.version_info.major}{sys.version_info.minor}.pyc"
-        ).write_bytes(
-            bytes([0])
-        );
+        (pycache / f"main.{sys.implementation.cache_tag}.pyc").write_bytes(bytes([0]));
         cfg = pkg_config_with_include(proj, "mypkg");
         files = collect_source_files(cfg, project_root=proj);
         paths = [sf.wheel_path for sf in files];

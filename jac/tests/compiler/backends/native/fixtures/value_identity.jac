@@ -1,4 +1,4 @@
-"""`is` / `is not` over by-value tuples and scalars answer like CPython."""
+"""`is` / `is not` over by-value tuples and scalars answer like Python."""
 
 obj Res {
     has tag: int = 0;

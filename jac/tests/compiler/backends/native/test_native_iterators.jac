@@ -164,7 +164,7 @@ test "iter assign iter of stored iterator" {
 
 # --- #6403: iter()/next() are positional-only; the keyword form is rejected ---
 # The checker must not type a keyword call (`next(it=...)`) that the backend
-# cannot lower — it should fail at the type level like CPython does.
+# cannot lower — it should fail at the type level like Python does.
 test "iter next keyword arg rejected" {
     prog = JacProgram();
     prog.compile(

@@ -36,7 +36,7 @@ def time_py -> dict[any, any] {
     try {
         time.sleep(float("inf"));
     } except OverflowError {
-        # str(e) is CPython-build-dependent ("platform time_t" vs "C PyTime_t");
+        # str(e) is build-dependent ("platform time_t" vs "C PyTime_t");
         # the except arm itself proves the type, so pin that only.
         inf_e = "OverflowError";
     } except Exception as e {
@@ -112,7 +112,7 @@ def time_na -> dict[str, any] {
     try {
         time.sleep(float("inf"));
     } except OverflowError {
-        # str(e) is CPython-build-dependent ("platform time_t" vs "C PyTime_t");
+        # str(e) is build-dependent ("platform time_t" vs "C PyTime_t");
         # the except arm itself proves the type, so pin that only.
         inf_e = "OverflowError";
     } except Exception as e {

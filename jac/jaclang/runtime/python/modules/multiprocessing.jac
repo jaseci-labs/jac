@@ -1,6 +1,6 @@
 """Named POSIX semaphores for multiprocessing: SemLock and sem_unlink().
 
-Derived from CPython 3.14.6 Modules/_multiprocessing/multiprocessing.c and
+Derived from Python 3.14.6 Modules/_multiprocessing/multiprocessing.c and
 semaphore.c; see ../LICENSE.cpython. A SemLock wraps a sem_t that
 synchronize.py shares between processes, either by name or, after fork(), by
 handle. semaphore_platform.<os>.jac says what the C library offers: a target

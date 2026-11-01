@@ -1,7 +1,7 @@
 /* glibc floor compatibility shims for the static-linked LLVMPY_* shim (#7082).
  *
  * The Linux shim links a libc++ LLVM slice with `zig c++` pinned to
- * <arch>-linux-gnu.2.17 (matching CPython's manylinux2014 floor). A few glibc
+ * <arch>-linux-gnu.2.17 (the manylinux2014 floor the Python runtime also builds to). A few glibc
  * symbols that newer LLVM/ORC objects reference only exist in later glibc, so at
  * the 2.17 floor they resolve to nothing. Provide safe fallbacks here so the
  * shipped libjacllvm.so stays at 2.17 instead of inheriting a higher floor.

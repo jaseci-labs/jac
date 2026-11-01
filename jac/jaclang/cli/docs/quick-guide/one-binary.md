@@ -29,7 +29,7 @@ maintain: they are compiler output, owned and re-derived on every build.
 
 | Capability | What it replaces | How you use it |
 |---|---|---|
-| **CPython 3.14** | System Python, pyenv, venvs | Bundled -- runs your `.jac` files and PyPI imports |
+| **JacPython (Python 3.14)** | System Python, pyenv, venvs | Bundled -- runs your `.jac` files and PyPI imports |
 | **Bun** | Node.js, npm, npx | Bundled -- compiles `.jac` to JS, manages npm deps |
 | **LLVM + Zig linker** | gcc, clang, make, cmake | Bundled -- `jac build <file> --native` produces native binaries |
 | **Package manager** | pip, npm, pipx | `jac install` for PyPI and npm |
@@ -110,7 +110,7 @@ With Jac installed, you no longer need these on your development machine:
 
 | Tool | Why it's replaced |
 |---|---|
-| Python / pyenv / conda | Jac bundles CPython 3.14 |
+| Python / pyenv / conda | Jac bundles JacPython, its own Python 3.14 runtime |
 | pip / pipx / uv / poetry | `jac install` manages Python deps |
 | Node.js / npm / npx / yarn | Jac bundles Bun; `jac install` manages JS deps |
 | venv / virtualenv | `.jac/venv` is automatic and project-scoped |
@@ -142,7 +142,7 @@ And when your program fits the restricted `na` subset, `jac build <file> --nativ
 
 The Jac binary is a self-contained native executable that embeds:
 
-- A **CPython 3.14 runtime** (stripped of unnecessary components)
+- **JacPython**, Jac's own Python 3.14 runtime, written in Jac
 - A **Bun runtime** for JavaScript/TypeScript compilation
 - An **LLVM backend** for native code generation
 - A **Zig-based linker** for producing native binaries and shared libraries

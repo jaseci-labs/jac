@@ -1423,7 +1423,7 @@ impl call_with_task(
     for index in range(len(rest)) {
         jacpy_tuple_set_owned(arguments, i64(index + 1), Py_NewRef(rest[index]));
     }
-    import from jaclang.runtime.python.cpython_api { PyObject_Call }
+    import from jaclang.runtime.python.python_capi { PyObject_Call }
     result = PyObject_Call(function, arguments, NULL);
     jacpy_release(arguments);
     return result;

@@ -6,7 +6,7 @@ is what `get_type_of_ability` does, and it is the read that stranded a fifth
 of the evaluator.
 
 `Mixed` pins the rule that generates the values rather than just their being
-generated. CPython counts from the largest value already assigned, not the
+generated. Python counts from the largest value already assigned, not the
 last one written, so a member declared after `10` and then `3` is `11` and
 not `4`. `Step` asks the same question in the declared-enum spelling, where
 an explicit value follows the generated ones. `Split` declares its members

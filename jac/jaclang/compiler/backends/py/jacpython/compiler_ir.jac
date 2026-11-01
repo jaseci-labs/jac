@@ -5,10 +5,10 @@
 # FROM this module; neither imports the other, keeping an acyclic front-end DAG.
 #
 # na-clean leaf: no host calls, no import cycles. Location encoding matches
-# CPython 3.14 (PEP 626); col offsets are 0-based byte offsets, NO_COLUMN = -1.
+# Python 3.14 (PEP 626); col offsets are 0-based byte offsets, NO_COLUMN = -1.
 
 # A source location. lineno/end_lineno are 1-based; col_offset/end_col_offset are
-# 0-based. Matches CPython's `location` struct (Python/compile.c).
+# 0-based. Matches the C compiler's `location` struct (Python/compile.c).
 obj cloc {
     has lineno: int,
         end_lineno: int,
@@ -28,7 +28,7 @@ def loc(lineno: int, end_lineno: int, col_offset: int, end_col_offset: int) -> c
     );
 }
 
-# NO_LOCATION sentinel (CPython: all fields -1). Emitted as a NONE linetable entry.
+# NO_LOCATION sentinel (all fields -1). Emitted as a NONE linetable entry.
 def no_loc -> cloc {
     return loc(NO_LINE, NO_LINE, NO_COLUMN, NO_COLUMN);
 }
@@ -71,7 +71,7 @@ def mk_jump(opcode: int, target: int, lc: cloc) -> cinstr {
 
 # One emitted break statement: the block holding its JUMP_FORWARD, the index of
 # that jump instruction, and the statement location. The loop visitors revisit
-# these sites after the shared continuation block is built so CPython's
+# these sites after the shared continuation block is built so the C compiler's
 # small-exit tail duplication can be applied per edge.
 obj break_site {
     has blk: basicblock,
@@ -85,7 +85,7 @@ obj loop_frame {
         break_blk: basicblock,
         break_is_stub: bool = False,
         # FOR-loop family: unwinding the loop on break pops the iterator
-        # (CPython codegen_unwind_fblock, COMPILE_FBLOCK_FOR_LOOP).
+        # (the C compiler's codegen_unwind_fblock, COMPILE_FBLOCK_FOR_LOOP).
         pops_iter: bool = False,
         cleanup_depth: int = 0,
         # Per-break emission sites recorded by visit_stmt (Break).
@@ -93,7 +93,7 @@ obj loop_frame {
 }
 
 # Enclosing with / async-with frame tracked for return unwinding (mirrors
-# CPython COMPILE_FBLOCK_WITH / COMPILE_FBLOCK_ASYNC_WITH). The open protect
+# the C compiler's COMPILE_FBLOCK_WITH / COMPILE_FBLOCK_ASYNC_WITH). The open protect
 # region is closed at the unwind boundary (POP_BLOCK equivalent).
 obj cleanup_frame {
     has is_async: bool = False,
@@ -129,14 +129,14 @@ obj with_unwind_rec {
 
 # One `await` SEND-loop cleanup pair inside an async-with body: the blocks
 # carry content but are PLACED by the enclosing visit_async_with after the
-# construct's continuation, matching CPython's cleanup grouping (enter ->
+# construct's continuation, matching the C compiler's cleanup grouping (enter ->
 # body awaits in order -> exit/unwind, all after the final RETURN).
 obj await_footer_job {
     has ct: basicblock,
         cj: basicblock,
         end_send: basicblock,
         loc: cloc,
-        # Frame-less await following a previous delegation: CPython ends the
+        # Frame-less await following a previous delegation: the C compiler ends the
         # generator row at the PREVIOUS cleanup jump and gives this pair its
         # own [ct..cj) -> generator row at placement time.
         emit_ct_row: bool = False;
@@ -144,7 +144,7 @@ obj await_footer_job {
 
 # An open try body while its statements are visited: an `await` (or
 # `yield from`) inside queues its CLEANUP_THROW footer for this frame's
-# flush and records its yield-window carve. CPython marks the cleanup pair
+# flush and records its yield-window carve. The C compiler marks the cleanup pair
 # cold (push_cold_blocks_to_end) and splits the try body's exception-table
 # span around each [yield..after_resume) window; our find_handler takes the
 # first matching row, so an unsplit span would misroute yield-window
@@ -176,7 +176,7 @@ obj cfg_builder {
         with_unwind_recs: list[with_unwind_rec] = [],
         # When inside an async-with body: await SEND-loop cleanup pairs are
         # queued here (placement deferred) instead of being placed eagerly,
-        # so they land after the construct's continuation like CPython's.
+        # so they land after the construct's continuation like the C compiler's.
         defer_await_footer_placement: bool = False,
         pending_await_footers: list[await_footer_job] = [],
         # Open try-body frames (innermost last). Awaits consult the innermost
@@ -185,11 +185,11 @@ obj cfg_builder {
         # Start block of the generator-protect region row for the next await:
         # function entry until the first boundary, then the last committed
         # try's protect end or the previous await's after-resume block
-        # (CPython closes/reopens the region at each construct boundary).
+        # (the C compiler closes/reopens the region at each construct boundary).
         await_region_barrier: int = -1,
         # except_region indices of open generator-tail rows ([protect_end..ct)
         # and post-resume [r..cj) rows); a later await's yield window splits
-        # them, matching CPython's A-then-C row pattern around each window.
+        # them, matching the C compiler's A-then-C row pattern around each window.
         open_gen_tails: list[int] = [],
         # Suspendable function (generator/coroutine) PEP 479 protect start block id.
         generator_protect_start: int = -1,
@@ -198,14 +198,14 @@ obj cfg_builder {
         # While emitting an except handler body: the enclosing handler's inline
         # success epilogue = POP_EXCEPT + jump to fin (fin_inline block, backward
         # flag, and the fin handler block id for region targeting). A nested try
-        # falling through emits that epilogue inline (CPython duplicates it per
+        # falling through emits that epilogue inline (the C compiler duplicates it per
         # path); handler_nest_depth counts active handler frames so nested try
-        # regions carry the extra exception stack depth (CPython per-instruction
+        # regions carry the extra exception stack depth (flowgraph.c's per-instruction
         # depths); handler_enclosing_unwind is the enclosing try's cleanup block
         # for retargeting nested handler-body regions.
         # handler_fallthrough_bind is the enclosing handler's `except ... as`
         # binding (None when unbound): inline epilogues must clear it
-        # (LOAD_CONST None / store / delete) after POP_EXCEPT, matching CPython's
+        # (LOAD_CONST None / store / delete) after POP_EXCEPT, matching the C compiler's
         # duplicated cleanup on every handler exit path.
         handler_fallthrough_fin: basicblock | None = None,
         handler_fallthrough_backward: bool = False,
@@ -223,7 +223,7 @@ obj cfg_builder {
         # the body entry label.
         handler_body_try_star_return: bool = False,
         # Unit-final loop containing try: when the try body exits via
-        # break/continue, CPython lays out the loop's natural exit block
+        # break/continue, the C compiler lays out the loop's natural exit block
         # (while return or for END_FOR/POP_ITER/return) before PUSH_EXC_INFO.
         # visit_while/visit_for set these before visiting the body; visit_try
         # materializes the deferred block when skip_protect_succ fires.
@@ -233,7 +233,7 @@ obj cfg_builder {
         # Set when visit_try materializes loop_exit_before_try_handlers with
         # the full natural-exit epilogue (including RETURN_VALUE).
         loop_exit_epilogue_complete: bool = False,
-        # Unit-final for loop with break inside try and no orelse: CPython's
+        # Unit-final for loop with break inside try and no orelse: the C compiler's
         # creation order lays the FOR_ITER exhaustion block (END_FOR/POP_ITER/
         # return) after the warm body but BEFORE the try machinery. visit_for
         # stashes the deferred block here; visit_try places it just before its
@@ -296,7 +296,7 @@ obj cfg_builder {
 
     def use(b: basicblock) {
         # Lay out a deferred block at the current end of the layout list on first
-        # use (CPython USE_LABEL). Already-placed blocks just become current.
+        # use (codegen.c USE_LABEL). Already-placed blocks just become current.
         if not b.placed {
             b.placed = True;
             self.u.blocks.append(b);
@@ -332,7 +332,7 @@ obj basicblock {
     has id: int,
         instrs: list[cinstr],
         # False for a deferred block (allocated but not yet laid out). use() lays
-        # it out at the current end of the layout list, mirroring CPython's split
+        # it out at the current end of the layout list, mirroring the C compiler's split
         # of NEW_JUMP_TARGET_LABEL (allocate) from USE_LABEL (place).
         placed: bool = True,
         fallthrough_used: bool = False,
@@ -340,13 +340,13 @@ obj basicblock {
         # (and MatchOr alternative) success jumps. The flowgraph's small-exit
         # inliner only tail-duplicates into these blocks, keeping the pass scoped
         # to match the way optimize_swap_range is scoped to match arms. Other
-        # constructs already emit CPython's post-optimizer shape by hand, so a
+        # constructs already emit the C compiler's post-optimizer shape by hand, so a
         # global inliner would mis-fire (e.g. on generator/async-for back-edges).
         exit_inline_ok: bool = False,
         # True on async-with bind seams: the block ends with a store whose
         # successor instruction is the next item's leading LOAD_FAST on the
         # same line. verify_cfg fuses these after add_checks_for_uninitialized
-        # (CPython fuses in its finer-grained CFG; running fusion before the
+        # (the C compiler fuses in its finer-grained CFG; running fusion before the
         # uninitialized-locals pass would hide the store's effect on the mask).
         fuse_store_ok: bool = False;
 }
@@ -411,22 +411,22 @@ obj unverified_cfg {
         # Comprehension loop-var slot whose borrowed copy is sitting on the
         # stack (left by STORE_FAST_LOAD_FAST at bind), awaiting consumption by
         # the first evaluated reference to that loop var. -1 = none pending.
-        # Subsequent references emit LOAD_FAST_BORROW (CPython's scheme).
+        # Subsequent references emit LOAD_FAST_BORROW (the C compiler's scheme).
         comp_pending_borrow: int = -1,
         # >0 while emitting a comprehension body: enables coalescing of adjacent
-        # LOAD_FAST_BORROW loads into LOAD_FAST_BORROW_LOAD_FAST_BORROW (CPython's
+        # LOAD_FAST_BORROW loads into LOAD_FAST_BORROW_LOAD_FAST_BORROW (flowgraph.c's
         # superinstruction peephole), scoped so ordinary code is untouched.
         comp_depth: int = 0,
         # Set by codegen on unsupported nodes; product_compile checks before
         # flowgraph verification (PLAN.md: no silent codegen paths).
         diag: compiler_diagnostic | None = None,
         # Folded display consts (tuple/list/frozenset) staged for late interning.
-        # CPython's display folding runs as a post-visit optimizer pass, so its
+        # The C compiler's display folding runs as a post-visit optimizer pass, so its
         # folded consts land AFTER every visit-time const including the implicit
         # epilogue None; eager add_const at fold time shifts all later indices.
         late_consts: list[PyObj] = [],
         late_flushed: bool = False,
-        # CPython keeps one dead small-int const (first 0..255 literal seen).
+        # The C compiler keeps one dead small-int const (first 0..255 literal seen).
         dead_small_int_const: bool = False,
         # Set after MAKE_FUNCTION; suppresses dead small-int consts on call args.
         nested_code_emitted: bool = False,
@@ -442,7 +442,7 @@ obj unverified_cfg {
         nested_try_finally_unwind_start: int = -1,
         # Last block of a nested try/except statement inside an outer try body;
         # the outer body span starts here so entries never overlap the inner
-        # try's own regions (CPython table is per-instruction innermost).
+        # try's own regions (the C compiler's table is per-instruction innermost).
         nested_try_except_end: int = -1,
         # Success-epilogue (start, end) block pairs published by the most
         # recent nested try/except; an enclosing try in carve-out mode emits
@@ -478,7 +478,7 @@ obj unverified_cfg {
     }
 
     # Allocate a block id without placing it in the layout. The block is laid out
-    # later, at its first use() (CPython NEW_JUMP_TARGET_LABEL vs USE_LABEL). Lets
+    # later, at its first use() (codegen.c NEW_JUMP_TARGET_LABEL vs USE_LABEL). Lets
     # codegen allocate a forward target (e.g. a MatchOr shared end) up front and
     # place it after the intervening bodies, so layout order != allocation order.
     def add_deferred_block -> basicblock {
@@ -548,7 +548,7 @@ obj unverified_cfg {
         return idx;
     }
 
-    # Intern staged consts after every visit-time const (CPython interns them
+    # Intern staged consts after every visit-time const (the C compiler interns them
     # in a post-visit optimizer pass, after the epilogue None), then patch all
     # negative OP_LOAD_CONST opargs to final indices. Call exactly once per
     # unverified_cfg before verification/assembly; no-op when nothing staged.

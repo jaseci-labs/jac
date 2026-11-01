@@ -1,13 +1,13 @@
 """Differential gate for jac's string-literal decoder.
 
-`String.lit_value` used to hand prefixed literals to CPython `eval`, which
+`String.lit_value` used to hand prefixed literals to Python's `eval`, which
 made literal decoding a Python-only seam: `eval` has no native lowering, so
 `unitree` could not seal past it and every sealed caller of `lit_value`
 (`sem_def_match_pass.connect_sems` among them) reached an `abort()` stub.
 `unitree.decode_string_literal` replaces it with one implementation both
 lanes run.
 
-The bar for that replacement is CPython-exact for everything jac accepts,
+The bar for that replacement is Python-exact for everything jac accepts,
 so the corpus here is generated rather than written: every prefix the
 parser splices onto a `STRING` token, crossed with every quote form the
 lexer scans, crossed with escape payloads built out of the lexer's own
@@ -20,7 +20,7 @@ decoder, and the two must agree on the value or agree on refusing.
 One exclusion is deliberate and is asserted as a refusal rather than
 silently tolerated: `\\N{name}` needs the Unicode name database, which the
 compiler cannot carry into a native unit. Every other `\\N` spelling is a
-`SyntaxError` in CPython too, so the escape is one loud refusal instead of
+`SyntaxError` in Python too, so the escape is one loud refusal instead of
 a decode that quietly disagrees with Python.
 """
 
@@ -57,7 +57,7 @@ glob LITERAL_QUOTES: tuple[str, ...] = ("'", '"', "'''", '"""');
 """The escape alphabet `Lexer.scan_string` admits without a warning."""
 glob LEXER_ESCAPE_CHARS: str = "nrtbfva01234567xNuU\\\"'";
 
-"""The one literal form the decoder refuses that CPython accepts, and why."""
+"""The one literal form the decoder refuses that Python accepts, and why."""
 glob DECODER_EXCLUSIONS: dict[(str, str)] = {
          "\\N{name}": (
              "resolving a Unicode character name needs the name database, "
@@ -156,7 +156,7 @@ def _corpus -> list[str] {
     return out;
 }
 
-"""Decode `text` the way CPython does; `(False, None)` when it refuses."""
+"""Decode `text` the way Python does; `(False, None)` when it refuses."""
 def _eval_decode(text: str) -> tuple[(bool, object)] {
     with warnings.catch_warnings() {
         warnings.simplefilter("ignore");
@@ -296,18 +296,18 @@ test "the generated corpus covers the whole literal grid" {
 }
 
 
-test "native decode equals CPython decode across the generated corpus" {
+test "native decode equals Python decode across the generated corpus" {
     corpus = _corpus();
     bad = _diffs(corpus);
     assert not bad , (
         f"{len(bad)} of {len(corpus)} generated literals decode differently "
-        "than CPython:\n"
+        "than Python:\n"
         + "\n".join(bad[:40])
     );
 }
 
 
-test "native decode equals CPython decode across the harvested corpus" {
+test "native decode equals Python decode across the harvested corpus" {
     harvest = _harvest();
     assert len(harvest) > 10000 , (
         f"only {len(harvest)} literals harvested from the tree -- the walk "
@@ -316,7 +316,7 @@ test "native decode equals CPython decode across the harvested corpus" {
     bad = _diffs([text for (text, _where) in harvest]);
     assert not bad , (
         f"{len(bad)} of {len(harvest)} harvested literals decode differently "
-        "than CPython:\n"
+        "than Python:\n"
         + "\n".join(bad[:40])
     );
 }
@@ -387,7 +387,7 @@ test "the excluded escape is refused by the lexer and by the decoder" {
 }
 
 
-test "the excluded escape stays a plain backslash where CPython keeps it" {
+test "the excluded escape stays a plain backslash where Python keeps it" {
     for text in ['r"\\N{BULLET}"', 'b"\\N{BULLET}"', 'rb"\\N{BULLET}"'] {
         assert _is_one_literal(text) , (
             f"the lexer stopped accepting {text!r}; `\\N` is not an escape in "
@@ -406,7 +406,7 @@ test "the excluded escape stays a plain backslash where CPython keeps it" {
 test "malformed hex escapes refuse instead of surviving as literal text" {
     for text in ['"\\x"', '"\\xZZ"', '"\\u12"', '"\\U0011FFFF"', 'b"\\x"'] {
         (eval_ok, _eval_val) = _eval_decode(text);
-        assert not eval_ok , f"{text!r} is no longer a CPython error";
+        assert not eval_ok , f"{text!r} is no longer a Python error";
         raised = "";
         try {
             decode_string_literal(text);
@@ -445,7 +445,7 @@ test "String.lit_value serves the decoder end to end" {
         }
     }
     assert not bad , (
-        f"{len(bad)} literals whose parsed `lit_value` disagrees with CPython:\n"
+        f"{len(bad)} literals whose parsed `lit_value` disagrees with Python:\n"
         + "\n".join(bad[:40])
     );
 }

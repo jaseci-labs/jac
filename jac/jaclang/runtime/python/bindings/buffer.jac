@@ -15,7 +15,7 @@ obj BufferArgument {
     def drop;
 }
 
-import from jaclang.runtime.python.cpython_api {
+import from jaclang.runtime.python.python_capi {
     jacpy_buffer_acquire,
     jacpy_buffer_bytes,
     jacpy_buffer_release,

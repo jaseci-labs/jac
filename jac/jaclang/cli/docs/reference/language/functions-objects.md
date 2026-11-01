@@ -68,7 +68,7 @@ The tail expression is type-checked exactly like an explicit `return`
 caller's frame. On the native backend it is a guaranteed tail call (LLVM
 `musttail`): recursion and dispatch through tail calls run in constant
 stack however deep they go, at every optimization level. This is how a
-CPython-style evaluator hands control from one instruction handler to the
+bytecode evaluator hands control from one instruction handler to the
 next.
 
 ```jac

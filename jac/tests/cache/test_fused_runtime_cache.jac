@@ -1,7 +1,7 @@
 """The fused launcher's runtime cache is content-addressed and reclaimed.
 
 A fused `jac` extracts its embedded runtime into `<cache>/rt/<key>/` before
-CPython exists. The key used to fold in the executable's path, so every
+the interpreter exists. The key used to fold in the executable's path, so every
 location a binary ran from (zig-out, ~/.local/bin, each temp dir a test built
 one in) extracted its own 500 MB copy of the same payload, and nothing but
 same-path siblings was ever pruned. The key is now the payload hash alone;
@@ -190,7 +190,7 @@ test "the launcher reclaims runtimes unused past the TTL and stale temp extracti
 
 """A marker the launcher cannot refresh (a read-only cache, a chmod-ed file)
 costs an earlier reclaim, never the boot: the bootstrap has no file write
-that can raise before CPython exists."""
+that can raise before the interpreter exists."""
 test "boot survives a last-use marker it cannot refresh" {
     if os.name != "posix" or os.geteuid() == 0 {
         return;

@@ -14,7 +14,7 @@ import from pathlib { Path }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
-test "isinstance on erased archetype values matches CPython" {
+test "isinstance on erased archetype values matches Python" {
     assert_native_identity(
         os.path.join(FIXTURES, "isinstance_erased_receiver.jac"),
         profiles=["rc", "managed"]

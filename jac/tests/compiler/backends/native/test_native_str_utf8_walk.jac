@@ -1,4 +1,4 @@
-"""Walking multibyte text natively matches CPython and leaks nothing.
+"""Walking multibyte text natively matches Python and leaks nothing.
 
 A multibyte character read out of a string (`s[i]`, `for ch in s`, `next`
 on a string iterator, a generator yielding it) is an immortal interned
@@ -39,7 +39,7 @@ test "owned-world loops over multibyte text agree under every profile" {
     assert "é 語 🙂x🙂 本語 a" in out , out[:400];
 }
 
-test "json.dumps and json.loads handle multibyte text the way CPython does" {
+test "json.dumps and json.loads handle multibyte text the way Python does" {
     out = assert_native_identity(
         os.path.join(FIXTURES, "str_utf8_json.jac"), profiles=["managed"]
     );

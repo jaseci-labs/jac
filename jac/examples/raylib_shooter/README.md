@@ -100,7 +100,7 @@ mode, with each build's average FPS as a multiple of the Python twin's:
 ================================================================
 ```
 
-(Numbers above are from an Apple M5 Max with CPython 3.14.6; yours will
+(Numbers above are from an Apple M5 Max with Python 3.14.6 (`python3`); yours will
 differ. In the original mode the three native builds track each other closely -
 they link the same precompiled raylib and do identical per-frame work, so the
 frame time is dominated by raylib and the GPU driver, and even Python's per-call
@@ -247,7 +247,7 @@ versioned install name and relies on the staged symlink set.
 
 ### The Python twin
 
-`shooter.py` is the same port in CPython, kept line for line with
+`shooter.py` is the same port in Python, kept line for line with
 `shooter.zig` and `shooter.rs`. It binds raylib with the standard library's
 `ctypes` - each entry point declared with its argument and return types, the
 moral equivalent of the `extern` blocks in the other twins - so it needs no
@@ -285,7 +285,7 @@ The current frame rate is shown top-left. The loop runs **uncapped** (no
 | `shooter.jac` | the whole demo: raylib FFI bindings, wrappers, and the game + render loop |
 | `shooter.zig`    | faithful Zig twin of the demo, built with `./demo.sh --zig`            |
 | `shooter.rs`     | faithful Rust twin of the demo, built with `./demo.sh --rust`          |
-| `shooter.py`     | faithful CPython twin of the demo, run with `./demo.sh --python`       |
+| `shooter.py`     | faithful Python twin of the demo, run with `./demo.sh --python`        |
 | `demo.sh`        | platform detection, download, build, benchmark (default) or run one    |
 
 ## Requirements

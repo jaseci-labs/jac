@@ -10,7 +10,7 @@ requiring a webview or display. Covers:
   5. FsPlugin security: allow-list enforcement, path traversal prevention
   6. ShellPlugin security: deny-all default, glob matching, no shell injection
   7. JS SDK injection snippet validity
-  8. Generated CPython bootstrap correctness
+  8. Generated Python bootstrap correctness
 """
 import json;
 import os;

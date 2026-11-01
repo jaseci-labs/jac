@@ -1,6 +1,6 @@
 """Bundled native `secrets` cross-backend equivalence fixture (#6978 Phase 1).
 
-The SAME `import secrets` binds CPython's `secrets` on the sv (Python) backend
+The SAME `import secrets` binds Python's `secrets` on the sv (Python) backend
 and the bundled `na_stdlib/secrets.jac` Mechanism-F module -- a thin pure-Jac
 surface over OpenSSL's `RAND_bytes` (the `_csprng_native.jac` FFI floor on the
 same bundled `libcrypto.a` as hashlib) -- on the na (native LLVM) backend.

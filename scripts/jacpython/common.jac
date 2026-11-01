@@ -1,17 +1,15 @@
-"""Paths, the pinned CPython archive, op definitions and formatting for the JacPython generators.
+"""Paths, the vendored Python sources, op definitions and formatting for the JacPython generators.
 
 The generators write Jac that `jac fmt --check --lintfix` must accept, and
 their own `--check` must agree with it, so every output goes through
 format_jac() exactly as it would be formatted in place.
 """
-import hashlib;
 import json;
 import os;
 import re;
 import shutil;
 import subprocess;
 import sys;
-import tarfile;
 import tempfile;
 import from pathlib { Path }
 
@@ -26,88 +24,39 @@ glob REPO: Path = Path(__file__).resolve().parents[2],
          JAC / "jaclang/compiler/backends/py/jacpython"
      ];
 
-def pin -> dict[str, str] {
-    return json.loads((BOOTSTRAP / "sources.json").read_text())["cpython"];
+# The Python version the runtime implements (bootstrap/python/seed.json).
+def python_version -> str {
+    return json.loads((BOOTSTRAP / "seed.json").read_text())["python"];
 }
 
-# The checksum-pinned CPython archive a JacPython build downloads.
-def archive_path -> Path {
-    pinned = pin();
-    path = JAC / ".python-build/jacpython/sources" / f"{pinned['sha256']}.tar.gz";
-    if not path.is_file() {
-        sys.exit(
-            f"Pinned CPython archive not found: {path}; run a JacPython build once"
-        );
-    }
-    if hashlib.sha256(path.read_bytes()).hexdigest() != pinned["sha256"] {
-        sys.exit(f"{path} does not match the pinned SHA256");
-    }
-    return path;
-}
+# The vendored Python sources a build stages (bootstrap/python/src).
+glob VENDORED: Path = BOOTSTRAP / "src";
 
-# The archive's headers are not an input: every header under Include/ is
-# generated from Jac definitions (gen_include.jac, gen_opcode_meta.jac) and
-# read from its checked-in copy.
-def no_archive_headers(prefixes: tuple[str, ...]) {
-    for prefix in prefixes {
-        if prefix.startswith("Include") or "Include/".startswith(prefix) {
-            sys.exit(
-                f"{prefix!r} reaches the archive's Include/; the headers are generated (bootstrap/python/generated/Include)"
-            );
-        }
-    }
-}
-
-# Files of the pinned archive whose relative path starts with one of `prefixes`.
-def archive_texts(prefixes: tuple[str, ...]) -> dict[str, str] {
-    no_archive_headers(prefixes);
+# Vendored files whose relative path starts with one of `prefixes`.
+def vendored_texts(prefixes: tuple[str, ...]) -> dict[str, str] {
     found: dict[str, str] = {};
-    with tarfile.open(archive_path()) as bundle {
-        for member in bundle.getmembers() {
-            relative = member.name.split("/", 1)[-1];
-            if member.isfile() and relative.startswith(prefixes) {
-                stream = bundle.extractfile(member);
-                if stream is not None {
-                    found[relative] = stream.read().decode("utf-8", "replace");
-                }
-            }
+    for path in sorted(VENDORED.rglob("*")) {
+        relative = path.relative_to(VENDORED).as_posix();
+        if path.is_file() and relative.startswith(prefixes) {
+            found[relative] = path.read_text(encoding="utf-8", errors="replace");
         }
     }
     return found;
 }
 
-# The paths cpython-sources.txt marks `generated`: a Jac generator writes each
-# as bootstrap/python/generated/<path>.in and the build stages that copy in
-# place of the archive's.
+# The paths a Jac generator writes as bootstrap/python/generated/<path>.in,
+# which the build stages into its tree.
 def generated_paths -> list[str] {
-    marker = re.compile(r"^# (\S+)\s+# generated: [\d,]+ source lines$");
-    found: list[str] = [];
-    for line in (BOOTSTRAP / "cpython-sources.txt").read_text().splitlines() {
-        hit = marker.match(line);
-        if hit {
-            found.append(hit.group(1));
-        }
-    }
-    return found;
+    tree = BOOTSTRAP / "generated";
+    return sorted(
+        path.relative_to(tree).as_posix()[:-len(".in")]
+        for path in tree.rglob("*.in")
+    );
 }
 
 # The checked-in copy the build stages for a generated path.
 def generated_copy(path: str) -> Path {
     return BOOTSTRAP / "generated" / f"{path}.in";
-}
-
-# Extract the archive members under `prefixes` into `target`; returns the tree root.
-def extract_tree(target: Path, prefixes: tuple[str, ...]) -> Path {
-    no_archive_headers(prefixes);
-    with tarfile.open(archive_path()) as bundle {
-        members = [
-            m
-            for m in bundle.getmembers()
-            if m.name.split("/", 1)[-1].startswith(prefixes)
-        ];
-        bundle.extractall(target, members=members, filter="data");
-    }
-    return next(target.iterdir());
 }
 
 # An op definition's signature in ops.jac.

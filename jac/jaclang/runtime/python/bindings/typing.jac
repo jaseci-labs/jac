@@ -1,6 +1,6 @@
 """The _typing module: the identity function and the interpreter's typing types.
 
-Derived from CPython 3.14.6 Modules/_typingmodule.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/_typingmodule.c; see ../LICENSE.cpython.
 """
 
 # Positions in jacpy_typing_types(), the interpreter's cached typing types in

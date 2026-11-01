@@ -1312,7 +1312,7 @@ import from c {
                      "for making sure that the file still exists whenever the remote process\n"
                      "tries to read it and that it hasn't been overwritten.\n"
                      "\n"
-                     "The remote process must be running a CPython interpreter of the same\n"
+                     "The remote process must be running a JacPython interpreter of the same\n"
                      "major and minor version as the local process.  If either the local or\n"
                      "remote interpreter is pre-release (alpha, beta, or release candidate)\n"
                      "then the local and remote interpreters must be the same exact version.\n"

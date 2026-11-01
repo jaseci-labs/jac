@@ -1,4 +1,4 @@
-"""str() ownership and negative string indexing (CPython parity).
+"""str() ownership and negative string indexing (Python parity).
 
 str(s) on a str returns the value itself; na must hand the caller its
 own reference, since builtin call sites release owned argument

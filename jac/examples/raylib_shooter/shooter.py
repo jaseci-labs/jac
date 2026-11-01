@@ -1,6 +1,6 @@
 """Jac Cube Shooter - the Python twin of shooter.jac.
 
-A faithful CPython port of the Jac-native shooter, kept line for line with
+A faithful Python port of the Jac-native shooter, kept line for line with
 shooter.zig and shooter.rs so the four can be compared side by side. Like the
 others it binds raylib by declaring its entry points directly - here through
 the standard library's ctypes, with no bindings package - so the symbols

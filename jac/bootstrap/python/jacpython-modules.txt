@@ -1,24 +1,23 @@
 # Standard-library extension modules implemented in native Jac.
 #
-# One module per line: <module> [<upstream tests> [linker flags...]]
-#   <module>          CPython import name; its PyInit_<module> is a :pub
-#                     definition under jaclang/runtime/python/bindings/ and is
-#                     imported by compiler/backends/py/jacpython/native_api.jac.
-#   <upstream tests>  Comma-separated pinned CPython test modules that
-#                     scripts/run_cpython_compiler_tests.jac runs against it.
-#                     Omitted when every upstream suite for the module needs
-#                     something outside it (_testcapi, compiler features).
+# One module per line: <module> [<tests> [linker flags...]]
+#   <module>          Import name; its PyInit_<module> is a :pub definition
+#                     under jaclang/runtime/python/bindings/ and is imported by
+#                     compiler/backends/py/jacpython/native_api.jac.
+#   <tests>           Comma-separated vendored conformance modules
+#                     (jac/tests/python_conformance) that
+#                     scripts/run_python_conformance.jac runs against it.
+#                     Omitted when every suite for the module needs something
+#                     outside it (_testcapi, compiler features).
 #   linker flags      Extra linker flags for a foreign library. A path
 #                     Modules/<name>.a names an archive the build compiles
-#                     from CPython's vendored sources (HACL*) before linking
-#                     the interpreter. A flag prefixed with an OS
-#                     (linux:-lrt) applies only on that OS.
+#                     from the vendored HACL* sources before linking the
+#                     interpreter. A flag prefixed with an OS (linux:-lrt)
+#                     applies only on that OS.
 #
 # This file is the single list. build_jacpython.zig links libpython with these
 # flags and fails when inittab.jac does not hold a listed PyInit;
 # smoke.py asserts each module is built in; CI runs each module's tests.
-# The C sources a module replaces are the `# removed:` entries of
-# cpython-sources.txt; build_python.zig owns that parser.
 
 _bisect         test.test_bisect
 _heapq          test.test_heapq
@@ -104,7 +103,7 @@ _interpreters   test.test__interpreters,test.test_interpreters,test.test_crossin
 _interpchannels test.test__interpchannels
 _interpqueues   test.test_interpreters
 marshal         test.test_marshal
-_imp            test.test_imp,test.test_importlib
+_imp            test.test_importlib
 _io             test.test_io,test.test_fileio,test.test_memoryio,test.test_bufio,test.test_univnewlines,test.test_file
 _ctypes         test.test_ctypes                        -lffi -ldl
 _scproxy        test.test_urllib2                       macos:-framework macos:SystemConfiguration macos:-framework macos:CoreFoundation

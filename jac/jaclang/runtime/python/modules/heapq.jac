@@ -2,7 +2,8 @@
 
 Keep compared objects alive across arbitrary user callbacks, then recheck the
 list length before accessing slots. Swaps use the current slots, including
-changes made by comparisons. Derived from CPython; see ../LICENSE.cpython.
+changes made by comparisons. Derived from Python's C implementation; see
+../LICENSE.cpython.
 """
 
 def heap_size_unchanged(heap: ptr[PyObject], size: i64) -> bool {

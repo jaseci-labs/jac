@@ -3,7 +3,7 @@
 `Flags` is `types.jac`'s shape -- a `class X(IntEnum)` whose members are bit
 values, re-tagged by masking one bit off and OR-ing another on, then handed
 back through the constructor. `Level` is the declared-enum spelling of the
-same question. CPython raises `ValueError` for a value no member carries, and
+same question. Python raises `ValueError` for a value no member carries, and
 `Flags` is an `IntEnum` rather than an `IntFlag`, so a combination of two bits
 is exactly such a value.
 """

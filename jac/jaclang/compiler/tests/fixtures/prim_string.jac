@@ -1,6 +1,6 @@
 """Bundled native `string` cross-backend equivalence fixture (#6978 Phase 3).
 
-The SAME `import from string { ... }` binds CPython's `string` on the sv
+The SAME `import from string { ... }` binds Python's `string` on the sv
 (Python) backend and the bundled `na_stdlib/string.jac` Mechanism-B module on
 the na (native LLVM) backend. Only the ASCII constant set, `capwords`, and the
 `$`-`Template` subset (`substitute`, `safe_substitute`, `is_valid`,

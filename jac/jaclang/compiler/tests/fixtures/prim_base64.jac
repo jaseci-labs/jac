@@ -1,6 +1,6 @@
 """Bundled native ``base64`` cross-backend equivalence fixture.
 
-The SAME ``import from base64 { ... }`` binds CPython's ``base64`` on the sv
+The SAME ``import from base64 { ... }`` binds Python's ``base64`` on the sv
 (Python) backend and the bundled ``na_stdlib/base64.jac`` Mechanism-B module
 on the na (native LLVM) backend. This fixture pins the two congruent.
 
@@ -21,8 +21,8 @@ split into small helpers, each mutating the shared result dict -- one
 function carrying the whole case body exceeds what the na backend can
 currently JIT reliably in a single function.
 
-Case inputs use CPython 3.14 semantics throughout: every expected value and
-error message below was probed against the embedded CPython 3.14.6 runtime
+Case inputs use Python 3.14 semantics throughout: every expected value and
+error message below was probed against the Python 3.14.6 runtime
 (the sv backend), including 3.14's non-strict ``a2b_base64`` end-of-input
 padding rules (``Zg==Zg==`` concatenates data characters across padding;
 ``Zm8=Zm8=`` is ``Incorrect padding``).
@@ -474,7 +474,7 @@ def _validate_na(r: dict[str, any]) {
     r["m01_cf"] = 1 if b32decode(b"mzxw1===", True, b"L") == b"foe" else 0;
 }
 
-# Error paths whose CPython message embeds a computed number
+# Error paths whose Python message embeds a computed number
 # (err64_one, err85_char, err85_over) are pinned as raise-flags only:
 # the na runtime does not yet keep a heap-built (concatenated) exception
 # message alive reliably across unwinding, so str(e) for those is

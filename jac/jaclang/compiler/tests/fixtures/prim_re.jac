@@ -1,6 +1,6 @@
 """Bundled native `re` cross-backend equivalence fixture (#6978 Phase 3).
 
-The SAME `import re` binds CPython's `re` on the sv (Python) backend and the
+The SAME `import re` binds Python's `re` on the sv (Python) backend and the
 bundled `na_stdlib/re.jac` Mechanism-B module (pure-Jac parser + backtracking
 matcher) on the na (native LLVM) backend. Only the congruent subset is
 exercised: literals, classes, anchors, greedy/lazy bounded repeats, alternation,
@@ -17,9 +17,9 @@ span wins, what a repeated group last captured), `cls_*` and `esc_caret` pin
 the class escapes, and `many`/`old_ok` compile more distinct patterns than
 the compiled-pattern cache holds, so older `Pattern` objects must keep
 answering after the cache is cleared.
-`flags*` pin `Pattern.flags` as CPython reports it. `err*` pin the
+`flags*` pin `Pattern.flags` as Python reports it. `err*` pin the
 pattern-compile error paths
-(`except Exception` covers CPython's `re.error`/`PatternError` and the native
+(`except Exception` covers Python's `re.error`/`PatternError` and the native
 `ValueError`). ES/JS opts out.
 """
 

@@ -1,7 +1,7 @@
 """Run the pinned CPython release's full regression suite and compare two runtimes.
 
 `run` installs the upstream test package of the CPython release pinned in
-jac/bootstrap/python/sources.json into an interpreter's standard library,
+scripts/cpython_compat.json into an interpreter's standard library,
 where `make install` would have put it, and runs every regrtest module in its
 own `python -m test`. One run per module makes that run's result the module's
 result, and a crash or hang stays inside it. Failed modules are re-run once,
@@ -52,8 +52,7 @@ glob REPO: Path = Path(__file__).resolve().parents[1],
      DETAIL_LIMIT: int = 240;
 
 def pinned_cpython -> dict[str, str] {
-    sources = json.loads((REPO / "jac/bootstrap/python/sources.json").read_text());
-    return sources["cpython"];
+    return json.loads((REPO / "scripts/cpython_compat.json").read_text());
 }
 
 def clean_env(work: Path) -> dict[str, str] {

@@ -3,8 +3,8 @@
 # Imports mirror the header of compiler_codegen.jac (foundational modules only).
 
 # Deep-fold one default expression into its constant value, collecting the
-# scalar leaf exprs in CPython visit (pre-)order. Tuples fold recursively like
-# CPython's instruction-level BUILD_TUPLE folding; anything else refuses.
+# scalar leaf exprs in the C compiler's visit (pre-)order. Tuples fold recursively like
+# the C compiler's instruction-level BUILD_TUPLE folding; anything else refuses.
 # Returns None when e is not an all-constant display.
 def fold_default_leaf_values(e: expr, leaves: list[expr]) -> PyObj | None {
     if isinstance(e, Constant) {
@@ -48,7 +48,7 @@ def function_argcounts(args: arguments) -> tuple[int, int, int] {
 }
 
 def function_code_flags(args: arguments, in_class: bool = False) -> int {
-    # CPython 3.14 CO_METHOD: code whose immediately-enclosing scope is a
+    # Python 3.14 CO_METHOD: code whose immediately-enclosing scope is a
     # class body (def / async def / lambda; any first-arg name).
     flags = CO_OPTIMIZED | CO_NEWLOCALS;
     if in_class {
@@ -63,7 +63,7 @@ def function_code_flags(args: arguments, in_class: bool = False) -> int {
     return flags;
 }
 
-# CPython qualname rules for a nested code object: plain name at module scope,
+# Python qualname rules for a nested code object: plain name at module scope,
 # <Class>.<name> inside a class body, and <parent>.<locals>.<name> under any
 # other (function) scope (compiler.c compute_qualname).
 def nested_code_qualname(
@@ -265,7 +265,7 @@ def ast_node_name(n: ast_node) -> str {
 }
 
 # Normalize an AST node's location: end_lineno is int|None; None means "same as
-# lineno" (CPython's convention for single-line nodes).
+# lineno" (the C compiler's convention for single-line nodes).
 def nloc(lineno: int, end_ln: int | None, col: int, end_col: int | None) -> cloc {
     el = lineno;
     if end_ln is not None {
@@ -278,7 +278,7 @@ def nloc(lineno: int, end_ln: int | None, col: int, end_col: int | None) -> cloc
     return loc(lineno, el, col, ec);
 }
 
-# CPython spans for `def`/`async def` run through the last body statement. The
+# The C compiler's spans for `def`/`async def` run through the last body statement. The
 # generated parser's end_tok can point past the block (wrong end_lineno/col).
 def function_def_loc(fd: FunctionDef) -> cloc {
     last = fd.body[len(fd.body) - 1];
@@ -523,7 +523,7 @@ def ast_cmp_kind(op: PyObj) -> int {
     return -1;
 }
 
-# cmpop -> CPython 3.14 COMPARE_OP oparg (low bits carry cache metadata).
+# cmpop -> Python 3.14 COMPARE_OP oparg (low bits carry cache metadata).
 def cmpop_oparg(op: PyObj) -> int {
     kind = ast_cmp_kind(op);
     if kind < 0 {
@@ -541,7 +541,7 @@ def cmpop_filter_oparg(op: PyObj) -> int {
     return compare_filter_oparg(kind);
 }
 
-# Constant-fold a BinOp when both operands are literal ints (CPython peephole).
+# Constant-fold a BinOp when both operands are literal ints (the C compiler's peephole).
 def try_fold_binop(left: expr, op: PyObj, right: expr) -> PyObj | None {
     if not isinstance(left, Constant) {
         return None;
@@ -586,7 +586,7 @@ def call_effective_keywords(ca: Call) -> list[keyword] {
 }
 
 # The top-level expression's location, assigned to the trailing RETURN_VALUE in
-# eval mode (matches CPython's observed co_positions).
+# eval mode (matches the C compiler's observed co_positions).
 def top_loc(e: expr) -> cloc {
     return expr_loc(e);
 }
@@ -594,7 +594,7 @@ def top_loc(e: expr) -> cloc {
 def stmt_loc(s: stmt) -> cloc {
     if isinstance(s, Assign) {
         a = s as Assign;
-        # CPython attributes STORE_NAME to the assignment target's span, not the
+        # The C compiler attributes STORE_NAME to the assignment target's span, not the
         # whole Assign. For band 2 the target is a single Name.
         if len(a.targets) > 0 {
             return expr_loc(a.targets[0]);
@@ -756,7 +756,7 @@ def comp_bound_names_from_target(target: expr) -> list[str] | None {
     return None;
 }
 
-# Leftmost sub-expression in CPython evaluation order (the first leaf pushed).
+# Leftmost sub-expression in Python evaluation order (the first leaf pushed).
 def comp_leftmost_leaf(e: expr) -> expr {
     cur = e;
     while True {

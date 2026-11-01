@@ -15,7 +15,7 @@ and names the loop's steps S_*; gen_sre.jac expands them. See
 ../LICENSE.cpython.
 """
 
-import from jaclang.runtime.python.cpython_api { PyErr_CheckSignals, PyMem_Malloc }
+import from jaclang.runtime.python.python_capi { PyErr_CheckSignals, PyMem_Malloc }
 import from jaclang.runtime.python.modules.sre_engine {
     JUMP_ASSERT,
     JUMP_ASSERT_NOT,

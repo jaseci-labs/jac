@@ -1,6 +1,6 @@
 """The Linux side of the posix process area.
 
-Derived from CPython 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
 Layouts are glibc's on x86_64 and aarch64: posix_spawnattr_t is 336 bytes,
 posix_spawn_file_actions_t 80, sigset_t 128, siginfo_t 128 with si_pid at
 byte 16, clock_t is long, and struct sched_param holds only sched_priority.

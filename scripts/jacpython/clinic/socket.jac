@@ -2,7 +2,8 @@
 
 scripts/jacpython/gen_clinic.jac generates
 jaclang/runtime/python/bindings/clinic/socket.jac from them. Taken from
-CPython 3.14.6 Modules/socketmodule.c, Modules/getaddrinfo.c, Modules/getnameinfo.c.
+the C sources it replaces (Modules/socketmodule.c, Modules/getaddrinfo.c, Modules/getnameinfo.c); see
+jac/jaclang/runtime/python/LICENSE.cpython.
 """
 import from clinic_schema { Clinic, Function, Parameter }
 

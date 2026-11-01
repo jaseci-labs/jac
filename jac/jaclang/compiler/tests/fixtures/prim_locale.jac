@@ -1,10 +1,10 @@
 """Bundled native `locale` cross-backend equivalence fixture (#6978).
 
-The same `import locale` binds CPython's `locale` (a thin layer over the C
+The same `import locale` binds Python's `locale` (a thin layer over the C
 library) on the sv backend and `na_stdlib/locale.jac` over the same
 `setlocale(3)`/`localeconv(3)`/`strcoll(3)` on the na (native LLVM) backend.
 Both lanes are pinned in the `C` locale so `localeconv()` is deterministic.
-The alias engine (`normalize`) is table driven from CPython's own
+The alias engine (`normalize`) is table driven from Python's own
 `locale_alias`/`locale_encoding_alias`, including the `@euro` modifier path,
 the `:`-as-encoding-delimiter path, and the unknown-name passthrough.
 `locale.Error` is caught by its exact class: a parent-class `except` arm does not

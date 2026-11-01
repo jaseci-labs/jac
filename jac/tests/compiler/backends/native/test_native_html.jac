@@ -1,15 +1,15 @@
-"""The native html module unescapes and escapes the way CPython's does.
+"""The native html module unescapes and escapes the way Python's does.
 
 The ES backend unescapes JSX text and attribute literals while it runs in
 the compiler kernel, so the native html.unescape has to follow the HTML 5
-rules CPython's does: named references with and without the semicolon,
+rules Python's does: named references with and without the semicolon,
 the longest-prefix match for legacy names, numeric references in both
 bases with the invalid-reference and invalid-codepoint tables.
 """
 import from pathlib { Path }
 import from tests.support { assert_native_identity }
 
-test "native html.unescape and html.escape match CPython" {
+test "native html.unescape and html.escape match Python" {
     source = str(
         Path(__file__).resolve().parent / "fixtures" / "html_unescape_fidelity.jac"
     );

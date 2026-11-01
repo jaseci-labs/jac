@@ -94,7 +94,7 @@ repository = "https://github.com/user/repo"
 | `jac-version` | string | Jac toolchain version the project targets, as a PEP 440-style specifier. `jac create` stamps `==<current>`; at `jac scale deploy` the pod runtime binary, admin console, and base image are all taken from the release that satisfies it, and the deploy aborts if none does. See [jac-version](#jac-version). |
 | `license` | string | SPDX license identifier (e.g. `"MIT"`) |
 | `readme` | string | Path to README file (default: `README.md`) |
-| `requires-python` | string | Minimum Python version (e.g. `">=3.14"`) -- the wheel carries bytecode precompiled for the CPython the `jac` binary bundles, so a lower floor than that cannot load it |
+| `requires-python` | string | Minimum Python version (e.g. `">=3.14"`) -- the wheel carries bytecode precompiled for the Python version the `jac` binary bundles, so a lower floor than that cannot load it |
 | `keywords` | list | Search keywords shown on PyPI |
 | `authors` | list of `{name, email}` | Package authors |
 | `maintainers` | list of `{name, email}` | Package maintainers |

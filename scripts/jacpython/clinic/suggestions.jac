@@ -2,7 +2,8 @@
 
 scripts/jacpython/gen_clinic.jac generates
 jaclang/runtime/python/bindings/clinic/suggestions.jac from them. Taken from
-CPython 3.14.6 Modules/_suggestions.c.
+the C sources it replaces (Modules/_suggestions.c); see
+jac/jaclang/runtime/python/LICENSE.cpython.
 """
 import from clinic_schema { Clinic, Function, Parameter }
 

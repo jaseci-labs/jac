@@ -1,8 +1,8 @@
 """`jac update --self`: offline tests for the self-update flow.
 
 GitHub and download calls are patched at their module boundaries
-(`GitHub.release`, the `.sha256` sidecar GET, toolchains `fetch`, the
-JacPython probe -- the fake fetch still enforces the digest contract); the update
+(`GitHub.release`, the `.sha256` sidecar GET, toolchains `fetch` -- the fake
+fetch still enforces the digest contract); the update
 target is a throwaway file with a real JACBIN01 trailer, so the genuine trailer
 parser and the genuine atomic replace are exercised.
 """
@@ -26,7 +26,7 @@ import from jaclang.dist.self_update {
 
 
 def fake_release(ver: str) -> dict[str, any] {
-    # One platform asset plus the dev/jacpython look-alikes that must never match.
+    # One platform asset plus the dev/debug look-alikes that must never match.
     return {
         "tag_name": "v24.1",
         "assets": [
@@ -34,7 +34,7 @@ def fake_release(ver: str) -> dict[str, any] {
                 "name": f"jac-{ver}-linux-x86_64",
                 "browser_download_url": f"https://x.test/jac-{ver}-linux-x86_64"
             },
-            {"name": f"jac-{ver}-linux-x86_64-jacpython"},
+            {"name": f"jac-{ver}-linux-x86_64-debug"},
             {"name": "jac-dev-linux-x86_64"}
         ]
     };
@@ -57,7 +57,6 @@ def run_flow(
     real_bin: bool = True,
     linked: str | None = None,
     readonly: bool = False,
-    jacpython: bool = False,
     managed: bool = False,
     installer_managed: bool = True,
     sidecar: str = "ok"
@@ -115,9 +114,6 @@ def run_flow(
     fetchm = patch("jaclang.toolchains.store.fetch", side_effect=fake_fetch).start();
     patch("jaclang.dist.self_update._fetch_text", side_effect=fake_sidecar).start();
     patch(
-        "jaclang.dist.self_update._running_jacpython", return_value=jacpython
-    ).start();
-    patch(
         "jaclang.packages.github.GitHub.release", side_effect=fake_release_call
     ).start();
     patch(
@@ -162,7 +158,7 @@ test "asset match takes the default binary only, with its version" {
         and hit[1] == "2.3.1";
     near = [
         {"name": "jac-dev-linux-x86_64"},
-        {"name": "jac-2.3.1-linux-x86_64-jacpython"},
+        {"name": "jac-2.3.1-linux-x86_64-debug"},
         {"name": "jac-2.3.1-linux-aarch64"}
     ];
     assert release_asset(near, "linux", "x86_64") is None;
@@ -227,18 +223,6 @@ test "guard: readonly install refuses before any download" {
     if os.geteuid() != 0 {
         (rc, target, fetchm, tags, tmp) = run_flow(readonly=True);
         assert rc == 1 and fetchm.call_count == 0;
-        shutil.rmtree(tmp, ignore_errors=True);
-    }
-}
-
-
-test "guard: JacPython install refuses before any download" {
-    (rc, target, fetchm, tags, tmp) = run_flow(jacpython=True);
-    try {
-        assert rc == 1 and fetchm.call_count == 0;
-        assert b"fake launcher" in target.read_bytes();
-        assert sorted(p.name for p in tmp.iterdir()) == [".jac-install", "jac"];
-    } finally {
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }

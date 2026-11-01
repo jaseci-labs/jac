@@ -1,6 +1,6 @@
 """The Linux side of the posix core.
 
-Derived from CPython 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
 dev_t is an unsigned 64-bit integer.
 """
 

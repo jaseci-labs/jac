@@ -1,12 +1,13 @@
 """The OpenSSL API of the native _ssl and _hashlib modules.
 
 Both ports call libssl and libcrypto (the vendored OpenSSL the JacPython build
-links) directly. The declarations name the exported functions; where CPython's
-C calls a macro or a static inline function, the port calls what it expands to
-(EVP_MD_size is EVP_MD_get_size, SSL_set_tlsext_host_name is an SSL_ctrl), and
-the few inline functions with logic (ERR_GET_LIB, ERR_GET_REASON) are Jac here.
-The macro values are generated in openssl_constants.jac. OpenSSL objects are
-opaque `ptr`s; a C string OpenSSL returns is a `ptr[u8]`.
+links) directly. The declarations name the exported functions; where the C
+version calls a macro or a static inline function, the port calls what it
+expands to (EVP_MD_size is EVP_MD_get_size, SSL_set_tlsext_host_name is an
+SSL_ctrl), and the few inline functions with logic (ERR_GET_LIB,
+ERR_GET_REASON) are Jac here. The macro values are generated in
+openssl_constants.jac. OpenSSL objects are opaque `ptr`s; a C string OpenSSL
+returns is a `ptr[u8]`.
 """
 
 import from c {

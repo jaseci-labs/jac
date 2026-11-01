@@ -1,6 +1,6 @@
 """The Linux side of the posix file functions.
 
-Derived from CPython 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
 mode_t is 32 bits and dev_t an unsigned 64-bit integer, split by glibc's
 gnu_dev_major/gnu_dev_minor/gnu_dev_makedev. The extended attribute calls
 (USE_XATTRS), posix_fallocate() and posix_fadvise() exist here only; there

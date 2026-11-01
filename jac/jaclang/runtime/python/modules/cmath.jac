@@ -1,6 +1,6 @@
 """Native complex transcendental algorithms and IEEE special-value rules.
 
-Recovered algorithms are checked against pinned CPython 3.14.6, with real
+Recovered algorithms are checked against Python 3.14.6's, with real
 transcendentals supplied by libm. See ../LICENSE.cpython.
 """
 

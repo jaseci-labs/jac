@@ -1,6 +1,6 @@
 """Process resource usage and limits.
 
-Derived from CPython 3.14.6 Modules/resource.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/resource.c; see ../LICENSE.cpython.
 Record layouts come from resource_records.<os>.jac and the limit and usage
 constants from resource_constants.<os>.jac.
 """

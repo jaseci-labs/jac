@@ -3,7 +3,7 @@
 
 `import socket` binds the bundled `na_stdlib/socket.jac` Mechanism-A/F module
 (a pure-Jac TCP-client surface over the libc socket FFI floor) on the na
-backend; the sv reference is CPython's real `socket`. There is no live network:
+backend; the sv reference is Python's real `socket`. There is no live network:
 a loopback HTTP server is stood up on an ephemeral port, its port published in
 `JAC_SOCKET_TEST_PORT`, and the two client implementations are pinned congruent
 on a raw GET against the same server -- the HTTP status and the exact total
@@ -74,7 +74,7 @@ test "socket TCP client over the libc floor (sv<->na congruent)" {
     (srv, port) = _start_server();
     os.environ["JAC_SOCKET_TEST_PORT"] = str(port);
     try {
-        # Pin canonical sv (CPython socket) semantics as a hard guard: a 200 and
+        # Pin canonical sv (Python socket) semantics as a hard guard: a 200 and
         # a non-empty total-byte count for the fixed server reply.
         py = run_py_fixture("prim_socket", "socket_py");
         assert py["status"] == 200 , py;

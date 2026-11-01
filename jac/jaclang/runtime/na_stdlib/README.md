@@ -44,7 +44,7 @@ searches **nearest-wins**:
    `__jac_*` functions (`compiler/backends/native/posix_floor.c`), so the
    kernel is the same program on every target.
 
-So `import from os.path { normpath }` binds CPython's `posixpath` on the sv
+So `import from os.path { normpath }` binds Python's `posixpath` on the sv
 (Python) pathway and `na_stdlib/os/path.jac` on the na (native) pathway (the
 *same source* on both), while a user module of the same name always shadows the
 bundled one. A bundled module links through the existing cross-module machinery
@@ -60,12 +60,12 @@ native layout records the emitted name separately from its source-level key.
 
 - **`unicodedata.jac`** (#10325) -- the native floor exposes `category` and
   `east_asian_width` from the generated Unicode 16.0.0 database. Compact
-  property ranges are generated from the same pinned CPython source by
+  property ranges are generated from the same pinned Python source by
   `scripts/jacpython/gen_unicodedata.jac`. This is a deliberately limited
   surface; other `unicodedata` APIs are not implemented natively.
 - **`os/path.jac`** (#6940 Phase 0, extended #8201) -- pure-string POSIX path
   helpers (`normpath`, `dirname`, `basename`, `split`, `splitext`, `isabs`,
-  `join`, `abspath`, plus `relpath` and `normcase`). `relpath` is CPython's
+  `join`, `abspath`, plus `relpath` and `normcase`). `relpath` is Python's
   algorithm verbatim: absolutize both sides, drop empty components, walk off
   the shared prefix with `..` for each remaining `start` component, and answer
   `.` when nothing is left. `normcase` is the identity, which is what it is on
@@ -82,20 +82,20 @@ native layout records the emitted name separately from its source-level key.
   implementation; no Python runtime is required.
 - **`json.jac`** (#6940 Phase 1) -- a recursive-descent `loads` over boxed
   `any` (dict/list/str/int/float/bool/None) plus a `dumps` serializer matching
-  CPython's default `(', ', ': ')` separators and insertion-ordered keys.
+  Python's default `(', ', ': ')` separators and insertion-ordered keys.
   One documented divergence: only the control set + JSON metacharacters are
   escaped, so congruence holds for ASCII payloads (`ensure_ascii` of
-  non-ASCII is a follow-up). (`dumps` of floats now matches CPython: native
+  non-ASCII is a follow-up). (`dumps` of floats now matches Python: native
   `str(float)` produces the shortest-round-trip repr -- #6940 Phase 0.3,
-  pinned byte-for-byte against CPython in the native suite.)
+  pinned byte-for-byte against Python in the native suite.)
 - **`datetime.jac`** (#6940 Phase 1 / #6951, extended to the full surface) --
-  a faithful port of CPython's `_pydatetime.py`: `timedelta`, `date`,
+  a faithful port of Python's `_pydatetime.py`: `timedelta`, `date`,
   `tzinfo`, `time`, `datetime`, `timezone`, `struct_time`, and the internal
   `IsoCalendarDate`, with the same class hierarchy (`datetime(date)`,
   `timezone(tzinfo)`). Civil-date math uses the proleptic-Gregorian ordinal
   algorithms; timezone-aware math rides the `tzinfo` protocol
   (`utcoffset`/`dst`/`tzname`/`fromutc`), `datetime.astimezone` performs the
-  local-timeline conversion like CPython (including the fold probe), and
+  local-timeline conversion like Python (including the fold probe), and
   `strptime` is a hand-rolled matcher port of `_strptime.py` since no regex
   engine exists natively. `_datetime_native.jac` is the FFI floor:
   `clock_gettime`/`localtime_r`/`gmtime_r`/`strftime`
@@ -104,8 +104,8 @@ native layout records the emitted name separately from its source-level key.
   `time()` / `timetz()` and `datetime.combine` return/accept `any` at the type
   level because method names shadow class names inside `obj datetime`
   (runtime behavior unchanged); `strftime` locale text comes from libc, like
-  CPython's.
-- **`calendar.jac`** -- a port of CPython's `calendar.py`: `Calendar` /
+  Python's.
+- **`calendar.jac`** -- a port of Python's `calendar.py`: `Calendar` /
   `TextCalendar` (`formatweek`-`formatyear`, `prweek`-`pryear` via
   `sys.stdout.write` since `print` doesn't lower), the `itermonth*` iterators,
   `monthcalendar`-`yeardatescalendar` grids, `isleap`/`leapdays`/`weekday`/
@@ -114,7 +114,7 @@ native layout records the emitted name separately from its source-level key.
   doesn't lower). SCOPE divergences: `weekday`/`monthrange` return plain
   `int`, not the 3.14 `Day`/`Month` `IntEnum`s, and the name tables are static
   English `list[str]` rather than locale-aware `_localized_*` objects.
-- **`zoneinfo.jac`** -- a port of CPython's `zoneinfo/_zoneinfo.py`: a full
+- **`zoneinfo.jac`** -- a port of Python's `zoneinfo/_zoneinfo.py`: a full
   TZif v1/v2+ parser (big-endian headers, transition/type arrays, POSIX TZ
   footer via `_TZStr` transition rules), `ZoneInfo` with module-level cache +
   `no_cache`/`from_file`/`clear_cache`, `TZPATH` filesystem discovery through
@@ -131,58 +131,58 @@ native layout records the emitted name separately from its source-level key.
   `compress2` and shared streaming inflater. `compress` takes the raw DEFLATE
   body (the zlib stream with its 2-byte header + 4-byte adler32 stripped --
   the DEFLATE bytes are identical under either frame) and wraps it; the result
-  is byte-identical to CPython's `gzip.compress` at the same level/`mtime` (XFL 2 for level 9,
-  4 for level < 2, 0 otherwise -- zlib's gzip-header rule, which CPython
-  reuses -- and OS byte 255; CPython 3.14 also defaults `mtime` to 0, so the
+  is byte-identical to Python's `gzip.compress` at the same level/`mtime` (XFL 2 for level 9,
+  4 for level < 2, 0 otherwise -- zlib's gzip-header rule, which Python
+  reuses -- and OS byte 255; Python 3.14 also defaults `mtime` to 0, so the
   defaults agree byte-for-byte). `decompress` walks the members of the stream
-  exactly as CPython does: per member it parses the header (honoring the
+  exactly as Python does: per member it parses the header (honoring the
   FEXTRA / FNAME / FCOMMENT skips; the 2 FHCRC bytes are skipped unverified,
-  which is also CPython's behavior), then raw-inflates the DEFLATE body in a
+  which is also Python's behavior), then raw-inflates the DEFLATE body in a
   single streaming pass (`windowBits = -15`); the stream's `total_in` locates
   the member boundary, after which gzip's own CRC-32 and ISIZE are enforced
   (compared mod 2^32, per RFC 1952, so members over 4 GiB verify the same way
-  CPython does) before concatenating the member outputs. The output buffer
+  Python does) before concatenating the member outputs. The output buffer
   starts at the final-ISIZE hint and grows geometrically on `Z_BUF_ERROR` up
   to DEFLATE's ~1032x expansion ceiling. A member with no end-of-stream
   marker (including a bare header glued onto a trailer) raises, as does
-  trailing garbage after the last member -- matching CPython. Error-type
+  trailing garbage after the last member -- matching Python. Error-type
   mapping: the native surface raises `ValueError` with static messages where
-  CPython raises `gzip.BadGzipFile` (an `OSError` subclass: bad magic /
+  Python raises `gzip.BadGzipFile` (an `OSError` subclass: bad magic /
   unknown method / CRC / length), `EOFError` (truncation), or `zlib.error`
   (corrupt DEFLATE data). The `GzipFile` class and streaming file API are out
   of scope.
 - **`base64.jac`** (#6978 Phase 3) -- self-contained RFC 4648
   base16/base32/base64 (`b16`/`b32`/`b64` encode+decode, `altchars`,
   `standard_`/`urlsafe_` variants) plus RFC 1924 base85 (`b85encode`/`b85decode`,
-  the alphabet CPython's `base64.b85encode` uses). A big-endian bit-accumulator
+  the alphabet Python's `base64.b85encode` uses). A big-endian bit-accumulator
   over `bytes` primitives -- no FFI floor, no big-int -- growing the result in a
   `list[int]` and converting once with `bytes(...)`. Encoding is byte-identical
-  to CPython for all 256 byte values; decoding matches the embedded CPython
+  to Python for all 256 byte values; decoding matches the embedded Python
   3.14 semantics, probed case by case: `b64decode(validate=False)` (the
   default) discards non-alphabet bytes and applies 3.14's end-of-input padding
   rules (so newline-wrapped MIME/PEM input decodes, unpadded input raises
-  `Incorrect padding`); `validate=True` implements strict mode with CPython's
+  `Incorrect padding`); `validate=True` implements strict mode with Python's
   leading/excess/discontinuous-padding errors; `urlsafe_b64decode` accepts
-  both the `+/` and `-_` alphabets (CPython translates then decodes); `b16`
+  both the `+/` and `-_` alphabets (Python translates then decodes); `b16`
   enforces digit-before-odd-length checks; `b32decode` takes `casefold` and
-  `map01` and enforces `len % 8` plus CPython's valid pad-count set
-  {0,1,3,4,6}; `b85decode` reports CPython's absolute error positions and the
-  32-bit overflow check. Error messages match CPython text, raised as
-  `ValueError` (CPython raises `binascii.Error`, itself a `ValueError`
+  `map01` and enforces `len % 8` plus Python's valid pad-count set
+  {0,1,3,4,6}; `b85decode` reports Python's absolute error positions and the
+  32-bit overflow check. Error messages match Python text, raised as
+  `ValueError` (Python raises `binascii.Error`, itself a `ValueError`
   subclass, so `except ValueError` is congruent; the message text is
-  identical). SCOPE: the CPython `None` sentinels for `altchars`/`map01` are
+  identical). SCOPE: the Python `None` sentinels for `altchars`/`map01` are
   `b""` here (na has no None-able `bytes` parameter), and bad `altchars`/
-  `map01` lengths raise `ValueError` where CPython asserts; the Ascii85
+  `map01` lengths raise `ValueError` where Python asserts; the Ascii85
   (`a85`) variant is a follow-up.
 - **`textwrap.jac`** (#6978 Phase 3) -- the greedy line wrapper (`wrap`,
-  `fill`) plus `dedent` and `indent`, a faithful port of CPython's
+  `fill`) plus `dedent` and `indent`, a faithful port of Python's
   `TextWrapper._wrap_chunks`/`_handle_long_word` over primitives (following
-  CPython **>= 3.14** long-word semantics -- 3.14 stopped breaking a long word
+  Python **>= 3.14** long-word semantics -- 3.14 stopped breaking a long word
   when `space_left == 0`, so 3.13-and-earlier output differs exactly there; the
   bundled sv runtime is 3.14 -- plus the `width <= 0` ->
   `ValueError("invalid width ... (must be > 0)")` error path). **WARNING -- default-call divergence:** this module implements
   `break_on_hyphens=False` semantics (words split on whitespace only), but
-  CPython's default is `break_on_hyphens=True`; the *same* `wrap(text, width)`
+  Python's default is `break_on_hyphens=True`; the *same* `wrap(text, width)`
   call therefore returns different lines on sv vs na whenever the text contains
   hyphenated words (e.g. `wrap("well-known", 6)` -> `['well-', 'known']` on sv,
   `['well-k', 'nown']` on na). Keep hyphenated text away from `wrap`/`fill`, or
@@ -192,11 +192,11 @@ native layout records the emitted name separately from its source-level key.
   `indent` splits on `"\n"`; `shorten`/`TextWrapper` not provided.
 - **`csv.jac`** (#6978 Phase 3) -- `reader` for the default **excel** dialect
   (delimiter `,`, quotechar `"`, `doublequote=True`, `skipinitialspace=False`,
-  QUOTE_MINIMAL). Field parsing matches CPython exactly (quoted fields, doubled
+  QUOTE_MINIMAL). Field parsing matches Python exactly (quoted fields, doubled
   quotes, a quote opening a field only at its start, literal mid-field quotes,
   unterminated quotes, a `\n` inside a quoted region of a single input string,
   empty line -> `[]`). A NUL character parses as an ordinary character,
-  matching CPython **>= 3.14** (3.13 and earlier raised
+  matching Python **>= 3.14** (3.13 and earlier raised
   `csv.Error("line contains NUL")`; the bundled sv runtime is 3.14) -- but the
   native string type drops an embedded NUL byte on concatenation, so while
   field *splitting* around a NUL is congruent, NUL-bearing field *content* is
@@ -206,19 +206,19 @@ native layout records the emitted name separately from its source-level key.
   SCOPE: eager `list[list[str]]` (congruent with `list(csv.reader(...))`), one
   record per input string -- a *record* cannot span two input strings, so
   feeding a file's raw split lines with multi-line quoted fields diverges from
-  CPython's file-object mode; `writer`/`DictReader`/`DictWriter`/custom
+  Python's file-object mode; `writer`/`DictReader`/`DictWriter`/custom
   dialects not provided.
 - **`pprint.jac`** (#6978 Phase 3) -- `pformat` rendering a single-line repr
-  with dict keys sorted (CPython `sort_dicts=True`) and Python `repr`
+  with dict keys sorted (Python `sort_dicts=True`) and Python `repr`
   conventions for str/int/bool/None/list/dict, including full string escaping:
   backslash/quotes, `\n`/`\t`/`\r` short forms, and `\xNN` for the remaining
   C0 controls (0x00-0x1f) and DEL (0x7f). SCOPE: **single-line output only** --
-  CPython wraps representations longer than `width=80` across lines, so any
+  Python wraps representations longer than `width=80` across lines, so any
   object whose repr exceeds one line diverges (width-driven wrapping not
-  implemented); string dict keys; floats print with CPython's
+  implemented); string dict keys; floats print with Python's
   shortest-round-trip repr (#6940 Phase 0.3, so the old `%g` divergence is
   gone); bytes > 0x7f pass through unescaped, so *unicode* non-printables
-  (e.g. U+00A0, U+200B) are NOT `\uXXXX`-escaped as CPython would -- congruent
+  (e.g. U+00A0, U+200B) are NOT `\uXXXX`-escaped as Python would -- congruent
   for ASCII and printable-unicode payloads. Out-of-scope value types: `set`
   raises `ValueError("pprint: unsupported value type on native")` instead of
   silently misrendering; other non-JSON values (e.g. object instances) cannot
@@ -228,12 +228,12 @@ native layout records the emitted name separately from its source-level key.
   divergence.
 - **`difflib.jac`** (#6978 Phase 3) -- `SequenceMatcher`
   (`ratio`/`get_matching_blocks`/`set_seq1`/`set_seq2`, full 4-arg constructor
-  including `autojunk`) and `get_close_matches`, a port of CPython's
+  including `autojunk`) and `get_close_matches`, a port of Python's
   longest-match DP, matching-block recursion, and `__chain_b` popular-element
   pruning (`autojunk=True` and `len(b) >= 200`: elements occurring more than
   `len(b) // 100 + 1` times cannot seed a match, exactly as their exclusion from
-  CPython's `b2j`; they still participate in match extension since `bjunk` is
-  empty). `get_close_matches` raises CPython's `ValueError`s for `n <= 0` and
+  Python's `b2j`; they still participate in match extension since `bjunk` is
+  empty). `get_close_matches` raises Python's `ValueError`s for `n <= 0` and
   `cutoff` outside `[0.0, 1.0]`. SCOPE: string sequences; `isjunk` accepted but
   ignored (a non-None `isjunk` silently behaves as None -- the remaining
   error-path/behavior divergence); `ratio` is the same IEEE-double value (only
@@ -243,7 +243,7 @@ native layout records the emitted name separately from its source-level key.
   (`whitespace`/`ascii_lowercase`/`ascii_uppercase`/`ascii_letters`/`digits`/
   `hexdigits`/`octdigits`/`punctuation`/`printable`), `capwords`, and a
   `$`-`Template` subset (`substitute`/`safe_substitute`/`is_valid`/
-  `get_identifiers`) supporting `$name`, `${name}`, and `$$` with CPython's
+  `get_identifiers`) supporting `$name`, `${name}`, and `$$` with Python's
   placeholder scan order. `substitute` raises `KeyError` on a missing name and
   `ValueError("Invalid placeholder in string: line N, col M")` on a malformed
   one; `safe_substitute` preserves unresolved and malformed placeholders
@@ -265,15 +265,15 @@ native layout records the emitted name separately from its source-level key.
   `*`/`+`/`?`/`{m,n}`, greedy or lazy) are fused instructions that loop in
   place and push one backtrack entry, not one per iteration, and when the
   next consuming instruction is a literal they skip the positions where it
-  cannot match (CPython's REPEAT_ONE/MIN_REPEAT_ONE optimizations); `.`
+  cannot match (Python's REPEAT_ONE/MIN_REPEAT_ONE optimizations); `.`
   repeats over ASCII text scan with `memchr`. Search skips impossible
   starts with a literal-prefix scan (`memchr` plus a compare), a 128-bit
   first-character set, or a single attempt for `\A`/`^`-anchored patterns.
   None of this changes which match wins: the VM explores alternatives in
-  CPython's order, applies CPython's empty-match rules (an empty match may
+  Python's order, applies Python's empty-match rules (an empty match may
   not end where the previous match ended, `fullmatch` backtracks until the
   match reaches `endpos`), and a seeded differential fuzz fixture
-  (`prim_re_fuzz.jac`) pins spans and groups against CPython across
+  (`prim_re_fuzz.jac`) pins spans and groups against Python across
   `search`/`match`/`fullmatch`/`finditer`/`findall`/`sub`/`subn`/`split`.
   ASCII subjects are matched in place through the string's own bytes
   (`__str_data`); other subjects are decoded once into a codepoint array
@@ -282,7 +282,7 @@ native layout records the emitted name separately from its source-level key.
   try-lock, so a call allocates only its results, and a concurrent or
   reentrant call on the same `Pattern` falls back to fresh state. The
   module-level functions and `compile` share a 512-entry compiled-pattern
-  cache, as CPython's do; `purge()` clears it.
+  cache, as Python's do; `purge()` clears it.
   Covers literals, character classes and ranges (incl. negation and class
   escapes `\d`/`\w`/`\s`), anchors (`^`/`$`/`\A`/
   `\Z`/`\b`/`\B`), greedy and lazy `*`/`+`/`?`/`{m,n}` repeats, alternation,
@@ -293,38 +293,38 @@ native layout records the emitted name separately from its source-level key.
   `compile`/`search`/`match`/`fullmatch`/`findall`/`finditer`/`split`/`sub`/
   `subn`/`escape`/`purge` plus `Pattern`/`Match` objects (`group`/`groups`/
   `groupdict`/`start`/`end`/`span`/`expand`, `groups`/`groupindex`/`pattern`/
-  `flags` on `Pattern`). Parse errors raise `ValueError` with CPython's
+  `flags` on `Pattern`). Parse errors raise `ValueError` with Python's
   message text and position suffix ("... at position N"), covering
   unterminated groups/classes, bad ranges, multiple/nothing-to-repeat
   (including a quantified anchor), unknown/duplicate/open group
   references, and non-leading global flags. Replacement templates are
-  compiled once per `sub`/`subn` call, before matching, as CPython does.
-  `Pattern.flags` reports what CPython reports: the explicit flags, any
+  compiled once per `sub`/`subn` call, before matching, as Python does.
+  `Pattern.flags` reports what Python reports: the explicit flags, any
   global inline flags, and `UNICODE` unless `ASCII` is set.
   SCOPE/divergences: ASCII semantics only (`\w`/`\d`/`\s` and IGNORECASE
   fold ASCII; no unicode categories or full casefold); no lookbehind,
   conditional `(?(id)y|n)`, atomic `(?>...)`, possessive quantifiers, `\N{}`,
   or `\p{}`; `sub`/`subn` take string replacements only (callable `repl` not
   supported -- no native callable boundary); `findall` raises `ValueError`
-  on patterns with more than one group (CPython returns a list of tuples,
+  on patterns with more than one group (Python returns a list of tuples,
   which the `list[str]` boundary cannot carry); `finditer` returns an eager
   `list[Match]` rather than an iterator; `split` yields `None` for
-  non-participating groups as CPython does, so its element type is `any`;
+  non-participating groups as Python does, so its element type is `any`;
   `Match.groups()` returns `list[any]` (not a tuple); `Match[...]`
   `__getitem__` and `Match.re`/`lastindex` not provided; LOCALE flag
   ignored; `error`/`PatternError` surfaces as `ValueError` (catch
-  `Exception`/`ValueError` accordingly -- CPython's `re.error` is not a
+  `Exception`/`ValueError` accordingly -- Python's `re.error` is not a
   `ValueError` subclass, so code catching `re.error` specifically diverges).
-  Decimal escapes follow CPython's rules exactly: `\N` with 1-2 digits is a
+  Decimal escapes follow Python's rules exactly: `\N` with 1-2 digits is a
   group reference, a three-octal-digit escape (e.g. `\123`) is a literal,
   a fourth digit or non-octal next char stays literal text, and octal
-  escapes above `\377` are rejected with CPython's message. Replacement
+  escapes above `\377` are rejected with Python's message. Replacement
   templates apply the same identifier/digit rules to `\g<name>` and `\N`,
-  and report CPython's error positions.
+  and report Python's error positions.
 - **`reprlib.jac`** (#6978 Phase 3) -- `repr` and a `Repr` object
   (`repr`/`repr1`, mutable `maxlevel`/`maxtuple`/`maxlist`/`maxdict`/
   `maxset`/`maxfrozenset`/`maxstring`/`maxlong`/`maxother` limits) rendering
-  bool/int/float/str/list/dict with CPython's conventions: quote selection
+  bool/int/float/str/list/dict with Python's conventions: quote selection
   (prefer `'`, switch to `"` when the string contains `'` but not `"`),
   `\\`/`\n`/`\t`/`\r`/`\xNN` escaping, `maxstring` middle-ellipsis fill,
   `maxlong` truncation for ints, `maxlist`/`maxdict` item caps, sorted dict
@@ -343,9 +343,9 @@ native layout records the emitted name separately from its source-level key.
   `fmean`/`mean`/`median`/`median_low`/`median_high`/`variance`/`pvariance`/
   `stdev`/`pstdev` over generic `[T]` defs, so int and float sequences both
   monomorphize without boxing. SCOPE/divergences: results always compute in
-  float (CPython runs exact Fraction arithmetic internally and `median` of an
+  float (Python runs exact Fraction arithmetic internally and `median` of an
   odd-count sequence returns the element itself, preserving int), and errors
-  raise `ValueError` directly (CPython's `StatisticsError` subclasses
+  raise `ValueError` directly (Python's `StatisticsError` subclasses
   `ValueError`, so `except ValueError` behaves identically on both backends).
 
 - **`shutil.jac`** (#7593 item 18) -- `which`/`copyfile`/`copy`/`copy2`/
@@ -357,19 +357,19 @@ native layout records the emitted name separately from its source-level key.
   SCOPE/divergences: copy/copy2 duplicate bytes but do not yet preserve
   mode/mtime metadata; rmtree follows the isdir predicate, so directory
   symlinks are recursed into rather than unlinked; errors raise `ValueError`
-  rather than CPython's `OSError` subclasses. `rmtree` and `move` errors name
+  rather than Python's `OSError` subclasses. `rmtree` and `move` errors name
   the path that failed and end with the `strerror` text.
 
 - **`keyword.jac`** (#7593 item 18) -- `kwlist`/`softkwlist`/`iskeyword`/
-  `issoftkeyword` mirroring CPython's lists verbatim, ordering included
+  `issoftkeyword` mirroring Python's lists verbatim, ordering included
   (stable since 3.10's soft-keyword additions).
 
 - **`fractions.jac`** (#6978 Phase 2) -- a pure-Jac (Mechanism B) `Fraction`
   over native `int`, normalized on construction via Euclid's GCD with the sign
-  carried by the numerator and the denominator kept positive (CPython's value
+  carried by the numerator and the denominator kept positive (Python's value
   model). Construction/reduction (`Fraction(n, d)`), `numerator` /
-  `denominator`, and `str()` match CPython exactly. Arithmetic and ordering are
-  the CPython dunder methods (`__add__` / `__sub__` / `__mul__` / `__truediv__`
+  `denominator`, and `str()` match Python exactly. Arithmetic and ordering are
+  the Python dunder methods (`__add__` / `__sub__` / `__mul__` / `__truediv__`
   / `__eq__` / `__lt__`). The na fixture calls them directly (`a.__add__(b)`)
   where the sv fixture uses `+` / `<`, and the resulting *values* are
   congruent; the operator spellings lower too, since the backend now routes a
@@ -379,11 +379,11 @@ native layout records the emitted name separately from its source-level key.
   Float/Decimal/string construction is out of scope. SCOPE: native `int` is a
   fixed-width i64, so the cross-multiplications in `__add__` / `__lt__` (and
   friends) silently overflow once intermediate products exceed 2^63, where
-  CPython's bignum `Fraction` stays exact; keep components comfortably below
+  Python's bignum `Fraction` stays exact; keep components comfortably below
   ~3x10^9 (sqrt of i64 max).
 
 - **`pathlib.jac`** (#8201) -- a `Path` that carries one normalized POSIX
-  string and derives every member from it, which is CPython's `PurePosixPath`
+  string and derives every member from it, which is Python's `PurePosixPath`
   value model: construction splits on `/`, drops empty and `.` components,
   keeps `..` (collapsing one lexically is not symlink-safe), and preserves the
   POSIX root -- `/`, or the special `//` a leading double slash denotes, which
@@ -393,18 +393,18 @@ native layout records the emitted name separately from its source-level key.
   `.exists()`, `.is_dir()`. Anything outside it does not exist on the type, so
   a native compile that reaches for one fails with "Type `Path` has no
   attribute ..." rather than silently answering wrong.
-  `.stem` follows `os.path.splitext`, which is what CPython's own `stem`
+  `.stem` follows `os.path.splitext`, which is what Python's own `stem`
   reduces to: the last `.` splits the name only when some non-`.` character
   precedes it, so `.bashrc` and `..` are entirely stem, while a trailing dot
-  does split (`b.` has stem `b`) -- that last case is CPython **>= 3.14**
+  does split (`b.` has stem `b`) -- that last case is Python **>= 3.14**
   behavior (3.13 and earlier answered `b.`) and the bundled sv runtime is 3.14.
   SCOPE: POSIX only (no Windows flavour, no drive letter, no
   `PureWindowsPath`). `.resolve()` absolutizes against `os.getcwd()`, resolves
   symlinks through the `realpath(3)` intercept, then collapses `.`/`..`
-  lexically -- byte-identical to CPython for a path that exists, but for a path
+  lexically -- byte-identical to Python for a path that exists, but for a path
   whose components do not all exist `realpath(3)` reports failure and the
   answer falls back to the lexical collapse, so a symlink sitting on an
-  existing *prefix* of a missing path is not resolved the way CPython's
+  existing *prefix* of a missing path is not resolved the way Python's
   component walk resolves it. Comparison, hashing, iteration, `.parts`,
   `.suffix`, `.glob`, `.open`, `.cwd()`, `.home()`, and the whole I/O surface
   are not provided.
@@ -412,12 +412,12 @@ native layout records the emitted name separately from its source-level key.
 - **`fnmatch.jac`** (#8201) -- `fnmatch` and `fnmatchcase` as a direct
   backtracking glob matcher (`*`, `?`, `[seq]`, `[!seq]`, ranges), since the
   native pathway has no regex engine to translate into. The bracket scanner
-  reproduces CPython's `translate` rules exactly: a `]` immediately after `[`
+  reproduces Python's `translate` rules exactly: a `]` immediately after `[`
   or `[!` is a literal member, an unterminated `[` degrades to a literal `[`,
-  and a `-` first or last in a class is a literal `-`. Pinned against CPython
+  and a `-` first or last in a class is a literal `-`. Pinned against Python
   over a 29-pattern by 14-name grid. `normcase` is the identity, which is what
   it is on POSIX, so `fnmatch` and `fnmatchcase` agree here; on Windows
-  CPython's `fnmatch` would case-fold first. `filter` and `translate` are not
+  Python's `fnmatch` would case-fold first. `filter` and `translate` are not
   provided.
 
 - **`logging.jac`** (#8201, rewritten for #6978) -- the level constants,
@@ -429,11 +429,11 @@ native layout records the emitted name separately from its source-level key.
   `basicConfig`, `disable`, `shutdown`, and the module-level `debug`/`info`/
   `warning`/`error`/`critical`/`exception`/`log`. `Formatter` substitutes
   `%(asctime)s` (through `strftime(3)` on `localtime_r(3)`, so `datefmt` is the
-  C format string CPython also passes), `%(levelname)s`, `%(levelno)s|d`,
+  C format string Python also passes), `%(levelname)s`, `%(levelno)s|d`,
   `%(name)s`, `%(message)s`, `%(pathname)s`, `%(filename)s`, `%(module)s`,
   `%(lineno)s|d`, `%(funcName)s`, `%(created)f`, `%(msecs)d`, and
   `%(relativeCreated)d`; unknown fields are left verbatim. Records with no
-  handler anywhere on the chain fall back to CPython's last-resort stderr
+  handler anywhere on the chain fall back to Python's last-resort stderr
   write for WARNING and above.
 
   SCOPE: `StreamHandler`/`FileHandler` are factory *functions* over one
@@ -445,25 +445,25 @@ native layout records the emitted name separately from its source-level key.
   `exc_info`/`stack_info`, `Filter`/`Filterer`, `LoggerAdapter`,
   `dictConfig`/`fileConfig`, and the rotating handlers are not provided;
   `LogRecord` takes keyword fields (`name=`, `level=`, `pathname=`, `lineno=`,
-  `msg=`) rather than CPython's positional `args`/`exc_info` tail. `disable`
-  is a module-wide threshold as on CPython.
+  `msg=`) rather than Python's positional `args`/`exc_info` tail. `disable`
+  is a module-wide threshold as on Python.
 
 - **`contextvars.jac`** (#8201, held back by #8220 until #8229 and #8230
   landed) -- `ContextVar[T]` as a single process-wide cell: `ContextVar(name)`
   and `` ContextVar(name, `default=...) ``, `.name`, `.get()`, `.get(default)`,
-  `.set(value)` and `.reset(token)`. `get` walks CPython's precedence -- the
+  `.set(value)` and `.reset(token)`. `get` walks Python's precedence -- the
   value last `set`, else the default the call passed, else the default the
   constructor took, else `LookupError(name)`. `set` returns a `Token[T]`
   (the class is the internal `ContextVarToken`, with `Token` its public alias, because a native
   program identifies classes by bare name and the compiler has its own
   `Token`) carrying `.var` and `.old_value`, and `reset(token)` restores the value the
   variable held before that `set`, or unsets it when it held none. As in
-  CPython, a token can be used once (`RuntimeError` on the second `reset`),
+  Python, a token can be used once (`RuntimeError` on the second `reset`),
   only by the variable that made it (`ValueError` otherwise), and as a
   context manager that resets on exit. An omitted default (to the
   constructor or to `get`) is a private `_NoDefault` marker rather than
   `None`, so `` ContextVar(name, `default=None) `` and `get(None)` answer
-  `None` exactly as CPython does.
+  `None` exactly as Python does.
   Any type argument lowers except a tagged `any` union such as `int | str`:
   a reference type (an archetype, `list`, `dict`) directly, and a by-value
   one (`int`, `float`, `bool`, `str`, a tuple, or an option of any of these
@@ -471,21 +471,21 @@ native layout records the emitted name separately from its source-level key.
   layout gives `T`, so `0`, `False` and `""` stay distinct from the null that
   spells None (#8229). `ContextVar[int | str]` is refused at the construction
   site with `E5092` naming the instantiation.
-  SCOPE: `Token.old_value` answers `None` where CPython answers
+  SCOPE: `Token.old_value` answers `None` where Python answers
   `Token.MISSING` for a variable that had no value. There is one cell per
   variable rather than one per context, because the native pathway has
   neither asyncio tasks nor threads to separate them, so `copy_context` and
   `Context.run` are not provided. A numeric value is boxed at the
   instantiation's type, so an `int` stored into a `ContextVar[float]` reads
-  back as a float where CPython keeps the `int`.
+  back as a float where Python keeps the `int`.
 
 - **`colorsys.jac`** (#6978) -- the six RGB/YIQ/HLS/HSV conversions
   (`rgb_to_yiq`, `yiq_to_rgb`, `rgb_to_hls`, `hls_to_rgb`, `rgb_to_hsv`,
   `hsv_to_rgb`) plus `ONE_THIRD`/`ONE_SIXTH`/`TWO_THIRD`. A direct
-  transliteration of CPython's pure-Python module, including the FCC NTSC
+  transliteration of Python's pure-Python module, including the FCC NTSC
   constants, the `yiq_to_rgb` clamping, the `gh-106498` `2.0-maxc-minc`
   saturation form, and `int()`-truncating hue sector selection, so the outputs
-  are bit-identical to CPython's.
+  are bit-identical to Python's.
 
 - **`uuid.jac`** (#6978, Mechanism F over the `_csprng_native` OpenSSL floor
   and the bundled `hashlib`) -- `UUID` with the `hex`/`bytes`/`bytes_le`/
@@ -497,27 +497,27 @@ native layout records the emitted name separately from its source-level key.
   `getnode`, `uuid1`, `uuid3`, `uuid4`, `uuid5`, `uuid6`, `uuid7`, `uuid8`,
   the four `NAMESPACE_*` constants, `NIL`, `MAX`, and the four variant strings.
   A UUID is stored as its 16 big-endian bytes, so `version` is `int | None`
-  exactly as on CPython (it is `None` unless the variant is RFC 4122).
-  `uuid1`/`uuid6`/`uuid7` keep CPython's monotonicity guards.
+  exactly as on Python (it is `None` unless the variant is RFC 4122).
+  `uuid1`/`uuid6`/`uuid7` keep Python's monotonicity guards.
 
   SCOPE: the 128-bit `.int` attribute and `int=` constructor form have no i64
   representation and are absent; the raw 16 bytes read through `to_bytes()`
   rather than a `.bytes` property (`bytes` names the builtin type), and the
   keyword is `bytes=` on the constructor. `fields=` takes any 6-element
-  sequence (CPython accepts the same). `is_safe`/`SafeUUID` and the
+  sequence (Python accepts the same). `is_safe`/`SafeUUID` and the
   `uuid_generate_time_safe(3)` fast path are not provided, so `uuid1` always
   takes the pure-Jac path. `getnode` reads `/sys/class/net/*/address` (skipping
   `lo`) and otherwise falls back to a random multicast node; on non-Linux hosts
   only the random fallback applies. The result is cached for the process, as it
-  is on CPython.
+  is on Python.
 
 - **`sched.jac`** (#6978) -- `Event` and `scheduler` with
   `enterabs`/`enter`/`cancel`/`empty`/`run`/`queue` and the
   `timefunc`/`delayfunc` constructor hooks (defaulting to `time.monotonic` and
   `time.sleep`). The queue is kept in `(time, priority, sequence)` order, which
-  is exactly the order CPython's heap pops in, so `queue` and `run` agree.
+  is exactly the order Python's heap pops in, so `queue` and `run` agree.
   `cancel` on an event that is no longer queued raises
-  `ValueError("list.remove(x): x not in list")` as CPython's `list.remove`
+  `ValueError("list.remove(x): x not in list")` as Python's `list.remove`
   does.
 
   SCOPE: actions are zero-argument callables (`Callable[[], None]`); a
@@ -525,27 +525,27 @@ native layout records the emitted name separately from its source-level key.
   into the call, because the native pathway cannot marshal a dynamic-arity
   call. Bind arguments in a closure instead. `Event` is an `obj` with the same
   six fields rather than a `namedtuple`, and there is no lock (`sched` is not
-  thread-safe here; CPython's `RLock` is).
+  thread-safe here; Python's `RLock` is).
 
 - **`ipaddress.jac`** (#6978) -- `IPv4Address`/`IPv6Address` (string, integer
   and packed-bytes constructors, `+`/`-`, ordering, `packed`, `exploded`,
   `compressed`, `reverse_pointer`, and the whole `is_*` predicate family driven
-  by CPython's own network tables), `IPv4Network`/`IPv6Network` (strict
+  by Python's own network tables), `IPv4Network`/`IPv6Network` (strict
   parsing, `netmask`/`hostmask`/`prefixlen`/`num_addresses`, `hosts`,
   `subnets`/`supernet`, `__contains__`, `overlaps`, `subnet_of`/`supernet_of`,
   `compare_networks`, `address_exclude`), `IPv4Interface`/`IPv6Interface`, the
   `ip_address`/`ip_network`/`ip_interface` factories, `summarize_address_range`
   and `collapse_addresses`. `AddressValueError` and `NetmaskValueError` are
-  `ValueError` subclasses with CPython's messages, exactly as there. CPython
+  `ValueError` subclasses with Python's messages, exactly as there. Python
   properties are `has x { getter; }` so `a.packed` reads identically on both
-  backends; CPython methods stay `def`s.
+  backends; Python methods stay `def`s.
 
   SCOPE: an IPv6 address is an unsigned 128-bit `(hi, lo)` i64 pair, so there
   is no `.int`; `hosts()`/`subnets()` materialize a list rather than returning
   a generator; `__hash__`, pickling, and `ipaddress.v4_int_to_packed`-style
   private helpers are not provided. `IPv6Address.teredo` is not provided; its
   halves exist only as the internal `_teredo_server` and `_teredo_client`
-  (each `IPv4Address | None`): CPython's
+  (each `IPv4Address | None`): Python's
   single 2-tuple-or-`None` property has to be typed `any` here, and a tuple of
   objects boxed into `any` does not lower -- it fails a native build closure
   outright ("Declarations in the native closure could not lower") and, worse,
@@ -558,11 +558,11 @@ native layout records the emitted name separately from its source-level key.
   `add_type`, `guess_type`, `guess_file_type`, `guess_all_extensions`,
   `guess_extension` and `read`, the module-level wrappers, `init`,
   `read_mime_types`, and the `suffix_map`/`encodings_map`/`types_map`/
-  `common_types` tables. The default tables are CPython 3.14's verbatim (in
+  `common_types` tables. The default tables are Python 3.14's verbatim (in
   insertion order, so the preferred extension of a type still comes first), and
   the module reads the same `knownfiles` list (`/etc/mime.types` and friends)
   at import, so a configured host sees the same answers on both backends.
-  `guess_type` reproduces CPython's suffix-map chaining (`.tgz` ->
+  `guess_type` reproduces Python's suffix-map chaining (`.tgz` ->
   `.tar.gz`), case-sensitive encoding suffixes vs case-insensitive type
   suffixes, the `data:` URL rules, and the "scheme longer than one character"
   test that keeps Windows drive letters on the path branch.
@@ -575,13 +575,13 @@ native layout records the emitted name separately from its source-level key.
 - **`locale.jac`** (#6978, Mechanism F) + **`_locale_native.linux.jac`** /
   **`_locale_native.darwin.jac`** (FFI floor over `setlocale(3)`,
   `localeconv(3)`, `nl_langinfo(3)`, `strcoll(3)` and `strxfrm(3)`) +
-  **`_locale_tables.jac`** (CPython's `locale_alias` and
+  **`_locale_tables.jac`** (Python's `locale_alias` and
   `locale_encoding_alias`, generated verbatim) -- the `LC_*` category
   constants (per-OS, from the floor), `CHAR_MAX`, `Error`, `setlocale`,
   `localeconv`, `getencoding`, `getpreferredencoding`, `getlocale`,
   `getdefaultlocale`, `strcoll`, `strxfrm`, `normalize`, `atof`, `atoi`,
   `delocalize`, `localize`,
-  `format_string` and `currency`. `normalize` is CPython's four-stage lookup
+  `format_string` and `currency`. `normalize` is Python's four-stage lookup
   including the `@euro` modifier rewrite and the `:`-as-encoding-delimiter
   form; `_group`/`_strip_padding`/`localize`/`currency` are its grouping and
   sign-position algorithms line for line.
@@ -605,7 +605,7 @@ native layout records the emitted name separately from its source-level key.
   `dngettext`, `dpgettext`, `dnpgettext` and the module-level
   `gettext`/`ngettext`/`pgettext`/`npgettext`.
 
-  The C plural-form expression is the interesting part: CPython's `c2py`
+  The C plural-form expression is the interesting part: Python's `c2py`
   compiles it to a Python lambda through `exec`, which the native pathway
   cannot do. Here `c2py` tokenizes and parses the same grammar (the same
   operator set, the same six precedence levels, the same left-associative
@@ -618,22 +618,22 @@ native layout records the emitted name separately from its source-level key.
   builtins and are absent; `translation` takes no `class_` and does not cache
   parsed catalogues; `find` returns `str | None` and has no `all=True` form; catalogues are read as bytes by path (no file objects); and
   the plural lookup is keyed by msgid into a `dict[str, list[str]]` rather than
-  CPython's `(msgid, index)` tuple keys.
+  Python's `(msgid, index)` tuple keys.
 
-- **`io.jac`** (Mechanism B) -- `BytesIO` (the CPython `io.BytesIO` value
+- **`io.jac`** (Mechanism B) -- `BytesIO` (the Python `io.BytesIO` value
   model: `read`/`read1`/`write`/`seek`/`tell`/`getvalue`/`seek`-relative
   `whence`, growth-with-NUL-fill on a seek-past-end write, `close`, context
   manager) plus a `BufferedIOBase` name whose abstract methods raise, and the
   `SEEK_*` / `DEFAULT_BUFFER_SIZE` constants. On the sv pathway `import io`
-  binds CPython's real `io` (same source, different binding), so the API
+  binds Python's real `io` (same source, different binding), so the API
   names/semantics match. DIVERGENCE: `BytesIO` is a **standalone** class rather
   than a `BufferedIOBase` subclass -- the native pathway does not yet support
   cross-module vtable dispatch (calling an overridden method through a
   base-typed reference defined in another module aborts at run time), so the
   bundled readers avoid inheritance across the module boundary. `FileIO` is
-  CPython's raw binary file for reading: `FileIO(path, mode="r")` over the
+  Python's raw binary file for reading: `FileIO(path, mode="r")` over the
   `_file_native.jac` stdio floor, with `read(size=-1)`, `readall`, `seek` over
-  every `whence`, `tell`, `close`, the context manager, and CPython's `name`,
+  every `whence`, `tell`, `close`, the context manager, and Python's `name`,
   `mode == "rb"` and `closed`; a missing file raises `FileNotFoundError` and a
   closed one `ValueError`. It is what a ranged read (`seek` then `read(n)`)
   spells on both pathways, e.g. the stub catalog embedded in the `jac`
@@ -642,12 +642,12 @@ native layout records the emitted name separately from its source-level key.
   `BufferedReader`/`BufferedWriter` wrappers).
 
 - **`compression/zstd.jac`** (Mechanism F) + **`_zstd_native.jac`** (FFI
-  floor over the bundled `libzstd`, zstd 1.5.7) -- the CPython 3.14
+  floor over the bundled `libzstd`, zstd 1.5.7) -- the Python 3.14
   `compression.zstd` read subset: `compress(data, level=3)` (one-shot
-  `ZSTD_compress2` with `ZSTD_c_compressionLevel`; byte-identical to CPython at
+  `ZSTD_compress2` with `ZSTD_c_compressionLevel`; byte-identical to Python at
   the same level, both over the same library), `decompress(data)` (loops
   `ZSTD_decompressStream` across MULTIPLE concatenated frames, exactly as
-  CPython does), `ZstdDecompressor` (`decompress(data, max_length=-1)`, `eof`,
+  Python does), `ZstdDecompressor` (`decompress(data, max_length=-1)`, `eof`,
   `needs_input`, `unused_data` -- single-frame semantics with the remainder
   surfaced as `unused_data`, `d_windowLogMax` raised to 27), read-mode
   `ZstdFile(file: io.BytesIO, mode="rb")` that pulls 1 MiB compressed chunks
@@ -667,7 +667,7 @@ native layout records the emitted name separately from its source-level key.
 
 - **`tarfile.jac`** (Mechanism B) + **`_tarfile_native.jac`** (tiny libc FFI
   floor: `chmod`/`symlink`/`link`/`utime`/`creat`/`write`) -- a streaming-read
-  subset of CPython 3.14 `tarfile`: `open(name=None, mode="r", fileobj=None)`
+  subset of Python 3.14 `tarfile`: `open(name=None, mode="r", fileobj=None)`
   supporting `"r"`/`"r:"`/`"r|"`, `TarInfo`
   (`name`/`size`/`mtime`/`mode`/`type`/`linkname`/`uid`/`gid`/`uname`/`gname`
   plus `isfile`/`isdir`/`issym`/`islnk`/`isreg`), `TarFile`
@@ -679,13 +679,13 @@ native layout records the emitted name separately from its source-level key.
   `0`/`\0`/`5`/`2`/`1`/`x` (pax `path`/`linkpath`/`size`/`mtime` records)/`g`
   (global pax, skipped)/`L`/`K` (GNU long name/link), padding to 512-byte
   blocks. `extractall` creates parent dirs, writes regular files, makes dirs,
-  and applies `mode & 0o777` via a libc `chmod` plus the CPython `data`-filter
+  and applies `mode & 0o777` via a libc `chmod` plus the Python `data`-filter
   permission rules (`mode & 0o755`, clear exec if not user-exec, `| 0o600` for
   files; directories/symlinks keep the system mode). The `data` filter's path
   containment, absolute-path, and absolute-link checks are enforced, raising the
-  CPython `FilterError` subclasses. DIVERGENCES: read-only (`w`/`a`/`x` raise);
+  Python `FilterError` subclasses. DIVERGENCES: read-only (`w`/`a`/`x` raise);
   the whole archive is materialized as `bytes` at `open()` (so `"r|"` diverges
-  from CPython's incremental stream in memory profile only -- the extracted tree
+  from Python's incremental stream in memory profile only -- the extracted tree
   is identical); a compressed `fileobj` must be a `compression.zstd.ZstdFile`
   (a plain `io.BytesIO` fileobj is not accepted on na -- use `name=` for an
   uncompressed file), and it must be called **module-qualified**
@@ -694,7 +694,7 @@ native layout records the emitted name separately from its source-level key.
   links are created via libc `link`/`symlink` when trivial. Native-host only.
   Pinned sv<->na congruent by `test_tarfile_equivalence.jac`.
 - **`math.jac`** (#6404, Mechanism B) + **`_math_native.jac`** (FFI floor over
-  the host `m`/libm) -- a pure-Jac surface of ~50 CPython-congruent endpoints
+  the host `m`/libm) -- a pure-Jac surface of ~50 Python-congruent endpoints
   replacing the old Mechanism-A compiler intercepts: constants
   (`pi`/`e`/`tau`/`inf`/`nan`), the trig/hyperbolic/exp/log family,
   rounding-to-int (`floor`/`ceil`/`trunc`), integer functions
@@ -703,15 +703,15 @@ native layout records the emitted name separately from its source-level key.
   (`isnan`/`isinf`/`isfinite`/`isclose`), float-bit
   decomposition/recomposition (`frexp`/`modf`/`ldexp`/`nextafter`/`ulp`), and
   the iterable reducers (`prod`/`fsum`/`hypot`/`dist`/`sumprod`). Raises match
-  CPython 3.14 **type-and-message** exactly (e.g. `sqrt(-1)` ->
+  Python 3.14 **type-and-message** exactly (e.g. `sqrt(-1)` ->
   `ValueError: expected a nonnegative input, got -1.0`; `log(4, 1)` ->
   `ZeroDivisionError: division by zero`; `fsum([inf, -inf])` ->
   `ValueError: -inf + inf in fsum`), pinned in `prim_math.jac`.
-  Results are CPython's, not merely close to them: the libm wrappers call the
-  same host libm CPython calls, `gamma`/`lgamma` are ports of CPython's own
-  Lanczos `m_tgamma`/`m_lgamma` (CPython does not use libm for these), and
+  Results are Python's, not merely close to them: the libm wrappers call the
+  same host libm Python calls, `gamma`/`lgamma` are ports of Python's own
+  Lanczos `m_tgamma`/`m_lgamma` (Python does not use libm for these), and
   `hypot`/`dist` port its `vector_norm` and `sumprod` its triple-length
-  accumulator. Where CPython's C build fuses a multiply-add (clang contracts
+  accumulator. Where Python's C build fuses a multiply-add (clang contracts
   `a*b + c` into one rounding on aarch64, never on baseline x86-64),
   `_math_fused.jac`'s `fmadd` calls the runtime floor's `__jac_fmadd`, which
   is fused or unfused the same way on each target. A
@@ -730,35 +730,35 @@ native layout records the emitted name separately from its source-level key.
   inlines the generic `a_clz_64` from musl's `atomic.h` in place of the
   arch include), and `erfc` ships inside the vendored `erf.c`. SCOPE/divergences:
   integer results are i64-bounded -- `factorial`, `comb`, `perm`, and `lcm`
-  raise `OverflowError` where CPython returns a bignum, and `prod`/`sumprod`
+  raise `OverflowError` where Python returns a bignum, and `prod`/`sumprod`
   raise at the i64 boundary instead of silently degrading to float; and
   parameters are statically typed rather than dispatched through
   `__index__`/`__float__`/`__trunc__`. Both plain `import math` and
   `import from math { ... }` bind it.
 - **`cmath.jac`** (Mechanism B, over the same `_math_native` libm floor) --
-  a pure-Jac port of CPython's `cmathmodule.c` complex algorithms: the full
+  a pure-Jac port of Python's `cmathmodule.c` complex algorithms: the full
   inverse-trig/hyperbolic family (`acos`/`acosh`/`asin`/`asinh`/`atan`/
   `atanh`), `cos`/`cosh`/`sin`/`sinh`/`tan`/`tanh`, `exp`, `sqrt`, `log`
   (incl. the two-arg base form), `log10`, `phase`, `polar`, `rect`,
   `isfinite`/`isinf`/`isnan`/`isclose`, and constants `pi`/`e`/`tau`/`inf`/
-  `nan`/`infj`/`nanj`. CPython's special-value tables for every finite/
+  `nan`/`infj`/`nanj`. Python's special-value tables for every finite/
   infinite/zero/NaN real-imaginary combination are carried over verbatim, so
   branch cuts, signed zeros, and `inf`/`nan` propagation match; error paths
   raise the same type-and-message (`ValueError: math domain error`,
   `OverflowError: math range error`), pinned in `prim_cmath.jac`. SCOPE:
-  parameters are `complex`-typed -- unlike CPython, a plain `float`/`int`
+  parameters are `complex`-typed -- unlike Python, a plain `float`/`int`
   argument is not implicitly coerced (pass `complex(x, 0.0)`); results are
-  native `JacComplex` values; and results can differ from CPython's in the
+  native `JacComplex` values; and results can differ from Python's in the
   last one or two bits (the C build's optimizer reorders the same formulas).
   The complex operators themselves (`+ - * / **`, including mixed
-  `complex`/real operands) are lowered by the compiler after CPython 3.14's
+  `complex`/real operands) are lowered by the compiler after Python 3.14's
   `complexobject.c`: C99 Annex G mixed-mode rules (signed zeros and
   infinities survive `1.0 - z`, `z * 2.0`, ...), infinity recovery in `*`
   and `/`, `ZeroDivisionError("division by zero")`, and `_Py_c_pow` /
   `c_powi` with `OverflowError("complex exponentiation")`. The libm wrappers
   link against host libm on native and against the vendored musl bitcode on
   wasm.
-- **`itertools.jac`** (#8145) -- the CPython 3.14 `itertools` surface as
+- **`itertools.jac`** (#8145) -- the Python 3.14 `itertools` surface as
   pure-Jac generators: `count` (int and float start/step), `cycle`,
   `repeat`, `accumulate` (default `+` over int/float/str plus a custom
   `func`, `initial=` included), `batched` (`strict=` included), `chain`
@@ -768,33 +768,33 @@ native layout records the emitted name separately from its source-level key.
   `islice`, `pairwise`, `permutations`, `product` (`repeat=` included),
   `starmap`, `tee`, and `zip_longest` (`fillvalue=` included).
   `islice` splits its arguments on call arity, so `islice(it, 2)` is a
-  stop and `islice(it, 2, None)` a start exactly as CPython's positional
+  stop and `islice(it, 2, None)` a start exactly as Python's positional
   forms distinguish them, and non-integer/negative arguments raise the
   same `ValueError` text (`"Start/Stop argument for islice() must be None
   or an integer: 0 <= x <= sys.maxsize."`, `"Step for islice() must be a
-  positive integer or None."`) while a wrong arity raises CPython's
+  positive integer or None."`) while a wrong arity raises Python's
   `TypeError` (`"islice expected at least/most N arguments, got M"`).
-  Negative `r`/`repeat`/`n` raise CPython's `ValueError`s
+  Negative `r`/`repeat`/`n` raise Python's `ValueError`s
   (`"r must be non-negative"`, `"repeat argument cannot be negative"`,
   `"n must be at least one"`, `"n must be >= 0"`, `"batched():
   incomplete batch"`). SCOPE/divergences: `chain.from_iterable` cannot be
   spelled on na (`chain` is a function, not a class), so code that uses it
   is placed in Python;
   the zero-argument `zip_longest()` and the zero/five-argument `islice`
-  arity `TypeError`s behave as CPython does at runtime but are probed
+  arity `TypeError`s behave as Python does at runtime but are probed
   standalone (the sv lane's checker enforces the typeshed arity, so those
   shapes cannot appear in an equivalence fixture);
   `groupby` yields `(key, list)` snapshots instead of lazily-invalidated
   `_grouper` iterators, so a group is still readable after advancing
-  where CPython's is not (a superset, safe for collect-each-group use);
+  where Python's is not (a superset, safe for collect-each-group use);
   `tee` eagerly materializes the source into `n` independent `list`s --
   same values, but the full memory cost is paid up front and the returned
   children are re-iterable lists, not one-shot shared-head iterators; `zip_longest`
   materializes every input *before* the first yield, so an infinite
-  input hangs where CPython streams (finite inputs are congruent);
+  input hangs where Python streams (finite inputs are congruent);
   `count`/`accumulate` arithmetic is i64/f64 bounded, not bignum; and
   `repeat`'s `times` is typed `int | None`, so a non-integer count fails
-  at the Jac call boundary rather than through CPython's `__index__`
+  at the Jac call boundary rather than through Python's `__index__`
   coercion. **Callables:** `dropwhile`, `takewhile`, `filterfalse`,
   `groupby`'s `key=`, `accumulate`'s `func`, and `starmap`'s `func` are
   typed `Callable` parameters (a boxed `any` has no native call path), so
@@ -815,14 +815,14 @@ native layout records the emitted name separately from its source-level key.
   children, are all `list[any]` (a native tuple is a fixed-arity literal
   struct, so `tuple(iterable)` is not a lowered builtin and a boxed
   `any` only subscripts as a list). Values and order are identical to
-  CPython; only the container type differs, so na rows are mutable where
-  CPython's are not. Pinned sv<->na congruent by `prim_itertools.jac`.
+  Python; only the container type differs, so na rows are mutable where
+  Python's are not. Pinned sv<->na congruent by `prim_itertools.jac`.
 
 - **`time.jac`** (Mechanism F surface) + **`_time_common.jac`** (shared
   `clock_gettime` / `clock_settime` FFI and timespec loads) +
   **`_time_native.jac`** (the target libc's clock ids and sleep, from the
   runtime floor's `__jac_clock_id` and `__jac_sleep_ns`: an absolute
-  `clock_nanosleep` on Linux, a `nanosleep` loop on Darwin) -- the clock half of CPython's
+  `clock_nanosleep` on Linux, a `nanosleep` loop on Darwin) -- the clock half of Python's
   `time` module, replacing the former Mechanism-A intercept: `time`,
   `time_ns`, `monotonic`, `monotonic_ns`, `perf_counter`, `perf_counter_ns`,
   `process_time`, `process_time_ns`, `thread_time`, `thread_time_ns`,
@@ -830,14 +830,14 @@ native layout records the emitted name separately from its source-level key.
   `CLOCK_REALTIME` / `CLOCK_MONOTONIC` / `CLOCK_MONOTONIC_RAW` /
   `CLOCK_PROCESS_CPUTIME_ID` / `CLOCK_THREAD_CPUTIME_ID` (per-OS values via
   the floor). `sleep` parks on an absolute `clock_nanosleep(CLOCK_MONOTONIC,
-  TIMER_ABSTIME)` deadline the way CPython's `pysleep` does (a relative
+  TIMER_ABSTIME)` deadline the way Python's `pysleep` does (a relative
   `nanosleep` remainder loop on Darwin), retries on `EINTR`, and matches
-  CPython's error behavior: `ValueError("sleep length must be
+  Python's error behavior: `ValueError("sleep length must be
   non-negative")` on negative input, `ValueError` on NaN, and
   `OverflowError("timestamp out of range for platform time_t")` on inputs
   (including infinities) whose nanoseconds do not fit an i64. Clock
   failures route through `_errno_native.raise_errno`, so they carry
-  CPython's `[Errno N]` message AND the mapped `OSError` subclass
+  Python's `[Errno N]` message AND the mapped `OSError` subclass
   (`PermissionError` for `EPERM`/`EACCES`, ...).
   SCOPE/divergences: the calendar/`struct_time` family (`localtime`,
   `gmtime`, `mktime`, `ctime`, `asctime`, `strftime`, `strptime`, `tzset`,
@@ -846,13 +846,13 @@ native layout records the emitted name separately from its source-level key.
   `clock_getres`, and `clock_settime` are absent because their bare names
   collide with the floor's C externs in the shared native symbol table --
   use `clock_gettime_ns` / `clock_settime_ns`; `perf_counter` is
-  `CLOCK_MONOTONIC`, matching CPython on POSIX; `sleep` takes float
+  `CLOCK_MONOTONIC`, matching Python on POSIX; `sleep` takes float
   seconds. Each floor call packs the `timespec` into a 16-byte buffer it
   allocates for itself, so the module is safe to call from any thread
   (the native backend spawns real ones). Native-host only.
 - **`sqlite3.jac`** (Mechanism F surface) + **`_sqlite3_native.jac`** (FFI
   floor over the system `libsqlite3`, 3.53.x) -- the DB-API 2.0 core of
-  CPython 3.14 `sqlite3`: `connect()` (with the full CPython kwarg set --
+  Python 3.14 `sqlite3`: `connect()` (with the full Python kwarg set --
   `database`/`timeout`/`detect_types`/`isolation_level`/`check_same_thread`/
   `factory`/`cached_statements`/`uri`/`autocommit`; `timeout`, `uri`,
   `isolation_level` and `autocommit` are honored, the rest are accepted for
@@ -863,26 +863,26 @@ native layout records the emitted name separately from its source-level key.
   `lastrowid`/`arraysize`/`connection`/`close`/iteration), `complete_statement`,
   `Binary`, `apilevel`/`paramstyle`/`threadsafety`/`sqlite_version`/
   `sqlite_version_info`, the `PARSE_*`/`LEGACY_TRANSACTION_CONTROL`/
-  `SQLITE_*` constants, and the full CPython exception hierarchy (`Error` ->
+  `SQLITE_*` constants, and the full Python exception hierarchy (`Error` ->
   `InterfaceError`/`DatabaseError` -> `InternalError`/`OperationalError`/
   `ProgrammingError`/`IntegrityError`/`DataError`/`NotSupportedError`).
   Parameter binding covers positional `?`, numbered `?N`, named `:name`,
   `@name`, and `$name` (dict params), plus `NULL`/`bool`/`int`/`float`/`str`/
   `bytes`-blob values; params accept list, tuple, or dict; transaction
-  semantics follow CPython's legacy mode (DML opens an implicit transaction,
+  semantics follow Python's legacy mode (DML opens an implicit transaction,
   DDL does not; `executescript` commits first), plus the 3.12+ `autocommit`
   kwarg (`True` suppresses implicit BEGIN, `False` opens one before every
   statement, `LEGACY_TRANSACTION_CONTROL` keeps legacy mode).
   `isolation_level` is validated case-insensitively against
   `''`/`DEFERRED`/`IMMEDIATE`/`EXCLUSIVE`. A per-connection prepared
-  statement pool (mirrors CPython's `cached_statements=128` LRU as plain
+  statement pool (mirrors Python's `cached_statements=128` LRU as plain
   FIFO-cap eviction) survives `execute`/`fetch` cycles; `reset` +
   `clear_bindings` re-arms pooled statements. The one-statement tail check
   inspects the raw `pzTail` bytes for non-whitespace via aligned
-  `__mem_load_i64` reads (never prepares the tail, matching CPython's
+  `__mem_load_i64` reads (never prepares the tail, matching Python's
   `*tail <= ' '` whitespace test). `Cursor.setinputsizes`/`setoutputsize`
   exist as no-ops. Error parity is class AND `sqlite3_errmsg` text,
-  probed against CPython 3.14. DIVERGENCES: rows and `description` entries
+  probed against Python 3.14. DIVERGENCES: rows and `description` entries
   materialize as `list`, not `tuple` (the native boundary has no tuple
   boxing); `Binary()` returns `bytes`, not `memoryview`; `database` accepts
   `str`/`bytes` but not `os.PathLike`; `check_same_thread`, `factory`, and
@@ -890,7 +890,7 @@ native layout records the emitted name separately from its source-level key.
   invalid `isolation_level`/`autocommit` is validated lazily at the next
   implicit `BEGIN` rather than at assignment (plain `has` fields have no
   setter hook); exceptions carry no `sqlite_errorcode`/`sqlite_errorname`
-  attributes; CPython 3.12+ mixed-parameter-style `DeprecationWarning`s are
+  attributes; Python 3.12+ mixed-parameter-style `DeprecationWarning`s are
   not emitted (no warnings module natively); invalid-UTF-8 TEXT columns
   return the decode result of the bytes rather than falling back to
   `bytes`; `row_factory`/`text_factory`/`create_function`/
@@ -909,7 +909,7 @@ native layout records the emitted name separately from its source-level key.
   the Linux-numbered constant set plus `signal`/`getsignal`/`raise_signal`/
   `alarm`/`pause`/`strsignal`/`valid_signals`/`pthread_sigmask`/
   `default_int_handler`. User handlers dispatch through a C-ABI trampoline
-  that delivers `(signum, None)` where CPython delivers `(signum, frame)`.
+  that delivers `(signum, None)` where Python delivers `(signum, frame)`.
   `SIG_DFL`/`SIG_IGN` are sentinel callables that `signal()` maps onto real
   kernel dispositions; `getsignal` answers from a shadow dict since libc
   cannot distinguish a Jac trampoline from a real handler. FFI names carry
@@ -924,7 +924,7 @@ native layout records the emitted name separately from its source-level key.
   Linux only (signal numbers are glibc/Linux-specific, so
   the module carries the `.linux.` suffix and other platforms get a clean
   "not provided" rather than a link error); `valid_signals` and
-  `pthread_sigmask` return a `list` where CPython returns a `set`;
+  `pthread_sigmask` return a `list` where Python returns a `set`;
   `default_int_handler` is exported but not installed on `SIGINT`, so Ctrl-C
   terminates the process rather than raising `KeyboardInterrupt`;
   `sigwait`/`sigwaitinfo`/`setitimer`/`getitimer` are not provided.
@@ -935,76 +935,76 @@ native layout records the emitted name separately from its source-level key.
   `ioctl(2)`; per-OS `F_*`/`O_*` flag values) -- `fcntl(fd, cmd, arg=0)`
   for the `F_GETFL`/`F_SETFL`/`F_GETFD`/`F_SETFD`/`F_SETOWN` family and
   `ioctl(fd, request, arg)` with a `bytes` arg (e.g. the packed `winsize`
-  for `termios`'s `TIOCGWINSZ`). As in CPython, `ioctl` copies `arg` into a
+  for `termios`'s `TIOCGWINSZ`). As in Python, `ioctl` copies `arg` into a
   private 1024-byte buffer followed by a guard, so the request writes
   memory the call owns whatever size the caller passed, and answers fresh
   `bytes` of `len(arg)`; the caller's object is never written. An `arg`
   longer than 1024 bytes raises `ValueError`, and a request that writes
   past `len(arg)` (a short buffer) is caught by the guard. Both calls
-  retry on `EINTR`, as CPython's do (PEP 475). The
+  retry on `EINTR`, as Python's do (PEP 475). The
   `fcntl(2)` extern is declared at fixed arity (the flag word as `i64`),
   the ABI shape the calls here make. DIVERGENCES: the short-buffer case
-  raises `RuntimeError("buffer overflow")` where CPython raises
+  raises `RuntimeError("buffer overflow")` where Python raises
   `SystemError` (no native `SystemError`); an int or mutable-buffer `arg`
   to `ioctl` is not accepted; errors
-  raise `ValueError` carrying CPython's `[Errno N] <strerror>` text where
-  CPython raises `OSError`; `flock`/`lockf` and the `struct flock`
+  raise `ValueError` carrying Python's `[Errno N] <strerror>` text where
+  Python raises `OSError`; `flock`/`lockf` and the `struct flock`
   commands are not provided. Pinned sv<->na congruent by
   `prim_fcntl.jac`.
 - **`termios.jac`** (Mechanism F) + **`_termios_native.linux.jac`** /
   **`_termios_native.darwin.jac`** (libc FFI floor: `tcgetattr(3)` /
   `tcsetattr(3)` / `cfgetispeed(3)` / `cfgetospeed(3)` over an opaque
   `struct termios` image; per-OS layout and constants) --
-  CPython-shaped `tcgetattr(fd)` / `tcsetattr(fd, when, attrs)` over the
+  Python-shaped `tcgetattr(fd)` / `tcsetattr(fd, when, attrs)` over the
   `[iflag, oflag, cflag, lflag, ispeed, ospeed, cc]` form with `cc` as
   `NCCS` ints (32 on glibc, 20 on darwin), plus the V*/I*/O*/C*/L*
   constant groups, `TCSANOW`/`TCSADRAIN`/`TCSAFLUSH`, and `TIOCGWINSZ`.
   The raw struct bytes travel opaquely through the floor, so a
-  save/restore pair is byte-exact for every byte the CPython shape
-  carries; speeds are read the way CPython reads them (`cfget*`).
-  `tcsetattr` packs over the fd's current `struct termios` (as CPython
-  does), so bytes outside the CPython shape (glibc's `c_line`) keep their
-  values, and it rejects malformed attributes with CPython's `TypeError`
+  save/restore pair is byte-exact for every byte the Python shape
+  carries; speeds are read the way Python reads them (`cfget*`).
+  `tcsetattr` packs over the fd's current `struct termios` (as Python
+  does), so bytes outside the Python shape (glibc's `c_line`) keep their
+  values, and it rejects malformed attributes with Python's `TypeError`
   before touching the terminal: a list that is not 7 elements, a `cc` list
   that is not exactly `NCCS` entries, or a `cc` entry that is neither an
-  int nor a one-byte `bytes`. As in CPython, no `termios` call is retried
+  int nor a one-byte `bytes`. As in Python, no `termios` call is retried
   on `EINTR`. The
   floor split is structural: glibc lays the struct out as four `u32` flag
   words + `c_cc[32]` (60 bytes), Libsystem as four `u64` words +
   `c_cc[20]` (72 bytes), and the surface parameterizes on the floor's
   `_FLAG_BYTES`/offsets, so only the floor files differ. Constant values
-  are per-OS. DIVERGENCES: `VSWTC` (Linux-only in CPython) is not
-  exported, since the public surface is the same on every OS; errors raise `ValueError` carrying CPython's
-  `[Errno N] <strerror>` text where CPython raises `termios.error`; `cc` entries are ints (one-item `bytes` entries
+  are per-OS. DIVERGENCES: `VSWTC` (Linux-only in Python) is not
+  exported, since the public surface is the same on every OS; errors raise `ValueError` carrying Python's
+  `[Errno N] <strerror>` text where Python raises `termios.error`; `cc` entries are ints (one-item `bytes` entries
   are still accepted by `tcsetattr`, as there). Pinned sv<->na congruent
   by `prim_termios.jac`.
 - **`tty.jac`** (Mechanism B over the bundled `termios`) -- `setraw(fd,
   when=TCSAFLUSH)` / `setcbreak(fd, when=TCSAFLUSH)`, a direct port of
-  CPython's `tty.py` formulas over the bundled `termios` surface, sharing
-  its constants and error model. As in CPython 3.12+, the new mode gets
+  Python's `tty.py` formulas over the bundled `termios` surface, sharing
+  its constants and error model. As in Python 3.12+, the new mode gets
   its own copy of the `cc` list, so the VMIN=1/VTIME=0 writes do not leak
   into the returned original-mode list (pinned by `prim_tty.jac` from a
   seeded VMIN). `cfmakeraw`/`cfmakecbreak` are not provided. Terminals
   are the host's, so raw mode
-  behaves identically to CPython's by construction; the module is
+  behaves identically to Python's by construction; the module is
   per-OS only through what `termios` resolves to.
 - **`select.jac`** (Mechanism F) + **`_select_native.jac`** (libc FFI
   floor: `poll(2)` -- one file, no per-OS split, since the `pollfd`
   layout, `POLL*` values and timeout shape are identical on every POSIX
   host) -- `select(rlist, wlist, xlist, timeout=-1.0)` merging the three
   lists into one pollfd array and building each result by walking its own
-  input list, so order and repeated fds come back as CPython returns them.
+  input list, so order and repeated fds come back as Python returns them.
   A wait interrupted by a signal whose handler returns is retried, as in
-  CPython (PEP 475): a finite timeout is recomputed from the monotonic
+  Python (PEP 475): a finite timeout is recomputed from the monotonic
   clock, and a deadline already passed answers three empty lists. The
   module also exports the `POLLIN`/`POLLOUT`/`POLLERR`/`POLLHUP`/`POLLNVAL`
   constants.
-  DIVERGENCES: `-1.0` is the block-forever sentinel where CPython spells
+  DIVERGENCES: `-1.0` is the block-forever sentinel where Python spells
   `None` (any negative timeout other than the sentinel raises `ValueError`);
-  `POLLERR`/`POLLHUP` report the fd readable AND writable where CPython
+  `POLLERR`/`POLLHUP` report the fd readable AND writable where Python
   reports the event that fired; the exceptional list is always empty (no
   `xlist` events are polled); errors raise `ValueError` carrying
-  CPython's `[Errno N] <strerror>` text where CPython raises
+  Python's `[Errno N] <strerror>` text where Python raises
   `OSError`/`select.error`. Timeout is truncated to milliseconds.
   Pinned sv<->na congruent by `prim_select.jac`.
 
@@ -1015,14 +1015,14 @@ native layout records the emitted name separately from its source-level key.
   `CalledProcessError`, `TimeoutExpired`, and the `PIPE`/`STDOUT`/`DEVNULL`
   sentinels. Spawn is `posix_spawnp` with file actions for stdio
   dup2/open/`chdir_np`; `communicate` interleaves stdin writes with stdout
-  and stderr reads over a `poll` loop (the same selector shape CPython
+  and stderr reads over a `poll` loop (the same selector shape Python
   uses), so a child filling one pipe while the parent drains the other does
   not deadlock, and `timeout` covers the whole exchange. `wait(timeout)`
-  raises `TimeoutExpired` and leaves the child running -- matching CPython;
+  raises `TimeoutExpired` and leaves the child running -- matching Python;
   only `run()` kills on timeout. `shell=True` builds
-  `["/bin/sh", "-c"] + args` verbatim, as CPython does. The first `Popen`
+  `["/bin/sh", "-c"] + args` verbatim, as Python does. The first `Popen`
   installs `SIG_IGN` on `SIGPIPE` through `signal()` itself -- matching
-  CPython's interpreter startup, including `getsignal(SIGPIPE)` answering
+  Python's interpreter startup, including `getsignal(SIGPIPE)` answering
   `SIG_IGN` -- so a write to a closed pipe fails with EPIPE instead of
   killing the caller.
   SCOPE/divergences:
@@ -1031,11 +1031,11 @@ native layout records the emitted name separately from its source-level key.
   `executable`, `bufsize`, `encoding`, or the file-object stream API
   (`Popen.stdout` is an int sentinel, not a reader); `kill`/`terminate`
   signal only the child pid, not a process group; `returncode` is `0` when
-  the child was already reaped (CPython's `ChildProcessError` path).
+  the child was already reaped (Python's `ChildProcessError` path).
   Pinned sv<->na congruent by `test_native_signal_subprocess.jac`.
 
 - **`hashlib.jac`** + **`hmac.jac`** + **`_digest.jac`** (pure Jac, no C
-  library) -- CPython's hash-object model over Jac digest cores: `Hash` keeps a
+  library) -- Python's hash-object model over Jac digest cores: `Hash` keeps a
   live `DigestCore` (update buffers bytes into blocks and compresses each full
   block, `digest()` pads and finalizes a copy, `copy()` clones the core), so
   repeated `digest()` is O(block) rather than re-hashing every retained chunk.
@@ -1047,9 +1047,9 @@ native layout records the emitted name separately from its source-level key.
   `new(name, data)`, `update`/`digest`/`hexdigest`/`copy`, and the
   `digest_size`/`block_size`/`name` attributes. `hmac.jac` builds RFC 2104
   HMAC over the same cores (`new(key, msg=None, digestmod)` -- `digestmod` is
-  required and its absence raises `TypeError` like CPython, as does a
+  required and its absence raises `TypeError` like Python, as does a
   non-bytes `msg`; `key`/`msg` also accept `bytearray`; `digest(key, msg,
-  digest)`; `compare_digest(a, b)`). Pinned against CPython at every block
+  digest)`; `compare_digest(a, b)`). Pinned against Python at every block
   boundary by `test_native_hashlib.jac` and sv<->na congruent by
   `test_prim_equivalence.jac`. SCOPE: `shake_128`/`shake_256` (XOF digests
   take a caller-supplied length), keyed or sized BLAKE2 and `pbkdf2_hmac` are
@@ -1058,22 +1058,22 @@ native layout records the emitted name separately from its source-level key.
   normalization); `update`/`new` `data`/`compare_digest` take `bytes` only
   (no buffer protocol); `algorithms_*`
   sets are not exposed; `digest_size`/`block_size`/`name` are plain `has`
-  fields (assignable, where CPython's are read-only).
+  fields (assignable, where Python's are read-only).
 - **`secrets.jac`** (Mechanism F) + **`_csprng_native.jac`** (`RAND_bytes`
   floor) -- `token_bytes`/`token_hex`/`token_urlsafe` (`nbytes=None` ->
   `DEFAULT_ENTROPY` = 32; negative -> `ValueError`; other non-int ->
   `TypeError`), `randbelow`
   (rejection-sampled over whole-byte draws), and `compare_digest` re-exported
   from `hmac`. `to_hex` lives once in `_hex` and is shared with
-  `hashlib`/`hmac`; CPython-style type names in `TypeError` messages
+  `hashlib`/`hmac`; Python-style type names in `TypeError` messages
   come from `_typename.typename` (an `isinstance` ladder -- `type(v).__name__`
   does not lower on `any`), also shared with `hmac`. SCOPE: `compare_digest` takes `bytes` only (str
   callers `.encode()`), and `SystemRandom`/`choice`/`randbits` are not
   provided.
-- **`stat.jac`** (Mechanism B) -- the CPython `stat` constant/predicate
+- **`stat.jac`** (Mechanism B) -- the Python `stat` constant/predicate
   surface: `ST_*` indexes, the `S_IF*` file-type constants (with the
   unsupported `S_IFDOOR`/`S_IFPORT`/`S_IFWHT` pinned to 0 and their `S_IS*`
-  predicates hardwired to `False`, exactly as CPython does off Solaris/BSD),
+  predicates hardwired to `False`, exactly as Python does off Solaris/BSD),
   the `S_I*` permission and `S_ISUID`/`S_ISGID`/`S_ENFMT`/`S_ISVTX` bits, the
   `UF_*`/`SF_*` BSD file flags, `S_IMODE`/`S_IFMT`, and `filemode` (the full
   `_filemode_table` rendering including `s`/`S` for setuid/setgid and `t`/`T`
@@ -1083,14 +1083,14 @@ native layout records the emitted name separately from its source-level key.
 - **`glob.jac`** (Mechanism B) + **`_glob_native.jac`** (tiny libc FFI floor:
   `lstat` for `lexists` semantics, so broken symlinks still match literal
   patterns, and `_directory_native`'s `opendir`/`readdir` for listings) --
-  a port of CPython 3.14's `_iglob`/`_glob0`/`_glob1`/`_glob2`/`_rlistdir`
+  a port of Python 3.14's `_iglob`/`_glob0`/`_glob1`/`_glob2`/`_rlistdir`
   walk: `glob`/`iglob`, `escape`, `has_magic`, `**` recursion under
   `recursive=True`, the dotfile rules (`*`/`?`/`[` never match a leading `.`
   unless the pattern segment starts with `.` or `include_hidden=True`), and
   trailing-slash patterns matching directories only. Matching goes through
   the bundled `fnmatch` (`fnmatchcase` == `fnmatch` here since `normcase` is
   the POSIX identity). SCOPE/divergences: each directory's names are visited
-  in sorted order where CPython's order is explicitly undefined (scandir
+  in sorted order where Python's order is explicitly undefined (scandir
   order) -- sort or compare sets before pinning; `iglob` returns an eager
   `list[str]`, not a lazy iterator; `root_dir`, `dir_fd`, `translate`, and
   the deprecated `glob0`/`glob1` are not provided; POSIX paths only.
@@ -1098,12 +1098,12 @@ native layout records the emitted name separately from its source-level key.
   FFI floor: `uname(2)` into a heap `struct utsname`, `uname -p` via
   `popen` for the processor field, `gnu_get_libc_version` on glibc, and
   `sw_vers -productVersion` on Darwin) -- the query surface `system`,
-  `node`, `release`, `version`, `machine`, `processor` (with CPython 3.14's
+  `node`, `release`, `version`, `machine`, `processor` (with Python 3.14's
   `_unknown_as_blank` semantics), `uname()`, `architecture`,
   `libc_ver`, `platform`, `python_version`, and `python_version_tuple`.
-  `platform()` reproduces CPython's join rules: `machine == processor` drops
+  `platform()` reproduces Python's join rules: `machine == processor` drops
   the processor, Darwin reports `macOS-<sw_vers>` and the generic branch,
-  Linux reports `...-with-glibc<ver>` (and ignores `terse`, as CPython does).
+  Linux reports `...-with-glibc<ver>` (and ignores `terse`, as Python does).
   SCOPE/divergences: glibc-Linux and Darwin only (on musl the
   `gnu_get_libc_version` extern fails to link, and `libc_ver` hardcodes
   `("glibc", <host glibc>)`); `uname()` returns an archetype, not a
@@ -1119,11 +1119,11 @@ native layout records the emitted name separately from its source-level key.
   provided.
 - **`errno.<os>.jac`** (Mechanism B, per-OS variant module -- the resolver's
   `<name>.<os>.jac` probe picks `errno.linux.jac` or `errno.darwin.jac`) --
-  the CPython `errno` constant surface: every `E*` the platform's
+  the Python `errno` constant surface: every `E*` the platform's
   `<errno.h>` defines (value-aliased pairs like `EAGAIN`/`EWOULDBLOCK`,
   `EDEADLK`/`EDEADLOCK`, `ENOTSUP`/`EOPNOTSUPP` included) plus the
-  `errorcode` reverse map built in CPython's `errnomodule.c` insertion order,
-  so aliased codes resolve to the same name CPython reports. SCOPE: Linux
+  `errorcode` reverse map built in Python's `errnomodule.c` insertion order,
+  so aliased codes resolve to the same name Python reports. SCOPE: Linux
   and Darwin tables only; no `strerror`-style message lookup is exported
   (`os.strerror` stays a compiler intercept).
 
@@ -1134,7 +1134,7 @@ intercepts, reached via the flat `import os`, not bundled here (see
 sibling module attributes (`extsep`, `pardir`, `curdir`, `pathsep`, `linesep`,
 `devnull`) resolve the same way; `os.altsep` is `None` on POSIX and is not
 provided. Note that `getmtime` / `getsize` answer `-1` for a path that cannot
-be stat'd, where CPython raises `OSError` -- the established native behavior
+be stat'd, where Python raises `OSError` -- the established native behavior
 for this family.
 
 The **pure-string** members are the bundled `os/path.jac` above and are
@@ -1238,13 +1238,13 @@ Layout and lifetime contract for callers:
 
 `zlib` is the first Mechanism-F module (#6940 Phase 2): the DEFLATE engine is
 never reimplemented; it is the system `libz`, reached through a thin FFI floor,
-exactly as CPython's `zlib` wraps the same library. The split is deliberate:
+exactly as Python's `zlib` wraps the same library. The split is deliberate:
 
 - `_zlib_native.jac`: the **FFI floor**. An `import from z { def ... }` block
   binds `libz` by logical name (`z` → `libz.so` / `libz.dylib` / `z.dll`) and
   re-exports each entry behind a `z_`-prefixed wrapper.
 - `zlib.jac`: the **pure-Jac surface**: the Python-shaped API
-  (`compress` / `decompress` / `crc32` / `adler32`, CPython argument orders and
+  (`compress` / `decompress` / `crc32` / `adler32`, Python argument orders and
   defaults), layered on the floor.
 
 Two conventions make foreign byte I/O work:
@@ -1276,7 +1276,7 @@ arena up to a caller-supplied ceiling; every site derives that ceiling from
 the floor's `z_inflate_bound(src_len, slack)` -- DEFLATE's ~1032x expansion
 bound plus slack (64 MiB for zlib, the default 1 KiB for the gzip per-member
 bound and the zipfile declared-size pre-check); empty or truncated input
-surfaces as `Z_BUF_ERROR` and raises `ValueError`, matching CPython's
+surfaces as `Z_BUF_ERROR` and raises `ValueError`, matching Python's
 `error -5`.
 
 `bz2` (#6978 Phase 2) follows the same two-file split: `_bz2_native.jac`
@@ -1285,26 +1285,26 @@ buffer API (logical name `bz2` -> `libbz2`; the in-process JIT dlopens the
 system library, while AOT `nacompile` consumes the bundled `libbz2.a`), and
 `bz2.jac` is the Python-shaped `compress(data, compresslevel=9)` /
 `decompress(data)` surface. `compress` produces a single bzip2 stream
-byte-identical to CPython's (same default `workFactor`); note `libbz2`'s
+byte-identical to Python's (same default `workFactor`); note `libbz2`'s
 one-shot API is 32-bit throughout -- `sourceLen` is a by-value C `unsigned int`
 (lowered as `u32`, unlike zlib's LP64 8-byte `uLong`) and the in/out `destLen`
 is an `unsigned int*` (a 4-byte cell) -- so both directions reject inputs
-larger than 4 GiB with a `ValueError` (CPython, which streams internally, has
-no such limit). SCOPE and divergences from CPython (3.14):
+larger than 4 GiB with a `ValueError` (Python, which streams internally, has
+no such limit). SCOPE and divergences from Python (3.14):
 
 - One-shot buffer API only: incremental `BZ2Compressor` / `BZ2Decompressor`
   and the file API are out of scope.
 - Multi-stream inputs return only the first stream's data (silent partial
-  output); CPython concatenates every stream.
+  output); Python concatenates every stream.
 - Corrupt input raises `ValueError` (carrying the libbz2 error code) where
-  CPython raises `OSError("Invalid data stream")`; truncated streams raise
+  Python raises `OSError("Invalid data stream")`; truncated streams raise
   `ValueError` on both. Out-of-range compresslevels raise `ValueError` on both
-  (the native surface reports libbz2's `BZ_PARAM_ERROR` rather than CPython's
+  (the native surface reports libbz2's `BZ_PARAM_ERROR` rather than Python's
   bounds message).
 - `decompress` grows its output buffer on `BZ_OUTBUFF_FULL` up to a ceiling of
   `sourceLen * 1024 + 64 MiB` (clamped to 4 GiB); a valid stream that expands
   past that ceiling raises a distinct `ValueError` ("decompressed output
-  exceeds the one-shot API limit") where CPython, which streams, would succeed.
+  exceeds the one-shot API limit") where Python, which streams, would succeed.
 
 Mechanism-F modules are native-host only: a wasm target gets a clean link error
 rather than silent breakage.
@@ -1320,7 +1320,7 @@ archives, including PK3 files. Its public surface is `namelist`, `infolist`,
 `ZipInfo` exposes `filename`, `compress_type`, `flag_bits`, `CRC`,
 `compress_size`, `file_size`, `header_offset`, `extra`, `comment`, and `is_dir`.
 The archive's `comment` is also available. Duplicate names remain in listing
-order; name lookup selects the last entry, matching CPython.
+order; name lookup selects the last entry, matching Python.
 
 The parser follows the [PKWARE ZIP specification](https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT).
 It accepts stored and DEFLATE entries, data descriptors, archive comments,
@@ -1328,7 +1328,7 @@ prepended data, UTF-8 names, and CP437 names. It checks central-directory and
 local-header bounds, overlapping entries, header agreement, decompressed
 length, and CRC-32. Malformed archives raise `BadZipFile`; missing names raise
 `KeyError`; reading a closed archive raises `ValueError`. Invalid UTF-8 names
-raise `BadZipFile` (CPython raises `UnicodeDecodeError`).
+raise `BadZipFile` (Python raises `UnicodeDecodeError`).
 
 The DEFLATE decoder drives the shared `z_inflate_all` streaming inflater
 (`windowBits = -15`, since ZIP stores the raw DEFLATE body). Output is bounded

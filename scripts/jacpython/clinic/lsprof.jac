@@ -2,7 +2,8 @@
 
 scripts/jacpython/gen_clinic.jac generates
 jaclang/runtime/python/bindings/clinic/lsprof.jac from them. Taken from
-CPython 3.14.6 Modules/_lsprof.c, Modules/rotatingtree.c.
+the C sources it replaces (Modules/_lsprof.c, Modules/rotatingtree.c); see
+jac/jaclang/runtime/python/LICENSE.cpython.
 """
 import from clinic_schema { Clinic, Function, Parameter }
 

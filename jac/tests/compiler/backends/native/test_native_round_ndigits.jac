@@ -8,7 +8,7 @@ to even (`round(2.5) == 2`).
 `round` now receives every positional argument. One argument rounds half to
 even with `rint`. With ndigits the result stays a float: non-negative ndigits
 are correctly rounded from the exact binary value by formatting with `%.*f`
-and parsing back, as CPython does (`round(2.675, 2) == 2.67`), and negative
+and parsing back, as Python does (`round(2.675, 2) == 2.67`), and negative
 ndigits scale and round half to even. `round(int, n)` returns the int for a
 constant non-negative n and refuses to lower otherwise.
 """

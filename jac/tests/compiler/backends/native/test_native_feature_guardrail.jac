@@ -1123,7 +1123,7 @@ def compile_sv_inline(label: str, code: str) -> JacProgram {
     return prog;
 }
 
-# Walrus on non-Name targets is a SyntaxError in CPython; Jac rejects it
+# Walrus on non-Name targets is a SyntaxError in Python; Jac rejects it
 # with the general E0020 in ASTValidationPass on every backend. These pin
 # that E0020 stays the single diagnostic: no native-specific E5090
 # duplicate, no E5007 bootstrap cascade, no E9001/E9002 ICE (#7593 item 3).
@@ -1225,7 +1225,7 @@ test "clib decl with known types is not rejected" {
 }
 
 # !r and dynamic format specs now lower natively (#7593 item 6); the !a
-# conversion still requires CPython-exact ascii() escaping and stays gated.
+# conversion still requires Python-exact ascii() escaping and stays gated.
 test "guardrail: f-string !a conversion demotes its function" {
     (prog, ir, log) = compile_na_inline_demote(
         "fstr_ascii", "def f(s: str) -> str { return f\"{s!a}\"; }\n"

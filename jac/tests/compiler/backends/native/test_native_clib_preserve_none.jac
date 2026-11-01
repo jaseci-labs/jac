@@ -1,7 +1,7 @@
 """`@__preserve_none` gives C definitions and calls through C records'
 function-pointer fields LLVM's preserve_none calling convention.
 
-CPython's tail-call interpreter defines every instruction handler this way
+A tail-call interpreter defines every instruction handler this way
 and dispatches through a table of them; a Jac handler has to match it to take
 a slot in that table and to tail-call the next handler."""
 import ctypes;

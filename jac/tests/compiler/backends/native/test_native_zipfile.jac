@@ -1,4 +1,4 @@
-"""Synthetic ZIPs compare the bundled native reader with CPython's zipfile."""
+"""Synthetic ZIPs compare the bundled native reader with Python's zipfile."""
 import ctypes;
 import io;
 import tempfile;
@@ -73,7 +73,7 @@ class StreamingBuffer(io.BytesIO) {
     }
 }
 
-test "native ZIP public reader and context manager agree with CPython" {
+test "native ZIP public reader and context manager agree with Python" {
     with tempfile.TemporaryDirectory() as directory {
         path = Path(directory) / "sample.pk3";
         path.write_bytes(sample());

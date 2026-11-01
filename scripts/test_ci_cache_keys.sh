@@ -13,7 +13,7 @@ cp "$repo/scripts/ci_cache_keys.sh" scripts/
 cp "$repo/jac/jaclang/compiler_inputs.txt" jac/jaclang/
 printf 'compiler\n' > jac/jaclang/compiler/pass.jac
 printf 'app\n' > jac/jaclang/scale/app.jac
-printf 'recipe\n' > jac/bootstrap/python/build.sh
+printf 'recipe\n' > jac/bootstrap/python/vendored.sh
 printf 'emitter\n' > jac/bootstrap/python/prepare_native.py
 printf 'shim\n' > jac/native/shim.cpp
 printf 'dependencies\n' > jac/build.zig.zon
@@ -38,7 +38,7 @@ rm -rf jac/jaclang/vendor jac/jaclang/compiler/__pycache__ jac/jaclang/compiler/
 printf 'app edit\n' >> jac/jaclang/scale/app.jac
 commit app
 after=$(keys)
-same compiler; same python_cpython; same python_jacpython
+same compiler; same python
 changed payload; changed binary
 
 before=$after
@@ -47,54 +47,54 @@ printf fixture > jac/jaclang/compiler/tests/fixture.jac
 printf test > jac/jaclang/compiler/pass.test.jac
 commit tests
 after=$(keys)
-same compiler; same python_cpython; same python_jacpython
+same compiler; same python
 
 before=$after
 printf 'compiler edit\n' >> jac/jaclang/compiler/pass.jac
 commit compiler
 after=$(keys)
-changed compiler; changed python_jacpython; changed binary; same python_cpython
+changed compiler; changed python; changed binary
 
 before=$after
 git mv jac/jaclang/compiler/pass.jac jac/jaclang/compiler/renamed.jac
 commit rename
 after=$(keys)
-changed compiler; changed python_jacpython
+changed compiler; changed python
 
 before=$after
 git rm -q jac/jaclang/compiler/renamed.jac
 commit delete
 after=$(keys)
-changed compiler; changed python_jacpython
+changed compiler; changed python
 
 before=$after
 printf emitter >> jac/bootstrap/python/prepare_native.py
 commit emitter
 after=$(keys)
-same compiler; same python_cpython; changed python_jacpython; changed binary
+same compiler; changed python; changed binary
 
 before=$after
-printf recipe >> jac/bootstrap/python/build.sh
+printf recipe >> jac/bootstrap/python/vendored.sh
 commit recipe
 after=$(keys)
-changed python_cpython; changed python_jacpython; same compiler
+changed python; same compiler
 
 before=$after
 printf dependency >> jac/build.zig.zon
 commit dependency
 after=$(keys)
-changed binary; changed python_jacpython; same python_cpython
+changed binary; changed python
 
 before=$after
 printf shim >> jac/native/shim.cpp
 commit shim
 after=$(keys)
-changed binary; changed python_jacpython; same python_cpython
+changed binary; changed python
 before=$after
 mkdir -p jac/examples/tiny_jacyac
 printf example > jac/examples/tiny_jacyac/web.jac
 commit tiny-example
 after=$(keys)
-changed binary; same compiler; same python_cpython; same python_jacpython
+changed binary; same compiler; same python
 
 echo 'CI cache mutation tests passed'

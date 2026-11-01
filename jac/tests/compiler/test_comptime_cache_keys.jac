@@ -320,7 +320,7 @@ test "a has-variable default edit is observed by its readers" {
 }
 
 def _bundle(paths: dict[str, str]) -> str {
-    pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
+    pyver = sys.implementation.cache_tag;
     bundle = os.path.join(paths["root"], "_precompiled", pyver);
     os.makedirs(bundle, exist_ok=True);
     for src in (paths["producer"], paths["consumer"]) {

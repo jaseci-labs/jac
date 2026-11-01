@@ -1,4 +1,4 @@
-# CPython 3.14 deferred module/class annotations share a lexical __annotate__
+# Python 3.14 deferred module/class annotations share a lexical __annotate__
 # scope. Conditional entries register their indices as the body executes;
 # the annotation function evaluates only those entries when called later.
 # Function-local and non-simple annotations never evaluate their expressions.
@@ -15,7 +15,7 @@ obj ann_entry {
         owner_lineno: int,
         owner_col: int,
         index: int,
-        # Full span of the owning AnnAssign (CPython's location for the
+        # Full span of the owning AnnAssign (the C compiler's location for the
         # registration and __annotate__ entry instructions).
         owner_loc: cloc | None = None,
         # True when the AnnAssign sits under control flow (If/While/For/Try/
@@ -33,7 +33,7 @@ obj ann_scope_plan {
         function_annotation: bool = False,
         any_annotation: bool = False,
         body_first_lineno: int = 1,
-        # Full span of the scope's first statement: CPython attributes the
+        # Full span of the scope's first statement: the C compiler attributes the
         # annotation setup bytes and the __annotate__ guard/epilogue to it.
         # For class scopes this is the `class` statement's own full span.
         head_loc: cloc | None = None,
@@ -259,7 +259,7 @@ def ann_collect_stmt(plan: ann_scope_plan, s: stmt, cond_depth: int) {
     }
     if isinstance(s, (Try, TryStar)) {
         # Finally-only Try arrives with handlers=None from the generated
-        # parser (host CPython AST would carry []); treat it as no handlers,
+        # parser (a Python AST would carry []); treat it as no handlers,
         # same tolerance as the visit_try dispatch in compiler_exc.jac.
         t = s as Try | TryStar;
         ann_collect_stmts(plan, t.body, cond_depth + 1);
@@ -464,7 +464,7 @@ def ann_discard_target(g: cfg_builder, target: expr) {
     }
 }
 
-# Small-int operand emission with CPython's dead-const rule: the FIRST
+# Small-int operand emission with the C compiler's dead-const rule: the FIRST
 # 0..255 literal seen while the const pool is empty keeps a dead pool slot;
 # later small ints are pure LOAD_SMALL_INT with no pool entry.
 def ann_emit_index_int(g: cfg_builder, v: int, lc: cloc) {
@@ -581,7 +581,7 @@ def emit_class_annotation_setup(g: cfg_builder, plan: ann_scope_plan, lc: cloc) 
 # BUILD_TUPLE, LOAD_CONST <code>, MAKE_FUNCTION, SET_FUNCTION_ATTRIBUTE 8,
 # STORE_NAME). Runs AFTER the body loop but BEFORE the epilogue, so the code
 # object's const lands after all statement consts yet before the epilogue's
-# ()/None -- matching CPython, which compiles the annotate fn during class
+# ()/None -- matching the C compiler, which compiles the annotate fn during class
 # finalization. Unlike the module path, no placeholder patching is needed:
 # appending to the const pool here is already in host order (class bodies
 # cannot contain return statements, so no duplicated return-None joins exist).

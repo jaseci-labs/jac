@@ -35,11 +35,6 @@
     "url": "https://github.com/libexpat/libexpat/releases/download/R_2_7_3/expat-2.7.3.tar.gz",
     "sha256": "821ac9710d2c073eaf13e1b1895a9c9aa66c1157a99635c639fbff65cdbdd732"
   },
-  "cpython": {
-    "url": "https://www.python.org/ftp/python/3.14.6/Python-3.14.6.tgz",
-    "sha256": "74d0d71d0600e477651a077101d6e62d1e2e69b8e992ba18c993dd643b7ba222",
-    "version": "3.14.6"
-  },
   "certifi": {
     "url": "https://github.com/certifi/python-certifi/archive/9d0a8f1f3a0d6b2e38d5773db7afe1a37e4527b6.tar.gz",
     "sha256": "74a1dcf5983616dfb07972e8b26f065497879c551f6457e197f1409b824e60c1"

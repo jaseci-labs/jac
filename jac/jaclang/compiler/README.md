@@ -15,7 +15,7 @@ this file is the map of the tree and the rules that keep it organized.
 | `placement/` | The placement solver: which module runs where, pins, workspaces | `frontend`, `passes` |
 | `driver/` | `JacProgram`, `JacCompiler`, the schedules, module resolution, the caches (bytecode, interface, JIR), compile options | everything |
 | `backends/common/` | What the generators share: the primitive emitter interfaces and their dispatch tables, the kernel unit lists, the format kernel | `frontend`, `passes` |
-| `backends/py/` | Jac to JCIR to CPython bytecode | `backends/common` |
+| `backends/py/` | Jac to JCIR to Python bytecode | `backends/common` |
 | `backends/es/` | Jac to ESTree to JavaScript, the client framework backends, view IR | `backends/common` |
 | `backends/native/` | Jac to LLVM IR, the linkers (ELF, Mach-O, PE, wasm), the wasm runtime, and the in-tree LLVM binding (`llvm/`, a translation of llvmlite, see `llvm/LICENSE.llvmlite`) | `backends/common` |
 | `tools/` | Formatter, linter, unparser, normalizer, doc IR, grammar extraction, code intelligence | `frontend`, `passes` |

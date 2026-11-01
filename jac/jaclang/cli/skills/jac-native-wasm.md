@@ -152,7 +152,7 @@ instance.exports.__jac_glob_init();
 
 - `str` args to an extern arrive as **pointers into linear memory** - read `new Uint8Array(mem.buffer)` from the pointer until the NUL byte (`raylib_shim.jac::_read_cstr`).
 - `f64`/`f32` cross as plain JS numbers; only i64 is BigInt.
-- Stdlib on this target: `math.sin` becomes an `env.sin` import (supplying `Math.sin` works, verified), `time.time` needs `clock_gettime`, while `random` is self-contained in-browser (bit-exact with CPython for the same seed). The host-binary stdlib table in `jac-native` does NOT mean "available with no imports" here.
+- Stdlib on this target: `math.sin` becomes an `env.sin` import (supplying `Math.sin` works, verified), `time.time` needs `clock_gettime`, while `random` is self-contained in-browser (bit-exact with Python for the same seed). The host-binary stdlib table in `jac-native` does NOT mean "available with no imports" here.
 
 ## `import from ...` externs become wasm imports
 

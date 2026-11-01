@@ -1,12 +1,12 @@
 """Three-lane sqrt bench: direct C FFI vs the bundled native `math` module vs a
-CPython-bridge crossing, with a bare float loop as the floor.
+Python-bridge crossing, with a bare float loop as the floor.
 
 Run with the native runtime (this file deliberately contains a DEMOTED function
 so `jac build --native` would reject it -- demotions are fatal there):
 
     jac run -b native scripts/bench_na_general_sqrt.jac
 
-CPython oracle (new .py files are blocked repo-wide, so it lives here; pipe it
+Python oracle (new .py files are blocked repo-wide, so it lives here; pipe it
 into python3 -):
 
     import math, time
@@ -23,7 +23,7 @@ into python3 -):
         acc = loop(1000000)
         el = (time.perf_counter_ns() - t0) / 1000000
         best = el if best is None else min(best, el)
-    print("cpython math.sqrt      %8.1f ns/call  acc=%.4f" % (best, acc))
+    print("python math.sqrt       %8.1f ns/call  acc=%.4f" % (best, acc))
 """
 
 import sys;
@@ -132,7 +132,7 @@ def bench_bridge(n: int) {
         }
         rep += 1;
     }
-    _row("na -> CPython bridge  ", best, acc);
+    _row("na -> Python bridge   ", best, acc);
 }
 
 

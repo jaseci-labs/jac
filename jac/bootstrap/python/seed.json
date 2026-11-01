@@ -1,0 +1,21 @@
+{
+  "python": "3.14.6",
+  "seeds": {
+    "linux-x86_64": {
+      "url": "https://github.com/jaseci-labs/jac/releases/download/deps/jacpython-seed-linux-x86_64-PENDING.tar.gz",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "linux-aarch64": {
+      "url": "https://github.com/jaseci-labs/jac/releases/download/deps/jacpython-seed-linux-aarch64-PENDING.tar.gz",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "macos-x86_64": {
+      "url": "https://github.com/jaseci-labs/jac/releases/download/deps/jacpython-seed-macos-x86_64-PENDING.tar.gz",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "macos-aarch64": {
+      "url": "https://github.com/jaseci-labs/jac/releases/download/deps/jacpython-seed-macos-aarch64-PENDING.tar.gz",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  }
+}

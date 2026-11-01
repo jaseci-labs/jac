@@ -134,7 +134,7 @@ impl cir_bind_classes(class_names: list[str]) -> list[type] {
         cls = getattr(ast, name, None);
         if cls is None {
             raise CodegenIrVersionError(
-                f"container names ast class {name} which this CPython "
+                f"container names ast class {name} which this Python "
                 f"({sys.version_info.major}.{sys.version_info.minor}) does not "
                 "provide; the producer and this runtime disagree"
             );

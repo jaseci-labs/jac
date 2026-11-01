@@ -1,10 +1,10 @@
 """Bundled native ``compression.zstd`` cross-backend equivalence fixture.
 
-The SAME ``import from compression.zstd { ... }`` binds CPython's real
+The SAME ``import from compression.zstd { ... }`` binds Python's real
 ``compression.zstd`` (zstd 1.5.7) on the sv (Python) backend and the bundled
 ``na_stdlib/compression/zstd.jac`` Mechanism-F surface -- a pure-Jac layer over
 the ``libzstd`` FFI floor (``_zstd_native.jac``) -- on the na (native LLVM)
-backend. ``io.BytesIO`` binds CPython's ``io`` on sv and the bundled
+backend. ``io.BytesIO`` binds Python's ``io`` on sv and the bundled
 ``na_stdlib/io.jac`` on na.
 
 The fixture round-trips ``compress`` -> ``decompress`` at several levels, decodes

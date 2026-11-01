@@ -1,6 +1,6 @@
 """`&mut x` lends the address of x even when the C declaration that fixed
 the symbol's ABI takes a plain `ptr[ptr[T]]`: dict.jac defines PyDict_Pop
-that way while cpython_api.jac declares the parameter `&mut T | None`, and
+that way while python_capi.jac declares the parameter `&mut T | None`, and
 the whole-program plan follows the definition. Passing x's value instead left
 `metaclass=` unread in __build_class__."""
 import from tests.support { compile_native_ir }

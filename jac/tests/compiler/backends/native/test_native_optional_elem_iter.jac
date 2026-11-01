@@ -133,7 +133,7 @@ test "the answers are the fixture's, not a shared wrong answer" {
     assert native_call(eng, "empty_optional_or_loop") == 7 , "an absent list adds 0";
     assert native_call(eng, "empty_optional_or_compr") == 5 , "an absent list adds 0";
     assert native_call(eng, "optional_local_loop") == 8 , "3 + 5";
-    # The `None` arm is the one a silent empty-walk would get wrong: CPython
+    # The `None` arm is the one a silent empty-walk would get wrong: Python
     # raises TypeError, so the fixture's `except` arm has to be the one that
     # runs on the native pathway too.
     assert native_call(eng, "none_direct_loop_raises") == -1 , (

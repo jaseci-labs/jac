@@ -1,6 +1,6 @@
 """The _types module: names for the interpreter's built-in types.
 
-Derived from CPython 3.14.6 Modules/_typesmodule.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/_typesmodule.c; see ../LICENSE.cpython.
 """
 
 glob:priv TYPES: list[tuple[str, ptr[PyObject]]] = [

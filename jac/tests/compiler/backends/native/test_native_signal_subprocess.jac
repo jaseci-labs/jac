@@ -1,13 +1,13 @@
-"""The bundled `signal` / `subprocess` modules must answer what CPython answers.
+"""The bundled `signal` / `subprocess` modules must answer what Python answers.
 
-`import signal` and `import subprocess` bind CPython's modules on the sv
+`import signal` and `import subprocess` bind Python's modules on the sv
 pathway and `na_stdlib/signal.linux.jac` / `na_stdlib/subprocess.linux.jac` on
 the na pathway, so running one fixture through both and demanding identical
-output *is* the congruence contract -- CPython is the oracle, not a
+output *is* the congruence contract -- Python is the oracle, not a
 hand-copied expectation table.
 
 `signal_probe.jac` exercises handler install/dispatch through the C-ABI
-trampoline (which delivers `(signum, None)` where CPython delivers
+trampoline (which delivers `(signum, None)` where Python delivers
 `(signum, frame)` -- only the signum is printed), the `SIG_IGN` / `SIG_DFL`
 sentinel handlers, `getsignal` shadow lookup, `strsignal`, `alarm`,
 `valid_signals`, and `pthread_sigmask` blocking with pending delivery on
@@ -28,13 +28,13 @@ import from pathlib { Path }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
-test "native signal answers what CPython's signal answers" {
+test "native signal answers what Python's signal answers" {
     (sv_out, _sv_err) = sv_run(os.path.join(FIXTURES, "signal_probe.jac"));
     (na_out, _na_err) = na_run(os.path.join(FIXTURES, "signal_probe.jac"));
     same_lines(sv_out, na_out, "signal");
 }
 
-test "native subprocess answers what CPython's subprocess answers" {
+test "native subprocess answers what Python's subprocess answers" {
     (sv_out, _sv_err) = sv_run(os.path.join(FIXTURES, "subprocess_probe.jac"));
     (na_out, _na_err) = na_run(os.path.join(FIXTURES, "subprocess_probe.jac"));
     same_lines(sv_out, na_out, "subprocess");

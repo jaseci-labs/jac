@@ -1,12 +1,12 @@
 """Bundled native `termios` cross-backend equivalence fixture.
 
-The SAME `import from termios { ... }` binds CPython's `termios` on the sv
+The SAME `import from termios { ... }` binds Python's `termios` on the sv
 (Python) backend and the bundled `na_stdlib/termios.jac` on the na (native
 LLVM) backend. `tcgetattr` needs a tty (pipes answer ENOTTY), so both lanes
 run against the slave side of a pseudo-terminal: `os.openpty()` on sv, libc
 `openpty(3)` on na (its name/termios/winsize out-params are passed as NULL).
 The master fd stays open until the end -- closing it first makes the
-slave's termios calls fail with EIO. Pins the CPython result shape (7
+slave's termios calls fail with EIO. Pins the Python result shape (7
 elements, `cc` of NCCS ints), the per-OS constant values, an attribute
 round trip, a cc write, and the raise paths (ENOTTY pipe, invalid `when`)
 as raised/did-not-raise, since the error TYPE diverges (ValueError vs

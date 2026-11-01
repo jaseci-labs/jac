@@ -1,6 +1,6 @@
 """Subscript augmented assignment semantics (silent-wrong-value family).
 
-CPython computes `seq[i] op= rhs` as `seq[i] = seq[i] op rhs`. Before the
+Python computes `seq[i] op= rhs` as `seq[i] = seq[i] op rhs`. Before the
 fix na dropped the read-modify step for subscript targets entirely and
 stored the raw RHS into the element (`v[0] -= 0.25` left 0.25) - for every
 op, on lists and dicts alike. Float `obj.field //= x` took the same silent

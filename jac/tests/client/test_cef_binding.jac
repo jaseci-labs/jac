@@ -67,7 +67,7 @@ def _compile_cef_host(host_src: str) -> tuple[any, ...] {
     }
 }
 
-"""The embedded-CPython CEF host (cef runtime model) links both libs."""
+"""The embedded-Python CEF host (cef runtime model) links both libs."""
 test "cef embedded-python host compiles and links libcef_dispatch and libpython" {
     if sys.platform != "linux" {
         testskip("CEF hosts link ELF shared objects; a Linux-only build");

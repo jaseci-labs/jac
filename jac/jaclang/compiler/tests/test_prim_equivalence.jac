@@ -934,11 +934,11 @@ test "native call fills omitted defaults from the bundled stdlib signature" {
     adler_val = adler();
     hex_val = hex_len();
     assert adler_val == 103547413 , (
-        f"adler32(b'hello') with the default seed: na={adler_val}, CPython=103547413 "
+        f"adler32(b'hello') with the default seed: na={adler_val}, Python=103547413 "
         f"(a zero-filled seed gives 103219732)"
     );
     assert hex_val == 64 , (
-        f"token_hex() with the default nbytes=32: na={hex_val} chars, CPython=64"
+        f"token_hex() with the default nbytes=32: na={hex_val} chars, Python=64"
     );
 }
 

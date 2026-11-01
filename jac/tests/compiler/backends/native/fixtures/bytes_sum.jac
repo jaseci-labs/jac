@@ -1,4 +1,4 @@
-"""`sum` over bytes and bytearray adds the byte values, with CPython semantics."""
+"""`sum` over bytes and bytearray adds the byte values, with Python semantics."""
 
 def total(data: &bytes) -> int {
     return sum(data);

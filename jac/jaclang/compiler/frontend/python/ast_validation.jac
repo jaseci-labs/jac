@@ -695,7 +695,7 @@ def validate_ast_value(
     );
 }
 
-# Expression context each child of `owner` must carry (CPython ast.c validate).
+# Expression context each child of `owner` must carry (Python/ast.c validate).
 obj ast_value_children(ast_child_visitor) {
     has owner: ast_node,
         context: str;

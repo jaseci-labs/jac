@@ -16,7 +16,7 @@ import from pathlib { Path }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
-test "tagged numeric arithmetic matches CPython" {
+test "tagged numeric arithmetic matches Python" {
     assert_native_identity(
         os.path.join(FIXTURES, "tagged_arith.jac"), profiles=["rc", "managed"]
     );

@@ -1,4 +1,4 @@
-"""The bytes and bytearray constructors lower natively with CPython semantics."""
+"""The bytes and bytearray constructors lower natively with Python semantics."""
 
 def zeroed(n: int) -> str {
     try {

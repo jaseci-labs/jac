@@ -1,6 +1,6 @@
 """Round-trip tests for the compact codegen IR (epic #8201, lane 2).
 
-The generic encoder below plays the producer role: it walks a real CPython
+The generic encoder below plays the producer role: it walks a real Python
 ast and emits JCIR through the reference writer, so the round trip proves
 the instruction vocabulary can carry everything the shim must rebuild. The
 hand-emitted tests prove the writer contract is usable without ast on the

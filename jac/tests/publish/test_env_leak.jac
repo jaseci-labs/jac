@@ -1,7 +1,7 @@
 """Guards #7047: the single binary must not leak its embedded-interpreter
 configuration (PYTHONHOME/PYTHONPATH) into the process environment.
 
-The launcher used to export PYTHONHOME/PYTHONPATH for the bundled CPython via
+The launcher used to export PYTHONHOME/PYTHONPATH for the bundled interpreter via
 setenv, so every subprocess inherited them; any python-based child (`aws` EKS
 exec-credentials, plain `python3`, ...) then adopted the jac runtime as its
 home, could not find its own stdlib, and died with "Fatal Python error: Failed

@@ -1,6 +1,6 @@
-"""Congruence probe: `import subprocess` must answer what CPython answers.
+"""Congruence probe: `import subprocess` must answer what Python answers.
 
-Runs on the sv pathway (CPython's subprocess) and the na pathway
+Runs on the sv pathway (Python's subprocess) and the na pathway
 (na_stdlib/subprocess.linux.jac). Only deterministic, lane-identical lines are
 printed; exception messages are not printed because the repr differs.
 """

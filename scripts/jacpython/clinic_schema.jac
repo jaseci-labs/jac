@@ -4,7 +4,7 @@ scripts/jacpython/clinic/<name>.jac holds one module's signatures as a Clinic
 record: every function and method its clinic input declares, in clinic's
 order, with each parameter's converter as Tools/clinic resolves it, the
 docstrings, and the parse each call takes. scripts/jacpython/gen_clinic_data.jac
-wrote them from the CPython sources once; they are edited here now.
+wrote them from the C sources once; they are edited here now.
 """
 
 # One parameter of a clinic function. The first parameter of every function is
@@ -99,7 +99,7 @@ obj Function {
 
 # A module's clinic input and the C docstrings its binding names.
 obj Clinic {
-    # version and sources: the CPython release and the C files the
+    # version and sources: the Python release and the C files the
     # signatures were taken from. classes: each clinic class's C typedef, by
     # name. docs: the module's other PyDoc_STRVAR docstrings and the docs its
     # PyMethodDef, PyMemberDef and PyGetSetDef tables write inline, by C name.

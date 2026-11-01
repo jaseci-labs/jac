@@ -39,7 +39,7 @@ demonstration:
 
 The subprocess pair is the contract, the same one
 `test_native_xmod_inherited_fields.jac` sets: the fixture runs through the
-server pathway (CPython) and as a native binary, and the two must print
+server pathway (Python) and as a native binary, and the two must print
 identical lines. Pinning the values is the point -- a dispatch that lands
 on the wrong body still lowers, links and exits 0.
 

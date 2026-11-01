@@ -7,8 +7,8 @@ bootstrap bytecode cache (``meta_importer``) and the JIR module cache
 (``jaclang.compiler.driver.jir``) directly, every other bucket through the
 ``jaclang.cache`` authority, which wraps this rule rather than restating it.
 The fused launcher (``jaclang/dist/fused/materialize.jac``) runs before
-CPython exists and carries an equivalent copy; ``tests/cache`` holds the two
-to the same answers.
+the Python runtime exists and carries an equivalent copy; ``tests/cache``
+holds the two to the same answers.
 
 The root rule::
 

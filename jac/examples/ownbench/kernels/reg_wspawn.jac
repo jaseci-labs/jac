@@ -47,7 +47,7 @@ def build_graph(n: int) -> Spot {
 }
 
 # The request loop lives in a def so `w` is a true frame local: entry-scope
-# names are module globals (CPython parity, #7626 A1), and a global binding
+# names are module globals (Python parity, #7626 A1), and a global binding
 # would keep the final walker alive past the metric prints.
 def run_reqs(entry_spot: Spot, reps: int) -> int {
     total = 0;

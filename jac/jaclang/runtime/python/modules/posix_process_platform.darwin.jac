@@ -1,6 +1,6 @@
 """The macOS side of the posix process area.
 
-Derived from CPython 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
 posix_spawnattr_t and posix_spawn_file_actions_t are pointers, sigset_t is
 32 bits, siginfo_t is 104 bytes with si_pid at byte 12, clock_t is unsigned
 long and mode_t 16 bits. The <sys/wait.h> macros are Darwin's (_W_INT of an

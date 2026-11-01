@@ -2,7 +2,7 @@
 # Fresh dev environment for the single-binary toolchain.
 #
 # jaclang ships as the one self-contained `jac` binary (a Jac launcher + a private
-# bundled CPython). There is NO pip-installed jaclang and no editable `.venv` for
+# bundled JacPython). There is NO pip-installed jaclang and no editable `.venv` for
 # the language itself. This script builds a `jac` for the EDITABLE DEV LOOP with
 # `zig build -Ddev`: the compiler is NOT bundled into the binary; instead the
 # binary links the in-repo `jac/` source and runs it live, so day-to-day edits to
@@ -12,7 +12,7 @@
 # passes at startup), so we fetch+place LLVM once below -- same prerequisite as a
 # release build, just not bundled into the binary. You only
 # rebuild for changes that live inside the binary itself (launcher .zig,
-# sitecustomize.py / _jac_finder.py, bundled CPython). The binary bundles the test
+# sitecustomize.py / _jac_finder.py, bundled JacPython). The binary bundles the test
 # runner (pytest + xdist), so `jac test` needs no system Python. For a fully
 # self-contained release binary instead, run a plain `cd jac && zig build`.
 #

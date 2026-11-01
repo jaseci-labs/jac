@@ -123,7 +123,7 @@ def fake_repo(repo: str) {
         b"in-tree-shim-bytes"
     );
     wf(repo, "bootstrap/pins.json", b"{}\n");
-    wf(repo, "bootstrap/python/sources.json", b"{}\n");
+    wf(repo, "bootstrap/python/seed.json", b"{}\n");
     wf(repo, "_jac_finder.py", b"finder\n");
     wf(repo, "sitecustomize.py", b"sitecustomize\n");
     wf(repo, "jac.toml", b"version = \"0.0.0\"\n");

@@ -1,7 +1,7 @@
-"""The bundled `io.FileIO` must read exactly what CPython's raw file reads.
+"""The bundled `io.FileIO` must read exactly what Python's raw file reads.
 
 One fixture runs on both pathways from a scratch directory: `import io` binds
-CPython's `io` on the sv pathway and `na_stdlib/io.jac` on the na pathway, so
+Python's `io` on the sv pathway and `na_stdlib/io.jac` on the na pathway, so
 identical stdout is the congruence contract for `read(n)`, `read()`,
 `readall()`, `seek` over every `whence`, `tell`, and the closed and missing
 file errors.
@@ -16,7 +16,7 @@ glob FIXTURE = str(
          Path(__file__).resolve().parent / "fixtures" / "fileio_probe.jac"
      );
 
-test "the native FileIO answers what CPython's FileIO answers" {
+test "the native FileIO answers what Python's FileIO answers" {
     with tempfile.TemporaryDirectory() as directory {
         binary = os.path.join(directory, "fileio.bin");
         build = subprocess.run(

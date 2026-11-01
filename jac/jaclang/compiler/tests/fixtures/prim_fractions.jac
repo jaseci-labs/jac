@@ -1,6 +1,6 @@
 """Bundled native ``fractions`` cross-backend equivalence fixture (#6978 Phase 2).
 
-The sv entry uses CPython's operators (``a + b``, ``a == b``, ``a < b``); the na
+The sv entry uses Python's operators (``a + b``, ``a == b``, ``a < b``); the na
 entry calls the dunder methods directly (``a.__add__(b)``, ``a.__eq__(b)``, ...)
 because the native backend has no operator-overload dispatch yet. Both must
 yield identical output. ES/JS opts out.

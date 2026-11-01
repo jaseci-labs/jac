@@ -1,6 +1,6 @@
 """Bundled native `colorsys` cross-backend equivalence fixture (#6978).
 
-The same `import colorsys` binds CPython's pure-Python `colorsys` on the sv
+The same `import colorsys` binds Python's pure-Python `colorsys` on the sv
 backend and `na_stdlib/colorsys.jac` on the na (native LLVM) backend. Every
 conversion is a pure float transform, so the two lanes are pinned on exact
 (1e-9 tolerance) values across the RGB/YIQ/HLS/HSV round trips, including the

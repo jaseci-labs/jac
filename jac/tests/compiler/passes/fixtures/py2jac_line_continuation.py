@@ -1,7 +1,7 @@
 """Fixture for #6928: implicit string concat across a backslash line-continuation."""
 
 # The reported minimal repro: two adjacent string literals joined by an explicit
-# `\` line-continuation. CPython folds these into a single str constant; py2jac
+# `\` line-continuation. Python folds these into a single str constant; py2jac
 # used to leak the source `\` into the emitted Jac, producing unparsable output.
 # `fmt: off` keeps ruff from collapsing the very construct under test.
 # fmt: off

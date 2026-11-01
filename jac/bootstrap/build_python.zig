@@ -1,5 +1,7 @@
-//! Build the release Python before any Jac tooling can run. Sources are
-//! checksum-pinned. A build-only CPython host emits the native JacPython replacement object.
+//! Build the JacPython runtime before any Jac tooling can run. A JacPython
+//! build runs on an earlier JacPython: the previous build's output, an
+//! installed runtime, or the checksum-pinned bootstrap seed of
+//! bootstrap/python/seed.json. Every other input is checked in or pinned.
 const std = @import("std");
 const native_inputs = @import("native_inputs.zig");
 const build_jacpython = @import("build_jacpython.zig");
@@ -7,61 +9,55 @@ const builtin = @import("builtin");
 const seed = @import("seed.zig");
 const Io = std.Io;
 const inputs = [_][]const u8{
-    "bootstrap/build_python.zig",             "bootstrap/seed.zig",
-    "bootstrap/python/sources.json",          "bootstrap/python/cpython-sources.txt",
-    "bootstrap/python/build.sh",              "bootstrap/python/smoke.py",
-    "bootstrap/python/finalize.py",           "bootstrap/python/build-graph.patch",
-    "bootstrap/python/host-graph.patch",      "bootstrap/python/jacpython-clinic.txt",
-    // Only the JacPython build reads the inputs from here on.
-    "bootstrap/build_jacpython.zig",          "bootstrap/pyconfig.zig",
-    "bootstrap/pyconfig_probes.zig",          "bootstrap/python/layouts_check.c",
-    "bootstrap/python/features_check.c",      "bootstrap/python/prepare_native.py",
-    "bootstrap/python/jacpython-modules.txt",
+    "bootstrap/build_python.zig",              "bootstrap/seed.zig",
+    "bootstrap/python/sources.json",           "bootstrap/python/vendored.sh",
+    "bootstrap/python/smoke.py",               "bootstrap/python/finalize.py",
+    "bootstrap/python/jacpython-clinic.txt",   "bootstrap/build_jacpython.zig",
+    "bootstrap/pyconfig.zig",                  "bootstrap/pyconfig_probes.zig",
+    "bootstrap/python/layouts_check.c",        "bootstrap/python/features_check.c",
+    "bootstrap/python/prepare_native.py",      "bootstrap/python/jacpython-modules.txt",
+    "bootstrap/python/main.c",
 };
-const first_jacpython_input = 10;
-// The Jac generators build_jacpython.zig runs with the build-time host (the
-// frozen modules, _PyRuntime, build-details.json), relative to the repository
-// root, the Jac root's parent. Only the JacPython build runs them.
+// The trees a build reads file by file: the Python sources (the standard
+// library, getpath.py, HACL* and the install templates) and the files the
+// Jac generators write (the C API headers and opcode tables).
+const vendored_sources = "bootstrap/python/src";
+const generated_sources = "bootstrap/python/generated";
+const input_trees = [_][]const u8{ vendored_sources, generated_sources };
+// The Jac generators build_jacpython.zig runs with the host (the frozen
+// modules, _PyRuntime, build-details.json), relative to the repository root,
+// the Jac root's parent.
 const generator_inputs = [_][]const u8{
     "scripts/jacpython/common.jac",
     "scripts/jacpython/gen_frozen.jac",
     "scripts/jacpython/gen_runtime_image.jac",
     "scripts/jacpython/gen_build_details.jac",
 };
-const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
-const Mode = enum { host, jacpython };
-
-fn parseMode(args: []const []const u8) !Mode {
-    if (args.len == 5) return .jacpython;
-    if (args.len == 6) {
-        if (std.mem.eql(u8, args[5], "--host")) return .host;
-    }
-    return error.InvalidBuildMode;
-}
+const Source = struct { url: []const u8, sha256: []const u8 };
+// bootstrap/python/seed.json: the Python version the runtime implements and,
+// per platform, the runtime a build starts from when it has no other.
+const SeedPins = struct { python: []const u8, seeds: std.json.ArrayHashMap(Source) };
 
 // The interpreter a JacPython build runs on: it runs the Jac compiler that
-// lowers the runtime, the generators, and supplies the vendored libraries.
+// lowers the runtime and the generators, and can hand the build its vendored
+// libraries.
 //   auto      the previous build's own output when it is complete and on the
-//             pinned version, else the bootstrap host (the default)
-//   stock     always the bootstrap host: stock CPython from the pinned archive,
-//             with its own configure and make (build.sh); the only choice on a
-//             platform no JacPython has been built for yet
+//             pinned version, else the bootstrap seed (the default)
+//   seed      always the bootstrap seed
 //   <path>    an installed runtime: its install prefix (.../python/install) or
 //             the build output holding it
 const host_flag = "--jacpython-host=";
-const HostChoice = union(enum) { auto, stock, installed: []const u8 };
-const Host = union(enum) { bootstrap, installed: []const u8 };
+const HostChoice = union(enum) { auto, seed, installed: []const u8 };
 
 fn parseHostChoice(text: []const u8) HostChoice {
     if (text.len == 0 or std.mem.eql(u8, text, "auto")) return .auto;
-    if (std.mem.eql(u8, text, "stock")) return .stock;
+    if (std.mem.eql(u8, text, "seed")) return .seed;
     return .{ .installed = text };
 }
 
 // What a build output carries forward so that the next build can run on it:
 // the interpreter, and the vendored libraries' archives, headers, notices and
-// CA bundle, which only the bootstrap host builds from source, with the key
-// they were built under (vendoredKey).
+// CA bundle, with the key they were built under (vendoredKey).
 const vendored_record = "python/build/vendored-key";
 const host_parts = [_][]const u8{
     "python/install/bin/python3.14", "python/build/include", "python/build/lib",
@@ -99,27 +95,24 @@ fn vendoredMatches(io: Io, a: std.mem.Allocator, tree: []const u8, vendored: []c
     return std.mem.eql(u8, std.mem.trim(u8, recorded, " \r\n"), vendored);
 }
 
-fn selectHost(io: Io, a: std.mem.Allocator, choice: HostChoice, dest: []const u8, pin: []const u8, vendored: []const u8, comptime probe: anytype) !Host {
+// The runtime to run on, or null for the bootstrap seed.
+fn selectHost(io: Io, a: std.mem.Allocator, choice: HostChoice, dest: []const u8, pin: []const u8, comptime probe: anytype) !?[]const u8 {
     switch (choice) {
-        .stock => return .bootstrap,
+        .seed => return null,
         .auto => {
-            // Only a finished output (it has its stamp) on the pinned version,
-            // carrying the vendored libraries this recipe pins. One built
-            // before outputs carried them, one built under other pins, or one
-            // that no longer runs, leaves the bootstrap host to build.
-            if (!pathExists(io, try std.fs.path.join(a, &.{ dest, "build-key" }))) return .bootstrap;
-            const tree = try hostTree(io, a, dest) orelse return .bootstrap;
-            if (!try vendoredMatches(io, a, tree, vendored)) return .bootstrap;
-            const version = probe(io, a, try std.fs.path.join(a, &.{ tree, host_parts[0] })) catch return .bootstrap;
-            if (!std.mem.eql(u8, version, pin)) return .bootstrap;
-            return .{ .installed = tree };
+            // Only a finished output (it has its stamp) on the pinned version.
+            // One that no longer runs leaves the seed to build.
+            if (!pathExists(io, try std.fs.path.join(a, &.{ dest, "build-key" }))) return null;
+            const tree = try hostTree(io, a, dest) orelse return null;
+            const version = probe(io, a, try std.fs.path.join(a, &.{ tree, host_parts[0] })) catch return null;
+            if (!std.mem.eql(u8, version, pin)) return null;
+            return tree;
         },
         .installed => |path| {
             const tree = try hostTree(io, a, path) orelse return error.IncompleteHostRuntime;
-            if (!try vendoredMatches(io, a, tree, vendored)) return error.VendoredLibrariesDiffer;
             const version = try probe(io, a, try std.fs.path.join(a, &.{ tree, host_parts[0] }));
             if (!std.mem.eql(u8, version, pin)) return error.HostVersionMismatch;
-            return .{ .installed = tree };
+            return tree;
         },
     }
 }
@@ -159,157 +152,120 @@ pub fn main(init: std.process.Init) !void {
     const a = init.arena.allocator();
     var reuse = false;
     var choice: HostChoice = .auto;
-    var kept: std.ArrayList([]const u8) = .empty;
+    var args: std.ArrayList([]const u8) = .empty;
     for (try init.minimal.args.toSlice(a)) |arg| {
         if (std.mem.eql(u8, arg, "--reuse-lowered")) {
             reuse = true;
         } else if (std.mem.startsWith(u8, arg, host_flag)) {
             choice = parseHostChoice(arg[host_flag.len..]);
-        } else try kept.append(a, arg);
+        } else try args.append(a, arg);
     }
-    const args = kept.items;
-    const mode = parseMode(args) catch seed.die("usage: build_python <os-arch> <destination> <jac-root> <zig> [--host] [--reuse-lowered] [" ++ host_flag ++ "auto|stock|<install prefix>]", .{});
-    const platform = args[1];
+    if (args.items.len != 5) seed.die("usage: build_python <os-arch> <destination> <jac-root> <zig> [--reuse-lowered] [" ++ host_flag ++ "auto|seed|<install prefix>]", .{});
+    const platform = args.items[1];
     if (!supported(platform)) seed.die("build-python: unsupported platform {s}", .{platform});
     if (!std.mem.eql(u8, platform, hostPlatform()))
         seed.die("build-python: build {s} on its matching release runner (host is {s})", .{ platform, hostPlatform() });
-    const dest = args[2];
-    const root = args[3];
-    const host_dest = try std.fmt.allocPrint(a, "{s}.host", .{dest});
-    const manifest_path = try std.fs.path.join(a, &.{ root, "bootstrap/python/sources.json" });
-    const manifest = try Io.Dir.cwd().readFileAlloc(io, manifest_path, a, .unlimited);
-    const sources = try std.json.parseFromSliceLeaky(std.json.ArrayHashMap(Source), a, manifest, .{});
+    const dest = args.items[2];
+    const root = args.items[3];
+    const zig = args.items[4];
+    const sources = try std.json.parseFromSliceLeaky(std.json.ArrayHashMap(Source), a, try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, "bootstrap/python/sources.json" }), a, .unlimited), .{});
+    const pins = try std.json.parseFromSliceLeaky(SeedPins, a, try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, "bootstrap/python/seed.json" }), a, .unlimited), .{});
     const smoke = try std.fs.path.join(a, &.{ root, "bootstrap/python/smoke.py" });
-    const key = try buildKey(io, a, platform, root, mode);
+    const key = try buildKey(io, a, platform, root);
     const vendored = try vendoredKey(io, a, platform, root);
     const stamp_path = try std.fs.path.join(a, &.{ dest, "build-key" });
     const old = Io.Dir.cwd().readFileAlloc(io, stamp_path, a, .limited(128)) catch "";
     const python = try std.fs.path.join(a, &.{ dest, "python/install/bin/python3.14" });
     if (std.mem.eql(u8, old, &key) and seed.fileExists(io, python)) {
-        try runSmoke(io, python, smoke, mode);
+        try runSmoke(io, python, smoke);
         seed.log("build-python: cached {s} ({s})", .{ platform, key[0..16] });
         return;
     }
     const sources_stamp = try std.fs.path.join(a, &.{ dest, "build-key-sources" });
-    if (mode == .jacpython and reuse and seed.fileExists(io, python)) {
+    if (reuse and seed.fileExists(io, python)) {
         if (try sourcesKey(io, a, platform, root, dest)) |lowered| {
             const recorded = Io.Dir.cwd().readFileAlloc(io, sources_stamp, a, .limited(128)) catch "";
             if (std.mem.eql(u8, recorded, &lowered)) {
-                try runSmoke(io, python, smoke, mode);
+                try runSmoke(io, python, smoke);
                 seed.log("build-python: reusing {s}; the sources it was lowered from are unchanged ({s})", .{ platform, lowered[0..16] });
                 return;
             }
         }
     }
-    // Something is built: choose the interpreter the JacPython build runs on.
-    var host_tree: []const u8 = host_dest;
-    var provenance: []const u8 = "";
-    if (mode == .jacpython) {
-        const pin = (sources.map.get("cpython") orelse return error.MissingCPythonSource).version orelse return error.MissingCPythonVersion;
-        const host = selectHost(io, a, choice, dest, pin, &vendored, probeVersion) catch |err|
-            seed.die("build-python: cannot build on {s}: {s}. A host is a finished build output, or its install prefix, on Python {s} with python/install, python/build/{{include,lib,cacert.pem,vendored-key}} and python/licenses, its vendored-key matching these pins; " ++ host_flag ++ "stock builds the bootstrap host instead.", .{ switch (choice) {
-                .installed => |path| path,
-                else => dest,
-            }, @errorName(err), pin });
-        switch (host) {
-            .bootstrap => {
-                seed.log("build-python: building on the bootstrap host (stock CPython from the pinned archive)", .{});
-                var host_build = try std.process.spawn(io, .{ .argv = &.{ args[0], platform, host_dest, root, args[4], "--host" } });
-                const result = try host_build.wait(io);
-                if (result != .exited or result.exited != 0) return error.HostPythonBuildFailed;
-                const host_key = Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ host_dest, "build-key" }), a, .limited(128)) catch "";
-                provenance = try std.fmt.allocPrint(a, "bootstrap {s}\n", .{host_key});
-            },
-            .installed => |tree| {
-                seed.log("build-python: building on the installed runtime at {s}", .{tree});
-                host_tree = tree;
-                provenance = try std.fmt.allocPrint(a, "installed {s}\n", .{try hostIdentity(io, a, tree)});
-            },
-        }
-    }
+    // Something is built: choose the interpreter the build runs on.
+    const cache_dir = try std.fs.path.join(a, &.{ root, ".python-build/sources" });
+    const selected = selectHost(io, a, choice, dest, pins.python, probeVersion) catch |err|
+        seed.die("build-python: cannot build on {s}: {s}. A host is a finished build output, or its install prefix, on Python {s} with python/install, python/build/{{include,lib,cacert.pem,vendored-key}} and python/licenses; " ++ host_flag ++ "seed builds on the bootstrap seed instead.", .{ switch (choice) {
+            .installed => |path| path,
+            else => dest,
+        }, @errorName(err), pins.python });
+    const host_tree = selected orelse host: {
+        const pinned = pins.seeds.map.get(platform) orelse seed.die("build-python: bootstrap/python/seed.json pins no seed for {s}", .{platform});
+        seed.log("build-python: building on the bootstrap seed {s}", .{pinned.sha256[0..16]});
+        break :host try seedTree(io, init.gpa, a, cache_dir, try std.fmt.allocPrint(a, "{s}.seed", .{dest}), pinned, seed.httpGetAlloc);
+    };
+    if (selected != null) seed.log("build-python: building on the runtime at {s}", .{host_tree});
+    const version = probeVersion(io, a, try std.fs.path.join(a, &.{ host_tree, host_parts[0] })) catch |err|
+        seed.die("build-python: the host at {s} does not run: {s}", .{ host_tree, @errorName(err) });
+    if (!std.mem.eql(u8, version, pins.python))
+        seed.die("build-python: the host at {s} is Python {s}; seed.json pins {s}", .{ host_tree, version, pins.python });
+    const provenance = try std.fmt.allocPrint(a, "{s} {s}\n", .{ if (selected == null) "seed" else "installed", try hostIdentity(io, a, host_tree) });
+
     const work = try std.fmt.allocPrint(a, "{s}.work", .{dest});
     // A failed build never produces the completion stamp or replaces a good tree.
     try Io.Dir.cwd().deleteTree(io, work);
     try Io.Dir.cwd().createDirPath(io, work);
-    const source_cache = try std.fs.path.join(a, &.{ root, ".python-build/jacpython/sources" });
-    for (sources.map.keys(), sources.map.values()) |name, source| {
-        if (mode == .jacpython and !std.mem.eql(u8, name, "cpython")) continue;
-        seed.log("build-python: source {s}", .{name});
-        const gz = try sourceArchive(io, init.gpa, source_cache, source, seed.httpGetAlloc);
-        defer init.gpa.free(gz);
-        const source_dir = try std.fs.path.join(a, &.{ work, "src", name });
-        try Io.Dir.cwd().createDirPath(io, source_dir);
-        var dir = try Io.Dir.cwd().openDir(io, source_dir, .{ .iterate = true });
-        defer dir.close(io);
-        const window = try init.gpa.alloc(u8, std.compress.flate.max_window_len);
-        defer init.gpa.free(window);
-        var reader = Io.Reader.fixed(gz);
-        var decompressor: std.compress.flate.Decompress = .init(&reader, .gzip, window);
-        try std.tar.extract(io, dir, &decompressor.reader, .{
-            .mode_mode = .executable_bit_only,
-            .strip_components = 1,
-        });
-        if (std.mem.eql(u8, name, "cpython")) {
-            const list_path = try std.fs.path.join(a, &.{ root, "bootstrap/python/cpython-sources.txt" });
-            const list = try Io.Dir.cwd().readFileAlloc(io, list_path, a, .limited(128 * 1024));
-            const retained = if (mode == .jacpython) list else try cSourceManifest(a, list);
-            try generatedHeadersOnly(retained);
-            try retainSources(io, a, dir, retained);
-            try stageGenerated(io, a, root, dir, list);
-            // One parser owns the manifest. build.sh checks the finished tree
-            // against this list rather than reading the markers again.
-            try Io.Dir.cwd().writeFile(io, .{
-                .sub_path = try std.fs.path.join(a, &.{ work, "absent-inputs" }),
-                .data = try absentInputs(a, list, mode),
-            });
-        }
-    }
     const recipe = try std.fs.path.join(a, &.{ root, "bootstrap/python" });
-    switch (mode) {
-        // The build-only host is stock CPython: its own configure and make.
-        .host => {
-            const script = try std.fs.path.join(a, &.{ recipe, "build.sh" });
-            var child = try std.process.spawn(io, .{ .argv = &.{ "sh", script, platform, work, args[4], recipe } });
-            const term = try child.wait(io);
-            if (term != .exited or term.exited != 0) seed.die("build-python: build failed; logs at {s}/logs", .{work});
-        },
-        .jacpython => build_jacpython.build(io, a, .{
-            .platform = platform,
-            .work = work,
-            .zig = args[4],
-            .recipe = recipe,
-            .host = host_tree,
-            .root = root,
-            .jobs = try jobCount(init.environ_map),
-            .environ = init.environ_map,
-        }) catch |err| {
-            // A runtime that builds the next one can carry its own defect into
-            // the build; the bootstrap host rules that out.
-            if (!std.mem.eql(u8, host_tree, host_dest))
-                seed.log("build-python: this build ran on the installed runtime at {s}; if that runtime is at fault, " ++ host_flag ++ "stock (zig build -Djacpython-host=stock) builds on the bootstrap host", .{host_tree});
-            seed.die("build-python: build failed ({s}); logs at {s}/logs", .{ @errorName(err), work });
-        },
-    }
+
+    // The vendored libraries come from the host when it built them under these
+    // pins, else from their pinned sources.
+    const vendored_tree = if (try vendoredMatches(io, a, host_tree, &vendored)) host_tree else libs: {
+        const tree = try std.fs.path.join(a, &.{ work, "vendored" });
+        for (sources.map.keys(), sources.map.values()) |name, source| {
+            seed.log("build-python: source {s}", .{name});
+            const gz = try sourceArchive(io, init.gpa, cache_dir, source, seed.httpGetAlloc);
+            defer init.gpa.free(gz);
+            try extractArchive(io, init.gpa, gz, try std.fs.path.join(a, &.{ tree, "src", name }), 1);
+        }
+        var child = try std.process.spawn(io, .{ .argv = &.{ "sh", try std.fs.path.join(a, &.{ recipe, "vendored.sh" }), platform, tree, zig } });
+        const term = try child.wait(io);
+        if (term != .exited or term.exited != 0) seed.die("build-python: vendored libraries failed; logs at {s}/logs", .{tree});
+        break :libs tree;
+    };
+
+    const python_src = try std.fs.path.join(a, &.{ work, "src/python" });
+    try stageSources(io, a, root, python_src);
+    build_jacpython.build(io, a, .{
+        .platform = platform,
+        .work = work,
+        .zig = zig,
+        .recipe = recipe,
+        .host = host_tree,
+        .vendored = vendored_tree,
+        .root = root,
+        .jobs = try jobCount(init.environ_map),
+        .environ = init.environ_map,
+    }) catch |err| {
+        // A runtime that builds the next one can carry its own defect into
+        // the build; the seed rules that out.
+        if (selected != null)
+            seed.log("build-python: this build ran on the runtime at {s}; if that runtime is at fault, " ++ host_flag ++ "seed (zig build -Djacpython-host=seed) builds on the bootstrap seed", .{host_tree});
+        seed.die("build-python: build failed ({s}); logs at {s}/logs", .{ @errorName(err), work });
+    };
     // Cache only the runtime and link archives, not intermediate objects or sources.
-    try Io.Dir.cwd().deleteTree(io, try std.fs.path.join(a, &.{ work, "src" }));
-    try Io.Dir.cwd().deleteTree(io, try std.fs.path.join(a, &.{ work, "deps" }));
-    try Io.Dir.cwd().deleteTree(io, try std.fs.path.join(a, &.{ work, "bin" }));
-    try Io.Dir.cwd().deleteTree(io, try std.fs.path.join(a, &.{ work, "absent-inputs" }));
-    // Either host built the vendored libraries under this key, or carried
-    // forward ones that were (selectHost).
-    try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fs.path.join(a, &.{ work, vendored_record }), .data = &vendored });
-    if (provenance.len > 0) {
-        try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fs.path.join(a, &.{ work, "build-host" }), .data = provenance });
+    for ([_][]const u8{ "src", "deps", "vendored" }) |transient| {
+        try Io.Dir.cwd().deleteTree(io, try std.fs.path.join(a, &.{ work, transient }));
     }
+    // The host built the vendored libraries under this key, or this build did.
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fs.path.join(a, &.{ work, vendored_record }), .data = &vendored });
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fs.path.join(a, &.{ work, "build-host" }), .data = provenance });
     try Io.Dir.cwd().deleteTree(io, dest);
     try Io.Dir.cwd().rename(work, Io.Dir.cwd(), dest, io);
     // Verify relocation before allowing a cache hit on the next invocation.
-    try runSmoke(io, python, smoke, mode);
+    try runSmoke(io, python, smoke);
     try Io.Dir.cwd().writeFile(io, .{ .sub_path = stamp_path, .data = &key });
-    if (mode == .jacpython) {
-        if (try sourcesKey(io, a, platform, root, dest)) |lowered| {
-            try Io.Dir.cwd().writeFile(io, .{ .sub_path = sources_stamp, .data = &lowered });
-        }
+    if (try sourcesKey(io, a, platform, root, dest)) |lowered| {
+        try Io.Dir.cwd().writeFile(io, .{ .sub_path = sources_stamp, .data = &lowered });
     }
 }
 
@@ -321,8 +277,8 @@ fn jobCount(environ: *const std.process.Environ.Map) !usize {
     return jobs;
 }
 
-// Host and native builds consume the same pinned archive. Keep it outside the
-// disposable work trees, and recheck its digest on every use.
+// Pinned archives (the seeds and the vendored libraries' sources) live outside
+// the disposable work trees, and their digest is rechecked on every use.
 fn sourceArchive(io: Io, a: std.mem.Allocator, cache_dir: []const u8, source: Source, comptime fetch: anytype) ![]u8 {
     const path = try std.fmt.allocPrint(a, "{s}/{s}.tar.gz", .{ cache_dir, source.sha256 });
     defer a.free(path);
@@ -346,20 +302,91 @@ fn sourceArchive(io: Io, a: std.mem.Allocator, cache_dir: []const u8, source: So
     return bytes;
 }
 
-// The interpreter a JacPython build runs on is not part of its key, or a
-// runtime that builds the next one would never be reused: the next build runs
-// on it and would key differently. The bootstrap host and an installed runtime
-// lower the same sources to the same native code; what they hand the build
-// that can differ is the frozen modules' bytecode, which each compiles with its
-// own compiler (build-host records which one did). The inputs are hashed
-// instead: the recipe, which pins the vendored libraries' sources, and the
-// compiler.
-fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8, mode: Mode) ![64]u8 {
-    var hash = std.crypto.hash.sha2.Sha256.init(.{});
-    try hashRecipe(io, a, platform, root, mode, &hash);
-    if (mode == .jacpython) {
-        try hashCompilerTree(io, a, root, &hash);
+fn extractArchive(io: Io, gpa: std.mem.Allocator, gz: []const u8, target: []const u8, strip: u32) !void {
+    try Io.Dir.cwd().createDirPath(io, target);
+    var dir = try Io.Dir.cwd().openDir(io, target, .{ .iterate = true });
+    defer dir.close(io);
+    const window = try gpa.alloc(u8, std.compress.flate.max_window_len);
+    defer gpa.free(window);
+    var reader = Io.Reader.fixed(gz);
+    var decompressor: std.compress.flate.Decompress = .init(&reader, .gzip, window);
+    try std.tar.extract(io, dir, &decompressor.reader, .{
+        .mode_mode = .executable_bit_only,
+        .strip_components = strip,
+    });
+}
+
+// The bootstrap seed, extracted once per pin next to the build output. The
+// stamp names the archive it came from; a partial extraction has none.
+fn seedTree(io: Io, gpa: std.mem.Allocator, a: std.mem.Allocator, cache_dir: []const u8, target: []const u8, source: Source, comptime fetch: anytype) ![]const u8 {
+    const stamp = try std.fs.path.join(a, &.{ target, "seed-sha256" });
+    const recorded = Io.Dir.cwd().readFileAlloc(io, stamp, a, .limited(128)) catch "";
+    if (std.mem.eql(u8, recorded, source.sha256)) {
+        if (try hostTree(io, a, target)) |tree| return tree;
     }
+    const gz = try sourceArchive(io, gpa, cache_dir, source, fetch);
+    defer gpa.free(gz);
+    try Io.Dir.cwd().deleteTree(io, target);
+    try extractArchive(io, gpa, gz, target, 0);
+    const tree = try hostTree(io, a, target) orelse return error.IncompleteSeed;
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = stamp, .data = source.sha256 });
+    return tree;
+}
+
+// Every regular file under `rel` (relative to `root`), sorted, so a hash over
+// them does not depend on directory order.
+fn treeFiles(io: Io, a: std.mem.Allocator, root: []const u8, rel: []const u8) ![]const []const u8 {
+    var dir = try Io.Dir.cwd().openDir(io, try std.fs.path.join(a, &.{ root, rel }), .{ .iterate = true });
+    defer dir.close(io);
+    var walker = try dir.walk(a);
+    defer walker.deinit();
+    var paths: std.ArrayList([]const u8) = .empty;
+    while (try walker.next(io)) |entry| {
+        if (entry.kind == .file) try paths.append(a, try a.dupe(u8, entry.path));
+    }
+    std.mem.sort([]const u8, paths.items, {}, struct {
+        fn less(_: void, left: []const u8, right: []const u8) bool {
+            return std.mem.lessThan(u8, left, right);
+        }
+    }.less);
+    return paths.items;
+}
+
+// The tree build_jacpython.zig compiles in: the vendored Python sources, with
+// each generated file staged at its path (bootstrap/python/generated/<path>.in).
+// A generated path must not shadow a vendored one, and the C API headers are
+// only ever generated.
+fn stageSources(io: Io, a: std.mem.Allocator, root: []const u8, target: []const u8) !void {
+    for (try treeFiles(io, a, root, vendored_sources)) |rel| {
+        if (std.mem.startsWith(u8, rel, "Include/")) {
+            seed.log("build-python: {s}/{s}: Include/ headers are generated", .{ vendored_sources, rel });
+            return error.VendoredHeader;
+        }
+        const dest = try std.fs.path.join(a, &.{ target, rel });
+        try Io.Dir.copyFile(.cwd(), try std.fs.path.join(a, &.{ root, vendored_sources, rel }), .cwd(), dest, io, .{ .make_path = true });
+    }
+    for (try treeFiles(io, a, root, generated_sources)) |rel| {
+        if (!std.mem.endsWith(u8, rel, ".in")) return error.UnexpectedGeneratedFile;
+        const dest = try std.fs.path.join(a, &.{ target, rel[0 .. rel.len - ".in".len] });
+        if (pathExists(io, dest)) {
+            seed.log("build-python: {s}/{s} shadows a vendored source", .{ generated_sources, rel });
+            return error.GeneratedShadowsSource;
+        }
+        try Io.Dir.copyFile(.cwd(), try std.fs.path.join(a, &.{ root, generated_sources, rel }), .cwd(), dest, io, .{ .make_path = true });
+    }
+}
+
+// The interpreter a build runs on is not part of its key, or a runtime that
+// builds the next one would never be reused: the next build runs on it and
+// would key differently. Any host lowers the same sources to the same native
+// code; what it hands the build that can differ is the frozen modules'
+// bytecode, which each compiles with its own compiler (build-host records
+// which one did). The inputs are hashed instead: the recipe, which pins the
+// vendored libraries' sources, the Python sources, and the compiler.
+fn buildKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8) ![64]u8 {
+    var hash = std.crypto.hash.sha2.Sha256.init(.{});
+    try hashRecipe(io, a, platform, root, &hash);
+    try hashCompilerTree(io, a, root, &hash);
     var digest: [32]u8 = undefined;
     hash.final(&digest);
     return std.fmt.bytesToHex(digest, .lower);
@@ -377,7 +404,7 @@ fn sourcesKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const 
         else => return err,
     };
     var hash = std.crypto.hash.sha2.Sha256.init(.{});
-    try hashRecipe(io, a, platform, root, .jacpython, &hash);
+    try hashRecipe(io, a, platform, root, &hash);
     hash.update("lowered-sources");
     var lines = std.mem.splitScalar(u8, record, '\n');
     var count: usize = 0;
@@ -401,7 +428,7 @@ fn sourcesKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const 
     return std.fmt.bytesToHex(digest, .lower);
 }
 
-/// The target and the toolchain every C translation in either build uses.
+/// The target and the toolchain every C translation uses.
 fn hashToolchain(io: Io, a: std.mem.Allocator, platform: []const u8, hash: *std.crypto.hash.sha2.Sha256) !void {
     hash.update(platform);
     hash.update(builtin.zig_version_string);
@@ -413,13 +440,12 @@ fn hashToolchain(io: Io, a: std.mem.Allocator, platform: []const u8, hash: *std.
 }
 
 /// What the vendored libraries' archives, headers, notices and CA bundle are
-/// built from: their pins and build.sh, which only the bootstrap host runs.
-/// Every output records it; a runtime whose record differs cannot hand its
-/// libraries to the next build.
+/// built from: their pins and vendored.sh. Every output records it; a runtime
+/// whose record differs cannot hand its libraries to the next build.
 fn vendoredKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8) ![64]u8 {
     var hash = std.crypto.hash.sha2.Sha256.init(.{});
     try hashToolchain(io, a, platform, &hash);
-    for ([_][]const u8{ "bootstrap/python/sources.json", "bootstrap/python/build.sh" }) |path| {
+    for ([_][]const u8{ "bootstrap/python/sources.json", "bootstrap/python/vendored.sh" }) |path| {
         hash.update(path);
         hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, path }), a, .unlimited));
     }
@@ -428,41 +454,32 @@ fn vendoredKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const
     return std.fmt.bytesToHex(digest, .lower);
 }
 
-fn hashRecipe(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8, mode: Mode, hash: *std.crypto.hash.sha2.Sha256) !void {
-    hash.update(@tagName(mode));
+fn hashRecipe(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8, hash: *std.crypto.hash.sha2.Sha256) !void {
     try hashToolchain(io, a, platform, hash);
-    for (inputs, 0..) |path, i| {
-        if (mode != .jacpython and i >= first_jacpython_input) continue;
-        const full = try std.fs.path.join(a, &.{ root, path });
+    for (inputs) |path| {
         hash.update(path);
-        hash.update(try Io.Dir.cwd().readFileAlloc(io, full, a, .unlimited));
+        hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, path }), a, .unlimited));
     }
-    // The checked-in copies staged in place of archive files.
-    const list_path = try std.fs.path.join(a, &.{ root, "bootstrap/python/cpython-sources.txt" });
-    const list = try Io.Dir.cwd().readFileAlloc(io, list_path, a, .limited(128 * 1024));
-    var lines = std.mem.splitScalar(u8, list, '\n');
-    while (lines.next()) |line| {
-        const entry = try markedExclusion(line) orelse continue;
-        if (entry.marker != .generated) continue;
-        const copy = try generatedCopy(a, entry.path);
-        hash.update(copy);
-        hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, copy }), a, .unlimited));
-    }
-    if (mode == .jacpython) {
-        for (generator_inputs) |path| {
+    for (input_trees) |tree| {
+        for (try treeFiles(io, a, root, tree)) |rel| {
+            const path = try std.fs.path.join(a, &.{ tree, rel });
             hash.update(path);
-            hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, "..", path }), a, .unlimited));
+            hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, path }), a, .unlimited));
         }
-        // Rebuild the native replacement when the producing compiler or its
-        // source inputs change; never reuse an object from another generation.
-        for ([_][]const u8{ "jaclang/vendor/typeshed/PIN", "jaclang/vendor/typeshed/TARBALL_SHA256" }) |path| {
-            hash.update(path);
-            hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, path }), a, .limited(1024)));
-        }
-        // prepare_native emits through the LLVM shim. Prefix-restored runtime
-        // trees must reject changes to that toolchain even when Jac is unchanged.
-        try native_inputs.hashShimInputs(io, a, root, hash);
     }
+    for (generator_inputs) |path| {
+        hash.update(path);
+        hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, "..", path }), a, .unlimited));
+    }
+    // Rebuild the native replacement when the producing compiler or its
+    // source inputs change; never reuse an object from another generation.
+    for ([_][]const u8{ "jaclang/vendor/typeshed/PIN", "jaclang/vendor/typeshed/TARBALL_SHA256" }) |path| {
+        hash.update(path);
+        hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, path }), a, .limited(1024)));
+    }
+    // prepare_native emits through the LLVM shim. Prefix-restored runtime
+    // trees must reject changes to that toolchain even when Jac is unchanged.
+    try native_inputs.hashShimInputs(io, a, root, hash);
 }
 
 fn hashCompilerTree(io: Io, a: std.mem.Allocator, root: []const u8, hash: *std.crypto.hash.sha2.Sha256) !void {
@@ -512,176 +529,12 @@ fn compilerInput(manifest: []const u8, path: []const u8) bool {
     return false;
 }
 
-// A commented manifest path carries a marker naming the builds that must lack
-// it. Every other comment is prose.
-const Marker = enum {
-    // Replaced by the native Jac implementation, and restored for the
-    // build-only host so it can still compile Python itself.
-    removed,
-    // Needed by no build. Absent from the host tree as well.
-    pruned,
-    // Written by a Jac generator (the opcode tables, the public C API
-    // headers) and checked in as bootstrap/python/generated/<path>.in; both
-    // trees stage that copy where the archive's was.
-    generated,
-};
-const Exclusion = struct { path: []const u8, marker: Marker };
-
-// "# <path>  # <marker>: <count> source lines". Prose comments have no path in
-// that position and are left alone; an unrecognized marker is a typo that would
-// silently drop a source, so it fails the build instead.
-fn markedExclusion(line: []const u8) !?Exclusion {
-    if (!std.mem.startsWith(u8, line, "# ")) return null;
-    const rest = std.mem.trimEnd(u8, line[2..], " \t\r");
-    const path_end = std.mem.indexOfScalar(u8, rest, ' ') orelse return null;
-    if (path_end == 0) return null;
-    const tail = rest[path_end..];
-    if (!std.mem.startsWith(u8, tail, "  # ")) return null;
-    const word = tail[4..];
-    const colon = std.mem.indexOfScalar(u8, word, ':') orelse return null;
-    const marker = std.meta.stringToEnum(Marker, word[0..colon]) orelse return error.UnknownSourceMarker;
-    return .{ .path = rest[0..path_end], .marker = marker };
-}
-
-// Only the build-time host retains the C compiler, so it alone restores the
-// entries marked as replaced. Pruned entries stay commented for both builds.
-fn cSourceManifest(a: std.mem.Allocator, manifest: []const u8) ![]const u8 {
-    var out: std.ArrayList(u8) = .empty;
-    var lines = std.mem.splitScalar(u8, manifest, '\n');
-    while (lines.next()) |line| {
-        var value = line;
-        if (try markedExclusion(line)) |excluded| {
-            if (excluded.marker == .removed) value = excluded.path;
-        }
-        try out.appendSlice(a, value);
-        try out.append(a, '\n');
-    }
-    return out.toOwnedSlice(a);
-}
-
-// Paths the finished build must not contain, one per line, for build.sh to
-// check against the tree. Both modes drop pruned entries; only the reduced
-// runtime drops the ones the host restores.
-fn absentInputs(a: std.mem.Allocator, manifest: []const u8, mode: Mode) ![]const u8 {
-    var out: std.ArrayList(u8) = .empty;
-    var lines = std.mem.splitScalar(u8, manifest, '\n');
-    while (lines.next()) |line| {
-        const excluded = try markedExclusion(line) orelse continue;
-        if (excluded.marker == .generated) continue;
-        if (excluded.marker == .removed and mode != .jacpython) continue;
-        try out.appendSlice(a, excluded.path);
-        try out.append(a, '\n');
-    }
-    return out.toOwnedSlice(a);
-}
-
-// The checked-in copy of a path the manifest marks generated, relative to the
-// Jac root.
-fn generatedCopy(a: std.mem.Allocator, path: []const u8) ![]const u8 {
-    return std.fmt.allocPrint(a, "bootstrap/python/generated/{s}.in", .{path});
-}
-
-// Every header under Include/ is generated from the Jac definitions
-// (scripts/jacpython/gen_include.jac): a manifest that keeps one of the
-// archive's, or a directory of them, fails the build.
-fn generatedHeadersOnly(manifest: []const u8) !void {
-    var lines = std.mem.splitScalar(u8, manifest, '\n');
-    while (lines.next()) |raw| {
-        const entry = std.mem.trim(u8, raw, " \t\r");
-        if (entry.len == 0 or entry[0] == '#' or !std.mem.startsWith(u8, entry, "Include/")) continue;
-        if (std.mem.endsWith(u8, entry, ".h") or std.mem.endsWith(u8, entry, "/")) {
-            seed.log("build-python: {s} would come from the CPython archive; Include/ headers are generated", .{entry});
-            return error.ArchiveHeader;
-        }
-    }
-}
-
-// Put each generated path's checked-in copy into the extracted tree. The
-// manifest comments the path out, so the archive's copy is already gone and a
-// missing checked-in copy fails the build instead of falling back to it.
-fn stageGenerated(io: Io, a: std.mem.Allocator, root: []const u8, dir: Io.Dir, manifest: []const u8) !void {
-    var lines = std.mem.splitScalar(u8, manifest, '\n');
-    while (lines.next()) |line| {
-        const entry = try markedExclusion(line) orelse continue;
-        if (entry.marker != .generated) continue;
-        const copy = try std.fs.path.join(a, &.{ root, try generatedCopy(a, entry.path) });
-        const data = try Io.Dir.cwd().readFileAlloc(io, copy, a, .unlimited);
-        if (std.fs.path.dirname(entry.path)) |parent| try dir.createDirPath(io, parent);
-        try dir.writeFile(io, .{ .sub_path = entry.path, .data = data });
-    }
-}
-
-fn runSmoke(io: Io, python: []const u8, smoke: []const u8, mode: Mode) !void {
-    var check = try std.process.spawn(io, .{ .argv = &.{ python, "-X", "faulthandler", "-I", smoke, @tagName(mode) } });
+fn runSmoke(io: Io, python: []const u8, smoke: []const u8) !void {
+    var check = try std.process.spawn(io, .{ .argv = &.{ python, "-X", "faulthandler", "-I", smoke } });
     const result = try check.wait(io);
     if (result != .exited or result.exited != 0) {
         return error.RelocationFailed;
     }
-}
-
-fn safePath(path: []const u8) bool {
-    if (path.len == 0 or std.fs.path.isAbsolute(path)) return false;
-    if (std.mem.indexOfAny(u8, path, "\\:*?[]\t\r\n") != null) return false;
-    var parts = std.mem.splitScalar(u8, path, '/');
-    while (parts.next()) |part| {
-        if (part.len == 0 or std.mem.eql(u8, part, "..") or std.mem.eql(u8, part, ".")) return false;
-    }
-    return true;
-}
-
-fn covered(path: []const u8, entries: []const []const u8) bool {
-    for (entries) |entry| {
-        if (std.mem.eql(u8, path, std.mem.trimEnd(u8, entry, "/"))) return true;
-        if (std.mem.endsWith(u8, entry, "/") and std.mem.startsWith(u8, path, entry)) return true;
-    }
-    return false;
-}
-
-fn needed(path: []const u8, directory: bool, entries: []const []const u8) bool {
-    if (covered(path, entries)) return true;
-    if (directory) for (entries) |entry| {
-        if (entry.len > path.len and entry[path.len] == '/' and std.mem.startsWith(u8, entry, path)) return true;
-    };
-    return false;
-}
-
-// Validate every entry before changing the extracted tree. Directory entries
-// end in '/', files are exact paths, and overlapping entries are rejected so
-// removing a line cannot be silently defeated by a broader directory entry.
-fn retainSources(io: Io, a: std.mem.Allocator, dir: Io.Dir, manifest: []const u8) !void {
-    var entries: std.ArrayList([]const u8) = .empty;
-    defer entries.deinit(a);
-    var lines = std.mem.splitScalar(u8, manifest, '\n');
-    while (lines.next()) |raw| {
-        const entry = std.mem.trim(u8, raw, " \t\r");
-        if (entry.len == 0 or entry[0] == '#') continue;
-        const directory = std.mem.endsWith(u8, entry, "/");
-        const path = if (directory) entry[0 .. entry.len - 1] else entry;
-        if (!safePath(path)) return error.UnsafeSourcePath;
-        if (covered(path, entries.items)) return error.OverlappingSourceEntries;
-        for (entries.items) |previous| {
-            if (covered(std.mem.trimEnd(u8, previous, "/"), &.{entry})) return error.OverlappingSourceEntries;
-        }
-        const stat = dir.statFile(io, path, .{ .follow_symlinks = false }) catch |err| {
-            seed.log("build-python: source entry {s}: {s}", .{ entry, @errorName(err) });
-            return err;
-        };
-        const expected_kind: Io.File.Kind = if (directory) .directory else .file;
-        if (stat.kind != expected_kind) return error.SourceEntryKindMismatch;
-        try entries.append(a, entry);
-    }
-    if (entries.items.len == 0) return error.EmptySourceManifest;
-
-    var walker = try dir.walkSelectively(a);
-    defer walker.deinit();
-    while (try walker.next(io)) |entry| {
-        if (!needed(entry.path, entry.kind == .directory, entries.items)) {
-            try entry.dir.deleteTree(io, entry.basename);
-        } else if (entry.kind == .directory and !covered(entry.path, entries.items)) {
-            try walker.enter(io, entry);
-        }
-    }
-    seed.log("build-python: retained {d} CPython source entries", .{entries.items.len});
 }
 
 test {
@@ -695,138 +548,22 @@ test "only release targets are accepted" {
     try std.testing.expect(!supported("windows-x86_64"));
 }
 
-test "JacPython is mandatory except for the build-only host" {
-    const args = [_][]const u8{ "build_python", "linux-x86_64", "out", "root", "zig" };
-    try std.testing.expectEqual(Mode.jacpython, try parseMode(&args));
-    try std.testing.expectError(error.InvalidBuildMode, parseMode(&(args ++ .{"--jacpython"})));
-    try std.testing.expectEqual(Mode.host, try parseMode(&(args ++ .{"--host"})));
-    try std.testing.expectError(error.InvalidBuildMode, parseMode(&(args ++ .{"--typo"})));
-    try std.testing.expectError(error.InvalidBuildMode, parseMode(args[0..4]));
-}
-
-test "manifest markers name the builds that must lack a path" {
-    const removed = (try markedExclusion("# Parser/parser.c  # removed: 1,953 source lines")).?;
-    try std.testing.expectEqual(Marker.removed, removed.marker);
-    try std.testing.expectEqualStrings("Parser/parser.c", removed.path);
-    const pruned = (try markedExclusion("# Lib/pydoc_data/  # pruned: 14,979 source lines")).?;
-    try std.testing.expectEqual(Marker.pruned, pruned.marker);
-    try std.testing.expectEqualStrings("Lib/pydoc_data/", pruned.path);
-    const generated = (try markedExclusion("# Include/opcode_ids.h  # generated: 259 source lines")).?;
-    try std.testing.expectEqual(Marker.generated, generated.marker);
-    try std.testing.expectEqualStrings("Include/opcode_ids.h", generated.path);
-    // Prose, including the header lines that quote the marker syntax.
-    try std.testing.expectEqual(@as(?Exclusion, null), try markedExclusion("# Parser and tokenizer"));
-    try std.testing.expectEqual(@as(?Exclusion, null), try markedExclusion("#   \"# path  # pruned: N source lines\""));
-    try std.testing.expectEqual(@as(?Exclusion, null), try markedExclusion("Python/ceval.c"));
-    // A misspelled marker would silently drop a source.
-    try std.testing.expectError(error.UnknownSourceMarker, markedExclusion("# Python/ceval.c  # remved: 1 source lines"));
-}
-
-test "only the reduced runtime must lack the entries the host restores" {
-    const a = std.testing.allocator;
-    const source = "# head\n# Parser/parser.c  # removed: 100 source lines\n# Lib/turtle.py  # pruned: 4,291 source lines\n# Lib/_opcode_metadata.py  # generated: 371 source lines\nPython/ceval.c\n";
-    const reduced = try absentInputs(a, source, .jacpython);
-    defer a.free(reduced);
-    try std.testing.expectEqualStrings("Parser/parser.c\nLib/turtle.py\n", reduced);
-    const host = try absentInputs(a, source, .host);
-    defer a.free(host);
-    try std.testing.expectEqualStrings("Lib/turtle.py\n", host);
-}
-
-test "C compiler builds restore only marked replacement exclusions" {
-    const a = std.testing.allocator;
-    const source = "# source allowlist\n# Parser/parser.c  # removed: 100 source lines\n# Lib/turtle.py  # pruned: 4,291 source lines\n# unused.c\nPython/ceval.c\n";
-    const restored = try cSourceManifest(a, source);
-    defer a.free(restored);
-    try std.testing.expectEqualStrings("# source allowlist\nParser/parser.c\n# Lib/turtle.py  # pruned: 4,291 source lines\n# unused.c\nPython/ceval.c\n\n", restored);
-}
-
-test "source paths stay inside the extracted tree" {
-    try std.testing.expect(safePath("Tools/msi"));
-    try std.testing.expect(!safePath("../LICENSE"));
-    try std.testing.expect(!safePath("/tmp"));
-    try std.testing.expect(!safePath("."));
-    try std.testing.expect(!safePath("Modules//main.c"));
-    try std.testing.expect(!safePath("Modules/*.c"));
-    try std.testing.expect(!safePath("..\\outside"));
-}
-
-test "source allowlist preserves exact files and subtrees and removes an entry on the next build" {
-    const io = std.testing.io;
-    const a = std.testing.allocator;
-    var tmp = std.testing.tmpDir(.{ .iterate = true });
-    defer tmp.cleanup();
-    for ([_][]const u8{ "Objects", "Lib/re", "Lib/regex", "Lib/test" }) |path| try tmp.dir.createDirPath(io, path);
-    for ([_][]const u8{ "Objects/listobject.c", "Objects/dictobject.c", "Objects/listobject.c.bak", "Lib/re/__init__.py", "Lib/regex/probe.py", "Lib/test/test_list.py", "LICENSE" }) |path| {
-        try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "source\n" });
-    }
-    try retainSources(io, a, tmp.dir, "# CPython inputs\n\nObjects/listobject.c\nObjects/dictobject.c\nLib/re/\r\nLICENSE\n");
-    _ = try tmp.dir.statFile(io, "Objects/listobject.c", .{});
-    _ = try tmp.dir.statFile(io, "Lib/re/__init__.py", .{});
-    try std.testing.expectError(error.FileNotFound, tmp.dir.statFile(io, "Objects/listobject.c.bak", .{}));
-    try std.testing.expectError(error.FileNotFound, tmp.dir.statFile(io, "Lib/regex", .{}));
-    try std.testing.expectError(error.FileNotFound, tmp.dir.statFile(io, "Lib/test", .{}));
-    try retainSources(io, a, tmp.dir, "# Objects/listobject.c  # removed: 1 source lines\nObjects/dictobject.c\nLib/re/\nLICENSE\n");
-    try std.testing.expectError(error.FileNotFound, tmp.dir.statFile(io, "Objects/listobject.c", .{}));
-}
-
-test "generated paths come from their checked-in copies" {
-    const io = std.testing.io;
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const a = arena.allocator();
-    var tmp = std.testing.tmpDir(.{ .iterate = true });
-    defer tmp.cleanup();
-    try tmp.dir.createDirPath(io, "root/bootstrap/python/generated/Include/internal");
-    try tmp.dir.writeFile(io, .{ .sub_path = "root/bootstrap/python/generated/Include/internal/table.h.in", .data = "from jac\n" });
-    try tmp.dir.createDirPath(io, "tree/Include");
-    try tmp.dir.writeFile(io, .{ .sub_path = "tree/Include/Python.h", .data = "header\n" });
-    const root = try tmp.dir.realPathFileAlloc(io, "root", a);
-    var tree = try tmp.dir.openDir(io, "tree", .{ .iterate = true });
-    defer tree.close(io);
-    const manifest = "Include/Python.h\n# Include/internal/table.h  # generated: 1 source lines\n";
-    try std.testing.expectError(error.ArchiveHeader, generatedHeadersOnly(manifest));
-    try std.testing.expectError(error.ArchiveHeader, generatedHeadersOnly("Include/internal/mimalloc/\n"));
-    try generatedHeadersOnly("Include/README.rst\n# Include/Python.h  # generated: 1 source lines\n");
-    try stageGenerated(io, a, root, tree, manifest);
-    try std.testing.expectEqualStrings("from jac\n", try tree.readFileAlloc(io, "Include/internal/table.h", a, .unlimited));
-    try std.testing.expectError(error.FileNotFound, stageGenerated(io, a, root, tree, "# Lib/missing.py  # generated: 1 source lines\n"));
-}
-
-test "invalid source manifests fail before pruning" {
-    const io = std.testing.io;
-    const a = std.testing.allocator;
-    var tmp = std.testing.tmpDir(.{ .iterate = true });
-    defer tmp.cleanup();
-    try tmp.dir.createDirPath(io, "Include");
-    try tmp.dir.writeFile(io, .{ .sub_path = "Include/Python.h", .data = "header\n" });
-    try std.testing.expectError(error.EmptySourceManifest, retainSources(io, a, tmp.dir, "# empty\n"));
-    try std.testing.expectError(error.UnsafeSourcePath, retainSources(io, a, tmp.dir, "../outside\n"));
-    try std.testing.expectError(error.FileNotFound, retainSources(io, a, tmp.dir, "missing.c\n"));
-    try std.testing.expectError(error.SourceEntryKindMismatch, retainSources(io, a, tmp.dir, "Include\n"));
-    try std.testing.expectError(error.OverlappingSourceEntries, retainSources(io, a, tmp.dir, "Include/\nInclude/Python.h\n"));
-    try std.testing.expectError(error.OverlappingSourceEntries, retainSources(io, a, tmp.dir, "Include/Python.h\nInclude/\n"));
-    _ = try tmp.dir.statFile(io, "Include/Python.h", .{});
-}
-
-test "compiler modes isolate caches; native emitter edits invalidate only JacPython" {
-    const io = std.testing.io;
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const a = arena.allocator();
-    var tmp = std.testing.tmpDir(.{ .iterate = true });
-    defer tmp.cleanup();
+// A Jac root holding every file the build key reads.
+fn fakeRoot(io: Io, a: std.mem.Allocator, tmp: *std.testing.TmpDir) !struct { dir: Io.Dir, root: []const u8 } {
     for (generator_inputs) |path| {
         try tmp.dir.createDirPath(io, std.fs.path.dirname(path).?);
         try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "generator" });
     }
     try tmp.dir.createDirPath(io, "jac");
     var dir = try tmp.dir.openDir(io, "jac", .{});
-    defer dir.close(io);
     for (inputs) |path| {
         if (std.fs.path.dirname(path)) |parent| try dir.createDirPath(io, parent);
         try dir.writeFile(io, .{ .sub_path = path, .data = "recipe" });
     }
+    try dir.createDirPath(io, vendored_sources ++ "/Lib");
+    try dir.writeFile(io, .{ .sub_path = vendored_sources ++ "/Lib/os.py", .data = "stdlib" });
+    try dir.createDirPath(io, generated_sources ++ "/Include");
+    try dir.writeFile(io, .{ .sub_path = generated_sources ++ "/Include/Python.h.in", .data = "header" });
     for (native_inputs.toolchain_inputs) |path| {
         try dir.writeFile(io, .{ .sub_path = path, .data = "toolchain" });
     }
@@ -835,51 +572,61 @@ test "compiler modes isolate caches; native emitter edits invalidate only JacPyt
     for ([_][]const u8{ "PIN", "TARBALL_SHA256" }) |name| {
         try dir.writeFile(io, .{ .sub_path = try std.fs.path.join(a, &.{ "jaclang/vendor/typeshed", name }), .data = "pin" });
     }
+    return .{ .dir = dir, .root = try dir.realPathFileAlloc(io, ".", a) };
+}
+
+test "the runtime key follows the recipe, the Python sources and the compiler, not the host" {
+    const io = std.testing.io;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var tmp = std.testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+    const fake = try fakeRoot(io, a, &tmp);
+    var dir = fake.dir;
+    defer dir.close(io);
+    const root = fake.root;
     try dir.createDirPath(io, "host");
     try dir.writeFile(io, .{ .sub_path = "host/build-key", .data = "host-key" });
     try dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "compiler" });
     try dir.writeFile(io, .{ .sub_path = "jaclang/compiler_inputs.txt", .data = "compiler.jac\ncompiler\nruntime\n" });
-    const root = try dir.realPathFileAlloc(io, ".", a);
-    const before_host = try buildKey(io, a, hostPlatform(), root, .host);
-    const before_runtime = try buildKey(io, a, hostPlatform(), root, .jacpython);
-    try std.testing.expect(!std.mem.eql(u8, &before_host, &before_runtime));
+    const before = try buildKey(io, a, hostPlatform(), root);
     try dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "changed compiler" });
-    const changed_runtime = try buildKey(io, a, hostPlatform(), root, .jacpython);
-    try std.testing.expect(!std.mem.eql(u8, &before_runtime, &changed_runtime));
-    try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, .host));
+    const changed = try buildKey(io, a, hostPlatform(), root);
+    try std.testing.expect(!std.mem.eql(u8, &before, &changed));
     try dir.writeFile(io, .{ .sub_path = "jaclang/vendor/generated.py", .data = "materialized vendor data" });
-    try std.testing.expectEqual(changed_runtime, try buildKey(io, a, hostPlatform(), root, .jacpython));
+    try std.testing.expectEqual(changed, try buildKey(io, a, hostPlatform(), root));
     try dir.writeFile(io, .{ .sub_path = "native/shim.cpp", .data = "changed emitter" });
-    try std.testing.expect(!std.mem.eql(u8, &changed_runtime, &(try buildKey(io, a, hostPlatform(), root, .jacpython))));
-    try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, .host));
+    try std.testing.expect(!std.mem.eql(u8, &changed, &(try buildKey(io, a, hostPlatform(), root))));
     try dir.deleteFile(io, "native/shim.cpp");
     for ([_][]const u8{ "scale/server.jac", "compiler/tests/example.jac", "compiler/example.test.jac", "runtime/test/fixture.py", "compiler/.generated/source.py" }) |rel| {
         const path = try std.fs.path.join(a, &.{ "jaclang", rel });
         try dir.createDirPath(io, std.fs.path.dirname(path).?);
         try dir.writeFile(io, .{ .sub_path = path, .data = "unrelated source" });
-        try std.testing.expectEqual(changed_runtime, try buildKey(io, a, hostPlatform(), root, .jacpython));
+        try std.testing.expectEqual(changed, try buildKey(io, a, hostPlatform(), root));
     }
     try dir.createDirPath(io, "jaclang/runtime/python");
     try dir.writeFile(io, .{ .sub_path = "jaclang/runtime/python/eval.jac", .data = "new runtime input" });
-    try std.testing.expect(!std.mem.eql(u8, &changed_runtime, &(try buildKey(io, a, hostPlatform(), root, .jacpython))));
+    try std.testing.expect(!std.mem.eql(u8, &changed, &(try buildKey(io, a, hostPlatform(), root))));
     try dir.deleteFile(io, "jaclang/runtime/python/eval.jac");
-    try std.testing.expectEqual(changed_runtime, try buildKey(io, a, hostPlatform(), root, .jacpython));
+    try std.testing.expectEqual(changed, try buildKey(io, a, hostPlatform(), root));
     try dir.writeFile(io, .{ .sub_path = "bootstrap/python/prepare_native.py", .data = "changed native emitter" });
-    try std.testing.expect(!std.mem.eql(u8, &changed_runtime, &(try buildKey(io, a, hostPlatform(), root, .jacpython))));
-    try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, .host));
-    const before_generator = try buildKey(io, a, hostPlatform(), root, .jacpython);
+    const before_generator = try buildKey(io, a, hostPlatform(), root);
+    try std.testing.expect(!std.mem.eql(u8, &changed, &before_generator));
     try tmp.dir.writeFile(io, .{ .sub_path = "scripts/jacpython/gen_frozen.jac", .data = "changed generator" });
-    try std.testing.expect(!std.mem.eql(u8, &before_generator, &(try buildKey(io, a, hostPlatform(), root, .jacpython))));
-    try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, .host));
-    const before_recipe = try buildKey(io, a, hostPlatform(), root, .jacpython);
-    try dir.writeFile(io, .{ .sub_path = "bootstrap/python/cpython-sources.txt", .data = "changed C source selection" });
-    try std.testing.expect(!std.mem.eql(u8, &before_host, &(try buildKey(io, a, hostPlatform(), root, .host))));
-    try std.testing.expect(!std.mem.eql(u8, &before_recipe, &(try buildKey(io, a, hostPlatform(), root, .jacpython))));
-    // The interpreter that runs the build is not an input: a rebuilt
-    // bootstrap host, or an installed runtime in its place, keeps the key.
-    const before_host_key = try buildKey(io, a, hostPlatform(), root, .jacpython);
+    const before_sources = try buildKey(io, a, hostPlatform(), root);
+    try std.testing.expect(!std.mem.eql(u8, &before_generator, &before_sources));
+    // A vendored or a generated Python source.
+    try dir.writeFile(io, .{ .sub_path = vendored_sources ++ "/Lib/os.py", .data = "patched stdlib" });
+    const patched = try buildKey(io, a, hostPlatform(), root);
+    try std.testing.expect(!std.mem.eql(u8, &before_sources, &patched));
+    try dir.writeFile(io, .{ .sub_path = generated_sources ++ "/Include/Python.h.in", .data = "regenerated" });
+    try std.testing.expect(!std.mem.eql(u8, &patched, &(try buildKey(io, a, hostPlatform(), root))));
+    // The interpreter that runs the build is not an input: a rebuilt host, or
+    // an installed runtime in its place, keeps the key.
+    const before_host = try buildKey(io, a, hostPlatform(), root);
     try dir.writeFile(io, .{ .sub_path = "host/build-key", .data = "rebuilt host" });
-    try std.testing.expectEqual(before_host_key, try buildKey(io, a, hostPlatform(), root, .jacpython));
+    try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root));
 }
 
 test "a PR may reuse a runtime whose recorded lowered sources are unchanged" {
@@ -889,30 +636,14 @@ test "a PR may reuse a runtime whose recorded lowered sources are unchanged" {
     const a = arena.allocator();
     var tmp = std.testing.tmpDir(.{ .iterate = true });
     defer tmp.cleanup();
-    for (generator_inputs) |path| {
-        try tmp.dir.createDirPath(io, std.fs.path.dirname(path).?);
-        try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "generator" });
-    }
-    try tmp.dir.createDirPath(io, "jac");
-    var dir = try tmp.dir.openDir(io, "jac", .{});
+    const fake = try fakeRoot(io, a, &tmp);
+    var dir = fake.dir;
     defer dir.close(io);
-    for (inputs) |path| {
-        if (std.fs.path.dirname(path)) |parent| try dir.createDirPath(io, parent);
-        try dir.writeFile(io, .{ .sub_path = path, .data = "recipe" });
-    }
-    for (native_inputs.toolchain_inputs) |path| {
-        try dir.writeFile(io, .{ .sub_path = path, .data = "toolchain" });
-    }
-    try dir.createDirPath(io, "native");
-    try dir.createDirPath(io, "jaclang/vendor/typeshed");
-    for ([_][]const u8{ "PIN", "TARBALL_SHA256" }) |name| {
-        try dir.writeFile(io, .{ .sub_path = try std.fs.path.join(a, &.{ "jaclang/vendor/typeshed", name }), .data = "pin" });
-    }
+    const root = fake.root;
     try dir.createDirPath(io, "jaclang/runtime/python");
     try dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "compiler" });
     try dir.writeFile(io, .{ .sub_path = "jaclang/runtime/python/eval.jac", .data = "lowered" });
     try dir.writeFile(io, .{ .sub_path = "jaclang/compiler_inputs.txt", .data = "compiler.jac\nruntime\n" });
-    const root = try dir.realPathFileAlloc(io, ".", a);
     const built = try std.fs.path.join(a, &.{ root, "built" });
 
     // No record: nothing to reuse.
@@ -924,7 +655,7 @@ test "a PR may reuse a runtime whose recorded lowered sources are unchanged" {
     try dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "changed compiler" });
     try std.testing.expectEqual(lowered, (try sourcesKey(io, a, hostPlatform(), root, built)).?);
     // ...while the full key, which main uses, still moves.
-    try std.testing.expect(!std.mem.eql(u8, &lowered, &(try buildKey(io, a, hostPlatform(), root, .jacpython))));
+    try std.testing.expect(!std.mem.eql(u8, &lowered, &(try buildKey(io, a, hostPlatform(), root))));
     // An edit to a recorded source does not reuse it.
     try dir.writeFile(io, .{ .sub_path = "jaclang/runtime/python/eval.jac", .data = "edited" });
     const edited = (try sourcesKey(io, a, hostPlatform(), root, built)).?;
@@ -934,7 +665,7 @@ test "a PR may reuse a runtime whose recorded lowered sources are unchanged" {
     try std.testing.expect(!std.mem.eql(u8, &edited, &(try sourcesKey(io, a, hostPlatform(), root, built)).?));
 }
 
-test "pinned source archives survive host builds and reject corrupt cached or fetched bytes" {
+test "pinned archives are cached and reject corrupt cached or fetched bytes" {
     const Fetch = struct {
         fn archive(_: Io, a: std.mem.Allocator, _: []const u8) ![]u8 {
             return a.dupe(u8, "pinned archive");
@@ -968,15 +699,15 @@ test "pinned source archives survive host builds and reject corrupt cached or fe
     try std.testing.expectError(error.SourceChecksumMismatch, sourceArchive(io, a, root, other, Fetch.archive));
 }
 
-test "the host choice names the bootstrap host, the previous output, or an installed runtime" {
+test "the host choice names the previous output, the seed, or an installed runtime" {
     try std.testing.expectEqual(HostChoice.auto, parseHostChoice(""));
     try std.testing.expectEqual(HostChoice.auto, parseHostChoice("auto"));
-    try std.testing.expectEqual(HostChoice.stock, parseHostChoice("stock"));
+    try std.testing.expectEqual(HostChoice.seed, parseHostChoice("seed"));
     try std.testing.expectEqualStrings("/opt/jacpython/python/install", parseHostChoice("/opt/jacpython/python/install").installed);
     _ = &main;
 }
 
-test "a JacPython build runs on the previous runtime when it can, else on the bootstrap host" {
+test "a build runs on the previous runtime when it can, else on the seed" {
     const Probe = struct {
         fn pinned(_: Io, _: std.mem.Allocator, _: []const u8) ![]const u8 {
             return "3.14.6";
@@ -998,11 +729,11 @@ test "a JacPython build runs on the previous runtime when it can, else on the bo
     const out = try std.fs.path.join(a, &.{ base, "out" });
     const prefix = try std.fs.path.join(a, &.{ out, "python/install" });
 
-    // Nothing built yet: only the bootstrap host can build.
-    try std.testing.expectEqual(Host.bootstrap, try selectHost(io, a, .auto, out, "3.14.6", "pins", Probe.pinned));
-    try std.testing.expectError(error.IncompleteHostRuntime, selectHost(io, a, .{ .installed = prefix }, out, "3.14.6", "pins", Probe.pinned));
+    // Nothing built yet: only the seed can build.
+    try std.testing.expectEqual(@as(?[]const u8, null), try selectHost(io, a, .auto, out, "3.14.6", Probe.pinned));
+    try std.testing.expectError(error.IncompleteHostRuntime, selectHost(io, a, .{ .installed = prefix }, out, "3.14.6", Probe.pinned));
 
-    // An output from before outputs carried the vendored headers.
+    // An output missing a part the build reads.
     for (host_parts) |part| {
         if (std.mem.eql(u8, part, "python/build/include")) continue;
         if (std.mem.endsWith(u8, part, "python3.14") or std.mem.endsWith(u8, part, ".pem") or std.mem.endsWith(u8, part, "-key")) {
@@ -1011,32 +742,32 @@ test "a JacPython build runs on the previous runtime when it can, else on the bo
         } else try tmp.dir.createDirPath(io, try std.fs.path.join(a, &.{ "out", part }));
     }
     try tmp.dir.writeFile(io, .{ .sub_path = "out/build-key", .data = "key" });
-    try std.testing.expectEqual(Host.bootstrap, try selectHost(io, a, .auto, out, "3.14.6", "pins", Probe.pinned));
-    try std.testing.expectError(error.IncompleteHostRuntime, selectHost(io, a, .{ .installed = prefix }, out, "3.14.6", "pins", Probe.pinned));
+    try std.testing.expectEqual(@as(?[]const u8, null), try selectHost(io, a, .auto, out, "3.14.6", Probe.pinned));
+    try std.testing.expectError(error.IncompleteHostRuntime, selectHost(io, a, .{ .installed = prefix }, out, "3.14.6", Probe.pinned));
 
     try tmp.dir.createDirPath(io, "out/python/build/include");
     // The finished previous output, named by itself or by its install prefix.
-    try std.testing.expectEqualStrings(out, (try selectHost(io, a, .auto, out, "3.14.6", "pins", Probe.pinned)).installed);
-    try std.testing.expectEqualStrings(out, (try selectHost(io, a, .{ .installed = prefix }, out, "3.14.6", "pins", Probe.pinned)).installed);
-    try std.testing.expectEqualStrings(out, (try selectHost(io, a, .{ .installed = out }, base, "3.14.6", "pins", Probe.pinned)).installed);
-    // stock always builds on the bootstrap host.
-    try std.testing.expectEqual(Host.bootstrap, try selectHost(io, a, .stock, out, "3.14.6", "pins", Probe.pinned));
+    try std.testing.expectEqualStrings(out, (try selectHost(io, a, .auto, out, "3.14.6", Probe.pinned)).?);
+    try std.testing.expectEqualStrings(out, (try selectHost(io, a, .{ .installed = prefix }, out, "3.14.6", Probe.pinned)).?);
+    try std.testing.expectEqualStrings(out, (try selectHost(io, a, .{ .installed = out }, base, "3.14.6", Probe.pinned)).?);
+    // seed always builds on the seed.
+    try std.testing.expectEqual(@as(?[]const u8, null), try selectHost(io, a, .seed, out, "3.14.6", Probe.pinned));
     // A runtime on another version, or one that no longer runs: the default
     // falls back, a named host is an error.
-    try std.testing.expectEqual(Host.bootstrap, try selectHost(io, a, .auto, out, "3.14.6", "pins", Probe.older));
-    try std.testing.expectEqual(Host.bootstrap, try selectHost(io, a, .auto, out, "3.14.6", "pins", Probe.broken));
-    try std.testing.expectError(error.HostVersionMismatch, selectHost(io, a, .{ .installed = prefix }, out, "3.14.6", "pins", Probe.older));
-    try std.testing.expectError(error.HostDoesNotRun, selectHost(io, a, .{ .installed = prefix }, out, "3.14.6", "pins", Probe.broken));
-    // Vendored libraries built under other pins: the default rebuilds them
-    // on the bootstrap host, a named host is an error.
-    try std.testing.expectEqual(Host.bootstrap, try selectHost(io, a, .auto, out, "3.14.6", "new pins", Probe.pinned));
-    try std.testing.expectError(error.VendoredLibrariesDiffer, selectHost(io, a, .{ .installed = prefix }, out, "3.14.6", "new pins", Probe.pinned));
+    try std.testing.expectEqual(@as(?[]const u8, null), try selectHost(io, a, .auto, out, "3.14.6", Probe.older));
+    try std.testing.expectEqual(@as(?[]const u8, null), try selectHost(io, a, .auto, out, "3.14.6", Probe.broken));
+    try std.testing.expectError(error.HostVersionMismatch, selectHost(io, a, .{ .installed = prefix }, out, "3.14.6", Probe.older));
+    try std.testing.expectError(error.HostDoesNotRun, selectHost(io, a, .{ .installed = prefix }, out, "3.14.6", Probe.broken));
+    // Vendored libraries built under other pins do not disqualify a host:
+    // the build rebuilds the libraries instead.
+    try std.testing.expect(try vendoredMatches(io, a, out, "pins"));
+    try std.testing.expect(!try vendoredMatches(io, a, out, "new pins"));
     // An unfinished output (no stamp) is never the default host.
     try tmp.dir.deleteFile(io, "out/build-key");
-    try std.testing.expectEqual(Host.bootstrap, try selectHost(io, a, .auto, out, "3.14.6", "pins", Probe.pinned));
+    try std.testing.expectEqual(@as(?[]const u8, null), try selectHost(io, a, .auto, out, "3.14.6", Probe.pinned));
 }
 
-test "the vendored libraries' key follows their pins and build.sh, not the runtime's inputs" {
+test "the vendored libraries' key follows their pins and vendored.sh, not the runtime's inputs" {
     const io = std.testing.io;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -1045,15 +776,43 @@ test "the vendored libraries' key follows their pins and build.sh, not the runti
     defer tmp.cleanup();
     try tmp.dir.createDirPath(io, "bootstrap/python");
     try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/sources.json", .data = "pins" });
-    try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/build.sh", .data = "recipe" });
-    try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/cpython-sources.txt", .data = "selection" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/vendored.sh", .data = "recipe" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/smoke.py", .data = "checks" });
     const root = try tmp.dir.realPathFileAlloc(io, ".", a);
     const before = try vendoredKey(io, a, hostPlatform(), root);
-    try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/cpython-sources.txt", .data = "changed selection" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/smoke.py", .data = "changed checks" });
     try std.testing.expectEqual(before, try vendoredKey(io, a, hostPlatform(), root));
     try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/sources.json", .data = "new pins" });
     const pinned = try vendoredKey(io, a, hostPlatform(), root);
     try std.testing.expect(!std.mem.eql(u8, &before, &pinned));
-    try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/build.sh", .data = "new recipe" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/vendored.sh", .data = "new recipe" });
     try std.testing.expect(!std.mem.eql(u8, &pinned, &(try vendoredKey(io, a, hostPlatform(), root))));
+}
+
+test "the build tree is the vendored sources with each generated file staged" {
+    const io = std.testing.io;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var tmp = std.testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+    const fake = try fakeRoot(io, a, &tmp);
+    var dir = fake.dir;
+    defer dir.close(io);
+    const root = fake.root;
+    try dir.createDirPath(io, generated_sources ++ "/Lib");
+    try dir.writeFile(io, .{ .sub_path = generated_sources ++ "/Lib/_opcode_metadata.py.in", .data = "from jac" });
+    const target = try std.fs.path.join(a, &.{ root, "tree" });
+    try stageSources(io, a, root, target);
+    try std.testing.expectEqualStrings("stdlib", try dir.readFileAlloc(io, "tree/Lib/os.py", a, .unlimited));
+    try std.testing.expectEqualStrings("header", try dir.readFileAlloc(io, "tree/Include/Python.h", a, .unlimited));
+    try std.testing.expectEqualStrings("from jac", try dir.readFileAlloc(io, "tree/Lib/_opcode_metadata.py", a, .unlimited));
+    // A generated file may not replace a vendored one.
+    try dir.writeFile(io, .{ .sub_path = generated_sources ++ "/Lib/os.py.in", .data = "shadow" });
+    try std.testing.expectError(error.GeneratedShadowsSource, stageSources(io, a, root, try std.fs.path.join(a, &.{ root, "tree2" })));
+    try dir.deleteFile(io, generated_sources ++ "/Lib/os.py.in");
+    // Nor may the vendored tree carry a C API header.
+    try dir.createDirPath(io, vendored_sources ++ "/Include");
+    try dir.writeFile(io, .{ .sub_path = vendored_sources ++ "/Include/object.h", .data = "upstream" });
+    try std.testing.expectError(error.VendoredHeader, stageSources(io, a, root, try std.fs.path.join(a, &.{ root, "tree3" })));
 }

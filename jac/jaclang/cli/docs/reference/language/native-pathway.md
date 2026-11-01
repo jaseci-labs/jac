@@ -555,7 +555,7 @@ At native strict sites, using a `T | None` value where the unwrapped `T` is requ
 
 | Feature | Example |
 |---------|---------|
-| `open(path, mode)` | `f = open("data.txt", "r");` -- raises `FileNotFoundError` if the path is missing (CPython-congruent) |
+| `open(path, mode)` | `f = open("data.txt", "r");` -- raises `FileNotFoundError` if the path is missing (Python-congruent) |
 | `f.read()` / `f.readline()` | Read entire file or one line |
 | `f.write(data)` / `f.flush()` | Write string, flush buffer |
 | `f.close()` | Close file handle |
@@ -587,11 +587,11 @@ to libc/libm. Where behavior can still diverge, it is noted per module below.
 
 | Module | Status | Lowering |
 |--------|--------|----------|
-| `math` | full (results match CPython to within floating-point ULP) | libm |
+| `math` | full (results match Python to within floating-point ULP) | libm |
 | `time` | full | `clock_gettime` / `nanosleep` |
 | `sys` | subset | constants + argv/exit |
 | `os` / `os.path` | subset | libc |
-| `random` | seed-sequence faithful | CPython MT19937 |
+| `random` | seed-sequence faithful | Python's MT19937 |
 | `signal` | subset, Linux only | libc (`bsd_signal` / `sigprocmask`) |
 | `subprocess` | subset, Linux only | `posix_spawnp` + `poll` |
 | `fcntl` | subset, POSIX hosts | libc (`fcntl(2)` / `ioctl(2)`) |
@@ -604,7 +604,7 @@ producing a wrong binary), so an unsupported `import` or member fails loudly.
 
 #### `math` -- Floating-Point Math
 
-`import math` lowers to libm, so results are congruent with CPython (which also
+`import math` lowers to libm, so results are congruent with Python (which also
 calls libm) to within floating-point ULP.
 
 | Group | Members |
@@ -634,7 +634,7 @@ with entry {
 
 `import time` binds the bundled `na_stdlib` module over POSIX clocks.
 Wall-clock values are inherently non-deterministic, but each reader is
-congruent with its CPython counterpart.
+congruent with its Python counterpart.
 
 | Feature | Notes |
 |---------|-------|
@@ -675,7 +675,7 @@ the real filesystem.
 | `os.mkdir(path)` / `os.rmdir(path)` | Create / remove a directory |
 | `os.remove(path)` / `os.unlink(path)` | Remove a file |
 | `os.rename(src, dst)` | Rename |
-| `os.system(cmd)` | Run a shell command, return the raw POSIX wait status (exit code x 256), as CPython does |
+| `os.system(cmd)` | Run a shell command, return the raw POSIX wait status (exit code x 256), as Python does |
 
 | `os.path` | Notes |
 |-----------|-------|
@@ -692,13 +692,13 @@ stdlib never compiles silently.
 
 #### `random` -- Pseudo-Random Numbers
 
-`import random` uses a faithful re-implementation of CPython's **MT19937**, so
+`import random` uses a faithful re-implementation of Python's **MT19937**, so
 `random.seed(n)` followed by the same calls produces the **same sequence** on
 the `sv` and `na` pathways (seed an integer first for reproducibility).
 
 | Feature | Notes |
 |---------|-------|
-| `random.seed(n)` | Seed from an integer (CPython `init_by_array`) |
+| `random.seed(n)` | Seed from an integer (Python's `init_by_array`) |
 | `random.random()` | Float in `[0, 1)` (53-bit, `genrand_res53`) |
 | `random.getrandbits(k)` | `k` up to 64 |
 | `random.randint(a, b)` | Inclusive, via the `_randbelow` rejection loop |
@@ -710,7 +710,7 @@ import random;
 
 with entry {
     random.seed(42);
-    print(random.random());        # matches CPython's seed(42) stream
+    print(random.random());        # matches Python's seed(42) stream
     print(random.randint(1, 100));
 }
 ```
@@ -746,9 +746,9 @@ Verbose mode enabled
 `alarm()` / `pause()` / `strsignal()` / `valid_signals()` /
 `pthread_sigmask()` / `default_int_handler` and the Linux `SIG*` constant
 set. User handlers dispatch through a C-ABI trampoline that receives
-`(signum, None)` where CPython delivers `(signum, frame)`. `SIG_DFL` /
+`(signum, None)` where Python delivers `(signum, frame)`. `SIG_DFL` /
 `SIG_IGN` install real kernel dispositions; `valid_signals` and
-`pthread_sigmask` answer `list` where CPython answers `set`.
+`pthread_sigmask` answer `list` where Python answers `set`.
 
 #### `subprocess` -- Child Processes (Linux)
 
@@ -766,18 +766,18 @@ does not deadlock). Scoped to `args`/`stdin`/`stdout`/`stderr`/`text`/`cwd`/
 `import fcntl` provides `fcntl(fd, cmd, arg=0)` (the `F_GETFL`/`F_SETFL`
 family) and `ioctl(fd, request, arg)`, which copies a `bytes` arg into a
 private 1024-byte buffer and answers fresh `bytes` of the same length (the
-packed `winsize` for `TIOCGWINSZ`), as CPython does. `import termios` provides
-`tcgetattr`/`tcsetattr` over the CPython `[iflag, oflag, cflag, lflag,
+packed `winsize` for `TIOCGWINSZ`), as Python does. `import termios` provides
+`tcgetattr`/`tcsetattr` over the Python `[iflag, oflag, cflag, lflag,
 ispeed, ospeed, cc]` shape (cc as NCCS ints: 32 on glibc, 20 on darwin)
 and the V*/I*/O*/C*/L* constant groups with their per-OS values. `import
-tty` provides `setraw`/`setcbreak`, CPython's `tty.py` ported over the
+tty` provides `setraw`/`setcbreak`, Python's `tty.py` ported over the
 bundled `termios`. `import select` provides `select(rlist, wlist, xlist,
 timeout=-1.0)` over `poll(2)` plus the `POLL*` constants.
 
-Divergences from CPython on these floors: errors raise `ValueError`
-carrying CPython's `[Errno N] <strerror>` text (CPython raises `OSError` /
+Divergences from Python on these floors: errors raise `ValueError`
+carrying Python's `[Errno N] <strerror>` text (Python raises `OSError` /
 `termios.error` / `select.error`); an `ioctl` request that writes past
-its argument raises `RuntimeError` where CPython raises `SystemError`;
+its argument raises `RuntimeError` where Python raises `SystemError`;
 `termios` does not export Linux's `VSWTC`; `select`'s
 block-forever sentinel is `-1.0` rather than `None`, `POLLERR`/`POLLHUP`
 report readable AND writable, and the exceptional list is always empty.

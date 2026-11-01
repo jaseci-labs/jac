@@ -1,7 +1,7 @@
 """Behavioral tests for native structural match patterns (#7593 item 7).
 
 Sequence, mapping, star, and class (MatchArch) patterns lower to native
-LLVM IR. Expected values are pinned against real CPython `match`
+LLVM IR. Expected values are pinned against real Python `match`
 semantics (see fixtures/match_patterns.jac).
 """
 

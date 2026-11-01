@@ -1,14 +1,14 @@
 """The bundled `fnmatch` / `logging` shims and the `os` gaps must answer what
-CPython answers.
+Python answers.
 
-`import from fnmatch {...}` binds CPython's module on the sv pathway and
+`import from fnmatch {...}` binds Python's module on the sv pathway and
 `na_stdlib/fnmatch.jac` on the na pathway, so running one fixture through both
-and demanding identical output *is* the congruence contract -- CPython is the
+and demanding identical output *is* the congruence contract -- Python is the
 oracle, not a hand-copied expectation table. Same for `logging`.
 
 `fnmatch_probe.jac` walks a 29-pattern by 14-name grid through both
 `fnmatchcase` and `fnmatch`, covering the metacharacters (`*`, `?`), character
-classes with negation and ranges, and every awkward bracket case CPython's
+classes with negation and ranges, and every awkward bracket case Python's
 `translate` special-cases: a `]` first in the class, an unterminated `[` that
 falls back to a literal, `[!]`, and a `-` at either end of a class.
 
@@ -22,7 +22,7 @@ reachable through the flat `import os`. The mtime is pinned with `touch -t`
 runs read one stamp; the absolute value is irrelevant, only that the two
 pathways agree on it.
 
-`logging_probe.jac` writes on stderr, where CPython's default handler writes,
+`logging_probe.jac` writes on stderr, where Python's default handler writes,
 and pins the parts of the surface that are congruent: the default WARNING
 threshold suppressing `.debug`/`.info`, `basicConfig` lowering it, the
 `%(levelname)s`/`%(name)s`/`%(message)s` format fields, and `getLogger()`
@@ -31,7 +31,7 @@ answering to the name `root`.
 `contextvars_probe.jac` runs one `ContextVar[Req]` through the whole
 precedence ladder `get` implements -- a set value, then the call's own
 default, then the constructor default, then `LookupError` -- so the sv run
-answers out of CPython's own `contextvars` and the na run out of the bundled
+answers out of Python's own `contextvars` and the na run out of the bundled
 shim.
 
 `contextvars_scalar.jac` runs the same ladder at `int`, `bool`, `str`,
@@ -39,7 +39,7 @@ shim.
 once, so a slot typed by its parameter is a pointer; a by-value argument
 boxes into it and unboxes at the access site, so `0`, `False` and `""` stay
 distinct from the null that spells None. The explicit `default=None` and
-`get(None)` it exercises are CPython's "a default was passed" case, which the
+`get(None)` it exercises are Python's "a default was passed" case, which the
 shim tells apart from an omitted default with a marker rather than `None`.
 A tagged `any` value has no box, so `ContextVar[int | str]` is still refused
 naming the instantiation, and a test pins that refusal.
@@ -52,7 +52,7 @@ variable raises `ValueError`, and a token used as a context manager
 resets on exit.
 
 `contextvars_own_token.jac` defines its own `Token` beside a `ContextVar`
-and imports the shim's token under CPython's name. A native program
+and imports the shim's token under Python's name. A native program
 identifies a class by its bare name, so the shim's class is
 `ContextVarToken` with `Token` an alias; a shim class named `Token` took the
 program's struct, and the compiler's own `unitree.Token` with it.
@@ -118,13 +118,13 @@ def _same_lines(sv_text: str, na_text: str, what: str) {
     }
 }
 
-test "native os path gaps answer what CPython's os.path answers" {
+test "native os path gaps answer what Python's os.path answers" {
     (sv_out, _sv_err) = _sv_run("os_gaps_probe.jac");
     (na_out, _na_err) = _na_run("os_gaps_probe.jac");
     _same_lines(sv_out, na_out, "os gaps");
 }
 
-test "native fnmatch answers what CPython's fnmatch answers" {
+test "native fnmatch answers what Python's fnmatch answers" {
     (sv_out, _sv_err) = _sv_run("fnmatch_probe.jac");
     (na_out, _na_err) = _na_run("fnmatch_probe.jac");
     _same_lines(sv_out, na_out, "fnmatch");
@@ -142,19 +142,19 @@ def _log_lines(text: str) -> str {
     return "\n".join(kept);
 }
 
-test "native logging writes what CPython's logging writes" {
+test "native logging writes what Python's logging writes" {
     (_sv_out, sv_err) = _sv_run("logging_probe.jac");
     (_na_out, na_err) = _na_run("logging_probe.jac");
     _same_lines(_log_lines(sv_err), _log_lines(na_err), "logging");
 }
 
-test "native contextvars answers what CPython's contextvars answers" {
+test "native contextvars answers what Python's contextvars answers" {
     (sv_out, _sv_err) = _sv_run("contextvars_probe.jac");
     (na_out, _na_err) = _na_run("contextvars_probe.jac");
     _same_lines(sv_out, na_out, "contextvars");
 }
 
-test "native ContextVar at scalar and optional type arguments answers like CPython" {
+test "native ContextVar at scalar and optional type arguments answers like Python" {
     py_out = python_run(os.path.join(FIXTURES, "contextvars_scalar.jac"));
     (na_out, _na_err) = _na_run("contextvars_scalar.jac");
     _same_lines(py_out, na_out, "contextvars scalar");
@@ -174,7 +174,7 @@ test "a ContextVar at a mixed by-value union type argument is refused, not lower
     assert "ContextVar[int | str]" in combined , f"diagnostic does not name the instantiation: {combined[-600:]}";
 }
 
-test "native ContextVar.set returns a Token that reset honors like CPython" {
+test "native ContextVar.set returns a Token that reset honors like Python" {
     py_out = python_run(os.path.join(FIXTURES, "contextvars_token.jac"));
     (na_out, _na_err) = _na_run("contextvars_token.jac");
     _same_lines(py_out, na_out, "contextvars token");
@@ -188,7 +188,7 @@ test "a program's own Token lives beside the contextvars shim's token" {
 }
 
 
-test "native unicodedata answers what CPython answers" {
+test "native unicodedata answers what Python answers" {
     (sv_out, _sv_err) = _sv_run("unicodedata_probe.jac");
     (na_out, _na_err) = _na_run("unicodedata_probe.jac");
     _same_lines(sv_out, na_out, "unicodedata");

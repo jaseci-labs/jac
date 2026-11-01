@@ -1,4 +1,4 @@
-import from jaclang.runtime.python.cpython_api { PyObject }
+import from jaclang.runtime.python.python_capi { PyObject }
 import from jaclang.runtime.python.constant_output { constant_object }
 import from jaclang.runtime.python.objects {
     PyCode,

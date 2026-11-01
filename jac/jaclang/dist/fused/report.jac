@@ -1,6 +1,7 @@
 """Launcher-side diagnostics: the two ways the fused runtime talks to the
-user before CPython exists -- a narrated cold-start step, and a clean failure
-exit. Kept apart from the I/O modules so every layer can import it."""
+user before the Python runtime exists -- a narrated cold-start step, and a
+clean failure exit. Kept apart from the I/O modules so every layer can import
+it."""
 
 import sys;
 

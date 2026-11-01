@@ -1,4 +1,4 @@
-//! pyconfig.h for the JacPython build, without autoconf. Every macro CPython's
+//! pyconfig.h for the JacPython build, without autoconf. Every macro
 //! configure writes there is either a build decision recorded in `probes` or
 //! the result of a small program the pinned Zig compiles (and, where configure
 //! links, links) for the release target, the same test configure runs. Probes

@@ -7,24 +7,26 @@
 //!     library (`jaclang/dist/fused`), compiled by the in-checkout
 //!     compiler with `jac build --as native` (the Jac-native linkers; no
 //!     external toolchain) -- it links only libc/libdl and dlopens the bundled
-//!     CPython at runtime;
+//!     JacPython runtime at boot;
 //!   * the payload tool is `jaclang.dist.payload`, Python-tier Jac that fetches the
 //!     vendored inputs, stages the runtime tree, packs it, and appends it to the
 //!     stub with the trailer.
 //!
-//! The build first compiles the pinned CPython and native libraries from
-//! bootstrap/python/sources.json using Zig's C toolchain. The seed verifies
-//! sources before running the retained upstream configure/make recipes.
-//! Build hosts need Zig 0.16.0, make, Perl, a POSIX shell, and a network
-//! connection. No installed Python or Jac is required. Each release target
-//! builds on its matching runner; the resulting Python tree is relocatable.
+//! The build first builds the JacPython runtime (bootstrap/build_python.zig)
+//! on an earlier JacPython: the previous build's output, else the
+//! checksum-pinned bootstrap seed of bootstrap/python/seed.json. Its vendored C
+//! libraries come from the host runtime or, when their pins in
+//! bootstrap/python/sources.json moved, are built from source with Zig's C
+//! toolchain. Build hosts need Zig 0.16.0, a POSIX shell, a network
+//! connection, and make and Perl when the vendored libraries are rebuilt. No
+//! installed Python or Jac is required. Each release target builds on its
+//! matching runner; the resulting Python tree is relocatable.
 //!
-//!   zig build build-python        # just Python and its native dependencies
+//!   zig build build-python        # just the Python runtime and its native libraries
 //!   zig build test                # offline bootstrap tests
 //!   zig build stub                # just the launcher
 //!   zig build                     # complete binary -> zig-out/bin/jac
-//!   zig build -Dpython=jacpython  # opt in to the native Python compiler
-//!   zig build -Dpython=jacpython -Djacpython-host=stock  # ...built on stock CPython
+//!   zig build -Djacpython-host=seed  # build on the bootstrap seed, not the previous runtime
 //!   zig build -Ddev               # link compiler sources from this checkout
 //!   zig build -Djaclang-dir=PATH   # link another compiler source tree
 //!   zig build -Dpayload=PATH       # pack an existing payload
@@ -69,9 +71,9 @@ fn llvmCacheDir(b: *std.Build, target: std.Build.ResolvedTarget) ?[]const u8 {
 // link path can both feed it through the same mkpayload/place plumbing.
 const Shim = struct { bin: std.Build.LazyPath, place: *std.Build.Step };
 
-/// The Python that boots the in-checkout compiler on the source-built CPython. `zig
-/// build` builds CPython from pinned sources first (bootstrap/build_python.zig, the
-/// first step that runs before any Python exists) and then drives every other
+/// The Python that boots the in-checkout compiler on the JacPython runtime. `zig
+/// build` builds that runtime first (bootstrap/build_python.zig, the first step
+/// that needs a Python, which it takes from the bootstrap seed) and then drives every other
 /// build step through this program, so the build tooling is Jac
 /// (`jaclang.dist.payload`) and needs no prior jac binary:
 ///
@@ -101,8 +103,8 @@ const JACBOOT_SRC =
 
 /// The Jac build tooling, as a runnable. Every run depends on BOTH seed
 /// fetches, which is what keeps the bootstrap acyclic: the callee imports the
-/// compiler from this checkout and compiling anything at all needs the source-built
-/// CPython to run on and the vendored typeshed to type-check against, so a Jac
+/// compiler from this checkout and compiling anything at all needs the JacPython
+/// runtime to run on and the vendored typeshed to type-check against, so a Jac
 /// tool run can never be the thing that puts either of them in place (#8785).
 /// Callers that cache on inputs must also declare the jaclang tree
 /// (addTreeInputs).
@@ -136,16 +138,11 @@ pub fn build(b: *std.Build) void {
     else
         b.resolveTargetQuery(.{ .cpu_model = .baseline });
     const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSmall });
-    // Chosen at build time; each binary bundles exactly one Python runtime.
-    const python_variant = b.option([]const u8, "python", "Python runtime to bundle: cpython (default) or jacpython") orelse "cpython";
-    if (!std.mem.eql(u8, python_variant, "cpython") and !std.mem.eql(u8, python_variant, "jacpython"))
-        std.debug.panic("-Dpython must be cpython or jacpython, not {s}", .{python_variant});
-    const jacpython = std.mem.eql(u8, python_variant, "jacpython");
     const reuse_python = b.option(bool, "reuse-python", "Reuse a JacPython runtime whose lowered sources are unchanged (pull-request builds)") orelse false;
     // The interpreter a JacPython build runs on (bootstrap/build_python.zig
-    // selectHost). The default builds on the previous JacPython runtime; stock
-    // CPython is built from the pinned archive only when there is none.
-    const jacpython_host = b.option([]const u8, "jacpython-host", "Interpreter a JacPython build runs on: auto (the previous runtime, else stock), stock (bootstrap CPython from the pinned archive), or an installed JacPython's prefix") orelse "auto";
+    // selectHost). The default builds on the previous JacPython runtime, and
+    // on the pinned bootstrap seed when there is none.
+    const jacpython_host = b.option([]const u8, "jacpython-host", "Interpreter a JacPython build runs on: auto (the previous runtime, else the bootstrap seed), seed (the bootstrap seed), or an installed JacPython's prefix") orelse "auto";
 
     // --- LLVMPY_* shim: compile jac/native/*.cpp + statically link host LLVM ---
     // Replaces the bundled libllvmlite.so (llvmlite wheel). Gated on -Dllvm-dir
@@ -158,7 +155,7 @@ pub fn build(b: *std.Build) void {
     addTests(b, target, optimize);
 
     // --- Stage 0: the two inputs that must exist before any Jac compiles -----
-    // The source-built CPython the Jac tooling runs ON, and the typeshed stdlib stubs it
+    // The JacPython runtime the Jac tooling runs ON, and the typeshed stdlib stubs it
     // type-checks AGAINST. Type inference is on the critical path of every
     // compilation, so both are hard prerequisites of compiling even the build
     // tooling itself -- which is why both are fetched by Zig seeds and not by
@@ -175,15 +172,12 @@ pub fn build(b: *std.Build) void {
     });
     const seed = b.addExecutable(.{ .name = "build_python", .root_module = seed_mod });
     const pins_path = b.pathFromRoot(pins.PINS_PATH);
-    const host_python_dir = b.pathFromRoot(b.fmt(".python-build/{s}/{s}", .{ python_variant, host_osarch }));
+    const host_python_dir = b.pathFromRoot(b.fmt(".python-build/{s}", .{host_osarch}));
     const fetch_host = b.addRunArtifact(seed);
     fetch_host.addArgs(&.{ host_osarch, host_python_dir, b.pathFromRoot("."), b.graph.zig_exe });
-    if (!jacpython) fetch_host.addArg("--host");
     if (reuse_python) fetch_host.addArg("--reuse-lowered");
-    if (jacpython) {
-        const choice = if (std.mem.eql(u8, jacpython_host, "auto") or std.mem.eql(u8, jacpython_host, "stock")) jacpython_host else b.pathFromRoot(jacpython_host);
-        fetch_host.addArg(b.fmt("--jacpython-host={s}", .{choice}));
-    }
+    const choice = if (std.mem.eql(u8, jacpython_host, "auto") or std.mem.eql(u8, jacpython_host, "seed")) jacpython_host else b.pathFromRoot(jacpython_host);
+    fetch_host.addArg(b.fmt("--jacpython-host={s}", .{choice}));
     fetch_host.has_side_effects = true;
     b.step("build-python", "Build the source-pinned Python runtime and native libraries").dependOn(&fetch_host.step);
     const root = b.pathFromRoot(".");
@@ -206,7 +200,7 @@ pub fn build(b: *std.Build) void {
     // die inside the compiler on a missing libjacllvm.so.
     if (jacllvm) |shim| {
         fetch_host.step.dependOn(shim.place);
-    } else if (jacpython and !shimPlacedInTree(b, target)) {
+    } else if (!shimPlacedInTree(b, target)) {
         fetch_host.step.dependOn(&b.addFail(
             "the JacPython runtime needs the LLVMPY_* shim: run `zig build fetch-llvm` " ++
                 "first (or restore a shim built from these inputs to " ++ SHIM_PLACE_DIR ++ ")",
@@ -239,7 +233,7 @@ pub fn build(b: *std.Build) void {
     // Standalone: fetch the pinned LLVM subset the jacllvm shim needs into
     // .llvm-build/ (one-time, ~84 MB range-fetched from the llvm-slice zip). After
     // this, a plain `zig build` picks it up via llvmCacheDir and ships the
-    // wheel-free binary. Pure-Zig bootstrap (no source-built CPython needed).
+    // wheel-free binary. Pure-Zig bootstrap (no Python needed).
     {
         const llvm_seed_mod = b.createModule(.{
             .root_source_file = b.path("bootstrap/fetch_llvm.zig"),
@@ -313,20 +307,19 @@ pub fn build(b: *std.Build) void {
     // The TARGET's source-built Python tree: the payload input, and the C floor archives
     // (libzstd.a, libcrypto.a, ...) the stub static-links. Same tree as the
     // host's whenever host == target, which is every CI lane.
-    const python_dir = b.pathFromRoot(b.fmt(".python-build/{s}/{s}", .{ python_variant, osarch }));
+    const python_dir = b.pathFromRoot(b.fmt(".python-build/{s}", .{osarch}));
     const python_tree = b.fmt("{s}/python", .{python_dir});
     const fetch_target: *std.Build.Step = if (std.mem.eql(u8, osarch, host_osarch)) &fetch_host.step else blk: {
         const fetch = b.addRunArtifact(seed);
         fetch.addArgs(&.{ osarch, python_dir, root, b.graph.zig_exe });
-        if (!jacpython) fetch.addArg("--host");
         fetch.has_side_effects = true;
         break :blk &fetch.step;
     };
 
     // --- launcher stub: the in-checkout compiler compiles launcher/ natively --
     // A native build treats any native-seam demotion in the stub's closure as
-    // a hard error: a function demoted to Python-only cannot run before CPython
-    // exists. (The whole-program type-check gate is not used here: it cannot
+    // a hard error: a function demoted to Python-only cannot run before the
+    // Python runtime exists. (The whole-program type-check gate is not used here: it cannot
     // see the bundled per-OS native floors the launcher imports.) Needs the
     // LLVMPY_* shim placed in-tree and the target's C floor archives.
     const build_stub = tool.run("jac", &.{ "build", "--native" });
@@ -410,12 +403,12 @@ pub fn build(b: *std.Build) void {
         // before the precompile and is refreshed after, so only changed modules
         // recompile. Content-keyed per module, so a stale dir can never change
         // the payload -- only how fast it builds. NOT a tracked input.
-        mk.addArg(b.fmt("--precompiled-cache={s}", .{b.pathFromRoot(b.fmt(".precompiled-build/{s}", .{python_variant}))}));
+        mk.addArg(b.fmt("--precompiled-cache={s}", .{b.pathFromRoot(".precompiled-build")}));
         // Persistent compressed-frame cache for the payload's deps layer: the
         // level-19 zstd frame over the rarely-changing deps tree is reused when
         // its content is unchanged. Verified by decompress + compare on reuse,
         // so it can never change the payload either.
-        mk.addArg(b.fmt("--layer-cache={s}", .{b.pathFromRoot(b.fmt(".payload-layers/{s}", .{python_variant}))}));
+        mk.addArg(b.fmt("--layer-cache={s}", .{b.pathFromRoot(".payload-layers")}));
 
         // Seal the runtime (issue #7135): a bundled release payload boots from
         // the JIR image + frozen jac0core bootstrap. This is the ONLY bundled
@@ -509,7 +502,7 @@ pub fn build(b: *std.Build) void {
         // The pins (Python/bun/LLVM) and the tool itself; a bump must repack.
         mk.addFileInput(b.path(pins.PINS_PATH));
         mk.addFileInput(b.path("bootstrap/python/sources.json"));
-        mk.addFileInput(b.path("bootstrap/python/cpython-sources.txt"));
+        mk.addFileInput(b.path("bootstrap/python/seed.json"));
         // Repack when any runtime source or recipe changes, even in dev mode.
         mk.addFileInput(.{ .cwd_relative = b.fmt("{s}/build-key", .{python_dir}) });
         break :payload out;

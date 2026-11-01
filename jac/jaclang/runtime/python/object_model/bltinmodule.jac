@@ -625,7 +625,7 @@ import from c {
                      "Return the identity of an object.\n"
                      "\n"
                      "This is guaranteed to be unique among simultaneously existing objects.\n"
-                     "(CPython uses the object's memory address.)"
+                     "(JacPython uses the object's memory address.)"
                  )
              ),
              PyMethodDef(

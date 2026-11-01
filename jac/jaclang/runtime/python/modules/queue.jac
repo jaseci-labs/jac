@@ -1,9 +1,9 @@
-"""Native reentrant FIFO with CPython's portable, interruptible wait primitive.
+"""Native reentrant FIFO with Python's portable, interruptible wait primitive.
 
 The interpreter lock protects queue state. A notification wakes one waiter;
-consuming an item passes that notification on when more items remain. CPython
+consuming an item passes that notification on when more items remain. Python
 references are visible to its cycle collector through the borrowed-item ABI.
-Derived from CPython 3.14.6; see ../LICENSE.cpython.
+Derived from Python 3.14.6; see ../LICENSE.cpython.
 """
 
 obj queue_state(NativeState) {
@@ -56,7 +56,7 @@ def:pub jacpy_queue_size(state: queue_state) -> i64 {
     return i64(state.items.count);
 }
 
-# Borrowed references: the CPython GC visitor never calls Python or releases GIL.
+# Borrowed references: the GC visitor never calls Python or releases GIL.
 def:pub jacpy_queue_borrow(state: queue_state, index: i64) -> ptr[PyObject] {
     return state.items.borrow(int(index));
 }

@@ -1,6 +1,6 @@
 """The macOS side of posix's process identity calls.
 
-Derived from CPython 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
 getgrouplist() and initgroups() take the group as an int (__APPLE__),
 setgroups() counts with an int, struct utsname is five 256-byte fields and
 getlogin_r() fills a MAXLOGNAME + 1 buffer. There is no setresuid() family

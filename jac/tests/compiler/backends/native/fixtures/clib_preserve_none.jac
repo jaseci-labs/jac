@@ -1,4 +1,4 @@
-"""Handlers in CPython's tail-call shape: preserve_none C definitions that
+"""Handlers in a tail-call interpreter's shape: preserve_none C definitions that
 dispatch to each other through a preserve_none function-pointer table."""
 import from c {
     @__preserve_none

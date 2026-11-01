@@ -1,7 +1,7 @@
 """Bundled native ``keyword`` cross-backend equivalence fixture.
 
-The sv entry uses CPython's keyword module; the na entry the bundled
-`keyword.jac`, which mirrors CPython's kwlist/softkwlist verbatim
+The sv entry uses Python's keyword module; the na entry the bundled
+`keyword.jac`, which mirrors Python's kwlist/softkwlist verbatim
 (ordering included). ES/JS opts out.
 """
 

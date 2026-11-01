@@ -86,7 +86,7 @@ exclude = [
     # regression suite and test262 gate it, not this check.
     "jac/js_engine/*",
 
-    # JacPython: the CPython runtime port, its compiler backend and its
+    # JacPython: the Python runtime, its compiler backend and its
     # generators. About 80% of this check's time on a 4 vCPU runner (122 of
     # 188 worker-minutes in the runtime port alone); its own test suites gate it.
     "jac/jaclang/runtime/python/*",
@@ -128,8 +128,8 @@ exclude = [
     "console.impl.jac",
     "cli_boot.jac",
     # Same reason for the fused runtime's diagnostics: report.jac narrates the
-    # single binary's cold start and its failures to stderr before CPython (and
-    # so the console) exists -- bare print() is its mechanism too.
+    # single binary's cold start and its failures to stderr before the Python
+    # runtime (and so the console) exists -- bare print() is its mechanism too.
     "fused/report.jac",
     # wheel_archive.jac is exported as the sdist build backend, which runs
     # without jaclang: an impl in an annex compiles to a jaclib decorator, so

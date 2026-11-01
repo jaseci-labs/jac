@@ -7,7 +7,7 @@ targets, called **codespaces**:
 
 | Codespace | Selector | Backend output | Runs on |
 |-----------|----------|----------------|---------|
-| **Server** | Inferred; the default, anchored by python imports, graph archetypes, and typed context blocks; `[placement.pins]` override | Python AST → CPython bytecode | CPython |
+| **Server** | Inferred; the default, anchored by python imports, graph archetypes, and typed context blocks; `[placement.pins]` override | Python AST → Python bytecode | JacPython |
 | **Client** | **Inferred** from client-only syntax (JSX, browser globals, string-path npm imports) and symbol references; `[placement.pins]` override or a `.jac` implementation-variant file | ESTree → JavaScript | Browsers / Node |
 | **Native** | **Inferred** -- whole modules by the placement solver's verdict under the native default codespace, elements from extern-decl (C-ABI FFI) imports and their users; `[placement.pins]` override, or forced module-wide by `jac build <file> --native` / `CompileOptions(force_codespace='native')` | LLVM IR → object code → executable | Bare machine (Linux / macOS, x86_64 / arm64) |
 
@@ -49,7 +49,7 @@ graph TB
 
     subgraph PY["Server (Python)"]
         PY_SRC[".py source"] --> PY_TOKEN[tokenizer]
-        PY_TOKEN --> PY_PARSE[CPython parser]
+        PY_TOKEN --> PY_PARSE[Python parser]
         PY_PARSE --> PY_SYMTAB[symbol table]
         PY_SYMTAB --> PY_CHECK[mypy / pyright]
         PY_CHECK --> PY_IR["AST → IR"]
@@ -691,7 +691,7 @@ The two lowering backends (ECMAScript and native) implement the same
 abstract emitter interface, defined in
 [`compiler/backends/common/primitives.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/common/primitives.jac).
 The server backend needs no emitters: it compiles to Python bytecode, so
-CPython itself provides the reference semantics the other backends must
+Python itself provides the reference semantics the other backends must
 match. This is what makes "`'hello'.upper()` works in all three codespaces"
 a guarantee rather than a convention.
 
@@ -728,7 +728,7 @@ Thirteen emitter families are defined: one per primitive type (`int`,
 exception machinery. The codegen pass calls `StrEmitter.emit_op_add(...)`
 and the backend's subclass produces an ES `BinaryExpression` or an LLVM
 `call @str_concat`; the Python backend emits an ordinary `BinOp` whose
-semantics come from CPython directly.
+semantics come from the Python runtime directly.
 
 If a backend hasn't implemented an operation, the emitter returns `None`
 and the compiler raises a diagnostic at compile time -- see the diagnostic
@@ -748,7 +748,7 @@ user-facing reference, [Primitives & Codespace Semantics](../reference/language/
 | `cl → sv` | HTTP `POST` to the walker / function endpoint exposed by `jac run` | `EsastGenPass` emits `fetch(...)` against the URL recorded in the binding |
 | `sv → cl` | None at runtime -- the client mounts its own DOM. The server only ships the bootstrap payload | `JcirGenPass` emits the static-file route for the bundle |
 | `sv → na` | In-process `ctypes.CFUNCTYPE` over the JIT'd function address (MCJIT); an AOT `--lib` build is loaded across the process boundary instead | `JcirGenPass` emits the ctypes stub; `NaIRGenPass` exposes the function with C ABI |
-| `na → sv` | Python callback wrapped in a `ctypes.CFUNCTYPE` and registered as a JIT symbol (`llvm.add_symbol`), so MCJIT resolves the native call back into CPython | `interop_bridge.register_py_callbacks`, alongside the `sv → na` stub |
+| `na → sv` | Python callback wrapped in a `ctypes.CFUNCTYPE` and registered as a JIT symbol (`llvm.add_symbol`), so MCJIT resolves the native call back into the Python runtime | `interop_bridge.register_py_callbacks`, alongside the `sv → na` stub |
 | `na → na` | Direct symbol reference resolved by the bundled LLD | `BoundaryAnalysisPass` records the import; `NativeCompilePass` emits the relocation |
 | `sv → sv` (cross-app) | A typed-async stub keyed by the provider **app name** when an import's target is compiled in a different app context; in-process when the provider app is colocated, HTTP `POST` when it runs as its own process | `JcirGenPass` emits a generated `async` `__jac_sv_client` stub (`call` / `spawn_walker`; un-awaited statement spawns become `_deferred`, the outbox); the manifest's app edges drive the built-in `scale` subsystem's boot order |
 

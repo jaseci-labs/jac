@@ -1,4 +1,4 @@
-"""bytes.join over a list of bytes lowers natively with CPython semantics."""
+"""bytes.join over a list of bytes lowers natively with Python semantics."""
 
 def glue(separator: &bytes, parts: &list[bytes]) -> bytes {
     return separator.join(parts);

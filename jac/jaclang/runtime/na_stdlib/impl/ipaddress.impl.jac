@@ -491,7 +491,7 @@ impl IPv4Network.__contains__(other: IPv4Address) -> bool {
 impl IPv4Network.hosts -> list[IPv4Address] {
     if self.num_addresses > 1048576 {
         raise ValueError(
-            "hosts(): network has more than 2**20 addresses; the native hosts() materializes a list and refuses (CPython returns a lazy iterator)"
+            "hosts(): network has more than 2**20 addresses; the native hosts() materializes a list and refuses (Python returns a lazy iterator)"
         );
     }
     out: list[IPv4Address] = [];
@@ -543,7 +543,7 @@ impl IPv4Network.subnets(
     }
     if diff > 20 {
         raise ValueError(
-            "subnets(): refusing to materialize more than 2**20 subnets on native (CPython returns a lazy iterator)"
+            "subnets(): refusing to materialize more than 2**20 subnets on native (Python returns a lazy iterator)"
         );
     }
     out: list[IPv4Network] = [];
@@ -1411,7 +1411,7 @@ impl IPv6Network.__contains__(other: IPv6Address) -> bool {
 impl IPv6Network.hosts -> list[IPv6Address] {
     if self.num_addresses > 1048576 {
         raise ValueError(
-            "hosts(): network has more than 2**20 addresses; the native hosts() materializes a list and refuses (CPython returns a lazy iterator)"
+            "hosts(): network has more than 2**20 addresses; the native hosts() materializes a list and refuses (Python returns a lazy iterator)"
         );
     }
     out: list[IPv6Address] = [];
@@ -1465,7 +1465,7 @@ impl IPv6Network.subnets(
     }
     if diff > 20 {
         raise ValueError(
-            "subnets(): refusing to materialize more than 2**20 subnets on native (CPython returns a lazy iterator)"
+            "subnets(): refusing to materialize more than 2**20 subnets on native (Python returns a lazy iterator)"
         );
     }
     count: int = 1 << diff;

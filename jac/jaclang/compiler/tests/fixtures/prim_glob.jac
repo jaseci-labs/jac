@@ -1,14 +1,14 @@
 """Bundled native ``glob`` cross-backend equivalence fixture.
 
-The SAME `import from glob { ... }` binds CPython's ``glob`` on the sv
+The SAME `import from glob { ... }` binds Python's ``glob`` on the sv
 (Python) backend and the bundled `na_stdlib/glob.jac` Mechanism-B module on
 the na (native LLVM) backend. Each lane builds the identical throwaway tree
 under /tmp (nested dirs, dotfiles, mixed extensions), runs the same pattern
-grid, SORTS each result (CPython documents glob order as undefined --
+grid, SORTS each result (Python documents glob order as undefined --
 scandir order -- while the na module returns each directory listing sorted),
 and pins results as "\n"-joined strings because raw lists do not marshal
 across the native boundary. Also pins escape/has_magic and iglob==glob
-agreement (iteration only: CPython's iglob yields, the na one returns an
+agreement (iteration only: Python's iglob yields, the na one returns an
 eager list). `glob` is a Jac keyword, so the function is imported and called
 under the `` `glob `` keyword escape (the bundled module declares it as
 `def:pub `glob``); the escape compiles to a plain `glob` name on sv. Bodies

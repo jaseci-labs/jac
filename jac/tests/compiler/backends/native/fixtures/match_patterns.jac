@@ -5,7 +5,7 @@ mapping patterns (key probe, missing key fall-through, **rest collection),
 class patterns (keyword, positional, subclass dispatch via vtable), nested
 sequence recursion, and guard interplay after structural binding.
 
-Every expected value is pinned against real CPython `match` semantics.
+Every expected value is pinned against real Python `match` semantics.
 Match captures type as Unknown in the checker, so captures are cast
 (`(x as int)`) per the match_stmt.jac precedent; lists are built at
 runtime via append loops so lengths are not compile-time constants.

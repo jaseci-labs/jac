@@ -1,4 +1,4 @@
-"""`set` and `frozenset` over ranges, tuples and dicts of numbers, as in CPython."""
+"""`set` and `frozenset` over ranges, tuples and dicts of numbers, as in Python."""
 
 obj Keeper {
     has count: int = 3,

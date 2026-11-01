@@ -252,7 +252,7 @@ test "bundled runtime python is None outside standalone" {
     }
 }
 
-test "pip runs on the bundled CPython in a sealed runtime, else sys.executable" {
+test "pip runs on the bundled Python in a sealed runtime, else sys.executable" {
     with patch.dict(os.environ, {}, clear=False) {
         os.environ.pop("JAC_STANDALONE", None);
         assert pip_python() == sys.executable;

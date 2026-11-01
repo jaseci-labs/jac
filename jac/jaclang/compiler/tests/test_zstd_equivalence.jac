@@ -2,9 +2,9 @@
 
 `import from compression.zstd { ... }` binds the bundled
 `na_stdlib/compression/zstd.jac` Mechanism-F surface (over the `libzstd` FFI
-floor) on the na backend and CPython's real `compression.zstd` (zstd 1.5.7) on
+floor) on the na backend and Python's real `compression.zstd` (zstd 1.5.7) on
 the sv reference; `io.BytesIO` binds the bundled `na_stdlib/io.jac` on na and
-CPython's `io` on sv. The fixture round-trips `compress`/`decompress` at levels
+Python's `io` on sv. The fixture round-trips `compress`/`decompress` at levels
 1/3/9/19, decodes a payload of TWO concatenated frames (the launcher's payload
 shape) one-shot, incrementally through `ZstdDecompressor`, and streamed through
 `ZstdFile(BytesIO(...)).read(chunk)`, pinning lengths + a poly digest of the
@@ -12,7 +12,7 @@ decompressed bytes.
 
 The na fixture is compiled with the native codespace forced on
 (`default_codespace='native'`), so no `[placement.pins]` entry is required, and
-its per-key output is asserted equal to the CPython reference (a regression in
+its per-key output is asserted equal to the Python reference (a regression in
 either backend is a hard failure). A second test pins the exact launcher decode
 path -- `ZstdFile(io.BytesIO(payload))` over two frames -- byte-for-byte with a
 sha256 on the sv side. ES/JS opts out (no zstd floor)."""
@@ -69,7 +69,7 @@ test "zstd reference facts pinned" {
 }
 
 
-test "zstd two-frame launcher decode path (CPython reference)" {
+test "zstd two-frame launcher decode path (Python reference)" {
     a = b"alpha payload block " * 500;
     b = b"beta payload block " * 500;
     two = _zc(a, 19) + _zc(b, 19);

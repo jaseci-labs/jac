@@ -1,7 +1,7 @@
 """Native deque and mapping policies for Python's collections module.
 
 Python object lifetimes and callbacks remain explicit at the boundary. Storage
-and all collection algorithms execute in Jac. Derived from CPython 3.14.6;
+and all collection algorithms execute in Jac. Derived from Python 3.14.6;
 see ../LICENSE.cpython.
 """
 

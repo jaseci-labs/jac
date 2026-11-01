@@ -8,7 +8,7 @@ offset and the total length), so a loop over `s[i]`, `s[i:i + 1]` or
 cache drops a string's cursor before its memory is freed, so a new string at
 the same address never inherits it.
 
-The fixture's checksums are recomputed here on CPython, over strings long
+The fixture's checksums are recomputed here on the interpreter, over strings long
 enough for the cache to engage, including strings rebuilt at the same address
 round after round. The scaling test times the four loops at n and 4n
 codepoints: linear work grows about 4x, while converting from byte 0 every
@@ -156,7 +156,7 @@ def _churn_walk(s: str) -> int {
     return acc;
 }
 
-test "codepoint access on long non-ASCII strings matches CPython" {
+test "codepoint access on long non-ASCII strings matches Python" {
     eng = _eng();
     index_mix = get_sfunc(
         eng,
@@ -197,7 +197,7 @@ test "codepoint access on long non-ASCII strings matches CPython" {
     }
 }
 
-test "searches on long non-ASCII strings match CPython" {
+test "searches on long non-ASCII strings match Python" {
     eng = _eng();
     search_mix = get_sfunc(
         eng,

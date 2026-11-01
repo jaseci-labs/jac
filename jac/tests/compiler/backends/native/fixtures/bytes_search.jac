@@ -1,4 +1,4 @@
-"""Bytes search methods lower natively with CPython semantics."""
+"""Bytes search methods lower natively with Python semantics."""
 
 def name_of(raw: &bytes) -> str {
     end = raw.find(b"\x00");

@@ -1,4 +1,4 @@
-"""Floats rendered by print, str, f-strings and str.format read like CPython."""
+"""Floats rendered by print, str, f-strings and str.format read like Python."""
 
 def half -> float {
     return 1.5;

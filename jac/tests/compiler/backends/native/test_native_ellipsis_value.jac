@@ -19,7 +19,7 @@ import from pathlib { Path }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
-test "Ellipsis as a value matches CPython" {
+test "Ellipsis as a value matches Python" {
     out = assert_native_identity(
         os.path.join(FIXTURES, "ellipsis_value.jac"), profiles=["rc", "managed"]
     );

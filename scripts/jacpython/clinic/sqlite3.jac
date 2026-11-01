@@ -2,7 +2,8 @@
 
 scripts/jacpython/gen_clinic.jac generates
 jaclang/runtime/python/bindings/clinic/sqlite3.jac from them. Taken from
-CPython 3.14.6 Modules/_sqlite/blob.c, Modules/_sqlite/connection.c, Modules/_sqlite/cursor.c, Modules/_sqlite/microprotocols.c, Modules/_sqlite/module.c, Modules/_sqlite/prepare_protocol.c, Modules/_sqlite/row.c, Modules/_sqlite/statement.c, Modules/_sqlite/util.c.
+the C sources it replaces (Modules/_sqlite/blob.c, Modules/_sqlite/connection.c, Modules/_sqlite/cursor.c, Modules/_sqlite/microprotocols.c, Modules/_sqlite/module.c, Modules/_sqlite/prepare_protocol.c, Modules/_sqlite/row.c, Modules/_sqlite/statement.c, Modules/_sqlite/util.c); see
+jac/jaclang/runtime/python/LICENSE.cpython.
 """
 import from clinic_schema { Clinic, Function, Parameter }
 

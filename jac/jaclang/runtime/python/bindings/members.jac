@@ -1,8 +1,8 @@
-"""C fields published as attributes with CPython's structmember conversions.
+"""C fields published as attributes with Python's structmember conversions.
 
 A native object keeps the C record behind an attribute in memory it owns;
 reads and writes go through PyMember_GetOne()/PyMember_SetOne() on that
-address, so range checks, truncation warnings and messages are CPython's own.
+address, so range checks, truncation warnings and messages are Python's own.
 """
 
 # Py_T_* field types (Include/descrobject.h) and the Py_READONLY flag.

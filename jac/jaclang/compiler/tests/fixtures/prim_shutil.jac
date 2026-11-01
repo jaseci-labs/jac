@@ -1,6 +1,6 @@
 """Bundled native ``shutil`` cross-backend equivalence fixture.
 
-The sv entry uses CPython's shutil; the na entry the bundled
+The sv entry uses Python's shutil; the na entry the bundled
 `shutil.jac` (which/copyfile/copy/copy2/move/rmtree over the os
 intrinsics plus libc). Both backends drive the same fixed /tmp workspace
 sequentially and pin observable facts as ints/strings. ES/JS opts out.

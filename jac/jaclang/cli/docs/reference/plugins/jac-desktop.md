@@ -6,7 +6,7 @@ desktop app is **one `jac build --native`d binary plus a web engine** - no Rust
 toolchain, no PyInstaller, no separate process.
 
 It builds the same Vite frontend that the **jac-client** framework produces (the `cl`
-codespace), then compiles a native host (`na`) that embeds CPython to serve that
+codespace), then compiles a native host (`na`) that embeds the Python runtime to serve that
 bundle on a loopback port and renders it in either the OS-native webview
 (WebKitGTK on Linux, WKWebView on macOS, WebView2 on Windows) or Chromium
 Embedded Framework (CEF). The embedded interpreter is also where the `sv`
@@ -315,7 +315,7 @@ notification = true
    remote `backend`, that URL is baked in as the bundle's API base.
 2. jac-desktop seals the program into an app image (`app.jab`, through the same
    `build_jab` that `jac build` uses) and generates a native host that:
-   - boots the fused Jac runtime with an embedded CPython, materializes the
+   - boots the fused Jac runtime with the embedded Python runtime, materializes the
      image and runs the one Jac server (`JacAPIServer`) on a loopback port,
      serving the built bundle as its client and, for an embedded backend, the
      program with its colocated service apps behind their `/api/<app>` routes;

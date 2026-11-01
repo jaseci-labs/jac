@@ -31,7 +31,7 @@
 # block) and renders through the same scalar rlgl API, so the two builds can be
 # compared side by side. shooter.rs is the matching Rust twin: an
 # `unsafe extern "C"` block in place of the import block, built with plain
-# `rustc` (no cargo, no crates). shooter.py is the CPython twin, binding the
+# `rustc` (no cargo, no crates). shooter.py is the Python twin, binding the
 # same entry points through the standard library's ctypes (no bindings package).
 #
 # Flock mode: a sibling `.flock` file turns on a 256-boid flock in every twin.

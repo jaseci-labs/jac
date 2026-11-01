@@ -1,6 +1,6 @@
 """`copy.copy` natively: a new instance of the runtime class sharing its fields.
 
-Every line is printed by both backends and diffed, so CPython's `copy` is the
+Every line is printed by both backends and diffed, so Python's `copy` is the
 oracle. Covers an obj copied through a base-typed parameter (the copy is the
 subclass, with its extra fields), a `class` archetype, a method copying
 `self`, an optional archetype, scalar mutation staying private while a shared

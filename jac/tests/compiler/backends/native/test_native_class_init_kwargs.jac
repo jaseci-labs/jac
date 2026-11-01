@@ -29,7 +29,7 @@ import from pathlib { Path }
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
      PROFILES: list[str] = ["managed", "rc"];
 
-test "keyword construction binds against the initializer like CPython" {
+test "keyword construction binds against the initializer like Python" {
     assert_native_identity(
         os.path.join(FIXTURES, "class_init_kwargs.jac"), profiles=PROFILES
     );

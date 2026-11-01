@@ -2,7 +2,7 @@
 # extracted from compiler_codegen.jac. Pure mechanical move; see
 # compiler_codegen.jac for the module-initialization ordering contract.
 
-# CPython's import prefix keeps int 0 in co_consts even though level uses
+# The C compiler's import prefix keeps int 0 in co_consts even though level uses
 # LOAD_SMALL_INT (same dead-small-int slot as literal folding).
 def ensure_import_prefix_consts(g: cfg_builder) {
     # Same dead-small-int rule: 0 is kept only at const index 0 (pool empty).
@@ -12,7 +12,7 @@ def ensure_import_prefix_consts(g: cfg_builder) {
     }
 }
 
-# LOAD_SMALL_INT level, LOAD_CONST fromlist, IMPORT_NAME modname (CPython import).
+# LOAD_SMALL_INT level, LOAD_CONST fromlist, IMPORT_NAME modname (codegen.c import).
 def emit_import_name_call(
     g: cfg_builder, modname: str, level: int, fromlist: PyObj | None, iloc: cloc
 ) {
@@ -74,7 +74,7 @@ def visit_import_from(g: cfg_builder, imp: ImportFrom) -> stmt_cont {
     emit_import_name_call(g, modname, level, fromlist, iloc);
     if len(imp.names) == 1 and imp.names[0].name == "*" {
         # `from M import *` lowers to CALL_INTRINSIC_1 INTRINSIC_IMPORT_STAR
-        # (oparg 2) + POP_TOP in CPython 3.14 -- IMPORT_FROM is never emitted
+        # (oparg 2) + POP_TOP in Python 3.14 -- IMPORT_FROM is never emitted
         # with name '*'. The intrinsic pops the module and pushes None.
         g.emit_op(OP_CALL_INTRINSIC_1, 2, iloc);
         g.emit_op(OP_POP_TOP, 0, iloc);
@@ -179,7 +179,7 @@ def class_body_has_typealias(cd: ClassDef) -> bool {
     return False;
 }
 
-# Class body boilerplate through __firstlineno__ (CPython compile_class).
+# Class body boilerplate through __firstlineno__ (the C compiler's compile_class).
 def class_body_has_function(cd: ClassDef) -> bool {
     bi = 0;
     while bi < len(cd.body) {
@@ -192,7 +192,7 @@ def class_body_has_function(cd: ClassDef) -> bool {
     return False;
 }
 
-# Class-body prologue locations (CPython 3.14): MAKE_CELL carries NO_LOCATION;
+# Class-body prologue locations (Python 3.14): MAKE_CELL carries NO_LOCATION;
 # RESUME points at the class statement line (def-line form, like nested scopes).
 # Use the class node's span. A supplied AST can have body statements from an
 # implementation file whose line numbers precede the class declaration.
@@ -201,15 +201,15 @@ def class_def_loc(cd: ClassDef) -> cloc {
 }
 
 def emit_class_body_prologue(g: cfg_builder, class_qname: str, body_firstlineno: int) {
-    # CPython 3.14 locations: MAKE_CELL carries NO_LOCATION; RESUME and the
+    # Python 3.14 locations: MAKE_CELL carries NO_LOCATION; RESUME and the
     # __name__/__module__/__qualname__ boilerplate all sit on the scope's
     # first line (the first decorator's line for a decorated class) with
-    # zero-width columns. CPython spans for `class` statements run through
+    # zero-width columns. The C compiler's spans for `class` statements run through
     # the last body statement (same parser-end_tok overshoot as
     # function_def_loc, see codegen_util).
     cloc = loc(body_firstlineno, body_firstlineno, 0, 0);
     noloc = no_loc();
-    # CPython order: COPY_FREE_VARS (class-body free vars) precedes MAKE_CELLs.
+    # The C compiler's order: COPY_FREE_VARS (class-body free vars) precedes MAKE_CELLs.
     if len(g.u.freevars) > 0 {
         g.emit_op(OP_COPY_FREE_VARS, len(g.u.freevars), noloc);
     }
@@ -254,7 +254,7 @@ def emit_class_body_epilogue(g: cfg_builder, last: cloc) {
         g.emit_op(OP_STORE_NAME, cdidx, last);
     }
     if "__class__" in g.u.cellvars {
-        # Return __classcell__ to __build_class__ (CPython codegen.c): the live
+        # Return __classcell__ to __build_class__ (codegen.c): the live
         # cell goes back so py_build_class can seed it with the finished class.
         cc_lp = localsplus_index_u(g.u, "__class__");
         g.emit_op(OP_LOAD_FAST_BORROW, cc_lp, last);
@@ -383,7 +383,7 @@ def compile_class_cfg(
     body_firstlineno: int | None = None,
     qualname: str | None = None
 ) -> unverified_cfg {
-    # CPython codegen_class scopes the class body at the first decorator's
+    # The C compiler's codegen_class scopes the class body at the first decorator's
     # line when decorated (drives co_firstlineno, RESUME/boilerplate rows,
     # and __firstlineno__); otherwise the `class` line.
     if body_firstlineno is None {
@@ -409,7 +409,7 @@ def compile_class_cfg(
     u.freevars = freevars_from_sym(sym_cls);
     u.set_varnames(inline_storage_names(sym_cls));
     u.cellvars.extend(inline_storage_names(sym_cls, True));
-    # Implicit __class__ cell first (CPython compiler_unit appends it before
+    # Implicit __class__ cell first (the C compiler's compiler_unit appends it before
     # __classdict__; observed oracle order ('__class__', '__classdict__')).
     if sym_cls.needs_class_closure {
         u.cellvars.append("__class__");
@@ -707,7 +707,7 @@ def compile_fn_cfg(
     in_class: bool = False,
     qualname: str | None = None
 ) -> unverified_cfg {
-    # CPython codegen_function scopes the body at the first decorator's line
+    # The C compiler's codegen_function scopes the body at the first decorator's line
     # when decorated (drives co_firstlineno and the prologue rows).
     if body_firstlineno is None {
         body_firstlineno = lineno;
@@ -755,13 +755,13 @@ def compile_fn_cfg(
         cont = visit_stmt(g, s, exec_tail_emits_code(body, bi + 1), body, bi + 1);
         last = cont.loc;
         if cont.terminated {
-            # CPython compiles the remaining statements and then drops them as
+            # The C compiler compiles the remaining statements and then drops them as
             # unreachable blocks (flowgraph remove_unreachable). Visiting them
             # here would append live bytes after a terminator, so stop now.
-            # The implicit-return None const is still interned by CPython's
+            # The implicit-return None const is still interned by the C compiler's
             # (dead) epilogue emission; remove_unused_consts keeps it only at
             # index 0, exactly like the host. Deferred comp cleanup handlers
-            # are emitted here too -- CPython lays them out after the (dead)
+            # are emitted here too -- the C compiler lays them out after the (dead)
             # epilogue regardless of how the body ended.
             u.add_const(py_none());
             flush_pending_await_footers(g);
@@ -807,7 +807,7 @@ def compile_function_cfg(
 
 # ---------------- PEP 695 `type X = v` / `type X[T, ...] = v` ----------------
 #
-# CPython lowers a type alias into a lazily-evaluated value function whose only
+# The C compiler lowers a type alias into a lazily-evaluated value function whose only
 # parameter is `.format` (guarded: formats above 2 raise NotImplementedError)
 # plus a 3-tuple (name, type_params_or_None, function) handed to
 # CALL_INTRINSIC_1(INTRINSIC_TYPEALIAS). With type parameters the tuple build
@@ -857,7 +857,7 @@ def type_expression_cfg(
     }
     entry_blk = u.add_block();
     g = new_cfg_builder(u, entry_blk, sym_v, private);
-    # Prologue: COPY_FREE_VARS, MAKE_CELL(s), RESUME (CPython flowgraph order).
+    # Prologue: COPY_FREE_VARS, MAKE_CELL(s), RESUME (flowgraph.c order).
     # Nested-scope locations: NO_LOCATION for cell plumbing, def-line RESUME.
     u.cellvars = cellvars_from_sym(sym_v);
     noloc = no_loc();
@@ -1096,7 +1096,7 @@ def visit_type_alias(g: cfg_builder, ta: TypeAlias) -> stmt_cont {
         return stmt_cont(loc=tloc);
     }
     sym_value = sym_v;
-    # CPython qualname rules: plain name at module scope, <Class>.Name in a
+    # Python qualname rules: plain name at module scope, <Class>.Name in a
     # class body, and <parent>.<locals>.Name under a function scope.
     vqname = name;
     gpqname = "<generic parameters of " + name + ">";

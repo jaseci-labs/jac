@@ -1,4 +1,4 @@
-"""CPython's opcode and code-object metadata: opcode numbers, inline cache
+"""The opcode and code-object metadata: opcode numbers, inline cache
 counts, deopt targets, stack effects, opcode classes and the operator and
 code-object constants the bytecode compiler and the runtime read.
 
@@ -353,7 +353,7 @@ glob CO_FAST_HIDDEN: int = 16,
      CO_FAST_CELL: int = 64,
      CO_FAST_FREE: int = 128;
 
-# CPython locals-plus kind bit flags (marshal reader / symtable contract).
+# Locals-plus kind bit flags (marshal reader / symtable contract).
 glob LP_LOCAL: int = 32,
      LP_CELL: int = 64,
      LP_FREE: int = 128;
@@ -1984,7 +1984,7 @@ def opcode_is_valid(op: int) -> bool {
     return op in _OPCODE_IS_VALID_SET;
 }
 
-# Opcode classification families (CPython opcode metadata has_* sets).
+# Opcode classification families (opcode metadata has_* sets).
 glob OC_ARG: int = 1,
      OC_CONST: int = 2,
      OC_NAME: int = 4,

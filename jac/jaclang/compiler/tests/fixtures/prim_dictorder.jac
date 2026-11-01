@@ -1,5 +1,5 @@
 """dict insertion-order cross-backend lock (issue #6404, congruence decision
-#3). CPython dicts preserve insertion order; json/collections/iteration parity
+#3). Python dicts preserve insertion order; json/collections/iteration parity
 depend on native matching that. Keys are inserted in a non-sorted order; a
 position-weighted sum of the values captures the iteration order without
 boxing strings into the result (int-only, so it isolates ordering).

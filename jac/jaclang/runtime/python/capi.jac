@@ -17,7 +17,7 @@ enum builtin_kind {
     OTHER = 15
 }
 
-import from jaclang.runtime.python.cpython_api {
+import from jaclang.runtime.python.python_capi {
     PyUnicode_DecodeUTF8Stateful,
     jacpy_unicode_intern_text,
     jacpy_bytes_copy_to,

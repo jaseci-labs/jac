@@ -107,7 +107,7 @@ test "sealed images persist placement and expose it without re-derivation" {
     manifest = {
         "format": MANIFEST_FORMAT,
         "package": "app",
-        "python_tag": f"cpython-{sys.version_info.major}{sys.version_info.minor}",
+        "python_tag": sys.implementation.cache_tag,
         "modules": {"svc.jac": {"module": "app.svc", "jir": "svc.jir"}},
         "placement": {"svc.jac": ["server"], "ui/page.jac": ["client"]}
     };

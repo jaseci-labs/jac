@@ -29,7 +29,7 @@ test "sum follows list element types and start values" {
 
 test "a float sum keeps the terms a plain running total rounds away" {
     (eng, _ir) = compile_native("sum_element_types.jac");
-    # CPython carries the rounding error of each float addition beside the
+    # Python carries the rounding error of each float addition beside the
     # total (Neumaier's compensated sum) and folds it in at the end.
     kept = 10000000000000002.0;
     assert get_func(eng, "sum_float_start_keeps_small_ints", ctypes.c_double)() == kept;

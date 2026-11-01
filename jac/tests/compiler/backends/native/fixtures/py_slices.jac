@@ -2,7 +2,7 @@
 
 Negative bounds crashed (raw stop-start fed rc_alloc/memcpy), negative
 start silently returned empty, and step was ignored. All forms below
-must match CPython: negative indices wrap, bounds clamp, steps walk in
+must match Python: negative indices wrap, bounds clamp, steps walk in
 either direction.
 """
 

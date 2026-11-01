@@ -1,4 +1,4 @@
-"""Typed conversion from Jac-owned AST nodes to retained CPython AST values."""
+"""Typed conversion from Jac-owned AST nodes to retained Python AST values."""
 
 def ast_output_checked(handle: ptr[PyObject]) -> ptr[PyObject] {
     if handle == 0 {

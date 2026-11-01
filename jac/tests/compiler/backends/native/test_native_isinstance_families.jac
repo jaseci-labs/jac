@@ -1,6 +1,6 @@
 """Behavioral tests for the isinstance arms a tag compare cannot answer alone.
 
-Three families are covered, and each is pinned against CPython's own answer for
+Three families are covered, and each is pinned against Python's own answer for
 the same operand rather than against a hand-written expectation, so the native
 result is compared to the semantics it is supposed to reproduce.
 
@@ -35,7 +35,7 @@ glob FIXTURES = os.path.join(
      ),
      _ENGINE: list[any] = [];
 
-"""Stand-ins for the fixture's archetypes, so CPython answers the same question."""
+"""Stand-ins for the fixture's archetypes, so Python answers the same question."""
 class PyBase {}
 
 class PyFoo(PyBase) {}
@@ -73,7 +73,7 @@ def native_fn(name: str, argc: int = 1) -> any {
     return ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(addr);
 }
 
-"""CPython's verdict for the same operand, as the 0/1 the fixture returns."""
+"""Python's verdict for the same operand, as the 0/1 the fixture returns."""
 def py_verdict(value: any, types: any) -> int {
     return 1 if isinstance(value, types) else 0;
 }
@@ -84,11 +84,11 @@ def operand_for(k: int) -> any {
 }
 
 
-test "untagged arm: (list, tuple) lowers and answers per CPython" {
+test "untagged arm: (list, tuple) lowers and answers per Python" {
     f = native_fn("chk_list_or_tuple");
     for k in range(4) {
         assert f(k) == py_verdict(operand_for(k), (list, tuple, )) , (
-            f"chk_list_or_tuple({k}) disagrees with CPython"
+            f"chk_list_or_tuple({k}) disagrees with Python"
         );
     }
 }
@@ -117,7 +117,7 @@ test "abc arm: Sequence reduces to the native shapes that inhabit it" {
     operands: list[any] = [[1, 2], 5, "ab", {1: 2}, PyFoo()];
     for k in range(len(operands)) {
         assert f(k) == py_verdict(operands[k], Sequence) , (
-            f"chk_sequence({k}) disagrees with CPython"
+            f"chk_sequence({k}) disagrees with Python"
         );
     }
 }
@@ -128,7 +128,7 @@ test "abc arm: Sequence holds for operands whose type is already known" {
     operands: list[any] = ["ab", [1, 2], (1, 2, )];
     for k in range(len(operands)) {
         assert f(k) == py_verdict(operands[k], Sequence) , (
-            f"chk_sequence_typed({k}) disagrees with CPython"
+            f"chk_sequence_typed({k}) disagrees with Python"
         );
     }
 }
@@ -196,7 +196,7 @@ test "value arms: a fixed-arity tuple of types unrolls" {
     picks: list[any] = [PyFoo(), PyBar(), PyBaz()];
     for k in range(3) {
         assert f(k) == py_verdict(picks[k], (PyFoo, PyBar, )) , (
-            f"chk_types_fixed({k}) disagrees with CPython"
+            f"chk_types_fixed({k}) disagrees with Python"
         );
     }
 }
@@ -207,7 +207,7 @@ test "value arms: a variadic tuple of types loops over a runtime length" {
     picks: list[any] = [PyFoo(), PyBar(), PyBaz()];
     for k in range(3) {
         assert f(k) == py_verdict(picks[k], (PyFoo, PyBar, )) , (
-            f"chk_types_variadic({k}) disagrees with CPython"
+            f"chk_types_variadic({k}) disagrees with Python"
         );
     }
 }
@@ -231,10 +231,10 @@ test "value arms: the variadic arity is the caller's, not the signature's" {
     picks: list[any] = [PyFoo(), PyBar(), PyBaz()];
     for k in range(3) {
         assert one(k) == py_verdict(picks[k], (PyBaz, )) , (
-            f"chk_types_variadic_one({k}) disagrees with CPython"
+            f"chk_types_variadic_one({k}) disagrees with Python"
         );
         assert three(k) == py_verdict(picks[k], (PyFoo, PyBar, PyBaz, )) , (
-            f"chk_types_variadic_three({k}) disagrees with CPython"
+            f"chk_types_variadic_three({k}) disagrees with Python"
         );
     }
 }

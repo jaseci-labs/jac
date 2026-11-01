@@ -13,6 +13,6 @@ import from pathlib { Path }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
-test "list slice deletion matches CPython under every memory profile" {
+test "list slice deletion matches Python under every memory profile" {
     assert_native_identity(os.path.join(FIXTURES, "list_slice_delete.jac"));
 }

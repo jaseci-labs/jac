@@ -3,7 +3,7 @@
 
 `import ssl` binds the bundled `na_stdlib/ssl.jac` Mechanism-F module (a
 verifying TLS-client surface over OpenSSL's `libssl`/`libcrypto`) on the na
-backend; the sv reference is CPython's real `ssl`. A loopback HTTPS server is
+backend; the sv reference is Python's real `ssl`. A loopback HTTPS server is
 stood up with a test-generated self-signed cert for `localhost`; the cert path
 (the trust anchor) is published in `JAC_SSL_TEST_CAFILE` and the port in
 `JAC_SSL_TEST_PORT`.
@@ -11,7 +11,7 @@ stood up with a test-generated self-signed cert for `localhost`; the cert path
 This is the executable **fail-closed** guard:
 
   - trusting the cert + the right hostname -> the handshake verifies and the GET
-    returns 200 (congruent with CPython, pinned via `ssl_py`);
+    returns 200 (congruent with Python, pinned via `ssl_py`);
   - the default trust store does NOT contain the self-signed cert -> the native
     `wrap_socket` raises a catchable `SSLError` (untrusted chain rejected);
   - trusting the cert but the WRONG hostname -> the in-handshake identity check
@@ -118,12 +118,12 @@ test "ssl verifying TLS client over libssl floor (fail-closed cert + hostname)" 
     os.environ["JAC_SSL_TEST_PORT"] = str(port);
     os.environ["JAC_SSL_TEST_CAFILE"] = cert;
     try {
-        # Pin the canonical sv (CPython ssl) result: a verified 200.
+        # Pin the canonical sv (Python ssl) result: a verified 200.
         py = run_py_fixture("prim_ssl", "ssl_py");
         assert py["status"] == 200 , py;
 
         (eng, _) = compile_native("prim_ssl.jac");
-        # Positive: verified handshake -> same status as CPython.
+        # Positive: verified handshake -> same status as Python.
         assert _call_na_int(eng, "ssl_status_na") == py["status"] , "verified GET status";
         # Fail-closed: an untrusted self-signed chain must raise SSLError.
         assert _call_na_int(eng, "ssl_untrusted_caught_na") == 1 , (

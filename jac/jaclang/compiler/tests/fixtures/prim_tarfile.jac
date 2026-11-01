@@ -1,6 +1,6 @@
 """Bundled native ``tarfile`` + ``compression.zstd`` + ``io`` extraction fixture.
 
-The SAME source binds CPython's real ``tarfile`` / ``compression.zstd`` / ``io``
+The SAME source binds Python's real ``tarfile`` / ``compression.zstd`` / ``io``
 on the sv (Python) backend and the bundled ``na_stdlib`` modules on the na
 (native LLVM) backend. Both entry points perform the single-binary launcher's
 exact extraction sequence -- wrap the payload in ``ZstdFile(io.BytesIO(...))``,

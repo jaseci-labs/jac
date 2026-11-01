@@ -13,7 +13,7 @@ Three properties, on one corpus:
     decode to the same tree.
   - **Losslessness.** Transcribing the container back through the shim
     reproduces the pyast lane's tree exactly, and the code objects
-    CPython compiles from the two trees agree field by field.
+    the interpreter compiles from the two trees agree field by field.
   - **Diagnostic transport.** Diagnostics carried in the container
     survive the crossing with their text, severity and span.
 

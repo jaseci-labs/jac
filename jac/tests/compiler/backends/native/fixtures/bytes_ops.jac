@@ -206,7 +206,7 @@ def bool_nonempty -> int {
     return 1 if bool(b"x") else 0;
 }
 
-# 5. repr: str(b)  (exact CPython b'...' form, compared in-language so the
+# 5. repr: str(b)  (exact Python b'...' form, compared in-language so the
 #    result need not cross the JIT boundary)
 def repr_abc_ok -> int {
     return 1 if str(b"abc") == "b'abc'" else 0;
@@ -291,7 +291,7 @@ def cmp_hi -> int {
     return 1 if b"\xff" > b"\x01" else 0;
 }
 
-# ─── #6751: comparing (bytes | None) to bytes follows CPython identity ───
+# ─── #6751: comparing (bytes | None) to bytes follows Python identity ───
 # `bytes | None` lowers to a tagged JacOptional value; == / != are tag
 # arithmetic plus a payload compare only when both sides carry values (equal
 # iff both None), so a None operand can never be dereferenced. Ordering an

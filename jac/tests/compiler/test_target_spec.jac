@@ -23,7 +23,7 @@ test "a target is found by osarch or by any spelling of its triple" {
     assert target_spec("aarch64-unknown-linux-gnu").osarch == "linux-aarch64";
     assert target_spec("arm64-apple-darwin25.5.0").triple == "arm64-apple-macosx11.0.0";
     assert target_spec("x86_64-apple-macosx10.15.0").osarch == "macos-x86_64";
-    assert target_spec("x86_64-pc-windows-msvc").cpython_platform == "win32";
+    assert target_spec("x86_64-pc-windows-msvc").sys_platform == "win32";
     assert triple_osarch("x86_64-unknown-linux-gnu") == "linux-x86_64";
 }
 

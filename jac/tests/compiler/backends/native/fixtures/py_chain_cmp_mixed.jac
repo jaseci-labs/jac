@@ -1,6 +1,6 @@
 """Chained comparisons with membership and identity links (#7593 item 2).
 
-CPython evaluates `a < b in xs` as `(a < b) and (b in xs)` with b
+Python evaluates `a < b in xs` as `(a < b) and (b in xs)` with b
 evaluated once; `t is u is w` as `(t is u) and (u is w)`. Before the fix
 na statically rejected any chain containing in/not in/is/is not.
 """

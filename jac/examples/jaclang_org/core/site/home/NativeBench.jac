@@ -35,7 +35,7 @@ glob _FPS_MAX: int = 3500,
          },
          {
              "lang": "Python",
-             "build": "CPython 3.14.6 · ctypes",
+             "build": "Python 3.14.6 · ctypes",
              "fps": 1588.4,
              "shown": "1,588.4",
              "frames": "12,708",

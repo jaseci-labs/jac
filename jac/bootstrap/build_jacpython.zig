@@ -1,9 +1,9 @@
 //! The JacPython runtime, built without autoconf or make. build_python.zig has
-//! extracted the pruned CPython tree; this lowers the native Jac object with
-//! the build-only host, writes pyconfig.h from compiler probes, compiles the C
-//! that remains with the flags CPython's makefile uses, links libpython and the
-//! interpreter, and installs the tree `make install` installs. The build-only
-//! host keeps CPython's own configure and make (build.sh).
+//! staged the Python sources (bootstrap/python/src and the generated files);
+//! this lowers the native Jac object with the host runtime, writes pyconfig.h
+//! from compiler probes, compiles the C that remains (HACL* and the
+//! interpreter's main), links libpython and the interpreter, and installs the
+//! standard Python install layout.
 const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
@@ -12,15 +12,19 @@ const pyconfig = @import("pyconfig.zig");
 
 pub const Options = struct {
     platform: []const u8,
-    /// The build tree: src/cpython (extracted), and the install prefix
-    /// python/install, as build.sh lays it out for the host.
+    /// The build tree: src/python (staged) and the install prefix
+    /// python/install.
     work: []const u8,
     zig: []const u8,
     /// bootstrap/python.
     recipe: []const u8,
-    /// The build output the build runs on: the bootstrap host, or a previous
-    /// JacPython runtime (its python/install, python/build and python/licenses).
+    /// The runtime the build runs on: the bootstrap seed, or a previous
+    /// JacPython runtime (its python/install).
     host: []const u8,
+    /// The tree holding the vendored libraries' archives, headers, notices and
+    /// CA bundle (python/build and python/licenses): the host's, or the ones
+    /// vendored.sh built for this build.
+    vendored: []const u8,
     /// The Jac root (jac/).
     root: []const u8,
     jobs: usize,
@@ -82,7 +86,7 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
         .a = a,
         .o = o,
         .p = p,
-        .src = try std.fs.path.join(a, &.{ o.work, "src/cpython" }),
+        .src = try std.fs.path.join(a, &.{ o.work, "src/python" }),
         .deps = try std.fs.path.join(a, &.{ o.work, "deps" }),
         .prefix = try std.fs.path.join(a, &.{ o.work, "python/install" }),
         .logs = try std.fs.path.join(a, &.{ o.work, "logs" }),
@@ -97,7 +101,7 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
     for ([_][]const u8{ "CFLAGS", "CPPFLAGS", "LDFLAGS", "CXXFLAGS", "CPATH", "C_INCLUDE_PATH", "CPLUS_INCLUDE_PATH", "LIBRARY_PATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "PYTHONPATH", "PYTHONHOME" }) |name| {
         _ = c.env.swapRemove(name);
     }
-    // Transient compiler caches stay in the build tree, as for the host.
+    // Transient compiler caches stay in the build tree.
     try c.env.put("ZIG_LOCAL_CACHE_DIR", c.cache);
     try c.env.put("ZIG_GLOBAL_CACHE_DIR", c.cache);
     try c.env.put("SOURCE_DATE_EPOCH", "0");
@@ -116,11 +120,12 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
     try cc.append(a, if (p.os == .linux) "-Wl,-rpath,$ORIGIN/../lib" else "-Wl,-rpath,@loader_path/../lib");
     c.cc = cc.items;
 
-    // The host's vendored libraries and their notices.
-    const host_build = c.path(&.{ o.host, "python/build" });
-    try copyTree(&c, c.path(&.{ host_build, "include" }), c.path(&.{ c.deps, "include" }));
-    try copyMatching(&c, c.path(&.{ host_build, "lib" }), c.path(&.{ c.deps, "lib" }), ".a");
-    try copyTree(&c, c.path(&.{ o.host, "python/licenses" }), c.path(&.{ o.work, "python/licenses" }));
+    // The vendored libraries and their notices, and the Python license.
+    const vendored_build = c.path(&.{ o.vendored, "python/build" });
+    try copyTree(&c, c.path(&.{ vendored_build, "include" }), c.path(&.{ c.deps, "include" }));
+    try copyMatching(&c, c.path(&.{ vendored_build, "lib" }), c.path(&.{ c.deps, "lib" }), ".a");
+    try copyTree(&c, c.path(&.{ o.vendored, "python/licenses" }), c.path(&.{ o.work, "python/licenses" }));
+    try Io.Dir.copyFile(.cwd(), c.path(&.{ c.src, "LICENSE" }), .cwd(), c.path(&.{ o.work, "python/licenses/python/LICENSE" }), io, .{ .make_path = true });
 
     try step(&c, "pyconfig", writePyconfig, .{&c});
 
@@ -145,16 +150,15 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
     try step(&c, "sysconfig", sysconfig, .{&c});
     try step(&c, "compileall", compileall, .{&c});
     try step(&c, "install-tools", installTools, .{&c});
-    try absentInputs(&c);
 
     try step(&c, "finalize", runArgv, .{ &c, &[_][]const u8{ c.path(&.{ c.prefix, "bin/python" ++ version }), "-I", c.path(&.{ o.recipe, "finalize.py" }) }, null });
     const build_dir = c.path(&.{ o.work, "python/build" });
     try Io.Dir.cwd().createDirPath(io, c.path(&.{ build_dir, "lib" }));
     try copyMatching(&c, c.path(&.{ c.deps, "lib" }), c.path(&.{ build_dir, "lib" }), ".a");
     // The headers too: with the archives, they let this runtime be the next
-    // build's host without the bootstrap host that built them.
+    // build's host without rebuilding the libraries.
     try copyTree(&c, c.path(&.{ c.deps, "include" }), c.path(&.{ build_dir, "include" }));
-    try Io.Dir.copyFile(.cwd(), c.path(&.{ host_build, "cacert.pem" }), .cwd(), c.path(&.{ build_dir, "cacert.pem" }), io, .{});
+    try Io.Dir.copyFile(.cwd(), c.path(&.{ vendored_build, "cacert.pem" }), .cwd(), c.path(&.{ build_dir, "cacert.pem" }), io, .{});
     try Io.Dir.copyFile(.cwd(), c.path(&.{ native, "sha256" }), .cwd(), c.path(&.{ build_dir, "jacpython-native-sha256" }), io, .{});
     try Io.Dir.copyFile(.cwd(), c.path(&.{ native, "sources" }), .cwd(), c.path(&.{ build_dir, "jacpython-native-sources" }), io, .{});
     try Io.Dir.cwd().deleteTree(io, native);
@@ -229,7 +233,7 @@ fn runAll(c: *Ctx, commands: []const []const []const u8, cwd: ?[]const u8) !void
     }
 }
 
-/// One of scripts/jacpython's generators, run by the build-only host with the
+/// One of scripts/jacpython's generators, run by the host runtime with the
 /// checkout's jaclang on its path; the generator's main() takes the arguments.
 fn generate(c: *Ctx, args: []const []const u8) !void {
     var argv: std.ArrayList([]const u8) = .empty;
@@ -247,7 +251,7 @@ fn generate(c: *Ctx, args: []const []const u8) !void {
 }
 
 /// gen_frozen's arguments: the frozen modules and getpath's configured
-/// locations, the values CPython's makefile passes to Modules/getpath.c
+/// locations, the values Makefile.pre.in passes to Modules/getpath.c
 /// (makefileVars installs the same PLATLIBDIR; an in-tree build has an empty
 /// VPATH).
 fn getpathArgs(c: *Ctx, output: []const u8) ![]const []const u8 {
@@ -295,7 +299,7 @@ fn writePyconfig(c: *Ctx) !void {
 
 // ------------------------------------------------------------- compile, link
 
-/// The flags CPython's makefile assembles, as configure sets them for this
+/// The flags Makefile.pre.in assembles, as configure sets them for this
 /// build (Makefile.pre.in's PY_CFLAGS, PY_CFLAGS_NODIST, PY_CPPFLAGS ...).
 const Flags = struct {
     base_cflags: []const u8,
@@ -436,12 +440,13 @@ fn compile(c: *Ctx) !void {
     var src_dir = try Io.Dir.cwd().openDir(c.io, c.src, .{});
     defer src_dir.close(c.io);
     try src_dir.createDirPath(c.io, "Python");
+    try src_dir.createDirPath(c.io, "Programs");
     try Io.Dir.copyFile(.cwd(), c.path(&.{ c.o.work, "native/jacpython.o" }), src_dir, native_object, c.io, .{});
 
     const f = Flags.of(c.p);
     const stdmodule = try stdmoduleCflags(c, f);
     var objects: std.ArrayList(Object) = .empty;
-    try objects.append(a, .{ .source = "./Programs/python.c", .object = "Programs/python.o" });
+    try objects.append(a, .{ .source = c.path(&.{ c.o.recipe, "main.c" }), .object = "Programs/python.o" });
     const simd = haclSimd(c);
     const hacl = [_][]const u8{ "Lib_Memzero0", "Hacl_Hash_MD5", "Hacl_Hash_SHA1", "Hacl_Hash_SHA2", "Hacl_Hash_SHA3", "Hacl_Hash_Blake2s", "Hacl_Hash_Blake2b", "Hacl_HMAC" };
     for (hacl) |name| {
@@ -536,6 +541,13 @@ fn fileExists(io: Io, path: []const u8) bool {
     return true;
 }
 
+/// The interpreter in the build tree. macOS's file system ignores case, and
+/// the tree's Python/ directory would take the name `python`, so there it is
+/// `python.exe`, as Makefile.pre.in's BUILDEXE makes it.
+fn buildExe(c: *Ctx) []const u8 {
+    return if (c.p.os == .macos) "python.exe" else "python";
+}
+
 fn libraryName(c: *Ctx) []const u8 {
     return if (c.p.os == .linux) "libpython" ++ version ++ ".so" else "libpython" ++ version ++ ".dylib";
 }
@@ -581,7 +593,7 @@ fn link(c: *Ctx) !void {
     try exe.appendSlice(a, c.cc);
     try exe.appendSlice(a, core_ldflags.items);
     try appendWords(a, &exe, f.linkforshared);
-    try exe.appendSlice(a, &.{ "-o", "python", "Programs/python.o" });
+    try exe.appendSlice(a, &.{ "-o", buildExe(c), "Programs/python.o" });
     try exe.appendSlice(a, try libraryObjects(c));
     try appendWords(a, &exe, f.libs);
     try exe.appendSlice(a, mods);
@@ -690,7 +702,7 @@ fn install(c: *Ctx) !void {
         try Io.Dir.cwd().createDirPath(io, dir);
     }
     // altbininstall: the interpreter and the shared library.
-    try installFile(c, c.path(&.{ c.src, "python" }), l.exename, mode_exec);
+    try installFile(c, c.path(&.{ c.src, buildExe(c) }), l.exename, mode_exec);
     try installFile(c, c.path(&.{ c.src, libraryName(c) }), c.path(&.{ l.libdir, libraryName(c) }), mode_exec);
 
     // libinstall: Lib/*.py, then the files directly in each LIBSUBDIRS entry.
@@ -712,7 +724,7 @@ fn install(c: *Ctx) !void {
     }
     try installFile(c, c.path(&.{ c.src, "LICENSE" }), c.path(&.{ l.libdest, "LICENSE.txt" }), mode_data);
 
-    // inclinstall: the public, cpython/ and internal/ headers, mimalloc's, and
+    // inclinstall: the public, Include/cpython and internal/ headers, mimalloc's, and
     // pyconfig.h.
     const include = c.path(&.{ c.src, "Include" });
     for ([_][]const u8{ "", "cpython", "internal" }) |sub| {
@@ -806,7 +818,7 @@ fn substitutions(c: *Ctx) !Subst {
 }
 
 fn extSuffix(c: *Ctx) ![]const u8 {
-    return std.fmt.allocPrint(c.a, ".cpython-" ++ soabi_version ++ "-{s}.so", .{c.p.triplet});
+    return std.fmt.allocPrint(c.a, ".cpython-{s}-{s}.so", .{ soabi_version, c.p.triplet });
 }
 
 fn substitute(a: Allocator, text: []const u8, s: Subst) ![]const u8 {
@@ -855,8 +867,8 @@ fn writeTemplate(c: *Ctx, from: []const u8, to: []const u8, s: Subst, mode: std.
 // ----------------------------------------------------------------- sysconfig
 
 /// The build's configuration as makefile variables: what sysconfig, python-config
-/// and extension builds read. sysconfig parses it exactly as it parsed CPython's
-/// makefile, and it is installed where that makefile was.
+/// and extension builds read. sysconfig parses it exactly as it parses a
+/// configure/make build's makefile, and it is installed where that makefile is.
 fn makefileVars(c: *Ctx) ![]const u8 {
     const a = c.a;
     const f = Flags.of(c.p);
@@ -870,7 +882,7 @@ fn makefileVars(c: *Ctx) ![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     try out.print(a,
         \\# The configuration of the JacPython runtime, written by
-        \\# bootstrap/build_jacpython.zig in the form of CPython's makefile.
+        \\# bootstrap/build_jacpython.zig in the form of a configure/make build's makefile.
         \\VERSION= {[version]s}
         \\srcdir=  .
         \\abs_srcdir= {[src]s}
@@ -944,7 +956,7 @@ fn makefileVars(c: *Ctx) ![]const u8 {
         \\LDCXXSHARED= {[ldcxxshared]s}
         \\DESTSHARED= $(BINLIBDEST)/lib-dynload
         \\EXE=
-        \\BUILDEXE=
+        \\BUILDEXE= {[buildexe]s}
         \\PYTHONFRAMEWORK=
         \\PYTHONFRAMEWORKDIR= no-framework
         \\PYTHONFRAMEWORKPREFIX=
@@ -1002,12 +1014,13 @@ fn makefileVars(c: *Ctx) ![]const u8 {
         .prefix = c.prefix,
         .ext_suffix = try extSuffix(c),
         .ldshared = if (linux) "$(CC) -shared $(PY_LDFLAGS)" else "$(CC) -shared -undefined dynamic_lookup",
-        // sysconfig's generator, run from CPython's build tree, records
+        // sysconfig's generator, run from a configure/make build tree, records
         // BLDSHARED as LDSHARED.
         .bldshared = if (linux) "$(CC) -shared $(PY_LDFLAGS)" else "$(CC) -shared -undefined dynamic_lookup",
         .ldcxxshared = if (linux) "$(CXX) -shared $(PY_LDFLAGS)" else "$(CXX) -bundle -undefined dynamic_lookup",
         .deployment = c.p.deployment_target orelse "",
         .host_type = host_type,
+        .buildexe = if (linux) "" else ".exe",
         .ldlibrary = if (linux) "libpython$(LDVERSION).so" else "libpython$(LDVERSION).dylib",
         .libs = f.libs,
         .libm = f.libm,
@@ -1065,7 +1078,7 @@ fn hostType(c: *Ctx) ![]const u8 {
     };
 }
 
-/// The sysconfig data CPython's `pybuilddir.txt` rule generates: the installed
+/// The sysconfig data Makefile.pre.in's `pybuilddir.txt` rule generates: the installed
 /// interpreter parses the makefile variables and pyconfig.h with sysconfig's
 /// own --generate-posix-vars, then build-details.json follows from it.
 fn sysconfig(c: *Ctx) !void {
@@ -1142,27 +1155,6 @@ fn copyMatching(c: *Ctx, from: []const u8, to: []const u8, suffix: []const u8) !
     for (try listFiles(c, from)) |name| {
         if (!std.mem.endsWith(u8, name, suffix)) continue;
         try Io.Dir.copyFile(.cwd(), c.path(&.{ from, name }), .cwd(), c.path(&.{ to, name }), c.io, .{});
-    }
-}
-
-/// The finished tree must not hold a path the source manifest takes out of
-/// this build (build_python.zig writes the list), nor an object compiled from
-/// one.
-fn absentInputs(c: *Ctx) !void {
-    const list = try readFile(c, c.path(&.{ c.o.work, "absent-inputs" }));
-    var lines = std.mem.splitScalar(u8, list, '\n');
-    while (lines.next()) |raw| {
-        const rel = std.mem.trimEnd(u8, std.mem.trim(u8, raw, " \r"), "/");
-        if (rel.len == 0) continue;
-        const full = c.path(&.{ c.src, rel });
-        var reappeared = fileExists(c.io, full);
-        if (!reappeared and std.mem.endsWith(u8, rel, ".c")) {
-            reappeared = fileExists(c.io, try std.fmt.allocPrint(c.a, "{s}.o", .{full[0 .. full.len - 2]}));
-        }
-        if (reappeared) {
-            std.debug.print("Excluded build input reappeared: {s}\n", .{rel});
-            return error.ExcludedInputReappeared;
-        }
     }
 }
 

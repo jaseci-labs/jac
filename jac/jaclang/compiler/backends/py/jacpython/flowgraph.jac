@@ -84,7 +84,7 @@ def layout_block_starts(u: unverified_cfg, sizes: list[int]) -> list[int] {
 }
 
 # Layout order (u.blocks list order) is authoritative, not block-id order.
-# With deferred block placement (CPython USE_LABEL), a block allocated early can
+# With deferred block placement (codegen.c USE_LABEL), a block allocated early can
 # be laid out late, so "next block" and forward/backward jump direction must be
 # read from layout position, never from id arithmetic. When every block is placed
 # at allocation (the common case) blocks[i].id == i and these reduce to id math.
@@ -105,7 +105,7 @@ def layout_pos(pos: dict[int, int], block_id: int) -> int {
     return -1;
 }
 
-# CPython flowgraph.c: after each forward conditional jump, insert NOT_TAKEN
+# flowgraph.c: after each forward conditional jump, insert NOT_TAKEN
 # (backward jump reversal is deferred to a later slice).
 def layout_next_block(u: unverified_cfg, idx: int) -> basicblock | None {
     if idx >= 0 and idx + 1 < len(u.blocks) {
@@ -194,7 +194,7 @@ def resolve_jump_offsets(
     }
 }
 
-# CPython's maybe_instr_make_load_smallint rewrites LOAD_CONST <int in 0..255> to
+# The C compiler's maybe_instr_make_load_smallint rewrites LOAD_CONST <int in 0..255> to
 # LOAD_SMALL_INT <value>. The const remains in the table (now unreferenced).
 def rewrite_small_ints(u: unverified_cfg, flat: list[cinstr]) {
     i = 0;
@@ -337,7 +337,7 @@ def block_by_id(blocks: list[basicblock | None], bid: int) -> basicblock | None 
     return blocks[bid];
 }
 
-# CPython flowgraph.c calculate_stackdepth: worklist over block edges with
+# flowgraph.c calculate_stackdepth: worklist over block edges with
 # generated stack_effect metadata (INTEGRATION_PLAN Phase 3).
 def calculate_stackdepth(u: unverified_cfg) -> tuple[int, compiler_diagnostic | None] {
     if len(u.blocks) == 0 {
@@ -557,10 +557,10 @@ def calculate_stackdepth(u: unverified_cfg) -> tuple[int, compiler_diagnostic | 
 
 # UnverifiedCFG -> VerifiedCFG (Phase 2 contract; Phase 3 worklist stack proof).
 # ---------------------------------------------------------------------------
-# SWAP / superinstruction optimization (CPython flowgraph.c: swaptimize,
+# SWAP / superinstruction optimization (flowgraph.c: swaptimize,
 # apply_static_swaps, insert_superinstructions). Runs per basic block. Match
 # pattern codegen emits naive rotate (SWAP) + separate STORE_FAST/POP_TOP; these
-# passes fold them into CPython's exact post-optimizer shape. Eliminated
+# passes fold them into the C compiler's exact post-optimizer shape. Eliminated
 # instructions are marked with target_block == OPT_DELETE and compacted out (so
 # no spurious NOPs reach assembly — intentional NOPs keep target_block == -1).
 glob OPT_DELETE: int = -999;
@@ -606,7 +606,7 @@ def opt_next_swappable(instrs: list[cinstr], i: int, lineno: int) -> int {
 
 # Replace a run of SWAPs/NOPs starting at ix with the minimal equivalent set of
 # SWAPs (written at the end of the run). Returns the index of the run's last
-# instruction (CPython's *ix += len - 1); returns ix unchanged for a lone SWAP.
+# instruction (the C compiler's *ix += len - 1); returns ix unchanged for a lone SWAP.
 def opt_swaptimize(instrs: list[cinstr], ix: int) -> int {
     depth = instrs[ix].oparg;
     length = 0;
@@ -756,7 +756,7 @@ def opt_make_super(inst1: cinstr, inst2: cinstr, superop: int) {
 
 # Superinstruction fusion over instrs[lo:]. Marked-delete slots (former SWAPs)
 # only ever sit before a store run, never between the two stores of a pair, so
-# raw i+1 adjacency is sufficient (matching CPython's post-compaction scan).
+# raw i+1 adjacency is sufficient (matching the C compiler's post-compaction scan).
 def opt_superinstructions(b: basicblock, lo: int) {
     i = lo;
     n = len(b.instrs);
@@ -781,10 +781,10 @@ def opt_superinstructions(b: basicblock, lo: int) {
 
 # Optimize only the instruction range [lo, end) of one block, in place. Scoped
 # to match-pattern arms: the reimpl emits already-optimized bytecode elsewhere
-# with its own block layout, so a global CPython-style pass would mis-fire (e.g.
-# fuse comprehension-restore stores CPython keeps split). Match arms emit naive
+# with its own block layout, so a global C-compiler-style pass would mis-fire (e.g.
+# fuse comprehension-restore stores the C compiler keeps split). Match arms emit naive
 # rotate (SWAP) + separate STORE_FAST/POP_TOP into a single success block, which
-# this folds into CPython's exact shape.
+# this folds into the C compiler's exact shape.
 def optimize_swap_range(b: basicblock, lo: int) {
     i = lo;
     while i < len(b.instrs) {
@@ -799,7 +799,7 @@ def optimize_swap_range(b: basicblock, lo: int) {
     opt_compact_block(b);
 }
 
-# CPython flowgraph.c CFG optimizer (subset). Runs on the block IR before jump
+# flowgraph.c CFG optimizer (subset). Runs on the block IR before jump
 # normalization and offset assignment. Currently ports:
 #   * inline_small_exit_blocks: a forward jump to a small (<= MAX_COPY_SIZE)
 #     scope-exit block is rewritten to a copy of that block's instructions
@@ -808,7 +808,7 @@ def optimize_swap_range(b: basicblock, lo: int) {
 #     exit block fully consumed by inlining leaves no dead bytes behind.
 # Both passes are SCOPED to blocks flagged exit_inline_ok -- the shared success /
 # next-arm / join targets emitted by match. Every other construct already emits
-# CPython's post-optimizer shape by hand (see optimize_swap_range's same-scoped
+# the C compiler's post-optimizer shape by hand (see optimize_swap_range's same-scoped
 # rationale), so a global pass would mis-fire on their back-edges and handlers.
 glob MAX_COPY_SIZE: int = 4;
 
@@ -827,7 +827,7 @@ def copy_cinstr(ins: cinstr) -> cinstr {
 }
 
 # A forward unconditional jump is a candidate for tail-duplication. Backward jumps
-# (loop back-edges, generator resume) are excluded: CPython's optimizer runs
+# (loop back-edges, generator resume) are excluded: the C compiler's optimizer runs
 # before jump direction is assigned and only threads jumps to scope-exit blocks,
 # which are never loop back-edges. Inlining a back-edge would corrupt loop shape.
 def is_inlinable_jump(op: int) -> bool {
@@ -966,7 +966,7 @@ def remove_unreachable_blocks(u: unverified_cfg) -> bool {
 
 def optimize_literal_iterables(u: unverified_cfg) {
     # Membership and iteration never expose their temporary list/set. Replace
-    # constant displays with a tuple/frozenset, as CPython's flowgraph pass does.
+    # constant displays with a tuple/frozenset, as the C compiler's flowgraph pass does.
     # This also preserves shared nested constants across code objects.
     for block in u.blocks {
         for index in range(len(block.instrs) - 1) {
@@ -1067,18 +1067,19 @@ def optimize_cfg(u: unverified_cfg) {
 }
 
 # ---------------------------------------------------------------------------
-# Superinstruction fusion (CPython flowgraph.c insert_superinstructions), run
+# Superinstruction fusion (flowgraph.c insert_superinstructions), run
 # globally over every block, restricted to LOAD_FAST -> LOAD_FAST_LOAD_FAST. Runs
 # BEFORE optimize_load_fast, which downgrades the non-escaping fused loads to their
 # borrow variants. Comprehension bodies already emit borrow shapes by hand, so this
 # finds nothing owned there and is inert on them (see emit_name_load).
 #
 # STORE_FAST pair fusion (STORE_FAST_{LOAD,STORE}_FAST) is deliberately NOT done
-# here: jac's codegen already hand-emits those where CPython fuses (tuple targets,
-# swaps), and CPython keeps some adjacent same-line store pairs unfused because they
-# straddle a basic-block boundary its finer CFG splits but jac's coarser one does
-# not (e.g. a comprehension's save/restore epilogue). A global store fuse would
-# over-fuse exactly those, so store shapes are left to the existing emission.
+# here: jac's codegen already hand-emits those where the C compiler fuses (tuple
+# targets, swaps), and the C compiler keeps some adjacent same-line store pairs
+# unfused because they straddle a basic-block boundary its finer CFG splits but
+# jac's coarser one does not (e.g. a comprehension's save/restore epilogue). A
+# global store fuse would over-fuse exactly those, so store shapes are left to
+# the existing emission.
 def insert_superinstructions(u: unverified_cfg) {
     bi = 0;
     while bi < len(u.blocks) {
@@ -1105,13 +1106,13 @@ def insert_superinstructions(u: unverified_cfg) {
 }
 
 # ---------------------------------------------------------------------------
-# LOAD_FAST -> LOAD_FAST_BORROW strength reduction (CPython flowgraph.c
+# LOAD_FAST -> LOAD_FAST_BORROW strength reduction (flowgraph.c
 # optimize_load_fast). Codegen emits owned LOAD_FAST for every fast-local load;
 # this pass proves, per basic block via abstract interpretation over a stack of
 # "references", which loads produce values that are fully consumed before their
 # supporting frame local can be killed -- those can borrow. Any load whose value
 # escapes (stored back as a local, left on the stack across the local's death, or
-# still live at block end) stays owned. Faithful port of CPython 3.14.6; both
+# still live at block end) stays owned. Faithful port of the 3.14.6 C code; both
 # sentinels NOT_LOCAL and DUMMY_INSTR are -1 there, so we mirror that.
 glob LF_NOT_LOCAL: int = -1,
      LF_DUMMY_INSTR: int = -1,
@@ -1210,10 +1211,10 @@ def lf_is_consume_only_op(op: int) -> bool {
 }
 
 def optimize_load_fast(u: unverified_cfg) {
-    # CPython's escape analysis runs over ITS basic blocks; jac splits blocks
+    # The C compiler's escape analysis runs over ITS basic blocks; jac splits blocks
     # finer (e.g. at exception-region boundaries), which would strand a fast
     # load's ref identity at every seam. So analyze maximal fallthrough chains
-    # of blocks as one virtual block, exactly matching CPython's granularity:
+    # of blocks as one virtual block, exactly matching the C compiler's granularity:
     # a chain breaks at any jump target, jump, or scope exit.
     sds = u.block_startdepths;
     jump_targets: set[int] = set();
@@ -1324,7 +1325,7 @@ def optimize_load_fast(u: unverified_cfg) {
                 } elif op == OP_RETURN_VALUE {
                     # Terminator: TOS is consumed; references left below are
                     # dead frame state, not values escaping into a successor,
-                    # so they reset silently (CPython still borrows such loads).
+                    # so they reset silently (the C compiler still borrows such loads).
                     dr = lf_pop(s);
                     seg = 0;
                     while seg < len(s.instr) {
@@ -1391,7 +1392,7 @@ def optimize_load_fast(u: unverified_cfg) {
                         k2 = k2 + 1;
                     }
                 }
-                # CPython ends a basic block at every jump / scope exit and
+                # The C compiler ends a basic block at every jump / scope exit and
                 # re-seeds the next block's ref stack with dummies. Chains end
                 # there too by construction, but jac coalesces conditional-jump
                 # tails (e.g. match guards) into one block, so replicate the
@@ -1442,13 +1443,13 @@ def optimize_load_fast(u: unverified_cfg) {
 }
 
 # ---------------------------------------------------------------------------
-# CPython flowgraph.c add_checks_for_loads_of_uninitialized_variables. A
+# flowgraph.c add_checks_for_loads_of_uninitialized_variables. A
 # worklist dataflow over "unsafe" bitmasks (local i may be uninitialized at a
 # block entry): seeds are non-parameter locals at the entry block; each scanned
 # instruction also propagates the block's current mask to its innermost
-# exception handler (derived from except_regions, unlike CPython's per-instr
+# exception handler (derived from except_regions, unlike the C compiler's per-instr
 # i_except links). LOAD_FAST under an unsafe bit becomes LOAD_FAST_CHECK.
-# Runs BEFORE superinstruction fusion and borrow analysis, matching CPython's
+# Runs BEFORE superinstruction fusion and borrow analysis, matching the C compiler's
 # pass order (CHECK loads never fuse or downgrade to borrows).
 def ac_innermost_handler(u: unverified_cfg, pos: list[int], bid: int) -> int {
     # Innermost region covering block bid = greatest start position among
@@ -1746,7 +1747,7 @@ def add_checks_for_uninitialized(u: unverified_cfg) {
 
 # Scoped STORE_FAST -> LOAD_FAST fusion for flagged bind-seam blocks. Runs
 # after add_checks_for_uninitialized so the dataflow sees the plain store
-# (CPython's CFG has these in one block and fuses after the same pass).
+# (the C compiler's CFG has these in one block and fuses after the same pass).
 def fuse_flagged_stores(u: unverified_cfg) {
     bi = 0;
     while bi < len(u.blocks) {
@@ -1759,9 +1760,9 @@ def fuse_flagged_stores(u: unverified_cfg) {
     }
 }
 
-# CPython flowgraph.c remove_unused_consts: after optimization, drop co_consts
+# flowgraph.c remove_unused_consts: after optimization, drop co_consts
 # entries no longer referenced by any instruction. Index 0 is always kept
-# (CPython preserves it as the potential docstring slot). Pure emission-level
+# (the C compiler preserves it as the potential docstring slot). Pure emission-level
 # cleanup: survivors keep their relative order and const opargs are remapped.
 def remove_unused_consts(u: unverified_cfg, flat: list[cinstr]) {
     n = len(u.consts);
@@ -1821,7 +1822,7 @@ def normalize_except_regions(u: unverified_cfg) {
     if not u.except_regions {
         return;
     }
-    # CPython's exception lookup requires disjoint, sorted ranges. A nested
+    # The C compiler's exception lookup requires disjoint, sorted ranges. A nested
     # cleanup can sit inside an enclosing handler's protected span: select the
     # innermost span at every boundary instead of serializing overlapping rows.
     pos = build_layout_pos(u);

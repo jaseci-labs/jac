@@ -1,9 +1,9 @@
 """jacpython token model.
 
-Originally generated from CPython 3.14.6 Grammar/Tokens.
+Originally generated from Python 3.14.6 Grammar/Tokens.
 Maintained directly in Jac.
 
-Coordinate convention (matches CPython 3.14 / compiler_ir.cloc):
+Coordinate convention (matches Python 3.14 / compiler_ir.cloc):
   lineno / end_lineno: 1-based line numbers
   col_offset / end_col_offset: 0-based byte offsets into the source line
 

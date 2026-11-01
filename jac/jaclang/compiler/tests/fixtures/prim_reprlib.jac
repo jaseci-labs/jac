@@ -1,6 +1,6 @@
 """Bundled native `reprlib` cross-backend equivalence fixture (#6978 Phase 3).
 
-The SAME `import from reprlib { Repr, repr }` binds CPython's `reprlib` on the
+The SAME `import from reprlib { Repr, repr }` binds Python's `reprlib` on the
 sv (Python) backend and the bundled `na_stdlib/reprlib.jac` Mechanism-B module
 on the na (native LLVM) backend. All results are exact strings, so they marshal
 cleanly across the harness.

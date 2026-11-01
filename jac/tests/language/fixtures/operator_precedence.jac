@@ -1,6 +1,6 @@
 """Test that bitwise vs logical operator precedence matches Python.
 
-Runs each expression in Jac and asserts the outputs match what CPython prints
+Runs each expression in Jac and asserts the outputs match what Python prints
 for the same expressions.
 """
 

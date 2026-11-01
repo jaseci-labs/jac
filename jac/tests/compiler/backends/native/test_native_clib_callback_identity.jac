@@ -1,6 +1,6 @@
 """A Jac def used as a C function pointer has one address.
 
-C compares function pointers for identity: CPython's subtype_dealloc walks
+C compares function pointers for identity: Python's subtype_dealloc walks
 the bases while `tp_dealloc == subtype_dealloc`. A def declared without
 `-> T` returns a word while the C slot it fills says void, and each C-typed
 use used to get its own trampoline, so the slot and `ptr(f)` differed and

@@ -27,16 +27,6 @@ impl _floor_tier(
     return Probe.hit(source, path, {}) if check(path) else Probe.missing();
 }
 
-impl _running_python_variant -> str {
-    parts = os.path.realpath(sys.prefix).split(os.sep);
-    for (i, part) in enumerate(parts) {
-        if part == ".python-build" and i + 1 < len(parts) {
-            return parts[i + 1];
-        }
-    }
-    return "";
-}
-
 impl CFloorArtifact.target -> str {
     return self.variant or osarch();
 }
@@ -49,30 +39,12 @@ impl CFloorArtifact.probe_sealed -> (Probe | None) {
 }
 
 impl CFloorArtifact.probe_checkout -> Probe {
-    running = _running_python_variant();
-    order = [running]
-        + [
-            v
-            for v in PYTHON_VARIANTS
-            if v != running
-        ]
-        if running
-        else list(PYTHON_VARIANTS);
-    for variant in order {
-        libdir = os.path.join(
-            _repo_root(),
-            ".python-build",
-            variant,
-            self.target(),
-            "python",
-            "build",
-            "lib"
-        );
-        if _has_archives(libdir) {
-            return Probe.hit(Source.CHECKOUT, libdir, {"python": variant});
-        }
-    }
-    return Probe.missing();
+    libdir = os.path.join(
+        _repo_root(), ".python-build", self.target(), "python", "build", "lib"
+    );
+    return Probe.hit(Source.CHECKOUT, libdir, {})
+        if _has_archives(libdir)
+        else Probe.missing();
 }
 
 impl CFloorArtifact.probe_kit -> Probe {
@@ -94,7 +66,7 @@ impl CFloorArtifact.build_blocker -> str {
 }
 
 impl CFloorArtifact.build(log: Callable[[str], None], force: bool, exact: bool) {
-    log("  zig build build-python (the source-built Python and its C floor)");
+    log("  zig build build-python (the JacPython runtime and its C floor)");
     _zig_build("build-python");
 }
 

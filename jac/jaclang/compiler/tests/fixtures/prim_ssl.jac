@@ -2,7 +2,7 @@
 
 `import ssl` binds the bundled `na_stdlib/ssl.jac` Mechanism-F module (a
 verifying TLS-client surface over the libssl/libcrypto FFI floor) on the na
-backend; the sv reference is CPython's real `ssl`. The owning
+backend; the sv reference is Python's real `ssl`. The owning
 `test_ssl_equivalence` suite stands up a loopback HTTPS server with a
 test-generated self-signed cert for `localhost`, publishes the port in
 `JAC_SSL_TEST_PORT` and the cert (used as the trust anchor) in
@@ -27,7 +27,7 @@ import ssl;
 import socket;
 
 
-"""CPython reference: a verifying TLS GET against the loopback server, trusting
+"""Python reference: a verifying TLS GET against the loopback server, trusting
 the test cert. Pins the server + the positive path (na must match this status)."""
 def ssl_py -> dict[any, any] {
     port = int(os.getenv("JAC_SSL_TEST_PORT"));

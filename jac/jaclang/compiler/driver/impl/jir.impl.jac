@@ -1513,8 +1513,7 @@ impl get_module_cache_path(source_path: str) -> Path {
         if kernel_target_active() and is_target_package_path(str(source))
         else str(source);
     path_hash = hashlib.sha256((name + projection).encode()).hexdigest()[:8];
-    (major, minor) = (sys.version_info.major, sys.version_info.minor);
-    return cache_dir / f"{source.stem}.{path_hash}.cpython-{major}{minor}.jir";
+    return cache_dir / f"{source.stem}.{path_hash}.{sys.implementation.cache_tag}.jir";
 }
 
 impl _touch_generation(cache_dir: Path) {

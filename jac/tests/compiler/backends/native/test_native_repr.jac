@@ -1,7 +1,7 @@
 """End-to-end tests for native container repr (#7593 item 5).
 
 `str(container)`, `f"{container}"`, and `print(container)` must produce
-CPython-exact repr text, recursing through nested containers and
+Python-exact repr text, recursing through nested containers and
 dispatching obj elements to `__repr__` (not `__str__`).
 """
 
@@ -35,7 +35,7 @@ def capture_stdout(fn: any) -> bytes {
     return data;
 }
 
-test "str(list[int]) is CPython repr" {
+test "str(list[int]) is Python repr" {
     (eng, _) = compile_native("container_repr.jac");
     f = get_func(eng, "list_int_str", ctypes.c_char_p);
     assert f() == b"[1, 2, 3]";
@@ -53,7 +53,7 @@ test "nested list repr" {
     assert f() == b"[[1, 2], [3]]";
 }
 
-test "str elements get CPython quote choice" {
+test "str elements get Python's quote choice" {
     (eng, _) = compile_native("container_repr.jac");
     f = get_func(eng, "list_str_quoting", ctypes.c_char_p);
     assert f() == b"['a', \"b'c\", 'd\"e']";

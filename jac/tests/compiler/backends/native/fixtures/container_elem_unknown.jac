@@ -9,7 +9,7 @@ the tagged representation, or the compile fails loudly.
 
 Ordering gets no free ride from boxing the way equality does: a mismatched tag
 simply compares unequal, but there is no sensible order between a string and an
-int. CPython raises `TypeError: '<' not supported between instances of 'str'
+int. Python raises `TypeError: '<' not supported between instances of 'str'
 and 'int'`, so the `mixed_ord_*` cases pin that native raises the same exception
 type at runtime rather than ordering on whatever bit pattern the payload holds.
 `mixed_ord_float_vs_int` is the case a raw payload unbox reads backwards: 2.5

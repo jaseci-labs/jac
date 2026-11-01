@@ -1,14 +1,14 @@
 """Write a JacPython build's build-details.json (PEP 739).
 
-CPython's `make all` runs Tools/build/generate-build-details.py with the
-interpreter it just built, and `make install` copies the file it writes into
-the library directory. JacPython keeps no Tools/build: build_jacpython.zig
-runs this generator with the pinned build-time CPython between those two
+A configure/make build's `make all` runs Tools/build/generate-build-details.py
+with the interpreter it just built, and `make install` copies the file it writes
+into the library directory. JacPython keeps no Tools/build: build_jacpython.zig
+runs this generator on the host runtime between those two
 steps. The
 values the upstream script reads from sysconfig come from the build's own
 sysconfig data (the _sysconfigdata module in the build directory); those it
 reads from the running interpreter (sys.version_info, sys.implementation and
-importlib's suffix lists) are the host's, which is the same CPython release
+importlib's suffix lists) are the host's, which is the same Python release
 built with the same configuration, as a cross build's build Python is.
 
     jac run scripts/jacpython/gen_build_details.jac \\
@@ -119,7 +119,7 @@ def main(argv: list[str]) {
     config = build_time_vars(Path(args.sysconfig));
     if config["VERSION"] != sysconfig.get_python_version() {
         sys.exit(
-            f"{COMMAND}: run with CPython {config['VERSION']}, the release this build "
+            f"{COMMAND}: run with Python {config['VERSION']}, the release this build "
             f"configured (running {sysconfig.get_python_version()})"
         );
     }

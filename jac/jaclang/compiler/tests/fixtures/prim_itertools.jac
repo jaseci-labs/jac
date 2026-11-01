@@ -1,6 +1,6 @@
 """Bundled native `itertools` cross-backend equivalence fixture (#8145).
 
-The SAME `import from itertools { ... }` binds CPython 3.14's `itertools` on
+The SAME `import from itertools { ... }` binds Python 3.14's `itertools` on
 the sv (Python) backend and the bundled `na_stdlib/itertools.jac`
 Mechanism-B module on the na (native LLVM) backend. Every iterator is
 materialized with `list(...)` before the digest helpers see it because a
@@ -23,10 +23,10 @@ enforces the typeshed signature, and the float-through-Callable form does
 not lower on na; the module's matching TypeErrors and ValueError are
 probed standalone), `groupby` group objects
 (materialized list snapshots on na, lazily invalidated iterators on
-CPython), `tee` children (independent list copies on na -- re-iterable
-where CPython's are one-shot iterators), `starmap` arity (exactly-2
+Python), `tee` children (independent list copies on na -- re-iterable
+where Python's are one-shot iterators), `starmap` arity (exactly-2
 callable on na), and row container type (`list` snapshots on na where
-CPython yields tuples).
+Python yields tuples).
 ES/JS opts out.
 """
 
@@ -224,7 +224,7 @@ def _jpairs3_na(out: dict[str, any], tag: str, vals: any) {
 }
 
 def _gb_py(it: any) -> list[any] {
-    # CPython's groupby yields lazy groupers that invalidate when the next
+    # Python's groupby yields lazy groupers that invalidate when the next
     # group starts; materialize each eagerly while it is still valid.
     rows: list[any] = [];
     for t in it {

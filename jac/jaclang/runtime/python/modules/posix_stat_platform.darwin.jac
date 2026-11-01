@@ -1,12 +1,12 @@
 """The macOS side of the posix stat area: struct stat's extra fields
 (st_flags, st_gen, st_birthtime) and os.statvfs over struct statfs.
 
-Derived from CPython 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
 macOS's struct statvfs counts blocks in 32 bits, so os.statvfs reads
 statfs(2) instead (the $INODE64 statfs, through the jacpy_statfs helpers).
 """
 
-import from jaclang.runtime.python.cpython_api {
+import from jaclang.runtime.python.python_capi {
     PyFloat_FromDouble,
     PyLong_FromLong,
     PyLong_FromLongLong,

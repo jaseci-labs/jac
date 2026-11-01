@@ -1,13 +1,13 @@
 """Bundled native ``platform`` cross-backend equivalence fixture.
 
-The SAME `import platform` / `import from platform { ... }` binds CPython's
+The SAME `import platform` / `import from platform { ... }` binds Python's
 ``platform`` on the sv (Python) backend and the bundled
 `na_stdlib/platform.jac` Mechanism-B module (over the per-OS
 `_platform_native.<os>.jac` uname(2)/libc FFI floor) on the na (native LLVM)
 backend. Every pinned value is host-derived rather than constant, but both
 lanes run on the same host and probe the same sources -- uname(2) fields for
 system/node/release/version/machine, the `uname -p` subprocess for processor
-(with CPython 3.14's "unknown"->'' blanking), confstr/gnu_get_libc_version
+(with Python 3.14's "unknown"->'' blanking), confstr/gnu_get_libc_version
 for libc_ver, and the '64bit'/'ELF' architecture pair -- so the lanes agree.
 ``python_version`` is the exception: the native module carries a fixed
 "3.14.x" claim matching the bundled sv runtime's major.minor, so only the

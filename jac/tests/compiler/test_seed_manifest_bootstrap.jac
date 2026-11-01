@@ -1,6 +1,6 @@
 """The declared bootstrap seed set stays honest.
 
-`scripts/check_seed_manifest.py` proves two invariants on plain CPython with
+`scripts/check_seed_manifest.py` proves two invariants on a plain interpreter with
 no jaclang importable: every manifest-covered module compiles under the jac0
 seed transpiler, and no seed module imports a non-seed jaclang module at
 module scope (a hoisted import deadlocks bootstrap). The checker itself must

@@ -9,7 +9,7 @@ Include/internal/, which jacpython.o resolves against libpython itself.
 
 gen_include.jac writes the headers' declarations from this table (a new entry
 is added at the end of its header under its condition, an entry removed
-drops its declaration) and gen_capi.jac types cpython_api.jac's externs from
+drops its declaration) and gen_capi.jac types python_capi.jac's externs from
 it.
 
 CONDITIONAL_STRUCTS holds the struct of each layouts.jac record whose header

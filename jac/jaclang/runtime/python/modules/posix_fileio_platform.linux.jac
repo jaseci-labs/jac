@@ -1,6 +1,6 @@
 """The Linux side of the posix file descriptor area.
 
-Derived from CPython 3.14.6 Modules/posixmodule.c and
+Derived from Python 3.14.6 Modules/posixmodule.c and
 Include/internal/pycore_fileutils.h; see ../LICENSE.cpython. pipe2, dup3,
 splice, eventfd and timerfd come from glibc 2.17; its sendfile() takes an
 optional offset pointer. memfd_create (glibc 2.27), copy_file_range (glibc
@@ -10,7 +10,7 @@ are absent; those entries are never reached, since the binding installs only
 the functions the target compiles.
 """
 
-import from jaclang.runtime.python.cpython_api { jacpy_set_errno }
+import from jaclang.runtime.python.python_capi { jacpy_set_errno }
 import from jaclang.runtime.python.modules.posix_constants { ENOSYS }
 import from jaclang.runtime.python.modules.time_records { timespec }
 

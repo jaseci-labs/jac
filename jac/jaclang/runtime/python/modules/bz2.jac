@@ -1,6 +1,6 @@
 """bzip2 compressor and decompressor objects.
 
-Derived from CPython 3.14.6 Modules/_bz2module.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/_bz2module.c; see ../LICENSE.cpython.
 libbzip2 keeps a pointer to its bz_stream, so each stream is pinned. The
 library runs with the GIL released; only the allocator callbacks run there.
 """

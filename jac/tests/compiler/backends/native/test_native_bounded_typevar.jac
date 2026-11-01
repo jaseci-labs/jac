@@ -15,7 +15,7 @@ import from pathlib { Path }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
-test "class-bounded type variables construct and read fields like CPython" {
+test "class-bounded type variables construct and read fields like Python" {
     assert_native_identity(
         os.path.join(FIXTURES, "bounded_typevar.jac"), profiles=["rc", "managed"]
     );

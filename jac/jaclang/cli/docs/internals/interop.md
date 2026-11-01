@@ -6,7 +6,7 @@ Jac compiles one source language to three first-class **codespaces** --
 **`sv`** (server / Python), **`cl`** (client / JavaScript), and **`na`**
 (native / LLVM) -- and a single `.jac` file may mix all three. Whenever a
 call crosses from one codespace into another, or out to a foreign runtime
-(CPython, C, or a WebAssembly host), the compiler has to *bridge* the gap:
+(Python, C, or a WebAssembly host), the compiler has to *bridge* the gap:
 discover the boundary, agree on a wire format, and synthesise the glue on
 both sides.
 
@@ -27,7 +27,7 @@ Every interop edge is one of two fundamentally different things:
   reference with no copy. Same-codespace calls (`sv→sv`, `cl→cl`, `na→na`)
   and Jac↔Python (`sv↔py`) are free.
 - **Marshalled boundaries** -- the two sides are different runtimes
-  (CPython ↔ V8, CPython ↔ machine code, machine code ↔ a wasm host). A call
+  (Python ↔ V8, Python ↔ machine code, machine code ↔ a wasm host). A call
   becomes an RPC or an FFI thunk, and every value that crosses must be
   *serialised* into a representation both sides understand. `cl↔sv`,
   `sv↔na`, `na↔C`, `na↔cl`, and the `sv→sv` crossing between two apps of a
@@ -62,12 +62,12 @@ is per-node, driven entirely by each node's `code_context` tag.
 
 The three codespaces give nine ordered pairs; the three same-codespace
 pairs are free, the six crossings are marshalled. Two external runtimes
-(CPython for Python interop, and C / a wasm host for foreign FFI) add the
+(the Python runtime for Python interop, and C / a wasm host for foreign FFI) add the
 remaining rows.
 
 | # | Direction | Boundary kind | Mechanism | What crosses | Synthesised by |
 |---|-----------|---------------|-----------|--------------|----------------|
-| 1 | **`sv → sv`** (in-process) | Free | Direct Python call | Live CPython objects (by ref) | -- (plain `import`) |
+| 1 | **`sv → sv`** (in-process) | Free | Direct Python call | Live Python objects (by ref) | -- (plain `import`) |
 | 2 | **`sv → sv`** (cross-app) | Marshalled | Typed-async stub keyed by provider app: in-process when colocated, HTTP `POST` when the provider app runs apart | JSON (`_to_wire`/`_from_wire`) | `JcirGenPass` (service bridge stub) + `jaclang.server.sv_client` + `jaclang.scale` |
 | 3 | **`cl → cl`** | Free | Direct JS call | JS values (by ref) | -- (plain client-side `import`) |
 | 4 | **`na → na`** | Free | Linker symbol reference | Native values / pointers | `NativeCompilePass` relocation |
@@ -77,7 +77,7 @@ remaining rows.
 | 8 | **`na → sv`** | Marshalled | Python callback registered as a JIT symbol | C-ABI scalars | `interop_bridge` (`llvm.add_symbol`) |
 | 9 | **`cl → na`** | Marshalled | JS calls exported wasm functions | wasm scalars / linear memory | `wasm_build` + wasm-ld exports |
 | 10 | **`na → cl`** | Marshalled | wasm imports the host `env` object | wasm scalars; host-provided externs | wasm-ld import table + cl host shim |
-| 11 | **`sv/na ↔ py`** | Free | Literal Python import / meta-path finder | Live CPython objects | `JcirGenPass` (`import`→`ast.Import`) + `meta_importer` |
+| 11 | **`sv/na ↔ py`** | Free | Literal Python import / meta-path finder | Live Python objects | `JcirGenPass` (`import`→`ast.Import`) + `meta_importer` |
 | 12 | **`na ↔ C`** | Marshalled (ABI) | System V AMD64 / AAPCS calling convention | C scalars, C-layout structs (by value or by address), `ptr[T]` addresses, pinned payloads | `NaIRGenPass` clib marshaller (`ctypes` on the Python backend) |
 | 13 | **`na → C host`** | Marshalled (ABI) | `--lib` C-ABI export | Scalars by value; Jac objects as opaque handles | the link plan's glue object (`backends/native/link_glue.jac`) + LLD (`native_link.jac`) |
 
@@ -91,12 +91,12 @@ A free boundary is "interop" only in the bookkeeping sense -- there is no
 wire format, no copy, and no generated glue. Two declarations in the *same*
 codespace simply reference each other directly:
 
-- **`sv → sv`** -- Jac server code is CPython bytecode. A `def` calling
+- **`sv → sv`** -- Jac server code is Python bytecode. A `def` calling
   another `def` is an ordinary Python call; an `obj` handed to another
   function is the *same* object, not a copy. Plain (untagged) Jac `import`
   statements lower verbatim to Python `import` nodes (`exit_import` in
   [`jcir_gen_pass.impl.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/py/impl/jcir_gen_pass.impl.jac)),
-  so resolution is the standard CPython import machinery.
+  so resolution is the standard Python import machinery.
 - **`cl → cl`** -- Client code becomes one JavaScript module graph; a `cl`
   function calling another is a direct JS call, bundled together by Vite.
 - **`na → na`** -- Two native modules are two native units. An import is a
@@ -274,7 +274,7 @@ return _fn(a, b)
 `interop_bridge.register_py_callbacks` wraps each referenced Python function
 in a `ctypes.CFUNCTYPE`, keeps the reference alive, and calls
 `llvm.add_symbol(name, cb_addr)` so MCJIT resolves the *native* call
-straight into CPython. The scalar type map (`JAC_TO_CTYPES`) is
+straight into the Python runtime. The scalar type map (`JAC_TO_CTYPES`) is
 `int→c_int64`, `float→c_double`, `bool→c_bool`, `str→c_char_p`.
 
 ### The engine and the in-process model
@@ -290,7 +290,7 @@ a separate shared object loaded across a process boundary.
 ### Crossing whole Jac values
 
 Whole-value crossings are **one-way and total**: the native side rebuilds
-the value as real CPython objects before it returns, and nothing native
+the value as real Python objects before it returns, and nothing native
 outlives the call. There is no view layer -- the earlier zero-copy
 `NativeStructView`/`NativeListView` machinery was deleted with #8139 Step 2
 once measurement showed per-access view reads losing to outright
@@ -510,7 +510,7 @@ call and dispatches to its exports. Calls to the bound names type-check as
 async in client code (the same coroutine-wrapping that client calls to
 server endpoints get), so `await init()` is the natural call shape. On the
 Python side the client-consumed import compiles to **nothing** -- it never
-executes the native module under CPython, which is what distinguishes it
+executes the native module under the Python runtime, which is what distinguishes it
 from a server-consumed import of the same native module (row 7's ctypes
 crossing). A module that declares app FFI
 registers its host implementations before the first call with
@@ -615,7 +615,7 @@ work." Untyped Python return values arrive in Jac as `any`.
 ### Python importing Jac
 
 A lazily-installed meta-path finder makes `.jac` modules first-class to
-CPython. The `jac` binary's launcher runs `import _jac_finder;
+the Python runtime. The `jac` binary's launcher runs `import _jac_finder;
 _jac_finder.install()` at interpreter startup (see `launcher/launcher.zig`
 `BOOT_SRC`); on the first `.jac` import the lazy finder bootstraps jaclang and
 installs `JacMetaImporter`
@@ -689,7 +689,7 @@ Everything crossing a marshalled boundary is **JSON** (for `cl↔sv` and the
 
 Scalars use the `JAC_TO_CTYPES` map (`int→c_int64`, `float→c_double`,
 `bool→c_bool`, `str→c_char_p`). Whole Jac values cross by
-**materialization** -- the native side constructs real CPython objects
+**materialization** -- the native side constructs real Python objects
 through libpython externs and hands over ownership (see "Crossing whole
 Jac values" above). Foreign C structs cross by the platform ABI
 (`byval`/`sret`/register coerce) as described above.
@@ -720,15 +720,15 @@ list.
 ## Desktop apps: stitching the boundaries together
 
 A Jac **desktop app** is the most integrated use of the matrix: it bundles
-the `cl` UI, a native (`na`) host binary, the OS's own webview, and an
-embedded CPython into a single shippable artefact. The desktop target is
+the `cl` UI, a native (`na`) host binary, the OS's own webview, and the
+embedded JacPython runtime into a single shippable artefact. The desktop target is
 built into `jaclang` core (`jac/jaclang/client/targets/desktop/`).
 
 > **Status note.** Older release notes mention a "PyTauri shell +
 > PyInstaller sidecar" and a `jac desktop` CLI -- those are **stale**. The
 > shipping architecture is a native host binary + the OS webview, and there
 > is no dedicated `jac desktop` command. The `sv` walkers and functions run
-> **in-process** on the embedded CPython (shipped via #7045): the webview
+> **in-process** on the embedded Python runtime (shipped via #7045): the webview
 > binds `__jac_invoke` to `inprocess_dispatch`, so walker/function calls
 > never leave the binary. A stdlib loopback broker still serves the bundle
 > and brokers SSO/session/logout over `/__jac`. Only per-OS packaging and
@@ -767,7 +767,7 @@ picks the shell it builds. There is no separate CLI verb -- the core
 | UI | `cl` (Vite/React bundle) | `DesktopTarget` subclasses `WebTarget`; reuses the standard `.jac/client/dist/` bundle |
 | Host binary | `na` (LLVM, linked by the bundled LLD) | A generated `host.jac`, compiled by `jac build --native`; records `libwebview.so` as `DT_NEEDED` with an `$ORIGIN` runpath |
 | Window | C FFI → `libwebview` | OS-native webview: WebKitGTK (Linux), WKWebView (macOS), WebView2 (Windows) |
-| Local runtime | C FFI → `libpython` | Embedded CPython runs `inprocess_dispatch` (walker/function invokes) **and** a stdlib loopback HTTP broker (bundle + SSO/session) |
+| Local runtime | C FFI → `libpython` | The embedded Python runtime runs `inprocess_dispatch` (walker/function invokes) **and** a stdlib loopback HTTP broker (bundle + SSO/session) |
 | Backend | `sv` in-process | Walker/function calls route through the embedded runtime via `__jac_invoke`; a remote `api_base` is optional for external backends |
 
 The generated host wires it all together (paraphrasing
@@ -793,10 +793,10 @@ with entry {
 So a desktop app exercises, in one process, the chain:
 
 ```text
-cl bundle  ──(served by)──▶  embedded CPython (loopback broker)
+cl bundle  ──(served by)──▶  embedded JacPython (loopback broker)
    ▲                                   │
    │ rendered in                       │ na host binary
-OS webview  ◀──(C FFI: libwebview)── na  ──(C FFI: libpython)── CPython
+OS webview  ◀──(C FFI: libwebview)── na  ──(C FFI: libpython)── JacPython
    │
    └──(HTTP: cl → sv RPC)──▶  sv backend (api_base)
 ```
@@ -809,7 +809,7 @@ the webview's per-origin `localStorage` (login/session) survives restarts.
 Reading the diagram as interop rows: a desktop app combines
 **`sv → cl`** (bundle delivery, served locally), **`na ↔ C`** (the host
 binding `libwebview` and `libpython`), **`na → C host`** inverted (the host
-*embeds* CPython rather than exporting to it), and **`cl → sv`** (the UI's
+*embeds* the Python runtime rather than exporting to it), and **`cl → sv`** (the UI's
 RPC to the backend). It is the matrix in miniature.
 
 ---

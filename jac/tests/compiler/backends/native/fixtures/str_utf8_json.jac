@@ -1,4 +1,4 @@
-"""json.dumps and json.loads walk multibyte text once and agree with CPython."""
+"""json.dumps and json.loads walk multibyte text once and agree with Python."""
 import json;
 
 def run -> int {

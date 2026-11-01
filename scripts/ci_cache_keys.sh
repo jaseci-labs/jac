@@ -18,14 +18,7 @@ compiler_tree() {
     awk -F '\t' '$2 !~ /\/(tests|test|__pycache__)\// && $2 !~ /\/\.[^\/]+\// && $2 !~ /\.test\./'
 }
 python_tree() {
-  tree jac/bootstrap/build_python.zig jac/bootstrap/seed.zig jac/bootstrap/python |
-    if [ "$1" = cpython ]; then
-      # Matches build_python.buildKey's host-mode exclusions. Jac sources and
-      # native bridge edits cannot invalidate the ordinary CPython SDK.
-      awk -F '\t' '$2 !~ /\/(layouts_check.c|features_check.c|prepare_native.py|jacpython-modules.txt)$/'
-    else
-      cat
-    fi
+  tree jac/bootstrap/build_python.zig jac/bootstrap/seed.zig jac/bootstrap/python
 }
 # The compiler-input RULE lives twice on purpose: here in awk, and in
 # jir.compiler_source_files. They cannot be merged -- this script runs at
@@ -49,13 +42,12 @@ emit() {
 }
 
 compiler_tree | emit compiler
-python_tree cpython | emit python_cpython
 {
-  python_tree jacpython
+  python_tree
   compiler_tree
   tree jac/jaclang/vendor/typeshed/PIN jac/jaclang/vendor/typeshed/TARBALL_SHA256 \
     jac/native jac/build.zig jac/build.zig.zon jac/bootstrap/pins.json
-} | emit python_jacpython
+} | emit python
 tree jac/jaclang | emit payload
 tree jac/jaclang jac/native jac/build.zig jac/build.zig.zon \
   jac/bootstrap/pins.json jac/_jac_finder.py jac.toml | emit kernel

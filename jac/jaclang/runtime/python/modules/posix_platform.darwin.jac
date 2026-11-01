@@ -1,6 +1,6 @@
 """The macOS side of the posix core.
 
-Derived from CPython 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
 The shared interpreter reaches the environment through _NSGetEnviron()
 (USE_DARWIN_NS_GET_ENVIRON), dev_t is a signed 32-bit int, and there is no
 fdatasync().

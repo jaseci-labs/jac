@@ -1,6 +1,6 @@
 """Growable output for streaming codecs, as a list of fixed bytes blocks.
 
-Derived from CPython 3.14.6 Include/internal/pycore_blocks_output_buffer.h;
+Derived from Python 3.14.6 Include/internal/pycore_blocks_output_buffer.h;
 see ../LICENSE.cpython. A codec writes into the current block through a cursor
 and a free count; finish() joins the used bytes, reusing a lone full block.
 """

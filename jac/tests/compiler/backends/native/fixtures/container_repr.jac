@@ -1,5 +1,5 @@
 """Container repr fixtures (#7593 item 5): str/print/f-string of containers
-must produce CPython-exact repr text."""
+must produce Python-exact repr text."""
 
 def list_int_str -> str {
     x: list[int] = [1, 2, 3];

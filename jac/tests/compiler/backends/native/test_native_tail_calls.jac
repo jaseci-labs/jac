@@ -1,7 +1,7 @@
 """`return tail f(args);` is a guaranteed tail call on the native backend.
 
 The callee reuses the caller's frame (LLVM `musttail`), so recursion through
-tail calls runs in constant stack: a CPython-style evaluator can dispatch
+tail calls runs in constant stack: a tail-calling bytecode evaluator can dispatch
 from one handler to the next through a function-pointer table for as long as
 it runs. `tail` is contextual, so a variable named `tail` still reads as one.
 The Python backend runs the same program as ordinary calls.

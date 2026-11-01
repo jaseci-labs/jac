@@ -2,7 +2,8 @@
 
 scripts/jacpython/gen_clinic.jac generates
 jaclang/runtime/python/bindings/clinic/ctypes.jac from them. Taken from
-CPython 3.14.6 Modules/_ctypes/_ctypes.c, Modules/_ctypes/callbacks.c, Modules/_ctypes/callproc.c, Modules/_ctypes/stgdict.c, Modules/_ctypes/cfield.c.
+the C sources it replaces (Modules/_ctypes/_ctypes.c, Modules/_ctypes/callbacks.c, Modules/_ctypes/callproc.c, Modules/_ctypes/stgdict.c, Modules/_ctypes/cfield.c); see
+jac/jaclang/runtime/python/LICENSE.cpython.
 """
 import from clinic_schema { Clinic, Function, Parameter }
 

@@ -10,9 +10,9 @@ impl load_pins(path: str | None = None) -> Pins {
     } except (OSError, ValueError) as e {
         die(f"pins: cannot read {p}: {e}");
     }
-    python_pins = os.path.join(os.path.dirname(p), "python-sources.json");
+    python_pins = os.path.join(os.path.dirname(p), "python-seed.json");
     if not os.path.exists(python_pins) {
-        python_pins = os.path.join(os.path.dirname(p), "python", "sources.json");
+        python_pins = os.path.join(os.path.dirname(p), "python", "seed.json");
     }
     try {
         with open(python_pins, "r", encoding="utf-8") as f {
@@ -33,7 +33,7 @@ impl load_pins(path: str | None = None) -> Pins {
         );
     }
     loaded = Pins(
-        python=str(python_raw["cpython"]["version"]),
+        python=str(python_raw["python"]),
         llvm=LlvmPins(
             version=str(llvm_raw["version"]),
             slice_base=str(llvm_raw["slice_base"]),

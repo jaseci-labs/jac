@@ -2,7 +2,7 @@
 
 `TypeFlags(...)` in `types.jac` re-tags a cloned type's flags: mask one bit
 off, OR another on, hand the result back through the constructor. `TypeFlags`
-is an `IntEnum`, not an `IntFlag`, so CPython accepts only a value some member
+is an `IntEnum`, not an `IntFlag`, so Python accepts only a value some member
 carries and raises `ValueError` for anything else -- `Instantiable|Instance`
 included. Lowering the call to the identity would have dropped that check, so
 the backend refused the whole shape and two `types.jac` methods sat behind a
@@ -18,7 +18,7 @@ Members whose values cannot be folded still have no table to validate against,
 and noninteger inputs to integer enums remain refused under E5092.
 
 The subprocess pair is the contract: the server pathway and a native binary
-print the same lines, and CPython's own answers for the same six calls are
+print the same lines, and Python's own answers for the same six calls are
 `2 1 25 4 rejected rejected 0`.
 """
 
@@ -129,7 +129,7 @@ test "the declared-enum spelling validates the same way" {
 }
 
 
-test "declared and undeclared values answer as CPython does" {
+test "declared and undeclared values answer as Python does" {
     sv = sv_lines("enum_ctor.jac");
     assert sv == list(EXPECTED) , f"server lane printed {sv}";
     na = na_lines("enum_ctor.jac");

@@ -1,9 +1,9 @@
 """Dual-lane benchmark rows for the bundled itertools module.
 
     jac run -b native  scripts/bench/bench_itertools_pr.jac   (bundled na_stdlib)
-    jac run -b python  scripts/bench/bench_itertools_pr.jac   (CPython bridge)
+    jac run -b python  scripts/bench/bench_itertools_pr.jac   (Python bridge)
 
-Rows print name|n|ns_per_op|acc; acc must match the CPython reference
+Rows print name|n|ns_per_op|acc; acc must match the Python reference
 (scripts/bench/bench_itertools_pr.py) lane for lane. Only operations with
 identical spelling and row shapes on both lanes are benched.
 """

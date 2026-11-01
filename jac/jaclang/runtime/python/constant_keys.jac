@@ -1,4 +1,4 @@
-"""Exact compiler constant identity, shared by pooling and CPython constant output."""
+"""Exact compiler constant identity, shared by pooling and Python constant output."""
 
 # Normalize finite IEEE doubles using exact powers of two. This works in both
 # Jac backends and avoids the native formatter rounding distinct constants to

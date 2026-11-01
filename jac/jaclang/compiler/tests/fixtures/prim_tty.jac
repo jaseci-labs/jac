@@ -1,15 +1,15 @@
 """Bundled native `tty` cross-backend equivalence fixture.
 
-`import from tty { setcbreak, setraw }` binds CPython's `tty` on sv and the
+`import from tty { setcbreak, setraw }` binds Python's `tty` on sv and the
 bundled `na_stdlib/tty.jac` on na. Uses a pty slave fd (pipes are ENOTTY
 for termios): `os.openpty()` on sv, libc `openpty(3)` on na, master kept
 open until the end. The pty is first seeded with VMIN=7/VTIME=3 and with
 NOFLSH|TOSTOP set in lflag, so every write the modes make is observable.
 `setcbreak` must clear ICANON and ECHO in `mode[3]` (lflag) and set cc
 VMIN=1/VTIME=0 on its OWN copy of the cc list, so the returned
-original-mode list still reports the seeded VMIN=7/VTIME=3 -- CPython
+original-mode list still reports the seeded VMIN=7/VTIME=3 -- Python
 3.12+'s behavior, pinned here. `setraw` must mask each flag word exactly
-by CPython's formula (clearing the seeded NOFLSH/TOSTOP), computed from
+by Python's formula (clearing the seeded NOFLSH/TOSTOP), computed from
 each lane's own saved attrs. Original attrs are restored and the restore
 is verified. ES/JS opts out (POSIX-only).
 """

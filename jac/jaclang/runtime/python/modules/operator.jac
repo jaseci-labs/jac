@@ -1,6 +1,6 @@
 """Python operator dispatch and callable accessors, executed in native Jac.
 
-Derived from CPython 3.14.6; see ../LICENSE.cpython.
+Derived from Python 3.14.6; see ../LICENSE.cpython.
 """
 
 # Preparing dotted paths once avoids reparsing attributes on every invocation.

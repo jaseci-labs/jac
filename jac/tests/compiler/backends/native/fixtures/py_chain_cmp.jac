@@ -1,6 +1,6 @@
 """Chained comparison semantics (issue #7320 Cluster 2, item 2a).
 
-CPython evaluates `a < b < c` as `(a < b) and (b < c)` with b evaluated
+Python evaluates `a < b < c` as `(a < b) and (b < c)` with b evaluated
 once. Before the fix na lowered only the first link, so `2 < 3 < 1` was
 silently True.
 """

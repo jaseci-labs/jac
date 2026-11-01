@@ -3,7 +3,7 @@
 The bundled `time` module is one unit on every target: `_time_native` asks the
 runtime floor (posix_floor.c, win_floor.c) for the target libc's clock IDs at
 run time, so a build for any target lowers the same unit and still reads the
-clocks CPython names on that target.
+clocks Python names on that target.
 """
 import os;
 import from pathlib { Path }
@@ -36,7 +36,7 @@ test "the clock unit is the same file for every target" {
     }
 }
 
-test "native clock IDs are the ones CPython names on this host" {
+test "native clock IDs are the ones Python names on this host" {
     source = str(Path(__file__).resolve().parent / "fixtures" / "time_clock_ids.jac");
     out = assert_native_identity(source, profiles=["managed"]);
     assert out.splitlines()[-1] == "True" , out;

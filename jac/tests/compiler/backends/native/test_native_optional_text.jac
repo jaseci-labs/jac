@@ -29,7 +29,7 @@ import from pathlib { Path }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
-test "optional values render like CPython under every memory profile" {
+test "optional values render like Python under every memory profile" {
     assert_native_identity(os.path.join(FIXTURES, "optional_text.jac"));
 }
 

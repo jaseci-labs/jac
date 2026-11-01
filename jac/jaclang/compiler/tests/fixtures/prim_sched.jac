@@ -1,6 +1,6 @@
 """Bundled native `sched` cross-backend equivalence fixture (#6978).
 
-The same `import sched` binds CPython's `sched` on the sv backend and
+The same `import sched` binds Python's `sched` on the sv backend and
 `na_stdlib/sched.jac` on the na (native LLVM) backend. Pins the queue
 discipline rather than wall-clock behaviour: absolute-time ordering, the
 priority tie-break, the monotonically increasing sequence number that breaks

@@ -1,16 +1,16 @@
 """Bundled native `logging` cross-backend equivalence fixture (#6978).
 
-The same `import logging` binds CPython's `logging` on the sv backend and
+The same `import logging` binds Python's `logging` on the sv backend and
 `na_stdlib/logging.jac` on the na (native LLVM) backend. Pins the parts that
 produce values rather than side effects on a stream: the level constants and
 `getLevelName`/`getLevelNamesMapping`, the dotted-name logger hierarchy
 (`getLogger` identity, `parent`, `getEffectiveLevel` walking up through NOTSET,
 `isEnabledFor`, `propagate`), `addHandler`/`removeHandler` bookkeeping, and the
-`%`-style `Formatter` rendering of a `LogRecord`. The bundled `LogRecord` takes CPython's positional
+`%`-style `Formatter` rendering of a `LogRecord`. The bundled `LogRecord` takes Python's positional
 parameter order (`name, level, pathname, lineno, msg, args, exc_info, func,
 sinfo`) precisely so one call shape type-checks on both lanes: the fixture's py
 lane is checked against the BUNDLED module's signatures even though it binds
-CPython's module at runtime, so a fixture may only use the intersection of the
+Python's module at runtime, so a fixture may only use the intersection of the
 two APIs.
 
 Both lanes narrow `child.parent` through an `is not None` guard: the checker types

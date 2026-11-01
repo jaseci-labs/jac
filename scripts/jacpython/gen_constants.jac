@@ -10,8 +10,8 @@ from a generated per-OS file instead of a hand-written table:
     jac run scripts/jacpython/gen_constants.jac errno --check
     jac run scripts/jacpython/gen_constants.jac mmap --cc "zig cc -target x86_64-linux-gnu" --os linux --arch x86_64
 
-The script collects the constant names from the module's C source in the
-pinned archive, compiles them against the headers the module includes with
+The script takes the constant names from scripts/jacpython/constant_facts.jac,
+compiles them against the headers the module includes with
 the target compiler and reads the folded values back from its assembly, then
 writes jaclang/runtime/python/modules/<name>_constants.<os>.jac with one glob
 per defined name and a CONSTANTS list in source order; with --arch, for
@@ -39,76 +39,37 @@ import sys;
 import tempfile;
 import textwrap;
 import from pathlib { Path }
-import from common { RUNTIME, archive_texts, format_jac, write_or_check }
+import from common { RUNTIME, format_jac, write_or_check }
+import from constant_facts { FACTS }
 
 glob OUTPUT: Path = RUNTIME / "modules",
-     PATTERNS: list[str] = [
-         r"\bADD_INT_MACRO\(\s*\w+\s*,\s*(\w+)\s*\)",
-         r"\bADD_INT_MACRO\(\s*(\w+)\s*\)",
-         r"\bADD_INT\(\s*\w+\s*,\s*(\w+)\s*\)",
-         r"\bPyModule_AddIntMacro\(\s*\w+\s*,\s*(\w+)\s*\)",
-         r"\bINS\(\s*(\w+)\s*\)",
-         r"\badd_errcode\(\s*\"(\w+)\"",
-         r"\bPyModule_AddIntConstant\(\s*\w+\s*,\s*\"(\w+)\"\s*,\s*\1\s*\)",
-         r"\bADD_INT\(\s*(\w+)\s*\)",
-         # A static {"NAME", NAME} table (termios), possibly cast to long.
-         r"\{\s*\"(\w+)\"\s*,\s*(?:\(long\)\s*)?\1\s*\}",
-         r"\bLANGINFO\(\s*(\w+)\s*,"
-     ],
-     # Constants published under a name other than their macro's
-     # (select's KQ_FILTER_READ is EVFILT_READ): (published, macro) groups.
-     ALIAS_PATTERNS: list[str] = [
-         r"\bADD_INT_CONST\(\s*\"(\w+)\"\s*,\s*([A-Za-z_]\w*)\s*\)",
-         r"\bADD_INT_CONST\(\s*\w+\s*,\s*\"(\w+)\"\s*,\s*([A-Za-z_]\w*)\s*\)",
-         r"\bPyModule_AddIntConstant\(\s*\w+\s*,\s*\"(\w+)\"\s*,\s*([A-Za-z_]\w*)\s*\)"
-     ],
      # The macro each aliased published name reads.
      MACROS: dict[str, str] = {},
      # The source condition guarding each published name.
      CONDITIONS: dict[str, str] = {},
      # The names the C source publishes (EXTRA ones excluded).
      PUBLISHED: set[str] = set(),
-     # Parameter names of the macro definitions themselves.
-     MACRO_PARAMETERS: set[str] = {"value", "macro", "c", "name", "VAL", "X"},
-     # The C source each module's constants come from, and the system headers
-     # that define them. Each include is guarded by __has_include, so one list
-     # serves every platform.
-     SOURCES: dict[str, tuple[str, list[str]]] = {
-         "errno": ("Modules/errnomodule.c", ["errno.h"]),
-         "fcntl": (
-             "Modules/fcntlmodule.c",
-             ["fcntl.h", "sys/ioctl.h", "sys/file.h", "linux/fs.h"]
-         ),
-         "resource": (
-             "Modules/resource.c",
-             ["sys/resource.h", "sys/time.h", "unistd.h"]
-         ),
-         "syslog": ("Modules/syslogmodule.c", ["syslog.h"]),
-         "termios": (
-             "Modules/termios.c",
-             ["termios.h", "sys/ioctl.h", "sys/termios.h", "unistd.h"]
-         ),
-         "_posixsubprocess": (
-             "Modules/_posixsubprocess.c",
-             ["unistd.h", "fcntl.h", "errno.h", "signal.h", "limits.h", "sys/syscall.h"]
-         ),
-         "select": (
-             "Modules/selectmodule.c",
-             [
+     # The system headers that define each module's constants. Each include
+     # is guarded by __has_include, so one list serves every platform.
+     HEADERS: dict[str, list[str]] = {
+         "errno": ["errno.h"],
+         "fcntl": ["fcntl.h", "sys/ioctl.h", "sys/file.h", "linux/fs.h"],
+         "resource": ["sys/resource.h", "sys/time.h", "unistd.h"],
+         "syslog": ["syslog.h"],
+         "termios": ["termios.h", "sys/ioctl.h", "sys/termios.h", "unistd.h"],
+         "_posixsubprocess": ["unistd.h", "fcntl.h", "errno.h", "signal.h", "limits.h", "sys/syscall.h"],
+         "select": [
                  "limits.h",
                  "sys/select.h",
                  "poll.h",
                  "sys/epoll.h",
                  "sys/event.h",
                  "sys/devpoll.h"
-             ]
-         ),
-         "mmap": ("Modules/mmapmodule.c", ["sys/mman.h", "unistd.h", "fcntl.h"]),
+             ],
+         "mmap": ["sys/mman.h", "unistd.h", "fcntl.h"],
          # socketmodule.c and socketmodule.h include these; Bluetooth's
          # headers are not part of any supported target's C library.
-         "_socket": (
-             "Modules/socketmodule.c",
-             [
+         "_socket": [
                  "sys/types.h",
                  "sys/socket.h",
                  "netinet/in.h",
@@ -134,18 +95,12 @@ glob OUTPUT: Path = RUNTIME / "modules",
                  "sys/sys_domain.h",
                  "sys/kern_control.h",
                  "poll.h"
-             ]
-         ),
+             ],
          # signalmodule.c's headers, and those of the values faulthandler.c
          # reads (RLIMIT_CORE, errno).
-         "_signal": (
-             "Modules/signalmodule.c",
-             ["signal.h", "sys/time.h", "sys/resource.h", "errno.h"]
-         ),
+         "_signal": ["signal.h", "sys/time.h", "sys/resource.h", "errno.h"],
          # posixmodule.c's own include order.
-         "posix": (
-             "Modules/posixmodule.c",
-             [
+         "posix": [
                  "stdio.h",
                  "stdlib.h",
                  "unistd.h",
@@ -189,17 +144,10 @@ glob OUTPUT: Path = RUNTIME / "modules",
                  "sys/statvfs.h",
                  "limits.h",
                  "errno.h"
-             ]
-         ),
-         "_locale": (
-             "Modules/_localemodule.c",
-             ["locale.h", "langinfo.h", "libintl.h"]
-         ),
-         "time": ("Modules/timemodule.c", ["time.h", "sys/time.h"]),
-         "_multiprocessing": (
-             "Modules/_multiprocessing/semaphore.c",
-             ["fcntl.h", "semaphore.h", "limits.h"]
-         )
+             ],
+         "_locale": ["locale.h", "langinfo.h", "libintl.h"],
+         "time": ["time.h", "sys/time.h"],
+         "_multiprocessing": ["fcntl.h", "semaphore.h", "limits.h"]
      },
      # Names a module's portable Jac code reads on every platform, declared as
      # 0 (and left out of CONSTANTS) where the headers do not define them.
@@ -397,17 +345,6 @@ glob OUTPUT: Path = RUNTIME / "modules",
          ]
      },
      # `{"NAME", MACRO}` arrays published as dicts: (C array, Jac list) pairs.
-     TABLES: dict[str, list[tuple[str, str]]] = {
-         "posix": [
-             ("posix_constants_pathconf", "PATHCONF_TABLE"),
-             ("posix_constants_confstr", "CONFSTR_TABLE"),
-             ("posix_constants_sysconf", "SYSCONF_TABLE")
-         ]
-     },
-     # The Argument Clinic header whose PyMethodDef macros a module's method
-     # table lists: with --pyconfig, the table's METHODS names the functions
-     # the target compiles (each macro's guard holds), for the binding to keep.
-     METHOD_SOURCES: dict[str, str] = {"posix": "Modules/clinic/posixmodule.c.h"},
      FEATURE_CHECK: Path = RUNTIME.parents[2] / "bootstrap" / "python" / "features_check.c",
      # The predefined macros that select a table's target in features_check.c.
      TARGET_MACROS: dict[str, str] = {
@@ -426,18 +363,6 @@ glob OUTPUT: Path = RUNTIME / "modules",
      },
      # Macros the C module defines before its includes to expose constants.
      DEFINES: dict[str, list[str]] = {"_socket": ["__APPLE_USE_RFC_3542 1"]},
-     # Conditions no supported target meets: the names published only
-     # inside `#ifdef` / `#if defined()` blocks on them are left out, even
-     # where a header happens to define the macro (Linux's AF_BLUETOOTH).
-     UNSUPPORTED: dict[str, list[str]] = {
-         "_socket": [
-             "MS_WINDOWS",
-             "MS_WINDOWS_DESKTOP",
-             "USE_BLUETOOTH",
-             "SIO_RCVALL",
-             "HAVE_AF_HYPERV"
-         ]
-     },
      # Names the C module publishes under a condition other than their own
      # macro, grouped by that condition: enumerators a header's presence
      # guards (configure's HAVE_LINUX_CAN_BCM_H and the like).
@@ -494,61 +419,6 @@ glob OUTPUT: Path = RUNTIME / "modules",
          "_socket": {"UDPLITE_SEND_CSCOV": "10", "UDPLITE_RECV_CSCOV": "11"}
      };
 
-# A comment reduced to its line breaks, so line numbers survive.
-def blank_comment(hit: re.Match[str]) -> str {
-    return "\n" * hit.group(0).count("\n");
-}
-
-def without_comments(source: str) -> str {
-    return re.sub(r"/\*.*?\*/", blank_comment, source, flags=re.S);
-}
-
-# The condition of one #if/#elif/#else frame: the earlier branches failed and
-# this one holds.
-def frame_condition(frame: tuple[list[str], str]) -> str {
-    (prior, current) = frame;
-    return " && ".join([f"!{earlier}" for earlier in prior] + [current]);
-}
-
-# The preprocessor condition each line of `source` is compiled under, as one C
-# expression ("1" outside any conditional).
-def line_conditions(source: str) -> list[str] {
-    conditions: list[str] = [];
-    stack: list[tuple[list[str], str]] = [];
-    pending = "";
-    for line in without_comments(source).splitlines() {
-        conditions.append(
-            " && ".join([f"({frame_condition(frame)})" for frame in stack]) or "1"
-        );
-        if line.rstrip().endswith("\\") {
-            pending += line.rstrip()[:-1] + " ";
-            continue;
-        }
-        text = pending + line;
-        pending = "";
-        directive = re.match(
-            r"\s*#\s*(ifdef|ifndef|if|elif|else|endif)\b(.*)", text
-        );
-        if not directive {
-            continue;
-        }
-        (kind, rest) = (directive.group(1), re.sub(r"//.*", "", directive.group(2)).strip());
-        if kind == "ifdef" {
-            stack.append(([], f"defined({rest})"));
-        } elif kind == "ifndef" {
-            stack.append(([], f"!defined({rest})"));
-        } elif kind == "if" {
-            stack.append(([], f"({rest})"));
-        } elif kind in ("elif", "else") and stack {
-            (prior, current) = stack[-1];
-            stack[-1] = (prior + [current], f"({rest})" if kind == "elif" else "1");
-        } elif kind == "endif" and stack {
-            stack.pop();
-        }
-    }
-    return conditions;
-}
-
 # The #if condition each guarded name of `module` is read under.
 def guards_for(module: str) -> dict[str, str] {
     guards: dict[str, str] = {};
@@ -558,123 +428,6 @@ def guards_for(module: str) -> dict[str, str] {
         }
     }
     return guards;
-}
-
-# Whether the open `#if` blocks of `frames` (directive, condition, in #else)
-# exclude their contents: a block on an unsupported macro, outside its
-# #else, or the #else of an `#ifndef` on one.
-def excluded_by(frames: list[tuple[str, str, bool]], unsupported: list[str]) -> bool {
-    for (directive, condition, in_else) in frames {
-        named = any(
-            re.search(rf"\b{macro}\b", condition) is not None for macro in unsupported
-        );
-        if named and (in_else == (directive == "ifndef")) {
-            return True;
-        }
-    }
-    return False;
-}
-
-def names_in(source: str, unsupported: list[str]) -> list[str] {
-    found: list[str] = [];
-    # A commented-out entry (_locale's YESSTR and NOSTR) is not published.
-    source = without_comments(source);
-    # A call continued after a comma is read as one line.
-    source = re.sub(r",[ \t]*\n\s*(?!#)", ", ", source);
-    conditions = line_conditions(source);
-    frames: list[tuple[str, str, bool]] = [];
-    for (number, line) in enumerate(source.splitlines()) {
-        directive = re.match(r"\s*#\s*(ifdef|ifndef|if|elif|else|endif)\b(.*)", line);
-        if directive {
-            (kind, rest) = (directive.group(1), directive.group(2));
-            if kind in ("ifdef", "ifndef", "if") {
-                frames.append((kind, rest, False));
-            } elif kind == "endif" and frames {
-                frames.pop();
-            } elif frames {
-                # An #elif starts a new condition; an #else flips the last.
-                top = frames.pop();
-                frames.append(
-                    ("if", rest, False) if kind == "elif" else (top[0], top[1], True)
-                );
-            }
-            continue;
-        }
-        if unsupported and excluded_by(frames, unsupported) {
-            continue;
-        }
-        for pattern in PATTERNS {
-            for hit in re.finditer(pattern, line) {
-                name = hit.group(1);
-                if name not in found and name not in MACRO_PARAMETERS {
-                    found.append(name);
-                    CONDITIONS[name] = conditions[number];
-                }
-            }
-        }
-        for pattern in ALIAS_PATTERNS {
-            for hit in re.finditer(pattern, line) {
-                name = hit.group(1);
-                if name not in found and hit.group(2) not in MACRO_PARAMETERS {
-                    found.append(name);
-                    CONDITIONS[name] = conditions[number];
-                    if hit.group(2) != name {
-                        MACROS[name] = hit.group(2);
-                    }
-                }
-            }
-        }
-    }
-    return found;
-}
-
-# The `{"NAME", MACRO}` entries of each of the module's TABLES, with the
-# condition guarding each entry: {Jac list: [(published, macro, condition)]}.
-def tables_in(module: str, source: str) -> dict[str, list[tuple[str, str, str]]] {
-    source = without_comments(source);
-    conditions = line_conditions(source);
-    lines = source.splitlines();
-    tables: dict[str, list[tuple[str, str, str]]] = {};
-    for (array, name) in TABLES.get(module, []) {
-        entries: list[tuple[str, str, str]] = [];
-        inside = False;
-        for (number, line) in enumerate(lines) {
-            if not inside {
-                inside = re.search(r"\b" + array + r"\s*\[\s*\]\s*=", line) is not None;
-                continue;
-            }
-            if line.strip().startswith("};") {
-                break;
-            }
-            for hit in re.finditer(r"\{\s*\"(\w+)\"\s*,\s*(\w+)\s*\}", line) {
-                entries.append((hit.group(1), hit.group(2), conditions[number]));
-            }
-        }
-        if not entries {
-            sys.exit(f"{module}: no constant entries in {array}");
-        }
-        tables[name] = entries;
-    }
-    return tables;
-}
-
-# The functions a clinic header defines PyMethodDef macros for, with the
-# condition guarding each definition: [(Python name, condition)].
-def methods_in(source: str) -> list[tuple[str, str]] {
-    source = without_comments(source);
-    conditions = line_conditions(source);
-    lines = source.splitlines();
-    methods: list[tuple[str, str]] = [];
-    for (number, line) in enumerate(lines) {
-        if not re.match(r"\s*#\s*define\s+\w+_METHODDEF\s*\\\s*$", line) {
-            continue;
-        }
-        hit = re.search(r"\{\s*\"(\w+)\"", lines[number + 1]);
-        if hit {
-            methods.append((hit.group(1), conditions[number]));
-        }
-    }
-    return methods;
 }
 
 # pyconfig.h's HAVE_* macros: {name: value}, 0 for the ones it leaves undefined.
@@ -696,7 +449,7 @@ def pyconfig_features(path: Path) -> dict[str, int] {
 
 def includes_for(module: str) -> list[str] {
     lines = [f"#define {define}" for define in DEFINES.get(module, [])];
-    for header in SOURCES[module][1] {
+    for header in HEADERS[module] {
         lines += [f"#if __has_include(<{header}>)", f"#include <{header}>", "#endif"];
     }
     for (name, value) in DEFAULTS.get(module, {}).items() {
@@ -945,18 +698,20 @@ with entry:__main__ {
     parser.set_defaults(cc="cc", os=sys.platform, arch="", pyconfig="");
     parser.add_argument("--check", action="store_true");
     args = parser.parse_args();
-    if args.module not in SOURCES {
+    if args.module not in HEADERS or args.module not in FACTS {
         sys.exit(f"No constant source recorded for {args.module}");
     }
-    source_file = SOURCES[args.module][0];
-    texts = archive_texts((source_file, ));
-    if source_file not in texts {
-        sys.exit(f"{source_file} is not in the pinned archive");
+    facts = FACTS[args.module];
+    for (name, condition, macro) in facts["names"] {
+        CONDITIONS[str(name)] = str(condition);
+        if macro {
+            MACROS[str(name)] = str(macro);
+        }
     }
-    names = [
-        n
-        for n in names_in(texts[source_file], UNSUPPORTED.get(args.module, []))
-        if n not in EXCLUDED.get(args.module, [])
+    names: list[str] = [
+        str(name)
+        for (name, _, _) in facts["names"]
+        if name not in EXCLUDED.get(args.module, [])
     ];
     PUBLISHED.update(names);
     names += [
@@ -971,7 +726,10 @@ with entry:__main__ {
         (name, MACROS.get(name, name), guards.get(name, f"defined({MACROS.get(name, name)})"))
         for name in names
     ];
-    source_tables = tables_in(args.module, texts[source_file]);
+    source_tables: dict[str, list[tuple[str, str, str]]] = {
+        str(table): [(str(item[0]), str(item[1]), str(item[2])) for item in entries]
+        for (table, entries) in facts["tables"].items()
+    };
     if args.pyconfig {
         configured = Path(args.pyconfig).resolve();
         prelude = [f'#include "{configured}"'] + PRELUDES.get(args.module, []);
@@ -990,7 +748,7 @@ with entry:__main__ {
         known = pyconfig_features(configured);
         features = [
             (name, known[name])
-            for name in sorted(set(re.findall(r"\bHAVE_\w+", texts[source_file])))
+            for name in facts["features"]
             if name in known
         ];
     }
@@ -1006,9 +764,8 @@ with entry:__main__ {
         }
     }
     method_table: list[tuple[str, str]] = [];
-    if args.pyconfig and args.module in METHOD_SOURCES {
-        header = METHOD_SOURCES[args.module];
-        method_table = methods_in(archive_texts((header, ))[header]);
+    if args.pyconfig and "methods" in facts {
+        method_table = [(str(method[0]), str(method[1])) for method in facts["methods"]];
         for (index, method) in enumerate(method_table) {
             probes.append((f"METHODS__{index}", "1", method[1]));
         }

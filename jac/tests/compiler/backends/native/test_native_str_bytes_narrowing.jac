@@ -14,7 +14,7 @@ import from pathlib { Path }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
-test "narrowed str | bytes receivers match CPython" {
+test "narrowed str | bytes receivers match Python" {
     assert_native_identity(
         os.path.join(FIXTURES, "str_bytes_narrowing.jac"), profiles=["rc", "managed"]
     );

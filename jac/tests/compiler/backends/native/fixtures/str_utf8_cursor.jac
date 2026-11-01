@@ -1,7 +1,7 @@
 """Codepoint access over long non-ASCII strings, where the cursor cache engages.
 
 Every function returns a checksum that `test_native_str_utf8_cursor.jac`
-recomputes on CPython. The `scan_*` loops are the shapes that went quadratic
+recomputes on the interpreter. The `scan_*` loops are the shapes that went quadratic
 when each index, slice or search converted from byte 0.
 """
 

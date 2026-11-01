@@ -1,7 +1,7 @@
 """Container repr cross-backend equivalence fixture (#7593 item 5).
 
-Pins CPython repr text for containers against the native repr family.
-Set fixtures use ascending small ints so CPython's hash order coincides
+Pins Python repr text for containers against the native repr family.
+Set fixtures use ascending small ints so Python's hash order coincides
 with native insertion order. ES/JS opts out.
 """
 

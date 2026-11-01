@@ -1,6 +1,6 @@
-"""SHA-2 hash objects over HACL*; derived from CPython 3.14.6 Modules/sha2module.c.
+"""SHA-2 hash objects over HACL*; derived from Python 3.14.6 Modules/sha2module.c.
 
-See ../LICENSE.cpython. The HACL* library stays C: CPython's
+See ../LICENSE.cpython. The HACL* library stays C: the vendored
 Modules/_hacl/libHacl_Hash_SHA2.a, which the registry links for _sha2.
 SHA-224 and SHA-256 share the 32-bit HACL* state and SHA256Type's methods;
 SHA-384 and SHA-512 share the 64-bit state and SHA512Type's. digest() runs the

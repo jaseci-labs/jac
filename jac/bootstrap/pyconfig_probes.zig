@@ -405,7 +405,7 @@ pub const probes = [_]Probe{
     .{ .name = "socklen_t", .kind = .type, .text = "socklen_t", .includes = "#include <sys/types.h>\n#include <sys/socket.h>\n", .value = "", .otherwise = "int" },
     .{ .name = "const", .kind = .value, .value = "" },
     .{ .name = "signed", .kind = .value, .value = "" },
-    // configure's own package identity is empty for CPython.
+    // configure's own package identity is empty for Python.
     .{ .name = "PACKAGE_BUGREPORT", .kind = .value, .value = "" },
     .{ .name = "PACKAGE_NAME", .kind = .value, .value = "" },
     .{ .name = "PACKAGE_STRING", .kind = .value, .value = "" },

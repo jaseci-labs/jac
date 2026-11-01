@@ -1,4 +1,3 @@
-import ctypes;
 import os;
 import platform;
 import re;
@@ -21,6 +20,5 @@ def _fetch_text(url: str) -> (str | None);
 
 def _sidecar_digest(url: str) -> (str | None);
 
-def _running_jacpython -> bool;
 
 def update_self(release: str, current: str, verbose: bool) -> int;

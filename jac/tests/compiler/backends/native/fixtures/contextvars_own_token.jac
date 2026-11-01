@@ -1,5 +1,5 @@
 """A program's own `Token` next to the contextvars shim, and the shim's token
-still importable under CPython's name."""
+still importable under Python's name."""
 import from contextvars { ContextVar }
 import from contextvars { Token as VarToken }
 

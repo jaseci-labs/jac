@@ -9,7 +9,7 @@ has to come from the natively linked declaration itself.
 
 `zlib.adler32(data, value=1)` and `secrets.token_hex(nbytes=32)` both have
 nonzero defaults, so a zero-filled slot gives a visibly different answer:
-adler32 seeded with 0 is 103219732 instead of CPython's 103547413, and
+adler32 seeded with 0 is 103219732 instead of Python's 103547413, and
 token_hex of 0 bytes is the empty string instead of 64 hex characters.
 """
 

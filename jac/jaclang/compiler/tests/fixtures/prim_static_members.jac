@@ -5,7 +5,7 @@ The native (na) pathway gains `ClassName.method(args)` on a `static def` and
 pathway. This fixture pins the two congruent: a static method (incl. one that
 reads a class attribute from its own body and one used as a factory returning an
 instance), class-attribute reads of int and str, and inheritance of statics
-through the MRO. It is the capability that unblocks a CPython-congruent bundled
+through the MRO. It is the capability that unblocks a Python-congruent bundled
 `datetime` (`datetime.now(...)` classmethod + `timezone.utc` class attribute).
 ES/JS opts out.
 """

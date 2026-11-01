@@ -1,4 +1,4 @@
-# `iter`/`next` are positional-only (CPython rejects keyword args). The native
+# `iter`/`next` are positional-only (Python rejects keyword args). The native
 # checker must reject the keyword form rather than typing a call the backend
 # cannot lower. (#6403)
 def kw_next() -> int {

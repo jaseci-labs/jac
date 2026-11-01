@@ -1,13 +1,13 @@
 """Cross-backend `tarfile` extraction over `ZstdFile` equivalence.
 
-Builds a PAX tar with CPython's `tarfile` (a >200-char path forcing a pax
+Builds a PAX tar with Python's `tarfile` (a >200-char path forcing a pax
 extended header, an exec-bit script, nested dirs, an empty file, and a >1 MiB
 file), wraps it in TWO concatenated zstd frames -- the single-binary launcher's
 payload shape -- and extracts it with the launcher's exact sequence:
 `ZstdFile(io.BytesIO(payload))` -> `tarfile.open(fileobj=..., mode="r|")` ->
 `extractall(dest)` (default `data` filter).
 
-The SAME fixture binds CPython's real modules on the sv reference and the
+The SAME fixture binds Python's real modules on the sv reference and the
 bundled `na_stdlib` (`tarfile.jac` / `compression/zstd.jac` / `io.jac`) on the na
 backend, forced native (`default_codespace='native'`) so no `[placement.pins]`
 entry is needed. Both extract into their own temp tree; the test then walks both
@@ -131,7 +131,7 @@ test "tarfile extractall over ZstdFile (sv<->na congruent)" {
         os.environ["JAC_TARFILE_DEST_PY"] = dest_py;
         os.environ["JAC_TARFILE_DEST_NA"] = dest_na;
 
-        # sv reference: CPython tarfile + compression.zstd, exact launcher path.
+        # sv reference: Python tarfile + compression.zstd, exact launcher path.
         py_count = run_py_fixture("prim_tarfile", "tarfile_extract_py");
         assert py_count == 7 , f"expected 7 members, got {py_count}";
 

@@ -1,17 +1,17 @@
 """Bundled native `select` cross-backend equivalence fixture.
 
-`import select` binds CPython's `select` on sv and the bundled
+`import select` binds Python's `select` on sv and the bundled
 `na_stdlib/select.jac` on na. Pipe fds: `os.pipe()` on sv, libc `pipe(2)`
 on na. Pins: a written pipe end answers readable, a pipe's write end
 answers writable at timeout 0.0, the empty probe answers three empty
 lists, and the block-forever sentinel answers immediately for a ready fd
-(spelled `None` on sv -- CPython's sentinel -- and `-1.0` on na: the
+(spelled `None` on sv -- Python's sentinel -- and `-1.0` on na: the
 documented divergence, so each lane pins its own spelling of the same
 observable). Each result list follows its own input list: a repeated
 ready fd comes back once per occurrence, in input order, and a not-ready
 fd is skipped wherever it appears. A signal with a handler that returns
 normally (SIGALRM from a one-shot 50 ms `setitimer`) arriving during a
-0.5 s wait on an empty pipe must not raise: as CPython does (PEP 475), the
+0.5 s wait on an empty pipe must not raise: as Python does (PEP 475), the
 wait is retried for the time left, so it answers three empty lists after
 the full timeout. ES/JS opts out (POSIX-only).
 """

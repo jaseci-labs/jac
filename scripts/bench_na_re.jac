@@ -1,7 +1,7 @@
-"""Benchmark: bundled native re/string/reprlib vs CPython's own modules.
+"""Benchmark: bundled native re/string/reprlib vs the interpreter's own modules.
 
 Lanes: `jac run -b native scripts/bench_na_re.jac` (bundled na_stdlib) and
-`jac run -b python scripts/bench_na_re.jac` (CPython's re/string/reprlib).
+`jac run -b python scripts/bench_na_re.jac` (the interpreter's re/string/reprlib).
 Every row prints ns/op as the median of ROUNDS timed rounds after one warmup,
 plus a checksum that must agree across lanes.
 """

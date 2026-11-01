@@ -2,7 +2,8 @@
 
 scripts/jacpython/gen_clinic.jac generates
 jaclang/runtime/python/bindings/clinic/statistics.jac from them. Taken from
-CPython 3.14.6 Modules/_statisticsmodule.c.
+the C sources it replaces (Modules/_statisticsmodule.c); see
+jac/jaclang/runtime/python/LICENSE.cpython.
 """
 import from clinic_schema { Clinic, Function, Parameter }
 

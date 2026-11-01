@@ -1,6 +1,6 @@
 """The Unix group database.
 
-Derived from CPython 3.14.6 Modules/grpmodule.c; see ../LICENSE.cpython.
+Derived from Python 3.14.6 Modules/grpmodule.c; see ../LICENSE.cpython.
 struct group has the same layout on every supported C library.
 """
 

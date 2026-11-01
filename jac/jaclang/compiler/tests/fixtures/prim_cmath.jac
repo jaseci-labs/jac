@@ -1,8 +1,8 @@
 """cmath module cross-backend equivalence fixture.
 
-The SAME `import from cmath { ... }` binds CPython's `cmath` on the sv
+The SAME `import from cmath { ... }` binds Python's `cmath` on the sv
 (Python) backend and the bundled `na_stdlib/cmath.jac` Mechanism-B module
-on the na (native LLVM) backend — a pure-Jac port of CPython's
+on the na (native LLVM) backend — a pure-Jac port of Python's
 cmathmodule.c algorithms over the `_math_native` libm floor. Complex
 results are decomposed into `<key>_r`/`<key>_i` float keys so the harness's
 1e-9 float tolerance applies; `inf`/`nan` components are pinned through

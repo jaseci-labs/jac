@@ -137,7 +137,7 @@ test "webview binding host compiles and links libwebview" {
     _links_webview(data);
 }
 
-"""The embedded-CPython host (the desktop runtime model) links libpython."""
+"""The embedded-Python host (the desktop runtime model) links libpython."""
 test "embedded-python host compiles and links libpython" {
     soname = sysconfig.get_config_var("INSTSONAME")
         or f"libpython{sys.version_info.major}.{sys.version_info.minor}.so.1.0";
@@ -182,7 +182,7 @@ test "entry-level webview handle wires run_main_loop" {
     _native_executable(data);
 }
 
-"""The plugin bridge + embedded-CPython + webview host compiles as a unit.
+"""The plugin bridge + embedded-Python + webview host compiles as a unit.
 
 This validates the full native stack: the bridge code is inlined directly
 into the host source (nacompile does not support string-literal imports

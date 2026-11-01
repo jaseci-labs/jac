@@ -6,12 +6,12 @@ decoded lines for streaming tokenization; parsing uses an existing source string
 
 glob TABSIZE: int = 8,
      MAXINDENT: int = 100,
-     # The scanner reads code points, as CPython's tok_nextc reads ints. This
+     # The scanner reads code points, as the C tokenizer's tok_nextc reads ints. This
      # one stands for "no more input" and matches no character.
      EOF_POINT: int = -1;
 
 # Operator spellings packed into one int key, a byte per character, the way
-# CPython's _PyToken_ThreeChars switches on (c1, c2, c3). Derived from
+# the C tokenizer's _PyToken_ThreeChars switches on (c1, c2, c3). Derived from
 # EXACT_TOKEN_TYPES so the two tables cannot drift; the spellings are kept so
 # an operator token reuses one string instead of decoding its bytes each time.
 def _pack_operator(spelling: str) -> int {
@@ -186,7 +186,7 @@ def _skip_comment_line(st: tok_state) -> bool {
     return False;
 }
 
-# Spaces in the prefix match zero or more ASCII spaces/tabs, as in CPython.
+# Spaces in the prefix match zero or more ASCII spaces/tabs, as in Python.
 def _type_comment_start(st: tok_state) -> int {
     if not st.type_comments {
         return -1;
@@ -443,7 +443,7 @@ def _match_operator(st: tok_state) -> tok_token | None {
             longest = 1;
         }
     }
-    # Longest match first (CPython _PyToken_ThreeChars / TwoChars / OneChar).
+    # Longest match first (_PyToken_ThreeChars / TwoChars / OneChar).
     # Every operator is ASCII, so a following byte of 128 or more, or
     # EOF_POINT, can only fail to match.
     if longest >= 3 and c2 > 0 and c2 < 128 and c3 > 0 and c3 < 128 {
@@ -1218,7 +1218,7 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
         }
         if ch == ord("#") {
             # Comment: consume to end of line (not the newline itself, which the
-            # newline branch handles). Matches CPython's comment-then-NEWLINE.
+            # newline branch handles). Matches Python's comment-then-NEWLINE.
             comment_start = st.col_offset;
             start_pos = st.pos;
             type_start = _type_comment_start(st);
@@ -1341,7 +1341,7 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
                 end_col_offset=start_col
             );
         }
-        # CPython tokenizes '.' as NUMBER when digits follow (.5 == 0.5);
+        # Python tokenizes '.' as NUMBER when digits follow (.5 == 0.5);
         # anything else ('.', '..', '...') falls through to the operator path.
         if ch == ord(".") {
             nxt = st.pos + 1;

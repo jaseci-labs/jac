@@ -8,14 +8,14 @@ it, and `ParameterCategory.ArgsList` lowered to nothing --
 `get_type_of_ability` demoted on the read, `get_type_of_expression` demoted on
 the call, and twenty-one more methods demoted on that.
 
-`auto()` has no value of its own to fold; CPython generates one from the
+`auto()` has no value of its own to fold; Python generates one from the
 members already assigned. That makes it a question about the declaration
 rather than the expression, which is why the answer lives beside the enum's
 layout instead of in the constant folder: the members arrive in source order
 and the generated value is `max(seen) + 1`, counting from 1.
 
 Counting from the largest rather than the last is the part worth pinning.
-`High = 10; Low = 3; Next = auto()` is `11` in CPython, not `4`, and a rule
+`High = 10; Low = 3; Next = auto()` is `11` in Python, not `4`, and a rule
 that tracked the previous member would answer the second and stay wrong
 quietly, because nothing else in the file would disagree with it.
 
@@ -26,7 +26,7 @@ reported under E5092 where it is used, never lowered with guessed zeros. And
 the name is
 matched through its symbol, not its spelling: a module-local function called
 `auto` is not `enum`'s, so `enum_auto_shadow.jac` keeps its seam and the
-server lane answers what CPython answers.
+server lane answers what Python answers.
 """
 
 import contextlib;
@@ -150,7 +150,7 @@ test "the declared-enum spelling generates the same way" {
 }
 
 
-test "generated values answer as CPython does" {
+test "generated values answer as Python does" {
     sv = sv_lines("enum_auto.jac");
     assert sv == list(EXPECTED) , f"server lane printed {sv}";
     na = na_lines("enum_auto.jac");

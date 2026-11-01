@@ -10,7 +10,7 @@ owning callable to a Python-only seam (call-site argument unpacking
 whose construction sites then refuse), while shapes with no demotable
 owner at all stay structured errors (unannotated variadics).
 
-Expected values are pinned against CPython (see each fixture wrapper).
+Expected values are pinned against Python (see each fixture wrapper).
 
 The generic cases at the bottom (#8247) run through a subprocess instead of
 the JIT: a pack of a generic archetype's erased type parameter used to lower
@@ -250,7 +250,7 @@ test "variadic init demotes the constructor and refuses its callers" {
     );
 }
 
-test "a pack of a generic archetype's erased T answers what CPython answers" {
+test "a pack of a generic archetype's erased T answers what Python answers" {
     (sv_out, _sv_err) = sv_run(os.path.join(FIXTURES, "varargs_generic.jac"));
     (na_out, _na_err) = na_run(os.path.join(FIXTURES, "varargs_generic.jac"));
     same_lines(sv_out, na_out, "erased pack");

@@ -1,4 +1,4 @@
-"""AST preprocessing for CPython 3.14 source and AST compilation."""
+"""AST preprocessing for Python 3.14 source and AST compilation."""
 
 def ast_constant(value: PyObj, location: expr | None = None) -> Constant {
     return Constant(
@@ -75,7 +75,7 @@ def fold_pattern(value: expr) -> expr {
     return value;
 }
 
-# CPython only rewrites tuple-based %s/%r/%a formatting at the AST stage.
+# Python only rewrites tuple-based %s/%r/%a formatting at the AST stage.
 # Arithmetic constant folding belongs to bytecode optimization in 3.14.
 def fold_percent_format(value: BinOp) -> expr {
     if not isinstance(value.op, Mod)

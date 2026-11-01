@@ -14,13 +14,12 @@ permissions:
   contents: read
 
 jobs:
-  # The JacPython accelerator on every platform it supports. Releases ship
-  # CPython; this is where JacPython's gates run without a pull request asking.
-  jacpython:
+  # The JacPython runtime's conformance gates on every release platform.
+  python-conformance:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
-    uses: ./.github/workflows/_jacpython.yml
+    uses: ./.github/workflows/_python-conformance.yml
     with:
-      runners: '["blacksmith-8vcpu-ubuntu-2404", "ubuntu-24.04-arm", "macos-14"]'
+      runners: '["blacksmith-8vcpu-ubuntu-2404", "blacksmith-16vcpu-ubuntu-2404-arm", "macos-15", "macos-15-intel"]'
 
   # The js_engine accelerator: releases ship bun, so this is where the engine
   # is built and gated without a pull request asking.

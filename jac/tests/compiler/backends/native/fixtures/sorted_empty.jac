@@ -9,7 +9,7 @@ single-element list the old loop handled only by accident of `0 >= 0`.
 
 Reached through both spellings: `sorted(xs)` copies then sorts the
 copy, and `xs.sort()` sorts in place; each entry point returns a length
-or element the test can compare against CPython's answer.
+or element the test can compare against Python's answer.
 """
 
 def sorted_empty_len() -> int {

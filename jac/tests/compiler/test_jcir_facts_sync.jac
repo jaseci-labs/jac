@@ -1,7 +1,7 @@
 """The JCIR emitter's baked facts match their sources of truth.
 
 `jcir_facts.jac` bakes two name sets, one path predicate and the target
-CPython version so the emitter and the container format can lower
+Python version so the emitter and the container format can lower
 natively instead of importing a Python module, scanning a stub file, or
 reading `sys.version_info` at emit time. Baked data drifts silently, so
 each fact is pinned against the thing it bakes: grow the runtime builtin
@@ -9,7 +9,7 @@ surface, the ambient typing stub, or the annex suffixes without
 re-baking and this file fails naming the delta.
 
 The version pin carries the weight `read_container` used to carry at
-read time. The container stamps the CPython minor the build targets and
+read time. The container stamps the Python minor the build targets and
 refuses a container stamped for another; that the build's target is the
 interpreter actually running it is this file's job, and a mismatch fails
 here instead of on the first container read.
@@ -85,7 +85,7 @@ test "the baked test-path predicate agrees with ext_registry" {
 }
 
 
-test "the baked CPython target is the interpreter running this build" {
+test "the baked Python target is the interpreter running this build" {
     assert (JCIR_PYTHON_MAJOR, JCIR_PYTHON_MINOR)
         == (sys.version_info.major, sys.version_info.minor) , (
         f"jcir_facts bakes Python {JCIR_PYTHON_MAJOR}.{JCIR_PYTHON_MINOR} but "

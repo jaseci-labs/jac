@@ -4,7 +4,7 @@ The native emitter used to copy the bytes and ignore both arguments, so
 `data.decode("utf-8", errors="replace")` kept the invalid bytes, "ignore"
 kept them too, and strict decoding never raised. The fixture sweeps
 utf-8/latin-1/ascii (under alias spellings, literal and run-time) against
-every decode error handler over CPython's maximal-subpart error cases, and
+every decode error handler over Python's maximal-subpart error cases, and
 catches the UnicodeDecodeError, LookupError and TypeError paths. Identity
 with the Python backend under every memory profile proves the semantics;
 a native build refuses any demoted function, so it also proves the native
@@ -13,7 +13,7 @@ path was taken.
 import from pathlib { Path }
 import from tests.support { assert_native_identity }
 
-test "native bytes.decode honours encoding and errors like CPython" {
+test "native bytes.decode honours encoding and errors like Python" {
     source = str(Path(__file__).resolve().parent / "fixtures" / "bytes_decode.jac");
     out = assert_native_identity(source);
     assert "ab\\xef\\xbf\\xbdcd" in out , out[:400];

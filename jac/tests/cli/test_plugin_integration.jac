@@ -1,7 +1,7 @@
 """Full-ecosystem integration checks, formerly `scripts/integration_tests.jac`.
 
 These prove the assembled distribution behaves as one system: the .pth/meta
-finder imports .jac modules from bare CPython, the CLI answers through the
+finder imports .jac modules from a bare interpreter, the CLI answers through the
 real dispatch path, and the scale server boots a project and serves the admin
 dashboard from the pre-built bundle when one is shipped. The server test
 needs scale's serve deps, so it gates on `dotenv` and skips (or fails under

@@ -1,4 +1,4 @@
-"""finditer hands back an iterator, as CPython's does: a loop and next() both step it,
+"""finditer hands back an iterator, as Python's does: a loop and next() both step it,
 and two live iterators over one pattern do not share state."""
 
 import re;

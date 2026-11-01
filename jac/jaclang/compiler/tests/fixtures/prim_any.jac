@@ -8,7 +8,7 @@ becomes a tag-dispatched unbox.
 
 The Python reference pins the semantics; `require=["na"]` makes the native backend
 a hard regression guard. `bool` is exercised first (it must be distinguishable from
-`int`, mirroring CPython's `isinstance(True, bool)` / `isinstance(5, bool)`).
+`int`, mirroring Python's `isinstance(True, bool)` / `isinstance(5, bool)`).
 """
 
 # A generic serializer-style dispatcher: classify an `any` by runtime type.
@@ -51,7 +51,7 @@ def any_dispatch_py() -> dict[any, any] {
         # boxed at the call site from concrete literals
         "t_lit_int": tag_py(7),
         "t_lit_str": tag_py("x"),
-        # bool <-> int subtype congruence (CPython: bool ⊂ int)
+        # bool <-> int subtype congruence (Python: bool ⊂ int)
         "is_int_bool": 1 if isinstance(yi, bool) else 0,
         "is_bool_int": 1 if isinstance(yb, int) else 0,
         # any -> concrete unbox (read the int back out)

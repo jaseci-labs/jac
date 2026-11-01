@@ -1,5 +1,5 @@
 """Bench the bundled native uuid / sched / ipaddress / mimetypes / colorsys /
-locale / gettext / logging modules against CPython 3.14.
+locale / gettext / logging modules against the interpreter's (Python 3.14).
 
 Build and run natively (demotions are fatal in a native build, so a clean
 build is itself proof that every benched lane is native):
@@ -7,7 +7,7 @@ build is itself proof that every benched lane is native):
     jac build --native scripts/bench_na_general.jac -o /tmp/bench_na_general
     /tmp/bench_na_general
 
-CPython oracle (new .py files are blocked repo-wide, so the oracle lives in
+Python oracle (new .py files are blocked repo-wide, so the oracle lives in
 this comment block; run it with python3 -):
 
     import time, uuid, sched, ipaddress, mimetypes, colorsys, locale, gettext
