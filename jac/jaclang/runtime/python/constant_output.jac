@@ -125,25 +125,34 @@ obj constant_writer {
     def code_of(code: PyCode) -> ptr[PyObject] {
         names: list[str] = [];
         kinds: list[int] = [];
-        slots: dict[str, int] = {};
-        local_kind = CO_FAST_LOCAL
-            | (0 if code.flags & CO_OPTIMIZED else CO_FAST_HIDDEN);
-        for name in code.varnames {
-            slots[name] = len(names);
-            names.append(name[6:] if name.startswith(".comp.") else name);
-            kinds.append(local_kind);
-        }
-        for name in code.cellvars {
-            if name in slots {
-                kinds[slots[name]] |= CO_FAST_CELL;
-            } else {
+        if len(code.localsplusnames) > 0 {
+            for name in code.localsplusnames {
                 names.append(name);
-                kinds.append(CO_FAST_CELL);
             }
-        }
-        for name in code.freevars {
-            names.append(name);
-            kinds.append(CO_FAST_FREE);
+            for kind in code.localspluskinds {
+                kinds.append(kind);
+            }
+        } else {
+            slots: dict[str, int] = {};
+            local_kind = CO_FAST_LOCAL
+                | (0 if code.flags & CO_OPTIMIZED else CO_FAST_HIDDEN);
+            for name in code.varnames {
+                slots[name] = len(names);
+                names.append(name[6:] if name.startswith(".comp.") else name);
+                kinds.append(local_kind);
+            }
+            for name in code.cellvars {
+                if name in slots {
+                    kinds[slots[name]] |= CO_FAST_CELL;
+                } else {
+                    names.append(name);
+                    kinds.append(CO_FAST_CELL);
+                }
+            }
+            for name in code.freevars {
+                names.append(name);
+                kinds.append(CO_FAST_FREE);
+            }
         }
         owned: list[ptr[PyObject]] = [];
         try {
