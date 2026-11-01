@@ -41,11 +41,6 @@ def is_client_only(mod: (uni.Module | None)) -> bool;
 def emits_server_code(mod: (uni.Module | None)) -> bool;
 
 
-def discover_spaces(
-    paths: list[str], prog: (JacProgram | None) = None
-) -> dict[str, set[str]];
-
-
 def pinned_module_space(source_path: str) -> str;
 
 

@@ -309,36 +309,3 @@ test "relocation changes path fields without rewriting diagnostic messages" {
             == "/installed/library/api.jac";
     }
 }
-
-test "sealing resolves conditional stub classes before application analysis" {
-    import os;
-    import from unittest.mock { patch }
-    import from jaclang.compiler.driver.compiler { JacCompiler }
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
-    import from jaclang.compiler.types.stubcat.writer { module_of }
-    import jaclang.dist.precompile_bytecode as precompile;
-    import jaclang.jac0core.stubcat_hook as hook;
-    package = jaclang_pkg_dir();
-    unit = JacProgram();
-    unit._compiler = JacCompiler();
-    source = os.path.join(package, "compiler", "driver", "compile_options.jac");
-    stub = os.path.join(package, "vendor", "typeshed", "stdlib", "types.pyi");
-    # A fresh finalizer has no active catalog. Symbol-only sealing work
-    # must prepare its own stub authority before resolving interface xrefs.
-    with patch.object(precompile, "_unit_program", [unit]), patch.object(
-        hook, "active", return_value=None
-    ) {
-        with precompile.precompile_unit_context(
-            source, package, collect=False
-        ) as program {
-            shared = program.iface_registry().resolve_shared(
-                stub, "NoneType", "NoneType"
-            );
-            assert shared is not None , "sealing could not resolve a version-guarded stub class";
-            assert module_of(shared.symbol_table) is not None , (
-                "sealing created an orphan class instead of a reusable interface reference"
-            );
-        }
-    }
-}

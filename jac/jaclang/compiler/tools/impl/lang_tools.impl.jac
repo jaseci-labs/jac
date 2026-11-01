@@ -40,134 +40,45 @@ impl AstTool.autodoc_uninode -> str {
 }
 
 impl AstTool.ir(args: list[str]) -> str {
-    error = 'Usage: ir <choose one of (sym / sym. / ast / ast. / docir / pyast / py / unparse / esast / es)> <.py or .jac file_path>';
+    error = 'Usage: ir <choose one of (sym / sym. / ast / ast. / cfg. / docir / pyast / py / unparse / esast / es)> <.py or .jac file_path>';
     if (len(args) != 2) {
         return error;
     }
     (output, file_name) = args;
-    prog = JacProgram();
     if not os.path.isfile(file_name) {
         return f"Error: {file_name} not found";
     }
-    if file_name.endswith(('.jac', '.py')) {
-        [base, mod] = os.path.split(file_name);
-        base = base or './';
-        if file_name.endswith('.py') {
-            file_source = read_file_with_encoding(file_name);
-            if (output == 'pyast') {
-                return f"{py_ast.dump(py_ast.parse(file_source), indent=2)}";
-            }
-            try {
-                (rep, _had_error) = parse_python_source(file_source, file_name, prog);
-                rep_src = unparse_module(rep);
-                console.print(rep_src);
-                ir_mod = prog.compile(
-                    use_str=rep_src,
-                    file_path=(file_name[:-3] + '.jac'),
-                    options=CompileOptions(no_cgen=True)
-                );
-            } except Exception as e {
-                return f"Error While Jac to Py AST conversion: {e}";
-            }
-        } else {
-            ir_mod = prog.compile(file_name, options=CompileOptions(no_cgen=True));
-        }
-        match output {
-            case 'sym':
-                out = '';
-                for module_ in prog.mod.hub.values() {
-                    mod_name = module_.name;
-                    t = '#' * len(mod_name);
-                    out += '##'
-                        + t
-                        + '##\n# '
-                        + mod_name
-                        + ' #\n##'
-                        + t
-                        + '##\n'
-                        + print_symtab_tree(root_node=module_.sym_tab)
-                        + '\n';
-                }
-                return out;
-
-            case 'sym.':
-                return printgraph_symtab_tree(ir_mod.sym_tab)
-                    if isinstance(ir_mod.sym_tab, UniScopeNode)
-                    else 'Sym_tab is None.';
-
-            case 'ast':
-                out = '';
-                for module_ in prog.mod.hub.values() {
-                    mod_name = module_.name;
-                    t = '#' * len(mod_name);
-                    out += '##'
-                        + t
-                        + '##\n# '
-                        + mod_name
-                        + ' #\n##'
-                        + t
-                        + '##\n'
-                        + print_ast_tree(module_)
-                        + '\n';
-                }
-                return out;
-
-            case 'ast.':
-                return printgraph_ast_tree(ir_mod);
-
-            case 'cfg.':
-                return cfg_dot_from_file(file_name);
-
-            case 'unparse':
-                return unparse_module(ir_mod);
-
-            case 'pyast':
-                ir_mod = prog.compile(file_name, options=CompileOptions());
-                if ir_mod.gen.py_recipe is None {
-                    return 'Compile failed.';
-                }
-                import from jaclang.compiler.backends.py.kernel_bytecode {
-                    kernel_python_ast
-                }
-                return py_ast.dump(kernel_python_ast(ir_mod), indent=2);
-
-            case 'docir':
-                return str(
-                    run_utility(CompilationProduct.DOC, ir_mod, prog).module.gen.doc_ir
-                );
-
-            case 'py':
-                import from jaclang.compiler.backends.py.python_text { generated_python }
-                ir_mod = prog.compile(file_name, options=CompileOptions());
-                return generated_python(ir_mod) or 'Compile failed.';
-
-            case 'esast':
-                require(prog, ir_mod, CompilationProduct.CLIENT);
-                es_ir = ir_mod;
-                es_ast = es_ir.gen.es_ast;
-                if isinstance(es_ast, EsNode) {
-                    return f"{json.dumps(es_node_to_dict(es_ast), indent=2)}";
-                } else {
-                    return 'ECMAScript AST generation failed.';
-                }
-
-            case 'es':
-                require(prog, ir_mod, CompilationProduct.CLIENT);
-                es_ir = ir_mod;
-                es_ast = es_ir.gen.es_ast;
-                if isinstance(es_ast, EsNode) {
-                    return f"{es_to_js(es_ast)}";
-                } else {
-                    return 'ECMAScript code generation failed.';
-                }
-
-            case _:
-                return f"Invalid key: {error}";
-
-        }
-    } else {
+    if not file_name.endswith(('.jac', '.py')) {
         return 'Not a .jac or .py file, or invalid command for file type.';
     }
+    if output == 'pyast' and file_name.endswith('.py') {
+        with open(file_name, encoding="utf-8") as handle {
+            return py_ast.dump(py_ast.parse(handle.read()), indent=2);
+        }
+    }
+    if output in ('pyast', 'py') {
+        if not file_name.endswith('.jac') {
+            return f"Invalid key: {error}";
+        }
+        compiled = call_compile(
+            compile_request_for([file_name], CompileOptions(), {}, ["python_ast"])
+        );
+        if not compiled.ok() {
+            return "\n".join([diagnostic_text(diag) for diag in compiled.errors]);
+        }
+        tree = compiled.unit(file_name).python_ast;
+        return py_ast.dump(tree, indent=2)
+            if output == 'pyast'
+            else py_ast.unparse(tree);
+    }
+    if output not in IR_VIEWS {
+        return f"Invalid key: {error}";
+    }
+    shown = tool_session().ast_view(file_name, output);
+    if shown.text or not shown.errors {
+        return shown.text;
+    }
+    return "\n".join([diagnostic_text(diag) for diag in shown.errors]);
 }
 
 impl AstTool.py_uni_nodes -> str {

@@ -127,6 +127,7 @@
   "jaclang.compiler.driver.program",
   "jaclang.compiler.driver.progstate",
   "jaclang.compiler.driver.session_compile",
+  "jaclang.compiler.driver.arch_file",
   "jaclang.compiler.driver.wiring",
   "jaclang.compiler.erased_imports",
   "jaclang.compiler.field_semantics",

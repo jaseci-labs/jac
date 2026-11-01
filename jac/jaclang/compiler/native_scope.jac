@@ -70,6 +70,7 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.driver.program"),
          NativeScopeEntry(module="jaclang.compiler.driver.progstate"),
          NativeScopeEntry(module="jaclang.compiler.driver.session_compile"),
+         NativeScopeEntry(module="jaclang.compiler.driver.arch_file"),
          NativeScopeEntry(module="jaclang.compiler.driver.wiring"),
          NativeScopeEntry(module="jaclang.compiler.erased_imports"),
          NativeScopeEntry(module="jaclang.compiler.field_semantics"),

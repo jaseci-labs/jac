@@ -732,10 +732,10 @@ impl debug(filename: str, main: bool = True, cache: bool = False) -> int {
     base = base or './';
     mod = mod[:-4];
     if filename.endswith('.jac') {
+        target_path = os.path.realpath(filename);
         program = Jac.get_program();
-        code = program._get_compiler().get_bytecode(
-            full_target=os.path.abspath(filename), target_program=program
-        );
+        compiled = kernel_compile(program, [target_path], CompileOptions());
+        code = compiled.unit(target_path).code if compiled.ok() else None;
         if code is not None {
             if db.has_breakpoint(marshal.dumps(code)) {
                 run(filename, main, cache);

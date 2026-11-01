@@ -2,8 +2,9 @@
 
 `PyInit_jac_kernel` is the module's init function: `jac native build kernel`
 links it into the development extension module, and a release links it into
-the interpreter's table of built-in modules. The module has four functions,
-`compile(request)`, `check(request)`, `build_kernel(request)` and
+the interpreter's table of built-in modules. The module has five functions,
+`compile(request)`, `check(request)`, `build_kernel(request)`,
+`native_build(request)` and
 `open_session(project_root, search_paths, package_root)`, the
 `Session` type whose methods are `KernelSession`'s, and the `KernelError`
 exception. `tests()` lists the test cases compiled into the kernel and
@@ -136,6 +137,14 @@ def:priv test_cases_object(cases: list[KernelTestCase]) -> ptr[PyObject];
 
 def:priv test_outcomes_object(outcomes: list[KernelTestOutcome]) -> ptr[PyObject];
 
+def:priv python_ast_object(unit: CompiledUnit) -> ptr[PyObject];
+
+def:priv output_object(output: ToolOutput) -> ptr[PyObject];
+
+def:priv grammar_object(report: GrammarReport) -> ptr[PyObject];
+
+def:priv arch_plan_object(plan: ArchPlan) -> ptr[PyObject];
+
 def:priv compile_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject];
 
 def:priv check_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject];
@@ -214,6 +223,188 @@ def:priv session_compile(
 
 def:priv session_check(instance: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject];
 
+def:priv native_build_request_of(value: ptr[PyObject]) -> NativeBuildRequest;
+
+def:priv native_build_result_object(result: NativeBuildResult) -> ptr[PyObject];
+
+def:priv native_build_call(
+    module: ptr[PyObject], request: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv element_space_object(space: ElementSpace) -> ptr[PyObject];
+
+def:priv element_spaces_object(spaces: list[ElementSpace]) -> ptr[PyObject];
+
+def:priv import_spaces_object(spaces: list[ImportSpace]) -> ptr[PyObject];
+
+def:priv marker_scan_object(scan: MarkerScan) -> ptr[PyObject];
+
+def:priv access_plan_object(plan: AccessPlan) -> ptr[PyObject];
+
+def:priv session_strip_markers(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv session_element_spaces(
+    instance: ptr[PyObject], path: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_client_imports(
+    instance: ptr[PyObject], path: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_access_plan(
+    instance: ptr[PyObject], project_root: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_package_api(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv session_shipped_wiring(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv session_stub_catalog(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv session_npm_sources(
+    instance: ptr[PyObject], project_root: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_definition_rows(
+    instance: ptr[PyObject], path: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv outline_object(outline: ModuleOutline) -> ptr[PyObject];
+
+def:priv edit_symbols_object(rows: list[EditSymbol]) -> ptr[PyObject];
+
+def:priv wiring_changes_object(rows: list[WiringChange]) -> ptr[PyObject];
+
+def:priv wired_files_object(found: WiredFiles) -> ptr[PyObject];
+
+def:priv wiring_model_object(model: WiringModel) -> ptr[PyObject];
+
+def:priv token_symbols_object(rows: list[TokenSymbol]) -> ptr[PyObject];
+
+def:priv token_stream_object(stream: TokenStream) -> ptr[PyObject];
+
+def:priv symbol_info_object(info: SymbolInfo) -> ptr[PyObject];
+
+def:priv symbol_infos_object(infos: list[SymbolInfo]) -> ptr[PyObject];
+
+def:priv source_refs_object(refs: list[SourceRef]) -> ptr[PyObject];
+
+def:priv entry_points_object(points: list[EntryPoint]) -> ptr[PyObject];
+
+def:priv context_slice_object(found: ContextSlice) -> ptr[PyObject];
+
+def:priv code_diagnostics_object(diags: list[CodeDiagnostic]) -> ptr[PyObject];
+
+def:priv session_module_outline(
+    instance: ptr[PyObject], path: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_edit_symbols(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv session_import_texts(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv session_wiring_changes(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv session_wired_dependents(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv session_wiring_module_files(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv session_wiring_model(
+    instance: ptr[PyObject], arch_path: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_token_symbols(
+    instance: ptr[PyObject], path: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_assignment_hints(
+    instance: ptr[PyObject], path: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_tokens(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv session_code_lookup(
+    instance: ptr[PyObject], name: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_code_references(
+    instance: ptr[PyObject], name: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_code_archetypes(
+    instance: ptr[PyObject], kind: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_code_walkers(
+    instance: ptr[PyObject], node_type: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_code_slice(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv session_code_diagnostics(
+    instance: ptr[PyObject], file: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_code_refresh(
+    instance: ptr[PyObject], file: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_dependents(instance: ptr[PyObject], path: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv session_set_shared_app_limit(
+    instance: ptr[PyObject], limit: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_lint(instance: ptr[PyObject], path: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv session_parse(instance: ptr[PyObject], path: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv session_statements(
+    instance: ptr[PyObject], path: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_py_to_jac(
+    instance: ptr[PyObject], path: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_ast_view(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv session_explain(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv session_grammar(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv session_arch_plan(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
 def:priv session_project_root(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
 
 def:priv session_dealloc(instance: ptr[PyObject]);
@@ -274,7 +465,7 @@ glob:priv session_methods: list[MethodDefinition] = [
          MethodDefinition(
              "completion",
              MethodCallbacks(fast=session_completion),
-             "completion(path, line, col, trigger='')\n--\n\nCompletions at a position.",
+             "completion(path, line, col)\n--\n\nCompletions at a position.",
              METH_FASTCALL
          ),
          MethodDefinition(
@@ -304,13 +495,13 @@ glob:priv session_methods: list[MethodDefinition] = [
          MethodDefinition(
              "format",
              MethodCallbacks(positional=session_format),
-             "format(path)\n--\n\nThe file's formatted text.",
+             "format(path)\n--\n\nThe file's formatted text, as a ToolOutput dict.",
              METH_O
          ),
          MethodDefinition(
              "lint_fix",
              MethodCallbacks(positional=session_lint_fix),
-             "lint_fix(path)\n--\n\nThe file's text with its lint fixes applied.",
+             "lint_fix(path)\n--\n\nThe file's text with its lint fixes applied, as a ToolOutput dict.",
              METH_O
          ),
          MethodDefinition(
@@ -324,6 +515,222 @@ glob:priv session_methods: list[MethodDefinition] = [
              MethodCallbacks(positional=session_check),
              "check(request)\n--\n\nCheck within the session's analysis.",
              METH_O
+         ),
+         MethodDefinition(
+             "strip_markers",
+             MethodCallbacks(fast=session_strip_markers),
+             "strip_markers(path, text)\n--\n\nA source text with its retired placement markers stripped.",
+             METH_FASTCALL
+         ),
+         MethodDefinition(
+             "element_spaces",
+             MethodCallbacks(positional=session_element_spaces),
+             "element_spaces(path)\n--\n\nThe codespace of each top-level element of a file.",
+             METH_O
+         ),
+         MethodDefinition(
+             "client_imports",
+             MethodCallbacks(positional=session_client_imports),
+             "client_imports(path)\n--\n\nWhether only client code reads each import of a file.",
+             METH_O
+         ),
+         MethodDefinition(
+             "access_plan",
+             MethodCallbacks(positional=session_access_plan),
+             "access_plan(project_root)\n--\n\nThe served declarations that must declare :protect.",
+             METH_O
+         ),
+         MethodDefinition(
+             "package_api",
+             MethodCallbacks(fast=session_package_api),
+             "package_api(base_root, exports)\n--\n\nA package's API surface, as its canonical JSON text.",
+             METH_FASTCALL
+         ),
+         MethodDefinition(
+             "shipped_wiring",
+             MethodCallbacks(fast=session_shipped_wiring),
+             "shipped_wiring(arch_path, dropped)\n--\n\nThe archwire text with every wire to a dropped module file removed.",
+             METH_FASTCALL
+         ),
+         MethodDefinition(
+             "stub_catalog",
+             MethodCallbacks(fast=session_stub_catalog),
+             "stub_catalog(out_path, only, pkg_dir)\n--\n\nBuild the type stub catalog into out_path.",
+             METH_FASTCALL
+         ),
+         MethodDefinition(
+             "npm_sources",
+             MethodCallbacks(positional=session_npm_sources),
+             "npm_sources(project_root)\n--\n\nThe client modules a project publishes to npm.",
+             METH_O
+         ),
+         MethodDefinition(
+             "definition_rows",
+             MethodCallbacks(positional=session_definition_rows),
+             "definition_rows(path)\n--\n\nThe definition span rows of a file, parsed.",
+             METH_O
+         ),
+         MethodDefinition(
+             "module_outline",
+             MethodCallbacks(positional=session_module_outline),
+             "module_outline(path)\n--\n\nA module's declarations, woven with its annexes.",
+             METH_O
+         ),
+         MethodDefinition(
+             "edit_symbols",
+             MethodCallbacks(fast=session_edit_symbols),
+             "edit_symbols(path, text)\n--\n\nThe top-level declarations of a source text.",
+             METH_FASTCALL
+         ),
+         MethodDefinition(
+             "import_texts",
+             MethodCallbacks(fast=session_import_texts),
+             "import_texts(path, text)\n--\n\nThe import statements of a source text.",
+             METH_FASTCALL
+         ),
+         MethodDefinition(
+             "wiring_changes",
+             MethodCallbacks(fast=session_wiring_changes),
+             "wiring_changes(path, old_text, new_text)\n--\n\nThe wires and rules an archwire edit adds, removes or changes.",
+             METH_FASTCALL
+         ),
+         MethodDefinition(
+             "wired_dependents",
+             MethodCallbacks(fast=session_wired_dependents),
+             "wired_dependents(head, names)\n--\n\nThe module files a module's wires carrying any of the names feed.",
+             METH_FASTCALL
+         ),
+         MethodDefinition(
+             "wiring_module_files",
+             MethodCallbacks(fast=session_wiring_module_files),
+             "wiring_module_files(arch_path, consumers)\n--\n\nThe files of an archwire's consumer modules.",
+             METH_FASTCALL
+         ),
+         MethodDefinition(
+             "wiring_model",
+             MethodCallbacks(positional=session_wiring_model),
+             "wiring_model(arch_path)\n--\n\nAn archwire.jac as modules, wires and rules.",
+             METH_O
+         ),
+         MethodDefinition(
+             "token_symbols",
+             MethodCallbacks(positional=session_token_symbols),
+             "token_symbols(path)\n--\n\nThe symbol each name token of a file resolves to.",
+             METH_O
+         ),
+         MethodDefinition(
+             "assignment_hints",
+             MethodCallbacks(positional=session_assignment_hints),
+             "assignment_hints(path)\n--\n\nInferred-type hints for untyped single-name assignments.",
+             METH_O
+         ),
+         MethodDefinition(
+             "tokens",
+             MethodCallbacks(fast=session_tokens),
+             "tokens(path, text)\n--\n\nA text's lexical tokens and comments.",
+             METH_FASTCALL
+         ),
+         MethodDefinition(
+             "code_lookup",
+             MethodCallbacks(positional=session_code_lookup),
+             "code_lookup(name)\n--\n\nThe project's definitions of a name.",
+             METH_O
+         ),
+         MethodDefinition(
+             "code_references",
+             MethodCallbacks(positional=session_code_references),
+             "code_references(name)\n--\n\nEvery definition and use of a name in the project.",
+             METH_O
+         ),
+         MethodDefinition(
+             "code_archetypes",
+             MethodCallbacks(positional=session_code_archetypes),
+             "code_archetypes(kind)\n--\n\nThe project's archetypes, optionally of one kind.",
+             METH_O
+         ),
+         MethodDefinition(
+             "code_walkers",
+             MethodCallbacks(positional=session_code_walkers),
+             "code_walkers(node_type)\n--\n\nThe walker entry points that traverse a node type.",
+             METH_O
+         ),
+         MethodDefinition(
+             "code_slice",
+             MethodCallbacks(fast=session_code_slice),
+             "code_slice(name, depth)\n--\n\nThe typed neighbourhood of a symbol.",
+             METH_FASTCALL
+         ),
+         MethodDefinition(
+             "code_diagnostics",
+             MethodCallbacks(positional=session_code_diagnostics),
+             "code_diagnostics(file)\n--\n\nThe code index's diagnostics, for one file or all.",
+             METH_O
+         ),
+         MethodDefinition(
+             "code_refresh",
+             MethodCallbacks(positional=session_code_refresh),
+             "code_refresh(file)\n--\n\nRe-index a changed file, or the whole project.",
+             METH_O
+         ),
+         MethodDefinition(
+             "dependents",
+             MethodCallbacks(positional=session_dependents),
+             "dependents(path)\n--\n\nEvery module that depends on a file, transitively.",
+             METH_O
+         ),
+         MethodDefinition(
+             "set_shared_app_limit",
+             MethodCallbacks(positional=session_set_shared_app_limit),
+             "set_shared_app_limit(limit)\n--\n\nHow many apps a shared module is checked against.",
+             METH_O
+         ),
+         MethodDefinition(
+             "lint",
+             MethodCallbacks(positional=session_lint),
+             "lint(path)\n--\n\nThe file's lint diagnostics, as a ToolOutput dict.",
+             METH_O
+         ),
+         MethodDefinition(
+             "parse",
+             MethodCallbacks(positional=session_parse),
+             "parse(path)\n--\n\nThe file's syntax diagnostics, as a ToolOutput dict.",
+             METH_O
+         ),
+         MethodDefinition(
+             "statements",
+             MethodCallbacks(positional=session_statements),
+             "statements(path)\n--\n\nThe spans of the file's own top-level statements.",
+             METH_O
+         ),
+         MethodDefinition(
+             "py_to_jac",
+             MethodCallbacks(positional=session_py_to_jac),
+             "py_to_jac(path)\n--\n\nA Python file as formatted Jac, as a ToolOutput dict.",
+             METH_O
+         ),
+         MethodDefinition(
+             "ast_view",
+             MethodCallbacks(fast=session_ast_view),
+             "ast_view(path, view)\n--\n\nOne of the AST tool's views of a file.",
+             METH_FASTCALL
+         ),
+         MethodDefinition(
+             "explain",
+             MethodCallbacks(fast=session_explain),
+             "explain(path, topic, memory_profile='')\n--\n\nThe memory or native report for a file.",
+             METH_FASTCALL
+         ),
+         MethodDefinition(
+             "grammar",
+             MethodCallbacks(fast=session_grammar),
+             "grammar()\n--\n\nThe Jac grammar as EBNF, as a GrammarReport dict.",
+             METH_FASTCALL
+         ),
+         MethodDefinition(
+             "arch_plan",
+             MethodCallbacks(fast=session_arch_plan),
+             "arch_plan(arch_path, action, prune=False, graph_format='')\n--\n\nWhat `jac arch` would write for an archwire.jac.",
+             METH_FASTCALL
          )
      ],
      session_type: TypeDefinition = TypeDefinition(
@@ -366,6 +773,12 @@ glob:priv session_methods: list[MethodDefinition] = [
              "build_kernel",
              MethodCallbacks(positional=build_kernel_call),
              "build_kernel(request)\n--\n\nBuild the kernel a KernelBuildRequest dict describes; returns a KernelBuildResult dict.",
+             METH_O
+         ),
+         MethodDefinition(
+             "native_build",
+             MethodCallbacks(positional=native_build_call),
+             "native_build(request)\n--\n\nBuild a NativeBuildRequest dict; returns a NativeBuildResult dict.",
              METH_O
          ),
          MethodDefinition(

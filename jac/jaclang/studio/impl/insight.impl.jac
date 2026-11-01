@@ -394,7 +394,6 @@ impl intent_report(model: ProjectModel) -> IntentReport {
             }
         }
         for r in model.rules {
-            rec = model.rule_recs.get(r.key);
             used = by_rule.get(r.key, []);
             ru = RuleUse(
                 key=r.key,
@@ -406,18 +405,16 @@ impl intent_report(model: ProjectModel) -> IntentReport {
                 wires=len(used),
                 governs=len([m for m in [r->:Governs:->]])
             );
-            if rec is not None {
-                for sp_ in rec.sources {
-                    for tp in rec.targets {
-                        arm = RuleArm(source=sp_.text, target=tp.text);
-                        for w in used {
-                            if sp_.matches(w.local_provider)
-                                and tp.matches(w.local_consumer) {
-                                arm.wires += 1;
-                            }
+            for sp_ in r.sources {
+                for tp in r.targets {
+                    arm = RuleArm(source=sp_, target=tp);
+                    wanted = arm_key(r.key, sp_, tp);
+                    for w in used {
+                        if wanted in w.arms {
+                            arm.wires += 1;
                         }
-                        ru.arms.append(arm);
                     }
+                    ru.arms.append(arm);
                 }
             }
             if r.names {

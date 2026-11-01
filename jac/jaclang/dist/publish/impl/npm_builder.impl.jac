@@ -24,7 +24,22 @@ impl NpmBuilder.build -> bytes {
         raise ValueError("Cannot build npm package: project_root is not set.");
     }
 
-    files = collect_npm_sources(self.config, project_root=proj_root);
+    root = str(proj_root);
+    try {
+        published = tool_session(root).npm_sources(root);
+    } except KernelError as error {
+        raise ValueError(str(error)) from error;
+    }
+    files = [
+        NpmSourceFile(
+            npm_path=item.npm_path,
+            source_path=Path(item.source_path) if item.source_path else None,
+            js=item.js,
+            dts=item.dts,
+            external_imports=list(item.external_imports)
+        )
+        for item in published
+    ];
     `entry = resolve_npm_entry(self.config, files);
     (extra_deps, extra_peers) = _resolve_externals(self.config, files);
 

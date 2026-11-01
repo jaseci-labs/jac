@@ -1,26 +1,17 @@
-import asyncio;
-
 import logging;
 import os;
-import sys;
 import time;
 import threading;
 import from collections { deque }
 import from concurrent.futures { Future }
 import from typing { Optional }
 
-import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.lsp.protocol { uris }
 
 import from . { utils }
 
-glob LSP_SHARED_APP_LIMIT: int = 4;
-
 def _uri_of(path: str) -> str;
 def _path_of(uri: str) -> str;
-def _merge_app_alerts(
-    collected: list[tuple[str, list[Alert], list[Alert]]], app_count: int
-) -> tuple[list[Alert], list[Alert]];
 
 obj Task {
     has file_uri: str,
@@ -33,33 +24,29 @@ obj Task {
 }
 
 obj JacLangServer(LanguageServer) {
-    has program: JacProgram postinit,
-        sem_managers: dict[str, SemTokManager] = {},
-        module_manager: ModuleManager postinit,
+    has session: (SessionClient | None) = None,
+        kernel_diagnostics: dict[str, list[KernelDiagnostic]] = {},
+        last_error: str = "",
         pipe: deque = deque(maxlen=1),
         dirty_files: dict[str, bool] = {},
         last_task: Task | None = None,
         worker_future: Future | None postinit,
+        _synced: dict[str, str] = {},
         _state_lock: ReadWriteLock postinit,
         _work_event: threading.Event = threading.Event(),
         _idle_event: threading.Event postinit,
         _shutdown_called: bool = False,
-        _dep_edges_seeded: bool = False,
         _debounce_timer: threading.Timer | None = None;
 
     def postinit -> None;
+    def client -> SessionClient;
     def dispatcher -> None;
 
     has diagnostics: dict[str, list[lspt.Diagnostic]] { getter; }
 
-    def _clear_alerts_for_file(file_path: str) -> None;
-    def update_modules(
-        file_path: str,
-        build: uni.Module,
-        need: bool = True,
-        files: (list[str] | None) = None
-    ) -> None;
-
+    def _open_documents -> dict[str, str];
+    def _sync_document(path: str) -> None;
+    def _unit_files(path: str) -> list[str];
     def type_check_file(
         file_uri: str, cancel_token: (CancelToken | None) = None
     ) -> bool;
@@ -67,35 +54,14 @@ obj JacLangServer(LanguageServer) {
     def type_check(file_uri: str) -> None;
     def _do_type_check(file_uri: str) -> None;
     def _fanout_dependents(file_uri: str) -> None;
-    def get_token_at_position(
-        file_path: str, position: lspt.Position
-    ) -> Optional[uni.AstSymbolNode];
-
     def debug(msg: str) -> None;
     def wait_till_idle_sync(file_uri: str) -> None;
     async def get_completion(
         file_uri: str, position: lspt.Position, completion_trigger: Optional[str]
     ) -> lspt.CompletionList;
 
-    def get_ast_of_file(file_path: str) -> Optional[uni.UniNode];
-    def get_node_at_position(
-        file_path: str, line: int, col: int
-    ) -> Optional[uni.UniNode];
-
-    def get_completion_of_node(nd: uni.UniNode) -> lspt.CompletionList;
-    def get_node_type(n: uni.UniNode) -> Optional[TypeBase];
-    def get_completion_items_of(
-        ty: TypeBase | uni.UniScopeNode
-    ) -> lspt.CompletionList;
-
-    def get_scope_completion(scope: uni.UniScopeNode) -> lspt.CompletionList;
-    def get_scope_at_position(
-        file_path: str, line: int, col: int
-    ) -> Optional[uni.UniScopeNode];
-
     def _flush_completion_state(file_uri: str) -> None;
-    def _position_in_string_or_comment(file_uri: str, line: int, col: int) -> bool;
-    def rename_module(old_path: str, new_path: str) -> None;
+    def rename_module(old_uri: str, new_uri: str) -> None;
     def close_module(uri: str) -> None;
     def delete_module(uri: str) -> None;
     def format_document(
@@ -107,19 +73,9 @@ obj JacLangServer(LanguageServer) {
         file_path: str, position: lspt.Position
     ) -> Optional[lspt.Hover];
 
-    def get_node_info(sym_node: uni.AstSymbolNode) -> Optional[str];
     def get_outline(file_path: str) -> list[lspt.DocumentSymbol];
     def get_definition(
         file_path: str, position: lspt.Position
-    ) -> Optional[lspt.Location];
-
-    def _string_import_definition(
-        file_path: str, position: lspt.Position
-    ) -> Optional[lspt.Location];
-
-    def _module_spec_target(mp: uni.ModulePath) -> Optional[str];
-    def _npm_item_location(
-        from_loc: uni.ModulePath, item_name: str
     ) -> Optional[lspt.Location];
 
     def get_references(file_path: str, position: lspt.Position) -> list[lspt.Location];

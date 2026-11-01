@@ -113,3 +113,61 @@ impl take_application_unit(path: str) -> (CompiledUnit | None) {
 impl forget_application_units {
     _APPLICATION_UNITS.clear();
 }
+
+impl native_build_request_for(
+    roots: list[str], kind: str, options: CompileOptions, output: str = ""
+) -> NativeBuildRequest {
+    return NativeBuildRequest(
+        roots=[os.path.realpath(path) for path in roots],
+        kind=kind,
+        output=os.path.abspath(output) if output else "",
+        project_root=options.project_root or "",
+        search_paths=list(sys.path),
+        package_root=package_root(),
+        options=options
+    );
+}
+
+impl kernel_native_build(
+    program: JacProgram, request: NativeBuildRequest
+) -> NativeBuildResult {
+    result = call_native_build(request);
+    adopt_diagnostics(program, result.errors, result.warnings);
+    return result;
+}
+
+impl kernel_module_facts(
+    program: JacProgram, paths: list[str], options: CompileOptions, closure: bool = False
+) -> CheckResult {
+    request = check_request_for(paths, options, closure=closure);
+    request.module_facts = True;
+    result = call_check(request);
+    adopt_diagnostics(program, result.errors, result.warnings);
+    return result;
+}
+
+impl persist_units(units: list[CompiledUnit]) {
+    for unit in units {
+        write_module_cache(
+            unit.path,
+            marshal.dumps(unit.code) if unit.code is not None else None,
+            extra_sections=dict(unit.sections)
+        );
+    }
+}
+
+impl unit_client_artifact(unit: CompiledUnit) -> (ClientArtifact | None) {
+    raw = unit.sections.get(SEC_CLIENT);
+    return client_artifact_from_json(raw.decode("utf-8")) if raw is not None else None;
+}
+
+impl kernel_client_artifact(
+    program: JacProgram, path: str, options: CompileOptions
+) -> (ClientArtifact | None) {
+    real = os.path.realpath(path);
+    compiled = kernel_compile(program, [real], options, products=["client_js"]);
+    if not compiled.ok() {
+        return None;
+    }
+    return unit_client_artifact(compiled.unit(real));
+}

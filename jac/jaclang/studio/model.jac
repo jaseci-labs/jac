@@ -105,8 +105,7 @@ obj WireInfo {
         violation: str = "",
         rules: list[str] = [],
         crosses: bool = False,
-        local_provider: str = "",
-        local_consumer: str = "";
+        arms: list[str] = [];
 
     def to_dict -> dict[str, any];
 }
@@ -121,19 +120,18 @@ obj ProjectModel {
         wires: list[WireInfo] = [],
         rules: list[StRule] = [],
         archwires: list[str] = [],
-        prog: JacProgram postinit,
         lock: any postinit,
         build_secs: float = 0.0,
         index_secs: float = 0.0,
         uses_done: set[str] = set(),
         arch_mtimes: dict[str, float] = {},
-        rule_recs: dict[str, any] = {},
         dir_mtimes: dict[str, float] = {},
         hot_dirs: set[str] = set(),
         found: list[str] = [],
-        _host: (ProjectHost | None) = None;
+        _session: (SessionClient | None) = None;
 
     def postinit;
+    def client -> SessionClient;
     def build(on_progress: any = None, index: bool = True);
     def index_all(on_progress: any = None);
     def _arch_files -> list[str];
@@ -142,23 +140,20 @@ obj ProjectModel {
     def _ensure_package(dotted: str) -> StNode;
     def _add_module(key: str, path: str, archwire: str, local_name: str) -> StModule;
     def _discover;
-    def _spec_key(spec: WiringSpec, local: str) -> str;
+    def _wiring_models -> list[WiringModel];
+    def _add_project_modules(wiring: WiringModel, skip_known: bool);
+    def _spec_key(wiring: WiringModel, local: str) -> str;
     def _is_nested_project(arch: str) -> bool;
-    def _add_wiring(arch: str, spec: WiringSpec);
+    def _add_wiring(wiring: WiringModel);
     def _add_symbol(owner: StNode, sym: StNode);
     def _clear_module_symbols(mod: StModule);
-    def _text(nd: any) -> str;
-    def _source_text(nd: any) -> str;
-    def _span(sym: StNode, nd: uni.UniNode);
-    def _doc(nd: any) -> str;
-    def _ability_node(key: str, ab: uni.Ability, owner: str) -> StAbility;
+    def _span(sym: StNode, row: OutlineSymbol);
     def index_module(key: str) -> bool;
-    def _index_archetype(mod: StModule, arch: uni.Archetype);
-    def _index_impl(mod: StModule, idef: uni.ImplDef) -> None;
+    def _index_outline(mod: StModule, outline: ModuleOutline);
+    def _index_impl(mod: StModule, row: OutlineSymbol) -> None;
     def _link_walkers;
     def refresh(path: str) -> list[str];
     def stale_files -> list[str];
-    def project_host -> ProjectHost;
     def new_files -> list[str];
     def _note_dir(path: str) -> None;
     def _forget_file(real: str) -> list[str];
@@ -194,9 +189,7 @@ obj ProjectModel {
 
 def fuzzy_score(q: str, key: str, name: str) -> int;
 
-def wire_violation(
-    spec: WiringSpec, provider: str, consumer: str, names: list[str], whole: bool
-) -> str;
+def arm_key(rule_key: str, source: str, target: str) -> str;
 
 def sym_uri(key: str) -> str;
 

@@ -2823,24 +2823,12 @@ impl map_list_activate(app: Studio, it: MapItem) -> None {
         }
         open_wires(app, f"Wires rule {it.label.split(':')[0]} admits", wires);
     } elif it.kind == "arm" {
-        rec = m.rule_recs.get(it.key);
+        wanted = arm_key(it.key, it.src, it.dst);
         wires: list[WireInfo] = [];
-        if rec is not None {
-            pats = [
-                (p, t) for p in rec.sources
-                for t in rec.targets
-                if p.text == it.src and t.text == it.dst
-            ];
-            with m.lock {
-                for w in m.wires {
-                    if it.key in w.rules {
-                        for (p, t) in pats {
-                            if p.matches(w.local_provider)
-                                and t.matches(w.local_consumer) {
-                                wires.append(w);
-                            }
-                        }
-                    }
+        with m.lock {
+            for w in m.wires {
+                if it.key in w.rules and wanted in w.arms {
+                    wires.append(w);
                 }
             }
         }

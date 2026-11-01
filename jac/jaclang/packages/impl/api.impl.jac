@@ -211,36 +211,12 @@ impl module_path_for(base_root: Path, module: str) -> Path | None {
 }
 
 impl package_surface(base_root: Path, exports: list[str]) -> dict[str, any] {
-    program = JacProgram();
-    modules: dict[str, any] = {};
-    module_docs: dict[str, str] = {};
-    missing: list[str] = [];
-    for module in sorted(set(exports)) {
-        path = module_path_for(base_root, module);
-        if path is None {
-            missing.append(module);
-            continue;
-        }
-        options = CompileOptions(no_cgen=True, project_root=str(base_root));
-        with compilation_scope(options) {
-            mod = program.compile(str(path), options=options);
-        }
-        modules[module] = module_surface(mod, program.get_type_evaluator());
-        text = doc_text(mod);
-        if text {
-            module_docs[module] = text;
-        }
+    root = str(base_root);
+    try {
+        return json.loads(tool_session(root).package_api(root, list(exports)));
+    } except KernelError as error {
+        raise ApiError(str(error)) from error;
     }
-    if missing {
-        raise ApiError(
-            "exported module(s) not found in the package: " + ", ".join(missing)
-        );
-    }
-    surface: dict[str, any] = {"format": API_FORMAT, "modules": modules};
-    if module_docs {
-        surface[MODULE_DOCS] = module_docs;
-    }
-    return surface;
 }
 
 impl _undocumented(desc: dict[str, any]) -> dict[str, any] {

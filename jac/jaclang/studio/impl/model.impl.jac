@@ -22,8 +22,14 @@ impl ProjectModel.postinit {
         kind="project",
         root_dir=self.root_dir
     );
-    self.prog = JacProgram();
     self.lock = threading.RLock();
+}
+
+impl ProjectModel.client -> SessionClient {
+    if self._session is None {
+        self._session = tool_session(self.root_dir);
+    }
+    return self._session;
 }
 
 impl ProjectModel.build(on_progress: any = None, index: bool = True) {
@@ -157,28 +163,35 @@ impl ProjectModel._add_module(
     return mod;
 }
 
-impl ProjectModel._discover {
-    specs: list[tuple[str, WiringSpec]] = [];
+impl ProjectModel._wiring_models -> list[WiringModel] {
+    models: list[WiringModel] = [];
     for arch in self._arch_files() {
-        spec = wiring_for_path(arch);
-        if spec is None {
+        self.archwires.append(arch);
+        models.append(self.client().wiring_model(arch));
+    }
+    return models;
+}
+
+impl ProjectModel._add_project_modules(wiring: WiringModel, skip_known: bool) {
+    nested = self._is_nested_project(wiring.arch_path);
+    for row in wiring.modules {
+        if not row.project
+            or not row.file
+            or os.path.basename(row.file) == ARCH_FILE_NAME {
             continue;
         }
-        self.archwires.append(arch);
-        specs.append((arch, spec));
-    }
-    for (arch, spec) in specs {
-        nested = self._is_nested_project(arch);
-        for local in spec.project_modules() {
-            path = spec.module_file(local);
-            if not path or os.path.basename(path) == ARCH_FILE_NAME {
-                continue;
-            }
-            key = self._rel_dotted(os.path.realpath(path))
-                if nested
-                else spec.import_name(local);
-            self._add_module(key, path, arch, local);
+        if skip_known and row.file in self.by_file {
+            continue;
         }
+        key = self._rel_dotted(row.file) if nested else row.import_name;
+        self._add_module(key, row.file, wiring.arch_path, row.local);
+    }
+}
+
+impl ProjectModel._discover {
+    models = self._wiring_models();
+    for wiring in models {
+        self._add_project_modules(wiring, False);
     }
     for path in self._head_files() {
         real = os.path.realpath(path);
@@ -187,114 +200,80 @@ impl ProjectModel._discover {
         }
         self._add_module(self._rel_dotted(real), real, "", "");
     }
-    for (arch, spec) in specs {
-        self._add_wiring(arch, spec);
+    for wiring in models {
+        self._add_wiring(wiring);
     }
     self._note_arch_mtimes();
 }
 
-impl ProjectModel._spec_key(spec: WiringSpec, local: str) -> str {
-    path = spec.module_file(local);
-    if path and os.path.realpath(path) in self.by_file {
-        return self.by_file[os.path.realpath(path)];
-    }
-    if path {
-        return spec.import_name(local);
+impl ProjectModel._spec_key(wiring: WiringModel, local: str) -> str {
+    for row in wiring.modules {
+        if row.local != local {
+            continue;
+        }
+        if row.file and row.file in self.by_file {
+            return self.by_file[row.file];
+        }
+        if row.file {
+            return row.import_name;
+        }
+        break;
     }
     return local;
 }
 
-impl ProjectModel._add_wiring(arch: str, spec: WiringSpec) {
-    for w in spec.wires {
-        prov_key = self._spec_key(spec, w.provider);
+impl ProjectModel._add_wiring(wiring: WiringModel) {
+    arch = wiring.arch_path;
+    for link in wiring.edges {
+        prov_key = self._spec_key(wiring, link.provider);
         prov = self.modules.get(prov_key);
         if prov is None {
-            prov = self._add_module(prov_key, "", arch, w.provider);
+            prov = self._add_module(prov_key, "", arch, link.provider);
         }
-        names = [(n if not a else f"{n} as {a}") for (n, a) in w.items];
-        form = "import" if w.is_module_form else "import from";
-        if w.is_comptime {
-            form = "comptime " + form;
+        ckey = self._spec_key(wiring, link.consumer);
+        cnode = self.modules.get(ckey);
+        if cnode is None {
+            cnode = self._add_module(ckey, "", arch, link.consumer);
         }
-        if w.is_typed {
-            form = "type " + form;
-        }
-        if w.is_absorb {
-            form = "include";
-        }
-        for consumer in w.consumers {
-            split = spec.split_consumer(consumer);
-            (cmod, scope) = (consumer, []);
-            if split is not None {
-                (cmod, scope) = split;
-            }
-            ckey = self._spec_key(spec, cmod);
-            cnode = self.modules.get(ckey);
-            if cnode is None {
-                cnode = self._add_module(ckey, "", arch, cmod);
-            }
-            admitting: list[str] = [];
-            crosses = False;
-            try {
-                crosses = spec.top_package(w.provider) != spec.top_package(cmod);
-                admitting = [
-                    f"{arch}#{r.name}"
-                    for r in spec.rules_admitting(w.provider, cmod, True)
-                ];
-            } except Exception {}
-            verdict = wire_violation(
-                spec, w.provider, cmod, [n for (n, a) in w.items], w.is_module_form
-            );
-            if verdict.startswith(("E2090", "E2091")) {
-                admitting = [];
-            }
-            info = WireInfo(
-                provider=prov_key,
-                consumer=ckey,
-                scope=".".join(scope),
-                names=names,
-                injected=w.is_injected,
-                form=form,
-                archwire=arch,
-                line=w.line,
-                violation=verdict,
-                rules=admitting,
-                crosses=crosses,
-                local_provider=w.provider,
-                local_consumer=cmod
-            );
-            self.wires.append(info);
-            prov +>:Wire(
-                names=names,
-                injected=w.is_injected,
-                form=form,
-                archwire=arch,
-                line=w.line
-            ):+> cnode;
-        }
+        info = WireInfo(
+            provider=prov_key,
+            consumer=ckey,
+            scope=".".join(link.scope),
+            names=list(link.names),
+            injected=link.injected,
+            form=link.form,
+            archwire=arch,
+            line=link.line,
+            violation=link.violation,
+            rules=[f"{arch}#{name}" for name in link.rules],
+            crosses=link.crosses,
+            arms=[f"{arch}#{arm}" for arm in link.arms]
+        );
+        self.wires.append(info);
+        prov +>:Wire(
+            names=info.names,
+            injected=link.injected,
+            form=link.form,
+            archwire=arch,
+            line=link.line
+        ):+> cnode;
     }
-    for r in spec.rules {
+    for r in wiring.rules {
         rule = StRule(
             key=f"{arch}#{r.name}",
             name=r.name,
             kind="rule",
             file=os.path.realpath(arch),
-            sources=[p.text for p in r.sources],
-            targets=[p.text for p in r.targets],
-            names=sorted(r.item_names) if r.item_names else []
+            sources=list(r.sources),
+            targets=list(r.targets),
+            names=list(r.names)
         );
         self.rules.append(rule);
-        self.rule_recs[rule.key] = r;
         self.top +>:Contains():+> rule;
-        for (key, mod) in self.modules.items() {
-            if mod.archwire != arch or not mod.local_name {
-                continue;
-            }
-            for p in r.sources {
-                if p.matches(mod.local_name) {
-                    rule +>:Governs():+> mod;
-                    break;
-                }
+        governed = set(r.governs);
+        for mod in self.modules.values() {
+            if mod.archwire == arch and mod.local_name in governed {
+                rule +>:Governs():+> mod;
             }
         }
     }
@@ -333,72 +312,11 @@ impl ProjectModel._clear_module_symbols(mod: StModule) {
     mod.files = mod.files[:1];
 }
 
-impl ProjectModel._text(nd: any) -> str {
-    if nd is None {
-        return "";
-    }
-    try {
-        return " ".join(unparse_node(nd).split());
-    } except Exception {
-        return "";
-    }
-}
-
-impl ProjectModel._source_text(nd: any) -> str {
-    try {
-        loc = nd.loc;
-        raw = loc.orig_src.code.encode("utf-8")[loc.pos_start:loc.pos_end];
-        return " ".join(raw.decode("utf-8", errors="replace").split());
-    } except Exception {
-        return "";
-    }
-}
-
-impl ProjectModel._span(sym: StNode, nd: uni.UniNode) {
-    sym.file = os.path.realpath(nd.loc.mod_path);
-    sym.line = nd.loc.first_line;
-    sym.end_line = nd.loc.last_line;
-    sym.col = nd.loc.col_start;
-}
-
-impl ProjectModel._doc(nd: any) -> str {
-    doc = nd?.doc;
-    if doc is None {
-        return "";
-    }
-    try {
-        return str(doc.lit_value).strip();
-    } except Exception {
-        return "";
-    }
-}
-
-impl ProjectModel._ability_node(key: str, ab: uni.Ability, owner: str) -> StAbility {
-    name = ab.name_ref.sym_name if ab.name_ref else "?";
-    sig = ab.signature;
-    sig_text = "";
-    event = "";
-    if isinstance(sig, uni.EventSignature) {
-        event = self._text(sig.arch_tag_info);
-        sig_text = f"with {event} {sig.event.value}".strip();
-    } elif isinstance(sig, uni.FuncSignature) {
-        sig_text = self._source_text(sig) or self._text(sig);
-    }
-    kind = "method" if owner else "def";
-    if event or isinstance(sig, uni.EventSignature) {
-        kind = "can";
-    }
-    snode = StAbility(
-        key=key,
-        name=name,
-        kind=kind,
-        signature=sig_text,
-        owner=owner,
-        event=event,
-        doc=self._doc(ab)
-    );
-    self._span(snode, ab);
-    return snode;
+impl ProjectModel._span(sym: StNode, row: OutlineSymbol) {
+    sym.file = row.file;
+    sym.line = row.line;
+    sym.end_line = row.end_line;
+    sym.col = row.col;
 }
 
 impl ProjectModel.index_module(key: str) -> bool {
@@ -409,65 +327,16 @@ impl ProjectModel.index_module(key: str) -> bool {
     if not mod.indexed and self._load_cache(mod) {
         return True;
     }
-    tree: (uni.Module | None) = None;
-    why = "";
-    try {
-        tree = self.project_host().woven_module(mod.file, self.prog);
-    } except Exception as e {
-        why = str(e);
-    }
-    if tree is None {
-        try {
-            with open(mod.file, encoding="utf-8") as fh {
-                text = fh.read();
-            }
-            (plain, failed) = parse(text, mod.file, prog=self.prog);
-            if not failed {
-                for annex in annex_sources(mod.file) {
-                    (extra, _) = parse(annex.source, annex.path, prog=self.prog);
-                    merge_annex_into(plain, extra);
-                }
-                tree = plain;
-            } else {
-                why = why or "syntax errors";
-            }
-        } except Exception as e {
-            why = why or str(e);
-        }
-    }
-    if tree is None {
-        mod.error = f"could not parse: {why}" if why else "could not parse";
+    outline = self.client().module_outline(mod.file);
+    if outline.error {
+        mod.error = outline.error;
         return False;
     }
     with self.lock {
         self._clear_module_symbols(mod);
         mod.error = "";
-        mod.doc = self._doc(tree);
-        for el in tree.body {
-            if isinstance(el, uni.Archetype) {
-                self._index_archetype(mod, el);
-            } elif isinstance(el, uni.Enum) {
-                name = el.name.sym_name;
-                snode = StArchetype(
-                    key=f"{key}.{name}",
-                    name=name,
-                    kind="enum",
-                    bases=[self._text(b) for b in (el.base_classes or [])],
-                    doc=self._doc(el)
-                );
-                self._span(snode, el);
-                self._add_symbol(mod, snode);
-            } elif isinstance(el, uni.Ability) {
-                if el.name_ref is None {
-                    continue;
-                }
-                anode = self._ability_node(f"{key}.{el.name_ref.sym_name}", el, "");
-                self._add_symbol(mod, anode);
-            }
-        }
-        for idef in tree.get_all_sub_nodes(uni.ImplDef) {
-            self._index_impl(mod, idef);
-        }
+        mod.doc = outline.doc;
+        self._index_outline(mod, outline);
         newest = 0.0;
         for f in mod.files {
             try {
@@ -481,51 +350,71 @@ impl ProjectModel.index_module(key: str) -> bool {
     return True;
 }
 
-impl ProjectModel._index_archetype(mod: StModule, arch: uni.Archetype) {
-    name = arch.name.sym_name;
-    akey = f"{mod.key}.{name}";
-    snode = StArchetype(
-        key=akey,
-        name=name,
-        kind=arch.arch_type.value,
-        bases=[self._text(b) for b in (arch.base_classes or [])],
-        doc=self._doc(arch)
-    );
-    self._span(snode, arch);
-    self._add_symbol(mod, snode);
-    for hv in arch.get_has_vars() {
-        fname = hv.name.sym_name;
-        f = StField(
-            key=f"{akey}.{fname}",
-            name=fname,
-            kind="has",
-            type_str=self._text(hv.type_tag.tag if hv.type_tag else None),
-            owner=akey
-        );
-        self._span(f, hv);
-        self._add_symbol(snode, f);
-    }
-    for ab in arch.get_methods() {
-        if ab.name_ref is None {
+impl ProjectModel._index_outline(mod: StModule, outline: ModuleOutline) {
+    owners: dict[str, StArchetype] = {};
+    for row in outline.symbols {
+        if row.kind == "impl" {
             continue;
         }
-        m = self._ability_node(f"{akey}.{ab.name_ref.sym_name}", ab, akey);
-        self._add_symbol(snode, m);
-        if m.event {
-            snode.walker_targets.append(m.event);
+        if row.kind == "has" {
+            owner = owners.get(row.owner);
+            if owner is None {
+                continue;
+            }
+            field = StField(
+                key=f"{owner.key}.{row.name}",
+                name=row.name,
+                kind="has",
+                type_str=row.type_str,
+                owner=owner.key
+            );
+            self._span(field, row);
+            self._add_symbol(owner, field);
+        } elif row.kind in ["def", "method", "can"] {
+            owner = owners.get(row.owner) if row.owner else None;
+            if row.owner and owner is None {
+                continue;
+            }
+            parent: StNode = owner if owner is not None else mod;
+            anode = StAbility(
+                key=f"{parent.key}.{row.name}",
+                name=row.name,
+                kind=row.kind,
+                signature=row.signature,
+                owner=owner.key if owner is not None else "",
+                event=row.event,
+                doc=row.doc
+            );
+            self._span(anode, row);
+            self._add_symbol(parent, anode);
+            if owner is not None and anode.event {
+                owner.walker_targets.append(anode.event);
+            }
+        } else {
+            snode = StArchetype(
+                key=f"{mod.key}.{row.name}",
+                name=row.name,
+                kind=row.kind,
+                bases=list(row.bases),
+                doc=row.doc
+            );
+            self._span(snode, row);
+            self._add_symbol(mod, snode);
+            owners[row.name] = snode;
+        }
+    }
+    for row in outline.symbols {
+        if row.kind == "impl" {
+            self._index_impl(mod, row);
         }
     }
 }
 
-impl ProjectModel._index_impl(mod: StModule, idef: uni.ImplDef) -> None {
-    parts = [t.sym_name for t in idef.target];
-    if not parts {
-        return;
-    }
-    target = ".".join(parts);
+impl ProjectModel._index_impl(mod: StModule, row: OutlineSymbol) -> None {
+    target = row.target;
     ikey = f"{mod.key}::idef::{target}";
     snode = StImpl(key=ikey, name=target, kind="impl", target=target);
-    self._span(snode, idef);
+    self._span(snode, row);
     if snode.file and snode.file not in mod.files {
         mod.files.append(snode.file);
         self.by_file[snode.file] = mod.key;
@@ -592,7 +481,7 @@ impl ProjectModel.refresh(path: str) -> list[str] {
     }
     key = self.by_file.get(real);
     if key is None {
-        base = self.project_host().base_file(real);
+        base = discover_base_file(real);
         if base {
             key = self.by_file.get(os.path.realpath(base));
         }
@@ -609,7 +498,6 @@ impl ProjectModel.refresh(path: str) -> list[str] {
             return [];
         }
     }
-    self.prog = JacProgram();
     self.index_module(key);
     with self.lock {
         self._link_walkers();
@@ -631,7 +519,6 @@ impl ProjectModel._forget_file(real: str) -> list[str] {
             }
             self.by_file.pop(real, None);
         }
-        self.prog = JacProgram();
         self.index_module(mod.key);
         return [mod.key];
     }
@@ -723,13 +610,6 @@ impl ProjectModel.new_files -> list[str] {
         }
     }
     return list(self.found);
-}
-
-impl ProjectModel.project_host -> ProjectHost {
-    if self._host is None {
-        self._host = ProjectHost();
-    }
-    return self._host;
 }
 
 impl ProjectModel.stale_files -> list[str] {
@@ -1261,75 +1141,21 @@ impl ProjectModel.rewire -> None {
         }
         self.wires = [];
         self.rules = [];
-        self.rule_recs = {};
         self.archwires = [];
-        specs: list[tuple[str, WiringSpec]] = [];
-        for arch in self._arch_files() {
-            spec = wiring_for_path(arch);
-            if spec is None {
-                continue;
-            }
-            self.archwires.append(arch);
-            specs.append((arch, spec));
+        models = self._wiring_models();
+        for wiring in models {
+            self._add_project_modules(wiring, True);
         }
-        for (arch, spec) in specs {
-            nested = self._is_nested_project(arch);
-            for local in spec.project_modules() {
-                path = spec.module_file(local);
-                if not path or os.path.basename(path) == ARCH_FILE_NAME {
-                    continue;
-                }
-                if os.path.realpath(path) in self.by_file {
-                    continue;
-                }
-                key = self._rel_dotted(os.path.realpath(path))
-                    if nested
-                    else spec.import_name(local);
-                self._add_module(key, path, arch, local);
-            }
-        }
-        for (arch, spec) in specs {
-            self._add_wiring(arch, spec);
+        for wiring in models {
+            self._add_wiring(wiring);
         }
         self.uses_done = set();
         self._note_arch_mtimes();
     }
 }
 
-impl wire_violation(
-    spec: WiringSpec, provider: str, consumer: str, names: list[str], whole: bool
-) -> str {
-    try {
-        governing = spec.rules_governing(provider, consumer, True);
-        if not governing {
-            if spec.needs_rule(provider, consumer, True) {
-                return f"E2099 crosses from package {spec.top_package(provider)} into {spec.top_package(
-                    consumer
-                )} and no rule admits it";
-            }
-            return "";
-        }
-        admitting = spec.rules_admitting(provider, consumer, True);
-        if not admitting {
-            return "E2090 not permitted by " + ", ".join([r.name for r in governing]);
-        }
-        allowed = WiringSpec.admitted_names(admitting);
-        if allowed is None {
-            return "";
-        }
-        if whole or not names {
-            return "E2091 a whole-module wire cannot pass a payload rule";
-        }
-        bad = [
-            n
-            for n in names
-            if n not in allowed
-        ];
-        if bad {
-            return "E2091 not admitted: " + ", ".join(bad);
-        }
-    } except Exception {}
-    return "";
+impl arm_key(rule_key: str, source: str, target: str) -> str {
+    return f"{rule_key}\x1f{source}\x1f{target}";
 }
 
 impl ProjectModel._cache_path(mod: StModule) -> str {
@@ -1402,13 +1228,11 @@ impl ProjectModel._load_cache(mod: StModule) -> bool {
     if mod.file not in stamps {
         return False;
     }
-    try {
-        for annex in self.project_host().annex_files(mod.file) {
-            if os.path.realpath(annex) not in stamps {
-                return False;
-            }
+    for annex in discover_annex_files(mod.file) {
+        if os.path.realpath(annex) not in stamps {
+            return False;
         }
-    } except Exception {}
+    }
     for (f, seen) in stamps.items() {
         try {
             if abs(os.path.getmtime(f) - float(seen)) > 0.0001 {

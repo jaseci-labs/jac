@@ -66,11 +66,17 @@ impl token_at(
     return None;
 }
 
-impl node_at(module: uni.Module, line: int, col: int) -> (uni.Token | None) {
+impl node_at(
+    module: uni.Module, line: int, col: int, path: str = ""
+) -> (uni.Token | None) {
     for nd in module._in_mod_nodes or [] {
-        if isinstance(nd, uni.Token) and position_within(nd, line, col) {
-            return nd;
+        if not isinstance(nd, uni.Token) or not position_within(nd, line, col) {
+            continue;
         }
+        if path and not belongs_to(nd, path) {
+            continue;
+        }
+        return nd;
     }
     return None;
 }
@@ -244,7 +250,10 @@ impl definition_spans(program: JacProgram, nd: uni.NameAtom) -> list[SourceSpan]
             }
             target = module_spec_target(import_node.from_loc);
             if target {
-                return [file_start(target)];
+                declared = dts_declaration(target, parent.name.value)
+                    if target.endswith(".d.ts")
+                    else None;
+                return [declared or file_start(target)];
             }
         }
     }
@@ -270,6 +279,39 @@ impl definition_spans(program: JacProgram, nd: uni.NameAtom) -> list[SourceSpan]
         return [span_at(first.loc)];
     }
     return [];
+}
+
+impl dts_declaration(dts_path: str, name: str) -> (SourceSpan | None) {
+    with open(dts_path, "r", encoding="utf-8", errors="replace") as handle {
+        src = handle.read();
+    }
+    escaped = re.escape(name);
+    if name == "default" {
+        patterns = [r"(?m)^[ \t]*export[ \t]+(default)\b"];
+    } else {
+        patterns = [
+            r"(?m)^[ \t]*(?:export[ \t]+)?(?:declare[ \t]+)?(?:abstract[ \t]+)?"
+            r"(?:const|let|var|function|class|interface|enum|namespace|type)"
+            r"[ \t]+(" + escaped + r")\b",
+            r"export[ \t]+(?:type[ \t]+)?\{[^{}]*?\b(" + escaped + r")\b"
+        ];
+    }
+    for pattern in patterns {
+        found = re.search(pattern, src);
+        if found {
+            start = found.start(1);
+            line = src.count("\n", 0, start) + 1;
+            col = start - (src.rfind("\n", 0, start) + 1) + 1;
+            return SourceSpan(
+                path=dts_path,
+                line=line,
+                col=col,
+                end_line=line,
+                end_col=col + len(found.group(1))
+            );
+        }
+    }
+    return None;
 }
 
 impl reference_spans(nd: uni.NameAtom) -> list[SourceSpan] {
@@ -350,17 +392,73 @@ impl members_of(ty: (TypeBase | uni.UniScopeNode)) -> list[CompletionItem] {
     return items;
 }
 
-impl scope_at(module: uni.Module, line: int, col: int) -> uni.UniScopeNode {
+impl scope_at(
+    module: uni.Module, line: int, col: int, path: str = ""
+) -> uni.UniScopeNode {
     best: uni.UniScopeNode = module;
     stack = list(module.kid_scope);
     while stack {
         scope = stack.pop();
+        if path and not belongs_to(scope, path) {
+            continue;
+        }
         if position_within(scope, line, col) {
             best = scope;
             stack.extend(scope.kid_scope);
         }
     }
     return best;
+}
+
+impl scope_items(scope: uni.UniScopeNode) -> list[CompletionItem] {
+    items = members_of(scope);
+    items.extend(keyword_items({item.label for item in items}));
+    return items;
+}
+
+impl node_items(program: JacProgram, nd: uni.UniNode) -> list[CompletionItem] {
+    ty = node_type(program, nd);
+    if ty is not None {
+        return members_of(ty);
+    }
+    if isinstance(nd, uni.UniScopeNode) {
+        return scope_items(nd);
+    }
+    return [];
+}
+
+impl inside_literal_or_comment(source: str, path: str, line: int, col: int) -> bool {
+    def covers(first: int, first_col: int, last: int, last_col: int) -> bool {
+        if first < line < last {
+            return True;
+        }
+        if line < first or line > last {
+            return False;
+        }
+        if line == first and col < first_col {
+            return False;
+        }
+        if line == last and col >= last_col {
+            return False;
+        }
+        return True;
+    }
+    (tokens, comments, _diags, _count) = tokenize_full(source, path);
+    for tok in tokens {
+        if tok.kind not in STRING_TOKEN_KINDS {
+            continue;
+        }
+        loc = tok.loc;
+        if covers(loc.line, loc.col_start, loc.end_line, loc.col_end) {
+            return True;
+        }
+    }
+    for note in comments {
+        if covers(note.line, note.col_start, note.end_line, note.col_end) {
+            return True;
+        }
+    }
+    return False;
 }
 
 impl keyword_items(seen: set[str]) -> list[CompletionItem] {
@@ -395,22 +493,28 @@ impl node_type(program: JacProgram, nd: uni.UniNode) -> (TypeBase | None) {
 }
 
 impl completion_items(
-    program: JacProgram, module: uni.Module, line: int, col: int, trigger: str
+    program: JacProgram, module: uni.Module, path: str, line: int, col: int
 ) -> list[CompletionItem] {
-    if trigger == "." {
-        target = node_at(module, line, col - 1);
-        if target is not None and isinstance(target.parent, uni.Expr) {
-            ty = node_type(program, target.parent);
-            if ty is not None {
-                return members_of(ty);
+    selected = node_at(module, line, max(col - 1, 1), path)
+        or node_at(module, line, col, path);
+    if isinstance(selected, uni.Token) {
+        parent = selected.parent;
+        if selected.name == "DOT" and isinstance(parent, uni.AtomTrailer) {
+            return node_items(program, parent.target);
+        }
+        if isinstance(selected, uni.Name) {
+            if isinstance(parent, uni.AtomTrailer)
+                and parent.is_attr
+                and selected is parent.right {
+                return node_items(program, parent.target);
+            }
+            enclosing = selected.find_parent_of_type(uni.UniScopeNode);
+            if enclosing is not None {
+                return scope_items(enclosing);
             }
         }
-        return [];
     }
-    items = members_of(scope_at(module, line, col));
-    seen = {item.label for item in items};
-    items.extend(keyword_items(seen));
-    return items;
+    return scope_items(scope_at(module, line, col, path));
 }
 
 impl inlay_hint_rows(

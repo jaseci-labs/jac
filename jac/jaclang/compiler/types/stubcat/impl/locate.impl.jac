@@ -196,7 +196,10 @@ impl StubcatArtifact.build(log: Callable[[str], None], force: bool, exact: bool)
     pkg = jaclang_pkg_dir();
     out = dev_catalog_path(pkg);
     log(f"  building the stub catalog into {out}");
-    build_catalog(out, pkg_dir=pkg, quiet=True);
+    report = tool_session().stub_catalog(out, [], pkg);
+    for failure in report.load_failures {
+        log(f"  stub catalog: {failure}");
+    }
     maybe_sweep("jir-stubcat");
 }
 

@@ -1,5 +1,4 @@
 import os;
-import time;
 import json;
 
 import from pathlib { Path }
@@ -35,84 +34,14 @@ glob INDEX_SCHEMA: int = 2,
 def _real(path: str) -> str;
 
 
-obj SourceRef {
-    has file: str,
-        line: int,
-        col: int = 0,
-        role: str = "use",
-        snippet: str = "";
-
-    def render -> str;
-    def to_dict -> dict[str, any];
-}
-
-
-obj SymbolInfo {
-    has name: str,
-        kind: str,
-        file: str,
-        line: int,
-        col: int = 0,
-        type_str: str = "",
-        doc: str = "",
-        signature: str = "",
-        fields: list[str] = [],
-        abilities: list[str] = [],
-        base_classes: list[str] = [],
-        is_genai: bool = False;
-
-    def render -> str;
-    def to_dict -> dict[str, any];
-    static def from_dict(d: dict[str, any]) -> SymbolInfo;
-}
-
-
-obj Diagnostic {
-    has file: str,
-        line: int,
-        severity: str,
-        message: str;
-
-    def render -> str;
-    def to_dict -> dict[str, any];
-}
-
-
-def _diag_key(d: Diagnostic) -> str;
-
-
-obj EntryPoint {
-    has walker_name: str,
-        ability: str,
-        node_type: str,
-        event: str,
-        file: str = "",
-        line: int = 0;
-
-    def render -> str;
-    def to_dict -> dict[str, any];
-    static def from_dict(d: dict[str, any]) -> EntryPoint;
-}
-
-
-obj ContextSlice {
-    has query: str,
-        target: SymbolInfo | None = None,
-        related: list[SymbolInfo] = [],
-        uses: list[SourceRef] = [];
-
-    def render -> str;
-    def to_dict -> dict[str, any];
-}
+def _diag_key(d: CodeDiagnostic) -> str;
 
 
 obj CodeIntelligence {
-    has proj_dir: str,
-        on_event: any = None;
+    has proj_dir: str;
 
     def postinit;
     def load;
-    def _emit(op: str, file: str, recompiled: int, t0: float, cached: int = 0);
     def refresh(file: str = "") -> None;
     def _head_for(real: str) -> str;
     def _drop_file(real: str);
@@ -148,8 +77,8 @@ obj CodeIntelligence {
     def _module_entry_points(mod: uni.Module) -> list[EntryPoint];
     def walkers_visiting(node_type: str) -> list[EntryPoint];
     def nodes_visited_by(walker_name: str) -> list[EntryPoint];
-    def diagnostics(file: str = "") -> list[Diagnostic];
-    def refresh_and_diff(file: str = "") -> list[Diagnostic];
+    def diagnostics(file: str = "") -> list[CodeDiagnostic];
+    def refresh_and_diff(file: str = "") -> list[CodeDiagnostic];
     def slice_for(name: str, depth: int = 1) -> ContextSlice;
     def _type_names(info: SymbolInfo) -> list[str];
     def _idents(text: str) -> list[str];
