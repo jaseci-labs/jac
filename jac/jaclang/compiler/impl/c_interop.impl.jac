@@ -314,7 +314,7 @@ impl c_param_type(call: UniNode, param: ParamVar) -> (TypeBase | None) {
     return None;
 }
 
-impl c_lent_param(arg: UniNode) -> (ParamVar | None) {
+impl c_lent_param(arg: UniNode, allow_borrow: bool = False) -> (ParamVar | None) {
     call = arg.parent;
     if not isinstance(call, FuncCall) {
         return None;
@@ -340,7 +340,9 @@ impl c_lent_param(arg: UniNode) -> (ParamVar | None) {
     }
     if target is None
         or (
-            target.type_tag is not None and is_borrow_kind(target.type_tag.ownership)
+            not allow_borrow
+            and target.type_tag is not None
+            and is_borrow_kind(target.type_tag.ownership)
         ) {
         return None;
     }
@@ -548,6 +550,23 @@ impl final_glob_value(nd: (UniNode | None)) -> (Expr | None) {
         return None;
     }
     return assign.value;
+}
+
+impl c_offset_address(expr: (UniNode | None)) -> tuple[(UniNode | None), int] {
+    while isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
+        expr = expr.value;
+    }
+    if not isinstance(expr, BinaryExpr)
+        or not isinstance(expr.op, Token)
+        or expr.op.name != Tok.PLUS
+        or not is_builtin_addressof_call(expr.left) {
+        return (None, 0);
+    }
+    (ok, value) = c_scalar_constant(expr.right);
+    if not ok or not isinstance(value, int) or isinstance(value, bool) or value < 0 {
+        return (None, 0);
+    }
+    return (expr.left, value);
 }
 
 impl c_scalar_constant(expr: (UniNode | None), depth: int = 0) -> tuple[bool, any] {

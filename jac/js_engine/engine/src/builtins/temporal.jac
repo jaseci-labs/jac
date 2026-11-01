@@ -57,7 +57,14 @@ import from engine.src.ffi.tz {
     tz_write_offset,
     tz_get_next_transition
 }
-import from engine.src.runtime.mem { io_alloc, read_i32 }
+import from engine.src.runtime.mem {
+    io_alloc,
+    read_i32,
+    byte_chr,
+    str_bslice,
+    str_byte,
+    str_nbytes
+}
 import from engine.src.runtime.temporal_parse {
     parse_iso_date_time,
     parse_duration,
@@ -282,8 +289,9 @@ def _js_str(s: str) -> JSValue {
 def:pub temporal_str_copy(s: str) -> str {
     out: str = "";
     i: int = 0;
-    while i < len(s) {
-        out = out + s[i:i + 1];
+    _nb292_s: int = str_nbytes(s);
+    while i < _nb292_s {
+        out = out + str_bslice(s, i, i + 1);
         i = i + 1;
     }
     return out;
@@ -2652,14 +2660,14 @@ not a valid year-month shape. Handles all four ISO forms: extended "YYYY-MM", ba
 day is appended in the SAME format (extended → "-01", basic → "01") so the retry
 string stays well-formed."""
 def:priv _temporal_year_month_ref_day_str(s: str) -> str {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if n == 0 {
         return "";
     }
     # Optional sign introduces a 6-digit expanded year; otherwise a 4-digit year.
     pos: int = 0;
     ylen: int = 4;
-    if s[0] == "+" or s[0] == "-" {
+    if byte_chr(str_byte(s, 0)) == "+" or byte_chr(str_byte(s, 0)) == "-" {
         pos = 1;
         ylen = 6;
     }
@@ -2669,7 +2677,7 @@ def:priv _temporal_year_month_ref_day_str(s: str) -> str {
         if pos + yi >= n {
             return "";
         }
-        c: str = s[pos + yi];
+        c: str = byte_chr(str_byte(s, pos + yi));
         if c < "0" or c > "9" {
             return "";
         }
@@ -2677,7 +2685,7 @@ def:priv _temporal_year_month_ref_day_str(s: str) -> str {
     }
     mpos: int = pos + ylen;
     sep: bool = False;
-    if mpos < n and s[mpos] == "-" {
+    if mpos < n and byte_chr(str_byte(s, mpos)) == "-" {
         sep = True;
         mpos = mpos + 1;
     }
@@ -2685,12 +2693,12 @@ def:priv _temporal_year_month_ref_day_str(s: str) -> str {
     if mpos + 2 != n {
         return "";
     }
-    m0: str = s[mpos];
-    m1: str = s[mpos + 1];
+    m0: str = byte_chr(str_byte(s, mpos));
+    m1: str = byte_chr(str_byte(s, mpos + 1));
     if m0 < "0" or m0 > "9" or m1 < "0" or m1 > "9" {
         return "";
     }
-    mm: int = (ord(m0) - 48) * 10 + (ord(m1) - 48);
+    mm: int = (str_byte(m0, 0) - 48) * 10 + (str_byte(m1, 0) - 48);
     if mm < 1 or mm > 12 {
         return "";
     }
@@ -2703,32 +2711,33 @@ def:priv _temporal_year_month_ref_day_str(s: str) -> str {
 """True if `s` is exactly "MM-DD": 2-digit month 01-12, "-", 2-digit day 01-31. Gates
 the year-less PlainMonthDay string retry so invalid forms still reject."""
 def:priv _temporal_is_month_day_shape(s: str) -> bool {
-    if len(s) != 5 {
+    if str_nbytes(s) != 5 {
         return False;
     }
-    m0: str = s[0];
-    m1: str = s[1];
+    m0: str = byte_chr(str_byte(s, 0));
+    m1: str = byte_chr(str_byte(s, 1));
     if m0 < "0" or m0 > "9" or m1 < "0" or m1 > "9" {
         return False;
     }
-    if s[2] != "-" {
+    if byte_chr(str_byte(s, 2)) != "-" {
         return False;
     }
-    d0: str = s[3];
-    d1: str = s[4];
+    d0: str = byte_chr(str_byte(s, 3));
+    d1: str = byte_chr(str_byte(s, 4));
     if d0 < "0" or d0 > "9" or d1 < "0" or d1 > "9" {
         return False;
     }
-    mm: int = (ord(m0) - 48) * 10 + (ord(m1) - 48);
-    dd: int = (ord(d0) - 48) * 10 + (ord(d1) - 48);
+    mm: int = (str_byte(m0, 0) - 48) * 10 + (str_byte(m1, 0) - 48);
+    dd: int = (str_byte(d0, 0) - 48) * 10 + (str_byte(d1, 0) - 48);
     return mm >= 1 and mm <= 12 and dd >= 1 and dd <= 31;
 }
 
 """Index of the first byte equal to `ch` (a single-byte string) in `s`, or -1."""
 def:priv _temporal_index_of(s: str, ch: str) -> int {
     i: int = 0;
-    while i < len(s) {
-        if s[i] == ch {
+    _nb2737_s: int = str_nbytes(s);
+    while i < _nb2737_s {
+        if byte_chr(str_byte(s, i)) == ch {
             return i;
         }
         i = i + 1;
@@ -2741,10 +2750,11 @@ case-insensitive identifier matching (e.g. the "UTC" time zone)."""
 def:priv _temporal_ascii_lower(s: str) -> str {
     out: str = "";
     i: int = 0;
-    while i < len(s) {
-        c: str = s[i];
+    _nb2751_s: int = str_nbytes(s);
+    while i < _nb2751_s {
+        c: str = byte_chr(str_byte(s, i));
         if c >= "A" and c <= "Z" {
-            out = out + chr(ord(c) + 32);
+            out = out + chr(str_byte(c, 0) + 32);
         } else {
             out = out + c;
         }
@@ -2814,7 +2824,7 @@ def:pub ToTemporalTimeZoneIdentifier(v: JSValue) -> str {
     # lenient ToTemporalZonedDateTime string form. Reject a sub-minute extracted offset,
     # otherwise accept (withTimeZone / property-bag timeZone allow this; the stricter
     # constructor param is validated separately at the constructor call site).
-    if len(tz) > 0 and (tz[0:1] == "+" or tz[0:1] == "-") {
+    if len(tz) > 0 and (str_bslice(tz, 0, 1) == "+" or str_bslice(tz, 0, 1) == "-") {
         if offset_string_has_subminute(tz) {
             vm_throw_native(
                 make_range_error('"' + tz + '" is not a valid time zone string')
@@ -2945,10 +2955,11 @@ def:priv _validate_relative_to_tz(pr: list[any], s: str, tz_ann: str) -> None {
             return;
         }
         if pr[PR_HAS_OFFSET] != 0 {
-            bracket: int = len(s);
+            bracket: int = str_nbytes(s);
             scan: int = 0;
-            while scan < len(s) {
-                if s[scan:scan + 1] == "[" {
+            _nb2957_s: int = str_nbytes(s);
+            while scan < _nb2957_s {
+                if str_bslice(s, scan, scan + 1) == "[" {
                     bracket = scan;
                     break;
                 }
@@ -2957,7 +2968,7 @@ def:priv _validate_relative_to_tz(pr: list[any], s: str, tz_ann: str) -> None {
             offpos: int = -1;
             scan2: int = 0;
             while scan2 < bracket {
-                c2: str = s[scan2:scan2 + 1];
+                c2: str = str_bslice(s, scan2, scan2 + 1);
                 if c2 == "+" or c2 == "-" {
                     offpos = scan2;
                 }
@@ -3358,10 +3369,10 @@ def:pub temporal_constrain_ymd(y: int, m: int, d: int) -> list[int] {
 }
 
 def:priv _month_code_is_leap(mc_s: str) -> bool {
-    if len(mc_s) < 2 {
+    if str_nbytes(mc_s) < 2 {
         return False;
     }
-    c: str = mc_s[len(mc_s) - 1:len(mc_s)];
+    c: str = str_bslice(mc_s, str_nbytes(mc_s) - 1, str_nbytes(mc_s));
     return c == "L" or c == "l";
 }
 
@@ -4775,7 +4786,7 @@ def:pub temporal_resolve_zone_offset_seconds(
     if tz == "UTC" or tz == "" {
         return 0;
     }
-    if len(tz) > 0 and (tz[0:1] == "+" or tz[0:1] == "-") {
+    if len(tz) > 0 and (str_bslice(tz, 0, 1) == "+" or str_bslice(tz, 0, 1) == "-") {
         off: list[any] = parse_utc_offset_string(tz);
         if off[0] != 0 {
             return off[1];
@@ -5280,14 +5291,14 @@ def:pub ToTemporalYearMonth(item: JSValue, options: JSValue) -> JSValue {
         br: int = _temporal_index_of(s, "[");
         date_part: str = s;
         if br >= 0 {
-            date_part = s[0:br];
+            date_part = str_bslice(s, 0, br);
         }
         with_ref: str = _temporal_year_month_ref_day_str(date_part);
         ym_ok: bool = len(with_ref) != 0;
         if ym_ok {
             s_try: str = with_ref;
             if br >= 0 {
-                s_try = with_ref + s[br:len(s)];
+                s_try = with_ref + str_bslice(s, br, str_nbytes(s));
             }
             pr2: list[any] = parse_iso_date_time(s_try);
             if pr2[PR_OK]
@@ -5438,16 +5449,16 @@ def:pub ToTemporalMonthDay(item: JSValue, options: JSValue) -> JSValue {
         md_part: str = s;
         br_md: int = _temporal_index_of(s, "[");
         if br_md >= 0 {
-            md_part = s[0:br_md];
+            md_part = str_bslice(s, 0, br_md);
         }
         md_norm: str = md_part;
-        if len(md_norm) >= 2 and md_norm[0:2] == "--" {
-            md_norm = md_norm[2:len(md_norm)];
+        if str_nbytes(md_norm) >= 2 and str_bslice(md_norm, 0, 2) == "--" {
+            md_norm = str_bslice(md_norm, 2, str_nbytes(md_norm));
         }
         pr_md: list[any] = [False];
         s_try_md: str = "1972-" + md_norm;
         if br_md >= 0 {
-            s_try_md = s_try_md + s[br_md:len(s)];
+            s_try_md = s_try_md + str_bslice(s, br_md, str_nbytes(s));
         }
         if _temporal_is_month_day_shape(md_norm) {
             pr_md = parse_iso_date_time(s_try_md);
@@ -5738,7 +5749,7 @@ def:pub temporal_zoned_datetime_getter(o: JSValue, name: str) -> JSValue {
         if tz == "UTC" or tz == "" {
             return js_int(24);
         }
-        if len(tz) > 0 and (tz[0:1] == "+" or tz[0:1] == "-") {
+        if len(tz) > 0 and (str_bslice(tz, 0, 1) == "+" or str_bslice(tz, 0, 1) == "-") {
             return js_int(24);
         }
         days: int = iso_days_from_ymd(y, m, d);

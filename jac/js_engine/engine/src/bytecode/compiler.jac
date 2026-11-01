@@ -30,7 +30,14 @@ import from engine.src.bytecode.op {
 
 import from engine.src.parser.ast { ASTNode, ASTNodeType }
 import from engine.src.runtime.jsstring { str_substr, utf8_encode_scalar }
-import from engine.src.runtime.mem { byte_chr }
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bfind,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
+}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Debug tracing
@@ -145,9 +152,9 @@ digits only), so a blind removal is safe here.
 def _strip_numeric_separators(raw: str) -> str {
     out: str = "";
     i: int = 0;
-    n: int = len(raw);
+    n: int = str_nbytes(raw);
     while i < n {
-        ch: str = raw[i];
+        ch: str = byte_chr(str_byte(raw, i));
         if ch != "_" {
             out = out + ch;
         }
@@ -167,11 +174,11 @@ def _unescape_string(raw: str) -> str {
     # literal and dominated the vite-bundle compile's allocation profile.
     result: list[str] = [];
     i: int = 0;
-    n: int = len(raw);
+    n: int = str_nbytes(raw);
     while i < n {
-        c: str = raw[i];
+        c: str = byte_chr(str_byte(raw, i));
         if c == "\\" and i + 1 < n {
-            esc: str = raw[i + 1];
+            esc: str = byte_chr(str_byte(raw, i + 1));
             i = i + 2;
             if esc == "\"" {
                 result.append("\"");
@@ -193,26 +200,26 @@ def _unescape_string(raw: str) -> str {
                 result.append(chr(11));
             } elif esc == "u" {
                 # \u{...} — braced code point (1+ hex digits up to 0x10FFFF)
-                if i < n and raw[i] == "{" {
+                if i < n and byte_chr(str_byte(raw, i)) == "{" {
                     j: int = i + 1;
                     cpb: int = 0;
                     okb: bool = True;
                     nhex: int = 0;
-                    while j < n and raw[j] != "}" {
-                        chb: str = raw[j];
+                    while j < n and byte_chr(str_byte(raw, j)) != "}" {
+                        chb: str = byte_chr(str_byte(raw, j));
                         if chb >= "0" and chb <= "9" {
-                            cpb = cpb * 16 + (ord(chb) - 48);
+                            cpb = cpb * 16 + (str_byte(chb, 0) - 48);
                         } elif chb >= "a" and chb <= "f" {
-                            cpb = cpb * 16 + 10 + (ord(chb) - 97);
+                            cpb = cpb * 16 + 10 + (str_byte(chb, 0) - 97);
                         } elif chb >= "A" and chb <= "F" {
-                            cpb = cpb * 16 + 10 + (ord(chb) - 65);
+                            cpb = cpb * 16 + 10 + (str_byte(chb, 0) - 65);
                         } else {
                             okb = False;
                         }
                         nhex = nhex + 1;
                         j = j + 1;
                     }
-                    if okb and nhex > 0 and j < n and raw[j] == "}" {
+                    if okb and nhex > 0 and j < n and byte_chr(str_byte(raw, j)) == "}" {
                         i = j + 1;
                         if cpb == 0 {
                             result.append(utf8_encode_scalar(0));  # NUL sentinel
@@ -231,13 +238,13 @@ def _unescape_string(raw: str) -> str {
                     cp: int = 0;
                     ok: bool = True;
                     while h < 4 {
-                        ch: str = raw[i + h];
+                        ch: str = byte_chr(str_byte(raw, i + h));
                         if ch >= "0" and ch <= "9" {
-                            cp = cp * 16 + (ord(ch) - 48);
+                            cp = cp * 16 + (str_byte(ch, 0) - 48);
                         } elif ch >= "a" and ch <= "f" {
-                            cp = cp * 16 + 10 + (ord(ch) - 97);
+                            cp = cp * 16 + 10 + (str_byte(ch, 0) - 97);
                         } elif ch >= "A" and ch <= "F" {
-                            cp = cp * 16 + 10 + (ord(ch) - 65);
+                            cp = cp * 16 + 10 + (str_byte(ch, 0) - 65);
                         } else {
                             ok = False;
                         }
@@ -265,13 +272,13 @@ def _unescape_string(raw: str) -> str {
                     ok2: bool = True;
                     x: int = 0;
                     while x < 2 {
-                        cx: str = raw[i + x];
+                        cx: str = byte_chr(str_byte(raw, i + x));
                         if cx >= "0" and cx <= "9" {
-                            cp2 = cp2 * 16 + (ord(cx) - 48);
+                            cp2 = cp2 * 16 + (str_byte(cx, 0) - 48);
                         } elif cx >= "a" and cx <= "f" {
-                            cp2 = cp2 * 16 + 10 + (ord(cx) - 97);
+                            cp2 = cp2 * 16 + 10 + (str_byte(cx, 0) - 97);
                         } elif cx >= "A" and cx <= "F" {
-                            cp2 = cp2 * 16 + 10 + (ord(cx) - 65);
+                            cp2 = cp2 * 16 + 10 + (str_byte(cx, 0) - 65);
                         } else {
                             ok2 = False;
                         }
@@ -299,13 +306,13 @@ def _unescape_string(raw: str) -> str {
                 # LineContinuation (ES §12.9.4): `\` followed by a LineTerminator is
                 # removed entirely (produces nothing).  `\<CR><LF>` is a single line
                 # continuation — swallow the trailing LF too.
-                if esc == chr(13) and i < n and raw[i] == "\n" {
+                if esc == chr(13) and i < n and byte_chr(str_byte(raw, i)) == "\n" {
                     i = i + 1;
                 }
             } elif esc == byte_chr(226)
                 and i + 1 < n
-                and raw[i] == byte_chr(128)
-                and (raw[i + 1] == byte_chr(168) or raw[i + 1] == byte_chr(169)) {
+                and byte_chr(str_byte(raw, i)) == byte_chr(128)
+                and (byte_chr(str_byte(raw, i + 1)) == byte_chr(168) or byte_chr(str_byte(raw, i + 1)) == byte_chr(169)) {
                 # LineContinuation with a multi-byte LineTerminator: U+2028 LINE
                 # SEPARATOR (0xE2 0x80 0xA8) or U+2029 PARAGRAPH SEPARATOR
                 # (0xE2 0x80 0xA9). Jac strings are byte-indexed, so `esc` above only
@@ -316,14 +323,14 @@ def _unescape_string(raw: str) -> str {
                 # Legacy octal escape (Annex B.1.2): `\` + 1-3 octal digits (first digit
                 # 0-3 allows 3 digits; 4-7 allows 2) → the character with that code.
                 # `\0` NOT followed by an octal digit yields NUL (oct_v == 0 below).
-                oct_v: int = ord(esc) - 48;
+                oct_v: int = str_byte(esc, 0) - 48;
                 oct_max: int = 3;
                 if esc >= "4" {
                     oct_max = 2;
                 }
                 oct_cnt: int = 1;
-                while oct_cnt < oct_max and i < n and raw[i] >= "0" and raw[i] <= "7" {
-                    oct_v = oct_v * 8 + (ord(raw[i]) - 48);
+                while oct_cnt < oct_max and i < n and byte_chr(str_byte(raw, i)) >= "0" and byte_chr(str_byte(raw, i)) <= "7" {
+                    oct_v = oct_v * 8 + (str_byte(raw, i) - 48);
                     i = i + 1;
                     oct_cnt = oct_cnt + 1;
                 }
@@ -512,8 +519,9 @@ obj Compiler {
         bind: str = self.esm_import_bindings[name];
         bind_colon: int = -1;
         bi: int = 0;
-        while bi < len(bind) {
-            if bind[bi] == ":" {
+        _nb522_bind: int = str_nbytes(bind);
+        while bi < _nb522_bind {
+            if byte_chr(str_byte(bind, bi)) == ":" {
                 bind_colon = bi;
             }
             bi = bi + 1;
@@ -521,8 +529,8 @@ obj Compiler {
         ns_g: str = bind;
         imp_k: str = bind;
         if bind_colon >= 0 {
-            ns_g = bind[0:bind_colon];
-            imp_k = bind[bind_colon + 1:];
+            ns_g = str_bslice(bind, 0, bind_colon);
+            imp_k = str_bslice_from(bind, bind_colon + 1);
         }
         self._emit(make_instruction(Opcode.LOAD_GLOBAL, self._intern(ns_g), 0, 0));
         self._emit_get_prop(imp_k);
@@ -567,10 +575,10 @@ obj Compiler {
         # Dedup: scan comma-separated entries.
         start: int = 0;
         ci: int = 0;
-        n: int = len(cur);
+        n: int = str_nbytes(cur);
         while ci <= n {
-            if ci == n or cur[ci] == "," {
-                if ci > start and cur[start:ci] == exported {
+            if ci == n or byte_chr(str_byte(cur, ci)) == "," {
+                if ci > start and str_bslice(cur, start, ci) == exported {
                     return;
                 }
                 start = ci + 1;
@@ -593,11 +601,11 @@ obj Compiler {
         cur: str = self.esm_export_aliases[name];
         start: int = 0;
         ci: int = 0;
-        n: int = len(cur);
+        n: int = str_nbytes(cur);
         while ci <= n {
-            if ci == n or cur[ci] == "," {
+            if ci == n or byte_chr(str_byte(cur, ci)) == "," {
                 if ci > start {
-                    alias: str = cur[start:ci];
+                    alias: str = str_bslice(cur, start, ci);
                     # Same-name `export { x }` after a live namespace store is already
                     # up to date; other aliases still need a copy.
                     if not (alias == name and self._is_esm_live(name)) {
@@ -663,7 +671,7 @@ obj Compiler {
         # so runtime Error.name + message don't double-prefix.
         throw_msg: str = msg;
         if throw_msg.startswith("SyntaxError: ") {
-            throw_msg = throw_msg[13:];
+            throw_msg = str_bslice_from(throw_msg, 13);
         }
         self._const("s:" + throw_msg);
         self._op(Opcode.THROW);
@@ -883,7 +891,7 @@ obj Compiler {
     distinct.  <scope> is the id of the nearest enclosing class body that declares
     `#name` (ES PrivateEnvironment lexical resolution)."""
     def _prop_key(name: str) -> str {
-        if len(name) > 0 and name[0] == "#" {
+        if len(name) > 0 and byte_chr(str_byte(name, 0)) == "#" {
             # Nearest PrivateEnvironment first (class bodies opened in this unit).
             si: int = len(self.priv_scope_ids) - 1;
             while si >= 0 {
@@ -920,7 +928,7 @@ obj Compiler {
 
     """True if `name` is a private class member name (starts with `#`)."""
     def _is_private_name(name: str) -> bool {
-        return len(name) > 0 and name[0] == "#";
+        return len(name) > 0 and byte_chr(str_byte(name, 0)) == "#";
     }
 
     """Enter a new class body's private scope: allocate a fresh scope id and record
@@ -931,7 +939,7 @@ obj Compiler {
         for m in nd.children {
             if m.key is not None and not m.computed {
                 mk: str = m.key.name;
-                if len(mk) > 0 and mk[0] == "#" {
+                if len(mk) > 0 and byte_chr(str_byte(mk, 0)) == "#" {
                     pnames[mk] = True;
                 }
             }
@@ -2106,6 +2114,33 @@ obj Compiler {
         # exactly once, with its code final (cell prefixes prepended, snc
         # elision done above), so this is the single chokepoint.
         optimize_fn(fn);
+        # Can a super() run inside this function -- in its own code or in an
+        # arrow it creates (those share its this binding)? When it cannot,
+        # reading `this` has no effect and no order, and the register
+        # translator keeps it symbolic (CompiledFunction.this_lazy). Where
+        # super() is allowed at all (a derived constructor, and the arrows and
+        # eval code that share its binding) `this` can still be uninitialized,
+        # and every read must throw where it stands, even when its value is
+        # unused: it stays a real LOAD_THIS there.
+        fn.this_lazy = 1;
+        if self.super_call_allowed {
+            fn.this_lazy = 0;
+        }
+        tl_i: int = 0;
+        while tl_i < len(fn.code) {
+            tl_op: Opcode = fn.code[tl_i].opcode;
+            if tl_op == Opcode.SUPER_CALL {
+                fn.this_lazy = 0;
+            } elif tl_op == Opcode.MAKE_ARROW {
+                tl_k: int = fn.code[tl_i].arg;
+                if tl_k < 0
+                    or tl_k >= len(self.all_fns)
+                    or self.all_fns[tl_k].this_lazy != 1 {
+                    fn.this_lazy = 0;
+                }
+            }
+            tl_i = tl_i + 1;
+        }
         # Register ISA (docs/VM_REARCH_PLAN.md V2): derived from this final
         # code lazily, the first time the function runs (VM._reg_ready).
         return fn;
@@ -5664,12 +5699,12 @@ obj Compiler {
         } elif nd.kind == "regexp" {
             # val is "/pattern/flags" — store as "r:pattern|flags"
             # Find the last '/' to split pattern from flags
-            last_slash: int = len(val) - 1;
-            while last_slash > 0 and val[last_slash] != "/" {
+            last_slash: int = str_nbytes(val) - 1;
+            while last_slash > 0 and byte_chr(str_byte(val, last_slash)) != "/" {
                 last_slash = last_slash - 1;
             }
             re_pat: str = str_substr(val, 1, last_slash);
-            re_flg: str = str_substr(val, last_slash + 1, len(val));
+            re_flg: str = str_substr(val, last_slash + 1, str_nbytes(val));
             # Store the raw "/pattern/flags" literal as-is — the VM decodes
             # by finding the last "/" (same logic as above). Avoids any
             # function-call-in-string-concat codegen issue.
@@ -6149,7 +6184,7 @@ obj Compiler {
             if nd.right is not None {
                 self.compile_expr(nd.right);
             }
-            self._emit_binop(op[0:len(op) - 1]);
+            self._emit_binop(str_bslice(op, 0, str_nbytes(op) - 1));
             self._emit(
                 make_instruction(Opcode.STORE_NAME_REF, sca_name_arg, sca_strict, 0)
             );
@@ -6160,7 +6195,7 @@ obj Compiler {
             if nd.right is not None {
                 self.compile_expr(nd.right);
             }
-            self._emit_binop(op[0:len(op) - 1]);
+            self._emit_binop(str_bslice(op, 0, str_nbytes(op) - 1));
             # No DUP — result is not needed in statement context.
             self._store_lvalue(lhs);
         }
@@ -6327,7 +6362,7 @@ obj Compiler {
         } elif lhs.ntype == ASTNodeType.MemberExpression
             and lhs.computed
             and self._lhs_is_super_member(lhs)
-            and self._compile_super_computed_compound(nd, lhs, op[0:len(op) - 1]) {
+            and self._compile_super_computed_compound(nd, lhs, str_bslice(op, 0, str_nbytes(op) - 1)) {
             # `super[key] op= rhs` — routed through the SUPER opcodes (else `super` compiles
             # as a bare identifier). Key evaluated once. Handled by the helper.
         } elif lhs.ntype == ASTNodeType.MemberExpression
@@ -6338,7 +6373,7 @@ obj Compiler {
             # evaluated ONCE, before the RHS.  Evaluate obj+key up front, coerce the
             # key a single time with TO_PROPERTY_KEY, stash it in a synthetic local,
             # and DUP the object so `base` and `prop` each evaluate exactly once.
-            _ca_bin: str = op[0:len(op) - 1];
+            _ca_bin: str = str_bslice(op, 0, str_nbytes(op) - 1);
             _ca_seq: int = self._dstr_iter_seq;
             self._dstr_iter_seq = self._dstr_iter_seq + 1;
             _ca_oslot: int = self._declare("__caobj_" + str(_ca_seq), "const");
@@ -6406,7 +6441,7 @@ obj Compiler {
             if nd.right is not None {
                 self.compile_expr(nd.right);
             }
-            self._emit_binop(op[0:len(op) - 1]);
+            self._emit_binop(str_bslice(op, 0, str_nbytes(op) - 1));
             self._emit(
                 make_instruction(Opcode.STORE_NAME_REF, wc_name_arg, wc_strict, 0)
             );
@@ -6415,7 +6450,7 @@ obj Compiler {
             if nd.right is not None {
                 self.compile_expr(nd.right);
             }
-            self._emit_binop(op[0:len(op) - 1]);
+            self._emit_binop(str_bslice(op, 0, str_nbytes(op) - 1));
             if lhs.ntype == ASTNodeType.Identifier {
                 self._op(Opcode.DUP);
             }
@@ -9035,13 +9070,13 @@ obj Compiler {
     still counts — over-reporting is safe, under-reporting is not."""
     def _aa_collect(word: str) {
         st: str = self.source_text;
-        n: int = len(st);
-        wl: int = len(word);
-        at: int = st.find(word, 0);
+        n: int = str_nbytes(st);
+        wl: int = str_nbytes(word);
+        at: int = str_bfind(st, word, 0);
         while at >= 0 {
             bounded: bool = True;
             if at > 0 {
-                pc: int = ord(st[at - 1]);
+                pc: int = str_byte(st, at - 1);
                 if (pc >= 97 and pc <= 122)
                     or (pc >= 65 and pc <= 90)
                     or (pc >= 48 and pc <= 57)
@@ -9051,7 +9086,7 @@ obj Compiler {
                 }
             }
             if bounded and at + wl < n {
-                nc: int = ord(st[at + wl]);
+                nc: int = str_byte(st, at + wl);
                 if (nc >= 97 and nc <= 122)
                     or (nc >= 65 and nc <= 90)
                     or (nc >= 48 and nc <= 57)
@@ -9068,27 +9103,27 @@ obj Compiler {
                 pj: int = at - 1;
                 while pj >= 0
                     and (
-                        st[pj] == " "
-                        or st[pj] == "\t"
-                        or st[pj] == "\n"
-                        or st[pj] == "\r"
+                        byte_chr(str_byte(st, pj)) == " "
+                        or byte_chr(str_byte(st, pj)) == "\t"
+                        or byte_chr(str_byte(st, pj)) == "\n"
+                        or byte_chr(str_byte(st, pj)) == "\r"
                     ) {
                     pj = pj - 1;
                 }
-                if pj >= 0 and st[pj] == "." {
+                if pj >= 0 and byte_chr(str_byte(st, pj)) == "." {
                     bounded = False;
                 }
                 nj: int = at + wl;
                 while nj < n
                     and (
-                        st[nj] == " "
-                        or st[nj] == "\t"
-                        or st[nj] == "\n"
-                        or st[nj] == "\r"
+                        byte_chr(str_byte(st, nj)) == " "
+                        or byte_chr(str_byte(st, nj)) == "\t"
+                        or byte_chr(str_byte(st, nj)) == "\n"
+                        or byte_chr(str_byte(st, nj)) == "\r"
                     ) {
                     nj = nj + 1;
                 }
-                if nj >= n or (st[nj] != "(" and st[nj] != "/") {
+                if nj >= n or (byte_chr(str_byte(st, nj)) != "(" and byte_chr(str_byte(st, nj)) != "/") {
                     bounded = False;
                 }
             }
@@ -9096,7 +9131,7 @@ obj Compiler {
                 self._aa_start.append(at);
                 self._aa_end.append(at + wl);
             }
-            at = st.find(word, at + wl);
+            at = str_bfind(st, word, at + wl);
         }
     }
 
@@ -9105,7 +9140,7 @@ obj Compiler {
     scan it replaces was O(source × nesting depth), and its false hits (`eval` in
     `evaluate`) made functions materialize an unused `arguments` object per call."""
     def _src_range_has_args_ref(start: int, end: int) -> bool {
-        if self._aa_src_len != len(self.source_text) {
+        if self._aa_src_len != str_nbytes(self.source_text) {
             self._aa_start = [];
             self._aa_end = [];
             self._aa_collect("arguments");
@@ -9130,7 +9165,7 @@ obj Compiler {
             }
             self._aa_start = m_start;
             self._aa_end = m_end;
-            self._aa_src_len = len(self.source_text);
+            self._aa_src_len = str_nbytes(self.source_text);
         }
         lo: int = 0;
         hi: int = len(self._aa_start);
@@ -9515,7 +9550,7 @@ obj Compiler {
             if len(self.source_text) > 0
                 and aa_sa >= 0
                 and aa_sb > aa_sa
-                and aa_sb <= len(self.source_text) {
+                and aa_sb <= str_nbytes(self.source_text) {
                 aa_needs = self._src_range_has_args_ref(aa_sa, aa_sb);
             }
             if aa_needs {
@@ -9914,8 +9949,8 @@ obj Compiler {
         if len(self.source_text) > 0 {
             src_a: int = nd.loc.start;
             src_b: int = nd.loc.end;
-            if src_a >= 0 and src_b > src_a and src_b <= len(self.source_text) {
-                compiled.source = self.source_text[src_a:src_b];
+            if src_a >= 0 and src_b > src_a and src_b <= str_nbytes(self.source_text) {
+                compiled.source = str_bslice(self.source_text, src_a, src_b);
             }
         }
         # param_base = slot offset where params live.
@@ -11295,15 +11330,15 @@ walking back to `start`, only spaces, `*` and the keywords function / async
 def _src_eval_own_name(src: str, start: int, at: int) -> bool {
     i: int = at - 1;
     while i >= start {
-        ch: str = src[i];
+        ch: str = byte_chr(str_byte(src, i));
         if ch == " " or ch == "\t" or ch == "\n" or ch == "\r" or ch == "*" {
             i = i - 1;
         } else {
             we: int = i;
             while i >= start
                 and (
-                    (src[i] >= "a" and src[i] <= "z")
-                    or (src[i] >= "A" and src[i] <= "Z")
+                    (byte_chr(str_byte(src, i)) >= "a" and byte_chr(str_byte(src, i)) <= "z")
+                    or (byte_chr(str_byte(src, i)) >= "A" and byte_chr(str_byte(src, i)) <= "Z")
                 ) {
                 i = i - 1;
             }
@@ -11326,12 +11361,12 @@ def _src_eval_own_name(src: str, start: int, at: int) -> bool {
 }
 
 def _src_word_at(src: str, pos: int, wl: int, word: str) -> bool {
-    if wl != len(word) {
+    if wl != str_nbytes(word) {
         return False;
     }
     j: int = 0;
     while j < wl {
-        if src[pos + j] != word[j] {
+        if byte_chr(str_byte(src, pos + j)) != byte_chr(str_byte(word, j)) {
             return False;
         }
         j = j + 1;

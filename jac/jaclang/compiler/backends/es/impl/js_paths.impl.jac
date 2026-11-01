@@ -1,19 +1,3 @@
-impl relative_js_specifier(target_path: str, importer_path: str) -> str {
-    target = target_path;
-    if target.endswith('.jac') {
-        target = target[:-4];
-    }
-
-    rel = os.path.relpath(
-        os.path.realpath(target), os.path.dirname(os.path.realpath(importer_path))
-    );
-    rel = rel.replace(os.sep, '/');
-    if not rel.startswith('.') {
-        rel = './' + rel;
-    }
-    return rel + '.js';
-}
-
 impl convert_to_js_import_path(path: str) -> str {
     if not path {
         return path;

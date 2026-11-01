@@ -32,7 +32,8 @@ walker BoundaryAnalysisPass(TreePass) {
         nd: Import,
         item: ModuleItem,
         source_mod: (Module | None),
-        caller_ctx: InteropContext
+        caller_ctx: InteropContext,
+        type_name: str = ""
     ) -> bool;
 
     def _provider_module_of(nd: Import) -> (Module | None);

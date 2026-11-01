@@ -89,6 +89,12 @@ import from engine.src.builtins.array { _to_integer_or_infinity }
 import from engine.src.builtins.string { js_coerce_to_string }
 import from engine.src.runtime.gc_pin { gc_pin_value }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_byte,
+    str_nbytes
+}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 1.  Hidden property key sentinels
 # ══════════════════════════════════════════════════════════════════════════════
@@ -346,13 +352,13 @@ def _format_fixed(sign: str, rounded: int, digits: int) -> str {
     # Convert rounded integer to a digit string
     raw: str = str(rounded);
     # Pad with leading zeros so len(raw) > digits
-    while len(raw) <= digits {
+    while str_nbytes(raw) <= digits {
         raw = "0" + raw;
     }
     # Split: integer part = raw[0 : len-digits], frac part = raw[len-digits : len]
-    split: int = len(raw) - digits;
+    split: int = str_nbytes(raw) - digits;
     int_part: str = str_substr(raw, 0, split);
-    frac_part: str = str_substr(raw, split, len(raw));
+    frac_part: str = str_substr(raw, split, str_nbytes(raw));
     if digits == 0 {
         return sign + int_part;
     }
@@ -391,18 +397,18 @@ def _to_fixed_str(n: float, d: int) -> str {
     if d == 0 {
         return sign + fd;
     }
-    while len(fd) < d + 1 {
+    while str_nbytes(fd) < d + 1 {
         fd = "0" + fd;
     }
     return sign
-        + str_substr(fd, 0, len(fd) - d)
+        + str_substr(fd, 0, str_nbytes(fd) - d)
         + "."
-        + str_substr(fd, len(fd) - d, len(fd));
+        + str_substr(fd, str_nbytes(fd) - d, str_nbytes(fd));
 }
 
 def _trim_leading_zeros(digits: str) -> str {
-    while len(digits) > 1 and str_char_at(digits, 0) == "0" {
-        digits = str_substr(digits, 1, len(digits));
+    while str_nbytes(digits) > 1 and str_char_at(digits, 0) == "0" {
+        digits = str_substr(digits, 1, str_nbytes(digits));
     }
     return digits;
 }
@@ -410,7 +416,7 @@ def _trim_leading_zeros(digits: str) -> str {
 def _num_inc_digit_str(s: str) -> str {
     carry: int = 1;
     out: str = "";
-    i: int = len(s) - 1;
+    i: int = str_nbytes(s) - 1;
     while i >= 0 {
         d: int = int(str_char_at(s, i)) - int(str_char_at("0", 0)) + carry;
         carry = 0;
@@ -432,7 +438,8 @@ def _digits_all_nines(digits: str) -> bool {
         return False;
     }
     i: int = 0;
-    while i < len(digits) {
+    _nb441_digits: int = str_nbytes(digits);
+    while i < _nb441_digits {
         if str_char_at(digits, i) != "9" {
             return False;
         }
@@ -446,42 +453,42 @@ def _to_exponential_explicit(pos: float, f_d: int) -> str {
     _dtoa_run_shortest(pos);
     dig: str = _DTOA_OUT_DIGITS;
     k: int = _DTOA_OUT_K;
-    if len(dig) < need {
+    if str_nbytes(dig) < need {
         _dtoa_run_fixed(pos, need, True);
         dig = _DTOA_OUT_DIGITS;
         k = _DTOA_OUT_K;
-    } elif len(dig) > need {
+    } elif str_nbytes(dig) > need {
         extra: int = int(str_char_at(dig, need)) - int(str_char_at("0", 0));
         head: str = str_substr(dig, 0, need);
         if extra >= 5 {
             head = _num_inc_digit_str(head);
         }
-        if len(head) > need {
+        if str_nbytes(head) > need {
             head = str_substr(head, 0, need);
             k = k + 1;
         }
         dig = head;
     }
-    exp_e: int = k - len(dig) + 1 + f_d;
+    exp_e: int = k - str_nbytes(dig) + 1 + f_d;
     return _format_exponential_mantissa_str(dig, f_d, exp_e);
 }
 
 def _format_exponential_mantissa_str(raw: str, f: int, exp: int) -> str {
     need: int = f + 1;
-    while len(raw) < need {
+    while str_nbytes(raw) < need {
         raw = "0" + raw;
     }
-    if len(raw) > need {
+    if str_nbytes(raw) > need {
         raw = str_substr(raw, 0, need);
     }
     int_d: str = str_substr(raw, 0, 1);
     mant: str = int_d;
     if f > 0 {
-        frac: str = str_substr(raw, 1, len(raw));
-        while len(frac) < f {
+        frac: str = str_substr(raw, 1, str_nbytes(raw));
+        while str_nbytes(frac) < f {
             frac = frac + "0";
         }
-        if len(frac) > f {
+        if str_nbytes(frac) > f {
             frac = str_substr(frac, 0, f);
         }  # jac:ignore[E1001]
         mant = int_d + "." + frac;
@@ -512,7 +519,7 @@ def _to_exponential_auto_parts(pos: float) -> list[int] {
     dig: str = _DTOA_OUT_DIGITS;
     k: int = _DTOA_OUT_K;
     n: int = int(dig);
-    f: int = len(dig) - 1;
+    f: int = str_nbytes(dig) - 1;
     return [k, n, f];
 }
 
@@ -556,7 +563,7 @@ def _to_exponential_str(n: float, fraction_digits: int) -> str {
     if fraction_digits < 0 {
         _dtoa_run_shortest(pos);
         dig_a: str = _trim_trailing_zeros(_DTOA_OUT_DIGITS);
-        f_a: int = len(dig_a) - 1;
+        f_a: int = str_nbytes(dig_a) - 1;
         if f_a < 0 {
             f_a = 0;
         }
@@ -572,13 +579,13 @@ Format significant-digit string `m` with exponent `e` and precision `p`.
 """
 def _format_precision_plain(sign: str, m: str, e: int, p: int) -> str {
     if e >= 0 {
-        if e + 1 >= len(m) {
-            pad: str = _repeat_char("0", e + 1 - len(m));
+        if e + 1 >= str_nbytes(m) {
+            pad: str = _repeat_char("0", e + 1 - str_nbytes(m));
             m = m + pad;
         }
         int_part: str = str_substr(m, 0, e + 1);
-        frac_part: str = str_substr(m, e + 1, len(m));
-        while len(frac_part) < p - (e + 1) {
+        frac_part: str = str_substr(m, e + 1, str_nbytes(m));
+        while str_nbytes(frac_part) < p - (e + 1) {
             frac_part = frac_part + "0";
         }
         if p == e + 1 {
@@ -1196,7 +1203,7 @@ Returns -1 if the character is not a valid digit.
 """
 def _digit_value(c: str, radix: int) -> int {
     v: int = -1;
-    o: int = ord(c);
+    o: int = str_byte(c, 0);
     if o >= 48 and o <= 57 {
         v = o - 48;
     } elif o >= 65 and o <= 90 {  # '0'–'9'
@@ -1219,8 +1226,9 @@ def _parse_int_str(s: str, radix: int) -> int {
     result: int = 0;
     found: bool = False;
     i: int = 0;
-    while i < len(s) {
-        c: str = s[i];
+    _nb1228_s: int = str_nbytes(s);
+    while i < _nb1228_s {
+        c: str = byte_chr(str_byte(s, i));
         dv: int = _digit_value(c, radix);
         if dv < 0 {
             break;
@@ -1240,15 +1248,15 @@ Parse a Jac str as a decimal float (integer + optional fractional + optional exp
 Returns NaN (MATH_NAN) on failure.
 """
 def _parse_float_str(s: str) -> float {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if n == 0 {
         return MATH_NAN;
     }
     i: int = 0;
     sign: float = 1.0;
     # Read sign
-    if i < n and (s[i] == "+" or s[i] == "-") {
-        if s[i] == "-" {
+    if i < n and (byte_chr(str_byte(s, i)) == "+" or byte_chr(str_byte(s, i)) == "-") {
+        if byte_chr(str_byte(s, i)) == "-" {
             sign = -1.0;
         }
         i = i + 1;
@@ -1257,7 +1265,7 @@ def _parse_float_str(s: str) -> float {
     int_part: float = 0.0;
     has_int: bool = False;
     while i < n {
-        c: str = s[i];
+        c: str = byte_chr(str_byte(s, i));
         dv: int = _digit_value(c, 10);
         if dv < 0 {
             break;
@@ -1270,10 +1278,10 @@ def _parse_float_str(s: str) -> float {
     frac_part: float = 0.0;
     frac_div: float = 1.0;
     has_frac: bool = False;
-    if i < n and s[i] == "." {
+    if i < n and byte_chr(str_byte(s, i)) == "." {
         i = i + 1;
         while i < n {
-            c2: str = s[i];
+            c2: str = byte_chr(str_byte(s, i));
             dv2: int = _digit_value(c2, 10);
             if dv2 < 0 {
                 break;
@@ -1289,18 +1297,18 @@ def _parse_float_str(s: str) -> float {
     }
     mantissa: float = sign * (int_part + frac_part / frac_div);
     # Exponent part
-    if i < n and (s[i] == "e" or s[i] == "E") {
+    if i < n and (byte_chr(str_byte(s, i)) == "e" or byte_chr(str_byte(s, i)) == "E") {
         i = i + 1;
         exp_sign: float = 1.0;
-        if i < n and (s[i] == "+" or s[i] == "-") {
-            if s[i] == "-" {
+        if i < n and (byte_chr(str_byte(s, i)) == "+" or byte_chr(str_byte(s, i)) == "-") {
+            if byte_chr(str_byte(s, i)) == "-" {
                 exp_sign = -1.0;
             }
             i = i + 1;
         }
         exp_val: float = 0.0;
         while i < n {
-            c3: str = s[i];
+            c3: str = byte_chr(str_byte(s, i));
             dv3: int = _digit_value(c3, 10);
             if dv3 < 0 {
                 break;
@@ -1336,16 +1344,16 @@ def _strip_js_whitespace(s: str) -> str {
     # allocates two lists, so first check the ASCII ends directly — only fall
     # through to the full Unicode scan when a non-ASCII byte is actually present
     # at either end (the only way a non-ASCII space can appear there).
-    n0: int = len(s);
+    n0: int = str_nbytes(s);
     if n0 == 0 {
         return s;
     }
-    f0: int = ord(str_char_at(s, 0));
-    l0: int = ord(str_char_at(s, n0 - 1));
+    f0: int = str_byte(str_char_at(s, 0), 0);
+    l0: int = str_byte(str_char_at(s, n0 - 1), 0);
     if f0 < 128 and l0 < 128 {
         lo0: int = 0;
         while lo0 < n0 {
-            c0: int = ord(str_char_at(s, lo0));
+            c0: int = str_byte(str_char_at(s, lo0), 0);
             if c0 == 32 or (c0 >= 9 and c0 <= 13) {
                 lo0 = lo0 + 1;
             } else {
@@ -1354,7 +1362,7 @@ def _strip_js_whitespace(s: str) -> str {
         }
         hi0: int = n0;
         while hi0 > lo0 {
-            c1: int = ord(str_char_at(s, hi0 - 1));
+            c1: int = str_byte(str_char_at(s, hi0 - 1), 0);
             if c1 == 32 or (c1 >= 9 and c1 <= 13) {
                 hi0 = hi0 - 1;
             } else {
@@ -1450,9 +1458,9 @@ def:pub js_parseInt(args: list[JSValue]) -> JSValue {
     }
     sign: int = 1;
     start: int = 0;
-    if s[0] == "+" {
+    if byte_chr(str_byte(s, 0)) == "+" {
         start = 1;
-    } elif s[0] == "-" {
+    } elif byte_chr(str_byte(s, 0)) == "-" {
         sign = -1;
         start = 1;
     }
@@ -1479,15 +1487,15 @@ def:pub js_parseInt(args: list[JSValue]) -> JSValue {
     if radix != 0 and (radix < 2 or radix > 36) {
         return js_nan();
     }
-    rest: str = str_substr(s, start, len(s));
+    rest: str = str_substr(s, start, str_nbytes(s));
     # Step 10: a 0x/0X prefix is stripped when R is 16 or unspecified. Note that
     # 0b/0o are NOT parseInt prefixes — parseInt("0b1") is 0, not 1.
     if (radix == 0 or radix == 16)
-        and len(rest) >= 2
-        and rest[0] == "0"
-        and (rest[1] == "x" or rest[1] == "X") {
+        and str_nbytes(rest) >= 2
+        and byte_chr(str_byte(rest, 0)) == "0"
+        and (byte_chr(str_byte(rest, 1)) == "x" or byte_chr(str_byte(rest, 1)) == "X") {
         radix = 16;
-        rest = str_substr(rest, 2, len(rest));
+        rest = str_substr(rest, 2, str_nbytes(rest));
     } elif radix == 0 {
         radix = 10;
     }
@@ -1523,13 +1531,13 @@ def:pub js_parseFloat(args: list[JSValue]) -> JSValue {
     # path used by Number(str)).
     s = _strip_js_whitespace(s);
     # `Infinity` / `±Infinity` prefix (e.g. `parseFloat("Infinityxyz")` → Infinity).
-    if len(s) >= 8 and str_substr(s, 0, 8) == "Infinity" {
+    if str_nbytes(s) >= 8 and str_substr(s, 0, 8) == "Infinity" {
         return js_infinity();
     }
-    if len(s) >= 9 and str_substr(s, 0, 9) == "+Infinity" {
+    if str_nbytes(s) >= 9 and str_substr(s, 0, 9) == "+Infinity" {
         return js_infinity();
     }
-    if len(s) >= 9 and str_substr(s, 0, 9) == "-Infinity" {
+    if str_nbytes(s) >= 9 and str_substr(s, 0, 9) == "-Infinity" {
         return js_neg_infinity();
     }
     f: float = _parse_float_str(s);

@@ -1,24 +1,10 @@
-"""The _elementtree module: the C accelerator for xml.etree.ElementTree.
-
-Derived from CPython 3.14.6 Modules/_elementtree.c; see ../LICENSE.cpython.
-Element, the element iterator, TreeBuilder and XMLParser keep their fields in
-C records laid out as the C structs are. An element's text and tail are tagged
-pointers: the low bit marks a list of fragments the tree builder collected,
-joined when read. XMLParser reaches Expat only through the pyexpat.expat_CAPI
-capsule, whose handlers call back here with the parser object as user data.
-"""
-
 import from c {
-    # ElementObject after its header.
     obj element_record {
         has tag: ptr[PyObject],
             text: ptr[PyObject],
             tail: ptr[PyObject],
             extra: ptr[element_extra];
-    }
-    # ElementObjectExtra: children points at the four static slots or at a
-    # PyMem block.
-    obj element_extra {
+    }  obj element_extra {
         has attrib: ptr[PyObject],
             length: i64,
             allocated: i64,
@@ -30,19 +16,14 @@ import from c {
     }  obj parent_locator {
         has parent: ptr[PyObject],
             child_index: i64;
-    }
-    # ElementIterObject after its header.
-    obj element_iter_record {
+    }  obj element_iter_record {
         has parent_stack: ptr[parent_locator],
             parent_stack_used: i64,
             parent_stack_size: i64,
             root_element: ptr[PyObject],
             sought_tag: ptr[PyObject],
             gettext: i32;
-    }
-    # TreeBuilderObject after its header; `module` (borrowed) stands for its
-    # state pointer.
-    obj treebuilder_record {
+    }  obj treebuilder_record {
         has root_node: ptr[PyObject],
             current: ptr[PyObject],
             last: ptr[PyObject],
@@ -63,10 +44,7 @@ import from c {
             module: ptr[PyObject],
             insert_comments: i32,
             insert_pis: i32;
-    }
-    # XMLParserObject after its header; target and entity lead for the
-    # member descriptors, and the module reference stands for its state.
-    obj xmlparser_record {
+    }  obj xmlparser_record {
         has target: ptr[PyObject],
             entity: ptr[PyObject],
             parser: ptr,
@@ -98,10 +76,8 @@ glob ELEMENT_RECORD_SIZE: int = 32,
 glob ELEMENT_TYPE_NAME: str = "xml.etree.ElementTree.Element";
 
 glob:priv STATIC_CHILDREN: int = 4,
-     # sizeof(ElementObjectExtra), and the offset of its static slots.
      EXTRA_SIZE: int = 64,
      STATIC_OFFSET: int = 32,
-     # sizeof(ElementObject) of CPython: the header and five pointers.
      ELEMENT_OBJECT_SIZE: int = 56,
      INIT_PARENT_STACK_SIZE: int = 8,
      INT_MAX: int = 2147483647,
@@ -109,8 +85,6 @@ glob:priv STATIC_CHILDREN: int = 4,
      PY_EQ: i32 = 2,
      PY_CONSTANT_EMPTY_STR: u32 = 7;
 
-# The handle of the module definition, which the binding fills in, so a type
-# finds its module as PyType_GetModuleByDef() does.
 obj DefinitionHandle {
     has handle: ptr = ptr();
 }
@@ -125,7 +99,6 @@ glob:priv empty_text = StaticText(text=""),
      utf8_name = StaticText(text="utf-8"),
      namespace_separator = StaticText(text="}");
 
-# elementtreestate.
 obj ElementTreeState(NativeState) {
     has parseerror_obj: ptr[PyObject] = NULL,
         deepcopy_obj: ptr[PyObject] = NULL,
@@ -147,78 +120,641 @@ obj ElementTreeState(NativeState) {
         expat_capsule: ptr[PyObject] = NULL,
         expat_capi: ptr[PyExpat_CAPI] = ptr[PyExpat_CAPI]();
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        for value in [
-            self.parseerror_obj,
-            self.deepcopy_obj,
-            self.elementpath_obj,
-            self.comment_factory,
-            self.pi_factory,
-            self.Element_Type,
-            self.ElementIter_Type,
-            self.TreeBuilder_Type,
-            self.XMLParser_Type,
-            self.expat_capsule
-        ] {
-            status = visit_reference(value, visitor, context);
-            if status != 0 {
-                return status;
-            }
-        }
-        return i32(0);
-    }
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
+}
 
-    def clear {
-        references = [
-            self.parseerror_obj,
-            self.deepcopy_obj,
-            self.elementpath_obj,
-            self.comment_factory,
-            self.pi_factory,
-            self.str_append,
-            self.str_find,
-            self.str_findall,
-            self.str_findtext,
-            self.str_iterfind,
-            self.str_tail,
-            self.str_text,
-            self.str_doctype,
-            self.Element_Type,
-            self.ElementIter_Type,
-            self.TreeBuilder_Type,
-            self.XMLParser_Type,
-            self.expat_capsule
-        ];
-        self.parseerror_obj = NULL;
-        self.deepcopy_obj = NULL;
-        self.elementpath_obj = NULL;
-        self.comment_factory = NULL;
-        self.pi_factory = NULL;
-        self.str_append = NULL;
-        self.str_find = NULL;
-        self.str_findall = NULL;
-        self.str_findtext = NULL;
-        self.str_iterfind = NULL;
-        self.str_tail = NULL;
-        self.str_text = NULL;
-        self.str_doctype = NULL;
-        self.Element_Type = NULL;
-        self.ElementIter_Type = NULL;
-        self.TreeBuilder_Type = NULL;
-        self.XMLParser_Type = NULL;
-        self.expat_capsule = NULL;
-        self.expat_capi = ptr[PyExpat_CAPI]();
-        for value in references {
-            jacpy_release(value);
+def module_state(module: ptr[PyObject]) -> ElementTreeState;
+
+def:priv state_by_cls(cls: ptr[PyObject]) -> ElementTreeState;
+
+def:priv state_by_type(type: ptr[PyObject]) -> ElementTreeState;
+
+def:priv element(instance: ptr[PyObject]) -> ptr[element_record];
+
+def:priv element_iter(instance: ptr[PyObject]) -> ptr[element_iter_record];
+
+def:priv treebuilder(instance: ptr[PyObject]) -> ptr[treebuilder_record];
+
+def:priv xmlparser(instance: ptr[PyObject]) -> ptr[xmlparser_record];
+
+def:priv is_element(state: ElementTreeState, value: ptr[PyObject]) -> bool;
+
+def:priv join_get(value: ptr[PyObject]) -> int;
+
+def:priv join_obj(value: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv join_set(value: ptr[PyObject], flag: int) -> ptr[PyObject];
+
+def:priv set_joined_text(instance: ptr[PyObject], value: ptr[PyObject], tail: bool);
+
+def:priv type_name_clipped(value: ptr[PyObject], limit: int) -> str;
+
+def:priv list_join(items: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv is_empty_dict(value: ptr[PyObject]) -> bool;
+
+def:priv fast_size(sequence: ptr[PyObject]) -> i64;
+
+def:priv fast_item(sequence: ptr[PyObject], index: i64) -> ptr[PyObject];
+
+def:priv raise_type_error(value: ptr[PyObject]);
+
+def:priv arity_error(fname: str, low: int, high: int, given: int);
+
+def:priv static_children(extra: ptr[element_extra]) -> ptr[ptr[PyObject]];
+
+def:priv create_extra(instance: ptr[PyObject], attrib: ptr[PyObject]) -> i32;
+
+def:priv dealloc_extra(extra: ptr[element_extra]);
+
+def:priv clear_extra(instance: ptr[PyObject]);
+
+def:priv extra_of(instance: ptr[PyObject]) -> ptr[element_extra];
+
+def:priv child_count(instance: ptr[PyObject]) -> i64;
+
+def:priv child_at(instance: ptr[PyObject], index: i64) -> ptr[PyObject];
+
+def:priv set_child(instance: ptr[PyObject], index: i64, value: ptr[PyObject]);
+
+def:priv element_resize(instance: ptr[PyObject], more: i64) -> i32;
+
+def:priv element_add_subelement(
+    state: ElementTreeState, instance: ptr[PyObject], child: ptr[PyObject]
+) -> i32;
+
+def:priv element_get_attrib(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv element_get_text(
+    instance: ptr[PyObject], tail: bool = False
+) -> ptr[PyObject];
+
+def:priv create_new_element(
+    state: ElementTreeState, tag: ptr[PyObject], attrib: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv get_attrib_from_keywords(kwds: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv merged_attrib(attrib: ptr[PyObject], kwds: ptr[PyObject]) -> ptr[PyObject];
+
+def element_new(
+    type: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def element_init(
+    instance: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> i32;
+
+def:priv bad_argument_value(
+    fname: str, position: int, expected: str, value: ptr[PyObject]
+);
+
+def subelement(
+    module: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def element_gc_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
+
+def element_gc_clear(instance: ptr[PyObject]) -> i32;
+
+def element_dealloc(instance: ptr[PyObject]);
+
+def _elementtree_Element_append_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], subelement: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _elementtree_Element_clear_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _elementtree_Element___copy___impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _elementtree_Element___deepcopy___impl(
+    receiver: ptr[PyObject], memo: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv element_deepcopy(
+    receiver: ptr[PyObject], memo: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv deepcopy(
+    state: ElementTreeState, value: ptr[PyObject], memo: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _elementtree_Element___sizeof___impl(receiver: ptr[PyObject]) -> u64;
+
+def _elementtree_Element___getstate___impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv element_setstate_from_attributes(
+    state: ElementTreeState,
+    instance: ptr[PyObject],
+    tag: ptr[PyObject],
+    attrib: ptr[PyObject],
+    text: ptr[PyObject],
+    tail: ptr[PyObject],
+    children: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv element_setstate_from_Python(
+    state: ElementTreeState, instance: ptr[PyObject], dictionary: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _elementtree_Element___setstate___impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], state: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv path_char(character: int) -> bool;
+
+def:priv checkpath(tag: ptr[PyObject]) -> bool;
+
+def _elementtree_Element_extend_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], elements: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv find_child(receiver: ptr[PyObject], path: ptr[PyObject]) -> ptr[PyObject];
+
+def _elementtree_Element_find_impl(
+    receiver: ptr[PyObject],
+    cls: ptr[PyObject],
+    path: ptr[PyObject],
+    namespaces: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _elementtree_Element_findtext_impl(
+    receiver: ptr[PyObject],
+    cls: ptr[PyObject],
+    path: ptr[PyObject],
+    default_: ptr[PyObject],
+    namespaces: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _elementtree_Element_findall_impl(
+    receiver: ptr[PyObject],
+    cls: ptr[PyObject],
+    path: ptr[PyObject],
+    namespaces: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _elementtree_Element_iterfind_impl(
+    receiver: ptr[PyObject],
+    cls: ptr[PyObject],
+    path: ptr[PyObject],
+    namespaces: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _elementtree_Element_get_impl(
+    receiver: ptr[PyObject], key: ptr[PyObject], default_: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _elementtree_Element_iter_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], tag: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _elementtree_Element_itertext_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject]
+) -> ptr[PyObject];
+
+def element_getitem(instance: ptr[PyObject], index: i64) -> ptr[PyObject];
+
+def element_bool(instance: ptr[PyObject]) -> i32;
+
+def _elementtree_Element_insert_impl(
+    receiver: ptr[PyObject], index: i64, subelement: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _elementtree_Element_items_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _elementtree_Element_keys_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def element_length(instance: ptr[PyObject]) -> i64;
+
+def _elementtree_Element_makeelement_impl(
+    receiver: ptr[PyObject],
+    cls: ptr[PyObject],
+    tag: ptr[PyObject],
+    attrib: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _elementtree_Element_remove_impl(
+    receiver: ptr[PyObject], subelement: ptr[PyObject]
+) -> ptr[PyObject];
+
+def element_repr(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def _elementtree_Element_set_impl(
+    receiver: ptr[PyObject], key: ptr[PyObject], value_: ptr[PyObject]
+) -> ptr[PyObject];
+
+def element_setitem(instance: ptr[PyObject], index: i64, item: ptr[PyObject]) -> i32;
+
+def element_subscr(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject];
+
+def element_ass_subscr(
+    instance: ptr[PyObject], item: ptr[PyObject], value: ptr[PyObject]
+) -> i32;
+
+def:priv delete_slice(
+    instance: ptr[PyObject], start: i64, stop: i64, step: i64
+) -> i32;
+
+def element_tag_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def element_text_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def element_tail_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def element_attrib_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def:priv refuse_delete(value: ptr[PyObject]) -> bool;
+
+def element_tag_setter(
+    instance: ptr[PyObject], value: ptr[PyObject], context: u64
+) -> i32;
+
+def element_text_setter(
+    instance: ptr[PyObject], value: ptr[PyObject], context: u64
+) -> i32;
+
+def element_tail_setter(
+    instance: ptr[PyObject], value: ptr[PyObject], context: u64
+) -> i32;
+
+def element_attrib_setter(
+    instance: ptr[PyObject], value: ptr[PyObject], context: u64
+) -> i32;
+
+def elementiter_dealloc(instance: ptr[PyObject]);
+
+def elementiter_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
+
+def elementiter_self(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv parent_stack_push_new(instance: ptr[PyObject], parent: ptr[PyObject]) -> i32;
+
+def elementiter_next(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv create_elementiter(
+    state: ElementTreeState, receiver: ptr[PyObject], tag: ptr[PyObject], gettext: bool
+) -> ptr[PyObject];
+
+def:priv builder_state(instance: ptr[PyObject]) -> ElementTreeState;
+
+def treebuilder_new(
+    type: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv replace_field(slot: ptr[ptr[PyObject]], value: ptr[PyObject]);
+
+def:priv builder_field(instance: ptr[PyObject], offset: int) -> ptr[ptr[PyObject]];
+
+glob:priv TB_ROOT: int = 0,
+     TB_THIS: int = 8,
+     TB_LAST: int = 16,
+     TB_LAST_FOR_TAIL: int = 24,
+     TB_DATA: int = 32,
+     TB_STACK: int = 40,
+     TB_ELEMENT_FACTORY: int = 56,
+     TB_COMMENT_FACTORY: int = 64,
+     TB_PI_FACTORY: int = 72,
+     TB_EVENTS_APPEND: int = 80,
+     TB_START_EVENT: int = 88,
+     TB_END_EVENT: int = 96,
+     TB_START_NS_EVENT: int = 104,
+     TB_END_NS_EVENT: int = 112,
+     TB_COMMENT_EVENT: int = 120,
+     TB_PI_EVENT: int = 128,
+     TB_VISITED: list[int] = [
+         TB_PI_EVENT,
+         TB_COMMENT_EVENT,
+         TB_END_NS_EVENT,
+         TB_START_NS_EVENT,
+         TB_END_EVENT,
+         TB_START_EVENT,
+         TB_EVENTS_APPEND,
+         TB_ROOT,
+         TB_THIS,
+         TB_LAST,
+         TB_LAST_FOR_TAIL,
+         TB_DATA,
+         TB_STACK,
+         TB_PI_FACTORY,
+         TB_COMMENT_FACTORY,
+         TB_ELEMENT_FACTORY
+     ],
+     TB_CLEARED: list[int] = [
+         TB_PI_EVENT,
+         TB_COMMENT_EVENT,
+         TB_END_NS_EVENT,
+         TB_START_NS_EVENT,
+         TB_END_EVENT,
+         TB_START_EVENT,
+         TB_EVENTS_APPEND,
+         TB_STACK,
+         TB_DATA,
+         TB_LAST,
+         TB_LAST_FOR_TAIL,
+         TB_THIS,
+         TB_PI_FACTORY,
+         TB_COMMENT_FACTORY,
+         TB_ELEMENT_FACTORY,
+         TB_ROOT
+     ];
+
+def _elementtree_TreeBuilder___init___impl(
+    receiver: ptr[PyObject],
+    element_factory: ptr[PyObject],
+    comment_factory: ptr[PyObject],
+    pi_factory: ptr[PyObject],
+    insert_comments: bool,
+    insert_pis: bool
+) -> i32;
+
+def treebuilder_gc_traverse(
+    instance: ptr[PyObject], visitor: ptr, context: ptr
+) -> i32;
+
+def treebuilder_gc_clear(instance: ptr[PyObject]) -> i32;
+
+def treebuilder_dealloc(instance: ptr[PyObject]);
+
+def _elementtree__set_factories_impl(
+    module: ptr[PyObject], comment_factory: ptr[PyObject], pi_factory: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv extend_text_or_tail(
+    state: ElementTreeState, builder: ptr[PyObject], target: ptr[PyObject], tail: bool
+) -> i32;
+
+def:priv treebuilder_flush_data(builder: ptr[PyObject]) -> i32;
+
+def:priv treebuilder_flush_state(
+    state: ElementTreeState, builder: ptr[PyObject], tb: ptr[treebuilder_record]
+) -> i32;
+
+def:priv tb_slot(tb: ptr[treebuilder_record], offset: int) -> ptr[ptr[PyObject]];
+
+def:priv treebuilder_start_state(
+    state: ElementTreeState,
+    builder: ptr[PyObject],
+    tag: ptr[PyObject],
+    attrib: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv treebuilder_end_state(
+    state: ElementTreeState, builder: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv treebuilder_add_subelement(
+    state: ElementTreeState, parent: ptr[PyObject], child: ptr[PyObject]
+) -> i32;
+
+def:priv treebuilder_append_event(
+    builder: ptr[PyObject], action: ptr[PyObject], item: ptr[PyObject]
+) -> i32;
+
+def:priv treebuilder_handle_start(
+    builder: ptr[PyObject], tag: ptr[PyObject], attrib: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv treebuilder_handle_data(
+    builder: ptr[PyObject], data: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv treebuilder_handle_end(
+    builder: ptr[PyObject], tag: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv treebuilder_handle_comment(
+    builder: ptr[PyObject], text: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv treebuilder_handle_pi(
+    builder: ptr[PyObject], target: ptr[PyObject], text: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv treebuilder_handle_start_ns(
+    builder: ptr[PyObject], prefix: ptr[PyObject], uri: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv treebuilder_handle_end_ns(
+    builder: ptr[PyObject], prefix: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _elementtree_TreeBuilder_data_impl(
+    receiver: ptr[PyObject], data: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _elementtree_TreeBuilder_end_impl(
+    receiver: ptr[PyObject], tag: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _elementtree_TreeBuilder_comment_impl(
+    receiver: ptr[PyObject], text: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _elementtree_TreeBuilder_pi_impl(
+    receiver: ptr[PyObject], target: ptr[PyObject], text: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv treebuilder_done(builder: ptr[PyObject]) -> ptr[PyObject];
+
+def _elementtree_TreeBuilder_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _elementtree_TreeBuilder_start_impl(
+    receiver: ptr[PyObject], tag: ptr[PyObject], attrs: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv parser_state(instance: ptr[PyObject]) -> ElementTreeState;
+
+def:priv capi_of(state: ElementTreeState) -> ptr[PyExpat_CAPI];
+
+def:priv capi_has(capi: ptr[PyExpat_CAPI], slot: int) -> bool;
+
+glob:priv CAPI_SET_HASH_SALT: int = 21,
+     CAPI_SET_REPARSE_DEFERRAL_ENABLED: int = 22,
+     CAPI_SET_HASH_SALT_16_BYTES: int = 27;
+
+def:priv decode_utf8(text: ptr[u8], size: i64) -> ptr[PyObject];
+
+def:priv makeuniversal(instance: ptr[PyObject], text: ptr[u8]) -> ptr[PyObject];
+
+def:priv makeuniversal_in(names: ptr[PyObject], text: ptr[u8]) -> ptr[PyObject];
+
+def:priv expat_set_error(
+    state: ElementTreeState, code: i32, line: i64, column: i64, message: ptr[u8]
+);
+
+def:priv is_treebuilder(state: ElementTreeState, value: ptr[PyObject]) -> bool;
+
+def expat_default_handler(op: ptr, data_in: ptr[u8], data_len: i32);
+
+def expat_start_handler(op: ptr, tag_in: ptr[u8], attrib_in: ptr[ptr[u8]]);
+
+def expat_data_handler(op: ptr, data_in: ptr[u8], data_len: i32);
+
+def expat_end_handler(op: ptr, tag_in: ptr[u8]);
+
+def expat_start_ns_handler(op: ptr, prefix_in: ptr[u8], uri_in: ptr[u8]);
+
+def expat_end_ns_handler(op: ptr, prefix_in: ptr[u8]);
+
+def expat_comment_handler(op: ptr, comment_in: ptr[u8]);
+
+def expat_start_doctype_handler(
+    op: ptr,
+    doctype_name: ptr[u8],
+    sysid: ptr[u8],
+    pubid: ptr[u8],
+    has_internal_subset: i32
+);
+
+def expat_pi_handler(op: ptr, target_in: ptr[u8], data_in: ptr[u8]);
+
+def xmlparser_new(
+    type: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv ignore_attribute_error(value: ptr[PyObject]) -> i32;
+
+def:priv parser_field(instance: ptr[PyObject], offset: int) -> ptr[ptr[PyObject]];
+
+glob:priv XP_TARGET: int = 0,
+     XP_ENTITY: int = 8,
+     XP_NAMES: int = 24,
+     XP_MODULE: int = 104,
+     XP_HANDLERS: list[tuple[int, str]] = [
+         (32, "start_ns"),
+         (40, "end_ns"),
+         (48, "start"),
+         (56, "data"),
+         (64, "end"),
+         (72, "comment"),
+         (80, "pi"),
+         (96, "close"),
+         (88, "doctype")
+     ];
+
+def _elementtree_XMLParser___init___impl(
+    receiver: ptr[PyObject], target: ptr[PyObject], encoding: ptr[u8]
+) -> i32;
+
+def xmlparser_gc_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
+
+def xmlparser_gc_clear(instance: ptr[PyObject]) -> i32;
+
+def xmlparser_dealloc(instance: ptr[PyObject]);
+
+def:priv check_xmlparser(instance: ptr[PyObject]) -> bool;
+
+def:priv expat_parse(
+    state: ElementTreeState,
+    instance: ptr[PyObject],
+    data: ptr[u8],
+    data_len: i32,
+    final: i32
+) -> ptr[PyObject];
+
+def _elementtree_XMLParser_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _elementtree_XMLParser_flush_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _elementtree_XMLParser_feed_impl(
+    receiver: ptr[PyObject], data: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _elementtree_XMLParser__parse_whole_impl(
+    receiver: ptr[PyObject], file: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv event_name_of(value: ptr[PyObject]) -> ptr[u8];
+
+def _elementtree_XMLParser__setevents_impl(
+    receiver: ptr[PyObject],
+    events_queue: ptr[PyObject],
+    events_to_report: ptr[PyObject]
+) -> ptr[PyObject];
+
+def xmlparser_version_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def subclass_clinic_state_Element_Type(
+    receiver: ptr[PyObject], value: ptr[PyObject], fname: str, label: str
+);
+
+def import_expat_capi(state: ElementTreeState) -> bool;
+
+impl ElementTreeState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    for value in [
+        self.parseerror_obj,
+        self.deepcopy_obj,
+        self.elementpath_obj,
+        self.comment_factory,
+        self.pi_factory,
+        self.Element_Type,
+        self.ElementIter_Type,
+        self.TreeBuilder_Type,
+        self.XMLParser_Type,
+        self.expat_capsule
+    ] {
+        status = visit_reference(value, visitor, context);
+        if status != 0 {
+            return status;
         }
     }
+    return i32(0);
+}
 
-    def drop {
-        self.clear();
+impl ElementTreeState.clear {
+    references = [
+        self.parseerror_obj,
+        self.deepcopy_obj,
+        self.elementpath_obj,
+        self.comment_factory,
+        self.pi_factory,
+        self.str_append,
+        self.str_find,
+        self.str_findall,
+        self.str_findtext,
+        self.str_iterfind,
+        self.str_tail,
+        self.str_text,
+        self.str_doctype,
+        self.Element_Type,
+        self.ElementIter_Type,
+        self.TreeBuilder_Type,
+        self.XMLParser_Type,
+        self.expat_capsule
+    ];
+    self.parseerror_obj = NULL;
+    self.deepcopy_obj = NULL;
+    self.elementpath_obj = NULL;
+    self.comment_factory = NULL;
+    self.pi_factory = NULL;
+    self.str_append = NULL;
+    self.str_find = NULL;
+    self.str_findall = NULL;
+    self.str_findtext = NULL;
+    self.str_iterfind = NULL;
+    self.str_tail = NULL;
+    self.str_text = NULL;
+    self.str_doctype = NULL;
+    self.Element_Type = NULL;
+    self.ElementIter_Type = NULL;
+    self.TreeBuilder_Type = NULL;
+    self.XMLParser_Type = NULL;
+    self.expat_capsule = NULL;
+    self.expat_capi = ptr[PyExpat_CAPI]();
+    for value in references {
+        jacpy_release(value);
     }
 }
 
-def module_state(module: ptr[PyObject]) -> ElementTreeState {
+impl ElementTreeState.drop {
+    self.clear();
+}
+
+impl module_state(module: ptr[PyObject]) -> ElementTreeState {
     state = jacpy_binding_module_native_get(module);
     if isinstance(state, ElementTreeState) {
         return state;
@@ -226,60 +762,53 @@ def module_state(module: ptr[PyObject]) -> ElementTreeState {
     return ElementTreeState();
 }
 
-# get_elementtree_state_by_cls(): PyType_GetModuleState(cls).
-def:priv state_by_cls(cls: ptr[PyObject]) -> ElementTreeState {
+impl state_by_cls(cls: ptr[PyObject]) -> ElementTreeState {
     return module_state(PyType_GetModule(cls));
 }
 
-# get_elementtree_state_by_type(): the state of the module defining `type`.
-def:priv state_by_type(type: ptr[PyObject]) -> ElementTreeState {
+impl state_by_type(type: ptr[PyObject]) -> ElementTreeState {
     return module_state(jacpy_binding_owner(type, module_definition.handle));
 }
 
-def:priv element(instance: ptr[PyObject]) -> ptr[element_record] {
+impl element(instance: ptr[PyObject]) -> ptr[element_record] {
     return ptr[element_record](jacpy_binding_record(instance, Element_token.handle));
 }
 
-def:priv element_iter(instance: ptr[PyObject]) -> ptr[element_iter_record] {
+impl element_iter(instance: ptr[PyObject]) -> ptr[element_iter_record] {
     return ptr[element_iter_record](
         jacpy_binding_record(instance, ElementIter_token.handle)
     );
 }
 
-def:priv treebuilder(instance: ptr[PyObject]) -> ptr[treebuilder_record] {
+impl treebuilder(instance: ptr[PyObject]) -> ptr[treebuilder_record] {
     return ptr[treebuilder_record](
         jacpy_binding_record(instance, TreeBuilder_token.handle)
     );
 }
 
-def:priv xmlparser(instance: ptr[PyObject]) -> ptr[xmlparser_record] {
+impl xmlparser(instance: ptr[PyObject]) -> ptr[xmlparser_record] {
     return ptr[xmlparser_record](
         jacpy_binding_record(instance, XMLParser_token.handle)
     );
 }
 
-def:priv is_element(state: ElementTreeState, value: ptr[PyObject]) -> bool {
+impl is_element(state: ElementTreeState, value: ptr[PyObject]) -> bool {
     return jacpy_type_check(value, state.Element_Type) != 0;
 }
 
-# ----------------------------------------------------------------- helpers
-
-# JOIN_GET(), JOIN_OBJ() and JOIN_SET() over a tagged text or tail pointer.
-def:priv join_get(value: ptr[PyObject]) -> int {
+impl join_get(value: ptr[PyObject]) -> int {
     return int(value) & 1;
 }
 
-def:priv join_obj(value: ptr[PyObject]) -> ptr[PyObject] {
+impl join_obj(value: ptr[PyObject]) -> ptr[PyObject] {
     return ptr[PyObject](int(value) & ~1);
 }
 
-def:priv join_set(value: ptr[PyObject], flag: int) -> ptr[PyObject] {
+impl join_set(value: ptr[PyObject], flag: int) -> ptr[PyObject] {
     return ptr[PyObject](int(join_obj(value)) | flag);
 }
 
-# _set_joined_ptr() on an element's text (or tail): store the tagged `value`
-# and release the object it replaces.
-def:priv set_joined_text(instance: ptr[PyObject], value: ptr[PyObject], tail: bool) {
+impl set_joined_text(instance: ptr[PyObject], value: ptr[PyObject], tail: bool) {
     record = element(instance).view(1);
     previous = record[0].tail if tail else record[0].text;
     if tail {
@@ -290,8 +819,7 @@ def:priv set_joined_text(instance: ptr[PyObject], value: ptr[PyObject], tail: bo
     jacpy_release(join_obj(previous));
 }
 
-# The type's tp_name, cut to `limit` bytes as C's %.<limit>s does.
-def:priv type_name_clipped(value: ptr[PyObject], limit: int) -> str {
+impl type_name_clipped(value: ptr[PyObject], limit: int) -> str {
     name = jacpy_type_name(value);
     if not name {
         PyErr_Clear();
@@ -306,7 +834,7 @@ def:priv type_name_clipped(value: ptr[PyObject], limit: int) -> str {
     return encoded[:limit].decode("utf-8", "replace");
 }
 
-def:priv list_join(items: ptr[PyObject]) -> ptr[PyObject] {
+impl list_join(items: ptr[PyObject]) -> ptr[PyObject] {
     joiner = Py_GetConstant(PY_CONSTANT_EMPTY_STR);
     if not joiner {
         return NULL;
@@ -316,34 +844,32 @@ def:priv list_join(items: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def:priv is_empty_dict(value: ptr[PyObject]) -> bool {
+impl is_empty_dict(value: ptr[PyObject]) -> bool {
     return jacpy_is_exact_dict(value) != 0 and PyDict_Size(value) == 0;
 }
 
-# PySequence_Fast_GET_SIZE() and PySequence_Fast_GET_ITEM() (borrowed).
-def:priv fast_size(sequence: ptr[PyObject]) -> i64 {
+impl fast_size(sequence: ptr[PyObject]) -> i64 {
     if jacpy_is_list(sequence) != 0 {
         return PyList_Size(sequence);
     }
     return PyTuple_Size(sequence);
 }
 
-def:priv fast_item(sequence: ptr[PyObject], index: i64) -> ptr[PyObject] {
+impl fast_item(sequence: ptr[PyObject], index: i64) -> ptr[PyObject] {
     if jacpy_is_list(sequence) != 0 {
         return PyList_GetItem(sequence, index);
     }
     return PyTuple_GetItem(sequence, index);
 }
 
-def:priv raise_type_error(value: ptr[PyObject]) {
+impl raise_type_error(value: ptr[PyObject]) {
     object_error(
         PyExc_TypeError,
         "expected an Element, not \"" + type_name_clipped(value, 200) + "\""
     );
 }
 
-# The "... takes at least/at most N argument(s) (M given)" of getargs.
-def:priv arity_error(fname: str, low: int, high: int, given: int) {
+impl arity_error(fname: str, low: int, high: int, given: int) {
     expected = low if given < low else high;
     bound = "exactly" if low == high else ("at least" if given < low else "at most");
     plural = "" if expected == 1 else "s";
@@ -353,14 +879,11 @@ def:priv arity_error(fname: str, low: int, high: int, given: int) {
     );
 }
 
-# ----------------------------------------------------- element extra block
-
-def:priv static_children(extra: ptr[element_extra]) -> ptr[ptr[PyObject]] {
+impl static_children(extra: ptr[element_extra]) -> ptr[ptr[PyObject]] {
     return ptr[ptr[PyObject]](int(extra) + STATIC_OFFSET);
 }
 
-# create_extra(): attrib (may be NULL) is borrowed.
-def:priv create_extra(instance: ptr[PyObject], attrib: ptr[PyObject]) -> i32 {
+impl create_extra(instance: ptr[PyObject], attrib: ptr[PyObject]) -> i32 {
     extra = ptr[element_extra](PyMem_Malloc(u64(EXTRA_SIZE)));
     if not extra {
         PyErr_NoMemory();
@@ -375,7 +898,7 @@ def:priv create_extra(instance: ptr[PyObject], attrib: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def:priv dealloc_extra(extra: ptr[element_extra]) {
+impl dealloc_extra(extra: ptr[element_extra]) {
     if not extra {
         return;
     }
@@ -390,8 +913,7 @@ def:priv dealloc_extra(extra: ptr[element_extra]) {
     PyMem_Free(ptr(extra));
 }
 
-# clear_extra(): detach first so releases cannot reach it again.
-def:priv clear_extra(instance: ptr[PyObject]) {
+impl clear_extra(instance: ptr[PyObject]) {
     record = element(instance).view(1);
     extra = record[0].extra;
     if not extra {
@@ -401,37 +923,37 @@ def:priv clear_extra(instance: ptr[PyObject]) {
     dealloc_extra(extra);
 }
 
-def:priv extra_of(instance: ptr[PyObject]) -> ptr[element_extra] {
+impl extra_of(instance: ptr[PyObject]) -> ptr[element_extra] {
     return element(instance).view(1)[0].extra;
 }
 
-def:priv child_count(instance: ptr[PyObject]) -> i64 {
+impl child_count(instance: ptr[PyObject]) -> i64 {
     extra = extra_of(instance);
     return extra.view(1)[0].length if extra else i64(0);
 }
 
-def:priv child_at(instance: ptr[PyObject], index: i64) -> ptr[PyObject] {
+impl child_at(instance: ptr[PyObject], index: i64) -> ptr[PyObject] {
     return (extra_of(instance).view(1)[0].children + index).view(1)[0];
 }
 
-def:priv set_child(instance: ptr[PyObject], index: i64, value: ptr[PyObject]) {
+impl set_child(instance: ptr[PyObject], index: i64, value: ptr[PyObject]) {
     (extra_of(instance).view(1)[0].children + index).view(1)[0] = value;
 }
 
-# element_resize(): room for `extra` more children, growing as Python 2.4's
-# lists did.
-def:priv element_resize(instance: ptr[PyObject], more: i64) -> i32 {
-    if not extra_of(instance) {
+impl element_resize(instance: ptr[PyObject], more: i64) -> i32 {
+    record = element(instance);
+    extra = record.view(1)[0].extra;
+    if not extra {
         if create_extra(instance, NULL) < 0 {
             return i32(-1);
         }
+        extra = record.view(1)[0].extra;
     }
-    extra = extra_of(instance);
     block = extra.view(1);
     size = block[0].length + more;
     if size > block[0].allocated {
         size = (size >> 3) + (3 if size < 9 else 6) + size;
-        # Always room for at least one child.
+
         size = size or i64(1);
         if size > PY_SSIZE_T_MAX // 8 {
             PyErr_NoMemory();
@@ -452,7 +974,6 @@ def:priv element_resize(instance: ptr[PyObject], more: i64) -> i32 {
                 PyErr_NoMemory();
                 return i32(-1);
             }
-            # Move the children out of the static area.
             jacpy_memory_copy(
                 ptr(children), ptr(block[0].children), block[0].length * 8
             );
@@ -463,7 +984,7 @@ def:priv element_resize(instance: ptr[PyObject], more: i64) -> i32 {
     return i32(0);
 }
 
-def:priv element_add_subelement(
+impl element_add_subelement(
     state: ElementTreeState, instance: ptr[PyObject], child: ptr[PyObject]
 ) -> i32 {
     if not is_element(state, child) {
@@ -473,15 +994,13 @@ def:priv element_add_subelement(
     if element_resize(instance, 1) < 0 {
         return i32(-1);
     }
-    block = extra_of(instance).view(1);
+    block = element(instance).view(1)[0].extra.view(1);
     (block[0].children + block[0].length).view(1)[0] = Py_NewRef(child);
     block[0].length = block[0].length + 1;
     return i32(0);
 }
 
-# element_get_attrib(): the attrib dict (borrowed), made when missing; the
-# extra block must exist.
-def:priv element_get_attrib(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl element_get_attrib(instance: ptr[PyObject]) -> ptr[PyObject] {
     block = extra_of(instance).view(1);
     result = block[0].attrib;
     if not result {
@@ -491,11 +1010,7 @@ def:priv element_get_attrib(instance: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-# element_get_text() / element_get_tail(): a new reference, joining a list
-# the tree builder collected.
-def:priv element_get_text(
-    instance: ptr[PyObject], tail: bool = False
-) -> ptr[PyObject] {
+impl element_get_text(instance: ptr[PyObject], tail: bool = False) -> ptr[PyObject] {
     record = element(instance).view(1);
     result = record[0].tail if tail else record[0].text;
     if join_get(result) {
@@ -518,8 +1033,7 @@ def:priv element_get_text(
     return Py_NewRef(result);
 }
 
-# create_new_element(): attrib (may be NULL) is borrowed.
-def:priv create_new_element(
+impl create_new_element(
     state: ElementTreeState, tag: ptr[PyObject], attrib: ptr[PyObject]
 ) -> ptr[PyObject] {
     created = jacpy_binding_allocate(state.Element_Type);
@@ -540,11 +1054,9 @@ def:priv create_new_element(
     return created;
 }
 
-# get_attrib_from_keywords(): kwds merged over its "attrib" entry, which is
-# removed from kwds.
-def:priv get_attrib_from_keywords(kwds: ptr[PyObject]) -> ptr[PyObject] {
+impl get_attrib_from_keywords(kwds: ptr[PyObject]) -> ptr[PyObject] {
     attrib: ptr[PyObject] = NULL;
-    if PyDict_PopString(kwds, "attrib", &mut attrib) < 0 {
+    if PyDict_PopString(kwds, ptr[u8]("attrib"), &mut attrib) < 0 {
         return NULL;
     }
     if attrib {
@@ -569,9 +1081,7 @@ def:priv get_attrib_from_keywords(kwds: ptr[PyObject]) -> ptr[PyObject] {
     return attrib;
 }
 
-# The attrib of Element() and SubElement(): a positional dict copied and
-# updated from kwds, else the keywords; NULL with no error set means none.
-def:priv merged_attrib(attrib: ptr[PyObject], kwds: ptr[PyObject]) -> ptr[PyObject] {
+impl merged_attrib(attrib: ptr[PyObject], kwds: ptr[PyObject]) -> ptr[PyObject] {
     if attrib {
         copied = PyDict_Copy(attrib);
         if not copied {
@@ -589,9 +1099,7 @@ def:priv merged_attrib(attrib: ptr[PyObject], kwds: ptr[PyObject]) -> ptr[PyObje
     return NULL;
 }
 
-# ------------------------------------------------------------ Element type
-
-def element_new(
+impl element_new(
     type: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     created = jacpy_binding_allocate(type);
@@ -605,8 +1113,7 @@ def element_new(
     return created;
 }
 
-# element_init(): PyArg_ParseTuple(args, "O|O!:Element", ...).
-def element_init(
+impl element_init(
     instance: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> i32 {
     given = int(PyTuple_Size(args));
@@ -633,9 +1140,9 @@ def element_init(
             return i32(-1);
         }
     }
-    # The reference to attrib is no longer needed.
+
     jacpy_release(attrib);
-    # Replace the objects tag, text and tail pointed to.
+
     record = element(instance).view(1);
     previous = record[0].tag;
     record[0].tag = Py_NewRef(tag);
@@ -645,8 +1152,7 @@ def element_init(
     return i32(0);
 }
 
-# getargs' converterr() message for an O! unit.
-def:priv bad_argument_value(
+impl bad_argument_value(
     fname: str, position: int, expected: str, value: ptr[PyObject]
 ) {
     shown = "None" if value == Py_None else type_name_clipped(value, 50);
@@ -656,8 +1162,7 @@ def:priv bad_argument_value(
     );
 }
 
-# SubElement(parent, tag, attrib={}, **extra).
-def subelement(
+impl subelement(
     module: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = module_state(module);
@@ -696,7 +1201,7 @@ def subelement(
     return created;
 }
 
-def element_gc_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+impl element_gc_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     status = visit_reference(Py_TYPE(instance), visitor, context);
     if status != 0 {
         return status;
@@ -727,33 +1232,37 @@ def element_gc_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> 
     return i32(0);
 }
 
-def element_gc_clear(instance: ptr[PyObject]) -> i32 {
-    record = element(instance).view(1);
-    tag = record[0].tag;
-    record[0].tag = NULL;
+impl element_gc_clear(instance: ptr[PyObject]) -> i32 {
+    rec = element(instance);
+    tag = rec.view(1)[0].tag;
+    rec.view(1)[0].tag = NULL;
     jacpy_release(tag);
-    record = element(instance).view(1);
-    if record[0].text {
-        set_joined_text(instance, NULL, False);
+    text = rec.view(1)[0].text;
+    if text {
+        rec.view(1)[0].text = NULL;
+        jacpy_release(join_obj(text));
     }
-    record = element(instance).view(1);
-    if record[0].tail {
-        set_joined_text(instance, NULL, True);
+    tail = rec.view(1)[0].tail;
+    if tail {
+        rec.view(1)[0].tail = NULL;
+        jacpy_release(join_obj(tail));
     }
-    # With every reference dropped the extra block goes too.
-    clear_extra(instance);
+    extra = rec.view(1)[0].extra;
+    if extra {
+        rec.view(1)[0].extra = ptr[element_extra]();
+        dealloc_extra(extra);
+    }
     return i32(0);
 }
 
-def element_dealloc(instance: ptr[PyObject]) {
-    # bpo-31095: untrack before any callback can run.
+impl element_dealloc(instance: ptr[PyObject]) {
     jacpy_binding_untrack(instance);
     jacpy_binding_clear_weakrefs(instance);
     element_gc_clear(instance);
     jacpy_binding_free(instance);
 }
 
-def _elementtree_Element_append_impl(
+impl _elementtree_Element_append_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], subelement: ptr[PyObject]
 ) -> ptr[PyObject] {
     if element_add_subelement(state_by_cls(cls), receiver, subelement) < 0 {
@@ -762,14 +1271,14 @@ def _elementtree_Element_append_impl(
     return Py_NewRef(Py_None);
 }
 
-def _elementtree_Element_clear_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _elementtree_Element_clear_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     clear_extra(receiver);
     set_joined_text(receiver, Py_NewRef(Py_None), False);
     set_joined_text(receiver, Py_NewRef(Py_None), True);
     return Py_NewRef(Py_None);
 }
 
-def _elementtree_Element___copy___impl(
+impl _elementtree_Element___copy___impl(
     receiver: ptr[PyObject], cls: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = state_by_cls(cls);
@@ -799,7 +1308,7 @@ def _elementtree_Element___copy___impl(
     return copied;
 }
 
-def _elementtree_Element___deepcopy___impl(
+impl _elementtree_Element___deepcopy___impl(
     receiver: ptr[PyObject], memo: ptr[PyObject]
 ) -> ptr[PyObject] {
     if jacpy_recursion_enter(" in Element.__deepcopy__") != 0 {
@@ -810,11 +1319,9 @@ def _elementtree_Element___deepcopy___impl(
     return result;
 }
 
-def:priv element_deepcopy(
-    receiver: ptr[PyObject], memo: ptr[PyObject]
-) -> ptr[PyObject] {
+impl element_deepcopy(receiver: ptr[PyObject], memo: ptr[PyObject]) -> ptr[PyObject] {
     state = state_by_type(Py_TYPE(receiver));
-    # deepcopy() holds a reference to what it copies.
+
     tag = deepcopy(state, element(receiver).view(1)[0].tag, memo);
     if not tag {
         return NULL;
@@ -867,7 +1374,6 @@ def:priv element_deepcopy(
                 return NULL;
             }
             if extra_of(receiver) and expected_count != child_count(receiver) {
-                # The source changed; make room for what is left of it.
                 expected_count = child_count(receiver);
                 if element_resize(copied, expected_count) < 0 {
                     jacpy_release(child);
@@ -879,10 +1385,10 @@ def:priv element_deepcopy(
             set_child(copied, index, child);
             index += 1;
         }
-        # The source's extra may be gone by now; `index` children were copied.
+
         extra_of(copied).view(1)[0].length = index;
     }
-    # The memo records the copy so deepcopy does not visit it again.
+
     key = PyLong_FromSsize_t(i64(int(receiver)));
     if not key {
         jacpy_release(copied);
@@ -897,9 +1403,7 @@ def:priv element_deepcopy(
     return copied;
 }
 
-# deepcopy(): fast paths for None, str, uniquely referenced plain dicts and
-# exact elements, else copy.deepcopy().
-def:priv deepcopy(
+impl deepcopy(
     state: ElementTreeState, value: ptr[PyObject], memo: ptr[PyObject]
 ) -> ptr[PyObject] {
     if value == Py_None or jacpy_is_exact_unicode(value) != 0 {
@@ -922,7 +1426,6 @@ def:priv deepcopy(
                 return PyDict_Copy(value);
             }
         } elif Py_TYPE(value) == state.Element_Type {
-            # Its __deepcopy__() can run arbitrary code, so hold it.
             Py_NewRef(value);
             result = _elementtree_Element___deepcopy___impl(value, memo);
             jacpy_release(value);
@@ -939,7 +1442,7 @@ def:priv deepcopy(
     return result;
 }
 
-def _elementtree_Element___sizeof___impl(receiver: ptr[PyObject]) -> u64 {
+impl _elementtree_Element___sizeof___impl(receiver: ptr[PyObject]) -> u64 {
     result = u64(jacpy_binding_basicsize(receiver));
     extra = extra_of(receiver);
     if extra {
@@ -952,9 +1455,7 @@ def _elementtree_Element___sizeof___impl(receiver: ptr[PyObject]) -> u64 {
     return result;
 }
 
-# __getstate__(): the instance dict of the pure-Python Element, so pickles
-# are interchangeable between the implementations.
-def _elementtree_Element___getstate___impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _elementtree_Element___getstate___impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     count = child_count(receiver);
     children = PyList_New(count);
     if not children {
@@ -985,7 +1486,7 @@ def _elementtree_Element___getstate___impl(receiver: ptr[PyObject]) -> ptr[PyObj
             ("tail", join_obj(record[0].tail))
         ];
         for (name, value) in entries {
-            key = PyUnicode_FromString(name);
+            key = jacpy_unicode_from_text(name);
             if not key or PyDict_SetItem(result, key, value) < 0 {
                 jacpy_release(key);
                 jacpy_release(result);
@@ -1000,7 +1501,7 @@ def _elementtree_Element___getstate___impl(receiver: ptr[PyObject]) -> ptr[PyObj
     return result;
 }
 
-def:priv element_setstate_from_attributes(
+impl element_setstate_from_attributes(
     state: ElementTreeState,
     instance: ptr[PyObject],
     tag: ptr[PyObject],
@@ -1033,7 +1534,7 @@ def:priv element_setstate_from_attributes(
             return NULL;
         }
         count = PyList_Size(children);
-        # (Re-)allocate the extra block, detached so releases cannot reach it.
+
         oldextra = extra_of(instance);
         element(instance).view(1)[0].extra = ptr[element_extra]();
         if element_resize(instance, count) != 0 {
@@ -1059,7 +1560,7 @@ def:priv element_setstate_from_attributes(
     } elif element_resize(instance, 0) != 0 {
         return NULL;
     }
-    # Stash attrib.
+
     block = extra_of(instance).view(1);
     previous_attrib = block[0].attrib;
     block[0].attrib = Py_NewRef(attrib) if attrib else NULL;
@@ -1068,9 +1569,7 @@ def:priv element_setstate_from_attributes(
     return Py_NewRef(Py_None);
 }
 
-# element_setstate_from_Python(): the state dict read as the keyword-only
-# arguments tag, attrib, text, tail and _children.
-def:priv element_setstate_from_Python(
+impl element_setstate_from_Python(
     state: ElementTreeState, instance: ptr[PyObject], dictionary: ptr[PyObject]
 ) -> ptr[PyObject] {
     names = ["tag", "attrib", "text", "tail", "_children"];
@@ -1078,8 +1577,8 @@ def:priv element_setstate_from_Python(
     found = 0;
     failed = False;
     for index in range(len(names)) {
-        value: ptr[PyObject] = NULL;
-        if PyDict_GetItemStringRef(dictionary, names[index], &mut value) < 0 {
+        (status, value) = dict_get_text(dictionary, names[index]);
+        if status < 0 {
             failed = True;
             break;
         }
@@ -1089,7 +1588,6 @@ def:priv element_setstate_from_Python(
         }
     }
     if not failed and found < int(PyDict_Size(dictionary)) {
-        # An extraneous keyword argument.
         position = i64(0);
         key: ptr[PyObject] = NULL;
         item: ptr[PyObject] = NULL;
@@ -1103,7 +1601,7 @@ def:priv element_setstate_from_Python(
             if text not in names {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "this function got an unexpected keyword argument '%S'",
+                    ptr[u8]("this function got an unexpected keyword argument '%S'"),
                     key
                 );
                 failed = True;
@@ -1123,13 +1621,13 @@ def:priv element_setstate_from_Python(
     return result;
 }
 
-def _elementtree_Element___setstate___impl(
+impl _elementtree_Element___setstate___impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], state: ptr[PyObject]
 ) -> ptr[PyObject] {
     if jacpy_is_exact_dict(state) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "Don't know how to unpickle \"%.200R\" as an Element",
+            ptr[u8]("Don't know how to unpickle \"%.200R\" as an Element"),
             state
         );
         return NULL;
@@ -1137,13 +1635,11 @@ def _elementtree_Element___setstate___impl(
     return element_setstate_from_Python(state_by_cls(cls), receiver, state);
 }
 
-def:priv path_char(character: int) -> bool {
-    # '/', '*', '[', '@', '.'
+impl path_char(character: int) -> bool {
     return character in [47, 42, 91, 64, 46];
 }
 
-# checkpath(): whether a tag holds an xpath character.
-def:priv checkpath(tag: ptr[PyObject]) -> bool {
+impl checkpath(tag: ptr[PyObject]) -> bool {
     if jacpy_is_unicode(tag) != 0 {
         length = int(PyUnicode_GetLength(tag));
         if length >= 3
@@ -1155,7 +1651,6 @@ def:priv checkpath(tag: ptr[PyObject]) -> bool {
                     and int(PyUnicode_ReadChar(tag, 2)) == 125
                 )
             ) {
-            # A wildcard: '{}tag' or '{*}tag'.
             return True;
         }
         check = True;
@@ -1198,14 +1693,14 @@ def:priv checkpath(tag: ptr[PyObject]) -> bool {
         }
         return False;
     }
-    # An unknown type might be a path expression.
+
     return True;
 }
 
-def _elementtree_Element_extend_impl(
+impl _elementtree_Element_extend_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], elements: ptr[PyObject]
 ) -> ptr[PyObject] {
-    sequence = PySequence_Fast(elements, "'elements' must be an iterable");
+    sequence = PySequence_Fast(elements, ptr[u8]("'elements' must be an iterable"));
     if not sequence {
         return NULL;
     }
@@ -1225,9 +1720,7 @@ def _elementtree_Element_extend_impl(
     return Py_NewRef(Py_None);
 }
 
-# The first child whose tag equals `path`, with a new reference; NULL when
-# there is none, or with the error set when a comparison fails.
-def:priv find_child(receiver: ptr[PyObject], path: ptr[PyObject]) -> ptr[PyObject] {
+impl find_child(receiver: ptr[PyObject], path: ptr[PyObject]) -> ptr[PyObject] {
     index = i64(0);
     while extra_of(receiver) and index < child_count(receiver) {
         item = Py_NewRef(child_at(receiver, index));
@@ -1246,7 +1739,7 @@ def:priv find_child(receiver: ptr[PyObject], path: ptr[PyObject]) -> ptr[PyObjec
     return NULL;
 }
 
-def _elementtree_Element_find_impl(
+impl _elementtree_Element_find_impl(
     receiver: ptr[PyObject],
     cls: ptr[PyObject],
     path: ptr[PyObject],
@@ -1265,7 +1758,7 @@ def _elementtree_Element_find_impl(
     return Py_NewRef(Py_None);
 }
 
-def _elementtree_Element_findtext_impl(
+impl _elementtree_Element_findtext_impl(
     receiver: ptr[PyObject],
     cls: ptr[PyObject],
     path: ptr[PyObject],
@@ -1300,7 +1793,7 @@ def _elementtree_Element_findtext_impl(
     return Py_NewRef(default_);
 }
 
-def _elementtree_Element_findall_impl(
+impl _elementtree_Element_findall_impl(
     receiver: ptr[PyObject],
     cls: ptr[PyObject],
     path: ptr[PyObject],
@@ -1333,7 +1826,7 @@ def _elementtree_Element_findall_impl(
     return out;
 }
 
-def _elementtree_Element_iterfind_impl(
+impl _elementtree_Element_iterfind_impl(
     receiver: ptr[PyObject],
     cls: ptr[PyObject],
     path: ptr[PyObject],
@@ -1345,7 +1838,7 @@ def _elementtree_Element_iterfind_impl(
     );
 }
 
-def _elementtree_Element_get_impl(
+impl _elementtree_Element_get_impl(
     receiver: ptr[PyObject], key: ptr[PyObject], default_: ptr[PyObject]
 ) -> ptr[PyObject] {
     extra = extra_of(receiver);
@@ -1361,7 +1854,7 @@ def _elementtree_Element_get_impl(
     return Py_NewRef(default_);
 }
 
-def _elementtree_Element_iter_impl(
+impl _elementtree_Element_iter_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], tag: ptr[PyObject]
 ) -> ptr[PyObject] {
     if jacpy_is_unicode(tag) != 0 {
@@ -1376,13 +1869,13 @@ def _elementtree_Element_iter_impl(
     return create_elementiter(state_by_cls(cls), receiver, tag, False);
 }
 
-def _elementtree_Element_itertext_impl(
+impl _elementtree_Element_itertext_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject]
 ) -> ptr[PyObject] {
     return create_elementiter(state_by_cls(cls), receiver, Py_None, True);
 }
 
-def element_getitem(instance: ptr[PyObject], index: i64) -> ptr[PyObject] {
+impl element_getitem(instance: ptr[PyObject], index: i64) -> ptr[PyObject] {
     if not extra_of(instance) or index < 0 or index >= child_count(instance) {
         object_error(PyExc_IndexError, "child index out of range");
         return NULL;
@@ -1390,10 +1883,12 @@ def element_getitem(instance: ptr[PyObject], index: i64) -> ptr[PyObject] {
     return Py_NewRef(child_at(instance, index));
 }
 
-def element_bool(instance: ptr[PyObject]) -> i32 {
+impl element_bool(instance: ptr[PyObject]) -> i32 {
     if PyErr_WarnEx(
         PyExc_DeprecationWarning,
-        "Testing an element's truth value will always return True in future versions.  Use specific 'len(elem)' or 'elem is not None' test instead.",
+        ptr[u8](
+            "Testing an element's truth value will always return True in future versions.  Use specific 'len(elem)' or 'elem is not None' test instead."
+        ),
         1
     )
         < 0 {
@@ -1402,7 +1897,7 @@ def element_bool(instance: ptr[PyObject]) -> i32 {
     return i32(1) if child_count(instance) else i32(0);
 }
 
-def _elementtree_Element_insert_impl(
+impl _elementtree_Element_insert_impl(
     receiver: ptr[PyObject], index: i64, subelement: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not extra_of(receiver) {
@@ -1434,7 +1929,7 @@ def _elementtree_Element_insert_impl(
     return Py_NewRef(Py_None);
 }
 
-def _elementtree_Element_items_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _elementtree_Element_items_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     extra = extra_of(receiver);
     if not extra or not extra.view(1)[0].attrib {
         return PyList_New(0);
@@ -1442,7 +1937,7 @@ def _elementtree_Element_items_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return PyDict_Items(extra.view(1)[0].attrib);
 }
 
-def _elementtree_Element_keys_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _elementtree_Element_keys_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     extra = extra_of(receiver);
     if not extra or not extra.view(1)[0].attrib {
         return PyList_New(0);
@@ -1450,11 +1945,11 @@ def _elementtree_Element_keys_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return PyDict_Keys(extra.view(1)[0].attrib);
 }
 
-def element_length(instance: ptr[PyObject]) -> i64 {
+impl element_length(instance: ptr[PyObject]) -> i64 {
     return child_count(instance);
 }
 
-def _elementtree_Element_makeelement_impl(
+impl _elementtree_Element_makeelement_impl(
     receiver: ptr[PyObject],
     cls: ptr[PyObject],
     tag: ptr[PyObject],
@@ -1469,11 +1964,9 @@ def _elementtree_Element_makeelement_impl(
     return created;
 }
 
-def _elementtree_Element_remove_impl(
+impl _elementtree_Element_remove_impl(
     receiver: ptr[PyObject], subelement: ptr[PyObject]
 ) -> ptr[PyObject] {
-    # The children may be cleared or shrink while comparing, so the bounds
-    # are checked on every step; faster growth is not guarded, as in lists.
     status = 0;
     index = i64(0);
     while extra_of(receiver) and index < child_count(receiver) {
@@ -1495,7 +1988,7 @@ def _elementtree_Element_remove_impl(
         object_error(PyExc_ValueError, "Element.remove(x): element not found");
         return NULL;
     }
-    # A mutation on the last step may have removed or cleared the children.
+
     if not extra_of(receiver) or index >= child_count(receiver) {
         return Py_NewRef(Py_None);
     }
@@ -1510,7 +2003,7 @@ def _elementtree_Element_remove_impl(
     return Py_NewRef(Py_None);
 }
 
-def element_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl element_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     tag = element(instance).view(1)[0].tag;
     if not tag {
         return PyUnicode_FromFormat("<Element at %p>", instance);
@@ -1532,7 +2025,7 @@ def element_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     return NULL;
 }
 
-def _elementtree_Element_set_impl(
+impl _elementtree_Element_set_impl(
     receiver: ptr[PyObject], key: ptr[PyObject], value_: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not extra_of(receiver) {
@@ -1550,7 +2043,7 @@ def _elementtree_Element_set_impl(
     return Py_NewRef(Py_None);
 }
 
-def element_setitem(instance: ptr[PyObject], index: i64, item: ptr[PyObject]) -> i32 {
+impl element_setitem(instance: ptr[PyObject], index: i64, item: ptr[PyObject]) -> i32 {
     if not extra_of(instance) or index < 0 or index >= child_count(instance) {
         object_error(PyExc_IndexError, "child assignment index out of range");
         return i32(-1);
@@ -1576,7 +2069,7 @@ def element_setitem(instance: ptr[PyObject], index: i64, item: ptr[PyObject]) ->
     return i32(0);
 }
 
-def element_subscr(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
+impl element_subscr(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
     if PyIndex_Check(item) != 0 {
         index = PyNumber_AsSsize_t(item, PyExc_IndexError);
         if index == -1 and PyErr_Occurred() {
@@ -1588,8 +2081,6 @@ def element_subscr(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject
         return element_getitem(instance, index);
     }
     if jacpy_is_slice(item) != 0 {
-        # The slice length is computed once user code can no longer change
-        # the children (gh-143200).
         start = i64(0);
         stop = i64(0);
         step = i64(0);
@@ -1609,8 +2100,7 @@ def element_subscr(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject
         if not result {
             return NULL;
         }
-        # Each index is computed, never stepped past the end, where a huge
-        # step would overflow.
+
         for index in range(int(count)) {
             PyList_SetItem(
                 result,
@@ -1624,7 +2114,7 @@ def element_subscr(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject
     return NULL;
 }
 
-def element_ass_subscr(
+impl element_ass_subscr(
     instance: ptr[PyObject], item: ptr[PyObject], value: ptr[PyObject]
 ) -> i32 {
     if PyIndex_Check(item) != 0 {
@@ -1650,8 +2140,8 @@ def element_ass_subscr(
     if not value {
         return delete_slice(instance, start, stop, step);
     }
-    # A new slice is assigned.
-    sequence = PySequence_Fast(value, "assignment expects an iterable");
+
+    sequence = PySequence_Fast(value, ptr[u8]("assignment expects an iterable"));
     if not sequence {
         return i32(-1);
     }
@@ -1673,7 +2163,7 @@ def element_ass_subscr(
         );
         return i32(-1);
     }
-    # Resize before the recycle bin exists, so nothing leaks.
+
     if newlen > slicelen {
         if element_resize(instance, newlen - slicelen) < 0 {
             jacpy_release(sequence);
@@ -1691,8 +2181,6 @@ def element_ass_subscr(
     }
     recycle: ptr[PyObject] = NULL;
     if slicelen > 0 {
-        # The old items wait in a recycle list until the element is
-        # consistent again, so their release cannot re-enter here.
         recycle = PyList_New(slicelen);
         if not recycle {
             jacpy_release(sequence);
@@ -1706,7 +2194,6 @@ def element_ass_subscr(
     }
     length = child_count(instance);
     if newlen < slicelen {
-        # Delete slice.
         position = stop;
         while position < length {
             set_child(
@@ -1715,7 +2202,6 @@ def element_ass_subscr(
             position += 1;
         }
     } elif newlen > slicelen {
-        # Insert slice.
         position = length - 1;
         while position >= stop {
             set_child(
@@ -1724,7 +2210,7 @@ def element_ass_subscr(
             position -= 1;
         }
     }
-    # Replace the slice.
+
     for index in range(int(newlen)) {
         set_child(
             instance,
@@ -1735,14 +2221,12 @@ def element_ass_subscr(
     block = extra_of(instance).view(1);
     block[0].length = block[0].length + newlen - slicelen;
     jacpy_release(sequence);
-    # Empty the recycle bin.
+
     jacpy_release(recycle);
     return i32(0);
 }
 
-def:priv delete_slice(
-    instance: ptr[PyObject], start: i64, stop: i64, step: i64
-) -> i32 {
+impl delete_slice(instance: ptr[PyObject], start: i64, stop: i64, step: i64) -> i32 {
     if not extra_of(instance) {
         return i32(0);
     }
@@ -1752,22 +2236,19 @@ def:priv delete_slice(
     if slicelen <= 0 {
         return i32(0);
     }
-    # Deleting does not care about direction, so make the range ascending.
+
     if step < 0 {
         stop = start + 1;
         start = stop + step * (slicelen - 1) - 1;
         step = -step;
     }
-    # Every removed child waits in `recycle`.
+
     recycle = PyList_New(slicelen);
     if not recycle {
         return i32(-1);
     }
     children = extra_of(instance).view(1)[0].children;
-    # Walk the children to delete; before the next one, num_moved children
-    # shift down by the i + 1 places already freed.
-    # Positions are compared without forming one past a huge step, which
-    # would overflow.
+
     length = child_count(instance);
     for position in range(int(slicelen)) {
         index = i64(position);
@@ -1783,7 +2264,7 @@ def:priv delete_slice(
             u64(num_moved * 8)
         );
     }
-    # The tail left after the last removed child.
+
     last = start + (slicelen - 1) * step;
     if step < length - last {
         current = last + step;
@@ -1795,24 +2276,24 @@ def:priv delete_slice(
     }
     block = extra_of(instance).view(1);
     block[0].length = block[0].length - slicelen;
-    # Discard the recycle list with the deleted children.
+
     jacpy_release(recycle);
     return i32(0);
 }
 
-def element_tag_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl element_tag_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     return Py_NewRef(element(instance).view(1)[0].tag);
 }
 
-def element_text_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl element_text_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     return element_get_text(instance);
 }
 
-def element_tail_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl element_tail_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     return element_get_text(instance, True);
 }
 
-def element_attrib_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl element_attrib_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     if not extra_of(instance) {
         if create_extra(instance, NULL) < 0 {
             return NULL;
@@ -1822,7 +2303,7 @@ def element_attrib_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject
     return Py_NewRef(result) if result else NULL;
 }
 
-def:priv refuse_delete(value: ptr[PyObject]) -> bool {
+impl refuse_delete(value: ptr[PyObject]) -> bool {
     if not value {
         object_error(PyExc_AttributeError, "can't delete element attribute");
         return True;
@@ -1830,7 +2311,7 @@ def:priv refuse_delete(value: ptr[PyObject]) -> bool {
     return False;
 }
 
-def element_tag_setter(
+impl element_tag_setter(
     instance: ptr[PyObject], value: ptr[PyObject], context: u64
 ) -> i32 {
     if refuse_delete(value) {
@@ -1843,7 +2324,7 @@ def element_tag_setter(
     return i32(0);
 }
 
-def element_text_setter(
+impl element_text_setter(
     instance: ptr[PyObject], value: ptr[PyObject], context: u64
 ) -> i32 {
     if refuse_delete(value) {
@@ -1853,7 +2334,7 @@ def element_text_setter(
     return i32(0);
 }
 
-def element_tail_setter(
+impl element_tail_setter(
     instance: ptr[PyObject], value: ptr[PyObject], context: u64
 ) -> i32 {
     if refuse_delete(value) {
@@ -1863,7 +2344,7 @@ def element_tail_setter(
     return i32(0);
 }
 
-def element_attrib_setter(
+impl element_attrib_setter(
     instance: ptr[PyObject], value: ptr[PyObject], context: u64
 ) -> i32 {
     if refuse_delete(value) {
@@ -1887,16 +2368,11 @@ def element_attrib_setter(
     return i32(0);
 }
 
-# ------------------------------------------------------- element iterator
-
-# The iterator walks the tree in pre-order with a stack of (parent, next
-# child index) pairs.
-
-def elementiter_dealloc(instance: ptr[PyObject]) {
+impl elementiter_dealloc(instance: ptr[PyObject]) {
     record = element_iter(instance).view(1);
     used = record[0].parent_stack_used;
     record[0].parent_stack_used = 0;
-    # bpo-31095: untrack before any callback can run.
+
     jacpy_binding_untrack(instance);
     stack = element_iter(instance).view(1)[0].parent_stack;
     while used > 0 {
@@ -1910,7 +2386,7 @@ def elementiter_dealloc(instance: ptr[PyObject]) {
     jacpy_binding_free(instance);
 }
 
-def elementiter_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+impl elementiter_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     record = element_iter(instance).view(1);
     used = record[0].parent_stack_used;
     while used > 0 {
@@ -1931,11 +2407,11 @@ def elementiter_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) ->
     return i32(0);
 }
 
-def elementiter_self(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl elementiter_self(instance: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(instance);
 }
 
-def:priv parent_stack_push_new(instance: ptr[PyObject], parent: ptr[PyObject]) -> i32 {
+impl parent_stack_push_new(instance: ptr[PyObject], parent: ptr[PyObject]) -> i32 {
     record = element_iter(instance).view(1);
     if record[0].parent_stack_used >= record[0].parent_stack_size {
         new_size = record[0].parent_stack_size * 2;
@@ -1955,32 +2431,27 @@ def:priv parent_stack_push_new(instance: ptr[PyObject], parent: ptr[PyObject]) -
     return i32(0);
 }
 
-# elementiter_next(): iter() and itertext() share it; itertext() yields only
-# non-empty text, and the tails of the elements below the one it started at.
-def elementiter_next(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl elementiter_next(instance: ptr[PyObject]) -> ptr[PyObject] {
     while True {
         record = element_iter(instance).view(1);
         elem: ptr[PyObject] = NULL;
         text: ptr[PyObject] = NULL;
         take_text = False;
         if not record[0].parent_stack_used {
-            # The start or the end of the iteration.
             if not record[0].root_element {
                 PyErr_SetNone(PyExc_StopIteration);
                 return NULL;
             }
-            # The root's reference moves to elem.
+
             elem = record[0].root_element;
             record[0].root_element = NULL;
         } else {
-            # Visit the current parent's next child, or pop the parent.
             item = (record[0].parent_stack + (record[0].parent_stack_used - 1)).view(1);
             child_index = item[0].child_index;
             elem = item[0].parent;
             if not extra_of(elem) or child_index >= child_count(elem) {
                 record[0].parent_stack_used = record[0].parent_stack_used - 1;
-                # itertext() returns only inner text, not the text after the
-                # element it began with.
+
                 if record[0].gettext and record[0].parent_stack_used {
                     text = element_get_text(elem, True);
                     take_text = True;
@@ -2026,7 +2497,7 @@ def elementiter_next(instance: ptr[PyObject]) -> ptr[PyObject] {
                 continue;
             }
         }
-        # gettext:
+
         jacpy_release(elem);
         if not text {
             return NULL;
@@ -2047,7 +2518,7 @@ def elementiter_next(instance: ptr[PyObject]) -> ptr[PyObject] {
     return NULL;
 }
 
-def:priv create_elementiter(
+impl create_elementiter(
     state: ElementTreeState, receiver: ptr[PyObject], tag: ptr[PyObject], gettext: bool
 ) -> ptr[PyObject] {
     created = jacpy_binding_allocate(state.ElementIter_Type);
@@ -2071,13 +2542,11 @@ def:priv create_elementiter(
     return created;
 }
 
-# ------------------------------------------------------------ TreeBuilder
-
-def:priv builder_state(instance: ptr[PyObject]) -> ElementTreeState {
+impl builder_state(instance: ptr[PyObject]) -> ElementTreeState {
     return module_state(treebuilder(instance).view(1)[0].module);
 }
 
-def treebuilder_new(
+impl treebuilder_new(
     type: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     created = jacpy_binding_allocate(type);
@@ -2113,73 +2582,17 @@ def treebuilder_new(
     return created;
 }
 
-# Store an owned value (or NULL) in a TreeBuilder field, releasing the old.
-def:priv replace_field(slot: ptr[ptr[PyObject]], value: ptr[PyObject]) {
+impl replace_field(slot: ptr[ptr[PyObject]], value: ptr[PyObject]) {
     previous = slot.view(1)[0];
     slot.view(1)[0] = value;
     jacpy_release(previous);
 }
 
-def:priv builder_field(instance: ptr[PyObject], offset: int) -> ptr[ptr[PyObject]] {
+impl builder_field(instance: ptr[PyObject], offset: int) -> ptr[ptr[PyObject]] {
     return ptr[ptr[PyObject]](int(treebuilder(instance)) + offset);
 }
 
-# Field offsets of treebuilder_record.
-glob:priv TB_ROOT: int = 0,
-     TB_THIS: int = 8,
-     TB_LAST: int = 16,
-     TB_LAST_FOR_TAIL: int = 24,
-     TB_DATA: int = 32,
-     TB_STACK: int = 40,
-     TB_ELEMENT_FACTORY: int = 56,
-     TB_COMMENT_FACTORY: int = 64,
-     TB_PI_FACTORY: int = 72,
-     TB_EVENTS_APPEND: int = 80,
-     TB_START_EVENT: int = 88,
-     TB_END_EVENT: int = 96,
-     TB_START_NS_EVENT: int = 104,
-     TB_END_NS_EVENT: int = 112,
-     TB_COMMENT_EVENT: int = 120,
-     TB_PI_EVENT: int = 128,
-     # The fields tp_traverse visits and tp_clear drops, in C's orders.
-     TB_VISITED: list[int] = [
-         TB_PI_EVENT,
-         TB_COMMENT_EVENT,
-         TB_END_NS_EVENT,
-         TB_START_NS_EVENT,
-         TB_END_EVENT,
-         TB_START_EVENT,
-         TB_EVENTS_APPEND,
-         TB_ROOT,
-         TB_THIS,
-         TB_LAST,
-         TB_LAST_FOR_TAIL,
-         TB_DATA,
-         TB_STACK,
-         TB_PI_FACTORY,
-         TB_COMMENT_FACTORY,
-         TB_ELEMENT_FACTORY
-     ],
-     TB_CLEARED: list[int] = [
-         TB_PI_EVENT,
-         TB_COMMENT_EVENT,
-         TB_END_NS_EVENT,
-         TB_START_NS_EVENT,
-         TB_END_EVENT,
-         TB_START_EVENT,
-         TB_EVENTS_APPEND,
-         TB_STACK,
-         TB_DATA,
-         TB_LAST,
-         TB_LAST_FOR_TAIL,
-         TB_THIS,
-         TB_PI_FACTORY,
-         TB_COMMENT_FACTORY,
-         TB_ELEMENT_FACTORY,
-         TB_ROOT
-     ];
-
-def _elementtree_TreeBuilder___init___impl(
+impl _elementtree_TreeBuilder___init___impl(
     receiver: ptr[PyObject],
     element_factory: ptr[PyObject],
     comment_factory: ptr[PyObject],
@@ -2219,7 +2632,7 @@ def _elementtree_TreeBuilder___init___impl(
     return i32(0);
 }
 
-def treebuilder_gc_traverse(
+impl treebuilder_gc_traverse(
     instance: ptr[PyObject], visitor: ptr, context: ptr
 ) -> i32 {
     status = visit_reference(Py_TYPE(instance), visitor, context);
@@ -2237,21 +2650,20 @@ def treebuilder_gc_traverse(
     return i32(0);
 }
 
-def treebuilder_gc_clear(instance: ptr[PyObject]) -> i32 {
+impl treebuilder_gc_clear(instance: ptr[PyObject]) -> i32 {
     for offset in TB_CLEARED {
         replace_field(builder_field(instance, offset), NULL);
     }
     return i32(0);
 }
 
-def treebuilder_dealloc(instance: ptr[PyObject]) {
+impl treebuilder_dealloc(instance: ptr[PyObject]) {
     jacpy_binding_untrack(instance);
     treebuilder_gc_clear(instance);
     jacpy_binding_free(instance);
 }
 
-# _set_factories(): the old (comment_factory, pi_factory).
-def _elementtree__set_factories_impl(
+impl _elementtree__set_factories_impl(
     module: ptr[PyObject], comment_factory: ptr[PyObject], pi_factory: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = module_state(module);
@@ -2284,13 +2696,11 @@ def _elementtree__set_factories_impl(
     return old;
 }
 
-# treebuilder_extend_element_text_or_tail(): append the collected data to
-# the element's text (or tail).
-def:priv extend_text_or_tail(
+impl extend_text_or_tail(
     state: ElementTreeState, builder: ptr[PyObject], target: ptr[PyObject], tail: bool
 ) -> i32 {
     data_slot = builder_field(builder, TB_DATA);
-    # The fast paths, almost always taken.
+
     if Py_TYPE(target) == state.Element_Type {
         record = element(target).view(1);
         dest = record[0].tail if tail else record[0].text;
@@ -2314,13 +2724,13 @@ def:priv extend_text_or_tail(
             return i32(0);
         }
     }
-    # The fallback for other elements and the non-trivial cases.
+
     name = state.str_tail if tail else state.str_text;
     previous = PyObject_GetAttr(target, name);
     if not previous {
         return i32(-1);
     }
-    joined = list_join(builder_field(builder, TB_DATA).view(1)[0]);
+    joined = list_join(data_slot.view(1)[0]);
     if not joined {
         jacpy_release(previous);
         return i32(-1);
@@ -2341,23 +2751,35 @@ def:priv extend_text_or_tail(
     if status < 0 {
         return i32(-1);
     }
-    replace_field(builder_field(builder, TB_DATA), NULL);
+    replace_field(data_slot, NULL);
     return i32(0);
 }
 
-def:priv treebuilder_flush_data(builder: ptr[PyObject]) -> i32 {
-    record = treebuilder(builder).view(1);
-    if not record[0].data {
+impl treebuilder_flush_data(builder: ptr[PyObject]) -> i32 {
+    tb = treebuilder(builder);
+    if not tb.view(1)[0].data {
         return i32(0);
     }
-    state = builder_state(builder);
-    if not record[0].last_for_tail {
-        return extend_text_or_tail(state, builder, record[0].last, False);
-    }
-    return extend_text_or_tail(state, builder, record[0].last_for_tail, True);
+    return treebuilder_flush_state(builder_state(builder), builder, tb);
 }
 
-def:priv treebuilder_add_subelement(
+impl treebuilder_flush_state(
+    state: ElementTreeState, builder: ptr[PyObject], tb: ptr[treebuilder_record]
+) -> i32 {
+    if not tb.view(1)[0].data {
+        return i32(0);
+    }
+    if not tb.view(1)[0].last_for_tail {
+        return extend_text_or_tail(state, builder, tb.view(1)[0].last, False);
+    }
+    return extend_text_or_tail(state, builder, tb.view(1)[0].last_for_tail, True);
+}
+
+impl tb_slot(tb: ptr[treebuilder_record], offset: int) -> ptr[ptr[PyObject]] {
+    return ptr[ptr[PyObject]](int(tb) + offset);
+}
+
+impl treebuilder_add_subelement(
     state: ElementTreeState, parent: ptr[PyObject], child: ptr[PyObject]
 ) -> i32 {
     if Py_TYPE(parent) == state.Element_Type {
@@ -2371,7 +2793,7 @@ def:priv treebuilder_add_subelement(
     return i32(0);
 }
 
-def:priv treebuilder_append_event(
+impl treebuilder_append_event(
     builder: ptr[PyObject], action: ptr[PyObject], item: ptr[PyObject]
 ) -> i32 {
     if action {
@@ -2391,14 +2813,23 @@ def:priv treebuilder_append_event(
     return i32(0);
 }
 
-def:priv treebuilder_handle_start(
+impl treebuilder_handle_start(
     builder: ptr[PyObject], tag: ptr[PyObject], attrib: ptr[PyObject]
 ) -> ptr[PyObject] {
-    state = builder_state(builder);
-    if treebuilder_flush_data(builder) < 0 {
+    return treebuilder_start_state(builder_state(builder), builder, tag, attrib);
+}
+
+impl treebuilder_start_state(
+    state: ElementTreeState,
+    builder: ptr[PyObject],
+    tag: ptr[PyObject],
+    attrib: ptr[PyObject]
+) -> ptr[PyObject] {
+    tb = treebuilder(builder);
+    if treebuilder_flush_state(state, builder, tb) < 0 {
         return NULL;
     }
-    factory = treebuilder(builder).view(1)[0].element_factory;
+    factory = tb.view(1)[0].element_factory;
     created: ptr[PyObject] = NULL;
     if not factory {
         created = create_new_element(state, tag, attrib);
@@ -2415,62 +2846,57 @@ def:priv treebuilder_handle_start(
     if not created {
         return NULL;
     }
-    current = treebuilder(builder).view(1)[0].current;
-    replace_field(builder_field(builder, TB_LAST_FOR_TAIL), NULL);
+    current = tb.view(1)[0].current;
+    replace_field(tb_slot(tb, TB_LAST_FOR_TAIL), NULL);
     if current != Py_None {
         if treebuilder_add_subelement(state, current, created) < 0 {
             jacpy_release(created);
             return NULL;
         }
     } else {
-        if treebuilder(builder).view(1)[0].root_node {
+        if tb.view(1)[0].root_node {
             object_error(state.parseerror_obj, "multiple elements on top level");
             jacpy_release(created);
             return NULL;
         }
-        treebuilder(builder).view(1)[0].root_node = Py_NewRef(created);
+        tb.view(1)[0].root_node = Py_NewRef(created);
     }
-    record = treebuilder(builder).view(1);
-    if record[0].index < PyList_Size(record[0].stack) {
-        if PyList_SetItem(record[0].stack, record[0].index, Py_NewRef(current)) < 0 {
+    stack = tb.view(1)[0].stack;
+    index = tb.view(1)[0].index;
+    if index < PyList_Size(stack) {
+        if PyList_SetItem(stack, index, Py_NewRef(current)) < 0 {
             jacpy_release(created);
             return NULL;
         }
-    } elif PyList_Append(record[0].stack, current) < 0 {
+    } elif PyList_Append(stack, current) < 0 {
         jacpy_release(created);
         return NULL;
     }
-    record = treebuilder(builder).view(1);
-    record[0].index = record[0].index + 1;
-    replace_field(builder_field(builder, TB_THIS), Py_NewRef(created));
-    replace_field(builder_field(builder, TB_LAST), Py_NewRef(created));
-    if treebuilder_append_event(
-        builder, treebuilder(builder).view(1)[0].start_event_obj, created
-    )
-        < 0 {
+    tb.view(1)[0].index = index + 1;
+    replace_field(tb_slot(tb, TB_THIS), Py_NewRef(created));
+    replace_field(tb_slot(tb, TB_LAST), Py_NewRef(created));
+    action = tb.view(1)[0].start_event_obj;
+    if action and treebuilder_append_event(builder, action, created) < 0 {
         jacpy_release(created);
         return NULL;
     }
     return created;
 }
 
-def:priv treebuilder_handle_data(
+impl treebuilder_handle_data(
     builder: ptr[PyObject], data: ptr[PyObject]
 ) -> ptr[PyObject] {
     record = treebuilder(builder).view(1);
     if not record[0].data {
         if record[0].last == Py_None {
-            # Data before the first start() is ignored.
             return Py_NewRef(Py_None);
         }
-        # The first item is stored as is.
+
         record[0].data = Py_NewRef(data);
     } elif Py_TYPE(record[0].data) == addressof(PyBytes_Type)
         and PyUnstable_Object_IsUniquelyReferenced(record[0].data) != 0
         and Py_TYPE(data) == addressof(PyBytes_Type)
         and PyBytes_Size(data) == 1 {
-        # Single character data sections grow the bytes in place, as
-        # _PyBytes_Resize() does.
         grown = record[0].data;
         record[0].data = NULL;
         PyBytes_Concat(&mut grown, data);
@@ -2479,7 +2905,6 @@ def:priv treebuilder_handle_data(
             return NULL;
         }
     } elif jacpy_is_exact_list(record[0].data) != 0 {
-        # Later items go to a list.
         if PyList_Append(record[0].data, data) < 0 {
             return NULL;
         }
@@ -2496,32 +2921,40 @@ def:priv treebuilder_handle_data(
     return Py_NewRef(Py_None);
 }
 
-def:priv treebuilder_handle_end(
+impl treebuilder_handle_end(
     builder: ptr[PyObject], tag: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if treebuilder_flush_data(builder) < 0 {
+    return treebuilder_end_state(builder_state(builder), builder);
+}
+
+impl treebuilder_end_state(
+    state: ElementTreeState, builder: ptr[PyObject]
+) -> ptr[PyObject] {
+    tb = treebuilder(builder);
+    if treebuilder_flush_state(state, builder, tb) < 0 {
         return NULL;
     }
-    record = treebuilder(builder).view(1);
-    if record[0].index == 0 {
+    index = tb.view(1)[0].index;
+    if index == 0 {
         object_error(PyExc_IndexError, "pop from empty stack");
         return NULL;
     }
-    item = record[0].last;
-    record[0].last = Py_NewRef(record[0].current);
-    replace_field(builder_field(builder, TB_LAST_FOR_TAIL), record[0].last);
-    record = treebuilder(builder).view(1);
-    record[0].index = record[0].index - 1;
-    record[0].current = Py_NewRef(PyList_GetItem(record[0].stack, record[0].index));
+    item = tb.view(1)[0].last;
+    last = Py_NewRef(tb.view(1)[0].current);
+    tb.view(1)[0].last = last;
+    replace_field(tb_slot(tb, TB_LAST_FOR_TAIL), last);
+    index -= 1;
+    tb.view(1)[0].index = index;
+    tb.view(1)[0].current = Py_NewRef(PyList_GetItem(tb.view(1)[0].stack, index));
     jacpy_release(item);
-    record = treebuilder(builder).view(1);
-    if treebuilder_append_event(builder, record[0].end_event_obj, record[0].last) < 0 {
+    action = tb.view(1)[0].end_event_obj;
+    if action and treebuilder_append_event(builder, action, tb.view(1)[0].last) < 0 {
         return NULL;
     }
-    return Py_NewRef(treebuilder(builder).view(1)[0].last);
+    return Py_NewRef(tb.view(1)[0].last);
 }
 
-def:priv treebuilder_handle_comment(
+impl treebuilder_handle_comment(
     builder: ptr[PyObject], text: ptr[PyObject]
 ) -> ptr[PyObject] {
     if treebuilder_flush_data(builder) < 0 {
@@ -2558,7 +2991,7 @@ def:priv treebuilder_handle_comment(
     return comment;
 }
 
-def:priv treebuilder_handle_pi(
+impl treebuilder_handle_pi(
     builder: ptr[PyObject], target: ptr[PyObject], text: ptr[PyObject]
 ) -> ptr[PyObject] {
     if treebuilder_flush_data(builder) < 0 {
@@ -2596,7 +3029,7 @@ def:priv treebuilder_handle_pi(
     return pi;
 }
 
-def:priv treebuilder_handle_start_ns(
+impl treebuilder_handle_start_ns(
     builder: ptr[PyObject], prefix: ptr[PyObject], uri: ptr[PyObject]
 ) -> ptr[PyObject] {
     record = treebuilder(builder).view(1);
@@ -2615,7 +3048,7 @@ def:priv treebuilder_handle_start_ns(
     return Py_NewRef(Py_None);
 }
 
-def:priv treebuilder_handle_end_ns(
+impl treebuilder_handle_end_ns(
     builder: ptr[PyObject], prefix: ptr[PyObject]
 ) -> ptr[PyObject] {
     record = treebuilder(builder).view(1);
@@ -2627,82 +3060,74 @@ def:priv treebuilder_handle_end_ns(
     return Py_NewRef(Py_None);
 }
 
-def _elementtree_TreeBuilder_data_impl(
+impl _elementtree_TreeBuilder_data_impl(
     receiver: ptr[PyObject], data: ptr[PyObject]
 ) -> ptr[PyObject] {
     return treebuilder_handle_data(receiver, data);
 }
 
-def _elementtree_TreeBuilder_end_impl(
+impl _elementtree_TreeBuilder_end_impl(
     receiver: ptr[PyObject], tag: ptr[PyObject]
 ) -> ptr[PyObject] {
     return treebuilder_handle_end(receiver, tag);
 }
 
-def _elementtree_TreeBuilder_comment_impl(
+impl _elementtree_TreeBuilder_comment_impl(
     receiver: ptr[PyObject], text: ptr[PyObject]
 ) -> ptr[PyObject] {
     return treebuilder_handle_comment(receiver, text);
 }
 
-def _elementtree_TreeBuilder_pi_impl(
+impl _elementtree_TreeBuilder_pi_impl(
     receiver: ptr[PyObject], target: ptr[PyObject], text: ptr[PyObject]
 ) -> ptr[PyObject] {
     return treebuilder_handle_pi(receiver, target, text);
 }
 
-def:priv treebuilder_done(builder: ptr[PyObject]) -> ptr[PyObject] {
+impl treebuilder_done(builder: ptr[PyObject]) -> ptr[PyObject] {
     top = treebuilder(builder).view(1)[0].root_node;
     return Py_NewRef(top or Py_None);
 }
 
-def _elementtree_TreeBuilder_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _elementtree_TreeBuilder_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return treebuilder_done(receiver);
 }
 
-def _elementtree_TreeBuilder_start_impl(
+impl _elementtree_TreeBuilder_start_impl(
     receiver: ptr[PyObject], tag: ptr[PyObject], attrs: ptr[PyObject]
 ) -> ptr[PyObject] {
     return treebuilder_handle_start(receiver, tag, attrs);
 }
 
-# ------------------------------------------------------ the expat interface
-
-def:priv parser_state(instance: ptr[PyObject]) -> ElementTreeState {
+impl parser_state(instance: ptr[PyObject]) -> ElementTreeState {
     return module_state(xmlparser(instance).view(1)[0].elementtree_module);
 }
 
-def:priv capi_of(state: ElementTreeState) -> ptr[PyExpat_CAPI] {
+impl capi_of(state: ElementTreeState) -> ptr[PyExpat_CAPI] {
     return state.expat_capi;
 }
 
-# Whether the capsule's entry at `slot` (its index counting 8-byte words from
-# the start of the record) is set; entries past the Expat version are NULL.
-def:priv capi_has(capi: ptr[PyExpat_CAPI], slot: int) -> bool {
+impl capi_has(capi: ptr[PyExpat_CAPI], slot: int) -> bool {
     return bool((ptr[ptr](capi) + slot).view(1)[0]);
 }
 
-glob:priv CAPI_SET_HASH_SALT: int = 21,
-     CAPI_SET_REPARSE_DEFERRAL_ENABLED: int = 22,
-     CAPI_SET_HASH_SALT_16_BYTES: int = 27;
-
-def:priv decode_utf8(text: ptr[u8], size: i64) -> ptr[PyObject] {
+impl decode_utf8(text: ptr[u8], size: i64) -> ptr[PyObject] {
     return PyUnicode_DecodeUTF8Stateful(ptr(text), size, ptr[u8](), None);
 }
 
-# makeuniversal(): a UTF-8 tag or attribute name from Expat as a universal
-# name, "{uri}local" for a namespaced one, cached in the names dict.
-def:priv makeuniversal(instance: ptr[PyObject], text: ptr[u8]) -> ptr[PyObject] {
+impl makeuniversal(instance: ptr[PyObject], text: ptr[u8]) -> ptr[PyObject] {
+    return makeuniversal_in(xmlparser(instance).view(1)[0].names, text);
+}
+
+impl makeuniversal_in(names: ptr[PyObject], text: ptr[u8]) -> ptr[PyObject] {
     size = i64(strlen(text));
     key = jacpy_bytes_from_memory(ptr(text), size);
     if not key {
         return NULL;
     }
-    names = xmlparser(instance).view(1)[0].names;
     found = PyDict_GetItemWithError(names, key);
     value = Py_NewRef(found) if found else NULL;
     if not value and not PyErr_Occurred() {
-        # A new name: convert it to a universal name and decode it.
         separator = size;
         for index in range(int(size)) {
             if int((text + index).view(1)[0]) == 125 {
@@ -2711,7 +3136,6 @@ def:priv makeuniversal(instance: ptr[PyObject], text: ptr[u8]) -> ptr[PyObject] 
             }
         }
         if separator != size {
-            # "{" + name, decoded as one run so errors keep their positions.
             buffer = ptr[u8](PyMem_Malloc(u64(size + 1)));
             if not buffer {
                 jacpy_release(key);
@@ -2738,9 +3162,7 @@ def:priv makeuniversal(instance: ptr[PyObject], text: ptr[u8]) -> ptr[PyObject] 
     return value;
 }
 
-# expat_set_error(): a ParseError with code and position attributes;
-# `message` (a C string, or NULL for Expat's) leads the text.
-def:priv expat_set_error(
+impl expat_set_error(
     state: ElementTreeState, code: i32, line: i64, column: i64, message: ptr[u8]
 ) {
     shown: ptr[u8] = message;
@@ -2761,7 +3183,7 @@ def:priv expat_set_error(
         jacpy_release(error);
         return;
     }
-    if PyObject_SetAttrString(error, "code", number) == -1 {
+    if PyObject_SetAttrString(error, ptr[u8]("code"), number) == -1 {
         jacpy_release(error);
         jacpy_release(number);
         return;
@@ -2784,7 +3206,7 @@ def:priv expat_set_error(
         jacpy_release(error);
         return;
     }
-    if PyObject_SetAttrString(error, "position", position) == -1 {
+    if PyObject_SetAttrString(error, ptr[u8]("position"), position) == -1 {
         jacpy_release(error);
         jacpy_release(position);
         return;
@@ -2794,12 +3216,11 @@ def:priv expat_set_error(
     jacpy_release(error);
 }
 
-def:priv is_treebuilder(state: ElementTreeState, value: ptr[PyObject]) -> bool {
+impl is_treebuilder(state: ElementTreeState, value: ptr[PyObject]) -> bool {
     return Py_TYPE(value) == state.TreeBuilder_Type;
 }
 
-# expat_default_handler(): entity references Expat could not expand.
-def expat_default_handler(op: ptr, data_in: ptr[u8], data_len: i32) {
+impl expat_default_handler(op: ptr, data_in: ptr[u8], data_len: i32) {
     instance = ptr[PyObject](op);
     if data_len < 2 or int(data_in.view(1)[0]) != 38 {
         return;
@@ -2823,8 +3244,6 @@ def expat_default_handler(op: ptr, data_in: ptr[u8], data_len: i32) {
         }
         jacpy_release(result);
     } elif not PyErr_Occurred() {
-        # Report the first error, not the last: "undefined entity " and up to
-        # 100 bytes of the reference, as strncat() into a char[128] does.
         message = ptr[u8](PyMem_Malloc(128));
         if not message {
             PyErr_NoMemory();
@@ -2857,14 +3276,15 @@ def expat_default_handler(op: ptr, data_in: ptr[u8], data_len: i32) {
     jacpy_release(key);
 }
 
-def expat_start_handler(op: ptr, tag_in: ptr[u8], attrib_in: ptr[ptr[u8]]) {
+impl expat_start_handler(op: ptr, tag_in: ptr[u8], attrib_in: ptr[ptr[u8]]) {
     instance = ptr[PyObject](op);
     if PyErr_Occurred() {
         return;
     }
-    tag = makeuniversal(instance, tag_in);
+    parser = xmlparser(instance);
+    names = parser.view(1)[0].names;
+    tag = makeuniversal_in(names, tag_in);
     if not tag {
-        # The parser looks for errors.
         return;
     }
     attrib: ptr[PyObject] = NULL;
@@ -2876,7 +3296,7 @@ def expat_start_handler(op: ptr, tag_in: ptr[u8], attrib_in: ptr[ptr[u8]]) {
         }
         pair = attrib_in;
         while pair.view(1)[0] and (pair + 1).view(1)[0] {
-            key = makeuniversal(instance, pair.view(1)[0]);
+            key = makeuniversal_in(names, pair.view(1)[0]);
             if not key {
                 jacpy_release(attrib);
                 jacpy_release(tag);
@@ -2901,12 +3321,11 @@ def expat_start_handler(op: ptr, tag_in: ptr[u8], attrib_in: ptr[ptr[u8]]) {
             pair = pair + 2;
         }
     }
-    state = parser_state(instance);
-    record = xmlparser(instance).view(1);
+    state = module_state(parser.view(1)[0].elementtree_module);
+    record = parser.view(1);
     result: ptr[PyObject] = NULL;
     if is_treebuilder(state, record[0].target) {
-        # The shortcut.
-        result = treebuilder_handle_start(record[0].target, tag, attrib);
+        result = treebuilder_start_state(state, record[0].target, tag, attrib);
     } elif record[0].handle_start {
         if not attrib {
             attrib = PyDict_New();
@@ -2924,7 +3343,7 @@ def expat_start_handler(op: ptr, tag_in: ptr[u8], attrib_in: ptr[ptr[u8]]) {
     jacpy_release(result);
 }
 
-def expat_data_handler(op: ptr, data_in: ptr[u8], data_len: i32) {
+impl expat_data_handler(op: ptr, data_in: ptr[u8], data_len: i32) {
     instance = ptr[PyObject](op);
     if PyErr_Occurred() {
         return;
@@ -2933,8 +3352,8 @@ def expat_data_handler(op: ptr, data_in: ptr[u8], data_len: i32) {
     if not data {
         return;
     }
-    state = parser_state(instance);
     record = xmlparser(instance).view(1);
+    state = module_state(record[0].elementtree_module);
     result: ptr[PyObject] = NULL;
     if is_treebuilder(state, record[0].target) {
         result = treebuilder_handle_data(record[0].target, data);
@@ -2945,17 +3364,16 @@ def expat_data_handler(op: ptr, data_in: ptr[u8], data_len: i32) {
     jacpy_release(result);
 }
 
-def expat_end_handler(op: ptr, tag_in: ptr[u8]) {
+impl expat_end_handler(op: ptr, tag_in: ptr[u8]) {
     instance = ptr[PyObject](op);
     if PyErr_Occurred() {
         return;
     }
-    state = parser_state(instance);
     record = xmlparser(instance).view(1);
+    state = module_state(record[0].elementtree_module);
     result: ptr[PyObject] = NULL;
     if is_treebuilder(state, record[0].target) {
-        # The standard tree builder does not look at the end tag.
-        result = treebuilder_handle_end(record[0].target, Py_None);
+        result = treebuilder_end_state(state, record[0].target);
     } elif record[0].handle_end {
         tag = makeuniversal(instance, tag_in);
         if tag {
@@ -2968,7 +3386,7 @@ def expat_end_handler(op: ptr, tag_in: ptr[u8]) {
     jacpy_release(result);
 }
 
-def expat_start_ns_handler(op: ptr, prefix_in: ptr[u8], uri_in: ptr[u8]) {
+impl expat_start_ns_handler(op: ptr, prefix_in: ptr[u8], uri_in: ptr[u8]) {
     instance = ptr[PyObject](op);
     if PyErr_Occurred() {
         return;
@@ -2979,7 +3397,6 @@ def expat_start_ns_handler(op: ptr, prefix_in: ptr[u8], uri_in: ptr[u8]) {
     record = xmlparser(instance).view(1);
     result: ptr[PyObject] = NULL;
     if is_treebuilder(state, record[0].target) {
-        # TreeBuilder does not implement start_ns(); report the event.
         target = record[0].target;
         builder = treebuilder(target).view(1);
         if builder[0].events_append and builder[0].start_ns_event_obj {
@@ -3015,7 +3432,7 @@ def expat_start_ns_handler(op: ptr, prefix_in: ptr[u8], uri_in: ptr[u8]) {
     jacpy_release(result);
 }
 
-def expat_end_ns_handler(op: ptr, prefix_in: ptr[u8]) {
+impl expat_end_ns_handler(op: ptr, prefix_in: ptr[u8]) {
     instance = ptr[PyObject](op);
     if PyErr_Occurred() {
         return;
@@ -3025,7 +3442,6 @@ def expat_end_ns_handler(op: ptr, prefix_in: ptr[u8]) {
     record = xmlparser(instance).view(1);
     result: ptr[PyObject] = NULL;
     if is_treebuilder(state, record[0].target) {
-        # TreeBuilder does not implement end_ns(); report the event.
         target = record[0].target;
         builder = treebuilder(target).view(1);
         if builder[0].events_append and builder[0].end_ns_event_obj {
@@ -3044,7 +3460,7 @@ def expat_end_ns_handler(op: ptr, prefix_in: ptr[u8]) {
     jacpy_release(result);
 }
 
-def expat_comment_handler(op: ptr, comment_in: ptr[u8]) {
+impl expat_comment_handler(op: ptr, comment_in: ptr[u8]) {
     instance = ptr[PyObject](op);
     if PyErr_Occurred() {
         return;
@@ -3073,7 +3489,7 @@ def expat_comment_handler(op: ptr, comment_in: ptr[u8]) {
     }
 }
 
-def expat_start_doctype_handler(
+impl expat_start_doctype_handler(
     op: ptr,
     doctype_name: ptr[u8],
     sysid: ptr[u8],
@@ -3112,7 +3528,6 @@ def expat_start_doctype_handler(
     state = parser_state(instance);
     handler = xmlparser(instance).view(1)[0].handle_doctype;
     if handler {
-        # The target's doctype handler.
         result = PyObject_CallFunctionObjArgs(
             handler, doctype_name_obj, pubid_obj, sysid_obj, NULL
         );
@@ -3120,7 +3535,9 @@ def expat_start_doctype_handler(
     } elif PyObject_HasAttrWithError(instance, state.str_doctype) > 0 {
         PyErr_WarnEx(
             PyExc_RuntimeWarning,
-            "The doctype() method of XMLParser is ignored.  Define doctype() method on the TreeBuilder target.",
+            ptr[u8](
+                "The doctype() method of XMLParser is ignored.  Define doctype() method on the TreeBuilder target."
+            ),
             1
         );
     }
@@ -3129,7 +3546,7 @@ def expat_start_doctype_handler(
     jacpy_release(sysid_obj);
 }
 
-def expat_pi_handler(op: ptr, target_in: ptr[u8], data_in: ptr[u8]) {
+impl expat_pi_handler(op: ptr, target_in: ptr[u8], data_in: ptr[u8]) {
     instance = ptr[PyObject](op);
     if PyErr_Occurred() {
         return;
@@ -3174,22 +3591,18 @@ def expat_pi_handler(op: ptr, target_in: ptr[u8], data_in: ptr[u8]) {
     }
 }
 
-# ---------------------------------------------------------------- XMLParser
-
-def xmlparser_new(
+impl xmlparser_new(
     type: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     created = jacpy_binding_allocate(type);
     if created {
-        # gh-111784: the parser keeps its module alive.
         module = jacpy_binding_owner(type, module_definition.handle);
         xmlparser(created).view(1)[0].elementtree_module = Py_NewRef(module);
     }
     return created;
 }
 
-# ignore_attribute_error(): 0 when the lookup succeeded or found nothing.
-def:priv ignore_attribute_error(value: ptr[PyObject]) -> i32 {
+impl ignore_attribute_error(value: ptr[PyObject]) -> i32 {
     if not value {
         if PyErr_ExceptionMatches(PyExc_AttributeError) == 0 {
             return i32(-1);
@@ -3199,29 +3612,11 @@ def:priv ignore_attribute_error(value: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def:priv parser_field(instance: ptr[PyObject], offset: int) -> ptr[ptr[PyObject]] {
+impl parser_field(instance: ptr[PyObject], offset: int) -> ptr[ptr[PyObject]] {
     return ptr[ptr[PyObject]](int(xmlparser(instance)) + offset);
 }
 
-# Offsets of xmlparser_record's handler fields, with the target attribute
-# each is looked up by.
-glob:priv XP_TARGET: int = 0,
-     XP_ENTITY: int = 8,
-     XP_NAMES: int = 24,
-     XP_MODULE: int = 104,
-     XP_HANDLERS: list[tuple[int, str]] = [
-         (32, "start_ns"),
-         (40, "end_ns"),
-         (48, "start"),
-         (56, "data"),
-         (64, "end"),
-         (72, "comment"),
-         (80, "pi"),
-         (96, "close"),
-         (88, "doctype")
-     ];
-
-def _elementtree_XMLParser___init___impl(
+impl _elementtree_XMLParser___init___impl(
     receiver: ptr[PyObject], target: ptr[PyObject], encoding: ptr[u8]
 ) -> i32 {
     entity = PyDict_New();
@@ -3248,7 +3643,7 @@ def _elementtree_XMLParser___init___impl(
         PyErr_NoMemory();
         return i32(-1);
     }
-    # 16 bytes of entropy when Expat (2.8.0 and later) takes them (gh-149018).
+
     if capi_has(capi, CAPI_SET_HASH_SALT_16_BYTES) {
         table[0].SetHashSalt16Bytes(parser, ptr[u8](addressof(_Py_HashSecret)));
     } elif capi_has(capi, CAPI_SET_HASH_SALT) {
@@ -3268,13 +3663,13 @@ def _elementtree_XMLParser___init___impl(
     }
     replace_field(parser_field(receiver, XP_TARGET), target);
     for (offset, name) in XP_HANDLERS {
-        handler = PyObject_GetAttrString(target, name);
+        handler = jacpy_object_getattr_text(target, name);
         replace_field(parser_field(receiver, offset), handler);
         if ignore_attribute_error(handler) {
             return i32(-1);
         }
     }
-    # Configure the parser.
+
     record = xmlparser(receiver).view(1);
     table[0].SetUserData(parser, ptr(receiver));
     if record[0].handle_start_ns or record[0].handle_end_ns {
@@ -3298,7 +3693,7 @@ def _elementtree_XMLParser___init___impl(
     return i32(0);
 }
 
-def xmlparser_gc_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+impl xmlparser_gc_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
     status = visit_reference(Py_TYPE(instance), visitor, context);
     if status != 0 {
         return status;
@@ -3327,7 +3722,7 @@ def xmlparser_gc_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -
     return i32(0);
 }
 
-def xmlparser_gc_clear(instance: ptr[PyObject]) -> i32 {
+impl xmlparser_gc_clear(instance: ptr[PyObject]) -> i32 {
     record = xmlparser(instance).view(1);
     if record[0].parser {
         parser = record[0].parser;
@@ -3357,13 +3752,13 @@ def xmlparser_gc_clear(instance: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def xmlparser_dealloc(instance: ptr[PyObject]) {
+impl xmlparser_dealloc(instance: ptr[PyObject]) {
     jacpy_binding_untrack(instance);
     xmlparser_gc_clear(instance);
     jacpy_binding_free(instance);
 }
 
-def:priv check_xmlparser(instance: ptr[PyObject]) -> bool {
+impl check_xmlparser(instance: ptr[PyObject]) -> bool {
     if not xmlparser(instance).view(1)[0].target {
         object_error(PyExc_ValueError, "XMLParser.__init__() wasn't called");
         return False;
@@ -3371,7 +3766,7 @@ def:priv check_xmlparser(instance: ptr[PyObject]) -> bool {
     return True;
 }
 
-def:priv expat_parse(
+impl expat_parse(
     state: ElementTreeState,
     instance: ptr[PyObject],
     data: ptr[u8],
@@ -3398,8 +3793,7 @@ def:priv expat_parse(
     return Py_NewRef(Py_None);
 }
 
-def _elementtree_XMLParser_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
-    # No more data for the parser.
+impl _elementtree_XMLParser_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     if not check_xmlparser(receiver) {
         return NULL;
     }
@@ -3420,7 +3814,7 @@ def _elementtree_XMLParser_close_impl(receiver: ptr[PyObject]) -> ptr[PyObject] 
     return result;
 }
 
-def _elementtree_XMLParser_flush_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _elementtree_XMLParser_flush_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     if not check_xmlparser(receiver) {
         return NULL;
     }
@@ -3429,8 +3823,7 @@ def _elementtree_XMLParser_flush_impl(receiver: ptr[PyObject]) -> ptr[PyObject] 
     if not capi_has(capi, CAPI_SET_REPARSE_DEFERRAL_ENABLED) {
         return Py_NewRef(Py_None);
     }
-    # The parser is private to this object, so reparse deferral is known to be
-    # enabled here.
+
     table = capi.view(1);
     table[0].SetReparseDeferralEnabled(
         xmlparser(receiver).view(1)[0].parser, XML_FALSE
@@ -3440,10 +3833,9 @@ def _elementtree_XMLParser_flush_impl(receiver: ptr[PyObject]) -> ptr[PyObject] 
     return result;
 }
 
-def _elementtree_XMLParser_feed_impl(
+impl _elementtree_XMLParser_feed_impl(
     receiver: ptr[PyObject], data: ptr[PyObject]
 ) -> ptr[PyObject] {
-    # Feed data to the parser.
     if not check_xmlparser(receiver) {
         return NULL;
     }
@@ -3458,7 +3850,7 @@ def _elementtree_XMLParser_feed_impl(
             object_error(PyExc_OverflowError, "size does not fit in an int");
             return NULL;
         }
-        # Explicitly UTF-8; the result is ignored.
+
         state.expat_capi.view(1)[0].SetEncoding(
             xmlparser(receiver).view(1)[0].parser, utf8_name.get()
         );
@@ -3478,14 +3870,13 @@ def _elementtree_XMLParser_feed_impl(
     return result;
 }
 
-def _elementtree_XMLParser__parse_whole_impl(
+impl _elementtree_XMLParser__parse_whole_impl(
     receiver: ptr[PyObject], file: ptr[PyObject]
 ) -> ptr[PyObject] {
-    # (internal) parse the whole input, until the end of the stream.
     if not check_xmlparser(receiver) {
         return NULL;
     }
-    reader = PyObject_GetAttrString(file, "read");
+    reader = PyObject_GetAttrString(file, ptr[u8]("read"));
     if not reader {
         return NULL;
     }
@@ -3493,17 +3884,17 @@ def _elementtree_XMLParser__parse_whole_impl(
     while True {
         buffer = PyObject_CallFunction(reader, "i", i32(64 * 1024));
         if not buffer {
-            # read() failed (a KeyboardInterrupt, say).
             jacpy_release(reader);
             return NULL;
         }
         if jacpy_is_exact_unicode(buffer) != 0 {
-            # A str is encoded to UTF-8.
             if PyUnicode_GetLength(buffer) == 0 {
                 jacpy_release(buffer);
                 break;
             }
-            encoded = PyUnicode_AsEncodedString(buffer, "utf-8", "surrogatepass");
+            encoded = PyUnicode_AsEncodedString(
+                buffer, ptr[u8]("utf-8"), ptr[u8]("surrogatepass")
+            );
             jacpy_release(buffer);
             if not encoded {
                 jacpy_release(reader);
@@ -3540,9 +3931,7 @@ def _elementtree_XMLParser__parse_whole_impl(
     return result;
 }
 
-# The C string of an event name (UTF-8 of a str, or a bytes payload); NULL
-# for anything else.
-def:priv event_name_of(value: ptr[PyObject]) -> ptr[u8] {
+impl event_name_of(value: ptr[PyObject]) -> ptr[u8] {
     if jacpy_is_unicode(value) != 0 {
         return PyUnicode_AsUTF8(value);
     }
@@ -3552,12 +3941,11 @@ def:priv event_name_of(value: ptr[PyObject]) -> ptr[u8] {
     return ptr[u8]();
 }
 
-def _elementtree_XMLParser__setevents_impl(
+impl _elementtree_XMLParser__setevents_impl(
     receiver: ptr[PyObject],
     events_queue: ptr[PyObject],
     events_to_report: ptr[PyObject]
 ) -> ptr[PyObject] {
-    # Activate element event reporting.
     if not check_xmlparser(receiver) {
         return NULL;
     }
@@ -3570,12 +3958,12 @@ def _elementtree_XMLParser__setevents_impl(
         );
         return NULL;
     }
-    events_append = PyObject_GetAttrString(events_queue, "append");
+    events_append = PyObject_GetAttrString(events_queue, ptr[u8]("append"));
     if not events_append {
         return NULL;
     }
     replace_field(builder_field(target, TB_EVENTS_APPEND), events_append);
-    # Clear out the existing events.
+
     for offset in [
         TB_START_EVENT,
         TB_END_EVENT,
@@ -3587,11 +3975,12 @@ def _elementtree_XMLParser__setevents_impl(
         replace_field(builder_field(target, offset), NULL);
     }
     if events_to_report == Py_None {
-        # The default is "end" only.
-        treebuilder(target).view(1)[0].end_event_obj = PyUnicode_FromString("end");
+        treebuilder(target).view(1)[0].end_event_obj = PyUnicode_FromString(
+            ptr[u8]("end")
+        );
         return Py_NewRef(Py_None);
     }
-    sequence = PySequence_Fast(events_to_report, "events must be a sequence");
+    sequence = PySequence_Fast(events_to_report, ptr[u8]("events must be a sequence"));
     if not sequence {
         return NULL;
     }
@@ -3602,7 +3991,7 @@ def _elementtree_XMLParser__setevents_impl(
         name = event_name_of(name_obj);
         if not name {
             jacpy_release(sequence);
-            PyErr_Format(PyExc_ValueError, "invalid events sequence");
+            PyErr_Format(PyExc_ValueError, ptr[u8]("invalid events sequence"));
             return NULL;
         }
         parser = xmlparser(receiver).view(1)[0].parser;
@@ -3629,7 +4018,7 @@ def _elementtree_XMLParser__setevents_impl(
             replace_field(builder_field(target, TB_PI_EVENT), Py_NewRef(name_obj));
             capi[0].SetProcessingInstructionHandler(parser, expat_pi_handler);
         } else {
-            PyErr_Format(PyExc_ValueError, "unknown event '%s'", name);
+            PyErr_Format(PyExc_ValueError, ptr[u8]("unknown event '%s'"), name);
             jacpy_release(sequence);
             return NULL;
         }
@@ -3639,14 +4028,12 @@ def _elementtree_XMLParser__setevents_impl(
     return Py_NewRef(Py_None);
 }
 
-def xmlparser_version_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl xmlparser_version_getter(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     (major, minor, micro) = expat_version();
     return PyUnicode_FromFormat("Expat %d.%d.%d", i32(major), i32(minor), i32(micro));
 }
 
-# object(subclass_of='clinic_state()->Element_Type'), with clinic_state() the
-# state of the receiver's module.
-def subclass_clinic_state_Element_Type(
+impl subclass_clinic_state_Element_Type(
     receiver: ptr[PyObject], value: ptr[PyObject], fname: str, label: str
 ) {
     state = state_by_type(Py_TYPE(receiver));
@@ -3655,10 +4042,10 @@ def subclass_clinic_state_Element_Type(
     }
 }
 
-# pyexpat's capsule, checked as _elementtree's module_exec() does; the error
-# is set and NULL returned when it is not usable.
-def import_expat_capi(state: ElementTreeState) -> bool {
-    capsule = PyImport_ImportModuleAttrString("pyexpat", "expat_CAPI");
+impl import_expat_capi(state: ElementTreeState) -> bool {
+    capsule = PyImport_ImportModuleAttrString(
+        ptr[u8]("pyexpat"), ptr[u8]("expat_CAPI")
+    );
     if not capsule {
         return False;
     }

@@ -146,67 +146,33 @@ with entry {
 }
 ```
 
-**Inline Python with `::py::` Blocks**
-
-For performance-critical code or complex Python-only APIs, embed Python directly in `.jac` files:
-
-```jac
-::py::
-import numpy as np
-
-def complex_calculation(data):
-    """Pure Python for performance-critical code."""
-    arr = np.array(data)
-    return arr.mean(), arr.std()
-::py::
-
-with entry {
-    (mean, std) = complex_calculation([1, 2, 3, 4, 5]);
-    print(f"Mean: {mean}, Std: {std}");
-}
-```
-
-**When to use inline Python:**
-
-* Complex Python-only APIs
-* Performance-critical numerical code
-* Legacy code integration
-
-**When NOT to use inline Python:**
-
-* Simple imports (use `import` instead)
-* New code that could use Jac features
-
 **Implementation Details:** Jac extends Python's native import mechanism using the [PEP 302](https://peps.python.org/pep-0302/) import hook system. When jaclang is installed, a `.pth` file registers a lightweight lazy finder at Python startup. On the first `.jac` import, the full Jac compiler is bootstrapped and a `JacMetaImporter` is registered that enables Python to locate and load `.jac` files. Subsequently, Python's import mechanism automatically checks for `.jac` files alongside `.py` files, compiles them transparently, and loads them into the program. This integration makes Jac modules function as first-class citizens within the Python environment.
 
 ---
 
-### **Five Adoption Patterns: Choose Your Integration Level**
+### **Four Adoption Patterns: Choose Your Integration Level**
 
-Jac provides five adoption strategies that accommodate different development requirements, ranging from pure Python implementations with Jac library support to fully Jac-based applications. The following patterns represent the primary integration approaches:
+Jac provides four adoption strategies that accommodate different development requirements, ranging from pure Python implementations with Jac library support to fully Jac-based applications. The following patterns represent the primary integration approaches:
 
 #### **Pattern Comparison Table**
 
 | Pattern | Use Case | Jac Content | Python Content | Key Benefits | Example Scenario |
 |---------|----------|-------------|----------------|--------------|------------------|
 | **1. Pure Jac** | New projects, service apps | 100% | 0% | Full Jac language features, modern syntax | Building a new graph-based application with only `.jac` files |
-| **2. Jac + Inline Python** | Inline Python in Jac files | Mixed (::py:: blocks) | Embedded inline | Gradual migration, use Python syntax when needed | `.jac` files with embedded Python for legacy logic or complex imports |
-| **3. Mostly Jac** | Import Python modules into Jac | 80-95% .jac | 5-20% .py | Jac architecture with existing Python utilities | Project with `.jac` files importing your existing `.py` utility modules |
-| **4. Mostly Python** | Import Jac modules into Python | 5-20% .jac | 80-95% .py | Python codebase with select Jac features | Python project with `.py` files importing specialized `.jac` modules for graphs/AI |
-| **5. Pure Python + Jac Library** | Conservative adoption | 0% | 100% | No new syntax, just Jac runtime capabilities | Pure `.py` project using Jac runtime via imports and decorators |
+| **2. Mostly Jac** | Import Python modules into Jac | 80-95% .jac | 5-20% .py | Jac architecture with existing Python utilities | Project with `.jac` files importing your existing `.py` utility modules |
+| **3. Mostly Python** | Import Jac modules into Python | 5-20% .jac | 80-95% .py | Python codebase with select Jac features | Python project with `.py` files importing specialized `.jac` modules for graphs/AI |
+| **4. Pure Python + Jac Library** | Conservative adoption | 0% | 100% | No new syntax, just Jac runtime capabilities | Pure `.py` project using Jac runtime via imports and decorators |
 
 ```mermaid
 graph LR
-    A[Pure Jac<br/>100% .jac files] --> B[Jac + Inline Python<br/>::py:: blocks]
-    B --> C[Mostly Jac<br/>import .py files]
-    C --> D[Mostly Python<br/>import .jac files]
-    D --> E[Pure Python<br/>+ Jac Library]
+    A[Pure Jac<br/>100% .jac files] --> B[Mostly Jac<br/>import .py files]
+    B --> C[Mostly Python<br/>import .jac files]
+    C --> D[Pure Python<br/>+ Jac Library]
 
     style A fill:#2d5f3f,stroke:#4CAF50,stroke-width:2px,color:#fff
-    style B fill:#3d4f2d,stroke:#8BC34A,stroke-width:2px,color:#fff
-    style C fill:#5f4d1a,stroke:#FFC107,stroke-width:2px,color:#fff
-    style D fill:#5f3d1a,stroke:#FF9800,stroke-width:2px,color:#fff
-    style E fill:#5f2d2d,stroke:#FF5722,stroke-width:2px,color:#fff
+    style B fill:#5f4d1a,stroke:#FFC107,stroke-width:2px,color:#fff
+    style C fill:#5f3d1a,stroke:#FF9800,stroke-width:2px,color:#fff
+    style D fill:#5f2d2d,stroke:#FF5722,stroke-width:2px,color:#fff
 ```
 
 ---
@@ -291,77 +257,7 @@ project/
 
 ---
 
-#### **Pattern 2: Jac + Inline Python**
-
-This pattern embeds Python code directly within `.jac` files using `::py::` blocks, enabling the use of Python-specific libraries or preservation of existing Python code.
-
-**Use Case:** Incremental migration of Python codebases while maintaining legacy utilities
-
-**Directory Structure:**
-
-```
-project/
-├── main.jac
-└── models.jac
-```
-
-=== "main.jac"
-    ```jac
-    """Application with inline Python validation."""
-    import models;
-
-    def generate_desc(title: str) -> str {
-        return f"Task description for: {title}";
-    }
-
-    ::py::
-    # Legacy Python validation - kept as-is
-    def validate_title(title):
-        """Complex validation logic from old codebase."""
-        return len(title) > 3 and title.strip() != ""
-
-    def get_sample_task():
-        """Helper from legacy code."""
-        return {"title": "Build API"}
-    ::py::
-
-    walker TaskCreator {
-        can create with Root entry {
-            # Use inline Python functions
-            task_data = get_sample_task();
-
-            if validate_title(task_data["title"]) {
-                task = models.Task(title=task_data["title"]);
-                here ++> task;
-                desc = generate_desc(task.title);
-                print(f" Created: {task.title}");
-                print(f"  AI: {desc}");
-            } else {
-                print(" Title invalid!");
-            }
-        }
-    }
-
-    with entry {
-        root spawn TaskCreator();
-    }
-    ```
-
-=== "models.jac"
-    ```jac
-    """Task node definition."""
-
-    node Task {
-        has title: str;
-        has done: bool = False;
-    }
-    ```
-
-This approach preserves tested Python code while introducing Jac features, supporting incremental migration strategies.
-
----
-
-#### **Pattern 3: Mostly Jac**
+#### **Pattern 2: Mostly Jac**
 
 This pattern implements the primary application logic in Jac while importing Python utilities from separate `.py` files.
 
@@ -441,7 +337,7 @@ Jac imports Python modules using standard import mechanisms without requiring co
 
 ---
 
-#### **Pattern 4: Mostly Python**
+#### **Pattern 3: Mostly Python**
 
 This pattern maintains a Python-first application structure while importing `.jac` modules for graph-based and AI features.
 
@@ -518,7 +414,7 @@ This approach maintains familiar Python syntax while providing access to Jac's g
 
 ---
 
-#### **Pattern 5: Pure Python + Jac Library**
+#### **Pattern 4: Pure Python + Jac Library**
 
 This pattern uses pure Python with Jac's runtime as a library, without any `.jac` files.
 
@@ -587,19 +483,18 @@ This pattern provides graph-based capabilities in pure Python without introducin
 
 Jac's Python bytecode compilation enables complementary use of both languages rather than requiring a choice between them. Key characteristics include:
 
-* **Incremental Adoption:** Projects can begin with Pattern 5 (pure Python + Jac library) and progressively adopt Pattern 1 (pure Jac) as requirements evolve
+* **Incremental Adoption:** Projects can begin with Pattern 4 (pure Python + Jac library) and progressively adopt Pattern 1 (pure Jac) as requirements evolve
 * **Full Ecosystem Access:** All Python libraries, frameworks, and development tools remain compatible without modification
-* **Flexible Integration:** Five adoption patterns accommodate different team preferences and project requirements
+* **Flexible Integration:** Four adoption patterns accommodate different team preferences and project requirements
 * **No Vendor Lock-in:** Transpiled Python code is readable and maintainable, providing migration paths if needed
 * **Transparent Interoperability:** A `.pth`-based lazy import hook enables seamless bidirectional imports between `.jac` and `.py` files with zero configuration
 
 | Adoption Pattern | Learning Curve | Migration Effort | Feature Access | Risk Level |
 |------------------|---------------|------------------|----------------|------------|
 | Pattern 1: Pure Jac | Higher | Higher | 100% Jac features | Low |
-| Pattern 2: Jac + Inline Python | Medium | Low | 100% Jac features | Low |
-| Pattern 3: Mostly Jac | Medium-High | Medium | 100% Jac features | Low |
-| Pattern 4: Mostly Python | Low-Medium | Low | Select Jac features | Low |
-| Pattern 5: Pure Python + Library | Low | Very Low | Core runtime only | Very Low |
+| Pattern 2: Mostly Jac | Medium-High | Medium | 100% Jac features | Low |
+| Pattern 3: Mostly Python | Low-Medium | Low | Select Jac features | Low |
+| Pattern 4: Pure Python + Library | Low | Very Low | Core runtime only | Very Low |
 
 Jac accommodates both new application development and enhancement of existing Python codebases, providing structured approaches to graph-based and object-spatial programming while maintaining full Python ecosystem compatibility.
 

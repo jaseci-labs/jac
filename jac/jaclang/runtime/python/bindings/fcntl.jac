@@ -1,20 +1,4 @@
-"""The fcntl module: generated clinic tables and the platform constants."""
-
-def:priv execute(module: ptr[PyObject]) -> i32 {
-    if PLATFORM == "" or len(CONSTANTS) == 0 {
-        object_error(
-            PyExc_ImportError,
-            "fcntl has no fcntl_records/fcntl_constants for this target platform"
-        );
-        return i32(-1);
-    }
-    for (name, value) in CONSTANTS {
-        if PyModule_AddIntConstant(module, name, value) < 0 {
-            return i32(-1);
-        }
-    }
-    return i32(0);
-}
+def:priv execute(module: ptr[PyObject]) -> i32;
 
 glob:priv definition = ModuleDefinition(
          "fcntl",
@@ -23,6 +7,24 @@ glob:priv definition = ModuleDefinition(
          ModuleHooks(execute=execute)
      );
 
-def:pub PyInit_fcntl -> ptr[PyObject] {
+def:pub PyInit_fcntl -> ptr[PyObject];
+
+impl execute(module: ptr[PyObject]) -> i32 {
+    if PLATFORM == "" or len(CONSTANTS) == 0 {
+        object_error(
+            PyExc_ImportError,
+            "fcntl has no fcntl_records/fcntl_constants for this target platform"
+        );
+        return i32(-1);
+    }
+    for (name, value) in CONSTANTS {
+        if jacpy_module_add_int_text(module, name, value) < 0 {
+            return i32(-1);
+        }
+    }
+    return i32(0);
+}
+
+impl PyInit_fcntl -> ptr[PyObject] {
     return definition.initialize();
 }

@@ -820,25 +820,7 @@ with entry {
 
 Reach for the mixin form only when `T` itself subclasses a primitive; for members that should carry rich state, use a plain `enum` whose members map to real `obj` instances, or store the data on the members some other way.
 
-### 5 Enums with Inline Python
-
-```jac
-enum HttpStatus {
-    OK = 200,
-    NOT_FOUND = 404
-
-    ::py::
-    def is_success(self):
-        return 200 <= self.value < 300
-
-    @property
-    def message(self):
-        return {200: "OK", 404: "Not Found"}.get(self.value, "Unknown")
-    ::py::
-}
-```
-
-### 6 Properties and Encapsulation
+### 5 Properties and Encapsulation
 
 Properties expose computed or validated access to data while looking like plain field access at the call site. Declare them with a `has` binding followed by an accessor block containing `getter`, `setter`, and/or `deleter`.
 

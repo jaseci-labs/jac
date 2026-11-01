@@ -77,6 +77,16 @@ async def:pub jacSsoLogin(
     platform: str, api_base: str = "", operation: str = "login"
 ) -> bool;
 
+async def:pub jacSsoConnect(
+    platform: str, scopes: (list[str] | None) = None, api_base: str = ""
+) -> bool;
+
+async def:pub jacSsoFinish(api_base: str = "") -> dict[str, any];
+
+async def:pub jacSsoConnections(api_base: str = "") -> list[dict[str, any]];
+
+async def:pub jacSsoDisconnect(platform: str, api_base: str = "") -> bool;
+
 def:pub jacSetToken(token: str) -> None;
 
 glob:pub Router = SolidRouter,

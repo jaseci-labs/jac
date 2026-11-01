@@ -219,7 +219,8 @@ import from engine.src.runtime.mem {
     read_i32,
     write_byte,
     write_i32,
-    write_i64
+    write_i64,
+    str_nbytes
 }
 import from engine.src.runtime.jsstring { str_substr, str_char_at }
 import from engine.src.runtime.jsvalue { jsv_double_bits, jsv_double_from_bits }
@@ -440,7 +441,7 @@ def:pub wasm_export_func(store_handle: int, instance_ptr: int, name: str) -> int
 
     item_out: int = io_alloc(_SIZEOF_EXTERN);
     found: bool = wasmtime_instance_export_get(
-        ctx, instance_ptr, name, len(name), item_out
+        ctx, instance_ptr, name, str_nbytes(name), item_out
     );
     if not found {
         _WASM_LAST_ERR = "export not found: " + name;
@@ -1062,19 +1063,20 @@ def:priv _f32_from_bits(fb: int) -> float {
     exp: int = (fb >> 23) & 0xFF;
     man: int = fb & 0x7F_FFFF;
     db: int = 0;
-    if exp == 0 {
-        db = sign << 63;  # zero (subnormals → zero)
-    } elif exp == 0xFF {
+    if sign != 0 {
+        db = -9223372036854775807 - 1;  # the sign bit; `1 << 63` overflows int
+    }
+    if exp == 0xFF {
         de: int = 0x7FF;
         dm: int = 0;
         if man != 0 {
             dm = 1 << 51;
         }
-        db = (sign << 63) | (de << 52) | dm;
-    } else {
+        db = db | (de << 52) | dm;
+    } elif exp != 0 {
         e: int = exp - 127 + 1023;
-        db = (sign << 63) | (e << 52) | (man << 29);
-    }
+        db = db | (e << 52) | (man << 29);
+    }  # exp == 0: signed zero (subnormals → zero)
     return jsv_double_from_bits(db);
 }
 
@@ -1194,7 +1196,7 @@ def:pub wasm_export_global(inst_handle: int, name: str) -> int {
     }
 
     item_out: int = io_alloc(_SIZEOF_EXTERN);
-    found: bool = wasmtime_instance_export_get(ctx, inst, name, len(name), item_out);
+    found: bool = wasmtime_instance_export_get(ctx, inst, name, str_nbytes(name), item_out);
     if not found {
         _WASM_LAST_ERR = "export not found: " + name;
         io_free(item_out);
@@ -1306,7 +1308,7 @@ def:pub wasm_export_memory(store_handle: int, instance_ptr: int, name: str) -> i
 
     item_out: int = io_alloc(_SIZEOF_EXTERN);
     found: bool = wasmtime_instance_export_get(
-        ctx, instance_ptr, name, len(name), item_out
+        ctx, instance_ptr, name, str_nbytes(name), item_out
     );
     if not found {
         _WASM_LAST_ERR = "export not found: " + name;
@@ -1628,7 +1630,7 @@ def:pub wasm_set_host_throw(msg: str) {
 ignores overflow beyond 64 bits (WASM i64 wraps mod 2^64 anyway). Empty/invalid
 → 0."""
 def:pub wasm_i64_from_decimal(s: str) -> int {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if n == 0 {
         return 0;
     }
@@ -1846,7 +1848,7 @@ def:pub wasm_export_table(inst_handle: int, name: str) -> int {
         return 0;
     }
     item_out: int = io_alloc(_SIZEOF_EXTERN);
-    found: bool = wasmtime_instance_export_get(ctx, inst, name, len(name), item_out);
+    found: bool = wasmtime_instance_export_get(ctx, inst, name, str_nbytes(name), item_out);
     if not found {
         _set_err("export not found: " + name, WASM_ERRCLASS_LINK);
         io_free(item_out);
@@ -2391,7 +2393,7 @@ def:pub _wasm_host_trampoline(
         if len(tmsg) == 0 {
             tmsg = "wasm host import threw";
         }
-        return wasmtime_trap_new(tmsg, len(tmsg));
+        return wasmtime_trap_new(tmsg, str_nbytes(tmsg));
     }
     if rc == 2 {
         return wasmtime_trap_new("wasm host import: no active VM", 30);

@@ -10,7 +10,7 @@
 
 Jac provides a library mode that enables developers to express all Jac language features as standard Python code. This mode provides complete access to Jac's object-spatial programming capabilities through the `jaclang.lib` package, allowing developers to work entirely within Python syntax.
 
-This page focuses on what is unique to library mode: the `jaclang.lib` API surface and the `jac tool jac2py` workflow. For how Jac compiles to and interoperates with Python in general (bytecode transpilation, bidirectional imports, type-only imports), see [Python Integration](python-integration.md#jac-compiles-to-python-bytecode). Library mode itself corresponds to adoption [Pattern 5: Pure Python + Jac Library](python-integration.md#pattern-5-pure-python-jac-library).
+This page focuses on what is unique to library mode: the `jaclang.lib` API surface and the `jac tool jac2py` workflow. For how Jac compiles to and interoperates with Python in general (bytecode transpilation, bidirectional imports, type-only imports), see [Python Integration](python-integration.md#jac-compiles-to-python-bytecode). Library mode itself corresponds to adoption [Pattern 4: Pure Python + Jac Library](python-integration.md#pattern-4-pure-python-jac-library).
 
 Library mode is designed for:
 
@@ -466,7 +466,7 @@ visit(
 | `jac_test(func)` | Mark function as test | `func`: Test function |
 | `run_test(filepath, ...)` | Run test suite | `filepath`: Test file<br>`func_name`, `filter`, `xit`, `maxfail`, `directory`, `verbose`: test options |
 | `report(expr, custom)` | Report value from walker | `expr`: Value to report<br>`custom`: custom report flag |
-| `printgraph(node, depth, traverse, edge_type, bfs, edge_limit, node_limit, file, format)` | Generate graph visualization | `node`: Start node<br>`depth`: Max depth<br>`traverse`: traversal flag<br>`edge_type`: filter edges<br>`bfs`: breadth-first flag<br>`edge_limit`, `node_limit`: limits<br>`file`: output path<br>`format`: 'dot' or 'mermaid' |
+| `printgraph(node, depth, traverse, edge_type, bfs, edge_limit, node_limit, file, format)` | Generate graph visualization | `node`: Start node<br>`depth`: Max depth<br>`traverse`: traversal flag<br>`edge_type`: filter edges<br>`bfs`: breadth-first flag<br>`edge_limit`, `node_limit`: limits<br>`file`: output path<br>`format`: 'dot', 'mermaid' or 'json' |
 
 ### **LLM & AI Integration**
 
@@ -525,7 +525,7 @@ visit(
 )
 ```
 
-> The full Jac syntax → library-mode mapping is covered in [Key Concepts Explained](#key-concepts-explained) above. For the general Jac↔Python interop story (importing `.jac` files, inline Python, type compatibility), see [Python Integration](python-integration.md#seamless-interoperability-import-jac-files-like-python-modules).
+> The full Jac syntax → library-mode mapping is covered in [Key Concepts Explained](#key-concepts-explained) above. For the general Jac↔Python interop story (importing `.jac` files, type compatibility), see [Python Integration](python-integration.md#seamless-interoperability-import-jac-files-like-python-modules).
 
 ---
 

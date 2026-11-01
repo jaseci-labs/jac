@@ -3227,12 +3227,6 @@ impl Parser.parse_element_stmt -> ElementStmt | EmptyToken | None {
         return self.parse_sem_def();
     }
 
-    if self.check(TokenKind.PYNLINE) {
-        py_tok = self.expect(TokenKind.PYNLINE);
-        py_code = self.make_uni_token(py_tok);
-        return PyInlineCode(code=py_code, kid=[py_code]);
-    }
-
     if self.check(TokenKind.KW_WITH) {
         return self.parse_module_code();
     }
@@ -3846,12 +3840,6 @@ impl Parser.parse_statement -> CodeBlockStmt | None {
     if self.check(TokenKind.KW_HAS)
         or (self.check(TokenKind.KW_STATIC) and self.check_peek(TokenKind.KW_HAS)) {
         return self.parse_has_stmt();
-    }
-
-    if self.check(TokenKind.PYNLINE) {
-        py_tok = self.expect(TokenKind.PYNLINE);
-        py_code = self.make_uni_token(py_tok);
-        return PyInlineCode(code=py_code, kid=[py_code]);
     }
 
     if self.check_any(
@@ -5250,7 +5238,8 @@ impl Parser.parse_import_items(
         TokenKind.KW_ASYNC,
         TokenKind.STRING,
         TokenKind.KW_GLOBAL,
-        TokenKind.KW_HAS
+        TokenKind.KW_HAS,
+        TokenKind.DECOR_OP
     )
         and (is_clib_import or not self.check(TokenKind.STRING)) {
         while not self.check(TokenKind.RBRACE) and not self.at_end() {
@@ -5490,7 +5479,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
     if self.check(TokenKind.DECOR_OP) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5499,21 +5488,21 @@ impl Parser.parse_archetype_member -> UniNode | None {
         if self.check_peek(TokenKind.KW_HAS) {
             has_stmt = self.parse_has_stmt();
             if doc {
-                _ = self._attach_doc(has_stmt, doc);
+                self._attach_doc(has_stmt, doc);
             }
             return has_stmt;
         }
 
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
     if self.check(TokenKind.KW_HAS) {
         has_stmt = self.parse_has_stmt();
         if doc {
-            _ = self._attach_doc(has_stmt, doc);
+            self._attach_doc(has_stmt, doc);
         }
         return has_stmt;
     }
@@ -5521,7 +5510,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
     if self.check(TokenKind.KW_ASYNC) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5535,7 +5524,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
         ) {
         ct_globals = self.parse_comptime_global();
         if doc {
-            _ = self._attach_doc(ct_globals, doc);
+            self._attach_doc(ct_globals, doc);
         }
         return ct_globals;
     }
@@ -5544,7 +5533,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
     ) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5555,7 +5544,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
         ) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5568,14 +5557,14 @@ impl Parser.parse_archetype_member -> UniNode | None {
     ) {
         archetype = self.parse_archetype();
         if doc {
-            _ = self._attach_doc(archetype, doc);
+            self._attach_doc(archetype, doc);
         }
         return archetype;
     }
     if self.check(TokenKind.KW_ENUM) {
         enum_node = self.parse_enum();
         if doc {
-            _ = self._attach_doc(enum_node, doc);
+            self._attach_doc(enum_node, doc);
         }
         return enum_node;
     }
@@ -5583,15 +5572,9 @@ impl Parser.parse_archetype_member -> UniNode | None {
     if self.check(TokenKind.KW_IMPL) {
         impl_node = self.parse_impl_def();
         if doc {
-            _ = self._attach_doc(impl_node, doc);
+            self._attach_doc(impl_node, doc);
         }
         return impl_node;
-    }
-
-    if self.check(TokenKind.PYNLINE) {
-        py_tok = self.expect(TokenKind.PYNLINE);
-        py_code = self.make_uni_token(py_tok);
-        return PyInlineCode(code=py_code, kid=[py_code]);
     }
 
     if self.check(TokenKind.KW_WITH) {
@@ -5611,7 +5594,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
             kid.append(rb_uni);
             module_code = ModuleCode(name=None, body=body, kid=kid, doc=None);
             if doc {
-                _ = self._attach_doc(module_code, doc);
+                self._attach_doc(module_code, doc);
             }
             return module_code;
         }
@@ -6335,13 +6318,6 @@ impl Parser.parse_enum -> Enum {
                 if self.match_tok(TokenKind.COMMA) {
                     body_kid.append(self.make_uni_token(self.previous()));
                 }
-            } elif self.check(TokenKind.PYNLINE) {
-                py_tok = self.expect(TokenKind.PYNLINE);
-                py_code = self.make_uni_token(py_tok);
-                pynline = PyInlineCode(code=py_code, kid=[py_code]);
-                pynline.is_enum_stmt = True;
-                body_l.append(pynline);
-                body_kid.append(pynline);
             } elif self.check(TokenKind.KW_WITH) {
                 mc = self.parse_module_code();
                 mc.is_enum_stmt = True;
