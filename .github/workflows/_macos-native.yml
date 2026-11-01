@@ -1,7 +1,8 @@
 name: macOS native
 
 # The darwin native lane: the sealed macOS kit and the Mach-O / wasm-floor /
-# libSystem-equivalence tests that consume it. Two callers share this one copy:
+# libSystem-equivalence tests and JacPython's conformance gates that consume
+# it. Two callers share this one copy:
 #   - nightly.yml (macos-native): daily, the default home for this lane.
 #   - ci.yml      (macos-native): PR lane, OPT-IN via the `macos` label, plus
 #     workflow_dispatch.
@@ -29,8 +30,9 @@ permissions:
   contents: read
 
 jobs:
-  # The macOS kit's compiler kernel, built on x86 Linux (#10219): the kit
-  # adopts it instead of spending most of its 44-68 min building one.
+  # The macOS kit's compiler kernel and jacpython.o, built on x86 Linux
+  # (#10219, #10472): the kit adopts both instead of spending most of its
+  # time lowering them on the slower runner.
   kernel:
     uses: ./.github/workflows/build-kernel.yml
     with:
@@ -48,10 +50,17 @@ jobs:
           name: kernel-macos-aarch64
           path: .kernel
 
+      - name: Download the JacPython object
+        uses: actions/download-artifact@v4
+        with:
+          name: jacpython-object-macos-aarch64
+          path: .jacpython-object
+
       - name: Build the jac binary (cached)
         uses: ./.github/actions/setup-jac
         with:
           kernel-dir: ${{ github.workspace }}/.kernel
+          jacpython-object: ${{ github.workspace }}/.jacpython-object
 
       - name: Set up Zig 0.16.0
         uses: mlugg/setup-zig@v2
@@ -117,6 +126,19 @@ jobs:
           cd "$RUNNER_TEMP/managed-ios"
           printf '[project]\nname = "managed-ios"\n\n[toolchains]\nsystem = false\n' > jac.toml
           jac setup --toolchain ios
+
+  # JacPython's conformance gates on darwin, on the sealed macOS kit.
+  jacpython-macos:
+    needs: build-kit-macos
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/jac-kit
+        with:
+          name: jac-kit-macos
+          sealed: "true"
+      - uses: ./.github/actions/jacpython-conformance
 
   # The desktop target on its second host. ci.yml smokes the same quickstart
   # scaffold under Xvfb with WebKitGTK; this is the WKWebView twin: the host

@@ -47,6 +47,7 @@ jobs:
     outputs:
       pr: ${{ inputs.pr }}
       matrix: ${{ steps.matrix.outputs.include }}
+      platforms: ${{ steps.matrix.outputs.platforms }}
     steps:
       - name: Verify the PR is open
         env:
@@ -71,17 +72,28 @@ jobs:
         run: |
           set -euo pipefail
           rows=""
+          osarch=""
           for p in ${PLATFORMS//,/ }; do
             case "$p" in
-              linux/amd64) rows="${rows}{\"os\":\"ubuntu-latest\",\"platform\":\"amd64\"}," ;;
-              linux/arm64) rows="${rows}{\"os\":\"ubuntu-24.04-arm\",\"platform\":\"arm64\"}," ;;
+              linux/amd64) rows="${rows}{\"os\":\"ubuntu-latest\",\"platform\":\"amd64\",\"osarch\":\"linux-x86_64\"},"; osarch="${osarch}\"linux-x86_64\"," ;;
+              linux/arm64) rows="${rows}{\"os\":\"ubuntu-24.04-arm\",\"platform\":\"arm64\",\"osarch\":\"linux-aarch64\"},"; osarch="${osarch}\"linux-aarch64\"," ;;
               *) echo "::error::unsupported platform '$p'"; exit 1 ;;
             esac
           done
           echo "include=[${rows%,}]" >> "$GITHUB_OUTPUT"
+          echo "platforms=[${osarch%,}]" >> "$GITHUB_OUTPUT"
+
+  # Each arch's compiler kernel and jacpython.o, lowered on x86 Linux from the
+  # PR's HEAD (build-kernel.yml); the arch build adopts both.
+  prebuild:
+    needs: resolve
+    uses: ./.github/workflows/build-kernel.yml
+    with:
+      platforms: ${{ needs.resolve.outputs.platforms }}
+      ref: refs/pull/${{ needs.resolve.outputs.pr }}/head
 
   build:
-    needs: resolve
+    needs: [resolve, prebuild]
     strategy:
       fail-fast: false
       matrix:
@@ -95,8 +107,23 @@ jobs:
         with:
           ref: refs/pull/${{ needs.resolve.outputs.pr }}/head
 
+      - name: Download the compiler kernel
+        uses: actions/download-artifact@v4
+        with:
+          name: kernel-${{ matrix.osarch }}
+          path: .kernel
+
+      - name: Download the JacPython object
+        uses: actions/download-artifact@v4
+        with:
+          name: jacpython-object-${{ matrix.osarch }}
+          path: .jacpython-object
+
       - name: Set up jac (build the binary)
         uses: ./.github/actions/setup-jac
+        with:
+          kernel-dir: ${{ github.workspace }}/.kernel
+          jacpython-object: ${{ github.workspace }}/.jacpython-object
 
       - name: Stage the binary
         run: |
