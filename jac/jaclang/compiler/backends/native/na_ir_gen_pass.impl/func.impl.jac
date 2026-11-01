@@ -962,7 +962,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     } finally {
         self._leave_function(state);
     }
-    # Each execution of the def statement is a new function object.
+
     _id_slot = self._fn_identity_slot(fn);
     if _id_slot is not None and not self.builder.block.is_terminated {
         self._release_loop_coll_slot(_id_slot, op="fn_identity");
