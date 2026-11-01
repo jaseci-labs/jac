@@ -1067,6 +1067,7 @@ impl NaIRGenPass._codegen_method(
     if full_name in self._native_skipped_methods or func.blocks {
         return;
     }
+    self._ensure_body_inference(method);
 
     _pre_viols = self._static_refusals(method);
     if _pre_viols is not None {
