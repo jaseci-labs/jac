@@ -30,6 +30,12 @@ test "server creation with custom config" {
     assert server.host == "0.0.0.0";
 }
 
+def answered(engine: any, message: dict[str, any]) -> dict[str, any] {
+    reply = engine.handle_message(message);
+    assert reply is not None;
+    return reply;
+}
+
 # ── Protocol Engine Tests (stdlib MCP, no external deps) ──
 test "engine initialize negotiates protocol version and advertises capabilities" {
     import from jaclang.cli.mcp.protocol { build_engine }
@@ -72,19 +78,19 @@ test "engine falls back to latest protocol version for an unknown client version
 test "engine lists tools, prompts, and resources with MCP-shaped entries" {
     import from jaclang.cli.mcp.protocol { build_engine }
     engine = build_engine();
-    tools = engine.handle_message({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})[
+    tools = answered(engine, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})[
         "result"
     ]["tools"];
     assert len(tools) > 0;
     for t in tools {
         assert "name" in t and "description" in t and "inputSchema" in t;
     }
-    prompts = engine.handle_message(
-        {"jsonrpc": "2.0", "id": 2, "method": "prompts/list"}
-    )["result"]["prompts"];
+    prompts = answered(engine, {"jsonrpc": "2.0", "id": 2, "method": "prompts/list"})[
+        "result"
+    ]["prompts"];
     assert len(prompts) > 0;
-    resources = engine.handle_message(
-        {"jsonrpc": "2.0", "id": 3, "method": "resources/list"}
+    resources = answered(
+        engine, {"jsonrpc": "2.0", "id": 3, "method": "resources/list"}
     )["result"]["resources"];
     assert len(resources) > 0;
     for r in resources {
@@ -96,7 +102,6 @@ test "engine tools/call wraps the tool result as MCP text content" {
     import from jaclang.cli.mcp.protocol { build_engine }
     import json;
     engine = build_engine();
-    assert tools is not None;
     resp = engine.handle_message(
         {
             "jsonrpc": "2.0",
@@ -168,9 +173,9 @@ test "engine surfaces method-not-found and invalid-params as JSON-RPC errors" {
 test "engine get_prompt renders messages as text content with valid roles" {
     import from jaclang.cli.mcp.protocol { build_engine }
     engine = build_engine();
-    prompts = engine.handle_message(
-        {"jsonrpc": "2.0", "id": 1, "method": "prompts/list"}
-    )["result"]["prompts"];
+    prompts = answered(engine, {"jsonrpc": "2.0", "id": 1, "method": "prompts/list"})[
+        "result"
+    ]["prompts"];
     name = prompts[0]["name"];
     args: dict[str, any] = {};
     for a in prompts[0].get("arguments", []) {
@@ -184,7 +189,7 @@ test "engine get_prompt renders messages as text content with valid roles" {
             "params": {"name": name, "arguments": args}
         }
     );
-    assert prompts is not None;
+    assert resp is not None;
     msgs = resp["result"]["messages"];
     assert len(msgs) > 0;
     for m in msgs {
@@ -715,9 +720,9 @@ test "all prompt messages use only MCP-valid roles" {
 test "all prompts render into well-formed MCP messages through the engine" {
     import from jaclang.cli.mcp.protocol { build_engine }
     engine = build_engine();
-    listed = engine.handle_message(
-        {"jsonrpc": "2.0", "id": 1, "method": "prompts/list"}
-    )["result"]["prompts"];
+    listed = answered(engine, {"jsonrpc": "2.0", "id": 1, "method": "prompts/list"})[
+        "result"
+    ]["prompts"];
     for prompt in listed {
         args: dict[str, any] = {};
         for arg in prompt.get("arguments", []) {
@@ -731,7 +736,7 @@ test "all prompts render into well-formed MCP messages through the engine" {
                 "params": {"name": prompt["name"], "arguments": args}
             }
         );
-        assert listed is not None;
+        assert resp is not None;
         for msg in resp["result"]["messages"] {
             assert msg["role"] in ["user", "assistant"] , f"prompt '{prompt[
                 'name'

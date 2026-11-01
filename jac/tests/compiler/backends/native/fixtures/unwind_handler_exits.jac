@@ -4,6 +4,10 @@ obj Failure(Exception) {}
 
 obj Wrapped(Exception) {
     has code: int = 0;
+
+    def init(code: int = 0) {
+        self.code = code;
+    }
 }
 
 def required(v: int) -> int {
