@@ -53,6 +53,9 @@ impl mir_type_of(
     if isinstance(t, AnyType) and t.is_foreign and t.foreign_scalar {
         return mir_class_type_named(t.foreign_scalar, site);
     }
+    if isinstance(t, AnyType) and not t.is_foreign {
+        return mir_any();
+    }
     if isinstance(t, FunctionType) and position == MirPosition.C_FIELD {
         params = [
             mir_type_of(p.param_type, MirPosition.C_FIELD, site) for p in t.parameters
@@ -105,6 +108,9 @@ impl mir_class_type(
     name = t.shared.class_name;
     if name in ("NoneType", "None") {
         return mir_none();
+    }
+    if name == "object" {
+        return mir_any();
     }
     if name == "bool" {
         return mir_bool();

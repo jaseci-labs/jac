@@ -10851,6 +10851,7 @@ graph import compiler.backends.native.mir {
         lower {
             MirKind,
             MirType,
+            mir_any,
             mir_bool,
             mir_c_fn,
             mir_holds_ref,
@@ -10870,6 +10871,7 @@ graph import compiler.backends.native.mir {
         },
         lower_types {
             MirType,
+            mir_any,
             mir_bool,
             mir_dict,
             mir_fn,
@@ -15372,6 +15374,13 @@ graph import runtime.na_stdlib {
 
 graph import runtime.native {
     lists ++> closures { __jac_rt_elem_release, __jac_rt_elem_retain }
+    rc ++> anys {
+        __jac_rt_alloc,
+        __jac_rt_free_block,
+        __jac_rt_release,
+        __jac_rt_retain,
+        __jac_rt_set_type
+    }
     rc ++> closures {
         __jac_rt_alloc,
         __jac_rt_free_block,

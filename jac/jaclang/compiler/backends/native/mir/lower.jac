@@ -33,6 +33,16 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      POP_EMPTY_MESSAGE: str = "pop from empty list",
      KEY_MESSAGE: str = "key not found",
      LIST_VALUE_MESSAGE: str = "value is not in list",
+     STR_INDEX_MESSAGE: str = "string index out of range",
+     ANY_INT_TAG: int = 0,
+     ANY_FLOAT_TAG: int = 1,
+     ANY_STR_TAG: int = 2,
+     ANY_LIST_TAG: int = 3,
+     ANY_DICT_TAG: int = 4,
+     ANY_SET_TAG: int = 5,
+     ANY_OBJ_TAG: int = 6,
+     ANY_BOOL_TAG: int = 7,
+     ANY_NONE_TAG: int = 8,
      EXC_TYPE_OFFSET: int = 8,
      EXC_MESSAGE_OFFSET: int = 24,
      MEMORY_ORDERS: list[str] = [
@@ -251,6 +261,19 @@ obj MirLowering {
     def lower_raise(nd: uni.RaiseStmt);
     def exception_matches(type_id: MirValue, clause: uni.Expr) -> MirValue;
     def exception_name(nd: uni.Expr) -> str;
+    def any_tag(t: MirType, site: uni.UniNode) -> int;
+    def any_box(value: MirValue, site: uni.UniNode) -> MirValue;
+    def any_make(tag: MirValue, payload: MirValue) -> MirValue;
+    def any_none -> MirValue;
+    def any_unbox(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
+    def any_to_box(value: MirValue, site: uni.UniNode) -> MirValue;
+    def any_from_box(handle: MirValue) -> MirValue;
+    def identity(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
+    def bound_args(nd: uni.FuncCall, ab: uni.Ability, method: bool) -> list[uni.Expr];
+    def constant_default(value: (uni.Expr | None)) -> bool;
+    def builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None);
+    def list_concat(left: MirValue, right: MirValue) -> MirValue;
+    def str_subscript(nd: uni.AtomTrailer) -> (MirValue | None);
     def emit_value(
         op: MirOp,
         type: MirType,

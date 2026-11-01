@@ -24,6 +24,9 @@ impl MirLowering.address_of(value: MirValue) -> MirValue {
 impl MirLowering.to_bits(value: MirValue, elem: MirType, site: uni.UniNode) -> MirValue {
     b = self.builder();
     kind = self.elem_kind(elem, site);
+    if elem.kind == MirKind.ANY {
+        return self.address_of(self.any_to_box(value, site));
+    }
     if kind == KIND_FLOAT {
         return self.emit_value(MirOp.BITCAST, mir_int(), [b.convert(value, mir_float())]);
     }
@@ -41,7 +44,7 @@ impl MirLowering.to_bits(value: MirValue, elem: MirType, site: uni.UniNode) -> M
         }
         return self.address_of(held);
     }
-    return self.address_of(value);
+    return self.address_of(self.coerce(value, elem, site));
 }
 
 impl MirLowering.scalar_from_bits(bits: MirValue, elem: MirType) -> MirValue {
@@ -58,6 +61,9 @@ impl MirLowering.scalar_from_bits(bits: MirValue, elem: MirType) -> MirValue {
 
 impl MirLowering.owned_element(handle: MirValue, elem: MirType) -> MirValue {
     b = self.builder();
+    if elem.kind == MirKind.ANY {
+        return self.any_from_box(handle);
+    }
     if elem.kind in (MirKind.STR, MirKind.STR_REF) {
         text = b.ref_cast(handle, mir_str_ref(), True);
         size = self.runtime("__jac_rt_str_size", [text]);

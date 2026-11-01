@@ -10,6 +10,7 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_str_from_int": ["str.ref", "int"],
          "__jac_rt_str_size": ["int", "str.ref"],
          "__jac_rt_str_ref": ["str.ref", "ptr", "ptr", "int"],
+         "__jac_rt_str_char_at": ["str.ref", "ptr", "int", "int"],
          "__jac_rt_list_new": ["ref", "int", "int"],
          "__jac_rt_list_push": ["none", "ref", "int", "int"],
          "__jac_rt_list_set": ["none", "ref", "int", "int", "int"],
@@ -55,7 +56,10 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_closure_new": ["ref", "int", "int"],
          "__jac_rt_closure_set": ["none", "ref", "int", "ref"],
          "__jac_rt_write": ["none", "int", "ptr", "int"],
-         "__jac_rt_write_int": ["none", "int", "int"]
+         "__jac_rt_write_int": ["none", "int", "int"],
+         "__jac_rt_any_box": ["ref", "int", "int"],
+         "__jac_rt_any_retain": ["none", "int", "int"],
+         "__jac_rt_any_release": ["none", "int", "int"]
      };
 
 def mir_runtime_signature(name: str) -> tuple[list[MirType], MirType];

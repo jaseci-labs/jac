@@ -333,7 +333,8 @@ impl MirLowering.lower_trace(obj_def: MirObjectDef) -> MirFunction {
     fn.params.append(MirParam(name="visitor", value=visit_fn));
     this = b.ref_cast(raw, mir_obj(obj_def.name), False);
     for member in obj_def.fields {
-        if not mir_holds_ref(member.type) or member.type.kind in (MirKind.STR, MirKind.STR_REF) {
+        if not mir_holds_ref(member.type)
+            or member.type.kind in (MirKind.STR, MirKind.STR_REF, MirKind.ANY) {
             continue;
         }
         place = self.emit_value(MirOp.FIELD_ADDR, mir_c_ptr(member.type), [this], int_value=member.index);
@@ -409,7 +410,7 @@ impl MirLowering.object_method(
     if decl is None {
         raise MirRefused(mir_refusal("method", f"{archetype_native_name(arch)}.{name}", nd));
     }
-    args = self.call_args(nd);
+    args = self.bound_args(nd, method, True);
     if len(args) != len(decl.params) {
         raise MirRefused(mir_refusal("call", f"{name} with {len(args)} arguments", nd));
     }
