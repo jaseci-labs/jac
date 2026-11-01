@@ -1,0 +1,55 @@
+# Rules for scripts/check_no_stock_cpython.sh. JacPython is the only Python
+# jac builds on, ships or runs; a tracked file must not name stock CPython as a
+# build or runtime dependency. One rule per line:
+#   deny <ERE>             a line matching it names stock CPython that way
+#   allow-path <pathspec>  a file that may (a git glob pathspec)
+#   allow-line <ERE>       a line that may, wherever it is
+
+# Selecting, building or caching stock CPython.
+deny -Dpython=cpython
+deny jacpython-host=stock
+deny \.python-build["']?(/|, *["'])cpython
+deny \.(precompiled-build|payload-layers)/cpython
+deny (python-build-v[0-9]+|jac-bin-v[0-9]+|jac-precompiled|payload-layers)-cpython
+deny python_cpython
+deny ^[[:space:]]*(python|PYTHON):[[:space:]]*["']?cpython
+deny ["']cpython["'],[[:space:]]*["']jacpython["']
+# The stock bootstrap host: its build-graph patches and its <platform>.host tree.
+deny (build|host)-graph\.patch
+deny \}\.host["']
+deny \.host/python/
+# Taking stock CPython from elsewhere.
+deny actions/setup-python
+deny FROM python:
+
+# The ABI identity JacPython keeps, so wheels and C extensions load: the
+# implementation name, the cache tag and SOABI, cp314 wheel tags, the C API
+# header layout and the PSF license notice.
+allow-line sys\.implementation\.name
+allow-line cache_tag
+allow-line SOABI|cpython-3[0-9]+-
+allow-line cp3[0-9]+
+allow-line Include/cpython
+allow-line LICENSE\.cpython|PSF
+
+# The CPython source archive stays a sha256-pinned input, for Lib/ and the tests.
+allow-path jac/bootstrap/python/sources.json
+allow-path jac/bootstrap/python/cpython-sources.txt
+
+# The manual compatibility verdict runs stock CPython as its reference.
+allow-path .github/workflows/jacpython-compat.yml
+allow-path scripts/cpython_compat.jac
+allow-path scripts/cpython_compat.test.jac
+
+# A program exported to plain source (`jac build --as source`) runs on any
+# Python; this image proves it runs without jac.
+allow-path .github/actions/polyglot-source/Dockerfile
+
+# History.
+allow-path release_notes/**
+allow-path **/release_notes/**
+allow-path **/CHANGELOG*
+
+# This gate.
+allow-path scripts/check_no_stock_cpython.sh
+allow-path scripts/no_stock_cpython.allow
