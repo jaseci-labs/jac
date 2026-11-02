@@ -36,6 +36,10 @@ impl _table(raw: any, *keys: str) -> dict[str, any] {
 
 impl _pins_of(raw: any) -> dict[str, str] {
     pins: dict[str, str] = {};
+    mute = os.environ.get('JAC_IGNORE_PLACEMENT_PINS', '').strip().lower();
+    if mute not in ('', '0', 'false', 'off', 'no') {
+        return pins;
+    }
     if isinstance(raw, dict) {
         for (key, value) in raw.items() {
             pins[str(key)] = str(value);
