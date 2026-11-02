@@ -46,12 +46,12 @@ glob FIXTURES = os.path.join(
 
 
 test "the native codegen schedule carries the native passes" {
-    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+    import from jaclang.compiler.backends.native.mir.backend { MirNativePass }
     import from jaclang.compiler.backends.native.na_compile_pass { NativeCompilePass }
     sched = codegen_lane(True);
     names = [p.__name__ for p in sched];
-    assert NaIRGenPass in sched , (
-        f"native codegen schedule lost NaIRGenPass: {names}"
+    assert MirNativePass in sched , (
+        f"native codegen schedule lost MirNativePass: {names}"
     );
     assert NativeCompilePass not in sched , (
         f"machine code is the host's assembly step, not a scheduled pass: {names}"

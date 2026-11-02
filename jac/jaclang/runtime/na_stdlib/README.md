@@ -30,7 +30,8 @@ name declares. That is the rule the compiler checks (`E5116`):
 ## How resolution works
 
 `jaclang.compiler.frontend.codeinfo.resolve_native_module` is the single shared resolver
-used by `BoundaryAnalysisPass`, `NaIRGenPass`, and `NativeCompilePass`. It
+used by `BoundaryAnalysisPass`, the native interface resolver
+(`compiler/driver/native_iface.jac`), and `NativeCompilePass`. It
 searches **nearest-wins**:
 
 1. the importing project's own tree (a flat sibling, then the dotted hierarchy
@@ -1129,8 +1130,9 @@ native layout records the emitted name separately from its source-level key.
 
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
 `mkdir`, `exists`, `getmtime`, `normcase`, ...) are Mechanism-A/H compiler
-intercepts, reached via the flat `import os`, not bundled here (see
-`compiler/backends/native/na_ir_gen/os.impl.jac`). `os.sep` and its
+intercepts, reached via the flat `import os`, not bundled here. They were
+intercepted by the legacy native backend; MIR (`compiler/backends/native/mir/`)
+does not lower them yet. `os.sep` and its
 sibling module attributes (`extsep`, `pardir`, `curdir`, `pathsep`, `linesep`,
 `devnull`) resolve the same way; `os.altsep` is `None` on POSIX and is not
 provided. Note that `getmtime` / `getsize` answer `-1` for a path that cannot

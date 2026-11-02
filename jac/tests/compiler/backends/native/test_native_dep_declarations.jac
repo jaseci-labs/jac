@@ -21,8 +21,6 @@ import from jaclang.compiler.backends.native.link_plan {
     build_link_plan,
     link_artifact
 }
-import from unittest.mock { patch }
-import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
 import from jaclang.compiler.frontend.unitree { Assignment, HasVar, Name }
 
 glob SOURCES: dict[str, str] = {
@@ -130,17 +128,19 @@ def _value_of(module: any, name: str) -> any {
     return None;
 }
 
-"""Build from `root_dir`, recording for each dependency a lowered unit reads
-whether it was typed on its declarations or analysed whole, and whether the
-value given to each of `names` carries a type."""
+"""Build from `root_dir` and report, for each dependency module the build
+loaded, whether it was typed on its declarations or analysed whole, and whether
+the value given to each of `names` carries a type."""
 def _plan_recording(
     root_dir: str, names: list[str]
 ) -> tuple[JacProgram, any, dict[str, DepTyping]] {
+    (prog, plan) = _plan_for(root_dir);
     seen: dict[str, DepTyping] = {};
-    original = NaIRGenPass._ensure_dep_inference;
-    def record(lowering: NaIRGenPass, dep_mod: any) {
-        original(lowering, dep_mod);
-        analysis = lowering.prog.analysis;
+    analysis = prog.analysis;
+    for dep_mod in list(prog.mod.hub.values()) {
+        if dep_mod.loc is None or not dep_mod.loc.mod_path {
+            continue;
+        }
         typed: dict[str, bool] = {};
         for name in names {
             value = _value_of(dep_mod, name);
@@ -153,9 +153,6 @@ def _plan_recording(
             whole=analysis.provides(dep_mod, AnalysisFact.TYPE_OF),
             typed=typed
         );
-    }
-    with patch.object(NaIRGenPass, "_ensure_dep_inference", record) {
-        (prog, plan) = _plan_for(root_dir);
     }
     return (prog, plan, seen);
 }

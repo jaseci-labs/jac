@@ -33,7 +33,7 @@ Here's a quick map from contribution type to the right part of the codebase:
 | Fix a compiler bug | `jac/jaclang/compiler/passes/` (shared analysis) + `compiler/backends/py/` (Python target) |
 | Add a language feature | `jac/jaclang/compiler/frontend/` (parser + AST) + `compiler/passes/` + `compiler/backends/` (all targets) |
 | Fix type checking | `jac/jaclang/compiler/types/` + `compiler/passes/type_checker_pass.jac` |
-| Work on native compilation | `jac/jaclang/compiler/backends/native/na_ir_gen_pass.impl/` |
+| Work on native compilation | `jac/jaclang/compiler/backends/native/mir/` + `jac/jaclang/runtime/native/` |
 | Work on JS compilation | `jac/jaclang/compiler/backends/es/` |
 | Improve the CLI | `jac/jaclang/cli/commands/` |
 | Fix a runtime bug | `jac/jaclang/runtime/` |
@@ -120,7 +120,7 @@ The `PRODUCTS` table in `compiler/driver/pipeline.jac` defines every pass schedu
 **CODEGEN**, **PY_IR**, **FROZEN** (code generation):
 
 1. `RcFactsPass`, `EsastGenPass` -- Reference-count facts and the JavaScript AST
-2. `NaIRGenPass` -- LLVM IR, only for a module that needs native code (then the session assembles `NATIVE_OBJECT`)
+2. `MirNativePass` -- LLVM IR, only for a module that needs native code (then the session assembles `NATIVE_OBJECT`)
 3. `NativeImportFactsPass`, `JcirGenPass` -- Lower the unitree into the compact codegen IR container
 4. `FreezeStructurePass` -- Freeze the module's structure
 5. `JcirBytecodeGenPass` -- The `BYTECODE` product the session assembles last
@@ -129,23 +129,21 @@ Each product has a bootstrap variant that the compiler falls back to when it is 
 
 ### `compiler/backends/native/` -- Native Compilation
 
-The native backend generates LLVM IR via `llvmlite`. `na_ir_gen_pass.jac` is the one declaration of `NaIRGenPass` (its state fields and every method signature, grouped by concern), and the bodies live under `na_ir_gen_pass.impl/`, one file per concern, the same shape as the Python and ECMAScript generators:
+The native backend is `MirNativePass` in `mir/`. It lowers the typed tree into a typed mid-level IR (MIR), inserts reference counting over MIR, and emits LLVM IR through the in-tree binding at `llvm/` (llvmlite is not used). Declarations live in the `.jac` files and bodies in `mir/impl/`, one file per concern:
 
 | File | What it covers |
 |------|---------------|
-| `core.impl.jac` | Module setup, entry points, target triple configuration |
-| `stmt.impl.jac` | Statements -- if/else, for/while loops, assignments, returns |
-| `expr.impl.jac` | Expressions -- binary/unary ops, comparisons, attribute access |
-| `func.impl.jac` | Function definitions, closures, parameter handling |
-| `calls.impl.jac` | Function call codegen, argument passing |
-| `objects.impl.jac` | Class/struct layout, field access, inheritance chains |
-| `types.impl.jac` | Mapping Jac types to LLVM types (i64, double, pointers, etc.) |
-| `comprehensions.impl.jac` | List, dict, and set comprehension codegen |
-| `builtins.impl.jac` | Builtin function implementations (print, len, range, etc.) |
-| `lists.impl.jac`, `dicts.impl.jac`, `sets.impl.jac`, `tuples.impl.jac` | Collection type operations |
-| `vtable.impl.jac` | Virtual method dispatch tables for dynamic dispatch |
-| `refcount.impl.jac` | Reference counting for memory management |
-| `exceptions.impl.jac` | Try/catch/finally, exception propagation |
+| `lower.impl.jac` | Module and function lowering, statements, expressions, calls, C calls |
+| `lower.objects.impl.jac`, `lower.enums.impl.jac` | Archetype layout, constructors, vtables, enums |
+| `lower.strings.impl.jac`, `lower.format.impl.jac`, `lower.containers.impl.jac`, `lower.tuples.impl.jac` | Strings, f-strings, lists, dicts, sets, tuples |
+| `lower.closures.impl.jac`, `lower.generics.impl.jac`, `lower.generators.impl.jac` | Closures, monomorphized generics, generators |
+| `lower.exceptions.impl.jac`, `lower.with.impl.jac` | try/except/finally, raise, context managers |
+| `lower.osp.impl.jac` | Nodes, edges, walkers |
+| `lower.any.impl.jac`, `lower.optionals.impl.jac`, `lower.interop.impl.jac` | `any` values, optionals, the Python boundary |
+| `rc.impl.jac` | Retain/release insertion from value ownership |
+| `emit.impl.jac` | MIR to LLVM IR (total: it never refuses) |
+
+The runtime the emitted code calls (strings, lists, dicts, refcounting, exceptions) is Jac source under `runtime/native/`, compiled by the same backend. See `cli/docs/internals/native-mir.md`.
 
 ### `cli/` -- Command-Line Interface
 

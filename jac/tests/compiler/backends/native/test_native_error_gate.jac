@@ -25,7 +25,7 @@ def _bytecode(prog: JacProgram, target: str) -> any {
 
 # `eval` of a runtime string can never be lowered on the na pathway: it
 # would need an embedded interpreter inside the AOT-compiled binary. The
-# E5092 fires deep inside NaIRGenPass codegen and, crucially, is NOT caught
+# E5092 fires deep inside native lowering and, crucially, is NOT caught
 # by the up-front capability blacklist -- that makes it the exact "drift"
 # class of error the gate exists for. (An earlier version leaned on
 # for-loop tuple destructuring, but #7238 later lowered that construct

@@ -1,10 +1,10 @@
 """Guardrail tests for the .jac / na {} native pipeline.
 
-These tests verify that NaIRGenPass raises a clear E5090 error on AST
+These tests verify that the native backend raises a clear error on AST
 node types it does not yet support, rather than silently dropping them
 and emitting empty function bodies.
 
-Each test below targets one feature that NaIRGenPass currently no-ops.
+Each test below targets one feature the native backend does not lower.
 When a feature gains real support, its test here should be deleted and
 a behavioral test added to test_native_gen_pass.jac -- unless the
 guardrail property survives the promotion in a stronger form, in which
@@ -39,7 +39,7 @@ glob FIXTURES_DIR = os.path.join(
 """Compile a snippet through the native pipeline and return the program.
 
 Uses a synthetic .jac path under the fixtures directory so the file
-extension routes the compile through NaIRGenPass.
+extension routes the compile through the native backend.
 """
 def compile_na_inline(label: str, code: str) -> JacProgram {
     path = os.path.join(FIXTURES_DIR, f"_guardrail_{label}.jac");
@@ -1023,9 +1023,9 @@ test "guardrail: a dict comprehension with untyped keys or always-None values is
 # crash, so the module silently ran as Python.
 test "a backend crash is E9003, never a refusal, and leaves the module nothing to run" {
     import from unittest.mock { patch }
-    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+    import from jaclang.compiler.backends.native.mir.lower { MirLowering }
     with patch.object(
-        NaIRGenPass, "_codegen_binary", side_effect=AssertionError("lowering exploded")
+        MirLowering, "lower_binary", side_effect=AssertionError("lowering exploded")
     ) {
         (prog, ir, log) = compile_na_inline_demote(
             "backend_crash", "def add(a: int, b: int) -> int {\n    return a + b;\n}\n"
