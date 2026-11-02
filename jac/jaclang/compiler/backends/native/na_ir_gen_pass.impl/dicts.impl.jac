@@ -331,9 +331,6 @@ impl NaIRGenPass._unbox_any_container(
         return self._adopt_any_view(_res, _payload, target_type, _message);
     }
     _res.is_owned = False;
-    if not self._binding_function_active() {
-        return _res;
-    }
     _null = ir.Constant(target_type, None);
     _failed = b.and_(
         b.icmp_unsigned("==", _res, _null, name="jv.view.null"),
@@ -343,6 +340,9 @@ impl NaIRGenPass._unbox_any_container(
         name="jv.view.failed"
     );
     self._emit_runtime_raise(_failed, "TypeError", _message);
+    if not self._binding_function_active() {
+        return _res;
+    }
     b = self.builder;
     _raw = b.inttoptr(_payload, target_type, name="jv.view.raw");
     _fresh = b.icmp_unsigned("!=", _res, _raw, name="jv.view.fresh");
@@ -371,9 +371,12 @@ impl NaIRGenPass._adopt_any_view(
         ),
         name="jv.adopt.failed"
     );
+    _raw = b.inttoptr(payload, target_type, name="jv.adopt.raw");
+    self._emit_rc_release_typed(
+        b.select(_failed, _raw, _null, name="jv.adopt.refused"), op="any_view"
+    );
     self._emit_runtime_raise(_failed, "TypeError", message);
     b = self.builder;
-    _raw = b.inttoptr(payload, target_type, name="jv.adopt.raw");
     _fresh = b.icmp_unsigned("!=", view, _raw, name="jv.adopt.fresh");
     self._emit_rc_release_typed(
         b.select(_fresh, _raw, _null, name="jv.adopt.replaced"), op="any_view"
