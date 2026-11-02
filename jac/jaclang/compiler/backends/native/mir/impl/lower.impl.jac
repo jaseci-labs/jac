@@ -439,6 +439,14 @@ impl MirLowering.store_name(target: uni.Name, value: MirValue) {
             return;
         }
     }
+    if target.sym is not None and id(target.sym) not in self.st().locals {
+        place = self.global_place(target);
+        if place is not None {
+            elem = self.place_elem(place);
+            self.builder().store(place, self.coerce(value, elem, target));
+            return;
+        }
+    }
     slot = self.local_slot(target.sym, target);
     self.builder().store(slot, self.coerce(value, slot.type, target));
 }

@@ -142,6 +142,9 @@ impl MirLowering.generic_call(
         raise MirRefused(mir_refusal("function", name, nd));
     }
     label = f"{archetype_native_name(owner)}.{name}" if owner is not None else name;
+    if self.has_spread(nd) {
+        raise MirRefused(mir_refusal("call argument", f"unpacking into {label}", nd));
+    }
     nodes = self.param_nodes(sig, receiver is not None);
     evaluator = self.prog.get_type_evaluator();
     solution: dict[str, TypeBase] = {};

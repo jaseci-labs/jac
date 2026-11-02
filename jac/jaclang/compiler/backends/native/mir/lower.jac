@@ -223,11 +223,19 @@ obj MirFnState {
         specials: dict[str, MirValue] = {};
 }
 
+obj MirBound {
+    has value: MirValue,
+        site: uni.UniNode,
+        star: bool = False;
+}
+
 obj MirPacked {
-    has items: list[uni.Expr],
+    has items: list[(uni.Expr | MirBound)],
         site: uni.UniNode,
         keyword: bool = False,
-        names: list[str] = [];
+        names: list[str] = [],
+        bindable: list[str] = [],
+        unique: bool = False;
 }
 
 obj MirDecl {
@@ -487,7 +495,19 @@ obj MirLowering {
     def identity(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
     def bound_args(
         nd: uni.FuncCall, ab: uni.Ability, method: bool
-    ) -> list[(uni.Expr | MirPacked)];
+    ) -> list[(uni.Expr | MirPacked | MirBound)];
+    def has_spread(nd: uni.FuncCall) -> bool;
+    def spread_args(
+        nd: uni.FuncCall, ab: uni.Ability, sig: uni.FuncSignature, method: bool
+    ) -> list[(uni.Expr | MirPacked | MirBound)];
+    def bind_from_spreads(
+        pv: uni.ParamVar,
+        given: (MirBound | None),
+        spreads: list[MirBound],
+        matched: MirValue,
+        ab: uni.Ability,
+        nd: uni.FuncCall
+    ) -> MirBound;
 
     def bind_by_name(
         ab: uni.Ability,
@@ -497,7 +517,7 @@ obj MirLowering {
         nd: uni.FuncCall
     ) -> uni.Expr;
 
-    def bound_value(arg: (uni.Expr | MirPacked), ptype: MirType) -> MirValue;
+    def bound_value(arg: (uni.Expr | MirPacked | MirBound), ptype: MirType) -> MirValue;
     def constant_default(value: (uni.Expr | None)) -> bool;
     def builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def list_concat(left: MirValue, right: MirValue) -> MirValue;
