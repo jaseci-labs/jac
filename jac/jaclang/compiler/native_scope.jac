@@ -112,6 +112,7 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.types.stubcat.modiface"),
          NativeScopeEntry(module="jaclang.compiler.types.stubcat.reader"),
          NativeScopeEntry(module="jaclang.compiler.types.stubcat.resolver"),
+         NativeScopeEntry(module="jaclang.compiler.types.stubcat.writer"),
          NativeScopeEntry(module="jaclang.compiler.types.ts_decl_parser"),
          NativeScopeEntry(module="jaclang.compiler.types.type_evaluator"),
          NativeScopeEntry(module="jaclang.compiler.types.type_utils"),

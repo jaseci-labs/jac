@@ -3,6 +3,7 @@ import os;
 glob KERNEL_TIMING_ENV: str = "JAC_KERNEL_TIMING",
      SLOW_COMPILE_SECONDS: float = 20.0,
      _APPLICATION_UNITS: dict[str, UnitProducts] = {},
+     _APPLICATION_SEEDS: dict[str, PythonInterface] = {},
      _HOST_PREPARING: list[str] = [],
      _IN_PROCESS: list[bool] = [];
 
@@ -51,6 +52,8 @@ def kernel_compile_application(
     options: CompileOptions,
     seeds: (list[PythonInterface] | None) = None
 ) -> (CompileReport | None);
+
+def unit_seed(path: str, unit: UnitProducts) -> (PythonInterface | None);
 
 def forget_application_units;
 

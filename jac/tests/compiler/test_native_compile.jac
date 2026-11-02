@@ -21,6 +21,7 @@ import from jaclang.compiler.frontend.kernel_analyze {
     CompileReport,
     run_kernel_compile
 }
+import from jaclang.compiler.frontend.kernel_host { HostAsker }
 import from jaclang.project.kernel_snapshot {
     COMPILE_ENTRY,
     call_with_asker,
@@ -163,6 +164,12 @@ test "the native jc_compile emits the host's products" {
         emitted = outcome.unit(entry_file);
         assert emitted is not None;
         assert_same_products(emitted, expected);
+        missing = [
+            unit.path
+            for unit in outcome.units
+            if unit.path.endswith('.jac') and (not unit.iface or not unit.iface_shape)
+        ];
+        assert not missing , f"the native kernel returned units without an interface: {missing}";
     }
 }
 
@@ -358,6 +365,102 @@ test "an import of a third-party package whose module is only a stub compiles in
         assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
         assert not outcome.analysis.misses , outcome.analysis.misses;
         assert outcome.unit(entry_file) is not None;
+    }
+}
+
+"""Answers the kernel's questions and nothing else, as the native kernel's
+host does: only the `ask` callback crosses the boundary."""
+obj AskOnly(HostAsker) {
+    has session: any;
+
+    override def ask(method: str, key: str) -> str {
+        return self.session.ask(method, key);
+    }
+}
+
+"""The next prepare reuses an unchanged module from the interface its unit
+carries, so every Jac unit a kernel compile returns carries one, whatever the
+host can do besides answering questions."""
+test "every module a kernel compile returns carries its interface" {
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        write_application(base);
+        entry_file = str(base / 'main.jac');
+        session = kernel_snapshot(
+            active_host(), JacProgram(), entry_file, compile_options()
+        );
+        outcome = run_kernel_compile(
+            session.text(), entry_file, None, AskOnly(session=session)
+        );
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        assert outcome.unit(entry_file) is not None;
+        jac_units = [
+            unit
+            for unit in outcome.units
+            if unit.path.endswith('.jac')
+        ];
+        missing = [
+            unit.path
+            for unit in jac_units
+            if not unit.iface or not unit.iface_shape
+        ];
+        assert not missing , missing;
+    }
+}
+
+"""A page outside the application entry's import closure is compiled after the
+application from the interfaces that compile produced, so the modules both
+import are not analysed again."""
+test "a page compiled after the application reuses the modules both import" {
+    import jaclang.project.kernel_compile as kernel_compile;
+    import from unittest.mock { patch }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'shared.jac').write_text(
+            'def:pub shared_value(x: int) -> int { return x + 1; }\n'
+        );
+        (base / 'main.jac').write_text(
+            'import from shared { shared_value }\n\n'
+                + 'def:pub go(n: int) -> int { return shared_value(n); }\n'
+        );
+        (base / 'page.jac').write_text(
+            'import from shared { shared_value }\n\n'
+                + 'def:pub view(n: int) -> int { return shared_value(n) * 2; }\n'
+        );
+        program = JacProgram();
+        with patch("jaclang.project.kernel_compile._IN_PROCESS", [True]) {
+            try {
+                application = kernel_compile.kernel_compile_application(
+                    active_host(), program, str(base / 'main.jac'), compile_options()
+                );
+                assert application is not None
+                    and application.analysis.status == ANALYSIS_OK , application;
+                page = kernel_compile.host_kernel_compile(
+                    active_host(), program, str(base / 'page.jac'), compile_options()
+                );
+                assert page is not None and page.analysis.status == ANALYSIS_OK , page;
+                analysed = sorted(
+                    os.path.basename(mod.path) for mod in page.analysis.modules
+                );
+                assert analysed == ['page.jac'] , analysed;
+                assert page.unit(str(base / 'page.jac')) is not None;
+                kernel_compile.host_prepared();
+                after = kernel_compile.host_kernel_compile(
+                    active_host(), program, str(base / 'page.jac'), compile_options()
+                );
+                assert after is not None
+                    and after.analysis.status == ANALYSIS_OK , after;
+                analysed_after = sorted(
+                    os.path.basename(mod.path) for mod in after.analysis.modules
+                );
+                assert 'shared.jac' in analysed_after , (
+                    f"a page compiled after the prepare ended reused its interfaces: {analysed_after}"
+                );
+            } finally {
+                kernel_compile.forget_application_units();
+            }
+        }
     }
 }
 
