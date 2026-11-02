@@ -233,17 +233,19 @@ impl find_destructure_index_path(target: UniNode, key: str) -> list[int] | None 
         return find_destructure_index_path(target.value, key);
     }
     if isinstance(target, (TupleVal, ListVal)) and target.values {
+        after_star = False;
         for (i, sub) in enumerate(target.values) {
             if (
                 isinstance(sub, UnaryExpr)
                 and isinstance(sub.op, Token)
                 and sub.op.name == Tok.STAR_MUL
             ) {
+                after_star = True;
                 continue;
             }
             sub_path = find_destructure_index_path(sub, key);
             if sub_path is not None {
-                return [i] + sub_path;
+                return [i - len(target.values) if after_star else i] + sub_path;
             }
         }
     }

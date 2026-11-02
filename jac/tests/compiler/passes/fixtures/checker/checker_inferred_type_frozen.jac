@@ -87,19 +87,23 @@ def binder_rebinds {
     }
     (kind, *title) = ("k", "x", "y");  # <-- Error
     (title, title) = (Label(), "x");  # <-- Error: the second write
+    (kind, *middle, title) = ("k", Label(), "x");  # <-- Error: the last element
     rest = ["r"];
-    (kind, *rest) = ("k", "x", "y");  # <-- Ok
+    (head, *rest) = (0, "x", "y");  # <-- Ok: only the captured elements
     (kind, title) = ("k", Label());  # <-- Ok
     [first, second] = [Label(), Label()];  # <-- Ok: first binding
     pending = None;
     (kind, pending) = ("k", 3);  # <-- Ok: None-sentinel
-    print(first, second, pending);
+    print(first, second, pending, head, middle);
 }
 
 def for_unpack_rebinds {
     title = Label(text="a");
     for [kind, title] in [["k", "x"]] {  # <-- Error
         print(kind);
+    }
+    for (title, title) in [(Label(), "x")] {  # <-- Error: the second write
+        print(title);
     }
     count = 0;
     # Iterating a dict yields its keys, so `count` gets a key's characters.
