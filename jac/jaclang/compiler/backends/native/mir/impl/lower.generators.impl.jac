@@ -1431,7 +1431,7 @@ impl MirLowering.builtin_sorted(
     flag = b.const_bool(False);
     order = named.get("reverse");
     if order is not None {
-        flag = self.truthy(self.lower_expr(order), order);
+        flag = self.condition(order);
     }
     if key_fn is not None {
         held = self.spill(made);

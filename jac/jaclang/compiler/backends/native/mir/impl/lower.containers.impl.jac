@@ -1,5 +1,6 @@
 impl MirLowering.elem_kind(t: MirType, site: uni.UniNode) -> int {
-    if t.kind in (MirKind.INT, MirKind.ENUM, MirKind.CLASS) {
+    if t.kind
+        in (MirKind.INT, MirKind.ENUM, MirKind.CLASS, MirKind.C_PTR, MirKind.C_FN) {
         return KIND_INT;
     }
     if t.kind == MirKind.OPT {
@@ -99,7 +100,7 @@ impl MirLowering.to_bits(
             b.const_int(0, mir_int())
         );
     }
-    if elem.kind == MirKind.CLASS {
+    if elem.kind in (MirKind.CLASS, MirKind.C_PTR, MirKind.C_FN) {
         return self.address_of(self.coerce(value, elem, site));
     }
     if kind == KIND_TUPLE {
@@ -133,7 +134,7 @@ impl MirLowering.to_bits(
 
 impl MirLowering.scalar_from_bits(bits: MirValue, elem: MirType) -> MirValue {
     b = self.builder();
-    if elem.kind == MirKind.CLASS {
+    if elem.kind in (MirKind.CLASS, MirKind.C_PTR, MirKind.C_FN) {
         return self.emit_value(MirOp.PTR_CAST, elem, [bits]);
     }
     if elem.kind == MirKind.FLOAT {
@@ -721,7 +722,7 @@ impl MirLowering.list_sort(lst: MirValue, nd: uni.FuncCall) -> (MirValue | None)
     flag = b.const_bool(False);
     order = named.get("reverse");
     if order is not None {
-        flag = self.truthy(self.lower_expr(order), order);
+        flag = self.condition(order);
     }
     held = self.spill(lst);
     if key_fn is not None {

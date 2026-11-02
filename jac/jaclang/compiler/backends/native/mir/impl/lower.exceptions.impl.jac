@@ -567,7 +567,7 @@ impl MirLowering.lower_assert(nd: uni.AssertStmt) {
     failed = fn.new_block("assert.fail");
     passed = fn.new_block("assert.ok");
     b.cond_branch(
-        self.truthy(self.lower_expr(nd.condition), nd.condition), passed, failed
+        self.condition(nd.condition), passed, failed
     );
     b.position(failed);
     self.raise_named("AssertionError", nd.error_msg, nd);

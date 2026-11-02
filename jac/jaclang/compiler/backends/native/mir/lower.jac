@@ -265,7 +265,8 @@ obj MirDecl {
         self_type: (MirType | None) = None,
         owner: (uni.Archetype | None) = None,
         event: str = "",
-        env: dict[str, TypeBase] = {};
+        env: dict[str, TypeBase] = {},
+        c_variadic: bool = False;
 }
 
 def mono_symbol_text(text: str) -> str;
@@ -373,7 +374,46 @@ obj MirLowering {
     def place_elem(place: MirValue) -> MirType;
     def lower_trailer(nd: uni.AtomTrailer) -> MirValue;
     def call_name(nd: uni.FuncCall) -> str;
+    def c_extern(
+        callee: uni.Ability, site: uni.UniNode
+    ) -> tuple[str, list[tuple[MirType, str]], MirType, str, bool];
     def c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue;
+    def c_extern_address(nd: uni.Name) -> (MirValue | None);
+    def c_param_borrowed(pv: uni.ParamVar) -> bool;
+    def c_declared_type(
+        declared: (TypeBase | None), fallback: (TypeBase | None)
+    ) -> (TypeBase | None);
+    def c_param_plan(
+        pv: uni.ParamVar, fallback: (TypeBase | None), site: uni.UniNode
+    ) -> tuple[MirType, str];
+    def c_bare(nd: uni.Expr) -> uni.Expr;
+    def c_borrow_operand(arg: uni.Expr) -> (uni.Expr | None);
+    def c_same_storage(a: MirType, b: MirType) -> bool;
+    def c_address(place: MirValue, to: MirType) -> MirValue;
+    def c_lend(
+        arg: uni.Expr,
+        to: MirType,
+        exact: bool,
+        copybacks: list[tuple[MirValue, MirValue, MirType]]
+    ) -> MirValue;
+    def c_text_arg(value: MirValue, site: uni.UniNode) -> MirValue;
+    def c_arg(
+        arg: uni.Expr,
+        to: MirType,
+        plan: str,
+        copybacks: list[tuple[MirValue, MirValue, MirType]]
+    ) -> MirValue;
+    def c_vararg(arg: uni.Expr) -> MirValue;
+    def c_defines(decl: uni.UniNode) -> bool;
+    def declare_c_definition(ab: uni.Ability);
+    def va_arg(nd: uni.FuncCall, receiver: uni.Expr) -> MirValue;
+    def pointer_arith(
+        op: str, left: MirValue, right: MirValue, site: uni.UniNode
+    ) -> (MirValue | None);
+    def condition(nd: uni.Expr) -> MirValue;
+    def c_return_plan(
+        sig: uni.FuncSignature, fallback: (TypeBase | None), site: uni.UniNode
+    ) -> tuple[MirType, str];
     def import_call(nd: uni.FuncCall, callee: uni.Ability) -> (MirValue | None);
     def intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue;
     def intrinsic_operand(arg: uni.Expr, spec: str) -> MirValue;
@@ -522,7 +562,6 @@ obj MirLowering {
     ) -> MirValue;
 
     def condition_only(nd: uni.Expr) -> bool;
-    def c_text(value: MirValue) -> MirValue;
     def accessor_of(
         nd: uni.AtomTrailer, kind: str
     ) -> (tuple[uni.Archetype, MirDecl] | None);

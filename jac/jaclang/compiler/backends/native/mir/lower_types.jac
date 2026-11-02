@@ -26,6 +26,14 @@ glob ITERATOR_CLASSES: list[str] = [
          MirKind.FN
      ];
 
+glob C_ABI_KINDS: list[MirKind] = [
+         MirKind.INT,
+         MirKind.FLOAT,
+         MirKind.BOOL,
+         MirKind.C_PTR,
+         MirKind.C_FN
+     ];
+
 class MirRefused(Exception) {}
 
 def mir_refusal(

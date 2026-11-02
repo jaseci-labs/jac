@@ -242,7 +242,7 @@ impl MirLowering.lower_match(nd: uni.MatchStmt) {
         if arm.guard is not None {
             chosen = fn.new_block("match.body");
             b.cond_branch(
-                self.truthy(self.lower_expr(arm.guard), arm.guard), chosen, fail
+                self.condition(arm.guard), chosen, fail
             );
             b.position(chosen);
         }
