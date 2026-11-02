@@ -151,7 +151,10 @@ obj token_iterator_state(token_source) {
         start_line = item.lineno;
         end_line = item.end_lineno;
         start = _character_column(self.source_line(start_line), item.col_offset);
-        end = _character_column(self.source_line(end_line), item.end_col_offset);
+        end_offset = item.end_col_offset - 1
+            if item.doubled_brace
+            else item.end_col_offset;
+        end = _character_column(self.source_line(end_line), end_offset);
         spelling = item.spelling;
         line = self.source_line(start_line);
         if kind in (STRING, FSTRING_MIDDLE, TSTRING_MIDDLE) {
@@ -161,7 +164,7 @@ obj token_iterator_state(token_source) {
                     "utf-8"
                 )
                     + "".join(self.lines[start_line:end_line - 1])
-                    + self.source_line(end_line).encode("utf-8")[:item.end_col_offset].decode(
+                    + self.source_line(end_line).encode("utf-8")[:end_offset].decode(
                         "utf-8"
                     );
             }

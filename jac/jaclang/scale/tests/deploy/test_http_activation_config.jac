@@ -205,6 +205,103 @@ test "apply_http_activation_for_target calls apply_http_activation with a correc
         == keda.http_scaled_object_name_for("preview-deployment");
 }
 
+# A new ScaledObject has no request on record, so KEDA takes its target
+# straight down to min_replicas unless initialCooldownPeriod holds it up.
+test "initial_cooldown_period reaches the ScaledObject, and leaving it unset keeps KEDA's default" {
+    (keda, custom_api, _, _) = _mocked_keda();
+    custom_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    apply_http_activation_for_target(
+        _cfg(initial_cooldown_period=120),
+        "preview-deployment",
+        "staging",
+        "preview-svc",
+        keda
+    );
+    scaled_obj_spec = custom_api.create_namespaced_custom_object.call_args_list[1][1][
+        "body"
+    ]["spec"];
+    assert scaled_obj_spec.get("initialCooldownPeriod") == 120 , scaled_obj_spec;
+
+    (keda, custom_api, _, _) = _mocked_keda();
+    custom_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    apply_http_activation_for_target(
+        _cfg(), "preview-deployment", "staging", "preview-svc", keda
+    );
+    scaled_obj_spec = custom_api.create_namespaced_custom_object.call_args_list[1][1][
+        "body"
+    ]["spec"];
+    assert "initialCooldownPeriod" not in scaled_obj_spec , scaled_obj_spec;
+}
+
+# RFC 7386 JSON merge patch, which is how the client sends a PATCH to a
+# custom object: a key the patch leaves out is kept, and null removes it.
+def _merge_patch(current: any, patch: any) -> any {
+    if not isinstance(patch, dict) {
+        return patch;
+    }
+    merged = dict(current) if isinstance(current, dict) else {};
+    for (key, value) in patch.items() {
+        if value is None {
+            merged.pop(key, None);
+        } else {
+            merged[key] = _merge_patch(merged.get(key), value);
+        }
+    }
+    return merged;
+}
+
+# Custom objects kept in memory, patched the way the API server patches them.
+obj _MergePatchStore {
+    has objects: dict[str, any] = {};
+
+    def get(**kw: any) -> any {
+        key = str(kw["plural"]) + "/" + str(kw["name"]);
+        if key not in self.objects {
+            raise ApiException(status=404);
+        }
+        return self.objects[key];
+    }
+
+    def create(**kw: any) -> any {
+        body = kw["body"];
+        self.objects[str(kw["plural"]) + "/" + str(body["metadata"]["name"])] = _merge_patch(
+            {}, body
+        );
+        return body;
+    }
+
+    def patch(**kw: any) -> any {
+        key = str(kw["plural"]) + "/" + str(kw["name"]);
+        self.objects[key] = _merge_patch(self.objects[key], kw["body"]);
+        return self.objects[key];
+    }
+}
+
+test "lowering initial_cooldown_period to 0, or removing it, clears it from a ScaledObject that has one" {
+    store = _MergePatchStore();
+    (keda, custom_api, _, _) = _mocked_keda();
+    custom_api.get_namespaced_custom_object.side_effect = store.get;
+    custom_api.create_namespaced_custom_object.side_effect = store.create;
+    custom_api.patch_namespaced_custom_object.side_effect = store.patch;
+    scaled_obj_key = "scaledobjects/"
+        + keda.http_scaled_object_name_for("preview-deployment");
+    for (cfg, expected) in [
+        (_cfg(initial_cooldown_period=120), 120),
+        (_cfg(initial_cooldown_period=0), None),
+        (_cfg(initial_cooldown_period=120), 120),
+        (_cfg(), None)
+    ] {
+        apply_http_activation_for_target(
+            cfg, "preview-deployment", "staging", "preview-svc", keda
+        );
+        scaled_obj_spec = store.objects[scaled_obj_key]["spec"];
+        assert scaled_obj_spec.get("initialCooldownPeriod") == expected , (
+            cfg,
+            scaled_obj_spec
+        );
+    }
+}
+
 test "apply_http_activation_for_target is a no-op when disabled or unset" {
     (keda, custom_api, _, _) = _mocked_keda();
     assert apply_http_activation_for_target(
