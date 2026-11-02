@@ -41,4 +41,6 @@ def host_contract_dicts(
 
 def _host_type(name: str) -> str;
 
+def _host_export(export: Expr | KWPair, program: JacProgram) -> (Ability | None);
+
 def check_host_call(call: FuncCall, program: JacProgram) -> None;

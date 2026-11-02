@@ -40,7 +40,17 @@ errno / process helpers live in ffi/libc.na.jac (get_errno).
 Bun reference: bun/src/sys.zig  (Syscall.Error, errno helpers)
 """
 
-import from engine.src.ffi.libc { calloc, free, write, abort, getenv }
+import from engine.src.ffi.libc {
+    calloc,
+    free,
+    write,
+    abort,
+    getenv,
+    strlen,
+    memcpy,
+    memcmp,
+    memmem
+}
 
 # ── Type aliases ─────────────────────────────────────────────────────────────
 
@@ -245,4 +255,162 @@ def:pub byte_chr(b: int) -> str {
         io_free(buf);
     }
     return _BYTE_STRS[b - 128];
+}
+
+# ── Byte access to a str ─────────────────────────────────────────────────────
+# Jac's str operations (len, indexing, slicing, find, startswith, ord, for)
+# count and index code points, and decode an invalid sequence such as the C0 80
+# NUL sentinel as U+FFFD (jaclang #9526). An engine string is a byte buffer in
+# the engine's own encoding (UTF-8 with C0 80 for U+0000 and CESU-8 for lone
+# surrogates, or raw bytes from I/O), so byte-oriented code goes through these.
+# An ASCII string is the same in bytes and code points, so each helper keeps
+# the str fast path for it.
+
+"""Byte length of `s` (`len(s)` counts code points). O(1) for an ASCII string;
+otherwise libc strlen over its bytes, so hoist it out of loops."""
+def:pub str_nbytes(s: str) -> int {
+    if s.isascii() {
+        return len(s);
+    }
+    return strlen(s);
+}
+
+"""Byte `i` of `s` (0..255). The caller keeps 0 <= i < str_nbytes(s)."""
+def:pub str_byte(s: str, i: int) -> int {
+    return int(__mem_load_i8(__str_data(s) + i)) & 255;
+}
+
+"""Bytes [a, b) of `s` as a new string. Bounds are clamped to 0..str_nbytes(s)
+as a slice clamps them; negative bounds do not count from the end."""
+def:pub str_bslice(s: str, a: int, b: int) -> str {
+    if s.isascii() {
+        if a < 0 {
+            a = 0;
+        }
+        if b < 0 {
+            b = 0;
+        }
+        return s[a:b];
+    }
+    bs_n: int = strlen(s);
+    if a < 0 {
+        a = 0;
+    }
+    if b > bs_n {
+        b = bs_n;
+    }
+    return _str_bcopy(s, a, b);
+}
+
+"""Bytes from `a` to the end of `s` as a new string."""
+def:pub str_bslice_from(s: str, a: int) -> str {
+    if a < 0 {
+        a = 0;
+    }
+    if s.isascii() {
+        return s[a:];
+    }
+    return _str_bcopy(s, a, strlen(s));
+}
+
+"""str_bslice for bounds the caller already knows are in range
+(0 <= a, b <= str_nbytes(s)): it does not measure `s`, which for a non-ASCII
+string is a strlen. Loops over one string keep its length and slice with this."""
+def:pub str_bslice_in(s: str, a: int, b: int) -> str {
+    if s.isascii() {
+        return s[a:b];
+    }
+    return _str_bcopy(s, a, b);
+}
+
+"""Copy of the bytes [a, b) of `s`, both in range."""
+def _str_bcopy(s: str, a: int, b: int) -> str {
+    if b <= a {
+        return "";
+    }
+    bc_k: int = b - a;
+    bc_buf: Ptr = io_alloc(bc_k + 1);
+    memcpy(bc_buf, __str_data(s) + a, bc_k);
+    bc_out: str = str_from_raw(bc_buf);
+    io_free(bc_buf);
+    return bc_out;
+}
+
+"""Byte offset of the first `sub` in `s` at or after byte `start`, or -1."""
+def:pub str_bfind(s: str, sub: str, start: int = 0) -> int {
+    if s.isascii() and sub.isascii() {
+        return s.find(sub, start);
+    }
+    bf_n: int = str_nbytes(s);
+    bf_m: int = str_nbytes(sub);
+    if start < 0 {
+        start = 0;
+    }
+    if start > bf_n {
+        return -1;
+    }
+    if bf_m == 0 {
+        return start;
+    }
+    if start + bf_m > bf_n {
+        return -1;
+    }
+    bf_base: int = __str_data(s);
+    bf_hit: int = memmem(bf_base + start, bf_n - start, __str_data(sub), bf_m);
+    if bf_hit == 0 {
+        return -1;
+    }
+    return bf_hit - bf_base;
+}
+
+"""str_bfind for a caller that already holds `n` = str_nbytes(s), so `s` is
+not measured again (a strlen per call for a non-ASCII string)."""
+def:pub str_bfind_in(s: str, sub: str, start: int, n: int) -> int {
+    if start < 0 {
+        start = 0;
+    }
+    if start > n {
+        return -1;
+    }
+    bi_m: int = str_nbytes(sub);
+    if bi_m == 0 {
+        return start;
+    }
+    if start + bi_m > n {
+        return -1;
+    }
+    bi_base: int = __str_data(s);
+    bi_hit: int = memmem(bi_base + start, n - start, __str_data(sub), bi_m);
+    if bi_hit == 0 {
+        return -1;
+    }
+    return bi_hit - bi_base;
+}
+
+"""Byte offset of the last `sub` in `s`, or -1."""
+def:pub str_brfind(s: str, sub: str) -> int {
+    if s.isascii() and sub.isascii() {
+        return s.rfind(sub);
+    }
+    br_n: int = str_nbytes(s);
+    br_m: int = str_nbytes(sub);
+    br_at: int = br_n - br_m;
+    br_base: int = __str_data(s);
+    br_sub: int = __str_data(sub);
+    while br_at >= 0 {
+        if int(memcmp(br_base + br_at, br_sub, br_m)) == 0 {
+            return br_at;
+        }
+        br_at = br_at - 1;
+    }
+    return -1;
+}
+
+"""True when `s` holds the bytes of `sub` at byte offset `at`."""
+def:pub str_bmatch_at(s: str, sub: str, at: int) -> bool {
+    bm_m: int = str_nbytes(sub);
+    if at < 0 or at + bm_m > str_nbytes(s) {
+        return False;
+    }
+    return int(memcmp(__str_data(s) + at, __str_data(sub), bm_m)) == 0;
 }

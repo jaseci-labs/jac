@@ -29,7 +29,19 @@ def _retry_sleep(attempt: int);
 async def _aretry_sleep(attempt: int);
 
 
+def _retry_delay(attempt: int) -> float;
+
+
+def _close_stream(stream: any);
+
+
+async def _aclose_stream(stream: any);
+
+
 def _is_prompt_caching_eligible(model_name: str) -> bool;
+
+
+def _without_cache_control(block: dict[str, any]) -> dict[str, any];
 
 
 def _mark_message_for_caching(msg: dict[str, any]);
@@ -38,7 +50,9 @@ def _mark_message_for_caching(msg: dict[str, any]);
 def _usage_int(usage: any, key: str) -> int;
 
 
-def _apply_prompt_caching(messages: list[object], tools: list[dict[str, any]] | None);
+def _apply_prompt_caching(
+    messages: list[any], tools: list[dict[str, any]] | None
+) -> tuple[list[any], list[dict[str, any]] | None];
 
 
 def _quiet_lookup(lookup: Callable, fallback: any) -> any;
@@ -68,6 +82,12 @@ def _record_usage(
     call_kind: str | None = None,
     finish_reason: str | None = None
 );
+
+
+class _StreamReset(str) {}
+
+
+glob _STREAM_RESET: str = _StreamReset();
 
 
 def _usage_step_events(
@@ -109,7 +129,7 @@ def _reasoning_events(
 
 
 def _answer_events(
-    mt_run: MTRuntime, token: str, iteration: int
+    mt_run: MTRuntime, tokens: Generator[str, None, None], iteration: int
 ) -> Generator[StreamEvent, None, None];
 
 
@@ -327,6 +347,7 @@ impl BaseLLM._compact_messages(
 
 impl BaseLLM.ainvoke(mt_run: MTRuntime) -> any {
     import asyncio;
+    self._call_deadline(mt_run);
     if image_resp_kind(mt_run.resp_type) {
         return await asyncio.to_thread(self.dispatch_image, mt_run);
     }
@@ -348,6 +369,7 @@ impl BaseLLM.__call__(**kwargs: object) -> BaseLLM {
 }
 
 impl BaseLLM.invoke(mt_run: MTRuntime) -> any {
+    self._call_deadline(mt_run);
     if image_resp_kind(mt_run.resp_type) {
         return self.dispatch_image(mt_run);
     }
@@ -417,6 +439,60 @@ impl BaseLLM._resolve_timeout(mt_run: MTRuntime) -> float | None {
     }
     resolved = float(timeout);
     return resolved if resolved > 0 else None;
+}
+
+
+impl BaseLLM._call_deadline(mt_run: MTRuntime) -> CallDeadline {
+    if mt_run._deadline is None {
+        mt_run._deadline = CallDeadline(
+            budget=self._resolve_timeout(mt_run), model=self.model_name
+        );
+    }
+    return mt_run._deadline;
+}
+
+
+impl BaseLLM._arm_attempt(
+    mt_run: MTRuntime, params: dict[str, any], stream: bool
+) -> None {
+    deadline = self._call_deadline(mt_run);
+    deadline.check();
+    if stream {
+        import httpx;
+        params["timeout"] = httpx.Timeout(
+            connect=deadline.bound(_streaming_config.get("connect_timeout", 30.0)),
+            read=deadline.bound(_streaming_config.get("read_timeout", 90.0)),
+            write=deadline.bound(_streaming_config.get("write_timeout", 30.0)),
+            pool=deadline.bound(_streaming_config.get("pool_timeout", 30.0))
+        );
+        return;
+    }
+    left = deadline.remaining();
+    if left is None {
+        params.pop("timeout", None);
+    } else {
+        params["timeout"] = left;
+    }
+}
+
+
+impl BaseLLM._may_retry(mt_run: MTRuntime, e: Exception, attempt: int) -> bool {
+    if not (
+        _is_transient_error(e) and attempt < self._resolve_stream_retries(mt_run)
+    ) {
+        return False;
+    }
+    deadline = self._call_deadline(mt_run);
+    left = deadline.remaining();
+    if left is None or left > _retry_delay(attempt + 1) {
+        return True;
+    }
+    left = max(0.0, left);
+    self.log_info(
+        f"Transient LLM error ({type(e).__name__}) on {self.model_name}; not "
+        f"retrying with {left:.1f}s left of the {deadline.budget:g}s timeout"
+    );
+    return False;
 }
 
 
@@ -633,31 +709,19 @@ impl BaseLLM._invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> obje
         and mt_run.resp_type is not None
         and mt_run.resp_type is not str {
         accumulated = "";
-        _seen_resets = mt_run._stream_reset_count;
         try {
-            for token in self.dispatch_streaming(mt_run) {
-                if mt_run._stream_reset_count != _seen_resets {
-                    _seen_resets = mt_run._stream_reset_count;
+            for ev in _answer_events(
+                mt_run, self.dispatch_streaming(mt_run, retractable=True), 0
+            ) {
+                if ev.event_type == "stream_reset" {
                     accumulated = "";
-                    try {
-                        on_event(
-                            StreamEvent(
-                                event_type="stream_reset", data={"scope": "answer"}
-                            )
-                        );
-                    } except Exception as e {
-                        logger.debug(f"stream_handler raised: {e}");
-                    }
+                } elif ev.event_type == "chunk" {
+                    accumulated += ev.data["content"];
                 }
-                if token {
-                    accumulated += token;
-                    try {
-                        on_event(
-                            StreamEvent(event_type="chunk", data={"content": token})
-                        );
-                    } except Exception as e {
-                        logger.debug(f"stream_handler raised: {e}");
-                    }
+                try {
+                    on_event(ev);
+                } except Exception as e {
+                    logger.debug(f"stream_handler raised: {e}");
                 }
             }
         } finally {
@@ -775,15 +839,9 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
 
         just_compacted = self._maybe_compact(mt_run, usage, just_compacted, _cp);
         if resp.tool_calls {
-            non_finish_calls: list[ToolCall] = [];
-            finish_tc: (ToolCall | None) = None;
-            for tc in resp.tool_calls {
-                if tc.is_finish_call() {
-                    finish_tc = tc;
-                    break;
-                }
-                non_finish_calls.append(tc);
-            }
+            (non_finish_calls, finish_tc, skipped_calls) = _split_at_finish(
+                resp.tool_calls
+            );
 
             if non_finish_calls {
                 batches = (
@@ -808,6 +866,8 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
                     }
                 }
             }
+
+            _answer_skipped(mt_run, skipped_calls);
 
             if finish_tc {
                 try {
@@ -934,7 +994,7 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict[str, any] {
         if isinstance(first, dict) and first.get("role") == "system"
         else None;
     if _is_prompt_caching_eligible(self.model_name) {
-        _apply_prompt_caching(messages, tools);
+        (messages, tools) = _apply_prompt_caching(messages, tools);
     }
 
     params = {
@@ -971,20 +1031,7 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict[str, any] {
         params = inject_tool_hint(params);
     }
 
-    if mt_run.stream {
-        import httpx;
-        params["timeout"] = httpx.Timeout(
-            connect=_streaming_config.get("connect_timeout", 30.0),
-            read=_streaming_config.get("read_timeout", 90.0),
-            write=_streaming_config.get("write_timeout", 30.0),
-            pool=_streaming_config.get("pool_timeout", 30.0)
-        );
-    } else {
-        call_timeout = self._resolve_timeout(mt_run);
-        if call_timeout is not None {
-            params["timeout"] = call_timeout;
-        }
-    }
+    self._arm_attempt(mt_run, params, mt_run.stream);
     return params;
 }
 
@@ -1038,6 +1085,11 @@ impl BaseLLM.format_prompt(params: dict[str, any]) -> str {
 
 def _error_tool_call(call_id: str, tool_name: str, reason: str) -> ToolCall;
 
+def _split_at_finish(
+    tool_calls: list[ToolCall]
+) -> tuple[list[ToolCall], ToolCall | None, list[ToolCall]];
+
+def _answer_skipped(mt_run: MTRuntime, skipped: list[ToolCall]) -> None;
 
 def _parse_tool_calls(
     mt_run: MTRuntime,
@@ -1064,12 +1116,12 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     params.pop("api_key", None);
     attempt = 0;
     while True {
+        self._arm_attempt(mt_run, params, False);
         try {
             response = self.model_call_no_stream(params);
             break;
         } except Exception as e {
-            if _is_transient_error(e)
-                and attempt < self._resolve_stream_retries(mt_run) {
+            if self._may_retry(mt_run, e, attempt) {
                 attempt += 1;
                 self.log_info(
                     f"Transient LLM error ({type(e).__name__}); "
@@ -1124,17 +1176,18 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
 }
 
 impl BaseLLM._should_retry_stream(
-    mt_run: MTRuntime, e: Exception, attempt: int, usage_base: int = -1
+    mt_run: MTRuntime,
+    e: Exception,
+    attempt: int,
+    usage_base: int = -1,
+    restartable: bool = True
 ) -> bool {
-    if not (
-        _is_transient_error(e) and attempt < self._resolve_stream_retries(mt_run)
-    ) {
+    if not (restartable and self._may_retry(mt_run, e, attempt)) {
         return False;
     }
     if usage_base >= 0 {
         mt_run._usage_history = mt_run._usage_history[:usage_base];
     }
-    mt_run._stream_reset_count += 1;
     self.log_info(
         f"Transient stream error ({type(e).__name__}); "
         f"retry {attempt + 1} on {self.model_name}"
@@ -1142,7 +1195,9 @@ impl BaseLLM._should_retry_stream(
     return True;
 }
 
-impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None] {
+impl BaseLLM.dispatch_streaming(
+    mt_run: MTRuntime, retractable: bool = False
+) -> Generator[str, None, None] {
     params = self.make_model_params(mt_run);
 
     log_params = self.format_prompt(params);
@@ -1153,14 +1208,19 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
     usage_base = len(mt_run._usage_history);
     stream_model: str = self.model_name;
     events = bool(mt_run.call_params.get("logging", False));
+    deadline = self._call_deadline(mt_run);
     while True {
         finish_reason = "";
         produced = False;
+        shown = False;
         mt_run._last_stream_chunks = [];
         reasoning_pending = "";
+        self._arm_attempt(mt_run, params, True);
+        response: any = None;
         try {
             response = self.model_call_with_stream(params);
             for chunk in response {
+                deadline.check();
                 if mt_run._call_kind == "final_answer_restream" {
                     mt_run._last_stream_chunks.append(chunk);
                 }
@@ -1190,9 +1250,10 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
                     );
                 }
                 if chunk?.choices and chunk?.choices?[0]?.delta {
-                    delta = chunk?.choices?[0]?.delta;
-                    produced = produced or bool(str(delta?.content or "").strip());
-                    yield delta?.content or "";
+                    content = str(chunk?.choices?[0]?.delta?.content or "");
+                    shown = shown or bool(content);
+                    produced = produced or bool(content.strip());
+                    yield content;
                 }
             }
             if reasoning_pending {
@@ -1201,12 +1262,19 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
             }
             break;
         } except Exception as e {
-            if self._should_retry_stream(mt_run, e, attempt, usage_base) {
+            if self._should_retry_stream(
+                mt_run, e, attempt, usage_base, retractable or not shown
+            ) {
                 attempt += 1;
+                if retractable {
+                    yield _STREAM_RESET;
+                }
                 _retry_sleep(attempt);
                 continue;
             }
             raise;
+        } finally {
+            _close_stream(response);
         }
     }
 
@@ -1234,11 +1302,13 @@ impl BaseLLM.dispatch_streaming_with_tools(
     no_stream = False;
     finish_reason = "";
     attempt = 0;
+    deadline = self._call_deadline(mt_run);
     while True {
         chunks = [];
         content_buf = "";
         reasoning_buf = "";
         reasoning_pending = "";
+        self._arm_attempt(mt_run, params, True);
 
         mt_run._tool_arg_deltas = [];
         settings = _tool_stream_settings(mt_run);
@@ -1251,9 +1321,11 @@ impl BaseLLM.dispatch_streaming_with_tools(
             ),
             max_per_call=int(settings.get("max_per_call", _TOOL_DELTA_MAX_PER_CALL))
         );
+        _stream_resp: any = None;
         try {
             _stream_resp = self.model_call_with_stream(params);
             for chunk in _stream_resp {
+                deadline.check();
                 chunks.append(chunk);
                 pending_before = len(mt_run._tool_arg_deltas);
                 if stream_args {
@@ -1308,10 +1380,13 @@ impl BaseLLM.dispatch_streaming_with_tools(
         } except Exception as e {
             if self._should_retry_stream(mt_run, e, attempt) {
                 attempt += 1;
+                yield _STREAM_RESET;
                 _retry_sleep(attempt);
                 continue;
             }
             raise;
+        } finally {
+            _close_stream(_stream_resp);
         }
     }
     if no_stream {
@@ -1384,12 +1459,12 @@ impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     params.pop("api_key", None);
     attempt = 0;
     while True {
+        self._arm_attempt(mt_run, params, False);
         try {
             response = await self.model_call_no_stream_async(params);
             break;
         } except Exception as e {
-            if _is_transient_error(e)
-                and attempt < self._resolve_stream_retries(mt_run) {
+            if self._may_retry(mt_run, e, attempt) {
                 attempt += 1;
                 self.log_info(
                     f"Transient LLM error ({type(e).__name__}); "
@@ -1448,12 +1523,17 @@ impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) -> AsyncIterator[str] {
     attempt = 0;
     usage_base = len(mt_run._usage_history);
     stream_model: str = self.model_name;
+    deadline = self._call_deadline(mt_run);
     while True {
         finish_reason = "";
         produced = False;
+        shown = False;
+        self._arm_attempt(mt_run, params, True);
+        response: any = None;
         try {
             response = await self.model_call_with_stream_async(params);
             async for chunk in response {
+                deadline.check();
                 stream_model = chunk?.model or stream_model;
                 if chunk?.choices and chunk?.choices?[0]?.finish_reason {
                     finish_reason = str(chunk?.choices?[0]?.finish_reason);
@@ -1467,19 +1547,22 @@ impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) -> AsyncIterator[str] {
                     );
                 }
                 if chunk?.choices and chunk?.choices?[0]?.delta {
-                    delta = chunk?.choices?[0]?.delta;
-                    produced = produced or bool(str(delta?.content or "").strip());
-                    yield str(delta?.content or "");
+                    content = str(chunk?.choices?[0]?.delta?.content or "");
+                    shown = shown or bool(content);
+                    produced = produced or bool(content.strip());
+                    yield content;
                 }
             }
             break;
         } except Exception as e {
-            if self._should_retry_stream(mt_run, e, attempt, usage_base) {
+            if self._should_retry_stream(mt_run, e, attempt, usage_base, not shown) {
                 attempt += 1;
                 await _aretry_sleep(attempt);
                 continue;
             }
             raise;
+        } finally {
+            await _aclose_stream(response);
         }
     }
 
@@ -1635,7 +1718,7 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
 
 
 impl BaseLLM._stream_final_answer(
-    mt_run: MTRuntime, fallback: str | None = None
+    mt_run: MTRuntime, fallback: str | None = None, retractable: bool = False
 ) -> Generator[str, None, None] {
     final_instruction = Message(
         role=MessageRole.USER,
@@ -1651,8 +1734,12 @@ impl BaseLLM._stream_final_answer(
     mt_run.call_params["tool_choice"] = "none";
     accumulated: str = "";
     try {
-        for token in self.dispatch_streaming(mt_run) {
-            accumulated += token;
+        for token in self.dispatch_streaming(mt_run, retractable) {
+            if token is _STREAM_RESET {
+                accumulated = "";
+            } else {
+                accumulated += token;
+            }
             yield token;
         }
         if not accumulated and fallback is not None {
@@ -1665,6 +1752,9 @@ impl BaseLLM._stream_final_answer(
         }
         accumulated = fallback;
         yield fallback;
+    } except Exception {
+        accumulated = "";
+        raise;
     } finally {
         mt_run._call_kind = original_call_kind;
         mt_run.call_params.pop("tool_choice", None);
@@ -1746,9 +1836,11 @@ impl BaseLLM._yield_recovery_result(
     }
     yield StreamEvent(event_type="steps_done", data={"iterations": iter_count});
     if finish_found {
-        for token in self._stream_final_answer(mt_run, fallback=committed) {
-            yield from _answer_events(mt_run, token, iter_count);
-        }
+        yield from _answer_events(
+            mt_run,
+            self._stream_final_answer(mt_run, fallback=committed, retractable=True),
+            iter_count
+        );
     } elif recovery_resp.output {
         yield StreamEvent(
             event_type="chunk", data={"content": str(recovery_resp.output)}
@@ -1769,14 +1861,9 @@ impl BaseLLM._invoke_streaming(
 
 impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, None] {
     if len(mt_run.tools) == 0 {
-        _seen_resets = mt_run._stream_reset_count;
-        for token in self.dispatch_streaming(mt_run) {
-            if mt_run._stream_reset_count != _seen_resets {
-                _seen_resets = mt_run._stream_reset_count;
-                yield StreamEvent(event_type="stream_reset", data={"scope": "answer"});
-            }
-            yield from _answer_events(mt_run, token, 0);
-        }
+        yield from _answer_events(
+            mt_run, self.dispatch_streaming(mt_run, retractable=True), 0
+        );
     } else {
         max_iters = (
             mt_run.call_params.get("max_react_iterations")
@@ -1829,9 +1916,11 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
                             "reason": "aborted_with_summary"
                         }
                     );
-                    for token in self._stream_final_answer(mt_run) {
-                        yield from _answer_events(mt_run, token, iter_count);
-                    }
+                    yield from _answer_events(
+                        mt_run,
+                        self._stream_final_answer(mt_run, retractable=True),
+                        iter_count
+                    );
                     yield from _usage_step_events(mt_run, _usage_base);
                     break;
                 }
@@ -1842,9 +1931,11 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
                     event_type="steps_done",
                     data={"iterations": iter_count - 1, "reason": "max_iterations"}
                 );
-                for token in self._stream_final_answer(mt_run) {
-                    yield from _answer_events(mt_run, token, iter_count);
-                }
+                yield from _answer_events(
+                    mt_run,
+                    self._stream_final_answer(mt_run, retractable=True),
+                    iter_count
+                );
                 yield from _usage_step_events(mt_run, _usage_base);
                 break;
             }
@@ -1854,14 +1945,13 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
             try {
                 _stream_out: list[CompletionResult] = [];
                 _emitted_deltas = False;
-                _seen_resets = mt_run._stream_reset_count;
                 for _tok in self.dispatch_streaming_with_tools(mt_run, _stream_out) {
-                    if mt_run._stream_reset_count != _seen_resets {
-                        _seen_resets = mt_run._stream_reset_count;
+                    if _tok is _STREAM_RESET {
                         yield StreamEvent(
                             event_type="stream_reset",
                             data={"scope": "thought", "iteration": iter_count}
                         );
+                        continue;
                     }
                     yield from _reasoning_events(mt_run, iter_count);
                     while mt_run._tool_arg_deltas {
@@ -1891,13 +1981,6 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
                     }
                 }
 
-                if mt_run._stream_reset_count != _seen_resets {
-                    _seen_resets = mt_run._stream_reset_count;
-                    yield StreamEvent(
-                        event_type="stream_reset",
-                        data={"scope": "thought", "iteration": iter_count}
-                    );
-                }
                 while mt_run._tool_arg_deltas {
                     _d = mt_run._tool_arg_deltas.pop(0);
                     _emitted_deltas = True;
@@ -1966,15 +2049,9 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
             _usage_base = len(mt_run._usage_history);
 
             if resp.tool_calls {
-                non_finish_calls: list[ToolCall] = [];
-                finish_tc: (ToolCall | None) = None;
-                for tc in resp.tool_calls {
-                    if tc.is_finish_call() {
-                        finish_tc = tc;
-                        break;
-                    }
-                    non_finish_calls.append(tc);
-                }
+                (non_finish_calls, finish_tc, skipped_calls) = _split_at_finish(
+                    resp.tool_calls
+                );
 
                 if non_finish_calls {
                     max_result_len = int(
@@ -2045,6 +2122,8 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
                     }
                 }
 
+                _answer_skipped(mt_run, skipped_calls);
+
                 if finish_tc {
                     try {
                         finish_msg = finish_tc();
@@ -2064,11 +2143,15 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
                     );
 
                     if mt_run.resp_type is None or mt_run.resp_type is str {
-                        for token in self._stream_final_answer(
-                            mt_run, fallback=str(final_output or "")
-                        ) {
-                            yield from _answer_events(mt_run, token, iter_count);
-                        }
+                        yield from _answer_events(
+                            mt_run,
+                            self._stream_final_answer(
+                                mt_run,
+                                fallback=str(final_output or ""),
+                                retractable=True
+                            ),
+                            iter_count
+                        );
                         yield from _usage_step_events(mt_run, _usage_base);
                     }
                     break;
@@ -2264,22 +2347,27 @@ impl _is_transient_error(exc: object) -> bool {
             litellm.APIConnectionError,
             litellm.InternalServerError,
             litellm.ServiceUnavailableError,
+            openai.APIConnectionError,
+            openai.InternalServerError,
             RateLimitError
         )
     );
 }
 
 
+impl _retry_delay(attempt: int) -> float {
+    base = float(_streaming_config.get("retry_backoff", 1.0));
+    return min(base * (2 ** max(0, attempt - 1)), 10.0);
+}
+
 impl _retry_sleep(attempt: int) {
-    base = _streaming_config.get("retry_backoff", 1.0);
-    time.sleep(min(base * (2 ** max(0, attempt - 1)), 10.0));
+    time.sleep(_retry_delay(attempt));
 }
 
 
 impl _aretry_sleep(attempt: int) {
     import asyncio;
-    base = _streaming_config.get("retry_backoff", 1.0);
-    await asyncio.sleep(min(base * (2 ** max(0, attempt - 1)), 10.0));
+    await asyncio.sleep(_retry_delay(attempt));
 }
 
 
@@ -2293,12 +2381,29 @@ impl _is_prompt_caching_eligible(model_name: str) -> bool {
 }
 
 
+impl _without_cache_control(block: dict[str, any]) -> dict[str, any] {
+    out = {
+        key: value
+        for (key, value) in block.items()
+        if key != "cache_control"
+    };
+    content = out.get("content");
+    if isinstance(content, list) {
+        out["content"] = [
+            _without_cache_control(part) if isinstance(part, dict) else part
+            for part in content
+        ];
+    }
+    return out;
+}
+
+
 impl _mark_message_for_caching(msg: dict[str, any]) {
     content = msg.get("content");
     if isinstance(content, str) {
-        msg["cache_control"] = _CACHE_CONTROL_EPHEMERAL;
-    } elif isinstance(content, list) and len(content) > 0 {
-        content[-1]["cache_control"] = _CACHE_CONTROL_EPHEMERAL;
+        msg["cache_control"] = dict(_CACHE_CONTROL_EPHEMERAL);
+    } elif isinstance(content, list) and content and isinstance(content[-1], dict) {
+        content[-1]["cache_control"] = dict(_CACHE_CONTROL_EPHEMERAL);
     }
 }
 
@@ -2343,33 +2448,35 @@ impl _usage_int(usage: any, key: str) -> int {
 }
 
 
-impl _apply_prompt_caching(messages: list[object], tools: list[dict[str, any]] | None) {
-    last_sys_idx = -1;
-    last_nonsys_idx = -1;
-    for (i, msg) in enumerate(messages) {
+impl _apply_prompt_caching(
+    messages: list[any], tools: list[dict[str, any]] | None
+) -> tuple[list[any], list[dict[str, any]] | None] {
+    out_msgs: list[any] = [
+        _without_cache_control(msg) if isinstance(msg, dict) else msg
+        for msg in messages
+    ];
+    last_sys: dict[str, any] | None = None;
+    last_nonsys: dict[str, any] | None = None;
+    for msg in out_msgs {
         if isinstance(msg, dict) {
             if msg.get("role") == "system" {
-                last_sys_idx = i;
+                last_sys = msg;
             } else {
-                last_nonsys_idx = i;
+                last_nonsys = msg;
             }
         }
     }
-    if last_sys_idx >= 0 {
-        _sys_msg = messages[last_sys_idx];
-        if isinstance(_sys_msg, dict) {
-            _mark_message_for_caching(_sys_msg);
+    for target in (last_sys, last_nonsys) {
+        if target is not None {
+            _mark_message_for_caching(target);
         }
     }
-    if last_nonsys_idx >= 0 {
-        _nonsys_msg = messages[last_nonsys_idx];
-        if isinstance(_nonsys_msg, dict) {
-            _mark_message_for_caching(_nonsys_msg);
-        }
+    if not tools {
+        return (out_msgs, tools);
     }
-    if tools {
-        tools[-1]["cache_control"] = _CACHE_CONTROL_EPHEMERAL;
-    }
+    out_tools = [_without_cache_control(tool) for tool in tools];
+    out_tools[-1]["cache_control"] = dict(_CACHE_CONTROL_EPHEMERAL);
+    return (out_msgs, out_tools);
 }
 
 
@@ -2611,11 +2718,17 @@ impl _reasoning_events(
 
 
 impl _answer_events(
-    mt_run: MTRuntime, token: str, iteration: int
+    mt_run: MTRuntime, tokens: Generator[str, None, None], iteration: int
 ) -> Generator[StreamEvent, None, None] {
-    yield from _reasoning_events(mt_run, iteration);
-    if token {
-        yield StreamEvent(event_type="chunk", data={"content": token});
+    for token in tokens {
+        if token is _STREAM_RESET {
+            yield StreamEvent(event_type="stream_reset", data={"scope": "answer"});
+        } else {
+            yield from _reasoning_events(mt_run, iteration);
+            if token {
+                yield StreamEvent(event_type="chunk", data={"content": token});
+            }
+        }
     }
 }
 
@@ -2735,6 +2848,31 @@ impl _error_tool_call(call_id: str, tool_name: str, reason: str) -> ToolCall {
     return ToolCall(call_id=call_id, tool=Tool(func=_report_error), args={});
 }
 
+impl _split_at_finish(
+    tool_calls: list[ToolCall]
+) -> tuple[list[ToolCall], ToolCall | None, list[ToolCall]] {
+    before: list[ToolCall] = [];
+    for (i, tc) in enumerate(tool_calls) {
+        if tc.is_finish_call() {
+            return (before, tc, tool_calls[i + 1:]);
+        }
+        before.append(tc);
+    }
+    return (before, None, []);
+}
+
+impl _answer_skipped(mt_run: MTRuntime, skipped: list[ToolCall]) -> None {
+    for tc in skipped {
+        mt_run.add_message(
+            ToolCallResultMsg(
+                content="Not executed: it came after finish_tool in the same response. "
+                "Call it again in a later response if it is still needed.",
+                tool_call_id=tc.call_id,
+                name=tc.tool.get_name()
+            )
+        );
+    }
+}
 
 impl _parse_tool_calls(
     mt_run: MTRuntime,
@@ -2917,4 +3055,28 @@ impl _images_from_response(response: dict[str, any]) -> list[Image] {
         raise OutputConversionError("The model returned no image for this call.");
     }
     return images;
+}
+
+impl _close_stream(stream: any) {
+    source = stream?.completion_stream or stream;
+    close = source?.close;
+    if callable(close) {
+        try {
+            close();
+        } except Exception {}
+    }
+}
+
+impl _aclose_stream(stream: any) {
+    import inspect;
+    close = stream?.aclose or stream?.close;
+    if not callable(close) {
+        return;
+    }
+    try {
+        closing = close();
+        if inspect.isawaitable(closing) {
+            await closing;
+        }
+    } except Exception {}
 }

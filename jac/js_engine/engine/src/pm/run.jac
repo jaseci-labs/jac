@@ -19,11 +19,17 @@ import from engine.src.pm.lifecycle { lifecycle_shell, lifecycle_env }
 import from engine.src.pm.fsx { fsx_is_file, fsx_cwd }
 import from engine.src.pm.paths { pm_path_dirname, pm_unscoped_name }
 
+import from engine.src.runtime.mem {
+    str_bfind,
+    str_bslice,
+    str_nbytes
+}
+
 def _out(s: str) {
-    write(1, s, len(s));
+    write(1, s, str_nbytes(s));
 }
 def _err(s: str) {
-    write(2, s, len(s));
+    write(2, s, str_nbytes(s));
 }
 
 """Directory of the nearest package.json at or above `start` ("" if none)."""
@@ -58,7 +64,7 @@ def _sh_quote(arg: str) -> str {
         return "''";
     }
     for ch in arg {
-        if _SH_SAFE.find(ch) < 0 {
+        if str_bfind(_SH_SAFE, ch) < 0 {
             return "'" + arg.replace("'", "'\\''") + "'";
         }
     }
@@ -160,9 +166,9 @@ def:pub pm_x_local(root_dir: str, pkg: str, extra: list[str]) -> int {
     if name.startswith("@") {
         start = 1;
     }
-    at: int = name.find("@", start);
+    at: int = str_bfind(name, "@", start);
     if at > 0 {
-        name = name[0:at];
+        name = str_bslice(name, 0, at);
     }
     bin_name: str = pm_unscoped_name(name);
     dir: str = root_dir;

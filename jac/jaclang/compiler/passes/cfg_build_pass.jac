@@ -15,6 +15,7 @@ walker CFGBuildPass(TreePass) {
     def link_bbs(source: UniCFGNode, target: UniCFGNode) -> None;
     def _link_sequential(body: Sequence[CodeBlockStmt]) -> None;
     def _exit_wired(nd: UniCFGNode) -> bool;
+    def _in_nested_lambda(succ: UniCFGNode, nd: UniCFGNode) -> bool;
     def _connect_tails(parent: UniNode, target: UniCFGNode) -> None;
     def _connect_tail(k: UniNode, target: UniCFGNode) -> None;
     def _raising_stmts(stmts: Sequence[UniNode]) -> list[CodeBlockStmt];
@@ -90,6 +91,7 @@ walker CFGBuildPass(TreePass) {
     can exit_typed_ctx_block with TypedCtxBlock exit;
     can exit_open_stmt with OpenStmt exit;
     can exit_jsx_slot with JsxSlot exit;
+    can exit_lambda_expr with LambdaExpr exit;
     can exit_ability with Ability exit;
     can exit_archetype with Archetype exit;
     can exit_impl_def with ImplDef exit;

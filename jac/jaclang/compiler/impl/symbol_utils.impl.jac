@@ -1,3 +1,27 @@
+impl import_binds_name(nd: UniNode, name: str) -> bool {
+    mod = nd.find_parent_of_type(Module);
+    if mod is None {
+        return False;
+    }
+    for imp in mod.get_all_sub_nodes(Import) {
+        if imp.from_loc is None
+            or imp.is_absorb
+            or imp.find_parent_of_type(UniScopeNode) is not mod {
+            continue;
+        }
+        for item in imp.items {
+            if not isinstance(item, ModuleItem) {
+                continue;
+            }
+            bound = item.alias if item.alias is not None else item.name;
+            if isinstance(bound, Name) and bound.value == name {
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
 impl resolve_expr_symbol(
     expr: Expr, module: (Module | None) = None
 ) -> (Symbol | None) {
@@ -125,7 +149,8 @@ impl classify_call(nd: FuncCall) -> CallKind {
     }
 
     if isinstance(nd.target, Name)
-        and JAC_TYPE_REGISTRY.is_builtin(nd.target.sym_name) {
+        and JAC_TYPE_REGISTRY.is_builtin(nd.target.sym_name)
+        and not import_binds_name(nd, nd.target.sym_name) {
         return CallKind.BUILTIN;
     }
     return CallKind.FUNCTION;

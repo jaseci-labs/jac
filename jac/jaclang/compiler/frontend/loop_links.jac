@@ -34,6 +34,8 @@ def made_in_comprehension(closure: UniNode) -> bool;
 
 def made_per_element(sym: Symbol, closure: UniNode) -> bool;
 
+def in_loop_else(nd: UniNode, at: UniNode) -> bool;
+
 def enclosing_loop(ctrl: CtrlStmt) -> (LoopStmt | None);
 
 def confined_to(sym: Symbol, loop: LoopStmt) -> bool;

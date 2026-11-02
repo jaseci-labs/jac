@@ -92,3 +92,34 @@ test "process.version reports the Node.js API level" {
     assert version == "v" + api;
     assert name == "node";
 }
+
+test "reading this before super() throws, even when its value is unused" {
+    out = run_source(
+        "const out = [];\n"
+            + "class Discard extends Object { constructor() { this; return {}; } }\n"
+            + "try { new Discard(); out.push('no error'); }"
+            + " catch (e) { out.push(e.constructor.name); }\n"
+            + "class Assign extends Object { constructor() { this.x = 1; return {}; } }\n"
+            + "try { new Assign(); out.push('no error'); }"
+            + " catch (e) { out.push(e.constructor.name); }\n"
+            + "class Ok extends Object { constructor() { super(); this.v = 1; } }\n"
+            + "out.push(new Ok().v);\n"
+            + "console.log(JSON.stringify(out));\n"
+    );
+    assert json.loads(out) == ["ReferenceError", "ReferenceError", 1];
+}
+
+test "void evaluates its operand, gives undefined, and checks an uninitialized binding" {
+    out = run_source(
+        "const out = [];\n"
+            + "let calls = 0;\n"
+            + "function f() { calls++; return 5; }\n"
+            + "function g() { return void f(); }\n"
+            + "out.push(g() === undefined, calls);\n"
+            + "function h() { try { void z; return 'no error'; }"
+            + " catch (e) { return e.constructor.name; } let z = 1; }\n"
+            + "out.push(h());\n"
+            + "console.log(JSON.stringify(out));\n"
+    );
+    assert json.loads(out) == [True, 1, "ReferenceError"];
+}

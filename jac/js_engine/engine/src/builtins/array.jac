@@ -71,13 +71,16 @@ import from engine.src.runtime.jsobject {
     js_object_get_own_property_descriptor,
     js_object_table_get,
     js_object_elems_kind_id,
+    js_object_cell_flags_id,
     js_object_brand,
     js_object_dense_elem,
     KEY_LENGTH,
     js_object_dense_set_present,
     js_object_array_shape,
     js_object_new_array,
-    js_object_new_array_range
+    js_object_new_array_range,
+    js_object_ic_shape,
+    js_object_slot_at_id
 }
 import from engine.src.runtime.jsobj_type {
     JSObject,
@@ -91,6 +94,7 @@ import from engine.src.runtime.jsobj_type {
 }
 import from engine.src.runtime.shape { shape_lookup, SHAPE_ATTR_ACCESSOR }
 import from engine.src.runtime.wk_keys { WK_LENGTH }
+import from engine.src.runtime.jscell { FLAG_IS_ARGUMENTS }
 import from engine.src.runtime.obs_context { obs_is_active }
 import from engine.src.vm.vm_obs {
     js_object_get_observable,
@@ -138,6 +142,12 @@ import from engine.src.runtime.dtoa { number_to_string_radix10 }
 
 import from engine.src.builtins.markers { _KEY_IS_ARRAY }
 import from engine.src.runtime.gc_pin { gc_pin_value }
+
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_byte,
+    str_nbytes
+}
 
 """Internal: object-table index of Array.prototype, wired by init_global."""
 glob _ARRAY_PROTO: JSValue = jsv_undefined(),
@@ -329,6 +339,31 @@ def:pub js_array_get(arr: JSValue, idx: int) -> JSValue {
     return js_object_get_observable(arr, str_intern_index(idx), arr);
 }
 
+"""js_array_get when the read runs no JavaScript: a dense element, or undefined
+for a hole while no prototype carries index properties. Anything else (a getter,
+a proxy, a sparse array) gives the hole value, and the caller takes the
+observable path."""
+def:pub js_array_get_quiet(arr: JSValue, idx: int) -> JSValue {
+    if idx >= 0 and jsv_is_object_cell(arr) {
+        gq_id: int = jsv_to_table_id(arr);
+        if gq_id > 0 {
+            gq_raw: JSObject = js_object_table_get(gq_id);
+            if gq_raw.elems_kind != ELEMS_NONE {
+                if idx < gq_raw.elen() {
+                    gq_v: JSValue = gq_raw.eget(idx);
+                    if not jsv_is_hole(gq_v) {
+                        return gq_v;
+                    }
+                }
+                if idx_protector_ok() {
+                    return jsv_undefined();
+                }
+            }
+        }
+    }
+    return jsv_hole();
+}
+
 """Set the element at index idx.  Grows the array if idx >= length."""
 def:pub js_array_set(arr: JSValue, idx: int, val: JSValue) {
     if idx >= 0 and jsv_is_object_cell(arr) {
@@ -415,7 +450,30 @@ def:pub js_array_push(arr: JSValue, item: JSValue) -> None {
 
 """Return the length of the array as a Jac int (LengthOfArrayLike)."""
 def:pub js_array_len(arr: JSValue) -> int {
+    # An Array still at js_array_create's shape: `length` is its slot 1, a
+    # plain writable data property (any other attributes, or anything else
+    # defined on it, moves the array to another shape; a proxy is never at
+    # it), so the value is the answer whenever it is a non-negative int32
+    # (lengths up to 2^31 - 1; larger ones are stored as doubles).
+    if _ARRAY_SHAPE > 0 and js_object_ic_shape(arr) == _ARRAY_SHAPE {
+        al_v: JSValue = js_object_slot_at_id(jsv_to_table_id(arr), 1);
+        if jsv_is_int32(al_v) and jsv_to_int32(al_v) >= 0 {
+            return jsv_to_int32(al_v);
+        }
+    }
     return _length_of(arr);
+}
+
+"""js_array_len when the read runs no JavaScript (an Array at js_array_create's
+shape, whose `length` is a plain int32 in slot 1), else -1."""
+def:pub js_array_len_quiet(arr: JSValue) -> int {
+    if _ARRAY_SHAPE > 0 and js_object_ic_shape(arr) == _ARRAY_SHAPE {
+        lq_v: JSValue = js_object_slot_at_id(jsv_to_table_id(arr), 1);
+        if jsv_is_int32(lq_v) and jsv_to_int32(lq_v) >= 0 {
+            return jsv_to_int32(lq_v);
+        }
+    }
+    return -1;
 }
 
 """Return True if v is a JS Array (has the _KEY_IS_ARRAY marker)."""
@@ -429,9 +487,13 @@ def:pub js_is_array(v: JSValue) -> bool {
     if ia_id <= 0 {
         return False;
     }
-    # Scalar field reads — no JSObject reference taken.
-    return js_object_elems_kind_id(ia_id) != ELEMS_NONE
-        or (js_object_brand(v) & BRAND_ARRAY) != 0;
+    # Scalar field reads — no JSObject reference taken. A strict `arguments`
+    # object keeps its indices as dense elements too (_build_arguments), so
+    # elements alone do not make an array.
+    if js_object_elems_kind_id(ia_id) != ELEMS_NONE {
+        return (js_object_cell_flags_id(ia_id) & FLAG_IS_ARGUMENTS) == 0;
+    }
+    return (js_object_brand(v) & BRAND_ARRAY) != 0;
 }
 
 """
@@ -1723,8 +1785,9 @@ def:pub js_Array_from(arraylike: JSValue) -> JSValue {
         s: str = str_from_id(jsv_to_table_id(arraylike));
         chars: list[JSValue] = [];
         ci: int = 0;
-        while ci < len(s) {
-            chars.append(jsv_from_string_id(str_intern(s[ci])));
+        _nb1751_s: int = str_nbytes(s);
+        while ci < _nb1751_s {
+            chars.append(jsv_from_string_id(str_intern(byte_chr(str_byte(s, ci)))));
             ci = ci + 1;
         }
         return js_array_create(chars);

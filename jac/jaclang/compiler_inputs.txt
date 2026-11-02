@@ -6,6 +6,8 @@ __init__.py
 jac0.py
 bootstrap_manifest.py
 meta_importer.py
+# The wiring every module under jaclang/ takes its imports from.
+archwire.jac
 jac0core
 compiler
 runtime

@@ -44,6 +44,14 @@ import from engine.src.builtins.module_registry {
 }
 import from engine.src.builtins.module_resolver { resolve_specifier, ResolveResult }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
+}
+
 """Own keys bag for CJS→ESM interop: plain object, or function.fn_props."""
 def _cjs_exports_key_bag(cjs_exports: JSValue) -> JSValue {
     if jsv_is_object_cell(cjs_exports) {
@@ -207,12 +215,12 @@ def:pub sync_builtin_esm_exports(globals_ref: dict[str, JSValue]) {
     for esm_key in _ESM_BUILTIN_NS {
         ns: JSValue = _ESM_BUILTIN_NS[esm_key];
         bare_name: str = esm_key;
-        if len(esm_key) > 4
-            and esm_key[0] == "e"
-            and esm_key[1] == "s"
-            and esm_key[2] == "m"
-            and esm_key[3] == ":" {
-            bare_name = esm_key[4:];
+        if str_nbytes(esm_key) > 4
+            and byte_chr(str_byte(esm_key, 0)) == "e"
+            and byte_chr(str_byte(esm_key, 1)) == "s"
+            and byte_chr(str_byte(esm_key, 2)) == "m"
+            and byte_chr(str_byte(esm_key, 3)) == ":" {
+            bare_name = str_bslice_from(esm_key, 4);
         }
         # Prefer namespace.default — that is the live CJS exports object the
         # named imports were bound against (globals["fs"] may be a different
@@ -321,7 +329,7 @@ def:pub esm_resolve_export(
     ci_cjs: int = 0;
     while ci_cjs < len(entries) {
         ec: str = entries[ci_cjs];
-        if len(ec) >= 2 and ec[0] == "C" and ec[1] == ":" {
+        if str_nbytes(ec) >= 2 and byte_chr(str_byte(ec, 0)) == "C" and byte_chr(str_byte(ec, 1)) == ":" {
             if export_name != "default" {
                 return "ok";
             }
@@ -335,18 +343,19 @@ def:pub esm_resolve_export(
         # L:name — local export initialized at Instantiation (var/function)
         # T:name — local export TDZ until evaluation (let/const/class/default)
         # Both are concrete local bindings for ResolveExport.
-        if len(e) >= 2 and (e[0] == "L" or e[0] == "T") and e[1] == ":" {
-            if e[2:] == export_name {
+        if str_nbytes(e) >= 2 and (byte_chr(str_byte(e, 0)) == "L" or byte_chr(str_byte(e, 0)) == "T") and byte_chr(str_byte(e, 1)) == ":" {
+            if str_bslice_from(e, 2) == export_name {
                 return "ok";
             }
-        } elif len(e) >= 2 and e[0] == "I" and e[1] == ":" {
+        } elif str_nbytes(e) >= 2 and byte_chr(str_byte(e, 0)) == "I" and byte_chr(str_byte(e, 1)) == ":" {
             # I:exportName:importName:absPath  (first two ':' delimit names; rest is path)
-            rest: str = e[2:];
+            rest: str = str_bslice_from(e, 2);
             c1: int = -1;
             c2: int = -1;
             ci: int = 0;
-            while ci < len(rest) {
-                if rest[ci] == ":" {
+            _nb356_rest: int = str_nbytes(rest);
+            while ci < _nb356_rest {
+                if byte_chr(str_byte(rest, ci)) == ":" {
                     if c1 < 0 {
                         c1 = ci;
                     } elif c2 < 0 {
@@ -356,9 +365,9 @@ def:pub esm_resolve_export(
                 ci = ci + 1;
             }
             if c1 >= 0 and c2 > c1 {
-                exp_n: str = rest[0:c1];
-                imp_n: str = rest[c1 + 1:c2];
-                dep: str = rest[c2 + 1:];
+                exp_n: str = str_bslice(rest, 0, c1);
+                imp_n: str = str_bslice(rest, c1 + 1, c2);
+                dep: str = str_bslice_from(rest, c2 + 1);
                 if exp_n == export_name {
                     return esm_resolve_export(dep, imp_n, resolve_set);
                 }
@@ -374,8 +383,8 @@ def:pub esm_resolve_export(
     ei = 0;
     while ei < len(entries) {
         e2: str = entries[ei];
-        if len(e2) >= 2 and e2[0] == "S" and e2[1] == ":" {
-            dep2: str = e2[2:];
+        if str_nbytes(e2) >= 2 and byte_chr(str_byte(e2, 0)) == "S" and byte_chr(str_byte(e2, 1)) == ":" {
+            dep2: str = str_bslice_from(e2, 2);
             # Fresh resolveSet copy is NOT used — spec shares resolveSet.
             r2: str = esm_resolve_export(dep2, export_name, resolve_set);
             if r2 == "ambiguous" {
@@ -406,12 +415,13 @@ def:pub esm_validate_indirect_exports(resolved: str) -> str {
     ei: int = 0;
     while ei < len(entries) {
         e: str = entries[ei];
-        if len(e) >= 2 and e[0] == "I" and e[1] == ":" {
-            rest: str = e[2:];
+        if str_nbytes(e) >= 2 and byte_chr(str_byte(e, 0)) == "I" and byte_chr(str_byte(e, 1)) == ":" {
+            rest: str = str_bslice_from(e, 2);
             c1: int = -1;
             ci: int = 0;
-            while ci < len(rest) {
-                if rest[ci] == ":" {
+            _nb421_rest: int = str_nbytes(rest);
+            while ci < _nb421_rest {
+                if byte_chr(str_byte(rest, ci)) == ":" {
                     if c1 < 0 {
                         c1 = ci;
                     }
@@ -419,7 +429,7 @@ def:pub esm_validate_indirect_exports(resolved: str) -> str {
                 ci = ci + 1;
             }
             if c1 >= 0 {
-                exp_n: str = rest[0:c1];
+                exp_n: str = str_bslice(rest, 0, c1);
                 rs: dict[str, bool] = {};
                 r: str = esm_resolve_export(resolved, exp_n, rs);
                 if r == "null" or r == "ambiguous" {
@@ -524,13 +534,13 @@ def:pub module_require_builtin(
     # Built-in module — create via registry (JS file builtins load in VM)
     if is_builtin_module(resolved) {
         bare_nm: str = resolved;
-        if len(resolved) > 5
-            and resolved[0] == "n"
-            and resolved[1] == "o"
-            and resolved[2] == "d"
-            and resolved[3] == "e"
-            and resolved[4] == ":" {
-            bare_nm = resolved[5:];
+        if str_nbytes(resolved) > 5
+            and byte_chr(str_byte(resolved, 0)) == "n"
+            and byte_chr(str_byte(resolved, 1)) == "o"
+            and byte_chr(str_byte(resolved, 2)) == "d"
+            and byte_chr(str_byte(resolved, 3)) == "e"
+            and byte_chr(str_byte(resolved, 4)) == ":" {
+            bare_nm = str_bslice_from(resolved, 5);
         }
         if bare_nm == "path" or bare_nm == "url" or bare_nm == "querystring" {
             return js_undefined();

@@ -71,17 +71,6 @@ impl ScaleClient.resource_status(
 impl ScaleClient.autoscaler_status(
     app_name: str, namespace: str, service: str = '', target: str = 'auto'
 ) -> AutoscalerRuntimeStatus {
-    """Why a workload is where it is, not just how many replicas it has.
-
-        `resource_status` reads the Deployment, which reports counts and never
-        the reason behind them: a target idled because no trigger is firing and
-        one stuck at zero because its scaler cannot reach its metric endpoint are
-        the same Deployment. This reads the autoscaler's own view, so
-        `scaler_ready` and the condition message behind a failure are answerable.
-
-        `service` names one member of a fleet; omitted, it reads the app's own
-        workload.
-        """;
     return self._autoscaler_for(app_name, namespace, target).get_runtime_status(
         self._scale_target_name(service or app_name), namespace
     );
@@ -94,23 +83,12 @@ impl ScaleClient.watch_autoscaler_transitions(
     timeout_seconds: (int | None) = None,
     target: str = 'auto'
 ) -> any {
-    """Stream deduplicated transitions instead of polling for them.
-
-        One call opens a bounded number of watches for one namespace and nothing
-        is shared between callers, so a consumer tracking many targets makes one
-        call and fans out in its own process rather than one watch per target.
-        """;
     return self._autoscaler_for(app_name, namespace, target).watch_scale_targets(
         namespace, label_selector=label_selector, timeout_seconds=timeout_seconds
     );
 }
 
 impl ScaleClient._scale_target_name(svc_name: str) -> str {
-    """The Deployment name the autoscaler scales, from a service name.
-
-        One derivation, matching what the manifest builder emitted, so a caller
-        never has to know the suffix to ask a question about its own app.
-        """;
     return f"{k8s_safe_name(svc_name)}-deployment";
 }
 

@@ -340,6 +340,10 @@ impl ViteBundler._resolve_api_base_url(
 
 def _to_js_expr(value: any) -> str;
 
+def _split_build_overrides(
+    build_config: dict[str, any]
+) -> tuple[dict[str, any], dict[str, any], dict[str, any]];
+
 impl ViteBundler._format_define_entries(
     self: ViteBundler, api_base_url: str, custom_defines: dict[str, any]
 ) -> str {
@@ -846,8 +850,17 @@ export default defineConfig({{
 }});
 ''';
     } else {
-        build_overrides_str = self._format_config_object(build_config, indent=2)
-            if (isinstance(build_config, dict) and build_config)
+        (build_overrides, rollup_overrides, output_overrides) = _split_build_overrides(
+            build_config if isinstance(build_config, dict) else {}
+        );
+        build_overrides_str = self._format_config_object(build_overrides, indent=2);
+        rollup_overrides_str = newline
+            + self._format_config_object(rollup_overrides, indent=4)
+            if rollup_overrides
+            else '';
+        output_overrides_str = newline
+            + self._format_config_object(output_overrides, indent=6)
+            if output_overrides
             else '';
         server_config = vite_config_data.get('server', {});
         server_config_str = self._format_config_object(server_config, indent=2)
@@ -913,14 +926,14 @@ export default defineConfig({{
     sourcemap: true, // Enable source maps for better error messages
 {build_overrides_str}
     rollupOptions: {{
-      input: path.resolve(buildDir, "{entry_relative}"), // your compiled entry file
+      input: path.resolve(buildDir, "{entry_relative}"), // your compiled entry file{rollup_overrides_str}
       output: {{
         entryFileNames: "client.[hash].js", // name of the final js file
         assetFileNames: (assetInfo) => assetInfo.name?.endsWith('.css') ? 'styles.css' : '[name].[ext]',
         sourcemapPathTransform: (relativeSourcePath) => {{
           // Transform source map paths to point to original location
           return relativeSourcePath;
-        }},
+        }},{output_overrides_str}
       }},
     }},
     outDir: path.resolve(buildDir, "{output_relative}"), // final bundled output
@@ -1004,6 +1017,7 @@ impl ViteBundler.find_bundle(self: ViteBundler) -> Optional[Path] {
 
 impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> None {
     import time;
+    stat_note("vite_build");
 
     bun = _require_bun();
 
@@ -1036,6 +1050,20 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
         command = [bun, 'run', 'build'];
     }
 
+    inputs = self._build_inputs_digest(build_dir, command);
+    stamp = self.output_dir / ".jac-build-inputs";
+    try {
+        if inputs
+            and stamp.read_text() == inputs
+            and any(
+                p
+                for p in self.output_dir.iterdir()
+                if p.name != stamp.name
+            ) {
+            console.print("\n  ✔ Client bundle unchanged");
+            return;
+        }
+    } except OSError {}
     console.print("\n  ⏳ Building client bundle...\n");
     start_time = time.time();
     result = subprocess.run(
@@ -1049,7 +1077,63 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
         )}";
         raise ClientBundleError(error_msg) from None;
     }
+    if inputs {
+        try {
+            stamp.write_text(inputs);
+        } except OSError {}
+    }
     console.print(f"\n  ✔ Client bundle built ({elapsed:.1f}s)");
+}
+
+impl ViteBundler._build_inputs_digest(
+    self: ViteBundler, build_dir: Path, command: list[str]
+) -> str {
+    compiled = self._client_app_dir() / "compiled";
+    if not compiled.is_dir() {
+        return "";
+    }
+    rows: list[str] = ["\x00".join(command), str(self.output_dir)];
+    for tree in [compiled, build_dir / "configs"] {
+        if not tree.is_dir() {
+            continue;
+        }
+        for p in sorted(tree.rglob("*")) {
+            if p.is_file() {
+                rows.append(f"{p.relative_to(build_dir)}:{file_sha256(str(p))}");
+            }
+        }
+    }
+    if self.config_path and Path(self.config_path).is_file() {
+        rows.append(f"config:{file_sha256(str(self.config_path))}");
+    }
+    for name in ("bun.lock", "package.json") {
+        lock = build_dir / name;
+        if lock.is_file() {
+            rows.append(f"{name}:{file_sha256(str(lock))}");
+        }
+    }
+    for target_path in sorted(self.config_loader.get_paths_config().values()) {
+        target = self.project_dir / target_path.lstrip('./').rstrip('/*');
+        sources = [target]
+            if target.is_file()
+            else (sorted(target.rglob("*")) if target.is_dir() else []);
+        for p in sources {
+            if p.is_file() and "node_modules" not in p.parts {
+                rows.append(f"{p}:{file_sha256(str(p))}");
+            }
+        }
+    }
+    for env_file in sorted(self.project_dir.glob(".env*")) {
+        if env_file.is_file() {
+            rows.append(f"{env_file.name}:{file_sha256(str(env_file))}");
+        }
+    }
+    for (key, value) in sorted(os.environ.items()) {
+        if key.startswith("VITE_") or key in ("NODE_ENV", API_BASE_URL_ENV_VAR) {
+            rows.append(f"env:{key}={value}");
+        }
+    }
+    return hashlib.sha256("\n".join(rows).encode("utf-8")).hexdigest();
 }
 
 impl ViteBundler.init(
@@ -1255,7 +1339,7 @@ impl ViteBundler.start_dev_server(
     return process;
 }
 
-def _dev_head_scripts -> str;
+def _dev_head -> str;
 
 impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> None {
     index_html = build_dir / 'index.html';
@@ -1265,9 +1349,7 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
     index_content = '''<!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Jac App (Dev)</title>
+__JAC_DEV_HEAD__
   </head>
   <body>
     <div id="root"></div>
@@ -1324,9 +1406,7 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
     index_content = index_content.replace(
         '__JAC_DEV_ENTRY__', json.dumps('/' + entry_relative)
     );
-    if head_scripts := _dev_head_scripts() {
-        index_content = index_content.replace('  </head>', f'{head_scripts}  </head>');
-    }
+    index_content = index_content.replace('__JAC_DEV_HEAD__', _dev_head());
     index_html.write_text(index_content, encoding='utf-8');
 }
 
@@ -1615,6 +1695,47 @@ impl _to_js_expr(value: any) -> str {
     }
 }
 
+impl _split_build_overrides(
+    build_config: dict[str, any]
+) -> tuple[dict[str, any], dict[str, any], dict[str, any]] {
+    build = dict(build_config);
+    rollup = build.pop('rollupOptions', {});
+    if not isinstance(rollup, dict) {
+        raise ClientBundleError(
+            '[client.vite.build] rollupOptions must be a table'
+        ) from None;
+    }
+    rollup = dict(rollup);
+    output = rollup.pop('output', {});
+    if not isinstance(output, dict) {
+        raise ClientBundleError(
+            '[client.vite.build.rollupOptions] output must be a single table'
+        ) from None;
+    }
+    output = dict(output);
+    ignored: list[str] = [];
+    for key in ('outDir', 'emptyOutDir') {
+        if build.pop(key, None) is not None {
+            ignored.append(key);
+        }
+    }
+    if rollup.pop('input', None) is not None {
+        ignored.append('rollupOptions.input');
+    }
+    for key in ('entryFileNames', 'assetFileNames', 'sourcemapPathTransform') {
+        if output.pop(key, None) is not None {
+            ignored.append(f'rollupOptions.output.{key}');
+        }
+    }
+    if ignored {
+        names = ', '.join(ignored);
+        console.warning(
+            f"[client.vite.build] ignoring {names}: Jac sets these to find and serve the client bundle"
+        );
+    }
+    return (build, rollup, output);
+}
+
 impl _proxy_entry(key: str, api_port: int) -> str {
     return (
         f'\n      "{key}": {{'
@@ -1664,10 +1785,26 @@ impl _is_vite_url_line(line: str) -> bool {
     return False;
 }
 
-impl _dev_head_scripts -> str {
+impl _dev_head -> str {
     config = get_config();
     client_cfg = config.get_plugin_config('client') if config else None;
-    meta_data = client_cfg.get('app_meta_data', {}) if client_cfg else {};
-    tags = HeaderBuilder(meta_data, 'dev').build_scripts();
-    return ''.join(f'    {tag}\n' for tag in tags);
+    meta_data = dict(client_cfg.get('app_meta_data', {}) if client_cfg else {});
+    meta_data['title'] = str(meta_data.get('title') or 'Jac App') + ' (Dev)';
+    head = HeaderBuilder(meta_data, 'dev').build_head();
+    return '\n'.join('    ' + line.strip() for line in head.split('\n'));
+}
+
+impl _build_vite_dev_command(
+    build_dir: Path, config_rel: Path, port: int, host: str = ""
+) -> list[str] {
+    cmd = _build_vite_command(
+        build_dir, ['--config', str(config_rel), '--port', str(port)]
+    );
+    if host {
+        cmd.append('--host');
+        cmd.append(host);
+    } else {
+        cmd.append('--host');
+    }
+    return cmd;
 }

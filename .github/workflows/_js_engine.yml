@@ -1,14 +1,14 @@
 name: js_engine
 
 # The js_engine accelerator's own lane. Releases and the CI kit ship bun, its
-# floor; the engine is built only on request: `jac native build js-engine`
-# locally, this lane in CI. It builds the engine from this checkout, installs
+# floor; the engine is built only here in CI (`jac native build js-engine`
+# locally). It builds the engine from this checkout, installs
 # it the way that command does for every jac, then holds the official (sealed)
 # binary to using it: `jac native status` must resolve it, the node suite and
 # a client build run on it, and test262 must pass everything its baseline does.
 #
-# Called by ci.yml (a pull request carrying the `native:js-engine` label, or a
-# manual run) and nightly.yml.
+# Called by ci.yml (a pull request that changes the engine or the compiler,
+# one carrying the `native:js-engine` label, or a manual run) and nightly.yml.
 
 on:
   workflow_call:

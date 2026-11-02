@@ -213,6 +213,20 @@ test "SSO endpoint registration includes browser and native session APIs" {
     assert ("/sso/{platform}/callback", "GET") in paths;
     assert ("/sso/{platform}/callback", "POST") in paths;
     assert ("/sso/firebase/token", "POST") in paths;
+    assert ("/sso/connections", "GET") in paths;
+    assert ("/sso/{platform}/connection", "DELETE") in paths;
+    begin = [
+        e
+        for e in host.endpoints
+        if e.path == "/sso/{platform}/begin"
+    ][0];
+    anonymous = Request(
+        method="POST", url=URL(path="/sso/google/begin"), headers=Headers(raw=[])
+    );
+    refused: any = asyncio.run(
+        begin.callback(anonymous, "google", "c" * 43, "native", "connect", "")
+    );
+    assert not refused.ok and refused.error.code == "SIGN_IN_REQUIRED";
 }
 
 test "Client callback destinations are never taken from untrusted OAuth state" {

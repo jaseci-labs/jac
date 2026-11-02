@@ -60,6 +60,10 @@ class ViteBundler {
     def _get_client_dir(self: ViteBundler) -> Path;
     def _client_app_dir(self: ViteBundler) -> Path;
     def build(self: ViteBundler, entry_file: Optional[Path] = None) -> None;
+    def _build_inputs_digest(
+        self: ViteBundler, build_dir: Path, command: list[str]
+    ) -> str;
+
     def find_bundle(self: ViteBundler) -> Optional[Path];
     def find_css(self: ViteBundler) -> Optional[Path];
     def read_bundle(self: ViteBundler) -> tuple[str, str];
@@ -136,19 +140,4 @@ class ViteBundler {
     def _start_vite_with_output_capture(
         self: ViteBundler, command: list[str], build_dir: Path, sys_module: any
     ) -> any;
-}
-
-impl _build_vite_dev_command(
-    build_dir: Path, config_rel: Path, port: int, host: str = ""
-) -> list[str] {
-    cmd = _build_vite_command(
-        build_dir, ['--config', str(config_rel), '--port', str(port)]
-    );
-    if host {
-        cmd.append('--host');
-        cmd.append(host);
-    } else {
-        cmd.append('--host');
-    }
-    return cmd;
 }

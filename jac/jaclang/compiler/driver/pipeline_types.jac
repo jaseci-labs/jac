@@ -18,6 +18,7 @@ enum AnalysisFact(StrEnum) {
     CLIENT_CAPABILITY = 'client_capability',
     CODESPACE_PULL = 'codespace-pull',
     COMPTIME = 'comptime',
+    DECL_TYPES = 'decl-types',
     FROZEN = 'frozen',
     OWNERSHIP = 'ownership',
     PORTABILITY = 'portability',
@@ -39,6 +40,7 @@ enum CompilationProduct {
     FLOW = "flow",
     PLACEMENT = "placement",
     ANALYSIS = "analysis",
+    DECLARATIONS = "declarations",
     BOUNDARIES = "boundaries",
     INTERFACE = "interface",
     CLIENT = "client",
@@ -72,7 +74,8 @@ enum ImportFallback {
 
 obj ProductRequest {
     has gen_mtir: bool = True,
-        native: bool = False;
+        native: bool = False,
+        endpoint_effects: bool = True;
 }
 
 enum TaskState {

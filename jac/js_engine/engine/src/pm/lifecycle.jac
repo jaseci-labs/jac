@@ -49,8 +49,12 @@ import from engine.src.pm.paths { pm_path_dirname }
 import from engine.src.pm.project { PkgJson, pm_read_package_json }
 import from engine.src.version { JS_ENGINE_VERSION }
 
+import from engine.src.runtime.mem {
+    str_nbytes
+}
+
 def _err(s: str) {
-    write(2, s, len(s));
+    write(2, s, str_nbytes(s));
 }
 
 glob:pub LIFECYCLE_NAMES: list[str] = [

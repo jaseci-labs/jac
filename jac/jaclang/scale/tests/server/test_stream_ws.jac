@@ -193,12 +193,19 @@ test "stream_forward.cleanup closes session without streaming" {
 }
 
 
-test "stream_forward returns None on connect refused (caller emits 502)" {
+# A refused connect is the one failure that provably never delivered the
+# request, so it is raised for the caller to tell apart from a lost response:
+# the gateway probe moves on to the next service only on this.
+test "stream_forward raises ClientRequestNotSent on connect refused" {
     async def body -> object {
-        fr = await stream_forward("GET", "http://127.0.0.1:1/does/not/matter", {}, b"");
-        return fr;
+        try {
+            await stream_forward("GET", "http://127.0.0.1:1/does/not/matter", {}, b"");
+        } except ClientRequestNotSent {
+            return "not sent";
+        }
+        return "no error";
     }
-    assert _run(body()) is None;
+    assert _run(body()) == "not sent";
 }
 
 

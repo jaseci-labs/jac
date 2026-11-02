@@ -10,7 +10,7 @@
 #
 # These suites exercise no single replaced extension module, so they are not
 # jacpython-modules.txt entries. A suite is listed once it passes as it does on
-# a stock CPython build of the pinned version; CI runs every line.
+# CPython of the pinned version; CI runs every line.
 
 test.test_tokenize          --tokenize-api
 test.test_fstring

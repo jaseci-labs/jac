@@ -24,11 +24,15 @@ def _database_config -> (DatabaseConfig | None);
 
 def _configured_dist -> str;
 
+def _env_dist -> str;
+
 def pinned_major -> int;
 
 def dist_cache_dir -> str;
 
 def platform_slug -> (str | None);
+
+def postgres_exe -> str;
 
 def _bin_of(dist: str) -> (str | None);
 
@@ -46,15 +50,22 @@ def _unpack(slug: str, version: str, dist_dir: str);
 
 def download_dist -> str;
 
+def _dist_root(bin_dir: (str | None)) -> (str | None);
+
+def bundled_dist_dir -> str;
+
+def cached_dist_dir -> str;
+
 obj PostgresArtifact(Artifact) {
     has name: str = "postgres",
         kind: ArtifactKind = ArtifactKind.CAPABILITY,
         release: ReleasePolicy = ReleasePolicy.ON_DEMAND,
         summary: str = "the embedded Postgres distribution",
-        hosts: list[str] = ["linux", "darwin"],
+        hosts: list[str] = ["linux", "darwin", "win32"],
         provision: bool = True;
 
     override def probe_checkout -> Probe;
+    override def build_blocker -> str;
     override def checkout_path -> str;
     override def build(log: Callable[[str], None], force: bool, exact: bool);
 }

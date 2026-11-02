@@ -6,7 +6,6 @@ import tempfile;
 import from tests.support { JAC_ROOT }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.placement.placement_facts {
-    client_only_paths,
     discover_spaces,
     emits_server_code,
     is_client_only,
@@ -14,7 +13,8 @@ import from jaclang.compiler.placement.placement_facts {
     native_only,
     native_unit,
     project_root_of,
-    require_project_root
+    require_project_root,
+    spaces_are_client_only
 }
 
 glob FIXTURE_DIR = os.path.join(
@@ -54,12 +54,17 @@ test "an empty or unreadable module defaults to server" {
 }
 
 
-test "discover_spaces batches paths and client_only_paths filters them" {
+test "discover_spaces batches paths and classifies the client-only ones" {
     paths = [_fixture("infer_client_app.jac"), _fixture("infer_three_spaces.jac")];
     facts = discover_spaces(paths);
     assert facts[os.path.abspath(paths[0])] == {"client"};
     assert "server" in facts[os.path.abspath(paths[1])];
-    assert client_only_paths(paths) == {os.path.abspath(paths[0])};
+    assert [
+        p
+        for (p, sp) in facts.items()
+        if spaces_are_client_only(sp)
+    ]
+        == [os.path.abspath(paths[0])];
 }
 
 
@@ -89,7 +94,7 @@ test "a module with compile errors is never classified client-only" {
     facts = discover_spaces([broken]);
     spaces = facts[os.path.abspath(broken)];
     assert "server" in spaces , spaces;
-    assert client_only_paths([broken]) == set();
+    assert not spaces_are_client_only(spaces);
 }
 
 

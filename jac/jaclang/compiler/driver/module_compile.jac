@@ -20,7 +20,7 @@ def run_codegen(task: ModuleAnalysis);
 
 def client_import_paths(module: uni.Module) -> list[str];
 
-def scrub_native_artifacts_on_error(program: JacProgram, mod: uni.Module) -> bool;
+def drop_products_on_error(program: JacProgram, mod: uni.Module) -> bool;
 
 def report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None;
 
