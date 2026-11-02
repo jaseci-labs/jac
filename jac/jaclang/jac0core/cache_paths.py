@@ -181,11 +181,36 @@ _digest_memo: dict[str, tuple[tuple[int, int, int, int], str]] = {}
 _digest_shards: dict[str, dict[str, list]] = {}
 _digest_dirty: set[str] = set()
 _digest_flush_armed: list[bool] = []
+_runtime_root_memo: dict[str, str] = {}
+_resolved_dir_memo: dict[str, str] = {}
 
 
 def get_digest_ledger_dir() -> Path:
     """Directory of the cross-process file-digest ledger."""
     return get_jir_cache_dir() / "digests"
+
+
+def _runtime_root() -> str:
+    """The cache home's ``rt/``, resolved. Memoized per configured root."""
+    home = os.path.abspath(get_cache_home())
+    found = _runtime_root_memo.get(home)
+    if found is None:
+        found = os.path.join(os.path.realpath(home), "rt", "")
+        _runtime_root_memo[home] = found
+    return found
+
+
+def _resolved_dir(path: str) -> str:
+    """The resolved directory of an absolute path, memoized per directory: a
+    file is named through whatever alias its caller used (the compiler hashes
+    resolved paths), and resolving each directory once is cheaper than
+    resolving every file."""
+    folder = os.path.dirname(path)
+    found = _resolved_dir_memo.get(folder)
+    if found is None:
+        found = os.path.join(os.path.realpath(folder), "")
+        _resolved_dir_memo[folder] = found
+    return found
 
 
 def file_identity(path: str | Path) -> tuple[int, int, int, int] | None:
@@ -200,7 +225,7 @@ def file_identity(path: str | Path) -> tuple[int, int, int, int] | None:
         st = os.stat(path)
     except OSError:
         return None
-    if os.path.abspath(path).startswith(os.path.join(os.path.abspath(get_cache_home()), "rt", "")):
+    if _resolved_dir(os.path.abspath(path)).startswith(_runtime_root()):
         return (0, st.st_size, st.st_mtime_ns, 0)
     return (st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
 
