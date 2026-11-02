@@ -32,8 +32,15 @@ on:
   push:
     branches: [main]
 
+# Adding a label CI never reads (one outside the list below, which the
+# `changes` job repeats) must neither rerun the suites nor cancel the run in
+# flight, so that run gets a group of its own and only Everything Passed runs.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: >-
+    ci-${{ github.event.pull_request.number || github.ref }}${{
+    github.event.action == 'labeled'
+    && !contains(fromJSON('["macos", "native:kernel", "native:js-engine", "native:jacpython", "type-error-report", "skip-no-python-check", "skip-release-notes-check", "skip-k8s"]'), github.event.label.name)
+    && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -45,6 +52,9 @@ permissions:
 jobs:
   # Path filter used ONLY to skip jobs on PRs; push/dispatch runs everything.
   changes:
+    if: >-
+      github.event.action != 'labeled'
+      || contains(fromJSON('["macos", "native:kernel", "native:js-engine", "native:jacpython", "type-error-report", "skip-no-python-check", "skip-release-notes-check", "skip-k8s"]'), github.event.label.name)
     runs-on: ubuntu-latest
     outputs:
       core: ${{ steps.filter.outputs.core }}
@@ -1777,6 +1787,7 @@ jobs:
   # on ordinary compiler churn, which is what put a 44-68 min leg on the
   # critical path of every native PR to begin with.
   macos-native:
+    needs: changes
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'macos')) }}
     uses: ./.github/workflows/_macos-native.yml
 
@@ -1794,6 +1805,7 @@ jobs:
   # gates. On request only -- the `native:jacpython` label or a manual run;
   # nightly.yml runs it on every platform.
   jacpython:
+    needs: changes
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'native:jacpython')) }}
     uses: ./.github/workflows/_jacpython.yml
 
@@ -1861,7 +1873,25 @@ jobs:
       - test-jac-pack-eject
       - installer-test
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
     steps:
+      # A label-only run skips every job, and the newest Everything Passed on a
+      # commit is the one that gates it, so that run repeats the verdict of the
+      # run before it (waiting for it if it is still going) instead of passing.
+      - name: Carry the previous run's verdict over a label-only run
+        if: needs.changes.result == 'skipped'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          prev=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$SHA" --limit 50 \
+            --json databaseId --jq "[.[] | select(.databaseId < $GITHUB_RUN_ID)] | first | .databaseId // empty")
+          if [ -z "$prev" ]; then
+            echo "::error::No earlier CI run on $SHA to carry over; push or rerun CI."
+            exit 1
+          fi
+          gh run watch "$prev" --repo "$GITHUB_REPOSITORY" --exit-status --interval 60
       - name: Fail if any dependency failed or was cancelled
         if: >-
           contains(needs.*.result, 'failure') ||
