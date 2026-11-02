@@ -801,25 +801,6 @@ impl DocIRGenPass.exit_test with uni.Test exit {
     here.gen.doc_ir = self.group(self.concat(parts, ast_node=here), ast_node=here);
 }
 
-impl DocIRGenPass.exit_py_inline_code with uni.PyInlineCode exit {
-    parts: list[doc.DocType] = [];
-    for i in [here->:Kid:->] {
-        if (i == here.doc) {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.hard_line());
-        } elif (isinstance(i, uni.Token) and (i.name == Tok.PYNLINE)) {
-            parts.append(self.text('::py::'));
-            parts.append(i.gen.doc_ir);
-            parts.append(self.text('::py::'));
-            parts.append(self.hard_line());
-        } else {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        }
-    }
-    here.gen.doc_ir = self.group(self.concat(parts, ast_node=here), ast_node=here);
-}
-
 impl DocIRGenPass.exit_assign_compr with uni.AssignCompr exit {
     parts: list[doc.DocType] = [];
     for i in [here->:Kid:->] {

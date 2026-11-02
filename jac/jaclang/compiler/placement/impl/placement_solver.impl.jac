@@ -37,14 +37,28 @@ impl _native_dep_scan(
     if cached is not None and cached.fresh == fresh {
         return (cached.reason, cached.deps);
     }
+    digest = _native_scan_digest(stamped, hold_exempt);
+    held = _read_native_scan(path, digest);
+    if held is not None {
+        _na_scan_memo[memo_key] = NativeDepScan(
+            fresh=fresh, reason=held.reason, deps=held.deps
+        );
+        return (held.reason, held.deps);
+    }
     sv_reason = '';
     deps: list[str] = [];
+    probes: list[str] = [];
+    unresolved = False;
     base_dir = os.path.dirname(os.path.abspath(path)) or '.';
     woven = host.woven_module(path, JacProgram()) if arch is not None else None;
     if woven is not None {
-        (sv_reason, deps) = scan_native_blockers(
+        scan = native_blocker_scan(
             woven, base_dir, allow_pub=True, hold_exempt=hold_exempt
         );
+        sv_reason = scan.first();
+        deps = scan.deps;
+        probes = scan.probes;
+        unresolved = scan.unresolved;
     } else {
         for f in files {
             try {
@@ -58,21 +72,90 @@ impl _native_dep_scan(
                 sv_reason = "parse error";
                 break;
             }
-            (f_sv, f_deps) = scan_native_blockers(
+            scan = native_blocker_scan(
                 dep_mod, base_dir, allow_pub=True, hold_exempt=hold_exempt
             );
+            probes.extend(scan.probes);
+            unresolved = unresolved or scan.unresolved;
+            f_sv = scan.first();
             if f_sv {
                 sv_reason = f_sv;
                 break;
             }
-            deps.extend(f_deps);
+            deps.extend(scan.deps);
         }
     }
     if sv_reason {
         deps = [];
     }
     _na_scan_memo[memo_key] = NativeDepScan(fresh=fresh, reason=sv_reason, deps=deps);
+    if digest and not unresolved {
+        _keep_native_scan(path, digest, sv_reason, deps, probes);
+    }
     return (sv_reason, deps);
+}
+
+impl _native_scan_digest(files: list[str], hold_exempt: bool) -> str {
+    host = active_host();
+    parts: list[str] = [NATIVE_SCAN_RECORD, str(int(hold_exempt))];
+    for f in files {
+        try {
+            text = host.read_source(f);
+        } except Exception {
+            return "";
+        }
+        parts.append(os.path.realpath(f));
+        parts.append(hashlib.sha256(text.encode()).hexdigest());
+    }
+    return hashlib.sha256("\x1f".join(parts).encode()).hexdigest();
+}
+
+impl _read_native_scan(path: str, digest: str) -> (NativeDepScan | None) {
+    if not digest {
+        return None;
+    }
+    text = active_host().native_scan_record(path, digest);
+    if not text {
+        return None;
+    }
+    lines = text.split("\n");
+    if len(lines) < 2 or lines[0] != NATIVE_SCAN_RECORD {
+        return None;
+    }
+    deps: list[str] = [];
+    for line in lines[2:] {
+        if not line {
+            continue;
+        }
+        if line.startswith("d\t") {
+            deps.append(line[2:]);
+        } elif line.startswith("p\t") {
+            if not os.path.exists(line[2:]) {
+                return None;
+            }
+        } else {
+            return None;
+        }
+    }
+    return NativeDepScan(fresh=[], reason=lines[1], deps=deps);
+}
+
+impl _keep_native_scan(
+    path: str, digest: str, reason: str, deps: list[str], probes: list[str]
+) {
+    rows: list[str] = [NATIVE_SCAN_RECORD, reason];
+    for dep in deps {
+        rows.append(f"d\t{dep}");
+    }
+    for probe in probes {
+        rows.append(f"p\t{probe}");
+    }
+    for row in rows {
+        if "\n" in row {
+            return;
+        }
+    }
+    active_host().keep_native_scan_record(path, digest, "\n".join(rows) + "\n");
 }
 
 impl _native_deps_ok(
@@ -936,7 +1019,6 @@ impl PlacementApplyPass._run_impl(ir_in: uni.Module) -> uni.Module {
         );
     }
     if ir_in.gen.native_undecided and ir_in.loc is not None and ir_in.loc.mod_path {
-        import from jaclang.compiler.placement.placement { native_blocker_scan }
         base_dir = os.path.dirname(os.path.abspath(ir_in.loc.mod_path)) or ".";
         closed = native_blocker_scan(ir_in, base_dir).first();
         if closed {

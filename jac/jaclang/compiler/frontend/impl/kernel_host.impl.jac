@@ -841,6 +841,23 @@ impl KernelHost.keep_wiring_records(digest: str, text: str) {
     }
 }
 
+impl KernelHost.native_scan_record(path: str, digest: str) -> str {
+    if self.kernel_only("native_scan_record") {
+        return "";
+    }
+    with self.delegating("native_scan_record") as host {
+        answer = host.native_scan_record(path, digest);
+    }
+    return answer;
+}
+
+impl KernelHost.keep_native_scan_record(path: str, digest: str, text: str) {
+    self.census.count("keep_native_scan_record");
+    if self.fallback is not None {
+        self.fallback.keep_native_scan_record(path, digest, text);
+    }
+}
+
 impl KernelHost.native_parse(
     source_str: str,
     file_path: str,
