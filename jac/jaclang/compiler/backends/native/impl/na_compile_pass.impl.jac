@@ -50,11 +50,6 @@ impl codegen_footprint(blob: bytes) -> int {
 }
 
 impl codegen_map(work: Callable[..., bytes], blobs: list[bytes]) -> list[bytes] {
-    """Run `work` on every module's bitcode on one thread per emit job. A
-    module starts only while the modules in flight fit available memory at
-    their footprints (code generation for a kernel partition held about
-    thirteen times its bitcode), largest first, so small modules fill in
-    around a large one.""";
     import threading;
     import from concurrent.futures { ThreadPoolExecutor }
     workers = min(len(blobs), object_emit_jobs());
@@ -152,10 +147,12 @@ impl create_unit_target_machine(
     if target_ovr {
         llvm.initialize_all_targets();
         llvm.initialize_all_asmprinters();
+        llvm.initialize_all_asmparsers();
         target = llvm.Target.from_triple(target_ovr);
     } else {
         llvm.initialize_native_target();
         llvm.initialize_native_asmprinter();
+        llvm.initialize_native_asmparser();
         target = llvm.Target.from_default_triple();
     }
     assert isinstance(target, llvm.Target);
@@ -184,6 +181,7 @@ impl optimize_unit(
 impl NativeCompilePass.postinit -> None {
     llvm.initialize_native_target();
     llvm.initialize_native_asmprinter();
+    llvm.initialize_native_asmparser();
 }
 
 impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
@@ -306,10 +304,6 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
 }
 
 impl NativeCompilePass._share_engine(module: uni.Module, engine: any) -> None {
-    """The plan may have recompiled this module as a unit while settling,
-    which evicts the module the importer will ask about and leaves its
-    products on the program's artifact carrier; the engine and the interop
-    tables go on that carrier too, so the lookup finds them either way.""";
     import os;
     if not (module.loc and module.loc.mod_path) {
         return;

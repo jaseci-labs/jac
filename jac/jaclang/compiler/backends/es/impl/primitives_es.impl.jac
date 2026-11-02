@@ -2241,7 +2241,6 @@ impl ESBuiltinEmitter.emit_bytearray(
 }
 
 impl _mcall(target: str, method: str, args: list[str]) -> str {
-    """Emit target.method(arg1, arg2, ...).""";
     if len(args) > 0 {
         return target + "." + method + "(" + ", ".join(args) + ")";
     }
@@ -2249,7 +2248,6 @@ impl _mcall(target: str, method: str, args: list[str]) -> str {
 }
 
 impl _fcall(name: str, args: list[str]) -> str {
-    """Emit name(arg1, arg2, ...).""";
     if len(args) > 0 {
         return name + "(" + ", ".join(args) + ")";
     }
@@ -2257,7 +2255,6 @@ impl _fcall(name: str, args: list[str]) -> str {
 }
 
 impl _rt(ns: str, method: str, args: list[str]) -> str {
-    """Emit a Jac JS runtime helper call: _jac.ns.method(args).""";
     if len(args) > 0 {
         return "_jac." + ns + "." + method + "(" + ", ".join(args) + ")";
     }
@@ -2265,19 +2262,10 @@ impl _rt(ns: str, method: str, args: list[str]) -> str {
 }
 
 impl _binop(left: str, op: str, right: str) -> str {
-    """Emit (left op right) with parens for safety.""";
     return "(" + left + " " + op + " " + right + ")";
 }
 
 impl _one_arg_cb(fn: str, seq: str, method: str, cb_body: str) -> str {
-    """Emit seq.method(cb) with cb receiving exactly one element.
-
-    Python's map/filter call the callback with just the element, while JS's
-    Array.prototype.map/filter also pass (index, array) -- which a two-arity
-    callable such as `int(x, base)` reads as a radix.  Binding `fn` and `seq`
-    as parameters keeps them evaluated once, in the enclosing scope, so a
-    call-expression callback is not re-run per element.
-    """;
     return "((_f, _s) => _s."
         + method
         + "((_v) => "

@@ -1,11 +1,9 @@
 impl HMAC.update(data: bytes) {
-    ctx_require(self._ctx, "hmac");
-    hmac_ctx_update(self._ctx, data);
+    self._core.update(data);
 }
 
 impl HMAC.digest -> bytes {
-    ctx_require(self._ctx, "hmac");
-    return hmac_ctx_digest(self._ctx);
+    return self._core.finish();
 }
 
 impl HMAC.hexdigest -> str {
@@ -13,21 +11,15 @@ impl HMAC.hexdigest -> str {
 }
 
 impl HMAC.copy -> HMAC {
-    ctx_require(self._ctx, "hmac");
     return HMAC(
-        _ctx=hmac_ctx_clone(self._ctx),
+        _core=self._core.clone(),
         digest_size=self.digest_size,
         block_size=self.block_size,
         name=self.name
     );
 }
 
-impl HMAC.drop {
-    if self._ctx != 0 {
-        hmac_ctx_free(self._ctx);
-        self._ctx = 0;
-    }
-}
+impl HMAC.drop {}
 
 impl new(key: any, msg: any = None, digestmod: str = "") -> HMAC {
     k: bytes = b"";
@@ -43,8 +35,8 @@ impl new(key: any, msg: any = None, digestmod: str = "") -> HMAC {
     if digestmod == "" {
         raise TypeError("Missing required argument 'digestmod'.");
     }
-    md: int = evp_md_for(digestmod);
-    if md == 0 {
+    core = new_hmac(digestmod, __bytes_data(k), len(k));
+    if core is None {
         raise ValueError("unsupported hash type " + digestmod);
     }
     data: bytes = b"";
@@ -58,9 +50,9 @@ impl new(key: any, msg: any = None, digestmod: str = "") -> HMAC {
         raise TypeError("object supporting the buffer API required");
     }
     hm = HMAC(
-        _ctx=hmac_ctx_new(md, k),
-        digest_size=digest_size_for(digestmod),
-        block_size=block_size_for(digestmod),
+        _core=core,
+        digest_size=core.digest_size,
+        block_size=core.block_size,
         name="hmac-" + digestmod
     );
     hm.update(data);

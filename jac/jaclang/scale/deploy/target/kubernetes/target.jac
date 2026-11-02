@@ -98,6 +98,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
     );
 
     def _fleet_deployment_names(apps_v1: any, namespace: str) -> list[str];
+    def _fleet_app_labels(apps_v1: any, namespace: str) -> list[str];
     def _owned_replica_sets(
         apps_v1: any, namespace: str, strict: bool = False
     ) -> list[any];
@@ -128,6 +129,10 @@ obj KubernetesTarget(KubernetesTargetBase) {
     def _apply_or_replace_pvc(core_v1: any, namespace: str, manifest: dict[str, any]);
     def _destroy_fleet_workloads(
         namespace: str, apps_v1: any, core_v1: any, policy_v1: any, networking_v1: any
+    );
+
+    def _sweep_budgets_and_services(
+        namespace: str, core_v1: any, policy_v1: any, selector: str
     );
 
     def _destroy_monitoring(

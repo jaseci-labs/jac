@@ -111,6 +111,38 @@ test "a sealed image runs its own kernel and never consults the checkout" {
     assert said == "";
 }
 
+"""A sealed image and a kit carry only their own target's kernel, so a kernel
+for another target never resolves to the host's."""
+test "another target's kernel never resolves to the sealed or kit kernel" {
+    import from jaclang.compiler.target_spec { RELEASE_TARGETS, host_target_spec }
+    host = host_target_spec().osarch;
+    other = [
+        t.osarch
+        for t in RELEASE_TARGETS
+        if t.osarch != host
+    ][0];
+    name = f"kernel@{other}";
+    shipped = ResolvedKernel(lib_path="shipped", layout={}, source="sealed");
+    router.forget();
+    try {
+        with _toolchain(), patch.object(router, "_omitted", return_value=frozenset()), patch.object(
+            resolver, "_from_sealed_image", return_value=shipped
+        ), patch.object(resolver, "read_sidecar", return_value={"classes": {}}), patch.object(
+            resolver, "_bundled_kernel", side_effect=_never
+        ), patch.object(
+            KernelArtifact, "probe_checkout", return_value=Probe.missing()
+        ) {
+            artifact = router.artifact_named(name);
+            assert artifact.probe_sealed() is None;
+            assert artifact.probe_kit().found is None;
+            resolution = router.resolve(name);
+        }
+    } finally {
+        router.forget();
+    }
+    assert resolution.found is None , f"{name} resolved to {resolution.found}";
+}
+
 test "only a build that asks through JAC_KIT_OMIT leaves the kernel out" {
     import from jaclang.artifacts.kit { pr_kit_omits }
     with patch.dict(os.environ, {"JAC_KIT_OMIT": "kernel"}) {

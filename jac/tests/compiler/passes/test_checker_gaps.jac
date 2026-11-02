@@ -761,3 +761,33 @@ test "gap 60 a receiver in an impossible arm keeps its declared type" {
     stamped = str(receivers[0].type);
     assert stamped == "Text" , f"Gap #60: impossible-arm receiver stamped {stamped}";
 }
+
+# =========================================================================
+# Gap #61: excluding None from a value the flow had narrowed to None
+# (`x is not None` right after `x = None`) leaves that arm Never, and since
+# gap 60 an arm reached only through Never keeps its declared type. That
+# fallback skipped the guard: `x: int | None` read as `int | None` inside
+# `if x is not None`, so `[start, x]` failed to assign to `list[int]`. The
+# exclusion now applies to the declared type, so the arm reads `int`.
+# =========================================================================
+test "gap 61 is not None on a value narrowed to None excludes None from the declared type" {
+    program = compile_and_check("checker_exclusion_on_narrowed_none.jac");
+    msgs = [str(e) for e in program.errors_had];
+    assert len(msgs) == 1 , f"Gap #61: expected only the still-optional error. Got: {msgs}";
+    assert "NoneType" in msgs[0] and "to list[int]" in msgs[0] , msgs;
+    assert program.errors_had[0].loc.first_line == 59 , msgs;
+    path = os.path.join(CHECKER_FIXTURES, "checker_exclusion_on_narrowed_none.jac");
+    mod = program.mod.hub[path];
+    stamped = [
+        str(nm.type)
+        for nm in mod.get_all_sub_nodes(uni.Name)
+        if nm.value == "aim" and nm.loc.first_line in (20, 31, 41, 48)
+    ];
+    assert stamped == ["int", "int", "int", "int"] , f"Gap #61: arm reads stamped {stamped}";
+    after = [
+        str(nm.type)
+        for nm in mod.get_all_sub_nodes(uni.Name)
+        if nm.value in ("scope", "top") and nm.loc.first_line in (80, 105)
+    ];
+    assert after == ["Fnc", "Fun | Arch"] , f"Gap #61: reads past an impossible arm stamped {after}";
+}

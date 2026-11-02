@@ -67,11 +67,7 @@ impl JacTestClient._ensure_initialized -> None {
         return;
     }
 
-    (base, mod) = os.path.split(self._jac_file);
-    base = base or "./";
-    if self._jac_file.endswith(".jac") {
-        mod = mod[:-4];
-    }
+    base = os.path.dirname(self._jac_file) or "./";
 
     Jac.set_base_path(self._base_path);
     Jac.set_full_target_path(self._jac_file);
@@ -91,10 +87,13 @@ impl JacTestClient._ensure_initialized -> None {
     prepared = build_services().prepare_application(
         self._jac_file, Jac.get_program(), base, default_codespace='server'
     );
-    initialize_application(prepared);
+    served = initialize_application(prepared);
 
     self._server = JacAPIServer(
-        module_name=mod, port=0, base_path=self._base_path, module_file=self._jac_file
+        module_name=served.__name__,
+        port=0,
+        base_path=self._base_path,
+        module_file=self._jac_file
     );
 
     self._server.load_module();
@@ -263,15 +262,14 @@ impl JacTestClient.reload -> None {
     import os;
     self._ensure_initialized();
 
-    (base, mod) = os.path.split(self._jac_file);
-    base = base or "./";
-    if self._jac_file.endswith(".jac") {
-        mod = mod[:-4];
-    }
+    base = os.path.dirname(self._jac_file) or "./";
+    mod = self.server.module_name;
 
     if self._hot_reloader is None {
         import from jaclang.runtime.build_services { build_services }
-        self._hot_reloader = build_services().hot_reloader(base, mod);
+        self._hot_reloader = build_services().hot_reloader(
+            base, mod, entry_path=self._jac_file
+        );
     }
     reloader = self._hot_reloader;
     assert reloader is not None;

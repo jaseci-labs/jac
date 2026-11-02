@@ -1,3 +1,1 @@
-def:pub app -> JsxElement {
-    return <JacYacMobile/>;
-}
+def:pub app -> JsxElement;

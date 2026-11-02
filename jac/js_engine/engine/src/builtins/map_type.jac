@@ -16,8 +16,8 @@ import from engine.src.runtime.jsvalue { JSValue }
 
 A Map's entries are the parallel lists `ekeys` / `evals` in insertion order; a
 deleted entry's key is the hole sentinel (live iterators step over it) and
-`head` is the first live entry (-1: none). `key_index` maps a key's stable id to
-its entry. Until its first insert a Map shares the empty MAP_NO_* containers
+`head` is the first live entry (-1: none). `key_index` maps a key's
+`js_svz_key` (one value per SameValueZero class) to its entry. Until its first insert a Map shares the empty MAP_NO_* containers
 (`owned` False) — most Maps a bundler makes stay small or empty. WeakMap keeps
 its entries in `keys` / `vals` instead."""
 obj:pub JSMapStorage {

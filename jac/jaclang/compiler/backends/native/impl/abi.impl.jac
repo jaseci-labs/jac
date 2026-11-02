@@ -1,7 +1,4 @@
 impl layout_identity(llt: ir.Type, memo: dict[str, str]) -> str {
-    """What an LLVM type's layout depends on: its members, and the members of
-    every struct it embeds. Pointers end the walk, since their layout does not
-    depend on what they point to.""";
     if isinstance(llt, ir.PointerType) {
         return "ptr";
     }
@@ -29,10 +26,6 @@ impl layout_identity(llt: ir.Type, memo: dict[str, str]) -> str {
 }
 
 impl struct_layouts(module: ir.Module) -> dict[str, tuple[list[int], int]] {
-    """Read identified struct offsets and sizes from LLVM's target ABI. LLVM
-    is the host's: the probe module and each struct's member count go to it,
-    and the offsets and sizes come back. A layout is asked for once per
-    distinct struct identity and data layout in a process.""";
     import json;
 
     data_layout = str(module.data_layout);
@@ -264,10 +257,6 @@ impl classify_struct_aapcs(
 impl classify_struct_win64(
     size: int, align: int, scalars: list[tuple[int, bool, int]]
 ) -> dict[str, any] {
-    """The Microsoft x64 convention: a record of exactly 1, 2, 4 or 8 bytes
-    travels in one integer register whatever its fields are, floats included;
-    any other is passed as a pointer to a copy the caller owns, and returned
-    through a hidden pointer.""";
     if size in (1, 2, 4, 8) {
         return {
             "size": size,

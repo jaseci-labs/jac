@@ -109,12 +109,52 @@ impl PrometheusMetricsCollector.postinit {
         "WebSocket broadcast publishes",
         registry=self._registry
     );
+
+    self._scheduled_runs = Counter(
+        f"{self._namespace}_scheduled_runs_total",
+        "Static @schedule runs this worker started, by outcome",
+        ["task", "status"],
+        registry=self._registry
+    );
+
+    self._scheduled_run_latency = Histogram(
+        f"{self._namespace}_scheduled_run_duration_seconds",
+        "Static @schedule run duration in seconds",
+        ["task"],
+        buckets=SCHEDULED_RUN_BUCKETS,
+        registry=self._registry
+    );
+
+    self._scheduled_skips = Counter(
+        f"{self._namespace}_scheduled_ticks_skipped_total",
+        "Static @schedule ticks this worker did not run, by reason",
+        ["task", "reason"],
+        registry=self._registry
+    );
 }
 
 impl PrometheusMetricsCollector.record_read_tier_retry(unit_key: str) {
     if self._read_tier_retries is not None {
         self._read_tier_retries.labels(unit=unit_key).inc();
     }
+}
+
+impl PrometheusMetricsCollector.record_scheduled_run(
+    task: str, status: str, reason: str, duration_seconds: float
+) {
+    if (
+        self._scheduled_runs is None
+        or self._scheduled_run_latency is None
+        or self._scheduled_skips is None
+    ) {
+        return;
+    }
+    if status == "skipped" {
+        self._scheduled_skips.labels(task=task, reason=reason).inc();
+        return;
+    }
+    self._scheduled_runs.labels(task=task, status=status).inc();
+    self._scheduled_run_latency.labels(task=task).observe(duration_seconds);
 }
 
 impl PrometheusMetricsCollector.record_ws_connection_opened {

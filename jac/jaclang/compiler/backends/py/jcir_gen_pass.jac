@@ -1,4 +1,3 @@
-import textwrap;
 import from collections.abc { Sequence }
 
 
@@ -334,7 +333,7 @@ walker JcirGenPass(TreePass) {
         doc: (String | None) = None
     ) -> list[CgItem];
 
-    def scope_directive_stmts(scopes: list[UniScopeNode | None]) -> list[CgNode];
+    def scope_directive_stmts(scope: UniScopeNode) -> list[CgNode];
     def _resolve_self_type(nd: Name) -> (CgNode | None);
     def _is_in_type_annotation(nd: UniNode) -> bool;
     def _is_descendant_of(nd: UniNode, ancestor: UniNode) -> bool;
@@ -357,7 +356,6 @@ walker JcirGenPass(TreePass) {
     can enter_test with Test entry;
     can exit_test with Test exit;
     can exit_module_code with ModuleCode exit;
-    can exit_py_inline_code with PyInlineCode exit;
     can exit_import with Import exit;
     can exit_module_path with ModulePath exit;
     can exit_module_item with ModuleItem exit;

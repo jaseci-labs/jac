@@ -59,6 +59,7 @@ node UnknownType(TypeBase) {
 
 node NeverType(TypeBase) {
     static has CATEGORY: TypeCategory = TypeCategory.Never;
+    has residual: (TypeBase | None) = None;
 
     def __str__ -> str;
 }

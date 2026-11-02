@@ -1,15 +1,5 @@
-"""ABCMeta support; derived from CPython 3.14.6 Modules/_abc.c.
-
-See ../LICENSE.cpython. Each ABC keeps an _abc_data instance in its
-`_abc_impl` attribute; the instance's native state holds the lazily created
-registry and caches (sets of weak references) and the negative cache version.
-The module state holds the _abc_data type, the interned attribute names and
-the invalidation counter that every register() call advances.
-"""
-
 glob abc_data_token = ClassToken();
 
-# Module state references: the _abc_data type, then the interned names.
 glob DATA_TYPE: int = 0,
      IMPL: int = 1,
      ABSTRACTMETHODS: int = 2,
@@ -32,34 +22,121 @@ glob DATA_TYPE: int = 0,
          "__abc_tpflags__"
      ];
 
-# The three weak-reference sets of an _abc_data, by reference index.
 glob:priv REGISTRY: int = 0,
      CACHE: int = 1,
      NEGATIVE_CACHE: int = 2,
-     # Py_TPFLAGS_SEQUENCE | Py_TPFLAGS_MAPPING
      COLLECTION_FLAGS: u64 = 96;
 
 obj AbcModuleState(NativeState) {
     has invalidation_counter: u64 = 0;
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return i32(0);
-    }
-
-    def clear {}
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
 }
 
-"""The _abc_data payload: the registry, cache and negative cache sets are
-created on first use; the version is the counter the negative cache matches."""
 obj AbcData(ReferenceState) {
     has negative_cache_version: u64 = 0;
 }
 
-def:priv name(module: ptr[PyObject], index: int) -> ptr[PyObject] {
+def:priv name(module: ptr[PyObject], index: int) -> ptr[PyObject];
+
+def:priv module_state(module: ptr[PyObject]) -> AbcModuleState | None;
+
+def:priv data_of(abc_impl: ptr[PyObject]) -> AbcData | None;
+
+def abc_data_new(
+    type: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv get_impl(module: ptr[PyObject], self_: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv in_weak_set(weak_set: ptr[PyObject], object_: ptr[PyObject]) -> i32;
+
+def:priv abc_destroy(
+    setweakref: ptr[PyObject], objweakref: ptr[PyObject]
+) -> ptr[PyObject];
+
+glob:priv destroy_functions = FunctionTable(
+         [MethodDefinition("_destroy", MethodCallbacks(positional=abc_destroy), "", 8)]
+     );
+
+def:priv add_to_weak_set(data: AbcData, which: int, object_: ptr[PyObject]) -> i32;
+
+def:priv clear_set(weak_set: ptr[PyObject]) -> bool;
+
+def _abc__reset_registry_impl(
+    module: ptr[PyObject], self_: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _abc__reset_caches_impl(
+    module: ptr[PyObject], self_: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _abc__get_dump_impl(module: ptr[PyObject], self_: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv add_if_abstract(
+    abstracts: ptr[PyObject], key: ptr[PyObject], value: ptr[PyObject]
+) -> i32;
+
+def:priv direct_abstracts(
+    module: ptr[PyObject], self_: ptr[PyObject], abstracts: ptr[PyObject]
+) -> i32;
+
+def:priv inherited_abstracts(
+    module: ptr[PyObject], self_: ptr[PyObject], abstracts: ptr[PyObject]
+) -> i32;
+
+def:priv compute_abstract_methods(module: ptr[PyObject], self_: ptr[PyObject]) -> i32;
+
+def _abc__abc_init_impl(module: ptr[PyObject], self_: ptr[PyObject]) -> ptr[PyObject];
+
+def _abc__abc_register_impl(
+    module: ptr[PyObject], self_: ptr[PyObject], subclass: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv call_subclasscheck(
+    module: ptr[PyObject], self_: ptr[PyObject], subclass: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv instancecheck(
+    module: ptr[PyObject],
+    self_: ptr[PyObject],
+    instance: ptr[PyObject],
+    data: AbcData,
+    subclass: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _abc__abc_instancecheck_impl(
+    module: ptr[PyObject], self_: ptr[PyObject], instance: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv subclasscheck_check_registry(data: AbcData, subclass: ptr[PyObject]) -> i32;
+
+def:priv remember(
+    data: AbcData, which: int, subclass: ptr[PyObject], answer: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv subclasscheck(
+    module: ptr[PyObject], self_: ptr[PyObject], data: AbcData, subclass: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _abc__abc_subclasscheck_impl(
+    module: ptr[PyObject], self_: ptr[PyObject], subclass: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _abc_get_cache_token_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+impl AbcModuleState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return i32(0);
+}
+
+impl AbcModuleState.clear {}
+
+impl name(module: ptr[PyObject], index: int) -> ptr[PyObject] {
     return jacpy_binding_state_get(module, i64(index));
 }
 
-def:priv module_state(module: ptr[PyObject]) -> AbcModuleState | None {
+impl module_state(module: ptr[PyObject]) -> AbcModuleState | None {
     if jacpy_binding_module_native_present(module) != 0 {
         state = jacpy_binding_module_native_get(module);
         if isinstance(state, AbcModuleState) {
@@ -70,7 +147,7 @@ def:priv module_state(module: ptr[PyObject]) -> AbcModuleState | None {
     return None;
 }
 
-def:priv data_of(abc_impl: ptr[PyObject]) -> AbcData | None {
+impl data_of(abc_impl: ptr[PyObject]) -> AbcData | None {
     if jacpy_binding_native_present(abc_impl, abc_data_token.handle) != 0 {
         state = jacpy_binding_native_get(abc_impl, abc_data_token.handle);
         if isinstance(state, AbcData) {
@@ -81,8 +158,7 @@ def:priv data_of(abc_impl: ptr[PyObject]) -> AbcData | None {
     return None;
 }
 
-"""tp_new of _abc_data; arguments are ignored, as in C."""
-def abc_data_new(
+impl abc_data_new(
     type: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     instance = jacpy_binding_allocate(type);
@@ -105,8 +181,7 @@ def abc_data_new(
     return instance;
 }
 
-"""_get_impl(): the owned _abc_impl of self, checked to be exactly _abc_data."""
-def:priv get_impl(module: ptr[PyObject], self_: ptr[PyObject]) -> ptr[PyObject] {
+impl get_impl(module: ptr[PyObject], self_: ptr[PyObject]) -> ptr[PyObject] {
     abc_impl = PyObject_GetAttr(self_, name(module, IMPL));
     if not abc_impl {
         return NULL;
@@ -119,7 +194,7 @@ def:priv get_impl(module: ptr[PyObject], self_: ptr[PyObject]) -> ptr[PyObject] 
     return abc_impl;
 }
 
-def:priv in_weak_set(weak_set: ptr[PyObject], object_: ptr[PyObject]) -> i32 {
+impl in_weak_set(weak_set: ptr[PyObject], object_: ptr[PyObject]) -> i32 {
     if not weak_set or PySet_Size(weak_set) == 0 {
         return i32(0);
     }
@@ -136,8 +211,7 @@ def:priv in_weak_set(weak_set: ptr[PyObject], object_: ptr[PyObject]) -> i32 {
     return res;
 }
 
-"""_destroy(): the weakref callback bound to a weak reference to the set."""
-def:priv abc_destroy(
+impl abc_destroy(
     setweakref: ptr[PyObject], objweakref: ptr[PyObject]
 ) -> ptr[PyObject] {
     weak_set: ptr[PyObject] = NULL;
@@ -155,11 +229,7 @@ def:priv abc_destroy(
     return Py_NewRef(borrowed_none());
 }
 
-glob:priv destroy_functions = FunctionTable(
-         [MethodDefinition("_destroy", MethodCallbacks(positional=abc_destroy), "", 8)]
-     );
-
-def:priv add_to_weak_set(data: AbcData, which: int, object_: ptr[PyObject]) -> i32 {
+impl add_to_weak_set(data: AbcData, which: int, object_: ptr[PyObject]) -> i32 {
     weak_set = data.references[which];
     if not weak_set {
         weak_set = PySet_New(NULL);
@@ -189,11 +259,11 @@ def:priv add_to_weak_set(data: AbcData, which: int, object_: ptr[PyObject]) -> i
     return ret;
 }
 
-def:priv clear_set(weak_set: ptr[PyObject]) -> bool {
+impl clear_set(weak_set: ptr[PyObject]) -> bool {
     return not weak_set or PySet_Clear(weak_set) >= 0;
 }
 
-def _abc__reset_registry_impl(
+impl _abc__reset_registry_impl(
     module: ptr[PyObject], self_: ptr[PyObject]
 ) -> ptr[PyObject] {
     abc_impl = get_impl(module, self_);
@@ -206,7 +276,7 @@ def _abc__reset_registry_impl(
     return Py_NewRef(borrowed_none()) if ok else NULL;
 }
 
-def _abc__reset_caches_impl(
+impl _abc__reset_caches_impl(
     module: ptr[PyObject], self_: ptr[PyObject]
 ) -> ptr[PyObject] {
     abc_impl = get_impl(module, self_);
@@ -221,7 +291,7 @@ def _abc__reset_caches_impl(
     return Py_NewRef(borrowed_none()) if ok else NULL;
 }
 
-def _abc__get_dump_impl(module: ptr[PyObject], self_: ptr[PyObject]) -> ptr[PyObject] {
+impl _abc__get_dump_impl(module: ptr[PyObject], self_: ptr[PyObject]) -> ptr[PyObject] {
     abc_impl = get_impl(module, self_);
     if not abc_impl {
         return NULL;
@@ -242,8 +312,7 @@ def _abc__get_dump_impl(module: ptr[PyObject], self_: ptr[PyObject]) -> ptr[PyOb
     return result;
 }
 
-"""Add key to abstracts when value is abstract; -1 on error."""
-def:priv add_if_abstract(
+impl add_if_abstract(
     abstracts: ptr[PyObject], key: ptr[PyObject], value: ptr[PyObject]
 ) -> i32 {
     is_abstract = _PyObject_IsAbstract(value);
@@ -253,9 +322,7 @@ def:priv add_if_abstract(
     return i32(0);
 }
 
-"""Stage 1: the abstract methods defined directly in the namespace. The items
-are listed first because _PyObject_IsAbstract() can mutate it."""
-def:priv direct_abstracts(
+impl direct_abstracts(
     module: ptr[PyObject], self_: ptr[PyObject], abstracts: ptr[PyObject]
 ) -> i32 {
     ns = PyObject_GetAttr(self_, name(module, DICT));
@@ -275,7 +342,7 @@ def:priv direct_abstracts(
             status = i32(-1);
             break;
         }
-        it = PySequence_Fast(item, "items() returned non-iterable");
+        it = PySequence_Fast(item, ptr[u8]("items() returned non-iterable"));
         jacpy_release(item);
         if not it {
             status = i32(-1);
@@ -302,8 +369,7 @@ def:priv direct_abstracts(
     return status;
 }
 
-"""Stage 2: inherited abstract methods that are still abstract on self."""
-def:priv inherited_abstracts(
+impl inherited_abstracts(
     module: ptr[PyObject], self_: ptr[PyObject], abstracts: ptr[PyObject]
 ) -> i32 {
     bases = PyObject_GetAttr(self_, name(module, BASES));
@@ -361,8 +427,7 @@ def:priv inherited_abstracts(
     return status;
 }
 
-"""compute_abstract_methods(): set self.__abstractmethods__."""
-def:priv compute_abstract_methods(module: ptr[PyObject], self_: ptr[PyObject]) -> i32 {
+impl compute_abstract_methods(module: ptr[PyObject], self_: ptr[PyObject]) -> i32 {
     abstracts = jacpy_set_new(NULL, 1);
     if not abstracts {
         return i32(-1);
@@ -379,11 +444,11 @@ def:priv compute_abstract_methods(module: ptr[PyObject], self_: ptr[PyObject]) -
     return status;
 }
 
-def _abc__abc_init_impl(module: ptr[PyObject], self_: ptr[PyObject]) -> ptr[PyObject] {
+impl _abc__abc_init_impl(module: ptr[PyObject], self_: ptr[PyObject]) -> ptr[PyObject] {
     if compute_abstract_methods(module, self_) < 0 {
         return NULL;
     }
-    # Set up inheritance registry.
+
     data = abc_data_new(name(module, DATA_TYPE), NULL, NULL);
     if not data {
         return NULL;
@@ -393,8 +458,7 @@ def _abc__abc_init_impl(module: ptr[PyObject], self_: ptr[PyObject]) -> ptr[PyOb
     if status < 0 {
         return NULL;
     }
-    # __abc_tpflags__ & COLLECTION_FLAGS sets those bits on the new class;
-    # collections.abc.Sequence and Mapping use it for pattern matching.
+
     if jacpy_is_type(self_) != 0 {
         flags: ptr[PyObject] = NULL;
         if PyDict_Pop(_PyType_GetDict(self_), name(module, TPFLAGS), &mut flags) < 0 {
@@ -421,7 +485,7 @@ def _abc__abc_init_impl(module: ptr[PyObject], self_: ptr[PyObject]) -> ptr[PyOb
     return Py_NewRef(borrowed_none());
 }
 
-def _abc__abc_register_impl(
+impl _abc__abc_register_impl(
     module: ptr[PyObject], self_: ptr[PyObject], subclass: ptr[PyObject]
 ) -> ptr[PyObject] {
     if jacpy_is_type(subclass) == 0 {
@@ -430,16 +494,14 @@ def _abc__abc_register_impl(
     }
     result = PyObject_IsSubclass(subclass, self_);
     if result > 0 {
-        return Py_NewRef(subclass);  # Already a subclass.
+        return Py_NewRef(subclass);
     }
     if result < 0 {
         return NULL;
     }
-    # Subtle: test for cycles *after* testing for "already a subclass";
-    # this means we allow X.register(X) and interpret it as a no-op.
+
     result = PyObject_IsSubclass(self_, subclass);
     if result > 0 {
-        # This would create a cycle, which is bad for the algorithm below.
         object_error(PyExc_RuntimeError, "Refusing to create an inheritance cycle");
         return NULL;
     }
@@ -456,13 +518,13 @@ def _abc__abc_register_impl(
     if failed {
         return NULL;
     }
-    # Invalidate negative cache
+
     state = module_state(module);
     if state is None {
         return NULL;
     }
     state.invalidation_counter += u64(1);
-    # Set Py_TPFLAGS_SEQUENCE or Py_TPFLAGS_MAPPING flag
+
     if jacpy_is_type(self_) != 0 {
         collection_flag = PyType_GetFlags(self_) & COLLECTION_FLAGS;
         if collection_flag != 0 {
@@ -472,7 +534,7 @@ def _abc__abc_register_impl(
     return Py_NewRef(subclass);
 }
 
-def:priv call_subclasscheck(
+impl call_subclasscheck(
     module: ptr[PyObject], self_: ptr[PyObject], subclass: ptr[PyObject]
 ) -> ptr[PyObject] {
     method = PyObject_GetAttr(self_, name(module, SUBCLASSCHECK));
@@ -484,14 +546,13 @@ def:priv call_subclasscheck(
     return result;
 }
 
-def:priv instancecheck(
+impl instancecheck(
     module: ptr[PyObject],
     self_: ptr[PyObject],
     instance: ptr[PyObject],
     data: AbcData,
     subclass: ptr[PyObject]
 ) -> ptr[PyObject] {
-    # Inline the cache checking.
     incache = in_weak_set(data.references[CACHE], subclass);
     if incache < 0 {
         return NULL;
@@ -514,7 +575,7 @@ def:priv instancecheck(
                 return Py_NewRef(borrowed_false());
             }
         }
-        # Fall back to the subclass check.
+
         return call_subclasscheck(module, self_, subclass);
     }
     result = call_subclasscheck(module, self_, subclass);
@@ -533,7 +594,7 @@ def:priv instancecheck(
     return result;
 }
 
-def _abc__abc_instancecheck_impl(
+impl _abc__abc_instancecheck_impl(
     module: ptr[PyObject], self_: ptr[PyObject], instance: ptr[PyObject]
 ) -> ptr[PyObject] {
     abc_impl = get_impl(module, self_);
@@ -556,10 +617,7 @@ def _abc__abc_instancecheck_impl(
     return result;
 }
 
-"""Return -1 when an exception occurred, 1 when subclass is a subclass of a
-registered class (and is cached), and 0 otherwise."""
-def:priv subclasscheck_check_registry(data: AbcData, subclass: ptr[PyObject]) -> i32 {
-    # Fast path: check subclass is in weakref directly.
+impl subclasscheck_check_registry(data: AbcData, subclass: ptr[PyObject]) -> i32 {
     ret = in_weak_set(data.references[REGISTRY], subclass);
     if ret != 0 {
         return ret;
@@ -568,8 +626,7 @@ def:priv subclasscheck_check_registry(data: AbcData, subclass: ptr[PyObject]) ->
     if not registry_shared {
         return i32(0);
     }
-    # A local copy of the registry protects against modifications of
-    # _abc_registry while the subclass checks run Python code.
+
     registry = jacpy_set_new(registry_shared, 1);
     if not registry {
         return i32(-1);
@@ -585,7 +642,6 @@ def:priv subclasscheck_check_registry(data: AbcData, subclass: ptr[PyObject]) ->
         status = PyWeakref_GetRef(key, &mut rkey);
         jacpy_release(key);
         if status < 0 {
-            # Someone inject non-weakref type in the registry.
             ret = i32(-1);
             break;
         }
@@ -610,8 +666,7 @@ def:priv subclasscheck_check_registry(data: AbcData, subclass: ptr[PyObject]) ->
     return ret;
 }
 
-"""Record the answer for subclass in the positive or negative cache."""
-def:priv remember(
+impl remember(
     data: AbcData, which: int, subclass: ptr[PyObject], answer: ptr[PyObject]
 ) -> ptr[PyObject] {
     if add_to_weak_set(data, which, subclass) < 0 {
@@ -620,10 +675,9 @@ def:priv remember(
     return Py_NewRef(answer);
 }
 
-def:priv subclasscheck(
+impl subclasscheck(
     module: ptr[PyObject], self_: ptr[PyObject], data: AbcData, subclass: ptr[PyObject]
 ) -> ptr[PyObject] {
-    # 1. Check cache.
     incache = in_weak_set(data.references[CACHE], subclass);
     if incache < 0 {
         return NULL;
@@ -635,10 +689,9 @@ def:priv subclasscheck(
     if state is None {
         return NULL;
     }
-    # 2. Check negative cache; may have to invalidate.
+
     invalidation_counter = state.invalidation_counter;
     if data.negative_cache_version < invalidation_counter {
-        # Invalidate the negative cache.
         if not clear_set(data.references[NEGATIVE_CACHE]) {
             return NULL;
         }
@@ -652,7 +705,7 @@ def:priv subclasscheck(
             return Py_NewRef(borrowed_false());
         }
     }
-    # 3. Check the subclass hook.
+
     hook = PyObject_GetAttr(self_, name(module, SUBCLASSHOOK));
     if not hook {
         return NULL;
@@ -679,11 +732,11 @@ def:priv subclasscheck(
         return NULL;
     }
     jacpy_release(ok);
-    # 4. Check if it's a direct subclass.
+
     if PyType_IsSubtype(subclass, self_) != 0 {
         return remember(data, CACHE, subclass, borrowed_true());
     }
-    # 5. Check if it's a subclass of a registered class (recursive).
+
     registered = subclasscheck_check_registry(data, subclass);
     if registered < 0 {
         return NULL;
@@ -691,7 +744,7 @@ def:priv subclasscheck(
     if registered > 0 {
         return Py_NewRef(borrowed_true());
     }
-    # 6. Check if it's a subclass of a subclass (recursive).
+
     method = PyObject_GetAttr(self_, name(module, SUBCLASSES));
     if not method {
         return NULL;
@@ -726,11 +779,11 @@ def:priv subclasscheck(
         pos += 1;
     }
     jacpy_release(subclasses);
-    # No dice; update negative cache.
+
     return remember(data, NEGATIVE_CACHE, subclass, borrowed_false());
 }
 
-def _abc__abc_subclasscheck_impl(
+impl _abc__abc_subclasscheck_impl(
     module: ptr[PyObject], self_: ptr[PyObject], subclass: ptr[PyObject]
 ) -> ptr[PyObject] {
     if jacpy_is_type(subclass) == 0 {
@@ -750,7 +803,7 @@ def _abc__abc_subclasscheck_impl(
     return result;
 }
 
-def _abc_get_cache_token_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl _abc_get_cache_token_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     state = module_state(module);
     if state is None {
         return NULL;

@@ -110,7 +110,7 @@ impl PlacementWork.refs(module: uni.Module) -> dict[int, set[int]] {
     mid = id(module);
     cached = self.references.get(mid);
     if cached is None {
-        cached = {id(top): _ref_top_ids(module, top) for top in module.body};
+        cached = {id(top): _ref_top_ids(module, top) for top in module.elements};
         self.references[mid] = cached;
     }
     return cached;

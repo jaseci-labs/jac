@@ -53,11 +53,20 @@ import from engine.src.pm.semver {
 import from engine.src.pm.fsx { fsx_is_file, fsx_write_str, fsx_perm }
 import from engine.src.pm.install { pm_install_project, TrustCtx }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bfind,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
+}
+
 def _out(s: str) {
-    write(1, s, len(s));
+    write(1, s, str_nbytes(s));
 }
 def _err(s: str) {
-    write(2, s, len(s));
+    write(2, s, str_nbytes(s));
 }
 
 """Split "name@spec" (scoped names keep their leading @)."""
@@ -66,11 +75,11 @@ def:pub pm_split_add_arg(arg: str) -> tuple[str, str] {
     if arg.startswith("@") {
         start = 1;
     }
-    at: int = arg.find("@", start);
+    at: int = str_bfind(arg, "@", start);
     if at < 0 {
         return (arg, "");
     }
-    return (arg[0:at], arg[at + 1:]);
+    return (str_bslice(arg, 0, at), str_bslice_from(arg, at + 1));
 }
 
 """Indentation unit of a JSON text (bun: guess_indentation): the whitespace
@@ -83,11 +92,12 @@ def _guess_indent(text: str) -> str {
     lines: list[str] = text.split("\n");
     for line in lines {
         n: int = 0;
-        while n < len(line) and (line[n] == " " or line[n] == "\t") {
+        _nb95_line: int = str_nbytes(line);
+        while n < _nb95_line and (byte_chr(str_byte(line, n)) == " " or byte_chr(str_byte(line, n)) == "\t") {
             n = n + 1;
         }
-        if n > 0 and n < len(line) and line[n] == "\"" {
-            return line[0:n];
+        if n > 0 and n < str_nbytes(line) and byte_chr(str_byte(line, n)) == "\"" {
+            return str_bslice(line, 0, n);
         }
     }
     return "  ";

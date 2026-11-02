@@ -287,9 +287,12 @@ test "a mid-stream drop is retried only when the error is transient" {
         model = Model(model_name="gpt-4o-mini");
         mt = mk_run(stream=True);
         raised: any = None;
+        events: list[any] = [];
         with scripted(model, replies) as script {
             try {
-                events = list(model._invoke_streaming(mt));
+                for ev in model._invoke_streaming(mt) {
+                    events.append(ev);
+                }
             } except Exception as e {
                 raised = e;
             }
@@ -297,8 +300,8 @@ test "a mid-stream drop is retried only when the error is transient" {
         assert len(script.seen) == calls , (
             f"{label}: expected {calls} model calls, got {len(script.seen)}"
         );
-        assert mt._stream_reset_count == resets , (
-            f"{label}: expected {resets} stream resets, got {mt._stream_reset_count}"
+        assert len(events_of(events, "stream_reset")) == resets , (
+            f"{label}: expected {resets} stream resets, got {event_types(events)}"
         );
         if escapes is None {
             assert raised is None , f"{label}: unexpected {raised!r}";

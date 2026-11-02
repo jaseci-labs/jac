@@ -122,13 +122,15 @@ impl JcirGenPass._switch_flag_set(nd: SwitchStmt, value: bool) -> CgNode {
 impl JcirGenPass._ctrl_owner(nd: UniNode) -> UniNode | None {
     at = nd.parent;
     while at is not None {
-        if isinstance(
-            at, (SwitchStmt, InForStmt, IterForStmt, WhileStmt, ForeverStmt)
-        ) {
-            return at;
-        }
-        if isinstance(at, (Ability, LambdaExpr)) {
-            return None;
+        if not in_loop_else(nd, at) {
+            if isinstance(
+                at, (SwitchStmt, InForStmt, IterForStmt, WhileStmt, ForeverStmt)
+            ) {
+                return at;
+            }
+            if isinstance(at, (Ability, LambdaExpr)) {
+                return None;
+            }
         }
         at = at.parent;
     }
@@ -230,31 +232,18 @@ impl JcirGenPass._move_release_stmts(stmt: UniNode) -> list[CgNode] {
     return [self._release_name_stmt(n, stmt) for n in names];
 }
 
-impl JcirGenPass.scope_directive_stmts(
-    scopes: list[UniScopeNode | None]
-) -> list[CgNode] {
+impl JcirGenPass.scope_directive_stmts(scope: UniScopeNode) -> list[CgNode] {
     global_names: list[str] = [];
     nonlocal_names: list[str] = [];
-    seen: set[str] = set();
-    for scope in scopes {
-        if scope is None {
+    linked = self.loop_links.linked_within(scope);
+    for (name, sym) in scope.implicit_rebinds.items() {
+        if sym in linked {
             continue;
         }
-        linked = self.loop_links.linked_within(scope);
-        for name in scope.implicit_rebinds {
-            if name in seen {
-                continue;
-            }
-            seen.add(name);
-            sym = scope.implicit_rebinds[name];
-            if sym in linked {
-                continue;
-            }
-            if isinstance(sym.parent_tab, Module) {
-                global_names.append(name);
-            } else {
-                nonlocal_names.append(name);
-            }
+        if isinstance(sym.parent_tab, Module) {
+            global_names.append(name);
+        } else {
+            nonlocal_names.append(name);
         }
     }
     stmts: list[CgNode] = [];
@@ -410,17 +399,7 @@ impl JcirGenPass.exit_else_if with ElseIf exit {
 }
 
 impl JcirGenPass.exit_else_stmt with ElseStmt exit {
-    body = self.resolve_stmt_block(here.body);
-    if isinstance(here.parent, (InForStmt, IterForStmt, WhileStmt)) {
-        body = [
-            self.nod(
-                'While',
-                ['test', 'body', 'orelse'],
-                [self.const_of(True), body + [self.nod('Break', [], [])], []]
-            )
-        ];
-    }
-    self.set_out(here, body);
+    self.set_out(here, self.resolve_stmt_block(here.body));
 }
 
 impl JcirGenPass.exit_expr_stmt with ExprStmt exit {

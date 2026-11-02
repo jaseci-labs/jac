@@ -68,6 +68,13 @@ glob KEY_CODES: dict[str, any] = {
          "ArrowRight": 39,
          "ArrowDown": 40,
 
+     },
+     MAC_EDIT_COMMANDS: dict[str, str] = {
+         "a": "selectAll",
+         "c": "copy",
+         "x": "cut",
+         "v": "paste",
+         "z": "undo"
      };
 
 
@@ -138,13 +145,17 @@ def _locate(
 
 def _real_click(cdp: CDP, x: float, y: float);
 
+def _type_steps(text: str) -> list[dict[str, any]];
+
 def _type_text(cdp: CDP, text: str);
 
 def _insert_text(cdp: CDP, text: str);
 
 def _key_code(ch: str) -> str;
 
-def _key_down(key: str, modifiers: int = 0) -> dict[str, any];
+def _key_down(key: str, modifiers: int = 0, platform: str = "") -> dict[str, any];
+
+def _select_all_modifier(platform: str = "") -> int;
 
 def _press(cdp: CDP, key: str, modifiers: int = 0);
 

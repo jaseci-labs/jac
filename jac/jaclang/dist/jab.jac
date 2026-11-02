@@ -15,6 +15,8 @@ def materialize_jab(jab_path: str) -> Path;
 
 def materialize_jab_bytes(data: bytes, expected_sha256: str = "") -> Path;
 
-def _materialize_jab_data(data: bytes, label: str, expected_sha256: str = "") -> Path;
+def _materialize_jab_data(
+    load: Callable[[], bytes], label: str, expected_sha256: str = ""
+) -> Path;
 
 def jab_app_meta(img_root: Path) -> dict[str, any];

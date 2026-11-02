@@ -6,7 +6,7 @@ impl Message.from_dict(d: dict[str, any]) -> Message | dict[str, any] {
             name=d.get("name", "")
         );
     }
-    if d.get("tool_calls") {
+    if d.get("tool_calls") or d.get("role") == "assistant" {
         return dict(d);
     }
     role_str = d.get("role", "user");

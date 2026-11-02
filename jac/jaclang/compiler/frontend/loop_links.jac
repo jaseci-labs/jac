@@ -27,13 +27,14 @@ obj LoopLinks {
     def _is_local(sym: Symbol, loop: LoopStmt) -> bool;
 }
 
-def is_frame(nd: UniNode) -> bool;
 
 def enclosing_pass_loops(closure: UniNode) -> list[LoopStmt];
 
 def made_in_comprehension(closure: UniNode) -> bool;
 
 def made_per_element(sym: Symbol, closure: UniNode) -> bool;
+
+def in_loop_else(nd: UniNode, at: UniNode) -> bool;
 
 def enclosing_loop(ctrl: CtrlStmt) -> (LoopStmt | None);
 
@@ -50,5 +51,3 @@ def is_plain_variable(sym: Symbol) -> bool;
 def owned_within(sym: Symbol, scope: UniNode) -> bool;
 
 def binding_sites(sym: Symbol) -> list[UniNode];
-
-def is_within(nd: UniNode, outer: UniNode) -> bool;

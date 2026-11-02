@@ -397,6 +397,8 @@ impl fetch_bun(osarch: str, dest: str) {
     if not file_exists(out_path) {
         die(f"fetch-bun: extract produced no {bun_name}");
     }
+
+    os.chmod(out_path, 0o755);
     write_bun_record(out_path);
     log(f"fetch-bun: ready at {out_path} ({len(bun_bytes) >> 20} MiB)");
 }

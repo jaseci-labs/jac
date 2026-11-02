@@ -140,13 +140,19 @@ test "an Intel Mac is told the release has no build for it, and which one does" 
 
 test "an Intel Mac installs normally from a release that does carry the binary" {
     fx = scaffold("x86_64", ["jac-0.37.1-macos-x86_64", "jac-0.37.1-macos-aarch64"]);
+    Path(fx["downloads"] + "/jac-0.37.1-macos-x86_64").write_bytes(b"fake jac binary");
     try {
         res = run_installer(fx);
         out = res.stdout + res.stderr;
+        assert res.returncode == 0 , out;
         assert ("Downloading jac-0.37.1-macos-x86_64" in out) , "a present asset must go straight to the download: "
             + out;
         assert ("no jac binary" not in out) , "a present asset must not trip the missing-platform message: "
             + out;
+        marker = Path(fx["base"]) / ".local" / "bin" / ".jac-install";
+        assert marker.read_text().strip() == "installed-by-jaseci-labs-install-script";
+        run_installer(fx, ["--uninstall"]);
+        assert not marker.exists() , "uninstall must remove the ownership marker";
     } finally {
         shutil.rmtree(fx["base"], ignore_errors=True);
     }

@@ -84,11 +84,12 @@ def parse_frontmatter(source: str) -> dict[str, any] {
 
     raw = m.group(1);
     meta: dict[str, any] = {};
-    current_key: str | None = None;
+    # ("" until the first key: a key always starts with a letter or `_`)
+    current_key: str = "";
     current_val_lines: list[str] = [];
 
     def _flush {
-        if current_key is not None {
+        if current_key {
             meta[current_key] = _parse_yaml_value("\n".join(current_val_lines));
         }
     }
@@ -100,7 +101,7 @@ def parse_frontmatter(source: str) -> dict[str, any] {
             _flush();
             current_key = key_match.group(1);
             current_val_lines = [key_match.group(2)] if key_match.group(2) else [];
-        } elif current_key is not None {
+        } elif current_key {
             current_val_lines.append(line);
         }
     }

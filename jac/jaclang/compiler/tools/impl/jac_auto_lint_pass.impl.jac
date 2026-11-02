@@ -451,15 +451,7 @@ impl JacAutoLintPass.create_glob_from_assignment(
 impl JacAutoLintPass.is_module_level_construct(stmt: uni.UniNode) -> bool {
     return isinstance(
         stmt,
-        (
-            uni.Import,
-            uni.Archetype,
-            uni.Ability,
-            uni.Enum,
-            uni.GlobalVars,
-            uni.Test,
-            uni.PyInlineCode
-        )
+        (uni.Import, uni.Archetype, uni.Ability, uni.Enum, uni.GlobalVars, uni.Test)
     );
 }
 
@@ -537,8 +529,11 @@ impl JacAutoLintPass.enter_module with uni.Module entry {
     }
     if self.report_only {
         self._separate_impls(here, here.body);
+        self._sink_impls(here, list(here.body));
+        self._check_annex_placement(here);
         return;
     }
+    self._check_annex_placement(here);
     module = here;
     if self.main_module is None {
         self.main_module = module;
@@ -601,7 +596,9 @@ impl JacAutoLintPass.enter_module with uni.Module entry {
     if not self.ctx._is_suppressed(W3003) {
         new_body = self.combine_consecutive_glob(new_body);
     }
-    new_body.extend(self._separate_impls(module, new_body));
+    floated = self._separate_impls(module, new_body);
+    new_body = self._sink_impls(module, new_body);
+    new_body.extend(floated);
     module._role_set(BodyRole, new_body);
     module._invalidate_sub_node_tab();
     new_kid: list[uni.UniNode] = [];
@@ -1898,22 +1895,19 @@ impl JacAutoLintPass._collect_reactive_has_names(
     ability_node: uni.Ability
 ) -> set[str] {
     names: set[str] = set();
-    container: (uni.UniNode | None) = ability_node.parent;
+    container = ability_node.decl_parent;
     while container is not None {
         if isinstance(container, (uni.Archetype, uni.Ability)) {
-            body = container.body;
-            if body is not None and isinstance(body, list) {
-                for stmt in body {
-                    if isinstance(stmt, uni.ArchHas) and stmt.in_client_context() {
-                        for hv in stmt.vars {
-                            names.add(hv.name.sym_name);
-                        }
+            for stmt in ModuleFacts.unwrap_body(container) or [] {
+                if isinstance(stmt, uni.ArchHas) and stmt.in_client_context() {
+                    for hv in stmt.vars {
+                        names.add(hv.name.sym_name);
                     }
                 }
             }
             break;
         }
-        container = container.parent;
+        container = container.decl_parent;
     }
     return names;
 }
@@ -2659,6 +2653,85 @@ impl JacAutoLintPass._separate_impls(
     return floated;
 }
 
+impl JacAutoLintPass._sink_impls(
+    module: uni.Module, body: list[(uni.ElementStmt | uni.String | uni.EmptyToken)]
+) -> list[(uni.ElementStmt | uni.String | uni.EmptyToken)] {
+    path = module.loc.mod_path;
+    if self.ctx._is_suppressed(W3056)
+        or not path
+        or path.endswith((".impl.jac", ".test.jac"))
+        or self._is_file_excluded(path) {
+        return body;
+    }
+    sunk: list[(uni.ElementStmt | uni.String | uni.EmptyToken)] = [];
+    for st in body {
+        if isinstance(st, uni.ImplDef) and st.loc.mod_path == path {
+            target = ".".join(nm.sym_name for nm in st.target);
+            if self.ctx.emit(
+                W3056,
+                node_override=st,
+                what=f"impl '{target}' belongs in an annex inside an impl folder"
+            ) {
+                sunk.append(st);
+            }
+        }
+    }
+    if not sunk or self.report_only {
+        return body;
+    }
+    kept = [
+        st
+        for st in body
+        if not any(st is s for s in sunk)
+    ];
+    return kept + sunk;
+}
+
+impl JacAutoLintPass._check_annex_placement(module: uni.Module) -> None {
+    path = module.loc.mod_path;
+    if self.ctx._is_suppressed(W3056) or not path or self._is_file_excluded(path) {
+        return;
+    }
+    if path.endswith(".impl.jac") {
+        if self._is_sibling_annex(path) {
+            self.ctx.emit(
+                W3056,
+                node_override=module,
+                what=f"Annex '{os.path.basename(path)}' belongs inside an impl folder"
+            );
+        }
+        return;
+    }
+    if path.endswith(".test.jac") {
+        return;
+    }
+    seen: set[str] = set();
+    for st in module.body {
+        annex = st.loc.mod_path;
+        if not isinstance(st, uni.ImplDef)
+            or not annex
+            or annex == path
+            or annex in seen
+            or not annex.endswith(".impl.jac")
+            or not self._is_sibling_annex(annex) {
+            continue;
+        }
+        seen.add(annex);
+        self.ctx.emit(
+            W3056,
+            node_override=st,
+            what=f"Annex '{os.path.basename(annex)}' belongs inside an impl folder"
+        );
+    }
+}
+
+impl JacAutoLintPass._is_sibling_annex(annex: str) -> bool {
+    base = active_host().base_file(annex);
+    return base is not None
+        and os.path.dirname(os.path.realpath(base))
+            == os.path.dirname(os.path.realpath(annex));
+}
+
 impl JacAutoLintPass._in_floated_spec(nd: uni.UniNode) -> bool {
     cur = nd.parent;
     while cur is not None and not isinstance(cur, uni.ImplDef) {
@@ -2706,7 +2779,7 @@ impl JacAutoLintPass._collect_inline_abilities(
 }
 
 impl JacAutoLintPass._can_separate(ab: uni.Ability) -> bool {
-    if ab.accessor_kind or ab.is_abstract or ab.is_comptime or ab.type_params {
+    if ab.accessor_kind or ab.is_abstract or ab.is_comptime {
         return False;
     }
     if not isinstance(ab.name_ref, uni.Name) or not isinstance(ab.body, list) {
@@ -2717,16 +2790,6 @@ impl JacAutoLintPass._can_separate(ab: uni.Ability) -> bool {
     }
     if not self.ctx._is_suppressed(W3038)
         and any(self._is_usestate_assignment(stmt) is not None for stmt in ab.body) {
-        return False;
-    }
-    if any(isinstance(stmt, uni.ArchHas) for stmt in ab.body)
-        or ab.get_all_sub_nodes(uni.JsxElement) {
-        return False;
-    }
-    sig = ab.signature;
-    if isinstance(sig, uni.FuncSignature)
-        and isinstance(sig.return_type, uni.Name)
-        and sig.return_type.value == "JsxElement" {
         return False;
     }
     kids = [ab->:Kid:->];
@@ -2773,7 +2836,19 @@ impl JacAutoLintPass._impl_header(
         sig_start = sig.loc.pos_start;
         sig_text = src.code.encode("utf-8")[sig_start:sig.loc.pos_end].decode("utf-8");
     }
-    head = "impl " + target + (" " if isinstance(sig, uni.EventSignature) else "");
+    tp_text = "";
+    if ab.type_params {
+        kids = [ab->:Kid:->];
+        opener = kids[kids.index(ab.type_params[0]) - 1];
+        closer = kids[kids.index(ab.type_params[-1]) + 1];
+        tp_text = src.code.encode("utf-8")[opener.loc.pos_start:closer.loc.pos_end].decode(
+            "utf-8"
+        );
+    }
+    head = "impl "
+        + target
+        + tp_text
+        + (" " if isinstance(sig, uni.EventSignature) else "");
     text = head + sig_text + " {}";
     (tokens, _comments, _diags, lex_errors) = tokenize_full(text, ab.loc.mod_path);
     parser = Parser(tokens=tokens, file_path=ab.loc.mod_path, source_code=text);
@@ -2906,6 +2981,108 @@ impl JacAutoLintPass._strip_docstrings(start: uni.UniNode) -> None {
         ];
         `node.set_kids(nodes=new_kid if len(new_kid) else [uni.EmptyToken()]);
         `node._invalidate_sub_node_tab();
+    }
+    self._strip_string_stmts(start);
+}
+
+impl JacAutoLintPass._is_string_stmt(stmt: uni.UniNode) -> bool {
+    if not isinstance(stmt, uni.ExprStmt) or stmt.in_fstring {
+        return False;
+    }
+    expr = stmt.expr;
+    if isinstance(expr, uni.String) {
+        return True;
+    }
+    return isinstance(expr, uni.MultiString)
+        and all(isinstance(part, uni.String) for part in expr.strings);
+}
+
+impl JacAutoLintPass._strip_string_stmts(start: uni.UniNode) -> None {
+    found: list[tuple[uni.UniNode, uni.UniNode]] = [];
+    stack: list[uni.UniNode] = [start];
+    while stack {
+        current = stack.pop();
+        if isinstance(current, uni.JsxSlot) {
+            continue;
+        }
+        body = self._stmt_body_list(current);
+        if isinstance(body, list) {
+            strs = [
+                s
+                for s in body
+                if self._is_string_stmt(s)
+            ];
+            real = [
+                s
+                for s in body
+                if not isinstance(s, uni.Semi)
+            ];
+            rest = [
+                s
+                for s in real
+                if not self._is_string_stmt(s)
+            ];
+            if strs
+                and not (
+                    isinstance(current, uni.LambdaExpr)
+                    and (
+                        len(real) == 1
+                        or (len(rest) == 1 and isinstance(rest[0], uni.ExprStmt))
+                    )
+                )
+                and not (
+                    isinstance(current, (uni.MatchCase, uni.SwitchCase))
+                    and len(strs) == len(real)
+                ) {
+                for stmt in strs {
+                    found.append((current, stmt));
+                }
+            }
+        }
+        for kid in [current->:Kid:->] {
+            if kid is not None {
+                stack.append(kid);
+            }
+        }
+    }
+    found.sort(
+        key=lambda (item: tuple[uni.UniNode, uni.UniNode]) { (
+            item[1].loc.first_line,
+            item[1].loc.col_start
+        ); }
+    );
+    doomed: dict[int, tuple[uni.UniNode, set[int]]] = {};
+    for (container, stmt) in found {
+        if not self.ctx.emit(W3051, node_override=stmt) or self.report_only {
+            continue;
+        }
+        if id(container) not in doomed {
+            fresh_ids: set[int] = set();
+            doomed[id(container)] = (container, fresh_ids);
+        }
+        doomed[id(container)][1].add(id(stmt));
+    }
+    for (container, stmt_ids) in doomed.values() {
+        body = self._stmt_body_list(container);
+        if not isinstance(body, list) {
+            continue;
+        }
+        container._role_set(
+            BodyRole,
+            [
+                s
+                for s in body
+                if id(s) not in stmt_ids
+            ]
+        );
+        container.set_kids(
+            [
+                k
+                for k in [container->:Kid:->]
+                if id(k) not in stmt_ids
+            ]
+        );
+        container._invalidate_sub_node_tab();
     }
 }
 

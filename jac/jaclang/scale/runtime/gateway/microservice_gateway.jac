@@ -39,11 +39,11 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, 
     def handle_health -> Response;
     def handle_health_live -> Response;
     def handle_health_ready -> Response;
-    async def aggregate_graph_data(request: Request) -> Response | None;
     async def handle_builtin_passthrough(
         request: Request, path: str
     ) -> Response | None;
 
+    async def merge_graph_pages(request: Request) -> Response;
     def eligible_services -> list[tuple[str, ServiceEntry]];
     def root_member -> ServiceEntry | None;
     def shell_answers(request: Request, path: str) -> bool;

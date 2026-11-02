@@ -414,7 +414,7 @@ impl JcirGenPass.exit_lambda_expr with LambdaExpr exit {
             body_stmts = self.resolve_stmt_block(here.body, doc=None);
         }
         body_stmts = [*body_hoists, *body_stmts];
-        directive_stmts = self.scope_directive_stmts([here]);
+        directive_stmts = self.scope_directive_stmts(here);
         if directive_stmts {
             body_stmts = [*directive_stmts, *body_stmts];
         }
@@ -983,29 +983,17 @@ impl JcirGenPass.exit_name with Name exit {
 }
 
 impl JcirGenPass._resolve_self_type(nd: Name) -> (CgNode | None) {
-    arch = nd.find_parent_of_type(Archetype);
-    enum_parent = nd.find_parent_of_type(Enum) if not arch else None;
-    enclosing = arch or enum_parent;
-    enclosing_name: str | None = None;
-    if enclosing {
-        enclosing_name = enclosing.name.sym_name if enclosing.name else None;
-    }
-    if not enclosing_name {
-        impl_def = nd.find_parent_of_type(ImplDef);
-        if (impl_def and impl_def.target and len(impl_def.target) > 0) {
-            enclosing_name = impl_def.target[0].sym_name
-                if isinstance(impl_def.target[0], NameAtom)
-                else None;
-        }
-    }
+    enclosing = nd.enclosing_decl(ArchSpec);
+    enclosing_name = enclosing.name.sym_name
+        if isinstance(enclosing, (Archetype, Enum)) and enclosing.name
+        else None;
     if not enclosing_name {
         return None;
     }
     if self._is_in_type_annotation(nd) {
         return self.name_load(enclosing_name);
     }
-    ability = nd.find_parent_of_type(Ability);
-    impl_def = nd.find_parent_of_type(ImplDef);
+    ability = nd.enclosing_decl(Ability);
     is_in_classmethod = False;
     is_in_method = False;
     if ability {
@@ -1013,15 +1001,6 @@ impl JcirGenPass._resolve_self_type(nd: Name) -> (CgNode | None) {
         is_in_method = ability.is_method
             and not ability.is_static
             and not ability.is_cls_method;
-    } elif (
-        impl_def and impl_def.decl_link and isinstance(impl_def.decl_link, Ability)
-    ) {
-        is_in_classmethod = impl_def.decl_link.is_cls_method;
-        is_in_method = (
-            impl_def.decl_link.is_method
-            and not impl_def.decl_link.is_static
-            and not impl_def.decl_link.is_cls_method
-        );
     }
     if is_in_classmethod {
         return self.nod('Name', ['id', 'ctx'], ['cls', self.py_ctx(nd)]);

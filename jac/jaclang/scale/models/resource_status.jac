@@ -32,6 +32,8 @@ def _count(source: any, key: str) -> int;
 
 def replica_floor_of(deployment: any) -> int;
 
+def container_crashlooping(cs: any, min_restarts: int = 1) -> bool;
+
 def assess_workload(
     deployment: any, crashlooping: bool = False, replica_floor: (int | None) = None
 ) -> ResourceStatusInfo;
