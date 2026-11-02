@@ -826,6 +826,11 @@ impl KEDAAutoscaler.apply_http_activation {
     scaled_obj_manifest = self._build_http_scaled_object(spec);
     scaled_obj_name = scaled_obj_manifest["name"];
     scaled_obj_body = scaled_obj_manifest["body"];
+
+    scaled_obj_patch = {
+        ** scaled_obj_body,
+        "spec": {"initialCooldownPeriod": None, ** scaled_obj_body["spec"]}
+    };
     try {
         api.get_namespaced_custom_object(
             group="keda.sh",
@@ -840,7 +845,7 @@ impl KEDAAutoscaler.apply_http_activation {
             namespace=spec.namespace,
             plural="scaledobjects",
             name=scaled_obj_name,
-            body=scaled_obj_body
+            body=scaled_obj_patch
         );
     } except ApiException as e {
         if e.status == 404 {
