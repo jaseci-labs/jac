@@ -557,14 +557,14 @@ impl MirLowering.iter_value(value: MirValue, site: uni.UniNode) -> MirValue {
     if t.kind == MirKind.TUPLE {
         return self.iter_value(self.tuple_items(value, site), site);
     }
-    made = self.user_method(value, "__iter__", site);
-    if made is not None and made.type.kind != MirKind.OBJ {
-        return self.iter_value(made, site);
+    iterated = self.user_method(value, "__iter__", site);
+    if iterated is not None and iterated.type.kind != MirKind.OBJ {
+        return self.iter_value(iterated, site);
     }
-    if made is not None {
-        elem = self.user_next(made, site).elem;
+    if iterated is not None {
+        elem = self.user_next(iterated, site).elem;
         return self.iter_adapter(
-            "next", mir_str_ref() if elem.kind == MirKind.STR else elem, [made], site
+            "next", mir_str_ref() if elem.kind == MirKind.STR else elem, [iterated], site
         );
     }
     raise MirRefused(mir_refusal("iteration", t.render(), site));
@@ -1147,11 +1147,11 @@ impl MirLowering.iter_adapter(
         self.nested.append(resume);
         self.adapters[key] = symbol;
     }
-    made = self.builder().call(symbol, inputs, mir_iter(elem));
-    if made is None {
+    adapted = self.builder().call(symbol, inputs, mir_iter(elem));
+    if adapted is None {
         raise RuntimeError(f"iterator adapter {symbol} returns no value");
     }
-    return made;
+    return adapted;
 }
 
 impl MirLowering.bind_values(

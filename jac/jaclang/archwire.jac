@@ -11706,6 +11706,7 @@ graph import compiler.backends.native.mir {
     ir ++> [
         backend { MirModule },
         emit {
+            MirBlock,
             MirFunction,
             MirGlobal,
             MirInstr,
