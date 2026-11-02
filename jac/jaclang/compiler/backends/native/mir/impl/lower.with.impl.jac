@@ -241,9 +241,7 @@ impl MirLowering.lower_match(nd: uni.MatchStmt) {
         self.match_test(arm.pattern, subject, fail, arm);
         if arm.guard is not None {
             chosen = fn.new_block("match.body");
-            b.cond_branch(
-                self.condition(arm.guard), chosen, fail
-            );
+            b.cond_branch(self.condition(arm.guard), chosen, fail);
             b.position(chosen);
         }
         self.lower_body(arm.body);

@@ -79,6 +79,7 @@ obj MirEmitter {
     def extern(
         symbol: str, ret: ir.Type, args: list[ir.Type], variadic: bool = False
     ) -> ir.Function;
+
     def emit_function(fn: MirFunction);
     def c_layout(t: MirType) -> tuple[int, int, list[tuple[int, bool, int]]];
     def c_classify(t: MirType) -> dict[str, any];

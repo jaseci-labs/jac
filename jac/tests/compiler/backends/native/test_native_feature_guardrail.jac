@@ -1274,7 +1274,9 @@ test "guardrail: implicit-ctor positionals lower; dynamic new() refuses" {
         "}\n"
         "with entry {}\n"
     );
-    assert no_ice(over) , f"new() arity overflow crashed the backend: {fmt_errors(over)}";
+    assert no_ice(over) , f"new() arity overflow crashed the backend: {fmt_errors(
+        over
+    )}";
     assert refusals(over) , (
         f"new() arity overflow must refuse with E5092, got: {fmt_errors(over)}"
     );

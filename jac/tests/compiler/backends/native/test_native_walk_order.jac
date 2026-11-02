@@ -116,7 +116,9 @@ test "imported obj-field chain executes correctly" {
 test "an unlowerable field type is a loud refusal naming the field or its type" {
     prog = JacProgram();
     opts = CompileOptions(force_codespace='native', skip_native_engine=True);
-    prog.compile(file_path=os.path.join(FIXTURES, "unlowerable_field.jac"), options=opts);
+    prog.compile(
+        file_path=os.path.join(FIXTURES, "unlowerable_field.jac"), options=opts
+    );
     refusals = [
         source_spelled(e.pretty_print())
         for e in prog.errors_had

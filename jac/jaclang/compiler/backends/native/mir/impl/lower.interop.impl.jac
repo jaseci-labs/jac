@@ -497,10 +497,7 @@ impl MirLowering.c_return_plan(
         return (mir_void(), "value");
     }
     declared = sig.return_type.type if isinstance(sig.return_type, uni.Expr) else None;
-    t = self.c_declared_type(
-        declared if declared is not None else fallback,
-        fallback
-    );
+    t = self.c_declared_type(declared if declared is not None else fallback, fallback);
     if isinstance(t, ClassType) and t.shared.class_name in ("NoneType", "None") {
         return (mir_void(), "value");
     }

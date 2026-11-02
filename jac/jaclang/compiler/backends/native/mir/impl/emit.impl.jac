@@ -1452,9 +1452,7 @@ impl MirEmitter.class_global(obj_def: MirObjectDef) -> ir.GlobalVariable {
     return made;
 }
 
-impl MirEmitter.c_layout(
-    t: MirType
-) -> tuple[int, int, list[tuple[int, bool, int]]] {
+impl MirEmitter.c_layout(t: MirType) -> tuple[int, int, list[tuple[int, bool, int]]] {
     if t.kind == MirKind.C_STRUCT {
         offset = 0;
         align = 1;
@@ -1521,7 +1519,9 @@ impl MirEmitter.c_abi_extern(ext: MirExtern) -> ir.Function {
         }
     }
     made = ir.Function(
-        self.module, ir.FunctionType(ret_type, args, var_arg=ext.variadic), name=ext.symbol
+        self.module,
+        ir.FunctionType(ret_type, args, var_arg=ext.variadic),
+        name=ext.symbol
     );
     if ret_plan is not None and ret_plan[0] == "sret" {
         made.args[0].add_attribute("sret");
@@ -1592,7 +1592,10 @@ impl MirEmitter.call_c_abi(
                 b.load(
                     b.gep(
                         buf,
-                        [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), index)]
+                        [
+                            ir.Constant(ir.IntType(32), 0),
+                            ir.Constant(ir.IntType(32), index)
+                        ]
                     )
                 )
             );
