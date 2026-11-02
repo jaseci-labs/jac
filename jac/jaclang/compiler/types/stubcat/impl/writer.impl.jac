@@ -835,8 +835,17 @@ impl CatalogWriter._types_ident(ts: (list[TypeBase] | None)) -> str {
     return ident_key(out);
 }
 
-impl CatalogWriter._literal_ident(value: any) -> str {
-    return ident_key([type(value).__name__, repr(value)]);
+impl CatalogWriter._literal_ident(value: (str | int | bool | None)) -> str {
+    if isinstance(value, bool) {
+        return ident_key(["bool", repr(value)]);
+    }
+    if isinstance(value, int) {
+        return ident_key(["int", repr(value)]);
+    }
+    if isinstance(value, str) {
+        return ident_key(["str", repr(value)]);
+    }
+    return ident_key(["NoneType", "None"]);
 }
 
 impl CatalogWriter.ref_type(t: (TypeBase | None)) -> int {
@@ -884,7 +893,7 @@ impl CatalogWriter.ref_shared(shared: (ClassDetailsShared | None)) -> int {
     return idx;
 }
 
-impl CatalogWriter.put_literal(out: bytearray, value: any) {
+impl CatalogWriter.put_literal(out: bytearray, value: (str | int | bool | None)) {
     if isinstance(value, bool) {
         put_uvar(out, LIT_BOOL);
         put_uvar(out, 1 if value else 0);
