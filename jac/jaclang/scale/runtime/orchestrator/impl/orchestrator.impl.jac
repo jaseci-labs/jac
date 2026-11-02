@@ -26,6 +26,8 @@ impl FleetOrchestrator.start_local -> None {
         return;
     }
 
+    client_dist: str = self._client_dist_dir();
+
     registry = self._build_registry();
     logger.info(f"Registry: {len(registry.entries)} apps");
 
@@ -53,16 +55,24 @@ impl FleetOrchestrator.start_local -> None {
 
     pm.start_health_monitor(interval=_BOOT_RECHECK_INTERVAL);
 
+    static_mounts: list[dict[str, str]] = self._parse_static_mounts();
     gateway = ProcessGateway(
         registry=registry,
         port=self._gateway_port(),
         host=self._gateway_host(),
+        client_dist_dir=client_dist,
+        static_mounts=static_mounts,
         port_pinned=self._port_pinned()
     );
 
     import from functools { partial }
     gateway.serve(
-        on_ready=partial(self._print_startup_banner, registry, self._gateway_host())
+        on_ready=partial(
+            self._print_startup_banner,
+            registry,
+            self._gateway_host(),
+            static_mounts=static_mounts
+        )
     );
 
     deployer.destroy_all();
@@ -87,6 +97,8 @@ impl FleetOrchestrator.start_gateway_only -> None {
         registry=registry,
         port=self._gateway_port(),
         host=self._gateway_host(),
+        client_dist_dir=self._client_dist_dir(),
+        static_mounts=self._parse_static_mounts(),
         port_pinned=self._port_pinned()
     );
     import from functools { partial }
@@ -119,6 +131,31 @@ impl FleetOrchestrator._build_registry -> ServiceRegistry {
         logger.info(f"Registered app: {name} -> {svc_entry.prefix}{role}");
     }
     return registry;
+}
+
+impl FleetOrchestrator._client_dist_dir -> str {
+    return str(self.gateway_config.get("client_dist_dir", DEFAULT_CLIENT_DIST_DIR));
+}
+
+impl FleetOrchestrator._parse_static_mounts -> list[dict[str, str]] {
+    out: list[dict[str, str]] = [];
+    raw = self.gateway_config.get("static_mounts", []);
+    if not isinstance(raw, list) {
+        return out;
+    }
+    for `entry in raw {
+        ed = dict(`entry) if isinstance(`entry, dict) else {};
+        url_prefix = str(ed.get("url_prefix", "")).strip();
+        local_path = str(ed.get("local_path", "")).strip();
+        if url_prefix and local_path {
+            out.append({"url_prefix": url_prefix, "local_path": local_path});
+        } else {
+            logger.warning(
+                f"static mount missing url_prefix/local_path, dropped: {`entry}"
+            );
+        }
+    }
+    return out;
 }
 
 impl FleetOrchestrator._wait_for_health(
@@ -174,7 +211,10 @@ impl FleetOrchestrator._wait_for_health(
 }
 
 impl FleetOrchestrator._print_startup_banner(
-    registry: ServiceRegistry, gateway_host: str, gateway_port: int
+    registry: ServiceRegistry,
+    gateway_host: str,
+    gateway_port: int,
+    static_mounts: list[dict[str, str]] = []
 ) {
     console.print();
     console.print("  Jac Fleet Mode", style="bold cyan");
@@ -194,6 +234,16 @@ impl FleetOrchestrator._print_startup_banner(
         console.print(
             f"  {icon} {name:18s} {label:20s} -> {`entry.url}", style=row_style
         );
+    }
+    if static_mounts {
+        console.print();
+        console.print("  Static mounts", style="bold");
+        console.print(f"  {'-' * 48}", style="muted");
+        for mount in static_mounts {
+            console.print(
+                f"  -> {mount['url_prefix']:20s} -> {mount['local_path']}", style="cyan"
+            );
+        }
     }
     console.print();
 }
