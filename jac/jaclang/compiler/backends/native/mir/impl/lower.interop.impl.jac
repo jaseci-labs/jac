@@ -305,11 +305,15 @@ impl MirLowering.c_param_plan(
 
 impl MirLowering.c_bare(nd: uni.Expr) -> uni.Expr {
     inner: uni.Expr = nd;
-    while (isinstance(inner, uni.AtomUnit) and isinstance(inner.value, uni.Expr))
-        or isinstance(inner, uni.CfgExpr) {
-        inner = inner.value if isinstance(inner, uni.AtomUnit) else inner.expr;
+    while True {
+        if isinstance(inner, uni.AtomUnit) and isinstance(inner.value, uni.Expr) {
+            inner = inner.value;
+        } elif isinstance(inner, uni.CfgExpr) {
+            inner = inner.expr;
+        } else {
+            return inner;
+        }
     }
-    return inner;
 }
 
 impl MirLowering.c_borrow_operand(arg: uni.Expr) -> (uni.Expr | None) {

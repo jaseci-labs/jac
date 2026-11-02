@@ -5668,8 +5668,7 @@ graph import compiler {
         passes.type_checker_pass.TypeCheckPass._check_c_global_use {
             clib_global_of_name,
             foreign_struct_of_type,
-            is_builtin_addressof_call,
-            is_va_list_type
+            is_builtin_addressof_call
         },
         passes.type_checker_pass.TypeCheckPass._check_c_interop_call {
             c_string_literal,
@@ -10548,6 +10547,7 @@ graph import compiler.backends.native.mir {
         emit {
             MirBlock,
             MirConst,
+            MirExtern,
             MirFunction,
             MirGlobal,
             MirInstr,

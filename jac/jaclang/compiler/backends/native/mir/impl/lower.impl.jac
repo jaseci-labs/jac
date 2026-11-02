@@ -149,7 +149,7 @@ impl MirLowering.module_abilities -> list[uni.Ability] {
             found.append(elem);
         } elif isinstance(elem, uni.Import) and elem.clib_decls {
             for decl in elem.clib_decls {
-                if self.c_defines(decl) {
+                if isinstance(decl, uni.Ability) and self.c_defines(decl) {
                     found.append(decl);
                 }
             }

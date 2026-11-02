@@ -1538,15 +1538,15 @@ impl MirEmitter.c_abi_extern(ext: MirExtern) -> ir.Function {
 
 impl MirEmitter.entry_alloca(b: ir.IRBuilder, shape: ir.Type) -> ir.Value {
     first = b.block.parent.blocks[0];
-    if b.block is first {
-        made = b.alloca(shape);
-        made.align = 16;
-        return made;
+    builder = b;
+    if b.block is not first {
+        builder = ir.IRBuilder(first);
+        builder.position_at_start(first);
     }
-    front = ir.IRBuilder(first);
-    front.position_at_start(first);
-    made = front.alloca(shape);
-    made.align = 16;
+    made = builder.alloca(shape);
+    if isinstance(made, ir.AllocaInstr) {
+        made.align = 16;
+    }
     return made;
 }
 
