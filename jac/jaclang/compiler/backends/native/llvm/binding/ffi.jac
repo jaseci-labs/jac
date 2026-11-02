@@ -6,9 +6,9 @@ import ctypes;
 class _MissingShimFunc {
     """Stands in for a shim function when no shim exists.
 
-    Binding modules configure argtypes/restype at import time; without a
-    shim those assignments land here and vanish, so the modules stay
-    importable (the checker resolving an import must not demand LLVM).
+    Binding modules configure argtypes/restype at import time. When the shim
+    is absent, those assignments are retained here and replayed if it loads
+    later, so the modules stay importable without losing the C signatures.
     Only an actual call raises, with the original locate error."""
     def init(self: _MissingShimFunc, err: Exception) {
         self._err: Exception = err;
@@ -23,16 +23,40 @@ class _MissingShimFunc {
 class _LazyLib {
     def init(self: _LazyLib) {
         self._handle: (ctypes.CDLL | None) = None;
+        self._missing: dict[str, _MissingShimFunc] = {};
+    }
+
+    def _missing_func(self: _LazyLib, name: str, err: Exception) -> _MissingShimFunc {
+        missing = self._missing.get(name);
+        if missing is None {
+            missing = _MissingShimFunc(err);
+            self._missing[name] = missing;
+        }
+        return missing;
+    }
+
+    def _apply_missing_signatures(self: _LazyLib) {
+        for (name, missing) in self._missing.items() {
+            func = getattr(self._handle, name);
+            if "argtypes" in missing.__dict__ {
+                func.argtypes = missing.__dict__["argtypes"];
+            }
+            if "restype" in missing.__dict__ {
+                func.restype = missing.__dict__["restype"];
+            }
+        }
+        self._missing.clear();
     }
 
     def __getattr__(self: _LazyLib, name: str) -> any {
         if self._handle is None {
             try {
                 self._handle = ctypes.CDLL(shim_path());
+                self._apply_missing_signatures();
             } except ArtifactUnavailable as e {
-                return _MissingShimFunc(e);
+                return self._missing_func(name, e);
             } except OSError as e {
-                return _MissingShimFunc(e);
+                return self._missing_func(name, e);
             }
         }
         return getattr(self._handle, name);

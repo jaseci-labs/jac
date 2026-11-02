@@ -120,6 +120,9 @@ test "the plan drops lowered LLVM modules before optimizing bitcode" {
     ) -> any {
         result = original_lower(self, path, use_str);
         if result is not None and self.compact_on_lower {
+            if self.async_snapshots {
+                self.await_snapshot(path);
+            }
             module = self.lowered.get(os.path.realpath(path));
             assert module is not None;
             assert module.gen.llvm_ir is None and module.gen.ir_module is None , (
@@ -151,6 +154,181 @@ test "the plan drops lowered LLVM modules before optimizing bitcode" {
     }
     assert lowered_count and lowered_count[-1] >= len(UNITS);
     assert optimized_count and optimized_count[0] >= len(UNITS);
+}
+
+test "a pending snapshot overlaps an independent lower and persists both products" {
+    import threading;
+    import jaclang.compiler.driver.native_snapshot_pipeline as snapshot_pipeline;
+    import from jaclang.compiler.driver.nativecache { NativeBuildSession }
+    with tempfile.TemporaryDirectory() as work {
+        first = str(Path(work) / "first.jac");
+        second = str(Path(work) / "second.jac");
+        Path(first).write_text("def first() -> int { return 1; }\n");
+        Path(second).write_text("def second() -> int { return 2; }\n");
+        first_path = os.path.realpath(first);
+        second_path = os.path.realpath(second);
+        prog = JacProgram();
+        opts = _opts();
+        prog.options = opts;
+        registry = prog.native_units();
+        snapshot_started = threading.Event();
+        release_snapshot = threading.Event();
+        snapshot_finished = threading.Event();
+        first_snapshot_path: list[str] = [];
+        overlap_paths: list[str] = [];
+        snapshot_calls = [0];
+        original_snapshot = snapshot_pipeline._snapshot_ir_text;
+        original_enqueue = NativeBuildSession.enqueue_snapshot;
+        def hold_first_snapshot(
+            path: str, ir_text: str
+        ) -> tuple[str, bytes, set[str], set[str], tuple[int, int]] {
+            snapshot_calls[0] += 1;
+            if snapshot_calls[0] == 1 {
+                snapshot_started.set();
+                if not release_snapshot.wait(10) {
+                    raise RuntimeError("test timed out waiting to release snapshot");
+                }
+                try {
+                    result = original_snapshot(path, ir_text);
+                    assert isinstance(result, tuple) , (
+                        "snapshot workers must return plain values, not Jac models"
+                    );
+                    return result;
+                } finally {
+                    snapshot_finished.set();
+                }
+            }
+            result = original_snapshot(path, ir_text);
+            assert isinstance(result, tuple) , (
+                "snapshot workers must return plain values, not Jac models"
+            );
+            return result;
+        }
+        def observe_enqueue(self: NativeBuildSession, path: str) {
+            resolved = os.path.realpath(path);
+            if not first_snapshot_path {
+                first_snapshot_path.append(resolved);
+            } elif resolved == second_path and resolved != first_snapshot_path[0] {
+                started = snapshot_started.wait(10);
+                if started and not snapshot_finished.is_set() {
+                    overlap_paths.append(resolved);
+                }
+                release_snapshot.set();
+            }
+            original_enqueue(self, path);
+        }
+        snapshot_pipeline._snapshot_ir_text = hold_first_snapshot;
+        NativeBuildSession.enqueue_snapshot = observe_enqueue;
+        try {
+            plan = build_link_plan(prog, [first, second], opts);
+        } finally {
+            release_snapshot.set();
+            snapshot_pipeline._snapshot_ir_text = original_snapshot;
+            NativeBuildSession.enqueue_snapshot = original_enqueue;
+        }
+        assert plan.unit(first_path) is not None;
+        assert plan.unit(second_path) is not None;
+        assert overlap_paths == [second_path] , overlap_paths;
+        for path in (first_path, second_path) {
+            cached_unit = registry.entries.get(path);
+            assert cached_unit is not None and cached_unit.bitcode is not None , (
+                f"build did not persist native bitcode for {path}"
+            );
+        }
+    }
+}
+
+test "worker failures still release session state" {
+    import from concurrent.futures { Future, ThreadPoolExecutor }
+    import from jaclang.compiler.driver.nativecache { NativeBuildSession }
+    import from jaclang.compiler.driver.native_snapshot_pipeline {
+        NativeOptimizationInput
+    }
+    import from jaclang.compiler.backends.native.na_compile_pass { UnitIRSnapshot }
+    prog = JacProgram();
+    registry = prog.native_units();
+    session = NativeBuildSession(registry=registry, options=_opts());
+    registry.session = session;
+    path = "/tmp/native-session-worker-failure.jac";
+    snapshot_failure = Future();
+    snapshot_failure.set_exception(RuntimeError("snapshot worker failed"));
+    optimizer_failure = Future();
+    optimizer_failure.set_exception(RuntimeError("optimizer worker failed"));
+    session.snapshot_pipeline.snapshot_future = snapshot_failure;
+    session.snapshot_pipeline.snapshot_path = path;
+    session.snapshot_pipeline.optimizer_future = optimizer_failure;
+    session.snapshot_pipeline.snapshot_executor = ThreadPoolExecutor(max_workers=1);
+    session.snapshot_pipeline.optimizer_executor = ThreadPoolExecutor(max_workers=1);
+    session.source_keys[path] = "source";
+    session.ir_snapshots[path] = UnitIRSnapshot(
+        bitcode=b"bitcode", defined=set(), declared=set(), function_counts=(0, 0)
+    );
+    session.snapshot_pipeline.pending_optimization = [
+        NativeOptimizationInput(path=path, bitcode=b"pending")
+    ];
+    original_release = JacProgram.release_compile_closure;
+    released_closures: list[bool] = [];
+    def observe_release(
+        self: JacProgram, collect: bool = True, retain_stubs: bool = True
+    ) {
+        if self is session.prog {
+            released_closures.append(True);
+        }
+        return original_release(self, collect, retain_stubs);
+    }
+    JacProgram.release_compile_closure = observe_release;
+    try {
+        with testraises(RuntimeError, `match="snapshot worker failed") {
+            session.close();
+        }
+    } finally {
+        JacProgram.release_compile_closure = original_release;
+    }
+
+    assert released_closures == [True];
+    assert session.lowered == {};
+    assert session.ir_snapshots == {};
+    assert session.source_keys == {};
+    assert session.snapshot_pipeline.snapshot_future is None;
+    assert session.snapshot_pipeline.snapshot_path is None;
+    assert session.snapshot_pipeline.optimizer_future is None;
+    assert session.snapshot_pipeline.pending_optimization == [];
+    assert session.optimized_units == set();
+    assert session.deferred == [] and session.discovery_open == [];
+    assert session.unlowerable == set();
+    assert session.snapshot_pipeline.snapshot_executor is None;
+    assert session.snapshot_pipeline.optimizer_executor is None;
+    assert registry.session is None;
+    assert session.prog._natives is None;
+}
+
+test "link plan restores scoped state when session close fails" {
+    import jaclang.compiler.driver.jir as jir;
+    import from jaclang.compiler.driver.nativecache { NativeBuildSession }
+    import from jaclang.compiler.frontend.codeinfo { effective_native_target }
+    with tempfile.TemporaryDirectory() as work {
+        missing = os.path.join(work, "missing.jac");
+        prog = JacProgram();
+        registry = prog.native_units();
+        opts = _opts();
+        prior_target = effective_native_target();
+        original_close = NativeBuildSession.close;
+        def fail_close(self: NativeBuildSession) {
+            raise RuntimeError("injected close failure");
+        }
+        NativeBuildSession.close = fail_close;
+        try {
+            with testraises(RuntimeError, `match="injected close failure") {
+                build_link_plan(prog, [missing], opts);
+            }
+        } finally {
+            NativeBuildSession.close = original_close;
+        }
+        assert registry.session is None;
+        assert jir._PREPARE_MEMO.get() is None;
+        assert jir._COMPILED_CONTENT.get() is None;
+        assert effective_native_target() == prior_target;
+    }
 }
 
 test "a body edit rewrites one object and keeps every interface" {

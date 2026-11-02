@@ -177,6 +177,8 @@ class Target(ffi.ObjectRef) {
         """
     @classmethod
     def from_triple(cls: any, triple: any) -> Target {
+        ffi.lib.LLVMPY_GetTargetFromTriple.argtypes = [c_char_p, POINTER(c_char_p)];
+        ffi.lib.LLVMPY_GetTargetFromTriple.restype = ffi.LLVMTargetRef;
         with ffi.OutputString() as outerr {
             target = ffi.lib.LLVMPY_GetTargetFromTriple(triple.encode('utf8'), outerr);
             if not target {
@@ -242,6 +244,19 @@ class Target(ffi.ObjectRef) {
         if ((os.name == 'nt') and (codemodel == 'jitdefault')) {
             triple += '-elf';
         }
+        ffi.lib.LLVMPY_CreateTargetMachine.argtypes = [
+            ffi.LLVMTargetRef,
+            c_char_p,
+            c_char_p,
+            c_char_p,
+            c_int,
+            c_char_p,
+            c_char_p,
+            c_int,
+            c_int,
+            c_char_p
+        ];
+        ffi.lib.LLVMPY_CreateTargetMachine.restype = ffi.LLVMTargetMachineRef;
         tm = ffi.lib.LLVMPY_CreateTargetMachine(
             self,
             _encode_string(triple),
@@ -336,6 +351,8 @@ class TargetMachine(ffi.ObjectRef) {
 
     @property
     def target_data(self: TargetMachine) -> object {
+        ffi.lib.LLVMPY_CreateTargetMachineData.argtypes = [ffi.LLVMTargetMachineRef];
+        ffi.lib.LLVMPY_CreateTargetMachineData.restype = ffi.LLVMTargetDataRef;
         return TargetData(ffi.lib.LLVMPY_CreateTargetMachineData(self));
     }
 
