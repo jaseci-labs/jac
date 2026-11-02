@@ -341,13 +341,19 @@ impl MirLowering.bind_by_name(
     named: dict[str, uni.Expr],
     keyword_ok: bool,
     nd: uni.FuncCall
-) -> uni.Expr {
+) -> (uni.Expr | MirBound) {
     name = pv.name.value;
     if name in named and keyword_ok {
         return named.pop(name);
     }
     if pv.value is not None and self.constant_default(pv.value) {
         return pv.value;
+    }
+    if isinstance(pv.value, uni.Expr) {
+        return MirBound(
+            value=self.default_value(pv.value, self.symbol_type(pv.name.sym, pv)),
+            site=pv
+        );
     }
     raise MirRefused(
         mir_refusal(

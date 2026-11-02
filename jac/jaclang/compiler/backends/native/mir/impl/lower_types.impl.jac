@@ -128,7 +128,11 @@ impl mir_union_type(
     if all(member is shared for member in lowered) {
         return mir_opt(shared) if has_none and shared.kind != MirKind.ANY else shared;
     }
-    addresses = [member for member in lowered if member.kind == MirKind.C_PTR];
+    addresses = [
+        member
+        for member in lowered
+        if member.kind == MirKind.C_PTR
+    ];
     if addresses
         and all(member.kind in (MirKind.C_PTR, MirKind.BOOL) for member in lowered) {
         word = addresses[0]

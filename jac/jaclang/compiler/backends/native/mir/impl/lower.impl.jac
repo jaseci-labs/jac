@@ -36,6 +36,7 @@ impl MirLowering.lower -> MirModule {
             self.mir.functions.append(made);
         }
     }
+    self.mir.functions.extend(self.function_default_thunks());
     for nd in self.module.body {
         if isinstance(nd, uni.Test) {
             tested = self.lower_test(nd);
@@ -172,7 +173,14 @@ impl MirLowering.declare(ab: uni.Ability) {
         return;
     }
     params: list[MirType] = [];
+    packed = sig.varargs is not None
+        and is_va_list_type(sig.varargs.type)
+        and sig.kwargs is None
+        and not sig.kwonlyargs;
     for pv in self.param_nodes(sig, False) {
+        if packed and pv is sig.varargs {
+            continue;
+        }
         params.append(self.symbol_type(pv.name.sym, pv));
     }
     fn_type = self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(ab));
@@ -183,7 +191,7 @@ impl MirLowering.declare(ab: uni.Ability) {
     key = id(ab);
     self.decl_syms[id(self.ability_sym(ab))] = key;
     self.decls[key] = MirDecl(
-        ability=ab, symbol=self.symbol_of(ab), params=params, ret=ret
+        ability=ab, symbol=self.symbol_of(ab), params=params, ret=ret, c_variadic=packed
     );
     self.order.append(key);
 }
@@ -1399,6 +1407,28 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
             return via_method;
         }
     }
+    if decl is not None and decl.c_variadic and decl.self_type is None {
+        given = self.call_args(nd);
+        if len(given) < len(decl.params) {
+            raise MirRefused(
+                mir_refusal(
+                    "call",
+                    f"{self.name_of(decl.ability)} with {len(given)} arguments",
+                    nd
+                )
+            );
+        }
+        va_values = [
+            self.coerce(self.lower_expr(va_arg), va_type, va_arg)
+            for (va_arg, va_type) in zip(given, decl.params)
+        ]
+            + [self.c_vararg(va_arg) for va_arg in given[len(decl.params):]];
+        va_result = self.builder().call(decl.symbol, va_values, decl.ret);
+        if va_result is None {
+            return self.builder().const_bool(False);
+        }
+        return va_result;
+    }
     if decl is not None {
         args: list[MirValue] = [];
         params = self.bound_args(nd, decl.ability, decl.self_type is not None);
@@ -1499,20 +1529,24 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         and isinstance(target.type, FunctionType)
         and self.expr_type(target).kind == MirKind.C_FN {
         fnptr = self.lower_expr(target);
-        params = fnptr.type.args[1:];
-        args = self.call_args(nd);
-        if len(args) != len(params) {
+        fp_params = fnptr.type.args[1:];
+        fp_args = self.call_args(nd);
+        if len(fp_args) != len(fp_params) {
             raise MirRefused(
-                mir_refusal("call", f"C function pointer with {len(args)} arguments", nd)
+                mir_refusal(
+                    "call", f"C function pointer with {len(fp_args)} arguments", nd
+                )
             );
         }
-        values = [
-            self.coerce(self.lower_expr(arg), ptype, arg)
-            for (arg, ptype) in zip(args, params)
+        fp_values = [
+            self.coerce(self.lower_expr(fp_arg), fp_type, fp_arg)
+            for (fp_arg, fp_type) in zip(fp_args, fp_params)
         ];
-        ret = fnptr.type.args[0];
-        result_type = mir_none() if ret.kind in (MirKind.NONE, MirKind.VOID) else ret;
-        return self.emit_value(MirOp.CALL_FNPTR, result_type, [fnptr] + values);
+        fp_ret = fnptr.type.args[0];
+        fp_result = mir_none()
+            if fp_ret.kind in (MirKind.NONE, MirKind.VOID)
+            else fp_ret;
+        return self.emit_value(MirOp.CALL_FNPTR, fp_result, [fnptr] + fp_values);
     }
     via_type = self.type_call(nd);
     if via_type is not None {
@@ -2469,13 +2503,16 @@ impl MirLowering.c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue {
     (symbol, plans, ret, ret_plan, variadic) = self.c_extern(callee, nd);
     sig = callee.signature;
     args: list[any] = [];
+    given = list(nd.params or []);
     if isinstance(sig, uni.FuncSignature)
         and sig.varargs is None
         and sig.kwargs is None
-        and any(isinstance(arg, uni.KWPair) for arg in list(nd.params or [])) {
+        and (
+            any(isinstance(arg, uni.KWPair) for arg in given) or len(given) < len(plans)
+        ) {
         args = list(self.bound_args(nd, callee, False));
         for arg in args {
-            if not isinstance(arg, uni.Expr) {
+            if not isinstance(arg, (uni.Expr, MirBound)) {
                 raise MirRefused(
                     mir_refusal("C call", f"{symbol} argument binding", nd)
                 );
@@ -2492,7 +2529,9 @@ impl MirLowering.c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue {
     copybacks: list[tuple[MirValue, MirValue, MirType]] = [];
     values: list[MirValue] = [];
     for (index, arg) in enumerate(args) {
-        if index < len(plans) {
+        if isinstance(arg, MirBound) {
+            values.append(self.coerce(arg.value, plans[index][0], arg.site));
+        } elif index < len(plans) {
             values.append(self.c_arg(arg, plans[index][0], plans[index][1], copybacks));
         } else {
             values.append(self.c_vararg(arg));
@@ -3053,6 +3092,12 @@ impl MirLowering.literal_destination(nd: uni.Int) -> (str | None) {
         and isinstance(up.target, uni.Name)
         and shape_of(up.target.value) is not None {
         dest = up.target.value;
+    }
+    if dest is None
+        and isinstance(up, uni.FuncCall)
+        and isinstance(up.target, uni.Expr)
+        and c_builtin_kind(up.target.type) == "ptr" {
+        dest = "u64";
     }
     return dest;
 }

@@ -1660,7 +1660,10 @@ impl MirEmitter.c_thunk(fn: MirFunction) {
                     outer.args[plan[2] + index],
                     b.gep(
                         buf,
-                        [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), index)]
+                        [
+                            ir.Constant(ir.IntType(32), 0),
+                            ir.Constant(ir.IntType(32), index)
+                        ]
                     )
                 );
             }

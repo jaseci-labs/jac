@@ -416,6 +416,7 @@ obj MirLowering {
     def list_extend_in_place(
         op: str, current: MirValue, value: MirValue, site: uni.UniNode
     ) -> (MirValue | None);
+
     def pointer_arith(
         op: str, left: MirValue, right: MirValue, site: uni.UniNode
     ) -> (MirValue | None);
@@ -632,9 +633,11 @@ obj MirLowering {
     def class_value_call(nd: uni.FuncCall, bound: uni.Archetype) -> MirValue;
     def class_bound(t: (TypeBase | None)) -> (uni.Archetype | None);
     def nearest_has_var(arch: uni.Archetype, name: str) -> (uni.HasVar | None);
-    def default_thunk(expr: uni.Expr) -> (tuple[uni.Archetype, str, MirType] | None);
+    def default_thunk(expr: uni.Expr) -> (tuple[str, str, MirType] | None);
     def default_value(expr: uni.Expr, to: MirType) -> MirValue;
     def default_thunks(arch: uni.Archetype) -> list[MirFunction];
+    def function_default_thunks -> list[MirFunction];
+    def make_default_thunks(defaults: list[uni.Expr]) -> list[MirFunction];
     def class_entry(arch: uni.Archetype, bound: uni.Archetype) -> (MirFunction | None);
     def ctor_takes_mask(params: list[tuple[str, MirType, (uni.Expr | None)]]) -> bool;
     def ctor_default(
@@ -744,7 +747,7 @@ obj MirLowering {
         named: dict[str, uni.Expr],
         keyword_ok: bool,
         nd: uni.FuncCall
-    ) -> uni.Expr;
+    ) -> (uni.Expr | MirBound);
 
     def bound_value(
         arg: (uni.Expr | MirPacked | MirBound), ptype: MirType
