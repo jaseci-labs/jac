@@ -24,6 +24,8 @@ def render_robots(site_url: str, disallows: list[str], asset_paths: list[str]) -
 
 def scan_routes(app_root: Path) -> list[RouteEntry];
 
+def clear_seo_files(dist_dir: Path) -> None;
+
 def apply_seo(
     dist_dir: Path,
     seo_config: dict[str, any],

@@ -107,6 +107,12 @@ impl scan_routes(app_root: Path) -> list[RouteEntry] {
     return scanner.scan();
 }
 
+impl clear_seo_files(dist_dir: Path) -> None {
+    for name in (ROBOTS_FILE, SITEMAP_FILE) {
+        (dist_dir / name).unlink(missing_ok=True);
+    }
+}
+
 impl apply_seo(
     dist_dir: Path,
     seo_config: dict[str, any],

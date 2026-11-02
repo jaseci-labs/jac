@@ -228,6 +228,34 @@ test "a hand-written public/robots.txt wins over the generated one" {
     }
 }
 
+test "a rebuild drops the robots.txt and sitemap.xml the last build generated" {
+    with tempfile.TemporaryDirectory() as tmp {
+        project_dir = Path(tmp).resolve();
+        entry_path = make_project(
+            project_dir, f'site_url = "{SITE}"', {"index.jac": page("Home")}, {}
+        );
+        dist = build_web(project_dir, entry_path);
+        assert (dist / "robots.txt").is_file() and (dist / "sitemap.xml").is_file();
+        (project_dir / "public").mkdir();
+        (project_dir / "public" / "robots.txt").write_text(HAND_WRITTEN);
+        dist = build_web(project_dir, entry_path);
+        assert (dist / "robots.txt").read_text() == HAND_WRITTEN , (
+            "the hand-written robots.txt did not replace the last build's generated one"
+        );
+        (project_dir / "public" / "robots.txt").unlink();
+        (project_dir / "jac.toml").write_text(
+            '[project]\nname = "site"\nkind = "web-app"\n'
+        );
+        dist = build_web(project_dir, entry_path);
+        assert not (dist / "robots.txt").exists() , (
+            "robots.txt from an earlier build survived removing site_url"
+        );
+        assert not (dist / "sitemap.xml").exists() , (
+            "sitemap.xml from an earlier build survived removing site_url"
+        );
+    }
+}
+
 test "without site_url the build writes neither file" {
     with tempfile.TemporaryDirectory() as tmp {
         project_dir = Path(tmp).resolve();

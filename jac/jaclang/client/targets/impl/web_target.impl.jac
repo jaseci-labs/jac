@@ -136,8 +136,13 @@ impl WebTarget.build(
         entry_path = str(entry_file.resolve());
         public_dirs = bundler.config_loader.get_public_dirs(entry_path);
         seo_config = bundler.config_loader.get_seo_config(entry_path);
+        import from jaclang.client.targets.seo_build {
+            apply_seo,
+            clear_seo_files,
+            scan_routes
+        }
+        clear_seo_files(dist_dir);
         if seo_config.get('site_url') {
-            import from jaclang.client.targets.seo_build { apply_seo, scan_routes }
             base_path = bundler.config_loader.get_base_path();
             asset_paths = [f"{base_path}{bundle_path.name}"];
             css_file = bundler.find_css();
