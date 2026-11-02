@@ -361,7 +361,7 @@ impl _treg_slot(key: int) -> int {
     return 0;
 }
 
-impl _trace_dispatch(o: int, visitor: int) {
+impl _trace_dispatch(o: int, visit_fn: int) {
     if (_color_bits(o) & RC_UNTRACED_BIT) != 0 {
         return;
     }
@@ -375,7 +375,7 @@ impl _trace_dispatch(o: int, visitor: int) {
         return;
     }
     cell = ptr[JacRtTraceSlot](slot).view(1)[0];
-    cell.trace(ptr[u8](o), ptr[u8](visitor));
+    cell.trace(ptr[u8](o), ptr[u8](visit_fn));
 }
 
 impl _mark_gray(o: int) {

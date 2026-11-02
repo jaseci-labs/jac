@@ -5,6 +5,11 @@ impl mir_refusal(
     help: (str | None) = None,
     code: str = "E5092"
 ) -> NativeRefusal {
+    import os;
+    if os.environ.get("JAC_MIR_TRACE") {
+        import traceback;
+        print("MIR-REFUSAL", kind, name, "".join(traceback.format_stack(limit=8)[:-1]));
+    }
     return NativeRefusal(kind=kind, name=name, site=site, help=help, code=code);
 }
 
@@ -96,6 +101,17 @@ impl mir_union_type(
         return mir_none();
     }
     shared = lowered[0];
+    if all(
+        member.kind == MirKind.INT
+        and member.width == shared.width
+        and member.signed == shared.signed
+        for member in lowered
+    ) {
+        merged = mir_int(
+            shared.width, shared.signed, all(member.is_sized() for member in lowered)
+        );
+        return mir_opt(merged) if has_none else merged;
+    }
     if all(member is shared for member in lowered) {
         return mir_opt(shared) if has_none and shared.kind != MirKind.ANY else shared;
     }

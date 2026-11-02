@@ -4,6 +4,9 @@ impl MirLowering.function_of(nd: uni.UniNode) -> (uni.UniNode | None) {
         if isinstance(cursor, (uni.Ability, uni.LambdaExpr)) {
             return cursor;
         }
+        if isinstance(cursor, uni.ImplDef) {
+            return cursor.decl_link if isinstance(cursor.decl_link, uni.Ability) else None;
+        }
         if isinstance(cursor, uni.Module) {
             return None;
         }

@@ -102,14 +102,14 @@ impl _list_drop_ref(o: int) {
     _list_free(o);
 }
 
-impl _list_trace_ref(o: int, visitor: int) {
+impl _list_trace_ref(o: int, visit_fn: int) {
     n = __mem_load_i64(o + LIST_LEN);
     data = __mem_load_i64(o + LIST_DATA);
     i = 0;
     while i < n {
         bits = __mem_load_i64(data + i * SLOT);
         if bits != 0 {
-            __mem_call_dtor(visitor, bits);
+            __mem_call_dtor(visit_fn, bits);
         }
         i += 1;
     }

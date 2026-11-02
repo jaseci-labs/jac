@@ -139,7 +139,7 @@ def _treg_put(keys: int, vals: int, mask: int, key: int, val: int);
 
 def _treg_slot(key: int) -> int;
 
-def _trace_dispatch(o: int, visitor: int);
+def _trace_dispatch(o: int, visit_fn: int);
 
 def _mark_gray(o: int);
 

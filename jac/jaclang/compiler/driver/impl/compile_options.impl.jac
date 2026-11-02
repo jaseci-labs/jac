@@ -88,7 +88,9 @@ impl CompileOptions.effective_triple -> str {
 }
 
 impl CompileOptions.native_options_identity -> str {
-    return ("tls=1;" if self.native_tls else "")
+    import os;
+    return ("mir=1;" if os.environ.get("JAC_NATIVE_MIR", "") == "1" else "")
+        + ("tls=1;" if self.native_tls else "")
         + ("sjlj=1;" if self.native_sjlj else "")
         + ("rawview=1;" if self.native_unchecked_views else "")
         + ("directc=1;" if self.native_direct_c_entries else "")

@@ -9,10 +9,21 @@ impl MirLowering.module_archetypes -> list[uni.Archetype] {
 }
 
 impl MirLowering.arch_of_type(t: (TypeBase | None)) -> (uni.Archetype | None) {
-    if isinstance(t, ClassType) and isinstance(t.shared.symbol_table, uni.Archetype) {
-        return t.shared.symbol_table;
+    if not isinstance(t, ClassType) or t._shared is None {
+        return None;
     }
-    return None;
+    scope = t.shared.symbol_table;
+    if not isinstance(scope, uni.Archetype)
+        or c_builtin_kind(t) is not None
+        or foreign_struct_of_type(t) is not None {
+        return None;
+    }
+    if scope.loc is not None
+        and scope.loc.mod_path.endswith(".pyi")
+        and class_type_native_name(t) == t.shared.class_name {
+        return None;
+    }
+    return scope;
 }
 
 impl MirLowering.object_type(arch: uni.Archetype) -> MirType {

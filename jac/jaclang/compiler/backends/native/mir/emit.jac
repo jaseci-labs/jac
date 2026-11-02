@@ -97,6 +97,7 @@ obj MirEmitter {
     def extern_call(
         b: ir.IRBuilder, symbol: str, ret: ir.Type, params: list[ir.Type], values: list[ir.Value]
     ) -> ir.Value;
+    def call_declared(b: ir.IRBuilder, callee: ir.Function, instr: MirInstr) -> ir.Value;
     def adapt(b: ir.IRBuilder, value: ir.Value, wanted: ir.Type) -> ir.Value;
     def emit_c(b: ir.IRBuilder, instr: MirInstr);
     def emit_memory(b: ir.IRBuilder, instr: MirInstr);

@@ -9,6 +9,9 @@ impl emit_mir_module(
 }
 
 impl MirEmitter.emit -> ir.Module {
+    for fn in self.mir.functions {
+        self.declare(fn);
+    }
     for ext in self.mir.externs.values() {
         self.extern(
             ext.symbol,
@@ -26,9 +29,6 @@ impl MirEmitter.emit -> ir.Module {
     }
     for (label, size) in self.mir.global_blocks.items() {
         self.global_block(label, size);
-    }
-    for fn in self.mir.functions {
-        self.declare(fn);
     }
     for fn in self.mir.functions {
         self.emit_function(fn);
@@ -288,7 +288,7 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
         if callee is None {
             raise MirEmitError(f"MIR runtime call to undeclared {instr.callee}");
         }
-        made = b.call(callee, [self.value(v) for v in instr.operands]);
+        made = self.call_declared(b, callee, instr);
         self.bind(instr.result, made);
     } elif op == MirOp.SELECT {
         self.bind(
@@ -313,7 +313,7 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
         if callee is None {
             raise MirEmitError(f"MIR call to undeclared function {instr.callee}");
         }
-        made = b.call(callee, [self.value(v) for v in instr.operands]);
+        made = self.call_declared(b, callee, instr);
         self.bind(instr.result, made);
     } elif op == MirOp.RAISE {
         self.emit_raise(b, instr);
@@ -322,7 +322,7 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
         if callee is None {
             raise MirEmitError(f"MIR Python call to undeclared bridge {instr.callee}");
         }
-        made = b.call(callee, [self.value(v) for v in instr.operands]);
+        made = self.call_declared(b, callee, instr);
         if type_arg_of(instr).kind != MirKind.NONE {
             self.bind(instr.result, made);
         }
@@ -709,7 +709,7 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
         if callee is None {
             raise MirEmitError(f"MIR C call to undeclared function {instr.callee}");
         }
-        made = b.call(callee, [self.value(v) for v in instr.operands]);
+        made = self.call_declared(b, callee, instr);
         if type_arg_of(instr).kind != MirKind.NONE {
             self.bind(instr.result, made);
         }
@@ -1053,6 +1053,22 @@ impl MirEmitter.extern_call(
         return made;
     }
     return self.adapt(b, made, ret);
+}
+
+impl MirEmitter.call_declared(b: ir.IRBuilder, callee: ir.Function, instr: MirInstr) -> ir.Value {
+    passed = [
+        self.adapt(b, self.value(v), arg.type)
+        for (v, arg) in zip(instr.operands, callee.args)
+    ];
+    made = b.call(callee, passed);
+    if instr.result is None or isinstance(callee.ftype.return_type, ir.VoidType) {
+        return made;
+    }
+    wanted = self.llvm_type(instr.result.type);
+    if isinstance(wanted, ir.VoidType) {
+        return made;
+    }
+    return self.adapt(b, made, wanted);
 }
 
 impl MirEmitter.adapt(b: ir.IRBuilder, value: ir.Value, wanted: ir.Type) -> ir.Value {

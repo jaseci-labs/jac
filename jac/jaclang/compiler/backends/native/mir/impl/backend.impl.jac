@@ -12,7 +12,9 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     mir = MirModule(path=path, prefix=native_unit_prefix(path));
     lowering = MirLowering(prog=self.prog, module=ir_in, mir=mir);
     lowered = lowering.lower();
-    if self.prog.options.native_required_for(path) {
+    runtime = mir_runtime_unit_paths();
+    here = os.path.realpath(path);
+    if self.prog.options.native_required_for(path) or here in runtime {
         self.report_refusals(lowering);
         if self.ctx.errors_had {
             return ir_in;
@@ -25,8 +27,6 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     for binding in lowering.bindings {
         ir_in.gen.interop_manifest.bindings[binding.name] = binding;
     }
-    runtime = mir_runtime_unit_paths();
-    here = os.path.realpath(path);
     if here in runtime {
         runtime = runtime[:runtime.index(here)];
     }

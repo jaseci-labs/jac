@@ -151,7 +151,7 @@ def _drop_release(bits: int, kind: int, collecting: bool);
 
 def _dict_drop(o: int, key_kind: int, val_kind: int);
 
-def _dict_trace(o: int, visitor: int, key_ref: bool, val_ref: bool);
+def _dict_trace(o: int, visit_fn: int, key_ref: bool, val_ref: bool);
 
 def _dict_drop_pp(o: int);
 
@@ -171,15 +171,15 @@ def _dict_drop_rs(o: int);
 
 def _dict_drop_rr(o: int);
 
-def _dict_trace_pr(o: int, visitor: int);
+def _dict_trace_pr(o: int, visit_fn: int);
 
-def _dict_trace_sr(o: int, visitor: int);
+def _dict_trace_sr(o: int, visit_fn: int);
 
-def _dict_trace_rp(o: int, visitor: int);
+def _dict_trace_rp(o: int, visit_fn: int);
 
-def _dict_trace_rs(o: int, visitor: int);
+def _dict_trace_rs(o: int, visit_fn: int);
 
-def _dict_trace_rr(o: int, visitor: int);
+def _dict_trace_rr(o: int, visit_fn: int);
 
 def _kind_class(kind: int) -> int;
 

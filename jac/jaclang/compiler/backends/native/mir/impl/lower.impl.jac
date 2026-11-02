@@ -253,7 +253,12 @@ impl MirLowering.symbol_type(sym: (uni.Symbol | None), site: uni.UniNode) -> Mir
         raise MirRefused(mir_refusal("name", "unresolved", site));
     }
     found = self.prog.get_type_evaluator().get_type_of_symbol(sym);
-    return self.type_of(found, MirPosition.VALUE, site);
+    made = self.type_of(found, MirPosition.VALUE, site);
+    import os;
+    if os.environ.get("JAC_MIR_TRACE") and made.kind == MirKind.ANY {
+        print("MIR-ANYSYM", sym.sym_name, type(found).__name__, str(found), site.loc, [ (m.shared.class_name, m.shared.symbol_table.loc.mod_path if m.shared.symbol_table and m.shared.symbol_table.loc else None, mir_type_of(m, MirPosition.VALUE, site).render()) for m in found.types] if isinstance(found, UnionType) else "");
+    }
+    return made;
 }
 
 impl MirLowering.expr_type(nd: uni.Expr) -> MirType {

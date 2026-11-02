@@ -90,6 +90,6 @@ def _list_drop_str(o: int);
 
 def _list_drop_ref(o: int);
 
-def _list_trace_ref(o: int, visitor: int);
+def _list_trace_ref(o: int, visit_fn: int);
 
 def _merge(src: int, dst: int, lo: int, mid: int, hi: int, kind: int, reverse: bool);

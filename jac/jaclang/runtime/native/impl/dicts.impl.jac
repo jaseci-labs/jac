@@ -508,7 +508,7 @@ impl _dict_drop(o: int, key_kind: int, val_kind: int) {
     __jac_rt_free_block(o - HDR_TOTAL);
 }
 
-impl _dict_trace(o: int, visitor: int, key_ref: bool, val_ref: bool) {
+impl _dict_trace(o: int, visit_fn: int, key_ref: bool, val_ref: bool) {
     used = __mem_load_i64(o + DICT_USED);
     keys = __mem_load_i64(o + DICT_KEYS);
     vals = __mem_load_i64(o + DICT_VALS);
@@ -519,13 +519,13 @@ impl _dict_trace(o: int, visitor: int, key_ref: bool, val_ref: bool) {
             if key_ref {
                 child = __mem_load_i64(keys + e * SLOT);
                 if child != 0 {
-                    __mem_call_dtor(visitor, child);
+                    __mem_call_dtor(visit_fn, child);
                 }
             }
             if val_ref and vals != 0 {
                 child = __mem_load_i64(vals + e * SLOT);
                 if child != 0 {
-                    __mem_call_dtor(visitor, child);
+                    __mem_call_dtor(visit_fn, child);
                 }
             }
         }
@@ -569,24 +569,24 @@ impl _dict_drop_rr(o: int) {
     _dict_drop(o, KIND_REF, KIND_REF);
 }
 
-impl _dict_trace_pr(o: int, visitor: int) {
-    _dict_trace(o, visitor, False, True);
+impl _dict_trace_pr(o: int, visit_fn: int) {
+    _dict_trace(o, visit_fn, False, True);
 }
 
-impl _dict_trace_sr(o: int, visitor: int) {
-    _dict_trace(o, visitor, False, True);
+impl _dict_trace_sr(o: int, visit_fn: int) {
+    _dict_trace(o, visit_fn, False, True);
 }
 
-impl _dict_trace_rp(o: int, visitor: int) {
-    _dict_trace(o, visitor, True, False);
+impl _dict_trace_rp(o: int, visit_fn: int) {
+    _dict_trace(o, visit_fn, True, False);
 }
 
-impl _dict_trace_rs(o: int, visitor: int) {
-    _dict_trace(o, visitor, True, False);
+impl _dict_trace_rs(o: int, visit_fn: int) {
+    _dict_trace(o, visit_fn, True, False);
 }
 
-impl _dict_trace_rr(o: int, visitor: int) {
-    _dict_trace(o, visitor, True, True);
+impl _dict_trace_rr(o: int, visit_fn: int) {
+    _dict_trace(o, visit_fn, True, True);
 }
 
 impl _kind_class(kind: int) -> int {
