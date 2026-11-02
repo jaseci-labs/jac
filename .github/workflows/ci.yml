@@ -303,11 +303,7 @@ jobs:
           test "comprehension" { assert [i for i in range(3)] == [0, 1, 2]; }
           test "strings" { assert "ja" + "c" == "jac"; }
           JAC
-          env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_TEST_JOBS=0 "$BIN" test "$WORK/test_smoke.jac" || {
-            env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_TEST_JOBS=0 JAC_NA_DEBUG=1 "$BIN" test "$WORK/test_smoke.jac" 2>&1 | tail -150
-            env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" build "$WORK/test_smoke.jac" --native -o "$WORK/smoke_bin" 2>&1 | tail -60
-            exit 1
-          }
+          env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_TEST_JOBS=0 "$BIN" test "$WORK/test_smoke.jac"
 
       # if-no-files-found only fires when NO path matches, so a single missing
       # tree ships a quietly incomplete kit to every consumer. Assert each one.
