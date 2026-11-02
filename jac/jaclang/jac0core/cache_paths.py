@@ -181,8 +181,12 @@ _digest_memo: dict[str, tuple[tuple[int, int, int, int], str]] = {}
 _digest_shards: dict[str, dict[str, list]] = {}
 _digest_dirty: set[str] = set()
 _digest_flush_armed: list[bool] = []
-_runtime_root_memo: dict[str, str] = {}
+_runtime_root_memo: dict[tuple[str | None, ...], str] = {}
 _resolved_dir_memo: dict[str, str] = {}
+# The variables get_cache_home() reads on this platform.
+_CACHE_HOME_INPUTS = ("JAC_CACHE_HOME", "XDG_CACHE_HOME") + (
+    ("LOCALAPPDATA", "USERPROFILE") if sys.platform == "win32" else ("HOME",)
+)
 
 
 def get_digest_ledger_dir() -> Path:
@@ -190,13 +194,27 @@ def get_digest_ledger_dir() -> Path:
     return get_jir_cache_dir() / "digests"
 
 
+def _runtime_dir(home: str | Path) -> str:
+    return os.path.join(os.path.realpath(home), "rt", "")
+
+
 def _runtime_root() -> str:
-    """The cache home's ``rt/``, resolved. Memoized per configured root."""
-    home = os.path.abspath(get_cache_home())
-    found = _runtime_root_memo.get(home)
+    """The cache home's ``rt/``, resolved, memoized on the variables
+    get_cache_home() reads. A relative root also depends on the working
+    directory, so only it pays for os.getcwd()."""
+    key = tuple(os.environ.get(name) for name in _CACHE_HOME_INPUTS)
+    found = _runtime_root_memo.get(key)
     if found is None:
-        found = os.path.join(os.path.realpath(home), "rt", "")
-        _runtime_root_memo[home] = found
+        home = get_cache_home()
+        found = _runtime_dir(home) if home.is_absolute() else ""
+        _runtime_root_memo[key] = found
+    if found:
+        return found
+    key += (os.getcwd(),)
+    found = _runtime_root_memo.get(key)
+    if found is None:
+        found = _runtime_dir(os.path.abspath(get_cache_home()))
+        _runtime_root_memo[key] = found
     return found
 
 
@@ -216,16 +234,19 @@ def _resolved_dir(path: str) -> str:
 def file_identity(path: str | Path) -> tuple[int, int, int, int] | None:
     """The (inode, size, mtime_ns, ctime_ns) identity of a file, or None.
 
-    A file of an extracted runtime (``rt/``) is (0, size, mtime_ns, 0): the
-    runtime is written once per payload and never in place, and copying the
-    cache home (an image layer unpacked on a node) moves only its inode and
-    ctime.
+    A file of an extracted runtime's own sources (``rt/<key>/site/``) is
+    (0, size, mtime_ns, 0): they are written once per payload and never in
+    place, and copying the cache home (an image layer unpacked on a node)
+    moves only their inode and ctime. The runtime's python (``rt/<key>/python/``)
+    keeps the full identity: ``jac install --global`` installs into it.
     """
     try:
         st = os.stat(path)
     except OSError:
         return None
-    if _resolved_dir(os.path.abspath(path)).startswith(_runtime_root()):
+    folder = _resolved_dir(os.path.abspath(path))
+    root = _runtime_root()
+    if folder.startswith(root) and folder[len(root) :].split(os.sep)[1:2] == ["site"]:
         return (0, st.st_size, st.st_mtime_ns, 0)
     return (st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
 
