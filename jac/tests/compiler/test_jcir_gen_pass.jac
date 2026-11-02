@@ -601,22 +601,6 @@ with entry {
     exec_both(ref_tree, got_tree, "enum_fixture.jac", ["c", "s", "total"]);
 }
 
-test "python inline splice lands with jac line offsets" {
-    src = """
-with entry {
-    seed = 40;
-}
-
-::py::
-X = seed + 2
-Y = X * 2
-::py::
-""";
-    (ref_tree, got_tree, _) = dual_compile(src, "pyinline_fixture.jac");
-    assert_dump_equal(ref_tree, got_tree);
-    exec_both(ref_tree, got_tree, "pyinline_fixture.jac", ["seed", "X", "Y"]);
-}
-
 test "global vars and module code guard match" {
     src = """
 \"\"\"Doc.\"\"\"

@@ -421,7 +421,7 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
             resolved_path = str(Path(file_path).resolve());
             for key in (file_path, resolved_path) {
                 if program is not None {
-                    program.invalidate_module(key);
+                    program.release_module(key);
                     program.drop_module_alerts(key);
                 }
             }

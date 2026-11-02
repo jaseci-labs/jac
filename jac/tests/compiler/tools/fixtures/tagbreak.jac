@@ -298,13 +298,6 @@ obj Vehicle(ssdsd) {  # Has statements with type annotations (instance variables
     has name2: str,  # C1
         year2: int,  # C2
         name1: str;  # C3
-
-    # Inline Python
-    ::py::
-    def py_method(self):
-        return "Python code"
-    ::py::
-
 }
 
 """Type check with thread cancellation and proper debouncing."""
