@@ -681,6 +681,11 @@ duplicates. Tasks registered directly by an embedding host before its first
 start are preserved for that start. Retried starts also use fresh shutdown
 state, so an earlier drain flag does not make ordinary requests return HTTP 503.
 
+Each rebuilt app also owns its WebSocket manager, broadcast backplane, metrics
+binding and shutdown hook. A retry therefore does not reuse a backplane closed
+by failed startup. Hot reload on the same app retains its existing manager and
+connections.
+
 API server starts share the process-wide bridge worker through distinct owner
 claims. Startup cleanup and the returned stop callable release only that start's
 claim, so another running server keeps its worker. Repeated releases are harmless;

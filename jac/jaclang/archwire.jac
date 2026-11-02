@@ -3886,9 +3886,9 @@ graph import {
     }
     server.net ++> [
         cli.commands.execution._find_free_port { find_available_port },
-        cli.errmap.humanize_error | scale.tests.server.test_host_serving {
-            PortInUseError
-        },
+        cli.errmap.humanize_error
+            | scale.tests.server.test_host_serving
+            | scale.tests.server.test_ws_functions { PortInUseError },
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.start {
             PORT_RETRY_LIMIT
         },
@@ -3902,18 +3902,26 @@ graph import {
             find_available_port as _find_available_port
         },
     ]
-    server.outbox ++> scale.tests.server.test_sv_outbox_endpoints {
-        LEASE_S,
-        OutboxEntry,
-        PgOutboxStore,
-        STATUS_DELIVERED,
-        STATUS_DELIVERING,
-        STATUS_PENDING,
-        SqliteOutboxStore,
-        stop_worker,
-        use_store,
-        worker_running
-    }
+    server.outbox ++> [
+        scale.tests.server.test_host_serving {
+            SqliteOutboxStore,
+            stop_worker,
+            use_store,
+            worker_running
+        },
+        scale.tests.server.test_sv_outbox_endpoints {
+            LEASE_S,
+            OutboxEntry,
+            PgOutboxStore,
+            STATUS_DELIVERED,
+            STATUS_DELIVERING,
+            STATUS_PENDING,
+            SqliteOutboxStore,
+            stop_worker,
+            use_store,
+            worker_running
+        },
+    ]
     server.outbox --> scale.tests.server.test_sv_streaming {
         STATUS_DELIVERED,
         SqliteOutboxStore,
@@ -4027,6 +4035,7 @@ graph import {
         },
     ]
     server.serving.app --> scale.tests.microservices.test_drain { ServingApp }
+    type server.serving.app ++> scale.server.websocket_ext { ServingApp }
     server.serving.authcrypt ++> [
         scale.deploy.target.kubernetes.manifest_builder
             | scale.deploy.target.kubernetes.utils.kubernetes_utils.resolve_minted_secret
@@ -4097,6 +4106,7 @@ graph import {
         scale.tests.server.test_sv_auth_forward._install_unreachable_walker_transport {
             ClientRequestNotSent
         },
+        scale.tests.server.test_ws_functions { aws_connect },
         testing.testkit { aws_connect, run_blocking },
     ]
     server.serving.client --> scale.tests.server.test_serve { aws_connect }
@@ -4284,7 +4294,6 @@ graph import {
     ]
     server.serving.server --> scale.tests.microservices.test_drain
         | scale.tests.microservices.test_microservice { ServingServer }
-    server.serving.server as serving_module ++> scale.tests.server.test_host_serving;
     server.serving.sse ++> [
         scale.runtime.rpc.rpc._iter_sse_text { consume_sse_events },
         scale.tests.microservices.test_sse_framing { sse_frame_stream },
@@ -4357,7 +4366,6 @@ graph import {
         scale.deploy.target.kubernetes.manifest_builder { AuthSettings, resolve_count },
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.start
             | scale.server.inprocess
-            | scale.tests.server.test_host_serving
             | scale.tests.server.test_serving_tail
             | scale.tests.server.test_sv_outbox_endpoints { ServeSettings },
         scale.tests.deploy.test_deployment_overlay { ServeConfigError },
@@ -4366,6 +4374,11 @@ graph import {
             EmailSettings,
             LockoutSettings,
             PasswordSettings
+        },
+        scale.tests.server.test_host_serving {
+            ServeConfigError,
+            ServeSettings,
+            TlsSettings
         },
         scale.tests.server.test_registration_challenge
             | scale.tests.server.test_registration_limits {
@@ -45484,10 +45497,8 @@ graph import scale {
             | tests.deploy.test_gateway_config_isolation
             | tests.deploy.test_service_routing
             | tests.misc.test_service_urls
-            | tests.server.test_scheduler_endpoints {
-            get_scale_config,
-            reset_scale_config
-        },
+            | tests.server.test_scheduler_endpoints
+            | tests.server.test_ws_functions { get_scale_config, reset_scale_config },
         tests.deploy.test_deployment_overlay
             | tests.misc.test_config_loader
             | tests.misc.test_config_validation {
@@ -46530,6 +46541,7 @@ graph import scale {
         runtime.provider.JacScaleRuntime.get_server_extensions { scale_extensions },
         tests.data.test_gateway_owned_identity { fleet_provisions_unknown_users },
         tests.server.test_auth_policy_startup { AdminExtension, MailExtension },
+        tests.server.test_ws_functions { MetricsExtension },
     ]
     server.extensions --> [
         tests.server.test_admin { AdminExtension },
@@ -46537,15 +46549,15 @@ graph import scale {
             validate_events_url as _validate_events_url
         },
     ]
-    server.inprocess ++> tests.scale_test_client.ScaleTestClient._initialize {
-        prepare_inprocess_runtime
-    }
+    server.inprocess ++> tests.scale_test_client.ScaleTestClient._initialize
+        | tests.server.test_ws_functions { prepare_inprocess_runtime }
     server.inprocess --> tests.server.test_host_serving { prepare_inprocess_runtime }
     server.jobs_ext ++> tests.server.test_scheduler_endpoints { _err_response }
     server.sso_ext ++> [
         tests.server.test_firebase_auth_sso { SSOExtension },
         tests.server.test_sso { SSOExtension, resolve_sso_client_redirect },
     ]
+    server.websocket_ext ++> tests.server.test_ws_functions { WebSocketExtension }
     shared.enums ++> sso.sso_auth | tests.server.test_firebase_auth_sso {
         Operations,
         Platforms
@@ -46629,7 +46641,7 @@ graph import scale {
     ]
     websocket.backplane ++> [
         server.websocket_ext { MemoryBackplane, build_backplane },
-        tests.server.test_backplane { PgBackplane },
+        tests.server.test_backplane | tests.server.test_ws_functions { PgBackplane },
         tests.server.test_ws_hardening {
             BaseBackplane,
             MemoryBackplane,
