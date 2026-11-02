@@ -604,8 +604,13 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
     } elif isinstance(nd, uni.TupleVal) {
         value = self.lower_tuple(nd);
     } elif isinstance(nd, uni.LambdaExpr) {
+        tail = nd.body if isinstance(nd.body, uni.Expr) else nd.tail_return_expr();
         value = self.lower_closure(
-            nd, nd.signature, nd.body, self.expr_type(nd), f"lambda{len(self.nested)}"
+            nd,
+            nd.signature,
+            tail if tail is not None else nd.body,
+            self.expr_type(nd),
+            f"lambda{len(self.nested)}"
         );
     } elif isinstance(nd, (uni.ListCompr, uni.DictCompr)) {
         value = self.lower_comprehension(nd);
