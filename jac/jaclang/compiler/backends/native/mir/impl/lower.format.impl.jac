@@ -579,6 +579,9 @@ impl MirLowering.text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) 
                 if name == "int"
                 else b.const_float(0.0, mir_float());
         }
+        if isinstance(args[0].type, AnyType) and args[0].type.is_foreign {
+            return None;
+        }
         source_kind = self.expr_type(args[0]).kind;
         if source_kind
             not in (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY) {

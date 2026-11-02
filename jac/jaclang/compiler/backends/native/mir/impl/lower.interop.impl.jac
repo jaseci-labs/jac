@@ -282,7 +282,13 @@ impl MirLowering.c_declared_type(
 impl MirLowering.c_param_plan(
     pv: uni.ParamVar, fallback: (TypeBase | None), site: uni.UniNode
 ) -> tuple[MirType, str] {
-    t = self.c_declared_type(pv.type, fallback);
+    declared = pv.type;
+    if declared is None and pv.type_tag is not None and not self.c_param_borrowed(pv) {
+        declared = self.prog.get_type_evaluator().get_type_of_expression(
+            pv.type_tag.tag
+        );
+    }
+    t = self.c_declared_type(declared, fallback);
     self.ensure_c_types(t);
     if self.c_param_borrowed(pv) {
         return (mir_c_ptr(mir_c_elem(t, site)), "lend");

@@ -365,7 +365,11 @@ obj MirLowering {
     def place_elem(place: MirValue) -> MirType;
     def lower_trailer(nd: uni.AtomTrailer) -> MirValue;
     def call_name(nd: uni.FuncCall) -> str;
+    def c_extern(
+        callee: uni.Ability, site: uni.UniNode
+    ) -> tuple[str, list[tuple[MirType, str]], MirType, str, bool];
     def c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue;
+    def c_function_value(nd: uni.Name) -> (MirValue | None);
     def c_param_borrowed(pv: uni.ParamVar) -> bool;
     def c_declared_type(
         declared: (TypeBase | None), fallback: (TypeBase | None)
@@ -394,6 +398,9 @@ obj MirLowering {
     def c_defines(decl: uni.UniNode) -> bool;
     def declare_c_definition(ab: uni.Ability);
     def va_arg(nd: uni.FuncCall, receiver: uni.Expr) -> MirValue;
+    def pointer_arith(
+        op: str, left: MirValue, right: MirValue, site: uni.UniNode
+    ) -> (MirValue | None);
     def condition(nd: uni.Expr) -> MirValue;
     def address_call(nd: uni.FuncCall) -> MirValue;
     def c_return_plan(
