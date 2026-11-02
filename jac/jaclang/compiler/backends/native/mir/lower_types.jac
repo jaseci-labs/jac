@@ -54,6 +54,10 @@ def mir_class_type(
     env: (dict[str, TypeBase] | None) = None
 ) -> MirType;
 
+def mir_class_value_type(
+    t: ClassType, env: (dict[str, TypeBase] | None) = None
+) -> MirType;
+
 def mir_spec_type(spec: str) -> MirType;
 
 def stub_archetype(scope: uni.Archetype) -> bool;

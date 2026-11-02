@@ -62,7 +62,10 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
         is_acyclic=layout.is_acyclic,
         local=local,
         drop_symbol=native_symbol_name(prefix, f"{name}.__drop"),
-        trace_symbol=native_symbol_name(prefix, f"{name}.__trace")
+        trace_symbol=native_symbol_name(prefix, f"{name}.__trace"),
+        class_symbol=native_symbol_name(
+            prefix, native_unit_spelling(f"{name}.__class", owner.loc.mod_path)
+        )
     );
     self.mir.objects[name] = made;
     self.archetypes[name] = arch;
@@ -368,7 +371,10 @@ impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) 
             [
                 this,
                 self.emit_value(
-                    MirOp.CSTR, mir_c_ptr(mir_int(8, False)), [], str_value=obj_def.name
+                    MirOp.CLASS_ADDR,
+                    mir_c_ptr(mir_int(8, False)),
+                    [],
+                    str_value=obj_def.name
                 )
             ]
         );
@@ -857,4 +863,71 @@ impl MirLowering.erased_slot(t: (TypeBase | None)) -> bool {
         }
     }
     return erased;
+}
+
+impl MirLowering.class_reference(nd: uni.Expr) -> (uni.Archetype | None) {
+    t = nd.type;
+    if not isinstance(t, ClassType)
+        or t._shared is None
+        or not t.is_instantiable()
+        or t.is_instance()
+        or is_enum_class_type(t) {
+        return None;
+    }
+    return self.arch_of_type(t);
+}
+
+impl MirLowering.class_value(arch: uni.Archetype) -> MirValue {
+    obj_def = self.object_def(arch);
+    return self.emit_value(
+        MirOp.CLASS_ADDR, mir_class(obj_def.name), [], str_value=obj_def.name
+    );
+}
+
+impl MirLowering.class_isinstance(value: MirValue, kind: MirValue) -> MirValue {
+    b = self.builder();
+    i8p = mir_c_ptr(mir_int(8, False));
+    wanted = self.address_of(self.emit_value(MirOp.PTR_CAST, i8p, [kind]));
+    if value.type.kind != MirKind.OBJ {
+        return b.const_bool(False);
+    }
+    obj_def = self.mir.objects.get(value.type.name);
+    if obj_def is None or obj_def.vtable_slot < 0 {
+        named = self.runtime_value("__jac_rt_type_name", [value]);
+        return b.compare("eq", self.address_of(named), wanted);
+    }
+    slot_place = self.emit_value(
+        MirOp.FIELD_ADDR,
+        mir_c_ptr(mir_c_ptr(i8p)),
+        [value],
+        int_value=obj_def.vtable_slot
+    );
+    table = b.load(slot_place, mir_c_ptr(i8p));
+    lineage = b.load(
+        self.emit_value(
+            MirOp.PTR_OFFSET, mir_c_ptr(i8p), [table, b.const_int(1, mir_int())]
+        ),
+        i8p
+    );
+    walk = self.temp_slot(mir_int());
+    verdict = self.temp_slot(mir_bool());
+    b.store(walk, self.address_of(lineage));
+    b.store(verdict, b.const_bool(False));
+    fn = self.st().fn;
+    head = fn.new_block("isa.cls.head");
+    body = fn.new_block("isa.cls.body");
+    done = fn.new_block("isa.cls.done");
+    b.branch(head);
+    b.position(head);
+    entry_value = self.emit_value(MirOp.MEM_LOAD, mir_int(), [b.load(walk, mir_int())]);
+    b.cond_branch(b.compare("ne", entry_value, b.const_int(0, mir_int())), body, done);
+    b.position(body);
+    found = b.compare(
+        "eq", self.emit_value(MirOp.MEM_LOAD, mir_int(), [entry_value]), wanted
+    );
+    b.store(verdict, found);
+    b.store(walk, b.binary("add", b.load(walk, mir_int()), b.const_int(8, mir_int())));
+    b.cond_branch(found, done, head);
+    b.position(done);
+    return b.load(verdict, mir_bool());
 }

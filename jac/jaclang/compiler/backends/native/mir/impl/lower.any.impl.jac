@@ -348,6 +348,11 @@ impl MirLowering.isinstance_test(
             verdict = found if verdict is None else b.binary("or", verdict, found);
             continue;
         }
+        if self.expr_type(item).kind == MirKind.CLASS {
+            found = self.class_isinstance(value, self.lower_expr(item));
+            verdict = found if verdict is None else b.binary("or", verdict, found);
+            continue;
+        }
         raise MirRefused(mir_refusal("call", "isinstance of a non-archetype", site));
     }
     if verdict is None or hit {

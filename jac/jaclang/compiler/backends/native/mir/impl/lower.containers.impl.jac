@@ -1,5 +1,5 @@
 impl MirLowering.elem_kind(t: MirType, site: uni.UniNode) -> int {
-    if t.kind in (MirKind.INT, MirKind.ENUM) {
+    if t.kind in (MirKind.INT, MirKind.ENUM, MirKind.CLASS) {
         return KIND_INT;
     }
     if t.kind == MirKind.TUPLE {
@@ -39,6 +39,9 @@ impl MirLowering.to_bits(
     if elem.kind == MirKind.ANY {
         return self.address_of(self.any_to_box(value, site));
     }
+    if elem.kind == MirKind.CLASS {
+        return self.address_of(self.coerce(value, elem, site));
+    }
     if kind == KIND_FLOAT {
         return self.emit_value(
             MirOp.BITCAST, mir_int(), [b.convert(value, mir_float())]
@@ -67,6 +70,9 @@ impl MirLowering.to_bits(
 
 impl MirLowering.scalar_from_bits(bits: MirValue, elem: MirType) -> MirValue {
     b = self.builder();
+    if elem.kind == MirKind.CLASS {
+        return self.emit_value(MirOp.PTR_CAST, elem, [bits]);
+    }
     if elem.kind == MirKind.FLOAT {
         wide = self.emit_value(MirOp.BITCAST, mir_float(), [bits]);
         return b.convert(wide, elem);

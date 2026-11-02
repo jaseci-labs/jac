@@ -154,6 +154,9 @@ impl mir_class_type(
         }
         return mir_enum(name, mir_int());
     }
+    if t.is_builtin("type") {
+        return mir_class_value_type(t, env);
+    }
     kind = c_builtin_kind(t);
     if kind == "ptr" {
         return mir_c_ptr(mir_c_elem(c_type_arg(t), site));
@@ -169,6 +172,9 @@ impl mir_class_type(
     scope = t.shared.symbol_table;
     if isinstance(scope, uni.Archetype) and not stub_archetype(scope) {
         native = class_type_native_name(t);
+        if native and t.is_instantiable() and not t.is_instance() {
+            return mir_class(native);
+        }
         if native {
             return mir_obj(native);
         }
@@ -291,4 +297,25 @@ impl mir_spec_type(spec: str) -> MirType {
 
 impl stub_archetype(scope: uni.Archetype) -> bool {
     return scope.loc is not None and scope.loc.mod_path.endswith(".pyi");
+}
+
+impl mir_class_value_type(
+    t: ClassType, env: (dict[str, TypeBase] | None) = None
+) -> MirType {
+    args = t.private.type_args if t.private else None;
+    bound = args[0] if args else None;
+    if isinstance(bound, TypeVarType) {
+        solved = env.get(bound.name) if env is not None else None;
+        bound = solved if solved is not None else bound.bound;
+    }
+    if isinstance(bound, ClassType) and bound._shared is not None {
+        scope = bound.shared.symbol_table;
+        if isinstance(scope, uni.Archetype) and not stub_archetype(scope) {
+            native = class_type_native_name(bound);
+            if native {
+                return mir_class(native);
+            }
+        }
+    }
+    return mir_class("*");
 }

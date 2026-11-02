@@ -405,6 +405,9 @@ obj MirLowering {
 
     def isinstance_check(value: MirValue, arch: uni.Archetype) -> MirValue;
     def erased_slot(t: (TypeBase | None)) -> bool;
+    def class_reference(nd: uni.Expr) -> (uni.Archetype | None);
+    def class_value(arch: uni.Archetype) -> MirValue;
+    def class_isinstance(value: MirValue, kind: MirValue) -> MirValue;
     def lower_module_init -> (MirFunction | None);
     def lower_module_entry -> (MirFunction | None);
     def none_value -> MirValue;

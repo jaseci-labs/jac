@@ -40,6 +40,9 @@ impl MirEmitter.emit -> ir.Module {
         if obj_def.local and obj_def.vtable_symbol {
             self.vtable_global(obj_def);
         }
+        if obj_def.local and obj_def.class_symbol {
+            self.class_global(obj_def);
+        }
     }
     return self.module;
 }
@@ -699,6 +702,14 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
                 self.vtable_global(obj_def), ir.IntType(8).as_pointer().as_pointer()
             )
         );
+    } elif op == MirOp.CLASS_ADDR {
+        self.bind(
+            instr.result,
+            b.bitcast(
+                self.class_global(self.mir.objects[instr.str_value]),
+                ir.IntType(8).as_pointer()
+            )
+        );
     } elif op == MirOp.GLOBAL_BLOCK {
         block = self.global_block(instr.str_value, instr.int_value);
         self.bind(instr.result, b.ptrtoint(block, ir.IntType(64)));
@@ -1199,19 +1210,8 @@ impl MirEmitter.vtable_global(obj_def: MirObjectDef) -> ir.GlobalVariable {
     }
     members.append(ir.Constant(i8p, None));
     lineage_global.initializer = ir.Constant(lineage_shape, members);
-    name_text = (obj_def.name + "\0").encode("utf-8");
-    name_global = ir.GlobalVariable(
-        self.module,
-        ir.ArrayType(ir.IntType(8), len(name_text)),
-        name=f"{obj_def.vtable_symbol}.name"
-    );
-    name_global.linkage = "private";
-    name_global.global_constant = True;
-    name_global.initializer = ir.Constant(
-        ir.ArrayType(ir.IntType(8), len(name_text)), bytearray(name_text)
-    );
     entries: list[ir.Value] = [
-        name_global.bitcast(i8p),
+        self.class_global(obj_def).bitcast(i8p),
         lineage_global.bitcast(i8p),
         ir.Constant(i8p, None)
     ];
@@ -1223,5 +1223,24 @@ impl MirEmitter.vtable_global(obj_def: MirObjectDef) -> ir.GlobalVariable {
     }
     made.initializer = ir.Constant(shape, entries);
     made.global_constant = True;
+    return made;
+}
+
+impl MirEmitter.class_global(obj_def: MirObjectDef) -> ir.GlobalVariable {
+    text = bytearray((obj_def.name + "\0").encode("utf-8"));
+    shape = ir.ArrayType(ir.IntType(8), len(text));
+    found = self.module.globals.get(obj_def.class_symbol);
+    if isinstance(found, ir.GlobalVariable) {
+        if obj_def.local and found.initializer is None {
+            found.initializer = ir.Constant(shape, text);
+            found.global_constant = True;
+        }
+        return found;
+    }
+    made = ir.GlobalVariable(self.module, shape, name=obj_def.class_symbol);
+    if obj_def.local {
+        made.initializer = ir.Constant(shape, text);
+        made.global_constant = True;
+    }
     return made;
 }

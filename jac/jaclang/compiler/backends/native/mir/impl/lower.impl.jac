@@ -695,6 +695,10 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
             self.fn_values[address.id] = decl;
             return address;
         }
+        named = self.class_reference(nd);
+        if named is not None {
+            return self.class_value(named);
+        }
         raise MirRefused(mir_refusal("name", nd.value, nd));
     }
     slot = self.st().locals[id(nd.sym)];
@@ -712,6 +716,15 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
     }
     if loaded.type.kind == MirKind.ANY {
         return self.narrow(loaded, nd);
+    }
+    if loaded.type.kind == MirKind.OBJ
+        and isinstance(nd.type, (ClassType, TypeVarType)) {
+        wanted = self.expr_type(nd);
+        if wanted.kind == MirKind.OBJ
+            and wanted is not loaded.type
+            and self.obj_extends(wanted.name, loaded.type.name) {
+            return self.builder().ref_cast(loaded, wanted, False);
+        }
     }
     return loaded;
 }
@@ -1239,6 +1252,9 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
         and to.kind == MirKind.OBJ
         and self.obj_extends(value.type.name, to.name) {
         return self.builder().ref_cast(value, to, False);
+    }
+    if value.type.kind == MirKind.CLASS and to.kind == MirKind.CLASS {
+        return self.emit_value(MirOp.PTR_CAST, to, [value]);
     }
     raise MirRefused(
         mir_refusal("conversion", f"{value.type.render()} to {to.render()}", site)
