@@ -744,6 +744,50 @@ impl callback_bind_exports(plan: LinkPlan) -> list[str] {
     ];
 }
 
+impl bind_python_bridges(plan: LinkPlan, undefined: list[str]) -> list[any] {
+    wanted = {name for name in undefined if name.startswith("__jac_na_import_")};
+    held: list[any] = [];
+    if not wanted {
+        return held;
+    }
+    import from jaclang.runtime.interop_bridge { register_py_callbacks }
+    bound: set[str] = set();
+    for unit in plan.units {
+        module = plan.prog.mod.hub.get(unit.path);
+        if module is None or module.gen is None {
+            continue;
+        }
+        callable = [
+            binding
+            for binding in module.gen.interop_manifest.callable_native_imports
+            if binding.symbol in wanted
+        ];
+        bound.update(binding.symbol for binding in callable);
+        if unit.is_root or not callable {
+            continue;
+        }
+        register_py_callbacks(
+            callable, module.gen.interop_py_funcs, held, llvm.add_symbol
+        );
+    }
+    for name in sorted(wanted - bound) {
+        def _unbound(symbol: str) -> any {
+            def stop {
+                sys.stderr.write(
+                    f"Native code called the Python bridge {symbol}, which no unit of this link binds; the process stops.\n"
+                );
+                sys.stderr.flush();
+                os.abort();
+            }
+            return stop;
+        }
+        stub = ctypes.CFUNCTYPE(None)(_unbound(name));
+        held.append(stub);
+        llvm.add_symbol(name, ctypes.cast(stub, ctypes.c_void_p).value);
+    }
+    return held;
+}
+
 impl callback_glue_ir(plan: LinkPlan) -> str {
     if not plan.callback_bindings {
         return "";
@@ -1569,6 +1613,7 @@ impl jit_engine(plan: LinkPlan) -> ExecutionEngine {
             f"undefined: {undefined_functions(merged)}\n"
         );
     }
+    bridges = bind_python_bridges(plan, undefined_functions(merged));
     libraries: dict[str, ctypes.CDLL] = {};
     symbols: dict[str, int] = {};
     symbol_lib = plan.clib_symbol_lib();
@@ -1607,6 +1652,7 @@ impl jit_engine(plan: LinkPlan) -> ExecutionEngine {
     engine.static_init_chained = {JAC_ENTRY_SYMBOL};
     engine_any: any = engine;
     engine_any._jac_libraries = libraries;
+    engine_any._jac_bridges = bridges;
     engine_any._jac_unit_ifaces = [u.iface for u in plan.units];
     root_u = plan.root_unit();
     try {
