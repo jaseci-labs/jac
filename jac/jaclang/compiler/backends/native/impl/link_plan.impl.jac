@@ -754,7 +754,11 @@ impl bind_python_bridges(plan: LinkPlan, undefined: list[str]) -> list[any] {
     if not wanted {
         return held;
     }
-    import from jaclang.runtime.interop_bridge { register_py_callbacks }
+    import from jaclang.runtime.interop_bridge {
+        BRIDGE_SYMBOLS,
+        register_py_callbacks
+    }
+    wanted = wanted - BRIDGE_SYMBOLS;
     bound: set[str] = set();
     for unit in plan.units {
         module = plan.prog.mod.hub.get(unit.path);
