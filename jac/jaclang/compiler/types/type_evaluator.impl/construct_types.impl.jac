@@ -447,6 +447,18 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
                 );
             }
             ret_type = self._extern_scalar_type(node_.signature.return_type);
+            ret_expr = node_.signature.return_type;
+            if isinstance(ret_type, AnyType)
+                and ret_type.foreign_scalar is None
+                and isinstance(ret_expr, Expr) {
+                declared = self._convert_to_instance(
+                    self.get_type_of_expression(ret_expr)
+                );
+                if isinstance(declared, ClassType)
+                    and declared.shared.class_name == "str" {
+                    ret_type = declared;
+                }
+            }
         }
         extern_fn = FunctionType(
             func_name=node_.name_spec.sym_name,
@@ -970,10 +982,15 @@ impl TypeEvaluator._extern_field_type(field: HasVar) -> TypeBase {
         rn = numeric_name_of(return_type);
         ret_type: TypeBase = AnyType(is_foreign=True, foreign_scalar=rn);
         if return_type is not None
-            and rn is not None
-            and JAC_TYPE_REGISTRY.is_sized(rn) {
+            and (
+                (rn is not None and JAC_TYPE_REGISTRY.is_sized(rn))
+                or self._is_typed_c_declaration(return_type)
+            ) {
             ret_type = return_type;
             typed = True;
+        } elif isinstance(return_type, ClassType)
+            and return_type.shared.class_name == "NoneType" {
+            ret_type = return_type;
         }
         if typed {
             return create_callable_type(param_types, ret_type, is_gradual=False);

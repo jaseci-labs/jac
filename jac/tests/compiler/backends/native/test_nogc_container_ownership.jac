@@ -47,7 +47,11 @@ def _compile_ir(entry_path: str) -> str {
 
 test "str containers compile RC-free" {
     ir = _compile_ir(os.path.join(FIXTURES, PROG));
-    calls = [marker for marker in RC_ENTRY_POINTS if marker in ir];
+    calls = [
+        marker
+        for marker in RC_ENTRY_POINTS
+        if marker in ir
+    ];
     assert not calls , f"str container build re-entered the RC world: {calls}";
 }
 

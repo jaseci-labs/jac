@@ -22,6 +22,8 @@ def mir_layout_key(t: MirType) -> str;
 
 def mir_layout_enum(t: MirType) -> (str | None);
 
+def mir_clib_path(spec: tuple[str, list[str], int], triple: str) -> str;
+
 walker MirNativePass(CompilerPass) {
     static has contract: PassContract = PassContract(
         requires=(AnalysisFact.TYPE_OF, AnalysisFact.CFG_SUCC)
@@ -29,7 +31,7 @@ walker MirNativePass(CompilerPass) {
 
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     def report_refusals(lowering: MirLowering);
-    def interface(mir: MirModule, deps: list[str]) -> NativeIface;
+    def interface(mir: MirModule, deps: list[str], triple: str = "") -> NativeIface;
     def layout(lowering: MirLowering, mir: MirModule) -> NativeModuleLayout;
     can run_walk with uni.Module entry;
 }

@@ -762,6 +762,10 @@ walker TypeEvaluator {
         loop_node: UniCFGNode, target: NarrowingTarget
     ) -> bool;
 
+    def _loop_back_edge_types(
+        loop_node: UniCFGNode, target: NarrowingTarget
+    ) -> (list[TypeBase] | None);
+
     def _classify_edge(pred: IfStmt, succ: UniCFGNode) -> str;
     def _find_predicate_for(
         target: NarrowingTarget, condition: Expr

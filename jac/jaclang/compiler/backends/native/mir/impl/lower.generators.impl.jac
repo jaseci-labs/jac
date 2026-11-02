@@ -153,7 +153,7 @@ impl MirLowering.lower_generator(decl: MirDecl) -> (MirFunction | None) {
         made = self.runtime_value("__jac_rt_iter_new", [code, frame_obj]);
         b.ret(b.ref_cast(made, decl.ret, True));
     } except MirRefused as err {
-        self.refusals.setdefault(name, []).append(refusal_of(err));
+        self.refusals.setdefault(self.refusal_key(decl), []).append(refusal_of(err));
         self.state = saved;
         return None;
     }
@@ -1431,7 +1431,7 @@ impl MirLowering.builtin_sorted(
     flag = b.const_bool(False);
     order = named.get("reverse");
     if order is not None {
-        flag = self.truthy(self.lower_expr(order), order);
+        flag = self.condition(order);
     }
     if key_fn is not None {
         held = self.spill(made);

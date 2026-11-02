@@ -27,6 +27,8 @@ glob RAISE_BUILTIN_SYMBOL: str = "__jac_rt_raise_builtin",
          MirOp.SIZEOF,
          MirOp.EXC_FRAME,
          MirOp.SETJMP,
+         MirOp.VA_START,
+         MirOp.ALLOCA,
          MirOp.VTABLE_ADDR,
          MirOp.CLASS_ADDR,
          MirOp.FN_ADDR,
@@ -67,18 +69,29 @@ obj MirEmitter {
         literals: dict[str, ir.GlobalVariable] = {},
         byte_literals: dict[str, ir.GlobalVariable] = {},
         native_tls: bool = False,
-        volatile_slots: bool = False;
+        volatile_slots: bool = False,
+        c_plans: dict[str, tuple[any, list[any]]] = {};
 
     def emit -> ir.Module;
     def llvm_type(t: MirType) -> ir.Type;
     def fn_type(params: list[MirType], ret: MirType) -> ir.FunctionType;
     def declare(fn: MirFunction) -> ir.Function;
-    def extern(symbol: str, ret: ir.Type, args: list[ir.Type]) -> ir.Function;
+    def extern(
+        symbol: str, ret: ir.Type, args: list[ir.Type], variadic: bool = False
+    ) -> ir.Function;
+
     def emit_function(fn: MirFunction);
+    def c_layout(t: MirType) -> tuple[int, int, list[tuple[int, bool, int]]];
+    def c_classify(t: MirType) -> dict[str, any];
+    def c_abi_extern(ext: MirExtern) -> ir.Function;
+    def entry_alloca(b: ir.IRBuilder, shape: ir.Type) -> ir.Value;
+    def call_c_abi(b: ir.IRBuilder, callee: ir.Function, instr: MirInstr) -> ir.Value;
     def emit_instr(b: ir.IRBuilder, instr: MirInstr);
     def value(v: MirValue) -> ir.Value;
     def bind(v: (MirValue | None), made: ir.Value);
     def cstring(b: ir.IRBuilder, text: str) -> ir.Value;
+    def cstring_global(text: str) -> ir.GlobalVariable;
+    def c_constant(made: MirConst, shape: ir.Type) -> ir.Constant;
     def emit_bin(b: ir.IRBuilder, instr: MirInstr) -> ir.Value;
     def emit_floordiv(
         b: ir.IRBuilder, l: ir.Value, r: ir.Value, signed: bool

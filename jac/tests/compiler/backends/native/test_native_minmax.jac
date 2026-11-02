@@ -101,9 +101,7 @@ test "unsupported keyword forms refuse lowering instead of discarding arguments"
     ] {
         with tempfile.TemporaryDirectory() as directory {
             source = Path(directory) / "refuse.jac";
-            source.write_text(
-                "def probe -> int { x = " + expression + "; return 0; }"
-            );
+            source.write_text("def probe -> int { x = " + expression + "; return 0; }");
             prog = JacProgram();
             prog.compile(file_path=str(source), options=native_force_opts());
             refusals = [

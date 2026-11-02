@@ -25,7 +25,9 @@ test "preserve_none definitions and table calls lower with the convention" {
     text = str(
         compile_native_ir("clib_preserve_none.jac", options=options).gen.llvm_ir
     );
-    assert re.search(r'define [^\n]*preserve_nonecc i64 @"?[\w.]*pn_count"?\(', text) , text;
+    assert re.search(
+        r'define [^\n]*preserve_nonecc i64 @"?[\w.]*pn_count"?\(', text
+    ) , text;
     assert "musttail call preserve_nonecc i64 " in text , text;
     assert re.search(r'(?<!musttail )call preserve_nonecc i64 ', text) , text;
 }

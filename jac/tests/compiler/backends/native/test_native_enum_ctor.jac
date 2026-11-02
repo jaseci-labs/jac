@@ -25,12 +25,7 @@ print the same lines, and CPython's own answers for the same six calls are
 import os;
 import subprocess;
 import tempfile;
-import from tests.support {
-    jac_command,
-    TESTS_DIR,
-    native_force_opts,
-    python_run
-}
+import from tests.support { jac_command, TESTS_DIR, native_force_opts, python_run }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.passes.layout_pass { get_layout_registry }
 

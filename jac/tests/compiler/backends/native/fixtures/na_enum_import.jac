@@ -3,15 +3,27 @@
 import from na_enum_export { TokenKind, Token, KEYWORDS, lookup_keyword, make_token, token_kind_value }
 
 def check_if_keyword() -> int {
-    return lookup_keyword("if");
+    try {
+        return lookup_keyword("if");
+    } except TypeError {
+        return -2;
+    }
 }
 
 def check_else_keyword() -> int {
-    return lookup_keyword("else");
+    try {
+        return lookup_keyword("else");
+    } except TypeError {
+        return -2;
+    }
 }
 
 def check_unknown_keyword() -> int {
-    return lookup_keyword("unknown");
+    try {
+        return lookup_keyword("unknown");
+    } except TypeError {
+        return -2;
+    }
 }
 
 def use_imported_enum() -> int {

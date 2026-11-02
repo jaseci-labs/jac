@@ -503,3 +503,26 @@ impl MirLowering.foreign_enum_method(
     }
     return None;
 }
+
+impl MirLowering.str_enum_int(nd: uni.FuncCall) -> (MirValue | None) {
+    args = list(nd.params or []);
+    if len(args) != 1 or not isinstance(args[0], uni.Expr) {
+        return None;
+    }
+    subject = self.expr_type(args[0]);
+    if subject.kind != MirKind.ENUM {
+        return None;
+    }
+    layout = self.enum_layout_of(subject, nd);
+    if not layout.is_string_enum {
+        return None;
+    }
+    b = self.builder();
+    self.lower_expr(args[0]);
+    b.raise_builtin(
+        "TypeError",
+        f"int() argument must be a string, a bytes-like object or a real number, not '{layout.name}'"
+    );
+    b.position(self.st().fn.new_block("int.dead"));
+    return b.const_int(0, mir_int());
+}

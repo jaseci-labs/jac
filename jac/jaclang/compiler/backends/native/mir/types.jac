@@ -30,7 +30,8 @@ enum MirKind {
     C_PTR = "c.ptr",
     C_STRUCT = "c.struct",
     C_VIEW = "c.view",
-    C_FN = "c.fn"
+    C_FN = "c.fn",
+    C_PIN = "c.pin"
 }
 
 obj MirType {
@@ -122,6 +123,8 @@ def mir_c_struct(name: str) -> MirType;
 def mir_c_view(elem: MirType) -> MirType;
 
 def mir_c_fn(params: list[MirType], ret: MirType) -> MirType;
+
+def mir_c_pin(elem: MirType) -> MirType;
 
 def mir_holds_ref(t: MirType) -> bool;
 

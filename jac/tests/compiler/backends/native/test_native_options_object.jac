@@ -47,7 +47,9 @@ test "rc debug trace gate is driven by the options object, not env" {
                 );
                 binary = os.path.join(tmp, "rc_debug_trace");
                 link_artifact(plan, binary, ArtifactKind.EXECUTABLE);
-                run = subprocess.run([binary], capture_output=True, text=True, timeout=120);
+                run = subprocess.run(
+                    [binary], capture_output=True, text=True, timeout=120
+                );
                 assert run.returncode == 0 , run.stderr[-800:];
                 traced = "RC MALLOC" in run.stdout + run.stderr;
                 if gate_on {

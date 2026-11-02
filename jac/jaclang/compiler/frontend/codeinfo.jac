@@ -258,6 +258,8 @@ def bundled_native_module_names -> list[str];
 
 def is_native_by_location(file_path: str) -> bool;
 
+def is_native_compiler_unit(file_path: str) -> bool;
+
 def bundled_stdlib_module_of(file_path: str) -> (str | None);
 
 glob SHARED_RUNTIME_MODULES: tuple[str, ...] = (
