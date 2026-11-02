@@ -149,17 +149,24 @@ impl MirLowering.spread_args(
             continue;
         }
         if isinstance(arg, uni.UnaryExpr) and arg.op.name == Tok.STAR_MUL {
+            spread_value = self.spill(self.lower_expr(arg.operand));
+            if spread_value.type.kind == MirKind.TUPLE {
+                for index in range(len(spread_value.type.args)) {
+                    positional.append(
+                        MirBound(
+                            value=self.tuple_get(spread_value, index), site=arg.operand
+                        )
+                    );
+                }
+                continue;
+            }
             if len(positional) < len(params) or sig.varargs is None {
                 raise MirRefused(
                     mir_refusal("call argument", "argument unpacking", arg)
                 );
             }
             positional.append(
-                MirBound(
-                    value=self.spill(self.lower_expr(arg.operand)),
-                    site=arg.operand,
-                    star=True
-                )
+                MirBound(value=spread_value, site=arg.operand, star=True)
             );
             continue;
         }
