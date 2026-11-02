@@ -619,3 +619,61 @@ impl MirLowering.raise_named(
     );
     b.unreachable();
 }
+
+impl MirLowering.lower_test(nd: uni.Test) -> (MirFunction | None) {
+    line = nd.loc.first_line if nd.loc else 0;
+    name = native_test_symbol(nd.name.sym_name, line);
+    i8p = mir_c_ptr(mir_int(8, False));
+    fn = MirFunction(name=name, symbol=native_test_symbol(nd.name.sym_name, line, self.mir.prefix), ret=i8p);
+    self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=fn.new_block("entry")));
+    try {
+        b = self.builder();
+        frame = fn.new_value(i8p, "exc.frame");
+        fn.blocks[0].instrs.insert(0, MirInstr(op=MirOp.EXC_FRAME, result=frame));
+        self.runtime("__jac_rt_exc_push", [frame]);
+        buffer = self.runtime("__jac_rt_exc_jmp_buf", [frame]);
+        if buffer is None {
+            raise MirRefused(mir_refusal("test", nd.name.sym_name, nd));
+        }
+        armed = self.emit_value(MirOp.SETJMP, mir_int(32, True, True), [buffer]);
+        body = fn.new_block("test.body");
+        failed = fn.new_block("test.fail");
+        b.cond_branch(b.compare("eq", armed, b.const_int(0, armed.type)), body, failed);
+        b.position(body);
+        self.st().tries.append((frame, failed, 0));
+        self.prepare_cells(nd, list(nd.body or []));
+        self.lower_body(list(nd.body or []));
+        self.st().tries.pop();
+        if not self.builder().block.terminated() {
+            self.runtime("__jac_rt_exc_pop", [frame]);
+            self.builder().ret(self.emit_value(MirOp.PTR_NULL, i8p, []));
+        }
+        self.builder().position(failed);
+        self.runtime("__jac_rt_exc_pop", [frame]);
+        address = self.address_of(frame);
+        message = self.emit_value(
+            MirOp.PTR_CAST,
+            i8p,
+            [
+                self.emit_value(
+                    MirOp.MEM_LOAD,
+                    mir_int(),
+                    [self.builder().binary("add", address, self.builder().const_int(EXC_MESSAGE_OFFSET, mir_int()))]
+                )
+            ]
+        );
+        self.builder().ret(message);
+        for blk in fn.blocks {
+            if not blk.terminated() {
+                self.builder().position(blk);
+                self.builder().unreachable();
+            }
+        }
+    } except MirRefused as err {
+        self.refusals.setdefault(name, []).append(refusal_of(err));
+        self.state = None;
+        return None;
+    }
+    self.state = None;
+    return fn;
+}

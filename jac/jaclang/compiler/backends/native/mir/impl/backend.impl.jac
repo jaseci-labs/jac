@@ -89,7 +89,7 @@ impl MirNativePass.interface(mir: MirModule, deps: list[str]) -> NativeIface {
         exports[fn.name] = NativeExport(
             name=fn.name,
             symbol=fn.symbol,
-            kind="function",
+            kind="test" if fn.name.startswith("__jac_test_") else "function",
             param_names=[p.name for p in fn.params],
             param_types=[p.value.type.render() for p in fn.params],
             ret_type=fn.ret.render()

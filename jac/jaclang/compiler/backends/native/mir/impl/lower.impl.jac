@@ -22,6 +22,14 @@ impl MirLowering.lower -> MirModule {
             self.mir.functions.append(made);
         }
     }
+    for nd in self.module.body {
+        if isinstance(nd, uni.Test) {
+            tested = self.lower_test(nd);
+            if tested is not None {
+                self.mir.functions.append(tested);
+            }
+        }
+    }
     for arch in archetypes {
         if archetype_native_name(arch) not in self.mir.objects {
             continue;

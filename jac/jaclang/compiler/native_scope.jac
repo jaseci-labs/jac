@@ -167,8 +167,15 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.backends.native.foreign"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.abi"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.region_abi"),
-         NativeScopeEntry(module="jaclang.compiler.backends.native.primitives_native"),
-         NativeScopeEntry(module="jaclang.compiler.backends.native.na_ir_gen_pass")
+         NativeScopeEntry(module="jaclang.compiler.backends.native.mir.types"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.mir.ir"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.mir.runtime_abi"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.mir.lower_types"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.mir.lower"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.mir.rc"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.mir.generators"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.mir.emit"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.mir.backend")
      ),
      KERNEL_ROOT_MODULE: str = "jaclang.compiler.jc_unit",
      KERNEL_ABI_CONTRACT_REL: tuple[str, ...] = (

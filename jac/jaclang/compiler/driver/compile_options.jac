@@ -101,4 +101,3 @@ def push_native_target(triple: str) -> (str | None);
 
 def pop_native_target(prev: (str | None));
 
-def native_mir_selected -> bool;

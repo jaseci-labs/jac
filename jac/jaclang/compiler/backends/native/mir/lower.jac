@@ -551,6 +551,7 @@ obj MirLowering {
     def callee_value(target: uni.Expr) -> MirValue;
     def function_value(decl: MirDecl, to: MirType) -> MirValue;
     def lower_try(nd: uni.TryStmt);
+    def lower_test(nd: uni.Test) -> (MirFunction | None);
     def lower_assert(nd: uni.AssertStmt);
     def raise_named(name: str, message_nd: (uni.UniNode | None), nd: uni.UniNode);
     def lower_raise(nd: uni.RaiseStmt);

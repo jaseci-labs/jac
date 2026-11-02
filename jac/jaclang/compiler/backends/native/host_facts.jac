@@ -12,4 +12,3 @@ def struct_layouts_fact(key: str) -> str;
 
 def codec_tables_fact -> str;
 
-def primitive_methods_fact(type_name: str) -> str;
