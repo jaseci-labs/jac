@@ -61,6 +61,19 @@ impl mir_type_of(
     if isinstance(t, AnyType) and not t.is_foreign {
         return mir_any();
     }
+    if isinstance(t, FunctionType)
+        and any(lenient_c_slot(p.param_type) for p in t.parameters) {
+        params = [
+            mir_c_ptr(mir_int(8, False))
+                if lenient_c_slot(p.param_type)
+                else mir_type_of(p.param_type, MirPosition.C_FIELD, site, env)
+            for p in t.parameters
+        ];
+        ret = mir_c_ptr(mir_int(8, False))
+            if lenient_c_slot(t.return_type)
+            else mir_type_of(t.return_type, MirPosition.C_FIELD, site, env);
+        return mir_c_fn(params, ret);
+    }
     if isinstance(t, FunctionType) and position == MirPosition.C_FIELD {
         params = [
             mir_type_of(p.param_type, MirPosition.C_FIELD, site, env)
@@ -357,4 +370,8 @@ impl mir_class_value_type(
     t: ClassType, env: (dict[str, TypeBase] | None) = None
 ) -> MirType {
     return mir_class("*");
+}
+
+impl lenient_c_slot(t: (TypeBase | None)) -> bool {
+    return isinstance(t, AnyType) and t.is_foreign and not t.foreign_scalar;
 }

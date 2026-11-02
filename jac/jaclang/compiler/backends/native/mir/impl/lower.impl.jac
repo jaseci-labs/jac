@@ -1441,6 +1441,25 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         and self.expr_type(target).kind == MirKind.FN {
         return self.closure_call(nd, self.callee_value(target));
     }
+    if isinstance(target, uni.Expr)
+        and isinstance(target.type, FunctionType)
+        and self.expr_type(target).kind == MirKind.C_FN {
+        fnptr = self.lower_expr(target);
+        params = fnptr.type.args[1:];
+        args = self.call_args(nd);
+        if len(args) != len(params) {
+            raise MirRefused(
+                mir_refusal("call", f"C function pointer with {len(args)} arguments", nd)
+            );
+        }
+        values = [
+            self.coerce(self.lower_expr(arg), ptype, arg)
+            for (arg, ptype) in zip(args, params)
+        ];
+        ret = fnptr.type.args[0];
+        result_type = mir_none() if ret.kind in (MirKind.NONE, MirKind.VOID) else ret;
+        return self.emit_value(MirOp.CALL_FNPTR, result_type, [fnptr] + values);
+    }
     via_type = self.type_call(nd);
     if via_type is not None {
         return via_type;
