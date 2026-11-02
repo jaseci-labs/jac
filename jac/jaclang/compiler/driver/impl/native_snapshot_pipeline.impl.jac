@@ -155,6 +155,9 @@ impl NativeSnapshotPipeline.close {
 impl _snapshot_ir_text(
     path: str, ir_text: str
 ) -> tuple[str, bytes, set[str], set[str], tuple[int, int]] {
+    import from jaclang.compiler.backends.native.na_compile_pass {
+        unit_snapshot_text_values
+    }
     (bitcode, defined, declared, function_counts) = unit_snapshot_text_values(ir_text);
     return (path, bitcode, defined, declared, function_counts);
 }
@@ -162,6 +165,9 @@ impl _snapshot_ir_text(
 impl _optimize_snapshot_batch(
     bitcodes: list[bytes], native_target: str, native_debug: bool, opt_level: int
 ) -> tuple[list[bytes], float] {
+    import from jaclang.compiler.backends.native.na_compile_pass {
+        optimize_unit_bitcodes_with_config
+    }
     started = time.perf_counter();
     optimized = optimize_unit_bitcodes_with_config(
         bitcodes, native_target, native_debug, opt_level

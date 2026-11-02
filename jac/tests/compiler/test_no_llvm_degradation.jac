@@ -129,6 +129,37 @@ else:
 }
 
 
+test "LLVM ctypes signatures survive a shim loaded after binding imports" {
+    script = f"""
+import sys
+sys.path.insert(0, {JAC_ROOT!r})
+from unittest.mock import patch
+from jaclang.artifacts import router
+from jaclang.artifacts.model import Probe
+from jaclang.compiler.backends.native.llvm.shim_path import ShimArtifact
+patches = [
+    patch.object(ShimArtifact, name, return_value=Probe.missing())
+    for name in ('probe_sealed', 'probe_checkout', 'probe_kit')
+]
+for p in patches:
+    p.start()
+from jaclang.compiler.backends.native.llvm.binding import context, module
+for p in patches:
+    p.stop()
+router.forget()
+ctx = context.get_global_context()
+assert not isinstance(ctx._ptr, int), repr(ctx._ptr)
+mod = module.parse_assembly('declare void @identity()', ctx)
+mod.close()
+ctx.close()
+""";
+    proc = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=600
+    );
+    assert proc.returncode == 0 , proc.stdout + proc.stderr;
+}
+
+
 test "jac native status reports a stale shim instead of crashing" {
     with tempfile.TemporaryDirectory() as work {
         (rc, out) = _run_no_llvm(["native", "status", "llvm-shim"], work, STALE);
