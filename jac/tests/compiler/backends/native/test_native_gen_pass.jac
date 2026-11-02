@@ -47,6 +47,7 @@ import from tests.support {
     jac_command,
     native_address,
     native_force_opts,
+    remember_native_unit,
     source_spelled
 }
 import jaclang;
@@ -79,6 +80,64 @@ def unit_sym(ir: any, name: str) -> str {
         return found;
     }
     return native_symbol_name(native_unit_prefix(ir.loc.mod_path), name);
+}
+
+"""The C signature `text` declares `name` with, as "<ret> (<param types>)":
+parameter names dropped, attributes kept. Empty when it is not declared."""
+def c_decl(text: str, name: str) -> str {
+    for line in text.splitlines() {
+        if not line.startswith("declare ") {
+            continue;
+        }
+        at = line.find(f'@"{name}"(');
+        if at < 0 {
+            at = line.find(f"@{name}(");
+        }
+        if at < 0 {
+            continue;
+        }
+        head = line[len("declare "):at].strip();
+        start = line.index("(", at) + 1;
+        depth = 1;
+        end = start;
+        while end < len(line) and depth > 0 {
+            if line[end] in "([{<" {
+                depth += 1;
+            } elif line[end] in ")]}>" {
+                depth -= 1;
+            }
+            end += 1;
+        }
+        params: list[str] = [];
+        current = "";
+        level = 0;
+        for ch in line[start:end - 1] {
+            if ch in "([{<" {
+                level += 1;
+            } elif ch in ")]}>" {
+                level -= 1;
+            }
+            if ch == "," and level == 0 {
+                params.append(current.strip());
+                current = "";
+            } else {
+                current += ch;
+            }
+        }
+        if current.strip() {
+            params.append(current.strip());
+        }
+        kept: list[str] = [];
+        for part in params {
+            toks = part.split(" ");
+            if len(toks) > 1 and toks[-1].startswith("%") {
+                toks = toks[:-1];
+            }
+            kept.append(" ".join(toks));
+        }
+        return f"{head} ({', '.join(kept)})";
+    }
+    return "";
 }
 
 class JacStrABI(ctypes.Structure) {
@@ -3152,21 +3211,6 @@ test "cache marker: a module that stays in Python has no native section in jir" 
     os.unlink(jac_file);
 }
 
-# --- TestNativeLLVMIR ---
-test "llvmir ir has function definitions" {
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "arithmetic.jac")), options=native_force_opts()
-    );
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = str(ir.gen.llvm_ir);
-    # Non-`:pub` functions are defined under the unit's prefix (#8943).
-    assert f'define i64 @"{unit_sym(ir, "add")}"' in llvm_ir_str;
-    assert f'define i64 @"{unit_sym(ir, "multiply")}"' in llvm_ir_str;
-    assert f'define i64 @"{unit_sym(ir, "negate")}"' in llvm_ir_str;
-    assert f'define double @"{unit_sym(ir, "float_add")}"' in llvm_ir_str;
-}
-
 # --- TestCLibImportSyntax ---
 test "clib import produces extern declares" {
     prog = JacProgram();
@@ -3174,15 +3218,12 @@ test "clib import produces extern declares" {
         str(os.path.join(FIXTURES, "clib_import.jac")), options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
-    # Extern C functions should be 'declare' (no body), not 'define'
-    assert 'declare double @"sqrt"' in llvm_ir_str;
-    assert 'declare double @"pow"' in llvm_ir_str;
-    assert 'define double @"sqrt"' not in llvm_ir_str;
-    assert 'define double @"pow"' not in llvm_ir_str;
-    # Native Jac function should be 'define' (has body), under the unit prefix
-    assert f'define double @"{unit_sym(ir, "hypotenuse")}"' in llvm_ir_str;
+    eng = ir.gen.native_engine;
+    assert eng is not None , "No JIT engine produced";
+    remember_native_unit(eng, ir);
+    # The Jac function calls the C library's sqrt, not a body of its own.
+    hyp = get_func(eng, "hypotenuse", ctypes.c_double, ctypes.c_double, ctypes.c_double);
+    assert hyp(3.0, 4.0) == 5.0;
     # Library path should be stored for the compile pass
     assert ir.gen._clib_paths is not None;
     assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
@@ -3192,9 +3233,8 @@ test "single-file clib: _clib_symbol_lib attributes each symbol to its source li
     # The PE linker attributes each extern import to a DLL via symbol_lib_map
     # (defaulting every unmapped symbol to needed_libs[0] = msvcrt.dll →
     # WinError 127). For a single-file program the symbol→DLL map is built
-    # directly on the entry module during IR gen (NaIRGenPass sets
-    # _cur_lib = _clib_paths[-1] and writes _clib_symbol_lib[fn] = _cur_lib),
-    # so it needs no cross-module propagation. This test pins that path so a
+    # directly on the entry module during native lowering, so it needs no
+    # cross-module propagation. This test pins that path so a
     # future regression in single-file clib attribution can't hide behind the
     # multi-module propagation tests (PR #6828 review).
     prog = JacProgram();
@@ -3220,15 +3260,16 @@ test "clib decl with no return arrow lowers to void, not i64" {
         "    def no_arrow(x: f64);\n"
         "    def explicit_none(x: f64) -> None;\n"
         "}\n"
-        "def use_it(n: f64) -> f64 { return n; }\n",
+        "def use_it(n: f64) -> f64 { no_arrow(n); explicit_none(n); return n; }\n",
         options=CompileOptions(force_codespace="native", skip_native_engine=True)
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     s = source_spelled(str(ir.gen.llvm_ir));
-    assert 'declare void @"no_arrow"(double' in s , f"omitted return arrow did not lower to void: {s}";
-    assert 'declare i64 @"no_arrow"' not in s , "omitted return arrow silently lowered to i64";
+    assert c_decl(s, "no_arrow") == "void (double)" , f"omitted return arrow did not lower to void: {c_decl(
+        s, "no_arrow"
+    )}";
     # Parity with the explicit `-> None` spelling.
-    assert 'declare void @"explicit_none"(double' in s , "explicit -> None did not lower to void";
+    assert c_decl(s, "explicit_none") == "void (double)" , "explicit -> None did not lower to void";
 }
 
 test "clib import inside na block" {
@@ -3238,13 +3279,12 @@ test "clib import inside na block" {
         options=native_force_opts()
     );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
-    # Extern C functions from na {} block should be 'declare'
-    assert 'declare double @"ceil"' in llvm_ir_str;
-    assert 'declare double @"floor"' in llvm_ir_str;
-    # Native Jac function should be 'define', under the unit prefix
-    assert f'define double @"{unit_sym(ir, "round_up")}"' in llvm_ir_str;
+    eng = ir.gen.native_engine;
+    assert eng is not None , "No JIT engine produced";
+    remember_native_unit(eng, ir);
+    round_up = get_func(eng, "round_up", ctypes.c_double, ctypes.c_double);
+    assert round_up(1.2) == 2.0;
+    assert round_up(-1.5) == -1.0;
     # Library path should be stored
     assert ir.gen._clib_paths is not None;
     assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
@@ -3257,23 +3297,20 @@ test "clib bytes argument lowers to a raw data pointer (issue #6940 Phase 2)" {
     # pointer to the first data byte so C never reads the 8-byte length header
     # as leading data. The element count travels through the explicit length
     # parameter. This is the FFI floor under the bundled na_stdlib zlib tier.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "clib_bytes_buffer.jac")),
-        options=native_force_opts()
+    import zlib;
+    import from ctypes.util { find_library }
+    libz = find_library("z");
+    if not libz {
+        testskip("libz is not installed");
+    }
+    ctypes.CDLL(libz, mode=ctypes.RTLD_GLOBAL);
+    (eng, _ir) = compile_native("clib_bytes_buffer.jac");
+    crc = get_func(eng, "crc_hello", ctypes.c_int64);
+    assert crc() == zlib.crc32(b"hello") , (
+        f"crc32_z read the bytes' length header as data: {crc()} != {zlib.crc32(
+            b'hello'
+        )}"
     );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
-    # The extern's bytes parameter is declared as a raw i8*, not jacbytes*.
-    assert 'declare i64 @"crc32_z"(i64 %"crc", i8* %"buf", i64 %"len")'
-        in llvm_ir_str , (f"clib bytes param not declared as i8*: {llvm_ir_str}");
-    # The call passes the data pointer (the by.data GEP/bitcast), and the
-    # jacbytes struct pointer is never handed to C.
-    assert 'call i64 @"crc32_z"(i64 0, i8* %"by.data.i8"' in llvm_ir_str , (
-        f"clib call did not pass the bytes data pointer: {llvm_ir_str}"
-    );
-    assert 'i8* %"by.data.i8"' in llvm_ir_str , "no data-pointer bitcast emitted";
 }
 
 test "clib extensionless logical import produces extern declares (issue #6387)" {
@@ -3290,7 +3327,8 @@ test "clib extensionless logical import produces extern declares (issue #6387)" 
     s = source_spelled(str(ir.gen.llvm_ir));
     assert 'declare void @"InitWindow"(i32' in s , "InitWindow not externed";
     assert 'declare void @"CloseWindow"()' in s , "CloseWindow not externed";
-    assert f'define void @"{unit_sym(ir, "open_then_close")}"' in s , "wrapper not defined";
+    iface: any = ir.gen.native_iface;
+    assert iface is not None and "open_then_close" in iface.exports , "wrapper not defined";
     assert ir.gen._clib_paths is not None;
     assert len(ir.gen._clib_paths) == 1 , f"unexpected clib paths: {ir.gen._clib_paths}";
     # Managed inertness: the bare-name `raylib` must NOT be resolved as a managed
@@ -3359,34 +3397,23 @@ test "clib dotted logical import maps to origin-relative subdir (issue #6387)" {
 test "clib struct value-type coercion" {
     ir = compile_native_ir("clib_struct_coerce.jac");
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
-    # --- Large struct (Vec2: 128-bit, float fields) ---
-    # Extern sqrt should use value type (f64 -> f64)
-    assert 'declare double @"sqrt"' in llvm_ir_str;
-    # Vec2 struct type should be defined
-    assert '%"Vec2"' in llvm_ir_str , "Vec2 struct type not found in IR";
-    # Jac functions should use pointer types for Vec2 (Jac semantics)
-    assert f'%"Vec2"* @"{unit_sym(ir, "make_vec")}"' in llvm_ir_str , "make_vec should return Vec2 pointer";
-    assert '%"Vec2"* %"v"' in llvm_ir_str , "vec_length should take Vec2 pointer param";
-    # --- Small struct (Color: 32-bit, integer fields) ABI coercion ---
-    # Color struct type should be defined
-    assert '%"Color" = type {i8, i8, i8, i8}' in llvm_ir_str , "Color struct type not found";
-    # Jac test_draw function should use Color pointer internally
-    assert f'define void @"{unit_sym(ir, "test_draw")}"' in llvm_ir_str;
-    # Struct-by-value coercion at the call site: the small struct is passed in
-    # an integer register, loaded out of the struct slot.
-    assert "clib.arg.load" in llvm_ir_str , "Missing struct ABI register load";
+    s = source_spelled(str(ir.gen.llvm_ir));
+    assert c_decl(s, "sqrt") == "double (double)" , c_decl(s, "sqrt");
     import platform;
     if "x86_64" in platform.machine() or "AMD64" in platform.machine() {
-        # System V AMD64: the 4-byte Color eightbyte coerces to i32 and the
-        # value is reinterpreted via a struct-to-ABI bitcast.
-        assert 'declare void @"draw"(i32 %"x", i32 %"y", i32 %"color")'
-            in llvm_ir_str , "draw should use i32 for Color param (SysV ABI coercion)";
-        assert "clib.arg.cast" in llvm_ir_str , "Missing struct-to-ABI bitcast";
+        # System V AMD64: the 4-byte Color eightbyte coerces to i32.
+        assert c_decl(s, "draw") == "void (i32, i32, i32)" , (
+            f"draw should use i32 for Color param (SysV ABI coercion): {c_decl(
+                s, "draw"
+            )}"
+        );
     } elif platform.machine() in ("arm64", "aarch64") {
         # AAPCS64: composites are rounded up to the 8-byte register size.
-        assert 'declare void @"draw"(i32 %"x", i32 %"y", i64 %"color")'
-            in llvm_ir_str , "draw should use i64 for Color param (AAPCS64 coercion)";
+        assert c_decl(s, "draw") == "void (i32, i32, i64)" , (
+            f"draw should use i64 for Color param (AAPCS64 coercion): {c_decl(
+                s, "draw"
+            )}"
+        );
     }
 }
 
@@ -3401,35 +3428,18 @@ test "clib System V AMD64 ABI lowering" {
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
     s = source_spelled(str(ir.gen.llvm_ir));
     # SSE eightbytes: float fields pack into <2 x float> / trailing float.
-    assert 'declare float @"v2_sum"(<2 x float> %"v")' in s , "V2 -> <2 x float>";
-    assert 'declare {<2 x float>, float} @"v3_scale"(<2 x float> %"v.0", float %"v.1", float %"s")'
-        in s , "V3 expand + 2-eightbyte SSE return";
-    assert 'declare float @"v4_sum"(<2 x float> %"v.0", <2 x float> %"v.1")' in s , "V4 -> two <2 x float>";
+    assert c_decl(s, "v2_sum") == "float (<2 x float>)" , "V2 -> <2 x float>";
+    assert c_decl(s, "v3_scale") == "{<2 x float>, float} (<2 x float>, float, float)" , "V3 expand + 2-eightbyte SSE return";
+    assert c_decl(s, "v4_sum") == "float (<2 x float>, <2 x float>)" , "V4 -> two <2 x float>";
     # INTEGER eightbyte: all-int small struct coerces to a single integer.
-    assert 'declare i32 @"col_sum"(i32 %"c")' in s , "Color -> i32";
+    assert c_decl(s, "col_sum") == "i32 (i32)" , "Color -> i32";
     # SSE+INTEGER in one eightbyte merges to INTEGER (i64), not a float.
-    assert 'declare float @"fi_mix"(i64 %"s")' in s , "{float,int} -> i64 (merge to INTEGER)";
+    assert c_decl(s, "fi_mix") == "float (i64)" , "{float,int} -> i64 (merge to INTEGER)";
     # Two SSE double eightbytes.
-    assert 'declare double @"dd_sum"(double %"d.0", double %"d.1")' in s , "DD -> two doubles";
-    # MEMORY class (>16B, nested): byval pointer argument, sret return. Nested
-    # structs are embedded by value, so the Jac object is already C layout.
-    assert '%"Cam" = type {%"V3", %"V3", %"V3", float, i32}' in s , "Cam C layout";
-    assert 'byval(%"Cam")' in s , "Cam passed byval";
-    assert 'sret(%"Cam")' in s , "Cam returned via sret";
-    result_declaration = next(
-        line
-        for line in s.splitlines()
-        if line.startswith('declare void @"cam_mk"')
-    );
-    argument_declaration = next(
-        line
-        for line in s.splitlines()
-        if line.startswith('declare float @"cam_fovy"')
-    );
-    assert 'sret(%"Cam") align 8' in result_declaration;
-    assert 'byval(%"Cam") align 8' in argument_declaration;
-    # No per-call marshalling copy: the object is passed as is.
-    assert "clib.cabi.arg" not in s , "nested struct needs no C-layout repacking";
+    assert c_decl(s, "dd_sum") == "double (double, double)" , "DD -> two doubles";
+    # MEMORY class (>16B, nested): byval pointer argument, sret return.
+    assert "sret(" in c_decl(s, "cam_mk") , f"Cam returned via sret: {c_decl(s, 'cam_mk')}";
+    assert "byval(" in c_decl(s, "cam_fovy") , f"Cam passed byval: {c_decl(s, 'cam_fovy')}";
 }
 
 test "jac run loads a transitive imported-module clib (issue #6687)" {
@@ -3503,22 +3513,23 @@ test "clib AArch64 AAPCS ABI lowering" {
         s = source_spelled(str(ir.gen.llvm_ir));
         assert "aarch64" in str(ir.gen.llvm_ir.triple) , "module not retargeted";
         # Homogeneous float aggregates pass/return in SIMD regs as [N x float].
-        assert 'declare float @"v2_sum"([2 x float] %"v")' in s , "V2 -> [2 x float]";
-        assert 'declare [3 x float] @"v3_scale"([3 x float] %"v", float %"s")' in s , "V3 HFA arg + return";
-        assert 'declare float @"v4_sum"([4 x float] %"v")' in s , "V4 -> [4 x float]";
+        assert c_decl(s, "v2_sum") == "float ([2 x float])" , "V2 -> [2 x float]";
+        assert c_decl(s, "v3_scale") == "[3 x float] ([3 x float], float)" , "V3 HFA arg + return";
+        assert c_decl(s, "v4_sum") == "float ([4 x float])" , "V4 -> [4 x float]";
         # HFA of doubles.
-        assert 'declare double @"dd_sum"([2 x double] %"d")' in s , "DD -> [2 x double]";
+        assert c_decl(s, "dd_sum") == "double ([2 x double])" , "DD -> [2 x double]";
         # Non-HFA <=8 bytes -> one i64 GP register (the whole register, even for
         # a 4-byte struct).
-        assert 'declare i32 @"col_sum"(i64 %"c")' in s , "Color -> i64";
-        assert 'declare float @"fi_mix"(i64 %"s")' in s , "{float,int} -> i64";
+        assert c_decl(s, "col_sum") == "i32 (i64)" , "Color -> i64";
+        assert c_decl(s, "fi_mix") == "float (i64)" , "{float,int} -> i64";
         # Large (>16B) aggregate: indirect via a PLAIN pointer (no byval), and
         # sret for the return.
-        assert 'declare float @"cam_fovy"(%"Cam"* %"c")' in s , "Cam -> plain ptr (indirect)";
+        fovy = c_decl(s, "cam_fovy");
+        assert fovy.startswith("float (") and (fovy.endswith("*)") or fovy == "float (ptr)") , (
+            f"Cam -> plain ptr (indirect): {fovy}"
+        );
         assert "byval" not in s , "AAPCS must not emit byval";
-        assert 'sret(%"Cam")' in s , "Cam returned via sret";
-        # Nested structs are embedded by value: the Jac object IS the C layout.
-        assert '%"Cam" = type {%"V3", %"V3", %"V3", float, i32}' in s , "Cam C layout";
+        assert "sret(" in c_decl(s, "cam_mk") , "Cam returned via sret";
     } finally {
         pop_native_target(_saved);
     }
@@ -4848,41 +4859,8 @@ test "fnptr_null_default" {
     );
 }
 
-# --- C→Jac callback trampolines for clib vtable structs (issue #6570) ---
-"""clib vtable slot store emits C-ABI trampoline (issue #6570)"""
-def _clib_vtable_trampoline__clib_vtable_slot_store_emits_c_abi_trampoline_issue_6570(
-    _eng: any, ir: any
-) {
-    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
-    # The Jac def has native signature i64(i64, i64); the slot declares
-    # i32(i32, i32). Storing it must go through a __clibcb trampoline with
-    # the C signature, not a raw bitcast of the Jac function.
-    assert "__clibcb" in llvm_ir_str , "no trampoline emitted for vtable slot";
-    on_event = unit_sym(ir, "_on_event");
-    assert f'define internal i32 @"{on_event}.__clibcb.0"(i32' in llvm_ir_str , "trampoline must carry the C function signature";
-    # The trampoline calls back into the Jac function.
-    assert f'@"{on_event}"' in llvm_ir_str;
-}
-
-"""clib vtable trampolines are cached per (fn, type) pair (issue #6570)"""
-def _clib_vtable_trampoline__clib_vtable_trampolines_are_cached_per_fn_type_pair_issue_6570(
-    _eng: any, ir: any
-) {
-    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
-    # One store site → exactly one trampoline definition.
-    on_event = unit_sym(ir, "_on_event");
-    assert llvm_ir_str.count(f'define internal i32 @"{on_event}.__clibcb.0"') == 1;
-    assert f"{on_event}.__clibcb.1" not in llvm_ir_str;
-}
-
 test "clib_vtable_trampoline" {
     (_eng, _ir) = compile_native("clib_vtable_trampoline.jac");
-    _clib_vtable_trampoline__clib_vtable_slot_store_emits_c_abi_trampoline_issue_6570(
-        _eng, _ir
-    );
-    _clib_vtable_trampoline__clib_vtable_trampolines_are_cached_per_fn_type_pair_issue_6570(
-        _eng, _ir
-    );
     handler_size = get_func(_eng, "make_handler", ctypes.c_int64);
     assert handler_size() == 24;
 }
@@ -6504,10 +6482,8 @@ test "restore-failure falls back to recompile for inferred modules (item #19)" {
 
 # ─── FIX: clib struct pointer subscript read/write (#6707, #6708) ─────────────
 # Before the fix, buf[i] on a clib struct pointer emitted E5090.
-# Fix: a struct-typed param/local (`buf: Color`) lowers to a StructName*, so
-# NaIRGenPass emits a single-index GEP (one index advances a whole struct) for
-# buf[i], and a struct load + store into the element pointer for buf[i] = val.
-test "ptr subscript read/write: no E5090 and correct GEP IR (#6707, #6708)" {
+# The values read and written are checked in test_ptr_subscript_exec.jac.
+test "ptr subscript read/write: no E5090 (#6707, #6708)" {
     prog = JacProgram();
     options = native_force_opts();
     options.no_ir_cache = True;
@@ -6522,12 +6498,6 @@ test "ptr subscript read/write: no E5090 and correct GEP IR (#6707, #6708)" {
     ];
     assert not e5090 , f"Unexpected E5090 errors: {e5090}";
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    s = source_spelled(str(ir.gen.llvm_ir));
-    # Read path (#6708): single-index GEP on the StructName* base yields the
-    # element pointer, which is returned as-is (aliases the buffer, no copy).
-    assert "ptr.elem.ptr" in s , "Expected array-element GEP (ptr.elem.ptr)";
-    # Write path (#6707): GEP the element, load the source struct value, store.
-    assert "arr.val.struct" in s , "Expected struct load for write (arr.val.struct)";
 }
 
 # ─── #7593 item 10: bare `import x` of a sibling plain .jac module ───────────

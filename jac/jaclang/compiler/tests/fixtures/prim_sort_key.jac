@@ -3,7 +3,7 @@
 Cross-backend equivalence fixture. The native lane guards the sort
 comparator delegation in NativeListEmitter.emit_sort: key results are
 compared through the canonical operator comparison path
-(NaIRGenPass._emit_comparison), which handles str descriptors with
+(the native backend's comparison lowering), which handles str descriptors with
 length-aware, NUL-safe comparison (#9144).
 
 The aggregate rows pin per-element semantics inside tuple/list keys:

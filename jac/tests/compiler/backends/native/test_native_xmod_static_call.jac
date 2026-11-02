@@ -11,8 +11,7 @@ said nothing -- the silent-wrong-answer class (#7685 family, found by wave 1's
 parity canary weaving two statements where bytecode wove four).
 
 The two forms now land the same way, and where they land is #8206's
-partition: a module-scope call has no owning callable and stays module-fatal,
-a body-scoped one demotes its own function and leaves its siblings native.
+partition: each refuses with an E5092 at the call, naming the callee.
 
 The control is the same three files with the Python base removed. It must
 still lower and still agree with the Python lane, so the refusal reads as a
@@ -31,7 +30,6 @@ import from tests.support {
     source_spelled
 }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -40,7 +38,7 @@ glob FIXTURES = os.path.join(
      MERGED = 7;
 
 
-"""Forced-native options that skip the IR cache so the coverage always runs."""
+"""Forced-native options: every refusal is an E5092 error."""
 def _opts -> CompileOptions {
     return CompileOptions(force_codespace='native');
 }
@@ -51,29 +49,6 @@ def _compile_native(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
     ir = prog.compile(file_path=os.path.join(FIXTURES, fixture), options=_opts());
     return (prog, ir);
-}
-
-
-"""Compile a fixture under the demotion coverage; return (program, module, coverage)."""
-def _compile_with_coverage(fixture: str) -> tuple[any, ...] {
-    prog = JacProgram();
-    na_coverage_begin();
-    try {
-        ir = prog.compile(file_path=os.path.join(FIXTURES, fixture), options=_opts());
-    } finally {
-        coverage = na_coverage_end();
-    }
-    return (prog, ir, coverage);
-}
-
-
-"""The coverage seam list recorded for a fixture path."""
-def _seams_of(coverage: dict[str, any], fixture: str) -> list[str] {
-    rec = coverage.get(os.path.realpath(os.path.join(FIXTURES, fixture)));
-    if rec is None {
-        return [];
-    }
-    return [source_spelled(str(s)) for s in (rec.get("seams") or [])];
 }
 
 
@@ -125,33 +100,22 @@ test "a module-scope static call into a Python-side class refuses" {
 }
 
 
-test "a body-scoped static call demotes only its owning function" {
-    (prog, ir, coverage) = _compile_with_coverage("xmod_static_pybase_seam.jac");
-    assert not prog.errors_had , (
-        f"a function owns this violation, so it demotes rather than failing "
-        f"the module: {[str(e) for e in prog.errors_had]}"
-    );
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "clean" in layout.functions , (
-        f"the clean sibling was lost: {sorted(layout.functions)}"
-    );
-    assert "probe" not in layout.functions , (
-        "the calling function must be demoted out of the native layout, not "
-        "lowered with the call quietly removed"
-    );
-    seams = [
-        s
-        for s in _seams_of(coverage, "xmod_static_pybase_seam.jac")
-        if s.startswith("probe: ")
+test "a body-scoped static call refuses at the call inside its owning function" {
+    (prog, ir) = _compile_native("xmod_static_pybase_seam.jac");
+    refusals = [
+        source_spelled(str(e))
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == "E5092"
     ];
-    assert len(seams) == 1 , (
-        f"expected exactly one coverage seam for probe, got: {_seams_of(
-            coverage, 'xmod_static_pybase_seam.jac'
-        )}"
+    assert refusals , (
+        "the call resolved to no native `Merger`, so it must refuse rather than "
+        f"lower with the call quietly removed: {[str(e) for e in prog.errors_had]}"
     );
-    assert "Merger.merge" in seams[0] , (
-        f"the seam reason must name the callee: {seams[0]}"
+    assert all(", line 12," in r for r in refusals) , (
+        f"the refusal must point at the call inside probe: {refusals}"
+    );
+    assert any("Merger" in r for r in refusals) , (
+        f"the refusal must name the callee: {refusals}"
     );
 }
 

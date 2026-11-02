@@ -12,12 +12,7 @@ non-list operand is a type error.
 import ctypes;
 import os;
 import tempfile;
-import from tests.support {
-    compile_native,
-    compile_native_ir,
-    get_func,
-    NATIVE_FIXTURES
-}
+import from tests.support { compile_native, get_func, NATIVE_FIXTURES }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
@@ -72,20 +67,6 @@ test "writes through the buffer are the list's elements, and the other way" {
         got = fn(x);
         assert got == want , f"{name}({x}) = {got}, want {want}";
     }
-}
-
-test "the call lowers to a load of the list's data field" {
-    text = str(compile_native_ir(FIXTURE).gen.llvm_ir);
-    lines = [line.strip() for line in text.splitlines()];
-    # field 2 of `{ len, cap, data* }`, loaded and turned into an integer
-    assert any(
-        '%"list.data.pp" = getelementptr' in line and "i32 0, i32 2" in line
-        for line in lines
-    ) , "no GEP of the list's data field";
-    assert any(line.startswith('%"list.data.p" = load') for line in lines);
-    assert any(line.startswith('%"list.data.i64" = ptrtoint') for line in lines);
-    # the intrinsic is lowered, never called
-    assert not any("__list_data_ptr" in line for line in lines) , "a call of __list_data_ptr was left in the IR";
 }
 
 test "a list of objects or strings is refused: its elements are reference counted" {

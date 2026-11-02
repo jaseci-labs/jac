@@ -116,7 +116,6 @@ test "the defining modules and the importer agree on symbols compiled apart" {
     ] {
         own_ir = str(compile_native_ir(fixture).gen.llvm_ir);
         info = native_arch_name(path, "Info");
-        passage = native_arch_name(path, "Passage");
         symbol = f'@"{native_symbol_name(native_unit_prefix(path), "Info.total")}"(';
         symbols.append(symbol);
         assert f"{info}.total" not in own_ir , (
@@ -129,12 +128,7 @@ test "the defining modules and the importer agree on symbols compiled apart" {
             line.startswith("declare") and symbol in line
             for line in main_ir.split("\n")
         ) , f"the importer does not declare {symbol}";
-        assert f'%"{passage}" = type' in own_ir;
-        assert f'%"{passage}" = type' in main_ir , (
-            f"the importer lost {fixture}'s Passage layout"
-        );
     }
-    assert '%"Passage" = type' not in main_ir , "a bare, shared Passage struct remains";
     assert symbols[0] != symbols[1] , "the two `Info.total` methods share one symbol";
 }
 

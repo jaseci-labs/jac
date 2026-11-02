@@ -5576,14 +5576,26 @@ graph import compiler {
     ]
     c_interop ++> [
         backends.native.mir.lower {
+            c_array_elem,
             c_builtin_kind,
+            c_bytes_array_values,
+            c_bytes_elem_shape,
+            c_bytes_literal,
+            c_offset_address,
             c_scalar_constant,
             c_string_literal,
             c_type_arg,
+            clib_global_of_name,
             clib_import_of,
+            final_glob_value,
             foreign_struct_of_type,
             is_builtin_addressof_call,
-            is_va_list_type
+            is_builtin_pin_call,
+            is_pinned_type,
+            is_ptr_type,
+            is_va_list_type,
+            named_function_of,
+            opaque_c_of_type
         },
         backends.native.mir.lower_types {
             c_builtin_kind,
@@ -10300,6 +10312,7 @@ graph import compiler.backends.es.backends {
 }
 
 graph import compiler.backends.native {
+    abi ++> mir.emit { classify_struct }
     foreign ++> abi.classify_foreign_fn { foreign_struct_layout }
     kernel_resolve ++> kernel_stage0 { KERNEL_LINK_MODE, kernel_plan }
     kernel_stage0 ++> kernel_resolve.build_kernel { link_kernel }
@@ -10523,6 +10536,7 @@ graph import compiler.backends.native.mir {
         backend { MirModule },
         emit {
             MirBlock,
+            MirConst,
             MirFunction,
             MirGlobal,
             MirInstr,
@@ -10545,6 +10559,7 @@ graph import compiler.backends.native.mir {
         lower {
             MirBlock,
             MirBuilder,
+            MirConst,
             MirExtern,
             MirFunction,
             MirGlobal,
@@ -10628,6 +10643,7 @@ graph import compiler.backends.native.mir {
             mir_bytearray,
             mir_bytes,
             mir_c_fn,
+            mir_c_pin,
             mir_c_ptr,
             mir_c_struct,
             mir_c_view,

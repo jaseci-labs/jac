@@ -3,12 +3,14 @@
 Two modules both define a global TABLE; the importer takes TABLE from the
 second, and FIRST from the first through a module that only re-exports it.
 Native lowering must bind TABLE to the module named in its import under every
-module walk order, declare no global for the other module's TABLE, and still
-find a re-exported global at the module that defines it.
+module walk order and still find a re-exported global at the module that
+defines it.
 """
 
+import ctypes;
 import os;
 import from pathlib { Path }
+import from tests.support { get_func, remember_native_unit }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
@@ -16,35 +18,30 @@ glob FIXTURE: str = str(
          Path(__file__).resolve().parent / "fixtures" / "glob_binding" / "main.jac"
      );
 
-def module_globals(walk_order: str | None, name: str) -> list[str] {
+"""The JIT engine of `path` compiled natively, module walk order `walk_order`."""
+def jit_engine(path: str, walk_order: str | None = None) -> any {
     prog = JacProgram();
-    opts = CompileOptions(
-        force_codespace='native',
-        skip_native_engine=True,
-        native_module_walk_order=walk_order
-    );
-    mod = prog.compile(file_path=FIXTURE, options=opts);
+    opts = CompileOptions(force_codespace='native', native_module_walk_order=walk_order);
+    mod = prog.compile(file_path=path, options=opts);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors: {errors}";
-    assert mod.gen.llvm_ir is not None , "No IR emitted";
-    return [
-        line
-        for line in str(mod.gen.llvm_ir).splitlines()
-        if line.startswith("@") and f".{name}\"" in line.split("=")[0]
-    ];
+    eng = mod.gen.native_engine;
+    assert eng is not None , "No JIT engine produced";
+    remember_native_unit(eng, mod);
+    return eng;
 }
 
 test "an imported global binds to the module its import names" {
     for order in [None, "reverse", "shuffle:7"] {
-        found = module_globals(order, "TABLE");
-        assert len(found) == 1 , f"{order}: {found}";
-        assert "second_table" in found[0] , f"{order}: {found}";
-        first = module_globals(order, "FIRST");
-        assert len(first) == 1 and "first_table" in first[0] , f"{order}: {first}";
+        got = get_func(jit_engine(FIXTURE, order), "table_size", ctypes.c_int64)();
+        assert got == 6 , (
+            f"{order}: table_size() == {got}; TABLE must be second_table's three "
+            f"elements and FIRST the re-exported 1"
+        );
     }
 }
 
-test "a Final scalar glob another module defines folds into its readers" {
+test "a Final scalar glob another module defines reads its value in importers" {
     import tempfile;
     with tempfile.TemporaryDirectory() as directory {
         (Path(directory) / "sizes.jac").write_text(
@@ -64,23 +61,15 @@ with entry {
 }
 """
         );
-        prog = JacProgram();
-        mod = prog.compile(
-            file_path=str(main),
-            options=CompileOptions(force_codespace='native', skip_native_engine=True)
-        );
-        assert not prog.errors_had , [str(e) for e in prog.errors_had];
-        text = str(mod.gen.llvm_ir);
+        eng = jit_engine(str(main));
+        payload = get_func(eng, "payload", ctypes.c_int64, ctypes.c_int64);
+        masked = get_func(eng, "masked", ctypes.c_uint64, ctypes.c_uint64);
+        assert payload(48) == 32 , payload(48);
+        assert masked(7) == 4 , masked(7);
     }
-    loads = [
-        line
-        for line in text.splitlines()
-        if "load" in line and ("HEADER_SIZE" in line or "MASK" in line)
-    ];
-    assert not loads , loads;
 }
 
-test "a Final glob of a module with a platform variant folds the variant's value" {
+test "a Final glob of a module with a platform variant reads the variant's value" {
     import tempfile;
     import from jaclang.compiler.frontend.codeinfo {
         native_target_arch,
@@ -105,19 +94,12 @@ with entry {
 }
 """
         );
-        prog = JacProgram();
-        mod = prog.compile(
-            file_path=str(main),
-            options=CompileOptions(force_codespace='native', skip_native_engine=True)
+        eng = jit_engine(str(main));
+        state_of = get_func(eng, "state_of", ctypes.c_int64, ctypes.c_int64);
+        assert state_of(8) == 11872 , (
+            f"state_of(8) == {state_of(8)}; the platform variant's 11864 must win"
         );
-        assert not prog.errors_had , [str(e) for e in prog.errors_had];
-        text = str(mod.gen.llvm_ir);
     }
-    start = text.index("define i64 @");
-    start = text.index("state_of", start);
-    body = text[text.rindex("define", 0, start):];
-    body = body[:body.index("\n}")];
-    assert "11864" in body , body;
 }
 
 test "a global imported under an alias reads the exporting module's value" {

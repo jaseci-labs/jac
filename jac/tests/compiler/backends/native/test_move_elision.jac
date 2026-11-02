@@ -7,8 +7,8 @@ it skips the defensive `__rc_retain` and nulls the source slot so the source's
 later scope/iter cleanup release is a no-op. The destination inherits the single
 reference and frees it exactly once.
 
-These tests lock both halves: that the retain is actually elided (IR count) and
-that the result is sound at runtime (no leak, no double free over a heavy loop).
+The test locks the observable half: the result is sound at runtime (no leak, no
+double free over a heavy loop).
 
 The proof is native-owned and does NOT depend on the ownership checker: the
 elision lives in the native codegen path rather than the analysis schedule.
@@ -16,27 +16,15 @@ elision lives in the native codegen path rather than the analysis schedule.
 
 import ctypes;
 import os;
-import from tests.support {
-    TESTS_DIR,
-    compile_native_ir,
-    native_address,
-    native_force_opts,
-    source_spelled
-}
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
-import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
-
-"""Stand-in for `_can_native_move_lower` that disables move-lowering (baseline)."""
-def _no_move_lower(pass_self: any, nd: any) -> bool {
-    return False;
-}
 
 """Compile a fixture and return (engine, ir). Defaults to the nacompile path."""
 def compile_fixture(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
@@ -51,57 +39,11 @@ def compile_fixture(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
     return (eng, ir);
 }
 
-"""Count the __rc_retain call sites in the fixture's own code. The unit's
-exported `jac_retain` helper wraps one retain for the link glue and is not
-an assignment's retain, so its body is left out."""
-def retain_calls(fixture: str, move_lower: bool) -> int {
-    orig = NaIRGenPass._can_native_move_lower;
-    if not move_lower {
-        _napatch: any = NaIRGenPass;
-        _napatch._can_native_move_lower = _no_move_lower;
-    }
-    try {
-        ir = compile_native_ir(fixture);
-        count = 0;
-        in_helper = False;
-        for line in source_spelled(str(ir.gen.llvm_ir)).splitlines() {
-            if line.startswith("define ") {
-                in_helper = '.jac_retain"' in line;
-            }
-            if not in_helper and 'call void @"__rc_retain"' in line {
-                count += 1;
-            }
-        }
-        return count;
-    } finally {
-        NaIRGenPass._can_native_move_lower = orig;
-    }
-}
-
 """Get a ctypes-callable function from the JIT engine."""
 def get_func(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
     addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(restype, *argtypes)(addr);
-}
-
-test "move-lowering elides exactly the `b = a` alias retain" {
-    # A/B on identical IR: the ONLY difference is whether the move is lowered.
-    off = retain_calls("move_elision.jac", False);
-    on = retain_calls("move_elision.jac", True);
-    assert off - on == 1 , f"move-lowering should elide exactly one retain call; off={off} on={on}";
-    # `take(x: Box)` receives an i64 (pointer-as-int), so the aliasing `b = a`
-    # is the sole retain; move-lowering removes it entirely.
-    assert on == 0 , f"expected 0 retain calls after move-lowering, got {on}";
-}
-
-test "move-lowering nulls the source slot (keeps the free sound)" {
-    ir = compile_native_ir("move_elision.jac");
-    text = source_spelled(str(ir.gen.llvm_ir));
-    # Nulling the moved-from slot is what makes eliding the retain sound: the
-    # source's cleanup release then loads null and is a no-op, so the object is
-    # freed exactly once (by the destination's cleanup).
-    assert 'store %"Box"* null, %"Box"** %"a"' in text , "move source 'a' was not nulled after the move";
 }
 
 test "move-lowering is sound at runtime: correct result, no leak, no double free" {

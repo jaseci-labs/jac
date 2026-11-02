@@ -144,12 +144,15 @@ test "a bytecode compile preserves native products across compilation contexts" 
 }
 
 test "suppressed module lowering failures retain their cause" {
-    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+    import from jaclang.compiler.backends.native.mir.backend { MirNativePass }
     import from jaclang.compiler.frontend.diagnostics { E5092 }
-    original: any = NaIRGenPass._codegen_entry;
-    def fail_entry(pass_: any, nodes: any) {
-        original(pass_, nodes);
-        pass_.emit(E5092, kind="test operation", name="unlowerable_entry");
+    original: any = MirNativePass._run_impl;
+    def fail_entry(pass_: any, ir_in: any) -> any {
+        out = original(pass_, ir_in);
+        pass_.ctx.emit(
+            E5092, node_override=ir_in, kind="test operation", name="unlowerable_entry"
+        );
+        return out;
     }
     with tempfile.TemporaryDirectory() as directory {
         source = Path(directory) / "main.jac";
@@ -161,7 +164,7 @@ test "suppressed module lowering failures retain their cause" {
             skip_native_engine=True,
             suppress_codes=["E5092"]
         );
-        with patch.object(NaIRGenPass, "_codegen_entry", fail_entry) {
+        with patch.object(MirNativePass, "_run_impl", fail_entry) {
             unit_entry = program.native_units().compile_unit(str(source), options);
         }
         assert unit_entry is None;

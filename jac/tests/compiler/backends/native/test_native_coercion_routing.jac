@@ -1,6 +1,6 @@
 """Congruence tests for optional coercion at call and assignment seams (N2).
 
-`NaIRGenPass._coerce_type` implements optional wrapping and checked
+Native lowering implements optional wrapping and checked
 unwrapping. Three use sites did not route through it: method call
 arguments on the primitive dispatch path, method receivers, and
 tuple-unpack stores. The tests whose names begin "primitive call

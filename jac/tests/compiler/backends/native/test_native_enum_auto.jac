@@ -29,8 +29,6 @@ matched through its symbol, not its spelling: a module-local function called
 server lane answers what CPython answers.
 """
 
-import contextlib;
-import io;
 import os;
 import subprocess;
 import tempfile;
@@ -49,19 +47,6 @@ def compile_native(fixture: str) -> tuple[any, ...] {
         file_path=os.path.join(FIXTURES, fixture), options=native_force_opts()
     );
     return (prog, ir, );
-}
-
-
-"""The seam report a build would show on stderr for a fixture."""
-def seam_report(fixture: str) -> str {
-    buf = io.StringIO();
-    prog = JacProgram();
-    with contextlib.redirect_stderr(buf) {
-        prog.compile(
-            file_path=os.path.join(FIXTURES, fixture), options=native_force_opts()
-        );
-    }
-    return buf.getvalue();
 }
 
 
@@ -102,14 +87,10 @@ def na_lines(fixture: str) -> list[str] {
 }
 
 
-test "an all-auto enum lowers with no seam" {
+test "an all-auto enum lowers with no refusal" {
     (prog, ir) = compile_native("enum_auto.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert ir is not None and ir.gen.llvm_ir , "no native IR for the fixture";
-    seams = seam_report("enum_auto.jac");
-    assert "attribute access" not in seams , (
-        f"a member read off the class still refused:\n{seams}"
-    );
 }
 
 

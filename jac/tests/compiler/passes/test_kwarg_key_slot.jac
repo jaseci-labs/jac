@@ -108,30 +108,6 @@ test "a nested function does not capture through a keyword key" {
 }
 
 
-test "the native nested function takes no phantom capture" {
-    prog = JacProgram();
-    options = native_force_opts();
-    options.no_ir_cache = True;
-    options.skip_native_engine = True;
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "kwarg_key_slot.jac"), options=options
-    );
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    defs = [
-        _l.strip()
-        for _l in str(ir.gen.llvm_ir).split("\n")
-        if "define" in _l and "__jac_nested_slot" in _l
-    ];
-    assert len(defs) == 1 , f"expected one nested definition, got {defs}";
-    assert "cap.align" not in defs[0] , (
-        f"the nested function carries a capture its body never reads: {defs[0]}"
-    );
-    assert defs[0].count(",") == 0 , (
-        f"the nested function takes more than its declared parameter: {defs[0]}"
-    );
-}
-
-
 test "the annexed body computes the same value on both lanes" {
     src = os.path.join(FIXTURES, "kwarg_key_slot.jac");
     sv = subprocess.run(

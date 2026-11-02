@@ -103,7 +103,7 @@ impl MirLowering.str_subscript(nd: uni.AtomTrailer) -> (MirValue | None) {
         return None;
     }
     b = self.builder();
-    text = self.spill(self.lower_expr(nd.target));
+    text = self.spill(self.as_text(self.lower_expr(nd.target)));
     position = right.slices[0].start;
     at = self.coerce(self.lower_expr(position), mir_int(), position);
     count = self.runtime(

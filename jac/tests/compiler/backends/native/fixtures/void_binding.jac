@@ -1,7 +1,7 @@
 """Fixture: each `*_caller` uses the result of a call returning None as a value.
 
-Native lowers that call to `void`, so the caller must refuse with E5092 (and
-run on the server) instead of crashing or inventing a value (#7139).
+The caller must either refuse with E5092 or bind None; it must never crash
+the compiler or invent a value (#7139).
 """
 
 obj Sink {

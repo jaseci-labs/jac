@@ -5,9 +5,9 @@ typed tree into a typed mid-level IR (MIR), and it is the only place the
 compiler decides how a value is represented natively and whether a piece of
 code can be native at all. **Emission** turns MIR into LLVM IR mechanically.
 This page records the design, the invariants it keeps, the runtime ABI it must
-preserve, and the plan for replacing `NaIRGenPass`.
+preserve, and how it replaced the legacy `NaIRGenPass` backend.
 
-It replaces the old split, in which `NaIRGenPass` chose representations while
+It replaced the old split, in which `NaIRGenPass` chose representations while
 it emitted LLVM: a local took the LLVM type of the first value stored into it,
 signedness and ownership travelled as flags on LLVM values, container and
 closure identity were keyed on LLVM type strings, and a function that failed
@@ -222,7 +222,7 @@ the next pass relies on.
 
 The native runtime is Jac source, compiled once by this backend and linked
 like any other unit, the way `runtime/osp_kernel.jac` and
-`runtime/region_native.jac` already are. It replaces the
+`runtime/region_native.jac` already are. It replaced the
 helpers `NaIRGenPass` emitted as hand-built LLVM IR into every unit (about 175
 per unit, specialized per element type and sharing state through weak
 globals).
@@ -286,34 +286,23 @@ it does not generate. These stay exactly as they are:
 - **Startup:** glob-init order and contents, entry, the runtime probe, and the
   link glue.
 
-## Replacing `NaIRGenPass`
+## How MIR replaced `NaIRGenPass`
 
-The replacement is wholesale. The new backend lives in
-`compiler/backends/native/mir/` (types, lowering, passes, emission) and is
-developed on the epic's branch until it covers everything `NaIRGenPass` does;
-then `NaIRGenPass` and its 53 annex files are deleted in the same branch. The
-merged result has one native backend and no switch.
+The replacement was wholesale. MIR lives in `compiler/backends/native/mir/`
+(types, lowering, passes, emission) and was developed on the epic's branch
+until it covered what `NaIRGenPass` did; then `NaIRGenPass`, its 53 annex files
+and `primitives_native` were deleted in the same branch. There is one native
+backend, `MirNativePass`, and no switch.
 
-The native tests are the oracle. Of the 2,271 tests in
-`tests/compiler/backends/native/`:
-
-- **about 1,584 check behavior only** and must pass unchanged. They depend on
-  the ABI listed above through `tests/support.jac` (`compile_native`,
-  `get_func`, `native_str_func`, symbol lookup through the interface).
-- **about 335 assert on LLVM IR text or on `NaIRGenPass` internals** and are
-  rewritten against MIR or against behavior.
-- **about 61 assert that something must be demoted**, encoding per-function
-  seam behavior. Each is reviewed against the refusal rules above; about 31
-  assert that something must *not* demote and are kept.
-- `assert_native_identity` (byte-identical output across memory profiles and
-  Python) and the tier census (`tests/tier_census.jac`) are the whole-program
-  ratchets.
-
-Coverage is reached in this order, cheapest behavioral gates first: numerics;
-strings, containers and tuples; control flow and loops; archetypes and
-vtables; optionals and unions; closures and calls; generics; exceptions and
-unwinding; generators; OSP; C interop; the stdlib units; memory profiles;
-cross-module and Python interop; concurrency.
+The native tests are the oracle. Tests that check behavior only run unchanged
+against MIR through the ABI in `tests/support.jac` (`compile_native`,
+`get_func`, `native_str_func`, symbol lookup through the interface). Tests that
+asserted the legacy backend's LLVM IR text or its internals were rewritten
+against MIR or against observable behavior (results, drop counts, leaks,
+refusals), and deleted where they only pinned the legacy codegen shape.
+`assert_native_identity` (byte-identical output across memory profiles and
+Python) and the tier census (`tests/tier_census.jac`) are the whole-program
+ratchets.
 
 ## Open questions
 

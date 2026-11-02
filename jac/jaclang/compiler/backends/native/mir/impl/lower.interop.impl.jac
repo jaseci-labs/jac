@@ -527,15 +527,6 @@ impl MirLowering.condition(nd: uni.Expr) -> MirValue {
     return b.load(result, mir_bool());
 }
 
-impl MirLowering.address_call(nd: uni.FuncCall) -> MirValue {
-    args = self.call_args(nd);
-    result_type = self.expr_type(nd);
-    if len(args) != 1 or result_type.kind != MirKind.C_PTR {
-        raise MirRefused(mir_refusal("call", "addressof(C data symbol)", nd));
-    }
-    return self.c_address(self.lower_place(args[0]), result_type);
-}
-
 impl MirLowering.c_defines(decl: uni.UniNode) -> bool {
     return isinstance(decl, uni.Ability)
         and isinstance(decl.signature, uni.FuncSignature)

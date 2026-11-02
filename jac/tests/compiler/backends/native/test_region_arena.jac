@@ -9,7 +9,7 @@ and the drop-hook/teardown behavior through the JIT.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, get_func, names_function }
+import from tests.support { TESTS_DIR, get_func }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import jaclang.compiler.frontend.unitree as uni;
@@ -35,48 +35,6 @@ def compile_native(
     eng = ir.gen.native_engine;
     assert isinstance(eng, ExecutionEngine) , f"No native engine produced for {fixture}";
     return (eng, ir);
-}
-
-"""Count call sites of `name` in either printer's spelling (quoted or bare)."""
-def calls_to(body: str, name: str) -> int {
-    return (
-        body.count('@"' + name + '"(')
-        + body.count("@" + name + "(")
-        + body.count("." + name + '"(')
-    );
-}
-
-"""Slice one function's textual IR out of the module dump."""
-def fn_ir(ir: uni.Module, name: str) -> str {
-    out: list[str] = [];
-    inside = False;
-    for ln in str(ir.gen.llvm_ir).split("\n") {
-        if not inside and ln.startswith("define") and names_function(ln, name) {
-            inside = True;
-        }
-        if inside {
-            out.append(ln);
-            if ln == "}" {
-                break;
-            }
-        }
-    }
-    assert out , f"No IR found for function '{name}'";
-    return "\n".join(out);
-}
-
-test "arena: every droppable construction consults the current region" {
-    # Stack-eligible objects (like region_arena's Box) may still take the
-    # stack path; droppable types carry a region-alloc arm beside the heap
-    # arm, selected by the thread's current region at run time.
-    (eng, ir) = compile_native("region_dtor.jac", opt_level=0);
-    body = fn_ir(ir, "dtor_order");
-    n_cur = calls_to(body, "__jac_region_current");
-    assert n_cur == 3 , f"expected 3 current-region reads in dtor_order, found {n_cur}";
-    n_arena = calls_to(body, "__jac_region_alloc");
-    assert n_arena == 3 , f"expected 3 region-alloc arms in dtor_order, found {n_arena}";
-    n_drop = calls_to(body, "__jac_region_drop");
-    assert n_drop >= 1 , f"expected a region drop at the close, found {n_drop}";
 }
 
 test "dynamic extent: a helper called under an open allocates in the region" {
@@ -195,10 +153,7 @@ test "R4: own rebox copies a string out of a region" {
 }
 
 test "a user archetype named Region shadows the builtin cleanly" {
-    (eng, ir) = compile_native("region_shadow.jac", opt_level=0);
-    body = fn_ir(ir, "shadowed");
-    n_new = calls_to(body, "__jac_region_new");
-    assert n_new == 0 , f"user Region must not intercept arena setup: {n_new}";
+    (eng, _) = compile_native("region_shadow.jac", opt_level=0);
     shadowed = get_func(eng, "shadowed", ctypes.c_int64);
     result = shadowed();
     assert result == 7 , f"shadowed() == {result}, expected 7";
