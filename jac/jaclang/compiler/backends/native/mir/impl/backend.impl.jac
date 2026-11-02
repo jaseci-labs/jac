@@ -94,6 +94,8 @@ impl MirNativePass.interface(mir: MirModule, deps: list[str]) -> NativeIface {
             name=fn.name,
             symbol=fn.symbol,
             kind="test" if fn.name.startswith("__jac_test_") else "function",
+            is_pub=fn.symbol in mir.public and fn.symbol not in mir.demoted,
+            param_defaults=list(mir.defaults.get(fn.symbol, [])),
             param_names=[p.name for p in fn.params],
             param_types=[p.value.type.render() for p in fn.params],
             ret_type=fn.ret.render()

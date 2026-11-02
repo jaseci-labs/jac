@@ -296,6 +296,8 @@ obj MirLowering {
         state: (MirFnState | None) = None;
 
     def lower -> MirModule;
+    def declaration_types;
+    def record_defaults;
     def settle;
     def callees_of(fn: MirFunction) -> list[str];
     def module_abilities -> list[uni.Ability];
@@ -510,6 +512,10 @@ obj MirLowering {
         nd: uni.FuncCall, receiver: MirValue, arch: uni.Archetype, name: str
     ) -> (MirValue | None);
 
+    def unbound_method(
+        nd: uni.FuncCall, arch: uni.Archetype, name: str
+    ) -> (MirValue | None);
+
     def method_decl(
         arch: uni.Archetype, method: uni.Ability, name: str, site: uni.UniNode
     ) -> MirDecl;
@@ -629,7 +635,7 @@ obj MirLowering {
     def any_from_box(handle: MirValue) -> MirValue;
     def identity(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
     def bound_args(
-        nd: uni.FuncCall, ab: uni.Ability, method: bool
+        nd: uni.FuncCall, ab: uni.Ability, method: bool, leading: int = 0
     ) -> list[(uni.Expr | MirPacked | MirBound)];
 
     def has_spread(nd: uni.FuncCall) -> bool;
@@ -663,6 +669,9 @@ obj MirLowering {
     def identity_of(value: MirValue, site: uni.UniNode) -> MirValue;
     def list_concat(left: MirValue, right: MirValue) -> MirValue;
     def str_subscript(nd: uni.AtomTrailer) -> (MirValue | None);
+    def sys_attr(nd: uni.AtomTrailer) -> (MirValue | None);
+    def extern_global(symbol: str, t: MirType) -> MirValue;
+    def input_call(nd: uni.FuncCall) -> MirValue;
     def osp_call(name: str, args: list[MirValue]) -> MirValue;
     def osp_hold(value: MirValue) -> MirValue;
     def osp_layout(arch: (uni.Archetype | None)) -> (ArchetypeLayout | None);
@@ -962,6 +971,7 @@ obj MirLowering {
     ) -> MirDecl;
 
     def lower_instances;
+    def body_types(ab: uni.Ability);
     def enum_layout(t: (TypeBase | None), site: uni.UniNode) -> EnumLayout;
     def enum_layout_of(value_type: MirType, site: uni.UniNode) -> EnumLayout;
     def enum_payload(layout: EnumLayout, member: EnumMemberLayout) -> int;

@@ -533,7 +533,8 @@ impl is_kernel_unit_path(path: str) -> bool {
             return True;
         }
     }
-    return False;
+    return rp.endswith(".jac")
+        and os.path.dirname(rp) == real_path(kernel_unit_path("runtime/native"));
 }
 
 impl native_erased_import_names(module_name: str, names: list[str]) -> bool {

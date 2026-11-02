@@ -6020,6 +6020,8 @@ graph import compiler {
         },
     ]
     driver.pipeline --> [
+        backends.native.mir.lower.MirLowering.body_types { require },
+        backends.native.mir.lower.MirLowering.declaration_types { require },
         frontend.kernel_host.KernelHost.lower_dependency { product_ready, require },
         placement.placement_solver.invalidate_importers_es { invalidate },
         placement.placement_solver.solve_module_placement._invalidate_stale_codegen {
@@ -6083,6 +6085,14 @@ graph import compiler {
         },
     ]
     driver.pipeline_types --> [
+        backends.native.mir.lower.MirLowering.body_types {
+            AnalysisFact,
+            CompilationProduct
+        },
+        backends.native.mir.lower.MirLowering.declaration_types {
+            AnalysisFact,
+            CompilationProduct
+        },
         frontend.kernel_host.KernelHost.lower_dependency
             | placement.placement_solver.invalidate_importers_es
             | tools.jac_formatter_pass.unparse_module { CompilationProduct },
@@ -9439,6 +9449,9 @@ graph import compiler {
     passes.decl_impl_match_pass ++> driver.pipeline { DeclImplMatchPass }
     passes.declaration_type_pass ++> driver.pipeline.declaration_passes {
         DeclarationTypePass
+    }
+    passes.declaration_type_pass --> backends.native.mir.lower.MirLowering.declaration_types {
+        importer_lowers_bodies
     }
     passes.endpoint_effect_pass ++> driver.pipeline { EndpointEffectPass }
     passes.execution ++> driver.pass_driver | tests.xbackend_equiv { run_walker }

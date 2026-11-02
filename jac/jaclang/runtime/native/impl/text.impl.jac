@@ -1334,6 +1334,39 @@ impl __jac_rt_flush(fd: int) {
     fflush(__jac_stdio(i32(fd)));
 }
 
+impl __jac_rt_input_line -> ptr[u8] {
+    stream = __jac_stdio(i32(0));
+    sb = __jac_rt_sb_new(64);
+    got = 0;
+    while True {
+        ch = int(fgetc(stream));
+        if ch < 0 {
+            break;
+        }
+        got += 1;
+        if ch == 10 {
+            break;
+        }
+        __jac_rt_sb_byte(sb, ch);
+    }
+    if got == 0 {
+        __jac_rt_sb_drop(sb);
+        return ptr[u8](0);
+    }
+    return __jac_rt_sb_finish(sb);
+}
+
+impl __jac_rt_argv_list(argc: int, argv: int) -> int {
+    lst = __jac_rt_list_new(argc if argc > 0 else 1, KIND_STR);
+    i = 0;
+    while i < argc {
+        item = __mem_load_i64(argv + i * 8);
+        _push_text(lst, item, strlen(item));
+        i += 1;
+    }
+    return lst;
+}
+
 impl __jac_rt_repr_enter(o: int) -> int {
     st = __thread_local_block("jac_rt_repr_stack", 24);
     depth = __mem_load_i64(st);

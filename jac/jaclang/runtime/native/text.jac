@@ -7,9 +7,9 @@ import from c {
         key: int, dtor: int
     ) -> i32;  def pthread_getspecific(key: int) -> int;  def pthread_setspecific(
         key: int, value: int
-    ) -> i32;  def strlen(text: int) -> int;  def fflush(stream: ptr[u8]) -> i32;  def __jac_stdio(
-        fd: i32
-    ) -> ptr[u8];
+    ) -> i32;  def strlen(text: int) -> int;  def fflush(stream: ptr[u8]) -> i32;  def fgetc(
+        stream: ptr[u8]
+    ) -> i32;  def __jac_stdio(fd: i32) -> ptr[u8];
 }
 
 glob KIND_STR: int = 3,
@@ -180,6 +180,10 @@ def:pub __jac_rt_str_ascii(data: ptr[u8], n: int) -> ptr[u8];
 def:pub __jac_rt_hash_bytes(data: ptr[u8], n: int) -> int;
 
 def:pub __jac_rt_flush(fd: int);
+
+def:pub __jac_rt_input_line -> ptr[u8];
+
+def:pub __jac_rt_argv_list(argc: int, argv: int) -> int;
 
 def:pub __jac_rt_repr_enter(o: int) -> int;
 

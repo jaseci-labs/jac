@@ -47,7 +47,7 @@ impl TypeEvaluator._get_type_of_expression_core(
     }
     match expr {
         case CfgExpr():
-            return self._get_type_of_expression_core(expr.expr, expected_type);
+            return self.get_type_of_expression(expr.expr, expected_type);
 
         case String():
             if self.prefetch and self.prefetch.str_class {

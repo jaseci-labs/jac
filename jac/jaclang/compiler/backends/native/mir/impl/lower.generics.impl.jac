@@ -212,6 +212,7 @@ impl MirLowering.declare_instance(
     symbol: str,
     owner: (uni.Archetype | None)
 ) -> MirDecl {
+    self.body_types(ab);
     saved = self.type_env;
     self.type_env = env;
     try {
@@ -263,4 +264,35 @@ impl MirLowering.lower_instances {
     }
     self.mir.functions.extend(self.nested);
     self.nested = [];
+}
+
+impl MirLowering.body_types(ab: uni.Ability) {
+    owner = ab.find_parent_of_type(uni.Module);
+    import from jaclang.compiler.driver.pipeline { require }
+    import from jaclang.compiler.driver.pipeline_types {
+        AnalysisFact,
+        CompilationProduct
+    }
+    if owner is None or owner is self.module {
+        return;
+    }
+    qualname = uni.definition_qualname(ab);
+    if qualname {
+        self.module.record_comptime_definition(owner.loc.mod_path, qualname);
+    } else {
+        self.module.record_comptime_dependency(owner.loc.mod_path, body=True);
+    }
+    if self.prog.analysis.provides(owner, AnalysisFact.TYPE_OF) {
+        return;
+    }
+    if not require(self.prog, owner, CompilationProduct.ANALYSIS) {
+        raise MirRefused(
+            mir_refusal(
+                "function",
+                self.name_of(ab),
+                ab,
+                f"Its module {owner.loc.mod_path} could not be analysed, and this unit lowers its body."
+            )
+        );
+    }
 }
