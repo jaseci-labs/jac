@@ -8,6 +8,18 @@ impl MirLowering.lower -> MirModule {
             self.refusals.setdefault(name, []).append(refusal_of(err));
         }
     }
+    for elem in self.module.body {
+        if isinstance(elem, uni.Enum) {
+            try {
+                enum_type = self.enum_self_type(elem);
+                if enum_type is not None {
+                    self.declare_enum_methods(elem, enum_type);
+                }
+            } except MirRefused as err {
+                self.refusals.setdefault(elem.name.value, []).append(refusal_of(err));
+            }
+        }
+    }
     archetypes = self.module_archetypes();
     for arch in archetypes {
         try {
@@ -76,7 +88,7 @@ impl MirLowering.callees_of(fn: MirFunction) -> list[str] {
 impl MirLowering.settle {
     symbols: dict[str, str] = {};
     for decl in self.decls.values() {
-        symbols[self.name_of(decl.ability)] = decl.symbol;
+        symbols[self.decl_label(decl)] = decl.symbol;
     }
     for (name, reasons) in self.refusals.items() {
         symbol = symbols.get(name, name);
@@ -179,7 +191,7 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
     if self.is_generator(ab) {
         return self.lower_generator(decl);
     }
-    fn = MirFunction(name=self.name_of(ab), symbol=decl.symbol, ret=decl.ret);
+    fn = MirFunction(name=self.decl_label(decl), symbol=decl.symbol, ret=decl.ret);
     first = fn.new_block("entry");
     self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
     try {
@@ -193,7 +205,7 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
             sig = spec;
             body = body.body;
         }
-        if not isinstance(sig, uni.FuncSignature) {
+        if not isinstance(sig, uni.FuncSignature) and not ab.accessor_kind {
             raise MirRefused(mir_refusal("function", "event ability", ab));
         }
         abstract = ab.is_abstract and not isinstance(body, (list, tuple));
@@ -203,7 +215,9 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
         if not isinstance(body, (list, tuple)) {
             raise MirRefused(mir_refusal("function", "expression body", ab));
         }
-        nodes = self.param_nodes(sig, decl.self_type is not None);
+        nodes = self.param_nodes(sig, decl.self_type is not None)
+            if isinstance(sig, uni.FuncSignature)
+            else [];
         if decl.self_type is not None {
             receiver = fn.new_value(decl.self_type, "self");
             fn.params.append(MirParam(name="self", value=receiver));
@@ -396,6 +410,9 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
         self.container_set(holder, target.right, value, nd);
         return;
     }
+    if isinstance(target, uni.AtomTrailer) and self.accessor_set(target, nd) {
+        return;
+    }
     if isinstance(target, uni.AtomTrailer) and nd.value is not None {
         place = self.lower_place(target);
         value = self.lower_expr(nd.value);
@@ -429,6 +446,10 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
         }
         slot = self.local_slot(target.sym, target);
         current = self.builder().load(slot, slot.type);
+        if current.type.kind == MirKind.SET
+            and self.set_operator(op, current, value, True, nd) is not None {
+            return;
+        }
         if current.type.kind == MirKind.STR and op == Tok.PLUS {
             value = self.str_concat(current, self.coerce(value, mir_str(), nd));
         } else {
@@ -608,6 +629,19 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
     value: (MirValue | None) = None;
     if isinstance(nd, uni.Int) {
         bits = uni.int_literal_i64(nd.value);
+        if bits is None {
+            dest = self.literal_destination(nd);
+            shape = shape_of(dest) if dest else None;
+            if dest is not None and shape is not None and shape.is_float {
+                value = self.builder().const_float(
+                    uni.int_literal_float(nd.value), mir_float()
+                );
+                return self.coerce(value, mir_class_type_named(dest, nd), nd);
+            }
+            if shape is not None and not shape.signed and shape.width >= 64 {
+                bits = uni.int_literal_u64_bits(nd.value);
+            }
+        }
         if bits is None {
             raise MirRefused(
                 mir_refusal(
@@ -791,6 +825,10 @@ impl MirLowering.lower_binary(nd: uni.BinaryExpr) -> MirValue {
         and nd.op.name == Tok.PLUS {
         return self.list_concat(left, right);
     }
+    via_set = self.set_operator(nd.op.name, left, right, False, nd);
+    if via_set is not None {
+        return via_set;
+    }
     return self.arith(nd.op.name, left, right, nd);
 }
 
@@ -814,6 +852,8 @@ impl MirLowering.arith(
             right = self.opt_unwrap_checked(right, message);
         }
     }
+    left = self.enum_as_int(left, site);
+    right = self.enum_as_int(right, site);
     if op == Tok.STAR_POW {
         return self.power(left, right, site);
     }
@@ -887,6 +927,10 @@ impl MirLowering.arith(
                 b.overflows("floordiv", li, ri), "OverflowError", OVERFLOW_MESSAGE
             );
             return b.binary("floordiv", li, ri);
+        }
+        if li.type.signed {
+            minus_one = b.compare("eq", ri, b.const_int(-1, ri.type));
+            return b.binary("mod", li, b.select(minus_one, b.const_int(1, ri.type), ri));
         }
         return b.binary("mod", li, ri);
     }
@@ -1050,7 +1094,7 @@ impl MirLowering.lower_unary(nd: uni.UnaryExpr) -> MirValue {
     if op == Tok.NOT {
         return b.logical_not(self.truthy(self.lower_expr(nd.operand), nd.operand));
     }
-    value = self.lower_expr(nd.operand);
+    value = self.enum_as_int(self.lower_expr(nd.operand), nd);
     if op == Tok.BW_AND and mir_holds_ref(value.type) {
         return value;
     }
@@ -1195,6 +1239,12 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     }
     name = self.call_name(nd);
     if isinstance(nd.target, uni.Name)
+        and name.startswith("wrapping_")
+        and callee is not None
+        and os.path.basename(callee.loc.mod_path) == "jac_builtins.pyi" {
+        return self.wrapping_call(nd, name, self.call_args(nd));
+    }
+    if isinstance(nd.target, uni.Name)
         and (
             callee is None
             or os.path.basename(callee.loc.mod_path)
@@ -1293,7 +1343,8 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
         and value.id in self.fn_values {
         return self.function_value(self.fn_values[value.id], to);
     }
-    if MirKind.ENUM in (value.type.kind, to.kind) {
+    if MirKind.ENUM in (value.type.kind, to.kind)
+        and MirKind.OPT not in (value.type.kind, to.kind) {
         return self.enum_coerce(value, to, site);
     }
     if to.kind == MirKind.ITER {
@@ -1302,6 +1353,9 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
     if to.kind == MirKind.OPT {
         if value.type.kind == MirKind.NONE {
             return self.builder().const_null(to);
+        }
+        if value.type.kind == MirKind.OPT {
+            return self.opt_recast(value, to, site);
         }
         return self.opt_wrap(self.coerce(value, to.payload(), site), to);
     }
@@ -1441,6 +1495,10 @@ impl MirLowering.type_of(
     self.ensure_objects(t);
     if made.kind == MirKind.ENUM and isinstance(t, ClassType) {
         self.enum_types.setdefault(made.name, t);
+    } elif made.kind == MirKind.ENUM
+        and isinstance(t, EnumMemberType)
+        and t.enum_class is not None {
+        self.enum_types.setdefault(made.name, t.enum_class.clone_as_instance());
     }
     return made;
 }
@@ -1646,6 +1704,12 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         return textual;
     }
     if any(isinstance(arg, uni.KWPair) for arg in list(nd.params or [])) {
+        if name == "sorted" {
+            return self.iter_builtin(nd, name);
+        }
+        if name in ("min", "max") {
+            return self.extreme_named(nd, name);
+        }
         return None;
     }
     args = self.call_args(nd);
@@ -1672,6 +1736,9 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
     }
     if name == "isinstance" and len(args) == 2 {
         return self.isinstance_value(args[0], args[1], nd);
+    }
+    if name.startswith("wrapping_") {
+        return self.wrapping_call(nd, name, args);
     }
     found = self.builtin_value(nd, name);
     if found is None {
@@ -1945,6 +2012,10 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
     special = self.attr_special(nd);
     if special is not None {
         return special;
+    }
+    via_accessor = self.accessor_get(nd);
+    if via_accessor is not None {
+        return via_accessor;
     }
     if not nd.is_attr
         and isinstance(nd.right, uni.IndexSlice)
@@ -2260,13 +2331,13 @@ impl MirLowering.type_call(nd: uni.FuncCall) -> (MirValue | None) {
         raise MirRefused(mir_refusal("pointer cast", value.type.render(), nd));
     }
     if result_type.is_numeric() and len(args) == 1 {
-        value = self.lower_expr(args[0]);
+        value = self.enum_as_int(self.lower_expr(args[0]), args[0]);
         if value.type.kind in (MirKind.C_PTR, MirKind.C_FN)
             and result_type.kind == MirKind.INT {
             return self.emit_value(MirOp.PTR_INT, result_type, [value]);
         }
         if value.type.is_numeric() {
-            return self.builder().convert(value, result_type);
+            return self.checked_cast(value, result_type, nd);
         }
     }
     return None;
@@ -2278,6 +2349,15 @@ impl MirLowering.method_call(
     right = target.right;
     if not isinstance(right, uni.Name) {
         return None;
+    }
+    if right.value == "wrap" and self.sized_type_name(target.target) is not None {
+        return self.sized_wrap(nd, self.sized_type_name(target.target) or "");
+    }
+    if right.value in ("from_bytes", "to_bytes") {
+        via_bytes = self.int_bytes_call(nd, target, right.value);
+        if via_bytes is not None {
+            return via_bytes;
+        }
     }
     if isinstance(target.target, uni.Name)
         and target.target.value in ("bytes", "bytearray")
@@ -2301,6 +2381,12 @@ impl MirLowering.method_call(
     if receiver_type.kind
         in (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY) {
         return self.text_method(self.lower_expr(target.target), right.value, nd);
+    }
+    if receiver_type.kind == MirKind.ENUM {
+        via_enum = self.enum_method_call(nd, self.lower_expr(target.target), right.value);
+        if via_enum is not None {
+            return via_enum;
+        }
     }
     owner_arch = self.arch_of_type(target.target.type)
         if isinstance(target.target, uni.Expr)
@@ -2425,4 +2511,28 @@ impl MirLowering.declare_global(nd: uni.Name) -> (MirGlobal | None) {
         found = made;
     }
     return found;
+}
+
+impl MirLowering.literal_destination(nd: uni.Int) -> (str | None) {
+    dest = nd.coerce_to;
+    up: (uni.UniNode | None) = nd.parent;
+    while dest is None
+        and (
+            isinstance(up, uni.AtomUnit)
+            or (
+                isinstance(up, uni.UnaryExpr)
+                and isinstance(up.op, uni.Token)
+                and up.op.name in (Tok.PLUS, Tok.MINUS)
+            )
+        ) {
+        dest = up.coerce_to;
+        up = up.parent;
+    }
+    if dest is None
+        and isinstance(up, uni.FuncCall)
+        and isinstance(up.target, uni.Name)
+        and shape_of(up.target.value) is not None {
+        dest = up.target.value;
+    }
+    return dest;
 }

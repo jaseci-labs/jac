@@ -136,3 +136,22 @@ impl MirLowering.opt_end(
     b.position(done);
     return b.load(held, held.type);
 }
+
+impl MirLowering.opt_recast(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    source = self.spill(value);
+    held = self.temp_slot(to);
+    some = fn.new_block("opt.recast.some");
+    none = fn.new_block("opt.recast.none");
+    done = fn.new_block("opt.recast.done");
+    b.cond_branch(self.opt_present(source), some, none);
+    b.position(some);
+    b.store(held, self.opt_wrap(self.coerce(self.opt_get(source), to.payload(), site), to));
+    b.branch(done);
+    b.position(none);
+    b.store(held, b.const_null(to));
+    b.branch(done);
+    b.position(done);
+    return b.load(held, to);
+}

@@ -3625,6 +3625,7 @@ graph import {
     runtime.scalars ++> [
         compiler.backends.es.esast_gen_pass.EsastGenPass._apply_fw_coercion
             | compiler.backends.es.primitives_es.ESBuiltinEmitter.emit_print
+            | compiler.backends.native.mir.lower
             | compiler.backends.native.mir.lower_types
             | compiler.backends.py.jcir_gen_pass
             | compiler.types.ct_eval
@@ -10067,7 +10068,9 @@ graph import compiler {
         backends.native.mir.lower {
             NON_DISPATCHED_METHODS,
             VTABLE_HEADER_SLOTS,
+            accessor_slot_name,
             adopt_imported_bases,
+            archetype_accessors,
             archetype_native_name,
             class_type_native_name,
             enum_decl_of,
@@ -10956,6 +10959,7 @@ graph import compiler {
         backends.native.mir.lower | backends.native.mir.lower_types {
             AnyType,
             ClassType,
+            EnumMemberType,
             FunctionType,
             TypeVarType,
             UnionType

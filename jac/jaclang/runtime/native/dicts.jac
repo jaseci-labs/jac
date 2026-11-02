@@ -79,6 +79,18 @@ def:pub __jac_rt_dict_update(dst: int, src: int, key_kind: int, val_kind: int);
 
 def:pub __jac_rt_dict_eq(a: int, b: int, key_kind: int, val_kind: int) -> bool;
 
+def:pub __jac_rt_dict_popitem(d: int, key_kind: int, val_kind: int, key_out: int) -> int;
+
+def:pub __jac_rt_set_filter(a: int, b: int, kind: int, keep_shared: bool) -> int;
+
+def:pub __jac_rt_set_xor(a: int, b: int, kind: int) -> int;
+
+def:pub __jac_rt_set_within(a: int, b: int, kind: int) -> bool;
+
+def:pub __jac_rt_set_disjoint(a: int, b: int, kind: int) -> bool;
+
+def _set_has(s: int, h: int, key: int, kind: int) -> bool;
+
 def _collecting -> bool;
 
 def _mul64(a: int, b: int) -> int;

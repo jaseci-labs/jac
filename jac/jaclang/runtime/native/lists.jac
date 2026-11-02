@@ -96,6 +96,8 @@ def:pub __jac_rt_list_slice(
 
 def:pub __jac_rt_list_sort(lst: int, kind: int, reverse: bool);
 
+def:pub __jac_rt_list_sort_keyed(lst: int, keys: int, kind: int, reverse: bool);
+
 def _collecting -> bool;
 
 def _elem_cmp(a: int, b: int, kind: int) -> int;
@@ -111,3 +113,14 @@ def _list_drop_ref(o: int);
 def _list_trace_ref(o: int, visit_fn: int);
 
 def _merge(src: int, dst: int, lo: int, mid: int, hi: int, kind: int, reverse: bool);
+
+def _merge_keyed(
+    src: int,
+    dst: int,
+    lo: int,
+    mid: int,
+    hi: int,
+    keys: int,
+    kind: int,
+    reverse: bool
+);

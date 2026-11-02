@@ -49,6 +49,9 @@ impl mir_type_of(
     if isinstance(t, ClassType) {
         return mir_class_type(t, position, site, env);
     }
+    if isinstance(t, EnumMemberType) and t.enum_class is not None {
+        return mir_class_type(t.enum_class.clone_as_instance(), position, site, env);
+    }
     if isinstance(t, UnionType) {
         return mir_union_type(t, position, site, env);
     }
@@ -243,6 +246,32 @@ impl mir_class_type(
         }
         return mir_tuple(
             [mir_type_of(member, MirPosition.VALUE, site, env) for member in members]
+        );
+    }
+    if name in ("dict_keys", "dict_values", "dict_items") {
+        args = t.private.type_args if t.private else None;
+        if not args or len(args) != 2 {
+            raise MirRefused(
+                mir_refusal("type", f"{name} without element types", site)
+            );
+        }
+        if name == "dict_items" {
+            return mir_list(
+                mir_tuple(
+                    [
+                        mir_type_of(args[0], MirPosition.VALUE, site, env),
+                        mir_type_of(args[1], MirPosition.VALUE, site, env)
+                    ]
+                )
+            );
+        }
+        return mir_list(
+            mir_type_of(
+                args[0] if name == "dict_keys" else args[1],
+                MirPosition.ELEMENT,
+                site,
+                env
+            )
         );
     }
     if name in ("list", "dict", "set") {

@@ -290,7 +290,7 @@ impl __jac_rt_sb_add(sb: int, data: ptr[u8], n: int) {
 impl __jac_rt_sb_byte(sb: int, byte: int) {
     _sb_reserve(sb, 1);
     size = __mem_load_i64(sb + SB_LEN);
-    __mem_store_i8(__mem_load_i64(sb + SB_DATA) + size, i8(byte));
+    __mem_store_i8(__mem_load_i64(sb + SB_DATA) + size, i8.wrap(byte));
     __mem_store_i64(sb + SB_LEN, size + 1);
 }
 
@@ -729,7 +729,7 @@ impl __jac_rt_str_case(data: ptr[u8], n: int, mode: int) -> ptr[u8] {
         } elif up {
             c += 32;
         }
-        __mem_store_i8(out + i, i8(c));
+        __mem_store_i8(out + i, i8.wrap(c));
         i += 1;
     }
     return __jac_rt_sb_finish(sb);
@@ -1178,22 +1178,22 @@ impl __jac_rt_str_chr(cp: int) -> ptr[u8] {
     buf = __thread_local_block("jac_rt_chr", 8);
     w = 4;
     if cp < 128 {
-        __mem_store_i8(buf, i8(cp));
+        __mem_store_i8(buf, i8.wrap(cp));
         w = 1;
     } elif cp < 2048 {
-        __mem_store_i8(buf, i8(192 | (cp >> 6)));
-        __mem_store_i8(buf + 1, i8(128 | (cp & 63)));
+        __mem_store_i8(buf, i8.wrap(192 | (cp >> 6)));
+        __mem_store_i8(buf + 1, i8.wrap(128 | (cp & 63)));
         w = 2;
     } elif cp < 65536 {
-        __mem_store_i8(buf, i8(224 | (cp >> 12)));
-        __mem_store_i8(buf + 1, i8(128 | ((cp >> 6) & 63)));
-        __mem_store_i8(buf + 2, i8(128 | (cp & 63)));
+        __mem_store_i8(buf, i8.wrap(224 | (cp >> 12)));
+        __mem_store_i8(buf + 1, i8.wrap(128 | ((cp >> 6) & 63)));
+        __mem_store_i8(buf + 2, i8.wrap(128 | (cp & 63)));
         w = 3;
     } else {
-        __mem_store_i8(buf, i8(240 | (cp >> 18)));
-        __mem_store_i8(buf + 1, i8(128 | ((cp >> 12) & 63)));
-        __mem_store_i8(buf + 2, i8(128 | ((cp >> 6) & 63)));
-        __mem_store_i8(buf + 3, i8(128 | (cp & 63)));
+        __mem_store_i8(buf, i8.wrap(240 | (cp >> 18)));
+        __mem_store_i8(buf + 1, i8.wrap(128 | ((cp >> 12) & 63)));
+        __mem_store_i8(buf + 2, i8.wrap(128 | ((cp >> 6) & 63)));
+        __mem_store_i8(buf + 3, i8.wrap(128 | (cp & 63)));
     }
     return __jac_rt_str_new(ptr[u8](buf), w);
 }

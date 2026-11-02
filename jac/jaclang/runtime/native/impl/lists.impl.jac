@@ -590,3 +590,92 @@ impl __jac_rt_list_sort(lst: int, kind: int, reverse: bool) {
     }
     free(scratch);
 }
+
+impl _merge_keyed(
+    src: int,
+    dst: int,
+    lo: int,
+    mid: int,
+    hi: int,
+    keys: int,
+    kind: int,
+    reverse: bool
+) {
+    i = lo;
+    j = mid;
+    k = lo;
+    while k < hi {
+        take_right = False;
+        if i >= mid {
+            take_right = True;
+        } elif j < hi {
+            order = _elem_cmp(
+                __mem_load_i64(keys + __mem_load_i64(src + j * SLOT) * SLOT),
+                __mem_load_i64(keys + __mem_load_i64(src + i * SLOT) * SLOT),
+                kind
+            );
+            take_right = (order < 0 and not reverse) or (order > 0 and reverse);
+        }
+        if take_right {
+            __mem_store_i64(dst + k * SLOT, __mem_load_i64(src + j * SLOT));
+            j += 1;
+        } else {
+            __mem_store_i64(dst + k * SLOT, __mem_load_i64(src + i * SLOT));
+            i += 1;
+        }
+        k += 1;
+    }
+}
+
+impl __jac_rt_list_sort_keyed(lst: int, keys: int, kind: int, reverse: bool) {
+    n = __mem_load_i64(lst + LIST_LEN);
+    if n < 2 {
+        return;
+    }
+    first = malloc(n * SLOT);
+    second = malloc(n * SLOT);
+    if first == 0 or second == 0 {
+        free(first);
+        free(second);
+        return;
+    }
+    i = 0;
+    while i < n {
+        __mem_store_i64(first + i * SLOT, i);
+        i += 1;
+    }
+    key_data = __mem_load_i64(keys + LIST_DATA);
+    src = first;
+    dst = second;
+    width = 1;
+    while width < n {
+        lo = 0;
+        while lo < n {
+            mid = lo + width;
+            if mid > n {
+                mid = n;
+            }
+            hi = mid + width;
+            if hi > n {
+                hi = n;
+            }
+            _merge_keyed(src, dst, lo, mid, hi, key_data, kind, reverse);
+            lo = hi;
+        }
+        held = src;
+        src = dst;
+        dst = held;
+        width = width * 2;
+    }
+    data = __mem_load_i64(lst + LIST_DATA);
+    memcpy(dst, data, n * SLOT);
+    k = 0;
+    while k < n {
+        __mem_store_i64(
+            data + k * SLOT, __mem_load_i64(dst + __mem_load_i64(src + k * SLOT) * SLOT)
+        );
+        k += 1;
+    }
+    free(first);
+    free(second);
+}

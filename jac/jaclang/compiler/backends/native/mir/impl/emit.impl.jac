@@ -261,7 +261,13 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
         self.bind(instr.result, made);
     } elif op == MirOp.OPT_MAKE {
         made = ir.Constant(self.llvm_type(type_arg_of(instr)), None);
-        made = b.insert_value(made, ir.Constant(ir.IntType(1), 1), 0);
+        made = b.insert_value(
+            made,
+            self.value(instr.operands[1])
+                if len(instr.operands) > 1
+                else ir.Constant(ir.IntType(1), 1),
+            0
+        );
         self.bind(instr.result, b.insert_value(made, self.value(instr.operands[0]), 1));
     } elif op == MirOp.TUPLE_MAKE {
         made = ir.Constant(self.llvm_type(type_arg_of(instr)), None);

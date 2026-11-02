@@ -61,6 +61,10 @@ impl MirLowering.attr_special(nd: uni.AtomTrailer) -> (MirValue | None) {
     if member is not None {
         return member;
     }
+    bound = self.sized_bound(nd);
+    if bound is not None {
+        return bound;
+    }
     target_type = self.expr_type(nd.target);
     if target_type.kind == MirKind.ENUM and nd.right.value in ("name", "value") {
         return self.enum_attr(self.lower_expr(nd.target), nd.right.value, nd);
@@ -93,7 +97,7 @@ impl MirLowering.enum_member(nd: uni.AtomTrailer) -> (MirValue | None) {
 impl MirLowering.enum_attr(
     value: MirValue, name: str, site: uni.AtomTrailer
 ) -> MirValue {
-    layout = self.enum_layout(site.target.type, site);
+    layout = self.enum_layout_of(value.type, site);
     if name == "name" {
         return self.enum_select(
             value, layout, [member.name for member in layout.members]
@@ -127,6 +131,18 @@ impl MirLowering.enum_select(
 
 impl MirLowering.enum_str(value: MirValue, site: uni.UniNode) -> MirValue {
     layout = self.enum_layout_of(value.type, site);
+    custom = self.enum_methods.get(f"{value.type.name}.__str__");
+    if custom is not None and not custom.params {
+        made = self.builder().call(custom.symbol, [value], custom.ret);
+        if made is not None {
+            return self.coerce(made, mir_str(), site);
+        }
+    }
+    if self.enum_is_text(value.type) and layout.is_string_enum {
+        return self.enum_select(
+            value, layout, [member.str_value or "" for member in layout.members]
+        );
+    }
     return self.enum_select(
         value, layout, [f"{layout.name}.{member.name}" for member in layout.members]
     );
@@ -136,7 +152,37 @@ impl MirLowering.compare_special(
     op: str, left: MirValue, right: MirValue, site: uni.UniNode
 ) -> (MirValue | None) {
     b = self.builder();
-    if left.type.kind == MirKind.ENUM or right.type.kind == MirKind.ENUM {
+    if (left.type.kind == MirKind.ENUM or right.type.kind == MirKind.ENUM)
+        and op not in (Tok.KW_IN, Tok.KW_NIN) {
+        if left.type is not right.type
+            and (left.type.is_numeric() or right.type.is_numeric()) {
+            as_left = self.enum_as_int(left, site);
+            as_right = self.enum_as_int(right, site);
+            if as_left.type.kind != MirKind.ENUM and as_right.type.kind != MirKind.ENUM {
+                return self.compare_values(op, as_left, as_right, site);
+            }
+        }
+        if left.type is not right.type
+            and op in (Tok.EE, Tok.NE)
+            and (self.is_text(left) or self.is_text(right)) {
+            member = left if left.type.kind == MirKind.ENUM else right;
+            if self.enum_is_text(member.type) {
+                text = self.enum_select(
+                    member,
+                    self.enum_layout_of(member.type, site),
+                    [
+                        known.str_value or ""
+                        for known in self.enum_layout_of(member.type, site).members
+                    ]
+                );
+                return self.compare_values(
+                    op,
+                    text if member is left else left,
+                    text if member is right else right,
+                    site
+                );
+            }
+        }
         if left.type is not right.type {
             raise MirRefused(
                 mir_refusal(
@@ -181,9 +227,40 @@ impl MirLowering.compare_special(
     return None;
 }
 
+impl MirLowering.enum_is_text(t: MirType) -> bool {
+    known = self.enum_types.get(t.name);
+    if not isinstance(known, ClassType) or known._shared is None {
+        return False;
+    }
+    return any(
+        ancestor._shared is not None and ancestor.shared.class_name == "str"
+        for ancestor in known.shared.mro
+        if isinstance(ancestor, ClassType)
+    );
+}
+
+impl MirLowering.enum_as_int(value: MirValue, site: uni.UniNode) -> MirValue {
+    if value.type.kind != MirKind.ENUM
+        or self.enum_layout_of(value.type, site).is_string_enum {
+        return value;
+    }
+    return self.builder().convert(value, mir_int());
+}
+
 impl MirLowering.enum_coerce(
     value: MirValue, to: MirType, site: uni.UniNode
 ) -> MirValue {
+    if value.type.kind == MirKind.ENUM and to.is_numeric() {
+        as_int = self.enum_as_int(value, site);
+        if as_int.type.kind == MirKind.INT {
+            return self.coerce(as_int, to, site);
+        }
+    }
+    if to.kind == MirKind.ENUM
+        and value.type.kind in (MirKind.INT, MirKind.BOOL)
+        and not self.enum_layout_of(to, site).is_string_enum {
+        return self.builder().convert(self.coerce(value, mir_int(), site), to);
+    }
     raise MirRefused(
         mir_refusal(
             "conversion",
@@ -278,4 +355,145 @@ impl MirLowering.enum_cursor(collection: uni.Expr) -> MirIterCursor {
         position=position,
         payloads=[self.enum_payload(layout, member) for member in layout.members]
     );
+}
+
+impl MirLowering.enum_self_type(decl: (uni.Archetype | uni.Enum)) -> (MirType | None) {
+    sym = decl.name.sym if decl.name is not None else None;
+    if sym is None {
+        return None;
+    }
+    made = self.prog.get_type_evaluator().get_type_of_symbol(sym);
+    if not isinstance(made, ClassType) or not is_enum_class_type(made) {
+        return None;
+    }
+    found = self.type_of(made.clone_as_instance(), MirPosition.VALUE, decl);
+    return found if found.kind == MirKind.ENUM else None;
+}
+
+impl MirLowering.declare_enum_methods(
+    decl: (uni.Archetype | uni.Enum), self_type: MirType
+) {
+    members: list[uni.Ability] = [];
+    for stmt in list(ModuleFacts.unwrap_body(decl) or []) {
+        if isinstance(stmt, uni.Ability) {
+            members.append(stmt);
+        } elif isinstance(stmt, uni.ModuleCode) {
+            for inner in stmt.body {
+                if isinstance(inner, uni.Ability) {
+                    members.append(inner);
+                }
+            }
+        }
+    }
+    path = self.module.loc.mod_path;
+    for method in members {
+        sig = method.signature;
+        if not isinstance(sig, uni.FuncSignature) or method.is_static {
+            continue;
+        }
+        name = self.name_of(method);
+        params: list[MirType] = [];
+        for pv in self.param_nodes(sig, True) {
+            params.append(self.symbol_type(pv.name.sym, pv));
+        }
+        fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
+            self.ability_sym(method)
+        );
+        ret = mir_none();
+        if isinstance(fn_type, FunctionType) {
+            ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, method);
+        }
+        made = MirDecl(
+            ability=method,
+            symbol=native_symbol_name(
+                native_unit_prefix(path),
+                native_unit_spelling(f"{self_type.name}.{name}", path)
+            ),
+            params=params,
+            ret=ret,
+            self_type=self_type
+        );
+        key = id(method);
+        self.decl_syms[id(self.ability_sym(method))] = key;
+        self.decls[key] = made;
+        self.enum_methods[f"{self_type.name}.{name}"] = made;
+        self.order.append(key);
+    }
+}
+
+impl MirLowering.enum_method_call(
+    nd: uni.FuncCall, receiver: MirValue, name: str
+) -> (MirValue | None) {
+    decl = self.enum_methods.get(f"{receiver.type.name}.{name}")
+        or self.foreign_enum_method(receiver.type, name);
+    if decl is None {
+        return None;
+    }
+    args = self.bound_args(nd, decl.ability, True);
+    if len(args) != len(decl.params) {
+        raise MirRefused(mir_refusal("call", f"{name} with {len(args)} arguments", nd));
+    }
+    values = [receiver]
+        + [self.bound_value(arg, ptype) for (arg, ptype) in zip(args, decl.params)];
+    made = self.builder().call(decl.symbol, values, decl.ret);
+    return made if made is not None else self.builder().const_bool(False);
+}
+
+impl MirLowering.foreign_enum_method(enum_type: MirType, name: str) -> (MirDecl | None) {
+    known = self.enum_types.get(enum_type.name);
+    decl = enum_decl_of(known) if known is not None else None;
+    if decl is None {
+        return None;
+    }
+    unit = decl.find_parent_of_type(uni.Module);
+    if unit is None or unit is self.module or not unit.loc.mod_path.endswith(".jac") {
+        return None;
+    }
+    members: list[uni.Ability] = [];
+    for stmt in list(ModuleFacts.unwrap_body(decl) or []) {
+        if isinstance(stmt, uni.Ability) {
+            members.append(stmt);
+        } elif isinstance(stmt, uni.ModuleCode) {
+            for inner in stmt.body {
+                if isinstance(inner, uni.Ability) {
+                    members.append(inner);
+                }
+            }
+        }
+    }
+    for method in members {
+        sig = method.signature;
+        if method.name_ref is None
+            or self.name_of(method) != name
+            or not isinstance(sig, uni.FuncSignature)
+            or method.is_static {
+            continue;
+        }
+        path = unit.loc.mod_path;
+        params = [self.symbol_type(pv.name.sym, pv) for pv in self.param_nodes(sig, True)];
+        fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
+            self.ability_sym(method)
+        );
+        ret = mir_none();
+        if isinstance(fn_type, FunctionType) {
+            ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, method);
+        }
+        symbol = native_symbol_name(
+            native_unit_prefix(path),
+            native_unit_spelling(f"{enum_type.name}.{name}", path)
+        );
+        self.mir.externs[symbol] = MirExtern(
+            symbol=symbol, ret=ret, params=[enum_type] + params
+        );
+        real = os.path.realpath(path);
+        if real not in self.mir.deps {
+            self.mir.deps.append(real);
+        }
+        made = MirDecl(
+            ability=method, symbol=symbol, params=params, ret=ret, self_type=enum_type
+        );
+        self.enum_methods[f"{enum_type.name}.{name}"] = made;
+        return made;
+    }
+    return None;
 }

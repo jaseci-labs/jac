@@ -41,8 +41,12 @@ impl MirLowering.captured_symbols(
             if sym is None or id(sym) in seen or sym.decl is None {
                 continue;
             }
-            if self.function_of(name) is owner
-                or self.function_of(sym.decl) is not owner {
+            declared_in = self.function_of(sym.decl);
+            holder = sym.decl.parent;
+            if isinstance(holder, uni.Ability) and holder.name_ref is sym.decl {
+                declared_in = self.function_of(holder);
+            }
+            if self.function_of(name) is owner or declared_in is not owner {
                 continue;
             }
             seen.add(id(sym));

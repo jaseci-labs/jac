@@ -677,3 +677,94 @@ impl _any_hash(box: int) -> int {
     }
     return _mix(payload);
 }
+
+impl __jac_rt_dict_popitem(d: int, key_kind: int, val_kind: int, key_out: int) -> int {
+    if __mem_load_i64(d + DICT_LEN) == 0 {
+        if val_kind < 0 {
+            raise KeyError("pop from an empty set");
+        }
+        raise KeyError("popitem(): dictionary is empty");
+    }
+    order = __mem_load_i64(d + DICT_ORDER);
+    e = __mem_load_i64(d + DICT_USED) - 1;
+    while __mem_load_i64(order + e * SLOT) < 0 {
+        e -= 1;
+    }
+    key = __mem_load_i64(__mem_load_i64(d + DICT_KEYS) + e * SLOT);
+    if key_out != 0 {
+        __mem_store_i64(key_out, key);
+    }
+    if val_kind >= 0 {
+        __jac_rt_elem_retain(key, key_kind);
+    }
+    return __jac_rt_dict_pop(d, key, key_kind, val_kind, 0);
+}
+
+impl _set_has(s: int, h: int, key: int, kind: int) -> bool {
+    if __mem_load_i64(s + DICT_LEN) == 0 {
+        return False;
+    }
+    return _probe(s, h, key, kind) >= 0;
+}
+
+impl __jac_rt_set_filter(a: int, b: int, kind: int, keep_shared: bool) -> int {
+    made = __jac_rt_dict_new(kind, KIND_NONE);
+    e = 0;
+    while e < __mem_load_i64(a + DICT_USED) {
+        h = __mem_load_i64(__mem_load_i64(a + DICT_ORDER) + e * SLOT);
+        if h >= 0 {
+            key = __mem_load_i64(__mem_load_i64(a + DICT_KEYS) + e * SLOT);
+            if _set_has(b, h, key, kind) == keep_shared {
+                _store(made, h, key, 0, kind, KIND_NONE);
+            }
+        }
+        e += 1;
+    }
+    return made;
+}
+
+impl __jac_rt_set_xor(a: int, b: int, kind: int) -> int {
+    made = __jac_rt_set_filter(a, b, kind, False);
+    e = 0;
+    while e < __mem_load_i64(b + DICT_USED) {
+        h = __mem_load_i64(__mem_load_i64(b + DICT_ORDER) + e * SLOT);
+        if h >= 0 {
+            key = __mem_load_i64(__mem_load_i64(b + DICT_KEYS) + e * SLOT);
+            if not _set_has(a, h, key, kind) {
+                _store(made, h, key, 0, kind, KIND_NONE);
+            }
+        }
+        e += 1;
+    }
+    return made;
+}
+
+impl __jac_rt_set_within(a: int, b: int, kind: int) -> bool {
+    e = 0;
+    while e < __mem_load_i64(a + DICT_USED) {
+        h = __mem_load_i64(__mem_load_i64(a + DICT_ORDER) + e * SLOT);
+        if h >= 0
+            and not _set_has(
+                b, h, __mem_load_i64(__mem_load_i64(a + DICT_KEYS) + e * SLOT), kind
+            ) {
+            return False;
+        }
+        e += 1;
+    }
+    return True;
+}
+
+impl __jac_rt_set_disjoint(a: int, b: int, kind: int) -> bool {
+    e = 0;
+    while e < __mem_load_i64(a + DICT_USED) {
+        h = __mem_load_i64(__mem_load_i64(a + DICT_ORDER) + e * SLOT);
+        if h >= 0
+            and _set_has(
+                b, h, __mem_load_i64(__mem_load_i64(a + DICT_KEYS) + e * SLOT), kind
+            ) {
+            return False;
+        }
+        e += 1;
+    }
+    return True;
+}

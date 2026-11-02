@@ -1378,13 +1378,13 @@ impl MirLowering.builtin_sorted(
     nd: uni.FuncCall, args: list[uni.Expr], named: dict[str, uni.Expr]
 ) -> MirValue {
     b = self.builder();
-    if len(args) != 1 or set(named) - {"reverse"} {
+    if len(args) != 1 or set(named) - {"reverse", "key"} {
         raise MirRefused(
             mir_refusal(
                 "call",
                 "sorted arguments",
                 nd,
-                "Native sorted() takes one iterable and an optional `reverse`; a `key` function is not lowered."
+                "Native sorted() takes one iterable and optional `key` and `reverse`."
             )
         );
     }
@@ -1394,7 +1394,7 @@ impl MirLowering.builtin_sorted(
     }
     elem = result_type.payload();
     kind = self.elem_kind(elem, nd);
-    if kind == KIND_REF {
+    if kind == KIND_REF and "key" not in named {
         raise MirRefused(
             mir_refusal(
                 "call",
@@ -1417,13 +1417,86 @@ impl MirLowering.builtin_sorted(
     } else {
         made = self.drain(source, elem, nd);
     }
+    key_fn: (MirValue | None) = None;
+    if "key" in named {
+        key_fn = self.key_function(named["key"]);
+    }
     flag = b.const_bool(False);
     order = named.get("reverse");
     if order is not None {
         flag = self.truthy(self.lower_expr(order), order);
     }
+    if key_fn is not None {
+        held = self.spill(made);
+        self.keyed_sort(held, key_fn, flag, nd);
+        return held;
+    }
     self.runtime("__jac_rt_list_sort", [made, b.const_int(kind, mir_int()), flag]);
     return made;
+}
+
+impl MirLowering.key_function(key_nd: uni.Expr) -> MirValue {
+    made = self.lower_expr(key_nd);
+    if made.type.kind != MirKind.FN {
+        made = self.coerce(made, self.expr_type(key_nd), key_nd);
+    }
+    if made.type.kind != MirKind.FN or len(made.type.args) != 2 {
+        raise MirRefused(
+            mir_refusal(
+                "call argument",
+                f"key function of {made.type.render()}",
+                key_nd,
+                "A native sort or min/max key is a function of one argument."
+            )
+        );
+    }
+    return self.spill(made);
+}
+
+impl MirLowering.key_slot_type(key_fn: MirValue, site: uni.UniNode) -> MirType {
+    key_type = key_fn.type.args[0];
+    if key_type.kind == MirKind.STR {
+        key_type = mir_str_ref();
+    }
+    if self.elem_kind(key_type, site) == KIND_REF {
+        raise MirRefused(
+            mir_refusal(
+                "call argument",
+                f"key of {key_type.render()}",
+                site,
+                "Native keys order ints, floats, bools, strings, tuples and boxed values."
+            )
+        );
+    }
+    return key_type;
+}
+
+impl MirLowering.keyed_sort(
+    made: MirValue, key_fn: MirValue, flag: MirValue, site: uni.UniNode
+) {
+    b = self.builder();
+    fn = self.st().fn;
+    key_type = self.key_slot_type(key_fn, site);
+    keys = self.spill(self.new_list(key_type, 8));
+    key_kind = b.const_int(self.elem_kind(key_type, site), mir_int());
+    cursor = self.temp_slot(mir_int());
+    b.store(cursor, b.const_int(0, mir_int()));
+    head = fn.new_block("keyed.head");
+    body = fn.new_block("keyed.body");
+    done = fn.new_block("keyed.done");
+    b.branch(head);
+    b.position(head);
+    at = b.load(cursor, mir_int());
+    b.cond_branch(b.compare("lt", at, self.container_len(made)), body, done);
+    b.position(body);
+    computed = self.call_closure(key_fn, [self.list_read(made, at)], site);
+    self.runtime(
+        "__jac_rt_list_push", [keys, self.to_bits(computed, key_type, site), key_kind]
+    );
+    b.store(cursor, b.binary("add", at, b.const_int(1, mir_int())));
+    b.branch(head);
+    b.position(done);
+    self.runtime("__jac_rt_list_sort_keyed", [made, keys, key_kind, flag]);
 }
 
 impl MirLowering.builtin_fold(

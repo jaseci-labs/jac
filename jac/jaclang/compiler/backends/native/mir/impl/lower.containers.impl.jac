@@ -2,6 +2,12 @@ impl MirLowering.elem_kind(t: MirType, site: uni.UniNode) -> int {
     if t.kind in (MirKind.INT, MirKind.ENUM, MirKind.CLASS) {
         return KIND_INT;
     }
+    if t.kind == MirKind.OPT {
+        if not self.nullable_payload(t.payload()) {
+            raise MirRefused(mir_refusal("container element", t.render(), site));
+        }
+        return KIND_STR if t.payload().kind == MirKind.STR_REF else KIND_REF;
+    }
     if t.kind == MirKind.TUPLE {
         for member in t.args {
             self.elem_kind(member, site);
@@ -85,6 +91,14 @@ impl MirLowering.to_bits(
     if elem.kind == MirKind.ANY {
         return self.address_of(self.any_to_box(value, site));
     }
+    if elem.kind == MirKind.OPT {
+        held = self.spill(self.coerce(value, elem, site));
+        return b.select(
+            self.opt_present(held),
+            self.address_of(self.opt_get(held)),
+            b.const_int(0, mir_int())
+        );
+    }
     if elem.kind == MirKind.CLASS {
         return self.address_of(self.coerce(value, elem, site));
     }
@@ -136,6 +150,12 @@ impl MirLowering.owned_element(handle: MirValue, elem: MirType) -> MirValue {
     b = self.builder();
     if elem.kind == MirKind.ANY {
         return self.any_from_box(handle);
+    }
+    if elem.kind == MirKind.OPT {
+        present = b.compare("ne", self.address_of(handle), b.const_int(0, mir_int()));
+        return self.emit_value(
+            MirOp.OPT_MAKE, elem, [b.ref_cast(handle, elem.payload(), True), present]
+        );
     }
     if elem.kind == MirKind.TUPLE {
         return self.tuple_unbox(handle, elem);
@@ -588,6 +608,9 @@ impl MirLowering.list_method(
     lst: MirValue, name: str, nd: uni.FuncCall
 ) -> (MirValue | None) {
     b = self.builder();
+    if name == "sort" {
+        return self.list_sort(lst, nd);
+    }
     args = self.call_args(nd);
     elem = lst.type.payload();
     kind = b.const_int(self.elem_kind(elem, nd), mir_int());
@@ -679,11 +702,37 @@ impl MirLowering.list_method(
         );
         return position;
     }
-    if name == "sort" and not args and self.elem_kind(elem, nd) != KIND_REF {
-        self.runtime("__jac_rt_list_sort", [lst, kind, b.const_bool(False)]);
-        return b.const_bool(False);
-    }
     return None;
+}
+
+impl MirLowering.list_sort(lst: MirValue, nd: uni.FuncCall) -> (MirValue | None) {
+    b = self.builder();
+    (args, named) = self.split_args(nd);
+    if args or set(named) - {"key", "reverse"} {
+        return None;
+    }
+    elem = lst.type.payload();
+    key_fn: (MirValue | None) = None;
+    if "key" in named {
+        key_fn = self.key_function(named["key"]);
+    } elif self.elem_kind(elem, nd) == KIND_REF {
+        return None;
+    }
+    flag = b.const_bool(False);
+    order = named.get("reverse");
+    if order is not None {
+        flag = self.truthy(self.lower_expr(order), order);
+    }
+    held = self.spill(lst);
+    if key_fn is not None {
+        self.keyed_sort(held, key_fn, flag, nd);
+    } else {
+        self.runtime(
+            "__jac_rt_list_sort",
+            [held, b.const_int(self.elem_kind(elem, nd), mir_int()), flag]
+        );
+    }
+    return b.const_bool(False);
 }
 
 impl MirLowering.dict_method(
@@ -737,6 +786,77 @@ impl MirLowering.dict_method(
         } else {
             b.store(held, self.coerce(self.none_value(), result_type, nd));
         }
+        b.branch(done);
+        b.position(done);
+        return b.load(held, result_type);
+    }
+    if name == "popitem" and not args {
+        result_type = self.expr_type(nd);
+        if result_type.kind != MirKind.TUPLE or len(result_type.args) != 2 {
+            return None;
+        }
+        key_cell = self.temp_slot(mir_int());
+        val_bits = self.runtime_value(
+            "__jac_rt_dict_popitem",
+            [d, key_kind, value_kind, self.emit_value(MirOp.PTR_INT, mir_int(), [key_cell])]
+        );
+        key_bits = b.load(key_cell, mir_int());
+        parts: list[MirValue] = [];
+        for (bits, part) in ((key_bits, key_type), (val_bits, value_type)) {
+            if self.elem_kind(part, nd) in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
+                parts.append(self.owned_element(b.ref_cast(bits, mir_ref(), True), part));
+            } else {
+                parts.append(self.scalar_from_bits(bits, part));
+            }
+        }
+        return self.emit_value(
+            MirOp.TUPLE_MAKE,
+            result_type,
+            [
+                self.coerce(parts[0], result_type.args[0], nd),
+                self.coerce(parts[1], result_type.args[1], nd)
+            ]
+        );
+    }
+    if name == "pop" and len(args) == 2 {
+        result_type = self.expr_type(nd);
+        flag = self.temp_slot(mir_int());
+        held = self.temp_slot(result_type);
+        bits = self.runtime_value(
+            "__jac_rt_dict_pop",
+            [
+                d,
+                self.to_bits(self.lower_expr(args[0]), key_type, args[0]),
+                key_kind,
+                value_kind,
+                self.emit_value(MirOp.PTR_INT, mir_int(), [flag])
+            ]
+        );
+        fn = self.st().fn;
+        hit = fn.new_block("pop.hit");
+        miss = fn.new_block("pop.miss");
+        done = fn.new_block("pop.done");
+        b.cond_branch(
+            b.compare("ne", b.load(flag, mir_int()), b.const_int(0, mir_int())), hit, miss
+        );
+        b.position(hit);
+        if self.elem_kind(value_type, nd) in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
+            b.store(
+                held,
+                self.coerce(
+                    self.owned_element(b.ref_cast(bits, mir_ref(), True), value_type),
+                    result_type,
+                    nd
+                )
+            );
+        } else {
+            b.store(
+                held, self.coerce(self.scalar_from_bits(bits, value_type), result_type, nd)
+            );
+        }
+        b.branch(done);
+        b.position(miss);
+        b.store(held, self.coerce(self.lower_expr(args[1]), result_type, args[1]));
         b.branch(done);
         b.position(done);
         return b.load(held, result_type);
@@ -818,7 +938,68 @@ impl MirLowering.dict_method(
         b.position(done);
         return made;
     }
+    if name == "items" and not args {
+        result_type = self.expr_type(nd);
+        if result_type.kind != MirKind.LIST
+            or result_type.payload().kind != MirKind.TUPLE {
+            return None;
+        }
+        pair = result_type.payload();
+        made = self.spill(self.new_list(pair, 8));
+        pair_kind = b.const_int(self.elem_kind(pair, nd), mir_int());
+        cursor = self.temp_slot(mir_int());
+        b.store(cursor, b.const_int(-1, mir_int()));
+        fn = self.st().fn;
+        head = fn.new_block("items.head");
+        body = fn.new_block("items.body");
+        done = fn.new_block("items.done");
+        b.branch(head);
+        b.position(head);
+        following = self.runtime_value(
+            "__jac_rt_dict_next", [d, b.load(cursor, mir_int())]
+        );
+        b.store(cursor, following);
+        b.cond_branch(
+            b.compare("ge", following, b.const_int(0, mir_int())), body, done
+        );
+        b.position(body);
+        at = b.load(cursor, mir_int());
+        key = self.dict_entry(d, at, key_type, True, nd);
+        held = self.dict_entry(d, at, value_type, False, nd);
+        made_pair = self.emit_value(
+            MirOp.TUPLE_MAKE,
+            pair,
+            [
+                self.coerce(key, pair.args[0], nd),
+                self.coerce(held, pair.args[1], nd)
+            ]
+        );
+        self.runtime("__jac_rt_list_push", [made, self.to_bits(made_pair, pair, nd), pair_kind]);
+        b.branch(head);
+        b.position(done);
+        return made;
+    }
     return None;
+}
+
+impl MirLowering.dict_entry(
+    d: MirValue, at: MirValue, part: MirType, is_key: bool, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    kind = self.elem_kind(part, site);
+    if kind in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
+        handle = self.runtime_value(
+            "__jac_rt_dict_key_ref" if is_key else "__jac_rt_dict_val_ref",
+            [d, at, b.const_int(kind, mir_int())]
+        );
+        return self.owned_element(handle, part);
+    }
+    return self.scalar_from_bits(
+        self.runtime_value(
+            "__jac_rt_dict_key_at" if is_key else "__jac_rt_dict_val_at", [d, at]
+        ),
+        part
+    );
 }
 
 impl MirLowering.set_method(
@@ -873,7 +1054,118 @@ impl MirLowering.set_method(
         self.runtime("__jac_rt_dict_update", [s, other, kind, none_kind]);
         return b.const_bool(False);
     }
+    if name == "pop" and not args {
+        bits = self.runtime_value(
+            "__jac_rt_dict_popitem", [s, kind, none_kind, b.const_int(0, mir_int())]
+        );
+        if self.elem_kind(elem, nd) in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
+            return self.owned_element(b.ref_cast(bits, mir_ref(), True), elem);
+        }
+        return self.scalar_from_bits(bits, elem);
+    }
+    if len(args) == 1
+        and name
+        in (
+            "union",
+            "intersection",
+            "difference",
+            "symmetric_difference",
+            "issubset",
+            "issuperset",
+            "isdisjoint",
+            "intersection_update",
+            "difference_update",
+            "symmetric_difference_update"
+        ) {
+        other = self.coerce(self.lower_expr(args[0]), s.type, args[0]);
+        return self.set_algebra(s, other, name, nd);
+    }
     return None;
+}
+
+impl MirLowering.set_algebra(
+    s: MirValue, other: MirValue, name: str, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    elem = s.type.payload();
+    kind = b.const_int(self.elem_kind(elem, site), mir_int());
+    none_kind = b.const_int(NO_VALUE_KIND, mir_int());
+    held = self.spill(other);
+    if name == "issubset" {
+        return self.runtime_value("__jac_rt_set_within", [s, held, kind]);
+    }
+    if name == "issuperset" {
+        return self.runtime_value("__jac_rt_set_within", [held, s, kind]);
+    }
+    if name == "isdisjoint" {
+        return self.runtime_value("__jac_rt_set_disjoint", [s, held, kind]);
+    }
+    made: MirValue;
+    if name == "union" {
+        made = b.ref_cast(
+            self.runtime_value("__jac_rt_dict_copy", [s, kind, none_kind]), s.type, True
+        );
+        self.runtime("__jac_rt_dict_update", [made, held, kind, none_kind]);
+        return made;
+    }
+    if name in ("symmetric_difference", "symmetric_difference_update") {
+        made = b.ref_cast(
+            self.runtime_value("__jac_rt_set_xor", [s, held, kind]), s.type, True
+        );
+    } else {
+        made = b.ref_cast(
+            self.runtime_value(
+                "__jac_rt_set_filter",
+                [s, held, kind, b.const_bool(name.startswith("intersection"))]
+            ),
+            s.type,
+            True
+        );
+    }
+    if not name.endswith("_update") {
+        return made;
+    }
+    self.runtime("__jac_rt_dict_clear", [s, kind, none_kind]);
+    self.runtime("__jac_rt_dict_update", [s, made, kind, none_kind]);
+    return b.const_bool(False);
+}
+
+impl MirLowering.set_operator(
+    op: str, left: MirValue, right: MirValue, in_place: bool, site: uni.UniNode
+) -> (MirValue | None) {
+    if left.type.kind != MirKind.SET or right.type.kind != MirKind.SET {
+        return None;
+    }
+    names: dict[str, str] = {
+        Tok.BW_OR: "union",
+        Tok.BW_AND: "intersection",
+        Tok.MINUS: "difference",
+        Tok.BW_XOR: "symmetric_difference"
+    };
+    name = names.get(op, "");
+    if not name {
+        return None;
+    }
+    other = self.coerce(right, left.type, site);
+    if not in_place {
+        return self.set_algebra(left, other, name, site);
+    }
+    if name == "union" {
+        b = self.builder();
+        elem = left.type.payload();
+        self.runtime(
+            "__jac_rt_dict_update",
+            [
+                left,
+                other,
+                b.const_int(self.elem_kind(elem, site), mir_int()),
+                b.const_int(NO_VALUE_KIND, mir_int())
+            ]
+        );
+    } else {
+        self.set_algebra(left, other, f"{name}_update", site);
+    }
+    return left;
 }
 
 impl MirLowering.contains(
@@ -1106,4 +1398,12 @@ impl MirLowering.container_rebuild(
     made = self.spill(self.new_dict(to.args[0], to.args[1], to));
     self.merge_dict(made, value, site, False);
     return made;
+}
+
+impl MirLowering.nullable_payload(t: MirType) -> bool {
+    return t.kind == MirKind.STR_REF
+        or (
+            mir_holds_ref(t)
+            and t.kind not in (MirKind.STR, MirKind.TUPLE, MirKind.ANY, MirKind.OPT)
+        );
 }

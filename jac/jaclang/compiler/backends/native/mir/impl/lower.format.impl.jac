@@ -868,6 +868,16 @@ impl MirLowering.power(left: MirValue, right: MirValue, site: uni.UniNode) -> Mi
             mir_refusal("binary operator", f"** on {left.type.render()}", site)
         );
     }
+    if (left.type.is_sized() or right.type.is_sized())
+        and left.type.kind != MirKind.FLOAT
+        and right.type.kind != MirKind.FLOAT
+        and max(left.type.width, right.type.width) < 64 {
+        sized = left.type if left.type.is_sized() else right.type;
+        raw = self.call_rt(
+            "__jac_rt_int_pow", [b.convert(left, mir_int()), b.convert(right, mir_int())]
+        );
+        return self.checked_cast(raw, sized, site);
+    }
     if left.type.is_sized() or right.type.is_sized() {
         raise MirRefused(
             mir_refusal(
@@ -960,4 +970,314 @@ impl MirLowering.hash_value(value: MirValue, site: uni.UniNode) -> MirValue {
         return b.const_int(0, mir_int());
     }
     raise MirRefused(mir_refusal("call", f"hash of {value.type.render()}", site));
+}
+
+impl MirLowering.extreme_named(nd: uni.FuncCall, name: str) -> (MirValue | None) {
+    b = self.builder();
+    fn = self.st().fn;
+    (args, named) = self.split_args(nd);
+    if len(args) != 1 or set(named) - {"key", "default"} {
+        return None;
+    }
+    items = self.spill(self.lower_expr(args[0]));
+    if items.type.kind != MirKind.LIST {
+        raise MirRefused(
+            mir_refusal("call", f"{name} of {items.type.render()} with keywords", nd)
+        );
+    }
+    result_type = self.expr_type(nd);
+    key_fn: (MirValue | None) = None;
+    if "key" in named {
+        key_fn = self.key_function(named["key"]);
+    }
+    fallback: (MirValue | None) = None;
+    if "default" in named {
+        fallback = self.spill(self.lower_expr(named["default"]));
+    }
+    held = self.temp_slot(result_type);
+    size = self.container_len(items);
+    empty = b.compare("eq", size, b.const_int(0, mir_int()));
+    filled = fn.new_block("extreme.filled");
+    finished = fn.new_block("extreme.finished");
+    if fallback is None {
+        self.raise_if(empty, "ValueError", f"{name}() iterable argument is empty");
+        b.branch(filled);
+    } else {
+        vacant = fn.new_block("extreme.empty");
+        b.cond_branch(empty, vacant, filled);
+        b.position(vacant);
+        b.store(held, self.coerce(fallback, result_type, nd));
+        b.branch(finished);
+    }
+    b.position(filled);
+    order = Tok.GT if name == "max" else Tok.LT;
+    best_at = self.temp_slot(mir_int());
+    b.store(best_at, b.const_int(0, mir_int()));
+    best_key: (MirValue | None) = None;
+    key_type = mir_void();
+    if key_fn is not None {
+        key_type = key_fn.type.args[0];
+        best_key = self.temp_slot(key_type);
+        b.store(
+            best_key,
+            self.call_closure(
+                key_fn, [self.list_read(items, b.const_int(0, mir_int()))], nd
+            )
+        );
+    }
+    cursor = self.temp_slot(mir_int());
+    b.store(cursor, b.const_int(1, mir_int()));
+    head = fn.new_block("extreme.head");
+    body = fn.new_block("extreme.body");
+    take = fn.new_block("extreme.take");
+    step = fn.new_block("extreme.step");
+    done = fn.new_block("extreme.done");
+    b.branch(head);
+    b.position(head);
+    at = b.load(cursor, mir_int());
+    b.cond_branch(b.compare("lt", at, self.container_len(items)), body, done);
+    b.position(body);
+    candidate = self.list_read(items, at);
+    computed: (MirValue | None) = None;
+    better: MirValue;
+    if key_fn is not None and best_key is not None {
+        computed = self.spill(self.call_closure(key_fn, [candidate], nd));
+        better = self.compare_values(order, computed, b.load(best_key, key_type), nd);
+    } else {
+        better = self.compare_values(
+            order, candidate, self.list_read(items, b.load(best_at, mir_int())), nd
+        );
+    }
+    b.cond_branch(better, take, step);
+    b.position(take);
+    b.store(best_at, at);
+    if computed is not None and best_key is not None {
+        b.store(best_key, computed);
+    }
+    b.branch(step);
+    b.position(step);
+    b.store(cursor, b.binary("add", at, b.const_int(1, mir_int())));
+    b.branch(head);
+    b.position(done);
+    b.store(
+        held,
+        self.coerce(
+            self.list_read(items, b.load(best_at, mir_int())), result_type, nd
+        )
+    );
+    b.branch(finished);
+    b.position(finished);
+    return b.load(held, result_type);
+}
+
+impl MirLowering.sized_type_name(nd: uni.UniNode) -> (str | None) {
+    if not isinstance(nd, uni.Name) {
+        return None;
+    }
+    if nd.sym is not None and id(nd.sym) in self.st().locals {
+        return None;
+    }
+    shape = shape_of(nd.value);
+    if shape is None or shape.is_float or not shape.sized {
+        return None;
+    }
+    return nd.value;
+}
+
+impl MirLowering.int_bounds(t: MirType) -> tuple[int, int] {
+    if t.signed {
+        return (-(1 << (t.width - 1)), (1 << (t.width - 1)) - 1);
+    }
+    return (0, (1 << t.width) - 1);
+}
+
+impl MirLowering.int_bits(value: int, t: MirType) -> int {
+    if value >= (1 << 63) {
+        return value - (1 << 64);
+    }
+    return value;
+}
+
+impl MirLowering.sized_bound(nd: uni.AtomTrailer) -> (MirValue | None) {
+    if not nd.is_attr
+        or not isinstance(nd.right, uni.Name)
+        or nd.right.value not in ("MIN", "MAX") {
+        return None;
+    }
+    name = self.sized_type_name(nd.target);
+    if name is None {
+        return None;
+    }
+    t = mir_class_type_named(name, nd);
+    (lo, hi) = self.int_bounds(t);
+    return self.builder().const_int(
+        self.int_bits(lo if nd.right.value == "MIN" else hi, t), t
+    );
+}
+
+impl MirLowering.sized_wrap(nd: uni.FuncCall, name: str) -> MirValue {
+    b = self.builder();
+    args = self.call_args(nd);
+    if len(args) != 1 {
+        raise MirRefused(mir_refusal("call", f"{name}.wrap", nd));
+    }
+    target = mir_class_type_named(name, nd);
+    value = self.enum_as_int(self.lower_expr(args[0]), args[0]);
+    if value.type.kind == MirKind.BOOL {
+        value = b.convert(value, mir_int());
+    }
+    if value.type.kind == MirKind.FLOAT {
+        value = b.convert(b.convert(value, mir_float()), mir_int());
+    }
+    if value.type.kind != MirKind.INT {
+        raise MirRefused(mir_refusal("call", f"{name}.wrap of {value.type.render()}", nd));
+    }
+    return b.convert(value, target);
+}
+
+impl MirLowering.wrapping_call(
+    nd: uni.FuncCall, name: str, args: list[uni.Expr]
+) -> MirValue {
+    b = self.builder();
+    values = [self.lower_expr(arg) for arg in args];
+    if not values or not all(value.type.kind == MirKind.INT for value in values) {
+        raise MirRefused(mir_refusal("call", name, nd));
+    }
+    if name == "wrapping_neg" and len(values) == 1 {
+        return b.binary("sub", b.const_int(0, values[0].type), values[0]);
+    }
+    if len(values) != 2 {
+        raise MirRefused(mir_refusal("call", name, nd));
+    }
+    (left, right) = (values[0], values[1]);
+    if name == "wrapping_shl" {
+        count = b.binary(
+            "and", b.convert(right, left.type), b.const_int(left.type.width - 1, left.type)
+        );
+        return b.binary("shl", left, count);
+    }
+    if right.type is not left.type {
+        right = b.convert(right, left.type);
+    }
+    ops = {"wrapping_add": "add", "wrapping_sub": "sub", "wrapping_mul": "mul"};
+    op = ops.get(name);
+    if op is None {
+        raise MirRefused(mir_refusal("call", name, nd));
+    }
+    return b.binary(op, left, right);
+}
+
+impl MirLowering.checked_cast(
+    value: MirValue, to: MirType, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    if value.type.kind == MirKind.BOOL {
+        value = b.convert(value, mir_int());
+    }
+    if to.kind != MirKind.INT or not to.is_sized() {
+        return b.convert(value, to);
+    }
+    (lo, hi) = self.int_bounds(to);
+    if value.type.kind == MirKind.FLOAT {
+        wide = b.convert(value, mir_float());
+        below = float(lo - 1);
+        above = float(hi + 1);
+        low_ok = b.compare("gt", wide, b.const_float(below, mir_float()))
+            if below == lo - 1
+            else b.compare("ge", wide, b.const_float(float(lo), mir_float()));
+        high_ok = b.compare("lt", wide, b.const_float(above, mir_float()))
+            if above == hi + 1
+            else b.compare("le", wide, b.const_float(float(hi), mir_float()));
+        self.raise_if(
+            b.logical_not(b.binary("and", low_ok, high_ok)),
+            "OverflowError",
+            OVERFLOW_MESSAGE
+        );
+        return b.convert(wide, to);
+    }
+    if value.type.kind != MirKind.INT {
+        return b.convert(value, to);
+    }
+    src = value.type;
+    (src_lo, src_hi) = self.int_bounds(src);
+    if lo > src_lo {
+        self.raise_if(
+            b.compare("lt", value, b.const_int(self.int_bits(lo, src), src)),
+            "OverflowError",
+            OVERFLOW_MESSAGE
+        );
+    }
+    if hi < src_hi {
+        self.raise_if(
+            b.compare("gt", value, b.const_int(self.int_bits(hi, src), src)),
+            "OverflowError",
+            OVERFLOW_MESSAGE
+        );
+    }
+    return b.convert(value, to);
+}
+
+impl MirLowering.int_bytes_call(
+    nd: uni.FuncCall, target: uni.AtomTrailer, name: str
+) -> (MirValue | None) {
+    b = self.builder();
+    owner = target.target;
+    is_class = isinstance(owner, uni.Name)
+        and owner.value == "int"
+        and not (owner.sym is not None and id(owner.sym) in self.st().locals);
+    if name == "from_bytes" and not is_class {
+        return None;
+    }
+    if name == "to_bytes"
+        and (
+            is_class
+            or not isinstance(owner, uni.Expr)
+            or self.expr_type(owner).kind not in (MirKind.INT, MirKind.BOOL)
+        ) {
+        return None;
+    }
+    (args, named) = self.split_args(nd);
+    order_names = ["length", "byteorder"] if name == "to_bytes" else ["bytes", "byteorder"];
+    for (index, arg) in enumerate(args) {
+        if index >= len(order_names) {
+            raise MirRefused(mir_refusal("call", f"int.{name} arguments", nd));
+        }
+        named[order_names[index]] = arg;
+    }
+    if set(named) - set(order_names + ["signed"]) or order_names[0] not in named {
+        raise MirRefused(mir_refusal("call", f"int.{name} arguments", nd));
+    }
+    big = b.const_bool(True);
+    order = named.get("byteorder");
+    if order is not None {
+        literal = uni.literal_string_value(order);
+        if literal == "big" or literal == "little" {
+            big = b.const_bool(literal == "big");
+        } else {
+            big = self.compare_values(
+                Tok.EE, self.lower_expr(order), b.const_str("big", mir_str()), order
+            );
+        }
+    }
+    signed = b.const_bool(False);
+    if "signed" in named {
+        signed = self.truthy(self.lower_expr(named["signed"]), named["signed"]);
+    }
+    if name == "from_bytes" {
+        source = self.spill(self.lower_expr(named["bytes"]));
+        if not self.is_byte_seq(source) {
+            raise MirRefused(
+                mir_refusal("call", f"int.from_bytes of {source.type.render()}", nd)
+            );
+        }
+        (data, size) = self.byte_parts(source);
+        return self.call_rt("__jac_rt_int_from_bytes", [data, size, big, signed]);
+    }
+    value = b.convert(self.lower_expr(owner), mir_int());
+    length = self.coerce(self.lower_expr(named["length"]), mir_int(), nd);
+    return b.ref_cast(
+        self.call_rt("__jac_rt_int_to_bytes", [value, length, big, signed]),
+        mir_bytes(),
+        True
+    );
 }

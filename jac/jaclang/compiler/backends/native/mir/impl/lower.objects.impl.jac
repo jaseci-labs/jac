@@ -254,6 +254,11 @@ impl MirLowering.foreign_method_decl(method: uni.Ability) -> (MirDecl | None) {
 }
 
 impl MirLowering.declare_archetype(arch: uni.Archetype) {
+    enum_type = self.enum_self_type(arch);
+    if enum_type is not None {
+        self.declare_enum_methods(arch, enum_type);
+        return;
+    }
     self_type = self.object_type(arch);
     obj_def = self.object_def(arch);
     for method in self.arch_methods(arch) {
@@ -291,6 +296,7 @@ impl MirLowering.declare_archetype(arch: uni.Archetype) {
         );
         self.order.append(key);
     }
+    self.declare_accessors(arch, self_type);
     self.declare_osp_abilities(arch);
     if obj_def.local {
         self.trace_pairs.append((obj_def.drop_symbol, obj_def.trace_symbol));
@@ -1417,4 +1423,150 @@ impl MirLowering.default_thunks(arch: uni.Archetype) -> list[MirFunction] {
         self.state = saved;
     }
     return made;
+}
+
+impl MirLowering.accessor_sig(acc: uni.Ability) -> (uni.FuncSignature | None) {
+    body = acc.body;
+    if isinstance(body, uni.ImplDef) and isinstance(body.spec, uni.FuncSignature) {
+        return body.spec;
+    }
+    return acc.signature if isinstance(acc.signature, uni.FuncSignature) else None;
+}
+
+impl MirLowering.declare_accessors(arch: uni.Archetype, self_type: MirType) {
+    for (slot, var, acc) in archetype_accessors(arch) {
+        if acc.accessor_kind not in ("property", "setter") {
+            continue;
+        }
+        params: list[MirType] = [];
+        ret = mir_none();
+        if acc.accessor_kind == "property" {
+            ret = self.type_of(
+                self.declared_field_type(var), MirPosition.SIGNATURE, var
+            );
+        } else {
+            sig = self.accessor_sig(acc);
+            nodes = self.param_nodes(sig, True) if sig is not None else [];
+            if len(nodes) != 1 {
+                raise MirRefused(
+                    mir_refusal(
+                        "accessor", f"{archetype_native_name(arch)}.{slot}", acc
+                    )
+                );
+            }
+            params.append(self.symbol_type(nodes[0].name.sym, nodes[0]));
+        }
+        key = id(acc);
+        self.decls[key] = MirDecl(
+            ability=acc,
+            symbol=self.method_symbol(arch, slot),
+            params=params,
+            ret=ret,
+            self_type=self_type,
+            owner=arch
+        );
+        self.order.append(key);
+    }
+}
+
+impl MirLowering.decl_label(decl: MirDecl) -> str {
+    ab = decl.ability;
+    if ab.accessor_kind and decl.owner is not None {
+        var = ab.find_parent_of_type(uni.HasVar);
+        field = var.name.value if var is not None and var.name is not None else "field";
+        return f"{archetype_native_name(decl.owner)}.{accessor_slot_name(field, ab)}";
+    }
+    return self.name_of(ab);
+}
+
+impl MirLowering.accessor_of(
+    nd: uni.AtomTrailer, kind: str
+) -> (tuple[uni.Archetype, MirDecl] | None) {
+    if not nd.is_attr
+        or not isinstance(nd.right, uni.Name)
+        or not isinstance(nd.target, uni.Expr) {
+        return None;
+    }
+    arch = self.arch_of_type(nd.target.type);
+    if arch is None {
+        return None;
+    }
+    var = self.nearest_has_var(arch, nd.right.value);
+    if var is None or not var.accessors {
+        return None;
+    }
+    label = f"{archetype_native_name(arch)}.{nd.right.value}";
+    for acc in var.accessors {
+        if acc.accessor_kind == kind {
+            decl = self.decls.get(id(acc));
+            if decl is None {
+                raise MirRefused(
+                    mir_refusal(
+                        "accessor",
+                        label,
+                        nd,
+                        "The accessor is declared on an archetype of another module, whose accessor bodies native code does not reach yet."
+                    )
+                );
+            }
+            return (arch, decl);
+        }
+    }
+    raise MirRefused(
+        mir_refusal(
+            "accessor",
+            f"{label} without a {'getter' if kind == 'property' else kind}",
+            nd
+        )
+    );
+}
+
+impl MirLowering.accessor_get(nd: uni.AtomTrailer) -> (MirValue | None) {
+    found = self.accessor_of(nd, "property");
+    if found is None {
+        return None;
+    }
+    (arch, decl) = found;
+    receiver = self.method_receiver(decl, arch, self.lower_expr(nd.target), nd);
+    return self.invoke_method(decl, arch, self.decl_label(decl), [receiver]);
+}
+
+impl MirLowering.accessor_set(target: uni.AtomTrailer, nd: uni.Assignment) -> bool {
+    if nd.value is None {
+        return False;
+    }
+    found = self.accessor_of(target, "setter");
+    if found is None {
+        return False;
+    }
+    (arch, decl) = found;
+    holder = self.spill(self.lower_expr(target.target));
+    value = self.lower_expr(nd.value);
+    if nd.aug_op is not None {
+        op = AUG_OPERATORS.get(nd.aug_op.name);
+        reader = self.accessor_of(target, "property");
+        if op is None or reader is None {
+            raise MirRefused(mir_refusal("augmented assignment", nd.aug_op.value, nd));
+        }
+        (get_arch, get_decl) = reader;
+        current = self.invoke_method(
+            get_decl,
+            get_arch,
+            self.decl_label(get_decl),
+            [self.method_receiver(get_decl, get_arch, holder, target)]
+        );
+        value = self.str_concat(current, self.coerce(value, mir_str(), nd))
+            if current.type.kind == MirKind.STR and op == Tok.PLUS
+            else self.arith(op, current, value, nd);
+    }
+    self.invoke_method(
+        decl,
+        arch,
+        self.decl_label(decl),
+        [
+            self.method_receiver(decl, arch, holder, target),
+            self.coerce(value, decl.params[0], nd)
+        ]
+    );
+    return True;
 }

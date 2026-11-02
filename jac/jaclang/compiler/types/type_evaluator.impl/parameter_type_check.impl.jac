@@ -710,6 +710,8 @@ impl TypeEvaluator._validate_call_type(
         }
         if matched_method is not None {
             expr.callee_signature = matched_method;
+        } else {
+            self._evaluate_call_args(expr);
         }
 
         inferred_type_args = self._infer_type_args_from_method(

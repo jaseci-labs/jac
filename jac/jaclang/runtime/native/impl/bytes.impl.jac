@@ -96,7 +96,7 @@ impl __jac_rt_bytes_from_list(lst: int) -> int {
             __jac_rt_release_acyclic(made);
             raise ValueError("bytes must be in range(0, 256)");
         }
-        __mem_store_i8(made + BYTES_DATA + i, i8(value));
+        __mem_store_i8(made + BYTES_DATA + i, i8.wrap(value));
         i += 1;
     }
     return made;
@@ -822,7 +822,7 @@ impl __jac_rt_bytearray_push(ba: int, value: int) {
     }
     n = __mem_load_i64(ba + LIST_LEN);
     _bytearray_reserve(ba, n + 1);
-    __mem_store_i8(__mem_load_i64(ba + LIST_DATA) + n, i8(value));
+    __mem_store_i8(__mem_load_i64(ba + LIST_DATA) + n, i8.wrap(value));
     __mem_store_i64(ba + LIST_LEN, n + 1);
 }
 
@@ -830,7 +830,7 @@ impl __jac_rt_bytearray_set(ba: int, i: int, value: int) {
     if value < 0 or value > 255 {
         raise ValueError("byte must be in range(0, 256)");
     }
-    __mem_store_i8(__mem_load_i64(ba + LIST_DATA) + i, i8(value));
+    __mem_store_i8(__mem_load_i64(ba + LIST_DATA) + i, i8.wrap(value));
 }
 
 impl __jac_rt_bytearray_extend(ba: int, data: ptr[u8], n: int) {
@@ -856,4 +856,62 @@ impl __jac_rt_bytearray_pop(ba: int, i: int) -> int {
 
 impl __jac_rt_bytearray_clear(ba: int) {
     __mem_store_i64(ba + LIST_LEN, 0);
+}
+
+impl __jac_rt_int_from_bytes(data: ptr[u8], n: int, big: bool, signed: bool) -> int {
+    d = int(data);
+    result = 0;
+    i = 0;
+    while i < n and i < 8 {
+        at = d + (n - 1 - i) if big else d + i;
+        result = result | wrapping_shl(_byte(at), i * 8);
+        i += 1;
+    }
+    if signed and n > 0 and n < 8 {
+        top = _byte(d if big else d + n - 1);
+        if top >= 128 {
+            result = result - (1 << (n * 8));
+        }
+    }
+    if not signed and n >= 8 and result < 0 {
+        raise OverflowError("int too large to convert");
+    }
+    fill = 255 if result < 0 else 0;
+    while i < n {
+        at = d + (n - 1 - i) if big else d + i;
+        if _byte(at) != fill {
+            raise OverflowError("int too large to convert");
+        }
+        i += 1;
+    }
+    return result;
+}
+
+impl __jac_rt_int_to_bytes(value: int, n: int, big: bool, signed: bool) -> int {
+    if n < 0 {
+        raise ValueError("length argument must be non-negative");
+    }
+    if not signed and value < 0 {
+        raise OverflowError("can't convert negative int to unsigned");
+    }
+    if n < 8 {
+        if signed {
+            half = 1 << (n * 8 - 1) if n > 0 else 1;
+            if n == 0 and value != 0 or n > 0 and (value < 0 - half or value >= half) {
+                raise OverflowError("int too big to convert");
+            }
+        } elif value >= (1 << (n * 8)) {
+            raise OverflowError("int too big to convert");
+        }
+    }
+    made = __jac_rt_bytes_zero(n);
+    fill = 255 if value < 0 else 0;
+    i = 0;
+    while i < n {
+        byte = (value >> (i * 8)) & 255 if i < 8 else fill;
+        at = made + BYTES_DATA + (n - 1 - i if big else i);
+        __mem_store_i8(at, i8.wrap(byte));
+        i += 1;
+    }
+    return made;
 }

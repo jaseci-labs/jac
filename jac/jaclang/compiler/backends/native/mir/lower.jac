@@ -287,6 +287,7 @@ obj MirLowering {
         instances: dict[str, MirDecl] = {},
         pending: list[MirDecl] = [],
         enum_types: dict[str, TypeBase] = {},
+        enum_methods: dict[str, MirDecl] = {},
         bindings: list[InteropBinding] = [],
         state: (MirFnState | None) = None;
 
@@ -324,6 +325,7 @@ obj MirLowering {
     def to_str(value: MirValue, site: uni.UniNode) -> MirValue;
     def lower_fstring(nd: uni.FString) -> MirValue;
     def lower_expr(nd: uni.UniNode) -> MirValue;
+    def literal_destination(nd: uni.Int) -> (str | None);
     def lower_name(nd: uni.Name) -> MirValue;
     def lower_binary(nd: uni.BinaryExpr) -> MirValue;
     def arith(op: str, left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
@@ -412,6 +414,33 @@ obj MirLowering {
     def container_rebuild(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
     def merge_dict(made: MirValue, source: MirValue, site: uni.UniNode, unique: bool);
     def list_slice(lst: MirValue, part: uni.Slice, site: uni.UniNode) -> MirValue;
+    def dict_entry(
+        d: MirValue, at: MirValue, part: MirType, is_key: bool, site: uni.UniNode
+    ) -> MirValue;
+    def list_sort(lst: MirValue, nd: uni.FuncCall) -> (MirValue | None);
+    def key_function(key_nd: uni.Expr) -> MirValue;
+    def key_slot_type(key_fn: MirValue, site: uni.UniNode) -> MirType;
+    def keyed_sort(
+        made: MirValue, key_fn: MirValue, flag: MirValue, site: uni.UniNode
+    );
+    def extreme_named(nd: uni.FuncCall, name: str) -> (MirValue | None);
+    def sized_type_name(nd: uni.UniNode) -> (str | None);
+    def int_bounds(t: MirType) -> tuple[int, int];
+    def int_bits(value: int, t: MirType) -> int;
+    def sized_bound(nd: uni.AtomTrailer) -> (MirValue | None);
+    def sized_wrap(nd: uni.FuncCall, name: str) -> MirValue;
+    def wrapping_call(nd: uni.FuncCall, name: str, args: list[uni.Expr]) -> MirValue;
+    def checked_cast(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
+    def int_bytes_call(
+        nd: uni.FuncCall, target: uni.AtomTrailer, name: str
+    ) -> (MirValue | None);
+    def set_algebra(
+        s: MirValue, other: MirValue, name: str, site: uni.UniNode
+    ) -> MirValue;
+    def set_operator(
+        op: str, left: MirValue, right: MirValue, in_place: bool, site: uni.UniNode
+    ) -> (MirValue | None);
+    def nullable_payload(t: MirType) -> bool;
     def container_method(
         receiver: MirValue, name: str, nd: uni.FuncCall
     ) -> (MirValue | None);
@@ -434,6 +463,14 @@ obj MirLowering {
     def method_symbol(arch: uni.Archetype, name: str) -> str;
     def foreign_method_decl(method: uni.Ability) -> (MirDecl | None);
     def declare_archetype(arch: uni.Archetype);
+    def accessor_sig(acc: uni.Ability) -> (uni.FuncSignature | None);
+    def declare_accessors(arch: uni.Archetype, self_type: MirType);
+    def decl_label(decl: MirDecl) -> str;
+    def accessor_of(
+        nd: uni.AtomTrailer, kind: str
+    ) -> (tuple[uni.Archetype, MirDecl] | None);
+    def accessor_get(nd: uni.AtomTrailer) -> (MirValue | None);
+    def accessor_set(target: uni.AtomTrailer, nd: uni.Assignment) -> bool;
     def lower_constructor(arch: uni.Archetype) -> (MirFunction | None);
     def lower_drop(obj_def: MirObjectDef) -> MirFunction;
     def lower_trace(obj_def: MirObjectDef) -> MirFunction;
@@ -497,6 +534,7 @@ obj MirLowering {
     def lower_module_init -> (MirFunction | None);
     def lower_module_entry -> (MirFunction | None);
     def none_value -> MirValue;
+    def opt_recast(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
     def opt_wrap(value: MirValue, to: MirType) -> MirValue;
     def opt_present(value: MirValue) -> MirValue;
     def opt_get(value: MirValue) -> MirValue;
@@ -901,6 +939,14 @@ obj MirLowering {
         op: str, left: MirValue, right: MirValue, site: uni.UniNode
     ) -> (MirValue | None);
 
+    def enum_is_text(t: MirType) -> bool;
+    def enum_self_type(decl: (uni.Archetype | uni.Enum)) -> (MirType | None);
+    def declare_enum_methods(decl: (uni.Archetype | uni.Enum), self_type: MirType);
+    def foreign_enum_method(enum_type: MirType, name: str) -> (MirDecl | None);
+    def enum_method_call(
+        nd: uni.FuncCall, receiver: MirValue, name: str
+    ) -> (MirValue | None);
+    def enum_as_int(value: MirValue, site: uni.UniNode) -> MirValue;
     def enum_coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
     def enum_call(nd: uni.FuncCall) -> (MirValue | None);
     def enum_cursor(collection: uni.Expr) -> MirIterCursor;
