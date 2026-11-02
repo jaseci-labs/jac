@@ -14,7 +14,9 @@ impl MirLowering.opt_get(value: MirValue) -> MirValue {
     return self.emit_value(MirOp.OPT_GET, value.type.payload(), [value]);
 }
 
-impl MirLowering.opt_unwrap_checked(value: MirValue, message: str) -> MirValue {
+impl MirLowering.opt_unwrap_checked(
+    value: MirValue, message: str, error: str = "TypeError"
+) -> MirValue {
     b = self.builder();
     fn = self.st().fn;
     held = self.spill(value);
@@ -22,7 +24,7 @@ impl MirLowering.opt_unwrap_checked(value: MirValue, message: str) -> MirValue {
     present = fn.new_block("opt.some");
     b.cond_branch(self.opt_present(held), present, absent);
     b.position(absent);
-    b.raise_builtin("TypeError", message);
+    b.raise_builtin(error, message);
     b.position(present);
     return self.opt_get(held);
 }

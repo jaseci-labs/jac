@@ -1,7 +1,6 @@
 import io;
 import os;
 import json;
-import from pathlib { Path }
 
 def keep_path(rel: str) -> str;
 

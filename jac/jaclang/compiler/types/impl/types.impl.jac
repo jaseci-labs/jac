@@ -395,7 +395,7 @@ impl ClassType.init(
 impl ModuleType.init(
     *,
     mod_name: str = "",
-    file_uri: Path = Path(""),
+    file_uri: str = "",
     symbol_table: (SymbolTable | None) = None,
     is_external: bool = False,
     flags: TypeFlags = TypeFlags.Null
@@ -835,7 +835,7 @@ impl ModuleType.__str__ -> str {
     if self.mod_name {
         return f"<module {self.mod_name}>";
     }
-    if self.file_uri and str(self.file_uri) != "." {
+    if self.file_uri and self.file_uri != "." {
         return f"<module {self.file_uri}>";
     }
     return "<module>";

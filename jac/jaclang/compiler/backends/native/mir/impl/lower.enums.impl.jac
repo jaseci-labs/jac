@@ -57,6 +57,10 @@ impl MirLowering.attr_special(nd: uni.AtomTrailer) -> (MirValue | None) {
         or not isinstance(nd.target, uni.Expr) {
         return None;
     }
+    via_stdlib = self.stdlib_attr(nd);
+    if via_stdlib is not None {
+        return via_stdlib;
+    }
     member = self.enum_member(nd);
     if member is not None {
         return member;
@@ -261,6 +265,15 @@ impl MirLowering.enum_coerce(
         and value.type.kind in (MirKind.INT, MirKind.BOOL)
         and not self.enum_layout_of(to, site).is_string_enum {
         return self.builder().convert(self.coerce(value, mir_int(), site), to);
+    }
+    if value.type.kind == MirKind.ENUM and to.kind in (MirKind.STR, MirKind.STR_REF) {
+        layout = self.enum_layout_of(value.type, site);
+        if layout.is_string_enum {
+            text = self.enum_select(
+                value, layout, [member.str_value or "" for member in layout.members]
+            );
+            return self.coerce(text, to, site);
+        }
     }
     raise MirRefused(
         mir_refusal(

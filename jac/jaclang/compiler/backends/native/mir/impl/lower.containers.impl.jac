@@ -625,9 +625,8 @@ impl MirLowering.list_method(
     if name == "extend" and len(args) == 1 {
         other = self.lower_expr(args[0]);
         if other.type is not lst.type {
-            raise MirRefused(
-                mir_refusal("call", f"extend with {other.type.render()}", nd)
-            );
+            self.extend_from(lst, self.spill(other), args[0]);
+            return b.const_bool(False);
         }
         self.runtime("__jac_rt_list_extend", [lst, other, kind]);
         return b.const_bool(False);
@@ -1102,9 +1101,8 @@ impl MirLowering.set_method(
     if name == "update" and len(args) == 1 {
         other = self.lower_expr(args[0]);
         if other.type is not s.type {
-            raise MirRefused(
-                mir_refusal("call", f"update with {other.type.render()}", nd)
-            );
+            self.extend_from(s, self.spill(other), args[0]);
+            return b.const_bool(False);
         }
         self.runtime("__jac_rt_dict_update", [s, other, kind, none_kind]);
         return b.const_bool(False);

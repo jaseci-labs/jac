@@ -341,6 +341,13 @@ impl MirLowering.lower_raise(nd: uni.RaiseStmt) {
                 and not cause.target.type.is_instance()
             )
         );
+    if isinstance(cause, uni.Name)
+        and JAC_TYPE_REGISTRY.is_exception(cause.value)
+        and isinstance(cause.type, ClassType)
+        and not cause.type.is_instance() {
+        self.raise_named(cause.value, None, nd);
+        return;
+    }
     if isinstance(cause, uni.FuncCall) and callee_class {
         (name, arch) = self.exception_target(cause);
         if arch is not None {

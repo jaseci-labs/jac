@@ -4616,7 +4616,7 @@ impl TypeEvaluator._load_stub_module(path: str) -> Module {
         raise FileNotFoundError(f"Stub file not found at {path}");
     }
 
-    resolved_path = str(Path(path).resolve());
+    resolved_path = os.path.realpath(path);
     if resolved_path in self.program.mod.hub {
         mod = self.program.mod.hub[resolved_path];
         if mod.parent_scope is None and mod is not self.builtins_module {

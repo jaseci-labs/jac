@@ -742,7 +742,7 @@ impl StubCatalog.type_of(tid: int) -> (TypeBase | None) {
         file_path = self.abs_path(rel) if "/" in rel or rel.endswith(".pyi") else rel;
         mt = ModuleType(
             mod_name=mod_name,
-            file_uri=Path(file_path) if file_path else Path(""),
+            file_uri=file_path or "",
             symbol_table=None,
             is_external=is_external,
             flags=flags

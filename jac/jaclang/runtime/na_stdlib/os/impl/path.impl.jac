@@ -1,25 +1,36 @@
 impl exists(path: str) -> bool {
-    return os.path.exists(path);
+    return stat_fields(path) is not None;
 }
 
 impl isfile(path: str) -> bool {
-    return os.path.isfile(path);
+    held = stat_fields(path);
+    return held is not None and (held[0] & S_IFMT) == S_IFREG;
 }
 
 impl isdir(s: str) -> bool {
-    return os.path.isdir(s);
+    held = stat_fields(s);
+    return held is not None and (held[0] & S_IFMT) == S_IFDIR;
 }
 
 impl realpath(filename: str) -> str {
-    return os.path.realpath(filename);
+    found = resolved_path(filename);
+    return found if found is not None else abspath(filename);
 }
 
 impl getsize(filename: str) -> int {
-    return os.path.getsize(filename);
+    held = stat_fields(filename);
+    if held is None {
+        raise FileNotFoundError(f"[Errno 2] No such file or directory: '{filename}'");
+    }
+    return held[1];
 }
 
 impl getmtime(filename: str) -> float {
-    return os.path.getmtime(filename);
+    held = stat_fields(filename);
+    if held is None {
+        raise FileNotFoundError(f"[Errno 2] No such file or directory: '{filename}'");
+    }
+    return float(held[2]) + float(held[3]) * 1e-9;
 }
 
 impl isabs(s: str) -> bool {
@@ -119,7 +130,7 @@ impl join(
 
 impl abspath(path: str) -> str {
     if not isabs(path) {
-        path = join(os.getcwd(), path);
+        path = join(cwd_path(), path);
     }
     return normpath(path);
 }
@@ -218,7 +229,7 @@ impl expanduser(path: str) -> str {
     }
     home: str | None = None;
     if end == 1 {
-        home = os.getenv("HOME");
+        home = env_value("HOME");
     }
     if home is None {
         home = user_home(path[1:end]);

@@ -34,6 +34,9 @@ impl mir_type_of(
     }
     if isinstance(t, TypeVarType) {
         bound = env.get(t.name) if env is not None else None;
+        if bound is None and t.is_class_type_param and not t.is_self {
+            return mir_any();
+        }
         if bound is None {
             raise MirRefused(
                 mir_refusal(
@@ -249,6 +252,9 @@ impl mir_class_type(
         members = t.private.type_args if t.private else None;
         if not members {
             raise MirRefused(mir_refusal("type", "tuple without member types", site));
+        }
+        if len(members) == 2 and isinstance(members[1], UnknownType) {
+            return mir_list(mir_type_of(members[0], MirPosition.ELEMENT, site, env));
         }
         return mir_tuple(
             [mir_type_of(member, MirPosition.VALUE, site, env) for member in members]

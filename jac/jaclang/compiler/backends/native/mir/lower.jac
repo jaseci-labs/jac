@@ -279,6 +279,7 @@ obj MirLowering {
         decl_syms: dict[int, int] = {},
         archetypes: dict[str, uni.Archetype] = {},
         refused_objects: dict[str, MirRefused] = {},
+        stdlib_units: dict[str, (uni.Module | None)] = {},
         c_struct_sites: dict[str, str] = {},
         trace_pairs: list[tuple[str, str]] = [],
         class_entries: list[tuple[str, str, str]] = [],
@@ -561,6 +562,10 @@ obj MirLowering {
     def find_method(arch: uni.Archetype, name: str) -> (uni.Ability | None);
     def method_symbol(arch: uni.Archetype, name: str) -> str;
     def foreign_method_decl(method: uni.Ability) -> (MirDecl | None);
+    def foreign_static_decl(method: uni.Ability) -> (MirDecl | None);
+    def method_decl_of(method: uni.Ability) -> (MirDecl | None);
+    def foreign_accessor_decl(var: uni.HasVar, acc: uni.Ability) -> (MirDecl | None);
+
     def declare_archetype(arch: uni.Archetype);
     def accessor_sig(acc: uni.Ability) -> (uni.FuncSignature | None);
     def declare_accessors(arch: uni.Archetype, self_type: MirType);
@@ -649,7 +654,10 @@ obj MirLowering {
     def opt_wrap(value: MirValue, to: MirType) -> MirValue;
     def opt_present(value: MirValue) -> MirValue;
     def opt_get(value: MirValue) -> MirValue;
-    def opt_unwrap_checked(value: MirValue, message: str) -> MirValue;
+    def opt_unwrap_checked(
+        value: MirValue, message: str, error: str = "TypeError"
+    ) -> MirValue;
+
     def narrowed_load(value: MirValue, nd: uni.Expr) -> MirValue;
     def narrow_down(value: MirValue, nd: uni.Expr) -> MirValue;
     def optional_eq(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
@@ -720,8 +728,23 @@ obj MirLowering {
     def any_from_box(handle: MirValue) -> MirValue;
     def identity(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
     def bound_args(
-        nd: uni.FuncCall, ab: uni.Ability, method: bool
+        nd: uni.FuncCall, ab: uni.Ability, method: bool, drop: int = 0
     ) -> list[(uni.Expr | MirPacked | MirBound)];
+
+    def class_method_call(
+        nd: uni.FuncCall, arch: uni.Archetype, name: str
+    ) -> (MirValue | None);
+
+    def super_call(nd: uni.FuncCall, name: str) -> MirValue;
+    def object_eq(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
+    def list_repeat(items: MirValue, times: MirValue, site: uni.UniNode) -> MirValue;
+    def direct_method_call(
+        nd: uni.FuncCall,
+        holder: uni.Archetype,
+        method: uni.Ability,
+        receiver: MirValue,
+        drop: int
+    ) -> MirValue;
 
     def has_spread(nd: uni.FuncCall) -> bool;
     def spread_args(
@@ -1029,6 +1052,11 @@ obj MirLowering {
     def type_value(value: MirValue, site: uni.UniNode) -> MirValue;
     def class_name_str(value: MirValue) -> MirValue;
     def is_template(ab: uni.Ability) -> bool;
+    def template_of(ab: uni.Ability) -> bool;
+    def stdlib_module(expr: uni.UniNode) -> (uni.Module | None);
+    def module_member(unit: uni.Module, name: str) -> (uni.UniNode | None);
+    def stdlib_call(nd: uni.FuncCall, target: uni.AtomTrailer) -> (MirValue | None);
+    def stdlib_attr(nd: uni.AtomTrailer) -> (MirValue | None);
     def mentions_typevar(t: (TypeBase | None)) -> bool;
     def resolved(t: (TypeBase | None)) -> (TypeBase | None);
     def unify(

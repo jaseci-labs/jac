@@ -5,6 +5,7 @@ glob LIST_CLASSES: list[str] = ["list", "Sequence", "MutableSequence"],
 
 glob ITERATOR_CLASSES: list[str] = [
          "Iterator",
+         "_GeneratorContextManager",
          "Generator",
          "reversed",
          "map",

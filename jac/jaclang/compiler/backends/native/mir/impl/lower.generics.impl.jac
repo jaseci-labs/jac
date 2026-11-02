@@ -13,6 +13,21 @@ impl mono_symbol_text(text: str) -> str {
     return out;
 }
 
+impl MirLowering.template_of(ab: uni.Ability) -> bool {
+    if id(ab) in self.templates {
+        return True;
+    }
+    unit = ab.find_parent_of_type(uni.Module);
+    if unit is None
+        or unit is self.module
+        or not unit.loc.mod_path.endswith(".jac")
+        or not self.is_template(ab) {
+        return False;
+    }
+    self.templates[id(ab)] = ab;
+    return True;
+}
+
 impl MirLowering.is_template(ab: uni.Ability) -> bool {
     if ab.type_params {
         return True;

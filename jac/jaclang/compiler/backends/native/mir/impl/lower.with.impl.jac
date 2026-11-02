@@ -45,8 +45,12 @@ impl MirLowering.with_items(
     }
     enter_method = self.find_method(arch, "__enter__");
     leave_method = self.find_method(arch, "__exit__");
-    enter_decl = self.decls.get(id(enter_method)) if enter_method is not None else None;
-    leave_decl = self.decls.get(id(leave_method)) if leave_method is not None else None;
+    enter_decl = self.method_decl_of(enter_method)
+        if enter_method is not None
+        else None;
+    leave_decl = self.method_decl_of(leave_method)
+        if leave_method is not None
+        else None;
     if enter_decl is None or leave_decl is None {
         raise MirRefused(
             mir_refusal(

@@ -228,7 +228,7 @@ impl MirLowering.value_truthy(value: MirValue, site: uni.UniNode) -> (MirValue |
             if found is None {
                 continue;
             }
-            decl = self.decls.get(id(found));
+            decl = self.method_decl_of(found);
             if decl is None or decl.params {
                 return None;
             }

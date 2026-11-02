@@ -6332,6 +6332,7 @@ graph import compiler {
             OSP_GRAPH_REL,
             OSP_KERNEL_REL,
             OSP_NATIVE_REL,
+            bundled_stdlib_module_of,
             interop_callback_symbol,
             kernel_unit_path,
             native_def_symbol,
@@ -6341,7 +6342,8 @@ graph import compiler {
             native_test_symbol,
             native_unit_identity,
             native_unit_prefix,
-            native_unit_spelling
+            native_unit_spelling,
+            resolve_native_module
         },
         backends.native.region_abi._region_layout_facts {
             HDR_ALLOC_ID_OFF,
@@ -10034,7 +10036,8 @@ graph import compiler {
             EnumMemberType,
             FunctionType,
             TypeVarType,
-            UnionType
+            UnionType,
+            UnknownType
         },
         c_interop.c_param_type { FunctionType },
         c_interop.c_type_spec
@@ -14645,7 +14648,7 @@ graph import runtime.na_stdlib {
     type _digest ++> hashlib | hmac { DigestCore }
     _directory_native ++> [
         glob | shutil | uuid | zoneinfo { try_directory_names },
-        pathlib { directory_names },
+        _os_native | pathlib { directory_names },
     ]
     _dirent_native ++> _directory_native { dirent_name }
     _errno_native ++> [
@@ -14752,6 +14755,25 @@ graph import runtime.na_stdlib {
         _default_types_ext,
         _default_types_val
     }
+    _posix_native ++> [
+        _os_native {
+            S_IFDIR,
+            S_IFMT,
+            cwd_path,
+            env_value,
+            make_dir,
+            stat_fields
+        },
+        os.path {
+            S_IFDIR,
+            S_IFMT,
+            S_IFREG,
+            cwd_path,
+            env_value,
+            resolved_path,
+            stat_fields
+        },
+    ]
     _replace_native ++> _os_native { replace_file }
     _repr ++> [
         difflib { str_gt },

@@ -335,6 +335,11 @@ impl MirLowering.iter_open(value: MirValue, site: uni.UniNode) -> MirIterCursor 
     if t.kind == MirKind.TUPLE {
         return self.tuple_cursor(value, self.tuple_elem(value, site));
     }
+    if t.kind == MirKind.OPT {
+        return self.iter_open(
+            self.opt_unwrap_checked(value, "'NoneType' object is not iterable"), site
+        );
+    }
     found = self.user_cursor(value, site);
     if found is not None {
         return found;
@@ -504,6 +509,11 @@ impl MirLowering.iter_value(value: MirValue, site: uni.UniNode) -> MirValue {
     t = value.type;
     if t.kind == MirKind.ITER {
         return value;
+    }
+    if t.kind == MirKind.OPT {
+        return self.iter_value(
+            self.opt_unwrap_checked(value, "'NoneType' object is not iterable"), site
+        );
     }
     if t.kind == MirKind.LIST {
         made = self.runtime_value(

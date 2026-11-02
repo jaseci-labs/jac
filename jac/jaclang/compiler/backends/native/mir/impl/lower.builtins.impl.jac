@@ -93,6 +93,33 @@ impl MirLowering.list_concat(left: MirValue, right: MirValue) -> MirValue {
     return joined;
 }
 
+impl MirLowering.list_repeat(
+    items: MirValue, times: MirValue, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    held = self.spill(items);
+    kind = b.const_int(self.elem_kind(held.type.payload(), site), mir_int());
+    made = self.spill(self.new_list(held.type.payload(), 0));
+    count = self.temp_slot(mir_int());
+    limit = self.spill(b.convert(times, mir_int()));
+    b.store(count, b.const_int(0, mir_int()));
+    head = fn.new_block("lrep.head");
+    body = fn.new_block("lrep.body");
+    done = fn.new_block("lrep.done");
+    b.branch(head);
+    b.position(head);
+    b.cond_branch(b.compare("lt", b.load(count, mir_int()), limit), body, done);
+    b.position(body);
+    self.runtime("__jac_rt_list_extend", [made, held, kind]);
+    b.store(
+        count, b.binary("add", b.load(count, mir_int()), b.const_int(1, mir_int()))
+    );
+    b.branch(head);
+    b.position(done);
+    return made;
+}
+
 impl MirLowering.str_subscript(nd: uni.AtomTrailer) -> (MirValue | None) {
     right = nd.right;
     if nd.is_attr

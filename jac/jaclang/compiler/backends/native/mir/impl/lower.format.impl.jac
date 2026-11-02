@@ -102,6 +102,19 @@ impl MirLowering.repr_of(value: MirValue, site: uni.UniNode) -> MirValue {
     if kind == MirKind.OBJ {
         return self.object_text(value, "__repr__", site);
     }
+    if kind == MirKind.ENUM {
+        layout = self.enum_layout_of(value.type, site);
+        short = layout.name.split("$")[0];
+        return self.enum_select(
+            value,
+            layout,
+            [
+                f"<{short}.{member.name}: {repr(member.str_value)
+                    if layout.is_string_enum
+                    else member.int_value}>" for member in layout.members
+            ]
+        );
+    }
     raise MirRefused(mir_refusal("conversion", f"repr of {value.type.render()}", site));
 }
 
@@ -127,7 +140,7 @@ impl MirLowering.object_text(
     }
     found = self.find_method(arch, method);
     if found is not None {
-        decl = self.decls.get(id(found));
+        decl = self.method_decl_of(found);
         if decl is None
             or decl.params
             or decl.ret.kind not in (MirKind.STR, MirKind.STR_REF) {
@@ -963,7 +976,7 @@ impl MirLowering.hash_value(value: MirValue, site: uni.UniNode) -> MirValue {
         arch = self.archetypes.get(value.type.name);
         method = self.find_method(arch, "__hash__") if arch is not None else None;
         if method is not None {
-            decl = self.decls.get(id(method));
+            decl = self.method_decl_of(method);
             if decl is None or decl.params {
                 raise MirRefused(
                     mir_refusal("method", f"{value.type.name}.__hash__", site)

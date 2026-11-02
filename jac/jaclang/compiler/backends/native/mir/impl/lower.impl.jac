@@ -916,6 +916,26 @@ impl MirLowering.lower_binary(nd: uni.BinaryExpr) -> MirValue {
         and nd.op.name == Tok.PLUS {
         return self.list_concat(left, right);
     }
+    if left.type.kind == MirKind.LIST
+        and right.type.kind == MirKind.LIST
+        and nd.op.name == Tok.PLUS {
+        joined_type = self.expr_type(nd);
+        if joined_type.kind == MirKind.LIST {
+            made = self.spill(self.new_list(joined_type.payload(), 0));
+            self.extend_from(made, self.spill(left), nd.left);
+            self.extend_from(made, self.spill(right), nd.right);
+            return made;
+        }
+    }
+    if nd.op.name == Tok.STAR_MUL
+        and MirKind.LIST in (left.type.kind, right.type.kind)
+        and MirKind.INT in (left.type.kind, right.type.kind) {
+        return self.list_repeat(
+            left if left.type.kind == MirKind.LIST else right,
+            right if left.type.kind == MirKind.LIST else left,
+            nd
+        );
+    }
     via_set = self.set_operator(nd.op.name, left, right, False, nd);
     if via_set is not None {
         return via_set;
@@ -1231,6 +1251,12 @@ impl MirLowering.compare_values(
         }
         return self.builder().compare(name, words[0], words[1]);
     }
+    if name in ("eq", "ne")
+        and left.type.kind in (MirKind.OBJ, MirKind.OSP)
+        and right.type.kind in (MirKind.OBJ, MirKind.OSP) {
+        same = self.object_eq(left, right, site);
+        return same if name == "eq" else self.builder().logical_not(same);
+    }
     if not left.type.is_numeric() or not right.type.is_numeric() {
         raise MirRefused(
             mir_refusal(
@@ -1387,13 +1413,26 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         return self.c_pin(nd);
     }
     callee = nd.callee_decl;
-    if callee is not None and id(callee) in self.templates {
+    if isinstance(callee, uni.Ability) and self.template_of(callee) {
+        owner = callee.find_parent_of_type(uni.Archetype);
+        if owner is not None
+            and not callee.is_static
+            and isinstance(nd.target, uni.AtomTrailer)
+            and nd.target.is_attr {
+            via_method = self.method_call(nd, nd.target);
+            if via_method is not None {
+                return via_method;
+            }
+        }
         return self.generic_call(nd, callee, None, None);
     }
     if isinstance(callee, uni.Ability) and clib_import_of(callee) is not None {
         return self.c_call(nd, callee);
     }
     decl = self.decls.get(id(callee)) if callee is not None else None;
+    if decl is None and isinstance(callee, uni.Ability) and callee.is_static {
+        decl = self.foreign_static_decl(callee);
+    }
     if decl is not None
         and decl.self_type is not None
         and isinstance(nd.target, uni.AtomTrailer)
@@ -1437,6 +1476,15 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         if constructed is not None {
             return self.object_call(nd, constructed);
         }
+    }
+    if not isinstance(callee, (uni.Archetype, uni.Ability))
+        and isinstance(nd.target, uni.Name)
+        and nd.target.value == "type"
+        and isinstance(nd.target.type, ClassType)
+        and nd.target.type.is_builtin("type")
+        and len(list(nd.params or [])) == 1
+        and isinstance(list(nd.params or [])[0], uni.Expr) {
+        return self.class_of(self.lower_expr(list(nd.params or [])[0]), nd);
     }
     if not isinstance(callee, (uni.Archetype, uni.Ability))
         and isinstance(nd.target, uni.Expr)
@@ -1489,6 +1537,10 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     }
     target = nd.target;
     if isinstance(target, uni.AtomTrailer) and target.is_attr {
+        via_stdlib = self.stdlib_call(nd, target);
+        if via_stdlib is not None {
+            return via_stdlib;
+        }
         via_method = self.method_call(nd, target);
         if via_method is not None {
             return via_method;
@@ -1591,6 +1643,17 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
     if value.type.kind == MirKind.OPT and value.type.payload() is to {
         return self.opt_get(value);
     }
+    if value.type.kind == MirKind.OPT
+        and value.type.payload().kind == MirKind.OBJ
+        and to.kind == MirKind.OBJ {
+        return self.coerce(
+            self.opt_unwrap_checked(
+                value, f"expected {to.render()}, got None", "TypeError"
+            ),
+            to,
+            site
+        );
+    }
     positioned = self.text_position(value, to);
     if positioned is not None {
         return positioned;
@@ -1617,7 +1680,10 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
     }
     if value.type.kind == MirKind.OBJ
         and to.kind == MirKind.OBJ
-        and self.obj_extends(value.type.name, to.name) {
+        and (
+            self.obj_extends(value.type.name, to.name)
+            or self.obj_extends(to.name, value.type.name)
+        ) {
         return self.builder().ref_cast(value, to, False);
     }
     if value.type.kind == MirKind.CLASS and to.kind == MirKind.CLASS {
@@ -1625,6 +1691,14 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
     }
     if mir_is_container(to) and value.type.kind == to.kind {
         return self.container_rebuild(value, to, site);
+    }
+    if to.kind == MirKind.LIST and value.type.kind == MirKind.TUPLE {
+        held = self.spill(value);
+        made = self.spill(self.new_list(to.payload(), len(value.type.args)));
+        for index in range(len(value.type.args)) {
+            self.container_add(made, self.tuple_get(held, index), site);
+        }
+        return made;
     }
     raise MirRefused(
         mir_refusal("conversion", f"{value.type.render()} to {to.render()}", site)
@@ -2812,6 +2886,10 @@ impl MirLowering.method_call(
     if not isinstance(right, uni.Name) {
         return None;
     }
+    if isinstance(target.target, uni.SpecialVarRef)
+        and target.target.value == "super" {
+        return self.super_call(nd, right.value);
+    }
     if right.value == "wrap" and self.sized_type_name(target.target) is not None {
         return self.sized_wrap(nd, self.sized_type_name(target.target) or "");
     }
@@ -2860,6 +2938,14 @@ impl MirLowering.method_call(
     owner_arch = self.arch_of_type(target.target.type)
         if isinstance(target.target, uni.Expr)
         else None;
+    if owner_arch is not None
+        and isinstance(target.target.type, ClassType)
+        and not target.target.type.is_instance() {
+        via_class = self.class_method_call(nd, owner_arch, right.value);
+        if via_class is not None {
+            return via_class;
+        }
+    }
     if owner_arch is not None {
         return self.object_method(
             nd, self.lower_expr(target.target), owner_arch, right.value

@@ -192,7 +192,10 @@ def forget_real_paths;
 
 def is_kernel_unit_path(path: str) -> bool;
 
-glob NATIVE_STDLIB_EXTENSIONS: dict[str, str] = {"os": "_os_native"},
+glob NATIVE_STDLIB_EXTENSIONS: dict[str, str] = {
+         "os": "_os_native",
+         "sys": "_sys_native"
+     },
      NOGC_NATIVE_STDLIB: set[str] = {
          "time",
          "_time_native",

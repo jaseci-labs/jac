@@ -1,9 +1,14 @@
 impl MirLowering.bound_args(
-    nd: uni.FuncCall, ab: uni.Ability, method: bool
+    nd: uni.FuncCall, ab: uni.Ability, method: bool, drop: int = 0
 ) -> list[(uni.Expr | MirPacked | MirBound)] {
     sig = ab.signature;
     if not isinstance(sig, uni.FuncSignature) {
-        return self.call_args(nd);
+        return self.call_args(nd)[drop:];
+    }
+    if drop and self.has_spread(nd) {
+        raise MirRefused(
+            mir_refusal("call argument", "unpacking after a receiver", nd)
+        );
     }
     if self.has_spread(nd) {
         return self.spread_args(nd, ab, sig, method);
@@ -37,6 +42,7 @@ impl MirLowering.bound_args(
             positional.append(arg);
         }
     }
+    positional = positional[drop:];
     if len(positional) > len(params) and sig.varargs is None {
         raise MirRefused(
             mir_refusal(
@@ -453,6 +459,11 @@ impl MirLowering.constant_default(value: (uni.Expr | None)) -> bool {
     }
     if isinstance(value, uni.UnaryExpr) and value.op.name == Tok.MINUS {
         return isinstance(value.operand, (uni.Int, uni.Float));
+    }
+    if isinstance(value, uni.AtomTrailer)
+        and value.is_attr
+        and self.is_enum_class(value.target) {
+        return True;
     }
     return isinstance(value.ct_value, (CtInt, CtBool, CtFloat));
 }
