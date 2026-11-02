@@ -877,9 +877,10 @@ test "native gradual object keys demote, never pointer-sort (#9158)" {
     # semantic `-> str` key in the same module stays natively lowered.
     (eng, na_ir) = compile_native("prim_sort_key_gradual.jac");
     llvm_txt = str(na_ir.gen.llvm_ir);
+    iface: any = na_ir.gen.native_iface;
     demoted = [
         sym.rsplit(".", 1)[-1]
-        for sym in (na_ir.gen.native_iface?.demoted or [])
+        for sym in (list(iface.demoted) if iface is not None else [])
     ];
     assert demoted.count("grad_obj_na") == 1 , (
         f"gradual object key function should demote exactly once: {demoted}"
