@@ -831,6 +831,9 @@ impl MirEmitter.global_variable(glob_def: MirGlobal) -> ir.GlobalVariable {
     shape = self.llvm_type(glob_def.type);
     made = ir.GlobalVariable(self.module, shape, name=glob_def.symbol);
     made.linkage = glob_def.linkage;
+    if glob_def.linkage == "external" {
+        return made;
+    }
     if glob_def.type.kind == MirKind.FLOAT {
         made.initializer = ir.Constant(shape, glob_def.float_value);
     } elif glob_def.type.kind in (MirKind.INT, MirKind.BOOL) {

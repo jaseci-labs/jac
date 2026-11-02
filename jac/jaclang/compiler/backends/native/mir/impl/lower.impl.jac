@@ -1347,6 +1347,12 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     }
     name = self.call_name(nd);
     if isinstance(nd.target, uni.Name)
+        and name == "addressof"
+        and callee is not None
+        and os.path.basename(callee.loc.mod_path) == "jac_builtins.pyi" {
+        return self.address_call(nd);
+    }
+    if isinstance(nd.target, uni.Name)
         and name.startswith("wrapping_")
         and callee is not None
         and os.path.basename(callee.loc.mod_path) == "jac_builtins.pyi" {
@@ -2220,6 +2226,22 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
     return self.narrowed_load(loaded, nd);
 }
 
+impl MirLowering.address_call(nd: uni.FuncCall) -> MirValue {
+    args = self.call_args(nd);
+    if len(args) != 1 or not isinstance(args[0], uni.Name) {
+        raise MirRefused(mir_refusal("call", "addressof of a non-name", nd));
+    }
+    place = self.global_place(args[0]);
+    if place is None {
+        raise MirRefused(mir_refusal("call", f"addressof {args[0].value}", nd));
+    }
+    wanted = self.expr_type(nd);
+    if wanted.kind == MirKind.C_PTR and wanted is not place.type {
+        return self.emit_value(MirOp.PTR_CAST, wanted, [place]);
+    }
+    return place;
+}
+
 impl MirLowering.call_name(nd: uni.FuncCall) -> str {
     target = nd.target;
     if isinstance(target, uni.Name) {
@@ -2684,6 +2706,19 @@ impl MirLowering.declare_global(nd: uni.Name) -> (MirGlobal | None) {
         return None;
     }
     found = self.mir.globals.get(sym.sym_name);
+    if found is None and declaration.find_parent_of_type(uni.Import) is not None {
+        found = MirGlobal(
+            name=sym.sym_name,
+            symbol=sym.sym_name,
+            type=mir_type_of(
+                self.prog.get_type_evaluator().get_type_of_symbol(sym),
+                MirPosition.C_FIELD,
+                nd
+            ),
+            linkage="external"
+        );
+        self.mir.globals[sym.sym_name] = found;
+    }
     if found is None {
         value_type = self.symbol_type(sym, nd);
         group = declaration.parent;

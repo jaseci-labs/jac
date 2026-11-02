@@ -497,6 +497,7 @@ obj MirLowering {
         holder: MirValue, members: list[uni.Archetype], name: str, site: uni.UniNode
     ) -> MirValue;
     def condition_only(nd: uni.Expr) -> bool;
+    def address_call(nd: uni.FuncCall) -> MirValue;
     def accessor_of(
         nd: uni.AtomTrailer, kind: str
     ) -> (tuple[uni.Archetype, MirDecl] | None);
