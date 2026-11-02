@@ -897,6 +897,7 @@ obj MirLowering {
         value: MirValue, items: list[uni.Expr], site: uni.UniNode
     ) -> MirValue;
 
+    def enum_owns_int_tag(site: uni.UniNode, item: uni.Expr) -> bool;
     def any_isinstance(
         value: MirValue, target: uni.Expr, site: uni.UniNode
     ) -> MirValue;

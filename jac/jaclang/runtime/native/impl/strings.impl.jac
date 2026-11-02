@@ -166,3 +166,21 @@ impl __jac_rt_str_char_at(data: ptr[u8], n: int, index: int) -> ptr[u8] {
     }
     return __jac_rt_str_new(data, 0);
 }
+
+impl __jac_rt_str_from_uint(value: int) -> ptr[u8] {
+    if value >= 0 {
+        return __jac_rt_str_from_int(value);
+    }
+    buf = __thread_local_block("jac_rt_int_text", 32);
+    high = ((value >> 1) & 9223372036854775807) // 5;
+    low = wrapping_sub(value, wrapping_mul(high, 10));
+    pos = INT_TEXT_MAX - 1;
+    __mem_store_i8(buf + pos, i8(48 + low));
+    rest = high;
+    while rest != 0 {
+        pos -= 1;
+        __mem_store_i8(buf + pos, i8(48 + rest % 10));
+        rest = rest // 10;
+    }
+    return __jac_rt_str_new(ptr[u8](buf + pos), INT_TEXT_MAX - pos);
+}

@@ -24,6 +24,8 @@ def:pub __jac_rt_str_concat(a: ptr[u8], an: int, b: ptr[u8], bn: int) -> ptr[u8]
 
 def:pub __jac_rt_str_from_int(value: int) -> ptr[u8];
 
+def:pub __jac_rt_str_from_uint(value: int) -> ptr[u8];
+
 def:pub __jac_rt_str_char_at(data: ptr[u8], n: int, index: int) -> ptr[u8];
 
 def:pub __jac_rt_write(fd: int, data: ptr[u8], n: int);

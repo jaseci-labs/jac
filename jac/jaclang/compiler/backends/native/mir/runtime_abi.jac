@@ -4,6 +4,7 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_str_new": ["str.ref", "ptr", "int"],
          "__jac_rt_str_concat": ["str.ref", "ptr", "int", "ptr", "int"],
          "__jac_rt_str_from_int": ["str.ref", "int"],
+         "__jac_rt_str_from_uint": ["str.ref", "int"],
          "__jac_rt_str_size": ["int", "str.ref"],
          "__jac_rt_str_ref": ["str.ref", "ptr", "ptr", "int"],
          "__jac_rt_str_char_at": ["str.ref", "ptr", "int", "int"],

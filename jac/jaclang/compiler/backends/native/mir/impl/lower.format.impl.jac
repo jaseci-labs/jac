@@ -19,7 +19,12 @@ impl MirLowering.str_value(value: MirValue, site: uni.UniNode) -> MirValue {
         return b.const_str("None", mir_str());
     }
     if kind == MirKind.INT {
-        made = self.call_rt("__jac_rt_str_from_int", [b.convert(value, mir_int())]);
+        made = self.call_rt(
+            "__jac_rt_str_from_uint"
+                if not value.type.signed and value.type.width == 64
+                else "__jac_rt_str_from_int",
+            [b.convert(value, mir_int())]
+        );
         return b.str_make(made, made, self.call_rt("__jac_rt_str_size", [made]));
     }
     if kind == MirKind.FLOAT {

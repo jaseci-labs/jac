@@ -85,7 +85,7 @@ impl MirLowering.any_unbox(
     if to.kind == MirKind.NONE {
         return self.none_value();
     }
-    if to.kind in (MirKind.INT, MirKind.BOOL, MirKind.FLOAT) {
+    if to.kind in (MirKind.INT, MirKind.BOOL, MirKind.FLOAT, MirKind.ENUM) {
         bits = self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [value]);
         if to.kind == MirKind.BOOL {
             return b.compare("ne", bits, b.const_int(0, mir_int()));
@@ -384,6 +384,22 @@ impl MirLowering.any_isinstance(
             }
             continue;
         }
+        if self.is_enum_class(item) {
+            if not self.enum_owns_int_tag(site, item) {
+                raise MirRefused(
+                    mir_refusal(
+                        "call",
+                        "isinstance of an enum sharing the int tag",
+                        site,
+                        "An enum member boxes with the int tag, so a value that may also be an int or another enum cannot be told apart from it."
+                    )
+                );
+            }
+            verdict = b.binary(
+                "or", verdict, b.compare("eq", tag, b.const_int(ANY_INT_TAG, mir_int()))
+            );
+            continue;
+        }
         arch = self.target_archetype(item);
         if arch is None {
             raise MirRefused(
@@ -500,4 +516,30 @@ impl MirLowering.hook_call(
         raise MirRefused(mir_refusal("method", decl.symbol));
     }
     return direct;
+}
+
+impl MirLowering.enum_owns_int_tag(site: uni.UniNode, item: uni.Expr) -> bool {
+    if not isinstance(site, uni.FuncCall)
+        or not site.params
+        or not isinstance(item.type, ClassType) {
+        return False;
+    }
+    source = list(site.params)[0];
+    if not isinstance(source, uni.Expr) or source.type is None {
+        return False;
+    }
+    wanted = mir_type_of(
+        item.type.clone_as_instance(), MirPosition.VALUE, site, self.type_env or None
+    );
+    members = source.type.types if isinstance(source.type, UnionType) else [source.type];
+    for member in members {
+        made = mir_type_of(member, MirPosition.VALUE, site, self.type_env or None);
+        if made.kind == MirKind.ENUM and made.name != wanted.name {
+            return False;
+        }
+        if made.kind in (MirKind.INT, MirKind.ANY) {
+            return False;
+        }
+    }
+    return wanted.kind == MirKind.ENUM;
 }
