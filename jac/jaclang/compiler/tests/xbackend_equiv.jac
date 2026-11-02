@@ -244,7 +244,7 @@ def compile_native(fixture: str, *, no_ir_cache: bool = False) -> tuple[any, ...
 """Pin the unit an engine was built from, so bare Jac names resolve to the
 unit's qualified symbols; every compile path that hands an engine to
 `get_func` calls this."""
-def remember_engine_unit(eng: object, ir: object, path: str = "") {
+def remember_engine_unit(eng: any, ir: any, path: str = "") {
     unit_path = ir.loc.mod_path if (ir?.loc and ir.loc.mod_path) else path;
     _ENGINE_UNITS[id(eng)] = (unit_path, ir.gen.native_iface, );
 }
@@ -285,7 +285,7 @@ def compile_native_errors(fixture: str) -> list[str] {
     return [str(e) for e in prog.errors_had] if prog.errors_had else [];
 }
 
-def get_func(eng: object, name: str, restype: type, *argtypes: type) -> object {
+def get_func(eng: any, name: str, restype: type, *argtypes: type) -> any {
     symbol = native_symbol_for(eng, name);
     addr = eng.get_function_address(symbol);
     if addr == 0 and symbol != name {
@@ -423,15 +423,15 @@ def _native_object(addr: int, like: any = None) -> any {
         count = _native_word(addr);
         out: list[any] = [];
         for i in range(count) {
-            kind = _native_word(addr + 8 + i * 8);
+            slot_kind = _native_word(addr + 8 + i * 8);
             bits = _native_word(addr + 8 + (count + i) * 8);
-            if kind == NATIVE_KIND_FLOAT {
+            if slot_kind == NATIVE_KIND_FLOAT {
                 out.append(_native_float(bits));
-            } elif kind == NATIVE_KIND_BOOL {
+            } elif slot_kind == NATIVE_KIND_BOOL {
                 out.append(bits != 0);
-            } elif kind in (NATIVE_KIND_INT, NATIVE_KIND_UINT) {
+            } elif slot_kind in (NATIVE_KIND_INT, NATIVE_KIND_UINT) {
                 out.append(bits);
-            } elif kind == NATIVE_KIND_STR {
+            } elif slot_kind == NATIVE_KIND_STR {
                 out.append(_native_text(bits));
             } else {
                 out.append(_native_object(bits, _guide_of(like, i)));
@@ -500,7 +500,7 @@ def run_native_function(
     eng: object, func_name: str, ir: object = None, like: any = None
 ) -> dict[str, any] {
     f = get_func(eng, func_name, ctypes.c_void_p);
-    made = f() or 0;
+    made = int(f() or 0);
     _learn_native_drops(eng);
     decoded = _native_object(made, like if isinstance(like, dict) else {});
     return decoded if isinstance(decoded, dict) else {};

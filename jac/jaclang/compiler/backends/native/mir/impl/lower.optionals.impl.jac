@@ -101,7 +101,7 @@ impl MirLowering.lower_cast(nd: uni.CastExpr) -> MirValue {
         and wanted.kind not in (MirKind.OPT, MirKind.NONE) {
         exception = "TypeError";
         message = "'NoneType' object cast to a value";
-        user: (uni.UniNode | None) = nd;
+        user: uni.UniNode = nd;
         while isinstance(user.parent, uni.AtomUnit) {
             user = user.parent;
         }
