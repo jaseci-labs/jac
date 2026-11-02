@@ -1175,8 +1175,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " scalar's storage only to a C function, where the write lands.",
          blocks_codegen=True
      ),
-     E1161 = _err(
-         "E1161",
+     E1162 = _err(
+         "E1162",
          Category.TYPE,
          "'Final' without a type needs a value to take its type from",
          help="Name the type in brackets, as in `has x: Final[int];`, or give a"

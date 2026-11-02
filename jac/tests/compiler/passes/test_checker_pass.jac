@@ -5740,7 +5740,7 @@ test "final_reassignment_errors" {
 
 test "final_bare_field_without_initializer" {
     # A bare `Final` with no value has no type to infer, so the declaration is
-    # E1161; a bare `Final` with a value stays valid.
+    # E1162; a bare `Final` with a value stays valid.
     program = JacProgram();
     program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_final_bare_field.jac"), options=NO_TC
@@ -5750,10 +5750,10 @@ test "final_bare_field_without_initializer" {
         [
             e.loc.first_line
             for e in program.errors_had
-            if e.loc and e.code and e.code.code == "E1161"
+            if e.loc and e.code and e.code.code == "E1162"
         ]
     );
-    assert got == [3, 6, 14] , f"expected E1161 on lines 3, 6, 14, got {got}:\n{all_errors}";
+    assert got == [3, 6, 14] , f"expected E1162 on lines 3, 6, 14, got {got}:\n{all_errors}";
     assert len(program.errors_had) == 3 , all_errors;
 }
 

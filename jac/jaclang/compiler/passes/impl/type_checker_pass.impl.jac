@@ -669,7 +669,7 @@ impl TypeCheckPass._check_bare_final(ann_node: Expr, value: (Expr | None)) -> No
         self.evaluator.get_type_of_expression(ann_node)
     );
     if final_form is not None and not final_form.private.type_args {
-        self.ctx.emit(E1161, node_override=ann_node);
+        self.ctx.emit(E1162, node_override=ann_node);
     }
 }
 

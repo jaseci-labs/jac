@@ -318,9 +318,9 @@ A foreign struct field must be C plain data: a sized scalar, `int`, `float`, `bo
 | Code | Message |
 |------|---------|
 | `E1135` | Cannot assign to '{name}': it is declared {kind} |
-| `E1161` | 'Final' without a type needs a value to take its type from |
+| `E1162` | 'Final' without a type needs a value to take its type from |
 
-A `Final` field with no value is set exactly once, by the first write in its object's `init` or `postinit`; a second write, a write that a loop repeats, or a `postinit` write to a field the constructor already set is `E1135`. A bare `Final` takes its type from its value, so writing it with neither a type nor a value is `E1161`.
+A `Final` field with no value is set exactly once, by the first write in its object's `init` or `postinit`; a second write, a write that a loop repeats, or a `postinit` write to a field the constructor already set is `E1135`. A bare `Final` takes its type from its value, so writing it with neither a type nor a value is `E1162`.
 
 ### Exception / Context Manager / Yield
 

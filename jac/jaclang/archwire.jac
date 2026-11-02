@@ -7245,6 +7245,7 @@ graph import compiler {
             E1158,
             E1159,
             E1161,
+            E1162,
             E2015,
             W1036,
             W1037,
