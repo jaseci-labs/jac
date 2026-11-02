@@ -1356,7 +1356,8 @@ impl NaIRGenPass._codegen_intrinsic(
     if _dispatch == IntrinsicDispatch.ATOMIC_XCHG {
         return self._emit_intrinsic_atomic_xchg(nd, intr, positional);
     }
-    if _dispatch == IntrinsicDispatch.C_THREAD_LOCAL {
+    if _dispatch
+        in (IntrinsicDispatch.C_THREAD_LOCAL, IntrinsicDispatch.GLOBAL_BLOCK) {
         return self._emit_intrinsic_c_thread_local(nd, intr, positional);
     }
     if _dispatch
@@ -4451,8 +4452,9 @@ impl NaIRGenPass._emit_intrinsic_c_thread_local(
     }
 
     defining = intr.name != "__c_thread_local";
+    per_thread = intr.name != "__global_block";
     cell: ir.Type = ir.IntType(64) if defining else ir.IntType(8);
-    if intr.name == "__thread_local_block" {
+    if intr.name in ("__thread_local_block", "__global_block") {
         (ok, size) = c_scalar_constant(args[1]);
         if not ok or not isinstance(size, int) or size <= 0 {
             self._emit_intrinsic_misuse(
@@ -4471,14 +4473,21 @@ impl NaIRGenPass._emit_intrinsic_c_thread_local(
                 if isinstance(cell, ir.IntType)
                 else ir.Constant(cell, None);
         }
-        existing.thread_local = True;
-        existing.tls_model = "initialexec";
+        if per_thread {
+            existing.thread_local = True;
+            existing.tls_model = "initialexec";
+        }
         if intr.name == "__thread_local" {
             self._record_export(name, name, "global", True);
         }
-    } elif not isinstance(existing, ir.GlobalVariable) or not existing.thread_local {
+    } elif not isinstance(existing, ir.GlobalVariable)
+        or bool(existing.thread_local) != per_thread {
         self._emit_intrinsic_misuse(
-            nd, intr, f"'{name}' is already declared and is not thread-local"
+            nd,
+            intr,
+            f"'{name}' is already declared and is not thread-local"
+                if per_thread
+                else f"'{name}' is already declared as thread-local"
         );
         return None;
     }
