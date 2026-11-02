@@ -91,6 +91,8 @@ def binder_rebinds {
     (fresh, fresh) = (Label(), "x");  # <-- Error: the second write
     rest = ["r"];
     (head, *rest) = (0, "x", "y");  # <-- Ok: only the captured elements
+    (count, *names) = (0, "x");
+    names.append("y");  # <-- Ok: a new starred target holds only what it captures
     if (label := "a") and (label := "b") {  # <-- Ok: a walrus binding widens
         print(head, middle, fresh, label);
     }
@@ -101,7 +103,7 @@ def binder_rebinds {
     [first, second] = [Label(), Label()];  # <-- Ok: first binding
     pending = None;
     (kind, pending) = ("k", 3);  # <-- Ok: None-sentinel
-    print(first, second, pending, spare);
+    print(first, second, pending, spare, count);
 }
 
 def for_unpack_rebinds {

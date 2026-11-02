@@ -12,3 +12,12 @@ def widen_via_star(rest: list[int] | None) -> int {
     }
     return 0;
 }
+
+# A target after the star takes the last element, so `x` narrows to str
+# and the typed-local assignment fails.
+def narrow_after_star(x: int | str) -> int {
+    (head, *middle, x) = (0, 1, 2, "s");
+    wrong: int = x;
+    print(head, middle);
+    return wrong;
+}

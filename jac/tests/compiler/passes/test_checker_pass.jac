@@ -3336,11 +3336,15 @@ test "starred_unpack_barrier" {
     # After `(head, *rest) = ...` inside `if rest is not None`, rest
     # must reset to list[int] | None. The typed-local assignment then
     # fails because list[int] | None is not assignable to list[int].
-    assert len(program.errors_had) == 1 , "Expected 1 type error, but got "
+    # A target after the star narrows to the last element, not the one
+    # at its own index.
+    assert len(program.errors_had) == 2 , "Expected 2 type errors, but got "
         + f"{len(program.errors_had)}:\n"
         + "\n---\n".join(err.pretty_print() for err in program.errors_had);
     msg = program.errors_had[0].pretty_print();
     assert 'Cannot assign list[int] | NoneType to list[int]' in msg , f"Expected starred-unpack reset error, got: {msg}";
+    msg = program.errors_had[1].pretty_print();
+    assert 'Cannot assign str to int' in msg , f"Expected the last element's type, got: {msg}";
 }
 
 """Tuple-unpacking assignment acts as a narrowing barrier."""
