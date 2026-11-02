@@ -1,11 +1,3 @@
-"""SHA-3 and SHAKE hash objects over HACL*; derived from CPython 3.14.6
-Modules/sha3module.c. See ../LICENSE.cpython.
-
-The HACL* library stays C: CPython's Modules/_hacl/libHacl_Hash_SHA3.a, which
-the registry links for _sha3. The six types share one implementation; a
-type's slot in the module state selects its HACL* algorithm.
-"""
-
 import from c {
     def _Py_LibHacl_Hacl_Hash_SHA3_malloc(a: u8) -> ptr;  def _Py_LibHacl_Hacl_Hash_SHA3_free(
         state: ptr
@@ -21,8 +13,6 @@ import from c {
 glob SHA3_token = ClassToken(),
      SHA3_MAX_DIGESTSIZE: i64 = 64;
 
-"""The module-state slot, type name and Spec_Hash_Definitions algorithm of
-each type, in the order _sha3_exec creates them."""
 glob SHA3_TYPES: list[tuple[str, u8]] = [
          ("sha3_224", u8(9)),
          ("sha3_256", u8(8)),
@@ -36,21 +26,77 @@ obj SHA3State(NativeState) {
     has lock: HashLock,
         hash_state: ptr = ptr();
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return i32(0);
-    }
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
+}
 
-    def clear {}
-    def drop {
-        if self.hash_state {
-            _Py_LibHacl_Hacl_Hash_SHA3_free(self.hash_state);
-        }
+def:priv sha3_update(hacl: ptr, address: ptr, size: i64);
+
+def:priv sha3_digest(hacl: ptr, output: ptr) -> i64;
+
+def:priv sha3_of(instance: ptr[PyObject]) -> SHA3State | None;
+
+def:priv type_index(cls: ptr[PyObject]) -> int;
+
+def:priv new_sha3_object(cls: ptr[PyObject], hacl: ptr) -> ptr[PyObject];
+
+def py_sha3_new_impl(
+    type: ptr[PyObject],
+    data_obj: ptr[PyObject],
+    usedforsecurity: bool,
+    string: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _sha3_sha3_224_copy_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _sha3_sha3_224_digest_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _sha3_sha3_224_hexdigest_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _sha3_sha3_224_update_impl(
+    receiver: ptr[PyObject], data: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv shake_digest(
+    receiver: ptr[PyObject], length: u64, as_hex: bool
+) -> ptr[PyObject];
+
+def _sha3_shake_128_digest_impl(receiver: ptr[PyObject], length: u64) -> ptr[PyObject];
+
+def _sha3_shake_128_hexdigest_impl(
+    receiver: ptr[PyObject], length: u64
+) -> ptr[PyObject];
+
+def get_block_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def get_name(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def get_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def get_shake_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def get_capacity_bits(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def get_rate_bits(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def get_suffix(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def get_shake_suffix(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+impl SHA3State.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return i32(0);
+}
+
+impl SHA3State.clear {}
+
+impl SHA3State.drop {
+    if self.hash_state {
+        _Py_LibHacl_Hacl_Hash_SHA3_free(self.hash_state);
     }
 }
 
-"""sha3_update(): the error code is ignored; SHA-3's 2^64 - 1 byte limit takes
-a billion years to reach."""
-def:priv sha3_update(hacl: ptr, address: ptr, size: i64) {
+impl sha3_update(hacl: ptr, address: ptr, size: i64) {
     remaining = size;
     cursor = address;
     while remaining > UINT32_MAX {
@@ -61,14 +107,12 @@ def:priv sha3_update(hacl: ptr, address: ptr, size: i64) {
     _Py_LibHacl_Hacl_Hash_SHA3_update(hacl, cursor, u32(remaining));
 }
 
-"""digest() of a fixed-length SHA-3: HACL* fails only for SHAKE, which these
-methods never see."""
-def:priv sha3_digest(hacl: ptr, output: ptr) -> i64 {
+impl sha3_digest(hacl: ptr, output: ptr) -> i64 {
     _Py_LibHacl_Hacl_Hash_SHA3_digest(hacl, output);
     return i64(_Py_LibHacl_Hacl_Hash_SHA3_hash_len(hacl));
 }
 
-def:priv sha3_of(instance: ptr[PyObject]) -> SHA3State | None {
+impl sha3_of(instance: ptr[PyObject]) -> SHA3State | None {
     state = hash_state_of(instance, SHA3_token);
     if isinstance(state, SHA3State) {
         return state;
@@ -76,8 +120,7 @@ def:priv sha3_of(instance: ptr[PyObject]) -> SHA3State | None {
     return None;
 }
 
-"""The index of `cls` among the module's six types, or -1."""
-def:priv type_index(cls: ptr[PyObject]) -> int {
+impl type_index(cls: ptr[PyObject]) -> int {
     module = PyType_GetModule(cls);
     if not module {
         return -1;
@@ -90,9 +133,7 @@ def:priv type_index(cls: ptr[PyObject]) -> int {
     return -1;
 }
 
-"""A new object of `cls` owning the HACL* state `hacl`; NULL with MemoryError
-when the state could not be allocated."""
-def:priv new_sha3_object(cls: ptr[PyObject], hacl: ptr) -> ptr[PyObject] {
+impl new_sha3_object(cls: ptr[PyObject], hacl: ptr) -> ptr[PyObject] {
     if not hacl {
         PyErr_NoMemory();
         return NULL;
@@ -102,7 +143,7 @@ def:priv new_sha3_object(cls: ptr[PyObject], hacl: ptr) -> ptr[PyObject] {
     );
 }
 
-def py_sha3_new_impl(
+impl py_sha3_new_impl(
     type: ptr[PyObject],
     data_obj: ptr[PyObject],
     usedforsecurity: bool,
@@ -134,7 +175,7 @@ def py_sha3_new_impl(
     return instance;
 }
 
-def _sha3_sha3_224_copy_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _sha3_sha3_224_copy_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = sha3_of(receiver);
     if state is None {
         return NULL;
@@ -145,7 +186,7 @@ def _sha3_sha3_224_copy_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return new_sha3_object(Py_TYPE(receiver), hacl);
 }
 
-def _sha3_sha3_224_digest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _sha3_sha3_224_digest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = sha3_of(receiver);
     if state is None {
         return NULL;
@@ -155,7 +196,7 @@ def _sha3_sha3_224_digest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-def _sha3_sha3_224_hexdigest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _sha3_sha3_224_hexdigest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = sha3_of(receiver);
     if state is None {
         return NULL;
@@ -165,7 +206,7 @@ def _sha3_sha3_224_hexdigest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-def _sha3_sha3_224_update_impl(
+impl _sha3_sha3_224_update_impl(
     receiver: ptr[PyObject], data: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = sha3_of(receiver);
@@ -175,11 +216,7 @@ def _sha3_sha3_224_update_impl(
     return hash_update(state.lock, state.hash_state, data, sha3_update);
 }
 
-"""_SHAKE_digest(): squeeze `length` bytes. HACL* fails for an empty output,
-so an empty digest is returned without squeezing, as before."""
-def:priv shake_digest(
-    receiver: ptr[PyObject], length: u64, as_hex: bool
-) -> ptr[PyObject] {
+impl shake_digest(receiver: ptr[PyObject], length: u64, as_hex: bool) -> ptr[PyObject] {
     state = sha3_of(receiver);
     if state is None {
         return NULL;
@@ -203,17 +240,19 @@ def:priv shake_digest(
     return result;
 }
 
-def _sha3_shake_128_digest_impl(receiver: ptr[PyObject], length: u64) -> ptr[PyObject] {
+impl _sha3_shake_128_digest_impl(
+    receiver: ptr[PyObject], length: u64
+) -> ptr[PyObject] {
     return shake_digest(receiver, length, False);
 }
 
-def _sha3_shake_128_hexdigest_impl(
+impl _sha3_shake_128_hexdigest_impl(
     receiver: ptr[PyObject], length: u64
 ) -> ptr[PyObject] {
     return shake_digest(receiver, length, True);
 }
 
-def get_block_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl get_block_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     state = sha3_of(instance);
     if state is None {
         return NULL;
@@ -221,17 +260,16 @@ def get_block_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     return PyLong_FromLong(i64(_Py_LibHacl_Hacl_Hash_SHA3_block_len(state.hash_state)));
 }
 
-def get_name(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl get_name(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     index = type_index(Py_TYPE(instance));
     if index < 0 {
         object_error(PyExc_SystemError, "bad argument to internal function");
         return NULL;
     }
-    return PyUnicode_FromString(SHA3_TYPES[index][0]);
+    return jacpy_unicode_from_text(SHA3_TYPES[index][0]);
 }
 
-"""digest_size of a fixed-length SHA-3 object; SHAKE objects report 0."""
-def get_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl get_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     state = sha3_of(instance);
     if state is None {
         return NULL;
@@ -239,11 +277,11 @@ def get_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     return PyLong_FromLong(i64(_Py_LibHacl_Hacl_Hash_SHA3_hash_len(state.hash_state)));
 }
 
-def get_shake_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl get_shake_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     return PyLong_FromLong(0);
 }
 
-def get_capacity_bits(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl get_capacity_bits(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     state = sha3_of(instance);
     if state is None {
         return NULL;
@@ -252,7 +290,7 @@ def get_capacity_bits(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     return PyLong_FromLong(1600 - rate);
 }
 
-def get_rate_bits(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl get_rate_bits(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     state = sha3_of(instance);
     if state is None {
         return NULL;
@@ -262,10 +300,10 @@ def get_rate_bits(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     );
 }
 
-def get_suffix(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    return PyBytes_FromStringAndSize(b"\x06", 1);
+impl get_suffix(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    return PyBytes_FromStringAndSize(ptr[u8]("\x06"), 1);
 }
 
-def get_shake_suffix(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    return PyBytes_FromStringAndSize(b"\x1f", 1);
+impl get_shake_suffix(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    return PyBytes_FromStringAndSize(ptr[u8]("\x1f"), 1);
 }

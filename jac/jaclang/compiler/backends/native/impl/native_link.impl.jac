@@ -237,6 +237,7 @@ impl _empty_object(work: str, triple: str) -> str {
     if not os.path.exists(path) {
         llvm.initialize_all_targets();
         llvm.initialize_all_asmprinters();
+        llvm.initialize_all_asmparsers();
         target = llvm.Target.from_triple(triple);
         tm = target.create_target_machine(reloc="pic");
         module = llvm.parse_assembly(f'target triple = "{triple}"\n');

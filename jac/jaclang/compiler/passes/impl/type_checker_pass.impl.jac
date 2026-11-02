@@ -2618,6 +2618,7 @@ impl TypeCheckPass._c_const_problem(
                             or c_scalar_constant(params[0])[0]
                             or named_function_of(params[0]) is not None
                             or is_builtin_addressof_call(params[0])
+                            or c_offset_address(params[0])[0] is not None
                         )
                     )
                 ) {
@@ -2707,6 +2708,9 @@ impl TypeCheckPass._check_c_function_def(nd: Ability) -> None {
             continue;
         }
         ptype = self._c_instance_of(param.type_tag.tag if param.type_tag else None);
+        if variadic is None and is_va_list_type(ptype) {
+            continue;
+        }
         if not self._c_plain_data(ptype, allow_callable=True) {
             self.ctx.emit(
                 E1158,
@@ -2732,6 +2736,9 @@ impl TypeCheckPass._check_c_function_def(nd: Ability) -> None {
         return;
     }
     rtype = self._c_instance_of(ret);
+    if is_va_list_type(rtype) {
+        return;
+    }
     if not self._c_plain_data(rtype, allow_callable=True) {
         self.ctx.emit(
             E1158,

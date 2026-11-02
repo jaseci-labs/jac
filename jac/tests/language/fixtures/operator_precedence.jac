@@ -1,7 +1,7 @@
 """Test that bitwise vs logical operator precedence matches Python.
 
-Runs each expression in Jac, then the same expressions via ::py:: inline Python,
-and asserts the outputs match.
+Runs each expression in Jac and asserts the outputs match what CPython prints
+for the same expressions.
 """
 
 with entry {
@@ -31,20 +31,8 @@ with entry {
     # Shift vs arithmetic preserved: should be 1 << (2 + 1)
     jac_results.append(str(1 << 2 + 1));
 
-    # Get Python results via inline Python
-    py_results: list[any] = [];
-    ::py::
-py_results = []
-py_results.append(str(3 & 1 == 1))
-py_results.append(str(3 | 0 or 4))
-py_results.append(str(3 ^ 1 and 0))
-py_results.append(str(2 < 3 | 1))
-py_results.append(str(7 & 3 == 3 and True))
-py_results.append(str(not 0 & 1))
-py_results.append(str(5 | 3 ^ 1 & 2))
-py_results.append(str(1 << 2 + 1))
-    ::py::
-
+    # Python's results for the same expressions, in order
+    py_results: list[str] = ["True", "3", "0", "True", "True", "True", "7", "8"];
 
     # Compare and report
     for i in range(len(jac_results)) {

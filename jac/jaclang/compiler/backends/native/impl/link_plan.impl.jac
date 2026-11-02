@@ -349,6 +349,7 @@ impl build_link_plan(
         return _build_link_plan(prog, roots, opts, mode, native_unit);
     }
     session = NativeBuildSession(registry=registry, options=opts);
+    session.compact_on_lower = True;
     registry.session = session;
 
     target_token = push_native_target(opts.native_target or "");
@@ -811,7 +812,7 @@ impl heap_glue_ir(plan: LinkPlan) -> tuple[str, list[str]] {
         return ("", []);
     }
     text = 'target triple = "' + plan.triple + '"\n' + text;
-    return inject_heap_accounting(text, managed);
+    return inject_heap_accounting(text, managed, plan.options.native_heap);
 }
 
 impl _glue_module(
