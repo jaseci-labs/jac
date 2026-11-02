@@ -353,12 +353,20 @@ test "jac check adopts the kernel's analysis however the entry path is spelled" 
             assert view.adopted , view.failure or spelling;
         }
         relative = write_entry(inner, "relative");
+        (inner / "relative.test.jac").write_text(
+            'test "annex" {\n    x: int = "text";\n}\n'
+        );
         cwd = os.getcwd();
         os.chdir(inner);
         os.chmod(base / "locked", 0o311);
         try {
-            view = kernel_check(JacProgram(), relative, check_options());
+            program = JacProgram();
+            view = kernel_check(program, relative, check_options());
             assert view.adopted , view.failure or relative;
+            assert any(
+                alert.loc.mod_path.endswith("relative.test.jac")
+                for alert in program.errors_had
+            ) , rendered(program.errors_had);
         } finally {
             os.chmod(base / "locked", 0o755);
             os.chdir(cwd);

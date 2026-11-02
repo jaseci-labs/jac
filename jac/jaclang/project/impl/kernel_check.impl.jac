@@ -109,7 +109,9 @@ impl kernel_check(
         return KernelCheck(outcome=replayed, adopted=True);
     }
     try {
-        outcome = kernel_analysis(active_host(), program, path, options, isolated=True);
+        outcome = kernel_analysis(
+            active_host(), program, os.path.realpath(path), options, isolated=True
+        );
     } except Exception as err {
         if not parity {
             raise KernelCheckError(
