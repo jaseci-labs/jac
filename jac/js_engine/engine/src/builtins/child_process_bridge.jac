@@ -172,7 +172,7 @@ def _cp_b64_to_buf(b64: str, out_len: list[int]) -> int {
         v: int = _cp_b64_val(str_byte(b64, si));
         si = si + 1;
         if v >= 0 {
-            acc = (acc << 6) | v;
+            acc = ((acc << 6) | v) & 16777215;
             nbits = nbits + 6;
             if nbits >= 8 {
                 nbits = nbits - 8;
@@ -869,18 +869,23 @@ def _cp_queue_event(hid: int, ev: str, a0: str, a1: str) {
 def:pub cp_event_count -> int {
     return len(_CP_EVT_HANDLE);
 }
+
 def:pub cp_event_handle(i: int) -> int {
     return _CP_EVT_HANDLE[i];
 }
+
 def:pub cp_event_name(i: int) -> str {
     return _CP_EVT_NAME[i];
 }
+
 def:pub cp_event_arg0(i: int) -> str {
     return _CP_EVT_ARG0[i];
 }
+
 def:pub cp_event_arg1(i: int) -> str {
     return _CP_EVT_ARG1[i];
 }
+
 def:pub cp_event_pending -> int {
     return len(_CP_EVT_HANDLE);
 }

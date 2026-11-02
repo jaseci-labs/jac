@@ -259,7 +259,7 @@ Nowhere in the source. Placement is inferred per declaration, and every
 import is a plain `import` -- the compiler classifies each module by its
 anchors and takes the right edge:
 
-- **Server-anchored** (Python imports, nodes/edges/walkers, `::py::`) --
+- **Server-anchored** (Python imports, nodes/edges/walkers) --
   `core/docs/graph.jac`, `core/knowledge/repo.jac`,
   `core/social_graph.jac`: `def:pub`s and walkers bridge to RPC stubs, objs
   cross as wire types.

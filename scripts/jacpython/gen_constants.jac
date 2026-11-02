@@ -27,9 +27,9 @@ and the table also carries FEATURES, the value of every configure HAVE_* macro
 the source tests, for the Jac port's own conditionals. Tables of
 `{"NAME", MACRO}` entries the module publishes as dicts (posix's
 `sysconf_names`) come out as lists in source order. The feature values are
-also written to bootstrap/python/features_check.c, which build.sh compiles
-against every build's configuration, so a table that disagrees with its build
-fails it.
+also written to bootstrap/python/features_check.c, which build_jacpython.zig
+compiles against every build's pyconfig.h, so a table that disagrees with its
+build fails it.
 """
 import argparse;
 import re;
@@ -44,6 +44,7 @@ import from common { RUNTIME, archive_texts, format_jac, write_or_check }
 glob OUTPUT: Path = RUNTIME / "modules",
      PATTERNS: list[str] = [
          r"\bADD_INT_MACRO\(\s*\w+\s*,\s*(\w+)\s*\)",
+         r"\bADD_INT_MACRO\(\s*(\w+)\s*\)",
          r"\bADD_INT\(\s*\w+\s*,\s*(\w+)\s*\)",
          r"\bPyModule_AddIntMacro\(\s*\w+\s*,\s*(\w+)\s*\)",
          r"\bINS\(\s*(\w+)\s*\)",
@@ -135,7 +136,12 @@ glob OUTPUT: Path = RUNTIME / "modules",
                  "poll.h"
              ]
          ),
-         "_signal": ("Modules/signalmodule.c", ["signal.h", "sys/time.h"]),
+         # signalmodule.c's headers, and those of the values faulthandler.c
+         # reads (RLIMIT_CORE, errno).
+         "_signal": (
+             "Modules/signalmodule.c",
+             ["signal.h", "sys/time.h", "sys/resource.h", "errno.h"]
+         ),
          # posixmodule.c's own include order.
          "posix": (
              "Modules/posixmodule.c",
@@ -270,6 +276,17 @@ glob OUTPUT: Path = RUNTIME / "modules",
              "SYS_getdents64"
          ],
          "_multiprocessing": ["O_CREAT", "O_EXCL", "SEM_VALUE_MAX"],
+         # The handler flags and error numbers of signalmodule.c and
+         # faulthandler.c.
+         "_signal": [
+             "SA_RESTART",
+             "SA_NODEFER",
+             "SA_ONSTACK",
+             "EINTR",
+             "EAGAIN",
+             "EWOULDBLOCK",
+             "RLIMIT_CORE"
+         ],
          "_socket": [
              "FIONBIO",
              "POLLIN",
@@ -391,7 +408,10 @@ glob OUTPUT: Path = RUNTIME / "modules",
      # table lists: with --pyconfig, the table's METHODS names the functions
      # the target compiles (each macro's guard holds), for the binding to keep.
      METHOD_SOURCES: dict[str, str] = {"posix": "Modules/clinic/posixmodule.c.h"},
-     FEATURE_CHECK: Path = RUNTIME.parents[2] / "bootstrap" / "python" / "features_check.c",
+     FEATURE_CHECK: Path = RUNTIME.parents[2]
+         / "bootstrap"
+         / "python"
+         / "features_check.c",
      # The predefined macros that select a table's target in features_check.c.
      TARGET_MACROS: dict[str, str] = {
          "darwin": "defined(__APPLE__)",
@@ -402,7 +422,11 @@ glob OUTPUT: Path = RUNTIME / "modules",
      # Names whose value is not fixed per OS, which the binding reads from the
      # target instead: CHAR_MAX follows the ABI's char signedness (unsigned on
      # Linux aarch64, signed on x86_64 and Apple arm64).
-     EXCLUDED: dict[str, list[str]] = {"_locale": ["CHAR_MAX"]},
+     EXCLUDED: dict[str, list[str]] = {
+         "_locale": ["CHAR_MAX"],
+         # glibc's SIGRTMIN and SIGRTMAX are calls (__libc_current_sigrtmin()).
+         "_signal": ["SIGRTMIN", "SIGRTMAX"]
+     },
      # Macros the C module defines before its includes to expose constants.
      DEFINES: dict[str, list[str]] = {"_socket": ["__APPLE_USE_RFC_3542 1"]},
      # Conditions no supported target meets: the names published only
@@ -505,13 +529,14 @@ def line_conditions(source: str) -> list[str] {
         }
         text = pending + line;
         pending = "";
-        directive = re.match(
-            r"\s*#\s*(ifdef|ifndef|if|elif|else|endif)\b(.*)", text
-        );
+        directive = re.match(r"\s*#\s*(ifdef|ifndef|if|elif|else|endif)\b(.*)", text);
         if not directive {
             continue;
         }
-        (kind, rest) = (directive.group(1), re.sub(r"//.*", "", directive.group(2)).strip());
+        (kind, rest) = (
+            directive.group(1),
+            re.sub(r"//.*", "", directive.group(2)).strip()
+        );
         if kind == "ifdef" {
             stack.append(([], f"defined({rest})"));
         } elif kind == "ifndef" {
@@ -705,14 +730,17 @@ def extract(
     compiler: list[str],
     prelude: list[str]
 ) -> dict[str, int] {
-    lines = prelude[:1] + [
-        "#ifndef _GNU_SOURCE",
-        "#define _GNU_SOURCE 1",
-        "#endif",
-        "#ifndef _DARWIN_C_SOURCE",
-        "#define _DARWIN_C_SOURCE 1",
-        "#endif"
-    ] + includes + prelude[1:];
+    lines = prelude[:1]
+        + [
+            "#ifndef _GNU_SOURCE",
+            "#define _GNU_SOURCE 1",
+            "#endif",
+            "#ifndef _DARWIN_C_SOURCE",
+            "#define _DARWIN_C_SOURCE 1",
+            "#endif"
+        ]
+        + includes
+        + prelude[1:];
     for (key, macro, condition) in probes {
         lines += [
             f"#if {condition}",
@@ -800,7 +828,9 @@ def render(
     lines += ["", "glob CONSTANTS: list[tuple[str, i64]] = ["];
     # An ALL_PORTABLE module's table publishes only what its source does;
     # other modules' bindings leave their EXTRA names out themselves.
-    internal = set(EXTRA.get(module, [])) - PUBLISHED if module in ALL_PORTABLE else set();
+    internal = set(EXTRA.get(module, [])) - PUBLISHED
+        if module in ALL_PORTABLE
+        else set();
     lines += [
         f'    ("{name}", {name}),'
         for name in defined
@@ -847,8 +877,8 @@ def render_feature_check -> str {
         " *",
         " * Generated by scripts/jacpython/gen_constants.jac from the FEATURES of",
         " * each jaclang/runtime/python/modules/<name>_constants.<os>[.<arch>].jac;",
-        " * do not edit. build.sh compiles it against every JacPython build's",
-        " * pyconfig.h, so a table that disagrees with its build fails the build.",
+        " * do not edit. build_jacpython.zig compiles it against every JacPython",
+        " * build's pyconfig.h, so a table that disagrees with it fails the build.",
         " */",
         "#include \"pyconfig.h\"",
         ""
@@ -947,8 +977,11 @@ with entry:__main__ {
     features: list[tuple[str, int]] = [];
     guards = guards_for(args.module);
     probes = [
-        (name, MACROS.get(name, name), guards.get(name, f"defined({MACROS.get(name, name)})"))
-        for name in names
+        (
+            name,
+            MACROS.get(name, name),
+            guards.get(name, f"defined({MACROS.get(name, name)})")
+        ) for name in names
     ];
     source_tables = tables_in(args.module, texts[source_file]);
     if args.pyconfig {
@@ -963,8 +996,7 @@ with entry:__main__ {
                 CONDITIONS[name]
                     if name in CONDITIONS
                     else guards.get(name, f"defined({MACROS.get(name, name)})")
-            )
-            for name in names
+            ) for name in names
         ];
         known = pyconfig_features(configured);
         features = [
@@ -1024,7 +1056,13 @@ with entry:__main__ {
     );
     if not args.check {
         print(
-            f"{len([name for name in names if name in values])} of {len(names)} names defined"
+            f"{len(
+                [
+                    name
+                    for name in names
+                    if name in values
+                ]
+            )} of {len(names)} names defined"
         );
     }
     stub = OUTPUT / f"{stem}_constants.jac";

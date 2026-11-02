@@ -274,9 +274,14 @@ def gb18030_encode(
             }
             utrrange = addressof(cjk_gb18030_to_unibmp_ranges);
             while int(utrrange.view(1)[0].first) != 0 {
-                item = utrrange.view(1)[0];
-                if int(item.first) <= c and c <= int(item.last) {
-                    gb18030_four(outbuf, c - int(item.first) + int(item.base), 0x81);
+                if int(utrrange.view(1)[0].first) <= c
+                    and c <= int(utrrange.view(1)[0].last) {
+                    gb18030_four(
+                        outbuf,
+                        c - int(utrrange.view(1)[0].first)
+                            + int(utrrange.view(1)[0].base),
+                        0x81
+                    );
                     next_inchar(inpos, 1);
                     next_out(outbuf, 4);
                     outleft -= 4;
@@ -352,8 +357,10 @@ def gb18030_decode(
                     while lseq >= int((utr + 1).view(1)[0].base) {
                         utr += 1;
                     }
-                    item = utr.view(1)[0];
-                    if not outchar(writer, int(item.first) - int(item.base) + lseq) {
+                    if not outchar(
+                        writer,
+                        int(utr.view(1)[0].first) - int(utr.view(1)[0].base) + lseq
+                    ) {
                         return MBERR_EXCEPTION;
                     }
                     next_in(inbuf, 4);

@@ -341,6 +341,134 @@ struct Bullet {
     life: f64,
 }
 
+/// One member of the flock: position, velocity, and the acceleration the
+/// steering pass computes for it before the integration pass applies it.
+#[derive(Clone, Copy)]
+struct Boid {
+    x: f64,
+    y: f64,
+    z: f64,
+    vx: f64,
+    vy: f64,
+    vz: f64,
+    ax: f64,
+    ay: f64,
+    az: f64,
+}
+
+// Flock size and steering radii (mirrors the Jac globals). Every boid looks at
+// every other boid each frame: NUM_BOIDS * NUM_BOIDS neighbour tests of pure
+// arithmetic - the part of the frame that runs outside raylib.
+const NUM_BOIDS: usize = 256;
+const BOID_VIEW2: f64 = 9.0;
+const BOID_SEP2: f64 = 1.0;
+const BOID_MAX_SPEED: f64 = 5.0;
+const BOID_MIN_SPEED: f64 = 2.0;
+
+/// Square root by Newton's method (12 fixed iterations, so no libm is needed).
+fn jsqrt(v: f64) -> f64 {
+    if v <= 0.0 {
+        return 0.0;
+    }
+    let mut g = if v > 1.0 { v } else { 1.0 };
+    let mut k = 0;
+    while k < 12 {
+        g = 0.5 * (g + v / g);
+        k += 1;
+    }
+    g
+}
+
+/// Steer every boid by separation, alignment and cohesion over the neighbours
+/// within its view radius (an all-pairs pass), then integrate with a speed clamp.
+fn update_flock(flock: &mut [Boid], step: f64) {
+    let n = flock.len();
+    let mut i = 0;
+    while i < n {
+        let (bx, by, bz, bvx, bvy, bvz) =
+            (flock[i].x, flock[i].y, flock[i].z, flock[i].vx, flock[i].vy, flock[i].vz);
+        let mut cnt: i32 = 0;
+        let (mut cx, mut cy, mut cz) = (0.0f64, 0.0f64, 0.0f64);
+        let (mut avx, mut avy, mut avz) = (0.0f64, 0.0f64, 0.0f64);
+        let (mut sx, mut sy, mut sz) = (0.0f64, 0.0f64, 0.0f64);
+        let mut j = 0;
+        while j < n {
+            if j != i {
+                let o = &flock[j];
+                let dx = o.x - bx;
+                let dy = o.y - by;
+                let dz = o.z - bz;
+                let d2 = dx * dx + dy * dy + dz * dz;
+                if d2 < BOID_VIEW2 {
+                    cnt += 1;
+                    cx += o.x;
+                    cy += o.y;
+                    cz += o.z;
+                    avx += o.vx;
+                    avy += o.vy;
+                    avz += o.vz;
+                    if d2 < BOID_SEP2 {
+                        let inv = 1.0 / (d2 + 0.01);
+                        sx -= dx * inv;
+                        sy -= dy * inv;
+                        sz -= dz * inv;
+                    }
+                }
+            }
+            j += 1;
+        }
+        let (mut ax, mut ay, mut az) = (0.0f64, 0.0f64, 0.0f64);
+        if cnt > 0 {
+            let fc = cnt as f64;
+            ax = (cx / fc - bx) * 0.6 + (avx / fc - bvx) * 0.9 + sx * 1.5;
+            ay = (cy / fc - by) * 0.6 + (avy / fc - bvy) * 0.9 + sy * 1.5;
+            az = (cz / fc - bz) * 0.6 + (avz / fc - bvz) * 0.9 + sz * 1.5;
+        }
+        let b = &mut flock[i];
+        b.ax = ax - bx * 0.08;
+        b.ay = ay + (4.0 - by) * 0.3;
+        b.az = az - (bz + 5.0) * 0.08;
+        i += 1;
+    }
+    for b in flock.iter_mut() {
+        b.vx += b.ax * step;
+        b.vy += b.ay * step;
+        b.vz += b.az * step;
+        let s2 = b.vx * b.vx + b.vy * b.vy + b.vz * b.vz;
+        if s2 > BOID_MAX_SPEED * BOID_MAX_SPEED {
+            let k = BOID_MAX_SPEED / jsqrt(s2);
+            b.vx *= k;
+            b.vy *= k;
+            b.vz *= k;
+        } else if s2 > 0.0 && s2 < BOID_MIN_SPEED * BOID_MIN_SPEED {
+            let k = BOID_MIN_SPEED / jsqrt(s2);
+            b.vx *= k;
+            b.vy *= k;
+            b.vz *= k;
+        }
+        b.x += b.vx * step;
+        b.y += b.vy * step;
+        b.z += b.vz * step;
+    }
+}
+
+/// Draw each boid as a short streak trailing back along its velocity.
+fn draw_flock(flock: &[Boid]) {
+    unsafe {
+        rlBegin(RL_LINES);
+        rlColor4ub(120, 200, 255, 255);
+        for b in flock.iter() {
+            rlVertex3f(b.x as f32, b.y as f32, b.z as f32);
+            rlVertex3f(
+                (b.x - b.vx * 0.12) as f32,
+                (b.y - b.vy * 0.12) as f32,
+                (b.z - b.vz * 0.12) as f32,
+            );
+        }
+        rlEnd();
+    }
+}
+
 /// cos via range-reduced Taylor series (good to ~1e-4 on the reduced range).
 fn jcos(a_in: f64) -> f64 {
     let twopi = 6.283185307179586;
@@ -376,6 +504,17 @@ impl Game {
     /// Random float in [lo, hi).
     fn rand_range(&mut self, lo: f64, hi: f64) -> f64 {
         lo + self.rand01() * (hi - lo)
+    }
+
+    /// A boid at a random spot over the arena with a random heading.
+    fn spawn_boid(&mut self) -> Boid {
+        let x = self.rand_range(-12.0, 12.0);
+        let y = self.rand_range(1.0, 7.0);
+        let z = self.rand_range(-14.0, 4.0);
+        let vx = self.rand_range(-2.0, 2.0);
+        let vy = self.rand_range(-0.5, 0.5);
+        let vz = self.rand_range(-2.0, 2.0);
+        Boid { x, y, z, vx, vy, vz, ax: 0.0, ay: 0.0, az: 0.0 }
     }
 
     /// (Re)place a target somewhere in the arena in front of the player.
@@ -548,6 +687,17 @@ fn main() {
         g.respawn(t);
     }
 
+    // High-compute mode (dormant unless `.flock` exists): spawn the flock that
+    // update_flock steers every frame. Without the file the shooter is exactly
+    // the original one, as in the Jac twin.
+    let flock_on = unsafe { FileExists(c".flock".as_ptr()) };
+    let mut flock = [Boid { x: 0.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0, ax: 0.0, ay: 0.0, az: 0.0 }; NUM_BOIDS];
+    if flock_on {
+        for b in flock.iter_mut() {
+            *b = g.spawn_boid();
+        }
+    }
+
     let bench = bench_seconds();
     let shot = shot_frames();
     let mut frames: i64 = 0;
@@ -576,6 +726,9 @@ fn main() {
         for t in targets.iter_mut() {
             t.y = t.base_y + 0.4 * jsin(g.world_t * 1.5 + t.phase);
         }
+        if flock_on {
+            update_flock(&mut flock, step);
+        }
 
         begin_frame(15, 18, 28);
         set_camera(g.px as f32, g.py as f32, g.pz as f32, g.yaw as f32, g.pitch as f32, 1.6);
@@ -591,6 +744,9 @@ fn main() {
             if b.life > 0.0 {
                 draw_box(b.x as f32, b.y as f32, b.z as f32, 0.22, 0.22, 0.22, 250, 220, 90);
             }
+        }
+        if flock_on {
+            draw_flock(&flock);
         }
 
         end_camera(960.0, 600.0);

@@ -961,6 +961,7 @@ glob:priv _WASM_CALL_RES_DBL: list[float] = [],
 def:pub wasm_call_result_count -> int {
     return len(_WASM_CALL_RES_KIND);
 }
+
 def:pub wasm_call_result_kind(i: int) -> int {
     if i < 0 or i >= len(_WASM_CALL_RES_KIND) {
         return 0 - 1;
@@ -1063,19 +1064,20 @@ def:priv _f32_from_bits(fb: int) -> float {
     exp: int = (fb >> 23) & 0xFF;
     man: int = fb & 0x7F_FFFF;
     db: int = 0;
-    if exp == 0 {
-        db = sign << 63;  # zero (subnormals → zero)
-    } elif exp == 0xFF {
+    if sign != 0 {
+        db = -9223372036854775807 - 1;  # the sign bit; `1 << 63` overflows int
+    }
+    if exp == 0xFF {
         de: int = 0x7FF;
         dm: int = 0;
         if man != 0 {
             dm = 1 << 51;
         }
-        db = (sign << 63) | (de << 52) | dm;
-    } else {
+        db = db | (de << 52) | dm;
+    } elif exp != 0 {
         e: int = exp - 127 + 1023;
-        db = (sign << 63) | (e << 52) | (man << 29);
-    }
+        db = db | (e << 52) | (man << 29);
+    }  # exp == 0: signed zero (subnormals → zero)
     return jsv_double_from_bits(db);
 }
 
@@ -1195,7 +1197,9 @@ def:pub wasm_export_global(inst_handle: int, name: str) -> int {
     }
 
     item_out: int = io_alloc(_SIZEOF_EXTERN);
-    found: bool = wasmtime_instance_export_get(ctx, inst, name, str_nbytes(name), item_out);
+    found: bool = wasmtime_instance_export_get(
+        ctx, inst, name, str_nbytes(name), item_out
+    );
     if not found {
         _WASM_LAST_ERR = "export not found: " + name;
         io_free(item_out);
@@ -1847,7 +1851,9 @@ def:pub wasm_export_table(inst_handle: int, name: str) -> int {
         return 0;
     }
     item_out: int = io_alloc(_SIZEOF_EXTERN);
-    found: bool = wasmtime_instance_export_get(ctx, inst, name, str_nbytes(name), item_out);
+    found: bool = wasmtime_instance_export_get(
+        ctx, inst, name, str_nbytes(name), item_out
+    );
     if not found {
         _set_err("export not found: " + name, WASM_ERRCLASS_LINK);
         io_free(item_out);
@@ -2047,6 +2053,7 @@ def:pub wasm_register_host_call(cb: Callable[[int, int], int]) {
 def:pub wasm_host_arg_count -> int {
     return len(_WASM_HOST_ARG_KINDS);
 }
+
 def:pub wasm_host_arg_kind(i: int) -> int {
     if i < 0 or i >= len(_WASM_HOST_ARG_KINDS) {
         return 0 - 1;

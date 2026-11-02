@@ -1677,12 +1677,6 @@ impl ModuleCode.postinit -> None {
 }
 
 
-impl PyInlineCode.postinit -> None {
-    UniNode.postinit(self);
-    CodeBlockStmt.postinit(self);
-}
-
-
 impl Import.prune_items(doomed: set[int]) -> bool {
     self._role_set(
         ItemsRole,

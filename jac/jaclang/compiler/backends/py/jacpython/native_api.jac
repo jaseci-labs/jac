@@ -1,10 +1,11 @@
 """Native compiler entry points: each request returns a retained CPython value
 or zero with the Python exception set.
 
-Every replacement stdlib module is wired into this entry from
-jaclang/archwire.jac. Its binding must stay in this file's compilation closure:
-the interpreter link resolves each registered `PyInit_*` from this object, so
-a missing wire leaves the symbol undefined at link time.
+Every replacement stdlib module enters this file's compilation closure through
+runtime/python/inittab.jac, the `_PyImport_Inittab` table archwire.jac wires
+each binding's `PyInit_*` into. The interpreter link resolves each registered
+`PyInit_*` from this object, so a missing wire leaves the symbol undefined at
+link time; prepare_native.py checks the compiled plan exports them all.
 """
 
 # Object-model ports define interpreter types and objects under their C names
@@ -320,9 +321,7 @@ obj mangle_request(native_request) {
         name: ptr[PyObject];
 
     def run -> ptr[PyObject] {
-        return text_object(
-            mangle_name(text_value(self.private), text_value(self.name))
-        );
+        return text_object(cpy_mangle(text_value(self.private), text_value(self.name)));
     }
 }
 
