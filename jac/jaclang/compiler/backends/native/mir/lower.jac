@@ -580,6 +580,10 @@ obj MirLowering {
     def opt_end(held: MirValue, absent_value: MirValue, done: MirBlock) -> MirValue;
     def lower_tuple(nd: uni.TupleVal) -> MirValue;
     def tuple_get(value: MirValue, index: int) -> MirValue;
+    def tuple_compare(
+        op: str, name: str, left: MirValue, right: MirValue, site: uni.UniNode
+    ) -> MirValue;
+
     def unpack_into(targets: list[uni.Expr], value: MirValue, site: uni.UniNode);
     def function_of(nd: uni.UniNode) -> (uni.UniNode | None);
     def names_within(nd: uni.UniNode) -> list[uni.Name];

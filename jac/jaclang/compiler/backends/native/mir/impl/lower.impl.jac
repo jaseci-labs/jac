@@ -1201,6 +1201,9 @@ impl MirLowering.compare_values(
             name, order, self.builder().const_int(0, order.type)
         );
     }
+    if left.type.kind == MirKind.TUPLE and right.type.kind == MirKind.TUPLE {
+        return self.tuple_compare(op, name, left, right, site);
+    }
     if mir_is_container(left.type) and name in ("eq", "ne") {
         same = self.container_eq(left, right);
         return same if name == "eq" else self.builder().logical_not(same);
@@ -2119,6 +2122,30 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
                     );
                 }
             }
+        }
+        if isinstance(target_type, UnionType) {
+            held = self.lower_expr(nd.target);
+            if held.type.kind == MirKind.OPT
+                and held.type.payload().kind == MirKind.OBJ {
+                b = self.builder();
+                held = self.spill(held);
+                missing = self.st().fn.new_block("attr.none");
+                present = self.st().fn.new_block("attr.some");
+                b.cond_branch(self.opt_present(held), present, missing);
+                b.position(missing);
+                b.raise_builtin(
+                    "AttributeError",
+                    f"'NoneType' object has no attribute '{right.value}'"
+                );
+                b.position(present);
+                held = self.opt_get(held);
+            }
+            if held.type.kind == MirKind.OBJ and held.type.name in self.archetypes {
+                return self.field_place(
+                    held, self.archetypes[held.type.name], right.value, nd
+                );
+            }
+            raise MirRefused(mir_refusal("attribute access", held.type.render(), nd));
         }
         base = self.lower_place(nd.target);
         holder = self.place_elem(base);
