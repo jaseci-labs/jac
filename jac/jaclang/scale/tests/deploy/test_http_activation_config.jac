@@ -217,7 +217,9 @@ test "initial_cooldown_period reaches the ScaledObject, and leaving it unset kee
         "preview-svc",
         keda
     );
-    scaled_obj_spec = custom_api.create_namespaced_custom_object.call_args_list[1][1]["body"]["spec"];
+    scaled_obj_spec = custom_api.create_namespaced_custom_object.call_args_list[1][1][
+        "body"
+    ]["spec"];
     assert scaled_obj_spec.get("initialCooldownPeriod") == 120 , scaled_obj_spec;
 
     (keda, custom_api, _, _) = _mocked_keda();
@@ -225,7 +227,9 @@ test "initial_cooldown_period reaches the ScaledObject, and leaving it unset kee
     apply_http_activation_for_target(
         _cfg(), "preview-deployment", "staging", "preview-svc", keda
     );
-    scaled_obj_spec = custom_api.create_namespaced_custom_object.call_args_list[1][1]["body"]["spec"];
+    scaled_obj_spec = custom_api.create_namespaced_custom_object.call_args_list[1][1][
+        "body"
+    ]["spec"];
     assert "initialCooldownPeriod" not in scaled_obj_spec , scaled_obj_spec;
 }
 
