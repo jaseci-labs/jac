@@ -43,6 +43,8 @@ pod_binary = "../jac/zig-out/bin/jac"
 
 Use this for air-gapped clusters, to pin an exact build, or to deploy a binary you compiled locally. The driver checksum-caches downloaded release binaries per channel and architecture, so an unchanged `stable`/`dev` deploy does not re-download on every run.
 
+**GitHub API rate limit.** Once the release version is known, the binary, its checksum and the admin console download straight from `github.com/jaseci-labs/jac/releases/download/`, which uses no API quota. An exact `jac-version` pin therefore makes no `api.github.com` request, a range makes one listing request, and an unpinned deploy asks the Releases API for the latest release. Unauthenticated, that API allows 60 requests per hour per IP, which a shared CI runner can use up. Set `GH_TOKEN` (or `GITHUB_TOKEN`; `GH_TOKEN` wins) in the environment that runs `jac scale deploy` and those requests use your own quota instead. The token is sent only to `api.github.com`, never to a redirect target or any other host. When the quota is exhausted the deploy stops with an error naming `GH_TOKEN` and the exact-pin alternative.
+
 ---
 
 ### App Artifact (`.jab`)
@@ -525,6 +527,7 @@ The KEDA engine above scales on CPU, memory, or any KEDA trigger, but none of th
 | `max_replicas` | `1` | Replica ceiling once activated. |
 | `polling_interval` | `30` | Seconds between HTTP metric evaluations. |
 | `cooldown_period` | `300` | Seconds of inactivity before scaling back to `min_replicas`. |
+| `initial_cooldown_period` | `0` | Seconds after the ScaledObject is created before the target may scale to `min_replicas`. A new target has served no request yet, so with `0` KEDA scales it down at once. |
 | `target_port` / `target_port_name` | `null` | Container port on the app's Service. Set exactly one. |
 | `concurrency_target` | `null` | In-flight-request concurrency target. Set this or `request_rate_target`. |
 | `request_rate_target` | `null` | Requests-per-window target, as an alternative to `concurrency_target`. |

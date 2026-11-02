@@ -1,7 +1,9 @@
 import os;
 import sys;
 
-def _discover_project_config(profile: str | None = None);
+def _discover_project_config(
+    profile: str | None = None, tolerate_invalid: bool = False
+) -> bool;
 
 def _exit_on_invalid_jac_toml(exc: any);
 
@@ -117,11 +119,18 @@ impl run_selected_command(command_name: str) -> None {
     }
 
     args_dict = vars(args);
-    _discover_project_config(profile=args_dict.get('profile') or None);
+    manifest_valid = _discover_project_config(
+        profile=args_dict.get('profile') or None,
+        tolerate_invalid=meta.tolerates_invalid_manifest
+    );
     if script_args {
         args_dict['args'] = script_args;
     }
-    _apply_profile(meta, args_dict);
+    if manifest_valid {
+        _apply_profile(meta, args_dict);
+    } else {
+        args_dict.pop('profile', None);
+    }
 
     handler = load_handler(command_name);
     spec = CommandSpec(name=meta.name, help=meta.help, handler=handler);
@@ -132,7 +141,9 @@ impl run_selected_command(command_name: str) -> None {
     _exit_now(result.return_code);
 }
 
-impl _discover_project_config(profile: str | None = None) {
+impl _discover_project_config(
+    profile: str | None = None, tolerate_invalid: bool = False
+) -> bool {
     try {
         import from jaclang.project.config { get_config }
         import from jaclang.project.pyvenv { add_venv_to_path }
@@ -144,8 +155,12 @@ impl _discover_project_config(profile: str | None = None) {
     } except MalformedJacTomlError as exc {
         _exit_on_malformed_jac_toml(exc);
     } except ValueError as exc {
+        if tolerate_invalid {
+            return False;
+        }
         _exit_on_invalid_jac_toml(exc);
     } except Exception {}
+    return True;
 }
 
 impl _exit_on_invalid_jac_toml(exc: any) {

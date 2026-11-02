@@ -1517,6 +1517,56 @@ test "W3051 strip-docstrings removes all docstrings when selected" {
     assert "# inline comment" in formatted;
 }
 
+test "W3051 strip-docstrings removes string statements inside bodies" {
+    input_path = auto_lint_fixture_path("deslop_string_stmts.jac");
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["default", "strip-docstrings"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+    } finally {
+        set_config(None);
+    }
+    for gone in [
+        "FIRST_STMT_DOC",
+        "MID_BODY_DOC",
+        "SINGLE_QUOTED_NOTE",
+        "MULTI_",
+        "NESTED_NOTE",
+        "CASE_NOTE",
+        "LAMBDA_NOTE"
+    ] {
+        assert gone not in formatted , f"{gone} survived:\n{formatted}";
+    }
+    # An f-string can run code, a suppressed line opted out, a case body
+    # cannot be left empty, a lone lambda statement is its return value (so a
+    # string whose removal would leave one expression statement must stay),
+    # and a string in a JSX slot is rendered content.
+    for kept in [
+        "KEPT_FSTRING",
+        "KEPT_SUPPRESSED",
+        "KEPT_LONE_CASE",
+        "KEPT_LAMBDA_RETURN",
+        "KEPT_BEFORE_LONE_EXPR",
+        "KEPT_SLOT_CONTENT"
+    ] {
+        assert kept in formatted , f"{kept} was stripped:\n{formatted}";
+    }
+    assert "return m;" in formatted;
+}
+
+test "W0060 flags every string statement in a body, not only the first" {
+    prog = JacProgram();
+    prog.compile(file_path=auto_lint_fixture_path("deslop_string_stmts.jac"));
+    lines = sorted(
+        w.loc.first_line
+        for w in prog.warnings_had
+        if w.code is not None and w.code.code == "W0060"
+    );
+    assert lines == [2, 8, 9, 10, 12, 14, 29] , f"W0060 lines: {lines}";
+}
+
 test "deslop rules fire under select all" {
     input_path = auto_lint_fixture_path("deslop.jac");
     config = JacConfig();
@@ -1625,6 +1675,53 @@ test "W3055 separate-impls is on under all and off under default" {
     assert "impl Foo.bar(" in format_separate_impls(["all"]);
     assert "impl Foo.bar(" not in format_separate_impls(["default"]);
     assert "impl Foo.bar(" not in format_separate_impls(["default", "strip-comments"]);
+}
+
+"""Lint-format `source` as mod.jac under `select`; return the text and W3056 count."""
+def format_impls_in_annex(source: str, select: list[str]) -> tuple[str, int] {
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=select));
+    set_config(config);
+    try {
+        with tempfile.TemporaryDirectory() as tmpdir {
+            path = os.path.join(tmpdir, "mod.jac");
+            with open(path, "w") as f {
+                f.write(source);
+            }
+            prog = JacProgram.jac_file_formatter(path, auto_lint=True);
+            flagged = [
+                w
+                for w in prog.warnings_had
+                if w.code is not None and w.code.code == "W3056"
+            ];
+            return (prog.mod.main.gen.jac, len(flagged));
+        }
+    } finally {
+        set_config(None);
+    }
+}
+
+glob IMPLS_IN_MODULE = (
+         "obj Foo {\n    def bar -> int;\n    def baz -> int;\n}\n\n"
+         "impl Foo.bar -> int {\n    return 1;\n}\n\n"
+         "glob LIMIT: int = 3;\n\n"
+         "impl Foo.baz -> int {\n    return 2;\n}\n\n"
+         "def top -> int;\n"
+     );
+
+test "W3056 impls-in-annex flags each impl and sinks them below the module" {
+    (formatted, flagged) = format_impls_in_annex(IMPLS_IN_MODULE, ["impls-in-annex"]);
+    assert flagged == 2 , flagged;
+    head = formatted[:formatted.index("impl Foo.bar")];
+    assert "glob LIMIT: int = 3;" in head and "def top -> int;" in head , formatted;
+    assert formatted.index("impl Foo.bar") < formatted.index("impl Foo.baz");
+    assert formatted.rstrip().endswith("return 2;\n}") , formatted;
+}
+
+test "W3056 impls-in-annex is on under all and off under default" {
+    assert format_impls_in_annex(IMPLS_IN_MODULE, ["all"])[1] == 2;
+    assert format_impls_in_annex(IMPLS_IN_MODULE, ["default"])[1] == 0;
+    assert format_impls_in_annex(IMPLS_IN_MODULE, ["separate-impls"])[1] == 0;
 }
 
 test "deslop rules are disabled under default select" {

@@ -103,3 +103,24 @@ test "the macOS profile lets the work dir and cache win over the hidden examples
     assert "network" not in profile;
     assert '(subpath "/w")' in lines[-1] and '(subpath "/c")' in lines[-1];
 }
+
+test "blocks past the job's deadline are reported, not run" {
+    import time;
+    was = WARMED.get("done");
+    WARMED["done"] = True;
+    try {
+        blocks = verify_markdown(
+            "```jac\nwith entry {\n    print(1);\n}\n```\n",
+            lambda (phase: str, text: str) {},
+            time.monotonic() - 1.0
+        );
+    } finally {
+        if was {
+            WARMED["done"] = True;
+        } else {
+            WARMED.pop("done", None);
+        }
+    }
+    assert len(blocks) == 1 and not blocks[0].ok;
+    assert "out of time" in blocks[0].detail;
+}

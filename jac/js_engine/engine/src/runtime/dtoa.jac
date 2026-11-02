@@ -9,6 +9,10 @@ with arbitrary-precision base-10^9 limbs — no floating-point digit generation.
 import from engine.src.runtime.jsvalue { __float_bits }
 import from engine.src.runtime.jsstring { str_substr, str_char_at }
 
+import from engine.src.runtime.mem {
+    str_nbytes
+}
+
 glob BIGNAT_BASE: int = 1000000000,
      DTOA_P: int = 54,
      DTOA_MAX_SAFE: float = 9007199254740991.0,
@@ -368,8 +372,8 @@ def _dtoa_find_k_fixed(exp_align: bool) {
 }
 
 def _trim_trailing_zeros(digits: str) -> str {
-    while len(digits) > 1 and str_char_at(digits, len(digits) - 1) == "0" {
-        digits = str_substr(digits, 0, len(digits) - 1);
+    while str_nbytes(digits) > 1 and str_char_at(digits, str_nbytes(digits) - 1) == "0" {
+        digits = str_substr(digits, 0, str_nbytes(digits) - 1);
     }
     return digits;
 }
@@ -381,40 +385,40 @@ def _format_digits_k(digits: str, k: int) -> str {
     # ES Number::toString radix-10 uses exponential form when the decimal expansion
     # would need more than six leading fractional zeros (|x| < 1e-6) or |x| >= 1e21.
     if k < -6 {
-        if len(digits) == 1 {
+        if str_nbytes(digits) == 1 {
             return digits + "e" + str(k);
         }
         return str_substr(digits, 0, 1)
             + "."
-            + str_substr(digits, 1, len(digits))
+            + str_substr(digits, 1, str_nbytes(digits))
             + "e"
             + str(k);
     }
     if k >= 21 {
-        if len(digits) == 1 {
+        if str_nbytes(digits) == 1 {
             return digits + "e+" + str(k);
         }
         return str_substr(digits, 0, 1)
             + "."
-            + str_substr(digits, 1, len(digits))
+            + str_substr(digits, 1, str_nbytes(digits))
             + "e+"
             + str(k);
     }
     if k >= 0 {
-        if k + 1 >= len(digits) {
-            pad: int = k + 1 - len(digits);
+        if k + 1 >= str_nbytes(digits) {
+            pad: int = k + 1 - str_nbytes(digits);
             i: int = 0;
             while i < pad {
                 digits = digits + "0";
                 i = i + 1;
             }
         }
-        if k == len(digits) - 1 {
+        if k == str_nbytes(digits) - 1 {
             return digits;
         }
         return str_substr(digits, 0, k + 1)
             + "."
-            + str_substr(digits, k + 1, len(digits));
+            + str_substr(digits, k + 1, str_nbytes(digits));
     }
     zeros: str = "";
     zc: int = -k - 1;
@@ -429,7 +433,7 @@ def _format_digits_k(digits: str, k: int) -> str {
 def _inc_digit_str(s: str) -> str {
     carry: int = 1;
     out: str = "";
-    i: int = len(s) - 1;
+    i: int = str_nbytes(s) - 1;
     while i >= 0 {
         d: int = int(str_char_at(s, i)) - int(str_char_at("0", 0)) + carry;
         carry = 0;
@@ -612,7 +616,7 @@ def:pub _dtoa_run_shortest(pos: float) -> None {
     if pos == int(pos) and pos <= DTOA_MAX_SAFE {
         s: str = str(int(pos));
         _DTOA_OUT_DIGITS = s;
-        _DTOA_OUT_K = len(s) - 1;
+        _DTOA_OUT_K = str_nbytes(s) - 1;
         return;
     }
     parts: list[int] = _double_to_mantissa_exp(pos);
@@ -746,9 +750,9 @@ def:pub _dtoa_run_fixed(pos: float, sig_digits: int, exp_align: bool) -> None {
         _DTOA_OUT_K = 0;
         return;
     }
-    if pos == int(pos) and pos <= DTOA_MAX_SAFE and sig_digits >= len(str(int(pos))) {
+    if pos == int(pos) and pos <= DTOA_MAX_SAFE and sig_digits >= str_nbytes(str(int(pos))) {
         base: str = str(int(pos));
-        bl: int = len(base);
+        bl: int = str_nbytes(base);
         if bl >= sig_digits {
             head: str = str_substr(base, 0, sig_digits);
             if bl > sig_digits {
@@ -759,7 +763,7 @@ def:pub _dtoa_run_fixed(pos: float, sig_digits: int, exp_align: bool) -> None {
                 }
             }
             adj_k: int = sig_digits - 1;
-            if len(head) > sig_digits {
+            if str_nbytes(head) > sig_digits {
                 head = str_substr(head, 0, sig_digits);
                 adj_k = adj_k + 1;
             }
@@ -774,7 +778,7 @@ def:pub _dtoa_run_fixed(pos: float, sig_digits: int, exp_align: bool) -> None {
             pi = pi + 1;
         }
         _DTOA_OUT_DIGITS = base + pad;
-        _DTOA_OUT_K = len(base) - 1;
+        _DTOA_OUT_K = str_nbytes(base) - 1;
         return;
     }
     parts: list[int] = _double_to_mantissa_exp(pos);
@@ -859,7 +863,7 @@ def _bn_to_dec(a: list[int]) -> str {
     j: int = len(t) - 2;
     while j >= 0 {
         piece: str = str(t[j]);
-        while len(piece) < 9 {
+        while str_nbytes(piece) < 9 {
             piece = "0" + piece;
         }
         out = out + piece;
@@ -931,7 +935,8 @@ def:pub dtoa_mul_round(pos: float, frac_digits: int) -> int {
     if frac_digits == 0 {
         dot0: int = -1;
         pi: int = 0;
-        while pi < len(plain) {
+        _nb938_plain: int = str_nbytes(plain);
+        while pi < _nb938_plain {
             if str_char_at(plain, pi) == "." {
                 dot0 = pi;
                 break;
@@ -950,7 +955,8 @@ def:pub dtoa_mul_round(pos: float, frac_digits: int) -> int {
     }
     dot: int = -1;
     i: int = 0;
-    while i < len(plain) {
+    _nb957_plain: int = str_nbytes(plain);
+    while i < _nb957_plain {
         if str_char_at(plain, i) == "." {
             dot = i;
             break;
@@ -964,16 +970,16 @@ def:pub dtoa_mul_round(pos: float, frac_digits: int) -> int {
         return int(plain + _repeat_zeros(frac_digits));
     }
     head: str = str_substr(plain, 0, dot);
-    frac: str = str_substr(plain, dot + 1, len(plain));
-    if len(frac) <= frac_digits {
-        frac = frac + _repeat_zeros(frac_digits - len(frac));
+    frac: str = str_substr(plain, dot + 1, str_nbytes(plain));
+    if str_nbytes(frac) <= frac_digits {
+        frac = frac + _repeat_zeros(frac_digits - str_nbytes(frac));
     } else {
         round_d: int = int(str_char_at(frac, frac_digits)) - int(str_char_at("0", 0));
         frac = str_substr(frac, 0, frac_digits);
         if round_d >= 5 {
             frac = _inc_digit_str(frac);
-            if len(frac) > frac_digits {
-                frac = str_substr(frac, 1, len(frac));
+            if str_nbytes(frac) > frac_digits {
+                frac = str_substr(frac, 1, str_nbytes(frac));
                 head = _inc_digit_str(head);
             }
         }

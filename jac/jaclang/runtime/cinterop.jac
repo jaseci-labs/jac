@@ -5,6 +5,7 @@ import os;
 import sys;
 import from ctypes.util { find_library }
 
+def shape_ctype(shape: ScalarShape) -> any;
 def _scalar_ctypes -> dict[str, any];
 
 glob _SCALAR_CTYPES: dict[str, any] = _scalar_ctypes(),
@@ -205,14 +206,6 @@ class CGlobal {
     def get(self: CGlobal) -> any;
     def set(self: CGlobal, value: any);
     def address(self: CGlobal) -> JacPtr;
-}
-
-impl CGlobal.value.getter -> any {
-    return self.get();
-}
-
-impl CGlobal.value.setter(value: any) {
-    self.set(value);
 }
 
 def jac_addressof(symbol: any) -> JacPtr;

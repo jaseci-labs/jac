@@ -349,6 +349,87 @@ test "generated host calls shutdown after run_main_loop()" {
     assert src.index("_ctx.shutdown()") < src.index("Py_Finalize();") , "shutdown must run before Py_Finalize()";
 }
 
+"""A backend switch ends the event loop; the host then relaunches itself, after
+the loopback server and the embedded store are down and before the
+interpreter finalizes. Both engines carry the backend table to host_boot."""
+test "generated hosts relaunch after shutdown and carry the backend choice" {
+    import json;
+    import from jaclang.client.targets.desktop._host_bootstrap { _generate_host_source }
+    import from jaclang.client.targets.desktop.cef_shell {
+        _generate_host_source as cef_host_source
+    }
+
+    backends = {"local": "embedded", "web": "https://web.example"};
+    src = _generate_host_source(
+        "T", 800, 600, "test-app", backends=backends, default_backend="web"
+    );
+    assert src.index("_ctx.shutdown()") < src.index("_ctx.relaunch_if_requested()") , "relaunch only after shutdown";
+    assert src.index("_ctx.relaunch_if_requested()") < src.index("Py_Finalize();") , "relaunch before the interpreter finalizes";
+    def host_config(source: str) -> dict[str, any] {
+        boot_py = json.loads(
+            source.split("glob BOOT_PY: str = ", 1)[1].split(";\n", 1)[0]
+        );
+        return json.loads(
+            json.loads(boot_py.split("host_boot.boot(", 1)[1].rsplit(")", 1)[0])
+        );
+    }
+    config = host_config(src);
+    assert config["backends"] == backends
+        and config["default_backend"] == "web" , config;
+
+    cef = cef_host_source(
+        "T",
+        800,
+        600,
+        "test-app",
+        "/tmp/cache",
+        backends=backends,
+        default_backend="ask"
+    );
+    assert host_config(cef)["backends"] == backends , "the CEF host carries the choice too";
+    assert cef.index("_ctx.shutdown()") < cef.index("_ctx.wants_relaunch()");
+    assert cef.index("_ctx.wants_relaunch()")
+        < cef.index("_ctx.relaunch()")
+        < cef.index("Py_Finalize();");
+}
+
+
+"""A multi-backend bundle loads `/__jac/backend.js` as a classic script at the top
+of `<head>`, so the backend globals exist before the module bundle runs."""
+test "the backend script tag lands first in head, once" {
+    import shutil;
+    import tempfile;
+    import from pathlib { Path }
+    import from jaclang.client.targets.desktop.desktop_build {
+        BACKEND_SCRIPT_TAG,
+        inject_backend_script
+    }
+    d = Path(tempfile.mkdtemp(prefix="jac_backend_tag_"));
+    try {
+        index = d / "index.html";
+        index.write_text(
+            "<!DOCTYPE html>\n<html><head><title>x</title></head><body><script type=\"module\" src=\"/app.js\"></script></body></html>"
+        );
+        inject_backend_script(index);
+        inject_backend_script(index);
+        html = index.read_text();
+        assert html.count(BACKEND_SCRIPT_TAG) == 1 , html;
+        assert html.index(BACKEND_SCRIPT_TAG) < html.index("<title>") , html;
+        assert html.index(BACKEND_SCRIPT_TAG) < html.index("/app.js") , html;
+        (d / "bare.html").write_text("<body></body>");
+        raised = False;
+        try {
+            inject_backend_script(d / "bare.html");
+        } except RuntimeError {
+            raised = True;
+        }
+        assert raised , "an index without <head> cannot load the script in time";
+    } finally {
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+
 """na (LLVM) is first-class in the fused runtime a desktop app bundles.
 
 The desktop host appends the CLI's `[payload][trailer]` (desktop_build.
@@ -526,6 +607,40 @@ test "the embedded store env scopes the cluster and points at the bundle" {
         == os.path.join("/apps/Notes.app/Contents/Resources", "pgdist");
     remote = embedded_store_env("/apps/x", "/xdg/org.example.notes", "");
     assert "JAC_PG_DIST" not in remote;
+}
+
+
+"""The postgres resolution follows the store env the host moves.
+
+The artifact router caches what it resolved per process, and the postgres
+distribution it resolves depends on `JAC_PG_HOME` / `JAC_PG_DIST`. A host that
+moves those must drop the cached answer, or the next boot in the same process
+reuses a distribution under the previous app's data dir (which may be gone).
+"""
+test "moving the embedded store env forgets the postgres resolution" {
+    import os;
+    import from jaclang.artifacts.model { Resolution }
+    import from jaclang.artifacts.router { _RESOLVED }
+    import from jaclang.client.targets.desktop.native.host_boot {
+        _enter_embedded_env,
+        _leave_embedded_env
+    }
+    prior = os.environ.get("JAC_PG_HOME");
+    try {
+        _RESOLVED["postgres"] = Resolution(name="postgres", reason="stale");
+        _enter_embedded_env({"JAC_PG_HOME": "/xdg/org.example.first"});
+        assert "postgres" not in _RESOLVED , "entering must forget the old answer";
+        _RESOLVED["postgres"] = Resolution(name="postgres", reason="first app");
+        _leave_embedded_env();
+        assert "postgres" not in _RESOLVED , "leaving must forget the app's answer";
+    } finally {
+        _leave_embedded_env();
+        if prior is None {
+            os.environ.pop("JAC_PG_HOME", None);
+        } else {
+            os.environ["JAC_PG_HOME"] = prior;
+        }
+    }
 }
 
 
@@ -713,10 +828,8 @@ test "a workspace app scopes its storage identity to the served app" {
         desktop_storage_identifier
     }
     entry_file = Path("/ws/app/main.jac");
-    # A workspace entry that resolves to a named app carries that app in the
-    # storage identity, so two served apps never share one data dir.
     with patch("jaclang.project.config.get_config_for_dir", return_value=None), patch(
-        "jaclang.client.targets.desktop.desktop_build.serving_app_for",
+        "jaclang.client.targets.desktop.desktop_build.storage_app_for",
         return_value="notes"
     ) {
         assert desktop_storage_identifier(
@@ -724,9 +837,8 @@ test "a workspace app scopes its storage identity to the served app" {
         )
             == "org.example.notes.notes";
     }
-    # A project without a distinct serving app keeps the plain identifier.
     with patch("jaclang.project.config.get_config_for_dir", return_value=None), patch(
-        "jaclang.client.targets.desktop.desktop_build.serving_app_for", return_value=""
+        "jaclang.client.targets.desktop.desktop_build.storage_app_for", return_value=""
     ) {
         assert desktop_storage_identifier(
             "org.example.notes", Path("/ws"), entry_file, "embedded"

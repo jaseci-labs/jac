@@ -286,13 +286,12 @@ def:priv iso2022_encode_with(
             }
             dsg += 1;
         }
-        item = dsg.view(1)[0];
-        mark = int(item.mark);
+        mark = int(dsg.view(1)[0].mark);
         if mark == 0 {
             return 1;
         }
-        plane = int(item.plane);
-        width = int(item.width);
+        plane = int(dsg.view(1)[0].plane);
+        width = int(dsg.view(1)[0].width);
         if plane == 0 {
             # G0
             if state_flag(state, F_SHIFTED) {

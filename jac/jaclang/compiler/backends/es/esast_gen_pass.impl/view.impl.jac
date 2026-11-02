@@ -32,7 +32,9 @@ impl EsastGenPass._push_loop_label(nd: uni.UniNode) -> None {
         return;
     }
     self._loop_label_seq += 1;
-    self._loop_label_stack.append(f"__jac_loop_{self._loop_label_seq}");
+    label = f"__jac_loop_{self._loop_label_seq}";
+    self._loop_label_stack.append(label);
+    self._loop_labels[id(nd)] = label;
 }
 
 impl EsastGenPass._finish_loop(

@@ -215,7 +215,9 @@ impl _verify_library(
         outcome.problems.append(f"{label}: the package does not build: {e}");
         return;
     }
-    if surface_digest(surface) != item.api_digest {
+    published_formats = range(1, API_FORMAT + 1);
+    if item.api_digest
+        not in [surface_digest(surface, fmt) for fmt in published_formats] {
         outcome.problems.append(
             f"{label}: the exported API rebuilt from source does not match the published api_digest"
         );

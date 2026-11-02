@@ -18,6 +18,16 @@ obj IdentityStorage {
         user_id: str, credentials: list[dict[str, any]]
     ) -> None abst;
 
+    def _get_oauth_grants(user_id: str) -> list[dict[str, any]] abst;
+    def _put_oauth_grant(user_id: str, grant: dict[str, any]) -> int abst;
+    def _swap_oauth_grant(
+        user_id: str, grant: dict[str, any], version: int
+    ) -> int abst;
+
+    def _take_oauth_grant(
+        user_id: str, platform: str, version: (int | None) = None
+    ) -> dict[str, any] | None abst;
+
     def _get_identities(user_id: str) -> list[dict[str, any]] abst;
     def _add_identity(user_id: str, identity: dict[str, any]) -> bool abst;
     def _remove_sso_identity(user_id: str, platform: str) -> bool abst;
@@ -76,6 +86,13 @@ obj PgIdentityStorage(IdentityStorage) {
     def _update_fields(user_id: str, fields: dict[str, any]) -> bool;
     def _get_credentials(user_id: str) -> list[dict[str, any]];
     def _update_credentials(user_id: str, credentials: list[dict[str, any]]) -> None;
+    def _get_oauth_grants(user_id: str) -> list[dict[str, any]];
+    def _put_oauth_grant(user_id: str, grant: dict[str, any]) -> int;
+    def _swap_oauth_grant(user_id: str, grant: dict[str, any], version: int) -> int;
+    def _take_oauth_grant(
+        user_id: str, platform: str, version: (int | None) = None
+    ) -> dict[str, any] | None;
+
     def _get_identities(user_id: str) -> list[dict[str, any]];
     def _add_identity(user_id: str, identity: dict[str, any]) -> bool;
     def _remove_sso_identity(user_id: str, platform: str) -> bool;

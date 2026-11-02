@@ -61,7 +61,10 @@ import from engine.src.runtime.gc_barrier {
     gc_gen_on,
     gc_rem_objs,
     gc_rem_vals,
-    gc_barrier_reset
+    gc_rem_gens,
+    gc_barrier_reset,
+    gc_young_reset,
+    FLAG_GEN_REMEMBERED
 }
 import from engine.src.runtime.gc_mark { gc_mark, gc_is_marked, gc_clear_marks }
 import from engine.src.runtime.jsobject {
@@ -115,7 +118,12 @@ import from engine.src.runtime.jsobj_type {
 }
 import from engine.src.ffi.libc { write, getenv, abort }
 import from engine.src.ffi.libuv { uv_hrtime }
-import from engine.src.runtime.mem { read_byte, write_byte }
+import from engine.src.runtime.mem {
+    read_byte,
+    write_byte,
+    str_bslice,
+    str_nbytes
+}
 # Pin registry lives in its own leaf module so any module can pin glob-held
 # singletons without an import cycle through this file.
 import from engine.src.runtime.gc_pin {
@@ -197,6 +205,8 @@ glob _GC_WORK: list[JSValue] = [];
 # whether it is a verification pass (JAC_GC_VERIFY) — references to dead
 # cells are recorded in _GC_VERIFY_BAD instead of being skipped.
 glob _GC_GEN_CYCLE: bool = False,
+     _GC_MINOR_CYCLE: bool = False,
+     _GC_YOUNG_SWEEP_NS: int = 0,
      _GC_VERIFY: int = -1,
      _GC_VERIFYING: bool = False,
      _GC_VERIFY_BAD: list[JSValue] = [];
@@ -734,8 +744,12 @@ def:pub gc_mark_roots(realm: Realm, extras: list[JSValue]) {
     # (plain `function*` states leave async_promise = undefined and stay
     # collectible via their generator object as before). Root it and trace the
     # snapshot so the frame survives until it is resumed.
+    # A minor collection roots only the states allocated or suspended since
+    # the last collection (_gc_minor_roots): an old state written by no
+    # suspend holds only what the last collection already marked. This scan
+    # of every slot is the major's.
     gnr: int = 0;
-    while gnr < len(realm.generators) {
+    while not _GC_MINOR_CYCLE and gnr < len(realm.generators) {
         ags: JSGeneratorState = realm.generators[gnr];
         if ags.cell_flags != CELL_FLAG_DEAD
             and not ags.done
@@ -1275,20 +1289,19 @@ def _gc_weak_clear(realm: Realm) {
 # gc_collect — full mark-and-sweep cycle
 # ─────────────────────────────────────────────────────────────────────────────
 
-"""A minor collection's roots beyond gc_mark_roots: every live generator
-state (a handful at a time; mutated on each suspend without a barrier), the
-children of the remembered old objects (already marked, so the trace would
-stop at them) and of the old mapped `arguments` objects (their parameter
-bindings live in the activation's locals list, written without a barrier),
-and the values logged by the non-object barriers."""
+"""A minor collection's roots beyond gc_mark_roots: the generator states
+allocated since the last collection and the old ones suspended since (the
+write barrier in js_set_generator_state remembers them; an old state no
+suspend touched holds only cells the last collection marked), the children
+of the remembered old objects (already marked, so the trace would stop at
+them) and of the old mapped `arguments` objects (their parameter bindings
+live in the activation's locals list, written without a barrier), and the values logged by the non-object barriers."""
 def _gc_minor_roots(realm: Realm) -> None {
-    mr_g: int = 0;
-    while mr_g < len(realm.generators) {
-        if realm.generators[mr_g].cell_flags != CELL_FLAG_DEAD
-            and not realm.generators[mr_g].done {
-            _gc_root_gen_state(realm, mr_g);
-        }
-        mr_g = mr_g + 1;
+    for mr_yg in realm.gc_young_gens {
+        _gc_root_gen_state(realm, mr_yg);
+    }
+    for mr_rg in gc_rem_gens() {
+        _gc_root_gen_state(realm, mr_rg);
     }
     mr_mp: int = realm.objmark_ptr;
     mr_eb: int = gc_mark_byte(realm);
@@ -1359,11 +1372,19 @@ def _gc_barrier_end(realm: Realm) -> None {
                 & ~FLAG_REMEMBERED;
         }
     }
+    for be_g in gc_rem_gens() {
+        if be_g >= 0 and be_g < len(realm.generators)
+            and realm.generators[be_g].cell_flags != CELL_FLAG_DEAD {
+            realm.generators[be_g].cell_flags = realm.generators[be_g].cell_flags
+                & ~FLAG_GEN_REMEMBERED;
+        }
+    }
     gc_barrier_reset();
     realm.gc_young_alloc = [];
     realm.gc_young_closures = [];
     realm.gc_young_maps = [];
     realm.gc_young_sets = [];
+    realm.gc_young_gens = [];
 }
 
 """JAC_GC_VERIFY=1: after every minor collection run a full one that records
@@ -1504,7 +1525,7 @@ references them, then abort."""
 def _gc_verify_report(realm: Realm, extras: list[JSValue]) -> None {
     vr_msg: str = "[GCVERIFY] " + str(len(_GC_VERIFY_BAD))
         + " young cell(s) a minor collection would have freed are reachable (missing write barrier)\n";
-    write(2, vr_msg, len(vr_msg));
+    write(2, vr_msg, str_nbytes(vr_msg));
     vr_k: int = 0;
     for vr_bad in _GC_VERIFY_BAD {
         if vr_k >= 5 {
@@ -1522,7 +1543,7 @@ def _gc_verify_report(realm: Realm, extras: list[JSValue]) -> None {
         vr_line: str = "  young cell kind=" + str(jsv_cell_kind(vr_bad)) + " id="
             + str(jsv_to_table_id(vr_bad)) + vr_what + "; referenced by:"
             + _gc_verify_referrers(realm, vr_bad, extras) + "\n";
-        write(2, vr_line, len(vr_line));
+        write(2, vr_line, str_nbytes(vr_line));
     }
 }
 
@@ -1604,7 +1625,7 @@ def _gc_type_breakdown(realm: Realm) {
         + " shapeMode="
         + str(shape_ct)
         + "\n";
-    write(2, _hdr, len(_hdr));
+    write(2, _hdr, str_nbytes(_hdr));
     # Top-12 shapes by live count, with resolved key names (a shape's key-set
     # self-classifies: {type,props,key,ref}=React element, hidden marker keys
     # =promise/array, etc.).
@@ -1653,7 +1674,7 @@ def _gc_type_breakdown(realm: Realm) {
             + " {"
             + _kstr
             + "}\n";
-        write(2, _line, len(_line));
+        write(2, _line, str_nbytes(_line));
         _shown = _shown + 1;
     }
     _deep_live: int = 0;
@@ -1665,7 +1686,7 @@ def _gc_type_breakdown(realm: Realm) {
         + " idxEntries=" + str(_ss[2]) + " keysCache=" + str(_ss[3])
         + " edges=" + str(_ss[4]) + " leaves>=128slots=" + str(_ss[5])
         + " liveObjs>=128slots=" + str(_deep_live) + "\n";
-    write(2, _sl, len(_sl));
+    write(2, _sl, str_nbytes(_sl));
     for _lsid in shape_deepest_leaves(12) {
         _lk: list[int] = shape_keys(_lsid);
         _lk_n: int = shape_key_count(_lsid);
@@ -1675,7 +1696,7 @@ def _gc_type_breakdown(realm: Realm) {
             if _lj < 6 or _lj >= _lk_n - 2 {
                 _lkn: str = str_from_id(_lk[_lj]);
                 if len(_lkn) == 0 { _lkn = "#" + str(_lk[_lj]); }
-                if len(_lkn) > 24 { _lkn = _lkn[0:24]; }
+                if str_nbytes(_lkn) > 24 { _lkn = str_bslice(_lkn, 0, 24); }
                 _lks = _lks + _lkn + ",";
             } elif _lj == 6 {
                 _lks = _lks + "…,";
@@ -1684,7 +1705,7 @@ def _gc_type_breakdown(realm: Realm) {
         }
         _ll: str = "  leaf#" + str(_lsid) + " slots=" + str(shape_slot_count(_lsid))
             + " live=" + str(shape_hist.get(_lsid, 0)) + " {" + _lks + "}\n";
-        write(2, _ll, len(_ll));
+        write(2, _ll, str_nbytes(_ll));
     }
 }
 
@@ -1761,7 +1782,7 @@ def _gc_string_breakdown(realm: Realm) {
         + " freeSlots="
         + str(len(realm.free_heap_string_slots))
         + "\n";
-    write(2, _hdr, len(_hdr));
+    write(2, _hdr, str_nbytes(_hdr));
     _labels: list[str] = ["<=16", "<=64", "<=256", "<=1K", "<=16K", "<=256K", ">256K"];
     _bi2: int = 0;
     while _bi2 < 7 {
@@ -1773,7 +1794,7 @@ def _gc_string_breakdown(realm: Realm) {
                 + " strs, "
                 + str(b_by[_bi2] // 1024)
                 + "KB\n";
-            write(2, _l, len(_l));
+            write(2, _l, str_nbytes(_l));
         }
         _bi2 = _bi2 + 1;
     }
@@ -1785,6 +1806,8 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
     }
     realm.gc_in_progress = True;
     gc_t0: int = uv_hrtime();
+    gc_young_reset();
+    _GC_YOUNG_SWEEP_NS = 0;
     # Generational (docs/GENERATIONAL_GC.md): a minor collection keeps the
     # epoch, so the cells marked by the last collection still read as marked
     # (old) and the trace stops at them; a major one un-marks everything
@@ -1799,6 +1822,7 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
     realm.gc_scan_weakmaps = [];
     realm.gc_scan_weaksets = [];
 
+    _GC_MINOR_CYCLE = gc_minor;
     gc_mark_roots(realm, extras);
     if gc_minor {
         _gc_minor_roots(realm);
@@ -1821,6 +1845,7 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
                 }
             }
             gc_minor = False;
+            _GC_MINOR_CYCLE = False;
             gc_clear_marks(realm, -1);
             realm.gc_scan_weakmaps = [];
             realm.gc_scan_weaksets = [];
@@ -1858,6 +1883,7 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
     gc_t_swo: int = uv_hrtime();
     if gc_minor {
         freed = freed + _gc_sweep_young_tables(realm);
+        _GC_YOUNG_SWEEP_NS = uv_hrtime() - gc_t_mark;
     } else {
         freed = freed + gc_sweep_closures(realm);
         freed = freed + gc_sweep_maps(realm);
@@ -1953,7 +1979,7 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
                 + " cumSwept="
                 + str(_GC_TRACE_SWEPT)
                 + "\n";
-            write(2, _gc_msg, len(_gc_msg));
+            write(2, _gc_msg, str_nbytes(_gc_msg));
             if gc_total_cycles % 20 == 0 {
                 _gc_type_breakdown(realm);
                 _gc_string_breakdown(realm);
@@ -1969,12 +1995,19 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
         if len(_GC_VERIFY_BAD) > 0 {
             vp_msg: str = "[GCVERIFY] after a " + ("minor" if gc_minor else "major")
                 + " collection: references to dead cells follow\n";
-            write(2, vp_msg, len(vp_msg));
+            write(2, vp_msg, str_nbytes(vp_msg));
             _gc_verify_report(realm, extras);
             abort();
         }
     }
     return freed;
+}
+
+"""Nanoseconds the last minor collection spent sweeping young cells (objects,
+closures, Maps, Sets) -- the part that scales with the young generation; 0
+after a major."""
+def:pub gc_last_young_sweep_ns -> int {
+    return _GC_YOUNG_SWEEP_NS;
 }
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -4,7 +4,7 @@ def:pub Field(value: str, onChange: any) -> JsxElement {
 
 def:pub Editor -> JsxElement {
     has text: str = "";
-    return <Field value={text} onChange={lambda (t: str) { text = t; }} />;
+    return <Field value={text} onChange={lambda (t: str) { text = t; }}/>;
 }
 
 def wave(x: float) -> float {
@@ -21,5 +21,10 @@ obj Painter {
 
 def:pub view -> JsxElement {
     p = Painter();
-    return <div>{wave(1.0)}{p.paint(1.0)}<Editor /></div>;
+    return
+        <div>
+            {wave(1.0)}
+            {p.paint(1.0)}
+            <Editor/>
+        </div>;
 }

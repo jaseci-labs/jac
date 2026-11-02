@@ -63,10 +63,6 @@ obj JacAPIServerAdmin {
         username: str, Authorization: str | None = None
     ) -> TransportResponse;
 
-    def admin_graph_data(
-        username: str | None = None, Authorization: str | None = None
-    ) -> JSONResponse;
-
     def admin_get_config(
         profile: str = "default", Authorization: str | None = None
     ) -> TransportResponse;

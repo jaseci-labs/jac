@@ -1,11 +1,3 @@
-"""jacpython AST node archetypes.
-
-Originally generated from CPython 3.14.6 Parser/Python.asdl.
-Maintained directly in Jac.
-"""
-
-# Concrete AST kinds. The numbering is the boundary contract with
-# JAC_AST_KINDS in jac/bootstrap/python/compiler_runtime.c.
 enum ast_kind {
     Module = 0,
     Interactive = 1,
@@ -122,8 +114,6 @@ enum ast_kind {
     TypeVarTuple = 112
 }
 
-# AST field names. The numbering is the boundary contract with
-# JAC_AST_FIELDS in jac/bootstrap/python/compiler_runtime.c.
 enum ast_field {
     ANNOTATION = 0,
     ARG = 1,
@@ -208,30 +198,38 @@ enum ast_field {
     VARARG = 80
 }
 
-obj ast_node {}
+obj ast_node {
+    def node_kind -> ast_kind abst;
+}
 
-# --- mod ---
 obj mod(ast_node) {}
 
 obj Module(mod) {
     has body: list[stmt],
         type_ignores: list[type_ignore];
+
+    def node_kind -> ast_kind;
 }
 
 obj Interactive(mod) {
     has body: list[stmt];
+
+    def node_kind -> ast_kind;
 }
 
 obj Expression(mod) {
     has body: expr;
+
+    def node_kind -> ast_kind;
 }
 
 obj FunctionType(mod) {
     has argtypes: list[expr],
         returns: expr;
+
+    def node_kind -> ast_kind;
 }
 
-# --- stmt ---
 obj stmt(ast_node) {
     has lineno: int,
         col_offset: int,
@@ -251,6 +249,8 @@ obj FunctionDef(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj AsyncFunctionDef(stmt) {
@@ -265,6 +265,8 @@ obj AsyncFunctionDef(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj ClassDef(stmt) {
@@ -278,6 +280,8 @@ obj ClassDef(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Return(stmt) {
@@ -286,6 +290,8 @@ obj Return(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Delete(stmt) {
@@ -294,6 +300,8 @@ obj Delete(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Assign(stmt) {
@@ -304,6 +312,8 @@ obj Assign(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj TypeAlias(stmt) {
@@ -314,6 +324,8 @@ obj TypeAlias(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj AugAssign(stmt) {
@@ -324,6 +336,8 @@ obj AugAssign(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj AnnAssign(stmt) {
@@ -335,6 +349,8 @@ obj AnnAssign(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj For(stmt) {
@@ -347,6 +363,8 @@ obj For(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj AsyncFor(stmt) {
@@ -359,6 +377,8 @@ obj AsyncFor(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj While(stmt) {
@@ -369,6 +389,8 @@ obj While(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj If(stmt) {
@@ -379,6 +401,8 @@ obj If(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj With(stmt) {
@@ -389,6 +413,8 @@ obj With(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj AsyncWith(stmt) {
@@ -399,6 +425,8 @@ obj AsyncWith(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Match(stmt) {
@@ -408,6 +436,8 @@ obj Match(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Raise(stmt) {
@@ -417,6 +447,8 @@ obj Raise(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Try(stmt) {
@@ -428,6 +460,8 @@ obj Try(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj TryStar(stmt) {
@@ -439,6 +473,8 @@ obj TryStar(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Assert(stmt) {
@@ -448,6 +484,8 @@ obj Assert(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Import(stmt) {
@@ -456,6 +494,8 @@ obj Import(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj ImportFrom(stmt) {
@@ -466,6 +506,8 @@ obj ImportFrom(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Global(stmt) {
@@ -474,6 +516,8 @@ obj Global(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Nonlocal(stmt) {
@@ -482,6 +526,8 @@ obj Nonlocal(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Expr(stmt) {
@@ -490,6 +536,8 @@ obj Expr(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Pass(stmt) {
@@ -497,6 +545,8 @@ obj Pass(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Break(stmt) {
@@ -504,6 +554,8 @@ obj Break(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Continue(stmt) {
@@ -511,9 +563,10 @@ obj Continue(stmt) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
-# --- expr ---
 obj expr(ast_node) {
     has lineno: int,
         col_offset: int,
@@ -528,6 +581,8 @@ obj BoolOp(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj NamedExpr(expr) {
@@ -537,6 +592,8 @@ obj NamedExpr(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj BinOp(expr) {
@@ -547,6 +604,8 @@ obj BinOp(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj UnaryOp(expr) {
@@ -556,6 +615,8 @@ obj UnaryOp(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Lambda(expr) {
@@ -565,6 +626,8 @@ obj Lambda(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj IfExp(expr) {
@@ -575,6 +638,8 @@ obj IfExp(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Dict(expr) {
@@ -584,6 +649,8 @@ obj Dict(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Set(expr) {
@@ -592,6 +659,8 @@ obj Set(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj ListComp(expr) {
@@ -601,6 +670,8 @@ obj ListComp(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj SetComp(expr) {
@@ -610,6 +681,8 @@ obj SetComp(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj DictComp(expr) {
@@ -620,6 +693,8 @@ obj DictComp(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj GeneratorExp(expr) {
@@ -629,6 +704,8 @@ obj GeneratorExp(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Await(expr) {
@@ -637,6 +714,8 @@ obj Await(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Yield(expr) {
@@ -645,6 +724,8 @@ obj Yield(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj YieldFrom(expr) {
@@ -653,6 +734,8 @@ obj YieldFrom(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Compare(expr) {
@@ -663,6 +746,8 @@ obj Compare(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Call(expr) {
@@ -673,6 +758,8 @@ obj Call(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj FormattedValue(expr) {
@@ -683,6 +770,8 @@ obj FormattedValue(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Interpolation(expr) {
@@ -694,6 +783,8 @@ obj Interpolation(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj JoinedStr(expr) {
@@ -702,6 +793,8 @@ obj JoinedStr(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj TemplateStr(expr) {
@@ -710,6 +803,8 @@ obj TemplateStr(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Constant(expr) {
@@ -719,6 +814,10 @@ obj Constant(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind {
+        return ast_kind.Constant;
+    }
 }
 
 obj Attribute(expr) {
@@ -729,6 +828,8 @@ obj Attribute(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Subscript(expr) {
@@ -739,6 +840,8 @@ obj Subscript(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Starred(expr) {
@@ -748,6 +851,8 @@ obj Starred(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Name(expr) {
@@ -757,6 +862,8 @@ obj Name(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj List(expr) {
@@ -766,6 +873,8 @@ obj List(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Tuple(expr) {
@@ -775,6 +884,8 @@ obj Tuple(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj Slice(expr) {
@@ -785,96 +896,157 @@ obj Slice(expr) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
-# --- expr_context ---
 obj expr_context(ast_node) {}
 
-obj Load(expr_context) {}
+obj Load(expr_context) {
+    def node_kind -> ast_kind;
+}
 
-obj Store(expr_context) {}
+obj Store(expr_context) {
+    def node_kind -> ast_kind;
+}
 
-obj Del(expr_context) {}
+obj Del(expr_context) {
+    def node_kind -> ast_kind;
+}
 
-# --- boolop ---
 obj boolop(ast_node) {}
 
-obj And(boolop) {}
+obj And(boolop) {
+    def node_kind -> ast_kind;
+}
 
-obj Or(boolop) {}
+obj Or(boolop) {
+    def node_kind -> ast_kind;
+}
 
-# --- operator ---
 obj operator(ast_node) {}
 
-obj Add(operator) {}
+obj Add(operator) {
+    def node_kind -> ast_kind;
+}
 
-obj Sub(operator) {}
+obj Sub(operator) {
+    def node_kind -> ast_kind;
+}
 
-obj Mult(operator) {}
+obj Mult(operator) {
+    def node_kind -> ast_kind;
+}
 
-obj MatMult(operator) {}
+obj MatMult(operator) {
+    def node_kind -> ast_kind;
+}
 
-obj Div(operator) {}
+obj Div(operator) {
+    def node_kind -> ast_kind;
+}
 
-obj Mod(operator) {}
+obj Mod(operator) {
+    def node_kind -> ast_kind;
+}
 
-obj Pow(operator) {}
+obj Pow(operator) {
+    def node_kind -> ast_kind;
+}
 
-obj LShift(operator) {}
+obj LShift(operator) {
+    def node_kind -> ast_kind;
+}
 
-obj RShift(operator) {}
+obj RShift(operator) {
+    def node_kind -> ast_kind;
+}
 
-obj BitOr(operator) {}
+obj BitOr(operator) {
+    def node_kind -> ast_kind;
+}
 
-obj BitXor(operator) {}
+obj BitXor(operator) {
+    def node_kind -> ast_kind;
+}
 
-obj BitAnd(operator) {}
+obj BitAnd(operator) {
+    def node_kind -> ast_kind;
+}
 
-obj FloorDiv(operator) {}
+obj FloorDiv(operator) {
+    def node_kind -> ast_kind;
+}
 
-# --- unaryop ---
 obj unaryop(ast_node) {}
 
-obj Invert(unaryop) {}
+obj Invert(unaryop) {
+    def node_kind -> ast_kind;
+}
 
-obj Not(unaryop) {}
+obj Not(unaryop) {
+    def node_kind -> ast_kind;
+}
 
-obj UAdd(unaryop) {}
+obj UAdd(unaryop) {
+    def node_kind -> ast_kind;
+}
 
-obj USub(unaryop) {}
+obj USub(unaryop) {
+    def node_kind -> ast_kind;
+}
 
-# --- cmpop ---
 obj cmpop(ast_node) {}
 
-obj Eq(cmpop) {}
+obj Eq(cmpop) {
+    def node_kind -> ast_kind;
+}
 
-obj NotEq(cmpop) {}
+obj NotEq(cmpop) {
+    def node_kind -> ast_kind;
+}
 
-obj Lt(cmpop) {}
+obj Lt(cmpop) {
+    def node_kind -> ast_kind;
+}
 
-obj LtE(cmpop) {}
+obj LtE(cmpop) {
+    def node_kind -> ast_kind;
+}
 
-obj Gt(cmpop) {}
+obj Gt(cmpop) {
+    def node_kind -> ast_kind;
+}
 
-obj GtE(cmpop) {}
+obj GtE(cmpop) {
+    def node_kind -> ast_kind;
+}
 
-obj Is(cmpop) {}
+obj Is(cmpop) {
+    def node_kind -> ast_kind;
+}
 
-obj IsNot(cmpop) {}
+obj IsNot(cmpop) {
+    def node_kind -> ast_kind;
+}
 
-obj In(cmpop) {}
+obj In(cmpop) {
+    def node_kind -> ast_kind;
+}
 
-obj NotIn(cmpop) {}
+obj NotIn(cmpop) {
+    def node_kind -> ast_kind;
+}
 
-# --- comprehension (product) ---
 obj comprehension(ast_node) {
     has target: expr,
         iter: expr,
         ifs: list[expr],
         is_async: int;
+
+    def node_kind -> ast_kind;
 }
 
-# --- excepthandler ---
 obj excepthandler(ast_node) {
     has type: expr | None,
         name: str | None,
@@ -893,9 +1065,10 @@ obj ExceptHandler(excepthandler) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
-# --- arguments (product) ---
 obj arguments(ast_node) {
     has posonlyargs: list[arg],
         args: list[arg],
@@ -904,9 +1077,10 @@ obj arguments(ast_node) {
         kw_defaults: list[expr | None],
         kwarg: arg | None,
         defaults: list[expr];
+
+    def node_kind -> ast_kind;
 }
 
-# --- arg (product) ---
 obj arg(ast_node) {
     has arg: str,
         annotation: expr | None,
@@ -915,9 +1089,10 @@ obj arg(ast_node) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
-# --- keyword (product) ---
 obj keyword(ast_node) {
     has arg: str | None,
         value: expr,
@@ -925,9 +1100,10 @@ obj keyword(ast_node) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
-# --- alias (product) ---
 obj alias(ast_node) {
     has name: str,
         asname: str | None,
@@ -935,22 +1111,25 @@ obj alias(ast_node) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
-# --- withitem (product) ---
 obj withitem(ast_node) {
     has context_expr: expr,
         optional_vars: expr | None;
+
+    def node_kind -> ast_kind;
 }
 
-# --- match_case (product) ---
 obj match_case(ast_node) {
     has pattern: pattern,
         guard: expr | None,
         body: list[stmt];
+
+    def node_kind -> ast_kind;
 }
 
-# --- pattern ---
 obj pattern(ast_node) {
     has lineno: int,
         col_offset: int,
@@ -964,6 +1143,8 @@ obj MatchValue(pattern) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj MatchSingleton(pattern) {
@@ -972,6 +1153,8 @@ obj MatchSingleton(pattern) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj MatchSequence(pattern) {
@@ -980,6 +1163,8 @@ obj MatchSequence(pattern) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj MatchMapping(pattern) {
@@ -990,6 +1175,8 @@ obj MatchMapping(pattern) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj MatchClass(pattern) {
@@ -1001,6 +1188,8 @@ obj MatchClass(pattern) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj MatchStar(pattern) {
@@ -1009,6 +1198,8 @@ obj MatchStar(pattern) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj MatchAs(pattern) {
@@ -1018,6 +1209,8 @@ obj MatchAs(pattern) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj MatchOr(pattern) {
@@ -1026,17 +1219,19 @@ obj MatchOr(pattern) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
-# --- type_ignore ---
 obj type_ignore(ast_node) {}
 
 obj TypeIgnore(type_ignore) {
     has lineno: int,
         tag: str;
+
+    def node_kind -> ast_kind;
 }
 
-# --- type_param ---
 obj type_param(ast_node) {
     has name: str,
         lineno: int,
@@ -1053,6 +1248,8 @@ obj TypeVar(type_param) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj ParamSpec(type_param) {
@@ -1062,6 +1259,8 @@ obj ParamSpec(type_param) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
 }
 
 obj TypeVarTuple(type_param) {
@@ -1071,4 +1270,454 @@ obj TypeVarTuple(type_param) {
         col_offset: int,
         end_lineno: int | None,
         end_col_offset: int | None;
+
+    def node_kind -> ast_kind;
+}
+
+impl Module.node_kind -> ast_kind {
+    return ast_kind.Module;
+}
+
+impl Interactive.node_kind -> ast_kind {
+    return ast_kind.Interactive;
+}
+
+impl Expression.node_kind -> ast_kind {
+    return ast_kind.Expression;
+}
+
+impl FunctionType.node_kind -> ast_kind {
+    return ast_kind.FunctionType;
+}
+
+impl FunctionDef.node_kind -> ast_kind {
+    return ast_kind.FunctionDef;
+}
+
+impl AsyncFunctionDef.node_kind -> ast_kind {
+    return ast_kind.AsyncFunctionDef;
+}
+
+impl ClassDef.node_kind -> ast_kind {
+    return ast_kind.ClassDef;
+}
+
+impl Return.node_kind -> ast_kind {
+    return ast_kind.Return;
+}
+
+impl Delete.node_kind -> ast_kind {
+    return ast_kind.Delete;
+}
+
+impl Assign.node_kind -> ast_kind {
+    return ast_kind.Assign;
+}
+
+impl TypeAlias.node_kind -> ast_kind {
+    return ast_kind.TypeAlias;
+}
+
+impl AugAssign.node_kind -> ast_kind {
+    return ast_kind.AugAssign;
+}
+
+impl AnnAssign.node_kind -> ast_kind {
+    return ast_kind.AnnAssign;
+}
+
+impl For.node_kind -> ast_kind {
+    return ast_kind.For;
+}
+
+impl AsyncFor.node_kind -> ast_kind {
+    return ast_kind.AsyncFor;
+}
+
+impl While.node_kind -> ast_kind {
+    return ast_kind.While;
+}
+
+impl If.node_kind -> ast_kind {
+    return ast_kind.If;
+}
+
+impl With.node_kind -> ast_kind {
+    return ast_kind.With;
+}
+
+impl AsyncWith.node_kind -> ast_kind {
+    return ast_kind.AsyncWith;
+}
+
+impl Match.node_kind -> ast_kind {
+    return ast_kind.Match;
+}
+
+impl Raise.node_kind -> ast_kind {
+    return ast_kind.Raise;
+}
+
+impl Try.node_kind -> ast_kind {
+    return ast_kind.Try;
+}
+
+impl TryStar.node_kind -> ast_kind {
+    return ast_kind.TryStar;
+}
+
+impl Assert.node_kind -> ast_kind {
+    return ast_kind.Assert;
+}
+
+impl Import.node_kind -> ast_kind {
+    return ast_kind.Import;
+}
+
+impl ImportFrom.node_kind -> ast_kind {
+    return ast_kind.ImportFrom;
+}
+
+impl Global.node_kind -> ast_kind {
+    return ast_kind.Global;
+}
+
+impl Nonlocal.node_kind -> ast_kind {
+    return ast_kind.Nonlocal;
+}
+
+impl Expr.node_kind -> ast_kind {
+    return ast_kind.Expr;
+}
+
+impl Pass.node_kind -> ast_kind {
+    return ast_kind.Pass;
+}
+
+impl Break.node_kind -> ast_kind {
+    return ast_kind.Break;
+}
+
+impl Continue.node_kind -> ast_kind {
+    return ast_kind.Continue;
+}
+
+impl BoolOp.node_kind -> ast_kind {
+    return ast_kind.BoolOp;
+}
+
+impl NamedExpr.node_kind -> ast_kind {
+    return ast_kind.NamedExpr;
+}
+
+impl BinOp.node_kind -> ast_kind {
+    return ast_kind.BinOp;
+}
+
+impl UnaryOp.node_kind -> ast_kind {
+    return ast_kind.UnaryOp;
+}
+
+impl Lambda.node_kind -> ast_kind {
+    return ast_kind.Lambda;
+}
+
+impl IfExp.node_kind -> ast_kind {
+    return ast_kind.IfExp;
+}
+
+impl Dict.node_kind -> ast_kind {
+    return ast_kind.Dict;
+}
+
+impl Set.node_kind -> ast_kind {
+    return ast_kind.Set;
+}
+
+impl ListComp.node_kind -> ast_kind {
+    return ast_kind.ListComp;
+}
+
+impl SetComp.node_kind -> ast_kind {
+    return ast_kind.SetComp;
+}
+
+impl DictComp.node_kind -> ast_kind {
+    return ast_kind.DictComp;
+}
+
+impl GeneratorExp.node_kind -> ast_kind {
+    return ast_kind.GeneratorExp;
+}
+
+impl Await.node_kind -> ast_kind {
+    return ast_kind.Await;
+}
+
+impl Yield.node_kind -> ast_kind {
+    return ast_kind.Yield;
+}
+
+impl YieldFrom.node_kind -> ast_kind {
+    return ast_kind.YieldFrom;
+}
+
+impl Compare.node_kind -> ast_kind {
+    return ast_kind.Compare;
+}
+
+impl Call.node_kind -> ast_kind {
+    return ast_kind.Call;
+}
+
+impl FormattedValue.node_kind -> ast_kind {
+    return ast_kind.FormattedValue;
+}
+
+impl Interpolation.node_kind -> ast_kind {
+    return ast_kind.Interpolation;
+}
+
+impl JoinedStr.node_kind -> ast_kind {
+    return ast_kind.JoinedStr;
+}
+
+impl TemplateStr.node_kind -> ast_kind {
+    return ast_kind.TemplateStr;
+}
+
+impl Attribute.node_kind -> ast_kind {
+    return ast_kind.Attribute;
+}
+
+impl Subscript.node_kind -> ast_kind {
+    return ast_kind.Subscript;
+}
+
+impl Starred.node_kind -> ast_kind {
+    return ast_kind.Starred;
+}
+
+impl Name.node_kind -> ast_kind {
+    return ast_kind.Name;
+}
+
+impl List.node_kind -> ast_kind {
+    return ast_kind.List;
+}
+
+impl Tuple.node_kind -> ast_kind {
+    return ast_kind.Tuple;
+}
+
+impl Slice.node_kind -> ast_kind {
+    return ast_kind.Slice;
+}
+
+impl Load.node_kind -> ast_kind {
+    return ast_kind.Load;
+}
+
+impl Store.node_kind -> ast_kind {
+    return ast_kind.Store;
+}
+
+impl Del.node_kind -> ast_kind {
+    return ast_kind.Del;
+}
+
+impl And.node_kind -> ast_kind {
+    return ast_kind.And;
+}
+
+impl Or.node_kind -> ast_kind {
+    return ast_kind.Or;
+}
+
+impl Add.node_kind -> ast_kind {
+    return ast_kind.Add;
+}
+
+impl Sub.node_kind -> ast_kind {
+    return ast_kind.Sub;
+}
+
+impl Mult.node_kind -> ast_kind {
+    return ast_kind.Mult;
+}
+
+impl MatMult.node_kind -> ast_kind {
+    return ast_kind.MatMult;
+}
+
+impl Div.node_kind -> ast_kind {
+    return ast_kind.Div;
+}
+
+impl Mod.node_kind -> ast_kind {
+    return ast_kind.Mod;
+}
+
+impl Pow.node_kind -> ast_kind {
+    return ast_kind.Pow;
+}
+
+impl LShift.node_kind -> ast_kind {
+    return ast_kind.LShift;
+}
+
+impl RShift.node_kind -> ast_kind {
+    return ast_kind.RShift;
+}
+
+impl BitOr.node_kind -> ast_kind {
+    return ast_kind.BitOr;
+}
+
+impl BitXor.node_kind -> ast_kind {
+    return ast_kind.BitXor;
+}
+
+impl BitAnd.node_kind -> ast_kind {
+    return ast_kind.BitAnd;
+}
+
+impl FloorDiv.node_kind -> ast_kind {
+    return ast_kind.FloorDiv;
+}
+
+impl Invert.node_kind -> ast_kind {
+    return ast_kind.Invert;
+}
+
+impl Not.node_kind -> ast_kind {
+    return ast_kind.Not;
+}
+
+impl UAdd.node_kind -> ast_kind {
+    return ast_kind.UAdd;
+}
+
+impl USub.node_kind -> ast_kind {
+    return ast_kind.USub;
+}
+
+impl Eq.node_kind -> ast_kind {
+    return ast_kind.Eq;
+}
+
+impl NotEq.node_kind -> ast_kind {
+    return ast_kind.NotEq;
+}
+
+impl Lt.node_kind -> ast_kind {
+    return ast_kind.Lt;
+}
+
+impl LtE.node_kind -> ast_kind {
+    return ast_kind.LtE;
+}
+
+impl Gt.node_kind -> ast_kind {
+    return ast_kind.Gt;
+}
+
+impl GtE.node_kind -> ast_kind {
+    return ast_kind.GtE;
+}
+
+impl Is.node_kind -> ast_kind {
+    return ast_kind.Is;
+}
+
+impl IsNot.node_kind -> ast_kind {
+    return ast_kind.IsNot;
+}
+
+impl In.node_kind -> ast_kind {
+    return ast_kind.In;
+}
+
+impl NotIn.node_kind -> ast_kind {
+    return ast_kind.NotIn;
+}
+
+impl comprehension.node_kind -> ast_kind {
+    return ast_kind.comprehension;
+}
+
+impl ExceptHandler.node_kind -> ast_kind {
+    return ast_kind.ExceptHandler;
+}
+
+impl arguments.node_kind -> ast_kind {
+    return ast_kind.arguments;
+}
+
+impl arg.node_kind -> ast_kind {
+    return ast_kind.arg;
+}
+
+impl keyword.node_kind -> ast_kind {
+    return ast_kind.keyword;
+}
+
+impl alias.node_kind -> ast_kind {
+    return ast_kind.alias;
+}
+
+impl withitem.node_kind -> ast_kind {
+    return ast_kind.withitem;
+}
+
+impl match_case.node_kind -> ast_kind {
+    return ast_kind.match_case;
+}
+
+impl MatchValue.node_kind -> ast_kind {
+    return ast_kind.MatchValue;
+}
+
+impl MatchSingleton.node_kind -> ast_kind {
+    return ast_kind.MatchSingleton;
+}
+
+impl MatchSequence.node_kind -> ast_kind {
+    return ast_kind.MatchSequence;
+}
+
+impl MatchMapping.node_kind -> ast_kind {
+    return ast_kind.MatchMapping;
+}
+
+impl MatchClass.node_kind -> ast_kind {
+    return ast_kind.MatchClass;
+}
+
+impl MatchStar.node_kind -> ast_kind {
+    return ast_kind.MatchStar;
+}
+
+impl MatchAs.node_kind -> ast_kind {
+    return ast_kind.MatchAs;
+}
+
+impl MatchOr.node_kind -> ast_kind {
+    return ast_kind.MatchOr;
+}
+
+impl TypeIgnore.node_kind -> ast_kind {
+    return ast_kind.TypeIgnore;
+}
+
+impl TypeVar.node_kind -> ast_kind {
+    return ast_kind.TypeVar;
+}
+
+impl ParamSpec.node_kind -> ast_kind {
+    return ast_kind.ParamSpec;
+}
+
+impl TypeVarTuple.node_kind -> ast_kind {
+    return ast_kind.TypeVarTuple;
 }

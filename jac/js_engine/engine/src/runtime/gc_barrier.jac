@@ -22,7 +22,25 @@ import from engine.src.runtime.jsvalue { JSValue, jsv_is_cell }
 glob _GC_GEN_ON: bool = False,
      _GC_REM_OBJS: list[int] = [],
      _GC_REM_VALS: list[JSValue] = [],
-     _GC_REM_VALS_CAP: int = 4096;
+     _GC_REM_VALS_CAP: int = 4096,
+     _GC_REM_GENS: list[int] = [];
+
+# JSGeneratorState.cell_flags bit: the state is in the remembered list (above
+# the 0xFF DEAD sentinel, like the object flags).
+glob:pub FLAG_GEN_REMEMBERED: int = 4096;
+
+# Young budget, in approximate bytes (V8-style: the young generation is sized
+# in bytes, starts small and grows only when collecting it often is what
+# costs). Allocation sites add an estimate of what they allocate (a cell's row,
+# a slot or element buffer's growth, a string's characters); a minor
+# collection is requested once the bytes allocated since the last collection
+# reach the budget. The allocation-count nursery (JAC_GC_NURSERY) stays as an
+# upper bound. JAC_GC_YOUNG_MIN_MB / JAC_GC_YOUNG_MAX_MB set the range.
+glob _GC_YOUNG_BYTES: int = 0,
+     _GC_YOUNG_BUDGET: int = 8388608,
+     _GC_YOUNG_MIN: int = 8388608,
+     _GC_YOUNG_MAX: int = 1073741824,
+     _GC_LAST_END_NS: int = 0;
 
 """True while generational collection is on (JAC_GC_GEN). With it off no cell
 is ever flagged old, so every barrier is inert."""
@@ -80,10 +98,97 @@ def:pub gc_rem_vals -> list[JSValue] {
     return _GC_REM_VALS;
 }
 
+"""Record old generator state `idx` as remembered: it was suspended (its
+locals, saved stack and delegate written) since the last collection, so the
+next minor collection traces it. Its caller has set FLAG_GEN_REMEMBERED."""
+def:pub gc_rem_gen(idx: int) -> None {
+    _GC_REM_GENS.append(idx);
+}
+
+"""The remembered generator states since the last collection."""
+def:pub gc_rem_gens -> list[int] {
+    return _GC_REM_GENS;
+}
+
 """Start a new cycle: forget the remembered objects (the collector clears
 their FLAG_REMEMBERED first) and the logged values."""
 def:pub gc_barrier_reset -> None {
     _GC_REM_OBJS = [];
     _GC_REM_VALS = [];
     _GC_REM_VALS_CAP = 4096;
+    _GC_REM_GENS = [];
+}
+
+"""Add `n` young bytes (a buffer's growth); the next cell allocation checks the
+budget."""
+def:pub gc_young_note(n: int) -> None {
+    _GC_YOUNG_BYTES = _GC_YOUNG_BYTES + n;
+}
+
+"""Add `n` young bytes for a cell allocation; True once the young budget is
+spent and a minor collection is due (generational mode only)."""
+def:pub gc_young_add(n: int) -> bool {
+    _GC_YOUNG_BYTES = _GC_YOUNG_BYTES + n;
+    return _GC_GEN_ON and _GC_YOUNG_BYTES >= _GC_YOUNG_BUDGET;
+}
+
+"""A collection started: the young bytes so far are being collected."""
+def:pub gc_young_reset -> None {
+    _GC_YOUNG_BYTES = 0;
+}
+
+def:pub gc_young_budget -> int {
+    return _GC_YOUNG_BUDGET;
+}
+
+"""Set the young budget's range in bytes (non-positive values keep the
+default); the budget restarts at the minimum."""
+def:pub gc_young_range_set(lo: int, hi: int) -> None {
+    if lo > 0 {
+        _GC_YOUNG_MIN = lo;
+    }
+    if hi > 0 {
+        _GC_YOUNG_MAX = hi;
+    }
+    if _GC_YOUNG_MAX < _GC_YOUNG_MIN {
+        _GC_YOUNG_MAX = _GC_YOUNG_MIN;
+    }
+    _GC_YOUNG_BUDGET = _GC_YOUNG_MIN;
+}
+
+"""Adapt the young budget after an automatic collection that ended at `now_ns`
+and took `gc_ns`, `sweep_ns` of it sweeping young cells. Like V8's new space,
+the budget doubles when much of the young generation survives (20% or more of
+the `allocs` cells allocated since the last collection, of which `freed` were
+freed) or when the part of a minor that does not scale with the young
+generation -- roots, survivors, full-table sweeps -- costs 2% or more of the
+program's time since the last collection; it halves when little survives (under
+5%) and that part costs under 0.5%. A minor's young sweep scales with the
+budget itself, so it never drives growth. Majors only restart the clock."""
+def:pub gc_young_adapt(minor: bool, allocs: int, freed: int, gc_ns: int, sweep_ns: int, now_ns: int) -> None {
+    mutator_ns: int = now_ns - gc_ns - _GC_LAST_END_NS;
+    _GC_LAST_END_NS = now_ns;
+    if not minor or allocs <= 0 or mutator_ns <= 0 {
+        return;
+    }
+    survived: int = allocs - freed;
+    if survived < 0 {
+        survived = 0;
+    }
+    fixed_ns: int = gc_ns - sweep_ns;
+    if survived * 100 >= allocs * 20 or fixed_ns * 100 >= mutator_ns * 2 {
+        if _GC_YOUNG_BUDGET < _GC_YOUNG_MAX {
+            _GC_YOUNG_BUDGET = _GC_YOUNG_BUDGET * 2;
+            if _GC_YOUNG_BUDGET > _GC_YOUNG_MAX {
+                _GC_YOUNG_BUDGET = _GC_YOUNG_MAX;
+            }
+        }
+    } elif survived * 100 < allocs * 5 and fixed_ns * 200 < mutator_ns {
+        if _GC_YOUNG_BUDGET > _GC_YOUNG_MIN {
+            _GC_YOUNG_BUDGET = _GC_YOUNG_BUDGET // 2;
+            if _GC_YOUNG_BUDGET < _GC_YOUNG_MIN {
+                _GC_YOUNG_BUDGET = _GC_YOUNG_MIN;
+            }
+        }
+    }
 }

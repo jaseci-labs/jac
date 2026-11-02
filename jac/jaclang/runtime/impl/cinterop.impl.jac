@@ -1,14 +1,18 @@
+impl shape_ctype(shape: ScalarShape) -> any {
+    if shape.name == "bool" {
+        return ctypes.c_bool;
+    }
+    if shape.is_float {
+        return ctypes.c_float if shape.width == 32 else ctypes.c_double;
+    }
+    prefix = "c_int" if shape.signed else "c_uint";
+    return getattr(ctypes, f"{prefix}{shape.width}");
+}
+
 impl _scalar_ctypes -> dict[str, any] {
     out: dict[str, any] = {};
     for shape in numeric_shapes() {
-        if shape.name == "bool" {
-            out[shape.name] = ctypes.c_bool;
-        } elif shape.is_float {
-            out[shape.name] = ctypes.c_float if shape.width == 32 else ctypes.c_double;
-        } else {
-            prefix = "c_int" if shape.signed else "c_uint";
-            out[shape.name] = getattr(ctypes, f"{prefix}{shape.width}");
-        }
+        out[shape.name] = shape_ctype(shape);
     }
     return out;
 }
@@ -1017,4 +1021,12 @@ impl _ChainScope.__getitem__(self: _ChainScope, key: str) -> any {
         raise NameError(f"C type '{key}' is not bound");
     }
     return found;
+}
+
+impl CGlobal.value.getter -> any {
+    return self.get();
+}
+
+impl CGlobal.value.setter(value: any) {
+    self.set(value);
 }

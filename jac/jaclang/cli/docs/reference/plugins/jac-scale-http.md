@@ -828,6 +828,10 @@ Only providers with both `client_id` and `client_secret` configured are enabled.
 | GET | `/sso/{platform}/register` | Redirect to provider registration |
 | GET | `/sso/{platform}/callback` | OAuth callback handler (GET) |
 | POST | `/sso/{platform}/callback` | OAuth callback handler (POST, for Apple Sign In) |
+| POST | `/sso/{platform}/begin` | Start a client-managed flow (PKCE challenge from the client); `intent: "connect"` with `scopes` connects the provider for the signed-in caller |
+| POST | `/sso/{platform}/finish` | Finish a client-managed flow with `code`, `state` and the PKCE `verifier` |
+| GET | `/sso/connections` | The caller's connected accounts (requires auth; tokens are never returned) |
+| DELETE | `/sso/{platform}/connection` | Disconnect: forget the caller's grant and revoke it with the provider (requires auth) |
 
 Where `{platform}` is `google`, `apple`, or `github`.
 
@@ -848,6 +852,54 @@ When set, the callback endpoint redirects to the configured URL with query param
 **SSO Account Linking/Unlinking:**
 
 SSO accounts can be linked and unlinked programmatically. An SSO identity is automatically linked when a user logs in via SSO. To unlink, use the admin portal API or the `UserManager.unlink_sso_account()` method. Unlinking removes the SSO identity from the user's identity array but does not delete the user account.
+
+**Connected accounts (calling the provider's APIs):**
+
+Sign-in asks a provider for the user's identity only (`openid email profile` for Google). To call the provider's APIs on the user's behalf (Google Calendar, Gmail, a user's GitHub repositories), list the extra permissions the app may request:
+
+```toml
+[scale.sso]
+client_auth_callback_url = "http://localhost:8000/sso/done"   # a page of your app
+
+[scale.sso.google]
+client_id = "your-google-client-id"
+client_secret = "your-google-client-secret"
+scopes = ["https://www.googleapis.com/auth/calendar.readonly"]
+```
+
+A signed-in user connects the provider from the client. `jacSsoConnect` sends the browser to the provider, which returns to `client_auth_callback_url`; that page calls `jacSsoFinish`:
+
+```jac
+import from "@jac/runtime" { jacSsoConnect, jacSsoFinish }
+
+async def connect_calendar {
+    await jacSsoConnect("google");    # every configured scope; or pass a list of them
+}
+
+async def on_callback_page {
+    result = await jacSsoFinish();    # {"ok", "connected", "platform", "error"}
+    if not result["ok"] {
+        console.warn(result["error"]);
+    }
+}
+```
+
+A connect needs a signed-in caller (`SIGN_IN_REQUIRED` otherwise), and every requested scope must be in the provider's `scopes` list (`SCOPES_NOT_ALLOWED` otherwise). Google is asked for offline access (`access_type=offline`, `prompt=consent`) and keeps earlier grants (`include_granted_scopes=true`), so connecting again with another scope adds to what was granted. Google refuses sign-in inside embedded webviews, so connect from a browser.
+
+Server code gets a valid access token for its caller:
+
+```jac
+import from jaclang.scale.sso.grants { sso_access_token }
+
+async def:protect calendar_token_ready -> bool {
+    token = await sso_access_token("google");    # "" when the caller has not connected
+    return token != "";
+}
+```
+
+`sso_access_token` refreshes an access token that expires within a minute and stores a refresh token the provider rotates. Simultaneous callers, across workers too, share one refresh: the rest keep using the current token while it is in date, or wait for the new one. When the provider refuses the refresh token (the user revoked access), the grant is forgotten and the call returns `""`, so the app can ask the user to connect again. `sso_connections()` lists the caller's connected accounts and `await sso_disconnect(platform)` forgets and revokes one; `access_token_for(user_id, platform)`, `connections_for(user_id)` and `disconnect_for(user_id, platform)` take an explicit user for code that runs outside a request, such as a scheduled job. On the client, `jacSsoConnections()` and `jacSsoDisconnect(platform)` call the endpoints above.
+
+Grants live in their own `identity_oauth_grants` table, one row per user and provider, apart from login credentials. Access and refresh tokens are encrypted at rest (an HMAC-SHA256 keystream with encrypt-then-MAC) under keys derived from `[serve.auth] secret`, are bound to their user and provider, and never leave the server. Changing that secret makes the stored grants unreadable, and users connect again. Disconnecting revokes the grant at the provider and removes it, but keeps the SSO identity, so the user can still sign in with the provider. Unlinking the SSO identity or deleting the user removes the stored grant without revoking it at the provider; call `disconnect_for` first to revoke it.
 
 **Example:**
 
@@ -2092,17 +2144,20 @@ When server is running:
 
 ## Graph Visualization
 
-Navigate to `http://localhost:8000/graph` to view an interactive visualization of your application's graph directly in the browser.
+Navigate to `http://localhost:8000/graph` to explore your application's graph directly in the browser.
 
-- **Without authentication** - displays the public graph (super root), useful for applications with public endpoints
-- **With authentication** - click the **Login** button in the header to sign in and view your user-specific graph
+- **Without authentication** - explores the public graph (the guest root), useful for applications with public endpoints
+- **With authentication** - click the **Login** button in the header to sign in and explore your user-specific graph
 
-The visualizer uses a force-directed layout with color-coded node types, edge labels, tooltips on hover, and controls for refresh, fit-to-view, and physics toggle. If a user has previously logged in (via a jac-client app or the login modal), the existing `jac_token` in localStorage is picked up automatically.
+The explorer opens on the root and its first page of neighbors. Click a node to see its type, a short summary of its fields and its neighbor counts per node and edge type, and to load its neighbors one page at a time (**Load more** while more remain, **Collapse** to fold them away). The header picks which edges an expansion follows (outgoing, incoming or both), and the canvas stops adding nodes at 1500 with a message, so a large graph never freezes the tab. Every request reads one page and only what the caller may read. If a user has previously logged in (via a jac-client app or the login modal), the existing `jac_token` in localStorage is picked up automatically.
 
 | Endpoint | Description |
 |---|---|
-| `GET /graph` | Serves the graph visualization UI |
-| `GET /graph/data` | Returns graph nodes and edges as JSON (optional `Authorization` header) |
+| `GET /graph` | Serves the graph explorer UI |
+| `GET /graph/node?id=` | One node the caller can read (`id` defaults to the caller's root): `id`, `type`, `root`, a truncated `fields` summary, and `counts` of neighbors per node and edge type, `out` and `in`. `404` if the caller cannot read it |
+| `GET /graph/neighbors?id=&dir=&type=&edge=&limit=&cursor=` | One page of neighbors (`dir` is `out`, `in` or `both`; `type` and `edge` filter by node and edge type; `limit` defaults to 50, at most 200) with the edges that reach them, and `next_cursor` for the following page (`null` on the last) |
+
+Both take an optional `Authorization` header. The whole-graph dump `GET /graph/data` was removed: its cost grew with everything stored, not with what is on screen.
 
 ---
 

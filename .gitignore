@@ -72,7 +72,7 @@ demo/
 zig-out/
 
 # Local CPython reference sources.
-reference/
+/reference/
 
 # Agent / IDE working notes (not repo artifacts)
 /AGENTS.md

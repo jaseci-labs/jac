@@ -1,0 +1,53 @@
+impl resolve_node_tool(project_dir: Path, tool: str) -> list[str] {
+    return _node_resolve_node_tool(project_dir, tool);
+}
+
+impl run_manifest_install(project_dir: Path) {
+    _node_run_manifest_install(project_dir);
+}
+
+impl resolve_rn_project_dir(
+    project_dir: Path, client_cfg: (JacClientConfig | None) = None
+) -> Path {
+    if client_cfg is None {
+        client_cfg = JacClientConfig(project_dir);
+    }
+    rn_cfg = client_cfg.get_react_native_config();
+    custom = str(rn_cfg.get("project_dir", "") or "").strip();
+    if custom {
+        p = Path(custom);
+        if not p.is_absolute() {
+            p = project_dir / p;
+        }
+        return p;
+    }
+    return client_cfg.get_jac_config().get_build_dir() / DEFAULT_PROJECT_DIR_NAME;
+}
+
+impl normalize_rn_platform(platform: str | None = None) -> str {
+    if platform is None or platform.strip() == "" {
+        return "android";
+    }
+    value = platform.lower().strip();
+    if value in ("android", "ios") {
+        return value;
+    }
+    raise ValueError(
+        f"Unsupported mobile platform '{platform}'. Supported: android, ios, web."
+    );
+}
+
+impl detect_lan_ipv4 -> str | None {
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM);
+    try {
+        s.settimeout(0.5);
+        s.connect(("8.8.8.8", 80));
+        addr = s.getsockname()[0];
+        if addr and addr != "127.0.0.1" {
+            return addr;
+        }
+    } except OSError {} finally {
+        s.close();
+    }
+    return None;
+}

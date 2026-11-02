@@ -186,10 +186,14 @@ impl NaIRGenPass._repr_leaf_fn(kind: str) -> (ir.Function | None) {
         snprintf = self._get_or_declare_extern(
             "snprintf", i32, [i8p, i64, i8p], var_arg=True
         );
-        fmt_g = self._make_global_string("%lld", name_prefix=".repr.fmt.int");
-        cap = ir.Constant(i64, 24);
+        cap = ir.Constant(i64, 32);
         buf: any = b.call(self.rc_alloc_fn, [cap], name="rp.i.buf");
-        b.call(snprintf, [buf, cap, fmt_g, v]);
+        if self._nogc_headerless() {
+            fmt_g = self._make_global_string("%lld", name_prefix=".repr.fmt.int");
+            b.call(snprintf, [buf, cap, fmt_g, v]);
+        } else {
+            self._str_finish(b, buf, self._emit_fmt_int(b, v, buf, False));
+        }
         self._emit_set_type_tag(b, buf, "str");
         b.ret(buf);
     }

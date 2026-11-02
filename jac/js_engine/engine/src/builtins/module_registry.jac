@@ -54,6 +54,13 @@ import from engine.src.builtins.native_kinds {
 import from engine.src.builtins.module_bindings { module_create_bound_require }
 import from engine.src.runtime.gc_pin { gc_pin_value, gc_unpin_value, gc_pin_live_list }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
+}
+
 # ── module.compileCache stubs (Node module.enableCompileCache parity) ─────────
 # Intentional no-op: records directory + status codes only (no disk cache I/O).
 # Sufficient for Vite CLI bootstrap; not a production compile-cache implementation.
@@ -111,13 +118,13 @@ Accepts both bare names ("path") and prefixed ("node:path").
 """
 def:pub is_builtin_module(name: str) -> bool {
     bare: str = name;
-    if len(name) > 5
-        and name[0] == "n"
-        and name[1] == "o"
-        and name[2] == "d"
-        and name[3] == "e"
-        and name[4] == ":" {
-        bare = name[5:];
+    if str_nbytes(name) > 5
+        and byte_chr(str_byte(name, 0)) == "n"
+        and byte_chr(str_byte(name, 1)) == "o"
+        and byte_chr(str_byte(name, 2)) == "d"
+        and byte_chr(str_byte(name, 3)) == "e"
+        and byte_chr(str_byte(name, 4)) == ":" {
+        bare = str_bslice_from(name, 5);
     }
     if bare == "path" {
         return True;
@@ -316,13 +323,13 @@ console, timers), the factory returns a reference to the existing global.
 """
 def:pub create_builtin_module(name: str, globals_ref: dict[str, JSValue]) -> JSValue {
     bare: str = name;
-    if len(name) > 5
-        and name[0] == "n"
-        and name[1] == "o"
-        and name[2] == "d"
-        and name[3] == "e"
-        and name[4] == ":" {
-        bare = name[5:];
+    if str_nbytes(name) > 5
+        and byte_chr(str_byte(name, 0)) == "n"
+        and byte_chr(str_byte(name, 1)) == "o"
+        and byte_chr(str_byte(name, 2)) == "d"
+        and byte_chr(str_byte(name, 3)) == "e"
+        and byte_chr(str_byte(name, 4)) == ":" {
+        bare = str_bslice_from(name, 5);
     }
 
     # ── Modules that are already global objects ─────────────────────

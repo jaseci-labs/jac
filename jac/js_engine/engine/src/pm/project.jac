@@ -11,6 +11,14 @@ import from engine.src.pm.json {
 }
 import from engine.src.pm.bytes { ByteBuf, bytebuf_free }
 
+import from engine.src.runtime.mem {
+    str_bfind,
+    str_brfind,
+    str_bslice,
+    str_bslice_from,
+    str_nbytes
+}
+
 obj:pub PkgJson {
     has ok: bool = False,
         error: str = "",
@@ -58,16 +66,16 @@ def:pub pm_workspace_dirs(root_dir: str, pj: JVal) -> list[str] {
     for raw in jv_str_list(ws) {
         pat: str = raw;
         while pat.startswith("./") {
-            pat = pat[2:];
+            pat = str_bslice_from(pat, 2);
         }
         while pat.endswith("/") {
-            pat = pat[0:len(pat) - 1];
+            pat = str_bslice(pat, 0, str_nbytes(pat) - 1);
         }
         if pat == "" {
             continue;
         }
         if pat.endswith("/*") or pat.endswith("/**") {
-            base: str = pat[0:pat.rfind("/")];
+            base: str = str_bslice(pat, 0, str_brfind(pat, "/"));
             d: FsxDir = fsx_scandir(root_dir + "/" + base);
             i: int = 0;
             while i < len(d.names) {
@@ -80,7 +88,7 @@ def:pub pm_workspace_dirs(root_dir: str, pj: JVal) -> list[str] {
                 }
                 i = i + 1;
             }
-        } elif pat.find("*") < 0 {
+        } elif str_bfind(pat, "*") < 0 {
             if fsx_is_file(root_dir + "/" + pat + "/package.json")
                 and not (pat in out) {
                 out.append(pat);

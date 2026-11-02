@@ -262,12 +262,6 @@ impl PgRuntime._resolve_binaries -> str {
 
 
 impl stop_cluster(data_dir: str) -> None {
-    """Stop the embedded cluster at `data_dir` if it is running.
-
-    A desktop app owns its per-app cluster and stops it when the app process
-    exits; a missing pidfile or a stopped cluster is a no-op. Failures are
-    logged, never raised: this runs from an exit path.
-    """;
     rt = PgRuntime(data_dir=data_dir);
     try {
         rt.stop();

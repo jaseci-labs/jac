@@ -438,34 +438,6 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
         )
     );
 
-    def admin_graph_handler(
-        request: Request, username: str | None = None
-    ) -> JSONResponse {
-        authorization = request.headers.get('Authorization');
-        return self.admin_graph_data(username, authorization);
-    }
-    server.add_endpoint(
-        JEndPoint(
-            method=HTTPMethod.GET,
-            path='/admin/graph',
-            callback=admin_graph_handler,
-            parameters=[
-                APIParameter(
-                    name='username',
-                    data_type='string',
-                    required=False,
-                    default_value=None,
-                    description='Username to view graph for (defaults to all users)',
-                    kind=ParameterType.QUERY
-                )
-            ],
-            response_model=None,
-            tags=['Admin'],
-            summary='Admin graph data',
-            description='Get graph data for any user (admin only)'
-        )
-    );
-
     def get_metrics_handler(request: Request) -> TransportResponse {
         authorization = request.headers.get('Authorization');
         return self.admin_get_metrics(authorization);
@@ -1084,75 +1056,6 @@ impl JacAPIServerAdmin.admin_update_config(
             code='WRITE_ERROR',
             message=f'Failed to save config: {str(e)}',
             meta=Meta(extra={'http_status': 500})
-        );
-    }
-}
-
-impl JacAPIServerAdmin.admin_graph_data(
-    username: str | None = None, Authorization: str | None = None
-) -> JSONResponse {
-    error = self.require_admin(Authorization);
-    if error {
-        return JSONResponse(
-            status_code=403,
-            content={'error': 'Forbidden', 'message': 'Admin access required'}
-        );
-    }
-
-    target_username = username or Con.GUEST.value;
-    root_id = self._require_user_manager().get_root_id(target_username);
-    if not root_id {
-        return JSONResponse(
-            status_code=404,
-            content={
-                'error': 'Not found',
-                'message': f"User '{target_username}' not found or has no graph"
-            }
-        );
-    }
-    ctx = Jac.get_context();
-    ctx.set_user_root(root_id);
-    try {
-        user_root = ctx.get_root();
-        visited_nodes: set = set();
-        connections: set = set();
-        edge_ids: set = set();
-        nodes: list[dict[str, str]] = [];
-        edges: list[dict[str, str]] = [];
-
-        collect_node_connections(user_root, visited_nodes, connections, edge_ids);
-
-        nodes.append({'id': Jac.object_ref(user_root), 'label': 'root'});
-        for node_arch in visited_nodes {
-            if node_arch != user_root {
-                nodes.append(
-                    {'id': Jac.object_ref(node_arch), 'label': repr(node_arch)}
-                );
-            }
-        }
-        for (_, source_node, target_node, edge_arch) in connections {
-            edge_data: dict[str, str] = {
-                'from': Jac.object_ref(source_node),
-                'to': Jac.object_ref(target_node)
-            };
-            if repr(edge_arch) != 'GenericEdge()' {
-                edge_data['label'] = repr(edge_arch);
-            }
-            edges.append(edge_data);
-        }
-
-        return JSONResponse(
-            status_code=200,
-            content={
-                'version': '1.0',
-                'username': target_username,
-                'nodes': nodes,
-                'edges': edges
-            }
-        );
-    } except Exception as e {
-        return JSONResponse(
-            status_code=500, content={'error': 'Internal error', 'message': str(e)}
         );
     }
 }

@@ -9,6 +9,7 @@ entry-point = "app"
 
 [serve.workers]
 count = 2
+hang_timeout = 120.0
 
 [serve.timeouts]
 drain = 1.0

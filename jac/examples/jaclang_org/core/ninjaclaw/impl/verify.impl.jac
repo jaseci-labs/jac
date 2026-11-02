@@ -245,17 +245,39 @@ impl verify_block(index: int, code: str) -> BlockView {
     }
 }
 
-impl verify_markdown(markdown: str, note: Callable) -> list[BlockView] {
+impl verify_markdown(
+    markdown: str, note: Callable, deadline: float = 0.0
+) -> list[BlockView] {
     results: list[BlockView] = [];
     blocks = code_blocks(markdown);
+    no_time = False;
     if blocks and not WARMED.get("done") {
-        note("verify", "preparing the sandbox (first use on this server)");
-        problem = warm_sandbox();
-        if problem {
-            note("verify", "the sandbox is not usable: " + problem[:200]);
+        if deadline and deadline - time.monotonic() < WARM_TIMEOUT_S {
+            no_time = True;
+        } else {
+            note("verify", "preparing the sandbox (first use on this server)");
+            problem = warm_sandbox();
+            if problem {
+                note("verify", "the sandbox is not usable: " + problem[:200]);
+            }
         }
     }
     for (i, code) in enumerate(blocks) {
+        if no_time
+            or (
+                deadline
+                and deadline - time.monotonic() < CHECK_TIMEOUT_S + RUN_TIMEOUT_S
+            ) {
+            results.append(
+                BlockView(
+                    index=i,
+                    mode=block_mode(code),
+                    ok=False,
+                    detail="not checked: out of time"
+                )
+            );
+            continue;
+        }
         note(
             "verify",
             "block " + str(i + 1) + " of " + str(len(blocks)) + ": " + block_mode(code)
