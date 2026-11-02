@@ -162,6 +162,9 @@ impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
     if t.kind == MirKind.C_STRUCT {
         return self.c_struct(t.name);
     }
+    if t.kind == MirKind.C_PIN {
+        return self.llvm_type(t.payload()).as_pointer();
+    }
     if t.kind == MirKind.C_VIEW {
         return ir.LiteralStructType(
             [self.llvm_type(mir_c_ptr(t.payload())), ir.IntType(64)]
@@ -1224,7 +1227,9 @@ impl MirEmitter.emit_rc(b: ir.IRBuilder, instr: MirInstr) {
         self.bind(instr.result, self.value(subject));
         return;
     }
-    acyclic = (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY);
+    acyclic = (
+        MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY, MirKind.C_PIN
+    );
     symbol = RELEASE_ACYCLIC_SYMBOL if held_type.kind in acyclic else RELEASE_SYMBOL;
     self.rc_call(b, symbol, target);
 }

@@ -402,3 +402,132 @@ impl MirLowering.c_const_lost(made: MirConst) -> str {
     }
     return found;
 }
+
+impl MirLowering.c_struct_call(nd: uni.FuncCall, struct_type: MirType) -> MirValue {
+    arch = foreign_struct_of_type(nd.type);
+    if arch is None {
+        raise MirRefused(mir_refusal("call", struct_type.render(), nd));
+    }
+    layout = self.mir.structs[struct_type.name];
+    fields = self.arch_fields(arch);
+    given: dict[str, uni.Expr] = {};
+    for (index, param) in enumerate(nd.params or []) {
+        if isinstance(param, uni.KWPair) {
+            if not isinstance(param.key, uni.Name) {
+                raise MirRefused(
+                    mir_refusal("call argument", "keyword unpacking", param)
+                );
+            }
+            key = param.key.sym_name;
+            if key in given
+                or not any(hv.name.sym_name == key for hv in fields) {
+                raise MirRefused(
+                    mir_refusal("call", f"{arch.name.value} argument {key}", param)
+                );
+            }
+            given[key] = param.value;
+        } elif index < len(fields)
+            and not (
+                isinstance(param, uni.UnaryExpr)
+                and param.op.name in (Tok.STAR_MUL, Tok.STAR_POW)
+            ) {
+            given[fields[index].name.sym_name] = param;
+        } else {
+            raise MirRefused(
+                mir_refusal(
+                    "call", f"{arch.name.value} with {len(nd.params)} arguments", nd
+                )
+            );
+        }
+    }
+    b = self.builder();
+    slot = self.temp_slot(struct_type);
+    b.store(slot, b.const_null(struct_type));
+    for hv in fields {
+        source = given.get(hv.name.sym_name, hv.value);
+        if source is None {
+            continue;
+        }
+        index = layout.index_of(hv.name.value);
+        member = layout.fields[index].type;
+        place = self.emit_value(
+            MirOp.FIELD_ADDR,
+            mir_c_ptr(member),
+            [self.coerce_place(slot)],
+            int_value=index
+        );
+        b.store(place, self.c_field_value(source, member));
+    }
+    return b.load(slot, struct_type);
+}
+
+impl MirLowering.c_field_value(expr: uni.Expr, member: MirType) -> MirValue {
+    while isinstance(expr, uni.AtomUnit) and isinstance(expr.value, uni.Expr) {
+        expr = expr.value;
+    }
+    if member.kind in (MirKind.C_PTR, MirKind.C_FN) {
+        if isinstance(expr, uni.Null) {
+            return self.builder().const_null(member);
+        }
+        (ok, folded) = c_scalar_constant(expr);
+        if ok and isinstance(folded, int) and not isinstance(folded, bool) and folded == 0 {
+            return self.builder().const_null(member);
+        }
+    }
+    if member.kind in (MirKind.C_PTR, MirKind.C_FN)
+        and named_function_of(expr) is not None {
+        return self.c_function_value(expr, member);
+    }
+    value = self.lower_expr(expr);
+    if member.kind in (MirKind.C_PTR, MirKind.C_FN)
+        and value.type.kind in (MirKind.C_PTR, MirKind.C_FN)
+        and value.type is not member {
+        return self.emit_value(MirOp.PTR_CAST, member, [value]);
+    }
+    return self.coerce(value, member, expr);
+}
+
+impl MirLowering.c_pin(nd: uni.FuncCall) -> MirValue {
+    args = self.call_args(nd);
+    if len(args) != 1 {
+        raise MirRefused(mir_refusal("call", "pin(value)", nd));
+    }
+    pinned = self.expr_type(nd);
+    if pinned.kind != MirKind.C_PIN {
+        raise MirRefused(mir_refusal("call", f"pin as {pinned.render()}", nd));
+    }
+    payload = pinned.payload();
+    value = self.coerce(self.lower_expr(args[0]), payload, args[0]);
+    b = self.builder();
+    size = self.st().fn.new_value(mir_int());
+    b.emit(MirInstr(op=MirOp.SIZEOF, result=size, type_arg=pinned));
+    raw = self.runtime("__jac_rt_alloc_zeroed", [size]);
+    if raw is None {
+        raise MirRefused(mir_refusal("call", "pin(value)", nd));
+    }
+    made = b.ref_cast(raw, pinned, True);
+    b.store(self.emit_value(MirOp.PTR_CAST, mir_c_ptr(payload), [made]), value);
+    return made;
+}
+
+impl MirLowering.c_function_value(expr: uni.Expr, member: MirType) -> MirValue {
+    symbol = self.c_function_symbol(expr);
+    shape: (MirType | None) = None;
+    for decl in self.decls.values() {
+        if decl.symbol == symbol {
+            shape = mir_c_fn(decl.params, decl.ret);
+        }
+    }
+    held = self.mir.externs.get(symbol);
+    if shape is None and held is not None {
+        shape = mir_c_fn(held.params, held.ret);
+    }
+    if shape is None {
+        raise MirRefused(mir_refusal("function address", symbol, expr));
+    }
+    address = self.emit_value(MirOp.FN_ADDR, shape, [], callee=symbol);
+    if shape is member {
+        return address;
+    }
+    return self.emit_value(MirOp.PTR_CAST, member, [address]);
+}

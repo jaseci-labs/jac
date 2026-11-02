@@ -376,6 +376,10 @@ obj MirLowering {
     def declare_global(nd: uni.Name) -> (MirGlobal | None);
     def declare_c_data;
     def declare_module_globals;
+    def c_struct_call(nd: uni.FuncCall, struct_type: MirType) -> MirValue;
+    def c_field_value(expr: uni.Expr, member: MirType) -> MirValue;
+    def c_pin(nd: uni.FuncCall) -> MirValue;
+    def c_function_value(expr: uni.Expr, member: MirType) -> MirValue;
     def declare_c_global(assign: uni.Assignment) -> MirGlobal;
     def c_array_count(value: uni.Expr, elem: TypeBase) -> int;
     def c_const(

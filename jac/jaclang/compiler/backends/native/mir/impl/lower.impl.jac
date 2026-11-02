@@ -1218,6 +1218,9 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     if is_builtin_addressof_call(nd) {
         return self.c_addressof(nd);
     }
+    if is_builtin_pin_call(nd) {
+        return self.c_pin(nd);
+    }
     callee = nd.callee_decl;
     if callee is not None and id(callee) in self.templates {
         return self.generic_call(nd, callee, None, None);
@@ -1608,7 +1611,7 @@ impl MirLowering.ensure_c_types(t: (TypeBase | None)) {
         return;
     }
     kind = c_builtin_kind(t);
-    if kind in ("ptr", "PtrView") {
+    if kind in ("ptr", "PtrView", "Pinned") {
         self.ensure_c_types(c_type_arg(t));
         return;
     }
@@ -2025,6 +2028,12 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
             raise MirRefused(mir_refusal("attribute", type(right).__name__, nd));
         }
         target_type = nd.target.type if isinstance(nd.target, uni.Expr) else None;
+        if right.value == "value" and is_pinned_type(target_type) {
+            box = self.lower_expr(nd.target);
+            return self.emit_value(
+                MirOp.PTR_CAST, mir_c_ptr(box.type.payload()), [box]
+            );
+        }
         arch = self.arch_of_type(target_type);
         if arch is not None {
             return self.field_place(self.lower_expr(nd.target), arch, right.value, nd);
@@ -2400,6 +2409,12 @@ impl MirLowering.memory_order(nd: uni.FuncCall, arg: uni.Expr, kind: str) -> str
 
 impl MirLowering.type_call(nd: uni.FuncCall) -> (MirValue | None) {
     result_type = self.expr_type(nd);
+    if result_type.kind == MirKind.C_STRUCT
+        and isinstance(nd.target, uni.Expr)
+        and isinstance(nd.target.type, ClassType)
+        and not nd.target.type.is_instance() {
+        return self.c_struct_call(nd, result_type);
+    }
     args = self.call_args(nd);
     if result_type.kind == MirKind.C_PTR {
         if not args {
