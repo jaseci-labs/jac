@@ -205,6 +205,30 @@ test "apply_http_activation_for_target calls apply_http_activation with a correc
         == keda.http_scaled_object_name_for("preview-deployment");
 }
 
+# A new ScaledObject has no request on record, so KEDA takes its target
+# straight down to min_replicas unless initialCooldownPeriod holds it up.
+test "initial_cooldown_period reaches the ScaledObject, and leaving it unset keeps KEDA's default" {
+    (keda, custom_api, _, _) = _mocked_keda();
+    custom_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    apply_http_activation_for_target(
+        _cfg(initial_cooldown_period=120),
+        "preview-deployment",
+        "staging",
+        "preview-svc",
+        keda
+    );
+    scaled_obj_spec = custom_api.create_namespaced_custom_object.call_args_list[1][1]["body"]["spec"];
+    assert scaled_obj_spec.get("initialCooldownPeriod") == 120 , scaled_obj_spec;
+
+    (keda, custom_api, _, _) = _mocked_keda();
+    custom_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    apply_http_activation_for_target(
+        _cfg(), "preview-deployment", "staging", "preview-svc", keda
+    );
+    scaled_obj_spec = custom_api.create_namespaced_custom_object.call_args_list[1][1]["body"]["spec"];
+    assert "initialCooldownPeriod" not in scaled_obj_spec , scaled_obj_spec;
+}
+
 test "apply_http_activation_for_target is a no-op when disabled or unset" {
     (keda, custom_api, _, _) = _mocked_keda();
     assert apply_http_activation_for_target(
