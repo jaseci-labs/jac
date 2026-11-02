@@ -24,7 +24,7 @@ def verify(library_path: Path) {
     if sys.version_info[:2] != (3, 14) {
         raise RuntimeError("The JacPython output oracle requires CPython 3.14");
     }
-    bridge = getattr(ctypes.pythonapi, "_PyJac_CompilerBridgeVersion", None);
+    bridge = ctypes.pythonapi?._PyJac_CompilerBridgeVersion;
     if bridge is None or bridge() != 4 {
         raise RuntimeError(
             "The JacPython output oracle runs inside the JacPython runtime (bridge 4)"
@@ -152,9 +152,37 @@ def main -> int {
         for relative in staged {
             destination = stage / "native_subject" / relative;
             destination.parent.mkdir(parents=True, exist_ok=True);
-            destination.write_text(
-                (sources / relative).read_text().replace("jaclang.", "native_subject.")
+            source_text = (sources / relative).read_text().replace(
+                "jaclang.", "native_subject."
             );
+            if relative == "runtime/python/constant_output.jac" {
+                # The main workspace provides these imports through archwire.
+                # The isolated native_subject tree has no archwire, so restore
+                # the module's exact dependencies from that graph here.
+                source_text = (
+                    "import from native_subject.runtime.python.capi {"
+                    " checked, required, text_object, write_buffer }\n"
+                    "import from native_subject.runtime.python.constant_keys {"
+                    " constant_key }\n"
+                    "import from native_subject.runtime.python.compiler_integer {"
+                    " PyBigInt }\n"
+                    "import from native_subject.runtime.python.cpython_api {"
+                    " NULL, PyBool_FromLong, PyComplex_FromDoubles,"
+                    " PyFloat_FromDouble, PyLong_FromLongLong,"
+                    " PyNumber_Negative, PyObject, PySlice_New, PyTuple_New,"
+                    " Py_Ellipsis, Py_NewRef, Py_None, jacpy_code_new,"
+                    " jacpy_long_from_bytes, jacpy_release, jacpy_set_new,"
+                    " jacpy_tuple_set_owned }\n"
+                    "import from native_subject.runtime.python.objects {"
+                    " PyBool, PyBytes, PyCode, PyComplex, PyEllipsis, PyFloat,"
+                    " PyInt, PyNoneType, PyObj, PySet, PySlice, PyStr, PyTuple }\n"
+                    "import from native_subject.runtime.python.opcode_meta {"
+                    " CO_FAST_CELL, CO_FAST_FREE, CO_FAST_HIDDEN,"
+                    " CO_FAST_LOCAL, CO_OPTIMIZED }\n\n"
+                )
+                    + source_text;
+            }
+            destination.write_text(source_text);
         }
         fixture = repo
             / "jac/tests/compiler/backends/native/fixtures/jacpython_constants.jac";
