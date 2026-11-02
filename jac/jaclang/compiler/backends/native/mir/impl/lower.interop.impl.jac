@@ -305,11 +305,15 @@ impl MirLowering.c_param_plan(
 
 impl MirLowering.c_bare(nd: uni.Expr) -> uni.Expr {
     inner: uni.Expr = nd;
-    while (isinstance(inner, uni.AtomUnit) and isinstance(inner.value, uni.Expr))
-        or isinstance(inner, uni.CfgExpr) {
-        inner = inner.value if isinstance(inner, uni.AtomUnit) else inner.expr;
+    while True {
+        if isinstance(inner, uni.AtomUnit) and isinstance(inner.value, uni.Expr) {
+            inner = inner.value;
+        } elif isinstance(inner, uni.CfgExpr) {
+            inner = inner.expr;
+        } else {
+            return inner;
+        }
     }
-    return inner;
 }
 
 impl MirLowering.c_borrow_operand(arg: uni.Expr) -> (uni.Expr | None) {
@@ -497,10 +501,7 @@ impl MirLowering.c_return_plan(
         return (mir_void(), "value");
     }
     declared = sig.return_type.type if isinstance(sig.return_type, uni.Expr) else None;
-    t = self.c_declared_type(
-        declared if declared is not None else fallback,
-        fallback
-    );
+    t = self.c_declared_type(declared if declared is not None else fallback, fallback);
     if isinstance(t, ClassType) and t.shared.class_name in ("NoneType", "None") {
         return (mir_void(), "value");
     }

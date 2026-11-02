@@ -5668,8 +5668,7 @@ graph import compiler {
         passes.type_checker_pass.TypeCheckPass._check_c_global_use {
             clib_global_of_name,
             foreign_struct_of_type,
-            is_builtin_addressof_call,
-            is_va_list_type
+            is_builtin_addressof_call
         },
         passes.type_checker_pass.TypeCheckPass._check_c_interop_call {
             c_string_literal,
@@ -6238,6 +6237,9 @@ graph import compiler {
         types.type_evaluator.TypeEvaluator._get_type_of_lhs_assignment {
             find_destructure_index_path
         },
+        types.type_evaluator.TypeEvaluator._loop_back_edge_types {
+            collect_assignment_target_keys
+        },
         types.type_evaluator.TypeEvaluator._loop_body_writes_target {
             collect_assignment_target_keys
         },
@@ -6389,7 +6391,8 @@ graph import compiler {
         },
         driver.ifacecache.native_lowering_reads {
             is_compiler_source_path,
-            is_native_by_location
+            is_native_by_location,
+            is_native_compiler_unit
         },
         driver.jir {
             is_compiler_source_path,
@@ -6574,7 +6577,6 @@ graph import compiler {
         | types.enum_utils
         | types.operations.get_pow_result_type { fold_const }
     frontend.constant ++> [
-        backends.native.mir.lower { is_borrow_kind },
         backends.es.esast_gen_pass | symbol_utils {
             CodeContext,
             SymbolType,
@@ -6595,8 +6597,19 @@ graph import compiler {
             | expr_keys.type_tag_borrows
             | passes.type_checker_pass.TypeCheckPass._check_c_function_def
             | types.type_evaluator.TypeEvaluator._c_lent_args { is_borrow_kind },
-        backends.native.mir.lower
-            | c_interop.c_offset_address
+        backends.native.mir.lower { Tokens as Tok, is_borrow_kind },
+        backends.py.jcir_gen_pass {
+            CodeContext,
+            OwnershipKind,
+            SymbolStorage,
+            Tokens as Tok,
+            is_borrow_kind
+        },
+        c_interop.c_lent_param
+            | passes.type_checker_pass.TypeCheckPass._check_c_interop_import {
+            is_borrow_kind
+        },
+        c_interop.c_offset_address
             | driver.wiring
             | expr_keys
             | passes.cfg_build_pass.CFGBuildPass.exit_ctrl_stmt
@@ -6609,17 +6622,6 @@ graph import compiler {
             | tools.jac_auto_lint_pass
             | types.operations
             | types.type_evaluator.TypeEvaluator._find_predicate_for { Tokens as Tok },
-        backends.py.jcir_gen_pass {
-            CodeContext,
-            OwnershipKind,
-            SymbolStorage,
-            Tokens as Tok,
-            is_borrow_kind
-        },
-        c_interop.c_lent_param
-            | passes.type_checker_pass.TypeCheckPass._check_c_interop_import {
-            is_borrow_kind
-        },
         driver.boundary_classify { CodeContext, SymbolAccess, Tokens as Tok },
         driver.boundary_classify.module_own_native_anchor
             | passes.ownership_hints
@@ -10013,12 +10015,20 @@ graph import compiler {
             | passes.ownership_check_pass._is_class_object { ClassType },
         backends.es.esast_gen_pass.EsastGenPass._osp_expr_arch_name
             | passes.layout_pass.enum_class_of { ClassType },
-        backends.native.mir.lower | backends.native.mir.lower_types {
+        backends.native.mir.lower {
             AnyType,
             ClassType,
             EnumMemberType,
             FunctionType,
             ModuleType,
+            TypeVarType,
+            UnionType
+        },
+        backends.native.mir.lower_types {
+            AnyType,
+            ClassType,
+            EnumMemberType,
+            FunctionType,
             TypeVarType,
             UnionType
         },

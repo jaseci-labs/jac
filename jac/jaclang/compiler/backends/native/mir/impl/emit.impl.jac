@@ -1420,9 +1420,16 @@ impl MirEmitter.vtable_global(obj_def: MirObjectDef) -> ir.GlobalVariable {
     for symbol in lineage {
         holder = self.module.globals.get(symbol);
         if holder is None {
-            holder = ir.GlobalVariable(
-                self.module, ir.ArrayType(i8p, VTABLE_HEADER_SLOTS), name=symbol
-            );
+            owners = [
+                other
+                for other in self.mir.objects.values()
+                if other.vtable_symbol == symbol and other is not obj_def
+            ];
+            holder = self.vtable_global(owners[0])
+                if owners
+                else ir.GlobalVariable(
+                    self.module, ir.ArrayType(i8p, VTABLE_HEADER_SLOTS), name=symbol
+                );
         }
         members.append(holder.bitcast(i8p));
     }
@@ -1463,9 +1470,7 @@ impl MirEmitter.class_global(obj_def: MirObjectDef) -> ir.GlobalVariable {
     return made;
 }
 
-impl MirEmitter.c_layout(
-    t: MirType
-) -> tuple[int, int, list[tuple[int, bool, int]]] {
+impl MirEmitter.c_layout(t: MirType) -> tuple[int, int, list[tuple[int, bool, int]]] {
     if t.kind == MirKind.C_STRUCT {
         offset = 0;
         align = 1;
@@ -1532,7 +1537,9 @@ impl MirEmitter.c_abi_extern(ext: MirExtern) -> ir.Function {
         }
     }
     made = ir.Function(
-        self.module, ir.FunctionType(ret_type, args, var_arg=ext.variadic), name=ext.symbol
+        self.module,
+        ir.FunctionType(ret_type, args, var_arg=ext.variadic),
+        name=ext.symbol
     );
     if ret_plan is not None and ret_plan[0] == "sret" {
         made.args[0].add_attribute("sret");
@@ -1549,15 +1556,15 @@ impl MirEmitter.c_abi_extern(ext: MirExtern) -> ir.Function {
 
 impl MirEmitter.entry_alloca(b: ir.IRBuilder, shape: ir.Type) -> ir.Value {
     first = b.block.parent.blocks[0];
-    if b.block is first {
-        made = b.alloca(shape);
-        made.align = 16;
-        return made;
+    builder = b;
+    if b.block is not first {
+        builder = ir.IRBuilder(first);
+        builder.position_at_start(first);
     }
-    front = ir.IRBuilder(first);
-    front.position_at_start(first);
-    made = front.alloca(shape);
-    made.align = 16;
+    made = builder.alloca(shape);
+    if isinstance(made, ir.AllocaInstr) {
+        made.align = 16;
+    }
     return made;
 }
 
@@ -1603,7 +1610,10 @@ impl MirEmitter.call_c_abi(
                 b.load(
                     b.gep(
                         buf,
-                        [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), index)]
+                        [
+                            ir.Constant(ir.IntType(32), 0),
+                            ir.Constant(ir.IntType(32), index)
+                        ]
                     )
                 )
             );

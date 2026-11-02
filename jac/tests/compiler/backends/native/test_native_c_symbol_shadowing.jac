@@ -15,12 +15,7 @@ import re;
 import subprocess;
 import tempfile;
 import jaclang;
-import from tests.support {
-    compile_native,
-    get_func,
-    jac_command,
-    TESTS_DIR
-}
+import from tests.support { compile_native, get_func, jac_command, TESTS_DIR }
 import from jaclang.compiler.frontend.codeinfo {
     NATIVE_RESERVED_C_SYMBOLS,
     native_def_symbol,
@@ -140,7 +135,9 @@ test "every C symbol the backend or a bundled module declares is reserved" {
             ) {
                 declared[found.group(1)] = path;
             }
-            for found in re.finditer(r'SETJMP_SYMBOL: str = "([A-Za-z_]\w*)"', source) {
+            for found in re.finditer(
+                r'SETJMP_SYMBOL: str = "([A-Za-z_]\w*)"', source
+            ) {
                 declared[found.group(1)] = path;
             }
         }

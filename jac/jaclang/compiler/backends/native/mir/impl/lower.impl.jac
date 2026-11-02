@@ -100,7 +100,7 @@ impl MirLowering.callees_of(fn: MirFunction) -> list[str] {
 impl MirLowering.settle {
     symbols: dict[str, str] = {};
     for decl in self.decls.values() {
-        symbols[self.decl_label(decl)] = decl.symbol;
+        symbols[self.refusal_key(decl)] = decl.symbol;
     }
     for (name, reasons) in self.refusals.items() {
         symbol = symbols.get(name, name);
@@ -149,7 +149,7 @@ impl MirLowering.module_abilities -> list[uni.Ability] {
             found.append(elem);
         } elif isinstance(elem, uni.Import) and elem.clib_decls {
             for decl in elem.clib_decls {
-                if self.c_defines(decl) {
+                if isinstance(decl, uni.Ability) and self.c_defines(decl) {
                     found.append(decl);
                 }
             }
@@ -298,7 +298,7 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
             }
         }
     } except MirRefused as err {
-        self.refusals.setdefault(fn.name, []).append(refusal_of(err));
+        self.refusals.setdefault(self.refusal_key(decl), []).append(refusal_of(err));
         self.state = None;
         return None;
     }
@@ -391,7 +391,7 @@ impl MirLowering.lower_stmt(nd: uni.UniNode) {
         self.lower_assert(nd);
     } elif isinstance(nd, (uni.VisitStmt, uni.ReportStmt, uni.DisengageStmt)) {
         self.lower_osp_stmt(nd);
-    } else {
+    } elif not isinstance(nd, uni.Import) {
         raise MirRefused(mir_refusal("statement", type(nd).__name__, nd));
     }
 }
@@ -571,7 +571,9 @@ impl MirLowering.loop_scoped(sym: uni.Symbol) -> bool {
     return False;
 }
 
-impl MirLowering.within_body(nd: uni.UniNode, loop: uni.UniNode) -> bool {
+impl MirLowering.within_body(
+    nd: uni.UniNode, loop: (uni.WhileStmt | uni.InForStmt | uni.IterForStmt)
+) -> bool {
     child = nd;
     walk = nd.parent;
     while walk is not None {
@@ -957,11 +959,15 @@ impl MirLowering.pointer_arith(
         raise MirRefused(mir_refusal("pointer arithmetic", right.type.render(), site));
     }
     step = b.convert(right, mir_int());
-    offset = step if op == Tok.PLUS else b.binary("sub", b.const_int(0, mir_int()), step);
+    offset = step
+        if op == Tok.PLUS
+        else b.binary("sub", b.const_int(0, mir_int()), step);
     if left.type.payload().kind == MirKind.OBJ {
         u8p = mir_c_ptr(mir_int(8, False));
         moved = self.emit_value(
-            MirOp.PTR_OFFSET, u8p, [self.emit_value(MirOp.PTR_CAST, u8p, [left]), offset]
+            MirOp.PTR_OFFSET,
+            u8p,
+            [self.emit_value(MirOp.PTR_CAST, u8p, [left]), offset]
         );
         return self.emit_value(MirOp.PTR_CAST, left.type, [moved]);
     }
@@ -1214,17 +1220,14 @@ impl MirLowering.compare_values(
         same = self.container_eq(left, right);
         return same if name == "eq" else self.builder().logical_not(same);
     }
-    if left.type.kind == MirKind.C_PTR and right.type.kind == MirKind.C_PTR {
-        li = self.emit_value(MirOp.PTR_INT, mir_int(64, False), [left]);
-        ri = self.emit_value(MirOp.PTR_INT, mir_int(64, False), [right]);
-        return self.builder().compare(name, li, ri);
-    }
     if MirKind.C_PTR in (left.type.kind, right.type.kind)
         or MirKind.C_FN in (left.type.kind, right.type.kind) {
         words: list[MirValue] = [];
         for side in (left, right) {
             if side.type.kind in (MirKind.C_PTR, MirKind.C_FN) {
-                words.append(self.emit_value(MirOp.PTR_INT, mir_int(64, False), [side]));
+                words.append(
+                    self.emit_value(MirOp.PTR_INT, mir_int(64, False), [side])
+                );
             } elif side.type.kind in (MirKind.INT, MirKind.BOOL) {
                 words.append(self.builder().convert(side, mir_int(64, False)));
             } else {
@@ -1293,27 +1296,78 @@ impl MirLowering.lower_unary(nd: uni.UnaryExpr) -> MirValue {
     raise MirRefused(mir_refusal("unary operator", op, nd));
 }
 
+impl MirLowering.condition_only(nd: uni.Expr) -> bool {
+    current: uni.UniNode = nd;
+    parent = nd.parent;
+    while isinstance(parent, (uni.AtomUnit, uni.CfgExpr)) {
+        current = parent;
+        parent = parent.parent;
+    }
+    if isinstance(
+        parent, (uni.IfStmt, uni.WhileStmt, uni.IfElseExpr, uni.AssertStmt)
+    ) {
+        return parent.condition is current;
+    }
+    if isinstance(parent, uni.UnaryExpr) {
+        return parent.op.name == Tok.NOT;
+    }
+    if isinstance(parent, uni.InnerCompr) {
+        return any(cond is current for cond in list(parent.conditional or []));
+    }
+    if isinstance(parent, uni.BoolExpr) {
+        return self.condition_only(parent);
+    }
+    return False;
+}
+
 impl MirLowering.lower_bool(nd: uni.BoolExpr) -> MirValue {
     b = self.builder();
     fn = self.st().fn;
-    result_type = self.expr_type(nd);
+    tested = self.condition_only(nd);
+    result_type = mir_bool() if tested else self.expr_type(nd);
     result = self.temp_slot(result_type);
     done = fn.new_block("bool.done");
     is_and = nd.op.name == Tok.KW_AND;
     values = list(nd.values);
     for (index, operand_nd) in enumerate(values) {
         operand = self.lower_expr(operand_nd);
-        b.store(result, self.coerce(operand, result_type, operand_nd));
+        if tested {
+            verdict = self.truthy(operand, operand_nd);
+            b.store(result, verdict);
+            if index + 1 < len(values) {
+                more = fn.new_block("bool.next");
+                if is_and {
+                    b.cond_branch(verdict, more, done);
+                } else {
+                    b.cond_branch(verdict, done, more);
+                }
+                b.position(more);
+            } else {
+                b.branch(done);
+            }
+            continue;
+        }
         if index + 1 < len(values) {
+            keep = fn.new_block("bool.keep");
             more = fn.new_block("bool.next");
             verdict = self.truthy(operand, operand_nd);
             if is_and {
-                b.cond_branch(verdict, more, done);
+                b.cond_branch(verdict, more, keep);
             } else {
-                b.cond_branch(verdict, done, more);
+                b.cond_branch(verdict, keep, more);
             }
+            b.position(keep);
+            kept = operand;
+            if not is_and
+                and operand.type.kind == MirKind.OPT
+                and result_type.kind not in (MirKind.OPT, MirKind.ANY) {
+                kept = self.opt_get(operand);
+            }
+            b.store(result, self.coerce(kept, result_type, operand_nd));
+            b.branch(done);
             b.position(more);
         } else {
+            b.store(result, self.coerce(operand, result_type, operand_nd));
             b.branch(done);
         }
     }
@@ -2007,9 +2061,7 @@ impl MirLowering.lower_if_else_expr(nd: uni.IfElseExpr) -> MirValue {
     then = fn.new_block("sel.then");
     otherwise = fn.new_block("sel.else");
     done = fn.new_block("sel.done");
-    b.cond_branch(
-        self.condition(nd.condition), then, otherwise
-    );
+    b.cond_branch(self.condition(nd.condition), then, otherwise);
     b.position(then);
     b.store(held, self.coerce(self.lower_expr(nd.value), result_type, nd.value));
     b.branch(done);
@@ -2196,7 +2248,29 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
         }
         arch = self.arch_of_type(target_type);
         if arch is not None {
-            return self.field_place(self.lower_expr(nd.target), arch, right.value, nd);
+            subject = self.lower_expr(nd.target);
+            owner = self.member_owner(right);
+            if owner is not None
+                and owner is not arch
+                and self.obj_extends(
+                    self.object_type(owner).name, self.object_type(arch).name
+                ) {
+                arch = owner;
+            }
+            wanted = self.object_type(arch);
+            if subject.type.kind == MirKind.OBJ
+                and wanted.kind == MirKind.OBJ
+                and wanted is not subject.type
+                and self.obj_extends(wanted.name, subject.type.name) {
+                subject = self.builder().ref_cast(subject, wanted, False);
+            }
+            return self.field_place(subject, arch, right.value, nd);
+        }
+        members = self.union_archetypes(target_type);
+        if members {
+            return self.union_field_place(
+                self.lower_expr(nd.target), members, right.value, nd
+            );
         }
         if isinstance(nd.target, uni.Name)
             and nd.target.sym is not None
@@ -2357,20 +2431,26 @@ impl MirLowering.c_extern(
     );
     sig = callee.signature;
     symbol = self.name_of(callee);
-    if not isinstance(fn_type, FunctionType) or not isinstance(sig, uni.FuncSignature) {
+    if not isinstance(fn_type, FunctionType)
+        or not isinstance(sig, uni.FuncSignature) {
         raise MirRefused(mir_refusal("C call", symbol, site));
     }
     declared = sig.get_parameters();
-    fixed = [pv for pv in declared if not (pv.is_vararg or pv.is_kwargs)];
+    fixed = [
+        pv
+        for pv in declared
+        if not (pv.is_vararg or pv.is_kwargs)
+    ];
     variadic = any(pv.is_vararg for pv in declared);
     fallbacks = [p.param_type for p in fn_type.parameters];
     plans = [
         self.c_param_plan(
             pv,
-            fallbacks[declared.index(pv)] if declared.index(pv) < len(fallbacks) else None,
+            fallbacks[declared.index(pv)]
+                if declared.index(pv) < len(fallbacks)
+                else None,
             site
-        )
-        for pv in fixed
+        ) for pv in fixed
     ];
     (ret, ret_plan) = self.c_return_plan(sig, fn_type.return_type, site);
     self.ensure_objects(fn_type);
@@ -2396,7 +2476,9 @@ impl MirLowering.c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue {
         args = list(self.bound_args(nd, callee, False));
         for arg in args {
             if not isinstance(arg, uni.Expr) {
-                raise MirRefused(mir_refusal("C call", f"{symbol} argument binding", nd));
+                raise MirRefused(
+                    mir_refusal("C call", f"{symbol} argument binding", nd)
+                );
             }
         }
     } else {
@@ -2835,15 +2917,18 @@ impl MirLowering.coerce_place(place: MirValue) -> MirValue {
 }
 
 impl MirLowering.global_declaration(sym: uni.Symbol) -> (uni.Assignment | None) {
-    cursor: (uni.UniNode | None) = sym.decl;
+    child: (uni.UniNode | None) = sym.decl;
     if sym.imported {
-        cursor = uni.resolved_decl_of(sym) or sym.decl;
+        child = uni.resolved_decl_of(sym) or sym.decl;
     }
+    cursor: (uni.UniNode | None) = child.parent if child is not None else None;
     while cursor is not None and not isinstance(cursor, uni.Assignment) {
+        child = cursor;
         cursor = cursor.parent;
     }
     if isinstance(cursor, uni.Assignment)
-        and isinstance(cursor.parent, uni.GlobalVars) {
+        and isinstance(cursor.parent, uni.GlobalVars)
+        and child is not cursor.value {
         return cursor;
     }
     return None;

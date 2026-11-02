@@ -3222,7 +3222,9 @@ test "clib import produces extern declares" {
     assert eng is not None , "No JIT engine produced";
     remember_native_unit(eng, ir);
     # The Jac function calls the C library's sqrt, not a body of its own.
-    hyp = get_func(eng, "hypotenuse", ctypes.c_double, ctypes.c_double, ctypes.c_double);
+    hyp = get_func(
+        eng, "hypotenuse", ctypes.c_double, ctypes.c_double, ctypes.c_double
+    );
     assert hyp(3.0, 4.0) == 5.0;
     # Library path should be stored for the compile pass
     assert ir.gen._clib_paths is not None;
@@ -3429,7 +3431,8 @@ test "clib System V AMD64 ABI lowering" {
     s = source_spelled(str(ir.gen.llvm_ir));
     # SSE eightbytes: float fields pack into <2 x float> / trailing float.
     assert c_decl(s, "v2_sum") == "float (<2 x float>)" , "V2 -> <2 x float>";
-    assert c_decl(s, "v3_scale") == "{<2 x float>, float} (<2 x float>, float, float)" , "V3 expand + 2-eightbyte SSE return";
+    assert c_decl(s, "v3_scale")
+        == "{<2 x float>, float} (<2 x float>, float, float)" , "V3 expand + 2-eightbyte SSE return";
     assert c_decl(s, "v4_sum") == "float (<2 x float>, <2 x float>)" , "V4 -> two <2 x float>";
     # INTEGER eightbyte: all-int small struct coerces to a single integer.
     assert c_decl(s, "col_sum") == "i32 (i32)" , "Color -> i32";
@@ -3438,8 +3441,12 @@ test "clib System V AMD64 ABI lowering" {
     # Two SSE double eightbytes.
     assert c_decl(s, "dd_sum") == "double (double, double)" , "DD -> two doubles";
     # MEMORY class (>16B, nested): byval pointer argument, sret return.
-    assert "sret(" in c_decl(s, "cam_mk") , f"Cam returned via sret: {c_decl(s, 'cam_mk')}";
-    assert "byval(" in c_decl(s, "cam_fovy") , f"Cam passed byval: {c_decl(s, 'cam_fovy')}";
+    assert "sret(" in c_decl(s, "cam_mk") , f"Cam returned via sret: {c_decl(
+        s, 'cam_mk'
+    )}";
+    assert "byval(" in c_decl(s, "cam_fovy") , f"Cam passed byval: {c_decl(
+        s, 'cam_fovy'
+    )}";
 }
 
 test "jac run loads a transitive imported-module clib (issue #6687)" {
@@ -3525,7 +3532,8 @@ test "clib AArch64 AAPCS ABI lowering" {
         # Large (>16B) aggregate: indirect via a PLAIN pointer (no byval), and
         # sret for the return.
         fovy = c_decl(s, "cam_fovy");
-        assert fovy.startswith("float (") and (fovy.endswith("*)") or fovy == "float (ptr)") , (
+        assert fovy.startswith("float (")
+            and (fovy.endswith("*)") or fovy == "float (ptr)") , (
             f"Cam -> plain ptr (indirect): {fovy}"
         );
         assert "byval" not in s , "AAPCS must not emit byval";

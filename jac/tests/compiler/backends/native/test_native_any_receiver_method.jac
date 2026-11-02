@@ -63,7 +63,11 @@ def measured -> tuple[any, ...] {
 def refusals_in(name: str) -> list[str] {
     (refused, spans) = measured();
     (first, last) = spans[name];
-    return [said for (line, said) in refused if first <= line <= last];
+    return [
+        said
+        for (line, said) in refused
+        if first <= line <= last
+    ];
 }
 
 

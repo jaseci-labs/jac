@@ -163,7 +163,12 @@ glob TEXT_CASES: dict[str, int] = {
          "iso8859-1": 2,
          "l1": 2
      },
-     TEXT_ERRORS: dict[str, int] = {"strict": 0, "replace": 1, "ignore": 2},
+     TEXT_ERRORS: dict[str, int] = {
+         "strict": 0,
+         "replace": 1,
+         "ignore": 2,
+         "surrogatepass": 3
+     },
      TEXT_BUILTINS: list[str] = [
          "str",
          "len",
@@ -321,7 +326,10 @@ obj MirLowering {
     def store_name(target: uni.Name, value: MirValue);
     def local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirValue;
     def loop_scoped(sym: uni.Symbol) -> bool;
-    def within_body(nd: uni.UniNode, loop: uni.UniNode) -> bool;
+    def within_body(
+        nd: uni.UniNode, loop: (uni.WhileStmt | uni.InForStmt | uni.IterForStmt)
+    ) -> bool;
+
     def lower_return(nd: uni.ReturnStmt);
     def lower_if(nd: (uni.IfStmt | uni.ElseIf));
     def lower_else(nd: (uni.ElseStmt | uni.ElseIf | None), done: MirBlock);
@@ -370,15 +378,18 @@ obj MirLowering {
     def c_extern(
         callee: uni.Ability, site: uni.UniNode
     ) -> tuple[str, list[tuple[MirType, str]], MirType, str, bool];
+
     def c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue;
     def c_extern_address(nd: uni.Name) -> (MirValue | None);
     def c_param_borrowed(pv: uni.ParamVar) -> bool;
     def c_declared_type(
         declared: (TypeBase | None), fallback: (TypeBase | None)
     ) -> (TypeBase | None);
+
     def c_param_plan(
         pv: uni.ParamVar, fallback: (TypeBase | None), site: uni.UniNode
     ) -> tuple[MirType, str];
+
     def c_bare(nd: uni.Expr) -> uni.Expr;
     def c_borrow_operand(arg: uni.Expr) -> (uni.Expr | None);
     def c_same_storage(a: MirType, b: MirType) -> bool;
@@ -389,6 +400,7 @@ obj MirLowering {
         exact: bool,
         copybacks: list[tuple[MirValue, MirValue, MirType]]
     ) -> MirValue;
+
     def c_text_arg(value: MirValue, site: uni.UniNode) -> MirValue;
     def c_arg(
         arg: uni.Expr,
@@ -396,6 +408,7 @@ obj MirLowering {
         plan: str,
         copybacks: list[tuple[MirValue, MirValue, MirType]]
     ) -> MirValue;
+
     def c_vararg(arg: uni.Expr) -> MirValue;
     def c_defines(decl: uni.UniNode) -> bool;
     def declare_c_definition(ab: uni.Ability);
@@ -406,10 +419,12 @@ obj MirLowering {
     def pointer_arith(
         op: str, left: MirValue, right: MirValue, site: uni.UniNode
     ) -> (MirValue | None);
+
     def condition(nd: uni.Expr) -> MirValue;
     def c_return_plan(
         sig: uni.FuncSignature, fallback: (TypeBase | None), site: uni.UniNode
     ) -> tuple[MirType, str];
+
     def import_call(nd: uni.FuncCall, callee: uni.Ability) -> (MirValue | None);
     def intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue;
     def intrinsic_operand(arg: uni.Expr, spec: str) -> MirValue;
@@ -551,6 +566,14 @@ obj MirLowering {
     def accessor_sig(acc: uni.Ability) -> (uni.FuncSignature | None);
     def declare_accessors(arch: uni.Archetype, self_type: MirType);
     def decl_label(decl: MirDecl) -> str;
+    def refusal_key(decl: MirDecl) -> str;
+    def member_owner(member: uni.Name) -> (uni.Archetype | None);
+    def union_archetypes(t: (TypeBase | None)) -> list[uni.Archetype];
+    def union_field_place(
+        holder: MirValue, members: list[uni.Archetype], name: str, site: uni.UniNode
+    ) -> MirValue;
+
+    def condition_only(nd: uni.Expr) -> bool;
     def accessor_of(
         nd: uni.AtomTrailer, kind: str
     ) -> (tuple[uni.Archetype, MirDecl] | None);

@@ -82,7 +82,6 @@ exclude = [
     "checker_*.jac",
     "*_err.jac",
 
-
     # js_engine is a separate native project with its own jac.toml; its
     # regression suite and test262 gate it, not this check.
     "jac/js_engine/*",
