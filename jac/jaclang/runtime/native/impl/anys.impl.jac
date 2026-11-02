@@ -126,7 +126,7 @@ impl __jac_rt_class_name(text: ptr[u8]) -> ptr[u8] {
     if int(text) == 0 {
         return __jac_rt_str_new(text, 0);
     }
-    size = strlen(int(text));
+    size = int(strlen(text));
     at = 0;
     while at < size and (int(__mem_load_i8(int(text) + at)) & 255) != 36 {
         at += 1;
