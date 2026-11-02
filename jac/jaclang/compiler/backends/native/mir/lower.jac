@@ -690,11 +690,13 @@ obj MirLowering {
     def value_truthy(value: MirValue, site: uni.UniNode) -> (MirValue | None);
     def any_to_str(value: MirValue, site: uni.UniNode) -> MirValue;
     def narrow(value: MirValue, nd: uni.Name) -> MirValue;
-    def type_names(target: uni.Expr) -> (list[str] | None);
     def target_archetype(target: uni.Expr) -> (uni.Archetype | None);
     def isinstance_value(
         subject: uni.Expr, target: uni.Expr, site: uni.UniNode
-    ) -> (MirValue | None);
+    ) -> MirValue;
+    def isinstance_test(
+        value: MirValue, items: list[uni.Expr], site: uni.UniNode
+    ) -> MirValue;
 
     def any_isinstance(
         value: MirValue, target: uni.Expr, site: uni.UniNode

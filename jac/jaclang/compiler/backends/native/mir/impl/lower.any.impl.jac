@@ -257,24 +257,6 @@ impl MirLowering.narrow(value: MirValue, nd: uni.Name) -> MirValue {
     return self.any_unbox(value, narrowed, nd);
 }
 
-impl MirLowering.type_names(target: uni.Expr) -> (list[str] | None) {
-    items = [
-        part
-        for part in target.values
-        if isinstance(part, uni.Expr)
-    ]
-        if isinstance(target, uni.TupleVal)
-        else [target];
-    names: list[str] = [];
-    for item in items {
-        if not isinstance(item, uni.Name) or item.value not in ANY_TYPE_TAGS {
-            return None;
-        }
-        names.append(item.value);
-    }
-    return names;
-}
-
 impl MirLowering.target_archetype(target: uni.Expr) -> (uni.Archetype | None) {
     wanted = self.arch_of_type(target.type);
     if wanted is None
@@ -289,19 +271,60 @@ impl MirLowering.target_archetype(target: uni.Expr) -> (uni.Archetype | None) {
 
 impl MirLowering.isinstance_value(
     subject: uni.Expr, target: uni.Expr, site: uni.UniNode
-) -> (MirValue | None) {
-    names = self.type_names(target);
-    subject_type = self.expr_type(subject);
-    if subject_type.kind == MirKind.ANY {
+) -> MirValue {
+    if self.expr_type(subject).kind == MirKind.ANY {
         return self.any_isinstance(self.lower_expr(subject), target, site);
     }
-    if names is None {
-        return None;
+    items = [
+        part
+        for part in target.values
+        if isinstance(part, uni.Expr)
+    ]
+        if isinstance(target, uni.TupleVal)
+        else [target];
+    return self.isinstance_test(self.lower_expr(subject), items, site);
+}
+
+impl MirLowering.isinstance_test(
+    value: MirValue, items: list[uni.Expr], site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    if value.type.kind == MirKind.OPT {
+        none_hit = any(
+            isinstance(item, uni.Name) and item.value == "NoneType" for item in items
+        );
+        (held, payload, absent, done) = self.opt_begin(value, mir_bool());
+        self.opt_switch(held, self.isinstance_test(payload, items, site), absent, done);
+        return self.opt_end(held, b.const_bool(none_hit), done);
     }
-    self.lower_expr(subject);
-    static_name = STATIC_TYPE_NAMES.get(subject_type.kind.value, "");
-    hit = static_name in names or (static_name == "bool" and "int" in names);
-    return self.builder().const_bool(hit);
+    static_name = STATIC_TYPE_NAMES.get(value.type.kind.value, "");
+    if value.type.kind == MirKind.ENUM {
+        static_name = "";
+    }
+    verdict: (MirValue | None) = None;
+    hit = False;
+    for item in items {
+        if isinstance(item, uni.Name)
+            and (
+                item.value in ANY_TYPE_TAGS or item.value in STATIC_TYPE_NAMES.values()
+            ) {
+            hit = hit
+                or static_name == item.value
+                or (static_name == "bool" and item.value == "int");
+            continue;
+        }
+        arch = self.target_archetype(item);
+        if arch is not None {
+            found = self.isinstance_check(value, arch);
+            verdict = found if verdict is None else b.binary("or", verdict, found);
+            continue;
+        }
+        raise MirRefused(mir_refusal("call", "isinstance of a non-archetype", site));
+    }
+    if verdict is None or hit {
+        return b.const_bool(hit);
+    }
+    return verdict;
 }
 
 impl MirLowering.any_isinstance(

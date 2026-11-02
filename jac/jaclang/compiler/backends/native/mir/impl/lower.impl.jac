@@ -701,7 +701,13 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
     loaded = self.builder().load(slot, slot.type);
     if loaded.type.kind == MirKind.OPT
         and nd.type is not None
-        and not isinstance(nd.type, UnionType) {
+        and not (
+            isinstance(nd.type, UnionType)
+            and any(
+                isinstance(member, ClassType)
+                    and member.shared.class_name in ("NoneType", "None") for member in nd.type.types
+            )
+        ) {
         return self.opt_get(loaded);
     }
     if loaded.type.kind == MirKind.ANY {
@@ -1575,24 +1581,7 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         raise MirRefused(mir_refusal("call", f"len of {value.type.render()}", nd));
     }
     if name == "isinstance" and len(args) == 2 {
-        boxed = self.isinstance_value(args[0], args[1], nd);
-        if boxed is not None {
-            return boxed;
-        }
-        wanted = self.arch_of_type(args[1].type)
-            if isinstance(args[1], uni.Expr)
-            else None;
-        if wanted is None
-            and isinstance(args[1], uni.Name)
-            and isinstance(args[1].sym, uni.Symbol) {
-            decl = args[1].sym.decl;
-            holder = decl.parent if decl is not None else None;
-            wanted = holder if isinstance(holder, uni.Archetype) else None;
-        }
-        if wanted is not None {
-            return self.isinstance_check(self.lower_expr(args[0]), wanted);
-        }
-        raise MirRefused(mir_refusal("call", "isinstance of a non-archetype", nd));
+        return self.isinstance_value(args[0], args[1], nd);
     }
     found = self.builtin_value(nd, name);
     if found is None {
@@ -1789,6 +1778,22 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
         arch = self.arch_of_type(target_type);
         if arch is not None {
             return self.field_place(self.lower_expr(nd.target), arch, right.value, nd);
+        }
+        if isinstance(nd.target, uni.Name)
+            and nd.target.sym is not None
+            and id(nd.target.sym) in self.st().locals {
+            slot_type = self.st().locals[id(nd.target.sym)].type;
+            if slot_type.kind == MirKind.OPT {
+                slot_type = slot_type.payload();
+            }
+            if slot_type.kind == MirKind.OBJ and slot_type.name in self.archetypes {
+                held = self.lower_expr(nd.target);
+                if held.type is slot_type {
+                    return self.field_place(
+                        held, self.archetypes[slot_type.name], right.value, nd
+                    );
+                }
+            }
         }
         base = self.lower_place(nd.target);
         holder = self.place_elem(base);
