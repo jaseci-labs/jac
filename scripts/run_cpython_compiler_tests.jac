@@ -17,6 +17,7 @@ import hashlib;
 import importlib;
 import io;
 import json;
+import logging;
 import from pathlib { Path }
 import sys;
 import tarfile;
@@ -184,14 +185,11 @@ def main -> int {
 glob NO_TESTCAPI: str = "the Jac runtime does not ship _testcapi",
      NO_TESTINTERNALCAPI: str = "the Jac runtime does not ship _testinternalcapi",
      LAUNCHER_ENVIRONMENT: str = "the jac launcher starts the interpreter without the PYTHON* environment",
-     LAUNCHER_OPTIONS: str = "the jac launcher does not apply CPython -X options to child processes",
      LAUNCHER_SCRIPT: str = "the jac launcher runs a script path only when it ends in .py, .jac or .jab",
-     LAUNCHER_REPL: str = "the jac launcher does not implement CPython interactive-REPL input semantics",
-     LAUNCHER_ERRORS: str = "the jac launcher prints errors in its CLI format, not CPython traceback format",
-     INTERPRETER_SYS_PATH: str = "Jac subinterpreters use the runtime site path instead of CPython sys.path[0]",
-     INTERPRETER_STDERR: str = "Jac interpreter-worker diagnostics bypass redirected parent stderr",
-     FINALIZATION_DIFFERENCE: str = "Jac shutdown does not run the CPython daemon-thread finalization hook",
-     TRACEMALLOC_CHILD: str = "the jac launcher does not forward tracemalloc startup options",
+     LAUNCHER_X_OPTIONS: str = "the jac launcher starts from CPython's isolated configuration, which fixes dev mode, tracemalloc and int_max_str_digits before -X is read",
+     LAUNCHER_UTF8_MODE: str = "the jac launcher always starts the interpreter in UTF-8 mode, so -X utf8=0 has no effect",
+     LAUNCHER_TRACEBACK: str = "the jac launcher reports an uncaught exception in its own format, not as a Python traceback",
+     LAUNCHER_SYS_PATH: str = "the jac launcher sets a script's sys.path[0] after startup ('./' for a relative path), so it is not the script directory and subinterpreters start from the runtime's site directory",
      RUNTIME_DIFFERENCES: dict[str, dict[str, str]] = {
          "test.test_posix": {"PosixTester.test_pipe2_c_limits": NO_TESTCAPI},
          "test.test_os": {
@@ -214,6 +212,7 @@ glob NO_TESTCAPI: str = "the Jac runtime does not ship _testcapi",
              "CoroutineGatherTests.test_env_var_debug": LAUNCHER_ENVIRONMENT,
              "FutureGatherTests.test_env_var_debug": LAUNCHER_ENVIRONMENT
          },
+         # PYTHONWARNINGS; test_tracemalloc starts its child with -X tracemalloc=2.
          "test.test_warnings": {
              "CEnvironmentVariableTests.test_comma_separated_warnings": LAUNCHER_ENVIRONMENT,
              "CEnvironmentVariableTests.test_conflicting_envvar_and_command_line": LAUNCHER_ENVIRONMENT,
@@ -225,31 +224,28 @@ glob NO_TESTCAPI: str = "the Jac runtime does not ship _testcapi",
              "PyEnvironmentVariableTests.test_envvar_and_command_line": LAUNCHER_ENVIRONMENT,
              "PyEnvironmentVariableTests.test_nonascii": LAUNCHER_ENVIRONMENT,
              "PyEnvironmentVariableTests.test_single_warning": LAUNCHER_ENVIRONMENT,
-             "PyWarningsDisplayTests.test_tracemalloc": TRACEMALLOC_CHILD
+             "PyWarningsDisplayTests.test_tracemalloc": LAUNCHER_X_OPTIONS
          },
-         "test.test_faulthandler": {
-             "FaultHandlerTests.test_env_var": LAUNCHER_ENVIRONMENT
-         },
-         "test.test_threading": {
-             "ThreadTests.test_finalize_daemon_thread_hang": FINALIZATION_DIFFERENCE
-         },
+         # PYTHONFAULTHANDLER.
+         "test.test_faulthandler": {"FaultHandlerTests.test_env_var": LAUNCHER_ENVIRONMENT},
+         # The child script imports _testcapi.
+         "test.test_threading": {"ThreadTests.test_finalize_daemon_thread_hang": NO_TESTCAPI},
+         # The children start with -X dev and -X utf8=0.
          "test.test_io": {
-             "CMiscIOTest.test_check_encoding_errors": LAUNCHER_OPTIONS,
-             "CMiscIOTest.test_text_encoding": LAUNCHER_OPTIONS,
-             "PyMiscIOTest.test_check_encoding_errors": LAUNCHER_OPTIONS,
-             "PyMiscIOTest.test_text_encoding": LAUNCHER_OPTIONS
+             "CMiscIOTest.test_check_encoding_errors": LAUNCHER_X_OPTIONS,
+             "CMiscIOTest.test_text_encoding": LAUNCHER_UTF8_MODE,
+             "PyMiscIOTest.test_check_encoding_errors": LAUNCHER_X_OPTIONS,
+             "PyMiscIOTest.test_text_encoding": LAUNCHER_UTF8_MODE
          },
+         # The stateless-function tests compare code objects with
+         # _testinternalcapi.get_code_var_counts. The script that
+         # test_display_preserved_exception starts also needs its directory on
+         # the subinterpreter's sys.path, which LAUNCHER_SYS_PATH rules out.
          "test.test_interpreters": {
              "TestInterpreterCall.test_stateless_func_returns_arg": NO_TESTINTERNALCAPI,
              "TestInterpreterCall.test_stateless_funcs": NO_TESTINTERNALCAPI,
-             "InterpreterObjectTests.test_cleanup_in_repl": LAUNCHER_REPL,
-             "TestInterpreterExec.test_display_preserved_exception": LAUNCHER_ERRORS,
-             "StartupTests.test_sys_path_0": INTERPRETER_SYS_PATH
-         },
-         "test.test_concurrent_futures.test_interpreter_pool": {
-             "InterpreterPoolExecutorTest.test_init_closure": INTERPRETER_STDERR,
-             "InterpreterPoolExecutorTest.test_init_exception_in_func": INTERPRETER_STDERR,
-             "InterpreterPoolExecutorTest.test_init_instance_method": INTERPRETER_STDERR
+             "TestInterpreterExec.test_display_preserved_exception": LAUNCHER_TRACEBACK,
+             "StartupTests.test_sys_path_0": LAUNCHER_SYS_PATH
          }
      };
 
@@ -276,10 +272,21 @@ def skip_runtime_differences(suite: unittest.TestSuite, module: str) {
 # child can re-import by name. The Jac runtime ships no test package and this
 # runner is a Jac application, so for the run the fetched package is linked
 # into the standard library and the main module is a neutral stand-in.
+# A Jac application also starts with the root logger configured
+# (logging.basicConfig in jaclang/meta_importer.py), its handler bound to the
+# stderr of that moment, so a test's redirect_stderr does not capture what is
+# logged. The run uses the unconfigured root logger of a plain interpreter.
 def run_tests(args: any, calls: list[int]) -> int {
     library = fetch_tests(args.cache);
     main_module = sys.modules["__main__"];
     sys.modules["__main__"] = types.ModuleType("__main__");
+    root_logger = logging.getLogger();
+    root_handlers = list(root_logger.handlers);
+    root_level = root_logger.level;
+    for handler in root_handlers {
+        root_logger.removeHandler(handler);
+    }
+    root_logger.setLevel(logging.WARNING);
     link = Path(unittest.__file__).resolve().parent.parent / "test";
     if link.is_symlink() {
         link.unlink();
@@ -295,6 +302,10 @@ def run_tests(args: any, calls: list[int]) -> int {
             link.unlink();
         }
         sys.modules["__main__"] = main_module;
+        root_logger.setLevel(root_level);
+        for handler in root_handlers {
+            root_logger.addHandler(handler);
+        }
     }
 }
 
@@ -393,14 +404,8 @@ def run_library_tests(args: any, calls: list[int], library: Path) -> int {
         }
 
         def stopTest(self: Result, test_case: any) {
-            test_id = test_case?.id;
-            if callable(test_id) {
-                test_id = test_id();
-            } else {
-                test_id = f"{type(test_case).__name__}.{getattr(
-                    test_case, '_testMethodName', ''
-                )}";
-            }
+            # Some upstream tests keep an interpreter id in self.id.
+            test_id = unittest.TestCase.id(test_case);
             print(f"JACPYTHON_CALLS {test_id} {calls[0]}", flush=True);
             super.stopTest(test_case);
         }
@@ -483,7 +488,9 @@ def run_library_tests(args: any, calls: list[int], library: Path) -> int {
         # sys.executable is the jac launcher, which starts the interpreter with
         # its own configuration: PYTHONTRACEMALLOC and -X tracemalloc do not
         # reach the child. The in-process tests still run.
-        test_module.TestCommandLine = unittest.skip(TRACEMALLOC_CHILD)(
+        test_module.TestCommandLine = unittest.skip(
+            "the jac launcher does not forward tracemalloc startup options"
+        )(
             test_module.TestCommandLine
         );
     }

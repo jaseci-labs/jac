@@ -1023,7 +1023,7 @@ import from c {
         fd: i32, status: &mut _Py_stat_struct
     ) -> i32;  def jacpy_fstatat(
         dir_fd: i32, path: str, status: &mut _Py_stat_struct, flags: i32
-    ) -> i32;  def jacpy_fstatfs(fd: i32, buffer: ptr) -> i32;  def jacpy_hacl_simd_features -> i64;  def jacpy_hash_unsigned(
+    ) -> i32;  def jacpy_fstatfs(fd: i32, buffer: ptr) -> i32;  def jacpy_hash_unsigned(
         handle: ptr[PyObject]
     ) -> ptr[PyObject];  def jacpy_interpreter_finalizing -> i64;  def jacpy_is_bool(
         value: ptr[PyObject]

@@ -82,7 +82,7 @@ def prepare_application(
     `root: (str | None) = None,
     services: any = (),
     client: bool = False,
-    dev: bool = True,
+    dev: (bool | None) = None,
     force_codespace: str = ''
 ) -> PreparedApplication;
 

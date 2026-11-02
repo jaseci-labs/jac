@@ -171,8 +171,8 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
     } elif isinstance(nd, uni.DeleteStmt) {
         self._codegen_delete(nd);
     } elif isinstance(nd, uni.Semi) {} elif isinstance(nd, uni.Import) {} elif isinstance(
-        nd, uni.PyInlineCode
-    ) {} elif isinstance(nd, uni.VisitStmt) {
+        nd, uni.VisitStmt
+    ) {
         self._codegen_visit(nd);
     } elif isinstance(nd, uni.DisengageStmt) {
         self._codegen_disengage(nd);
@@ -2188,7 +2188,7 @@ impl NaIRGenPass._codegen_dict_counter_update(nd: uni.Assignment) -> bool {
     return True;
 }
 
-impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
+impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
     _rhs_errs_before = len(self.ctx.errors_had);
     if self._lower_partition_unpack(nd) {
         return;
@@ -2259,6 +2259,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         if target_index > 0 {
             assignment_rhs.is_owned = False;
             assignment_rhs.na_tuple_owned = None;
+            self._mark_target_bound(targets[target_index - 1]);
         }
         value: ir.Value = assignment_rhs;
         if isinstance(target_expr, uni.TupleVal) {

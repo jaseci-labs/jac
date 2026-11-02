@@ -187,10 +187,6 @@ impl UnparsePass.exit_module_code with uni.ModuleCode exit {
     here.gen.jac = " ".join(parts);
 }
 
-impl UnparsePass.exit_py_inline_code with uni.PyInlineCode exit {
-    here.gen.jac = "::py::" + here.code.value + "::py::";
-}
-
 impl UnparsePass.exit_import with uni.Import exit {
     parts: list[str] = [];
     if here.doc {

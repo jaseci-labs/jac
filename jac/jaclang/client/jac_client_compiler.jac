@@ -11,7 +11,8 @@ class JacClientCompiler {
     has entry_path: str = "",
         na_wasm_modules: set[str] = set(),
         link_demand: dict[Path, dict[Path, list[str]]] = {},
-        input_files: dict[str, str] = {};
+        input_files: dict[str, str] = {},
+        client_modules: dict[str, str] = {};
 
     with entry {
         ROUTER_EXPORTS = [

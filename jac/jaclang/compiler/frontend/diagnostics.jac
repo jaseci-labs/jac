@@ -384,7 +384,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0100 = _err("E0100", Category.SYNTAX, "Unterminated string literal"),
      E0101 = _err("E0101", Category.SYNTAX, "Unterminated block comment"),
      E0102 = _err("E0102", Category.SYNTAX, "Unterminated f-string"),
-     E0103 = _err("E0103", Category.SYNTAX, "Unterminated inline Python block"),
      E0104 = _err("E0104", Category.SYNTAX, "Unexpected end of JSX content"),
      E0105 = _err("E0105", Category.SYNTAX, "Unexpected character: '{ch}'"),
      E0106 = _err("E0106", Category.SYNTAX, "Unexpected character in JSX tag: '{ch}'"),
