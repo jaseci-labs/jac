@@ -45056,6 +45056,9 @@ graph import scale {
         | tests.deploy.test_postgres_predicate_lock_headroom {
         KubernetesPostgresProvider
     }
+    type deploy.target.deployment_target ++> runtime.realizer.kubernetes_realizer {
+        DeploymentTarget
+    }
     deploy.target.factory ++> [
         plugin
             | runtime.realizer.kubernetes_realizer
@@ -45122,7 +45125,7 @@ graph import scale {
         },
         tests.microservices.test_pvc_injector { KubernetesConfig },
     ]
-    deploy.target.kubernetes.kubernetes_target ++> runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize
+    deploy.target.kubernetes.kubernetes_target ++> runtime.realizer.kubernetes_realizer.KubernetesRealizer._deploy_on_target
         | tests.deploy.test_database_intent { KubernetesTargetBase }
     deploy.target.kubernetes.kubernetes_target --> tests.microservices.test_pvc_injector {
         KubernetesTargetBase
@@ -45195,8 +45198,8 @@ graph import scale {
     }
     deploy.target.kubernetes.runtime_resolver as resolver_mod --> tests.deploy.test_pod_env;
     deploy.target.kubernetes.target ++> [
-        runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize
-            | sdk.client
+        runtime.realizer.kubernetes_realizer.KubernetesRealizer._deploy_on_target
+            | sdk.client.ScaleClient._build_target
             | tests.deploy.test_access_hint
             | tests.deploy.test_alb_zero_downtime
             | tests.deploy.test_crash_scan_fleet_guard
@@ -45222,6 +45225,7 @@ graph import scale {
         },
     ]
     deploy.target.kubernetes.target as target_mod --> tests.deploy.test_superseded_deployment_reap;
+    type deploy.target.kubernetes.target ++> sdk.client { KubernetesTarget }
     deploy.target.kubernetes.utils.kubernetes_utils ++> [
         injector.injector | injector.pvc_injector { KubectlCluster },
         injector.pvc_injector.PvcInjector.seed {
@@ -45715,8 +45719,8 @@ graph import scale {
             FLEET_ENV
         },
         deploy.target.kubernetes.target | injector.bundle { FleetSpec },
+        plugin._fleet_cmd { fleet_from_config, fleet_from_env },
         plugin._print_local_fleet_banner { format_fleet_lines },
-        plugin.scale_cmd { fleet_from_config, fleet_from_env },
         plugin.scale_local_serve { fleet_from_plans },
         tests.apps.test_app_scale_overrides { fleet_from_config },
         tests.apps.test_fleet_from_apps {
@@ -45832,13 +45836,13 @@ graph import scale {
         _to_ws_scheme,
         websocket_forward
     }
-    runtime.orchestrator.local_deployer ++> plugin.scale_cmd
+    runtime.orchestrator.local_deployer ++> plugin._fleet_cmd
         | tests.deploy.test_deployer { LocalDeployer }
     runtime.orchestrator.orchestrator ++> [
-        plugin.scale_cmd { ServiceRegistry, build_registry },
+        plugin._fleet_cmd { ServiceRegistry, build_registry },
         tests.apps.test_fleet_from_apps { build_registry },
     ]
-    runtime.orchestrator.orchestrator --> plugin.scale_cmd { start_gateway_only }
+    runtime.orchestrator.orchestrator --> plugin._fleet_cmd { start_gateway_only }
     runtime.orchestrator.process_manager ++> [
         tests.microservices.test_boot_grace
             | tests.microservices.test_boot_order
@@ -46374,10 +46378,12 @@ graph import scale.observability {
 }
 
 graph import scale.runtime {
-    cli.diagnostics --> realizer.kubernetes_realizer.KubernetesRealizer.realize {
+    cli.diagnostics --> realizer.kubernetes_realizer.KubernetesRealizer._deploy_on_target {
         has_errors
     }
-    cli.plan --> realizer.kubernetes_realizer.KubernetesRealizer.realize { print_plan }
+    cli.plan --> realizer.kubernetes_realizer.KubernetesRealizer._deploy_on_target {
+        print_plan
+    }
     context.auth_ctx ++> rpc.rpc._rpc_headers { get_current_auth }
     context.errors ++> [
         gateway.microservice_gateway.MicroserviceGateway.forward_to {

@@ -24,6 +24,13 @@ impl require_deploy_tooling(dry_run: bool = False) {
         return;
     }
     require_optional("kubernetes", "deploy.k8s");
+    shim = sys.modules.get("jaclang.scale._optdeps.kubernetes");
+    if shim is not None and not shim.HAS_KUBERNETES {
+        raise RuntimeError(
+            "The Kubernetes client was installed after this process had already "
+            "loaded without it. Run the command again."
+        );
+    }
 }
 
 impl DeploymentTargetFactory.create(

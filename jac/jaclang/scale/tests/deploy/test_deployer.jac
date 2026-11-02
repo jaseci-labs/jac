@@ -1,3 +1,6 @@
+import importlib;
+import pathlib;
+import tempfile;
 import unittest.mock;
 import subprocess;
 
@@ -214,5 +217,43 @@ test "deploy all starts all services" {
         result = deployer.deploy_all();
         assert result;
         assert len(deployer._ensure_pm().processes) == 2;
+    }
+}
+
+test "scale fleet actions run against the apps in jac.toml" {
+    plugin = importlib.import_module("jaclang.scale.plugin");
+    config_mod = importlib.import_module("jaclang.project.config");
+    orchestrator = importlib.import_module(
+        "jaclang.scale.runtime.orchestrator.orchestrator"
+    );
+    with tempfile.TemporaryDirectory() as tmpdir {
+        project = pathlib.Path(tmpdir);
+        (project / "jac.toml").write_text(
+            '[project]\nname = "shop"\ndefault-app = "web"\n\n'
+            '[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n'
+            '[apps.orders]\nkind = "service"\nentry-point = "orders"\n',
+            encoding="utf-8"
+        );
+        (project / "web").mkdir();
+        (project / "web" / "main.jac").write_text("with entry {}\n", encoding="utf-8");
+        (project / "orders.jac").write_text("with entry {}\n", encoding="utf-8");
+        scale_config = unittest.mock.MagicMock();
+        scale_config.get_gateway_config.return_value = {};
+        scale_config.get_jac_config.return_value = config_mod.JacConfig.load(
+            project / "jac.toml"
+        );
+        with unittest.mock.patch.object(
+            plugin, "get_scale_config", return_value=scale_config
+        ), unittest.mock.patch.object(orchestrator, "start_gateway_only") as gateway {
+            for (action, code) in [
+                ("status", 0),
+                ("stop", 1),
+                ("gateway", 0),
+                ("no-such-action", 1)
+            ] {
+                assert plugin.scale_cmd(action) == code , action;
+            }
+            gateway.assert_called_once();
+        }
     }
 }

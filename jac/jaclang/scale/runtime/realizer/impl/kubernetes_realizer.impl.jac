@@ -115,7 +115,30 @@ impl KubernetesRealizer.realize(
     deployment_target = DeploymentTargetFactory.create(
         target, target_config, logger, dry_run=dry_run
     );
+    return self._deploy_on_target(
+        deployment_target,
+        target,
+        target_config,
+        scale_config,
+        code_folder,
+        entry_file,
+        enable_tls,
+        dry_run,
+        show_yaml
+    );
+}
 
+impl KubernetesRealizer._deploy_on_target(
+    deployment_target: DeploymentTarget,
+    target: str,
+    target_config: dict[str, any],
+    scale_config: any,
+    code_folder: str,
+    entry_file: str,
+    enable_tls: bool,
+    dry_run: bool,
+    show_yaml: bool
+) -> int {
     if isinstance(deployment_target, KubernetesTarget) {
         deployment_target.fleet = self.fleet;
         deployment_target.gateway_config = self.gateway_config;

@@ -315,7 +315,10 @@ impl scale_cmd(
         }
         return deploy_destroy(service_name, target, component);
     }
+    return _fleet_cmd(action, service_name, lines);
+}
 
+impl _fleet_cmd(action: str, service_name: str, lines: int) -> int {
     scale_config = get_scale_config();
     gateway_cfg = scale_config.get_gateway_config();
 

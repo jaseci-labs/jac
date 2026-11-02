@@ -27,4 +27,16 @@ obj KubernetesRealizer {
         dry_run: bool = False,
         show_yaml: bool = False
     ) -> int;
+
+    def _deploy_on_target(
+        deployment_target: DeploymentTarget,
+        target: str,
+        target_config: dict[str, any],
+        scale_config: any,
+        code_folder: str,
+        entry_file: str,
+        enable_tls: bool,
+        dry_run: bool,
+        show_yaml: bool
+    ) -> int;
 }
