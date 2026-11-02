@@ -6236,6 +6236,9 @@ graph import compiler {
         types.type_evaluator.TypeEvaluator._get_type_of_lhs_assignment {
             find_destructure_index_path
         },
+        types.type_evaluator.TypeEvaluator._loop_back_edge_types {
+            collect_assignment_target_keys
+        },
         types.type_evaluator.TypeEvaluator._loop_body_writes_target {
             collect_assignment_target_keys
         },

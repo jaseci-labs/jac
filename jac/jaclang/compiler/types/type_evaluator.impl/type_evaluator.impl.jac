@@ -4961,6 +4961,7 @@ impl TypeEvaluator._get_type_from_flow_node(
     );
     incoming_types: list[TypeBase] = [];
     has_unnarrowed_pred: bool = False;
+    back_edges_joined: bool = False;
     for pred in flow_node.bb_in {
         if pred is flow_node {
             has_unnarrowed_pred = True;
@@ -4975,6 +4976,16 @@ impl TypeEvaluator._get_type_from_flow_node(
             continue;
         }
         if is_loop_header and self._node_encloses(flow_node, pred) {
+            if not back_edges_joined
+                and self._loop_body_writes_target(flow_node, target) {
+                back_edges_joined = True;
+                back_types = self._loop_back_edge_types(flow_node, target);
+                if back_types is None {
+                    has_unnarrowed_pred = True;
+                } else {
+                    incoming_types.extend(back_types);
+                }
+            }
             continue;
         }
 
@@ -5320,6 +5331,63 @@ impl TypeEvaluator._if_exit_type(
         return arm_types[0];
     }
     return self._union_narrowed_types(arm_types);
+}
+
+impl TypeEvaluator._loop_back_edge_types(
+    loop_node: UniCFGNode, target: NarrowingTarget
+) -> (list[TypeBase] | None) {
+    if loop_node.get_all_sub_nodes(AssignCompr) {
+        return None;
+    }
+    for_nodes: list[InForStmt] = loop_node.get_all_sub_nodes(InForStmt);
+    if isinstance(loop_node, InForStmt) {
+        for_nodes.append(loop_node);
+    }
+    for f in for_nodes {
+        if target.key in collect_assignment_target_keys(f.target) {
+            return None;
+        }
+    }
+    declared = target.declared_type;
+    found: list[TypeBase] = [];
+    for asgn in loop_node.get_all_sub_nodes(Assignment) {
+        for t in asgn.target {
+            written = collect_assignment_target_keys(t);
+            if target.deps and (target.deps & written) {
+                return None;
+            }
+            if target.key not in written {
+                continue;
+            }
+            if asgn.aug_op is not None {
+                continue;
+            }
+            flat = (isinstance(t, Name) and t.value == target.key)
+                or (
+                    isinstance(t, AtomTrailer)
+                    and t.is_attr
+                    and self.create_key_for_reference(t) == target.key
+                );
+            if not flat or not isinstance(asgn.value, Expr) {
+                return None;
+            }
+            assigned = self.get_type_of_expression(asgn.value, expected_type=declared);
+            if isinstance(assigned, UnknownType) {
+                return None;
+            }
+            assigned = self._widen_literal_for_declaration(assigned);
+            if self.is_none_type(declared)
+                or (
+                    self.assign_type(assigned, declared)
+                    and not self.assign_type(declared, assigned)
+                ) {
+                found.append(assigned);
+            } else {
+                return None;
+            }
+        }
+    }
+    return found;
 }
 
 impl TypeEvaluator._loop_body_writes_target(
