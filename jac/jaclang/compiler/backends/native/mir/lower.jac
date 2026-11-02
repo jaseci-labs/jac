@@ -434,6 +434,15 @@ obj MirLowering {
     ) -> list[tuple[str, MirType, (uni.Expr | None)]];
 
     def object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue;
+    def construct(
+        symbol: str,
+        obj_def: MirObjectDef,
+        owner: uni.Module,
+        params: list[tuple[str, MirType, (uni.Expr | None)]],
+        values: list[MirValue],
+        nd: uni.FuncCall
+    ) -> MirValue;
+
     def object_method(
         nd: uni.FuncCall, receiver: MirValue, arch: uni.Archetype, name: str
     ) -> (MirValue | None);
@@ -532,6 +541,7 @@ obj MirLowering {
     def bound_value(
         arg: (uni.Expr | MirPacked | MirBound), ptype: MirType
     ) -> MirValue;
+
     def constant_default(value: (uni.Expr | None)) -> bool;
     def builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def list_concat(left: MirValue, right: MirValue) -> MirValue;

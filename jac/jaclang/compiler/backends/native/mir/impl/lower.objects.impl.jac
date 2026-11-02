@@ -298,11 +298,7 @@ impl MirLowering.constructor_params(
     init = self.find_method(arch, "init") or self.find_method(arch, "__init__");
     found: list[tuple[str, MirType, (uni.Expr | None)]] = [];
     if init is not None and isinstance(init.signature, uni.FuncSignature) {
-        for pv in list(init.signature.posonly_params)
-            + list(init.signature.params or []) {
-            if pv.name.value == "self" {
-                continue;
-            }
+        for pv in self.param_nodes(init.signature, True) {
             found.append((pv.name.value, self.symbol_type(pv.name.sym, pv), pv.value));
         }
         return found;
@@ -607,6 +603,30 @@ impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue 
         native_unit_prefix(owner.loc.mod_path), f"{obj_def.name}.__ctor"
     );
     params = self.constructor_params(arch);
+    init = self.find_method(arch, "init") or self.find_method(arch, "__init__");
+    if init is not None
+        and isinstance(init.signature, uni.FuncSignature)
+        and (
+            init.signature.varargs is not None
+            or init.signature.kwargs is not None
+            or init.signature.kwonlyargs
+            or self.has_spread(nd)
+        ) {
+        bound = self.bound_args(nd, init, True);
+        if len(bound) != len(params) {
+            raise MirRefused(
+                mir_refusal("call", f"{obj_def.name} with {len(bound)} arguments", nd)
+            );
+        }
+        return self.construct(
+            symbol,
+            obj_def,
+            owner,
+            params,
+            [self.bound_value(arg, param[1]) for (arg, param) in zip(bound, params)],
+            nd
+        );
+    }
     positional: list[uni.Expr] = [];
     named: dict[str, uni.Expr] = {};
     for arg in list(nd.params or []) {
@@ -638,6 +658,17 @@ impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue 
         }
         values.append(self.coerce(self.lower_expr(source), ptype, source));
     }
+    return self.construct(symbol, obj_def, owner, params, values, nd);
+}
+
+impl MirLowering.construct(
+    symbol: str,
+    obj_def: MirObjectDef,
+    owner: uni.Module,
+    params: list[tuple[str, MirType, (uni.Expr | None)]],
+    values: list[MirValue],
+    nd: uni.FuncCall
+) -> MirValue {
     if not obj_def.local {
         self.mir.externs[symbol] = MirExtern(
             symbol=symbol, ret=mir_obj(obj_def.name), params=[p[1] for p in params]
