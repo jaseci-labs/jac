@@ -214,6 +214,15 @@ obj MirFnState {
         specials: dict[str, MirValue] = {};
 }
 
+"""Call arguments that bind to a `*args` or `**kwargs` parameter; the call
+builds the list or dict that parameter receives."""
+obj MirPacked {
+    has items: list[uni.Expr],
+        site: uni.UniNode,
+        keyword: bool = False,
+        names: list[str] = [];
+}
+
 obj MirDecl {
     has ability: uni.Ability,
         symbol: str,
@@ -419,6 +428,8 @@ obj MirLowering {
     def closure_call(nd: uni.FuncCall, callee: MirValue) -> MirValue;
     def function_value(decl: MirDecl, to: MirType) -> MirValue;
     def lower_try(nd: uni.TryStmt);
+    def lower_assert(nd: uni.AssertStmt);
+    def raise_named(name: str, message_nd: (uni.UniNode | None), nd: uni.UniNode);
     def lower_raise(nd: uni.RaiseStmt);
     def exception_matches(type_id: MirValue, clause: uni.Expr) -> MirValue;
     def exception_name(nd: uni.Expr) -> str;
@@ -430,7 +441,11 @@ obj MirLowering {
     def any_to_box(value: MirValue, site: uni.UniNode) -> MirValue;
     def any_from_box(handle: MirValue) -> MirValue;
     def identity(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
-    def bound_args(nd: uni.FuncCall, ab: uni.Ability, method: bool) -> list[uni.Expr];
+    def bound_args(nd: uni.FuncCall, ab: uni.Ability, method: bool) -> list[(uni.Expr | MirPacked)];
+    def bind_by_name(
+        ab: uni.Ability, pv: uni.ParamVar, named: dict[str, uni.Expr], keyword_ok: bool, nd: uni.FuncCall
+    ) -> uni.Expr;
+    def bound_value(arg: (uni.Expr | MirPacked), ptype: MirType) -> MirValue;
     def constant_default(value: (uni.Expr | None)) -> bool;
     def builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def list_concat(left: MirValue, right: MirValue) -> MirValue;

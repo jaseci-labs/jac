@@ -174,7 +174,7 @@ impl mir_class_type(
     if name in ("NoneType", "None") {
         return mir_none();
     }
-    if name == "object" {
+    if name == "object" or (name == "Any" and isinstance(scope, uni.Archetype) and stub_archetype(scope)) {
         return mir_any();
     }
     if name == "range" {

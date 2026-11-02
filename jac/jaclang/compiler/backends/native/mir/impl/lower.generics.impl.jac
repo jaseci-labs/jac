@@ -134,7 +134,7 @@ impl MirLowering.generic_call(
     evaluator = self.prog.get_type_evaluator();
     solution: dict[str, TypeBase] = {};
     for (pv, chosen) in zip(nodes, self.bound_args(nd, ab, receiver is not None)) {
-        if pv.name.sym is not None {
+        if pv.name.sym is not None and not isinstance(chosen, MirPacked) {
             self.unify(evaluator.get_type_of_symbol(pv.name.sym), chosen.type, solution);
         }
     }
@@ -174,7 +174,7 @@ impl MirLowering.generic_call(
         raise MirRefused(mir_refusal("call", f"{label} with {len(bound)} arguments", nd));
     }
     values = [
-        self.coerce(self.lower_expr(arg), ptype, arg)
+        self.bound_value(arg, ptype)
         for (arg, ptype) in zip(bound, decl.params)
     ];
     if receiver is not None {

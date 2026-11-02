@@ -1,6 +1,6 @@
 impl MirLowering.bound_args(
     nd: uni.FuncCall, ab: uni.Ability, method: bool
-) -> list[uni.Expr] {
+) -> list[(uni.Expr | MirPacked)] {
     sig = ab.signature;
     if not isinstance(sig, uni.FuncSignature) {
         return self.call_args(nd);
@@ -23,12 +23,12 @@ impl MirLowering.bound_args(
             positional.append(arg);
         }
     }
-    if len(positional) > len(params) {
+    if len(positional) > len(params) and sig.varargs is None {
         raise MirRefused(
             mir_refusal("call", f"{self.name_of(ab)} with {len(positional)} arguments", nd)
         );
     }
-    bound: list[uni.Expr] = [];
+    bound: list[(uni.Expr | MirPacked)] = [];
     for (index, pv) in enumerate(params) {
         name = pv.name.value;
         if index < len(positional) {
@@ -38,20 +38,21 @@ impl MirLowering.bound_args(
                 );
             }
             bound.append(positional[index]);
-        } elif name in named and id(pv) in keyword_ok {
-            bound.append(named.pop(name));
-        } elif pv.value is not None and self.constant_default(pv.value) {
-            bound.append(pv.value);
         } else {
-            raise MirRefused(
-                mir_refusal(
-                    "call",
-                    f"{self.name_of(ab)} missing {name}",
-                    nd,
-                    "Native calls fill omitted arguments only from constant defaults."
-                )
-            );
+            bound.append(self.bind_by_name(ab, pv, named, id(pv) in keyword_ok, nd));
         }
+    }
+    if sig.varargs is not None {
+        bound.append(MirPacked(items=positional[len(params):], site=nd));
+    }
+    for pv in list(sig.kwonlyargs or []) {
+        bound.append(self.bind_by_name(ab, pv, named, True, nd));
+    }
+    if sig.kwargs is not None {
+        names = sorted(named);
+        bound.append(
+            MirPacked(keyword=True, items=[named.pop(key) for key in names], names=names, site=nd)
+        );
     }
     if named {
         raise MirRefused(
@@ -59,6 +60,60 @@ impl MirLowering.bound_args(
         );
     }
     return bound;
+}
+
+impl MirLowering.bind_by_name(
+    ab: uni.Ability, pv: uni.ParamVar, named: dict[str, uni.Expr], keyword_ok: bool, nd: uni.FuncCall
+) -> uni.Expr {
+    name = pv.name.value;
+    if name in named and keyword_ok {
+        return named.pop(name);
+    }
+    if pv.value is not None and self.constant_default(pv.value) {
+        return pv.value;
+    }
+    raise MirRefused(
+        mir_refusal(
+            "call",
+            f"{self.name_of(ab)} missing {name}",
+            nd,
+            "Native calls fill omitted arguments only from constant defaults."
+        )
+    );
+}
+
+impl MirLowering.bound_value(arg: (uni.Expr | MirPacked), ptype: MirType) -> MirValue {
+    if not isinstance(arg, MirPacked) {
+        return self.coerce(self.lower_expr(arg), ptype, arg);
+    }
+    b = self.builder();
+    if not arg.keyword {
+        if ptype.kind != MirKind.LIST {
+            raise MirRefused(mir_refusal("call argument", f"*args as {ptype.render()}", arg.site));
+        }
+        elem = ptype.payload();
+        made = self.spill(self.new_list(elem, max(len(arg.items), 4)));
+        kind = b.const_int(self.elem_kind(elem, arg.site), mir_int());
+        for item in arg.items {
+            self.runtime("__jac_rt_list_push", [made, self.to_bits(self.lower_expr(item), elem, item), kind]);
+        }
+        return made;
+    }
+    if ptype.kind != MirKind.DICT {
+        raise MirRefused(mir_refusal("call argument", f"**kwargs as {ptype.render()}", arg.site));
+    }
+    (key, value) = (ptype.args[0], ptype.args[1]);
+    made = self.spill(self.new_dict(key, value, ptype));
+    key_kind = b.const_int(self.elem_kind(key, arg.site), mir_int());
+    value_kind = b.const_int(self.elem_kind(value, arg.site), mir_int());
+    for (name, item) in zip(arg.names, arg.items) {
+        key_bits = self.to_bits(b.const_str(name, mir_str()), key, arg.site);
+        self.runtime(
+            "__jac_rt_dict_set",
+            [made, key_bits, self.to_bits(self.lower_expr(item), value, item), key_kind, value_kind]
+        );
+    }
+    return made;
 }
 
 impl MirLowering.constant_default(value: (uni.Expr | None)) -> bool {
@@ -78,14 +133,17 @@ impl MirLowering.constant_default(value: (uni.Expr | None)) -> bool {
 }
 
 impl MirLowering.param_nodes(sig: uni.FuncSignature, skip_self: bool) -> list[uni.ParamVar] {
-    if sig.varargs is not None or sig.kwargs is not None or sig.kwonlyargs {
-        raise MirRefused(
-            mir_refusal("function", "variadic or keyword-only parameters", sig)
-        );
-    }
-    return [
+    found = [
         pv
         for pv in list(sig.posonly_params) + list(sig.params or [])
         if not skip_self or pv.name.value != "self"
     ];
+    if sig.varargs is not None {
+        found.append(sig.varargs);
+    }
+    found.extend(list(sig.kwonlyargs or []));
+    if sig.kwargs is not None {
+        found.append(sig.kwargs);
+    }
+    return found;
 }

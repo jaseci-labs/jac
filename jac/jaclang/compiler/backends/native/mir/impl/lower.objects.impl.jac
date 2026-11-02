@@ -519,7 +519,7 @@ impl MirLowering.object_method(
         raise MirRefused(mir_refusal("call", f"{name} with {len(args)} arguments", nd));
     }
     values = [receiver] + [
-        self.coerce(self.lower_expr(arg), ptype, arg) for (arg, ptype) in zip(args, decl.params)
+        self.bound_value(arg, ptype) for (arg, ptype) in zip(args, decl.params)
     ];
     obj_def = self.object_def(arch);
     if obj_def.vtable_symbol and decl.symbol in obj_def.vtable_methods and name not in NON_DISPATCHED_METHODS {

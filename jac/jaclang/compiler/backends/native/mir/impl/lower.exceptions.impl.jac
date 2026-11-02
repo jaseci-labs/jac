@@ -140,15 +140,31 @@ impl MirLowering.lower_raise(nd: uni.RaiseStmt) {
     }
     name = self.exception_name(nd.cause);
     args = self.call_args(nd.cause) if isinstance(nd.cause, uni.FuncCall) else [];
-    if not args {
+    self.raise_named(name, args[0] if args else None, nd);
+}
+
+impl MirLowering.lower_assert(nd: uni.AssertStmt) {
+    b = self.builder();
+    fn = self.st().fn;
+    failed = fn.new_block("assert.fail");
+    passed = fn.new_block("assert.ok");
+    b.cond_branch(self.truthy(self.lower_expr(nd.condition), nd.condition), passed, failed);
+    b.position(failed);
+    self.raise_named("AssertionError", nd.error_msg, nd);
+    b.position(passed);
+}
+
+impl MirLowering.raise_named(name: str, message_nd: (uni.UniNode | None), nd: uni.UniNode) {
+    b = self.builder();
+    if message_nd is None {
         b.raise_builtin(name, "");
         return;
     }
-    if len(args) == 1 and isinstance(args[0], uni.String) and isinstance(args[0].lit_value, str) {
-        b.raise_builtin(name, args[0].lit_value);
+    if isinstance(message_nd, uni.String) and isinstance(message_nd.lit_value, str) {
+        b.raise_builtin(name, message_nd.lit_value);
         return;
     }
-    message = self.lower_expr(args[0]);
+    message = self.lower_expr(message_nd);
     if message.type.kind == MirKind.C_PTR {
         self.runtime(
             "__jac_rt_raise_builtin",
@@ -157,7 +173,7 @@ impl MirLowering.lower_raise(nd: uni.RaiseStmt) {
         b.unreachable();
         return;
     }
-    text = self.to_str(message, args[0]);
+    text = self.to_str(message, message_nd);
     held = self.runtime(
         "__jac_rt_str_ref", [b.str_part(text, "root"), b.str_part(text, "data"), b.str_part(text, "len")]
     );

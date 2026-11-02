@@ -325,6 +325,8 @@ impl MirLowering.lower_stmt(nd: uni.UniNode) {
         self.store_name(nd.name_ref, made);
     } elif isinstance(nd, uni.RaiseStmt) {
         self.lower_raise(nd);
+    } elif isinstance(nd, uni.AssertStmt) {
+        self.lower_assert(nd);
     } elif isinstance(nd, (uni.VisitStmt, uni.ReportStmt, uni.DisengageStmt)) {
         self.lower_osp_stmt(nd);
     } else {
@@ -1046,7 +1048,7 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
             );
         }
         for (arg_nd, ptype) in zip(params, decl.params) {
-            args.append(self.coerce(self.lower_expr(arg_nd), ptype, arg_nd));
+            args.append(self.bound_value(arg_nd, ptype));
         }
         result = self.builder().call(decl.symbol, args, decl.ret);
         if result is None {
@@ -1906,7 +1908,7 @@ impl MirLowering.import_call(
         );
     }
     values = [
-        self.coerce(self.lower_expr(arg), ptype, arg)
+        self.bound_value(arg, ptype)
         for (arg, ptype) in zip(args, params)
     ];
     result = self.builder().call(symbol, values, ret);

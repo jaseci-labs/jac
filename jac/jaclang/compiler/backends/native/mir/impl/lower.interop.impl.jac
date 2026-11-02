@@ -36,7 +36,7 @@ impl MirLowering.python_call(nd: uni.FuncCall) -> (MirValue | None) {
         raise MirRefused(mir_refusal("call", f"{name} with {len(bound)} arguments", nd));
     }
     args = [
-        self.coerce(self.lower_expr(arg), ptype, arg) for (arg, ptype) in zip(bound, params)
+        self.bound_value(arg, ptype) for (arg, ptype) in zip(bound, params)
     ];
     return self.bridge_call(binding.symbol, binding.name, args, ret, nd);
 }
