@@ -87,10 +87,15 @@ impl MirLowering.callees_of(fn: MirFunction) -> list[str] {
         for instr in blk.instrs {
             if instr.op in (MirOp.CALL, MirOp.FN_ADDR) and instr.callee {
                 found.append(instr.callee);
-            } elif instr.op == MirOp.VTABLE_ADDR {
-                obj_def = self.mir.objects.get(instr.str_value);
-                if obj_def is not None {
-                    found.extend(obj_def.vtable_methods);
+            } elif instr.op == MirOp.CALL_FNPTR and instr.str_value {
+                slot = instr.str_value.rsplit(".", 1)[-1];
+                found.append(instr.str_value);
+                for obj_def in self.mir.objects.values() {
+                    for method in obj_def.vtable_methods {
+                        if method.rsplit(".", 1)[-1] == slot {
+                            found.append(method);
+                        }
+                    }
                 }
             }
         }
@@ -108,15 +113,6 @@ impl MirLowering.settle {
         first = reasons[0];
         self.mir.demoted[symbol] = f"{first.kind} '{first.name}'";
         self.bridge_symbol(symbol);
-    }
-    for obj_def in self.mir.objects.values() {
-        if any(method in self.mir.demoted for method in obj_def.vtable_methods) {
-            for method in obj_def.vtable_methods {
-                if method not in self.mir.demoted {
-                    self.mir.demoted[method] = "an override in its vtable is not native";
-                }
-            }
-        }
     }
     changed = True;
     while changed {

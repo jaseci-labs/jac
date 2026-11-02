@@ -866,7 +866,9 @@ impl MirLowering.invoke_method(
         result_type = mir_none()
             if decl.ret.kind in (MirKind.NONE, MirKind.VOID)
             else decl.ret;
-        result = self.emit_value(MirOp.CALL_FNPTR, result_type, [callee] + values);
+        result = self.emit_value(
+            MirOp.CALL_FNPTR, result_type, [callee] + values, str_value=decl.symbol
+        );
         result.owned = mir_holds_ref(result_type);
         return result;
     }
