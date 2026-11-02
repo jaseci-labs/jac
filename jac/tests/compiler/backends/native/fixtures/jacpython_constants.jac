@@ -24,6 +24,10 @@ import from jaclang.runtime.python.compiler_integer {
     PyBigInt
 }
 
+def:pub echo_object_probe(obj_: ptr[PyObject]) -> ptr[PyObject] {
+    return obj_;
+}
+
 def:pub none_borrowed_probe -> ptr[PyObject] {
     return Py_None;
 }

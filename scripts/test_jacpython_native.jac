@@ -43,6 +43,13 @@ def verify(library_path: Path) {
     is_true = ctypes.pythonapi.PyObject_IsTrue;
     is_true.argtypes = [ctypes.c_void_p];
     is_true.restype = ctypes.c_int;
+    echo_object = library.echo_object_probe;
+    echo_object.argtypes = [ctypes.c_void_p];
+    echo_object.restype = ctypes.c_void_p;
+    none_address = id(None);
+    raw_echo = echo_object(none_address);
+    assert raw_echo == none_address;
+    assert is_true(raw_echo) == 0;
     borrowed_none = library.none_borrowed_probe;
     borrowed_none.argtypes = [];
     borrowed_none.restype = ctypes.c_void_p;
