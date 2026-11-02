@@ -64,7 +64,9 @@ jobs:
       - name: Run the JacPython compiler tests
         env:
           JAC_TEST_JOBS: "0"
-        run: jac test jac/tests/compiler/test_jacpython_block_tail_compare.jac
+        run: |
+          jac test jac/tests/compiler/test_jacpython_block_tail_compare.jac
+          jac test jac/tests/compiler/test_jacpython_local_indices.jac
 
       - name: Check native standard-library replacements against CPython
         run: |

@@ -6,6 +6,7 @@ library and builds objects through the runtime's retained object API.
 """
 import argparse;
 import ctypes;
+import faulthandler;
 import math;
 import from pathlib { Path }
 import sys;
@@ -30,6 +31,8 @@ def verify(library_path: Path) {
             "The JacPython output oracle runs inside the JacPython runtime (bridge 4)"
         );
     }
+    # Keep the active Python frame in CI logs if native verification crashes.
+    faulthandler.enable();
     library = ctypes.PyDLL(str(library_path), mode=ctypes.RTLD_GLOBAL);
     library.diagnostic_probe.argtypes = [];
     library.diagnostic_probe.restype = ctypes.c_int64;
@@ -37,6 +40,30 @@ def verify(library_path: Path) {
     library.integer_probe.argtypes = [];
     library.integer_probe.restype = ctypes.c_int64;
     assert library.integer_probe() == 0;
+    is_true = ctypes.pythonapi.PyObject_IsTrue;
+    is_true.argtypes = [ctypes.c_void_p];
+    is_true.restype = ctypes.c_int;
+    echo_object = library.echo_object_probe;
+    echo_object.argtypes = [ctypes.c_void_p];
+    echo_object.restype = ctypes.c_void_p;
+    none_address = id(None);
+    raw_echo = echo_object(none_address);
+    assert raw_echo == none_address;
+    assert is_true(raw_echo) == 0;
+    none_constant = library.none_constant_probe;
+    none_constant.argtypes = [];
+    none_constant.restype = ctypes.c_void_p;
+    raw_none = none_constant();
+    assert raw_none == none_address;
+    assert is_true(raw_none) == 0;
+    new_ref_object = library.new_ref_object_probe;
+    new_ref_object.argtypes = [ctypes.c_void_p];
+    new_ref_object.restype = ctypes.c_void_p;
+    raw_new_ref = new_ref_object(none_address);
+    assert raw_new_ref == none_address;
+    assert is_true(raw_new_ref) == 0;
+    assert take_object(library, "none_constant_probe") is None;
+    assert take_object(library, "none_probe") is None;
     constants = take_object(library, "probe_constants");
     assert constants[:6] == (None, True, 0, -1, -(1 << 63), (1 << 63) - 1);
     assert math.copysign(1, constants[6]) == -1;
@@ -55,6 +82,7 @@ def verify(library_path: Path) {
     assert constants[20] == 1.2345678901234569;
     assert constants[20] != constants[19];
     assert math.copysign(1, constants[21]) == 1;
+    assert constants[22] is Ellipsis;
     code = take_object(library, "code_object");
     assert code.co_filename == "probe.py";
     assert code.co_name == "<module>";
@@ -97,6 +125,17 @@ def staged_sources(sources: Path, roots: list[str]) -> list[str] {
         for sibling in sorted(module.parent.glob(f"{stem}.*.jac")) {
             pending.append(str(sibling.relative_to(sources)));
         }
+        impl_root = module.parent / "impl";
+        impl_file = impl_root / f"{stem}.impl.jac";
+        if impl_file.is_file() {
+            pending.append(str(impl_file.relative_to(sources)));
+        }
+        impl_parts = impl_root / f"{stem}.impl";
+        if impl_parts.is_dir() {
+            for part in sorted(impl_parts.glob("*.jac")) {
+                pending.append(str(part.relative_to(sources)));
+            }
+        }
         impl_dir = module.parent / f"{stem}.impl";
         if impl_dir.is_dir() {
             for part in sorted(impl_dir.glob("*.jac")) {
@@ -135,6 +174,9 @@ def main -> int {
                 "runtime/python/opcode_meta.jac",
                 "runtime/python/cpython_api.jac",
                 "runtime/python/capi.jac",
+                # cpython_api's platform-selected C struct declarations.
+                "runtime/python/modules/stat_records.jac",
+                "runtime/python/modules/time_records.jac",
                 "runtime/python/constant_keys.jac",
                 "runtime/python/constant_output.jac",
                 "compiler/frontend/python/syntax_error.jac"
@@ -146,6 +188,11 @@ def main -> int {
                 (sources / relative).read_text().replace("jaclang.", "native_subject.")
             );
         }
+        # Keep the probe isolated, but use the runtime's production import
+        # wiring so its staged units resolve types like the real package.
+        (stage / "native_subject" / "archwire.jac").write_text(
+            (sources / "archwire.jac").read_text()
+        );
         fixture = repo
             / "jac/tests/compiler/backends/native/fixtures/jacpython_constants.jac";
         entry_name = stage / "probe.jac";
