@@ -18,9 +18,7 @@ obj PlainBase(ABC) {
         return n + 1;
     }
 
-    def note_origin {
-        ::py::
-        self.seed = self.seed + 0
-        ::py::
+    async def note_origin {
+        self.seed = self.seed + 0;
     }
 }

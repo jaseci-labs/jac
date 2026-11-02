@@ -1270,7 +1270,7 @@ impl JacAPIServer._register_scheduled_tasks -> None {
     }
 
     _self = self;
-    def _make_target(name: str, is_walker: bool) -> Callable[[], None] {
+    def _make_target(name: str, is_walker: bool) -> Callable[[], any] {
         async def _run -> any {
             intro = _self.introspector;
             registry: dict[str, any] = (
@@ -1290,7 +1290,7 @@ impl JacAPIServer._register_scheduled_tasks -> None {
             if name not in registry {
                 return {'error': f"'{name}' is no longer registered"};
             }
-            with _self.request_scope() {
+            async with _self.request_scope() {
                 if is_walker {
                     return await _self.execution_manager.spawn_walker(
                         registry[name], {}, SYSTEM_USER
@@ -1301,15 +1301,8 @@ impl JacAPIServer._register_scheduled_tasks -> None {
                 );
             }
         }
-        def target {
-            outcome = asyncio.run(_run());
-            if (
-                isinstance(outcome, dict)
-                and 'error' in outcome
-                and outcome.get('error_code') != 'execution_error'
-            ) {
-                logger.error(f"scheduled {name} failed: {outcome.get('error')}");
-            }
+        def target -> any {
+            return asyncio.run(_run());
         }
         return target;
     }
@@ -1320,9 +1313,7 @@ impl JacAPIServer._register_scheduled_tasks -> None {
         }
         self.scheduler.register(name, _make_target(name, is_walker), spec, is_walker);
     }
-    def _make_member_target(
-        label: str, member: any, is_walker: bool
-    ) -> Callable[[], None] {
+    def _make_member_target(member: any, is_walker: bool) -> Callable[[], any] {
         async def _run_member -> any {
             with _self.request_scope() {
                 if is_walker {
@@ -1335,15 +1326,8 @@ impl JacAPIServer._register_scheduled_tasks -> None {
                 );
             }
         }
-        def member_target {
-            outcome = asyncio.run(_run_member());
-            if (
-                isinstance(outcome, dict)
-                and 'error' in outcome
-                and outcome.get('error_code') != 'execution_error'
-            ) {
-                logger.error(f"scheduled {label} failed: {outcome.get('error')}");
-            }
+        def member_target -> any {
+            return asyncio.run(_run_member());
         }
         return member_target;
     }
@@ -1353,7 +1337,7 @@ impl JacAPIServer._register_scheduled_tasks -> None {
         }
         label = f"{app}.{name}";
         self.scheduler.register(
-            label, _make_member_target(label, member, is_walker), spec, is_walker
+            label, _make_member_target(member, is_walker), spec, is_walker
         );
     }
     if self.scheduler.has_pending() {
@@ -1457,6 +1441,9 @@ impl JacAPIServer._prepare_to_serve(dev: bool, no_client: bool) -> ServeSettings
     self._ensure_client_bundle();
 
     self.drain = DrainState(timeout=settings.timeouts.drain);
+    if self.server is not None {
+        self.scheduler = Scheduler();
+    }
     self.scheduler.drain = self.drain;
     self.build_app();
     self._register_scheduled_tasks();
@@ -1481,11 +1468,12 @@ impl JacAPIServer.serve_background(
         app=self.require_app(), settings=settings, drain=self.drain
     );
     self.server = serving;
-    self.scheduler.start_if_pending();
+    scheduler = self.scheduler;
+    scheduler.start_if_pending();
     bridge_owner = object();
     def _stop_services {
         try {
-            self.scheduler.stop(timeout=serving.drain.remaining());
+            scheduler.stop(timeout=serving.drain.remaining());
         } finally {
             stop_worker(owner=bridge_owner);
         }
@@ -1633,11 +1621,11 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
     functions = server.introspector.get_functions();
     walkers = server.introspector.get_walkers();
     client_exports = server.introspector._client_manifest.get('exports', []);
-    """Print section header.""";
+
     def section(title: str, auth: str = '') {
         console.print(f"{title}{f' ({auth})' if auth else ''}{('-' * 80)}");
     }
-    """Print endpoint with description.""";
+
     def endpoint(method: str, path: str, desc: str, details: str = '') {
         console.print(f"{method:6} {path}");
         console.print(f"       {desc}");
@@ -1645,7 +1633,7 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
             console.print(f"       {details}");
         }
     }
-    """Format parameter info.""";
+
     def format_param(name: str, info: dict[(str, any)]) -> str {
         req = 'required' if info['required'] else 'optional';
         `default = f", default: {info['default']}" if info.get('default') else '';

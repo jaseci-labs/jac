@@ -28,7 +28,10 @@ import from engine.src.runtime.mem {
     read_i32,
     write_i32,
     read_u16,
-    write_byte
+    write_byte,
+    str_bfind,
+    str_bslice_from,
+    str_nbytes
 }
 import from engine.src.pm.bytes {
     ByteBuf,
@@ -60,7 +63,7 @@ def:pub proc_env_get(env: list[str], key: str) -> str {
     prefix: str = key + "=";
     for e in env {
         if e.startswith(prefix) {
-            return e[len(prefix):];
+            return str_bslice_from(e, str_nbytes(prefix));
         }
     }
     return "";
@@ -257,7 +260,7 @@ def:pub proc_run(
 
 """First executable named `name` on PATH ("" when none)."""
 def:pub proc_which(name: str, path_env: str) -> str {
-    if name.find("/") >= 0 {
+    if str_bfind(name, "/") >= 0 {
         return name;
     }
     for dir in path_env.split(":") {

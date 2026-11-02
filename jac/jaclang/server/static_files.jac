@@ -36,6 +36,10 @@ def static_roots(
 
 def _within_assets(rel: str) -> str;
 
+def _climbs(rel: str) -> bool;
+
+def _contained_file(within: Path, candidate: Path) -> bool;
+
 def find_static_candidate(
     base_path: str, relative_path: str, client_dist: str = ''
 ) -> (Path | None);

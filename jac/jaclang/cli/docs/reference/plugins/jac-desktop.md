@@ -102,6 +102,106 @@ resizable = true
   function call goes there, and the host serves only the bundle and the
   desktop broker. The desktop app needs no server-side code of its own.
 
+### Letting the user choose the backend
+
+To ship one app that can run either locally or against a server, list the
+backends under `backends` instead of setting `backend`; the user picks one at
+run time:
+
+```toml
+[desktop]
+name = "my-app"
+backends = { local = "embedded", web = "https://my-app.example" }
+default_backend = "ask"   # or one of the names: the backend a first launch uses
+```
+
+- Each key names a choice and each value is `"embedded"` or a server URL. Give
+  at least two, name `"embedded"` at most once (the app has one local store),
+  and use letters, digits, `-` and `_` for names (`ask` is reserved). Set
+  either `backend` or `backends`, not both.
+- The build ships every backend it lists: it seals the app image and vendors
+  Postgres when one is `"embedded"`, and bakes no API base into the bundle.
+- At launch the host reads the user's saved choice from the app's data
+  directory (`.jac/desktop/backend.json`), falling back to `default_backend`.
+  Only the chosen backend runs: an embedded pick boots the in-process server
+  and its Postgres, a remote pick boots neither. With `"ask"` and nothing
+  saved, the host serves just the bundle and the broker, so the app's own UI
+  shows the choice.
+- The page learns the choice before the bundle runs: the build adds
+  `<script src="/__jac/backend.js">` to the top of `<head>`, and the broker
+  answers it with `window.__JAC_BACKEND__` and, for a remote pick, the API base.
+- Sessions are per backend. Before the bundle runs, `/__jac/backend.js` puts
+  the active backend's token in `localStorage["jac_token"]` and keeps each other
+  backend's under `jac_token@<name>`; the broker keeps one session file per
+  backend. A token from one backend is never sent to another, and code that
+  reads `jac_token` itself keeps working.
+- Switching saves the choice and relaunches the app into it.
+
+The UI reads and changes the choice through `backend` from `@jac/desktop`:
+
+```jac
+import from "@jac/desktop" { backend }
+
+def:pub BackendPicker -> JsxElement {
+    if backend.current() is not None {
+        return <></>;
+    }
+    return <div>
+        {[
+            <button key={b["name"]} onClick={lambda { backend.use(b["name"]); }}>
+                {b["name"]}
+            </button>
+            for b in backend.choices()
+        ]}
+    </div>;
+}
+```
+
+`backend.choices()` lists `{"name", "kind", "url"}` for every backend (empty in
+a single-backend app), `backend.current()` is the running one or `None` before
+a choice, and `await backend.use(name)` saves a choice and relaunches (it
+returns `False` when `name` is already running). A remote backend must accept
+requests from the app's loopback origin, as with a single remote `backend`.
+
+### Local profiles instead of sign-in
+
+An app that runs on its embedded server can drop sign-in altogether and let the
+user keep named profiles instead, like save slots:
+
+```toml
+[desktop]
+profiles = true
+```
+
+- Each profile is its own user, and so its own root and graph, created by the
+  host with no password. The host keeps the list in the app's data directory
+  (`.jac/desktop/profiles.json`). The page never sees the user behind a profile.
+- Before the bundle runs, `/__jac/backend.js` signs the page in as the active
+  profile: it sets `window.__JAC_PROFILES__` and puts a fresh session in
+  `localStorage["jac_token"]` (none when no profile is active). The token comes
+  from a synchronous same-origin request, never from the script body, so a
+  foreign page that loads the script gets nothing. Protected endpoints and
+  `jacIsLoggedIn()` work as after a sign-in.
+- `profiles` needs an embedded backend. With `backends`, it applies while an
+  embedded backend runs, and a remote one keeps its own sign-in.
+
+The UI manages them through `profiles` from `@jac/desktop`:
+
+```jac
+import from "@jac/desktop" { profiles }
+
+async def start(name: str) {
+    if profiles.current() is None {
+        await profiles.create(name);    # creates it, picks it, and reloads signed in
+    }
+}
+```
+
+`profiles.choices()` gives `{"id", "name", "created"}` for each, `profiles.current()`
+the active one or `None`, and `profiles.enabled()` whether this backend uses
+profiles. `await profiles.use(id)` switches to another and `await profiles.leave()`
+returns to no profile; each reloads the page.
+
 `engine` defaults to `"native"`. Set it to `"cef"` when the project should use
 Chromium Embedded Framework. Then build or launch the app as usual:
 

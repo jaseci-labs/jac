@@ -120,6 +120,17 @@ obj PluginHost {
         );
     }
 
+    def close_window -> None {
+        if self._cef {
+            self.eval_js("window.close();");
+            return;
+        }
+        if self._wv_lib is None or self._wv_handle == 0 {
+            return;
+        }
+        self._wv_lib.webview_terminate(ctypes.c_void_p(self._wv_handle));
+    }
+
     def _parse_invoke(req_json: str) -> dict[str, any] {
         wire = json.loads(req_json);
         if isinstance(wire, list) and len(wire) >= 2 {

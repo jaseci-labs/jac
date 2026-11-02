@@ -16,6 +16,8 @@ import sys;
 import sysconfig;
 import tempfile;
 import from pathlib { Path }
+import from jaclang.toolchains.desktop { stage_module }
+import from tests.support { unit_source }
 
 """Locate the shipped CEF binding (under jaclang/client/)."""
 def _cef_dir -> Path {
@@ -41,7 +43,7 @@ def _compile_cef_host(host_src: str) -> tuple[any, ...] {
     jac = shutil.which("jac") or "jac";
     tmp = tempfile.mkdtemp();
     try {
-        shutil.copy2(str(_cef_dir() / "cef.jac"), os.path.join(tmp, "cef.jac"));
+        stage_module(_cef_dir() / "cef.jac", Path(tmp));
         with open(os.path.join(tmp, "host.jac"), "w") as f {
             f.write(host_src);
         }
@@ -164,8 +166,8 @@ with `()`. Guards against re-introducing the bare-name no-op that left the
 cef-subprocess entry and `g_exe_dir_buf` initialization dead."""
 test "cef native lifecycle functions are invoked with parentheses" {
     cef = _cef_dir();
-    sub = (cef / "cef_subprocess.jac").read_text();
-    disp = (cef / "cef_dispatch.jac").read_text();
+    sub = unit_source(cef / "cef_subprocess.jac");
+    disp = unit_source(cef / "cef_dispatch.jac");
     # Required paren-form invocations.
     for needle in [
         "_subprocess_main()",
@@ -201,7 +203,7 @@ Previously the env var was a silent no-op -- the GPU process still spawned and
 crashed on hosts with no usable GL. Pins the wiring so it cannot regress."""
 test "JAC_CEF_DISABLE_GPU wires through to --disable-gpu in cef_dispatch" {
     cef = _cef_dir();
-    disp = (cef / "cef_dispatch.jac").read_text();
+    disp = unit_source(cef / "cef_dispatch.jac");
     # The env var must be read inside the cmdline handler ...
     assert 'cef_dispatch_getenv_set("JAC_CEF_DISABLE_GPU")' in disp , (
         "cef_dispatch.jac must read JAC_CEF_DISABLE_GPU in _on_before_cmdline"
@@ -241,7 +243,7 @@ test "cef host source boots the runtime host in cef mode with its app image" {
     assert "_ctx.port" in src;
     # host_boot owns the cef wiring: it binds the plugin host to CEF and serves
     # the app image on the same loopback server the webview host uses.
-    host_boot_src = (_cef_dir().parent / "host_boot.jac").read_text();
+    host_boot_src = unit_source(_cef_dir().parent / "host_boot.jac");
     assert "host.setup_cef(" in host_boot_src;
     assert "prepare_inprocess_runtime(" in host_boot_src;
     assert "transport_kind=\"listener\"" in host_boot_src;

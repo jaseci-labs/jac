@@ -6,10 +6,11 @@ def _class_decl(arch: Archetype) -> str;
 
 def _global_decl(assign: any, wanted: any) -> str;
 
-impl dts_for_module(mod: Module) -> str {
+impl dts_for_module(mod: Module, linked: (list[str] | None) = None) -> str {
     manifest = mod.gen.client_manifest if (mod and mod.gen) else None;
-    exports: set[str] = set(manifest.exports) if manifest else set();
-    globals_set: set[str] = set(manifest.globals) if manifest else set();
+    exports: set[str] = set(manifest.exports if manifest else []) | set(linked or []);
+    globals_set: set[str] = set(manifest.globals if manifest else [])
+        | set(linked or []);
     if not exports and not globals_set {
         return "";
     }

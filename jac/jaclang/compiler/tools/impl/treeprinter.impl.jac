@@ -48,7 +48,7 @@ impl printgraph_ast_tree(
         starting_call = True;
         dot_lines = [];
     }
-    """Generate number for each nodes.""";
+
     def gen_node_id(nd: uni.UniNode) -> int {
         if (id(nd) not in id_bag) {
             id_bag[id(nd)] = id_state["used"];
@@ -68,7 +68,6 @@ impl printgraph_ast_tree(
         }
         info1: list[tuple[(str, str, str)]] = [];
         if isinstance(nd, uni.Token) {
-            ' "Only tokens and some declared types are box(others are oval )';
             shape = 'shape="box"';
             info1.append(('name', '=', nd.name));
             info1.append(('value', '=', html.escape(nd.value)));

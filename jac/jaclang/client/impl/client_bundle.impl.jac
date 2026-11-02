@@ -106,8 +106,17 @@ impl ClientBundleBuilder._compile_bundle(
     );
 }
 
-impl ClientBundleBuilder._compile_to_js(source_path: Path) -> ClientArtifact {
+impl ClientBundleBuilder._compile_to_js(
+    source_path: Path, source_root: Path | None = None
+) -> ClientArtifact {
     program = client_program(self.program);
+    if source_root is not None {
+        import copy;
+        import from jaclang.compiler.driver.compilation_context { context_program }
+        options = copy.copy(program.options);
+        options.client_source_root = str(source_root.resolve());
+        program = context_program(program, options);
+    }
     compiler = program._get_compiler();
     diagnostic_program = compiler.product_program(str(source_path), program);
     prev_error_count = len(diagnostic_program.errors_had);
@@ -116,6 +125,12 @@ impl ClientBundleBuilder._compile_to_js(source_path: Path) -> ClientArtifact {
         errors = diagnostic_program.errors_had[prev_error_count:]
             or _errors_reaching(diagnostic_program, str(source_path));
         formatted = '\n'.join(str(err) for err in errors);
+        if not formatted {
+            formatted = (
+                " it lowers to no client code because it declares nothing that runs on "
+                "or is exposed to the client."
+            );
+        }
         raise ClientBundleError(
             f"Failed to compile '{source_path}' for client bundle:{formatted}"
         );
@@ -155,4 +170,16 @@ impl emitted_tree_digest(tree_root: Path) -> str {
 impl ClientBundleBuilder._signature(paths: Iterable[Path]) -> str {
     parts = [f"{path}:{ct_dep_digest(str(path), with_annexes=True)}" for path in paths];
     return hashlib.sha256('|'.join(parts).encode('utf-8')).hexdigest();
+}
+
+impl client_program(program: JacProgram | None) -> JacProgram {
+    if program is not None {
+        return program;
+    }
+
+    current = JacRuntime.program;
+    if current is None {
+        raise ClientBundleError('No active compilation program for client products');
+    }
+    return current;
 }

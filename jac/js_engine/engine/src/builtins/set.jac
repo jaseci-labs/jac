@@ -43,12 +43,7 @@ import from engine.src.runtime.jsobject {
     js_object_brand
 }
 import from engine.src.runtime.jsobj_type { JSProperty, BRAND_SET, BRAND_WEAKSET }
-import from engine.src.runtime.jsstring {
-    str_intern,
-    str_from_id,
-    str_substr,
-    HEAP_STRING_BASE
-}
+import from engine.src.runtime.jsstring { str_intern }
 import from engine.src.runtime.encoding { SYMBOL_KEY_BASE }
 import from engine.src.runtime.jssymbol { SYMBOL_ITERATOR, SYMBOL_TO_STRING_TAG }
 import from engine.src.runtime.wk_keys { WK_NEXT }
@@ -60,6 +55,7 @@ import from engine.src.builtins.array {
 }
 import from engine.src.builtins.map {
     _same_value_zero,
+    js_svz_key,
     _can_be_held_weakly,
     MAP_SET_ITER_KIND_KEY,
     MAP_SET_ITER_KIND_VALUE,
@@ -130,60 +126,14 @@ def _msi_set_slot_key -> int {
     return _MSI_SET_KEY;
 }
 
-def _set_key_id(key: JSValue) -> int {
-    # Canonicalize string keys by content — identical strings can live under
-    # multiple table ids (Buffer.toString/decoders mint fresh cells) and Set
-    # membership is SameValueZero; see _map_key_id in map.jac for the full
-    # rationale (rollup exportDescriptions bug).
-    if jsv_is_string_cell(key) {
-        sk_sid: int = jsv_to_table_id(key);
-        if sk_sid >= HEAP_STRING_BASE {
-            # Copy-before-intern: see _map_key_id in map.jac (views must not
-            # enter the intern table — suffix-slice corruption class).
-            sk_hs: str = str_from_id(sk_sid);
-            return str_intern(str_substr(sk_hs, 0, len(sk_hs)));
-        }
-        return sk_sid;
-    }
-    # An integral float64 in int32 range (including -0) hashes like that int32:
-    # same SameValueZero key — see _map_key_id in map.jac.
-    if jsv_is_double(key) {
-        skd: float = jsv_to_double(key);
-        if skd == skd and skd >= -2147483648.0 and skd <= 2147483647.0 {
-            skd_i: int = int(skd);
-            if float(skd_i) == skd {
-                return jsv_to_table_id(js_int(skd_i));
-            }
-        }
-    }
-    return jsv_to_table_id(key);
-}
-
 def _set_find(ss: JSSetStorage, key: JSValue) -> int {
-    if jsv_is_double(key) {
-        kd: float = jsv_to_double(key);
-        if kd != kd {
-            ni: int = 0;
-            nn: int = len(ss.ekeys);
-            while ni < nn {
-                nk: JSValue = ss.ekeys[ni];
-                if not jsv_is_hole(nk) and _same_value_zero(nk, key) {
-                    return ni;
-                }
-                ni = ni + 1;
-            }
-            return -1;
-        }
-    }
     if len(ss.key_index) == 0 {
         return -1;
     }
-    idx: int = ss.key_index.get(_set_key_id(key), -1);
-    if idx >= 0 and idx < len(ss.ekeys) {
-        ik: JSValue = ss.ekeys[idx];
-        if not jsv_is_hole(ik) and _same_value_zero(ik, key) {
-            return idx;
-        }
+    # (js_svz_key is exact; see _map_find)
+    idx: int = ss.key_index.get(js_svz_key(key), -1);
+    if idx >= 0 and idx < len(ss.ekeys) and not jsv_is_hole(ss.ekeys[idx]) {
+        return idx;
     }
     return -1;
 }
@@ -325,7 +275,7 @@ def:pub js_set_add(s: JSValue, val: JSValue) -> JSValue {
     if ss.head < 0 {
         ss.head = ni;
     }
-    ss.key_index[_set_key_id(val)] = ni;
+    ss.key_index[js_svz_key(val)] = ni;
     ss.live_count = ss.live_count + 1;
     return s;
 }
@@ -345,7 +295,7 @@ def:pub js_set_delete(s: JSValue, val: JSValue) -> JSValue {
         return js_false();
     }
     ss.ekeys[fi] = jsv_hole();
-    kid: int = _set_key_id(val);
+    kid: int = js_svz_key(val);
     if ss.key_index.get(kid, -1) == fi {
         del ss.key_index[kid];
     }

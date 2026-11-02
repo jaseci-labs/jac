@@ -155,3 +155,7 @@ impl DocsSidebar(
             }}
         </aside>;
 }
+
+impl _title_matches(title: str, q: str) -> bool {
+    return q == "" or q.lower() in title.lower();
+}

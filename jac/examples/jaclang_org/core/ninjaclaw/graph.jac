@@ -68,7 +68,8 @@ node ClawTutorial(ClawNode) {
         job_id: str = "",
         created_at: str = "",
         pr_state: str = "",
-        pr_url: str = "";
+        pr_url: str = "",
+        checked_version: str = "";
 }
 
 node ClawGap(ClawNode) {
@@ -91,8 +92,7 @@ edge Answered(ClawEdge): ClawTutorial --> ClawJob {}
 
 glob DAILY_JOBS: int = int(os.environ.get("NINJACLAW_DAILY_JOBS", "200") or 200),
      STALE_WORKING_S: float = 900.0,
-     JOB_LEASE_S: float = 120.0,
-     CHORE_LEASE_S: float = 300.0,
+     CHORE_LEASE_S: float = 7200.0,
      MAX_ATTEMPTS: int = 2,
      RECENT_LIMIT: int = 30,
      PR_POLL_S: float = 3600.0,
@@ -146,9 +146,14 @@ def forget_jobs(job_ids: list[str]) -> int;
 
 def prune_jobs(keep: int) -> int;
 
-def sweep_inputs -> list[tuple[str, str, str, str]];
+def sweep_inputs -> list[tuple[str, str, str, str, str]];
 
-def apply_sweep(results: dict[str, list[BlockView]], version: str, error: str);
+def apply_sweep(
+    results: dict[str, list[BlockView]],
+    version: str,
+    error: str,
+    complete: bool = False
+);
 
 def promote_candidates -> list[PromoteCandidate];
 

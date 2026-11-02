@@ -379,6 +379,61 @@ test "serve_background binds loopback on an ephemeral port and serves a client_d
 }
 
 
+test "API background retries run each static task once and isolate earlier stop handles" {
+    tmp = _workspace();
+    Jac.set_base_path(tmp);
+    Jac.set_context(Jac.create_j_context(user_root=None));
+    stop: any = None;
+    restarted_stop: any = None;
+    try {
+        set_config(None);
+        base = os.path.join(tmp, "web");
+        app = Path(base) / "main.jac";
+        app.write_text(
+            app.read_text()
+                + "\nglob TICKS: list[int] = [];\n"
+                + "@schedule(date=\"2099-01-01T00:00:00+00:00\", trigger=ScheduleTrigger.STATIC)\n"
+                + "def:protect retry_tick { TICKS.append(1); }\n"
+        );
+        Jac.set_full_target_path(str(app));
+        sv_client.set_consumer_app("web");
+        _load(tmp, "main", base);
+        with socket.socket() as occupied {
+            occupied.bind(("127.0.0.1", 0));
+            occupied.listen();
+            settings = ServeSettings.load(
+                base, {"host": "127.0.0.1", "port": occupied.getsockname()[1]}
+            );
+            srv = JacAPIServer(
+                module_name="main", base_path=base, settings=settings, extensions=[]
+            );
+            for _ in range(2) {
+                assert isinstance(_startup_error(srv), PortInUseError);
+            }
+        }
+        stop = srv.serve_background(port_retries=0);
+        for task in srv.scheduler._tasks {
+            srv.scheduler._execute(task);
+        }
+        ticks = list(sys.modules["main"].TICKS);
+        stop();
+        restarted_stop = srv.serve_background(port_retries=0);
+        worker = srv.scheduler._thread;
+        assert worker is not None;
+        stop();
+        assert ticks == [1] and worker.is_alive() , (ticks, worker.is_alive());
+    } finally {
+        if restarted_stop is not None {
+            restarted_stop();
+        }
+        if stop is not None {
+            stop();
+        }
+        _reset(tmp);
+    }
+}
+
+
 test "prepare_inprocess_runtime colocates the workspace's service apps" {
     os.environ["JAC_SCALE_RUNTIME"] = "1";
     tmp = _workspace();

@@ -1,6 +1,7 @@
 """Typed values must survive a real process boundary (#9101)."""
 
 import shutil;
+import subprocess;
 import requests;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
@@ -10,7 +11,6 @@ def _served_by(pid: int, server_pid: int) -> bool {
     if pid == server_pid {
         return True;
     }
-    import subprocess;
     try {
         parent = subprocess.run(
             ["ps", "-o", "ppid=", "-p", str(pid)],
@@ -125,8 +125,12 @@ test "split services recursively reconstruct returned archetypes" {
             stop_server(other);
             for server in [consumer, provider, other] {
                 if server is not None {
-                    (stdout, stderr) = server.communicate();
-                    print(stdout + stderr);
+                    try {
+                        (stdout, stderr) = server.communicate(timeout=30);
+                        print(stdout + stderr);
+                    } except subprocess.TimeoutExpired {
+                        print(f"server {server.pid}: output still open 30s after stop");
+                    }
                 }
             }
         }

@@ -9,6 +9,10 @@ glob OVERFLOW_MSG: str = "integer overflow",
 
 def _signed_repr(width: int, value: int) -> int;
 
+def _int_min_bits(width: int) -> int;
+
+def _int_max_bits(width: int) -> int;
+
 impl NaIRGenPass._scalar_shape_named(name: (str | None)) -> (ScalarShape | None) {
     if name is None {
         return None;
@@ -356,6 +360,12 @@ impl NaIRGenPass._emit_overflow_op(
 ) -> ir.Value {
     int_ty = left.type;
     assert isinstance(int_ty, ir.IntType) , "an overflow-checked op needs an integer";
+    if not unsigned and op in ("add", "sub") and self._address_sum(left, right, op) {
+        if op == "add" {
+            return self.builder.add(left, right, name="addr.add");
+        }
+        return self.builder.sub(left, right, name="addr.sub");
+    }
     prefix = "u" if unsigned else "s";
     overflow_ret = ir.LiteralStructType([int_ty, ir.IntType(1)]);
     intrinsic = self._get_or_declare_extern(
@@ -378,7 +388,7 @@ impl NaIRGenPass._emit_checked_abs(val: ir.Value) -> ir.Value {
     int_ty = val.type;
     assert isinstance(int_ty, ir.IntType) , "a sized integer op needs an integer";
     zero = ir.Constant(int_ty, 0);
-    min_val = ir.Constant(int_ty, -(1 << (int_ty.width - 1)));
+    min_val = ir.Constant(int_ty, _int_min_bits(int_ty.width));
     is_min = self.builder.icmp_signed("==", val, min_val, name="abs.min");
     self._emit_runtime_raise(is_min, "OverflowError", OVERFLOW_MSG);
     is_neg = self.builder.icmp_signed("<", val, zero, name="abs.neg");
@@ -401,6 +411,52 @@ impl NaIRGenPass._shift_count_as(count: ir.Value, target: ir.IntType) -> ir.Valu
         return self.builder.trunc(count, target, name="shift.count");
     }
     return self.builder.zext(count, target, name="shift.count");
+}
+
+impl NaIRGenPass._emit_plain_int_shl(left: ir.Value, right: ir.Value) -> ir.Value {
+    i64 = ir.IntType(64);
+    neg = self.builder.icmp_signed(
+        "<", right, ir.Constant(right.type, 0), name="shift.neg"
+    );
+    self._emit_runtime_raise(neg, "ValueError", "negative shift count");
+    count = self._coerce_type(right, i64);
+    wide = self.builder.icmp_unsigned(
+        ">=", count, ir.Constant(i64, 64), name="shift.wide"
+    );
+    nonzero = self.builder.icmp_signed(
+        "!=", left, ir.Constant(i64, 0), name="shl.nonzero"
+    );
+    self._emit_runtime_raise(
+        self.builder.and_(wide, nonzero, name="shl.wide.overflow"),
+        "OverflowError",
+        OVERFLOW_MSG
+    );
+    safe_count = self.builder.and_(count, ir.Constant(i64, 63), name="shl.safe.count");
+    shifted = self.builder.shl(left, safe_count, name="shl");
+    back = self.builder.ashr(shifted, safe_count, name="shl.back");
+    lost = self.builder.icmp_signed("!=", back, left, name="shl.lost");
+    self._emit_runtime_raise(
+        self.builder.and_(self.builder.not_(wide), lost, name="shl.overflow"),
+        "OverflowError",
+        OVERFLOW_MSG
+    );
+    return self.builder.select(wide, ir.Constant(i64, 0), shifted, name="shl.result");
+}
+
+impl NaIRGenPass._emit_plain_int_shr(left: ir.Value, right: ir.Value) -> ir.Value {
+    i64 = ir.IntType(64);
+    neg = self.builder.icmp_signed(
+        "<", right, ir.Constant(right.type, 0), name="shift.neg"
+    );
+    self._emit_runtime_raise(neg, "ValueError", "negative shift count");
+    count = self._coerce_type(right, i64);
+    wide = self.builder.icmp_unsigned(
+        ">=", count, ir.Constant(i64, 64), name="shift.wide"
+    );
+    safe_count = self.builder.and_(count, ir.Constant(i64, 63), name="shr.safe.count");
+    shifted = self.builder.ashr(left, safe_count, name="ashr");
+    sign = self.builder.ashr(left, ir.Constant(i64, 63), name="shr.sign");
+    return self.builder.select(wide, sign, shifted, name="shr.result");
 }
 
 impl NaIRGenPass._emit_checked_shl(
@@ -445,7 +501,7 @@ impl NaIRGenPass._emit_int_divmod(
             self.builder.urem(left, right, name="urem")
         );
     }
-    min_val = ir.Constant(int_ty, -(1 << (int_ty.width - 1)));
+    min_val = ir.Constant(int_ty, _int_min_bits(int_ty.width));
     is_min = self.builder.icmp_signed("==", left, min_val, name="div.min");
     is_m1 = self.builder.icmp_signed(
         "==", right, ir.Constant(int_ty, -1), name="div.m1"
@@ -472,4 +528,51 @@ impl _signed_repr(width: int, value: int) -> int {
         out -= 1 << width;
     }
     return out;
+}
+
+impl NaIRGenPass._is_address_word(value: ir.Value) -> bool {
+    if isinstance(value, ir.CastInstr) {
+        return value.opname == "ptrtoint";
+    }
+    if isinstance(value, ir.Instruction) and value.name.startswith("addr.") {
+        return value.opname == "add";
+    }
+    return isinstance(value, ir.FormattedConstant)
+        and value.get_reference().startswith("ptrtoint (");
+}
+
+impl NaIRGenPass._address_sum(left: ir.Value, right: ir.Value, op: str) -> bool {
+    if not isinstance(left.type, ir.IntType) or left.type.width != 64 {
+        return False;
+    }
+    limit = 1 << 56;
+    if self._is_address_word(left) {
+        if isinstance(right, ir.Constant)
+            and isinstance(right.constant, int)
+            and -limit < right.constant
+            and right.constant < limit {
+            return True;
+        }
+        return op == "sub" and self._is_address_word(right);
+    }
+    return op == "add"
+        and self._is_address_word(right)
+        and isinstance(left, ir.Constant)
+        and isinstance(left.constant, int)
+        and -limit < left.constant
+        and left.constant < limit;
+}
+
+impl _int_min_bits(width: int) -> int {
+    if width >= 64 {
+        return -9223372036854775807 - 1;
+    }
+    return -(1 << (width - 1));
+}
+
+impl _int_max_bits(width: int) -> int {
+    if width >= 64 {
+        return 9223372036854775807;
+    }
+    return (1 << (width - 1)) - 1;
 }

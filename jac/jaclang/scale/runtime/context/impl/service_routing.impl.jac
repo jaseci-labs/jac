@@ -1,9 +1,4 @@
 impl resolve_interceptor_service_address(kubernetes_cfg: dict[str, any]) -> str {
-    """The one place that decides which interceptor address a deployment
-    uses: [scale.kubernetes.http_activation].interceptor_service_address when
-    set, KEDA_INTERCEPTOR_SERVICE_ADDRESS otherwise. Every KEDAAutoscaler
-    construction site and the runtime routing resolver below both go through
-    this, so neither can point at an interceptor the other does not.""";
     http_cfg: dict[str, any] = dict(kubernetes_cfg.get("http_activation", {}));
     return str(
         http_cfg.get("interceptor_service_address", KEDA_INTERCEPTOR_SERVICE_ADDRESS)
@@ -13,10 +8,6 @@ impl resolve_interceptor_service_address(kubernetes_cfg: dict[str, any]) -> str 
 impl resolve_http_activation_config(
     top_level_http_activation: dict[str, any], app_scale_cfg: dict[str, any]
 ) -> dict[str, any] | None {
-    """Merge [apps.<svc_name>.scale.http_activation] over
-    [scale.kubernetes.http_activation]. The single implementation of this
-    precedence; ManifestBuilder._get_http_activation_config delegates here.
-    Returns None when the merged config isn't enabled.""";
     per_service: dict[str, any] = dict(app_scale_cfg.get("http_activation", {}));
     merged: dict[str, any] = dict(top_level_http_activation);
     merged.update(per_service);
@@ -33,7 +24,6 @@ impl resolve_service_route(
     kubernetes_cfg: dict[str, any],
     app_scale_cfg: dict[str, any]
 ) -> ServiceRoute {
-    """The one decision point: interceptor-routed vs. direct ClusterIP.""";
     safe_name = k8s_safe_name(svc_name);
     real_host = k8s_service_dns_host(f"{safe_name}-service", namespace);
     http_cfg = resolve_http_activation_config(

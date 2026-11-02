@@ -58,7 +58,8 @@ impl AnalysisReport.to_dict -> dict[str, any] {
         "errors": [d.to_dict() for d in self.errors],
         "warnings": [d.to_dict() for d in self.warnings],
         "misses": list(self.misses),
-        "events": [list(row) for row in self.events]
+        "events": [list(row) for row in self.events],
+        "reads": [list(row) for row in self.reads]
     };
 }
 
@@ -79,7 +80,8 @@ impl AnalysisReport.from_dict(raw: dict[str, any]) -> AnalysisReport {
         errors=[diag_from_dict(d) for d in json_maps(raw.get("errors"))],
         warnings=[diag_from_dict(d) for d in json_maps(raw.get("warnings"))],
         misses=json_str_list(raw.get("misses")),
-        events=json_str_pairs_of(raw.get("events"))
+        events=json_str_pairs_of(raw.get("events")),
+        reads=json_str_pairs_of(raw.get("reads"))
     );
 }
 
@@ -238,6 +240,9 @@ impl KernelRun.outcome(entry_path: str) -> AnalysisReport {
     );
     outcome.misses.extend(self.host.census.miss_keys);
     outcome.events = self.host.event_rows();
+    outcome.reads = [
+        [path, digest] for (path, digest) in self.host.source_reads.items()
+    ];
     return outcome;
 }
 

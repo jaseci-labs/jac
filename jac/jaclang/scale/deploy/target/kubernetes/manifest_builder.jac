@@ -153,6 +153,7 @@ obj ManifestBuilder {
     def _build_startup_probe -> dict[str, any];
     def _alb_deregistration_cushion -> int;
     def _build_prestop_hook -> dict[str, any];
+    def _fleet_role(svc_name: str) -> str;
     def _build_deployment_manifest(
         svc_name: str, pod_spec: dict[str, any]
     ) -> dict[str, any];

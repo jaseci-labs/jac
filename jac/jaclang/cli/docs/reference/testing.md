@@ -675,9 +675,11 @@ exception type. With `port_retries=0` (the `JacAPIServer` default), an occupied
 port raises `PortInUseError`, which is an `OSError`. TLS, boot, and readiness
 callback errors also propagate; a failed start does not return a stop handle.
 
-Each API server owns its static scheduler. Retried starts use fresh shutdown
-state, so a drain flag left by the previous attempt does not make ordinary
-requests return HTTP 503.
+Each API server owns its static scheduler. After a transport attempt, the next
+start rebuilds static schedules on a fresh scheduler rather than appending
+duplicates. Tasks registered directly by an embedding host before its first
+start are preserved for that start. Retried starts also use fresh shutdown
+state, so an earlier drain flag does not make ordinary requests return HTTP 503.
 
 API server starts share the process-wide bridge worker through distinct owner
 claims. Startup cleanup and the returned stop callable release only that start's

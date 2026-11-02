@@ -94,7 +94,9 @@ impl CompilerBridge.typecheck_snippet(
         program = JacProgram();
         compiler = Jac.get_compiler();
 
-        ir = compiler.compile(tmp_path, program);
+        ir = compiler.compile(
+            tmp_path, program, use_str=code, options=CompileOptions(no_cgen=True)
+        );
 
         errors: list[dict[str, any]] = [];
         warnings: list[dict[str, any]] = [];

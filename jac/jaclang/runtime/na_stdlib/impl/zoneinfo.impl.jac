@@ -23,14 +23,12 @@ impl _be_u32(b: bytes, off: int) -> int {
 }
 
 impl _be_i64(b: bytes, off: int) -> int {
-    v: int = 0;
-    i: int = 0;
+    top: int = b[off];
+    v: int = top - 256 if top >= 128 else top;
+    i: int = 1;
     while i < 8 {
-        v = (v << 8) | b[off + i];
+        v = v * 256 + b[off + i];
         i += 1;
-    }
-    if v > 9223372036854775807 {
-        v -= 18446744073709551616;
     }
     return v;
 }

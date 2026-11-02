@@ -285,17 +285,26 @@ impl replies_for(job_ids: list[str]) -> list[JobReply] {
     return out;
 }
 
-impl sweep_inputs -> list[tuple[str, str, str, str]] {
-    return [(t.slug, t.body, t.status, t.verified_version) for t in claw_tutorials()];
+impl sweep_inputs -> list[tuple[str, str, str, str, str]] {
+    return [
+        (t.slug, t.body, t.status, t.verified_version, t.checked_version)
+        for t in claw_tutorials()
+    ];
 }
 
-impl apply_sweep(results: dict[str, list[BlockView]], version: str, error: str) {
+impl apply_sweep(
+    results: dict[str, list[BlockView]],
+    version: str,
+    error: str,
+    complete: bool = False
+) {
     hub = claw_hub();
     for t in claw_tutorials() {
         blocks = results.get(t.slug);
         if blocks is None {
             continue;
         }
+        t.checked_version = version;
         t.blocks = blocks;
         if sweep_passed(blocks) {
             t.status = "published";
@@ -310,7 +319,9 @@ impl apply_sweep(results: dict[str, list[BlockView]], version: str, error: str) 
         if t.status != "removed"
     ];
     hub.last_sweep_at = stamp();
-    hub.swept_version = version if not error else hub.swept_version;
+    if complete and not error {
+        hub.swept_version = version;
+    }
     hub.sweep_passed = len(
         [
             t
