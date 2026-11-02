@@ -1899,6 +1899,27 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             return self._emit_isinstance(nd);
         }
 
+        if func_name == "hasattr" {
+            params_l: list[uni.Expr | uni.KWPair] = list(nd.params or []);
+            arg_vals: list[ir.Value] = [];
+            arg_nodes: list[uni.UniNode] = [];
+            for param in params_l {
+                if isinstance(param, uni.KWPair) {
+                    continue;
+                }
+                value = self._codegen_expr(param);
+                if value is not None {
+                    arg_vals.append(value);
+                    arg_nodes.append(param);
+                }
+            }
+            result = self._dispatch_builtin(
+                func_name, arg_vals, arg_nodes=arg_nodes, kw_node=nd
+            );
+            self._release_owned_args(arg_vals, op="hasattr_arg");
+            return result;
+        }
+
         if func_name == "type" {
             _cid_params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
             if len(_cid_params) == 1 {

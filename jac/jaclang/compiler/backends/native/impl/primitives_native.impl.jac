@@ -5829,7 +5829,46 @@ impl NativeBuiltinEmitter.emit_setattr(
 impl NativeBuiltinEmitter.emit_hasattr(
     self: NativeBuiltinEmitter, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
+    if len(args) != 2 or len(ctx.arg_nodes) != 2 {
+        return None;
+    }
+    p = ctx.pass_ref;
+    type_name = p._type_key_of(ctx.arg_nodes[0]);
+    if type_name is None or type_name not in p.struct_field_indices {
+        return None;
+    }
+    fields = p.struct_field_indices[type_name];
+    i1 = ir.IntType(1);
+    # No compile-time fast path for a literal name: reading the literal needs
+    # either `getattr(node, "lit_value", None)` (a 3-arg FuncCall the native
+    # backend refuses) or a `uni.String` isinstance, and an un-lowerable body
+    # turns into an abort() stub when this file is compiled into the kernel
+    # (jaseci-labs/jac#10485, #10492). The runtime strcmp loop below is
+    # semantically identical; it only costs a few compares.
+    i8p = ir.IntType(8).as_pointer();
+    if args[1].type != i8p {
+        return None;
+    }
+    if not fields {
+        return ir.Constant(i1, 0);
+    }
+    b = get_builder(p);
+    strcmp = p._get_or_declare_extern(
+        "strcmp", ir.IntType(32), [i8p, i8p]
+    );
+    result: ir.Value = ir.Constant(i1, 0);
+    for field_name in fields.keys() {
+        cmp = b.call(
+            strcmp,
+            [args[1], p._make_global_string(field_name, name_prefix=".hasattr")],
+            name="hasattr.cmp"
+        );
+        matches = b.icmp_signed(
+            "==", cmp, ir.Constant(ir.IntType(32), 0), name="hasattr.match"
+        );
+        result = b.or_(result, matches, name="hasattr.or");
+    }
+    return result;
 }
 
 impl NativeBuiltinEmitter.emit_delattr(
