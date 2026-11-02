@@ -346,6 +346,7 @@ obj MirLowering {
     def method_call(nd: uni.FuncCall, target: uni.AtomTrailer) -> (MirValue | None);
     def call_args(nd: uni.FuncCall) -> list[uni.Expr];
     def coerce_place(place: MirValue) -> MirValue;
+    def declare_global(nd: uni.Name) -> (MirGlobal | None);
     def global_place(nd: uni.Name) -> (MirValue | None);
     def global_declaration(sym: uni.Symbol) -> (uni.Assignment | None);
     def runtime(name: str, args: list[MirValue]) -> (MirValue | None);
@@ -378,6 +379,15 @@ obj MirLowering {
     );
 
     def dict_get(d: MirValue, key: MirValue, site: uni.UniNode) -> MirValue;
+    def dict_entry_value(d: MirValue, at: MirValue, site: uni.UniNode) -> MirValue;
+    def is_spread(item: uni.UniNode) -> bool;
+    def each_begin(
+        source: MirValue, site: uni.UniNode
+    ) -> tuple[MirValue, MirIterCursor, MirBlock, MirBlock];
+    def each_end(head: MirBlock, after: MirBlock);
+    def container_add(made: MirValue, item: MirValue, site: uni.UniNode);
+    def extend_from(made: MirValue, source: MirValue, site: uni.UniNode);
+    def merge_dict(made: MirValue, source: MirValue, site: uni.UniNode, unique: bool);
     def list_slice(lst: MirValue, part: uni.Slice, site: uni.UniNode) -> MirValue;
     def container_method(
         receiver: MirValue, name: str, nd: uni.FuncCall

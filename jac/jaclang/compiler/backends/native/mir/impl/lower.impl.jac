@@ -2276,6 +2276,16 @@ impl MirLowering.global_declaration(sym: uni.Symbol) -> (uni.Assignment | None) 
 }
 
 impl MirLowering.global_place(nd: uni.Name) -> (MirValue | None) {
+    found = self.declare_global(nd);
+    if found is None {
+        return None;
+    }
+    return self.emit_value(
+        MirOp.GLOBAL_ADDR, mir_c_ptr(found.type), [], str_value=found.symbol
+    );
+}
+
+impl MirLowering.declare_global(nd: uni.Name) -> (MirGlobal | None) {
     sym = nd.sym;
     if sym is None {
         return None;
@@ -2318,7 +2328,5 @@ impl MirLowering.global_place(nd: uni.Name) -> (MirValue | None) {
         self.mir.globals[sym.sym_name] = made;
         found = made;
     }
-    return self.emit_value(
-        MirOp.GLOBAL_ADDR, mir_c_ptr(found.type), [], str_value=found.symbol
-    );
+    return found;
 }

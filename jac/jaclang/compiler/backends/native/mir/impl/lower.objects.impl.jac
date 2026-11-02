@@ -764,7 +764,20 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
         if self.osp_setup {
             b.call(self.osp_setup, [], mir_none());
         }
-        for (glob_def, initial) in self.deferred_globals {
+        index = 0;
+        while index < len(self.deferred_globals) {
+            for used in self.deferred_globals[index][1].get_all_sub_nodes(uni.Name) {
+                self.declare_global(used);
+            }
+            index += 1;
+        }
+        ordered = sorted(
+            self.deferred_globals,
+            key=lambda (pair: tuple[MirGlobal, uni.Expr]) -> int {
+                pair[1].loc.pos_start;
+            }
+        );
+        for (glob_def, initial) in ordered {
             place = self.emit_value(
                 MirOp.GLOBAL_ADDR,
                 mir_c_ptr(glob_def.type),
