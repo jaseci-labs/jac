@@ -236,7 +236,9 @@ impl MirBuilder.const_str(text: str, type: MirType) -> MirValue {
 
 impl MirBuilder.const_null(type: MirType) -> MirValue {
     result = self.fn.new_value(type);
-    self.emit(MirInstr(op=MirOp.CONST_NULL, result=result, type_arg=type));
+    if type.kind != MirKind.NONE {
+        self.emit(MirInstr(op=MirOp.CONST_NULL, result=result, type_arg=type));
+    }
     return result;
 }
 
