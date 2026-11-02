@@ -1258,6 +1258,27 @@ impl MirEmitter.emit_rc(b: ir.IRBuilder, instr: MirInstr) {
         }
         return;
     }
+    if subject.type.kind == MirKind.OPT
+        and subject.type.payload().kind == MirKind.TUPLE {
+        whole = self.value(subject);
+        payload = b.extract_value(whole, 1);
+        if not isinstance(payload.type, ir.PointerType) {
+            held = b.function.append_basic_block(name="rc.opt.held");
+            after = b.function.append_basic_block(name="rc.opt.after");
+            b.cbranch(b.extract_value(whole, 0), held, after);
+            b.position_at_end(held);
+            part = MirValue(id=-2, type=subject.type.payload());
+            self.values[-2] = payload;
+            self.emit_rc(b, MirInstr(op=instr.op, operands=[part]));
+            self.values.pop(-2, None);
+            b.branch(after);
+            b.position_at_end(after);
+            if instr.op == MirOp.RETAIN {
+                self.bind(instr.result, whole);
+            }
+            return;
+        }
+    }
     i8p = ir.IntType(8).as_pointer();
     target = self.value(subject);
     held_type = subject.type;

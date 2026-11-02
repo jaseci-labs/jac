@@ -154,7 +154,9 @@ impl MirLowering.object_text(
                 mir_c_fn([value.type], decl.ret),
                 [b.load(entry_place, i8p)]
             );
-            result = self.emit_value(MirOp.CALL_FNPTR, decl.ret, [callee, value]);
+            result = self.emit_value(
+                MirOp.CALL_FNPTR, decl.ret, [callee, value], str_value=decl.symbol
+            );
             result.owned = True;
             return self.as_text(result);
         }

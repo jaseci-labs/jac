@@ -104,6 +104,7 @@ impl native_build(
         options = CompileOptions(
             aot_mode=True,
             default_codespace="native",
+            native_required=not lib,
             skip_native_engine=True,
             memory_profile=memory,
             native_target=triple,

@@ -10,9 +10,9 @@ back as the slot's declared default and nothing was diagnosed: a wrong
 answer, not a gap, and the worst class in the ledger.
 
 Both fixtures answer 103 in the sv lane. Before the refusal both
-answered 5 natively, in silence. Now a forced-native compile refuses the
-construction (E5088 / E5092) instead of answering, and the reason is on the
-record.
+answered 5 natively, in silence. Now the construction refuses, which
+demotes the owning callable to its Python implementation -- so both lanes
+answer 103 again and the reason is on the record.
 
 The non-generic control is what places the fault. The compiler's own
 pass chain reached this path through `BaseTransform[T_in, T_out]`, which
@@ -46,19 +46,29 @@ glob FIXTURES = os.path.join(
      NO_BASE_POSTINIT = "pyb_gen_base_main.jac";
 
 
-"""The native refusals (E5088 / E5092) a forced-native compile of a fixture
-reported."""
+"""The refusals a forced-native compile of a fixture reported: each demotion
+it wrote to stderr, and any E5088 / E5092 error."""
 def _refusals(fixture: str) -> list[str] {
+    import contextlib;
+    import io;
     prog = JacProgram();
-    prog.compile(
-        file_path=os.path.join(FIXTURES, fixture),
-        options=CompileOptions(force_codespace='native')
-    );
+    buf = io.StringIO();
+    with contextlib.redirect_stderr(buf) {
+        prog.compile(
+            file_path=os.path.join(FIXTURES, fixture),
+            options=CompileOptions(force_codespace='native')
+        );
+    }
     return [
-        str(e)
-        for e in prog.errors_had
-        if e.code is not None and e.code.code in ("E5088", "E5092")
-    ];
+        line
+        for line in buf.getvalue().splitlines()
+        if "demoting" in line
+    ]
+        + [
+            str(e)
+            for e in prog.errors_had
+            if e.code is not None and e.code.code in ("E5088", "E5092")
+        ];
 }
 
 
@@ -88,13 +98,22 @@ test "the generic pass-shaped chain refuses instead of answering wrongly" {
 }
 
 
-test "the non-generic control refuses too, so genericity is not the fault" {
+test "the non-generic control refuses or answers as Python does, never 5" {
     assert _sv_read_back(PLAIN) == 103 , "the sv lane runs the override";
     hits = _refusals(PLAIN);
-    assert hits , "the same construction with no type parameter must refuse too";
-    assert any("PlainKid" in hit for hit in hits) , (
-        f"the refusal does not name the class: {hits}"
-    );
+    if hits {
+        assert any("PlainKid" in hit for hit in hits) , (
+            f"the refusal does not name the class: {hits}"
+        );
+    } else {
+        import ctypes;
+        import from tests.support { compile_native, get_func }
+        (eng, _ir) = compile_native(PLAIN);
+        native = get_func(eng, "read_back", ctypes.c_int64)();
+        assert native == 103 , (
+            f"the construction lowered but skipped the override: native answered {native}"
+        );
+    }
 }
 
 

@@ -107,8 +107,10 @@ def jac_command(*args: str, compiler_root: str | None = None) -> list[str] {
 
 The retired .na.jac marker used to do this from the filename; tests that
 compile a fixture and expect a JIT engine now state the mandate explicitly.
-Forced placement keeps lowering failures loud (no server demotion), exactly
-like the old suffix.
+Forced placement is not a requirement: a function the backend refuses is
+demoted to Python (named in the unit interface's `demoted`), and a native
+caller that cannot reach it demotes with it. Only required native (kernel
+units, `[native] require`, the runtime units) turns a refusal into E5092.
 """
 def native_force_opts -> CompileOptions {
     import from jaclang.compiler.driver.compile_options { CompileOptions }

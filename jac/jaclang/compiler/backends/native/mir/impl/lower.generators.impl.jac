@@ -1528,6 +1528,11 @@ impl MirLowering.builtin_fold(
     } else {
         b.store(held, b.const_bool(name == "all"));
     }
+    compensated: (MirValue | None) = None;
+    if name == "sum" and result_type.kind == MirKind.FLOAT {
+        compensated = self.temp_slot(result_type);
+        b.store(compensated, b.const_float(0.0, result_type));
+    }
     (cursors, counter) = self.open_sources(source);
     head = fn.new_block("fold.head");
     after = fn.new_block("fold.exit");
@@ -1537,7 +1542,29 @@ impl MirLowering.builtin_fold(
     if len(values) != 1 {
         raise MirRefused(mir_refusal("call", f"{name} over tuples", nd));
     }
-    if name == "sum" {
+    if name == "sum" and compensated is not None {
+        x = values[0];
+        f = b.load(held, result_type);
+        if x.type.kind != MirKind.FLOAT {
+            b.store(held, b.binary("add", f, self.coerce(x, result_type, nd)));
+        } else {
+            x = self.coerce(x, result_type, nd);
+            t = b.binary("add", f, x);
+            zero = b.const_float(0.0, result_type);
+            f_abs = b.select(b.compare("lt", f, zero), b.negate(f), f);
+            x_abs = b.select(b.compare("lt", x, zero), b.negate(x), x);
+            lost = b.select(
+                b.compare("ge", f_abs, x_abs),
+                b.binary("add", b.binary("sub", f, t), x),
+                b.binary("add", b.binary("sub", x, t), f)
+            );
+            b.store(
+                compensated, b.binary("add", b.load(compensated, result_type), lost)
+            );
+            b.store(held, t);
+        }
+        b.branch(head);
+    } elif name == "sum" {
         b.store(
             held,
             self.coerce(
@@ -1563,6 +1590,22 @@ impl MirLowering.builtin_fold(
         b.branch(after);
     }
     b.position(after);
+    if compensated is not None {
+        c = b.load(compensated, result_type);
+        zero = b.const_float(0.0, result_type);
+        finite = b.compare("eq", b.binary("sub", c, c), zero);
+        settled = fn.new_block("fold.settle");
+        done = fn.new_block("fold.done");
+        b.cond_branch(
+            b.select(finite, b.compare("ne", c, zero), b.const_bool(False)),
+            settled,
+            done
+        );
+        b.position(settled);
+        b.store(held, b.binary("add", b.load(held, result_type), c));
+        b.branch(done);
+        b.position(done);
+    }
     return self.coerce(b.load(held, result_type), wanted, nd);
 }
 

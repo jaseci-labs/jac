@@ -53,18 +53,22 @@ def sv_lines(fixture: str) -> list[str] {
 }
 
 
-"""The E5092 refusals a forced-native compile of a fixture reports, each with
-the line it points at."""
-def refusals(fixture: str) -> list[tuple[str, int]] {
+"""The seam report a build would show on stderr for a fixture: each function
+a forced-native compile demotes, with the refusal that demoted it."""
+def seam_report(fixture: str) -> str {
+    import contextlib;
+    import io;
+    buf = io.StringIO();
     prog = JacProgram();
-    prog.compile(
-        file_path=os.path.join(FIXTURES, fixture), options=native_force_opts()
-    );
-    return [
-        (str(e), e.loc.first_line)
-        for e in prog.errors_had
-        if e.code is not None and e.code.code == "E5092"
-    ];
+    with contextlib.redirect_stderr(buf) {
+        prog.compile(
+            file_path=os.path.join(FIXTURES, fixture), options=native_force_opts()
+        );
+    }
+    assert not prog.errors_had , f"forced native demotes: {[
+        str(e) for e in prog.errors_had
+    ]}";
+    return buf.getvalue();
 }
 
 
@@ -105,15 +109,12 @@ test "declared and undeclared values answer as CPython does" {
 
 
 test "a noninteger input to an integer enum refuses by name" {
-    found = refusals("xmod_demote_dyn_lib.jac");
-    hits = [
-        line
-        for (text, line) in found
-        if "enum constructor 'Hue'" in text
-    ];
-    assert hits , f"the floating-point input lowered silently: {found}";
-    assert hits == [14] , (
-        f"the refusal must point at the call inside from_code: {found}"
+    seams = seam_report("xmod_demote_dyn_lib.jac");
+    assert "enum constructor 'Hue'" in seams , (
+        f"the floating-point input lowered silently:\n{seams}"
+    );
+    assert "demoting from_code" in seams and "line 14," in seams , (
+        f"the refusal did not demote the callable that owns it:\n{seams}"
     );
 }
 
@@ -138,9 +139,9 @@ test "a same-named local function is not read as the enum" {
 
 
 test "a non-integer argument refuses instead of being coerced" {
-    found = refusals("enum_ctor_bad_arg.jac");
-    assert any("enum constructor 'Level'" in text for (text, _) in found) , (
-        f"a float argument was coerced into the member table: {found}"
+    seams = seam_report("enum_ctor_bad_arg.jac");
+    assert "enum constructor 'Level'" in seams , (
+        f"a float argument was coerced into the member table:\n{seams}"
     );
 }
 

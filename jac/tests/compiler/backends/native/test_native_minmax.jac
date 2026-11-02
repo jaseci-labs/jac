@@ -96,21 +96,51 @@ test "unsupported keyword forms refuse lowering instead of discarding arguments"
     import from jaclang.compiler.driver.program { JacProgram }
     for (fname, expression) in [
         ("min", "min([1, 2], key=abs)"),
-        ("max", "max([1, 2], key=abs)"),
-        ("min", "min([1, 2], `default='missing')")
+        ("max", "max([1, 2], key=abs)")
     ] {
         with tempfile.TemporaryDirectory() as directory {
             source = Path(directory) / "refuse.jac";
             source.write_text("def probe -> int { x = " + expression + "; return 0; }");
+            import contextlib;
+            import io;
             prog = JacProgram();
-            prog.compile(file_path=str(source), options=native_force_opts());
-            refusals = [
-                str(e)
-                for e in prog.errors_had
-                if e.code is not None and e.code.code == "E5092"
-            ];
-            assert any(f"'{fname}" in said for said in refusals) , (
-                f"must refuse {expression}: {[str(e) for e in prog.errors_had]}"
+            buf = io.StringIO();
+            with contextlib.redirect_stderr(buf) {
+                ir = prog.compile(file_path=str(source), options=native_force_opts());
+            }
+            said = buf.getvalue();
+            assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+            iface: any = ir.gen.native_iface;
+            assert iface is not None and "probe" in iface.demoted , (
+                f"must refuse {expression} ({fname}) and demote probe: {said}"
+            );
+            assert "demoting probe" in said , f"the demotion of probe must be reported: {said}";
+        }
+    }
+}
+
+
+test "a default of another type is kept, not discarded" {
+    import tempfile;
+    import from pathlib { Path }
+    import from tests.support { native_force_opts }
+    import from jaclang.compiler.driver.program { JacProgram }
+    with tempfile.TemporaryDirectory() as directory {
+        source = Path(directory) / "other_default.jac";
+        source.write_text(
+            "def probe -> int {\n"
+            "    xs: list[int] = [];\n"
+            "    x = min(xs, `default='missing');\n"
+            "    return len(str(x));\n"
+            "}\n"
+        );
+        prog = JacProgram();
+        ir = prog.compile(file_path=str(source), options=native_force_opts());
+        assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+        iface: any = ir.gen.native_iface;
+        if "probe" not in iface.demoted {
+            assert get_func(ir.gen.native_engine, "probe", ctypes.c_int64)() == 7 , (
+                "an empty min must answer its str default"
             );
         }
     }
