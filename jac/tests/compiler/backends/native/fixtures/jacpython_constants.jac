@@ -1,4 +1,4 @@
-import from jaclang.runtime.python.cpython_api { PyObject, Py_NewRef, Py_None }
+import from jaclang.runtime.python.cpython_api { PyObject, Py_NewRef, Py_GetConstant }
 import from jaclang.runtime.python.constant_output { constant_object }
 import from jaclang.runtime.python.objects {
     PyCode,
@@ -10,6 +10,7 @@ import from jaclang.runtime.python.objects {
     PyBytes,
     PyTuple,
     PyBool,
+    PyEllipsis,
     PySet,
     PySlice,
     py_none
@@ -28,12 +29,12 @@ def:pub echo_object_probe(obj_: ptr[PyObject]) -> ptr[PyObject] {
     return obj_;
 }
 
-def:pub none_borrowed_probe -> ptr[PyObject] {
-    return Py_None;
+def:pub none_constant_probe -> ptr[PyObject] {
+    return Py_GetConstant(u32(0));
 }
 
-def:pub none_direct_probe -> ptr[PyObject] {
-    return Py_NewRef(Py_None);
+def:pub new_ref_object_probe(obj_: ptr[PyObject]) -> ptr[PyObject] {
+    return Py_NewRef(obj_);
 }
 
 def:pub none_probe -> ptr[PyObject] {
@@ -64,7 +65,8 @@ def:pub probe_constants -> ptr[PyObject] {
         PyStr(t="str", val="repeat"),
         PyFloat(t="float", val=1.2345678901234567),
         PyFloat(t="float", val=1.2345678901234569),
-        PyFloat(t="float", val=0.0)
+        PyFloat(t="float", val=0.0),
+        PyEllipsis(t="ellipsis")
     ];
     return constant_object(PyTuple(t="tuple", items=values));
 }
