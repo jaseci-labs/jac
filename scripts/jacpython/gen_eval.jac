@@ -170,9 +170,15 @@ def entry_pattern -> re.Pattern {
 }
 
 def wire_key(source: str, names: str) -> str {
-    return source + ":" + ",".join(
-        sorted(name.strip() for name in names.split(",") if name.strip())
-    );
+    return source
+        + ":"
+        + ",".join(
+            sorted(
+                name.strip()
+                for name in names.split(",")
+                if name.strip()
+            )
+        );
 }
 
 def present_wires(text: str) -> list[str] {
@@ -1016,7 +1022,8 @@ def dispatch_module(names: list[str]) -> str {
     slots = ",\n".join(
         f"        HandlerSlot(handler=_TAIL_CALL_{name})" for name in table
     );
-    return "import from c {\n" + "\n".join(externs)
+    return "import from c {\n"
+        + "\n".join(externs)
         + f"\n    glob INSTRUCTION_TABLE: list[HandlerSlot] = [\n{slots}\n    ];\n}}\n";
 }
 

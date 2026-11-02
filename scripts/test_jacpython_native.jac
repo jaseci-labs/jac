@@ -24,7 +24,7 @@ def verify(library_path: Path) {
     if sys.version_info[:2] != (3, 14) {
         raise RuntimeError("The JacPython output oracle requires CPython 3.14");
     }
-    bridge = getattr(ctypes.pythonapi, "_PyJac_CompilerBridgeVersion", None);
+    bridge = ctypes.pythonapi?._PyJac_CompilerBridgeVersion;
     if bridge is None or bridge() != 4 {
         raise RuntimeError(
             "The JacPython output oracle runs inside the JacPython runtime (bridge 4)"

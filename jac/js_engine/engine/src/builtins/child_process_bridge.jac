@@ -869,18 +869,23 @@ def _cp_queue_event(hid: int, ev: str, a0: str, a1: str) {
 def:pub cp_event_count -> int {
     return len(_CP_EVT_HANDLE);
 }
+
 def:pub cp_event_handle(i: int) -> int {
     return _CP_EVT_HANDLE[i];
 }
+
 def:pub cp_event_name(i: int) -> str {
     return _CP_EVT_NAME[i];
 }
+
 def:pub cp_event_arg0(i: int) -> str {
     return _CP_EVT_ARG0[i];
 }
+
 def:pub cp_event_arg1(i: int) -> str {
     return _CP_EVT_ARG1[i];
 }
+
 def:pub cp_event_pending -> int {
     return len(_CP_EVT_HANDLE);
 }

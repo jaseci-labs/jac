@@ -227,9 +227,13 @@ glob NO_TESTCAPI: str = "the Jac runtime does not ship _testcapi",
              "PyWarningsDisplayTests.test_tracemalloc": LAUNCHER_X_OPTIONS
          },
          # PYTHONFAULTHANDLER.
-         "test.test_faulthandler": {"FaultHandlerTests.test_env_var": LAUNCHER_ENVIRONMENT},
+         "test.test_faulthandler": {
+             "FaultHandlerTests.test_env_var": LAUNCHER_ENVIRONMENT
+         },
          # The child script imports _testcapi.
-         "test.test_threading": {"ThreadTests.test_finalize_daemon_thread_hang": NO_TESTCAPI},
+         "test.test_threading": {
+             "ThreadTests.test_finalize_daemon_thread_hang": NO_TESTCAPI
+         },
          # The children start with -X dev and -X utf8=0.
          "test.test_io": {
              "CMiscIOTest.test_check_encoding_errors": LAUNCHER_X_OPTIONS,

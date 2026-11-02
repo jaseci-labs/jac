@@ -961,6 +961,7 @@ glob:priv _WASM_CALL_RES_DBL: list[float] = [],
 def:pub wasm_call_result_count -> int {
     return len(_WASM_CALL_RES_KIND);
 }
+
 def:pub wasm_call_result_kind(i: int) -> int {
     if i < 0 or i >= len(_WASM_CALL_RES_KIND) {
         return 0 - 1;
@@ -1196,7 +1197,9 @@ def:pub wasm_export_global(inst_handle: int, name: str) -> int {
     }
 
     item_out: int = io_alloc(_SIZEOF_EXTERN);
-    found: bool = wasmtime_instance_export_get(ctx, inst, name, str_nbytes(name), item_out);
+    found: bool = wasmtime_instance_export_get(
+        ctx, inst, name, str_nbytes(name), item_out
+    );
     if not found {
         _WASM_LAST_ERR = "export not found: " + name;
         io_free(item_out);
@@ -1848,7 +1851,9 @@ def:pub wasm_export_table(inst_handle: int, name: str) -> int {
         return 0;
     }
     item_out: int = io_alloc(_SIZEOF_EXTERN);
-    found: bool = wasmtime_instance_export_get(ctx, inst, name, str_nbytes(name), item_out);
+    found: bool = wasmtime_instance_export_get(
+        ctx, inst, name, str_nbytes(name), item_out
+    );
     if not found {
         _set_err("export not found: " + name, WASM_ERRCLASS_LINK);
         io_free(item_out);
@@ -2048,6 +2053,7 @@ def:pub wasm_register_host_call(cb: Callable[[int, int], int]) {
 def:pub wasm_host_arg_count -> int {
     return len(_WASM_HOST_ARG_KINDS);
 }
+
 def:pub wasm_host_arg_kind(i: int) -> int {
     if i < 0 or i >= len(_WASM_HOST_ARG_KINDS) {
         return 0 - 1;

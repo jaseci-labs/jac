@@ -408,7 +408,10 @@ glob OUTPUT: Path = RUNTIME / "modules",
      # table lists: with --pyconfig, the table's METHODS names the functions
      # the target compiles (each macro's guard holds), for the binding to keep.
      METHOD_SOURCES: dict[str, str] = {"posix": "Modules/clinic/posixmodule.c.h"},
-     FEATURE_CHECK: Path = RUNTIME.parents[2] / "bootstrap" / "python" / "features_check.c",
+     FEATURE_CHECK: Path = RUNTIME.parents[2]
+         / "bootstrap"
+         / "python"
+         / "features_check.c",
      # The predefined macros that select a table's target in features_check.c.
      TARGET_MACROS: dict[str, str] = {
          "darwin": "defined(__APPLE__)",
@@ -526,13 +529,14 @@ def line_conditions(source: str) -> list[str] {
         }
         text = pending + line;
         pending = "";
-        directive = re.match(
-            r"\s*#\s*(ifdef|ifndef|if|elif|else|endif)\b(.*)", text
-        );
+        directive = re.match(r"\s*#\s*(ifdef|ifndef|if|elif|else|endif)\b(.*)", text);
         if not directive {
             continue;
         }
-        (kind, rest) = (directive.group(1), re.sub(r"//.*", "", directive.group(2)).strip());
+        (kind, rest) = (
+            directive.group(1),
+            re.sub(r"//.*", "", directive.group(2)).strip()
+        );
         if kind == "ifdef" {
             stack.append(([], f"defined({rest})"));
         } elif kind == "ifndef" {
@@ -726,14 +730,17 @@ def extract(
     compiler: list[str],
     prelude: list[str]
 ) -> dict[str, int] {
-    lines = prelude[:1] + [
-        "#ifndef _GNU_SOURCE",
-        "#define _GNU_SOURCE 1",
-        "#endif",
-        "#ifndef _DARWIN_C_SOURCE",
-        "#define _DARWIN_C_SOURCE 1",
-        "#endif"
-    ] + includes + prelude[1:];
+    lines = prelude[:1]
+        + [
+            "#ifndef _GNU_SOURCE",
+            "#define _GNU_SOURCE 1",
+            "#endif",
+            "#ifndef _DARWIN_C_SOURCE",
+            "#define _DARWIN_C_SOURCE 1",
+            "#endif"
+        ]
+        + includes
+        + prelude[1:];
     for (key, macro, condition) in probes {
         lines += [
             f"#if {condition}",
@@ -821,7 +828,9 @@ def render(
     lines += ["", "glob CONSTANTS: list[tuple[str, i64]] = ["];
     # An ALL_PORTABLE module's table publishes only what its source does;
     # other modules' bindings leave their EXTRA names out themselves.
-    internal = set(EXTRA.get(module, [])) - PUBLISHED if module in ALL_PORTABLE else set();
+    internal = set(EXTRA.get(module, [])) - PUBLISHED
+        if module in ALL_PORTABLE
+        else set();
     lines += [
         f'    ("{name}", {name}),'
         for name in defined
@@ -968,8 +977,11 @@ with entry:__main__ {
     features: list[tuple[str, int]] = [];
     guards = guards_for(args.module);
     probes = [
-        (name, MACROS.get(name, name), guards.get(name, f"defined({MACROS.get(name, name)})"))
-        for name in names
+        (
+            name,
+            MACROS.get(name, name),
+            guards.get(name, f"defined({MACROS.get(name, name)})")
+        ) for name in names
     ];
     source_tables = tables_in(args.module, texts[source_file]);
     if args.pyconfig {
@@ -984,8 +996,7 @@ with entry:__main__ {
                 CONDITIONS[name]
                     if name in CONDITIONS
                     else guards.get(name, f"defined({MACROS.get(name, name)})")
-            )
-            for name in names
+            ) for name in names
         ];
         known = pyconfig_features(configured);
         features = [
@@ -1045,7 +1056,13 @@ with entry:__main__ {
     );
     if not args.check {
         print(
-            f"{len([name for name in names if name in values])} of {len(names)} names defined"
+            f"{len(
+                [
+                    name
+                    for name in names
+                    if name in values
+                ]
+            )} of {len(names)} names defined"
         );
     }
     stub = OUTPUT / f"{stem}_constants.jac";

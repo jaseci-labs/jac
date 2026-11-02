@@ -1,5 +1,12 @@
 """Native compiler entry points: each request returns a retained CPython value
-or zero with the Python exception set."""
+or zero with the Python exception set.
+
+Every replacement stdlib module enters this file's compilation closure through
+runtime/python/inittab.jac, the `_PyImport_Inittab` table archwire.jac wires
+each binding's `PyInit_*` into. The interpreter link resolves each registered
+`PyInit_*` from this object, so a missing wire leaves the symbol undefined at
+link time; prepare_native.py checks the compiled plan exports them all.
+"""
 
 # Object-model ports define interpreter types and objects under their C names
 # (Objects/boolobject.c: PyBool_Type, _Py_FalseStruct, _Py_TrueStruct).

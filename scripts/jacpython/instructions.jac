@@ -536,9 +536,19 @@ glob OPS: list[Op] = [
          Op("_GUARD_NOS_DICT", "nos, unused -- nos, unused"),
          Op("_GUARD_TOS_DICT", "tos -- tos"),
          Op("_GUARD_TOS_ANY_SET", "tos -- tos"),
-         Op("_BINARY_OP_MULTIPLY_FLOAT", "left!, right! -- res", escapes=False, error=True),
+         Op(
+             "_BINARY_OP_MULTIPLY_FLOAT",
+             "left!, right! -- res",
+             escapes=False,
+             error=True
+         ),
          Op("_BINARY_OP_ADD_FLOAT", "left!, right! -- res", escapes=False, error=True),
-         Op("_BINARY_OP_SUBTRACT_FLOAT", "left!, right! -- res", escapes=False, error=True),
+         Op(
+             "_BINARY_OP_SUBTRACT_FLOAT",
+             "left!, right! -- res",
+             escapes=False,
+             error=True
+         ),
          Op("_BINARY_OP_ADD_UNICODE", "left!, right! -- res", error=True),
          Op("_BINARY_OP_INPLACE_ADD_UNICODE", "left!, right! --"),
          Op("_SKIP_STORE_FAST", "--", escapes=False),

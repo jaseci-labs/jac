@@ -22,3 +22,30 @@ test "large Python local tables preserve closure and argument slots" {
     assert shifted(3) == 260;
     assert namespace["reordered"](2, 1) == (1, 2);
 }
+
+test "high local slots preserve unbound-local checks" {
+    for local_count in [63, 64] {
+        lines = ["def read_last():"];
+        for index in range(local_count - 1) {
+            lines.append(f"    local_{index} = {index}");
+        }
+        lines.extend(
+            [
+                "    if False:",
+                f"        local_{local_count - 1} = {local_count - 1}",
+                f"    return local_{local_count - 1}"
+            ]
+        );
+        namespace: dict[str, any] = {};
+        pyexec(
+            pycompile("\n".join(lines) + "\n", "unbound_local.py", "exec"), namespace
+        );
+        caught = False;
+        try {
+            namespace["read_last"]();
+        } except UnboundLocalError {
+            caught = True;
+        }
+        assert caught , f"expected UnboundLocalError for {local_count} local slots";
+    }
+}

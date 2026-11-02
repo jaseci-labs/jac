@@ -32,16 +32,15 @@ import from gen_clinic { DATA, data_name, posix_condition, registered }
 import from clinic_schema { Clinic, Function, Parameter }
 
 # The CPython release the data was taken from.
-glob EXTRACTED_FROM: str = "3.14.6";
-
-# Built-in modules the interpreter core defines rather than Setup: their C
-# source under Python/, by module name.
-glob CORE_SOURCES: dict[str, str] = {
+glob EXTRACTED_FROM: str = "3.14.6",
+     CORE_SOURCES: dict[str, str] = {
          "_warnings": "Python/_warnings.c",
          "_imp": "Python/import.c",
          "marshal": "Python/marshal.c"
      };
 
+# Built-in modules the interpreter core defines rather than Setup: their C
+# source under Python/, by module name.
 # A module's C sources: those Setup lists, each followed by the local `.c`
 # files it textually includes (_ssl.c's `#include "_ssl/cert.c"`), whose clinic
 # blocks belong to the same module.
@@ -310,13 +309,12 @@ def c_table_docs(tree: Path, sources: list[Path]) -> dict[str, str] {
 # Tools/clinic sees it while rendering the block ("" when none). Keyed by the
 # Function's id: a function defined once per platform branch (semaphore.c's
 # SemLock.acquire) has one full name for several definitions.
-glob CONDITIONS: dict[int, str] = {};
+glob CONDITIONS: dict[int, str] = {},
+     PARSERS: dict[int, tuple[any, str]] = {};
 
 # How Tools/clinic parses each function's arguments, by Function id: its
 # ParseArgsCodeGen (flags, pos_only, min_pos, max_pos, min_kw_only) and the
 # generated C parser, which names the getargs routine it calls.
-glob PARSERS: dict[int, tuple[any, str]] = {};
-
 # (class or None, clinic function) for every clinic input block of `sources`.
 def clinic_functions(tree: Path, sources: list[Path]) -> list[tuple[any, any]] {
     sys.path.insert(0, str(tree / "Tools/clinic"));
@@ -395,7 +393,7 @@ def custom_parse_source(conv: any) -> str {
 # The values of a converter's own keyword options that name C objects of the
 # module, or that its parse spells as C string literals (kept as one).
 def converter_options(conv: any) -> list[str] {
-    init = getattr(type(conv), "converter_init", None);
+    init = type(conv)?.converter_init;
     if init is None {
         return [];
     }
@@ -525,8 +523,8 @@ def describe_parameter(p: any) -> Parameter {
         takes_module="(module, " in parsed
             or bool(named and f"{named}(module," in parsed),
         releases=bool(re.search(r"Py_X?DECREF\(", conv.cleanup() or "")),
-        deprecated_positional=version_text(getattr(p, "deprecated_positional", None)),
-        deprecated_keyword=version_text(getattr(p, "deprecated_keyword", None))
+        deprecated_positional=version_text(p?.deprecated_positional),
+        deprecated_keyword=version_text(p?.deprecated_keyword)
     );
 }
 
