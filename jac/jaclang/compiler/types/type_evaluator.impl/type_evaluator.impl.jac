@@ -2940,6 +2940,11 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                 return self.get_type_of_expression(node_.parent.right);
             }
 
+            if isinstance(node_.parent, (MatchAs, MatchStar))
+                and node_.parent.name is node_ {
+                return self._get_type_of_match_capture(node_.parent);
+            }
+
             if isinstance(node_.parent, ExprAsItem) and node_.parent.alias is node_ {
                 return self.get_type_of_with_alias(node_.parent);
             }
@@ -6830,4 +6835,113 @@ impl TypeEvaluator._is_empty_container_expr(expr: Expr) -> bool {
         return expr.target.value in ("list", "set", "dict", "frozenset");
     }
     return False;
+}
+
+impl TypeEvaluator._get_type_of_match_capture(pattern: MatchPattern) -> TypeBase {
+    if isinstance(pattern, MatchAs) and pattern.pattern is not None {
+        narrowed = self._get_type_from_match_pattern(pattern.pattern);
+        if narrowed is not None {
+            return self._convert_to_instance(narrowed);
+        }
+    }
+    return self._match_position_type(pattern);
+}
+
+impl TypeEvaluator._match_position_type(pattern: MatchPattern) -> TypeBase {
+    parent = pattern.parent;
+    if isinstance(parent, MatchCase) {
+        holder = parent.parent;
+        if isinstance(holder, MatchStmt) {
+            return self.get_type_of_expression(holder.target);
+        }
+        return UnknownType();
+    }
+    if isinstance(parent, (MatchAs, MatchOr)) {
+        return self._match_position_type(parent);
+    }
+    if isinstance(parent, MatchSequence) {
+        whole = self._match_position_type(parent);
+        if isinstance(pattern, MatchStar) {
+            element = self._get_iterable_element_type(whole, parent);
+            if element is None or self.prefetch is None or self.prefetch.list_class is None {
+                return UnknownType();
+            }
+            made = self._convert_to_instance(self.prefetch.list_class);
+            if isinstance(made, ClassType) {
+                made.private.type_args = [element];
+            }
+            return made;
+        }
+        if isinstance(whole, ClassType)
+            and whole.is_builtin(["tuple"])
+            and whole.private.type_args
+            and not any(isinstance(part, MatchStar) for part in parent.values) {
+            index = parent.values.index(pattern);
+            members = list(whole.private.type_args);
+            if index < len(members) {
+                return members[index];
+            }
+        }
+        element = self._get_iterable_element_type(whole, parent);
+        return element if element is not None else UnknownType();
+    }
+    if isinstance(parent, MatchMapping) {
+        whole = self._match_position_type(parent);
+        return whole;
+    }
+    if isinstance(parent, MatchKVPair) and parent.value is pattern {
+        owner = parent.parent;
+        if isinstance(owner, MatchMapping) {
+            whole = self._match_position_type(owner);
+            if isinstance(whole, ClassType)
+                and whole.private.type_args
+                and len(whole.private.type_args) == 2 {
+                return whole.private.type_args[1];
+            }
+            return UnknownType();
+        }
+        if isinstance(owner, MatchArch) and isinstance(parent.key, Name) {
+            arch = self._convert_to_instance(self.get_type_of_expression(owner.name));
+            if isinstance(arch, ClassType) {
+                member = self._lookup_class_member(arch, parent.key.value);
+                if member is not None {
+                    return self.get_type_of_member(member, arch);
+                }
+            }
+        }
+        return UnknownType();
+    }
+    if isinstance(parent, MatchArch) {
+        arch = self._convert_to_instance(self.get_type_of_expression(parent.name));
+        args = list(parent.arg_patterns or []);
+        if isinstance(arch, ClassType) and pattern in args {
+            fields: list[str] = [];
+            for ancestor in reversed(list(arch.shared.mro)) {
+                scope = ancestor.shared.symbol_table
+                    if isinstance(ancestor, ClassType) and ancestor._shared is not None
+                    else None;
+                if isinstance(scope, Archetype) {
+                    for block in scope.get_all_sub_nodes(ArchHas) {
+                        if block.is_static {
+                            continue;
+                        }
+                        for has_var in block.vars {
+                            if has_var.name.value not in fields {
+                                fields.append(has_var.name.value);
+                            }
+                        }
+                    }
+                }
+            }
+            index = args.index(pattern);
+            if index < len(fields) {
+                member = self._lookup_class_member(arch, fields[index]);
+                if member is not None {
+                    return self.get_type_of_member(member, arch);
+                }
+            }
+        }
+        return UnknownType();
+    }
+    return UnknownType();
 }

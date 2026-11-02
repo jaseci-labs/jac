@@ -637,6 +637,8 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
         value = self.lower_expr(nd.value);
     } elif isinstance(nd, uni.CfgExpr) {
         value = self.lower_expr(nd.expr);
+    } elif isinstance(nd, uni.CastExpr) {
+        value = self.lower_cast(nd);
     } elif isinstance(nd, uni.BinaryExpr) {
         value = self.lower_binary(nd);
     } elif isinstance(nd, uni.CompareExpr) {

@@ -81,6 +81,26 @@ impl MirLowering.optional_eq(
     return b.load(held, mir_bool());
 }
 
+impl MirLowering.lower_cast(nd: uni.CastExpr) -> MirValue {
+    value = self.lower_expr(nd.value);
+    if nd.type is None or isinstance(nd.type, (UnionType, AnyType)) {
+        return value;
+    }
+    wanted = self.expr_type(nd);
+    if value.type is wanted {
+        return value;
+    }
+    if value.type.kind == MirKind.ANY {
+        return self.any_unbox(value, wanted, nd);
+    }
+    if value.type.kind == MirKind.OPT and wanted.kind != MirKind.OPT {
+        return self.narrow_down(
+            self.opt_unwrap_checked(value, "'NoneType' object cast to a value"), nd
+        );
+    }
+    return self.narrow_down(value, nd);
+}
+
 impl MirLowering.opt_begin(
     value: MirValue, result: MirType
 ) -> tuple[MirValue, MirValue, MirBlock, MirBlock] {

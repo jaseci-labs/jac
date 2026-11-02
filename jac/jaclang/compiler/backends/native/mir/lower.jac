@@ -452,6 +452,7 @@ obj MirLowering {
     def narrowed_load(value: MirValue, nd: uni.Expr) -> MirValue;
     def narrow_down(value: MirValue, nd: uni.Expr) -> MirValue;
     def optional_eq(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
+    def lower_cast(nd: uni.CastExpr) -> MirValue;
     def opt_begin(
         value: MirValue, result: MirType
     ) -> tuple[MirValue, MirValue, MirBlock, MirBlock];
@@ -817,6 +818,9 @@ obj MirLowering {
         pat: uni.MatchPattern, subject: MirValue, fail: MirBlock, site: uni.UniNode
     );
 
+    def match_star_sequence(
+        pat: uni.MatchSequence, at: int, subject: MirValue, fail: MirBlock
+    );
     def match_arch(pat: uni.MatchArch, subject: MirValue, fail: MirBlock);
     def branch_unless(cond: MirValue, fail: MirBlock);
     def python_call(nd: uni.FuncCall) -> (MirValue | None);

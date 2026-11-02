@@ -344,7 +344,16 @@ impl MirLowering.match_test(
         return;
     }
     if isinstance(pat, uni.MatchSequence) {
-        if any(isinstance(part, uni.MatchStar) for part in pat.values) {
+        stars = [
+            index
+            for (index, part) in enumerate(pat.values)
+            if isinstance(part, uni.MatchStar)
+        ];
+        if stars and subject.type.kind == MirKind.LIST and len(stars) == 1 {
+            self.match_star_sequence(pat, stars[0], subject, fail);
+            return;
+        }
+        if stars {
             raise MirRefused(mir_refusal("match pattern", "star in a sequence", pat));
         }
         if subject.type.kind == MirKind.TUPLE {
@@ -388,7 +397,13 @@ impl MirLowering.match_test(
             );
         }
         key_type = subject.type.args[0];
+        matched_keys: list[MirValue] = [];
+        rest: (uni.MatchStar | None) = None;
         for entry_pat in pat.values {
+            if isinstance(entry_pat, uni.MatchStar) {
+                rest = entry_pat;
+                continue;
+            }
             if not isinstance(entry_pat, uni.MatchKVPair) {
                 raise MirRefused(
                     mir_refusal("match pattern", "** in a mapping", entry_pat)
@@ -404,6 +419,7 @@ impl MirLowering.match_test(
                 );
             }
             key = self.spill(self.lower_expr(key_node));
+            matched_keys.append(key);
             found = self.runtime_value(
                 "__jac_rt_dict_find",
                 [
@@ -419,6 +435,27 @@ impl MirLowering.match_test(
                 fail,
                 entry_pat
             );
+        }
+        if rest is not None and isinstance(rest.name, uni.Name) and rest.name.sym is not None {
+            value_type = subject.type.args[1];
+            key_kind = b.const_int(self.elem_kind(key_type, rest), mir_int());
+            value_kind = b.const_int(self.elem_kind(value_type, rest), mir_int());
+            copied = self.spill(
+                b.ref_cast(
+                    self.runtime_value(
+                        "__jac_rt_dict_copy", [subject, key_kind, value_kind]
+                    ),
+                    subject.type,
+                    True
+                )
+            );
+            for key in matched_keys {
+                self.runtime(
+                    "__jac_rt_dict_del",
+                    [copied, self.to_bits(key, key_type, rest), key_kind, value_kind]
+                );
+            }
+            self.store_name(rest.name, copied);
         }
         return;
     }
@@ -478,5 +515,44 @@ impl MirLowering.match_arch(pat: uni.MatchArch, subject: MirValue, fail: MirBloc
         self.match_test(
             part, self.spill(b.load(place, self.place_elem(place))), fail, part
         );
+    }
+}
+
+impl MirLowering.match_star_sequence(
+    pat: uni.MatchSequence, at: int, subject: MirValue, fail: MirBlock
+) {
+    b = self.builder();
+    heads = pat.values[:at];
+    tails = pat.values[at + 1:];
+    size = self.container_len(subject);
+    self.branch_unless(
+        b.compare("ge", size, b.const_int(len(heads) + len(tails), mir_int())), fail
+    );
+    for (index, part) in enumerate(heads) {
+        element = self.spill(self.list_read(subject, b.const_int(index, mir_int())));
+        self.match_test(part, element, fail, part);
+    }
+    for (index, part) in enumerate(tails) {
+        position = b.binary(
+            "sub", size, b.const_int(len(tails) - index, mir_int())
+        );
+        element = self.spill(self.list_read(subject, position));
+        self.match_test(part, element, fail, part);
+    }
+    star = pat.values[at];
+    if isinstance(star, uni.MatchStar)
+        and isinstance(star.name, uni.Name)
+        and star.name.sym is not None {
+        middle = self.runtime_value(
+            "__jac_rt_list_slice",
+            [
+                subject,
+                b.const_int(len(heads), mir_int()),
+                b.binary("sub", size, b.const_int(len(tails), mir_int())),
+                b.const_int(1, mir_int()),
+                b.const_int(self.elem_kind(subject.type.payload(), star), mir_int())
+            ]
+        );
+        self.store_name(star.name, self.spill(b.ref_cast(middle, subject.type, True)));
     }
 }
