@@ -340,7 +340,11 @@ impl KernelHost.python_module(program: JacProgram, file_path: str) -> (Module | 
     self._served[resolved] = ServedInterface(catalog=catalog, module=mod);
     program.stamp_app_facts(mod);
     if iface.effects {
-        mod.gen.callable_effects = json.loads(iface.effects);
+        effects: dict[str, dict[str, any]] = {};
+        for (key, facts) in json_map(json.loads(iface.effects)).items() {
+            effects[key] = json_map(facts);
+        }
+        mod.gen.callable_effects = effects;
     }
     if iface.placement {
         import from jaclang.compiler.placement.placement { summary_store }
