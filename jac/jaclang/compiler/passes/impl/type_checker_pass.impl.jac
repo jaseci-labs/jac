@@ -540,7 +540,7 @@ impl TypeCheckPass._rebound_enclosing_symbol(
     scope: UniNode, leaf: Name
 ) -> (Symbol | None) {
     py_scope = find_python_scope_node_of(scope);
-    return py_scope.lookup(leaf.value, deep=False) if py_scope is not None else None;
+    return py_scope.names_in_scope.get(leaf.value) if py_scope is not None else None;
 }
 
 impl TypeCheckPass._is_initializer_write(target: Expr, decl_sym: Symbol) -> bool {
