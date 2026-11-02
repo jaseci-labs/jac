@@ -6558,6 +6558,7 @@ graph import compiler {
             STR_LEN_PAYLOAD_MASK,
             STR_LEN_TAG_BIT,
             STR_LEN_TAG_SHIFT,
+            is_mir_runtime_path,
             is_package_keyed_path,
             native_unit_identity,
             real_path,

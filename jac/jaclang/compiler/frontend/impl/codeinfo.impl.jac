@@ -503,6 +503,12 @@ impl kernel_unit_path(rel: str) -> str {
     return os.path.join(target_pkg_root(), rel.replace("/", os.sep));
 }
 
+impl is_mir_runtime_path(source_path: str) -> bool {
+    import os;
+    runtime = os.path.join(real_path(jaclang_pkg_root()), "runtime", "native") + os.sep;
+    return real_path(source_path).startswith(runtime);
+}
+
 impl kernel_unit_paths -> list[str] {
     return [kernel_unit_path(rel) for rel in kernel_unit_rels()];
 }
