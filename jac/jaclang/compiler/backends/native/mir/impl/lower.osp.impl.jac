@@ -116,6 +116,36 @@ impl MirLowering.osp_handles(value: MirValue, site: uni.UniNode) -> MirValue {
         if elem.kind == MirKind.OBJ {
             return self.builder().ref_cast(value, mir_list(mir_int()), False);
         }
+        if elem.kind == MirKind.ANY {
+            b = self.builder();
+            fn = self.st().fn;
+            source = self.osp_hold(value);
+            made = self.spill(self.new_list(mir_int(), 4));
+            index = self.temp_slot(mir_int());
+            b.store(index, b.const_int(0, mir_int()));
+            head = fn.new_block("handles.head");
+            body = fn.new_block("handles.body");
+            done = fn.new_block("handles.done");
+            b.branch(head);
+            b.position(head);
+            at = b.load(index, mir_int());
+            b.cond_branch(b.compare("lt", at, self.container_len(source)), body, done);
+            b.position(body);
+            self.runtime(
+                "__jac_rt_list_push",
+                [
+                    made,
+                    self.emit_value(
+                        MirOp.ANY_PAYLOAD, mir_int(), [self.list_read(source, at)]
+                    ),
+                    b.const_int(KIND_INT, mir_int())
+                ]
+            );
+            b.store(index, b.binary("add", at, b.const_int(1, mir_int())));
+            b.branch(head);
+            b.position(done);
+            return made;
+        }
         raise MirRefused(mir_refusal("graph operand", value.type.render(), site));
     }
     return self.osp_one(self.osp_handle(value, site));
@@ -140,6 +170,15 @@ impl MirLowering.osp_typed(handles: MirValue, site: uni.Expr) -> MirValue {
     }
     if target is handles.type {
         return handles;
+    }
+    if target.payload().kind == MirKind.ANY {
+        boxed = self.runtime(
+            "__jac_rt_list_box", [handles, b.const_int(ANY_OBJ_TAG, mir_int())]
+        );
+        if boxed is None {
+            raise MirRefused(mir_refusal("expression", "graph result", site));
+        }
+        return b.ref_cast(boxed, target, True);
     }
     if target.payload().kind != MirKind.OBJ {
         raise MirRefused(
@@ -691,17 +730,22 @@ impl MirLowering.osp_edge_object(
         return b.ref_cast(self.osp_call("__jac_osp_generic_edge", []), mir_ref(), True);
     }
     obj_def = self.object_def(edge_arch);
+    if isinstance(co.conn_type, uni.FuncCall) {
+        built = self.object_call(co.conn_type, edge_arch);
+        for (field, value) in values.items() {
+            place = self.field_place(built, edge_arch, field, site);
+            b.store(place, self.coerce(value, self.place_elem(place), site));
+        }
+        return built;
+    }
     args: list[MirValue] = [];
     taken: set[str] = set();
     params = self.constructor_params(edge_arch);
     mask = 0;
     for (index, (pname, ptype, fallback)) in enumerate(params) {
-        if pname in values {
+        if pname in values and fallback is None {
             args.append(self.coerce(values[pname], ptype, site));
             taken.add(pname);
-            if fallback is not None {
-                mask = mask | (1 << index);
-            }
         } elif fallback is not None {
             args.append(self.placeholder(ptype));
         } else {
@@ -1090,7 +1134,9 @@ impl MirLowering.lower_osp_filter(nd: uni.AtomTrailer) -> MirValue {
     if arch is None and f.compares {
         raise MirRefused(mir_refusal("expression", "FilterCompr", nd, OSP_FILTER_HELP));
     }
-    result = self.osp_handles(self.lower_expr(nd.target), nd);
+    result = self.lower_edge_handles(nd.target)
+        if isinstance(nd.target, uni.EdgeRefTrailer)
+        else self.osp_handles(self.lower_expr(nd.target), nd);
     if f.f_type is not None {
         result = self.osp_call(
             "__jac_osp_filter",

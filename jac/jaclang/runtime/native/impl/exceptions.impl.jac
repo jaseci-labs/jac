@@ -72,3 +72,70 @@ impl _report_uncaught(message: ptr[u8]) {
     }
     _write_text(ptr[u8]("\n"));
 }
+
+impl _lineage_slot(key: int) -> int {
+    table = __global_block("__jac_rt_exc_lineage", 4096);
+    at = (key ^ (key >> 17) ^ (key >> 31)) & (EXC_LINEAGE_SLOTS - 1);
+    probes = 0;
+    while probes < EXC_LINEAGE_SLOTS {
+        held = __mem_load_i64(table + at * 8);
+        if held == key or held == 0 {
+            return table + at * 8;
+        }
+        at = (at + 1) & (EXC_LINEAGE_SLOTS - 1);
+        probes += 1;
+    }
+    return 0;
+}
+
+impl __jac_rt_exc_lineage_add(type_id: int, base_id: int) {
+    key = (type_id << 32) | base_id;
+    place = _lineage_slot(key);
+    if place != 0 {
+        __mem_store_i64(place, key);
+    }
+}
+
+impl __jac_rt_exc_isa(type_id: int, base_id: int) -> bool {
+    if type_id == base_id {
+        return True;
+    }
+    key = (type_id << 32) | base_id;
+    place = _lineage_slot(key);
+    return place != 0 and __mem_load_i64(place) == key;
+}
+
+impl __jac_rt_exc_class_add(name: ptr[u8], type_id: int) {
+    table = __global_block("__jac_rt_exc_classes", 1025);
+    count = __mem_load_i64(table);
+    i = 0;
+    while i < count {
+        if __mem_load_i64(table + 16 + i * 16) == type_id {
+            return;
+        }
+        i += 1;
+    }
+    if count >= 511 {
+        return;
+    }
+    __mem_store_i64(table + 8 + count * 16, int(name));
+    __mem_store_i64(table + 16 + count * 16, type_id);
+    __mem_store_i64(table, count + 1);
+}
+
+impl __jac_rt_exc_class_of(held: int, fallback: int) -> int {
+    if held == 0 {
+        return fallback;
+    }
+    name = ptr[u8](__mem_load_i64(held - 24));
+    table = __global_block("__jac_rt_exc_classes", 1025);
+    count = __mem_load_i64(table);
+    i = 0;
+    while i < count {
+        if int(strcmp(ptr[u8](__mem_load_i64(table + 8 + i * 16)), name)) == 0 {
+            return __mem_load_i64(table + 16 + i * 16);
+        }
+        i += 1;
+    }
+    return fallback;
+}

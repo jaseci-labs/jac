@@ -70,6 +70,12 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
     self.mir.objects[name] = made;
     self.archetypes[name] = arch;
     for member in layout.fields {
+        if member.name == EXC_MESSAGE_FIELD {
+            made.fields.append(
+                MirObjectField(name=member.name, type=mir_str_ref(), index=member.index)
+            );
+            continue;
+        }
         field_type = member.semantic_type or self.declared_field_type(member.decl_node);
         self.ensure_objects(field_type);
         made.fields.append(
@@ -318,7 +324,8 @@ impl MirLowering.constructor_params(
     obj_def = self.object_def(arch);
     for member in layout.fields {
         decl = member.decl_node;
-        if isinstance(decl, uni.HasVar) and decl.defer {
+        if (isinstance(decl, uni.HasVar) and decl.defer)
+            or member.name == EXC_MESSAGE_FIELD {
             continue;
         }
         default_value = member.default_expr
@@ -474,7 +481,7 @@ impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) 
     return fn;
 }
 
-impl MirLowering.lower_drop(obj_def: MirObjectDef) -> MirFunction {
+impl MirLowering.lower_drop(obj_def: MirObjectDef, arch: uni.Archetype) -> MirFunction {
     i8p = mir_c_ptr(mir_int(8, False));
     fn = MirFunction(
         name=f"{obj_def.name}.__drop",
@@ -489,6 +496,11 @@ impl MirLowering.lower_drop(obj_def: MirObjectDef) -> MirFunction {
     raw = fn.new_value(i8p, "o");
     fn.params.append(MirParam(name="o", value=raw));
     this = b.ref_cast(raw, mir_obj(obj_def.name), False);
+    try {
+        self.drop_hook(arch, raw);
+    } except MirRefused as err {
+        self.refusals.setdefault(fn.symbol, []).append(refusal_of(err));
+    }
     collecting = self.emit_value(
         MirOp.MEM_LOAD,
         mir_int(8, True, True),
@@ -532,6 +544,76 @@ impl MirLowering.lower_drop(obj_def: MirObjectDef) -> MirFunction {
     b.ret(None);
     self.state = saved;
     return fn;
+}
+
+impl MirLowering.drop_hook(arch: uni.Archetype, raw: MirValue) {
+    hook = self.find_method(arch, "drop");
+    if hook is None
+        or hook.is_static
+        or not isinstance(hook.signature, uni.FuncSignature)
+        or self.param_nodes(hook.signature, True) {
+        return;
+    }
+    decl = self.method_decl(arch, hook, "drop", hook);
+    if decl.self_type is None {
+        return;
+    }
+    b = self.builder();
+    fn = self.st().fn;
+    self.emit_value(
+        MirOp.MEM_STORE,
+        mir_none(),
+        [
+            b.binary("sub", self.address_of(raw), b.const_int(16, mir_int())),
+            b.const_int(DROP_RC_SENTINEL, mir_int())
+        ]
+    );
+    frame = fn.new_value(mir_c_ptr(mir_int(8, False)), "exc.frame");
+    fn.blocks[0].instrs.insert(0, MirInstr(op=MirOp.EXC_FRAME, result=frame));
+    self.runtime("__jac_rt_exc_push", [frame]);
+    buffer = self.runtime("__jac_rt_exc_jmp_buf", [frame]);
+    if buffer is None {
+        raise MirRefused(mir_refusal("method", "drop", hook));
+    }
+    armed = self.emit_value(MirOp.SETJMP, mir_int(32, True, True), [buffer]);
+    call_bb = fn.new_block("drop.hook");
+    raised_bb = fn.new_block("drop.raised");
+    done_bb = fn.new_block("drop.hooked");
+    b.cond_branch(
+        b.compare("eq", armed, b.const_int(0, armed.type)), call_bb, raised_bb
+    );
+    b.position(call_bb);
+    b.call(decl.symbol, [b.ref_cast(raw, decl.self_type, False)], mir_none());
+    self.runtime("__jac_rt_exc_pop", [frame]);
+    b.branch(done_bb);
+    b.position(raised_bb);
+    self.runtime("__jac_rt_exc_pop", [frame]);
+    address = self.address_of(frame);
+    message = self.emit_value(
+        MirOp.MEM_LOAD,
+        mir_int(),
+        [b.binary("add", address, b.const_int(EXC_MESSAGE_OFFSET, mir_int()))]
+    );
+    shown = archetype_native_name(arch).split("$")[0];
+    self.write_value(
+        b.const_str(f"Exception ignored in: {shown}.drop: ", mir_str()), 2, hook
+    );
+    has_message_bb = fn.new_block("drop.message");
+    newline_bb = fn.new_block("drop.newline");
+    b.cond_branch(
+        b.compare("ne", message, b.const_int(0, mir_int())), has_message_bb, newline_bb
+    );
+    b.position(has_message_bb);
+    text = self.emit_value(MirOp.PTR_CAST, mir_str_ref(), [message]);
+    size = self.runtime("__jac_rt_str_size", [text]);
+    if size is not None {
+        self.write_value(b.str_make(text, text, size), 2, hook);
+    }
+    b.branch(newline_bb);
+    b.position(newline_bb);
+    self.write_value(b.const_str("\n", mir_str()), 2, hook);
+    b.branch(done_bb);
+    b.position(done_bb);
 }
 
 impl MirLowering.lower_trace(obj_def: MirObjectDef) -> MirFunction {
@@ -629,6 +711,11 @@ impl MirLowering.field_place(
 
 impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue {
     obj_def = self.object_def(arch);
+    if obj_def.field(EXC_MESSAGE_FIELD) is not None
+        and (self.find_method(arch, "init") or self.find_method(arch, "__init__"))
+        is None {
+        return self.exception_object(nd, arch);
+    }
     owner = arch.find_parent_of_type(uni.Module) or self.module;
     symbol = native_symbol_name(
         native_unit_prefix(owner.loc.mod_path), f"{obj_def.name}.__ctor"
@@ -649,9 +736,7 @@ impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue 
                 mir_refusal("call", f"{obj_def.name} with {len(bound)} arguments", nd)
             );
         }
-        values = [
-            self.bound_value(arg, param[1]) for (arg, param) in zip(bound, params)
-        ];
+        values = self.bound_values(list(bound), [param[1] for param in params]);
         if self.ctor_takes_mask(params) {
             given = 0;
             for (index, param) in enumerate(params) {
@@ -710,8 +795,7 @@ impl MirLowering.object_method(
     if len(args) != len(decl.params) {
         raise MirRefused(mir_refusal("call", f"{name} with {len(args)} arguments", nd));
     }
-    values = [receiver]
-        + [self.bound_value(arg, ptype) for (arg, ptype) in zip(args, decl.params)];
+    values = [receiver] + self.bound_values(list(args), decl.params);
     return self.invoke_method(decl, arch, name, values);
 }
 

@@ -80,6 +80,12 @@ impl MirNativePass.interface(mir: MirModule, deps: list[str]) -> NativeIface {
         if fn.linkage == "internal" {
             continue;
         }
+        held = exports.get(fn.name);
+        if held is not None
+            and held.symbol in (f"{mir.prefix}.{fn.name}", fn.name)
+            and fn.symbol != held.symbol {
+            continue;
+        }
         exports[fn.name] = NativeExport(
             name=fn.name,
             symbol=fn.symbol,

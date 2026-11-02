@@ -17,12 +17,13 @@ import from c {
             error_message: ptr[u8];
     }  def _longjmp(env: ptr[u8], value: i32) -> None;  def write(
         fd: i32, buf: ptr[u8], count: i64
-    ) -> i64;  def strlen(text: ptr[u8]) -> i64;  def _exit(code: i32) -> None;  def fflush(
+    ) -> i64;  def strlen(text: ptr[u8]) -> i64;  def strcmp(a: ptr[u8], b: ptr[u8]) -> i32;  def _exit(code: i32) -> None;  def fflush(
         stream: ptr[u8]
     ) -> i32;
 }
 
-glob EXC_STATE_HEADER: int = 40;
+glob EXC_STATE_HEADER: int = 40,
+     EXC_LINEAGE_SLOTS: int = 4096;
 
 def:pub __jac_rt_exc_context -> ptr[JacRtExcContext];
 
@@ -39,6 +40,16 @@ def:pub __jac_rt_unwind_pop(record: ptr[JacRtUnwindRecord]);
 def:pub __jac_rt_raise(target: ptr[u8], type_id: i32, message: ptr[u8]);
 
 def:pub __jac_rt_raise_builtin(type_id: i32, message: ptr[u8]);
+
+def:pub __jac_rt_exc_lineage_add(type_id: int, base_id: int);
+
+def:pub __jac_rt_exc_isa(type_id: int, base_id: int) -> bool;
+
+def _lineage_slot(key: int) -> int;
+
+def:pub __jac_rt_exc_class_add(name: ptr[u8], type_id: int);
+
+def:pub __jac_rt_exc_class_of(held: int, fallback: int) -> int;
 
 def _write_text(text: ptr[u8]);
 

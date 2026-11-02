@@ -38,13 +38,14 @@ impl MirLowering.lower -> MirModule {
             }
         }
         obj_def = self.object_def(arch);
-        self.mir.functions.append(self.lower_drop(obj_def));
+        self.mir.functions.append(self.lower_drop(obj_def, arch));
         self.mir.functions.append(self.lower_trace(obj_def));
     }
     self.lower_osp_module();
     self.mir.functions.extend(self.nested);
     self.nested = [];
-    for extra in (self.lower_module_init(), self.lower_module_entry()) {
+    module_entry = self.lower_module_entry();
+    for extra in (self.lower_module_init(), module_entry) {
         if extra is not None {
             self.mir.functions.append(extra);
         }
@@ -187,10 +188,11 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
         body = ab.body;
         if isinstance(body, uni.ImplDef) {
             spec = body.spec;
-            if not isinstance(spec, uni.FuncSignature) {
+            if isinstance(spec, uni.FuncSignature) {
+                sig = spec;
+            } elif spec is not None {
                 raise MirRefused(mir_refusal("function", "impl signature", ab));
             }
-            sig = spec;
             body = body.body;
         }
         if not isinstance(sig, uni.FuncSignature) {
@@ -445,16 +447,18 @@ impl MirLowering.store_name(target: uni.Name, value: MirValue) {
             return;
         }
     }
+    slot = self.name_slot(target);
+    self.builder().store(slot, self.coerce(value, self.place_elem(slot), target));
+}
+
+impl MirLowering.name_slot(target: uni.Name) -> MirValue {
     if target.sym is not None and id(target.sym) not in self.st().locals {
         place = self.global_place(target);
         if place is not None {
-            elem = self.place_elem(place);
-            self.builder().store(place, self.coerce(value, elem, target));
-            return;
+            return place;
         }
     }
-    slot = self.local_slot(target.sym, target);
-    self.builder().store(slot, self.coerce(value, slot.type, target));
+    return self.local_slot(target.sym, target);
 }
 
 impl MirLowering.local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirValue {
@@ -730,7 +734,9 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
     if nd.value == "self" and receiver is not None {
         return receiver;
     }
-    if isinstance(nd, uni.SpecialVarRef) and nd.value in ("here", "visitor", "root") {
+    if isinstance(nd, uni.SpecialVarRef)
+        and nd.value in ("here", "visitor", "root")
+        and (nd.sym is None or id(nd.sym) not in self.st().locals) {
         return self.osp_special(nd);
     }
     if nd.sym is not None {
@@ -1174,9 +1180,7 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
                 )
             );
         }
-        for (arg_nd, ptype) in zip(params, decl.params) {
-            args.append(self.bound_value(arg_nd, ptype));
-        }
+        args.extend(self.bound_values(list(params), decl.params));
         result = self.builder().call(decl.symbol, args, decl.ret);
         if result is None {
             return self.builder().const_bool(False);
@@ -1230,7 +1234,7 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         and (
             callee is None
             or os.path.basename(callee.loc.mod_path)
-                in ("builtins.pyi", "builtins.jac", "na_builtins.pyi")
+                in ("builtins.pyi", "builtins.jac", "na_builtins.pyi", "jac_builtins.pyi")
         ) {
         builtin = self.builtin_call(nd, name);
         if builtin is not None {
@@ -1615,6 +1619,10 @@ impl MirLowering.spill(value: MirValue) -> MirValue {
     return self.builder().load(slot, slot.type);
 }
 
+impl MirLowering.bound_values(args: list[any], params: list[MirType]) -> list[MirValue] {
+    return [self.bound_value(arg, ptype) for (arg, ptype) in zip(args, params)];
+}
+
 impl MirLowering.lower_string(nd: (uni.String | uni.MultiString)) -> MirValue {
     literal = self.bytes_literal(nd);
     if literal is not None {
@@ -1887,6 +1895,12 @@ impl MirLowering.place_elem(place: MirValue) -> MirType {
 
 impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
     if isinstance(nd, uni.Name) {
+        if nd.sym is not None and id(nd.sym) not in self.st().locals {
+            place = self.global_place(nd);
+            if place is not None {
+                return place;
+            }
+        }
         if nd.sym is None or id(nd.sym) not in self.st().locals {
             raise MirRefused(mir_refusal("place", nd.value, nd));
         }
@@ -2104,7 +2118,7 @@ impl MirLowering.import_call(
             mir_refusal("call", f"{symbol} with {len(args)} arguments", nd)
         );
     }
-    values = [self.bound_value(arg, ptype) for (arg, ptype) in zip(args, params)];
+    values = self.bound_values(list(args), params);
     result = self.builder().call(symbol, values, ret);
     if result is None {
         return self.builder().const_bool(False);

@@ -25,7 +25,9 @@ impl MirRcState.run {
                     MirOp.TUPLE_GET,
                     MirOp.ANY_TAG,
                     MirOp.ANY_PAYLOAD,
-                    MirOp.FRAME_FIELD
+                    MirOp.FRAME_FIELD,
+                    MirOp.FIELD_ADDR,
+                    MirOp.PTR_OFFSET
                 )
                 and instr.result is not None {
                 self.parents[instr.result.id] = instr.operands[0].id;
