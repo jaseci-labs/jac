@@ -745,7 +745,11 @@ impl callback_bind_exports(plan: LinkPlan) -> list[str] {
 }
 
 impl bind_python_bridges(plan: LinkPlan, undefined: list[str]) -> list[any] {
-    wanted = {name for name in undefined if name.startswith("__jac_na_import_")};
+    wanted = {
+        name
+        for name in undefined
+        if name.startswith("__jac_na_import_")
+    };
     held: list[any] = [];
     if not wanted {
         return held;
