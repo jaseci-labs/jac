@@ -5576,12 +5576,26 @@ graph import compiler {
     ]
     c_interop ++> [
         backends.native.mir.lower {
+            c_array_elem,
             c_builtin_kind,
+            c_bytes_array_values,
+            c_bytes_elem_shape,
+            c_bytes_literal,
+            c_offset_address,
             c_scalar_constant,
             c_string_literal,
             c_type_arg,
+            clib_global_of_name,
             clib_import_of,
-            foreign_struct_of_type
+            final_glob_value,
+            foreign_struct_of_type,
+            is_builtin_addressof_call,
+            is_builtin_pin_call,
+            is_pinned_type,
+            is_ptr_type,
+            is_va_list_type,
+            named_function_of,
+            opaque_c_of_type
         },
         backends.native.mir.lower_types {
             c_builtin_kind,
@@ -6223,6 +6237,9 @@ graph import compiler {
         types.type_evaluator.TypeEvaluator._get_type_of_lhs_assignment {
             find_destructure_index_path
         },
+        types.type_evaluator.TypeEvaluator._loop_back_edge_types {
+            collect_assignment_target_keys
+        },
         types.type_evaluator.TypeEvaluator._loop_body_writes_target {
             collect_assignment_target_keys
         },
@@ -6375,7 +6392,8 @@ graph import compiler {
         },
         driver.ifacecache.native_lowering_reads {
             is_compiler_source_path,
-            is_native_by_location
+            is_native_by_location,
+            is_native_compiler_unit
         },
         driver.jir {
             is_compiler_source_path,
@@ -6580,39 +6598,8 @@ graph import compiler {
             | expr_keys.type_tag_borrows
             | passes.type_checker_pass.TypeCheckPass._check_c_function_def
             | types.type_evaluator.TypeEvaluator._c_lent_args { is_borrow_kind },
-        backends.native.mir.lower
-            | c_interop.c_offset_address
-            | driver.wiring
-            | expr_keys
-            | passes.cfg_build_pass.CFGBuildPass.exit_ctrl_stmt
-            | passes.graph_lowering_pass
-            | passes.mtir_gen_pass
-            | passes.ownership_check_pass.OwnershipCheckPass._emit_flow_for_diagnostics
-            | passes.type_checker_pass.TypeCheckPass.exit_impl_def
-            | tools.cfg_dot.CoalesceBBPass._node_label
-            | tools.comment_attach_pass
-            | tools.jac_auto_lint_pass
-            | types.operations
-            | types.type_evaluator.TypeEvaluator._find_predicate_for { Tokens as Tok },
-        backends.native.mir.backend { CodeContext },
-        backends.py.jcir_gen_pass {
-            CodeContext,
-            OwnershipKind,
-            SymbolStorage,
-            Tokens as Tok,
-            is_borrow_kind
-        },
-        c_interop.c_lent_param
-            | passes.type_checker_pass.TypeCheckPass._check_c_interop_import {
-            is_borrow_kind
-        },
-        driver.boundary_classify { CodeContext, SymbolAccess, Tokens as Tok },
-        driver.boundary_classify.module_own_native_anchor
-            | passes.ownership_hints
-            | passes.rc_facts_pass.RcFactsPass._asn_makes_region_handle
-            | passes.type_checker_pass.TypeCheckPass._borrowed_scalar_param
-            | passes.wasm_contract { OwnershipKind },
-        driver.ifacecache.IfaceRegistry._client_edges
+        backends.native.mir.backend
+            | driver.ifacecache.IfaceRegistry._client_edges
             | driver.module_compile
             | driver.program.JacProgram.stamp_boundary_facts
             | driver.unit_products
@@ -6625,6 +6612,37 @@ graph import compiler {
             | placement.placement_facts.settle_server
             | placement.placement_solver
             | symbol_utils.report_placement_warnings { CodeContext },
+        backends.native.mir.lower { Tokens as Tok, is_borrow_kind },
+        backends.py.jcir_gen_pass {
+            CodeContext,
+            OwnershipKind,
+            SymbolStorage,
+            Tokens as Tok,
+            is_borrow_kind
+        },
+        c_interop.c_lent_param
+            | passes.type_checker_pass.TypeCheckPass._check_c_interop_import {
+            is_borrow_kind
+        },
+        c_interop.c_offset_address
+            | driver.wiring
+            | expr_keys
+            | passes.cfg_build_pass.CFGBuildPass.exit_ctrl_stmt
+            | passes.graph_lowering_pass
+            | passes.mtir_gen_pass
+            | passes.ownership_check_pass.OwnershipCheckPass._emit_flow_for_diagnostics
+            | passes.type_checker_pass.TypeCheckPass.exit_impl_def
+            | tools.cfg_dot.CoalesceBBPass._node_label
+            | tools.comment_attach_pass
+            | tools.jac_auto_lint_pass
+            | types.operations
+            | types.type_evaluator.TypeEvaluator._find_predicate_for { Tokens as Tok },
+        driver.boundary_classify { CodeContext, SymbolAccess, Tokens as Tok },
+        driver.boundary_classify.module_own_native_anchor
+            | passes.ownership_hints
+            | passes.rc_facts_pass.RcFactsPass._asn_makes_region_handle
+            | passes.type_checker_pass.TypeCheckPass._borrowed_scalar_param
+            | passes.wasm_contract { OwnershipKind },
         driver.module_analysis.run_analysis { CodeContext as _CodeCtx },
         native_bindings | types.type_utils { ParamKind, Tokens as Tok },
         passes.access_check_pass
@@ -6761,7 +6779,6 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass.prepare
             | passes.placement_pass.PlacementPass._run_decided { E5096 },
         backends.native.mir.backend { E5092, E9003 },
-        driver.module_compile.report_missing_native_ir { E5092 },
         backends.native.na_compile_pass { E5020, E5026 },
         backends.py.jcir_bc_gen_pass { E5040, E5043 },
         backends.py.jcir_gen_pass {
@@ -6780,6 +6797,7 @@ graph import compiler {
         },
         driver.ifacecache._alert_from_record
             | native_compiler.NativeCompiler.take_pass_results { DIAGNOSTICS },
+        driver.module_compile.report_missing_native_ir { E5092 },
         driver.program.JacProgram.module_scoped_errors { Category },
         passes.access_check_pass {
             E2034,
@@ -9569,6 +9587,7 @@ graph import compiler {
         frontend.kernel_host.KernelHost.python_module { summary_from_dict },
     ]
     placement.placement_facts ++> [
+        backends.native.mir.backend { native_placement_hard },
         driver.compiler.JacCompiler.kernel_native_entry { module_record },
         driver.module_compile.admits_native_checks { variant_selected },
         driver.program.JacProgram.declared_codespace {
@@ -9581,7 +9600,6 @@ graph import compiler {
             native_placement_hard
         },
         driver.unit_products.placement_record { module_spaces },
-        backends.native.mir.backend { native_placement_hard },
         passes.placement_pass { native_placement_soft },
         passes.placement_pass.PlacementPass._run_undecided { contexts_of },
         passes.placement_pass.settle_native_module { settle_server },
@@ -10002,12 +10020,20 @@ graph import compiler {
             | passes.ownership_check_pass._is_class_object { ClassType },
         backends.es.esast_gen_pass.EsastGenPass._osp_expr_arch_name
             | passes.layout_pass.enum_class_of { ClassType },
-        backends.native.mir.lower | backends.native.mir.lower_types {
+        backends.native.mir.lower {
             AnyType,
             ClassType,
             EnumMemberType,
             FunctionType,
             ModuleType,
+            TypeVarType,
+            UnionType
+        },
+        backends.native.mir.lower_types {
+            AnyType,
+            ClassType,
+            EnumMemberType,
+            FunctionType,
             TypeVarType,
             UnionType
         },
@@ -10301,6 +10327,7 @@ graph import compiler.backends.es.backends {
 }
 
 graph import compiler.backends.native {
+    abi ++> mir.emit { classify_struct }
     foreign ++> abi.classify_foreign_fn { foreign_struct_layout }
     kernel_resolve ++> kernel_stage0 { KERNEL_LINK_MODE, kernel_plan }
     kernel_stage0 ++> kernel_resolve.build_kernel { link_kernel }
@@ -10524,6 +10551,8 @@ graph import compiler.backends.native.mir {
         backend { MirModule },
         emit {
             MirBlock,
+            MirConst,
+            MirExtern,
             MirFunction,
             MirGlobal,
             MirInstr,
@@ -10546,6 +10575,7 @@ graph import compiler.backends.native.mir {
         lower {
             MirBlock,
             MirBuilder,
+            MirConst,
             MirExtern,
             MirFunction,
             MirGlobal,
@@ -10564,8 +10594,10 @@ graph import compiler.backends.native.mir {
     lower ++> backend { MirLowering }
     lower_types ++> lower {
         ANY_BOXABLE,
+        C_ABI_KINDS,
         MirPosition,
         MirRefused,
+        mir_c_elem,
         mir_class_type_named,
         mir_refusal,
         mir_spec_type,
@@ -10627,6 +10659,7 @@ graph import compiler.backends.native.mir {
             mir_bytearray,
             mir_bytes,
             mir_c_fn,
+            mir_c_pin,
             mir_c_ptr,
             mir_c_struct,
             mir_c_view,

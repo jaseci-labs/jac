@@ -445,6 +445,12 @@ impl MirLowering.constant_default(value: (uni.Expr | None)) -> bool {
     if isinstance(value, uni.String) and isinstance(value.lit_value, str) {
         return True;
     }
+    if isinstance(value, uni.MultiString) {
+        return all(
+            isinstance(part, uni.String) and isinstance(part.lit_value, str)
+            for part in value.strings
+        );
+    }
     if isinstance(value, uni.UnaryExpr) and value.op.name == Tok.MINUS {
         return isinstance(value.operand, (uni.Int, uni.Float));
     }

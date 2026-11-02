@@ -25,12 +25,7 @@ print the same lines, and CPython's own answers for the same six calls are
 import os;
 import subprocess;
 import tempfile;
-import from tests.support {
-    jac_command,
-    TESTS_DIR,
-    native_force_opts,
-    python_run
-}
+import from tests.support { jac_command, TESTS_DIR, native_force_opts, python_run }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.passes.layout_pass { get_layout_registry }
 
@@ -70,7 +65,9 @@ def seam_report(fixture: str) -> str {
             file_path=os.path.join(FIXTURES, fixture), options=native_force_opts()
         );
     }
-    assert not prog.errors_had , f"forced native demotes: {[str(e) for e in prog.errors_had]}";
+    assert not prog.errors_had , f"forced native demotes: {[
+        str(e) for e in prog.errors_had
+    ]}";
     return buf.getvalue();
 }
 

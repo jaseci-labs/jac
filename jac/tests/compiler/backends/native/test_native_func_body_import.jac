@@ -114,7 +114,9 @@ test "an unsupported body-scoped import demotes its function, and its native cal
     ]}";
     caller_iface: any = caller_ir.gen.native_iface;
     assert caller_iface is not None and "twice" in caller_iface.demoted , (
-        f"the native caller of the demoted function must demote with it: {caller_iface.demoted if caller_iface else None}"
+        f"the native caller of the demoted function must demote with it: {caller_iface.demoted
+            if caller_iface
+            else None}"
     );
 }
 

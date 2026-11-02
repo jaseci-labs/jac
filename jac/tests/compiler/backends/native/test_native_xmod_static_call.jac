@@ -95,7 +95,9 @@ def _run_py_lane(stem: str, func_name: str) -> object {
 test "a module-scope static call into a Python-side class demotes the entry" {
     (prog, ir, log) = _compile_logged("xmod_static_pybase_main.jac");
     assert not prog.errors_had , (
-        f"forced native placement demotes, it does not fail: {[str(e) for e in prog.errors_had]}"
+        f"forced native placement demotes, it does not fail: {[
+            str(e) for e in prog.errors_had
+        ]}"
     );
     iface: any = ir.gen.native_iface;
     assert iface is not None and iface.entry_symbol == "" , (

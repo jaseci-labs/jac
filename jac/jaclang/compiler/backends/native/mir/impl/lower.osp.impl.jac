@@ -357,7 +357,7 @@ impl MirLowering.lower_ability(decl: MirDecl) -> (MirFunction | None) {
             }
         }
     } except MirRefused as err {
-        self.refusals.setdefault(fn.symbol, []).append(refusal_of(err));
+        self.refusals.setdefault(self.refusal_key(decl), []).append(refusal_of(err));
         self.state = None;
         return None;
     }

@@ -104,10 +104,10 @@ def _demotions(fixture: str) -> list[str] {
     iface: any = ir.gen.native_iface if ir is not None else None;
     return (list(iface.demoted) if iface is not None else [])
         + [
-        d.pretty_print()
-        for d in (prog.errors_had or [])
-        if d.code is not None and d.code.code == "E5092"
-    ];
+            d.pretty_print()
+            for d in (prog.errors_had or [])
+            if d.code is not None and d.code.code == "E5092"
+        ];
 }
 
 

@@ -21,7 +21,9 @@ glob FIXTURE: str = str(
 """The JIT engine of `path` compiled natively, module walk order `walk_order`."""
 def jit_engine(path: str, walk_order: str | None = None) -> any {
     prog = JacProgram();
-    opts = CompileOptions(force_codespace='native', native_module_walk_order=walk_order);
+    opts = CompileOptions(
+        force_codespace='native', native_module_walk_order=walk_order
+    );
     mod = prog.compile(file_path=path, options=opts);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors: {errors}";

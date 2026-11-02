@@ -27,7 +27,11 @@ def mir_demoted_name(mir: MirModule, symbol: str) -> str;
 
 def mir_soft_blocks(top: (uni.UniNode | None), whole: bool, event: bool) -> bool;
 
-def mir_top_element(module: uni.Module, nd: (uni.UniNode | None)) -> (uni.UniNode | None);
+def mir_top_element(
+    module: uni.Module, nd: (uni.UniNode | None)
+) -> (uni.UniNode | None);
+
+def mir_clib_path(spec: tuple[str, list[str], int], triple: str) -> str;
 
 walker MirNativePass(CompilerPass) {
     static has contract: PassContract = PassContract(
@@ -41,7 +45,7 @@ walker MirNativePass(CompilerPass) {
     def settle_soft(lowering: MirLowering) -> bool;
     def refuse_events(lowering: MirLowering) -> bool;
     def note_demotions(lowering: MirLowering, prior: (NativeIface | None));
-    def interface(mir: MirModule, deps: list[str]) -> NativeIface;
+    def interface(mir: MirModule, deps: list[str], triple: str = "") -> NativeIface;
     def layout(lowering: MirLowering, mir: MirModule) -> NativeModuleLayout;
     can run_walk with uni.Module entry;
 }

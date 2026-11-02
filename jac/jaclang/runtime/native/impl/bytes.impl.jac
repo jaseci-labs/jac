@@ -405,12 +405,23 @@ impl __jac_rt_bytes_decode(
             continue;
         }
         w = 1 if c < 128 else (0 if codec == CODEC_ASCII else _utf8_valid(d, n, i));
+        if w <= 0
+            and errors == ERRORS_SURROGATEPASS
+            and codec == CODEC_UTF8
+            and c == 237
+            and i + 2 < n
+            and _byte(d + i + 1) >= 160
+            and _byte(d + i + 1) <= 191
+            and _byte(d + i + 2) >= 128
+            and _byte(d + i + 2) <= 191 {
+            w = 3;
+        }
         if w > 0 {
             __jac_rt_sb_add(sb, ptr[u8](d + i), w);
             i += w;
             continue;
         }
-        if errors == ERRORS_STRICT {
+        if errors == ERRORS_STRICT or errors == ERRORS_SURROGATEPASS {
             __jac_rt_sb_drop(sb);
             if codec == CODEC_ASCII {
                 __jac_rt_raise_builtin(
@@ -501,7 +512,7 @@ impl __jac_rt_str_encode(
         fits = cp < 128 if codec == CODEC_ASCII else cp < 256;
         if fits {
             __jac_rt_sb_byte(sb, cp);
-        } elif errors == ERRORS_STRICT {
+        } elif errors == ERRORS_STRICT or errors == ERRORS_SURROGATEPASS {
             __jac_rt_sb_drop(sb);
             if w > 2 {
                 cp = c & (15 if w == 3 else 7);

@@ -68,15 +68,6 @@ def demoted(ir: any) -> set[str] {
     return set(iface.demoted) if iface is not None else set();
 }
 
-"""The E5092 refusals of a forced-native compile, with their help text."""
-def refusals(prog: JacProgram) -> list[str] {
-    return [
-        source_spelled(str(e)) + " " + (e.help_text or "")
-        for e in prog.errors_had
-        if e.code is not None and e.code.code == "E5092"
-    ];
-}
-
 """No internal compiler error leaked out of the compile."""
 def no_ice(prog: JacProgram) -> bool {
     return not [
@@ -208,7 +199,9 @@ test "guardrail: yield without a generator return type demotes its function" {
     (prog, ir, log) = compile_na_inline_demote(
         "yield_expr", "def gen() -> int {\n" "    yield 1;\n" "    return 0;\n" "}\n"
     );
-    assert not prog.errors_had , f"forced native demotes the generator: {fmt_errors(prog)}";
+    assert not prog.errors_had , f"forced native demotes the generator: {fmt_errors(
+        prog
+    )}";
     assert "gen" in demoted(ir) , (
         f"yield in a non-generator signature must demote, never drop the yield:\n{log}"
     );
@@ -697,7 +690,9 @@ test "guardrail: foreign import used as a runtime value is still refused" {
         "def f -> int { x = ast3.parse(\"1\"); return 0; }\n"
         "with entry { print(f()); }\n"
     );
-    assert not prog.errors_had , f"forced native demotes the caller: {fmt_errors(prog)}";
+    assert not prog.errors_had , f"forced native demotes the caller: {fmt_errors(
+        prog
+    )}";
     assert "f" in demoted(ir) , f"the runtime use of a foreign import must demote f:\n{log}";
 }
 
@@ -1034,8 +1029,12 @@ test "a dict comprehension with any keys lowers, and always-None values demote" 
             "    return len(d);\n"
             "}\n"
         );
-        assert no_ice(none_prog) , f"{label}: emitter crash leaked: {fmt_errors(none_prog)}";
-        assert not none_prog.errors_had , f"{label}: must demote, got: {fmt_errors(none_prog)}";
+        assert no_ice(none_prog) , f"{label}: emitter crash leaked: {fmt_errors(
+            none_prog
+        )}";
+        assert not none_prog.errors_had , f"{label}: must demote, got: {fmt_errors(
+            none_prog
+        )}";
         assert "build" in demoted(none_ir) , (
             f"{label}: a dict whose values are always None must demote:\n{none_log}"
         );

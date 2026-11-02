@@ -70,7 +70,7 @@ impl MirLowering.compr_level(
     self.bind_values(level.target, values, level);
     for condition in list(level.conditional or []) {
         keep = fn.new_block("compr.keep");
-        b.cond_branch(self.truthy(self.lower_expr(condition), condition), keep, head);
+        b.cond_branch(self.condition(condition), keep, head);
         b.position(keep);
     }
     self.compr_level(nd, levels, index + 1, made);

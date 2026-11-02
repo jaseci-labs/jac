@@ -65,10 +65,10 @@ def _refusals(fixture: str) -> list[str] {
         if "demoting" in line
     ]
         + [
-        str(e)
-        for e in prog.errors_had
-        if e.code is not None and e.code.code in ("E5088", "E5092")
-    ];
+            str(e)
+            for e in prog.errors_had
+            if e.code is not None and e.code.code in ("E5088", "E5092")
+        ];
 }
 
 
