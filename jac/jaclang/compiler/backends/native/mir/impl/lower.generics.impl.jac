@@ -149,7 +149,7 @@ impl MirLowering.generic_call(
     evaluator = self.prog.get_type_evaluator();
     solution: dict[str, TypeBase] = {};
     for (pv, chosen) in zip(nodes, self.bound_args(nd, ab, receiver is not None)) {
-        if pv.name.sym is not None and not isinstance(chosen, MirPacked) {
+        if pv.name.sym is not None and isinstance(chosen, uni.Expr) {
             self.unify(
                 evaluator.get_type_of_symbol(pv.name.sym), chosen.type, solution
             );

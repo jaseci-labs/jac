@@ -245,7 +245,7 @@ impl MirLowering.lower_list_literal(nd: uni.ListVal) -> MirValue {
     elem = result_type.payload();
     made = self.spill(self.new_list(elem, max(len(nd.values), 4)));
     for item in nd.values {
-        if self.is_spread(item) {
+        if isinstance(item, uni.UnaryExpr) and self.is_spread(item) {
             self.extend_from(made, self.lower_expr(item.operand), item);
         } else {
             self.container_add(made, self.lower_expr(item), item);
@@ -262,7 +262,7 @@ impl MirLowering.lower_set_literal(nd: uni.SetVal) -> MirValue {
     elem = result_type.payload();
     made = self.spill(self.new_dict(elem, None, result_type));
     for item in list(nd.values or []) {
-        if self.is_spread(item) {
+        if isinstance(item, uni.UnaryExpr) and self.is_spread(item) {
             self.extend_from(made, self.lower_expr(item.operand), item);
         } else {
             self.container_add(made, self.lower_expr(item), item);

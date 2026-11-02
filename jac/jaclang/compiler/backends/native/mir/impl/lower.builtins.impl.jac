@@ -35,9 +35,9 @@ impl MirLowering.builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None)
             raise MirRefused(mir_refusal("call", f"set as {made_type.render()}", nd));
         }
         source = self.lower_expr(args[0]);
-        made = self.spill(self.new_dict(made_type.payload(), None, made_type));
-        self.extend_from(made, source, args[0]);
-        return made;
+        built = self.spill(self.new_dict(made_type.payload(), None, made_type));
+        self.extend_from(built, source, args[0]);
+        return built;
     }
     if name == "dict" {
         made_type = self.expr_type(nd);
@@ -47,11 +47,11 @@ impl MirLowering.builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None)
                 mir_refusal("call", f"dict of {source.type.render()}", nd)
             );
         }
-        made = self.spill(
+        built = self.spill(
             self.new_dict(made_type.args[0], made_type.args[1], made_type)
         );
-        self.merge_dict(made, source, args[0], False);
-        return made;
+        self.merge_dict(built, source, args[0], False);
+        return built;
     }
     if name in ("list", "reversed") {
         value = self.lower_expr(args[0]);
