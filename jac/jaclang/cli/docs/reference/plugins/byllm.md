@@ -1507,7 +1507,7 @@ The function returns a generator that yields raw string tokens as they arrive fr
 
 ### Streaming with Tools
 
-Streaming works with tool calling. The ReAct loop runs normally (non-streaming), then the **final answer** is streamed token by token:
+Streaming works with tool calling. The ReAct loop runs normally (non-streaming), then the **final answer** is delivered on the stream. When the model ends the loop with its answer, that answer arrives as one piece: byLLM does not ask the model to write it a second time. When the loop is cut short by `max_react_iterations` or `ABORT_WITH_SUMMARY`, there is no answer yet, so byLLM asks for one and streams it token by token:
 
 ```jac
 def get_weather(city: str) -> str {
@@ -1527,7 +1527,7 @@ with entry {
 ```
 
 !!! note
-    With `stream=True` alone (no `logging`), the user sees nothing during intermediate tool calls -- only the final answer is streamed. For visibility into intermediate steps, add `logging=True`.
+    With `stream=True` alone (no `logging`), the user sees nothing during intermediate tool calls -- only the final answer is yielded. For visibility into intermediate steps, add `logging=True`.
 
 ### Streaming with Logging (`StreamEvent`)
 
@@ -1631,7 +1631,7 @@ delta from a stream that replaced an abandoned one.
 | `thought` | Visible text the model wrote before a tool call | `content` (str), `iteration` (int) |
 | `reasoning` | Reasoning text from a model that returns it, merged into pieces of about 200 characters (see [Reasoning](#reasoning)) | `content` (str), `iteration` (int) |
 | `steps_done` | ReAct loop finished, final answer next | `iterations` (int), `reason` (str): `"max_iterations"`, `"aborted"`, or `"aborted_with_summary"` |
-| `chunk` | One token of the final streamed answer | `content` (str) |
+| `chunk` | Text of the final answer: one token at a time when byLLM streams it, or the whole answer in one event when the model already gave it (as text or through `finish_tool`) | `content` (str) |
 | `compaction` | Auto-compaction replaced the message history (tool-calling invocations only) | See [Observing compactions](#observing-compactions) |
 | `usage_step` | A single LLM call finished (tool-calling invocations only; see [Per-Call Usage](#per-call-usage)) | Same shape as `usage`, scoped to that one call |
 | `usage` | All LLM calls complete (always the last event) | `total` (dict), `by_kind` (dict), `per_call` (list[dict]), `requests` (int) |
@@ -1674,7 +1674,7 @@ with entry {
 | `call_kind` | When it happens |
 |---|---|
 | `react_iteration` | A normal turn of the ReAct loop - the calls you actually asked for |
-| `final_answer_restream` | byLLM re-asking the model to reproduce its already-known answer as a stream, once tool calls are done |
+| `final_answer_restream` | byLLM asking the model for a final answer after the loop was cut short by `max_react_iterations` or `ABORT_WITH_SUMMARY` |
 | `recovery` | byLLM re-prompting after the model skipped `finish_tool` on a structured/typed call |
 | `compaction` | The summarisation call that shrinks message history when auto-compaction fires |
 
