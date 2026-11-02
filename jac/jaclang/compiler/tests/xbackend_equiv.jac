@@ -297,154 +297,213 @@ def get_func(eng: object, name: str, restype: type, *argtypes: type) -> object {
     return functype(addr);
 }
 
-class JacVal(ctypes.Structure) {
-    has _fields_: list[any] = [("tag", ctypes.c_int8), ("payload", ctypes.c_int64)];
+glob NATIVE_TAG_INT: int = 0,
+     NATIVE_TAG_FLOAT: int = 1,
+     NATIVE_TAG_STR: int = 2,
+     NATIVE_TAG_LIST: int = 3,
+     NATIVE_TAG_DICT: int = 4,
+     NATIVE_TAG_SET: int = 5,
+     NATIVE_TAG_BOOL: int = 7,
+     NATIVE_TAG_NONE: int = 8,
+     NATIVE_KIND_INT: int = 0,
+     NATIVE_KIND_FLOAT: int = 1,
+     NATIVE_KIND_BOOL: int = 2,
+     NATIVE_KIND_STR: int = 3,
+     NATIVE_KIND_UINT: int = 7,
+     NATIVE_DROPS: dict[str, tuple[str, str]] = {
+         "_list_drop_plain": ("lists", "p"),
+         "_list_drop_str": ("lists", "s"),
+         "_list_drop_ref": ("lists", "r"),
+         "_dict_drop_pp": ("dicts", "pp"),
+         "_dict_drop_sp": ("dicts", "sp"),
+         "_dict_drop_ss": ("dicts", "ss"),
+         "_dict_drop_sr": ("dicts", "sr"),
+         "_dict_drop_rp": ("dicts", "rp"),
+         "_dict_drop_rs": ("dicts", "rs"),
+         "_dict_drop_rr": ("dicts", "rr")
+     },
+     _NATIVE_DROP_KINDS: dict[int, str] = {};
+
+def _learn_native_drops(eng: any) {
+    _NATIVE_DROP_KINDS.clear();
+    runtime = Path(jaclang.__file__).parent / "runtime" / "native";
+    for (name, (unit, kinds)) in NATIVE_DROPS.items() {
+        symbol = native_symbol_name(
+            native_unit_prefix(str(runtime / f"{unit}.jac")), name
+        );
+        try {
+            address = int(eng.get_function_address(symbol));
+        } except Exception {
+            address = 0;
+        }
+        if address {
+            _NATIVE_DROP_KINDS[address] = kinds;
+        }
+    }
 }
 
-def unbox_jacval(jv: JacVal) -> object {
-    if jv.tag == 0 {
-        return jv.payload;
-    } elif jv.tag == 1 {
-        return struct.unpack('d', struct.pack('q', jv.payload))[0];
-    } elif jv.tag == 2 {
-        if jv.payload == 0 {
-            return "";
-        }
-        return ctypes.cast(jv.payload, ctypes.c_char_p).value.decode("utf-8");
-    } elif jv.tag == 3 {
-        # List pointer: {i64 len, i64 cap, T* data}. The RC header's type-tag
-        # string (at payload - 24) names the concrete storage (list_i64,
-        # list_f64, list_jacval, ...) so hetero payloads decode by element tag.
-        if jv.payload == 0 {
-            return [];
-        }
-        class ListStruct(ctypes.Structure) {
-            has _fields_: list[any] = [
-                ("len", ctypes.c_int64),
-                ("cap", ctypes.c_int64),
-                ("data", ctypes.c_void_p)
-            ];
-        }
-        tname = "";
-        try {
-            _tslot = ctypes.cast(jv.payload - 24, ctypes.POINTER(ctypes.c_void_p));
-            _tp = _tslot.contents.value;
-            if _tp {
-                tname = ctypes.string_at(_tp).decode("utf-8", errors="replace");
-            }
-        } except Exception {
-            tname = "";
-        }
-        lst_ptr = ctypes.cast(jv.payload, ctypes.POINTER(ListStruct));
-        n = lst_ptr.contents.len;
-        data = lst_ptr.contents.data;
-        if (n == 0 or not data) {
-            return [];
-        }
-        if tname == "list_jacval" {
-            jarr = (JacVal * n).from_address(data);
-            return [unbox_jacval(jarr[i]) for i in range(n)];
-        }
-        if tname == "list_f64" {
-            farr = (ctypes.c_double * n).from_address(data);
-            return [float(farr[i]) for i in range(n)];
-        }
-        iarr = (ctypes.c_int64 * n).from_address(data);
-        return [int(iarr[i]) for i in range(n)];
-    } elif jv.tag == 4 {
-        # Dict pointer: struct { i64 len, i64 cap, i8** keys, JacVal* vals }
-        if jv.payload == 0 {
-            return {};
-        }
-        # Hash-table dict layout (see DictStruct below). `order[0..len]` holds the
-        # keys/vals slot of each entry in insertion order (Python dict semantics),
-        # so iterate order[i] -> keys[slot]/vals[slot].
-        class InnerDictStruct(ctypes.Structure) {
-            has _fields_: list[any] = [
-                ("len", ctypes.c_int64),
-                ("cap", ctypes.c_int64),
-                ("keys", ctypes.POINTER(ctypes.c_char_p)),
-                ("vals", ctypes.POINTER(JacVal)),
-                ("ctrl", ctypes.POINTER(ctypes.c_uint8)),
-                ("used", ctypes.c_int64),
-                ("order", ctypes.POINTER(ctypes.c_int64))
-            ];
-        }
-        dct_ptr = ctypes.cast(jv.payload, ctypes.POINTER(InnerDictStruct));
-        result: dict[str, any] = {};
-        for i in range(dct_ptr.contents.len) {
-            slot = dct_ptr.contents.order[i];
-            k = dct_ptr.contents.keys[slot].decode("utf-8");
-            result[k] = unbox_jacval(dct_ptr.contents.vals[slot]);
-        }
-        return result;
-    } elif jv.tag == 5 {
-        # Set pointer: hash-table Set.i64 layout
-        #   {i64 len, i64 cap, i64* keys, i8* ctrl, i64 used, i64* order}
-        if jv.payload == 0 {
-            return set();
-        }
-        class SetStruct(ctypes.Structure) {
-            has _fields_: list[any] = [
-                ("len", ctypes.c_int64),
-                ("cap", ctypes.c_int64),
-                ("keys", ctypes.POINTER(ctypes.c_int64)),
-                ("ctrl", ctypes.POINTER(ctypes.c_uint8)),
-                ("used", ctypes.c_int64),
-                ("order", ctypes.POINTER(ctypes.c_int64))
-            ];
-        }
-        st_ptr = ctypes.cast(jv.payload, ctypes.POINTER(SetStruct));
-        n = st_ptr.contents.len;
-        return {st_ptr.contents.keys[st_ptr.contents.order[i]] for i in range(n)};
-    } elif jv.tag == 7 {
-        # bool: kept distinct from int (tag 0) so it round-trips as True/False
-        # rather than 1/0, matching the Python reference exactly.
-        return jv.payload != 0;
-    } elif jv.tag == 9 {
-        return ...;
+def _native_word(addr: int) -> int {
+    return ctypes.c_int64.from_address(addr).value;
+}
+
+def _native_header(addr: int) -> str {
+    if addr == 0 {
+        return "";
+    }
+    named = ctypes.c_void_p.from_address(addr - 24).value;
+    return ctypes.string_at(named).decode("utf-8", errors="replace") if named else "";
+}
+
+def _native_kinds(addr: int) -> str {
+    return _NATIVE_DROP_KINDS.get(_native_word(addr - 8) & 0xFFFFFFFFFFFFFFFF, "");
+}
+
+def _native_text(addr: int) -> str {
+    if addr == 0 {
+        return "";
+    }
+    tag = _native_word(addr - 8);
+    size = ((tag & 0x7FFFFFFFFFFFFFFF) >> 1)
+        if tag & 1
+        else len(ctypes.string_at(addr));
+    return ctypes.string_at(addr, size).decode("utf-8", errors="replace");
+}
+
+def _native_float(bits: int) -> float {
+    return struct.unpack("d", struct.pack("q", bits))[0];
+}
+
+def _guide_of(like: any, index: int) -> any {
+    if isinstance(like, (list, tuple)) and like {
+        return like[index] if index < len(like) else like[0];
+    }
+    if isinstance(like, set) and like {
+        return next(iter(like));
     }
     return None;
 }
 
-def run_native_function(
-    eng: object, func_name: str, ir: object = None
-) -> dict[str, any] {
-    # Open-addressing hash-table dict:
-    #   {i64 len, i64 cap, i8** keys, JacVal* vals, i8* ctrl, i64 used, i64* order}
-    # Live entries sit at sparse hashed slots across `cap`. `order[0..len]` holds
-    # the keys/vals slot index of each entry in INSERTION ORDER (Python dict
-    # semantics), so iterate order[i] -> keys[slot] / vals[slot].
-    class DictStruct(ctypes.Structure) {
-        has _fields_: list[any] = [
-            ("len", ctypes.c_int64),
-            ("cap", ctypes.c_int64),
-            ("keys", ctypes.POINTER(ctypes.c_char_p)),
-            ("vals", ctypes.POINTER(JacVal)),
-            ("ctrl", ctypes.POINTER(ctypes.c_uint8)),
-            ("used", ctypes.c_int64),
-            ("order", ctypes.POINTER(ctypes.c_int64))
+def _native_slot(bits: int, kind: str, like: any) -> any {
+    if kind == "s" {
+        return _native_text(bits);
+    }
+    if kind == "r" {
+        return _native_object(bits, like);
+    }
+    if isinstance(like, bool) {
+        return bits != 0;
+    }
+    if isinstance(like, float) {
+        return _native_float(bits);
+    }
+    return bits;
+}
+
+def _native_object(addr: int, like: any = None) -> any {
+    if addr == 0 {
+        return None;
+    }
+    name = _native_header(addr);
+    if name == "any" {
+        return native_any(_native_word(addr), _native_word(addr + 8), like);
+    }
+    if name == "str" {
+        return _native_text(addr);
+    }
+    if name == "list" {
+        kind = _native_kinds(addr) or "p";
+        count = _native_word(addr);
+        data = _native_word(addr + 16);
+        return [
+            _native_slot(_native_word(data + i * 8), kind, _guide_of(like, i))
+            for i in range(count)
         ];
     }
-    # Module-level and `static has` globals whose values are not compile-time
-    # constants (strings, constructor calls) are populated by the unit
-    # initializers the link plan ordered onto the engine
-    # (`engine.static_init_symbols`, dependencies first). The engine runs
-    # them itself the first time it hands out the address of a non-chained
-    # symbol, so looking the fixture function up is what initializes this
-    # unit and every native import it links. `ir` is accepted for callers
-    # that still pass the module; nothing is read from it.
-    f = get_func(eng, func_name, ctypes.POINTER(DictStruct));
-    dict_ptr = f();
-    result: dict[str, any] = {};
-    # Iterate in insertion order via order[0..len].
-    for i in range(dict_ptr.contents.len) {
-        slot = dict_ptr.contents.order[i];
-        key = dict_ptr.contents.keys[slot].decode("utf-8");
-        jv = dict_ptr.contents.vals[slot];
-        result[key] = unbox_jacval(jv);
+    if name == "tuple" {
+        count = _native_word(addr);
+        out: list[any] = [];
+        for i in range(count) {
+            kind = _native_word(addr + 8 + i * 8);
+            bits = _native_word(addr + 8 + (count + i) * 8);
+            if kind == NATIVE_KIND_FLOAT {
+                out.append(_native_float(bits));
+            } elif kind == NATIVE_KIND_BOOL {
+                out.append(bits != 0);
+            } elif kind in (NATIVE_KIND_INT, NATIVE_KIND_UINT) {
+                out.append(bits);
+            } elif kind == NATIVE_KIND_STR {
+                out.append(_native_text(bits));
+            } else {
+                out.append(_native_object(bits, _guide_of(like, i)));
+            }
+        }
+        return tuple(out);
     }
-    return result;
+    if name in ("dict", "set") {
+        kinds = _native_kinds(addr) or "pp";
+        used = _native_word(addr + 40);
+        keys = _native_word(addr + 16);
+        vals = _native_word(addr + 24);
+        order = _native_word(addr + 48);
+        key_like = next(iter(like)) if isinstance(like, (dict, set)) and like else None;
+        if name == "set" {
+            members: set[any] = set();
+            for i in range(used) {
+                if _native_word(order + i * 8) >= 0 {
+                    members.add(
+                        _native_slot(_native_word(keys + i * 8), kinds[0], key_like)
+                    );
+                }
+            }
+            return members;
+        }
+        result: dict[any, any] = {};
+        for i in range(used) {
+            if _native_word(order + i * 8) < 0 {
+                continue;
+            }
+            key = _native_slot(_native_word(keys + i * 8), kinds[0], key_like);
+            value_like = like.get(key) if isinstance(like, dict) else None;
+            result[key] = _native_slot(
+                _native_word(vals + i * 8), kinds[1], value_like
+            );
+        }
+        return result;
+    }
+    return addr;
+}
+
+def native_any(tag: int, payload: int, like: any = None) -> any {
+    tag = tag & 0xFF;
+    if tag == NATIVE_TAG_INT {
+        return payload;
+    }
+    if tag == NATIVE_TAG_FLOAT {
+        return _native_float(payload);
+    }
+    if tag == NATIVE_TAG_BOOL {
+        return payload != 0;
+    }
+    if tag == NATIVE_TAG_NONE {
+        return None;
+    }
+    if tag == NATIVE_TAG_STR {
+        return _native_text(payload);
+    }
+    if tag in (NATIVE_TAG_LIST, NATIVE_TAG_DICT, NATIVE_TAG_SET) {
+        return _native_object(payload, like);
+    }
+    return payload;
+}
+
+def run_native_function(
+    eng: object, func_name: str, ir: object = None, like: any = None
+) -> dict[str, any] {
+    f = get_func(eng, func_name, ctypes.c_void_p);
+    made = f() or 0;
+    _learn_native_drops(eng);
+    decoded = _native_object(made, like if isinstance(like, dict) else {});
+    return decoded if isinstance(decoded, dict) else {};
 }
 
 # -----------------------------------------------------------------------
@@ -559,7 +618,7 @@ def run_with_both(
     na_keys: int = 0;
     try {
         (eng, na_ir) = compile_native(fixture);
-        na_result = run_native_function(eng, na_fn, na_ir);
+        na_result = run_native_function(eng, na_fn, na_ir, py_result);
         na_keys = len(set(py_result.keys()) & set(na_result.keys()));
         if strict_keys and "na" in reqd {
             assert_full_parity(py_result, na_result, f"{label} [NA]", allow_missing);
