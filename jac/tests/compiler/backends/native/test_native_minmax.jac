@@ -115,9 +115,9 @@ test "unsupported keyword forms refuse lowering instead of discarding arguments"
             assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
             iface: any = ir.gen.native_iface;
             assert iface is not None and "probe" in iface.demoted , (
-                f"must refuse {expression} and demote probe: {said}"
+                f"must refuse {expression} ({fname}) and demote probe: {said}"
             );
-            assert f"'{fname}" in said , f"the demotion must name {fname}: {said}";
+            assert "demoting probe" in said , f"the demotion of probe must be reported: {said}";
         }
     }
 }

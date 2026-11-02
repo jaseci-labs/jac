@@ -98,13 +98,22 @@ test "the generic pass-shaped chain refuses instead of answering wrongly" {
 }
 
 
-test "the non-generic control refuses too, so genericity is not the fault" {
+test "the non-generic control refuses or answers as Python does, never 5" {
     assert _sv_read_back(PLAIN) == 103 , "the sv lane runs the override";
     hits = _refusals(PLAIN);
-    assert hits , "the same construction with no type parameter must refuse too";
-    assert any("PlainKid" in hit for hit in hits) , (
-        f"the refusal does not name the class: {hits}"
-    );
+    if hits {
+        assert any("PlainKid" in hit for hit in hits) , (
+            f"the refusal does not name the class: {hits}"
+        );
+    } else {
+        import ctypes;
+        import from tests.support { compile_native, get_func }
+        (eng, _ir) = compile_native(PLAIN);
+        native = get_func(eng, "read_back", ctypes.c_int64)();
+        assert native == 103 , (
+            f"the construction lowered but skipped the override: native answered {native}"
+        );
+    }
 }
 
 

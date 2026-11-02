@@ -312,30 +312,28 @@ test "a generic archetype at a scalar boxes, and 0 stays distinct from None" {
 }
 
 
-test "an unboxable type argument is refused, naming the instantiation" {
-    # A union of unrelated by-value kinds is a tagged `any` value with no box,
-    # so the erasure has no sound representation for it.
+test "a union type argument lowers through the tagged any value" {
+    # A union of unrelated by-value kinds is a tagged `any` value. The slot
+    # holds it as one, so a present value and None stay distinct.
     _src = "obj Ctx[T] {\n"
     "    has value: (T | None) = None;\n"
     "}\n"
-    "def five() -> int {\n"
-    "    c = Ctx[int | str](value=5);\n"
+    "def five(k: int) -> int {\n"
+    "    c = Ctx[int | str](value=k);\n"
     "    if c.value is not None {\n"
     "        return 1;\n"
     "    }\n"
     "    return -1;\n"
+    "}\n"
+    "def unset(k: int) -> int {\n"
+    "    c = Ctx[int | str]();\n"
+    "    if c.value is not None {\n"
+    "        return 1;\n"
+    "    }\n"
+    "    return -1 - k;\n"
     "}\n";
-    msgs = _seam_reasons("scalar_named", _src);
-    assert any([("Ctx" in m) for m in msgs]) , (
-        f"the demotion must name the offending instantiation: {msgs}"
-    );
-    (prog, ir) = _compile_src("scalar_named_layout", _src);
-    assert not prog.errors_had , (
-        f"the refusal must demote five() rather than fail the module: "
-        f"{[str(e) for e in prog.errors_had]}"
-    );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "five" not in ir.gen.native_layout.functions;
+    assert _lowered_fn("scalar_named", _src, "five")(5) == 1;
+    assert _lowered_fn("scalar_named_unset", _src, "unset")(2) == -3;
 }
 
 
@@ -514,8 +512,9 @@ test "a `list[T]` slot on a generic archetype stays loud" {
         f"a list over an unsolved type parameter must keep reporting: {msgs}"
     );
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "go" not in ir.gen.native_layout.functions , (
+    go_layout: any = ir.gen.native_layout;
+    assert go_layout is not None , "whole-module native compile aborted";
+    assert "go" not in go_layout.functions , (
         "the unlowerable container must demote its callable"
     );
 }

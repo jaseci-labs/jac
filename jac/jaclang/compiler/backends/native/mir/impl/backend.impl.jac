@@ -323,7 +323,13 @@ impl MirNativePass.interface(mir: MirModule, deps: list[str]) -> NativeIface {
         prefix=mir.prefix,
         exports=exports,
         deps=list(deps),
-        demoted=sorted({mir_demoted_name(mir, symbol) for symbol in mir.demoted}),
+        demoted=sorted(
+            {
+                mir_demoted_name(mir, symbol)
+                for symbol in mir.demoted
+                if symbol.startswith(mir.prefix + ".") or "." not in symbol
+            }
+        ),
         python_imports=sorted(mir.python_imports),
         init_symbol=native_glob_init_name(mir.path)
             if mir.function(native_glob_init_name(mir.path)) is not None

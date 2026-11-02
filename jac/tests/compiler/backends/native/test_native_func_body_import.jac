@@ -90,7 +90,8 @@ test "an unsupported body-scoped import demotes its function, and its native cal
     assert iface is not None and "use" in iface.demoted , (
         "the function with the Python-only import must be demoted to Python"
     );
-    assert "use" not in ir.gen.native_layout.functions , (
+    layout: any = ir.gen.native_layout;
+    assert "use" not in layout.functions , (
         "the function with the Python-only import must leave the native layout"
     );
 

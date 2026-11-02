@@ -493,7 +493,8 @@ test "native partial class: native caller of a demoted method demotes, not silen
         );
     }
     assert iface.entry_symbol == "" , "the entry calls a demoted function natively";
-    assert "Box.length" in by_source_name(ir.gen.native_layout.methods);
+    layout: any = ir.gen.native_layout;
+    assert "Box.length" in by_source_name(layout.methods);
 }
 
 test "native partial class: un-lowerable virtual method demotes to a stub slot" {
