@@ -897,8 +897,12 @@ impl _inferred_native_path(candidate: (str | None)) -> (str | None) {
     if candidate is None {
         return None;
     }
+    import from jaclang.compiler.native_scope { scope_allows_inferred_path }
+    if not scope_allows_inferred_path(candidate) {
+        return None;
+    }
     import from jaclang.compiler.frontend.host { active_host }
-    key = "native-inferred\x1f"
+    key = "native-default-ok\x1f"
         + str(native_unit_compile_active())
         + "\x1f"
         + str(id(active_host()))
@@ -913,10 +917,6 @@ impl _inferred_native_path(candidate: (str | None)) -> (str | None) {
 }
 
 impl _inferred_native_path_uncached(candidate: str) -> str {
-    import from jaclang.compiler.native_scope { scope_allows_inferred_path }
-    if not scope_allows_inferred_path(candidate) {
-        return "";
-    }
     import from jaclang.compiler.placement.placement_solver { native_default_path_ok }
     return candidate if native_default_path_ok(candidate) else "";
 }
