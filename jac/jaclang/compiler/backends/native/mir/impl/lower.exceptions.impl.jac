@@ -261,9 +261,9 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
     }
 }
 
-impl MirLowering.leave_tries(loop_depth: int) {
+impl MirLowering.leave_tries(loop_depth: int, run_finals: bool = True) {
     tries = list(self.st().tries);
-    finals = list(self.st().finals);
+    finals = list(self.st().finals) if run_finals else [];
     at_final = len(finals) - 1;
     at_try = len(tries) - 1;
     while at_final >= 0 or at_try >= 0 {

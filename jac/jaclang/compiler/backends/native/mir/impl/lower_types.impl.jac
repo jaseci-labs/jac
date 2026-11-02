@@ -182,6 +182,12 @@ impl mir_class_type(
     if name in ("NoneType", "None") {
         return mir_none();
     }
+    if name in ("Node", "Edge", "Walker")
+        and isinstance(scope, uni.Archetype)
+        and stub_archetype(scope)
+        and t.is_instance() {
+        return mir_any();
+    }
     if name == "object"
         or (
             name == "Any" and isinstance(scope, uni.Archetype) and stub_archetype(scope)

@@ -247,7 +247,7 @@ impl MirLowering.yield_value(value: MirValue, site: uni.UniNode) {
             [bits, b.const_int(self.elem_kind(info.elem, site), mir_int())]
         );
     }
-    self.leave_tries(0);
+    self.leave_tries(0, False);
     b.emit(MirInstr(op=MirOp.YIELD, operands=[shared]));
     self.rearm_tries();
 }
