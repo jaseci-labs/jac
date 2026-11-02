@@ -5984,6 +5984,8 @@ graph import compiler {
         backends.native.na_compile_pass.NativeCompilePass._emit_debug_products {
             get_native_debug_dir
         },
+        frontend.codeinfo._build_memo_get { _PREPARE_MEMO },
+        frontend.codeinfo._build_memo_put { _PREPARE_MEMO },
         placement.placement_facts._record_at {
             SEC_PLACEMENT,
             get_module_cache_path,
@@ -12078,9 +12080,10 @@ graph import compiler.frontend {
         source_layout { PathFacts },
     ]
     host --> [
-        codeinfo.effective_default_codespace
+        codeinfo._inferred_native_path
             | parser.frontend.annex_paths
             | unitree.Module.annexable_by.getter { active_host },
+        codeinfo.effective_default_codespace { active_host },
         codeinfo.effective_native_target { active_host },
         codeinfo.native_target_arch { active_host },
         codeinfo.resolve_native_module { active_host },

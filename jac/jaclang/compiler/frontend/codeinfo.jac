@@ -315,7 +315,6 @@ def native_variant_of(module_path: str) -> str;
 
 def _inferred_native_path(candidate: (str | None)) -> (str | None);
 
-def _inferred_native_path_uncached(candidate: str) -> str;
 
 def resolve_native_module(
     module_name: str, base_dir: str, allow_inferred: bool = True

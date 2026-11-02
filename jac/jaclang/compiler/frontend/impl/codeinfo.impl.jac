@@ -806,13 +806,11 @@ impl _native_variant_path(base_no_ext: str) -> (str | None) {
 }
 
 impl _build_memo_get(key: str) -> (str | None) {
-    import from jaclang.compiler.driver.jir { _PREPARE_MEMO }
     memo = _PREPARE_MEMO.get();
     return memo.get(key) if memo is not None else None;
 }
 
 impl _build_memo_put(key: str, value: str) {
-    import from jaclang.compiler.driver.jir { _PREPARE_MEMO }
     memo = _PREPARE_MEMO.get();
     if memo is not None {
         memo[key] = value;
@@ -910,15 +908,13 @@ impl _inferred_native_path(candidate: (str | None)) -> (str | None) {
         + candidate;
     found = _build_memo_get(key);
     if found is None {
-        found = _inferred_native_path_uncached(candidate);
+        import from jaclang.compiler.placement.placement_solver {
+            native_default_path_ok
+        }
+        found = candidate if native_default_path_ok(candidate) else "";
         _build_memo_put(key, found);
     }
     return found or None;
-}
-
-impl _inferred_native_path_uncached(candidate: str) -> str {
-    import from jaclang.compiler.placement.placement_solver { native_default_path_ok }
-    return candidate if native_default_path_ok(candidate) else "";
 }
 
 impl resolve_native_module(
