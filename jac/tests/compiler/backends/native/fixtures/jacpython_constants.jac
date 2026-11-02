@@ -1,4 +1,4 @@
-import from jaclang.runtime.python.cpython_api { PyObject }
+import from jaclang.runtime.python.cpython_api { PyObject, Py_NewRef, Py_None }
 import from jaclang.runtime.python.constant_output { constant_object }
 import from jaclang.runtime.python.objects {
     PyCode,
@@ -22,6 +22,10 @@ import from jaclang.runtime.python.compiler_integer {
     integer_negate,
     integer_to_float,
     PyBigInt
+}
+
+def:pub none_direct_probe -> ptr[PyObject] {
+    return Py_NewRef(Py_None);
 }
 
 def:pub none_probe -> ptr[PyObject] {

@@ -40,6 +40,7 @@ def verify(library_path: Path) {
     library.integer_probe.argtypes = [];
     library.integer_probe.restype = ctypes.c_int64;
     assert library.integer_probe() == 0;
+    assert take_object(library, "none_direct_probe") is None;
     assert take_object(library, "none_probe") is None;
     constants = take_object(library, "probe_constants");
     assert constants[:6] == (None, True, 0, -1, -(1 << 63), (1 << 63) - 1);
