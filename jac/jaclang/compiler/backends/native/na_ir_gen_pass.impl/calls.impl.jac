@@ -2050,6 +2050,20 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                             base=arg_val
                         );
                     }
+                    _len_static = params_l[0].type
+                        if isinstance(params_l[0], uni.Expr)
+                        else None;
+                    if _len_result is None
+                        and isinstance(_len_static, ClassType)
+                        and _len_static.shared.class_name == "tuple"
+                        and _len_static.private.type_args
+                        and not self.prog.get_type_evaluator()._tuple_has_variadic_arg(
+                        _len_static
+                    ) {
+                        _len_result = ir.Constant(
+                            ir.IntType(64), len(_len_static.private.type_args)
+                        );
+                    }
                     if _len_result is not None {
                         self._release_owned_args([arg_val], op="len_arg");
                         return _len_result;
