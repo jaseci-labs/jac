@@ -5545,6 +5545,12 @@ graph import compiler {
         driver.nativecache.NativeUnitRegistry.emit_objects { emit_unit_objects },
         driver.nativecache.NativeUnitRegistry.object_for { emit_unit_object },
     ]
+    backends.native.na_compile_pass ++> driver.native_snapshot_pipeline._snapshot_ir_text {
+        unit_snapshot_text_values
+    }
+    backends.native.na_compile_pass ++> driver.native_snapshot_pipeline._optimize_snapshot_batch {
+        optimize_unit_bitcodes_with_config
+    }
     type backends.native.na_compile_pass ++> driver.native_snapshot_pipeline
         | driver.nativecache { UnitIRSnapshot }
     backends.native.na_constants --> driver.native_iface.resolve_native_unit_ref {
