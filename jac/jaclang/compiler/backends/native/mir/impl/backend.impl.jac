@@ -37,11 +37,18 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
         for unit in runtime + lowered.deps
         if unit != here
     ];
-    ir_in.gen.llvm_ir = emit_mir_module(
+    emitted = emit_mir_module(
         lowered,
         self.prog.options.effective_triple(),
         bool(self.prog.options.native_tls)
     );
+    target = active_host().native_fact(
+        FACT_TARGET, self.prog.options.native_target or ""
+    ).split(
+        FACT_SEP
+    );
+    emitted.data_layout = target[0];
+    ir_in.gen.llvm_ir = emitted;
     ir_in.gen.native_deps = list(deps);
     ir_in.gen.native_iface = self.interface(lowered, deps);
     return ir_in;

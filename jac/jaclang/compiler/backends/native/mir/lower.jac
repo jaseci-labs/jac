@@ -343,6 +343,7 @@ obj MirLowering {
     def runtime(name: str, args: list[MirValue]) -> (MirValue | None);
     def temp_slot(type: MirType) -> MirValue;
     def spill(value: MirValue) -> MirValue;
+    def name_slot(target: uni.Name) -> MirValue;
     def arg_mark -> tuple[MirBlock, (MirInstr | None)];
     def carry_args(
         values: list[MirValue], marks: list[tuple[MirBlock, (MirInstr | None)]]

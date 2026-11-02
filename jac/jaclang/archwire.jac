@@ -7652,6 +7652,7 @@ graph import compiler {
         passes.package_boundary_pass { ProjectFacts, active_host },
         types.type_evaluator.TypeEvaluator.get_type_of_module { active_host },
     ]
+    frontend.host ++> backends.native.mir.backend { active_host }
     frontend.host --> [
         backends.es.client_paths.client_output_path
             | backends.native.na_ir_gen_pass.NaIRGenPass._opaque_field_if_unlowerable
@@ -11489,6 +11490,7 @@ graph import compiler.backends.native {
         },
         wasm_build.prepare_wasm_module { optimize_unit },
     ]
+    na_constants ++> mir.backend { FACT_SEP, FACT_TARGET }
     na_constants ++> [
         abi.struct_layouts { FACT_SEP, FACT_STRUCT_LAYOUTS },
         host_facts {

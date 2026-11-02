@@ -421,8 +421,8 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
         if op is None {
             raise MirRefused(mir_refusal("augmented assignment", nd.aug_op.value, nd));
         }
-        slot = self.local_slot(target.sym, target);
-        current = self.builder().load(slot, slot.type);
+        slot = self.name_slot(target);
+        current = self.builder().load(slot, self.place_elem(slot));
         if current.type.kind == MirKind.STR and op == Tok.PLUS {
             value = self.str_concat(current, self.coerce(value, mir_str(), nd));
         } else {
@@ -440,8 +440,18 @@ impl MirLowering.store_name(target: uni.Name, value: MirValue) {
             return;
         }
     }
-    slot = self.local_slot(target.sym, target);
-    self.builder().store(slot, self.coerce(value, slot.type, target));
+    slot = self.name_slot(target);
+    self.builder().store(slot, self.coerce(value, self.place_elem(slot), target));
+}
+
+impl MirLowering.name_slot(target: uni.Name) -> MirValue {
+    if target.sym is not None and id(target.sym) not in self.st().locals {
+        place = self.global_place(target);
+        if place is not None {
+            return place;
+        }
+    }
+    return self.local_slot(target.sym, target);
 }
 
 impl MirLowering.local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirValue {
@@ -1035,10 +1045,7 @@ impl MirLowering.lower_bool(nd: uni.BoolExpr) -> MirValue {
     b = self.builder();
     fn = self.st().fn;
     result_type = self.expr_type(nd);
-    result = fn.new_value(result_type, "bool.result");
-    fn.blocks[0].instrs.insert(
-        0, MirInstr(op=MirOp.SLOT, result=result, type_arg=result_type)
-    );
+    result = self.temp_slot(result_type);
     done = fn.new_block("bool.done");
     is_and = nd.op.name == Tok.KW_AND;
     values = list(nd.values);
@@ -1842,6 +1849,12 @@ impl MirLowering.place_elem(place: MirValue) -> MirType {
 
 impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
     if isinstance(nd, uni.Name) {
+        if nd.sym is not None and id(nd.sym) not in self.st().locals {
+            place = self.global_place(nd);
+            if place is not None {
+                return place;
+            }
+        }
         if nd.sym is None or id(nd.sym) not in self.st().locals {
             raise MirRefused(mir_refusal("place", nd.value, nd));
         }
