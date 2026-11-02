@@ -563,7 +563,7 @@ obj MirLowering {
     def register_exception(arch: uni.Archetype);
     def exception_message(value: MirValue, arch: uni.Archetype) -> MirValue;
     def exception_text(value: MirValue, arch: uni.Archetype) -> MirValue;
-    def exception_object(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue;
+    def exception_object(nd: (uni.FuncCall | None), arch: uni.Archetype) -> MirValue;
     def any_tag(t: MirType, site: uni.UniNode) -> int;
     def any_box(value: MirValue, site: uni.UniNode) -> MirValue;
     def any_make(tag: MirValue, payload: MirValue) -> MirValue;

@@ -186,14 +186,15 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
         );
         b.position(handler);
         bound_arch: (uni.Archetype | None) = None;
-        if clause.name is not None and clause.name.sym is not None {
-            bound_type = self.symbol_type(clause.name.sym, clause.name);
+        bound_name = clause.name;
+        if bound_name is not None and bound_name.sym is not None {
+            bound_type = self.symbol_type(bound_name.sym, bound_name);
             if bound_type.kind == MirKind.OBJ {
                 bound_arch = self.archetypes.get(bound_type.name);
             }
         }
-        if bound_arch is not None {
-            slot = self.local_slot(clause.name.sym, clause.name);
+        if bound_arch is not None and bound_name is not None {
+            slot = self.local_slot(bound_name.sym, bound_name);
             b.store(slot, b.ref_cast(origin, slot.type, True));
         } elif clause.name is not None {
             if clause.name.sym is None {
@@ -426,18 +427,25 @@ impl MirLowering.exception_object(
             positional.append(arg);
         }
     }
+    if nd is None {
+        raise MirRefused(
+            mir_refusal(
+                "exception",
+                f"{obj_def.name} raised without a call",
+                arch,
+                "Raise an instance: `raise E()`."
+            )
+        );
+    }
     has_init = (self.find_method(arch, "init") or self.find_method(arch, "__init__"))
         is not None;
     if has_init or obj_def.field(EXC_MESSAGE_FIELD) is None {
-        if nd is None {
-            raise MirRefused(mir_refusal("exception", obj_def.name, arch));
-        }
         return self.object_call(nd, arch);
     }
     lowered = [self.spill(self.lower_expr(arg)) for arg in positional];
     values: list[MirValue] = [];
     mask = 0;
-    site: uni.UniNode = nd if nd is not None else arch;
+    site = nd;
     for (index, (pname, ptype, fallback)) in enumerate(params) {
         if index < len(lowered) {
             values.append(self.coerce(lowered[index], ptype, positional[index]));
