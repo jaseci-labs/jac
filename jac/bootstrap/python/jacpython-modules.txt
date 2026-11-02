@@ -8,11 +8,9 @@
 #                     scripts/run_cpython_compiler_tests.jac runs against it.
 #                     Omitted when every upstream suite for the module needs
 #                     something outside it (_testcapi, compiler features).
-#   linker flags      Extra linker flags for a foreign library. A path
-#                     Modules/<name>.a names an archive the build compiles
-#                     from CPython's vendored sources (HACL*) before linking
-#                     the interpreter. A flag prefixed with an OS
-#                     (linux:-lrt) applies only on that OS.
+#   linker flags      Extra linker flags for a foreign library. A flag
+#                     prefixed with an OS (linux:-lrt) applies only on
+#                     that OS.
 #
 # This file is the single list. build_jacpython.zig links libpython with these
 # flags and fails when inittab.jac does not hold a listed PyInit;
@@ -63,12 +61,12 @@ atexit          test.test_atexit
 time            test.test_time,test.test_strftime
 select          test.test_select,test.test_poll,test.test_kqueue,test.test_epoll,test.test_selectors
 mmap            test.test_mmap
-_md5            test.test_hashlib                       Modules/_hacl/libHacl_Hash_MD5.a
-_sha1           test.test_hashlib                       Modules/_hacl/libHacl_Hash_SHA1.a
-_sha2           test.test_hashlib                       Modules/_hacl/libHacl_Hash_SHA2.a
-_sha3           test.test_hashlib                       Modules/_hacl/libHacl_Hash_SHA3.a
-_blake2         test.test_hashlib                       Modules/_hacl/libHacl_Hash_BLAKE2.a
-_hmac           test.test_hmac                          Modules/_hacl/libHacl_HMAC.a
+_md5            test.test_hashlib
+_sha1           test.test_hashlib
+_sha2           test.test_hashlib
+_sha3           test.test_hashlib
+_blake2         test.test_hashlib
+_hmac           test.test_hmac
 fcntl           test.test_fcntl
 termios         test.test_termios,test.test_tty
 _posixsubprocess test.test_subprocess
@@ -104,7 +102,7 @@ _interpreters   test.test__interpreters,test.test_interpreters,test.test_crossin
 _interpchannels test.test__interpchannels
 _interpqueues   test.test_interpreters
 marshal         test.test_marshal
-_imp            test.test_imp,test.test_importlib
+_imp            test.test_importlib
 _io             test.test_io,test.test_fileio,test.test_memoryio,test.test_bufio,test.test_univnewlines,test.test_file
 _ctypes         test.test_ctypes                        -lffi -ldl
 _scproxy        test.test_urllib2                       macos:-framework macos:SystemConfiguration macos:-framework macos:CoreFoundation

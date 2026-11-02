@@ -1,16 +1,5 @@
 """Native public symbol-table data and projection from compiler scopes."""
 
-glob PUBLIC_DEF_FREE_CLASS: int = 64,
-     PUBLIC_DEF_COMP_CELL: int = 2048,
-     TYPE_FUNCTION: int = 0,
-     TYPE_CLASS: int = 1,
-     TYPE_MODULE: int = 2,
-     TYPE_ANNOTATION: int = 3,
-     TYPE_TYPE_ALIAS: int = 4,
-     TYPE_TYPE_PARAMETERS: int = 5,
-     TYPE_TYPE_VARIABLE: int = 6,
-     SCOPE_MASK: int = 15;
-
 obj SymtableEntry {
     has _name: str,
         _type: int,
@@ -63,81 +52,24 @@ obj SymtableEntry {
     }
 }
 
-def _entry_from_block(b: sym_block, nested: bool = False) -> SymtableEntry {
-    kind = TYPE_FUNCTION;
-    name = b.name;
-    if b.kind == scope_kind.MODULE {
-        kind = TYPE_MODULE;
-    } elif b.kind == scope_kind.CLASS {
-        kind = TYPE_CLASS;
-    } elif b.generic_parameters {
-        kind = TYPE_TYPE_PARAMETERS;
-        name = name.removeprefix("<generic parameters of ").removesuffix(">");
-    } elif b.scope_info == scope_info_kind.ANNOTATION {
-        kind = TYPE_ANNOTATION;
-    } elif b.scope_info == scope_info_kind.TYPE_ALIAS {
-        kind = TYPE_TYPE_ALIAS;
-    } elif is_type_variable_info(b.scope_info) {
-        kind = TYPE_TYPE_VARIABLE;
-    }
-    symbols = dict(b.symbols);
-    varnames = list(b.varnames);
-    if kind == TYPE_TYPE_PARAMETERS
-        and ".defaults" not in symbols
-        and any(
-            child.kind == scope_kind.FUNCTION
-                and child.scope_info == scope_info_kind.NONE for child in b.children
-        ) {
-        # The public table includes CPython's generic-function defaults slot
-        # even when Jac's factory does not need to pass a defaults tuple.
-        symbols = {".defaults": DEF_PARAM | (SCOPE_LOCAL << SCOPE_OFFSET), ** symbols};
-        varnames.insert(0, ".defaults");
+def _entry_from_ste(ste: cpy_ste) -> SymtableEntry {
+    symbols: dict[str, int] = {};
+    for name in ste.symbol_order {
+        symbols[name] = ste.symbols[name];
     }
     table = SymtableEntry(
-        _name=name,
-        _type=kind,
-        _lineno=b.lineno,
-        _nested=nested,
+        _name=ste.name,
+        _type=ste.ste_type,
+        _lineno=ste.loc.lineno,
+        _nested=bool(ste.nested),
         _symbols=symbols,
-        _varnames=varnames,
+        _varnames=list(ste.varnames),
         _children=[]
     );
-    if b.scope_info != scope_info_kind.NONE and ".format" in table.symbols {
-        table.symbols[".format"] |= SYM_USE;
+    for child in ste.children {
+        table.children.append(_entry_from_ste(child));
     }
-    for free_name in b.class_free_names {
-        if free_name in table.symbols and table.symbols[free_name] & DEF_BOUND {
-            table.symbols[free_name] |= PUBLIC_DEF_FREE_CLASS;
-        }
-    }
-    _entry_children(table, b, nested or b.kind == scope_kind.FUNCTION);
     return table;
-}
-
-def _entry_children(table: SymtableEntry, b: sym_block, nested: bool) {
-    for child in b.children {
-        if child.inlined {
-            for (name, flags) in child.symbols.items() {
-                scope = (flags >> SCOPE_OFFSET) & SCOPE_MASK;
-                if scope == SCOPE_CELL {
-                    flags |= PUBLIC_DEF_COMP_CELL;
-                }
-                if name in table.symbols {
-                    previous = table.symbols[name];
-                    if flags & PUBLIC_DEF_COMP_CELL {
-                        table.symbols[name] = (previous & ((1 << SCOPE_OFFSET) - 1))
-                            | PUBLIC_DEF_COMP_CELL
-                            | (SCOPE_CELL << SCOPE_OFFSET);
-                    }
-                } else {
-                    table.symbols[name] = flags;
-                }
-            }
-            _entry_children(table, child, True);
-        } else {
-            table.children.append(_entry_from_block(child, nested));
-        }
-    }
 }
 
 import from jaclang.compiler.frontend.python.ast_output {
@@ -145,65 +77,38 @@ import from jaclang.compiler.frontend.python.ast_output {
     ast_write_text,
     ast_output_append_owned
 }
-import from jaclang.compiler.frontend.python.ast_nodes { stmt, Expr }
+import from jaclang.compiler.frontend.python.ast_nodes { Expression, mod }
 import from jaclang.compiler.frontend.python.parser {
     parse_file,
     parse_eval_expr,
     parse_interactive
 }
-import from jaclang.compiler.frontend.python.compiler_validate { future_features }
-import from jaclang.compiler.frontend.python.compiler_symtable { build_module_symtable }
-import from jaclang.compiler.frontend.python.compiler_diagnostics {
-    compiler_diag_to_pyobj
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_context { compile_context }
 import from jaclang.runtime.python.objects { PyObj, py_error }
 import from jaclang.runtime.python.capi { boundary_failure }
 def source_symtable(source: str, filename: str, mode: str) -> SymtableEntry | PyObj {
-    body: list[stmt] = [];
+    tree: mod | None = None;
     if mode == "eval" {
         expression = parse_eval_expr(source, filename);
-        if expression is None {
-            return py_error("SyntaxError", "invalid syntax");
+        if expression is not None {
+            tree = Expression(body=expression);
         }
-        body = [
-            Expr(
-                value=expression,
-                lineno=expression.lineno,
-                col_offset=expression.col_offset,
-                end_lineno=expression.end_lineno,
-                end_col_offset=expression.end_col_offset
-            )
-        ];
     } elif mode == "single" {
-        interactive = parse_interactive(source, filename);
-        if interactive is None {
-            return py_error("SyntaxError", "invalid syntax");
-        }
-        body = interactive.body;
+        tree = parse_interactive(source, filename);
     } elif mode == "exec" {
-        module = parse_file(source, filename);
-        if module is None {
-            return py_error("SyntaxError", "invalid syntax");
-        }
-        body = module.body;
+        tree = parse_file(source, filename);
     } else {
         return py_error(
             "ValueError", "symtable() arg 3 must be 'exec' or 'eval' or 'single'"
         );
     }
-    (flags, validation) = future_features(body, False);
-    if validation.diag is not None {
-        return compiler_diag_to_pyobj(validation.diag);
+    if tree is None {
+        return py_error("SyntaxError", "invalid syntax");
     }
-    result = build_module_symtable(body, compile_context(flags=flags));
-    if result.diag is not None {
-        return compiler_diag_to_pyobj(result.diag);
-    }
-    if result.top is None {
+    table = cpy_symtable_build(tree, filename, cpy_future_from_ast(tree, filename));
+    if table.top is None {
         return py_error("SystemError", "symbol table has no module table");
     }
-    return _entry_from_block(result.top);
+    return _entry_from_ste(table.top);
 }
 
 def symtable_to_object(table: SymtableEntry) -> ptr[PyObject] {

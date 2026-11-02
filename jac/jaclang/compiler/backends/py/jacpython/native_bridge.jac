@@ -35,7 +35,7 @@ import from c {
         bytes_: ptr[u8], size: i64
     ) -> ptr[PyObject];  def PyByteArray_Resize(
         self_: ptr[PyObject], size: i64
-    ) -> i32;  def PyBytes_FromObject(x: ptr[PyObject]) -> ptr[PyObject];  def PyUnicode_Decode(
+    ) -> i32;  def PyBytes_FromStringAndSize(s: ptr[u8], size: i64) -> ptr[PyObject];  def PyUnicode_Decode(
         s: ptr[u8], size: i64, encoding: ptr[u8], errors: ptr[u8]
     ) -> ptr[PyObject];  def PyErr_SetFromErrno(exc: ptr[PyObject]) -> ptr[PyObject];  def PyErr_ExceptionMatches(
         exc: ptr[PyObject]
@@ -168,7 +168,9 @@ def bytearray_data(op: ptr[PyObject]) -> ptr[u8];
 
 def append_bytes(source: ptr[PyObject], data: ptr[u8], size: i64) -> i32;
 
-def decoded_source(data: ptr[PyObject], encoding: ptr[u8]) -> ptr[PyObject];
+def decoded_source(data: ptr[PyObject], size: i64, encoding: ptr[u8]) -> ptr[PyObject];
+
+def interactive_parse_size(data: ptr[PyObject]) -> i64;
 
 def copy_flags(flags: ptr[CompilerFlags], target: ptr[CompilerFlags]);
 
@@ -427,7 +429,11 @@ import from c {
                 }
                 break;
             }
-            source = decoded_source(data, encoding);
+            parse_size = object_size(data);
+            if not eof {
+                parse_size = interactive_parse_size(data);
+            }
+            source = decoded_source(data, parse_size, encoding);
             if not source {
                 break;
             }
@@ -584,13 +590,40 @@ impl append_bytes(source: ptr[PyObject], data: ptr[u8], size: i64) -> i32 {
     return i32(0);
 }
 
-impl decoded_source(data: ptr[PyObject], encoding: ptr[u8]) -> ptr[PyObject] {
+impl decoded_source(
+    data: ptr[PyObject], size: i64, encoding: ptr[u8]
+) -> ptr[PyObject] {
     if encoding {
         return PyUnicode_Decode(
-            bytearray_data(data), object_size(data), encoding, ptr[u8]("strict")
+            bytearray_data(data), size, encoding, ptr[u8]("strict")
         );
     }
-    return PyBytes_FromObject(data);
+    return PyBytes_FromStringAndSize(bytearray_data(data), size);
+}
+
+# CPython's interactive tokenizer keeps a compound statement open until a
+# blank line. Parsing the lines read so far without the newline of a last
+# non-blank line keeps such a statement incomplete, as codeop does. A blank
+# line, or one continued by a backslash, is parsed with its newline.
+impl interactive_parse_size(data: ptr[PyObject]) -> i64 {
+    size = object_size(data);
+    text = bytearray_data(data).view(size);
+    if size == 0 or text[size - 1] != u8(10) {
+        return size;
+    }
+    end = size - 1;
+    if end > 0 and text[end - 1] == u8(13) {
+        end -= 1;
+    }
+    i = end - 1;
+    while i >= 0 and text[i] != u8(10) {
+        c = text[i];
+        if c != u8(32) and c != u8(9) and c != u8(12) and c != u8(13) {
+            return size if c == u8(92) else end;
+        }
+        i -= 1;
+    }
+    return size;
 }
 
 impl copy_flags(flags: ptr[CompilerFlags], target: ptr[CompilerFlags]) {
@@ -649,7 +682,7 @@ impl read_file(fp: ptr, encoding: ptr[u8]) -> ptr[PyObject] {
         PyErr_SetFromErrno(PyExc_OSError);
         return NULL;
     }
-    source = decoded_source(data, encoding);
+    source = decoded_source(data, object_size(data), encoding);
     object_decref(data);
     return source;
 }
