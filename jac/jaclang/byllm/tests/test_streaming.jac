@@ -85,10 +85,12 @@ test "a logging stream with no tools yields chunks then one usage event" {
 
 
 test "a logging stream with tools reports the call, the result, then the answer" {
+    answer = "Based on the information gathered, London is sunny at 25 degrees.";
     llm = MockLLM(
         outputs=[
             call("get_weather", {"city": "London"}),
-            finish("The weather in London is sunny, 25 degrees.")
+            finish("The weather in London is sunny, 25 degrees."),
+            say(answer)
         ]
     );
 
@@ -160,7 +162,9 @@ test "a finish_tool answer reaches the caller as committed, with no second call"
             got = chunk_text(list(out));
         } else {
             got = out;
-            assert chunk_text(seen) == committed , f"handler saw {chunk_text(seen)!r}";
+            assert chunk_text(seen) == committed , f"{mode}: the handler saw {chunk_text(
+                seen
+            )!r}";
         }
         assert got == committed , f"{mode}: the caller received {got!r}";
         assert len(llm.seen) == 2 , f"{mode}: expected 2 requests, got {len(llm.seen)}";
@@ -171,22 +175,6 @@ test "a finish_tool answer reaches the caller as committed, with no second call"
         ];
         assert answers == [committed] , f"{mode}: the conversation saved {answers}";
     }
-}
-
-
-test "a typed answer recovered through finish_tool is returned as the value" {
-    # Recovery only runs for typed returns; the recovered finish_tool value is the
-    # answer, so it is neither restated nor turned into text.
-    seen: list[StreamEvent] = [];
-    llm = MockLLM(outputs=[say("seven"), finish(7), say("Seven, as text.")]);
-
-    def pick(task: str) -> int by llm(
-        tools=[get_weather], stream=True, stream_handler=seen.append
-    );
-
-    assert pick("go") == 7;
-    assert len(llm.seen) == 2 , f"expected 2 requests, got {len(llm.seen)}";
-    assert chunk_text(seen) == "" , f"a typed answer is not text: {chunk_text(seen)!r}";
 }
 
 

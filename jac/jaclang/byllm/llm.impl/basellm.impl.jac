@@ -133,7 +133,7 @@ def _answer_events(
 ) -> Generator[StreamEvent, None, None];
 
 
-def _commit_answer(mt_run: MTRuntime, output: object) -> str;
+def _commit_answer(mt_run: MTRuntime, output: object, call_id: str) -> str;
 
 
 def _answer_text(mt_run: MTRuntime, output: object) -> str;
@@ -881,7 +881,7 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
                     continue;
                 }
                 mt_run.add_message(finish_msg);
-                answer = _commit_answer(mt_run, final_output);
+                answer = _commit_answer(mt_run, final_output, finish_tc.call_id);
                 return answer if mt_run.stream else final_output;
             }
         } else {
@@ -1692,7 +1692,7 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
                 if tool_call.is_finish_call() {
                     mt_run.add_scaffolding_message(tool_call());
                     output = tool_call.get_output();
-                    _commit_answer(mt_run, output);
+                    _commit_answer(mt_run, output, tool_call.call_id);
                     return output;
                 }
             }
@@ -1808,7 +1808,7 @@ impl BaseLLM._yield_recovery_result(
         for tool_call in recovery_resp.tool_calls {
             if tool_call.is_finish_call() {
                 mt_run.add_message(tool_call());
-                _commit_answer(mt_run, tool_call.get_output());
+                _commit_answer(mt_run, tool_call.get_output(), tool_call.call_id);
                 finish_found = True;
                 break;
             }
@@ -2109,7 +2109,7 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
                         continue;
                     }
                     mt_run.add_message(finish_msg);
-                    answer = _commit_answer(mt_run, final_output);
+                    answer = _commit_answer(mt_run, final_output, finish_tc.call_id);
                     yield StreamEvent(
                         event_type="steps_done", data={"iterations": iter_count}
                     );
@@ -2695,14 +2695,18 @@ impl _answer_events(
 }
 
 
-impl _commit_answer(mt_run: MTRuntime, output: object) -> str {
+impl _commit_answer(mt_run: MTRuntime, output: object, call_id: str) -> str {
     mt_run._final_output = output;
     mt_run._has_final_output = True;
     text = _answer_text(mt_run, output);
     if text {
         final: dict[str, any] = {"role": "assistant"};
         for msg in reversed(mt_run.messages) {
-            if isinstance(msg, dict) and msg.get("role") == "assistant" {
+            if isinstance(msg, dict)
+                and any(
+                    str(response_field(tc, "id") or "") == call_id
+                    for tc in msg.get("tool_calls") or []
+                ) {
                 final = dict(msg);
                 break;
             }
@@ -2736,7 +2740,7 @@ impl _recovered_answer(mt_run: MTRuntime, recovery_resp: CompletionResult) -> ob
         if tool_call.is_finish_call() {
             mt_run.add_message(tool_call());
             output = tool_call.get_output();
-            _commit_answer(mt_run, output);
+            _commit_answer(mt_run, output, tool_call.call_id);
             return output;
         }
     }

@@ -16,7 +16,6 @@ import from support {
     fail,
     finish,
     fixture_path,
-    mk_run,
     say
 }
 
@@ -77,14 +76,16 @@ def turn(
     llm: MockLLM,
     history: list[any],
     path: tuple[str, bool, bool, bool, bool],
-    message: str
+    message: str,
+    max_react_iterations: int = 0
 ) -> list[any] {
     (_, stream, logging, tools, _) = path;
     def ask(msg: str) -> str by llm(
         tools=[get_weather] if tools else [],
         conversation=history,
         stream=stream,
-        logging=logging
+        logging=logging,
+        max_react_iterations=max_react_iterations
     );
     out: any = ask(message);
     return list(out) if stream else [];
@@ -275,37 +276,30 @@ test "compaction counts reasoning, and the hook then reports the rebuilt request
 test "a stream litellm cannot rebuild still keeps the reasoning it carried" {
     think = {"reasoning_content": THINK};
     no_builder = RuntimeError("no builder");
-    history: list[any] = [];
-    # A loop cut off by max_react_iterations streams a requested answer.
-    cut = mk_run(
-        stream=True, tools=[get_weather], call_params={"max_react_iterations": 1}
-    );
-    with mock.patch.object(
-        _byllm_llm_mod.litellm, "stream_chunk_builder", side_effect=no_builder
-    ) {
-        turn(
-            MockLLM(outputs=[say("Paris is sunny.", fields=think)]),
-            history,
-            PATHS[3],
-            "How is Paris?"
-        );
-        cut_llm = MockLLM(
-            outputs=[
+    # A plain stream cut off by max_react_iterations asks for its answer and streams it.
+    for (path, cap, replies) in [
+        (PATHS[3], 0, [say("Paris is sunny.", fields=think)]),
+        (
+            PATHS[1],
+            1,
+            [
                 call("get_weather", {"city": "Paris"}),
                 say("Paris is sunny.", fields=think)
             ]
-        );
-        list(cut_llm._invoke_react_loop_streaming(cut));
-    }
-    for (label, reply) in [
-        (PATHS[3][0], history[-1]),
-        ("cut-off restream", cut.messages[-1])
+        )
     ] {
+        label = f"{path[0]}, max_react_iterations={cap}";
+        history: list[any] = [];
+        with mock.patch.object(
+            _byllm_llm_mod.litellm, "stream_chunk_builder", side_effect=no_builder
+        ) {
+            turn(MockLLM(outputs=replies), history, path, "How is Paris?", cap);
+        }
+        reply = history[-1];
         assert (reply.get("content"), reply.get("reasoning_content"))
             == ("Paris is sunny.", THINK) , f"{label}: {reply}";
     }
 }
-
 
 test "reasoning streams while the model is still thinking" {
     llm = MockLLM(
