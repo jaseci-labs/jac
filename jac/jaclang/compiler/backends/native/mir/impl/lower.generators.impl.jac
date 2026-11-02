@@ -57,7 +57,11 @@ impl MirLowering.lower_generator(decl: MirDecl) -> (MirFunction | None) {
         body = ab.body;
         if isinstance(body, uni.ImplDef) {
             spec = body.spec;
-            sig = spec if isinstance(spec, uni.FuncSignature) else None;
+            if isinstance(spec, uni.FuncSignature) {
+                sig = spec;
+            } elif spec is not None {
+                sig = None;
+            }
             body = body.body;
         }
         if not isinstance(sig, uni.FuncSignature)

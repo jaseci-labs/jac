@@ -16443,6 +16443,7 @@ graph import runtime.na_stdlib {
 }
 
 graph import runtime.native {
+    anys ++> lists { __jac_rt_any_box }
     dicts ++> [
         anys { __jac_rt_dict_len },
         iterators { __jac_rt_dict_key_at, __jac_rt_dict_next },

@@ -192,7 +192,7 @@ impl MirLowering.generic_call(
             mir_refusal("call", f"{label} with {len(bound)} arguments", nd)
         );
     }
-    values = [self.bound_value(arg, ptype) for (arg, ptype) in zip(bound, decl.params)];
+    values = self.bound_values(list(bound), decl.params);
     if receiver is not None {
         values.insert(0, receiver);
     }

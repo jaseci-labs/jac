@@ -29,6 +29,37 @@ impl MirLowering.builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None)
         }
         return self.address_of(value);
     }
+    if name == "set" {
+        made_type = self.expr_type(nd);
+        if made_type.kind != MirKind.SET {
+            raise MirRefused(mir_refusal("call", f"set as {made_type.render()}", nd));
+        }
+        elem = made_type.payload();
+        source = self.lower_expr(args[0]);
+        made = self.spill(self.new_dict(elem, None, made_type));
+        kind = b.const_int(self.elem_kind(elem, nd), mir_int());
+        fn = self.st().fn;
+        walker_state = self.iter_open(source, nd);
+        head = fn.new_block("set.head");
+        body = fn.new_block("set.body");
+        after = fn.new_block("set.exit");
+        b.branch(head);
+        b.position(head);
+        element = self.iter_step(walker_state, body, after);
+        self.runtime(
+            "__jac_rt_dict_set",
+            [
+                made,
+                self.to_bits(self.coerce(element, elem, nd), elem, nd),
+                b.const_int(0, mir_int()),
+                kind,
+                b.const_int(NO_VALUE_KIND, mir_int())
+            ]
+        );
+        b.branch(head);
+        b.position(after);
+        return made;
+    }
     if name in ("list", "reversed") {
         value = self.lower_expr(args[0]);
         if name == "list" and value.type.kind != MirKind.LIST {

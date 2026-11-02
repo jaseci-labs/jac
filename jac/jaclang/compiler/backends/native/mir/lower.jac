@@ -60,6 +60,7 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      OSP_DISCONNECT_LIST_HELP: str = "a disconnect with both list operands and attribute predicates is not lowered natively; loop over the nodes and disconnect each pair.",
      EXC_TYPE_OFFSET: int = 8,
      EXC_MESSAGE_OFFSET: int = 24,
+     DROP_RC_SENTINEL: int = 9223372036854775807,
      MEMORY_ORDERS: list[str] = [
          "monotonic",
          "acquire",
@@ -342,6 +343,11 @@ obj MirLowering {
     def runtime(name: str, args: list[MirValue]) -> (MirValue | None);
     def temp_slot(type: MirType) -> MirValue;
     def spill(value: MirValue) -> MirValue;
+    def arg_mark -> tuple[MirBlock, (MirInstr | None)];
+    def carry_args(
+        values: list[MirValue], marks: list[tuple[MirBlock, (MirInstr | None)]]
+    ) -> list[MirValue];
+    def bound_values(args: list[any], params: list[MirType]) -> list[MirValue];
     def lower_string(nd: (uni.String | uni.MultiString)) -> MirValue;
     def str_concat(left: MirValue, right: MirValue) -> MirValue;
     def str_compare(op: str, left: MirValue, right: MirValue) -> MirValue;
@@ -393,7 +399,8 @@ obj MirLowering {
     def foreign_method_decl(method: uni.Ability) -> (MirDecl | None);
     def declare_archetype(arch: uni.Archetype);
     def lower_constructor(arch: uni.Archetype) -> (MirFunction | None);
-    def lower_drop(obj_def: MirObjectDef) -> MirFunction;
+    def lower_drop(obj_def: MirObjectDef, arch: uni.Archetype) -> MirFunction;
+    def drop_hook(arch: uni.Archetype, raw: MirValue);
     def lower_trace(obj_def: MirObjectDef) -> MirFunction;
     def constructor_params(
         arch: uni.Archetype

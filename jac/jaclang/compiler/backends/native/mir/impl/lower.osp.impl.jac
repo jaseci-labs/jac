@@ -141,6 +141,15 @@ impl MirLowering.osp_typed(handles: MirValue, site: uni.Expr) -> MirValue {
     if target is handles.type {
         return handles;
     }
+    if target.payload().kind == MirKind.ANY {
+        boxed = self.runtime(
+            "__jac_rt_list_box", [handles, b.const_int(ANY_OBJ_TAG, mir_int())]
+        );
+        if boxed is None {
+            raise MirRefused(mir_refusal("expression", "graph result", site));
+        }
+        return b.ref_cast(boxed, target, True);
+    }
     if target.payload().kind != MirKind.OBJ {
         raise MirRefused(
             mir_refusal("expression", f"graph result as {target.render()}", site)
@@ -1082,7 +1091,9 @@ impl MirLowering.lower_osp_filter(nd: uni.AtomTrailer) -> MirValue {
     if arch is None and f.compares {
         raise MirRefused(mir_refusal("expression", "FilterCompr", nd, OSP_FILTER_HELP));
     }
-    result = self.osp_handles(self.lower_expr(nd.target), nd);
+    result = self.lower_edge_handles(nd.target)
+        if isinstance(nd.target, uni.EdgeRefTrailer)
+        else self.osp_handles(self.lower_expr(nd.target), nd);
     if f.f_type is not None {
         result = self.osp_call(
             "__jac_osp_filter",

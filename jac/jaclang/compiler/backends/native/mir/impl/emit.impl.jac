@@ -148,7 +148,22 @@ impl MirEmitter.emit_function(fn: MirFunction) {
     for blk in emission_order(fn) {
         b.position_at_end(self.blocks[blk.label]);
         for instr in blk.instrs {
-            self.emit_instr(b, instr);
+            try {
+                self.emit_instr(b, instr);
+            } except MirEmitError as err {
+                raise err;
+            } except Exception as err {
+                origins = [
+                    made.render()
+                    for other in fn.blocks
+                    for made in other.instrs
+                    if made.result is not None
+                        and any(made.result.id == used.id for used in instr.operands)
+                ];
+                raise MirEmitError(
+                    f"{fn.symbol}: {instr.render()} in {blk.label} (operands from {origins}): {err}"
+                ) from err;
+            }
         }
     }
 }

@@ -31,7 +31,7 @@ impl MirLowering.lower -> MirModule {
             self.mir.functions.append(made);
         }
         obj_def = self.object_def(arch);
-        self.mir.functions.append(self.lower_drop(obj_def));
+        self.mir.functions.append(self.lower_drop(obj_def, arch));
         self.mir.functions.append(self.lower_trace(obj_def));
     }
     self.lower_osp_module();
@@ -180,10 +180,11 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
         body = ab.body;
         if isinstance(body, uni.ImplDef) {
             spec = body.spec;
-            if not isinstance(spec, uni.FuncSignature) {
+            if isinstance(spec, uni.FuncSignature) {
+                sig = spec;
+            } elif spec is not None {
                 raise MirRefused(mir_refusal("function", "impl signature", ab));
             }
-            sig = spec;
             body = body.body;
         }
         if not isinstance(sig, uni.FuncSignature) {
@@ -1088,9 +1089,7 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
                 )
             );
         }
-        for (arg_nd, ptype) in zip(params, decl.params) {
-            args.append(self.bound_value(arg_nd, ptype));
-        }
+        args.extend(self.bound_values(list(params), decl.params));
         result = self.builder().call(decl.symbol, args, decl.ret);
         if result is None {
             return self.builder().const_bool(False);
@@ -1505,6 +1504,55 @@ impl MirLowering.spill(value: MirValue) -> MirValue {
     return self.builder().load(slot, slot.type);
 }
 
+impl MirLowering.arg_mark -> tuple[MirBlock, (MirInstr | None)] {
+    blk = self.builder().block;
+    return (blk, blk.instrs[-1] if blk.instrs else None);
+}
+
+impl MirLowering.carry_args(
+    values: list[MirValue], marks: list[tuple[MirBlock, (MirInstr | None)]]
+) -> list[MirValue] {
+    now = self.builder().block;
+    moved: list[int] = [
+        index
+        for (index, value) in enumerate(values)
+        if marks[index][0] is not now
+            and value.owned
+            and mir_holds_ref(value.type)
+    ];
+    if not moved {
+        return values;
+    }
+    slots = {index: self.temp_slot(values[index].type) for index in moved};
+    for index in reversed(moved) {
+        (blk, last) = marks[index];
+        at = 0;
+        for (position, instr) in enumerate(blk.instrs) {
+            if instr is last {
+                at = position + 1;
+            }
+        }
+        blk.instrs.insert(
+            at, MirInstr(op=MirOp.STORE, operands=[slots[index], values[index]])
+        );
+    }
+    out = list(values);
+    for index in moved {
+        out[index] = self.builder().load(slots[index], slots[index].type);
+    }
+    return out;
+}
+
+impl MirLowering.bound_values(args: list[any], params: list[MirType]) -> list[MirValue] {
+    values: list[MirValue] = [];
+    marks: list[tuple[MirBlock, (MirInstr | None)]] = [];
+    for (arg, ptype) in zip(args, params) {
+        values.append(self.bound_value(arg, ptype));
+        marks.append(self.arg_mark());
+    }
+    return self.carry_args(values, marks);
+}
+
 impl MirLowering.lower_string(nd: (uni.String | uni.MultiString)) -> MirValue {
     literal = self.bytes_literal(nd);
     if literal is not None {
@@ -1898,7 +1946,13 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
         }
     }
     place = self.lower_place(nd);
-    return self.builder().load(place, self.place_elem(place));
+    loaded = self.builder().load(place, self.place_elem(place));
+    if loaded.type.kind == MirKind.OPT
+        and isinstance(nd.type, ClassType)
+        and nd.type.shared.class_name not in ("NoneType", "None") {
+        return self.opt_get(loaded);
+    }
+    return loaded;
 }
 
 impl MirLowering.call_name(nd: uni.FuncCall) -> str {
@@ -1986,7 +2040,7 @@ impl MirLowering.import_call(
             mir_refusal("call", f"{symbol} with {len(args)} arguments", nd)
         );
     }
-    values = [self.bound_value(arg, ptype) for (arg, ptype) in zip(args, params)];
+    values = self.bound_values(list(args), params);
     result = self.builder().call(symbol, values, ret);
     if result is None {
         return self.builder().const_bool(False);
