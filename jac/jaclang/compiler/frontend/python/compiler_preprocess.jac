@@ -36,14 +36,20 @@ def pattern_sum(left: PyObj, right: PyObj, subtract: bool) -> PyObj {
     real_left = pattern_real(left);
     real_right = pattern_real(right);
     real = real_left - real_right if subtract else real_left + real_right;
-    if isinstance(left, PyComplex) or isinstance(right, PyComplex) {
-        imag_left = left.imag if isinstance(left, PyComplex) else 0.0;
-        imag_right = right.imag if isinstance(right, PyComplex) else 0.0;
+    if isinstance(left, PyComplex) and isinstance(right, PyComplex) {
         return PyComplex(
             t="complex",
             real=real,
-            imag=imag_left - imag_right if subtract else imag_left + imag_right
+            imag=left.imag - right.imag if subtract else left.imag + right.imag
         );
+    }
+    if isinstance(right, PyComplex) {
+        return PyComplex(
+            t="complex", real=real, imag=-right.imag if subtract else right.imag
+        );
+    }
+    if isinstance(left, PyComplex) {
+        return PyComplex(t="complex", real=real, imag=left.imag);
     }
     return PyFloat(t="float", val=real);
 }
