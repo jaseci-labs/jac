@@ -29,6 +29,10 @@ def:pub __jac_rt_any_box(tag: int, payload: int) -> int;
 
 def:pub __jac_rt_any_truthy(tag: int, payload: int) -> bool;
 
+def:pub __jac_rt_any_len(tag: int, payload: int) -> int;
+
+def _is_buffer(tag: int, payload: int) -> bool;
+
 def:pub __jac_rt_any_str(tag: int, payload: int) -> ptr[u8];
 
 def:pub __jac_rt_type_name(o: int) -> ptr[u8];

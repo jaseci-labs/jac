@@ -15036,7 +15036,12 @@ graph import runtime.native {
         text { __jac_rt_is_heap, __jac_rt_release_acyclic },
     ]
     strings ++> [
-        anys { __jac_rt_str_from_int, __jac_rt_str_new, __jac_rt_str_size },
+        anys {
+            __jac_rt_str_from_int,
+            __jac_rt_str_len,
+            __jac_rt_str_new,
+            __jac_rt_str_size
+        },
         dicts { __jac_rt_str_size },
         format | iterators | text { __jac_rt_str_new, __jac_rt_str_size },
         lists { __jac_rt_str_cmp, __jac_rt_str_size },

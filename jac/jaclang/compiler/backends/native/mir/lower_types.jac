@@ -17,6 +17,8 @@ glob ITERATOR_CLASSES: list[str] = [
          MirKind.NONE,
          MirKind.STR,
          MirKind.STR_REF,
+         MirKind.BYTES,
+         MirKind.BYTEARRAY,
          MirKind.LIST,
          MirKind.DICT,
          MirKind.SET,

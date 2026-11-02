@@ -1787,6 +1787,16 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         if value.type.kind == MirKind.TUPLE {
             return self.builder().const_int(len(value.type.args), mir_int());
         }
+        if value.type.kind == MirKind.ANY {
+            held = self.spill(value);
+            return self.runtime_value(
+                "__jac_rt_any_len",
+                [
+                    self.emit_value(MirOp.ANY_TAG, mir_int(), [held]),
+                    self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [held])
+                ]
+            );
+        }
         raise MirRefused(mir_refusal("call", f"len of {value.type.render()}", nd));
     }
     if name == "isinstance" and len(args) == 2 {
@@ -2392,7 +2402,18 @@ impl MirLowering.type_call(nd: uni.FuncCall) -> (MirValue | None) {
         raise MirRefused(mir_refusal("pointer cast", value.type.render(), nd));
     }
     if result_type.is_numeric() and len(args) == 1 {
-        value = self.enum_as_int(self.lower_expr(args[0]), args[0]);
+        value = self.lower_expr(args[0]);
+        if value.type.kind == MirKind.OPT
+            and (
+                value.type.payload().is_numeric()
+                or value.type.payload().kind == MirKind.ENUM
+            ) {
+            value = self.opt_unwrap_checked(
+                value,
+                f"{result_type.render()}() argument must be a string, a bytes-like object or a real number, not 'NoneType'"
+            );
+        }
+        value = self.enum_as_int(value, args[0]);
         if value.type.kind in (MirKind.C_PTR, MirKind.C_FN)
             and result_type.kind == MirKind.INT {
             return self.emit_value(MirOp.PTR_INT, result_type, [value]);

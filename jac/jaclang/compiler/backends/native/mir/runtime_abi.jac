@@ -76,6 +76,7 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_any_retain": ["none", "int", "int"],
          "__jac_rt_any_release": ["none", "int", "int"],
          "__jac_rt_any_truthy": ["bool", "int", "int"],
+         "__jac_rt_any_len": ["int", "int", "int"],
          "__jac_rt_any_str": ["str.ref", "int", "int"],
          "__jac_rt_any_type_name": ["ptr", "int", "int"],
          "__jac_rt_any_isa": ["bool", "int", "int", "ptr"],

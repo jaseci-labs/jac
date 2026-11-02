@@ -51,7 +51,33 @@ impl __jac_rt_any_truthy(tag: int, payload: int) -> bool {
     if tag == ANY_TAG_DICT or tag == ANY_TAG_SET {
         return __jac_rt_dict_len(payload) != 0;
     }
+    if _is_buffer(tag, payload) {
+        return __mem_load_i64(payload) != 0;
+    }
     return True;
+}
+
+impl _is_buffer(tag: int, payload: int) -> bool {
+    return __jac_rt_any_isa(tag, payload, ptr[u8]("bytes"))
+        or __jac_rt_any_isa(tag, payload, ptr[u8]("bytearray"));
+}
+
+impl __jac_rt_any_len(tag: int, payload: int) -> int {
+    if tag == ANY_TAG_STR {
+        return __jac_rt_str_len(
+            ptr[u8](payload), ptr[u8](payload), __jac_rt_str_size(ptr[u8](payload))
+        );
+    }
+    if tag == ANY_TAG_LIST {
+        return __mem_load_i64(payload + LIST_LEN);
+    }
+    if tag == ANY_TAG_DICT or tag == ANY_TAG_SET {
+        return __jac_rt_dict_len(payload);
+    }
+    if _is_buffer(tag, payload) {
+        return __mem_load_i64(payload);
+    }
+    raise TypeError("object has no len()");
 }
 
 impl __jac_rt_any_str(tag: int, payload: int) -> ptr[u8] {

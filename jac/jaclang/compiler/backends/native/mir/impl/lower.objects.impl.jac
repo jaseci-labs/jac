@@ -1558,7 +1558,7 @@ impl MirLowering.decl_label(decl: MirDecl) -> str {
     if ab.accessor_kind and decl.owner is not None {
         var = ab.find_parent_of_type(uni.HasVar);
         field = var.name.value if var is not None and var.name is not None else "field";
-        return f"{archetype_native_name(decl.owner)}.{accessor_slot_name(field, ab)}";
+        return accessor_slot_name(field, ab) or field;
     }
     return self.name_of(ab);
 }

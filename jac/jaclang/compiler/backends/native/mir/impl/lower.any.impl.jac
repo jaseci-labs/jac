@@ -23,7 +23,7 @@ impl MirLowering.any_tag(t: MirType, site: uni.UniNode) -> int {
     if t.kind == MirKind.SET {
         return ANY_SET_TAG;
     }
-    if t.kind in (MirKind.OBJ, MirKind.FN) {
+    if t.kind in (MirKind.OBJ, MirKind.FN, MirKind.BYTES, MirKind.BYTEARRAY) {
         return ANY_OBJ_TAG;
     }
     raise MirRefused(mir_refusal("conversion", f"{t.render()} to any", site));
@@ -382,6 +382,15 @@ impl MirLowering.any_isinstance(
                     "or", verdict, b.compare("eq", tag, b.const_int(wanted, mir_int()))
                 );
             }
+            continue;
+        }
+        if isinstance(item, uni.Name) and item.value in ("bytes", "bytearray") {
+            label = self.emit_value(
+                MirOp.CSTR, mir_c_ptr(mir_int(8, False)), [], str_value=item.value
+            );
+            verdict = b.binary(
+                "or", verdict, self.runtime_value("__jac_rt_any_isa", [tag, payload, label])
+            );
             continue;
         }
         if self.is_enum_class(item) {

@@ -1056,16 +1056,20 @@ impl MirEmitter.bytes_literal(b: ir.IRBuilder, data: bytes) -> ir.Value {
     found = self.byte_literals.get(key);
     if found is None {
         i64 = ir.IntType(64);
+        i8p = ir.IntType(8).as_pointer();
         chars = ir.ArrayType(ir.IntType(8), len(data));
-        shape = ir.LiteralStructType([i64, i64, i64, chars]);
+        shape = ir.LiteralStructType([i64, i8p, i64, i64, i64, chars]);
         found = ir.GlobalVariable(
             self.module, shape, name=f".jac.bytes.{len(self.byte_literals)}"
         );
         found.linkage = "private";
         found.global_constant = True;
+        self.cstring(b, "bytes");
         found.initializer = ir.Constant(
             shape,
             [
+                ir.Constant(i64, 0),
+                self.strings["bytes"].bitcast(i8p),
                 ir.Constant(i64, RC_SENTINEL),
                 ir.Constant(i64, 0),
                 ir.Constant(i64, len(data)),
@@ -1076,7 +1080,7 @@ impl MirEmitter.bytes_literal(b: ir.IRBuilder, data: bytes) -> ir.Value {
     }
     i32 = ir.IntType(32);
     return b.bitcast(
-        b.gep(found, [ir.Constant(i32, 0), ir.Constant(i32, 2)]),
+        b.gep(found, [ir.Constant(i32, 0), ir.Constant(i32, 4)]),
         ir.IntType(8).as_pointer()
     );
 }
