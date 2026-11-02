@@ -212,13 +212,16 @@ impl CompileOptions.keeps_interfaces -> bool {
     );
 }
 
-impl CompileOptions.for_symbols(need_tree: bool = False) -> CompileOptions {
+impl CompileOptions.for_symbols(
+    need_tree: bool = False, need_bodies: bool = False
+) -> CompileOptions {
     import copy;
     result = copy.copy(self);
     result.no_cgen = True;
     result.symtab_ir_only = True;
     result.iface_ok = not need_tree;
     result.need_full_ast = need_tree;
+    result.body_demand = need_bodies;
     result.native_parity = False;
 
     return result;
