@@ -212,3 +212,28 @@ impl MirLowering.input_call(nd: uni.FuncCall) -> MirValue {
     );
     return b.str_make(line, line, self.runtime_value("__jac_rt_str_size", [line]));
 }
+
+impl MirLowering.sys_exit(nd: uni.FuncCall) -> MirValue {
+    args = self.call_args(nd);
+    b = self.builder();
+    code = b.const_int(0, mir_int());
+    if args {
+        given = self.lower_expr(args[0]);
+        if given.type.kind == MirKind.NONE {
+            code = b.const_int(0, mir_int());
+        } elif given.type.kind in (MirKind.INT, MirKind.BOOL) {
+            code = b.convert(given, mir_int());
+        } else {
+            raise MirRefused(
+                mir_refusal(
+                    "call",
+                    f"sys.exit with {given.type.render()}",
+                    nd,
+                    "Native sys.exit takes an int status (or none)."
+                )
+            );
+        }
+    }
+    self.runtime("__jac_rt_exit", [code]);
+    return self.none_value();
+}

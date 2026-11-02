@@ -54,7 +54,8 @@ impl MirLowering.is_enum_class(nd: uni.UniNode) -> bool {
 impl MirLowering.attr_special(nd: uni.AtomTrailer) -> (MirValue | None) {
     if not nd.is_attr
         or not isinstance(nd.right, uni.Name)
-        or not isinstance(nd.target, uni.Expr) {
+        or not isinstance(nd.target, uni.Expr)
+        or isinstance(nd.target.type, ModuleType) {
         return None;
     }
     member = self.enum_member(nd);

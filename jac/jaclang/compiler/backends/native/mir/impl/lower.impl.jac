@@ -2107,6 +2107,12 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
             raise MirRefused(mir_refusal("attribute", type(right).__name__, nd));
         }
         target_type = nd.target.type if isinstance(nd.target, uni.Expr) else None;
+        if isinstance(target_type, ModuleType) and right.sym is not None {
+            imported = self.global_place(right);
+            if imported is not None {
+                return imported;
+            }
+        }
         arch = self.arch_of_type(target_type);
         if arch is not None {
             return self.field_place(self.lower_expr(nd.target), arch, right.value, nd);
@@ -2570,6 +2576,12 @@ impl MirLowering.method_call(
         and isinstance(target.target.type, ModuleType)
         and target.target.type.mod_name == "struct" {
         return self.struct_call(nd, right.value);
+    }
+    if isinstance(target.target, uni.Name)
+        and isinstance(target.target.type, ModuleType)
+        and target.target.type.mod_name == "sys"
+        and right.value == "exit" {
+        return self.sys_exit(nd);
     }
     if right.value in ("from_bytes", "to_bytes") {
         via_bytes = self.int_bytes_call(nd, target, right.value);

@@ -1,3 +1,8 @@
+impl __jac_rt_exit(code: int) {
+    fflush(ptr[u8]());
+    _exit(i32(code));
+}
+
 impl __jac_rt_exc_context -> ptr[JacRtExcContext] {
     return ptr[JacRtExcContext](__thread_local_block("jac_rt_exception_context", 40));
 }

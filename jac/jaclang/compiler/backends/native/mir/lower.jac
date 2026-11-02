@@ -676,6 +676,7 @@ obj MirLowering {
     def sys_attr(nd: uni.AtomTrailer) -> (MirValue | None);
     def extern_global(symbol: str, t: MirType) -> MirValue;
     def input_call(nd: uni.FuncCall) -> MirValue;
+    def sys_exit(nd: uni.FuncCall) -> MirValue;
     def osp_call(name: str, args: list[MirValue]) -> MirValue;
     def osp_hold(value: MirValue) -> MirValue;
     def osp_layout(arch: (uni.Archetype | None)) -> (ArchetypeLayout | None);

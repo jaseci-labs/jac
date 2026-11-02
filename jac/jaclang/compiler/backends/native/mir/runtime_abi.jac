@@ -180,6 +180,7 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_repr_leave": ["none", "int"],
          "__jac_rt_flush": ["none", "int"],
          "__jac_rt_input_line": ["str.ref"],
+         "__jac_rt_exit": ["none", "int"],
          "__jac_rt_argv_list": ["ref", "int", "ptr"],
          "__jac_rt_float_repr": ["str.ref", "float"],
          "__jac_rt_format_int": ["str.ref", "int", "ptr", "int"],
