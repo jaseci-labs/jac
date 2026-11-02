@@ -219,7 +219,9 @@ impl __jac_rt_elem_eq(a: int, b: int, kind: int) -> bool {
 
 impl _elem_cmp(a: int, b: int, kind: int) -> int {
     if kind == KIND_UINT {
-        return _elem_cmp(a ^ (-9223372036854775807 - 1), b ^ (-9223372036854775807 - 1), KIND_INT);
+        return _elem_cmp(
+            a ^ (-9223372036854775807 - 1), b ^ (-9223372036854775807 - 1), KIND_INT
+        );
     }
     if kind == KIND_TUPLE {
         return _tuple_cmp(a, b);
@@ -595,14 +597,7 @@ impl __jac_rt_list_sort(lst: int, kind: int, reverse: bool) {
 }
 
 impl _merge_keyed(
-    src: int,
-    dst: int,
-    lo: int,
-    mid: int,
-    hi: int,
-    keys: int,
-    kind: int,
-    reverse: bool
+    src: int, dst: int, lo: int, mid: int, hi: int, keys: int, kind: int, reverse: bool
 ) {
     i = lo;
     j = mid;

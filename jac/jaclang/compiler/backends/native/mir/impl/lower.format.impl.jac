@@ -879,7 +879,8 @@ impl MirLowering.power(left: MirValue, right: MirValue, site: uni.UniNode) -> Mi
         and max(left.type.width, right.type.width) < 64 {
         sized = left.type if left.type.is_sized() else right.type;
         raw = self.call_rt(
-            "__jac_rt_int_pow", [b.convert(left, mir_int()), b.convert(right, mir_int())]
+            "__jac_rt_int_pow",
+            [b.convert(left, mir_int()), b.convert(right, mir_int())]
         );
         return self.checked_cast(raw, sized, site);
     }
@@ -1066,9 +1067,7 @@ impl MirLowering.extreme_named(nd: uni.FuncCall, name: str) -> (MirValue | None)
     b.position(done);
     b.store(
         held,
-        self.coerce(
-            self.list_read(items, b.load(best_at, mir_int())), result_type, nd
-        )
+        self.coerce(self.list_read(items, b.load(best_at, mir_int())), result_type, nd)
     );
     b.branch(finished);
     b.position(finished);
@@ -1135,7 +1134,9 @@ impl MirLowering.sized_wrap(nd: uni.FuncCall, name: str) -> MirValue {
         value = b.convert(b.convert(value, mir_float()), mir_int());
     }
     if value.type.kind != MirKind.INT {
-        raise MirRefused(mir_refusal("call", f"{name}.wrap of {value.type.render()}", nd));
+        raise MirRefused(
+            mir_refusal("call", f"{name}.wrap of {value.type.render()}", nd)
+        );
     }
     return b.convert(value, target);
 }
@@ -1157,7 +1158,9 @@ impl MirLowering.wrapping_call(
     (left, right) = (values[0], values[1]);
     if name == "wrapping_shl" {
         count = b.binary(
-            "and", b.convert(right, left.type), b.const_int(left.type.width - 1, left.type)
+            "and",
+            b.convert(right, left.type),
+            b.const_int(left.type.width - 1, left.type)
         );
         return b.binary("shl", left, count);
     }
@@ -1242,7 +1245,9 @@ impl MirLowering.int_bytes_call(
         return None;
     }
     (args, named) = self.split_args(nd);
-    order_names = ["length", "byteorder"] if name == "to_bytes" else ["bytes", "byteorder"];
+    order_names = ["length", "byteorder"]
+        if name == "to_bytes"
+        else ["bytes", "byteorder"];
     for (index, arg) in enumerate(args) {
         if index >= len(order_names) {
             raise MirRefused(mir_refusal("call", f"int.{name} arguments", nd));
@@ -1342,7 +1347,9 @@ impl MirLowering.struct_call(nd: uni.FuncCall, name: str) -> MirValue {
                     mir_int(width, True, True),
                     [b.convert(self.coerce(value, mir_float(), arg), mir_float(width))]
                 );
-                bits = b.convert(b.convert(raw, mir_int(width, False, True)), mir_int());
+                bits = b.convert(
+                    b.convert(raw, mir_int(width, False, True)), mir_int()
+                );
             } else {
                 bits = self.coerce(self.enum_as_int(value, arg), mir_int(), arg);
             }

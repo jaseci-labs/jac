@@ -1432,7 +1432,8 @@ impl MirLowering.builtin_sorted(
         return held;
     }
     self.runtime(
-        "__jac_rt_list_sort", [made, b.const_int(self.sort_kind(elem, nd), mir_int()), flag]
+        "__jac_rt_list_sort",
+        [made, b.const_int(self.sort_kind(elem, nd), mir_int()), flag]
     );
     return made;
 }

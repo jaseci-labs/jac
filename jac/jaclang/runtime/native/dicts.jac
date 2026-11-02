@@ -79,7 +79,9 @@ def:pub __jac_rt_dict_update(dst: int, src: int, key_kind: int, val_kind: int);
 
 def:pub __jac_rt_dict_eq(a: int, b: int, key_kind: int, val_kind: int) -> bool;
 
-def:pub __jac_rt_dict_popitem(d: int, key_kind: int, val_kind: int, key_out: int) -> int;
+def:pub __jac_rt_dict_popitem(
+    d: int, key_kind: int, val_kind: int, key_out: int
+) -> int;
 
 def:pub __jac_rt_set_filter(a: int, b: int, kind: int, keep_shared: bool) -> int;
 

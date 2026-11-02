@@ -116,12 +116,5 @@ def _list_trace_ref(o: int, visit_fn: int);
 def _merge(src: int, dst: int, lo: int, mid: int, hi: int, kind: int, reverse: bool);
 
 def _merge_keyed(
-    src: int,
-    dst: int,
-    lo: int,
-    mid: int,
-    hi: int,
-    keys: int,
-    kind: int,
-    reverse: bool
+    src: int, dst: int, lo: int, mid: int, hi: int, keys: int, kind: int, reverse: bool
 );

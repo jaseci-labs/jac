@@ -728,7 +728,8 @@ impl MirLowering.list_sort(lst: MirValue, nd: uni.FuncCall) -> (MirValue | None)
         self.keyed_sort(held, key_fn, flag, nd);
     } else {
         self.runtime(
-            "__jac_rt_list_sort", [held, b.const_int(self.sort_kind(elem, nd), mir_int()), flag]
+            "__jac_rt_list_sort",
+            [held, b.const_int(self.sort_kind(elem, nd), mir_int()), flag]
         );
     }
     return b.const_bool(False);
@@ -797,13 +798,20 @@ impl MirLowering.dict_method(
         key_cell = self.temp_slot(mir_int());
         val_bits = self.runtime_value(
             "__jac_rt_dict_popitem",
-            [d, key_kind, value_kind, self.emit_value(MirOp.PTR_INT, mir_int(), [key_cell])]
+            [
+                d,
+                key_kind,
+                value_kind,
+                self.emit_value(MirOp.PTR_INT, mir_int(), [key_cell])
+            ]
         );
         key_bits = b.load(key_cell, mir_int());
         parts: list[MirValue] = [];
         for (bits, part) in ((key_bits, key_type), (val_bits, value_type)) {
             if self.elem_kind(part, nd) in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
-                parts.append(self.owned_element(b.ref_cast(bits, mir_ref(), True), part));
+                parts.append(
+                    self.owned_element(b.ref_cast(bits, mir_ref(), True), part)
+                );
             } else {
                 parts.append(self.scalar_from_bits(bits, part));
             }
@@ -836,10 +844,13 @@ impl MirLowering.dict_method(
         miss = fn.new_block("pop.miss");
         done = fn.new_block("pop.done");
         b.cond_branch(
-            b.compare("ne", b.load(flag, mir_int()), b.const_int(0, mir_int())), hit, miss
+            b.compare("ne", b.load(flag, mir_int()), b.const_int(0, mir_int())),
+            hit,
+            miss
         );
         b.position(hit);
-        if self.elem_kind(value_type, nd) in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
+        if self.elem_kind(value_type, nd)
+            in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
             b.store(
                 held,
                 self.coerce(
@@ -850,7 +861,8 @@ impl MirLowering.dict_method(
             );
         } else {
             b.store(
-                held, self.coerce(self.scalar_from_bits(bits, value_type), result_type, nd)
+                held,
+                self.coerce(self.scalar_from_bits(bits, value_type), result_type, nd)
             );
         }
         b.branch(done);
@@ -968,12 +980,11 @@ impl MirLowering.dict_method(
         made_pair = self.emit_value(
             MirOp.TUPLE_MAKE,
             pair,
-            [
-                self.coerce(key, pair.args[0], nd),
-                self.coerce(held, pair.args[1], nd)
-            ]
+            [self.coerce(key, pair.args[0], nd), self.coerce(held, pair.args[1], nd)]
         );
-        self.runtime("__jac_rt_list_push", [made, self.to_bits(made_pair, pair, nd), pair_kind]);
+        self.runtime(
+            "__jac_rt_list_push", [made, self.to_bits(made_pair, pair, nd), pair_kind]
+        );
         b.branch(head);
         b.position(done);
         return made;
@@ -1064,18 +1075,18 @@ impl MirLowering.set_method(
     }
     if len(args) == 1
         and name
-        in (
-            "union",
-            "intersection",
-            "difference",
-            "symmetric_difference",
-            "issubset",
-            "issuperset",
-            "isdisjoint",
-            "intersection_update",
-            "difference_update",
-            "symmetric_difference_update"
-        ) {
+            in (
+                "union",
+                "intersection",
+                "difference",
+                "symmetric_difference",
+                "issubset",
+                "issuperset",
+                "isdisjoint",
+                "intersection_update",
+                "difference_update",
+                "symmetric_difference_update"
+            ) {
         other = self.coerce(self.lower_expr(args[0]), s.type, args[0]);
         return self.set_algebra(s, other, name, nd);
     }

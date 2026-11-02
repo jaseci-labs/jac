@@ -158,7 +158,8 @@ impl MirLowering.compare_special(
             and (left.type.is_numeric() or right.type.is_numeric()) {
             as_left = self.enum_as_int(left, site);
             as_right = self.enum_as_int(right, site);
-            if as_left.type.kind != MirKind.ENUM and as_right.type.kind != MirKind.ENUM {
+            if as_left.type.kind != MirKind.ENUM
+                and as_right.type.kind != MirKind.ENUM {
                 return self.compare_values(op, as_left, as_right, site);
             }
         }
@@ -439,7 +440,9 @@ impl MirLowering.enum_method_call(
     return made if made is not None else self.builder().const_bool(False);
 }
 
-impl MirLowering.foreign_enum_method(enum_type: MirType, name: str) -> (MirDecl | None) {
+impl MirLowering.foreign_enum_method(
+    enum_type: MirType, name: str
+) -> (MirDecl | None) {
     known = self.enum_types.get(enum_type.name);
     decl = enum_decl_of(known) if known is not None else None;
     if decl is None {
@@ -470,7 +473,9 @@ impl MirLowering.foreign_enum_method(enum_type: MirType, name: str) -> (MirDecl 
             continue;
         }
         path = unit.loc.mod_path;
-        params = [self.symbol_type(pv.name.sym, pv) for pv in self.param_nodes(sig, True)];
+        params = [
+            self.symbol_type(pv.name.sym, pv) for pv in self.param_nodes(sig, True)
+        ];
         fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
             self.ability_sym(method)
         );
