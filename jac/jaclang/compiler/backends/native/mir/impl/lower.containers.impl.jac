@@ -25,7 +25,7 @@ impl MirLowering.elem_kind(t: MirType, site: uni.UniNode) -> int {
 
 impl MirLowering.tuple_box(value: MirValue, site: uni.UniNode) -> MirValue {
     b = self.builder();
-    held = self.spill(value);
+    held = value;
     box = self.runtime_value(
         "__jac_rt_tuple_new", [b.const_int(len(value.type.args), mir_int())]
     );
