@@ -5487,10 +5487,9 @@ graph import compiler {
     type backends.native.llvm.binding ++> driver.compiler.JacCompiler._load_native_from_cache
         | frontend.codeinfo { ExecutionEngine }
     type backends.native.llvm.ir ++> frontend.codeinfo { Module as IRModule }
-    backends.native.lowering ++> [
-        driver.nativecache.NativeUnitRegistry.adopt_lowered { native_fallbacks_in_ir },
-        tests.test_prim_equivalence { native_lowering_issues },
-    ]
+    backends.native.lowering ++> driver.nativecache.NativeUnitRegistry.adopt_lowered {
+        native_fallbacks_in_ir
+    }
     type backends.native.lowering ++> frontend.codeinfo { NativeFallbacks }
     backends.native.mir.backend --> [
         driver.pipeline.codegen_passes { MirNativePass },
