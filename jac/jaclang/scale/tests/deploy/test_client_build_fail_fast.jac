@@ -208,6 +208,7 @@ test "an app without a client entry skips the build untouched" {
 
 test "a transient install failure is retried and the deploy succeeds" {
     tmp = tempfile.mkdtemp(prefix="client-retry-");
+    _seam = None;
     try {
         project_dir = _web_app_project(tmp);
         (script, counter) = _counting_jac(tmp, 1, "bun install failed after 12.0s");
@@ -224,7 +225,9 @@ test "a transient install failure is retried and the deploy succeeds" {
         index_html = os.path.join(project_dir, ".jac", "client", "dist", "index.html");
         assert os.path.isfile(index_html) , "retry did not produce a bundle";
     } finally {
-        _seam.stop();
+        if _seam is not None {
+            _seam.stop();
+        }
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
@@ -233,6 +236,7 @@ test "a transient install failure is retried and the deploy succeeds" {
 test "a persistent transient failure still fails after a bounded retry" {
     tmp = tempfile.mkdtemp(prefix="client-retry-");
     raised = None;
+    _seam = None;
     try {
         project_dir = _project("with entry {}\n");
         (script, counter) = _counting_jac(
@@ -255,7 +259,9 @@ test "a persistent transient failure still fails after a bounded retry" {
         );
         shutil.rmtree(project_dir, ignore_errors=True);
     } finally {
-        _seam.stop();
+        if _seam is not None {
+            _seam.stop();
+        }
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
@@ -264,6 +270,7 @@ test "a persistent transient failure still fails after a bounded retry" {
 test "a genuine compile error fails on the first attempt with no retry" {
     tmp = tempfile.mkdtemp(prefix="client-retry-");
     raised = None;
+    _seam = None;
     try {
         project_dir = _project("with entry { this does not parse ((( }\n");
         (script, counter) = _counting_jac(tmp, 0, "");
@@ -284,7 +291,9 @@ test "a genuine compile error fails on the first attempt with no retry" {
         );
         shutil.rmtree(project_dir, ignore_errors=True);
     } finally {
-        _seam.stop();
+        if _seam is not None {
+            _seam.stop();
+        }
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }

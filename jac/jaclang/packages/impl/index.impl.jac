@@ -62,7 +62,8 @@ impl _str_map(raw: any) -> dict[str, str] {
     if not isinstance(raw, dict) {
         return {};
     }
-    return {str(k): str(v) for (k, v) in raw.items()};
+    entries: dict[str, any] = raw;
+    return {k: str(v) for (k, v) in entries.items()};
 }
 
 impl parse_index_lines(text: str) -> list[IndexEntry] {

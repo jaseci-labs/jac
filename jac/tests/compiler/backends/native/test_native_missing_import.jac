@@ -6,12 +6,10 @@ and native lowering bound every use of the missing global to nothing: the
 `TypeDefinition("select.poll", "", poll_methods, ...)` glob initializer got a
 literal NULL, and the interpreter crashed at load.
 
-Native lowering now refuses the binding itself: a name the bound Jac
-module's symbol table does not hold is `E1145`, naming the module and the
-name, and the build stops. The checker keeps `W1101`, a warning, because its
-lazy resolution can miss a name that exists (an import cycle still under
-analysis, a sibling module shadowing a standard-library one); the native
-check reads the bound module's complete symbol table and does not.
+The checker now refuses the binding on every backend: a name the source
+Jac module does not define is `E1145`, naming the module and the name, and
+the build stops. A module that defines a module-level `__getattr__` provides
+every name, typed by that hook's return type.
 """
 
 import subprocess;
@@ -38,10 +36,16 @@ def check_codes(fixture: str) -> list[str] {
     return codes;
 }
 
-test "the checker reports a missing imported name as a warning" {
+test "the checker reports a missing imported name as an error" {
     codes = check_codes("missing_import_main.jac");
-    assert "W1101" in codes , codes;
-    assert "E1145" not in codes , codes;
+    assert "E1145" in codes , codes;
+    assert "W1101" not in codes , codes;
+}
+
+test "a module __getattr__ provides any name, typed by its return" {
+    codes = check_codes("lazy_import_main.jac");
+    assert "E1145" not in codes and "W1101" not in codes , codes;
+    assert codes.count("E1001") == 1 , codes;
 }
 
 test "a native build importing a missing name fails with the name and module" {

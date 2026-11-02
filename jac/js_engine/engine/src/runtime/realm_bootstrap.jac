@@ -10,7 +10,8 @@ import from engine.src.runtime.jsvalue {
     js_true,
     js_int,
     jsv_from_string_id,
-    jsv_is_symbol
+    jsv_is_symbol,
+    jsv_is_object_cell
 }
 import from engine.src.runtime.jsobject {
     JSProperty,

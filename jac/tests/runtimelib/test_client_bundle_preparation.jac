@@ -105,7 +105,7 @@ test "files a web app writes at runtime do not invalidate its prepared record" {
         base = Path(tmp);
         path = base / 'main.jac';
         path.write_text(
-            'import from "@jac/runtime" { renderJsxTree, }\n\n'
+            'import from "@jac/runtime" { jacLogin, }\n\n'
             'def:pub app(children: any) -> JsxElement {\n    <div class="root">{children}</div>\n}\n'
         );
         asset = base / 'assets' / 'brand.css';
@@ -151,7 +151,7 @@ test "an edit to a client module the entry imports re-prepares the application" 
         base = Path(tmp);
         path = base / 'main.jac';
         path.write_text(
-            'import from "@jac/runtime" { renderJsxTree, }\n\n'
+            'import from "@jac/runtime" { jacLogin, }\n\n'
             'def:pub app(children: any) -> JsxElement {\n    <div class="root">{children}</div>\n}\n'
         );
         (base / 'jac.toml').write_text('[project]\nname = "prepared-imports"\n');

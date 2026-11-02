@@ -851,7 +851,8 @@ impl stored_wiring_digest(source_path: str) -> str {
                 held = json.load(f);
             }
             if isinstance(held, dict) {
-                table = {str(k): str(v) for (k, v) in held.items()};
+                entries: dict[str, any] = held;
+                table = {k: str(v) for (k, v) in entries.items()};
             }
         } except (OSError, ValueError) {}
         _WIRING_DIGESTS[stamp] = table;
@@ -884,13 +885,18 @@ impl unit_source_digest(path: str) -> str {
 impl sidecar_unit_paths(sidecar: dict[str, any]) -> list[str] {
     units = sidecar.get("units");
     ids = sidecar.get("unit_ids");
-    recorded = [str(u) for u in units] if isinstance(units, list) else [];
+    recorded: list[str] = [];
+    if isinstance(units, list) {
+        unit_items: list[any] = units;
+        recorded = [str(u) for u in unit_items];
+    }
     if not isinstance(ids, list) or len(ids) != len(recorded) {
         return recorded;
     }
+    id_items: list[any] = ids;
     pkg_parent = os.path.dirname(target_pkg_root());
     out: list[str] = [];
-    for (path, ident) in zip(recorded, ids) {
+    for (path, ident) in zip(recorded, id_items) {
         ident_s = str(ident);
         local = (
             os.path.join(pkg_parent, ident_s)
@@ -1218,10 +1224,12 @@ impl rebase_placement_section(raw: bytes, base: str) -> bytes {
             return value;
         }
         if isinstance(value, list) {
-            return [_rebase(v) for v in value];
+            items: list[any] = value;
+            return [_rebase(v) for v in items];
         }
         if isinstance(value, dict) {
-            return {k: _rebase(v) for (k, v) in value.items()};
+            entries: dict[str, any] = value;
+            return {k: _rebase(v) for (k, v) in entries.items()};
         }
         return value;
     }

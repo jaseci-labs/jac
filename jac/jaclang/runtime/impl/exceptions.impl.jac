@@ -1,3 +1,7 @@
+impl MissingAnchorError.init(anchor_id: str) {
+    self.anchor_id = anchor_id;
+}
+
 impl MissingAnchorError.__str__ -> str {
     return (
         f"Anchor {self.anchor_id} does not exist in the anchor store "
@@ -5,8 +9,28 @@ impl MissingAnchorError.__str__ -> str {
     );
 }
 
-impl WriteConflict.postinit {
+impl WriteConflict.init(
+    anchor_id: UUID,
+    expected_version: int = -1,
+    actual_version: int = -1,
+    siblings: (list[any] | None) = None
+) {
+    self.anchor_id = anchor_id;
+    self.expected_version = expected_version;
+    self.actual_version = actual_version;
+    self.siblings = siblings;
     super.init(self.message());
+}
+
+impl ReadOnlyRetry.init(
+    anchor_id: UUID,
+    expected_version: int = -1,
+    actual_version: int = -1,
+    siblings: (list[any] | None) = None,
+    unit_key: str = ''
+) {
+    self.unit_key = unit_key;
+    super.init(anchor_id, expected_version, actual_version, siblings);
 }
 
 impl WriteConflict.message -> str {

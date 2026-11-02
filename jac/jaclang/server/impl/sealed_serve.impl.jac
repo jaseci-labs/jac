@@ -15,11 +15,15 @@ impl _image_module_keys(img_root: str) -> set {
         if isinstance(data, dict) {
             modules = data.get("modules");
             if isinstance(modules, dict) {
-                keys = set(modules.keys());
+                module_map: dict[str, any] = modules;
+                keys = set(module_map.keys());
             }
-            `entry = data.get("entry");
-            if isinstance(`entry, dict) and isinstance(`entry.get("path"), str) {
-                keys.add(`entry["path"]);
+            raw_entry = data.get("entry");
+            if isinstance(raw_entry, dict) {
+                entry_record: dict[str, any] = raw_entry;
+                if isinstance(entry_record.get("path"), str) {
+                    keys.add(entry_record["path"]);
+                }
             }
         }
     } except Exception {
@@ -93,7 +97,7 @@ impl read_serve_manifest(img_root: str) -> dict[str, any] {
         );
     }
     data = json.loads(mf.read_text(encoding="utf-8"));
-    meta = data if isinstance(data, dict) else {};
+    meta: dict[str, any] = data if isinstance(data, dict) else {};
     if meta.get('format') != SERVE_MANIFEST_FORMAT {
         built_by = meta.get('jaclang_version');
         origin = f'jac {built_by}' if built_by else 'an older jac';

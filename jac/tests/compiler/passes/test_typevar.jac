@@ -180,6 +180,12 @@ test "paramspec_callable_no_false_e1071" {
         if "E1071" in e
     ];
     assert len(e1071_errors) == 0 , f"Expected no E1071 errors for Callable[P, T], got:\n{all_errors}";
+    signature_errors = [
+        e
+        for e in program.errors_had
+        if "E1053" in e.pretty_print()
+    ];
+    assert [e.loc.first_line for e in signature_errors] == [37] , f"Expected the ParamSpec-decorated greet(42) as the only E1053, got:\n{all_errors}";
 }
 
 """Test constrained TypeVars with ellipsis stub bodies (Pyright: typeVar10.py)."""

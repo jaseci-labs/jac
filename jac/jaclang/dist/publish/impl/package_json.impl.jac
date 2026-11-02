@@ -33,7 +33,8 @@ impl npm_dependencies(config: JacConfig) -> dict[str, str] {
     npm = npm_settings(config);
     `override = npm.get("dependencies", {});
     if isinstance(`override, dict) {
-        for (key, value) in `override.items() {
+        dep_table: dict[str, any] = `override;
+        for (key, value) in dep_table.items() {
             if isinstance(value, str) {
                 result[key] = value;
             }
@@ -48,7 +49,8 @@ impl npm_peer_dependencies(config: JacConfig) -> dict[str, str] {
 
     peers = npm.get("peer_dependencies", npm.get("peerDependencies", {}));
     if isinstance(peers, dict) {
-        for (key, value) in peers.items() {
+        peer_table: dict[str, any] = peers;
+        for (key, value) in peer_table.items() {
             if isinstance(value, str) {
                 result[key] = value;
             }

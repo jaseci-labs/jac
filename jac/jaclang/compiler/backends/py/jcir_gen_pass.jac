@@ -51,7 +51,9 @@ glob TOKEN_CLS_BY_NAME: dict[(str, str)] = {
          'MINUS': 'USub'
      };
 
-glob FW_ELIDABLE_OPS: frozenset = frozenset({Tok.PLUS, Tok.MINUS, Tok.STAR_MUL}),
+glob FW_ELIDABLE_OPS: frozenset[Tok] = frozenset(
+         {Tok.PLUS, Tok.MINUS, Tok.STAR_MUL}
+     ),
      FW_AUG_TO_BIN: dict[str, str] = {
          "ADD_EQ": "PLUS",
          "SUB_EQ": "MINUS",
@@ -120,7 +122,6 @@ def write_ir_value(w: CodegenIrWriter, v: object);
 def module_container_bytes(mod_path: str, root_node: CgNode) -> bytes;
 
 walker JcirGenPass(TreePass) {
-    static has contract: PassContract = PassContract();
     has already_added: list[str] = [],
         _ct_only_names: (set[str] | None) = None,
         jaclib_imports: set[str] postinit,
@@ -234,6 +235,8 @@ walker JcirGenPass(TreePass) {
     def name_load(name_id: str, jac_node: (UniNode | None) = None) -> CgNode;
     def _with_ctx(cgn: CgNode, ctx_cls: str) -> CgNode;
     def jaclib_obj(obj_name: str) -> CgNode;
+    def _default_slot(value: Expr) -> CgNode;
+    def _per_call_default_prologue(sig: FuncSignature) -> list[CgNode];
     def builtin_name(name: str) -> CgNode;
     def _add_preamble_once(key: str, cgn: CgNode) -> None;
     def needs_enum_kind(kind: str) -> None;

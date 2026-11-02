@@ -17,6 +17,12 @@ obj ClientConnectionError(Exception) {
         status_code: (int | None) = None,
         response: any = None;
 
+    def init(
+        detail: str = 'connection failed',
+        status_code: (int | None) = None,
+        response: any = None
+    );
+
     def __str__ -> str;
 }
 

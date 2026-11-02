@@ -48,7 +48,13 @@ obj:pub CalledProcessError(SubprocessError) {
         stderr: any = None,
         stdout: any = None;
 
-    def postinit;
+    def init(
+        returncode: int = 0,
+        cmd: any = None,
+        output: any = None,
+        stderr: any = None,
+        stdout: any = None
+    );
 }
 
 obj:pub TimeoutExpired(SubprocessError) {
@@ -58,7 +64,13 @@ obj:pub TimeoutExpired(SubprocessError) {
         stderr: any = None,
         stdout: any = None;
 
-    def postinit;
+    def init(
+        cmd: any = None,
+        timeout: any = None,
+        output: any = None,
+        stderr: any = None,
+        stdout: any = None
+    );
 }
 
 obj:pub CompletedProcess {

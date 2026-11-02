@@ -97,7 +97,8 @@ impl PgBackplane._on_notify(channel: str, payload: str) -> None {
     try {
         data = json.loads(payload);
         if isinstance(data, dict) and '__kv' in data {
-            key = str(data['__kv']);
+            spilled: dict[str, any] = data;
+            key = str(spilled['__kv']);
             got = self._store.kv_get(key);
             if got is None {
                 logger.warning(

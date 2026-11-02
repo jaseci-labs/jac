@@ -865,7 +865,7 @@ impl NaIRGenPass._is_c_ptr_node(nd: (uni.UniNode | None)) -> bool {
     if isinstance(nd, uni.CfgExpr) {
         nd = nd.expr;
     }
-    return nd is not None and is_ptr_type(nd?.type);
+    return isinstance(nd, uni.Expr) and is_ptr_type(nd.type);
 }
 
 impl NaIRGenPass._c_ptr_aug(
@@ -1094,7 +1094,7 @@ impl NaIRGenPass._c_const_struct(expr: uni.Expr, sname: str) -> (ir.Constant | N
     struct_type = self.struct_types[sname];
     values: list[ir.Constant] = [];
     for (i, field) in enumerate(fields) {
-        elem = struct_type.elements[i];
+        elem = struct_type.members()[i];
         arg = given.get(field.name.sym_name);
         if arg is None {
             values.append(ir.Constant(elem, None));

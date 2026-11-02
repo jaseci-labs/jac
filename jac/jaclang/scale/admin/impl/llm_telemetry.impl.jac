@@ -420,7 +420,8 @@ impl TelemetryStore.record_llm_event(event: dict[str, any]) {
         trace = self._traces[inv_id];
         _raw_msgs = event.get("messages");
         if isinstance(_raw_msgs, list) and len(_raw_msgs) > 20 {
-            _raw_msgs = _raw_msgs[-20:];
+            recent_msgs: list[any] = _raw_msgs;
+            _raw_msgs = recent_msgs[-20:];
         }
         _raw_resp = event.get("response");
         try {
@@ -681,12 +682,11 @@ impl TelemetryStore.get_trace(invocation_id: str) -> dict[str, any] | None {
             result["child_count"] = len(child_traces);
 
             _top_agg = self._aggregate_descendants(invocation_id, children_lookup);
-            result["aggregated_total_tokens"] = result["total_tokens"]
-                + _top_agg["tokens"];
+            result["aggregated_total_tokens"] = trace.total_tokens + _top_agg["tokens"];
             result["aggregated_total_cost"] = round(
-                result["total_cost"] + _top_agg["cost"], 6
+                trace.total_cost + _top_agg["cost"], 6
             );
-            result["aggregated_llm_call_count"] = result["llm_call_count"]
+            result["aggregated_llm_call_count"] = trace.llm_call_count
                 + _top_agg["calls"];
             return result;
         }

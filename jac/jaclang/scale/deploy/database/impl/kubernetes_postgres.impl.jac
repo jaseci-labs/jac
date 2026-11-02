@@ -231,8 +231,9 @@ impl KubernetesPostgresProvider.deploy(config: dict[str, any] = {}) -> dict[str,
         );
         overrides: any = self._db_cfg().get('postgres_settings') or {};
         if isinstance(overrides, dict) {
-            for (key, value) in overrides.items() {
-                settings[str(key)] = str(value);
+            entries: dict[str, any] = overrides;
+            for (key, value) in entries.items() {
+                settings[key] = str(value);
             }
         }
         server_args: list[str] = ['postgres'];

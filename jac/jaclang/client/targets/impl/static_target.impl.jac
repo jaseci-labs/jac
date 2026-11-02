@@ -1,6 +1,7 @@
 import re;
 
 import os;
+import from os { PathLike }
 
 import functools;
 
@@ -65,7 +66,7 @@ impl inline_dist_assets(dist_dir: Path) -> bool {
 
 class _DistRequestHandler(SimpleHTTPRequestHandler) {
     def translate_path(self: _DistRequestHandler, path: str) -> str;
-    def guess_type(self: _DistRequestHandler, path: str) -> str;
+    def guess_type(self: _DistRequestHandler, path: str | PathLike[str]) -> str;
 }
 
 impl serve_static_dir(dist_dir: Path, host: str, port: int) -> None {
@@ -159,7 +160,9 @@ impl _DistRequestHandler.translate_path(self: _DistRequestHandler, path: str) ->
     return super.translate_path(path);
 }
 
-impl _DistRequestHandler.guess_type(self: _DistRequestHandler, path: str) -> str {
+impl _DistRequestHandler.guess_type(
+    self: _DistRequestHandler, path: str | PathLike[str]
+) -> str {
     if str(path).endswith(".wasm") {
         return "application/wasm";
     }

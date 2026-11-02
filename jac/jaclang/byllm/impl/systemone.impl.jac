@@ -323,19 +323,20 @@ impl assemble(spec: SystemOneSpec, answers: dict[str, any]) -> tuple[object, flo
         kwargs: dict[str, any] = {};
         worst = 1.0;
         for (fname, q) in spec.questions.items() {
-            a = answers.get(fname);
-            if not isinstance(a, dict) {
+            raw_a = answers.get(fname);
+            if not isinstance(raw_a, dict) {
                 raise OutputConversionError(
                     f"System One response carried no answer for field {fname!r}"
                 );
             }
+            field_answer: dict[str, any] = raw_a;
             ftype = hints.get(fname);
             if q.kind == NOUL {
-                p = float(a.get("noul", 0.0));
+                p = float(field_answer.get("noul", 0.0));
                 kwargs[fname] = p > 0.5;
                 worst = min(worst, abs(2.0 * p - 1.0));
             } else {
-                label = a.get("choice");
+                label = field_answer.get("choice");
                 members = getattr(ftype, "__members__", {});
                 if label not in members {
                     raise OutputConversionError(
@@ -344,18 +345,19 @@ impl assemble(spec: SystemOneSpec, answers: dict[str, any]) -> tuple[object, flo
                     );
                 }
                 kwargs[fname] = members[label];
-                worst = min(worst, float(a.get("confidence", 0.0)));
+                worst = min(worst, float(field_answer.get("confidence", 0.0)));
             }
         }
         return (ctor(**kwargs), worst);
     }
 
-    answer = answers.get(ANSWER_KEY);
-    if not isinstance(answer, dict) {
+    raw_answer = answers.get(ANSWER_KEY);
+    if not isinstance(raw_answer, dict) {
         raise OutputConversionError(
             f"System One response carried no answer for {ANSWER_KEY!r}"
         );
     }
+    answer: dict[str, any] = raw_answer;
 
     if spec.mode == MODE_BOOL {
         p = float(answer.get("noul", 0.0));
@@ -463,10 +465,11 @@ impl resolve_api_key(caps: ProviderCaps, explicit: str = "") -> str {
 impl distribution(spec: SystemOneSpec, answers: dict[str, any]) -> dict[str, any] {
     out: dict[str, any] = {};
     for (qid, q) in spec.questions.items() {
-        a = answers.get(qid);
-        if not isinstance(a, dict) {
+        raw_a = answers.get(qid);
+        if not isinstance(raw_a, dict) {
             continue;
         }
+        a: dict[str, any] = raw_a;
         if q.kind == NOUL {
             p = float(a.get("noul", 0.0));
             out[qid] = {"true": p, "false": 1.0 - p};

@@ -162,12 +162,18 @@ impl _mounts_entry(project_root: str) -> tuple[str, str] {
                 data = tomllib.load(fh);
             }
             build = data.get('build', {});
-            if isinstance(build, dict) and isinstance(build.get('dir'), str) {
-                mounts = os.path.join(project_root, build['dir'], MOUNTS_DIR_NAME);
+            build_table: dict[str, any] = build if isinstance(build, dict) else {};
+            build_dir = build_table.get('dir');
+            if isinstance(build_dir, str) {
+                mounts = os.path.join(project_root, build_dir, MOUNTS_DIR_NAME);
             }
             project = data.get('project', {});
-            if isinstance(project, dict) and isinstance(project.get('name'), str) {
-                name = project['name'];
+            project_table: dict[str, any] = project
+                if isinstance(project, dict)
+                else {};
+            project_name = project_table.get('name');
+            if isinstance(project_name, str) {
+                name = project_name;
             }
         } except Exception {
             name = '';
@@ -764,7 +770,8 @@ impl _resolve_export_target(
         return candidate if os.path.isfile(candidate) else None;
     }
     if isinstance(target, list) {
-        for item in target {
+        items: list[any] = target;
+        for item in items {
             resolved = _resolve_export_target(item, conditions, pkg_dir, star_sub);
             if resolved {
                 return resolved;
@@ -773,7 +780,8 @@ impl _resolve_export_target(
         return None;
     }
     if isinstance(target, dict) {
-        for (key, value) in target.items() {
+        entries: dict[str, any] = target;
+        for (key, value) in entries.items() {
             if key.startswith('.') {
                 continue;
             }
@@ -792,20 +800,21 @@ impl _resolve_pkg_exports(
     exports: object, subpath: str, conditions: tuple[str, ...], pkg_dir: str
 ) -> (str | None) {
     if isinstance(exports, dict) {
-        has_subpath_keys = `any(k.startswith('.') for k in exports.keys());
+        export_map: dict[str, any] = exports;
+        has_subpath_keys = `any(k.startswith('.') for k in export_map.keys());
         if not has_subpath_keys {
             if subpath == '.' {
                 return _resolve_export_target(exports, conditions, pkg_dir);
             }
             return None;
         }
-        if subpath in exports {
-            return _resolve_export_target(exports[subpath], conditions, pkg_dir);
+        if subpath in export_map {
+            return _resolve_export_target(export_map[subpath], conditions, pkg_dir);
         }
 
         best_key: (str | None) = None;
         best_sub: (str | None) = None;
-        for key in exports.keys() {
+        for key in export_map.keys() {
             if ('*' not in key or not key.startswith('.')) {
                 continue;
             }
@@ -827,7 +836,7 @@ impl _resolve_pkg_exports(
         }
         if best_key is not None {
             return _resolve_export_target(
-                exports[best_key], conditions, pkg_dir, star_sub=best_sub
+                export_map[best_key], conditions, pkg_dir, star_sub=best_sub
             );
         }
         return None;

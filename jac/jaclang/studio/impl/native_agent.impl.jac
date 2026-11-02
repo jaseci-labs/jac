@@ -738,6 +738,7 @@ impl tool_title(tool: str, args: any) -> str {
     if not isinstance(args, dict) {
         return tool;
     }
+    fields: dict[str, any] = args;
     for k in [
         "path",
         "command",
@@ -748,8 +749,8 @@ impl tool_title(tool: str, args: any) -> str {
         "scope",
         "pattern"
     ] {
-        if args.get(k) {
-            val = " ".join(str(args[k]).split());
+        if fields.get(k) {
+            val = " ".join(str(fields[k]).split());
             return f"{tool} {val[:80]}";
         }
     }
@@ -757,14 +758,18 @@ impl tool_title(tool: str, args: any) -> str {
 }
 
 impl tool_locations(args: any, root_dir: str) -> list[dict[str, any]] {
-    if not isinstance(args, dict) or not args.get("path") {
+    if not isinstance(args, dict) {
         return [];
     }
-    p = str(args["path"]);
+    fields: dict[str, any] = args;
+    if not fields.get("path") {
+        return [];
+    }
+    p = str(fields["path"]);
     full = p if os.path.isabs(p) else os.path.join(root_dir, p);
     loc: dict[str, any] = {"path": os.path.normpath(full)};
-    if args.get("start_line") {
-        loc["line"] = args["start_line"];
+    if fields.get("start_line") {
+        loc["line"] = fields["start_line"];
     }
     return [loc];
 }

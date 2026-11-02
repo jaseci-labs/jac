@@ -1578,9 +1578,11 @@ impl _is_serialization_conflict(e: Exception) -> bool {
     while cur is not None and seen < 8 {
         c: BaseException = cur;
         for arg in getattr(c, 'args', ()) {
-            if isinstance(arg, dict)
-                and arg.get('C') in ('40001', '40P01', '53200', '55P03', '08006') {
-                return True;
+            if isinstance(arg, dict) {
+                fields: dict[str, any] = arg;
+                if fields.get('C') in ('40001', '40P01', '53200', '55P03', '08006') {
+                    return True;
+                }
             }
         }
         cur = c.__cause__ or c.__context__;
@@ -1596,8 +1598,11 @@ impl _is_lock_timeout(e: Exception) -> bool {
     while cur is not None and seen < 8 {
         c: BaseException = cur;
         for arg in getattr(c, 'args', ()) {
-            if isinstance(arg, dict) and arg.get('C') == '55P03' {
-                return True;
+            if isinstance(arg, dict) {
+                fields: dict[str, any] = arg;
+                if fields.get('C') == '55P03' {
+                    return True;
+                }
             }
         }
         cur = c.__cause__ or c.__context__;

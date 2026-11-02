@@ -102,7 +102,8 @@ impl _build_package_json(app_slug: str, native_deps: dict[str, str]) -> str {
             "react-hook-form": "^7.54.0",
             "@hookform/resolvers": "^3.10.0",
             "zod": "^3.24.0"
-        },
+        }
+            | native_deps,
         "devDependencies": {
             "@babel/core": "^7.25.0",
             "babel-preset-expo": f"~{EXPO_SDK_VERSION}.0.0",
@@ -110,9 +111,6 @@ impl _build_package_json(app_slug: str, native_deps: dict[str, str]) -> str {
             "typescript": "~6.0.3"
         }
     };
-    for (pkg_name, version) in native_deps.items() {
-        pkg["dependencies"][pkg_name] = version;
-    }
     return json.dumps(pkg, indent=2) + "\n";
 }
 

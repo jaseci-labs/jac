@@ -5904,31 +5904,30 @@ def run_sv_source(code: str) -> str {
     return buf.getvalue();
 }
 
-test "glob scoping: bare function-scope assignment does not touch the module global" {
+test "glob scoping: a typed function-scope declaration does not touch the module global" {
     (eng, _ir) = compile_native("glob_scoping.jac");
-    # bump_local() does `counter = 5;` with no `global` declaration — Python
-    # semantics make this a function-local, so the module global stays 0.
+    # bump_local() declares `counter: int = 5;`, a function-local shadow, so
+    # the module global stays 0.
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     bump_local = get_func(eng, "bump_local", ctypes.c_int64);
     read_global = get_func(eng, "read_global", ctypes.c_int64);
     assert bump_local() == 5 , "bare local assignment should evaluate to 5";
     assert read_global() == 0 , (
-        "module global must be untouched by a bare function-scope assignment "
-        "(before the fix this returned 5 — the native pathway rebound the global)"
+        "module global must be untouched by a typed function-scope declaration"
     );
 }
 
-test "glob scoping: explicit `global` still rebinds the module global" {
+test "glob scoping: a bare assignment rebinds the module global" {
     (eng, _ir) = compile_native("glob_scoping.jac");
-    # bump_global() declares `global counter;` first, so `counter = 99;` is a
-    # genuine global store — this must keep working.
+    # bump_global() assigns `counter = 99;` with no type, which rebinds the
+    # nearest enclosing binding: the module glob.
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     bump_global = get_func(eng, "bump_global", ctypes.c_int64);
     read_global = get_func(eng, "read_global", ctypes.c_int64);
     assert bump_global() == 99;
-    assert read_global() == 99 , "explicit `global x;` must rebind the global";
+    assert read_global() == 99 , "a bare assignment must rebind the global";
 }
 
 test "cross-pathway: glob scoping is identical in the na and sv pathways" {
@@ -5947,28 +5946,35 @@ test "cross-pathway: glob scoping is identical in the na and sv pathways" {
     bump_local = get_func(eng, "bump_local", ctypes.c_int64);
     read_global = get_func(eng, "read_global", ctypes.c_int64);
     bump_global = get_func(eng, "bump_global", ctypes.c_int64);
-    na_results = [bump_local(), read_global(), bump_global(), read_global()];
+    bump_early = get_func(eng, "bump_early", ctypes.c_int64);
+    na_results = [
+        bump_local(),
+        read_global(),
+        bump_global(),
+        read_global(),
+        bump_early(),
+        read_global()
+    ];
 
     # --- sv pathway: identical source, entry block prints the same sequence ---
-    sv_src = base_src.replace(
-        "with entry {}",
-        "with entry {\n"
-            + "    print(bump_local());\n"
-            + "    print(read_global());\n"
-            + "    print(bump_global());\n"
-            + "    print(read_global());\n"
-            + "}"
-    );
-    assert "with entry {\n" in sv_src , "fixture entry block not substituted";
+    sv_src = base_src
+        + "\nwith entry {\n"
+        + "    print(bump_local());\n"
+        + "    print(read_global());\n"
+        + "    print(bump_global());\n"
+        + "    print(read_global());\n"
+        + "    print(bump_early());\n"
+        + "    print(read_global());\n"
+        + "}\n";
     sv_out = run_sv_source(sv_src);
     sv_results = [int(tok) for tok in sv_out.split()];
 
-    assert sv_results == [5, 0, 99, 99] , (
+    assert sv_results == [5, 0, 99, 99, 42, 42] , (
         f"sv pathway diverged from CPython scoping: {sv_results}"
     );
     assert na_results == sv_results , (
         f"native pathway diverges from sv: na={na_results} sv={sv_results}. "
-        "A bare function-scope assignment to a glob name must be a local."
+        "A typed declaration shadows a glob; a bare assignment rebinds it."
     );
 }
 

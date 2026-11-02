@@ -17,7 +17,11 @@ impl service_apps(cfg: any, served: any) -> list[AppConfig] {
 impl gateway_colocates(cfg: any) -> bool {
     scale_cfg: dict[str, any] = cfg.get_plugin_config("scale") or {};
     gateway = scale_cfg.get("gateway", {}) if isinstance(scale_cfg, dict) else {};
-    return not (isinstance(gateway, dict) and gateway.get("colocate") is False);
+    if not isinstance(gateway, dict) {
+        return True;
+    }
+    gateway_table: dict[str, any] = gateway;
+    return gateway_table.get("colocate") is not False;
 }
 
 impl colocate_services(

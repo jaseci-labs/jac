@@ -382,6 +382,7 @@ test "effective_for_app layers base, app overlays, profile and local" {
         assert web.is_workspace;
         assert list(web.apps.keys()) == ["web", "mobile"];
         assert web.project_root == cfg.project_root;
+        assert web.config_files is not None;
         assert [p.name for p in web.config_files]
             == ["jac.toml", "jac.prod.toml", "jac.local.toml"];
         assert cfg.serve.port == 8090 , "the source config is untouched";

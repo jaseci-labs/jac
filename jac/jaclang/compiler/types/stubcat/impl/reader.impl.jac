@@ -197,7 +197,8 @@ impl StubCatalog.ambient_typing_names -> dict[str, set[str]] {
     for (mod_name, names) in raw.items() {
         members: set[str] = set();
         if isinstance(names, list) {
-            for name in names {
+            name_items: list[any] = names;
+            for name in name_items {
                 members.add(str(name));
             }
         }

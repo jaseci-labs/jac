@@ -81,6 +81,6 @@ obj MicroserviceGateway(EndpointHost, JacAPIServerAdmin, JacAPIServerWorkloads, 
     def serve_spa_fallback -> Response | None;
     def bootstrap_admin_ui -> None;
     def _install_admin_api -> None;
-    def serve_admin_asset(asset_path: str) -> Response | None;
+    def serve_admin_asset(asset_path: str) -> Response;
     def start(on_ready: any = None) -> None;
 }

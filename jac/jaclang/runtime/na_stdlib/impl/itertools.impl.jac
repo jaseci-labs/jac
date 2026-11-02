@@ -12,7 +12,8 @@ impl _tolist_any(src: any) -> list[any] {
             "itertools: variadic arguments must be lists or str on the native pathway"
         );
     }
-    for v in src {
+    items: list[any] = src;
+    for v in items {
         out.append(v);
     }
     return out;
@@ -129,7 +130,8 @@ impl chain(*iterables: any) -> Iterator[any] {
                     "itertools: variadic arguments must be lists or str on the native pathway"
                 );
             }
-            for v in it {
+            items: list[any] = it;
+            for v in items {
                 yield v;
             }
         }
@@ -475,7 +477,8 @@ impl _chain_fi_gen[C: Iterable](src: C) -> Iterator[any] {
                     "itertools: variadic arguments must be lists or str on the native pathway"
                 );
             }
-            for v in it {
+            items: list[any] = it;
+            for v in items {
                 yield v;
             }
         }

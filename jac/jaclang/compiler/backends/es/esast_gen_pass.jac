@@ -176,7 +176,6 @@ obj NullSafeLink {
 }
 
 walker EsastGenPass(TreePass) {
-    static has contract: PassContract = PassContract();
     has _ct_only_names: (set[str] | None) = None,
         imports: list[es.ImportDeclaration] = [],
         module_import_paths: dict[str, str] = {},

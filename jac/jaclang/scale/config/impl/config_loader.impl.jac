@@ -501,7 +501,7 @@ impl app_scale_overrides(config: any, app_name: str) -> dict[str, any] {
         return {};
     }
     app = config.apps[app_name];
-    overlays = app.overlays if isinstance(app.overlays, dict) else {};
+    overlays: dict[str, any] = app.overlays if isinstance(app.overlays, dict) else {};
     declared = overlays.get("scale");
     if isinstance(declared, dict) {
         import from jaclang.project.config_schema { report_schema_findings }
@@ -520,7 +520,9 @@ impl app_scale_overrides(config: any, app_name: str) -> dict[str, any] {
     } except Exception {
         return _pick_app_scale_keys(declared);
     }
-    plugins = effective.plugins if isinstance(effective.plugins, dict) else {};
+    plugins: dict[str, any] = effective.plugins
+        if isinstance(effective.plugins, dict)
+        else {};
     return _pick_app_scale_keys(plugins.get("scale", {}));
 }
 

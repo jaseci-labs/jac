@@ -25,7 +25,8 @@ import from engine.src.runtime.jsvalue {
     jsv_is_int32,
     jsv_from_string_id,
     jsv_to_table_id,
-    jsv_is_string_cell
+    jsv_is_string_cell,
+    jsv_is_object_cell
 }
 import from engine.src.runtime.jsobject {
     js_object_create_null,

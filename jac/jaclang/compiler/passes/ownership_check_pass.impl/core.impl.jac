@@ -1306,7 +1306,9 @@ impl OwnershipCheckPass._emit_place_move_diagnostics -> None {
     }
     for call in self.module.get_all_sub_nodes(FuncCall) {
         is_ctor = self._seal_arch_ctor(call) or self._nogc_fresh_arch_elem(call);
-        own_params = None if is_ctor else self._callee_own_param_names(call);
+        own_params: set[str] = set()
+            if is_ctor
+            else (self._callee_own_param_names(call) or set());
         if not is_ctor and not own_params {
             continue;
         }

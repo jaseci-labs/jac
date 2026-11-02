@@ -5,9 +5,15 @@ obj JacTestResult(unittest.TextTestResult) {
         descriptions: any,
         verbosity: int,
         max_failures: (int | None) = None,
-        failures_count: int postinit;
+        failures_count: int = 0;
 
-    def postinit -> None;
+    def init(
+        stream: any,
+        descriptions: any,
+        verbosity: int,
+        max_failures: (int | None) = None
+    ) -> None;
+
     def addFailure(`test: any, err: any) -> None;
     def stop -> None;
 }

@@ -34,7 +34,8 @@ impl is_jac_database(database: str) -> bool {
 impl sqlstate_of(err: Exception) -> str {
     for arg in getattr(err, 'args', ()) {
         if isinstance(arg, dict) {
-            return str(arg.get('C') or '');
+            fields: dict[str, any] = arg;
+            return str(fields.get('C') or '');
         }
     }
     return '';

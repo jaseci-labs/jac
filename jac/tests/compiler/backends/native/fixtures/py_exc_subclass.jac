@@ -8,6 +8,11 @@ object's fields).
 obj ParseError(Exception) {
     has line_no: int = 0,
         hint: str = "";
+
+    def init(line_no: int = 0, hint: str = "") {
+        self.line_no = line_no;
+        self.hint = hint;
+    }
 }
 
 def boom(n: int) -> int {

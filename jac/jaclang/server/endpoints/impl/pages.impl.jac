@@ -429,18 +429,19 @@ impl register_diagnostics_endpoints(server: JacAPIServer) {
         } except Exception {
             return JSONResponse(status_code=400, content={'error': 'Invalid JSON'});
         }
-        if not isinstance(data, dict) or not data.get('message') {
+        error_report: dict[str, any] = data if isinstance(data, dict) else {};
+        if not error_report.get('message') {
             return JSONResponse(
                 status_code=400, content={'error': 'Missing required field: message'}
             );
         }
 
-        if not _error_rate_limiter.should_log(str(data.get('message'))) {
+        if not _error_rate_limiter.should_log(str(error_report.get('message'))) {
             return JSONResponse(content={'ok': True, 'throttled': True});
         }
         cfg = get_config();
         verbose = cfg.client_errors.verbose if cfg else False;
-        diag = log_client_error(server.base_path or '', data, verbose);
+        diag = log_client_error(server.base_path or '', error_report, verbose);
         logger.error(diag.render());
         return JSONResponse(content={'ok': True});
     }

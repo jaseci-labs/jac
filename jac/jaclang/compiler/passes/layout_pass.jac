@@ -186,7 +186,6 @@ obj LayoutRegistry {
 }
 
 walker LayoutPass(CompilerPass) {
-    static has contract: PassContract = PassContract();
     has registry: LayoutRegistry postinit,
         isinstance_targets: set[str] postinit;
 
@@ -197,7 +196,9 @@ walker LayoutPass(CompilerPass) {
     def _collect_archetypes(module: Module) -> dict[str, Archetype];
     def _collect_isinstance_targets(module: Module) -> None;
     def _build_hierarchy(archetypes: dict[str, Archetype]) -> None;
-    def _compute_c3_mro(class_name: str) -> list[str];
+    def _layout_ancestors(class_name: str) -> set[str];
+    def _layout_mro(class_name: str, cls: ClassType, reachable: set[str]) -> list[str];
+    def _mro_member_name(anc: ClassType, reachable: set[str]) -> (str | None);
     def _topo_sort(arch_map: dict[str, Archetype]) -> list[str];
     def _build_layout(arch: Archetype) -> ArchetypeLayout;
     def _build_enum_layouts(module: Module) -> None;

@@ -14,6 +14,7 @@ test "reactive walker preserves assignment values and scope boundaries" {
     outer = mod.body[0];
     assert isinstance(outer, uni.Ability);
     walk = ReactiveUseWalker(reactive={"count", "state"});
+    assert isinstance(outer.body, list);
     for stmt in outer.body {
         stmt spawn walk;
     }

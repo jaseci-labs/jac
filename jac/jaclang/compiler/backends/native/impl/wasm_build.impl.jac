@@ -309,7 +309,7 @@ impl _project_gc_settings -> tuple[str, list[str], list[str]] {
     enf_mods: list[str] = [];
     enf_grand: list[str] = [];
     try {
-        import from jaclang.project { get_config }
+        import from jaclang.project.config { get_config }
         cfg = get_config();
         if cfg {
             gc_mode = cfg.memory.gc_mode();

@@ -242,8 +242,9 @@ impl print_guide_hint(code: (str | None), category: (str | None)) -> None {
 impl print_diag(d: any, is_error: bool) {
     emit = console.error if is_error else console.warning;
     if isinstance(d, dict) {
-        emit(str(d.get('pretty') or d.get('text') or ''));
-        print_guide_hint(d.get('code'), d.get('category'));
+        diag: dict[str, any] = d;
+        emit(str(diag.get('pretty') or diag.get('text') or ''));
+        print_guide_hint(diag.get('code'), diag.get('category'));
     } else {
         emit(str(d));
     }

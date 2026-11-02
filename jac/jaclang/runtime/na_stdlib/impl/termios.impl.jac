@@ -45,8 +45,9 @@ impl _pack_attrs(base: bytes, attrs: list[any]) -> bytes {
             "tcsetattr: attributes[6] must be " + str(_NCCS) + " element list"
         );
     }
+    cc_items: list[any] = ccv;
     cc_bytes: list[int] = [];
-    for e in ccv {
+    for e in cc_items {
         cc_bytes.append(_cc_byte(e));
     }
     blob: bytes = base;

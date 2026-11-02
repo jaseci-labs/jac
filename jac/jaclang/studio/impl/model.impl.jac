@@ -1388,14 +1388,16 @@ impl ProjectModel._load_cache(mod: StModule) -> bool {
     path = self._cache_path(mod);
     try {
         with open(path, encoding="utf-8") as fh {
-            data = json.load(fh);
+            raw_data = json.load(fh);
         }
     } except (OSError, ValueError) {
         return False;
     }
-    if not isinstance(data, dict)
-        or data.get("format") != INDEX_FORMAT
-        or data.get("key") != mod.key {
+    if not isinstance(raw_data, dict) {
+        return False;
+    }
+    data: dict[str, any] = raw_data;
+    if data.get("format") != INDEX_FORMAT or data.get("key") != mod.key {
         return False;
     }
     stamps = data.get("stamps") or {};

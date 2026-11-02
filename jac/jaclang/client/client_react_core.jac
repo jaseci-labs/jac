@@ -16,7 +16,7 @@ obj:pub BridgeError(Exception) {
         status: int = 0,
         message: str = "";
 
-    def postinit;
+    def init(app: str = "", name: str = "", detail: str = "", status: int = 0);
 }
 
 obj:pub BridgeUnavailable(BridgeError) {}

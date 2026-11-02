@@ -17,7 +17,7 @@ glob CORE_RUNTIME_DEPS: dict[str, str] = {
          "@types/react": "^19.2.0",
          "@types/react-dom": "^19.2.0"
      },
-     LEGACY_META_PACKAGES: set = {"jac-client-node", "@jac-client/dev-deps"};
+     LEGACY_META_PACKAGES: set[str] = {"jac-client-node", "@jac-client/dev-deps"};
 
 
 def target_scoped_npm_deps(config: JacConfig, target_name: str) -> dict[str, str];

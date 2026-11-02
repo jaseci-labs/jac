@@ -8,12 +8,14 @@ obj HTTPError(Exception) {
     has status_code: int,
         detail: str = '';
 
+    def init(status_code: int, detail: str = '');
     def __str__ -> str;
 }
 
 obj WebSocketDisconnect(Exception) {
     has code: int = 1000;
 
+    def init(code: int = 1000);
     def __str__ -> str;
 }
 

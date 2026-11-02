@@ -566,7 +566,8 @@ impl EsastGenPass._finalize_runtime_imports(program: es.Program) -> None {
                 pending.append(child);
             }
         } elif isinstance(value, list) {
-            for item in value {
+            items: list[any] = value;
+            for item in items {
                 pending.append(item);
             }
         }

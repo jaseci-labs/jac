@@ -277,8 +277,11 @@ impl _apply_config_defaults(config: any, meta: CommandSpec, args_dict: dict[str,
             continue;
         }
         raw = config._raw_data.get(section, {});
-        if isinstance(raw, dict) and key in raw {
-            args_dict[dict_key] = config_value;
+        if isinstance(raw, dict) {
+            table: dict[str, any] = raw;
+            if key in table {
+                args_dict[dict_key] = config_value;
+            }
         }
     }
 }

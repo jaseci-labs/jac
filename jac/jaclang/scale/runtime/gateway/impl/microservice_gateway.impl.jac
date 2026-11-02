@@ -148,7 +148,7 @@ impl MicroserviceGateway.bootstrap_admin_ui -> None {
     );
 }
 
-impl MicroserviceGateway.serve_admin_asset(asset_path: str) -> Response | None {
+impl MicroserviceGateway.serve_admin_asset(asset_path: str) -> Response {
     admin_dist = resolve_console(Path(self.admin_dist_dir), self.admin_console);
     if isinstance(admin_dist, Response) {
         return admin_dist;
@@ -164,10 +164,10 @@ impl MicroserviceGateway.serve_admin_asset(asset_path: str) -> Response | None {
         resolved = target.resolve();
         dist_resolved = admin_dist.resolve();
         if not resolved.is_relative_to(dist_resolved) {
-            return None;
+            return not_found(f"/admin/{asset_path}");
         }
     } except OSError {
-        return None;
+        return not_found(f"/admin/{asset_path}");
     }
 
     if not target.is_file() {
@@ -175,7 +175,7 @@ impl MicroserviceGateway.serve_admin_asset(asset_path: str) -> Response | None {
         if index.is_file() {
             return HTMLResponse(content=index.read_text(encoding="utf-8"));
         }
-        return None;
+        return not_found(f"/admin/{asset_path}");
     }
 
     (content_type, _) = mimetypes.guess_type(str(target));
@@ -296,7 +296,11 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
         } except ValueError {
             return False;
         }
-        return isinstance(answer, dict) and answer.get("code") == "unknown_type";
+        if not isinstance(answer, dict) {
+            return False;
+        }
+        reply: dict[str, any] = answer;
+        return reply.get("code") == "unknown_type";
     }
     for result in answers {
         if result is None {
@@ -464,7 +468,7 @@ impl MicroserviceGateway.shell_answers(request: Request, path: str) -> bool {
     if not (Path(self.client_dist_dir) / "index.html").is_file() {
         return False;
     }
-    return not path.lstrip("/") or "text/html" in request.headers.get("accept", "");
+    return not path.lstrip("/") or "text/html" in (request.headers.get("accept") or "");
 }
 
 impl MicroserviceGateway.forward_to_root(
@@ -795,7 +799,7 @@ impl MicroserviceGateway.handle_spa_fallback(
     if not path.lstrip("/") {
         return self.serve_spa_fallback();
     }
-    if "text/html" in request.headers.get("accept", "") {
+    if "text/html" in (request.headers.get("accept") or "") {
         return self.serve_spa_fallback();
     }
     return None;

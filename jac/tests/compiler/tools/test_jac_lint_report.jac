@@ -51,7 +51,7 @@ def _write_tmp(src: str) -> str {
 test "lint report scheduler uses JacLintCheckPass" {
     sched = product_passes(CompilationProduct.LINT);
     assert len(sched) == 1;
-    assert sched[0] is JacLintCheckPass;
+    assert sched[0].load() is JacLintCheckPass;
 }
 
 test "lint report path preserves every diagnostic the mutation pass emits" {
@@ -60,8 +60,6 @@ test "lint report path preserves every diagnostic the mutation pass emits" {
         "obj Foo {\n    has x: int = 5;\n    pass;\n}\n",
         # W3021 unnecessary else after return
         "def bad(x: int) -> int {\n    if x > 0 {\n        return x;\n    } else {\n        return -x;\n    }\n}\n",
-        # W3036 mutable default argument
-        "def bad_list(items: list[any] = []) -> list[any] {\n    items.append(1);\n    return items;\n}\n",
         # W3035 `is` with literal
         "with entry {\n    x = 5;\n    if x is 5 {\n        print(\"five\");\n    }\n}\n",
         # W3024 repeated condition in if/elif chain

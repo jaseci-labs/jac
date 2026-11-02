@@ -853,6 +853,7 @@ test "compiled MTIR keeps the params, tools and fields a call site needs" {
     mod = load_fixture("call_site_lists");
     describe = JacRuntime.fetch_mtir(mod.describe);
     assert isinstance(describe, FunctionInfo);
+    assert describe.params is not None and describe.tools is not None;
     assert [p.name for p in describe.params] == ["text", "limit"];
     assert describe.params[0].semstr == "Text to describe.";
     assert [t.name for t in describe.tools] == ["lookup"];

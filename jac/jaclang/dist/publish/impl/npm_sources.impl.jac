@@ -6,8 +6,11 @@ glob _DEFAULT_RUNTIME_PKG: str = "@jaseci/runtime";
 
 impl runtime_pkg_name(config: JacConfig) -> str {
     npm = config._raw_data.get("npm", {});
-    if isinstance(npm, dict) and npm.get("runtime") {
-        return str(npm["runtime"]);
+    if isinstance(npm, dict) {
+        npm_table: dict[str, any] = npm;
+        if npm_table.get("runtime") {
+            return str(npm_table["runtime"]);
+        }
     }
     return _DEFAULT_RUNTIME_PKG;
 }
@@ -139,7 +142,11 @@ impl resolve_npm_entry(config: JacConfig, files: list[NpmSourceFile],) -> str | 
     paths = {f.npm_path for f in files};
 
     npm = config._raw_data.get("npm", {});
-    `entry: str = str(npm.get("entry", "")) if isinstance(npm, dict) else "";
+    `entry: str = "";
+    if isinstance(npm, dict) {
+        npm_table: dict[str, any] = npm;
+        `entry = str(npm_table.get("entry", ""));
+    }
     if `entry {
         candidate = npm_js_path(`entry.replace("\\", "/"));
         if candidate in paths {

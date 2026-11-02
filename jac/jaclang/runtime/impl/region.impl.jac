@@ -108,6 +108,11 @@ impl instrument_drops(cls: any) {
         _orig_init(inst, *args, **kwargs);
         register_drop(inst);
     }
+    setattr(
+        _region_init,
+        "__jac_generated_init__",
+        getattr(_orig_init, "__jac_generated_init__", False)
+    );
     setattr(cls, "__init__", _region_init);
     _orig_del: any = cls?.__del__;
     def _drop_on_release(inst: any) {

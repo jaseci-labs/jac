@@ -58,12 +58,12 @@ test "a cached baseline is redone when a file the check read changes" {
         );
         gate = EditGate(root_dir=tmp);
         before = gate._baseline(str(target));
-        assert any([d.code == "W1101" for d in before]) , [d.message for d in before];
+        assert any([d.code == "E1145" for d in before]) , [d.message for d in before];
         (base / "a.jac").write_text(
             "def other -> int {\n    return 1;\n}\n\ndef thing -> int {\n    return 2;\n}\n"
         );
         after = gate._baseline(str(target));
-        assert not any([d.code == "W1101" for d in after]) , "the baseline kept a finding the change to a.jac fixed";
+        assert not any([d.code == "E1145" for d in after]) , "the baseline kept a finding the change to a.jac fixed";
     }
 }
 

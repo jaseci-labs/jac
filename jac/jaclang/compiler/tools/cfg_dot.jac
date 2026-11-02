@@ -1,7 +1,6 @@
 import from typing { cast }
 
 walker CoalesceBBPass(TreePass) {
-    static has contract: PassContract = PassContract();
     has basic_blocks: dict[int, dict[str, list[UniCFGNode]]] = {},
         bb_counter: int = 0;
 

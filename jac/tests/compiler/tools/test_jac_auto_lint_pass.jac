@@ -785,7 +785,7 @@ test "signature mismatch fixed" {
     # Helper to get param names from an ImplDef
     def get_impl_params(impl_def: uni.ImplDef) -> list[str] {
         if isinstance(impl_def.spec, uni.FuncSignature) {
-            return [p.name.value for p in impl_def.spec.params];
+            return [p.name.value for p in (impl_def.spec.params or [])];
         }
         return [];
     }
@@ -857,7 +857,7 @@ test "nested class impl signature fixed" {
     # Helper to get param names from an ImplDef
     def get_impl_params(impl_def: uni.ImplDef) -> list[str] {
         if isinstance(impl_def.spec, uni.FuncSignature) {
-            return [p.name.value for p in impl_def.spec.params];
+            return [p.name.value for p in (impl_def.spec.params or [])];
         }
         return [];
     }

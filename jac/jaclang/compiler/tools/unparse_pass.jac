@@ -1,6 +1,4 @@
 walker UnparsePass(TreePass) {
-    static has contract: PassContract = PassContract();
-
     def _comma_sep(nodes: Sequence[uni.UniNode]) -> str;
     can unparse_prepare_exit with uni.UniNode exit;
     can unparse_default_exit with uni.UniNode exit;

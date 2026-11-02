@@ -29,7 +29,8 @@ impl element_to_dict(es: ElementSummary) -> dict[str, any] {
 impl _str_list(value: object) -> list[str] {
     out: list[str] = [];
     if isinstance(value, list) {
-        for item in value {
+        items: list[any] = value;
+        for item in items {
             out.append(str(item));
         }
     }
@@ -39,7 +40,8 @@ impl _str_list(value: object) -> list[str] {
 impl _int_list(value: object) -> list[int] {
     out: list[int] = [];
     if isinstance(value, list) {
-        for item in value {
+        items: list[any] = value;
+        for item in items {
             out.append(int(item));
         }
     }
@@ -49,7 +51,8 @@ impl _int_list(value: object) -> list[int] {
 impl _str_rows(value: object) -> list[list[str]] {
     out: list[list[str]] = [];
     if isinstance(value, list) {
-        for item in value {
+        items: list[any] = value;
+        for item in items {
             out.append(_str_list(item));
         }
     }
@@ -59,9 +62,11 @@ impl _str_rows(value: object) -> list[list[str]] {
 impl _escape_rows(value: object) -> list[tuple[int, str]] {
     out: list[tuple[int, str]] = [];
     if isinstance(value, list) {
-        for item in value {
+        items: list[any] = value;
+        for item in items {
             if isinstance(item, list) and len(item) >= 2 {
-                out.append((int(item[0]), str(item[1])));
+                pair: list[any] = item;
+                out.append((int(pair[0]), str(pair[1])));
             }
         }
     }
@@ -71,11 +76,13 @@ impl _escape_rows(value: object) -> list[tuple[int, str]] {
 impl _maps(value: object) -> list[dict[str, any]] {
     out: list[dict[str, any]] = [];
     if isinstance(value, list) {
-        for item in value {
+        items: list[any] = value;
+        for item in items {
             if isinstance(item, dict) {
+                entries: dict[str, any] = item;
                 row: dict[str, any] = {};
-                for (key, field) in item.items() {
-                    row[str(key)] = field;
+                for (key, field) in entries.items() {
+                    row[key] = field;
                 }
                 out.append(row);
             }

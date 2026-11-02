@@ -129,3 +129,17 @@ impl fold_const(expr: (UniNode | None)) -> tuple[(bool, any)] {
     }
     return (False, None);
 }
+
+impl is_constant_default(expr: (UniNode | None)) -> bool {
+    if isinstance(expr, Null) {
+        return True;
+    }
+    if isinstance(expr, AtomUnit) {
+        return is_constant_default(expr.value);
+    }
+    if isinstance(expr, TupleVal) {
+        return all(is_constant_default(v) for v in expr.values);
+    }
+    (ok, _) = fold_const(expr);
+    return ok;
+}

@@ -160,7 +160,8 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     conv_list_ref: object = None;
     if isinstance(conv_arg, list) {
         conv_list_ref = conv_arg;
-        for item in conv_arg {
+        conv_items: list[any] = conv_arg;
+        for item in conv_items {
             if _is_system_message(item) {
                 continue;
             }
@@ -391,7 +392,8 @@ impl _is_finish_tool_call(tc: any) -> bool {
         return tc.function.name == "finish_tool";
     }
     if isinstance(tc, dict) {
-        return (tc.get("function") or {}).get("name", "") == "finish_tool";
+        call: dict[str, any] = tc;
+        return (call.get("function") or {}).get("name", "") == "finish_tool";
     }
     return False;
 }

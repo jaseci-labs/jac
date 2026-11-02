@@ -261,8 +261,10 @@ impl c_spec_same(a: any, b: any) -> bool {
         if len(a) != len(b) {
             return False;
         }
-        for i in range(len(a)) {
-            if not c_spec_same(a[i], b[i]) {
+        left: list[any] = a;
+        right: list[any] = b;
+        for i in range(len(left)) {
+            if not c_spec_same(left[i], right[i]) {
                 return False;
             }
         }

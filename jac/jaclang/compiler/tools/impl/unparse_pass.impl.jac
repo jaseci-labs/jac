@@ -257,7 +257,7 @@ impl UnparsePass.exit_archetype with uni.Archetype exit {
     }
     if here.base_classes or here.keywords {
         inherit = [b.gen.jac for b in here.base_classes]
-            + [k.gen.jac for k in here.keywords];
+            + [k.gen.jac for k in (here.keywords or [])];
         parts.append("(" + ", ".join(inherit) + ")");
     }
     if here.src_endpoint and here.tgt_endpoint {
@@ -268,7 +268,7 @@ impl UnparsePass.exit_archetype with uni.Archetype exit {
     if here.body {
         if isinstance(here.body, uni.ImplDef) {
             parts.append(";");
-        } else {
+        } elif isinstance(here.body, Sequence) {
             body = " ".join([s.gen.jac for s in here.body]);
             parts.append("{ " + body + " }");
         }
@@ -333,7 +333,7 @@ impl UnparsePass.exit_enum with uni.Enum exit {
     if here.body {
         if isinstance(here.body, uni.ImplDef) {
             parts.append(";");
-        } else {
+        } elif isinstance(here.body, Sequence) {
             body = " ".join([s.gen.jac for s in here.body]);
             parts.append("{ " + body + " }");
         }
@@ -414,7 +414,7 @@ impl UnparsePass.exit_func_signature with uni.FuncSignature exit {
         }
         param_parts.append("/");
     }
-    for prm in here.params {
+    for prm in (here.params or []) {
         param_parts.append(prm.gen.jac);
     }
     if here.varargs {

@@ -348,6 +348,21 @@ impl get_type_of_binary_operation(
                 or _has_gradual_type_args(right_type) {
                 return UnknownType();
             }
+            if isinstance(left_type, UnionType) or isinstance(right_type, UnionType) {
+                if all_numeric(left_type) and all_numeric(right_type) {
+                    return left_type
+                        if isinstance(left_type, UnionType)
+                        else right_type;
+                }
+                evaluator.emit_diag(
+                    E1011,
+                    expr,
+                    op=expr.op.value,
+                    left=str(left_type),
+                    right=str(right_type)
+                );
+                return UnknownType(is_diagnosed=True);
+            }
             evaluator.emit_diag(E1055, expr, method=magic);
             return UnknownType();
         }

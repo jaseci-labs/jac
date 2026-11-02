@@ -28,12 +28,16 @@ impl _flatten_message_content(msg: dict[str, any]) -> dict[str, any] {
     }
     text_chunks: list[str] = [];
     has_non_text = False;
-    for part in content {
-        if isinstance(part, dict) and part.get("type") == "text" {
-            text_chunks.append(str(part.get("text", "")));
-        } else {
-            has_non_text = True;
+    parts: list[any] = content;
+    for part in parts {
+        if isinstance(part, dict) {
+            block: dict[str, any] = part;
+            if block.get("type") == "text" {
+                text_chunks.append(str(block.get("text", "")));
+                continue;
+            }
         }
+        has_non_text = True;
     }
     if has_non_text {
         return msg;
@@ -50,7 +54,8 @@ impl _coerce_tool_calls(msg: dict[str, any]) -> dict[str, any] {
     }
     changed = False;
     coerced: list[dict[str, any]] = [];
-    for tc in tcs {
+    calls: list[any] = tcs;
+    for tc in calls {
         if isinstance(tc, dict) {
             coerced.append(tc);
             continue;

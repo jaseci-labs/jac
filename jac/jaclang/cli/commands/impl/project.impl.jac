@@ -1272,10 +1272,10 @@ impl _toml_apps_and_default(toml_path: Path) -> tuple[set[str], str] {
     }
     apps = doc.get("apps", {});
     project = doc.get("project", {});
-    default_app = str(project.get("default-app", ""))
-        if isinstance(project, dict)
-        else "";
-    return (set(apps.keys()) if isinstance(apps, dict) else set(), default_app);
+    app_tables: dict[str, any] = apps if isinstance(apps, dict) else {};
+    project_table: dict[str, any] = project if isinstance(project, dict) else {};
+    default_app = str(project_table.get("default-app", ""));
+    return (set(app_tables.keys()), default_app);
 }
 
 impl _toml_apps(toml_path: Path) -> set[str] {
@@ -1291,8 +1291,9 @@ impl _stamp_kind(config: dict[str, any], kind: str) -> None {
         proj = {};
         config["project"] = proj;
     }
-    if not proj.get("kind") {
-        proj["kind"] = kind;
+    project_table: dict[str, any] = proj;
+    if not project_table.get("kind") {
+        project_table["kind"] = kind;
     }
 }
 
@@ -1302,9 +1303,10 @@ impl _stamp_jac_version(config: dict[str, any]) {
         proj = {};
         config["project"] = proj;
     }
-    if not proj.get("jac-version") {
+    project_table: dict[str, any] = proj;
+    if not project_table.get("jac-version") {
         import from jaclang.cli.cli { jac_version }
-        proj["jac-version"] = f"=={jac_version()}";
+        project_table["jac-version"] = f"=={jac_version()}";
     }
 }
 
@@ -1369,8 +1371,10 @@ impl _resolve_bundled_template(name: str, example: str) -> ProjectTemplate | Non
         tmpl = load_template_from_directory(cand);
 
         tmpl.config.pop("dev", None);
-        if isinstance(tmpl.config.get("project"), dict) {
-            tmpl.config["project"]["name"] = "{{name}}";
+        project = tmpl.config.get("project");
+        if isinstance(project, dict) {
+            project_table: dict[str, any] = project;
+            project_table["name"] = "{{name}}";
         }
         return tmpl;
     }
@@ -1458,7 +1462,8 @@ impl _render_config_to_toml(config: dict[str, any], project_name: str) -> str {
         } elif isinstance(v, (int, float)) {
             return str(v);
         } elif isinstance(v, list) {
-            items = [render_value(item) for item in v];
+            elements: list[any] = v;
+            items = [render_value(item) for item in elements];
             return "[" + ", ".join(items) + "]";
         } else {
             return str(v);

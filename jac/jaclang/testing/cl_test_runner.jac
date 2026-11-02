@@ -93,7 +93,7 @@ def _collect_local_imports(
     module_js: str, source_dir: str, entry_path: str, allow_runtime: bool = False
 ) -> tuple[dict[str, any], dict[str, any]];
 
-def _exported_names(js: str) -> set;
+def _exported_names(js: str) -> set[str];
 
 def find_server_entry(
     test_filepath: str, server_imports: (list[str] | None) = None

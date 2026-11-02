@@ -169,11 +169,14 @@ test "shortcoming_33_for_iter_type" {
 # =========================================================================
 test "shortcoming_34_return_none_implicit" {
     program = compile_and_check("checker_bug_return_none_implicit.jac");
-
-    # Expected: 2 errors (maybe_return and always_missing can implicitly return None)
-    assert len(program.errors_had) >= 2 , "#34: Missing return not detected. "
-    f"Expected at least 2 type errors but got {len(program.errors_had)}. "
-    "Functions declared -> int should error if they can return None.";
+    flagged = {
+        str(e).split("'")[1]
+        for e in program.errors_had
+        if "implicitly return" in str(e)
+    };
+    assert flagged == {"maybe_return", "always_missing", "impl_missing"} , (
+        f"#34: functions that can fall off the end: {flagged}"
+    );
 }
 
 # A `while True` with no break can only exit via return/raise, so a

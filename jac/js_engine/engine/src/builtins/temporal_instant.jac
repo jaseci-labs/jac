@@ -11,7 +11,11 @@ import from engine.src.runtime.jsvalue {
     jsv_to_int32,
     jsv_to_double,
     jsv_is_double,
-    jsv_is_bigint_cell
+    jsv_is_bigint_cell,
+    jsv_is_bool,
+    jsv_is_null,
+    jsv_is_symbol,
+    jsv_to_table_id
 }
 import from engine.src.runtime.jsstring { str_intern }
 import from engine.src.runtime.error {
@@ -120,10 +124,7 @@ import from engine.src.runtime.js_bigint { js_bigint_from_primitive }
 import from engine.src.builtins.string { js_coerce_to_string }
 import from engine.src.vm.vm_obs { js_object_get_observable }
 
-import from engine.src.runtime.mem {
-    str_bslice,
-    str_nbytes
-}
+import from engine.src.runtime.mem { str_bslice, str_nbytes }
 
 def _epoch_ns_from_parts(
     y: int, m: int, d: int, h: int, mi: int, s: int, ns: int, offset_s: int

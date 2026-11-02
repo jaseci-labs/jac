@@ -803,20 +803,21 @@ impl strip_kernel_best_effort(site: str) {
     if not isinstance(record, dict) {
         return;
     }
-    lib: str = os.path.join(site, "jaclang", str(record["path"]));
+    artifact: dict[str, any] = record;
+    lib: str = os.path.join(site, "jaclang", str(artifact["path"]));
     if not file_exists(lib) {
         return;
     }
     strip_best_effort(lib);
     with open(lib, "rb") as lf {
-        record["sha256"] = hashlib.sha256(lf.read()).hexdigest();
+        artifact["sha256"] = hashlib.sha256(lf.read()).hexdigest();
     }
     sidecar_path = lib + ".layout.json";
     if file_exists(sidecar_path) {
         with open(sidecar_path, "r", encoding="utf-8") as sf {
             sidecar = dict(json.load(sf));
         }
-        sidecar["artifact_sha256"] = record["sha256"];
+        sidecar["artifact_sha256"] = artifact["sha256"];
         with open(sidecar_path, "w", encoding="utf-8") as sf {
             sf.write(json.dumps(sidecar, sort_keys=True));
         }

@@ -256,7 +256,7 @@ impl print_ast_tree(
                 child, marker, [*level_markers, not is_last], output_file, max_depth
             );
         }
-    } elif isinstance(root_node, ast3.AST) {
+    } else {
         tree_str = f"{get_location_info(root_node)}	{markers}{__node_repr_in_py_tree(
             root_node
         )}\n";

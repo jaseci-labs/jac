@@ -296,9 +296,10 @@ impl es_node_to_dict(nd: Node) -> dict[str, any] {
         if isinstance(value, Node) {
             result[key] = es_node_to_dict(value);
         } elif isinstance(value, list) {
+            items: list[any] = value;
             result[key] = [
                 es_node_to_dict(item) if isinstance(item, Node) else item
-                for item in value
+                for item in items
             ];
         } else {
             result[key] = value;

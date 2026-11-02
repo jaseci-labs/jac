@@ -1,11 +1,12 @@
 """Impl file that reassigns a typed has variable.
 
-The assignment `tasks = tasks + [task]` should resolve `tasks` to the
-HasVar symbol from the parent scope, not create a new untyped local var.
+A bare `tasks` in a method body is a local of that body: it never resolves
+to the class's `has tasks`, which is reached through `self`.
 """
 
 impl TaskManager.add_task(task: str) -> None {
-    tasks = tasks + [task];
+    tasks = self.tasks + [task];
+    self.tasks = tasks;
 }
 
 impl TaskManager.get_tasks -> list[any] {

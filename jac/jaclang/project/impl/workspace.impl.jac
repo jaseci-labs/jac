@@ -29,7 +29,8 @@ impl _table(raw: any, *keys: str) -> dict[str, any] {
         if not isinstance(cur, dict) {
             return {};
         }
-        cur = cur.get(key, {});
+        table: dict[str, any] = cur;
+        cur = table.get(key, {});
     }
     return cur if isinstance(cur, dict) else {};
 }
@@ -37,8 +38,9 @@ impl _table(raw: any, *keys: str) -> dict[str, any] {
 impl _pins_of(raw: any) -> dict[str, str] {
     pins: dict[str, str] = {};
     if isinstance(raw, dict) {
-        for (key, value) in raw.items() {
-            pins[str(key)] = str(value);
+        entries: dict[str, any] = raw;
+        for (key, value) in entries.items() {
+            pins[key] = str(value);
         }
     }
     return pins;
@@ -49,17 +51,18 @@ impl _npm_names_of(raw: any) -> set[str] {
     if not isinstance(raw, dict) {
         return names;
     }
-    for k in raw {
-        key = str(k);
+    table: dict[str, any] = raw;
+    for key in table {
         if key == 'dev' {
             continue;
         }
         names.add(key);
     }
-    dev = raw.get('dev', {});
+    dev = table.get('dev', {});
     if isinstance(dev, dict) {
-        for k in dev {
-            names.add(str(k));
+        dev_table: dict[str, any] = dev;
+        for key in dev_table {
+            names.add(key);
         }
     }
     return names;
@@ -269,10 +272,14 @@ impl serving_apps(ws: WorkspaceSpec) -> list[AppSpec] {
 }
 
 impl persistence_namespace(raw: any, project_name: str) -> str {
-    if (not isinstance(raw, dict) or set(raw) - {'namespace'}) {
+    if not isinstance(raw, dict) {
         raise ValueError('[persistence] accepts only namespace');
     }
-    namespace = raw.get('namespace', project_name.strip() or 'main');
+    table: dict[str, any] = raw;
+    if (set(table) - {'namespace'}) {
+        raise ValueError('[persistence] accepts only namespace');
+    }
+    namespace = table.get('namespace', project_name.strip() or 'main');
     if not isinstance(namespace, str) or not namespace.strip() {
         raise ValueError('[persistence] namespace must be a nonempty string');
     }

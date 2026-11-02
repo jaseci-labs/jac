@@ -146,15 +146,18 @@ impl template_kind_for(config: dict[str, any], explicit: str = "") -> str {
     }
     apps = config.get("apps") if isinstance(config, dict) else None;
     if isinstance(apps, dict) and apps {
-        if len(apps) > 1 {
+        app_tables: dict[str, any] = apps;
+        if len(app_tables) > 1 {
             return "workspace";
         }
-        sole = next(iter(apps.values()));
-        sole_kind = sole.get("kind", "") if isinstance(sole, dict) else "";
+        sole = next(iter(app_tables.values()));
+        sole_table: dict[str, any] = sole if isinstance(sole, dict) else {};
+        sole_kind = sole_table.get("kind", "");
         return str(sole_kind or "") or "cli";
     }
     project = config.get("project", {}) if isinstance(config, dict) else {};
-    kind = project.get("kind", "") if isinstance(project, dict) else "";
+    project_table: dict[str, any] = project if isinstance(project, dict) else {};
+    kind = project_table.get("kind", "");
     return str(kind or "") or "cli";
 }
 
@@ -183,7 +186,8 @@ impl _iter_template_dicts(results: any) -> list[dict[str, any]] {
     if isinstance(results, dict) {
         out.append(results);
     } elif isinstance(results, list) {
-        for item in results {
+        items: list[any] = results;
+        for item in items {
             out.extend(_iter_template_dicts(item));
         }
     }

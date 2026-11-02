@@ -118,7 +118,8 @@ impl JcirGenPass._fw_checked(
 
 impl JcirGenPass._fw_as_load(item: any) -> any {
     if isinstance(item, list) {
-        return [self._fw_as_load(x) for x in item];
+        elems: list[any] = item;
+        return [self._fw_as_load(x) for x in elems];
     }
     if not isinstance(item, CgNode) {
         return item;

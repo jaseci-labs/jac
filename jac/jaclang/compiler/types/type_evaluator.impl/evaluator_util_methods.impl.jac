@@ -1904,6 +1904,7 @@ impl TypeEvaluator._create_callable_type(
     param_types: list[TypeBase] = [];
     return_type: TypeBase = UnknownType();
     is_gradual: bool = False;
+    param_spec: (TypeVarType | None) = None;
     if type_args_expr is None {
         is_gradual = True;
         return create_callable_type([], return_type, is_gradual=True);
@@ -1927,7 +1928,10 @@ impl TypeEvaluator._create_callable_type(
             }
         } else {
             resolved_first = self.get_type_of_expression(first_arg);
-            if isinstance(resolved_first, TypeVarType) {
+            if isinstance(resolved_first, TypeVarType)
+                and resolved_first.is_param_spec {
+                param_spec = resolved_first;
+            } elif isinstance(resolved_first, TypeVarType) {
                 is_gradual = True;
             } elif self.is_paramspec_class(resolved_first)
                 or self.is_type_var_tuple_class(resolved_first) {
@@ -1956,7 +1960,9 @@ impl TypeEvaluator._create_callable_type(
         return_type = self._convert_to_instance(return_type);
         is_gradual = True;
     }
-    return create_callable_type(param_types, return_type, is_gradual=is_gradual);
+    return create_callable_type(
+        param_types, return_type, is_gradual=is_gradual, param_spec=param_spec
+    );
 }
 
 impl TypeEvaluator._get_special_form_type(
@@ -2615,4 +2621,82 @@ impl TypeEvaluator._collect_if_else_returns(
         return if_returns and else_returns;
     }
     return False;
+}
+
+impl TypeEvaluator._own_member_names(cls: ClassType) -> set[str] {
+    table = cls.shared.symbol_table;
+    if table is None {
+        return set();
+    }
+    return set(table.names_in_scope.keys());
+}
+
+impl TypeEvaluator._own_field_names(cls: ClassType) -> list[str] {
+    table = cls.shared.symbol_table;
+    if isinstance(table, Archetype) {
+        return [
+            hv.name.value
+            for hv in table.get_has_vars()
+            if not hv.defer
+                and not hv.accessors
+                and field_initialization(hv).participates_in_init
+        ];
+    }
+    if isinstance(table, CatScope) {
+        return [
+            name
+            for (name, sym) in table.names_in_scope.items()
+            if sym.sym_type == SymbolType.HAS_VAR
+        ];
+    }
+    return [];
+}
+
+impl TypeEvaluator._has_handwritten_init(cls: ClassType) -> bool {
+    if cls.shared.class_name == "object" {
+        return False;
+    }
+    names = self._own_member_names(cls);
+    if isinstance(cls.shared.symbol_table, (Archetype, CatScope)) {
+        return "init" in names or "__init__" in names;
+    }
+    return "__init__" in names and not cls.is_data_class();
+}
+
+impl TypeEvaluator.constructor_shape(cls: ClassType) -> CtorShape {
+    shape = CtorShape();
+    mro = [
+        c
+        for c in cls.shared.mro
+        if isinstance(c, ClassType)
+    ];
+
+    for c in mro {
+        if self._has_handwritten_init(c) {
+            shape.kind = "own" if c.shared.same_class(cls.shared) else "inherited";
+            shape.owner = c;
+            break;
+        }
+    }
+    if shape.kind != "inherited" or shape.owner is None {
+        return shape;
+    }
+    covered = {
+        id(c.shared)
+        for c in shape.owner.shared.mro
+        if isinstance(c, ClassType)
+    };
+    for c in mro {
+        if id(c.shared) not in covered {
+            shape.unset_fields.extend(self._own_field_names(c));
+        }
+    }
+    for c in mro {
+        names = self._own_member_names(c);
+        if "postinit" in names or "__post_init__" in names {
+            shape.postinit_unreachable = id(c.shared) not in covered;
+            break;
+        }
+    }
+    return shape;
 }

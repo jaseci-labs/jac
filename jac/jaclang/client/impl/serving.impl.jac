@@ -115,8 +115,9 @@ impl HeaderBuilder.build_scripts -> list[str] {
     if not isinstance(specs, list) {
         return [];
     }
+    spec_items: list[any] = specs;
     lines: list[str] = [];
-    for item in specs {
+    for item in spec_items {
         spec = {"src": item} if isinstance(item, str) else item;
         if not isinstance(spec, dict) {
             continue;

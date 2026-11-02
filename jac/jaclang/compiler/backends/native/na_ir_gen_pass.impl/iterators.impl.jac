@@ -1108,23 +1108,20 @@ impl NaIRGenPass._resolve_method_owner(
 impl NaIRGenPass._resolve_method(
     arch_name: str, method_name: str
 ) -> (ir.Function | None) {
-    _reg = get_layout_registry(self.module, self.prog);
-    cur: (str | None) = arch_name;
-    _guard = 0;
-    while cur is not None and _guard < 64 {
-        fn = self.method_funcs.get(f"{cur}.{method_name}");
-        if fn is not None {
-            return fn;
-        }
-        _parents = _reg.class_parents.get(cur, []);
-        cur = _parents[0] if _parents else None;
-        _guard += 1;
-    }
     owner = self._resolve_method_owner(arch_name, method_name);
-    if owner is None {
-        return None;
+    if owner is not None {
+        found = self.method_funcs.get(f"{owner}.{method_name}");
+        if found is not None {
+            return found;
+        }
     }
-    return self.method_funcs.get(f"{owner}.{method_name}");
+    for cls in self._mro_of(arch_name) {
+        found = self.method_funcs.get(f"{cls}.{method_name}");
+        if found is not None {
+            return found;
+        }
+    }
+    return None;
 }
 
 impl NaIRGenPass._arch_implements_iter(arch_name: str) -> bool {

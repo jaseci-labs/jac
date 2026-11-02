@@ -256,11 +256,20 @@ impl _scale_transport -> any {
 }
 
 impl _unwrap_envelope(data: any, app: str, name: str) -> any {
-    if isinstance(data, dict) and data.get("ok") {
-        return data.get("data");
+    err: any = None;
+    if isinstance(data, dict) {
+        reply: dict[str, any] = data;
+        if reply.get("ok") {
+            return reply.get("data");
+        }
+        err = reply.get("error");
     }
-    err: any = (data.get("error") if isinstance(data, dict) else None) or {};
-    msg = err.get("message") if isinstance(err, dict) else str(err);
+    err = err or {};
+    msg: any = str(err);
+    if isinstance(err, dict) {
+        failure: dict[str, any] = err;
+        msg = failure.get("message");
+    }
     raise BridgeError(app=app, name=name, detail=str(msg or "unknown error"));
 }
 
@@ -293,8 +302,11 @@ impl _http_call(
 
 impl function_result(data: any, app: str, fn: str) -> any {
     envelope = _unwrap_envelope(data, app, fn);
-    if isinstance(envelope, dict) and ("result" in envelope) {
-        return envelope["result"];
+    if isinstance(envelope, dict) {
+        reply: dict[str, any] = envelope;
+        if "result" in reply {
+            return reply["result"];
+        }
     }
     return envelope;
 }
@@ -302,10 +314,8 @@ impl function_result(data: any, app: str, fn: str) -> any {
 impl hydrate_walker_envelope(
     data: any, app: str, walker_name: str, stub_cls: any
 ) -> any {
-    envelope = _unwrap_envelope(data, app, walker_name);
-    if not isinstance(envelope, dict) {
-        envelope = {};
-    }
+    raw_envelope = _unwrap_envelope(data, app, walker_name);
+    envelope: dict[str, any] = raw_envelope if isinstance(raw_envelope, dict) else {};
     if stub_cls is None {
         return envelope;
     }

@@ -1086,7 +1086,7 @@ impl EsastGenPass._lower_func_call(here: uni.FuncCall) -> None {
     }
     args: list[(es.Expression | es.SpreadElement)] = [];
     props: list[(es.Property | es.SpreadElement)] = [];
-    for param in here.params {
+    for param in (here.params or []) {
         if isinstance(param, uni.KWPair) {
             value_expr = cast(
                 es.Expression,
@@ -1290,7 +1290,7 @@ impl EsastGenPass._lower_func_call(here: uni.FuncCall) -> None {
             _unparser = JSCodeGenerator();
             _arg_type_names: list[str] = [
                 self._expr_type_name(_p)
-                for _p in here.params
+                for _p in (here.params or [])
                 if not isinstance(_p, uni.KWPair)
             ];
 

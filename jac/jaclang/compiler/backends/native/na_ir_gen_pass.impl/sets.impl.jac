@@ -143,13 +143,12 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
     elem_size = 0;
     if first_val is not None {
         elem_type = first_val.type;
+    } elif _first_src_info is None {
+        return None;
     } elif _first_src_info["kind"] == "set" {
         elem_type = _first_src_info["helpers"]["elem_type"];
         elem_size = _first_src_info["helpers"]["elem_size"];
     } else {
-        if _first_src_info is None {
-            return None;
-        }
         _spread_elem = self._spread_elem_storage(_first_src_info, _first_spread);
         if _spread_elem is None {
             self.emit(
@@ -184,7 +183,7 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
         if nd.loc
         else 0}";
 
-    if first_val is None {
+    if _first_src_info is not None {
         if self._reject_spread_slot_mismatch(
             nd.values[0],
             _first_src_info["helpers"]["elem_type"],

@@ -76,7 +76,8 @@ impl FirebaseSSOProvider.handle_callback(request: Request) -> SSOUserInfo {
         raise ValueError("Request body must be valid JSON with an 'id_token' field.");
     }
 
-    id_token_raw = body.get("id_token") if isinstance(body, dict) else None;
+    fields: dict[str, any] = body if isinstance(body, dict) else {};
+    id_token_raw = fields.get("id_token");
     if not id_token_raw {
         raise ValueError("Missing 'id_token' in request body.");
     }

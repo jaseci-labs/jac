@@ -14,7 +14,8 @@ impl field_of(source: any, key: str) -> any {
         return None;
     }
     if isinstance(source, dict) {
-        return source.get(key);
+        record: dict[str, any] = source;
+        return record.get(key);
     }
     return getattr(source, key, None);
 }

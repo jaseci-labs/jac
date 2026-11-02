@@ -288,12 +288,12 @@ test "a schedule dependency mid-import puts the compile on the bootstrap tier" {
             "mid-import; a pass reaching that module at run time re-enters it"
         );
         tail = [
-            p.__name__
+            step.name
             for product in (
                 CompilationProduct.CODEGEN,
                 CompilationProduct.PY_IR,
                 CompilationProduct.FROZEN
-            ) for p in (schedule_for(product, ProductRequest(native=True)) or [])
+            ) for step in (schedule_for(product, ProductRequest(native=True)) or [])
         ];
         assert tail == ["NativeImportFactsPass", "JcirGenPass"] , tail;
     } finally {
@@ -347,12 +347,12 @@ test "every scheduled pass and loader import is a declared schedule dependency" 
                 f"{origin}: {dep} came back half-initialized"
             );
         }
-        for p in passes {
-            owner = p.__module__;
+        for step in passes {
+            owner = step.load().__module__;
             covered = seed(owner)
                 or any(owner == dep or owner.startswith(dep + ".") for dep in deps);
             assert covered , (
-                f"{origin}: pass {p.__name__} lives in {owner}, which is neither a "
+                f"{origin}: pass {step.name} lives in {owner}, which is neither a "
                 "seed module nor in the schedule's dependency list; a compile "
                 "reached from its import would run the schedule that needs it"
             );

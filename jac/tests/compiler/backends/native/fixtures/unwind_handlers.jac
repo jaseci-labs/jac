@@ -3,6 +3,11 @@
 obj AppError(Exception) {
     has code: int = 0,
         detail: list[str] = [];
+
+    def init(code: int = 0, detail: list[str] = []) {
+        self.code = code;
+        self.detail = detail;
+    }
 }
 
 def raise_plain(n: int) -> int {

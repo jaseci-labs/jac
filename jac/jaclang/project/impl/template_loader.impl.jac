@@ -188,10 +188,11 @@ impl scaffold_app(
     }
     text = read_file_with_encoding(str(toml_path));
     doc = tomllib.loads(text);
-    apps_table = doc.get("apps", {});
-    if not isinstance(apps_table, dict) {
+    apps_raw = doc.get("apps", {});
+    if not isinstance(apps_raw, dict) {
         raise ValueError(f"[apps] in {toml_path} is not a table");
     }
+    apps_table: dict[str, any] = apps_raw;
     if name in apps_table {
         raise ValueError(f"App '{name}' already exists in {toml_path}");
     }
@@ -226,7 +227,8 @@ impl scaffold_app(
     }
     _toml_append_section(lines, ("apps", name), table);
     tmpl_deps = template.config.get("dependencies", {});
-    tmpl_npm = tmpl_deps.get("npm") if isinstance(tmpl_deps, dict) else None;
+    tmpl_dep_tables: dict[str, any] = tmpl_deps if isinstance(tmpl_deps, dict) else {};
+    tmpl_npm = tmpl_dep_tables.get("npm");
     if isinstance(tmpl_npm, dict) and tmpl_npm {
         _append_overlay_tables(lines, ("apps", name, "dependencies", "npm"), tmpl_npm);
     }
@@ -257,11 +259,13 @@ impl scaffold_app(
 impl template_app_table(template: ProjectTemplate) -> dict[str, any] {
     apps = template.config.get("apps");
     if isinstance(apps, dict) and len(apps) == 1 {
-        sole = next(iter(apps.values()));
+        app_tables: dict[str, any] = apps;
+        sole = next(iter(app_tables.values()));
         if isinstance(sole, dict) {
+            sole_table: dict[str, any] = sole;
             return {
                 k: v
-                for (k, v) in sole.items()
+                for (k, v) in sole_table.items()
                 if not isinstance(v, dict)
             };
         }
@@ -271,7 +275,8 @@ impl template_app_table(template: ProjectTemplate) -> dict[str, any] {
     if not isinstance(project, dict) {
         return {};
     }
-    entry_point = str(project.get("entry-point", "") or "");
+    project_table: dict[str, any] = project;
+    entry_point = str(project_table.get("entry-point", "") or "");
     return {"entry-point": entry_point} if entry_point else {};
 }
 

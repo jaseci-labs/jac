@@ -55,7 +55,6 @@ def del_forms -> dict[any, any] {
         "kept": len([edge c->:E:->]),
         "holder": len(holder),
         "named": len([edge p->:E:->]),
-        "x": x,
         "picked": len(picked),
         "calls": calls[0]
     };

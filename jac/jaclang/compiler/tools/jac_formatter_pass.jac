@@ -1,7 +1,6 @@
 import from collections { deque }
 
 walker JacFormatPass(CompilerPass) {
-    static has contract: PassContract = PassContract();
     has indent_size: int = 4,
         MAX_LINE_LENGTH: int = 88,
         _probe_cache: dict[tuple[int, int, int], bool] = {},

@@ -42,16 +42,20 @@ impl read_identity(tree: Path) -> PackageIdentity {
     }
     jacpack = data.get("jacpack");
     if isinstance(jacpack, dict) {
+        jacpack_table: dict[str, any] = jacpack;
         return PackageIdentity(
-            name=str(jacpack.get("name", "")), version=str(jacpack.get("version", ""))
+            name=str(jacpack_table.get("name", "")),
+            version=str(jacpack_table.get("version", ""))
         );
     }
     project = data.get("project", {});
     if not isinstance(project, dict) {
         raise ArtifactError(f"{toml_path}: [project] must be a table");
     }
+    project_table: dict[str, any] = project;
     return PackageIdentity(
-        name=str(project.get("name", "")), version=str(project.get("version", ""))
+        name=str(project_table.get("name", "")),
+        version=str(project_table.get("version", ""))
     );
 }
 

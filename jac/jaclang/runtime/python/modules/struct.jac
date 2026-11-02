@@ -162,7 +162,7 @@ obj UnpackState(NativeState) {
         owner: ptr[PyObject] = NULL;
 
     def clear;
-    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32;
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
     def drop;
 }
 
@@ -1028,7 +1028,7 @@ impl UnpackState.clear {
     jacpy_release(previous_owner);
 }
 
-impl UnpackState.traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+impl UnpackState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
     status = visit_reference(self.owner, visitor, context);
     if status != 0 {
         return status;

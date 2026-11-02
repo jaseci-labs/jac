@@ -71,8 +71,9 @@ impl aggregate_openapi(registry: ServiceRegistry) -> dict[str, any] {
             _agg_logger.warning(f"openapi aggregate: skipping {name}");
             continue;
         }
+        spec: dict[str, any] = doc;
 
-        raw_paths = doc.get("paths");
+        raw_paths = spec.get("paths");
         paths: dict[str, any] = raw_paths if isinstance(raw_paths, dict) else {};
         for (path, op) in _prefixed_paths(paths, `entry.prefix).items() {
             if path in merged_paths {
@@ -85,7 +86,7 @@ impl aggregate_openapi(registry: ServiceRegistry) -> dict[str, any] {
             merged_paths[path] = op;
         }
 
-        raw_comps = doc.get("components");
+        raw_comps = spec.get("components");
         comps: dict[str, any] = raw_comps if isinstance(raw_comps, dict) else {};
         raw_schemas = comps.get("schemas");
         schemas: dict[str, any] = raw_schemas if isinstance(raw_schemas, dict) else {};

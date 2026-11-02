@@ -299,18 +299,19 @@ impl nav_pages(docs_root: Path | None = None) -> list[NavPage] {
             if not isinstance(item, dict) {
                 continue;
             }
-            title = str(item.get("title", "")).strip();
-            if "page" in item {
+            entry_map: dict[str, any] = item;
+            title = str(entry_map.get("title", "")).strip();
+            if "page" in entry_map {
                 pages.append(
                     NavPage(
-                        page=str(item["page"]),
+                        page=str(entry_map["page"]),
                         title=title,
                         order=len(pages),
                         section=trail
                     )
                 );
-            } elif "items" in item {
-                walk(item["items"] as list[object], trail + [title]);
+            } elif "items" in entry_map {
+                walk(entry_map["items"] as list[object], trail + [title]);
             }
         }
     }

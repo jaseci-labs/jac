@@ -277,7 +277,7 @@ impl NaIRGenPass._osp_build_slot_list(
     pairs: list[tuple[int, ir.Function]]
 ) -> ir.Value {
     i8p = ir.IntType(8).as_pointer();
-    _h = self.list_helpers.get("ptr");
+    _h = self.list_helpers["ptr"];
     _lst = self._rc_call_with_ctx(_h["new"], [], op="new", loc="", name="osp.slots");
     for _pair in pairs {
         _slot = self._osp_build_slot(_pair[0], _pair[1]);

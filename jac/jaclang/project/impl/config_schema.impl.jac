@@ -30,14 +30,16 @@ impl _walk_schema(
         if not isinstance(spec, dict) or not isinstance(value, dict) {
             continue;
         }
-        nested = spec.get("nested");
+        spec_table: dict[str, any] = spec;
+        value_table: dict[str, any] = value;
+        nested = spec_table.get("nested");
         if isinstance(nested, dict) {
-            _walk_schema(value, nested, f"{path}.{key_s}", findings);
+            _walk_schema(value_table, nested, f"{path}.{key_s}", findings);
             continue;
         }
-        nested_each = spec.get("nested_each");
+        nested_each = spec_table.get("nested_each");
         if isinstance(nested_each, dict) {
-            for (child_key, child_val) in value.items() {
+            for (child_key, child_val) in value_table.items() {
                 if isinstance(child_val, dict) {
                     _walk_schema(
                         child_val, nested_each, f"{path}.{key_s}.{child_key}", findings

@@ -10,14 +10,15 @@ impl _mi(mode: list[any], i: int) -> int {
 impl _set_cc(value: any) -> list[any] {
     out: list[any] = [];
     if isinstance(value, list) {
+        cc: list[any] = value;
         i: int = 0;
-        while i < len(value) {
+        while i < len(cc) {
             if i == VMIN {
                 out.append(1);
             } elif i == VTIME {
                 out.append(0);
             } else {
-                out.append(value[i]);
+                out.append(cc[i]);
             }
             i += 1;
         }

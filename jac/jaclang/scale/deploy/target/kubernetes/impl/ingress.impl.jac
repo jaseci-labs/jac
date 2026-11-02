@@ -814,8 +814,8 @@ impl IngressDeployer.destroy(
     delete_if_exists(
         core_v1.delete_namespaced_secret, 'letsencrypt-prod-key', namespace, 'Secret'
     );
+    custom_api = client.CustomObjectsApi();
     try {
-        custom_api = client.CustomObjectsApi();
         custom_api.delete_namespaced_custom_object(
             group='cert-manager.io',
             version='v1',

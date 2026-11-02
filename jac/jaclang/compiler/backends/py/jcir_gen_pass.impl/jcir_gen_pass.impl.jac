@@ -67,10 +67,11 @@ impl write_ir_value(w: CodegenIrWriter, v: object) {
     } elif isinstance(v, bytes) {
         w.emit_bytes(v);
     } elif isinstance(v, list) {
-        for item in v {
+        elems: list[any] = v;
+        for item in elems {
             write_ir_value(w, item);
         }
-        w.emit_list(len(v));
+        w.emit_list(len(elems));
     } else {
         raise ValueError(
             "JCIR emitter produced a value outside the v1 constant domain. "

@@ -1596,7 +1596,10 @@ impl JacLLM.`by(model: LLMModel) -> Callable {
 }
 
 impl JacLLM.by_operator(lhs: any, rhs: any) -> any {
-    lhs_list = lhs if isinstance(lhs, list) else [lhs];
+    lhs_list: list[any] = [lhs];
+    if isinstance(lhs, list) {
+        lhs_list = lhs;
+    }
     if all(isinstance(element, (NodeArchetype, EdgeArchetype)) for element in lhs_list)
         and isinstance(rhs, BaseLLM) {
         import from jaclang.byllm.visit_routing { route_visit }

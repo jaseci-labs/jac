@@ -470,7 +470,8 @@ impl optional_list(raw: object) -> (list[str] | None) {
 impl json_str_list(value: object) -> list[str] {
     out: list[str] = [];
     if isinstance(value, list) {
-        for item in value {
+        items: list[any] = value;
+        for item in items {
             out.append(str(item));
         }
     }
@@ -480,7 +481,8 @@ impl json_str_list(value: object) -> list[str] {
 impl json_str_pairs(value: object) -> list[list[str]] {
     out: list[list[str]] = [];
     if isinstance(value, list) {
-        for item in value {
+        items: list[any] = value;
+        for item in items {
             pair = json_str_list(item);
             if len(pair) == 2 {
                 out.append(pair);
@@ -493,8 +495,9 @@ impl json_str_pairs(value: object) -> list[list[str]] {
 impl json_str_map(value: object) -> dict[str, str] {
     out: dict[str, str] = {};
     if isinstance(value, dict) {
-        for (key, item) in value.items() {
-            out[str(key)] = str(item);
+        entries: dict[str, any] = value;
+        for (key, item) in entries.items() {
+            out[key] = str(item);
         }
     }
     return out;
@@ -503,8 +506,9 @@ impl json_str_map(value: object) -> dict[str, str] {
 impl json_bool_map(value: object) -> dict[str, bool] {
     out: dict[str, bool] = {};
     if isinstance(value, dict) {
-        for (key, item) in value.items() {
-            out[str(key)] = bool(item);
+        entries: dict[str, any] = value;
+        for (key, item) in entries.items() {
+            out[key] = bool(item);
         }
     }
     return out;
@@ -513,8 +517,9 @@ impl json_bool_map(value: object) -> dict[str, bool] {
 impl json_map(value: object) -> dict[str, any] {
     out: dict[str, any] = {};
     if isinstance(value, dict) {
-        for (key, item) in value.items() {
-            out[str(key)] = item;
+        entries: dict[str, any] = value;
+        for (key, item) in entries.items() {
+            out[key] = item;
         }
     }
     return out;
@@ -523,7 +528,8 @@ impl json_map(value: object) -> dict[str, any] {
 impl json_maps(value: object) -> list[dict[str, any]] {
     out: list[dict[str, any]] = [];
     if isinstance(value, list) {
-        for item in value {
+        items: list[any] = value;
+        for item in items {
             out.append(json_map(item));
         }
     }

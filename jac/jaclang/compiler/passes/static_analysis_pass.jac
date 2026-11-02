@@ -179,10 +179,6 @@ walker UnusedSymbolWalker(ScopeWalker) {
 }
 
 walker StaticAnalysisPass(CompilerPass) {
-    static has contract: PassContract = PassContract(
-        provides=(AnalysisFact.STATIC_CHECKS, )
-    );
-
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def _check_unused_symbols(scope: UniScopeNode) -> None;

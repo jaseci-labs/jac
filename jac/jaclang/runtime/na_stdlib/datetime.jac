@@ -544,7 +544,7 @@ obj:pub datetime(date) {
     def utcoffset -> (timedelta | None);
     def tzname -> (str | None);
     def dst -> (timedelta | None);
-    def _cmp(other: datetime, allow_mixed: bool) -> int;
+    def _cmp_datetime(other: datetime, allow_mixed: bool) -> int;
     def __eq__(other: datetime) -> bool;
     def __ne__(other: datetime) -> bool;
     def __le__(other: datetime) -> bool;

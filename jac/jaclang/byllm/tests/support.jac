@@ -508,7 +508,7 @@ obj RoutingLLM(MockLLM) {
         if c
         else []; };
 
-    override def model_call_no_stream(params: dict[str, any]) -> object {
+    override def model_call_no_stream(params: dict[str, any]) -> dict[str, any] {
         self._queue_route(params);
         return super.model_call_no_stream(params);
     }

@@ -1,8 +1,4 @@
 walker RegionInferPass(CompilerPass) {
-    static has contract: PassContract = PassContract(
-        provides=(AnalysisFact.REGION_INFER, )
-    );
-
     has _use_index: (dict[int, list[NameAtom]] | None) = None;
 
     can run_walk with Module entry;

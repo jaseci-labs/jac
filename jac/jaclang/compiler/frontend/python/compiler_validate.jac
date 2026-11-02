@@ -11,7 +11,8 @@ def validate_feature_version(value: any, version: int) {
         return;
     }
     if isinstance(value, list) {
-        for item in value {
+        items: list[any] = value;
+        for item in items {
             validate_feature_version(item, version);
         }
         return;

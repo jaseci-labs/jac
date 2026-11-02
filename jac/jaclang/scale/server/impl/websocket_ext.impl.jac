@@ -125,10 +125,11 @@ impl serve_ws_connection(
                 if isgenerator(result) or isinstance(result, AsyncGenerator) {
                     await _ws_stream_result(send_result, result, scope.abort);
                 } elif isinstance(result, dict) and 'error' in result {
+                    failure: dict[str, any] = result;
                     await websocket.send_json(
                         ws_error_frame(
                             'EXECUTION_ERROR',
-                            result.get('error', f"{label} execution failed")
+                            failure.get('error', f"{label} execution failed")
                         )
                     );
                 } else {

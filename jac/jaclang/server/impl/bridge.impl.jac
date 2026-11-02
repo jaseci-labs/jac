@@ -21,6 +21,15 @@ impl replay_response(cached: str) -> any {
     );
 }
 
+impl BridgeError.init(
+    app: str = "", name: str = "", detail: str = "", status: int = 0
+) {
+    self.app = app;
+    self.name = name;
+    self.detail = detail;
+    self.status = status;
+}
+
 impl BridgeError.__str__ -> str {
     label = f"{self.app}.{self.name}" if self.name else self.app;
     return f"bridge to '{label}' failed: {self.detail or 'unknown error'}";

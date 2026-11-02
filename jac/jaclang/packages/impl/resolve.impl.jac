@@ -53,6 +53,7 @@ impl GraphSource.note_requirement(name: str, req: Requirement) {
 }
 
 impl GraphSource.add_local(dep: PackageDep, base: Path) -> LocalPackage {
+    co: GitCheckout | None = None;
     if dep.kind() == "path" {
         tree = resolve_path(base, dep.path);
         if not (tree / "jac.toml").is_file() {
@@ -84,7 +85,7 @@ impl GraphSource.add_local(dep: PackageDep, base: Path) -> LocalPackage {
         }
         return existing;
     }
-    if dep.kind() == "git" {
+    if co is not None {
         (_, sha256) = pack_checkout(co);
     }
     cfg = JacConfig.load(tree / "jac.toml");

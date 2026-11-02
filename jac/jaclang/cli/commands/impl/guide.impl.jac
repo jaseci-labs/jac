@@ -316,18 +316,19 @@ impl _print_nav(as_json: bool) -> int {
             if not isinstance(item, dict) {
                 continue;
             }
-            title = str(item.get("title", "")).strip();
-            if "page" in item {
-                name = str(item["page"]);
+            entry_map: dict[str, any] = item;
+            title = str(entry_map.get("title", "")).strip();
+            if "page" in entry_map {
+                name = str(entry_map["page"]);
                 if name.endswith(".md") {
                     name = name[:-3];
                 }
                 _emit(f"{pad}{title}  [{name}]");
-            } elif "items" in item {
+            } elif "items" in entry_map {
                 console.print(f"{pad}{title}", style="bold");
-                walk(item["items"] as list[object], depth + 1);
-            } elif "url" in item {
-                _emit(f"{pad}{title}  {item['url']}");
+                walk(entry_map["items"] as list[object], depth + 1);
+            } elif "url" in entry_map {
+                _emit(f"{pad}{title}  {entry_map['url']}");
             }
         }
     }

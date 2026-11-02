@@ -145,20 +145,22 @@ test "native early passes preserve the store parser's symbol graph" {
         );
         assert not failed;
         pending = pending_early(native, nat_mod);
-        assert sorted(pending) == sorted(p.__name__ for p in early_passes());
+        assert sorted(pending) == sorted(step.name for step in early_passes());
         before = scope_profile(nat_mod);
         for early in early_passes() {
-            run_pass(early, nat_mod, native);
+            run_pass(early.load(), nat_mod, native);
         }
         assert not pending_early(native, nat_mod);
-        assert all(native.analysis.pass_runs[p.__name__] == 1 for p in early_passes());
+        assert all(
+            native.analysis.pass_runs[step.name] == 1 for step in early_passes()
+        );
         assert scope_profile(nat_mod) == before;
 
         store = JacProgram();
         (store_mod, store_failed) = parse(SOURCE, "early_scopes.jac", store);
         assert not store_failed;
         for early in early_passes() {
-            run_pass(early, store_mod, store);
+            run_pass(early.load(), store_mod, store);
         }
         assert scope_profile(nat_mod) == scope_profile(store_mod);
         assert not native.errors_had;
@@ -211,7 +213,7 @@ test "application modules run their early passes in the kernel" {
             prog.analysis.record_early = spy;
             prog.compile(str(path), options=CompileOptions(no_cgen=True));
             assert not prog.errors_had;
-            assert sorted(recorded) == sorted(p.__name__ for p in early_passes());
+            assert sorted(recorded) == sorted(step.name for step in early_passes());
             assert not any(b.early for b in prog.analysis.builds.values());
         }
     }
@@ -342,13 +344,13 @@ test "kernel early passes match the store parser's flow, impl, and semantic fact
         assert not failed;
         assert kernel.skipped() == 0;
         for early in early_passes() {
-            run_pass(early, nat_mod, native);
+            run_pass(early.load(), nat_mod, native);
         }
         store = JacProgram();
         (store_mod, store_failed) = parse(FLOW_SOURCE, "early_flow.jac", store);
         assert not store_failed;
         for early in early_passes() {
-            run_pass(early, store_mod, store);
+            run_pass(early.load(), store_mod, store);
         }
         nat_profile = flow_profile(nat_mod);
         store_profile = flow_profile(store_mod);

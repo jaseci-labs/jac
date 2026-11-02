@@ -28,9 +28,8 @@ impl NaIRGenPass._codegen_with_recursive(
         return;
     }
 
-    cm_val = self._codegen_expr(expr_item.expr);
+    cm_val = self._codegen_required(expr_item.expr);
     if cm_val is None {
-        self._codegen_with_recursive(exprs, idx + 1, body);
         return;
     }
 
@@ -47,15 +46,20 @@ impl NaIRGenPass._codegen_with_recursive(
     if type_name is None {
         type_name = self._infer_type_name(cm_val);
     }
-    if type_name is None {
-        self._codegen_with_recursive(exprs, idx + 1, body);
-        return;
-    }
-
-    enter_fn = self._resolve_method(type_name, "__enter__");
-    exit_fn = self._resolve_method(type_name, "__exit__");
+    enter_fn = self._resolve_method(type_name, "__enter__")
+        if type_name is not None
+        else None;
+    exit_fn = self._resolve_method(type_name, "__exit__")
+        if type_name is not None
+        else None;
     if enter_fn is None or exit_fn is None {
-        self._codegen_with_recursive(exprs, idx + 1, body);
+        self.emit(
+            E5092,
+            node_override=expr_item.expr,
+            kind="context manager",
+            name=type_name or type(expr_item.expr).__name__,
+            help_text="A `with` lowers natively only over an object whose class defines `__enter__` and `__exit__` in native code."
+        );
         return;
     }
 

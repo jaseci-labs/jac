@@ -301,8 +301,9 @@ impl _error_response(msg_id: any, code: int, message: str) -> dict[str, any] {
 
 impl _process(engine: McpEngine, msg: any) -> any {
     if isinstance(msg, list) {
+        batch: list[any] = msg;
         responses: list[any] = [];
-        for m in msg {
+        for m in batch {
             r = engine.handle_message(m);
             if r is not None {
                 responses.append(r);

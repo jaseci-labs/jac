@@ -466,6 +466,18 @@ impl NativeUnitRegistry.ensure(
     return self.compile_unit(resolved, options, products=products);
 }
 
+impl NativeUnitRegistry.is_not_native(path: str) -> bool {
+    resolved = os.path.realpath(path);
+    return self.not_native.get(resolved) == NativeUnitRegistry._source_key(resolved);
+}
+
+impl NativeUnitRegistry.dep_unlowerable(path: str) -> bool {
+    resolved = os.path.realpath(path);
+    return resolved in self.failures
+        or (self.session is not None and resolved in self.session.unlowerable)
+        or self.is_not_native(resolved);
+}
+
 impl NativeUnitRegistry.dep_iface(
     path: str, options: CompileOptions, products: bool = True
 ) -> (NativeIface | None) {
@@ -500,6 +512,9 @@ impl NativeUnitRegistry.dep_iface(
         check_deps=False,
         products=products
     );
+    if ent is None and session is not None and resolved not in self.building {
+        session.unlowerable.add(resolved);
+    }
     return ent.iface if ent is not None else None;
 }
 
@@ -898,7 +913,7 @@ impl NativeBuildSession.lower(
     path: str, use_str: (str | None) = None
 ) -> (NativeUnitEntry | None) {
     resolved = os.path.realpath(path);
-    if resolved in self.registry.building {
+    if resolved in self.registry.building or resolved in self.registry.failures {
         return None;
     }
     self.heap.take();
@@ -979,6 +994,7 @@ impl NativeBuildSession.lower(
             }
             discover = lowered_any;
         }
+        self.prog.release_check_caches();
         self.registry._event("native_unit_lower");
         self.registry.note_slow_step("lowering", resolved, started);
         if len(self.prog.errors_had) > errors_before or mod.gen.native_iface is None {
@@ -986,11 +1002,9 @@ impl NativeBuildSession.lower(
                 or unavailable(CompilationProduct.NATIVE_LOWER);
             if refusal {
                 self.registry.failures[resolved] = refusal;
-            } elif mod.gen.native_iface is None {
-                self.registry.failures[resolved] = (
-                    "lowering produced no native interface: the module has "
-                    "no native code of its own, so it is not a link unit"
-                );
+            } elif mod.gen.native_iface is None
+                and (key := NativeUnitRegistry._source_key(resolved)) is not None {
+                self.registry.not_native[resolved] = key;
             }
             return None;
         }
@@ -1001,6 +1015,7 @@ impl NativeBuildSession.lower(
         settle_unit_ir(mod);
         self.registry.unit_functions[resolved] = unit_function_counts(mod.gen.llvm_ir);
         self.lowered[resolved] = mod;
+        self.unlowerable.discard(resolved);
         ent = self.registry.record_module(mod, opts);
         self.registry._stash_products(resolved, mod.gen);
         if self.compact_on_lower {
@@ -1058,7 +1073,10 @@ impl NativeBuildSession.compact_ir(paths: list[str]) {
         }
         _ = unit_fallbacks(mod.gen);
         snapshot = NativeIRSnapshot(
-            bitcode=unit_bitcode(ir), defined=symbols[0], declared=symbols[1]
+            bitcode=unit_bitcode(ir),
+            defined=symbols[0],
+            declared=symbols[1],
+            referenced=_ir_referenced_symbols(ir)
         );
         self.ir_snapshots[resolved] = snapshot;
         mod.gen.ir_module = None;
@@ -1116,13 +1134,6 @@ impl NativeBuildSession.unbound_symbols(
                 if consumer_snapshot is not None
                 else _ir_referenced_symbols(consumer.gen.llvm_ir)
         );
-        if consumer_snapshot is not None and used is None {
-            import jaclang.compiler.backends.native.llvm.binding as llvm;
-            used = _ir_referenced_symbols(
-                llvm.parse_bitcode(consumer_snapshot.bitcode)
-            );
-            consumer_snapshot.referenced = used;
-        }
         unbound = {
             symbol
             for symbol in unbound
@@ -1182,9 +1193,15 @@ impl NativeBuildSession._optimize_in_parallel(paths: list[str]) -> set[str] {
     bitcodes: list[bytes] = [];
     for (path, mod) in todo {
         snapshot = self.ir_snapshots.get(path);
-        bitcodes.append(
-            snapshot.bitcode if snapshot is not None else unit_bitcode(mod.gen.llvm_ir)
-        );
+        if snapshot is None {
+            bitcodes.append(unit_bitcode(mod.gen.llvm_ir));
+            continue;
+        }
+        if snapshot.bitcode is None {
+            raise RuntimeError(f"native unit optimized twice in one session: {path}");
+        }
+        bitcodes.append(snapshot.bitcode);
+        snapshot.bitcode = None;
     }
     bitcodes = optimize_unit_bitcodes(bitcodes, opts, int(opts.opt_level or 0));
     self.registry._timed("NATIVE_OPTIMIZE", started);
@@ -1248,18 +1265,17 @@ impl NativeBuildSession._finish(paths: list[str]) {
 }
 
 impl NativeBuildSession.close {
-    try {
-        for (phase, seconds) in self.prog.analysis.phase_time.items() {
-            self.registry._add_time("NATIVE_FRONTEND_" + phase, seconds);
-        }
-        self.lowered.clear();
-        self.ir_snapshots.clear();
-        self.source_keys.clear();
-        self.prog._natives = None;
-        self.prog.release_compile_closure();
-    } finally {
-        self.heap.release();
+    self.heap.release();
+    for (phase, seconds) in self.prog.analysis.phase_time.items() {
+        self.registry._add_time("NATIVE_FRONTEND_" + phase, seconds);
     }
+    self.lowered.clear();
+    self.ir_snapshots.clear();
+    self.source_keys.clear();
+    self.prog._natives = None;
+    self.prog.release_compile_closure();
+    gc.collect();
+    maybe_malloc_trim();
 }
 
 impl _ir_symbols(unit_ir: any) -> (tuple[set[str], set[str]] | None) {
@@ -1301,14 +1317,16 @@ impl _interface_changes(before: any, after: any, path: str, out: list[str]) {
         return;
     }
     if isinstance(before, dict) and isinstance(after, dict) {
-        for key in sorted(set(before.keys()) | set(after.keys()), key=str) {
-            where = f"{path}.{key}" if path else str(key);
-            if key not in before {
+        old_map: dict[str, any] = before;
+        new_map: dict[str, any] = after;
+        for key in sorted(set(old_map.keys()) | set(new_map.keys())) {
+            where = f"{path}.{key}" if path else key;
+            if key not in old_map {
                 out.append(f"{where}: added");
-            } elif key not in after {
+            } elif key not in new_map {
                 out.append(f"{where}: removed");
             } else {
-                _interface_changes(before[key], after[key], where, out);
+                _interface_changes(old_map[key], new_map[key], where, out);
             }
         }
         return;
@@ -1316,7 +1334,11 @@ impl _interface_changes(before: any, after: any, path: str, out: list[str]) {
     if isinstance(before, list)
         and isinstance(after, list)
         and len(before) == len(after) {
-        for (index, (item_before, item_after)) in enumerate(zip(before, after)) {
+        old_items: list[any] = before;
+        new_items: list[any] = after;
+        for (index, (item_before, item_after)) in enumerate(
+            zip(old_items, new_items)
+        ) {
             _interface_changes(item_before, item_after, f"{path}[{index}]", out);
         }
         return;

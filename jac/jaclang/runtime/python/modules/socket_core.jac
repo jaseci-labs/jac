@@ -27,6 +27,22 @@ import from c {
          accept4_works: i32 = -1;
 }
 
+def sock_cloexec_flag -> i32 {
+    return sock_cloexec_works;
+}
+
+def set_sock_cloexec_flag(value: i32) {
+    sock_cloexec_works = value;
+}
+
+def accept4_flag -> i32 {
+    return accept4_works;
+}
+
+def set_accept4_flag(value: i32) {
+    accept4_works = value;
+}
+
 glob INVALID_SOCKET: i32 = -1,
      SOCKLEN_T_LIMIT: int = 0x7FFFFFFF,
      INT_MAX: int = 2147483647,

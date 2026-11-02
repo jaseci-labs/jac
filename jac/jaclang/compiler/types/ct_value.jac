@@ -141,6 +141,7 @@ obj CtRaise(Exception) {
     has exc: CtExc,
         user: bool = False;
 
+    def init(exc: CtExc, user: bool = False);
     def __str__ -> str;
 }
 

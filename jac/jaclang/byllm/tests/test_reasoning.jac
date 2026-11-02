@@ -100,6 +100,7 @@ test "a reply's own fields are kept, sent back, streamed, counted and reported o
     def broken(record: dict[str, any]) {
         raise RuntimeError("a hook that raises must not break the call");
     }
+    records: list[dict[str, any]] = [];
     for path in PATHS {
         (path_name, stream, logging, tools, restream) = path;
         for (kind, fields, streams) in KINDS {
@@ -126,7 +127,7 @@ test "a reply's own fields are kept, sent back, streamed, counted and reported o
             }
             calls = len(replies);
             llm = MockLLM(outputs=replies, chunk_size=40);
-            records: list[dict[str, any]] = [];
+            records = [];
             register_llm_call_hook(broken);
             register_llm_call_hook(records.append);
             history: list[any] = [];

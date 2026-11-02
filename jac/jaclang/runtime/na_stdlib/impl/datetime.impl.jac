@@ -2549,7 +2549,7 @@ impl datetime.dst -> (timedelta | None) {
     return offset;
 }
 
-impl datetime._cmp(other: datetime, allow_mixed: bool) -> int {
+impl datetime._cmp_datetime(other: datetime, allow_mixed: bool) -> int {
     mytz: (tzinfo | None) = self.tzinfo;
     ottz: (tzinfo | None) = other.tzinfo;
     myoff: (timedelta | None) = None;
@@ -2608,27 +2608,27 @@ impl datetime._cmp(other: datetime, allow_mixed: bool) -> int {
 }
 
 impl datetime.__eq__(other: datetime) -> bool {
-    return self._cmp(other, True) == 0;
+    return self._cmp_datetime(other, True) == 0;
 }
 
 impl datetime.__ne__(other: datetime) -> bool {
-    return self._cmp(other, True) != 0;
+    return self._cmp_datetime(other, True) != 0;
 }
 
 impl datetime.__le__(other: datetime) -> bool {
-    return self._cmp(other, False) <= 0;
+    return self._cmp_datetime(other, False) <= 0;
 }
 
 impl datetime.__lt__(other: datetime) -> bool {
-    return self._cmp(other, False) < 0;
+    return self._cmp_datetime(other, False) < 0;
 }
 
 impl datetime.__ge__(other: datetime) -> bool {
-    return self._cmp(other, False) >= 0;
+    return self._cmp_datetime(other, False) >= 0;
 }
 
 impl datetime.__gt__(other: datetime) -> bool {
-    return self._cmp(other, False) > 0;
+    return self._cmp_datetime(other, False) > 0;
 }
 
 impl datetime.__add__(other: timedelta) -> datetime {

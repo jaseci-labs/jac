@@ -829,6 +829,7 @@ test "a keyset cursor walks a neighbourhood once, in edge order" {
                     sess, GraphQuery(b2, hops=[QHop(dir=2, nd=FItem)], limit=size)
                 );
                 last = tail_page[-1][2];
+                assert last is not None;
                 past = GraphQuery(b2, hops=[QHop(dir=2, nd=FItem)], after=last);
                 if size >= 23 {
                     assert not resolve_query_exists(sess, past) , (

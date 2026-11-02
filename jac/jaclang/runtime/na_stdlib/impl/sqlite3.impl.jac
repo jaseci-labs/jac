@@ -445,7 +445,12 @@ impl Cursor._bind_params(
         return;
     }
     params: list[any] = [];
-    if isinstance(parameters, tuple) or isinstance(parameters, list) {
+    if isinstance(parameters, list) {
+        given: list[any] = parameters;
+        for el in given {
+            params.append(el);
+        }
+    } elif isinstance(parameters, tuple) {
         for el in parameters {
             params.append(el);
         }
@@ -573,8 +578,9 @@ impl Cursor.execute(
             );
         }
     } elif isinstance(parameters, list) and meta[5] == 0 {
+        given: list[any] = parameters;
         plist: list[any] = [];
-        for e in parameters {
+        for e in given {
             plist.append(e);
         }
         m = len(plist);
@@ -674,8 +680,9 @@ impl Cursor.executemany(sql: any, seq_of_parameters: list[any]) -> Cursor {
     named = meta[5];
     for parameters in seq_of_parameters {
         if isinstance(parameters, list) and named == 0 {
+            given: list[any] = parameters;
             plist: list[any] = [];
-            for e in parameters {
+            for e in given {
                 plist.append(e);
             }
             m = len(plist);
@@ -955,8 +962,16 @@ impl Binary(`obj: any) -> bytes {
     );
 }
 
+impl Warning.init(message: str = "") {
+    self.message = message;
+}
+
 impl Warning.__str__ -> str {
     return self.message;
+}
+
+impl Error.init(message: str = "") {
+    self.message = message;
 }
 
 impl Error.__str__ -> str {

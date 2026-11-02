@@ -42,10 +42,11 @@ impl HTTPActivationView.from_manifest(http: Any) -> HTTPActivationView | None {
     if not isinstance(http, dict) or not http {
         return None;
     }
-    if http.get("concurrency_target") is not None {
-        metric = f"concurrency={http.get('concurrency_target')}";
-    } elif http.get("request_rate_target") is not None {
-        metric = f"request_rate={http.get('request_rate_target')}";
+    activation: dict[str, any] = http;
+    if activation.get("concurrency_target") is not None {
+        metric = f"concurrency={activation.get('concurrency_target')}";
+    } elif activation.get("request_rate_target") is not None {
+        metric = f"request_rate={activation.get('request_rate_target')}";
     } else {
         metric = "(metric unset)";
     }
@@ -92,7 +93,8 @@ impl ServiceView.from_manifests(
     container_port: int | None = None;
     ports = lget(container, "ports");
     if ports and isinstance(ports[0], dict) {
-        raw = ports[0].get("containerPort");
+        first_port: dict[str, any] = ports[0];
+        raw = first_port.get("containerPort");
         if raw is not None {
             try {
                 container_port = int(raw);
@@ -108,7 +110,8 @@ impl ServiceView.from_manifests(
         if not isinstance(e, dict) {
             continue;
         }
-        if e.get("valueFrom") {
+        env_entry: dict[str, any] = e;
+        if env_entry.get("valueFrom") {
             secret_refs += 1;
             continue;
         }
@@ -273,13 +276,15 @@ impl _render_cluster_wide(bundle: any, gateway_cfg: any) -> None {
     if isinstance(cors, dict) and cors.get("enabled") {
         raw = cors.get("allow_origins");
         if isinstance(raw, list) and raw {
-            lines.append(f"  cors:        allow_origins={[str(o) for o in raw]}");
+            origins: list[any] = raw;
+            lines.append(f"  cors:        allow_origins={[str(o) for o in origins]}");
         } else {
             lines.append("  cors:        enabled");
         }
     }
 
-    us = bundle.get("user_secret") if isinstance(bundle, dict) else None;
+    bundle_map: dict[str, any] = bundle if isinstance(bundle, dict) else {};
+    us = bundle_map.get("user_secret");
     if isinstance(us, dict) {
         name = sget(dget(us, "metadata"), "name") or "?";
         data = dget(us, "data") or dget(us, "stringData");
@@ -302,13 +307,15 @@ impl _render_totals(bundle: any) {
         return f"{n} {label}{'s' if n != 1 else ''}" if n else None;
     }
     def _n_mode(mode: ScalingMode, label: str) -> str | None {
-        n = len(
-            [
-                p
-                for p in dget(bundle, "scaling").values()
-                if isinstance(p, dict) and p.get("mode") == mode
-            ]
-        );
+        n = 0;
+        for p in dget(bundle, "scaling").values() {
+            if isinstance(p, dict) {
+                policy: dict[str, any] = p;
+                if policy.get("mode") == mode {
+                    n += 1;
+                }
+            }
+        }
         return f"{n} {label}{'s' if n != 1 else ''}" if n else None;
     }
     parts: list[str] = [];
@@ -330,8 +337,11 @@ impl _render_totals(bundle: any) {
             parts.append(`entry);
         }
     }
-    if isinstance(bundle, dict) and bundle.get("ingress") {
-        parts.append("1 ingress");
+    if isinstance(bundle, dict) {
+        bundle_map: dict[str, any] = bundle;
+        if bundle_map.get("ingress") {
+            parts.append("1 ingress");
+        }
     }
     console.print();
     console.print("Totals", style="bold");
@@ -385,16 +395,13 @@ impl Plan.from_target(target: any, app_config: AppConfig) -> Plan {
     services: list[ServiceView] = [];
     for svc in ordered {
         route_path: str | None = str(routes[svc]) if svc in routes else None;
-        plan_svc: Any = scaling.get(svc);
-        mode: Any = plan_svc.get("mode") if isinstance(plan_svc, dict) else None;
-        hpa: Any = (
-            plan_svc.get("autoscaler")
-                if isinstance(plan_svc, dict) and mode == ScalingMode.METRIC
-                else None
-        );
+        raw_plan: Any = scaling.get(svc);
+        plan_svc: dict[str, any] = raw_plan if isinstance(raw_plan, dict) else {};
+        mode: Any = plan_svc.get("mode");
+        hpa: Any = plan_svc.get("autoscaler") if mode == ScalingMode.METRIC else None;
         http: Any = (
             plan_svc.get("http_activation")
-                if isinstance(plan_svc, dict) and mode == ScalingMode.HTTP_ACTIVATION
+                if mode == ScalingMode.HTTP_ACTIVATION
                 else None
         );
         services.append(

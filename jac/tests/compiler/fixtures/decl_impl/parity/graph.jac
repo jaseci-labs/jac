@@ -27,6 +27,7 @@ obj Stamp {
 }
 
 def last_key(scores: dict[str, int]) -> str {
+    key = "";
     for (key, score) in scores.items() {
         if score {
             break;

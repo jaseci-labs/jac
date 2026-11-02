@@ -1,5 +1,5 @@
 glob WASM_HOST_MODULE: str = "jac_host1",
-     WASM_HOST_ABI: set = {
+     WASM_HOST_ABI: set[str] = {
          "write",
          "fflush",
          "exit",

@@ -11,6 +11,10 @@ obj:pub BindError(StoreError) {}
 
 obj:pub CodedError(Exception) {
     has code: int;
+
+    def init(code: int) {
+        self.code = code;
+    }
 }
 
 def:pub bind_value(kind: int) -> int {

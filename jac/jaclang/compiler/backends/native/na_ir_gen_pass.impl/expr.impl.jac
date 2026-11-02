@@ -704,7 +704,33 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     if JAC_TYPE_REGISTRY.is_sized(var_name) and not _is_call_target {
         return self._codegen_type_name_str(var_name);
     }
-    return self._codegen_class_ref(nd);
+    if not _is_call_target and var_name in self._seam_stubs {
+        return self._seam_stubs[var_name];
+    }
+    _ref = self._codegen_class_ref(nd);
+    if _ref is None and nd.expr_ctx == ExprCtx.LOAD {
+        _decl = resolved_decl_of(nd.sym) if nd.sym is not None else None;
+        if _decl is not None and isinstance(_decl.name_of, uni.Ability) {
+            _owner = _decl.find_parent_of_type(uni.Module);
+            _demoted = self._imported_function_demotions(_owner)
+                if _owner is not None
+                else None;
+            _where = _owner.loc.mod_path if _owner is not None else "its module";
+            _why = "its module demoted it to Python"
+                if _demoted is not None and var_name in _demoted
+                else "it was not declared in this native unit";
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind=f"function reference ({_why})",
+                name=var_name,
+                help_text=f"'{var_name}' (from {_where}) has no native definition here: {_why}. A function used as a value must lower to a native function."
+            );
+        } elif self._binds_variable(nd) and not self._reads_unlowered_local(nd) {
+            self.emit(E5092, node_override=nd, kind="variable read", name=var_name);
+        }
+    }
+    return _ref;
 }
 
 impl NaIRGenPass._codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None) {
@@ -931,7 +957,7 @@ impl NaIRGenPass._codegen_kernel_spawn(
     }
     _argtys = osp_spawn_fn.function_type.args;
 
-    _h = self.list_helpers.get("i64");
+    _h = self.list_helpers["i64"];
     _starts = self._rc_call_with_ctx(
         _h["new"], [], op="new", loc="", name="spawn.starts"
     );
@@ -2218,7 +2244,7 @@ impl NaIRGenPass._codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None) {
             self._release_owned_args([result], op="bool_drop");
         }
         _bool_peer_saved = self._peer_container_ty;
-        self._peer_container_ty = self._opt_ptr_payload_of(result.type);
+        self._peer_container_ty = self._opt_ptr_payload_of(result.type) or result.type;
         rhs_val = self._str_norm_optional(self._codegen_expr(nd.values[i]));
         self._peer_container_ty = _bool_peer_saved;
         if rhs_val is None {
@@ -2735,6 +2761,8 @@ impl NaIRGenPass._codegen_plain_trailer(nd: uni.AtomTrailer) -> (ir.Value | None
     if _c_handled {
         return _c_val;
     }
+    target_name: (str | None) = None;
+    right_name: (str | None) = None;
     if nd.is_attr {
         target_name = self._get_name(nd.target);
         right_name = self._get_name(nd.right);

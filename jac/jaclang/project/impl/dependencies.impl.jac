@@ -41,9 +41,10 @@ impl PackageDep.parse(name: str, value: any, dev: bool, section: str) -> Package
             f"jac.toml [{section}]: '{name}' must be a version string or a table"
         );
     }
+    table: dict[str, any] = value;
     unknown = [
         k
-        for k in value
+        for k in table
         if k not in PACKAGE_DEP_KEYS
     ];
     if unknown {
@@ -54,11 +55,11 @@ impl PackageDep.parse(name: str, value: any, dev: bool, section: str) -> Package
     }
     dep = PackageDep(
         name=name,
-        version=str(value.get("version", "*")),
-        path=str(value.get("path", "")),
-        git=str(value.get("git", "")),
-        rev=str(value.get("rev", "")),
-        registry=str(value.get("registry", "")),
+        version=str(table.get("version", "*")),
+        path=str(table.get("path", "")),
+        git=str(table.get("git", "")),
+        rev=str(table.get("rev", "")),
+        registry=str(table.get("registry", "")),
         dev=dev
     );
     if dep.path and dep.git {
@@ -97,11 +98,15 @@ impl split_dependency_table(
                     f"jac.toml [{section}.{PYPI_TABLE}] must be a table"
                 );
             }
-            for (pkg, spec) in value.items() {
+            pypi_table: dict[str, any] = value;
+            for (pkg, spec) in pypi_table.items() {
                 if isinstance(spec, str) {
                     out.pypi[pkg] = spec;
-                } elif isinstance(spec, dict) and spec.get("git") {
-                    out.pypi_git[pkg] = {str(k): str(v) for (k, v) in spec.items()};
+                    continue;
+                }
+                git_spec: dict[str, any] = spec if isinstance(spec, dict) else {};
+                if git_spec.get("git") {
+                    out.pypi_git[pkg] = {k: str(v) for (k, v) in git_spec.items()};
                 } else {
                     raise ManifestError(
                         f"jac.toml [{section}.{PYPI_TABLE}]: '{pkg}' must be a "
@@ -147,7 +152,8 @@ impl migrate_dependency_table(table: dict[str, any]) -> dict[str, any] {
             continue;
         }
         if key == "git" and isinstance(value, dict) {
-            for (pkg, spec) in value.items() {
+            git_table: dict[str, any] = value;
+            for (pkg, spec) in git_table.items() {
                 pypi[pkg] = spec;
             }
             continue;

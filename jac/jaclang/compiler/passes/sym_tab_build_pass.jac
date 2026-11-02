@@ -43,17 +43,6 @@ glob TEST_ASSERT_METHOD_NAMES: tuple[str, ...] = (
      );
 
 walker SymTabBuildPass(TreePass) {
-    static has contract: PassContract = PassContract(
-        provides=(
-            AnalysisFact.SYM_OF,
-            AnalysisFact.DEFINES,
-            AnalysisFact.IN_SCOPE,
-            AnalysisFact.SCOPE_CHILD,
-
-        ),
-        kernel_safe=True
-    );
-
     has cur_sym_tab: list[UniScopeNode] = [];
 
     can prepare with entry;

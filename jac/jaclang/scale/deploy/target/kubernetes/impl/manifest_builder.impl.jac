@@ -127,10 +127,12 @@ impl _is_named_list(items: list[object]) -> bool {
 
 impl merge_manifest_overlay(base: any, overlay: any) -> any {
     if isinstance(base, dict) and isinstance(overlay, dict) {
-        merged = dict(base);
-        for (key, value) in overlay.items() {
-            merged[key] = merge_manifest_overlay(base.get(key), value)
-                if key in base
+        base_map: dict[str, any] = base;
+        overlay_map: dict[str, any] = overlay;
+        merged = dict(base_map);
+        for (key, value) in overlay_map.items() {
+            merged[key] = merge_manifest_overlay(base_map.get(key), value)
+                if key in base_map
                 else value;
         }
         return merged;
@@ -141,9 +143,11 @@ impl merge_manifest_overlay(base: any, overlay: any) -> any {
         and _is_named_list(base)
         and _is_named_list(overlay)
     ) {
-        overlay_by_name = {item["name"]: item for item in overlay};
+        base_items: list[any] = base;
+        overlay_items: list[any] = overlay;
+        overlay_by_name = {item["name"]: item for item in overlay_items};
         merged_list: list[any] = [];
-        for item in base {
+        for item in base_items {
             item_name = item["name"];
             if item_name in overlay_by_name {
                 merged_list.append(
@@ -153,7 +157,7 @@ impl merge_manifest_overlay(base: any, overlay: any) -> any {
                 merged_list.append(item);
             }
         }
-        for item in overlay {
+        for item in overlay_items {
             if item["name"] in overlay_by_name {
                 merged_list.append(item);
             }
@@ -1028,8 +1032,9 @@ impl ManifestBuilder._shared_volumes_config -> list[dict[str, any]] {
     if not isinstance(raw, list) {
         return [];
     }
+    entries: list[any] = raw;
     out: list[dict[str, any]] = [];
-    for `entry in raw {
+    for `entry in entries {
         if isinstance(`entry, dict) {
             out.append(dict(`entry));
         }

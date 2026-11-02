@@ -32,7 +32,10 @@ def codegen_lane(native: bool) -> list[type] {
         CompilationProduct.PY_IR,
         CompilationProduct.FROZEN
     ) {
-        lane.extend(product_passes(product, ProductRequest(native=native)));
+        lane.extend(
+            step.load()
+            for step in product_passes(product, ProductRequest(native=native))
+        );
     }
     return lane;
 }

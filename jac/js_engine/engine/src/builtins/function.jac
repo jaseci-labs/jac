@@ -60,6 +60,7 @@ import from engine.src.runtime.jsobject {
     js_object_create_null,
     js_object_get
 }
+import from engine.src.runtime.gc_barrier { gc_gen_on }
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 1.  Constants

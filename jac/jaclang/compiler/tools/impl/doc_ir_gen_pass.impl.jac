@@ -136,7 +136,7 @@ impl DocIRGenPass.exit_jsx_element with uni.JsxElement exit {
             if isinstance(kid, uni.JsxElementName)
         ];
         name_node = name_kids[0] if name_kids else None;
-        attr_docs = [attr.gen.doc_ir for attr in here.attributes];
+        attr_docs = [attr.gen.doc_ir for attr in (here.attributes or [])];
         parts: list[doc.DocType] = [start_token.gen.doc_ir];
         if name_node {
             parts.append(name_node.gen.doc_ir);
@@ -494,13 +494,12 @@ impl DocIRGenPass.exit_impl_def with uni.ImplDef exit {
 impl DocIRGenPass.exit_sub_tag with uni.SubTag exit {
     before_colon: list[doc.DocType] = [];
     after_colon: list[doc.DocType] = [];
-    seen_colon = False;
+    colon_tok: (doc.DocType | None) = None;
     prev_after: (uni.UniNode | None) = None;
     for i in [here->:Kid:->] {
-        if (isinstance(i, uni.Token) and (i.name == Tok.COLON) and not seen_colon) {
+        if (isinstance(i, uni.Token) and (i.name == Tok.COLON) and colon_tok is None) {
             colon_tok = i.gen.doc_ir;
-            seen_colon = True;
-        } elif seen_colon {
+        } elif colon_tok is not None {
             if after_colon
                 and not (
                     isinstance(prev_after, uni.Token)
@@ -514,7 +513,7 @@ impl DocIRGenPass.exit_sub_tag with uni.SubTag exit {
             before_colon.append(i.gen.doc_ir);
         }
     }
-    if seen_colon {
+    if colon_tok is not None {
         is_access_modifier = (
             isinstance(here.tag, uni.Token)
             and (here.tag.name in [Tok.KW_PUB, Tok.KW_PRIV, Tok.KW_PROT])
@@ -2282,7 +2281,7 @@ impl DocIRGenPass._rescue_lost_comments(
     if self._emitted_comment_ids is None {
         self._emitted_comment_ids = set();
     }
-    if self._rescue_nd is not nd {
+    if self._rescue_nd is not nd or self._rescue_own_ids is None {
         self._rescue_nd = nd;
         self._rescue_idx = 0;
         mod_dc = nd.gen.doc_comments;

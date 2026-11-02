@@ -217,11 +217,13 @@ impl _get_group_attr(group_name: str) -> str {
 impl _app_settings(config: JacConfig, show_all: bool) -> dict[str, dict[str, object]] {
     settings: dict[str, dict[str, object]] = {};
     raw_apps = config._raw_data.get("apps", {}) if config._raw_data else {};
+    app_tables: dict[str, any] = raw_apps if isinstance(raw_apps, dict) else {};
     for (name, app) in config.apps.items() {
-        raw_app = raw_apps.get(name, {}) if isinstance(raw_apps, dict) else {};
+        raw_app = app_tables.get(name, {});
+        app_table: dict[str, any] = raw_app if isinstance(raw_app, dict) else {};
         for field in APP_FIELDS {
             toml_key = field.replace("_", "-") if field == "entry_point" else field;
-            is_set = isinstance(raw_app, dict) and toml_key in raw_app;
+            is_set = toml_key in app_table;
             if not show_all and not is_set {
                 continue;
             }
@@ -268,8 +270,8 @@ impl _is_explicitly_set(config: JacConfig, group_name: str, key: str) -> bool {
     if not isinstance(section_data, dict) {
         return False;
     }
-
-    return key in section_data;
+    section_table: dict[str, any] = section_data;
+    return key in section_table;
 }
 
 impl _config_list(

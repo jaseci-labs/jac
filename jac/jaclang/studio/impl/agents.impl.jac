@@ -71,20 +71,23 @@ impl AgentRegistry.postinit {
 }
 
 impl AgentRegistry._merge(table: dict[str, any], source: str) -> None {
-    entries = table.get("agents") or {};
-    if not isinstance(entries, dict) {
+    raw_entries = table.get("agents") or {};
+    if not isinstance(raw_entries, dict) {
         return;
     }
-    for (name, raw) in entries.items() {
-        if not isinstance(raw, dict) {
+    entries: dict[str, any] = raw_entries;
+    for (name, raw_spec) in entries.items() {
+        if not isinstance(raw_spec, dict) {
             continue;
         }
+        raw: dict[str, any] = raw_spec;
         base = self.agents.get(name);
         cmd = raw.get("command");
         args = raw.get("args");
         if isinstance(cmd, list) and cmd {
-            args = [*[str(c) for c in cmd[1:]], *(args or [])];
-            cmd = str(cmd[0]);
+            argv: list[any] = cmd;
+            args = [*[str(c) for c in argv[1:]], *(args or [])];
+            cmd = str(argv[0]);
         }
         if cmd is not None and args is None {
             args = [];

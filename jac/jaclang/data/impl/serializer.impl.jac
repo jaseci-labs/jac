@@ -75,7 +75,8 @@ impl Serializer._declared_of(owner: object, attr: str) -> object {
             if not isinstance(ann, dict) {
                 continue;
             }
-            for (name, tag) in ann.items() {
+            annotations: dict[str, any] = ann;
+            for (name, tag) in annotations.items() {
                 sized = SIZED_TYPES.get(tag)
                     if isinstance(tag, str)
                     else (tag if tag?.__jac_sized__ is not None else None);
@@ -379,15 +380,17 @@ impl Serializer.deserialize_api(
     value: object, boundary_types: dict[str, type], target: (type | None) = None
 ) -> object {
     if isinstance(value, list) {
-        return [Serializer.deserialize_api(v, boundary_types, target) for v in value];
+        items: list[any] = value;
+        return [Serializer.deserialize_api(v, boundary_types, target) for v in items];
     }
     if not isinstance(value, dict) {
         return value;
     }
-    tag = value.get('_jac_type_id', value.get('_jac_type'));
+    record: dict[str, any] = value;
+    tag = record.get('_jac_type_id', record.get('_jac_type'));
     cls = boundary_types.get(tag, target) if isinstance(tag, str) else target;
     decoded: dict[str, object] = {
-        k: Serializer.deserialize_api(v, boundary_types) for (k, v) in value.items()
+        k: Serializer.deserialize_api(v, boundary_types) for (k, v) in record.items()
     };
     if cls is None {
         return decoded;
@@ -406,15 +409,17 @@ impl Serializer._deserialize_value(val: object) -> object {
         return val;
     }
     if isinstance(val, list) {
-        return [Serializer._deserialize_value(v) for v in val];
+        items: list[any] = val;
+        return [Serializer._deserialize_value(v) for v in items];
     }
     if isinstance(val, dict) {
-        if '$ref' in val and val.keys() <= {'$ref', '$type'} {
-            return Serializer._deserialize_jac_ref(val);
+        record: dict[str, any] = val;
+        if '$ref' in record and record.keys() <= {'$ref', '$type'} {
+            return Serializer._deserialize_jac_ref(record);
         }
-        return Serializer.deserialize(val)
-            if '__type__' in val
-            else {k: Serializer._deserialize_value(v) for (k, v) in val.items()};
+        return Serializer.deserialize(record)
+            if '__type__' in record
+            else {k: Serializer._deserialize_value(v) for (k, v) in record.items()};
     }
     return val;
 }
@@ -966,9 +971,12 @@ impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) 
                 }
                 return None;
             }
-            archetype = Serializer._deserialize_archetype(arch_data, anchor);
+            arch_record: dict[str, any] = arch_data;
+            archetype = Serializer._deserialize_archetype(arch_record, anchor);
             if archetype is None {
-                arch_key = f"{arch_data.get('__module__')}.{arch_data.get('__type__')}";
+                arch_key = f"{arch_record.get('__module__')}.{arch_record.get(
+                    '__type__'
+                )}";
                 if (n := Serializer._warn_occurrence("archetype-failed", arch_key)) {
                     logger.warning(
                         "Serializer: archetype reconstruction failed for "
@@ -994,7 +1002,8 @@ impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) 
                 if not isinstance(raw_edges, list) {
                     raise TypeError("anchor payload 'edges' is not a list");
                 }
-                for raw_eid in raw_edges {
+                edge_list: list[any] = raw_edges;
+                for raw_eid in edge_list {
                     if not isinstance(raw_eid, str) {
                         raise TypeError(
                             "anchor payload 'edges' holds a non-string edge id"
@@ -1044,11 +1053,13 @@ impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) 
         raise;
     } except Exception as e {
         failed_arch = data.get('archetype');
-        arch_id = (
-            f"{failed_arch.get('__module__')}.{failed_arch.get('__type__')}"
-                if isinstance(failed_arch, dict)
-                else data.get('__type__', 'anchor')
-        );
+        arch_id: object = data.get('__type__', 'anchor');
+        if isinstance(failed_arch, dict) {
+            failed_record: dict[str, any] = failed_arch;
+            arch_id = f"{failed_record.get('__module__')}.{failed_record.get(
+                '__type__'
+            )}";
+        }
         if (
             n
             := Serializer._warn_occurrence(
@@ -1067,12 +1078,13 @@ impl Serializer._deserialize_permission(data: object) -> (Permission | None) {
     if not isinstance(data, dict) or not data {
         return None;
     }
+    record: dict[str, any] = data;
     perm = Permission();
-    perm.all = access_level_cast(data.get('all', -1));
-    if (roots := data.get('roots')) {
+    perm.all = access_level_cast(record.get('all', -1));
+    if (roots := record.get('roots')) {
         perm.roots = Serializer._deserialize_access(roots);
     }
-    if (groups := data.get('groups')) {
+    if (groups := record.get('groups')) {
         perm.groups = Serializer._deserialize_access(groups);
     }
     return perm;
@@ -1083,11 +1095,13 @@ impl Serializer._deserialize_access(data: object) -> Access {
         return Access();
     }
     access = Access();
-    anchors = data.get('anchors');
+    record: dict[str, any] = data;
+    anchors = record.get('anchors');
     if isinstance(anchors, dict) and anchors {
-        for (k, v) in anchors.items() {
+        levels: dict[str, any] = anchors;
+        for (k, v) in levels.items() {
             if isinstance(v, (int, str, AccessLevel)) {
-                access.anchors[str(k)] = access_level_cast(v);
+                access.anchors[k] = access_level_cast(v);
             }
         }
     }
@@ -1365,7 +1379,8 @@ impl frozen_fields(anchor: Anchor) -> bool {
     if not isinstance(fields, dict) {
         return False;
     }
-    for (name, value) in fields.items() {
+    attrs: dict[str, any] = fields;
+    for (name, value) in attrs.items() {
         if name != '__jac__' and not frozen_value(value) {
             return False;
         }

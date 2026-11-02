@@ -104,6 +104,8 @@ def write_buffer(data: bytes) -> ptr[PyObject];
 
 obj module_failure(Exception) {
     has message: str;
+
+    def init(message: str);
 }
 
 obj boundary_failure(Exception) {}
@@ -391,4 +393,8 @@ impl StaticText.get -> ptr[u8] {
         self.address = c_string_copy(self.text);
     }
     return self.address;
+}
+
+impl module_failure.init(message: str) {
+    self.message = message;
 }

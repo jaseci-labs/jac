@@ -376,7 +376,7 @@ impl NaIRGenPass._codegen_class_value_call(
     for (i, p) in enumerate(params) {
         given = values.get(i);
         call_args.append(
-            given if given is not None else self._default_arg_fallback(p.type)
+            given if given is not None else self._missing_argument(nd, p.type)
         );
     }
     result = self.builder.call(
@@ -428,7 +428,7 @@ impl NaIRGenPass._bind_class_ctor_spread(
             p.name,
             p.type,
             i,
-            values[i] if i in values else self._default_arg_fallback(p.type),
+            values[i] if i in values else self._missing_argument(nd, p.type),
             "kw" if i in values else None,
             None
         );
@@ -1229,9 +1229,7 @@ impl NaIRGenPass._emit_class_ctor_bridge(
     state = self._enter_function(bridge);
     try {
         mask: ir.Value = ir.Constant(i64, 0);
-        forwarded: list[ir.Value] = [
-            self._default_arg_fallback(p.type) for p in signature
-        ];
+        forwarded: list[ir.Value] = [self._zero_const(p.type) for p in signature];
         for (i, j) in routes {
             given = self.builder.icmp_unsigned(
                 "!=",

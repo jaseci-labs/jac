@@ -755,8 +755,11 @@ impl _append_app_table(
         doc = {};
     }
     apps = doc.get('apps', {}) if isinstance(doc, dict) else {};
-    if isinstance(apps, dict) and name in apps {
-        return [];
+    if isinstance(apps, dict) {
+        app_tables: dict[str, any] = apps;
+        if name in app_tables {
+            return [];
+        }
     }
     lines: list[str] = text.split("\n");
     before = len(lines);

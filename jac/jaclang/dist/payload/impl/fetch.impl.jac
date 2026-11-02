@@ -430,14 +430,20 @@ impl _manifest_sha_map(manifest: bytes, rel: LlvmSlice) -> dict[str, str] {
         die(f"fetch-llvm: manifest parse failed: {e}");
     }
     sha_map: dict[str, str] = {};
-    libs = parsed.get("libs") if isinstance(parsed, dict) else None;
+    libs: any = None;
+    if isinstance(parsed, dict) {
+        manifest_record: dict[str, any] = parsed;
+        libs = manifest_record.get("libs");
+    }
     if isinstance(libs, dict) {
-        for o in libs.values() {
+        lib_records: dict[str, any] = libs;
+        for o in lib_records.values() {
             if not isinstance(o, dict) {
                 continue;
             }
-            fv = o.get("file");
-            sv = o.get("sha256");
+            lib_record: dict[str, any] = o;
+            fv = lib_record.get("file");
+            sv = lib_record.get("sha256");
             if isinstance(fv, str) and isinstance(sv, str) {
                 sha_map[fv] = sv;
             }

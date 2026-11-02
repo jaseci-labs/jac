@@ -33,6 +33,12 @@ obj Hundred(Counter) {
 
 obj Scaled(Point) {
     has scale: int = 3;
+
+    def init(x: int, y: int = 5) {
+        self.x = x;
+        self.y = y;
+        self.scale = 3;
+    }
 }
 
 obj Named(Point) {

@@ -688,6 +688,13 @@ impl RcFactsPass._solve_liveness(
                 use.add(sid);
             }
         }
+        if isinstance(n, Assignment) and n.value is not None {
+            for nm in n.value.get_all_sub_nodes(Name) {
+                if nm.sym is not None and id(nm.sym) in tracked {
+                    use.add(id(nm.sym));
+                }
+            }
+        }
         self._node_use[id(n)] = use;
         self._node_def[id(n)] = dfn;
     }

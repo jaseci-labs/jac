@@ -58,6 +58,8 @@ glob _REASONS: dict[int, str] = {
 obj ProtocolError(Exception) {
     has status: int = 400,
         reason: str = 'Bad Request';
+
+    def init(status: int = 400, reason: str = 'Bad Request');
 }
 
 

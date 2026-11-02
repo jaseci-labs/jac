@@ -1082,7 +1082,7 @@ impl EsastGenPass._build_spawn_arg_object(
         else {};
     properties: list[(es.Property | es.SpreadElement)] = [];
     positional_index = 0;
-    for param in call_node.params {
+    for param in (call_node.params or []) {
         if isinstance(param, uni.KWPair) {
             if param.key {
                 field_name = param.key.sym_name;

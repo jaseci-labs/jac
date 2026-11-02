@@ -221,8 +221,8 @@ impl _collect_local_imports(
     return (staged, merged_imports);
 }
 
-impl _exported_names(js: str) -> set {
-    names: set = set();
+impl _exported_names(js: str) -> set[str] {
+    names: set[str] = set();
     for m in re.finditer(r"export\s*\{([^}]*)\}", js) {
         for part in m.group(1).split(",") {
             `entry = part.strip();

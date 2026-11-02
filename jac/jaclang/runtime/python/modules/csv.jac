@@ -2,7 +2,7 @@ obj CsvConfig(NativeState) {
     has limit: i64 = 128 * 1024;
 
     def clear;
-    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32;
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
 }
 
 def:priv fail(kind: ptr[PyObject], message: str);
@@ -153,7 +153,7 @@ def _csv_field_size_limit_impl(
 
 impl CsvConfig.clear {}
 
-impl CsvConfig.traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+impl CsvConfig.traverse_refs(visitor: ptr, context: ptr) -> i32 {
     return i32(0);
 }
 

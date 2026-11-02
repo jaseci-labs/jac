@@ -62,6 +62,10 @@ a nested archetype inheriting an imported one fails to construct)."""
 obj FailPlugin(DesktopPlugin) {
     has plugin_name: str = "fail";
 
+    def init {
+        self.plugin_name = "fail";
+    }
+
     def handle(command: str, args: dict[str, any]) -> dict[str, any] {
         raise PluginError("FORBIDDEN", "Access denied");
     }
@@ -71,6 +75,10 @@ obj FailPlugin(DesktopPlugin) {
 """A plugin whose handle() raises an unexpected (non-PluginError) exception."""
 obj CrashPlugin(DesktopPlugin) {
     has plugin_name: str = "crash";
+
+    def init {
+        self.plugin_name = "crash";
+    }
 
     def handle(command: str, args: dict[str, any]) -> dict[str, any] {
         raise RuntimeError("boom");

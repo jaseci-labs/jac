@@ -204,7 +204,7 @@ impl report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
     }
     from_pass: type = JcirGenPass
         if reason
-        else product_passes(CompilationProduct.NATIVE_LOWER)[-1];
+        else product_passes(CompilationProduct.NATIVE_LOWER)[-1].load();
     deliver_alerts(
         [
             Alert(

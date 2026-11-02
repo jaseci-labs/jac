@@ -248,13 +248,15 @@ impl build_runtime_closure(
         closure[relative] = source.encode('utf-8');
         resources = _declared_literal(tree, '__jac_resources__');
         if resources is not None {
-            if not isinstance(resources, list)
-                or not all(isinstance(pattern, str) for pattern in resources) {
-                raise ValueError(
-                    f'{module}.__jac_resources__ must be a list of package-relative glob patterns'
-                );
+            bad_resources = f'{module}.__jac_resources__ must be a list of package-relative glob patterns';
+            if not isinstance(resources, list) {
+                raise ValueError(bad_resources);
             }
-            for pattern in resources {
+            patterns: list[any] = resources;
+            if not all(isinstance(pattern, str) for pattern in patterns) {
+                raise ValueError(bad_resources);
+            }
+            for pattern in patterns {
                 matches = [
                     item
                     for item in path.parent.glob(pattern)

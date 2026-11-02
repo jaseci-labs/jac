@@ -118,7 +118,9 @@ obj Shelf {
     }
 }
 
-obj Tray(Res) {
+obj Tray {
+    has id: int = 0;
+
     def drop(extra: int) {
         log.append(self.id + extra);
     }

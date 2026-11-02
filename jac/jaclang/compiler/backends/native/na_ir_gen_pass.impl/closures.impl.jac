@@ -14,13 +14,13 @@ impl NaIRGenPass._scan_closure_escapes(
         if sub.enclosing_frame is not nd or self._ability_is_generator(sub) {
             continue;
         }
-        sname = sub.name_ref.sym_name if sub.name_ref else None;
-        if sname is None {
+        sub_sym = sub.name_spec.sym;
+        if sub_sym is None {
             continue;
         }
         escapes = False;
         for nm in direct_names {
-            if nm.value != sname {
+            if nm.sym is not sub_sym {
                 continue;
             }
             _np = nm.parent;
@@ -502,23 +502,50 @@ impl NaIRGenPass._codegen_closure_call(
         );
         self.builder.store(clos_val, held_slot);
     }
+    by_slot: dict[int, uni.UniNode] = {};
+    callee_sig = nd.callee_signature;
+    shift = 1
+        if isinstance(callee_sig, SemanticFunctionType)
+            and callee_sig.parameters
+            and callee_sig.parameters[0].is_self
+        else 0;
+    for (slot, arg) in nd.arg_binding {
+        by_slot[slot - shift] = arg;
+    }
+    if not by_slot {
+        for (i, p) in enumerate(nd.params or []) {
+            if isinstance(p, uni.KWPair) {
+                self.emit(
+                    E5092,
+                    node_override=p,
+                    kind="call argument",
+                    name="keyword argument to an untyped function value"
+                );
+                return None;
+            }
+            by_slot[i] = p;
+        }
+    }
     raw_args: list[ir.Value] = [];
-    for p in (nd.params or []) {
-        v = self._codegen_expr(p);
-        if v is not None {
-            raw_args.append(v);
-        }
-    }
     coerced: list[ir.Value] = [];
-    for (i, a) in enumerate(raw_args) {
-        if i < len(declared) {
-            coerced.append(self._coerce_type(a, declared[i]));
-        } else {
-            coerced.append(a);
+    for (i, want) in enumerate(declared) {
+        arg = by_slot.get(i);
+        if arg is None {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="call argument",
+                name=f"parameter {i} of a function value",
+                help_text="A function value's defaults belong to whichever function it holds at run time, so a native call through it must pass every argument."
+            );
+            return None;
         }
-    }
-    while len(coerced) < len(declared) {
-        coerced.append(self._default_arg_fallback(declared[len(coerced)]));
+        v = self._codegen_required(arg);
+        if v is None {
+            return None;
+        }
+        raw_args.append(v);
+        coerced.append(self._coerce_type(v, want));
     }
     if none_guard is not None {
         self._emit_runtime_raise(

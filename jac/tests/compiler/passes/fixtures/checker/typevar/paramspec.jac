@@ -24,3 +24,15 @@ def make_decorator(tag: str) -> Callable[([Callable[(P, T)]], Callable[(P, T)])]
     }
     return decorator;
 }
+
+# A ParamSpec decorator keeps the decorated function's signature, so a call
+# through it is checked against `name: str`.
+@wrap
+def greet(name: str) -> str {
+    return name;
+}
+
+with entry {
+    greet("ok");
+    greet(42);
+}

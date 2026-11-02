@@ -70,15 +70,8 @@ impl SymTabBuildPass.exit_global_vars with GlobalVars exit {
 }
 
 impl SymTabBuildPass._declare_global_vars(nd: GlobalVars) -> None {
-    for i in nd.assignments {
-        for j in i.target {
-            if isinstance(j, AstSymbolNode) {
-                j.name_spec._sym_category = SymbolType.MOD_VAR;
-                j.sym_tab.def_insert(j, access_spec=nd, single_decl='global var');
-            } else {
-                self.ctx.ice('Expected name type for global vars');
-            }
-        }
+    if not declare_global_vars(nd) {
+        self.ctx.ice('Expected name type for global vars');
     }
 }
 

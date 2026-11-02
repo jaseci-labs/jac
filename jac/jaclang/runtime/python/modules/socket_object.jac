@@ -314,13 +314,13 @@ impl AcceptCall.run(fd: i32) -> bool {
         paddrlen = ptr[u32]();
         length_cell(self.address).view(1)[0] = u32(0);
     }
-    if HAS_ACCEPT4 and accept4_works != 0 {
+    if HAS_ACCEPT4 and accept4_flag() != 0 {
         self.result = accept_cloexec(fd, addr, paddrlen, i32(SOCK_CLOEXEC));
-        if self.result == INVALID_SOCKET and accept4_works == -1 {
-            accept4_works = i32(1) if jacpy_errno() != ENOSYS else i32(0);
+        if self.result == INVALID_SOCKET and accept4_flag() == -1 {
+            set_accept4_flag(i32(1) if jacpy_errno() != ENOSYS else i32(0));
         }
     }
-    if not HAS_ACCEPT4 or accept4_works == 0 {
+    if not HAS_ACCEPT4 or accept4_flag() == 0 {
         self.result = accept(fd, addr, paddrlen);
     }
     if self.result < 0 {
@@ -509,7 +509,7 @@ impl sock_accept(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject] {
         return NULL;
     }
     newfd = call.result;
-    if not HAS_ACCEPT4 or accept4_works == 0 {
+    if not HAS_ACCEPT4 or accept4_flag() == 0 {
         if _Py_set_inheritable(newfd, 0, None) < 0 {
             close(newfd);
             free_addrbuf(space);
@@ -2127,14 +2127,14 @@ impl sock_init(
         }
         error = i64(0);
         thread = PyEval_SaveThread();
-        if HAS_SOCK_CLOEXEC and sock_cloexec_works != 0 {
+        if HAS_SOCK_CLOEXEC and sock_cloexec_flag() != 0 {
             fd = socket(i32(fam), i32(typ | SOCK_CLOEXEC), i32(pro));
             error = jacpy_errno();
-            if sock_cloexec_works == -1 {
+            if sock_cloexec_flag() == -1 {
                 if fd >= 0 {
-                    sock_cloexec_works = i32(1);
+                    set_sock_cloexec_flag(i32(1));
                 } elif error == EINVAL {
-                    sock_cloexec_works = i32(0);
+                    set_sock_cloexec_flag(i32(0));
                     fd = socket(i32(fam), i32(typ), i32(pro));
                     error = jacpy_errno();
                 }
@@ -2162,9 +2162,9 @@ impl sock_init(
 
 impl set_inheritable_new(fd: i32) -> int {
     if HAS_SOCK_CLOEXEC {
-        works = sock_cloexec_works;
+        works = sock_cloexec_flag();
         status = _Py_set_inheritable(fd, 0, &mut works);
-        sock_cloexec_works = works;
+        set_sock_cloexec_flag(works);
         return int(status);
     }
     return int(_Py_set_inheritable(fd, 0, None));

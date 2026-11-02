@@ -178,14 +178,12 @@ import from engine.src.builtins.temporal {
     KEY_OFFSET_NS,
     KEY_CALENDAR,
     KEY_NANOSECONDS,
-    temporal_get_overflow
+    temporal_get_overflow,
+    temporal_reject_epoch_ns_out_of_range
 }
 import from engine.src.vm.vm_obs { js_object_get_observable, js_to_string_observable }
 
-import from engine.src.runtime.mem {
-    str_bslice,
-    str_nbytes
-}
+import from engine.src.runtime.mem { str_bslice, str_nbytes }
 
 glob _ZDT_STR_DIVMOD_REM: int = 0;
 
@@ -385,7 +383,8 @@ def _zdt_instant_to_local_parts(ns_s: str, zone_id: str) -> list[int] {
     if zone_id == "UTC" or zone_id == "" {
         return utc;
     }
-    if len(zone_id) > 0 and (str_bslice(zone_id, 0, 1) == "+" or str_bslice(zone_id, 0, 1) == "-") {
+    if len(zone_id) > 0
+        and (str_bslice(zone_id, 0, 1) == "+" or str_bslice(zone_id, 0, 1) == "-") {
         off_parse: list[any] = parse_utc_offset_string(zone_id);
         if off_parse[0] != 0 {
             off_s: int = off_parse[1];

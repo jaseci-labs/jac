@@ -95,9 +95,15 @@ impl JacTestResult.addFailure(`test: any, err: any) -> None {
     }
 }
 
-impl JacTestResult.postinit -> None {
+impl JacTestResult.init(
+    stream: any, descriptions: any, verbosity: int, max_failures: (int | None) = None
+) -> None {
+    self.stream = stream;
+    self.descriptions = descriptions;
+    self.verbosity = verbosity;
+    self.max_failures = max_failures;
     self.failures_count = JacTestCheck.failcount;
-    super.init(self.stream, self.descriptions, self.verbosity);
+    super.init(stream, descriptions, verbosity);
 }
 
 impl invoke_native_test(

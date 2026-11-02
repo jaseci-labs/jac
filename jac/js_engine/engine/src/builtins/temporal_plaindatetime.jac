@@ -32,7 +32,8 @@ import from engine.src.runtime.jsvalue {
     jsv_is_double,
     jsv_is_object_cell,
     jsv_is_undefined,
-    jsv_is_null
+    jsv_is_null,
+    jsv_is_any_object
 }
 import from engine.src.runtime.jsstring { str_intern }
 import from engine.src.runtime.jsobject { js_object_get }
@@ -143,11 +144,7 @@ import from engine.src.builtins.calendars.calendar_gregory {
 import from engine.src.builtins.string { js_coerce_to_string }
 import from engine.src.builtins.temporal_plaintime { js_Temporal_PlainTime_compare }
 
-import from engine.src.runtime.mem {
-    byte_chr,
-    str_byte,
-    str_nbytes
-}
+import from engine.src.runtime.mem { byte_chr, str_byte, str_nbytes }
 
 def:priv _get_int(o: JSValue, key: int) -> int {
     v: JSValue = js_object_get(o, key);
@@ -577,7 +574,8 @@ def:pub js_PlainDateTime_with(this_val: JSValue, args: list[JSValue]) -> JSValue
             vm_throw_native(make_range_error("invalid monthCode"));
             return js_undefined();
         }
-        mc_is_leap: bool = len(mc_s) > 0 and byte_chr(str_byte(mc_s, str_nbytes(mc_s) - 1)) == "L";
+        mc_is_leap: bool = len(mc_s) > 0
+            and byte_chr(str_byte(mc_s, str_nbytes(mc_s) - 1)) == "L";
         if cal == "iso8601" and (mc_n > 12 or mc_is_leap) {
             bad_month_code = True;
         }

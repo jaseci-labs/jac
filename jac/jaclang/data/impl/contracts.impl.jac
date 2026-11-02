@@ -22,8 +22,9 @@ impl decode_contract(value: any, contract: any, path: str = "response") -> any {
         if not isinstance(value, list) {
             raise ContractError(f"{path}: expected list");
         }
+        items: list[any] = value;
         return [
-            decode_contract(v, args[0], f"{path}[{i}]") for (i, v) in enumerate(value)
+            decode_contract(v, args[0], f"{path}[{i}]") for (i, v) in enumerate(items)
         ];
     }
     if contract in (str, int, bool, float) {
@@ -35,20 +36,21 @@ impl decode_contract(value: any, contract: any, path: str = "response") -> any {
     if not is_record(contract) or not isinstance(value, dict) {
         raise ContractError(f"{path}: expected declared record {contract}");
     }
+    record: dict[str, any] = value;
     hints = get_type_hints(contract);
     kwargs: dict[str, any] = {};
     for f in fields(contract) {
         if not f.init {
             continue;
         }
-        if f.name not in value {
+        if f.name not in record {
             if f.default is MISSING and f.default_factory is None {
                 raise ContractError(f"{path}.{f.name}: missing required field");
             }
             continue;
         }
         kwargs[f.name] = decode_contract(
-            value[f.name], hints[f.name], path + "." + f.name
+            record[f.name], hints[f.name], path + "." + f.name
         );
     }
     return contract(**kwargs);

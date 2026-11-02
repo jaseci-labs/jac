@@ -144,9 +144,7 @@ impl compile_in_session(
                     target.scratch.compile_depth -= 1;
                     if target.scratch.compile_depth <= 0 {
                         target.scratch.compile_depth = 0;
-                        try {
-                            target.release_check_caches();
-                        } except Exception {}
+                        target.release_check_caches();
                     }
                 }
                 hooks.finish_compile(frame);

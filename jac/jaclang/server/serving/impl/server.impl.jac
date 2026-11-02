@@ -1,3 +1,8 @@
+impl ProtocolError.init(status: int = 400, reason: str = 'Bad Request') {
+    self.status = status;
+    self.reason = reason;
+}
+
 impl _is_token(text: str) -> bool {
     return bool(text) and all(ch in _TOKEN_CHARS for ch in text);
 }

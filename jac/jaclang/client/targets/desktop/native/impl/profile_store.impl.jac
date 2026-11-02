@@ -14,9 +14,15 @@ impl ProfileStore.load(path: str) -> ProfileStore {
     if not isinstance(data, dict) {
         return store;
     }
-    raw_profiles = data.get("profiles");
-    for raw in raw_profiles if isinstance(raw_profiles, list) else [] {
-        if not isinstance(raw, dict) or not raw.get("id") or not raw.get("user_id") {
+    record: dict[str, any] = data;
+    raw_profiles = record.get("profiles");
+    profile_items: list[any] = raw_profiles if isinstance(raw_profiles, list) else [];
+    for raw_profile in profile_items {
+        if not isinstance(raw_profile, dict) {
+            continue;
+        }
+        raw: dict[str, any] = raw_profile;
+        if not raw.get("id") or not raw.get("user_id") {
             continue;
         }
         try {
@@ -33,7 +39,7 @@ impl ProfileStore.load(path: str) -> ProfileStore {
             )
         );
     }
-    active = str(data.get("active") or "");
+    active = str(record.get("active") or "");
     store.active = active if store.find(active) is not None else "";
     return store;
 }
@@ -103,10 +109,15 @@ impl ProfileStore.load_for_write(path: str) -> ProfileStore {
             f"the saved profile list {path} cannot be read ({e}); not overwriting it"
         );
     }
-    if not isinstance(data, dict) or not isinstance(data.get("profiles", []), list) {
-        raise RuntimeError(
-            f"the saved profile list {path} is not a profile list; not overwriting it"
-        );
+    not_a_list = RuntimeError(
+        f"the saved profile list {path} is not a profile list; not overwriting it"
+    );
+    if not isinstance(data, dict) {
+        raise not_a_list;
+    }
+    record: dict[str, any] = data;
+    if not isinstance(record.get("profiles", []), list) {
+        raise not_a_list;
     }
     return ProfileStore.load(path);
 }

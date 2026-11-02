@@ -1,5 +1,6 @@
 impl PyastBuildPass.aug_op_map(tok_dict: dict[str, str], op: Token) -> str {
     op.value += '=';
+    _key = "";
     for (_key, value) in tok_dict.items() {
         if (value == op.value) {
             break;

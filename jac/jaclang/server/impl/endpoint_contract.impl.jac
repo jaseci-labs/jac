@@ -20,13 +20,15 @@ impl check_endpoint_contract(
         else getattr(module, "__name__", "");
     try {
         parts = json.loads(identity);
-        if isinstance(parts, list)
-            and len(parts) == 4
-            and parts[2] == kind
-            and parts[3] == name
-            and parts[1] == source
-            and (not parts[0] or parts[0] == app) {
-            return None;
+        if isinstance(parts, list) {
+            fields: list[any] = parts;
+            if len(fields) == 4
+                and fields[2] == kind
+                and fields[3] == name
+                and fields[1] == source
+                and (not fields[0] or fields[0] == app) {
+                return None;
+            }
         }
     } except (ValueError, TypeError) {}
     return TransportResponse.fail(

@@ -3121,9 +3121,9 @@ impl paint_tray(app: Studio) -> None {
             label = "map of "
                 + (scope_ or "the project")
                 + (f" ({filter_label(spec_)})" if spec_ else "");
-        } elif parse_deps_key(k) is not None {
+        } elif (deps := parse_deps_key(k)) is not None {
             kind = "wire";
-            (src, dst) = parse_deps_key(k);
+            (src, dst) = deps;
             spec_ = split_spec(k)[1];
             label = f"wires {src} → {dst}"
                 + (f" ({filter_label(spec_)})" if spec_ else "");
@@ -3607,10 +3607,11 @@ impl append_stream(app: Studio, role: str, text: str) -> None {
 
 impl summarize_tool(d: dict[str, any]) -> str {
     out: list[str] = [];
-    for c in (d.get("content") or []) {
-        if not isinstance(c, dict) {
+    for raw_block in (d.get("content") or []) {
+        if not isinstance(raw_block, dict) {
             continue;
         }
+        c: dict[str, any] = raw_block;
         if c.get("type") == "diff" {
             old = str(c.get("oldText") or "");
             new = str(c.get("newText") or "");
@@ -3628,18 +3629,25 @@ impl summarize_tool(d: dict[str, any]) -> str {
             out.append(f"edit {c.get('path', '')}  +{added} -{removed}");
         } elif c.get("type") == "content" {
             inner = c.get("content") or {};
-            if isinstance(inner, dict) and inner.get("type") == "text" {
-                text = str(inner.get("text", "")).strip();
-                if text {
-                    out.append(text);
+            if isinstance(inner, dict) {
+                inner_block: dict[str, any] = inner;
+                if inner_block.get("type") == "text" {
+                    text = str(inner_block.get("text", "")).strip();
+                    if text {
+                        out.append(text);
+                    }
                 }
             }
         } elif c.get("type") == "terminal" {
             out.append(f"terminal {c.get('terminalId', '')}");
         }
     }
-    for loc in (d.get("locations") or [])[:3] {
-        if isinstance(loc, dict) and loc.get("path") {
+    for raw_loc in (d.get("locations") or [])[:3] {
+        if not isinstance(raw_loc, dict) {
+            continue;
+        }
+        loc: dict[str, any] = raw_loc;
+        if loc.get("path") {
             out.append(
                 f"{loc['path']}" + (f":{loc['line']}" if loc.get("line") else "")
             );
@@ -3711,8 +3719,12 @@ impl handle_agent_event(app: Studio, ev: any) -> None {
         if detail {
             e.detail = rel_text(app, detail);
         }
-        for loc in (d.get("locations") or []) {
-            if isinstance(loc, dict) and loc.get("path") {
+        for raw_loc in (d.get("locations") or []) {
+            if not isinstance(raw_loc, dict) {
+                continue;
+            }
+            loc: dict[str, any] = raw_loc;
+            if loc.get("path") {
                 ref = str(loc["path"]) + (f":{loc['line']}" if loc.get("line") else "");
                 if ref not in e.locs {
                     e.locs.append(ref);
@@ -3766,11 +3778,14 @@ impl handle_agent_event(app: Studio, ev: any) -> None {
             if code is None
             else ("completed" if code == 0 else "failed");
     } elif kind == "commands" {
-        app.agent_commands = [
-            str(c.get("name", ""))
-            for c in (d.get("commands") or [])
-            if isinstance(c, dict)
-        ];
+        names: list[str] = [];
+        for c in (d.get("commands") or []) {
+            if isinstance(c, dict) {
+                command: dict[str, any] = c;
+                names.append(str(command.get("name", "")));
+            }
+        }
+        app.agent_commands = names;
     } elif kind == "turn_end" {
         close_message(app);
         reason = str(d.get("stop_reason", ""));
@@ -4423,9 +4438,11 @@ impl auto_permission(app: Studio, d: dict[str, any]) -> bool {
         or "mcp__jac__" in raw;
     allow = kind in AUTO_KINDS or tools or (kind == "edit" and app.gate is not None);
     extra = app.config.get("auto_allow", []);
-    if isinstance(extra, list)
-        and (kind in extra or any([str(x) in title for x in extra])) {
-        allow = True;
+    if isinstance(extra, list) {
+        extra_kinds: list[any] = extra;
+        if kind in extra_kinds or any([str(x) in title for x in extra_kinds]) {
+            allow = True;
+        }
     }
     if not allow {
         return False;

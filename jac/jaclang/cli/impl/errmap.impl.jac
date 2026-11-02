@@ -4,8 +4,11 @@ impl show_tracebacks -> bool {
 
 impl _sqlstate(e: Exception) -> str {
     for arg in getattr(e, 'args', ()) {
-        if isinstance(arg, dict) and 'C' in arg {
-            return str(arg.get('C') or '');
+        if isinstance(arg, dict) {
+            fields: dict[str, any] = arg;
+            if 'C' in fields {
+                return str(fields.get('C') or '');
+            }
         }
     }
     return '';

@@ -37,9 +37,9 @@ obj PrometheusMetricsCollector(MetricsCollector) {
     has config: dict[str, any] = {},
         worker_count: int = 1,
         _multiprocess: bool = False,
-        _enabled: bool postinit,
-        _namespace: str postinit,
-        _include_walker_metrics: bool postinit,
+        _enabled: bool = False,
+        _namespace: str = "",
+        _include_walker_metrics: bool = False,
         _registry: any = None,
         _request_count: any = None,
         _request_latency: any = None,
@@ -53,7 +53,7 @@ obj PrometheusMetricsCollector(MetricsCollector) {
         _scheduled_skips: any = None,
         _jac_info: any = None;
 
-    def postinit;
+    def init(config: dict[str, any] = {}, worker_count: int = 1) -> None;
     def record_read_tier_retry(unit_key: str);
     def record_scheduled_run(
         task: str, status: str, reason: str, duration_seconds: float

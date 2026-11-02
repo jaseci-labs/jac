@@ -197,8 +197,11 @@ impl session_from_dict(root_dir: str, d: dict[str, any]) -> StudioSession {
 impl StudioSession.tool_entry(tool_id: str) -> (dict[str, any] | None) {
     for e in reversed(self.entries) {
         tc = e.get("tool_call");
-        if isinstance(tc, dict) and str(tc.get("id", "")) == tool_id {
-            return e;
+        if isinstance(tc, dict) {
+            call: dict[str, any] = tc;
+            if str(call.get("id", "")) == tool_id {
+                return e;
+            }
         }
     }
     return None;
@@ -252,8 +255,11 @@ impl _import_json(root_dir: str, top: any) -> None {
         } except (OSError, ValueError) {
             continue;
         }
-        if isinstance(data, dict) and _find(top, str(data.get("id", ""))) is None {
-            _write(top, session_from_dict(root_dir, data));
+        if isinstance(data, dict) {
+            record: dict[str, any] = data;
+            if _find(top, str(record.get("id", ""))) is None {
+                _write(top, session_from_dict(root_dir, record));
+            }
         }
         os.replace(path, path + ".imported");
     }

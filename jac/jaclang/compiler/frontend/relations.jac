@@ -20,6 +20,8 @@ edge CfgTrue: ConditionalNode --> UniCFGNode {}
 
 edge CfgFalse: ConditionalNode --> UniCFGNode {}
 
+edge CfgExit: UniCFGNode --> UniCFGNode {}
+
 edge PlacedIn: ContextAwareNode --> Codespace {}
 
 edge DecidedCodespace: Module --> Codespace {}
@@ -45,6 +47,10 @@ edge TypeOf: AstTypedVarNode | Expr --> TypeBase {}
 edge NarrowedTypeOf: Expr --> TypeBase {}
 
 edge CalleeSignature: FuncCall --> TypeBase {}
+
+edge BindsArg: FuncCall --> UniNode {
+    has slot: int = 0;
+}
 
 edge EventTriggerOf: Ability --> TypeBase {}
 

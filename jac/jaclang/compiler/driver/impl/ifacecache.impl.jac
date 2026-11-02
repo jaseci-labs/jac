@@ -38,7 +38,7 @@ impl prime_iface_codec -> (IfaceCodec | None) {
 }
 
 impl iface_verify_enabled -> bool {
-    truthy: set = {'1', 'true', 'True', 'TRUE', 'yes', 'YES', 'on', 'ON'};
+    truthy: set[str] = {'1', 'true', 'True', 'TRUE', 'yes', 'YES', 'on', 'ON'};
     return os.environ.get('JAC_IFACE_VERIFY', '') in truthy;
 }
 

@@ -17,7 +17,8 @@ impl _dump_value(value: any, exclude_none: bool) -> any {
         return value.value;
     }
     if isinstance(value, list) {
-        return [_dump_value(v, exclude_none) for v in value];
+        items: list[any] = value;
+        return [_dump_value(v, exclude_none) for v in items];
     }
     if isinstance(value, tuple) {
         return [_dump_value(v, exclude_none) for v in value];

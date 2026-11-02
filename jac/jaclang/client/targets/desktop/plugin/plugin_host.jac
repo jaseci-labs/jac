@@ -134,8 +134,9 @@ obj PluginHost {
     def _parse_invoke(req_json: str) -> dict[str, any] {
         wire = json.loads(req_json);
         if isinstance(wire, list) and len(wire) >= 2 {
-            args = wire[2] if len(wire) > 2 and wire[2] is not None else {};
-            return {"plugin": wire[0], "command": wire[1], "args": args};
+            parts: list[any] = wire;
+            args = parts[2] if len(parts) > 2 and parts[2] is not None else {};
+            return {"plugin": parts[0], "command": parts[1], "args": args};
         }
         if isinstance(wire, dict) {
             return wire;

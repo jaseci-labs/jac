@@ -638,7 +638,7 @@ impl EsastGenPass.exit_dict_val with uni.DictVal exit {
 
 impl EsastGenPass._gen_seq_array(nd: uni.ListVal | uni.TupleVal | uni.SetVal) -> None {
     elements: list[es.Expression | es.SpreadElement | None] = [];
-    for item in nd.values {
+    for item in (nd.values or []) {
         if (
             isinstance(item, uni.UnaryExpr)
             and item.op.name == Tok.STAR_MUL.value
@@ -666,7 +666,7 @@ impl EsastGenPass.exit_tuple_val with uni.TupleVal exit {
 
 impl EsastGenPass.exit_set_val with uni.SetVal exit {
     elements: list[es.Expression | es.SpreadElement | None] = [];
-    for item in here.values {
+    for item in (here.values or []) {
         if item.gen.es_ast {
             elements.append(cast(es.Expression, item.gen.es_ast));
         }

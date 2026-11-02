@@ -12,7 +12,7 @@ def sum_chain(start: Item | None) -> int {
     total = 0;
     cur = start;
     while cur {
-        total += cur.count;   # cur: Item (not Item | None)
+        total += cur.count;  # cur: Item (not Item | None)
         cur = cur.prev;
     }
     return total;
@@ -26,4 +26,11 @@ def collect_labels(head: Wrapper | None) -> list[str] {
         cur = cur.next;
     }
     return result;
+}
+
+def poll_until_set(flag: Wrapper | None) -> None {
+    if flag is None {
+        return;
+    }
+    while not flag.label {}
 }
