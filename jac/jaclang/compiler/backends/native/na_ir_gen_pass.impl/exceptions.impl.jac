@@ -669,8 +669,8 @@ impl NaIRGenPass._exc_bound_struct(ex: (uni.Expr | None)) -> (str | None) {
     if key is None or key not in self.struct_types {
         return None;
     }
-    if f"{key}.init" in self.method_funcs
-        or f"{key}.__init__" in self.method_funcs
+    if self._has_method_func(f"{key}.init")
+        or self._has_method_func(f"{key}.__init__")
         or self._exc_message_slot(key) is not None {
         return key;
     }
@@ -956,8 +956,8 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
                     _exc_pos_args.append(_p);
                 }
             }
-            _exc_has_init = f"{exc_type_name}.init" in self.method_funcs;
-            if f"{exc_type_name}.__init__" in self.method_funcs {
+            _exc_has_init = self._has_method_func(f"{exc_type_name}.init");
+            if self._has_method_func(f"{exc_type_name}.__init__") {
                 _exc_has_init = True;
             }
             _exc_order = self.struct_field_order.get(exc_type_name);

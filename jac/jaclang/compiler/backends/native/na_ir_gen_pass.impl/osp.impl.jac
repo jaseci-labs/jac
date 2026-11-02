@@ -121,7 +121,7 @@ impl NaIRGenPass._emit_osp_thunk(arch_name: str, method: uni.Ability) -> None {
     if full in self.osp_thunk_funcs {
         return;
     }
-    fn = self.method_funcs.get(full);
+    fn = self._method_func(full);
     if fn is None {
         return;
     }

@@ -13,10 +13,13 @@ impl _jc_optional_payload(semantic: (TypeBase | None)) -> (TypeBase | None) {
 }
 
 impl ImportedFunctions.provides(name: str) -> bool {
-    return name in self.by_name;
+    return name in self.by_name or name in self.methods;
 }
 
 impl ImportedFunctions.resolve(name: str) -> (ir.Function | None) {
+    if name in self.methods {
+        return self.lowering._declare_imported_method(name);
+    }
     pending = self.by_name.get(name);
     if pending is None {
         return None;

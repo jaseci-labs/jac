@@ -143,7 +143,8 @@ obj PendingImport {
 obj ImportedFunctions(FunctionSource) {
     has lowering: NaIRGenPass,
         by_name: dict[str, PendingImport] = {},
-        by_key: dict[tuple[str, str], PendingImport] = {};
+        by_key: dict[tuple[str, str], PendingImport] = {},
+        methods: dict[str, tuple[str, uni.Ability, (uni.HasVar | None)]] = {};
 
     override def provides(name: str) -> bool;
     override def resolve(name: str) -> (ir.Function | None);
@@ -1365,6 +1366,10 @@ walker NaIRGenPass(CompilerPass) {
     def _declares_lazily(nd: uni.Ability) -> bool;
     def _defer_import(pending: PendingImport, owner_name: str) -> None;
     def _declare_import(pending: PendingImport) -> (ir.Function | None);
+    def _declare_imported_method(full_name: str) -> (ir.Function | None);
+    def _method_func(full_name: str) -> (ir.Function | None);
+    def _has_method_func(full_name: str) -> bool;
+    def _is_static_method(full_name: str) -> bool;
     def _module_function(key: tuple[str, str]) -> (ir.Function | None);
     def _module_function_known(key: tuple[str, str]) -> bool;
     def _record_linked_decl(func: (ir.Function | None), decl: uni.Ability) -> None;
