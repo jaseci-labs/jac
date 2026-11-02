@@ -216,6 +216,7 @@ jobs:
           # cache hit skips producing both, so ask for them explicitly.
           need-build-inputs: "true"
           native-kernel: ${{ needs.changes.outputs.kernel }}
+          kernel-carry: "true"
 
       - name: Set up Zig 0.16.0
         uses: mlugg/setup-zig@v2

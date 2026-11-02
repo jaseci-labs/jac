@@ -1230,6 +1230,7 @@ impl seal_native(
         aot_mode=True,
         default_codespace="native",
         native_unit=True,
+        kit_carry=pkg_name == "jaclang" and kit_carry_enabled(),
         skip_native_engine=True,
         native_target=host_target_spec().triple
     );

@@ -73,7 +73,8 @@ impl parse_mkpayload_flags(flags: list[str]) -> MkPayloadOpts {
         "--precompiled-cache=": "precompiled_cache",
         "--layer-cache=": "layer_cache",
         "--stubcat-out=": "stubcat_out",
-        "--kernel=": "kernel_dir"
+        "--kernel=": "kernel_dir",
+        "--kernel-carry=": "kernel_carry"
     };
     for arg in flags {
         if arg == "--seal" {

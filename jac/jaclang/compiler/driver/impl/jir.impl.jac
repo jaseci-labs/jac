@@ -593,6 +593,61 @@ impl native_producer_digest(kernel_build: bool = False) -> str {
     return known;
 }
 
+impl kit_carry_enabled -> bool {
+    return os.environ.get(KIT_CARRY_ENV, "") == "1";
+}
+
+impl kit_carry_digest -> str {
+    current = running_compiler_digest();
+    known = _KIT_CARRY_DIGESTS.get(current);
+    if known is not None {
+        return known;
+    }
+    import from jaclang.compiler.frontend.codeinfo { NATIVE_ABI_VERSION }
+    import from jaclang.compiler.kernel_target { target_pkg_root }
+    known = KIT_NATIVE_PRODUCER
+        + str(NATIVE_ABI_VERSION)
+        + ":"
+        + carry_contract_digest(target_pkg_root());
+    _KIT_CARRY_DIGESTS[current] = known;
+    return known;
+}
+
+impl carry_contract_digest(pkg_root: str) -> str {
+    files: set[str] = set();
+    for rel in KIT_CARRY_CONTRACT_REL + KERNEL_ABI_CONTRACT_REL {
+        top = os.path.join(pkg_root, *rel.split("/"));
+        if os.path.isfile(top) {
+            files.add(rel);
+            continue;
+        }
+        for (walk_dir, dirs, names) in os.walk(top) {
+            dirs[:] = sorted(
+                d
+                for d in dirs
+                if not d.startswith(".") and d not in COMPILER_DIGEST_SKIP_DIRS
+            );
+            for name in names {
+                if name.endswith(".jac") {
+                    files.add(
+                        os.path.relpath(os.path.join(walk_dir, name), pkg_root).replace(
+                            os.sep, "/"
+                        )
+                    );
+                }
+            }
+        }
+    }
+    h = hashlib.sha256();
+    for rel in sorted(files) {
+        h.update(rel.encode("utf-8"));
+        h.update(b"\x00");
+        h.update(unit_source_digest(os.path.join(pkg_root, *rel.split("/"))).encode());
+        h.update(b"\n");
+    }
+    return h.hexdigest();
+}
+
 impl _producer_kind(digest: str) -> str {
     return DEV_NATIVE_PRODUCER if digest.startswith(DEV_NATIVE_PRODUCER) else "";
 }
@@ -1509,9 +1564,10 @@ impl get_module_cache_path(source_path: str) -> Path {
         is_target_package_path,
         kernel_target_active
     }
-    name = native_unit_identity(str(source))
-        if kernel_target_active() and is_target_package_path(str(source))
-        else str(source);
+    import from jaclang.compiler.frontend.codeinfo { is_compiler_source_path }
+    relocatable = (kernel_target_active() and is_target_package_path(str(source)))
+        or (kit_carry_enabled() and is_compiler_source_path(str(source)));
+    name = native_unit_identity(str(source)) if relocatable else str(source);
     path_hash = hashlib.sha256((name + projection).encode()).hexdigest()[:8];
     (major, minor) = (sys.version_info.major, sys.version_info.minor);
     return cache_dir / f"{source.stem}.{path_hash}.cpython-{major}{minor}.jir";
@@ -1931,7 +1987,9 @@ impl carried_module_bytecode(source_path: str) -> (tuple[bytes, bytes] | None) {
 }
 
 impl carried_native_sections(source_path: str, producer: str) -> dict[int, bytes] {
-    if not producer.startswith(DEV_NATIVE_PRODUCER) or not dev_carry_enabled() {
+    kit = producer.startswith(KIT_NATIVE_PRODUCER);
+    if not kit
+        and (not producer.startswith(DEV_NATIVE_PRODUCER) or not dev_carry_enabled()) {
         return {};
     }
     prefix = producer + "\x1f";
@@ -1940,7 +1998,7 @@ impl carried_native_sections(source_path: str, producer: str) -> dict[int, bytes
         candidates: list[tuple[float, str]] = [];
         for generation in current.parent.parent.iterdir() {
             candidate = generation / current.name;
-            if generation == current.parent or not candidate.is_file() {
+            if (generation == current.parent and not kit) or not candidate.is_file() {
                 continue;
             }
             candidates.append((candidate.stat().st_mtime, str(candidate)));

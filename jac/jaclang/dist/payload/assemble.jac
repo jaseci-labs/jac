@@ -59,7 +59,8 @@ obj MkPayloadOpts {
         seal: bool = False,
         debug_src: bool = False,
         stubcat_out: str | None = None,
-        kernel_dir: str | None = None;
+        kernel_dir: str | None = None,
+        kernel_carry: str | None = None;
 }
 
 obj FoundLib {
@@ -89,7 +90,8 @@ def precompile(
     site: str,
     seal: bool,
     debug_src: bool,
-    kernel_dir: (str | None) = None
+    kernel_dir: (str | None) = None,
+    kernel_carry: (str | None) = None
 );
 
 def precompile_env(python_dir: str, site: str) -> dict[str, str];
