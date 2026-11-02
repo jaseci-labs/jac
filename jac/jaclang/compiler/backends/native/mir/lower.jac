@@ -726,6 +726,9 @@ obj MirLowering {
     ) -> (MirValue | None);
 
     def tuple_items(value: MirValue, site: uni.UniNode) -> MirValue;
+    def tuple_elem(value: MirValue, site: uni.UniNode) -> MirType;
+    def tuple_cursor(value: MirValue, elem: MirType) -> MirIterCursor;
+    def step_tuple(cursor: MirIterCursor, body: MirBlock, done: MirBlock) -> MirValue;
     def split_args(nd: uni.FuncCall) -> tuple[list[uni.Expr], dict[str, uni.Expr]];
     def iter_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def builtin_next(nd: uni.FuncCall, args: list[uni.Expr]) -> MirValue;

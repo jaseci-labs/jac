@@ -1671,6 +1671,12 @@ impl MirLowering.lower_for(nd: uni.InForStmt) {
         self.lower_for_sources(nd, None);
         return;
     }
+    if isinstance(source, uni.TupleVal) and not source.values {
+        after = self.st().fn.new_block("each.exit");
+        self.lower_else(nd.else_body, after);
+        self.builder().position(after);
+        return;
+    }
     holder = self.lower_expr(source);
     if self.is_text(holder) or self.is_byte_seq(holder) {
         self.lower_for_text(nd, holder);

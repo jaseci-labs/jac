@@ -329,7 +329,7 @@ impl MirLowering.iter_open(value: MirValue, site: uni.UniNode) -> MirIterCursor 
         );
     }
     if t.kind == MirKind.TUPLE {
-        return self.iter_open(self.tuple_items(value, site), site);
+        return self.tuple_cursor(value, self.tuple_elem(value, site));
     }
     found = self.user_cursor(value, site);
     if found is not None {
@@ -453,6 +453,9 @@ impl MirLowering.iter_step(
     }
     if cursor.kind == "user" {
         return self.step_user(cursor, body, done);
+    }
+    if cursor.kind == "tuple" {
+        return self.step_tuple(cursor, body, done);
     }
     raise RuntimeError(f"malformed iteration cursor {cursor.kind}");
 }
@@ -903,30 +906,81 @@ impl MirLowering.user_method(
     return self.invoke_method(decl, arch, name, [held]);
 }
 
-impl MirLowering.tuple_items(value: MirValue, site: uni.UniNode) -> MirValue {
-    members = [
-        mir_str_ref() if member.kind == MirKind.STR else member
-        for member in value.type.args
-    ];
+impl MirLowering.tuple_elem(value: MirValue, site: uni.UniNode) -> MirType {
+    members = list(value.type.args);
     if not members {
         raise MirRefused(mir_refusal("iteration", "empty tuple", site));
     }
     elem = members[0];
-    if not all(member is elem for member in members) {
-        for member in members {
-            if member.kind not in ANY_BOXABLE {
-                raise MirRefused(
-                    mir_refusal(
-                        "iteration",
-                        value.type.render(),
-                        site,
-                        f"A tuple whose members share no representation iterates as `any`, and a {member.render()} has no `any` box."
-                    )
-                );
-            }
-        }
-        elem = mir_any();
+    if all(member is elem for member in members) {
+        return elem;
     }
+    for member in members {
+        if member.kind not in ANY_BOXABLE {
+            raise MirRefused(
+                mir_refusal(
+                    "iteration",
+                    value.type.render(),
+                    site,
+                    f"A tuple whose members share no representation iterates as `any`, and a {member.render()} has no `any` box."
+                )
+            );
+        }
+    }
+    return mir_any();
+}
+
+impl MirLowering.tuple_cursor(value: MirValue, elem: MirType) -> MirIterCursor {
+    position = self.temp_slot(mir_int());
+    self.builder().store(position, self.builder().const_int(-1, mir_int()));
+    return MirIterCursor(
+        kind="tuple", elem=elem, source=self.spill(value), position=position
+    );
+}
+
+impl MirLowering.step_tuple(
+    cursor: MirIterCursor, body: MirBlock, done: MirBlock
+) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    source = cursor.source;
+    position = cursor.position;
+    if source is None or position is None {
+        raise RuntimeError("tuple cursor has no tuple");
+    }
+    site = cursor.site or self.module;
+    size = len(source.type.args);
+    following = b.binary("add", b.load(position, mir_int()), b.const_int(1, mir_int()));
+    b.store(position, following);
+    b.cond_branch(b.compare("lt", following, b.const_int(size, mir_int())), body, done);
+    b.position(body);
+    held = self.temp_slot(cursor.elem);
+    joined = fn.new_block("tuple.item");
+    for index in range(size) {
+        hit = fn.new_block("tuple.member");
+        missed = joined;
+        if index + 1 < size {
+            missed = fn.new_block("tuple.next");
+            b.cond_branch(
+                b.compare("eq", following, b.const_int(index, mir_int())), hit, missed
+            );
+        } else {
+            b.branch(hit);
+        }
+        b.position(hit);
+        b.store(held, self.coerce(self.tuple_get(source, index), cursor.elem, site));
+        b.branch(joined);
+        b.position(missed);
+    }
+    return b.load(held, cursor.elem);
+}
+
+impl MirLowering.tuple_items(value: MirValue, site: uni.UniNode) -> MirValue {
+    elem = self.tuple_elem(value, site);
+    if elem.kind == MirKind.STR {
+        elem = mir_str_ref();
+    }
+    members = list(value.type.args);
     held = self.spill(value);
     made = self.spill(self.new_list(elem, len(members)));
     kind = self.builder().const_int(self.elem_kind(elem, site), mir_int());
@@ -1149,9 +1203,19 @@ impl MirLowering.bind_target(target: uni.Expr, value: MirValue) {
 impl MirLowering.lower_for_sources(nd: uni.InForStmt, holder: (MirValue | None)) {
     b = self.builder();
     fn = self.st().fn;
-    (cursors, counter) = self.open_sources(nd.collection)
-        if holder is None
-        else ([self.iter_open(holder, nd)], None);
+    cursors: list[MirIterCursor] = [];
+    counter: (MirValue | None) = None;
+    if holder is None {
+        (cursors, counter) = self.open_sources(nd.collection);
+    } elif holder.type.kind == MirKind.TUPLE
+        and isinstance(nd.target, uni.Name)
+        and nd.target.sym is not None {
+        cursors = [
+            self.tuple_cursor(holder, self.symbol_type(nd.target.sym, nd.target))
+        ];
+    } else {
+        cursors = [self.iter_open(holder, nd)];
+    }
     head = fn.new_block("each.head");
     otherwise = fn.new_block("each.else");
     after = fn.new_block("each.exit");
@@ -1367,7 +1431,8 @@ impl MirLowering.builtin_fold(
 ) -> MirValue {
     b = self.builder();
     fn = self.st().fn;
-    result_type = self.expr_type(nd);
+    wanted = self.expr_type(nd);
+    result_type = wanted if name == "sum" else mir_bool();
     held = self.temp_slot(result_type);
     if name == "sum" {
         if not result_type.is_numeric() {
@@ -1412,7 +1477,7 @@ impl MirLowering.builtin_fold(
         b.branch(after);
     }
     b.position(after);
-    return b.load(held, result_type);
+    return self.coerce(b.load(held, result_type), wanted, nd);
 }
 
 impl MirLowering.drain(value: MirValue, elem: MirType, site: uni.UniNode) -> MirValue {
