@@ -19,8 +19,6 @@ compiling.
 import os;
 import shutil;
 import tempfile;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 
 glob _FIELD_SRC: str = (
@@ -243,7 +241,7 @@ def _dep_project(source: str, declared: bool) -> tuple[str, str] {
     (base, mod_path) = _project(source, name="main.jac");
     toml = "[project]\nname = \"missingdep\"\nversion = \"0.1.0\"\n";
     if declared {
-        toml += "\n[dependencies]\nnot-installed-pkg-xyz = \">=1.0\"\n";
+        toml += "\n[dependencies.pypi]\nnot-installed-pkg-xyz = \">=1.0\"\n";
     }
     with open(os.path.join(base, "jac.toml"), "w") as f {
         f.write(toml);
@@ -310,7 +308,7 @@ test "a dependency declared only on the app that owns the module is an error too
         f.write(
             "[project]\nname = \"missingdep\"\nversion = \"0.1.0\"\n\n"
             "[apps.web]\nkind = \"service\"\nentry-point = \"main\"\n\n"
-            "[apps.web.dependencies]\nnot-installed-pkg-xyz = \">=1.0\"\n"
+            "[apps.web.dependencies.pypi]\nnot-installed-pkg-xyz = \">=1.0\"\n"
         );
     }
     try {
@@ -334,7 +332,7 @@ test "a shared module is not an error for an app that does not declare the packa
             "[project]\nname = \"missingdep\"\nversion = \"0.1.0\"\n\n"
             "[apps.web]\nkind = \"service\"\nentry-point = \"web\"\n\n"
             "[apps.worker]\nkind = \"service\"\nentry-point = \"worker\"\n\n"
-            "[apps.worker.dependencies]\nnot-installed-pkg-xyz = \">=1.0\"\n"
+            "[apps.worker.dependencies.pypi]\nnot-installed-pkg-xyz = \">=1.0\"\n"
         );
     }
     try {
@@ -364,6 +362,55 @@ test "a build compile keeps the warning for a declared missing dependency" {
         prog.compile(mod_path);
         assert "E1138" not in _codes(prog) , _codes(prog);
         assert "W1100" in _warn_codes(prog) , _warn_codes(prog);
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "a relative import in an impl/ annex resolves from its module, as at runtime" {
+    base = tempfile.mkdtemp(prefix="annex_rel_");
+    try {
+        os.makedirs(os.path.join(base, "impl"));
+        with open(os.path.join(base, "helper.jac"), "w") as f {
+            f.write("glob VALUE: int = 7;\n");
+        }
+        with open(os.path.join(base, "mod.jac"), "w") as f {
+            f.write("def get -> int;\n");
+        }
+        with open(os.path.join(base, "impl", "mod.impl.jac"), "w") as f {
+            f.write(
+                "import from .helper { VALUE }\n\nimpl get -> int {\n    return VALUE;\n}\n"
+            );
+        }
+        prog = JacProgram();
+        prog.compile(os.path.join(base, "mod.jac"));
+        assert "E1134" not in _codes(prog) , _codes(prog);
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "an absolute import in an annex keeps resolving from the annex, past a sibling of the module" {
+    base = tempfile.mkdtemp(prefix="annex_abs_");
+    try {
+        os.makedirs(os.path.join(base, "mod.impl"));
+        with open(os.path.join(base, "types.jac"), "w") as f {
+            f.write("glob NOTHING: int = 0;\n");
+        }
+        with open(os.path.join(base, "mod.jac"), "w") as f {
+            f.write("def is_gen(x: object) -> bool;\n");
+        }
+        with open(os.path.join(base, "mod.impl", "gen.impl.jac"), "w") as f {
+            f.write(
+                "impl is_gen(x: object) -> bool {\n    import types as _t;\n"
+                "    return isinstance(x, _t.GeneratorType);\n}\n"
+            );
+        }
+        prog = JacProgram();
+        prog.compile(os.path.join(base, "mod.jac"));
+        assert not _codes(prog) , _codes(prog);
     } finally {
         shutil.rmtree(base, ignore_errors=True);
     }

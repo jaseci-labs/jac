@@ -231,7 +231,8 @@ test "fetch-bun verifies SHASUMS256.txt and writes the zip's bun member" {
         with contextlib.redirect_stderr(err) {
             assert main(["fetch-bun", "linux-x86_64", dest]) == 0;
         }
-        assert err.getvalue() == f"fetch-bun: already present at {out}\n";
+        assert err.getvalue()
+            == f"fetch-bun: bun {BUN_VERSION} already present at {out}\n";
         assert len(http.calls) == 2;
 
         http.table[f"{BUN_BASE}/bun-v{BUN_VERSION}/SHASUMS256.txt"] = b"";

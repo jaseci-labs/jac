@@ -1,49 +1,381 @@
-"""Argument ownership and signature binding shared by native Python adapters."""
-import from jaclang.runtime.python.capi {
-    boundary_failure,
-    required,
-    object_error,
-    text_value,
-    jacpy_release,
-    jacpy_retain,
-    jacpy_tuple_size,
-    jacpy_tuple_item,
-    jacpy_dict_items,
-    jacpy_list_size,
-    jacpy_list_item,
-    jacpy_is_unicode,
-    jacpy_unicode_size,
-    jacpy_unicode_char,
-    jacpy_index,
-    jacpy_error_pending
-}
-import from c { def jacpy_ssize(value: u64) -> i64;  }
-
 obj BoundArguments {
-    has values: list[u64],
-        context: u64 = 0,
-        keywords: u64 = 0;
+    has values: list[ptr[PyObject]],
+        context: ptr[PyObject] = NULL,
+        keywords: ptr[PyObject] = NULL,
+        failure: str = "",
+        failure_at: int = -1,
+        nargs: int = 0;
 
-    def drop {
-        for value in self.values {
-            jacpy_release(value);
-        }
-        jacpy_release(self.keywords);
+    def fail_at(index: int, message: str);
+    def reach(index: int);
+    def drop;
+}
+
+import from c {
+    obj ArgumentSlots {
+        has s0: ptr[PyObject] = ptr[PyObject](),
+            s1: ptr[PyObject] = ptr[PyObject](),
+            s2: ptr[PyObject] = ptr[PyObject](),
+            s3: ptr[PyObject] = ptr[PyObject](),
+            s4: ptr[PyObject] = ptr[PyObject](),
+            s5: ptr[PyObject] = ptr[PyObject](),
+            s6: ptr[PyObject] = ptr[PyObject](),
+            s7: ptr[PyObject] = ptr[PyObject](),
+            s8: ptr[PyObject] = ptr[PyObject](),
+            s9: ptr[PyObject] = ptr[PyObject](),
+            s10: ptr[PyObject] = ptr[PyObject](),
+            s11: ptr[PyObject] = ptr[PyObject](),
+            s12: ptr[PyObject] = ptr[PyObject](),
+            s13: ptr[PyObject] = ptr[PyObject](),
+            s14: ptr[PyObject] = ptr[PyObject](),
+            s15: ptr[PyObject] = ptr[PyObject]();
+    }  def jacpy_stack_address(slots: &mut ArgumentSlots) -> int;
+}
+
+glob ARGUMENT_SLOTS: int = 16;
+
+def invalid(message: str) -> bool;
+
+def index_value(value: ptr[PyObject]) -> (i64 | None);
+
+glob PARSE_AUTO: int = 0,
+     PARSE_POSITIONAL: int = 1,
+     PARSE_KEYWORDS: int = 2,
+     PARSE_FORMAT: int = 3,
+     PARSE_NOTHING: int = 4,
+     PARSE_NO_ARGUMENTS: int = 5,
+     PARSE_GIVEN: int = 6,
+     PARSE_FORMAT_KEYWORDS: int = 7;
+
+obj KeywordArguments {
+    has keys: list[ptr[PyObject]] = [],
+        names: list[str] = [],
+        values: list[ptr[PyObject]] = [];
+
+    def add(key: ptr[PyObject], value: ptr[PyObject]);
+    def find(name: str) -> ptr[PyObject];
+}
+
+def keywords_of_dict(kwargs: ptr[PyObject]) -> KeywordArguments;
+
+def keywords_of_vector(
+    args: ptr[ptr[PyObject]], nargs: int, kwnames: ptr[PyObject]
+) -> KeywordArguments;
+
+def plural(count: int) -> str;
+
+obj CallSignature {
+    has name: str,
+        names: list[str],
+        required_count: int,
+        positional_count: int,
+        positional_only: int = 0,
+        keyword_required: int = 0,
+        parser: int = PARSE_AUTO,
+        interned: list[ptr[PyObject]] = [],
+        positional_warning: str = "",
+        positional_warn_range: tuple[int, int] = (0, 0),
+        keyword_warning: str = "",
+        keyword_warn_required: int = -1,
+        keyword_warn_optional: list[int] = [],
+        spare: (BoundArguments | None) = None;
+
+    def take(context: ptr[PyObject]) -> BoundArguments;
+    def give(bound: BoundArguments);
+    def resolved -> int;
+    def plain(count: int) -> bool;
+    def bind_plain(
+        result: BoundArguments, args: ptr[ptr[PyObject]], count: int
+    ) -> bool;
+
+    def fill_keyword(
+        slots: ptr[ptr[PyObject]], key: ptr[PyObject], value: ptr[PyObject], start: int
+    ) -> bool;
+
+    def fill_slots(
+        args: ptr[ptr[PyObject]],
+        nargs: i64,
+        kwnames: ptr[ptr[PyObject]],
+        kwvalues: ptr[ptr[PyObject]],
+        nkw: i64,
+        kwargs: ptr[PyObject],
+        slots: ptr[ptr[PyObject]]
+    ) -> bool;
+
+    def bind_slots(
+        result: BoundArguments,
+        args: ptr[ptr[PyObject]],
+        nargs: i64,
+        kwnames: ptr[ptr[PyObject]],
+        kwvalues: ptr[ptr[PyObject]],
+        nkw: i64,
+        kwargs: ptr[PyObject]
+    ) -> bool;
+
+    def bind_quick(
+        result: BoundArguments, args: ptr[PyObject], kwargs: ptr[PyObject]
+    ) -> bool;
+
+    def bind_vector_quick(
+        result: BoundArguments,
+        args: ptr[ptr[PyObject]],
+        nargs: i64,
+        kwnames: ptr[PyObject]
+    ) -> bool;
+
+    def warn(message: str) -> bool;
+    def bind_values(
+        result: BoundArguments,
+        positional: list[ptr[PyObject]],
+        keywords: KeywordArguments
+    ) -> bool;
+
+    def caller -> str;
+    def bind(
+        result: BoundArguments, args: ptr[PyObject], kwargs: ptr[PyObject]
+    ) -> bool;
+
+    def bind_vector(
+        result: BoundArguments,
+        args: ptr[ptr[PyObject]],
+        nargs: i64,
+        kwnames: ptr[PyObject]
+    ) -> bool;
+
+    def bind_arguments(
+        result: BoundArguments,
+        positional: list[ptr[PyObject]],
+        keywords: KeywordArguments
+    ) -> bool;
+
+    def keys -> list[ptr[PyObject]];
+    def keyword_slot(key: ptr[PyObject], start: int) -> int;
+    def unpack_array(
+        args: ptr[ptr[PyObject]],
+        nargs: i64,
+        kwnames: ptr[ptr[PyObject]],
+        kwvalues: ptr[ptr[PyObject]],
+        nkw: i64
+    ) -> ptr[ptr[PyObject]];
+
+    def unpack_keywords(
+        result: BoundArguments,
+        positional: list[ptr[PyObject]],
+        keywords: KeywordArguments
+    ) -> bool;
+
+    def format_keywords(
+        result: BoundArguments,
+        positional: list[ptr[PyObject]],
+        keywords: KeywordArguments
+    ) -> bool;
+}
+
+def check_positional(name: str, nargs: int, low: int, high: int) -> bool;
+
+def unexpected_keyword(
+    name: str, accepted: list[str], keywords: KeywordArguments
+) -> str;
+
+def call_bound(
+    bound: BoundArguments, implementation: Callable[[BoundArguments], ptr[PyObject]]
+) -> ptr[PyObject];
+
+def bind_checked(
+    signature: CallSignature,
+    bound: BoundArguments,
+    args: ptr[PyObject],
+    kwargs: ptr[PyObject]
+) -> bool;
+
+def bind_vector_checked(
+    signature: CallSignature,
+    bound: BoundArguments,
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> bool;
+
+def call_bound_values(
+    signature: CallSignature,
+    bound: BoundArguments,
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]]
+) -> ptr[PyObject];
+
+def invoke(
+    signature: CallSignature,
+    args: ptr[PyObject],
+    kwargs: ptr[PyObject],
+    implementation: Callable[[BoundArguments], ptr[PyObject]],
+    context: ptr[PyObject] = 0,
+    forward_keywords: bool = False,
+    checked: bool = True
+) -> ptr[PyObject];
+
+def invoke_vector(
+    signature: CallSignature,
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject],
+    implementation: Callable[[BoundArguments], ptr[PyObject]],
+    context: ptr[PyObject] = 0
+) -> ptr[PyObject];
+
+def call_values(
+    bound: BoundArguments,
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]]
+) -> ptr[PyObject];
+
+def unpack_stack(
+    signature: CallSignature,
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[ptr[PyObject]];
+
+def unpack_mapping(
+    signature: CallSignature, args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[ptr[PyObject]];
+
+def kwnames_items(kwnames: ptr[PyObject]) -> ptr[ptr[PyObject]];
+
+def invoke_keywords(
+    signature: CallSignature,
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject],
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]],
+    context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def invoke_mapping(
+    signature: CallSignature,
+    args: ptr[PyObject],
+    kwargs: ptr[PyObject],
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]],
+    context: ptr[PyObject],
+    checked: bool = True
+) -> ptr[PyObject];
+
+def invoke_stack(
+    signature: CallSignature,
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject],
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]],
+    context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def invoke_tuple(
+    signature: CallSignature,
+    args: ptr[PyObject],
+    kwargs: ptr[PyObject],
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]],
+    context: ptr[PyObject],
+    checked: bool = True
+) -> ptr[PyObject];
+
+def invoke_given(
+    value: ptr[PyObject],
+    implementation: Callable[[BoundArguments], ptr[PyObject]],
+    context: ptr[PyObject] = 0
+) -> ptr[PyObject];
+
+def vector_tuple(args: ptr[ptr[PyObject]], nargs: i64) -> ptr[PyObject];
+
+def invoke_one(
+    value: ptr[PyObject], implementation: Callable[[ptr[PyObject]], ptr[PyObject]]
+) -> ptr[PyObject];
+
+def character_value(value: ptr[PyObject], context: str) -> (i64 | None);
+
+
+obj ArgumentValue {
+    has given: bool = False,
+        object: ptr[PyObject] = NULL,
+        signed: i64 = 0,
+        unsigned: u64 = 0,
+        flag: bool = False,
+        text: str = "";
+}
+
+obj FormatPlan {
+    has kinds: list[str],
+        codes: list[int],
+        minimum: int,
+        maximum: int,
+        optional: bool,
+        typed: bool;
+}
+
+glob FORMAT_PLANS: dict[str, FormatPlan] = {},
+     ABSENT = ArgumentValue();
+
+def format_plan(units: str) -> FormatPlan;
+
+obj ArgumentFormat {
+    has name: str = "",
+        message: str = "",
+        types: list[ptr[PyObject]] = [];
+
+    def caller -> str;
+    def mismatch(position: int, expected: str, value: ptr[PyObject]);
+    def reject(position: int, detail: str);
+    def units_of(format: str) -> list[str];
+    def expected_types(kinds: list[str]) -> list[ptr[PyObject]];
+    def failed -> bool;
+    def signed_range(value: i64, low: i64, high: i64, kind: str) -> i64;
+    def convert(
+        code: int, value: ptr[PyObject], position: int, type: ptr[PyObject] = NULL
+    ) -> ArgumentValue;
+
+    def arity(args: ptr[PyObject], minimum: int, maximum: int) -> int;
+    def parse(args: ptr[PyObject], units: str) -> list[ArgumentValue];
+    def parse_keywords(
+        args: ptr[PyObject], kwargs: ptr[PyObject], units: str, keywords: list[str]
+    ) -> list[ArgumentValue];
+
+    def extraneous_keyword(
+        args: ptr[PyObject], kwargs: ptr[PyObject], keywords: list[str]
+    );
+
+    def unexpected_keyword(key: ptr[PyObject], keywords: list[str]);
+    def too_many_arguments(count: int, nargs: int, given: int);
+    def too_many_positional(maximum: int, nargs: int, optional: bool);
+    def missing_keyword(keyword: str, position: int);
+}
+
+impl BoundArguments.fail_at(index: int, message: str) {
+    self.failure = message;
+    self.failure_at = index;
+}
+
+impl BoundArguments.reach(index: int) {
+    if self.failure_at >= 0 and index >= self.failure_at {
+        object_error(PyExc_TypeError, self.failure);
+        raise boundary_failure();
     }
 }
 
-def invalid(message: str) -> bool {
-    object_error("TypeError", message);
+impl BoundArguments.drop {
+    for value in self.values {
+        jacpy_release(value);
+    }
+    jacpy_release(self.keywords);
+}
+
+impl invalid(message: str) -> bool {
+    object_error(PyExc_TypeError, message);
     return False;
 }
 
-def index_value(value: u64) -> (i64 | None) {
-    index = jacpy_index(value);
+impl index_value(value: ptr[PyObject]) -> (i64 | None) {
+    index = PyNumber_Index(value);
     if index == 0 {
         return None;
     }
     try {
-        result = jacpy_ssize(index);
+        result = PyLong_AsSsize_t(index);
         if result == -1 and jacpy_error_pending() != 0 {
             return None;
         }
@@ -53,114 +385,1459 @@ def index_value(value: u64) -> (i64 | None) {
     }
 }
 
-obj CallSignature {
-    has name: str,
-        names: list[str],
-        required_count: int,
-        positional_count: int,
-        positional_only: int = 0;
+impl KeywordArguments.add(key: ptr[PyObject], value: ptr[PyObject]) {
+    self.keys.append(key);
+    self.names.append(text_value(key) if jacpy_is_unicode(key) != 0 else "");
+    self.values.append(value);
+}
 
-    def bind(result: BoundArguments, args: u64, kwargs: u64) -> bool {
-        count = int(jacpy_tuple_size(args));
-        if count < 0 {
+impl KeywordArguments.find(name: str) -> ptr[PyObject] {
+    for i in range(len(self.keys)) {
+        if self.names[i] == name and jacpy_is_unicode(self.keys[i]) != 0 {
+            return self.values[i];
+        }
+    }
+    return NULL;
+}
+
+impl keywords_of_dict(kwargs: ptr[PyObject]) -> KeywordArguments {
+    found = KeywordArguments();
+    if kwargs == 0 {
+        return found;
+    }
+    position: i64 = 0;
+    key: ptr[PyObject] = NULL;
+    value: ptr[PyObject] = NULL;
+    while PyDict_Next(kwargs, &mut position, &mut key, &mut value) != 0 {
+        found.add(key, value);
+    }
+    return found;
+}
+
+impl keywords_of_vector(
+    args: ptr[ptr[PyObject]], nargs: int, kwnames: ptr[PyObject]
+) -> KeywordArguments {
+    found = KeywordArguments();
+    if kwnames == 0 {
+        return found;
+    }
+    count = int(PyTuple_Size(kwnames));
+    stack = args.view(nargs + count);
+    for i in range(count) {
+        found.add(PyTuple_GetItem(kwnames, i64(i)), stack[nargs + i]);
+    }
+    return found;
+}
+
+impl plural(count: int) -> str {
+    return "" if count == 1 else "s";
+}
+
+impl CallSignature.warn(message: str) -> bool {
+    text = jacpy_unicode_from_text(message);
+    if not text {
+        return False;
+    }
+    status = PyErr_WarnEx(PyExc_DeprecationWarning, PyUnicode_AsUTF8(text), 1);
+    jacpy_release(text);
+    return status == 0;
+}
+
+impl CallSignature.bind_values(
+    result: BoundArguments, positional: list[ptr[PyObject]], keywords: KeywordArguments
+) -> bool {
+    count = len(positional);
+    result.nargs = count;
+    if self.positional_warning
+        and self.positional_warn_range[0] < count
+        and count <= self.positional_warn_range[1]
+        and not self.warn(self.positional_warning) {
+        return False;
+    }
+    if not self.bind_arguments(result, positional, keywords) {
+        return False;
+    }
+    if self.keyword_warning {
+        passed = self.keyword_warn_required >= 0
+            and count < self.keyword_warn_required + 1;
+        for index in self.keyword_warn_optional {
+            if count < index + 1 and result.values[index] != NULL {
+                passed = True;
+            }
+        }
+        if passed and not self.warn(self.keyword_warning) {
             return False;
         }
-        if count > self.positional_count {
+    }
+    return True;
+}
+
+impl CallSignature.caller -> str {
+    return f"{self.name}()" if self.name else "function";
+}
+
+impl CallSignature.bind(
+    result: BoundArguments, args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> bool {
+    if self.bind_quick(result, args, kwargs) {
+        return True;
+    }
+    count = int(PyTuple_Size(args));
+    if count < 0 {
+        return False;
+    }
+    positional = [PyTuple_GetItem(args, i64(i)) for i in range(count)];
+    return self.bind_values(result, positional, keywords_of_dict(kwargs));
+}
+
+impl CallSignature.bind_vector(
+    result: BoundArguments, args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
+) -> bool {
+    if self.bind_vector_quick(result, args, nargs, kwnames) {
+        return True;
+    }
+    count = int(nargs);
+    positional: list[ptr[PyObject]] = [];
+    if count > 0 {
+        stack = args.view(count);
+        positional = [stack[i] for i in range(count)];
+    }
+    return self.bind_values(
+        result, positional, keywords_of_vector(args, count, kwnames)
+    );
+}
+
+impl CallSignature.bind_arguments(
+    result: BoundArguments, positional: list[ptr[PyObject]], keywords: KeywordArguments
+) -> bool {
+    parser = self.parser;
+    if parser == PARSE_AUTO {
+        parser = PARSE_POSITIONAL
+            if self.positional_only == len(self.names)
+            else PARSE_KEYWORDS;
+    }
+    count = len(positional);
+    if parser == PARSE_NOTHING and count > 0 {
+        return invalid(f"{self.name}() takes no positional arguments");
+    }
+    if parser == PARSE_NO_ARGUMENTS and (count > 0 or keywords.keys) {
+        return invalid(f"{self.name}() takes no arguments");
+    }
+    if keywords.keys
+        and parser in (PARSE_POSITIONAL, PARSE_FORMAT, PARSE_NOTHING, PARSE_GIVEN) {
+        return invalid(f"{self.name}() takes no keyword arguments");
+    }
+    if parser == PARSE_KEYWORDS {
+        return self.unpack_keywords(result, positional, keywords);
+    }
+    if parser == PARSE_FORMAT_KEYWORDS {
+        return self.format_keywords(result, positional, keywords);
+    }
+    if parser == PARSE_POSITIONAL {
+        if self.parser == PARSE_AUTO and not self.names and count > 0 {
+            return invalid(f"{self.name}() takes no arguments ({count} given)");
+        }
+        if not check_positional(
+            self.name, count, self.required_count, self.positional_count
+        ) {
+            return False;
+        }
+    } elif parser == PARSE_FORMAT {
+        low = self.required_count;
+        high = self.positional_count;
+        if count < low or count > high {
+            bound = low if count < low else high;
+            quantity = "exactly"
+                if low == high
+                else ("at least" if count < low else "at most");
             return invalid(
-                f"{self.name}() takes at most {self.positional_count} positional arguments ({count} given)"
+                f"{self.caller()} takes {quantity} {bound} argument{plural(bound)} ({count} given)"
             );
         }
+    }
+    for i in range(min(count, len(result.values))) {
+        result.values[i] = Py_NewRef(positional[i]);
+    }
+    return True;
+}
+
+impl CallSignature.keys -> list[ptr[PyObject]] {
+    if len(self.interned) != len(self.names) {
+        made: list[ptr[PyObject]] = [];
+        for name in self.names {
+            made.append(jacpy_unicode_intern_text(name));
+        }
+        self.interned = made;
+    }
+    return self.interned;
+}
+
+impl CallSignature.keyword_slot(key: ptr[PyObject], start: int) -> int {
+    known = self.keys();
+    for i in range(start, len(known)) {
+        if known[i] == key {
+            return i;
+        }
+    }
+    for i in range(start, len(known)) {
+        if known[i] != NULL and PyUnicode_Equal(known[i], key) == 1 {
+            return i;
+        }
+    }
+    return -1;
+}
+
+impl CallSignature.take(context: ptr[PyObject]) -> BoundArguments {
+    if current_interp() == ptr[u8](_PyInterpreterState_Main()) {
+        spare = self.spare;
+        if spare is not None {
+            self.spare = None;
+            spare.context = context;
+            return spare;
+        }
+    }
+    return BoundArguments([NULL for _ in self.names], context);
+}
+
+impl CallSignature.give(bound: BoundArguments) {
+    values = bound.values;
+    for i in range(len(values)) {
+        value = values[i];
+        if value {
+            values[i] = NULL;
+            jacpy_release(value);
+        }
+    }
+    keywords = bound.keywords;
+    if keywords {
+        bound.keywords = NULL;
+        jacpy_release(keywords);
+    }
+    if bound.failure_at >= 0 {
+        bound.failure = "";
+        bound.failure_at = -1;
+    }
+    bound.context = NULL;
+    bound.nargs = 0;
+    if current_interp() == ptr[u8](_PyInterpreterState_Main()) {
+        self.spare = bound;
+    }
+}
+
+impl CallSignature.resolved -> int {
+    if self.parser != PARSE_AUTO {
+        return self.parser;
+    }
+    return PARSE_POSITIONAL
+        if self.positional_only == len(self.names)
+        else PARSE_KEYWORDS;
+}
+
+impl CallSignature.plain(count: int) -> bool {
+    if self.positional_warning or self.keyword_warning {
+        return False;
+    }
+    parser = self.resolved();
+    if parser == PARSE_KEYWORDS {
+        return self.keyword_required == 0
+            and self.required_count <= count
+            and count <= self.positional_count;
+    }
+    if parser == PARSE_POSITIONAL or parser == PARSE_FORMAT {
+        return self.required_count <= count and count <= self.positional_count;
+    }
+    if parser == PARSE_NOTHING or parser == PARSE_NO_ARGUMENTS {
+        return count == 0;
+    }
+    return parser == PARSE_GIVEN;
+}
+
+impl CallSignature.bind_plain(
+    result: BoundArguments, args: ptr[ptr[PyObject]], count: int
+) -> bool {
+    if not self.plain(count) {
+        return False;
+    }
+    result.nargs = count;
+    values = result.values;
+    size = min(count, len(values));
+    if size > 0 {
+        given = args.view(size);
+        for i in range(size) {
+            values[i] = Py_NewRef(given[i]);
+        }
+    }
+    return True;
+}
+
+impl CallSignature.fill_keyword(
+    slots: ptr[ptr[PyObject]], key: ptr[PyObject], value: ptr[PyObject], start: int
+) -> bool {
+    if jacpy_is_unicode(key) == 0 {
+        return False;
+    }
+    slot = self.keyword_slot(key, start);
+    if slot < 0 or (slots + slot).view(1)[0] != NULL {
+        return False;
+    }
+    (slots + slot).view(1)[0] = value;
+    return True;
+}
+
+impl CallSignature.fill_slots(
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[ptr[PyObject]],
+    kwvalues: ptr[ptr[PyObject]],
+    nkw: i64,
+    kwargs: ptr[PyObject],
+    slots: ptr[ptr[PyObject]]
+) -> bool {
+    total = len(self.names);
+    posonly = self.positional_only;
+    maxpos = self.positional_count;
+    minpos = self.required_count;
+    count = int(nargs);
+    nkeys = int(jacpy_dict_size(kwargs)) if kwargs else int(nkw);
+    if count > maxpos or count < min(posonly, minpos) or count + nkeys > total {
+        return False;
+    }
+    if count > 0 {
+        given = args.view(count);
+        bound = slots.view(count);
         for i in range(count) {
-            result.values[i] = required(jacpy_tuple_item(args, i64(i)));
+            bound[i] = given[i];
         }
-        if kwargs != 0 {
-            items = required(jacpy_dict_items(kwargs));
-            try {
-                for i in range(int(jacpy_list_size(items))) {
-                    item = required(jacpy_list_item(items, i64(i)));
-                    key: u64 = 0;
-                    try {
-                        key = required(jacpy_tuple_item(item, 0));
-                        if jacpy_is_unicode(key) == 0 {
-                            return invalid("keywords must be strings");
-                        }
-                        name = text_value(key);
-                        index = -1;
-                        for j in range(self.positional_only, len(self.names)) {
-                            if self.names[j] == name {
-                                index = j;
-                                break;
-                            }
-                        }
-                        if index < 0 {
-                            return invalid(
-                                f"{self.name}() got an unexpected keyword argument '{name}'"
-                            );
-                        }
-                        if result.values[index] != 0 {
-                            return invalid(
-                                f"argument for {self.name}() given by name ('{name}') and position ({index
-                                    + 1})"
-                            );
-                        }
-                        result.values[index] = required(jacpy_tuple_item(item, 1));
-                    } finally {
-                        jacpy_release(key);
-                        jacpy_release(item);
-                    }
-                }
-            } finally {
-                jacpy_release(items);
+    }
+    start = max(count, posonly);
+    if kwargs {
+        position: i64 = 0;
+        key: ptr[PyObject] = NULL;
+        value: ptr[PyObject] = NULL;
+        while PyDict_Next(kwargs, &mut position, &mut key, &mut value) != 0 {
+            if not self.fill_keyword(slots, key, value, start) {
+                return False;
             }
         }
-        for i in range(self.required_count) {
-            if result.values[i] == 0 {
-                return invalid(
-                    f"{self.name}() missing required argument '{self.names[i]}' (pos {i
-                        + 1})"
-                );
+    } elif nkeys > 0 {
+        keys = kwnames.view(nkeys);
+        values = kwvalues.view(nkeys);
+        for j in range(nkeys) {
+            if not self.fill_keyword(slots, keys[j], values[j], start) {
+                return False;
             }
+        }
+    }
+    required = maxpos + self.keyword_required if self.keyword_required else minpos;
+    if total > 0 {
+        filled = slots.view(total);
+        for i in range(total) {
+            if filled[i] == NULL and (i < minpos or (maxpos <= i and i < required)) {
+                return False;
+            }
+        }
+    }
+    return True;
+}
+
+impl CallSignature.bind_slots(
+    result: BoundArguments,
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[ptr[PyObject]],
+    kwvalues: ptr[ptr[PyObject]],
+    nkw: i64,
+    kwargs: ptr[PyObject]
+) -> bool {
+    if self.positional_warning
+        or self.keyword_warning
+        or self.resolved() != PARSE_KEYWORDS {
+        return False;
+    }
+    total = len(self.names);
+    if total > ARGUMENT_SLOTS {
+        return False;
+    }
+    slots: own ArgumentSlots = ArgumentSlots();
+    buffer = ptr[ptr[PyObject]](jacpy_stack_address(&mut slots));
+    if not self.fill_slots(args, nargs, kwnames, kwvalues, nkw, kwargs, buffer) {
+        return False;
+    }
+    result.nargs = int(nargs);
+    if total > 0 {
+        values = result.values;
+        filled = buffer.view(total);
+        for i in range(total) {
+            if filled[i] {
+                values[i] = Py_NewRef(filled[i]);
+            }
+        }
+    }
+    return True;
+}
+
+impl CallSignature.bind_quick(
+    result: BoundArguments, args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> bool {
+    count = PyTuple_Size(args);
+    if count < 0 {
+        return False;
+    }
+    items = jacpy_tuple_items(args);
+    if not kwargs or jacpy_dict_size(kwargs) == 0 {
+        return self.bind_plain(result, items, int(count));
+    }
+    none = ptr[ptr[PyObject]](0);
+    return self.bind_slots(result, items, count, none, none, 0, kwargs);
+}
+
+impl CallSignature.bind_vector_quick(
+    result: BoundArguments, args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
+) -> bool {
+    nkw = PyTuple_Size(kwnames) if kwnames else i64(0);
+    if nkw == 0 {
+        return self.bind_plain(result, args, int(nargs));
+    }
+    return self.bind_slots(
+        result, args, nargs, kwnames_items(kwnames), args + nargs, nkw, NULL
+    );
+}
+
+impl CallSignature.unpack_array(
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[ptr[PyObject]],
+    kwvalues: ptr[ptr[PyObject]],
+    nkw: i64
+) -> ptr[ptr[PyObject]] {
+    total = len(self.names);
+    array = ptr[ptr[PyObject]](PyMem_Calloc(u64(max(total, 1)), u64(8)));
+    if array == 0 {
+        return ptr[ptr[PyObject]](0);
+    }
+    if not self.fill_slots(args, nargs, kwnames, kwvalues, nkw, NULL, array) {
+        PyMem_Free(array);
+        return ptr[ptr[PyObject]](0);
+    }
+    return array;
+}
+
+impl CallSignature.unpack_keywords(
+    result: BoundArguments, positional: list[ptr[PyObject]], keywords: KeywordArguments
+) -> bool {
+    nargs = len(positional);
+    nkwargs = len(keywords.keys);
+    posonly = self.positional_only;
+    minpos = self.required_count;
+    maxpos = self.positional_count;
+    minkw = self.keyword_required;
+    maxargs = len(self.names);
+    reqlimit = maxpos + minkw if minkw else minpos;
+    minposonly = min(posonly, minpos);
+    if nkwargs == 0 and minkw == 0 and minpos <= nargs and nargs <= maxpos {
+        for i in range(nargs) {
+            result.values[i] = Py_NewRef(positional[i]);
         }
         return True;
     }
+    caller = self.caller();
+    if nargs + nkwargs > maxargs {
+        return invalid(
+            f"{caller} takes at most {maxargs} {'keyword '
+                if nargs == 0
+                else ''}argument{plural(maxargs)} ({nargs + nkwargs} given)"
+        );
+    }
+    if nargs > maxpos {
+        if maxpos == 0 {
+            return invalid(f"{caller} takes no positional arguments");
+        }
+        return invalid(
+            f"{caller} takes {'at most' if minpos < maxpos else 'exactly'} {maxpos} positional argument{plural(
+                maxpos
+            )} ({nargs} given)"
+        );
+    }
+    if nargs < minposonly {
+        return invalid(
+            f"{caller} takes {'at least' if minposonly < maxpos else 'exactly'} {minposonly} positional argument{plural(
+                minposonly
+            )} ({nargs} given)"
+        );
+    }
+    for i in range(nargs) {
+        result.values[i] = Py_NewRef(positional[i]);
+    }
+    remaining = nkwargs;
+    for i in range(max(nargs, posonly), maxargs) {
+        current: ptr[PyObject] = NULL;
+        if remaining {
+            current = keywords.find(self.names[i]);
+        } elif i >= reqlimit {
+            break;
+        }
+        if current {
+            result.values[i] = Py_NewRef(current);
+            remaining -= 1;
+        } elif i < minpos or (maxpos <= i and i < reqlimit) {
+            return invalid(
+                f"{caller} missing required argument '{self.names[i]}' (pos {i + 1})"
+            );
+        }
+    }
+    if remaining > 0 {
+        for i in range(posonly, nargs) {
+            if keywords.find(self.names[i]) {
+                return invalid(
+                    f"argument for {caller} given by name ('{self.names[
+                        i
+                    ]}') and position ({i + 1})"
+                );
+            }
+        }
+        return invalid(unexpected_keyword(self.name, self.names[posonly:], keywords));
+    }
+    return True;
 }
 
-def invoke(
-    signature: CallSignature,
-    args: u64,
-    kwargs: u64,
-    implementation: Callable[[BoundArguments], u64],
-    context: u64 = 0,
-    forward_keywords: bool = False
-) -> u64 {
-    # The call frame lives outside the exception region: every exit releases
-    # all converted arguments, including a failure in a nested conversion.
-    bound = BoundArguments([u64(0) for _ in signature.names], context);
-    if forward_keywords and kwargs != 0 {
-        bound.keywords = jacpy_retain(kwargs);
+impl CallSignature.format_keywords(
+    result: BoundArguments, positional: list[ptr[PyObject]], keywords: KeywordArguments
+) -> bool {
+    nargs = len(positional);
+    remaining = len(keywords.keys);
+    total = len(self.names);
+    pos = self.positional_only;
+    caller = self.caller();
+    if nargs + remaining > total {
+        return invalid(
+            f"{caller} takes at most {total} {'keyword ' if nargs == 0 else ''}argument{plural(
+                total
+            )} ({nargs + remaining} given)"
+        );
     }
-    try {
-        if not signature.bind(bound, args, u64(0) if forward_keywords else kwargs) {
-            return 0;
+
+    unbounded = 0x7FFFFFFF;
+    optional = self.keyword_required == 0 and self.required_count < total;
+    low = self.required_count if optional else unbounded;
+    high = self.positional_count if self.positional_count < total else unbounded;
+    skipping = False;
+    i = 0;
+    while i < total {
+        if i == high {
+            if skipping {
+                break;
+            }
+            if high < nargs {
+                if high == 0 {
+                    result.fail_at(i, f"{caller} takes no positional arguments");
+                } else {
+                    result.fail_at(
+                        i,
+                        f"{caller} takes {'at most' if low != unbounded else 'exactly'} {high} positional argument{plural(
+                            high
+                        )} ({nargs} given)"
+                    );
+                }
+                return True;
+            }
         }
+        if not skipping {
+            current: ptr[PyObject] = NULL;
+            if i < nargs {
+                current = positional[i];
+            } elif remaining and i >= pos {
+                current = keywords.find(self.names[i]);
+                if current {
+                    remaining -= 1;
+                }
+            }
+            if current {
+                result.values[i] = Py_NewRef(current);
+                i += 1;
+                continue;
+            }
+            if i < low {
+                if i < pos {
+                    skipping = True;
+                } else {
+                    result.fail_at(
+                        i,
+                        f"{caller} missing required argument '{self.names[i]}' (pos {i
+                            + 1})"
+                    );
+                    return True;
+                }
+            }
+            if not remaining and not skipping {
+                return True;
+            }
+        }
+        i += 1;
+    }
+    if skipping {
+        least = min(pos, low);
+        result.fail_at(
+            i,
+            f"{caller} takes {'at least' if least < i else 'exactly'} {least} positional argument{plural(
+                least
+            )} ({nargs} given)"
+        );
+        return True;
+    }
+    if remaining > 0 {
+        for j in range(pos, nargs) {
+            if keywords.find(self.names[j]) {
+                result.fail_at(
+                    total,
+                    f"argument for {caller} given by name ('{self.names[
+                        j
+                    ]}') and position ({j + 1})"
+                );
+                return True;
+            }
+        }
+        result.fail_at(
+            total, unexpected_keyword(self.name, self.names[pos:], keywords)
+        );
+    }
+    return True;
+}
+
+impl check_positional(name: str, nargs: int, low: int, high: int) -> bool {
+    if nargs < low {
+        qualifier = "" if low == high else "at least ";
+        return invalid(
+            f"{name} expected {qualifier}{low} argument{plural(low)}, got {nargs}"
+        );
+    }
+    if nargs > high {
+        qualifier = "" if low == high else "at most ";
+        return invalid(
+            f"{name} expected {qualifier}{high} argument{plural(high)}, got {nargs}"
+        );
+    }
+    return True;
+}
+
+impl unexpected_keyword(
+    name: str, accepted: list[str], keywords: KeywordArguments
+) -> str {
+    shown = f"{name}()" if name else "this function";
+    for i in range(len(keywords.keys)) {
+        key = keywords.keys[i];
+        if jacpy_is_unicode(key) == 0 {
+            return "keywords must be strings";
+        }
+        if keywords.names[i] in accepted {
+            continue;
+        }
+        candidates = required(PyList_New(i64(len(accepted))));
+        suggestion: ptr[PyObject] = NULL;
+        try {
+            for j in range(len(accepted)) {
+                if PyList_SetItem(
+                    candidates, i64(j), required(jacpy_unicode_from_text(accepted[j]))
+                )
+                    < 0 {
+                    raise boundary_failure();
+                }
+            }
+            suggestion = _Py_CalculateSuggestions(candidates, key);
+            if suggestion {
+                return f"{shown} got an unexpected keyword argument '{keywords.names[
+                    i
+                ]}'. Did you mean '{text_value(suggestion)}'?";
+            }
+            return f"{shown} got an unexpected keyword argument '{keywords.names[i]}'";
+        } finally {
+            jacpy_release(suggestion);
+            jacpy_release(candidates);
+        }
+    }
+    return f"invalid keyword argument for {shown}";
+}
+
+impl call_bound(
+    bound: BoundArguments, implementation: Callable[[BoundArguments], ptr[PyObject]]
+) -> ptr[PyObject] {
+    try {
         return implementation(bound);
     } except boundary_failure {
-        return 0;
+        return NULL;
     }
 }
 
-def invoke_one(value: u64, implementation: Callable[[u64], u64]) -> u64 {
+impl invoke(
+    signature: CallSignature,
+    args: ptr[PyObject],
+    kwargs: ptr[PyObject],
+    implementation: Callable[[BoundArguments], ptr[PyObject]],
+    context: ptr[PyObject] = 0,
+    forward_keywords: bool = False,
+    checked: bool = True
+) -> ptr[PyObject] {
+    bound = signature.take(context);
+    if not checked {
+        if signature.parser == PARSE_NOTHING {
+            result = call_bound(bound, implementation);
+            signature.give(bound);
+            return result;
+        }
+        kwargs = NULL;
+    }
+    if forward_keywords and kwargs != 0 {
+        bound.keywords = Py_NewRef(kwargs);
+    }
+    if not bind_checked(signature, bound, args, NULL if forward_keywords else kwargs) {
+        signature.give(bound);
+        return NULL;
+    }
+    result = call_bound(bound, implementation);
+    signature.give(bound);
+    return result;
+}
+
+impl bind_checked(
+    signature: CallSignature,
+    bound: BoundArguments,
+    args: ptr[PyObject],
+    kwargs: ptr[PyObject]
+) -> bool {
+    if signature.bind_quick(bound, args, kwargs) {
+        return True;
+    }
+    try {
+        return signature.bind(bound, args, kwargs);
+    } except boundary_failure {
+        return False;
+    }
+}
+
+impl bind_vector_checked(
+    signature: CallSignature,
+    bound: BoundArguments,
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> bool {
+    if signature.bind_vector_quick(bound, args, nargs, kwnames) {
+        return True;
+    }
+    try {
+        return signature.bind_vector(bound, args, nargs, kwnames);
+    } except boundary_failure {
+        return False;
+    }
+}
+
+impl invoke_vector(
+    signature: CallSignature,
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject],
+    implementation: Callable[[BoundArguments], ptr[PyObject]],
+    context: ptr[PyObject] = 0
+) -> ptr[PyObject] {
+    bound = signature.take(context);
+    if not bind_vector_checked(signature, bound, args, nargs, kwnames) {
+        signature.give(bound);
+        return NULL;
+    }
+    result = call_bound(bound, implementation);
+    signature.give(bound);
+    return result;
+}
+
+impl call_values(
+    bound: BoundArguments,
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]]
+) -> ptr[PyObject] {
+    count = len(bound.values);
+    if count == 0 {
+        return implementation(bound.context, ptr[ptr[PyObject]](0), i64(0));
+    }
+    if count <= ARGUMENT_SLOTS {
+        slots: own ArgumentSlots = ArgumentSlots();
+        buffer = ptr[ptr[PyObject]](jacpy_stack_address(&mut slots));
+        values = buffer.view(count);
+        for i in range(count) {
+            values[i] = bound.values[i];
+        }
+        return implementation(bound.context, buffer, i64(count));
+    }
+    array = ptr[ptr[PyObject]](PyMem_Malloc(u64(count * 8)));
+    if array == 0 {
+        return PyErr_NoMemory();
+    }
+    copied = array.view(count);
+    for i in range(count) {
+        copied[i] = bound.values[i];
+    }
+    result = implementation(bound.context, array, i64(count));
+    PyMem_Free(array);
+    return result;
+}
+
+impl call_bound_values(
+    signature: CallSignature,
+    bound: BoundArguments,
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]]
+) -> ptr[PyObject] {
+    result = call_values(bound, implementation);
+    signature.give(bound);
+    return result;
+}
+
+impl unpack_stack(
+    signature: CallSignature,
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[ptr[PyObject]] {
+    nkw = PyTuple_Size(kwnames) if kwnames else i64(0);
+    return signature.unpack_array(
+        args, nargs, kwnames_items(kwnames), args + nargs, nkw
+    );
+}
+
+impl unpack_mapping(
+    signature: CallSignature, args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[ptr[PyObject]] {
+    total = len(signature.names);
+    array = ptr[ptr[PyObject]](PyMem_Calloc(u64(max(total, 1)), u64(8)));
+    if array == 0 {
+        return ptr[ptr[PyObject]](0);
+    }
+    none = ptr[ptr[PyObject]](0);
+    if not signature.fill_slots(
+        jacpy_tuple_items(args), PyTuple_Size(args), none, none, 0, kwargs, array
+    ) {
+        PyMem_Free(array);
+        return none;
+    }
+    return array;
+}
+
+impl kwnames_items(kwnames: ptr[PyObject]) -> ptr[ptr[PyObject]] {
+    return jacpy_tuple_items(kwnames) if kwnames else ptr[ptr[PyObject]](0);
+}
+
+impl invoke_keywords(
+    signature: CallSignature,
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject],
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]],
+    context: ptr[PyObject]
+) -> ptr[PyObject] {
+    total = len(signature.names);
+    nkw = PyTuple_Size(kwnames) if kwnames else i64(0);
+    if total <= ARGUMENT_SLOTS {
+        slots: own ArgumentSlots = ArgumentSlots();
+        buffer = ptr[ptr[PyObject]](jacpy_stack_address(&mut slots));
+        if signature.fill_slots(
+            args, nargs, kwnames_items(kwnames), args + nargs, nkw, NULL, buffer
+        ) {
+            return implementation(context, buffer, i64(total));
+        }
+    } else {
+        values = signature.unpack_array(
+            args, nargs, kwnames_items(kwnames), args + nargs, nkw
+        );
+        if values {
+            unpacked = implementation(context, values, i64(total));
+            PyMem_Free(values);
+            return unpacked;
+        }
+    }
+    return invoke_stack(signature, args, nargs, kwnames, implementation, context);
+}
+
+impl invoke_mapping(
+    signature: CallSignature,
+    args: ptr[PyObject],
+    kwargs: ptr[PyObject],
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]],
+    context: ptr[PyObject],
+    checked: bool = True
+) -> ptr[PyObject] {
+    if not checked {
+        return invoke_tuple(signature, args, kwargs, implementation, context, False);
+    }
+    total = len(signature.names);
+    if total <= ARGUMENT_SLOTS {
+        slots: own ArgumentSlots = ArgumentSlots();
+        buffer = ptr[ptr[PyObject]](jacpy_stack_address(&mut slots));
+        none = ptr[ptr[PyObject]](0);
+        if signature.fill_slots(
+            jacpy_tuple_items(args), PyTuple_Size(args), none, none, 0, kwargs, buffer
+        ) {
+            return implementation(context, buffer, i64(total));
+        }
+    } else {
+        values = unpack_mapping(signature, args, kwargs);
+        if values {
+            unpacked = implementation(context, values, i64(total));
+            PyMem_Free(values);
+            return unpacked;
+        }
+    }
+    return invoke_tuple(signature, args, kwargs, implementation, context);
+}
+
+impl invoke_stack(
+    signature: CallSignature,
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject],
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]],
+    context: ptr[PyObject]
+) -> ptr[PyObject] {
+    bound = signature.take(context);
+    if not bind_vector_checked(signature, bound, args, nargs, kwnames) {
+        signature.give(bound);
+        return NULL;
+    }
+    return call_bound_values(signature, bound, implementation);
+}
+
+impl invoke_tuple(
+    signature: CallSignature,
+    args: ptr[PyObject],
+    kwargs: ptr[PyObject],
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]],
+    context: ptr[PyObject],
+    checked: bool = True
+) -> ptr[PyObject] {
+    if not checked {
+        if signature.parser == PARSE_NOTHING {
+            return implementation(context, ptr[ptr[PyObject]](0), i64(0));
+        }
+        kwargs = NULL;
+    }
+    bound = signature.take(context);
+    if not bind_checked(signature, bound, args, kwargs) {
+        signature.give(bound);
+        return NULL;
+    }
+    return call_bound_values(signature, bound, implementation);
+}
+
+impl invoke_given(
+    value: ptr[PyObject],
+    implementation: Callable[[BoundArguments], ptr[PyObject]],
+    context: ptr[PyObject] = 0
+) -> ptr[PyObject] {
+    bound = BoundArguments([Py_NewRef(value)] if value else [], context);
+    return call_bound(bound, implementation);
+}
+
+impl vector_tuple(args: ptr[ptr[PyObject]], nargs: i64) -> ptr[PyObject] {
+    result = PyTuple_New(nargs);
+    if not result or nargs == 0 {
+        return result;
+    }
+    stack = args.view(int(nargs));
+    for i in range(int(nargs)) {
+        if PyTuple_SetItem(result, i64(i), Py_NewRef(stack[i])) < 0 {
+            jacpy_release(result);
+            return NULL;
+        }
+    }
+    return result;
+}
+
+impl invoke_one(
+    value: ptr[PyObject], implementation: Callable[[ptr[PyObject]], ptr[PyObject]]
+) -> ptr[PyObject] {
     try {
         return implementation(value);
     } except boundary_failure {
-        return 0;
+        return NULL;
     }
 }
 
-def character_value(value: u64, context: str) -> (i64 | None) {
+impl character_value(value: ptr[PyObject], context: str) -> (i64 | None) {
     if jacpy_is_unicode(value) == 0 or jacpy_unicode_size(value) != 1 {
-        object_error("TypeError", f"{context}() argument must be a unicode character");
+        object_error(
+            PyExc_TypeError, f"{context}() argument must be a unicode character"
+        );
         return None;
     }
-    return jacpy_unicode_char(value, 0);
+    return PyUnicode_ReadChar(value, 0);
+}
+
+
+impl format_plan(units: str) -> FormatPlan {
+    if units in FORMAT_PLANS {
+        return FORMAT_PLANS[units];
+    }
+
+    format: list[str] = [];
+    for character in units {
+        if character == "!" and format and format[-1] == "O" {
+            format[-1] = "O!";
+        } else {
+            format.append(character);
+        }
+    }
+    kinds = [
+        unit
+        for unit in format
+        if unit != "|" and unit != "$"
+    ];
+    optional = [
+        unit
+        for unit in format
+        if unit != "$"
+    ];
+    positional = [
+        unit
+        for unit in format
+        if unit != "|"
+    ];
+    codes: list[int] = [];
+    for unit in kinds {
+        codes.append(256 if unit == "O!" else ord(unit));
+    }
+    plan = FormatPlan(
+        kinds=kinds,
+        codes=codes,
+        minimum=optional.index("|") if "|" in optional else len(kinds),
+        maximum=positional.index("$") if "$" in positional else len(kinds),
+        optional="|" in format,
+        typed="O!" in kinds
+    );
+    FORMAT_PLANS[units] = plan;
+    return plan;
+}
+
+impl ArgumentFormat.caller -> str {
+    return f"{self.name}()" if self.name else "function";
+}
+
+impl ArgumentFormat.mismatch(position: int, expected: str, value: ptr[PyObject]) {
+    shown = "None" if value == Py_None else type_name(value);
+    self.reject(position, f"must be {expected}, not {shown}");
+}
+
+impl ArgumentFormat.reject(position: int, detail: str) {
+    if self.message {
+        object_error(PyExc_TypeError, self.message);
+        raise boundary_failure();
+    }
+    caller = f"{self.name}() " if self.name else "";
+    object_error(PyExc_TypeError, f"{caller}argument {position} {detail}");
+    raise boundary_failure();
+}
+
+impl ArgumentFormat.units_of(format: str) -> list[str] {
+    units: list[str] = [];
+    for character in format {
+        if character == "!" and units and units[-1] == "O" {
+            units[-1] = "O!";
+        } else {
+            units.append(character);
+        }
+    }
+    return units;
+}
+
+impl ArgumentFormat.expected_types(kinds: list[str]) -> list[ptr[PyObject]] {
+    expected: list[ptr[PyObject]] = [];
+    next_type = 0;
+    for unit in kinds {
+        if unit == "O!" {
+            expected.append(self.types[next_type]);
+            next_type += 1;
+        } else {
+            expected.append(NULL);
+        }
+    }
+    return expected;
+}
+
+impl ArgumentFormat.failed -> bool {
+    return bool(PyErr_Occurred());
+}
+
+impl ArgumentFormat.signed_range(value: i64, low: i64, high: i64, kind: str) -> i64 {
+    if value > high {
+        object_error(PyExc_OverflowError, f"{kind} is greater than maximum");
+        raise boundary_failure();
+    }
+    if value < low {
+        object_error(PyExc_OverflowError, f"{kind} is less than minimum");
+        raise boundary_failure();
+    }
+    return value;
+}
+
+impl ArgumentFormat.convert(
+    code: int, value: ptr[PyObject], position: int, type: ptr[PyObject] = NULL
+) -> ArgumentValue {
+    result = ArgumentValue(given=True, object=value);
+    if code == 79 {
+        return result;
+    }
+    if code == 105 or code == 108 or code == 104 {
+        wide = PyLong_AsLong(value);
+        if wide == -1 and self.failed() {
+            raise boundary_failure();
+        }
+        if code == 105 {
+            result.signed = self.signed_range(
+                wide, -2147483648, 2147483647, "signed integer"
+            );
+        } elif code == 104 {
+            result.signed = self.signed_range(
+                wide, -32768, 32767, "signed short integer"
+            );
+        } else {
+            result.signed = wide;
+        }
+        return result;
+    }
+    if code == 83 {
+        if jacpy_is_bytes(value) == 0 {
+            self.mismatch(position, "bytes", value);
+        }
+        return result;
+    }
+    if code == 256 {
+        if PyType_IsSubtype(Py_TYPE(value), type) == 0 {
+            expected = required(
+                c_string_text(ptr[PyTypeObject](type).view(1)[0].tp_name)
+            );
+            try {
+                self.mismatch(position, text_value(expected), value);
+            } finally {
+                jacpy_release(expected);
+            }
+        }
+        return result;
+    }
+    if code == 67 {
+        if jacpy_is_unicode(value) == 0 {
+            self.mismatch(position, "a unicode character", value);
+        }
+        length = jacpy_unicode_size(value);
+        if length != 1 {
+            self.reject(
+                position,
+                f"must be a unicode character, not a string of length {length}"
+            );
+        }
+        result.signed = PyUnicode_ReadChar(value, 0);
+        return result;
+    }
+    if code == 85 or code == 115 {
+        if jacpy_is_unicode(value) == 0 {
+            self.mismatch(position, "str", value);
+        }
+        if code == 115 {
+            size: i64 = 0;
+            if PyUnicode_AsUTF8AndSize(value, &mut size).is_null() {
+                raise boundary_failure();
+            }
+            result.text = text_value(value);
+            if "\x00" in result.text {
+                object_error(PyExc_ValueError, "embedded null character");
+                raise boundary_failure();
+            }
+        }
+        return result;
+    }
+    if code == 112 {
+        truth = PyObject_IsTrue(value);
+        if truth < 0 {
+            raise boundary_failure();
+        }
+        result.flag = truth != 0;
+        return result;
+    }
+    if code == 110 {
+        index = PyNumber_Index(value);
+        if not index {
+            raise boundary_failure();
+        }
+        result.signed = PyLong_AsSsize_t(index);
+        jacpy_release(index);
+        if result.signed == -1 and self.failed() {
+            raise boundary_failure();
+        }
+        return result;
+    }
+    if code == 76 {
+        result.signed = PyLong_AsLongLong(value);
+        if result.signed == -1 and self.failed() {
+            raise boundary_failure();
+        }
+        return result;
+    }
+    if code == 66 or code == 72 or code == 73 or code == 107 or code == 75 {
+        if (code == 107 or code == 75) and PyIndex_Check(value) == 0 {
+            self.mismatch(position, "int", value);
+        }
+        result.unsigned = PyLong_AsUnsignedLongLongMask(value)
+            if code == 75
+            else PyLong_AsUnsignedLongMask(value);
+        if result.unsigned == u64(0xFFFFFFFFFFFFFFFF) and self.failed() {
+            raise boundary_failure();
+        }
+        if code == 66 {
+            result.unsigned = result.unsigned & u64(0xFF);
+        } elif code == 72 {
+            result.unsigned = result.unsigned & u64(0xFFFF);
+        } elif code == 73 {
+            result.unsigned = result.unsigned & u64(0xFFFFFFFF);
+        }
+        return result;
+    }
+    wide = PyLong_AsLong(value);
+    if wide == -1 and self.failed() {
+        raise boundary_failure();
+    }
+    result.signed = wide;
+    return result;
+}
+
+impl ArgumentFormat.arity(args: ptr[PyObject], minimum: int, maximum: int) -> int {
+    count = int(PyTuple_Size(args));
+    if count < 0 {
+        raise boundary_failure();
+    }
+    if count < minimum or count > maximum {
+        if self.message {
+            object_error(PyExc_TypeError, self.message);
+        } else {
+            bound = minimum if count < minimum else maximum;
+            quantity = "exactly"
+                if minimum == maximum
+                else ("at least" if count < minimum else "at most");
+            plural = "" if bound == 1 else "s";
+            object_error(
+                PyExc_TypeError,
+                f"{self.caller()} takes {quantity} {bound} argument{plural} ({count} given)"
+            );
+        }
+        raise boundary_failure();
+    }
+    return count;
+}
+
+impl ArgumentFormat.parse(args: ptr[PyObject], units: str) -> list[ArgumentValue] {
+    plan = format_plan(units);
+    codes = plan.codes;
+    total = len(codes);
+    count = self.arity(args, plan.minimum, total);
+    values: list[ArgumentValue] = [];
+    if plan.typed {
+        expected = self.expected_types(plan.kinds);
+        for i in range(total) {
+            values.append(
+                self.convert(
+                    codes[i], PyTuple_GetItem(args, i64(i)), i + 1, expected[i]
+                )
+                    if i < count
+                    else ABSENT
+            );
+        }
+        return values;
+    }
+    for i in range(total) {
+        values.append(
+            self.convert(codes[i], PyTuple_GetItem(args, i64(i)), i + 1)
+                if i < count
+                else ABSENT
+        );
+    }
+    return values;
+}
+
+impl ArgumentFormat.too_many_arguments(count: int, nargs: int, given: int) {
+    shown = self.name or "function";
+    called = "()" if self.name else "";
+    object_error(
+        PyExc_TypeError,
+        f"{shown}{called} takes at most {count} {'keyword '
+            if nargs == 0
+            else ''}argument{'' if count == 1 else 's'} ({given} given)"
+    );
+    raise boundary_failure();
+}
+
+impl ArgumentFormat.too_many_positional(maximum: int, nargs: int, optional: bool) {
+    shown = self.name or "function";
+    called = "()" if self.name else "";
+    if maximum == 0 {
+        object_error(PyExc_TypeError, f"{shown}{called} takes no positional arguments");
+    } else {
+        quantity = "at most" if optional else "exactly";
+        object_error(
+            PyExc_TypeError,
+            f"{shown}{called} takes {quantity} {maximum} positional argument{''
+                if maximum == 1
+                else 's'} ({nargs} given)"
+        );
+    }
+    raise boundary_failure();
+}
+
+impl ArgumentFormat.missing_keyword(keyword: str, position: int) {
+    shown = self.name or "function";
+    called = "()" if self.name else "";
+    object_error(
+        PyExc_TypeError,
+        f"{shown}{called} missing required argument '{keyword}' (pos {position})"
+    );
+    raise boundary_failure();
+}
+
+impl ArgumentFormat.parse_keywords(
+    args: ptr[PyObject], kwargs: ptr[PyObject], units: str, keywords: list[str]
+) -> list[ArgumentValue] {
+    plan = format_plan(units);
+    codes = plan.codes;
+    typed = plan.typed;
+    expected = self.expected_types(plan.kinds) if typed else [];
+    count = len(keywords);
+    minimum = plan.minimum;
+    maximum = plan.maximum;
+    nargs = int(PyTuple_Size(args));
+    nkwargs = int(PyDict_Size(kwargs)) if kwargs else 0;
+    if nargs + nkwargs > count {
+        self.too_many_arguments(count, nargs, nargs + nkwargs);
+    }
+    values = [ABSENT for _ in range(count)];
+    remaining = nkwargs;
+    for i in range(count) {
+        if i == maximum and maximum < nargs {
+            self.too_many_positional(maximum, nargs, plan.optional);
+        }
+        if i < nargs {
+            values[i] = self.convert(
+                codes[i],
+                PyTuple_GetItem(args, i64(i)),
+                i + 1,
+                expected[i] if typed else NULL
+            );
+            continue;
+        }
+        if remaining > 0 {
+            (status, found) = dict_get_text(kwargs, keywords[i]);
+            if status < 0 {
+                raise boundary_failure();
+            }
+            if found {
+                remaining -= 1;
+                try {
+                    values[i] = self.convert(
+                        codes[i], found, i + 1, expected[i] if typed else NULL
+                    );
+                } finally {
+                    jacpy_release(found);
+                }
+                continue;
+            }
+        }
+        if i < minimum {
+            self.missing_keyword(keywords[i], i + 1);
+        }
+        if remaining == 0 {
+            return values;
+        }
+    }
+    if remaining > 0 {
+        self.extraneous_keyword(args, kwargs, keywords);
+    }
+    return values;
+}
+
+impl ArgumentFormat.extraneous_keyword(
+    args: ptr[PyObject], kwargs: ptr[PyObject], keywords: list[str]
+) {
+    shown = self.name or "function";
+    called = "()" if self.name else "";
+    for i in range(int(PyTuple_Size(args))) {
+        (status, found) = dict_get_text(kwargs, keywords[i]);
+        if status < 0 {
+            raise boundary_failure();
+        }
+        if found {
+            jacpy_release(found);
+            object_error(
+                PyExc_TypeError,
+                f"argument for {shown}{called} given by name ('{keywords[
+                    i
+                ]}') and position ({i + 1})"
+            );
+            raise boundary_failure();
+        }
+    }
+    items = required(PyDict_Items(kwargs));
+    try {
+        for j in range(int(jacpy_list_size(items))) {
+            item = required(PyList_GetItemRef(items, i64(j)));
+            key = NULL;
+            try {
+                key = required(jacpy_tuple_item(item, 0));
+                if jacpy_is_unicode(key) == 0 {
+                    object_error(PyExc_TypeError, "keywords must be strings");
+                    raise boundary_failure();
+                }
+                if text_value(key) in keywords {
+                    continue;
+                }
+                self.unexpected_keyword(key, keywords);
+            } finally {
+                jacpy_release(key);
+                jacpy_release(item);
+            }
+        }
+    } finally {
+        jacpy_release(items);
+    }
+    object_error(
+        PyExc_TypeError,
+        f"invalid keyword argument for {self.name or 'this function'}{called}"
+    );
+    raise boundary_failure();
+}
+
+impl ArgumentFormat.unexpected_keyword(key: ptr[PyObject], keywords: list[str]) {
+    shown = self.name or "this function";
+    called = "()" if self.name else "";
+    candidates = required(PyList_New(i64(len(keywords))));
+    suggestion = NULL;
+    try {
+        for i in range(len(keywords)) {
+            if PyList_SetItem(
+                candidates, i64(i), required(jacpy_unicode_from_text(keywords[i]))
+            )
+                < 0 {
+                raise boundary_failure();
+            }
+        }
+        suggestion = _Py_CalculateSuggestions(candidates, key);
+        if suggestion {
+            object_error(
+                PyExc_TypeError,
+                f"{shown}{called} got an unexpected keyword argument '{text_value(
+                    key
+                )}'. Did you mean '{text_value(suggestion)}'?"
+            );
+        } else {
+            object_error(
+                PyExc_TypeError,
+                f"{shown}{called} got an unexpected keyword argument '{text_value(
+                    key
+                )}'"
+            );
+        }
+    } finally {
+        jacpy_release(suggestion);
+        jacpy_release(candidates);
+    }
+    raise boundary_failure();
 }

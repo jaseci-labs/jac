@@ -1,9 +1,9 @@
-"""Probe for the native `shutil.rmtree`: argv[1] is the mode, argv[2] the tree.
+"""Probe for the native `shutil.rmtree` and `shutil.move`: argv[1] is the mode, argv[2] the tree.
 
 `ignore` removes best-effort and reports whether the tree is gone; `strict`
 removes with the default (raising) behavior, so a failure surfaces as an
 uncaught exception whose message must name the entry that could not be
-removed.
+removed and why; `move` relocates argv[2] to argv[3] the same way.
 """
 import os;
 import shutil;
@@ -17,6 +17,9 @@ with entry {
         shutil.rmtree(target, ignore_errors=True);
         print("returned");
         print("gone" if not os.path.isdir(target) else "exists");
+    } elif mode == "move" {
+        shutil.move(target, sys.argv[3]);
+        print("moved");
     } else {
         shutil.rmtree(target);
         print("removed");

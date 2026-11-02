@@ -7,33 +7,6 @@
 #
 # Product module: imports token_model + tokenizer only.
 
-import from jaclang.compiler.frontend.python.token_model {
-    ENDMARKER,
-    NAME,
-    NUMBER,
-    NEWLINE,
-    INDENT,
-    DEDENT,
-    NL,
-    COMMENT,
-    TYPE_IGNORE,
-    ERRORTOKEN,
-    NT_OFFSET,
-    TOK_NO_LINE,
-    TOK_NO_COLUMN,
-    is_whitespace_token,
-    tok_diag,
-    mk_diag,
-    tok_loc,
-    tok_no_loc,
-    tok_token,
-}
-import from jaclang.compiler.frontend.python.tokenizer {
-    tok_state,
-    tokenizer_from_string,
-    tokenizer_next
-}
-
 # Keyword token ids start at 500 in CPython's pegen generator (parser_generator.py).
 glob PEG_KEYWORD_TYPE_BASE: int = 500;
 glob STAR_TARGETS: int = 0,
@@ -70,7 +43,7 @@ obj peg_parser {
         feature_version: int = 14,
         type_ignores: list[tuple[int, str]] = [],
         tokens: list[peg_token] = [],
-        source_lines: list[bytes] = [],
+        source_line_starts: list[int] = [],
         mark: int = 0,
         keywords: dict[str, int] = {},
         soft_keywords: list[str] = [],
@@ -80,7 +53,31 @@ obj peg_parser {
         error: tok_diag | None = None,
         known_err_token: peg_token | None = None,
         filename: str = "<unknown>",
-        parsing_started: bool = False;
+        parsing_started: bool = False,
+        # Rule nesting depth (Parser.level).
+        level: int = 0,
+        memo_value: object | None = None;
+}
+
+# Parser/parser.c's MAXSTACK: deeper rule nesting is a MemoryError.
+glob MAXSTACK: int = 6000;
+
+def peg_rule_abort(p: peg_parser) {
+    if p.level >= MAXSTACK {
+        peg_stack_overflow(p);
+    }
+}
+
+def peg_stack_overflow(p: peg_parser) {
+    if p.error is None {
+        p.error = mk_diag(
+            "MemoryError",
+            "Parser stack overflowed - Python source too complex to parse",
+            tok_loc(lineno=1, end_lineno=1, col_offset=0, end_col_offset=0),
+            p.filename
+        );
+    }
+    p.error_indicator = True;
 }
 
 def peg_token_from_tok(tok: tok_token) -> peg_token {
@@ -144,24 +141,29 @@ def peg_has_error(p: peg_parser) -> bool {
 }
 
 def peg_fill_token(p: peg_parser) -> bool {
-    if peg_has_error(p) {
+    if p.error_indicator {
         return False;
     }
     if p.mark < len(p.tokens) {
         return True;
     }
+    return peg_scan_token(p);
+}
+
+def peg_scan_token(p: peg_parser) -> bool {
+    raw = tokenizer_next(p.tok);
     import from jaclang.compiler.frontend.python.compiler_diagnostics {
         report_token_warnings
     }
-    raw = tokenizer_next(p.tok);
     report_token_warnings(p.tok);
-    while isinstance(raw, tok_token) and raw.tok_type == TYPE_IGNORE {
-        p.type_ignores.append((raw.lineno, raw.spelling));
+    while raw is not p.tok.error and (raw as tok_token).tok_type == TYPE_IGNORE {
+        ignored = raw as tok_token;
+        p.type_ignores.append((ignored.lineno, ignored.spelling));
         raw = tokenizer_next(p.tok);
         report_token_warnings(p.tok);
     }
-    if isinstance(raw, tok_diag) {
-        p.error = raw;
+    if raw is p.tok.error {
+        p.error = p.tok.error;
         p.error_indicator = True;
         return False;
     }
@@ -230,6 +232,23 @@ def peg_check_memo(p: peg_parser, rule_type: int) -> peg_memo | None {
         head = &head.next;
     }
     return None;
+}
+
+def peg_memo_hit(p: peg_parser, rule_type: int) -> bool {
+    if not peg_ensure_token(p) {
+        p.memo_value = None;
+        return True;
+    }
+    head: &peg_memo | None = &p.tokens[p.mark].memo_head;
+    while head is not None {
+        if head.rule_type == rule_type {
+            p.mark = head.end_mark;
+            p.memo_value = head.result;
+            return True;
+        }
+        head = &head.next;
+    }
+    return False;
 }
 
 def peg_insert_memo(

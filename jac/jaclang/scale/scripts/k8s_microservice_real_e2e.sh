@@ -36,6 +36,16 @@ allow_credentials = true
 TOML
     echo "# appended the e2e-harness overlay (logs/ingress/cors) to jac.toml"
 fi
+# Own marker: the overlay above is already committed in the fixture, so its guard never appends.
+if ! grep -q "e2e-harness memory_request" "${PROJECT_DIR}/jac.toml"; then
+    cat >> "${PROJECT_DIR}/jac.toml" <<'TOML'
+
+# --- e2e-harness memory_request (appended by k8s_microservice_real_e2e.sh) ---
+[apps.cart_app.scale]
+memory_request = "1Gi"
+TOML
+    echo "# appended the e2e-harness memory_request for cart_app to jac.toml"
+fi
 
 NAMESPACE="${NAMESPACE:-jac-e2e}"
 CLUSTER_TYPE="${CLUSTER_TYPE:-microk8s}"
@@ -98,6 +108,8 @@ if [ "${CLUSTER_TYPE}" = "kind" ]; then
         jac-rwx-bundle-pv /var/jac-rwx-bundle jac-rwx-perms
 fi
 
+# Pods must run the code under test, never a published release.
+ship_checkout_binary "${PROJECT_DIR}" || exit 1
 cd "${PROJECT_DIR}"
 # The fixture ships jac.preview.toml with a deployment_overlay marker;
 # selecting it here makes the deploy exercise profile resolution AND
@@ -108,20 +120,7 @@ import logging, os, sys, jaclang  # noqa: F401
 from jaclang.scale.deploy.target.kubernetes.target import KubernetesTarget
 from jaclang.scale.deploy.target.kubernetes.kubernetes_config import KubernetesConfig
 from jaclang.scale.config.app_config import AppConfig
-from jaclang.scale.config.dev_config import BINARY_PATH_ENV
 
-# JAC_SCALE_BINARY_PATH makes the deploy resolve to the LOCAL channel and ship
-# the jac built from THIS checkout, so the e2e validates the code under test
-# rather than a published release.
-_local = os.environ.get(BINARY_PATH_ENV, "")
-if not _local or not os.path.isfile(_local):
-    print(
-        f"FATAL: {BINARY_PATH_ENV} must point at the jac binary built from this "
-        f"checkout so the pod runs the code under test; got {_local!r}.",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-print(f"shipping local jac binary to pods: {_local}", file=sys.stderr)
 
 # Surface MonitoringDeployer / observability warnings to stderr so CI
 # logs show the actual error instead of the silent
@@ -358,7 +357,7 @@ fi
 echo "  breaker opened after ${BREAKER_CALLS} call(s) and shed load in ${BREAKER_SECS}s"
 
 _t "circuit breaker load shedding OK"
-echo "=== verify HPA OOM guardrails (cpu+memory metrics, behavior rate limits) ==="
+echo "=== verify HPA OOM guardrails (memory metric only with a configured memory_request, behavior rate limits) ==="
 # The heredoc feeds python's stdin, so the HPA JSON must travel via a file.
 HPA_JSON="$(mktemp)"
 kubectl get hpa -n "${NAMESPACE}" -l managed=jac-scale -o json > "${HPA_JSON}"
@@ -370,6 +369,10 @@ with open(sys.argv[1]) as f:
     items = json.load(f).get("items", [])
 if not items:
     sys.exit("FAIL: no managed HPAs found in namespace")
+# Only cart_app sets memory_request in the harness overlay.
+MEMORY_DEPLOYMENT = "cart-app-deployment"
+if not any(h["spec"]["scaleTargetRef"]["name"] == MEMORY_DEPLOYMENT for h in items):
+    sys.exit(f"FAIL: no managed HPA targets {MEMORY_DEPLOYMENT}")
 for hpa in items:
     name = hpa["metadata"]["name"]
     spec = hpa["spec"]
@@ -378,8 +381,9 @@ for hpa in items:
         for m in spec.get("metrics", [])
         if m.get("type") == "Resource"
     )
-    if metric_names != ["cpu", "memory"]:
-        sys.exit(f"FAIL: {name} metrics={metric_names}, expected cpu+memory")
+    expected = ["cpu", "memory"] if spec["scaleTargetRef"]["name"] == MEMORY_DEPLOYMENT else ["cpu"]
+    if metric_names != expected:
+        sys.exit(f"FAIL: {name} metrics={metric_names}, expected {'+'.join(expected)}")
     behavior = spec.get("behavior") or {}
     up = behavior.get("scaleUp") or {}
     down = behavior.get("scaleDown") or {}

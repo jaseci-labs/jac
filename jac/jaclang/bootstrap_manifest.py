@@ -23,13 +23,39 @@ from __future__ import annotations
 
 import os
 
+def read_input_rules(manifest_path: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """The (roots, roster) a compiler_inputs.txt declares.
+
+    `!path` lines name inputs the digest covers by path only: native-only
+    units whose own module keys already track their content. Adding or
+    removing one still changes the digest; editing one does not. Every tree is
+    digested under its own declaration, so a pinned snapshot keeps the
+    identity its pin recorded when this tree's declaration changes.
+    """
+    with open(manifest_path) as inputs:
+        lines = tuple(
+            line.strip() for line in inputs
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+    roots = tuple(line for line in lines if not line.startswith("!"))
+    roster = tuple(line[1:] for line in lines if line.startswith("!"))
+    return roots, roster
+
+
 # Data, not compiler code: the Zig bootstrap and CI read this same manifest
 # before a Jac compiler exists. Include the manifest itself in source digests.
-with open(os.path.join(os.path.dirname(__file__), "compiler_inputs.txt")) as _inputs:
-    COMPILER_DIGEST_ROOTS: tuple[str, ...] = tuple(
-        line.strip() for line in _inputs
-        if line.strip() and not line.lstrip().startswith("#")
+COMPILER_DIGEST_ROOTS, COMPILER_DIGEST_ROSTER = read_input_rules(
+    os.path.join(os.path.dirname(__file__), "compiler_inputs.txt")
+)
+
+
+def is_roster_input(rel_path: str, roster: tuple[str, ...] | None = None) -> bool:
+    """Whether a declared compiler input is digested by its path alone."""
+    return any(
+        rel_path == p or rel_path.startswith(p + "/")
+        for p in (COMPILER_DIGEST_ROSTER if roster is None else roster)
     )
+
 
 # Inputs the build LOWERS into JacPython's native object (prepare_native.py)
 # instead of shipping as source. They are compiler identity exactly like every
@@ -56,6 +82,21 @@ def is_native_lowered(rel: str) -> bool:
     rel = rel.replace(os.sep, "/")
     return any(rel == p or rel.startswith(p + "/") for p in NATIVE_LOWERED_PATHS)
 
+
+# Inputs the payload stager ships REWRITTEN instead of copied, named by file
+# name. A wiring file is shipped with its edges to natively lowered providers
+# blanked (dist/payload ship_wiring), so the staged copy is a function of the
+# source copy and NATIVE_LOWERED_PATHS, yet hashes differently from it. Like a
+# lowered input, a staging resolves these from the hashes COMPILER_IDENTITY_NAME
+# recorded from the complete tree, so a payload reports the identity of the
+# checkout it was built from and that checkout reuses the payload's units.
+STAGING_REWRITTEN_NAMES: tuple[str, ...] = ("archwire.jac",)
+
+
+def is_staging_rewritten(rel: str) -> bool:
+    """Does a staging ship ``rel`` rewritten, so its recorded hash names it?"""
+    return rel.replace(os.sep, "/").rsplit("/", 1)[-1] in STAGING_REWRITTEN_NAMES
+
 # Everything the jac0 tier compiles. Directory entries cover subtrees.
 # compiler/passes/ and compiler/backends/ are deliberately listed file by
 # file (or implementation/parser subtree): their siblings (backends/es/,
@@ -68,7 +109,11 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/frontend/diagnostic_utils.jac",
     "compiler/frontend/diagnostics.jac",
     "compiler/frontend/helpers.jac",
+    "compiler/frontend/host.jac",
+    "compiler/frontend/source_layout.jac",
+    "compiler/types/stubcat/resolver.jac",
     "compiler/frontend/impl/",
+    "compiler/frontend/loop_links.jac",
     "compiler/frontend/module_facts.jac",
     "compiler/frontend/parser/",
     "compiler/frontend/relations.jac",
@@ -85,11 +130,7 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/backends/py/jcir_facts.jac",
     "compiler/backends/py/jcir_gen_pass.impl/",
     "compiler/backends/py/jcir_gen_pass.jac",
-    "compiler/backends/common/ast_gen_base.jac",
-    "compiler/backends/common/kernel_units.jac",
     "compiler/backends/common/fmt_kernel.jac",
-    "compiler/backends/native/wasm_linker.jac",
-    "compiler/backends/native/linker_common.jac",
     "compiler/passes/annex_weave.jac",
     "compiler/passes/ast_validation_pass.jac",
     "compiler/passes/graph_lowering_pass.jac",
@@ -97,10 +138,14 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/passes/decl_impl_match_pass.jac",
     "compiler/passes/endpoint_effect_pass.jac",
     "compiler/passes/semantic_analysis_pass.jac",
+    "compiler/passes/import_wiring_pass.jac",
+    "compiler/passes/package_boundary_pass.jac",
     "compiler/passes/sym_tab_build_pass.jac",
     "compiler/passes/context.jac",
     "compiler/native_scope.jac",
+    "compiler/kernel_target.jac",
     "compiler/field_semantics.jac",
+    "compiler/c_interop.jac",
     "compiler/native_compiler.jac",
     "compiler/jc_unit.jac",
     "compiler/jc_materialize.jac",
@@ -108,6 +153,7 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/tools/treeprinter.jac",
     "runtime/runtime.jac",
     "runtime/constants.jac",
+    "runtime/surface.jac",
     "runtime/build_services.jac",
     "runtime/prepared.jac",
     "runtime/prepared_loader.jac",
@@ -120,6 +166,7 @@ SEED_PATHS: tuple[str, ...] = (
     "runtime/archetype.jac",
     "runtime/constructs.jac",
     "runtime/graph_query.jac",
+    "runtime/pass_link.jac",
     "runtime/interop_bridge.jac",
     "runtime/traceback_render.jac",
     "runtime/debugger.jac",
@@ -135,32 +182,43 @@ SEED_PATHS: tuple[str, ...] = (
     "runtime/semantic.jac",
     "cli/cli_boot.jac",
     "jac0core/cli_boot.jac",
+    "jac0core/handoff.jac",
+    "jac0core/artifact_registry.jac",
     "project/__init__.jac",
     "project/tomlio.jac",
     "project/source.jac",
+    "project/textio.jac",
     "project/apps.jac",
     "project/modresolver.jac",
     "project/workspace.jac",
+    "project/workspace_model.jac",
+    "project/compiler_host.jac",
     "project/placement.jac",
     "project/app_kinds.jac",
 )
 
-# Modules that live under a seed directory but belong to the native
-# toolchain tier: jac build --native --lib builds them into a shared library, and they
-# never execute as bytecode (extern `import from c` declarations have no
-# Python lowering). The jac0 sweep and the seed-manifest gate skip them;
-# tier stamping (is_seed_source) is unaffected, which also keeps them out
-# of the full-compiler seal sweep.
-NATIVE_ONLY_SEEDS: tuple[str, ...] = (
+# Modules with no bytecode meaning: they import C symbols (the kernel
+# roots and the fused-binary shims) or live under the native standard
+# library. The roster lives here, in the pure-Python tier, because the jac0
+# sweep and the seed-manifest gate must skip them before any .jac module can
+# load; `placement_facts.native_only` is the compiler's view of the same
+# data and the only predicate the driver, the seal and the link plan
+# consult. Tier stamping (is_seed_source) is unaffected.
+NATIVE_ONLY_REL: tuple[str, ...] = (
     "compiler/jc_unit.jac",
     "compiler/jc_materialize.jac",
+    "compiler/jc_ask.jac",
+    "dist/fused/embed.jac",
+    "dist/fused/_libc.jac",
 )
+NATIVE_ONLY_DIR_REL: tuple[str, ...] = ("runtime/na_stdlib",)
 
 
-def is_native_only_seed(rel_path: str) -> bool:
-    """Whether a jaclang-package-relative POSIX path is a native-tier unit
-    that jac0 must not compile even though a seed directory covers it."""
-    return rel_path in NATIVE_ONLY_SEEDS
+def is_native_only(rel_path: str) -> bool:
+    """Whether a jaclang-package-relative POSIX path has no bytecode meaning."""
+    if rel_path in NATIVE_ONLY_REL:
+        return True
+    return any(rel_path.startswith(d + "/") for d in NATIVE_ONLY_DIR_REL)
 
 
 def seed_abs_entries(jaclang_dir: str) -> tuple[tuple[str, ...], frozenset[str]]:

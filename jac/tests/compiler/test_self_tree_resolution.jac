@@ -86,8 +86,7 @@ test "type check holds one identity per class across a self-import cycle" {
     def body(home_pkg: Path, shadow: str) {
         prog = JacProgram();
         prog.compile(
-            file_path=str(home_pkg / 'app.jac'),
-            options=CompileOptions(no_cgen=True, force_target_program=True)
+            file_path=str(home_pkg / 'app.jac'), options=CompileOptions(no_cgen=True)
         );
         errs = [str(e) for e in prog.errors_had];
         assert not errs , f"identity split across package copies: {errs}";

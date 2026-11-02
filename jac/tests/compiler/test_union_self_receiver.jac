@@ -7,12 +7,7 @@ def check_receiver(source: str) -> list[str] {
     program.compile(
         file_path="self_union_receiver.jac",
         use_str=source,
-        options=CompileOptions(
-            no_cgen=True,
-            no_ir_cache=True,
-            force_target_program=True,
-            force_codespace="server"
-        )
+        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
     );
     return [str(error) for error in program.errors_had];
 }

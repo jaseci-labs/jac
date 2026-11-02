@@ -79,7 +79,7 @@ test "exceptions finish active work and detach both listeners" {
     finished: list[str] = [];
     main_path = _project();
     with patch.object(
-        JacCompiler, "_compile_once", side_effect=RuntimeError("failed")
+        JacCompiler, "compile_attempt", side_effect=RuntimeError("failed")
     ) {
         try {
             with compile_progress.listen(started.append, finished.append) {

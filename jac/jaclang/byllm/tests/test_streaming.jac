@@ -131,6 +131,23 @@ test "a logging stream with tools reports the call, the result, then the answer"
 }
 
 
+test "an empty final-answer restream falls back to the committed answer" {
+    committed = "The weather in London is sunny, 25 degrees.";
+    llm = MockLLM(outputs=[finish(committed), call("get_weather", {"city": "London"})]);
+
+    def check_weather(question: str) -> str by llm(
+        tools=[get_weather], stream=True, logging=True
+    );
+
+    events = stream_events(check_weather("What is the weather in London?"));
+    assert chunk_text(events) == committed , (
+        f"the committed answer must survive an empty final stream, got {chunk_text(
+            events
+        )!r}"
+    );
+}
+
+
 test "a str answer that skips finish_tool still arrives on the chunk channel" {
     # A tool is offered so the ReAct loop is entered, but the model answers in
     # plain text instead of calling finish_tool. The terminal text must reach
@@ -270,9 +287,12 @@ test "a mid-stream drop is retried only when the error is transient" {
         model = Model(model_name="gpt-4o-mini");
         mt = mk_run(stream=True);
         raised: any = None;
+        events: list[any] = [];
         with scripted(model, replies) as script {
             try {
-                events = list(model._invoke_streaming(mt));
+                for ev in model._invoke_streaming(mt) {
+                    events.append(ev);
+                }
             } except Exception as e {
                 raised = e;
             }
@@ -280,8 +300,8 @@ test "a mid-stream drop is retried only when the error is transient" {
         assert len(script.seen) == calls , (
             f"{label}: expected {calls} model calls, got {len(script.seen)}"
         );
-        assert mt._stream_reset_count == resets , (
-            f"{label}: expected {resets} stream resets, got {mt._stream_reset_count}"
+        assert len(events_of(events, "stream_reset")) == resets , (
+            f"{label}: expected {resets} stream resets, got {event_types(events)}"
         );
         if escapes is None {
             assert raised is None , f"{label}: unexpected {raised!r}";
@@ -319,7 +339,10 @@ test "the inter-chunk read timeout is set for streaming only" {
     streaming = model.make_model_params(mk_run(stream=True));
     assert "timeout" in streaming , "a stream needs a read timeout to fail fast";
     assert streaming["timeout"].read == 90.0 , f"got {streaming['timeout'].read}";
-    assert "timeout" not in model.make_model_params(mk_run(stream=False)) , (
+
+    # Non-streaming gets a flat timeout instead; see test_timeout.jac.
+    plain = model.make_model_params(mk_run(stream=False));
+    assert not hasattr(plain["timeout"], "read") , (
         "a non-streaming call must not inherit the inter-chunk timeout"
     );
 }

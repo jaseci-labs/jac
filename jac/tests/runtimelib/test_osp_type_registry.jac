@@ -11,8 +11,8 @@ without caching it.
 
 import jaclang.runtime.osp_graph as _g;
 import from jaclang.runtime.osp_kernel {
-    NodeDesc,
-    Slot,
+    OspNodeDesc,
+    OspSlot,
     UNTYPED,
     osp_has_desc,
     osp_node_desc,
@@ -34,6 +34,10 @@ def _fresh_graph {
     _g.DEFAULT_GRAPH.row_of.clear();
     _g.DEFAULT_GRAPH.dead.clear();
     _g.DEFAULT_GRAPH.regions.clear();
+    _g.DEFAULT_GRAPH.tags_out.clear();
+    _g.DEFAULT_GRAPH.tags_in.clear();
+    _g.DEFAULT_GRAPH.holes_out.clear();
+    _g.DEFAULT_GRAPH.holes_in.clear();
 }
 
 test "register_type is idempotent and refuses a re-register with different bases" {
@@ -71,8 +75,8 @@ test "descriptor registry: registered descs return, misses stay uncached" {
     miss = osp_node_desc(t);
     assert miss.type_tag == t and miss.`entry == [];
     assert not osp_has_desc(t) , "a miss was cached";
-    nd = NodeDesc(
-        type_tag=t, `entry=[Slot(trig_tag=UNTYPED, fn=_noop_ability)], `exit=[]
+    nd = OspNodeDesc(
+        type_tag=t, `entry=[OspSlot(trig_tag=UNTYPED, fn=_noop_ability)], `exit=[]
     );
     osp_register_desc(t, nd);
     assert osp_has_desc(t);

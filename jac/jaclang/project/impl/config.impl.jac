@@ -10,42 +10,63 @@ impl interpolate_env_vars(
     }
     source = os.environ if environ is None else environ;
 
-    pattern = r"\$\{([^}:]+)(?:(:[-?])([^}]*))?\}";
+    pattern = r"\$\{([^}]*)\}";
+    supported = r"([A-Za-z_][A-Za-z0-9_]*)(?:(:[-?])([^}]*))?";
     def replace_env_var(`match: re.Match) -> str {
-        var_name = `match.group(1);
-        operator = `match.group(2);
-        operand = `match.group(3) or "";
-
-        env_value = source.get(var_name);
-
-        if env_value is not None {
-            return env_value;
-        }
-
-        if operator == ":-" {
-            return operand;
-        }
-        if not var_name.isidentifier() {
+        body = `match.group(1);
+        parts = re.fullmatch(supported, body);
+        leading = re.match(r"[A-Za-z_][A-Za-z0-9_]*", body);
+        if leading is None {
             return `match.group(0);
         }
-        ref = UnresolvedRef(var=var_name, required=operator == ":?", message=operand);
+        var_name = leading.group(0);
+        record = None;
+        if parts is None {
+            record = UnresolvedRef(
+                var=var_name, unsupported=True, form=`match.group(0)
+            );
+        } else {
+            operator = parts.group(2);
+            operand = parts.group(3) or "";
+            env_value = source.get(var_name);
+            if env_value is not None {
+                return env_value;
+            }
+            if operator == ":-" {
+                return operand;
+            }
+            record = UnresolvedRef(
+                var=var_name, required=operator == ":?", message=operand
+            );
+        }
         if sink is not None {
-            sink.append(ref);
+            sink.append(record);
             return `match.group(0);
         }
-        raise ValueError(ref.describe());
+        raise ValueError(record.describe());
     }
     return re.sub(pattern, replace_env_var, value);
 }
 
 impl UnresolvedRef.describe -> str {
+    if self.unsupported {
+        return f"Unsupported form {self.form}: jac reads ${{VAR}}, "
+        "${VAR:-default} and ${VAR:?message}";
+    }
     return f"Environment variable {self.var} is required: {self.message}"
         if self.required
         else f"Environment variable {self.var} is not set";
 }
 
+impl UnresolvedRef.reason -> str {
+    if self.unsupported {
+        return f"{self.form} is not a form jac reads "
+        "(use ${VAR}, ${VAR:-default} or ${VAR:?message})";
+    }
+    return f"{self.var} is not set" + (f" ({self.message})" if self.message else "");
+}
+
 impl find_project_root(start: Path | None = None) -> tuple[Path, Path] | None {
-    import from jaclang.project.modresolver { find_project_root as _find_project_root }
     return _find_project_root(start);
 }
 
@@ -73,7 +94,6 @@ impl JacConfig.discover(
 }
 
 impl JacConfig.load(toml_path: Path) -> JacConfig {
-    import from jaclang.project.tomlio { read_toml_with_encoding }
     if not toml_path.exists() {
         raise FileNotFoundError(f"Configuration file not found: {toml_path}");
     }
@@ -105,19 +125,7 @@ impl JacConfig.from_toml_str(
     return _parse_toml_data(data, toml_path);
 }
 
-def _deep_merge(base: dict[str, any], `override: dict[str, any]) -> dict[str, any] {
-    result = base.copy();
-    for (key, value) in `override.items() {
-        if key in result
-            and isinstance(result[key], dict)
-            and isinstance(value, dict) {
-            result[key] = _deep_merge(result[key], value);
-        } else {
-            result[key] = value;
-        }
-    }
-    return result;
-}
+def _deep_merge(base: dict[str, any], `override: dict[str, any]) -> dict[str, any];
 
 impl JacConfig._section_map -> dict[
     str,
@@ -169,10 +177,20 @@ impl JacConfig.apply_profile(
 
     section_map = self._section_map();
     for (section, obj) in section_map.items() {
-        if section in profile {
+        if section == "serve" and section in profile {
+            _apply_serve_table(
+                self.serve, profile[section], f"environments.{profile_name}.serve"
+            );
+        } elif section in profile {
             profile_section: dict[str, any] = profile[section];
             for (key, value) in profile_section.items() {
-                if hasattr(obj, key) {
+                if not hasattr(obj, key) {
+                    continue;
+                }
+                current = getattr(obj, key);
+                if isinstance(current, dict) and isinstance(value, dict) {
+                    setattr(obj, key, _deep_merge(current, value));
+                } else {
                     setattr(obj, key, value);
                 }
             }
@@ -225,20 +243,7 @@ impl JacConfig.apply_profile(
         }
     }
 
-    if "dependencies" in profile {
-        for (key, value) in profile["dependencies"].items() {
-            if isinstance(value, str) {
-                self.dependencies[key] = value;
-            }
-        }
-    }
-    if "dev-dependencies" in profile {
-        for (key, value) in profile["dev-dependencies"].items() {
-            if isinstance(value, str) {
-                self.dev_dependencies[key] = value;
-            }
-        }
-    }
+    self.merge_dependency_tables(profile, f"environments.{profile_name}.");
     if "scripts" in profile {
         self.scripts.update(profile["scripts"]);
     }
@@ -285,7 +290,6 @@ impl JacConfig.apply_profile_overlay(profile_name: str | None = None) -> None {
 }
 
 impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
-    import from jaclang.project.tomlio { read_toml_with_encoding }
     if not toml_path.exists() {
         return;
     }
@@ -294,7 +298,13 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
     self.unresolved = self.unresolved + refs;
     section_map = self._section_map();
     for (section, obj) in section_map.items() {
-        if section in data {
+        if section == "serve" and section in data {
+            try {
+                _apply_serve_table(self.serve, data[section], "serve");
+            } except ServeConfigError as e {
+                raise ServeConfigError(f"{toml_path.name}: {e}") from e;
+            }
+        } elif section in data {
             data_section: dict[str, any] = data[section];
             for (key, value) in data_section.items() {
                 if hasattr(obj, key) {
@@ -355,39 +365,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
         }
     }
 
-    if "dependencies" in data {
-        deps = data["dependencies"];
-        for (key, value) in deps.items() {
-            if isinstance(value, str) {
-                self.dependencies[key] = value;
-            } elif isinstance(value, dict) {
-                if key == "git" {
-                    self.git_dependencies.update(value);
-                } else {
-                    if key not in self.plugin_dependencies {
-                        self.plugin_dependencies[key] = {};
-                    }
-                    self.plugin_dependencies[key].update(value);
-                }
-            }
-        }
-    }
-    if "dev-dependencies" in data {
-        dev_deps = data["dev-dependencies"];
-        for (key, value) in dev_deps.items() {
-            if isinstance(value, str) {
-                self.dev_dependencies[key] = value;
-            } elif isinstance(value, dict) {
-                if key not in self.plugin_dependencies {
-                    self.plugin_dependencies[key] = {};
-                }
-                if "dev" not in self.plugin_dependencies[key] {
-                    self.plugin_dependencies[key]["dev"] = {};
-                }
-                self.plugin_dependencies[key]["dev"].update(value);
-            }
-        }
-    }
+    self.merge_dependency_tables(data);
     if "environments" in data {
         self.environments.update(data["environments"]);
     }
@@ -470,7 +448,7 @@ impl JacConfig.save -> None {
     old_doc: dict[str, any] = {};
     if self.toml_path.exists() {
         import tomllib;
-        import from jaclang.project.source { read_file_with_encoding }
+        import from jaclang.project.textio { read_file_with_encoding }
         import from jaclang.project.tomlio { MalformedJacTomlError }
         text = read_file_with_encoding(str(self.toml_path));
         try {
@@ -481,50 +459,14 @@ impl JacConfig.save -> None {
     }
     doc = copy.deepcopy(old_doc);
 
-    old_deps = doc.get("dependencies", {});
-    sub_tables = {
-        k: v
-        for (k, v) in old_deps.items()
-        if isinstance(v, dict)
-    };
-    doc["dependencies"] = dict(self.dependencies);
-
-    for (k, v) in sub_tables.items() {
-        doc["dependencies"][k] = v;
-    }
-
-    if self.git_dependencies {
-        doc["dependencies"]["git"] = dict(self.git_dependencies);
-    } elif "git" in doc.get("dependencies", {}) {
-        del doc["dependencies"]["git"];
-    }
-
-    if self.dev_dependencies {
-        doc["dev-dependencies"] = dict(self.dev_dependencies);
-    } elif "dev-dependencies" in doc {
-        doc["dev-dependencies"] = {};
-    }
-
-    for (dep_type, deps) in self.plugin_dependencies.items() {
-        if dep_type not in doc["dependencies"] {
-            doc["dependencies"][dep_type] = {};
-        }
-
-        dev_deps = deps.get("dev", {}) if isinstance(deps.get("dev"), dict) else {};
-        regular_deps = {
-            k: v
-            for (k, v) in deps.items()
-            if k != "dev"
-        };
-
-        doc["dependencies"][dep_type] = regular_deps.copy();
-        if dev_deps {
-            doc["dependencies"][dep_type]["dev"] = dev_deps;
-        }
+    doc["dependencies"] = _dependency_doc(self, dev=False);
+    dev_doc = _dependency_doc(self, dev=True);
+    if dev_doc or "dev-dependencies" in doc {
+        doc["dev-dependencies"] = dev_doc;
     }
 
     if text {
-        updated = _toml_minimal_update(
+        updated = toml_minimal_update(
             text, old_doc, doc, ["dependencies", "dev-dependencies"]
         );
         if updated is not None {
@@ -534,6 +476,8 @@ impl JacConfig.save -> None {
     }
     self.persist_doc(doc);
 }
+
+def _dependency_doc(config: JacConfig, dev: bool) -> dict[str, any];
 
 impl JacConfig.persist_doc(doc: dict[str, any]) -> None {
     self._write_toml_text(serialize_toml(doc));
@@ -559,272 +503,73 @@ impl JacConfig._write_toml_text(text: str) -> None {
     }
 }
 
-def _needs_quoting(key: str) -> bool {
-    import re;
-    return not bool(re.`match(r'^[A-Za-z0-9_-]+$', key));
-}
+def _needs_quoting(key: str) -> bool;
 
-def _quote_key(key: str) -> str {
-    if _needs_quoting(key) {
-        escaped = key.replace("\\", "\\\\").replace('"', '\\"');
-        return f'"{escaped}"';
-    }
-    return key;
-}
+def _quote_key(key: str) -> str;
+
+glob INLINE_SPEC_KEYS: set[str] = {
+         "version",
+         "path",
+         "git",
+         "rev",
+         "branch",
+         "tag",
+         "registry",
+         "extras"
+     };
+
+def _toml_is_inline(
+    lines: list[str], path: tuple[str, ...], value: dict[str, any]
+) -> bool;
 
 def _toml_flatten_into(
     view: dict[tuple[str, ...], dict[str, any]],
     path: tuple[str, ...],
-    table: dict[str, any]
-) {
-    flat: dict[str, any] = {};
-    for (k, v) in table.items() {
-        if isinstance(v, dict) {
-            _toml_flatten_into(view, path + (k, ), v);
-        } else {
-            flat[k] = v;
-        }
-    }
-    view[path] = flat;
-}
+    table: dict[str, any],
+    lines: list[str]
+);
 
 def _toml_flatten(
-    doc: dict[str, any], roots: list[str]
-) -> dict[tuple[str, ...], dict[str, any]] | None {
-    view: dict[tuple[str, ...], dict[str, any]] = {};
-    for root_key in roots {
-        if root_key not in doc {
-            continue;
-        }
-        table = doc[root_key];
-        if not isinstance(table, dict) {
-            return None;
-        }
-        _toml_flatten_into(view, (root_key, ), table);
-    }
-    return view;
-}
+    doc: dict[str, any], roots: list[str], lines: list[str]
+) -> dict[tuple[str, ...], dict[str, any]] | None;
 
-def _toml_token_alt(name: str) -> str {
-    import re;
-    alts: list[str] = [];
-    if name and not _needs_quoting(name) {
-        alts.append(re.escape(name));
-    }
-    basic = name.replace("\\", "\\\\").replace('"', '\\"');
-    alts.append(re.escape(f'"{basic}"'));
-    if "'" not in name {
-        alts.append(re.escape(f"'{name}'"));
-    }
-    return "(?:" + "|".join(alts) + ")";
-}
+def _toml_token_alt(name: str) -> str;
 
 def _toml_find_span(
     lines: list[str], parts: tuple[str, ...]
-) -> tuple[int, int] | None {
-    import re;
-    header_re = re.compile(
-        r"^\s*\[\s*"
-            + r"\s*\.\s*".join([_toml_token_alt(p) for p in parts])
-            + r"\s*\]\s*(?:#.*)?$"
-    );
-    header = -1;
-    for (i, line) in enumerate(lines) {
-        if header_re.`match(line) {
-            if header >= 0 {
-                return None;
-            }
-            header = i;
-        }
-    }
-    if header < 0 {
-        return None;
-    }
-    end = len(lines);
-    for j in range(header + 1, len(lines)) {
-        if lines[j].lstrip().startswith("[") {
-            end = j;
-            break;
-        }
-    }
-    return (header, end);
-}
+) -> tuple[int, int] | None;
 
 def _toml_find_key(
     lines: list[str], span: tuple[int, int], key: str
-) -> tuple[int, int] | None {
-    import re;
-    key_re = re.compile(r"^\s*" + _toml_token_alt(key) + r"\s*=\s*");
-    found = -1;
-    value_start = -1;
-    for i in range(span[0] + 1, span[1]) {
-        m = key_re.`match(lines[i]);
-        if m {
-            if found >= 0 {
-                return None;
-            }
-            found = i;
-            value_start = m.end();
-        }
-    }
-    if found < 0 {
-        return None;
-    }
-    return (found, value_start);
-}
+) -> tuple[int, int] | None;
 
-def _toml_value_end(line: str, start: int) -> int | None {
-    n = len(line);
-    if start >= n {
-        return None;
-    }
-    c = line[start];
-    if c in ('"', "'") {
-        if line[start:start + 3] == c * 3 {
-            closing = line.find(c * 3, start + 3);
-            return closing + 3 if closing >= 0 else None;
-        }
-        j = start + 1;
-        while j < n {
-            if line[j] == "\\" and c == '"' {
-                j += 2;
-                continue;
-            }
-            if line[j] == c {
-                return j + 1;
-            }
-            j += 1;
-        }
-        return None;
-    }
-    if c in ("[", "{") {
-        depth = 0;
-        in_str = "";
-        j = start;
-        while j < n {
-            ch = line[j];
-            if in_str {
-                if ch == "\\" and in_str == '"' {
-                    j += 2;
-                    continue;
-                }
-                if ch == in_str {
-                    in_str = "";
-                }
-            } elif ch in ('"', "'") {
-                in_str = ch;
-            } elif ch in ("[", "{") {
-                depth += 1;
-            } elif ch in ("]", "}") {
-                depth -= 1;
-                if depth == 0 {
-                    return j + 1;
-                }
-            }
-            j += 1;
-        }
-        return None;
-    }
-    j = start;
-    while j < n and line[j] != "#" {
-        j += 1;
-    }
-    while j > start and line[j - 1] in (" ", "\t") {
-        j -= 1;
-    }
-    return j if j > start else None;
-}
+def _toml_value_end(line: str, start: int) -> int | None;
 
 def _toml_replace_key(
     lines: list[str], parts: tuple[str, ...], key: str, value_text: str
-) -> bool {
-    import re;
-    span = _toml_find_span(lines, parts);
-    if span is None {
-        return False;
-    }
-    hit = _toml_find_key(lines, span, key);
-    if hit is None {
-        return False;
-    }
-    (idx, value_start) = hit;
-    line = lines[idx];
-    value_end = _toml_value_end(line, value_start);
-    if value_end is None or not re.`match(r"^\s*(?:#.*)?$", line[value_end:]) {
-        return False;
-    }
-    lines[idx] = line[:value_start] + value_text + line[value_end:];
-    return True;
-}
+) -> bool;
 
-def _toml_delete_key(lines: list[str], parts: tuple[str, ...], key: str) -> bool {
-    span = _toml_find_span(lines, parts);
-    if span is None {
-        return False;
-    }
-    hit = _toml_find_key(lines, span, key);
-    if hit is None {
-        return False;
-    }
-    lines.pop(hit[0]);
-    return True;
-}
+def _toml_delete_key(lines: list[str], parts: tuple[str, ...], key: str) -> bool;
 
 def _toml_insert_key(
     lines: list[str], parts: tuple[str, ...], key: str, value_text: str
-) -> bool {
-    span = _toml_find_span(lines, parts);
-    if span is None {
-        return False;
-    }
-    at = span[0];
-    for j in range(span[0] + 1, span[1]) {
-        stripped = lines[j].strip();
-        if stripped and not stripped.startswith("#") {
-            at = j;
-        }
-    }
-    lines.insert(at + 1, f"{_quote_key(key)} = {value_text}");
-    return True;
-}
+) -> bool;
 
 def _toml_append_section(
     lines: list[str], parts: tuple[str, ...], flat: dict[str, any]
-) {
-    while lines and not lines[-1].strip() {
-        lines.pop();
-    }
-    if lines {
-        lines.append("");
-    }
-    header = ".".join([_quote_key(p) for p in parts]);
-    lines.append(f"[{header}]");
-    for (k, v) in flat.items() {
-        lines.append(f"{_quote_key(k)} = {toml_value(v)}");
-    }
-    lines.append("");
-}
+);
 
-def _toml_remove_section(lines: list[str], parts: tuple[str, ...]) -> bool {
-    span = _toml_find_span(lines, parts);
-    if span is None {
-        return False;
-    }
-    for _ in range(span[1] - span[0]) {
-        lines.pop(span[0]);
-    }
-    return True;
-}
+def _toml_remove_section(lines: list[str], parts: tuple[str, ...]) -> bool;
 
-def _toml_minimal_update(
+impl toml_minimal_update(
     text: str, old_doc: dict[str, any], new_doc: dict[str, any], roots: list[str]
 ) -> str | None {
-    old_view = _toml_flatten(old_doc, roots);
-    new_view = _toml_flatten(new_doc, roots);
+    lines: list[str] = text.split("\n");
+    old_view = _toml_flatten(old_doc, roots, lines);
+    new_view = _toml_flatten(new_doc, roots, lines);
     if old_view is None or new_view is None {
         return None;
     }
-    lines: list[str] = text.split("\n");
     for path in sorted(set(old_view.keys()) | set(new_view.keys())) {
         old_flat = old_view.get(path);
         new_flat = new_view.get(path);
@@ -968,17 +713,51 @@ impl toml_value(value: any) -> str {
     }
 }
 
-impl JacConfig.add_dependency(
-    name: str, version: str, dev: bool = False, dep_type: str = "python"
+impl JacConfig.merge_dependency_tables(
+    data: dict[str, any], section_prefix: str = ""
 ) -> None {
-    if dep_type == "python" {
-        if dev {
-            self.dev_dependencies[name] = version;
-        } else {
-            self.dependencies[name] = version;
+    if isinstance(data.get("registries"), dict) {
+        for (name, url) in data["registries"].items() {
+            self.registries[str(name)] = str(url);
         }
-    } elif dep_type == "git" {
-        self.git_dependencies[name] = {"git": version};
+    }
+    for (section, dev) in (("dependencies", False), ("dev-dependencies", True)) {
+        table = data.get(section);
+        if not isinstance(table, dict) {
+            continue;
+        }
+        tables = split_dependency_table(table, dev, section_prefix + section);
+        (self.dev_dependencies if dev else self.dependencies).update(tables.packages);
+        (self.pypi_dev_dependencies if dev else self.pypi_dependencies).update(
+            tables.pypi
+        );
+        self.pypi_git_dependencies.update(tables.pypi_git);
+        for (eco, deps) in tables.ecosystems.items() {
+            bucket = self.plugin_dependencies.setdefault(eco, {});
+            if dev {
+                bucket.setdefault("dev", {}).update(deps);
+            } else {
+                bucket.update(deps);
+            }
+        }
+    }
+}
+
+impl JacConfig.add_dependency(
+    name: str, version: str, dev: bool = False, dep_type: str = "pypi"
+) -> None {
+    if dep_type == "pypi" {
+        if dev {
+            self.pypi_dev_dependencies[name] = version;
+        } else {
+            self.pypi_dependencies[name] = version;
+        }
+    } elif dep_type == "pypi-git" {
+        self.pypi_git_dependencies[name] = {"git": version};
+    } elif dep_type == "jac" {
+        (self.dev_dependencies if dev else self.dependencies)[name] = PackageDep(
+            name=name, version=version or "*", dev=dev
+        );
     } else {
         if dep_type not in self.plugin_dependencies {
             self.plugin_dependencies[dep_type] = {};
@@ -995,21 +774,23 @@ impl JacConfig.add_dependency(
 }
 
 impl JacConfig.remove_dependency(
-    name: str, dev: bool = False, dep_type: str = "python"
+    name: str, dev: bool = False, dep_type: str = "pypi"
 ) -> bool {
-    if dep_type == "python" {
-        if dev {
-            if name in self.dev_dependencies {
-                del self.dev_dependencies[name];
-                return True;
-            }
-        } elif name in self.dependencies {
-            del self.dependencies[name];
+    if dep_type == "pypi" {
+        table = self.pypi_dev_dependencies if dev else self.pypi_dependencies;
+        if name in table {
+            del table[name];
             return True;
         }
-    } elif dep_type == "git" {
-        if name in self.git_dependencies {
-            del self.git_dependencies[name];
+    } elif dep_type == "pypi-git" {
+        if name in self.pypi_git_dependencies {
+            del self.pypi_git_dependencies[name];
+            return True;
+        }
+    } elif dep_type == "jac" {
+        packages = self.dev_dependencies if dev else self.dependencies;
+        if name in packages {
+            del packages[name];
             return True;
         }
     } elif dep_type in self.plugin_dependencies {
@@ -1080,39 +861,12 @@ impl _parse_toml_data(
             default_app=str(
                 proj.get("default-app", proj.get("default_app", "")) or ""
             ).strip(),
+            exports=[str(e) for e in proj.get("exports", [])],
             urls=proj.get("urls", {}),
             `include=_parse_include(proj.get("include", {}))
         );
     }
-    if "dependencies" in data {
-        deps = data["dependencies"];
-        for (key, value) in deps.items() {
-            if isinstance(value, str) {
-                config.dependencies[key] = value;
-            } elif isinstance(value, dict) {
-                if key == "git" {
-                    config.git_dependencies = value;
-                } elif key == "npm" {
-                    config.plugin_dependencies["npm"] = value;
-                } else {
-                    config.plugin_dependencies[key] = value;
-                }
-            }
-        }
-    }
-    if "dev-dependencies" in data {
-        dev_deps = data["dev-dependencies"];
-        for (key, value) in dev_deps.items() {
-            if isinstance(value, str) {
-                config.dev_dependencies[key] = value;
-            } elif isinstance(value, dict) {
-                if key not in config.plugin_dependencies {
-                    config.plugin_dependencies[key] = {};
-                }
-                config.plugin_dependencies[key]["dev"] = value;
-            }
-        }
-    }
+    config.merge_dependency_tables(data);
     if "run" in data {
         run_data = data["run"];
         config.run = RunConfig(
@@ -1138,115 +892,7 @@ impl _parse_toml_data(
         );
     }
     if "serve" in data {
-        serve_data = data["serve"];
-
-        on_conflict = str(serve_data.get("on_conflict", "retry")).strip().lower();
-        if on_conflict not in ("retry", "fail") {
-            import from jaclang.cli.console { console }
-            console.warning(
-                f"[serve] on_conflict='{serve_data.get('on_conflict')}' is not "
-                "'retry' or 'fail'; defaulting to 'retry'."
-            );
-            on_conflict = "retry";
-        }
-        workers_raw = serve_data.get("workers", {});
-        workers_data: dict[str, any] = (
-            workers_raw if isinstance(workers_raw, dict) else {"count": workers_raw}
-        );
-        tls_data: dict[str, any] = serve_data.get("tls", {}) or {};
-        proxy_data: dict[str, any] = serve_data.get("proxy", {}) or {};
-        limits_data: dict[str, any] = serve_data.get("limits", {}) or {};
-        timeouts_data: dict[str, any] = serve_data.get("timeouts", {}) or {};
-        access_data: dict[str, any] = serve_data.get("access_log", {}) or {};
-        compression_data: dict[str, any] = serve_data.get("compression", {}) or {};
-        ws_data: dict[str, any] = serve_data.get("websocket", {}) or {};
-        auth_data: dict[str, any] = serve_data.get("auth", {}) or {};
-        cors_raw = serve_data.get("cors_origins", ["*"]);
-        config.serve = ServeConfig(
-            host=str(serve_data.get("host", "0.0.0.0")),
-            port=serve_data.get("port", 8000),
-            session=serve_data.get("session", ""),
-            main=serve_data.get("main", True),
-            docs_enabled=bool(serve_data.get("docs_enabled", True)),
-            graph_enabled=bool(serve_data.get("graph_enabled", True)),
-            cors_origins=[str(_o) for _o in cors_raw]
-                if isinstance(cors_raw, list)
-                else [str(cors_raw)],
-            on_conflict=on_conflict,
-            conflict_max_attempts=serve_data.get("conflict_max_attempts", 5),
-            conflict_backoff_ms=serve_data.get("conflict_backoff_ms", 0),
-            workers=ServeWorkersConfig(
-                count=str(workers_data.get("count", "1")),
-                threads=str(workers_data.get("threads", "auto")),
-                max_requests=int(workers_data.get("max_requests", 0)),
-                max_requests_jitter=int(workers_data.get("max_requests_jitter", 0)),
-                request_timeout=float(workers_data.get("request_timeout", 0.0)),
-                boot_timeout=float(workers_data.get("boot_timeout", 120.0)),
-                hang_timeout=float(workers_data.get("hang_timeout", 30.0))
-            ),
-            tls=ServeTlsConfig(
-                certfile=str(tls_data.get("certfile", "")),
-                keyfile=str(tls_data.get("keyfile", "")),
-                ca_certs=str(tls_data.get("ca_certs", "")),
-                min_version=str(tls_data.get("min_version", "1.2"))
-            ),
-            proxy=ServeProxyConfig(
-                trusted=[str(_p) for _p in proxy_data.get("trusted", [])]
-            ),
-            limits=ServeLimitsConfig(
-                max_connections=int(limits_data.get("max_connections", 0)),
-                backlog=int(limits_data.get("backlog", 2048)),
-                max_body_bytes=int(limits_data.get("max_body_bytes", 104857600)),
-                max_header_bytes=int(limits_data.get("max_header_bytes", 65536)),
-                max_header_count=int(limits_data.get("max_header_count", 100)),
-                max_request_line_bytes=int(
-                    limits_data.get("max_request_line_bytes", 8192)
-                ),
-                multipart_spool_bytes=int(
-                    limits_data.get("multipart_spool_bytes", 1048576)
-                )
-            ),
-            timeouts=ServeTimeoutsConfig(
-                header=float(timeouts_data.get("header", 30.0)),
-                body=float(timeouts_data.get("body", 60.0)),
-                keepalive=float(timeouts_data.get("keepalive", 65.0)),
-                drain=float(timeouts_data.get("drain", 10.0)),
-                close=float(timeouts_data.get("close", 5.0))
-            ),
-            access_log=ServeAccessLogConfig(
-                enabled=bool(access_data.get("enabled", True)),
-                format=str(access_data.get("format", "text")),
-                suppress_health_checks=bool(
-                    access_data.get("suppress_health_checks", False)
-                )
-            ),
-            compression=ServeCompressionConfig(
-                enabled=bool(compression_data.get("enabled", True)),
-                min_bytes=int(compression_data.get("min_bytes", 1024)),
-                level=int(compression_data.get("level", 4))
-            ),
-            websocket=ServeWebSocketConfig(
-                allowed_origins=[str(_o) for _o in ws_data.get("allowed_origins", [])],
-                max_message_bytes=int(ws_data.get("max_message_bytes", 0)),
-                ping_interval=float(ws_data.get("ping_interval", 20.0)),
-                ping_timeout=float(ws_data.get("ping_timeout", 20.0))
-            ),
-            auth=ServeAuthConfig(
-                secret=str(auth_data.get("secret", "")),
-                algorithm=str(auth_data.get("algorithm", "HS256")),
-                token_ttl_days=int(auth_data.get("token_ttl_days", 7)),
-                password_hash_cost=int(auth_data.get("password_hash_cost", 14)),
-                registration_challenge=bool(
-                    auth_data.get("registration_challenge", False)
-                ),
-                registration_attempts_per_hour=max(
-                    0, int(auth_data.get("registration_attempts_per_hour", 0))
-                ),
-                registration_challenges_per_10_minutes=max(
-                    0, int(auth_data.get("registration_challenges_per_10_minutes", 0))
-                )
-            )
-        );
+        _apply_serve_table(config.serve, data["serve"], "serve");
     }
     if "format" in data {
         fmt = data["format"];
@@ -1270,7 +916,8 @@ impl _parse_toml_data(
             suppress=check_data.get("suppress", []),
             suppress_categories=check_data.get("suppress_categories", []),
             enforce_access=check_data.get("enforce_access", False),
-            warn_native_seams=check_data.get("warn_native_seams", True)
+            warn_native_seams=check_data.get("warn_native_seams", True),
+            untyped_external=str(check_data.get("untyped-external", "warning"))
         );
     }
     if "dot" in data {
@@ -1310,11 +957,38 @@ impl _parse_toml_data(
         client_data = data["client"];
         config.client = ClientConfig(framework=client_data.get("framework", "react"));
     }
+    if isinstance(data.get("database"), dict) {
+        db_data: dict[str, any] = data["database"];
+        indexes = db_data.get("indexes");
+        days = str(db_data.get("retention_days") or "0").strip();
+        config.database = DatabaseConfig(
+            indexes={
+                str(arch): [str(field) for field in fields]
+                for (arch, fields) in (
+                    indexes.items() if isinstance(indexes, dict) else []
+                )
+                if isinstance(fields, list)
+            },
+            retention_days=int(days) if days.isdigit() else 0,
+            postgres_dist=str(db_data.get("postgres_dist") or ""),
+            postgres_version=str(db_data.get("postgres_version") or "")
+        );
+    }
+    if isinstance(data.get("network"), dict) {
+        config.network = NetworkConfig(offline=data["network"].get("offline") is True);
+    }
+    if isinstance(data.get("toolchains"), dict) {
+        config.toolchains = ToolchainsConfig(
+            system=data["toolchains"].get("system", True) is not False
+        );
+    }
     if "dev" in data {
         dev_data = data["dev"];
 
         config.dev = DevConfig(
             jaclang_source=str(dev_data.get("jaclang_source", "")),
+            exact=dev_data.get("exact") is True,
+            pod_binary=str(dev_data.get("pod_binary", "")),
             jobs=str(dev_data.get("jobs", "")),
             test_jobs=str(dev_data.get("test_jobs", "")),
             check_jobs=str(dev_data.get("check_jobs", "")),
@@ -1372,6 +1046,10 @@ impl _parse_toml_data(
         app = implicit_app(config);
         config.apps = {app.name: app};
     }
+
+    config.persistence = parse_persistence(
+        data.get("persistence", {}), config.project.name
+    );
     return config;
 }
 
@@ -1412,10 +1090,7 @@ impl report_env_findings(
     if not refs {
         return;
     }
-    lines = [
-        f"  {ref.path}: {ref.var} is not set"
-            + (f" ({ref.message})" if ref.message else "") for ref in refs
-    ];
+    lines = [f"  {ref.path}: {ref.reason()}" for ref in refs];
     tail = f"\n{hint}" if hint else "";
     raise ValueError(context + "\n" + "\n".join(lines) + tail);
 }
@@ -1553,7 +1228,7 @@ impl JacConfig.resolved_kind(app: AppConfig) -> str {
     if app.kind {
         return app.kind;
     }
-    import from jaclang.project.kinds { resolve_app_kind, resolve_entry }
+
     root_dir = str(self.project_root) if self.project_root else "";
     entry_file = resolve_entry(self, root_dir, app) if root_dir else "";
     return resolve_app_kind(self, app, entry_file);
@@ -1604,7 +1279,6 @@ impl JacConfig.app_for_target(entry_path: str = "") -> AppConfig | None {
 }
 
 impl JacConfig.app_for_path(abs_path: str) -> AppConfig | None {
-    import from jaclang.runtime.prepared { origin_for_source }
     abs_path = origin_for_source(abs_path);
     if self.project_root is None {
         return None;
@@ -1618,7 +1292,6 @@ impl JacConfig.app_for_path(abs_path: str) -> AppConfig | None {
 }
 
 impl JacConfig.serving_apps -> list[AppConfig] {
-    import from jaclang.project.kinds { kind_spec }
     out: list[AppConfig] = [];
     for app in self.apps.values() {
         spec = kind_spec(self.resolved_kind(app));
@@ -1633,11 +1306,428 @@ impl JacConfig.default_app.getter -> str {
     return self.project.default_app;
 }
 
-def _apply_build_section(cfg: JacConfig, data: dict[str, any]) -> None {
+def _apply_build_section(cfg: JacConfig, data: dict[str, any]) -> None;
+
+def _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]);
+
+impl _deep_merge(base: dict[str, any], `override: dict[str, any]) -> dict[str, any] {
+    result = base.copy();
+    for (key, value) in `override.items() {
+        if key in result
+            and isinstance(result[key], dict)
+            and isinstance(value, dict) {
+            result[key] = _deep_merge(result[key], value);
+        } else {
+            result[key] = value;
+        }
+    }
+    return result;
+}
+
+impl table_value(current: any, raw: any, label: str) -> any {
+    if isinstance(current, bool) {
+        if not isinstance(raw, bool) {
+            raise ServeConfigError(f"{label} must be true or false, got {raw!r}");
+        }
+        return raw;
+    }
+    if isinstance(current, int) {
+        if isinstance(raw, bool) or not isinstance(raw, int) {
+            raise ServeConfigError(f"{label} must be an integer, got {raw!r}");
+        }
+        return raw;
+    }
+    if isinstance(current, float) {
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)) {
+            raise ServeConfigError(f"{label} must be a number, got {raw!r}");
+        }
+        return float(raw);
+    }
+    if isinstance(current, list) {
+        if not isinstance(raw, list)
+            or not all(isinstance(item, str) for item in raw) {
+            raise ServeConfigError(f"{label} must be a list of strings, got {raw!r}");
+        }
+        return list(raw);
+    }
+    if not isinstance(raw, str) {
+        raise ServeConfigError(f"{label} must be a string, got {raw!r}");
+    }
+    return raw;
+}
+
+impl apply_table(
+    target: object, table: dict[str, any], section: str, moved: dict[str, str]
+) -> None {
+    names = [f.name for f in fields(target)];
+    for key in table {
+        if key in names {
+            continue;
+        }
+        if key in moved {
+            raise ServeConfigError(f"[{section}] {key} has moved to {moved[key]}");
+        }
+        raise ServeConfigError(
+            f"[{section}] has no key {key!r}; its keys are {', '.join(names)}"
+        );
+    }
+    for (name, raw) in table.items() {
+        current = getattr(target, name);
+        if not (is_record(current) or isinstance(current, dict)) {
+            setattr(target, name, table_value(current, raw, f"[{section}] {name}"));
+        } elif not isinstance(raw, dict) {
+            raise ServeConfigError(f"[{section}.{name}] must be a table");
+        } elif is_record(current) {
+            apply_table(current, raw, f"{section}.{name}", {});
+        } else {
+            setattr(target, name, _deep_merge(current, raw));
+        }
+    }
+}
+
+impl _apply_serve_table(serve: ServeConfig, raw: any, section: str) -> None {
+    if not isinstance(raw, dict) {
+        raise ServeConfigError(f"[{section}] must be a table");
+    }
+    table = dict(raw);
+    workers = table.get("workers");
+    if workers is not None and not isinstance(workers, dict) {
+        workers = {"count": workers};
+    }
+    if isinstance(workers, dict) {
+        table["workers"] = {
+            key: str(value)
+                if key in ("count", "threads")
+                    and isinstance(value, int)
+                    and not isinstance(value, bool)
+                else value for (key, value) in workers.items()
+        };
+    }
+    if isinstance(table.get("cors_origins"), str) {
+        table["cors_origins"] = [table["cors_origins"]];
+    }
+    apply_table(serve, table, section, SERVE_MOVED_KEYS);
+    if "on_conflict" in table {
+        mode = serve.on_conflict.strip().lower();
+        if mode not in ("retry", "fail") {
+            import from jaclang.cli.console { console }
+            console.warning(
+                f"[{section}] on_conflict='{serve.on_conflict}' is not "
+                "'retry' or 'fail'; defaulting to 'retry'."
+            );
+            mode = "retry";
+        }
+        serve.on_conflict = mode;
+    }
+}
+
+impl _dependency_doc(config: JacConfig, dev: bool) -> dict[str, any] {
+    packages = config.dev_dependencies if dev else config.dependencies;
+    out: dict[str, any] = {
+        name: dep.to_toml() for (name, dep) in sorted(packages.items())
+    };
+    pypi: dict[str, any] = dict(
+        config.pypi_dev_dependencies if dev else config.pypi_dependencies
+    );
+    if not dev {
+        for (name, info) in config.pypi_git_dependencies.items() {
+            pypi[name] = dict(info);
+        }
+    }
+    if pypi {
+        out["pypi"] = pypi;
+    }
+    if not dev {
+        for (eco, deps) in config.plugin_dependencies.items() {
+            regular = {
+                k: v
+                for (k, v) in deps.items()
+                if k != "dev"
+            };
+            dev_deps = deps.get("dev") if isinstance(deps.get("dev"), dict) else {};
+            table = dict(regular);
+            if dev_deps {
+                table["dev"] = dict(dev_deps);
+            }
+            out[eco] = table;
+        }
+    }
+    return out;
+}
+
+impl _needs_quoting(key: str) -> bool {
+    import re;
+    return not bool(re.`match(r'^[A-Za-z0-9_-]+$', key));
+}
+
+impl _quote_key(key: str) -> str {
+    if _needs_quoting(key) {
+        escaped = key.replace("\\", "\\\\").replace('"', '\\"');
+        return f'"{escaped}"';
+    }
+    return key;
+}
+
+impl _toml_is_inline(
+    lines: list[str], path: tuple[str, ...], value: dict[str, any]
+) -> bool {
+    if not value or _toml_find_span(lines, path) is not None {
+        return False;
+    }
+    return all(not isinstance(v, dict) for v in value.values())
+        and any(k in INLINE_SPEC_KEYS for k in value);
+}
+
+impl _toml_flatten_into(
+    view: dict[tuple[str, ...], dict[str, any]],
+    path: tuple[str, ...],
+    table: dict[str, any],
+    lines: list[str]
+) {
+    flat: dict[str, any] = {};
+    for (k, v) in table.items() {
+        if isinstance(v, dict) and not _toml_is_inline(lines, path + (k, ), v) {
+            _toml_flatten_into(view, path + (k, ), v, lines);
+        } else {
+            flat[k] = v;
+        }
+    }
+    view[path] = flat;
+}
+
+impl _toml_flatten(
+    doc: dict[str, any], roots: list[str], lines: list[str]
+) -> dict[tuple[str, ...], dict[str, any]] | None {
+    view: dict[tuple[str, ...], dict[str, any]] = {};
+    for root_key in roots {
+        if root_key not in doc {
+            continue;
+        }
+        table = doc[root_key];
+        if not isinstance(table, dict) {
+            return None;
+        }
+        _toml_flatten_into(view, (root_key, ), table, lines);
+    }
+    return view;
+}
+
+impl _toml_token_alt(name: str) -> str {
+    import re;
+    alts: list[str] = [];
+    if name and not _needs_quoting(name) {
+        alts.append(re.escape(name));
+    }
+    basic = name.replace("\\", "\\\\").replace('"', '\\"');
+    alts.append(re.escape(f'"{basic}"'));
+    if "'" not in name {
+        alts.append(re.escape(f"'{name}'"));
+    }
+    return "(?:" + "|".join(alts) + ")";
+}
+
+impl _toml_find_span(
+    lines: list[str], parts: tuple[str, ...]
+) -> tuple[int, int] | None {
+    import re;
+    header_re = re.compile(
+        r"^\s*\[\s*"
+            + r"\s*\.\s*".join([_toml_token_alt(p) for p in parts])
+            + r"\s*\]\s*(?:#.*)?$"
+    );
+    header = -1;
+    for (i, line) in enumerate(lines) {
+        if header_re.`match(line) {
+            if header >= 0 {
+                return None;
+            }
+            header = i;
+        }
+    }
+    if header < 0 {
+        return None;
+    }
+    end = len(lines);
+    for j in range(header + 1, len(lines)) {
+        if lines[j].lstrip().startswith("[") {
+            end = j;
+            break;
+        }
+    }
+    return (header, end);
+}
+
+impl _toml_find_key(
+    lines: list[str], span: tuple[int, int], key: str
+) -> tuple[int, int] | None {
+    import re;
+    key_re = re.compile(r"^\s*" + _toml_token_alt(key) + r"\s*=\s*");
+    found = -1;
+    value_start = -1;
+    for i in range(span[0] + 1, span[1]) {
+        m = key_re.`match(lines[i]);
+        if m {
+            if found >= 0 {
+                return None;
+            }
+            found = i;
+            value_start = m.end();
+        }
+    }
+    if found < 0 {
+        return None;
+    }
+    return (found, value_start);
+}
+
+impl _toml_value_end(line: str, start: int) -> int | None {
+    n = len(line);
+    if start >= n {
+        return None;
+    }
+    c = line[start];
+    if c in ('"', "'") {
+        if line[start:start + 3] == c * 3 {
+            closing = line.find(c * 3, start + 3);
+            return closing + 3 if closing >= 0 else None;
+        }
+        j = start + 1;
+        while j < n {
+            if line[j] == "\\" and c == '"' {
+                j += 2;
+                continue;
+            }
+            if line[j] == c {
+                return j + 1;
+            }
+            j += 1;
+        }
+        return None;
+    }
+    if c in ("[", "{") {
+        depth = 0;
+        in_str = "";
+        j = start;
+        while j < n {
+            ch = line[j];
+            if in_str {
+                if ch == "\\" and in_str == '"' {
+                    j += 2;
+                    continue;
+                }
+                if ch == in_str {
+                    in_str = "";
+                }
+            } elif ch in ('"', "'") {
+                in_str = ch;
+            } elif ch in ("[", "{") {
+                depth += 1;
+            } elif ch in ("]", "}") {
+                depth -= 1;
+                if depth == 0 {
+                    return j + 1;
+                }
+            }
+            j += 1;
+        }
+        return None;
+    }
+    j = start;
+    while j < n and line[j] != "#" {
+        j += 1;
+    }
+    while j > start and line[j - 1] in (" ", "\t") {
+        j -= 1;
+    }
+    return j if j > start else None;
+}
+
+impl _toml_replace_key(
+    lines: list[str], parts: tuple[str, ...], key: str, value_text: str
+) -> bool {
+    import re;
+    span = _toml_find_span(lines, parts);
+    if span is None {
+        return False;
+    }
+    hit = _toml_find_key(lines, span, key);
+    if hit is None {
+        return False;
+    }
+    (idx, value_start) = hit;
+    line = lines[idx];
+    value_end = _toml_value_end(line, value_start);
+    if value_end is None or not re.`match(r"^\s*(?:#.*)?$", line[value_end:]) {
+        return False;
+    }
+    lines[idx] = line[:value_start] + value_text + line[value_end:];
+    return True;
+}
+
+impl _toml_delete_key(lines: list[str], parts: tuple[str, ...], key: str) -> bool {
+    span = _toml_find_span(lines, parts);
+    if span is None {
+        return False;
+    }
+    hit = _toml_find_key(lines, span, key);
+    if hit is None {
+        return False;
+    }
+    lines.pop(hit[0]);
+    return True;
+}
+
+impl _toml_insert_key(
+    lines: list[str], parts: tuple[str, ...], key: str, value_text: str
+) -> bool {
+    span = _toml_find_span(lines, parts);
+    if span is None {
+        return False;
+    }
+    at = span[0];
+    for j in range(span[0] + 1, span[1]) {
+        stripped = lines[j].strip();
+        if stripped and not stripped.startswith("#") {
+            at = j;
+        }
+    }
+    lines.insert(at + 1, f"{_quote_key(key)} = {value_text}");
+    return True;
+}
+
+impl _toml_append_section(
+    lines: list[str], parts: tuple[str, ...], flat: dict[str, any]
+) {
+    while lines and not lines[-1].strip() {
+        lines.pop();
+    }
+    if lines {
+        lines.append("");
+    }
+    header = ".".join([_quote_key(p) for p in parts]);
+    lines.append(f"[{header}]");
+    for (k, v) in flat.items() {
+        lines.append(f"{_quote_key(k)} = {toml_value(v)}");
+    }
+    lines.append("");
+}
+
+impl _toml_remove_section(lines: list[str], parts: tuple[str, ...]) -> bool {
+    span = _toml_find_span(lines, parts);
+    if span is None {
+        return False;
+    }
+    for _ in range(span[1] - span[0]) {
+        lines.pop(span[0]);
+    }
+    return True;
+}
+
+impl _apply_build_section(cfg: JacConfig, data: dict[str, any]) -> None {
     if "build" not in data or not isinstance(data["build"], dict) {
         return;
     }
-    import from jaclang.cli.console { console }
+
     build_data = data["build"];
     for (_old_key, _new_home) in [
         ("default_codespace", "[placement] default"),
@@ -1649,27 +1739,16 @@ def _apply_build_section(cfg: JacConfig, data: dict[str, any]) -> None {
             );
         }
     }
-    _builtin_cap = BuildConfig().native_closure_cap;
-    try {
-        _cap = int(build_data.get("native_closure_cap", _builtin_cap));
-    } except (TypeError, ValueError) {
-        _cap = 0;
-    }
-    if _cap < 1 {
+    if "native_closure_cap" in build_data {
         console.warning(
-            f"[build] native_closure_cap="
-            f"'{build_data.get('native_closure_cap')}' must be a positive "
-            f"integer; defaulting to {_builtin_cap}."
+            "jac.toml: [build] native_closure_cap was retired; a module's whole "
+            "import closure is always judged for native placement."
         );
-        _cap = _builtin_cap;
     }
-    cfg.build = BuildConfig(
-        dir=str(build_data.get("dir", BuildConfig().dir)), native_closure_cap=_cap
-    );
+    cfg.build = BuildConfig(dir=str(build_data.get("dir", BuildConfig().dir)));
 }
 
-def _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]) {
-    import from jaclang.cli.console { console }
+impl _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]) {
     for (_old, _new) in [("gc", "[memory] profile / enforce / exempt")] {
         if _old in data {
             console.error(f"jac.toml: the [{_old}] section was retired; use {_new}.");
@@ -1703,6 +1782,11 @@ def _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]) {
     }
     if "native" in data and isinstance(data["native"], dict) {
         nat = data["native"];
+        _link_mode = str(nat.get("link_mode", cfg.native.link_mode));
+        if _link_mode not in ("objects", "bitcode") {
+            raise ValueError("[native] link_mode must be objects or bitcode");
+        }
+        cfg.native.link_mode = _link_mode;
         if "require" in nat {
             if not isinstance(nat["require"], list)
                 or not all(isinstance(pattern, str) for pattern in nat["require"]) {
@@ -1731,6 +1815,13 @@ def _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]) {
             cfg.native.threads = 4;
         }
     }
+    if "arch" in data {
+        raise ValueError(
+            "[arch] was removed from jac.toml: an archwire.jac seals the directory it"
+            " sits in. Delete the [arch] table and run `jac arch init --strip` in"
+            " each directory it closed."
+        );
+    }
     if "placement" in data
         and isinstance(data["placement"], dict)
         and "default" in data["placement"] {
@@ -1746,4 +1837,18 @@ def _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]) {
             );
         }
     }
+}
+
+impl MemoryConfig.gc_mode -> str {
+    return {"managed": "cycles", "rc": "rc", "nogc": "none"}[self.profile];
+}
+
+impl offline_mode -> bool {
+    config = get_config();
+    return config is not None and config.network.offline;
+}
+
+impl use_system_toolchains -> bool {
+    config = get_config();
+    return config is None or config.toolchains.system;
 }

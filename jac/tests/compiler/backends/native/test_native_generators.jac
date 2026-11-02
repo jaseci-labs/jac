@@ -14,11 +14,13 @@ import from tests.support {
     compile_native,
     get_func,
     has_error_code,
+    native_address,
     native_force_opts
 }
 import jaclang;
 
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.frontend.codeinfo { HDR_RC_OFF }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -45,7 +47,7 @@ def get_sfunc(eng: any, name: str, restype: type | None, *argtypes: type) -> any
     # bytes/str args build their backing storage via jac_str_new; str
     # returns come back as the full bytes of the result string, so existing
     # comparisons keep working.
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     real_res: any = JacStrABI if restype == ctypes.c_char_p else restype;
     str_slots: list[bool] = [];
@@ -65,7 +67,7 @@ def get_sfunc(eng: any, name: str, restype: type | None, *argtypes: type) -> any
     sn_addr = 0;
     for sn in ("jac_str_new", "__jac_str_new") {
         try {
-            sn_addr = eng.get_function_address(sn);
+            sn_addr = native_address(eng, sn);
         } except Exception {
             sn_addr = 0;
         }
@@ -268,4 +270,39 @@ test "generator: capturing lambda as a map callback inside a generator" {
     (eng, _) = compile_native("generators_closures.jac");
     f = get_func(eng, "sum_gen_mapped", ctypes.c_int64, ctypes.c_int64);
     assert f(10) == 36 , "11+12+13";
+}
+
+test "generator: enumerate inside a generator body survives frame drop" {
+    (eng, _) = compile_native("generators_iter_ownership.jac");
+    f = get_func(eng, "total_picked", ctypes.c_int64, ctypes.c_int64);
+    assert f(200) == 200 * (20 + 30);
+}
+
+def iter_refs(it: int) -> int {
+    return ctypes.c_int64.from_address(it + HDR_RC_OFF).value;
+}
+
+test "generator: a for-loop iterator in a frame slot is released exactly once" {
+    # The caller keeps two references to one iterator so an extra release
+    # shows up as a count instead of a freed block. Draining a generator
+    # whose loop iterates an owned alias, a borrowed parameter, or abandons
+    # the loop mid-way must leave the caller's count where it was.
+    (eng, _) = compile_native("generators_iter_ownership.jac");
+    make = get_func(eng, "make_counter", ctypes.c_void_p, ctypes.c_int64);
+    alias = get_func(eng, "alias", ctypes.c_void_p, ctypes.c_void_p);
+    drain_owned = get_func(eng, "drain_owned", ctypes.c_int64, ctypes.c_void_p);
+    drain_borrowed = get_func(eng, "drain_borrowed", ctypes.c_int64, ctypes.c_void_p);
+    first_borrowed = get_func(eng, "first_borrowed", ctypes.c_int64, ctypes.c_void_p);
+    for (label, run, expected) in [
+        ("owned", drain_owned, 6),
+        ("borrowed", drain_borrowed, 6),
+        ("abandoned", first_borrowed, 0)
+    ] {
+        it = make(4);
+        assert alias(it) == it;
+        before = iter_refs(it);
+        assert before == 2 , f"{label}: caller holds two references";
+        assert run(it) == expected , label;
+        assert iter_refs(it) == before , f"{label}: iterator reference count drifted";
+    }
 }

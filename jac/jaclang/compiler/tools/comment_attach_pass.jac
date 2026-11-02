@@ -1,11 +1,5 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.passes.context { CompileContext }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.frontend.codeinfo { NodeComments }
-
-walker CommentAttachPass {
-    has ctx: CompileContext,
-        module: uni.Module;
+walker CommentAttachPass(CompilerPass) {
+    static has contract: PassContract = PassContract();
 
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     can run_walk with uni.Module entry;

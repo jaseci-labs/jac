@@ -330,6 +330,8 @@ Evaluation is fuel-limited, has no access to the file system, network, environme
 
 Not interpreted: `match`, lambdas, generators, `async`, `with`, walkers and `spawn`, and `super` calls inside a comptime-run `init`.
 
+The evaluator works on its own typed values rather than on live Python objects, and reproduces Python's observable behavior for them: arbitrary-precision `int`, correctly rounded `float` conversion and division, `repr`/`str`/f-string and `%` formatting, `str.format`, ordering and equality across `int`/`float`/`bool`, dict insertion order and key identity (`1`, `1.0`, and `True` are one key), and the standard exception types and messages, which `try`/`except` can catch. Only allow-listed methods of `str`, `bytes`, `list`, `tuple`, `dict`, `set`, `frozenset`, `int`, `float`, and `range` are callable. A few results that Python itself cannot reproduce from one build to the next are refused instead: `hash()` of a string, bytes, type, or enum member (Python seeds those per process) and a negative number raised to a fractional power (a complex result). A set iterates in insertion order. The `target` record describes the host that runs the compiler.
+
 ## Per-Tier Behavior
 
 - **Python**: `comptime` bindings are emitted with their computed value, `comptime if` keeps only the live branch, `comptime for` becomes a plain loop over the materialized collection, calls to comptime defs are replaced by their results, and `comptime def`, `comptime assert`, and `comptime import` disappear.

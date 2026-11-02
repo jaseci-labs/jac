@@ -1,0 +1,195 @@
+def:priv _csv_list_dialects_call(
+    receiver: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject];
+
+glob:priv _csv_unregister_dialect_signature = CallSignature(
+         "unregister_dialect", ["name"], 1, 1, 0, parser=PARSE_KEYWORDS
+     );
+
+def:priv _csv_unregister_dialect_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv _csv_unregister_dialect_call(
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject];
+
+glob:priv _csv_get_dialect_signature = CallSignature(
+         "get_dialect", ["name"], 1, 1, 0, parser=PARSE_KEYWORDS
+     );
+
+def:priv _csv_get_dialect_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv _csv_get_dialect_call(
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject];
+
+glob:priv _csv_field_size_limit_signature = CallSignature(
+         "field_size_limit", ["new_limit"], 0, 1, 0, parser=PARSE_KEYWORDS
+     );
+
+def:priv _csv_field_size_limit_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv _csv_field_size_limit_call(
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject];
+
+glob dialect_reduce_doc: str = "raises an exception to avoid pickling",
+     Dialect_Type_doc: str = "CSV dialect\n\nThe Dialect type records CSV parsing and generation options.\n",
+     Reader_Type_doc: str = "CSV reader\n\nReader objects are responsible for reading and parsing tabular data\nin CSV format.\n",
+     csv_writerow_doc: str = "writerow($self, row, /)\n--\n\nConstruct and write a CSV record from an iterable of fields.\n\nNon-string elements will be converted to string.",
+     csv_writerows_doc: str = "writerows($self, rows, /)\n--\n\nConstruct and write a series of iterables to a csv file.\n\nNon-string elements will be converted to string.",
+     Writer_Type_doc: str = "CSV writer\n\nWriter objects are responsible for generating tabular data\nin CSV format from sequence input.\n",
+     csv_module_doc: str = "CSV parsing and writing.\n",
+     csv_reader_doc: str = "reader($module, iterable, /, dialect='excel', **fmtparams)\n--\n\nReturn a reader object that will process lines from the given iterable.\n\nThe \"iterable\" argument can be any object that returns a line\nof input for each iteration, such as a file object or a list.  The\noptional \"dialect\" argument defines a CSV dialect.  The function\nalso accepts optional keyword arguments which override settings\nprovided by the dialect.\n\nThe returned object is an iterator.  Each iteration returns a row\nof the CSV file (which can span multiple input lines).\n",
+     csv_writer_doc: str = "writer($module, fileobj, /, dialect='excel', **fmtparams)\n--\n\nReturn a writer object that will write user data on the given file object.\n\nThe \"fileobj\" argument can be any object that supports the file API.\nThe optional \"dialect\" argument defines a CSV dialect.  The function\nalso accepts optional keyword arguments which override settings\nprovided by the dialect.\n",
+     csv_register_dialect_doc: str = "register_dialect($module, name, /, dialect='excel', **fmtparams)\n--\n\nCreate a mapping from a string name to a CVS dialect.\n\nThe optional \"dialect\" argument specifies the base dialect instance\nor the name of the registered dialect.  The function also accepts\noptional keyword arguments which override settings provided by the\ndialect.\n",
+     module_methods: list[MethodDefinition] = [
+         MethodDefinition(
+             "list_dialects",
+             MethodCallbacks(positional=_csv_list_dialects_call),
+             "list_dialects($module, /)\n--\n\nReturn a list of all known dialect names.",
+             4
+         ),
+         MethodDefinition(
+             "unregister_dialect",
+             MethodCallbacks(fast_keywords=_csv_unregister_dialect_call),
+             "unregister_dialect($module, /, name)\n--\n\nDelete the name/dialect mapping associated with a string name.",
+             130
+         ),
+         MethodDefinition(
+             "get_dialect",
+             MethodCallbacks(fast_keywords=_csv_get_dialect_call),
+             "get_dialect($module, /, name)\n--\n\nReturn the dialect instance associated with name.",
+             130
+         ),
+         MethodDefinition(
+             "field_size_limit",
+             MethodCallbacks(fast_keywords=_csv_field_size_limit_call),
+             "field_size_limit($module, /, new_limit=<unrepresentable>)\n--\n\nSets an upper limit on parsed fields.\n\nReturns old limit. If limit is not given, no new limit is set and\nthe old limit is returned",
+             130
+         ),
+
+     ];
+
+impl _csv_list_dialects_call(
+    receiver: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        return _csv_list_dialects_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
+}
+
+impl _csv_unregister_dialect_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        name: ptr[PyObject] = value;
+        return _csv_unregister_dialect_impl(receiver, name);
+    } except boundary_failure {
+        return NULL;
+    }
+}
+
+impl _csv_unregister_dialect_call(
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return _csv_unregister_dialect_bound(receiver, args, nargs);
+    }
+    return invoke_keywords(
+        _csv_unregister_dialect_signature,
+        args,
+        nargs,
+        kwnames,
+        _csv_unregister_dialect_bound,
+        receiver
+    );
+}
+
+impl _csv_get_dialect_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        value = clinic_args[0];
+        name: ptr[PyObject] = value;
+        return _csv_get_dialect_impl(receiver, name);
+    } except boundary_failure {
+        return NULL;
+    }
+}
+
+impl _csv_get_dialect_call(
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    if kwnames == NULL and nargs >= 1 and nargs <= 1 {
+        return _csv_get_dialect_bound(receiver, args, nargs);
+    }
+    return invoke_keywords(
+        _csv_get_dialect_signature,
+        args,
+        nargs,
+        kwnames,
+        _csv_get_dialect_bound,
+        receiver
+    );
+}
+
+impl _csv_field_size_limit_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        new_limit: ptr[PyObject] = NULL;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            new_limit = value;
+        }
+        return _csv_field_size_limit_impl(receiver, new_limit);
+    } except boundary_failure {
+        return NULL;
+    }
+}
+
+impl _csv_field_size_limit_call(
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    if kwnames == NULL and nargs >= 0 and nargs <= 1 {
+        return _csv_field_size_limit_bound(receiver, args, nargs);
+    }
+    return invoke_keywords(
+        _csv_field_size_limit_signature,
+        args,
+        nargs,
+        kwnames,
+        _csv_field_size_limit_bound,
+        receiver
+    );
+}

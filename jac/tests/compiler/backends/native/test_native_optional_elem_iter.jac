@@ -19,9 +19,10 @@ Two properties are pinned:
   silently iterating nothing.
 """
 
+import from jaclang.compiler.backends.py.codegen_shim { generated_python }
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
@@ -60,7 +61,7 @@ def native_build -> tuple[any, ...] {
 
 """Call a no-argument int-returning function out of the JIT engine."""
 def native_call(eng: any, name: str) -> int {
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64)(addr)();
 }
@@ -75,7 +76,7 @@ def sv_funcs -> dict[str, any] {
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"sv compilation errors: {errors}";
     ns: dict[str, any] = {};
-    exec(compile(ir.gen.py, path, "exec"), ns);
+    exec(compile(generated_python(ir.gen), path, "exec"), ns);
     return ns;
 }
 

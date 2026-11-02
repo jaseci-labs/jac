@@ -37,8 +37,8 @@ def host_errors(
                 import from jaclang.compiler.frontend.unitree { FuncCall, Name }
                 import from jaclang.compiler.passes.wasm_contract { check_host_call }
                 import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
+                import from jaclang.compiler.types.stubcat.writer { build_module_iface }
                 import from jaclang.compiler.types.stubcat.modiface {
-                    build_module_iface,
                     open_module_iface,
                     iface_module
                 }
@@ -48,7 +48,7 @@ def host_errors(
                 package = jaclang_pkg_dir();
                 payload = build_module_iface(module, evaluator, package);
                 catalog = open_module_iface(
-                    payload, package, resolver=program.iface_registry().resolve_module
+                    payload, package, resolver=program.iface_registry()
                 );
                 assert catalog is not None;
                 cached = iface_module(catalog);
@@ -117,6 +117,32 @@ test "host binding validates inherited signatures loaded from an interface cache
     );
     assert any(
         "Host import 'CloseWindow' has incompatible signature" in e for e in errors
+    );
+}
+
+"""When the native module is read as an interface only (a warm check), the
+export's symbol does not lead back to its ability, and the binding used to fail
+with E5110 on alternate runs. The provider is now found through the import."""
+test "host binding finds an export whose provider was read as an interface" {
+    import unittest.mock;
+    import jaclang.compiler.frontend.unitree as unitree;
+    real = unitree.ability_of_symbol;
+
+    def lookup(sym: any) -> any {
+        if sym is not None and sym.sym_name == "init" {
+            return None;
+        }
+        return real(sym);
+    }
+    with unittest.mock.patch.object(unitree, "ability_of_symbol", side_effect=lookup), unittest.mock.patch.object(
+        unitree, "resolved_decl_of", return_value=None
+    ) {
+        ok = host_errors('obj Host { def CloseWindow {} }\n');
+        missing = host_errors('obj Host {}\n');
+    }
+    assert not ok , "\n".join(ok);
+    assert any("Host is missing native import 'CloseWindow'" in e for e in missing) , (
+        "the contract must still be checked against the interface-loaded export"
     );
 }
 

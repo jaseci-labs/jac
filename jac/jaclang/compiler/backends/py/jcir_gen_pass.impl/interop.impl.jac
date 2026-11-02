@@ -3,7 +3,15 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
     parts: list[str] = [];
     names: list[str] = [];
     if (manifest and manifest.bindings) {
-        import from jaclang.runtime.interop_bridge { JAC_TO_CTYPES_STR }
+        import from jaclang.runtime.constants { JAC_TO_CTYPES_STR }
+        import from jaclang.compiler.frontend.codeinfo {
+            native_def_symbol,
+            native_symbol_name,
+            native_unit_prefix
+        }
+        import from jaclang.compiler.frontend.constant { Tokens as _NsTok }
+        mod_path = self.module.loc.mod_path if self.module.loc else "";
+        prefix = native_unit_prefix(mod_path) if mod_path else "";
         for binding in manifest.native_exports {
             params = ', '.join(binding.param_names);
             ret_ct = JAC_TO_CTYPES_STR.get(binding.ret_type, 'ctypes.c_int64');
@@ -11,11 +19,18 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
                 JAC_TO_CTYPES_STR.get(pt, 'ctypes.c_int64')
                 for pt in binding.param_types
             );
+            decl = binding.ast_node;
+            is_pub = isinstance(decl, AstAccessNode)
+                and decl.access is not None
+                and decl.access.tag.name == _NsTok.KW_PUB;
+            symbol = native_def_symbol(binding.name)
+                if (is_pub or not prefix)
+                else native_symbol_name(prefix, binding.name);
             parts.append(
                 f"def {binding.name}({params}):\n"
                     + f"    import ctypes\n"
                     + f"    _addr = __jac_native_engine__"
-                    + f".get_function_address('{binding.name}')\n"
+                    + f".get_function_address('{symbol}')\n"
                     + f"    _fn = ctypes.CFUNCTYPE({ret_ct}, {arg_cts})(_addr)\n"
                     + f"    return _fn({params})"
             );
@@ -29,20 +44,20 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
 
 impl JcirGenPass._native_import_registration_map -> dict[str, list[CgSplice]] {
     manifest = self.module.gen.interop_manifest;
-    if not (manifest and manifest.bindings and manifest.native_imports) {
+    if not (manifest and manifest.bindings) {
         return {};
     }
     reg_map: dict[str, list[CgSplice]] = {};
-    for binding in manifest.native_imports {
-        if binding.name in reg_map {
+    for (local_name, binding) in manifest.bindings.items() {
+        if not binding.native_callable {
             continue;
         }
         src = (
             f"if '__jac_interop_py_funcs__' in globals() "
-            + f"and '{binding.name}' in globals():\n"
-            + f"    __jac_interop_py_funcs__['{binding.name}'] = {binding.name}"
+            + f"and '{local_name}' in globals():\n"
+            + f"    __jac_interop_py_funcs__['{binding.symbol}'] = {local_name}"
         );
-        reg_map[binding.name] = [CgSplice(src=src, offset=0)];
+        reg_map[local_name] = [CgSplice(src=src, offset=0)];
     }
     return reg_map;
 }
@@ -98,35 +113,19 @@ impl JcirGenPass._top_level_bound_names(items: any) -> list[str] {
 }
 
 impl JcirGenPass._native_test_shim_stmts(nd: Test) -> list[CgItem] {
-    import from jaclang.compiler.frontend.codeinfo {
-        native_test_symbol,
-        native_glob_init_name
-    }
     test_name = nd.name.sym_name;
     line = nd.loc.first_line if nd.loc else 0;
-    symbol = native_test_symbol(test_name, line);
-    manifest = self.module.gen.interop_manifest if self.module?.gen else None;
-    dep_sources = manifest.native_transitive_sources if manifest else [];
-    init_syms: list[str] = [];
-    for dep_src in (dep_sources or []) {
-        if dep_src {
-            dep_init = native_glob_init_name(dep_src, manifest);
-            if dep_init not in init_syms {
-                init_syms.append(dep_init);
-            }
-        }
-    }
-    init_syms.append("__jac_glob_init");
-    init_list = "[" + ", ".join(f"'{sy}'" for sy in init_syms) + "]";
+    mod_path = self.module.loc.mod_path if self.module.loc else "";
+    symbol = native_test_symbol(
+        test_name, line, native_unit_prefix(mod_path) if mod_path else ""
+    );
     src_lines = [
         "from jaclang.testing.test import invoke_native_test as _jac_invoke",
         "_jac_invoke(globals().get('__jac_native_engine__'), '"
             + symbol
             + "', '"
             + test_name
-            + "', "
-            + init_list
-            + ")"
+            + "')"
     ];
     return [CgSplice(src='\n'.join(src_lines), offset=0)];
 }
@@ -175,7 +174,7 @@ impl JcirGenPass._generate_sv_to_sv_stubs(nd: Import) -> bool {
         if not isinstance(item, ModuleItem) {
             continue;
         }
-        item_name = getattr(item.name, 'value', str(item.name));
+        item_name = item.name.value;
         local_name = item.alias.sym_name if item.alias else item_name;
         if item_name not in sv_to_sv_names {
             continue;
@@ -438,18 +437,22 @@ impl JcirGenPass._sv_endpoint_effects(binding: InteropBinding, key: str) -> list
         return ['*'];
     }
     import from jaclang.compiler.frontend.codeinfo { endpoint_key }
-    (kind, name) = key.split(":", 1);
+    split_at = key.find(":");
     effect = src_mod.gen.interop_manifest.endpoint_effects.get(
-        endpoint_key(src_mod, kind, name)
+        endpoint_key(src_mod, key[:split_at], key[split_at + 1:])
     );
-    if not isinstance(effect, dict) or effect.get('unknown') {
+    if effect is None or effect.get('unknown') {
         return ['*'];
     }
-    return [str(t) for t in effect['writes']];
+    writes: list[any] = effect['writes'];
+    names: list[str] = [];
+    for target in writes {
+        names.append(str(target));
+    }
+    return names;
 }
 
 impl JcirGenPass._sv_consumer_app_expr -> str {
-    import from jaclang.compiler.driver.boundary_classify { module_app }
     consumer = module_app(self.module);
     if consumer {
         return "'" + consumer + "'";
@@ -458,18 +461,17 @@ impl JcirGenPass._sv_consumer_app_expr -> str {
 }
 
 impl JcirGenPass._sv_bridge_walker_call(expr: Expr) -> (FuncCall | None) {
-    import from jaclang.compiler.driver.boundary_classify {
-        CrossAppKind,
-        classify_cross_app_import
-    }
-    if isinstance(expr, BinaryExpr) and expr.op?.name == Tok.KW_SPAWN {
-        for side in (expr.right, expr.left) {
-            found = self._sv_bridge_walker_call(side);
-            if found is not None {
-                return found;
+    if isinstance(expr, BinaryExpr) {
+        op = expr.op;
+        if isinstance(op, Token) and op.name == Tok.KW_SPAWN {
+            for side in (expr.right, expr.left) {
+                found = self._sv_bridge_walker_call(side);
+                if found is not None {
+                    return found;
+                }
             }
+            return None;
         }
-        return None;
     }
     if not isinstance(expr, FuncCall) or not isinstance(expr.target, Name) {
         return None;
@@ -502,7 +504,7 @@ impl JcirGenPass._sv_bridge_walker_call(expr: Expr) -> (FuncCall | None) {
         return None;
     }
     facts = imp.boundary_facts;
-    item_name = getattr(item.name, 'value', str(item.name));
+    item_name = item.name.value;
     in_walkers = facts is not None and item_name in facts.sv_walkers;
     if not in_walkers {
         binding = self.module.gen.interop_manifest.bindings.get(target.sym_name);

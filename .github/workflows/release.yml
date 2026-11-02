@@ -40,10 +40,6 @@ jobs:
       inputs.action == 'create-pr'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
-    env:
-      # Run the release scripts with the published compiler. The root jac.toml
-      # otherwise reroutes the installed binary to this checkout's jaclang.
-      JAC_NO_DEV_SOURCE: "1"
     permissions:
       contents: write
       pull-requests: write
@@ -64,14 +60,22 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Validate version bump
+        # From outside the checkout, so the published compiler runs: the root
+        # jac.toml would reroute it to this checkout's jaclang. The scripts find
+        # the repository from their own path.
+        working-directory: ${{ runner.temp }}
         run: |
-          jac run scripts/validate_release.jac \
+          jac run "$GITHUB_WORKSPACE/scripts/validate_release.jac" \
             --jaclang "${{ inputs.jaclang }}"
 
       - name: Bump versions
         id: release
+        # From outside the checkout, so the published compiler runs: the root
+        # jac.toml would reroute it to this checkout's jaclang. The scripts find
+        # the repository from their own path.
+        working-directory: ${{ runner.temp }}
         run: |
-          jac run scripts/release.jac \
+          jac run "$GITHUB_WORKSPACE/scripts/release.jac" \
             --jaclang "${{ inputs.jaclang }}"
 
       - name: Configure git

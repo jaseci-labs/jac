@@ -1,133 +1,8 @@
-import from jaclang.compiler.frontend.python.syntax_error {
-    syntax_failure,
-    source_line_bytes
-}
 # P0.7 parser action helpers (PLAN.md).
 #
 # Lowers CPython grammar actions (_PyAST_*, _PyPegen_*) into ast_nodes.jac
 # objects. Generated parser rules call these helpers; this file is hand-written
 # and grows with each grammar profile.
-
-import from jaclang.runtime.python.objects {
-    PyObj,
-    PyInt,
-    PyBool,
-    PyStr,
-    PyBytes,
-    PyFloat,
-    PyComplex,
-    PyEllipsis,
-    PyNoneType,
-    py_none
-}
-import from jaclang.compiler.frontend.python.ast_nodes {
-    ast_node,
-    expr,
-    mod,
-    stmt,
-    operator,
-    unaryop,
-    boolop,
-    cmpop,
-    expr_context,
-    Expression,
-    Module,
-    Constant,
-    Name,
-    Load,
-    Store,
-    Del,
-    Attribute,
-    Subscript,
-    Slice,
-    AugAssign,
-    Delete,
-    BinOp,
-    UnaryOp,
-    BoolOp,
-    Compare,
-    Call,
-    IfExp,
-    Starred,
-    Assign,
-    AnnAssign,
-    Expr,
-    Return,
-    Pass,
-    Tuple,
-    List,
-    Add,
-    Sub,
-    Mult,
-    Div,
-    FloorDiv,
-    Mod,
-    MatMult,
-    Pow,
-    LShift,
-    RShift,
-    BitOr,
-    BitXor,
-    BitAnd,
-    USub,
-    UAdd,
-    Invert,
-    Not,
-    And,
-    Or,
-    Eq,
-    NotEq,
-    Lt,
-    LtE,
-    Gt,
-    GtE,
-    Is,
-    IsNot,
-    In,
-    NotIn,
-    cmpop,
-    keyword,
-    Break,
-    Continue,
-    FunctionDef,
-    ClassDef,
-    AsyncFunctionDef,
-    pattern,
-    arguments,
-    alias,
-    arg,
-    comprehension,
-    excepthandler,
-    match_case,
-    type_param,
-    withitem,
-    MatchOr,
-    MatchSingleton,
-    ImportFrom,
-    JoinedStr,
-    TemplateStr,
-    Interpolation,
-    FormattedValue,
-    Lambda,
-    GeneratorExp,
-    Yield,
-    YieldFrom,
-    Await,
-    ListComp,
-    SetComp,
-    DictComp,
-    Dict,
-    Set,
-    NamedExpr,
-}
-import from jaclang.compiler.frontend.python.peg_runtime {
-    peg_parser,
-    peg_token,
-    peg_has_error,
-    peg_raise_syntax_error,
-    peg_raise_syntax_error_on_token
-}
-import from jaclang.compiler.frontend.python.token_model { mk_diag, tok_loc }
 
 # The characters a backslash may escape in a str literal, as code points.
 glob VALID_ESCAPE_POINTS: set[int] = {
@@ -284,8 +159,6 @@ def pa_check_escape(
 # non-ASCII character, spelled as a \U escape, and a backslash in front of one,
 # spelled as an escaped backslash.
 def pa_decode_escape_body(body: str, tok: peg_token | None = None) -> str {
-    import from jaclang.runtime.python.characters { point_width, point_at }
-    import from jaclang.runtime.python.native_services { decode_unicode }
     data = body.encode("utf-8");
     size = len(data);
     parts: list[str] = [];
@@ -323,7 +196,6 @@ def pa_decode_escape_body(body: str, tok: peg_token | None = None) -> str {
 def pa_decode_bytes_escape_body(
     body: str, raw: bool, tok: peg_token | None = None
 ) -> list[int] {
-    import from jaclang.runtime.python.native_services { decode_bytes }
     if not body.isascii() {
         raise syntax_failure("bytes can only contain ASCII literal characters");
     }
@@ -635,7 +507,6 @@ def _has_float_marker(s: str) -> bool {
 }
 
 def pa_py_number_from_spelling(spelling: str) -> PyObj {
-    import from jaclang.runtime.python.native_services { parse_integer, parse_float }
     if _is_prefixed_int(spelling) {
         return parse_integer(spelling);
     }
@@ -912,7 +783,6 @@ def pa_seq_insert_front(head: object, tail: object | None) -> list[object] {
     return out;
 }
 
-
 def pa_singleton_seq_expr(item: expr) -> list[expr] {
     return [item];
 }
@@ -1096,7 +966,6 @@ def pa_seq_insert_front_kvpattern(
     }
     return out;
 }
-
 
 def pa_make_cmpop_pair(op: cmpop, rhs: expr) -> pa_cmpop_expr_pair {
     return pa_cmpop_expr_pair(cmpop=op, expr=rhs);
@@ -2357,24 +2226,49 @@ def interpolation_text(
         end_line = format.lineno;
         end_col = format.col_offset;
     }
-    if not p.source_lines {
-        p.source_lines = source_line_bytes(p.tok.data);
+    if not p.source_line_starts {
+        p.source_line_starts = source_line_starts(p.tok.data);
     }
-    lines = p.source_lines;
+    starts = p.source_line_starts;
+    data = p.tok.data;
     text = b"";
     for line in range(lineno, end_line + 1) {
+        line_start = starts[line - 1];
+        line_end = starts[line] if line < len(starts) else len(data);
+        line_bytes = data[line_start:line_end];
         start = col_offset + 1 if line == lineno else 0;
-        end = end_col if line == end_line else len(lines[line - 1]);
+        end = end_col if line == end_line else len(line_bytes);
         for (comment_start, comment_end) in p.tok.comments.get(line, []) {
             if comment_end <= start or comment_start >= end {
                 continue;
             }
-            text += lines[line - 1][start:max(start, comment_start)];
+            text += line_bytes[start:max(start, comment_start)];
             start = min(end, comment_end);
         }
-        text += lines[line - 1][start:end];
+        text += line_bytes[start:end];
     }
     return text.decode("utf-8");
+}
+
+def source_line_starts(data: bytes) -> list[int] {
+    starts: list[int] = [0];
+    size = len(data);
+    index = 0;
+    while index < size {
+        byte = data[index];
+        index += 1;
+        if byte == 13 {
+            if index < size and data[index] == 10 {
+                index += 1;
+            }
+        } elif byte != 10 {
+            continue;
+        }
+        if index < size {
+            starts.append(index);
+        }
+    }
+    return starts;
 }
 
 def _interpolation_conversion(

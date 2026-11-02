@@ -7,6 +7,7 @@ distinct form (E1106); a distinct alias over a non-primitive base is
 rejected (E1107).
 """
 
+import from jaclang.compiler.backends.py.codegen_shim { generated_python }
 import os;
 import from tests.support { JAC_ROOT }
 import from jaclang { JacRuntime as Jac }
@@ -103,7 +104,7 @@ test "jac0 bootstrap erases distinct to a plain alias" {
 def compile_py(name: str) -> tuple[list[any], str] {
     prog = JacProgram();
     mod = prog.compile(os.path.join(FIXTURE_DIR, name));
-    return (prog.errors_had, mod.gen.py, );
+    return (prog.errors_had, generated_python(mod.gen), );
 }
 
 
@@ -133,6 +134,43 @@ test "a brand over a comptime-imported base loads and brands" {
     m = import_fixture("brand_comptime_base");
     assert m.mk(5) == 5 , "the brand must erase to its primitive at runtime";
     assert type(m.mk(5)) is int , "type(Brand(x)) must be the erased base";
+}
+
+
+test "a comptime-imported module is no link unit of its native consumer" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.backends.native.link_plan { build_link_plan }
+    opts = CompileOptions(
+        aot_mode=True, default_codespace='native', skip_native_engine=True
+    );
+    prog = JacProgram();
+    prog.options = opts;
+    plan = build_link_plan(
+        prog, [os.path.join(FIXTURE_DIR, "brand_comptime_base.jac")], opts
+    );
+    units = [os.path.basename(u.path) for u in plan.units];
+    assert "brand_comptime_base.jac" in units , units;
+    assert "base_alias.jac" not in units , (
+        f"a comptime import binds nothing at run time, so it links nothing: {units}"
+    );
+}
+
+
+test "a module also reached at run time stays a link unit whatever the import order" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.backends.native.link_plan { build_link_plan }
+    opts = CompileOptions(
+        aot_mode=True, default_codespace='native', skip_native_engine=True
+    );
+    prog = JacProgram();
+    prog.options = opts;
+    plan = build_link_plan(
+        prog, [os.path.join(FIXTURE_DIR, "ct_facade_consumer.jac")], opts
+    );
+    units = [os.path.basename(u.path) for u in plan.units];
+    assert "ct_leaf.jac" in units , (
+        f"ct_leaf is reached through a runtime import of the facade: {units}"
+    );
 }
 
 

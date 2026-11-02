@@ -1,5 +1,3 @@
-import jaclang.compiler.backends.es.estree as es;
-
 obj FreeIdentifier {
     has name: str,
         line: int,
@@ -10,3 +8,5 @@ glob RUNTIME_PRELUDE_GLOBALS: set[str] = {"__jacJsx", "__jacSpawn"};
 
 def client_ambient_globals -> set[str];
 def free_identifiers(program: es.Program, allowed: set[str]) -> list[FreeIdentifier];
+def js_identifiers(text: str) -> list[str];
+def js_top_level_declarations(code: str) -> set[str];

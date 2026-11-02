@@ -1,4 +1,3 @@
-import from jaclang.runtime.osp_kernel { osp_skip_rest }
 impl GExpr.__eq__(other: object) -> bool {
     return type(self) == type(other);
 }
@@ -2694,4 +2693,17 @@ impl GrammarExtractPass.emit_ebnf -> str {
         lines.append(self.format_rule_pretty(rule, "::=", 88));
     }
     return "\n\n".join(lines);
+}
+
+impl is_nil_expr(nd: object) -> bool {
+    if isinstance(nd, uni.CfgExpr) {
+        return is_nil_expr(nd.expr);
+    }
+    if isinstance(nd, uni.Null) {
+        return True;
+    }
+    if isinstance(nd, uni.Name) {
+        return nd.value == "NIL";
+    }
+    return False;
 }

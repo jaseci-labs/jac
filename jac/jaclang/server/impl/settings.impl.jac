@@ -1,5 +1,7 @@
+import re;
 import ssl;
 import from pathlib { Path }
+import from urllib.parse { urlsplit }
 
 
 impl TlsSettings.build_context -> any {
@@ -37,10 +39,6 @@ impl TlsSettings.build_context -> any {
 
 
 impl AuthSettings.resolve_secret(base_path: str) -> str {
-    import from jaclang.server.serving.authcrypt {
-        PLACEHOLDER_JWT_SECRET,
-        project_signing_secret
-    }
     secret = self.secret.strip();
     if secret and secret != PLACEHOLDER_JWT_SECRET {
         return secret;
@@ -56,45 +54,208 @@ impl AuthSettings.resolve_secret(base_path: str) -> str {
 }
 
 
+def env_typed(current: any, name: str, environ: (dict[str, str] | None)) -> any;
+
+
+impl overlay_table(
+    target: object,
+    table: dict[str, any],
+    env: str,
+    section: str,
+    moved: dict[str, str],
+    environ: (dict[str, str] | None) = None
+) -> None {
+    apply_table(target, table, section, moved);
+    for f in fields(target) {
+        current = getattr(target, f.name);
+        env_name = env + f.name.upper();
+        if is_record(current) {
+            overlay_table(
+                current, {}, env_name + '_', f"{section}.{f.name}", {}, environ
+            );
+        } elif env_value(env_name, environ) is not None {
+            setattr(target, f.name, env_typed(current, env_name, environ));
+        }
+    }
+}
+
+
+impl removed_table(config: (JacConfig | None)) -> list[str] {
+    if config is None {
+        return [];
+    }
+    scale = config.get_plugin_config('scale');
+    if not isinstance(scale, dict) or 'auth' not in scale {
+        return [];
+    }
+    leftover = scale['auth'];
+    keys = list(leftover) if isinstance(leftover, dict) else [];
+    if not keys {
+        return ["[scale.auth] was removed; its settings live in [serve.auth.email]"];
+    }
+    return [
+        f"[scale.auth] {key} has moved to {SCALE_AUTH_MOVED_KEYS[key]}"
+            if key in SCALE_AUTH_MOVED_KEYS
+            else f"[scale.auth] {key} was removed and has no replacement"
+        for key in keys
+    ];
+}
+
+
+impl IdentifierSettings.enabled -> list[str] {
+    return [
+        kind
+        for kind in IDENTIFIER_KINDS
+        if getattr(self, kind) != 'off'
+    ];
+}
+
+impl IdentifierSettings.login_identifiers -> list[str] {
+    return list(self.login_with) if self.login_with else list(IDENTIFIER_KINDS);
+}
+
+
+impl AuthSettings.from_table(
+    table: dict[str, any], environ: (dict[str, str] | None) = None
+) -> AuthSettings {
+    settings = AuthSettings();
+    overlay_table(settings, table, 'AUTH_', 'serve.auth', AUTH_MOVED_KEYS, environ);
+    settings.password.hash_cost = max(10, min(17, settings.password.hash_cost));
+    return settings;
+}
+
+
+impl AuthSettings.problems -> list[str] {
+    out: list[str] = [];
+    ids = self.identifiers;
+    for kind in IDENTIFIER_KINDS {
+        mode = getattr(ids, kind);
+        if mode not in IDENTIFIER_MODES {
+            out.append(
+                f"[serve.auth.identifiers] {kind} must be 'required', 'optional' "
+                f"or 'off', got {mode!r}"
+            );
+        }
+    }
+    if out {
+        return out;
+    }
+    enabled = ids.enabled();
+    if not enabled {
+        out.append(
+            "[serve.auth.identifiers] username and email are both 'off'; an "
+            "account needs at least one identifier"
+        );
+    }
+    for name in ids.login_with {
+        if name not in IDENTIFIER_KINDS {
+            out.append(
+                f"[serve.auth.identifiers] login_with names {name!r}; it may "
+                f"name only {', '.join(IDENTIFIER_KINDS)}"
+            );
+        }
+    }
+    login = ids.login_identifiers();
+    required = [
+        kind
+        for kind in enabled
+        if getattr(ids, kind) == 'required'
+    ];
+    reachable = any(kind in login for kind in required)
+        or (not required and all(kind in login for kind in enabled));
+    if enabled and not reachable {
+        out.append(
+            f"[serve.auth.identifiers] login_with = {login!r} leaves accounts that "
+            "hold only the other identifier with no way to log in"
+        );
+    }
+    if self.email.verification not in VERIFICATION_MODES {
+        out.append(
+            "[serve.auth.email] verification must be 'none', 'optional' or "
+            f"'required', got {self.email.verification!r}"
+        );
+    }
+    if ids.email == 'off' {
+        if self.email.verification != 'none' {
+            out.append(
+                "[serve.auth.email] verification is "
+                f"{self.email.verification!r} while [serve.auth.identifiers] "
+                "email is 'off'"
+            );
+        }
+        if self.email.allowed_domains {
+            out.append(
+                "[serve.auth.email] allowed_domains is set while "
+                "[serve.auth.identifiers] email is 'off'"
+            );
+        }
+    }
+    if self.email.verify_token_ttl_seconds < 1
+        or self.email.reset_token_ttl_seconds < 1 {
+        out.append(
+            "[serve.auth.email] verify_token_ttl_seconds and "
+            "reset_token_ttl_seconds must be at least 1"
+        );
+    }
+    if self.username.min_length < 1
+        or self.username.max_length < self.username.min_length {
+        out.append(
+            "[serve.auth.username] needs 1 <= min_length <= max_length, got "
+            f"{self.username.min_length} and {self.username.max_length}"
+        );
+    }
+    if self.username.pattern {
+        try {
+            re.compile(self.username.pattern);
+        } except re.error as e {
+            out.append(f"[serve.auth.username] pattern is not a valid regex: {e}");
+        }
+    }
+    pw = self.password;
+    if pw.min_length < 1 or pw.max_length < pw.min_length {
+        out.append(
+            "[serve.auth.password] needs 1 <= min_length <= max_length, got "
+            f"{pw.min_length} and {pw.max_length}"
+        );
+    }
+    unknown = [
+        name
+        for name in pw.require
+        if name not in PASSWORD_CLASSES
+    ];
+    if unknown {
+        out.append(
+            f"[serve.auth.password] require names {unknown!r}; it may name only "
+            f"{', '.join(PASSWORD_CLASSES)}"
+        );
+    }
+    if pw.min_length < len(set(pw.require)) {
+        out.append(
+            f"[serve.auth.password] min_length = {pw.min_length} is shorter than "
+            f"the {len(set(pw.require))} character classes it requires"
+        );
+    }
+    if pw.history < 0 or pw.max_age_days < 0 {
+        out.append(
+            "[serve.auth.password] history and max_age_days must not be negative"
+        );
+    }
+    if self.lockout.max_attempts < 0 or self.lockout.window_seconds < 1 {
+        out.append(
+            "[serve.auth.lockout] needs max_attempts >= 0 and window_seconds >= 1"
+        );
+    }
+    return out;
+}
+
+
 impl secret_home(base_path: str) -> str {
-    import from jaclang.project.config { find_project_root }
     start = Path(base_path) if base_path else Path.cwd();
     found = find_project_root(start);
     if found is not None {
         return str(found[0]);
     }
     return base_path or '.';
-}
-
-
-impl cpu_quota -> int {
-    try {
-        text = Path('/sys/fs/cgroup/cpu.max').read_text(encoding='utf-8').strip();
-        parts = text.split();
-        if len(parts) == 2 and parts[0] != 'max' {
-            quota = int(parts[0]);
-            period = int(parts[1]);
-            if quota > 0 and period > 0 {
-                return max(1, -(-quota // period));
-            }
-        }
-    } except (OSError, ValueError) {}
-    try {
-        quota_text = Path('/sys/fs/cgroup/cpu/cpu.cfs_quota_us').read_text(
-            encoding='utf-8'
-        ).strip();
-        period_text = Path('/sys/fs/cgroup/cpu/cpu.cfs_period_us').read_text(
-            encoding='utf-8'
-        ).strip();
-        quota_v1 = int(quota_text);
-        period_v1 = int(period_text);
-        if quota_v1 > 0 and period_v1 > 0 {
-            return max(1, -(-quota_v1 // period_v1));
-        }
-    } except (OSError, ValueError) {}
-    counter: any = os?.process_cpu_count;
-    counted = counter() if counter is not None else os.cpu_count();
-    return max(1, int(counted or 1));
 }
 
 
@@ -117,6 +278,23 @@ impl resolve_count(raw: str, quota: int, label: str) -> int {
 }
 
 
+impl default_worker_count(
+    quota: int, headroom: int, clustered: bool, can_fork: bool
+) -> int {
+    if clustered or not can_fork {
+        return 1;
+    }
+    return max(1, min(quota, headroom // WORKER_MEMORY_BUDGET));
+}
+
+
+impl machine_worker_count(quota: int) -> int {
+    return default_worker_count(
+        quota, memory_headroom_bytes(), in_cluster(), hasattr(os, 'fork')
+    );
+}
+
+
 impl default_threads(worker_count: int, quota: int) -> int {
     per_worker = max(1, quota // max(1, worker_count));
     return min(32, per_worker * 4 + 4);
@@ -134,17 +312,25 @@ impl ServeSettings.load(
         config = JacConfig.discover(start);
     }
     cfg: ServeConfig = config.serve if config is not None else ServeConfig();
+    removed = removed_table(config);
+    if removed {
+        raise ServeConfigError('\n'.join(f"- {p}" for p in removed));
+    }
     quota = cpu_quota();
 
     workers_raw = str(
-        given.get('workers') or env_value('WORKERS') or cfg.workers.count
-    );
-    worker_count = resolve_count(workers_raw, quota, '[serve.workers] count');
+        given.get('workers') or env_value('WORKERS') or cfg.workers.count or ''
+    ).strip();
+    count_by_default = not workers_raw;
+    worker_count = machine_worker_count(quota)
+        if count_by_default
+        else resolve_count(workers_raw, quota, '[serve.workers] count');
     threads_raw = str(
         given.get('threads') or env_value('THREADS') or cfg.workers.threads
     );
+    threads_by_default = threads_raw.strip().lower() == WORKERS_AUTO;
     threads = default_threads(worker_count, quota)
-        if threads_raw.strip().lower() == WORKERS_AUTO
+        if threads_by_default
         else resolve_count(threads_raw, quota, '[serve.workers] threads');
 
     port = (
@@ -167,6 +353,7 @@ impl ServeSettings.load(
         docs_enabled=env_bool('DOCS', cfg.docs_enabled),
         graph_enabled=env_bool('GRAPH', cfg.graph_enabled),
         cors_origins=env_list('CORS_ORIGINS', list(cfg.cors_origins)),
+        public_origin=(env_value('PUBLIC_ORIGIN') or cfg.public_origin).rstrip('/'),
         workers=WorkerSettings(
             count=worker_count,
             threads=threads,
@@ -176,7 +363,9 @@ impl ServeSettings.load(
             ),
             request_timeout=env_float('REQUEST_TIMEOUT', cfg.workers.request_timeout),
             boot_timeout=env_float('BOOT_TIMEOUT', cfg.workers.boot_timeout),
-            hang_timeout=env_float('HANG_TIMEOUT', cfg.workers.hang_timeout)
+            hang_timeout=env_float('HANG_TIMEOUT', cfg.workers.hang_timeout),
+            count_by_default=count_by_default,
+            threads_by_default=threads_by_default
         ),
         tls=TlsSettings(
             certfile=env_value('TLS_CERTFILE') or cfg.tls.certfile,
@@ -227,25 +416,14 @@ impl ServeSettings.load(
             ping_interval=env_float('WS_PING_INTERVAL', cfg.websocket.ping_interval),
             ping_timeout=env_float('WS_PING_TIMEOUT', cfg.websocket.ping_timeout)
         ),
-        auth=AuthSettings(
-            secret=env_value('AUTH_SECRET') or cfg.auth.secret,
-            algorithm=env_value('AUTH_ALGORITHM') or cfg.auth.algorithm,
-            token_ttl_days=env_int('AUTH_TOKEN_TTL_DAYS', cfg.auth.token_ttl_days),
-            registration_challenge=cfg.auth.registration_challenge,
-            registration_attempts_per_hour=cfg.auth.registration_attempts_per_hour,
-            registration_challenges_per_10_minutes=cfg.auth.registration_challenges_per_10_minutes,
-            password_hash_cost=max(
-                10,
-                min(17, env_int('AUTH_PASSWORD_HASH_COST', cfg.auth.password_hash_cost))
-            )
-        )
+        auth=AuthSettings.from_table(cfg.auth)
     );
     return settings;
 }
 
 
 impl ServeSettings.validate -> list[str] {
-    problems: list[str] = [];
+    problems: list[str] = self.auth.problems();
     if self.access_log.format not in ('text', 'json') {
         problems.append(
             f"[serve.access_log] format must be 'text' or 'json', got "
@@ -256,6 +434,20 @@ impl ServeSettings.validate -> list[str] {
         problems.append(
             f"[serve.compression] level must be 1..9, got {self.compression.level}"
         );
+    }
+    if self.public_origin {
+        origin = urlsplit(self.public_origin);
+        if origin.scheme not in ('http', 'https')
+            or not origin.netloc
+            or '@' in origin.netloc
+            or origin.path
+            or origin.query
+            or origin.fragment {
+            problems.append(
+                f"{ENV_PREFIX}PUBLIC_ORIGIN must be a scheme and host such as "
+                f"https://app.example.com, got {self.public_origin!r}"
+            );
+        }
     }
     if self.timeouts.drain < 0 or self.timeouts.close < 0 {
         problems.append("[serve.timeouts] drain and close must not be negative");
@@ -297,9 +489,120 @@ impl ServeSettings.validate -> list[str] {
 }
 
 
+impl ServeSettings.warnings -> list[str] {
+    lockout = self.auth.lockout;
+    if in_cluster() and lockout.max_attempts > 0 and not self.proxy.trusted {
+        return [
+            "[serve.auth.lockout] counts failed logins per source address and "
+            "identity, but [serve.proxy] trusted is empty in a cluster, so every "
+            "caller arrives from the ingress address and the limit is per identity: "
+            f"{lockout.max_attempts} wrong passwords from anyone lock that "
+            f"account's login for {lockout.window_seconds} seconds. List the "
+            "ingress in [serve.proxy] trusted (JAC_SERVE_PROXY_TRUSTED), or set "
+            "[serve.auth.lockout] max_attempts = 0."
+        ];
+    }
+    return [];
+}
+
+
 impl ServeSettings.require_valid -> None {
     problems = self.validate();
     if problems {
         raise ServeConfigError('\n'.join(f"- {p}" for p in problems));
     }
+}
+
+
+impl env_typed(current: any, name: str, environ: (dict[str, str] | None)) -> any {
+    if isinstance(current, bool) {
+        return env_bool(name, current, environ);
+    }
+    if isinstance(current, int) {
+        return env_int(name, current, environ);
+    }
+    if isinstance(current, float) {
+        return env_float(name, current, environ);
+    }
+    if isinstance(current, list) {
+        return env_list(name, current, environ);
+    }
+    return env_value(name, environ) or current;
+}
+
+impl WorkerSettings.multi_process -> bool {
+    return self.count > 1;
+}
+
+impl TlsSettings.enabled -> bool {
+    return bool(self.certfile);
+}
+
+impl ServeSettings.scheme -> str {
+    return 'https' if self.tls.enabled() else 'http';
+}
+
+impl in_cluster -> bool {
+    return bool(os.environ.get('KUBERNETES_SERVICE_HOST', '').strip());
+}
+
+impl env_value(name: str, environ: (dict[str, str] | None) = None) -> (str | None) {
+    raw = (os.environ if environ is None else environ).get(ENV_PREFIX + name, '');
+    return raw.strip() or None;
+}
+
+impl env_bool(
+    name: str, `default: bool, environ: (dict[str, str] | None) = None
+) -> bool {
+    raw = env_value(name, environ);
+    if raw is None {
+        return `default;
+    }
+    if raw.lower() not in ENV_TRUE + ENV_FALSE {
+        raise ServeConfigError(
+            f"{ENV_PREFIX}{name} must be true or false "
+            f"({'/'.join(ENV_TRUE)} or {'/'.join(ENV_FALSE)}), got {raw!r}"
+        );
+    }
+    return raw.lower() in ENV_TRUE;
+}
+
+impl env_int(name: str, `default: int, environ: (dict[str, str] | None) = None) -> int {
+    raw = env_value(name, environ);
+    if raw is None {
+        return `default;
+    }
+    try {
+        return int(raw);
+    } except ValueError {
+        raise ServeConfigError(f"{ENV_PREFIX}{name} must be an integer, got {raw!r}");
+    }
+}
+
+impl env_float(
+    name: str, `default: float, environ: (dict[str, str] | None) = None
+) -> float {
+    raw = env_value(name, environ);
+    if raw is None {
+        return `default;
+    }
+    try {
+        return float(raw);
+    } except ValueError {
+        raise ServeConfigError(f"{ENV_PREFIX}{name} must be a number, got {raw!r}");
+    }
+}
+
+impl env_list(
+    name: str, `default: list[str], environ: (dict[str, str] | None) = None
+) -> list[str] {
+    raw = env_value(name, environ);
+    if raw is None {
+        return `default;
+    }
+    return [
+        part.strip()
+        for part in raw.split(',')
+        if part.strip()
+    ];
 }

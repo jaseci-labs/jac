@@ -1,7 +1,3 @@
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-import from jaclang.comptime { name as ct_name }
-
-
 comptime SPEC_EXPLAIN: CommandSpec = CommandSpec(
          name="explain",
          help="Explain what the compiler inferred: memory (ownership, drops), placement (demotions), ir (optimized LLVM IR)",
@@ -128,6 +124,13 @@ comptime SPEC_EXPLAIN: CommandSpec = CommandSpec(
                  short="",
                  help="Restrict a workspace check to one [apps.<name>] entry of jac.toml"
              ),
+             Arg.create(
+                 "kernel-parity",
+                 typ=bool,
+                 `default=False,
+                 short="",
+                 help="Compiler development: check with both the host and the native kernel and report every diagnostic they disagree on"
+             ),
 
          ],
          examples=[
@@ -179,7 +182,8 @@ def check(
     native_coverage: bool = False,
     placements: bool = False,
     jobs: str = "",
-    app: str = ""
+    app: str = "",
+    kernel_parity: bool = False
 ) -> int;
 
 def lint(
@@ -265,13 +269,19 @@ comptime SPEC_PRECOMMIT: CommandSpec = CommandSpec(
                  "paths",
                  kind=ArgKind.MULTI_POSITIONAL,
                  `default=[],
-                 help="Paths to .jac files or directories (default: project root)"
+                 help="Paths to .jac files or directories (default: staged .jac files; use --all for the project)"
              ),
              Arg.create(
                  "staged",
                  typ=bool,
+                 `default=True,
+                 help="Only process git-staged .jac files (default)"
+             ),
+             Arg.create(
+                 "all",
+                 typ=bool,
                  `default=False,
-                 help="Only process git-staged .jac files"
+                 help="Process the whole project when no paths are supplied"
              ),
              Arg.create(
                  "verify",
@@ -295,8 +305,9 @@ comptime SPEC_PRECOMMIT: CommandSpec = CommandSpec(
 
          ],
          examples=[
-             ("jac precommit", "Format (lintfix) and check the whole project"),
-             ("jac precommit --staged", "Run on staged '.jac' files only"),
+             ("jac precommit", "Format and check staged '.jac' files"),
+             ("jac precommit --verify", "Verify staged '.jac' files without rewriting"),
+             ("jac precommit --all", "Format and check the whole project"),
              ("jac precommit --install", "Install the pre-commit + commit-msg hooks"),
              (
                  "jac precommit --install --force",
@@ -310,7 +321,8 @@ comptime SPEC_PRECOMMIT: CommandSpec = CommandSpec(
 
 def precommit(
     paths: (list[str] | None) = None,
-    staged: bool = False,
+    staged: bool = True,
+    all: bool = False,
     verify: bool = False,
     install: bool = False,
     force: bool = False,
@@ -337,7 +349,7 @@ comptime SPEC_TEST: CommandSpec = CommandSpec(
              Arg.create(
                  "test_name",
                  `default="",
-                 help="Run specific test (without test_ prefix)",
+                 help="Run tests whose name contains every word given (case-insensitive)",
                  short="t"
              ),
              Arg.create(

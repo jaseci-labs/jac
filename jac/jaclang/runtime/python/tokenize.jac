@@ -1,45 +1,7 @@
 """Python's streaming token iterator backed by the shared Jac scanner."""
 
 import type from typing { Never }
-import from jaclang.compiler.frontend.python.compiler_diagnostics {
-    report_token_warnings
-}
-import from jaclang.compiler.frontend.python.tokenizer {
-    tok_state,
-    token_source,
-    tokenizer_next
-}
-import from jaclang.compiler.frontend.python.token_model {
-    ENDMARKER,
-    NEWLINE,
-    INDENT,
-    DEDENT,
-    NUMBER,
-    STRING,
-    OP,
-    FSTRING_MIDDLE,
-    TSTRING_MIDDLE,
-    NL,
-    tok_diag
-}
 
-import from jaclang.runtime.python.capi {
-    boundary_failure,
-    checked,
-    required,
-    text_object,
-    jacpy_int,
-    jacpy_tuple_new,
-    jacpy_tuple_set_owned,
-    jacpy_release
-}
-import from jaclang.runtime.python.native_services {
-    take_buffer,
-    parse_integer,
-    parse_float
-}
-import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
-import from c { def jacpy_readline(reader: u64, encoding: str, decode: i64) -> u64;  }
 obj native_token {
     has kind: int,
         spelling: str,
@@ -70,14 +32,16 @@ def _character_column(line: str, column: int) -> int {
 }
 
 obj token_iterator_state(token_source) {
-    has reader: u64,
+    has reader: ptr[PyObject],
         encoding: str | None,
         scanner: tok_state,
         lines: list[str] = [],
         finished: bool = False,
         input_finished: bool = False,
         last_line: str = "",
-        last_line_number: int = 0;
+        last_line_number: int = 0,
+        line_text: str = "",
+        line_handle: ptr[PyObject] = NULL;
 
     def __iter__ -> token_iterator_state {
         return self;
@@ -95,10 +59,29 @@ obj token_iterator_state(token_source) {
             self.input_finished = True;
             return False;
         }
+        if line.endswith("\n")
+            and line.count("\n") == 1
+            and "\r" not in line
+            and "\x00" not in line {
+            self.lines.append(line);
+            self.scanner.data += line.encode("utf-8");
+            return True;
+        }
+        first = len(self.lines);
         parts = line.split("\n");
         self.lines.extend(part + "\n" for part in parts[:-1]);
         if parts[-1] {
             self.lines.append(parts[-1]);
+        }
+        # tok_nextc(): a line holding a NUL ends the stream with this error.
+        if "\x00" in line {
+            for index in range(first, len(self.lines)) {
+                if "\x00" in self.lines[index] {
+                    self.syntax_error(
+                        "source code cannot contain null bytes", index + 1, 0
+                    );
+                }
+            }
         }
         decoded = line.replace("\r\n", "\n");
         if not decoded.endswith("\n") {
@@ -106,6 +89,23 @@ obj token_iterator_state(token_source) {
         }
         self.scanner.data += decoded.encode("utf-8");
         return True;
+    }
+
+    def line_object(line: str) -> ptr[PyObject] {
+        if self.line_handle == 0 or self.line_text != line {
+            handle = text_object(line);
+            jacpy_release(self.line_handle);
+            self.line_text = line;
+            self.line_handle = handle;
+        }
+        Py_IncRef(self.line_handle);
+        return self.line_handle;
+    }
+
+    def release_line {
+        jacpy_release(self.line_handle);
+        self.line_handle = NULL;
+        self.line_text = "";
     }
 
     def source_line(lineno: int) -> str {
@@ -123,7 +123,8 @@ obj token_iterator_state(token_source) {
             lineno=lineno,
             offset=offset,
             text=line,
-            kind=kind
+            kind=kind,
+            open_end=True
         );
     }
 
@@ -132,18 +133,20 @@ obj token_iterator_state(token_source) {
             return None;
         }
         self.scanner.discard_consumed();
-        item = tokenizer_next(self.scanner);
+        raw = tokenizer_next(self.scanner);
         report_token_warnings(self.scanner);
-        if isinstance(item, tok_diag) {
-            line = self.source_line(item.loc.lineno);
-            column = _character_column(line, item.loc.col_offset);
-            if item.kind in ("IndentationError", "TabError") {
+        if raw is self.scanner.error {
+            diag = raw as tok_diag;
+            line = self.source_line(diag.loc.lineno);
+            column = _character_column(line, diag.loc.col_offset);
+            if diag.kind in ("IndentationError", "TabError") {
                 column = _character_column(
                     line, len(line.rstrip("\r\n").encode("utf-8"))
                 );
             }
-            self.syntax_error(item.message, item.loc.lineno, column + 1, item.kind);
+            self.syntax_error(diag.message, diag.loc.lineno, column + 1, diag.kind);
         }
+        item = raw as tok_token;
         kind = item.tok_type;
         start_line = item.lineno;
         end_line = item.end_lineno;
@@ -241,9 +244,12 @@ obj token_iterator_state(token_source) {
             } elif ("." in spelling or "e" in spelling or "E" in spelling) {
                 parse_float(spelling);
             } else {
+                # The tokenize module accepts leading zeros (0_7, 09_99;
+                # gh-105549): the literal is checked as if it began with 1,
+                # which keeps its underscore rules.
                 parse_integer(
-                    spelling.lstrip("0") or "0"
-                        if self.scanner.extra_tokens
+                    "1" + spelling[1:]
+                        if self.scanner.extra_tokens and spelling.startswith("0")
                         else spelling
                 );
             }
@@ -254,7 +260,7 @@ obj token_iterator_state(token_source) {
 }
 
 def:pub token_iterator(
-    reader: u64, encoding: str, decode: bool, extra: bool
+    reader: ptr[PyObject], encoding: str, decode: bool, extra: bool
 ) -> token_iterator_state {
     scanner = tok_state(data=b"", filename="<string>", extra_tokens=extra);
     result = token_iterator_state(
@@ -266,20 +272,25 @@ def:pub token_iterator(
 
 # (type, string, (start line, column), (end line, column), line); zero with no
 # exception set once the stream is exhausted.
-def token_object(iterator: token_iterator_state) -> u64 {
+def token_object(iterator: token_iterator_state) -> ptr[PyObject] {
     value = iterator.next_token();
     if value is None {
-        return 0;
+        iterator.release_line();
+        return NULL;
     }
-    result = required(jacpy_tuple_new(5));
+    result = required(PyTuple_New(5));
     try {
-        checked(jacpy_tuple_set_owned(result, 0, required(jacpy_int(i64(value.kind)))));
+        checked(
+            jacpy_tuple_set_owned(
+                result, 0, required(PyLong_FromLongLong(i64(value.kind)))
+            )
+        );
         checked(jacpy_tuple_set_owned(result, 1, text_object(value.spelling)));
         checked(
             jacpy_tuple_set_owned(result, 2, position(value.start_line, value.start))
         );
         checked(jacpy_tuple_set_owned(result, 3, position(value.end_line, value.end)));
-        checked(jacpy_tuple_set_owned(result, 4, text_object(value.line)));
+        checked(jacpy_tuple_set_owned(result, 4, iterator.line_object(value.line)));
     } except Exception {
         jacpy_release(result);
         raise;
@@ -287,11 +298,15 @@ def token_object(iterator: token_iterator_state) -> u64 {
     return result;
 }
 
-def position(line: int, column: int) -> u64 {
-    result = required(jacpy_tuple_new(2));
+def position(line: int, column: int) -> ptr[PyObject] {
+    result = required(PyTuple_New(2));
     try {
-        checked(jacpy_tuple_set_owned(result, 0, required(jacpy_int(i64(line)))));
-        checked(jacpy_tuple_set_owned(result, 1, required(jacpy_int(i64(column)))));
+        checked(
+            jacpy_tuple_set_owned(result, 0, required(PyLong_FromLongLong(i64(line))))
+        );
+        checked(
+            jacpy_tuple_set_owned(result, 1, required(PyLong_FromLongLong(i64(column))))
+        );
     } except Exception {
         jacpy_release(result);
         raise;
@@ -300,6 +315,7 @@ def position(line: int, column: int) -> u64 {
 }
 
 def:pub jacpy_token_close(iterator: token_iterator_state) {
+    iterator.release_line();
     iterator.scanner.input = None;
     iterator.finished = True;
 }

@@ -2,110 +2,6 @@
 # from compiler_codegen.jac. Pure mechanical move; see compiler_codegen.jac for
 # the module-initialization ordering contract.
 
-import from jaclang.runtime.python.objects { py_none }
-import from jaclang.runtime.python.opcode_meta {
-    OP_BUILD_LIST,
-    OP_CALL,
-    OP_CALL_INTRINSIC_1,
-    OP_CALL_INTRINSIC_2,
-    OP_CHECK_EG_MATCH,
-    OP_CHECK_EXC_MATCH,
-    OP_CLEANUP_THROW,
-    OP_COPY,
-    OP_END_FOR,
-    OP_END_SEND,
-    OP_GET_AWAITABLE,
-    OP_JUMP_BACKWARD,
-    OP_JUMP_BACKWARD_NO_INTERRUPT,
-    OP_JUMP_FORWARD,
-    OP_LIST_APPEND,
-    OP_LOAD_CONST,
-    OP_LOAD_SPECIAL,
-    OP_NOP,
-    OP_NOT_TAKEN,
-    OP_POP_EXCEPT,
-    OP_POP_ITER,
-    OP_POP_JUMP_IF_FALSE,
-    OP_POP_JUMP_IF_NONE,
-    OP_POP_JUMP_IF_NOT_NONE,
-    OP_POP_JUMP_IF_TRUE,
-    OP_POP_TOP,
-    OP_PUSH_EXC_INFO,
-    OP_RAISE_VARARGS,
-    OP_RERAISE,
-    OP_RESUME,
-    OP_RETURN_VALUE,
-    OP_SEND,
-    OP_STORE_FAST,
-    OP_SWAP,
-    OP_TO_BOOL,
-    OP_WITH_EXCEPT_START,
-    OP_YIELD_VALUE,
-}
-import from jaclang.compiler.frontend.python.ast_nodes {
-    AsyncWith,
-    ExceptHandler,
-    Pass,
-    Raise,
-    Return,
-    Try,
-    TryStar,
-    With,
-    expr,
-    stmt,
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_ir {
-    basicblock,
-    cfg_builder,
-    cloc,
-    except_region,
-    loc,
-    no_loc,
-    stmt_cont,
-    cleanup_frame,
-    with_unwind_rec,
-    await_footer_job,
-    try_await_frame,
-}
-import from jaclang.compiler.backends.py.jacpython.flowgraph {
-    build_layout_pos,
-    layout_pos
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_emit {
-    anext_send_loop,
-    await_send_loop,
-    codegen_busy,
-    codegen_fail,
-    emit_await_send_except_regions,
-    emit_await_send_loop_footer,
-    emit_await_send_loop_header,
-    emit_return_unwind,
-    emit_send_delegation_loop,
-    visit_expr,
-}
-import from jaclang.compiler.backends.py.jacpython.codegen_util {
-    body_is_try_except_only,
-    body_is_try_finally_only,
-    exec_tail_emits_code,
-    expr_loc,
-    nloc,
-    stmt_loc,
-    try_handler_span,
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_annotations {
-    ann_scope_plan
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_codegen {
-    emit_module_return,
-    emit_name_delete,
-    emit_name_store,
-    emit_unit_loop_exit_epilogue,
-    visit_return_stmt,
-    visit_stmt_tail,
-    visit_stmts,
-    visit_store_target_tos
-}
-
 def visit_cleanup_stmts(
     g: cfg_builder, body: list[stmt], ann_ctx: ann_scope_plan | None
 ) -> stmt_cont {
@@ -353,7 +249,6 @@ def emit_await_send_loop_inline_footer(
     return (als, cleanup_throw_blk, end_send_blk);
 }
 
-
 def emit_anext_send_except_regions(
     g: cfg_builder,
     als: anext_send_loop,
@@ -414,7 +309,6 @@ def emit_anext_send_except_regions(
     }
 }
 
-
 # Clear an except-as binding (STORE None + DELETE) before handler exit.
 def emit_except_as_cleanup(g: cfg_builder, bind_name: str, cloc: cloc) {
     none_idx = g.u.add_const(py_none());
@@ -422,7 +316,6 @@ def emit_except_as_cleanup(g: cfg_builder, bind_name: str, cloc: cloc) {
     emit_name_store(g, bind_name, cloc);
     emit_name_delete(g, bind_name, cloc);
 }
-
 
 # Emit comprehension cleanup handlers after the module RETURN_VALUE (dead code on
 # the normal path; reached only via the exception table).
@@ -465,7 +358,6 @@ def emit_deferred_comp_handlers(g: cfg_builder) {
     }
 }
 
-
 # Lower raise (exc/cause forms; bare re-raise in handler context).
 def visit_raise_stmt(g: cfg_builder, r: Raise) -> stmt_cont {
     rloc = nloc(r.lineno, r.end_lineno, r.col_offset, r.end_col_offset);
@@ -496,7 +388,6 @@ def visit_raise_stmt(g: cfg_builder, r: Raise) -> stmt_cont {
     g.emit_op(OP_RAISE_VARARGS, 0, rloc);
     return stmt_cont(loc=rloc, terminated=True);
 }
-
 
 def ordered_unwind_spans(
     spans: list[tuple[int, int]], pos: dict[int, int]
@@ -666,7 +557,6 @@ def visit_try_finally(
     return stmt_cont(loc=tloc);
 }
 
-
 def emit_finally_inline_block(
     g: cfg_builder,
     finalbody: list[stmt],
@@ -783,7 +673,6 @@ def merge_except_spans(
     }
     return out;
 }
-
 
 def visit_try(
     g: cfg_builder,
@@ -1013,7 +902,6 @@ def trystar_stmt_loc(t: TryStar) -> cloc {
     }
     return best;
 }
-
 
 # Lower try/except* (ExceptionGroup handlers). Dispatch + guards; the byte
 # layout lives in visit_try_star_except. CPython: codegen_try_star.

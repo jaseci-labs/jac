@@ -7,12 +7,14 @@ default_codespace-driven whole-module native inference (native by default,
 server signals and closure poison opt modules back out).
 """
 
+import from jaclang.compiler.backends.py.codegen_shim { generated_python }
 import os;
 import re;
 import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.pass_driver { run_pass }
 
 glob FIXTURE_DIR = os.path.join(
@@ -22,7 +24,10 @@ glob FIXTURE_DIR = os.path.join(
 """Compile a codespace fixture; stamps only (no codegen) unless cgen=True."""
 def compile_fixture(name: str, cgen: bool = False) -> any {
     prog = JacProgram();
-    mod = prog.compile(os.path.join(FIXTURE_DIR, name), no_cgen=not cgen);
+    mod = prog.compile(
+        os.path.join(FIXTURE_DIR, name),
+        options=CompileOptions(no_cgen=not cgen, skip_native_engine=True)
+    );
     assert not prog.errors_had , f"{name}: {[str(e) for e in prog.errors_had]}";
     return mod;
 }
@@ -203,6 +208,60 @@ test "locals shadowing client names do not pull" {
     mod = compile_fixture("infer_shadowing.jac");
     assert stamp_of(mod, "styled") == 'client' , "real use of npm import pulls client";
     assert stamp_of(mod, "server_side") == 'server' , "shadowed names resolve to locals - no pull";
+}
+
+test "member names spelled like browser globals do not seed client" {
+    mod = compile_fixture("infer_member_names.jac");
+    for name in [
+        "Passage",
+        "connect_window",
+        "build_opts",
+        "filter_window",
+        "filter_fetch",
+        "order_fetch",
+        "assign_fetch",
+        "match_performance",
+        "takes_window",
+        "pass_window"
+    ] {
+        stamp = stamp_of(mod, name);
+        assert stamp not in ('client', 'missing') , (
+            f"{name} only names a member, it references no browser global: {stamp}"
+        );
+    }
+    assert stamp_of(mod, "uses_window") == 'client' , "a real `window` reference seeds client";
+    assert stamp_of(mod, "filter_by_performance") == 'client' , (
+        "a browser global on the value side of a filter still seeds client"
+    );
+}
+
+test "a browser-global-named edge field keeps an imported graph module native" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.frontend.codeinfo {
+        set_effective_default_codespace,
+        get_effective_default_codespace_override
+    }
+    prog = JacProgram();
+    _prev = get_effective_default_codespace_override();
+    try {
+        mod = prog.compile(
+            os.path.join(FIXTURE_DIR, "nadefault_member_names.jac"),
+            options=CompileOptions(default_codespace="native")
+        );
+    } finally {
+        set_effective_default_codespace(_prev);
+    }
+    assert not prog.errors_had , (
+        f"no module is client code, so no E5082: {[str(e) for e in prog.errors_had]}"
+    );
+    assert mod.decided_codespace == 'native' , "the importer lowers native";
+    assert mod.gen.native_engine is not None;
+    graph_mod = hub_module(prog, "nadefault_member_names_graph.jac");
+    assert graph_mod is not None;
+    for name in ["carve", "Passage", "bump"] {
+        stamp = stamp_of(graph_mod, name);
+        assert stamp not in ('client', 'missing') , f"{name} must not be pulled client: {stamp}";
+    }
 }
 
 test "pure modules infer native under the shipped default" {
@@ -406,30 +465,43 @@ test "cascade: importer of a demoted module demotes with it" {
     assert mod.decided_codespace == '' , "importer of a demoted dep must demote too";
 }
 
-test "closure cap exceeded skips native inference with a note" {
-    import io;
-    import sys;
-    import from jaclang.compiler.frontend.codeinfo { set_native_closure_cap }
-    set_native_closure_cap(1);
-    buf = io.StringIO();
-    old_stderr = sys.stderr;
-    sys.stderr = buf;
-    try {
-        mod = compile_with_default("nadefault_capchain_a.jac", "native", cgen=True);
-    } finally {
-        sys.stderr = old_stderr;
-        set_native_closure_cap(0);
+test "an import closure of any size can be native when every module can be" {
+    import tempfile;
+    import from jaclang.compiler.placement.placement_solver {
+        native_default_path_ok,
+        native_closure_blocker
     }
-    assert mod.decided_codespace == '' , "cap-exceeded root must stay server";
-    assert stamp_of(mod, "fa") == 'server';
-    assert "native_closure_cap" in buf.getvalue() , (
-        f"note must name the knob, got: {buf.getvalue()!r}"
-    );
+    # 300 pure modules, each importing the next: past the 256 the closure
+    # walks once stopped at, after which the root fell back to the server.
+    count = 300;
+    with tempfile.TemporaryDirectory() as folder {
+        for i in range(count) {
+            body = f"return f{i + 1}() + 1;" if i + 1 < count else f"return {i};";
+            head = f"import from link{i + 1} {{ f{i + 1} }}\n\n"
+                if i + 1 < count
+                else "";
+            text = f"{head}def f{i} -> int {{\n    {body}\n}}\n";
+            with open(os.path.join(folder, f"link{i}.jac"), "w") as handle {
+                handle.write(text);
+            }
+        }
+        root_path = os.path.join(folder, "link0.jac");
+        assert native_default_path_ok(root_path) , "a long pure chain must stay native";
+        prog = JacProgram();
+        prog.compile(
+            root_path, options=CompileOptions(default_codespace="native", no_cgen=True)
+        );
+        assert not prog.errors_had , [str(e) for e in prog.errors_had];
+        (blocker, bridged) = native_closure_blocker(
+            prog, root_path, [os.path.join(folder, "link1.jac")]
+        );
+        assert blocker == '' and not bridged , blocker;
+    }
 }
 
-test "capped chain still infers native under the default cap" {
+test "a short pure import chain infers native" {
     mod = compile_with_default("nadefault_capchain_a.jac", "native", cgen=True);
-    assert mod.decided_codespace == 'native' , "3-module pure chain fits default cap";
+    assert mod.decided_codespace == 'native' , "3-module pure chain lowers native";
     assert mod.gen.native_engine is not None;
 }
 
@@ -583,16 +655,16 @@ test "cross-module pulled elements dual-emit for the server side" {
     }
     _ensure_js_generated(util, prog);
     util_js = util.gen.js;
-    assert 'register' in util.gen.client_manifest.exports , (
-        "pulled accessless def must be an ES export of the pulled module"
+    assert 'register' in util.gen.client_manifest.linkable , (
+        "pulled accessless def must be exportable to its client importers"
     );
-    assert '_tags' in util.gen.client_manifest.globals , (
-        "pulled glob must be an ES export of the pulled module"
+    assert '_tags' in util.gen.client_manifest.linkable , (
+        "pulled glob must be exportable to its client importers"
     );
     assert util_js.strip() , "pulled module must produce client JS";
     run_pass(JcirGenPass, util, prog);
     run_pass(JcirBytecodeGenPass, util, prog);
-    py_src = util.gen.py;
+    py_src = generated_python(util.gen);
     assert 'def register' in py_src , (
         "pulled element must still exist in the python module (dual emit)"
     );
@@ -641,9 +713,9 @@ test "codespace stamps invalidate stale module codegen" {
     assert app is not None;
     run_pass(EsastGenPass, app, prog);
     _ensure_js_generated(util, prog);
-    assert 'register' in util.gen.client_manifest.exports , (
+    assert 'register' in util.gen.client_manifest.linkable , (
         "pull stamps must invalidate the pre-pull ES cache so the pulled def "
-        "regenerates with its export"
+        "regenerates as client code its importers can link"
     );
     assert 'register' in (util.gen.js or '') , (
         "regenerated module JS must contain the pulled def"

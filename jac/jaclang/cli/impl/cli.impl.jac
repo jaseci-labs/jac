@@ -2,12 +2,9 @@ import os;
 import sys;
 
 impl start_cli -> None {
-    import from jaclang.cli.console { console }
-    import from jaclang.cli.manifest_route { handle_manifest_route }
-
     raw_argv = sys.argv[1:];
 
-    dev_source = os.environ.get('JAC_DEV_SOURCE');
+    dev_source = str(handoff().get('compiler_source') or '');
     if dev_source {
         notice = (
             f"🛠  jac dev mode — using compiler source at {dev_source}"
@@ -21,7 +18,5 @@ impl start_cli -> None {
 }
 
 impl jac_version -> str {
-    import from jaclang.cli.manifest_route { resolve_cli_version }
-
     return resolve_cli_version();
 }

@@ -1,9 +1,10 @@
 # Python compiler replacement
 
-`JACPYTHON=1 zig build` compiles Python source and ASTs using native Jac machine
-code. CPython still provides Python objects, the execution engine, and the
-standard library. Plain `zig build` uses stock CPython. The environment variable
-selects the compiler at build time; each binary contains one runtime.
+`jac native build jacpython` builds a jac whose interpreter compiles Python
+source and ASTs using native Jac machine code. CPython still provides Python
+objects, the execution engine, and the standard library. Plain `zig build`
+uses stock CPython; the interpreter is chosen at build time and each binary
+contains one runtime.
 
 | Location (from repository root) | Responsibility |
 | --- | --- |
@@ -11,6 +12,7 @@ selects the compiler at build time; each binary contains one runtime.
 | `jac/jaclang/compiler/backends/py/jacpython/` | Native request handling, bytecode generation, assembly, and code-object serialization |
 | `jac/jaclang/runtime/python/` | Compiler values, tokenizer/symbol-table interfaces, shared object API, and native standard-library modules |
 | `jac/jaclang/runtime/python/bindings/` | Native module/type declarations, argument binding, descriptors, and Python object ownership |
+| `jac/jaclang/runtime/python/object_model/` | Native ports of `Objects/` files: interpreter types and objects defined under their C names |
 | `jac/bootstrap/python/` | Pinned source build and shared C shims for opaque CPython ABI records and object APIs |
 
 `native_api.jac` connects source/AST requests to `product_compile.jac` and the
@@ -27,7 +29,11 @@ CPython license is retained.
 The native object is built with Jac's `rc` memory profile and the same LLVM
 module pipeline as every other native artifact. Each compile request runs inside
 one region, so the tokens, trees, symbol tables and code units it builds are
-reclaimed together once its CPython result exists.
+reclaimed together once its CPython result exists. A request can re-enter
+native modules through CPython (the tokenizer imports `unicodedata` to decode
+`\N{...}`); every binding callback is a Jac function C calls, which runs with
+no current region, so module state and objects built there never land in the
+request's region.
 
 The build-time host is ordinary CPython. `prepare_native.py` uses Jac's native
 backend to emit the replacement object, rejects interpreted demotions, and
@@ -40,28 +46,81 @@ JacPython build cache.
 Rebuild after editing the replacement:
 
 ```sh
-cd jac
-JACPYTHON=1 zig build
-JAC_NO_DEV_SOURCE=1 zig-out/bin/jac -c 'assert eval("6 * 7") == 42'
+jac native build jacpython
+BIN="$PWD/jac/zig-out/jacpython/bin/jac"
+(cd "$(mktemp -d)" && "$BIN" -c 'assert eval("6 * 7") == 42')
 ```
 
-See [CONTRIBUTING.md](../../../../CONTRIBUTING.md#trying-the-jacpython-release-binary)
-for downloading release binaries. The upstream compatibility
+Releases ship stock CPython; see
+[CONTRIBUTING.md](../../../../CONTRIBUTING.md#building-jacpython) for the
+JacPython build and its CI lane. The upstream compatibility
 runner, `scripts/run_cpython_compiler_tests.jac`, downloads checksum-pinned
 CPython tests and requires the native JacPython runtime. Build and test drivers
 may use Python; replacement algorithms execute natively.
 
-The AST, token model, PEG parser and opcode metadata derive from CPython 3.14.6
-and are maintained directly in Jac. [`LICENSE.cpython`](LICENSE.cpython) applies
-to the CPython-derived code across these packages.
+The AST, token model and PEG parser derive from CPython 3.14.6 and are
+maintained directly in Jac. The opcode metadata (`opcode_meta.jac`, and the
+opcode headers and `Lib/_opcode_metadata.py` the build stages from
+`bootstrap/python/generated/`) is generated from the instruction table in
+`scripts/jacpython/instructions.jac` by `scripts/jacpython/gen_opcode_meta.jac`.
+[`LICENSE.cpython`](LICENSE.cpython) applies to the CPython-derived code across
+these packages.
+
+`object_model/` is CPython's object model in Jac. `layouts.jac` declares the C
+layouts (`PyObject`'s header, `PyTypeObject`, `PyNumberMethods`,
+`PyLongObject`, ...) and the header constants their initializers use. It is
+the input of the C API headers: every header under `Include/` (public,
+`cpython/` and `internal/`) is staged from `bootstrap/python/generated/`, and
+`scripts/jacpython/gen_include.jac` writes their structs and integer constants
+from it, their declarations from `scripts/jacpython/capi_table.jac` and the
+static strings from `scripts/jacpython/global_strings.jac`. A build fails on
+a header the CPython archive would supply. `scripts/jacpython/gen_layouts.jac`
+reads only `layouts.jac`: it computes the offsets and writes
+`bootstrap/python/layouts_check.c`, which asserts every offset, size and
+constant against the staged headers of each build. A module defines
+its static type objects and singletons as C data under their C names
+(`object_model/bool.jac` defines `PyBool_Type`, `_Py_FalseStruct` and
+`_Py_TrueStruct`), so the interpreter's C code uses them unchanged. The ported
+files are `boolobject.c`, `cellobject.c`, `namespaceobject.c`, `capsule.c`,
+`iterobject.c`, `enumobject.c`, `sliceobject.c` and `rangeobject.c`
+(`bool.jac`, `cell.jac`, `namespace.jac`, `capsule.jac`, `iterator.jac`,
+`enumerate.jac`, `slice.jac`, `range.jac`), then `complexobject.c`,
+`classobject.c`, `structseq.c`, `genericaliasobject.c`, `unionobject.c`,
+`picklebufobject.c`, `interpolationobject.c`, `templateobject.c` and
+`fileobject.c` (`complex.jac`, `method.jac`, `structseq.jac`,
+`genericalias.jac`, `union.jac`, `picklebuffer.jac`, `interpolation.jac`,
+`template.jac`, `file.jac`); `header.jac` holds the object header's inline
+operations they share, reference counting included.
 
 `modules/` contains the native standard-library algorithms. `bindings/` implements
-all seventeen module adapters in native Jac, including their `PyInit_*` entry points,
-constructors, descriptors, protocol callbacks, and lifecycle handling. There are
-no per-module C adapters. `capi.jac` declares shared retained-object operations;
-`bootstrap/python/object_api.c` implements those C API primitives, while
-`bootstrap/python/binding_api.c` stores opaque CPython module, type, and buffer
-records without module-specific policy.
+every module adapter in native Jac, including the `PyInit_*` entry points,
+constructors, descriptors, protocol callbacks, and lifecycle handling; the modules
+are listed in `bootstrap/python/jacpython-modules.txt`. There are no per-module C
+adapters. The HACL*-backed hash modules (`_md5`, `_sha1`, `_sha2`, `_sha3`,
+`_blake2`, `_hmac`) call CPython's vendored HACL* library, which stays C and is
+linked from the archives the registry names. Jac calls the CPython C API by its own
+names: `cpython_api.jac` is generated by `scripts/jacpython/gen_capi.jac` from the
+headers a build stages and declares
+every function and data symbol the sources use, with Python objects typed
+`ptr[PyObject]`: exception objects are read in place (`PyExc_ValueError`) and
+static types and singletons are used by address (`addressof(PyCode_Type)`,
+`Py_None`).
+`bindings/clinic/` is generated by `scripts/jacpython/gen_clinic.jac` from each
+module's Argument Clinic signatures (`scripts/jacpython/clinic/<name>.jac`), and
+calls the module's `_impl` functions with their C signatures;
+`bindings/converters.jac` holds the generic clinic converters. The `jacpy_*`
+helpers in `object_model/object_api.jac` and `compiler_objects.jac` give Jac
+callers what the C API has as macros, static inline functions and object-layout
+fields, and `object_model/binding_api.jac` stores opaque CPython module, type,
+and buffer records without module-specific policy; all keep their C names and
+signatures. What differs between C libraries (the stat and dirent symbol
+variants, errno, the stdio streams, CPUID, the macOS system log) comes from the
+native floor (`compiler/backends/native/posix_floor.c`). Data
+symbols, pointer arithmetic, in-place field access through a pointer, calls
+through C function pointers, calls to variadic C functions (`fcntl`, `syslog`,
+`PyTuple_Pack`, `Py_BuildValue`), and C functions with exact C names and structs
+by value (`_PyAtExit_Init` returns a `PyStatus`) are written in Jac. The porting process is documented in
+`cli/docs/internals/jacpython-migration.md`.
 
 Declarations contain no Python objects and live for the process lifetime. Each
 interpreter owns its module state and heap types. Owned argument frames release
@@ -79,8 +138,13 @@ The compatibility runner excludes the upstream deque test that hard-codes that
 C layout; the runtime smoke checks allocation growth and reclamation instead.
 
 `modules/math.jac` and `modules/cmath.jac` share the platform libm interface in
-`modules/numeric.jac`. Integer algorithms use retained CPython integer operations;
-there is no second arbitrary-precision runtime for these modules. Accurate
+`modules/numeric.jac`. The libm functions that Zig's compiler-rt also defines
+(log, log2, log10, exp, exp2, sin, cos, tan, fma) go through `jacpy_libm_*`
+helpers in `object_model/object_api.jac`, which look them up in libSystem (libm on
+Linux), because a Mach-O link otherwise binds them to compiler-rt's copies. As in CPython, `gamma` and
+`lgamma` use their own Lanczos evaluation rather than libm. Integer algorithms
+use retained CPython integer operations; there is no second arbitrary-precision
+runtime for these modules. Accurate
 summation, vector norms, and dot products use native error-free transforms.
 
 `modules/statistics.jac` evaluates Wichura's AS241 inverse normal CDF over the
@@ -94,12 +158,11 @@ comparison keys, and cache policy. Bounded caches reuse the retained runtime's
 ordered dictionary; native binding state stores cached hashes and visits references.
 There is no separate native hash table or Python cache-policy callback.
 
-Iterator policies live in `modules/iterators.jac`, `combinatorics.jac`,
-`grouping.jac`, and `tee.jac`. Shared tee replay blocks have one CPython GC owner
-per block, so multiple cursors do not report duplicate reference edges. Tuple
-reuse preserves callback safety. As with deque, the four upstream iterator
-size tests describe the retired C layout; smoke tests check native storage
-accounting instead.
+`modules/itertools.jac` follows itertoolsmodule.c: every iterator type is a C
+record with its own slots, created from a `PyType_Spec` when the module executes
+and kept in the module state. Combinatoric iterators, `pairwise` and
+`zip_longest` reuse their result tuple while they hold its only reference, and
+index arrays are `PyMem` blocks, so `__sizeof__` reports the C layout.
 
 `modules/array.jac` shares endian-aware scalar operations with `struct` through
 `modules/binary_scalars.jac`. Its buffer uses retained CPython bytearray storage;
@@ -108,14 +171,77 @@ Exported memoryviews pin the logical size, and conversion finishes before an
 address is taken so user callbacks cannot invalidate a saved buffer pointer.
 Array size reporting includes the Jac state and actual retained buffer allocation.
 
-`modules/pickle.jac` exposes typed reader/writer state. `pickle_encode.jac` and
-`pickle_decode.jac` implement all six protocols, memoization, object reductions,
-and callbacks; `pickle_stream.jac` owns framing and bounds checks, while
-`pickle_objects.jac` resolves globals and compatibility mappings. Retained
-CPython dictionaries store memo entries, and buffer objects keep their existing
-Python ABI. Shared serialization error notes live in `capi.jac`, also used by
-JSON. The two upstream pickle size assertions describe retired C layouts;
-smoke checks cover native memo allocation, reclamation, and callback cycles.
+`modules/pickle.jac` holds the Pickler and Unpickler objects, their memo
+proxies and the module-level dump(s)/load(s). `pickle_encode.jac` and
+`pickle_decode.jac` follow `Modules/_pickle.c` over C records: the encoder
+keeps the pointer-keyed open-addressing memo table and a framed bytes output
+buffer, the decoder an object stack, a mark stack and an index-keyed memo
+array, reading straight from the input buffer or a prefetched file chunk.
+dumps/loads run on stack-held records. The two upstream pickle size
+assertions describe retired C layouts; smoke checks cover native memo
+allocation, reclamation, and callback cycles.
+
+`modules/datetime_*.jac` implement `_datetime`: calendar arithmetic and ISO
+8601 parsing (`datetime_calendar.jac`), the shared accessors, constructors and
+tzinfo helpers (`datetime_objects.jac`), strftime preprocessing
+(`datetime_format.jac`) and one file per type. The types, the UTC singleton and
+the datetime C API capsule are static C data with `Include/datetime.h`'s
+layouts, because C extensions such as `_zoneinfo` read them through the header's
+macros; `bindings/datetime.jac` readies them for each interpreter and defines the
+module.
+
+`modules/decimal_*.jac` implement `_decimal` over libmpdec, which stays the C
+library the build links (`-lmpdec`) and is declared in `modules/mpdecimal.jac`.
+A Decimal keeps its `mpd_t` and a four-word static coefficient inside the object
+and a Context its `mpd_context_t`, laid out as `_decimal.c`'s structs, so
+libmpdec works on them in place. `decimal_objects.jac` holds the layouts, module
+state, signal maps and the contextvar-based current context,
+`decimal_convert.jac` the conversions, `decimal_number.jac` the Decimal type,
+`decimal_context.jac` Context, SignalDictMixin and the context manager, and
+`decimal_ops.jac` names the libmpdec operation each method family applies. The
+heap types come from `PyType_Spec`s of C data in `bindings/decimal.jac`, each spec
+its type's token.
+
+`modules/socket*.jac` implement `_socket`. A socket object is a
+`PySocketSockObject` in place (its layout, with `PySocketModule_APIObject`, is
+generated from the pinned archive's `Modules/socketmodule.h`), so the
+`_socket.CAPI` capsule hands `_ssl` the same type and fields as the C module.
+`socket_core.jac` holds the module state, errors and `sock_call_ex()`, whose C
+callbacks are `SocketCall` records run with the GIL released;
+`socket_address.jac` converts addresses (`getsockaddrarg`, `makesockaddr`,
+`setipaddr`); `socket_object.jac` the socket type with ancillary data;
+`socket.jac` the module functions. Arguments go through CPython's own
+`PyArg_ParseTuple()` family with the C formats. `socket_platform.<os>.jac`
+declares what differs between C libraries (sockaddr length bytes, `msghdr` and
+`cmsghdr` widths, `CMSG_*` alignment, `gethostbyname_r()` or the netdb lock,
+`accept4()`) and which address families the target has; `socket_constants` is
+generated by `gen_constants.jac`.
+
+`modules/hashopenssl.jac` and `modules/ssl*.jac` implement `_hashlib` and
+`_ssl` over the vendored OpenSSL, whose functions `modules/openssl.jac`
+declares and whose macro values and error tables `gen_openssl.jac` generates
+(`openssl_constants.jac`, `ssl_errors.jac`). `ssl_core.jac` holds the module
+state, the native state of `_SSLContext`, `_SSLSocket`, `MemoryBIO`,
+`SSLSession` and `Certificate`, SSL error reporting with `_ssl.c`'s line
+numbers, and `PySSL_select()`; `ssl_cert.jac` decodes certificates;
+`ssl.jac` has the clinic `_impl` functions and the OpenSSL callbacks (SNI,
+ALPN, message, keylog, password, PSK). `ssl.SSLError` is a C-data
+`PyType_Spec` over `OSError` whose `tp_str` reads `PyOSErrorObject` in place.
+`_hashlib` caches fetched `EVP_MD`s in its module state and shares
+`hashlib.jac`'s `HashLock` and `compare_digest()` with the HACL* modules and
+`_operator`.
+
+`modules/posixsubprocess.jac` converts every `fork_exec()` argument into C
+memory before forking: argv, envp and the executable list as char* arrays,
+the descriptors to keep, the group list, the child's messages and scratch
+buffers, all reached from one C-layout record. Between fork and exec the child
+runs only scalar and pointer arithmetic over that record and
+async-signal-safe C calls, so it allocates nothing (the user's `preexec_fn`
+aside, as in C). On Linux the child may start with `vfork()`; the native
+backend declares `vfork` `returns_twice`, as clang does, so the function that
+calls it is never inlined and its frame stays valid for the parent's return.
+Descriptor listing, `struct termios` and `struct flock` layouts are per-OS
+(`*_platform.<os>.jac`, `*_records.<os>.jac`).
 
 ## Evaluator migration validation
 

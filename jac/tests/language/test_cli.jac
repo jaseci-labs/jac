@@ -1,5 +1,6 @@
 """Test Jac cli module."""
 
+import from jaclang.compiler.backends.py.codegen_shim { generated_python }
 import io;
 import inspect;
 import json;
@@ -23,9 +24,10 @@ import from jaclang.cli.commands {
 }
 import from jaclang.cli.commands { config as config_cmd }
 import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_tokens }
-import from jaclang.compiler.tools.unparse_pass { unparse_module }
+import from jaclang.compiler.tools.jac_formatter_pass { unparse_module }
 import from jaclang.project.config { set_config }
 import from jaclang.runtime.builtin { printgraph }
+import from jaclang.testing.test_runner { _build_selector }
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      _template_state = {"initialized": False},
@@ -700,6 +702,21 @@ test "run specific test only" {
 }
 
 
+"""`--test_name` is a name, not a filter expression: words that are also filter
+operators (`and`, `or`, `not`) still have to appear in the test's name.
+`--filter` keeps them as operators."""
+test "test_name matches every word literally, including and/or/not" {
+    by_name = _build_selector("loads and reports or not", "");
+    assert by_name is not None;
+    assert by_name.matches("native command loads and reports or not");
+    assert not by_name.matches("native command loads reports");
+    by_filter = _build_selector("", "loads and not reports");
+    assert by_filter is not None;
+    assert by_filter.matches("native command loads status");
+    assert not by_filter.matches("native command loads and reports status");
+}
+
+
 test "graph coverage" {
     graph_params = set(inspect.signature(tools.dot).parameters.keys());
     printgraph_params = set(inspect.signature(printgraph).parameters.keys());
@@ -808,7 +825,7 @@ test "param arg" {
     jac_file_path = "";
     try {
         transform.jac2py(f"{fixture_path('params/test_complex_params.jac')}");
-        py_code = JacProgram().compile(file_path=filename).gen.py;
+        py_code = generated_python(JacProgram().compile(file_path=filename).gen);
 
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".py", delete=False
@@ -1521,7 +1538,7 @@ test "jac install <pkg> routes package names to the project venv installer" {
         with patch(
             "jaclang.project.providers.PythonProvider.install_specs", fake_install_specs
         ) {
-            result = project.install(packages=["numpy", "pandas"]);
+            result = project.install(pypi=True, packages=["numpy", "pandas"]);
         }
         assert result == 0 , f"Expected exit 0, got {result}";
         assert captured == [["numpy", "pandas"]] , f"unexpected specs routed: {captured}";
@@ -2430,7 +2447,7 @@ test "bare lt in jsx content is treated as text" {
 test "jac check reports errors for files inside jaclang source tree" {
     # Regression: the self-host redirect routed jaclang-internal files to
     # the self-host program, so errors were invisible to the caller's JacProgram.
-    # force_target_program=True (set by jac check) fixes this. The fixture
+    #  (set by jac check) fixes this. The fixture
     # is deliberately ill-typed so this test never depends on an incidental
     # compiler bug in a shared fixture.
     internal_fixture = os.path.join(

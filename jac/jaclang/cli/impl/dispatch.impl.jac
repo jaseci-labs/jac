@@ -1,40 +1,13 @@
 import os;
 import sys;
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec, arg_consumes_value }
 
-def _discover_project_config(profile: str | None = None) {
-    import from jaclang.project.tomlio { MalformedJacTomlError }
+def _discover_project_config(
+    profile: str | None = None, tolerate_invalid: bool = False
+) -> bool;
 
-    try {
-        import from jaclang.project.config { get_config }
-        import from jaclang.project.pyvenv { add_venv_to_path }
+def _exit_on_invalid_jac_toml(exc: any);
 
-        config = get_config(profile=profile);
-        if config is not None {
-            add_venv_to_path(config);
-        }
-    } except MalformedJacTomlError as exc {
-        _exit_on_malformed_jac_toml(exc);
-    } except ValueError as exc {
-        _exit_on_invalid_jac_toml(exc);
-    } except Exception {}
-}
-
-def _exit_on_invalid_jac_toml(exc: any) {
-    import from jaclang.cli.console { console }
-
-    console.error(f"jac.toml is invalid: {exc}");
-    sys.`exit(2);
-}
-
-def _exit_on_malformed_jac_toml(exc: any) {
-    import from jaclang.cli.console { console }
-
-    console.error(
-        f"jac.toml is malformed: {exc.original}", hint=f"File: {exc.file_path}"
-    );
-    sys.`exit(2);
-}
+def _exit_on_malformed_jac_toml(exc: any);
 
 impl split_remainder_argv(
     raw: list[str], meta: CommandSpec
@@ -93,7 +66,116 @@ impl split_remainder_argv(
     return None;
 }
 
-def _extract_script_args(meta: CommandSpec) -> list[str] {
+def _extract_script_args(meta: CommandSpec) -> list[str];
+
+def _apply_profile(meta: CommandSpec, args_dict: dict[str, any]);
+
+def _arg_dict_key(arg: Arg) -> str;
+
+def _target_app_name(config: any, target: any) -> str;
+
+def _command_config(config: any, meta: CommandSpec, args_dict: dict[str, any]) -> any;
+
+def _config_value(config: any, config_key: str) -> tuple[str, str, any] | None;
+
+def _apply_config_defaults(config: any, meta: CommandSpec, args_dict: dict[str, any]);
+
+def _requests_help(cmd_argv: list[str]) -> bool;
+
+def _command_argv(command_name: str) -> list[str];
+
+def _exit_now(code: int) -> None;
+
+
+impl run_selected_command(command_name: str) -> None {
+    meta = get_command_meta(command_name);
+    if meta is None {
+        sys.stderr.write(f"Unknown command: {command_name}\n");
+        raise SystemExit(2);
+    }
+
+    parser = build_command_parser(meta);
+    cmd_argv = _command_argv(command_name);
+
+    if _requests_help(cmd_argv) {
+        parser.parse_known_args(cmd_argv);
+        return;
+    }
+
+    script_args = _extract_script_args(meta);
+    (args, unknown) = parser.parse_known_args(cmd_argv);
+    if unknown {
+        if command_name == 'test' and any(not u.startswith('-') for u in unknown) {
+            console.error(
+                f"unrecognized arguments: {' '.join(unknown)}\n"
+                "hint: use quotes for multi-word test names:\n"
+                '  jac test <file.jac> --test_name "my test name"\n'
+                '  jac test <file.jac> --test_name my_test_name'
+            );
+        } else {
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}");
+        }
+        raise SystemExit(2);
+    }
+
+    args_dict = vars(args);
+    manifest_valid = _discover_project_config(
+        profile=args_dict.get('profile') or None,
+        tolerate_invalid=meta.tolerates_invalid_manifest
+    );
+    if script_args {
+        args_dict['args'] = script_args;
+    }
+    if manifest_valid {
+        _apply_profile(meta, args_dict);
+    } else {
+        args_dict.pop('profile', None);
+    }
+
+    handler = load_handler(command_name);
+    spec = CommandSpec(name=meta.name, help=meta.help, handler=handler);
+    result = get_executor().execute(spec, args_dict);
+    if result.error {
+        console.error(f"{result.error}");
+    }
+    _exit_now(result.return_code);
+}
+
+impl _discover_project_config(
+    profile: str | None = None, tolerate_invalid: bool = False
+) -> bool {
+    try {
+        import from jaclang.project.config { get_config }
+        import from jaclang.project.pyvenv { add_venv_to_path }
+
+        config = get_config(profile=profile);
+        if config is not None {
+            add_venv_to_path(config);
+        }
+    } except MalformedJacTomlError as exc {
+        _exit_on_malformed_jac_toml(exc);
+    } except ValueError as exc {
+        if tolerate_invalid {
+            return False;
+        }
+        _exit_on_invalid_jac_toml(exc);
+    } except Exception {}
+    return True;
+}
+
+impl _exit_on_invalid_jac_toml(exc: any) {
+    console.error(f"jac.toml is invalid: {exc}");
+    sys.`exit(2);
+}
+
+impl _exit_on_malformed_jac_toml(exc: any) {
+    console.error(
+        f"jac.toml is malformed: {exc.original}", hint=f"File: {exc.file_path}"
+    );
+    sys.`exit(2);
+}
+
+impl _extract_script_args(meta: CommandSpec) -> list[str] {
     raw = sys.argv[1:];
     split = split_remainder_argv(raw, meta);
     if split is None {
@@ -104,8 +186,7 @@ def _extract_script_args(meta: CommandSpec) -> list[str] {
     return script_args;
 }
 
-def _apply_profile(meta: CommandSpec, args_dict: dict[str, any]) {
-    import from jaclang.cli.console { console }
+impl _apply_profile(meta: CommandSpec, args_dict: dict[str, any]) {
     try {
         import from jaclang.project.config { get_config }
 
@@ -122,14 +203,14 @@ def _apply_profile(meta: CommandSpec, args_dict: dict[str, any]) {
     }
 }
 
-def _arg_dict_key(arg: Arg) -> str {
+impl _arg_dict_key(arg: Arg) -> str {
     if arg.dest {
         return arg.dest;
     }
     return arg.name.replace("-", "_");
 }
 
-def _target_app_name(config: any, target: any) -> str {
+impl _target_app_name(config: any, target: any) -> str {
     if not isinstance(target, str) {
         return "";
     }
@@ -148,7 +229,7 @@ def _target_app_name(config: any, target: any) -> str {
     return app.name if app is not None else "";
 }
 
-def _command_config(config: any, meta: CommandSpec, args_dict: dict[str, any]) -> any {
+impl _command_config(config: any, meta: CommandSpec, args_dict: dict[str, any]) -> any {
     for arg in meta.args {
         if arg.kind != ArgKind.POSITIONAL or arg.name != "target" {
             continue;
@@ -164,7 +245,7 @@ def _command_config(config: any, meta: CommandSpec, args_dict: dict[str, any]) -
     return config;
 }
 
-def _config_value(config: any, config_key: str) -> tuple[str, str, any] | None {
+impl _config_value(config: any, config_key: str) -> tuple[str, str, any] | None {
     dot = config_key.find(".");
     if dot < 0 {
         return None;
@@ -178,7 +259,7 @@ def _config_value(config: any, config_key: str) -> tuple[str, str, any] | None {
     return (section, key, getattr(section_obj, key, None));
 }
 
-def _apply_config_defaults(config: any, meta: CommandSpec, args_dict: dict[str, any]) {
+impl _apply_config_defaults(config: any, meta: CommandSpec, args_dict: dict[str, any]) {
     for arg in meta.args {
         if not arg.config_key {
             continue;
@@ -202,7 +283,7 @@ def _apply_config_defaults(config: any, meta: CommandSpec, args_dict: dict[str, 
     }
 }
 
-def _requests_help(cmd_argv: list[str]) -> bool {
+impl _requests_help(cmd_argv: list[str]) -> bool {
     for tok in cmd_argv {
         if tok == '--' {
             return False;
@@ -214,7 +295,7 @@ def _requests_help(cmd_argv: list[str]) -> bool {
     return False;
 }
 
-def _command_argv(command_name: str) -> list[str] {
+impl _command_argv(command_name: str) -> list[str] {
     return (
         sys.argv[2:]
             if len(sys.argv) > 1 and sys.argv[1] == command_name
@@ -222,7 +303,7 @@ def _command_argv(command_name: str) -> list[str] {
     );
 }
 
-def _exit_now(code: int) -> None {
+impl _exit_now(code: int) -> None {
     if os.environ.get('JAC_SLOW_EXIT') {
         if code != 0 {
             raise SystemExit(code);
@@ -238,59 +319,4 @@ def _exit_now(code: int) -> None {
         sys.stderr.flush();
     } except Exception {}
     os._exit(code);
-}
-
-
-impl run_selected_command(command_name: str) -> None {
-    import from jaclang.cli.manifest { get_command_meta }
-    import from jaclang.cli.manifest_parse { build_command_parser }
-
-    meta = get_command_meta(command_name);
-    if meta is None {
-        sys.stderr.write(f"Unknown command: {command_name}\n");
-        raise SystemExit(2);
-    }
-
-    parser = build_command_parser(meta);
-    cmd_argv = _command_argv(command_name);
-
-    if _requests_help(cmd_argv) {
-        parser.parse_known_args(cmd_argv);
-        return;
-    }
-
-    import from jaclang.cli.console { console }
-    import from jaclang.cli.executor { get_executor }
-    import from jaclang.cli.loader { load_handler }
-
-    script_args = _extract_script_args(meta);
-    (args, unknown) = parser.parse_known_args(cmd_argv);
-    if unknown {
-        if command_name == 'test' and any(not u.startswith('-') for u in unknown) {
-            console.error(
-                f"unrecognized arguments: {' '.join(unknown)}\n"
-                "hint: use quotes for multi-word test names:\n"
-                '  jac test <file.jac> --test_name "my test name"\n'
-                '  jac test <file.jac> --test_name my_test_name'
-            );
-        } else {
-            parser.error(f"unrecognized arguments: {' '.join(unknown)}");
-        }
-        raise SystemExit(2);
-    }
-
-    args_dict = vars(args);
-    _discover_project_config(profile=args_dict.get('profile') or None);
-    if script_args {
-        args_dict['args'] = script_args;
-    }
-    _apply_profile(meta, args_dict);
-
-    handler = load_handler(command_name);
-    spec = CommandSpec(name=meta.name, help=meta.help, handler=handler);
-    result = get_executor().execute(spec, args_dict);
-    if result.error {
-        console.error(f"{result.error}");
-    }
-    _exit_now(result.return_code);
 }

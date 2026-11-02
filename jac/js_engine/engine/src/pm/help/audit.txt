@@ -1,0 +1,18 @@
+
+Usage: bun audit [flags]
+
+  Check installed packages for vulnerabilities.
+
+Flags:
+      --json                 Output in JSON format
+      --audit-level=<val>    Only print advisories with severity greater than or equal to <level> (low, moderate, high, critical)
+      --ignore=<val>         Ignore specific CVE IDs from audit
+
+Examples:
+  Check the current project's packages for vulnerabilities.
+  bun audit
+
+  Output package vulnerabilities in JSON format.
+  bun audit --json
+
+Full documentation is available at https://bun.com/docs/install/audit.

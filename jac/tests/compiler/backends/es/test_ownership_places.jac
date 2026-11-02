@@ -2,7 +2,7 @@ import os;
 import subprocess;
 import from tests.support { TESTS_DIR }
 import from tests.compiler.backends.es.codegen_helpers { compile_fixture_to_js }
-import from jaclang.client.bun_installer { get_bun }
+import from tests.support { js_runtime_or_none }
 
 test "take and swap preserve place semantics in JavaScript" {
     js = compile_fixture_to_js(
@@ -10,7 +10,7 @@ test "take and swap preserve place semantics in JavaScript" {
             TESTS_DIR, "compiler", "backends", "es", "fixtures", "ownership_places.jac"
         )
     );
-    runtime = get_bun();
+    runtime = js_runtime_or_none();
     assert runtime is not None , "the JavaScript runtime is required for this test";
     ran = subprocess.run(
         [

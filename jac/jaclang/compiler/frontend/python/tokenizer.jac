@@ -4,51 +4,6 @@ Source decoding stays outside the scanner. An optional refill callback supplies
 decoded lines for streaming tokenization; parsing uses an existing source string.
 """
 
-import from jaclang.compiler.frontend.python.token_model {
-    ENDMARKER,
-    NAME,
-    NUMBER,
-    STRING,
-    NEWLINE,
-    INDENT,
-    DEDENT,
-    COMMENT,
-    NL,
-    ERRORTOKEN,
-    TYPE_COMMENT,
-    TYPE_IGNORE,
-    LPAR,
-    RPAR,
-    LSQB,
-    RSQB,
-    LBRACE,
-    RBRACE,
-    COMMA,
-    COLON,
-    FSTRING_START,
-    FSTRING_MIDDLE,
-    FSTRING_END,
-    TSTRING_START,
-    TSTRING_MIDDLE,
-    TSTRING_END,
-    TOK_NO_COLUMN,
-    EXACT_TOKEN_TYPES,
-    exact_token_type,
-    tok_token,
-    tok_diag,
-    mk_diag,
-    tok_loc_span,
-    tok_no_loc,
-}
-
-import from jaclang.runtime.python.characters {
-    point_width,
-    point_at,
-    unicode_start,
-    unicode_continue,
-    unicode_printable
-}
-
 glob TABSIZE: int = 8,
      MAXINDENT: int = 100,
      # The scanner reads code points, as CPython's tok_nextc reads ints. This
@@ -648,6 +603,27 @@ def _read_number(st: tok_state) -> tok_token | tok_diag {
         }
     }
     spell = st.data[start:st.pos].decode("utf-8");
+    # lexer.c: a decimal integer with a leading zero and a nonzero digit is
+    # an old-style octal, refused outside the tokenize module (gh-105549).
+    if not based
+        and not st.extra_tokens
+        and spell[0] == "0"
+        and spell.replace("_", "").isdigit()
+        and spell.replace("_", "").strip("0") {
+        nonzero = 1;
+        while nonzero < len(spell) and spell[nonzero] in "0_" {
+            nonzero += 1;
+        }
+        bad = mk_diag(
+            "SyntaxError",
+            "leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers",
+            tok_loc_span(st.lineno, st.lineno, start_col, start_col + nonzero + 1),
+            st.filename
+        );
+        st.error = bad;
+        st.done = True;
+        return bad;
+    }
     if _is_id_start(_peek(st)) and not st.extra_tokens {
         kind = "decimal";
         if spell.lower().startswith("0x") {
@@ -696,6 +672,22 @@ def _read_name(st: tok_state) -> tok_token {
     start = st.pos;
     start_col = st.col_offset;
     _advance(st);
+    data = st.data;
+    end = st.pos;
+    size = len(data);
+    while end < size {
+        b = data[end];
+        if (b >= 97 and b <= 122)
+            or (b >= 65 and b <= 90)
+            or (b >= 48 and b <= 57)
+            or b == 95 {
+            end += 1;
+        } else {
+            break;
+        }
+    }
+    st.col_offset += end - st.pos;
+    st.pos = end;
     while _has_source(st) {
         c = _peek(st);
         if not _is_id_continue(c) and not (st.extra_tokens and c >= 128) {
@@ -1150,7 +1142,10 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
 def tokenizer_from_string(source: str, filename: str, exec_input: bool) -> tok_state {
     # File input gets a terminal newline before scanning; eval/single input
     # must retain physical EOF so incomplete-input flags can distinguish it.
-    buf = source.replace("\r\n", "\n").replace("\r", "\n");
+    buf = source;
+    if "\r" in source {
+        buf = source.replace("\r\n", "\n").replace("\r", "\n");
+    }
     if exec_input and buf and not buf.endswith("\n") {
         buf += "\n";
     }
@@ -1485,8 +1480,9 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
 
 def tokenizer_next(st: tok_state) -> tok_token | tok_diag {
     token = _tokenizer_next(st);
-    if isinstance(token, tok_token) {
-        token.level = st.paren_level;
+    if token is not st.error {
+        tok = token as tok_token;
+        tok.level = st.paren_level;
     }
     return token;
 }

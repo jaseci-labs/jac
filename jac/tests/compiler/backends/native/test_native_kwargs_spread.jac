@@ -44,9 +44,7 @@ def check_na_inline(label: str, code: str) -> JacProgram {
     prog.compile(
         file_path=os.path.join(FIXTURES, f"_kwspread_{label}.jac"),
         use_str=code,
-        options=CompileOptions(
-            no_cgen=True, force_codespace="native", force_target_program=True
-        )
+        options=CompileOptions(no_cgen=True, force_codespace="native")
     );
     return prog;
 }
@@ -104,10 +102,11 @@ test "the spread fixture compiles with no native diagnostics" {
 }
 
 # ─────────────────────────────────────────────────────────────────────
-# The genuinely dynamic case stays rejected
+# A callee with fixed parameters binds the spread; only an unknown
+# signature stays rejected
 # ─────────────────────────────────────────────────────────────────────
 
-test "guardrail: a spread at a callee with no sink demotes the caller" {
+test "a spread at a callee with no sink binds its declared parameters" {
     prog = JacProgram();
     ir = prog.compile(
         file_path=os.path.join(FIXTURES, "_kwspread_onto_named.jac"),
@@ -118,8 +117,29 @@ test "guardrail: a spread at a callee with no sink demotes the caller" {
         "}\n",
         options=native_force_opts()
     );
+    assert not prog.errors_had , fmt_errors(prog);
+    layout = ir.gen.native_layout;
+    assert layout is not None , "whole-module native compile aborted";
+    assert "use" in layout.functions , (
+        f"the fixed-signature spread caller must lower: {list(layout.functions)}"
+    );
+    use = get_func(ir.gen.native_engine, "use", ctypes.c_int64);
+    assert use() == 3 , f"got {use()}";
+}
+
+test "guardrail: a spread into a callee with no known signature demotes" {
+    prog = JacProgram();
+    ir = prog.compile(
+        file_path=os.path.join(FIXTURES, "_kwspread_unknown_callee.jac"),
+        use_str="def sink(a: int, b: int) -> int { return a + b; }\n"
+        "def use(f: Callable[..., int]) -> int {\n"
+        "    d: dict[str, int] = {\"b\": 2};\n"
+        "    return f(1, **d);\n"
+        "}\n",
+        options=native_force_opts()
+    );
     assert not has_error_code(prog, "E5090") , (
-        f"the sink-less spread is owned by use(), which must demote to a "
+        f"the unknown-callee spread is owned by use(), which must demote to a "
         f"seam, got {fmt_errors(prog)}"
     );
     layout = ir.gen.native_layout;
@@ -128,7 +148,7 @@ test "guardrail: a spread at a callee with no sink demotes the caller" {
         f"clean sibling function was lost: {list(layout.functions)}"
     );
     assert "use" not in layout.functions , (
-        "the sink-less spread caller must be demoted out of the native layout"
+        "a spread into a callee without a static signature must be demoted"
     );
 }
 

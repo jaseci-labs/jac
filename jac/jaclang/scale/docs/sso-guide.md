@@ -37,6 +37,14 @@ client_secret = "${GITHUB_CLIENT_SECRET}"
 
 Only providers with both `client_id` and `client_secret` configured will be available. Unconfigured providers are silently skipped.
 
+### How an SSO login finds its account
+
+1. The provider account has signed in before: that account is used.
+2. Otherwise, the provider reports the email as verified and an existing account holds the same email as a **verified** identity: the provider is linked to that account.
+3. Otherwise a new account is created, with the provider-verified email stored as a verified email identity when `[serve.auth.identifiers] email` accepts one.
+
+An unverified provider email is never used to find an account, and a matching local email that is itself unverified fails the login with `SSO_EMAIL_IN_USE` instead of linking. With `[serve.auth.identifiers] email = "required"` a provider that shares no verified email fails with `SSO_EMAIL_REQUIRED`, and with `[serve.auth.registration] enabled = false` SSO signs in existing accounts only. An account with a verified second factor gets the second-factor challenge (`mfa_required`, `challenge_token`) instead of a token, to be completed at `/user/mfa/login`; a frontend redirect carries it as `?mfa_required=1&challenge_token=...`.
+
 ## 2. Endpoints
 
 ### Initiation
@@ -72,6 +80,10 @@ If `client_auth_callback_url` is configured, the callback redirects to that URL 
 - **Error**: `{client_auth_callback_url}?error={code}&message={details}`
 
 If not configured, the callback returns a JSON `TransportResponse`.
+
+### Connected accounts
+
+Sign-in only asks a provider who the user is. To call its APIs for the user, add the extra permissions the app may request, such as `scopes = ["https://www.googleapis.com/auth/calendar.readonly"]` under `[scale.sso.google]`, and point `client_auth_callback_url` at a page of your app. A signed-in user connects with `await jacSsoConnect("google")`, the callback page finishes with `await jacSsoFinish()`, and server code gets a refreshed access token with `await sso_access_token("google")` from `jaclang.scale.sso.grants`. Tokens are encrypted at rest under `[serve.auth] secret` and never reach the client. The full reference is the "Connected accounts" part of the jac-scale HTTP reference.
 
 ## 3. Google SSO Setup
 
@@ -116,6 +128,8 @@ If not configured, the callback returns a JSON `TransportResponse`.
 > **Note**: Apple Sign In sends callbacks as POST requests, which is why both GET and POST callback endpoints are registered.
 
 ## 5. GitHub SSO Setup
+
+GitHub sign-in asks for the public identity only. The one exception is `[serve.auth.identifiers] email = "required"`: an account then needs an email, so the `user:email` scope is requested and the account's verified primary address is read. Under any other setting a GitHub account is created or matched by its GitHub ID alone and never linked by email.
 
 1. Go to [GitHub Developer Settings](https://github.com/settings/developers).
 2. Click **New OAuth App**.

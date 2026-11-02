@@ -1,7 +1,4 @@
-import from jaclang.compiler.frontend.diagnostics { E1308, E1313 }
-
 impl OwnershipCheckPass._flow_for_stmts -> list[InForStmt] {
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
     out: list[InForStmt] = [];
     for lp in self.module.get_all_sub_nodes(InForStmt) {
         for k in [lp->:Kid:->] {
@@ -15,7 +12,6 @@ impl OwnershipCheckPass._flow_for_stmts -> list[InForStmt] {
 }
 
 impl OwnershipCheckPass._flow_reduce_shape(asgn: Assignment, sid: SymId) -> str {
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
     if len(asgn.target) != 1 or not isinstance(asgn.target[0], Name) {
         return "";
     }
@@ -92,7 +88,7 @@ impl OwnershipCheckPass._collect_flow_reductions(lp: InForStmt) -> dict[SymId, s
     }
     _cands: dict[SymId, str] = {};
     _sites: dict[SymId, list[Assignment]] = {};
-    _lp_fn = lp.find_parent_of_type(Ability);
+    _lp_fn = lp.enclosing_decl(Ability);
     _lp_mc = lp.find_parent_of_type(ModuleCode);
     for a in _asgns {
         if len(a.target) != 1 or not isinstance(a.target[0], Name) {
@@ -103,10 +99,10 @@ impl OwnershipCheckPass._collect_flow_reductions(lp: InForStmt) -> dict[SymId, s
         if sid is None or tgt.sym is None or tgt.sym.decl is None {
             continue;
         }
-        if self._is_ancestor(lp, tgt.sym.decl) {
+        if tgt.sym.decl.is_within(lp) {
             continue;
         }
-        if tgt.sym.decl.find_parent_of_type(Ability) is not _lp_fn
+        if tgt.sym.decl.enclosing_decl(Ability) is not _lp_fn
             or tgt.sym.decl.find_parent_of_type(ModuleCode) is not _lp_mc {
             continue;
         }
@@ -152,7 +148,7 @@ impl OwnershipCheckPass._collect_flow_reductions(lp: InForStmt) -> dict[SymId, s
                 }
                 _inside = False;
                 for a in _sites[sid] {
-                    if nm is a or self._is_ancestor(a, nm) {
+                    if nm is a or nm.is_within(a) {
                         _inside = True;
                         break;
                     }
@@ -179,7 +175,6 @@ impl OwnershipCheckPass._collect_flow_reductions(lp: InForStmt) -> dict[SymId, s
 }
 
 impl OwnershipCheckPass._emit_flow_for_diagnostics -> None {
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
     _flows = self._flow_for_stmts();
     if not _flows {
         return;
@@ -260,13 +255,13 @@ impl OwnershipCheckPass._emit_flow_for_diagnostics -> None {
                 if sym.in_stub_scope() {
                     continue;
                 }
-                if self._is_ancestor(lp, sym.decl) {
+                if sym.decl.is_within(lp) {
                     continue;
                 }
                 if isinstance(nm.parent, FuncCall) and nm.parent.target is nm {
                     continue;
                 }
-                _ab = sym.decl.find_parent_of_type(Ability);
+                _ab = sym.decl.enclosing_decl(Ability);
                 if _ab is not None and _ab.name_ref is sym.decl {
                     continue;
                 }
@@ -305,9 +300,9 @@ impl OwnershipCheckPass._emit_flow_for_diagnostics -> None {
 }
 
 impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
-    tracked = set(self.owned_decl);
-    tracked.update(self.borrow_meta);
-    tracked.update(self.imm_decl);
+    tracked = set(self.owned_decl.keys());
+    tracked.update(self.borrow_meta.keys());
+    tracked.update(self.imm_decl.keys());
     for nd in self.idx_assignments {
         for tgt in nd.target {
             if isinstance(tgt, Name) and tgt.sym {
@@ -321,7 +316,6 @@ impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
         }
     }
 
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
     for cexpr in self.idx_concurrent {
         if cexpr.tok is not None and cexpr.tok.name == Tok.KW_WAIT {
             continue;
@@ -380,7 +374,6 @@ impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
 impl OwnershipCheckPass._flow_lend_joined(
     cexpr: ConcurrentExpr, owner_sid: SymId
 ) -> bool {
-    import from jaclang.compiler.frontend.constant { Tokens as Tok }
     asgn = cexpr.find_parent_of_type(Assignment);
     if asgn is None
         or asgn.value is not cexpr
@@ -391,11 +384,10 @@ impl OwnershipCheckPass._flow_lend_joined(
     }
     handle_sid = self._name_sym_id(asgn.target[0]);
     container = asgn.parent;
-    _cbody = container?.body;
-    if not isinstance(_cbody, (list, tuple)) or asgn not in _cbody {
+    body: list[UniNode] = [container->:BodyRole:->] if container is not None else [];
+    if asgn not in body {
         return False;
     }
-    body: list[UniNode] = [s for s in _cbody];
     idx = body.index(asgn);
     for st in body[idx + 1:] {
         _wait_found = False;
@@ -428,7 +420,7 @@ impl OwnershipCheckPass._flow_lend_joined(
         for ex in _exits {
             _joins_first = False;
             for w in _wait_nodes {
-                if ex is w or self._is_ancestor(ex, w) {
+                if ex is w or w.is_within(ex) {
                     _joins_first = True;
                 }
             }

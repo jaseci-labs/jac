@@ -1,0 +1,124 @@
+name: js_engine
+
+# The js_engine accelerator's own lane. Releases and the CI kit ship bun, its
+# floor; the engine is built only here in CI (`jac native build js-engine`
+# locally). It builds the engine from this checkout, installs
+# it the way that command does for every jac, then holds the official (sealed)
+# binary to using it: `jac native status` must resolve it, the node suite and
+# a client build run on it, and test262 must pass everything its baseline does.
+#
+# Called by ci.yml (a pull request that changes the engine or the compiler,
+# one carrying the `native:js-engine` label, or a manual run) and nightly.yml.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  js-engine:
+    name: js-engine
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build the jac binary (cached)
+        uses: ./.github/actions/setup-jac
+        with:
+          # `zig build js-engine` runs the checkout's compiler on the
+          # source-built interpreter, which loads the shim.
+          need-build-inputs: "true"
+
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+
+      - name: Fingerprint immutable build inputs
+        id: inputs
+        run: bash scripts/ci_cache_keys.sh >> "$GITHUB_OUTPUT"
+
+      # The engine is a function of its sources and of the compiler that
+      # lowers them; a hit restores a build `jac native build` then finds
+      # current and only installs.
+      - name: Restore the built engine
+        id: engine-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: jac/zig-out/js
+          key: js-engine-${{ runner.os }}-${{ runner.arch }}-c${{ steps.inputs.outputs.compiler }}-${{ hashFiles('jac/js_engine/**', 'jac/build.zig', 'jac/build.zig.zon') }}
+
+      # The build runs through this checkout's compiler (the root jac.toml's
+      # reroute), on the bundle the binary was built from (setup-jac keeps it
+      # under its interpreter's name).
+      - name: Seed the reroute from the binary's precompile bundle
+        run: |
+          set -euo pipefail
+          BUNDLE="$(ls -d jac/.precompiled-build/*/ | head -1)"
+          [ -n "$BUNDLE" ] || { echo "::error::setup-jac left no precompile bundle"; exit 1; }
+          rm -rf jac/jaclang/_precompiled
+          cp -r "$BUNDLE" jac/jaclang/_precompiled
+          rm -f jac/jaclang/_precompiled/MANIFEST.json
+
+      - name: Build and install the engine
+        run: jac native build js-engine
+
+      - name: Save the built engine
+        if: steps.engine-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: jac/zig-out/js
+          key: js-engine-${{ runner.os }}-${{ runner.arch }}-c${{ steps.inputs.outputs.compiler }}-${{ hashFiles('jac/js_engine/**', 'jac/build.zig', 'jac/build.zig.zon') }}
+
+      # From here on the official binary runs sealed, as a user's would, and
+      # must pick up the engine the build installed.
+      - uses: ./.github/actions/seal-checkout
+
+      - name: The official binary uses the installed engine
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euxo pipefail
+          jac native status js-engine
+          jac native status --require js-engine
+
+      - name: Run the node suite and a client build on the engine
+        env:
+          JAC_TEST_JOBS: "0"
+          JAC_TEST_STRICT: "1"
+        run: >-
+          jac test jac/tests/client/test_js_engine_node.jac
+          jac/tests/runtimelib/test_client_bundle.jac
+
+      - name: Restore the test262 checkout
+        uses: actions/cache@v4
+        with:
+          path: jac/js_engine/engine/tests/test262/vendor
+          key: test262-${{ hashFiles('jac/js_engine/engine/tests/test262/test262.sha') }}
+
+      - name: Fetch test262 at the pinned commit
+        run: jac/js_engine/tools/fetch_test_deps.sh test262
+
+      # Fails on any test that does not pass and is not in known_failures.txt.
+      # A per-test timeout above the runner's default keeps a slower runner
+      # from turning passes into hangs.
+      - name: Run test262
+        working-directory: jac/js_engine
+        run: |
+          set -euo pipefail
+          for suite in language built-ins; do
+            jac engine/tests/test262/run_test262.jac --gc --timeout 30 \
+              --filter "$suite" \
+              --check-baseline engine/tests/test262/known_failures.txt
+          done
+
+      - name: Upload the test262 run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test262-run-log
+          path: jac/js_engine/engine/tests/test262/.run_logs
+          retention-days: 7
+          if-no-files-found: ignore

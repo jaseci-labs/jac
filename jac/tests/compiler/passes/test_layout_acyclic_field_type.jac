@@ -47,7 +47,7 @@ cycles come out right.
 
 import os;
 import jaclang.compiler.frontend.unitree as uni;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, by_source_name }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.passes.layout_pass { get_layout_registry }
@@ -72,7 +72,7 @@ def _registry -> any {
 
 """Whether the walk called a layout acyclic. Asserts the layout exists."""
 def _acyclic(name: str) -> bool {
-    lay = _registry().get_layout(name);
+    lay = by_source_name(_registry().layouts).get(name);
     assert lay is not None , (
         f"no layout for {name}; the fixture stopped producing one, so this "
         "file would be asserting about nothing"

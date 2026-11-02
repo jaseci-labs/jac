@@ -14,7 +14,12 @@ import ctypes;
 import importlib;
 import os;
 import sys;
-import from tests.support { TESTS_DIR, compile_native, native_force_opts }
+import from tests.support {
+    TESTS_DIR,
+    compile_native,
+    native_address,
+    native_force_opts
+}
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -50,7 +55,7 @@ test "function-body imports lower and agree with sv" {
         "method_import"
     ];
     for name in cases {
-        addr = eng.get_function_address(name);
+        addr = native_address(eng, name);
         assert addr != 0 , f"'{name}' not found in the JIT engine";
         na_fn = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(addr);
         sv_fn = getattr(sv, name);
@@ -165,13 +170,18 @@ test "nested imports are harvested only from native-context elements" {
 # link set -- which is the transitive half of N8c actually working.
 test "a native-context body-scoped import contributes its module's clib" {
     prog = JacProgram();
+    opts = native_force_opts();
+    opts.skip_native_engine = True;
     ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "clib_ctx_gated_entry.jac"),
-        options=native_force_opts()
+        file_path=os.path.join(FIXTURES, "clib_ctx_gated_entry.jac"), options=opts
     );
     assert not prog.errors_had , f"Errors: {[str(e) for e in prog.errors_had]}";
-    assert any("libctxgated" in p for p in ir.gen._clib_paths) , (
+    # The link set is the plan's: the imported module is its own unit and its
+    # declared C library rides on that unit's interface.
+    import from jaclang.compiler.backends.native.link_plan { build_link_plan }
+    plan = build_link_plan(prog, [ir.loc.mod_path], opts);
+    assert any("libctxgated" in p for p in plan.clib_paths()) , (
         f"transitive body-scoped import did not contribute its clib: "
-        f"{ir.gen._clib_paths}"
+        f"{plan.clib_paths()}"
     );
 }

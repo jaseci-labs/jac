@@ -1,0 +1,635 @@
+def argument_label(argname: str, position: int) -> str;
+
+def bad_argument(
+    fname: str, label: str, expected: str, value: ptr[PyObject], qualified: bool = False
+);
+
+def convert_unicode_char(
+    value: ptr[PyObject], fname: str, label: str, clinic: bool = True
+) -> u32;
+
+def failed -> bool;
+
+def convert_int(value: ptr[PyObject]) -> i32;
+
+def convert_long(value: ptr[PyObject]) -> i64;
+
+def convert_long_long(value: ptr[PyObject]) -> i64;
+
+def convert_ssize(value: ptr[PyObject]) -> i64;
+
+def convert_optional_ssize(value: ptr[PyObject], fallback: i64) -> i64;
+
+def convert_slice_index_not_none(value: ptr[PyObject], fname: str, label: str) -> i64;
+
+def convert_unsigned_long(
+    value: ptr[PyObject], bitwise: bool, fname: str, label: str
+) -> u64;
+
+def convert_unsigned_long_long(
+    value: ptr[PyObject], bitwise: bool, fname: str, label: str
+) -> u64;
+
+def convert_unsigned_bounded(
+    value: ptr[PyObject], bitwise: bool, limit: u64, kind: str, fname: str, label: str
+) -> u64;
+
+def convert_fildes(value: ptr[PyObject], fname: str, label: str) -> i32;
+
+def convert_unsigned_short(value: ptr[PyObject]) -> u16;
+
+def convert_unsigned_int(value: ptr[PyObject]) -> u32;
+
+def convert_uint16(value: ptr[PyObject]) -> u16;
+
+def convert_uint32(value: ptr[PyObject]) -> u32;
+
+def convert_uint8(value: ptr[PyObject]) -> u8;
+
+def convert_uint64(value: ptr[PyObject]) -> u64;
+
+def convert_double(value: ptr[PyObject]) -> f64;
+
+def convert_float(value: ptr[PyObject]) -> f32;
+
+def convert_bool(value: ptr[PyObject]) -> bool;
+
+def convert_bool_int(value: ptr[PyObject]) -> bool;
+
+def convert_PyUnicode_FSConverter(
+    value: ptr[PyObject], fname: str, label: str
+) -> ptr[PyObject];
+
+def convert_unicode(value: ptr[PyObject], fname: str, label: str) -> ptr[PyObject];
+
+def convert_str(value: ptr[PyObject], fname: str, label: str) -> str;
+
+obj SizedText {
+    has data: ptr[u8] = ptr[u8](),
+        size: i64 = 0;
+}
+
+def convert_sized_str(value: ptr[PyObject], fname: str, label: str) -> SizedText;
+
+def convert_optional_str(value: ptr[PyObject], fname: str, label: str) -> (str | None);
+
+def convert_cstr(
+    value: ptr[PyObject], fname: str, label: str, accept_none: bool
+) -> ptr[u8];
+
+def convert_text_buffer(
+    value: ptr[PyObject], fname: str, label: str
+) -> BufferArgument;
+
+def convert_buffer(value: ptr[PyObject], fname: str, label: str) -> BufferArgument;
+
+def convert_writable_buffer(
+    value: ptr[PyObject], fname: str, label: str
+) -> BufferArgument;
+
+def borrowed_none -> ptr[PyObject];
+
+def borrowed_true -> ptr[PyObject];
+
+def borrowed_false -> ptr[PyObject];
+
+obj ClassToken {
+    has handle: ptr = ptr(),
+        shared: list[ptr] = [];
+
+    def share(handle: ptr);
+    def definition_of(cls: ptr[PyObject]) -> ptr;
+}
+
+def new_checks_arguments(type: ptr[PyObject], token: ClassToken) -> bool;
+
+def init_checks_arguments(instance: ptr[PyObject], token: ClassToken) -> bool;
+
+def defining_class_or_null(
+    receiver: ptr[PyObject], token: ClassToken
+) -> ptr[PyObject];
+
+def defining_class(receiver: ptr[PyObject], token: ClassToken) -> ptr[PyObject];
+
+def defining_class_of_type_or_null(
+    receiver: ptr[PyObject], token: ClassToken
+) -> ptr[PyObject];
+
+def defining_class_of_type(
+    receiver: ptr[PyObject], token: ClassToken
+) -> ptr[PyObject];
+
+def exact_int_at(args: ptr[ptr[PyObject]], nargs: i64, index: int) -> bool;
+
+def missing_argument(fname: str, name: str, position: int);
+
+def return_int(value: i32) -> ptr[PyObject];
+
+def return_bool(value: i32) -> ptr[PyObject];
+
+def return_long(value: i64) -> ptr[PyObject];
+
+def return_ssize(value: i64) -> ptr[PyObject];
+
+def return_size(value: u64) -> ptr[PyObject];
+
+def return_unsigned(value: u32) -> ptr[PyObject];
+
+def return_double(value: f64) -> ptr[PyObject];
+
+impl argument_label(argname: str, position: int) -> str {
+    return f"argument {position}" if not argname else f"argument '{argname}'";
+}
+
+impl bad_argument(
+    fname: str, label: str, expected: str, value: ptr[PyObject], qualified: bool = False
+) {
+    shown = type_name(value, True)
+        if qualified
+        else ("None" if value == Py_None else type_name(value));
+
+    caller = f"{fname}() " if fname else "";
+    object_error(PyExc_TypeError, f"{caller}{label} must be {expected}, not {shown}");
+    raise boundary_failure();
+}
+
+impl convert_unicode_char(
+    value: ptr[PyObject], fname: str, label: str, clinic: bool = True
+) -> u32 {
+    if jacpy_is_unicode(value) == 0 {
+        bad_argument(fname, label, "a unicode character", value);
+    }
+    size = jacpy_unicode_size(value);
+    if size != 1 {
+        caller = f"{fname}():" if clinic else f"{fname}()";
+        object_error(
+            PyExc_TypeError,
+            f"{caller} {label} must be a unicode character, not a string of length {size}"
+        );
+        raise boundary_failure();
+    }
+    return u32(PyUnicode_ReadChar(value, 0));
+}
+
+impl failed -> bool {
+    return bool(PyErr_Occurred());
+}
+
+impl convert_int(value: ptr[PyObject]) -> i32 {
+    result = PyLong_AsInt(value);
+    if result == -1 and failed() {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+impl convert_long(value: ptr[PyObject]) -> i64 {
+    result = PyLong_AsLong(value);
+    if result == -1 and failed() {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+impl convert_long_long(value: ptr[PyObject]) -> i64 {
+    result = PyLong_AsLongLong(value);
+    if result == -1 and failed() {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+impl convert_ssize(value: ptr[PyObject]) -> i64 {
+    index = PyNumber_Index(value);
+    if not index {
+        raise boundary_failure();
+    }
+    result = PyLong_AsSsize_t(index);
+    jacpy_release(index);
+    if result == -1 and failed() {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+impl convert_optional_ssize(value: ptr[PyObject], fallback: i64) -> i64 {
+    if value == Py_None {
+        return fallback;
+    }
+    if PyIndex_Check(value) == 0 {
+        object_error(
+            PyExc_TypeError,
+            f"argument should be integer or None, not '{type_name(value)}'"
+        );
+        raise boundary_failure();
+    }
+    result = PyNumber_AsSsize_t(value, PyExc_OverflowError);
+    if result == -1 and failed() {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+impl convert_slice_index_not_none(value: ptr[PyObject], fname: str, label: str) -> i64 {
+    if PyIndex_Check(value) == 0 {
+        object_error(
+            PyExc_TypeError,
+            "slice indices must be integers or have an __index__ method"
+        );
+        raise boundary_failure();
+    }
+    result = PyNumber_AsSsize_t(value, NULL);
+    if result == -1 and failed() {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+impl convert_unsigned_long(
+    value: ptr[PyObject], bitwise: bool, fname: str, label: str
+) -> u64 {
+    if bitwise {
+        if PyIndex_Check(value) == 0 {
+            bad_argument(fname, label, "int", value);
+        }
+        masked = PyLong_AsUnsignedLongMask(value);
+        if masked == u64(0xFFFFFFFFFFFFFFFF) and failed() {
+            raise boundary_failure();
+        }
+        return masked;
+    }
+    result: u64 = 0;
+    if jacpy_unsigned_converter(value, &mut result, 0) == 0 {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+impl convert_unsigned_long_long(
+    value: ptr[PyObject], bitwise: bool, fname: str, label: str
+) -> u64 {
+    if bitwise {
+        if PyIndex_Check(value) == 0 {
+            bad_argument(fname, label, "int", value);
+        }
+        masked = PyLong_AsUnsignedLongLongMask(value);
+        if masked == u64(0xFFFFFFFFFFFFFFFF) and failed() {
+            raise boundary_failure();
+        }
+        return masked;
+    }
+    result: u64 = 0;
+    if jacpy_unsigned_converter(value, &mut result, 1) == 0 {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+impl convert_unsigned_bounded(
+    value: ptr[PyObject], bitwise: bool, limit: u64, kind: str, fname: str, label: str
+) -> u64 {
+    if bitwise {
+        masked = PyLong_AsUnsignedLongMask(value);
+        if masked == u64(0xFFFFFFFFFFFFFFFF) and failed() {
+            raise boundary_failure();
+        }
+        return masked & limit;
+    }
+    wide = convert_long(value);
+    if wide < 0 {
+        object_error(PyExc_OverflowError, f"{kind} is less than minimum");
+        raise boundary_failure();
+    }
+    if u64(wide) > limit {
+        object_error(PyExc_OverflowError, f"{kind} is greater than maximum");
+        raise boundary_failure();
+    }
+    return u64(wide);
+}
+
+impl convert_fildes(value: ptr[PyObject], fname: str, label: str) -> i32 {
+    fd = PyObject_AsFileDescriptor(value);
+    if fd == -1 {
+        raise boundary_failure();
+    }
+    return fd;
+}
+
+impl convert_unsigned_short(value: ptr[PyObject]) -> u16 {
+    result: u16 = 0;
+    if _PyLong_UnsignedShort_Converter(value, &mut result) == 0 {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+impl convert_unsigned_int(value: ptr[PyObject]) -> u32 {
+    result: u32 = 0;
+    if _PyLong_UnsignedInt_Converter(value, &mut result) == 0 {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+impl convert_uint16(value: ptr[PyObject]) -> u16 {
+    result: u16 = 0;
+    if _PyLong_UInt16_Converter(value, &mut result) == 0 {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+impl convert_uint32(value: ptr[PyObject]) -> u32 {
+    result: u32 = 0;
+    if _PyLong_UInt32_Converter(value, &mut result) == 0 {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+impl convert_uint8(value: ptr[PyObject]) -> u8 {
+    result: u8 = 0;
+    if _PyLong_UInt8_Converter(value, &mut result) == 0 {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+impl convert_uint64(value: ptr[PyObject]) -> u64 {
+    result: u64 = 0;
+    if _PyLong_UInt64_Converter(value, &mut result) == 0 {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+impl convert_double(value: ptr[PyObject]) -> f64 {
+    result = PyFloat_AsDouble(value);
+    if result == -1.0 and failed() {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+impl convert_float(value: ptr[PyObject]) -> f32 {
+    return f32(convert_double(value));
+}
+
+impl convert_bool(value: ptr[PyObject]) -> bool {
+    result = PyObject_IsTrue(value);
+    if result < 0 {
+        raise boundary_failure();
+    }
+    return result != 0;
+}
+
+impl convert_bool_int(value: ptr[PyObject]) -> bool {
+    if jacpy_is_float(value) != 0 {
+        object_error(PyExc_TypeError, "integer argument expected, got float");
+        raise boundary_failure();
+    }
+    return convert_int(value) != 0;
+}
+
+impl convert_PyUnicode_FSConverter(
+    value: ptr[PyObject], fname: str, label: str
+) -> ptr[PyObject] {
+    result = NULL;
+    if PyUnicode_FSConverter(value, &mut result) == 0 {
+        raise boundary_failure();
+    }
+    return result;
+}
+
+impl convert_unicode(value: ptr[PyObject], fname: str, label: str) -> ptr[PyObject] {
+    if jacpy_is_unicode(value) == 0 {
+        bad_argument(fname, label, "str", value);
+    }
+    return value;
+}
+
+impl convert_str(value: ptr[PyObject], fname: str, label: str) -> str {
+    convert_unicode(value, fname, label);
+
+    size: i64 = 0;
+    if PyUnicode_AsUTF8AndSize(value, &mut size).is_null() {
+        raise boundary_failure();
+    }
+    text = text_value(value);
+    if "\x00" in text {
+        object_error(PyExc_ValueError, "embedded null character");
+        raise boundary_failure();
+    }
+    return text;
+}
+
+impl convert_sized_str(value: ptr[PyObject], fname: str, label: str) -> SizedText {
+    data = ptr[u8]();
+    size: i64 = 0;
+    if jacpy_arg_parse_sized_text(value, f"s#:{fname}", &mut data, &mut size) == 0 {
+        raise boundary_failure();
+    }
+    return SizedText(data=data, size=size);
+}
+
+impl convert_optional_str(
+    value: ptr[PyObject], fname: str, label: str
+) -> (str | None) {
+    if value == Py_None {
+        return None;
+    }
+    return convert_str(value, fname, label);
+}
+
+impl convert_cstr(
+    value: ptr[PyObject], fname: str, label: str, accept_none: bool
+) -> ptr[u8] {
+    if accept_none and value == Py_None {
+        return ptr[u8]();
+    }
+    if jacpy_is_unicode(value) == 0 {
+        bad_argument(fname, label, "str or None" if accept_none else "str", value);
+    }
+    size: i64 = 0;
+    text = PyUnicode_AsUTF8AndSize(value, &mut size);
+    if not text {
+        raise boundary_failure();
+    }
+    if size > 0 {
+        chars = text.view(int(size));
+        for index in range(int(size)) {
+            if chars[index] == 0 {
+                object_error(PyExc_ValueError, "embedded null character");
+                raise boundary_failure();
+            }
+        }
+    }
+    return text;
+}
+
+impl convert_text_buffer(
+    value: ptr[PyObject], fname: str, label: str
+) -> BufferArgument {
+    view = BufferArgument();
+    if not view.acquire_text(value) {
+        raise boundary_failure();
+    }
+    return view;
+}
+
+impl convert_buffer(value: ptr[PyObject], fname: str, label: str) -> BufferArgument {
+    view = BufferArgument();
+    if not view.acquire(value) {
+        raise boundary_failure();
+    }
+    return view;
+}
+
+impl convert_writable_buffer(
+    value: ptr[PyObject], fname: str, label: str
+) -> BufferArgument {
+    view = BufferArgument();
+    if not view.acquire_writable(value) {
+        raise boundary_failure();
+    }
+    return view;
+}
+
+impl borrowed_none -> ptr[PyObject] {
+    return Py_GetConstantBorrowed(u32(0));
+}
+
+impl borrowed_true -> ptr[PyObject] {
+    return Py_GetConstantBorrowed(u32(2));
+}
+
+impl borrowed_false -> ptr[PyObject] {
+    return Py_GetConstantBorrowed(u32(1));
+}
+
+impl ClassToken.share(handle: ptr) {
+    if handle not in self.shared {
+        self.shared.append(handle);
+    }
+}
+
+impl ClassToken.definition_of(cls: ptr[PyObject]) -> ptr {
+    for handle in self.shared {
+        if jacpy_binding_type_matches(cls, handle) != 0 {
+            return handle;
+        }
+    }
+    return self.handle;
+}
+
+impl new_checks_arguments(type: ptr[PyObject], token: ClassToken) -> bool {
+    base = jacpy_binding_base(type, token.definition_of(type));
+
+    if not base {
+        PyErr_Clear();
+        return True;
+    }
+    checked = type == base
+        or PyType_GetSlot(type, i32(TypeSlot.INIT.value))
+            == PyType_GetSlot(base, i32(TypeSlot.INIT.value));
+    jacpy_release(base);
+    return checked;
+}
+
+impl init_checks_arguments(instance: ptr[PyObject], token: ClassToken) -> bool {
+    type = Py_TYPE(instance);
+    base = jacpy_binding_base(type, token.definition_of(type));
+
+    if not base {
+        PyErr_Clear();
+        return True;
+    }
+    checked = type == base
+        or PyType_GetSlot(type, i32(TypeSlot.NEW.value))
+            == PyType_GetSlot(base, i32(TypeSlot.NEW.value));
+    jacpy_release(base);
+    return checked;
+}
+
+impl defining_class_or_null(
+    receiver: ptr[PyObject], token: ClassToken
+) -> ptr[PyObject] {
+    cls = Py_TYPE(receiver);
+    found = jacpy_binding_base(cls, token.definition_of(cls));
+    if found {
+        jacpy_release(found);
+    }
+    return found;
+}
+
+impl defining_class(receiver: ptr[PyObject], token: ClassToken) -> ptr[PyObject] {
+    found = defining_class_or_null(receiver, token);
+    if not found {
+        raise boundary_failure();
+    }
+    return found;
+}
+
+impl defining_class_of_type_or_null(
+    receiver: ptr[PyObject], token: ClassToken
+) -> ptr[PyObject] {
+    found = jacpy_binding_base(receiver, token.definition_of(receiver));
+    if found {
+        jacpy_release(found);
+    }
+    return found;
+}
+
+impl defining_class_of_type(
+    receiver: ptr[PyObject], token: ClassToken
+) -> ptr[PyObject] {
+    found = defining_class_of_type_or_null(receiver, token);
+    if not found {
+        raise boundary_failure();
+    }
+    return found;
+}
+
+impl exact_int_at(args: ptr[ptr[PyObject]], nargs: i64, index: int) -> bool {
+    return nargs <= index or jacpy_is_exact_long((args + index).view(1)[0]) != 0;
+}
+
+impl missing_argument(fname: str, name: str, position: int) {
+    object_error(
+        PyExc_TypeError,
+        f"{fname}() missing required argument '{name}' (pos {position})"
+    );
+    raise boundary_failure();
+}
+
+impl return_int(value: i32) -> ptr[PyObject] {
+    return NULL if value == -1 and failed() else PyLong_FromLong(i64(value));
+}
+
+impl return_bool(value: i32) -> ptr[PyObject] {
+    return NULL if value == -1 and failed() else PyBool_FromLong(i64(value));
+}
+
+impl return_long(value: i64) -> ptr[PyObject] {
+    return NULL if value == -1 and failed() else PyLong_FromLong(value);
+}
+
+impl return_ssize(value: i64) -> ptr[PyObject] {
+    return NULL if value == -1 and failed() else PyLong_FromSsize_t(value);
+}
+
+impl return_size(value: u64) -> ptr[PyObject] {
+    return NULL
+        if value == u64(0xFFFFFFFFFFFFFFFF) and failed()
+        else PyLong_FromSize_t(value);
+}
+
+impl return_unsigned(value: u32) -> ptr[PyObject] {
+    return NULL
+        if value == u32(0xFFFFFFFF) and failed()
+        else PyLong_FromUnsignedLong(u64(value));
+}
+
+impl return_double(value: f64) -> ptr[PyObject] {
+    return NULL if value == -1.0 and failed() else PyFloat_FromDouble(value);
+}

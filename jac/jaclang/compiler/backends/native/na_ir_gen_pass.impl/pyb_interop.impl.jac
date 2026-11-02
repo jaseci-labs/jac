@@ -1,32 +1,8 @@
 glob _PYB_BRIDGE_MODULE: str = "jaclang.runtime.interop_bridge";
 
 impl NaIRGenPass._pyb_base_of(arch_name: str) -> (tuple[str, str] | None) {
-    """The first Python-side base on `arch_name`'s MRO, as (name, path).
-
-    A base counts as Python-side when its symbol resolves to a jac
-    archetype in a module the native import walk did not register, which
-    is exactly the cross-module-trust "layout only" case. Bases that are
-    native (same unit or linked import) recurse so a native class over a
-    Python-based native class classifies the same way.
-
-    A subscripted generic base (`PyGenBase[int]`) is unwrapped to its
-    target before resolution: the subscript is type-position information
-    the bridge does not need, and leaving it wrapped made the base
-    invisible, so stores to inherited fields demoted instead of
-    bridging. The shape was found on the compiler's own pass chain, back
-    when it spelled `Transform[Module, Module]`; the chain is
-    monomorphic now, and user code still writes it.
-
-    A base the native lane erases at compile time is never Python-side, even
-    when its declaration is reachable: `NATIVE_ERASED_BASES` names the
-    bases lowering drops outright, so they contribute no shadow and no
-    slots. The distinction only became observable once `PassRim` moved
-    from a `.py` to a `.jac`, which made its declaration resolvable while
-    the base claim -- an admission about the *base*, not about the unit --
-    stayed the same. Resolving one is not the same as inheriting one.
-    """;
     import os;
-    import from jaclang.compiler.frontend.codeinfo { NATIVE_ERASED_BASES }
+
     if arch_name in self._pyb_base_memo {
         cached = self._pyb_base_memo[arch_name];
         return cached;
@@ -39,7 +15,7 @@ impl NaIRGenPass._pyb_base_of(arch_name: str) -> (tuple[str, str] | None) {
     if arch.arch_kind is not None or self._arch_is_osp_name(arch_name) {
         return None;
     }
-    _own_path = os.path.realpath(self.module.loc.mod_path) if self.module?.loc else "";
+    _own_path = real_path(self.module.loc.mod_path) if self.module?.loc else "";
     for base_expr in (arch.base_classes or []) {
         if isinstance(base_expr, uni.AtomTrailer)
             and isinstance(base_expr.right, uni.IndexSlice) {
@@ -52,8 +28,9 @@ impl NaIRGenPass._pyb_base_of(arch_name: str) -> (tuple[str, str] | None) {
         if bname in ("Node", "Edge", "Walker", "Object", "Obj", "Root", "Archetype") {
             continue;
         }
-        if bname in self.arch_ast_map {
-            sub = self._pyb_base_of(bname);
+        bkey = self._arch_ref_key(base_expr) or bname;
+        if bkey in self.arch_ast_map {
+            sub = self._pyb_base_of(bkey);
             if sub is not None {
                 self._pyb_base_memo[arch_name] = sub;
                 return sub;
@@ -68,7 +45,7 @@ impl NaIRGenPass._pyb_base_of(arch_name: str) -> (tuple[str, str] | None) {
         if decl is None {
             continue;
         }
-        base_arch = decl.find_parent_of_type(uni.Archetype);
+        base_arch = decl.enclosing_decl(uni.Archetype);
         if base_arch is None {
             continue;
         }
@@ -77,7 +54,7 @@ impl NaIRGenPass._pyb_base_of(arch_name: str) -> (tuple[str, str] | None) {
         if not path or not path.endswith(".jac") {
             continue;
         }
-        if os.path.realpath(path) == _own_path {
+        if real_path(path) == _own_path {
             continue;
         }
         found = (bname, os.path.abspath(path), );
@@ -88,25 +65,11 @@ impl NaIRGenPass._pyb_base_of(arch_name: str) -> (tuple[str, str] | None) {
 }
 
 impl NaIRGenPass._pyb_shadow_postinit_owner(arch_name: str) -> (str | None) {
-    """The Python-side ancestor of `arch_name` that owns a `postinit`, if any.
-
-    Construction of a native class over a Python-side base runs that
-    base's initializer on the Python shadow, not on the native object.
-    When the base chain carries a `postinit`, whatever it stores or
-    dispatches lands on the shadow, where the subclass's native slots do
-    not exist and its overrides are not on the shadow's class. This walk
-    is what names that ancestor so the refusal can point at it.
-
-    Native ancestors are walked through rather than reported: their
-    `postinit` lowers (or is demoted with its own diagnostic), so it is
-    not a shadow-side initializer. A subscripted base is unwrapped the
-    same way `_pyb_base_of` unwraps it.
-    """;
     arch = self.arch_ast_map.get(arch_name);
     if not isinstance(arch, uni.Archetype) {
         return None;
     }
-    seen: set = {arch_name};
+    seen: set[str] = {arch_name};
     queue: list[uni.Expr] = list(arch.base_classes or []);
     while queue {
         base_expr = queue.pop(0);
@@ -124,14 +87,12 @@ impl NaIRGenPass._pyb_shadow_postinit_owner(arch_name: str) -> (str | None) {
         }
         sym = base_expr.sym if isinstance(base_expr, uni.NameAtom) else None;
         decl = sym.decl if sym is not None else None;
-        base_arch = decl.find_parent_of_type(uni.Archetype)
-            if decl is not None
-            else None;
+        base_arch = decl.enclosing_decl(uni.Archetype) if decl is not None else None;
         if base_arch is None {
             continue;
         }
-        if bname not in self.arch_ast_map {
-            for stmt in (base_arch.body or []) {
+        if (self._arch_ref_key(base_expr) or bname) not in self.arch_ast_map {
+            for stmt in (ModuleFacts.unwrap_body(base_arch) or []) {
                 if isinstance(stmt, uni.Ability)
                     and stmt.name_ref is not None
                     and stmt.name_ref.sym_name in ("postinit", "__post_init__") {
@@ -145,13 +106,6 @@ impl NaIRGenPass._pyb_shadow_postinit_owner(arch_name: str) -> (str | None) {
 }
 
 impl NaIRGenPass._pyb_native_override_owner(arch_name: str, meth: str) -> (str | None) {
-    """The native class on `arch_name`'s MRO that owns a live `meth` body.
-
-    A name is a native override only while its body is still native: a
-    method already demoted to its Python implementation is served from the
-    same place the shadow would find it, so it is no longer a divergence
-    and must not be reported as one.
-    """;
     for _sc in self._mro_of(arch_name) {
         _k = f"{_sc}.{meth}";
         if _k in self.method_funcs and _k not in self._native_skipped_methods {
@@ -164,29 +118,11 @@ impl NaIRGenPass._pyb_native_override_owner(arch_name: str, meth: str) -> (str |
 impl NaIRGenPass._pyb_shadowed_dispatch(
     arch_name: str, method_name: str
 ) -> (tuple[str, str, str] | None) {
-    """`(base, dispatched, owner)` when a shadow call would run the wrong body.
-
-    The bridge builds the shadow as `type(name, (base,), {})` -- the
-    Python-side base chain and none of the native subclass's bodies. So a
-    base method invoked on the shadow resolves `self.X()` against that
-    hollow class: it finds the base's own `X`, never the override the
-    native subclass declares. The override is skipped and nothing says so
-    (#8310), which is the same wrongness class as the hollow construction
-    E5088 refuses one call shallower.
-
-    The walk is deliberately narrow. It reports only what it can SEE: a
-    Python-side ancestor that declares `method_name`, whose body contains a
-    literal `self.X(...)` call, where `X` has a live native override on
-    `arch_name`'s MRO. Reflective dispatch (`getattr(self, n)()`), a body
-    written inside an inline `::py::` block, and dispatch routed through a
-    Python-resident helper are all invisible here and stay unreported --
-    this closes the shapes the tree can prove, not every shape that exists.
-    """;
     arch = self.arch_ast_map.get(arch_name);
     if not isinstance(arch, uni.Archetype) {
         return None;
     }
-    seen: set = {arch_name};
+    seen: set[str] = {arch_name};
     queue: list[uni.Expr] = list(arch.base_classes or []);
     while queue {
         base_expr = queue.pop(0);
@@ -204,15 +140,13 @@ impl NaIRGenPass._pyb_shadowed_dispatch(
         }
         sym = base_expr.sym if isinstance(base_expr, uni.NameAtom) else None;
         decl = sym.decl if sym is not None else None;
-        base_arch = decl.find_parent_of_type(uni.Archetype)
-            if decl is not None
-            else None;
+        base_arch = decl.enclosing_decl(uni.Archetype) if decl is not None else None;
         if base_arch is None {
             continue;
         }
 
-        if bname not in self.arch_ast_map {
-            for stmt in (base_arch.body or []) {
+        if (self._arch_ref_key(base_expr) or bname) not in self.arch_ast_map {
+            for stmt in (ModuleFacts.unwrap_body(base_arch) or []) {
                 if not isinstance(stmt, uni.Ability) {
                     continue;
                 }
@@ -248,13 +182,6 @@ impl NaIRGenPass._pyb_cstr(text: str) -> ir.Value {
 }
 
 impl NaIRGenPass._pyb_helper(name: str) -> ir.Function {
-    """Get-or-emit one of the fixed `__jac_pyb_*` runtime helpers.
-
-    Each helper wraps a short libpython C-API sequence in its own
-    PyGILState_Ensure/Release pair, so native code stays correct no
-    matter whether its caller held the GIL. A failed call surfaces via
-    PyErr_Print (loud on stderr) and a zero value rather than a crash.
-    """;
     cached = self._pyb_helper_fns.get(name);
     if cached is not None {
         return cached;
@@ -793,15 +720,10 @@ impl NaIRGenPass._pyb_from_py(
 impl NaIRGenPass._pyb_build_args(
     params: list[uni.Expr | uni.KWPair], skip_kwargs: bool = False
 ) -> (tuple[ir.Value, ir.Value | None] | None) {
-    """Marshal call params into (PyTuple handle, PyDict handle | None).
-
-    Returns None when any argument's type cannot cross the boundary;
-    the caller reports the seam.
-    """;
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
     pos: list[uni.Expr] = [];
-    kwp: list[any] = [];
+    kwp: list[uni.KWPair] = [];
     for p in (params or []) {
         if isinstance(p, uni.KWPair) {
             if p.key is None {
@@ -828,16 +750,18 @@ impl NaIRGenPass._pyb_build_args(
         marshalled.append(o);
     }
     kw_pairs: list[tuple[str, ir.Value]] = [];
-    for p in kwp {
-        v = self._codegen_expr(p.value);
+    for kw in kwp {
+        v = self._codegen_expr(kw.value);
         if v is None {
             return None;
         }
-        o = self._pyb_to_py(p.value, v);
+        o = self._pyb_to_py(kw.value, v);
         if o is None {
             return None;
         }
-        kw_pairs.append((p.key.sym_name, o, ));
+        _kw_key = kw.key;
+        assert _kw_key is not None;
+        kw_pairs.append((_kw_key.sym_name, o, ));
     }
     t = self.builder.call(
         self._pyb_helper("tuple_new"),
@@ -885,7 +809,7 @@ impl NaIRGenPass._codegen_pyb_field_load(
     self.builder.call(self._pyb_helper("drop"), [shadow]);
     val = self._pyb_from_py(o, tk);
     if val is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="inherited field read",
@@ -912,7 +836,7 @@ impl NaIRGenPass._codegen_pyb_field_assign(
     o = self._pyb_to_py(target, value);
     if o is None {
         tk = self._type_key_of(target);
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=target,
             kind="inherited field assignment",
@@ -936,21 +860,10 @@ impl NaIRGenPass._codegen_pyb_field_assign(
 impl NaIRGenPass._codegen_pyb_method_call(
     nd: uni.FuncCall, type_name: str, method_name: str
 ) -> (ir.Value | None) {
-    """Invoke a Python-side base's method on the shadow beside the object.
-
-    The shadow carries the base chain and none of this class's bodies, so a
-    base method that dispatches `self.X()` resolves it against that hollow
-    class and finds the base's X rather than the override declared here. The
-    wrong body runs and nothing says so (#8310) -- the same wrongness E5088
-    refuses one call shallower, at construction. Per the class-tier doctrine
-    the answer is the refusal arm, not teaching the shadow to delegate back:
-    the call is refused before it is built and its owning callable demotes to
-    the Python lane, where the whole chain agrees again.
-    """;
     _shadowed = self._pyb_shadowed_dispatch(type_name, method_name);
     if _shadowed is not None {
         (_sh_base, _sh_disp, _sh_owner) = _shadowed;
-        self.ctx.emit(
+        self.emit(
             E5089,
             node_override=nd,
             cls=_sh_owner,
@@ -972,7 +885,7 @@ impl NaIRGenPass._codegen_pyb_method_call(
     obj_val = self._opt_unwrap_attr(obj_val);
     built = self._pyb_build_args(nd.params or []);
     if built is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="inherited method call",
@@ -995,7 +908,7 @@ impl NaIRGenPass._codegen_pyb_method_call(
     self.builder.call(self._pyb_helper("drop"), [shadow]);
     ret = self._pyb_from_py(r, self._pyb_ret_key(nd));
     if ret is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="inherited method call",
@@ -1030,7 +943,7 @@ impl NaIRGenPass._codegen_pyb_super_call(
     }
     built = self._pyb_build_args(nd.params or []);
     if built is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="call",
@@ -1065,7 +978,7 @@ impl NaIRGenPass._codegen_pyb_super_call(
     r = self._pyb_bridge_call("_pyb_super_call", [shadow, anchor, mt, t, kw]);
     ret = self._pyb_from_py(r, self._pyb_ret_key(nd));
     if ret is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="call",
@@ -1108,7 +1021,7 @@ impl NaIRGenPass._codegen_pyb_shadow_init(
     if not suppress {
         shadow_owner = self._pyb_shadow_postinit_owner(type_name);
         if shadow_owner is not None {
-            self.ctx.emit(E5088, node_override=nd, cls=type_name, owner=shadow_owner);
+            self.emit(E5088, node_override=nd, cls=type_name, owner=shadow_owner);
             return False;
         }
     }
@@ -1124,7 +1037,7 @@ impl NaIRGenPass._codegen_pyb_shadow_init(
         v = self._codegen_expr(param.value);
         o = self._pyb_to_py(param.value, v) if v is not None else None;
         if o is None {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd,
                 kind="constructor argument",
@@ -1148,7 +1061,7 @@ impl NaIRGenPass._codegen_pyb_shadow_init(
         ),
         self.builder.call(
             self._pyb_helper("from_cstr"),
-            [self._pyb_cstr(type_name)],
+            [self._pyb_cstr(self._arch_display(type_name))],
             name="pyb.ctor.cls"
         ),
         kwd,

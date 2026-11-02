@@ -1,0 +1,17 @@
+# Upstream CPython suites for the native Jac Python frontend: the tokenizer,
+# the PEG parser and its error paths, AST conversion and code generation.
+#
+# One suite per line: <upstream test module> [runner flags...]
+#   <upstream test module>  Pinned CPython test module that
+#                           scripts/run_cpython_compiler_tests.jac runs
+#                           against the native compiler bridge.
+#   runner flags            Extra flags for that runner, such as
+#                           --tokenize-api to count calls through _tokenize.
+#
+# These suites exercise no single replaced extension module, so they are not
+# jacpython-modules.txt entries. A suite is listed once it passes as it does on
+# a stock CPython build of the pinned version; CI runs every line.
+
+test.test_tokenize          --tokenize-api
+test.test_fstring
+test.test_type_params

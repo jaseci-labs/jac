@@ -34,8 +34,8 @@ def:pub ButtonGroup(props: any) -> JsxElement {
         role="group"
         data-slot="button-group"
         data-orientation={orientation}
-        className={computedClass}
         {**attrs}
+        className={computedClass}
     >
         {props["children"]}
     </div>
@@ -52,13 +52,13 @@ def:pub ButtonGroupText(props: any) -> JsxElement {
         return
             <Slot.Root
                 data-slot="button-group-text"
-                className={computedClass}
                 {**props}
+                className={computedClass}
             >
                 {props["children"]}
             </Slot.Root>;
     }
-    <div data-slot="button-group-text" className={computedClass} {**attrs}>
+    <div data-slot="button-group-text" {**attrs} className={computedClass}>
         {props["children"]}
     </div>
 }
@@ -68,11 +68,11 @@ def:pub ButtonGroupSeparator(props: any) -> JsxElement {
     <Separator
         data-slot="button-group-separator"
         orientation={orientation}
+        {**props}
         className={cn(
             "cn-button-group-separator relative self-stretch data-horizontal:mx-px data-horizontal:w-auto data-vertical:my-px data-vertical:h-auto",
             props["className"]
         )}
-        {**props}
     />
 }
 

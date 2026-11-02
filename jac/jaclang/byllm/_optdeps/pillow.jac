@@ -6,7 +6,6 @@ with entry {
         class PILImageCls {}
 
         def open_image(*args: object, **kwargs: object) -> object {
-            import from jaclang.project.capabilities { require_optional }
             require_optional("PIL", "llm");
         }
         HAS_PILLOW = False;

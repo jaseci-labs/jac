@@ -1,5 +1,3 @@
-import from core.utils { cn }
-import from .SourceBrowser { SourceBrowser }
 import from "@hugeicons/react" { HugeiconsIcon }
 import from "@hugeicons/core-free-icons" {
     ArrowExpand01Icon,
@@ -8,9 +6,7 @@ import from "@hugeicons/core-free-icons" {
 }
 
 def:pub FloatingSource(
-    always_float: bool = False,
-    closable: bool = False,
-    initial_path: str = "web/main.jac"
+    always_float: bool = False, closable: bool = False, initial_path: str = "web.jac"
 ) -> JsxElement {
     has floating: bool = False,
         pulled: bool = False,

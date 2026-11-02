@@ -9,7 +9,9 @@ of the evaluator.
 generated. CPython counts from the largest value already assigned, not the
 last one written, so a member declared after `10` and then `3` is `11` and
 not `4`. `Step` asks the same question in the declared-enum spelling, where
-an explicit value follows the generated ones.
+an explicit value follows the generated ones. `Split` declares its members
+in an `impl` block, which the native layout once tried to iterate as a list
+and crashed on.
 """
 
 import from enum { IntEnum, auto }
@@ -35,6 +37,14 @@ class Mixed(IntEnum) {
 
 
 enum Step { First = auto(), Second = auto(), Third = 9 }
+
+
+enum Split;
+
+
+impl Split {
+    Low = 3, Next = auto()
+}
 
 
 def category(n: int) -> int {
@@ -66,6 +76,7 @@ def run -> int {
     print(int(Mixed.Low));
     print(counted());
     print(stepped());
+    print(int(Split.Next));
     return 0;
 }
 

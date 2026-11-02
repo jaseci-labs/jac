@@ -21,29 +21,22 @@ import hashlib;
 import io;
 import os;
 import from compression.zstd { compress as _zc, decompress as _zd, ZstdFile }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.tests.xbackend_equiv {
-    FIXTURES,
-    run_py_fixture,
-    run_native_function,
-    compare_results
-}
 
 
 """Compile a fixture with the native codespace forced on and return
 (engine, ir). Unlike the shared `compile_native`, this does not depend on a
 `[placement.pins]` entry in the fixtures `jac.toml`: `default_codespace='native'`
-plus `force_target_program` coerces the whole module into the native codespace,
+coerces the whole module into the native codespace,
 which is exactly what these bundled-stdlib fixtures need."""
 def _compile_native_forced(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
-    opts = CompileOptions(default_codespace="native", force_target_program=True);
+    opts = CompileOptions(default_codespace="native");
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), options=opts);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
+    remember_engine_unit(eng, ir);
     return (eng, ir);
 }
 

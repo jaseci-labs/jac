@@ -1,6 +1,3 @@
-import from jaclang.compiler.backends.native.llvm { ir }
-import from jaclang.compiler.frontend.diagnostics { E9002 }
-
 impl NaIRGenPass._require_trace_fn(
     type_name: str, participates: bool, has_trace: bool
 ) -> None {
@@ -8,7 +5,7 @@ impl NaIRGenPass._require_trace_fn(
         return;
     }
     if participates and not has_trace {
-        self.ctx.emit(
+        self.emit(
             E9002,
             node_override=self.module,
             details=(
@@ -54,7 +51,7 @@ impl NaIRGenPass._emit_trace_fn(arch_name: str) -> None {
     field_indices = self.struct_field_indices.get(arch_name, {});
     foreign_fields = self.struct_field_foreign.get(arch_name, set());
 
-    ptr_fields = [];
+    ptr_fields: list[tuple[str, int, bool]] = [];
     for (fname, ftype) in field_types.items() {
         if fname in foreign_fields {
             continue;
@@ -119,11 +116,13 @@ impl NaIRGenPass._emit_trace_fn(arch_name: str) -> None {
     b.ret_void();
 }
 
-impl NaIRGenPass._register_trace_pair(dtor_fn: object, trace_fn: ir.Function) -> bool {
+impl NaIRGenPass._register_trace_pair(
+    dtor_fn: (ir.Function | None), trace_fn: ir.Function
+) -> bool {
     if dtor_fn is None {
         return False;
     }
-    _key = dtor_fn?.name or str(dtor_fn);
+    _key = dtor_fn.name;
     if _key not in self.rc_trace_pairs {
         self.rc_trace_pairs[_key] = (dtor_fn, trace_fn);
     }
@@ -133,11 +132,28 @@ impl NaIRGenPass._register_trace_pair(dtor_fn: object, trace_fn: ir.Function) ->
 impl NaIRGenPass._finalize_trace_lookup -> None {
     lookup_fn = self.rc_trace_lookup_fn;
     if lookup_fn is None or lookup_fn.blocks {
+        self.rc_treg_final = True;
+        self._fill_rc_treg_register();
         return;
     }
     i64 = ir.IntType(64);
+    if self.rc_treg_find_fn is None {
+        self._emit_rc_trace_registry();
+    }
+
     entry_bb = lookup_fn.append_basic_block("entry");
+    chain_bb = lookup_fn.append_basic_block("chain");
+    found_bb = lookup_fn.append_basic_block("found");
     b = ir.IRBuilder(entry_bb);
+    _shared = b.call(self.rc_treg_find_fn, [lookup_fn.args[0]], name="t.shared");
+    b.cbranch(
+        b.icmp_unsigned("!=", _shared, ir.Constant(i64, 0), name="t.hit"),
+        found_bb,
+        chain_bb
+    );
+    fb = ir.IRBuilder(found_bb);
+    fb.ret(_shared);
+    b = ir.IRBuilder(chain_bb);
     for (_key, _pair) in self.rc_trace_pairs.items() {
         (_dtor_fn, _trace_fn) = _pair;
         _hit_bb = lookup_fn.append_basic_block(f"hit.{_key}");
@@ -152,5 +168,8 @@ impl NaIRGenPass._finalize_trace_lookup -> None {
         hb.ret(hb.ptrtoint(_trace_fn, i64, name=f"t.{_key}"));
         b = ir.IRBuilder(_next_bb);
     }
+
     b.ret(ir.Constant(i64, 0));
+    self.rc_treg_final = True;
+    self._fill_rc_treg_register();
 }

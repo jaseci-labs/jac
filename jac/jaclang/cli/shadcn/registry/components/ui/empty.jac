@@ -18,11 +18,11 @@ def:pub Empty(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     <div
         data-slot="empty"
+        {**attrs}
         className={cn(
             "cn-empty flex w-full min-w-0 flex-1 flex-col items-center justify-center text-center text-balance",
             props["className"]
         )}
-        {**attrs}
     >
         {props["children"]}
     </div>
@@ -32,10 +32,10 @@ def:pub EmptyHeader(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     <div
         data-slot="empty-header"
+        {**attrs}
         className={cn(
             "cn-empty-header flex max-w-sm flex-col items-center", props["className"]
         )}
-        {**attrs}
     >
         {props["children"]}
     </div>
@@ -52,8 +52,8 @@ def:pub EmptyMedia(props: any) -> JsxElement {
     <div
         data-slot="empty-icon"
         data-variant={variant}
-        className={computedClass}
         {**attrs}
+        className={computedClass}
     >
         {props["children"]}
     </div>
@@ -63,8 +63,8 @@ def:pub EmptyTitle(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     <div
         data-slot="empty-title"
-        className={cn("cn-empty-title", props["className"])}
         {**attrs}
+        className={cn("cn-empty-title", props["className"])}
     >
         {props["children"]}
     </div>
@@ -74,11 +74,11 @@ def:pub EmptyDescription(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     <div
         data-slot="empty-description"
+        {**attrs}
         className={cn(
             "cn-empty-description text-muted-foreground [&>a:hover]:text-primary [&>a]:underline [&>a]:underline-offset-4",
             props["className"]
         )}
-        {**attrs}
     >
         {props["children"]}
     </div>
@@ -88,11 +88,11 @@ def:pub EmptyContent(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     <div
         data-slot="empty-content"
+        {**attrs}
         className={cn(
             "cn-empty-content flex w-full max-w-sm min-w-0 flex-col items-center text-balance",
             props["className"]
         )}
-        {**attrs}
     >
         {props["children"]}
     </div>

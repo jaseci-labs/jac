@@ -16,6 +16,18 @@ test "C callback arguments sign-extend the C integer before calling Jac" {
     assert function() == 123;
 }
 
+test "C function pointers from records adapt Jac callback arguments" {
+    callback_type = ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_int32);
+    invoke_type = ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_void_p, ctypes.c_int32);
+    def invoke(address: int, value: int) -> int {
+        return callback_type(address)(value);
+    }
+    foreign = invoke_type(invoke);
+    (engine, _) = compile_native("clib_record_callback_argument.jac");
+    function = get_func(engine, "call_through_record", ctypes.c_int32, ctypes.c_int64);
+    assert function(ctypes.cast(foreign, ctypes.c_void_p).value) == 123;
+}
+
 test "nullable Jac callbacks cannot become untyped C code addresses" {
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -26,9 +38,7 @@ test "nullable Jac callbacks cannot become untyped C code addresses" {
             + "obj Handler { has callback: Callable[[i32], i32] | None; }\n"
             + "def invoke(handler: Handler) -> i32 { cb = handler.callback; "
             + "if cb is None { return 0; } return invoke_c(cb, 7); }\n",
-        options=CompileOptions(
-            aot_mode=True, native_required=True, force_target_program=True
-        )
+        options=CompileOptions(aot_mode=True, native_required=True)
     );
     assert any("function pointer" in str(error) for error in program.errors_had) , (
         "A nullable Jac callable must not be cast to an arbitrary C address"
@@ -44,9 +54,7 @@ test "C callback records have layout-compatible pointer fields" {
         use_str="import from c { obj Callbacks { has call: Callable[[i32], i32] = 0; } }\n"
             + "def signed(value: i32) -> i32 { return value; }\n"
             + "glob callbacks = Callbacks(call=signed);\n",
-        options=CompileOptions(
-            no_cgen=True, native_required=True, force_target_program=True
-        )
+        options=CompileOptions(no_cgen=True, native_required=True)
     );
     assert not program.errors_had , str(program.errors_had);
     assert not any(
@@ -69,7 +77,7 @@ test "C callback records accept addresses from dynamic symbol lookup" {
             + "def invoke_address(address: int, value: i32) -> i32 { "
             + "functions = Functions(); functions.absolute = address; "
             + "return functions.absolute(value); }\n",
-        options=CompileOptions(native_required=True, force_target_program=True)
+        options=CompileOptions(native_required=True)
     );
     assert not program.errors_had , str(program.errors_had);
     engine = module.gen.native_engine;
@@ -99,12 +107,17 @@ test "Callback records survive managed field and container cleanup" {
     allocator_type = ctypes.CFUNCTYPE(
         ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t
     );
+    original = ctypes.cast(library.calloc, ctypes.c_void_p).value;
+    library.calloc.argtypes = [ctypes.c_size_t, ctypes.c_size_t];
+    library.calloc.restype = ctypes.c_void_p;
+    guarded: list[bool] = [False];
     def allocate(count: int, size: int) -> int {
-        assert count * size <= mmap.PAGESIZE;
-        return address + mmap.PAGESIZE;
+        if guarded[0] and count * size <= mmap.PAGESIZE {
+            return address + mmap.PAGESIZE;
+        }
+        return library.calloc(count, size) or 0;
     }
     allocator = allocator_type(allocate);
-    original = ctypes.cast(library.calloc, ctypes.c_void_p).value;
     try {
         llvm.add_symbol("calloc", ctypes.cast(allocator, ctypes.c_void_p).value);
         program = JacProgram();
@@ -117,12 +130,13 @@ test "Callback records survive managed field and container cleanup" {
                 + "holders = [Holder(cb, cb)]; callbacks = [cb]; "
                 + "value = holders[0].callback.call(-7) + callbacks[0].call(7); "
                 + "holders.clear(); callbacks.clear(); return cb.call(value); }\n",
-            options=CompileOptions(native_required=True, force_target_program=True)
+            options=CompileOptions(native_required=True)
         );
         assert not program.errors_had , str(program.errors_had);
         function = get_func(module.gen.native_engine, "probe", ctypes.c_int32);
         child = os.fork();
         if child == 0 {
+            guarded[0] = True;
             os._exit(0 if function() == 0 else 1);
         }
         (_, status) = os.waitpid(child, 0);

@@ -60,9 +60,10 @@ impl Tool.make_finish_tool(resp_type: type) -> Tool {
         try {
             return TypeAdapter(resp_type).validate_python(final_output);
         } except Exception as e {
+            type_name = type_display_name(resp_type);
             raise FinishToolError(
-                f"finish_tool output does not match expected type '{resp_type.__name__}': {e}"
-            );
+                f"finish_tool output does not match expected type '{type_name}': {e}"
+            ) from e;
         }
     }
     finish_tool.__annotations__["return"] = resp_type;

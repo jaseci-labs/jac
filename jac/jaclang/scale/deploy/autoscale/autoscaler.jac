@@ -1,6 +1,16 @@
 glob DEFAULT_CPU_UTILIZATION_TARGET: int = 50,
      DEFAULT_MEMORY_UTILIZATION_TARGET: int = 80;
 
+glob RESOURCE_ONLY_TRIGGER_TYPES: set[str] = {"cpu", "memory"};
+
+
+def _is_real_trigger_type(trigger_type: any) -> bool;
+
+
+def triggers_can_reach_zero(
+    autoscaler_cfg: (dict[str, any] | None), engine: str
+) -> bool;
+
 obj TriggerAuth {
     has secret_refs: dict[str, dict[str, str]] = {};
 }
@@ -31,72 +41,86 @@ obj AutoscalerSpec {
 }
 
 
+obj AutoscalerRuntimeStatus(ResourceStatusInfo) {
+    has engine: str = "",
+        autoscaler_name: (str | None) = None,
+        trigger_active: (bool | None) = None,
+        scaler_ready: (bool | None) = None,
+        conditions: list[dict[str, any]] = [],
+        resource_version: (str | None) = None;
+}
+
+
+obj AutoscalerTransition {
+    has scale_target_name: str,
+        namespace: str,
+        state: ResourceStatus,
+        previous_state: (ResourceStatus | None) = None,
+        autoscaler_name: (str | None) = None,
+        engine: str = "",
+        observed_at: str = "",
+        resource_version: (str | None) = None,
+        reason: str = "",
+        message: (str | None) = None;
+}
+
+
+def transition_from(
+    status: AutoscalerRuntimeStatus,
+    scale_target_name: str,
+    namespace: str,
+    previous_state: (ResourceStatus | None)
+) -> AutoscalerTransition;
+
+
+def normalize_conditions(raw: any) -> list[dict[str, any]];
+
+
+def condition(conditions: list[dict[str, any]], kind: str) -> (dict[str, any] | None);
+
+
+def tristate(conditions: list[dict[str, any]], kind: str) -> (bool | None);
+
+
 class Autoscaler {
-    static def _managed_labels -> dict[str, str] {
-        return {"managed": "jac-scale"};
-    }
-
-    static def _build_behavior(spec: AutoscalerSpec) -> dict[str, any] {
-        `default: dict[str, any] = {
-            "scaleUp": {
-                "stabilizationWindowSeconds": min(
-                    3600, max(0, spec.scale_up_stabilization)
-                ),
-                "policies": [
-                    {
-                        "type": "Pods",
-                        "value": max(1, spec.scale_up_max_pods),
-                        "periodSeconds": 60
-                    }
-                ]
-            },
-            "scaleDown": {
-                "stabilizationWindowSeconds": min(3600, max(0, spec.cooldown_period)),
-                "policies": [{"type": "Percent", "value": 50, "periodSeconds": 60}]
-            }
-        };
-        if not spec.behavior_overlay {
-            return `default;
-        }
-        import from jaclang.scale.deploy.target.kubernetes.manifest_builder {
-            merge_manifest_overlay
-        }
-        return merge_manifest_overlay(`default, spec.behavior_overlay);
-    }
-
+    static def _managed_labels -> dict[str, str];
+    static def _build_behavior(spec: AutoscalerSpec) -> dict[str, any];
     def _build_manifests(
         self: Autoscaler, spec: AutoscalerSpec
-    ) -> list[dict[str, any]] {
-        raise NotImplementedError(
-            "_build_manifests() must be implemented by a concrete Autoscaler subclass"
-        );
-    }
+    ) -> list[dict[str, any]];
 
-    def apply(self: Autoscaler, spec: AutoscalerSpec) -> bool {
-        raise NotImplementedError(
-            "apply() must be implemented by a concrete Autoscaler subclass"
-        );
-    }
+    def apply(self: Autoscaler, spec: AutoscalerSpec) -> bool;
+    def destroy(self: Autoscaler, app_name: str, namespace: str);
+    def destroy_collection(self: Autoscaler, namespace: str, label_selector: str);
+    def preflight(self: Autoscaler) -> list[str];
+    def read_workload(
+        self: Autoscaler,
+        scale_target_name: str,
+        namespace: str,
+        apps_api: (any | None) = None
+    ) -> (any | None);
 
-    def destroy(self: Autoscaler, app_name: str, namespace: str) {
-        raise NotImplementedError(
-            "destroy() must be implemented by a concrete Autoscaler subclass"
-        );
-    }
+    def get_runtime_status(
+        self: Autoscaler,
+        scale_target_name: str,
+        namespace: str,
+        autoscaler_name: (str | None) = None
+    ) -> AutoscalerRuntimeStatus;
 
-    def destroy_collection(self: Autoscaler, namespace: str, label_selector: str) {
-        raise NotImplementedError(
-            "destroy_collection() must be implemented by a concrete Autoscaler subclass"
-        );
-    }
+    def watch_scale_targets(
+        self: Autoscaler,
+        namespace: str,
+        label_selector: (str | None) = None,
+        timeout_seconds: (int | None) = None
+    ) -> any;
 
-    def preflight(self: Autoscaler) -> list[str] {
-        return [];
-    }
+    def workload_runtime_status(
+        self: Autoscaler,
+        scale_target_name: str,
+        namespace: str,
+        replica_floor: (int | None) = None,
+        apps_api: (any | None) = None
+    ) -> AutoscalerRuntimeStatus;
 
-    def resource_name_for(self: Autoscaler, target: str) -> str {
-        raise NotImplementedError(
-            "resource_name_for() must be implemented by a concrete Autoscaler subclass."
-        );
-    }
+    def resource_name_for(self: Autoscaler, target: str) -> str;
 }

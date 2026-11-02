@@ -10,13 +10,6 @@ bulk/per-user flow that flags pre-scrypt accounts for password reset.
 import logging;
 import from unittest.mock { patch }
 import from logging.handlers { MemoryHandler }
-import from jaclang.server.serving.authcrypt {
-    SCRYPT_MAX_N,
-    SCRYPT_MAXMEM,
-    hash_password,
-    is_prescrypt_hash,
-    verify_password
-}
 
 # A real bcrypt vector: bcrypt.hashpw(b"correcthorse", gensalt(12)).
 glob BCRYPT_VECTOR = "$2b$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUW";

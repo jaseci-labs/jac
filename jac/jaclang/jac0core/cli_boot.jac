@@ -9,6 +9,5 @@ the source tree. The real module lives at `jaclang.cli.cli_boot`
 built before the reorg. Both modules are seed-tier so the boot fast
 paths (`jac --version`, `jac --help`) stay off the full compiler.
 """
-import from jaclang.cli.cli_boot { start_cli }
 
 glob __all__ = ["start_cli"];

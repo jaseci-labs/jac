@@ -8,7 +8,7 @@ fixtures/fixed_width_unsigned.jac and is JIT-compiled once.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import from jaclang.compiler.driver.program { JacProgram }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
@@ -28,7 +28,7 @@ def engine -> ExecutionEngine {
         errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
         assert not prog.errors_had , f"Compilation errors: {errors}";
         eng = ir.gen.native_engine;
-        assert eng is not None , "No native engine produced";
+        assert isinstance(eng, ExecutionEngine) , "No native engine produced";
         _ENG = eng;
     }
     out = _ENG;
@@ -38,14 +38,14 @@ def engine -> ExecutionEngine {
 
 def probe(name: str) -> int {
     eng = engine();
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64)(addr)();
 }
 
 def probe_f(name: str) -> float {
     eng = engine();
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_double)(addr)();
 }
@@ -111,8 +111,19 @@ test "f32 rounds to binary32 after every operation" {
     assert probe_f("f32_rounds_per_op") == 0.30000001192092896;
 }
 
-test "plain int keeps its pre-existing lowering: shifts, negation, abs and pow do not trap" {
-    assert probe("plain_int_is_not_sized") == 4;
+test "plain int arithmetic traps on overflow and stays exact in range" {
+    assert probe("plain_int_add_overflow_traps") == 1;
+    assert probe("plain_int_sub_underflow_traps") == 1;
+    assert probe("plain_int_mul_overflow_traps") == 1;
+    assert probe("plain_int_pow_overflow_traps") == 1;
+    assert probe("plain_int_pow_in_range") == 3;
+    assert probe("plain_int_shl_overflow_traps") == 1;
+    assert probe("plain_int_large_shift_results") == -1;
+    assert probe("plain_int_aug_large_shift_results") == -1;
+    assert probe("plain_int_neg_min_traps") == 1;
+    assert probe("plain_int_abs_min_traps") == 1;
+    assert probe("plain_int_aug_mul_traps") == 1;
+    assert probe("plain_int_aug_floordiv_zero_raises") == 1;
 }
 
 test "sized casts unwrap narrowed optional fields" {

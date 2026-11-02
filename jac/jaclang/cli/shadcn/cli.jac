@@ -1,6 +1,3 @@
-import from jaclang.comptime { name as ct_name }
-import from jaclang.cli.command { Arg, CommandSpec }
-
 glob _PENDING_THEME: dict[str, str | None] = {};
 
 def run_shadcn_add(packages: list[str]) -> int;
@@ -74,25 +71,4 @@ def retheme(
     radius: str | None = None,
     menuAccent: str | None = None,
     menuColor: str | None = None
-) -> int {
-    import from jaclang.project.config { get_config }
-    import from jaclang.cli.console { console }
-    import from jaclang.cli.shadcn.theme_handler { retheme_project }
-
-    config = get_config();
-    overrides: dict[str, str | None] = {
-        "style": style,
-        "baseColor": baseColor,
-        "theme": theme,
-        "font": font,
-        "radius": radius,
-        "menuAccent": menuAccent,
-        "menuColor": menuColor
-    };
-    try {
-        return 0 if retheme_project(config, overrides) else 1;
-    } except Exception as e {
-        console.error("Retheme failed: " + str(e));
-        return 1;
-    }
-}
+) -> int;

@@ -468,6 +468,81 @@ A user can have at most **one** identity of each non-SSO type (one username, one
 
 Passwords are hashed with [scrypt](https://en.wikipedia.org/wiki/Scrypt) (random salt per password, stdlib `hashlib.scrypt`). Plain-text passwords never leave the request handler.
 
+### Auth Policy
+
+A project declares its auth policy under `[serve.auth]` in `jac.toml`. The server checks it at every place a value is written: registration, password change and reset, add-identity, rename and admin user creation. A policy change never locks out an account that already exists, because rules apply when a value is written, not when it is read.
+
+**Identifiers.** Each identifier is set on its own:
+
+```toml
+[serve.auth.identifiers]
+username = "optional"    # "required" | "optional" | "off"
+email = "optional"       # "required" | "optional" | "off"
+login_with = []          # kinds that may log in; [] = both
+```
+
+| Setup | `username` | `email` |
+|-------|-----------|---------|
+| Either one (the default): an account registers with a username, an email, or both | `"optional"` | `"optional"` |
+| The username is the email | `"off"` | `"required"` |
+| A username, plus a required email | `"required"` | `"required"` |
+| A username, no email needed | `"required"` | `"optional"` |
+
+An account always needs at least one identifier.
+
+`"off"` is a rule about new values: registration and add-identity refuse that kind. An account that already holds an identifier of that kind keeps logging in with it, so turning a kind off never locks anyone out. To stop a kind from logging in as well, leave it out of `login_with` (for example `login_with = ["email"]`); that is an explicit choice, and the server refuses a `login_with` that would leave a newly registered account with no way in.
+
+A new username may not contain `@`, so a username can never be mistaken for, or block, an email address. `[serve.auth.username]` adds `min_length`, `max_length` and an optional `pattern`.
+
+**Email verification.** `[serve.auth.email] verification` is `"none"` (the default: nothing is mailed unless the client asks), `"optional"` (registration and add-identity mail a verification link; login is not blocked) or `"required"` (the same mail is sent, `/user/register` answers `201` with `verification_required: true` and no token, and login answers `403 EMAIL_NOT_VERIFIED` and re-sends the link until it is used). `"required"` needs a configured [emailer](#emailer); the server refuses to start without one. `allowed_domains` limits which email domains may register, including the provider-verified email of an account created by SSO.
+
+**Passwords.** `[serve.auth.password]` sets the rules a new password must meet:
+
+| Key | Default | Rule |
+|-----|---------|------|
+| `min_length` / `max_length` | `8` / `128` | Length bounds |
+| `require` | `[]` | Character classes that must appear: any of `"lower"`, `"upper"`, `"digit"`, `"symbol"` |
+| `reject_common` | `true` | Not on the bundled common-password list |
+| `reject_identifiers` | `true` | Does not contain the account's username or email local part |
+| `breached_check` | `false` | Not in a known breach, checked by a k-anonymity range lookup (an outbound call; a failed lookup lets the password through) |
+| `history` | `0` | Not one of the last N passwords |
+| `max_age_days` | `0` | A password older than this sets `requires_password_reset` at login |
+
+Length and the common and breached lists do most of the work; `require`, `history` and `max_age_days` are off by default and exist for deployments whose compliance rules ask for them.
+
+**Registration and login limits.** `[serve.auth.registration] enabled = false` closes self-registration (`403 REGISTRATION_CLOSED`); accounts are then created by an admin. `[serve.auth.lockout]` limits failed logins to `max_attempts` (default `10`) per `window_seconds` (default `900`) for each source address and identity, answering `429 RATE_LIMITED`.
+
+The login limit depends on the server seeing each caller's own address. Behind an ingress or proxy that is not listed in `[serve.proxy] trusted`, every caller arrives from the proxy's address, so the limit becomes per identity: anyone can spend an account's attempts and lock its owner out for the window. A server in a cluster with the limit on and no trusted proxy logs a warning at startup saying so. `jac scale deploy` trusts the cluster's private ranges on the app services but sets none on the gateway, which is the pod an ingress talks to; list your ingress controller's address in `[serve.proxy] trusted`, or set `max_attempts = 0` to turn the limit off.
+
+**Refusals.** A value that breaks the policy is answered with `400 POLICY_VIOLATION`, and the error `details` list every rule it broke so a form can show them together:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "POLICY_VIOLATION",
+    "message": "Rejected by the auth policy: the password is too short; the password is too common",
+    "details": {"violations": ["PASSWORD_TOO_SHORT", "PASSWORD_COMMON"]}
+  }
+}
+```
+
+Violation codes: `IDENTIFIER_REQUIRED`, `IDENTIFIER_NOT_ALLOWED`, `USERNAME_INVALID`, `EMAIL_DOMAIN_NOT_ALLOWED`, `PASSWORD_TOO_SHORT`, `PASSWORD_TOO_LONG`, `PASSWORD_MISSING_CLASS`, `PASSWORD_COMMON`, `PASSWORD_CONTAINS_IDENTIFIER`, `PASSWORD_BREACHED`, `PASSWORD_REUSED`.
+
+**Reading the policy.** `GET /user/auth-policy` is public and returns what a sign-up or sign-in form needs:
+
+```json
+{
+  "identifiers": {"username": "optional", "email": "optional", "login_with": ["username", "email"]},
+  "username": {"min_length": 1, "max_length": 64, "pattern": ""},
+  "email": {"verification": "none"},
+  "password": {"min_length": 8, "max_length": 128, "require": [], "reject_common": true, "reject_identifiers": true},
+  "registration": {"enabled": true, "challenge": false}
+}
+```
+
+The full key list, with environment overrides, is in the [configuration reference](../config/index.md#serve).
+
 ### Storage
 
 Identity data lives in the same Postgres database as the graph -- the project's database in the machine's shared embedded cluster locally, or whatever `[scale.database].url` / `JAC_DB_URL` points at:
@@ -495,7 +570,7 @@ curl -X POST http://localhost:8000/user/register \
       {"type": "username", "value": "myuser"},
       {"type": "email", "value": "user@example.com"}
     ],
-    "credential": {"type": "password", "password": "secret"},
+    "credential": {"type": "password", "password": "correct horse battery"},
     "profile": {"firstname": "Alice", "lastname": "Doe"}
   }'
 ```
@@ -507,12 +582,14 @@ Returns on success (HTTP 201):
   "ok": true,
   "data": {
     "user_id": "550e8400-e29b-41d4-a716-446655440000",
-    "message": "User registered successfully"
+    "root_id": "7c1e9f2a-...",
+    "message": "User registered successfully",
+    "token": "eyJhbGciOiJIUzI1NiIs..."
   }
 }
 ```
 
-Registration does **not** return a token. Use `/user/login` after registration to authenticate.
+The `token` is a session, as from `/user/login`. With `[serve.auth.email] verification = "required"` and an email identity, the body carries `"verification_required": true` instead of a token, and the user signs in after following the emailed link (see [Email Verification](#email-verification)).
 
 **Validation rules:**
 
@@ -654,6 +731,7 @@ token_ttl_days = 7
 | `JAC_SERVE_AUTH_SECRET` | `secret` | Secret key for JWT signing | unset: a dev server mints one per project into `.jac/data/jwt_secret` |
 | `JAC_SERVE_AUTH_ALGORITHM` | `algorithm` | JWT signing algorithm | `HS256` |
 | `JAC_SERVE_AUTH_TOKEN_TTL_DAYS` | `token_ttl_days` | Token expiration in days | `7` |
+| `JAC_SERVE_AUTH_SESSION_COOKIE` | `session_cookie` | Also set an `HttpOnly` `jac_session` cookie that authorizes `GET`/`HEAD` only, so `<img>`, `<video>` and download links reach protected endpoints | `false` |
 
 !!! warning "Production: set the JWT secret"
     Left unset, the secret is minted per project into `.jac/data/jwt_secret` -- fine for a dev server, wrong for a cluster, where it would be per-replica. A cluster with none configured refuses to start rather than signing with a placeholder; `jac scale deploy` mints a random secret into the app Secret as `JAC_SERVE_AUTH_SECRET` when neither `[serve.auth] secret` nor `[scale.secrets]` provides one.
@@ -711,8 +789,12 @@ jac-scale supports SSO with **Google**, **Apple**, and **GitHub**. SSO accounts 
 1. User is redirected to the provider's login page
 2. Provider calls back with an authorization code
 3. jac-scale exchanges the code for user info (email, external ID, plus optional `display_name`, `first_name`, `last_name`, `picture`)
-4. If a user with that email exists, the SSO identity is linked and a JWT is returned
-5. If no user exists, a new account is created with a verified email identity, the SSO identity is linked, and a JWT is returned
+4. If this provider account has signed in before, that account is used
+5. Otherwise, if the provider reports the email as verified and an existing account holds the same email as a **verified** identity, the SSO identity is linked to that account
+6. Otherwise a new account is created. It stores the provider-verified email as a verified email identity when `[serve.auth.identifiers] email` accepts one
+7. A JWT is returned, or the second-factor challenge when the account has a verified second factor
+
+An email the provider has not verified is never used to find an account. When the matching local email is itself unverified, nothing is linked and the login fails with `SSO_EMAIL_IN_USE`: sign in with the password and connect the provider from the account. Linking by email therefore only happens for accounts whose email was verified, so set `[serve.auth.email] verification` to `"optional"` or `"required"` if you want it to apply to password-registered accounts. With `email = "required"`, a provider that shares no verified email fails with `SSO_EMAIL_REQUIRED`; with `[serve.auth.registration] enabled = false`, SSO signs in existing accounts but creates none. GitHub sign-in asks for the public identity only and shares no email, so it never links by email; with `email = "required"` it requests the `user:email` scope and reads the verified primary address.
 
 **Profile population.** The optional fields the provider returns (`display_name`, `first_name`, `last_name`, `picture`) are written to `profile.sso.<platform>` on the user record. They are refreshed from the latest provider data on every SSO login, so display names and avatar URLs stay current. Developer-set fields outside the `sso` namespace (e.g. `profile.firstname` set during `/user/register`) are never overwritten by the SSO refresh.
 
@@ -746,6 +828,10 @@ Only providers with both `client_id` and `client_secret` configured are enabled.
 | GET | `/sso/{platform}/register` | Redirect to provider registration |
 | GET | `/sso/{platform}/callback` | OAuth callback handler (GET) |
 | POST | `/sso/{platform}/callback` | OAuth callback handler (POST, for Apple Sign In) |
+| POST | `/sso/{platform}/begin` | Start a client-managed flow (PKCE challenge from the client); `intent: "connect"` with `scopes` connects the provider for the signed-in caller |
+| POST | `/sso/{platform}/finish` | Finish a client-managed flow with `code`, `state` and the PKCE `verifier` |
+| GET | `/sso/connections` | The caller's connected accounts (requires auth; tokens are never returned) |
+| DELETE | `/sso/{platform}/connection` | Disconnect: forget the caller's grant and revoke it with the provider (requires auth) |
 
 Where `{platform}` is `google`, `apple`, or `github`.
 
@@ -766,6 +852,54 @@ When set, the callback endpoint redirects to the configured URL with query param
 **SSO Account Linking/Unlinking:**
 
 SSO accounts can be linked and unlinked programmatically. An SSO identity is automatically linked when a user logs in via SSO. To unlink, use the admin portal API or the `UserManager.unlink_sso_account()` method. Unlinking removes the SSO identity from the user's identity array but does not delete the user account.
+
+**Connected accounts (calling the provider's APIs):**
+
+Sign-in asks a provider for the user's identity only (`openid email profile` for Google). To call the provider's APIs on the user's behalf (Google Calendar, Gmail, a user's GitHub repositories), list the extra permissions the app may request:
+
+```toml
+[scale.sso]
+client_auth_callback_url = "http://localhost:8000/sso/done"   # a page of your app
+
+[scale.sso.google]
+client_id = "your-google-client-id"
+client_secret = "your-google-client-secret"
+scopes = ["https://www.googleapis.com/auth/calendar.readonly"]
+```
+
+A signed-in user connects the provider from the client. `jacSsoConnect` sends the browser to the provider, which returns to `client_auth_callback_url`; that page calls `jacSsoFinish`:
+
+```jac
+import from "@jac/runtime" { jacSsoConnect, jacSsoFinish }
+
+async def connect_calendar {
+    await jacSsoConnect("google");    # every configured scope; or pass a list of them
+}
+
+async def on_callback_page {
+    result = await jacSsoFinish();    # {"ok", "connected", "platform", "error"}
+    if not result["ok"] {
+        console.warn(result["error"]);
+    }
+}
+```
+
+A connect needs a signed-in caller (`SIGN_IN_REQUIRED` otherwise), and every requested scope must be in the provider's `scopes` list (`SCOPES_NOT_ALLOWED` otherwise). Google is asked for offline access (`access_type=offline`, `prompt=consent`) and keeps earlier grants (`include_granted_scopes=true`), so connecting again with another scope adds to what was granted. Google refuses sign-in inside embedded webviews, so connect from a browser.
+
+Server code gets a valid access token for its caller:
+
+```jac
+import from jaclang.scale.sso.grants { sso_access_token }
+
+async def:protect calendar_token_ready -> bool {
+    token = await sso_access_token("google");    # "" when the caller has not connected
+    return token != "";
+}
+```
+
+`sso_access_token` refreshes an access token that expires within a minute and stores a refresh token the provider rotates. Simultaneous callers, across workers too, share one refresh: the rest keep using the current token while it is in date, or wait for the new one. When the provider refuses the refresh token (the user revoked access), the grant is forgotten and the call returns `""`, so the app can ask the user to connect again. `sso_connections()` lists the caller's connected accounts and `await sso_disconnect(platform)` forgets and revokes one; `access_token_for(user_id, platform)`, `connections_for(user_id)` and `disconnect_for(user_id, platform)` take an explicit user for code that runs outside a request, such as a scheduled job. On the client, `jacSsoConnections()` and `jacSsoDisconnect(platform)` call the endpoints above.
+
+Grants live in their own `identity_oauth_grants` table, one row per user and provider, apart from login credentials. Access and refresh tokens are encrypted at rest (an HMAC-SHA256 keystream with encrypt-then-MAC) under keys derived from `[serve.auth] secret`, are bound to their user and provider, and never leave the server. Changing that secret makes the stored grants unreadable, and users connect again. Disconnecting revokes the grant at the provider and removes it, but keeps the SSO identity, so the user can still sign in with the provider. Unlinking the SSO identity or deleting the user removes the stored grant without revoking it at the provider; call `disconnect_for` first to revoke it.
 
 **Example:**
 
@@ -852,18 +986,33 @@ In addition to the static identities supplied at registration, users can attach 
 Configure TTLs and the URLs the emails should point at:
 
 ```toml
-[scale.auth]
+[serve.auth.email]
 verify_token_ttl_seconds = 86400    # 24h
 reset_token_ttl_seconds  = 1800     # 30min
 verify_url_template      = "https://app.example.com/verify?token={token}"
 reset_url_template       = "https://app.example.com/reset?token={token}"
+send_verification_per_hour = 5      # per user
+forgot_password_per_hour   = 3      # per recovery address
 ```
 
 The `{token}` placeholder in each template is replaced with the raw token before the email is sent. Leave a template empty to receive the bare token in the email body (useful in tests/dev).
 
+#### Email Verification
+
+With `verification = "optional"` or `"required"`, the server mails a link to each unverified email when an account registers and when an email is added. The flow under `"required"`:
+
+1. `/user/register` creates the account and mails the link. It answers `201` with `verification_required: true` and no token.
+2. The link is `verify_url_template` with the token filled in. The server does not serve that page: it is a page in your app that reads `token` from its URL and sends it to `POST /user/verify-identity`.
+3. Until that succeeds, `/user/login` with the right password answers `403 EMAIL_NOT_VERIFIED` and mails a fresh link. Signing in again is the way to resend: `/user/send-verification` needs a session, which the account cannot get yet.
+4. After `/user/verify-identity` succeeds, `/user/login` returns a token.
+
+Each send revokes the earlier links for that address, so only the newest one works. Sends are limited to `send_verification_per_hour` per user (5 by default); a login over the limit still answers `403 EMAIL_NOT_VERIFIED` but mails nothing. Only an email given at registration under `"required"` blocks sign-in: an email added later with `/user/add-identity` gets a link but does not block it, and accounts created before the mode changed are never blocked.
+
+The message is plain text with the subject "Verify your email address"; only the link is configurable. For other wording or HTML, use a [custom emailer](#custom-emailer-python-or-jac) that rewrites what it is given.
+
 #### Add Identity
 
-Attach a new identity to the authenticated user. **This endpoint never sends mail** -- it just adds the identity (email identities are stored as `verified=false`). To dispatch a verification email afterwards, call `/user/send-verification`.
+Attach a new identity to the authenticated user. An email identity is stored as `verified=false`. With `[serve.auth.email] verification = "none"` (the default) no mail is sent, and `/user/send-verification` dispatches the verification email on request; with `"optional"` or `"required"` the verification link is mailed at once. The identity must be a kind `[serve.auth.identifiers]` accepts.
 
 ```bash
 curl -X POST http://localhost:8000/user/add-identity \
@@ -988,18 +1137,19 @@ Returns HTTP 200:
 }
 ```
 
-Errors: `400 INVALID_TOKEN`.
+Errors: `400 INVALID_TOKEN`, `400 POLICY_VIOLATION`. A password the policy rejects does not consume the token, so the user can retry with a stronger one.
 
 ### Auth Endpoint Summary
 
 | Method | Path | Auth Required | Description |
 |--------|------|--------------|-------------|
+| GET | `/user/auth-policy` | No | The identifier, password, verification and registration rules in force |
 | POST | `/user/register` | No | Create a new user |
 | POST | `/user/login` | No | Authenticate and get JWT |
 | POST | `/user/refresh-token` | No (token in body) | Refresh an existing JWT |
 | GET | `/user/me` | Yes (Bearer) | Get the authenticated user's profile |
 | PUT | `/user/password` | Yes (Bearer) | Update password |
-| POST | `/user/add-identity` | Yes (Bearer) | Attach an email/username identity to the current user (no email sent) |
+| POST | `/user/add-identity` | Yes (Bearer) | Attach an email/username identity to the current user |
 | POST | `/user/send-verification` | Yes (Bearer) | Dispatch a verification email for an unverified email identity |
 | POST | `/user/verify-identity` | No (token in body) | Confirm an email identity via the token sent by email |
 | POST | `/user/forgot-password` | No | Start the password-reset flow (always returns 200) |
@@ -1066,6 +1216,46 @@ timeout  = 10.0
 | `use_tls` | STARTTLS upgrade after connect | `true` |
 | `timeout` | Connection timeout in seconds | `10.0` |
 
+### Reply-To and Attachments
+
+`send_email` also takes an optional `reply_to` address and a list of `EmailAttachment`s. An attachment with a `content_id` is shown inside the HTML body, where `cid:<content_id>` refers to it (an inline image, such as a QR code); one without is attached as a separate file. With no HTML body, every attachment is attached.
+
+```jac
+import from jaclang.scale.emailer.emailer { Emailer, EmailAttachment }
+
+def send_tickets(emailer: Emailer, qr_png: bytes, receipt_pdf: bytes) -> bool {
+    return emailer.send_email(
+        to_addr="guest@example.com",
+        subject="Your tickets",
+        body_text="Your tickets are attached.",
+        body_html='<p>Show this at the door:</p><img src="cid:ticket-1">',
+        reply_to="Box Office <boxoffice@example.com>",
+        attachments=[
+            EmailAttachment(
+                filename="ticket-1.png",
+                content=qr_png,
+                mime_type="image/png",
+                content_id="ticket-1"
+            ),
+            EmailAttachment(
+                filename="receipt.pdf", content=receipt_pdf, mime_type="application/pdf"
+            )
+        ]
+    );
+}
+```
+
+| `EmailAttachment` field | Description | Default |
+|-------------------------|-------------|---------|
+| `filename` | The file's name as the recipient sees it | required |
+| `content` | The file's bytes | required |
+| `mime_type` | Its type, e.g. `image/png`. Parameters such as `; charset=utf-8` are dropped, and a value that isn't `type/subtype` is sent as `application/octet-stream` (`media_type()` gives the type sent). | `application/octet-stream` |
+| `content_id` | Shows the file inside the HTML body as `cid:<content_id>`. Given with or without angle brackets (`qr-1` or `<qr-1>`); `bare_content_id()` gives it without. | `None` (attached) |
+
+A header value with a line break (the recipient, subject, `reply_to` or an attachment's filename) is refused: the SMTP emailer's `send_email` returns `False`, as for any failed send.
+
+A custom emailer's `send_email` must accept both parameters.
+
 ### Custom Emailer (Python or Jac)
 
 Subclass `Emailer` and point `provider` at your class. The factory imports it dynamically at server startup and instantiates it with the full emailer config dict.
@@ -1079,7 +1269,8 @@ class SendGridEmailer(Emailer):
     def postinit(self):
         self._client = sendgrid.SendGridAPIClient(api_key=os.environ["SENDGRID_API_KEY"])
 
-    def send_email(self, to_addr, subject, body_text, body_html=None, from_addr=None):
+    def send_email(self, to_addr, subject, body_text, body_html=None, from_addr=None,
+                   reply_to=None, attachments=None):
         # ... use self._client to send ...
         return True
 
@@ -1113,7 +1304,7 @@ port     = 587
 username = "no-reply@example.com"
 use_tls  = true
 
-[scale.auth]
+[serve.auth.email]
 verify_token_ttl_seconds = 86400
 reset_token_ttl_seconds  = 1800
 verify_url_template      = "https://app.example.com/verify?token={token}"
@@ -1168,7 +1359,8 @@ class SendGridEmailer(Emailer):
         api_key = os.environ.get("SENDGRID_API_KEY", "")
         self._client = SendGridAPIClient(api_key=api_key) if api_key else None
 
-    def send_email(self, to_addr, subject, body_text, body_html=None, from_addr=None):
+    def send_email(self, to_addr, subject, body_text, body_html=None, from_addr=None,
+                   reply_to=None, attachments=None):
         if self._client is None:
             logger.warning("SendGrid client not configured; dropping email to %s", to_addr)
             return False
@@ -1196,7 +1388,7 @@ class SendGridEmailer(Emailer):
 provider     = "myapp.email:SendGridEmailer"
 from_address = "no-reply@example.com"
 
-[scale.auth]
+[serve.auth.email]
 verify_token_ttl_seconds = 86400
 reset_token_ttl_seconds  = 1800
 verify_url_template      = "https://app.example.com/verify?token={token}"
@@ -1220,7 +1412,7 @@ jac-scale includes a built-in admin portal for managing users, roles, and SSO co
 
 ### Accessing the Admin Portal
 
-Navigate to `http://localhost:8000/admin` to access the admin dashboard. On first server start, an admin user is automatically bootstrapped.
+Navigate to `http://localhost:8000/admin` to access the admin dashboard. On first server start, an admin user is automatically bootstrapped. There is no default password: with none configured, a dev server mints a one-time password and logs it once at startup, and a cluster does not create the admin until one is supplied (`jac scale deploy` mints one into the app Secret as `JAC_SCALE_ADMIN_PASSWORD`). The admin must change it at first login.
 
 ### Configuration
 
@@ -1235,6 +1427,7 @@ session_expiry_hours = 24
 |--------|------|---------|-------------|
 | `enabled` | bool | `true` | Enable/disable admin portal |
 | `username` | string | `"admin"` | Admin username |
+| `default_password` | string | unset | Initial admin password. Whether it comes from here or from `JAC_SCALE_ADMIN_PASSWORD`, it must meet `[serve.auth.password]`, or the server refuses to start |
 | `session_expiry_hours` | int | `24` | Admin session duration in hours |
 | `require_password_reset` | bool | `true` | Force admin to change the default password on first login |
 
@@ -1242,9 +1435,7 @@ session_expiry_hours = 24
 
 | Variable | Description |
 |----------|-------------|
-| `ADMIN_USERNAME` | Admin username (overrides jac.toml) |
-| `ADMIN_EMAIL` | Admin email (overrides jac.toml) |
-| `ADMIN_DEFAULT_PASSWORD` | Initial password (overrides jac.toml) |
+| `JAC_SCALE_ADMIN_PASSWORD` | Initial admin password (overrides `default_password`). Set in the shell that runs `jac scale deploy`, it is written into the app Secret so the pods receive it |
 
 ### User Roles
 
@@ -1819,6 +2010,7 @@ Serving an app (`jac run <app>`) also brings up every service app it bridges to,
 - **Colocated** (default): each service app's entry module is loaded into the served app's process and registered with `sv_client.register_local(app, module)`. Bridged calls invoke the provider's function or spawn its walker in-process -- still awaited, no sockets. One process, the boundary still compiled as a cut.
 - **Fleet**: `jac run <app> --fleet`, or `[scale.gateway] colocate = false`, runs each service app as its own local process behind the served app's gateway (one public port, one `/docs`, one `/metrics`, `X-Trace-Id` threaded through every hop). Peers are wired with `JAC_APP_<APP>_URL`. `jac scale status` / `logs` / `restart` / `stop` manage the members.
 - **Peer URLs are used as given.** A fleet member (and a deployed pod) mounts its endpoints at its root -- `/walker/<name>`, `/function/<name>` -- and the gateway strips the app's public route (`/api/<app>`) before forwarding. A consumer therefore never appends the route it compiled against to a peer URL: `JAC_APP_<APP>_URL=http://127.0.0.1:8011` is called at `http://127.0.0.1:8011/walker/<name>`. Only a route registered _together with_ a URL is appended -- `JAC_APP_<APP>_ROUTE`, or `sv_client.register(app, url, route)` -- which is how a consumer is pointed at a public gateway instead of a member.
+- **HTTP forwarding.** The serving HTTP client skips provisional `1xx` response headers until the final response; `101 Switching Protocols` remains terminal for WebSocket upgrades. The gateway removes `Expect` when forwarding requests to a service.
 - **Service identity between members.** Set `JAC_BRIDGE_TOKEN` on every member: consumers send it as a bearer on bridged calls (when no end-user `Authorization` is being forwarded), and a provider whose own `JAC_BRIDGE_TOKEN` matches the presented bearer runs the walker or function as the fixed service user `__bridge__`, which satisfies `requires_auth` endpoints and owns its own root. A mismatching bearer is still a 401; a provider without the variable set never honors it.
 - **Deployed**: `jac scale deploy` is always a fleet; see [Service Apps in Kubernetes](jac-scale-kubernetes.md#service-apps-in-kubernetes).
 
@@ -1952,17 +2144,20 @@ When server is running:
 
 ## Graph Visualization
 
-Navigate to `http://localhost:8000/graph` to view an interactive visualization of your application's graph directly in the browser.
+Navigate to `http://localhost:8000/graph` to explore your application's graph directly in the browser.
 
-- **Without authentication** - displays the public graph (super root), useful for applications with public endpoints
-- **With authentication** - click the **Login** button in the header to sign in and view your user-specific graph
+- **Without authentication** - explores the public graph (the guest root), useful for applications with public endpoints
+- **With authentication** - click the **Login** button in the header to sign in and explore your user-specific graph
 
-The visualizer uses a force-directed layout with color-coded node types, edge labels, tooltips on hover, and controls for refresh, fit-to-view, and physics toggle. If a user has previously logged in (via a jac-client app or the login modal), the existing `jac_token` in localStorage is picked up automatically.
+The explorer opens on the root and its first page of neighbors. Click a node to see its type, a short summary of its fields and its neighbor counts per node and edge type, and to load its neighbors one page at a time (**Load more** while more remain, **Collapse** to fold them away). The header picks which edges an expansion follows (outgoing, incoming or both), and the canvas stops adding nodes at 1500 with a message, so a large graph never freezes the tab. Every request reads one page and only what the caller may read. If a user has previously logged in (via a jac-client app or the login modal), the existing `jac_token` in localStorage is picked up automatically.
 
 | Endpoint | Description |
 |---|---|
-| `GET /graph` | Serves the graph visualization UI |
-| `GET /graph/data` | Returns graph nodes and edges as JSON (optional `Authorization` header) |
+| `GET /graph` | Serves the graph explorer UI |
+| `GET /graph/node?id=` | One node the caller can read (`id` defaults to the caller's root): `id`, `type`, `root`, a truncated `fields` summary, and `counts` of neighbors per node and edge type, `out` and `in`. `404` if the caller cannot read it |
+| `GET /graph/neighbors?id=&dir=&type=&edge=&limit=&cursor=` | One page of neighbors (`dir` is `out`, `in` or `both`; `type` and `edge` filter by node and edge type; `limit` defaults to 50, at most 200) with the edges that reach them, and `next_cursor` for the following page (`null` on the last) |
+
+Both take an optional `Authorization` header. The whole-graph dump `GET /graph/data` was removed: its cost grew with everything stored, not with what is on screen.
 
 ---
 

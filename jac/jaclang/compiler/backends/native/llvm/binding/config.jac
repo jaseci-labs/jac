@@ -1,7 +1,6 @@
 import os;
 import warnings;
 import from ctypes { c_int, c_char_p }
-import from jaclang.compiler.backends.native.llvm.binding { ffi }
 
 with entry {
     ffi.lib.LLVMPY_HasSVMLSupport.argtypes = ();

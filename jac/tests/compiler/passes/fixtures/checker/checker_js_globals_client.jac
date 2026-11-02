@@ -5,7 +5,6 @@ Mirrors the real-world failure from littleX TweetCard.jac line 25:
 JS globals. All of this must type-check cleanly in client context.
 """
 
-
 def now_diff(created_at: str) -> int {
     diff_ms = Date.now() - new(Date, created_at).getTime();
     return int(diff_ms / 1000);
@@ -35,4 +34,9 @@ def toggle_dark(dark: bool) -> bool {
     }
     document.body.classList.toggle("ready");
     return document.head.classList.contains("loaded");
+}
+
+def typing_into(e: KeyboardEvent) -> bool {
+    tag = str(e.target.tagName).lower();
+    return tag == "input" or e.target.isContentEditable;
 }

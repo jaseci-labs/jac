@@ -5,28 +5,9 @@ consuming an item passes that notification on when more items remain. CPython
 references are visible to its cycle collector through the borrowed-item ABI.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
-    jacpy_retain,
-    jacpy_release,
-    jacpy_lock_notify,
-    jacpy_lock_wait,
-    jacpy_pending_calls,
-    jacpy_timeout_ns,
-    jacpy_deadline,
-    jacpy_deadline_remaining,
-    jacpy_is_none,
-    jacpy_error_pending,
-    jacpy_set_none_exception,
-    object_error
-}
-import from jaclang.runtime.python.bindings.state { NativeState }
-import from jaclang.runtime.python.bindings.module { jacpy_binding_visit }
-import from jaclang.runtime.python.capi { jacpy_lock_free }
-
-import from jaclang.runtime.python.modules.object_ring { object_ring }
 
 obj queue_state(NativeState) {
-    has lock: u64,
+    has lock: ptr,
         items: object_ring = object_ring(),
         waiters: int = 0,
         notification: bool = False;
@@ -35,9 +16,9 @@ obj queue_state(NativeState) {
         jacpy_queue_clear(self);
     }
 
-    def traverse_refs(visitor: u64, context: u64) -> i32 {
+    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
         for i in range(self.items.count) {
-            result = jacpy_binding_visit(self.items.borrow(i), visitor, context);
+            result = visit_reference(self.items.borrow(i), visitor, context);
             if result != 0 {
                 return result;
             }
@@ -53,12 +34,12 @@ obj queue_state(NativeState) {
     def notify {
         if self.waiters > 0 and self.items.count > 0 and not self.notification {
             self.notification = True;
-            jacpy_lock_notify(self.lock);
+            PyThread_release_lock(self.lock);
         }
     }
 }
 
-def:pub jacpy_queue_new(lock: u64) -> queue_state {
+def:pub jacpy_queue_new(lock: ptr) -> queue_state {
     return queue_state(lock=lock);
 }
 
@@ -76,29 +57,29 @@ def:pub jacpy_queue_size(state: queue_state) -> i64 {
 }
 
 # Borrowed references: the CPython GC visitor never calls Python or releases GIL.
-def:pub jacpy_queue_borrow(state: queue_state, index: i64) -> u64 {
+def:pub jacpy_queue_borrow(state: queue_state, index: i64) -> ptr[PyObject] {
     return state.items.borrow(int(index));
 }
 
-def:pub jacpy_queue_put(state: queue_state, value: u64) {
-    state.items.push(jacpy_retain(value));
+def:pub jacpy_queue_put(state: queue_state, value: ptr[PyObject]) {
+    state.items.push(Py_NewRef(value));
     state.notify();
 }
 
 def:pub jacpy_queue_get(
-    state: queue_state, empty: u64, block: i64, timeout: u64
-) -> u64 {
+    state: queue_state, empty: ptr[PyObject], block: i64, timeout: ptr[PyObject]
+) -> ptr[PyObject] {
     deadline: i64 = 0;
-    if block != 0 and jacpy_is_none(timeout) == 0 {
+    if block != 0 and timeout != Py_None {
         nanoseconds = jacpy_timeout_ns(timeout);
         if jacpy_error_pending() != 0 {
-            return 0;
+            return NULL;
         }
         if nanoseconds < 0 {
-            object_error("ValueError", "'timeout' must be a non-negative number");
-            return 0;
+            object_error(PyExc_ValueError, "'timeout' must be a non-negative number");
+            return NULL;
         }
-        deadline = jacpy_deadline(nanoseconds);
+        deadline = _PyDeadline_Init(nanoseconds);
     }
     while True {
         if state.items.count > 0 {
@@ -107,15 +88,15 @@ def:pub jacpy_queue_get(
             return value;
         }
         if block == 0 {
-            jacpy_set_none_exception(empty);
-            return 0;
+            PyErr_SetNone(empty);
+            return NULL;
         }
         remaining: i64 = -1;
         if deadline != 0 {
-            remaining = jacpy_deadline_remaining(deadline);
+            remaining = _PyDeadline_Get(deadline);
             if remaining < 0 {
-                jacpy_set_none_exception(empty);
-                return 0;
+                PyErr_SetNone(empty);
+                return NULL;
             }
         }
         state.waiters += 1;
@@ -124,11 +105,104 @@ def:pub jacpy_queue_get(
         if status == 1 {
             state.notification = False;
         } elif status == 0 {
-            jacpy_set_none_exception(empty);
-            return 0;
-        } elif jacpy_pending_calls() < 0 {
-            return 0;
+            PyErr_SetNone(empty);
+            return NULL;
+        } elif Py_MakePendingCalls() < 0 {
+            return NULL;
         }
     }
-    return 0;
+    return NULL;
+}
+
+# The Argument Clinic _impl functions over the instance's native FIFO,
+# found through the SimpleQueue ClassToken.
+glob SimpleQueue_token = ClassToken();
+
+def:priv queue_of(instance: ptr[PyObject]) -> (queue_state | None) {
+    if jacpy_binding_native_present(instance, SimpleQueue_token.handle) != 0 {
+        state = jacpy_binding_native_get(instance, SimpleQueue_token.handle);
+        if isinstance(state, queue_state) {
+            return state;
+        }
+    }
+    object_error(PyExc_SystemError, "native SimpleQueue state is unavailable");
+    return None;
+}
+
+def simplequeue_new_impl(type: ptr[PyObject]) -> ptr[PyObject] {
+    instance = jacpy_binding_allocate(type);
+    if instance == 0 {
+        return NULL;
+    }
+    lock = jacpy_lock_new();
+    if lock == 0 {
+        jacpy_release(instance);
+        return NULL;
+    }
+    if jacpy_binding_native_set(
+        instance, SimpleQueue_token.handle, jacpy_queue_new(lock)
+    )
+        < 0 {
+        jacpy_release(instance);
+        return NULL;
+    }
+    return instance;
+}
+
+def:priv put(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
+    state = queue_of(instance);
+    if state is None {
+        return NULL;
+    }
+    jacpy_queue_put(state, item);
+    return Py_NewRef(Py_None);
+}
+
+def _queue_SimpleQueue_put_impl(
+    instance: ptr[PyObject], item: ptr[PyObject], block: bool, timeout: ptr[PyObject]
+) -> ptr[PyObject] {
+    return put(instance, item);
+}
+
+def _queue_SimpleQueue_put_nowait_impl(
+    instance: ptr[PyObject], item: ptr[PyObject]
+) -> ptr[PyObject] {
+    return put(instance, item);
+}
+
+# Empty is the defining module's second state slot.
+def:priv take(
+    instance: ptr[PyObject], cls: ptr[PyObject], block: bool, timeout: ptr[PyObject]
+) -> ptr[PyObject] {
+    state = queue_of(instance);
+    if state is None {
+        return NULL;
+    }
+    empty = jacpy_binding_state_get(PyType_GetModule(cls), 1);
+    return jacpy_queue_get(state, empty, i64(block), timeout);
+}
+
+def _queue_SimpleQueue_get_impl(
+    instance: ptr[PyObject], cls: ptr[PyObject], block: bool, timeout: ptr[PyObject]
+) -> ptr[PyObject] {
+    return take(instance, cls, block, timeout);
+}
+
+def _queue_SimpleQueue_get_nowait_impl(
+    instance: ptr[PyObject], cls: ptr[PyObject]
+) -> ptr[PyObject] {
+    return take(instance, cls, False, Py_None);
+}
+
+def _queue_SimpleQueue_empty_impl(instance: ptr[PyObject]) -> i32 {
+    state = queue_of(instance);
+    if state is None {
+        return i32(-1);
+    }
+    return i32(jacpy_queue_size(state) == 0);
+}
+
+def _queue_SimpleQueue_qsize_impl(instance: ptr[PyObject]) -> i64 {
+    state = queue_of(instance);
+    return jacpy_queue_size(state) if state is not None else i64(-1);
 }

@@ -77,7 +77,7 @@ cd jac
 zig build test                       # bootstrap unit tests (no network needed)
 zig build stub                       # just the launcher stub (no payload)
 zig build                            # -> zig-out/bin/jac (stock CPython)
-JACPYTHON=1 zig build                 # opt in to the native JacPython compiler
+zig build -Dpython=jacpython         # JacPython (prefer `jac native build jacpython`)
 ./zig-out/bin/jac --version
 
 zig build -Dpayload-progress         # stream the payload build live
@@ -93,9 +93,10 @@ No installed Python, Jac, or python-build-standalone distribution is needed.
 Build hosts need Zig 0.16.0, make, Perl, a POSIX shell, and network access.
 macOS also needs the SDK provided by Xcode command line tools.
 
-Builds use stock CPython by default. `JACPYTHON=1` selects JacPython's native
-parser/compiler replacement at build time; unset or any other value selects
-CPython. Each binary bundles one runtime. For JacPython, the CPython VM and
+Builds use stock CPython by default. `-Dpython=jacpython` selects JacPython's
+native parser/compiler replacement at build time; `jac native build jacpython`
+runs that build into `zig-out/jacpython/` so it sits beside the CPython binary.
+Each binary bundles one runtime. For JacPython, the CPython VM and
 object runtime remain. A separate build-only CPython host runs Jac's
 native compiler to emit that object. The build rejects interpreted demotions;
 no replacement bytecode, compiler seed, or Python adapter ships in the payload.
@@ -124,11 +125,10 @@ Blank lines and full-line comments are allowed; globs, missing paths, and
 overlapping entries fail the build. The archive is still downloaded and
 checksum-verified as a whole. Other dependency archives use `sources.json`.
 
-Stable and rolling dev releases build both runtimes per selected platform.
-Stock CPython uses `jac-<version>-<platform>` (or `jac-dev-<platform>`);
-JacPython adds `-jacpython`. Each asset has its own `.sha256` checksum.
-The installer defaults to CPython; pass `--jacpython` to select JacPython.
-Docker images use the default CPython assets.
+Stable and rolling dev releases build one binary per selected platform, on
+stock CPython: `jac-<version>-<platform>` (or `jac-dev-<platform>`), each with
+its own `.sha256` checksum. JacPython is not released; it is built on request.
+Docker images use the same assets.
 Intel Mac remains a manually selected release target.
 
 The list starts with the C implementations needed by the Linux/macOS release

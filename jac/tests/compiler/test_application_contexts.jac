@@ -63,22 +63,23 @@ test "a sealed entry loads without a package initializer" {
         app.code[helper_path] = builtins.compile(
             'from .main import values', helper_path, 'exec'
         );
-        name = 'prepared_namespace_fixture';
-        info = {'module': name + '.main'};
+        package = 'prepared_image_fixture';
+        info = {'module': package + '.main'};
         image = SimpleNamespace(
-            package=name,
+            package=package,
             manifest={
                 'modules': {
                     'main.jac': info,
-                    'helper.jac': {'module': name + '.helper'}
+                    'helper.jac': {'module': package + '.helper'}
                 }
             },
             index={
-                name + '.main': (info, 'main.jac'),
-                name + '.helper': ({'module': name + '.helper'}, 'helper.jac')
+                package + '.main': (info, 'main.jac'),
+                package + '.helper': ({'module': package + '.helper'}, 'helper.jac')
             }
         );
         publish(app);
+        name = application_namespace(app);
         try {
             with patch.object(sealed, 'image_for_bundle_dir', return_value=image) {
                 loaded: any = load_prepared_module(path);
@@ -86,6 +87,7 @@ test "a sealed entry loads without a package initializer" {
                 helper: any = load_prepared_module(helper_path);
                 assert helper.__name__ == name + '.helper';
                 assert helper.values is loaded.values;
+                assert package not in sys.modules;
             }
         } finally {
             clear();

@@ -27,6 +27,8 @@ Every import follows the same template. Square brackets mark optional parts:
 
 A plain whole-module import (`import os;`) takes a trailing semicolon. The `import from ... { ... }` brace form does not.
 
+A project can also declare its imports between its own modules once, in an `archwire.jac` beside `jac.toml`, where a wire such as `core.knowledge.repo --> core.knowledge_service { ensure_repo }` generates the import into the consumer at compile time and checks the module against it. External imports stay in the module file. See [Project Wiring](wiring.md).
+
 ---
 
 ## Choosing the codespace
@@ -103,9 +105,6 @@ import type from .models { Task }
 # include -- absorbs every public name from the module into this namespace.
 include math_helpers;
 ```
-
-!!! note "Inline Python escape hatch"
-    For Python-only APIs or legacy code, you can embed raw Python in a `::py:: ... ::py::` block instead of importing. Prefer a normal `import` for anything new.
 
 ---
 
@@ -221,7 +220,7 @@ import from "libgeometry.so" {
 ```
 
 !!! info "Fixed-width types at the C boundary"
-    The `import from` declaration uses fixed-width types (`f64`, `i32`, `u8`, `c_void`, …) so the signature matches the C ABI exactly. Carry those same fixed-width types through any function that passes values into a C call, or cast at the boundary: a plain `int` into an `i32` parameter is the checked cast `i32(n)`, and the checker reports an uncast narrowing (`E1127`) rather than letting the backend truncate silently. Widening (`u8 -> i32`, `f32 -> f64`) stays implicit. Library paths are platform-specific -- `.so` on Linux, `.dylib` on macOS, and system libraries live in different locations per platform.
+    The `import from` declaration uses fixed-width types (`f64`, `i32`, `u8`, …, plus `ptr[T]` for addresses) so the signature matches the C ABI exactly. Carry those same fixed-width types through any function that passes values into a C call, or cast at the boundary: a plain `int` into an `i32` parameter is the checked cast `i32(n)`, and the checker reports an uncast narrowing (`E1127`) rather than letting the backend truncate silently. Widening (`u8 -> i32`, `f32 -> f64`) stays implicit. Library paths are platform-specific -- `.so` on Linux, `.dylib` on macOS, and system libraries live in different locations per platform.
 
 ---
 

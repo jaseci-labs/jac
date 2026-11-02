@@ -9,7 +9,7 @@ both halves of the comparison and neither tree needs to carry a copy.
 
 Corpus paths are resolved against the cwd and so name the sources of whichever
 tree is being measured. The schedule phases (parse, ir_gen, analysis, boundary,
-codegen) are the schedules `JacCompiler` `_compile_once` itself runs for a
+codegen) are the schedules `JacCompiler` `run_module` itself runs for a
 plain Python-lane module, driven here one at a time so each is attributable;
 `full` is the whole-closure `JacProgram.compile` that a real `jac run` pays,
 and `check` is a fresh-program full-analysis compile (`no_cgen` +
@@ -33,12 +33,6 @@ import time;
 
 import from pathlib { Path }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pipeline {
-    get_analysis_sched,
-    get_boundary_analysis_sched,
-    get_ir_gen_sched,
-    get_py_code_gen
-}
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob CORPUS: list[str] = [
@@ -58,6 +52,45 @@ glob CORPUS: list[str] = [
          "check"
      ];
 
+"""Run one schedule stage on `mod`: by product on this tree, by schedule on a baseline older than the product table."""
+def run_stage(staged: JacProgram, mod: any, stage: str) {
+    try {
+        import from jaclang.compiler.driver.pipeline { require }
+        import from jaclang.compiler.driver.pipeline_types {
+            CompilationProduct,
+            ProductRequest
+        }
+    } except ImportError {
+        import importlib;
+        pipeline_mod = importlib.import_module("jaclang.compiler.driver.pipeline");
+        codegen_mod = importlib.import_module("jaclang.compiler.driver.module_compile");
+        if stage == "ir_gen" {
+            sched = getattr(pipeline_mod, "get_ir_gen_sched")();
+        } elif stage == "analysis" {
+            sched = getattr(pipeline_mod, "get_analysis_sched")();
+        } elif stage == "boundary" {
+            sched = getattr(pipeline_mod, "get_boundary_analysis_sched")();
+        } else {
+            sched = getattr(codegen_mod, "get_py_code_gen")(native=False);
+        }
+        getattr(staged, "run_schedule")(mod, sched);
+        return;
+    }
+    products = {
+        "ir_gen": [CompilationProduct.IR],
+        "analysis": [CompilationProduct.ANALYSIS],
+        "boundary": [CompilationProduct.BOUNDARIES],
+        "codegen": [
+            CompilationProduct.CODEGEN,
+            CompilationProduct.PY_IR,
+            CompilationProduct.FROZEN
+        ]
+    };
+    for product in products[stage] {
+        require(staged, mod, product, request=ProductRequest(native=False));
+    }
+}
+
 """Time one pass of every phase over `src`, on programs nothing else has touched."""
 def phase_row(src: str) -> dict[any, any] {
     text = Path(src).read_text(encoding="utf-8");
@@ -65,13 +98,13 @@ def phase_row(src: str) -> dict[any, any] {
     t0 = time.perf_counter();
     mod = staged.parse_str(text, src);
     t1 = time.perf_counter();
-    staged.run_schedule(mod, get_ir_gen_sched());
+    run_stage(staged, mod, "ir_gen");
     t2 = time.perf_counter();
-    staged.run_schedule(mod, get_analysis_sched());
+    run_stage(staged, mod, "analysis");
     t2a = time.perf_counter();
-    staged.run_schedule(mod, get_boundary_analysis_sched());
+    run_stage(staged, mod, "boundary");
     t3 = time.perf_counter();
-    staged.run_schedule(mod, get_py_code_gen(native=False));
+    run_stage(staged, mod, "codegen");
     t4 = time.perf_counter();
     errors = len(staged.errors_had);
     staged.release_compile_closure();
@@ -82,9 +115,7 @@ def phase_row(src: str) -> dict[any, any] {
     errors += len(whole.errors_had);
     whole.release_compile_closure();
     checker = JacProgram();
-    check_opts = CompileOptions(
-        no_cgen=True, native_parity=True, force_target_program=True
-    );
+    check_opts = CompileOptions(no_cgen=True, native_parity=True);
     if hasattr(check_opts, "iface_ok") {
         check_opts.iface_ok = True;
     }

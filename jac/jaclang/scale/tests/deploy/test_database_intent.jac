@@ -5,15 +5,7 @@ import os;
 import unittest.mock;
 import from pathlib { Path }
 
-import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_config }
 import from jaclang.scale.deploy.database { kubernetes_postgres as pg_module }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_target {
-    KubernetesTargetBase
-}
-import from jaclang.scale._optdeps.kubernetes { ApiException }
 
 # The bare host is namespace-relative: exactly what a platform pod has in JAC_DB_URL.
 glob PLATFORM_DB_URL = "postgresql://platform@platform-postgres-service:5432/platform",

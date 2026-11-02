@@ -18,9 +18,16 @@ test that fails: "expected E5090, got no errors" — which is exactly the
 class of bug this guardrail exists to prevent.
 """
 
+import from jaclang.compiler.backends.py.codegen_shim { generated_python }
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_force_opts }
+import from tests.support {
+    TESTS_DIR,
+    by_source_name,
+    native_address,
+    native_force_opts,
+    source_spelled
+}
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -66,7 +73,7 @@ def compile_na_inline_demote(label: str, code: str) -> tuple[any, ...] {
             os.environ["JAC_NA_DEBUG"] = _prev;
         }
     }
-    return (prog, ir, buf.getvalue(), );
+    return (prog, ir, source_spelled(buf.getvalue()), );
 }
 
 """Compile a snippet through the FRONT-END check schedule (the `type_check`
@@ -81,10 +88,7 @@ def check_na_inline(label: str, code: str) -> JacProgram {
         file_path=path,
         use_str=code,
         options=CompileOptions(
-            no_cgen=True,
-            native_parity=True,
-            force_codespace="native",
-            force_target_program=True
+            no_cgen=True, native_parity=True, force_codespace="native",
         )
     );
     return prog;
@@ -95,7 +99,7 @@ engine. A guardrail that has become a lowering pin needs the native lane's
 answer, not just its layout membership."""
 def native_answer(eng: any, name: str) -> int {
     assert eng is not None , f"no native engine produced for {name}";
-    addr = eng.get_function_address(name);
+    addr = native_address(eng, name);
     assert addr != 0 , f"'{name}' not found in the JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64)(addr)();
 }
@@ -111,7 +115,7 @@ def server_answer(label: str, code: str, name: str) -> int {
     );
     assert not prog.errors_had , f"server-lane compilation errors: {fmt_errors(prog)}";
     ns: dict[str, any] = {};
-    exec(compile(ir.gen.py, path, "exec"), ns);
+    exec(compile(generated_python(ir.gen), path, "exec"), ns);
     return ns[name]();
 }
 
@@ -211,7 +215,7 @@ test "guardrail: yield without a generator return type is rejected" {
 # neighbour over an edge with declared endpoints) IS supported and reads
 # correctly on native; see test_osp_equivalence.jac "osp field access" and
 # "osp typed edge endpoints".
-test "guardrail: field access on an untyped (any) node-ref element demotes the ability with a filter hint" {
+test "guardrail: field access on an untyped (any) node-ref element refuses the ability with a filter hint" {
     (prog, ir, log) = compile_na_inline_demote(
         "node_ref_any_field",
         "node N { has tag: int = 0; }\n"
@@ -225,13 +229,15 @@ test "guardrail: field access on an untyped (any) node-ref element demotes the a
         "}\n"
         "with entry { a = N(); b = N(tag=9); a +>: Portal() :+> b; a spawn W(); }\n"
     );
-    assert not has_error_code(prog, "E5090") , f"An ability-owned violation must demote, not fail the module: {fmt_errors(
+    assert not has_error_code(prog, "E5090") , f"An ability-owned violation is reported once, against the ability: {fmt_errors(
         prog
     )}";
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "W.go" not in layout.methods , (
-        "the violating ability must be demoted out of the native layout"
+    # A demoted function refuses its native callers. An ability has none: the
+    # graph engine runs it, and would reach the stub. So the module is refused,
+    # naming the ability.
+    refused = [str(e) for e in prog.errors_had];
+    assert any("event ability" in r and "go" in r for r in refused) , (
+        f"a walker with an ability that cannot lower must refuse the module: {refused}"
     );
     assert "NA_DEBUG demote W.go" in log , f"no demotion recorded for W.go in:\n{log}";
     assert "[?:" in log , f"the demotion diagnostic should suggest a `[?:Type]` filter:\n{log}";
@@ -723,41 +729,6 @@ test "guardrail: list-endpoint disconnect lowers; list plus predicate stays loud
     )}";
 }
 
-# ::py:: blocks cannot execute in a native binary. Before the capability
-# sweep covered PyInlineCode they were silently DROPPED in native context -
-# exactly the silent-failure class this guardrail file exists to prevent.
-# Granular demotion seams the owning function (Python executes the block),
-# and a NATIVE caller of the demoted function stays a structured error
-# rather than silently binding its abort stub.
-test "guardrail: inline Python block demotes its function, native callers stay loud" {
-    (prog, ir, log) = compile_na_inline_demote(
-        "pyinline",
-        "def f -> int {\n" "    ::py::\n" "x = 1\n" "::py::\n" "    return 1;\n" "}\n"
-    );
-    assert not prog.errors_had , f"A function-owned PyInlineCode must demote, got: {fmt_errors(
-        prog
-    )}";
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "f" not in layout.functions , (
-        "the PyInlineCode function must be demoted out of the native layout"
-    );
-    assert "NA_DEBUG demote f" in log , f"no demotion recorded for f in:\n{log}";
-    caller = compile_na_inline(
-        "pyinline_caller",
-        "def f -> int {\n"
-        "    ::py::\n"
-        "x = 1\n"
-        "::py::\n"
-        "    return 1;\n"
-        "}\n"
-        "with entry { print(f()); }\n"
-    );
-    assert has_error_code(caller, "E5092") , f"A native caller of a demoted function must fail loudly, got: {fmt_errors(
-        caller
-    )}";
-}
-
 # ─────────────────────────────────────────────────────────────────────
 # OSP gate soundness (issue #6636)
 # ─────────────────────────────────────────────────────────────────────
@@ -1018,11 +989,109 @@ test "guardrail: open() with a non-string (POSIX flags) mode is a clean diagnost
     )}";
     for alrt in prog.errors_had {
         if alrt.code is not None {
-            assert alrt.code.code not in ("E9001", "E9002") , f"ICE leaked for POSIX open(path, flags): {fmt_errors(
+            assert alrt.code.code not in ("E9001", "E9002", "E9003") , f"ICE leaked for POSIX open(path, flags): {fmt_errors(
                 prog
             )}";
         }
     }
+}
+
+test "guardrail: a dict comprehension with untyped keys or always-None values is refused, not an emitter crash" {
+    for (label, value, refusal) in [
+        ("any_key", "1", "dict with mixed key types"),
+        ("none_value", "None", "dict with mixed key types"),
+        ("str_key_none_value", "None", "dict whose values are always None")
+    ] {
+        elem = "str" if label == "str_key_none_value" else "any";
+        (prog, ir, log) = compile_na_inline_demote(
+            f"dcompr_{label}",
+            f"def build(xs: list[{elem}]) -> int {{\n"
+            f"    d = {{x: {value} for x in xs}};\n"
+            "    return len(d);\n"
+            "}\n"
+        );
+        seen = fmt_errors(prog) + log;
+        assert refusal in seen , f"{label}: expected the '{refusal}' refusal, got: {seen}";
+        assert "E9003" not in seen , f"{label}: emitter crash leaked: {seen}";
+    }
+}
+
+# A backend exception is a compiler defect: it is reported as E9003, it is never
+# absorbed as an E5092 refusal, and the module keeps nothing it could run in
+# place of the native code -- not the bytecode the host assembles and not the
+# JCIR the kernel hands the host. Before E9003 the kernel's JCIR survived the
+# crash, so the module silently ran as Python.
+test "a backend crash is E9003, never a refusal, and leaves the module nothing to run" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+    with patch.object(
+        NaIRGenPass, "_codegen_binary", side_effect=AssertionError("lowering exploded")
+    ) {
+        (prog, ir, log) = compile_na_inline_demote(
+            "backend_crash", "def add(a: int, b: int) -> int {\n    return a + b;\n}\n"
+        );
+    }
+    codes = [
+        e.code.code
+        for e in prog.errors_had
+        if e.code is not None
+    ];
+    assert "E9003" in codes , f"a backend crash must be E9003, got: {fmt_errors(prog)}";
+    assert "E5092" not in codes , f"a backend crash must not read as a refusal: {fmt_errors(
+        prog
+    )}";
+    assert "lowering exploded" in fmt_errors(prog);
+    assert ir.gen.jcir is None , "the crashed module kept JCIR the kernel would run";
+    assert ir.gen.py_bytecode is None , "the crashed module kept bytecode";
+}
+
+# The native compiler's int is 64 bits, so a literal past that is a refusal the
+# module's placement decides (the server codespace holds unbounded ints), never
+# an overflow inside the compiler. The two literals at the edge of the native
+# range still lower: -2**63 as the constant (its literal part alone does not
+# fit), and 2**64 - 1 as the u64 bit pattern.
+test "an integer literal past 64 bits is a refusal, while i64.MIN and u64.MAX literals lower" {
+    (prog, ir, log) = compile_na_inline_demote(
+        "wide_literal",
+        "def big -> int {\n    return 123456789012345678901234567890;\n}\n"
+    );
+    seen = fmt_errors(prog) + log;
+    assert "integer literal" in seen , f"expected the wide-literal refusal, got: {seen}";
+    assert "E9003" not in seen , f"a wide literal crashed the backend: {seen}";
+    code = "def low -> int {\n    return -9223372036854775808;\n}\n\n"
+    "def top -> u64 {\n    t: u64 = 18446744073709551615;\n    return t;\n}\n";
+    (edge_prog, edge_ir, edge_log) = compile_na_inline_demote("i64_u64_edges", code);
+    assert not edge_prog.errors_had , f"edge literals must lower clean, got: {fmt_errors(
+        edge_prog
+    )}";
+    assert native_answer(edge_ir.gen.native_engine, "low") == -9223372036854775808;
+    assert native_answer(edge_ir.gen.native_engine, "top") == -1 , "u64.MAX reads as -1 through c_int64";
+}
+
+# A literal's destination type sits on the outermost expression that is only
+# the literal, so a parenthesized or unary-plus literal lowers through its
+# wrapper: to the u64 bit pattern, or to a float when the target is one.
+test "a wide literal lowers through parentheses and to a float target" {
+    code = "def paren_top -> u64 {\n    t: u64 = (18446744073709551615);\n    return t;\n}\n\n"
+    "def plus_top -> u64 {\n    t: u64 = +0xFFFF_FFFF_FFFF_FFFF;\n    return t;\n}\n\n"
+    "def paren_low -> int {\n    return -(9223372036854775808);\n}\n\n"
+    "def as_float -> int {\n    x: f64 = 9223372036854775808;\n"
+    "    return 1 if x == 9223372036854775808.0 else 0;\n}\n\n"
+    "def neg_float -> int {\n    x: f64 = -18446744073709551615;\n"
+    "    return 1 if x == -18446744073709551615.0 else 0;\n}\n\n"
+    "def radix_float -> int {\n    x: f64 = 0x10000000000000801;\n"
+    "    return 1 if x == 18446744073709555712.0 else 0;\n}\n";
+    (prog, ir, log) = compile_na_inline_demote("wide_wrapped", code);
+    assert not prog.errors_had , f"wrapped wide literals must lower clean, got: {fmt_errors(
+        prog
+    )}";
+    eng = ir.gen.native_engine;
+    assert native_answer(eng, "paren_top") == -1;
+    assert native_answer(eng, "plus_top") == -1;
+    assert native_answer(eng, "paren_low") == -9223372036854775808;
+    assert native_answer(eng, "as_float") == 1 , "2**63 must not wrap before it becomes a float";
+    assert native_answer(eng, "neg_float") == 1 , "a negated wide literal reaches its float target";
+    assert native_answer(eng, "radix_float") == 1 , "a radix literal rounds once, by its full value";
 }
 
 # Positive control: with the libc `open(path, flags) -> i32` extern in scope
@@ -1073,7 +1142,7 @@ test "walrus on a subscript target: one general E0020, no native cascade" {
     )}";
     for alrt in prog.errors_had {
         if alrt.code is not None {
-            assert alrt.code.code not in ("E9001", "E9002") , f"ICE leaked: {fmt_errors(
+            assert alrt.code.code not in ("E9001", "E9002", "E9003") , f"ICE leaked: {fmt_errors(
                 prog
             )}";
         }
@@ -1096,7 +1165,7 @@ test "walrus on an attribute target: one general E0020, no native cascade" {
     )}";
     for alrt in prog.errors_had {
         if alrt.code is not None {
-            assert alrt.code.code not in ("E9001", "E9002") , f"ICE leaked: {fmt_errors(
+            assert alrt.code.code not in ("E9001", "E9002", "E9003") , f"ICE leaked: {fmt_errors(
                 prog
             )}";
         }
@@ -1115,7 +1184,7 @@ test "walrus on a subscript target is the same single E0020 on sv" {
     )}";
     for alrt in prog.errors_had {
         if alrt.code is not None {
-            assert alrt.code.code not in ("E9001", "E9002") , f"ICE leaked: {fmt_errors(
+            assert alrt.code.code not in ("E9001", "E9002", "E9003") , f"ICE leaked: {fmt_errors(
                 prog
             )}";
         }
@@ -1251,7 +1320,7 @@ test "guardrail: nested event ability demotes its function, not an ICE" {
     );
     for alrt in prog.errors_had {
         if alrt.code is not None {
-            assert alrt.code.code not in ("E9001", "E9002") , (
+            assert alrt.code.code not in ("E9001", "E9002", "E9003") , (
                 f"ICE leaked for a nested event ability: {fmt_errors(prog)}"
             );
         }

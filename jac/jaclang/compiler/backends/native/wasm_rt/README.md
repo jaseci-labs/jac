@@ -15,6 +15,7 @@ in `../wasm_host_abi.jac`, plus the app's own declared FFI.
 | `jac_io.c` | `printf`/`puts`/`putchar`: format in-module via `vsnprintf`, emit through the host's `write(fd, ptr, len)`; no C varargs ever cross the boundary | ours |
 | `jac_builtins.c` | compiler-rt builtins the wasm backend emits libcalls for (`__multi3`) | ours |
 | `jac_errno.c` | `errno` storage + `__errno_location`, wasi-libc model | ours |
+| `jac_floor.c` | the runtime floor's `__jac_*` functions for wasm32, so the stdlib's floor calls stay inside the module (Linux ABI values; directory, account and executable-path calls fail with `ENOSYS`-style results) | ours |
 | `jac_abi64.c` | `__jac64_*` widening adapters: the floor declares libc externs with 64-bit `size_t`/`long`, wasm32 libc uses i32, and a signature-mismatched direct call lowers to `unreachable`; `wasm_build.jac` renames the floor's declarations to these (`_ABI64_ADAPTED` must list the same names) | ours |
 | `prelude.h` | musl-internal macros (`hidden`, `weak_alias`, …) normally provided by musl's own build | ours |
 | `vendor/internal`, `vendor/arch/wasm32`, `vendor/private`, `vendor/stdlib/strtod.c`, `vendor/stdio/{vfprintf,vsnprintf}.c`, `vendor/errno/strerror.c` | wasm-adapted sources (fp128 long double handled via `printscan.h`) | wasi-libc, as bundled by zig 0.16.0 |
@@ -36,6 +37,9 @@ Kept deliberately tiny; each carries a `jac wasm_rt transform` comment:
    machinery into every module), and `fabsl` is mapped to `fabs` alongside
    upstream's `frexpl`/`copysignl`/... mappings (unmapped it pulls fp128
    compiler-rt into every module).
+3. `vendor/math/fma.c`: musl includes its arch-specific `atomic.h` only for
+   `a_clz_64`; wasm has no musl arch layer, so the generic bit-twiddle from
+   musl 1.2.5 `src/internal/atomic.h` is inlined in its place.
 
 ## Building
 

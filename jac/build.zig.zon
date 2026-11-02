@@ -3,14 +3,62 @@
     .version = "0.30.0",
     .minimum_zig_version = "0.16.0",
     .fingerprint = 0x125cfde06c37a26a,
-    // The launcher, the payload tool and their tests are Jac: the build has no
-    // Zig dependencies. Zig is the bootstrap seed (bootstrap/build_python.zig) and
-    // the C/C++ cross-compiler for the LLVM shim and the vendored runtimes.
-    .dependencies = .{},
+    // The launcher, the payload tool and their tests are Jac. Zig is the
+    // bootstrap seed (bootstrap/build_python.zig) and the C/C++ cross-compiler
+    // for the LLVM shim and the vendored runtimes; the dependencies below are
+    // the JavaScript engine's foreign sources (js_engine/native/build_native.zig).
+    .dependencies = .{
+        .pcre2 = .{
+            .url = "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.49/pcre2-10.49.tar.gz",
+            .hash = "pcre2-10.49.0-IZ6r68cregBKN199ndY6AaKNyKJpNmnQVSm8-h0gp4sj",
+            .lazy = true,
+        },
+        .libuv = .{
+            .url = "https://dist.libuv.org/dist/v1.51.0/libuv-v1.51.0.tar.gz",
+            .hash = "N-V-__8AABtNRAB58M85Dm0p6z6iRHP3Zz3eyo08HU4EF5mq",
+            .lazy = true,
+        },
+        .nghttp2 = .{
+            .url = "https://github.com/nghttp2/nghttp2/releases/download/v1.64.0/nghttp2-1.64.0.tar.xz",
+            .hash = "N-V-__8AAFRWtwAO9IGW1GXQU_v-IOKsyY0cT-EgAl3bRiC_",
+            .lazy = true,
+        },
+        .brotli = .{
+            .url = "https://github.com/google/brotli/archive/refs/tags/v1.1.0.tar.gz",
+            .hash = "N-V-__8AAF_gIQDX2wVzXI-r96NyCgKuDj9W_Gab-TU7Qzoi",
+            .lazy = true,
+        },
+        .llhttp = .{
+            .url = "https://github.com/nodejs/llhttp/archive/refs/tags/release/v9.4.1.tar.gz",
+            .hash = "N-V-__8AALIfBgB2k6v6tAJs1-VLn5Ww9ifKI0CaLTydAR2r",
+            .lazy = true,
+        },
+        .node_api_headers = .{
+            .url = "https://github.com/nodejs/node-api-headers/archive/refs/tags/v1.5.0.tar.gz",
+            .hash = "N-V-__8AAASNAQA0UI0mvQk4LyFEhdFuFBPgH8HSokdFFpnz",
+            .lazy = true,
+        },
+        .icu4c = .{
+            .url = "https://github.com/unicode-org/icu/releases/download/release-74-2/icu4c-74_2-src.tgz",
+            .hash = "N-V-__8AAO6_vQZzKHX6fOJDJ1y_L9w3G-ZiovP476NdrZZN",
+            .lazy = true,
+        },
+        .wasmtime_x86_64_linux = .{
+            .url = "https://github.com/bytecodealliance/wasmtime/releases/download/v48.0.2/wasmtime-v48.0.2-x86_64-linux-c-api.tar.xz",
+            .hash = "N-V-__8AACKuZwZAUqtfncpykr6w6VKWURakWwOksH-uJnq7",
+            .lazy = true,
+        },
+        .mimalloc = .{
+            .url = "https://github.com/microsoft/mimalloc/archive/refs/tags/v3.5.3.tar.gz",
+            .hash = "N-V-__8AAJ2kWgAyMSn9Yf-t-pUPi1ZkFkG6UUOmXod6BvPG",
+            .lazy = true,
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "bootstrap",
         "launcher",
+        "js_engine",
     },
 }

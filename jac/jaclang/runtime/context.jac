@@ -1,13 +1,10 @@
+import asyncio;
 import from contextvars { ContextVar }
-import from jaclang.runtime.object_model { MISSING }
+
 import from logging { getLogger }
 import from queue { Queue }
-import from typing { cast }
+import from typing { cast, Generator, AsyncGenerator }
 import from uuid { UUID }
-
-import from jaclang.runtime.archetype { NodeAnchor, PermissionDenied, Root }
-import from jaclang.runtime.constants { Constants as Con }
-import from jaclang.runtime.memory { Memory }
 
 glob __all__ = ['ExecutionContext'],
      logger = getLogger(__name__);
@@ -28,11 +25,15 @@ obj ExecutionContext {
         base_path_dir: (str | None) = None,
         full_target_path: (str | None) = None,
         _parent: (ExecutionContext | None) = None,
+        _own_session: bool = False,
         _system_root: (NodeAnchor | None) = None,
         _user_root: (NodeAnchor | None) = None,
         _entry_node: (NodeAnchor | None) = None;
 
     def postinit -> None;
+    static async def for_target(
+        target: object, parent: ExecutionContext, user_root_id: str
+    ) -> ExecutionContext;
 
     has system_root: NodeAnchor { getter; }
     has user_root: NodeAnchor { getter; }
@@ -43,6 +44,8 @@ obj ExecutionContext {
     def set_user_root(root_id: str) -> None;
     def set_entry_node(entry_node: (str | None)) -> None;
     def close -> None;
+    async def aclose -> None;
+    async def bind_stream(value: any) -> any;
     def on_commit(callback: Callable) -> None;
     def run_pending_effects -> None;
     def note_traversal_reads(origins: list[NodeAnchor]) -> None;

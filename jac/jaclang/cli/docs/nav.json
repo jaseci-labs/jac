@@ -76,6 +76,7 @@
           "items": [
             {"title": "Your First AI Function", "page": "tutorials/ai/quickstart.md"},
             {"title": "Structured Outputs", "page": "tutorials/ai/structured-outputs.md"},
+            {"title": "Decision Models (System One)", "page": "tutorials/ai/decision-models.md"},
             {"title": "Agentic AI", "page": "tutorials/ai/agentic.md"},
             {"title": "Multimodal", "page": "tutorials/ai/multimodal.md"},
             {"title": "AI-Assisted Development (MCP)", "page": "tutorials/ai/mcp-quickstart.md"}
@@ -168,13 +169,16 @@
             {"title": "CLI Commands", "page": "reference/cli/index.md"},
             {"title": "MCP Server", "page": "reference/mcp.md"},
             {"title": "Agent Skills & MCP", "page": "reference/agent-skills-and-mcp.md"},
+            {"title": "Hack mode", "page": "reference/hack.md"},
             {"title": "Configuration", "page": "reference/config/index.md"},
             {"title": "Workspaces & Apps", "page": "reference/apps.md"},
-            {"title": "Publishing Packages", "page": "reference/publishing.md"},
+            {"title": "Packages", "page": "reference/packages.md"},
+            {"title": "Publishing to PyPI and npm", "page": "reference/publishing.md"},
             {"title": "Persistence & Schema Migration", "page": "reference/persistence.md"},
             {"title": "Placement", "page": "reference/placement.md"},
             {"title": "Errors & Warnings", "page": "reference/diagnostics.md"},
             {"title": "Code Organization", "page": "reference/code-organization.md"},
+            {"title": "Project Wiring", "page": "reference/wiring.md"},
             {"title": "Testing", "page": "reference/testing.md"}
           ]
         },
@@ -215,7 +219,10 @@
         {"title": "The Analysis Cache", "page": "internals/analysis-cache.md"},
         {"title": "Cross-Codespace Interop", "page": "internals/interop.md"},
         {"title": "Region-Granular Persistence Design", "page": "internals/region-persistence-design.md"},
-        {"title": "Compact Codegen IR", "page": "internals/codegen-ir.md"}
+        {"title": "Compact Codegen IR", "page": "internals/codegen-ir.md"},
+        {"title": "Native Units", "page": "internals/native-units.md"},
+        {"title": "The Artifact Router", "page": "internals/artifacts.md"},
+        {"title": "JacPython Migration", "page": "internals/jacpython-migration.md"}
       ]
     },
     {"title": "Ask Jac GPT ✨", "url": "https://jac-gpt.jaseci.org"}

@@ -18,7 +18,9 @@ import os;
 import sys;
 import from tests.support {
     TESTS_DIR,
+    by_source_name,
     compile_native,
+    native_address,
     native_force_opts,
     native_str_func
 }
@@ -51,7 +53,7 @@ test "str dunders reading through a trailer are not demoted to Python" {
     layout = ir.gen.native_layout;
     assert layout is not None , "no native layout -- module-wide native compile failed";
     for want in ["Kind.__str__", "Outer.__str__", "Indexed.__str__"] {
-        assert want in layout.methods , (
+        assert want in by_source_name(layout.methods) , (
             f"{want} was demoted or never emitted; native methods: "
             f"{sorted(layout.methods)}"
         );
@@ -77,7 +79,7 @@ test "class-form enum members and trailer dunders match the sv values" {
 test "a StrEnum member compares equal to its text on both backends" {
     (eng, _) = compile_native("dunder_str_trailer.jac");
     sv = sv_module("dunder_str_trailer");
-    addr = eng.get_function_address("alpha_is_text");
+    addr = native_address(eng, "alpha_is_text");
     assert addr != 0 , "alpha_is_text not found in the JIT engine";
     na_out = ctypes.CFUNCTYPE(ctypes.c_int64)(addr)();
     assert na_out == sv.alpha_is_text() , (

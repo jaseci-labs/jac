@@ -106,3 +106,43 @@ def builtins_introspection_cl() -> dict[any, any] {
 def builtins_introspection_na() -> dict[str, any] {
     return {};
 }
+
+def type_identity_py() -> dict[any, any] {
+    o: _I = _I();
+    return {
+        "is_str": 1 if type("s") is str else 0,
+        "isnot_dict": 1 if type(7) is not dict else 0,
+        "bool_isnot_int": 1 if type(True) is not int else 0,
+        "float_is_float": 1 if type(1.5) is float else 0,
+        "int_ne_float": 1 if type(1) != type(1.5) else 0,
+        "dict_is_dict": 1 if type({"a": 1}) is dict else 0,
+        "isinstance_dict": 1 if isinstance({"a": 1}, dict) else 0,
+        "none_name": type(None).__name__,
+        "int_str": str(type(1)),
+        "arch_is": 1 if type(o) is _I else 0,
+        "arch_name": type(o).__name__,
+        "type_of_type": 1 if type(str) is type else 0,
+        "arch_class_is_type": 1 if type(_I) is type else 0,
+        "arch_class_name": type(_I).__name__
+    };
+}
+
+def type_identity_cl() -> dict[any, any] {
+    o: _I = _I();
+    return {
+        "is_str": 1 if type("s") is str else 0,
+        "isnot_dict": 1 if type(7) is not dict else 0,
+        "bool_isnot_int": 1 if type(True) is not int else 0,
+        "float_is_float": 1 if type(1.5) is float else 0,
+        "int_ne_float": 1 if type(1) != type(1.5) else 0,
+        "dict_is_dict": 1 if type({"a": 1}) is dict else 0,
+        "isinstance_dict": 1 if isinstance({"a": 1}, dict) else 0,
+        "none_name": type(None).__name__,
+        "int_str": str(type(1)),
+        "arch_is": 1 if type(o) is _I else 0,
+        "arch_name": type(o).__name__,
+        "type_of_type": 1 if type(str) is type else 0,
+        "arch_class_is_type": 1 if type(_I) is type else 0,
+        "arch_class_name": type(_I).__name__
+    };
+}

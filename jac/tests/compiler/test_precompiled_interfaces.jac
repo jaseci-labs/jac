@@ -58,12 +58,143 @@ test "precompiled modules carry their type interface on cold and cached builds" 
     }
 }
 
+def _record_paths(raw: (bytes | None)) -> set[str] {
+    if not raw {
+        return set();
+    }
+    return {
+        line.split("\t")[0]
+        for line in raw.decode("utf-8").split("\n")
+        if line.strip()
+    };
+}
+
+test "skipping analysis changes no precompiled product, only analysis dependency records" {
+    import from jaclang.compiler.driver.jir {
+        HEADER_SIZE,
+        SECTIONS_MAGIC,
+        SEC_CTDEPS,
+        SEC_DEPS,
+        read_sections
+    }
+    with TemporaryDirectory() as directory {
+        sections: dict[bool, dict[int, bytes]] = {};
+        for skipped in (False, True) {
+            package = _package(Path(directory) / ("skip" if skipped else "analyze"));
+            (package / "model.jac").write_text("obj Box { has value: int; }\n");
+            source = package / "api.jac";
+            source.write_text(
+                "import from .model { Box }\n"
+                    + "def make() -> Box { return Box(42); }\n"
+            );
+            data = precompile_unit(
+                str(source), str(package), collect=False, skip_analysis=skipped
+            );
+            assert data is not None;
+            start = data.find(SECTIONS_MAGIC, HEADER_SIZE);
+            assert start >= 0;
+            sections[skipped] = read_sections(data, start + len(SECTIONS_MAGIC));
+        }
+        records = {SEC_CTDEPS, SEC_DEPS};
+        for key in set(sections[False]) | set(sections[True]) {
+            if key not in records {
+                assert sections[False].get(key) == sections[True].get(key) , (
+                    f"the analysis schedule changed precompiled section {key}"
+                );
+            }
+        }
+        for key in records {
+            analyzed = _record_paths(sections[False].get(key));
+            skipped_paths = _record_paths(sections[True].get(key));
+            assert skipped_paths <= analyzed , (
+                f"skipping analysis recorded dependencies {skipped_paths - analyzed} "
+                + f"in section {key} that analysis did not"
+            );
+        }
+    }
+}
+
+"""LLVM keeps process-wide tables (metadata kinds, for one) that grow with
+whatever was compiled, and a module's bitcode carries them. A unit written
+from the shared context therefore differed, byte for byte, from the same unit
+written in a process that had compiled something else first, with identical
+IR. Every unit is written from a context of its own."""
+test "a unit's native bitcode does not depend on what the process compiled before" {
+    import from jaclang.compiler.driver.jir {
+        HEADER_SIZE,
+        SECTIONS_MAGIC,
+        SEC_NBITCODE,
+        read_sections
+    }
+    import from jaclang.compiler.driver.program { JacProgram }
+    earlier = JacProgram();
+    earlier.compile(
+        file_path="bitcode_context_probe.jac",
+        use_str=(
+            "import os;\n"
+            + "glob xs: list[int] = [len(os.getcwd())];\n"
+            + "def f(a: dict[str, int]) -> str { return str(sorted(a.items())); }\n"
+        )
+    );
+    assert not earlier.errors_had , [e.pretty_print() for e in earlier.errors_had];
+    with TemporaryDirectory() as directory {
+        written: dict[bool, (bytes | None)] = {};
+        for skipped in (False, True) {
+            package = _package(Path(directory) / ("skip" if skipped else "analyze"));
+            (package / "model.jac").write_text("obj Box { has value: int; }\n");
+            source = package / "api.jac";
+            source.write_text(
+                "import from .model { Box }\n"
+                    + "def make() -> Box { return Box(42); }\n"
+            );
+            data = precompile_unit(
+                str(source), str(package), collect=False, skip_analysis=skipped
+            );
+            assert data is not None;
+            start = data.find(SECTIONS_MAGIC, HEADER_SIZE);
+            assert start >= 0;
+            written[skipped] = read_sections(data, start + len(SECTIONS_MAGIC)).get(
+                SEC_NBITCODE
+            );
+        }
+        assert written[False] is not None , "the unit was not placed native";
+        assert written[False] == written[True] , (
+            "the same unit was written as different bitcode"
+        );
+    }
+}
+
+test "a unit that skips analysis is not gated by analysis diagnostics" {
+    with TemporaryDirectory() as directory {
+        results: dict[bool, (bytes | None)] = {};
+        for skipped in (False, True) {
+            package = _package(Path(directory) / ("skip" if skipped else "analyze"));
+            source = package / "api.jac";
+            source.write_text("def answer() -> int { return 'forty-two'; }\n");
+            results[skipped] = precompile_unit(
+                str(source), str(package), collect=False, skip_analysis=skipped
+            );
+        }
+        assert results[False] is None , "the analyzed unit ignored its type error";
+        assert results[True] is not None , "the unanalyzed unit was blocked";
+    }
+}
+
+test "only the running toolchain package precompiles without analysis" {
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    import from jaclang.dist.precompile_bytecode { is_toolchain_package }
+    assert is_toolchain_package(jaclang_pkg_root());
+    with TemporaryDirectory() as directory {
+        assert not is_toolchain_package(str(_package(Path(directory))));
+    }
+}
+
 test "an installed precompiled interface resolves paths without rebuilding its source" {
     import from jaclang.jac0core { sealed }
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.types.types { FunctionType, ClassType }
     with TemporaryDirectory() as directory {
-        base_path = Path(directory);
+        base_path = Path(directory).resolve();
         package = _package(base_path / "build");
         source = package / "api.jac";
         (package / "model.jac").write_text("obj Box { has value: int; }\n");
@@ -121,7 +252,7 @@ test "an installed precompiled interface resolves paths without rebuilding its s
             assert reloaded._materialize(cached).loc.mod_path == path , (
                 "persisting a reused interface lost its relocation metadata"
             );
-            code = program.get_bytecode(path);
+            code = program._get_compiler().get_bytecode(path, program);
             assert code is not None and code.co_filename == path;
             import from jaclang.compiler.placement.placement { summary_store }
             assert summary_store(program)[path].mod_path == path;
@@ -186,6 +317,8 @@ test "freezing bootstrap bytecode initializes and preserves its interface" {
     # Finalization is a fresh process. A selfhost symbol-only compile does not
     # initialize the interface codec implicitly, unlike an application compile.
     script = """
+from jaclang.jac0core.artifact_registry import begin
+begin(['stubcat'])
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -214,14 +347,8 @@ with TemporaryDirectory() as directory:
     assert read_section_bytes(data, SEC_IFACE) is not None, (
         'fresh bootstrap sealing lost the dependency interface')
 """;
-    env = dict(os.environ);
-    env["JAC_STUBCAT_BUILDING"] = "1";
     result = subprocess.run(
-        [sys.executable, "-c", script],
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=600
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=600
     );
     assert result.returncode == 0 , result.stdout + result.stderr;
 }

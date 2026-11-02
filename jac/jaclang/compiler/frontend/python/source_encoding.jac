@@ -1,11 +1,4 @@
 """Native BOM and coding-cookie detection for Python source input."""
-import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
-
-import from jaclang.runtime.python.native_services { take_error_text }
-import from jaclang.runtime.python.capi { boundary_failure }
-import from c {
-    def jacpy_codec_valid(name: str) -> i64;  def jacpy_error_is(name: str) -> i64;
-}
 
 def normal_encoding(name: str) -> str {
     prefix = name[:12].lower().replace("_", "-");
@@ -73,7 +66,7 @@ def source_encoding(source: bytes) -> str {
         encoding = cookie_encoding(line);
         if encoding is not None {
             if jacpy_codec_valid(encoding) == 0 {
-                if jacpy_error_is("LookupError") != 0 {
+                if PyErr_ExceptionMatches(PyExc_LookupError) != 0 {
                     take_error_text();
                     raise syntax_failure("unknown encoding: " + encoding);
                 }
@@ -97,7 +90,6 @@ def source_encoding(source: bytes) -> str {
 }
 
 import from jaclang.runtime.python.native_services { take_buffer }
-import from c { def jacpy_fd_line(fd: i64) -> u64;  }
 def source_fd_encoding(fd: int) -> str {
     first = take_buffer(jacpy_fd_line(i64(fd)));
     if not first {

@@ -13,25 +13,21 @@ impl JcirGenPass.exit_jsx_element with JsxElement exit {
     } elif any(isinstance(attr, JsxSpreadAttribute) for attr in here.attributes) {
         attrs_expr = self.nod('Dict', ['keys', 'values'], [[], []], jac_node=here);
         for attr in here.attributes {
+            merge_keys: list[any] = [None];
+            merge_values: list[any] = [attrs_expr];
             if isinstance(attr, JsxSpreadAttribute) {
-                attrs_expr = self.nod(
-                    'Dict',
-                    ['keys', 'values'],
-                    [[None, None], [attrs_expr, self.val(attr)]],
-                    jac_node=attr
-                );
+                merge_keys.append(None);
+                merge_values.append(self.val(attr));
             } elif isinstance(attr, JsxNormalAttribute) {
-                attr_tuple = self.val(attr);
-                attrs_expr = self.nod(
-                    'Dict',
-                    ['keys', 'values'],
-                    [
-                        [None, attr_tuple.get('elts')[0]],
-                        [attrs_expr, attr_tuple.get('elts')[1]]
-                    ],
-                    jac_node=attr
-                );
+                attr_pair = self.val(attr).items('elts');
+                merge_keys.append(attr_pair[0]);
+                merge_values.append(attr_pair[1]);
+            } else {
+                continue;
             }
+            attrs_expr = self.nod(
+                'Dict', ['keys', 'values'], [merge_keys, merge_values], jac_node=attr
+            );
         }
     } else {
         dkeys: list[CgNode] = [];

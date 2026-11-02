@@ -21,15 +21,19 @@ down with it.
 
 import ctypes;
 import os;
-import subprocess;
-import tempfile;
 import from tests.support {
-    jac_command,
     TESTS_DIR,
+    by_source_name,
     compile_native,
     get_func,
     has_error_code,
-    native_force_opts
+    native_build_fails,
+    native_force_opts,
+    sv_run,
+    na_run,
+    same_lines,
+    source_spelled,
+    unit_symbol
 }
 import jaclang;
 
@@ -57,64 +61,6 @@ def compile_na_inline_ir(label: str, code: str) -> tuple[any, ...] {
     options.skip_native_engine = True;
     ir = prog.compile(file_path=path, use_str=code, options=options);
     return (prog, ir, );
-}
-
-"""Run a fixture on the server pathway, where CPython is the oracle."""
-def sv_run(fixture: str) -> str {
-    proc = subprocess.run(
-        jac_command("run", os.path.join(FIXTURES, fixture)),
-        capture_output=True,
-        text=True,
-        timeout=900
-    );
-    assert proc.returncode == 0 , f"sv run failed: {proc.stderr[-800:]
-        if proc.stderr
-        else '(empty)'}";
-    return proc.stdout;
-}
-
-"""Build a fixture into a binary and run it, so a crash is a test failure."""
-def na_run(fixture: str) -> str {
-    out_bin = os.path.join(tempfile.mkdtemp(), "probe.bin");
-    comp = subprocess.run(
-        jac_command(
-            "build", "--native", os.path.join(FIXTURES, fixture), "-o", out_bin
-        ),
-        capture_output=True,
-        text=True,
-        timeout=900
-    );
-    assert comp.returncode == 0 , f"nacompile failed: {comp.stderr[-800:]
-        if comp.stderr
-        else '(empty)'}";
-    proc = subprocess.run([out_bin], capture_output=True, text=True, timeout=120);
-    assert proc.returncode == 0 , (
-        f"native binary exited {proc.returncode} "
-        f"(a negative code is a signal, i.e. a crash): {proc.stderr[-400:]
-            if proc.stderr
-            else '(empty)'}"
-    );
-    return proc.stdout;
-}
-
-def same_lines(sv_text: str, na_text: str, what: str) {
-    sv = [
-        _l
-        for _l in sv_text.split("\n")
-        if _l.strip()
-    ];
-    na = [
-        _l
-        for _l in na_text.split("\n")
-        if _l.strip()
-    ];
-    assert sv , f"{what}: sv pathway produced no output";
-    assert len(sv) == len(na) , f"{what} line count: sv {len(sv)} vs na {len(na)}";
-    for idx in range(len(sv)) {
-        assert sv[idx] == na[idx] , f"{what} line {idx}: sv {sv[idx]!r} vs na {na[
-            idx
-        ]!r}";
-    }
 }
 
 test "varargs: *args sums positional extras" {
@@ -243,23 +189,17 @@ test "callsite star-unpack: list spread routes through a variadic callee" {
     assert f() == 15 , "vsum(*[4, 5, 6])";
 }
 
-test "double-star unpack at a call site demotes the calling function" {
+test "double-star unpack into fixed parameters stays native" {
     (prog, ir) = compile_na_inline_ir(
         "dstar_fixed",
         "def two(a: int, b: int) -> int { return a * 10 + b; }\n"
         "def use() -> int { d = {'a': 1, 'b': 2}; return two(**d); }\n"
     );
-    assert not prog.errors_had , (
-        f"two(**d) is owned by use(), which must demote to a seam, got: "
-        f"{[str(e) for e in prog.errors_had]}"
-    );
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
     layout = ir.gen.native_layout;
     assert layout is not None , "whole-module native compile aborted";
-    assert "two" in layout.functions , (
-        f"clean sibling function was lost: {list(layout.functions)}"
-    );
-    assert "use" not in layout.functions , (
-        "the unpacking caller must be demoted out of the native layout"
+    assert "two" in layout.functions and "use" in layout.functions , (
+        f"a ** spread into fixed parameters binds natively: {list(layout.functions)}"
     );
 }
 
@@ -301,7 +241,7 @@ test "variadic init demotes the constructor and refuses its callers" {
     assert "pure" in layout.functions , (
         f"clean sibling function was lost: {list(layout.functions)}"
     );
-    assert "P.init" not in layout.methods , (
+    assert "P.init" not in by_source_name(layout.methods) , (
         "the variadic init must be demoted out of the native layout"
     );
     assert "mk" not in layout.functions , (
@@ -311,9 +251,9 @@ test "variadic init demotes the constructor and refuses its callers" {
 }
 
 test "a pack of a generic archetype's erased T answers what CPython answers" {
-    same_lines(
-        sv_run("varargs_generic.jac"), na_run("varargs_generic.jac"), "erased pack"
-    );
+    (sv_out, _sv_err) = sv_run(os.path.join(FIXTURES, "varargs_generic.jac"));
+    (na_out, _na_err) = na_run(os.path.join(FIXTURES, "varargs_generic.jac"));
+    same_lines(sv_out, na_out, "erased pack");
 }
 
 test "a generic pack slot is a native list, not the bare erased pointer" {
@@ -325,17 +265,19 @@ test "a generic pack slot is a native list, not the bare erased pointer" {
     assert not prog.errors_had , str(prog.errors_had);
     layout = ir.gen.native_layout;
     assert layout is not None , "whole-module native compile aborted";
-    assert "Cell.get" in layout.methods , (
+    assert "Cell.get" in by_source_name(layout.methods) , (
         f"the variadic method must reach the native image: {sorted(layout.methods)}"
     );
-    assert "Cell.count" in layout.methods , (
+    assert "Cell.count" in by_source_name(layout.methods) , (
         f"the variadic method must reach the native image: {sorted(layout.methods)}"
     );
-    assert "Cell.pick" in layout.methods , (
+    assert "Cell.pick" in by_source_name(layout.methods) , (
         f"a pack after a fixed parameter must lower too: {sorted(layout.methods)}"
     );
-    text = str(ir.gen.llvm_ir);
-    assert 'define i8* @"Cell.get"(%"Cell"* %"self", %"List.ptr"* %"fallback")'
+    text = source_spelled(str(ir.gen.llvm_ir));
+    assert f'define i8* @"{source_spelled(
+        unit_symbol(ir, "Cell.get")
+    )}"(%"Cell"* %"self", %"List.ptr"* %"fallback")'
         in text , (
         "the pack slot must lay out as the pointer-flavoured native list; a bare "
         "i8* there is the erased element leaking into the pack's own slot"
@@ -343,23 +285,7 @@ test "a generic pack slot is a native list, not the bare erased pointer" {
 }
 
 test "a generic pack at a by-value type argument is refused, not lowered" {
-    out_bin = os.path.join(tempfile.mkdtemp(), "nope.bin");
-    comp = subprocess.run(
-        jac_command(
-            "build",
-            "--native",
-            os.path.join(FIXTURES, "varargs_generic_scalar.jac"),
-            "-o",
-            out_bin
-        ),
-        capture_output=True,
-        text=True,
-        timeout=900
-    );
-    combined = (comp.stdout or "") + (comp.stderr or "");
-    assert comp.returncode != 0 , (
-        f"an int in a pointer-element pack compiled silently: {combined[-600:]}"
-    );
+    combined = native_build_fails(os.path.join(FIXTURES, "varargs_generic_scalar.jac"));
     assert "Cell[int]" in combined , (
         f"diagnostic does not name the instantiation: {combined[-600:]}"
     );

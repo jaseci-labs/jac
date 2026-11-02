@@ -30,6 +30,27 @@ def _as_any(v: any) -> any {
     return v;
 }
 
+"""Run one execution-manager call the way a transport does: inside a request
+scope of its own, on the database the process context uses."""
+async def _in_request_scope(call: any) -> any {
+    import from jaclang.runtime.runtime { JacRuntime as Jac }
+    import from jaclang.server.request_scope { RequestScope }
+    ambient = Jac.get_context();
+    with RequestScope.open(ambient.base_path_dir, ambient.full_target_path) {
+        return await call;
+    }
+}
+
+"""Persist the system root the way server start-up does. A bare
+ExecutionManager skips that step, and concurrent first calls on sessions of
+their own would otherwise each try to create it."""
+def _persist_system_root {
+    import from jaclang.runtime.runtime { JacRuntime as Jac }
+    ambient = Jac.get_context();
+    assert ambient.system_root is not None;
+    ambient.mem.commit();
+}
+
 """Skip a test unless client integration is explicitly enabled.
 
 Rendering a client page now runs the real Vite/Bun pipeline (bun + npm install
@@ -302,7 +323,7 @@ test "serve user login" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "bob"}],
-                "credential": {"type": "password", "password": "pass456"}
+                "credential": {"type": "password", "password": "pass456_Secure1"}
             }
         );
         create_data = create_response.data;
@@ -311,7 +332,7 @@ test "serve user login" {
             "/user/login",
             json={
                 "identity": {"type": "username", "value": "bob"},
-                "credential": {"type": "password", "password": "pass456"}
+                "credential": {"type": "password", "password": "pass456_Secure1"}
             }
         );
         assert login_response.ok;
@@ -337,7 +358,7 @@ test "serve register rejects legacy payload" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         response = client.post(
-            "/user/register", json={"username": "legacy", "password": "pass123"}
+            "/user/register", json={"username": "legacy", "password": "pass123_Secure1"}
         );
         assert not response.ok;
         assert response.status_code == 422;
@@ -352,7 +373,7 @@ test "serve login with an unknown email identity is refused" {
             "/user/login",
             json={
                 "identity": {"type": "email", "value": "a@b.c"},
-                "credential": {"type": "password", "password": "pass"}
+                "credential": {"type": "password", "password": "pass_Secure1"}
             }
         );
         assert not response.ok;
@@ -456,14 +477,14 @@ test "serve get user info different users" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         # Register first user
-        client.register_user("user1", "pass1");
+        client.register_user("user1", "pass1_Secure1");
         user1_info_response = client.get("/user/info");
         assert user1_info_response.ok;
         user1_info = user1_info_response.data;
         user1_token = user1_info["token"];
         # Register second user
         client.clear_auth();
-        client.register_user("user2", "pass2");
+        client.register_user("user2", "pass2_Secure1");
         user2_info_response = client.get("/user/info");
         assert user2_info_response.ok;
         user2_info = user2_info_response.data;
@@ -500,7 +521,7 @@ test "serve authentication required" {
 test "serve list functions" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("funcuser", "pass");
+        client.register_user("funcuser", "pass_Secure1");
         response = client.get("/functions");
         assert response.ok;
         data = response.data;
@@ -514,7 +535,7 @@ test "serve list functions" {
 test "serve get function signature" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("siguser", "pass");
+        client.register_user("siguser", "pass_Secure1");
         response = client.get("/function/add_numbers");
         assert response.ok;
         data = response.data;
@@ -532,7 +553,7 @@ test "serve get function signature" {
 test "serve call function" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("calluser", "pass");
+        client.register_user("calluser", "pass_Secure1");
         # Call add_numbers
         response = client.post("/function/add_numbers", json={"a": 10, "b": 25});
         assert response.ok;
@@ -552,7 +573,7 @@ test "serve call function" {
 test "serve call function with defaults" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("defuser", "pass");
+        client.register_user("defuser", "pass_Secure1");
         response = client.post("/function/greet", json={});
         assert response.ok;
         data = response.data;
@@ -565,7 +586,7 @@ test "serve call function with defaults" {
 test "serve list walkers" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("walkuser", "pass");
+        client.register_user("walkuser", "pass_Secure1");
         response = client.get("/walkers");
         assert response.ok;
         data = response.data;
@@ -580,7 +601,7 @@ test "serve list walkers" {
 test "serve get walker info" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("infouser", "pass");
+        client.register_user("infouser", "pass_Secure1");
         response = client.get("/walker/CreateTask");
         assert response.ok;
         data = response.data;
@@ -600,7 +621,7 @@ test "serve get walker info" {
 test "serve spawn walker" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("spawnuser", "pass");
+        client.register_user("spawnuser", "pass_Secure1");
         # Spawn CreateTask walker
         response = client.post(
             "/walker/CreateTask", json={"title": "Test Task", "priority": 2}
@@ -637,7 +658,7 @@ test "serve user isolation" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "user1"}],
-                "credential": {"type": "password", "password": "pass1"}
+                "credential": {"type": "password", "password": "pass1_Secure1"}
             }
         );
         user1_data = user1_response.data;
@@ -646,7 +667,7 @@ test "serve user isolation" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "user2"}],
-                "credential": {"type": "password", "password": "pass2"}
+                "credential": {"type": "password", "password": "pass2_Secure1"}
             }
         );
         user2_data = user2_response.data;
@@ -671,7 +692,7 @@ test "serve user isolation" {
 test "serve invalid function" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("invaliduser", "pass");
+        client.register_user("invaliduser", "pass_Secure1");
         response = client.post("/function/nonexistent", json={});
         assert not response.ok or "error" in response.json();
         client.close();
@@ -681,7 +702,7 @@ test "serve invalid function" {
 test "serve invalid walker" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("invalidwalk", "pass");
+        client.register_user("invalidwalk", "pass_Secure1");
         response = client.post("/walker/NonExistentWalker", json={"fields": {}});
         assert not response.ok or "error" in response.json();
         client.close();
@@ -730,7 +751,7 @@ test "serve update username" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "olduser"}],
-                "credential": {"type": "password", "password": "pass123"}
+                "credential": {"type": "password", "password": "pass123_Secure1"}
             }
         );
         assert create_response.ok;
@@ -748,12 +769,12 @@ test "serve update username" {
         assert "token" in update_response.data;
         # Login with new username should work
         client.clear_auth();
-        login_response = client.login("newuser", "pass123");
+        login_response = client.login("newuser", "pass123_Secure1");
         assert login_response.ok;
         assert login_response.data["username"] == "newuser";
         # Login with old username should fail
         client.clear_auth();
-        old_login_response = client.login("olduser", "pass123");
+        old_login_response = client.login("olduser", "pass123_Secure1");
         assert not old_login_response.ok;
         client.close();
     }
@@ -766,7 +787,7 @@ test "serve update username requires auth" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "authtest"}],
-                "credential": {"type": "password", "password": "pass123"}
+                "credential": {"type": "password", "password": "pass123_Secure1"}
             }
         );
         client.clear_auth();
@@ -787,7 +808,7 @@ test "serve update username cannot update other users" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "user1"}],
-                "credential": {"type": "password", "password": "pass1"}
+                "credential": {"type": "password", "password": "pass1_Secure1"}
             }
         );
         user1_token = user1_response.data["token"];
@@ -796,7 +817,7 @@ test "serve update username cannot update other users" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "user2"}],
-                "credential": {"type": "password", "password": "pass2"}
+                "credential": {"type": "password", "password": "pass2_Secure1"}
             }
         );
         # User1 tries to update user2's username
@@ -818,7 +839,7 @@ test "serve update username already exists" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "user_a"}],
-                "credential": {"type": "password", "password": "pass1"}
+                "credential": {"type": "password", "password": "pass1_Secure1"}
             }
         );
         token = response1.data["token"];
@@ -827,7 +848,7 @@ test "serve update username already exists" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "user_b"}],
-                "credential": {"type": "password", "password": "pass2"}
+                "credential": {"type": "password", "password": "pass2_Secure1"}
             }
         );
         # Try to update user_a to user_b (already exists)
@@ -849,7 +870,7 @@ test "serve update password" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "passuser"}],
-                "credential": {"type": "password", "password": "oldpass"}
+                "credential": {"type": "password", "password": "oldpass_Secure1"}
             }
         );
         assert create_response.ok;
@@ -860,8 +881,8 @@ test "serve update password" {
             "/user/password",
             json={
                 "username": "passuser",
-                "current_password": "oldpass",
-                "new_password": "newpass"
+                "current_password": "oldpass_Secure1",
+                "new_password": "newpass_Secure1"
             }
         );
         assert update_response.ok;
@@ -869,11 +890,11 @@ test "serve update password" {
         assert "message" in update_response.data;
         # Login with new password should work
         client.clear_auth();
-        login_response = client.login("passuser", "newpass");
+        login_response = client.login("passuser", "newpass_Secure1");
         assert login_response.ok;
         # Login with old password should fail
         client.clear_auth();
-        old_login_response = client.login("passuser", "oldpass");
+        old_login_response = client.login("passuser", "oldpass_Secure1");
         assert not old_login_response.ok;
         client.close();
     }
@@ -886,7 +907,7 @@ test "serve update password requires auth" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "noauthpass"}],
-                "credential": {"type": "password", "password": "pass123"}
+                "credential": {"type": "password", "password": "pass123_Secure1"}
             }
         );
         client.clear_auth();
@@ -894,8 +915,8 @@ test "serve update password requires auth" {
             "/user/password",
             json={
                 "username": "noauthpass",
-                "current_password": "pass123",
-                "new_password": "newpass"
+                "current_password": "pass123_Secure1",
+                "new_password": "newpass_Secure1"
             }
         );
         assert not response.ok;
@@ -921,7 +942,7 @@ test "serve update password wrong current" {
             json={
                 "username": "wrongpass",
                 "current_password": "wrongpassword",
-                "new_password": "newpass"
+                "new_password": "newpass_Secure1"
             }
         );
         assert not response.ok;
@@ -937,7 +958,7 @@ test "serve update password cannot update other users" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "pass_user1"}],
-                "credential": {"type": "password", "password": "pass1"}
+                "credential": {"type": "password", "password": "pass1_Secure1"}
             }
         );
         user1_token = user1_response.data["token"];
@@ -946,7 +967,7 @@ test "serve update password cannot update other users" {
             "/user/register",
             json={
                 "identities": [{"type": "username", "value": "pass_user2"}],
-                "credential": {"type": "password", "password": "pass2"}
+                "credential": {"type": "password", "password": "pass2_Secure1"}
             }
         );
         # User1 tries to update user2's password
@@ -955,8 +976,8 @@ test "serve update password cannot update other users" {
             "/user/password",
             json={
                 "username": "pass_user2",
-                "current_password": "pass2",
-                "new_password": "hacked"
+                "current_password": "pass2_Secure1",
+                "new_password": "hacked_Secure1"
             }
         );
         assert not response.ok;
@@ -971,7 +992,7 @@ test "serve update password cannot update other users" {
 test "serve imported functions and walkers" {
     with TemporaryDirectory() as tmpdir {
         imports_client = make_imports_client(tmpdir);
-        imports_client.register_user("importuser", "pass");
+        imports_client.register_user("importuser", "pass_Secure1");
         # Test listing functions - should include both local and imported
         functions_response = imports_client.get("/functions");
         assert functions_response.ok;
@@ -1075,7 +1096,7 @@ test "serve protected function requires auth" {
 test "serve protected function with auth" {
     with TemporaryDirectory() as tmpdir {
         ac = make_access_client(tmpdir);
-        ac.register_user("authuser", "pass123");
+        ac.register_user("authuser", "pass123_Secure1");
         response = ac.post("/function/protected_function", json={"message": "secret"});
         assert response.ok;
         data = response.data;
@@ -1098,7 +1119,7 @@ test "serve private function is not served without auth" {
 test "serve private function is not served even with auth" {
     with TemporaryDirectory() as tmpdir {
         ac = make_access_client(tmpdir);
-        ac.register_user("privuser", "pass456");
+        ac.register_user("privuser", "pass456_Secure1");
         response = ac.post("/function/private_function", json={"secret": "topsecret"});
         assert not response.ok , ":priv is private, not an authenticated endpoint";
         assert response.status_code in (404, 405) , response.status_code;
@@ -1135,7 +1156,7 @@ test "serve protected walker requires auth" {
 test "serve protected walker with auth" {
     with TemporaryDirectory() as tmpdir {
         ac = make_access_client(tmpdir);
-        ac.register_user("walkuser", "pass789");
+        ac.register_user("walkuser", "pass789_Secure1");
         response = ac.post("/walker/ProtectedWalker", json={"data": "mydata"});
         assert response.ok;
         data = response.data;
@@ -1157,7 +1178,7 @@ test "serve private walker is not served without auth" {
 test "serve private walker is not served even with auth" {
     with TemporaryDirectory() as tmpdir {
         ac = make_access_client(tmpdir);
-        ac.register_user("privwalk", "pass000");
+        ac.register_user("privwalk", "pass000_Secure1");
         response = ac.post("/walker/PrivateWalker", json={"secret": "verysecret"});
         assert not response.ok , ":priv walkers are private, not authenticated endpoints";
         listing = ac.get("/walkers");
@@ -1215,7 +1236,7 @@ test "serve render client page returns html" {
     _require_client_integration();
     with TemporaryDirectory() as tmpdir {
         client = make_client_app_client(tmpdir);
-        client.register_user("tester", "pass");
+        client.register_user("tester", "pass_Secure1");
         response = client.get("/cl/client_page");
         html = response.text;
         assert "<!DOCTYPE html>" in html;
@@ -1241,7 +1262,7 @@ test "serve render client page returns html" {
 test "serve render unknown page returns error" {
     with TemporaryDirectory() as tmpdir {
         client = make_client_app_client(tmpdir);
-        client.register_user("tester", "pass");
+        client.register_user("tester", "pass_Secure1");
         response = client.get("/cl/missing");
         assert not response.ok or "error" in response.text.lower();
         client.close();
@@ -1377,7 +1398,7 @@ test "bundled app: cross-boundary def:pub endpoint registers for jaclang-bundled
     # Regression for `jac ai --ui`: when the app lives under the jaclang package
     # root, its modules route to the self-host program, so the
     # cross-boundary bindings land there -- not in `Jac.program.mod.hub`. The
-    # serve collector must span both hubs (`_search_hubs`); before the fix it
+    # serve collector must span both hubs (`execution_hubs`); before the fix it
     # scanned only `Jac.program.mod.hub` (empty for a bundled app), so cross_pub
     # went unregistered and the client got a 404/405 instead of "pub-ok".
     bundled = make_bundled_crossboundary_client();
@@ -1425,7 +1446,7 @@ test "serve imported protected walker requires auth" {
 test "serve imported protected walker with auth" {
     with TemporaryDirectory() as tmpdir {
         iac = make_imported_access_client(tmpdir);
-        iac.register_user("importuser", "pass123");
+        iac.register_user("importuser", "pass123_Secure1");
         response = iac.post(
             "/walker/ProtectedImportedWalker", json={"data": "authenticated data"}
         );
@@ -1540,7 +1561,7 @@ test "serve imported protected function requires auth" {
 test "serve imported protected function with auth" {
     with TemporaryDirectory() as tmpdir {
         iac = make_imported_access_client(tmpdir);
-        iac.register_user("importfuncuser", "pass123");
+        iac.register_user("importfuncuser", "pass123_Secure1");
         response = iac.post("/function/protectedImportedFunc", json={});
         assert response.ok;
         data = response.data;
@@ -1715,7 +1736,7 @@ test "serve unknown path returns 404 without base route app" {
 test "serve sync skips write access check on unchanged anchors" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        client.register_user("syncuser", "pass");
+        client.register_user("syncuser", "pass_Secure1");
         # Simulate server-restart conditions
         import from jaclang.runtime.runtime { JacRuntimeInterface as Jac }
         ctx = Jac.get_context();
@@ -1727,20 +1748,20 @@ test "serve sync skips write access check on unchanged anchors" {
         # so a subsequent sync() should detect no drift and skip the
         # write-access check.
         import from typing { cast }
-        import from jaclang.server.session { Session }
+        import from jaclang.server.session { RowState, Session }
         serialized = cast(dict, Serializer.serialize(sys_root, include_type=True));
         sys_root_copy = Serializer.deserialize(serialized);
         if sys_root_copy is not None {
             sys_root.__dict__.update(sys_root_copy.__dict__);
         }
         sys_root.persistent = True;
-        sys_root.hash = Serializer._compute_hash(sys_root);
+        sys_root.hash = Serializer.stored_hash(sys_root);
         # Seed the session exactly as a load would: identity-mapped, flushed
         # hash recorded, not dirty -- i.e. an unchanged anchor.
         sess = cast(Session, ctx.mem);
         sys_root_id = sys_root.ensure_id();
         sess.__mem__[sys_root_id] = sys_root;
-        sess._flushed_hash[sys_root_id] = sys_root.hash;
+        sess._rows.loaded(sys_root_id, RowState(hash=sys_root.hash, version=0));
         sess._dirty.pop(sys_root_id, None);
         # Capture logs
         logger = logging.getLogger("jaclang.runtime.runtime");
@@ -1785,15 +1806,17 @@ test "serve blocking sync walkers run concurrently via to_thread" {
         user_mgr = UserManager(base_path=tmpdir);
         exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
         # Create a test user so spawn_walker can resolve a root
-        user_mgr.create_user("testuser", "testpass");
+        user_mgr.create_internal_user("testuser", "testpass");
+        _persist_system_root();
         # Each walker sleeps for 1 second. Launch 3 concurrently.
         # If they run in threads (concurrent): ~1s total.
         # If they run serially on event loop: ~3s total.
         async def run_concurrent_walkers -> float {
             start = time();
             tasks = [
-                exec_mgr.spawn_walker(walker_cls, {"duration": 1.0}, "testuser")
-                for _ in range(3)
+                _in_request_scope(
+                    exec_mgr.spawn_walker(walker_cls, {"duration": 1.0}, "testuser")
+                ) for _ in range(3)
             ];
             results = await asyncio.gather(*tasks);
             elapsed = time() - start;
@@ -1807,6 +1830,56 @@ test "serve blocking sync walkers run concurrently via to_thread" {
         # With to_thread fix: ~1s. Without: ~3s. Use 2.5s as threshold.
         assert elapsed < 2.5 , f"Blocking walkers took {elapsed:.2f}s (expected < 2.5s for concurrent execution)";
     }
+}
+
+test "a served walker's reports go to the response, not the server's stdout" {
+    import asyncio;
+    import io;
+    import from contextlib { redirect_stdout }
+    import from jaclang.server.server {
+        ExecutionManager,
+        UserManager,
+        ModuleIntrospector
+    }
+
+    with TemporaryDirectory() as tmpdir {
+        jac_file = fixture_abs_path("serve_blocking_io.jac");
+        introspector = ModuleIntrospector(
+            module_name="serve_blocking_io", base_path=str(Path(jac_file).parent)
+        );
+        prepare_source(jac_file);
+        introspector.load();
+        walkers = introspector.get_walkers();
+        user_mgr = UserManager(base_path=tmpdir);
+        exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
+        user_mgr.create_internal_user("testuser", "testpass");
+        _persist_system_root();
+        served = io.StringIO();
+        with redirect_stdout(served) {
+            result = _as_any(
+                asyncio.run(
+                    _in_request_scope(
+                        exec_mgr.spawn_walker(
+                            walkers["slow_blocking"], {"duration": 0.0}, "testuser"
+                        )
+                    )
+                )
+            );
+        }
+        reports = result.get("reports") or [];
+        assert reports and "duration" in reports[0] , f"report missing: {result}";
+        assert "duration" not in served.getvalue() , (
+            "a served request printed its report to the server's stdout, which "
+            f"copies response data into the server log: {served.getvalue()[:200]!r}"
+        );
+    }
+    script = io.StringIO();
+    with redirect_stdout(script) {
+        report {"printed_in": "script mode"};
+    }
+    assert "script mode" in script.getvalue() , (
+        "with no request collecting it, a report is printed (jac run)"
+    );
 }
 
 test "endpoint effect classifier follows helper calls" {
@@ -1859,13 +1932,17 @@ test "spawn_walker_sync and spawn_walker_async dispatch to explicit paths" {
         walker_cls = introspector.get_walkers()["slow_blocking"];
         user_mgr = UserManager(base_path=tmpdir);
         exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
-        user_mgr.create_user("testuser", "testpass");
+        user_mgr.create_internal_user("testuser", "testpass");
+        _persist_system_root();
         async def run -> tuple[any, ...] {
             # Explicit sync path: must still run concurrently via to_thread.
             start = time();
             tasks = [
-                exec_mgr.spawn_walker_sync(walker_cls, {"duration": 0.5}, "testuser")
-                for _ in range(3)
+                _in_request_scope(
+                    exec_mgr.spawn_walker_sync(
+                        walker_cls, {"duration": 0.5}, "testuser"
+                    )
+                ) for _ in range(3)
             ];
             results = await asyncio.gather(*tasks);
             sync_elapsed = time() - start;
@@ -1905,12 +1982,16 @@ test "concurrent async walkers run concurrently end-to-end" {
         assert getattr(walker_cls, "__jac_async__", False) , "slow_async walker must be async";
         user_mgr = UserManager(base_path=tmpdir);
         exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
-        user_mgr.create_user("testuser", "testpass");
+        user_mgr.create_internal_user("testuser", "testpass");
+        _persist_system_root();
         async def run -> float {
             start = time();
             tasks = [
-                exec_mgr.spawn_walker_async(walker_cls, {"duration": 0.5}, "testuser")
-                for _ in range(3)
+                _in_request_scope(
+                    exec_mgr.spawn_walker_async(
+                        walker_cls, {"duration": 0.5}, "testuser"
+                    )
+                ) for _ in range(3)
             ];
             results = await asyncio.gather(*tasks);
             for r in results {
@@ -2125,15 +2206,17 @@ test "concurrent multi-user requests do not race on ctx.user_root" {
         users = [f"user_{i}" for i in range(3)];
         root_ids = {};
         for uname in users {
-            info = user_mgr.create_user(uname, "pw");
+            info = user_mgr.create_internal_user(uname, "pw");
             root_ids[uname] = info["root_id"];
         }
         # Sanity: each user got a unique root.
         assert len(set(root_ids.values())) == 3;
+        _persist_system_root();
         async def run_probe(walker_cls: any) -> list[any] {
             tasks = [
-                exec_mgr.spawn_walker(walker_cls, {"sleep_s": 0.1}, uname)
-                for uname in users
+                _in_request_scope(
+                    exec_mgr.spawn_walker(walker_cls, {"sleep_s": 0.1}, uname)
+                ) for uname in users
             ];
             gathered = await asyncio.gather(*tasks);
             return _as_any(gathered);
@@ -2187,7 +2270,7 @@ with no HTTP response at all."""
 test "orphaned user root is refused with a json error instead of dropping the connection" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        reg = client.register_user("orphan_user", "pw12345");
+        reg = client.register_user("orphan_user", "pw12345_Secure1");
         assert reg.ok , f"register should succeed: {reg.text}";
         # Point the users row at a root anchor id that does not exist in the
         # anchor store, simulating a store that was reset or migrated out from
@@ -2267,18 +2350,19 @@ without a restart), while genuine build failures stay memoized."""
 test "ensure_bundle retries a missing-bun failure and a build error alike" {
     import from unittest.mock { MagicMock }
     import from jaclang.server.server { ModuleIntrospector }
-    import from jaclang.client.client_bundle { ClientBundleError, MissingBunError }
+    import from jaclang.artifacts.model { ArtifactUnavailable }
+    import from jaclang.client.client_bundle { ClientBundleError }
     intro = ModuleIntrospector("serve_api", FIXTURES);
     intro._module = types.ModuleType("serve_api");
     intro._module.__file__ = fixture_abs_path("serve_api.jac");
     bun_missing = MagicMock();
-    bun_missing.build.side_effect = MissingBunError("bun is not available");
+    bun_missing.build.side_effect = ArtifactUnavailable("bun is not available");
     intro._bundle_builder = bun_missing;
     for _ in range(2) {
         try {
             intro.ensure_bundle();
             assert False , "ensure_bundle should raise while bun is missing";
-        } except ClientBundleError {}
+        } except ArtifactUnavailable {}
     }
     assert bun_missing.build.call_count == 2 , "missing bun must be re-checked on every call, not memoized";
 
@@ -2419,7 +2503,7 @@ for (const row of ROWS) {
     token: Boolean(localStorage.getItem("jac_token")),
     badge: document.getElementById("mode-badge").textContent,
     error: errorEl.style.display === "block" ? errorEl.textContent : null,
-    authedGraph: calls.some((c) => c.url.endsWith("/graph/data") && Boolean(c.auth)),
+    authedGraph: calls.some((c) => c.url.includes("/graph/node?") && Boolean(c.auth)),
   };
   const want = { token: row.token, badge: row.badge, error: row.error, authedGraph: row.token };
   const ok = JSON.stringify(seen) === JSON.stringify(want);
@@ -2429,10 +2513,139 @@ for (const row of ROWS) {
 process.exit(failed ? 1 : 0);
 """;
 
-"""The stdlib server serves /graph, /graph/data and /docs, and the /graph login
-modal signs in against it (#8951)."""
+"""Serve settings for `base` as if JAC_SERVE_WORKERS were unset."""
+def _settings_without_worker_env(
+    base: str, overrides: (dict[str, any] | None) = None, config: any = None
+) -> any {
+    import from jaclang.server.settings { ServeSettings }
+    saved = os.environ.pop("JAC_SERVE_WORKERS", None);
+    try {
+        return ServeSettings.load(base, overrides, config=config);
+    } finally {
+        if saved is not None {
+            os.environ["JAC_SERVE_WORKERS"] = saved;
+        }
+    }
+}
+
+
+test "an unset worker count picks as many as fit; an explicit one is kept" {
+    import from jaclang.server.settings {
+        ServeSettings,
+        WORKER_MEMORY_BUDGET,
+        default_worker_count
+    }
+    budget = WORKER_MEMORY_BUDGET;
+    cases = [
+        (8, 64 * budget, False, True, 8, "ample memory gives one worker per core"),
+        (8, 2 * budget, False, True, 2, "two budgets of memory give two workers"),
+        (8, 2 * budget - 1, False, True, 1, "just under two budgets gives one"),
+        (8, budget // 2, False, True, 1, "less than one budget gives one"),
+        (8, 0, False, True, 1, "no free memory gives one"),
+        (8, 64 * budget, True, True, 1, "a cluster pod gives one"),
+        (8, 64 * budget, False, False, 1, "no fork gives one"),
+        (1, 64 * budget, False, True, 1, "one core gives one")
+    ];
+    for (quota, headroom, clustered, can_fork, expected, why) in cases {
+        got = default_worker_count(quota, headroom, clustered, can_fork);
+        assert got == expected , f"{why}: expected {expected}, got {got}";
+    }
+    with TemporaryDirectory() as tmpdir {
+        unset = _settings_without_worker_env(tmpdir, {"workers": ""});
+        assert unset.workers.count_by_default;
+        assert unset.workers.count >= 1;
+        pinned = ServeSettings.load(tmpdir, {"workers": "3"});
+        assert not pinned.workers.count_by_default;
+        assert pinned.workers.count == 3;
+    }
+}
+
+
+test "a [serve] table stands where it omits a key or a JAC_SERVE_* variable is blank" {
+    import from unittest.mock { patch }
+    import from jaclang.project.config { JacConfig }
+    import from jaclang.server.settings { ServeConfigError }
+    with TemporaryDirectory() as tmpdir {
+        manifest = Path(tmpdir) / "jac.toml";
+        manifest.write_text(
+            '[project]\nname = "workers-unset"\n\n'
+            '[serve]\nport = 9123\ngraph_enabled = false\n'
+            'cors_origins = ["https://app.example"]\n'
+        );
+        config = JacConfig.load(manifest);
+        assert config.serve.port == 9123;
+        assert config.serve.workers.count == "" , (
+            f"an absent worker count loaded as {config.serve.workers.count!r}"
+        );
+        settings = _settings_without_worker_env(tmpdir, config=config);
+        assert settings.workers.count_by_default , (
+            "a [serve] port pinned the app to an explicit worker count"
+        );
+        blank = {
+            name: ""
+            for name in ["JAC_SERVE_GRAPH", "JAC_SERVE_PORT", "JAC_SERVE_CORS_ORIGINS"]
+        };
+        with patch.dict(os.environ, blank) {
+            loaded = _settings_without_worker_env(tmpdir, config=config);
+        }
+        seen = (loaded.graph_enabled, loaded.port, loaded.cors_origins);
+        assert seen == (False, 9123, ["https://app.example"]) , (
+            f"a blank JAC_SERVE_* variable overrode jac.toml: {seen}"
+        );
+        with patch.dict(os.environ, {"JAC_SERVE_GRAPH": "disabled"}) {
+            try {
+                _settings_without_worker_env(tmpdir, config=config);
+                assert False , "JAC_SERVE_GRAPH=disabled was read as a boolean";
+            } except ServeConfigError as refused {
+                assert "JAC_SERVE_GRAPH must be true or false" in str(refused) , (
+                    str(refused)
+                );
+            }
+        }
+    }
+}
+
+
+test "an unset worker count falls back to one worker where more would be refused" {
+    import from jaclang.server.settings { ServeConfigError, ServeSettings }
+    with TemporaryDirectory() as tmpdir {
+        client = JacTestClient.from_file(
+            fixture_abs_path("serve_shared_root.jac"), base_path=tmpdir
+        );
+        try {
+            chosen = _settings_without_worker_env(tmpdir, {"workers": ""});
+            chosen.workers.count = 4;
+            chosen.dev = True;
+            client.server.settings = chosen;
+            client.server._validate_or_raise();
+            assert chosen.workers.count == 1 , (
+                f"--dev kept {chosen.workers.count} default workers"
+            );
+            pinned = ServeSettings.load(tmpdir, {"workers": "2"});
+            pinned.dev = True;
+            client.server.settings = pinned;
+            refused = "";
+            try {
+                client.server._validate_or_raise();
+            } except ServeConfigError as e {
+                refused = str(e);
+            }
+            assert "workers = 1 for development" in refused , (
+                f"an explicit count of 2 with --dev was not refused: {refused!r}"
+            );
+            assert pinned.workers.count == 2 , "an explicit count was lowered";
+        } finally {
+            client.close();
+        }
+    }
+}
+
+
+"""The stdlib server serves /graph, the explorer's /graph/node and
+/graph/neighbors, and /docs, and the /graph login modal signs in against it
+(#8951)."""
 test "stdlib server serves graph visualizer and docs" {
-    import from jaclang.client.bun_installer { get_bun }
+    import from tests.support { js_runtime_or_none }
     import from jaclang.server.settings { ServeSettings }
     import from .react_jsdom_harness { REACT_JSDOM_DEPS, bun_install, run_harness }
 
@@ -2445,11 +2658,13 @@ test "stdlib server serves graph visualizer and docs" {
         assert "<html" in page.text.lower() , "/graph should serve the visualizer html";
         seeded = client.post("/walker/leave_note", json={"text": "hi"});
         assert seeded.ok , f"seed walker failed: {seeded.text}";
-        data = client.get("/graph/data");
-        assert data.status_code == 200 , f"/graph/data: {data.text}";
-        payload = data.json();
-        assert "nodes" in payload and "edges" in payload , f"payload: {data.text}";
-        assert len(payload["nodes"]) >= 1 , "graph data should include the root node";
+        opened = client.get("/graph/node");
+        assert opened.status_code == 200 , f"/graph/node: {opened.text}";
+        assert opened.json()["root"] is True , f"/graph/node opens on the root: {opened.text}";
+        page = client.get(f"/graph/neighbors?id={opened.json()['id']}");
+        assert page.status_code == 200 , f"/graph/neighbors: {page.text}";
+        payload = page.json();
+        assert "nodes" in payload and "edges" in payload , f"payload: {page.text}";
         docs = client.get("/docs");
         assert docs.status_code == 200 , f"/docs: {docs.status_code}";
         assert "swagger-ui" in docs.text.lower() , "/docs should serve the API explorer";
@@ -2459,8 +2674,8 @@ test "stdlib server serves graph visualizer and docs" {
         assert "/walker/leave_note" in paths , "openapi should list the module's walkers";
         assert "/user/login" in paths , "openapi should list auth endpoints";
         _require_client_integration();
-        bun = get_bun();
-        assert bun is not None , "bun is on PATH but get_bun() could not locate it";
+        bun = js_runtime_or_none();
+        assert bun is not None , "bun is on PATH but js_runtime_or_none() could not locate it";
         registered = client.register_user("graph_viewer", "pw12345678");
         assert registered.ok , f"register failed: {registered.text}";
         client.server.settings = ServeSettings.load(
@@ -2911,7 +3126,7 @@ test "serve: X-Jac-Idempotency-Key replays the first response for a repeated cal
             );
             assert first.ok , f"greet should be callable: {first.data}";
             scoped = scoped_idempotency_key(
-                "outbox-entry-1", Con.GUEST.value, "serve_api", "greet"
+                "outbox-entry-1", Con.GUEST.value, client.server.module_name, "greet"
             );
             assert cached_result(scoped) is not None , (
                 "a successful keyed call is remembered in the outbox seen-table "
@@ -3032,5 +3247,113 @@ test "sv_client: a walker spawn without a stub class is refused before the provi
         assert stub.calls == [] , "the provider must not have been asked to run the walker";
     } finally {
         _reset_bridge_state();
+    }
+}
+
+import from jaclang.client.client_bundle { ClientBundle, ClientBundleBuilder }
+
+"""A real builder whose bundler step only counts its runs."""
+obj _CountingBundleBuilder(ClientBundleBuilder) {
+    has bundles: int = 0;
+
+    def _compile_bundle(module: types.ModuleType, module_path: Path) -> ClientBundle {
+        self.bundles += 1;
+        return ClientBundle(
+            module_name=module.__name__,
+            code=f"export const build = {self.bundles};",
+            client_functions=[],
+            client_globals=[],
+            hash=f"hash-{self.bundles}"
+        );
+    }
+}
+
+test "client bundles are rebuilt by content, not by timestamp" {
+    import time;
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp).resolve();
+        (base / "jac.toml").write_text('[project]\nname = "sig"\nkind = "web-app"\n');
+        page = base / "page.jac";
+        annex = base / "page.impl.jac";
+        page.write_text(
+            'def label -> str;\n\n'
+            'def:pub App -> any {\n    return <div>{label()}</div>;\n}\n'
+        );
+        annex.write_text('impl label -> str {\n    return "one";\n}\n');
+        module = types.ModuleType("sig_page");
+        module.__file__ = str(page);
+        builder = _CountingBundleBuilder();
+        builder.build(module);
+        moved = time.time_ns() - 3_600_000_000_000;
+        for source in (page, annex) {
+            os.utime(source, ns=(moved, moved));
+        }
+        builder.build(module);
+        assert builder.bundles == 1 , "identical bytes under a new timestamp rebuilt the bundle";
+        page.write_text(
+            page.read_text().replace("<div>", "<p>").replace("</div>", "</p>")
+        );
+        builder.build(module);
+        assert builder.bundles == 2 , "a content change reused the stale bundle";
+        annex.unlink();
+        builder.build(module);
+        assert builder.bundles == 3 , "an annex deletion reused the stale bundle";
+    }
+}
+
+"""Boot used to resolve every served walker class only to read its `@restspec`,
+so readiness grew with the program instead of the route count. Routes now come
+from the surface manifest: boot resolves only targets whose decorator arguments
+are not literals, and a walker class is resolved on the first request to it."""
+test "routes come from the manifest and a walker resolves on its first request" {
+    import sys;
+    with TemporaryDirectory() as tmp {
+        app = os.path.join(tmp, "main.jac");
+        walkers = ''.join(
+            f'walker:pub w{i} {{\n    can go with Root entry {{\n        report {i};\n    }}\n}}\n\n'
+            for i in range(20)
+        );
+        Path(app).write_text(
+            'import from http { HTTPMethod }\n\n'
+                + 'glob DYNAMIC_PATH = "/dynamic";\n\n'
+                + walkers
+                + '@restspec(method=HTTPMethod.GET, path="/hello")\n'
+                + 'walker:pub Hello {\n    can go with Root entry {\n        report "hi";\n    }\n}\n\n'
+                + '@restspec(path=DYNAMIC_PATH)\n'
+                + 'walker:pub Dynamic {\n    can go with Root entry {\n        report "dyn";\n    }\n}\n'
+        );
+        resolved: list[str] = [];
+        def tally(frame: any, event: str, arg: any) {
+            if event == 'call' and frame.f_code.co_name == '_resolve_declared' {
+                resolved.append(str(frame.f_locals.get('name')));
+            }
+        }
+        client = JacTestClient.from_file(app, base_path=tmp);
+        sys.setprofile(tally);
+        try {
+            client.server;
+        } finally {
+            sys.setprofile(None);
+        }
+        try {
+            assert resolved == ['Dynamic'] , f"boot resolved {resolved}";
+            resolved.clear();
+            sys.setprofile(tally);
+            try {
+                response = client.post("/walker/w3", json={});
+            } finally {
+                sys.setprofile(None);
+            }
+            assert response.status_code == 200 , response.text;
+            assert set(resolved) == {'w3'} , f"the first request resolved {resolved}";
+            hello = client.get("/hello");
+            assert hello.status_code == 200 , hello.text;
+            assert "hi" in hello.text;
+            dynamic = client.post("/dynamic", json={});
+            assert dynamic.status_code == 200 , dynamic.text;
+            assert "dyn" in dynamic.text;
+        } finally {
+            client.close();
+        }
     }
 }

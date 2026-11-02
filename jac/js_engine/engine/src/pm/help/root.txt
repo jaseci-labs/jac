@@ -1,0 +1,48 @@
+js_engine is a JavaScript engine and package manager written in Jac. (v@VERSION@, bun-compat @BUN_COMPAT@)
+
+Usage: bun <command> [...flags] [...args]
+       bun [...flags] <file.js> [...args]
+
+Commands:
+  run       ./my-script.js        Execute a file with bun
+            lint                 Run a package.json script
+  x         prettier             Execute a package binary (CLI) from node_modules/.bin
+
+  install                        Install dependencies for a package.json (bun i)
+  add       zod                  Add a dependency to package.json (bun a)
+
+  <command> --help               Print help text for command.
+
+Flags:
+      --smol                          Use less memory: enable the garbage collector and collect more often
+      --nogc                          Disable the garbage collector (it is on by default)
+      --expose-gc                     Expose gc() on the global object (collects when the garbage collector is enabled)
+  -r, --preload=<val>                 Import a module before other modules are loaded
+      --require=<val>                 Alias of --preload, for Node.js compatibility
+      --import=<val>                  Alias of --preload, for Node.js compatibility
+      --if-present                    Exit without an error if the entrypoint does not exist
+  -e, --eval=<val>                    Evaluate argument as a script
+  -p, --print=<val>                   Evaluate argument as a script and print the result
+      --input-type=<val>              Treat -e / -p code as "module" or "commonjs"
+      --no-deprecation                Suppress all reporting of the custom deprecation.
+      --throw-deprecation             Determine whether or not deprecation warnings result in errors.
+      --no-warnings                   Silence all process warnings
+      --title=<val>                   Set the process title
+      --zero-fill-buffers             Boolean to force Buffer.allocUnsafe(size) to be zero-filled.
+      --unhandled-rejections=<val>    One of "strict", "throw", "warn", "none", or "warn-with-error-code"
+      --console-depth=<val>           Set the default depth for console.log object inspection (default: 2)
+      --preserve-symlinks             Resolve modules without following symlinks
+      --preserve-symlinks-main        Resolve the entry point without following symlinks
+      --silent                        Don't print the script command
+  -v, --version                       Print version and exit
+  -b, --bun                           Force a script or package to use bun instead of Node.js (via symlinking node)
+      --env-file=<val>                Load environment variables from the specified file(s)
+      --cwd=<val>                     Absolute path to resolve files & entry points from. This just changes the process' cwd.
+  -c, --config=<val>                  Specify path to the config file. Default $cwd/bunfig.toml
+  -h, --help                          Display this menu and exit
+
+(more flags in bun install --help and bun run --help)
+
+Learn more about Jac:            https://www.jaclang.org/docs
+Jaseci on GitHub:                https://github.com/jaseci-labs/jaseci
+Join our Discord community:      https://discord.gg/6j3QNdtcN6

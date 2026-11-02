@@ -19,7 +19,7 @@ import from pathlib { Path }
 import from unittest.mock { patch }
 import from tests.support { cache_env }
 import from jaclang.cache.locking { FileLock }
-import from jaclang.toolchains.store { InstallLock }
+import from jaclang.jac0core.cache_paths { FileLock as InstallLock }
 import from jaclang.jac0core.cache_paths { get_cache_home, get_jir_cache_dir }
 import from jaclang.cache.home {
     CACHEDIR_TAG,
@@ -54,10 +54,14 @@ glob DAY: float = 86400.0,
          "jir-modules",
          "jir-bootstrap",
          "jir-stubcat",
-         "jir-kernel-units",
          "jir-digests",
+         "jir-nativeglue",
          "apps",
+         "pkgs",
+         "pkg-git",
+         "pkg-index",
          "scale-binaries",
+         "admin",
          "models",
          "toolchains-downloads",
          "toolchains-installed",
@@ -500,28 +504,22 @@ test "nested staging uses the orphan TTL and never follows symlinks" {
     }
 }
 
-test "retired toolchains honor custom roots and never remove an active bucket root" {
+test "retired toolchains are swept and an active bucket root is kept" {
     (base, env) = private_root();
-    with tempfile.TemporaryDirectory() as custom {
-        env["JAC_TOOLCHAIN_DIR"] = custom;
-        old = entry_dir(Path(custom), "llvm-cbe", 0.0);
-        default_old = entry_dir(base, "toolchains/cocoapods", 0.0);
-        with patch.dict(os.environ, env) {
-            extra = dict(unmanaged());
-            assert str(old) in extra;
-            gc(dry_run=True);
-            assert old.exists() and default_old.exists();
-            gc();
-            assert not old.exists() and not default_old.exists();
-        }
-        env["JAC_TOOLCHAIN_DIR"] = str(base / "toolchains/llvm-cbe");
-        with patch.dict(os.environ, env) {
-            active = entry_dir(
-                bucket("toolchains-installed").path(), "demo/v1/platform", 0.0
-            );
-            gc();
-            assert active.exists();
-        }
+    old = entry_dir(base, "toolchains/llvm-cbe", 0.0);
+    other_old = entry_dir(base, "toolchains/cocoapods", 0.0);
+    with patch.dict(os.environ, env) {
+        extra = dict(unmanaged());
+        assert "toolchains/llvm-cbe" in extra , extra;
+        gc(dry_run=True);
+        assert old.exists() and other_old.exists();
+        gc();
+        assert not old.exists() and not other_old.exists();
+        active = entry_dir(
+            bucket("toolchains-installed").path(), "demo/v1/platform", 0.0
+        );
+        gc();
+        assert active.exists();
     }
 }
 
@@ -529,7 +527,6 @@ test "private test environments override every inherited cache family" {
     with tempfile.TemporaryDirectory() as tmp {
         inherited = {
             "JAC_CACHE_HOME": "/unrelated",
-            "JAC_TOOLCHAIN_DIR": "/unrelated-tools",
             "JAC_MODELS_DIR": "/unrelated-models",
             "JAC_SCALE_CACHE_DIR": "/unrelated-binaries"
         };

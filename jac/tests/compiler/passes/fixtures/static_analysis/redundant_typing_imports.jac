@@ -6,7 +6,7 @@ certified every ambient name IDENTICAL across spellings: same canonical
 declaration, same assignability, same diagnostic stream. The import buys
 nothing the ambient binding does not already give -- and when the source
 is `typing`, the import alone keeps the module off the native pathway
-(native_default_verdict: "unresolved import 'typing'").
+(the placement pass refuses it: "unresolved import 'typing'").
 
 Expected refusals:
   - E1125 for 'Callable' and 'Mapping' from typing

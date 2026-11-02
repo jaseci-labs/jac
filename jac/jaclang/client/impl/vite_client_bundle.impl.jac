@@ -1,11 +1,8 @@
-import from jaclang.cli.console { console }
-
 impl make_client_bundle_builder(
     base_path: (Path | None) = None,
     entry_path: str = "",
     program: JacProgram | None = None
 ) -> ViteClientBundleBuilder {
-    import from jaclang.client.vite_bundler { ViteBundler }
     if base_path is None {
         import from jaclang.runtime.runtime { JacRuntime as Jac }
         import from jaclang.project.config { find_project_root }
@@ -42,7 +39,6 @@ impl make_client_bundle_builder(
 }
 
 impl ViteClientBundleBuilder._emitted_digest(self: ViteClientBundleBuilder) -> str {
-    import from jaclang.client.client_bundle { emitted_tree_digest }
     if not self.vite_package_json {
         return '';
     }
@@ -82,8 +78,8 @@ impl ViteClientBundleBuilder._get_compiler(
                 'Vite package.json not found. Set vite_package_json when using ViteClientBundleBuilder'
             );
         }
-        compile_to_js_func: Callable[[Path], ClientArtifact] = cast(
-            Callable[[Path], ClientArtifact], self._compile_to_js
+        compile_to_js_func: Callable[[Path, Path | None], ClientArtifact] = cast(
+            Callable[[Path, Path | None], ClientArtifact], self._compile_to_js
         );
         self._compiler = ViteCompiler(
             vite_package_json=self.vite_package_json,

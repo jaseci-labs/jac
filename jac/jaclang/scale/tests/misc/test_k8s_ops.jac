@@ -11,7 +11,6 @@ resolution for namespace / availability, and a mocked config-loader boundary
 import os;
 import from unittest.mock { patch, MagicMock }
 import from kubernetes.client.exceptions { ApiException }
-import from jaclang.scale.admin { k8s_ops }
 
 
 test "api_error_detail maps 403 to actionable RBAC guidance" {
@@ -101,6 +100,30 @@ test "k8s_available gates on client presence and service host env" {
             assert k8s_ops.k8s_available() == False;
         }
     }
+}
+
+
+test "every api accessor degrades to None off-cluster, including the KEDA ones" {
+    # The autoscaler accessors are reached from status paths that must render
+    # "unavailable" rather than raise, so they have to answer like core_api.
+    k8s_ops._config_loaded = False;
+    k8s_ops._config_ok = False;
+    with patch.object(k8s_ops, "HAS_KUBERNETES", True) {
+        with patch.dict(os.environ) {
+            os.environ.pop("KUBERNETES_SERVICE_HOST", None);
+            for name in [
+                "core_api",
+                "apps_api",
+                "networking_api",
+                "autoscaling_api",
+                "custom_objects_api"
+            ] {
+                assert getattr(k8s_ops, name)() is None , name;
+            }
+        }
+    }
+    k8s_ops._config_loaded = False;
+    k8s_ops._config_ok = False;
 }
 
 

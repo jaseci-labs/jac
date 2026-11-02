@@ -177,7 +177,7 @@ impl NaIRGenPass._dispatch_bytearray_method(
     fns = self._bytearray_runtime_fns();
     i8 = ir.IntType(8);
     i64 = ir.IntType(64);
-    params: Sequence[any] = nd.params or [];
+    params: Sequence[uni.Expr | uni.KWPair] = nd.params or [];
     if method_name == "append" {
         if not params {
             return None;
@@ -278,7 +278,7 @@ impl NaIRGenPass._emit_struct_pack_into(
     if buf_val is None
         or "u8" not in self.list_types
         or buf_val.type != self.list_types["u8"].as_pointer() {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="struct.pack_into buffer",
@@ -288,7 +288,7 @@ impl NaIRGenPass._emit_struct_pack_into(
     }
     _off_raw = self._codegen_expr(params[2]);
     if _off_raw is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="struct.pack_into offset",
@@ -306,7 +306,7 @@ impl NaIRGenPass._emit_struct_pack_into(
         ]
     );
     if len(params) - 3 != _expected {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="struct.pack_into argument count",

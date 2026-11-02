@@ -1,58 +1,10 @@
-import from jaclang.compiler.frontend.roles { Kid }
 import json;
+import os;
 import from typing { cast }
-import jaclang.compiler.backends.es.estree as es;
-import jaclang.compiler.frontend.unitree as uni;
-import type from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.es.es_unparse { es_to_js, JSCodeGenerator }
-import from jaclang.compiler.types.types { TypeBase, ClassType }
-import from jaclang.compiler.backends.es.primitives_es { ESBuiltinEmitter }
-import from jaclang.compiler.frontend.constant { CodeContext, SymbolType }
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from jaclang.compiler.passes.osp_analysis { OspAnalysis, OspModel, OspSlot }
-import from jaclang.compiler.backends.common.ast_gen_base { BaseAstGenPass }
-import from jaclang.compiler.frontend.module_facts { ModuleFacts }
-import from jaclang.compiler.backends.es.jsx_processor { EsJsxProcessor }
-import from jaclang.compiler.frontend.codeinfo { BoundaryTypeInfo, ClientManifest }
-import from jaclang.compiler.backends.es.scoped_styles {
-    ScopedStyleSheet,
-    load_style_annex
-}
-import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
-import from jaclang.compiler.backends.es.free_ident_audit {
-    FreeIdentifier,
-    RUNTIME_PRELUDE_GLOBALS,
-    client_ambient_globals,
-    free_identifiers
-}
-import from jaclang.project.modresolver {
-    convert_to_js_import_path,
-    relative_js_specifier,
-    resolve_relative_path
-}
-import from jaclang.compiler.frontend.diagnostics {
-    E2025,
-    E5010,
-    E5011,
-    E5012,
-    E5016,
-    E5017,
-    E5018,
-    W5013,
-    W5014,
-    W5015,
-    E5080,
-    E5081,
-    E5085,
-    E5086,
-    E5099,
-    E5101,
-    E5103
-}
 
 glob _T = TypeVar('_T', bound=es.Node),
-     ES_LOGICAL_OPS: dict[(Tok, str)] = {Tok.KW_AND: '&&', Tok.KW_OR: '||'},
-     ES_BINARY_OPS: dict[(Tok, str)] = {
+     ES_LOGICAL_OPS: dict[str, str] = {Tok.KW_AND: '&&', Tok.KW_OR: '||'},
+     ES_BINARY_OPS: dict[str, str] = {
          Tok.EE: '===',
          Tok.NE: '!==',
          Tok.LT: '<',
@@ -64,13 +16,14 @@ glob _T = TypeVar('_T', bound=es.Node),
          Tok.STAR_MUL: '*',
          Tok.DIV: '/',
          Tok.MOD: '%',
+         Tok.STAR_POW: '**',
          Tok.BW_AND: '&',
          Tok.BW_OR: '|',
          Tok.BW_XOR: '^',
          Tok.LSHIFT: '<<',
          Tok.RSHIFT: '>>'
      },
-     ES_COMPARISON_OPS: dict[(Tok, str)] = {
+     ES_COMPARISON_OPS: dict[str, str] = {
          Tok.EE: '===',
          Tok.NE: '!==',
          Tok.LT: '<',
@@ -82,13 +35,13 @@ glob _T = TypeVar('_T', bound=es.Node),
          Tok.KW_IN: 'in',
          Tok.KW_NIN: 'in'
      },
-     ES_UNARY_OPS: dict[(Tok, str)] = {
+     ES_UNARY_OPS: dict[str, str] = {
          Tok.MINUS: '-',
          Tok.PLUS: '+',
          Tok.NOT: '!',
          Tok.BW_NOT: '~'
      },
-     ES_AUG_ASSIGN_OPS: dict[(Tok, str)] = {
+     ES_AUG_ASSIGN_OPS: dict[str, str] = {
          Tok.ADD_EQ: '+=',
          Tok.SUB_EQ: '-=',
          Tok.MUL_EQ: '*=',
@@ -101,32 +54,32 @@ glob _T = TypeVar('_T', bound=es.Node),
          Tok.RSHIFT_EQ: '>>=',
          Tok.STAR_POW_EQ: '**='
      },
-     OP_EMIT_MAP: dict[(Tok, str)] = {
-         Tok.PLUS: "emit_op_add",
-         Tok.MINUS: "emit_op_sub",
-         Tok.STAR_MUL: "emit_op_mul",
-         Tok.DIV: "emit_op_truediv",
-         Tok.FLOOR_DIV: "emit_op_floordiv",
-         Tok.MOD: "emit_op_mod",
-         Tok.STAR_POW: "emit_op_pow",
-         Tok.BW_AND: "emit_op_and",
-         Tok.BW_OR: "emit_op_or",
-         Tok.BW_XOR: "emit_op_xor",
-         Tok.LSHIFT: "emit_op_lshift",
-         Tok.RSHIFT: "emit_op_rshift"
+     OP_EMIT_MAP: dict[str, str] = {
+         Tok.PLUS: "op_add",
+         Tok.MINUS: "op_sub",
+         Tok.STAR_MUL: "op_mul",
+         Tok.DIV: "op_truediv",
+         Tok.FLOOR_DIV: "op_floordiv",
+         Tok.MOD: "op_mod",
+         Tok.STAR_POW: "op_pow",
+         Tok.BW_AND: "op_and",
+         Tok.BW_OR: "op_or",
+         Tok.BW_XOR: "op_xor",
+         Tok.LSHIFT: "op_lshift",
+         Tok.RSHIFT: "op_rshift"
      },
-     CMP_EMIT_MAP: dict[(Tok, str)] = {
-         Tok.EE: "emit_op_eq",
-         Tok.NE: "emit_op_ne",
-         Tok.LT: "emit_op_lt",
-         Tok.GT: "emit_op_gt",
-         Tok.LTE: "emit_op_le",
-         Tok.GTE: "emit_op_ge",
-         Tok.KW_IN: "emit_op_contains",
-         Tok.KW_NIN: "emit_op_contains"
+     CMP_EMIT_MAP: dict[str, str] = {
+         Tok.EE: "op_eq",
+         Tok.NE: "op_ne",
+         Tok.LT: "op_lt",
+         Tok.GT: "op_gt",
+         Tok.LTE: "op_le",
+         Tok.GTE: "op_ge",
+         Tok.KW_IN: "op_contains",
+         Tok.KW_NIN: "op_contains"
      },
-     FW_JS_PLAIN_OPS: frozenset = frozenset({"&", "|", "^"}),
-     FW_JS_CHECKED_OPS: frozenset = frozenset({"+", "-", "*"}),
+     FW_JS_PLAIN_OPS: frozenset[str] = frozenset({"&", "|", "^"}),
+     FW_JS_CHECKED_OPS: frozenset[str] = frozenset({"+", "-", "*"}),
      FW_JS_HELPER_OPS: dict[(str, str)] = {
          "/": "div",
          "//": "fdiv",
@@ -141,7 +94,7 @@ glob _T = TypeVar('_T', bound=es.Node),
          "%": "mod",
          "**": "pow"
      },
-     FW_BINARY_OPS: dict[(Tok, str)] = {
+     FW_BINARY_OPS: dict[str, str] = {
          Tok.PLUS: "+",
          Tok.MINUS: "-",
          Tok.STAR_MUL: "*",
@@ -155,44 +108,29 @@ glob _T = TypeVar('_T', bound=es.Node),
          Tok.LSHIFT: "<<",
          Tok.RSHIFT: ">>"
      },
-     AUG_TO_BINARY_TOK: dict[(Tok, Tok)] = {
-         Tok.ADD_EQ: Tok.PLUS,
-         Tok.SUB_EQ: Tok.MINUS,
-         Tok.MUL_EQ: Tok.STAR_MUL,
-         Tok.DIV_EQ: Tok.DIV,
-         Tok.FLOOR_DIV_EQ: Tok.FLOOR_DIV,
-         Tok.MOD_EQ: Tok.MOD,
-         Tok.STAR_POW_EQ: Tok.STAR_POW,
-         Tok.BW_AND_EQ: Tok.BW_AND,
-         Tok.BW_OR_EQ: Tok.BW_OR,
-         Tok.BW_XOR_EQ: Tok.BW_XOR,
-         Tok.LSHIFT_EQ: Tok.LSHIFT,
-         Tok.RSHIFT_EQ: Tok.RSHIFT
+     UNARY_EMIT_MAP: dict[str, str] = {
+         Tok.MINUS: "op_neg",
+         Tok.PLUS: "op_pos",
+         Tok.BW_NOT: "op_invert"
      },
-     UNARY_EMIT_MAP: dict[(Tok, str)] = {
-         Tok.MINUS: "emit_op_neg",
-         Tok.PLUS: "emit_op_pos",
-         Tok.BW_NOT: "emit_op_invert"
-     },
-     AUG_EMIT_MAP: dict[(Tok, str)] = {
-         Tok.ADD_EQ: "emit_op_iadd",
-         Tok.SUB_EQ: "emit_op_isub",
-         Tok.MUL_EQ: "emit_op_imul",
-         Tok.BW_OR_EQ: "emit_op_ior",
-         Tok.BW_AND_EQ: "emit_op_iand",
-         Tok.BW_XOR_EQ: "emit_op_ixor"
-     },
-     LiteralValue = str | bool | int | float | None;
+     AUG_EMIT_MAP: dict[str, str] = {
+         Tok.ADD_EQ: "op_iadd",
+         Tok.SUB_EQ: "op_isub",
+         Tok.MUL_EQ: "op_imul",
+         Tok.BW_OR_EQ: "op_ior",
+         Tok.BW_AND_EQ: "op_iand",
+         Tok.BW_XOR_EQ: "op_ixor"
+     };
 
-glob VIEW_ACC: str = "__jac_view_kids";
+type LiteralValue = str | bool | int | float | None;
 
-glob ES_STMT_DISPLAY: dict[str, str] = {
+glob VIEW_ACC: str = "__jac_view_kids",
+     ES_STMT_DISPLAY: dict[str, str] = {
          'DeleteStmt': "'del' statement",
          'MatchStmt': "'match' statement",
          'WithStmt': "'with' statement",
          'OpenStmt': "'open' block",
-         'TypedCtxBlock': 'typed context block',
-         'PyInlineCode': 'inline Python block'
+         'TypedCtxBlock': 'typed context block'
      };
 
 obj ScopeInfo {
@@ -230,10 +168,16 @@ obj CallArgSlot {
         value: (es.Expression | es.SpreadElement | None);
 }
 
-walker EsastGenPass(BaseAstGenPass[es.Statement]) {
-    has prog: JacProgram,
-        _ct_only_names: (set[str] | None) = None,
-        child_passes: list[EsastGenPass] = [],
+obj NullSafeLink {
+    has guard: es.Expression,
+        recv: es.Expression,
+        ref: es.Expression,
+        lowered: es.Expression;
+}
+
+walker EsastGenPass(TreePass) {
+    static has contract: PassContract = PassContract();
+    has _ct_only_names: (set[str] | None) = None,
         imports: list[es.ImportDeclaration] = [],
         module_import_paths: dict[str, str] = {},
         exports: list[es.ExportNamedDeclaration] = [],
@@ -244,7 +188,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         _jsx_processor: EsJsxProcessor | None = None,
         scoped_styles: (ScopedStyleSheet | None) = None,
         reactive_vars: set[str] = set(),
-        component_export_names: set[str] = set(),
+        shared_arch_names: set[str] = set(),
         reactive_vars_stack: list[set[str]] = [],
         injected_imports: set[str] = set(),
         match_seq: int = 0,
@@ -258,6 +202,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         _view_branch_base: dict[(int, int)] = {},
         _view_slot_loops: set[int] = set(),
         _loop_label_stack: list[str] = [],
+        _loop_labels: dict[int, str] = {},
         _loop_label_savepoints: list[list[str]] = [],
         _used_loop_labels: set[str] = set(),
         _loop_label_seq: int = 0,
@@ -268,13 +213,16 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         needs_jac_runtime: bool = False,
         needs_osp_kernel: bool = False,
         needs_osp_graph: bool = False,
-        _unlowered_reported: set = set(),
+        _unlowered_reported: set[int] = set(),
         _unbound_reported: set[str] = set(),
         _osp_var_arch_cache: (dict[str, str] | None) = None,
-        _primitive_emitters: dict[str, object] = {},
+        _primitive_emitters: dict[str, PrimitiveEmitter[(str, ESEmitCtx)]] = {},
         _emitters_ready: bool = False,
-        _builtin_emitter: ESBuiltinEmitter = ESBuiltinEmitter(),
-        _poly_methods: (set[str] | None) = None;
+        _builtin_emitter: PrimitiveEmitter[(str, ESEmitCtx)] = ESBuiltinEmitter(),
+        _poly_methods: (set[str] | None) = None,
+        loop_links: LoopLinks = LoopLinks(),
+        _native_links: dict[int, bool] = {},
+        _null_safe_links: dict[int, NullSafeLink] = {};
 
     has resolved_backend: FrameworkBackend {
         getter {
@@ -291,8 +239,6 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         }
     }
 
-    static has HOST_PASS: bool = True;
-
     can prepare with entry;
     can enter_walk with uni.UniNode entry;
     can exit_walk with uni.UniNode exit;
@@ -301,11 +247,16 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     ) -> es.Expression;
 
     def _apply_fw_coercion(nd: uni.Expr) -> None;
+    def _js_int_spelling(text: str) -> str;
     def _fw_js_binop(
         op: str, left: es.Expression, right: es.Expression, jac_node: uni.UniNode
     ) -> es.Expression;
 
     def _fw_to_number(expr: es.Expression, jac_node: uni.UniNode) -> es.Expression;
+    def _floor_div(
+        left: es.Expression, right: es.Expression, jac_node: uni.UniNode
+    ) -> es.Expression;
+
     def _fw_binary(
         nd: uni.Expr, op: str, left: es.Expression, right: es.Expression
     ) -> (es.Expression | None);
@@ -414,13 +365,24 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         default_factory: Callable[([(uni.UniNode | None)], _T)]
     ) -> _T;
 
-    def _ct_es_expr(cv: any, jac_node: uni.UniNode) -> (es.Expression | None);
-    def _ct_es_value(v: any) -> (es.Expression | None);
+    def _ct_es_expr(
+        cv: (CtValue | None), jac_node: uni.UniNode
+    ) -> (es.Expression | None);
+
+    def _ct_es_value(v: CtValue) -> (es.Expression | None);
     def _ct_only_name(nd: uni.Name) -> bool;
     def _comptime_only_names -> set[str];
     def _is_ct_type_param(nd: uni.Name) -> bool;
     def _ct_ctor_slots(nd: uni.UniNode) -> (list[tuple[str, uni.Expr]] | None);
     def _trailer_reaches_ct_class(nd: uni.AtomTrailer) -> bool;
+    def _pass_link_name(link: PassLink) -> str;
+    def _pass_link_ref(link: PassLink, nd: uni.UniNode) -> es.Expression;
+    def _build_pass_block(loop: LoopStmt) -> es.BlockStatement;
+    def _pass_link_native(link: PassLink) -> bool;
+    def _target_confined(loop: uni.InForStmt) -> bool;
+    def _target_rebound(loop: uni.InForStmt) -> bool;
+    def _frame_scope_of(nd: uni.UniNode) -> (ScopeInfo | None);
+    def _pass_link_detaches(loop: (LoopStmt | None)) -> list[es.Statement];
     def _build_block_statement(
         scope_node: uni.UniScopeNode, body_nodes: (Sequence[uni.UniNode] | None)
     ) -> es.BlockStatement;
@@ -464,6 +426,8 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _es_json_literal(value: any) -> any;
     can exit_type_alias with uni.TypeAlias exit;
     can exit_type_param with uni.TypeParam exit;
+    can enter_archetype with uni.Archetype entry;
+    can enter_enum with uni.Enum entry;
     can exit_archetype with uni.Archetype exit;
     can exit_enum with uni.Enum exit;
     can enter_ability with uni.Ability entry;
@@ -478,7 +442,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _setter_name_taken(has_var: uni.HasVar, setter_name: str) -> bool;
     can exit_has_var with uni.HasVar exit;
     def _has_import(name: str) -> bool;
-    def _inject_runtime_import(name: str, nd: uni.UniNode) -> None;
+    def _inject_runtime_import(name: str, nd: uni.UniNode, src: str = "") -> None;
     def _ref_head_name(expr: (uni.UniNode | None)) -> (str | None);
     def _ref_forward_param(nd: uni.Ability) -> (uni.ParamVar | None);
     def _register_jac_virtual_import(module_id: str) -> None;
@@ -524,7 +488,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
 
     def _push_loop_label(nd: uni.UniNode) -> None;
     def _finish_loop(
-        nd: (uni.InForStmt | uni.IterForStmt | uni.WhileStmt), loop_stmt: es.Statement
+        nd: uni.IterForStmt | uni.InForStmt | uni.WhileStmt, loop_stmt: es.Statement
     ) -> es.Statement;
 
     def _innermost_breakable(nd: uni.CtrlStmt) -> (uni.UniNode | None);
@@ -641,11 +605,58 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
         target: uni.UniNode, value_es: (es.Expression | None), jac_node: uni.UniNode
     ) -> (es.Statement | None);
 
+    def _mark_optional_link(recv: es.Expression, lowered: es.Expression) -> bool;
+    def _null_safe_ref(recv: es.Expression, jac_node: uni.UniNode) -> es.Expression;
+    def _null_safe_guard(
+        recv: es.Expression,
+        ref: es.Expression,
+        lowered: es.Expression,
+        jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _null_safe_new(
+        new_expr: es.NewExpression, jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _null_safe_link_of(expr: (es.Node | None)) -> (NullSafeLink | None);
+    def _open_null_safe_chain(target: uni.Expr) -> list[NullSafeLink];
+    def _close_null_safe_chain(links: list[NullSafeLink], nd: uni.Expr) -> None;
+    def _null_safe_unguarded(expr: es.Node, jac_node: uni.UniNode) -> es.Node;
+    def _bind_once(
+        param: es.Identifier,
+        body: es.Expression,
+        value: es.Expression,
+        jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _bind_once_delegated(
+        param: es.Identifier,
+        body: es.Expression,
+        value: es.Expression,
+        awaits: bool,
+        jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _unbox_first(boxed: es.Expression, jac_node: uni.UniNode) -> es.Expression;
+    def _suspends_in_place(jac_node: uni.UniNode, kind: type[uni.UniNode]) -> bool;
+    def _strip_optional_chain(expr: (es.Node | None)) -> None;
     can exit_binary_expr with uni.BinaryExpr exit;
     can exit_cfg_expr with uni.CfgExpr exit;
     can exit_bool_expr with uni.BoolExpr exit;
     can exit_compare_expr with uni.CompareExpr exit;
     can exit_unary_expr with uni.UnaryExpr exit;
+    def _aug_target_once(
+        target: es.Expression, jac_node: uni.UniNode
+    ) -> tuple[es.Expression, list[tuple[es.Identifier, es.Expression]]];
+
+    def _rereads_safely(expr: es.Expression) -> bool;
+    def _assign_once(
+        target: es.Expression,
+        value: es.Expression,
+        binds: list[tuple[es.Identifier, es.Expression]],
+        jac_node: uni.UniNode
+    ) -> es.Expression;
+
     def _convert_assignment_target(
         target: uni.UniNode
     ) -> tuple[(es.Pattern | es.Expression), (es.Expression | None), (str | None)];
@@ -655,6 +666,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
     def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
     def _return_type_route_role(rt: uni.Expr) -> (str | None);
+    def _client_linkable(nd: uni.AstAccessNode) -> bool;
     def _component_pascal_name(nd: uni.Ability) -> (str | None);
     def _component_call_abi(ability_node: uni.Ability) -> str;
     def _build_props_spread_component_call(
@@ -668,6 +680,16 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _pos_params_from_ability(ability_node: uni.Ability) -> list[uni.ParamVar];
     def _param_names_from_ability(ability_node: uni.Ability) -> list[str];
     def _param_type_map_from_ability(ability_node: uni.Ability) -> dict[(str, str)];
+    def _builtin_param_names(nd: uni.FuncCall) -> (list[str] | None);
+    def _slot_builtin_kwargs(
+        nd: uni.FuncCall,
+        args: list[(es.Expression | es.SpreadElement)],
+        props: list[(es.Property | es.SpreadElement)],
+        func_name: str
+    ) -> (
+        tuple[(list[(es.Expression | es.SpreadElement)], (es.Expression | None))] | None
+    );
+
     def _wrap_to_wire_if_boundary(
         expr: es.Expression,
         type_name: str,
@@ -676,7 +698,7 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
     ) -> es.Expression;
 
     def _extract_return_type(
-        ability_node: uni.Ability, func_name: str, manifest: any
+        ability_node: uni.Ability, func_name: str, manifest: (InteropManifest | None)
     ) -> str;
 
     def _wrap_return_with_boundary(
@@ -739,11 +761,13 @@ walker EsastGenPass(BaseAstGenPass[es.Statement]) {
 
     def _bind_client_value_refs(nd: uni.Module) -> list[es.Statement];
     can exit_func_call with uni.FuncCall exit;
+    def _lower_func_call(here: uni.FuncCall) -> None;
     def _place_accessors(place: es.Expression) -> es.Expression | None;
     def _lower_place_builtin(nd: uni.FuncCall) -> es.Expression | None;
     can exit_index_slice with uni.IndexSlice exit;
     can exit_special_var_ref with uni.SpecialVarRef exit;
     can exit_atom_trailer with uni.AtomTrailer exit;
+    def _lower_atom_trailer(here: uni.AtomTrailer) -> None;
     can enter_lambda_expr with uni.LambdaExpr entry;
     can exit_lambda_expr with uni.LambdaExpr exit;
     can exit_atom_unit with uni.AtomUnit exit;

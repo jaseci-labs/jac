@@ -1,92 +1,3 @@
-impl _SetupProgress.postinit -> None {
-    self._seen_files = `set();
-}
-
-impl _SetupProgress._get_jaclang_root -> str {
-    if (self._jaclang_root is None) {
-        import jaclang;
-        self._jaclang_root = os.path.dirname(str(jaclang.__file__));
-    }
-    return self._jaclang_root;
-}
-
-impl _SetupProgress._atexit_handler -> None {
-    if (self._banner_shown and (self._compile_count > 0)) {
-        sys.stderr.write(
-            f"Jac setup complete ({self._compile_count} modules compiled and cached)\n"
-        );
-        sys.stderr.flush();
-    }
-}
-
-impl _SetupProgress.on_internal_compile(file_path: str) -> None {
-    normalized = os.path.normpath(file_path);
-    if (normalized in self._seen_files) {
-        return;
-    }
-    self._seen_files.add(normalized);
-    if not self._banner_shown {
-        self._banner_shown = True;
-        atexit.register(self._atexit_handler);
-        sys.stderr.write(
-            '\nSetting up Jac for first use (compiling and caching compiler)...\n'
-        );
-        sys.stderr.flush();
-    }
-    jaclang_root = self._get_jaclang_root();
-    rel_path = file_path;
-    if normalized.startswith((jaclang_root + os.sep)) {
-        rel_path = os.path.relpath(normalized, os.path.dirname(jaclang_root));
-    }
-    self._compile_count += 1;
-    import time;
-    if self._first_compile_at is None {
-        self._first_compile_at = time.monotonic();
-    }
-    if self._precompile_limit() > 0 {
-        since = time.monotonic() - self._first_compile_at;
-        sys.stderr.write(
-            f"  Compiling {rel_path}... [{self._compile_count} @ {since:.2f}s]\n"
-        );
-    } else {
-        sys.stderr.write(f"  Compiling {rel_path}...\n");
-    }
-    sys.stderr.flush();
-    self._halt_at_limit();
-}
-
-impl _SetupProgress._precompile_limit -> int {
-    raw = os.environ.get("JAC_PRECOMPILE_LIMIT");
-    if not raw {
-        return 0;
-    }
-    try {
-        return int(raw);
-    } except ValueError {
-        return 0;
-    }
-}
-
-impl _SetupProgress._halt_at_limit -> None {
-    limit = self._precompile_limit();
-    if limit <= 0 or self._compile_count < limit {
-        return;
-    }
-    import time;
-    started = self._first_compile_at if self._first_compile_at is not None else 0.0;
-    elapsed = time.monotonic() - started;
-    sys.stderr.write(
-        f"Jac precompile limit reached: {self._compile_count} modules in "
-        f"{elapsed:.2f}s\n"
-    );
-    sys.stderr.flush();
-    os._exit(0);
-}
-
-impl _SetupProgress.is_active.getter -> bool {
-    return self._banner_shown;
-}
-
 impl CompileProgress.postinit -> None {
     self._listeners = [];
     self._finished_listeners = [];
@@ -128,5 +39,151 @@ impl CompileProgress.listen(
         if on_finished is not None {
             self._finished_listeners.remove(on_finished);
         }
+    }
+}
+
+impl diagnostic_policy_for(
+    check: CheckSettings, extra_suppress_tokens: (list[str] | None) = None
+) -> DiagnosticPolicy {
+    tokens: list[str] = list(check.suppress);
+    if extra_suppress_tokens {
+        tokens.extend(extra_suppress_tokens);
+    }
+    resolved: list[str] = [];
+    if tokens {
+        (resolved, _unknown) = resolve_diagnostic_tokens(tokens);
+    }
+    return DiagnosticPolicy(
+        suppress_codes=resolved,
+        suppress_categories=list(check.suppress_categories),
+        lint_active=check.lint_active,
+        lint_select=list(check.lint_select),
+        lint_ignore=list(check.lint_ignore)
+    );
+}
+
+impl build_diagnostic_policy(prog: JacProgram) -> DiagnosticPolicy {
+    opts = prog.options;
+    check = active_host().check_settings(opts.target_app if opts is not None else '');
+    extra: list[str] = (
+        list(opts.suppress_codes) if (opts is not None and opts.suppress_codes) else []
+    );
+    return diagnostic_policy_for(check, extra);
+}
+
+impl _alert_in_internal_stub(loc_path: str) -> bool {
+    if not loc_path.endswith('.pyi') {
+        return False;
+    }
+    _p = os.path.realpath(loc_path);
+    _pkg = os.path.realpath(os.path.join(jaclang_pkg_root(), 'compiler'));
+    if _p.startswith(_pkg + os.sep) {
+        return True;
+    }
+    return (os.sep + 'typeshed' + os.sep) in _p;
+}
+
+impl deliver_alerts(
+    errors: Sequence[Alert],
+    warnings: Sequence[Alert],
+    prog: JacProgram,
+    policy: (DiagnosticPolicy | None) = None,
+    module_path: str = ""
+) {
+    pol = policy if policy is not None else build_diagnostic_policy(prog);
+    drop_toolchain = not prog.toolchain_dependency(module_path);
+    for alrt in errors {
+        if alrt.code is not None and pol.is_suppressed(alrt.code, alrt.loc) {
+            continue;
+        }
+        if alrt.code is not None
+            and not alrt.code.code.startswith("E9")
+            and _alert_in_internal_stub(str(alrt.loc.mod_path or "")) {
+            continue;
+        }
+        prog.errors_had.append(alrt);
+    }
+    for alrt in warnings {
+        if alrt.code is not None and pol.is_suppressed(alrt.code, alrt.loc) {
+            continue;
+        }
+        if alrt.code is not None
+            and _alert_in_internal_stub(str(alrt.loc.mod_path or "")) {
+            continue;
+        }
+        if drop_toolchain and prog.toolchain_dependency(str(alrt.loc.mod_path or "")) {
+            continue;
+        }
+        prog.warnings_had.append(alrt);
+    }
+}
+
+impl run_pass[W: CompilerPass](
+    pass_cls: type[W],
+    ir_in: Module,
+    prog: JacProgram,
+    cancel_token: (CancelToken | None) = None,
+    policy: (DiagnosticPolicy | None) = None
+) -> W {
+    pol = policy if policy is not None else build_diagnostic_policy(prog);
+    errors: list[Alert] = [];
+    warnings: list[Alert] = [];
+    inst: (W | None) = None;
+    completed = prog.analysis.take_early(ir_in, pass_cls.__name__);
+    if completed is not None {
+        for alert in completed.errors_had + completed.warnings_had {
+            alert.from_pass = pass_cls;
+        }
+        if completed.errors_had or completed.warnings_had {
+            sources: dict[str, Source] = {ir_in.source.file_path: ir_in.source};
+            for nd in ir_in._in_mod_nodes or [] {
+                sources[nd.loc.mod_path] = nd.loc.orig_src;
+            }
+            completed.errors_had = [
+                alert
+                for alert in completed.errors_had
+                if alert.code is None
+                    or not pol.is_suppressed(
+                        alert.code, alert.loc, source=sources.get(alert.loc.mod_path)
+                    )
+            ];
+            completed.warnings_had = [
+                alert
+                for alert in completed.warnings_had
+                if alert.code is None
+                    or not pol.is_suppressed(
+                        alert.code, alert.loc, source=sources.get(alert.loc.mod_path)
+                    )
+            ];
+        }
+    }
+    try {
+        inst = run_walker(
+            pass_cls,
+            module=ir_in,
+            prog=prog,
+            cancel_token=cancel_token,
+            cancel_requested=bool(cancel_token is not None and cancel_token.is_set()),
+            policy=pol,
+            errors_had=errors,
+            warnings_had=warnings,
+            completed=completed
+        );
+        return inst;
+    } finally {
+        eff = inst.ctx.policy
+            if (inst is not None and inst.ctx.policy is not None)
+            else pol;
+        deliver_alerts(errors, warnings, prog, eff, module_path=ir_in.loc.mod_path);
+        try {
+            ledger = prog.analysis;
+            pass_name = pass_cls.__name__;
+            ledger.pass_runs[pass_name] = ledger.pass_runs.get(pass_name, 0) + 1;
+            if inst is not None {
+                ledger.pass_time[pass_name] = (
+                    ledger.pass_time.get(pass_name, 0.0) + inst.ctx.time_taken
+                );
+            }
+        } except Exception {}
     }
 }

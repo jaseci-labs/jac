@@ -14,10 +14,6 @@ PgStateBackend) needs the deploy tier and is not here; see
 """
 
 import os;
-import jaclang.scale.state.factory as factory_mod;
-import jaclang.server.shared_store as store_mod;
-import from jaclang.scale.state.factory { get_state_backend, in_fleet }
-import from jaclang.scale.state.state_backend { InProcessStateBackend }
 
 glob _CLUSTER_ENV = 'KUBERNETES_SERVICE_HOST',
      _SIBLING_ENV = 'JAC_SV_SIBLING',

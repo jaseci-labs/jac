@@ -126,12 +126,12 @@ def _table_border(widths: list[int], left: str, mid: str, right: str, h: str) ->
     return left + mid.join(segs) + right;
 }
 
-def _make_spinner(use_color: bool, use_emoji: bool, text: str) -> any {
+def _make_spinner(use_color: bool, use_emoji: bool, text: str, stream: any) -> any {
     if not use_color {
         return None;
     }
     try {
-        if not sys.stdout.isatty() {
+        if not stream.isatty() {
             return None;
         }
     } except Exception {
@@ -140,7 +140,7 @@ def _make_spinner(use_color: bool, use_emoji: bool, text: str) -> any {
     frames = _SPINNER_FRAMES if use_emoji else _SPINNER_FRAMES_ASCII;
     prefix = str(_ANSI_ROLES.get('highlight') or "");
     return _Spinner(
-        text=text, stream=sys.stdout, frames=frames, style_prefix=prefix, reset=RESET
+        text=text, stream=stream, frames=frames, style_prefix=prefix, reset=RESET
     );
 }
 
@@ -387,10 +387,11 @@ impl ConsoleRenderer.status_ctx(args: list[object], kwargs: dict[str, any]) -> o
     if args {
         text = args[0] if isinstance(args[0], str) else str(args[0]);
     }
-    sp = _make_spinner(self.use_color, self.use_emoji, text);
+    stream = kwargs.get('file') or sys.stdout;
+    sp = _make_spinner(self.use_color, self.use_emoji, text, stream);
     if sp is None {
         if text {
-            self.emit([Span(text, 'muted')]);
+            self.emit([Span(text, 'muted')], stream);
         }
         yield _NullStatus();
     } else {
@@ -599,4 +600,75 @@ impl use_line_buffered_output(streams: (list[TextIO] | None) = None) -> int {
         } except (OSError, ValueError) {}
     }
     return switched;
+}
+
+impl Content.__str__ -> str {
+    return self.text;
+}
+
+impl _Spinner.postinit {
+    import from threading { Event }
+    self._stop = Event();
+}
+
+impl _Spinner.update(text: any = '') {
+    self.text = text;
+}
+
+impl _Spinner.clear {
+    try {
+        self.stream.write("\r\033[K");
+        self.stream.flush();
+    } except (BrokenPipeError, OSError) {}
+}
+
+impl _Spinner._run {
+    idx = 0;
+    while not self._stop.is_set() {
+        frame = self.frames[idx % len(self.frames)];
+        current = self.text;
+        text = str(current() if callable(current) else current);
+        try {
+            width = os.get_terminal_size().columns;
+        } except OSError {
+            width = 0;
+        }
+        if width > 8 and len(text) > width - 3 {
+            text = text[:width - 6] + "...";
+        }
+        try {
+            self.stream.write(f"\r{self.style_prefix}{frame}{self.reset} {text}\033[K");
+            self.stream.flush();
+        } except (BrokenPipeError, OSError) {
+            return;
+        }
+        idx += 1;
+        self._stop.`wait(self.interval);
+    }
+}
+
+impl _Spinner.start {
+    import from threading { Thread }
+    self._thread = Thread(target=self._run, daemon=True);
+    self._thread.start();
+}
+
+impl _Spinner.stop {
+    self._stop.set();
+    if self._thread is not None {
+        self._thread.join(timeout=1.0);
+    }
+    self.clear();
+}
+
+impl _NullStatus.update(text: any = '') -> None {
+    return;
+}
+
+impl _NullStatus.clear -> None {
+    return;
+}
+
+impl _ConsoleProxy.__getattr__(self: _ConsoleProxy, name: str) -> any {
+    return getattr(_get_console(), name);
 }

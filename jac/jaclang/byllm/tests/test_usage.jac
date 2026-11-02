@@ -14,7 +14,7 @@ import unittest.mock;
 import types;
 import litellm;
 import jaclang.byllm.llm as _byllm_llm_mod;
-import from jaclang.byllm.lib { Model, MockLLM }
+import from jaclang.byllm.lib { Model, MockLLM, OutputTruncatedError }
 import from jaclang.byllm.mtir { MTRuntime }
 import from jaclang.byllm.types { MockToolCall, IterationContext }
 import from jaclang.byllm.telemetry { register_agent_callback, _agent_callbacks }
@@ -38,6 +38,12 @@ obj _Person {
 
 def step_a -> str {
     return "stepped";
+}
+
+
+# Big enough that the first round is worth a summariser call in a 1000-token window.
+def bulky_step -> str {
+    return "x" * 1000;
 }
 
 
@@ -547,7 +553,12 @@ def _recovery_case -> MTRuntime {
 }
 
 
-def _compaction_case -> MTRuntime {
+def _compaction_case(
+    reply: any = (
+        "a summary",
+        {"prompt_tokens": 200, "completion_tokens": 20, "total_tokens": 220}
+    )
+) -> MTRuntime {
     sys_msg = {"role": "system", "content": "You are a helpful assistant."};
     user_msg = {"role": "user", "content": "Do the thing."};
     round1 = [
@@ -570,18 +581,17 @@ def _compaction_case -> MTRuntime {
     ];
     messages = [sys_msg, user_msg] + round1 + round1 + round1;
 
-    summariser = MockLLM(
-        model_name="test-model",
-        outputs=[
-            (
-                "a summary",
-                {"prompt_tokens": 200, "completion_tokens": 20, "total_tokens": 220}
-            )
-        ]
-    );
+    summariser = MockLLM(model_name="test-model", outputs=[reply]);
     parent_mt = mk_run();
-    _byllm_llm_mod._default_compact(messages, 1, summariser, parent_mt);
+    try {
+        _byllm_llm_mod._default_compact(messages, 1, summariser, parent_mt);
+    } except OutputTruncatedError {}
     return parent_mt;
+}
+
+
+def _cut_off_compaction_case -> MTRuntime {
+    return _compaction_case(say("", usage=TOKENS, finish_reason="length"));
 }
 
 
@@ -589,12 +599,13 @@ test "byLLM's own follow-up calls get a call_kind distinct from react_iteration"
     cases = [
         ("final_answer_restream", _restream_case),
         ("recovery", _recovery_case),
-        ("compaction", _compaction_case)
+        ("compaction", _compaction_case),
+        ("compaction", _cut_off_compaction_case)
     ];
     for (expected_kind, run) in cases {
         mt_run = run();
         assert len(mt_run._usage_history) == 1 , (
-            f"{expected_kind}: expected exactly one recorded call"
+            f"{run.__name__}: expected exactly one recorded call"
         );
         assert mt_run._usage_history[0]["call_kind"] == expected_kind;
         assert mt_run._call_kind == "react_iteration" , (
@@ -750,7 +761,7 @@ test "usage_step correctly attributes an interleaved compaction call" {
         ctx_window=1000,
         outputs=[
             call(
-                "step_a",
+                "bulky_step",
                 usage={
                     "prompt_tokens": 100,
                     "completion_tokens": 10,
@@ -758,7 +769,7 @@ test "usage_step correctly attributes an interleaved compaction call" {
                 }
             ),
             call(
-                "step_a",
+                "bulky_step",
                 usage={
                     "prompt_tokens": 850,
                     "completion_tokens": 10,
@@ -782,15 +793,20 @@ test "usage_step correctly attributes an interleaved compaction call" {
     );
 
     def task(q: str) -> str by llm(
-        tools=[step_a],
+        tools=[bulky_step],
         stream=True,
         logging=True,
         threshold_ratio=0.80,
         keep_recent_iterations=1
     );
 
-    steps = [e.data for e in events_of(list(task("go")), "usage_step")];
+    events: list[any] = list(task("go"));
+    steps = [e.data for e in events_of(events, "usage_step")];
     assert llm.exhausted() , f"the summary was never requested: {llm.outputs}";
+    reported = [
+        (e.data["reason"], e.data["by"]) for e in events_of(events, "compaction")
+    ];
+    assert reported == [("threshold", "builtin")] , f"compaction events {reported}";
     compacted = [
         step
         for step in steps

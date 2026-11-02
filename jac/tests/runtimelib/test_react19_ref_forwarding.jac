@@ -22,7 +22,7 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 
 import from jaclang.cli.shadcn.shadcn_handler { load_registry }
-import from jaclang.client.bun_installer { get_bun }
+import from tests.support { js_runtime_or_none }
 import from jaclang.compiler.backends.es.backends.react { ReactBackend }
 import from .react_jsdom_harness {
     REACT_JSDOM_DEPS,
@@ -155,7 +155,7 @@ process.exit(failures.length ? 1 : 0);
 
 test "a compiled component is a ref target, live in jsdom" {
     require_client_integration("React 19 ref-as-prop");
-    bun = get_bun();
+    bun = js_runtime_or_none();
     if bun is None {
         testskip("bun is required but could not be located/installed");
     }

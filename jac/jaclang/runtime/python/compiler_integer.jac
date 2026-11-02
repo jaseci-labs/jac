@@ -1,5 +1,4 @@
 """Arbitrary-precision compiler constants in Jac-owned base-2**15 storage."""
-import from jaclang.runtime.python.objects { PyObj, PyInt, PyStr }
 
 obj PyBigInt(PyObj) {
     has digits: list[int],

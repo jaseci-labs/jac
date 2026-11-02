@@ -7,7 +7,7 @@ token out of the body).
 
 Loaded via `provider = "test_emailer_fake:FakeEmailer"` in jac.toml.
 """
-import from jaclang.scale.emailer.emailer { Emailer }
+import from jaclang.scale.emailer.emailer { Emailer, EmailAttachment }
 
 # Shared mailbox - tests inspect and clear this between cases.
 glob SENT: list[dict[str, any]] = [];
@@ -22,7 +22,9 @@ obj FakeEmailer(Emailer) {
         subject: str,
         body_text: str,
         body_html: (str | None) = None,
-        from_addr: (str | None) = None
+        from_addr: (str | None) = None,
+        reply_to: (str | None) = None,
+        attachments: (list[EmailAttachment] | None) = None
     ) -> bool {
         SENT.append(
             {
@@ -30,7 +32,9 @@ obj FakeEmailer(Emailer) {
                 "subject": subject,
                 "body_text": body_text,
                 "body_html": body_html,
-                "from": from_addr or self.from_address
+                "from": from_addr or self.from_address,
+                "reply_to": reply_to,
+                "attachments": attachments or []
             }
         );
         return True;

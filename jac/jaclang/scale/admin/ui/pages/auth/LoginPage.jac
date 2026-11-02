@@ -7,15 +7,21 @@ import from ...context.AuthContext { useAuth }
 def:pub LoginPage -> JsxElement {
     has loginUsername: str = "",
         loginPassword: str = "",
-        loginError: str = "";
+        loginError: str = "",
+        loginCode: str = "",
+        codeRequired: bool = False;
 
     auth = useAuth();
 
     async def handleLogin(e: any) {
         e.preventDefault();
         loginError = "";
-        result = await auth["login"](loginUsername, loginPassword);
+        result = await auth["login"](loginUsername, loginPassword, loginCode);
         if not result["ok"] {
+            if result["codeRequired"] {
+                codeRequired = True;
+            }
+            loginCode = "";
             loginError = result["error"];
         }
     }
@@ -47,6 +53,18 @@ def:pub LoginPage -> JsxElement {
                         placeholder="Enter password"
                         className="mb-5"
                     />
+                    {(
+                        <Input
+                            label="Authentication code"
+                            type="text"
+                            value={loginCode}
+                            onChange={lambda (e: any) { loginCode = e.target.value; }}
+                            placeholder="6-digit code"
+                            className="mb-5"
+                        />
+                    )
+                        if codeRequired
+                        else None}
                     <Button type="submit" className="w-full">Sign In</Button>
                 </form>
             </div>

@@ -1,28 +1,12 @@
 import json;
-import from jaclang.server.serving.authcrypt {
-    hash_password as _scrypt_hash,
-    verify_password as _scrypt_verify,
-    is_prescrypt_hash as _is_prescrypt,
-    needs_rehash as _needs_rehash
-}
+
 import uuid;
 import from datetime { datetime, UTC }
-import from jaclang.runtime.constants { Constants as Con }
-import from jaclang.server.identity.config { password_hash_cost }
 
 obj IdentityTakenError(Exception) {}
 
 
-def primary_username(user: dict[str, any]) -> str {
-    for identity in (user.get('identities') or []) {
-        if isinstance(identity, dict) and identity.get('type') == 'username' {
-            return str(
-                identity.get('value_raw') or identity.get('value_normalized') or ''
-            );
-        }
-    }
-    return '';
-}
+def primary_username(user: dict[str, any]) -> str;
 
 obj IdentityStorage {
     static def hash_password(password: str) -> str;
@@ -33,6 +17,16 @@ obj IdentityStorage {
     def _update_credentials(
         user_id: str, credentials: list[dict[str, any]]
     ) -> None abst;
+
+    def _get_oauth_grants(user_id: str) -> list[dict[str, any]] abst;
+    def _put_oauth_grant(user_id: str, grant: dict[str, any]) -> int abst;
+    def _swap_oauth_grant(
+        user_id: str, grant: dict[str, any], version: int
+    ) -> int abst;
+
+    def _take_oauth_grant(
+        user_id: str, platform: str, version: (int | None) = None
+    ) -> dict[str, any] | None abst;
 
     def _get_identities(user_id: str) -> list[dict[str, any]] abst;
     def _add_identity(user_id: str, identity: dict[str, any]) -> bool abst;
@@ -60,11 +54,18 @@ obj IdentityStorage {
     def authenticate(identifier: str, password: str) -> dict[str, any] | None;
     def set_user_role(user_id: str, role: str) -> bool;
     def get_user_role(user_id: str) -> str | None;
+    def holds_password(user_id: str, password: str) -> bool;
+    def password_reused(credentials: list[dict[str, any]], new_password: str) -> bool;
+    def write_password(
+        user_id: str, credentials: list[dict[str, any]], new_password: str
+    ) -> None;
+
+    def password_expired(user: dict[str, any], credential: dict[str, any]) -> bool;
     def update_password(
         user_id: str, current_password: str, new_password: str
-    ) -> dict[str, str];
+    ) -> dict[str, any];
 
-    def reset_password(user_id: str, new_password: str) -> dict[str, str];
+    def reset_password(user_id: str, new_password: str) -> dict[str, any];
     def expire_legacy_credentials(user_id: (str | None) = None) -> list[str];
     def get_root_id(user_id: str) -> str | None;
     def get_username(user_id: str) -> str | None;
@@ -85,6 +86,13 @@ obj PgIdentityStorage(IdentityStorage) {
     def _update_fields(user_id: str, fields: dict[str, any]) -> bool;
     def _get_credentials(user_id: str) -> list[dict[str, any]];
     def _update_credentials(user_id: str, credentials: list[dict[str, any]]) -> None;
+    def _get_oauth_grants(user_id: str) -> list[dict[str, any]];
+    def _put_oauth_grant(user_id: str, grant: dict[str, any]) -> int;
+    def _swap_oauth_grant(user_id: str, grant: dict[str, any], version: int) -> int;
+    def _take_oauth_grant(
+        user_id: str, platform: str, version: (int | None) = None
+    ) -> dict[str, any] | None;
+
     def _get_identities(user_id: str) -> list[dict[str, any]];
     def _add_identity(user_id: str, identity: dict[str, any]) -> bool;
     def _remove_sso_identity(user_id: str, platform: str) -> bool;

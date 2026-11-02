@@ -16,7 +16,8 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
         if _out_low is not None {
             if isinstance(_out_low, ir.DoubleType) {
                 _own_spec = "f64";
-            } elif isinstance(_out_low, ir.PointerType) {
+            } elif isinstance(_out_low, ir.PointerType)
+                or (self._str_desc_ty is not None and _out_low == self._str_desc_ty) {
                 _own_spec = "ptr";
             } elif self?.jacval_type and _out_low == self.jacval_type {
                 _own_spec = "jacval";
@@ -24,6 +25,10 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
                 _own_spec = "i64";
             }
         }
+    }
+
+    if _own_spec is None and self._is_boolean_result_expr(nd.out_expr) {
+        _own_spec = "i64";
     }
     if _own_spec is not None {
         elem_type_name = _own_spec;
@@ -37,7 +42,8 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
             elem_type_name = "ptr";
         }
         if elem_type_name == "i64" and isinstance(nd.out_expr, uni.FuncCall) {
-            call_name = self._get_name(nd.out_expr.target);
+            call_name = self._arch_ref_key(nd.out_expr.target)
+                or self._get_name(nd.out_expr.target);
             if call_name is not None and call_name in self.struct_types {
                 elem_type_name = "ptr";
             }
@@ -103,6 +109,33 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
     return list_val;
 }
 
+impl NaIRGenPass._is_boolean_result_expr(nd: (uni.UniNode | None)) -> bool {
+    while isinstance(nd, (uni.CfgExpr, uni.AtomUnit)) {
+        nd = nd.expr if isinstance(nd, uni.CfgExpr) else nd.value;
+    }
+    if isinstance(nd, (uni.CompareExpr, uni.Bool)) {
+        return True;
+    }
+    if isinstance(nd, uni.UnaryExpr) {
+        return nd.op.name == Tok.NOT;
+    }
+    if isinstance(nd, uni.BoolExpr) {
+        if not nd.values {
+            return False;
+        }
+        for _operand in nd.values {
+            if not self._is_boolean_result_expr(_operand) {
+                return False;
+            }
+        }
+        return True;
+    }
+    if isinstance(nd, uni.Expr) {
+        return primitive_type_name_of(nd.type) == "bool";
+    }
+    return False;
+}
+
 impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
     if not nd.compr {
         return None;
@@ -144,7 +177,8 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
         val_type_name = "ptr";
         val_type = ir.IntType(8).as_pointer();
     } elif isinstance(val_expr, uni.FuncCall) {
-        call_name = self._get_name(val_expr.target);
+        call_name = self._arch_ref_key(val_expr.target)
+            or self._get_name(val_expr.target);
         if call_name is not None and call_name in self.struct_types {
             val_type_name = "ptr";
             val_type = ir.IntType(8).as_pointer();
@@ -180,6 +214,27 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
             if self._str_desc_ty is not None and resolved_value == self._str_desc_ty
             else resolved_value;
         val_type_name = self._dict_val_spec(val_type);
+    }
+
+    if self?.jacval_type and key_type == self.jacval_type {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="expression",
+            name="dict with mixed key types",
+            help_text="Native dicts hash a single concrete key type; a dict whose keys mix representations has no native storage. Use one key type (for example str) and keep the mixing on the value side."
+        );
+        return None;
+    }
+    if isinstance(val_type, ir.VoidType) {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="expression",
+            name="dict whose values are always None",
+            help_text="A native dict stores one concrete value type, and a value that is always None has none. Give the values a type that can hold None (for example dict[str, int | None])."
+        );
+        return None;
     }
 
     self._emit_dict_helpers(key_type_name, val_type_name, key_type, val_type, key_size);
@@ -228,7 +283,8 @@ impl NaIRGenPass._codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None) {
         elem_type_name = f"tuple{elem_size}";
         elem_type = ir.IntType(8).as_pointer();
     } elif isinstance(out_expr, uni.FuncCall) {
-        call_name = self._get_name(out_expr.target);
+        call_name = self._arch_ref_key(out_expr.target)
+            or self._get_name(out_expr.target);
         if call_name is not None and call_name in self.struct_types {
             elem_type_name = "ptr";
             elem_type = ir.IntType(8).as_pointer();
@@ -246,8 +302,10 @@ impl NaIRGenPass._codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None) {
                         pointee = ftype.pointee;
                         if isinstance(pointee, ir.LiteralStructType) {
                             total = 0;
-                            for el in pointee.elements {
-                                total += el.width // 8 if el?.width else 8;
+                            for el in pointee.members() {
+                                total += el.width // 8
+                                    if isinstance(el, ir.IntType) and el.width
+                                    else 8;
                             }
                             elem_size = total;
                             elem_type_name = f"tuple{elem_size}";
@@ -330,6 +388,7 @@ impl NaIRGenPass._emit_compr_element(compr: NativeComprehension) -> None {
                 _boxed_val_compr = value_val;
                 value_val = self._coerce_type(value_val, expected_val_type);
                 self.builder.call(helpers["set"], [acc, key_val, value_val]);
+                self._nogc_release_dict_key(key_val);
 
                 if isinstance(_boxed_key.type, ir.PointerType)
                     and self._is_owned(_boxed_key) {
@@ -390,13 +449,7 @@ impl NaIRGenPass._emit_compr_element(compr: NativeComprehension) -> None {
                 val = self.builder.bitcast(val, i8p, name="compr.cast");
             }
             val = self._coerce_type(val, helpers["elem_type"]);
-            _compr_loc_raw = getattr(_compr_append_orig, 'jac_loc', key_expr?.loc);
-            _compr_loc: str = "";
-            if isinstance(_compr_loc_raw, str) {
-                _compr_loc = _compr_loc_raw;
-            } elif _compr_loc_raw is not None {
-                _compr_loc = f"{os.path.basename(self.module.loc.mod_path)}:{_compr_loc_raw.first_line}";
-            }
+            _compr_loc: str = _compr_append_orig.jac_loc;
             if not _compr_loc {
                 _compr_loc = f"{os.path.basename(self.module.loc.mod_path)}:0";
             }
@@ -488,7 +541,7 @@ impl NaIRGenPass._codegen_compr_walk_body(
             if built is not None {
                 self._codegen_compr_iter_walk(compr, idx, (built[0], built[2], True));
             } else {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=collection,
                     kind="expression",
@@ -578,7 +631,7 @@ impl NaIRGenPass._codegen_compr_walk_body(
 
     if unpack_target is not None {
         if not self._codegen_tuple_unpack(unpack_target.values, elem_val, None) {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=unpack_target,
                 kind="comprehension target",
@@ -652,7 +705,7 @@ impl NaIRGenPass._codegen_compr_iter_walk(
         );
     }
     if not self._codegen_tuple_unpack(targets, yielded, None) {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=inner.target,
             kind="comprehension target",
@@ -680,7 +733,7 @@ impl NaIRGenPass._codegen_compr_range_walk(
     if not isinstance(collection, uni.FuncCall) {
         return;
     }
-    params: Sequence[any] = collection.params or [];
+    params: Sequence[uni.Expr | uni.KWPair] = collection.params or [];
     start_val: (ir.Value | None) = None;
     stop_val: (ir.Value | None) = None;
     if len(params) == 1 {

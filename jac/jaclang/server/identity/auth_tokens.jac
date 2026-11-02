@@ -24,11 +24,16 @@ obj AuthTokenStore {
 
     def peek_token(token: str, purpose: str) -> (dict[str, any] | None);
     def consume_token(token: str, purpose: str) -> (dict[str, any] | None);
-    def revoke_user_tokens(user_id: str, purpose: str) -> int;
+    def revoke_user_tokens(
+        user_id: str, purpose: str, identity_value: (str | None) = None
+    ) -> int;
+
     def _persist(record: dict[str, any]) -> None;
     def _find(token_hash: str, purpose: str) -> (dict[str, any] | None);
     def _delete(token_hash: str) -> bool;
-    def _delete_user(user_id: str, purpose: str) -> int;
+    def _delete_user(
+        user_id: str, purpose: str, identity_value: (str | None) = None
+    ) -> int;
 }
 
 def reset_auth_token_store -> None;

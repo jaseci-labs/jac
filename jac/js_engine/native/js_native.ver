@@ -1,0 +1,21 @@
+{
+  global:
+    napi_*;
+    node_api_*;
+    _napi_*;
+    tz_*;
+    icu_*;
+    uv_*;
+    pcre2_*;
+    nghttp2_*;
+    llhttp_*;
+    Brotli*;
+    # mimalloc: the C allocation API it overrides, and its own mi_* API
+    malloc; calloc; realloc; free; cfree; strdup; strndup;
+    posix_memalign; aligned_alloc; memalign; valloc; pvalloc;
+    malloc_usable_size; reallocarray;
+    __libc_malloc; __libc_calloc; __libc_realloc; __libc_free; __libc_cfree;
+    __libc_memalign; __libc_valloc; __libc_pvalloc; __posix_memalign;
+    mi_*;
+  local: *;
+};

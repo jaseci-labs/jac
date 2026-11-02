@@ -1,5 +1,4 @@
 impl primitive_type_name_of(ty: (TypeBase | None)) -> (str | None) {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if not isinstance(ty, ClassType) {
         return None;
     }
@@ -16,12 +15,17 @@ impl primitive_type_name_of(ty: (TypeBase | None)) -> (str | None) {
 }
 
 impl expr_primitive_name(expr_node: UniNode) -> str {
-    import from jaclang.compiler.frontend.unitree { CfgExpr }
-
     while isinstance(expr_node, CfgExpr) {
         expr_node = expr_node.expr;
     }
-    return primitive_type_name_of(expr_node?.type) or "";
+    if not isinstance(expr_node, Expr) {
+        return "";
+    }
+    return expr_type_primitive_name(expr_node);
+}
+
+impl expr_type_primitive_name(expr_node: Expr) -> str {
+    return primitive_type_name_of(expr_node.type) or "";
 }
 
 impl get_generator_type_args(return_type: TypeBase) -> (list[TypeBase] | None) {
@@ -92,31 +96,9 @@ impl is_generator_family_type(return_type: TypeBase) -> bool {
 
 glob _proto_checks_in_progress: set[tuple[int, int]] = set();
 
-def _method_entry_of(sym: Symbol) -> Symbol | Ability | None {
-    if sym.provider is not None {
-        import from jaclang.compiler.frontend.constant { SymbolType }
-        if sym.sym_type
-            in (SymbolType.ABILITY, SymbolType.METHOD, SymbolType.CONSTRUCTOR) {
-            return sym;
-        }
-        return None;
-    }
-    decl = sym.decl;
-    if decl is not None {
-        owner = decl.name_of;
-        if isinstance(owner, Ability) {
-            return owner;
-        }
-    }
-    return None;
-}
+def _method_entry_of(sym: Symbol) -> Symbol | Ability | None;
 
-def _method_entry_type(evaluator: TypeEvaluator, member: Symbol | Ability) -> TypeBase {
-    if isinstance(member, Symbol) {
-        return evaluator.get_type_of_symbol(member);
-    }
-    return evaluator.get_type_of_ability(member);
-}
+def _method_entry_type(evaluator: TypeEvaluator, member: Symbol | Ability) -> TypeBase;
 
 impl class_implements_protocol(
     cls: ClassType, proto: ClassType, evaluator: TypeEvaluator | None = None
@@ -166,6 +148,18 @@ impl class_implements_protocol(
                 cls_func_type = _method_entry_type(evaluator, cls_method);
                 if isinstance(proto_func_type, FunctionType)
                     and isinstance(cls_func_type, FunctionType) {
+                    if proto.private is not None and proto.private.type_args {
+                        proto_func_type = proto_func_type.specialize(proto);
+                        cls_member = evaluator._lookup_class_member(cls, name);
+                        impl_func = evaluator._protocol_member_impl(
+                            proto_func_type, cls_member, cls
+                        )
+                            if cls_member is not None
+                            else None;
+                        if impl_func is not None {
+                            cls_func_type = impl_func;
+                        }
+                    }
                     if not evaluator._assign_callable(cls_func_type, proto_func_type) {
                         return False;
                     }
@@ -340,8 +334,6 @@ impl origin_of_local_name(nd: UniNode, local: str) -> tuple[str, (str | None)] {
 impl collect_member_syms(
     scope: UniScopeNode, name: str, deep: bool = False
 ) -> list[Symbol] {
-    import from jaclang.compiler.frontend.helpers { evaluate_version_condition }
-
     def live_branches(guard: IfStmt) -> list[UniScopeNode] {
         eval_result = evaluate_version_condition(guard.condition);
         if eval_result is None or eval_result {
@@ -623,55 +615,31 @@ impl compute_mro_linearization(
     }
 }
 
-impl mro_signature(cls: ClassType) -> tuple[tuple[int, int | str], ...] {
-    sig: list[tuple[int, int | str]] = [];
+impl mro_signature(cls: ClassType) -> list[tuple[int, str]] {
+    sig: list[tuple[int, str]] = [];
     for base in cls.shared.base_classes {
         if isinstance(base, ClassType) {
-            sig.append((id(base.shared), len(base.shared.mro)));
+            sig.append((id(base.shared), str(len(base.shared.mro))));
         } else {
             sig.append((0, type(base).__name__));
         }
     }
-    return tuple(sig);
+    return sig;
 }
 
 impl ensure_mro_fresh(cls: ClassType, _visiting: (set[int] | None) = None) -> bool {
     shared = cls.shared;
-    if _visiting is None {
-        _visiting = set();
-    }
-    key = id(shared);
-    if key in _visiting {
+    if shared._fresh_epoch == CLASS_GRAPH_EPOCH[0] {
         return False;
     }
-    _visiting.add(key);
-    for base in shared.base_classes or [] {
-        if isinstance(base, ClassType) {
-            ensure_mro_fresh(base, _visiting);
-        }
+    changed = _ensure_mro_fresh(cls, _visiting);
+    if _visiting is None or not _visiting {
+        shared._fresh_epoch = CLASS_GRAPH_EPOCH[0];
     }
-    _visiting.discard(key);
-    if not shared.mro {
-        compute_mro_linearization(cls, _visiting);
-        return True;
-    }
-    sig = mro_signature(cls);
-    if shared._mro_sig is None {
-        shared._mro_sig = sig;
-        return False;
-    }
-    if shared._mro_sig == sig {
-        return False;
-    }
-    rebuilt = linearize_mro(cls, _visiting);
-    if len(rebuilt) > len(shared.mro) {
-        shared.mro = rebuilt;
-        shared._mro_sig = sig;
-        return True;
-    }
-    shared._mro_sig = sig;
-    return False;
+    return changed;
 }
+
+def _ensure_mro_fresh(cls: ClassType, _visiting: (set[int] | None) = None) -> bool;
 
 impl compute_module_source_flags(file_path: str) -> ModuleSourceFlags {
     flags = ModuleSourceFlags();
@@ -844,7 +812,7 @@ impl shadowed_type_var_names(
                 declared.add(tp_node.sym_name);
             }
         }
-        scope = scope.parent;
+        scope = scope.decl_parent;
     }
     return {
         name
@@ -854,6 +822,173 @@ impl shadowed_type_var_names(
 }
 
 impl build_type_var_solution(class_type: ClassType) -> dict[str, TypeBase] {
+    private = class_type.private;
+    mro = class_type.shared.mro;
+    parts: list[str] = [str(id(private)), str(id(mro)), str(len(mro))];
+    targs: list[TypeBase] = private.type_args;
+    if targs {
+        for arg in targs {
+            parts.append(str(id(arg)));
+        }
+    }
+    key = ",".join(parts);
+    held = class_type._tv_solution;
+    if held is not None and class_type._tv_key == key {
+        return held;
+    }
+    solution = _build_type_var_solution(class_type);
+    class_type._tv_key = key;
+    class_type._tv_solution = solution;
+    return solution;
+}
+
+def _build_type_var_solution(class_type: ClassType) -> dict[str, TypeBase];
+
+impl build_solution_from_specialized_class(
+    class_type: ClassType
+) -> dict[str, TypeBase] {
+    solution: dict[str, TypeBase] = {};
+
+    if class_type.is_builtin("tuple")
+        and len(class_type.shared.type_params) == 1
+        and len(class_type.private.type_args) > 1
+        and not any(
+            isinstance(arg, UnknownType) for arg in class_type.private.type_args
+        ) {
+        parameter = class_type.shared.type_params[0];
+        if parameter.name {
+            arguments = class_type.private.type_args;
+            first = arguments[0];
+            solution[parameter.name] = first
+                if all(types_equivalent(first, argument) for argument in arguments[1:])
+                else UnionType(types=arguments);
+            return solution;
+        }
+    }
+
+    if class_type.shared.type_params and class_type.private.type_args {
+        for (idx, tp) in enumerate(class_type.shared.type_params) {
+            if tp.name and idx < len(class_type.private.type_args) {
+                if tp.name not in solution {
+                    solution[tp.name] = class_type.private.type_args[idx];
+                }
+            }
+        }
+    } elif class_type.shared.type_params {
+        for tp in class_type.shared.type_params {
+            if tp.name {
+                solution[tp.name] = AnyType();
+            }
+        }
+    }
+
+    return solution;
+}
+
+impl specialize_for_base_class(
+    src_type: ClassType, base_class: ClassType
+) -> ClassType {
+    if src_type.shared.same_class(base_class.shared) {
+        return src_type;
+    }
+
+    if not base_class.shared.type_params {
+        return base_class;
+    }
+
+    return _specialize_for_base_recursive(src_type, base_class);
+}
+
+def _specialize_for_base_recursive(
+    src_type: ClassType, target_base: ClassType
+) -> ClassType;
+
+def _apply_solution_to_class(
+    class_type: ClassType, solution: dict[str, TypeBase]
+) -> ClassType;
+
+def _apply_to_function(
+    func: FunctionType,
+    solution: dict[str, TypeBase],
+    class_type: (ClassType | None),
+    shadowed: (set[str] | None) = None
+) -> FunctionType;
+
+def _apply_to_function_uncached(
+    func: FunctionType,
+    solution: dict[str, TypeBase],
+    class_type: (ClassType | None),
+    shadowed: (set[str] | None) = None
+) -> FunctionType;
+
+impl _method_entry_of(sym: Symbol) -> Symbol | Ability | None {
+    if sym.provider is not None {
+        import from jaclang.compiler.frontend.constant { SymbolType }
+        if sym.sym_type
+            in (SymbolType.ABILITY, SymbolType.METHOD, SymbolType.CONSTRUCTOR) {
+            return sym;
+        }
+        return None;
+    }
+    decl = sym.decl;
+    if decl is not None {
+        owner = decl.name_of;
+        if isinstance(owner, Ability) {
+            return owner;
+        }
+    }
+    return None;
+}
+
+impl _method_entry_type(
+    evaluator: TypeEvaluator, member: Symbol | Ability
+) -> TypeBase {
+    if isinstance(member, Symbol) {
+        return evaluator.get_type_of_symbol(member);
+    }
+    return evaluator.get_type_of_ability(member);
+}
+
+
+impl _ensure_mro_fresh(cls: ClassType, _visiting: (set[int] | None) = None) -> bool {
+    shared = cls.shared;
+    if _visiting is None {
+        _visiting = set();
+    }
+    key = id(shared);
+    if key in _visiting {
+        return False;
+    }
+    _visiting.add(key);
+    for base in shared.base_classes or [] {
+        if isinstance(base, ClassType) {
+            ensure_mro_fresh(base, _visiting);
+        }
+    }
+    _visiting.discard(key);
+    if not shared.mro {
+        compute_mro_linearization(cls, _visiting);
+        return True;
+    }
+    sig = mro_signature(cls);
+    if shared._mro_sig is None {
+        shared._mro_sig = sig;
+        return False;
+    }
+    if shared._mro_sig == sig {
+        return False;
+    }
+    rebuilt = linearize_mro(cls, _visiting);
+    if len(rebuilt) > len(shared.mro) {
+        shared.mro = rebuilt;
+        shared._mro_sig = sig;
+        return True;
+    }
+    shared._mro_sig = sig;
+    return False;
+}
+
+impl _build_type_var_solution(class_type: ClassType) -> dict[str, TypeBase] {
     solution: dict[str, TypeBase] = {};
 
     if class_type.shared.type_params
@@ -913,62 +1048,7 @@ impl build_type_var_solution(class_type: ClassType) -> dict[str, TypeBase] {
     return solution;
 }
 
-impl build_solution_from_specialized_class(
-    class_type: ClassType
-) -> dict[str, TypeBase] {
-    solution: dict[str, TypeBase] = {};
-
-    if class_type.is_builtin("tuple")
-        and len(class_type.shared.type_params) == 1
-        and len(class_type.private.type_args) > 1
-        and not any(
-            isinstance(arg, UnknownType) for arg in class_type.private.type_args
-        ) {
-        parameter = class_type.shared.type_params[0];
-        if parameter.name {
-            arguments = class_type.private.type_args;
-            first = arguments[0];
-            solution[parameter.name] = first
-                if all(types_equivalent(first, argument) for argument in arguments[1:])
-                else UnionType(types=arguments);
-            return solution;
-        }
-    }
-
-    if class_type.shared.type_params and class_type.private.type_args {
-        for (idx, tp) in enumerate(class_type.shared.type_params) {
-            if tp.name and idx < len(class_type.private.type_args) {
-                if tp.name not in solution {
-                    solution[tp.name] = class_type.private.type_args[idx];
-                }
-            }
-        }
-    } elif class_type.shared.type_params {
-        for tp in class_type.shared.type_params {
-            if tp.name {
-                solution[tp.name] = AnyType();
-            }
-        }
-    }
-
-    return solution;
-}
-
-impl specialize_for_base_class(
-    src_type: ClassType, base_class: ClassType
-) -> ClassType {
-    if src_type.shared.same_class(base_class.shared) {
-        return src_type;
-    }
-
-    if not base_class.shared.type_params {
-        return base_class;
-    }
-
-    return _specialize_for_base_recursive(src_type, base_class);
-}
-
-def _specialize_for_base_recursive(
+impl _specialize_for_base_recursive(
     src_type: ClassType, target_base: ClassType
 ) -> ClassType {
     if src_type.shared.same_class(target_base.shared) {
@@ -1006,7 +1086,7 @@ def _specialize_for_base_recursive(
     return target_base;
 }
 
-def _apply_solution_to_class(
+impl _apply_solution_to_class(
     class_type: ClassType, solution: dict[str, TypeBase]
 ) -> ClassType {
     if not class_type.private.type_args {
@@ -1031,7 +1111,49 @@ def _apply_solution_to_class(
     return class_type;
 }
 
-def _apply_to_function(
+impl _apply_to_function(
+    func: FunctionType,
+    solution: dict[str, TypeBase],
+    class_type: (ClassType | None),
+    shadowed: (set[str] | None) = None
+) -> FunctionType {
+    if class_type is None or class_type._tv_solution is not solution {
+        return _apply_to_function_uncached(func, solution, class_type, shadowed);
+    }
+    memo_key = (
+        id(solution),
+        id(class_type),
+        frozenset(shadowed) if shadowed is not None else None
+    );
+    cache = func._acc_cache;
+    if cache is None {
+        cache = {};
+        func._acc_cache = cache;
+    }
+    memo:
+        (
+            dict[
+                tuple[(int, int, (frozenset[str] | None))],
+                tuple[(dict[str, TypeBase], (ClassType | None), FunctionType)]
+            ]
+            | None
+        ) = cache.get("_applied");
+    if memo is None {
+        memo = {};
+        cache["_applied"] = memo;
+    }
+    held = memo.get(memo_key);
+    if held is not None and held[0] is solution and held[1] is class_type {
+        return held[2];
+    }
+    result = _apply_to_function_uncached(func, solution, class_type, shadowed);
+    if len(memo) < 32 {
+        memo[memo_key] = (solution, class_type, result);
+    }
+    return result;
+}
+
+impl _apply_to_function_uncached(
     func: FunctionType,
     solution: dict[str, TypeBase],
     class_type: (ClassType | None),
@@ -1064,4 +1186,26 @@ def _apply_to_function(
     }
 
     return clone;
+}
+
+impl is_builtin_region_type(t: (object | None), allow_class: bool = False) -> bool {
+    if not isinstance(t, ClassType) or t.shared is None {
+        return False;
+    }
+    if t.shared.class_name != "Region" {
+        return False;
+    }
+    if not allow_class and t.is_instantiable() and not t.is_instance() {
+        return False;
+    }
+    owner = t.shared.symbol_table;
+    if isinstance(owner, Archetype) {
+        _loc = owner.loc;
+        return _loc is not None and str(_loc.mod_path).endswith(".pyi");
+    }
+    return True;
+}
+
+impl expr_is_builtin_region(expr: (UniNode | None)) -> bool {
+    return isinstance(expr, Expr) and is_builtin_region_type(expr.type);
 }

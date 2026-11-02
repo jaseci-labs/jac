@@ -1,41 +1,126 @@
-import from _csprng_native { csprng_bytes }
+import from hashlib { md5, sha1 }
+import time;
+
+glob RESERVED_NCS: str = "reserved for NCS compatibility",
+     RFC_4122: str = "specified in RFC 4122",
+     RESERVED_MICROSOFT: str = "reserved for Microsoft compatibility",
+     RESERVED_FUTURE: str = "reserved for future definition";
+
+glob _HEXV: str = "0123456789abcdef";
+
+glob _HEXB: bytes = b"0123456789abcdef";
+
+
+def _hexval(c: str) -> int;
+
+
+def _byte_hexval(c: int) -> int;
+
+
+def _be(b: bytes, off: int, width: int) -> int;
+
+
+def _frozen(buf: bytearray, n: int) -> bytes;
+
+
+def hex_concat(b: bytes) -> str;
+
+
+def hex_buffer(b: bytes) -> str;
+
+
+def _hex_str(b: bytes) -> str;
+
+
+def _put(buf: bytearray, off: int, width: int, value: int);
 
 
 obj:pub UUID {
-    has hex: str,
-        version: int = 4;
+    has _b: bytes = b"";
+    has hex: str { getter; }
+    has fields: tuple[int, int, int, int, int, int] { getter; }
+    has time_low: int { getter; }
+    has time_mid: int { getter; }
+    has time_hi_version: int { getter; }
+    has clock_seq_hi_variant: int { getter; }
+    has clock_seq_low: int { getter; }
+    has clock_seq: int { getter; }
+    has `node: int { getter; }
+    has time: int { getter; }
+    has urn: str { getter; }
+    has variant: str { getter; }
+    has version: (int | None) { getter; }
+    has bytes_le: bytes { getter; }
 
-    def __str__ -> str {
-        h: str = self.hex;
-        return h[0:8]
-            + "-"
-            + h[8:12]
-            + "-"
-            + h[12:16]
-            + "-"
-            + h[16:20]
-            + "-"
-            + h[20:32];
-    }
+    def init(
+        hex: str = "",
+        bytes: bytes = b"",
+        bytes_le: bytes = b"",
+        fields: (list[int] | None) = None,
+        version: int = 0
+    );
+
+    def __str__ -> str;
+    def __repr__ -> str;
+    def __eq__(other: UUID) -> bool;
+    def __ne__(other: UUID) -> bool;
+    def __lt__(other: UUID) -> bool;
+    def __gt__(other: UUID) -> bool;
+    def __le__(other: UUID) -> bool;
+    def __ge__(other: UUID) -> bool;
+    def __hash__ -> int;
+    def _to_bytes -> bytes;
 }
 
 
-def:pub uuid4 -> UUID {
-    raw = csprng_bytes(16);
-    digits: str = "0123456789abcdef";
-    out: str = "";
-    i: int = 0;
-    while i < 16 {
-        v: int = raw[i];
-        if i == 6 {
-            v = (v & 15) | 64;
-        }
-        if i == 8 {
-            v = (v & 63) | 128;
-        }
-        out += digits[v >> 4];
-        out += digits[v & 15];
-        i += 1;
-    }
-    return UUID(hex=out, version=4);
+def _from_bytes(raw: bytes, version: int) -> UUID;
+
+
+def:pub getnode -> int;
+
+
+obj _Cell {
+    has value: int = 0;
 }
+
+glob _NODE: _Cell = _Cell(),
+     _LAST_V1: _Cell = _Cell(),
+     _LAST_V6: _Cell = _Cell(),
+     _LAST_V7: _Cell = _Cell(),
+     _CNT_V7: _Cell = _Cell(),
+     _UUID_EPOCH: int = 122192928000000000;
+
+
+def _rand_bits(nbits: int) -> int;
+
+
+def:pub uuid1(`node: int = -1, clock_seq: int = -1) -> UUID;
+
+
+def:pub uuid3(namespace: UUID, name: str) -> UUID;
+
+
+def:pub uuid4 -> UUID;
+
+
+def uuid4_fresh_buffer -> UUID;
+
+
+def:pub uuid5(namespace: UUID, name: str) -> UUID;
+
+
+def:pub uuid6(`node: int = -1, clock_seq: int = -1) -> UUID;
+
+
+def:pub uuid7 -> UUID;
+
+
+def:pub uuid8(a: int = -1, b: int = -1, c: int = -1) -> UUID;
+
+
+glob:pub NAMESPACE_DNS: UUID = UUID(hex="6ba7b810-9dad-11d1-80b4-00c04fd430c8"),
+     NAMESPACE_URL: UUID = UUID(hex="6ba7b811-9dad-11d1-80b4-00c04fd430c8"),
+     NAMESPACE_OID: UUID = UUID(hex="6ba7b812-9dad-11d1-80b4-00c04fd430c8"),
+     NAMESPACE_X500: UUID = UUID(hex="6ba7b814-9dad-11d1-80b4-00c04fd430c8"),
+     NIL: UUID = UUID(hex="00000000-0000-0000-0000-000000000000"),
+     MAX: UUID = UUID(hex="ffffffff-ffff-ffff-ffff-ffffffffffff");

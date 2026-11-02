@@ -1,4 +1,3 @@
-import from jaclang.runtime.osp_kernel { osp_skip_rest }
 impl JcirGenPass._get_builtin_names -> set[str] {
     return self._builtin_names;
 }
@@ -14,14 +13,18 @@ impl JcirGenPass.postinit -> None {
     _typing: set[str] = set();
     self.jaclib_imports = _jaclib;
     self._runtime_aliases = {};
-    self._builtin_names = set(JCIR_BUILTIN_NAMES);
-    self._ambient_typing_names = set(JCIR_AMBIENT_TYPING_NAMES);
+    _builtin_names: set[str] = set(JCIR_BUILTIN_NAMES);
+    _ambient_names: set[str] = set(JCIR_AMBIENT_TYPING_NAMES);
+    self._builtin_names = _builtin_names;
+    self._ambient_typing_names = _ambient_names;
     self._reserved_names = {nd.sym_name for nd in self.module.get_all_sub_nodes(Name)};
     self.builtin_imports = _builtins;
     self.sized_imports = _sized;
     self.typing_imports = _typing;
     self._hoist_frames = [[]];
     self._sink = {};
+    self.loop_links = LoopLinks.of(self.module);
+    self._pass_link_names = {};
     self.preamble = [
         self.nod(
             'ImportFrom',
@@ -68,7 +71,8 @@ impl JcirGenPass.enter_walk with UniNode entry {
         return;
     }
     self.ctx.current_node = here;
-    if (isinstance(here, Module) and (here is not self.module)) {
+    if (isinstance(here, Module) and (here is not self.module))
+        or self.reached_by_syntax(here) {
         osp_skip_rest();
         return;
     }
@@ -79,7 +83,7 @@ impl JcirGenPass.enter_walk with UniNode entry {
     if (
         isinstance(here, ContextAwareNode)
         and (here.code_context == CodeContext.NATIVE)
-        and ((here.parent is None) or isinstance(here.parent, Module))
+        and ((here.decl_parent is None) or isinstance(here.decl_parent, Module))
         and not isinstance(here, (Import, Test))
         and not self._is_native_ext_module()
     ) {
@@ -107,7 +111,7 @@ impl JcirGenPass.enter_walk with UniNode entry {
         isinstance(here, ContextAwareNode)
         and (here.code_context == CodeContext.CLIENT)
         and not here.codespace_dual
-        and ((here.parent is None) or isinstance(here.parent, Module))
+        and ((here.decl_parent is None) or isinstance(here.decl_parent, Module))
     ) {
         osp_skip_rest();
         return;
@@ -116,6 +120,7 @@ impl JcirGenPass.enter_walk with UniNode entry {
         isinstance(here, Import)
         and here.code_context == CodeContext.NATIVE
         and (not here.items)
+        and (not here.clib_decls)
     ) {
         osp_skip_rest();
         return;
@@ -132,7 +137,8 @@ impl JcirGenPass.exit_walk with UniNode exit {
         osp_skip_rest();
         return;
     }
-    if (isinstance(here, Module) and (here is not self.module)) {
+    if (isinstance(here, Module) and (here is not self.module))
+        or self.reached_by_syntax(here) {
         osp_skip_rest();
         return;
     }
@@ -145,7 +151,7 @@ impl JcirGenPass.exit_walk with UniNode exit {
         isinstance(here, ContextAwareNode)
         and (here.code_context == CodeContext.CLIENT)
         and not here.codespace_dual
-        and ((here.parent is None) or isinstance(here.parent, Module))
+        and ((here.decl_parent is None) or isinstance(here.decl_parent, Module))
     ) {
         osp_skip_rest();
         return;
@@ -153,7 +159,7 @@ impl JcirGenPass.exit_walk with UniNode exit {
     if (
         isinstance(here, ContextAwareNode)
         and (here.code_context == CodeContext.NATIVE)
-        and ((here.parent is None) or isinstance(here.parent, Module))
+        and ((here.decl_parent is None) or isinstance(here.decl_parent, Module))
         and not isinstance(here, (Import, Test))
         and not self._is_native_ext_module()
     ) {
@@ -164,6 +170,7 @@ impl JcirGenPass.exit_walk with UniNode exit {
         isinstance(here, Import)
         and here.code_context == CodeContext.NATIVE
         and (not here.items)
+        and (not here.clib_decls)
     ) {
         osp_skip_rest();
         return;
@@ -247,6 +254,21 @@ impl JcirGenPass.val(nd: UniNode) -> CgNode {
 
 impl JcirGenPass.const_of(value: any, jac_node: (UniNode | None) = None) -> CgNode {
     return self.nod('Constant', ['value'], [value], jac_node=jac_node);
+}
+
+impl JcirGenPass.int_const_of(
+    value: CtInt, jac_node: (UniNode | None) = None
+) -> CgNode {
+    wide = int_wide_bytes(value);
+    if wide is None {
+        return self.const_of(int_host(value), jac_node);
+    }
+    return self.nod(
+        'Constant',
+        ['value'],
+        [CgWideInt(negative=value.neg, magnitude=wide)],
+        jac_node=jac_node
+    );
 }
 
 impl JcirGenPass.name_load(name_id: str, jac_node: (UniNode | None) = None) -> CgNode {
@@ -447,6 +469,9 @@ impl JcirGenPass._report_leaked_hoisted_lambdas -> None {
 impl JcirGenPass._function_expr_from_def(
     func_def: CgNode, jac_node: UniNode
 ) -> CgNode {
+    if self._closure_bindings(jac_node) {
+        return self._linked_closure_factory(func_def, jac_node);
+    }
     if isinstance(jac_node, LambdaExpr) {
         parent = jac_node.parent;
         immediate = isinstance(parent, FuncCall) and parent.target is jac_node;
@@ -487,6 +512,174 @@ impl JcirGenPass._function_expr_from_def(
         ['id', 'ctx'],
         [func_def.get('name'), self.nod('Load', [], [], jac_node=jac_node)],
         jac_node=jac_node
+    );
+}
+
+impl JcirGenPass._pass_link_name(link: PassLink) -> str {
+    known = self._pass_link_names.get(link.index);
+    if known is None {
+        known = self._reserve_name(f"_jac_pass_{link.sym.sym_name}");
+        self._pass_link_names[link.index] = known;
+    }
+    return known;
+}
+
+impl JcirGenPass._closure_bindings(closure: UniNode) -> list[str] {
+    names: list[str] = [];
+    for link in self.loop_links.of_closure(closure) {
+        names.append(self._pass_link_name(link));
+    }
+    for sym in self.loop_links.rebinds_of(closure) {
+        names.append(sym.sym_name);
+    }
+    return names;
+}
+
+impl JcirGenPass._pass_link_args(names: list[str]) -> CgNode {
+    params: list[CgNode] = [];
+    for name in names {
+        params.append(self.nod('arg', ['arg', 'annotation'], [name, None]));
+    }
+    return self.nod(
+        'arguments',
+        ['posonlyargs', 'args', 'kwonlyargs', 'kw_defaults', 'defaults'],
+        [[], params, [], [], []]
+    );
+}
+
+impl JcirGenPass._pass_link_ref(link: PassLink, nd: Name) -> CgNode {
+    cell = self.nod(
+        'Attribute',
+        ['value', 'attr', 'ctx'],
+        [
+            self.name_load(self._pass_link_name(link), nd),
+            'cell',
+            self.nod('Load', [], [], jac_node=nd)
+        ],
+        jac_node=nd
+    );
+    return self.nod(
+        'Attribute',
+        ['value', 'attr', 'ctx'],
+        [cell, 'cell_contents', self.py_ctx(nd)],
+        jac_node=nd
+    );
+}
+
+impl JcirGenPass._pass_link_opens(loop: UniNode) -> list[CgNode] {
+    opens: list[CgNode] = [];
+    for link in self.loop_links.of_loop(loop) {
+        made: CgNode;
+        if link.sym.storage == SymbolStorage.MODULE_GLOBAL {
+            made = self.call_node(
+                self._pass_link_ctor('of_global', loop),
+                [
+                    self.call_node(
+                        self.name_load('globals', loop), [], [], jac_node=loop
+                    ),
+                    self.const_of(link.sym.sym_name)
+                ],
+                [],
+                jac_node=loop
+            );
+        } else {
+            probe = self.nod(
+                'Lambda',
+                ['args', 'body'],
+                [self._pass_link_args([]), self.name_load(link.sym.sym_name, loop)],
+                jac_node=loop
+            );
+            made = self.call_node(
+                self._pass_link_ctor('of_local', loop), [probe], [], jac_node=loop
+            );
+        }
+        target = self.nod(
+            'Name',
+            ['id', 'ctx'],
+            [self._pass_link_name(link), self.nod('Store', [], [], jac_node=loop)],
+            jac_node=loop
+        );
+        opens.append(
+            self.nod('Assign', ['targets', 'value'], [[target], made], jac_node=loop)
+        );
+    }
+    return opens;
+}
+
+impl JcirGenPass._pass_link_ctor(kind: str, loop: UniNode) -> CgNode {
+    return self.nod(
+        'Attribute',
+        ['value', 'attr', 'ctx'],
+        [self.jaclib_obj('PassLink'), kind, self.nod('Load', [], [], jac_node=loop)],
+        jac_node=loop
+    );
+}
+
+impl JcirGenPass._pass_link_detaches(loop: (UniNode | None)) -> list[CgNode] {
+    detaches: list[CgNode] = [];
+    if loop is None {
+        return detaches;
+    }
+    for link in self.loop_links.of_loop(loop) {
+        detach = self.nod(
+            'Attribute',
+            ['value', 'attr', 'ctx'],
+            [
+                self.name_load(self._pass_link_name(link), loop),
+                'detach',
+                self.nod('Load', [], [], jac_node=loop)
+            ],
+            jac_node=loop
+        );
+        detaches.append(
+            self.nod(
+                'Expr',
+                ['value'],
+                [self.call_node(detach, [], [], jac_node=loop)],
+                jac_node=loop
+            )
+        );
+    }
+    return detaches;
+}
+
+impl JcirGenPass._linked_closure_value(closure: UniNode, value: CgNode) -> CgNode {
+    names = self._closure_bindings(closure);
+    if not names {
+        return value;
+    }
+    factory = self.nod(
+        'Lambda',
+        ['args', 'body'],
+        [self._pass_link_args(names), value],
+        jac_node=closure
+    );
+    return self.call_node(
+        factory, [self.name_load(name, closure) for name in names], [], jac_node=closure
+    );
+}
+
+impl JcirGenPass._linked_closure_factory(func_def: CgNode, closure: UniNode) -> CgNode {
+    names = self._closure_bindings(closure);
+    factory_name = self._next_lambda_name();
+    returned = self.nod(
+        'Return',
+        ['value'],
+        [self.name_load(str(func_def.get('name')), jac_node=closure)],
+        jac_node=closure
+    );
+    factory = self.nod(
+        'FunctionDef',
+        ['name', 'args', 'body', 'decorator_list', 'returns', 'type_params'],
+        [factory_name, self._pass_link_args(names), [func_def, returned], [], None, []],
+        jac_node=closure
+    );
+    self._hoist_lambda(factory);
+    return self.call_node(
+        self.name_load(factory_name, jac_node=closure),
+        [self.name_load(name, closure) for name in names],
+        [],
+        jac_node=closure
     );
 }
 

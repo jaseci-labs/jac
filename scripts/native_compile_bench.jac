@@ -1,9 +1,9 @@
 """Measure uncached AOT builds with a warm compiler.
 
-    JAC_COMPILER_LIB=/path/to/kernel.so jac run scripts/native_compile_bench.jac \
-        jac/examples/chess/chess.jac --rounds 5
+    jac native build kernel
+    jac run scripts/native_compile_bench.jac jac/examples/chess/chess.jac --rounds 5
 
-Run each kernel in a fresh process. Compiler startup and warmup are excluded;
+Compiler startup and warmup are excluded;
 each measured build reparses the application and emits and links an executable.
 Runtime-unit IR is rebuilt as part of each measured build.
 """
@@ -11,7 +11,6 @@ Runtime-unit IR is rebuilt as part of each measured build.
 import argparse;
 import gc;
 import json;
-import os;
 import statistics;
 import tempfile;
 import time;
@@ -31,11 +30,14 @@ def main -> None {
     }
 
     import from jaclang.cli.commands.native_build { native_build }
+    import from jaclang.compiler.driver.jir { scrub_cache_dirs }
     import from jaclang.compiler.native_compiler { ensure_loaded }
 
     kernel = ensure_loaded();
     if kernel is None {
-        parser.error("set JAC_COMPILER_LIB to a built compiler kernel");
+        parser.error(
+            "no compiler kernel is loaded; run `jac native build kernel` first"
+        );
         return;
     }
     times: list[float] = [];
@@ -43,6 +45,7 @@ def main -> None {
         output = args.output or Path(directory) / "program";
         for round_number in range(-args.warmups, args.rounds) {
             gc.collect();
+            scrub_cache_dirs(str(args.source.resolve().parent));
             start = time.perf_counter();
             result = native_build(
                 str(args.source.resolve()), output=str(output), no_ir_cache=True
@@ -61,8 +64,7 @@ def main -> None {
         json.dumps(
             {
                 "source": str(args.source),
-                "kernel": os.environ.get("JAC_COMPILER_LIB", "auto"),
-                "early_passes": kernel.supports_early,
+                "kernel": kernel.lib_path,
                 "seconds": times,
                 "median_seconds": statistics.median(times),
                 "min_seconds": min(times),

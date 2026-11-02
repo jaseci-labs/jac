@@ -1,7 +1,7 @@
 """Tool use and the ReAct loop: finish_tool, and recovering when a model skips it."""
 
 import from jaclang.byllm.types { IterationAction, IterationContext }
-import from jaclang.byllm.lib { MockLLM }
+import from jaclang.byllm.lib { MockLLM, MockRawResponse }
 import from support { call, finish, prompt_text, say, tool_names }
 
 
@@ -45,10 +45,7 @@ test "the answer is extracted however the model delivers it past max iterations"
     # When max_react_iterations is exceeded byLLM forces a final answer. Some
     # providers reply in plain text, Anthropic replies with a finish_tool call.
     # Both have to yield the same result, and neither may re-run the tools.
-    for (label, final) in [
-        ("plain text", say("FINAL_REPORT")),
-        ("finish_tool call", finish("FINAL_REPORT"))
-    ] {
+    def answers(label: str, final: MockRawResponse) {
         calls = {"wind": 0, "unit": 0};
 
         def get_live_wind_speed(city: str) -> str {
@@ -80,21 +77,24 @@ test "the answer is extracted however the model delivers it past max iterations"
             f"{label}: the last turn must be the forced-answer prompt"
         );
     }
+    for (label, final) in [
+        ("plain text", say("FINAL_REPORT")),
+        ("finish_tool call", finish("FINAL_REPORT"))
+    ] {
+        answers(label, final);
+    }
 }
 
 
 test "an on_iteration hook can stop the loop, with or without a summary" {
     # ABORT stops dead; ABORT_WITH_SUMMARY stops and spends one more model call
     # asking for a summary. Both must leave the tools already run untouched.
-    for (label, action, extra_replies, expected) in [
-        ("ABORT", IterationAction.ABORT, [], None),
-        (
-            "ABORT_WITH_SUMMARY",
-            IterationAction.ABORT_WITH_SUMMARY,
-            [say("SUMMARY_OUTPUT")],
-            "SUMMARY_OUTPUT"
-        )
-    ] {
+    def stops(
+        label: str,
+        action: IterationAction,
+        extra_replies: list[MockRawResponse],
+        expected: str | None
+    ) {
         seen: list[str] = [];
 
         def get_data(key: str) -> str {
@@ -127,6 +127,13 @@ test "an on_iteration hook can stop the loop, with or without a summary" {
             assert result == expected , f"{label}: got {result!r}";
         }
     }
+    stops("ABORT", IterationAction.ABORT, [], None);
+    stops(
+        "ABORT_WITH_SUMMARY",
+        IterationAction.ABORT_WITH_SUMMARY,
+        [say("SUMMARY_OUTPUT")],
+        "SUMMARY_OUTPUT"
+    );
 }
 
 

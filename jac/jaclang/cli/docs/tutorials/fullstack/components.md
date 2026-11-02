@@ -345,6 +345,23 @@ def:pub ItemList(items: list[str]) -> JsxElement {
 
 Loop slots that emit keyless JSX get a warning -- `W2019` for a `while` loop and `W2021` for a `for` loop. Siblings produced by a loop need a stable `key=` (as in the `<li key={i}>` above) so a re-render keeps their identity.
 
+#### Per-item handlers
+
+A handler built in a loop slot sees its own row. It may read the loop target and any local the slot body assigns; each handler keeps the values of the iteration that created it:
+
+```jac
+def:pub Picker(items: list[str], onPick: Callable[[str], None]) -> JsxElement {
+    <ul>
+        {for (i, item) in enumerate(items) {
+            label = item.upper();
+            <li key={i} onClick={lambda { onPick(label); }}>{label}</li>;
+        }}
+    </ul>
+}
+```
+
+A name the component also assigns outside the loop is shared instead: every handler reads its current value. See [Variables and Scope](../../reference/language/variables-and-scope.md#4-scope-rules) for the rule.
+
 ### `has`-fields and Handlers
 
 A `def:pub -> JsxElement` body can declare `has`-fields and nested `def` handlers exactly like a regular component. `has`-fields keep the auto-`useState` wiring -- assigning to one rewrites to the generated setter:

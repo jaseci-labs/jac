@@ -6,8 +6,6 @@ import shutil;
 import subprocess;
 import from pathlib { Path }
 import from typing { Optional }
-import from jaclang.client.client_bundle { ClientBundleError }
-import from .config_loader { JacClientConfig }
 
 glob logger = logging.getLogger(__name__),
      API_BASE_URL_ENV_VAR = "JAC_CLIENT_API_BASE_URL",
@@ -40,7 +38,8 @@ def _forward_vite_output(
     ready_event: any,
     sys_module: any,
     output_buffer: list[str],
-    dispatch: any = None
+    dispatch: any = None,
+    closed_event: any = None
 ) -> None;
 
 class ViteBundler {
@@ -61,6 +60,10 @@ class ViteBundler {
     def _get_client_dir(self: ViteBundler) -> Path;
     def _client_app_dir(self: ViteBundler) -> Path;
     def build(self: ViteBundler, entry_file: Optional[Path] = None) -> None;
+    def _build_inputs_digest(
+        self: ViteBundler, build_dir: Path, command: list[str]
+    ) -> str;
+
     def find_bundle(self: ViteBundler) -> Optional[Path];
     def find_css(self: ViteBundler) -> Optional[Path];
     def read_bundle(self: ViteBundler) -> tuple[str, str];

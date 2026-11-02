@@ -3,17 +3,14 @@ impl JacScaleConfig.get_plugin_name(self: JacScaleConfig) -> str {
 }
 
 impl JacScaleConfig.get_config_schema(self: JacScaleConfig) -> dict[str, any] {
-    import from jaclang.scale.config.validation { scale_schema_options }
     return {"section": "scale", "options": scale_schema_options()};
 }
 
 impl JacScaleConfig.get_app_config_schema(self: JacScaleConfig) -> dict[str, any] {
-    import from jaclang.scale.config.plugin_config { app_scale_schema }
     return {"section": "scale", "options": app_scale_schema()};
 }
 
 impl JacScaleConfig.get_config_strict_env(self: JacScaleConfig) -> str {
-    import from jaclang.scale.config.validation { STRICT_ENV }
     return STRICT_ENV;
 }
 
@@ -83,7 +80,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'enabled': True,
             'username': 'admin',
             'email': 'admin@localhost',
-            'default_password': 'changeme',
+            'default_password': '',
             'session_expiry_hours': 24,
             'require_password_reset': True
         },
@@ -109,15 +106,19 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
                 'timeout': 10.0
             }
         },
-        'auth': {
-            'reset_token_ttl_seconds': 1800,
-            'verify_token_ttl_seconds': 86400,
-            'reset_url_template': '',
-            'verify_url_template': '',
-            'token_collection': 'auth_tokens'
-        },
         'gateway': {'gateway_port': 8000, 'gateway_host': '0.0.0.0', 'colocate': True}
     };
+}
+
+impl _scope_text(value: any) -> str {
+    if isinstance(value, (list, tuple)) {
+        return ' '.join(
+            str(v).strip()
+            for v in value
+            if str(v).strip()
+        );
+    }
+    return ' '.join(str(value or '').replace(',', ' ').split());
 }
 
 impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, any] {
@@ -132,15 +133,18 @@ impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, any] {
         'client_auth_callback_url': sso_config.get('client_auth_callback_url', ''),
         'google': {
             'client_id': google_config.get('client_id', ''),
-            'client_secret': google_config.get('client_secret', '')
+            'client_secret': google_config.get('client_secret', ''),
+            'scopes': _scope_text(google_config.get('scopes', ''))
         },
         'apple': {
             'client_id': apple_config.get('client_id', ''),
-            'client_secret': apple_config.get('client_secret', '')
+            'client_secret': apple_config.get('client_secret', ''),
+            'scopes': _scope_text(apple_config.get('scopes', ''))
         },
         'github': {
             'client_id': github_config.get('client_id', ''),
-            'client_secret': github_config.get('client_secret', '')
+            'client_secret': github_config.get('client_secret', ''),
+            'scopes': _scope_text(github_config.get('scopes', ''))
         },
         'firebase': {
             'project_id': resolve_firebase_project_id(
@@ -188,10 +192,6 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any
         if name
     ];
 
-    import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-        KubernetesConfig,
-        k8s_safe_slug
-    }
     derived = k8s_safe_slug(self.get_jac_config().project.name, fallback='');
     if derived {
         k8s_config.setdefault('app_name', derived);
@@ -308,7 +308,6 @@ impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, any
 }
 
 impl JacScaleConfig.get_events_config(self: JacScaleConfig) -> dict[str, any] {
-    import from jaclang.scale.events.broker { RetryPolicy }
     config = self.load();
     events_config = config.get('events', {});
     retry_config = events_config.get('retry', {});
@@ -418,10 +417,6 @@ impl JacScaleConfig.get_telemetry_config(self: JacScaleConfig) -> dict[str, any]
 }
 
 impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, any] {
-    import from jaclang.scale.config.validation {
-        scheduler_job_cap,
-        scheduler_min_interval
-    }
     config = self.load();
     scheduler_config = config.get('scheduler', {});
     floor: any = scheduler_min_interval(scheduler_config.get('min_interval', 1.0));
@@ -460,30 +455,6 @@ impl JacScaleConfig.get_emailer_config(self: JacScaleConfig) -> dict[str, any] {
             'use_tls': bool(smtp_config.get('use_tls', True)),
             'timeout': float(smtp_config.get('timeout', 10.0))
         }
-    };
-}
-
-impl JacScaleConfig.get_auth_config(self: JacScaleConfig) -> dict[str, any] {
-    config = self.load();
-    auth_config: any = config.get('auth', {}) or {};
-    return {
-        'reset_token_ttl_seconds': int(
-            auth_config.get('reset_token_ttl_seconds', 1800)
-        ),
-        'verify_token_ttl_seconds': int(
-            auth_config.get('verify_token_ttl_seconds', 86400)
-        ),
-        'reset_url_template': auth_config.get('reset_url_template', ''),
-        'verify_url_template': auth_config.get('verify_url_template', ''),
-        'token_collection': auth_config.get('token_collection', 'auth_tokens'),
-        'forgot_password_rate_per_hour': int(
-            auth_config.get('forgot_password_rate_per_hour', 3)
-        ),
-        'forgot_password_burst': int(auth_config.get('forgot_password_burst', 3)),
-        'send_verification_rate_per_hour': int(
-            auth_config.get('send_verification_rate_per_hour', 5)
-        ),
-        'send_verification_burst': int(auth_config.get('send_verification_burst', 5))
     };
 }
 
@@ -612,7 +583,11 @@ impl JacScaleConfig.get_admin_config(self: JacScaleConfig) -> dict[str, any] {
         'enabled': admin_config.get('enabled', True),
         'username': admin_config.get('username', 'admin'),
         'email': admin_config.get('email', 'admin@localhost'),
-        'default_password': admin_config.get('default_password', 'changeme'),
+        'default_password': str(
+            os.environ.get(ADMIN_PASSWORD_ENV)
+                or admin_config.get('default_password')
+                or ''
+        ),
         'session_expiry_hours': int(admin_config.get('session_expiry_hours', 24)),
         'require_password_reset': admin_config.get('require_password_reset', True)
     };

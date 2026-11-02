@@ -30,6 +30,14 @@ walker create {
 
 Anchors live in an `anchors` table with `jsonb` payloads; the same database also carries the `quarantine` sidecar, a `kv_state` utility table, and (under jac-scale) the `jac_docs` table for scheduler jobs and webhook API keys. `jac db inspect` summarizes anchors by kind and archetype; `jac db sql "..."` runs one SQL statement against the project store when you need to look closer.
 
+### Named SQL parameters
+
+`PgWireConnection.run` and `PgStore.rows` accept named SQL parameters such as `:name`. Only executable placeholders are bound: ordinary strings, quoted identifiers, dollar-quoted strings, `E'...'` escape strings, and SQL comments retain their text. Repeated names share one positional parameter, and PostgreSQL `::` casts remain unchanged.
+
+### Array NULL parameters
+
+When using `PgWireConnection.run` directly, `None` inside an array parameter represents a SQL `NULL` element. For example, binding `[1, None, 3]` to `:values::int[]` preserves the missing middle value. Strings such as `"None"`, `"NULL"`, and the empty string remain text values in a `text[]` parameter.
+
 !!! info "Attachment, disconnection, and deletion"
     Reachability from persistent graph state promotes transient nodes and edges into storage. It is not a continuous garbage-collection rule for stored records: removing an edge does not automatically delete a previously persisted node. Use explicit deletion when the record should be destroyed. Ordinary local values and transient graphs do not become durable merely because their types are declared in Jac.
 
@@ -41,7 +49,7 @@ Each served request runs in its own session against the same store, and two runt
 
 **Connections are pooled per process.** A request's store borrows a wire connection from a process-wide pool keyed by the connection info and parks it again on close, sanitized with `DISCARD ALL` (the reset PgBouncer runs between borrowers), so `pg_stat_activity` shows long-lived sessions rather than one connect and SCRAM handshake per request. `JAC_DB_POOL=0` turns parking off; `JAC_DB_POOL_MAX` (default 16 per connection key) caps how many idle connections a process keeps and `JAC_DB_POOL_IDLE_S` (default 300) how long an idle one stays parked.
 
-**Units of work that only read run on the read tier.** A walker or function the process has never observed writing opens `REPEATABLE READ READ ONLY`, which takes no predicate locks and never aborts against a concurrent writer. The first time such a unit writes, the request is re-run at SERIALIZABLE through the conflict loop and the unit is recorded as a writer for `JAC_DB_RO_WRITER_TTL_S` seconds (default 300); write paths keep SERIALIZABLE verbatim and version OCC on upsert is unchanged. `JAC_DB_RO_UNITS=0` restores SERIALIZABLE everywhere.
+**Units of work that only read run on the read tier.** A walker or function the process has never observed writing opens `REPEATABLE READ READ ONLY`, which takes no predicate locks and never aborts against a concurrent writer. The first time such a unit writes, the request is re-run at SERIALIZABLE through the conflict loop and the unit is recorded as a writer for `JAC_DB_RO_WRITER_TTL_S` seconds (default 300). A unit that commits a write part-way (`commit()`, or a nested walk) is recorded as a writer at that commit instead, so its later writes run at SERIALIZABLE and the committed work is not re-run. Write paths keep SERIALIZABLE verbatim and version OCC on upsert is unchanged. `JAC_DB_RO_UNITS=0` restores SERIALIZABLE everywhere.
 
 That record is per process, so every replica learns its writing units independently, and a rolling deploy makes every new replica learn them at once against live traffic: one re-run per writing unit per replica per TTL window, bounded by the app's walker and function surface rather than by traffic. Each re-run logs at info on `jaclang.serve` with the unit key and increments `{namespace}_read_tier_retries_total{unit}` when Prometheus metrics are enabled, so a post-deploy latency blip can be read against it. The TTL is the trade-off knob: a higher value means fewer re-learn passes per replica, at the cost of a read path that was demoted by a transient write (a one-time heal, say) staying at SERIALIZABLE for longer.
 
@@ -468,7 +476,7 @@ jac db fetch
 
 The official `jaseci/jaclang` image already carries everything the embedded engine needs, so nothing here is required to run it. The rules matter when you build your own image or override the defaults:
 
-- **The distribution is baked, not downloaded.** The image ships the Postgres binaries and points `JAC_PG_DIST` at them. To do the same in your own image, run `jac db fetch` at build time and set `JAC_PG_DIST` to the resulting directory (the one holding `bin/postgres`); the runtime then never reaches the network. `JAC_PG_DIST` also lets an air-gapped host use a distribution copied in by hand.
+- **The distribution is baked, not downloaded.** The image runs `jac db fetch` at build time, so the Postgres binaries are already in its cache, where the runtime finds them before it would reach the network. Do the same in your own image. On an air-gapped host, point `[database] postgres_dist` in `jac.toml` at a distribution copied in by hand (the directory holding `bin/postgres`).
 - **The cluster is not in `$HOME`.** `JAC_CACHE_HOME` decides where the cluster lives (default `~/.cache/jac`). The image pins it to a shared directory so the path does not change with the uid the pod runs as; that is also the one path to mount if you want the cluster to survive a restart.
 - **Postgres cannot run as root.** `initdb` refuses uid 0. The image therefore defaults to a real unprivileged account (uid 1000) rather than root, and because the account exists in `/etc/passwd`, an explicit `runAsUser: 1000` resolves too. If jac does run as root anyway, the embedded engine drops privileges for the server subprocess to the first resolvable unprivileged account (`JAC_PG_USER`, then `SUDO_USER`, then `jac` / `postgres` / `nobody`), handing it the data directory first. With no such account it fails with a message naming `JAC_PG_USER` and `JAC_DB_URL` instead of leaking `initdb`'s error.
 

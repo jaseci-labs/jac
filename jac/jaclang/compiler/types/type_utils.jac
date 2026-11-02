@@ -1,41 +1,5 @@
-import type from jaclang.compiler.types.type_evaluator { TypeEvaluator }
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    Archetype,
-    AtomTrailer,
-    ElseIf,
-    ElseStmt,
-    Expr,
-    HasVar,
-    IfStmt,
-    Import,
-    ImplDef,
-    KWPair,
-    Module,
-    ModuleItem,
-    Name,
-    ModulePath,
-    Symbol,
-    UnaryExpr,
-    UniNode,
-    UniScopeNode
-}
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
-import from .types {
-    NeverType,
-    EnumMemberType,
-    AnyType,
-    ClassType,
-    FunctionType,
-    ParamKind,
-    Parameter,
-    TypeBase,
-    TypeVarType,
-    UnionType,
-    UnknownType
-}
-
 glob BARE_GENERIC_REQUIRED: list[str] = ["dict", "list", "tuple"];
+
 
 enum PropertyWriteKind { NOT_PROPERTY = 0, READ_ONLY = 1, WRITABLE = 2, }
 
@@ -58,13 +22,15 @@ def linearize_mro(
     cls: ClassType, _visiting: (set[int] | None) = None
 ) -> list[ClassType];
 
-def mro_signature(cls: ClassType) -> tuple[tuple[int, int | str], ...];
+def mro_signature(cls: ClassType) -> list[tuple[int, str]];
 
 def ensure_mro_fresh(cls: ClassType, _visiting: (set[int] | None) = None) -> bool;
 
 def primitive_type_name_of(ty: (TypeBase | None)) -> (str | None);
 
 def expr_primitive_name(expr_node: UniNode) -> str;
+
+def expr_type_primitive_name(expr_node: Expr) -> str;
 
 obj ParamAssignmentTracker {
     has params: list[Parameter],
@@ -140,3 +106,7 @@ def build_solution_from_specialized_class(
 ) -> dict[str, TypeBase];
 
 def specialize_for_base_class(src_type: ClassType, base_class: ClassType) -> ClassType;
+
+def is_builtin_region_type(t: (object | None), allow_class: bool = False) -> bool;
+
+def expr_is_builtin_region(expr: (UniNode | None)) -> bool;

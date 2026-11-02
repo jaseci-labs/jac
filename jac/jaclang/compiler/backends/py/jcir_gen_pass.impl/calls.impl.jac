@@ -7,10 +7,10 @@ impl JcirGenPass.exit_atom_trailer with AtomTrailer exit {
         here.is_attr
         and trailer_cv is not None
         and self._ct_concrete(here)
-        and self._ct_kind(trailer_cv.v) in ("scalar", "CtEnumMember")
+        and self._ct_kind(trailer_cv) in ("scalar", "CtEnumMember")
         and self._trailer_reaches_ct_class(here)
     ) {
-        folded = self._materialize(trailer_cv.v, here);
+        folded = self._materialize(trailer_cv, here);
         if folded is not None {
             self.set_out(here, [folded]);
             return;
@@ -60,7 +60,8 @@ impl JcirGenPass.exit_atom_trailer with AtomTrailer exit {
         if self._is_edge_ref_target(here.target) {
             target_py = self.val(here.target);
             narrow_kws = self._query_filter_kws(here.right, 'nd', 'preds');
-            target_py.get('args')[0] = self.call_node(
+            narrowed_args = target_py.items('args');
+            narrowed_args[0] = self.call_node(
                 self.nod(
                     'Attribute',
                     ['value', 'attr', 'ctx'],
@@ -69,6 +70,7 @@ impl JcirGenPass.exit_atom_trailer with AtomTrailer exit {
                 [],
                 narrow_kws
             );
+            target_py.setf('args', narrowed_args);
             self.set_out(here, [target_py]);
         } else {
             self.set_out(
@@ -118,8 +120,8 @@ impl JcirGenPass.exit_atom_trailer with AtomTrailer exit {
         slice_call = self.call_node(
             self.name_load('slice'), [start_ast, stop_ast, step_ast], []
         );
-        target_py.get('keywords').append(
-            self.nod('keyword', ['arg', 'value'], ['slc', slice_call])
+        target_py.push(
+            'keywords', self.nod('keyword', ['arg', 'value'], ['slc', slice_call])
         );
         self.set_out(here, [target_py]);
     } else {
@@ -187,7 +189,9 @@ impl JcirGenPass.exit_atom_trailer with AtomTrailer exit {
                 )
                 and cur.get('args')
             ) {
-                cur.get('args')[0] = tmp_ref;
+                rebound_args = cur.items('args');
+                rebound_args[0] = tmp_ref;
+                cur.setf('args', rebound_args);
             }
             body_expr = cur;
         } elif cur.cls == 'Subscript' {
@@ -217,6 +221,7 @@ impl JcirGenPass.exit_atom_trailer with AtomTrailer exit {
             ]
         );
     }
+    self._c_copy_rewrite(here);
 }
 
 impl JcirGenPass.exit_atom_unit with AtomUnit exit {
@@ -254,22 +259,25 @@ impl JcirGenPass.gen_call_args(nd: FuncCall) -> tuple[list[CgNode], list[CgNode]
 
 impl JcirGenPass.exit_func_call with FuncCall exit {
     self._exit_func_call_impl(here);
+    self._c_interop_call_rewrite(here);
 }
 
-impl JcirGenPass._place_parts(arg: UniNode) -> (tuple[str, any, any] | None) {
+impl JcirGenPass._place_parts(arg: UniNode) -> (PlacePath | None) {
     place = arg;
     if isinstance(arg, UnaryExpr) and is_borrow_kind(arg.ownership) {
         place = arg.operand;
     }
     cg = self.val(place);
     if cg.cls == 'Attribute' {
-        return ('attr', cg.get('value'), self.const_of(cg.get('attr')));
+        return PlacePath(
+            kind='attr', target=cg.get('value'), key=self.const_of(cg.get('attr'))
+        );
     }
     if cg.cls == 'Subscript' {
-        return ('item', cg.get('value'), cg.get('slice'));
+        return PlacePath(kind='item', target=cg.get('value'), key=cg.get('slice'));
     }
     if cg.cls == 'Name' {
-        return ('name', cg.get('id'), None);
+        return PlacePath(kind='name', name=str(cg.get('id')));
     }
     return None;
 }
@@ -303,19 +311,18 @@ impl JcirGenPass._lower_take(nd: FuncCall) -> (CgNode | None) {
     if len(params) != 1 or isinstance(params[0], KWPair) {
         return None;
     }
-    parts = self._place_parts(params[0]);
-    if parts is None {
+    place = self._place_parts(params[0]);
+    if place is None {
         return None;
     }
-    (kind, owner, key) = parts;
-    if kind == 'name' {
-        return self._name_take_expr(owner);
+    if place.kind == 'name' {
+        return self._name_take_expr(place.name);
     }
-    helper = '_jac_take_attr' if kind == 'attr' else '_jac_take_item';
+    helper = '_jac_take_attr' if place.kind == 'attr' else '_jac_take_item';
     return self.nod(
         'Call',
         ['func', 'args', 'keywords'],
-        [self.builtin_name(helper), [owner, key], []]
+        [self.builtin_name(helper), [place.target, place.key], []]
     );
 }
 
@@ -324,19 +331,20 @@ impl JcirGenPass._lower_swap(nd: FuncCall) -> (CgNode | None) {
     if len(params) != 2 or any([isinstance(p, KWPair) for p in params]) {
         return None;
     }
-    pa = self._place_parts(params[0]);
-    pb = self._place_parts(params[1]);
-    if pa is None or pb is None {
+    a = self._place_parts(params[0]);
+    b = self._place_parts(params[1]);
+    if a is None or b is None {
         return None;
     }
-    (ka, oa, keya) = pa;
-    (kb, ob, keyb) = pb;
-    if ka == 'name' and kb == 'name' {
+    if a.kind == 'name' and b.kind == 'name' {
         inner = self.nod(
             'Tuple',
             ['elts', 'ctx'],
             [
-                [self.name_load(ob), self._name_swap_expr(ob, self.name_load(oa))],
+                [
+                    self.name_load(b.name),
+                    self._name_swap_expr(b.name, self.name_load(a.name))
+                ],
                 self.nod('Load', [], [])
             ]
         );
@@ -345,49 +353,22 @@ impl JcirGenPass._lower_swap(nd: FuncCall) -> (CgNode | None) {
             ['value', 'slice', 'ctx'],
             [inner, self.const_of(0), self.nod('Load', [], [])]
         );
-        return self.nod(
-            'Subscript',
-            ['value', 'slice', 'ctx'],
-            [
-                self.nod(
-                    'Tuple',
-                    ['elts', 'ctx'],
-                    [
-                        [self._name_swap_expr(oa, old_b), self.const_of(None)],
-                        self.nod('Load', [], [])
-                    ]
-                ),
-                self.const_of(1),
-                self.nod('Load', [], [])
-            ]
-        );
+        return self._second_of_pair(self._name_swap_expr(a.name, old_b));
     }
-    if ka == 'name' or kb == 'name' {
-        (name_id, pk, pobj, pkey) = (oa, kb, ob, keyb)
-            if ka == 'name'
-            else (ob, ka, oa, keya);
-        helper = '_jac_replace_attr' if pk == 'attr' else '_jac_replace_item';
+    if a.kind == 'name' or b.kind == 'name' {
+        named = a if a.kind == 'name' else b;
+        other = b if a.kind == 'name' else a;
+        helper = '_jac_replace_attr' if other.kind == 'attr' else '_jac_replace_item';
         replaced = self.nod(
             'Call',
             ['func', 'args', 'keywords'],
-            [self.builtin_name(helper), [pobj, pkey, self.name_load(name_id)], []]
-        );
-        return self.nod(
-            'Subscript',
-            ['value', 'slice', 'ctx'],
             [
-                self.nod(
-                    'Tuple',
-                    ['elts', 'ctx'],
-                    [
-                        [self._name_swap_expr(name_id, replaced), self.const_of(None)],
-                        self.nod('Load', [], [])
-                    ]
-                ),
-                self.const_of(1),
-                self.nod('Load', [], [])
+                self.builtin_name(helper),
+                [other.target, other.key, self.name_load(named.name)],
+                []
             ]
         );
+        return self._second_of_pair(self._name_swap_expr(named.name, replaced));
     }
     return self.nod(
         'Call',
@@ -395,14 +376,30 @@ impl JcirGenPass._lower_swap(nd: FuncCall) -> (CgNode | None) {
         [
             self.builtin_name('_jac_swap_places'),
             [
-                oa,
-                keya,
-                self.const_of(ka == 'attr'),
-                ob,
-                keyb,
-                self.const_of(kb == 'attr')
+                a.target,
+                a.key,
+                self.const_of(a.kind == 'attr'),
+                b.target,
+                b.key,
+                self.const_of(b.kind == 'attr')
             ],
             []
+        ]
+    );
+}
+
+impl JcirGenPass._second_of_pair(first: CgNode) -> CgNode {
+    return self.nod(
+        'Subscript',
+        ['value', 'slice', 'ctx'],
+        [
+            self.nod(
+                'Tuple',
+                ['elts', 'ctx'],
+                [[first, self.const_of(None)], self.nod('Load', [], [])]
+            ),
+            self.const_of(1),
+            self.nod('Load', [], [])
         ]
     );
 }
@@ -431,7 +428,7 @@ impl JcirGenPass._exit_func_call_impl(nd: FuncCall) -> None {
         and call_cv is not None
         and self._ct_concrete(nd)
     ) {
-        folded = self._materialize(call_cv.v, nd);
+        folded = self._materialize(call_cv, nd);
         if folded is not None {
             self.set_out(nd, [folded]);
             return;

@@ -42,17 +42,30 @@ def:pub AuthProvider(children: any) -> JsxElement {
         isLoading = False;
     }
 
-    async def login(username: str, password: str) -> dict[str, any] {
+    async def login(username: str, password: str, code: str = "") -> dict[str, any] {
         try {
+            credentials: dict[str, any] = {"username": username, "password": password};
+            if code {
+                credentials["code"] = code;
+            }
             resp = await fetch(
                 baseUrl + "/admin/login",
                 {
                     "method": "POST",
                     "headers": {"Content-Type": "application/json"},
-                    "body": JSON.stringify({"username": username, "password": password})
+                    "body": JSON.stringify(credentials)
                 }
             );
             data = await _jsonBody(resp);
+            if not data["ok"]
+                and data["error"]
+                and data["error"]["code"] == "MFA_REQUIRED" {
+                return {
+                    "ok": False,
+                    "codeRequired": True,
+                    "error": "Enter the code from your authenticator app."
+                };
+            }
             if data["ok"] and data["data"] {
                 if data["data"]["requires_password_reset"] {
                     tempToken = data["data"]["token"];

@@ -24,23 +24,63 @@ test "a cached partial helper is regenerated when a new client root pulls anothe
         second = os.path.join(tmp, "second.jac");
         cold = JacProgram();
         cold.compile(first);
-        partial = cold.get_client_artifact(identity);
+        partial = cold._get_compiler().get_client_artifact(identity, cold);
         assert partial is not None;
         assert "function avatar_of(" in partial.js;
         assert "function name_of(" not in partial.js;
         assert not cold.errors_had , [str(e) for e in cold.errors_had];
         warm = JacProgram();
-        assert warm.get_client_artifact(first) is not None;
-        caller = warm.get_client_artifact(second);
+        assert warm._get_compiler().get_client_artifact(first, warm) is not None;
+        caller = warm._get_compiler().get_client_artifact(second, warm);
         assert caller is not None;
         assert 'import { name_of } from "./identity.js"' in caller.js;
-        complete = warm.get_client_artifact(identity);
+        complete = warm._get_compiler().get_client_artifact(identity, warm);
         assert complete is not None;
         assert "function name_of(" in complete.js , (
             "a source-fresh artifact can still be placement-stale: " + complete.js
         );
         assert "__jacCallFunction" not in caller.js;
         assert not warm.errors_had , [str(e) for e in warm.errors_had];
+    }
+}
+
+
+test "a shared helper keeps what one root pulled when another root pulls more" {
+    with tempfile.TemporaryDirectory(prefix="jac-client-placement-") as tmp {
+        files = {
+            "jac.toml": "[project]\nname = \"placement-union\"\n",
+            "identity.jac": "def:pub name_of(username: str) -> str { return \"@\" + username; }\ndef:pub avatar_of(username: str) -> str { return username; }\n",
+            "first.jac": "import from .identity { avatar_of }\ndef:pub app -> JsxElement { return <div>{avatar_of(\"a\")}</div>; }\n",
+            "second.jac": "import from .identity { name_of }\ndef:pub app -> JsxElement { return <div>{name_of(\"a\")}</div>; }\n"
+        };
+        for (name, source) in files.items() {
+            with open(os.path.join(tmp, name), "w") as f {
+                f.write(source);
+            }
+        }
+        program = JacProgram();
+        builder = program._get_compiler();
+        for root_file in ("first.jac", "second.jac") {
+            assert builder.get_client_artifact(os.path.join(tmp, root_file), program)
+                is not None;
+        }
+        helper = builder.get_client_artifact(
+            os.path.join(tmp, "identity.jac"), program
+        );
+        assert helper is not None;
+        assert "function avatar_of(" in helper.js , helper.js;
+        assert "function name_of(" in helper.js , helper.js;
+        assert not program.errors_had , [str(e) for e in program.errors_had];
+        later = JacProgram();
+        again = later._get_compiler().get_client_artifact(
+            os.path.join(tmp, "first.jac"), later
+        );
+        assert again is not None;
+        kept = later._get_compiler().get_client_artifact(
+            os.path.join(tmp, "identity.jac"), later
+        );
+        assert kept is not None;
+        assert "function name_of(" in kept.js , kept.js;
     }
 }
 

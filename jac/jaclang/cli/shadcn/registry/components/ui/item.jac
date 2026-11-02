@@ -47,10 +47,10 @@ def:pub ItemGroup(props: any) -> JsxElement {
     <div
         role="list"
         data-slot="item-group"
+        {**attrs}
         className={cn(
             "cn-item-group group/item-group flex w-full flex-col", props["className"]
         )}
-        {**attrs}
     >
         {props["children"]}
     </div>
@@ -60,8 +60,8 @@ def:pub ItemSeparator(props: any) -> JsxElement {
     <Separator
         data-slot="item-separator"
         orientation="horizontal"
-        className={cn("cn-item-separator", props["className"])}
         {**props}
+        className={cn("cn-item-separator", props["className"])}
     />
 }
 
@@ -116,8 +116,8 @@ def:pub ItemMedia(props: any) -> JsxElement {
     <div
         data-slot="item-media"
         data-variant={variant}
-        className={computedClass}
         {**attrs}
+        className={computedClass}
     >
         {props["children"]}
     </div>
@@ -127,11 +127,11 @@ def:pub ItemContent(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     <div
         data-slot="item-content"
+        {**attrs}
         className={cn(
             "cn-item-content flex flex-1 flex-col [&+[data-slot=item-content]]:flex-none",
             props["className"]
         )}
-        {**attrs}
     >
         {props["children"]}
     </div>
@@ -141,10 +141,10 @@ def:pub ItemTitle(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     <div
         data-slot="item-title"
+        {**attrs}
         className={cn(
             "cn-item-title line-clamp-1 flex w-fit items-center", props["className"]
         )}
-        {**attrs}
     >
         {props["children"]}
     </div>
@@ -154,11 +154,11 @@ def:pub ItemDescription(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     <p
         data-slot="item-description"
+        {**attrs}
         className={cn(
             "cn-item-description line-clamp-2 font-normal [&>a:hover]:text-primary [&>a]:underline [&>a]:underline-offset-4",
             props["className"]
         )}
-        {**attrs}
     >
         {props["children"]}
     </p>
@@ -168,8 +168,8 @@ def:pub ItemActions(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     <div
         data-slot="item-actions"
-        className={cn("cn-item-actions flex items-center", props["className"])}
         {**attrs}
+        className={cn("cn-item-actions flex items-center", props["className"])}
     >
         {props["children"]}
     </div>
@@ -179,11 +179,11 @@ def:pub ItemHeader(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     <div
         data-slot="item-header"
+        {**attrs}
         className={cn(
             "cn-item-header flex basis-full items-center justify-between",
             props["className"]
         )}
-        {**attrs}
     >
         {props["children"]}
     </div>
@@ -193,11 +193,11 @@ def:pub ItemFooter(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     <div
         data-slot="item-footer"
+        {**attrs}
         className={cn(
             "cn-item-footer flex basis-full items-center justify-between",
             props["className"]
         )}
-        {**attrs}
     >
         {props["children"]}
     </div>

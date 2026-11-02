@@ -1,78 +1,8 @@
 """Native compiler entry points: each request returns a retained CPython value
 or zero with the Python exception set."""
-import from jaclang.runtime.python.bindings.pickle { PyInit__pickle }
-import from jaclang.runtime.python.bindings.array { PyInit_array }
-import from jaclang.runtime.python.bindings.itertools { PyInit_itertools }
-import from jaclang.runtime.python.bindings.functools { PyInit__functools }
-import from jaclang.runtime.python.bindings.math { PyInit_math }
-import from jaclang.runtime.python.bindings.collections { PyInit__collections }
-import from jaclang.runtime.python.bindings.struct { PyInit__struct }
-import from jaclang.runtime.python.bindings.cmath { PyInit_cmath }
 
-import from jaclang.runtime.python.bindings.csv { PyInit__csv }
-import from jaclang.runtime.python.bindings.json { PyInit__json }
-import from jaclang.runtime.python.bindings.queue { PyInit__queue }
-import from jaclang.runtime.python.bindings.operator { PyInit__operator }
-import from jaclang.runtime.python.bindings.binascii { PyInit_binascii }
-import from jaclang.runtime.python.bindings.random { PyInit__random }
-import from jaclang.runtime.python.bindings.bisect { PyInit__bisect }
-import from jaclang.runtime.python.bindings.heapq { PyInit__heapq }
-import from jaclang.runtime.python.bindings.statistics { PyInit__statistics }
-import from jaclang.runtime.python.tokenize {
-    token_iterator_state,
-    token_iterator,
-    token_object,
-    jacpy_token_close
-}
-import from jaclang.compiler.frontend.python.source_encoding { source_fd_encoding }
-import from jaclang.compiler.backends.py.jacpython.product_compile {
-    compile_source,
-    compile_ast,
-    prepare_ast_output
-}
-import from jaclang.compiler.frontend.python.parser {
-    parse_file,
-    parse_eval_source,
-    parse_interactive,
-    parse_func_type
-}
-import from jaclang.compiler.frontend.python.ast_nodes { mod }
-import from jaclang.compiler.frontend.python.syntax_error {
-    syntax_failure,
-    split_source_lines,
-    source_character_column
-}
-import from jaclang.runtime.python.objects { PyObj, PyCode, PyError, PyInt }
-import from jaclang.runtime.python.capi {
-    boundary_failure,
-    checked,
-    required,
-    text_object,
-    text_value,
-    jacpy_int,
-    jacpy_none,
-    jacpy_tuple_new,
-    jacpy_tuple_set_owned,
-    jacpy_release
-}
-import from jaclang.runtime.python.constant_output { constant_object }
-import from jaclang.compiler.frontend.python.ast_input { read_node }
-import from jaclang.compiler.frontend.python.ast_output { ast_write_node }
-import from jaclang.compiler.frontend.python.ast_validation { validate_ast_value }
-import from jaclang.runtime.python.symtable {
-    source_symtable,
-    symtable_to_object,
-    SymtableEntry
-}
-import from jaclang.compiler.frontend.python.compiler_symtable { mangle_name }
-import from jaclang.runtime.python.opcode_meta { stack_effect }
-import from jaclang.compiler.frontend.python.source_input { decode_source_value }
-import from c {
-    def jacpy_source_kind(handle: u64) -> i64;  def jacpy_error_pending -> i64;  def jacpy_raise_compiler_error(
-        kind: str, message: u64, location: u64
-    );
-}
-
+# Object-model ports define interpreter types and objects under their C names
+# (Objects/boolobject.c: PyBool_Type, _Py_FalseStruct, _Py_TrueStruct).
 glob PyCF_ONLY_AST: int = 1024;
 
 # A request runs its compiler work inside one region: the tokens, trees,
@@ -84,15 +14,15 @@ obj native_request {
         isolated: bool = True,
         located: bool = True;
 
-    def run -> u64 abst;
+    def run -> ptr[PyObject] abst;
 }
 
-def serve(request: native_request) -> u64 {
+def serve(request: native_request) -> ptr[PyObject] {
     if not request.isolated {
         return respond(request);
     }
     arena = Region();
-    result: u64 = 0;
+    result: ptr[PyObject] = NULL;
     in arena {
         result = respond(request);
     }
@@ -100,13 +30,13 @@ def serve(request: native_request) -> u64 {
 }
 
 # Python exception kinds for failures raised by the compiler implementation.
-def respond(request: native_request) -> u64 {
+def respond(request: native_request) -> ptr[PyObject] {
     try {
         return request.run();
     } except syntax_failure as error {
         raise_failure(request, error);
     } except boundary_failure {
-        return 0;
+        return NULL;
     } except ValueError as error {
         raise_failure(request, syntax_failure(str(error), kind="ValueError"));
     } except TypeError as error {
@@ -120,19 +50,64 @@ def respond(request: native_request) -> u64 {
     } except Exception as error {
         raise_failure(request, syntax_failure(str(error), kind="SystemError"));
     }
-    return 0;
+    return NULL;
+}
+
+"""The exception type a compiler diagnostic names; NULL for an unknown kind."""
+def:priv failure_type(kind: str) -> ptr[PyObject] {
+    if kind == "SyntaxError" {
+        return PyExc_SyntaxError;
+    } elif kind == "IndentationError" {
+        return PyExc_IndentationError;
+    } elif kind == "TabError" {
+        return PyExc_TabError;
+    } elif kind == "_IncompleteInputError" {
+        return addressof(_PyExc_IncompleteInputError);
+    } elif kind == "ValueError" {
+        return PyExc_ValueError;
+    } elif kind == "TypeError" {
+        return PyExc_TypeError;
+    } elif kind == "OverflowError" {
+        return PyExc_OverflowError;
+    } elif kind == "RecursionError" {
+        return PyExc_RecursionError;
+    } elif kind == "RuntimeError" {
+        return PyExc_RuntimeError;
+    } elif kind == "NotImplementedError" {
+        return PyExc_NotImplementedError;
+    } elif kind == "MemoryError" {
+        return PyExc_MemoryError;
+    } elif kind == "SystemError" {
+        return PyExc_SystemError;
+    }
+    return NULL;
 }
 
 def raise_failure(request: native_request, error: syntax_failure) {
     try {
         message = text_object(error.msg);
         try {
-            location: u64 = 0;
+            location: ptr[PyObject] = NULL;
             if request.located {
                 location = failure_location(request.filename, error);
             }
             try {
-                jacpy_raise_compiler_error(error.kind, message, location);
+                kind = failure_type(error.kind);
+                if kind == 0 {
+                    object_error(
+                        PyExc_SystemError, "unknown native diagnostic " + error.kind
+                    );
+                } elif location and PyObject_IsSubclass(kind, PyExc_SyntaxError) > 0 {
+                    # A SyntaxError subclass takes CPython's argument shape:
+                    # (message, (filename, lineno, offset, text, end_lineno, end_offset)).
+                    args = PyTuple_Pack(2, message, location);
+                    if args {
+                        PyErr_SetObject(kind, args);
+                        jacpy_release(args);
+                    }
+                } else {
+                    PyErr_SetObject(kind, message);
+                }
             } finally {
                 jacpy_release(location);
             }
@@ -143,15 +118,19 @@ def raise_failure(request: native_request, error: syntax_failure) {
 }
 
 # (filename, lineno, offset, text, end_lineno, end_offset), as SyntaxError args.
-def failure_location(filename: str, error: syntax_failure) -> u64 {
-    result = required(jacpy_tuple_new(6));
+def failure_location(filename: str, error: syntax_failure) -> ptr[PyObject] {
+    result = required(PyTuple_New(6));
     try {
         checked(jacpy_tuple_set_owned(result, 0, text_object(filename)));
         checked(
-            jacpy_tuple_set_owned(result, 1, required(jacpy_int(i64(error.lineno))))
+            jacpy_tuple_set_owned(
+                result, 1, required(PyLong_FromLongLong(i64(error.lineno)))
+            )
         );
         checked(
-            jacpy_tuple_set_owned(result, 2, required(jacpy_int(i64(error.offset))))
+            jacpy_tuple_set_owned(
+                result, 2, required(PyLong_FromLongLong(i64(error.offset)))
+            )
         );
         checked(
             jacpy_tuple_set_owned(
@@ -159,14 +138,26 @@ def failure_location(filename: str, error: syntax_failure) -> u64 {
                 3,
                 text_object(error.text)
                     if error.text is not None
-                    else required(jacpy_none())
+                    else required(Py_NewRef(Py_None))
             )
         );
         checked(
-            jacpy_tuple_set_owned(result, 4, required(jacpy_int(i64(error.end_lineno))))
+            jacpy_tuple_set_owned(
+                result,
+                4,
+                required(Py_NewRef(Py_None))
+                    if error.open_end
+                    else required(PyLong_FromLongLong(i64(error.end_lineno)))
+            )
         );
         checked(
-            jacpy_tuple_set_owned(result, 5, required(jacpy_int(i64(error.end_offset))))
+            jacpy_tuple_set_owned(
+                result,
+                5,
+                required(Py_NewRef(Py_None))
+                    if error.open_end
+                    else required(PyLong_FromLongLong(i64(error.end_offset)))
+            )
         );
     } except Exception {
         jacpy_release(result);
@@ -176,7 +167,7 @@ def failure_location(filename: str, error: syntax_failure) -> u64 {
 }
 
 # A compiler PyError becomes a located failure over the request source.
-def code_result(value: PyObj, source: str, filename: str) -> u64 {
+def code_result(value: PyObj, source: str, filename: str) -> ptr[PyObject] {
     if isinstance(value, PyError) {
         error = syntax_failure(
             value.exception.message, filename=filename, kind=value.exception.type_name
@@ -205,7 +196,7 @@ def code_result(value: PyObj, source: str, filename: str) -> u64 {
 
 def tree_result(
     tree: mod, source: str, filename: str, optimize: int, flags: int
-) -> u64 {
+) -> ptr[PyObject] {
     output = prepare_ast_output(tree, filename, optimize, flags);
     if isinstance(output, PyObj) {
         return code_result(output, source, filename);
@@ -214,14 +205,14 @@ def tree_result(
 }
 
 obj compile_request(native_request) {
-    has source: u64,
-        filename_handle: u64,
+    has source: ptr[PyObject],
+        filename_handle: ptr[PyObject],
         mode: str,
         optimize: int,
         flags: int,
         feature: int;
 
-    def run -> u64 {
+    def run -> ptr[PyObject] {
         self.filename = text_value(self.filename_handle);
         kind = int(jacpy_source_kind(self.source));
         if kind == 2 {
@@ -239,7 +230,7 @@ obj compile_request(native_request) {
         return self.compile_text(decode_source_value(self.source));
     }
 
-    def compile_text(text: str) -> u64 {
+    def compile_text(text: str) -> ptr[PyObject] {
         if "\x00" in text {
             raise syntax_failure("source code string cannot contain null bytes");
         }
@@ -269,7 +260,21 @@ obj compile_request(native_request) {
         return tree_result(tree, text, self.filename, self.optimize, self.flags);
     }
 
-    def compile_tree -> u64 {
+    def compile_tree -> ptr[PyObject] {
+        # PyAST_obj2mod(): the root must be the mode's node before any field
+        # is converted.
+        (required_kind, required_name) = {
+            "exec": (ast_kind.Module, "Module"),
+            "eval": (ast_kind.Expression, "Expression"),
+            "single": (ast_kind.Interactive, "Interactive"),
+            "func_type": (ast_kind.FunctionType, "FunctionType")
+        }[self.mode];
+        if int(jacpy_ast_kind(self.source)) != required_kind.value {
+            raise syntax_failure(
+                f"expected {required_name} node, got {type_name(self.source)}",
+                kind="TypeError"
+            );
+        }
         tree = read_node(self.source);
         validate_ast_value(tree);
         if not isinstance(tree, mod) {
@@ -289,11 +294,11 @@ obj compile_request(native_request) {
 }
 
 obj symtable_request(native_request) {
-    has source: u64,
-        filename_handle: u64,
+    has source: ptr[PyObject],
+        filename_handle: ptr[PyObject],
         mode: str;
 
-    def run -> u64 {
+    def run -> ptr[PyObject] {
         self.filename = text_value(self.filename_handle);
         text = decode_source_value(self.source);
         result = source_symtable(text, self.filename, self.mode);
@@ -305,10 +310,10 @@ obj symtable_request(native_request) {
 }
 
 obj mangle_request(native_request) {
-    has private: u64,
-        name: u64;
+    has private: ptr[PyObject],
+        name: ptr[PyObject];
 
-    def run -> u64 {
+    def run -> ptr[PyObject] {
         return text_object(
             mangle_name(text_value(self.private), text_value(self.name))
         );
@@ -318,7 +323,7 @@ obj mangle_request(native_request) {
 obj fd_encoding_request(native_request) {
     has fd: int;
 
-    def run -> u64 {
+    def run -> ptr[PyObject] {
         return text_object(source_fd_encoding(self.fd));
     }
 }
@@ -326,19 +331,19 @@ obj fd_encoding_request(native_request) {
 obj token_request(native_request) {
     has iterator: token_iterator_state;
 
-    def run -> u64 {
+    def run -> ptr[PyObject] {
         return token_object(self.iterator);
     }
 }
 
 def:pub jacpy_compile_object(
-    source: u64,
-    filename_handle: u64,
+    source: ptr[PyObject],
+    filename_handle: ptr[PyObject],
     mode: str,
     optimize: int,
     flags: int,
     feature: int
-) -> u64 {
+) -> ptr[PyObject] {
     return serve(
         compile_request(
             source=source,
@@ -351,19 +356,21 @@ def:pub jacpy_compile_object(
     );
 }
 
-def:pub jacpy_symtable_object(source: u64, filename_handle: u64, mode: str) -> u64 {
+def:pub jacpy_symtable_object(
+    source: ptr[PyObject], filename_handle: ptr[PyObject], mode: str
+) -> ptr[PyObject] {
     return serve(
         symtable_request(source=source, filename_handle=filename_handle, mode=mode)
     );
 }
 
-def:pub jacpy_mangle(private: u64, name: u64) -> u64 {
+def:pub jacpy_mangle(private: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
     return serve(
         mangle_request(private=private, name=name, isolated=False, located=False)
     );
 }
 
-def:pub jacpy_fd_encoding(fd: int) -> u64 {
+def:pub jacpy_fd_encoding(fd: int) -> ptr[PyObject] {
     return serve(fd_encoding_request(fd=fd, isolated=False, located=False));
 }
 
@@ -373,13 +380,13 @@ def:pub jacpy_stack_effect(opcode: int, argument: int, jump: int) -> int {
 }
 
 def:pub jacpy_token_create(
-    reader: u64, encoding: str, decode: bool, extra: bool
+    reader: ptr[PyObject], encoding: str, decode: bool, extra: bool
 ) -> token_iterator_state {
     return token_iterator(reader, encoding, decode, extra);
 }
 
 # Zero with no exception set marks the end of the token stream.
-def:pub jacpy_token_step(iterator: token_iterator_state) -> u64 {
+def:pub jacpy_token_step(iterator: token_iterator_state) -> ptr[PyObject] {
     return serve(token_request(iterator=iterator, isolated=False));
 }
 

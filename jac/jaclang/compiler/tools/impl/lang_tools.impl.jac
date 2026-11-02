@@ -1,13 +1,3 @@
-import from jaclang.compiler.driver.pipeline { require_product, CompilationProduct }
-import from jaclang.cli.console { console }
-import from jaclang.compiler.tools.unparse_pass { unparse_module }
-import from jaclang.compiler.tools.treeprinter {
-    print_ast_tree,
-    print_symtab_tree,
-    printgraph_ast_tree,
-    printgraph_symtab_tree
-}
-
 impl AstTool.autodoc_uninode -> str {
     output = '';
     tick = chr(96);
@@ -50,7 +40,6 @@ impl AstTool.autodoc_uninode -> str {
 }
 
 impl AstTool.ir(args: list[str]) -> str {
-    import from jaclang.compiler.driver.pipeline { run_utility, UtilityProduct }
     error = 'Usage: ir <choose one of (sym / sym. / ast / ast. / docir / pyast / py / unparse / esast / es)> <.py or .jac file_path>';
     if (len(args) != 2) {
         return error;
@@ -71,7 +60,7 @@ impl AstTool.ir(args: list[str]) -> str {
             }
             try {
                 rep = run_utility(
-                    UtilityProduct.PYTHON_AST,
+                    CompilationProduct.PYTHON_AST,
                     uni.PythonModuleAst(
                         parsed_ast, orig_src=uni.Source(file_source, file_name)
                     ),
@@ -83,16 +72,13 @@ impl AstTool.ir(args: list[str]) -> str {
                 ir_mod = prog.compile(
                     use_str=rep_src,
                     file_path=(file_name[:-3] + '.jac'),
-                    options=CompileOptions(no_cgen=True, force_target_program=True)
+                    options=CompileOptions(no_cgen=True)
                 );
             } except Exception as e {
                 return f"Error While Jac to Py AST conversion: {e}";
             }
         } else {
-            ir_mod = prog.compile(
-                file_name,
-                options=CompileOptions(no_cgen=True, force_target_program=True)
-            );
+            ir_mod = prog.compile(file_name, options=CompileOptions(no_cgen=True));
         }
         match output {
             case 'sym':
@@ -144,28 +130,25 @@ impl AstTool.ir(args: list[str]) -> str {
                 return unparse_module(ir_mod);
 
             case 'pyast':
-                ir_mod = prog.compile(
-                    file_name, options=CompileOptions(force_target_program=True)
-                );
+                ir_mod = prog.compile(file_name, options=CompileOptions());
                 return f"{py_ast.dump(ir_mod.gen.py_ast[0], indent=2)}"
                     if isinstance(ir_mod.gen.py_ast[0], py_ast.AST)
                     else 'Compile failed.';
 
             case 'docir':
                 return str(
-                    run_utility(UtilityProduct.DOC, ir_mod, prog).module.gen.doc_ir
+                    run_utility(CompilationProduct.DOC, ir_mod, prog).module.gen.doc_ir
                 );
 
             case 'py':
-                ir_mod = prog.compile(
-                    file_name, options=CompileOptions(force_target_program=True)
-                );
-                return f"{ir_mod.gen.py}"
-                    if isinstance(ir_mod.gen.py[0], str)
-                    else 'Compile failed.';
+                import from jaclang.compiler.backends.py.codegen_shim {
+                    generated_python
+                }
+                ir_mod = prog.compile(file_name, options=CompileOptions());
+                return generated_python(ir_mod.gen) or 'Compile failed.';
 
             case 'esast':
-                require_product(prog, ir_mod, CompilationProduct.CLIENT);
+                require(prog, ir_mod, CompilationProduct.CLIENT);
                 es_ir = ir_mod;
                 es_ast = es_ir.gen.es_ast;
                 if isinstance(es_ast, EsNode) {
@@ -175,7 +158,7 @@ impl AstTool.ir(args: list[str]) -> str {
                 }
 
             case 'es':
-                require_product(prog, ir_mod, CompilationProduct.CLIENT);
+                require(prog, ir_mod, CompilationProduct.CLIENT);
                 es_ir = ir_mod;
                 es_ast = es_ir.gen.es_ast;
                 if isinstance(es_ast, EsNode) {
@@ -194,8 +177,6 @@ impl AstTool.ir(args: list[str]) -> str {
 }
 
 impl AstTool.py_uni_nodes -> str {
-    import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
-
     py_ast.unparse(py_ast.parse(""));
     visit_methods = [
         method

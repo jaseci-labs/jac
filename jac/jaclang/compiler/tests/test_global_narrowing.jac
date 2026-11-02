@@ -22,9 +22,6 @@ import tempfile;
 import importlib;
 import from pathlib { Path }
 import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.bccache { discover_base_file }
 
 glob BATCH_DIR = str(
          Path(jaclang.__file__).parent
@@ -39,7 +36,7 @@ glob BATCH_DIR = str(
 
 Mirrors the CLI's per-file loop: an impl annex is resolved back to its base
 module and every entry is compiled into the shared program with
-`force_target_program` so they land in one hub. Returns the emitted messages.
+a session-owned program so they land in one hub. Returns the emitted messages.
 """
 def check_batch(files: list[str]) -> list[str] {
     prog = JacProgram();
@@ -49,10 +46,7 @@ def check_batch(files: list[str]) -> list[str] {
         if base_path is not None {
             file_path = base_path;
         }
-        prog.compile(
-            file_path=file_path,
-            options=CompileOptions(no_cgen=True, force_target_program=True)
-        );
+        prog.compile(file_path=file_path, options=CompileOptions(no_cgen=True));
     }
     return [str(e) for e in prog.errors_had];
 }

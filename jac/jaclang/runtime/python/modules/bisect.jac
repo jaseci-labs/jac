@@ -4,112 +4,217 @@ CPython supplies values and their protocol operations. Search and insertion
 orchestration execute here, without converting the sequence to a Jac list.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
-import from jaclang.runtime.python.capi {
-    jacpy_release,
-    jacpy_none,
-    jacpy_int,
-    jacpy_object_size,
-    jacpy_sequence_slot,
-    jacpy_slot_item,
-    jacpy_call_one,
-    jacpy_less,
-    jacpy_insert,
-    jacpy_recursion_enter,
-    jacpy_recursion_leave,
-    object_error,
-    jacpy_comparison_slot,
-    jacpy_same_type,
-    jacpy_slot_less
-}
+
+import from c { def Py_EnterRecursiveCall(where: ptr[u8]) -> i32;  }
+
+glob:priv PY_LT: i32 = 0;
 
 def bisect_index(
-    sequence: u64, item: u64, low: i64, high: i64, key: u64, right: bool
+    sequence: ptr[PyObject],
+    item: ptr[PyObject],
+    low: i64,
+    high: i64,
+    key: ptr[PyObject],
+    right: bool
 ) -> i64 {
     if low < 0 {
-        object_error("ValueError", "lo must be non-negative");
+        object_error(PyExc_ValueError, "lo must be non-negative");
         return -1;
     }
     if high == -1 {
-        high = jacpy_object_size(sequence);
+        high = PySequence_Size(sequence);
         if high < 0 {
             return -1;
         }
     }
-    slot = jacpy_sequence_slot(sequence);
-    if slot == 0 {
+    if jacpy_sequence_slot(sequence) == NULL {
         return -1;
     }
-    context = " in _bisect.bisect_right" if right else " in _bisect.bisect_left";
-    if jacpy_recursion_enter(context) != 0 {
-        return -1;
-    }
-    compare = jacpy_comparison_slot(item);
-    try {
-        while low < high {
-            # Unsigned addition avoids overflow for valid ssize_t bounds.
-            middle = i64((u64(low) + u64(high)) // u64(2));
-            value = jacpy_slot_item(slot, sequence, middle);
-            if value == 0 {
-                return -1;
-            }
-            if key != 0 {
-                mapped = jacpy_call_one(key, value);
-                jacpy_release(value);
-                value = mapped;
-                if value == 0 {
-                    return -1;
-                }
-            }
-            left = item if right else value;
-            other = value if right else item;
-            comparison = i64(-2);
-            if compare != 0 and jacpy_same_type(item, value) != 0 {
-                comparison = jacpy_slot_less(compare, left, other);
-                if comparison == -2 {
-                    compare = 0;
-                }
-            }
-            if comparison == -2 {
-                comparison = jacpy_less(left, other);
-            }
-            jacpy_release(value);
-            if comparison < 0 {
-                return -1;
-            }
-            if (comparison != 0) == right {
-                high = middle;
-            } else {
-                low = middle + 1;
-            }
+    sequence_type = object_type(sequence);
+    if right {
+        if Py_EnterRecursiveCall(ptr[u8](" in _bisect.bisect_right")) != 0 {
+            return -1;
         }
-        return low;
-    } finally {
-        jacpy_recursion_leave();
+    } elif Py_EnterRecursiveCall(ptr[u8](" in _bisect.bisect_left")) != 0 {
+        return -1;
     }
+    item_type = object_type(item);
+    fast = int(item_type.view(1)[0].tp_richcompare) != 0;
+    while low < high {
+        middle = i64((u64(low) + u64(high)) >> u64(1));
+        value = sequence_type.view(1)[0].tp_as_sequence.view(1)[0].sq_item(
+            sequence, middle
+        );
+        if value == NULL {
+            Py_LeaveRecursiveCall();
+            return -1;
+        }
+        if key != NULL {
+            mapped = PyObject_CallOneArg(key, value);
+            object_decref(value);
+            if mapped == NULL {
+                Py_LeaveRecursiveCall();
+                return -1;
+            }
+            value = mapped;
+        }
+        comparison: i64 = 0;
+        if fast and object_type(value) == item_type {
+            outcome = item_type.view(1)[0].tp_richcompare(
+                item if right else value, value if right else item, PY_LT
+            );
+            if outcome == ptr[PyObject](addressof(_Py_TrueStruct)) {
+                object_decref(outcome);
+                object_decref(value);
+                if right {
+                    high = middle;
+                } else {
+                    low = middle + 1;
+                }
+                continue;
+            }
+            if outcome == ptr[PyObject](addressof(_Py_FalseStruct)) {
+                object_decref(outcome);
+                object_decref(value);
+                if right {
+                    low = middle + 1;
+                } else {
+                    high = middle;
+                }
+                continue;
+            }
+            if outcome == NULL {
+                object_decref(value);
+                Py_LeaveRecursiveCall();
+                return -1;
+            }
+            if outcome == Py_NotImplemented {
+                object_decref(outcome);
+                fast = False;
+                comparison = i64(
+                    PyObject_RichCompareBool(
+                        item if right else value, value if right else item, PY_LT
+                    )
+                );
+            } else {
+                comparison = i64(PyObject_IsTrue(outcome));
+                object_decref(outcome);
+            }
+        } else {
+            comparison = i64(
+                PyObject_RichCompareBool(
+                    item if right else value, value if right else item, PY_LT
+                )
+            );
+        }
+        object_decref(value);
+        if comparison < 0 {
+            Py_LeaveRecursiveCall();
+            return -1;
+        }
+        if (comparison != 0) == right {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    Py_LeaveRecursiveCall();
+    return low;
 }
 
+# internal_bisect_right/left through the key: the index, or -1 with the
+# exception set.
 def:pub jacpy_bisect(
-    sequence: u64, item: u64, low: i64, high: i64, key: u64, right: i64, insert: i64
-) -> u64 {
+    sequence: ptr[PyObject],
+    item: ptr[PyObject],
+    low: i64,
+    high: i64,
+    key: ptr[PyObject],
+    right: bool
+) -> i64 {
+    return bisect_index(
+        sequence, item, low, high, NULL if key == Py_None else key, right
+    );
+}
+
+# insort_right/left: insert `item` at its bisection point, searching by
+# key(item) when a key is given.
+def:priv insort(
+    sequence: ptr[PyObject],
+    item: ptr[PyObject],
+    low: i64,
+    high: i64,
+    key: ptr[PyObject],
+    right: bool
+) -> ptr[PyObject] {
     search = item;
-    if insert != 0 and key != 0 {
-        search = jacpy_call_one(key, item);
+    if key != Py_None {
+        search = PyObject_CallOneArg(key, item);
         if search == 0 {
-            return 0;
+            return NULL;
         }
     }
-    index = bisect_index(sequence, search, low, high, key, right != 0);
-    if insert != 0 and key != 0 {
+    index = jacpy_bisect(sequence, search, low, high, key, right);
+    if key != Py_None {
         jacpy_release(search);
     }
     if index < 0 {
-        return 0;
+        return NULL;
     }
-    if insert == 0 {
-        return jacpy_int(index);
+    if jacpy_is_exact_list(sequence) != 0 {
+        if PyList_Insert(sequence, index, item) < 0 {
+            return NULL;
+        }
+    } else {
+        result = PyObject_CallMethod(sequence, "insert", "nO", index, item);
+        if not result {
+            return NULL;
+        }
+        jacpy_release(result);
     }
-    if jacpy_insert(sequence, index, item) < 0 {
-        return 0;
-    }
-    return jacpy_none();
+    return Py_NewRef(Py_None);
+}
+
+def _bisect_bisect_right_impl(
+    module: ptr[PyObject],
+    a: ptr[PyObject],
+    x: ptr[PyObject],
+    lo: i64,
+    hi: i64,
+    key: ptr[PyObject]
+) -> i64 {
+    return jacpy_bisect(a, x, lo, hi, key, True);
+}
+
+def _bisect_bisect_left_impl(
+    module: ptr[PyObject],
+    a: ptr[PyObject],
+    x: ptr[PyObject],
+    lo: i64,
+    hi: i64,
+    key: ptr[PyObject]
+) -> i64 {
+    return jacpy_bisect(a, x, lo, hi, key, False);
+}
+
+def _bisect_insort_right_impl(
+    module: ptr[PyObject],
+    a: ptr[PyObject],
+    x: ptr[PyObject],
+    lo: i64,
+    hi: i64,
+    key: ptr[PyObject]
+) -> ptr[PyObject] {
+    return insort(a, x, lo, hi, key, True);
+}
+
+def _bisect_insort_left_impl(
+    module: ptr[PyObject],
+    a: ptr[PyObject],
+    x: ptr[PyObject],
+    lo: i64,
+    hi: i64,
+    key: ptr[PyObject]
+) -> ptr[PyObject] {
+    return insort(a, x, lo, hi, key, False);
 }

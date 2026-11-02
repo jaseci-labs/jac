@@ -1,0 +1,6 @@
+# Generated / vendored - don't count in diff stats, hide in review
+jac/jaclang/compiler/frontend/python/parser.jac linguist-generated=true -diff
+jac/jaclang/compiler/frontend/python/ast_input.jac linguist-generated=true
+jac/jaclang/compiler/frontend/python/ast_output.jac linguist-generated=true
+jac/jaclang/runtime/python/opcode_meta.jac linguist-generated=true
+jac/jaclang/vendor/** linguist-vendored

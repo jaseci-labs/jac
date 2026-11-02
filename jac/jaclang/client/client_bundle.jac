@@ -1,20 +1,13 @@
-import type from jaclang.compiler.driver.program { JacProgram }
 import hashlib;
 import os;
 import from pathlib { Path }
 import from types { ModuleType }
-import from jaclang.client.artifact {
-    ClientBundle,
-    ClientBundleError,
-    MissingBunError,
-    prebuilt_bundle
-}
-import type from jaclang.compiler.frontend.codeinfo { ClientArtifact, ClientManifest }
-import type from jaclang.compiler.frontend.unitree { Module }
 
 def _client_target_module(source_key: str, program: any) -> (Module | None);
 
 def _ensure_js_generated(mod: Module, program: any) -> None;
+
+def _errors_reaching(program: any, source: str) -> list[any];
 
 obj ClientBuildInputs {
     has module_name: str,
@@ -41,7 +34,10 @@ obj ClientBundleBuilder {
     ) -> dict[str, any];
 
     def _compile_bundle(module: ModuleType, module_path: Path) -> ClientBundle;
-    def _compile_to_js(source_path: Path) -> ClientArtifact;
+    def _compile_to_js(
+        source_path: Path, source_root: Path | None = None
+    ) -> ClientArtifact;
+
     def _emitted_digest -> str;
     static def _signature(paths: Iterable[Path]) -> str;
 }
@@ -49,14 +45,4 @@ obj ClientBundleBuilder {
 def emitted_tree_digest(tree_root: Path) -> str;
 
 
-def client_program(program: JacProgram | None) -> JacProgram {
-    if program is not None {
-        return program;
-    }
-    import from jaclang.runtime.runtime { JacRuntime }
-    current = JacRuntime.program;
-    if current is None {
-        raise ClientBundleError('No active compilation program for client products');
-    }
-    return current;
-}
+def client_program(program: JacProgram | None) -> JacProgram;

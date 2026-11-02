@@ -480,6 +480,82 @@ test "the shared client-error path classifies once and carries both stacks" {
     }
 }
 
+test "an unchanged status document is not rewritten" {
+    import os;
+    with TemporaryDirectory() as tmp {
+        proj = Path(tmp);
+        doc = proj / ".jac" / "client" / ".jac-status.json";
+        reloader = _reloader(proj);
+        try {
+            reloader.record_error(str(proj / "app.jac"), "boom");
+            written = doc.read_text();
+            os.utime(doc, ns=(1000000000, 1000000000));
+            reloader.record_client_event("ready", None);
+            reloader.record_client_event("runtime", None);
+            reloader._sync_status_file();
+            assert doc.stat().st_mtime_ns == 1000000000 , (
+                "an unchanged status document was written again"
+            );
+            reloader.record_error(str(proj / "app.jac"), "a different failure");
+            assert doc.read_text() != written;
+            reloader.record_ok();
+            assert not doc.exists();
+        } finally {
+            _reset_client_globals();
+        }
+    }
+}
+
+test "a workspace app's status document and reload signal sit where its dev config reads them" {
+    import from jaclang { JacRuntime as Jac }
+    import from jaclang.project.config { JacConfig, get_config, set_config }
+    import from jaclang.client.vite_client_bundle { make_client_bundle_builder }
+    previous = get_config();
+    with TemporaryDirectory() as tmp {
+        project = Path(tmp).resolve();
+        manifest = '[project]\nname = "status-paths"\ndefault-app = "web"\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n';
+        (project / "jac.toml").write_text(manifest);
+        target = project / "web" / "main.jac";
+        target.parent.mkdir();
+        target.write_text("def:pub app -> JsxElement {\n    return <div/>;\n}\n");
+        try {
+            set_config(JacConfig.from_toml_str(manifest, project / "jac.toml"));
+            compiler = make_client_bundle_builder(
+                project, entry_path=str(target), program=Jac.get_program()
+            )._get_compiler();
+            compiled = Path(str(compiler.jac_client_compiler.compiled_dir));
+            config_path = compiler.vite_bundler.create_vite_config(target, is_dev=True);
+            generated = config_path.read_text();
+            build_dir = config_path.parent.parent;
+            assert compiled.parent != build_dir , (
+                f"not a workspace layout: {compiled} compiles beside the dev config"
+            );
+            assert 'const buildDir = path.resolve(__dirname, "..");' in generated;
+            assert 'path.resolve(buildDir, ".jac-status.json")' in generated;
+            assert 'path.resolve(buildDir, ".jac-force-reload")' in generated;
+            _reset_client_globals();
+            reloader = HotReloader(
+                base_path=str(project),
+                module_name="app",
+                watcher=JacFileWatcher(watch_paths=[str(project)]),
+                client_compiler=compiler
+            );
+            reloader.record_error(str(target), "boom");
+            assert (build_dir / ".jac-status.json").exists() , (
+                "the overlay plugin never sees the status document"
+            );
+            assert not (compiled.parent / ".jac-status.json").exists();
+            reloader._signal_full_reload();
+            assert (build_dir / ".jac-force-reload").read_text() == "1";
+            reloader.record_ok();
+            assert not (build_dir / ".jac-status.json").exists();
+        } finally {
+            set_config(previous);
+            _reset_client_globals();
+        }
+    }
+}
+
 test "the suite leaves no dev-loop global behind" {
     import from jaclang.client.source_mapping {
         _locator_cache,
@@ -493,4 +569,30 @@ test "the suite leaves no dev-loop global behind" {
     assert _mapper_cache == {};
     assert _error_rate_limiter._seen == {};
     assert _error_rate_limiter._count == 0;
+}
+
+
+test "a vite that exits before it is ready raises at once with its exit code and last line" {
+    import sys;
+    import time;
+    import from jaclang.client.vite_bundler { ViteBundler }
+    import from jaclang.client.artifact { ClientBundleError }
+    with TemporaryDirectory() as tmp {
+        bundler = ViteBundler(Path(tmp));
+        command = [
+            sys.executable,
+            "-c",
+            "print('vite: bad config'); raise SystemExit(3)"
+        ];
+        started = time.monotonic();
+        raised = "";
+        try {
+            bundler._start_vite_with_output_capture(command, Path(tmp), sys);
+        } except ClientBundleError as e {
+            raised = str(e);
+        }
+        assert "exited with code 3" in raised , raised;
+        assert "vite: bad config" in raised , raised;
+        assert time.monotonic() - started < 20 , "waited out the ready timeout";
+    }
 }

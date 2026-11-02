@@ -25,7 +25,7 @@ takes the opposite direction through the same code.
 import ctypes;
 import os;
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { JAC_ROOT, native_force_opts }
+import from tests.support { JAC_ROOT, native_address, native_force_opts }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "native", "fixtures"
@@ -53,7 +53,7 @@ def engine -> any {
 
 """A fixture function taking one bool and returning an i64."""
 def flag_fn(name: str) -> any {
-    addr = engine().get_function_address(name);
+    addr = native_address(engine(), name);
     assert addr != 0 , f"'{name}' is absent from the JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_bool)(addr);
 }
@@ -87,4 +87,17 @@ test "scalar elements take the opposite direction cleanly" {
     fn = flag_fn("sum_scalar_elems");
     assert fn(True) == 17 , f"scalar sum {fn(True)}, expected 17";
     assert fn(False) == 7 , f"scalar sum {fn(False)}, expected 7";
+}
+
+
+test "pointer elements keep their kind when boxed into a str union list" {
+    for (name, flag, want) in [
+        ("union_obj_elems", True, 7),
+        ("union_obj_elems", False, 10),
+        ("union_str_elems", True, 300),
+        ("union_str_elems", False, 400)
+    ] {
+        got = flag_fn(name)(flag);
+        assert got == want , f"{name}({flag}) gave {got}, expected {want}";
+    }
 }

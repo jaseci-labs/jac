@@ -154,7 +154,6 @@ impl skip_none(p: str) -> bool {
 }
 
 impl skip_jaclang(p: str) -> bool {
-    import from jaclang.bootstrap_manifest { is_native_lowered }
     if p != "runtime/python/LICENSE.cpython" and is_native_lowered(p) {
         return True;
     }
@@ -244,26 +243,54 @@ impl clone_env(parent: dict[str, str] | None = None) -> dict[str, str] {
 impl run_child(argv: list[str], env: dict[str, str] | None, allow_fail: bool) -> bool {
     sys.stderr.flush();
     sys.stdout.flush();
+    import time;
+    started = time.time();
+    child_env = dict(env) if env is not None else dict(os.environ);
+    child_env["JAC_PAYLOAD_CHILD_T0"] = str(started);
     try {
-        rc = subprocess.run(argv, env=env).returncode;
+        rc = subprocess.run(argv, env=child_env).returncode;
     } except OSError as e {
         die(f"spawn {argv[0]} failed: {type(e).__name__}: {e}");
     }
     ok = rc == 0;
+    took = time.time() - started;
+    if took >= 5.0 {
+        label = " ".join(os.path.basename(a) for a in argv[1:4]);
+        log(f"   ({label}: {took:.1f}s)");
+    }
+    if rc < 0 {
+        import signal;
+        try {
+            how = signal.Signals(-rc).name;
+        } except ValueError {
+            how = f"signal {-rc}";
+        }
+        log(f"   {argv[0]} killed by {how} after {took:.1f}s");
+    } elif not ok {
+        log(f"   {argv[0]} exited {rc} after {took:.1f}s");
+    }
     if not ok and not allow_fail {
         die(f"command failed: {argv[0]}");
     }
     return ok;
 }
 
-impl strip_best_effort(path: str) {
+impl strip_best_effort(path: str, args: list[str] | None = None) {
     before = file_size_or_zero(path);
     if before == 0 {
         return;
     }
+
+    if sys.platform == "darwin" {
+        mapped: list[str] = [];
+        for a in (args or []) {
+            mapped.append("-S" if a == "--strip-debug" else a);
+        }
+        args = mapped;
+    }
     try {
         subprocess.run(
-            ["strip", path],
+            ["strip"] + (args or []) + [path],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
@@ -318,23 +345,9 @@ impl rd_u32(b: bytes, off: int) -> int {
     return int.from_bytes(b[off:off + 4], "little");
 }
 
-def _default_modes -> tuple[int, int] {
-    um = os.umask(0);
-    os.umask(um);
-    return (0o666 & ~um, 0o777 & ~um);
-}
+def _default_modes -> tuple[int, int];
 
-def _stripped_name(name: str, strip_components: int) -> str | None {
-    parts = [
-        part
-        for part in name.split("/")
-        if part not in ("", ".")
-    ];
-    if len(parts) <= strip_components {
-        return None;
-    }
-    return "/".join(parts[strip_components:]);
-}
+def _stripped_name(name: str, strip_components: int) -> str | None;
 
 impl extract_tar(
     tar_bytes: bytes, dest: str, strip_components: int, exec_bit_only: bool
@@ -381,4 +394,22 @@ impl extract_tar(
         }
     }
     os.chmod(dest, dir_default | 0o700);
+}
+
+impl _default_modes -> tuple[int, int] {
+    um = os.umask(0);
+    os.umask(um);
+    return (0o666 & ~um, 0o777 & ~um);
+}
+
+impl _stripped_name(name: str, strip_components: int) -> str | None {
+    parts = [
+        part
+        for part in name.split("/")
+        if part not in ("", ".")
+    ];
+    if len(parts) <= strip_components {
+        return None;
+    }
+    return "/".join(parts[strip_components:]);
 }

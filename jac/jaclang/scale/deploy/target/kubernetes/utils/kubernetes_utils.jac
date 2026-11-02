@@ -1,13 +1,6 @@
 import os;
 import time;
 import from pathlib { Path }
-import from jaclang.scale._optdeps.kubernetes {
-    client,
-    config,
-    ApiException,
-    ConfigException
-}
-import from jaclang.scale.deploy.target.kubernetes.cluster_provider { ClusterProvider }
 
 glob _LOCAL_FALLBACK_NOTE: str = (
          "Falling back to local provider semantics: service URLs will be "
@@ -47,6 +40,15 @@ def create_k8s_secret(
     secret_data: dict[str, str]
 ) -> str;
 
+def resolve_minted_secret(
+    core_v1: client.CoreV1Api,
+    namespace: str,
+    secret_name: str,
+    secret_data: dict[str, str],
+    key: str,
+    fresh: str
+) -> bool;
+
 def delete_k8s_secret(
     core_v1: client.CoreV1Api, namespace: str, secret_name: str
 ) -> None;
@@ -59,7 +61,7 @@ def ensure_namespace_exists(namespace: str, owner: str) -> None;
 
 def namespace_is_owned(core_v1: client.CoreV1Api, namespace: str, owner: str) -> bool;
 
-def delete_namespace(namespace: str) -> None;
+def delete_namespace(core_v1: client.CoreV1Api, namespace: str) -> None;
 
 def cluster_type -> str;
 
@@ -87,4 +89,18 @@ def wait_for_pod_deletion(
     core_v1: client.CoreV1Api, namespace: str, pod_name: str, timeout: int = 120
 ) -> None;
 
-def run_kubectl_command(args: list[str], cwd: str | Path | None = None) -> None;
+obj KubectlCluster {
+    has args: list[str] = [],
+        env: dict[str, str] = {};
+
+    def command(args: list[str]) -> list[str];
+    def environ -> dict[str, str];
+}
+
+def kubectl_cluster(kube_context: str = "", kubeconfig: str = "") -> KubectlCluster;
+
+def in_cluster_kubectl -> KubectlCluster;
+
+def run_kubectl_command(
+    args: list[str], kubectl: KubectlCluster, cwd: str | Path | None = None
+) -> None;

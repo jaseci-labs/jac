@@ -1,4 +1,3 @@
-import from jaclang.compiler.expr_keys { type_tag_borrows }
 impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> None {
     if elem_type_name in self.list_helpers {
         return;
@@ -113,6 +112,22 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
         _old_v_s = b.load(ep2, name="lset_old_val");
         b.store(set_fn.args[2], ep2);
         self._emit_elem_release(b, elem_type, _old_v_s);
+    } elif self._nogc_headerless()
+        and isinstance(elem_type, ir.PointerType)
+        and self._elem_kind(elem_type) != "raw" {
+        _old_v_h = b.load(ep2, name="lset_old_val");
+        b.store(set_fn.args[2], ep2);
+        _replaced = b.icmp_unsigned(
+            "!=", _old_v_h, set_fn.args[2], name="lset.replaced"
+        );
+        _rep_bb = set_fn.append_basic_block("lset.drop");
+        _end_bb = set_fn.append_basic_block("lset.done");
+        b.cbranch(_replaced, _rep_bb, _end_bb);
+        b = self._emit_elem_slot_drop(
+            ir.IRBuilder(_rep_bb), set_fn, set_fn.args[0], _list_layout, 0, _old_v_h
+        );
+        b.branch(_end_bb);
+        b = ir.IRBuilder(_end_bb);
     } else {
         b.store(set_fn.args[2], ep2);
     }
@@ -140,7 +155,7 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
 }
 
 impl NaIRGenPass._cast_to_list_elem(
-    b: any, val: ir.Value, elem_type: ir.Type, name: str
+    b: ir.IRBuilder, val: ir.Value, elem_type: ir.Type, name: str
 ) -> ir.Value {
     if val.type == elem_type {
         return val;
@@ -257,7 +272,7 @@ impl NaIRGenPass._empty_list_dest_spec(nd: uni.ListVal) -> (str | None) {
     if isinstance(_dp, uni.KWPair) and _dp.value is _child {
         _fc = _dp.parent;
         if isinstance(_fc, uni.FuncCall) {
-            _cn = self._get_name(_fc.target);
+            _cn = self._arch_ref_key(_fc.target) or self._get_name(_fc.target);
             if _cn is None or _cn not in self.struct_types {
                 _cn = self._struct_name_of(_fc);
             }
@@ -374,7 +389,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             self._str_norm_optional(self._codegen_expr(_first_spread))
         );
         if _first_src_info is None {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd.values[0],
                 kind="expression",
@@ -388,6 +403,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         if first_val is None {
             return None;
         }
+        first_val = self._wrap_fn_as_closure_value(first_val);
         first_val = self._box_value_tuple(
             first_val,
             loc=f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
@@ -399,6 +415,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             and first_val.type != _decl_elem {
             first_val = self._coerce_type(first_val, _decl_elem);
         }
+        first_val = self._variadic_elem_coerce(first_val, nd);
     }
     _lit_spec = self._elem_spec_of(nd);
     _aos_lit = self._aos_elem_of(nd);
@@ -501,7 +518,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
                 self._str_norm_optional(self._codegen_expr(_spread_op))
             );
             if _src_info is None {
-                self.ctx.emit(
+                self.emit(
                     E5092,
                     node_override=nd.values[i],
                     kind="expression",
@@ -530,7 +547,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         }
         val = self._str_norm_optional(self._codegen_expr(nd.values[i]));
         if val is None {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd.values[i],
                 kind="expression",
@@ -548,12 +565,14 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
                 val, self._pending_list_elem_struct.pointee
             );
         }
+        val = self._wrap_fn_as_closure_value(val);
         val = self._box_value_tuple(val, loc=_linit_loc);
         if _clos_elem is not None
             and _decl_elem is not None
             and val.type != _decl_elem {
             val = self._coerce_type(val, _decl_elem);
         }
+        val = self._variadic_elem_coerce(val, nd);
         val = self._nogc_elem_prep(nd.values[i], val);
         if val is None {
             return None;
@@ -578,6 +597,44 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     return list_val;
 }
 
+impl NaIRGenPass._emit_list_index_check(
+    index_val: ir.Value,
+    len_val: ir.Value,
+    msg: str,
+    release_on_error: list[ir.Value],
+    tag: str
+) -> ir.Value {
+    i64 = ir.IntType(64);
+    func = self.builder.function;
+    in_range = self.builder.icmp_unsigned(
+        "<", index_val, len_val, name=f"{tag}.inrange"
+    );
+    entry_bb = self.builder.block;
+    wrap_bb = func.append_basic_block(name=f"{tag}.wrap");
+    use_bb = func.append_basic_block(name=f"{tag}.use");
+
+    _br = self.builder.cbranch(in_range, use_bb, wrap_bb);
+    _br.set_weights([2000, 1]);
+    self.builder.position_at_end(wrap_bb);
+    adjusted = self.builder.add(index_val, len_val, name=f"{tag}.adj");
+    is_neg = self.builder.icmp_signed(
+        "<", index_val, ir.Constant(i64, 0), name=f"{tag}.neg"
+    );
+    adj_ok = self.builder.icmp_signed(
+        ">=", adjusted, ir.Constant(i64, 0), name=f"{tag}.adjok"
+    );
+    is_valid = self.builder.and_(is_neg, adj_ok, name=f"{tag}.valid");
+    is_oob = self.builder.not_(is_valid, name=f"{tag}.oob");
+    self._emit_runtime_raise(is_oob, "IndexError", msg, release_on_error);
+    wrap_end = self.builder.block;
+    self.builder.branch(use_bb);
+    self.builder.position_at_end(use_bb);
+    idx = self.builder.phi(i64, name=f"{tag}.norm");
+    idx.add_incoming(index_val, entry_bb);
+    idx.add_incoming(adjusted, wrap_end);
+    return idx;
+}
+
 impl NaIRGenPass._codegen_index(
     target_val: ir.Value, index_val: ir.Value, elem_type_name: str
 ) -> (ir.Value | None) {
@@ -587,22 +644,50 @@ impl NaIRGenPass._codegen_index(
     }
     i64 = ir.IntType(64);
     index_val = self._coerce_type(index_val, i64);
+    anchor = self._list_anchor_of(target_val, helpers["elem_type"]);
+    fast_bb: (ir.Block | None) = None;
+    fast_val: (ir.Value | None) = None;
+    join_bb: (ir.Block | None) = None;
+    if anchor is not None {
+        fn = self.builder.function;
+        fast_bb = fn.append_basic_block("list.get.fast");
+        slow_bb = fn.append_basic_block("list.get.slow");
+        join_bb = fn.append_basic_block("list.get.join");
+        self.builder.cbranch(
+            self.builder.icmp_unsigned("<", index_val, anchor[0], name="list.get.inb"),
+            fast_bb,
+            slow_bb
+        ).set_weights(
+            [2000, 1]
+        );
+        self.builder.position_at_end(fast_bb);
+        fast_val = self.builder.load(
+            self.builder.gep(anchor[1], [index_val], name="list.get.at"),
+            name="list.get.v"
+        );
+        self.builder.branch(join_bb);
+        self.builder.position_at_end(slow_bb);
+    }
 
-    len_val = self.builder.call(helpers["len"], [target_val], name="list.len.chk");
-    is_neg = self.builder.icmp_signed(
-        "<", index_val, ir.Constant(i64, 0), name="idx.neg.chk"
+    _slow_attrs = ["noinline"] if anchor is not None else None;
+    len_val = self.builder.call(
+        helpers["len"], [target_val], name="list.len.chk", attrs=_slow_attrs
     );
-    adjusted = self.builder.add(index_val, len_val, name="idx.adj");
-    index_val = self.builder.select(is_neg, adjusted, index_val, name="idx.norm");
-    below = self.builder.icmp_signed(
-        "<", index_val, ir.Constant(i64, 0), name="idx.below"
+    index_val = self._emit_list_index_check(
+        index_val, len_val, "list index out of range", [target_val], "idx"
     );
-    above = self.builder.icmp_signed(">=", index_val, len_val, name="idx.oob.chk");
-    is_oob = self.builder.or_(below, above, name="idx.range.chk");
-    self._emit_runtime_raise(
-        is_oob, "IndexError", "list index out of range", [target_val]
+    _got: ir.Value = self.builder.call(
+        helpers["get"], [target_val, index_val], name="list.get", attrs=_slow_attrs
     );
-    _got = self.builder.call(helpers["get"], [target_val, index_val], name="list.get");
+    if anchor is not None and fast_bb is not None and join_bb is not None {
+        slow_end = self.builder.block;
+        self.builder.branch(join_bb);
+        self.builder.position_at_end(join_bb);
+        merged = self.builder.phi(_got.type, name="list.get.m");
+        merged.add_incoming(fast_val, fast_bb);
+        merged.add_incoming(_got, slow_end);
+        _got = merged;
+    }
     if elem_type_name == "u8" {
         return self.builder.zext(_got, i64, name="ba.get.zext");
     }
@@ -643,8 +728,8 @@ impl NaIRGenPass._codegen_any_len(jacval: ir.Value) -> ir.Value {
     merge_bb = func.append_basic_block(name="anylen.end");
     b.cbranch(is_str, str_bb, cont_bb);
     b.position_at_end(str_bb);
-    sp = b.inttoptr(payload, i8p, name="anylen.sp");
-    sl = self._call_str_len(b, sp, name="anylen.strlen");
+    sl = self._jacval_text_len(tag, payload, "anylen");
+    str_end = b.block;
     b.branch(merge_bb);
     b.position_at_end(cont_bb);
     lp = b.inttoptr(payload, i64.as_pointer(), name="anylen.lp");
@@ -652,7 +737,7 @@ impl NaIRGenPass._codegen_any_len(jacval: ir.Value) -> ir.Value {
     b.branch(merge_bb);
     b.position_at_end(merge_bb);
     phi = b.phi(i64, name="anylen");
-    phi.add_incoming(sl, str_bb);
+    phi.add_incoming(sl, str_end);
     phi.add_incoming(cl, cont_bb);
     return phi;
 }
@@ -660,34 +745,46 @@ impl NaIRGenPass._codegen_any_len(jacval: ir.Value) -> ir.Value {
 impl NaIRGenPass._codegen_index_set(
     target_val: ir.Value, index_val: ir.Value, value: ir.Value, elem_type_name: str
 ) -> None {
-    _normed = self._str_norm(value);
-    value = _normed;
+    _normed = self._str_materialize(value)
+        if self._elem_kind(value.type) == "str" and self._is_owned(value)
+        else self._str_norm(value);
+    value = self._wrap_fn_as_closure_value(_normed);
     helpers = self.list_helpers.get(elem_type_name);
     if helpers is None {
         return;
     }
     i64 = ir.IntType(64);
     index_val = self._coerce_type(index_val, i64);
+    elem_type = helpers["elem_type"];
+    anchor = self._list_anchor_of(target_val, elem_type);
+    set_join: (ir.Block | None) = None;
+    if anchor is not None and self._elem_kind(value.type) == "raw" {
+        fn = self.builder.function;
+        fast_bb = fn.append_basic_block("list.set.fast");
+        slow_bb = fn.append_basic_block("list.set.slow");
+        set_join = fn.append_basic_block("list.set.join");
+        self.builder.cbranch(
+            self.builder.icmp_unsigned("<", index_val, anchor[0], name="list.set.inb"),
+            fast_bb,
+            slow_bb
+        ).set_weights(
+            [2000, 1]
+        );
+        self.builder.position_at_end(fast_bb);
+        self.builder.store(
+            self._coerce_type(value, elem_type),
+            self.builder.gep(anchor[1], [index_val], name="list.set.at")
+        );
+        self.builder.branch(set_join);
+        self.builder.position_at_end(slow_bb);
+    }
 
     len_val = self.builder.call(helpers["len"], [target_val], name="list.setlen.chk");
-    is_neg = self.builder.icmp_signed(
-        "<", index_val, ir.Constant(i64, 0), name="setidx.neg.chk"
+    index_val = self._emit_list_index_check(
+        index_val, len_val, "list assignment index out of range", [], "setidx"
     );
-    adjusted = self.builder.add(index_val, len_val, name="setidx.adj");
-    index_val = self.builder.select(is_neg, adjusted, index_val, name="setidx.norm");
-    below = self.builder.icmp_signed(
-        "<", index_val, ir.Constant(i64, 0), name="setidx.below"
-    );
-    above = self.builder.icmp_signed(">=", index_val, len_val, name="setidx.oob.chk");
-    is_oob = self.builder.or_(below, above, name="setidx.range.chk");
-    self._emit_runtime_raise(
-        is_oob, "IndexError", "list assignment index out of range"
-    );
-    elem_type = helpers["elem_type"];
 
-    _lset_ctx_loc = getattr(
-        value, 'jac_loc', f"{os.path.basename(self.module.loc.mod_path)}:0"
-    );
+    _lset_ctx_loc = value.jac_loc;
 
     if self._reject_ptr_into_raw_slot(
         None, value, elem_type, "list element assignment"
@@ -702,6 +799,10 @@ impl NaIRGenPass._codegen_index_set(
         loc=_lset_ctx_loc
     );
     self._release_after_store(value, op="list_set");
+    if set_join is not None {
+        self.builder.branch(set_join);
+        self.builder.position_at_end(set_join);
+    }
 }
 
 impl NaIRGenPass._emit_aos_list_helpers(tname: str) -> ir.Type {
@@ -952,4 +1053,452 @@ impl NaIRGenPass._container_is_view(nd: uni.UniNode) -> bool {
         return type_tag_borrows(_p.type_tag);
     }
     return False;
+}
+
+impl NaIRGenPass._tbaa_tag(
+    tbaa_root: ir.MDValue, cache: dict[str, ir.MDValue], name: str
+) -> ir.MDValue {
+    found = cache.get(name);
+    if found is not None {
+        return found;
+    }
+    i64 = ir.IntType(64);
+    type_node = self.llvm_module.add_metadata([name, tbaa_root, ir.Constant(i64, 0)]);
+    tag = self.llvm_module.add_metadata([type_node, type_node, ir.Constant(i64, 0)]);
+    cache[name] = tag;
+    return tag;
+}
+
+impl NaIRGenPass._tbaa_list_field(
+    gep: ir.GEPInstr, list_tys: set[int]
+) -> (int | None) {
+    base_ty = gep.pointer.type;
+    if not isinstance(base_ty, ir.PointerType) or id(base_ty.pointee) not in list_tys {
+        return None;
+    }
+    if len(gep.indices) != 2 {
+        return None;
+    }
+    first = gep.indices[0];
+    second = gep.indices[1];
+    if not isinstance(first, ir.Constant) or not isinstance(second, ir.Constant) {
+        return None;
+    }
+    lead = first.constant;
+    field = second.constant;
+    if not isinstance(lead, int) or not isinstance(field, int) {
+        return None;
+    }
+    if lead != 0 or field < 0 or field > 2 {
+        return None;
+    }
+    return field;
+}
+
+impl NaIRGenPass._apply_list_tbaa -> None {
+    import os;
+    if os.environ.get("JAC_NO_TBAA") or not self.list_types {
+        return;
+    }
+    list_tys: set[int] = set();
+    for lt in self.list_types.values() {
+        list_tys.add(id(lt));
+    }
+    cache: dict[str, ir.MDValue] = {};
+    tbaa_root = self.llvm_module.add_metadata(["jac.tbaa"]);
+    header = {0: "jac.list.len", 1: "jac.list.cap", 2: "jac.list.data"};
+    for fn in self.llvm_module.functions {
+        if fn.is_declaration {
+            continue;
+        }
+        data_loads: set[int] = set();
+        elem_sites: list[tuple[ir.Instruction, ir.GEPInstr]] = [];
+        for blk in fn.blocks {
+            for inst in blk.instructions {
+                if not isinstance(inst, ir.Instruction) {
+                    continue;
+                }
+                is_load = isinstance(inst, ir.LoadInstr);
+                if not is_load and not isinstance(inst, ir.StoreInstr) {
+                    continue;
+                }
+                ptr = inst.operands[0] if is_load else inst.operands[1];
+                if not isinstance(ptr, ir.GEPInstr) {
+                    continue;
+                }
+                field = self._tbaa_list_field(ptr, list_tys);
+                if field is not None {
+                    inst.set_metadata(
+                        "tbaa", self._tbaa_tag(tbaa_root, cache, header[field])
+                    );
+                    if is_load and field == 2 {
+                        data_loads.add(id(inst));
+                    }
+                    continue;
+                }
+                if len(ptr.indices) == 1 {
+                    elem_sites.append((inst, ptr));
+                }
+            }
+        }
+        for (inst, gep) in elem_sites {
+            if id(gep.pointer) not in data_loads {
+                continue;
+            }
+            vt = inst.type if isinstance(inst, ir.LoadInstr) else inst.operands[0].type;
+            kind = "ptr" if isinstance(vt, ir.PointerType) else str(vt);
+            inst.set_metadata(
+                "tbaa", self._tbaa_tag(tbaa_root, cache, f"jac.list.elem.{kind}")
+            );
+        }
+    }
+}
+
+impl NaIRGenPass._body_keeps_list_headers(body: list[uni.UniNode]) -> bool {
+    allowed = (
+        "range",
+        "len",
+        "abs",
+        "min",
+        "max",
+        "int",
+        "float",
+        "bool",
+        "ord",
+        "chr"
+    );
+    for stmt in body {
+        nodes: list[uni.UniNode] = list(stmt.flatten());
+        for nd in nodes {
+            kind = type(nd).__name__;
+            if kind
+                in (
+                    "DeleteStmt",
+                    "YieldExpr",
+                    "AwaitExpr",
+                    "LambdaExpr",
+                    "WithStmt",
+                    "SpawnExpr",
+                    "ConnectOp",
+                    "DisconnectOp",
+                    "VisitStmt",
+                    "ReportStmt",
+                    "GlobalStmt",
+                    "NonLocalStmt",
+                    "Ability",
+                    "ListCompr",
+                    "GenCompr",
+                    "SetCompr",
+                    "DictCompr",
+                    "MatchStmt",
+                    "EdgeRefTrailer",
+                    "FilterCompr",
+                    "AssignCompr"
+                ) {
+                return False;
+            }
+            if isinstance(nd, uni.FuncCall) {
+                if not isinstance(nd.target, uni.Name)
+                    or nd.target.value not in allowed
+                    or not self._anchor_builtin_call(nd) {
+                    return False;
+                }
+            } elif isinstance(nd, uni.AtomTrailer) {
+                if nd.is_attr {
+                    attr = nd.right;
+                    if not isinstance(attr, uni.Name) or attr.sym is None {
+                        return False;
+                    }
+                    owner = attr.sym.decl.name_of;
+                    if isinstance(owner, uni.Ability) {
+                        return False;
+                    }
+                    if isinstance(owner, uni.HasVar) and owner.accessors {
+                        return False;
+                    }
+                } elif isinstance(nd.right, uni.IndexSlice) {
+                    if nd.right.is_range or not self._anchor_container(nd.target) {
+                        return False;
+                    }
+                }
+            } elif isinstance(nd, uni.InForStmt) {
+                if not self._anchor_container(nd.collection) {
+                    return False;
+                }
+            } elif isinstance(nd, uni.BinaryExpr) {
+                if not (isinstance(nd.op, uni.Token) and nd.op.name == Tok.WALRUS_EQ)
+                    and not (
+                        self._anchor_plain(nd.left) and self._anchor_plain(nd.right)
+                    ) {
+                    return False;
+                }
+            } elif isinstance(nd, uni.CompareExpr) {
+                ops = [str(getattr(op, "value", "")) for op in (nd.ops or [])];
+                if not all(op in ("is", "is not") for op in ops)
+                    and not all(
+                        self._anchor_plain(o) for o in [nd.left] + list(nd.rights or [])
+                    ) {
+                    return False;
+                }
+            } elif isinstance(nd, uni.BoolExpr) {
+                if not all(self._anchor_plain(v) for v in (nd.values or [])) {
+                    return False;
+                }
+            } elif isinstance(nd, uni.UnaryExpr) {
+                if not self._anchor_plain(nd.operand) {
+                    return False;
+                }
+            } elif isinstance(nd, uni.FormattedValue) {
+                if not self._anchor_plain(nd.format_part) {
+                    return False;
+                }
+            } elif kind
+                in ("IfStmt", "ElseIf", "WhileStmt", "IfElseExpr", "AssertStmt") {
+                if not self._anchor_plain(nd?.condition) {
+                    return False;
+                }
+            } elif kind in ("DictVal", "SetVal") {
+                if not self._anchor_plain(nd) {
+                    return False;
+                }
+            } elif isinstance(nd, uni.Assignment) and nd.aug_op is not None {
+                if not all(self._anchor_immutable(t) for t in nd.target) {
+                    return False;
+                }
+            }
+        }
+    }
+    return True;
+}
+
+impl NaIRGenPass._anchor_plain(e: object) -> bool {
+    while isinstance(e, uni.CfgExpr) {
+        e = e.expr;
+    }
+    if not isinstance(e, uni.Expr) or e.type is None {
+        return False;
+    }
+    mangled = "";
+    try {
+        mangled = e.type.mangle();
+    } except Exception {
+        return False;
+    }
+    plain = (
+        "int",
+        "float",
+        "bool",
+        "str",
+        "bytes",
+        "bytearray",
+        "None",
+        "NoneType",
+        "list",
+        "dict",
+        "set",
+        "frozenset",
+        "tuple",
+        "range",
+        "complex",
+        "LiteralString"
+    );
+    words = "".join(c if c.isalnum() or c == "_" else " " for c in mangled).split();
+    return bool(words)
+        and all(w in plain or JAC_TYPE_REGISTRY.is_sized(w) for w in words);
+}
+
+impl NaIRGenPass._anchor_immutable(e: object) -> bool {
+    while isinstance(e, uni.CfgExpr) {
+        e = e.expr;
+    }
+    if not isinstance(e, uni.Expr) or e.type is None {
+        return False;
+    }
+    mangled = "";
+    try {
+        mangled = e.type.mangle();
+    } except Exception {
+        return False;
+    }
+    immutable = (
+        "int",
+        "float",
+        "bool",
+        "str",
+        "bytes",
+        "None",
+        "NoneType",
+        "complex",
+        "LiteralString"
+    );
+    words = "".join(c if c.isalnum() or c == "_" else " " for c in mangled).split();
+    return bool(words)
+        and all(w in immutable or JAC_TYPE_REGISTRY.is_sized(w) for w in words);
+}
+
+impl NaIRGenPass._anchor_container(e: object) -> bool {
+    while isinstance(e, uni.CfgExpr) {
+        e = e.expr;
+    }
+    if not isinstance(e, uni.Expr) or e.type is None {
+        return False;
+    }
+    mangled = "";
+    try {
+        mangled = e.type.mangle();
+    } except Exception {
+        return False;
+    }
+    head = mangled.split("[")[0].strip();
+    if head in ("list", "tuple", "str", "bytes", "bytearray", "range") {
+        return True;
+    }
+    return head in ("dict", "set", "frozenset") and self._anchor_plain(e);
+}
+
+impl NaIRGenPass._anchor_builtin_call(nd: uni.FuncCall) -> bool {
+    tgt = nd.target;
+    if not isinstance(tgt, uni.Name) or tgt.sym is None {
+        return False;
+    }
+    decl = tgt.sym.decl;
+    if decl.loc is None or not str(decl.loc.mod_path).endswith("builtins.pyi") {
+        return False;
+    }
+    for p in (nd.params or []) {
+        arg = p.value if isinstance(p, uni.KWPair) else p;
+        if tgt.value == "len" {
+            if not (self._anchor_container(arg) or self._anchor_plain(arg)) {
+                return False;
+            }
+        } elif not self._anchor_plain(arg) {
+            return False;
+        }
+    }
+    return True;
+}
+
+impl NaIRGenPass._emit_list_anchors(body: list[uni.UniNode]) -> None {
+    import os;
+    if os.environ.get("JAC_NO_LIST_ANCHORS")
+        or not self._body_keeps_list_headers(body) {
+        return;
+    }
+    list_tys: set[int] = set();
+    for lt in self.list_types.values() {
+        list_tys.add(id(lt));
+    }
+    assigned: set[str] = set();
+    indexed: list[str] = [];
+    for stmt in body {
+        nodes: list[uni.UniNode] = list(stmt.flatten());
+        for nd in nodes {
+            bound: list[uni.UniNode] = [];
+            if isinstance(nd, uni.Assignment) {
+                bound = list(nd.target);
+            } elif isinstance(nd, uni.InForStmt) {
+                bound = [nd.target];
+            } elif isinstance(nd, uni.BinaryExpr)
+                and isinstance(nd.op, uni.Token)
+                and nd.op.name == Tok.WALRUS_EQ {
+                bound = [nd.left];
+            } elif type(nd).__name__ in ("MatchAs", "MatchStar") {
+                _match_name = nd?.name;
+                if isinstance(_match_name, uni.UniNode) {
+                    bound = [_match_name];
+                }
+            }
+
+            while bound {
+                tgt = bound.pop();
+                if isinstance(tgt, uni.Name) {
+                    assigned.add(tgt.value);
+                } elif isinstance(tgt, (uni.TupleVal, uni.ListVal)) {
+                    for item in (tgt.values or []) {
+                        bound.append(item);
+                    }
+                } elif isinstance(tgt, uni.UnaryExpr) {
+                    bound.append(tgt.operand);
+                }
+            }
+            if isinstance(nd, uni.AtomTrailer)
+                and isinstance(nd.right, uni.IndexSlice)
+                and isinstance(nd.target, uni.Name)
+                and nd.target.value not in indexed {
+                indexed.append(nd.target.value);
+            }
+        }
+    }
+    i32 = ir.IntType(32);
+    for name in indexed {
+        if name in assigned or name in self.closure_cell_handles {
+            continue;
+        }
+        slot = self.local_vars.get(name);
+        if slot is None or id(slot) in self._list_anchors {
+            continue;
+        }
+        slot_ty = slot.type;
+        if not isinstance(slot_ty, ir.PointerType) {
+            continue;
+        }
+        held = slot_ty.pointee;
+        if not isinstance(held, ir.PointerType) or id(held.pointee) not in list_tys {
+            continue;
+        }
+        lv = self.builder.load(slot, name=f"{name}.anchor");
+        empty = self.llvm_module.globals.get("__jac_empty_list_header");
+        if empty is None {
+            arr = ir.ArrayType(ir.IntType(64), 4);
+            empty = ir.GlobalVariable(
+                self.llvm_module, arr, name="__jac_empty_list_header"
+            );
+            empty.linkage = "weak";
+            empty.initializer = ir.Constant(arr, None);
+        }
+        held_list = self.builder.select(
+            self.builder.icmp_unsigned(
+                "!=", lv, ir.Constant(lv.type, None), name=f"{name}.anchor.set"
+            ),
+            lv,
+            self.builder.bitcast(empty, lv.type),
+            name=f"{name}.anchor.list"
+        );
+        alen = self.builder.load(
+            self.builder.gep(held_list, [ir.Constant(i32, 0), ir.Constant(i32, 0)]),
+            name=f"{name}.anchor.len"
+        );
+        adata = self.builder.load(
+            self.builder.gep(held_list, [ir.Constant(i32, 0), ir.Constant(i32, 2)]),
+            name=f"{name}.anchor.data"
+        );
+        self._list_anchors[id(slot)] = (alen, adata);
+    }
+}
+
+impl NaIRGenPass._list_anchor_of(
+    target_val: ir.Value, elem_type: ir.Type
+) -> (tuple[ir.Value, ir.Value] | None) {
+    if not self._list_anchors or self._elem_kind(elem_type) != "raw" {
+        return None;
+    }
+    if not isinstance(target_val, ir.LoadInstr) {
+        return None;
+    }
+    found = self._list_anchors.get(id(target_val.operands[0]));
+    if found is None {
+        return None;
+    }
+
+    anchor_inst = found[0];
+    if not isinstance(anchor_inst, ir.Instruction)
+        or anchor_inst.parent is None
+        or anchor_inst.parent.parent is not self.builder.function {
+        return None;
+    }
+    data_ty = found[1].type;
+    if not isinstance(data_ty, ir.PointerType) or data_ty.pointee != elem_type {
+        return None;
+    }
+    return found;
 }

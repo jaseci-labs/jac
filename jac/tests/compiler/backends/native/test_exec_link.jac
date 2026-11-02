@@ -1,4 +1,3 @@
-import from jaclang.compiler.backends.native.entry_points { inject_main }
 import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,
@@ -9,43 +8,40 @@ import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.backends.native.elf_linker { ElfLinker }
-import from jaclang.compiler.backends.native.macho_linker { MachOLinker }
-import from jaclang.cli.commands.native_build { _collect_musl_static, _musl_lib_dir }
+import from jaclang.compiler.backends.native.native_link {
+    NativeLinkJob,
+    link_native,
+    musl_lib_dir,
+    musl_runtime
+}
+import from tests.support { program_ir }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
      FIXTURE = "exec_smoke.jac";
 
 
-def _compile_ir(fixture: str, triple: str) -> str {
-    prev = push_native_target(triple);
-    try {
-        prog = JacProgram();
-        ir = prog.compile(
-            file_path=os.path.join(FIXTURES, fixture),
-            options=CompileOptions(aot_mode=True)
-        );
-        assert not prog.errors_had , f"compile errors: {[
-            str(e) for e in prog.errors_had
-        ]}";
-        ir_txt = str(ir.gen.llvm_ir);
-    } finally {
-        pop_native_target(prev);
-    }
-    return ir_txt;
+"""Count the unit entry definitions in whole-program IR: a unit defines
+`__jac_entry_<prefix>` and the glue's `jac_entry` calls the root's exactly once."""
+def _entry_definitions(ir_txt: str) -> int {
+    assert ir_txt.count("define void @jac_entry()") == 1 , "the glue defines jac_entry once";
+    return sum(
+        1
+        for line in ir_txt.splitlines()
+        if line.startswith("define void @__jac_entry_")
+    );
 }
 
-
-def _emit_object(ir_txt: str, triple: str) -> bytes {
+def _emit_object(
+    ir_txt: str, triple: str, reloc: str = "default", codemodel: str = "large"
+) -> bytes {
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
+    llvm.initialize_all_asmparsers();
     mod = llvm.parse_assembly(ir_txt);
     mod.verify();
     tm = llvm.Target.from_triple(triple).create_target_machine(
-        opt=2, codemodel="large"
+        opt=2, reloc=reloc, codemodel=codemodel
     );
     return tm.emit_object(mod);
 }
@@ -54,6 +50,7 @@ def _emit_object(ir_txt: str, triple: str) -> bytes {
 def _emit_for_tm(tm: any, triple: str) -> bytes {
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
+    llvm.initialize_all_asmparsers();
     mod = llvm.parse_assembly(f'target triple = "{triple}"\n');
     mod.triple = triple;
     mod.data_layout = str(tm.target_data);
@@ -61,15 +58,8 @@ def _emit_for_tm(tm: any, triple: str) -> bytes {
 }
 
 
-def _inject_elf(ir_txt: str) -> str {
-    # Linux executables are now fully static against musl, whose crt1.o supplies
-    # `_start`; we inject only `main` (the real path nacompile uses).
-    return inject_main(ir_txt);
-}
-
-
 def _musl_ok(triple: str) -> bool {
-    return _musl_lib_dir(triple) is not None;
+    return musl_lib_dir(triple) is not None;
 }
 
 
@@ -77,35 +67,36 @@ def _link_static(relobj: bytes, triple: str, out: str) -> bool {
     # Static-link against vendored musl (libc.a + libzigc.a + compiler-rt + crt),
     # exactly as `jac build --native` does. Returns False if the musl runtime is not
     # vendored in this environment (callers skip the link/run in that case).
-    musl = _collect_musl_static(relobj, triple);
-    if musl is None {
+    runtime = musl_runtime(triple);
+    if runtime is None {
         return False;
     }
-    (members, crt) = musl;
-    return ElfLinker.link(
-        obj_bytes=relobj,
-        output_path=out,
-        needed_libs=[],
-        crt_objects=crt,
-        archive_members=members,
-        static_link=True
+    (crt, archives) = runtime;
+    link_native(
+        NativeLinkJob(
+            platform="elf",
+            triple=triple,
+            output_path=out,
+            objects=[relobj],
+            crt_objects=crt,
+            archives=archives,
+            static_musl=True
+        )
     );
+    return True;
 }
 
 
-def _inject_macho(ir_txt: str) -> str {
-    globals_ir = ""
-        if "__jac_argc" in ir_txt
-        else "@__jac_argc = global i32 0\n@__jac_argv = global ptr null\n\n";
-    return ir_txt
-        + (
-            "\n; --- injected entry point ---\n"
-            + globals_ir
-            + "define i32 @main(i32 %argc, ptr %argv) {\nentry:\n"
-            + "    store i32 %argc, ptr @__jac_argc\n"
-            + "    store ptr %argv, ptr @__jac_argv\n"
-            + "    call void @jac_entry()\n    ret i32 0\n}\n"
-        );
+def _link_macho(relobj: bytes, triple: str, out: str) {
+    link_native(
+        NativeLinkJob(
+            platform="macho",
+            triple=triple,
+            output_path=out,
+            objects=[relobj],
+            needed_libs=["/usr/lib/libSystem.B.dylib"]
+        )
+    );
 }
 
 
@@ -143,14 +134,14 @@ def _codesig_off(raw: bytes) -> int {
 
 test "ELF executable links, runs, and prints through the C ABI" {
     triple = "x86_64-unknown-linux-gnu";
-    relobj = _emit_object(_inject_elf(_compile_ir(FIXTURE, triple)), triple);
+    relobj = _emit_object(program_ir(FIXTURE, triple, static_musl=True), triple);
     d = tempfile.mkdtemp();
     out = os.path.join(d, "exec_smoke");
     if not _musl_ok(triple) {
         return;
     }
     ok = _link_static(relobj, triple, out);
-    assert ok , "ElfLinker static link returned False";
+    assert ok , "static musl link did not run";
     raw = Path(out).read_bytes();
     assert raw[:4] == b"\x7fELF" , "not an ELF image";
     e_type = struct.unpack_from("<H", raw, 16)[0];
@@ -177,9 +168,9 @@ test "ELF executable links, runs, and prints through the C ABI" {
 
 
 test "multiple `with entry` blocks emit a single jac_entry (issue #6660)" {
-    ir_txt = _compile_ir("multi_entry.jac", llvm.get_default_triple());
-    n = ir_txt.count('define void @"jac_entry"');
-    assert n == 1 , f"expected exactly one jac_entry definition, got {n}";
+    ir_txt = program_ir("multi_entry.jac", llvm.get_default_triple());
+    n = _entry_definitions(ir_txt);
+    assert n == 1 , f"expected exactly one unit entry definition, got {n}";
 }
 
 
@@ -188,12 +179,12 @@ test "concatenated `with entry` blocks run in source order (issue #6660)" {
 
     if sys.platform.startswith("linux") and ("x86_64" in triple) and _musl_ok(triple) {
         relobj = _emit_object(
-            _inject_elf(_compile_ir("multi_entry.jac", triple)), triple
+            program_ir("multi_entry.jac", triple, static_musl=True), triple
         );
         d = tempfile.mkdtemp();
         out = os.path.join(d, "multi_entry");
         ok = _link_static(relobj, triple, out);
-        assert ok , "ElfLinker static link returned False";
+        assert ok , "static musl link did not run";
         res = subprocess.run([out], capture_output=True, timeout=30);
         assert res.returncode == 0 , f"exec exited {res.returncode}, stderr={res.stderr}";
         i = res.stdout.find(b"FIRST");
@@ -206,17 +197,17 @@ test "concatenated `with entry` blocks run in source order (issue #6660)" {
 
 test "a terminating `with entry` block stops later blocks (issue #6660)" {
     triple = llvm.get_default_triple();
-    ir_txt = _compile_ir("multi_entry_terminator.jac", triple);
+    ir_txt = program_ir("multi_entry_terminator.jac", triple, static_musl=True);
 
-    n = ir_txt.count('define void @"jac_entry"');
-    assert n == 1 , f"expected exactly one jac_entry definition, got {n}";
+    n = _entry_definitions(ir_txt);
+    assert n == 1 , f"expected exactly one unit entry definition, got {n}";
 
     if sys.platform.startswith("linux") and ("x86_64" in triple) and _musl_ok(triple) {
-        relobj = _emit_object(_inject_elf(ir_txt), triple);
+        relobj = _emit_object(ir_txt, triple);
         d = tempfile.mkdtemp();
         out = os.path.join(d, "multi_entry_terminator");
         ok = _link_static(relobj, triple, out);
-        assert ok , "ElfLinker static link returned False";
+        assert ok , "static musl link did not run";
         res = subprocess.run([out], capture_output=True, timeout=30);
 
         assert res.returncode != 0 , f"expected non-zero exit from uncaught raise, got 0: {res.stdout}";
@@ -227,17 +218,17 @@ test "a terminating `with entry` block stops later blocks (issue #6660)" {
 
 test "glob-init runs before every `with entry` block (issue #6660)" {
     triple = llvm.get_default_triple();
-    ir_txt = _compile_ir("multi_entry_glob.jac", triple);
+    ir_txt = program_ir("multi_entry_glob.jac", triple, static_musl=True);
 
-    assert ir_txt.count('define void @"jac_entry"') == 1 , "expected exactly one jac_entry";
-    assert "__jac_glob_init" in ir_txt , "expected a __jac_glob_init call in jac_entry";
+    assert _entry_definitions(ir_txt) == 1 , "expected exactly one unit entry";
+    assert "__jac_glob_init" in ir_txt , "expected the unit's glob init in the program";
 
     if sys.platform.startswith("linux") and ("x86_64" in triple) and _musl_ok(triple) {
-        relobj = _emit_object(_inject_elf(ir_txt), triple);
+        relobj = _emit_object(ir_txt, triple);
         d = tempfile.mkdtemp();
         out = os.path.join(d, "multi_entry_glob");
         ok = _link_static(relobj, triple, out);
-        assert ok , "ElfLinker static link returned False";
+        assert ok , "static musl link did not run";
         res = subprocess.run([out], capture_output=True, timeout=30);
 
         assert res.returncode == 0 , f"exec exited {res.returncode}, stderr={res.stderr}";
@@ -253,12 +244,12 @@ test "a cross-module raise unwinds to the importer's handler (issue #7013)" {
     triple = llvm.get_default_triple();
     if sys.platform.startswith("linux") and ("x86_64" in triple) and _musl_ok(triple) {
         relobj = _emit_object(
-            _inject_elf(_compile_ir("xmod_exc_main.jac", triple)), triple
+            program_ir("xmod_exc_main.jac", triple, static_musl=True), triple
         );
         d = tempfile.mkdtemp();
         out = os.path.join(d, "xmod_exc_main");
         ok = _link_static(relobj, triple, out);
-        assert ok , "ElfLinker static link returned False";
+        assert ok , "static musl link did not run";
         res = subprocess.run([out], capture_output=True, timeout=30);
         assert res.returncode == 0 , f"cross-module raise did not unwind (exit {res.returncode}); stderr={res.stderr}";
         assert b"XMOD_CAUGHT" in res.stdout , f"handler did not catch cross-module raise: {res.stdout}";
@@ -270,16 +261,10 @@ test "a cross-module raise unwinds to the importer's handler (issue #7013)" {
 
 test "Mach-O executable has MH_EXECUTE filetype and an LC_MAIN entry" {
     triple = "x86_64-apple-darwin";
-    relobj = _emit_object(_inject_macho(_compile_ir(FIXTURE, triple)), triple);
+    relobj = _emit_object(program_ir(FIXTURE, triple), triple, "pic", "small");
     d = tempfile.mkdtemp();
     out = os.path.join(d, "exec_smoke");
-    ok = MachOLinker.link(
-        obj_bytes=relobj,
-        output_path=out,
-        needed_libs=["/usr/lib/libSystem.B.dylib"],
-        shared=False
-    );
-    assert ok , "MachOLinker.link(shared=False) returned False";
+    _link_macho(relobj, triple, out);
     raw = Path(out).read_bytes();
     assert struct.unpack_from("<I", raw, 0)[0] == 0xFEEDFACF , "not a Mach-O 64 image";
     filetype = struct.unpack_from("<I", raw, 12)[0];
@@ -302,16 +287,10 @@ test "Mach-O executable has MH_EXECUTE filetype and an LC_MAIN entry" {
 
 test "Mach-O arm64 executable is ad-hoc signed with CS_EXECSEG_MAIN_BINARY" {
     triple = "arm64-apple-darwin";
-    relobj = _emit_object(_inject_macho(_compile_ir(FIXTURE, triple)), triple);
+    relobj = _emit_object(program_ir(FIXTURE, triple), triple, "pic", "small");
     d = tempfile.mkdtemp();
     out = os.path.join(d, "exec_smoke_arm64");
-    ok = MachOLinker.link(
-        obj_bytes=relobj,
-        output_path=out,
-        needed_libs=["/usr/lib/libSystem.B.dylib"],
-        shared=False
-    );
-    assert ok , "MachOLinker.link(shared=False) returned False for arm64";
+    _link_macho(relobj, triple, out);
     raw = Path(out).read_bytes();
     assert struct.unpack_from("<I", raw, 12)[0] == 2 , "expected MH_EXECUTE (2)";
     sig_off = _codesig_off(raw);
@@ -326,6 +305,7 @@ test "AOT executable code model emits COFF, not ELF, on a Windows triple" {
     import from unittest.mock { patch }
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
+    llvm.initialize_all_asmparsers();
     win_triple = "x86_64-pc-windows-msvc";
     target = llvm.Target.from_triple(win_triple);
     with patch.object(_tgt.os, "name", "nt") {

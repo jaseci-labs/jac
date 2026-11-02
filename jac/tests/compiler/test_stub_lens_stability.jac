@@ -1,21 +1,10 @@
-"""Typeshed is served through one lens for the life of a process.
+"""Each analysis session uses one consistent representation of typeshed.
 
-Typeshed reaches the checker two ways: as parsed `.pyi` trees, or from the
-stub catalog. The catalog used to be activated only by the first compile of
-a file outside the compiler tree, so a long-lived `jac check` worker that
-started on compiler-tree files parsed stubs as trees, cached their classes
-on the compiler-tree dependencies it keeps between files, and then flipped
-to the catalog for its first application file. From then on the evaluator's
-own `NoneType` (and `TypeVar`, `type`, every prelude class) was a different
-record from the ones in every type it had cached, so `x: T | None` never
-narrowed, generics stopped binding, and impl bodies reported E1099 / E1053
-on lines that pass in isolation. Which files lost depended on the worker's
-history, which is the order-dependent `jac check .` failure in CI.
-
-The contract now: any top-level compile for a non-selfhost program decides
-the lens up front by activating the catalog, and once stub trees have been
-served to a non-selfhost program the catalog stays closed for that process.
-None recognition additionally compares class records by canonical identity.
+Parsed stubs and catalog classes have session-local semantic identity. A
+session that has served raw trees keeps using them until it releases its
+closure. Other sessions may use the catalog independently. This prevents
+file-order-dependent narrowing and generic binding across compiler and
+application checks.
 """
 import os;
 import subprocess;
@@ -87,7 +76,6 @@ obj LensState {
             self.compiler.stub_catalog_disabled,
             self.compiler._stub_catalog,
             self.compiler._stub_catalog_tried,
-            self.compiler._stub_trees_served,
             active(),
 
         );
@@ -98,7 +86,6 @@ obj LensState {
         set_active(None);
         self.compiler._stub_catalog = None;
         self.compiler._stub_catalog_tried = False;
-        self.compiler._stub_trees_served = False;
     }
 
     def new_stub_trees -> set[str] {
@@ -110,7 +97,6 @@ obj LensState {
             self.compiler.stub_catalog_disabled,
             self.compiler._stub_catalog,
             self.compiler._stub_catalog_tried,
-            self.compiler._stub_trees_served,
             cat,
 
         ) = self.saved;
@@ -124,17 +110,14 @@ obj LensState {
 test "a compiler-tree compile activates the catalog instead of parsing stub trees" {
     prog = JacProgram();
     compiler = prog._get_compiler();
-    state = LensState(compiler=compiler, internal=compiler.selfhost.program);
+    state = LensState(compiler=compiler, internal=prog);
     try {
         state.deactivate_catalog();
         target = os.path.join(
             compiler.selfhost.jaclang_root(), "compiler", "driver", "log.jac"
         );
         assert os.path.isfile(target) , f"missing fixture {target}";
-        prog.compile(
-            file_path=target,
-            options=CompileOptions(no_cgen=True, force_target_program=True)
-        );
+        prog.compile(file_path=target, options=CompileOptions(no_cgen=True));
         assert compiler.stub_catalog() is not None , (
             "a non-selfhost compile of a compiler-tree file left the catalog inactive"
         );
@@ -149,11 +132,11 @@ test "a compiler-tree compile activates the catalog instead of parsing stub tree
     }
 }
 
-test "once stub trees serve a program the catalog stays closed" {
+test "stub representation stays fixed for a session without disabling other sessions" {
     prog = JacProgram();
     compiler = prog._get_compiler();
-    state = LensState(compiler=compiler, internal=compiler.selfhost.program);
-    opts = CompileOptions(no_cgen=True, native_parity=True, force_target_program=True);
+    state = LensState(compiler=compiler, internal=prog);
+    opts = CompileOptions(no_cgen=True, native_parity=True);
     try {
         with tempfile.TemporaryDirectory() as d {
             state.deactivate_catalog();
@@ -165,12 +148,15 @@ test "once stub trees serve a program the catalog stays closed" {
                 prog, first.loc.mod_path
             );
             assert state.new_stub_trees() , "expected stub trees while the catalog is disabled";
-            assert compiler._stub_trees_served , "serving stub trees must mark the process";
-            prog.release_compile_closure();
+            assert prog._stub_trees_served , "serving stub trees must mark the session";
             compiler.stub_catalog_disabled = False;
-            assert compiler.ensure_stub_catalog() is None , (
-                "the catalog opened after stub trees were served"
-            );
+            assert compiler.ensure_stub_catalog() is not None;
+            assert prog.stub_catalog() is None , "an active tree session must not switch catalogs";
+            other = JacProgram();
+            other._get_compiler().ensure_stub_catalog();
+            assert other.stub_catalog() is not None , "another session can use the catalog";
+            prog.release_compile_closure();
+            assert prog.stub_catalog() is not None , "a released session can use the catalog";
             second = prog.compile(
                 file_path=_write(d, "lens_narrower", NARROWER), options=opts
             );
@@ -186,8 +172,8 @@ test "once stub trees serve a program the catalog stays closed" {
 test "None recognition survives a forced lens flip" {
     prog = JacProgram();
     compiler = prog._get_compiler();
-    state = LensState(compiler=compiler, internal=compiler.selfhost.program);
-    opts = CompileOptions(no_cgen=True, native_parity=True, force_target_program=True);
+    state = LensState(compiler=compiler, internal=prog);
+    opts = CompileOptions(no_cgen=True, native_parity=True);
     try {
         with tempfile.TemporaryDirectory() as d {
             state.deactivate_catalog();
@@ -200,7 +186,6 @@ test "None recognition survives a forced lens flip" {
             );
             prog.release_compile_closure();
             compiler.stub_catalog_disabled = False;
-            compiler._stub_trees_served = False;
             assert compiler.ensure_stub_catalog() is not None , (
                 "the stub catalog is unavailable, so the flip cannot be staged"
             );

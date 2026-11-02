@@ -27,16 +27,15 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.es { EsastGenPass }
-import from jaclang.compiler.backends.es.es_unparse { es_to_js }
+import from tests.compiler.backends.es.codegen_helpers { es_js_with_backend }
 import from jaclang.compiler.backends.es.backends.solid { SolidBackend }
 import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
 import from jaclang.client.client_surface { with_runtime_globals }
 import from tests.runtimelib.react_jsdom_harness { write_runtime_support }
 import from jaclang.client.runtime_source { resolve_client_runtime_cl_path }
-import from jaclang.client.bun_installer { get_bun }
+import from jaclang.compiler.backends.es.jac_runtime_js { point_jac_prelude_at }
+import from tests.support { js_runtime_or_none }
 import from jaclang.client.solid_entry { build_pages_solid_entry_script }
-import from jaclang.compiler.driver.pass_driver { run_pass }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures"),
      # Real npm deps. The solid-* / zod versions mirror the canonical Solid set in
@@ -803,8 +802,7 @@ def _compile_solid(path: str) -> str {
         if not issubclass(e.from_pass, TypeCheckPass)
     ];
     assert not fatal , f"compile errors in {path}: {[str(e) for e in fatal]}";
-    es_pass = run_pass(EsastGenPass, ir, prog, backend=SolidBackend());
-    return es_to_js(es_pass.module.gen.es_ast);
+    return point_jac_prelude_at(es_js_with_backend(ir, prog, SolidBackend()));
 }
 
 """Point the shim's dotted core import at a flat sibling (mirrors the bundler)."""
@@ -834,7 +832,7 @@ def _compile_page(path: str, backend: any) -> str {
 
 test "solid counter mounts and reacts in jsdom" {
     _require_client_integration();
-    bun = get_bun();
+    bun = js_runtime_or_none();
     if bun is None {
         testskip("bun is required but could not be located/installed");
     }
@@ -851,11 +849,7 @@ test "solid counter mounts and reacts in jsdom" {
         str(Path(runtime_path).parent / "client_runtime_core.jac")
     );
     # Wire the three emitted modules together by relative path inside the work dir.
-    for q in ['"', "'"] {
-        component_js = component_js.replace(
-            f"{q}@jac/runtime{q}", f"{q}./jac_runtime.js{q}"
-        );
-    }
+    component_js = _wire_jac_runtime(component_js);
 
     with TemporaryDirectory() as tmp {
         work = Path(tmp);
@@ -909,7 +903,7 @@ test "solid native control flow (<For>/<Show>) renders + reacts in jsdom (Branch
     # (not just emit plausible JSX strings — the unit tests pin the strings, this
     # pins the runtime behaviour). Same opt-in + toolchain as the counter test.
     _require_client_integration();
-    bun = get_bun();
+    bun = js_runtime_or_none();
     if bun is None {
         testskip("bun is required but could not be located/installed");
     }
@@ -979,7 +973,7 @@ test "solid file-based routing mounts, navigates, and guards in jsdom" {
     # shapes the generated entry never writes: an `element=` parent route and a
     # layout wrapping `<Outlet/>`. Same opt-in + toolchain as the counter test.
     _require_client_integration();
-    bun = get_bun();
+    bun = js_runtime_or_none();
     if bun is None {
         testskip("bun is required but could not be located/installed");
     }
@@ -1119,7 +1113,7 @@ test "solid JacForm renders and validates in jsdom (TanStack Form end-to-end)" {
     # onSubmit fires) is verified end-to-end. Same opt-in + toolchain as the
     # counter test.
     _require_client_integration();
-    bun = get_bun();
+    bun = js_runtime_or_none();
     if bun is None {
         testskip("bun is required but could not be located/installed");
     }
@@ -1188,7 +1182,7 @@ test "solid P2 jsdom matrix: dynamic prop, ref e2e, and callback prop" {
     #     once on click — Solid does NOT call it as a reactive accessor.
     # All three share one bun install (same _DEPS) for faster CI.
     _require_client_integration();
-    bun = get_bun();
+    bun = js_runtime_or_none();
     if bun is None {
         testskip("bun is required but could not be located/installed");
     }

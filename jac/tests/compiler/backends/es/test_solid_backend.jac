@@ -37,22 +37,21 @@ import from jaclang.client.runtime_source {
     client_runtime_cl_basename,
     resolve_client_runtime_cl_path
 }
-import from jaclang.compiler.driver.pass_driver { run_pass }
+import from jaclang.compiler.backends.es.framework_backend { FrameworkBackend }
+import from tests.compiler.backends.es.codegen_helpers { es_js_with_backend }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "es", "fixtures"
      );
 
 """Compile a fixture with the given backend and return emitted JS."""
-def compile_fixture_with_backend(fixture_name: str, backend: object) -> str {
+def compile_fixture_with_backend(fixture_name: str, backend: FrameworkBackend) -> str {
     prog = JacProgram();
     ir = prog.compile(file_path=os.path.join(FIXTURES, fixture_name), no_cgen=True);
     assert not prog.errors_had , (
         f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
     );
-    es_pass = run_pass(EsastGenPass, ir, prog, backend=backend);
-    es_ir = es_pass.module;
-    return es_to_js(es_ir.gen.es_ast);
+    return es_js_with_backend(ir, prog, backend);
 }
 
 test "registry resolves the solid backend" {
@@ -390,9 +389,7 @@ test "solid runtime shim compiles and links its impl bodies" {
         st.loc.mod_path and st.loc.mod_path.endswith(".impl.jac") for st in ir.body
     );
     assert has_impl_node , "Solid runtime impl annex was not linked";
-    js = es_to_js(
-        run_pass(EsastGenPass, ir, prog, backend=SolidBackend()).module.gen.es_ast
-    );
+    js = es_js_with_backend(ir, prog, SolidBackend());
     # The dom-expressions (JSX) path: no __jacJsx hyperscript factory.
     assert "function __jacJsx(" not in js , "Solid shim must not emit __jacJsx (dom-expressions path)";
     assert "createElement" not in js , "Solid shim must not use React.createElement";
@@ -412,9 +409,7 @@ test "solid runtime shim reaches router/form parity with the React shim" {
     assert not prog.errors_had , (
         f"Solid runtime failed to compile: {[str(e) for e in prog.errors_had]}"
     );
-    js = es_to_js(
-        run_pass(EsastGenPass, ir, prog, backend=SolidBackend()).module.gen.es_ast
-    );
+    js = es_js_with_backend(ir, prog, SolidBackend());
     # Router adapters bridging react-router-dom's shape onto @solidjs/router.
     for fn in [
         "function Routes(",
@@ -468,9 +463,7 @@ test "solid runtime shim exports the full router/form surface" {
     rt = resolve_client_runtime_cl_path("solid");
     prog = JacProgram();
     ir = prog.compile(file_path=rt, no_cgen=True);
-    js = es_to_js(
-        run_pass(EsastGenPass, ir, prog, backend=SolidBackend()).module.gen.es_ast
-    );
+    js = es_js_with_backend(ir, prog, SolidBackend());
     export_line = "";
     for ln in js.splitlines() {
         if ln.strip().startswith("export {") {

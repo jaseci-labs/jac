@@ -7,7 +7,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 compiler_paths=(jac/jaclang/compiler_inputs.txt)
 while IFS= read -r entry || [ -n "$entry" ]; do
-  case "$entry" in ''|'#'*) continue ;; esac
+  case "$entry" in ''|'#'*|'!'*) continue ;; esac
   compiler_paths+=("jac/jaclang/$entry")
 done < jac/jaclang/compiler_inputs.txt
 
@@ -22,7 +22,7 @@ python_tree() {
     if [ "$1" = cpython ]; then
       # Matches build_python.buildKey's host-mode exclusions. Jac sources and
       # native bridge edits cannot invalidate the ordinary CPython SDK.
-      awk -F '\t' '$2 !~ /\/(compiler-bridge.patch|compiler_bridge.c|compiler_bridge.h|prepare_native.py|compiler_runtime.c|object_api.c|binding_api.c)$/'
+      awk -F '\t' '$2 !~ /\/(layouts_check.c|features_check.c|prepare_native.py|jacpython-modules.txt)$/'
     else
       cat
     fi
@@ -57,10 +57,12 @@ python_tree cpython | emit python_cpython
     jac/native jac/build.zig jac/build.zig.zon jac/bootstrap/pins.json
 } | emit python_jacpython
 tree jac/jaclang | emit payload
+tree jac/jaclang jac/native jac/build.zig jac/build.zig.zon \
+  jac/bootstrap/pins.json jac/_jac_finder.py jac.toml | emit kernel
 tree jac/jaclang jac/build.zig jac/build.zig.zon jac/launcher jac/bootstrap \
   jac/native jac/_jac_finder.py jac/sitecustomize.py jac/examples/jaclang_org \
   jac/examples/tiny_jacyac \
   jac.toml jac/jac.toml | emit binary
 tree jac/launcher jac/bootstrap jac/build.zig jac/build.zig.zon jac/native \
-  jac/jaclang/client/bun_installer.jac jac/jaclang/compiler/backends/native/wasm_rt |
+  jac/jaclang/client/js_runtime.jac jac/jaclang/compiler/backends/native/wasm_rt |
   emit layers

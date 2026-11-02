@@ -180,3 +180,42 @@ impl Video.to_dict -> list[dict[str, any]] {
         for frame in self._base64frames
     ];
 }
+
+impl Document.postinit -> None {
+    source = self.source;
+    if isinstance(source, (str, os.PathLike)) {
+        path = os.fsdecode(source);
+        if not os.path.isfile(path) {
+            raise ValueError(f"Document file does not exist: {path}");
+        }
+        with open(path, "rb") as f {
+            raw = f.read();
+        }
+        self.filename = self.filename or os.path.basename(path);
+    } elif isinstance(source, (bytes, bytearray, memoryview)) {
+        raw = bytes(source);
+    } else {
+        raise TypeError(
+            "Unsupported Document input type. Provide a path (str or os.PathLike) "
+            "or bytes."
+        );
+    }
+    start = raw.find(b"%PDF-", 0, 1024);
+    if start < 0 {
+        raise ValueError(
+            "Document accepts PDF files only. Pass text-like files (.md, .txt, "
+            "code, .csv) as Text."
+        );
+    }
+    raw = raw[start:];
+    b64 = base64.b64encode(raw).decode("utf-8");
+    self._data_url = f"data:application/pdf;base64,{b64}";
+}
+
+impl Document.to_dict -> list[dict[str, any]] {
+    file = {"file_data": self._data_url};
+    if self.filename {
+        file["filename"] = self.filename;
+    }
+    return [{"type": "file", "file": file}];
+}

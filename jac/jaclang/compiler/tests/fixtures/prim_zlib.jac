@@ -5,18 +5,22 @@ backend and the bundled `na_stdlib/zlib.jac` Mechanism-F module — a thin
 pure-Jac surface over the system `libz` (the FFI floor) — on the na (native
 LLVM) backend. This fixture pins the two implementations congruent on the
 one-shot DEFLATE surface: `compress` produces byte-identical output (asserted
-through `crc32` of the compressed stream), `decompress` round-trips, and the
+through `crc32` of the compressed stream), `decompress` round-trips (a large
+highly-compressible payload exercises the streaming inflater's geometric
+growth path), and the
 `crc32` / `adler32` checksums (with and without a continuation seed) match
 CPython exactly. ES/JS opts out.
 """
 
 import from zlib { compress, decompress, crc32, adler32 }
 
-def zlib_py() -> dict[any, any] {
+def zlib_py -> dict[any, any] {
     data = b"hello world, hello world, hello zlib zlib zlib!";
     comp = compress(data, 6);
     back = decompress(comp);
     empty_rt = decompress(compress(b"", 6));
+    big = b"\x00" * 200000;
+    big_rt = decompress(compress(big, 6));
     return {
         "crc_basic": crc32(b"hello"),
         "crc_seed": crc32(b"world", crc32(b"hello")),
@@ -29,20 +33,24 @@ def zlib_py() -> dict[any, any] {
         "roundtrip_len": len(back),
         "decomp_crc": crc32(back),
         "empty_ok": 1 if empty_rt == b"" else 0,
+        "big_ok": 1 if big_rt == big else 0,
+        "big_len": len(big_rt),
 
     };
 }
 
-def zlib_cl() -> dict[any, any] {
+def zlib_cl -> dict[any, any] {
     return {};
 }
 
 
-def zlib_na() -> dict[str, any] {
+def zlib_na -> dict[str, any] {
     data = b"hello world, hello world, hello zlib zlib zlib!";
     comp = compress(data, 6);
     back = decompress(comp);
     empty_rt = decompress(compress(b"", 6));
+    big = b"\x00" * 200000;
+    big_rt = decompress(compress(big, 6));
     return {
         "crc_basic": crc32(b"hello"),
         "crc_seed": crc32(b"world", crc32(b"hello")),
@@ -55,6 +63,8 @@ def zlib_na() -> dict[str, any] {
         "roundtrip_len": len(back),
         "decomp_crc": crc32(back),
         "empty_ok": 1 if empty_rt == b"" else 0,
+        "big_ok": 1 if big_rt == big else 0,
+        "big_len": len(big_rt),
 
     };
 }

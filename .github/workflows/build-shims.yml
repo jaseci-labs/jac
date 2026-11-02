@@ -168,7 +168,7 @@ jobs:
           set -euo pipefail
           ASSET="${{ steps.asset.outputs.name }}"
           mkdir -p dist
-          cp jac/jaclang/compiler/backends/native/llvm/libjacllvm.* "dist/$ASSET"
+          cp "jac/jaclang/compiler/backends/native/llvm/libjacllvm.${ASSET##*.}" "dist/$ASSET"
           ( cd dist && shasum -a 256 "$ASSET" > "$ASSET.sha256" )
           gh release create deps --repo "$GITHUB_REPOSITORY" --prerelease \
             --title "Prebuilt build dependencies (rolling)" \

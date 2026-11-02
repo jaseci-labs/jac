@@ -1,20 +1,20 @@
-import from jaclang.runtime.python.capi { read_buffer, required, boundary_failure }
-import from jaclang.runtime.python.objects { PyObj }
-import from jaclang.compiler.frontend.python.syntax_error { syntax_failure }
-import from jaclang.runtime.python.compiler_integer { integer_from_marshal }
-import from c {
-    def jacpy_take_error_text -> u64;  def jacpy_error_is(name: str) -> i64;  def jacpy_parse_long(
-        source: str, size: i64
-    ) -> u64;  def jacpy_parse_float(source: str, size: i64) -> u64;  def jacpy_float_value(
-        handle: u64
-    ) -> f64;  def jacpy_normalize(source: str, size: i64) -> u64;  def jacpy_unicode_escape(
-        source: str, size: i64
-    ) -> u64;  def jacpy_bytes_escape(source: str, size: i64) -> u64;  def jacpy_release(
-        handle: u64
-    );  def jacpy_warning(message: str, filename: str, line: i64) -> i64;
-}
+def take_buffer(handle: ptr[PyObject]) -> bytes;
 
-def take_buffer(handle: u64) -> bytes {
+def take_error_text -> str;
+
+def normalize_identifier(value: str) -> str;
+
+def decode_unicode(value: str) -> str;
+
+def decode_bytes(value: str) -> list[int];
+
+def warn(message: str, filename: str, line: int, column: int = 0);
+
+def parse_integer(value: str) -> PyObj;
+
+def parse_float(value: str) -> float;
+
+impl take_buffer(handle: ptr[PyObject]) -> bytes {
     required(handle);
     try {
         return read_buffer(handle);
@@ -23,35 +23,59 @@ def take_buffer(handle: u64) -> bytes {
     }
 }
 
-def take_error_text -> str {
+impl take_error_text -> str {
     return take_buffer(jacpy_take_error_text()).decode("utf-8", "surrogatepass");
 }
 
-def normalize_identifier(value: str) -> str {
-    return take_buffer(jacpy_normalize(value, i64(len(value.encode("utf-8"))))).decode(
-        "utf-8"
-    );
+impl normalize_identifier(value: str) -> str {
+    text = text_object(value);
+    module: ptr[PyObject] = NULL;
+    result: ptr[PyObject] = NULL;
+    try {
+        module = required(PyImport_ImportModule(ptr[u8]("unicodedata")));
+        result = required(PyObject_CallMethod(module, "normalize", "sO", "NFKC", text));
+        return text_value(result);
+    } finally {
+        jacpy_release(result);
+        jacpy_release(module);
+        jacpy_release(text);
+    }
 }
 
-def decode_unicode(value: str) -> str {
+impl decode_unicode(value: str) -> str {
     handle = jacpy_unicode_escape(value, i64(len(value.encode("utf-8"))));
-    if handle == 0 and jacpy_error_is("UnicodeError") != 0 {
+    if handle == 0 and PyErr_ExceptionMatches(PyExc_UnicodeError) != 0 {
         raise syntax_failure("(unicode error) " + take_error_text());
     }
     return take_buffer(handle).decode("utf-8", "surrogatepass");
 }
 
-def decode_bytes(value: str) -> list[int] {
+impl decode_bytes(value: str) -> list[int] {
     handle = jacpy_bytes_escape(value, i64(len(value.encode("utf-8"))));
-    if handle == 0 and jacpy_error_is("ValueError") != 0 {
+    if handle == 0 and PyErr_ExceptionMatches(PyExc_ValueError) != 0 {
         raise syntax_failure(take_error_text());
     }
     return list(take_buffer(handle));
 }
 
-def warn(message: str, filename: str, line: int, column: int = 0) {
-    if jacpy_warning(message, filename, i64(line)) < 0 {
-        if jacpy_error_is("SyntaxWarning") != 0 {
+impl warn(message: str, filename: str, line: int, column: int = 0) {
+    message_text = jacpy_unicode_from_text(message);
+    filename_text = jacpy_unicode_from_text(filename);
+    status: i32 = -1;
+    if message_text and filename_text {
+        status = PyErr_WarnExplicit(
+            PyExc_SyntaxWarning,
+            PyUnicode_AsUTF8(message_text),
+            PyUnicode_AsUTF8(filename_text),
+            i32(line),
+            ptr[u8](),
+            NULL
+        );
+    }
+    jacpy_release(filename_text);
+    jacpy_release(message_text);
+    if status < 0 {
+        if PyErr_ExceptionMatches(PyExc_SyntaxWarning) != 0 {
             take_error_text();
             raise syntax_failure(
                 message, filename=filename, lineno=line, offset=column + 1
@@ -61,9 +85,24 @@ def warn(message: str, filename: str, line: int, column: int = 0) {
     }
 }
 
-def parse_integer(value: str) -> PyObj {
+impl parse_integer(value: str) -> PyObj {
+    size = len(value);
+    if size > 0
+        and size <= 18
+        and value.isascii()
+        and value.isdigit()
+        and (size == 1 or value[0] != "0") {
+        data = value.encode("utf-8");
+        total = 0;
+        index = 0;
+        while index < size {
+            total = total * 10 + (data[index] - 48);
+            index += 1;
+        }
+        return PyInt(t="int", val=total);
+    }
     handle = jacpy_parse_long(value, i64(len(value.encode("utf-8"))));
-    if handle == 0 and jacpy_error_is("ValueError") != 0 {
+    if handle == 0 and PyErr_ExceptionMatches(PyExc_ValueError) != 0 {
         message = take_error_text();
         if message.startswith("Exceeds the limit ") {
             message += " Consider hexadecimal for huge integer literals to avoid decimal conversion limits.";
@@ -73,10 +112,10 @@ def parse_integer(value: str) -> PyObj {
     return integer_from_marshal(take_buffer(handle));
 }
 
-def parse_float(value: str) -> float {
+impl parse_float(value: str) -> float {
     handle = jacpy_parse_float(value, i64(len(value.encode("utf-8"))));
     if handle == 0 {
-        if jacpy_error_is("ValueError") != 0 {
+        if PyErr_ExceptionMatches(PyExc_ValueError) != 0 {
             raise syntax_failure(take_error_text());
         }
         raise boundary_failure();

@@ -1,52 +1,3 @@
-import from jaclang.compiler.passes.context { CompileContext }
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    Archetype,
-    Assignment,
-    AstSymbolNode,
-    AtomTrailer,
-    BinaryExpr,
-    Bool,
-    BuiltinType,
-    EdgeOpRef,
-    EdgeRefTrailer,
-    Enum,
-    EventSignature,
-    Expr,
-    FilterCompr,
-    Float,
-    FuncCall,
-    FuncSignature,
-    Int,
-    KWPair,
-    ListVal,
-    Module,
-    MultiString,
-    Name,
-    NameAtom,
-    String,
-    Symbol,
-    Token,
-    TupleVal,
-    UniNode,
-    UniScopeNode,
-    VisitStmt
-}
-import from jaclang.runtime.semantic {
-    ClassInfo,
-    EnumInfo,
-    FieldInfo,
-    FunctionInfo,
-    MethodInfo,
-    ParamInfo,
-    mk_dict,
-    mk_list,
-    mk_tuple,
-    type_to_str
-}
-
-import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-
 glob PRIMITIVE_TYPES: list[str] = [
          'int',
          'float',
@@ -61,10 +12,10 @@ glob PRIMITIVE_TYPES: list[str] = [
      ]
          + JAC_TYPE_REGISTRY.sized_scalar_names();
 
-walker MTIRGenPass {
-    has ctx: CompileContext,
-        module: Module,
-        _class_info_cache: dict[int, ClassInfo] = {};
+walker MTIRGenPass(CompilerPass) {
+    static has contract: PassContract = PassContract();
+    has _class_info_cache: dict[int, ClassInfo] = {},
+        _owned: list[str] = [];
 
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
@@ -72,7 +23,7 @@ walker MTIRGenPass {
     def _doc_text(doc: String | None) -> str | None;
     def _parse_type_expr(
         type_expr: Expr | None, scope: UniScopeNode
-    ) -> ClassInfo | EnumInfo | str | tuple[object, ...] | None;
+    ) -> ClassInfo | EnumInfo | TypeForm | str | None;
 
     def _extract_type_symbol(
         type_expr: Expr | None, scope: UniScopeNode

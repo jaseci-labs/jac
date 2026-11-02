@@ -71,7 +71,9 @@ pub fn llvmRelease(b: *std.Build, osarch: ?[]const u8) ?LlvmRelease {
 /// shim must link them with `zig c++ -target <floor>` rather than the host
 /// g++/libstdc++.
 pub fn isLibcxx(rel: LlvmRelease) bool {
-    return std.mem.endsWith(u8, rel.triple, "-libcxx");
+    // `-libcxx` names the C++ runtime wherever it sits in the triple: an
+    // LLD-carrying slice is `<arch>-linux-libcxx-lld`.
+    return std.mem.indexOf(u8, rel.triple, "-libcxx") != null;
 }
 
 /// The bundled CPython minor, derived from its source pin.

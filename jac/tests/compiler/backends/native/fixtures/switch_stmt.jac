@@ -5,12 +5,15 @@ def switch_int(x: int) -> int {
     switch x {
         case 1:
             result = 10;
+            break;
 
         case 2:
             result = 20;
+            break;
 
         case 3:
             result = 30;
+            break;
 
         default:
             result = -1;
@@ -61,14 +64,14 @@ def switch_no_default(x: int) -> int {
     switch x {
         case 10:
             result = 100;
+            break;
 
         case 20:
             result = 200;
+            break;
 
     }
     return result;
 }
 
-with entry {
-    x = 0;
-}
+glob x = 0;

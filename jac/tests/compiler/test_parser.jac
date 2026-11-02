@@ -19,7 +19,7 @@ import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.frontend.constant { CodeContext }
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.project.source { read_file_with_encoding }
+import from jaclang.project.textio { read_file_with_encoding }
 import from jaclang.testing.test { parametrize }
 import from tests.fixtures_list { MICRO_JAC_FILES }
 

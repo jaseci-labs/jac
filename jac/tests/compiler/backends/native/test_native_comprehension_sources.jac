@@ -1,6 +1,7 @@
 """Native comprehensions iterate every source a native for-loop iterates."""
 
 import ctypes;
+import from tests.support { native_address }
 import os;
 import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -18,10 +19,7 @@ test "comprehensions over ranges, strings, bytes, sets and adapters run natively
             "comprehension_sources.jac"
         ),
         options=CompileOptions(
-            force_codespace="native",
-            force_target_program=True,
-            need_full_ast=True,
-            no_ir_cache=True
+            force_codespace="native", need_full_ast=True, no_ir_cache=True
         )
     );
     assert not program.errors_had , str(program.errors_had);
@@ -38,7 +36,7 @@ test "comprehensions over ranges, strings, bytes, sets and adapters run natively
         ("enumerated", 135)
     ];
     for (name, want) in expected {
-        address = engine.get_function_address(name);
+        address = native_address(engine, name);
         assert isinstance(address, int) and address != 0 , name;
         got = ctypes.CFUNCTYPE(ctypes.c_int64)(address)();
         assert got == want , f"{name}: {got} != {want}";

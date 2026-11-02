@@ -7,8 +7,8 @@ name: Installer smoke
 #     or broken asset is caught even when nobody touches the installer.
 #
 # It was duplicated between those two files and had already drifted: only the
-# ci.yml copy linted install.sh, and only the ci.yml copy inherited
-# JAC_NO_DEV_SOURCE (see the env note below). Two copies of an installer test
+# ci.yml copy linted install.sh, and only the ci.yml copy ran the shipped
+# compiler rather than the checkout's. Two copies of an installer test
 # converge on being one wrong copy, so the body lives here.
 
 on:
@@ -27,16 +27,6 @@ on:
 permissions:
   contents: read
 
-# This job installs the SHIPPED binary and must run it, not the checkout's
-# compiler. The repo root's jac.toml sets `[dev] jaclang_source = "jac"`, and
-# every step below runs with the checkout as cwd, so without this the
-# installed binary would be rerouted to in-repo compiler source and the test
-# would stop proving anything about the artifact users download. ci.yml sets
-# this at its own workflow level; a called workflow does not inherit the
-# caller's env, so it is declared here -- which also closes the gap on the
-# nightly lane, which never set it.
-env:
-  JAC_NO_DEV_SOURCE: "1"
 
 jobs:
   installer:
@@ -67,6 +57,11 @@ jobs:
     continue-on-error: ${{ matrix.optional || false }}
     steps:
       - uses: actions/checkout@v5
+      # This job installs the SHIPPED binary and must run it, not the
+      # checkout's compiler: the repo root's jac.toml would reroute it to the
+      # in-repo source, and the test would stop proving anything about the
+      # artifact users download.
+      - uses: ./.github/actions/seal-checkout
 
       - name: ShellCheck install.sh
         if: inputs.shellcheck && runner.os == 'Linux'

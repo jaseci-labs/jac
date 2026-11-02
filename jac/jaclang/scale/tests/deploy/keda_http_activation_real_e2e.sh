@@ -55,6 +55,11 @@ with open(path, "w") as f:
 PYEOF
 fi
 
+# Ship the jac built from this checkout to the pods (channel local), so the
+# e2e validates the code under test rather than a published release.
+ship_checkout_binary "${FIXTURE_DIR}" \
+    || echo "WARN: pods will bootstrap from a published release binary instead of the code under test."
+
 CFG=$(cd "${FIXTURE_DIR}" && jac -c "
 import tomllib
 with open('jac.toml', 'rb') as f:
@@ -133,6 +138,15 @@ cleanup() {
     fi
     if [ "${rc}" != "0" ] && [ "${E2E_KEEP_NS_ON_FAIL:-1}" = "1" ]; then
         echo "=== e2e failed (rc=${rc}); KEEPING namespace '${NAMESPACE}' for inspection (set E2E_KEEP_NS_ON_FAIL=0 to force cleanup) ==="
+        return
+    fi
+    # A caller that watches this cycle from outside cannot read the settled
+    # scale-to-zero once the namespace is gone: the Deployment and the
+    # ScaledObject disappear independently while it terminates, so a poll
+    # landing in that window reads a half-deleted state rather than an idle
+    # one. Such a caller sets this and owns the teardown itself.
+    if [ "${E2E_KEEP_NS:-0}" = "1" ]; then
+        echo "=== keeping namespace '${NAMESPACE}'; the caller owns teardown (E2E_KEEP_NS=1) ==="
         return
     fi
     # Deleting the namespace sweeps the Deployment/Service and the namespaced

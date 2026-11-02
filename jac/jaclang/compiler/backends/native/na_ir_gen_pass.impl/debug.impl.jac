@@ -1,7 +1,75 @@
-import from jaclang.cli.console { console }
-import from jaclang.compiler.backends.native.llvm { binding as llvm }
 import os;
 import sys;
+
+impl NaIRGenPass._native_tls_on -> bool {
+    opts = self.prog.options;
+    return opts is not None and bool(opts.native_tls);
+}
+
+impl NaIRGenPass._native_sjlj_on -> bool {
+    opts = self.prog.options;
+    return opts is not None and bool(opts.native_sjlj);
+}
+
+impl NaIRGenPass._unchecked_views_on -> bool {
+    opts = self.prog.options;
+    return opts is not None and bool(opts.native_unchecked_views);
+}
+
+impl NaIRGenPass._heap_extern(kind: str) -> ir.Function {
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    opts = self.prog.options;
+    name = kind;
+    if opts is not None and opts.native_heap and self._gc_mode() != "none" {
+        name = f"{opts.native_heap}_{kind}";
+    }
+    if kind == "free" {
+        return self._get_or_declare_extern(name, ir.VoidType(), [i8p]);
+    }
+    if kind == "calloc" {
+        return self._get_or_declare_extern(name, i8p, [i64, i64]);
+    }
+    if kind == "realloc" {
+        return self._get_or_declare_extern(name, i8p, [i8p, i64]);
+    }
+    return self._get_or_declare_extern(name, i8p, [i64]);
+}
+
+impl NaIRGenPass._heap_usable_size(
+    b: ir.IRBuilder, block: ir.Value, name: str
+) -> ir.Value {
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    opts = self.prog.options;
+    if opts is not None and opts.native_heap and self._gc_mode() != "none" {
+        size_fn = self._get_or_declare_extern(
+            f"{opts.native_heap}_usable_size", i64, [i8p]
+        );
+        return b.call(size_fn, [block], name=name);
+    }
+    return self._floor_call("__jac_malloc_size", i64, [block], name, b);
+}
+
+impl NaIRGenPass._direct_c_entry(fn: ir.Function) -> bool {
+    if self._is_kernel_unit() {
+        return True;
+    }
+    opts = self.prog.options;
+    if opts is None {
+        return False;
+    }
+    if opts.native_heap
+        and fn.name
+            in [
+                f"{opts.native_heap}_{kind}"
+                for kind in ("malloc", "calloc", "realloc", "free", "usable_size")
+            ] {
+        return True;
+    }
+    return bool(opts.native_direct_c_entries)
+        and (fn.calling_convention or "") == "preserve_nonecc";
+}
 
 impl NaIRGenPass._na_debug_on -> bool {
     _opts = self.prog.options;
@@ -96,20 +164,14 @@ impl NaIRGenPass.finish with exit {
         }
     }
 
-    ir_str = str(self.llvm_module);
-
     if self.prog.options.debug_ir {
-        import from jaclang.compiler.driver.jir { get_native_cache_dir }
-        src_path = self.module.loc.mod_path;
-        if src_path {
-            stem = os.path.splitext(os.path.basename(src_path))[0];
-            ir_dir = str(get_native_cache_dir(src_path));
-            os.makedirs(ir_dir, exist_ok=True);
-            auto_ir_path = os.path.join(ir_dir, stem + ".ll");
-            with open(auto_ir_path, "w") as f {
-                f.write(ir_str);
-            }
-            console.print(f"[native debug] IR saved to: {auto_ir_path}");
-        }
+        self._save_debug_ir(str(self.llvm_module));
+    }
+}
+
+impl NaIRGenPass._save_debug_ir(ir_str: str) -> None {
+    src_path = self.module.loc.mod_path;
+    if src_path {
+        active_host().save_native_debug_ir(src_path, ir_str);
     }
 }

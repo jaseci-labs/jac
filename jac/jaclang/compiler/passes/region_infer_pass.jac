@@ -1,25 +1,9 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.passes.context { CompileContext }
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    Archetype,
-    CodeBlockStmt,
-    FuncCall,
-    ImplDef,
-    Module,
-    ModuleCode,
-    Name,
-    NameAtom,
-    OpenStmt,
-    Symbol,
-    Test,
-    UniNode
-}
+walker RegionInferPass(CompilerPass) {
+    static has contract: PassContract = PassContract(
+        provides=(AnalysisFact.REGION_INFER, )
+    );
 
-walker RegionInferPass {
-    has ctx: CompileContext,
-        module: Module,
-        _use_index: (dict[int, list[NameAtom]] | None) = None;
+    has _use_index: (dict[int, list[NameAtom]] | None) = None;
 
     can run_walk with Module entry;
     def _run_impl(ir_in: Module) -> Module;

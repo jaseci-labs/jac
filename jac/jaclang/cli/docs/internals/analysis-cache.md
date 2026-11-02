@@ -112,7 +112,7 @@ that does not becomes the stale path:
 | Module cache | `is_module_cache_valid` fails when a row's digest moved |
 | Unsealed precompiled bundle | served only while its rows are fresh; a sealed image is a frozen build and is served on its seal alone |
 | Bundle promoted into the module cache | the bundle's rows ride along on the promotion write, absolutized onto the package root |
-| Native dependency IR cache | `.ir_cache` is keyed on the module's own source, so its `.ir_meta` stamps the rows the fold read and a hit whose stamp moved is dropped and rebuilt |
+| Native unit sections | `SEC_NIFACE` / `SEC_NOBJ` / `SEC_NBITCODE` / `SEC_NDEPS` / `SEC_NCTDEPS` live in the module JIR under MODKEY plus their own compiler-and-codegen stamp; `SEC_NDEPS` carries each native dependency's interface digest and `SEC_NCTDEPS` preserves native compile-time inputs with the shared dependency codec, and a dependent whose recorded digest moved is rebuilt. Only the native compile writes them, so a bytecode compile of the same module leaves them untouched. See [Native Units](native-units.md) |
 
 Bundle rows are stored relative to the package root so a relocated bundle
 still resolves them, and absolutized again on the way into a module cache.
@@ -140,8 +140,9 @@ module itself is served from `SEC_IFACE`.
 
 There is no flag that disables hydration. The two escape hatches are:
 
-- `JAC_REBUILD=1` -- recompute everything and **rewrite** the cache. Results
-  are identical by construction; the cache is never silently bypassed.
+- `jac cache purge jir-modules` -- drop the cache; the next run recomputes
+  everything and **rewrites** it. Results are identical by construction; the
+  cache is never silently bypassed.
 - `JAC_IFACE_VERIFY=1` -- serve from the cache *and* recompute in a fresh
   program, then diff: hydrated dependency interfaces against a source
   compile of the dep, replayed diagnostics against a fresh analysis. Any

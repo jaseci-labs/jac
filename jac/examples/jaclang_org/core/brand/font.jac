@@ -1,3 +1,1 @@
-def:pub useBrandFont -> bool {
-    return True;
-}
+def:pub useBrandFont -> bool;

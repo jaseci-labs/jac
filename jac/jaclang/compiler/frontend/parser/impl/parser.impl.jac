@@ -1,9 +1,3 @@
-import from jaclang.compiler.frontend.constant {
-    Tokens as Tok,
-    SymbolAccess,
-    SymbolType
-}
-
 impl Parser.current -> LexToken {
     if self.pos < self._tokens_len {
         return self.tokens[self.pos];
@@ -54,7 +48,7 @@ impl Parser.check_peek_any(*kinds: TokenKind) -> bool {
     return self.peek().kind in kinds;
 }
 
-impl Parser.postinit{
+impl Parser.postinit {
     self.source = Source(self.source_code, self.file_path);
     self._tokens_len = len(self.tokens);
 }
@@ -146,10 +140,7 @@ impl Parser.check_name -> bool {
 }
 
 impl Parser.is_name_usable_token -> bool {
-    if self.check_any(TokenKind.KW_ROOT, TokenKind.KW_SUPER) {
-        return False;
-    }
-    return is_special_var_kind(self.current().kind) or self.is_builtin_type_token();
+    return is_name_usable_kind(self.current().kind);
 }
 
 impl Parser.is_keyword_token -> bool {
@@ -372,7 +363,7 @@ impl Parser.make_semi -> Semi {
     );
 }
 
-impl Parser.synchronize{
+impl Parser.synchronize {
     self.advance();
     while not self.at_end() {
         if self.check_any(
@@ -2730,6 +2721,7 @@ impl Parser.parse_lambda_expr -> Expr {
     rbrace_uni: Token | None = None;
     if self.match_tok(TokenKind.LBRACE) {
         lbrace_uni = self.make_uni_token(self.previous());
+        self._lambda_block = True;
         body_stmts2 = self._apply_implicit_return(self.parse_code_block_stmts());
         rbrace_uni = self.consume_uni(TokenKind.RBRACE);
     } else {
@@ -3222,18 +3214,17 @@ impl Parser.parse_element_stmt -> ElementStmt | EmptyToken | None {
         return self.parse_comptime_element();
     }
 
+    if self.check_any(TokenKind.KW_GRAPH, TokenKind.KW_IMPL)
+        and self.check_peek(TokenKind.KW_IMPORT) {
+        return self.parse_graph_import();
+    }
+
     if self.check(TokenKind.KW_IMPL) {
         return self.parse_impl_def();
     }
 
     if self.check(TokenKind.KW_SEM) {
         return self.parse_sem_def();
-    }
-
-    if self.check(TokenKind.PYNLINE) {
-        py_tok = self.expect(TokenKind.PYNLINE);
-        py_code = self.make_uni_token(py_tok);
-        return PyInlineCode(code=py_code, kid=[py_code]);
     }
 
     if self.check(TokenKind.KW_WITH) {
@@ -3486,15 +3477,17 @@ impl Parser.parse_module_code -> ModuleCode {
 
 impl Parser.parse_code_block_stmts -> list[CodeBlockStmt] {
     stmts: list[CodeBlockStmt] = [];
-    checked_first = False;
+    lambda_block = self._lambda_block;
+    self._lambda_block = False;
+    flagged: list[SourceLoc] = [];
+    flagged_at: list[int] = [];
     while not self.check(TokenKind.RBRACE) and not self.at_end() {
         before = self.pos;
         stmt = self.parse_statement();
         if stmt is not None {
             is_docstring = False;
             if (
-                not checked_first
-                and self._view_body_depth == 0
+                self._view_body_depth == 0
                 and isinstance(stmt, ExprStmt)
                 and not stmt.in_fstring
                 and stmt.has_semi
@@ -3510,14 +3503,8 @@ impl Parser.parse_code_block_stmts -> list[CodeBlockStmt] {
                 }
             }
             if is_docstring {
-                self.emit_warn(
-                    "Docstrings in Jac go before the declaration, not inside the body. Move this string before the enclosing test/can/obj/etc.",
-                    "W0060",
-                    loc=self.tokens[before].loc
-                );
-            }
-            if not isinstance(stmt, Semi) {
-                checked_first = True;
+                flagged.append(self.tokens[before].loc);
+                flagged_at.append(len(stmts));
             }
             stmts.append(stmt);
 
@@ -3542,6 +3529,34 @@ impl Parser.parse_code_block_stmts -> list[CodeBlockStmt] {
         if self.pos == before {
             self.advance();
         }
+    }
+    if lambda_block {
+        real = [
+            i
+            for i in range(len(stmts))
+            if not isinstance(stmts[i], Semi)
+        ];
+        rest = [
+            i
+            for i in real
+            if i not in flagged_at
+        ];
+        if len(real) == 1 {
+            return stmts;
+        }
+        if len(rest) == 1 {
+            lone = stmts[rest[0]];
+            if isinstance(lone, ExprStmt) and lone.has_semi {
+                return stmts;
+            }
+        }
+    }
+    for loc in flagged {
+        self.emit_warn(
+            "A string on its own does nothing. Docstrings go before the declaration, not inside the body; write a note inside a body as a # comment.",
+            "W0060",
+            loc=loc
+        );
     }
     return stmts;
 }
@@ -3825,12 +3840,6 @@ impl Parser.parse_statement -> CodeBlockStmt | None {
     if self.check(TokenKind.KW_HAS)
         or (self.check(TokenKind.KW_STATIC) and self.check_peek(TokenKind.KW_HAS)) {
         return self.parse_has_stmt();
-    }
-
-    if self.check(TokenKind.PYNLINE) {
-        py_tok = self.expect(TokenKind.PYNLINE);
-        py_code = self.make_uni_token(py_tok);
-        return PyInlineCode(code=py_code, kid=[py_code]);
     }
 
     if self.check_any(
@@ -4179,7 +4188,8 @@ impl Parser.parse_try_stmt -> TryStmt {
         awaiting_lb = self.consume_uni(TokenKind.LBRACE);
         awaiting_stmts = self.parse_code_block_stmts();
         awaiting_rb = self.consume_uni(TokenKind.RBRACE);
-        awaiting_kid: list[UniNode] = [awaiting_uni, awaiting_lb];
+        awaiting_kid: list[UniNode] = [];
+        awaiting_kid.extend([awaiting_uni, awaiting_lb]);
         awaiting_kid.extend(awaiting_stmts);
         awaiting_kid.append(awaiting_rb);
         awaiting_body = AwaitingClause(body=awaiting_stmts, kid=awaiting_kid);
@@ -4198,7 +4208,8 @@ impl Parser.parse_try_stmt -> TryStmt {
         fin_lb = self.consume_uni(TokenKind.LBRACE);
         finally_stmts = self.parse_code_block_stmts();
         fin_rb = self.consume_uni(TokenKind.RBRACE);
-        fin_kid: list[UniNode] = [fin_uni, fin_lb];
+        fin_kid: list[UniNode] = [];
+        fin_kid.extend([fin_uni, fin_lb]);
         fin_kid.extend(finally_stmts);
         fin_kid.append(fin_rb);
         finally_body = FinallyStmt(body=finally_stmts, kid=fin_kid);
@@ -4737,16 +4748,49 @@ impl Parser.parse_class_pattern_args(
 impl Parser.parse_return_stmt -> ReturnStmt {
     ret_uni = self.consume_uni(TokenKind.KW_RETURN);
     expr = None;
+    tail_uni: Token | None = None;
+    tail_loc: any = None;
+    if self.check(TokenKind.NAME)
+        and self.current().value == "tail"
+        and self.check_peek_any(
+            TokenKind.NAME, TokenKind.KWESC_NAME, TokenKind.KW_SELF, TokenKind.KW_SUPER
+        ) {
+        tail_tok = self.expect(TokenKind.NAME);
+        tail_loc = tail_tok.loc;
+        tail_uni = Token(
+            orig_src=self.source,
+            name=Tok.KW_TAIL.value,
+            value=tail_tok.value,
+            line=tail_tok.loc.line,
+            end_line=tail_tok.loc.end_line,
+            col_start=tail_tok.loc.col_start,
+            col_end=tail_tok.loc.col_end,
+            pos_start=tail_tok.loc.pos_start,
+            pos_end=tail_tok.loc.pos_end
+        );
+    }
     if not self.check(TokenKind.SEMI) and not self.check(TokenKind.RBRACE) {
         expr = self.parse_expression();
     }
+    tail_on_call = isinstance(expr, FuncCall);
+    if tail_uni is not None and not tail_on_call {
+        self.emit_diag(
+            "`return tail` needs a function call",
+            "E0097",
+            loc=tail_loc,
+            help="A guaranteed tail call replaces the current frame with the callee's, so its operand is a call: `return tail next_step(state);`."
+        );
+    }
     kid: list[UniNode] = [ret_uni];
-    if expr {
+    if tail_uni is not None {
+        kid.append(tail_uni);
+    }
+    if expr is not None {
         kid.append(expr);
     }
     self.expect(TokenKind.SEMI);
     kid.append(self.make_semi());
-    return ReturnStmt(expr=expr, kid=kid);
+    return ReturnStmt(expr=expr, is_tail=tail_uni is not None, kid=kid);
 }
 
 impl Parser.parse_yield_stmt -> YieldExpr {
@@ -5194,7 +5238,8 @@ impl Parser.parse_import_items(
         TokenKind.KW_ASYNC,
         TokenKind.STRING,
         TokenKind.KW_GLOBAL,
-        TokenKind.KW_HAS
+        TokenKind.KW_HAS,
+        TokenKind.DECOR_OP
     )
         and (is_clib_import or not self.check(TokenKind.STRING)) {
         while not self.check(TokenKind.RBRACE) and not self.at_end() {
@@ -5434,7 +5479,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
     if self.check(TokenKind.DECOR_OP) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5443,21 +5488,21 @@ impl Parser.parse_archetype_member -> UniNode | None {
         if self.check_peek(TokenKind.KW_HAS) {
             has_stmt = self.parse_has_stmt();
             if doc {
-                _ = self._attach_doc(has_stmt, doc);
+                self._attach_doc(has_stmt, doc);
             }
             return has_stmt;
         }
 
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
     if self.check(TokenKind.KW_HAS) {
         has_stmt = self.parse_has_stmt();
         if doc {
-            _ = self._attach_doc(has_stmt, doc);
+            self._attach_doc(has_stmt, doc);
         }
         return has_stmt;
     }
@@ -5465,7 +5510,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
     if self.check(TokenKind.KW_ASYNC) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5479,7 +5524,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
         ) {
         ct_globals = self.parse_comptime_global();
         if doc {
-            _ = self._attach_doc(ct_globals, doc);
+            self._attach_doc(ct_globals, doc);
         }
         return ct_globals;
     }
@@ -5488,7 +5533,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
     ) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5499,7 +5544,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
         ) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5512,14 +5557,14 @@ impl Parser.parse_archetype_member -> UniNode | None {
     ) {
         archetype = self.parse_archetype();
         if doc {
-            _ = self._attach_doc(archetype, doc);
+            self._attach_doc(archetype, doc);
         }
         return archetype;
     }
     if self.check(TokenKind.KW_ENUM) {
         enum_node = self.parse_enum();
         if doc {
-            _ = self._attach_doc(enum_node, doc);
+            self._attach_doc(enum_node, doc);
         }
         return enum_node;
     }
@@ -5527,15 +5572,9 @@ impl Parser.parse_archetype_member -> UniNode | None {
     if self.check(TokenKind.KW_IMPL) {
         impl_node = self.parse_impl_def();
         if doc {
-            _ = self._attach_doc(impl_node, doc);
+            self._attach_doc(impl_node, doc);
         }
         return impl_node;
-    }
-
-    if self.check(TokenKind.PYNLINE) {
-        py_tok = self.expect(TokenKind.PYNLINE);
-        py_code = self.make_uni_token(py_tok);
-        return PyInlineCode(code=py_code, kid=[py_code]);
     }
 
     if self.check(TokenKind.KW_WITH) {
@@ -5555,7 +5594,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
             kid.append(rb_uni);
             module_code = ModuleCode(name=None, body=body, kid=kid, doc=None);
             if doc {
-                _ = self._attach_doc(module_code, doc);
+                self._attach_doc(module_code, doc);
             }
             return module_code;
         }
@@ -5569,13 +5608,13 @@ impl Parser.parse_archetype_member -> UniNode | None {
     return EmptyToken();
 }
 
-impl Parser._skip_semicolons{
+impl Parser._skip_semicolons {
     while self.match_tok(TokenKind.SEMI) {
         continue;
     }
 }
 
-impl Parser._error_unexpected_member{
+impl Parser._error_unexpected_member {
     self.emit_diag("Unexpected token in archetype body", "E0046");
     self.advance();
 }
@@ -6279,13 +6318,6 @@ impl Parser.parse_enum -> Enum {
                 if self.match_tok(TokenKind.COMMA) {
                     body_kid.append(self.make_uni_token(self.previous()));
                 }
-            } elif self.check(TokenKind.PYNLINE) {
-                py_tok = self.expect(TokenKind.PYNLINE);
-                py_code = self.make_uni_token(py_tok);
-                pynline = PyInlineCode(code=py_code, kid=[py_code]);
-                pynline.is_enum_stmt = True;
-                body_l.append(pynline);
-                body_kid.append(pynline);
             } elif self.check(TokenKind.KW_WITH) {
                 mc = self.parse_module_code();
                 mc.is_enum_stmt = True;
@@ -6596,6 +6628,16 @@ impl Parser.parse_impl_def -> ImplDef {
         target_names.append(self.parse_impl_target_name());
     }
 
+    impl_tp_list: (list[TypeParam] | None) = None;
+    impl_tp_lb_uni: Token | None = None;
+    impl_tp_rb_uni: Token | None = None;
+    impl_tp_comma_unis: list[Token] = [];
+    if self.match_tok(TokenKind.LSQUARE) {
+        impl_tp_lb_uni = self.make_uni_token(self.previous());
+        (impl_tp_list, impl_tp_comma_unis) = self.parse_type_params();
+        impl_tp_rb_uni = self.consume_uni(TokenKind.RSQUARE);
+    }
+
     spec_sig: UniNode | None = None;
     spec_is_inh = False;
     base_classes: list[Expr] = [];
@@ -6680,6 +6722,18 @@ impl Parser.parse_impl_def -> ImplDef {
             kid.append(dot_unis[i]);
         }
     }
+    if impl_tp_list is not None
+        and impl_tp_lb_uni is not None
+        and impl_tp_rb_uni is not None {
+        kid.append(impl_tp_lb_uni);
+        for (i, tp) in enumerate(impl_tp_list) {
+            if i > 0 {
+                kid.append(impl_tp_comma_unis[i - 1]);
+            }
+            kid.append(tp);
+        }
+        kid.append(impl_tp_rb_uni);
+    }
     if spec_sig is not None {
         kid.append(spec_sig);
     } elif spec_is_inh and len(base_classes) > 0 and impl_inh_lp_tok is not None {
@@ -6725,6 +6779,7 @@ impl Parser.parse_impl_def -> ImplDef {
     return ImplDef(
         decorators=decorators,
         target=target_names,
+        type_params=impl_tp_list,
         spec=spec_arg,
         body=impl_body_arg,
         kid=kid,
@@ -7136,4 +7191,510 @@ impl Parser.parse_report_stmt -> ReportStmt {
 
 impl Parser._lookahead_advance -> None {
     self.advance();
+}
+
+impl Parser.parse_graph_import -> GraphImport {
+    if self.check(TokenKind.KW_IMPL) {
+        self.emit_diag(
+            "Wiring blocks are written 'graph import'; 'impl import' was removed",
+            "E0099",
+            loc=self.current().loc
+        );
+        self.advance();
+        kid: list[UniNode] = [self.make_uni_token(self.previous())];
+    } else {
+        kid = [self.consume_uni(TokenKind.KW_GRAPH)];
+    }
+    kid.append(self.consume_uni(TokenKind.KW_IMPORT));
+    scope: ModulePath | None = None;
+    if not self.check(TokenKind.LBRACE) {
+        if self.check_name() or self.is_keyword_token() {
+            scope_tok = self.current();
+            scope = self.parse_wire_module_path("scope");
+            if scope.alias is not None or scope.string_path_value is not None {
+                self.emit_diag(
+                    "A 'graph import' scope is a dotted package name",
+                    "E0093",
+                    loc=scope_tok.loc
+                );
+            }
+            kid.append(scope);
+        } else {
+            self.emit_diag("A 'graph import' scope is a dotted package name", "E0093");
+        }
+    }
+    kid.append(self.consume_uni(TokenKind.LBRACE));
+    body: list[ImportWire | ImportRule] = [];
+    while not self.check(TokenKind.RBRACE) and not self.at_end() {
+        start = self.pos;
+        stmt: ImportWire | ImportRule | None = None;
+        if self.check(TokenKind.KW_EDGE) {
+            stmt = self.parse_import_rule();
+        } elif self.check_any(
+            TokenKind.KW_COMPTIME,
+            TokenKind.KW_INCLUDE,
+            TokenKind.TYP_TYPE,
+            TokenKind.TYP_ANY,
+            TokenKind.STAR_MUL,
+            TokenKind.STRING
+        )
+            or self.check_name()
+            or self.is_keyword_token() {
+            stmt = self.parse_import_wire();
+        } else {
+            self.emit_diag(
+                "Expected a wire ('provider --> consumer') or an edge rule here",
+                "E0094"
+            );
+        }
+        if stmt is not None {
+            body.append(stmt);
+            kid.append(stmt);
+        }
+        if self.pos == start {
+            self.advance();
+        }
+    }
+    kid.append(self.consume_uni(TokenKind.RBRACE));
+    return GraphImport(doc=None, scope=scope, body=body, kid=kid);
+}
+
+impl Parser.parse_wire_module_path(context: str) -> ModulePath {
+    path_names: list[Name | String] = [];
+    path_kid: list[UniNode] = [];
+    if self.check(TokenKind.STRING) {
+        str_node = self.make_string(self.expect(TokenKind.STRING));
+        path_names.append(str_node);
+        path_kid.append(str_node);
+    } else {
+        name_tok = self.advance()
+            if self.check_name() or self.is_keyword_token()
+            else self.expect_name(context);
+        nm = self.make_name(name_tok);
+        path_names.append(nm);
+        path_kid.append(nm);
+        while self.check(TokenKind.DOT) and not self.check_peek(TokenKind.STAR_MUL) {
+            self.expect(TokenKind.DOT);
+            path_kid.append(self.make_uni_token(self.previous()));
+            name_tok = self.advance()
+                if self.check_name() or self.is_keyword_token()
+                else self.expect_name(context);
+            nm = self.make_name(name_tok);
+            path_names.append(nm);
+            path_kid.append(nm);
+        }
+    }
+    alias: Name | None = None;
+    if self.match_tok(TokenKind.KW_AS) {
+        as_uni = self.make_uni_token(self.previous());
+        alias = self.make_name(self.expect_name("alias"));
+        path_kid.append(as_uni);
+        path_kid.append(alias);
+    }
+    return ModulePath(path=path_names, level=0, alias=alias, kid=path_kid);
+}
+
+impl Parser.parse_module_pattern -> ModulePattern {
+    if self.check(TokenKind.TYP_ANY) {
+        any_tok = self.expect(TokenKind.TYP_ANY);
+        self.emit_diag(
+            "An edge rule's patterns name modules under this archwire.jac; 'any' is not a pattern",
+            "E0098",
+            loc=any_tok.loc
+        );
+        return ModulePattern(
+            path=None, is_glob=True, kid=[self.make_uni_token(any_tok)]
+        );
+    }
+    if self.check(TokenKind.STAR_MUL) {
+        star_uni = self.make_uni_token(self.expect(TokenKind.STAR_MUL));
+        return ModulePattern(path=None, is_glob=True, kid=[star_uni]);
+    }
+    path = self.parse_wire_module_path("module pattern");
+    kid: list[UniNode] = [path];
+    is_glob = False;
+    if self.check(TokenKind.DOT) and self.check_peek(TokenKind.STAR_MUL) {
+        kid.append(self.consume_uni(TokenKind.DOT));
+        kid.append(self.consume_uni(TokenKind.STAR_MUL));
+        is_glob = True;
+    }
+    return ModulePattern(path=path, is_glob=is_glob, kid=kid);
+}
+
+impl Parser.parse_import_rule -> ImportRule | None {
+    kid: list[UniNode] = [self.consume_uni(TokenKind.KW_EDGE)];
+    if not (self.check_name() and self.check_peek(TokenKind.COLON)) {
+        self.emit_diag(
+            "An edge rule is named: 'edge Name: source --> target'", "E0092"
+        );
+        self._skip_wiring_stmt();
+        return None;
+    }
+    name = self.make_name(self.expect_name("rule name"));
+    kid.append(name);
+    kid.append(self.consume_uni(TokenKind.COLON));
+    sources: list[ModulePattern] = [self.parse_module_pattern()];
+    kid.append(sources[0]);
+    while self.match_tok(TokenKind.BW_OR) {
+        kid.append(self.make_uni_token(self.previous()));
+        pat = self.parse_module_pattern();
+        sources.append(pat);
+        kid.append(pat);
+    }
+    self._expect_rule_arrow(kid);
+    targets: list[ModulePattern] = [self.parse_module_pattern()];
+    kid.append(targets[0]);
+    while self.match_tok(TokenKind.BW_OR) {
+        kid.append(self.make_uni_token(self.previous()));
+        pat = self.parse_module_pattern();
+        targets.append(pat);
+        kid.append(pat);
+    }
+    items: list[WireItem] | None = None;
+    if self.check(TokenKind.LBRACE) {
+        items = self.parse_wire_payload(kid, True);
+    } else {
+        self.expect(TokenKind.SEMI);
+        kid.append(self.make_semi());
+    }
+    return ImportRule(
+        name=name, sources=sources, targets=targets, items=items, kid=kid
+    );
+}
+
+impl Parser.parse_import_wire -> ImportWire | None {
+    kid: list[UniNode] = [];
+    is_comptime = False;
+    is_absorb = False;
+    is_typed = False;
+    if not self._wire_path_ahead() and self.match_tok(TokenKind.KW_COMPTIME) {
+        is_comptime = True;
+        kid.append(self.make_uni_token(self.previous()));
+    }
+    if not self._wire_path_ahead() and self.match_tok(TokenKind.KW_INCLUDE) {
+        is_absorb = True;
+        kid.append(self.make_uni_token(self.previous()));
+    } elif not self._wire_path_ahead() and self.match_tok(TokenKind.TYP_TYPE) {
+        is_typed = True;
+        kid.append(self.make_uni_token(self.previous()));
+    }
+    if self.check_any(TokenKind.TYP_ANY, TokenKind.STAR_MUL) {
+        self.emit_diag(
+            "A wire names one provider; patterns belong to an edge rule", "E0087"
+        );
+        self._skip_wiring_stmt();
+        return None;
+    }
+    provider = self.parse_wire_module_path("provider");
+    kid.append(provider);
+    if self.check_any(TokenKind.DOT, TokenKind.BW_OR) {
+        self.emit_diag(
+            "A wire names one provider; patterns belong to an edge rule", "E0087"
+        );
+        self._skip_wiring_stmt();
+        return None;
+    }
+    injected = self.check(TokenKind.CARROW_R);
+    if injected {
+        kid.append(self.consume_uni(TokenKind.CARROW_R));
+    } elif not self._expect_wire_arrow(kid) {
+        self._skip_wiring_stmt();
+        return None;
+    }
+    targets: list[WireTarget] = [];
+    grouped = self.check(TokenKind.LSQUARE);
+    if grouped {
+        kid.append(self.consume_uni(TokenKind.LSQUARE));
+        while not self.check(TokenKind.RSQUARE) and not self.at_end() {
+            target = self.parse_wire_target(is_absorb, provider);
+            if target is None {
+                self._skip_wiring_stmt(open_lists=1);
+                return None;
+            }
+            targets.append(target);
+            kid.append(target);
+            if not self.match_tok(TokenKind.COMMA) {
+                break;
+            }
+            kid.append(self.make_uni_token(self.previous()));
+        }
+        close_tok = self.current();
+        kid.append(self.consume_uni(TokenKind.RSQUARE));
+        if not targets {
+            self.emit_diag(
+                "A grouped wire lists at least one consumer", "E0088", loc=close_tok.loc
+            );
+            return None;
+        }
+    } else {
+        target = self.parse_wire_target(is_absorb, provider);
+        if target is None {
+            self._skip_wiring_stmt();
+            return None;
+        }
+        targets.append(target);
+        kid.append(target);
+        if target.is_module_form {
+            self.expect(TokenKind.SEMI);
+            kid.append(self.make_semi());
+        }
+    }
+    return ImportWire(
+        provider=provider,
+        targets=targets,
+        is_grouped=grouped,
+        is_injected=injected,
+        is_absorb=is_absorb,
+        is_typed=is_typed,
+        is_comptime=is_comptime,
+        kid=kid
+    );
+}
+
+impl Parser.parse_wire_target(
+    is_absorb: bool, provider: ModulePath
+) -> WireTarget | None {
+    kid: list[UniNode] = [];
+    consumers: list[ModulePath] = [];
+    while True {
+        if self.check_any(TokenKind.TYP_ANY, TokenKind.STAR_MUL, TokenKind.STRING) {
+            self.emit_diag(
+                "A wire's consumer is a project module named in full", "E0088"
+            );
+            return None;
+        }
+        consumer_tok = self.current();
+        consumer = self.parse_wire_module_path("consumer");
+        if self.check(TokenKind.DOT) or consumer.alias is not None {
+            self.emit_diag(
+                "A wire's consumer is a project module named in full",
+                "E0088",
+                loc=consumer_tok.loc
+            );
+            return None;
+        }
+        consumers.append(consumer);
+        kid.append(consumer);
+        if not self.match_tok(TokenKind.BW_OR) {
+            break;
+        }
+        kid.append(self.make_uni_token(self.previous()));
+    }
+    items: list[WireItem] | None = None;
+    if self.check(TokenKind.LBRACE) {
+        if is_absorb {
+            self.emit_diag("'include' takes no payload", "E0091");
+        } elif provider.alias is not None {
+            self.emit_diag("'as' applies to the module form of a wire", "E0089");
+        }
+        items = self.parse_wire_payload(kid, False);
+    }
+    return WireTarget(consumers=consumers, items=items, kid=kid);
+}
+
+impl Parser.parse_wire_payload(kid: list[UniNode], in_rule: bool) -> list[WireItem] {
+    kid.append(self.consume_uni(TokenKind.LBRACE));
+    items: list[WireItem] = [];
+    seen: set[str] = set();
+    saw_star = False;
+    while not self.check(TokenKind.RBRACE) and not self.at_end() {
+        item_name: Name | Token;
+        item_tok: LexToken;
+        if self.check(TokenKind.STAR_MUL) {
+            item_tok = self.expect(TokenKind.STAR_MUL);
+            item_name = self.make_uni_token(item_tok);
+            saw_star = True;
+            if in_rule {
+                self.emit_diag(
+                    "'*' must be the only item in a payload", "E0095", loc=item_tok.loc
+                );
+            }
+        } else {
+            item_tok = self.expect_name("payload item");
+            item_name = self.make_name(item_tok);
+        }
+        item_kid: list[UniNode] = [item_name];
+        alias: Name | None = None;
+        if self.match_tok(TokenKind.KW_AS) {
+            as_uni = self.make_uni_token(self.previous());
+            alias_tok = self.expect_name("alias");
+            alias = self.make_name(alias_tok);
+            item_kid.append(as_uni);
+            item_kid.append(alias);
+            if in_rule {
+                self.emit_diag(
+                    "A rule payload lists names without aliases",
+                    "E0096",
+                    loc=alias_tok.loc
+                );
+            }
+        }
+        bound = alias.value if alias is not None else item_name.value;
+        if bound in seen {
+            self.emit_diag(
+                f"Duplicate '{bound}' in a wire payload", "E0090", loc=item_tok.loc
+            );
+        }
+        seen.add(bound);
+        item = WireItem(name=item_name, alias=alias, kid=item_kid);
+        items.append(item);
+        kid.append(item);
+        if not self.match_tok(TokenKind.COMMA) {
+            break;
+        }
+        kid.append(self.make_uni_token(self.previous()));
+    }
+    rb_tok = self.expect(TokenKind.RBRACE);
+    kid.append(self.make_uni_token(rb_tok));
+    if saw_star and len(items) > 1 {
+        self.emit_diag(
+            "'*' must be the only item in a payload", "E0095", loc=rb_tok.loc
+        );
+    }
+    if not items {
+        self.emit_diag(
+            "import statement must specify at least one item", "E0044", loc=rb_tok.loc
+        );
+    }
+    return items;
+}
+
+impl Parser._expect_wire_arrow(kid: list[UniNode]) -> bool {
+    if self.check_any(
+        TokenKind.ARROW_L, TokenKind.ARROW_BI, TokenKind.CARROW_L, TokenKind.CARROW_BI
+    ) {
+        self.emit_diag(
+            "A wire is directed: write 'provider ++> consumer' to inject the import,"
+            " or 'provider --> consumer' to declare one the consumer writes",
+            "E0086"
+        );
+        self.advance();
+        return False;
+    }
+    kid.append(self.consume_uni(TokenKind.ARROW_R));
+    return True;
+}
+
+impl Parser._expect_rule_arrow(kid: list[UniNode]) -> None {
+    if self.check(TokenKind.CARROW_R) {
+        self.emit_diag(
+            "An edge rule only checks imports; write 'source --> target'", "E0086"
+        );
+        self.advance();
+        return;
+    }
+    self._expect_wire_arrow(kid);
+}
+
+impl Parser._wire_path_ahead -> bool {
+    return self.check_peek_any(
+        TokenKind.ARROW_R,
+        TokenKind.CARROW_R,
+        TokenKind.DOT,
+        TokenKind.KW_AS,
+        TokenKind.BW_OR
+    );
+}
+
+impl Parser._skip_wiring_stmt(open_lists: int = 0) -> None {
+    depth = 0;
+    lists = open_lists;
+    while not self.at_end() {
+        if depth == 0 and lists == 0 and self.check(TokenKind.RBRACE) {
+            return;
+        }
+        tok = self.advance();
+        if tok.kind == TokenKind.LSQUARE {
+            lists += 1;
+        } elif tok.kind == TokenKind.RSQUARE {
+            lists -= 1;
+            if lists <= 0 and depth == 0 {
+                return;
+            }
+        } elif tok.kind == TokenKind.LBRACE {
+            depth += 1;
+        } elif tok.kind == TokenKind.RBRACE {
+            depth -= 1;
+            if depth <= 0 and lists == 0 {
+                return;
+            }
+        } elif tok.kind == TokenKind.SEMI and depth == 0 and lists == 0 {
+            return;
+        }
+    }
+}
+
+impl _string_lit_text(raw: str) -> str {
+    v = raw;
+    while v and v[0] in "rbfRBF" {
+        v = v[1:];
+    }
+    if len(v) >= 6 and v.startswith('"""') and v.endswith('"""') {
+        return v[3:-3];
+    }
+    if len(v) >= 6 and v.startswith("'''") and v.endswith("'''") {
+        return v[3:-3];
+    }
+    if len(v) >= 2 and (v[0] == "'" or v[0] == '"') and v[-1] == v[0] {
+        return v[1:-1];
+    }
+    return v;
+}
+
+impl _test_ident_from_desc(desc_text: str) -> str {
+    ident_chars: list[str] = [];
+    prev_sep = False;
+    for ch in desc_text {
+        is_word = ("a" <= ch and ch <= "z")
+            or ("A" <= ch and ch <= "Z")
+            or ("0" <= ch and ch <= "9");
+        if is_word {
+            ident_chars.append(ch);
+            prev_sep = False;
+        } elif not prev_sep {
+            ident_chars.append("_");
+            prev_sep = True;
+        }
+    }
+    ident: str = str("".join(ident_chars));
+    if ident.startswith("_") {
+        ident = ident[1:];
+    }
+    if ident.endswith("_") {
+        ident = ident[:-1];
+    }
+    return ident.lower();
+}
+
+impl parse_program(
+    source: str, file_path: str
+) -> tuple[(Module, int, list[SrcDiag], list[CommentData], list[SrcDiag], int)] {
+    (tokens, comments, lex_diags, lex_error_count) = tokenize_full(source, file_path);
+    parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
+    mod = parser.parse();
+    return (
+        mod,
+        parser.error_count,
+        parser.diags,
+        comments,
+        lex_diags,
+        lex_error_count
+    );
+}
+
+impl parse_expression(
+    source: str, file_path: str = "<input>"
+) -> tuple[Expr, bool, list[SrcDiag], list[SrcDiag]] {
+    (tokens, _comments, lex_diags, lex_errors) = tokenize_full(source, file_path);
+    parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
+    expression = parser.parse_expression();
+    if not parser.at_end() {
+        parser.error("Unexpected token after expression");
+    }
+    return (
+        expression,
+        lex_errors > 0 or parser.error_count > 0,
+        parser.diags,
+        lex_diags
+    );
 }

@@ -1,14 +1,6 @@
 import from unittest.mock { patch, MagicMock }
 import from concurrent.futures { ThreadPoolExecutor }
 import from tempfile { mkdtemp }
-import from jaclang.data.pgembed { PgRuntime }
-import from jaclang.data.store { PgStore }
-import from jaclang.server.identity.rate_limit { consume_limit }
-import from jaclang.server.endpoints.auth { register_auth_endpoints }
-import from jaclang.server.identity.auth_models { RegisterRequest }
-import from jaclang.server.settings { AuthSettings }
-import from jaclang.server.serving.datatypes { Request }
-import from jaclang.server.serving.app { transport_to_response }
 
 test "database quotas are atomic isolated and reset only at expiration" {
     runtime = PgRuntime(data_dir=mkdtemp(prefix='jaclimits_') + '/data');
@@ -73,9 +65,9 @@ test "registration limits precede verification and account creation" {
     with patch(
         register_auth_endpoints.__module__ + '.auth_settings',
         return_value=AuthSettings(
-            registration_challenge=True,
-            registration_attempts_per_hour=5,
-            registration_challenges_per_10_minutes=20
+            registration=RegistrationSettings(
+                challenge=True, attempts_per_hour=5, challenges_per_10_minutes=20
+            )
         )
     ), patch(
         register_auth_endpoints.__module__ + '.consume_limit', return_value=42

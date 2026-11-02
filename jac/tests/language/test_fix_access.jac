@@ -100,10 +100,16 @@ test "fix access reports :priv declarations that used to be served" {
     }
 }
 
-test "fix access --dry-run writes nothing and a second run is a no-op" {
+test "fix access writes nothing on a dry run or an invalid jac.toml, and a second run is a no-op" {
     with tempfile.TemporaryDirectory() as tmpdir {
         proj = _write_project(tmpdir);
         before = _read(os.path.join(proj, "main.jac"));
+        with open(os.path.join(proj, "jac.toml"), "a") as f {
+            f.write('\n[dependencies]\nrequests = ">=2"\n');
+        }
+        assert fix("access", [proj]) == 2;
+        assert _read(os.path.join(proj, "main.jac")) == before;
+        assert fix("dependencies", [proj]) == 0;
         assert fix("access", [proj], dry_run=True) == 0;
         assert _read(os.path.join(proj, "main.jac")) == before;
         assert fix("access", [proj]) == 0;
@@ -125,5 +131,45 @@ test "fix access without a serving app changes nothing" {
         assert fix("access", [tmpdir]) == 0;
         assert _read(os.path.join(tmpdir, "main.jac"))
             == 'def helper -> int {\n    return 1;\n}\n';
+    }
+}
+
+test "fix access follows recursive includes in the entry namespace" {
+    with tempfile.TemporaryDirectory() as tmp {
+        with open(os.path.join(tmp, "jac.toml"), "w") as f {
+            f.write(TOML);
+        }
+        files = {
+            "main.jac": "include utils;\n",
+            "utils.jac": (
+                "include nested;\n"
+                + "import from helpers { used }\n"
+                + "def included -> int { return used(); }\n"
+                + "walker IncludedWalker {}\n"
+                + "def:priv secret -> int { return 0; }\n"
+            ),
+            "nested.jac": "include utils;\ndef nested -> int { return 2; }\n",
+            "helpers.jac": (
+                "def used -> int { return 1; }\n"
+                + "def untouched -> int { return 0; }\n"
+            )
+        };
+        for (name, source) in files.items() {
+            with open(os.path.join(tmp, name), "w") as f {
+                f.write(source);
+            }
+        }
+        (plan, notes) = _access_plan(tmp);
+        assert {rw.name for rw in plan}
+            == {"included", "IncludedWalker", "nested", "used"} , plan;
+        assert len(plan) == 4 , "cycles must not duplicate rewrites";
+        assert any("secret" in note for note in notes) , notes;
+        assert fix("access", [tmp], dry_run=True) == 0;
+        assert _read(os.path.join(tmp, "utils.jac")) == files["utils.jac"];
+        assert fix("access", [tmp]) == 0;
+        assert "def:protect included" in _read(os.path.join(tmp, "utils.jac"));
+        assert "def:protect nested" in _read(os.path.join(tmp, "nested.jac"));
+        assert "def untouched" in _read(os.path.join(tmp, "helpers.jac"));
+        assert _access_plan(tmp)[0] == [];
     }
 }

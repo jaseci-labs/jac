@@ -23,6 +23,7 @@ Bug index:
   #TVAR-3 - Union return types with TypeVars (e.g., V | None) resolve to Unknown
   #TVAR-5 - Module-level TypeVars shadowed by class type parameters
   #IMPL-1 - Has var reassigned in impl body loses its type (shadow local)
+  #IMPL-2 - Local first assigned in a nested block of an impl body taken for the archetype's member
   #BASE-1 - Base class name resolved in class's own scope (should be enclosing)
   #SUPER-1 - super() call returns Unknown instead of parent instance
   #DSTR-1  - Docstring before declaration inside function body triggers W0060 instead of attaching
@@ -30,6 +31,8 @@ Bug index:
   #STUB-VGUARD - Module-level version-guarded stub symbols (e.g. datetime.UTC) resolve as Unknown
   #HOGEN-1 - TypeVars not bound through function-typed args; blocks generic decorator-application
   #WITHAS-1 - `with cm() as x` bound x to the manager not __enter__'s result; async with used sync protocol
+  #WITHAS-2 - a `with ... as x` alias read before the checker walked its `with` (a
+              native import's interface build) was Unknown and stayed cached
   #UNPACK-1 - Assignment unpacking of a non-tuple iterable (bytes/str/range) typed targets as Unknown
   #STARGUARD-1 - version-guarded names re-exported via `from M import *` (e.g. Buffer) fail to resolve
   #BYTES-1 - Byte-string literals (b"...") typed as str instead of bytes
@@ -39,6 +42,10 @@ Bug index:
                       Unknown when the included submodule imported back from its
                       own package (circular self-import); poisoned the vendored
                       llvm ir/binding surface and every native pass (#7163)
+  #UNBOUND-1 - an instance method read through its class and used as a value
+               (`m = Cls.method; m(obj, x)`, a Callable argument) lost its
+               receiver parameter; only a direct `Cls.method(obj, x)` call
+               bound it
   #LOOPHDR-1 - loop-header back-edge detection used find_parent_of_type(<same
                kind>), so a back edge originating inside a nested loop of the
                SAME kind was treated as a loop-entry pred and destroyed the
@@ -50,6 +57,12 @@ Bug index:
                     still on the stack fell into a fresh program.compile of the
                     same path instead of answering from the in-flight state
                     (#7853)
+  #CYCLE-IMPORT-2 - the re-entrant import guard looked for the in-flight
+                    module only in the checking program's hub, so a module
+                    compiling in another context program came back as an empty
+                    stub, and the evaluator cached that stub as the module for
+                    every later import: `ir.Module` stayed Unknown for the rest
+                    of a `jac check` worker
   #CYCLE-TAINT-1 - an Unknown born from the symbol-resolution cycle guard was
                    cached on the expression node and diagnosed (W1051 / E1032 /
                    E1053), freezing transient in-flight types that settle once
@@ -117,6 +130,10 @@ Bug index:
                the declaration path widens literals, so an annotated
                `list[str]` local was narrowed to `list[LiteralString]` anyway
                (#8982 item 12)
+  #PROTOOVL-1 - a protocol member implemented by an overloaded method solved
+                the protocol's type variable from the first overload only, so
+                `round(x, 3)` on a float matched `_SupportsRound2[_T]` against
+                `float.__round__`'s ndigits-less overload and typed as `int`
 """
 
 import os;
@@ -674,6 +691,44 @@ test "bug_impl1_has_var_shadow_in_impl_body" {
 }
 
 # =========================================================================
+# Bug #IMPL-2: Local in a nested block of an impl body bound to a member
+#
+# In the body of `impl Arch.method`, a name first assigned inside a nested
+# block (a `for` or `if` body) was bound to the archetype's method or `has`
+# field of that name instead of becoming a local:
+#
+#     impl Shelf.tally(words: list[str]) -> int {
+#         for word in words {
+#             changed = len(word);     # E1001: Cannot assign int to
+#         }                            #        <function changed() -> None>
+#     }
+#
+# The same assignment at the top level of the body was a local, as it is in
+# a method bodied inline.
+#
+# Root cause: binding a target in a nested block asks the enclosing
+# function's scope whether it already has the name, with a shallow lookup
+# (`deep=False`). For an impl, `UniScopeNode.lookup` then falls through to
+# the declaration it implements, and from there it looked deep, climbing
+# from the declaration into the archetype. A shallow lookup came back with
+# the archetype's member.
+#
+# Fix: the lookup through an impl's declaration is as deep as was asked
+# for. A shallow one sees the declaration's own names (its parameters) and
+# no further, so the target is a local; `self.member` reaches the member.
+# =========================================================================
+test "bug_impl2_local_in_nested_block_of_impl_body" {
+    fixture_dir = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "fixtures");
+    program = JacProgram();
+    program.compile(os.path.join(fixture_dir, "impl_nested_local_shadows_member.jac"));
+    assert len(program.errors_had) == 0 , (
+        "Bug #IMPL-2: a local first assigned in a nested block of an impl body "
+        "should be a local, not the archetype's method or field of that name. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
 # Bug #BASE-1: Base class name resolved in class's own scope
 #
 # For `class Child(Parent) { def Parent -> int {...} }` the name `Parent`
@@ -880,6 +935,52 @@ test "bug_comprehension_narrowing_negative" {
 }
 
 # =========================================================================
+# Bug #COMPR-TAIL-NARROW: a statement that ends an `if` body with a
+# comprehension did not flow on to what follows the `if`.
+#
+# `CFGBuildPass._wire_compr_filters` links the enclosing statement to the
+# comprehension's first clause. `_exit_wired` took that link for the
+# statement's way out, so `_connect_tails` never joined the body's last
+# statement to the next one: the only way into it was the edge on which the
+# condition was false. A second `if x is not None` then narrowed `x` from
+# `None` alone, and every use of `x` under it raised E1099.
+# =========================================================================
+test "bug_comprehension_block_tail_narrowing" {
+    program = compile_and_check("checker_bug_compr_block_tail_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "A statement that ends a block with a comprehension must flow on to "
+        "what follows the block, so that a guard asked again after it "
+        "narrows as it would after any other statement. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
+# Bug #COMPR-TAIL-NARROW (true-positive guard): joining the block's tail to
+# what follows must not hide a use that is not guarded, nor one on the
+# branch where the name is None.
+# =========================================================================
+test "bug_comprehension_block_tail_narrowing_negative" {
+    program = compile_and_check("checker_bug_compr_block_tail_narrowing_negative.jac");
+    found = [str(e) for e in program.errors_had];
+    none_lines = [
+        e.loc.first_line
+        for e in program.errors_had
+        if "NoneType" in str(e)
+    ];
+
+    assert 21 in none_lines , (
+        "After the `if`, with no guard, the name may still be None: the "
+        f"use on line 21 must be reported. Got: {found}"
+    );
+    assert 28 in none_lines , (
+        "On the branch where the name is None the use on line 28 must be "
+        f"reported. Got: {found}"
+    );
+}
+
+# =========================================================================
 # Bug #JSX-SLOT-NARROW: `T | None` narrowing did not reach JSX statement
 # slot bodies (`{for ... { <jsx> }}` / `{if ... { <jsx> }}`).
 #
@@ -1064,6 +1165,71 @@ test "bug_withas_1_async_with_as_binds_and_checks" {
         "Bug #WITHAS-1: `async with cm() as x` must verify the async protocol "
         "and bind x to the awaited __aenter__ result. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #WITHAS-2: the alias type was only ever set by the checker pass as it
+# entered the `with` statement. A native module analyses its imports in full,
+# and each import's interface is built first, typing the import's function
+# bodies before the checker walks them: the alias read as Unknown there, the
+# Unknown stayed cached on the use, and `jac check` reported E1032 inside the
+# import (the bundled native `zipfile` among them) and then failed with
+# "Native dependency analysis failed". The evaluator now derives the alias
+# from `__enter__` whenever it is read.
+test "bug_withas_2_alias_typed_before_checker_walks_with" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    program = JacProgram();
+    failure = "";
+    try {
+        program.compile(
+            os.path.join(CHECKER_FIXTURES, "checker_with_alias_native_dep.jac"),
+            options=CompileOptions(
+                no_cgen=True,
+                native_parity=True,
+                iface_ok=True,
+                strict_dependencies=True
+            )
+        );
+    } except RuntimeError as e {
+        failure = str(e);
+    }
+    assert failure == "" and program.errors_had == [] , (
+        "Bug #WITHAS-2: a `with ... as` alias in a native module's import must "
+        f"type through __enter__. Got failure {failure!r}, errors: "
+        f"{[str(e) for e in program.errors_had]}"
+    );
+}
+
+# The same reads with no pass running at all: a native module's `open` resolves
+# to the native builtin by the module it is written in (not by whichever node a
+# running pass happens to be on), and the alias binds through `__enter__`.
+test "bug_withas_2_native_alias_typed_outside_a_pass" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import jaclang.compiler.frontend.unitree as uni;
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_with_alias_outside_pass.jac"),
+        options=CompileOptions(symtab_ir_only=True, force_codespace="native")
+    );
+    evaluator = program.get_type_evaluator();
+    opens = [
+        call
+        for call in mod.get_all_sub_nodes(uni.FuncCall)
+        if isinstance(call.target, uni.Name) and call.target.value == "open"
+    ];
+    uses = [
+        name
+        for name in mod.get_all_sub_nodes(uni.Name)
+        if name.value == "stream" and name.sym is not None and name.sym.decl is not name
+    ];
+    assert len(opens) == 1 and len(uses) == 1 , f"fixture shape changed: {opens} {uses}";
+    open_type = str(evaluator.get_type_of_expression(opens[0]));
+    alias_type = str(evaluator.get_type_of_expression(uses[0]));
+    assert open_type == "BinaryFile" , (
+        f"Bug #WITHAS-2: native `open(path, \"rb\")` typed {open_type}, not BinaryFile"
+    );
+    assert alias_type == "BinaryFile" , (
+        f"Bug #WITHAS-2: the `with` alias typed {alias_type}, not BinaryFile"
     );
 }
 
@@ -1279,6 +1445,60 @@ test "bug_cycimp1_reentrant_import_guard_returns_stub" {
     assert not settled.stub_only and settled.name == "checker_cycle_guard_target" , (
         "Bug #CYCLE-IMPORT-1: once the module is no longer mid-compile, the "
         "same query must compile and return the real module."
+    );
+}
+
+# =========================================================================
+# Bug #CYCLE-IMPORT-2: the guard's stub answer is transient, so the module
+# type cache must not keep it. `jac check` reuses one program per worker; a
+# stub cached for the llvm `ir` package while it was mid-compile turned every
+# later `ir.Module` in that worker into Unknown (E1032 / E1053 across the
+# native backend). The test marks the package in-compile while one module
+# imports it, then checks that a second module importing it after the compile
+# has settled sees the real package.
+# =========================================================================
+test "bug_cycimp2_inflight_stub_is_not_cached" {
+    import from pathlib { Path }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    program = JacProgram();
+    evaluator = program.get_type_evaluator();
+    init = str(
+        Path(
+            os.path.join(
+                JAC_ROOT,
+                "jaclang",
+                "compiler",
+                "backends",
+                "native",
+                "llvm",
+                "ir",
+                "__init__.jac"
+            )
+        ).resolve()
+    );
+    evaluator._modules_in_compile.add(init);
+    try {
+        program.compile(
+            os.path.join(CHECKER_FIXTURES, "checker_cycle_inflight_pkg_first.jac"),
+            options=CompileOptions(default_codespace='server')
+        );
+    } finally {
+        evaluator._modules_in_compile.discard(init);
+    }
+    cached = evaluator._module_type_cache.get(init);
+    assert cached is None or not getattr(cached.symbol_table, "stub_only", False) , (
+        "Bug #CYCLE-IMPORT-2: the stub answered for a mid-compile package "
+        "must not be cached as that package."
+    );
+    pre_errs = len(program.errors_had);
+    program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_cycle_inflight_pkg_second.jac"),
+        options=CompileOptions(default_codespace='server')
+    );
+    assert program.errors_had[pre_errs:] == [] , (
+        "Bug #CYCLE-IMPORT-2: a module importing the package after its compile "
+        "settled must resolve `ir.Module`. Got errors: "
+        f"{[str(e) for e in program.errors_had[pre_errs:]]}"
     );
 }
 
@@ -2067,5 +2287,106 @@ test "bug_selfovl1_receiver_selects_the_self_typed_overload" {
     );
     assert len(program.errors_had) == 0 , "\n".join(
         e.pretty_print() for e in program.errors_had
+    );
+}
+
+test "assignment narrowing preserves contextual container element types" {
+    program = compile_and_check("checker_contextual_container_assignment.jac");
+    errors = [e.pretty_print() for e in program.errors_had];
+    assert len(errors) == 1 , '\n'.join(errors);
+    assert 'not a Base' in errors[0] , errors[0];
+}
+
+test "bug_protoovl1_overloaded_protocol_member_picks_fitting_overload" {
+    program = compile_and_check("checker_protocol_overloaded_member.jac");
+    by_line = {
+        e.loc.first_line: str(e)
+        for e in program.errors_had
+        if e.loc
+    };
+    assert len(program.errors_had) == 2 , (
+        "Bug #PROTOOVL-1: only the two deliberate mismatches may fire. Got: "
+        f"{[str(e) for e in program.errors_had]}"
+    );
+    assert "Cannot assign float to int" in by_line.get(10, "") , (
+        "Bug #PROTOOVL-1: round(float, ndigits) must type as float. Line 10 "
+        f"reported: {by_line.get(10)}"
+    );
+    assert "Cannot assign int to str" in by_line.get(11, "") , (
+        "Bug #PROTOOVL-1: round(float) must still type as int. Line 11 "
+        f"reported: {by_line.get(11)}"
+    );
+}
+
+# Bug #GENPROTO-1: a `Protocol[...]` base was typed as `_SpecialForm.__getitem__`'s
+# `object`, so a generic protocol whose name does not start with `Supports` was
+# not a protocol, and `ExitStack.enter_context` rejected every context manager.
+test "bug_genproto_1_subscripted_protocol_base_is_a_protocol" {
+    program = compile_and_check("checker_subscripted_protocol_base.jac");
+    by_line = {
+        e.loc.first_line: str(e)
+        for e in program.errors_had
+        if e.loc
+    };
+    assert sorted(by_line) == [42, 43, 57, 58] , (
+        "Bug #GENPROTO-1: only the four deliberate mismatches may fire. Got: "
+        f"{[str(e) for e in program.errors_had]}"
+    );
+    assert "Cannot assign int to str" in by_line[42] , by_line[42];
+    assert "NoExit" in by_line[43] , by_line[43];
+    assert "BytesLocation" in by_line[57] , by_line[57];
+    assert "Cannot assign list[int] to list[str]" in by_line[58] , by_line[58];
+}
+
+# Bug #UNBOUND-1: `Cls.method` read as a value is a function taking the
+# receiver first. The type now carries that (FunctionTypeFlags.UnboundMethod
+# with an explicit self), so a call through a name, a list element or a
+# Callable parameter binds the receiver as a direct `Cls.method(obj, x)` does.
+test "bug_unbound_1_method_through_class_as_value" {
+    program = compile_and_check("checker_unbound_method_value.jac");
+    assert program.errors_had == [] , (
+        "Bug #UNBOUND-1: an unbound method used as a value must take its "
+        f"receiver. Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #CTOR-INIT-ARGS: a class whose `__new__` takes anything (`dict`'s is
+# `__new__(cls, *args, **kwargs)`) left its type arguments unsolved, because
+# the `__init__` overloads that carry them were never asked. `dict(x)` was a
+# bare `dict`, and everything read from it untyped.
+test "bug_ctor_init_args_dict_call_is_typed_by_init" {
+    program = compile_and_check("checker_ctor_type_args_from_init.jac");
+    assert program.errors_had == [] , (
+        "Bug #CTOR-INIT-ARGS: each use reads `dict(...)` as the typed dict "
+        f"its arguments make it. Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_ctor_init_args_dict_call_misuse_is_reported" {
+    program = compile_and_check("checker_ctor_type_args_from_init_negative.jac");
+    by_line = {
+        e.loc.first_line: str(e)
+        for e in program.errors_had
+        if e.loc
+    };
+    assert len(program.errors_had) == 4 , (
+        "Bug #CTOR-INIT-ARGS: the four deliberate misuses, and only those, "
+        f"must be reported. Got: {[str(e) for e in program.errors_had]}"
+    );
+    assert "str" in by_line.get(9, "") and "int" in by_line.get(9, "") , (
+        "Bug #CTOR-INIT-ARGS: a value read from `dict(fields)` is a str. "
+        f"Line 9 reported: {by_line.get(9)}"
+    );
+    assert "int" in by_line.get(14, "") and "str" in by_line.get(14, "") , (
+        "Bug #CTOR-INIT-ARGS: a value read from `dict(pairs)` is an int. "
+        f"Line 14 reported: {by_line.get(14)}"
+    );
+    assert "dict[str, int]" in by_line.get(19, "") , (
+        "Bug #CTOR-INIT-ARGS: `dict(a=1, b=2)` is a dict[str, int]. "
+        f"Line 19 reported: {by_line.get(19)}"
+    );
+    assert "dict[int, str]" in by_line.get(24, "") , (
+        "Bug #CTOR-INIT-ARGS: `dict({1: \"one\"})` is a dict[int, str]. "
+        f"Line 24 reported: {by_line.get(24)}"
     );
 }

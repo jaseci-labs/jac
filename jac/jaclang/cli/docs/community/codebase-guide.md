@@ -72,7 +72,7 @@ These two layers define the data structures and orchestration that every compila
 The most important files to know:
 
 - **`frontend/unitree.jac`** -- The unified AST that all backends share. If you're adding or changing syntax, you'll touch this.
-- **`driver/compiler.jac`** -- The pass pipeline orchestrator. It defines schedules like `get_ir_gen_sched()` and `get_py_code_gen()` that chain passes together. This is the authoritative source for pass ordering.
+- **`driver/pipeline.jac`** -- The pass scheduler. Its `PRODUCTS` table defines every schedule (IR, analysis, codegen, native, format, lint), and `require(program, module, product)` is the one way passes run. This is the authoritative source for pass ordering.
 - **`driver/jir.jac`** -- The JIR container: cached module bytecode plus typed sections (MTIR, placement, native objects, module interfaces, dependency hashes, diagnostics), keyed by source content and the running compiler's identity. Trees are never persisted; they are working state, re-derived per process -- what a module *exports* is persisted instead, as an interface section that dependency ingestion hydrates from (`driver/ifacecache.jac`).
 - **`frontend/diagnostics.jac`** -- Error and warning reporting infrastructure.
 - **`project/modresolver.jac`** -- Shared project and module import resolution.
@@ -99,35 +99,33 @@ A fourth category -- `compiler/tools/` -- contains non-compilation passes for th
 
 ### Compilation Pass Ordering
 
-The compiler orchestrator in `compiler/driver/compiler.jac` defines several pass schedules. For the default Python target, the full pipeline runs roughly as follows:
+The `PRODUCTS` table in `compiler/driver/pipeline.jac` defines every pass schedule, and each pass declares the analysis facts it requires and provides on its own class. For the default Python target, a module compile requests these products in order:
 
-**IR generation** (`get_ir_gen_sched`):
+**IR** (`ir_passes`):
 
-1. `ASTValidationPass` -- Validate AST structure after parsing
-2. `SymTabBuildPass` -- Build the symbol table (scopes, bindings)
-3. `DeclImplMatchPass` -- Pair declarations with their implementations
-4. `SemanticAnalysisPass` -- Resolve names, check imports, validate semantics
-5. `SemDefMatchPass` -- Link semantic definitions across modules
-6. `CFGBuildPass` -- Build control flow graphs for reachability and flow analysis
-7. `MTIRGenPass` -- Generate the mid-tier IR used by downstream passes
-8. `UniTreeEnrichPass` -- Annotate the AST with computed semantic information
+1. `AppContextPass`, `GraphLoweringPass`, `ASTValidationPass`, `AbsorbImportsPass`, `SymTabBuildPass` -- Validate the tree and build the symbol table
+2. `ImportWiringPass`, `PackageBoundaryPass`, `DeclImplMatchPass` -- Wire imports and pair declarations with their implementations
+3. `SemanticAnalysisPass`, `SemDefMatchPass` -- Resolve names and link semantic definitions
+4. `CFGBuildPass` -- Build control flow graphs for reachability and flow analysis
+5. `MTIRGenPass` -- Generate the Meaning-Typed IR for `by llm` calls
+6. `JsxIntrinsicGuardPass`, `PlacementApplyPass`, `ComptimeResolvePass` -- Guard JSX tags, seed placement, settle `comptime` sites
 
-**Type checking** (`get_type_check_sched`, when enabled):
+**ANALYSIS** (`analysis_passes`, always):
 
-1. `TypeCheckPass` -- Infer and validate types
-2. `StaticAnalysisPass` -- Detect unreachable code, unused variables, etc.
-3. `UniTreeEnrichPass` -- Final enrichment with type information
+1. `RegionInferPass`, `VariantAgreementPass`
+2. `TypeCheckPass` -- Infer and validate types
+3. `StaticAnalysisPass`, `AccessCheckPass`, `OwnershipCheckPass`
+4. `PlacementPass`, `PortabilityWarnPass`, `JacLintCheckPass`
 
-**Code generation** (`get_py_code_gen`):
+**CODEGEN**, **PY_IR**, **FROZEN** (code generation):
 
-1. `InteropAnalysisPass` -- Analyze Python interop requirements
-2. `EsastGenPass` -- Generate JavaScript AST (for JS target)
-3. `NaIRGenPass` -- Generate LLVM IR (for native target)
-4. `NativeCompilePass` -- JIT-compile LLVM IR to machine code
-5. `JcirGenPass` -- Lower the unitree into the compact codegen IR container
-6. `JcirBytecodeGenPass` -- Rebuild the Python AST from the container and compile it to bytecode
+1. `RcFactsPass`, `EsastGenPass` -- Reference-count facts and the JavaScript AST
+2. `NaIRGenPass` -- LLVM IR, only for a module that needs native code (then the session assembles `NATIVE_OBJECT`)
+3. `NativeImportFactsPass`, `JcirGenPass` -- Lower the unitree into the compact codegen IR container
+4. `FreezeStructurePass` -- Freeze the module's structure
+5. `JcirBytecodeGenPass` -- The `BYTECODE` product the session assembles last
 
-See `compiler/driver/compiler.jac` for the authoritative ordering -- it uses re-entrancy guards during bootstrap that slightly alter the schedule when the compiler is compiling itself.
+Each product has a bootstrap variant that the compiler falls back to when it is compiling its own pass modules; see the `PRODUCTS` table for the authoritative ordering.
 
 ### `compiler/backends/native/` -- Native Compilation
 
@@ -258,8 +256,9 @@ There are three documentation tiers with different contributor expectations:
 **Validating docs locally:**
 
 ```bash
-jac run scripts/validate_docs_code.jac        # syntax-check every code block
-cd jac && jac test tests/cli/test_docs_content.jac   # links, anchors, staleness
+cd jac
+jac test tests/cli/test_docs_code_blocks.jac   # syntax-check every code block
+jac test tests/cli/test_docs_content.jac       # links, anchors, staleness
 ```
 
 Adding or removing a page means updating `nav.json` in the same PR -- a test
@@ -279,7 +278,7 @@ GitHub Actions workflows in `.github/workflows/`:
 | `release-dev.yml` | Rolling `dev` prerelease binaries, rebuilt nightly from main |
 | `nightly.yml` | Cron canaries: notes-app CEF smoke and the live-release installer check |
 
-Local git hooks come from `jac precommit --install`: a pre-commit hook that formats and lints staged `.jac` files, and a commit-msg hook that blocks AI co-author attribution. Markdown lint and the em-dash ban run on every PR via pre-commit.ci (`.pre-commit-config.yaml`).
+Local git hooks come from `jac precommit --install`: a pre-commit hook that formats and lints staged `.jac` files, and a commit-msg hook that blocks AI co-author attribution. Manual `jac precommit` runs on staged `.jac` files by default; use `jac precommit --verify` for a check-only run or `jac precommit --all` for the whole project. Markdown lint and the em-dash ban run on every PR via pre-commit.ci (`.pre-commit-config.yaml`).
 
 ---
 

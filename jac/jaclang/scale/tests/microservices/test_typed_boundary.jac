@@ -1,10 +1,29 @@
 """Typed values must survive a real process boundary (#9101)."""
 
 import shutil;
+import subprocess;
 import requests;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
-import from jaclang.scale.tests.support { get_free_port, start_server, stop_server }
+
+"""Whether `pid` is the server process `server_pid` or one of its workers."""
+def _served_by(pid: int, server_pid: int) -> bool {
+    if pid == server_pid {
+        return True;
+    }
+    try {
+        parent = subprocess.run(
+            ["ps", "-o", "ppid=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=10
+        ).stdout.strip();
+        return parent.isdigit() and int(parent) == server_pid;
+    } except (OSError, subprocess.SubprocessError) {
+        return False;
+    }
+}
+
 
 test "split services recursively reconstruct returned archetypes" {
     fixture = Path(__file__).parent.parent / "fixtures" / "typed_boundary";
@@ -58,8 +77,16 @@ test "split services recursively reconstruct returned archetypes" {
             assert body["ok"] , body;
             result = body["data"]["result"];
             assert result["owner"] == "jaseci-labs";
-            assert result["provider_pid"] == provider.pid;
-            assert result["consumer_pid"] == consumer.pid;
+            provider_pid = result["provider_pid"];
+            consumer_pid = result["consumer_pid"];
+            assert _served_by(provider_pid, provider.pid) , (
+                f"the provider call ran in pid {provider_pid}, not in the provider "
+                f"service ({provider.pid}) or one of its workers"
+            );
+            assert _served_by(consumer_pid, consumer.pid) , (
+                f"the consumer ran in pid {consumer_pid}, not in the consumer "
+                f"service ({consumer.pid}) or one of its workers"
+            );
             assert provider.pid != consumer.pid;
             assert result["provider_loaded"] is False;
             errors: list[str] = [];
@@ -98,8 +125,12 @@ test "split services recursively reconstruct returned archetypes" {
             stop_server(other);
             for server in [consumer, provider, other] {
                 if server is not None {
-                    (stdout, stderr) = server.communicate();
-                    print(stdout + stderr);
+                    try {
+                        (stdout, stderr) = server.communicate(timeout=30);
+                        print(stdout + stderr);
+                    } except subprocess.TimeoutExpired {
+                        print(f"server {server.pid}: output still open 30s after stop");
+                    }
                 }
             }
         }

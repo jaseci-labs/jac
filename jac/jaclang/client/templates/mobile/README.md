@@ -22,8 +22,8 @@ jac setup                                       # optional: provision the Expo s
 The first native `jac run` / `jac build` scaffolds the Expo project in
 `.jac/mobile-rn/` and installs its packages, narrating the one-time setup;
 later runs only re-sync the packages when the manifest changed. `jac setup`
-does the same ahead of time (CI images, offline prep; `JAC_OFFLINE=1` runs
-cannot provision and point back at it).
+does the same ahead of time (CI images, offline prep; runs in a project with
+`[network] offline = true` in `jac.toml` cannot provision and point back at it).
 
 A bare `jac run` on a `mobile` app builds it for the app's platform and installs
 it on a device or simulator; the `--dev` forms above are the development loops.

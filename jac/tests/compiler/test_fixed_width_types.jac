@@ -272,6 +272,17 @@ test "a lattice widening produces a value of the wider type" {
     assert type(half) is int and half == 201;
 }
 
+def accumulate(v: f64) -> f64 {
+    total = 0.0;
+    total += v;
+    total += v;
+    return total;
+}
+
+test "an augmented assignment widens its target without coercing the store" {
+    assert accumulate(f64(1.25)) == 2.5;
+}
+
 test "literal adoption makes the literal the sized type" {
     x: i8 = 1;
     assert type(x) is int;

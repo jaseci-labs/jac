@@ -122,6 +122,7 @@ impl ClassDetailsShared.mro.setter(mro: list[ClassType]) -> None {
         self +>:MroOf:+> t;
     }
     self._mro_cache = `list(mro or []);
+    CLASS_GRAPH_EPOCH[0] += 1;
 }
 
 impl ClassDetailsShared.type_params.getter -> list[TypeVarType] {
@@ -174,6 +175,7 @@ impl ClassDetailsShared.base_classes.setter(
     for t in (base_classes or []) {
         self +>:BaseOf:+> t;
     }
+    CLASS_GRAPH_EPOCH[0] += 1;
     c = self._acc_cache;
     if c is None {
         c = {};
@@ -214,8 +216,10 @@ impl ClassDetailsShared.enum_value_type.setter(
 
 impl ClassDetailsShared.typeddict_fields.getter -> dict[str, TypeBase] {
     d: dict[str, TypeBase] = {};
-    for ea in [edge self->:TypeMemberOf:->] {
-        d[ea.name] = getattr(ea, "__jac__").target.archetype;
+    members = [edge self->:TypeMemberOf:->];
+    targets = [self->:TypeMemberOf:->];
+    for (member, target) in zip(members, targets) {
+        d[member.name] = target;
     }
     return d;
 }
@@ -231,8 +235,10 @@ impl ClassDetailsShared.typeddict_fields.setter(
 
 impl ClassDetailsShared.enum_members.getter -> dict[str, EnumMemberInfo] {
     d: dict[str, EnumMemberInfo] = {};
-    for ea in [edge self->:EnumMemberOf:->] {
-        d[ea.name] = getattr(ea, "__jac__").target.archetype;
+    members = [edge self->:EnumMemberOf:->];
+    targets = [self->:EnumMemberOf:->];
+    for (member, target) in zip(members, targets) {
+        d[member.name] = target;
     }
     return d;
 }
@@ -261,6 +267,7 @@ impl ClassDetailsShared.init(
     typeddict_fields: (dict[str, TypeBase] | None) = None,
     is_root_class: bool = False,
     is_enum_class: bool = False,
+    is_extern_struct: bool = False,
     enum_value_type: (TypeBase | None) = None,
     enum_members: (dict[str, EnumMemberInfo] | None) = None,
     _identity_key: (tuple[str, int, int, str] | None) = None,
@@ -275,9 +282,11 @@ impl ClassDetailsShared.init(
     self.is_typeddict = is_typeddict;
     self.is_root_class = is_root_class;
     self.is_enum_class = is_enum_class;
+    self.is_extern_struct = is_extern_struct;
     self._identity_key = _identity_key;
     self._derived_special_types = _derived_special_types;
     self.ct_params = ct_params;
+    self._fresh_epoch = -1;
     self.symbol_table = symbol_table;
     self.mro = [];
     self.type_params = type_params;
@@ -290,7 +299,7 @@ impl ClassDetailsShared.init(
 impl ClassDetailsPrivate.init(
     *,
     type_args: (list[TypeBase] | None) = None,
-    ct_args: (dict[str, any] | None) = None,
+    ct_args: (dict[str, CtValue] | None) = None,
     alias_name: (str | None) = None,
     literal_value: (str | int | bool | None) = None,
     distinct_key: (str | None) = None
@@ -379,6 +388,8 @@ impl ClassType.init(
     self.flags = flags;
     self._shared = _shared;
     self.private = private or ClassDetailsPrivate();
+    self._tv_key = "";
+    self._tv_solution = None;
 }
 
 impl ModuleType.init(
@@ -870,12 +881,23 @@ impl FunctionType.clone -> FunctionType {
 }
 
 impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
-    import from jaclang.compiler.types.type_utils {
-        apply_solved_type_vars,
-        build_type_var_solution
-    }
-
     solution = build_type_var_solution(class_type);
+    cache = self._acc_cache;
+    if cache is None {
+        cache = {};
+        self._acc_cache = cache;
+    }
+    memo: (dict[int, tuple[(ClassType, dict[str, TypeBase], FunctionType)]] | None) = cache.get(
+        "_specialized"
+    );
+    if memo is None {
+        memo = {};
+        cache["_specialized"] = memo;
+    }
+    held = memo.get(id(class_type));
+    if held is not None and held[0] is class_type and held[1] is solution {
+        return held[2];
+    }
 
     clone = self.clone();
 
@@ -893,14 +915,15 @@ impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
         );
     }
 
+    if len(memo) < 32 {
+        memo[id(class_type)] = (class_type, solution, clone);
+    }
     return clone;
 }
 
 impl FunctionType.specialize_func_type_vars(
     solution: dict[(str, TypeBase)]
 ) -> FunctionType {
-    import from jaclang.compiler.types.type_utils { apply_solved_type_vars }
-
     clone = self.clone();
 
     for param in clone.parameters {
@@ -958,20 +981,9 @@ impl OverloadedType.__str__ -> str {
     return f"<overload {count} overloads>";
 }
 
-def _class_scope_category(scope: any) -> any {
-    import from jaclang.compiler.frontend.unitree { Archetype }
-    if isinstance(scope, Archetype) {
-        return scope.sym_category;
-    }
-    import from jaclang.compiler.types.stubcat.reader { CatScope }
-    if isinstance(scope, CatScope) and scope.cat_owner_sym is not None {
-        return scope.cat_owner_sym.sym_type;
-    }
-    return None;
-}
+def _class_scope_category(scope: any) -> any;
 
 impl ClassType.is_node_type -> bool {
-    import from jaclang.compiler.frontend.constant { SymbolType }
     if self.shared.is_root_class or self.is_builtin("Node") {
         return True;
     }
@@ -979,7 +991,6 @@ impl ClassType.is_node_type -> bool {
 }
 
 impl ClassType.is_edge_type -> bool {
-    import from jaclang.compiler.frontend.constant { SymbolType }
     if self.is_builtin("Edge") {
         return True;
     }
@@ -987,7 +998,6 @@ impl ClassType.is_edge_type -> bool {
 }
 
 impl ClassType.is_walker_type -> bool {
-    import from jaclang.compiler.frontend.constant { SymbolType }
     if self.is_builtin("Walker") {
         return True;
     }
@@ -1026,18 +1036,6 @@ impl ClassType.is_builtin(class_name: (str | list[str] | None) = None) -> bool {
 impl ClassType.lookup_member_symbol(
     member: str, r_overloaded: list[Symbol] | None = None
 ) -> (Symbol | None) {
-    import from jaclang.compiler.frontend.unitree {
-        Ability,
-        Archetype,
-        Assignment,
-        AtomTrailer,
-        FuncSignature,
-        ParamVar
-    }
-    import from jaclang.compiler.types.type_utils {
-        collect_member_syms,
-        ensure_mro_fresh
-    }
     ensure_mro_fresh(self);
     for cls in self.shared.mro {
         all_syms = collect_member_syms(cls.shared.symbol_table, member);
@@ -1105,12 +1103,11 @@ impl ClassType.lookup_member_symbol(
 }
 
 impl ClassType.get_class_symbol -> (Symbol | None) {
-    import from jaclang.compiler.frontend.unitree { Archetype }
     symbol_table = self.shared.symbol_table;
     if isinstance(symbol_table, Archetype) {
         return symbol_table.name.sym;
     }
-    import from jaclang.compiler.types.stubcat.reader { CatScope }
+
     if isinstance(symbol_table, CatScope) {
         return symbol_table.cat_owner_sym;
     }
@@ -1252,13 +1249,21 @@ impl ClassDetailsShared.same_class(other: ClassDetailsShared) -> bool {
     if other_key is None or self.class_name != other.class_name {
         return False;
     }
-    import from jaclang.compiler.frontend.codeinfo { bundled_stdlib_module_of }
+
     mod_name = bundled_stdlib_module_of(key[0]);
     return mod_name is not None and mod_name == bundled_stdlib_module_of(other_key[0]);
 }
 
 impl TypeBase.is_class_instance -> bool {
     return ((self.category == TypeCategory.Class) and self.is_instance());
+}
+
+impl TypeBase.as_class -> (ClassType | None) {
+    return None;
+}
+
+impl ClassType.as_class -> (ClassType | None) {
+    return self if self._shared is not None else None;
 }
 
 impl TypeBase.is_instantiable_class -> bool {
@@ -1374,4 +1379,46 @@ impl FunctionType.is_gradual_callable_form -> bool {
 
 impl FunctionType.is_from_callable_annotation -> bool {
     return self.func_name == "";
+}
+
+impl _class_scope_category(scope: any) -> any {
+    if isinstance(scope, Archetype) {
+        return scope.sym_category;
+    }
+
+    if isinstance(scope, CatScope) and scope.cat_owner_sym is not None {
+        return scope.cat_owner_sym.sym_type;
+    }
+    return None;
+}
+
+impl create_callable_type(
+    param_types: list[TypeBase], return_type: TypeBase, is_gradual: bool = False
+) -> FunctionType {
+    parameters: list[Parameter] = [];
+
+    for (idx, param_type) in enumerate(param_types) {
+        parameters.append(
+            Parameter(
+                name=f"__p{idx}",
+                category=ParameterCategory.Positional,
+                param_type=param_type,
+                default_value=None,
+                is_self=False,
+                is_cls=False,
+                param_kind=ParamKind.POSONLY
+            )
+        );
+    }
+
+    flags: int = FunctionTypeFlags.GradualCallableForm
+        if is_gradual
+        else FunctionTypeFlags.Null;
+
+    return FunctionType(
+        func_name="",
+        return_type=return_type,
+        parameters=parameters,
+        function_flags=flags
+    );
 }

@@ -1,70 +1,17 @@
 import os;
+
 import shutil;
+
 import subprocess;
+
 import platform as platform_mod;
+
 import from typing { Optional }
-import from jaclang.cli.console { console }
-import from jaclang.runtime.runtime { JacRuntime as Jac }
-import from jaclang.server.watcher { FileChangeEvent }
-import from jaclang.client.targets.react_native.common {
-    DEFAULT_APP_ID,
-    DEFAULT_APP_NAME,
-    DEFAULT_APP_SLUG,
-    detect_lan_ipv4,
-    resolve_rn_project_dir
-}
-import from jaclang.client.targets.react_native.scaffold {
-    ensure_native_deps_installed,
-    write_expo_scaffold
-}
-import from jaclang.client.targets.react_native.build {
-    lint_native_incompatible_usage,
-    lint_unmapped_tags,
-    read_user_js_sources,
-    run_expo_prebuild,
-    run_gradle_assemble,
-    run_eas_local_build,
-    run_eas_update_opt_in,
-    run_xcodebuild_ios,
-    stage_native_image_assets,
-    entry_module_for,
-    stage_compiled_entry,
-    strip_css_imports,
-    write_native_entry
-}
-import from jaclang.client.config_loader { JacClientConfig }
-import from jaclang.client.targets.react_native.config {
-    _resolve_rn_android_builder,
-    _resolve_rn_eas_profile,
-    _resolve_rn_eas_update_branch,
-    _resolve_rn_eas_update_enabled,
-    _resolve_rn_eas_update_message,
-    _resolve_rn_ios_builder,
-    _resolve_rn_release
-}
-import from jaclang.client.targets.react_native.dev {
-    inject_dev_api_base_url,
-    resolve_metro_port,
-    restore_app_json,
-    rn_hmr_on_jac_changed,
-    run_expo_start,
-    setup_android_port_reverse,
-    JAC_RN_DEV_HOST_ENV
-}
-import from jaclang.client.targets.client_dev_common {
-    ensure_watchdog_common,
-    install_dev_signal_handlers,
-    resolve_port_or_next_available,
-    start_backend_server_common,
-    stop_dev_watcher,
-    terminate_dev_processes
-}
 
 impl MobileTarget.ensure_ready(
     project_dir: Path, platform: Optional[str] = None
 ) -> None {
     import time;
-    import from jaclang.toolchains.store { offline }
 
     if (platform or "").strip().lower() == "web" {
         return;
@@ -76,7 +23,7 @@ impl MobileTarget.ensure_ready(
     }
     if offline() {
         raise RuntimeError(
-            f"React Native scaffold not found at {rn_dir} and JAC_OFFLINE is set; "
+            f"React Native scaffold not found at {rn_dir} and jac.toml sets `[network] offline`; "
             "provisioning it needs the network. Run `jac setup <app>` online first."
         );
     }
@@ -114,7 +61,10 @@ impl MobileTarget.setup(project_dir: Path) -> None {
     );
     console.print("  Build (iOS):     jac build --platform ios <app>", style="muted");
     console.print("  Build (browser): jac build --platform web <app>", style="muted");
-    console.print("  Dev:             jac run --dev <app>", style="muted");
+    console.print(
+        "  On your phone:   jac run <app>  (scan the QR code with Expo Go)",
+        style="muted"
+    );
     console.print(
         f"  EAS Build:       cd {rn_dir} && npx eas build --platform android",
         style="muted"
@@ -262,14 +212,12 @@ impl MobileTarget.dev(
         requested_api, "API", reserved=[metro_port]
     );
 
+    tunnel = os.environ.get(JAC_RN_TUNNEL_ENV, "") == "1";
+    requested_plat = os.environ.get("JAC_MOBILE_PLATFORM", "").strip().lower();
+    device_plat = requested_plat if requested_plat in ("android", "ios") else "";
     host_override = os.environ.get(JAC_RN_DEV_HOST_ENV, "").strip();
-    visible_host: str;
-    if host_override {
-        visible_host = host_override;
-    } else {
-        lan = detect_lan_ipv4();
-        visible_host = lan or "127.0.0.1";
-    }
+    packager_host = "" if tunnel else (host_override or detect_lan_ipv4() or "");
+    visible_host = "Expo tunnel" if tunnel else (packager_host or "127.0.0.1");
 
     console.print(
         f"\nReact Native dev (Expo + Metro Fast Refresh) — host {visible_host}",
@@ -287,8 +235,21 @@ impl MobileTarget.dev(
     stage_native_image_assets(rn_dir / "jac-src", rn_dir);
     write_native_entry(rn_dir);
 
-    dev_api_url = f"http://{visible_host}:{api_eff}";
-    original_app_json = inject_dev_api_base_url(rn_dir, dev_api_url);
+    api_proxy = "";
+    if tunnel {
+        if not refresh_metro_config(rn_dir) {
+            console.warning(
+                "  metro.config.js is user-edited, so API calls over the tunnel "
+                f"need its {METRO_API_PREFIX} proxy; regenerate it with `jac setup`."
+            );
+        }
+        api_proxy = f"http://127.0.0.1:{api_eff}";
+        dev_api_url = f"<tunnel>{METRO_API_PREFIX} → {api_proxy}";
+        original_app_json = inject_metro_api_base(rn_dir);
+    } else {
+        dev_api_url = f"http://{visible_host}:{api_eff}";
+        original_app_json = inject_dev_api_base_url(rn_dir, dev_api_url);
+    }
 
     setup_android_port_reverse(metro_port, api_eff);
 
@@ -326,15 +287,29 @@ impl MobileTarget.dev(
             watcher_p.start();
         }
 
+        metro_line = (
+            "via the Expo tunnel (URL printed by Expo below)"
+                if tunnel
+                else f"http://{visible_host}:{metro_port}"
+        );
         console.print(
-            f"\n📱 React Native dev ready.\n"
-            f"   Metro     : http://{visible_host}:{metro_port}\n"
+            "\n📱 React Native dev ready.\n"
+            f"   Metro     : {metro_line}\n"
             f"   API       : {dev_api_url}\n"
-            f"   Edit client .jac files — Metro will Fast Refresh on save.\n",
+            "   Edit client .jac files — Metro will Fast Refresh on save.\n"
+            "   Scan the QR code below with Expo Go (Android) or the Camera app (iOS).\n",
             style="bold green"
         );
 
-        rc = run_expo_start(rn_dir, metro_port, clear_cache=True);
+        rc = run_expo_start(
+            rn_dir,
+            metro_port,
+            clear_cache=True,
+            platform=device_plat,
+            tunnel=tunnel,
+            packager_host=packager_host,
+            api_proxy=api_proxy
+        );
         if rc != 0 {
             console.warning(
                 f"  expo start exited with code {rc} — see Metro output above."
@@ -350,7 +325,6 @@ impl MobileTarget.dev(
 impl MobileTarget._compile_native_jac_modules(entry_file: Path) -> tuple[(any, Path)] {
     console.print("  Step 1: Compiling Jac modules + native runtime...", style="muted");
 
-    import from jaclang.client.vite_client_bundle { ViteClientBundleBuilder }
     builder = Jac.get_client_bundle_builder();
     if not isinstance(builder, ViteClientBundleBuilder) {
         raise RuntimeError(
@@ -377,8 +351,6 @@ impl MobileTarget._compile_native_jac_modules(entry_file: Path) -> tuple[(any, P
 impl MobileTarget.start(
     entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
-    import from jaclang.client.targets.react_native.common { normalize_rn_platform }
-
     rn_cfg = JacClientConfig(project_dir).get_react_native_config();
     default_plat = (
         os.environ.get("JAC_MOBILE_PLATFORM", "")
@@ -406,7 +378,15 @@ impl _RNHmrHandler.on_event(evt: FileChangeEvent) -> None {
     );
 }
 
-def _start_android(apk_path: Path, project_dir: Path) -> None {
+def _start_android(apk_path: Path, project_dir: Path) -> None;
+
+def _start_ios(artifact_path: Path, project_dir: Path);
+
+def _simctl_install_and_launch(
+    xcrun: str, udid: str, app_path: Path, bundle_id: str | None
+);
+
+impl _start_android(apk_path: Path, project_dir: Path) -> None {
     import json;
     adb = shutil.which("adb");
     if not adb {
@@ -453,7 +433,7 @@ def _start_android(apk_path: Path, project_dir: Path) -> None {
     console.success("App installed and launched.");
 }
 
-def _start_ios(artifact_path: Path, project_dir: Path) {
+impl _start_ios(artifact_path: Path, project_dir: Path) {
     import json;
     rn_dir = resolve_rn_project_dir(project_dir);
     if platform_mod.system() != "Darwin" {
@@ -568,7 +548,7 @@ def _start_ios(artifact_path: Path, project_dir: Path) {
     console.success("iOS app installed and launched on simulator.");
 }
 
-def _simctl_install_and_launch(
+impl _simctl_install_and_launch(
     xcrun: str, udid: str, app_path: Path, bundle_id: str | None
 ) {
     console.print(

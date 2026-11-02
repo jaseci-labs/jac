@@ -1,9 +1,4 @@
 """Graph construction must compile and run on every backend."""
-import from jaclang.compiler.tests.xbackend_equiv {
-    run_with_both,
-    run_py_fixture,
-    run_js_module_fixture
-}
 
 test "client module fixtures run through symlinked directories" {
     import from pathlib { Path }
@@ -53,4 +48,62 @@ test "graph construction shares topology and fragment semantics" {
         require=["na", "cl"],
         client_modules=True
     );
+}
+
+test "source analysis still rejects client access to native fields" {
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    with TemporaryDirectory() as directory {
+        base = Path(directory).resolve();
+        (base / "jac.toml").write_text(
+            '[placement.pins]\n"fixture.State" = "native"\n"fixture.read" = "client"\n'
+        );
+        source = base / "fixture.jac";
+        source.write_text(
+            "obj State { has value: int = 1; }\n"
+            "def read(state: State) -> int { return state.value; }\n"
+        );
+        prog = JacProgram();
+        prog.compile(
+            str(source), options=CompileOptions(no_cgen=True, need_full_ast=True)
+        );
+        assert any(
+            alert.code is not None and alert.code.code == "E5112"
+            for alert in prog.errors_had
+        );
+    }
+}
+
+test "native build analysis rejects client access to native fields" {
+    import from pathlib { Path }
+    import from tempfile { TemporaryDirectory }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    with TemporaryDirectory() as directory {
+        base = Path(directory).resolve();
+        (base / "jac.toml").write_text(
+            '[placement.pins]\n"fixture.State" = "native"\n"fixture.read" = "client"\n'
+        );
+        source = base / "fixture.jac";
+        source.write_text(
+            "obj State { has value: int = 1; }\n"
+            "def read(state: State) -> int { return state.value; }\n"
+        );
+        prog = JacProgram();
+        prog.compile(
+            str(source),
+            options=CompileOptions(
+                no_cgen=True,
+                need_full_ast=True,
+                aot_mode=True,
+                default_codespace="native"
+            )
+        );
+        assert any(
+            alert.code is not None and alert.code.code == "E5112"
+            for alert in prog.errors_had
+        );
+    }
 }

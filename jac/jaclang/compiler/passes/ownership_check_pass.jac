@@ -1,79 +1,4 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.passes.context { CompileContext }
 import from enum { Enum }
-import from typing { TypeAlias }
-import from jaclang.compiler.frontend.unitree {
-    Ability,
-    AstElseBodyNode,
-    Archetype,
-    Assignment,
-    AtomTrailer,
-    BinaryExpr,
-    CfgExpr,
-    ConcurrentExpr,
-    ConnectOp,
-    CtrlStmt,
-    DeleteStmt,
-    DictVal,
-    DisengageStmt,
-    Enum as UniEnum,
-    Expr,
-    FString,
-    FuncCall,
-    FuncSignature,
-    GlobalVars,
-    HasVar,
-    IfElseExpr,
-    Import,
-    InForStmt,
-    IndexSlice,
-    Int,
-    IterForStmt,
-    KWPair,
-    LambdaExpr,
-    ListVal,
-    Module,
-    ModuleCode,
-    MultiString,
-    Name,
-    Null,
-    OpenStmt,
-    ParamVar,
-    RaiseStmt,
-    FinallyStmt,
-    Except,
-    TryStmt,
-    ReturnStmt,
-    SetVal,
-    Slice,
-    String,
-    SubTag,
-    Token,
-    TupleVal,
-    UnaryExpr,
-    UniCFGNode,
-    UniNode,
-    UniScopeNode,
-    WhileStmt,
-    YieldExpr
-}
-import from jaclang.compiler.frontend.constant {
-    Tokens as Tok,
-    OwnershipKind,
-    SymbolStorage,
-    is_borrow_kind,
-    is_mut_kind
-}
-
-import from jaclang.compiler.passes.dataflow {
-    solve_backward,
-    solve_forward,
-    solve_forward_must
-}
-import type from jaclang.compiler.driver.program { JacProgram }
-
-glob SymId: TypeAlias = int,
-     DataflowTransfer: TypeAlias = Callable[[UniCFGNode, set[SymId]], set[SymId]];
 
 enum AccessKind {
     ASSIGN_TARGET = "assign_target",
@@ -99,17 +24,16 @@ obj BorrowMeta {
         managed: bool = False,
         path_fields: set[str] postinit;
 
-    def postinit {
-        self.extra_owners = [];
-        self.path_fields = set();
-    }
+    def postinit;
 }
 
-walker OwnershipCheckPass {
-    has ctx: CompileContext,
-        prog: JacProgram,
-        module: Module,
-        owned_decl: dict[SymId, Name] = {},
+walker OwnershipCheckPass(CompilerPass) {
+    static has contract: PassContract = PassContract(
+        requires=(AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF, ),
+        provides=(AnalysisFact.OWNERSHIP, )
+    );
+
+    has owned_decl: dict[SymId, Name] = {},
         linear_decl: dict[SymId, Name] = {},
         consumed_syms: set[SymId] = set(),
         borrow_meta: dict[SymId, BorrowMeta] = {},
@@ -134,13 +58,12 @@ walker OwnershipCheckPass {
         receiver_probe: set[int] = set(),
         arch_view_syms: set[SymId] = set();
 
-    static has HOST_PASS: bool = True;
-
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def _nogc_setup -> None;
     def _nogc_resolve_provenance -> (str | None);
     def _nogc_infer_locals -> None;
+    def _nogc_entry_confined_str(tgt: Name) -> bool;
     def _nogc_infer_state(expr: Expr | None) -> tuple[OwnershipKind, list[Name]];
     def _nogc_bind_inferred(
         nd: Assignment, tgt: Name, kind: OwnershipKind, roots: list[Name]
@@ -169,6 +92,10 @@ walker OwnershipCheckPass {
     def _stamp_view_call_results(scope: UniNode, seen_ids: set[int]) -> None;
     def _view_call_owner(call: FuncCall) -> (SymId | None);
     def _emit_view_diagnostics -> None;
+    def _is_c_view(expr: (UniNode | None)) -> bool;
+    def _mentions_c_view(t: (TypeBase | None), depth: int = 0) -> bool;
+    def _c_view_escape(site: UniNode, what: str) -> None;
+    def _emit_c_view_diagnostics -> None;
     def _nogc_str_elem_ok(expr: Expr | None, idx_ctx: bool = False) -> bool;
     def _nogc_tag_shape(tag: SubTag | None) -> str;
     def _nogc_local_shape(nm: Name) -> str;
@@ -202,10 +129,50 @@ walker OwnershipCheckPass {
     def _stamp_raises_effects -> None;
     def _stamp_write_effects -> None;
     def _local_writes(ab: Ability) -> set[str];
-    def _owning_ability(nd: UniNode) -> (Ability | None);
     def _store_fields(tgt: Expr, out: set[str]) -> None;
     def _call_writes(call: FuncCall) -> set[str];
     def _stamp_managed_borrows -> None;
+    def _stamp_inferred_borrows -> None;
+    def _infer_nodes_of(ab: Ability) -> list[UniNode];
+    def _infer_is_generator(nds: list[UniNode]) -> bool;
+    def _infer_plain_type(t: (TypeBase | None)) -> bool;
+    def _infer_expr_plain(e: object) -> bool;
+    def _infer_region_effects(nds: list[UniNode], callees: list[Ability]) -> set[str];
+    def _infer_indexable(target: object) -> bool;
+    def _infer_iterable(coll: object) -> bool;
+    def _infer_call_effects(call: FuncCall, callees: list[Ability]) -> set[str];
+    def _infer_path(expr: object) -> (tuple[Name, set[str]] | None);
+    def _infer_borrows_in(
+        ab: Ability, nds: list[UniNode], effects: dict[int, set[str]]
+    ) -> int;
+
+    def _infer_bound_names(tgt: object) -> list[Name];
+    def _infer_loop_borrows(
+        ab: Ability,
+        nds: list[UniNode],
+        other_binds: dict[SymId, int],
+        simple: dict[SymId, list[Assignment]],
+        excluded: set[SymId],
+        effects: dict[int, set[str]]
+    ) -> int;
+
+    def _infer_in_else(nm: UniNode, st: InForStmt) -> bool;
+    def _infer_contains(outer: UniNode, inner: UniNode) -> bool;
+    def _infer_is_local(nm: Name) -> bool;
+    def _infer_builtin_outer(e: object) -> bool;
+    def _infer_scalar_slot(tgt: object) -> bool;
+    def _infer_is_type_expr(nd: object) -> bool;
+    def _infer_mutator_effects(
+        mname: str, call: FuncCall, args: list[Expr]
+    ) -> set[str];
+
+    def _infer_owner_stable(
+        ab: Ability,
+        sid: SymId,
+        other_binds: dict[SymId, int],
+        simple: dict[SymId, list[Assignment]]
+    ) -> bool;
+
     def _is_place_borrow(nd: Assignment) -> bool;
     def _is_null_bind(nd: Assignment) -> bool;
     def _managed_start_ok(start: Name) -> bool;
@@ -214,6 +181,7 @@ walker OwnershipCheckPass {
     def _emit_managed_borrow_diagnostics(cfg_nodes: list[UniCFGNode]) -> None;
     def _raise_type_name(nd: RaiseStmt) -> (str | None);
     def _handled_by_enclosing_try(nd: UniNode, exc: str, stop: UniNode) -> bool;
+    def _raised_class_names(site: UniNode, exc: str, seen: set[int]) -> set[str];
     def _callee_ability(call: FuncCall) -> (Ability | None);
     def _local_raises(ab: UniNode) -> set[str];
     def _emit_raises_diagnostics -> None;
@@ -228,7 +196,6 @@ walker OwnershipCheckPass {
     def _callee_own_param_names(call: FuncCall) -> (set[str] | None);
     def _emit_place_move_diagnostics -> None;
     def _emit_linear_diagnostics(cfg_nodes: list[UniCFGNode]) -> None;
-    def _node_within(nd: UniNode, scope: UniNode) -> bool;
     def _is_scope_exit(nd: UniCFGNode) -> bool;
     def _call_consumes_args(call: FuncCall) -> bool;
     def _grow_arg_moves(call: FuncCall, arg: Expr | None) -> bool;
@@ -300,7 +267,6 @@ walker OwnershipCheckPass {
     def _run_borrow_liveness(cfg_nodes: list[UniCFGNode]) -> None;
     def _run_reaching_borrows(cfg_nodes: list[UniCFGNode]) -> None;
     def _active_borrows_at(cfg: UniCFGNode) -> set[SymId];
-    def _is_ancestor(ancestor: UniNode, nd: UniNode) -> bool;
     def _emit_diagnostics -> None;
     def _earlier_move_in_node(nd: Name, sid: SymId) -> (Name | None);
     def _emit_borrow_diagnostics -> None;

@@ -1,56 +1,10 @@
-import from jaclang.compiler.frontend.unitree {
-    Module,
-    TreeWalker,
-    UniNode,
-    Ability,
-    ArchHas,
-    Archetype,
-    Assignment,
-    AstSymbolNode,
-    AtomExpr,
-    AtomTrailer,
-    DisengageStmt,
-    EdgeOpRef,
-    EventSignature,
-    ExprAsItem,
-    FuncSignature,
-    HasVar,
-    ImplDef,
-    InForStmt,
-    InnerCompr,
-    Name,
-    ParamVar,
-    SpecialVarRef,
-    TypedCtxBlock,
-    VisitStmt
-}
-import from jaclang.compiler.passes.context { CompileContext }
 import from collections.abc { Sequence }
-import from jaclang.compiler.frontend.constant { ExprCtx }
-import from jaclang.compiler.frontend.constant { Tokens as Tok }
 
-import from jaclang.compiler.frontend.diagnostics {
-    E2004,
-    E2005,
-    W2006,
-    W2007,
-    E2008,
-    W2029
-}
 
 def inform_from_walker(nd: UniNode) -> None;
 
-walker SemanticAnalysisPass(TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: Module;
+walker SemanticAnalysisPass(TreePass) {
+    static has contract: PassContract = PassContract(kernel_safe=True);
 
     can enter_archetype with Archetype entry;
     def _check_archetype(nd: Archetype) -> None;

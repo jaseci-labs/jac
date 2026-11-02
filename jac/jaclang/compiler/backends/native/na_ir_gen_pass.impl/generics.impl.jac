@@ -1,13 +1,19 @@
+def _mangle_word_char(ch: str) -> bool;
+
+def _replace_mangle_word(text: str, word: str, repl: str) -> str;
+
+def _mangle_symbol_text(text: str) -> str;
+
 impl NaIRGenPass._mangled_of(t: any) -> (str | None) {
-    if t is None or not t?.mangle {
+    if not isinstance(t, TypeBase) {
         return None;
     }
-    m = t.mangle();
+
+    m = native_type_key(t);
     _map = self._mono_mangle_map;
     if _map {
-        import re;
         for (tv, repl) in _map.items() {
-            m = re.sub(rf"\b{re.escape(tv)}\b", repl, m);
+            m = _replace_mangle_word(m, tv, repl);
         }
     }
     if m == "Sequence" or m.startswith("Sequence[") {
@@ -196,17 +202,19 @@ impl NaIRGenPass._solve_generic_call(
     return solution;
 }
 
-impl NaIRGenPass._ct_eval -> any {
+impl NaIRGenPass._ct_eval -> CtEvaluator {
     return self.prog.get_type_evaluator().ct_eval;
 }
 
-impl NaIRGenPass._ct_value_with_bindings(nd: uni.Expr) -> tuple[bool, any] {
+impl NaIRGenPass._ct_value_with_bindings(
+    nd: uni.Expr
+) -> tuple[bool, (CtValue | None)] {
     cv = nd.ct_value;
     if cv is None {
         return (False, None);
     }
     if not cv.is_deferred {
-        return (True, cv.v);
+        return (True, cv);
     }
     if not self._ct_bindings {
         return (False, None);
@@ -218,19 +226,22 @@ impl NaIRGenPass._ct_value_with_bindings(nd: uni.Expr) -> tuple[bool, any] {
     }
 }
 
-impl NaIRGenPass._ct_native_const(v: any, nd: uni.Expr) -> (ir.Value | None) {
+impl NaIRGenPass._ct_native_const(v: CtValue, nd: uni.Expr) -> (ir.Value | None) {
     out: (ir.Value | None) = None;
-    if isinstance(v, bool) {
-        out = ir.Constant(ir.IntType(1), 1 if v else 0);
-    } elif isinstance(v, int) {
-        out = ir.Constant(ir.IntType(64), v);
-    } elif isinstance(v, float) {
-        out = ir.Constant(ir.DoubleType(), v);
-    } elif isinstance(v, str) {
-        out = self._make_global_string(v);
-    } elif isinstance(v, bytes) {
-        out = self._make_global_bytes(v);
-    } elif v is None {
+    if isinstance(v, CtBool) {
+        out = ir.Constant(ir.IntType(1), 1 if v.value else 0);
+    } elif isinstance(v, CtInt) {
+        if v.mag {
+            return None;
+        }
+        out = ir.Constant(ir.IntType(64), v.small);
+    } elif isinstance(v, CtFloat) {
+        out = ir.Constant(ir.DoubleType(), v.value);
+    } elif isinstance(v, CtStr) {
+        out = self._make_global_string(v.value);
+    } elif isinstance(v, CtBytes) {
+        out = self._make_global_bytes(v.value);
+    } elif isinstance(v, CtNone) {
         out = ir.Constant(ir.IntType(8).as_pointer(), None);
     }
     if out is not None and nd.coerce_to is not None {
@@ -240,7 +251,6 @@ impl NaIRGenPass._ct_native_const(v: any, nd: uni.Expr) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._ct_fold(nd: (uni.UniNode | None)) -> (ir.Value | None) {
-    import from jaclang.compiler.frontend.constant { ExprCtx }
     if not isinstance(nd, uni.Expr) or nd.ct_value is None {
         return None;
     }
@@ -261,7 +271,7 @@ impl NaIRGenPass._ct_fold(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         return None;
     }
     (ok, v) = self._ct_value_with_bindings(nd);
-    if not ok {
+    if not ok or v is None {
         return None;
     }
     return self._ct_native_const(v, nd);
@@ -318,7 +328,7 @@ impl NaIRGenPass._ability_has_ct_params(ability: uni.Ability) -> bool {
 
 impl NaIRGenPass._solve_ct_args(
     ability: uni.Ability, nd: uni.FuncCall
-) -> (dict[str, any] | None) {
+) -> (dict[str, CtValue] | None) {
     sig = ability.signature;
     params = sig.get_parameters() if isinstance(sig, uni.FuncSignature) else [];
     positional: list[uni.Expr] = [];
@@ -332,7 +342,7 @@ impl NaIRGenPass._solve_ct_args(
             positional.append(a);
         }
     }
-    out: dict[str, any] = {};
+    out: dict[str, CtValue] = {};
     for (i, p) in enumerate(params) {
         if not p.is_comptime {
             continue;
@@ -343,7 +353,7 @@ impl NaIRGenPass._solve_ct_args(
             chosen = p.value;
         }
         if chosen is None {
-            self.ctx.emit(
+            self.emit(
                 E5092,
                 node_override=nd,
                 kind="call argument",
@@ -353,8 +363,8 @@ impl NaIRGenPass._solve_ct_args(
             return None;
         }
         (ok, v) = self._ct_value_with_bindings(chosen);
-        if not ok {
-            self.ctx.emit(
+        if not ok or v is None {
+            self.emit(
                 E5092,
                 node_override=chosen,
                 kind="argument for comptime parameter",
@@ -368,7 +378,7 @@ impl NaIRGenPass._solve_ct_args(
     return out;
 }
 
-impl NaIRGenPass._bind_ct_target(tgt: uni.UniNode, v: any) -> None {
+impl NaIRGenPass._bind_ct_target(tgt: uni.UniNode, v: CtValue) -> None {
     if isinstance(tgt, uni.AtomUnit) {
         self._bind_ct_target(tgt.value, v);
         return;
@@ -378,7 +388,7 @@ impl NaIRGenPass._bind_ct_target(tgt: uni.UniNode, v: any) -> None {
         return;
     }
     if isinstance(tgt, (uni.TupleVal, uni.ListVal)) {
-        items = list(v);
+        items = ct_iter(v);
         for (i, t) in enumerate(tgt.values) {
             if i < len(items) {
                 self._bind_ct_target(t, items[i]);
@@ -390,11 +400,10 @@ impl NaIRGenPass._bind_ct_target(tgt: uni.UniNode, v: any) -> None {
 impl NaIRGenPass._instantiate_generic(
     nd: uni.FuncCall, func_name: str
 ) -> (ir.Function | None) {
-    import from jaclang.compiler.types.ct_value { ct_mangle }
     ability = self.generic_fns[func_name];
     solution = self._solve_generic_call(ability, nd);
     if solution is None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="function",
@@ -409,7 +418,7 @@ impl NaIRGenPass._instantiate_generic(
     }
     _mangles: dict[str, str] = {};
     for (k, v) in solution.items() {
-        _mangles[k] = v.mangle() if v?.mangle else "any";
+        _mangles[k] = native_type_key(v) if v?.mangle else "any";
     }
     parts = sorted([f"{k}={m}" for (k, m) in _mangles.items()]);
     parts.extend(sorted([f"ct_{k}={ct_mangle(v)}" for (k, v) in ct_bind.items()]));
@@ -418,9 +427,8 @@ impl NaIRGenPass._instantiate_generic(
     if _hit is not None {
         return _hit;
     }
-    import re;
     import hashlib as _mono_hash;
-    safe = re.sub(r"[^0-9A-Za-z_]", "_", "_".join(parts));
+    safe = _mangle_symbol_text("_".join(parts));
     _kd = _mono_hash.sha256(key.encode()).hexdigest()[:8];
     spec_name = f"__jac_mono_{func_name}_{safe}_{_kd}";
     saved_sol = self._mono_solution;
@@ -439,9 +447,20 @@ impl NaIRGenPass._instantiate_generic(
     return fn;
 }
 
+impl NaIRGenPass._record_generic_definition(ability: uni.Ability) -> None {
+    path = ability.loc.mod_path;
+    qualname = definition_qualname(ability);
+    if qualname {
+        self.module.record_comptime_definition(path, qualname);
+    } else {
+        self.module.record_comptime_dependency(path, body=True);
+    }
+}
+
 impl NaIRGenPass._stamp_mono_fn(
     ability: uni.Ability, spec_name: str, memo_key: str
 ) -> (ir.Function | None) {
+    self._record_generic_definition(ability);
     name = ability.name_ref.sym_name if ability.name_ref else "unnamed";
     sig = ability.signature;
     if not isinstance(sig, uni.FuncSignature) {
@@ -449,11 +468,9 @@ impl NaIRGenPass._stamp_mono_fn(
     }
     param_types: list[ir.Type] = [];
     for p in sig.get_parameters() {
-        param_types.append(
-            self._resolve_jac_type(p) if p.type_tag is not None else ir.IntType(64)
-        );
+        param_types.append(self._resolve_jac_type(p));
     }
-    ret_type = self._resolve_jac_type(sig.return_type);
+    ret_type = self._byvalue_ret_type(self._resolve_return_type(sig.return_type));
     fnty = ir.FunctionType(ret_type, param_types);
     fn = ir.Function(self.llvm_module, fnty, name=spec_name);
     fn.linkage = "private";
@@ -463,12 +480,13 @@ impl NaIRGenPass._stamp_mono_fn(
     self._mono_fns[memo_key] = fn;
     self._record_ret_facts(spec_name, sig);
 
-    saved_symtab = dict(self.func_symtab);
-    self.func_symtab[name] = fn;
+    saved_scope = self.scope;
+    self.scope = saved_scope.child();
+    self.scope.bind_function(name, fn);
     try {
         self._codegen_ability(ability);
     } finally {
-        self.func_symtab = saved_symtab;
+        self.scope = saved_scope;
     }
     return fn;
 }
@@ -523,7 +541,7 @@ impl NaIRGenPass._instantiate_generic_for_target(
     }
     _mangles: dict[str, str] = {};
     for (k, v) in solution.items() {
-        _mangles[k] = v.mangle() if v?.mangle else "any";
+        _mangles[k] = native_type_key(v) if v?.mangle else "any";
     }
     parts = sorted([f"{k}={m}" for (k, m) in _mangles.items()]);
     key = func_name + "|" + ",".join(parts);
@@ -531,9 +549,8 @@ impl NaIRGenPass._instantiate_generic_for_target(
     if _hit is not None {
         return _hit;
     }
-    import re;
     import hashlib as _mono_hash;
-    safe = re.sub(r"[^0-9A-Za-z_]", "_", "_".join(parts));
+    safe = _mangle_symbol_text("_".join(parts));
     _kd = _mono_hash.sha256(key.encode()).hexdigest()[:8];
     spec_name = f"__jac_mono_{func_name}_{safe}_{_kd}";
     saved_sol = self._mono_solution;
@@ -555,7 +572,7 @@ impl NaIRGenPass._instantiate_generic_method(
     ability = self._generic_methods[f"{owner_arch}.{method_name}"];
     solution = self._solve_generic_call(ability, nd);
     if not solution {
-        self.ctx.emit(
+        self.emit(
             E5092,
             node_override=nd,
             kind="method",
@@ -566,7 +583,7 @@ impl NaIRGenPass._instantiate_generic_method(
     }
     _mangles: dict[str, str] = {};
     for (k, v) in solution.items() {
-        _mangles[k] = v.mangle() if v?.mangle else "any";
+        _mangles[k] = native_type_key(v) if v?.mangle else "any";
     }
     parts = sorted([f"{k}={m}" for (k, m) in _mangles.items()]);
     key = f"{owner_arch}.{method_name}|" + ",".join(parts);
@@ -574,9 +591,8 @@ impl NaIRGenPass._instantiate_generic_method(
     if _hit is not None {
         return _hit;
     }
-    import re;
     import hashlib as _mono_hash;
-    safe = re.sub(r"[^0-9A-Za-z_]", "_", "_".join(parts));
+    safe = _mangle_symbol_text("_".join(parts));
     _kd = _mono_hash.sha256(key.encode()).hexdigest()[:8];
     spec_name = f"__jac_mono_{owner_arch}_{method_name}_{safe}_{_kd}";
     saved_sol = self._mono_solution;
@@ -599,6 +615,7 @@ impl NaIRGenPass._stamp_mono_method(
     spec_name: str,
     memo_key: str
 ) -> (ir.Function | None) {
+    self._record_generic_definition(ability);
     full_name = f"{arch_name}.{method_name}";
     if full_name in self._native_skipped_methods {
         return None;
@@ -609,16 +626,14 @@ impl NaIRGenPass._stamp_mono_method(
         or not isinstance(sig, uni.FuncSignature)
         or ability.is_static
         or ability.is_classmethod {
-        self.ctx.emit(E5092, node_override=ability, kind="method", name=full_name);
+        self.emit(E5092, node_override=ability, kind="method", name=full_name);
         return None;
     }
     param_types: list[ir.Type] = [struct_type.as_pointer()];
     for p in sig.get_parameters() {
-        param_types.append(
-            self._resolve_jac_type(p) if p.type_tag is not None else ir.IntType(64)
-        );
+        param_types.append(self._resolve_jac_type(p));
     }
-    ret_type = self._resolve_jac_type(sig.return_type);
+    ret_type = self._byvalue_ret_type(self._resolve_return_type(sig.return_type));
     fnty = ir.FunctionType(ret_type, param_types);
     fn = ir.Function(self.llvm_module, fnty, name=spec_name);
     fn.linkage = "private";
@@ -654,7 +669,7 @@ impl NaIRGenPass._find_source_ability(
     mod_name: str, func_name: str
 ) -> (uni.Ability | None) {
     import os;
-    import from jaclang.compiler.frontend.codeinfo { resolve_native_module }
+
     _base = os.path.dirname(self.module.loc.mod_path);
     _clean = mod_name[:-3] if mod_name.endswith(".na") else mod_name;
     (_src, full_path) = resolve_native_module(_clean, _base);
@@ -677,17 +692,29 @@ impl NaIRGenPass._find_source_ability(
             self.prog.options = _saved_opts;
         }
     }
+    if imported_mod is not None and self._is_catalog_module(imported_mod) {
+        imported_mod = self._full_ast_of(full_path);
+    }
     if imported_mod is None {
         return None;
     }
-    for stmt in (imported_mod.body or []) {
-        if (
-            isinstance(stmt, uni.Ability)
-            and stmt.name_ref is not None
-            and stmt.name_ref.sym_name == func_name
-            and isinstance(stmt.signature, uni.FuncSignature)
-        ) {
-            return stmt;
+    return NaIRGenPass._module_ability(imported_mod, func_name);
+}
+
+impl NaIRGenPass._module_ability(
+    mod: uni.Module, func_name: str
+) -> (uni.Ability | None) {
+    for stmt in (mod.body or []) {
+        candidates = (stmt.clib_decls or [])
+            if isinstance(stmt, uni.Import)
+            else [stmt];
+        for decl in candidates {
+            if isinstance(decl, uni.Ability)
+                and decl.name_ref is not None
+                and decl.name_ref.sym_name == func_name
+                and isinstance(decl.signature, uni.FuncSignature) {
+                return decl;
+            }
         }
     }
     return None;
@@ -721,4 +748,51 @@ impl NaIRGenPass._ct_only_name(nd: uni.Name) -> bool {
         }
     }
     return False;
+}
+
+impl _mangle_word_char(ch: str) -> bool {
+    return (ch >= "a" and ch <= "z")
+        or (ch >= "A" and ch <= "Z")
+        or (ch >= "0" and ch <= "9")
+        or ch == "_"
+        or ch > "\x7f";
+}
+
+impl _replace_mangle_word(text: str, word: str, repl: str) -> str {
+    n = len(word);
+    if n == 0 {
+        return text;
+    }
+    head_word = _mangle_word_char(word[0]);
+    tail_word = _mangle_word_char(word[n - 1]);
+    out = "";
+    i = 0;
+    size = len(text);
+    while i < size {
+        if text[i:i + n] == word
+            and (i > 0 and _mangle_word_char(text[i - 1])) != head_word
+            and (i + n < size and _mangle_word_char(text[i + n])) != tail_word {
+            out += repl;
+            i += n;
+        } else {
+            out += text[i];
+            i += 1;
+        }
+    }
+    return out;
+}
+
+impl _mangle_symbol_text(text: str) -> str {
+    out = "";
+    for ch in text {
+        if (ch >= "a" and ch <= "z")
+            or (ch >= "A" and ch <= "Z")
+            or (ch >= "0" and ch <= "9")
+            or ch == "_" {
+            out += ch;
+        } else {
+            out += "_";
+        }
+    }
+    return out;
 }

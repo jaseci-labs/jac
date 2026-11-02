@@ -1,8 +1,3 @@
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-import type from jaclang.project.config { JacConfig }
-import from jaclang.comptime { name as ct_name }
-
-
 comptime SPEC_CREATE: CommandSpec = CommandSpec(
          name="create",
          help="Create a new Jac project",
@@ -42,7 +37,7 @@ comptime SPEC_CREATE: CommandSpec = CommandSpec(
              Arg.create(
                  "use",
                  `default="default",
-                 help="Custom template: file path or URL to a .jacpack (or a variant name)",
+                 help="Template: a published template (org/name or org/name@range), a template directory or .jab, or a variant name",
                  short="u"
              ),
              Arg.create(
@@ -64,18 +59,6 @@ comptime SPEC_CREATE: CommandSpec = CommandSpec(
                  `default=False,
                  help="List available project kinds and named variants",
                  short="l"
-             ),
-             Arg.create(
-                 "pack",
-                 `default="",
-                 short="",
-                 help="Bundle a template directory into a .jacpack instead of creating (absorbs 'jac jacpack pack')"
-             ),
-             Arg.create(
-                 "pack_output",
-                 `default="",
-                 short="",
-                 help="With --pack: output .jacpack file path"
              ),
              Arg.create(
                  "skip",
@@ -140,8 +123,8 @@ comptime SPEC_CREATE: CommandSpec = CommandSpec(
                  "Initialize a cli project in the current directory (name from cwd)"
              ),
              (
-                 "jac create --pack ./my-template --pack_output my.jacpack",
-                 "Bundle a template directory into a .jacpack"
+                 "jac create myapp --use acme/starter",
+                 "Create a project from a published template"
              ),
              ("jac create myapp", "Create new myapp/ directory (cli kind)"),
              ("jac create myapp --kind service", "Scaffold a headless API service"),
@@ -163,8 +146,11 @@ comptime SPEC_CREATE: CommandSpec = CommandSpec(
                  "Create the Tiny JacYac social app workspace"
              ),
              ("jac create --force", "Reinitialize existing project"),
-             ("jac create --use ./my.jacpack", "Create from local .jacpack file"),
-             ("jac create --use https://example.com/t.jacpack", "Create from URL"),
+             (
+                 "jac create --use ./my-template",
+                 "Create from a local template directory"
+             ),
+             ("jac create --use ./starter.jab", "Create from a template package file"),
              ("jac create --list", "List available project kinds and named variants"),
 
          ],
@@ -182,8 +168,6 @@ def create(
     awesome: bool = False,
     awetiny: bool = False,
     `list: bool = False,
-    pack: str = "",
-    pack_output: str = "",
     `skip: bool = False,
     style: str | None = None,
     baseColor: str | None = None,
@@ -202,7 +186,33 @@ comptime SPEC_INSTALL: CommandSpec = CommandSpec(
                  "packages",
                  kind=ArgKind.MULTI_POSITIONAL,
                  `default=[],
-                 help="Package(s) to add to jac.toml and install into the project's venv (.jac/venv)"
+                 help="Jac package(s) to add (org/name or org/name@range); with --pypi, Python package(s)"
+             ),
+             Arg.create(
+                 "pypi",
+                 typ=bool,
+                 `default=False,
+                 short="",
+                 help="The named packages (or --git repository) are Python packages for [dependencies.pypi] and .jac/venv"
+             ),
+             Arg.create(
+                 "path",
+                 `default="",
+                 short="",
+                 help="Add the Jac package in this local directory as a path dependency"
+             ),
+             Arg.create(
+                 "rev",
+                 `default="",
+                 short="",
+                 help="With --git: the branch, tag or commit to use"
+             ),
+             Arg.create(
+                 "frozen",
+                 typ=bool,
+                 `default=False,
+                 short="",
+                 help="Install exactly what jac.lock pins; fail if jac.lock is missing or out of date (for CI)"
              ),
              Arg.create(
                  "editable",
@@ -236,7 +246,7 @@ comptime SPEC_INSTALL: CommandSpec = CommandSpec(
              Arg.create(
                  "git",
                  `default="",
-                 help="Git repository URL to install and record as a git dependency",
+                 help="Git repository URL of a Jac package to add (with --pypi, of a Python package)",
                  short="g"
              ),
              Arg.create(
@@ -332,22 +342,39 @@ comptime SPEC_INSTALL: CommandSpec = CommandSpec(
 
          ],
          examples=[
-             ("jac install", "Install all dependencies from jac.toml"),
+             ("jac install", "Resolve, lock and install every dependency in jac.toml"),
+             ("jac install --frozen", "Install exactly what jac.lock pins (CI)"),
              ("jac install --plan", "Show the fully resolved dependency plan"),
+             ("jac install jaseci/vecdb", "Add a Jac package from the registry"),
+             (
+                 'jac install "jaseci/vecdb@^2.1"',
+                 "Add a Jac package with a version range"
+             ),
+             ("jac install --path ../util", "Add a local Jac package"),
+             (
+                 "jac install --git https://github.com/acme/kit --rev v1.2.0",
+                 "Add a Jac package from git"
+             ),
              (
                  "jac install --scale",
                  "Also install deploy-time capabilities (kubernetes/docker) for the operator machine"
              ),
-             ("jac install requests", "Add requests to jac.toml and install it"),
              (
-                 'jac install "numpy>=1.24" pandas',
-                 "Add multiple packages with version constraints"
+                 "jac install --pypi requests",
+                 "Add a Python package to [dependencies.pypi]"
              ),
-             ("jac install pytest --dev", "Add a dev dependency"),
-             ("jac install numpy --no-save", "Install without recording in jac.toml"),
              (
-                 "jac install --git https://github.com/user/plugin.git",
-                 "Install and record a git dependency"
+                 'jac install --pypi "numpy>=1.24" pandas',
+                 "Add Python packages with version constraints"
+             ),
+             ("jac install --pypi pytest --dev", "Add a Python dev dependency"),
+             (
+                 "jac install --pypi numpy --no-save",
+                 "Install a Python package without recording it in jac.toml"
+             ),
+             (
+                 "jac install --pypi --git https://github.com/user/plugin.git",
+                 "Add a Python package from git"
              ),
              ("jac install --npm left-pad", "Add a client-side npm dependency"),
              ("jac install --shadcn button card", "Add shadcn UI components"),
@@ -396,6 +423,10 @@ comptime SPEC_INSTALL: CommandSpec = CommandSpec(
 
 def install(
     packages: list[str] = [],
+    pypi: bool = False,
+    path: str = "",
+    rev: str = "",
+    frozen: bool = False,
     editable: list[any] = [],
     dev: bool = False,
     extras: list[str] = [],
@@ -425,7 +456,14 @@ comptime SPEC_REMOVE: CommandSpec = CommandSpec(
                  "packages",
                  kind=ArgKind.MULTI_POSITIONAL,
                  `default=[],
-                 help="Packages to remove"
+                 help="Jac packages (org/name) to remove; with --pypi, Python packages"
+             ),
+             Arg.create(
+                 "pypi",
+                 typ=bool,
+                 `default=False,
+                 short="",
+                 help="Remove Python package(s) from [dependencies.pypi]"
              ),
              Arg.create(
                  "dev",
@@ -449,8 +487,9 @@ comptime SPEC_REMOVE: CommandSpec = CommandSpec(
 
          ],
          examples=[
-             ("jac remove requests", "Remove a package"),
-             ("jac remove pytest --dev", "Remove dev dependency"),
+             ("jac remove jaseci/vecdb", "Remove a Jac package"),
+             ("jac remove --pypi requests", "Remove a Python package"),
+             ("jac remove --pypi pytest --dev", "Remove a Python dev dependency"),
              ("jac remove --npm left-pad", "Remove a client-side npm dependency"),
              ("jac remove --shadcn button", "Remove shadcn UI components"),
 
@@ -460,18 +499,117 @@ comptime SPEC_REMOVE: CommandSpec = CommandSpec(
      );
 
 def remove(
-    packages: list[str] = [], dev: bool = False, npm: bool = False, shadcn: bool = False
+    packages: list[str] = [],
+    pypi: bool = False,
+    dev: bool = False,
+    npm: bool = False,
+    shadcn: bool = False
+) -> int;
+
+comptime SPEC_PUBLISH: CommandSpec = CommandSpec(
+         name="publish",
+         help="Publish this package (library or template) to the package index",
+         args=[
+             Arg.create(
+                 "dry-run",
+                 typ=bool,
+                 `default=False,
+                 short="",
+                 help="Build the package and run every publish gate (API diff, semver, checks) without uploading"
+             ),
+             Arg.create(
+                 "yank",
+                 `default="",
+                 short="",
+                 metavar="VERSION",
+                 help="Open an index pull request that marks VERSION yanked (new resolutions skip it; locks keep it)"
+             ),
+             Arg.create(
+                 "registry",
+                 `default="",
+                 short="",
+                 help="Publish to a registry named under [registries] instead of the default index"
+             ),
+             Arg.create(
+                 "output",
+                 `default="",
+                 short="o",
+                 help="Also write the built package .jab into this directory"
+             ),
+             Arg.create(
+                 "verify-index",
+                 `default="",
+                 short="",
+                 metavar="DIR",
+                 help="Index CI: verify the index checkout at DIR against --base (append-only lines, owners, uploads, API digest, semver)"
+             ),
+             Arg.create(
+                 "base",
+                 `default="",
+                 short="",
+                 help="With --verify-index: the git ref the pull request is based on"
+             ),
+             Arg.create(
+                 "author",
+                 `default="",
+                 short="",
+                 help="With --verify-index: the GitHub login that opened the pull request"
+             ),
+             Arg.create(
+                 "mirror-out",
+                 `default="",
+                 short="",
+                 help="With --verify-index: write the verified blobs to copy into the index blob store as JSON"
+             ),
+
+         ],
+         examples=[
+             (
+                 "jac publish --dry-run",
+                 "Build and check the package, show the API diff"
+             ),
+             ("jac publish", "Open the index pull request that publishes this version"),
+             ("jac publish --yank 1.2.0", "Mark a published version yanked"),
+             (
+                 "jac publish --verify-index . --base origin/main --author octocat",
+                 "Verify an index pull request (index repository CI)"
+             ),
+
+         ],
+         group="project",
+         handler_name=ct_name(publish)
+     );
+
+def publish(
+    dry_run: bool = False,
+    yank: str = "",
+    registry: str = "",
+    output: str = "",
+    verify_index: str = "",
+    base: str = "",
+    author: str = "",
+    mirror_out: str = ""
 ) -> int;
 
 comptime SPEC_UPDATE: CommandSpec = CommandSpec(
          name="update",
-         help="Update project dependencies to latest compatible versions",
+         help=("Update project dependencies, or the jac binary itself with --self"),
          args=[
              Arg.create(
                  "packages",
                  kind=ArgKind.MULTI_POSITIONAL,
                  `default=[],
-                 help="Packages to update (all if empty)"
+                 help=(
+                     "Jac packages to re-resolve (all if empty); "
+                     "not valid with --self"
+                 )
+             ),
+             Arg.create(
+                 "pypi",
+                 typ=bool,
+                 `default=False,
+                 short="",
+                 help="Update Python packages only"
              ),
              Arg.create(
                  "dev",
@@ -481,21 +619,57 @@ comptime SPEC_UPDATE: CommandSpec = CommandSpec(
                  short="d"
              ),
              Arg.create(
+                 "self",
+                 typ=bool,
+                 `default=False,
+                 short="",
+                 dest="self_update",
+                 help=(
+                     "Update the jac binary itself to the latest release "
+                     "instead of project dependencies"
+                 )
+             ),
+             Arg.create(
+                 "release",
+                 `default="",
+                 short="",
+                 help=(
+                     "With --self: update to this release tag (e.g. 2.3.1) "
+                     "instead of the latest"
+                 )
+             ),
+             Arg.create(
                  "verbose", typ=bool, `default=False, help="Verbose output", short="v"
              ),
 
          ],
          examples=[
-             ("jac update", "Update all dependencies to latest compatible versions"),
-             ("jac update requests", "Update a specific package"),
+             ("jac update", "Re-resolve every dependency within its range"),
+             ("jac update jaseci/vecdb", "Re-resolve one Jac package"),
+             ("jac update --pypi requests", "Update one Python package"),
              ("jac update --dev", "Also update dev dependencies"),
+             (
+                 "jac update --self",
+                 "Update the jac binary itself to the latest release"
+             ),
+             (
+                 "jac update --self --release 2.3.1",
+                 "Pin the jac binary to release v2.3.1"
+             ),
 
          ],
          group="project",
          handler_name=ct_name(update)
      );
 
-def update(packages: list[str] = [], dev: bool = False, verbose: bool = False) -> int;
+def update(
+    packages: list[str] = [],
+    pypi: bool = False,
+    dev: bool = False,
+    self_update: bool = False,
+    release: str = "",
+    verbose: bool = False
+) -> int;
 
 def deps(scale: bool = False, as_json: bool = False) -> int;
 
@@ -561,8 +735,11 @@ def clean(
     force: bool = False
 ) -> int;
 
-def jacpack(action: str = "", path: str = "", output: str = "") -> int;
 
 def bundle(
-    output: str = "dist", target: str = "wheel", fat: bool = False, app: str = ""
+    output: str = "dist",
+    target: str = "wheel",
+    fat: bool = False,
+    app: str = "",
+    allow_drop_client: bool = False
 ) -> int;

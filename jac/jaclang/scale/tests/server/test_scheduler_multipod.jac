@@ -14,17 +14,6 @@ import datetime;
 import socket;
 import threading;
 import from tempfile { mkdtemp }
-import from jaclang.data.pgembed { PgRuntime }
-import from jaclang.data.store { PgStore }
-import from jaclang.testing.requires { require_module }
-import from jaclang.scale.scheduler.scheduler {
-    JOBS_CHANGED_CHANNEL,
-    JacScaleScheduler,
-    PgJobStore,
-    TriggerSpec,
-    new_engine
-}
-import from jaclang.server.task_scheduler { tick_of }
 
 glob _holder: dict[str, any] = {};
 
@@ -62,6 +51,10 @@ def _on_grid(when: datetime.datetime, seconds: int) -> datetime.datetime {
 obj _Introspector {
     has _walkers: dict[str, any] = {},
         _functions: dict[str, any] = {};
+
+    def target(name: str) -> any {
+        return self._walkers.get(name) or self._functions.get(name);
+    }
 }
 
 
@@ -72,7 +65,6 @@ obj _Server {
 
 
 def _unreachable_store -> PgStore {
-    import from jaclang.server.session { conninfo_from_url }
     probe = socket.socket();
     probe.bind(('127.0.0.1', 0));
     port = probe.getsockname()[1];
@@ -83,7 +75,11 @@ def _unreachable_store -> PgStore {
 }
 
 
-def _wait_for_runs(engine: any, job_id: str, count: int) -> bool {
+"""Return an event set once `job_id` has run `count` times.
+
+Install it before `engine.start()`: catch-up runs fire as soon as the engine
+starts, and a run that finishes before the listener exists is never counted."""
+def _runs_waiter(engine: any, job_id: str, count: int) -> threading.Event {
     import from apscheduler.events { EVENT_JOB_ERROR, EVENT_JOB_EXECUTED }
     seen: list[str] = [];
     done = threading.Event();
@@ -96,7 +92,7 @@ def _wait_for_runs(engine: any, job_id: str, count: int) -> bool {
         }
     }
     engine.add_listener(on_run, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR);
-    return done.`wait(15.0);
+    return done;
 }
 
 
@@ -177,6 +173,81 @@ test "each scheduled occurrence of a job is claimed by exactly one pod" {
 }
 
 
+test "a static task runs on one pod at a time, and a dead pod's hold expires" {
+    # The run hold (1 s here) is renewed while a 2.5 s run goes, so no pod
+    # starts the task until the run is over.
+    store_a = _store();
+    if store_a is None {
+        return;
+    }
+    store_b = _store();
+    if store_b is None {
+        return;
+    }
+    lock = threading.Lock();
+    state: dict[str, float] = {"live": 0, "peak": 0, "first": 0.0};
+    won: list[int] = [];
+    pods: list[Scheduler] = [];
+    # A pod that died mid-run leaves its hold behind until the TTL runs out.
+    assert store_a.kv_acquire_lease("sched-run:overlap:slow_fn", 1, "dead-pod");
+    planted = time.monotonic();
+    for store in [store_a, store_b] {
+        pod = Scheduler();
+        pod.namespace = "overlap";
+        pod.hold_ttl = 1;
+        def claim(key: str, tick: int, st: PgStore = store) -> bool {
+            got = bool(st.kv_claim_tick(key, tick));
+            if got {
+                with lock {
+                    won.append(tick);
+                }
+            }
+            return got;
+        }
+        def hold(key: str, ttl: int, owner: str, st: PgStore = store) -> bool {
+            return bool(st.kv_acquire_lease(key, ttl, owner));
+        }
+        def release(key: str, owner: str, st: PgStore = store) -> bool {
+            return bool(st.kv_release_lease(key, owner));
+        }
+        def slow {
+            with lock {
+                if state["first"] == 0.0 {
+                    state["first"] = time.monotonic() - planted;
+                }
+                state["live"] += 1;
+                state["peak"] = max(state["peak"], state["live"]);
+            }
+            time.sleep(2.5);
+            with lock {
+                state["live"] -= 1;
+            }
+        }
+        pod.claim = claim;
+        pod.hold = hold;
+        pod.release = release;
+        pod.register("slow_fn", slow, ScheduleSpec(interval=0.2), False);
+        pods.append(pod);
+    }
+    for pod in pods {
+        pod.start();
+    }
+    try {
+        time.sleep(5.0);
+    } finally {
+        for pod in pods {
+            pod.stop(timeout=3.0);
+        }
+    }
+    assert len(won) == len(set(won)) , f"a tick ran twice: {sorted(won)}";
+    assert len(won) >= 1 , "no pod ran the task";
+    assert state["peak"] == 1 , f"pods overlapped, peak {state['peak']}";
+    assert state["first"] >= 0.9 , f"ran {state[
+        'first'
+    ]:.2f}s after a dead pod's 1s hold";
+}
+
+
 test "interval jobs scheduled apart share one phase" {
     require_module("apscheduler");
     import from apscheduler.triggers.interval { IntervalTrigger }
@@ -252,9 +323,10 @@ test "each run carries the time it was scheduled for" {
         start_date=first,
         next_run_time=first
     );
+    fired = _runs_waiter(engine, 'fire-times', 4);
     engine.start();
     try {
-        assert _wait_for_runs(engine, 'fire-times', 4) , seen;
+        assert fired.`wait(15.0) , seen;
         assert seen[:4]
             == [first, first + step, first + 2 * step, first + 3 * step] , seen;
     } finally {
@@ -297,10 +369,12 @@ test "a late run claims the occurrence it was scheduled for, not the current one
         engine.modify_job(job_id, next_run_time=top);
     }
     assert pod_a._claim_fire('ran-on-a', top) is True;
+    ran_on_a = _runs_waiter(engine, 'ran-on-a', 1);
+    ran_nowhere = _runs_waiter(engine, 'ran-nowhere', 1);
     engine.start();
     try {
-        assert _wait_for_runs(engine, 'ran-on-a', 1);
-        assert _wait_for_runs(engine, 'ran-nowhere', 1);
+        assert ran_on_a.`wait(15.0);
+        assert ran_nowhere.`wait(15.0);
     } finally {
         engine.shutdown(`wait=False);
     }

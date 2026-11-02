@@ -23,7 +23,6 @@ import from pathlib { Path }
 import from concurrent.futures { ThreadPoolExecutor, as_completed }
 
 import requests;
-import from jaclang.scale.tests.support { get_free_port, register_user, start_server }
 
 glob FIXTURES_DIR = Path(__file__).parent.parent / "fixtures",
      JAC_FILE = FIXTURES_DIR / "race_app.jac";

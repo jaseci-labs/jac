@@ -7,7 +7,10 @@ obj syntax_failure(Exception) {
         text: str | None = None,
         end_lineno: int = 0,
         end_offset: int = -1,
-        kind: str = "SyntaxError";
+        kind: str = "SyntaxError",
+        # The tokenize module's errors carry no end position (None), as
+        # Python-tokenize.c's _tokenizer_error builds them.
+        open_end: bool = False;
 }
 
 # Lines keep their terminators; CR, LF and CRLF each end a line.

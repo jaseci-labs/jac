@@ -1,13 +1,3 @@
-import from jaclang.compiler.frontend.srcloc { CodeLocInfo, Span }
-import from jaclang.compiler.frontend.diagnostics {
-    DiagnosticInfo,
-    E9001,
-    LINT_ALIASES,
-    Severity
-}
-import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_tokens }
-import from jaclang.compiler.frontend.unitree { Source, UniNode }
-
 obj Alert {
     has msg: str,
         loc: Span,
@@ -23,6 +13,15 @@ obj Alert {
     def as_log(*, colors: bool = False) -> str;
     def pretty_print(*, colors: bool = False) -> str;
 }
+
+glob INLINE_LOCKED_CODES: set[str] = {
+         "E1144",
+         "E1146",
+         "E2090",
+         "E2091",
+         "E2094",
+         "E2099"
+     };
 
 obj DiagnosticPolicy {
     has suppress_codes: list[str] = [],
@@ -53,14 +52,14 @@ obj CompileContext {
     has current_node: UniNode,
         from_pass: type,
         pass_name: str,
-        cancel_token: any = None,
+        cancel_token: (CancelToken | None) = None,
         cancel_requested: bool = False,
         errors_had: list[Alert] = [],
         warnings_had: list[Alert] = [],
         time_taken: float = 0.0,
         nested_depth: int = 0,
         policy: (DiagnosticPolicy | None) = None,
-        resources: any = None;
+        program: (JacProgram | None) = None;
 
     def emit(
         diag: DiagnosticInfo,
@@ -76,7 +75,26 @@ obj CompileContext {
     def walk_subtree(nd: UniNode, walk: Walker) -> None;
     def enter_node(nd: UniNode) -> None;
     def exit_node(nd: UniNode) -> None;
-    def is_canceled -> bool {
-        return self.cancel_requested;
-    }
+    def is_canceled -> bool;
+}
+
+walker CompilerPass {
+    static has contract: (PassContract | None) = None;
+    has ctx: CompileContext,
+        module: Module;
+
+    has prog: JacProgram { getter; }
+
+    def release;
+}
+
+type PassSchedule = list[type[CompilerPass]];
+
+walker TreePass(CompilerPass, TreeWalker) {
+    has _decl_bodies: list[ImplDef] = [];
+
+    can enter_walk with UniNode entry;
+    can exit_walk with UniNode exit;
+    def walk_decl_body(decl: UniNode) -> None;
+    def reached_by_syntax(nd: UniNode) -> bool;
 }

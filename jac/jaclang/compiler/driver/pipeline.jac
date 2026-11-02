@@ -1,401 +1,112 @@
 import os;
 import time;
-import from collections.abc { Callable }
-import type from threading { Event }
 import from contextvars { ContextVar }
-import type from jaclang.compiler.driver.compiler { JacCompiler }
-import type from jaclang.compiler.driver.program { JacProgram }
-import type from jaclang.compiler.driver.compile_options { CompileOptions }
-import type from jaclang.compiler.driver.pipeline_runner { ModuleCompilation }
-import type from jaclang.compiler.frontend.unitree { Module }
-import from jaclang.compiler.driver.context_passes {
-    AppContextPass,
-    AbsorbImportsPass,
-    BoundaryFactsPass,
-    NativeImportFactsPass
-}
-import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
-import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
-import from jaclang.compiler.passes.ast_validation_pass { ASTValidationPass }
-import from jaclang.compiler.passes.graph_lowering_pass { GraphLoweringPass }
-import from jaclang.compiler.passes.boundary_analysis_pass { BoundaryAnalysisPass }
-import from jaclang.compiler.passes.decl_impl_match_pass { DeclImplMatchPass }
-import from jaclang.compiler.passes.endpoint_effect_pass { EndpointEffectPass }
-import from jaclang.compiler.passes.semantic_analysis_pass { SemanticAnalysisPass }
-import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
 
-import from jaclang.compiler.placement.placement_solver { PlacementApplyPass }
-import from jaclang.compiler.driver.source_failures { fail_loud_on_compiler_source }
-import from jaclang.compiler.driver.pipeline_types {
-    UtilityProduct,
-    AnalysisFact,
-    PassContract,
-    CompilationProduct,
-    ProductTask,
-    TaskState
-}
-import from jaclang.compiler.driver.client_graph { collect_client_graph }
+class TypeshedUnavailableError(RuntimeError) {}
 
-glob PASS_CONTRACTS: dict[str, PassContract] = {
-         'AccessCheckPass': PassContract((), (AnalysisFact.ACCESS_CHECKS, )),
-         'CFGBuildPass': PassContract(
-             (),
-             (AnalysisFact.CFG_SUCC, AnalysisFact.CFG_TRUE, AnalysisFact.CFG_FALSE, )
-         ),
-         'ClientCapabilityCheckPass': PassContract(
-             (), (AnalysisFact.CLIENT_CAPABILITY, )
-         ),
-         'ComptimeResolvePass': PassContract((), (AnalysisFact.COMPTIME, )),
-         'DeclImplMatchPass': PassContract(
-             (AnalysisFact.SYM_OF, ), (AnalysisFact.IMPL_OF, )
-         ),
-         'FreezeStructurePass': PassContract((), (AnalysisFact.FROZEN, )),
-         'NaIRGenPass': PassContract(
-             (
-                 AnalysisFact.TYPE_OF,
-                 AnalysisFact.CFG_SUCC,
-                 AnalysisFact.OWNERSHIP,
-                 AnalysisFact.CAPABILITY,
-                 AnalysisFact.RC_FACTS,
+def no_passes(request: ProductRequest) -> PassSchedule;
 
-             ),
-             ()
-         ),
-         'NativeCapabilityCheckPass': PassContract((), (AnalysisFact.CAPABILITY, )),
-         'OwnershipCheckPass': PassContract(
-             (AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF, ), (AnalysisFact.OWNERSHIP, )
-         ),
-         'PlacementApplyPass': PassContract(
-             (AnalysisFact.SYM_OF, ),
-             (
-                 AnalysisFact.PLACED_IN,
-                 AnalysisFact.DECIDED_CODESPACE,
-                 AnalysisFact.CODESPACE_PULL,
+def unavailable_schedule(request: ProductRequest) -> (PassSchedule | None);
 
-             )
-         ),
-         'PortabilityWarnPass': PassContract((), (AnalysisFact.PORTABILITY, )),
-         'RcFactsPass': PassContract(
-             (AnalysisFact.CFG_SUCC, ), (AnalysisFact.RC_FACTS, )
-         ),
-         'RegionInferPass': PassContract((), (AnalysisFact.REGION_INFER, )),
-         'StaticAnalysisPass': PassContract((), (AnalysisFact.STATIC_CHECKS, )),
-         'SymTabBuildPass': PassContract(
-             (),
-             (
-                 AnalysisFact.SYM_OF,
-                 AnalysisFact.DEFINES,
-                 AnalysisFact.IN_SCOPE,
-                 AnalysisFact.SCOPE_CHILD,
+def empty_schedule(request: ProductRequest) -> (PassSchedule | None);
 
-             )
-         ),
-         'TypeCheckPass': PassContract((), (AnalysisFact.TYPE_OF, )),
-         'VariantAgreementPass': PassContract((), (AnalysisFact.VARIANT_AGREEMENT, ))
-     };
+def no_action(program: JacProgram, module: Module) -> bool;
 
-def product_pipeline(product: CompilationProduct) -> list[type] {
-    if product == CompilationProduct.SYMBOLS {
-        return get_symtab_ir_sched();
-    }
-    if product == CompilationProduct.FLOW {
-        import from jaclang.compiler.passes.cfg_build_pass { CFGBuildPass }
-        return [CFGBuildPass];
-    }
-    if product == CompilationProduct.ANALYSIS {
-        return get_analysis_sched();
-    }
-    if product == CompilationProduct.BOUNDARIES {
-        return get_boundary_analysis_sched();
-    }
-    if product == CompilationProduct.CLIENT {
-        import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
-        return [EsastGenPass];
-    }
-    if product == CompilationProduct.LAYOUT {
-        import from jaclang.compiler.passes.layout_pass { LayoutPass }
-        return [LayoutPass];
-    }
-    if product == CompilationProduct.NATIVE_IR {
-        import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
-        import from jaclang.compiler.backends.native { NaIRGenPass }
-        return [NativeImportFactsPass, RcFactsPass, NaIRGenPass];
-    }
-    raise ValueError(f"Product {product.value} requires an entry compilation");
+def no_drop(program: JacProgram, module: Module);
+
+def no_precheck;
+
+def no_blocker -> str;
+
+obj ProductSpec {
+    has needs: list[CompilationProduct] = [],
+        passes: Callable[[ProductRequest], PassSchedule] = no_passes,
+        bootstrap:
+            Callable[[ProductRequest], (PassSchedule | None)] = unavailable_schedule,
+        action: Callable[[JacProgram, Module], bool] = no_action,
+        drop: Callable[[JacProgram, Module], None] = no_drop,
+        precheck: Callable[[], None] = no_precheck,
+        blocker: Callable[[], str] = no_blocker,
+        loads: list[str] = [],
+        tier_with: list[CompilationProduct] = [],
+        tiered: bool = False,
+        acts: bool = False,
+        cached: bool = False,
+        tool: bool = False,
+        on_import_error: ImportFallback = ImportFallback.RAISE;
 }
 
-def invalidate_client_product(program: JacProgram, module: Module) {
-    module.gen.js = '';
-    module.gen.es_ast = None;
-    tasks = program.analysis.product_tasks.get(id(module));
-    if tasks is not None {
-        tasks.pop(CompilationProduct.CLIENT, None);
-    }
-    completed = program.analysis.completed_passes.get(id(module));
-    if completed is not None {
-        for step in product_pipeline(CompilationProduct.CLIENT) {
-            completed.discard(step.__name__);
-        }
-    }
-    path = os.path.realpath(module.loc.mod_path);
-    program.hub.client_artifacts.pop(path, None);
-    import from jaclang.compiler.driver.compilation_context { cache_scope }
-    import from jaclang.compiler.driver.jir { get_module_cache_path }
-    owner_options = None
-        if program._get_compiler().selfhost.is_selfhost(program)
-        else program.options;
-    with cache_scope(owner_options) {
-        try {
-            get_module_cache_path(path).unlink(missing_ok=True);
-        } except OSError {}
-    }
-}
+def front_passes -> PassSchedule;
 
-glob PRODUCT_READY_FACTS: dict[CompilationProduct, tuple[AnalysisFact, ...]] = {
-         CompilationProduct.FLOW: (AnalysisFact.CFG_SUCC, ),
-         CompilationProduct.ANALYSIS: (AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF, ),
-         CompilationProduct.CLIENT: (AnalysisFact.TYPE_OF, ),
-         CompilationProduct.NATIVE_IR: (AnalysisFact.CFG_SUCC, AnalysisFact.TYPE_OF, ),
+def symbols_passes(request: ProductRequest) -> PassSchedule;
 
-     },
-     PRODUCT_PREREQUISITES: dict[CompilationProduct, tuple[CompilationProduct, ...]] = {
-         CompilationProduct.ANALYSIS: (CompilationProduct.FLOW, ),
-         CompilationProduct.CLIENT: (CompilationProduct.ANALYSIS, ),
-         CompilationProduct.NATIVE_IR: (
-             CompilationProduct.FLOW,
-             CompilationProduct.ANALYSIS,
+def bootstrap_ir_passes(request: ProductRequest) -> (PassSchedule | None);
 
-         )
-     };
+def ir_passes(request: ProductRequest) -> PassSchedule;
 
-def product_ready(
-    program: JacProgram, module: Module, product: CompilationProduct
-) -> bool {
-    for fact in PRODUCT_READY_FACTS.get(product, ()) {
-        if not program.analysis.analyses_run.provides(module, fact) {
-            return False;
-        }
-    }
-    tasks = program.analysis.product_tasks.get(id(module));
-    task = tasks.get(product) if tasks is not None else None;
-    return task is None or task.state == TaskState.SUCCEEDED;
-}
+def flow_passes(request: ProductRequest) -> PassSchedule;
 
-def providers_of_product(
-    product: CompilationProduct, visiting: (set[CompilationProduct] | None) = None
-) -> set[AnalysisFact] {
-    if visiting is None {
-        visiting = set();
-    }
-    if product in visiting {
-        raise RuntimeError(f"product prerequisite cycle through {product.value}");
-    }
-    visiting.add(product);
-    facts = set(providers_of(product_pipeline(product)));
-    for prereq in PRODUCT_PREREQUISITES.get(product, ()) {
-        facts |= providers_of_product(prereq, visiting);
-    }
-    visiting.discard(product);
-    return facts;
-}
+def analysis_passes(request: ProductRequest) -> PassSchedule;
 
-def prereq_provides(product: CompilationProduct) -> set[AnalysisFact] {
-    facts: set[AnalysisFact] = set();
-    for prereq in PRODUCT_PREREQUISITES.get(product, ()) {
-        facts |= providers_of_product(prereq);
-    }
-    return facts;
-}
+def declaration_passes(request: ProductRequest) -> PassSchedule;
 
-def validate_product_specs {
-    for product in PRODUCT_READY_FACTS {
-        available = providers_of_product(product);
-        for fact in PRODUCT_READY_FACTS[product] {
-            if fact not in available {
-                raise RuntimeError(
-                    f"product {product.value} declares readiness fact "
-                    f"'{fact.value}' that neither its pipeline nor its "
-                    f"prerequisites provide"
-                );
-            }
-        }
-    }
-}
+def boundary_passes(request: ProductRequest) -> PassSchedule;
 
-def require_product(
-    program: JacProgram,
-    module: Module,
-    product: CompilationProduct,
-    cancel_token: (Event | None) = None
-) -> bool {
-    active_cancel = cancel_token
-        if cancel_token is not None
-        else program.options.cancel_token;
-    program.analysis.retain_tasks(module);
-    tasks = program.analysis.product_tasks.setdefault(id(module), {});
-    task = tasks.get(product);
-    if task is not None {
-        if task.state == TaskState.RUNNING {
-            raise RuntimeError(
-                f"Compilation dependency cycle: {product.value} of {module.loc.mod_path}"
-            );
-        }
-        if task.state == TaskState.SUCCEEDED {
-            if product_ready(program, module, product) {
-                return True;
-            }
-        } elif task.state == TaskState.FAILED
-            or (active_cancel is not None and active_cancel.is_set()) {
-            return False;
-        }
-        task.state = TaskState.RUNNING;
-    } else {
-        task = ProductTask(product, TaskState.RUNNING);
-        tasks[product] = task;
-    }
-    start = time.perf_counter();
-    before = len(program.errors_had);
-    try {
-        for prereq in PRODUCT_PREREQUISITES.get(product, ()) {
-            if product_ready(program, module, prereq) {
-                continue;
-            }
-            if not require_product(
-                program, module, prereq, cancel_token=active_cancel
-            ) {
-                task.state = TaskState.CANCELLED
-                    if active_cancel is not None and active_cancel.is_set()
-                    else TaskState.FAILED;
-                return False;
-            }
-        }
-        if product == CompilationProduct.INTERFACE {
-            if not program.iface_registry().prepare_interface(
-                os.path.realpath(module.loc.mod_path), module
-            ) {
-                task.state = TaskState.FAILED;
-                return False;
-            }
-        } else {
-            schedule = product_pipeline(product);
-            if not schedule {
-                task.state = TaskState.PENDING;
-                return False;
-            }
-            module = execute_passes(
-                program, module, schedule, cancel_token=active_cancel
-            );
-        }
-        if active_cancel is not None and active_cancel.is_set() {
-            task.state = TaskState.CANCELLED;
-        } elif len(program.errors_had) != before {
-            task.state = TaskState.FAILED;
-        } else {
-            task.state = TaskState.SUCCEEDED;
-        }
-        return task.state == TaskState.SUCCEEDED;
-    } except Exception {
-        task.state = TaskState.FAILED;
-        raise;
-    } finally {
-        task.elapsed = time.perf_counter() - start;
-    }
-}
+def client_passes(request: ProductRequest) -> PassSchedule;
 
-enum CompilationPhase {
-    PARSE = "parse",
-    IR = "ir",
-    PLACEMENT = "placement",
-    ANALYSIS = "analysis",
-    BOUNDARIES = "boundaries",
-    NATIVE_CHECKS = "native_checks",
-    CLIENT_DEPENDENCIES = "client_dependencies",
-    INTERFACE = "interface",
-    CODEGEN = "codegen"
-}
+def layout_passes(request: ProductRequest) -> PassSchedule;
 
-obj CompilationStep {
-    has phase: CompilationPhase,
-        execute: Callable[[ModuleCompilation], None];
-}
+def codegen_passes(request: ProductRequest) -> PassSchedule;
 
-def module_pipeline -> list[CompilationStep] {
-    import from jaclang.compiler.driver.pipeline_runner { ModuleCompilation }
-    return [
-        CompilationStep(CompilationPhase.PARSE, ModuleCompilation.parse),
-        CompilationStep(CompilationPhase.IR, ModuleCompilation.ir),
-        CompilationStep(CompilationPhase.PLACEMENT, ModuleCompilation.placement),
-        CompilationStep(CompilationPhase.ANALYSIS, ModuleCompilation.analysis),
-        CompilationStep(CompilationPhase.BOUNDARIES, ModuleCompilation.boundaries),
-        CompilationStep(
-            CompilationPhase.NATIVE_CHECKS, ModuleCompilation.native_checks
-        ),
-        CompilationStep(
-            CompilationPhase.CLIENT_DEPENDENCIES, ModuleCompilation.client_dependencies
-        ),
-        CompilationStep(CompilationPhase.INTERFACE, ModuleCompilation.interface),
-        CompilationStep(CompilationPhase.CODEGEN, ModuleCompilation.codegen)
-    ];
-}
+def py_ir_passes(request: ProductRequest) -> PassSchedule;
 
-def compile_module(
-    compiler: JacCompiler,
-    program: JacProgram,
-    path: str,
-    options: CompileOptions,
-    source: str | None = None
-) -> Module {
-    import from jaclang.compiler.driver.pipeline_runner { ModuleCompilation }
-    task = ModuleCompilation(compiler, program, path, options, source);
-    for step in module_pipeline() {
-        if options.cancel_token is not None and options.cancel_token.is_set() {
-            break;
-        }
-        started = time.perf_counter();
-        try {
-            step.execute(task);
-        } finally {
-            name = step.phase.name;
-            program.analysis.phase_time[name] = (
-                program.analysis.phase_time.get(name, 0.0) + time.perf_counter()
-                - started
-            );
-        }
-    }
-    return task.module;
-}
+def frozen_passes(request: ProductRequest) -> PassSchedule;
 
-def get_symtab_ir_sched -> list[type] {
-    if not schedule_tier_reason() {
-        _tok = _ir_sched_loading.set(True);
-        try {
-            _import_all(SYMTAB_SCHED_DEPS);
-        } except ImportError as e {
-            fail_loud_on_compiler_source(e);
-        } finally {
-            _ir_sched_loading.reset(_tok);
-        }
-    }
-    return validate_schedule(
-        [
-            AppContextPass,
-            GraphLoweringPass,
-            ASTValidationPass,
-            AbsorbImportsPass,
-            SymTabBuildPass,
-            DeclImplMatchPass,
-            PlacementApplyPass
-        ],
-        origin='symtab-ir schedule'
-    );
-}
+def bytecode_passes(request: ProductRequest) -> PassSchedule;
 
-glob _ir_sched_loading = ContextVar('jac_ir_sched_loading', `default=False),
-     _codegen_sched_loading = ContextVar('jac_codegen_sched_loading', `default=False),
-     _analysis_sched_loading = ContextVar('jac_analysis_sched_loading', `default=False);
+def native_ir_passes(request: ProductRequest) -> PassSchedule;
 
-glob SYMTAB_SCHED_DEPS: tuple[str, ...] = ('jaclang.compiler.symbol_utils', ),
-     IR_SCHED_DEPS: tuple[str, ...] = (
+def native_lower_passes(request: ProductRequest) -> PassSchedule;
+
+def native_toolchain_blocker -> str;
+
+def native_object_passes(request: ProductRequest) -> PassSchedule;
+
+def format_passes(request: ProductRequest) -> PassSchedule;
+
+def format_lintfix_passes(request: ProductRequest) -> PassSchedule;
+
+def lint_passes(request: ProductRequest) -> PassSchedule;
+
+def python_ast_passes(request: ProductRequest) -> PassSchedule;
+
+def python_symbols_passes(request: ProductRequest) -> PassSchedule;
+
+def grammar_passes(request: ProductRequest) -> PassSchedule;
+
+def cfg_dot_passes(request: ProductRequest) -> PassSchedule;
+
+def normalize_passes(request: ProductRequest) -> PassSchedule;
+
+def unparse_passes(request: ProductRequest) -> PassSchedule;
+
+def doc_passes(request: ProductRequest) -> PassSchedule;
+
+def format_text_passes(request: ProductRequest) -> PassSchedule;
+
+def place_module(program: JacProgram, module: Module) -> bool;
+
+def prepare_interface(program: JacProgram, module: Module) -> bool;
+
+def drop_client(program: JacProgram, module: Module);
+
+def drop_native_ir(program: JacProgram, module: Module);
+
+def drop_native_object(program: JacProgram, module: Module);
+
+def require_typeshed_stubs -> None;
+
+glob IR_LOADS: list[str] = [
          'jaclang.compiler.symbol_utils',
          'jaclang.compiler.expr_keys',
          'jaclang.compiler.type_registry',
@@ -403,6 +114,7 @@ glob SYMTAB_SCHED_DEPS: tuple[str, ...] = ('jaclang.compiler.symbol_utils', ),
          'jaclang.compiler.intrinsic_registry',
          'jaclang.compiler.types.type_evaluator',
          'jaclang.compiler.types.stubcat.modiface',
+         'jaclang.compiler.types.stubcat.writer',
          'jaclang.compiler.passes.pyast_load_pass',
          'jaclang.compiler.passes.layout_pass',
          'jaclang.compiler.passes.cfg_build_pass',
@@ -411,8 +123,8 @@ glob SYMTAB_SCHED_DEPS: tuple[str, ...] = ('jaclang.compiler.symbol_utils', ),
          'jaclang.compiler.passes.mtir_gen_pass',
          'jaclang.compiler.passes.comptime_resolve_pass',
          'jaclang.project.mobui_scope'
-     ),
-     ANALYSIS_SCHED_DEPS: tuple[str, ...] = (
+     ],
+     ANALYSIS_LOADS: list[str] = [
          'jaclang.compiler.field_semantics',
          'jaclang.compiler.passes.type_checker_pass',
          'jaclang.compiler.types.type_evaluator',
@@ -434,544 +146,200 @@ glob SYMTAB_SCHED_DEPS: tuple[str, ...] = ('jaclang.compiler.symbol_utils', ),
          'jaclang.compiler.passes.access_check_pass',
          'jaclang.compiler.passes.variant_agreement_pass',
          'jaclang.compiler.passes.capability_check_pass',
+         'jaclang.compiler.capability_notes',
+         'jaclang.compiler.boundary_rules',
+         'jaclang.compiler.native_bindings',
+         'jaclang.compiler.passes.placement_pass',
          'jaclang.compiler.passes.ownership_check_pass',
          'jaclang.compiler.passes.region_infer_pass',
          'jaclang.compiler.tools.jac_auto_lint_pass'
-     ),
-     CODEGEN_SCHED_DEPS: tuple[str, ...] = (
+     ],
+     CODEGEN_LOADS: list[str] = [
          'jaclang.compiler.passes.rc_facts_pass',
          'jaclang.compiler.backends.es',
          'jaclang.compiler.passes.freeze_structure_pass'
-     ),
-     NATIVE_CODEGEN_DEPS: tuple[str, ...] = ('jaclang.compiler.backends.native', );
+     ],
+     NATIVE_LOADS: list[str] = ['jaclang.compiler.backends.native.na_ir_gen_pass', ];
 
-def module_in_flight(names: tuple[str, ...]) -> str {
-    import sys;
-    for name in names {
-        spec = sys.modules.get(name)?.__spec__;
-        if spec is not None and getattr(spec, '_initializing', False) {
-            return name;
-        }
-    }
-    return '';
-}
+glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
+         CompilationProduct.SYMBOLS: ProductSpec(
+             passes=symbols_passes,
+             bootstrap=symbols_passes,
+             loads=['jaclang.compiler.symbol_utils'],
+             tier_with=[CompilationProduct.IR],
+             tiered=True,
+             on_import_error=ImportFallback.BOOTSTRAP
+         ),
+         CompilationProduct.IR: ProductSpec(
+             passes=ir_passes,
+             bootstrap=bootstrap_ir_passes,
+             loads=IR_LOADS,
+             tiered=True,
+             on_import_error=ImportFallback.BOOTSTRAP_INTERNAL
+         ),
+         CompilationProduct.FLOW: ProductSpec(passes=flow_passes, cached=True),
+         CompilationProduct.PLACEMENT: ProductSpec(action=place_module, acts=True),
+         CompilationProduct.ANALYSIS: ProductSpec(
+             needs=[CompilationProduct.FLOW],
+             passes=analysis_passes,
+             precheck=require_typeshed_stubs,
+             loads=ANALYSIS_LOADS,
+             tiered=True,
+             cached=True
+         ),
+         CompilationProduct.DECLARATIONS: ProductSpec(
+             needs=[CompilationProduct.FLOW],
+             passes=declaration_passes,
+             precheck=require_typeshed_stubs,
+             loads=ANALYSIS_LOADS + ['jaclang.compiler.passes.declaration_type_pass'],
+             tiered=True,
+             cached=True
+         ),
+         CompilationProduct.BOUNDARIES: ProductSpec(passes=boundary_passes),
+         CompilationProduct.INTERFACE: ProductSpec(
+             action=prepare_interface, acts=True, cached=True
+         ),
+         CompilationProduct.CLIENT: ProductSpec(
+             needs=[CompilationProduct.ANALYSIS],
+             passes=client_passes,
+             drop=drop_client,
+             cached=True
+         ),
+         CompilationProduct.LAYOUT: ProductSpec(passes=layout_passes, cached=True),
+         CompilationProduct.CODEGEN: ProductSpec(
+             passes=codegen_passes,
+             bootstrap=empty_schedule,
+             loads=CODEGEN_LOADS,
+             tier_with=[CompilationProduct.IR, CompilationProduct.NATIVE_LOWER],
+             tiered=True,
+             on_import_error=ImportFallback.REPORT
+         ),
+         CompilationProduct.PY_IR: ProductSpec(passes=py_ir_passes),
+         CompilationProduct.FROZEN: ProductSpec(
+             passes=frozen_passes,
+             bootstrap=empty_schedule,
+             tier_with=[CompilationProduct.CODEGEN],
+             tiered=True,
+             on_import_error=ImportFallback.REPORT
+         ),
+         CompilationProduct.BYTECODE: ProductSpec(
+             needs=[CompilationProduct.PY_IR], passes=bytecode_passes
+         ),
+         CompilationProduct.NATIVE_IR: ProductSpec(
+             needs=[CompilationProduct.FLOW, CompilationProduct.ANALYSIS],
+             passes=native_ir_passes,
+             blocker=native_toolchain_blocker,
+             loads=NATIVE_LOADS,
+             cached=True
+         ),
+         CompilationProduct.NATIVE_LOWER: ProductSpec(
+             needs=[CompilationProduct.ANALYSIS],
+             passes=native_lower_passes,
+             blocker=native_toolchain_blocker,
+             drop=drop_native_ir,
+             loads=NATIVE_LOADS
+         ),
+         CompilationProduct.NATIVE_OBJECT: ProductSpec(
+             needs=[CompilationProduct.NATIVE_LOWER],
+             passes=native_object_passes,
+             drop=drop_native_object
+         ),
+         CompilationProduct.FORMAT: ProductSpec(passes=format_passes),
+         CompilationProduct.FORMAT_LINTFIX: ProductSpec(passes=format_lintfix_passes),
+         CompilationProduct.LINT: ProductSpec(passes=lint_passes),
+         CompilationProduct.PYTHON_AST: ProductSpec(
+             passes=python_ast_passes, tool=True
+         ),
+         CompilationProduct.PYTHON_SYMBOLS: ProductSpec(
+             passes=python_symbols_passes, tool=True
+         ),
+         CompilationProduct.GRAMMAR: ProductSpec(passes=grammar_passes, tool=True),
+         CompilationProduct.CFG_DOT: ProductSpec(passes=cfg_dot_passes, tool=True),
+         CompilationProduct.NORMALIZE: ProductSpec(passes=normalize_passes, tool=True),
+         CompilationProduct.UNPARSE: ProductSpec(passes=unparse_passes, tool=True),
+         CompilationProduct.DOC: ProductSpec(passes=doc_passes, tool=True),
+         CompilationProduct.FORMAT_TEXT: ProductSpec(
+             passes=format_text_passes, tool=True
+         )
+     },
+     _LOADING: ContextVar[list[CompilationProduct]] = ContextVar(
+         'jac_schedule_loading', `default=[]
+     );
 
-def _import_all(names: tuple[str, ...]) {
-    import importlib;
-    for name in names {
-        importlib.import_module(name);
-    }
-}
-
-def schedule_tier_reason -> str {
-    if _ir_sched_loading.get() {
-        return 'the ir-gen schedule was still loading';
-    }
-    dep = module_in_flight(IR_SCHED_DEPS);
-    if dep {
-        return f"'{dep}', a dependency of the ir-gen schedule, was mid-import";
-    }
-    return '';
-}
-
-def _codegen_tier_reason -> str {
-    if _codegen_sched_loading.get() {
-        return 'the codegen schedule was still loading';
-    }
-    dep = module_in_flight(CODEGEN_SCHED_DEPS + NATIVE_CODEGEN_DEPS);
-    if dep {
-        return f"'{dep}', a dependency of the codegen schedule, was mid-import";
-    }
-    return schedule_tier_reason();
-}
-
-def pass_requires(p: type) -> tuple[AnalysisFact, ...] {
-    return PASS_CONTRACTS.get(p.__name__, PassContract()).requires;
-}
-
-def pass_provides(p: type) -> tuple[AnalysisFact, ...] {
-    return PASS_CONTRACTS.get(p.__name__, PassContract()).provides;
-}
+def contract_of(p: type[CompilerPass]) -> PassContract;
 
 def validate_schedule(
-    passes: list[type],
+    passes: PassSchedule,
     preprovided: (set[AnalysisFact] | None) = None,
     origin: str = 'schedule'
-) -> list[type] {
-    provided: set[AnalysisFact] = set(preprovided)
-        if preprovided is not None
-        else set();
-    for p in passes {
-        for tag in pass_requires(p) {
-            if tag not in provided {
-                raise RuntimeError(
-                    f"scheduling error: pass {p.__name__} requires analysis "
-                    f"'{tag}' which is neither provided by an earlier pass in "
-                    f"the {origin} nor already available -- the schedule was "
-                    f"constructed missing a declared dependency."
-                );
-            }
-        }
-        for tag in pass_provides(p) {
-            provided.add(tag);
-        }
-    }
-    return passes;
-}
+) -> PassSchedule;
 
-class TypeshedUnavailableError(RuntimeError) {}
+def providers_of(passes: PassSchedule) -> set[AnalysisFact];
 
-glob _native_sched_failure: dict[str, str] = {};
+def schedule_loading -> bool;
 
-def _note_native_schedule_failure(err: (BaseException | None)) {
-    if err is None {
-        _native_sched_failure.pop('reason', None);
-    } else {
-        _native_sched_failure['reason'] = f"{type(err).__name__}: {err}";
-    }
-}
+def tier_reason(product: CompilationProduct) -> str;
 
-def native_schedule_failure -> str {
-    return _native_sched_failure.get('reason', '');
-}
+def resolve(
+    product: CompilationProduct,
+    request: (ProductRequest | None) = None,
+    internal: bool = False,
+    peer_fell_back: bool = False
+) -> tuple[(PassSchedule | None), bool, bool];
 
-def get_boundary_analysis_sched -> list[type] {
-    return validate_schedule(
-        [BoundaryFactsPass, BoundaryAnalysisPass, EndpointEffectPass],
-        origin='boundary-analysis schedule'
-    );
-}
+def schedule_for(
+    product: CompilationProduct,
+    request: (ProductRequest | None) = None,
+    internal: bool = False
+) -> (PassSchedule | None);
 
-def get_bootstrap_ir_sched -> list[type] {
-    return validate_schedule(
-        [
-            AppContextPass,
-            GraphLoweringPass,
-            ASTValidationPass,
-            AbsorbImportsPass,
-            SymTabBuildPass,
-            DeclImplMatchPass,
-            SemanticAnalysisPass
-        ],
-        origin='bootstrap-ir schedule'
-    );
-}
+def unavailable(product: CompilationProduct) -> str;
 
-def get_ir_gen_sched(is_internal: bool = False, gen_mtir: bool = True) -> list[type] {
-    if schedule_tier_reason() {
-        return get_bootstrap_ir_sched();
-    }
-    _tok = _ir_sched_loading.set(True);
-    try {
-        _import_all(IR_SCHED_DEPS);
-        import from jaclang.compiler.passes.cfg_build_pass { CFGBuildPass }
-        import from jaclang.compiler.passes.sem_def_match_pass { SemDefMatchPass }
-        import from jaclang.compiler.passes.jsx_intrinsic_guard_pass {
-            JsxIntrinsicGuardPass
-        }
+def product_passes(
+    product: CompilationProduct, request: (ProductRequest | None) = None
+) -> PassSchedule;
 
-        passes: list[type] = [
-            AppContextPass,
-            GraphLoweringPass,
-            ASTValidationPass,
-            AbsorbImportsPass,
-            SymTabBuildPass,
-            DeclImplMatchPass,
-            SemanticAnalysisPass,
-            SemDefMatchPass,
-            CFGBuildPass
-        ];
-        if gen_mtir {
-            import from jaclang.compiler.passes.mtir_gen_pass { MTIRGenPass }
-            passes.append(MTIRGenPass);
-        }
-        passes.append(JsxIntrinsicGuardPass);
-        passes.append(PlacementApplyPass);
-        import from jaclang.compiler.passes.comptime_resolve_pass {
-            ComptimeResolvePass
-        }
-        passes.append(ComptimeResolvePass);
-        return validate_schedule(passes, origin='ir-gen schedule');
-    } except ImportError as e {
-        fail_loud_on_compiler_source(e);
-        if is_internal {
-            return get_bootstrap_ir_sched();
-        }
-        raise;
-    } finally {
-        _ir_sched_loading.reset(_tok);
-    }
-}
+def product_facts(product: CompilationProduct) -> set[AnalysisFact];
 
-def typeshed_stubs_available -> bool {
-    import jaclang;
-    return os.path.exists(
-        os.path.join(
-            os.path.dirname(str(jaclang.__file__)),
-            'vendor',
-            'typeshed',
-            'stdlib',
-            'builtins.pyi'
-        )
-    );
-}
+def early_passes -> PassSchedule;
 
-def require_typeshed_stubs -> None {
-    import from jaclang.jac0core.stubcat_hook { active }
-    if active() is not None or typeshed_stubs_available() {
-        return;
-    }
-    raise TypeshedUnavailableError(
-        "type inference is on the critical path of every compilation, but this "
-        "environment has neither a stub catalog nor the vendored typeshed stdlib "
-        "stubs, so no module can be compiled. In a source checkout run "
-        "'zig build fetch-typeshed'; in an installed environment reinstall the "
-        "jac distribution, whose payload carries the catalog."
-    );
-}
+def dependents(product: CompilationProduct) -> list[CompilationProduct];
 
-def get_analysis_sched -> list[type] {
-    if _analysis_sched_loading.get() or module_in_flight(ANALYSIS_SCHED_DEPS) {
-        return [];
-    }
-    require_typeshed_stubs();
-    _tok = _analysis_sched_loading.set(True);
-    try {
-        _import_all(ANALYSIS_SCHED_DEPS);
-        import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
-        import from jaclang.compiler.passes.static_analysis_pass { StaticAnalysisPass }
-        import from jaclang.compiler.passes.access_check_pass { AccessCheckPass }
-        import from jaclang.compiler.passes.variant_agreement_pass {
-            VariantAgreementPass
-        }
-        import from jaclang.compiler.passes.capability_check_pass {
-            ClientCapabilityCheckPass,
-            NativeCapabilityCheckPass,
-            PortabilityWarnPass
-        }
-        import from jaclang.compiler.passes.ownership_check_pass { OwnershipCheckPass }
-        import from jaclang.compiler.passes.region_infer_pass { RegionInferPass }
-        import from jaclang.compiler.tools.jac_auto_lint_pass { JacLintCheckPass }
-        return validate_schedule(
-            [
-                RegionInferPass,
-                VariantAgreementPass,
-                TypeCheckPass,
-                StaticAnalysisPass,
-                AccessCheckPass,
-                OwnershipCheckPass,
-                NativeCapabilityCheckPass,
-                ClientCapabilityCheckPass,
-                PortabilityWarnPass,
-                JacLintCheckPass
-            ],
-            preprovided=prereq_provides(CompilationProduct.ANALYSIS),
-            origin='analysis schedule'
-        );
-    } except ImportError as e {
-        fail_loud_on_compiler_source(e);
-        raise;
-    } finally {
-        _analysis_sched_loading.reset(_tok);
-    }
-}
+def product_ready(
+    program: JacProgram, module: Module, product: CompilationProduct
+) -> bool;
 
-glob _native_env_memo: dict[str, tuple[bool, str]] = {};
+def cancelled(cancel_token: (CancelToken | None)) -> bool;
 
-def native_pipeline_available -> tuple[bool, str] {
-    cached = _native_env_memo.get('verdict');
-    if cached is not None {
-        return cached;
-    }
-    if (
-        _analysis_sched_loading.get()
-        or _ir_sched_loading.get()
-        or _codegen_sched_loading.get()
-    ) {
-        return (True, '');
-    }
-    reason = '';
-    try {
-        import from jaclang.compiler.backends.native.llvm { _find_shim }
-        _find_shim();
-    } except ModuleNotFoundError {
-        reason = (
-            'native pipeline unavailable: LLVM shim (libjacllvm) '
-            + 'not found in this environment'
-        );
-    } except ImportError as e {
-        fail_loud_on_compiler_source(e);
-        return (False, 'native pipeline undecided: the compiler is still initializing');
-    } except Exception {
-        reason = (
-            'native pipeline unavailable: LLVM shim (libjacllvm) '
-            + 'not found in this environment'
-        );
-    }
-    verdict = (not reason, reason);
-    _native_env_memo['verdict'] = verdict;
-    return verdict;
-}
+def produce(
+    program: JacProgram,
+    module: Module,
+    product: CompilationProduct,
+    cancel_token: (CancelToken | None),
+    request: (ProductRequest | None),
+    task: (ProductTask | None) = None
+) -> (bool | None);
 
-def _py_codegen_tail -> list[type] {
-    return [NativeImportFactsPass, JcirGenPass, JcirBytecodeGenPass];
-}
+def require(
+    program: JacProgram,
+    module: Module,
+    product: CompilationProduct,
+    cancel_token: (CancelToken | None) = None,
+    request: (ProductRequest | None) = None
+) -> bool;
 
-def get_py_code_gen(
-    native: bool = True, provided: (set[AnalysisFact] | None) = None
-) -> list[type] {
-    if _codegen_tier_reason() {
-        return _py_codegen_tail();
-    }
-    _tok = _codegen_sched_loading.set(True);
-    try {
-        _import_all(CODEGEN_SCHED_DEPS);
-        import from jaclang.compiler.backends.es { EsastGenPass }
-        import from jaclang.compiler.passes.rc_facts_pass { RcFactsPass }
-
-        passes: list[type] = [RcFactsPass, EsastGenPass];
-        if native {
-            _import_all(NATIVE_CODEGEN_DEPS);
-            import from jaclang.compiler.backends.native {
-                NaIRGenPass,
-                NativeCompilePass
-            }
-            passes.extend([NaIRGenPass, NativeCompilePass]);
-            _note_native_schedule_failure(None);
-        }
-        passes.extend(_py_codegen_tail());
-        import from jaclang.compiler.passes.freeze_structure_pass {
-            FreezeStructurePass
-        }
-        passes.append(FreezeStructurePass);
-        return validate_schedule(
-            passes,
-            preprovided=providers_of_product(CompilationProduct.ANALYSIS)
-                if provided is None
-                else provided,
-            origin='codegen schedule'
-        );
-    } except ImportError as e {
-        fail_loud_on_compiler_source(e);
-        if native {
-            _note_native_schedule_failure(e);
-        }
-        return _py_codegen_tail();
-    } finally {
-        _codegen_sched_loading.reset(_tok);
-    }
-}
-
-def providers_of(passes: list[type]) -> set[AnalysisFact] {
-    out: set[AnalysisFact] = set();
-    for p in passes {
-        for tag in pass_provides(p) {
-            out.add(tag);
-        }
-    }
-    return out;
-}
-
-def get_format_sched(auto_lint: bool = False) -> list[type] {
-    import from jaclang.compiler.tools.comment_attach_pass { CommentAttachPass }
-    import from jaclang.compiler.tools.doc_ir_gen_pass { DocIRGenPass }
-    import from jaclang.compiler.tools.jac_auto_lint_pass { JacAutoLintPass }
-    import from jaclang.compiler.tools.jac_formatter_pass { JacFormatPass }
-    if auto_lint {
-        return validate_schedule(
-            [CommentAttachPass, JacAutoLintPass, DocIRGenPass, JacFormatPass],
-            origin='format schedule'
-        );
-    }
-    return validate_schedule(
-        [CommentAttachPass, DocIRGenPass, JacFormatPass], origin='format schedule'
-    );
-}
-
-def get_lint_sched -> list[type] {
-    import from jaclang.compiler.tools.jac_auto_lint_pass { JacLintCheckPass }
-    return validate_schedule([JacLintCheckPass], origin='lint schedule');
-}
-
-def build_wasm(program: JacProgram, path: str, exports: list[str]) -> bytes {
-    import from jaclang.compiler.driver.pipeline_runner { wasm_artifact }
-    return wasm_artifact(program, path, exports);
-}
+def invalidate(program: JacProgram, module: Module, product: CompilationProduct);
 
 def execute_passes(
     program: JacProgram,
     module: Module,
-    passes: list[type],
-    cancel_token: Event | None = None
-) -> Module {
-    import from jaclang.compiler.driver.pass_driver {
-        run_pass,
-        build_diagnostic_policy
-    }
-    program.analysis.retain_tasks(module);
-    provided = program.analysis.analyses_run.provided(module);
-    validate_schedule(
-        passes,
-        preprovided=provided,
-        origin=f"schedule for module {module.loc.mod_path}"
-    );
-    policy = build_diagnostic_policy(program);
-    completed = program.analysis.completed_passes.setdefault(id(module), set());
-    for step in passes {
-        if step.__name__ in completed {
-            continue;
-        }
-        if cancel_token is not None and cancel_token.is_set() {
-            return module;
-        }
-        module = run_pass(
-            step, module, program, cancel_token=cancel_token, policy=policy
-        ).module;
-        provided.update(pass_provides(step));
-        if cancel_token is None or not cancel_token.is_set() {
-            completed.add(step.__name__);
-        } else {
-            return module;
-        }
-    }
-    return module;
-}
+    passes: PassSchedule,
+    cancel_token: (CancelToken | None) = None
+) -> Module;
 
 def run_utility(
-    product: UtilityProduct,
+    product: CompilationProduct,
     ir: any,
     program: JacProgram,
-    cancel_token: Event | None = None
-) -> any {
-    import from jaclang.compiler.driver.pass_driver { run_pass }
-    step: type;
-    if product == UtilityProduct.PYTHON_AST {
-        import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
-        step = PyastBuildPass;
-    } elif product == UtilityProduct.PYTHON_SYMBOLS {
-        step = SymTabBuildPass;
-    } elif product == UtilityProduct.GRAMMAR {
-        import from jaclang.compiler.tools.grammar_extract_pass { GrammarExtractPass }
-        step = GrammarExtractPass;
-    } elif product == UtilityProduct.CFG_DOT {
-        import from jaclang.compiler.passes.cfg_build_pass { CoalesceBBPass }
-        step = CoalesceBBPass;
-    } elif product == UtilityProduct.NORMALIZE {
-        import from jaclang.compiler.tools.normalize_pass { NormalizePass }
-        step = NormalizePass;
-    } elif product == UtilityProduct.UNPARSE {
-        import from jaclang.compiler.tools.unparse_pass { UnparsePass }
-        step = UnparsePass;
-    } elif product == UtilityProduct.DOC {
-        import from jaclang.compiler.tools.doc_ir_gen_pass { DocIRGenPass }
-        step = DocIRGenPass;
-    } elif product == UtilityProduct.FORMAT {
-        import from jaclang.compiler.tools.jac_formatter_pass { JacFormatPass }
-        step = JacFormatPass;
-    } else {
-        raise ValueError(f"Unknown utility product: {product}");
-    }
-    return run_pass(step, ir, program, cancel_token=cancel_token);
-}
-
-def route_exports(program: JacProgram, path: str) -> tuple[str | None, str | None] {
-    artifact = program.get_client_artifact(os.path.realpath(path));
-    if artifact is None {
-        return (None, None);
-    }
-    return (artifact.manifest.page_export, artifact.manifest.layout_export);
-}
-
-def compile_application(
-    program: JacProgram, entry_path: str, options: CompileOptions
-) -> Module {
-    import copy;
-    import from pathlib { Path }
-    import from jaclang.compiler.driver.compilation_context {
-        bind_options,
-        context_program
-    }
-    import from jaclang.compiler.frontend.unitree { Import, ModulePath }
-    import from jaclang.compiler.backends.py.artifact_imports { package_sources }
-    import from jaclang.jac0core.ext_registry { is_annex }
-    import from jaclang.project.app_kinds { kind_has_client }
-    entry_path = os.path.realpath(entry_path);
-    project_root = os.path.realpath(
-        options.project_root or os.path.dirname(entry_path)
-    );
-    selected = context_program(program, bind_options(entry_path, program, options));
-    pending: list[tuple[JacProgram, str]] = [(selected, entry_path)];
-    if kind_has_client(options.app_kind) {
-        pages = Path(entry_path).parent / 'pages';
-        if pages.is_dir() {
-            pending.extend(
-                (selected, str(p))
-                for p in sorted(pages.rglob('*.jac'))
-                if not is_annex(str(p))
-            );
-        }
-    }
-    seen: set[tuple[str, str]] = set();
-    entry_module: Module | None = None;
-    while pending {
-        (context, path) = pending.pop(0);
-        if options.cancel_token is not None and options.cancel_token.is_set() {
-            break;
-        }
-        bound = bind_options(path, context, copy.copy(context.options));
-        bound.no_cgen = options.no_cgen;
-        bound.native_parity = options.native_parity;
-        bound.cancel_token = options.cancel_token;
-        context = context_program(context, bound);
-        identity = (context.context_key, path);
-        if identity in seen {
-            continue;
-        }
-        seen.add(identity);
-        module = program.compile(path, options=bound);
-        if path == entry_path and entry_module is None {
-            entry_module = module;
-        }
-        dependencies = package_sources(path, project_root);
-        dependencies.update(context.iface_registry().direct_deps.get(path, {}));
-        dependencies.update(
-            dependency
-            for (dependency, importers) in context.deps.dependents.items()
-            if path in importers
-        );
-        for statement in module.get_all_sub_nodes(Import) {
-            if not statement.is_jac or statement.is_virtual_jac {
-                continue;
-            }
-            imports = [statement.from_loc]
-                if statement.from_loc is not None
-                else [
-                    item
-                    for item in statement.items
-                    if isinstance(item, ModulePath)
-                ];
-            for imported in imports {
-                dependency = imported.resolve_relative_path();
-                if isinstance(dependency, str) and dependency.endswith('.jac') {
-                    dependencies.add(os.path.realpath(dependency));
-                }
-            }
-        }
-        pending.extend(
-            (context, dependency)
-            for dependency in sorted(dependencies)
-            if dependency.startswith(project_root + os.sep)
-                and os.path.isfile(dependency)
-                and not any(
-                    part in ('.jac', 'node_modules', 'venv')
-                    for part in os.path.relpath(dependency, project_root).split(os.sep)
-                )
-        );
-    }
-    if entry_module is None {
-        raise RuntimeError(
-            f'Application compilation cancelled before parsing {entry_path}'
-        );
-    }
-    return entry_module;
-}
+    cancel_token: (CancelToken | None) = None
+) -> any;

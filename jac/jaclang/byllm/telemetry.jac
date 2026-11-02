@@ -1,14 +1,20 @@
 import from contextvars { ContextVar }
 import logging;
-import type from jaclang.byllm.mtir { MTRuntime }
 
 glob _agent_callbacks: list[Callable[[dict[str, any]], None]] = [],
+     _llm_call_hooks: list[Callable[[dict[str, any]], None]] = [],
      logger = logging.getLogger(__name__),
      _current_invocation_id: ContextVar[str | None] = ContextVar(
          'byllm_invocation_id', `default=None
      );
 
 def:pub register_agent_callback(callback: Callable[[dict[str, any]], None]) -> None;
+
+def:pub register_llm_call_hook(hook: Callable[[dict[str, any]], None]) -> None;
+
+def:pub unregister_llm_call_hook(hook: Callable[[dict[str, any]], None]) -> None;
+
+def _notify_llm_call(mt_run: MTRuntime) -> None;
 
 def _aggregate_usage(usage_history: list[dict[str, any]]) -> dict[str, object];
 

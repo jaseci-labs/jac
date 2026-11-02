@@ -1,10 +1,3 @@
-"""Retained CPython object operations for native Jac module implementations.
-
-Handles borrow their arguments. Object-producing operations return a new
-reference (zero on error), released with jacpy_release or returned to Python.
-All calls require the interpreter lock; exceptions remain in CPython's thread
-state. No Python implementation of a replaced module is invoked here.
-"""
 enum builtin_kind {
     NONE = 0,
     BOOL = 1,
@@ -24,265 +17,90 @@ enum builtin_kind {
     OTHER = 15
 }
 
+import from jaclang.runtime.python.cpython_api {
+    PyUnicode_DecodeUTF8Stateful,
+    jacpy_unicode_intern_text,
+    jacpy_bytes_copy_to,
+    jacpy_bytes_from_payload,
+    jacpy_bytes_length,
+    jacpy_qualified_type_name,
+    jacpy_release,
+    jacpy_set_exception,
+    jacpy_text,
+    jacpy_tuple_set_owned,
+    jacpy_type_name,
+    jacpy_utf8,
+    jacpy_writer_new,
+    Py_NewRef,
+    Py_TYPE,
+    PyBool_Type,
+    PyByteArray_Type,
+    PyBytes_Type,
+    PyDict_GetItemRef,
+    PyDict_SetItem,
+    PyDict_Type,
+    PyErr_GetRaisedException,
+    PyErr_SetRaisedException,
+    PyFloat_Type,
+    PyFrozenSet_Type,
+    PyFunction_Type,
+    PyList_Type,
+    PyLong_Type,
+    PyMem_RawMalloc,
+    _PyNone_Type,
+    PyObject,
+    PyObject_Repr,
+    PyPickleBuffer_Type,
+    PySet_Type,
+    jacpy_audit_tuple_text,
+    PyTuple_New,
+    PyTuple_Type,
+    PyType_Type,
+    PyUnicode_Type,
+    PyUnicodeWriter,
+    PyObject_CallMethod
+}
 import from c {
-    def jacpy_bytes_copy_to(value: u64, target: bytes, size: i64);  def jacpy_bytes_from_data(
-        data: bytes, size: i64
-    ) -> u64;  def jacpy_dict_memory(value: u64) -> i64;  def jacpy_dict_items(
-        value: u64
-    ) -> u64;  def jacpy_unicode_intern(value: u64) -> u64;  def jacpy_exception_context(
-        error: u64, cause: u64
-    );  def jacpy_not_implemented -> u64;  def jacpy_ellipsis -> u64;  def jacpy_is_iterator(
-        value: u64
-    ) -> i64;  def jacpy_mapping_optional_item(mapping: u64, key: u64) -> u64;  def jacpy_audit_pickle_find(
-        module: u64, name: u64
-    ) -> i64;  def jacpy_builtin_kind(value: u64) -> i64;  def jacpy_is_not_implemented(
-        value: u64
-    ) -> i64;  def jacpy_set_new(iterable: u64, frozen: i64) -> u64;  def jacpy_set_add(
-        set: u64, value: u64
-    ) -> i64;  def jacpy_memoryview(value: u64) -> u64;  def jacpy_is_type(
-        value: u64
-    ) -> i64;  def jacpy_float_from_text(value: u64) -> u64;  def jacpy_bytes_unescape(
-        value: u64
-    ) -> u64;  def jacpy_number_long(value: u64) -> u64;  def jacpy_long_signed_bytes(
-        value: u64, size: i64
-    ) -> u64;  def jacpy_long_from_signed_bytes(value: u64) -> u64;  def jacpy_bytes_decode(
-        value: u64, encoding: str, errors: str
-    ) -> u64;  def jacpy_unicode_encode(
-        value: u64, encoding: str, errors: str
-    ) -> u64;  def jacpy_optional_attr(value: u64, name: str) -> u64;  def jacpy_setattr(
-        value: u64, name: u64, item: u64
-    ) -> i64;  def jacpy_import_object(name: u64) -> u64;  def jacpy_type_new(
-        type: u64, args: u64, kwargs: u64
-    ) -> u64;  def jacpy_unicode_decode_bytes(value: u64, encoding: str) -> u64;  def jacpy_unicode_from_ordinal(
-        point: i64
-    ) -> u64;  def jacpy_memory_move(target: u64, source: u64, size: i64);  def jacpy_bytearray_new(
-        size: i64
-    ) -> u64;  def jacpy_bytearray_resize(value: u64, size: i64) -> i64;  def jacpy_bytearray_memory(
-        value: u64
-    ) -> i64;  def jacpy_float32_bits(value: f64) -> u64;  def jacpy_tuple_unique(
-        value: u64
-    ) -> i64;  def jacpy_tuple_exchange(value: u64, index: i64, item: u64) -> u64;  def jacpy_call_two(
-        callable: u64, a: u64, b: u64
-    ) -> u64;  def jacpy_object_type(value: u64) -> u64;  def jacpy_callable(
-        value: u64
-    ) -> i64;  def jacpy_is_exact_unicode(value: u64) -> i64;  def jacpy_is_exact_tuple(
-        value: u64
-    ) -> i64;  def jacpy_object_hash(value: u64) -> i64;  def jacpy_dict_copy(
-        value: u64
-    ) -> u64;  def jacpy_dict_update(target: u64, source: u64) -> i64;  def jacpy_ordered_dict_new -> u64;  def jacpy_long_fits_i64(
-        value: u64
-    ) -> i64;  def jacpy_sequence_tuple(value: u64) -> u64;  def jacpy_is_exact_float(
-        value: u64
-    ) -> i64;  def jacpy_long_double(value: u64) -> f64;  def jacpy_special_noargs(
-        value: u64, name: str
-    ) -> u64;  def jacpy_long_from_double(value: f64) -> u64;  def jacpy_libm_parts(
-        value: f64, integral: i64
-    ) -> u64;  def jacpy_float_bits(value: f64) -> u64;  def jacpy_float_from_bits(
-        value: u64
-    ) -> f64;  def jacpy_long_frexp(value: u64) -> u64;  def jacpy_long_sign(
-        value: u64
-    ) -> i64;  def jacpy_long_gcd(a: u64, b: u64) -> u64;  def jacpy_long_shift(
-        value: u64, count: i64, left: i64
-    ) -> u64;  def jacpy_sequence_list(value: u64) -> u64;  def jacpy_dict_repr(
-        value: u64
-    ) -> u64;  def jacpy_compare_bool(a: u64, b: u64, operation: i64) -> i64;  def jacpy_set_key_error(
-        key: u64
-    );  def jacpy_release(handle: u64);  def jacpy_retain(handle: u64) -> u64;  def jacpy_list_item(
-        handle: u64, index: i64
-    ) -> u64;  def jacpy_list_size(handle: u64) -> i64;  def jacpy_list_append(
-        handle: u64, value: u64
-    ) -> i64;  def jacpy_list_delete(handle: u64, start: i64, end: i64) -> i64;  def jacpy_list_exchange(
-        handle: u64, index: i64, value: u64
-    ) -> u64;  def jacpy_list_swap(handle: u64, left: i64, right: i64);  def jacpy_none -> u64;  def jacpy_int(
-        value: i64
-    ) -> u64;  def jacpy_raise_error(kind: str, message: str, size: i64);  def jacpy_object_size(
-        handle: u64
-    ) -> i64;  def jacpy_sequence_slot(handle: u64) -> u64;  def jacpy_slot_item(
-        slot: u64, handle: u64, index: i64
-    ) -> u64;  def jacpy_call_one(callable: u64, argument: u64) -> u64;  def jacpy_less(
-        left: u64, right: u64
-    ) -> i64;  def jacpy_comparison_slot(handle: u64) -> u64;  def jacpy_same_type(
-        left: u64, right: u64
-    ) -> i64;  def jacpy_slot_less(slot: u64, left: u64, right: u64) -> i64;  def jacpy_insert(
-        handle: u64, index: i64, value: u64
-    ) -> i64;  def jacpy_recursion_enter(context: str) -> i64;  def jacpy_recursion_leave;  def jacpy_is_long(
-        handle: u64
-    ) -> i64;  def jacpy_long_absolute(handle: u64) -> u64;  def jacpy_hash_unsigned(
-        handle: u64
-    ) -> u64;  def jacpy_long_bits(handle: u64) -> i64;  def jacpy_long_bytes(
-        handle: u64, size: i64
-    ) -> u64;  def jacpy_long_from_bytes(handle: u64) -> u64;  def jacpy_unsigned_long(
-        handle: u64
-    ) -> u64;  def jacpy_integer_value(handle: u64) -> i64;  def jacpy_entropy(
-        size: i64
-    ) -> u64;  def jacpy_clear_error;  def jacpy_error_pending -> i64;  def jacpy_wall_time -> i64;  def jacpy_monotonic_time -> i64;  def jacpy_process_id -> i64;  def jacpy_is_tuple(
-        handle: u64
-    ) -> i64;  def jacpy_tuple_size(handle: u64) -> i64;  def jacpy_tuple_new(
-        size: i64
-    ) -> u64;  def jacpy_tuple_item(handle: u64, index: i64) -> u64;  def jacpy_tuple_set_owned(
-        handle: u64, index: i64, value: u64
-    ) -> i64;  def jacpy_buffer_size(handle: u64) -> i64;  def jacpy_buffer_byte(
-        handle: u64, index: i64
-    ) -> i64;  def jacpy_buffer_new(size: i64) -> u64;  def jacpy_buffer_set(
-        handle: u64, index: i64, value: i64
-    );  def jacpy_set_exception(kind: u64, message: str, size: i64);  def jacpy_add(
-        a: u64, b: u64
-    ) -> u64;  def jacpy_sub(a: u64, b: u64) -> u64;  def jacpy_mul(
-        a: u64, b: u64
-    ) -> u64;  def jacpy_matmul(a: u64, b: u64) -> u64;  def jacpy_floordiv(
-        a: u64, b: u64
-    ) -> u64;  def jacpy_truediv(a: u64, b: u64) -> u64;  def jacpy_mod(
-        a: u64, b: u64
-    ) -> u64;  def jacpy_lshift(a: u64, b: u64) -> u64;  def jacpy_rshift(
-        a: u64, b: u64
-    ) -> u64;  def jacpy_and_(a: u64, b: u64) -> u64;  def jacpy_xor(
-        a: u64, b: u64
-    ) -> u64;  def jacpy_or_(a: u64, b: u64) -> u64;  def jacpy_iadd(
-        a: u64, b: u64
-    ) -> u64;  def jacpy_isub(a: u64, b: u64) -> u64;  def jacpy_imul(
-        a: u64, b: u64
-    ) -> u64;  def jacpy_imatmul(a: u64, b: u64) -> u64;  def jacpy_ifloordiv(
-        a: u64, b: u64
-    ) -> u64;  def jacpy_itruediv(a: u64, b: u64) -> u64;  def jacpy_imod(
-        a: u64, b: u64
-    ) -> u64;  def jacpy_ilshift(a: u64, b: u64) -> u64;  def jacpy_irshift(
-        a: u64, b: u64
-    ) -> u64;  def jacpy_iand(a: u64, b: u64) -> u64;  def jacpy_ixor(
-        a: u64, b: u64
-    ) -> u64;  def jacpy_ior(a: u64, b: u64) -> u64;  def jacpy_concat(
-        a: u64, b: u64
-    ) -> u64;  def jacpy_iconcat(a: u64, b: u64) -> u64;  def jacpy_getitem(
-        a: u64, b: u64
-    ) -> u64;  def jacpy_neg(a: u64) -> u64;  def jacpy_pos(a: u64) -> u64;  def jacpy_abs(
-        a: u64
-    ) -> u64;  def jacpy_invert(a: u64) -> u64;  def jacpy_index(a: u64) -> u64;  def jacpy_power(
-        a: u64, b: u64, inplace: i64
-    ) -> u64;  def jacpy_truth(a: u64) -> i64;  def jacpy_boolean(value: i64) -> u64;  def jacpy_is_none(
-        a: u64
-    ) -> i64;  def jacpy_compare(a: u64, b: u64, operation: i64) -> u64;  def jacpy_contains(
-        a: u64, b: u64
-    ) -> i64;  def jacpy_sequence_index(a: u64, b: u64) -> i64;  def jacpy_sequence_count(
-        a: u64, b: u64
-    ) -> i64;  def jacpy_length_hint(a: u64, fallback: i64) -> i64;  def jacpy_setitem(
-        a: u64, b: u64, value: u64
-    ) -> i64;  def jacpy_delitem(a: u64, b: u64) -> i64;  def jacpy_getattr(
-        a: u64, name: u64
-    ) -> u64;  def jacpy_call(callable: u64, args: u64, kwargs: u64) -> u64;  def jacpy_tuple_slice(
-        a: u64, start: i64, end: i64
-    ) -> u64;  def jacpy_is_unicode(a: u64) -> i64;  def jacpy_text(
-        data: str, size: i64
-    ) -> u64;  def jacpy_repr(a: u64) -> u64;  def jacpy_repr_enter(a: u64) -> i64;  def jacpy_repr_leave(
-        a: u64
-    );  def jacpy_unicode_split(a: u64, sep: u64) -> u64;  def jacpy_unicode_join(
-        sep: u64, items: u64
-    ) -> u64;  def jacpy_dict_size(a: u64) -> i64;  def jacpy_dict_entry(
-        a: u64, position: i64
-    ) -> u64;  def jacpy_import_attr(module: str, name: str) -> u64;  def jacpy_utf8(
-        a: u64
-    ) -> u64;  def jacpy_crypto_compare(a: u64, b: u64, size: i64) -> i64;  def jacpy_lock_new -> u64;  def jacpy_lock_free(
-        handle: u64
-    );  def jacpy_lock_notify(handle: u64);  def jacpy_lock_wait(
-        handle: u64, timeout_ns: i64
-    ) -> i64;  def jacpy_pending_calls -> i64;  def jacpy_timeout_ns(
-        value: u64
-    ) -> i64;  def jacpy_deadline(timeout: i64) -> i64;  def jacpy_deadline_remaining(
-        deadline: i64
-    ) -> i64;  def jacpy_set_none_exception(kind: u64);  def jacpy_writer_new -> u64;  def jacpy_writer_discard(
-        writer: u64
-    );  def jacpy_writer_finish(writer: u64) -> u64;  def jacpy_writer_char(
-        writer: u64, value: i64
-    ) -> i64;  def jacpy_writer_text(writer: u64, text: u64) -> i64;  def jacpy_writer_slice(
-        writer: u64, text: u64, start: i64, end: i64
-    ) -> i64;  def jacpy_writer_ascii(writer: u64, text: str, size: i64) -> i64;  def jacpy_unicode_size(
-        text: u64
-    ) -> i64;  def jacpy_unicode_char(text: u64, index: i64) -> i64;  def jacpy_unicode_slice(
-        text: u64, start: i64, end: i64
-    ) -> u64;  def jacpy_dict_default(dictionary: u64, key: u64, value: u64) -> u64;  def jacpy_dict_set(
-        dictionary: u64, key: u64, value: u64
-    ) -> i64;  def jacpy_raise_value(kind: str, value: u64);  def jacpy_set_object_exception(
-        kind: u64, value: u64
-    );  def jacpy_list_new -> u64;  def jacpy_dict_new -> u64;  def jacpy_is_bool(
-        value: u64
-    ) -> i64;  def jacpy_is_float(value: u64) -> i64;  def jacpy_is_list(
-        value: u64
-    ) -> i64;  def jacpy_is_dict(value: u64) -> i64;  def jacpy_is_exact_dict(
-        value: u64
-    ) -> i64;  def jacpy_long_repr(value: u64) -> u64;  def jacpy_float_repr(
-        value: u64
-    ) -> u64;  def jacpy_float_value(value: u64) -> f64;  def jacpy_identity(
-        value: u64
-    ) -> u64;  def jacpy_type_name(value: u64) -> u64;  def jacpy_qualified_type_name(
-        value: u64
-    ) -> u64;  def jacpy_error_take -> u64;  def jacpy_error_restore(value: u64);  def jacpy_exception_note(
-        error: u64, note: u64
-    ) -> i64;  def jacpy_sequence_fast(value: u64, message: str) -> u64;  def jacpy_fast_size(
-        value: u64
-    ) -> i64;  def jacpy_fast_item(value: u64, index: i64) -> u64;  def jacpy_mapping_items(
-        value: u64
-    ) -> u64;  def jacpy_list_sort(value: u64) -> i64;  def jacpy_dict_remove(
-        dictionary: u64, key: u64
-    ) -> i64;  def jacpy_unicode_concat(left: u64, right: u64) -> u64;  def jacpy_sequence_repeat(
-        value: u64, count: i64
-    ) -> u64;  def jacpy_is_exact_long(value: u64) -> i64;  def jacpy_type_check(
-        value: u64, type: u64
-    ) -> i64;  def jacpy_long_as_int32(value: u64) -> i64;  def jacpy_getattr_string(
-        value: u64, name: str
-    ) -> u64;  def jacpy_dict_get(dictionary: u64, key: u64) -> u64;  def jacpy_dict_keys(
-        dictionary: u64
-    ) -> u64;  def jacpy_dict_pop_discard(dictionary: u64, key: u64) -> i64;  def jacpy_iter(
-        value: u64
-    ) -> u64;  def jacpy_iter_next(value: u64) -> u64;  def jacpy_number_float(
-        value: u64
-    ) -> u64;  def jacpy_number_check(value: u64) -> i64;  def jacpy_object_str(
-        value: u64
-    ) -> u64;  def jacpy_error_is(name: str) -> i64;  def jacpy_number_as_double(
-        value: u64
-    ) -> f64;  def jac_heap_size(address: u64) -> i64;  def jac_list_heap_size(
+    def jac_heap_size(address: u64) -> i64;  def jac_list_heap_size(
         address: u64
-    ) -> i64;  def jacpy_dict_clear(value: u64);  def jacpy_native_size(
-        kind: i64, alignment: i64
-    ) -> i64;  def jacpy_native_little_endian -> i64;  def jacpy_memory_byte(
-        address: u64, offset: i64
-    ) -> i64;  def jacpy_memory_set(address: u64, offset: i64, value: i64);  def jacpy_memory_zero(
-        address: u64, size: i64
-    );  def jacpy_memory_copy(target: u64, source: u64, size: i64);  def jacpy_bytes_from_memory(
-        address: u64, size: i64
-    ) -> u64;  def jacpy_is_bytes(value: u64) -> i64;  def jacpy_is_bytearray(
-        value: u64
-    ) -> i64;  def jacpy_bytes_address(value: u64) -> u64;  def jacpy_bytes_length(
-        value: u64
-    ) -> i64;  def jacpy_index_check(value: u64) -> i64;  def jacpy_long_pointer(
-        value: u64
-    ) -> u64;  def jacpy_uint(value: u64) -> u64;  def jacpy_long_u64(
-        value: u64
-    ) -> u64;  def jacpy_float(value: f64) -> u64;  def jacpy_complex_value(
-        value: u64
-    ) -> u64;  def jacpy_complex_real(value: u64) -> f64;  def jacpy_complex_imag(
-        value: u64
-    ) -> f64;  def jacpy_complex(real: f64, imaginary: f64) -> u64;  def jacpy_float_pack(
-        value: f64, address: u64, size: i64, little: i64
-    ) -> i64;  def jacpy_float_unpack(address: u64, size: i64, little: i64) -> f64;  def jacpy_native_float_store(
-        value: f64, address: u64, size: i64
-    );  def jacpy_clear_errno;  def jacpy_math_errno -> i64;
+    ) -> i64;
 }
 
-def object_error(kind: str, message: str) {
-    jacpy_raise_error(kind, message, i64(len(message.encode("utf-8"))));
-}
+glob:priv BUILTIN_TYPES: list[ptr[PyObject]] = [
+         addressof(_PyNone_Type),
+         addressof(PyBool_Type),
+         addressof(PyLong_Type),
+         addressof(PyFloat_Type),
+         addressof(PyBytes_Type),
+         addressof(PyUnicode_Type),
+         addressof(PyTuple_Type),
+         addressof(PyList_Type),
+         addressof(PyDict_Type),
+         addressof(PySet_Type),
+         addressof(PyFrozenSet_Type),
+         addressof(PyByteArray_Type),
+         addressof(PyType_Type),
+         addressof(PyFunction_Type),
+         addressof(PyPickleBuffer_Type)
+     ];
 
+def builtin_kind_of(value: ptr[PyObject]) -> int;
 
-# The payload of a retained bytes-like value, copied into Jac storage.
-def read_buffer(handle: u64) -> bytes {
-    size = jacpy_bytes_length(handle);
-    data = b"\x00" * int(size);
-    jacpy_bytes_copy_to(handle, data, size);
-    return data;
-}
+def builtin_type(kind: builtin_kind) -> ptr[PyObject];
 
-def write_buffer(data: bytes) -> u64 {
-    return jacpy_bytes_from_data(data, i64(len(data)));
-}
+def object_error(kind: ptr[PyObject], message: str);
 
+def c_int(value: int) -> i32;
+
+def c_size(value: i64) -> u64;
+
+def memory_byte(address: ptr, offset: i64) -> i64;
+
+def memory_set(address: ptr, offset: i64, value: i64);
+
+def read_buffer(handle: ptr[PyObject]) -> bytes;
+
+def write_buffer(data: bytes) -> ptr[PyObject];
 
 obj module_failure(Exception) {
     has message: str;
@@ -290,20 +108,121 @@ obj module_failure(Exception) {
 
 obj boundary_failure(Exception) {}
 
-def required(handle: u64) -> u64 {
+def raise_boundary_failure;
+
+def required(handle: ptr[PyObject]) -> ptr[PyObject];
+
+def text_object(value: str) -> ptr[PyObject];
+
+def text_value(value: ptr[PyObject]) -> str;
+
+def repr_value(value: ptr[PyObject]) -> str;
+
+def pair(first: ptr[PyObject], second: ptr[PyObject]) -> ptr[PyObject];
+
+def checked(status: i64);
+
+def object_tuple(values: list[ptr[PyObject]]) -> ptr[PyObject];
+
+def audit_event(event: str, values: list[ptr[PyObject]]) -> bool;
+
+def type_name(value: ptr[PyObject], qualified: bool = False) -> str;
+
+def serialization_note(
+    value: ptr[PyObject], key: ptr[PyObject], index: int, kind: int, detail: str = ""
+);
+
+def dict_set_text(dict_: ptr[PyObject], key: str, value: ptr[PyObject]) -> i32;
+
+def dict_get_text(dict_: ptr[PyObject], key: str) -> tuple[i32, ptr[PyObject]];
+
+def new_writer -> ptr[PyUnicodeWriter];
+
+def c_string_length(address: ptr[u8], limit: int = -1) -> int;
+
+def c_string_text(address: ptr[u8], limit: int = -1) -> ptr[PyObject];
+
+def c_text(address: ptr, size: i64) -> ptr[PyObject];
+
+def c_string_copy(text: str) -> ptr[u8];
+
+obj StaticText {
+    has text: str,
+        address: ptr[u8] = ptr[u8]();
+
+    def get -> ptr[u8];
+}
+
+impl builtin_kind_of(value: ptr[PyObject]) -> int {
+    exact = Py_TYPE(value);
+    for kind in range(len(BUILTIN_TYPES)) {
+        if BUILTIN_TYPES[kind] == exact {
+            return kind;
+        }
+    }
+    return builtin_kind.OTHER.value;
+}
+
+impl builtin_type(kind: builtin_kind) -> ptr[PyObject] {
+    return Py_NewRef(BUILTIN_TYPES[kind.value]);
+}
+
+impl object_error(kind: ptr[PyObject], message: str) {
+    jacpy_set_exception(kind, message, i64(len(message.encode("utf-8"))));
+}
+
+impl c_int(value: int) -> i32 {
+    bits = value & 0xFFFFFFFF;
+    if bits >= 0x80000000 {
+        bits -= 0x100000000;
+    }
+    return i32(bits);
+}
+
+impl c_size(value: i64) -> u64 {
+    if value >= 0 {
+        return u64(value);
+    }
+    return ~u64(-(value + 1));
+}
+
+impl memory_byte(address: ptr, offset: i64) -> i64 {
+    return i64(ptr[u8](int(address) + int(offset)).view(1)[0]);
+}
+
+impl memory_set(address: ptr, offset: i64, value: i64) {
+    ptr[u8](int(address) + int(offset)).view(1)[0] = u8(value & 255);
+}
+
+impl read_buffer(handle: ptr[PyObject]) -> bytes {
+    size = jacpy_bytes_length(handle);
+    data = b"\x00" * int(size);
+    jacpy_bytes_copy_to(handle, data, size);
+    return data;
+}
+
+impl write_buffer(data: bytes) -> ptr[PyObject] {
+    return jacpy_bytes_from_payload(data, i64(len(data)));
+}
+
+impl raise_boundary_failure {
+    raise boundary_failure();
+}
+
+impl required(handle: ptr[PyObject]) -> ptr[PyObject] {
     if handle == 0 {
-        raise boundary_failure();
+        raise_boundary_failure();
     }
     return handle;
 }
 
-def text_object(value: str) -> u64 {
+impl text_object(value: str) -> ptr[PyObject] {
     return required(
         jacpy_text(value, i64(len(value.encode("utf-8", "surrogatepass"))))
     );
 }
 
-def text_value(value: u64) -> str {
+impl text_value(value: ptr[PyObject]) -> str {
     buffer = required(jacpy_utf8(value));
     try {
         return read_buffer(buffer).decode("utf-8", "surrogatepass");
@@ -312,8 +231,8 @@ def text_value(value: u64) -> str {
     }
 }
 
-def repr_value(value: u64) -> str {
-    result = required(jacpy_repr(value));
+impl repr_value(value: ptr[PyObject]) -> str {
+    result = required(PyObject_Repr(value));
     try {
         return text_value(result);
     } finally {
@@ -321,31 +240,52 @@ def repr_value(value: u64) -> str {
     }
 }
 
-# Both inputs are borrowed; the returned tuple owns its references.
-def pair(first: u64, second: u64) -> u64 {
-    result = required(jacpy_tuple_new(2));
-    jacpy_tuple_set_owned(result, 0, jacpy_retain(first));
-    jacpy_tuple_set_owned(result, 1, jacpy_retain(second));
+impl pair(first: ptr[PyObject], second: ptr[PyObject]) -> ptr[PyObject] {
+    result = required(PyTuple_New(2));
+    jacpy_tuple_set_owned(result, 0, Py_NewRef(first));
+    jacpy_tuple_set_owned(result, 1, Py_NewRef(second));
     return result;
 }
 
-
-def checked(status: i64) {
+impl checked(status: i64) {
     if status < 0 {
-        raise boundary_failure();
+        raise_boundary_failure();
     }
 }
 
-# Entries are borrowed; each successful result owns all its element references.
-def object_tuple(values: list[u64]) -> u64 {
-    result = required(jacpy_tuple_new(i64(len(values))));
+impl object_tuple(values: list[ptr[PyObject]]) -> ptr[PyObject] {
+    result = required(PyTuple_New(i64(len(values))));
     for i in range(len(values)) {
-        jacpy_tuple_set_owned(result, i64(i), jacpy_retain(values[i]));
+        jacpy_tuple_set_owned(result, i64(i), Py_NewRef(values[i]));
     }
     return result;
 }
 
-def type_name(value: u64, qualified: bool = False) -> str {
+impl audit_event(event: str, values: list[ptr[PyObject]]) -> bool {
+    complete = True;
+    for value in values {
+        if not value {
+            complete = False;
+        }
+    }
+    status = i32(-1);
+    if complete {
+        arguments = PyTuple_New(i64(len(values)));
+        if arguments {
+            for i in range(len(values)) {
+                jacpy_tuple_set_owned(arguments, i64(i), Py_NewRef(values[i]));
+            }
+            status = jacpy_audit_tuple_text(event, arguments);
+            jacpy_release(arguments);
+        }
+    }
+    for value in values {
+        jacpy_release(value);
+    }
+    return status >= 0;
+}
+
+impl type_name(value: ptr[PyObject], qualified: bool = False) -> str {
     name = required(
         jacpy_qualified_type_name(value) if qualified else jacpy_type_name(value)
     );
@@ -356,9 +296,10 @@ def type_name(value: u64, qualified: bool = False) -> str {
     }
 }
 
-# Preserve the original exception if formatting a diagnostic invokes user code.
-def serialization_note(value: u64, key: u64, index: int, kind: int, detail: str = "") {
-    error = jacpy_error_take();
+impl serialization_note(
+    value: ptr[PyObject], key: ptr[PyObject], index: int, kind: int, detail: str = ""
+) {
+    error = PyErr_GetRaisedException();
     if error == 0 {
         return;
     }
@@ -371,35 +312,83 @@ def serialization_note(value: u64, key: u64, index: int, kind: int, detail: str 
         }
         note = text_object("when serializing " + type_name(value, True) + tail);
         try {
-            checked(jacpy_exception_note(error, note));
+            added = PyObject_CallMethod(error, "add_note", "O", note);
+            checked(i64(0 if added else -1));
+            jacpy_release(added);
         } finally {
             jacpy_release(note);
         }
     } except boundary_failure {} finally {
-        jacpy_error_restore(error);
+        PyErr_SetRaisedException(error);
     }
 }
 
-import from c {
-    obj SliceBounds {
-        has start: i64,
-            stop: i64,
-            step: i64,
-            count: i64,
-            valid: i64;
-    }  def jacpy_is_slice(value: u64) -> i64;  def jacpy_slice_unpack(
-        value: u64
-    ) -> SliceBounds;  def jacpy_slice_adjust(
-        length: i64, bounds: SliceBounds
-    ) -> SliceBounds;  def jacpy_audit(event: str, arguments: u64) -> i64;  def jacpy_warn(
-        category: str, message: str, stacklevel: i64
-    ) -> i64;  def jacpy_builtins -> u64;  def jacpy_type_subtype(
-        type: u64, base: u64
-    ) -> i64;  def jacpy_number_ssize(value: u64, exception: str) -> i64;
+impl dict_set_text(dict_: ptr[PyObject], key: str, value: ptr[PyObject]) -> i32 {
+    key_object = jacpy_unicode_intern_text(key);
+    if not key_object {
+        return i32(-1);
+    }
+    status = PyDict_SetItem(dict_, key_object, value);
+    jacpy_release(key_object);
+    return status;
 }
 
-import from c {
-    def jacpy_builtin_type(kind: i64) -> u64;  def jacpy_generic_getattr(
-        object: u64, name: u64
-    ) -> u64;  def jacpy_generic_setattr(object: u64, name: u64, value: u64) -> i32;
+impl dict_get_text(dict_: ptr[PyObject], key: str) -> tuple[i32, ptr[PyObject]] {
+    value: ptr[PyObject] = ptr[PyObject]();
+    key_object = jacpy_unicode_intern_text(key);
+    if not key_object {
+        return (i32(-1), value);
+    }
+    status = PyDict_GetItemRef(dict_, key_object, &mut value);
+    jacpy_release(key_object);
+    return (status, value);
+}
+
+impl new_writer -> ptr[PyUnicodeWriter] {
+    writer = jacpy_writer_new();
+    if not writer {
+        raise boundary_failure();
+    }
+    return writer;
+}
+
+impl c_string_length(address: ptr[u8], limit: int = -1) -> int {
+    length = 0;
+    while limit < 0 or length < limit {
+        if (address + length).view(1)[0] == 0 {
+            break;
+        }
+        length += 1;
+    }
+    return length;
+}
+
+impl c_string_text(address: ptr[u8], limit: int = -1) -> ptr[PyObject] {
+    return c_text(ptr(address), i64(c_string_length(address, limit)));
+}
+
+impl c_text(address: ptr, size: i64) -> ptr[PyObject] {
+    return PyUnicode_DecodeUTF8Stateful(address, size, ptr[u8](), None);
+}
+
+impl c_string_copy(text: str) -> ptr[u8] {
+    encoded = text.encode("utf-8");
+    size = len(encoded);
+    memory = ptr[u8](PyMem_RawMalloc(u64(size + 1)));
+    if memory.is_null() {
+        return memory;
+    }
+    characters = memory.view(size + 1);
+    for i in range(size) {
+        characters[i] = u8(encoded[i]);
+    }
+    characters[size] = u8(0);
+    return memory;
+}
+
+impl StaticText.get -> ptr[u8] {
+    if not self.address {
+        self.address = c_string_copy(self.text);
+    }
+    return self.address;
 }

@@ -34,14 +34,15 @@ impl AccessCheckPass._collect_bridged_imports(ir_in: Module) -> None {
             return nd.abs_path;
         }
         try {
-            found = nd.resolve_relative_path();
+            if isinstance(nd, ModulePath) {
+                return nd.resolve_relative_path();
+            }
+            return nd.resolve_relative_path();
         } except Exception {
             return None;
         }
-        return found if isinstance(found, str) else None;
     }
 
-    import from jaclang.compiler.driver.boundary_classify { classify_cross_app_import }
     for imp in ir_in.get_all_sub_nodes(typ=Import) {
         facts = imp.boundary_facts;
         if facts is not None {
@@ -134,12 +135,11 @@ impl AccessCheckPass._module_app_facts(
     if not mod_path {
         return (None, mod.jac_project_root);
     }
-    import from jaclang.project.modresolver { find_jac_project_root }
-    import from jaclang.compiler.driver.compilation_context { context_app }
+
     app = context_app(mod_path);
     return (
         app.name if app is not None else None,
-        mod.jac_project_root or find_jac_project_root(mod_path)
+        mod.jac_project_root or active_host().project_root(mod_path)
     );
 }
 
@@ -177,7 +177,7 @@ impl AccessCheckPass._check_app_laws(
 impl AccessCheckPass._check_member(
     use_node: AstSymbolNode, sym: Symbol, owner: Archetype
 ) -> None {
-    user = use_node.find_parent_of_type(Archetype);
+    user = use_node.enclosing_decl(Archetype);
     if (sym.access == SymbolAccess.PRIVATE) {
         if (user is not owner) {
             self.ctx.emit(

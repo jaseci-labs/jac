@@ -7,7 +7,7 @@ import tomllib;
 import time;
 import json;
 import from pathlib { Path }
-import from subprocess { PIPE, Popen, run }
+import from subprocess { PIPE, Popen, TimeoutExpired, run }
 import unittest.mock;
 
 """Test jac create --kind mobile command."""
@@ -516,7 +516,7 @@ test "add npm with mixed deps" {
             os.chdir(temp_dir);
 
             # Create jac.toml with both pypi and npm sections
-            toml_content = '[project]\nname = "fullstack-app"\nversion = "1.0.0"\ndescription = "Test project with mixed deps"\nentry-point = "app"\n\n[dependencies]\nrequests = "~=2.31"\nflask = "~=3.0"\n\n[dependencies.npm]\n\n[dev-dependencies]\npytest = ">=8.0.0"\n';
+            toml_content = '[project]\nname = "fullstack-app"\nversion = "1.0.0"\ndescription = "Test project with mixed deps"\nentry-point = "app"\n\n[dependencies.pypi]\nrequests = "~=2.31"\nflask = "~=3.0"\n\n[dependencies.npm]\n\n[dev-dependencies.pypi]\npytest = ">=8.0.0"\n';
             config_path = os.path.join(temp_dir, "jac.toml");
             with open(config_path, "w") as f {
                 f.write(toml_content);
@@ -1060,16 +1060,23 @@ test "create cl and run no root files" {
 
             files_before_run = get_root_files(project_path);
 
-            # Run jac run main.jac
+            # Execute the entry. A mobile app serves the Expo dev server by
+            # default, which never exits; --no-serve runs the program itself.
             process = Popen(
-                ["jac", "run", "main.jac"],
+                ["jac", "run", "--no-serve", "main.jac"],
                 cwd=project_path,
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
                 text=True,
             );
-            (stdout, stderr) = process.communicate();
+            try {
+                (stdout, stderr) = process.communicate(timeout=600);
+            } except TimeoutExpired {
+                process.kill();
+                (stdout, stderr) = process.communicate();
+                assert False , f"jac run --no-serve did not exit: {stderr}";
+            }
             assert process.returncode == 0 , f"jac run failed: {stderr}";
 
             # Record files after run
@@ -1098,7 +1105,7 @@ test "vite build injects core deps without prompting" {
         bundler = ViteBundler(project_dir);
         with unittest.mock.patch("builtins.input", return_value="Y") as mock_input {
             with unittest.mock.patch(
-                "jaclang.client.bun_installer.get_bun", return_value="bun"
+                "jaclang.client.js_runtime.js_runtime_path", return_value="bun"
             ) {
                 with unittest.mock.patch("subprocess.run") as mock_subprocess {
                     # bun install returns success, vite build returns failure
@@ -1137,7 +1144,11 @@ test "vite build injects core deps without prompting" {
     }
 }
 
-test "start dev prepares the client before initialization" {
+"""Boot a created web app with `jac run <mode_flags>` and assert its client is
+compiled before readiness, so no page request is left to build it. With
+`declare_kind` False the `[project] kind` line is removed and the kind has to be
+inferred, as it is for a project that never declared one."""
+def assert_client_prepared_before_ready(mode_flags: list[str], declare_kind: bool) {
     import signal;
     import socket;
     import subprocess;
@@ -1153,6 +1164,12 @@ test "start dev prepares the client before initialization" {
         );
         assert created.returncode == 0 , created.stdout + created.stderr;
         project = Path(temp_dir) / "test-start-dev-client";
+        if not declare_kind {
+            toml_path = project / "jac.toml";
+            declared = toml_path.read_text();
+            assert 'kind = "web-app"' in declared , declared;
+            toml_path.write_text(declared.replace('kind = "web-app"\n', ""));
+        }
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock {
             sock.bind(("127.0.0.1", 0));
             port = sock.getsockname()[1];
@@ -1160,7 +1177,7 @@ test "start dev prepares the client before initialization" {
         log = Path(temp_dir) / "server.log";
         with log.open("w") as stream {
             process = Popen(
-                [executable, "run", "--dev", "--port", str(port), "main.jac"],
+                [executable, "run", *mode_flags, "--port", str(port), "main.jac"],
                 cwd=project,
                 stdout=stream,
                 stderr=subprocess.STDOUT,
@@ -1206,6 +1223,14 @@ test "start dev prepares the client before initialization" {
             }
         }
     }
+}
+
+test "start dev prepares the client before initialization" {
+    assert_client_prepared_before_ready(["--dev"], True);
+}
+
+test "serve prepares the client of a web app whose kind is inferred" {
+    assert_client_prepared_before_ready(["--serve"], False);
 }
 
 """Test that create_vite_config(build/dev) generate correct files."""
@@ -1280,6 +1305,100 @@ test "vite config generation" {
             assert "sourcemap: true" in dev_config_content;
         } finally {
             os.chdir(original_cwd);
+        }
+    }
+}
+
+"""rollupOptions overrides land inside the built-in block instead of replacing it."""
+test "vite build rollupOptions overrides are merged" {
+    with tempfile.TemporaryDirectory() as temp_dir {
+        original_cwd = os.getcwd();
+        try {
+            os.chdir(temp_dir);
+            toml_content = '\n[client.vite.build]\nminify = "esbuild"\noutDir = "elsewhere"\n\n[client.vite.build.rollupOptions]\nexternal = ["left-pad"]\ninput = "other.js"\n\n[client.vite.build.rollupOptions.output]\nchunkFileNames = "chunks/[name]-[hash].js"\nentryFileNames = "app.js"\n\n[client.vite.build.rollupOptions.output.manualChunks]\nvendor = ["react", "react-dom"]\n';
+            with open(os.path.join(temp_dir, "jac.toml"), "w") as f {
+                f.write(toml_content);
+            }
+
+            import from jaclang.client.vite_bundler { ViteBundler }
+
+            bundler = ViteBundler(Path(temp_dir));
+            entry_file = Path(temp_dir) / ".jac" / "client" / "build" / "main.js";
+            entry_file.parent.mkdir(parents=True, exist_ok=True);
+            entry_file.write_text("// Mock entry file");
+
+            content = bundler.create_vite_config(entry_file).read_text();
+            build = content[content.index("build: {"):content.index("publicDir:")];
+
+            # Each key appears once, so no later duplicate can discard the user's values
+            for key in (
+                "rollupOptions:",
+                "output:",
+                "input:",
+                "entryFileNames:",
+                "outDir:"
+            ) {
+                count = build.count(key);
+                assert count == 1 , f"{key} appears {count} times";
+            }
+            assert "minify: 'esbuild'" in build;
+            assert "external: ['left-pad']" in build;
+            assert "chunkFileNames: 'chunks/[name]-[hash].js'" in build;
+            assert "vendor: ['react', 'react-dom']" in build;
+            assert 'entryFileNames: "client.[hash].js"' in build;
+            assert "elsewhere" not in build;
+            assert "other.js" not in build;
+            assert "app.js" not in build;
+
+            # User output keys sit inside the built-in output block
+            output_end = build.index("\n      },\n    },");
+            for key in ("manualChunks:", "chunkFileNames:") {
+                assert build.index("sourcemapPathTransform:")
+                    < build.index(key)
+                    < output_end;
+            }
+        } finally {
+            os.chdir(original_cwd);
+        }
+    }
+}
+
+test "vite build rollupOptions of the wrong shape is a clear error" {
+    import from jaclang.client.vite_bundler { ViteBundler }
+    import from jaclang.client.client_bundle { ClientBundleError }
+
+    cases = [
+        (
+            '\n[client.vite.build]\nrollupOptions = "bad"\n',
+            "rollupOptions must be a table"
+        ),
+        (
+            '\n[[client.vite.build.rollupOptions.output]]\nformat = "es"\n\n[[client.vite.build.rollupOptions.output]]\nformat = "cjs"\n',
+            "output must be a single table"
+        )
+    ];
+    for (toml_content, expected) in cases {
+        with tempfile.TemporaryDirectory() as temp_dir {
+            original_cwd = os.getcwd();
+            try {
+                os.chdir(temp_dir);
+                with open(os.path.join(temp_dir, "jac.toml"), "w") as f {
+                    f.write(toml_content);
+                }
+                bundler = ViteBundler(Path(temp_dir));
+                entry_file = Path(temp_dir) / ".jac" / "client" / "build" / "main.js";
+                entry_file.parent.mkdir(parents=True, exist_ok=True);
+                entry_file.write_text("// Mock entry file");
+                raised = "";
+                try {
+                    bundler.create_vite_config(entry_file);
+                } except ClientBundleError as e {
+                    raised = str(e);
+                }
+                assert expected in raised , f"expected {expected!r}, got {raised!r}";
+            } finally {
+                os.chdir(original_cwd);
+            }
         }
     }
 }

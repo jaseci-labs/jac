@@ -1,11 +1,9 @@
 import sys;
 import traceback;
-import from jaclang.cli.console { console }
 
 impl CommandExecutor.execute(
     spec: CommandSpec, args: dict[str, any]
 ) -> ExecutionResult {
-    import from jaclang.cli.command { CommandSpec }
     import from jaclang.cli.executor { ExecutionResult }
 
     return_code = 0;
@@ -36,7 +34,7 @@ impl CommandExecutor.execute(
 
 impl CommandExecutor.run_handler(spec: CommandSpec, args: dict[str, any]) -> int {
     import inspect;
-    import from jaclang.cli.command { CommandSpec }
+
     if spec.handler is None {
         console.error(f"No handler registered for command '{spec.name}'");
         return 1;

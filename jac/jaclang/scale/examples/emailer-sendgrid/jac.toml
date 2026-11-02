@@ -12,7 +12,7 @@ from_address = "no-reply@example.com"
 # API key is read from SENDGRID_API_KEY env var inside the class.
 
 # Token TTLs + frontend URLs the framework drops into the email body.
-[scale.auth]
+[serve.auth.email]
 verify_token_ttl_seconds = 86400
 reset_token_ttl_seconds = 1800
 verify_url_template = "https://app.example.com/verify?token={token}"

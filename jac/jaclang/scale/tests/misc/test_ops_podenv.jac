@@ -4,12 +4,6 @@ Redaction is the safety-critical bit: only allowlisted keys show their
 value; secretRef values are never resolved.
 """
 
-import from jaclang.server.serving.endpoint { HTTPMethod }
-import from jaclang.scale.tests.support { RecordingHost }
-import from jaclang.scale.admin.podenv { JacAPIServerPodEnv }
-import from jaclang.scale.admin.podenv { redact_entry, pod_env_entries }
-
-
 obj PodEnvHost(JacAPIServerPodEnv) {
     has server: any = None;
 }

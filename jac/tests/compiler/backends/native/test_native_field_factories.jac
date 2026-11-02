@@ -17,15 +17,26 @@ test "field helpers preserve deferred and keyword-only constructor slots" {
 }
 
 test "synthetic pipe calls preserve the source graph after lowering" {
-    (engine, module) = compile_native("pipe_fwd.jac");
-    chain = get_func(engine, "pipe_chain", ctypes.c_int64, ctypes.c_int64);
-    spread = get_func(
-        engine, "pipe_tuple", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
-    );
-    assert chain(5) == 7;
-    assert spread(3, 4) == 7;
-    for expr in module.get_all_sub_nodes(uni.BinaryExpr) {
-        assert expr.left.parent is expr;
-        assert expr.right.parent is expr;
+    # A synthetic call left linked to its operands only goes away at a cycle
+    # collection, so collection stays off while the graph is read.
+    import gc;
+    collecting = gc.isenabled();
+    gc.disable();
+    try {
+        (engine, module) = compile_native("pipe_fwd.jac");
+        chain = get_func(engine, "pipe_chain", ctypes.c_int64, ctypes.c_int64);
+        spread = get_func(
+            engine, "pipe_tuple", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+        );
+        assert chain(5) == 7;
+        assert spread(3, 4) == 7;
+        for expr in module.get_all_sub_nodes(uni.BinaryExpr) {
+            assert expr.left.parent is expr;
+            assert expr.right.parent is expr;
+        }
+    } finally {
+        if collecting {
+            gc.enable();
+        }
     }
 }

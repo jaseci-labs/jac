@@ -7,7 +7,7 @@ follows. The helpers live in [`support.jac`](support.jac).
 
 ```bash
 # Once per binary: the dependencies CI installs for this suite.
-jac install "litellm>=1.75.2,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
+jac install "litellm>=1.102.1,<1.103.0" "pillow>=12.0.0,<13.0.0" \
   "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" --global
 
 # The suite, as CI's byllm lane runs it.
@@ -85,6 +85,31 @@ What a provider reports about a reply, and a real model class:
 | a stream carrying litellm's `logging_obj` | `MockLLM(logging_obj=...)` |
 | a real `Model` or `LocalLLM`, with its own request shaping | `with scripted(model, replies) { ... }` |
 | a routing prompt answered by reading its candidates | `RoutingLLM(pick=...)` |
+| a `systemone:` decision model | `MockSystemOne(answers=[...])`, below |
+
+### System One models
+
+`MockSystemOne` stands in for a decision-model endpoint the way `MockLLM` stands in for a
+chat one: each entry in `answers` is one request's answers, consumed in order, and `seen`
+holds the payloads sent. A `(status, body)` entry returns that HTTP status instead.
+
+```jac
+so1 = MockSystemOne(answers=[choose("HIGH", 0.93)]);
+def rank(ticket: str) -> Priority by so1();
+assert rank("site is down") is Priority.HIGH;
+assert questions_of(so1)["value"]["type"] == "choice";
+```
+
+| Entry helper | Answers |
+|---|---|
+| `choose(label, confidence)` | a single enum call |
+| `yes(p)` | a single bool call |
+| `nouls({name: p, ...})` | a `list[E]` or routing call, one probability per member |
+
+Under `jac test`, a call site declared in the test module has no compiler IR attached, so
+the question is built from the runtime enum alone. To assert the wording the IR supplies,
+build a `FunctionInfo` and call `lower()` on an `MTRuntime` carrying it, as
+`test_systemone.jac` does.
 
 ## Reading what happened
 
@@ -94,6 +119,7 @@ What a provider reports about a reply, and a real model class:
 | message roles, in order | `roles(llm, n)` |
 | the user turn's content blocks and media | `user_blocks(llm, n)`, `media_blocks(llm, n)`, `data_url(block)` |
 | did some text reach the model at all | `prompt_text(llm, n)` |
+| the questions a System One call asked | `questions_of(so1, n)` |
 | which tools were offered | `tool_names(params)` |
 | the routing candidates offered | `routing_candidates(params)` |
 | the events of a `logging=True` stream | `stream_events(stream)`, `events_of(events, kind)`, `event_types(events)` |

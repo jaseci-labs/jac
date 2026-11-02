@@ -51,23 +51,28 @@ Jac distinguishes project dependencies from globally installed Python tools. Use
 Dependencies declared in `jac.toml` and installed into the project's `.jac/venv/`:
 
 ```bash
-# Add a dependency to your project
-jac install numpy
+# Add a Jac package, a Python package, an npm package
+jac install jaseci/vecdb
+jac install --pypi numpy
+jac install --npm react
 
-# Or declare it in jac.toml and install
+# Or declare them in jac.toml and install
 jac install
 ```
 
 ```toml
 # jac.toml
 [dependencies]
+"jaseci/vecdb" = "^2.1"
+
+[dependencies.pypi]
 numpy = ">=1.26"
 
 [dependencies.npm]
 react = "^19.2.0"
 ```
 
-Both PyPI and npm packages live in the same config file, managed by the same tool.
+Jac, PyPI and npm packages live in the same config file, managed by the same tool, and `jac.lock` pins all three. See [Packages](../reference/packages.md).
 
 ### Global scope
 
@@ -89,7 +94,7 @@ jac install --global huggingface_hub
 jac x hf whoami          # runs the Hugging Face CLI
 
 # Project-scoped Python tools work too
-jac install ruff         # installed into .jac/venv
+jac install --pypi ruff  # installed into .jac/venv
 jac x ruff check .       # runs ruff within the project
 
 # npm CLI tools are project-scoped

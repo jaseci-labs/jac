@@ -9,28 +9,8 @@ import from kubernetes.client.exceptions { ApiException }
 import unittest.mock;
 import from types { SimpleNamespace }
 
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.models.deployment_result { DeploymentResult }
-import from jaclang.scale.models.resource_status { ResourceStatus }
-import from jaclang.scale.config.config_loader {
-    JacScaleConfig,
-    get_scale_config,
-    reset_scale_config
-}
 import from tempfile { mkdtemp }
 import shutil;
-import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
-import from jaclang.scale.deploy.database.kubernetes_postgres {
-    KubernetesPostgresProvider
-}
-import from jaclang.scale.observability.factory { UtilityFactory }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.ingress { IngressDeployer }
-import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
-import from jaclang.scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger }
-import from jaclang.testing.requires { require_flag }
 
 with entry {
     require_flag(
@@ -215,7 +195,9 @@ test "fleet rollout ignores crash-looping pod from a stale replica set" {
     stale_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": stale_hash};
     stale_pod.metadata.name = "svc-a-stale-crash";
     stale_pod.metadata.deletion_timestamp = None;
-    stale_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
+    stale_pod.status.container_statuses = [
+        unittest.mock.MagicMock(restart_count=5, ready=False)
+    ];
     stale_pod.status.phase = "Running";
 
     fake_core_v1 = unittest.mock.MagicMock();
@@ -248,7 +230,9 @@ test "fleet rollout still fails when a current replica set pod is crash-looping"
     crash_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
     crash_pod.metadata.name = "svc-a-crash";
     crash_pod.metadata.deletion_timestamp = None;
-    crash_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
+    crash_pod.status.container_statuses = [
+        unittest.mock.MagicMock(restart_count=5, ready=False)
+    ];
     crash_pod.status.phase = "Running";
 
     fake_core_v1 = unittest.mock.MagicMock();
@@ -294,7 +278,7 @@ test "fleet rollout still fails when a companion Deployment pod outside the flee
     companion_pod.metadata.name = "svc-a-postgres-789";
     companion_pod.metadata.deletion_timestamp = None;
     companion_pod.status.container_statuses = [
-        unittest.mock.MagicMock(restart_count=5)
+        unittest.mock.MagicMock(restart_count=5, ready=False)
     ];
     companion_pod.status.phase = "Running";
 
@@ -323,7 +307,9 @@ test "fleet rollout falls back to broad pod scan when RS lookup fails" {
     crash_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": "whatever-hash"};
     crash_pod.metadata.name = "svc-a-crash";
     crash_pod.metadata.deletion_timestamp = None;
-    crash_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
+    crash_pod.status.container_statuses = [
+        unittest.mock.MagicMock(restart_count=5, ready=False)
+    ];
     crash_pod.status.phase = "Running";
 
     fake_core_v1 = unittest.mock.MagicMock();

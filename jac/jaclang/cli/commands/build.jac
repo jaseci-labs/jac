@@ -1,7 +1,3 @@
-import from jaclang.comptime { name as ct_name }
-import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
-
-
 comptime SPEC_BUILD: CommandSpec = CommandSpec(
          name="build",
          help="Build an app's artifact (.jab by default; type-checks first)",
@@ -79,6 +75,14 @@ comptime SPEC_BUILD: CommandSpec = CommandSpec(
                  help="With --native: 'host' (default), 'wasm32', or an LLVM triple"
              ),
              Arg.create(
+                 "link-mode",
+                 dest="native_link_mode",
+                 `default="",
+                 choices=["objects", "bitcode"],
+                 short="",
+                 help="With --native: reuse optimized objects (default) or optimize whole-program bitcode"
+             ),
+             Arg.create(
                  "debug",
                  typ=bool,
                  `default=False,
@@ -99,6 +103,13 @@ comptime SPEC_BUILD: CommandSpec = CommandSpec(
                      "Vendor the Python dependency closure as wheels into the bundle "
                      "(jab/binary only) so it materializes offline, with no PyPI"
                  )
+             ),
+             Arg.create(
+                 "allow-drop-client",
+                 typ=bool,
+                 `default=False,
+                 short="",
+                 help="With --as wheel: build even though client-codespace modules cannot ship in a Python wheel (they are left out)"
              ),
              Arg.create(
                  "check_only",
@@ -130,7 +141,10 @@ comptime SPEC_BUILD: CommandSpec = CommandSpec(
                  "Borrow-checked, no runtime"
              ),
              ("jac build lib.jac --native --lib", "Compile a C-ABI shared library"),
-             ("jac build main.jac --native --target wasm32", "Compile to WebAssembly"),
+             (
+                 "jac build main.jac --native --target-triple wasm32",
+                 "Compile to WebAssembly"
+             ),
              ("jac build --fat", "Build a fat jab (Python deps vendored)"),
              ("jac build --as wheel", "Build a PyPI wheel"),
              ("jac build --as client web", "Build only the web app's browser bundle"),
@@ -164,5 +178,7 @@ def build(
     lib: bool = False,
     memory: str = "",
     native_target: str = "",
-    debug: bool = False
+    debug: bool = False,
+    native_link_mode: str = "",
+    allow_drop_client: bool = False
 ) -> int;

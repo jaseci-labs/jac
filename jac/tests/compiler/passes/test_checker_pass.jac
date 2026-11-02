@@ -790,6 +790,57 @@ Cannot assign Literal["a"] | Literal["b"] | Literal["c"] to Literal["c"]
              ]
          ),
          (
+             "equality_keeps_type",
+             "checker",
+             "checker_equality_keeps_type.jac",
+             6,
+             True,
+             [
+                 (
+                     0,
+                     """
+Cannot return str | NoneType, expected int
+        return v;  # <-- Error: neither str nor None equals 1, so v is not narrowed
+    """
+                 ),
+                 (
+                     1,
+                     """
+Cannot return int, expected bool
+        return n;  # <-- Error: 1 == True, so n is int, not bool
+    """
+                 ),
+                 (
+                     2,
+                     """
+Cannot return float, expected int
+    return f;  # <-- Error: 1.0 == 1, so f is float, not int
+    """
+                 ),
+                 (
+                     3,
+                     """
+Cannot return int, expected bool
+        return n;  # <-- Error: `and` keeps the equality rule
+    """
+                 ),
+                 (
+                     4,
+                     """
+Cannot return int, expected bool
+        return n;  # <-- Error: `not` keeps the equality rule
+    """
+                 ),
+                 (
+                     5,
+                     """
+Cannot return int, expected bool
+        return n;  # <-- Error: `in` compares with ==, so n is int, not bool
+    """
+                 )
+             ]
+         ),
+         (
              "literal_ne_does_not_over_narrow",
              "checker",
              "checker_literal_ne_no_over_narrow.jac",
@@ -856,6 +907,23 @@ Cannot assign Literal["a"] | Literal["b"] | Literal["c"] to Literal["c"]
                      """Not all required parameters were provided in the function call: 'skill'"""
                  ),
                  (3, """Cannot assign int to parameter 'owner' of type str""")
+             ]
+         ),
+         (
+             "exception_obj_constructs_through_field_init",
+             "checker",
+             "checker_exception_fields_init.jac",
+             2,
+             True,
+             [
+                 (
+                     0,
+                     """Cannot assign Literal["not a code"] to parameter 'code' of type int"""
+                 ),
+                 (
+                     1,
+                     """Cannot assign Literal["not a code either"] to parameter 'code' of type int"""
+                 )
              ]
          ),
          (
@@ -1155,6 +1223,14 @@ Cannot assign Literal["a"] | Literal["b"] | Literal["c"] to Literal["c"]
              "walrus_operator_narrowing",
              "checker",
              "checker_walrus_narrowing.jac",
+             0,
+             True,
+             []
+         ),
+         (
+             "assert_own_condition_narrowing",
+             "checker",
+             "checker_assert_own_condition_narrowing.jac",
              0,
              True,
              []
@@ -1528,6 +1604,25 @@ test "imported_overloaded_function_call_resolves" {
     );
 }
 
+"""A star import binds a name to the last overload while its type comes from the
+first, so every overload must still be offered, in the order it was declared."""
+test "overloads_survive_a_star_import" {
+    for name in [
+        "through_stub",
+        "through_guarded_stub",
+        "through_include",
+        "direct_include"
+    ] {
+        path = os.path.join(CHECKER_FIXTURES, "overload_star_import", f"{name}.jac");
+        program = JacProgram();
+        program.compile(path);
+        assert program.errors_had == [] , (
+            f"{name}: expected no errors, got: "
+            + str([e.pretty_print() for e in program.errors_had])
+        );
+    }
+}
+
 test "dunder_new_direct_call" {
     path = os.path.join(CHECKER_FIXTURES, "checker_dunder_new_direct.jac");
     program = JacProgram();
@@ -1876,7 +1971,7 @@ test "return_type" {
     program = JacProgram();
     path = os.path.join(CHECKER_FIXTURES, "checker_return_type.jac");
     mod = program.compile(path, options=NO_TC);
-    assert len(program.errors_had) == 4;
+    assert len(program.errors_had) == 5;
 
     expected_errors = [
         """
@@ -1892,7 +1987,7 @@ test "return_type" {
         """
         Cannot return Literal[""], expected int
 
-        def bar()  -> int {
+        def bar -> int {
             return "";  # <-- Error
             ^^^^^^^^^^
         """,
@@ -1900,9 +1995,15 @@ test "return_type" {
         Cannot return float, expected int
             return 1.1;  # <-- Error
             ^^^^^^^^^^
+        """,
+        """
+        Return type annotation required when function returns a value
+            return 0;  # <-- Error (no return annotation, but returning a value)
+            ^^^^^^^^^
         """
     ];
 
+    # Regression (#9094): caller's `return bump();` must not also raise E1002.
     for i in range(len(expected_errors)) {
         assert_error_pretty_found(
             expected_errors[i], program.errors_had[i].pretty_print()
@@ -2239,7 +2340,7 @@ test "lambda_param_unresolved_requires_annotation" {
     # is checked in place instead; deferring it would drop the checks on its
     # other statements entirely, which is what this assertion guards. (The
     # rationale lives here because jaclang source is deslopped: jac.toml's
-    # `[check.lint]` selects `strip-comments`/`strip-docstrings`, and
+    # `[check.lint]` selects `all`, which strips comments and docstrings, and
     # `*/tests/*` is the exclusion that lets a note like this survive.)
     e1053 = [
         e
@@ -2475,26 +2576,56 @@ test "agentvisitor_connect_no_errors" {
 
 test "inferred_local_type_frozen" {
     # An unannotated local is frozen to the type inferred at its first
-    # binding; reassigning an incompatible type is an error. The
-    # `None`-sentinel pattern is the one exception (the type evolves).
+    # binding; reassigning an incompatible type is an error, and so is a
+    # `for` target that reuses the name, unannotated or annotated (#9972).
+    # The `None`-sentinel pattern is the one exception (the type evolves).
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_inferred_type_frozen.jac"),
         options=NO_TC
     );
-    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got {len(
+    assert len(program.errors_had) == 5 , f"Expected 5 type errors, but got {len(
         program.errors_had
     )}: "
         + "\n".join([err.pretty_print() for err in program.errors_had]);
-    _first_code = program.errors_had[0].code;
-    assert _first_code is not None;
-    assert _first_code.code == "E1001";
-    assert_error_pretty_found(
-        """
+    for err in program.errors_had {
+        assert err.code is not None and err.code.code == "E1001";
+    }
+    for (idx, needle) in [
+        (0, """
         a = "some str";  # <-- Error
-    """,
-        program.errors_had[0].pretty_print()
-    );
+    """),
+        (
+            1,
+            """
+        for a in ["x", "y"] {  # <-- Error
+        Cannot assign str to int
+    """
+        ),
+        (
+            2,
+            """
+        for (kind, a) in [("k", "x")] {  # <-- Error
+        Cannot assign str to int
+    """
+        ),
+        (
+            3,
+            """
+        for c in [1, 2] {  # <-- Error
+        Cannot assign int to str
+    """
+        ),
+        (
+            4,
+            """
+        for x in ["bad"] {  # <-- Error
+        Cannot assign str to int
+    """
+        )
+    ] {
+        assert_error_pretty_found(needle, program.errors_had[idx].pretty_print());
+    }
 }
 
 test "inferred_local_type_widens_literals" {
@@ -4614,6 +4745,29 @@ test "jsx_intrinsic_tag_names_do_not_emit_w1051" {
     ]}";
 }
 
+test "jsx_svg_and_less_common_html_tags_are_intrinsic" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_svg_and_html_intrinsics.jac");
+    program = JacProgram();
+    program.compile(path);
+    lines = Path(path).read_text().splitlines();
+    def opening_tag(w: any) -> bool {
+        return lines[w.loc.first_line - 1][w.loc.col_start - 2] == "<";
+    }
+    flagged = [
+        w
+        for w in program.warnings_had
+        if w.code
+            and (w.code.code == "W1050" or (w.code.code == "W2001" and opening_tag(w)))
+    ];
+    assert len(flagged) == 0 , f"Expected SVG and HTML tags to resolve as intrinsic elements, got {len(
+        flagged
+    )}:\n"
+        + "\n---\n".join(w.pretty_print() for w in flagged);
+    assert len(program.errors_had) == 0 , f"Unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
+}
+
 test "dom_browser_globals_resolve_to_storage" {
     # `localStorage` / `sessionStorage` are ambient browser globals typed as
     # `Storage` (dom_types.pyi). Their real API surface must type-check with
@@ -4956,6 +5110,43 @@ test "pipe_forward_typing_matches_call_form" {
     assert err.code and err.code.code == "E1053" , f"Expected E1053, got {err.code.code
         if err.code
         else 'no-code'}:\n{err.pretty_print()}";
+}
+
+test "pipe operands keep the pipe expression as their only parent" {
+    # A pipe is typed and emitted through a temporary call over its operands.
+    # A temporary left linked only goes away at a cycle collection, so
+    # collection stays off while the graph is read.
+    import gc;
+    import from jaclang.compiler.frontend.roles { Kid }
+    path = os.path.join(CHECKER_FIXTURES, "checker_pipe_operand_parents.jac");
+    collecting = gc.isenabled();
+    gc.disable();
+    try {
+        program = JacProgram();
+        mod = program.compile(path, options=NO_TC);
+        assert not program.errors_had;
+        assert mod.gen.py_ast;
+        pipes = [
+            expr
+            for expr in mod.get_all_sub_nodes(uni.BinaryExpr)
+            if isinstance(expr.op, uni.Token)
+                and expr.op.value in ("|>", ":>", "<|", "<:")
+        ];
+        assert len(pipes) == 8;
+        for expr in pipes {
+            for operand in (expr.left, expr.right) {
+                holders = [operand<-:Kid:<-];
+                assert len(holders) == 1 and holders[0] is expr , f"line {expr.loc.first_line}: a pipe operand is held by {[
+                    type(h).__name__ for h in holders
+                ]}";
+                assert operand.parent is expr;
+            }
+        }
+    } finally {
+        if collecting {
+            gc.enable();
+        }
+    }
 }
 
 test "as_cast_resolves_any_assignment" {
@@ -5310,7 +5501,7 @@ test "mobui_project_forbids_html_intrinsic_tags" {
     # D17: in a mobui (React Native) project, raw HTML host tags are
     # forbidden — JsxIntrinsicGuardPass emits E1105 for each lowercase tag,
     # with a fix-it pointing at the @jac/mobui / RN component. Uppercase user
-    # components (<Card>) are allowed. The pass runs in get_ir_gen_sched, so
+    # components (<Card>) are allowed. The pass runs in the IR product, so
     # it fires even with type_check=False (the .jac / build path).
     path = os.path.join(CHECKER_FIXTURES, "checker_jsx_mobui_html_forbidden.jac");
     program = JacProgram();
@@ -5634,4 +5825,23 @@ test "a bare name in a method body skips the class scope" {
     assert len(make_hints) == 2 , f"Expected W2001 for 'make' in both methods, got: {names}";
     assert any("`Toolbox.make`" in h for h in make_hints) , f"static method hint: {make_hints}";
     assert any("`cls.make`" in h for h in make_hints) , f"class method hint: {make_hints}";
+}
+
+test "arguments of a call whose callee is Any are still type-evaluated" {
+    # `any(...)` resolves its callee to the `Any` keyword type, and calling an
+    # `any`-typed value has no signature to check arguments against. Both
+    # calls still evaluate their arguments, so a comprehension passed straight
+    # to them carries its element type to the backends.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_any_call_arguments.jac")
+    );
+    assert len(program.errors_had) == 0 , "Unexpected errors:\n"
+        + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    comprs = mod.get_all_sub_nodes(uni.ListCompr);
+    assert len(comprs) == 3 , f"expected three comprehensions, got {len(comprs)}";
+    for compr in comprs {
+        assert str(compr.type) == "list[bool]" , f"line {compr.loc.first_line}: {compr.type}";
+        assert str(compr.out_expr.type) == "bool" , f"line {compr.loc.first_line}: {compr.out_expr.type}";
+    }
 }

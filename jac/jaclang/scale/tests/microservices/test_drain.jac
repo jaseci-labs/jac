@@ -3,8 +3,6 @@ readiness probe and gateway read from it."""
 
 import asyncio;
 import json;
-import from jaclang.server.serving.datatypes { JSONResponse, Request, URL }
-import from jaclang.server.serving.drain { DrainState, drain_middleware }
 
 
 def _request(path: str) -> Request {

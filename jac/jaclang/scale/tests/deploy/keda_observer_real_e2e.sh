@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+# Proves watch_scale_targets observes a real scale-to-zero cycle (#7405 criterion 12).
+#
+# Wraps the HTTP-activation e2e rather than deploying its own app: that script
+# already drives a full 0 -> 1 -> ready -> 0 cycle on a live cluster, and a
+# second deploy would add minutes of CI for a cycle we already pay for. The
+# recorder watches while it runs; this script asserts on what it recorded.
+#
+# The wrapped script is the source of truth for pass/fail of the deploy itself,
+# so its exit code is honoured before any transition is inspected.
+set -euo pipefail
+
+# The cycle under test ends at the first return to inactive after a wake out of
+# inactive reached active. Anything before that wake is the deploy settling,
+# which can itself pass through active before KEDA first idles the target.
+CYCLE_CUT='$2=="inactive" { woke=1 } woke && $4=="active" { seen=1 } seen && $4=="inactive" { done=1; exit }'
+
+cycle_of() {
+    awk "{ print } ${CYCLE_CUT}" "$1"
+}
+
+cycle_complete() {
+    awk "${CYCLE_CUT} END { exit !done }" "$1"
+}
+
+check_cycle() {
+    local transitions="$1" cycle states
+    if [[ ! -s "${transitions}" ]]; then
+        echo "FAIL: the observer recorded no transitions during a cycle that completed" >&2
+        return 1
+    fi
+    if ! cycle_complete "${transitions}"; then
+        echo "FAIL: never observed a return to 'inactive' after 'active'" >&2
+        cat "${transitions}" >&2
+        return 1
+    fi
+    cycle="$(cycle_of "${transitions}")"
+    echo "=== cycle under test (teardown excluded) ==="
+    echo "${cycle}"
+
+    # A watch that yields events is the claim the unit tests cannot make, so assert
+    # on the states actually observed rather than on a count.
+    states="$(awk '{print $4}' <<<"${cycle}" | tr '\n' ' ')"
+    echo "observed states: ${states}"
+
+    # Dedup is the property that makes the stream usable: the same state must never
+    # be emitted twice in a row for one target.
+    if awk '{ key=$1; state=$4; if (key==lk && state==ls) { print; } lk=key; ls=state; }' \
+            <<<"${cycle}" | grep -q .; then
+        echo "FAIL: the same state was emitted twice in a row for one target" >&2
+        return 1
+    fi
+    echo "ok: no consecutive duplicate state for any target"
+
+    # A transition must never claim a previous state it did not observe, and the
+    # first sighting of a target is the only place 'none' is legitimate.
+    if awk 'NR>1 && $2=="none"' <<<"${cycle}" | grep -q .; then
+        echo "FAIL: a later transition reported no previous state" >&2
+        return 1
+    fi
+    echo "ok: previous_state is only absent on a first sighting"
+
+    # A healthy cycle must never report degraded. This is the assertion that was
+    # missing when this e2e first ran: it recorded two spurious inactive -> degraded
+    # transitions from KEDA's HPA reporting ScalingActive False at zero replicas,
+    # and passed anyway because it only checked that active and inactive appeared.
+    if grep -qE " -> degraded( |$)" <<<"${cycle}"; then
+        echo "FAIL: a healthy cycle reported degraded" >&2
+        grep -E " -> degraded( |$)" <<<"${cycle}" >&2
+        return 1
+    fi
+    echo "ok: no degraded transition during a healthy cycle"
+}
+
+# Checks a recorded transitions file without a cluster.
+if [[ "${1:-}" == "--check" ]]; then
+    check_cycle "$2"
+    exit $?
+fi
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+FIXTURE_DIR="${1:-${HERE}/../fixtures/keda_http_activation_e2e}"
+INNER_E2E="${HERE}/keda_http_activation_real_e2e.sh"
+RECORDER="${HERE}/observer_transition_recorder.jac"
+
+for required in "${INNER_E2E}" "${RECORDER}"; do
+    if [[ ! -f "${required}" ]]; then
+        echo "missing ${required}" >&2
+        exit 2
+    fi
+done
+
+# Read the namespace straight out of jac.toml, the same way the wrapped e2e
+# reads its own config: importing jac-scale to resolve it would compile modules
+# and print setup lines into the value being captured.
+CFG=$(cd "${FIXTURE_DIR}" && jac -c "
+import tomllib
+with open('jac.toml', 'rb') as f:
+    cfg = tomllib.load(f)
+print(cfg['scale']['kubernetes'].get('namespace', 'default'))
+")
+NAMESPACE=$(echo "${CFG}" | sed -n '1p')
+
+# A namespace read wrongly would leave the observer watching nothing while the
+# cycle succeeded elsewhere, so reject anything that is not a DNS label rather
+# than discovering it as "no transitions recorded" minutes later.
+if [[ ! "${NAMESPACE}" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
+    echo "resolved namespace '${NAMESPACE}' is not a DNS label; check the fixture" >&2
+    exit 2
+fi
+echo "fixture namespace: ${NAMESPACE}"
+
+TRANSITIONS="$(mktemp)"
+RECORDER_LOG="$(mktemp)"
+RECORDER_PID=""
+
+cleanup() {
+    rc=$?
+    if [[ -n "${RECORDER_PID}" ]] && kill -0 "${RECORDER_PID}" 2>/dev/null; then
+        kill "${RECORDER_PID}" 2>/dev/null || true
+        wait "${RECORDER_PID}" 2>/dev/null || true
+    fi
+    echo "=== recorder log ==="
+    cat "${RECORDER_LOG}" || true
+    echo "=== transitions recorded ==="
+    cat "${TRANSITIONS}" || true
+    rm -f "${TRANSITIONS}" "${RECORDER_LOG}"
+    # The inner e2e hands its namespace over rather than deleting it, so the
+    # recorder above could read a settled idle state instead of a terminating
+    # one. Teardown lands here, after the recorder is stopped.
+    if [[ "${rc}" != "0" ]]; then
+        # What the cluster did, with its own clock: when KEDA deactivated the
+        # target, when the pod was told to stop and when it was gone. The
+        # recorder only sees ScaledObject updates, so this is what tells a late
+        # transition from one that never came.
+        echo "=== cluster state at failure ==="
+        kubectl get scaledobject,deploy,pods -n "${NAMESPACE}" -o wide || true
+        echo "=== events ==="
+        kubectl get events -n "${NAMESPACE}" --sort-by=.lastTimestamp \
+            -o custom-columns=LAST:.lastTimestamp,KIND:.involvedObject.kind,NAME:.involvedObject.name,REASON:.reason,MESSAGE:.message \
+            | tail -40 || true
+    fi
+    if [[ "${rc}" != "0" && "${E2E_KEEP_NS_ON_FAIL:-1}" == "1" ]]; then
+        echo "=== observer e2e failed (rc=${rc}); KEEPING namespace '${NAMESPACE}' for inspection (set E2E_KEEP_NS_ON_FAIL=0 to force cleanup) ==="
+    else
+        kubectl delete namespace "${NAMESPACE}" --ignore-not-found \
+            --timeout="${DELETE_TIMEOUT:-120}s" || true
+    fi
+    exit "${rc}"
+}
+trap cleanup EXIT
+
+echo "=== start the observer on namespace '${NAMESPACE}' ==="
+E2E_NAMESPACE="${NAMESPACE}" \
+E2E_TRANSITIONS_OUT="${TRANSITIONS}" \
+E2E_WATCH_SECONDS="${E2E_WATCH_SECONDS:-900}" \
+E2E_WAIT_SECONDS="${E2E_WAIT_SECONDS:-420}" \
+    jac run "${RECORDER}" >"${RECORDER_LOG}" 2>&1 &
+RECORDER_PID=$!
+
+echo "=== drive a real cycle via the HTTP-activation e2e ==="
+# Its exit code decides whether a cycle happened at all; a transition assertion
+# on a failed deploy would be meaningless.
+E2E_KEEP_NS=1 bash "${INNER_E2E}" "${FIXTURE_DIR}"
+
+echo "=== stop the observer and inspect what it saw ==="
+# The namespace is still up, so this waits for the watch to report a workload
+# that is genuinely idle at zero. Deleting first made the same wait read
+# teardown: the last transition landed on degraded or unknown, never on
+# inactive.
+#
+# The wait is for the cycle's return to inactive, not for a fixed time. The
+# inner e2e returns at its first ten-second poll that reads zero replicas, and
+# the ScaledObject's next update follows the scale-down by ten seconds or more.
+SETTLE_SECONDS="${E2E_SETTLE_SECONDS:-150}"
+deadline=$((SECONDS + SETTLE_SECONDS))
+until cycle_complete "${TRANSITIONS}" || (( SECONDS >= deadline )); do
+    kill -0 "${RECORDER_PID}" 2>/dev/null || break
+    sleep 2
+done
+if kill -0 "${RECORDER_PID}" 2>/dev/null; then
+    kill "${RECORDER_PID}" 2>/dev/null || true
+    wait "${RECORDER_PID}" 2>/dev/null || true
+fi
+RECORDER_PID=""
+
+check_cycle "${TRANSITIONS}"
+
+echo "=== KEDA observer REAL e2e PASSED ==="

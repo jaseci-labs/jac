@@ -1,9 +1,5 @@
-import from jaclang.compiler.frontend.unitree { Module, SemDef, Symbol, UniScopeNode }
-import from jaclang.compiler.passes.context { CompileContext }
-
-walker SemDefMatchPass {
-    has ctx: CompileContext,
-        module: Module;
+walker SemDefMatchPass(CompilerPass) {
+    static has contract: PassContract = PassContract(kernel_safe=True);
 
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;

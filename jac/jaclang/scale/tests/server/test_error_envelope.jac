@@ -8,7 +8,6 @@ import time;
 import uuid;
 import from logging.handlers { MemoryHandler }
 import from typing { Callable }
-import from jaclang.scale.tests.scale_test_client { extract_data, make_client }
 
 glob WATCHED_LOGGERS: tuple[str, ...] = (
          "jaclang.serve",

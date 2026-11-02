@@ -2,26 +2,6 @@ import asyncio;
 import json;
 import from urllib.parse { urlparse, parse_qs }
 import from unittest.mock { patch, AsyncMock }
-import from jaclang.server.serving.datatypes {
-    Request,
-    QueryParams,
-    URL,
-    Headers,
-    RedirectResponse
-}
-import from jaclang.server.serving.endpoint { JEndPoint }
-import from jaclang.server.server { EndpointHost }
-import from jaclang.server.identity.user_manager { UserManager }
-import from jaclang.server.identity.auth_tokens { AuthTokenStore }
-import from jaclang.server.transport { TransportResponse, Meta }
-import from jaclang.scale.sso.sso_auth { SSOAuth }
-import from jaclang.scale.sso.provider { SSOUserInfo }
-import from jaclang.scale.sso.github { GithubSSOProvider }
-import from jaclang.scale.sso.google { GoogleSSOProvider }
-import from jaclang.scale.sso.apple { AppleSSOProvider }
-import from jaclang.scale.server.sso_ext { SSOExtension, resolve_sso_client_redirect }
-import from jaclang.scale.shared.utils { is_safe_loopback_redirect }
-import from .oauth_fixtures { FakeTokens, fake_users }
 
 obj RecordingHost(EndpointHost) {
     has users: UserManager,
@@ -178,6 +158,47 @@ test "GitHub sign-in needs public identity only and no email permission" {
         assert info.email == "";
         api.assert_awaited_once_with("/user", "token");
     }
+
+    # An account that must hold an email is the one case that asks for it.
+    import from jaclang.server.identity.config { configure_identity }
+    import from jaclang.server.settings { AuthSettings, IdentifierSettings }
+    try {
+        configure_identity(
+            AuthSettings(
+                identifiers=IdentifierSettings(username="off", email="required")
+            ),
+            ""
+        );
+        assert p.scope() == "user:email";
+        with patch.object(
+            GithubSSOProvider,
+            "_api_get",
+            new_callable=AsyncMock,
+            side_effect=[
+                {"id": 123, "login": "alice"},
+                [
+                    {"email": "old@corp.example", "primary": False, "verified": True},
+                    {"email": "alice@corp.example", "primary": True, "verified": True}
+                ]
+            ]
+        ) {
+            info = asyncio.run(p.fetch_user("token", {}));
+            assert info.verified_email() == "alice@corp.example";
+        }
+        with patch.object(
+            GithubSSOProvider,
+            "_api_get",
+            new_callable=AsyncMock,
+            side_effect=[
+                {"id": 123, "login": "alice"},
+                [{"email": "alice@corp.example", "primary": True, "verified": False}]
+            ]
+        ) {
+            assert asyncio.run(p.fetch_user("token", {})).verified_email() == "";
+        }
+    } finally {
+        configure_identity(AuthSettings(), "");
+    }
 }
 
 test "SSO endpoint registration includes browser and native session APIs" {
@@ -192,6 +213,20 @@ test "SSO endpoint registration includes browser and native session APIs" {
     assert ("/sso/{platform}/callback", "GET") in paths;
     assert ("/sso/{platform}/callback", "POST") in paths;
     assert ("/sso/firebase/token", "POST") in paths;
+    assert ("/sso/connections", "GET") in paths;
+    assert ("/sso/{platform}/connection", "DELETE") in paths;
+    begin = [
+        e
+        for e in host.endpoints
+        if e.path == "/sso/{platform}/begin"
+    ][0];
+    anonymous = Request(
+        method="POST", url=URL(path="/sso/google/begin"), headers=Headers(raw=[])
+    );
+    refused: any = asyncio.run(
+        begin.callback(anonymous, "google", "c" * 43, "native", "connect", "")
+    );
+    assert not refused.ok and refused.error.code == "SIGN_IN_REQUIRED";
 }
 
 test "Client callback destinations are never taken from untrusted OAuth state" {

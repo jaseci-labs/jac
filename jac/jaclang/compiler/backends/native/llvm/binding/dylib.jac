@@ -1,6 +1,4 @@
 import from ctypes { c_void_p, c_char_p, c_bool, POINTER }
-import from jaclang.compiler.backends.native.llvm.binding { ffi }
-import from jaclang.compiler.backends.native.llvm.binding.common { _encode_string }
 """
     Get the in-process address of symbol named *name*.
     An integer is returned, or None if the symbol isn't found.

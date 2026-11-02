@@ -5,6 +5,7 @@ verification, and the floor staging allow-list."""
 import io;
 import os;
 import shutil;
+import sys;
 import tarfile;
 import tempfile;
 import from unittest.mock { patch }
@@ -15,7 +16,7 @@ import from compression.zstd {
     compress,
     decompress
 }
-import from jaclang.compiler.backends.native.llvm.binding.ffi { _shim_name }
+import from jaclang.compiler.backends.native.llvm.shim_path { shim_name }
 import from jaclang.dist.payload.assemble {
     MkPayloadOpts,
     PAYLOAD_WINDOW_LOG,
@@ -25,6 +26,7 @@ import from jaclang.dist.payload.assemble {
     assemble_site,
     collect_stage_entries,
     is_volatile_path,
+    precompile_env,
     shim_file_name,
     stage_floor,
     tar_stage,
@@ -142,35 +144,23 @@ test "payload interface sealing uses the fresh staged catalog" {
             argv: list[str], env: dict[str, str] | None, allow_fail: bool
         ) -> bool {
             assert env is not None;
-            for name in ("JAC_STUBCAT_FILE", "JAC_STUBCAT_OFF", "JAC_STUBCAT_LEN") {
-                assert name not in env , "the payload inherited the host's catalog";
-            }
             if argv[2].endswith("stubcat_boot.py") {
-                assert env.get("JAC_STUBCAT_BUILDING") == "1";
+                assert "begin(['stubcat'])" in rf(argv[2]).decode() , (
+                    "the catalog writer marks itself before importing the compiler"
+                );
                 assert not os.path.exists(os.path.join(pre, "MANIFEST.json")) , (
                     "catalog construction must load staged sources, not a cached image"
                 );
                 wf(pre, "stubcat.bin", b"fresh catalog");
                 calls.append("catalog");
             } else {
-                assert not env.get("JAC_STUBCAT_BUILDING") , (
-                    "interface sealing disabled its stub authority"
-                );
                 assert rf(os.path.join(pre, "stubcat.bin")) == b"fresh catalog";
                 wf(pre, "PRECOMPILE_RESULT.json", b"{}");
                 calls.append("interfaces");
             }
             return True;
         }
-        with patch.object(assembly, "run_child", side_effect=child), patch.dict(
-            os.environ,
-            {
-                "JAC_STUBCAT_BUILDING": "1",
-                "JAC_STUBCAT_FILE": "host.bin",
-                "JAC_STUBCAT_OFF": "100",
-                "JAC_STUBCAT_LEN": "200"
-            }
-        ) {
+        with patch.object(assembly, "run_child", side_effect=child) {
             assembly.run_precompile_stage(
                 "python",
                 base,
@@ -184,55 +174,37 @@ test "payload interface sealing uses the fresh staged catalog" {
     }
 }
 
-test "skipping payload precompilation publishes an empty catalog region" {
+test "a linked-source payload publishes an empty catalog region" {
     import jaclang.dist.payload.assemble as assembly;
     with tempfile.TemporaryDirectory() as base {
         out = os.path.join(base, "stubcat.bin");
-        for opts in (
-            MkPayloadOpts(skip_precompile=True, stubcat_out=out),
-            MkPayloadOpts(link_source=base, stubcat_out=out)
-        ) {
-            wf(base, "stubcat.bin", b"stale catalog");
-            with patch.object(assembly, "run_child") as child {
-                assembly.run_precompile_stage("python", base, base, opts);
-                child.assert_not_called();
-            }
-            assert rf(out) == b"";
+        wf(base, "stubcat.bin", b"stale catalog");
+        with patch.object(assembly, "run_child") as child {
+            assembly.run_precompile_stage(
+                "python", base, base, MkPayloadOpts(link_source=base, stubcat_out=out)
+            );
+            child.assert_not_called();
         }
+        assert rf(out) == b"";
     }
 }
 
-test "skipping the payload catalog cannot reuse a cached catalog" {
-    import jaclang.dist.payload.assemble as assembly;
-    with tempfile.TemporaryDirectory() as base {
-        site = os.path.join(base, "site");
-        cache = os.path.join(base, "cache");
-        pre = os.path.join(site, "jaclang", "_precompiled");
-        out = os.path.join(base, "stubcat.bin");
-        wf(site, "jaclang/dist/precompile_bytecode.jac", b"");
-        wf(cache, "stubcat.bin", b"stale catalog");
-        def child(
-            argv: list[str], env: dict[str, str] | None, allow_fail: bool
-        ) -> bool {
-            assert argv[2].endswith("precompile_boot.py");
-            assert env is not None and env.get("JAC_STUBCAT_BUILDING") == "1";
-            assert not os.path.exists(os.path.join(pre, "stubcat.bin"));
-            wf(pre, "PRECOMPILE_RESULT.json", b"{}");
-            return True;
+test "the precompile child keeps the cache home and the kit omissions while HOME moves" {
+    with tempfile.TemporaryDirectory() as tmp {
+        site = os.path.join(tmp, "site");
+        os.makedirs(site);
+        outer = {
+            "JAC_CACHE_HOME": os.path.join(tmp, "cache"),
+            "JAC_KIT_OMIT": "kernel"
+        };
+        with patch.dict(os.environ, outer) {
+            env = precompile_env(os.path.join(tmp, "python"), site);
         }
-        with patch.object(assembly, "run_child", side_effect=child) as runner {
-            assembly.run_precompile_stage(
-                "python",
-                base,
-                site,
-                MkPayloadOpts(
-                    skip_stubcat=True, precompiled_cache=cache, stubcat_out=out
-                )
-            );
-            runner.assert_called_once();
-        }
-        assert rf(out) == b"";
-        assert not os.path.exists(os.path.join(cache, "stubcat.bin"));
+        assert env["JAC_CACHE_HOME"] == outer["JAC_CACHE_HOME"];
+        assert env["JAC_KIT_OMIT"] == "kernel" , (
+            "the seal reads what the kit build asked it to leave out"
+        );
+        assert env["HOME"] == site + ".home";
     }
 }
 
@@ -492,6 +464,14 @@ test "assemble_site bundles a content-keyed shim under the canonical name" {
     try {
         repo = os.path.join(base, "repo");
         fake_repo(repo);
+        for rel in (
+            "build.zig",
+            "build.zig.zon",
+            "bootstrap/pins.json",
+            "native/core.cpp"
+        ) {
+            wf(repo, rel, f"shim input {rel}\n".encode());
+        }
 
         # What the release channel hands mkpayload: the deps-release asset,
         # whose name embeds the platform and the shim-input hash.
@@ -513,16 +493,147 @@ test "assemble_site bundles a content-keyed shim under the canonical name" {
             assert rf(os.path.join(site, template, "web.jac")) == b"template-entry\n";
             assert not os.path.exists(os.path.join(site, template, ".jac"));
         }
-        # Exactly the path _find_shim() scans for on every sys.path entry.
+        # Exactly the path the llvm-shim artifact probes for in a kit.
         llvm_dir = os.path.join(
             site, "jaclang", "compiler", "backends", "native", "llvm"
         );
         staged = sorted(os.listdir(llvm_dir));
-        assert shim_file_name() == _shim_name() , "payload and loader must spell one shim name";
-        assert staged == [_shim_name()] , f"site shim dir holds {staged}";
-        shim = rf(os.path.join(llvm_dir, _shim_name()));
+        assert shim_file_name() == shim_name() , "payload and loader must spell one shim name";
+        assert staged == [shim_name(), shim_name() + ".artifact.json"] , f"site shim dir holds {staged}";
+        import json;
+        import from jaclang.compiler.backends.native.llvm.shim_path {
+            shim_inputs_digest
+        }
+        record = json.loads(rf(os.path.join(llvm_dir, shim_name() + ".artifact.json")));
+        assert record == {"inputs": shim_inputs_digest(repo)} , (
+            "the kit's shim records the sources it was built from"
+        );
+        shim = rf(os.path.join(llvm_dir, shim_name()));
         assert shim == b"prebuilt-shim-bytes" , "the --shim asset, not the in-tree copy";
     } finally {
         shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+test "a fetched bun leaves the payload executable by users who do not own it" {
+    # The official image extracts the runtime as root and runs jac as uid 1000,
+    # which cannot chmod a root-owned file: bun has to come out of the payload
+    # executable, not wait for jac to chmod it at first use (#10384).
+    import hashlib;
+    import zipfile;
+    import jaclang.dist.payload.fetch as fetch_mod;
+    import from jaclang.dist.payload.cli { main }
+    import from jaclang.dist.payload.fetch { BUN_BASE, BUN_VERSION }
+
+    buf = io.BytesIO();
+    with zipfile.ZipFile(buf, "w") as zf {
+        zf.writestr("bun-linux-x64/bun", b"\x7fELF bun\n");
+    }
+    zip_bytes = buf.getvalue();
+    release = f"{BUN_BASE}/bun-v{BUN_VERSION}";
+    assets = {
+        f"{release}/bun-linux-x64.zip": zip_bytes,
+        f"{release}/SHASUMS256.txt": f"{hashlib.sha256(
+            zip_bytes
+        ).hexdigest()}  bun-linux-x64.zip\n".encode()
+    };
+    base = tempfile.mkdtemp(prefix="jac-payload-bun-");
+    try {
+        bun = os.path.join(base, "bun-build", "bun");
+        with patch.object(fetch_mod, "http_get", assets.__getitem__) {
+            assert main(["fetch-bun", "linux-x86_64", os.path.dirname(bun)]) == 0;
+        }
+        repo = os.path.join(base, "repo");
+        fake_repo(repo);
+        wf(repo, "build.zig", b"shim input\n");
+        wf(repo, "build.zig.zon", b"shim input\n");
+        shim = os.path.join(base, "libjacllvm." + shim_file_name().rsplit(".", 1)[-1]);
+        wf(base, os.path.basename(shim), b"prebuilt-shim-bytes");
+        stage = os.path.join(base, "stage");
+        assemble_site(
+            repo, os.path.join(stage, "site"), MkPayloadOpts(shim_so=shim, bun_bin=bun)
+        );
+        packed = os.path.join(base, "payload.tar.zst");
+        tar_zst_dir(stage, packed, None);
+        rt = os.path.join(base, "rt");
+        extract_payload(packed, rt);
+        mode = os.stat(os.path.join(rt, "site/jaclang/client/_bun/bun")).st_mode
+            & 0o777;
+        assert mode & 0o111 == 0o111 , f"bun leaves the payload as {oct(mode)}";
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+test "stripping the kernel keeps its sidecar hash truthful" {
+    import hashlib;
+    import json;
+    import os;
+    import tempfile;
+    import from pathlib { Path }
+    import from jaclang.dist.payload.assemble { strip_kernel_best_effort }
+    with tempfile.TemporaryDirectory() as tmp {
+        site = os.path.join(tmp, "site");
+        pre = Path(site) / "jaclang" / "_precompiled";
+        pre.mkdir(parents=True);
+        lib = Path(site) / "jaclang" / "compiler" / "libjac_compiler.so";
+        lib.parent.mkdir(parents=True);
+        lib.write_bytes(b"not an ELF image, so strip leaves it alone");
+        (pre / "MANIFEST.json").write_text(
+            json.dumps(
+                {
+                    "native": {
+                        "artifact": {
+                            "path": "compiler/libjac_compiler.so",
+                            "sha256": "stale"
+                        }
+                    }
+                }
+            )
+        );
+        Path(str(lib) + ".layout.json").write_text(
+            json.dumps({"classes": {}, "artifact_sha256": "stale", "plan_digest": "p"})
+        );
+        strip_kernel_best_effort(site);
+        actual = hashlib.sha256(lib.read_bytes()).hexdigest();
+        manifest = json.loads((pre / "MANIFEST.json").read_text());
+        assert manifest["native"]["artifact"]["sha256"] == actual;
+        sidecar = json.loads(Path(str(lib) + ".layout.json").read_text());
+        assert sidecar["artifact_sha256"] == actual , (
+            "the sidecar must describe the library the kit ships, or a checkout never adopts it"
+        );
+        assert sidecar["plan_digest"] == "p" and sidecar["classes"] == {};
+    }
+}
+
+test "the staged interpreter keeps the C API its extension modules link against" {
+    if sys.platform != "darwin" {
+        return;
+    }
+    import subprocess;
+    import from jaclang.dist.payload.assemble { stage_python_bin }
+    cc = shutil.which("cc");
+    assert cc is not None , "a C compiler is required for the interpreter fixture";
+    with tempfile.TemporaryDirectory() as tmp {
+        bindir = os.path.join(tmp, "py", "install", "bin");
+        os.makedirs(bindir);
+        csrc = os.path.join(tmp, "interp.c");
+        with open(csrc, "w") as f {
+            f.write(
+                "int PyExc_Fixture = 1;\nint main(void) { return PyExc_Fixture - 1; }\n"
+            );
+        }
+        exe = os.path.join(bindir, f"python{py_ver()}");
+        subprocess.run([cc, "-o", exe, csrc, "-Wl,-export_dynamic"], check=True);
+        stage = os.path.join(tmp, "stage");
+        stage_python_bin(os.path.join(tmp, "py"), stage);
+        staged = os.path.join(stage, "python", "bin", f"python{py_ver()}");
+        exports = subprocess.run(
+            ["nm", "-gU", staged], capture_output=True, text=True, check=True
+        ).stdout;
+        assert "_PyExc_Fixture" in exports , (
+            "lib-dynload modules resolve the C API against the interpreter; "
+            f"strip removed its exports:\n{exports}"
+        );
     }
 }

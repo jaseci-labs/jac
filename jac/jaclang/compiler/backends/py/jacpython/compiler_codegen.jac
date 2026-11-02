@@ -13,429 +13,6 @@
 # Product module: imports compiler_ir + opcode_meta + ast_nodes only. No host
 # tokenize/ast/compile/marshal.
 
-import from jaclang.runtime.python.objects {
-    PyObj,
-    PyInt,
-    PyStr,
-    py_none,
-    PyNoneType,
-    PySlice,
-    PyCode,
-    PyTuple
-}
-import from jaclang.runtime.python.opcode_meta {
-    is_scope_exit_opcode,
-    is_unconditional_jump_opcode,
-    OP_RESUME,
-    OP_RETURN_GENERATOR,
-    OP_RETURN_VALUE,
-    OP_YIELD_VALUE,
-    OP_GET_YIELD_FROM_ITER,
-    OP_GET_AWAITABLE,
-    OP_GET_AITER,
-    OP_GET_ANEXT,
-    OP_END_ASYNC_FOR,
-    OP_SEND,
-    OP_END_SEND,
-    OP_CLEANUP_THROW,
-    OP_JUMP_BACKWARD_NO_INTERRUPT,
-    OP_CALL_INTRINSIC_1,
-    OP_LOAD_CONST,
-    OP_LOAD_SMALL_INT,
-    OP_LOAD_NAME,
-    OP_LOAD_GLOBAL,
-    OP_LOAD_BUILD_CLASS,
-    OP_MAKE_FUNCTION,
-    OP_MAKE_CELL,
-    OP_COPY_FREE_VARS,
-    OP_LOAD_DEREF,
-    OP_STORE_DEREF,
-    OP_BUILD_TUPLE,
-    OP_SET_FUNCTION_ATTRIBUTE,
-    OP_BINARY_OP,
-    CO_OPTIMIZED,
-    CO_NEWLOCALS,
-    CO_NESTED,
-    CO_GENERATOR,
-    CO_COROUTINE,
-    CO_ASYNC_GENERATOR,
-    CO_VARARGS,
-    CO_VARKEYWORDS,
-    OP_UNARY_NEGATIVE,
-    OP_UNARY_INVERT,
-    OP_UNARY_NOT,
-    OP_PUSH_NULL,
-    OP_CALL,
-    OP_CALL_KW,
-    OP_LOAD_LOCALS,
-    OP_COMPARE_OP,
-    OP_IS_OP,
-    OP_CONTAINS_OP,
-    OP_POP_TOP,
-    OP_IMPORT_NAME,
-    OP_IMPORT_FROM,
-    OP_STORE_NAME,
-    OP_STORE_GLOBAL,
-    OP_STORE_ATTR,
-    OP_STORE_SUBSCR,
-    OP_STORE_SLICE,
-    OP_BINARY_SLICE,
-    OP_BUILD_SLICE,
-    OP_LOAD_ATTR,
-    OP_DELETE_NAME,
-    OP_DELETE_GLOBAL,
-    OP_DELETE_ATTR,
-    OP_DELETE_SUBSCR,
-    OP_POP_JUMP_IF_FALSE,
-    OP_POP_JUMP_IF_TRUE,
-    OP_POP_JUMP_IF_NOT_NONE,
-    OP_POP_JUMP_IF_NONE,
-    OP_JUMP_FORWARD,
-    OP_JUMP_BACKWARD,
-    OP_COPY,
-    OP_SWAP,
-    OP_GET_LEN,
-    OP_MATCH_SEQUENCE,
-    OP_MATCH_MAPPING,
-    OP_MATCH_KEYS,
-    OP_MATCH_CLASS,
-    OP_DICT_UPDATE,
-    OP_TO_BOOL,
-    OP_NOP,
-    OP_NOT_TAKEN,
-    OP_GET_ITER,
-    OP_FOR_ITER,
-    OP_END_FOR,
-    OP_POP_ITER,
-    OP_BUILD_LIST,
-    OP_LIST_APPEND,
-    OP_LIST_EXTEND,
-    OP_BUILD_SET,
-    OP_SET_ADD,
-    OP_SET_UPDATE,
-    OP_BUILD_MAP,
-    OP_MAP_ADD,
-    OP_LOAD_FAST,
-    OP_LOAD_FAST_BORROW,
-    OP_LOAD_FAST_CHECK,
-    OP_LOAD_FAST_BORROW_LOAD_FAST_BORROW,
-    OP_LOAD_FAST_AND_CLEAR,
-    OP_STORE_FAST,
-    OP_DELETE_FAST,
-    OP_DELETE_DEREF,
-    OP_STORE_FAST_STORE_FAST,
-    OP_STORE_FAST_LOAD_FAST,
-    OP_UNPACK_SEQUENCE,
-    OP_UNPACK_EX,
-    OP_PUSH_EXC_INFO,
-    OP_POP_EXCEPT,
-    OP_CHECK_EXC_MATCH,
-    OP_RERAISE,
-    OP_RAISE_VARARGS,
-    OP_LOAD_SPECIAL,
-    OP_WITH_EXCEPT_START,
-    OP_LOAD_COMMON_CONSTANT,
-    NB_ADD,
-    NB_SUBTRACT,
-    NB_MULTIPLY,
-    NB_TRUE_DIVIDE,
-    NB_FLOOR_DIVIDE,
-    NB_REMAINDER,
-    NB_POWER,
-    NB_LSHIFT,
-    NB_RSHIFT,
-    NB_OR,
-    NB_XOR,
-    NB_AND,
-    NB_MATRIX_MULTIPLY,
-    NB_SUBSCR,
-    NB_INPLACE_ADD,
-    NB_INPLACE_SUBTRACT,
-    NB_INPLACE_MULTIPLY,
-    NB_INPLACE_TRUE_DIVIDE,
-    NB_INPLACE_FLOOR_DIVIDE,
-    NB_INPLACE_REMAINDER,
-    NB_INPLACE_POWER,
-    NB_INPLACE_LSHIFT,
-    NB_INPLACE_RSHIFT,
-    NB_INPLACE_OR,
-    NB_INPLACE_XOR,
-    NB_INPLACE_AND,
-    NB_INPLACE_MATRIX_MULTIPLY,
-    CMP_LT,
-    CMP_LE,
-    CMP_EQ,
-    CMP_NE,
-    CMP_GT,
-    CMP_GE,
-    compare_oparg,
-    compare_filter_oparg,
-}
-import from jaclang.compiler.frontend.python.ast_nodes {
-    ast_node,
-    expr,
-    stmt,
-    Constant,
-    Name,
-    BinOp,
-    UnaryOp,
-    Compare,
-    Assign,
-    Expr,
-    Pass,
-    Return,
-    AugAssign,
-    AnnAssign,
-    Delete,
-    Attribute,
-    Subscript,
-    Slice,
-    Load,
-    Store,
-    Lt,
-    Gt,
-    Eq,
-    NotEq,
-    LtE,
-    GtE,
-    Is,
-    IsNot,
-    In,
-    NotIn,
-    Add,
-    Sub,
-    Mult,
-    Div,
-    Mod,
-    Pow,
-    LShift,
-    RShift,
-    BitOr,
-    BitXor,
-    BitAnd,
-    FloorDiv,
-    MatMult,
-    USub,
-    UAdd,
-    Invert,
-    Not,
-    BoolOp,
-    And,
-    Or,
-    NamedExpr,
-    Lambda,
-    IfExp,
-    Dict,
-    Set,
-    ListComp,
-    SetComp,
-    DictComp,
-    GeneratorExp,
-    comprehension,
-    Await,
-    Yield,
-    YieldFrom,
-    FormattedValue,
-    JoinedStr,
-    Interpolation,
-    TemplateStr,
-    Starred,
-    List,
-    Tuple,
-    FunctionDef,
-    AsyncFunctionDef,
-    keyword,
-    arguments,
-    ClassDef,
-    TypeAlias,
-    For,
-    AsyncFor,
-    While,
-    If,
-    With,
-    AsyncWith,
-    Match,
-    match_case,
-    pattern,
-    MatchValue,
-    MatchSingleton,
-    MatchAs,
-    MatchOr,
-    MatchSequence,
-    MatchMapping,
-    MatchClass,
-    MatchStar,
-    Raise,
-    Try,
-    TryStar,
-    ExceptHandler,
-    Assert,
-    Import,
-    ImportFrom,
-    alias,
-    Global,
-    Nonlocal,
-    Break,
-    Continue,
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_ir {
-    cloc,
-    unverified_cfg,
-    basicblock,
-    cinstr,
-    loc,
-    no_loc,
-    mk_instr,
-    mk_jump,
-    cfg_builder,
-    stmt_cont,
-    new_cfg_builder,
-    loop_frame,
-    break_site,
-    control_unwind,
-    except_region,
-    comp_handler,
-}
-import from jaclang.compiler.frontend.python.compiler_symtable {
-    scope_kind,
-    sym_block,
-    sym_dict_get,
-    sym_flag_set,
-    sym_scope_of,
-    sym_sorted_names,
-    mangle_name,
-    DEF_COMP_ITER,
-    SCOPE_GLOBAL_EXPLICIT,
-    SCOPE_GLOBAL_IMPLICIT,
-    SCOPE_LOCAL,
-    SCOPE_CELL,
-    SCOPE_FREE,
-    sym_block_tuple_names,
-}
-import from jaclang.compiler.frontend.python.compiler_diagnostics {
-    lowering_diagnostic
-}
-import from jaclang.compiler.backends.py.jacpython.flowgraph {
-    verify_cfg,
-    optimize_swap_range
-}
-import from jaclang.compiler.backends.py.jacpython.assembler { assemble }
-import from jaclang.compiler.backends.py.jacpython.compiler_emit {
-    emit_suspendable_prologue,
-    emit_generator_except_handler,
-    flush_pending_await_footers,
-    cellvars_from_sym,
-    codegen_busy,
-    codegen_fail,
-    codegen_mangle,
-    comp_append_handler,
-    comp_emit_bind_target,
-    comp_emit_cleanup,
-    comp_emit_filters,
-    comp_emit_setup,
-    comp_emit_single_elt,
-    comp_finish_loop,
-    comp_lead_loopvar_slot,
-    comp_name_fast_index,
-    comp_target_slots,
-    compile_lambda_cfg,
-    emit_anext_send_loop_footer,
-    emit_anext_send_loop_header,
-    emit_await_send_except_regions,
-    emit_await_send_loop_footer,
-    emit_await_send_loop_header,
-    emit_return_unwind,
-    emit_control_unwind,
-    finish_control_unwind,
-    emit_branch_if_test_false,
-    emit_branch_if_test_true,
-    emit_cmp_link,
-    emit_folded_int,
-    emit_function_defaults,
-    emit_function_kwdefaults,
-    emit_function_prologue,
-    emit_make_function_with_closure,
-    emit_name_load,
-    emit_send_delegation_loop,
-    emit_slice_bound,
-    emit_slice_load,
-    emit_starred_list_build,
-    fast_local_index,
-    fast_varnames_from_sym,
-    freevars_from_sym,
-    is_none_identity_test,
-    localsplus_index,
-    localsplus_index_u,
-    name_load_opcode,
-    register_int_literal_const,
-    try_emit_fast_local_pair_load,
-    unit_fail,
-    varname_index,
-    visit_boolop,
-    visit_comp_dict_kv,
-    visit_comp_elt,
-    visit_compare,
-    visit_dict_comp,
-    visit_expr,
-    visit_lambda,
-    visit_list_comp,
-    visit_set_comp,
-    visit_subscript_index,
-    visit_test_expr,
-}
-import from jaclang.compiler.backends.py.jacpython.codegen_util {
-    body_docstring,
-    args_have_kw_defaults,
-    function_argcounts,
-    function_code_flags,
-    ast_node_name,
-    nloc,
-    function_def_loc,
-    async_function_def_loc,
-    binop_id,
-    inplace_binop_id,
-    expr_loc,
-    fold_slice_const,
-    unary_opcode,
-    ast_cmp_kind,
-    cmpop_oparg,
-    cmpop_filter_oparg,
-    try_fold_binop,
-    call_func_loc,
-    call_effective_args,
-    top_loc,
-    stmt_loc,
-    seq_target_elts,
-    is_seq_literal,
-    display_has_starred,
-    display_all_constant,
-    display_const_items,
-    starred_target_index,
-    exec_tail_emits_code,
-    comp_name_bound,
-    comp_bound_names_from_target,
-    comp_leftmost_leaf,
-    comp_dict_map_loc,
-    try_handler_span,
-    body_is_try_finally_only,
-    body_is_try_except_only,
-    match_pattern_loc,
-    match_pattern_unwrap_or,
-    match_pattern_wildcard,
-    loop_body_has_break,
-    import_bind_name,
-    class_effective_bases,
-    class_effective_keywords
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_annotations {
-    ann_scope_plan,
-    collect_ann_plan,
-    emit_module_annotation_setup,
-    finish_module_annotations,
-    visit_ann_assign,
-}
-
-
 def emit_name_store(g: cfg_builder, name: str, tloc: cloc) {
     name = codegen_mangle(g, name);
     # Cell/free scope FIRST (see emit_name_load in compiler_emit): a
@@ -507,7 +84,6 @@ def emit_name_delete(g: cfg_builder, name: str, tloc: cloc) {
     g.emit_op(OP_DELETE_NAME, idx, tloc);
 }
 
-
 # Non-constant slice STORE (value already on the stack, container just pushed).
 # 2-element: STORE_SLICE (fused). 3-element: BUILD_SLICE 3 + STORE_SUBSCR.
 def emit_slice_store(g: cfg_builder, sl: Slice, lc: cloc) {
@@ -538,13 +114,11 @@ def emit_slice_delete(g: cfg_builder, sl: Slice, lc: cloc) {
     g.emit_op(OP_DELETE_SUBSCR, 0, lc);
 }
 
-
 def emit_compare_cleanup(g: cfg_builder, cleanup: basicblock, lc: cloc) {
     g.use(cleanup);
     g.emit_op(OP_SWAP, 2, lc);
     g.emit_op(OP_POP_TOP, 0, lc);
 }
-
 
 # Build a unverified_cfg for an eval-mode expression. Emits RESUME (module/eval
 # scope: lineno 0), the expression, then RETURN_VALUE carrying the expression's
@@ -675,7 +249,6 @@ def visit_store_target_tos(g: cfg_builder, t: expr) -> stmt_cont {
     return stmt_cont(loc=expr_loc(t));
 }
 
-
 # With the sequence value on TOS, emit UNPACK_SEQUENCE (no star) or UNPACK_EX
 # (starred), then store each element target left-to-right. Nested Tuple/List
 # targets recurse; a Starred target stores the captured list into its .value.
@@ -703,7 +276,6 @@ def emit_unpack_stores(g: cfg_builder, elts: list[expr], tloc: cloc) -> cloc {
     }
     return last_loc;
 }
-
 
 def visit_store_seq_literal(
     g: cfg_builder, telts: list[expr], velts: list[expr], tloc: cloc, vloc: cloc
@@ -793,7 +365,6 @@ def visit_delete_target(g: cfg_builder, t: expr) -> stmt_cont {
     return stmt_cont(loc=expr_loc(t));
 }
 
-
 # Module-level epilogue (LOAD_CONST None; RETURN_VALUE).
 def emit_module_return(g: cfg_builder, lc: cloc) {
     if g.cur.instrs {
@@ -821,7 +392,6 @@ def emit_unit_loop_exit_epilogue(g: cfg_builder, lc: cloc, with_end_for: bool) {
     }
     emit_module_return(g, lc);
 }
-
 
 # Lower assert (test + optional message).
 def visit_assert_stmt(g: cfg_builder, a: Assert) -> stmt_cont {
@@ -959,7 +529,6 @@ def emit_tail_and_finish(
     return stmt_cont(loc=end_loc, next_si=len(tail), terminated=True);
 }
 
-
 # Lower one statement into the builder's current block.
 def finish_expression(g: cfg_builder, lc: cloc) {
     if g.u.interactive {
@@ -977,10 +546,6 @@ def visit_stmt(
     tail_join: basicblock | None = None,
     ann_ctx: ann_scope_plan | None = None
 ) -> stmt_cont {
-    import jaclang.compiler.backends.py.jacpython.compiler_defs as dispatch_defs;
-    import jaclang.compiler.backends.py.jacpython.compiler_exc as dispatch_exc;
-    import jaclang.compiler.backends.py.jacpython.compiler_loops as dispatch_loops;
-    import jaclang.compiler.backends.py.jacpython.compiler_match as dispatch_match;
     if codegen_busy(g) {
         return stmt_cont(loc=stmt_loc(s));
     }
@@ -1018,7 +583,8 @@ def visit_stmt(
             }
         }
         cmp_cleanup = visit_expr(g, asgn.value, False, False);
-        if cmp_cleanup is not None and more_code_follows {
+        if cmp_cleanup is not None
+            and (more_code_follows or g.fallthrough_target is not None) {
             join = g.new_block();
             cmp_loc = expr_loc(asgn.value);
             g.emit_jump(OP_JUMP_FORWARD, join.id, cmp_loc);
@@ -1341,7 +907,6 @@ def visit_return_stmt(
     finish_control_unwind(g, unwind_end);
 }
 
-
 # Build a unverified_cfg for an exec-mode module body. Emits RESUME (module scope:
 # lineno 0), each statement, then the implicit LOAD_CONST None; RETURN_VALUE
 # epilogue. The epilogue carries the last-emitted instruction's location (or the
@@ -1481,7 +1046,6 @@ def emit_source_resume(
 }
 
 def finish_source_scope(g: cfg_builder, protect_start: int) {
-    import jaclang.compiler.backends.py.jacpython.compiler_exc as dispatch_exc;
     flush_pending_await_footers(g);
     dispatch_exc.emit_deferred_comp_handlers(g);
     emit_generator_except_handler(g, protect_start);

@@ -1,0 +1,21 @@
+name: Seal the checkout
+description: >
+  Drop every `[dev] jaclang_source` from the checkout's jac.toml files, so each
+  jac this job starts runs the compiler bundled in its binary, not this
+  checkout's source. A process tree's compiler is decided once, by its top
+  process from the nearest jac.toml, and the children inherit that decision
+  through the handoff record; a sealed lane is one where no jac.toml names a
+  source.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        git ls-files -z -- 'jac.toml' '*/jac.toml' \
+          | xargs -0 -r perl -i -ne 'print unless /^\s*jaclang_source\s*=/'
+        if git grep -nE '^\s*jaclang_source\s*=' -- 'jac.toml' '*/jac.toml'; then
+          echo "::error::a jac.toml still names a compiler source"
+          exit 1
+        fi

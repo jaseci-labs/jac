@@ -1,6 +1,4 @@
-import from jaclang.runtime.scalars { sized_scalar_names }
-
-glob JCIR_BUILTIN_NAMES: frozenset = frozenset(
+glob JCIR_BUILTIN_NAMES: frozenset[str] = frozenset(
          {
              "APIProtocol",
              "AccessLevel",
@@ -8,6 +6,18 @@ glob JCIR_BUILTIN_NAMES: frozenset = frozenset(
              "RaisesContext",
              "Region",
              "region_of",
+             "ptr",
+             "PtrView",
+             "Pinned",
+             "pin",
+             "addressof",
+             "VaList",
+             "_jac_clib_bind",
+             "_jac_c_copy",
+             "_jac_c_cell",
+             "_jac_c_lend",
+             "_jac_c_function_ptr",
+             "_jac_c_vararg",
              "ScheduleTrigger",
              "_jac_chunks",
              "_jac_take_attr",
@@ -52,7 +62,7 @@ glob JCIR_BUILTIN_NAMES: frozenset = frozenset(
          }
              | set(sized_scalar_names())
      ),
-     JCIR_AMBIENT_TYPING_NAMES: frozenset = frozenset(
+     JCIR_AMBIENT_TYPING_NAMES: frozenset[str] = frozenset(
          {
              "Annotated",
              "AsyncIterable",
@@ -77,10 +87,6 @@ glob JCIR_BUILTIN_NAMES: frozenset = frozenset(
 glob JCIR_PYTHON_MAJOR: int = 3,
      JCIR_PYTHON_MINOR: int = 14;
 
-def jcir_is_test_path(path: str) -> bool {
-    return path.endswith(".test.jac");
-}
+def jcir_is_test_path(path: str) -> bool;
 
-def jcir_python_version -> int {
-    return (JCIR_PYTHON_MAJOR << 8) | JCIR_PYTHON_MINOR;
-}
+def jcir_python_version -> int;

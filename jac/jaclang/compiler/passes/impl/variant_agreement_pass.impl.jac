@@ -19,7 +19,7 @@ impl annotation_text(nd: (UniNode | None)) -> str {
     if nd is None {
         return '';
     }
-    import from jaclang.compiler.tools.unparse_pass { unparse_node }
+
     try {
         return ' '.join(unparse_node(nd).split());
     } except Exception {
@@ -59,8 +59,8 @@ impl public_surface(mod: Module) -> dict[str, tuple[str, str, UniNode]] {
                 continue;
             }
             fields: list[str] = [];
-            for hv in stmt.get_all_sub_nodes(typ=HasVar) {
-                if hv.find_parent_of_type(Archetype) is not stmt {
+            for hv in stmt.element_sub_nodes(HasVar) {
+                if hv.enclosing_decl(Archetype) is not stmt {
                     continue;
                 }
                 tag = hv.type_tag.tag if hv.type_tag is not None else None;
@@ -113,10 +113,9 @@ impl VariantAgreementPass._parse_sibling(path: str) -> (Module | None) {
     if found is not None and not found.parse_failed {
         return found;
     }
-    import from jaclang.project.source { read_file_with_encoding }
-    import from jaclang.compiler.frontend.parser.frontend { parse }
+
     try {
-        (mod, had_error) = parse(read_file_with_encoding(path), path, prog=None);
+        (mod, had_error) = parse(active_host().read_source(path), path, prog=None);
     } except Exception {
         return None;
     }

@@ -1,279 +1,15 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.passes.context { CompileContext }
-import from jaclang.compiler.types.builtin_extensions { install_builtin_extensions }
 import os;
 import from pathlib { Path }
-import type from jaclang.compiler.types.stubcat.reader { CatScope, StubCatalog }
+
 import from typing { cast }
-import from jaclang.compiler.types.ct_eval { CtEvaluator }
-import from jaclang.compiler.types.ct_value { CtValue }
-import from jaclang.compiler.frontend.diagnostics { E0033, E0108, E0109 }
-import from jaclang.compiler.frontend.unitree {
-    literal_string_value,
-    Ability,
-    Archetype,
-    AssertStmt,
-    AssignCompr,
-    Assignment,
-    AtomTrailer,
-    AtomUnit,
-    AwaitExpr,
-    BinaryExpr,
-    Bool,
-    BoolExpr,
-    BuiltinType,
-    CastExpr,
-    CfgExpr,
-    CodeBlockStmt,
-    CompareExpr,
-    ConcurrentExpr,
-    CtrlStmt,
-    DictCompr,
-    DictVal,
-    EdgeOpRef,
-    EdgeRefTrailer,
-    Ellipsis,
-    ElseIf,
-    ElseStmt,
-    Enum,
-    EventSignature,
-    Except,
-    Expr,
-    ExprStmt,
-    FString,
-    FilterCompr,
-    Float,
-    ForeverStmt,
-    FormattedValue,
-    FuncCall,
-    FuncSignature,
-    GenCompr,
-    HasVar,
-    IfElseExpr,
-    IfStmt,
-    ImplDef,
-    Import,
-    InForStmt,
-    IndexSlice,
-    InnerCompr,
-    Int,
-    IterForStmt,
-    JsxComment,
-    JsxElement,
-    JsxElementName,
-    JsxNormalAttribute,
-    JsxSpreadAttribute,
-    JsxText,
-    KVPair,
-    KWPair,
-    LambdaExpr,
-    ListCompr,
-    ListVal,
-    MatchArch,
-    MatchAs,
-    MatchCase,
-    MatchOr,
-    MatchPattern,
-    MatchStmt,
-    MatchWild,
-    Module,
-    ModuleItem,
-    ModulePath,
-    MultiString,
-    Name,
-    NameAtom,
-    is_client_destined,
-    kind_has_runtime_binding,
-    resolved_decl_of,
-    Null,
-    OpenStmt,
-    ParamKind as UniParamKind,
-    ParamVar,
-    RaiseStmt,
-    ReturnStmt,
-    Semi,
-    SetCompr,
-    SetVal,
-    Source,
-    SpecialVarRef,
-    String,
-    SubTag,
-    SwitchCase,
-    SwitchStmt,
-    Symbol,
-    Token,
-    TryStmt,
-    TupleVal,
-    TypeAlias,
-    TypeParam,
-    UnaryExpr,
-    UniCFGNode,
-    UniNode,
-    UniScopeNode,
-    WhileStmt,
-    WithStmt,
-    YieldExpr
-}
-import from jaclang.runtime.constants { EdgeDir }
-import from jaclang.compiler.frontend.constant {
-    TOKEN_MAP,
-    BindingKind,
-    CodeContext,
-    ExprCtx,
-    ImmutabilityKind,
-    SymbolType,
-    Tokens as Tok,
-    SymbolAccess,
-    OwnershipKind
-}
-import from jaclang.compiler.types.types {
-    AnyType,
-    ClassDetailsPrivate,
-    ClassDetailsShared,
-    ClassType,
-    EnumMemberInfo,
-    EnumMemberType,
-    FunctionType,
-    FunctionTypeFlags,
-    ModuleType,
-    NeverType,
-    OverloadedType,
-    ParamKind,
-    Parameter,
-    ParameterCategory,
-    TypeBase,
-    TypeCategory,
-    TypeFlags,
-    TypeVarType,
-    UnionType,
-    UnknownType,
-    create_callable_type
-}
-import from jaclang.project.source { read_file_with_encoding }
 
-import type from jaclang.compiler.driver.program { JacProgram }
-
-import from jaclang.compiler.types.operations {
-    BINARY_OPERATOR_MAP,
-    get_type_of_binary_operation,
-    is_annotation_type
-}
-import from jaclang.compiler.types.fixed_width {
-    AssignVerdict,
-    assign_numeric_expr,
-    both_numeric,
-    fixed_width_call_type,
-    is_unsigned_type,
-    unify_numeric_operands
-}
-import from jaclang.compiler.types.type_utils {
-    ClassMember,
-    ParamAssignmentTracker,
-    PropertyWriteKind,
-    PropertyWriteResult,
-    apply_solved_type_vars,
-    build_type_var_solution,
-    class_implements_protocol,
-    collect_member_syms,
-    compute_module_source_flags,
-    compute_mro_linearization,
-    convert_to_instance,
-    get_declared_generator_return_type,
-    is_generator_family_type,
-    lookup_symtab,
-    shadowed_type_var_names,
-    specialize_for_base_class,
-    synthesize_self_type_var
-}
-import from jaclang.compiler.types.properties {
-    is_cached_property_decorator_type,
-    is_property_decorator_type
-}
-import from jaclang.compiler.types.enum_utils {
-    build_enum_members,
-    get_special_enum_value_type_from_bases
-}
-import from jaclang.compiler.types.ts_decl_parser {
-    TsDecl,
-    TsType,
-    TsTypeKind,
-    TsDeclKind,
-    TsAccess,
-    TsMember,
-    ts_decl_binding_kind
-}
-
-import from jaclang.compiler.frontend.diagnostics {
-    DiagnosticInfo,
-    E1001,
-    E1002,
-    E1010,
-    E1023,
-    E1030,
-    E1031,
-    E1032,
-    E1033,
-    E1034,
-    E1035,
-    E1038,
-    E1040,
-    E1041,
-    E1043,
-    E1044,
-    E1050,
-    E1051,
-    E1052,
-    E1053,
-    E1054,
-    E1055,
-    E1056,
-    E1057,
-    E1062,
-    E1063,
-    E1064,
-    E1065,
-    E1070,
-    E1071,
-    E1072,
-    E1073,
-    E1080,
-    E1081,
-    E1096,
-    E1097,
-    E1098,
-    E1099,
-    E1100,
-    E1101,
-    E1102,
-    E1103,
-    E1104,
-    E1110,
-    E1111,
-    E1120,
-    E1121,
-    E1129,
-    E1131,
-    E1134,
-    E1136,
-    E1137,
-    E1138,
-    E1139,
-    E0049,
-    E5094,
-    W1050,
-    W1051,
-    W1053,
-    W1100,
-    W1101,
-    W1102,
-    W2081,
-    W2082
-}
+import from typing { cast }
 
 obj PrefetchedTypes {
     has none_type_class: ClassType | None = None,
         object_class: ClassType | None = None,
         type_class: ClassType | None = None,
+        base_exception_class: ClassType | None = None,
         coroutine_class: ClassType | None = None,
         generator_class: ClassType | None = None,
         function_class: ClassType | None = None,
@@ -358,7 +94,8 @@ obj NarrowingPredicate {
         attr_name: str | None = None,
         narrows_on_true: bool = True,
         narrows_on_false: bool = True,
-        replaces_declared: bool = False;
+        replaces_declared: bool = False,
+        by_equality: bool = False;
 }
 
 enum NarrowingKind {
@@ -373,7 +110,8 @@ enum NarrowingKind {
     TYPE_IS = "type_is",
     TYPE_GUARD = "type_guard",
     MEMBERSHIP_IN = "membership_in",
-    MEMBERSHIP_NOT_IN = "membership_not_in"
+    MEMBERSHIP_NOT_IN = "membership_not_in",
+    MEMBERSHIP_KEY = "membership_key"
 }
 
 enum EndpointVerdict {
@@ -415,11 +153,14 @@ walker TypeEvaluator {
         prefetch: PrefetchedTypes postinit,
         _pass: CompileContext | None = None,
         _diagnostic_suppression_depth: int = 0,
+        _trial_notes: (list[tuple[UniNode, str, str, bool]] | None) = None,
+        _last_trial_notes: list[tuple[UniNode, str, str, bool]] = [],
         builtins_module: Module | None = None,
         _flow_node_type_cache: dict[tuple[int, int], TypeBase | None] = {},
         _flow_key_type_cache: dict[tuple[int, str], TypeBase | None] = {},
-        _flow_pending_symbols: set[int] postinit,
-        _flow_pending_keys: set[str] postinit,
+        _narrow_expr_memo: dict[tuple[int, int, int], tuple[any, any, any, any]] = {},
+        _flow_pending_symbols: set[tuple[int, int]] postinit,
+        _flow_pending_keys: set[tuple[str, int]] postinit,
         _module_type_cache: dict[str, ModuleType] = {},
         _modules_in_compile: set[str] postinit,
         _mobui_module_cache: dict[str, bool] = {},
@@ -431,7 +172,6 @@ walker TypeEvaluator {
         _ts_decl_cache: dict[str, (dict[str, TsDecl] | None)] = {},
         _ts_decl_path_cache: dict[str, (str | None)] = {},
         _ts_synth_class_cache: dict[int, (dict[str, ClassType] | None)] = {},
-        _untyped_external_cfg_cache: dict[str, bool] = {},
         typing_module: Module postinit,
         types_module: Module postinit,
         enum_module: Module postinit,
@@ -441,6 +181,8 @@ walker TypeEvaluator {
         js_globals_module: Module postinit;
 
     def postinit -> None;
+    def release_check_caches -> None;
+    def release_compile_caches -> None;
     def ct_demand(nd: Expr) -> (CtValue | None);
     def ct_site_error(
         nd: Expr, what: str, cv: (CtValue | None), allow_deferred: bool = True
@@ -466,6 +208,8 @@ walker TypeEvaluator {
         path: str, importer_path: (str | None) = None, need_tree: bool = False
     ) -> Module;
 
+    def _in_flight_module(resolved_path: str) -> (Module | None);
+    def _module_in_flight(path: str) -> bool;
     def _resolve_importer_path(ast_node: UniNode) -> (str | None);
     def forget_module(resolved_path: str) -> None;
     def _resolve_from_path(from_mod: ModulePath) -> Path;
@@ -563,7 +307,7 @@ walker TypeEvaluator {
     def _extract_ct_params(node_: Archetype) -> (list[str] | None);
     def _ct_args_for_class(
         base_type: ClassType, slot_vals: list[Expr]
-    ) -> (tuple[dict[str, any], set[int]] | None);
+    ) -> (tuple[dict[str, CtValue], set[int]] | None);
 
     def _is_class_scoped_type_param(node_: TypeParam) -> bool;
     def _collect_typevars_from_base(
@@ -592,6 +336,10 @@ walker TypeEvaluator {
     def _is_strict_site(nd: UniNode) -> bool;
     def _diag_unnarrowed_optional(nd: UniNode, ty: TypeBase, required: str) -> bool;
     def _in_native_context -> bool;
+    def note_native(nd: UniNode, code: str, text: str, requires: bool = False) -> None;
+    def commit_trial_notes(notes: list[tuple[UniNode, str, str, bool]]) -> None;
+    def neutral_site(nd: UniNode) -> bool;
+    def _is_address_pair(src_type: TypeBase, dest_type: TypeBase) -> bool;
     def is_typevar_class(ty: TypeBase) -> bool;
     def is_paramspec_class(ty: TypeBase) -> bool;
     def is_type_var_tuple_class(ty: TypeBase) -> bool;
@@ -601,6 +349,11 @@ walker TypeEvaluator {
     ) -> bool;
 
     def _extern_scalar_type(type_expr: Expr | None) -> TypeBase;
+    def _is_typed_c_declaration(declared: TypeBase) -> bool;
+    def _assign_c_interop_args(
+        src_type: ClassType, dest_type: ClassType, strict: bool = False
+    ) -> bool;
+
     def _intrinsic_function_type(name: str) -> (FunctionType | None);
     def _intrinsic_spec_type(spec: str) -> TypeBase;
     def _check_extern_ctor_args(expr: FuncCall, arch: Archetype) -> None;
@@ -622,13 +375,17 @@ walker TypeEvaluator {
     ) -> TypeBase | None;
 
     def slice_assignment_is_valid(target: Expr, value_node: Expr) -> bool;
-    def is_sub_class(super_cls: ClassType, sub_cls: ClassType) -> bool;
+    def is_sub_class(
+        super_cls: ClassType, sub_cls: ClassType, ignore_unknown: bool = False
+    ) -> bool;
+
     def _heal_ancestry(cls: ClassType) -> None;
     def _heal_class_bases(cls: ClassType) -> None;
     def _assign_callable(
         src_func: FunctionType, dest_func: FunctionType, strict: bool = False
     ) -> bool;
 
+    def _callable_value_params(fn: FunctionType) -> list[Parameter];
     def _callable_mismatch(
         src_func: FunctionType, dest_func: FunctionType, strict: bool = False
     ) -> CallableMismatch | None;
@@ -646,6 +403,21 @@ walker TypeEvaluator {
     def _is_protocol_class(cls_type: ClassType) -> bool;
     def _solve_protocol_type_args(
         src_type: ClassType, proto_type: ClassType, bindings: dict[str, TypeBase]
+    ) -> bool;
+
+    def _solve_protocol_members(
+        src_type: ClassType,
+        proto_type: ClassType,
+        proto_symtab: UniScopeNode,
+        bindings: dict[str, TypeBase]
+    ) -> bool;
+
+    def _protocol_member_impl(
+        proto_func: FunctionType, member: ClassMember, src_type: ClassType
+    ) -> (FunctionType | None);
+
+    def _protocol_signature_fits(
+        proto_func: FunctionType, impl_func: FunctionType
     ) -> bool;
 
     def _get_type_of_symbol(symbol: Symbol) -> TypeBase;
@@ -674,6 +446,7 @@ walker TypeEvaluator {
     ) -> TypeBase;
 
     def _set_module_item_symbol_and_type(node_: ModuleItem, sym: Symbol) -> TypeBase;
+    def _provided_import_item_symbol(node_: ModuleItem) -> Symbol | None;
     def resolve_imported_symbols(sym: Symbol) -> Symbol;
     def _set_symbol_to_expr(expr: NameAtom, sym: Symbol) -> TypeBase;
     def _resolution_scope_for(expr: UniNode) -> UniScopeNode | None;
@@ -716,6 +489,7 @@ walker TypeEvaluator {
         is_async: bool = False
     ) -> TypeBase | None;
 
+    def get_type_of_with_alias(item: ExprAsItem) -> TypeBase;
     def _native_iter_next_result(expr: FuncCall) -> TypeBase | None;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     def _edge_endpoint_declared(
@@ -771,8 +545,15 @@ walker TypeEvaluator {
         expected_type: TypeBase | None, dict_class: TypeBase
     ) -> tuple[TypeBase, TypeBase] | None;
 
-    def _infer_list_elem_from_mutations(expr: ListVal) -> TypeBase | None;
-    def _list_mutation_elem_contrib(ref: NameAtom) -> TypeBase | None;
+    def _infer_elem_from_mutations(
+        expr: Expr, container_class: ClassType
+    ) -> TypeBase | None;
+
+    def _mutation_elem_contrib(
+        ref: NameAtom, container_class: ClassType
+    ) -> TypeBase | None;
+
+    def _iterable_elem_contrib(args: list[Expr]) -> TypeBase | None;
     def _get_special_form_type(name: str, symbol_type: TypeBase) -> TypeBase | None;
     def _create_callable_type(
         type_args_expr: Expr | None, error_node: Expr
@@ -801,13 +582,26 @@ walker TypeEvaluator {
     ) -> MatchArgsToParamsResult;
 
     def _is_unbound_method_call(expr: FuncCall) -> bool;
+    def _carries_unbound_method(t: (TypeBase | None)) -> bool;
+    def _as_unbound_method(
+        t: TypeBase, member: ClassMember, owner: ClassType
+    ) -> TypeBase;
+
+    def class_member_store_type(target: AtomTrailer, declared: TypeBase) -> TypeBase;
+    def _unbound_clone(fn: FunctionType, owner: ClassType) -> FunctionType;
+    def _is_instance_method_member(member: ClassMember) -> bool;
     def validate_call_args(expr: FuncCall) -> TypeBase;
     def _validate_call_type(expr: FuncCall, caller_type: TypeBase) -> TypeBase;
-    def _container_value_type(value_type: TypeBase, at: Expr) -> TypeBase;
+    def _evaluate_call_args(expr: FuncCall) -> None;
+    def _container_value_type(
+        value_type: TypeBase, at: Expr, widen: bool = False
+    ) -> TypeBase;
+
     def _make_coroutine_type(inner: TypeBase) -> TypeBase;
     def _is_awaitable_type(t: TypeBase) -> bool;
     def _unwrap_awaitable_type(t: TypeBase, node_: UniNode) -> TypeBase;
     def _is_sv_async_call(expr: FuncCall) -> bool;
+    def _c_lent_args(args: MatchArgsToParamsResult) -> set[Expr | KWPair];
     def validate_arg_types(
         args: MatchArgsToParamsResult,
         checking_overload: bool = False,
@@ -842,12 +636,21 @@ walker TypeEvaluator {
     ) -> TypeBase | None;
 
     def _typeddict_as_dict(base_type: ClassType) -> ClassType | None;
+    def _assign_typeddict(
+        src_type: ClassType, dest_type: ClassType, strict: bool = False
+    ) -> bool;
+
+    def _typeddict_for_dict_literal(
+        expr: DictVal, expected_type: TypeBase | None
+    ) -> ClassType | None;
+
     def _synthesize_typeddict_method(
         base_type: ClassType, method: str
     ) -> OverloadedType | None;
 
     def _create_object_init_method(class_type: ClassType) -> FunctionType;
     def _scope_has_fields(tab: UniScopeNode | None) -> bool;
+    def _dataclass_shadows_base_init(class_type: ClassType) -> bool;
     def _create_namedtuple_new_method(class_type: ClassType) -> FunctionType;
     def _create_special_builtin_type(name: str, base_class: ClassType) -> ClassType;
     def _validate_constructor_method(
@@ -868,6 +671,10 @@ walker TypeEvaluator {
     ) -> None;
 
     def _member_is_metaclass_only(cls_type: ClassType, expr: FuncCall) -> bool;
+    def _type_args_from_init_overload(
+        caller_type: ClassType, expr: FuncCall, raw_ctor: FunctionType
+    ) -> list[TypeBase];
+
     def class_constructor_callables(cls_type: ClassType) -> list[FunctionType];
     def _infer_type_args_from_method(
         caller_type: ClassType, expr: FuncCall, matched_method: FunctionType | None
@@ -935,10 +742,15 @@ walker TypeEvaluator {
         expr: Expr, declared_type: TypeBase, at_node: UniNode
     ) -> TypeBase | None;
 
-    def _get_type_from_flow_node(
-        target: NarrowingTarget, flow_node: UniCFGNode, visited: set
+    def _narrowed_type_for_expr(
+        expr: Expr, declared_type: TypeBase, at_node: UniNode
     ) -> TypeBase | None;
 
+    def _get_type_from_flow_node(
+        target: NarrowingTarget, flow_node: UniCFGNode, visited: set[int]
+    ) -> TypeBase | None;
+
+    def _readable_flow_type(flow_type: TypeBase | None) -> TypeBase | None;
     def _node_encloses(outer: UniNode, inner: UniNode) -> bool;
     def _loop_body_writes_target(
         loop_node: UniCFGNode, target: NarrowingTarget
@@ -962,6 +774,12 @@ walker TypeEvaluator {
 
     def _narrow_type_to(base_type: TypeBase, narrow_type: TypeBase) -> TypeBase | None;
     def _narrow_member_to(member: TypeBase, narrow_type: TypeBase) -> TypeBase | None;
+    def _never_holds_none(base_type: TypeBase) -> bool;
+    def _narrow_type_by_equality(
+        base_type: TypeBase, compared: TypeBase
+    ) -> TypeBase | None;
+
+    def _may_equal(member: TypeBase, compared: TypeBase) -> bool;
     def _specialize_narrow_from_base(
         base_type: TypeBase, narrow_type: TypeBase
     ) -> TypeBase;
@@ -972,7 +790,7 @@ walker TypeEvaluator {
         target: NarrowingTarget,
         stmt: IfStmt,
         entry_type: (TypeBase | None),
-        visited: set
+        visited: set[int]
     ) -> (TypeBase | None);
 
     def exclude_type_from_union(original: TypeBase, to_exclude: TypeBase) -> TypeBase;

@@ -5,10 +5,10 @@ sv/cl/na: DFS-recursive traversal with subtype dispatch, post-order exits,
 opt-in visit-once via `scope.ignores`, and report collection."""
 
 import from jaclang.runtime.osp_kernel {
-    Slot,
-    WalkerDesc,
-    NodeDesc,
-    WalkScope,
+    OspSlot,
+    OspWalkerDesc,
+    OspNodeDesc,
+    OspWalkScope,
     OspRuntime,
     osp_spawn,
     osp_visit,
@@ -51,8 +51,8 @@ def ab_mixed_exit(here: TNode, w: TWalker) {
 
 test "entry-only walks keep bounded traversal frames" {
     starts = [TNode(tag=1, name=str(i)) for i in range(2000)];
-    wd = WalkerDesc(
-        type_tag=10, `entry=[Slot(trig_tag=1, fn=ab_bounded_entry)], `exit=[]
+    wd = OspWalkerDesc(
+        type_tag=10, `entry=[OspSlot(trig_tag=1, fn=ab_bounded_entry)], `exit=[]
     );
     w = TWalker();
     osp_spawn(_runtime(), w, wd, _as_any(starts));
@@ -68,16 +68,16 @@ test "entry-only frames preserve outer exits and visits inserted from exits" {
     b.neighbors = [c];
     c.neighbors = [TNode(tag=1, name="D")];
     for tag in (2, 3) {
-        _ndescs[tag] = NodeDesc(
-            type_tag=tag, `entry=[], `exit=[Slot(trig_tag=UNTYPED, fn=ab_mixed_exit)]
+        _ndescs[tag] = OspNodeDesc(
+            type_tag=tag, `entry=[], `exit=[OspSlot(trig_tag=UNTYPED, fn=ab_mixed_exit)]
         );
     }
     try {
-        wd = WalkerDesc(
+        wd = OspWalkerDesc(
             type_tag=10,
             `entry=[
-                Slot(trig_tag=1, fn=ab_mixed_entry),
-                Slot(trig_tag=3, fn=ab_mixed_entry)
+                OspSlot(trig_tag=1, fn=ab_mixed_entry),
+                OspSlot(trig_tag=3, fn=ab_mixed_entry)
             ],
             `exit=[]
         );
@@ -106,14 +106,14 @@ def t_is_a(tag: int, base: int) -> bool {
     return base in _ancestors.get(tag, []);
 }
 
-def t_node_desc(tag: int) -> NodeDesc {
+def t_node_desc(tag: int) -> OspNodeDesc {
     if tag in _ndescs {
         return _ndescs[tag];
     }
-    return NodeDesc(type_tag=tag, `entry=[], `exit=[]);
+    return OspNodeDesc(type_tag=tag, `entry=[], `exit=[]);
 }
 
-def t_on_complete(scope: WalkScope, ok: bool) {
+def t_on_complete(scope: OspWalkScope, ok: bool) {
     _last_reports.clear();
     for r in scope.reports {
         _last_reports.append(r);
@@ -176,9 +176,9 @@ def ab_node_for_walker(here: any, visitor: any) {
 }
 
 test "osp kernel: subtyping dispatch and report collection" {
-    wd = WalkerDesc(
+    wd = OspWalkerDesc(
         type_tag=10,
-        `entry=[Slot(trig_tag=1, fn=ab_place), Slot(trig_tag=2, fn=ab_cafe)],
+        `entry=[OspSlot(trig_tag=1, fn=ab_place), OspSlot(trig_tag=2, fn=ab_cafe)],
         `exit=[]
     );
     w = TWalker();
@@ -196,7 +196,7 @@ test "osp kernel: visit enqueues, DFS recursion through a chain" {
     a.neighbors = [b];
     b.neighbors = [c];
     c.neighbors = [];
-    wd = WalkerDesc(type_tag=10, `entry=[Slot(trig_tag=1, fn=ab_step)], `exit=[]);
+    wd = OspWalkerDesc(type_tag=10, `entry=[OspSlot(trig_tag=1, fn=ab_step)], `exit=[]);
     w = TWalker();
     osp_spawn(_runtime(), w, wd, _as_any([a]));
     assert w.log == ["step:A", "step:B", "step:C"];
@@ -211,10 +211,10 @@ test "osp kernel: branching tree - queue-FIFO entries, post-order exits" {
     b.neighbors = [d];
     c.neighbors = [];
     d.neighbors = [];
-    wd = WalkerDesc(
+    wd = OspWalkerDesc(
         type_tag=10,
-        `entry=[Slot(trig_tag=1, fn=ab_log_entry)],
-        `exit=[Slot(trig_tag=1, fn=ab_log_exit)]
+        `entry=[OspSlot(trig_tag=1, fn=ab_log_entry)],
+        `exit=[OspSlot(trig_tag=1, fn=ab_log_exit)]
     );
     w = TWalker();
     osp_spawn(_runtime(), w, wd, _as_any([a]));
@@ -230,10 +230,10 @@ test "osp kernel: exit abilities fire in post-order" {
     b = TNode(tag=1, name="B");
     a.neighbors = [b];
     b.neighbors = [];
-    wd = WalkerDesc(
+    wd = OspWalkerDesc(
         type_tag=10,
-        `entry=[Slot(trig_tag=1, fn=ab_step_with_exit)],
-        `exit=[Slot(trig_tag=1, fn=ab_exit)]
+        `entry=[OspSlot(trig_tag=1, fn=ab_step_with_exit)],
+        `exit=[OspSlot(trig_tag=1, fn=ab_exit)]
     );
     w = TWalker();
     osp_spawn(_runtime(), w, wd, _as_any([a]));
@@ -248,7 +248,7 @@ test "osp kernel: disengage stops the walk" {
     a.neighbors = [b];
     b.neighbors = [c];
     c.neighbors = [];
-    wd = WalkerDesc(type_tag=10, `entry=[Slot(trig_tag=1, fn=ab_stop)], `exit=[]);
+    wd = OspWalkerDesc(type_tag=10, `entry=[OspSlot(trig_tag=1, fn=ab_stop)], `exit=[]);
     w = TWalker();
     osp_spawn(_runtime(), w, wd, _as_any([a]));
     # Disengage at B drops the already-queued C.
@@ -256,15 +256,15 @@ test "osp kernel: disengage stops the walk" {
 }
 
 test "osp kernel: node-side untyped and walker-typed entry abilities" {
-    _ndescs[3] = NodeDesc(
+    _ndescs[3] = OspNodeDesc(
         type_tag=3,
         `entry=[
-            Slot(trig_tag=UNTYPED, fn=ab_node_any),
-            Slot(trig_tag=10, fn=ab_node_for_walker)
+            OspSlot(trig_tag=UNTYPED, fn=ab_node_any),
+            OspSlot(trig_tag=10, fn=ab_node_for_walker)
         ],
         `exit=[]
     );
-    wd = WalkerDesc(type_tag=10, `entry=[], `exit=[]);
+    wd = OspWalkerDesc(type_tag=10, `entry=[], `exit=[]);
     w = TWalker();
     osp_spawn(_runtime(), w, wd, _as_any([TNode(tag=3, name="P")]));
     # Untyped node ability (phase 2) then walker-typed node ability (phase 3).

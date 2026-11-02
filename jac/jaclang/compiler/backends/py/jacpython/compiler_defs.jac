@@ -2,153 +2,6 @@
 # extracted from compiler_codegen.jac. Pure mechanical move; see
 # compiler_codegen.jac for the module-initialization ordering contract.
 
-import from jaclang.runtime.python.objects {
-    PyCode,
-    PyInt,
-    PyObj,
-    PyStr,
-    PyTuple,
-    py_none,
-}
-import from jaclang.runtime.python.opcode_meta {
-    CO_ASYNC_GENERATOR,
-    CO_COROUTINE,
-    CO_GENERATOR,
-    CO_HAS_DOCSTRING,
-    CO_NESTED,
-    CO_NEWLOCALS,
-    CO_OPTIMIZED,
-    CMP_GT,
-    OP_CALL,
-    OP_CALL_INTRINSIC_1,
-    OP_CALL_INTRINSIC_2,
-    OP_UNPACK_SEQUENCE,
-    OP_CALL_KW,
-    OP_COMPARE_OP,
-    OP_BUILD_TUPLE,
-    OP_COPY,
-    OP_COPY_FREE_VARS,
-    OP_IMPORT_FROM,
-    OP_IMPORT_NAME,
-    OP_LOAD_BUILD_CLASS,
-    OP_LOAD_COMMON_CONSTANT,
-    OP_LOAD_CONST,
-    OP_LOAD_FAST_BORROW,
-    OP_LOAD_LOCALS,
-    OP_LOAD_NAME,
-    OP_MAKE_CELL,
-    OP_MAKE_FUNCTION,
-    OP_POP_JUMP_IF_FALSE,
-    OP_POP_TOP,
-    OP_PUSH_NULL,
-    OP_RAISE_VARARGS,
-    OP_RESUME,
-    OP_RETURN_VALUE,
-    OP_SET_FUNCTION_ATTRIBUTE,
-    OP_LOAD_SMALL_INT,
-    OP_STORE_DEREF,
-    OP_STORE_FAST,
-    OP_STORE_NAME,
-    OP_SWAP,
-    compare_oparg,
-}
-import from jaclang.compiler.frontend.python.ast_nodes {
-    AsyncFunctionDef,
-    ClassDef,
-    Call,
-    Dict,
-    Constant,
-    Load,
-    FunctionDef,
-    Import,
-    ImportFrom,
-    Name,
-    TypeAlias,
-    TypeVar,
-    Tuple,
-    Starred,
-    expr,
-    TypeVarTuple,
-    ParamSpec,
-    type_param,
-    arguments,
-    keyword,
-    stmt,
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_ir {
-    cfg_builder,
-    cloc,
-    loc,
-    new_cfg_builder,
-    no_loc,
-    stmt_cont,
-    unverified_cfg,
-}
-import from jaclang.compiler.frontend.python.compiler_symtable {
-    scope_kind,
-    scope_role,
-    sym_block,
-    sym_dict_get,
-    sym_scope_of,
-    SCOPE_GLOBAL_EXPLICIT
-}
-import from jaclang.compiler.backends.py.jacpython.flowgraph { verify_cfg }
-import from jaclang.compiler.backends.py.jacpython.assembler { assemble }
-import from jaclang.compiler.backends.py.jacpython.compiler_emit {
-    cellvars_from_sym,
-    call_has_unpacking,
-    emit_call_ex_positional,
-    emit_call_keyword_values,
-    emit_call_instruction,
-    emit_function_defaults,
-    emit_function_kwdefaults,
-    emit_generator_except_handler,
-    emit_name_load,
-    codegen_busy,
-    flush_pending_await_footers,
-    codegen_fail,
-    emit_folded_int,
-    emit_function_prologue,
-    emit_local_or_cell_store,
-    emit_make_function_with_closure,
-    codegen_mangle,
-    fast_local_index,
-    fast_varnames_from_sym,
-    inline_storage_names,
-    freevars_from_sym,
-    localsplus_index,
-    localsplus_index_u,
-    visit_expr,
-}
-import from jaclang.compiler.backends.py.jacpython.codegen_util {
-    body_docstring,
-    stmt_loc,
-    async_function_def_loc,
-    class_effective_bases,
-    class_effective_keywords,
-    exec_tail_emits_code,
-    expr_loc,
-    function_argcounts,
-    function_code_flags,
-    function_def_loc,
-    import_bind_name,
-    nested_code_qualname,
-    nloc,
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_codegen {
-    emit_name_store,
-    visit_stmt
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_exc {
-    emit_deferred_comp_handlers
-}
-import from jaclang.compiler.backends.py.jacpython.compiler_annotations {
-    collect_ann_plan_class,
-    emit_class_annotation_setup,
-    emit_future_function_annotations,
-    finish_class_annotations
-}
-
 # CPython's import prefix keeps int 0 in co_consts even though level uses
 # LOAD_SMALL_INT (same dead-small-int slot as literal folding).
 def ensure_import_prefix_consts(g: cfg_builder) {
@@ -158,7 +11,6 @@ def ensure_import_prefix_consts(g: cfg_builder) {
         g.u.dead_small_int_const = True;
     }
 }
-
 
 # LOAD_SMALL_INT level, LOAD_CONST fromlist, IMPORT_NAME modname (CPython import).
 def emit_import_name_call(
@@ -176,7 +28,6 @@ def emit_import_name_call(
     midx = g.u.add_name(modname);
     g.emit_op(OP_IMPORT_NAME, midx, iloc);
 }
-
 
 def visit_import(g: cfg_builder, imp: Import) -> stmt_cont {
     iloc = nloc(imp.lineno, imp.end_lineno, imp.col_offset, imp.end_col_offset);
@@ -202,7 +53,6 @@ def visit_import(g: cfg_builder, imp: Import) -> stmt_cont {
     }
     return stmt_cont(loc=iloc);
 }
-
 
 def visit_import_from(g: cfg_builder, imp: ImportFrom) -> stmt_cont {
     iloc = nloc(imp.lineno, imp.end_lineno, imp.col_offset, imp.end_col_offset);
@@ -242,7 +92,6 @@ def visit_import_from(g: cfg_builder, imp: ImportFrom) -> stmt_cont {
     return stmt_cont(loc=iloc);
 }
 
-
 # Explicit global definitions have module-level identities, even inside a
 # function or class. Use the same mangled binding as load/store lowering.
 def definition_qualname(g: cfg_builder, name: str) -> str {
@@ -256,7 +105,6 @@ def definition_qualname(g: cfg_builder, name: str) -> str {
     return nested_code_qualname(g.sym_top.kind, g.u.qualname, name);
 }
 
-
 def sym_class_qualname(
     cd: ClassDef, sym_cls: sym_block, enclosing_private: str | None
 ) -> str {
@@ -265,7 +113,6 @@ def sym_class_qualname(
     }
     return cd.name;
 }
-
 
 # The body function and class name are already on the stack. Reuse ordinary
 # call lowering, including ordered *bases and **keywords merging.
@@ -332,7 +179,6 @@ def class_body_has_typealias(cd: ClassDef) -> bool {
     return False;
 }
 
-
 # Class body boilerplate through __firstlineno__ (CPython compile_class).
 def class_body_has_function(cd: ClassDef) -> bool {
     bi = 0;
@@ -346,7 +192,6 @@ def class_body_has_function(cd: ClassDef) -> bool {
     return False;
 }
 
-
 # Class-body prologue locations (CPython 3.14): MAKE_CELL carries NO_LOCATION;
 # RESUME points at the class statement line (def-line form, like nested scopes).
 # Use the class node's span. A supplied AST can have body statements from an
@@ -354,7 +199,6 @@ def class_body_has_function(cd: ClassDef) -> bool {
 def class_def_loc(cd: ClassDef) -> cloc {
     return nloc(cd.lineno, cd.end_lineno, cd.col_offset, cd.end_col_offset);
 }
-
 
 def emit_class_body_prologue(g: cfg_builder, class_qname: str, body_firstlineno: int) {
     # CPython 3.14 locations: MAKE_CELL carries NO_LOCATION; RESUME and the
@@ -396,7 +240,6 @@ def emit_class_body_prologue(g: cfg_builder, class_qname: str, body_firstlineno:
     }
 }
 
-
 # __static_attributes__, optional __classdictcell__, and implicit RETURN_VALUE None.
 def emit_class_body_epilogue(g: cfg_builder, last: cloc) {
     tup = PyTuple(t="tuple", items=[]);
@@ -424,7 +267,6 @@ def emit_class_body_epilogue(g: cfg_builder, last: cloc) {
     }
     g.emit_op(OP_RETURN_VALUE, 0, last);
 }
-
 
 # Lower `class name: ...` at module/class scope into nested PyCode + LOAD_BUILD_CLASS.
 def visit_class_def(g: cfg_builder, cd: ClassDef) -> stmt_cont {
@@ -627,7 +469,6 @@ def compile_class_cfg(
     u.flush_late_consts();
     return u;
 }
-
 
 # Lower `def name(...): ...` at module/class scope into nested PyCode + MAKE_FUNCTION.
 def visit_function_def(
@@ -955,7 +796,6 @@ def compile_fn_cfg(
     return u;
 }
 
-
 # Build unverified_cfg for a `def` body (nested code object before assembly).
 def compile_function_cfg(
     fd: FunctionDef, filename: str, sym_fn: sym_block, private: str | None = None
@@ -964,7 +804,6 @@ def compile_function_cfg(
         fd.name, fd.args, fd.body, fd.lineno, filename, sym_fn, private
     );
 }
-
 
 # ---------------- PEP 695 `type X = v` / `type X[T, ...] = v` ----------------
 #
@@ -981,7 +820,6 @@ def typealias_target_name(ta: TypeAlias) -> str | None {
     }
     return None;
 }
-
 
 # The lazy value scope: argcount 1 (.format), format guard, then the alias
 # value expression. Generic aliases additionally take the type params as
@@ -1057,7 +895,6 @@ def type_expression_cfg(
     return u;
 }
 
-
 # The hidden <generic parameters of X> scope: builds one TypeVar per param
 # into cells, then assembles (name, (typevar, ...), closure-wrapped value fn).
 def typealias_genparams_cfg(
@@ -1117,7 +954,6 @@ def typealias_genparams_cfg(
     u.flush_late_consts();
     return u;
 }
-
 
 def emit_type_parameters(
     g: cfg_builder, tps: list[type_param], qualname: str, in_class: bool, tloc: cloc

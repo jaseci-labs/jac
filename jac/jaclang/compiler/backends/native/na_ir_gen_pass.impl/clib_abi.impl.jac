@@ -1,5 +1,4 @@
 impl NaIRGenPass._foreign_model -> dict[str, list[tuple[str, str | None]]] {
-    import from jaclang.compiler.backends.native.foreign { collect_foreign_structs }
     universe = [self.module] + self._foreign_modules;
     if self._foreign_structs is None or self._foreign_model_nmods != len(universe) {
         self._foreign_structs = collect_foreign_structs(universe);
@@ -9,7 +8,6 @@ impl NaIRGenPass._foreign_model -> dict[str, list[tuple[str, str | None]]] {
 }
 
 impl NaIRGenPass._foreign_fns -> dict[str, dict[str, any]] {
-    import from jaclang.compiler.backends.native.foreign { collect_foreign_fns }
     universe = [self.module] + self._foreign_modules;
     if self._foreign_fn_decls is None or self._foreign_fns_nmods != len(universe) {
         self._foreign_fn_decls = collect_foreign_fns(universe);
@@ -18,54 +16,14 @@ impl NaIRGenPass._foreign_fns -> dict[str, dict[str, any]] {
     return self._foreign_fn_decls;
 }
 
-impl NaIRGenPass._foreign_fields_of(name: str) -> list[tuple[str, str | None]] {
-    model = self._foreign_model();
-    indices = self.struct_field_indices.get(name, {});
-    out: list[tuple[str, str | None]] = [];
-    for (i, (fn, tn)) in enumerate(model.get(name, [])) {
-        assert fn not in indices or indices[fn] == i , f"foreign field order mismatch for {name}.{fn}";
-        out.append((fn, tn if (tn is not None and tn in model) else None));
-    }
-    return out;
-}
-
 impl NaIRGenPass._clib_struct_layout(
     name: str
 ) -> tuple[int, int, list[tuple[int, bool, int]]] {
-    import from jaclang.compiler.backends.native.foreign { foreign_struct_layout }
     return foreign_struct_layout(self._foreign_model(), name);
 }
 
-impl NaIRGenPass._clib_has_nested(name: str) -> bool {
-    for (_fn, nested) in self._foreign_fields_of(name) {
-        if nested is not None {
-            return True;
-        }
-    }
-    return False;
-}
-
 impl NaIRGenPass._clib_c_type(name: str) -> ir.Type {
-    if not self._clib_has_nested(name) {
-        return self.struct_types[name];
-    }
-    key = name + ".cabi";
-    if key in self.struct_types {
-        return self.struct_types[key];
-    }
-    ct = self.llvm_module.context.get_identified_type(key);
-    self.struct_types[key] = ct;
-    ftypes = self.struct_field_types.get(name, {});
-    body: list[ir.Type] = [];
-    for (fn, nested) in self._foreign_fields_of(name) {
-        if nested is not None {
-            body.append(self._clib_c_type(nested));
-        } else {
-            body.append(ftypes.get(fn, ir.IntType(64)));
-        }
-    }
-    ct.set_body(*body);
-    return ct;
+    return self.struct_types[name];
 }
 
 impl NaIRGenPass._clib_alloc_box(name: str) -> ir.Value {
@@ -108,84 +66,34 @@ impl NaIRGenPass._clib_alloc_box(name: str) -> ir.Value {
     return typed_ptr;
 }
 
-impl NaIRGenPass._clib_copy_jac_to_c(
-    jac_ptr: ir.Value, c_ptr: ir.Value, name: str
-) -> None {
-    for (ix, (fn, tn)) in enumerate(self._foreign_fields_of(name)) {
-        jac_field = self.builder.gep(
-            jac_ptr,
-            [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), ix)],
-            name="clib.j2c.jf"
-        );
-        c_field = self.builder.gep(
-            c_ptr,
-            [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), ix)],
-            name="clib.j2c.cf"
-        );
-        if tn is not None {
-            sub_jac = self.builder.load(jac_field, name="clib.j2c.subptr");
-            self._clib_copy_jac_to_c(sub_jac, c_field, tn);
-        } else {
-            v = self.builder.load(jac_field, name="clib.j2c.v");
-            self.builder.store(v, c_field);
-        }
-    }
-}
-
-impl NaIRGenPass._clib_copy_c_to_jac(
-    c_ptr: ir.Value, jac_ptr: ir.Value, name: str
-) -> None {
-    for (ix, (fn, tn)) in enumerate(self._foreign_fields_of(name)) {
-        c_field = self.builder.gep(
-            c_ptr,
-            [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), ix)],
-            name="clib.c2j.cf"
-        );
-        jac_field = self.builder.gep(
-            jac_ptr,
-            [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), ix)],
-            name="clib.c2j.jf"
-        );
-        if tn is not None {
-            sub_box = self._clib_alloc_box(tn);
-            self._clib_copy_c_to_jac(c_field, sub_box, tn);
-            self.builder.store(sub_box, jac_field);
-            self._mark_owned(sub_box);
-        } else {
-            v = self.builder.load(c_field, name="clib.c2j.v");
-            self.builder.store(v, jac_field);
-        }
-    }
-}
-
 impl NaIRGenPass._clib_materialize_c_ptr(jac_ptr: ir.Value, name: str) -> ir.Value {
-    if not self._clib_has_nested(name) {
-        return jac_ptr;
+    ct = self._clib_c_type(name).as_pointer();
+
+    _present = self._opt_unwrap_guarded(
+        jac_ptr, "clib.rec", f"C record argument '{name}' cannot be None"
+    );
+    if _present is not None {
+        jac_ptr = _present;
     }
-    ct = self._clib_c_type(name);
-    cbuf = self._entry_alloca(ct, "clib.cabi.arg");
-    self._clib_copy_jac_to_c(jac_ptr, cbuf, name);
-    return cbuf;
+    if jac_ptr.type != ct {
+        return self.builder.bitcast(jac_ptr, ct, name="clib.cptr");
+    }
+    return jac_ptr;
 }
 
 impl NaIRGenPass._clib_box_c_ptr(c_ptr: ir.Value, name: str) -> ir.Value {
-    box = self._clib_alloc_box(name);
-    if not self._clib_has_nested(name) {
-        val = self.builder.load(c_ptr, name="clib.ret.load");
-        self.builder.store(val, box);
-    } else {
-        self._clib_copy_c_to_jac(c_ptr, box, name);
-    }
-    self._mark_owned(box);
-    return box;
+    return self._foreign_copy_box(c_ptr, name);
 }
 
 impl NaIRGenPass._codegen_clib_call(
-    func: ir.Function, func_name: str, args: list[ir.Value]
+    func: ir.Function,
+    func_name: str,
+    args: list[ir.Value],
+    copybacks: (list[tuple[ir.Value, ir.Value, any]] | None) = None
 ) -> (ir.Value | None) {
     plan = self.clib_fn_abi[func_name];
-    param_plans = plan["params"];
-    ret_plan = plan["ret"];
+    param_plans: list[dict[str, any]] = plan["params"];
+    ret_plan: dict[str, any] = plan["ret"];
     call_args: list[ir.Value] = [];
 
     arg_attrs: dict[int, ir.ArgumentAttributes] = {};
@@ -196,20 +104,29 @@ impl NaIRGenPass._codegen_clib_call(
         sret_aa = ir.ArgumentAttributes();
         sret_aa.add("sret");
         sret_aa.type = sret_ct;
-        _sret_al = ret_plan["align"];
+        _sret_al: int = ret_plan["align"];
         sret_aa.align = _sret_al if _sret_al > 8 else 8;
         arg_attrs[len(call_args)] = sret_aa;
         call_args.append(sret_buf);
     }
-    for (i, pp) in enumerate(param_plans) {
+    _materialized: list[ir.Value] = [];
+    for i in range(len(param_plans)) {
+        pp = param_plans[i];
         jac_val = args[i] if i < len(args) else None;
-        kind = pp["kind"];
-        if kind == "scalar" {
+        kind: str = pp["kind"];
+        _c_arg: dict[str, any] = pp.get("c_arg") or {};
+        if kind == "scalar" and _c_arg {
+            if jac_val is None {
+                call_args.append(ir.Constant(pp["type"], None));
+            } else {
+                call_args.append(self._clib_pointer_arg(jac_val));
+            }
+        } elif kind == "scalar" {
             if jac_val is None {
                 call_args.append(ir.Constant(pp["type"], 0));
             } else {
                 _cv = jac_val;
-                scalar_type = pp["type"];
+                scalar_type: ir.Type = pp["type"];
                 if self._is_bytes_value(_cv)
                     and scalar_type == ir.IntType(8).as_pointer() {
                     _cv = self._bytes_data_ptr(_cv);
@@ -221,7 +138,14 @@ impl NaIRGenPass._codegen_clib_call(
                     and isinstance(scalar_type.pointee, ir.FunctionType) {
                     call_args.append(self._clib_coerce_callback(_cv, scalar_type));
                 } else {
-                    call_args.append(self._coerce_type(_cv, scalar_type));
+                    _coerced = self._coerce_type(_cv, scalar_type);
+                    if self._str_desc_ty is not None
+                        and _cv.type == self._str_desc_ty
+                        and _coerced is not _cv
+                        and self._is_owned(_coerced) {
+                        _materialized.append(_coerced);
+                    }
+                    call_args.append(_coerced);
                 }
             }
         } elif kind == "struct_mem" {
@@ -233,7 +157,7 @@ impl NaIRGenPass._codegen_clib_call(
                 byval_aa = ir.ArgumentAttributes();
                 byval_aa.add("byval");
                 byval_aa.type = self._clib_c_type(pp["sname"]);
-                _bv_al = pp["align"];
+                _bv_al: int = pp["align"];
                 byval_aa.align = _bv_al if _bv_al > 8 else 8;
                 arg_attrs[len(call_args)] = byval_aa;
                 call_args.append(c_ptr);
@@ -250,7 +174,7 @@ impl NaIRGenPass._codegen_clib_call(
                 return None;
             }
             c_ptr = self._clib_materialize_c_ptr(jac_val, pp["sname"]);
-            coerce = pp["coerce"];
+            coerce: list[ir.Type] = pp["coerce"];
             ct = ir.LiteralStructType(coerce);
             if pp["safe"] {
                 _buf = self._entry_alloca(ct, "clib.arg.buf");
@@ -275,6 +199,9 @@ impl NaIRGenPass._codegen_clib_call(
             }
         }
     }
+    for extra in args[len(param_plans):] {
+        call_args.append(extra);
+    }
     _actual_params = func.function_type.args;
     for (k, _ca) in enumerate(call_args) {
         if k < len(_actual_params) and _ca.type != _actual_params[k] {
@@ -286,29 +213,66 @@ impl NaIRGenPass._codegen_clib_call(
     result: ir.Value = self.builder.call(
         func, call_args, name=f"call.{func_name}", arg_attrs=arg_attrs
     );
-    rkind = ret_plan["kind"];
+    for (_tmp, _slot, _elem) in (copybacks or []) {
+        self._c_store_scalar(
+            self._c_load_scalar(_tmp, _elem, "clib.copyback"), _slot, _elem
+        );
+    }
+    _struct_temps: list[ir.Value] = [];
+    _heap_temps: list[ir.Value] = [];
+    for i in range(len(param_plans)) {
+        pp = param_plans[i];
+        _tv = args[i] if i < len(args) else None;
+        if _tv is None or not self._is_owned(_tv) {
+            continue;
+        }
+        if pp["kind"] != "scalar" and isinstance(_tv.type, ir.PointerType) {
+            _struct_temps.append(_tv);
+        } elif pp["kind"] == "scalar"
+            and (
+                self._is_bytes_value(_tv)
+                or (self._str_desc_ty is not None and _tv.type == self._str_desc_ty)
+                or (pp.get("is_str") and isinstance(_tv.type, ir.PointerType))
+            ) {
+            _heap_temps.append(_tv);
+        }
+    }
+    for _st in _struct_temps {
+        self._c_release_temp(_st);
+    }
+    for _ht in _heap_temps {
+        if self._nogc_headerless() {
+            self._c_release_temp(_ht);
+        } else {
+            self._release_owned_args([_ht], op="c_temp");
+        }
+    }
+    self._release_owned_args(_materialized, op="c_str_arg");
+    rkind: str = ret_plan["kind"];
     if rkind == "sret" {
         assert sret_buf is not None , "the sret buffer is allocated whenever the plan asks for one";
         return self._clib_box_c_ptr(sret_buf, ret_plan["sname"]);
     }
     if rkind == "struct_reg" {
-        sname = ret_plan["sname"];
-        coerce = ret_plan["coerce"];
+        sname: str = ret_plan["sname"];
+        _ret_coerce: list[ir.Type] = ret_plan["coerce"];
 
         if ret_plan["safe"] {
-            rbuf = self._entry_alloca(ir.LiteralStructType(coerce), "clib.ret.rbuf");
+            rbuf = self._entry_alloca(
+                ir.LiteralStructType(_ret_coerce), "clib.ret.rbuf"
+            );
         } else {
             rbuf = self._entry_alloca(self._clib_c_type(sname), "clib.ret.cbuf");
         }
-        if len(coerce) == 1 {
+        if len(_ret_coerce) == 1 {
             slot = self.builder.bitcast(
-                rbuf, coerce[0].as_pointer(), name="clib.ret.cast"
+                rbuf, _ret_coerce[0].as_pointer(), name="clib.ret.cast"
             );
             self.builder.store(result, slot);
         } else {
-            ct = ir.LiteralStructType(coerce);
+            ct = ir.LiteralStructType(_ret_coerce);
             ct_ptr = self.builder.bitcast(rbuf, ct.as_pointer(), name="clib.ret.cast");
-            for j in range(len(coerce)) {
+            for j in range(len(_ret_coerce)) {
                 piece = self.builder.extract_value(result, j, name="clib.ret.piece");
                 piece_ptr = self.builder.gep(
                     ct_ptr,
@@ -324,6 +288,9 @@ impl NaIRGenPass._codegen_clib_call(
         return self._clib_box_c_ptr(c_view, sname);
     }
 
+    if ret_plan.get("cptr") {
+        return self.builder.ptrtoint(result, ir.IntType(64), name="clib.ret.addr");
+    }
     _declared_ret = ret_plan.get("type");
     if (
         isinstance(_declared_ret, ir.Type)
@@ -357,4 +324,380 @@ impl NaIRGenPass._clib_reinterpret(
         return self.builder.bitcast(val, want, name=name);
     }
     return self._coerce_type(val, want);
+}
+
+impl NaIRGenPass._clib_abi_signature(decl: uni.Ability) -> str {
+    sig = decl.signature;
+    if not isinstance(sig, uni.FuncSignature) {
+        return "";
+    }
+    i64 = ir.IntType(64);
+    params: list[str] = [];
+    for p in sig.get_parameters() {
+        if p.is_vararg or p.is_kwargs {
+            continue;
+        }
+        if p.type_tag is not None and is_borrow_kind(p.type_tag.ownership) {
+            params.append(str(i64));
+        } else {
+            ptype = self._clib_param_type(p);
+            params.append(str(i64 if isinstance(ptype, ir.PointerType) else ptype));
+        }
+    }
+    if sig.varargs is not None {
+        params.append("...");
+    }
+    rtype = self._resolve_clib_type(sig.return_type);
+    returned = str(i64 if isinstance(rtype, ir.PointerType) else rtype);
+    return f"({', '.join(params)}) -> {returned}";
+}
+
+impl NaIRGenPass._declare_clib_definitions -> None {
+    for (name, decl) in list(self._clib_definitions.items()) {
+        other = self._foreign_clib_abilities.get(name);
+        if other is None {
+            continue;
+        }
+        here = self._clib_abi_signature(decl);
+        there = self._clib_abi_signature(other);
+        if here == there {
+            continue;
+        }
+        owner = other.find_parent_of_type(uni.Module);
+        where = owner.loc.mod_path
+            if owner is not None and owner.loc
+            else "another module";
+        self.ctx.emit(
+            E1158,
+            node_override=decl,
+            name=name,
+            reason=f"takes the C symbol '{name}' that {where} declares as {there}, with a different signature {here}; rename one of them"
+        );
+        self._clib_definitions.pop(name, None);
+    }
+    for (name, decl) in self._clib_definitions.items() {
+        if c_variadic_param(decl.signature) is not None {
+            self.clib_extern_fns.pop(name, None);
+            self.extern_funcs.pop(name, None);
+            existing = self.llvm_module.globals.get(name);
+            if isinstance(existing, ir.Function) and not existing.blocks {
+                self.scope.unbind_function(name);
+                self.llvm_module.globals.pop(name, None);
+                self.llvm_module.scope.release(name);
+            }
+            self.clib_extern_names.discard(name);
+            self._clib_symbol_lib.pop(name, None);
+            self._maybe_declare_ability(decl, symbol=name);
+            self._record_export(name, name, "function", True);
+            if self.module?.gen and name not in self.module.gen._exported_symbols {
+                self.module.gen._exported_symbols.append(name);
+            }
+            continue;
+        }
+        cfunc = self.clib_extern_fns.get(name) or self.scope.function(name);
+        if not isinstance(cfunc, ir.Function) {
+            continue;
+        }
+        self._clib_exports[name] = cfunc;
+        self.clib_extern_fns.pop(name, None);
+        self.scope.unbind_function(name);
+        self.clib_extern_names.discard(name);
+        self._clib_symbol_lib.pop(name, None);
+        self._maybe_declare_ability(decl, symbol=f"{name}.jac");
+        jac_fn = self.scope.function(name);
+        if isinstance(jac_fn, ir.Function) {
+            jac_fn.linkage = "internal";
+        }
+        self._record_export(name, name, "function", True);
+        if self.module?.gen and name not in self.module.gen._exported_symbols {
+            self.module.gen._exported_symbols.append(name);
+        }
+    }
+}
+
+impl NaIRGenPass._emit_clib_definitions -> None {
+    for (name, decl) in self._clib_definitions.items() {
+        self._codegen_ability(decl);
+        if name in self._clib_exports {
+            self._emit_clib_export_thunk(name);
+        }
+    }
+}
+
+impl NaIRGenPass._emit_clib_export_thunk(name: str) -> None {
+    cfunc = self._clib_exports[name];
+    jac_fn = self.scope.function(name);
+    if not isinstance(jac_fn, ir.Function) or cfunc.blocks {
+        return;
+    }
+    plan = self.clib_fn_abi.get(name);
+    state = self._enter_function(cfunc);
+    try {
+        plan_ret: dict[str, any] = plan["ret"] if plan is not None else {};
+        plan_params: list[dict[str, any]] = plan["params"] if plan is not None else [];
+        _scalar_only = plan is None
+            or (not plan["sret"] and plan_ret.get("kind") != "struct_reg");
+        for i in range(len(plan_params)) {
+            pp = plan_params[i];
+            if pp["kind"] != "scalar" or pp["argpos"] != i {
+                _scalar_only = False;
+            }
+        }
+        b = self.builder;
+        i32 = ir.IntType(32);
+
+        if _scalar_only and self._c_entry_tail_or_escape(cfunc, jac_fn) {
+            return;
+        }
+        saved = self._region_c_entry_escape();
+        jac_args: list[ir.Value] = [];
+        boxes: list[ir.Value] = [];
+        params: list[dict[str, any]] = plan["params"] if plan is not None else [];
+        for (i, want) in enumerate(jac_fn.function_type.args) {
+            if plan is None {
+                jac_args.append(
+                    self._clib_reinterpret(cfunc.args[i], want, name=f"cdef.arg.{i}")
+                );
+                continue;
+            }
+            pp = params[i];
+            pos = pp["argpos"];
+            if pp["kind"] == "scalar" {
+                jac_args.append(
+                    self._clib_reinterpret(cfunc.args[pos], want, name=f"cdef.arg.{i}")
+                );
+                continue;
+            }
+            c_struct = self._clib_c_type(pp["sname"]);
+            if pp["kind"] == "struct_mem" {
+                src = b.bitcast(
+                    cfunc.args[pos], c_struct.as_pointer(), name="cdef.mem"
+                );
+            } else {
+                pieces = ir.LiteralStructType(pp["coerce"]);
+                buf = self._entry_alloca(
+                    pieces if pp["safe"] else c_struct, "cdef.reg.buf"
+                );
+                view = b.bitcast(buf, pieces.as_pointer(), name="cdef.reg.view");
+                for j in range(len(pp["coerce"])) {
+                    b.store(
+                        cfunc.args[pos + j],
+                        b.gep(view, [ir.Constant(i32, 0), ir.Constant(i32, j)])
+                    );
+                }
+                src = b.bitcast(buf, c_struct.as_pointer(), name="cdef.reg.struct");
+            }
+            box = self._clib_box_c_ptr(src, pp["sname"]);
+            boxes.append(box);
+            jac_args.append(self._clib_reinterpret(box, want, name=f"cdef.box.{i}"));
+        }
+        result = b.call(jac_fn, jac_args, name="cdef.call");
+        for box in boxes {
+            self._c_release_temp(box);
+        }
+        ret_type = cfunc.function_type.return_type;
+        ret_plan: dict[str, any] = plan["ret"] if plan is not None else {};
+        rkind = ret_plan.get("kind");
+        if plan is not None and (plan["sret"] or rkind == "struct_reg") {
+            self._mark_owned(result);
+            c_struct = self._clib_c_type(ret_plan["sname"]);
+            src = self._clib_materialize_c_ptr(result, ret_plan["sname"]);
+            if plan["sret"] {
+                b.store(
+                    b.load(src, name="cdef.ret.value"),
+                    b.bitcast(cfunc.args[0], c_struct.as_pointer(), name="cdef.sret")
+                );
+                self._c_release_temp(result);
+                self._region_c_entry_restore(saved);
+                b.ret_void();
+            } else {
+                coerce = ret_plan["coerce"];
+                shape = coerce[0] if len(coerce) == 1 else ir.LiteralStructType(coerce);
+                if ret_plan["safe"] {
+                    staged = self._entry_alloca(
+                        ir.LiteralStructType(coerce), "cdef.ret.stage"
+                    );
+                    b.store(
+                        b.load(src, name="cdef.ret.struct"),
+                        b.bitcast(staged, c_struct.as_pointer())
+                    );
+                    src = staged;
+                }
+                value = b.load(b.bitcast(src, shape.as_pointer()), name="cdef.ret.reg");
+                self._c_release_temp(result);
+                self._region_c_entry_restore(saved);
+                b.ret(value);
+            }
+        } elif isinstance(ret_type, ir.VoidType) {
+            self._region_c_entry_restore(saved);
+            b.ret_void();
+        } else {
+            value = self._clib_reinterpret(result, ret_type, name="cdef.ret");
+            self._region_c_entry_restore(saved);
+            b.ret(value);
+        }
+    } finally {
+        self._leave_function(state);
+    }
+}
+
+impl NaIRGenPass._thunk_tail_callable(cfunc: ir.Function, jac_fn: ir.Function) -> bool {
+    cty = cfunc.function_type;
+    jty = jac_fn.function_type;
+    triple = str(self.llvm_module.triple or "");
+    if cty.var_arg
+        or jty.var_arg
+        or len(cty.args) != len(jty.args)
+        or (cfunc.calling_convention or "") != (jac_fn.calling_convention or "")
+        or "wasm" in triple
+        or "i386" in triple
+        or "i686" in triple
+        or triple.startswith("arm-")
+        or triple.startswith("armv7") {
+        return False;
+    }
+    i64 = ir.IntType(64);
+
+    for (c_arg, j_arg) in zip(cty.args, jty.args) {
+        if c_arg == j_arg {
+            continue;
+        }
+        if isinstance(c_arg, ir.PointerType)
+            and (j_arg == i64 or isinstance(j_arg, ir.PointerType)) {
+            continue;
+        }
+        return False;
+    }
+    c_ret = cty.return_type;
+    j_ret = jty.return_type;
+    return c_ret == j_ret
+        or (
+            isinstance(c_ret, ir.PointerType)
+            and (j_ret == i64 or isinstance(j_ret, ir.PointerType))
+        )
+        or (isinstance(c_ret, ir.VoidType) and j_ret == i64);
+}
+
+impl NaIRGenPass._c_entry_tail_or_escape(
+    c_entry: ir.Function, jac_fn: ir.Function
+) -> bool {
+    if not self._thunk_tail_callable(c_entry, jac_fn) {
+        return False;
+    }
+    if self._direct_c_entry(c_entry) {
+        self._thunk_tail_call(c_entry, jac_fn);
+        self._direct_c_entries.append((c_entry, jac_fn));
+        return True;
+    }
+    b = self.builder;
+    opened = self._region_open_test();
+    escape_bb = c_entry.append_basic_block("centry.region.open");
+    tail_bb = c_entry.append_basic_block("centry.tail");
+    b.cbranch(opened, escape_bb, tail_bb).set_weights([1, 2000]);
+    b.position_at_end(tail_bb);
+    self._thunk_tail_call(c_entry, jac_fn);
+    b.position_at_end(escape_bb);
+    self._thunk_tail_call(c_entry, self._c_entry_escape_fn(c_entry, jac_fn));
+    return True;
+}
+
+impl NaIRGenPass._c_entry_escape_fn(
+    c_entry: ir.Function, jac_fn: ir.Function
+) -> ir.Function {
+    cty = c_entry.function_type;
+    esc = self._c_entry_escape_shell(c_entry);
+    saved_builder = self._builder;
+    self._builder = ir.IRBuilder(esc.append_basic_block("entry"));
+    try {
+        b = self.builder;
+        depth = b.call(
+            self._region_kernel_fn("__jac_region_escape"), [], name="region.escape"
+        );
+        target = jac_fn
+            if cty == jac_fn.function_type
+            else b.bitcast(jac_fn, cty.as_pointer(), name="cdef.body");
+        result = b.call(
+            target,
+            list(esc.args),
+            name="cdef.call",
+            cconv=c_entry.calling_convention or None
+        );
+        b.call(self._region_kernel_fn("__jac_region_restore"), [depth]);
+        if isinstance(cty.return_type, ir.VoidType) {
+            b.ret_void();
+        } else {
+            b.ret(result);
+        }
+    } finally {
+        self._builder = saved_builder;
+    }
+    return esc;
+}
+
+impl NaIRGenPass._c_entry_escape_shell(c_entry: ir.Function) -> ir.Function {
+    esc = ir.Function(
+        self.llvm_module,
+        c_entry.function_type,
+        name=self.llvm_module.scope.deduplicate(f"{c_entry.name}.escape")
+    );
+    esc.linkage = "internal";
+    esc.calling_convention = c_entry.calling_convention;
+    esc.attributes.add("noinline");
+    esc.attributes.add("cold");
+    return esc;
+}
+
+impl NaIRGenPass._thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> None {
+    cty = cfunc.function_type;
+    jty = jac_fn.function_type;
+    b = self.builder;
+    target = jac_fn
+        if cty == jty
+        else b.bitcast(jac_fn, cty.as_pointer(), name="cdef.body");
+    call = b.call(
+        target,
+        list(cfunc.args),
+        name="cdef.call",
+        cconv=cfunc.calling_convention or None
+    );
+    call.tail = "musttail";
+    if isinstance(cty.return_type, ir.VoidType) {
+        b.ret_void();
+    } else {
+        b.ret(call);
+    }
+}
+
+impl NaIRGenPass._fold_direct_c_entries -> None {
+    if not self._direct_c_entries {
+        return;
+    }
+    renamed: dict[str, ir.Function] = {};
+    dropped: set[str] = set();
+    for (c_entry, jac_fn) in self._direct_c_entries {
+        if len(c_entry.blocks) != 1 or jac_fn.name in dropped {
+            continue;
+        }
+        dropped.add(jac_fn.name);
+        renamed[c_entry.name] = jac_fn;
+    }
+    if not renamed {
+        return;
+    }
+    folded: dict[str, ir.GlobalValue] = {};
+    for (key, value) in self.llvm_module.globals.items() {
+        if key in dropped {
+            continue;
+        }
+        body = renamed.get(key);
+        if body is None {
+            folded[key] = value;
+            continue;
+        }
+        body._name = key;
+        body.linkage = "";
+        folded[key] = body;
+    }
+    self.llvm_module.globals = folded;
+    self._direct_c_entries = [];
 }

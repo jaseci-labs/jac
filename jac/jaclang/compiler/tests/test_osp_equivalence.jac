@@ -31,8 +31,6 @@ Backend support today (see each fixture's docstring for specifics):
     is how "support landed" becomes an enforced regression.
 """
 
-import from jaclang.compiler.tests.xbackend_equiv { run_with_both, run_py_fixture }
-
 # ---------------------------------------------------------------------------
 # Spawn/dispatch core.
 # ---------------------------------------------------------------------------
@@ -99,7 +97,7 @@ test "osp filter predicates: field compares over type-filtered elements" {
         "filter_pred_py",
         "filter_pred_cl",
         "filter_pred_na",
-        require=["na"]
+        require=["na", "cl"]
     );
 }
 
@@ -477,6 +475,35 @@ test "osp field access: reading a field off an edge-ref / filtered node-ref elem
         "field_access_py",
         "field_access_na",
         "field_access_na",
+        require=["na"]
+    );
+}
+
+test "osp bound endpoints and jid lower natively" {
+    # `[p ->:Child:-> c]` keeps the hop results that reach `c` (edge objects
+    # with `edge`), including a list of endpoints, an endpoint combined with an
+    # edge predicate, and one in the middle of a chain. `jid` is compared by
+    # shape: stable, distinct, 32 hex characters.
+    assert run_py_fixture("osp_bound_endpoint", "bound_endpoint_py")
+        == {
+            "fwd": 7,
+            "bwd": 7,
+            "other": 9,
+            "listed": 1,
+            "predicated": 10,
+            "mid_chain": 10,
+            "unconnected": 0,
+            "jid_stable": True,
+            "jid_distinct": True,
+            "jid_len": 64,
+            "jid_narrowed": 32,
+            "jid_none": -1
+        };
+    run_with_both(
+        "osp_bound_endpoint.jac",
+        "bound_endpoint_py",
+        "bound_endpoint_na",
+        "bound_endpoint_na",
         require=["na"]
     );
 }

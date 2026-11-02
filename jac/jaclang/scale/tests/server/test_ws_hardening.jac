@@ -7,19 +7,6 @@ import os;
 import shutil;
 import time;
 import from tempfile { mkdtemp }
-import from jaclang.scale.config.config_loader { reset_scale_config }
-import from jaclang.server.identity.user_manager { UserManager }
-import from jaclang.scale.tests.scale_test_client { make_client }
-import from jaclang.scale.websocket.websocket {
-    WebSocketConnectionManager,
-    ConnectionContext
-}
-import from jaclang.scale.websocket.backplane {
-    BaseBackplane,
-    MemoryBackplane,
-    build_backplane
-}
-import from jaclang.scale.websocket.protocol { ws_handle_control, ws_heartbeat_loop }
 
 
 def _ws_client -> any {
@@ -366,7 +353,7 @@ test "a refresh frame on a public endpoint does not disconnect the client" {
 test "a refresh with the connection's own valid token is accepted" {
     (test_dir, um) = _real_user_manager();
     try {
-        owner = um.create_user("ws_owner", "Secret123!");
+        owner = um.create_internal_user("ws_owner", "Secret123!");
         owner_id = owner["user_id"];
         owner_token = um.create_jwt_token(owner_id);
         async def body -> str {
@@ -395,8 +382,8 @@ test "a refresh with the connection's own valid token is accepted" {
 test "a refresh carrying another user's real token is rejected as an identity mismatch" {
     (test_dir, um) = _real_user_manager();
     try {
-        user_a = um.create_user("ws_user_a", "Secret123!");
-        user_b = um.create_user("ws_user_b", "Secret123!");
+        user_a = um.create_internal_user("ws_user_a", "Secret123!");
+        user_b = um.create_internal_user("ws_user_b", "Secret123!");
         a_id = user_a["user_id"];
         b_id = user_b["user_id"];
         token_a = um.create_jwt_token(a_id);

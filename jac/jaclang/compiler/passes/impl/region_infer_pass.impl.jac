@@ -1,21 +1,3 @@
-import from jaclang.compiler.frontend.unitree {
-    Assignment,
-    AtomTrailer,
-    BinaryExpr,
-    ConnectOp,
-    CtrlStmt,
-    ExprStmt,
-    FuncSignature,
-    KWPair,
-    RaiseStmt,
-    ReturnStmt,
-    Symbol,
-    Token,
-    YieldExpr
-}
-import from jaclang.compiler.frontend.roles { BodyRole }
-import from jaclang.compiler.frontend.constant { SymbolStorage, Tokens as Tok }
-
 impl RegionInferPass.run_walk with Module entry {
     self.module = self._run_impl(here);
 }
@@ -24,25 +6,22 @@ impl RegionInferPass._run_impl(ir_in: Module) -> Module {
     self._use_index = None;
     owners: list[tuple[Ability | ModuleCode | ImplDef | Test, list[UniNode]]] = [];
     for ab in ir_in.get_all_sub_nodes(Ability) {
-        if isinstance(ab.signature, FuncSignature)
-            and isinstance(ab.body, (list, tuple)) {
-            owners.append((ab, list(ab.body)));
+        ab_body = ab.body;
+        if isinstance(ab.signature, FuncSignature) and isinstance(ab_body, Sequence) {
+            owners.append((ab, list(ab_body)));
         }
     }
     for im in ir_in.get_all_sub_nodes(ImplDef) {
-        if isinstance(im.body, (list, tuple)) {
-            owners.append((im, list(im.body)));
+        im_body = im.body;
+        if isinstance(im_body, Sequence) {
+            owners.append((im, list(im_body)));
         }
     }
     for ts in ir_in.get_all_sub_nodes(Test) {
-        if isinstance(ts.body, (list, tuple)) {
-            owners.append((ts, list(ts.body)));
-        }
+        owners.append((ts, list(ts.body)));
     }
     for mc in ir_in.get_all_sub_nodes(ModuleCode) {
-        if isinstance(mc.body, (list, tuple)) {
-            owners.append((mc, list(mc.body)));
-        }
+        owners.append((mc, list(mc.body)));
     }
     for (owner, body) in owners {
         groups = self._scan_block(body);
@@ -113,7 +92,7 @@ impl RegionInferPass._arch_of_call(expr: (UniNode | None)) -> (Archetype | None)
         return None;
     }
     decl = sym.decl;
-    arch = decl if isinstance(decl, Archetype) else decl.find_parent_of_type(Archetype);
+    arch = decl if isinstance(decl, Archetype) else decl.enclosing_decl(Archetype);
     if arch is not None and arch.name.value == expr.target.sym_name {
         return arch;
     }

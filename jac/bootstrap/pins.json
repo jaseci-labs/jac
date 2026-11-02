@@ -7,18 +7,18 @@
     "slices": {
       "linux-x86_64": {
         "_comment": "libc++ slice (built -DLLVM_ENABLE_LIBCXX=ON with zig c++ @ glibc 2.17): the LLVMPY_* shim links it with `zig c++` for a clean glibc 2.17 floor (#7082). The stock x86_64-linux slice is libstdc++ and forces a host-g++ link at the runner's glibc (~2.38).",
-        "dirname": "LLVM-22.1.8-Linux-X64-libcxx",
-        "triple": "x86_64-linux-libcxx",
-        "manifest_sha256": "6c227bfc95829729a93b8af44eeae182489df5a2bb16fd5bb5fe9b36d8877d54",
-        "zip_size": 667452266,
+        "dirname": "LLVM-22.1.8-Linux-X64-libcxx-lld",
+        "triple": "x86_64-linux-libcxx-lld",
+        "manifest_sha256": "2870eb77034eb74ce2fc17e24d37ea035db9d61c06071f42b6ad6ecbb32a14c8",
+        "zip_size": 1423609156,
         "upstream": false
       },
       "linux-aarch64": {
         "_comment": "libc++ slice, same zig c++ @ 2.17 build as x86_64 (built natively on ubuntu-24.04-arm, llvm-slice#4); the libcxx triple routes the shim to the zig c++/2.17 link path. Closes the #7082 aarch64 follow-up.",
-        "dirname": "LLVM-22.1.8-Linux-ARM64-libcxx",
-        "triple": "aarch64-linux-libcxx",
-        "manifest_sha256": "0315f2d83f4cab6cc5e0ef94b5d6999306109b27d0955549e7af46897ca28c34",
-        "zip_size": 462054429,
+        "dirname": "LLVM-22.1.8-Linux-ARM64-libcxx-lld",
+        "triple": "aarch64-linux-libcxx-lld",
+        "manifest_sha256": "f7d6dc875024b0d0fd915d5809706b395d03f3305a10f150202657987731895b",
+        "zip_size": 1424249476,
         "upstream": false
       },
       "macos-aarch64": {
@@ -30,10 +30,10 @@
       },
       "macos-x86_64": {
         "_comment": "Upstream ships no macOS Intel binaries for 22.x, so this slice is built from source by llvm-slice (build-macos-x64.yml) on the macos-15-intel runner: plain native archives (no ThinLTO/libLTO), externals OFF, minos pinned to 12.0 so release binaries reach 2015-and-newer Intel Macs.",
-        "dirname": "LLVM-22.1.8-macOS-X64",
-        "triple": "x86_64-apple-darwin",
-        "manifest_sha256": "a984b4f7aef1978386f74ff2ea4b30d76f9e0b33d08dbae57bee9fea9bb16f9d",
-        "zip_size": 49613317,
+        "dirname": "LLVM-22.1.8-macOS-X64-lld",
+        "triple": "x86_64-apple-darwin-lld",
+        "manifest_sha256": "9fb77f8581295c855cf9fab32caf67d505732ff64c547ba30c4d1a0435cc3bee",
+        "zip_size": 109599841,
         "upstream": false
       }
     }

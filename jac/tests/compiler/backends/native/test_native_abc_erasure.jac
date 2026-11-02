@@ -1,9 +1,8 @@
 """`abc`'s abstractness markers are compile-time, so they stop poisoning placement.
 
-`import from abc { ABC }` used to be an unresolved import, which the placement
-solver treats as an all-or-nothing verdict on the whole module: one such line
-demotes the file and, through `_native_deps_ok`, every module whose import
-closure reaches it. Two of the compiler's most widely-reached modules carry
+`import from abc { ABC }` used to be an unresolved import, which placement
+treats as a refusal of the whole module: one such line keeps the file off
+native, and every module that imports it cannot call into it from native code. Two of the compiler's most widely-reached modules carry
 exactly that line -- `types/types.jac` and `compiler/passes/transform.jac`,
 the base every pass inherits -- so the reach was most of the pass tree.
 
@@ -28,7 +27,7 @@ import os;
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
 import from jaclang.compiler.placement.placement { scan_native_blockers }
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { JAC_ROOT, native_force_opts }
+import from tests.support { JAC_ROOT, native_address, native_force_opts }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "native", "fixtures"
@@ -111,7 +110,7 @@ test "the erased base leaves the archetype's behavior intact" {
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     eng = ir.gen.native_engine;
     assert eng is not None , "no native engine for the abc fixture";
-    addr = eng.get_function_address("run");
+    addr = native_address(eng, "run");
     assert addr != 0 , "'run' is absent from the JIT engine";
     run = ctypes.CFUNCTYPE(ctypes.c_int64)(addr);
     assert run() == 25 , (

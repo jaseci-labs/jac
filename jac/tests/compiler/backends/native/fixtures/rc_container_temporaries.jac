@@ -110,6 +110,29 @@ def borrowed_field_write -> int {
     return item.value;
 }
 
+obj Registry {
+    has items: dict[str, Item] = {};
+
+    def items_rw -> dict[str, Item] {
+        return self.items;
+    }
+}
+
+def fresh_items -> dict[str, Item] {
+    return {};
+}
+
+def subscript_receiver -> int {
+    fresh_items()["k"] = Item(13);
+    return 13;
+}
+
+def borrowed_subscript_receiver -> int {
+    registry = Registry();
+    registry.items_rw()["k"] = Item(14);
+    return registry.items["k"].value;
+}
+
 def drop_count -> int {
     return dropped;
 }

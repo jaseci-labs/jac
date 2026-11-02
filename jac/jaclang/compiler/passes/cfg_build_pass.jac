@@ -1,76 +1,20 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.frontend.unitree {
-    Module,
-    TreeWalker,
-    UniNode,
-    Ability,
-    Archetype,
-    AssertStmt,
-    AstElseBodyNode,
-    AtomUnit,
-    AwaitingClause,
-    BoolExpr,
-    CfgExpr,
-    CodeBlockStmt,
-    CtrlStmt,
-    DictCompr,
-    DisengageStmt,
-    ElseIf,
-    ElseStmt,
-    Except,
-    Expr,
-    FinallyStmt,
-    ForeverStmt,
-    GenCompr,
-    GlobalVars,
-    IfElseExpr,
-    IfStmt,
-    ImplDef,
-    InForStmt,
-    InnerCompr,
-    IterForStmt,
-    JsxSlot,
-    LambdaExpr,
-    ListCompr,
-    MatchCase,
-    MatchStmt,
-    ModuleCode,
-    Name,
-    OpenStmt,
-    RaiseStmt,
-    ReturnStmt,
-    SemDef,
-    Semi,
-    SetCompr,
-    SwitchCase,
-    SwitchStmt,
-    Test,
-    Token,
-    TryStmt,
-    TypeAlias,
-    TypedCtxBlock,
-    UniCFGNode,
-    WhileStmt,
-    WithStmt
-}
-import from jaclang.compiler.passes.context { CompileContext }
 import from typing { cast }
 
-walker CFGBuildPass(TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
-    }
+walker CFGBuildPass(TreePass) {
+    static has contract: PassContract = PassContract(
+        provides=(
+            AnalysisFact.CFG_SUCC,
+            AnalysisFact.CFG_TRUE,
+            AnalysisFact.CFG_FALSE,
 
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: Module;
+        ),
+        kernel_safe=True
+    );
 
     def link_bbs(source: UniCFGNode, target: UniCFGNode) -> None;
     def _link_sequential(body: Sequence[CodeBlockStmt]) -> None;
     def _exit_wired(nd: UniCFGNode) -> bool;
+    def _in_nested_lambda(succ: UniCFGNode, nd: UniCFGNode) -> bool;
     def _connect_tails(parent: UniNode, target: UniCFGNode) -> None;
     def _link_body_tails_to_header(
         nd: WhileStmt | ForeverStmt | InForStmt | IterForStmt
@@ -143,6 +87,7 @@ walker CFGBuildPass(TreeWalker) {
     can exit_typed_ctx_block with TypedCtxBlock exit;
     can exit_open_stmt with OpenStmt exit;
     can exit_jsx_slot with JsxSlot exit;
+    can exit_lambda_expr with LambdaExpr exit;
     can exit_ability with Ability exit;
     can exit_archetype with Archetype exit;
     can exit_impl_def with ImplDef exit;
@@ -150,27 +95,10 @@ walker CFGBuildPass(TreeWalker) {
     can exit_test with Test exit;
 }
 
-walker CoalesceBBPass(TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
-    }
+def is_structural_child(nd: UniNode) -> bool;
 
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
-    }
+def _unwrap_parens(expr: Expr) -> Expr;
 
-    has ctx: CompileContext,
-        module: Module,
-        basic_blocks: dict[int, dict[str, list[UniCFGNode]]] = {},
-        bb_counter: int = 0;
+def unwrap_to_bool(cfg: CfgExpr) -> BoolExpr | None;
 
-    can prepare with entry;
-    def get_bb(nd: UniCFGNode) -> list[UniCFGNode];
-    can coalesce_collect with UniNode entry;
-    def printgraph_cfg -> str;
-    def _node_label(nd: UniNode) -> str;
-    def _has_bool_sc(condition: Expr) -> bool;
-}
-
-def _is_structural_child(nd: UniNode) -> bool;
-def cfg_dot_from_file(file_name: str) -> str;
+def _bool_is_and(expr: BoolExpr) -> bool;

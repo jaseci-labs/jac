@@ -34,7 +34,8 @@ glob DAY: float = 86400.0,
 
 """The fused binary running this suite, or None under a bare source install."""
 def fused_exe -> str | None {
-    exe = os.environ.get("JAC_EXECUTABLE", "") or os.path.realpath(sys.executable);
+    import from jaclang.dist.fused_binary { running_executable }
+    exe = running_executable();
     if not os.path.isfile(exe) {
         return None;
     }
@@ -56,9 +57,7 @@ def launcher_env(explicit: Path, xdg: Path) -> dict[str, str] {
     env["JAC_CACHE_HOME"] = str(explicit);
     env["XDG_CACHE_HOME"] = str(xdg);
     # The bundled compiler, not the checkout's: the probe must not compile.
-    env["JAC_NO_DEV_SOURCE"] = "1";
-    env.pop("JAC_DEV_SOURCE", None);
-    env.pop("JAC_EXECUTABLE", None);
+    env["JAC_HANDOFF"] = '{"compiler_source": ""}';
     env.pop("JAC_CACHE_TTL_DAYS", None);
     return env;
 }

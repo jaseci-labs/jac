@@ -111,3 +111,20 @@ test "jac0 casts do not erase context manager or exception aliases" {
     );
     assert namespace["probe"]() == "kept";
 }
+
+node SharedEdgesProbe {}
+
+edge SharedEdgesWeight: SharedEdgesProbe --> SharedEdgesProbe {
+    has w: int = 0;
+}
+
+test "a heavy jac0 connect gives each endpoint its own edge list" {
+    import from jaclang.jac0core.osp0 { connect0 }
+    a = SharedEdgesProbe();
+    b = SharedEdgesProbe();
+    bystander = SharedEdgesProbe();
+    connect0(a, b, SharedEdgesWeight);
+    assert len(a.__jac__.edges) == 1;
+    assert len(b.__jac__.edges) == 1;
+    assert not bystander.__jac__.edges;
+}

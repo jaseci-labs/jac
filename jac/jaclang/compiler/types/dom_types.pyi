@@ -101,6 +101,7 @@ class HTMLElement(EventTarget):
     tabIndex: int
     draggable: bool
     contentEditable: str
+    isContentEditable: bool
     dataset: dict[str, str]
     style: CSSStyleDeclaration
     classList: DOMTokenList
@@ -795,3 +796,97 @@ class _JsxIntrinsicElements:
     dialog: _HtmlCommonProps
     template: _HtmlCommonProps
     slot: _HtmlCommonProps
+    # Further HTML elements
+    address: _HtmlCommonProps
+    area: _HtmlCommonProps
+    b: _HtmlCommonProps
+    base: _HtmlCommonProps
+    bdi: _HtmlCommonProps
+    bdo: _HtmlCommonProps
+    body: _HtmlCommonProps
+    data: _HtmlCommonProps
+    dfn: _HtmlCommonProps
+    embed: _HtmlCommonProps
+    head: _HtmlCommonProps
+    hgroup: _HtmlCommonProps
+    html: _HtmlCommonProps
+    i: _HtmlCommonProps
+    ins: _HtmlCommonProps
+    kbd: _HtmlCommonProps
+    link: _HtmlCommonProps
+    map: _HtmlCommonProps
+    menu: _HtmlCommonProps
+    meta: _HtmlCommonProps
+    noscript: _HtmlCommonProps
+    object: _HtmlCommonProps
+    rp: _HtmlCommonProps
+    rt: _HtmlCommonProps
+    ruby: _HtmlCommonProps
+    samp: _HtmlCommonProps
+    script: _HtmlCommonProps
+    search: _HtmlCommonProps
+    style: _HtmlCommonProps
+    title: _HtmlCommonProps
+    track: _HtmlCommonProps
+    u: _HtmlCommonProps
+    var: _HtmlCommonProps
+    wbr: _HtmlCommonProps
+    # SVG elements (children of <svg>)
+    animate: _HtmlCommonProps
+    animateMotion: _HtmlCommonProps
+    animateTransform: _HtmlCommonProps
+    circle: _HtmlCommonProps
+    clipPath: _HtmlCommonProps
+    defs: _HtmlCommonProps
+    desc: _HtmlCommonProps
+    ellipse: _HtmlCommonProps
+    feBlend: _HtmlCommonProps
+    feColorMatrix: _HtmlCommonProps
+    feComponentTransfer: _HtmlCommonProps
+    feComposite: _HtmlCommonProps
+    feConvolveMatrix: _HtmlCommonProps
+    feDiffuseLighting: _HtmlCommonProps
+    feDisplacementMap: _HtmlCommonProps
+    feDistantLight: _HtmlCommonProps
+    feDropShadow: _HtmlCommonProps
+    feFlood: _HtmlCommonProps
+    feFuncA: _HtmlCommonProps
+    feFuncB: _HtmlCommonProps
+    feFuncG: _HtmlCommonProps
+    feFuncR: _HtmlCommonProps
+    feGaussianBlur: _HtmlCommonProps
+    feImage: _HtmlCommonProps
+    feMerge: _HtmlCommonProps
+    feMergeNode: _HtmlCommonProps
+    feMorphology: _HtmlCommonProps
+    feOffset: _HtmlCommonProps
+    fePointLight: _HtmlCommonProps
+    feSpecularLighting: _HtmlCommonProps
+    feSpotLight: _HtmlCommonProps
+    feTile: _HtmlCommonProps
+    feTurbulence: _HtmlCommonProps
+    filter: _HtmlCommonProps
+    foreignObject: _HtmlCommonProps
+    g: _HtmlCommonProps
+    image: _HtmlCommonProps
+    line: _HtmlCommonProps
+    linearGradient: _HtmlCommonProps
+    marker: _HtmlCommonProps
+    mask: _HtmlCommonProps
+    metadata: _HtmlCommonProps
+    mpath: _HtmlCommonProps
+    path: _HtmlCommonProps
+    pattern: _HtmlCommonProps
+    polygon: _HtmlCommonProps
+    polyline: _HtmlCommonProps
+    radialGradient: _HtmlCommonProps
+    rect: _HtmlCommonProps
+    set: _HtmlCommonProps
+    stop: _HtmlCommonProps
+    switch: _HtmlCommonProps
+    symbol: _HtmlCommonProps
+    text: _HtmlCommonProps
+    textPath: _HtmlCommonProps
+    tspan: _HtmlCommonProps
+    use: _HtmlCommonProps
+    view: _HtmlCommonProps

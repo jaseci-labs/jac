@@ -13,64 +13,16 @@ import from c { def write(fd: i32, buf: bytes, n: int) -> int;  }
 import from _dirent_native { dirent_name }
 import from _fd_native { open_readonly, open_writetrunc }
 
-def:pub write_file(path: str, data: bytes) -> bool {
-    fd = open_writetrunc(path);
-    if fd < 0 {
-        return False;
-    }
-    wrote = write(fd, data, len(data));
-    close(fd);
-    return wrote == len(data);
-}
+def:pub write_file(path: str, data: bytes) -> bool;
 
-def:pub read_at(path: str, off: int, n: int) -> bytes {
-    fd = open_readonly(path);
-    if fd < 0 {
-        return b"";
-    }
-    buf = b"\x00" * n;
-    got = pread(fd, buf, n, off);
-    close(fd);
-    if got < 0 {
-        return b"";
-    }
-    return buf[0:got];
-}
+def:pub read_at(path: str, off: int, n: int) -> bytes;
 
-def:pub listdir(path: str) -> list[str] {
-    names: list[str] = [];
-    dirp = opendir(path);
-    if dirp == 0 {
-        return names;
-    }
-    ent = readdir(dirp);
-    while ent != 0 {
-        name = dirent_name(ent);
-        if name != "." and name != ".." {
-            names.append(name);
-        }
-        ent = readdir(dirp);
-    }
-    closedir(dirp);
-    return names;
-}
+def:pub listdir(path: str) -> list[str];
 
-def:pub c_string(ptr: int) -> str {
-    return strdup(ptr);
-}
+def:pub c_string(ptr: int) -> str;
 
-def:pub c_alloc_string(s: str) -> int {
-    p = malloc(len(s.encode()) + 1);
-    strcpy(p, s);
-    return p;
-}
+def:pub c_alloc_string(s: str) -> int;
 
-def:pub peek(ptr: int, n: int) -> bytes {
-    buf = b"\x00" * n;
-    memcpy(buf, ptr, n);
-    return buf;
-}
+def:pub peek(ptr: int, n: int) -> bytes;
 
-def:pub poke(ptr: int, data: bytes) {
-    memmove(ptr, data, len(data));
-}
+def:pub poke(ptr: int, data: bytes);

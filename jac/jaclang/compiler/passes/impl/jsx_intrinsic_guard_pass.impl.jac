@@ -1,0 +1,78 @@
+impl _suggestion_for(tag: str) -> str {
+    if _tag_suggestions is None {
+        try {
+            import from jaclang.client.targets.react_native.html_tag_map {
+                rn_tag_suggestions
+            }
+            _tag_suggestions = rn_tag_suggestions();
+        } except ImportError {
+            _tag_suggestions = {};
+        }
+    }
+    return _tag_suggestions.get(tag, _GENERIC_SUGGESTION);
+}
+
+impl JsxIntrinsicGuardPass.prepare with entry {
+    if self.ctx.nested_depth {
+        return;
+    }
+    self._enforced_root = self.module.mobui_enforced_root;
+    self._exempt_paths.clear();
+}
+
+impl JsxIntrinsicGuardPass.enter_module with Module entry {
+    if self._enforced_root is None {
+        osp_skip_rest();
+    }
+}
+
+impl JsxIntrinsicGuardPass.enter_jsx_element with JsxElement entry {
+    if isinstance(here.parent, JsxElement) {
+        return;
+    }
+    self._check_element(here);
+}
+
+impl JsxIntrinsicGuardPass._check_element(el: JsxElement) {
+    if (
+        self._enforced_root is not None
+        and not self._is_exempt(el.loc.mod_path)
+        and el.name is not None
+        and el.name.parts
+    ) {
+        first = el.name.parts[0];
+        tag = first.value or "" if isinstance(first, (Name, Token)) else "";
+        if tag and tag[0].islower() and not self._resolves_in_scope(el, first) {
+            self.ctx.emit(
+                E1105, node_override=first, tag=tag, suggestion=_suggestion_for(tag)
+            );
+        }
+    }
+    for child in (el.children or []) {
+        if isinstance(child, JsxElement) {
+            self._check_element(child);
+        }
+    }
+}
+
+impl JsxIntrinsicGuardPass._resolves_in_scope(el: JsxElement, first: UniNode) -> bool {
+    if not isinstance(first, Name) or not el.sym_tab or el.name is None {
+        return False;
+    }
+    name_chain = [
+        p
+        for p in el.name.parts
+        if isinstance(p, Name)
+    ];
+    el.sym_tab.chain_use_lookup(name_chain);
+    return first.sym is not None;
+}
+
+impl JsxIntrinsicGuardPass._is_exempt(mod_path: str) -> bool {
+    if mod_path not in self._exempt_paths {
+        self._exempt_paths[mod_path] = mobui_module_exempt(
+            mod_path, self._enforced_root
+        );
+    }
+    return self._exempt_paths[mod_path];
+}

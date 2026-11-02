@@ -9,6 +9,7 @@ import asyncio;
 import from pathlib { Path }
 import from jaclang.byllm.config_loader { get_byllm_config, reset_byllm_config }
 import from jaclang.byllm.lib { MockLLM }
+import from jaclang.byllm.exceptions { OutputConversionError }
 import from support { FIXTURE_DIR, fail, prompt_text, say }
 
 
@@ -35,12 +36,21 @@ test "broken json is regenerated, and the retry prompt shows what was wrong" {
             say('{"schema_object_wrapper": {"name": "Ada", "age": 36}}')
         ]
     );
+    union_llm = MockLLM(
+        outputs=[
+            say('{"name": "Bo", "age":'),
+            say('{"schema_object_wrapper": {"name": "Bo", "age": 41}}')
+        ]
+    );
 
     def get_person -> RetryPerson by llm();
+    def person_or_age -> RetryPerson | int by union_llm();
 
-    for (why, person, model, name, age) in [
-        ("sync", get_person(), llm, "Ada", 36),
-        ("async", asyncio.run(_aget_person()), _arecover, "Zoe", 27)
+    union_person: any = person_or_age();
+    for (why, person, model, name, age, type_name) in [
+        ("sync", get_person(), llm, "Ada", 36, "RetryPerson"),
+        ("async", asyncio.run(_aget_person()), _arecover, "Zoe", 27, "RetryPerson"),
+        ("union", union_person, union_llm, "Bo", 41, "RetryPerson | int")
     ] {
         assert (person.name, person.age) == (name, age) , (
             f"{why}: malformed then valid JSON should recover, got {person!r}"
@@ -53,6 +63,7 @@ test "broken json is regenerated, and the retry prompt shows what was wrong" {
             f"{why}: the retry prompt must show the model its broken output"
         );
         assert "age" in retry , f"{why}: the retry prompt must re-show the schema";
+        assert f"`{type_name}`" in retry , f"{why}: the retry prompt must name the type";
     }
 }
 
@@ -83,6 +94,19 @@ test "retries are bounded, and the error reports how many were spent" {
             f"{label}: the error should report the counts, got: {err}"
         );
     }
+
+    # An empty reply is never parsed; it fails as a non-conforming value.
+    empty = MockLLM(outputs=[say(""), say("")]);
+    def empty_person -> RetryPerson by empty(max_output_retries=1);
+    err: any = None;
+    try {
+        empty_person();
+    } except OutputConversionError as e {
+        err = e;
+    }
+    assert "return type 'RetryPerson'" in str(err) , (
+        f"empty reply: the error should name the type, got: {err!r}"
+    );
 }
 
 

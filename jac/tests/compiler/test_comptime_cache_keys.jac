@@ -17,17 +17,18 @@ import os;
 import sys;
 import tempfile;
 import time;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.compiler { JacCompiler }
+import from jaclang.compiler.driver.jir { native_section_payload, SEC_NBITCODE }
+import jaclang.compiler.backends.native.llvm.binding as llvm;
 import from jaclang.compiler.driver.jir {
     SEC_CTDEPS,
-    SEC_NATIVE_OBJ,
-    SEC_LLVM_IR,
+    SEC_NOBJ,
     precompiled_jir_matches_source,
     read_section_bytes
 }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compilation_context { artifact_cache_path }
+import from jaclang.compiler.driver.compilation_context { program_for }
+import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
 import from jaclang.dist.precompile_bytecode { precompile_unit }
 import from types { CodeType }
 import from unittest.mock { patch }
@@ -49,8 +50,7 @@ glob SPEC_SRC: str = "obj Spec {\n    has name: str,\n        help: str;\n}\n",
 
 def _isolated(tmp: str) -> any {
     env = cache_env(os.path.join(tmp, "cache"));
-    env["JAC_REBUILD"] = "";
-    env["JAC_NO_PRECOMPILE"] = "";
+    env["JAC_HANDOFF"] = "";
     return patch.dict(os.environ, env);
 }
 
@@ -185,8 +185,8 @@ test "an ordinary runtime import leaves a server consumer's fold cache alone" {
     with _isolated(paths["root"]) {
         _folded(paths["consmod"]);
         cache = artifact_cache_path(paths["consmod"], JacProgram());
-        assert read_section_bytes(cache.read_bytes(), SEC_NATIVE_OBJ) is None;
-        assert read_section_bytes(cache.read_bytes(), SEC_LLVM_IR) is None;
+        assert read_section_bytes(cache.read_bytes(), SEC_NOBJ) is None;
+        assert read_section_bytes(cache.read_bytes(), SEC_NBITCODE) is None;
         stamp = os.path.getmtime(cache);
         _write(paths["othermod"], OTHER_SRC_EDIT);
         _folded(paths["consmod"]);
@@ -231,6 +231,29 @@ test "an embedded file is re-read when its content changes" {
         assert "beta payload" in warm , (
             f"the embedder served the stale file content: {warm}"
         );
+    }
+}
+
+test "a comptime embed cannot read outside its package root" {
+    tmp = tempfile.mkdtemp();
+    with _isolated(tmp) {
+        proj = os.path.join(tmp, "pkg");
+        os.makedirs(proj);
+        _write(os.path.join(proj, "jac.toml"), "[project]\nname = \"pkg\"\n");
+        _write(os.path.join(tmp, "secret.txt"), "top secret");
+        src = os.path.realpath(os.path.join(proj, "leak.jac"));
+        _write(
+            src,
+            "import from jaclang.comptime { embed_file }\n\n"
+            "comptime BLOB: str = embed_file(\"../secret.txt\");\n\n"
+            "with entry {\n"
+            "    print(BLOB);\n"
+            "}\n"
+        );
+        prog = JacProgram();
+        JacCompiler().get_bytecode(src, prog);
+        msgs = [a.pretty_print() for a in prog.errors_had];
+        assert any("outside the package root" in m for m in msgs) , msgs;
     }
 }
 
@@ -363,7 +386,7 @@ test "a bundle promoted into the module cache carries its comptime deps" {
 
 def _native_compile(path: str) {
     prog = JacProgram();
-    prog.compile(path, options=CompileOptions(force_target_program=True));
+    prog.compile(path);
     assert not prog.errors_had , (
         f"native compile of {path} failed: "
         f"{[a.pretty_print() for a in prog.errors_had]}"
@@ -371,23 +394,19 @@ def _native_compile(path: str) {
 }
 
 def _native_ir(path: str) -> str {
-    import from jaclang.compiler.driver.jir { get_native_cache_dir }
-    cache_dir = str(get_native_cache_dir(path));
-    stem = os.path.splitext(os.path.basename(path))[0];
-    text = "";
-    if os.path.isdir(cache_dir) {
-        for name in sorted(os.listdir(cache_dir)) {
-            if name.startswith(f"{stem}.") and name.endswith(".ir_cache") {
-                with open(os.path.join(cache_dir, name), "r") as fh {
-                    text += fh.read();
-                }
-            }
-        }
+    prog = program_for(path, JacProgram());
+    cache_path = artifact_cache_path(path, prog);
+    if not cache_path.is_file() {
+        return "";
     }
-    return text;
+    payload = native_section_payload(
+        read_section_bytes(cache_path.read_bytes(), SEC_NBITCODE),
+        prog.native_units().stamp_for(None, path)
+    );
+    return str(llvm.parse_bitcode(payload)) if payload is not None else "";
 }
 
-test "a native-placed fold is not served from a stale IR cache" {
+test "a native-placed fold is not served from stale JIR bitcode" {
     tmp = tempfile.mkdtemp();
     with _isolated(tmp) {
         _write(
@@ -415,14 +434,13 @@ test "a native-placed fold is not served from a stale IR cache" {
         );
         _native_compile(main_mod);
         cold = _native_ir(native);
-        assert cold , "the native lane wrote no IR cache for the pinned module";
+        assert cold , "the native lane wrote no JIR bitcode for the pinned module";
         assert "alpha" in cold , f"the cold native IR did not fold the producer";
         _write(producer, "comptime TAG: str = \"beta\";\n");
         _native_compile(main_mod);
         warm = _native_ir(native);
         assert "beta" in warm , (
-            "the native IR cache served a stale fold after its comptime "
-            "producer changed"
+            "the native JIR served a stale fold after its comptime " "producer changed"
         );
     }
 }

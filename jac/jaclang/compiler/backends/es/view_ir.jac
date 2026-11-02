@@ -1,5 +1,4 @@
-import jaclang.compiler.backends.es.estree as es;
-import jaclang.compiler.frontend.unitree as uni;
+glob _Located = TypeVar('_Located', bound=es.Node);
 
 obj HostTag {
     has name: str,
@@ -86,16 +85,27 @@ obj EachChild {
         jac_node: (uni.UniNode | None);
 }
 
-glob ViewChild = TextChild
-         | DynamicChild
-         | ElementChild
-         | SlotChild
-         | IfChild
-         | EachChild;
+type ViewChild = TextChild
+    | DynamicChild
+    | ElementChild
+    | SlotChild
+    | IfChild
+    | EachChild;
 
 obj ViewElement {
     has tag: (HostTag | ComponentTag | FragmentTag | DynamicTag),
         attrs: list[StaticAttr | DynamicAttr | EventAttr | RefAttr | SpreadAttr],
         children: list[ViewChild],
         jac_node: (uni.UniNode | None);
+}
+
+def view_attr_node(
+    attr: (StaticAttr | DynamicAttr | EventAttr | RefAttr | SpreadAttr)
+) -> (uni.UniNode | None);
+
+obj ViewLocator {
+    has anchor: (uni.UniNode | None) = None,
+        locate: bool = True;
+
+    def at(es_node: _Located, jac_node: (uni.UniNode | None) = None) -> _Located;
 }

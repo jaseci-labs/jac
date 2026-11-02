@@ -1,15 +1,11 @@
-import from jaclang.compiler.frontend.unitree { Module }
-import from jaclang.compiler.frontend.roles { BodyRole }
-
-def merge_annex_into(nd: Module, annex_mod: Module) -> None {
-    stmts = list(annex_mod.body);
-    if not stmts {
-        return;
-    }
-    nd.add_kids_right(stmts, pos_update=False, parent_update=True, role=BodyRole);
-    for sub in annex_mod._in_mod_nodes {
-        if sub is not annex_mod {
-            nd._in_mod_nodes.append(sub);
-        }
-    }
+obj WovenAnnex {
+    has source: str,
+        path: str,
+        consumer: str = "";
 }
+
+def merge_annex_into(nd: Module, annex_mod: Module) -> None;
+
+def import_form(
+    is_absorb: bool, is_typed: bool, is_comptime: bool, from_form: bool
+) -> str;

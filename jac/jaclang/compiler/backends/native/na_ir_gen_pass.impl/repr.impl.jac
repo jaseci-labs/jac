@@ -67,10 +67,10 @@ impl NaIRGenPass._repr_elem_spec_of_key(elem_key: str) -> (tuple[str, ir.Type] |
     i8p = ir.IntType(8).as_pointer();
     _parts = self._split_type_args(elem_key, "|");
     if len(_parts) == 2 and ("NoneType" in _parts or "None" in _parts) {
-        return ("jacval", self.jacval_type) if self?.jacval_type else None;
+        return ("jacval", self.jacval_type);
     }
     if len(_parts) > 1 or elem_key in ("any", "Any") {
-        return ("jacval", self.jacval_type) if self?.jacval_type else None;
+        return ("jacval", self.jacval_type);
     }
     if elem_key in ("int", "bool") {
         return ("i64", i64);
@@ -160,12 +160,12 @@ impl NaIRGenPass._repr_leaf_fn(kind: str) -> (ir.Function | None) {
     if _cached is not None {
         return _cached;
     }
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+
     i8p: any = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     fnty = ir.FunctionType(i8p, [i64]);
-    fn: any = ir.Function(
+    fn: ir.Function = ir.Function(
         self.llvm_module, fnty, name=f"__jac_repr_{native_safe_sym(kind)}"
     );
     fn.linkage = "private";
@@ -186,10 +186,14 @@ impl NaIRGenPass._repr_leaf_fn(kind: str) -> (ir.Function | None) {
         snprintf = self._get_or_declare_extern(
             "snprintf", i32, [i8p, i64, i8p], var_arg=True
         );
-        fmt_g = self._make_global_string("%lld", name_prefix=".repr.fmt.int");
-        cap = ir.Constant(i64, 24);
+        cap = ir.Constant(i64, 32);
         buf: any = b.call(self.rc_alloc_fn, [cap], name="rp.i.buf");
-        b.call(snprintf, [buf, cap, fmt_g, v]);
+        if self._nogc_headerless() {
+            fmt_g = self._make_global_string("%lld", name_prefix=".repr.fmt.int");
+            b.call(snprintf, [buf, cap, fmt_g, v]);
+        } else {
+            self._str_finish(b, buf, self._emit_fmt_int(b, v, buf, False));
+        }
         self._emit_set_type_tag(b, buf, "str");
         b.ret(buf);
     }
@@ -203,13 +207,13 @@ impl NaIRGenPass._repr_str_fn -> ir.Function {
     if _cached is not None {
         return _cached;
     }
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+
     i1 = ir.IntType(1);
     i8 = ir.IntType(8);
     i8p: any = i8.as_pointer();
     i64 = ir.IntType(64);
     fnty = ir.FunctionType(i8p, [i8p]);
-    fn: any = ir.Function(
+    fn: ir.Function = ir.Function(
         self.llvm_module, fnty, name=f"__jac_repr_{native_safe_sym('str')}"
     );
     fn.linkage = "private";
@@ -359,16 +363,17 @@ impl NaIRGenPass._repr_obj_fn(arch_name: str) -> ir.Function {
     if _cached is not None {
         return _cached;
     }
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
+
     i8p: any = ir.IntType(8).as_pointer();
-    _pst: any = self.struct_types[arch_name];
+    _pst = self.struct_types[arch_name];
     pty = _pst.as_pointer();
     fnty = ir.FunctionType(i8p, [pty]);
-    fn: any = ir.Function(
+    fn: ir.Function = ir.Function(
         self.llvm_module, fnty, name=f"__jac_repr_{native_safe_sym(arch_name)}"
     );
     fn.linkage = "private";
     fn.args[0].name = "obj";
+    self._repr_fns[arch_name] = fn;
     o = fn.args[0];
     saved_builder = self._builder;
     entry_bb = fn.append_basic_block("entry");
@@ -381,7 +386,7 @@ impl NaIRGenPass._repr_obj_fn(arch_name: str) -> ir.Function {
     b.position_at_end(null_bb);
     b.ret(self._repr_const_str("None"));
     b.position_at_end(live_bb);
-    _m: any = self._resolve_method(arch_name, "__repr__");
+    _m = self._resolve_method(arch_name, "__repr__");
     _res: any = None;
     if _m is None {
         _res = self._emit_default_obj_repr(o, arch_name);
@@ -396,7 +401,409 @@ impl NaIRGenPass._repr_obj_fn(arch_name: str) -> ir.Function {
     }
     b.ret(self._coerce_type(_res, i8p));
     self._builder = saved_builder;
-    self._repr_fns[arch_name] = fn;
+    return fn;
+}
+
+impl NaIRGenPass._default_repr_piece(
+    value: ir.Value, arch_name: str, field_name: str, decl: uni.HasVar
+) -> (ir.Value | None) {
+    b = self.builder;
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    value = self._str_norm(value);
+    shape = value.type;
+    if isinstance(shape, (ir.IntType, ir.FloatType, ir.DoubleType))
+        or shape == i8p
+        or (self.jacval_type is not None and shape == self.jacval_type) {
+        return self._emit_value_repr(value, decl.name);
+    }
+    payload_type = self._opt_payload_of(shape);
+    if payload_type is not None {
+        fn = b.function;
+        head_bb = b.block;
+        some_bb = fn.append_basic_block(f"rp.d.{field_name}.some");
+        b.position_at_end(some_bb);
+        present = self._default_repr_piece(
+            b.extract_value(value, 1, name=f"rp.d.{field_name}.payload"),
+            arch_name,
+            field_name,
+            decl
+        );
+        if present is None {
+            b.unreachable();
+            b.position_at_end(head_bb);
+            return None;
+        }
+        present = self._coerce_type(present, i8p);
+        some_end = b.block;
+        none_bb = fn.append_basic_block(f"rp.d.{field_name}.none");
+        done_bb = fn.append_basic_block(f"rp.d.{field_name}.done");
+        b.branch(done_bb);
+        b.position_at_end(head_bb);
+        tag = b.extract_value(value, 0, name=f"rp.d.{field_name}.tag");
+        b.cbranch(
+            b.icmp_signed(
+                "==", tag, ir.Constant(i8, 0), name=f"rp.d.{field_name}.isnone"
+            ),
+            none_bb,
+            some_bb
+        );
+        b.position_at_end(none_bb);
+        absent = self._rc_strdup(
+            self._make_global_string("None", name_prefix=".repr.none"),
+            name=f"rp.d.{field_name}.nonetext"
+        );
+        b.branch(done_bb);
+        b.position_at_end(done_bb);
+        merged = b.phi(i8p, name=f"rp.d.{field_name}.text");
+        merged.add_incoming(self._coerce_type(absent, i8p), none_bb);
+        merged.add_incoming(present, some_end);
+        return self._mark_owned(merged);
+    }
+    for (cls, cls_type) in self.struct_types.items() {
+        if shape == cls_type {
+            held = b.alloca(shape, name=f"rp.d.{field_name}.inline");
+            b.store(value, held);
+            value = held;
+            shape = value.type;
+            break;
+        }
+    }
+    keys = self.struct_field_elem_keys.get(arch_name, {}).get(field_name);
+    typed_keys = bool(keys) and all(k is not None for k in (keys or []));
+    if isinstance(shape, ir.LiteralStructType) and typed_keys {
+        held = b.alloca(shape, name=f"rp.d.{field_name}.tuple");
+        b.store(value, held);
+        value = held;
+        shape = value.type;
+    }
+    if not isinstance(shape, ir.PointerType) {
+        return None;
+    }
+    piece_fn: (ir.Function | None) = None;
+    for (cls, cls_type) in self.struct_types.items() {
+        if shape == cls_type.as_pointer() {
+            piece_fn = self._repr_obj_fn(cls);
+            break;
+        }
+    }
+    if piece_fn is None and typed_keys and keys is not None {
+        layout = _named_struct_name(shape.pointee);
+        type_key = "";
+        if isinstance(shape.pointee, ir.LiteralStructType) {
+            type_key = "tuple[" + ",".join([str(k) for k in keys]) + "]";
+        } elif layout.startswith("List.") {
+            type_key = f"list[{keys[0]}]";
+        } elif layout.startswith("Set.") {
+            type_key = f"set[{keys[0]}]";
+        } elif layout.startswith("Dict.") and len(keys) == 2 {
+            type_key = f"dict[{keys[0]},{keys[1]}]";
+        }
+        if type_key {
+            piece_fn = self._repr_fn_for_type_key(type_key);
+        }
+    }
+    if piece_fn is None {
+        return None;
+    }
+    return self._repr_call_elem_fn(piece_fn, value);
+}
+
+impl NaIRGenPass._repr_active_fns -> tuple[ir.Function, ir.Function] {
+    enter_name = "__jac_repr_enter";
+    leave_name = "__jac_repr_leave";
+    if enter_name in self.extern_funcs {
+        return (self.extern_funcs[enter_name], self.extern_funcs[leave_name]);
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    void = ir.VoidType();
+    zero = ir.Constant(i64, 0);
+    block_type = ir.LiteralStructType([i64, i64, i8p.as_pointer()]);
+    block_ptr = block_type.as_pointer();
+    malloc_fn = self._get_or_declare_extern("malloc", i8p, [i64]);
+    realloc_fn = self._get_or_declare_extern("realloc", i8p, [i8p, i64]);
+    free_fn = self._get_or_declare_extern("free", void, [i8p]);
+    field_at = [ir.Constant(i32, 0), ir.Constant(i32, 1), ir.Constant(i32, 2)];
+
+    drop_fn = ir.Function(
+        self.llvm_module, ir.FunctionType(void, [i8p]), name="__jac_repr_tls_free"
+    );
+    drop_fn.linkage = "linkonce_odr";
+    db = ir.IRBuilder(drop_fn.append_basic_block("entry"));
+    dropped = db.bitcast(drop_fn.args[0], block_ptr, name="rp.t.block");
+    db.call(
+        free_fn,
+        [
+            db.bitcast(
+                db.load(
+                    db.gep(dropped, [field_at[0], field_at[2]], name="rp.t.items.p"),
+                    name="rp.t.items"
+                ),
+                i8p
+            )
+        ]
+    );
+    db.call(free_fn, [drop_fn.args[0]]);
+    db.ret_void();
+    (get_fn, set_fn) = self._emit_tls_slot(
+        "__jac_repr_tls", "__jac_repr_tls_get", "__jac_repr_tls_set", drop_fn
+    );
+
+    enter_fn = ir.Function(
+        self.llvm_module, ir.FunctionType(i64, [i8p]), name=enter_name
+    );
+    enter_fn.linkage = "linkonce_odr";
+    enter_fn.args[0].name = "obj";
+    leave_fn = ir.Function(
+        self.llvm_module, ir.FunctionType(void, [i64]), name=leave_name
+    );
+    leave_fn.linkage = "linkonce_odr";
+    leave_fn.args[0].name = "depth";
+    self.extern_funcs[enter_name] = enter_fn;
+    self.extern_funcs[leave_name] = leave_fn;
+
+    entry_bb = enter_fn.append_basic_block("entry");
+    make_bb = enter_fn.append_basic_block("make");
+    have_bb = enter_fn.append_basic_block("have");
+    scan_bb = enter_fn.append_basic_block("scan");
+    probe_bb = enter_fn.append_basic_block("probe");
+    cycle_bb = enter_fn.append_basic_block("cycle");
+    fresh_bb = enter_fn.append_basic_block("fresh");
+    grow_bb = enter_fn.append_basic_block("grow");
+    push_bb = enter_fn.append_basic_block("push");
+    eb = ir.IRBuilder(entry_bb);
+    scan_i = eb.alloca(i64, name="rp.t.i");
+    eb.store(zero, scan_i);
+    held = eb.call(get_fn, [], name="rp.t.held");
+    held_block = eb.inttoptr(held, block_ptr, name="rp.t.held.p");
+    eb.cbranch(eb.icmp_unsigned("==", held, zero, name="rp.t.none"), make_bb, have_bb);
+    eb.position_at_end(make_bb);
+    made = eb.call(malloc_fn, [ir.Constant(i64, 24)], name="rp.t.made");
+    made_block = eb.bitcast(made, block_ptr, name="rp.t.made.p");
+    eb.store(zero, eb.gep(made_block, [field_at[0], field_at[0]]));
+    eb.store(zero, eb.gep(made_block, [field_at[0], field_at[1]]));
+    eb.store(
+        ir.Constant(i8p.as_pointer(), None),
+        eb.gep(made_block, [field_at[0], field_at[2]])
+    );
+    eb.call(set_fn, [eb.ptrtoint(made, i64, name="rp.t.made.i")]);
+    eb.branch(have_bb);
+    eb.position_at_end(have_bb);
+    block = eb.phi(block_ptr, name="rp.t.block");
+    block.add_incoming(held_block, entry_bb);
+    block.add_incoming(made_block, make_bb);
+    depth_at = eb.gep(block, [field_at[0], field_at[0]], name="rp.t.depth.p");
+    room_at = eb.gep(block, [field_at[0], field_at[1]], name="rp.t.room.p");
+    items_at = eb.gep(block, [field_at[0], field_at[2]], name="rp.t.items.p");
+    depth = eb.load(depth_at, name="rp.t.depth");
+    items = eb.load(items_at, name="rp.t.items");
+    eb.branch(scan_bb);
+    eb.position_at_end(scan_bb);
+    at = eb.load(scan_i, name="rp.t.at");
+    eb.cbranch(eb.icmp_signed("<", at, depth, name="rp.t.more"), probe_bb, fresh_bb);
+    eb.position_at_end(probe_bb);
+    seen = eb.load(eb.gep(items, [at], name="rp.t.slot"), name="rp.t.seen");
+    eb.store(eb.add(at, ir.Constant(i64, 1), name="rp.t.next"), scan_i);
+    eb.cbranch(
+        eb.icmp_unsigned("==", seen, enter_fn.args[0], name="rp.t.same"),
+        cycle_bb,
+        scan_bb
+    );
+    eb.position_at_end(cycle_bb);
+    eb.ret(ir.Constant(i64, -1));
+    eb.position_at_end(fresh_bb);
+    room = eb.load(room_at, name="rp.t.room");
+    eb.cbranch(eb.icmp_signed("<", depth, room, name="rp.t.fits"), push_bb, grow_bb);
+    eb.position_at_end(grow_bb);
+    wider = eb.add(
+        eb.mul(room, ir.Constant(i64, 2), name="rp.t.double"),
+        ir.Constant(i64, 16),
+        name="rp.t.wider"
+    );
+    moved = eb.bitcast(
+        eb.call(
+            realloc_fn,
+            [
+                eb.bitcast(items, i8p, name="rp.t.items.raw"),
+                eb.mul(wider, ir.Constant(i64, 8), name="rp.t.bytes")
+            ],
+            name="rp.t.moved.raw"
+        ),
+        i8p.as_pointer(),
+        name="rp.t.moved"
+    );
+    eb.store(moved, items_at);
+    eb.store(wider, room_at);
+    eb.branch(push_bb);
+    eb.position_at_end(push_bb);
+    eb.store(
+        enter_fn.args[0],
+        eb.gep(eb.load(items_at, name="rp.t.items.now"), [depth], name="rp.t.mine")
+    );
+    eb.store(eb.add(depth, ir.Constant(i64, 1), name="rp.t.deeper"), depth_at);
+    eb.ret(depth);
+
+    lb = ir.IRBuilder(leave_fn.append_basic_block("entry"));
+    back_bb = leave_fn.append_basic_block("back");
+    done_bb = leave_fn.append_basic_block("done");
+    kept = lb.call(get_fn, [], name="rp.t.held");
+    lb.cbranch(lb.icmp_unsigned("==", kept, zero, name="rp.t.none"), done_bb, back_bb);
+    lb.position_at_end(back_bb);
+    lb.store(
+        leave_fn.args[0],
+        lb.gep(
+            lb.inttoptr(kept, block_ptr, name="rp.t.held.p"),
+            [field_at[0], field_at[0]],
+            name="rp.t.depth.p"
+        )
+    );
+    lb.branch(done_bb);
+    lb.position_at_end(done_bb);
+    lb.ret_void();
+    return (enter_fn, leave_fn);
+}
+
+impl NaIRGenPass._default_repr_fn(arch_name: str) -> (ir.Function | None) {
+    cache_key = "default:" + arch_name;
+    cached = self._repr_fns.get(cache_key);
+    if cached is not None {
+        return cached;
+    }
+    unwritable_key = "default-unwritable:" + arch_name;
+    struct_type = self.struct_types.get(arch_name);
+    if struct_type is None
+        or self._builder is None
+        or unwritable_key in self._repr_fns {
+        return None;
+    }
+    diagnostics_before = len(self.ctx.errors_had);
+    fields: list[tuple[str, str, uni.HasVar]] = [];
+    for cls in reversed(self._mro_of(arch_name)) {
+        declared = self.arch_ast_map.get(cls);
+        if declared is None {
+            continue;
+        }
+        for var in declared.get_has_vars() {
+            owner = var.find_parent_of_type(uni.ArchHas);
+            if var.name is None
+                or var.accessors
+                or (owner is not None and owner.is_static) {
+                continue;
+            }
+            held = [
+                at
+                for (at, f) in enumerate(fields)
+                if f[0] == var.name.value
+            ];
+            if held {
+                fields[held[0]] = (var.name.value, cls, var);
+            } else {
+                fields.append((var.name.value, cls, var));
+            }
+        }
+    }
+    i8p = ir.IntType(8).as_pointer();
+    fn: ir.Function = ir.Function(
+        self.llvm_module,
+        ir.FunctionType(i8p, [struct_type.as_pointer()]),
+        name=f"__jac_default_repr_{native_safe_sym(arch_name)}"
+    );
+    fn.linkage = "private";
+    fn.args[0].name = "obj";
+    self._repr_fns[cache_key] = fn;
+    saved_builder = self._builder;
+    saved_locals = self.local_vars;
+    self.local_vars = {};
+    b = ir.IRBuilder(fn.append_basic_block("entry"));
+    self._builder = b;
+    i64 = ir.IntType(64);
+    (enter_fn, leave_fn) = self._repr_active_fns();
+    me = b.bitcast(fn.args[0], i8p, name="rp.d.me");
+    outer = b.call(enter_fn, [me], name="rp.d.outer");
+    again_bb = fn.append_basic_block("rp.d.again");
+    fresh_bb = fn.append_basic_block("rp.d.fresh");
+    b.cbranch(
+        b.icmp_signed("<", outer, ir.Constant(i64, 0), name="rp.d.cycle"),
+        again_bb,
+        fresh_bb
+    );
+    b.position_at_end(again_bb);
+    b.ret(
+        self._rc_strdup(
+            self._make_global_string("...", name_prefix=".repr.cycle"),
+            name="rp.d.cycletext"
+        )
+    );
+    b.position_at_end(fresh_bb);
+    guarded = not self._slot_lowering_active();
+    if guarded {
+        if self._exc_raise_fn is None {
+            self._declare_exception_runtime();
+        }
+        fn.attributes.add("optnone");
+        fn.attributes.add("noinline");
+        raised_bb = fn.append_basic_block("rp.d.raised");
+        body_bb = fn.append_basic_block("rp.d.body");
+        (raised, region_depth) = self._push_exception_handler(raised_bb, body_bb);
+        b.position_at_end(raised_bb);
+        self._region_unwind(b.load(region_depth));
+        thrown = self._exception_values(raised);
+        self._emit_exc_pop(b);
+        b.call(leave_fn, [outer]);
+        b.call(self._exc_raise_fn, [thrown[1], thrown[0], thrown[2]]);
+        b.unreachable();
+        b.position_at_end(body_bb);
+    }
+    cur: any = self._rc_strdup(
+        self._make_global_string(
+            self._arch_display(arch_name) + "(", name_prefix=".repr.open"
+        ),
+        name="rp.d.acc0"
+    );
+    complete = True;
+    for (position, (field_name, _owner, decl)) in enumerate(fields) {
+        value = self._read_field_or_refuse(decl, fn.args[0], field_name, arch_name);
+        piece = self._default_repr_piece(value, arch_name, field_name, decl)
+            if value is not None
+            else None;
+        if piece is None {
+            complete = False;
+            break;
+        }
+        label = self._make_global_string(
+            (", " if position else "") + field_name + "=", name_prefix=".repr.field"
+        );
+        labelled: any = self._emit_binary_op(Tok.PLUS, cur, label);
+        self._emit_rc_release_simple(cur, op="mstr_old", loc="");
+        joined: any = self._emit_binary_op(
+            Tok.PLUS, labelled, self._coerce_type(piece, i8p)
+        );
+        self._emit_rc_release_simple(labelled, op="mstr_old", loc="");
+        if self._is_owned(piece) {
+            self._emit_rc_release_simple(piece, op="mstr_val", loc="");
+        }
+        cur = joined;
+    }
+    closed: any = self._emit_binary_op(
+        Tok.PLUS, cur, self._make_global_string(")", name_prefix=".repr.close")
+    );
+    self._emit_rc_release_simple(cur, op="mstr_old", loc="");
+    self._emit_set_type_tag(self.builder, closed, "str");
+    if guarded {
+        self._emit_exc_pop(self.builder);
+    }
+    self.builder.call(leave_fn, [outer]);
+    self.builder.ret(closed);
+    self._builder = saved_builder;
+    self.local_vars = saved_locals;
+    del self.ctx.errors_had[diagnostics_before:];
+    if not complete {
+        self._repr_fns.pop(cache_key, None);
+        self._repr_fns[unwritable_key] = fn;
+        return None;
+    }
     return fn;
 }
 
@@ -413,7 +820,7 @@ impl NaIRGenPass._repr_seq_fn(
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     fnty = ir.FunctionType(i8p, [cont_ptr_ty]);
-    fn: any = ir.Function(self.llvm_module, fnty, name=fn_name);
+    fn: ir.Function = ir.Function(self.llvm_module, fnty, name=fn_name);
     fn.linkage = "private";
     fn.args[0].name = "cont";
     c_arg = fn.args[0];
@@ -483,7 +890,6 @@ impl NaIRGenPass._repr_seq_fn(
 }
 
 impl NaIRGenPass._repr_list_fn(type_key: str) -> (ir.Function | None) {
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
     _inner = type_key[5:-1];
     _spec = self._repr_elem_spec_of_key(_inner);
     if _spec is None {
@@ -493,8 +899,12 @@ impl NaIRGenPass._repr_list_fn(type_key: str) -> (ir.Function | None) {
     if elem_fn is None {
         return None;
     }
+    _built = self._repr_fns.get(type_key);
+    if _built is not None {
+        return _built;
+    }
     self._emit_list_helpers(_spec[0], _spec[1]);
-    _st: any = self.list_types.get(_spec[0]);
+    _st = self.list_types.get(_spec[0]);
     if _st is None {
         return None;
     }
@@ -509,7 +919,6 @@ impl NaIRGenPass._repr_list_fn(type_key: str) -> (ir.Function | None) {
 }
 
 impl NaIRGenPass._repr_set_fn(type_key: str) -> (ir.Function | None) {
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
     _inner = type_key[4:-1] if type_key.startswith("set[") else type_key[10:-1];
     _spec = self._repr_elem_spec_of_key(_inner);
     if _spec is None {
@@ -519,8 +928,12 @@ impl NaIRGenPass._repr_set_fn(type_key: str) -> (ir.Function | None) {
     if elem_fn is None {
         return None;
     }
+    _built = self._repr_fns.get(type_key);
+    if _built is not None {
+        return _built;
+    }
     self._emit_set_helpers(_spec[0], _spec[1]);
-    _st: any = self.set_types.get(_spec[0]);
+    _st = self.set_types.get(_spec[0]);
     if _st is None {
         return None;
     }
@@ -536,7 +949,6 @@ impl NaIRGenPass._repr_set_fn(type_key: str) -> (ir.Function | None) {
 }
 
 impl NaIRGenPass._repr_dict_fn(type_key: str) -> (ir.Function | None) {
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
     _args = self._split_type_args(type_key[5:-1]);
     if len(_args) != 2 {
         return None;
@@ -551,8 +963,12 @@ impl NaIRGenPass._repr_dict_fn(type_key: str) -> (ir.Function | None) {
     if kfn is None or vfn is None {
         return None;
     }
+    _built = self._repr_fns.get(type_key);
+    if _built is not None {
+        return _built;
+    }
     self._emit_dict_helpers(_kspec[0], _vspec[0], _kspec[1], _vspec[1]);
-    _st: any = self.dict_types.get(f"{_kspec[0]}:{_vspec[0]}");
+    _st = self.dict_types.get(f"{_kspec[0]}:{_vspec[0]}");
     if _st is None {
         return None;
     }
@@ -561,7 +977,7 @@ impl NaIRGenPass._repr_dict_fn(type_key: str) -> (ir.Function | None) {
     i64 = ir.IntType(64);
     pty = _st.as_pointer();
     fnty = ir.FunctionType(i8p, [pty]);
-    fn: any = ir.Function(
+    fn: ir.Function = ir.Function(
         self.llvm_module, fnty, name=f"__jac_repr_{native_safe_sym(type_key)}"
     );
     fn.linkage = "private";
@@ -625,7 +1041,6 @@ impl NaIRGenPass._repr_dict_fn(type_key: str) -> (ir.Function | None) {
 }
 
 impl NaIRGenPass._repr_tuple_fn(type_key: str) -> (ir.Function | None) {
-    import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
     _fkeys = self._split_type_args(type_key[6:-1]);
     if not _fkeys or _fkeys == [""] {
         return None;
@@ -644,11 +1059,15 @@ impl NaIRGenPass._repr_tuple_fn(type_key: str) -> (ir.Function | None) {
         _ffns.append(_f);
         _ftys.append(_ft);
     }
+    _built = self._repr_fns.get(type_key);
+    if _built is not None {
+        return _built;
+    }
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     pty = ir.LiteralStructType(_ftys).as_pointer();
     fnty = ir.FunctionType(i8p, [pty]);
-    fn: any = ir.Function(
+    fn: ir.Function = ir.Function(
         self.llvm_module, fnty, name=f"__jac_repr_{native_safe_sym(type_key)}"
     );
     fn.linkage = "private";
@@ -697,10 +1116,11 @@ impl NaIRGenPass._repr_tuple_fn(type_key: str) -> (ir.Function | None) {
 }
 
 impl NaIRGenPass._runtime_repr_key(val: ir.Value) -> (str | None) {
-    if not isinstance(val.type, ir.PointerType) {
+    _vt = val.type;
+    if not isinstance(_vt, ir.PointerType) {
         return None;
     }
-    _pname: str = getattr(val.type.pointee, "name", "") or "";
+    _pname = _named_struct_name(_vt.pointee);
     _elem_names = {"i64": "int", "f64": "float", "jacval": "any", "ptr": "str"};
     if _pname.startswith("List.") {
         _spec = _pname[5:];
@@ -767,12 +1187,13 @@ impl NaIRGenPass._emit_container_repr(
         self._emit_rc_release_simple(boxed, op="mstr_val", loc="");
         return res;
     }
-    if not isinstance(val.type, ir.PointerType) {
+    _vt = val.type;
+    if not isinstance(_vt, ir.PointerType) {
         return None;
     }
-    _pointee = val.type.pointee;
-    _pname: any = getattr(_pointee, "name", "") or "";
-    ok: any = False;
+    _pointee = _vt.pointee;
+    _pname = _named_struct_name(_pointee);
+    ok = False;
     if base.startswith("list[") {
         ok = _pname.startswith("List.");
     } elif base.startswith("dict[") {
@@ -818,7 +1239,7 @@ impl NaIRGenPass._repr_jacval_fn -> (ir.Function | None) {
     i64 = ir.IntType(64);
     f64 = ir.DoubleType();
     fnty = ir.FunctionType(i8p, [self.jacval_type]);
-    fn: any = ir.Function(self.llvm_module, fnty, name="__jac_repr_jacval");
+    fn: ir.Function = ir.Function(self.llvm_module, fnty, name="__jac_repr_jacval");
     fn.linkage = "private";
     fn.args[0].name = "jv";
     self._repr_fns["jacval"] = fn;
@@ -848,7 +1269,8 @@ impl NaIRGenPass._repr_jacval_fn -> (ir.Function | None) {
         (5, "set"),
         (6, "obj"),
         (7, "bool"),
-        (8, "none")
+        (8, "none"),
+        (JACVAL_ELLIPSIS_TAG, "ellipsis")
     ];
     for (_t, _label) in _cases {
         _hit_bb = fn.append_basic_block(f"jv.{_label}");
@@ -879,6 +1301,8 @@ impl NaIRGenPass._repr_jacval_fn -> (ir.Function | None) {
             bh.ret(bh.call(_bool_fn, [payload], name="rp.jv.bool"));
         } elif _label == "none" {
             _ret_const(bh, "None", "none");
+        } elif _label == "ellipsis" {
+            _ret_const(bh, "Ellipsis", "ellipsis");
         } elif _label == "list" {
             _ret_const(bh, "[...]", "list");
         } elif _label in ("dict", "set") {
@@ -911,7 +1335,7 @@ impl NaIRGenPass._str_jacval_fn -> (ir.Function | None) {
     i8p: any = i8.as_pointer();
     f64 = ir.DoubleType();
     fnty = ir.FunctionType(i8p, [self.jacval_type]);
-    fn: any = ir.Function(self.llvm_module, fnty, name="__jac_str_jacval");
+    fn: ir.Function = ir.Function(self.llvm_module, fnty, name="__jac_str_jacval");
     fn.linkage = "private";
     fn.args[0].name = "jv";
     self._repr_fns["jacval_str"] = fn;
@@ -941,7 +1365,8 @@ impl NaIRGenPass._str_jacval_fn -> (ir.Function | None) {
         (5, "set"),
         (6, "obj"),
         (7, "bool"),
-        (8, "none")
+        (8, "none"),
+        (JACVAL_ELLIPSIS_TAG, "ellipsis")
     ];
     for (_t, _label) in _cases {
         _hit_bb = fn.append_basic_block(f"sjv.{_label}");
@@ -971,6 +1396,8 @@ impl NaIRGenPass._str_jacval_fn -> (ir.Function | None) {
             bh.ret(bh.call(_bool_fn, [payload], name="sj.bool"));
         } elif _label == "none" {
             _ret_const(bh, "None", "none");
+        } elif _label == "ellipsis" {
+            _ret_const(bh, "Ellipsis", "ellipsis");
         } elif _label == "list" {
             _ret_const(bh, "[...]", "list");
         } elif _label in ("dict", "set") {

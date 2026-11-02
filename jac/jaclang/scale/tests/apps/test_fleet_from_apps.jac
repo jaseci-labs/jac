@@ -7,28 +7,7 @@ import os;
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig }
 import from jaclang.server { sv_client }
-import from jaclang.scale.runtime.fleet {
-    FLEET_ENV,
-    FleetSpec,
-    ROOT_PREFIX,
-    consumer_provider_edges,
-    fleet_from_config,
-    fleet_from_env,
-    fleet_of,
-    guard_fleet_routes,
-    order_by_edges,
-    solo_fleet
-}
-import from jaclang.scale.runtime.orchestrator.orchestrator { build_registry }
-import from jaclang.scale.runtime.gateway.dispatch { classify_route, ROUTE_PROXY }
-import from jaclang.scale.runtime.gateway.service_registry {
-    ServiceRegistry,
-    ServiceEntry,
-    ServiceStatus
-}
-import from jaclang.scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
 
 glob _WORKSPACE_TOML: str = '[project]\nname = "shop"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "web.main"\n\n[apps.orders]\nkind = "service"\nentry-point = "core.orders"\n\n[apps.cart]\nkind = "service"\nentry-point = "core.cart"\nroute = "/api/basket"\n\n[apps.tool]\nkind = "cli"\nentry-point = "tool.main"\n';
 
@@ -350,7 +329,12 @@ test "a compiled cross-app import is reported as a consumer/provider edge" {
     d = _bridge_workspace();
     try {
         cfg = _config(d);
-        apps = [cfg.app("web"), cfg.app("orders"), cfg.app("cart")];
+        apps = [
+            app
+            for app in [cfg.app("web"), cfg.app("orders"), cfg.app("cart")]
+            if app is not None
+        ];
+        assert len(apps) == 3 , "the workspace declares web, orders and cart";
         edges = consumer_provider_edges(cfg, d, apps);
         assert ("orders", "cart") in edges , (
             f"a declared cross-app import produced no edge: {edges!r}"
@@ -379,17 +363,19 @@ test "edge analysis visits modules registered while analyzing either hub" {
     final = module([("orders", "db")]);
     user_hub = {"first": first};
     compiler_hub = {"internal": internal};
-    def analyze(prog: any, mod: any, schedule: any) {
+    def analyze(prog: any, mod: any, product: any) -> bool {
         if mod is first {
             user_hub["added"] = added;
         }
         if mod is internal {
             compiler_hub["final"] = final;
         }
+        return True;
     }
+    import jaclang.compiler.driver.pipeline as pipeline;
     with patch.object(JacProgram, "compile"), patch.object(
-        JacProgram, "_search_hubs", return_value=[user_hub, compiler_hub]
-    ), patch.object(JacProgram, "run_schedule", analyze) {
+        JacProgram, "execution_hubs", return_value=[user_hub, compiler_hub]
+    ), patch.object(pipeline, "require", analyze) {
         edges = _compiled_app_edges("main.jac", "web", "web-app", "/tmp");
         assert set(edges) == {("web", "orders"), ("orders", "db")} , (
             edges,

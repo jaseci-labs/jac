@@ -12,11 +12,10 @@ impl EsastGenPass._has_import(name: str) -> bool {
 }
 
 impl EsastGenPass._register_jac_virtual_import(module_id: str) -> None {
-    import from jaclang.project.modresolver { resolve_jac_virtual_module_path }
     if not self.client_manifest or module_id in self.client_manifest.imports {
         return;
     }
-    source_path = resolve_jac_virtual_module_path(module_id);
+    source_path = active_host().jac_virtual_module_path(module_id);
     if source_path {
         self.client_manifest.imports[module_id] = source_path;
     }
@@ -26,12 +25,13 @@ impl EsastGenPass._register_jac_runtime_import -> None {
     self._register_jac_virtual_import(self.resolved_backend.runtime_module());
 }
 
-impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
-    import from jaclang.client.client_surface { runtime_import_source }
+impl EsastGenPass._inject_runtime_import(
+    name: str, nd: uni.UniNode, src: str = ""
+) -> None {
     if name in self.injected_imports or self._has_import(name) {
         return;
     }
-    src = runtime_import_source(name, self.resolved_backend);
+    src = src or runtime_import_source(name, self.resolved_backend);
     specifier = self.sync_loc(
         es.ImportSpecifier(
             imported=es.Identifier(name=name), local=es.Identifier(name=name)
@@ -44,7 +44,7 @@ impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
     );
     self.imports.append(import_decl);
     self.injected_imports.add(name);
-    if src.startswith('@jac/') {
+    if src.startswith('@jac/') and (src != JAC_PRELUDE_MODULE) {
         self._register_jac_runtime_import();
     }
 }
@@ -91,11 +91,19 @@ impl EsastGenPass.exit_import with uni.Import exit {
 
         import_path = here.from_loc.dot_path_str;
         is_jac_runtime = here.is_virtual_jac;
-        if resolved_path.endswith('.jac')
-            and not import_path.startswith('.')
-            and not is_jac_runtime {
+        if not is_jac_runtime
+            and (
+                resolved_path.endswith('.jac')
+                or (
+                    self.prog.options.client_source_root
+                    and import_path.startswith('.')
+                    and os.path.isfile(resolved_path)
+                )
+            ) {
             js_import_path = relative_js_specifier(
-                resolved_path, self.module.loc.mod_path or here.loc.mod_path
+                resolved_path,
+                self.module.loc.mod_path or here.loc.mod_path,
+                self.prog.options.client_source_root
             );
         } else {
             js_import_path = convert_to_js_import_path(import_path);
@@ -111,7 +119,7 @@ impl EsastGenPass.exit_import with uni.Import exit {
         } else {
             import_key = '';
         }
-        resolved_path = resolve_relative_path(
+        (resolved_path, _lang) = active_host().resolve_module(
             import_key,
             here.loc.mod_path,
             string_spec=isinstance(first_item, uni.ModulePath)
@@ -119,9 +127,19 @@ impl EsastGenPass.exit_import with uni.Import exit {
         );
         self.client_manifest.imports[import_key] = resolved_path;
         import_path = import_key;
-        if resolved_path.endswith('.jac') and not import_path.startswith('.') {
+        if not here.is_virtual_jac
+            and (
+                resolved_path.endswith('.jac')
+                or (
+                    self.prog.options.client_source_root
+                    and import_path.startswith('.')
+                    and os.path.isfile(resolved_path)
+                )
+            ) {
             js_import_path = relative_js_specifier(
-                resolved_path, self.module.loc.mod_path or here.loc.mod_path
+                resolved_path,
+                self.module.loc.mod_path or here.loc.mod_path,
+                self.prog.options.client_source_root
             );
         } else {
             js_import_path = convert_to_js_import_path(import_path);
@@ -155,6 +173,13 @@ impl EsastGenPass.exit_import with uni.Import exit {
                         jac_node=item
                     )
                 );
+                if resolved_path.endswith(".jac") {
+                    self.client_manifest.forwards[local.name] = [
+                        js_import_path,
+                        resolved_path,
+                        imported.name
+                    ];
+                }
             } elif isinstance(item.name, uni.Token) {
                 if (item.name.value == 'default') {
                     if not item.alias {
@@ -197,16 +222,10 @@ impl EsastGenPass._partition_client_import_items(
     tuple[list[uni.ModuleItem | uni.ModulePath], list[uni.ModuleItem | uni.ModulePath]]
     | None
 ) {
-    import from jaclang.compiler.symbol_utils {
-        ClientImportVerdict,
-        classify_client_import_item,
-        is_client_boundary_import,
-        report_dead_client_import
-    }
     if not is_client_boundary_import(nd) {
         return None;
     }
-    import from jaclang.compiler.driver.boundary_classify { import_crosses_apps }
+
     cross_app = import_crosses_apps(nd);
     source_mod = self._resolve_source_module(nd);
     if source_mod is None {
@@ -223,12 +242,12 @@ impl EsastGenPass._partition_client_import_items(
                 continue;
             }
         }
-        verdict = classify_client_import_item(source_mod, item);
+        verdict = classify_client_import_item(source_mod, item, self.prog);
         if verdict == ClientImportVerdict.BRIDGED {
             bridged.append(item);
         } elif verdict == ClientImportVerdict.DEAD {
             if not cross_app and isinstance(item, uni.ModuleItem) {
-                report_dead_client_import(self, nd, item);
+                report_dead_client_import(self, nd, item, self._unbound_reported);
             }
         } else {
             kept.append(item);
@@ -273,6 +292,10 @@ impl EsastGenPass._generate_sv_import_stubs(
                 }
             }
             ret_type_name = binding.ret_type;
+            if isinstance(binding.ast_node, uni.Ability)
+                and binding.ast_node.sym_name {
+                func_name = binding.ast_node.sym_name;
+            }
             _src_mod = binding.ast_node.find_parent_of_type(uni.Module)
                 if binding.ast_node is not None
                 else None;
@@ -375,12 +398,10 @@ impl EsastGenPass._generate_sv_import_stubs(
 }
 
 impl EsastGenPass._is_client_native_import(nd: uni.Import) -> bool {
-    import from jaclang.compiler.driver.boundary_classify { import_binds_client_native }
     return import_binds_client_native(nd, self.module.gen.interop_manifest);
 }
 
 impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
-    import from jaclang.compiler.frontend.codeinfo { native_wasm_stem }
     import json;
     contracts: dict[str, dict[str, any]] = {};
     host_imports: dict[str, any] = {};
@@ -394,7 +415,7 @@ impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
 
     bind_local = '__jac_na_bind';
     if bind_local not in self.injected_imports {
-        host_module = '@jac/wasm_host';
+        host_module = WASM_HOST_MODULE;
         specifier = self.sync_loc(
             es.ImportSpecifier(
                 imported=es.Identifier(name='__na_bind'),
@@ -446,19 +467,13 @@ impl EsastGenPass._generate_na_import_binding(nd: uni.Import) -> None {
         return;
     }
 
+    bind_payload: dict[str, any] = {"exports": contracts, "imports": host_imports};
     bind_call = self.sync_loc(
         es.CallExpression(
             callee=es.Identifier(name=bind_local),
             arguments=[
                 self.sync_loc(es.Literal(value=stem, raw=f'"{stem}"'), jac_node=nd),
-                self.sync_loc(
-                    es.Literal(
-                        value=json.dumps(
-                            {"exports": contracts, "imports": host_imports}
-                        )
-                    ),
-                    jac_node=nd
-                ),
+                self.sync_loc(es.Literal(value=json.dumps(bind_payload)), jac_node=nd),
 
             ]
         ),
@@ -498,8 +513,9 @@ impl EsastGenPass._sv_import_item_is_type(
 }
 
 impl EsastGenPass.exit_sub_tag with uni.SubTag exit {
-    if here.tag.gen.es_ast {
-        here.gen.es_ast = here.tag.gen.es_ast;
+    tag = here.tag;
+    if isinstance(tag, uni.UniNode) and tag.gen.es_ast {
+        here.gen.es_ast = tag.gen.es_ast;
     }
 }
 
@@ -535,23 +551,24 @@ impl EsastGenPass._finalize_runtime_imports(program: es.Program) -> None {
         ]
     );
 
-    import re;
     referenced: set[str] = set();
-    pending: list[object] = [value_body];
+    pending: list[any] = [value_body];
     while pending {
         value = pending.pop();
-        if isinstance(value, (es.Identifier, es.JsxIdentifier)) {
-            referenced.update(re.findall(r"[A-Za-z_$][A-Za-z0-9_$]*", value.name));
+        if isinstance(value, es.Identifier) {
+            referenced.update(js_identifiers(value.name));
+        } elif isinstance(value, es.JsxIdentifier) {
+            referenced.update(js_identifiers(value.name));
         } elif isinstance(value, es.RawCode) {
-            referenced.update(re.findall(r"[A-Za-z_$][A-Za-z0-9_$]*", value.code));
+            referenced.update(js_identifiers(value.code));
         } elif isinstance(value, es.Node) {
-            pending.extend(
-                child
-                for (key, child) in vars(value).items()
-                if key not in ("loc", "type")
-            );
-        } elif isinstance(value, (list, tuple)) {
-            pending.extend(value);
+            for (_field, child) in es.es_children(value).items() {
+                pending.append(child);
+            }
+        } elif isinstance(value, list) {
+            for item in value {
+                pending.append(item);
+            }
         }
     }
     for stmt in program.body {

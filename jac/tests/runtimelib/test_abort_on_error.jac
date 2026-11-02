@@ -37,7 +37,7 @@ def count_items(client: JacTestClient) -> int {
 test "failed walker's create does not appear to later requests" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        assert client.register_user("abort_a", "pw12345").ok;
+        assert client.register_user("abort_a", "pw12345_Secure1").ok;
         fail_response = client.post("/walker/CreateAndFail", json={});
         assert (not fail_response.ok) or ("error" in (fail_response.json() or {})) , "CreateAndFail should surface an error";
         assert count_items(client) == 0 , (
@@ -51,11 +51,11 @@ test "failed walker's create does not appear to later requests" {
 test "failed walker's create does not survive a restart" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        assert client.register_user("abort_b", "pw12345").ok;
+        assert client.register_user("abort_b", "pw12345_Secure1").ok;
         client.post("/walker/CreateAndFail", json={});
         client.close();
         reopened = make_client(tmpdir);
-        assert reopened.login("abort_b", "pw12345").ok;
+        assert reopened.login("abort_b", "pw12345_Secure1").ok;
         assert count_items(reopened) == 0 , (
             "a failed walker's create was persisted across restart"
         );
@@ -67,7 +67,7 @@ test "failed walker's create does not survive a restart" {
 test "failed walker's delete is rolled back" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        assert client.register_user("abort_c", "pw12345").ok;
+        assert client.register_user("abort_c", "pw12345_Secure1").ok;
         ok_response = client.post("/walker/CreateOk", json={"name": "survivor"});
         assert ok_response.ok , f"CreateOk failed: {ok_response.json()}";
         assert count_items(client) == 1;
@@ -77,7 +77,7 @@ test "failed walker's delete is rolled back" {
         );
         client.close();
         reopened = make_client(tmpdir);
-        assert reopened.login("abort_c", "pw12345").ok;
+        assert reopened.login("abort_c", "pw12345_Secure1").ok;
         assert count_items(reopened) == 1 , (
             "a failed walker's delete destroyed committed data durably"
         );
@@ -89,12 +89,12 @@ test "failed walker's delete is rolled back" {
 test "successful walker still persists (positive control)" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
-        assert client.register_user("abort_d", "pw12345").ok;
+        assert client.register_user("abort_d", "pw12345_Secure1").ok;
         assert client.post("/walker/CreateOk", json={"name": "kept"}).ok;
         assert count_items(client) == 1;
         client.close();
         reopened = make_client(tmpdir);
-        assert reopened.login("abort_d", "pw12345").ok;
+        assert reopened.login("abort_d", "pw12345_Secure1").ok;
         assert count_items(reopened) == 1 , "committed work must survive restart";
         reopened.close();
     }

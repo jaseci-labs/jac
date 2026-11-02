@@ -203,10 +203,8 @@ def is_annex_path_of(candidate_path: str, base_path: str) -> bool:
         if base_path.endswith(JAC_SUFFIX)
         else base_path
     )
-    if candidate_path.startswith(stem):
+    if candidate_path.startswith(stem + "."):
         rest = candidate_path[len(stem) :]
-        if not rest.startswith("."):
-            return False
         return any(
             rest.endswith(suffix) or rest.startswith(folder + os.sep)
             for suffix, folder in ANNEX_FOLDER.items()
@@ -266,6 +264,12 @@ def _subtree_has_jac(directory: str) -> bool:
                         name = entry.name
                         if not name.startswith(".") and name not in _WALK_SKIP_DIRS:
                             subdirs.append(entry.path)
+                    elif entry.is_symlink() and os.path.isfile(
+                        os.path.join(entry.path, "jac.toml")
+                    ):
+                        # A mounted Jac package (.jac/packages/<org>/<name>)
+                        # is Jac source without descending the link.
+                        return True
                     elif entry.is_file() and is_jac(entry.name):
                         return True
                 except OSError:

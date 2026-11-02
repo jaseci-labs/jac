@@ -1,63 +1,3 @@
-import from jaclang.compiler.frontend.unitree {
-    Module,
-    TreeWalker,
-    UniNode,
-    Ability,
-    ArchHas,
-    Archetype,
-    Assignment,
-    AstSymbolNode,
-    AtomTrailer,
-    BinaryExpr,
-    DictCompr,
-    ElseIf,
-    ElseStmt,
-    Enum,
-    Except,
-    ExprAsItem,
-    FinallyStmt,
-    ForeverStmt,
-    GenCompr,
-    GlobalVars,
-    HasVar,
-    IfStmt,
-    ImplDef,
-    Import,
-    InForStmt,
-    InnerCompr,
-    IterForStmt,
-    LambdaExpr,
-    ListCompr,
-    MatchCase,
-    ModuleItem,
-    ModulePath,
-    Name,
-    OpenStmt,
-    ParamVar,
-    SemDef,
-    SetCompr,
-    SwitchCase,
-    Symbol,
-    Test,
-    Token,
-    TryStmt,
-    TypeAlias,
-    TypeParam,
-    TypedCtxBlock,
-    UniScopeNode,
-    WhileStmt,
-    WithStmt,
-    bind_assignment_targets,
-    def_insert_unpacking,
-    find_python_scope_node_of,
-    record_cross_scope_rebind,
-    rebind_or_def_insert
-}
-import from jaclang.compiler.passes.context { CompileContext }
-import from jaclang.compiler.frontend.constant { SymbolAccess }
-
-import from jaclang.compiler.frontend.diagnostics { E0064, E0077 }
-
 glob TEST_ASSERT_METHOD_NAMES: tuple[str, ...] = (
          'assertAlmostEqual',
          'assertCountEqual',
@@ -102,18 +42,19 @@ glob TEST_ASSERT_METHOD_NAMES: tuple[str, ...] = (
          'assertWarnsRegex'
      );
 
-walker SymTabBuildPass(TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
-    }
+walker SymTabBuildPass(TreePass) {
+    static has contract: PassContract = PassContract(
+        provides=(
+            AnalysisFact.SYM_OF,
+            AnalysisFact.DEFINES,
+            AnalysisFact.IN_SCOPE,
+            AnalysisFact.SCOPE_CHILD,
 
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
-    }
+        ),
+        kernel_safe=True
+    );
 
-    has ctx: CompileContext,
-        module: Module,
-        cur_sym_tab: list[UniScopeNode] = [];
+    has cur_sym_tab: list[UniScopeNode] = [];
 
     can prepare with entry;
     def push_scope_and_link(key_node: UniScopeNode) -> None;
@@ -128,6 +69,7 @@ walker SymTabBuildPass(TreeWalker) {
     can exit_type_alias with TypeAlias exit;
     can enter_type_param with TypeParam entry;
     can exit_global_vars with GlobalVars exit;
+    def _declare_global_vars(nd: GlobalVars) -> None;
     can exit_assignment with Assignment exit;
     can exit_binary_expr with BinaryExpr exit;
     can enter_test with Test entry;

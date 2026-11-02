@@ -90,10 +90,8 @@ obj Person {
 # Install the Jac toolchain
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 
-# Individual plugins
-jac install byllm        # LLM integration
-# (Production deployment & scaling and full-stack web + native-desktop app
-#  building ship with the jac binary -- no separate install)
+# byLLM, production deployment & scaling, and full-stack web + native-desktop
+# app building ship with the jac binary -- no separate install
 ```
 
 This installs the self-contained `jac` binary -- no Python, pip, or uv required.
@@ -362,7 +360,7 @@ walker Example {
 }
 ```
 
-To match every node regardless of type, use the anonymous form `can traverse with entry { ... }` -- there is no built-in `Node` catch-all trigger.
+To match every node regardless of type, trigger on the ambient `Node` base: `can traverse with Node entry { ... }`. A bare `can start with entry { ... }` in a walker runs once, when the walk starts (and `with exit` once when it ends).
 
 ### 6. `report` vs `return`
 

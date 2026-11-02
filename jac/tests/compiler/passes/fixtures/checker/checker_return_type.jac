@@ -1,24 +1,25 @@
-def foo() {
+def foo {
     return 1;  # <-- Error (no return annotation, but returning a value)
-
 
     return;  # <-- Ok
 
-
     return "";  # <-- Error (no return annotation, but returning a value)
 
-
     return None;  # <-- Ok
-
 }
 
-def bar()  -> int {
+def bar -> int {
     return "";  # <-- Error
-
 
     return 1;  # <-- Ok
 
-
     return 1.1;  # <-- Error
+}
 
+def bump {
+    return 0;  # <-- Error (no return annotation, but returning a value)
+}
+
+def caller -> None {
+    return bump();  # <-- Ok (bump() implicitly returns None; matches declared None)
 }

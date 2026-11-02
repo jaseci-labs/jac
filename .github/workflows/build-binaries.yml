@@ -1,7 +1,9 @@
 name: Build jac native binaries
 
 # Builds the self-contained `jac` binary per platform and attaches it to a
-# GitHub Release, with CPython and opt-in native JacPython on every target.
+# GitHub Release: one official configuration (CPython + bun) per target.
+# JacPython and js_engine are accelerators built only on request
+# (`jac native build`); a release ships their floors.
 # One parameterized workflow serves both channels:
 #   - channel=release (default): cold, glibc-2.17-pinned builds attached to a
 #     versioned release. Called by release.yml after it cuts the release (a
@@ -35,7 +37,7 @@ on:
         default: release
         type: string
       only:
-        # Diagnostic lane: build both runtimes for ONE platform, so a
+        # Diagnostic lane: build ONE platform, so a
         # single red platform can be iterated on with fewer runners.
         # Empty (the default) keeps the channel's full
         # leg list. With `tag` set, `plan` accepts the filter only when every
@@ -122,7 +124,7 @@ jobs:
   # nobody could run; 0.37.2 already went out without it. Two lanes replace
   # the matrix slot: nightly.yml's weekly `intel-mac-probe` (artifact only,
   # the leg's signal) and the manual release lane (dispatch this workflow
-  # with only=macos-x86_64 and tag=v<version> to attach both runtime assets to
+  # with only=macos-x86_64 and tag=v<version> to attach its asset to
   # an already-published release).
   #
   # `optional` marks a leg that still builds but no longer gates: the matrix
@@ -138,6 +140,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       include: ${{ steps.legs.outputs.include }}
+      platforms: ${{ steps.legs.outputs.platforms }}
       required: ${{ steps.legs.outputs.required }}
     steps:
       - name: Select build legs for the channel
@@ -154,9 +157,12 @@ jobs:
           # exists to build it goes red when it fails. Delete the flag when
           # #8805 is fixed and the leg should carry a release again; that
           # restores it as a blocking leg and a required asset in one edit.
+          # No leg builds its own compiler kernel: the `kernel` job builds every
+          # leg's kernel on x86 Linux and each leg's seal adopts it (#10219), so
+          # an ARM leg no longer needs the 16-vCPU runner's memory.
           LEGS='[
-            {"os": "blacksmith-4vcpu-ubuntu-2404", "platform": "linux-x86_64", "zig_target": "x86_64-linux-gnu.2.17"},
-            {"os": "ubuntu-24.04-arm", "platform": "linux-aarch64", "zig_target": "aarch64-linux-gnu.2.17"},
+            {"os": "blacksmith-8vcpu-ubuntu-2404", "platform": "linux-x86_64", "zig_target": "x86_64-linux-gnu.2.17"},
+            {"os": "blacksmith-8vcpu-ubuntu-2404-arm", "platform": "linux-aarch64", "zig_target": "aarch64-linux-gnu.2.17"},
             {"os": "macos-14",         "platform": "macos-aarch64"},
             {"os": "macos-15-intel",   "platform": "macos-x86_64",  "zig_target": "x86_64-macos.12.0", "manual": true}
           ]'
@@ -187,17 +193,13 @@ jobs:
               exit 1
             fi
           fi
-          # Both runtimes ship for each selected platform. Keep the platform
-          # token for shared LLVM shims; only JacPython asset names get a suffix.
-          LEGS="$(jq -c '[.[] | . as $leg | ["cpython", "jacpython"][] as $runtime
-            | $leg + {runtime: $runtime, jacpython: (if $runtime == "jacpython" then "1" else "0" end),
-              asset_platform: ($leg.platform + (if $runtime == "jacpython" then "-jacpython" else "" end))}]' <<<"$LEGS")"
           echo "include=$(jq -c . <<<"$LEGS")" >> "$GITHUB_OUTPUT"
+          echo "platforms=$(jq -c 'map(.platform)' <<<"$LEGS")" >> "$GITHUB_OUTPUT"
 
           # The platforms a release is obliged to ship, read off the same array
           # the matrix was. Absence of both flags means blocking, so a new leg
           # is required until someone says otherwise.
-          REQUIRED="$(jq -r 'map(select(.optional != true and .manual != true)) | map(.asset_platform) | join(" ")' <<<"$LEGS")"
+          REQUIRED="$(jq -r 'map(select(.optional != true and .manual != true)) | map(.platform) | join(" ")' <<<"$LEGS")"
           # A release whose every leg is optional has nothing to verify, and
           # publishing it would reveal whatever the draft happened to hold.
           # Only the unfiltered matrix feeds a publish (release.yml); the
@@ -208,12 +210,22 @@ jobs:
             exit 1
           fi
           echo "required=$REQUIRED" >> "$GITHUB_OUTPUT"
-          echo "Building: $(jq -r 'map(.asset_platform) | join(" ")' <<<"$LEGS")"
+          echo "Building: $(jq -r 'map(.platform) | join(" ")' <<<"$LEGS")"
           echo "Required to publish: ${REQUIRED:-(none)}"
 
-  build:
-    name: ${{ matrix.asset_platform }}
+  # The compiler kernel for every leg, built on x86 Linux (#10219): the ~2 h
+  # of single-threaded lowering and code generation stay off the ARM runners,
+  # which are 2.5-3x slower per thread. See build-kernel.yml.
+  kernel:
     needs: plan
+    uses: ./.github/workflows/build-kernel.yml
+    with:
+      platforms: ${{ needs.plan.outputs.platforms }}
+      ref: ${{ inputs.channel == 'dev' && github.sha || inputs.commit || inputs.tag || github.event.release.tag_name }}
+
+  build:
+    name: ${{ matrix.platform }}
+    needs: [plan, kernel]
     strategy:
       fail-fast: false
       matrix:
@@ -226,7 +238,6 @@ jobs:
     # without the key resolve to false and keep vetoing as they always have.
     continue-on-error: ${{ matrix.optional || false }}
     env:
-      JACPYTHON: ${{ matrix.jacpython }}
       # -Dtarget flag for zig build: set on release-channel Linux legs, empty
       # (host-native) on the dev channel and macOS.
       DTARGET: ${{ inputs.channel != 'dev' && matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) || '' }}
@@ -275,7 +286,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: jac/jaclang/compiler/backends/native/llvm/libjacllvm.*
-          key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.json') }}
+          key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/build.zig.zon', 'jac/bootstrap/pins.json') }}
 
       # Keyed on bootstrap/pins.json to match the entries setup-jac seeds (the
       # old release-dev key hashed the payload tool, so it never matched them and
@@ -296,21 +307,18 @@ jobs:
       # inherited at all, since such a seed would only ever miss. A
       # compiler-touching commit therefore forfeits the seed by construction.
       #
-      # Key shared with setup-jac, so the three jacpython legs here restore the
-      # tree ci.yml's build-kit already paid for instead of each recompiling it.
-      # No runner.os/runner.arch: a precompiled unit is relocatable marshalled
+      # Key shared with setup-jac, so these legs restore the tree ci.yml's
+      # build-kit already paid for instead of each recompiling it. No
+      # runner.os/runner.arch: a precompiled unit is relocatable marshalled
       # bytecode whose key folds no platform axis (see the note in setup-jac).
-      # The runtime token stays, and must: a .jac module's bytecode comes from
-      # the HOST interpreter's `compile`, which is the native Jac compiler under
-      # jacpython and CPython's own under cpython, so the two legs cannot share.
       - name: Restore cached JIR precompile tree (dev channel)
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.precompiled-build/${{ matrix.runtime }}
-          key: jac-precompiled-${{ matrix.runtime }}-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
+          path: jac/.precompiled-build/cpython
+          key: jac-precompiled-cpython-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
           restore-keys: |
-            jac-precompiled-${{ matrix.runtime }}-c${{ steps.inputs.outputs.compiler }}-
+            jac-precompiled-cpython-c${{ steps.inputs.outputs.compiler }}-
 
       # Cache the selected runtime and any build host. Release builds remain cold.
       - name: Resolve Python SDK cache input
@@ -325,17 +333,17 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.python-build/${{ matrix.runtime }}
-          key: python-build-v4-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ matrix.runtime == 'cpython' && steps.inputs.outputs.python_cpython || steps.inputs.outputs.python_jacpython }}
+          path: jac/.python-build/cpython
+          key: python-build-v4-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.python_cpython }}
           restore-keys: |
-            python-build-v4-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-
+            python-build-v4-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-
 
       - name: Restore cached bun runtime (dev channel)
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
           path: jac/.bun-build
-          key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/client/bun_installer.jac') }}
+          key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/client/js_runtime.jac') }}
 
       # The payload's compressed deps-layer frame (mkpayload --layer-cache):
       # content-addressed and verified by decompress + byte-compare before
@@ -345,10 +353,10 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.payload-layers/${{ matrix.runtime }}
-          key: payload-layers-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
+          path: jac/.payload-layers/cpython
+          key: payload-layers-cpython-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
           restore-keys: |
-            payload-layers-${{ matrix.runtime }}-${{ runner.os }}-${{ runner.arch }}-
+            payload-layers-cpython-${{ runner.os }}-${{ runner.arch }}-
 
       # Release channel: fetch the prebuilt, target-pinned shim that
       # build-shims.yml publishes on the rolling `deps` prerelease instead of
@@ -422,8 +430,8 @@ jobs:
         run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
 
       # The native backend statically links a pinned LLVM; fetch it per target
-      # before `zig build`. Skipped when a prebuilt shim is in hand (-Dshim-bin
-      # needs no LLVM at all): the dev-channel shim cache, the release-channel
+      # before `zig build`. Skipped when a prebuilt shim is in hand (a current
+      # shim needs no LLVM at all): the dev-channel shim cache, the release-channel
       # deps-release fetch, or a dev-channel LLVM-cache hit (tree already
       # restored). The cross-channel gates are vacuous: each channel's skipped
       # restore/fetch steps leave their outputs empty, so only its own paths
@@ -455,22 +463,32 @@ jobs:
           launchctl list | grep -i reportcrash
           exit 0
 
+      # The kernel job built this leg's compiler kernel; the seal adopts it.
+      - name: Download the compiler kernel
+        uses: actions/download-artifact@v4
+        with:
+          name: kernel-${{ matrix.platform }}
+          path: .kernel
+
       - name: Build the jac binary (one command)
         working-directory: jac
-        # On a dev-channel shim-cache hit, stage the shim outside its in-tree
-        # place path: the build copies -Dshim-bin back there, and a self-copy
-        # would read the file it is truncating. Mirrors setup-jac. The
-        # release-channel deps-release fetch already lives outside the tree.
+        # A dev-channel shim-cache hit restored the shim, record included, to
+        # its in-tree place, and the build reuses it there. The release
+        # channel's prebuilt asset is named by the hash of the same inputs, so
+        # placing it and adopting it is equally sound.
+        # build.zig streams mkpayload live under CI (-Dpayload-progress). The
+        # seal children are plain Python, so these make their output
+        # line-buffered and a native fault print its stack.
+        env:
+          PYTHONUNBUFFERED: "1"
+          PYTHONFAULTHANDLER: "1"
         run: |
-          SHIM_ARG=()
-          if [ "${{ steps.shim-cache.outputs.cache-hit }}" = "true" ]; then
-            mkdir -p .shim-build
-            cp jaclang/compiler/backends/native/llvm/libjacllvm.* .shim-build/
-            SHIM_ARG=(-Dshim-bin=".shim-build/$(ls .shim-build | head -1)")
-          elif [ "${{ steps.shim-fetch.outputs.hit }}" = "true" ]; then
-            SHIM_ARG=(-Dshim-bin="${{ steps.shim-fetch.outputs.file }}")
+          if [ "${{ steps.shim-fetch.outputs.hit }}" = "true" ]; then
+            PLACED="jaclang/compiler/backends/native/llvm/$(basename "${{ steps.shim-fetch.outputs.file }}" | sed -E 's/^libjacllvm-.*\.(so|dylib)$/libjacllvm.\1/')"
+            cp "${{ steps.shim-fetch.outputs.file }}" "$PLACED"
+            zig build adopt-shim $DTARGET --summary all
           fi
-          zig build $DTARGET "${SHIM_ARG[@]}" --summary all
+          zig build $DTARGET -Dkernel="$GITHUB_WORKSPACE/.kernel" --summary all
 
       # Launcher unit tests (`zig build test`) live in ci.yml's `test-launcher`
       # job so they gate every PR on Linux + macOS, not just release time. The
@@ -485,7 +503,7 @@ jobs:
           printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
 
-      - name: Verify the shipped Python compiler matches the selected runtime
+      - name: Verify the shipped Python is stock CPython
         working-directory: jac
         run: |
           set -euo pipefail
@@ -495,19 +513,20 @@ jobs:
           import ctypes;
           import os;
           with entry {
-              if os.environ.get("JACPYTHON") == "1" {
-                  assert ctypes.pythonapi._PyJac_CompilerRequired() == 1;
-                  assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4;
-              } else {
-                  assert not hasattr(ctypes.pythonapi, "_PyJac_CompilerRequired");
-              }
+              assert not hasattr(ctypes.pythonapi, "_PyJac_CompilerRequired");
               assert not hasattr(sys, "_jacpython_compile");
               assert not hasattr(sys, "_jacpython_image");
               assert eval("6 * 7") == 42;
               print("Python compiler verified");
           }
           EOF
-          JAC_NO_DEV_SOURCE=1 zig-out/bin/jac run "$WORK/native_compiler.jac"
+          # From $WORK: the checkout's jac.toml would reroute the binary to
+          # this tree's compiler source.
+          BIN="$PWD/zig-out/bin/jac"
+          (cd "$WORK" && "$BIN" run "$WORK/native_compiler.jac")
+          # A release never runs a required artifact on its floor, and ships
+          # every floor its policy names (CPython, bun).
+          (cd "$WORK" && "$BIN" native status && "$BIN" native status --require release)
 
       # Guards #7047: the binary must not leak PYTHONHOME/PYTHONPATH (or any
       # interpreter config) into subprocesses -- a python-based child spawned
@@ -616,7 +635,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: macos-crash-evidence-${{ matrix.asset_platform }}
+          name: macos-crash-evidence-${{ matrix.platform }}
           path: ${{ runner.temp }}/jac-crash-evidence
           if-no-files-found: ignore
 
@@ -683,7 +702,7 @@ jobs:
       # floor checks on purpose: a floor regression fails the job before
       # anything is published.
       - name: Seed the deps release with the built shim (release channel)
-        if: inputs.channel != 'dev' && matrix.runtime == 'cpython' && steps.shim-fetch.outputs.hit != 'true'
+        if: inputs.channel != 'dev' && steps.shim-fetch.outputs.hit != 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -706,9 +725,9 @@ jobs:
         run: |
           set -euxo pipefail
           if [ "${{ inputs.channel }}" = "dev" ]; then
-            ASSET="jac-dev-${{ matrix.asset_platform }}"
+            ASSET="jac-dev-${{ matrix.platform }}"
           else
-            ASSET="jac-${{ steps.ver.outputs.version }}-${{ matrix.asset_platform }}"
+            ASSET="jac-${{ steps.ver.outputs.version }}-${{ matrix.platform }}"
           fi
           mkdir -p dist
           cp zig-out/bin/jac "dist/$ASSET"
@@ -759,10 +778,10 @@ jobs:
         if: failure() && matrix.optional
         run: |
           {
-            echo "### ${{ matrix.asset_platform }} failed (non-blocking)"
+            echo "### ${{ matrix.platform }} failed (non-blocking)"
             echo ""
             echo "This leg does not gate the release, so the run continues and"
-            echo "the release will ship **without a \`${{ matrix.asset_platform }}\`"
+            echo "the release will ship **without a \`${{ matrix.platform }}\`"
             echo "binary**. Users on that platform get nothing new until it is"
             echo "fixed; \`scripts/install.sh\` tells them so and points at the"
             echo "last release that had one."
@@ -771,7 +790,7 @@ jobs:
             echo "its entry in the \`plan\` job of this workflow. That restores"
             echo "it as a blocking leg and as a required release asset."
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "::warning title=${{ matrix.asset_platform }} did not build::The release will ship without a ${{ matrix.asset_platform }} binary. See the job summary."
+          echo "::warning title=${{ matrix.platform }} did not build::The release will ship without a ${{ matrix.platform }} binary. See the job summary."
 
   # The admin console is platform-independent, so build it once with the
   # linux-x86_64 binary this run produced (same-commit compiler) and attach

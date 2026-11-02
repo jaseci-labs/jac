@@ -1,83 +1,3 @@
-import type from jaclang.compiler.frontend.unitree {
-    Ability,
-    ArchHas,
-    Archetype,
-    AssertStmt,
-    AssignCompr,
-    Assignment,
-    AstAccessNode,
-    AstDocNode,
-    AstElseBodyNode,
-    AstTypedVarNode,
-    AtomTrailer,
-    AwaitingClause,
-    CastExpr,
-    CfgExpr,
-    CompareExpr,
-    ConcurrentExpr,
-    ConnectOp,
-    CtrlStmt,
-    DictCompr,
-    DictVal,
-    DisconnectOp,
-    EdgeOpRef,
-    EdgeRefTrailer,
-    ElseIf,
-    ElseStmt,
-    Enum,
-    EventSignature,
-    Except,
-    Expr,
-    ExprAsItem,
-    FString,
-    FilterCompr,
-    FinallyStmt,
-    FormattedValue,
-    FuncSignature,
-    GlobalVars,
-    HasVar,
-    IfElseExpr,
-    ImplDef,
-    Import,
-    IndexSlice,
-    InnerCompr,
-    IterForStmt,
-    JsxAttribute,
-    JsxChild,
-    JsxElement,
-    JsxElementName,
-    KVPair,
-    KWPair,
-    ListCompr,
-    MatchArch,
-    MatchCase,
-    MatchKVPair,
-    MatchOr,
-    MatchPattern,
-    Module,
-    ModuleItem,
-    ModulePath,
-    MultiString,
-    Name,
-    NameAtom,
-    ParamVar,
-    ProgramModule,
-    PyInlineCode,
-    RaiseStmt,
-    Slice,
-    String,
-    SubTag,
-    SwitchCase,
-    Test,
-    Token,
-    TryStmt,
-    TypeParam,
-    TypedCtxBlock,
-    UnaryExpr,
-    UniNode,
-    VisitStmt
-}
-
 edge Role: UniNode --> UniNode {}
 
 edge Kid: UniNode --> UniNode {}
@@ -124,8 +44,6 @@ edge ChildrenRole(Role): JsxElement --> JsxChild | JsxElement {}
 
 edge ClibDeclsRole(Role): Import --> UniNode {}
 
-edge CodeRole(Role): PyInlineCode --> Token {}
-
 edge CollectionRole(Role): UniNode --> Expr {}
 
 edge ComparesRole(Role): FilterCompr --> Expr {}
@@ -139,6 +57,8 @@ edge ConditionalRole(Role): InnerCompr --> Expr {}
 edge ConnAssignRole(Role): ConnectOp --> AssignCompr {}
 
 edge ConnTypeRole(Role): ConnectOp --> Expr {}
+
+edge ConsumersRole(Role): WireTarget --> ModulePath {}
 
 edge CountByRole(Role): IterForStmt --> Assignment {}
 
@@ -194,7 +114,9 @@ edge HintRole(Role): Import --> SubTag[Token] {}
 
 edge InsertLocRole(Role): VisitStmt --> Expr {}
 
-edge ItemsRole(Role): Import --> ModuleItem | ModulePath {}
+edge ItemsRole(Role): Import | ImportRule | WireTarget --> ModuleItem
+    | ModulePath
+    | WireItem {}
 
 edge IterRole(Role): IterForStmt --> Assignment {}
 
@@ -234,11 +156,15 @@ edge PartsRole(Role): UniNode --> FormattedValue | Token {}
 
 edge PathRole(Role): ModulePath --> Name | String {}
 
+edge PatternPathRole(Role): ModulePattern --> ModulePath {}
+
 edge PatternRole(Role): UniNode --> MatchPattern {}
 
 edge PatternsRole(Role): MatchOr --> MatchPattern {}
 
 edge PosonlyParamsRole(Role): FuncSignature --> ParamVar {}
+
+edge ProviderRole(Role): ImportWire --> ModulePath {}
 
 edge ReturnTypeRole(Role): FuncSignature --> Expr {}
 
@@ -246,9 +172,13 @@ edge RightRole(Role): UniNode --> Expr {}
 
 edge RightsRole(Role): CompareExpr --> Expr {}
 
+edge ScopeRole(Role): GraphImport --> ModulePath {}
+
 edge SignatureRole(Role): UniNode --> EventSignature | FuncSignature {}
 
 edge SlicesRole(Role): IndexSlice --> Slice {}
+
+edge SourcesRole(Role): ImportRule --> ModulePattern {}
 
 edge SpecRole(Role): ImplDef --> EventSignature | Expr | FuncSignature {}
 
@@ -263,6 +193,8 @@ edge StopRole(Role): Slice --> Expr {}
 edge StringsRole(Role): MultiString --> FString | String {}
 
 edge TargetRole(Role): UniNode --> Expr {}
+
+edge TargetsRole(Role): ImportRule | ImportWire --> ModulePattern | WireTarget {}
 
 edge TgtEndpointRole(Role): Archetype --> Expr {}
 

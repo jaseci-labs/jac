@@ -1,22 +1,4 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.frontend.unitree { TreeWalker }
-import from jaclang.compiler.passes.context { CompileContext }
-import jaclang.compiler.frontend.unitree as uni;
-
-import from jaclang.compiler.frontend.parser.tokens { BUILTIN_TYPE_KINDS, TokenKind }
-
-def is_nil_expr(nd: object) -> bool {
-    if isinstance(nd, uni.CfgExpr) {
-        return is_nil_expr(nd.expr);
-    }
-    if isinstance(nd, uni.Null) {
-        return True;
-    }
-    if isinstance(nd, uni.Name) {
-        return nd.value == "NIL";
-    }
-    return False;
-}
+def is_nil_expr(nd: object) -> bool;
 
 obj GExpr {
     def __eq__(other: object) -> bool;
@@ -138,18 +120,9 @@ obj ConditionResult {
         tokens: list[str];
 }
 
-walker GrammarExtractPass(TreeWalker) {
-    can enter_walk with uni.UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with uni.UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: uni.Module,
-        rules: list[GrammarRule] = [],
+walker GrammarExtractPass(TreePass) {
+    static has contract: PassContract = PassContract();
+    has rules: list[GrammarRule] = [],
         target_class: str = "Parser",
         diagnostics: list[dict[str, any]] = [],
         _parse_impls: list[tuple[str, list[uni.UniNode]]] = [],

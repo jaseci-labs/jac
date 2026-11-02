@@ -1,0 +1,19 @@
+[check]
+suppress = ["E5092"]
+
+[check.lint]
+ignore = ["no-print"]
+
+[memory]
+profile = "rc"
+
+[placement.pins]
+"engine.src.*" = "native"
+"napi.src.*" = "native"
+"tools.*" = "server"
+"engine.tests.test262.run_test262" = "server"
+"engine.tests.test262.analyze_builtins_failures" = "server"
+
+[native]
+link_mode = "bitcode"
+opt = 3

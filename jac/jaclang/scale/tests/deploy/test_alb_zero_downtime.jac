@@ -3,12 +3,6 @@ import os;
 import tempfile;
 import unittest;
 import from uuid { uuid4 }
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
-import from jaclang.scale.deploy.target.kubernetes.target { KubernetesTarget }
 
 glob READINESS_GATE_LABEL: str = "elbv2.k8s.aws/pod-readiness-gate-inject",
      _shared: dict[str, any] = {};

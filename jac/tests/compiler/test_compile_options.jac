@@ -1,7 +1,7 @@
 """Compile-options identity and boundary tests (#7871 workstream G).
 
 CompileOptions is the single authority for codegen-affecting build options:
-env vars are read once at options construction, the codegen fingerprint is
+project settings are read once at options construction, the codegen fingerprint is
 part of artifact identity (folded into the JIR module key), and no compiler
 pass reads os.environ directly (source-scan gate below).
 """
@@ -47,10 +47,7 @@ test "forced server compilation retains Python standard-library imports" {
             + "def bind_local { sock = socket.socket(); "
             + "sock.bind(('127.0.0.1', 0)); sock.close(); }\n",
         options=CompileOptions(
-            default_codespace="native",
-            force_codespace="server",
-            force_target_program=True,
-            need_full_ast=True
+            default_codespace="native", force_codespace="server", need_full_ast=True
         )
     );
     assert not program.errors_had , str(program.errors_had);
@@ -69,7 +66,9 @@ test "every codegen option flip changes the fingerprint" {
         _pinned_opts(rc_debug_codegen=True),
         _pinned_opts(native_target="wasm32-unknown-unknown"),
         _pinned_opts(native_debug=True),
-        _pinned_opts(opt_level=0)
+        _pinned_opts(opt_level=0),
+        _pinned_opts(native_threads=7),
+        _pinned_opts(client_source_root="/apps/web")
     ];
     seen: set = {base_fp};
     for flipped in flips {
@@ -82,6 +81,23 @@ test "every codegen option flip changes the fingerprint" {
     assert len(seen) == len(flips) + 1 , "fingerprint collision between flips";
 }
 
+test "client layout survives a kernel request and separates dependency caches" {
+    import from jaclang.compiler.frontend.kernel_inputs {
+        request_of,
+        request_to_dict,
+        request_from_dict
+    }
+    first = _pinned_opts(client_source_root="/apps/first");
+    second = _pinned_opts(client_source_root="/apps/second");
+    restored = request_from_dict(request_to_dict(request_of(first))).to_options();
+    assert restored.client_source_root == first.client_source_root;
+    assert restored.codegen_fingerprint() == first.codegen_fingerprint();
+    assert first.dependency_projection("/shared/Card.jac")
+        != second.dependency_projection("/shared/Card.jac");
+    assert first.unit_codegen_identity("/shared/Card.jac")
+        == second.unit_codegen_identity("/shared/Card.jac");
+}
+
 test "diagnostic-only options do not enter the fingerprint" {
     base_fp = _pinned_opts().codegen_fingerprint();
     diag = _pinned_opts(
@@ -92,6 +108,12 @@ test "diagnostic-only options do not enter the fingerprint" {
         na_debug=True
     );
     assert diag.codegen_fingerprint() == base_fp;
+    # Strict dependency checking only changes diagnostics, so it keys the
+    # diagnostic profile, not the module's cache file.
+    strict = _pinned_opts();
+    strict.strict_dependencies = True;
+    assert strict.module_projection() == _pinned_opts().module_projection();
+    assert strict.analysis_identity() != _pinned_opts().analysis_identity();
 }
 
 
@@ -103,11 +125,6 @@ test "JAC_NA_DEBUG enters the options object at construction" {
         assert CompileOptions().na_debug == True;
         assert CompileOptions(na_debug=False).na_debug == False;
         assert CompileOptions().clone_for_native_import().na_debug == True;
-        assert CompileOptions(no_ir_cache=True).clone_for_native_import().no_ir_cache , (
-            "a cache-bypassing compile must bypass it for nested native imports "
-            "too, or a dep-of-a-dep is still served from a stale IR cache"
-        );
-        assert not CompileOptions().clone_for_native_import().no_ir_cache;
         os.environ["JAC_NA_DEBUG"] = "0";
         assert CompileOptions().na_debug == False;
     } finally {
@@ -711,6 +728,43 @@ test "no consumer-site NULL guards on string operands" {
     );
 }
 
+
+test "native import handoff preserves memory policy and generated thread defaults" {
+    parent = CompileOptions(
+        memory_profile="nogc",
+        memory_enforce=["app.*"],
+        memory_exempt=["app.legacy"],
+        native_threads=7,
+        native_link_mode="bitcode",
+        native_target="aarch64-unknown-linux-gnu"
+    );
+    for child in [parent.clone_for_native_import()] {
+        assert child.codegen_identity() == parent.codegen_identity();
+        assert child.analysis_identity() == parent.analysis_identity();
+        assert child.memory_profile == "nogc" and child.nogc_enforce_all;
+        assert child.native_threads == 7;
+        assert child.native_link_mode == "bitcode";
+        assert child.memory_enforce == ["app.*"];
+        assert child.memory_exempt == ["app.legacy"];
+    }
+}
+
+test "native link mode uses project configuration without changing unit codegen" {
+    import from unittest.mock { patch }
+    import from jaclang.project.config { JacConfig }
+    import from jaclang.project.compiler_host { ProjectHost, project_defaults_of }
+    cfg = JacConfig.from_toml_str('[native]\nlink_mode = "bitcode"\n');
+    with patch.object(
+        ProjectHost, "project_defaults", return_value=project_defaults_of(cfg)
+    ) {
+        configured = CompileOptions();
+        explicit = CompileOptions(native_link_mode="objects");
+        assert configured.native_link_mode == "bitcode";
+        assert explicit.native_link_mode == "objects";
+        assert configured.codegen_identity() == explicit.codegen_identity();
+    }
+}
+
 test "symbol requests preserve their app and native target context" {
     parent = CompileOptions(
         aot_mode=True,
@@ -765,20 +819,21 @@ test "native-only dependencies stay in the target rather than the compiler host"
 
 test "native dependency caches use the running compiler identity" {
     import from unittest.mock { patch }
-    import from jaclang.compiler.backends.native.na_compile_pass {
-        native_compiler_fingerprint
-    }
+    import from jaclang.compiler.driver.jir { current_native_stamp }
     options = _pinned_opts();
     with patch(
         "jaclang.compiler.driver.jir.running_compiler_digest", return_value="compiler-a"
     ) {
-        first = native_compiler_fingerprint(options);
-        assert first == native_compiler_fingerprint(options);
-        assert first != native_compiler_fingerprint(_pinned_opts(native_required=True));
+        first = current_native_stamp(options.codegen_identity(), "").key();
+        assert first == current_native_stamp(options.codegen_identity(), "").key();
+        assert first
+            != current_native_stamp(
+                _pinned_opts(native_required=True).codegen_identity(), ""
+            ).key();
     }
     with patch(
         "jaclang.compiler.driver.jir.running_compiler_digest", return_value="compiler-b"
     ) {
-        assert first != native_compiler_fingerprint(options);
+        assert first != current_native_stamp(options.codegen_identity(), "").key();
     }
 }

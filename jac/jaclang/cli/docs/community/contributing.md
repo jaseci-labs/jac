@@ -17,8 +17,8 @@ It covers the full workflow:
 - Code rules: Jac style, type safety, no scaffolding, and documentation
   expectations.
 - The release flow for maintainers.
-- Downloading and experimenting with the opt-in
-  [JacPython release binary](https://github.com/jaseci-labs/jac/blob/main/CONTRIBUTING.md#trying-the-jacpython-release-binary).
+- Building the opt-in
+  [JacPython accelerator](https://github.com/jaseci-labs/jac/blob/main/CONTRIBUTING.md#building-jacpython).
 
 For a guided tour of the codebase itself -- how the repository is laid out,
 where the compiler, runtime, and CLI live, and how to find your way to the

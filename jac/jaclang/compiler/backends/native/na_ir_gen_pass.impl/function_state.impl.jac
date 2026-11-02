@@ -3,6 +3,7 @@ impl NaIRGenPass._enter_bindings(inherit: bool = False) -> NativeBindingState {
         local_vars=self.local_vars,
         param_vars=self.param_vars,
         borrowed_vars=self.borrowed_vars,
+        owned_tuple_vars=self.owned_tuple_vars,
         nogc_owned_str_vars=self.nogc_owned_str_vars,
         region_handle_vars=self.region_handle_vars,
         var_list_elem_struct=self.var_list_elem_struct,
@@ -12,6 +13,7 @@ impl NaIRGenPass._enter_bindings(inherit: bool = False) -> NativeBindingState {
     self.local_vars = self.local_vars.copy() if inherit else {};
     self.param_vars = self.param_vars.copy() if inherit else set();
     self.borrowed_vars = self.borrowed_vars.copy() if inherit else set();
+    self.owned_tuple_vars = self.owned_tuple_vars.copy() if inherit else set();
     self.nogc_owned_str_vars = self.nogc_owned_str_vars.copy() if inherit else set();
     self.region_handle_vars = self.region_handle_vars.copy() if inherit else set();
     self.var_list_elem_struct = self.var_list_elem_struct.copy() if inherit else {};
@@ -34,6 +36,7 @@ impl NaIRGenPass._leave_bindings(
     self.local_vars = state.local_vars;
     self.param_vars = state.param_vars;
     self.borrowed_vars = state.borrowed_vars;
+    self.owned_tuple_vars = state.owned_tuple_vars;
     self.nogc_owned_str_vars = state.nogc_owned_str_vars;
     self.region_handle_vars = state.region_handle_vars;
     self.var_list_elem_struct = state.var_list_elem_struct;
@@ -46,6 +49,7 @@ impl NaIRGenPass._shadow_bindings(names: list[str]) -> None {
         self.local_vars.pop(name, None);
         self.param_vars.discard(name);
         self.borrowed_vars.discard(name);
+        self.owned_tuple_vars.discard(name);
         self.nogc_owned_str_vars.discard(name);
         self.region_handle_vars.discard(name);
         self.var_list_elem_struct.pop(name, None);
@@ -58,9 +62,7 @@ impl NaIRGenPass._enter_function(func: ir.Function) -> NativeFunctionState {
     state = NativeFunctionState(
         bindings=self._enter_bindings(),
         _builder=self._builder,
-        func_symtab=self.func_symtab,
-        nested_captures=self.nested_captures,
-        lambda_captures=self.lambda_captures,
+        scope=self.scope,
         region_open_stack=self.region_open_stack,
         loop_stack=self.loop_stack,
         _self_owned=self._self_owned,
@@ -73,9 +75,7 @@ impl NaIRGenPass._enter_function(func: ir.Function) -> NativeFunctionState {
         _caught_error_stack=self._caught_error_stack
     );
     self._builder = ir.IRBuilder(func.append_basic_block("entry"));
-    self.func_symtab = self.func_symtab.copy();
-    self.nested_captures = self.nested_captures.copy();
-    self.lambda_captures = self.lambda_captures.copy();
+    self.scope = self.scope.child();
     self.region_open_stack = [];
     self.loop_stack = [];
     self._self_owned = False;
@@ -111,11 +111,10 @@ impl NaIRGenPass._bind_function_parameter(
 }
 
 impl NaIRGenPass._leave_function(state: NativeFunctionState) -> None {
+    self._register_unwind_cleanup();
     self._leave_bindings(state.bindings);
     self._builder = state._builder;
-    self.func_symtab = state.func_symtab;
-    self.nested_captures = state.nested_captures;
-    self.lambda_captures = state.lambda_captures;
+    self.scope = state.scope;
     self.region_open_stack = state.region_open_stack;
     self.loop_stack = state.loop_stack;
     self._self_owned = state._self_owned;

@@ -19,6 +19,8 @@ import from jaclang.compiler.driver.jir {
     SECTIONS_MAGIC,
     SEC_BYTECODE,
     SEC_DEBUG_SRC,
+    SEC_NIFACE,
+    SEC_NOBJ,
     SEC_TERMINATOR,
     PRECOMPILE_SENTINEL,
     FLAG_PRECOMPILED,
@@ -32,6 +34,8 @@ test "sealed.py container constants match jir.jac" {
     assert sealed.SECTIONS_MAGIC == SECTIONS_MAGIC;
     assert sealed.SEC_BYTECODE == SEC_BYTECODE;
     assert sealed.SEC_DEBUG_SRC == SEC_DEBUG_SRC;
+    assert sealed.SEC_NIFACE == SEC_NIFACE;
+    assert sealed.SEC_NOBJ == SEC_NOBJ;
     assert sealed.SEC_TERMINATOR == SEC_TERMINATOR;
     assert sealed.PRECOMPILE_SENTINEL == PRECOMPILE_SENTINEL;
 }
@@ -140,5 +144,129 @@ test "register_image hash-verifies its JIRs (fail-closed)" {
         }
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+"""A manifest for a throwaway sealed package, with or without a native record."""
+def _twin_manifest(native: (dict[str, any] | None)) -> dict[str, any] {
+    manifest: dict[str, any] = {
+        "format": sealed.MANIFEST_FORMAT,
+        "package": "sealed_twin_native_pkg",
+        "python_tag": sealed.python_tag(),
+        "jir_format_version": sealed.JIR_FORMAT_VERSION,
+        "modules": {
+            "mod.jac": {
+                "module": "sealed_twin_native_pkg.mod",
+                "jir": "mod.jir",
+                "package": False,
+                "sha256": "0" * 64
+            }
+        }
+    };
+    if native is not None {
+        manifest["native"] = native;
+    }
+    return manifest;
+}
+
+test "verify_native refuses a native artifact record whose file is missing" {
+    import shutil;
+    import tempfile;
+    import from pathlib { Path }
+
+    tmp = Path(tempfile.mkdtemp(prefix="sealed-twin-native-"));
+    try {
+        pre = tmp / "_precompiled";
+        pre.mkdir(parents=True);
+        native = {
+            "units": {"mod.jac": {"jir": "mod.jir", "iface_digest": "f" * 64}},
+            "artifact": {
+                "path": "native/libsealed_twin_native_pkg.so",
+                "sha256": "0" * 64,
+                "layout_digest": "1" * 64,
+                "plan_digest": "2" * 64
+            }
+        };
+        img = sealed.SealedImage(pre, _twin_manifest(native));
+        assert img.native_artifact() is not None , "the artifact record must be exposed";
+        assert set(img.native_units().keys()) == {"mod.jac"};
+        with testraises(RuntimeError) {
+            img.verify_native();
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "verify_native passes an image with no native record" {
+    import shutil;
+    import tempfile;
+    import from pathlib { Path }
+
+    tmp = Path(tempfile.mkdtemp(prefix="sealed-twin-nonative-"));
+    try {
+        pre = tmp / "_precompiled";
+        pre.mkdir(parents=True);
+        img = sealed.SealedImage(pre, _twin_manifest(None));
+        assert img.native == {};
+        assert img.native_artifact() is None;
+        assert img.native_units() == {};
+        img.verify_native();
+        # A native record naming units but no artifact is not an artifact
+        # record either; nothing to verify against.
+        bare = sealed.SealedImage(pre, _twin_manifest({"units": {}}));
+        assert bare.native_artifact() is None;
+        bare.verify_native();
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+"""A kit whose kernel was built by the compiler itself wrote each kernel unit's
+bitcode, interface and object into the module cache. The compiler's own sealed
+twins must not carry them into the image: the kernel library is their linked
+product, and shipping both multiplied the size of the payload and of every
+first run."""
+test "a compiler module's sealed twin sheds its native sections and keeps the rest" {
+    import tempfile;
+    import from pathlib { Path }
+    import from jaclang.dist.precompile_bytecode { _drop_native_twin }
+    import from jaclang.compiler.driver.jir {
+        SEC_MODKEY,
+        SEC_NBITCODE,
+        parse_header,
+        read_section_bytes
+    }
+    code = marshal.dumps(compile("X = 1", "<twin>", "exec"));
+    src = zlib.compress(b"with entry { X = 1; }");
+    with tempfile.TemporaryDirectory() as tmp {
+        twin = Path(tmp) / "unit.jir";
+        twin.write_bytes(
+            write_precompiled_jir(
+                code,
+                "unit-key",
+                FLAG_PRECOMPILED,
+                {
+                    SEC_DEBUG_SRC: src,
+                    SEC_NIFACE: b"iface",
+                    SEC_NOBJ: b"o" * 4096,
+                    SEC_NBITCODE: b"b" * 4096
+                }
+            )
+        );
+        fat = len(twin.read_bytes());
+        assert _drop_native_twin(twin);
+        lean = twin.read_bytes();
+        assert len(lean) < fat - 8000;
+        for sec in (SEC_NIFACE, SEC_NOBJ, SEC_NBITCODE) {
+            assert read_section_bytes(lean, sec) is None;
+        }
+        assert read_section_bytes(lean, SEC_BYTECODE) == code;
+        assert read_section_bytes(lean, SEC_DEBUG_SRC) == src;
+        assert read_section_bytes(lean, SEC_MODKEY) == b"unit-key";
+        header = parse_header(lean[:HEADER_SIZE]);
+        assert header is not None and header.flags == FLAG_PRECOMPILED;
+        assert not _drop_native_twin(twin) , "a lean twin is left as it is";
     }
 }

@@ -75,11 +75,11 @@ remaining rows.
 | 6 | **`sv → cl`** | Marshalled (one-shot) | Static bundle + bootstrap JSON (CSR) | The compiled JS bundle + init payload | `JcirGenPass` static route + Vite/Bun bundler |
 | 7 | **`sv → na`** | Marshalled | `ctypes.CFUNCTYPE` over the JIT address (or AOT `.so`) | C-ABI scalars; Jac objects as zero-copy views | `JcirGenPass` ctypes stub + `NaIRGenPass` C-ABI export |
 | 8 | **`na → sv`** | Marshalled | Python callback registered as a JIT symbol | C-ABI scalars | `interop_bridge` (`llvm.add_symbol`) |
-| 9 | **`cl → na`** | Marshalled | JS calls exported wasm functions | wasm scalars / linear memory | `wasm_build` + `WasmLinker` exports |
-| 10 | **`na → cl`** | Marshalled | wasm imports the host `env` object | wasm scalars; host-provided externs | `WasmLinker` import table + cl host shim |
+| 9 | **`cl → na`** | Marshalled | JS calls exported wasm functions | wasm scalars / linear memory | `wasm_build` + wasm-ld exports |
+| 10 | **`na → cl`** | Marshalled | wasm imports the host `env` object | wasm scalars; host-provided externs | wasm-ld import table + cl host shim |
 | 11 | **`sv/na ↔ py`** | Free | Literal Python import / meta-path finder | Live CPython objects | `JcirGenPass` (`import`→`ast.Import`) + `meta_importer` |
-| 12 | **`na ↔ C`** | Marshalled (ABI) | System V AMD64 / AAPCS calling convention | C scalars & structs (by value or pointer) | `NaIRGenPass` clib marshaller |
-| 13 | **`na → C host`** | Marshalled (ABI) | `--lib` C-ABI export | Scalars by value; Jac objects as opaque handles | `nacompile` `_inject_shared_init` + platform linkers |
+| 12 | **`na ↔ C`** | Marshalled (ABI) | System V AMD64 / AAPCS calling convention | C scalars, C-layout structs (by value or by address), `ptr[T]` addresses, pinned payloads | `NaIRGenPass` clib marshaller (`ctypes` on the Python backend) |
+| 13 | **`na → C host`** | Marshalled (ABI) | `--lib` C-ABI export | Scalars by value; Jac objects as opaque handles | the link plan's glue object (`backends/native/link_glue.jac`) + LLD (`native_link.jac`) |
 
 The rest of the document is one section per group of rows.
 
@@ -99,10 +99,12 @@ codespace simply reference each other directly:
   so resolution is the standard CPython import machinery.
 - **`cl → cl`** -- Client code becomes one JavaScript module graph; a `cl`
   function calling another is a direct JS call, bundled together by Vite.
-- **`na → na`** -- Two native modules link at the IR/object level. An import
-  is a direct symbol reference resolved by the in-tree linker
-  (`_compile_and_link_native_imports` in `NativeCompilePass`). The linker
-  rejects duplicate *owned* symbols with `E5026`.
+- **`na → na`** -- Two native modules are two native units. An import is a
+  direct symbol reference to the defining unit's module-qualified symbol
+  (recorded in its `SEC_NIFACE`), and the link plan
+  (`backends/native/link_plan.jac`) brings the unit's object into the
+  artifact. Two units defining one Jac name never collide; `E5026` remains
+  for two `:pub` exports of one name in one link.
 - **`sv ↔ py`** -- Because `sv` *is* the Python target, server code and
   imported Python share one interpreter, one `sys.modules`, and one object
   model. This is covered in full under [Python interop](#python-interop-row-11)
@@ -333,16 +335,33 @@ the block opens with a declaration keyword, populates `Import.clib_decls`,
 and stamps `CodeContext.NATIVE`. A logical name (`raylib`) is mapped to
 `libraylib.so` / `.dylib` / `raylib.dll` per target triple, and the runpath
 is emitted as ELF `DT_RUNPATH=$ORIGIN` (or Mach-O `@loader_path`). A `str`
-parameter lowers to `i8*`. A clib declaration with a *body* is an error
-(`E5060`).
+parameter lowers to `i8*`.
+
+The block is the C boundary in both directions. A declaration without a body
+or initializer names something C defines; with one, Jac defines it under that
+exact symbol. `glob name: T = value;` is C-layout data built from a C constant
+initializer (`ptr(f)` is the address of the named function `f`, for an
+untyped function-pointer field), and `def name(...) -> R { ... }` is a C function with the C
+calling convention: callers in the same module call the Jac body directly,
+while C code and other modules reach it through a generated C-ABI entry point
+that unpacks struct-by-value arguments and returns (register pieces, `byval`
+memory, `sret`) with the same classification the call side uses. A C variadic
+definition (`*args: VaList`) is emitted directly under the C name, since its
+fixed parameters are scalars or pointers.
 
 ### The three-layer ABI implementation
 
 | Layer | File | Responsibility |
 |-------|------|----------------|
-| **Declaration model** | `compiler/backends/native/foreign.jac` | What the user declared: scalar sizes (`FOREIGN_SCALARS`), C struct layout (`foreign_struct_layout` -- byte offsets, alignment, tail padding, nested-by-value flattening) |
+| **Declaration model** | `compiler/backends/native/foreign.jac` | What the user declared: scalar sizes (`FOREIGN_SCALARS`), C struct layout (`foreign_struct_layout` -- byte offsets, alignment, tail padding, nested-by-value flattening), which parameters are borrows |
 | **psABI classifier** | `compiler/backends/native/abi.jac` | Pure calling-convention logic: `classify_struct` dispatches on the triple -- `aarch64`/`arm64` → AAPCS, else System V AMD64 |
-| **Backend marshaller** | `na_ir_gen_pass.impl/clib_abi.impl.jac` | Emits the actual call: applies the plan, builds the parallel `.cabi` LLVM type, copies between Jac and C layouts |
+| **Backend marshaller** | `na_ir_gen_pass.impl/clib_abi.impl.jac`, `na_ir_gen_pass.impl/c_interop.impl.jac` | Emits the actual call: applies the plan, splits by-value structs into their register pieces, passes borrowed storage and pointers as addresses |
+
+The facts every consumer shares -- which `obj` is a foreign struct or an
+opaque C type, which read copies a struct out of C storage, what `ptr[T]`,
+`PtrView[T]` and `Pinned[T]` denote -- live in one module,
+`compiler/c_interop.jac`, read by the checker, the ownership pass and both
+backends.
 
 ### How structs cross
 
@@ -363,6 +382,62 @@ site. Whether a struct travels by pointer or by value differs for
 The marshaller marks `byval`/`sret` on **both** the function declaration and
 the call instruction -- omit either and LLVM passes the pointer in a register
 instead of copying the aggregate, silently violating the ABI.
+
+A foreign struct's Jac storage **is** its C layout: nested structs are
+embedded by value (the LLVM struct `%Camera = {%Vector3, %Vector3, float,
+i32}`), so the object pointer is already the `T*` C expects and no call
+copies between a Jac shape and a C shape. A managed or RC object keeps that
+payload behind its header, at an address that never moves; under headerless
+`nogc` codegen the payload is a bare allocation, or is flattened into an
+owner like other acyclic owned fields. Reading a nested struct field (or a
+view element) as a value copies its bytes into a fresh object; reaching
+through it (`cam.position.x`, `&mut cam.position`, `cam.position = v`)
+works in place. `foreign_read_copies` in `compiler/c_interop.jac` is the one
+rule both backends lower.
+
+### Pointers, borrows and pinned payloads
+
+- **`&T` / `&mut T` parameters** are declared as a plain pointer. A foreign
+  struct argument passes its payload address; a scalar argument passes the
+  address of its slot (spilled to a slot of the C type and copied back after
+  the call when the Jac slot differs, e.g. `bool`). The borrow's lifetime is
+  the call, so the ownership checker needs no new rule, and a clib call
+  never consumes its arguments.
+- **`&mut x` for a `ptr[T]` parameter.** Passed positionally to a `ptr[T]`
+  parameter of a C-ABI function (a clib declaration, or a function a C
+  block defines in this module or another), `&mut x` (or `&x`) lends x's
+  address for the call, as C's `&x` does, when x is a local or field of
+  exactly `T` (a C scalar other than `bool`, a C pointer or a foreign
+  struct): `PySlice_Unpack(item, &mut start, &mut stop, &mut step)`. The
+  native backend passes the variable's slot or the struct's storage; the
+  Python backend passes a C cell's address and reads it back, or the
+  foreign struct's own storage. Anywhere else the argument is an ordinary
+  mismatch (`E1053`). `c_lent_arg_elem` in `compiler/c_interop.jac` is the
+  rule the checker and both backends share.
+- **`ptr[T]`** lowers to an `i64` in Jac values (locals, fields, container
+  elements, foreign struct fields), so no reference-count or cycle-collector
+  path ever sees it; the marshaller converts at the call boundary.
+- **`PtrView[T]`** is a by-value `{address, length}` pair. Indexing
+  normalises a negative index, checks the bounds (raising `IndexError`) and
+  addresses the element; a struct element read in value position is copied.
+- **`Pinned[T]`** is a pointer to a box of `T` -- a heap object whose
+  address is stable because nothing moves heap objects. Under `rc`/`managed`
+  it is reference counted like the struct itself; under `nogc` it is an owned
+  allocation dropped at its static point, and it is never flattened into an
+  owner (flattening would copy the payload). A `&Pinned[T]` parameter
+  receives the box's payload address; `| None` passes NULL.
+
+### The Python backend
+
+When the Python backend is requested (`jac run --backend python`, a forced
+`server` codespace), a clib import is no longer seeded native: `JcirGenPass`
+serialises the block (library, structs, opaque types, function signatures
+as type specs) into one `_jac_clib_bind(globals(), <json>)` call, and
+`jaclang/runtime/cinterop.jac` builds `ctypes.Structure` subclasses with the
+same layout and `ctypes` function wrappers from it. Scalar `&mut` arguments
+travel as cells written back to their place after the call, and the same
+foreign-storage reads copy, so a program prints identically on both
+backends.
 
 > **Contrast with Jac-native structs.** A user-defined Jac `obj` is a
 > reference-counted heap allocation and lowers to *pointer-to-struct*
@@ -392,7 +467,7 @@ program, or Python via `ctypes`) can load across a process/module boundary.
   recorded into `gen._exported_symbols` (re-exported transitively from
   imported native modules). Methods are *not* exported (class-qualified
   symbol) -- wrap them in a `:pub` free function.
-- **Initialisation** -- `_inject_shared_init` emits `@__jac_shared_init`,
+- **Initialisation** -- the link plan's glue object defines `@__jac_shared_init`,
   hooked via ELF `DT_INIT_ARRAY` / Mach-O `__mod_init_func` / PE `DllMain`,
   so global initialisers run on load with no `jac_init()` call required.
 - **Object lifetime** -- Jac objects cross the ABI as **opaque `void*`
@@ -413,7 +488,7 @@ which serves `/static/<stem>.wasm`) both route through
 compiles AOT, honors the project's `[memory]` settings (`profile = "nogc"`
 builds headerless and audits the IR for `__rc_*` machinery), runs `opt2`
 **without** `internalize` (so defined functions stay exported), and links
-with the pure-Jac `WasmLinker` (no wasm-ld/emscripten).
+with the wasm-ld that ships inside the compiler's LLVM shim (no emscripten).
 
 The language-level spelling of the crossing is a plain import of a
 native-placed module (inferred from its extern-decl surface, or pinned
@@ -444,7 +519,7 @@ setup at all.
 
 Underneath, the interop model is the standard wasm import/export contract:
 
-- **`cl → na`** (exports) -- `WasmLinker` exports `memory`, the
+- **`cl → na`** (exports) -- the module exports `memory`, the
   `__stack_pointer`/`__heap_base` globals, and **every defined function**
   (or an explicit `export_funcs` list). JS calls these directly after
   `WebAssembly.instantiate`.
@@ -535,9 +610,7 @@ A plain Jac `import` lowers verbatim to a Python import node:
 | `import type X;` | wrapped in `if TYPE_CHECKING:` |
 
 Because these are real Python imports, `pandas`/`numpy`/`sklearn` "just
-work." Untyped Python return values arrive in Jac as `any`. Inline Python
-via `::py::` blocks is parsed into a `PyInlineCode` node and spliced
-verbatim into the Python AST (server backend only).
+work." Untyped Python return values arrive in Jac as `any`.
 
 ### Python importing Jac
 
@@ -598,6 +671,20 @@ Everything crossing a marshalled boundary is **JSON** (for `cl↔sv` and the
   envelope. Walkers always keep it, having no single value to project. See
   [jac-scale HTTP](../reference/plugins/jac-scale-http.md#raw-response-bodies).
 
+- **What may cross** -- `compiler/boundary_rules.jac` judges the declared
+  signature of every function and walker a client reaches, and
+  `BoundaryAnalysisPass` reports `E5115` for a type with no wire form. The
+  rule mirrors the two halves above. The request binder builds scalars
+  (`str`, `int`, `float`, `bool`, `bytes`, `None`), lists, tuples and sets,
+  dicts, enums and objects from JSON, and the serializer writes the same
+  shapes back, so those cross, as does an archetype whose fields all cross
+  and a union of types that cross. A dict crosses only with `str` keys,
+  because a JSON object has no other kind and neither side converts them
+  back. An upload is a part of a request, so it crosses only as a parameter
+  of a server function. A generator crosses only as a result, which is
+  streamed. A callable, an awaitable, a file handle or a native handle is
+  behaviour or a resource, not data, and does not cross.
+
 ### C-ABI wire format (`na`)
 
 Scalars use the `JAC_TO_CTYPES` map (`int→c_int64`, `float→c_double`,
@@ -620,10 +707,11 @@ For `na`, an additional hard limit applies: the **native capability
 boundary**. `native_capability_violations` (the single authority behind
 `E5090`, run identically at `jac check` and `jac build --native`) rejects
 constructs the native backend cannot lower -- non-allowlisted imports
-(allowlist: `sys`, `math`, `time`, `os`, `random`), structural match
-patterns, generators (`yield`), inline Python (`::py::`), `by llm()`, and a
-handful of edge-traversal forms. Anything `E5090` rejects can never reach,
-let alone cross, the native boundary. See
+(allowlist: `sys`, `os`, `random`, `struct`, `enum`,
+`collections.abc`; `math`, `cmath`, `time`, and the other bundled
+`na_stdlib` modules are supported through bundling rather than the allowlist),
+structural match patterns, generators (`yield`), `by llm()`, and a handful of edge-traversal forms. Anything `E5090` rejects
+can never reach, let alone cross, the native boundary. See
 [Native Compilation](../reference/language/native-pathway.md) for the full
 list.
 
@@ -677,7 +765,7 @@ picks the shell it builds. There is no separate CLI verb -- the core
 | Layer | Codespace / tech | Role |
 |-------|------------------|------|
 | UI | `cl` (Vite/React bundle) | `DesktopTarget` subclasses `WebTarget`; reuses the standard `.jac/client/dist/` bundle |
-| Host binary | `na` (LLVM, pure-Jac linker) | A generated `host.jac`, compiled by `jac build --native`; records `libwebview.so` as `DT_NEEDED` with an `$ORIGIN` runpath |
+| Host binary | `na` (LLVM, linked by the bundled LLD) | A generated `host.jac`, compiled by `jac build --native`; records `libwebview.so` as `DT_NEEDED` with an `$ORIGIN` runpath |
 | Window | C FFI → `libwebview` | OS-native webview: WebKitGTK (Linux), WKWebView (macOS), WebView2 (Windows) |
 | Local runtime | C FFI → `libpython` | Embedded CPython runs `inprocess_dispatch` (walker/function invokes) **and** a stdlib loopback HTTP broker (bundle + SSO/session) |
 | Backend | `sv` in-process | Walker/function calls route through the embedded runtime via `__jac_invoke`; a remote `api_base` is optional for external backends |
@@ -736,8 +824,8 @@ RPC to the backend). It is the matrix in miniature.
 | `sv → cl` | `client/impl/{compiler,vite_bundler}.impl.jac`; `server/impl/server.impl.jac`; `backends/es/impl/jsx_processor.impl.jac` |
 | `sv ↔ na` | `runtime/interop_bridge.jac`; `backends/py/impl/jcir_gen_pass.impl.jac` (`_gen_native_interop_stubs`, `_generate_sv_to_sv_stubs`); `backends/native/impl/na_compile_pass.impl.jac` |
 | `na ↔ C` | `compiler/backends/native/{foreign,abi}.jac`; `backends/native/na_ir_gen_pass.impl/{clib_abi,clib_vtable}.impl.jac` |
-| `na → C host` | `cli/commands/impl/nacompile.impl.jac` (`_inject_shared_init`); `backends/native/impl/{elf,macho,pe}_linker.impl.jac` |
-| `na ↔ cl` (wasm) | `backends/native/{wasm_build,wasm_linker}.jac`; `client/impl/compiler.impl.jac` |
+| `na → C host` | `backends/native/link_plan.jac` + `link_glue.jac`; `backends/native/native_link.jac` |
+| `na ↔ cl` (wasm) | `backends/native/{wasm_build,wasm_artifact}.jac`; `client/impl/compiler.impl.jac` |
 | Python interop | [`meta_importer.py`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/meta_importer.py); `_jac_finder.py` (launcher `BOOT_SRC`); `backends/py/impl/jcir_gen_pass.impl.jac` (`exit_import`, `exit_py_inline_code`) |
 | Marshalling | `data/impl/serializer.impl.jac`; `server/impl/{server,transport}.impl.jac` |
 | Capability boundary | `compiler/passes/capability_check_pass.jac`; [`diagnostics.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/diagnostics.jac) (`E5090`) |

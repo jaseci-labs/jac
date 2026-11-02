@@ -43,9 +43,6 @@ ROLLOUT_TIMEOUT="${ROLLOUT_TIMEOUT:-600s}"
 DELETE_TIMEOUT="${DELETE_TIMEOUT:-300s}"
 APP_LOCAL_PORT="${APP_LOCAL_PORT:-18300}"
 
-if [ -z "${JAC_SCALE_BINARY_PATH:-}" ]; then
-    echo "WARN: JAC_SCALE_BINARY_PATH is unset; pods will bootstrap from a published release binary instead of the code under test."
-fi
 
 PORT_FORWARD_PID=""
 SHIM_PID=""
@@ -110,6 +107,8 @@ with open(sys.argv[1]) as f:
 with open(sys.argv[2], "w") as f:
     f.writelines(out)
 PYEOF
+ship_checkout_binary "${APP_DIR}" \
+    || echo "WARN: pods will bootstrap from a published release binary instead of the code under test."
 export SDK_DEPLOY_SOURCE="${APP_DIR}"
 echo "  staged at ${APP_DIR}"
 

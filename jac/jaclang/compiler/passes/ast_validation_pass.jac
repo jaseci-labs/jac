@@ -1,116 +1,17 @@
-import from jaclang.compiler.frontend.roles { Kid }
-import from jaclang.compiler.frontend.unitree {
-    Module,
-    TreeWalker,
-    UniNode,
-    Ability,
-    ArchHas,
-    Archetype,
-    Assignment,
-    AtomTrailer,
-    AtomUnit,
-    BinaryExpr,
-    ContextAwareNode,
-    CtrlStmt,
-    DeleteStmt,
-    ElseStmt,
-    Enum,
-    ExprAsItem,
-    ExprStmt,
-    ForeverStmt,
-    FString,
-    FuncCall,
-    FuncSignature,
-    GlobalVars,
-    HasVar,
-    IfStmt,
-    ImplDef,
-    Import,
-    InForStmt,
-    InnerCompr,
-    IterForStmt,
-    JsxElement,
-    JsxNormalAttribute,
-    JsxSlot,
-    KWPair,
-    LambdaExpr,
-    ListVal,
-    Literal,
-    MatchStmt,
-    ModuleCode,
-    MultiString,
-    Name,
-    ParamVar,
-    ReturnStmt,
-    SpecialVarRef,
-    SwitchStmt,
-    Token,
-    TryStmt,
-    TupleVal,
-    UnaryExpr,
-    WhileStmt,
-    WithStmt,
-    YieldExpr
-}
-import from jaclang.compiler.passes.context { CompileContext }
 import keyword;
-import from jaclang.compiler.frontend.constant {
-    CodeContext,
-    DeleteTargetError,
-    Tokens as Tok
-}
+import os;
 
-import from jaclang.compiler.frontend.diagnostics {
-    E0010,
-    E0020,
-    E0023,
-    E0024,
-    E0031,
-    E0040,
-    E0041,
-    E0042,
-    E0043,
-    E0044,
-    E0050,
-    E0051,
-    E0052,
-    E0055,
-    E0058,
-    E0059,
-    E0063,
-    E0065,
-    E0066,
-    E0067,
-    E0071,
-    E0075,
-    E0076,
-    E0082,
-    E0083,
-    E2019,
-    E2020,
-    E2021,
-    E2022,
-    E2024,
-    E2084,
-    W2019,
-    W2020,
-    W2021
-}
 
-walker ASTValidationPass(TreeWalker) {
-    can enter_walk with UniNode entry {
-        self.ctx.enter_node(here);
-    }
-
-    can exit_walk with UniNode exit {
-        self.ctx.exit_node(here);
-    }
-
-    has ctx: CompileContext,
-        module: Module;
+walker ASTValidationPass(TreePass) {
+    static has contract: PassContract = PassContract(kernel_safe=True);
 
     can enter_try_stmt with TryStmt entry;
     can enter_match_stmt with MatchStmt entry;
+    can enter_module with Module entry;
+    def _import_bindings(mod: Module) -> dict[str, tuple[Import, Name]];
+    def _declared_names(item: ContextAwareNode) -> list[Name];
+    def _imports_itself(mod: Module, stmt: Import) -> bool;
+    def _binding_origin(mod: Module, name: Name) -> str;
     can enter_module_code with ModuleCode entry;
     can enter_binary_expr with BinaryExpr entry;
     can enter_name with Name entry;
@@ -136,6 +37,9 @@ walker ASTValidationPass(TreeWalker) {
     can enter_global_vars with GlobalVars entry;
     can enter_func_call with FuncCall entry;
     can enter_archetype with Archetype entry;
+    can enter_impl_def with ImplDef entry;
+    def _member_attr_name(nref: Name) -> str;
+    def _check_field_method_clash(owner_node: UniNode, members: list[UniNode]) -> None;
     can enter_jsx_slot with JsxSlot entry;
     can enter_expr_stmt with ExprStmt entry;
     def _check_slot_body(stmts: list[UniNode], in_loop: bool, loop_kw: str) -> None;

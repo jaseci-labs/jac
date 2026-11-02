@@ -4,8 +4,6 @@ import from collections.abc { Callable }
 import from enum { StrEnum }
 import from typing { ClassVar, NoReturn, `override }
 import type from enum { IntEnum }
-import type from jaclang.runtime.constructs { AccessLevel, NodeArchetype }
-import type from jaclang.runtime.runtime { LLMModel }
 import type from jaclang { JacRuntimeInterface }
 
 enum APIProtocol(StrEnum) {
@@ -48,6 +46,21 @@ def _get_archetype_alias -> Callable[..., any];
 
 def _get_schema_builder(name: str) -> Callable[..., any];
 
+glob _CINTEROP_NAMES: dict[str, str] = {
+         'ptr': 'JacPtr',
+         'PtrView': 'JacPtrView',
+         'Pinned': 'JacPinned',
+         'pin': 'jac_pin',
+         'addressof': 'jac_addressof',
+         'VaList': 'JacVaList',
+         '_jac_clib_bind': 'clib_bind',
+         '_jac_c_copy': 'c_copy',
+         '_jac_c_cell': 'c_cell',
+         '_jac_c_lend': 'c_lend',
+         '_jac_c_function_ptr': 'c_function_ptr',
+         '_jac_c_vararg': 'c_vararg'
+     };
+
 def __getattr__(name: str) -> object;
 
 def printgraph(
@@ -61,8 +74,6 @@ def printgraph(
     file: (str | None) = None,
     format: str = 'dot'
 ) -> str;
-
-def _jac_graph_json(file: (str | None) = None) -> str;
 
 def restspec(**specs: any) -> Callable;
 
@@ -170,6 +181,18 @@ glob __all__ = [
          '_jac_swap_places',
          'Region',
          'region_of',
+         'ptr',
+         'PtrView',
+         'Pinned',
+         'pin',
+         'addressof',
+         'VaList',
+         '_jac_clib_bind',
+         '_jac_c_copy',
+         '_jac_c_cell',
+         '_jac_c_lend',
+         '_jac_c_function_ptr',
+         '_jac_c_vararg',
          '_jac_region_open',
          '_jac_region_close',
          '_jac_region_register',

@@ -9,7 +9,7 @@ and the drop-hook/teardown behavior through the JIT.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, get_func }
+import from tests.support { TESTS_DIR, get_func, names_function }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import jaclang.compiler.frontend.unitree as uni;
@@ -33,13 +33,17 @@ def compile_native(
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {fixture}";
+    assert isinstance(eng, ExecutionEngine) , f"No native engine produced for {fixture}";
     return (eng, ir);
 }
 
 """Count call sites of `name` in either printer's spelling (quoted or bare)."""
 def calls_to(body: str, name: str) -> int {
-    return body.count('@"' + name + '"(') + body.count("@" + name + "(");
+    return (
+        body.count('@"' + name + '"(')
+        + body.count("@" + name + "(")
+        + body.count("." + name + '"(')
+    );
 }
 
 """Slice one function's textual IR out of the module dump."""
@@ -47,9 +51,7 @@ def fn_ir(ir: uni.Module, name: str) -> str {
     out: list[str] = [];
     inside = False;
     for ln in str(ir.gen.llvm_ir).split("\n") {
-        if not inside
-            and ln.startswith("define")
-            and ((('@"' + name + '"') in ln) or (("@" + name + "(") in ln)) {
+        if not inside and ln.startswith("define") and names_function(ln, name) {
             inside = True;
         }
         if inside {
@@ -206,4 +208,11 @@ test "nested functions preserve an event's active region" {
     (eng, _) = compile_native("region_nested_event.jac");
     scenario = get_func(eng, "scenario", ctypes.c_int64);
     assert scenario() == 12;
+}
+
+test "a constructor whose argument raises leaves no stale field for the close" {
+    (eng, _) = compile_native("region_partial_ctor.jac");
+    probe = get_func(eng, "probe", ctypes.c_int64);
+    # 20 rounds of fill(50) (300 each) plus one caught failure (1 each).
+    assert probe() == 6020;
 }

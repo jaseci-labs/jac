@@ -1,22 +1,39 @@
-import from enum { Enum }
+import from enum { StrEnum }
 
-class ResourceStatus(Enum) {
-    has UNKNOWN: str = 'unknown',
-        PENDING: str = 'pending',
-        RUNNING: str = 'running',
-        FAILED: str = 'failed',
-        STOPPED: str = 'stopped';
+glob REPLICA_FLOOR_ANNOTATION: str = "jac-scale.replica-floor";
+
+enum ResourceStatus(StrEnum) {
+    UNKNOWN = "unknown",
+    INACTIVE = "inactive",
+    ACTIVATING = "activating",
+    ACTIVE = "active",
+    DEACTIVATING = "deactivating",
+    DEGRADED = "degraded"
 }
 
 obj ResourceStatusInfo {
     has status: ResourceStatus,
         replicas: int = 0,
+        current_replicas: int = 0,
         ready_replicas: int = 0,
+        available_replicas: int = 0,
+        updated_replicas: int = 0,
+        replica_floor: int = 1,
+        reason: str = "",
         message: (str | None) = None;
 
-    def is_ready -> bool {
-        return self.status == ResourceStatus.RUNNING
-            and self.replicas > 0
-            and self.ready_replicas == self.replicas;
-    }
+    def is_settled -> bool;
+    def is_serving -> bool;
 }
+
+def field_of(source: any, key: str) -> any;
+
+def _count(source: any, key: str) -> int;
+
+def replica_floor_of(deployment: any) -> int;
+
+def container_crashlooping(cs: any, min_restarts: int = 1) -> bool;
+
+def assess_workload(
+    deployment: any, crashlooping: bool = False, replica_floor: (int | None) = None
+) -> ResourceStatusInfo;

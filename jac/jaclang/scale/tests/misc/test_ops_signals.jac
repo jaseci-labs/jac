@@ -10,7 +10,6 @@ list, which this test also pins.
 
 import re;
 import from pathlib { Path }
-import jaclang.scale.admin as admin_pkg;
 
 glob BACKEND_SIGNALS = ["traces", "logs", "metrics", "postgres", "admin_api"];
 

@@ -5,7 +5,7 @@ impl NaIRGenPass._quiet_glob_type(type_expr: (uni.UniNode | None)) -> (ir.Type |
     if isinstance(type_expr, uni.SubTag) and type_expr?.tag is not None {
         return self._quiet_glob_type(type_expr.tag);
     }
-    _ptb = type_expr?.type;
+    _ptb = _node_sem_type(type_expr);
     if _ptb is None {
         return None;
     }
@@ -43,7 +43,7 @@ impl NaIRGenPass._register_globals(module: uni.Module) -> None {
 
 impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
     candidates: dict[str, ir.Type] = {};
-    dropped: set = set();
+    dropped: set[str] = set();
     for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
         if not isinstance(stmt, uni.ModuleCode) {
             continue;
@@ -52,14 +52,11 @@ impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
             if assign.aug_op is not None {
                 continue;
             }
-            targets = assign.target
-                if isinstance(assign.target, (list, tuple))
-                else [(assign.target)];
-            for target in targets {
+            for target in assign.target {
                 if (
                     not isinstance(target, uni.NameAtom)
                     or target.sym is None
-                    or target.sym.storage != uni.SymbolStorage.MODULE_GLOBAL
+                    or target.sym.storage != SymbolStorage.MODULE_GLOBAL
                 ) {
                     continue;
                 }
@@ -97,9 +94,12 @@ impl NaIRGenPass._register_entry_globals(module: uni.Module) -> None {
             }
         }
     }
+
     for (var_name, var_type) in candidates.items() {
         try {
-            global_var = ir.GlobalVariable(self.llvm_module, var_type, name=var_name);
+            global_var = ir.GlobalVariable(
+                self.llvm_module, var_type, name=native_def_symbol(var_name)
+            );
         } except Exception as _dup_err {
             continue;
         }
@@ -146,35 +146,34 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
                 }
             }
 
+            _is_priv = bool(nd.access and nd.access.tag.name == Tok.KW_PRIV);
+            _is_pub = bool(nd.access and nd.access.tag.name == Tok.KW_PUB);
+            _symbol = self._symbol_for(var_name, None, _is_pub);
             try {
                 global_var = ir.GlobalVariable(
-                    self.llvm_module, var_type, name=var_name
+                    self.llvm_module, var_type, name=_symbol
                 );
             } except Exception as _dup_err {
                 _cur_path = self.module.loc.mod_path
                     if self.module?.loc
                     else "(current module)";
                 _origin = self._global_origins.get(var_name, "(imported module)");
-                self.ctx.emit(
-                    E5026,
-                    symbol=var_name,
-                    existing_module=_origin,
-                    new_module=_cur_path
+                self.emit(
+                    E5026, symbol=_symbol, existing_module=_origin, new_module=_cur_path
                 );
                 continue;
             }
 
-            _is_priv = nd.access and nd.access.tag.name == Tok.KW_PRIV;
             if _is_priv {
                 global_var.linkage = "internal";
             } else {
                 global_var.linkage = "";
+                self._record_export(var_name, _symbol, "global", _is_pub);
             }
 
-            _is_pub = nd.access and nd.access.tag.name == Tok.KW_PUB;
-            if _is_pub and self.module?.gen and var_name.isidentifier() {
-                if var_name not in self.module.gen._exported_symbols {
-                    self.module.gen._exported_symbols.append(var_name);
+            if _is_pub and self.module?.gen and _symbol.isidentifier() {
+                if _symbol not in self.module.gen._exported_symbols {
+                    self.module.gen._exported_symbols.append(_symbol);
                 }
             }
 
@@ -210,14 +209,16 @@ impl NaIRGenPass._infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | 
     }
 
     if isinstance(value_node, uni.FuncCall) {
-        call_name = self._get_name(value_node.target);
+        call_name = self._arch_ref_key(value_node.target)
+            or self._get_name(value_node.target);
         if call_name is not None and call_name in self.struct_types {
             return self.struct_types[call_name].as_pointer();
         }
     }
 
     if isinstance(value_node, uni.AtomTrailer) {
-        target_name = self._get_name(value_node.target);
+        target_name = self._arch_ref_key(value_node.target)
+            or self._get_name(value_node.target);
         if target_name is not None and target_name in self.struct_types {
             return self.struct_types[target_name].as_pointer();
         }
@@ -238,7 +239,6 @@ impl NaIRGenPass._infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | 
 impl NaIRGenPass._codegen_const_expr(
     nd: uni.UniNode, target_type: ir.Type
 ) -> (ir.Constant | None) {
-    import from jaclang.compiler.frontend.const_fold { fold_const }
     if self?.jacval_type and target_type == self.jacval_type {
         return None;
     }
@@ -252,11 +252,16 @@ impl NaIRGenPass._codegen_const_expr(
         return ir.Constant(target_type, None);
     }
     cv = nd.ct_value if isinstance(nd, uni.Expr) else None;
-    if cv is not None and not cv.is_deferred and isinstance(cv.v, (bool, int, float)) {
-        if isinstance(cv.v, bool) {
-            return ir.Constant(target_type, 1 if cv.v else 0);
+    if cv is not None and not cv.is_deferred {
+        if isinstance(cv, CtBool) {
+            return ir.Constant(target_type, 1 if cv.value else 0);
         }
-        return ir.Constant(target_type, cv.v);
+        if isinstance(cv, CtInt) and not cv.mag {
+            return ir.Constant(target_type, cv.small);
+        }
+        if isinstance(cv, CtFloat) {
+            return ir.Constant(target_type, cv.value);
+        }
     }
     (ok, v) = fold_const(nd);
     if not ok {
@@ -274,7 +279,7 @@ impl NaIRGenPass._codegen_const_expr(
 impl NaIRGenPass._register_enums(module: uni.Module) -> None {
     for stmt in ModuleFacts.iter_context_stmts(module, CodeContext.NATIVE) {
         if isinstance(stmt, uni.Enum) {
-            self._codegen_enum(stmt);
+            self._codegen_enum(stmt, quiet=True);
         }
     }
 }

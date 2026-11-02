@@ -5,13 +5,6 @@ false, no Prometheus), and unit tests for the pure projection helpers
 (status / pod-owner heuristics, name validation).
 """
 
-import from jaclang.scale.tests.scale_test_client { make_client, extract_data }
-import from jaclang.scale.admin.workload_helpers {
-    phase_to_status,
-    owner_name_from_pod,
-    match_owner
-}
-
 # ============================================================================
 # Endpoint auth gating
 # ============================================================================

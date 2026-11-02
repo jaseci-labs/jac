@@ -1,44 +1,11 @@
-import from jaclang.compiler.frontend.unitree {
-    Module,
-    Ability,
-    Archetype,
-    Assignment,
-    Import,
-    AstImplNeedingNode,
-    AstSymbolNode,
-    AtomTrailer,
-    FuncSignature,
-    HasVar,
-    ImplDef,
-    Name,
-    NameAtom,
-    ParamVar,
-    SpecialVarRef,
-    Symbol,
-    UniNode,
-    UniScopeNode,
-    bind_assignment_targets,
-    find_python_scope_node_of,
-    is_identifier_slot
-}
-import from jaclang.compiler.passes.context { CompileContext }
+walker DeclImplMatchPass(CompilerPass) {
+    static has contract: PassContract = PassContract(
+        requires=(AnalysisFact.SYM_OF, ),
+        provides=(AnalysisFact.IMPL_OF, ),
+        kernel_safe=True
+    );
 
-import from jaclang.compiler.frontend.diagnostics {
-    E2009,
-    E2011,
-    E2012,
-    E2013,
-    E2016,
-    E2017,
-    E2026,
-    E2087,
-    W2080
-}
-
-walker DeclImplMatchPass {
-    has ctx: CompileContext,
-        module: Module,
-        _e2026_reported: set[int] = set();
+    has _e2026_reported: set[int] = set();
 
     def _run_impl(ir_in: Module) -> Module;
     def _report_unimplemented(ir_in: Module) -> None;
@@ -55,7 +22,6 @@ walker DeclImplMatchPass {
         impl_node: ImplDef, sym_name: str, target_sym_tab: UniScopeNode
     ) -> None;
 
-    def _share_scope_names(impl_node: ImplDef, valid_decl: AstImplNeedingNode) -> None;
     def _report_bare_redecls(sym_tab: UniScopeNode) -> None;
     def validate_params_match(
         impl_node: ImplDef, sym_name: str, valid_decl: AstSymbolNode

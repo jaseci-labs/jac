@@ -29,13 +29,29 @@ permissions:
   contents: read
 
 jobs:
+  # The macOS kit's compiler kernel, built on x86 Linux (#10219): the kit
+  # adopts it instead of spending most of its 44-68 min building one.
+  kernel:
+    uses: ./.github/workflows/build-kernel.yml
+    with:
+      platforms: '["macos-aarch64"]'
+
   build-kit-macos:
+    needs: kernel
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
 
+      - name: Download the compiler kernel
+        uses: actions/download-artifact@v4
+        with:
+          name: kernel-macos-aarch64
+          path: .kernel
+
       - name: Build the jac binary (cached)
         uses: ./.github/actions/setup-jac
+        with:
+          kernel-dir: ${{ github.workspace }}/.kernel
 
       - name: Set up Zig 0.16.0
         uses: mlugg/setup-zig@v2
@@ -45,8 +61,6 @@ jobs:
 
       - name: Materialize typeshed + wasm libc floor
         working-directory: jac
-        env:
-          JACPYTHON: "1"
         run: |
           zig build fetch-typeshed --summary all
           zig build vendor-wasm-libc --summary all
@@ -75,8 +89,6 @@ jobs:
   test-native-macos:
     needs: build-kit-macos
     runs-on: macos-latest
-    env:
-      JAC_NO_DEV_SOURCE: "1"
     steps:
       - uses: actions/checkout@v5
         with:
@@ -84,6 +96,7 @@ jobs:
       - uses: ./.github/actions/jac-kit
         with:
           name: jac-kit-macos
+          sealed: "true"
       - name: Run native Mach-O linker regression tests
         run: |
           jac test jac/tests/compiler/backends/native/test_shared_lib.jac
@@ -99,9 +112,11 @@ jobs:
           jac test jac/jaclang/compiler/tests/test_prim_equivalence.jac
           -f "shutil or path or textwrap or keyword or str or bytes"
       - name: Provision managed Ruby, CocoaPods, and native Node
-        env:
-          JAC_TOOLCHAIN_USE_SYSTEM: "0"
-        run: jac setup --toolchain ios
+        run: |
+          mkdir -p "$RUNNER_TEMP/managed-ios"
+          cd "$RUNNER_TEMP/managed-ios"
+          printf '[project]\nname = "managed-ios"\n\n[toolchains]\nsystem = false\n' > jac.toml
+          jac setup --toolchain ios
 
   # The desktop target on its second host. ci.yml smokes the same quickstart
   # scaffold under Xvfb with WebKitGTK; this is the WKWebView twin: the host
@@ -112,8 +127,6 @@ jobs:
   desktop-macos:
     needs: build-kit-macos
     runs-on: macos-latest
-    env:
-      JAC_NO_DEV_SOURCE: "1"
     steps:
       - uses: actions/checkout@v5
         with:
@@ -121,6 +134,7 @@ jobs:
       - uses: ./.github/actions/jac-kit
         with:
           name: jac-kit-macos
+          sealed: "true"
 
       - name: Scaffold the site (jac create --awesome; pulls npm deps)
         run: jac create site --awesome

@@ -2,7 +2,8 @@ import subprocess;
 import tempfile;
 import from pathlib { Path }
 import from tests.support { TESTS_DIR }
-import from jaclang.client.bun_installer { get_bun }
+import from tests.support { js_runtime_or_none }
+import from tests.compiler.backends.es.codegen_helpers { stage_prelude_dir }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.project.config { JacConfig, get_config, set_config }
@@ -19,21 +20,19 @@ test "arena host scalar boundary input and asynchronous lifecycle" {
     try {
         set_config(JacConfig.discover(start_path=source.parent));
         program = JacProgram();
-        module = program.compile(
-            str(source), options=CompileOptions(force_target_program=True)
-        );
+        module = program.compile(str(source), options=CompileOptions());
         assert not program.errors_had , str(program.errors_had);
         js = module.gen.js;
         webgl = program.compile(
             str(Path(TESTS_DIR).parent / "jaclang" / "client" / "webgl.jac"),
-            options=CompileOptions(force_target_program=True)
+            options=CompileOptions()
         );
         assert not program.errors_had , str(program.errors_had);
         webgl_js = webgl.gen.js;
     } finally {
         set_config(previous);
     }
-    runtime = get_bun();
+    runtime = js_runtime_or_none();
     assert runtime is not None;
     fixtures = Path(TESTS_DIR) / "compiler" / "backends" / "es" / "fixtures";
     with tempfile.TemporaryDirectory() as tmp {
@@ -43,6 +42,7 @@ test "arena host scalar boundary input and asynchronous lifecycle" {
                 "@jac/webgl", "./webgl.mjs"
             )
         );
+        stage_prelude_dir(str(target));
         (target / "webgl.mjs").write_text(webgl_js);
         (target / "wasm_host.mjs").write_text(
             (fixtures / "arena_wasm_stub.mjs").read_text()

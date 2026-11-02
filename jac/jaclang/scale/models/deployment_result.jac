@@ -5,7 +5,5 @@ obj DeploymentResult {
         message: (str | None) = None,
         details: dict[str, any] = {};
 
-    def is_successful -> bool {
-        return self.success;
-    }
+    def is_successful -> bool;
 }

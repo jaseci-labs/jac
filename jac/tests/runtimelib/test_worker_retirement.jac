@@ -11,7 +11,8 @@ Retirement therefore takes whichever bound trips first. `JAC_TEST_RECYCLE_MB`
 carries the memory bound; either can be disabled with 0.
 """
 
-import from jaclang.testing.test_runner { _should_retire, _worker_rss_mb }
+import from jaclang.testing.test_runner { _should_retire }
+import from jaclang.cli.workpool { worker_rss_mb as _worker_rss_mb }
 import mmap;
 import sys;
 

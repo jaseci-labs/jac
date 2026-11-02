@@ -27,7 +27,7 @@ AND unequal ones do not -- so the rule is pinned rather than half-observed.
 import ctypes;
 import os;
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { JAC_ROOT, native_force_opts }
+import from tests.support { JAC_ROOT, native_address, native_force_opts }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "native", "fixtures"
@@ -54,7 +54,7 @@ def engine -> any {
 
 """Call a zero-argument fixture function returning an i64."""
 def call(name: str) -> int {
-    addr = engine().get_function_address(name);
+    addr = native_address(engine(), name);
     assert addr != 0 , f"'{name}' is absent from the JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64)(addr)();
 }

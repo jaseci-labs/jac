@@ -51,8 +51,10 @@ def:pub UsersPage -> JsxElement {
         []
     );
 
-    async def handleCreate(username: str, password: str, role: str) -> dict[str, any] {
-        result = await createUser(username, password, role, auth["authToken"]);
+    async def handleCreate(
+        username: str, email: str, password: str, role: str
+    ) -> dict[str, any] {
+        result = await createUser(username, email, password, role, auth["authToken"]);
         if result["ok"] {
             alert["showAlert"]("User created", "success");
             loadUsers();

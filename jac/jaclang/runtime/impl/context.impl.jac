@@ -2,17 +2,13 @@ import os;
 import from typing { cast }
 import from uuid { UUID }
 
-import from jaclang.runtime.archetype { NodeAnchor, Root }
-import from jaclang.runtime.constants { Constants as Con }
-import from jaclang.runtime.exceptions { MissingAnchorError }
-import from jaclang.runtime.memory { Memory }
-
 impl ExecutionContext.postinit -> None {
-    import from jaclang.runtime.runtime { JacRuntime }
     if self._parent is not None {
-        self.mem = self._parent.mem;
         self.base_path_dir = self._parent.base_path_dir;
-        self.full_target_path = self._parent.full_target_path;
+        self.full_target_path = self.full_target_path or self._parent.full_target_path;
+        self.mem = self._parent.mem.new_session(self.full_target_path or '')
+            if self._own_session
+            else self._parent.mem;
         return;
     }
 
@@ -27,7 +23,7 @@ impl ExecutionContext.postinit -> None {
         self.mem = Memory();
         return;
     }
-    import from jaclang.server.session { Session }
+
     self.mem = Session(base_path=self.base_path_dir, target_path=self.full_target_path);
 }
 
@@ -52,7 +48,7 @@ impl ExecutionContext._resolve_roots -> None {
         return;
     }
     outer = self._parent;
-    if outer is not None {
+    if outer is not None and self.mem is outer.mem {
         self._system_root = outer.system_root;
         self._user_root = outer.user_root;
         self._entry_node = outer.entry_node;
@@ -100,11 +96,26 @@ impl ExecutionContext.set_entry_node(entry_node: (str | None)) -> None {
 }
 
 impl ExecutionContext.close -> None {
-    if self._parent is not None {
+    if self._parent is not None and self.mem is self._parent.mem {
         return;
     }
 
     self.mem.close();
+
+    self.run_pending_effects();
+}
+
+impl ExecutionContext.aclose -> None {
+    if self._parent is not None and self.mem is self._parent.mem {
+        return;
+    }
+
+    try {
+        await self.mem.aclose();
+    } except asyncio.CancelledError {
+        self.run_pending_effects();
+        raise;
+    }
 
     self.run_pending_effects();
 }
@@ -119,12 +130,17 @@ impl ExecutionContext.run_pending_effects -> None {
     }
     effects = self.pending_effects;
     self.pending_effects = [];
-    for effect in effects {
-        try {
-            effect();
-        } except Exception as e {
-            logger.error(f"on_commit effect failed: {e}");
+    self.mem.unseal_scan();
+    try {
+        for effect in effects {
+            try {
+                effect();
+            } except Exception as e {
+                logger.error(f"on_commit effect failed: {e}");
+            }
         }
+    } finally {
+        self.mem.unseal_scan();
     }
 }
 
@@ -153,4 +169,104 @@ impl ExecutionContext.aset_user_root(root_id: str) -> None {
     self._resolve_roots();
     self._user_root = await self._aget_anchor(root_id);
     self._entry_node = self._user_root;
+}
+
+
+impl ExecutionContext.bind_stream(value: any) -> any {
+    import inspect;
+
+    context = self;
+    if inspect.isgenerator(value) {
+        def stream -> Generator[any, None, None] {
+            try {
+                yield None;
+                while True {
+                    token = JacRuntime.push_request_context(context);
+                    try {
+                        item = next(value);
+                    } except StopIteration {
+                        return;
+                    } finally {
+                        JacRuntime.reset_request_context(token);
+                    }
+                    yield item;
+                }
+            } except BaseException {
+                context.mem.abort();
+                raise;
+            } finally {
+                token = JacRuntime.push_request_context(context);
+                try {
+                    try {
+                        value.close();
+                    } finally {
+                        context.close();
+                    }
+                } finally {
+                    JacRuntime.reset_request_context(token);
+                }
+            }
+        }
+        wrapped: Generator[any, None, None] = stream();
+        next(wrapped);
+        return wrapped;
+    }
+    if inspect.isasyncgen(value) {
+        async def astream -> AsyncGenerator[any, None] {
+            try {
+                yield None;
+                while True {
+                    token = JacRuntime.push_request_context(context);
+                    try {
+                        item = await value.__anext__();
+                    } except StopAsyncIteration {
+                        return;
+                    } finally {
+                        JacRuntime.reset_request_context(token);
+                    }
+                    yield item;
+                }
+            } except BaseException {
+                context.mem.abort();
+                raise;
+            } finally {
+                token = JacRuntime.push_request_context(context);
+                try {
+                    try {
+                        await value.aclose();
+                    } finally {
+                        context.close();
+                    }
+                } finally {
+                    JacRuntime.reset_request_context(token);
+                }
+            }
+        }
+        wrapped_async: AsyncGenerator[any, None] = astream();
+        await wrapped_async.__anext__();
+        return wrapped_async;
+    }
+    return value;
+}
+
+impl ExecutionContext.for_target(
+    target: object, parent: ExecutionContext, user_root_id: str
+) -> ExecutionContext {
+    application = application_of(target);
+    caller = application_for(parent.full_target_path or '');
+    if application is None or caller is None or application is caller {
+        context = ExecutionContext(_parent=parent);
+    } else {
+        context = ExecutionContext(
+            _parent=parent, _own_session=True, full_target_path=application.entry
+        );
+    }
+    try {
+        await context.aset_user_root(user_root_id);
+    } except BaseException {
+        context.mem.abort();
+        context.close();
+        raise;
+    }
+    return context;
 }

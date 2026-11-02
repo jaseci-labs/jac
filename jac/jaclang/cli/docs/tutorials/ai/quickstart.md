@@ -22,12 +22,12 @@ In this tutorial, you'll set up byLLM, write your first AI-powered function, exp
 
 ## Setup
 
-### 1. Install byLLM
+### 1. Set up byLLM
 
-If you haven't already:
+byLLM ships inside `jac`. In a project that declares a `[byllm]` section, `jac install` pulls the model client it needs:
 
 ```bash
-jac install byllm
+jac install
 ```
 
 ### 2. Pick a Backend

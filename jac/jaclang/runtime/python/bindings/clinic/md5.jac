@@ -1,0 +1,174 @@
+glob:priv MD5Type_copy_signature = CallSignature(
+         "copy", [], 0, 0, 0, parser=PARSE_NO_ARGUMENTS
+     );
+
+def:priv MD5Type_copy_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv MD5Type_copy_call(
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv MD5Type_digest_call(
+    receiver: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv MD5Type_hexdigest_call(
+    receiver: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv MD5Type_update_call(
+    receiver: ptr[PyObject], value: ptr[PyObject]
+) -> ptr[PyObject];
+
+glob:priv _md5_md5_signature = CallSignature(
+         "md5", ["data", "usedforsecurity", "string"], 0, 1, 0, parser=PARSE_KEYWORDS
+     );
+
+def:priv _md5_md5_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv _md5_md5_call(
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject];
+
+glob MD5Type_methods: list[MethodDefinition] = [
+         MethodDefinition(
+             "copy",
+             MethodCallbacks(fast_keywords=MD5Type_copy_call),
+             "copy($self, /)\n--\n\nReturn a copy of the hash object.",
+             130
+         ),
+         MethodDefinition(
+             "digest",
+             MethodCallbacks(positional=MD5Type_digest_call),
+             "digest($self, /)\n--\n\nReturn the digest value as a bytes object.",
+             4
+         ),
+         MethodDefinition(
+             "hexdigest",
+             MethodCallbacks(positional=MD5Type_hexdigest_call),
+             "hexdigest($self, /)\n--\n\nReturn the digest value as a string of hexadecimal digits.",
+             4
+         ),
+         MethodDefinition(
+             "update",
+             MethodCallbacks(positional=MD5Type_update_call),
+             "update($self, obj, /)\n--\n\nUpdate this hash object's state with the provided string.",
+             8
+         ),
+
+     ],
+     module_methods: list[MethodDefinition] = [
+         MethodDefinition(
+             "md5",
+             MethodCallbacks(fast_keywords=_md5_md5_call),
+             "md5($module, /, data=b'', *, usedforsecurity=True, string=None)\n--\n\nReturn a new MD5 hash object; optionally initialized with a string.",
+             130
+         ),
+
+     ];
+
+impl MD5Type_copy_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        cls = defining_class(receiver, MD5Type_token);
+        return MD5Type_copy_impl(receiver, cls);
+    } except boundary_failure {
+        return NULL;
+    }
+}
+
+impl MD5Type_copy_call(
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    if kwnames == NULL and nargs == 0 {
+        return MD5Type_copy_bound(receiver, args, nargs);
+    }
+    return invoke_stack(
+        MD5Type_copy_signature, args, nargs, kwnames, MD5Type_copy_bound, receiver
+    );
+}
+
+impl MD5Type_digest_call(
+    receiver: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        return MD5Type_digest_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
+}
+
+impl MD5Type_hexdigest_call(
+    receiver: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        return MD5Type_hexdigest_impl(receiver);
+    } except boundary_failure {
+        return NULL;
+    }
+}
+
+impl MD5Type_update_call(
+    receiver: ptr[PyObject], value: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        obj_: ptr[PyObject] = value;
+        return MD5Type_update_impl(receiver, obj_);
+    } except boundary_failure {
+        return NULL;
+    }
+}
+
+impl _md5_md5_bound(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    try {
+        data: ptr[PyObject] = NULL;
+        if count > 0 and clinic_args[0] != NULL {
+            value = clinic_args[0];
+            data = value;
+        }
+        usedforsecurity: bool = True;
+        if count > 1 and clinic_args[1] != NULL {
+            value = clinic_args[1];
+            usedforsecurity = convert_bool(value);
+        }
+        string: ptr[PyObject] = NULL;
+        if count > 2 and clinic_args[2] != NULL {
+            value = clinic_args[2];
+            string = value;
+        }
+        return _md5_md5_impl(receiver, data, usedforsecurity, string);
+    } except boundary_failure {
+        return NULL;
+    }
+}
+
+impl _md5_md5_call(
+    receiver: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject] {
+    if kwnames == NULL and nargs >= 0 and nargs <= 1 {
+        return _md5_md5_bound(receiver, args, nargs);
+    }
+    return invoke_keywords(
+        _md5_md5_signature, args, nargs, kwnames, _md5_md5_bound, receiver
+    );
+}

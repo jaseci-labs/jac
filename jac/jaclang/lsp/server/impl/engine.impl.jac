@@ -63,11 +63,9 @@ impl _merge_app_alerts(
     return (merge(1), merge(2));
 }
 
-import from jaclang.compiler.tools.unparse_pass { unparse_node }
-
 impl Task.postinit -> None {
     self.task_id = Task._task_id;
-    self.cancel_token = threading.Event();
+    self.cancel_token = CancelToken();
     Task._task_id += 1;
 }
 
@@ -187,7 +185,7 @@ impl JacLangServer._fanout_dependents(file_uri: str) -> None {
 }
 
 impl JacLangServer.type_check_file(
-    file_uri: str, cancel_token: threading.Event | None = None
+    file_uri: str, cancel_token: (CancelToken | None) = None
 ) -> bool {
     if cancel_token and cancel_token.is_set() {
         return False;
@@ -256,7 +254,6 @@ impl JacLangServer.type_check_file(
                 use_str=main_doc.source,
                 options=CompileOptions(
                     no_cgen=True,
-                    force_target_program=True,
                     cancel_token=cancel_token,
                     target_app=app_name,
                     app_kind=app_kind,
@@ -460,19 +457,7 @@ impl JacLangServer.get_references(
     return [];
 }
 
-def _definition_symbol(sym: any) -> any {
-    cur = sym;
-    seen: set[int] = set();
-    while cur is not None and cur.provider is not None and id(cur) not in seen {
-        seen.add(id(cur));
-        target = cur.provider.definition();
-        if target is None or target is cur {
-            break;
-        }
-        cur = target;
-    }
-    return cur;
-}
+def _definition_symbol(sym: any) -> any;
 
 impl JacLangServer.get_definition(
     file_path: str, position: lspt.Position
@@ -664,11 +649,7 @@ impl JacLangServer._string_import_definition(
 
 impl JacLangServer._module_spec_target(mp: uni.ModulePath) -> Optional[str] {
     import os;
-    import from jaclang.project.modresolver {
-        resolve_client_npm_declarations,
-        resolve_client_npm_package
-    }
-    import from jaclang.compiler.placement.placement_pins { in_client_npm_world }
+
     try {
         resolved = mp.resolve_relative_path();
         if os.path.isfile(resolved) {
@@ -698,11 +679,6 @@ impl JacLangServer._module_spec_target(mp: uni.ModulePath) -> Optional[str] {
 impl JacLangServer._npm_item_location(
     from_loc: uni.ModulePath, item_name: str
 ) -> Optional[lspt.Location] {
-    import from jaclang.project.modresolver {
-        resolve_client_npm_declarations,
-        resolve_client_npm_package
-    }
-    import from jaclang.compiler.placement.placement_pins { in_client_npm_world }
     def at_file(path_: str, rng: Optional[lspt.Range]) -> Optional[lspt.Location] {
         path_uri = uris.from_fs_path(path_);
         if path_uri is None {
@@ -775,14 +751,7 @@ impl JacLangServer.get_node_info(sym_node: uni.AstSymbolNode) -> Optional[str] {
             node_info += f"\n{unparse_node(sym_node.signature)}";
         }
         try {
-            top: (uni.UniNode | None) = sym_node;
-            while (
-                top is not None
-                and not isinstance(top.parent, uni.Module)
-                and top.parent is not None
-            ) {
-                top = top.parent;
-            }
+            top = sym_node.top_element or sym_node;
             if isinstance(top, uni.ContextAwareNode) {
                 space = sym_node.codespace().value;
                 tags: list[str] = [];
@@ -802,7 +771,6 @@ impl JacLangServer.get_node_info(sym_node: uni.AstSymbolNode) -> Optional[str] {
 impl JacLangServer.get_inlay_hints(
     file_path: str, range: lspt.Range
 ) -> list[lspt.InlayHint] {
-    import from jaclang.compiler.passes.ownership_hints { inferred_hints }
     fs_path = _path_of(file_path);
     mod = self.program.mod.hub.get(fs_path);
     if mod is None {
@@ -816,7 +784,7 @@ impl JacLangServer.get_inlay_hints(
         }
         out.append(
             lspt.InlayHint(
-                position=lspt.Position(line=line, character=h.col),
+                position=lspt.Position(line=line, character=max(h.col - 1, 0)),
                 label=h.label,
                 kind=(
                     lspt.InlayHintKind.Parameter
@@ -990,7 +958,7 @@ impl JacLangServer.get_node_at_position(
         return None;
     }
     if (ast := self.get_ast_of_file(file_path)) {
-        for ast_node in ast._in_mod_nodes {
+        for ast_node in ast._in_mod_nodes or [] {
             if not isinstance(ast_node, uni.Token) {
                 continue;
             }
@@ -1227,4 +1195,18 @@ impl JacLangServer.diagnostics.getter -> dict[str, list[lspt.Diagnostic]] {
         }
         return result;
     }
+}
+
+impl _definition_symbol(sym: any) -> any {
+    cur = sym;
+    seen: set[int] = set();
+    while cur is not None and cur.provider is not None and id(cur) not in seen {
+        seen.add(id(cur));
+        target = cur.provider.definition();
+        if target is None or target is cur {
+            break;
+        }
+        cur = target;
+    }
+    return cur;
 }

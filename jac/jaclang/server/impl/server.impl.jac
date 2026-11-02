@@ -1,18 +1,12 @@
 import asyncio;
-import from jaclang.runtime.object_interop { fields as record_fields, is_record }
-import from jaclang.runtime.object_model { MISSING }
+
 import inspect;
 import json;
 import os;
 import from inspect { iscoroutine }
 import from typing { get_type_hints }
-import from jaclang.data.serializer { Serializer }
-import from jaclang.client.artifact { ClientBundleError, MissingBunError }
-import from jaclang.runtime.exceptions { ReadOnlyRetry, WriteConflict }
-import from jaclang.runtime.constants { Constants as Con }
-import from jaclang.server.net { PORT_RETRY_LIMIT }
-import from jaclang.server.serving.server { ServingServer }
-import type from jaclang.runtime.constructs { Archetype }
+import from enum { Enum }
+import from uuid { UUID }
 
 impl ExecutionManager.report_collector(
     call_state: CallState
@@ -35,76 +29,15 @@ impl ExecutionManager.report_collector(
     }
 }
 
-async def _begin_request_context(user_root_id: str) -> tuple[(ExecutionContext, any)] {
-    import from jaclang.runtime.osp_kernel_sv { isolate_request_walk_stack }
-    parent = Jac.get_context();
-    req_ctx = ExecutionContext(_parent=parent);
-    await req_ctx.aset_user_root(user_root_id);
-    token = Jac.push_request_context(req_ctx);
-
-    isolate_request_walk_stack();
-    return (req_ctx, token);
-}
+async def _begin_request_context(
+    user_root_id: str, target: object | None = None
+) -> tuple[(ExecutionContext, any)];
 
 async def _abegin_user_request_context(
-    user_manager: UserManager, username: str
-) -> tuple[(ExecutionContext, any, str)] | dict[str, JsonValue] {
-    import from jaclang.runtime.exceptions { MissingAnchorError }
-    root_id = await user_manager.aget_root_id(username);
-    if not root_id {
-        import os;
-        if username != Con.GUEST.value and os.environ.get('JAC_SV_SIBLING') {
-            ensure_root = getattr(
-                user_manager, 'ensure_user_root', user_manager.get_root_id
-            );
-            root_id = await asyncio.to_thread(ensure_root, username);
-        }
-        if not root_id {
-            return {'error': 'User not found'};
-        }
-    }
-    try {
-        (ctx, token) = await _begin_request_context(root_id);
-        return (ctx, token, root_id);
-    } except MissingAnchorError {
-        if username != Con.GUEST.value {
-            raise RuntimeError(
-                f"Root anchor {root_id} for user '{username}' does not "
-                "exist in the anchor store. The data store was likely "
-                "reset or migrated out from under the users db; restore "
-                "it or re-register the user."
-            );
-        }
-        import logging;
-        logging.getLogger('jaclang.serve').warning(
-            f"Guest root anchor {root_id} is missing from the anchor store; "
-            "minting a fresh guest root."
-        );
-        healed_id = await asyncio.to_thread(user_manager.reset_root, username);
-        if not healed_id {
-            return {'error': 'User not found'};
-        }
-        (ctx, token) = await _begin_request_context(healed_id);
-        return (ctx, token, healed_id);
-    }
-}
+    user_manager: UserManager, username: str, target: object | None = None
+) -> tuple[(ExecutionContext, any, str)] | dict[str, JsonValue];
 
-def _deserialize_wire_args(args: dict[(str, any)]) {
-    for (k, v) in list(args.items()) {
-        if isinstance(v, dict) and '__type__' in v {
-            deserialized = Serializer.deserialize(v);
-            if deserialized is not None {
-                args[k] = deserialized;
-            }
-        } elif isinstance(v, list) {
-            args[k] = [
-                Serializer.deserialize(item)
-                    if isinstance(item, dict) and '__type__' in item
-                    else item for item in v
-            ];
-        }
-    }
-}
+def _deserialize_wire_args(args: dict[(str, any)]);
 
 impl observe_read_tier_retry(metrics: any, unit_key: str) -> None {
     import logging;
@@ -124,34 +57,16 @@ impl observe_read_tier_retry(metrics: any, unit_key: str) -> None {
 }
 
 
-def _unit_key_for(target: any) -> (str | None) {
-    mod = str(getattr(target, '__module__', '') or '');
-    name = str(getattr(target, '__name__', '') or '');
-    if not name {
-        return None;
-    }
-    return f"{mod}.{name}";
-}
+def _unit_key_for(target: any) -> (str | None);
 
 
-def _occ_policy -> tuple[str, int, int] {
-    mode = "retry";
-    max_attempts = 5;
-    backoff_ms = 0;
-    try {
-        import from jaclang.project.config { get_config }
-        cfg = get_config();
-        if cfg is not None {
-            mode = str(cfg.serve.on_conflict).strip().lower();
-            if mode not in ("retry", "fail") {
-                mode = "retry";
-            }
-            max_attempts = cfg.serve.conflict_max_attempts;
-            backoff_ms = cfg.serve.conflict_backoff_ms;
-        }
-    } except Exception {}
-    return (mode, max_attempts, backoff_ms);
-}
+glob _TURN_POOL: list[any] = [];
+
+
+def _conflict_turn_pool -> any;
+
+
+def _occ_policy -> tuple[str, int, int];
 
 impl ExecutionManager._finalize_call_response(
     call_state: CallState, result: any, serialize_result: bool = True
@@ -172,6 +87,9 @@ impl ExecutionManager._finalize_call_response(
             else result,
         'reports': Serializer.serialize(reports, api_mode=True)
     };
+    if _plain_value(reports) and _plain_value(result) {
+        Jac.get_context().mem.seal_scan();
+    }
     ctx = Jac.get_context();
     if ctx.diagnostics {
         envelope['warnings'] = [d.to_dict() for d in ctx.diagnostics];
@@ -180,104 +98,17 @@ impl ExecutionManager._finalize_call_response(
     return dict[(str, JsonValue)](envelope);
 }
 
+def _plain_value(val: object) -> bool;
+
 async def _run_function_with_occ(
     mgr: ExecutionManager,
     args: dict[(str, any)],
     username: str,
     run_attempt: Callable,
     deserialize_args: bool = True,
-    unit_key: (str | None) = None
-) -> dict[str, JsonValue] | Generator | AsyncGenerator {
-    resolved = await _abegin_user_request_context(mgr.user_manager, username);
-    if isinstance(resolved, dict) {
-        return resolved;
-    }
-    (ctx, req_token, root_id) = resolved;
-    ctx.mem.unit_enter(unit_key);
-    settled = False;
-    try {
-        if deserialize_args {
-            _deserialize_wire_args(args);
-        }
-        (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
-        max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
-        attempt = 0;
-        ro_retries = 0;
-        while attempt < max_attempts {
-            attempt += 1;
-            call_token = ctx.call_state.set(CallState());
-            call_state = ctx.call_state.get();
-            try {
-                outcome = await run_attempt(call_state, ctx);
-                ctx.mem.unit_exit();
-                settled = True;
-                return outcome;
-            } except ReadOnlyRetry as rr {
-                settled = False;
-                if ctx.mem.unit_depth() == 0 {
-                    ctx.mem.unit_enter(unit_key);
-                }
-                ctx.mem.abort();
-                ctx.pending_effects.clear();
-                ctx.read_versions.clear();
-                ctx.diagnostics.clear();
-                ro_retries += 1;
-                observe_read_tier_retry(mgr.metrics, rr.unit_key or unit_key or "");
-                if ro_retries <= 2 {
-                    attempt -= 1;
-                }
-                await ctx.aset_user_root(root_id);
-            } except WriteConflict as wc {
-                settled = False;
-                if ctx.mem.unit_depth() == 0 {
-                    ctx.mem.unit_enter(unit_key);
-                }
-                ctx.mem.abort();
-                ctx.pending_effects.clear();
-                ctx.read_versions.clear();
-
-                ctx.diagnostics.clear();
-                if attempt >= max_attempts {
-                    return {
-                        'error': wc.message(),
-                        'error_code': 'write_conflict',
-                        'http_status': 409
-                    };
-                }
-                if occ_backoff_ms > 0 {
-                    await asyncio.sleep(occ_backoff_ms * attempt / 1000.0);
-                }
-                await ctx.aset_user_root(root_id);
-            } except Exception as e {
-                ctx.mem.abort();
-                import logging;
-                logging.getLogger('jaclang.serve').exception(
-                    f"{unit_key or 'request'} raised {type(e).__name__}: {e}"
-                );
-                return {'error': str(e), 'error_code': 'execution_error'};
-            } finally {
-                ctx.call_state.reset(call_token);
-            }
-        }
-        return {
-            'error': 'write_conflict: retries exhausted',
-            'error_code': 'write_conflict',
-            'http_status': 409
-        };
-    } finally {
-        try {
-            if not settled {
-                ctx.mem.unit_exit();
-            }
-        } except Exception as ue {
-            import logging;
-            logging.getLogger(__name__).warning(
-                f"unit exit failed: {type(ue).__name__}: {ue}"
-            );
-        }
-        Jac.reset_request_context(req_token);
-    }
-}
+    unit_key: (str | None) = None,
+    target: object | None = None
+) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
 impl ExecutionManager.execute_function(
     func: Callable[(..., any)],
@@ -312,7 +143,7 @@ impl ExecutionManager.execute_function_sync(
         return await self._finalize_call_response(call_state, result, serialize_result);
     }
     return await _run_function_with_occ(
-        self, args, username, run_attempt, unit_key=_unit_key_for(func)
+        self, args, username, run_attempt, unit_key=_unit_key_for(func), target=func
     );
 }
 
@@ -329,7 +160,7 @@ impl ExecutionManager.execute_function_async(
         return await self._finalize_call_response(call_state, result, serialize_result);
     }
     return await _run_function_with_occ(
-        self, args, username, run_attempt, unit_key=_unit_key_for(func)
+        self, args, username, run_attempt, unit_key=_unit_key_for(func), target=func
     );
 }
 
@@ -345,7 +176,6 @@ impl ExecutionManager.spawn_walker(
 impl ExecutionManager.spawn_walker_sync(
     walker_cls: type[WalkerArchetype], fields: dict[(str, any)], username: str
 ) -> dict[str, JsonValue] {
-    import from jaclang.runtime.constructs { NodeArchetype }
     target_node_id = fields.pop('_jac_spawn_node', None);
     _deserialize_wire_args(fields);
 
@@ -374,14 +204,14 @@ impl ExecutionManager.spawn_walker_sync(
         username,
         run_attempt,
         deserialize_args=False,
-        unit_key=_unit_key_for(walker_cls)
+        unit_key=_unit_key_for(walker_cls),
+        target=walker_cls
     );
 }
 
 impl ExecutionManager.spawn_walker_async(
     walker_cls: type[WalkerArchetype], fields: dict[(str, any)], username: str
 ) -> dict[str, JsonValue] {
-    import from jaclang.runtime.constructs { NodeArchetype }
     target_node_id = fields.pop('_jac_spawn_node', None);
     _deserialize_wire_args(fields);
 
@@ -411,7 +241,8 @@ impl ExecutionManager.spawn_walker_async(
         username,
         run_attempt,
         deserialize_args=False,
-        unit_key=_unit_key_for(walker_cls)
+        unit_key=_unit_key_for(walker_cls),
+        target=walker_cls
     );
 }
 
@@ -456,8 +287,7 @@ impl ModuleIntrospector.load(force_reload: bool = False) -> None {
     self._module = module;
     self._load_manifest();
     self._load_surface();
-    self._functions = self._collect_functions();
-    self._walkers = self._collect_walkers();
+    self._reset_targets();
     self._invalidate_bundle();
 }
 
@@ -467,7 +297,7 @@ impl ModuleIntrospector._load_manifest -> None {
     if not self._module {
         return;
     }
-    import from jaclang.server.sealed_serve { serve_manifest_for }
+
     path: str = getattr(self._module, '__file__', '');
     manifest = serve_manifest_for(path) if path else None;
     if manifest is None {
@@ -481,12 +311,16 @@ impl ModuleIntrospector._load_manifest -> None {
 }
 
 impl ModuleIntrospector._load_surface -> None {
-    import from jaclang.server.sealed_serve { serve_manifest_for }
-    import from jaclang.compiler.frontend.codeinfo { SurfaceEntry }
     path: str = getattr(self._module, '__file__', '') if self._module else '';
     manifest = serve_manifest_for(path) if path else None;
     if manifest is None {
         raise RuntimeError(f"No prepared access metadata for '{path}'.");
+    }
+    if not isinstance(manifest.get('surface'), dict) {
+        raise RuntimeError(
+            f"Prepared access metadata for '{path}' has no valid surface. "
+                + "Rebuild and reseal the application with the current Jac version."
+        );
     }
     self._surface = {
         str(name): SurfaceEntry.from_dict(str(name), dict(rec))
@@ -496,8 +330,6 @@ impl ModuleIntrospector._load_surface -> None {
 }
 
 impl ModuleIntrospector._resolve_declared(rel: str, name: str) -> any {
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
-    import from jaclang.server.sealed_serve { sealed_root_for }
     own_file: str = getattr(self._module, '__file__', '') if self._module else '';
     img_root = self._manifest_root
         or (sealed_root_for(own_file) if own_file else '')
@@ -505,7 +337,7 @@ impl ModuleIntrospector._resolve_declared(rel: str, name: str) -> any {
     src_path = os.path.join(img_root, rel)
         if (img_root and not os.path.isabs(rel))
         else rel;
-    import from jaclang.runtime.prepared { application_for, source_for_origin }
+
     application = application_for(own_file, self._module.__name__)
         if self._module is not None
         else None;
@@ -514,26 +346,28 @@ impl ModuleIntrospector._resolve_declared(rel: str, name: str) -> any {
             src_path = source_for_origin(application, rel);
         } except Exception {}
     }
-    if own_file and os.path.abspath(src_path) == os.path.abspath(own_file) {
+    target = os.path.abspath(src_path);
+    if own_file and target == os.path.abspath(own_file) {
         return getattr(self._module, name, None);
+    }
+
+    if application is not None and os.path.realpath(src_path) in application.code {
+        return getattr(load_prepared_module(src_path, application), name, None);
     }
     for loaded in list(Jac.loaded_modules.values()) {
         f = loaded?.__file__;
-        if f and os.path.abspath(f) == os.path.abspath(src_path) {
+        if f and os.path.abspath(f) == target {
             sym = getattr(loaded, name, None);
             if sym is not None {
                 return sym;
             }
         }
     }
-    import from jaclang.runtime.prepared { load_prepared_module }
     module = load_prepared_module(src_path);
     return getattr(module, name, None);
 }
 
 impl ModuleIntrospector.scheduled_members -> list[tuple[str, any, bool]] {
-    import from jaclang.runtime.constructs { WalkerArchetype }
-    import from jaclang.server.task_scheduler { ScheduleSpec }
     found: list[tuple[str, any, bool]] = [];
     if not self._module {
         return found;
@@ -552,25 +386,44 @@ impl ModuleIntrospector.scheduled_members -> list[tuple[str, any, bool]] {
     return found;
 }
 
-
-impl ModuleIntrospector._collect_functions -> dict[str, Callable[(..., any)]] {
-    if not self._module {
-        return {};
+impl ModuleIntrospector.scheduled_targets -> list[tuple[str, any, ScheduleSpec, bool]] {
+    found: list[tuple[str, any, ScheduleSpec, bool]] = [];
+    seen: set[str] = set();
+    for (name, member, is_walker) in self.scheduled_members() {
+        spec = member?.schedule_spec;
+        if isinstance(spec, ScheduleSpec) {
+            seen.add(name);
+            found.append((name, member, spec, is_walker));
+        }
     }
-    functions: dict[(str, Callable[(..., any)])] = {};
-    for (name, rec) in self._surface.items() {
-        if rec.kind != 'function' or not rec.is_served() {
-            continue;
+    for kind in ('walker', 'function') {
+        for rec in self.served(kind) {
+            if rec.name in seen or not self.is_scheduled(rec.name) {
+                continue;
+            }
+            member = self.target(rec.name);
+            spec = member?.schedule_spec;
+            if isinstance(spec, ScheduleSpec) {
+                seen.add(rec.name);
+                found.append((rec.name, member, spec, kind == 'walker'));
+            }
         }
-        try {
-            target = self._resolve_declared(rec.src, name);
-        } except Exception {
-            logger.exception('Could not load endpoint %s from %s', name, rec.src);
-            continue;
-        }
-        if callable(target) {
-            functions[name] = target;
-        }
+    }
+    return found;
+}
+
+
+impl ModuleIntrospector._reset_targets -> None {
+    self._functions = {};
+    self._walkers = {};
+    self._complete = False;
+    self._collect_client_functions();
+}
+
+impl ModuleIntrospector._collect_client_functions -> None {
+    self._client_functions = {};
+    if not self._module {
+        return;
     }
     for name in self._client_manifest.get('exports', []) {
         if not hasattr(self._module, name) {
@@ -581,78 +434,108 @@ impl ModuleIntrospector._collect_functions -> dict[str, Callable[(..., any)]] {
             self._client_functions[name] = attr;
         }
     }
-    return functions;
-}
-
-impl ModuleIntrospector._collect_walkers -> dict[str, type[WalkerArchetype]] {
-    import from jaclang.runtime.constructs { WalkerArchetype }
-    if not self._module {
-        return {};
-    }
-    walkers: dict[(str, type[WalkerArchetype])] = {};
-    for (name, rec) in self._surface.items() {
-        if rec.kind != 'walker' or not rec.is_served() {
-            continue;
-        }
-        try {
-            target = self._resolve_declared(rec.src, name);
-        } except Exception {
-            logger.exception('Could not load walker %s from %s', name, rec.src);
-            continue;
-        }
-        if isinstance(target, type) and issubclass(target, WalkerArchetype) {
-            walkers[name] = target;
-        }
-    }
-    return walkers;
 }
 
 impl ModuleIntrospector._check_module_freshness -> None {
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
     if not self._module {
         return;
     }
-
     current_module = Jac.loaded_modules.get(self.module_name);
-    if (current_module is not None and current_module is not self._module) {
+    replaced = current_module is not None and current_module is not self._module;
+    if replaced {
         self._module = current_module;
+    }
+    resolved = [*self._walkers.items(), *self._functions.items()];
+    if replaced
+        or any(
+            getattr(self._module, name, cached) is not cached
+            for (name, cached) in resolved
+        ) {
         self._load_manifest();
         self._load_surface();
-        self._functions = self._collect_functions();
-        self._walkers = self._collect_walkers();
-        self._invalidate_bundle();
-        return;
-    }
-
-    needs_refresh = False;
-    for (name, cached_cls) in self._walkers.items() {
-        current_cls = getattr(self._module, name, None);
-        if current_cls is not cached_cls {
-            needs_refresh = True;
-            break;
-        }
-    }
-    if not needs_refresh {
-        _fresh_walkers = self._collect_walkers();
-        if set(_fresh_walkers.keys()) != set(self._walkers.keys()) {
-            needs_refresh = True;
-        }
-    }
-    if needs_refresh {
-        self._load_manifest();
-        self._load_surface();
-        self._functions = self._collect_functions();
-        self._walkers = self._collect_walkers();
+        self._reset_targets();
         self._invalidate_bundle();
     }
 }
 
-impl ModuleIntrospector.get_functions -> dict[str, Callable[(..., any)]] {
-    if not self._functions {
+impl ModuleIntrospector.served(kind: str) -> list[any] {
+    if self._module is None {
         self.load();
-    } else {
+    }
+    return [
+        rec
+        for (_, rec) in sorted(self._surface.items())
+        if rec.kind == kind and rec.is_served()
+    ];
+}
+
+impl ModuleIntrospector.target(name: str) -> any {
+    if self._module is not None {
         self._check_module_freshness();
     }
+    if name in self._walkers {
+        return self._walkers[name];
+    }
+    if name in self._functions {
+        return self._functions[name];
+    }
+    if self._module is None and not (self._walkers or self._functions) {
+        self.load();
+    }
+    if self._module is None {
+        return None;
+    }
+    rec = self._surface.get(name);
+    if rec is None or not rec.is_served() or rec.kind not in ('walker', 'function') {
+        return None;
+    }
+    try {
+        found = self._resolve_declared(rec.src, name);
+    } except Exception {
+        logger.exception('Could not load %s %s from %s', rec.kind, name, rec.src);
+        return None;
+    }
+    if rec.kind == 'walker' {
+        if isinstance(found, type) and issubclass(found, WalkerArchetype) {
+            self._walkers[name] = found;
+            return found;
+        }
+    } elif callable(found) {
+        self._functions[name] = found;
+        return found;
+    }
+    return None;
+}
+
+impl ModuleIntrospector.route_spec(name: str) -> any {
+    rec = self._surface.get(name);
+    if rec is None {
+        return None;
+    }
+    if rec.reflect {
+        return target_restspec(self.target(name));
+    }
+    if rec.route is None {
+        return None;
+    }
+
+    server_cls: type[JacAPIServer] = Jac.get_api_server_class();
+    return server_cls.RestSpecs(**restspec_fields(rec.route));
+}
+
+impl ModuleIntrospector.is_scheduled(name: str) -> bool {
+    rec = self._surface.get(name);
+    if rec is None {
+        return False;
+    }
+    if rec.reflect {
+        return target_schedule_spec(self.target(name)) is not None;
+    }
+    return rec.scheduled;
+}
+
+impl ModuleIntrospector.get_functions -> dict[str, Callable[(..., any)]] {
+    self._resolve_all();
     return {
         k: v
         for (k, v) in self._functions.items()
@@ -661,11 +544,7 @@ impl ModuleIntrospector.get_functions -> dict[str, Callable[(..., any)]] {
 }
 
 impl ModuleIntrospector.get_walkers -> dict[str, type[WalkerArchetype]] {
-    if not self._walkers {
-        self.load();
-    } else {
-        self._check_module_freshness();
-    }
+    self._resolve_all();
     return {
         k: v
         for (k, v) in self._walkers.items()
@@ -673,13 +552,23 @@ impl ModuleIntrospector.get_walkers -> dict[str, type[WalkerArchetype]] {
     };
 }
 
-impl ModuleIntrospector.find_target(name: str) -> any {
-    if not self._walkers and not self._functions {
-        self.load();
-    } else {
+impl ModuleIntrospector._resolve_all -> None {
+    if self._module is not None {
         self._check_module_freshness();
+    } elif not (self._walkers or self._functions) {
+        self.load();
     }
-    return self._walkers.get(name) or self._functions.get(name);
+    if self._complete or self._module is None {
+        return;
+    }
+    for rec in [*self.served('walker'), *self.served('function')] {
+        self.target(rec.name);
+    }
+    self._complete = True;
+}
+
+impl ModuleIntrospector.find_target(name: str) -> any {
+    return self.target(name);
 }
 
 impl ModuleIntrospector.get_client_functions -> dict[str, Callable[(..., any)]] {
@@ -847,7 +736,7 @@ impl ModuleIntrospector.ensure_bundle -> str {
             self._bundle_error = None;
             self._bundle_epoch += 1;
             return self._bundle.hash;
-        } except MissingBunError {
+        } except ArtifactUnavailable {
             self._bundle_epoch += 1;
             raise;
         } except Exception as exc {
@@ -911,7 +800,6 @@ impl ModuleIntrospector.spa_fallback_status(url_path: str) -> int {
 }
 
 impl ModuleIntrospector._load_spa_routes -> (list[str] | None) {
-    import from jaclang.server.sealed_serve { serve_manifest_for }
     path: str = getattr(self._module, '__file__', '')
         if self._module
         else str(Path(self.base_path or '.') / (self.module_name + '.jac'));
@@ -955,22 +843,16 @@ impl ModuleIntrospector.is_auth_required_for_walker(walker_name: str) -> bool {
 
 impl ModuleIntrospector.restspec_routes -> list[tuple[str, str, any]] {
     routes: list[tuple[str, str, any]] = [];
-    try {
-        for (name, target) in sorted(self.get_walkers().items()) {
-            spec = target?.restspec;
+    for kind in ('walker', 'function') {
+        for rec in self.served(kind) {
+            if self.is_scheduled(rec.name) {
+                continue;
+            }
+            spec = self.route_spec(rec.name);
             if spec is not None {
-                routes.append((name, 'walker', spec));
+                routes.append((rec.name, kind, spec));
             }
         }
-        for (name, target) in sorted(self.get_functions().items()) {
-            fn_target: any = target;
-            fn_spec = fn_target?.restspec;
-            if fn_spec is not None {
-                routes.append((name, 'function', fn_spec));
-            }
-        }
-    } except Exception {
-        return routes;
     }
     return routes;
 }
@@ -1007,49 +889,20 @@ impl ModuleIntrospector.client_claimed_paths(candidates: list[str]) -> list[str]
 
 
 impl ModuleIntrospector.walker_protocol(walker_name: str) -> APIProtocol {
-    walkers = self.get_walkers();
-    if walker_name not in walkers {
-        return APIProtocol.HTTP;
-    }
-    restspec: any = target_restspec(walkers[walker_name]);
-    if restspec?.protocol {
-        return APIProtocol(restspec.protocol);
-    }
-    return APIProtocol.HTTP;
+    spec = self.route_spec(walker_name);
+    return APIProtocol(spec.protocol) if spec?.protocol else APIProtocol.HTTP;
 }
 
 impl ModuleIntrospector.function_protocol(func_name: str) -> APIProtocol {
-    functions = self.get_functions();
-    if func_name not in functions {
-        return APIProtocol.HTTP;
-    }
-    restspec: any = target_restspec(functions[func_name]);
-    if restspec?.protocol {
-        return APIProtocol(restspec.protocol);
-    }
-    return APIProtocol.HTTP;
+    spec = self.route_spec(func_name);
+    return APIProtocol(spec.protocol) if spec?.protocol else APIProtocol.HTTP;
 }
 
 
-def _warm_persistence {
-    try {
-        ctx = Jac.get_context();
-        anchor = ctx.system_root;
-        ctx.mem.commit();
-        logger.debug(f"persistent store ready (system root {anchor.id})");
-    } except Exception as e {
-        logger.warning(
-            f"persistent store not reachable while starting up "
-            f"({type(e).__name__}: {e}); requests that touch graph state will "
-            "provision it on demand"
-        );
-    }
-}
+def _warm_persistence;
 
 
 impl JacAPIServer.postinit -> None {
-    import from jaclang.server.identity.config { configure_identity, signing_secret }
-    import from jaclang.server.task_scheduler { Scheduler }
     if self.settings is None {
         overrides: dict[str, any] = {};
         if self.port > 0 {
@@ -1086,6 +939,7 @@ impl JacAPIServer.postinit -> None {
     );
     self.scheduler = Scheduler.instance();
     self.drain = DrainState(timeout=self.settings.timeouts.drain);
+    self.scheduler.drain = self.drain;
     if self.extensions is None {
         self.extensions = list(Jac.get_server_extensions());
     }
@@ -1126,21 +980,25 @@ impl JacAPIServer.add_shutdown_hook(fn: Callable[..., any]) -> None {
     self.require_app().add_shutdown_hook(fn);
 }
 
+impl JacAPIServer.request_scope -> RequestScope {
+    return RequestScope.open(
+        base_path_dir=self._context_base_path,
+        full_target_path=self._context_target_path
+    );
+}
+
 impl JacAPIServer._install_middleware -> None {
-    import from jaclang.server.middleware { jwt_middleware, request_context_middleware }
-    self.add_middleware(request_context_middleware());
+    self._context_base_path = Jac.get_base_path_dir() or self.base_path or None;
+    self._context_target_path = Jac.get_full_target_path() or self.module_file;
+    self.add_middleware(
+        request_context_middleware(
+            self.request_scope, public_origin=self.resolved_settings().public_origin
+        )
+    );
     self.add_middleware(jwt_middleware(self.user_manager));
 }
 
 impl JacAPIServer.build_app -> ServingApp {
-    import from jaclang.server.middleware { metrics_middleware }
-    import from jaclang.server.serving.drain { drain_middleware }
-    import from jaclang.server.serving.middleware {
-        cors_middleware,
-        custom_headers_middleware
-    }
-    import from jaclang.server.serving.openapi { register_docs_endpoints }
-    import from jaclang.project.config { JacConfig }
     settings = self.resolved_settings();
     if not settings.static_only {
         self.introspector.load();
@@ -1206,21 +1064,6 @@ impl JacAPIServer.build_app -> ServingApp {
 }
 
 impl JacAPIServer.register_endpoints -> None {
-    import from jaclang.server.endpoints.auth { register_auth_endpoints }
-    import from jaclang.server.endpoints.colocated { register_colocated_endpoints }
-    import from jaclang.server.endpoints.introspection {
-        register_introspection_endpoints
-    }
-    import from jaclang.server.endpoints.pages {
-        register_diagnostics_endpoints,
-        register_graph_endpoints,
-        register_page_endpoints
-    }
-    import from jaclang.server.endpoints.walkers {
-        register_function_endpoints,
-        register_walker_endpoints
-    }
-    import from jaclang.server.serving.health { register_health_endpoints }
     settings = self.resolved_settings();
     register_health_endpoints(self.require_app(), self.drain);
     if settings.static_only {
@@ -1262,15 +1105,17 @@ impl JacAPIServer.enable_hmr(hot_reloader: any) -> None {
 }
 
 impl JacAPIServer._refresh_dev_endpoints -> None {
-    self._hmr_pending = False;
-    self.introspector.load(force_reload=True);
+    with PREPARATION_LOCK {
+        self._hmr_pending = False;
+        self.introspector.load(force_reload=True);
+    }
     if self.app is None {
         return;
     }
     app = self.require_app();
     app.clear_routes();
     self._endpoints = [];
-    import from jaclang.server.serving.openapi { register_docs_endpoints }
+
     self.register_endpoints();
     for ext in (self.extensions or []) {
         ext.register(self);
@@ -1336,7 +1181,6 @@ impl JacAPIServer._ensure_sv_siblings -> None {
 }
 
 impl JacAPIServer._ensure_client_bundle -> None {
-    import from jaclang.runtime.prepared { application_for }
     module_path: str = getattr(self.introspector._module, '__file__', '');
     if module_path and application_for(module_path) is not None {
         return;
@@ -1344,10 +1188,7 @@ impl JacAPIServer._ensure_client_bundle -> None {
 
     import sys;
     import time;
-    import from jaclang.cli.banners { JAC_DISCORD_URL }
-    import from jaclang.cli.console { console }
-    import from jaclang.client.client_diagnostics { format_build_diagnostics }
-    import from jaclang.project.config { get_config }
+
     settings = self.resolved_settings();
     if settings.dev or settings.no_client or settings.client_dist {
         return;
@@ -1356,7 +1197,7 @@ impl JacAPIServer._ensure_client_bundle -> None {
     if not client_exports {
         return;
     }
-    import from jaclang.project.client_paths { client_app_dir_for }
+
     config = get_config();
     dist_dir = client_app_dir_for(config) / 'dist'
         if config
@@ -1391,7 +1232,6 @@ impl JacAPIServer._ensure_client_bundle -> None {
 }
 
 impl JacAPIServer._ensure_internal_users -> None {
-    import from jaclang.server.identity.user_manager { SYSTEM_USER, UserRole }
     self.user_manager.ensure_internal_user(Con.GUEST.value, '__no_password__');
     self.user_manager.ensure_internal_user(
         SYSTEM_USER, '__no_login__', role=UserRole.SYSTEM.value
@@ -1399,26 +1239,26 @@ impl JacAPIServer._ensure_internal_users -> None {
 }
 
 impl JacAPIServer._scheduled_targets -> list[tuple[str, any, bool]] {
-    import from jaclang.server.task_scheduler { ScheduleSpec }
-    found: list[tuple[str, any, bool]] = [];
-    seen: set[str] = set();
-    for (name, member, is_walker) in self.introspector.scheduled_members() {
-        spec = member?.schedule_spec;
-        if isinstance(spec, ScheduleSpec) {
-            seen.add(name);
-            found.append((name, spec, is_walker));
-        }
+    return [
+        (name, spec, is_walker)
+        for (name, _member, spec, is_walker) in self.introspector.scheduled_targets()
+    ];
+}
+
+impl JacAPIServer._colocated_scheduled_targets -> list[
+    tuple[str, str, any, ScheduleSpec, bool]
+] {
+    found: list[tuple[str, str, any, ScheduleSpec, bool]] = [];
+    if self.is_sv_sibling {
+        return found;
     }
-    for (registry, is_walker) in [
-        (dict(self.introspector._walkers), True),
-        (dict(self.introspector._functions), False)
-    ] {
-        for (name, item) in registry.items() {
-            spec = item?.schedule_spec;
-            if isinstance(spec, ScheduleSpec) and name not in seen {
-                seen.add(name);
-                found.append((name, spec, is_walker));
-            }
+    for (app, module) in sorted(colocated_providers().items()) {
+        intro = provider_introspector(self, app, module);
+        if intro is None {
+            continue;
+        }
+        for (name, member, spec, is_walker) in intro.scheduled_targets() {
+            found.append((app, name, member, spec, is_walker));
         }
     }
     return found;
@@ -1428,22 +1268,29 @@ impl JacAPIServer._register_scheduled_tasks -> None {
     if self.resolved_settings().static_only {
         return;
     }
-    import from jaclang.server.identity.user_manager { SYSTEM_USER }
-    import from jaclang.runtime.builtin { ScheduleTrigger }
-    import from jaclang.server.task_scheduler { schedule_namespace }
+
     _self = self;
-    def _make_target(name: str, is_walker: bool) -> Callable[[], None] {
+    def _make_target(name: str, is_walker: bool) -> Callable[[], any] {
         async def _run -> any {
             intro = _self.introspector;
             registry: dict[str, any] = (
                 dict(intro._walkers) if is_walker else dict(intro._functions)
             );
+            for (member_name, member, member_is_walker) in intro.scheduled_members() {
+                if member_is_walker == is_walker {
+                    registry[member_name] = member;
+                }
+            }
+            if name not in registry {
+                resolved = intro.target(name);
+                if resolved is not None and isinstance(resolved, type) == is_walker {
+                    registry[name] = resolved;
+                }
+            }
             if name not in registry {
                 return {'error': f"'{name}' is no longer registered"};
             }
-            ctx = Jac.create_j_context(user_root=None);
-            token = Jac.push_request_context(ctx);
-            try {
+            async with _self.request_scope() {
                 if is_walker {
                     return await _self.execution_manager.spawn_walker(
                         registry[name], {}, SYSTEM_USER
@@ -1452,23 +1299,10 @@ impl JacAPIServer._register_scheduled_tasks -> None {
                 return await _self.execution_manager.execute_function(
                     registry[name], {}, SYSTEM_USER
                 );
-            } finally {
-                try {
-                    ctx.close();
-                } finally {
-                    Jac.reset_request_context(token);
-                }
             }
         }
-        def target {
-            outcome = asyncio.run(_run());
-            if (
-                isinstance(outcome, dict)
-                and 'error' in outcome
-                and outcome.get('error_code') != 'execution_error'
-            ) {
-                logger.error(f"scheduled {name} failed: {outcome.get('error')}");
-            }
+        def target -> any {
+            return asyncio.run(_run());
         }
         return target;
     }
@@ -1479,12 +1313,39 @@ impl JacAPIServer._register_scheduled_tasks -> None {
         }
         self.scheduler.register(name, _make_target(name, is_walker), spec, is_walker);
     }
+    def _make_member_target(member: any, is_walker: bool) -> Callable[[], any] {
+        async def _run_member -> any {
+            with _self.request_scope() {
+                if is_walker {
+                    return await _self.execution_manager.spawn_walker(
+                        member, {}, SYSTEM_USER
+                    );
+                }
+                return await _self.execution_manager.execute_function(
+                    member, {}, SYSTEM_USER
+                );
+            }
+        }
+        def member_target -> any {
+            return asyncio.run(_run_member());
+        }
+        return member_target;
+    }
+    for (app, name, member, spec, is_walker) in self._colocated_scheduled_targets() {
+        if spec.trigger == ScheduleTrigger.DYNAMIC {
+            continue;
+        }
+        label = f"{app}.{name}";
+        self.scheduler.register(
+            label, _make_member_target(member, is_walker), spec, is_walker
+        );
+    }
     if self.scheduler.has_pending() {
         logger.info(
             f"static scheduler: {len(self.scheduler._tasks)} task(s) registered"
         );
     }
-    import from jaclang.server.identity.identity_storage { PgIdentityStorage }
+
     storage = self.user_manager._identity_storage;
     store: any = storage.store if isinstance(storage, PgIdentityStorage) else None;
     if store is not None {
@@ -1492,18 +1353,30 @@ impl JacAPIServer._register_scheduled_tasks -> None {
         def _claim(key: str, tick: int) -> bool {
             return bool(_store.kv_claim_tick(key, tick));
         }
+        def _hold(key: str, ttl: int, owner: str) -> bool {
+            return bool(_store.kv_acquire_lease(key, ttl, owner));
+        }
+        def _release(key: str, owner: str) -> bool {
+            return bool(_store.kv_release_lease(key, owner));
+        }
         self.scheduler.claim = _claim;
+        self.scheduler.hold = _hold;
+        self.scheduler.release = _release;
         self.scheduler.namespace = schedule_namespace(self.module_name);
     }
 }
 
-impl JacAPIServer._validate_or_raise -> None {
-    import from jaclang.server.settings { ServeConfigError }
+impl JacAPIServer._start_problems -> list[str] {
     settings = self.resolved_settings();
     problems = settings.validate();
+    transport: any = None;
     for ext in (self.extensions or []) {
         problems.extend(ext.validate(self));
+        if transport is None {
+            transport = ext.mail_transport();
+        }
     }
+    problems.extend(verification_problems(settings.auth.email.verification, transport));
     if not settings.static_only {
         import from jaclang.server.task_scheduler { schedule_problems }
         for (name, spec, _is_walker) in self._scheduled_targets() {
@@ -1511,6 +1384,35 @@ impl JacAPIServer._validate_or_raise -> None {
                 problems.append(f"@schedule on '{name}': {problem}");
             }
         }
+    }
+    return problems;
+}
+
+impl JacAPIServer._validate_or_raise -> None {
+    settings = self.resolved_settings();
+    problems = self._start_problems();
+    workers = settings.workers;
+    if problems and workers.count_by_default and workers.multi_process() {
+        (count, threads) = (workers.count, workers.threads);
+        workers.count = 1;
+        if workers.threads_by_default {
+            workers.threads = default_threads(1, cpu_quota());
+        }
+        single = self._start_problems();
+        if len(single) < len(problems) {
+            dropped = [
+                p
+                for p in problems
+                if p not in single
+            ];
+            logger.info(f"Serving with one worker instead of {count}: {dropped[0]}");
+            problems = single;
+        } else {
+            (workers.count, workers.threads) = (count, threads);
+        }
+    }
+    for warning in settings.warnings() {
+        logger.warning(warning);
     }
     if problems {
         raise ServeConfigError(
@@ -1520,7 +1422,6 @@ impl JacAPIServer._validate_or_raise -> None {
 }
 
 impl JacAPIServer._prepare_to_serve(dev: bool, no_client: bool) -> ServeSettings {
-    import from jaclang.server.serving.accesslog { configure_access_logging }
     settings = self.resolved_settings();
     settings.dev = dev;
     settings.no_client = no_client;
@@ -1549,7 +1450,13 @@ impl JacAPIServer.serve_background(
     on_ready: Callable[..., None] | None = None,
     port_retries: int = 0
 ) -> Callable[[], None] {
-    import from jaclang.server.outbox { start_worker_if_bridging, stop_worker }
+    workers = self.resolved_settings().workers;
+    if workers.count_by_default and workers.multi_process() {
+        workers.count = 1;
+        if workers.threads_by_default {
+            workers.threads = default_threads(1, cpu_quota());
+        }
+    }
     settings = self._prepare_to_serve(dev, no_client);
     serving = ServingServer(
         app=self.require_app(), settings=settings, drain=self.drain
@@ -1571,7 +1478,7 @@ impl JacAPIServer.serve_background(
     );
     def _stop {
         stop_transport();
-        self.scheduler.stop();
+        self.scheduler.stop(timeout=self.drain.remaining());
         stop_worker();
     }
     return _stop;
@@ -1582,8 +1489,6 @@ impl JacAPIServer.start(
     no_client: bool = False,
     on_ready: Callable[..., None] | None = None
 ) -> int {
-    import from jaclang.cli.console { console }
-    import from jaclang.server.serving.supervisor { WorkerSupervisor }
     settings = self._prepare_to_serve(dev, no_client);
 
     def _announce(bound_port: int) {
@@ -1613,7 +1518,10 @@ impl JacAPIServer.start(
     port_retries = 0 if settings.strict_port else PORT_RETRY_LIMIT;
     if settings.workers.multi_process() {
         supervisor = WorkerSupervisor(
-            settings=settings, worker_main=self._worker_main, on_ready=_announce
+            settings=settings,
+            worker_main=self._worker_main,
+            on_ready=_announce,
+            on_worker_exit=self._on_worker_exit
         );
         return supervisor.run(port_retries=port_retries);
     }
@@ -1627,7 +1535,6 @@ impl JacAPIServer._worker_main(
     on_ready: (Callable[[int], None] | None) = None,
     port_retries: int = 0
 ) -> int {
-    import from jaclang.server.outbox { start_worker_if_bridging, stop_worker }
     settings = self.resolved_settings();
     serving = ServingServer(
         app=self.require_app(),
@@ -1655,8 +1562,20 @@ impl JacAPIServer._worker_main(
     try {
         return serving.run(on_ready=_ready, port_retries=port_retries);
     } finally {
-        self.scheduler.stop();
+        self.scheduler.stop(timeout=self.drain.remaining());
         stop_worker();
+    }
+}
+
+impl JacAPIServer._on_worker_exit(pid: int) -> None {
+    for ext in (self.extensions or []) {
+        try {
+            ext.on_worker_exit(self, pid);
+        } except Exception {
+            logger.exception(
+                f"{type(ext).__name__}.on_worker_exit failed for worker pid {pid}"
+            );
+        }
     }
 }
 
@@ -1668,16 +1587,15 @@ impl JacAPIServer.request_stop -> None {
 
 
 impl print_endpoint_docs(server: JacAPIServer) -> None {
-    import from jaclang.cli.console { console }
     server.introspector.load();
     functions = server.introspector.get_functions();
     walkers = server.introspector.get_walkers();
     client_exports = server.introspector._client_manifest.get('exports', []);
-    """Print section header.""";
+
     def section(title: str, auth: str = '') {
         console.print(f"{title}{f' ({auth})' if auth else ''}{('-' * 80)}");
     }
-    """Print endpoint with description.""";
+
     def endpoint(method: str, path: str, desc: str, details: str = '') {
         console.print(f"{method:6} {path}");
         console.print(f"       {desc}");
@@ -1685,7 +1603,7 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
             console.print(f"       {details}");
         }
     }
-    """Format parameter info.""";
+
     def format_param(name: str, info: dict[(str, any)]) -> str {
         req = 'required' if info['required'] else 'optional';
         `default = f", default: {info['default']}" if info.get('default') else '';
@@ -1751,12 +1669,7 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
             );
         }
     }
-    import from jaclang.project.config { get_config }
-    import from jaclang.server.endpoints.colocated {
-        colocated_providers,
-        provider_route
-    }
-    import from jaclang.server.static_files { sibling_app_names }
+
     config = get_config();
     root_app = server.introspector.resolve_root_app();
     section('CLIENT PAGES', 'Public');
@@ -1800,4 +1713,379 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
     );
     console.print(('=' * 80));
     console.print('\nAuth: Bearer token (Authorization: Bearer <token>)\n');
+}
+
+impl _begin_request_context(
+    user_root_id: str, target: object | None = None
+) -> tuple[(ExecutionContext, any)] {
+    req_ctx = await ExecutionContext.for_target(
+        target, RequestScope.current(), user_root_id
+    );
+    token = Jac.push_request_context(req_ctx);
+
+    isolate_request_walk_stack();
+    return (req_ctx, token);
+}
+
+impl _abegin_user_request_context(
+    user_manager: UserManager, username: str, target: object | None = None
+) -> tuple[(ExecutionContext, any, str)] | dict[str, JsonValue] {
+    root_id = await user_manager.aget_root_id(username);
+    if not root_id {
+        import os;
+        if username != Con.GUEST.value and os.environ.get('JAC_SV_SIBLING') {
+            ensure_root = getattr(
+                user_manager, 'ensure_user_root', user_manager.get_root_id
+            );
+            root_id = await asyncio.to_thread(ensure_root, username);
+        }
+        if not root_id {
+            return {'error': 'User not found'};
+        }
+    }
+    try {
+        (ctx, token) = await _begin_request_context(root_id, target);
+        return (ctx, token, root_id);
+    } except MissingAnchorError {
+        if username != Con.GUEST.value {
+            raise RuntimeError(
+                f"Root anchor {root_id} for user '{username}' does not "
+                "exist in the anchor store. The data store was likely "
+                "reset or migrated out from under the users db; restore "
+                "it or re-register the user."
+            );
+        }
+        import logging;
+        logging.getLogger('jaclang.serve').warning(
+            f"Guest root anchor {root_id} is missing from the anchor store; "
+            "minting a fresh guest root."
+        );
+        healed_id = await asyncio.to_thread(user_manager.reset_root, username);
+        if not healed_id {
+            return {'error': 'User not found'};
+        }
+        (ctx, token) = await _begin_request_context(healed_id, target);
+        return (ctx, token, healed_id);
+    }
+}
+
+impl _deserialize_wire_args(args: dict[(str, any)]) {
+    for (k, v) in list(args.items()) {
+        if isinstance(v, dict) and '__type__' in v {
+            deserialized = Serializer.deserialize(v);
+            if deserialized is not None {
+                args[k] = deserialized;
+            }
+        } elif isinstance(v, list) {
+            args[k] = [
+                Serializer.deserialize(item)
+                    if isinstance(item, dict) and '__type__' in item
+                    else item for item in v
+            ];
+        }
+    }
+}
+
+
+impl _unit_key_for(target: any) -> (str | None) {
+    mod = str(getattr(target, '__module__', '') or '');
+    name = str(getattr(target, '__name__', '') or '');
+    if not name {
+        return None;
+    }
+    return f"{mod}.{name}";
+}
+
+
+impl _conflict_turn_pool -> any {
+    if not _TURN_POOL {
+        import from concurrent.futures { ThreadPoolExecutor }
+        _TURN_POOL.append(
+            ThreadPoolExecutor(max_workers=8, thread_name_prefix="jac-conflict-turn")
+        );
+    }
+    return _TURN_POOL[0];
+}
+
+
+impl _occ_policy -> tuple[str, int, int] {
+    mode = "retry";
+    max_attempts = 5;
+    backoff_ms = 0;
+    try {
+        import from jaclang.project.config { get_config }
+        cfg = get_config();
+        if cfg is not None {
+            mode = str(cfg.serve.on_conflict).strip().lower();
+            if mode not in ("retry", "fail") {
+                mode = "retry";
+            }
+            max_attempts = cfg.serve.conflict_max_attempts;
+            backoff_ms = cfg.serve.conflict_backoff_ms;
+        }
+    } except Exception {}
+    return (mode, max_attempts, backoff_ms);
+}
+
+impl _plain_value(val: object) -> bool {
+    kind = type(val);
+    if val is None or kind in (str, int, float, bool, UUID) or isinstance(val, Enum) {
+        return True;
+    }
+    if isinstance(val, (list, tuple)) and kind in (list, tuple) {
+        return all(_plain_value(item) for item in val);
+    }
+    if isinstance(val, dict) and kind is dict {
+        return all(
+            type(k) in (str, int, float, bool) and _plain_value(v)
+            for (k, v) in val.items()
+        );
+    }
+    return False;
+}
+
+impl _run_function_with_occ(
+    mgr: ExecutionManager,
+    args: dict[(str, any)],
+    username: str,
+    run_attempt: Callable,
+    deserialize_args: bool = True,
+    unit_key: (str | None) = None,
+    target: object | None = None
+) -> dict[str, JsonValue] | Generator | AsyncGenerator {
+    resolved = await _abegin_user_request_context(mgr.user_manager, username, target);
+    if isinstance(resolved, dict) {
+        return resolved;
+    }
+    (ctx, req_token, root_id) = resolved;
+    ctx.mem.unit_enter(unit_key);
+    settled = False;
+    streaming = False;
+    try {
+        if deserialize_args {
+            _deserialize_wire_args(args);
+        }
+        (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
+        max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
+        attempt = 0;
+        ro_retries = 0;
+        reload_root = False;
+        while attempt < max_attempts {
+            attempt += 1;
+            call_token = ctx.call_state.set(CallState());
+            call_state = ctx.call_state.get();
+            try {
+                if reload_root {
+                    reload_root = False;
+                    await ctx.aset_user_root(root_id);
+                }
+                outcome = await run_attempt(call_state, ctx);
+                ctx.mem.unit_exit();
+                settled = True;
+                streaming = isgenerator(outcome) or isinstance(outcome, AsyncGenerator);
+                return await ctx.bind_stream(outcome) if streaming else outcome;
+            } except ReadOnlyRetry as rr {
+                settled = False;
+                ctx.mem.take_ro_retry();
+                if ctx.mem.unit_depth() == 0 {
+                    ctx.mem.unit_enter(unit_key);
+                }
+                ctx.mem.abort();
+                ctx.pending_effects.clear();
+                ctx.read_versions.clear();
+                ctx.diagnostics.clear();
+                forget_response_choice();
+                ro_retries += 1;
+                observe_read_tier_retry(mgr.metrics, rr.unit_key or unit_key or "");
+                if ro_retries <= 2 {
+                    attempt -= 1;
+                }
+                reload_root = True;
+            } except WriteConflict as wc {
+                settled = False;
+                if ctx.mem.unit_depth() == 0 {
+                    ctx.mem.unit_enter(unit_key);
+                }
+                ctx.mem.abort();
+                ctx.pending_effects.clear();
+                ctx.read_versions.clear();
+
+                ctx.diagnostics.clear();
+                forget_response_choice();
+                if attempt >= max_attempts {
+                    return {
+                        'error': wc.message(),
+                        'error_code': 'write_conflict',
+                        'http_status': 409
+                    };
+                }
+                if occ_backoff_ms > 0 {
+                    await asyncio.sleep(occ_backoff_ms * attempt / 1000.0);
+                }
+                import from jaclang.server.session { Session }
+                mem: any = ctx.mem;
+                if isinstance(mem, Session) {
+                    import contextvars;
+                    turn_context = contextvars.copy_context();
+                    def take_turn {
+                        turn_context.run(mem.wait_turn);
+                    }
+                    turn = asyncio.get_running_loop().run_in_executor(
+                        _conflict_turn_pool(), take_turn
+                    );
+                    try {
+                        await asyncio.shield(turn);
+                    } except asyncio.CancelledError {
+                        while not turn.done() {
+                            try {
+                                await asyncio.shield(turn);
+                            } except asyncio.CancelledError {
+                                continue;
+                            }
+                        }
+                        raise;
+                    }
+                }
+                reload_root = True;
+            } except Exception as e {
+                import from jaclang.server.session { transient_db_error }
+                if attempt < max_attempts and transient_db_error(e) {
+                    settled = False;
+                    if ctx.mem.unit_depth() == 0 {
+                        ctx.mem.unit_enter(unit_key);
+                    }
+                    ctx.mem.abort();
+                    ctx.pending_effects.clear();
+                    ctx.read_versions.clear();
+                    ctx.diagnostics.clear();
+                    forget_response_choice();
+                    if occ_backoff_ms > 0 {
+                        await asyncio.sleep(occ_backoff_ms * attempt / 1000.0);
+                    }
+                    reload_root = True;
+                    continue;
+                }
+                ctx.mem.abort();
+                import logging;
+                logging.getLogger('jaclang.serve').exception(
+                    f"{unit_key or 'request'} raised {type(e).__name__}: {e}"
+                );
+                return {'error': str(e), 'error_code': 'execution_error'};
+            } finally {
+                ctx.call_state.reset(call_token);
+            }
+        }
+        return {
+            'error': 'write_conflict: retries exhausted',
+            'error_code': 'write_conflict',
+            'http_status': 409
+        };
+    } finally {
+        try {
+            if not settled {
+                ctx.mem.unit_exit();
+            }
+        } except Exception as ue {
+            import logging;
+            logging.getLogger(__name__).warning(
+                f"unit exit failed: {type(ue).__name__}: {ue}"
+            );
+        }
+        try {
+            if not streaming {
+                ctx.close();
+            }
+        } finally {
+            Jac.reset_request_context(req_token);
+        }
+    }
+}
+
+
+impl _warm_persistence {
+    try {
+        ctx = Jac.get_context();
+        anchor = ctx.system_root;
+        ctx.mem.commit();
+        logger.debug(f"persistent store ready (system root {anchor.id})");
+    } except Exception as e {
+        logger.warning(
+            f"persistent store not reachable while starting up "
+            f"({type(e).__name__}: {e}); requests that touch graph state will "
+            "provision it on demand"
+        );
+    }
+}
+
+impl ServerExtension.validate(server: JacAPIServer) -> list[str] {
+    return [];
+}
+
+impl ServerExtension.mail_transport -> any {
+    return None;
+}
+
+impl ServerExtension.on_worker_start(server: JacAPIServer) {}
+
+impl ServerExtension.on_worker_exit(server: JacAPIServer, pid: int) {}
+
+impl EndpointHost.mailer -> IdentityMailer {
+    return IdentityMailer(emailer=self?.emailer);
+}
+
+impl target_restspec(target: any) -> any {
+    return target.restspec if target?.restspec else None;
+}
+
+impl target_protocol(target: any) -> APIProtocol {
+    restspec: any = target_restspec(target);
+    if restspec?.protocol {
+        return APIProtocol(restspec.protocol);
+    }
+    return APIProtocol.HTTP;
+}
+
+impl target_schedule_spec(target: any) -> any {
+    return target.schedule_spec if target?.schedule_spec else None;
+}
+
+impl restspec_fields(specs: dict[str, any]) -> dict[str, any] {
+    specs = dict(specs);
+    protocol = specs.get('protocol');
+    if protocol is not None and not isinstance(protocol, APIProtocol) {
+        raw_p = str(protocol).strip().lower();
+        try {
+            specs['protocol'] = APIProtocol('websocket' if raw_p == 'ws' else raw_p);
+        } except ValueError {
+            raise ValueError(
+                f"@restspec protocol={protocol!r} is not recognized. Expected "
+                "APIProtocol.HTTP / WEBHOOK / WEBSOCKET (or the strings "
+                "'http', 'webhook', 'websocket'/'ws')."
+            );
+        }
+    }
+    method = specs.get('method');
+    if method is not None and not isinstance(method, HTTPMethod) {
+        try {
+            specs['method'] = HTTPMethod(str(method).strip().upper());
+        } except ValueError {
+            raise ValueError(
+                f"@restspec method={method!r} is not routable. Expected one "
+                f"of: {', '.join([m.value for m in HTTPMethod])}."
+            );
+        }
+    }
+    scheme = specs.get('scheme');
+    if scheme is not None {
+        raw_s = str(scheme).strip().lower();
+        if raw_s not in ('', 'jac', 'github') {
+            raise ValueError(
+                f"@restspec scheme={scheme!r} is not recognized. Expected "
+                "'jac' (api key plus timestamped HMAC, the default) or "
+                "'github' (X-Hub-Signature-256 over the raw body)."
+            );
+        }
+        specs['scheme'] = '' if raw_s == 'jac' else raw_s;
+    }
+    return specs;
 }

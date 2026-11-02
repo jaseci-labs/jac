@@ -1,0 +1,41 @@
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+glob:priv definition = ModuleDefinition(
+         "termios",
+         "This module provides an interface to the Posix calls for tty I/O control.\nFor a complete description of these calls, see the Posix or Unix manual\npages. It is only available for those Unix versions that support Posix\ntermios style tty I/O control.\n\nAll functions in this module take a file descriptor fd as their first\nargument. This can be an integer file descriptor, such as returned by\nsys.stdin.fileno(), or a file object, such as sys.stdin itself.",
+         module_methods,
+         ModuleHooks(execute=execute),
+         1
+     );
+
+def:pub PyInit_termios -> ptr[PyObject];
+
+impl execute(module: ptr[PyObject]) -> i32 {
+    if PLATFORM == "" or len(CONSTANTS) == 0 {
+        object_error(
+            PyExc_ImportError,
+            "termios has no termios_records/termios_constants for this target platform"
+        );
+        return i32(-1);
+    }
+    error = jacpy_binding_exception("termios.error", NULL, "");
+    if not add_state_owned(module, 0, "error", error) {
+        return i32(-1);
+    }
+    for (name, value) in CONSTANTS {
+        if name.startswith("TIO") {
+            if not add_owned(
+                module, name, PyLong_FromUnsignedLong(u64.wrap(value) & u64(0xFFFFFFFF))
+            ) {
+                return i32(-1);
+            }
+        } elif jacpy_module_add_int_text(module, name, value) < 0 {
+            return i32(-1);
+        }
+    }
+    return i32(0);
+}
+
+impl PyInit_termios -> ptr[PyObject] {
+    return definition.initialize();
+}

@@ -42,7 +42,10 @@ JIT_STENCILS_H empty unless the JIT is on.
 
 regen-executor-cases and regen-optimizer-cases keep naming pruned and
 discarded sources, as regen-parser already does: no default target reaches
-them.
+them. Grammar/ is pruned the same way and needs no hunk: only the recipes of
+regen-pegen, regen-token and regen-keyword read it. The host compiles the
+archive's generated Parser/parser.c and token tables; JacPython's parser and
+token model are Jac (compiler/frontend/python/parser.jac, token_model.jac).
 
 build_all: gdbhooks copies Tools/gdb/libpython.py next to the interpreter for
 test_gdb, and Programs/_testembed is an embedding test program. Neither is
@@ -60,22 +63,6 @@ only one compiled; the 1.1.1 and 3.0 tables survive as prerequisites alone.
 
 --- a/Makefile.pre.in
 +++ b/Makefile.pre.in
-@@ -466,15 +466,12 @@
- 		Python/intrinsics.o \
--		Python/jit.o \
- 		Python/legacy_tracing.o \
- 		Python/lock.o \
- 		Python/marshal.o \
- 		Python/modsupport.o \
- 		Python/mysnprintf.o \
- 		Python/mystrtoul.o \
- 		Python/object_stack.o \
- 		Python/optimizer.o \
--		Python/optimizer_analysis.o \
--		Python/optimizer_symbols.o \
- 		Python/parking_lot.o \
- 		Python/pathconfig.o \
- 		Python/preconfig.o \
 @@ -799,7 +796,7 @@
  
  .PHONY: build_all

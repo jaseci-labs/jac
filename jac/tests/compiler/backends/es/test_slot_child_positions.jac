@@ -26,7 +26,9 @@ def compile_fixture(filename: str) -> str {
     assert not prog.errors_had , (
         f"Compilation errors in {filename}: " + str([str(e) for e in prog.errors_had])
     );
-    return es_to_js(run_pass(EsastGenPass, ir, prog).module.gen.es_ast);
+    es_ast = run_pass(EsastGenPass, ir, prog).module.gen.es_ast;
+    assert isinstance(es_ast, es.Program);
+    return es_to_js(es_ast);
 }
 
 """Assert the slot accumulator's reserved length and the indices written to it."""

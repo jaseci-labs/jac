@@ -1,16 +1,6 @@
 import unittest.mock;
 import from kubernetes.client.exceptions { ApiException }
 import from kubernetes.config.config_exception { ConfigException }
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
-import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
-import from jaclang.scale.observability.factory { UtilityFactory }
-import from jaclang.scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger }
-import from jaclang.scale.deploy.autoscale.hpa_autoscaler { HPAAutoscaler }
-import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
 import from jaclang.scale.deploy.target.kubernetes { kubernetes_target as kt_module }
 
 def _as_any(v: any) -> any {

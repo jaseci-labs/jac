@@ -64,9 +64,11 @@ jaclang_source = "jac"   # dir containing jaclang/, relative to this jac.toml
 
 With this enabled, `import jaclang` resolves to `jac/jaclang` (it's prepended to `sys.path` at startup), so edits to jaclang's `.py` and `.jac` source -- the compiler, passes, CLI, runtime -- run live. The per-module compile cache is content-keyed, so edits self-invalidate; the dev loop also skips the binary's shipped precompiled bundle automatically (no manual cache clearing needed). Comment the stanza out to fall back to the binary's bundled jaclang.
 
+An edit recompiles what it touched, not the whole compiler. Every edit under jaclang's compiler sources changes the compiler's identity, and the compiler's own modules (about 150 of them) used to be recompiled one by one before the next command could run. In the dev loop an unchanged module now keeps the bytecode it already had, so only the modules you edited recompile. Three things stay exact: your own programs and test fixtures are always compiled by the compiler as you edited it; a change to the Python emitter (`jaclang/compiler/backends/py`) recompiles every module; and kit builds and CI never reuse bytecode from an earlier compiler. The compiler's native kernel is never built behind your back. A checkout runs the kernel built from its current sources (its own, or the one in the kit it runs on); otherwise every command runs the compiler from bytecode and says so on stderr. Run `jac native build kernel` to build it and `jac native status kernel` to see which sources moved since the last build. A kernel unit is stamped with the kernel's ABI (`NATIVE_ABI_VERSION` and the ABI contract files) instead of the compiler that lowered it, so `jac native build kernel` after an edit rebuilds the units whose source or dependencies' interfaces changed and relinks. A change to how native code is generated does not reach units you did not touch; bump `NATIVE_ABI_VERSION` when such a change alters what units assume about each other. Set `exact = true` under `[dev]` in `jac.toml` to have every command rebuild the compiler's modules with the compiler as edited, and run `jac native build kernel --force --exact` to do the same for its kernel units.
+
 **Faster builds: `zig build -Ddev`.** `fresh_env.sh` builds with `zig build -Ddev`, which *bakes* this link into the binary: the compiler is not bundled at all (no ~100 MB tree copy, no JIR precompile -- a much smaller, faster build), and the binary reroutes `import jaclang` to the build-root source from any directory, so the loop holds with no `[dev]` stanza in scope. It's the fastest build and the right default for compiler work; the tradeoff is the binary hard-depends on that source dir, so it's dev-only and not distributable. Use `-Djaclang-dir=PATH` to bake an explicit compiler dir, or a plain `zig build` for the fully self-contained release binary. Because the compiler imports the native passes at startup, a `-Ddev` binary still needs the LLVMPY_* shim **placed in the linked tree** (the same `zig build fetch-llvm` prerequisite as a release build -- `-Ddev` then compiles and places it automatically; without it the build stops with a clear message). `fresh_env.sh` runs `fetch-llvm` for you.
 
-The stanza is read from the **nearest ancestor `jac.toml`** (like every other config setting), so the single root `jac.toml` covers every directory in the repo -- the loop is active whether you work from the repo root or `cd jac` to run the suite. Other subprojects (`jac-byllm/`, `jac-mcp/`, ...) opt in by adding their own `[dev]` stanza. To force the loop *off* for a single command -- e.g. to test the shipped binary's bundled + precompiled jaclang instead of your edits -- set `JAC_NO_DEV_SOURCE=1` (CI's binary self-test does this).
+The stanza is read from the **nearest ancestor `jac.toml`** (like every other config setting), so the single root `jac.toml` covers every directory in the repo -- the loop is active whether you work from the repo root or `cd jac` to run the suite. Other subprojects (`jac-byllm/`, `jac-mcp/`, ...) opt in by adding their own `[dev]` stanza. To run the shipped binary's bundled + precompiled jaclang instead of your edits, start it from outside the repo (`cd "$(mktemp -d)"`): a jac started where no `[dev]` stanza is in scope runs its bundled compiler, and every process it starts inherits that choice. CI's sealed lanes get the same effect by dropping the stanza from their checkout (`.github/actions/seal-checkout`).
 
 You still need to `zig build` again when you change the parts that live *inside* the binary rather than in jaclang source: the launcher (`jac/launcher/*.zig`, `jac/build.zig`), the payload bootstrap (`jac/sitecustomize.py`, `jac/_jac_finder.py`), or the bundled CPython version.
 
@@ -90,7 +92,7 @@ test_jobs = "auto"   # "auto" = one worker per core; "0" = serial; or a fixed co
 **Build something awesome, or fix something that's broken**
 
 See Rules below.
-Formatting and linting are enforced by `jac precommit` (configured via `[check.lint]` in [`jac.toml`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac.toml)); markdown lint and the em-dash ban run on every PR via pre-commit.ci ([`.pre-commit-config.yaml`](https://github.com/Jaseci-Labs/jaseci/blob/main/.pre-commit-config.yaml)).
+Formatting and linting are enforced by `jac precommit` (staged `.jac` files by default; use `jac precommit --all` for the whole project), configured via `[check.lint]` in [`jac.toml`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac.toml); markdown lint and the em-dash ban run on every PR via pre-commit.ci ([`.pre-commit-config.yaml`](https://github.com/Jaseci-Labs/jaseci/blob/main/.pre-commit-config.yaml)).
 
 **This is how the docs work.**
 
@@ -101,8 +103,7 @@ exposes it as `jac://docs/*` resources, and the website renders the same
 corpus -- there is no separate docs build. Edit the markdown in place, then:
 
 ```bash
-jac run scripts/validate_docs_code.jac        # syntax-check the code blocks
-cd jac && JAC_TEST_JOBS=auto jac test tests/cli/test_docs_content.jac tests/cli/test_guide_docs.jac
+cd jac && JAC_TEST_JOBS=auto jac test tests/cli/test_docs_code_blocks.jac tests/cli/test_docs_content.jac tests/cli/test_guide_docs.jac
 ```
 
 Adding or removing a page means updating `jac/jaclang/cli/docs/nav.json` in
@@ -166,85 +167,41 @@ To skip this check, add the `skip-release-notes-check` label to your PR.
 
 **Example PR with a release note fragment**: [#5573](https://github.com/jaseci-labs/jaseci/pull/5573)
 
-## Trying the JacPython release binary
+## Building JacPython
 
-Releases provide stock CPython by default and an experimental JacPython variant.
-Pass `--jacpython` to `scripts/install.sh`, or download the platform asset ending
-in `-jacpython` from the [releases page](https://github.com/jaseci-labs/jac/releases).
-The Python compiler replacement runs as native Jac machine code. CPython still
-provides the bytecode VM, object runtime, and standard library. Compiler
-compatibility continues to be expanded; include a reproducer when reporting an issue.
-
-Choose the platform token for your machine:
-
-| Machine | `PLATFORM` |
-| --- | --- |
-| Linux x86-64 | `linux-x86_64` |
-| Linux ARM64 | `linux-aarch64` |
-| Apple Silicon Mac | `macos-aarch64` |
-| Intel Mac | `macos-x86_64` (only when the manual release lane has published it) |
-
-In Bash, replace `vX.Y.Z` with a released tag containing both runtime variants and
-set `PLATFORM` from the table. Use `TAG=dev` for the rolling development release
-once it includes both variants. The commands download into a temporary directory,
-verify the checksum, and keep your installed `jac` unchanged:
+Releases ship one configuration: stock CPython. JacPython (CPython with its C
+progressively replaced by native Jac, the Python compiler included) is an
+accelerator you build on request. From the repository, with Zig 0.16 and the
+LLVM shim in place (`zig build fetch-llvm` once):
 
 ```bash
-TAG=vX.Y.Z
-PLATFORM=linux-x86_64
-TRIAL=$(mktemp -d)
-ASSET="jac-${TAG#v}-${PLATFORM}-jacpython"
-BASE="https://github.com/jaseci-labs/jac/releases/download/$TAG"
-
-curl -fL --retry 3 "$BASE/$ASSET" -o "$TRIAL/$ASSET" &&
-curl -fL --retry 3 "$BASE/$ASSET.sha256" -o "$TRIAL/$ASSET.sha256" &&
-(cd "$TRIAL" && shasum -a 256 -c "$ASSET.sha256") &&
-chmod +x "$TRIAL/$ASSET" &&
-JACPYTHON_BIN="$TRIAL/$ASSET" &&
-JAC_NO_DEV_SOURCE=1 "$JACPYTHON_BIN" --version
+jac native build jacpython
 ```
 
-Continue only if the download and checksum check succeed. A 404 means the
-selected tag/platform does not have that asset; check the release's asset list.
-`shasum` is available on macOS; on Linux, `sha256sum -c` can replace
-`shasum -a 256 -c`. First use extracts the bundled runtime into Jac's cache.
-
-Verify the active compiler and exercise Python source and AST compilation:
+That builds a second jac, `jac/zig-out/jacpython/bin/jac`, whose bundled
+interpreter is JacPython; the jac you ran it with is unchanged. Use it like any
+jac. It reports the native compiler as active:
 
 ```bash
-JAC_NO_DEV_SOURCE=1 "$JACPYTHON_BIN" -c '
-import ast, ctypes, sys
+JACPYTHON_BIN="$PWD/jac/zig-out/jacpython/bin/jac"
+cd "$(mktemp -d)"   # outside the repo, so its [dev] stanza does not reroute the compiler
+"$JACPYTHON_BIN" -c '
+import ast, ctypes
 assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
-assert not hasattr(sys, "_jacpython_compile")
-assert not hasattr(sys, "_jacpython_image")
 print("Python compiler: native JacPython")
-assert eval("6 * 7") == 42
 exec(compile(ast.parse("print(6 * 7)"), "<jacpython-trial>", "exec"))
 '
-
-printf 'with entry { print(6 * 7); }\n' > "$TRIAL/hello.jac"
-JAC_NO_DEV_SOURCE=1 "$JACPYTHON_BIN" run "$TRIAL/hello.jac"
+"$JACPYTHON_BIN" native status jacpython
 ```
 
-Both examples should print `42`; the compiler probe should report native
-JacPython. The replacement executes as native machine code, while CPython
-provides the object runtime and executes the resulting Python bytecode.
-The `-c` probe exercises the Python replacement directly;
-`run` retains Jac's normal backend selection. Keep `JAC_NO_DEV_SOURCE=1` when
-testing a downloaded release inside this repository so its `[dev]` setting
-does not substitute the checkout's Jac compiler.
-
-Use the explicit `$JACPYTHON_BIN` path for further experiments. Include the tag,
-platform, compiler-probe output, and a minimal reproducer when reporting an issue.
-Older releases may use CPython's C compiler; the probe above distinguishes them.
-
-For changes to the JacPython implementation, rebuild with
-`cd jac && JACPYTHON=1 zig build` and use the resulting `zig-out/bin/jac`.
-Its native compiler object is linked at build time: editing source through the
-dev loop does not replace that object in an existing binary. Plain `zig build`
-produces the stock CPython variant. A separate build-only CPython host
-produces the initial native object and is not shipped. See
-[the build guide](jac/launcher/README.md#build) for cache details and prerequisites.
+`jac native build jacpython --exact` rebuilds the runtime instead of reusing one
+whose lowered sources are unchanged. Its native compiler object is linked at
+build time, so editing compiler source through the dev loop does not change an
+existing JacPython binary: rebuild it. CI builds and tests JacPython in its own
+lane (`.github/workflows/_jacpython.yml`), on a pull request carrying the
+`native:jacpython` label and nightly on every supported platform. See
+[the build guide](jac/launcher/README.md#build) for cache details and
+prerequisites.
 
 ## Code Rules and Guidelines
 
@@ -333,8 +290,8 @@ the MCP server, and the client/desktop runtimes are all bundled into the binary.
 5. Once the checks attach, enable **auto-merge** on the PR (or approve and merge manually when CI passes)
 
 PR preparation downloads the latest released Jac binary to run the version and
-release-note scripts. It sets `JAC_NO_DEV_SOURCE=1` to use the bundled compiler,
-so this job does not build Jac from source.
+release-note scripts. It runs them from outside the checkout so the bundled
+compiler serves, and this job does not build Jac from source.
 
 ### Step 2: Approve the Release
 

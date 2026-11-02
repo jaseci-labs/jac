@@ -1,0 +1,1544 @@
+"""The link plan over a five-module diamond (#8943).
+
+`top` imports `left`, `right` and `extra`, which all import `base`; the
+region arena joins by dependency edge like any toolchain unit. The plan
+walks the native edges each unit's interface records, orders the units
+dependencies first, and links their objects plus one synthesized glue
+object. Touching a body rewrites one object and leaves every interface
+alone; touching an interface moves the dependents' recorded digests, and a
+unit whose recorded digests disagree with the plan is recompiled until they
+agree. Two links from one cache are byte-identical, and the whole-program
+mode produces the same executable behavior from the same cache.
+"""
+
+import hashlib;
+import os;
+import shutil;
+import subprocess;
+import sys;
+import tempfile;
+import from pathlib { Path }
+import jaclang;
+import from jaclang.compiler.driver.compile_options {
+    CompileOptions,
+    NATIVE_LINK_MODE_BITCODE,
+    NATIVE_LINK_MODE_OBJECTS
+}
+import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.backends.native.link_plan {
+    ArtifactKind,
+    build_link_plan,
+    link_artifact
+}
+import from jaclang.compiler.frontend.codeinfo {
+    is_kernel_unit_path,
+    native_entry_name,
+    native_glob_init_name
+}
+
+glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures" / "link_diamond"),
+     UNITS: list[str] = ["base.jac", "left.jac", "right.jac", "extra.jac", "top.jac"];
+
+def _opts(mode: str = "") -> CompileOptions {
+    return CompileOptions(
+        aot_mode=True,
+        default_codespace='native',
+        skip_native_engine=True,
+        native_link_mode=(mode or None)
+    );
+}
+
+"""A private copy of the diamond, so edits never touch the fixtures."""
+def _diamond_copy -> str {
+    tmp = tempfile.mkdtemp(prefix="jac-diamond-");
+    for name in UNITS {
+        shutil.copy(os.path.join(FIXTURES, name), os.path.join(tmp, name));
+    }
+    return tmp;
+}
+
+def _plan_for(root_dir: str, mode: str = "") -> tuple[JacProgram, any] {
+    prog = JacProgram();
+    opts = _opts(mode);
+    top = os.path.join(root_dir, "top.jac");
+    prog.options = opts;
+    return (prog, build_link_plan(prog, [top], opts, mode=mode));
+}
+
+def _can_link_host -> bool {
+    return sys.platform.startswith("linux") or sys.platform == "darwin";
+}
+
+test "the plan holds every unit of the diamond, dependencies first" {
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir);
+    toolchain = [
+        u.path
+        for u in plan.units
+        if is_kernel_unit_path(u.path)
+    ];
+    names = [
+        os.path.basename(u.path)
+        for u in plan.units
+        if not is_kernel_unit_path(u.path)
+    ];
+    assert sorted(names) == sorted(UNITS) , names;
+    assert toolchain;
+    events = prog.analysis.cache_events;
+    assert events.get("native_unit_lower", 0)
+        == events.get("native_unit_analysis", 0) , events;
+    for u in plan.units {
+        for dep in u.iface.deps {
+            assert plan.units.index(plan.unit(dep)) < plan.units.index(u) , f"{dep} must precede its consumer {u.path}";
+        }
+    }
+    assert names[-1] == "top.jac" , "the root_dir comes last";
+    assert names.index("base.jac") < names.index("left.jac");
+    assert names.index("base.jac") < names.index("right.jac");
+    assert names.index("base.jac") < names.index("extra.jac");
+    assert plan.root_unit().path == os.path.realpath(os.path.join(root_dir, "top.jac"));
+    inits = plan.init_symbols();
+    assert native_glob_init_name(os.path.join(root_dir, "base.jac")) in inits;
+    assert inits.index(native_glob_init_name(os.path.join(root_dir, "base.jac")))
+        < inits.index(native_glob_init_name(os.path.join(root_dir, "left.jac")));
+    assert inits[-1] == native_glob_init_name(os.path.join(root_dir, "top.jac"));
+    assert plan.root_unit().iface.entry_symbol
+        == native_entry_name(os.path.join(root_dir, "top.jac"));
+    assert "diamond_abi_version" in plan.pub_exports();
+}
+
+test "the plan drops lowered LLVM modules before optimizing bitcode" {
+    import from jaclang.compiler.driver.nativecache { NativeBuildSession }
+    root_dir = _diamond_copy();
+    original_lower = NativeBuildSession.lower;
+    original_optimize = NativeBuildSession._optimize_in_parallel;
+    lowered_count: list[int] = [];
+    optimized_count: list[int] = [];
+
+    def inspect_lower(
+        self: NativeBuildSession, path: str, use_str: (str | None) = None
+    ) -> any {
+        result = original_lower(self, path, use_str);
+        if result is not None and self.compact_on_lower {
+            module = self.lowered.get(os.path.realpath(path));
+            assert module is not None;
+            assert module.gen.llvm_ir is None and module.gen.ir_module is None , (
+                "a lowered module must release LLVM IR before the next unit"
+            );
+            assert os.path.realpath(path) in self.ir_snapshots;
+            lowered_count.append(len(self.lowered));
+        }
+        return result;
+    }
+
+    def inspect_then_optimize(self: NativeBuildSession, paths: list[str]) -> set[str] {
+        assert all(
+            module.gen.llvm_ir is None and module.gen.ir_module is None
+            for module in self.lowered.values()
+        ) , "native LLVM modules must be released before optimization";
+        assert self.ir_snapshots , "bitcode and symbol snapshots must be retained";
+        optimized_count.append(len(self.lowered));
+        return original_optimize(self, paths);
+    }
+
+    NativeBuildSession.lower = inspect_lower;
+    NativeBuildSession._optimize_in_parallel = inspect_then_optimize;
+    try {
+        (prog, plan) = _plan_for(root_dir);
+    } finally {
+        NativeBuildSession.lower = original_lower;
+        NativeBuildSession._optimize_in_parallel = original_optimize;
+    }
+    assert lowered_count and lowered_count[-1] >= len(UNITS);
+    assert optimized_count and optimized_count[0] >= len(UNITS);
+}
+
+test "a body edit rewrites one object and keeps every interface" {
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir);
+    registry = prog.native_units();
+    obj_before = registry.object_for(os.path.join(root_dir, "left.jac"), _opts());
+    base_obj_before = registry.object_for(os.path.join(root_dir, "base.jac"), _opts());
+    assert obj_before is not None and base_obj_before is not None;
+
+    left = Path(root_dir) / "left.jac";
+    left.write_text(left.read_text().replace("scale(p.sum(), 2)", "scale(p.sum(), 3)"));
+    (prog2, plan2) = _plan_for(root_dir);
+    registry2 = prog2.native_units();
+    assert registry2.compiled_paths == [os.path.realpath(str(left))] , registry2.compiled_paths;
+    assert registry2.object_for(str(left), _opts()) != obj_before , "left's object must be rebuilt";
+    assert registry2.object_for(os.path.join(root_dir, "base.jac"), _opts())
+        == base_obj_before , "base is untouched";
+    for u in plan2.units {
+        prev = plan.unit(u.path);
+        assert prev is not None and prev.digest == u.digest , f"{u.path} interface moved on a body edit";
+    }
+}
+
+test "a no-op build lowers no units and preserves the linked artifact" {
+    if _can_link_host() {
+        root_dir = _diamond_copy();
+        (prog, plan) = _plan_for(root_dir);
+        output = os.path.join(root_dir, "program");
+        first = link_artifact(plan, output, ArtifactKind.EXECUTABLE);
+        before = os.stat(output).st_mtime_ns;
+        timed = prog.analysis.phase_time;
+        for phase in (
+            "NATIVE_ANALYSIS",
+            "NATIVE_LOWER",
+            "NATIVE_OPTIMIZE",
+            "NATIVE_EMIT",
+            "NATIVE_FRONTEND_PARSE"
+        ) {
+            assert timed.get(phase, 0.0) > 0.0 , f"{phase} was not timed: {timed}";
+        }
+        summary = prog.native_units().phase_summary();
+        assert "units analysed/lowered/optimized/emitted 5/5/5/" in summary , summary;
+        (warm_prog, warm_plan) = _plan_for(root_dir);
+        assert warm_prog.native_units().compiled_paths == [] , warm_prog.native_units().compiled_paths;
+        assert warm_prog.analysis.phase_time.get("NATIVE_LOWER", 0.0) == 0.0;
+        second = link_artifact(warm_plan, output, ArtifactKind.EXECUTABLE);
+        assert second.reused;
+        assert second.sha256 == first.sha256;
+        assert os.stat(output).st_mtime_ns == before;
+        assert warm_prog.analysis.cache_events.get("native_link", 0) == 0;
+        assert warm_prog.analysis.cache_events.get("native_link_hit", 0) == 1;
+        Path(output).write_bytes(b"corrupted");
+        repaired = link_artifact(warm_plan, output, ArtifactKind.EXECUTABLE);
+        assert not repaired.reused;
+        assert repaired.sha256 == first.sha256;
+    }
+}
+
+test "the layout sidecar records the inputs a kernel is accepted by" {
+    if _can_link_host() {
+        import from jaclang.compiler.backends.native.kernel_resolve { read_sidecar }
+        import from jaclang.compiler.backends.native.link_plan { unit_source_digest }
+        import from jaclang.compiler.driver.jir { running_compiler_digest }
+        import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
+        root_dir = _diamond_copy();
+        (prog, plan) = _plan_for(root_dir);
+        output = os.path.join(root_dir, "program");
+        link_artifact(plan, output, ArtifactKind.EXECUTABLE);
+        sidecar = read_sidecar(output);
+        assert sidecar is not None;
+        assert sidecar["compiler_digest"] == running_compiler_digest();
+        assert sidecar["codegen_identity"] == _opts().base_codegen_identity();
+        assert sidecar["triple"] == plan.triple;
+        assert sidecar["unit_sources"]
+            == {
+                native_unit_identity(u.path): unit_source_digest(u.path)
+                for u in plan.units
+            };
+        assert sidecar["unit_policy"]
+            == {native_unit_identity(u.path): 0 for u in plan.units};
+    }
+}
+
+test "a closure release keeps native interfaces and drops their products" {
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir);
+    registry = prog.native_units();
+    kept = set(registry.entries);
+    assert kept , "the plan registers its units";
+    prog.release_compile_closure();
+    assert set(registry.entries) == kept , "interfaces outlive the compile that produced them";
+    assert all(
+        ent.bitcode is None and ent.object_bytes is None
+        for ent in registry.entries.values()
+    ) , "products do not";
+    assert registry.compiled_paths == [];
+    prog.release_compile_closure(retain_stubs=False);
+    assert not registry.entries , "a full release drops the interfaces too";
+}
+
+test "a link after a closure release reads unit products back without lowering" {
+    if _can_link_host() {
+        root_dir = _diamond_copy();
+        (prog, plan) = _plan_for(root_dir, NATIVE_LINK_MODE_BITCODE);
+        lowered = prog.analysis.cache_events.get("native_unit_lower", 0);
+        prog.release_compile_closure();
+        out = os.path.join(root_dir, "top_released");
+        link_artifact(plan, out, ArtifactKind.EXECUTABLE);
+        assert prog.analysis.cache_events.get("native_unit_lower", 0) == lowered;
+        run = subprocess.run([out], capture_output=True, text=True);
+        assert run.returncode == 0 , run.stderr;
+        assert run.stdout.strip() == "34" , run.stdout;
+    }
+}
+
+test "changing a default argument updates an unchanged caller's executable" {
+    if _can_link_host() {
+        root_dir = tempfile.mkdtemp(prefix="jac-default-link-");
+        base = Path(root_dir) / "base.jac";
+        base.write_text("def f(x: int = 1) -> int { return x; }");
+        consumer = Path(root_dir) / "consumer.jac";
+        consumer.write_text("import from base { f }\ndef g() -> int { return f(); }");
+        top = Path(root_dir) / "top.jac";
+        top.write_text("import from consumer { g }\nwith entry { print(g()); }");
+        (prog, plan) = _plan_for(root_dir);
+        output = os.path.join(root_dir, "program");
+        link_artifact(plan, output, ArtifactKind.EXECUTABLE);
+        base.write_text("def f(x: int = 2) -> int { return x; }");
+        (updated_prog, updated_plan) = _plan_for(root_dir);
+        link_artifact(updated_plan, output, ArtifactKind.EXECUTABLE);
+        run = subprocess.run([output], capture_output=True, text=True);
+        assert run.returncode == 0 , run.stderr;
+        assert run.stdout.strip() == "2" , run.stdout;
+        assert str(consumer.resolve()) in updated_prog.native_units().compiled_paths;
+    }
+}
+
+test "bitcode builds emit objects on demand without lowering again" {
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir, NATIVE_LINK_MODE_BITCODE);
+    registry = prog.native_units();
+    unit_path = plan.root_unit().path;
+    ent = registry.entries[unit_path];
+    assert ent.bitcode is not None and ent.object_bytes is None;
+    emitted_before = list(registry.compiled_paths);
+    obj_bytes = registry.object_for(unit_path, _opts());
+    assert obj_bytes is not None;
+    assert registry.compiled_paths == emitted_before;
+}
+
+test "a warm bitcode artifact skips whole-program optimization and emission" {
+    import from unittest.mock { patch }
+    if _can_link_host() {
+        root_dir = _diamond_copy();
+        (_, plan) = _plan_for(root_dir, NATIVE_LINK_MODE_BITCODE);
+        products = {
+            u.path: hashlib.sha256(
+                plan.prog.native_units().bitcode_for(u.path, plan.options) or b""
+            ).hexdigest() for u in plan.units
+        };
+        output = os.path.join(root_dir, "program");
+        first = link_artifact(plan, output, ArtifactKind.EXECUTABLE);
+        (_, warm) = _plan_for(root_dir, NATIVE_LINK_MODE_BITCODE);
+        assert first.plan_digest == warm.plan_digest() , "warm link plan changed";
+        warm_products = {
+            u.path: hashlib.sha256(
+                warm.prog.native_units().bitcode_for(u.path, warm.options) or b""
+            ).hexdigest() for u in warm.units
+        };
+        assert products == warm_products , f"warm unit products changed: {products} -> {warm_products}";
+        with patch(
+            "jaclang.compiler.backends.native.link_plan.plan_objects",
+            side_effect=AssertionError("warm artifact ran object generation")
+        ) {
+            second = link_artifact(warm, output, ArtifactKind.EXECUTABLE);
+            assert second.reused and second.sha256 == first.sha256;
+        }
+        Path(output).write_bytes(b"corrupted");
+        repaired = link_artifact(warm, output, ArtifactKind.EXECUTABLE);
+        assert not repaired.reused and repaired.sha256 == first.sha256;
+    }
+}
+
+test "settlement refreshes edges and removes dependencies no longer reachable" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.native_iface { NativeIface }
+    scratch = Path(tempfile.mkdtemp(prefix="jac-plan-edges-"));
+    paths: dict[str, str] = {};
+    for name in ["top", "old", "new"] {
+        path = scratch / (name + ".jac");
+        path.write_text("def f -> int { return 1; }");
+        paths[name] = str(path.resolve());
+    }
+    prog = JacProgram();
+    opts = _opts();
+    prog.options = opts;
+    registry = prog.native_units();
+    registry.record(paths["old"], NativeIface(module="old", prefix="old"), opts);
+    replacement = registry.record(
+        paths["new"], NativeIface(module="new", prefix="new"), opts
+    );
+    registry.record(
+        paths["top"], NativeIface(module="top", prefix="top", deps=[paths["old"]]), opts
+    );
+    def recompile(path: str, options: CompileOptions) -> any {
+        assert path == paths["top"];
+        return registry.record(
+            path,
+            NativeIface(module="top", prefix="top", deps=[paths["new"]]),
+            options,
+            dep_digests={paths["new"]: replacement.digest}
+        );
+    }
+    with patch.object(
+        registry, "compile_unit", side_effect=recompile
+    ) as compile_unit {
+        plan = build_link_plan(prog, [paths["top"]], opts);
+        assert compile_unit.call_count == 1;
+    }
+    assert [u.path for u in plan.units] == [paths["new"], paths["top"]];
+}
+
+test "an imported generic body invalidates native code after a bytecode cache merge" {
+    if _can_link_host() {
+        import from jaclang.compiler.driver.jir {
+            SEC_CTDEPS,
+            SEC_NCTDEPS,
+            get_module_cache_path,
+            read_section_bytes,
+            write_module_cache
+        }
+        scratch = Path(tempfile.mkdtemp(prefix="jac-generic-incremental-"));
+        base = scratch / "base.jac";
+        base.write_text("def pick[T](xs: list[T]) -> T { return xs[0]; }");
+        top = scratch / "top.jac";
+        top.write_text(
+            "import from base { pick }\nwith entry { print(pick([1, 2])); }"
+        );
+        (prog, plan) = _plan_for(str(scratch));
+        native_deps = read_section_bytes(
+            get_module_cache_path(str(top)).read_bytes(), SEC_NCTDEPS
+        );
+        assert native_deps is not None;
+        write_module_cache(str(top), None, extra_sections={SEC_CTDEPS: b""});
+        assert read_section_bytes(
+            get_module_cache_path(str(top)).read_bytes(), SEC_NCTDEPS
+        )
+            == native_deps;
+        base.write_text("def pick[T](xs: list[T]) -> T { return xs[1]; }");
+        (updated_prog, updated_plan) = _plan_for(str(scratch));
+        assert str(top.resolve()) in updated_prog.native_units().compiled_paths;
+        output = str(scratch / "program");
+        link_artifact(updated_plan, output, ArtifactKind.EXECUTABLE);
+        run = subprocess.run([output], capture_output=True, text=True);
+        assert run.returncode == 0 , run.stderr;
+        assert run.stdout.strip() == "2" , run.stdout;
+    }
+}
+
+test "an interface edit moves the dependents' recorded digests" {
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir);
+    base = Path(root_dir) / "base.jac";
+    base_digest = plan.unit(str(base)).digest;
+    base.write_text(
+        base.read_text() + "\ndef newly_exported(v: int) -> int {\n    return v;\n}\n"
+    );
+    (prog2, plan2) = _plan_for(root_dir);
+    assert plan2.unit(str(base)).digest != base_digest , "an export must move base's digest";
+    for u in plan2.units {
+        for (dep, recorded) in prog2.native_units().recorded_native_deps(u.path) {
+            live = plan2.unit(dep);
+            if live is not None {
+                assert recorded == live.digest , f"{u.path} still records a stale digest for {dep}";
+            }
+        }
+    }
+}
+
+test "a stale recorded dependency is recompiled until the plan agrees" {
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir);
+    registry = prog.native_units();
+    top = os.path.realpath(os.path.join(root_dir, "top.jac"));
+    stale = dict(registry.entries[top].dep_digests);
+    assert stale , "top must have recorded its dependencies";
+    victim = sorted(stale.keys())[0];
+    stale[victim] = "0" * 64;
+    registry.entries[top].dep_digests = stale;
+    plan2 = build_link_plan(prog, [top], _opts());
+    recorded = dict(registry.recorded_native_deps(top));
+    victim_unit = plan2.unit(victim);
+    assert victim_unit is not None , victim;
+    assert recorded.get(victim) == victim_unit.digest , recorded;
+    for u in plan2.units {
+        rows: list[tuple[str, str]] = registry.recorded_native_deps(u.path);
+        for (dep, digest) in rows {
+            live = plan2.unit(dep);
+            assert live is None or live.digest == digest , f"{u.path} disagrees on {dep}";
+        }
+    }
+}
+
+test "two links from one cache are byte-identical" {
+    if not _can_link_host() {
+        import pytest;
+        pytest.skip("host linker unavailable");
+    } else {
+        root_dir = _diamond_copy();
+        (prog, plan) = _plan_for(root_dir);
+        out_a = os.path.join(root_dir, "top_a");
+        out_b = os.path.join(root_dir, "top_b");
+        ra = link_artifact(plan, out_a, ArtifactKind.EXECUTABLE);
+        rb = link_artifact(plan, out_b, ArtifactKind.EXECUTABLE);
+        assert ra.plan_digest == rb.plan_digest;
+        assert ra.sha256 == rb.sha256 , "the link must be deterministic";
+        assert ra.layout_digest == rb.layout_digest;
+        sidecar = Path(out_a + ".layout.json").read_text();
+        assert ra.plan_digest in sidecar;
+        run = subprocess.run([out_a], capture_output=True, text=True);
+        assert run.returncode == 0 , run.stderr;
+        assert run.stdout.strip() == "34" , run.stdout;
+    }
+}
+
+test "objects mode and bitcode mode agree on the program" {
+    if not _can_link_host() {
+        import pytest;
+        pytest.skip("host linker unavailable");
+    } else {
+        root_dir = _diamond_copy();
+        (prog_o, plan_o) = _plan_for(root_dir, NATIVE_LINK_MODE_OBJECTS);
+        (prog_b, plan_b) = _plan_for(root_dir, NATIVE_LINK_MODE_BITCODE);
+        assert plan_o.mode == NATIVE_LINK_MODE_OBJECTS;
+        assert plan_b.mode == NATIVE_LINK_MODE_BITCODE;
+        out_o = os.path.join(root_dir, "top_objects");
+        out_b = os.path.join(root_dir, "top_bitcode");
+        link_artifact(plan_o, out_o, ArtifactKind.EXECUTABLE);
+        link_artifact(plan_b, out_b, ArtifactKind.EXECUTABLE);
+        for out in (out_o, out_b) {
+            run = subprocess.run([out], capture_output=True, text=True);
+            assert run.returncode == 0 , run.stderr;
+            assert run.stdout.strip() == "34" , run.stdout;
+        }
+    }
+}
+
+test "a whole program splits into partitions that link as one" {
+    import from jaclang.compiler.backends.native.llvm { binding as llvm }
+    import from jaclang.compiler.backends.native.na_compile_pass { emit_unit_objects }
+    llvm.initialize_native_target();
+    llvm.initialize_native_asmprinter();
+    llvm.initialize_native_asmparser();
+    ir = """
+@msg = private constant [3 x i8] c"hi\\00"
+define internal i64 @helper(i64 %x) {
+  %r = add i64 %x, 1
+  ret i64 %r
+}
+define i64 @alpha(i64 %x) {
+  %r = call i64 @helper(i64 %x)
+  ret i64 %r
+}
+define i64 @beta(i64 %x) {
+  %r = call i64 @helper(i64 %x)
+  %p = ptrtoint ptr @msg to i64
+  %s = add i64 %r, %p
+  ret i64 %s
+}
+define i64 @gamma(i64 %x) {
+  %r = mul i64 %x, 3
+  ret i64 %r
+}
+""";
+    parts = llvm.parse_assembly(ir, llvm.create_context()).split_bitcode(3);
+    objects = emit_unit_objects(parts, _opts());
+    assert len(objects) == 3;
+    defined: list[str] = [];
+    wanted: set[str] = set();
+    for blob in objects {
+        (blob_defined, blob_undefined) = llvm.object_symbols(blob);
+        defined.extend(s.lstrip("_") for s in blob_defined);
+        wanted.update(s.lstrip("_") for s in blob_undefined);
+    }
+    assert sorted(defined) == sorted(set(defined)) , defined;
+    assert {"alpha", "beta", "gamma"} <= set(defined);
+    assert wanted <= set(defined) , wanted - set(defined);
+    assert all(
+        s.startswith("jac_part.")
+        for s in defined
+        if s not in ("alpha", "beta", "gamma")
+    ) , defined;
+}
+
+test "a shared link exports only the C ABI" {
+    if not _can_link_host() {
+        import pytest;
+        pytest.skip("host linker unavailable");
+    } else {
+        root_dir = _diamond_copy();
+        prog = JacProgram();
+        opts = _opts();
+        base = os.path.join(root_dir, "base.jac");
+        prog.compile(file_path=base, options=opts);
+        plan = build_link_plan(prog, [base], opts);
+        suffix = ".dylib" if sys.platform == "darwin" else ".so";
+        out = os.path.join(root_dir, "libbase" + suffix);
+        result = link_artifact(plan, out, ArtifactKind.SHARED);
+        import ctypes;
+        lib = ctypes.CDLL(out);
+        assert lib.diamond_abi_version() == 1;
+        assert hasattr(lib, "__jac_shared_init");
+        assert hasattr(lib, "jac_retain") and hasattr(lib, "jac_release");
+        assert result.sha256 == hashlib.sha256(Path(out).read_bytes()).hexdigest();
+    }
+}
+
+test "shared retain and release helpers honor --gc none" {
+    if _can_link_host() {
+        import ctypes;
+        import from jaclang.compiler.frontend.codeinfo {
+            HDR_TOTAL,
+            HDR_ALLOC_ID_OFF,
+            HDR_MAGIC_SHIFT_BASE,
+            HDR_RC_OFF
+        }
+        root_dir = _diamond_copy();
+        prog = JacProgram();
+        opts = _opts();
+        opts.na_gc_mode = "none";
+        base = os.path.join(root_dir, "base.jac");
+        plan = build_link_plan(prog, [base], opts);
+        suffix = ".dylib" if sys.platform == "darwin" else ".so";
+        out = os.path.join(root_dir, "libbase" + suffix);
+        link_artifact(plan, out, ArtifactKind.SHARED);
+        lib = ctypes.CDLL(out);
+        storage = ctypes.create_string_buffer(HDR_TOTAL + 8);
+        ctypes.c_int64.from_buffer(storage, HDR_TOTAL + HDR_ALLOC_ID_OFF).value = HDR_MAGIC_SHIFT_BASE;
+        count = ctypes.c_int64.from_buffer(storage, HDR_TOTAL + HDR_RC_OFF);
+        count.value = 2;
+        ptr = ctypes.addressof(storage) + HDR_TOTAL;
+        for name in ("jac_retain", "jac_release") {
+            helper = getattr(lib, name);
+            helper.argtypes = [ctypes.c_void_p];
+            helper.restype = None;
+            helper(ptr);
+            assert count.value == 2 , f"--gc none {name} changed the reference count";
+        }
+    }
+}
+
+test "the glue supplies the region-death hook only when no unit does" {
+    import from jaclang.compiler.backends.native.link_glue {
+        REGION_DIED_HOOK,
+        link_glue_ir
+    }
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir);
+    spec = plan.glue_spec(ArtifactKind.JIT, "jit", False);
+    assert spec.needs_region_hook;
+    (glue_ir, _exports) = link_glue_ir(spec);
+    assert f"define void @{REGION_DIED_HOOK}(" in glue_ir;
+
+    graph_path = os.path.join(root_dir, "graph.jac");
+    with open(graph_path, "w") as f {
+        f.write(
+            "node Cell { has v: int = 0; }\n"
+            "walker Sum { has total: int = 0;\n"
+            "    can add with Cell entry { self.total += here.v; visit [-->]; }\n"
+            "}\n"
+            "with entry { r = Cell(v=1); r ++> Cell(v=2); print(Sum() spawn r); }\n"
+        );
+    }
+    gprog = JacProgram();
+    opts = _opts();
+    gprog.compile(file_path=graph_path, options=opts);
+    assert not gprog.errors_had , [str(e) for e in gprog.errors_had];
+    gplan = build_link_plan(gprog, [graph_path], opts);
+    suppliers = [
+        u.path
+        for u in gplan.units
+        if REGION_DIED_HOOK in u.iface.exports
+    ];
+    assert suppliers , [u.path for u in gplan.units];
+    gspec = gplan.glue_spec(ArtifactKind.JIT, "jit", False);
+    assert not gspec.needs_region_hook;
+    (gglue_ir, _gexports) = link_glue_ir(gspec);
+    assert REGION_DIED_HOOK not in gglue_ir;
+}
+
+
+test "the glue defines atexit wherever glibc would leave it unresolved" {
+    import from jaclang.compiler.backends.native.link_glue { link_glue_ir }
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir);
+    shim = "define hidden i32 @atexit(";
+    dynamic_exec = plan.glue_spec(ArtifactKind.EXECUTABLE, "elf", False);
+    assert dynamic_exec.needs_atexit_shim , (
+        "a dynamically linked ELF executable resolves atexit itself"
+    );
+    assert shim in link_glue_ir(dynamic_exec)[0];
+    shared = plan.glue_spec(ArtifactKind.SHARED, "elf", False);
+    assert shared.needs_atexit_shim;
+    static_exec = plan.glue_spec(ArtifactKind.EXECUTABLE, "elf", True);
+    assert not static_exec.needs_atexit_shim , "musl's libc.a supplies atexit";
+    assert shim not in link_glue_ir(static_exec)[0];
+    macho = plan.glue_spec(ArtifactKind.EXECUTABLE, "macho", False);
+    assert not macho.needs_atexit_shim;
+    jit = plan.glue_spec(ArtifactKind.JIT, "jit", False);
+    assert not jit.needs_atexit_shim;
+}
+
+test "a source string can settle after its dependency interface changes" {
+    if not _can_link_host() {
+        return;
+    }
+    with tempfile.TemporaryDirectory(prefix="jac-plan-source-") as tmp {
+        dep = Path(tmp) / "dep.jac";
+        dep.write_text("def answer -> int { return 7; }\n");
+        path = str((Path(tmp) / "inline.jac").resolve());
+        prog = JacProgram();
+        opts = _opts();
+        module = prog.compile(
+            file_path=path,
+            use_str="import from dep { answer }\nwith entry { print(answer()); }\n",
+            options=opts
+        );
+        assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+        registry = prog.native_units();
+        ent = registry.record_module(module, opts);
+        assert ent is not None;
+        ent.dep_digests[str(dep.resolve())] = "";
+        plan = build_link_plan(prog, [path], opts);
+        assert not os.path.exists(path);
+        assert path in registry.compiled_paths;
+        output = str(Path(tmp) / "inline-bin");
+        link_artifact(plan, output, ArtifactKind.EXECUTABLE);
+        result = subprocess.run([output], capture_output=True, text=True);
+        assert result.returncode == 0 , result.stderr;
+        assert result.stdout.strip() == "7";
+    }
+}
+
+test "a unit retains prepared dependency interfaces when disk products are unavailable" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir);
+    registry = prog.native_units();
+    top = plan.root_unit().path;
+    prior = dict(registry.entries[top].dep_digests);
+    assert prior and all(prior.values());
+    with patch.object(NativeUnitRegistry, "_module_jir", return_value=None) {
+        ent = registry.compile_unit(top, _opts());
+    }
+    assert ent is not None , registry.failures;
+    assert ent.dep_digests == prior;
+}
+
+test "native plans compile without per-unit subprocesses" {
+    import from unittest.mock { patch }
+    root_dir = _diamond_copy();
+    with patch(
+        "subprocess.run", side_effect=AssertionError("native unit started a subprocess")
+    ) {
+        (prog, plan) = _plan_for(root_dir);
+    }
+    events = prog.analysis.cache_events;
+    assert events.get("native_unit_analysis", 0) > 0;
+    assert events.get("native_unit_analysis", 0)
+        == len(prog.native_units().compiled_paths);
+    assert prog.native_units().session is None;
+}
+
+test "an import cycle settles without repeating frontend analysis or optimization" {
+    with tempfile.TemporaryDirectory(prefix="jac-native-cycle-") as root_dir {
+        even = Path(root_dir) / "even.jac";
+        odd = Path(root_dir) / "odd.jac";
+        even.write_text(
+            "import from odd { odd }\n"
+                + "def even(n: int) -> bool { if n == 0 { return True; } return odd(n - 1); }\n"
+                + "with entry { print(even(10)); }\n"
+        );
+        odd.write_text(
+            "import from even { even }\n"
+                + "def odd(n: int) -> bool { if n == 0 { return False; } return even(n - 1); }\n"
+        );
+        prog = JacProgram();
+        plan = build_link_plan(prog, [str(even)], _opts());
+        events = prog.analysis.cache_events;
+        compiled = prog.native_units().compiled_paths;
+        assert str(even.resolve()) in compiled and str(odd.resolve()) in compiled;
+        assert len(compiled) == len(set(compiled));
+        assert events.get("native_unit_analysis", 0) == len(compiled);
+        assert events.get("native_unit_lower", 0) == len(compiled) , events;
+        assert events.get("native_dep_adopt", 0) >= 1 , events;
+        for unit in plan.units {
+            consumed = prog.native_units().entries[unit.path].dep_digests;
+            for dep in unit.iface.deps {
+                dependency = plan.unit(dep);
+                assert dependency is not None;
+                assert consumed[dep] == dependency.digest;
+            }
+        }
+        if _can_link_host() {
+            output = str(Path(root_dir) / "cycle");
+            link_artifact(plan, output, ArtifactKind.EXECUTABLE);
+            run = subprocess.run([output], capture_output=True, text=True, timeout=10);
+            assert run.returncode == 0 and run.stdout.strip() == "True" , run.stderr;
+        }
+    }
+}
+
+test "a cycle unit lowered before its dependency demoted a name it calls lowers again" {
+    with tempfile.TemporaryDirectory(prefix="jac-native-cycle-demote-") as root_dir {
+        even = Path(root_dir) / "even.jac";
+        odd = Path(root_dir) / "odd.jac";
+        even.write_text(
+            "import from odd { odd }\n"
+                + "def:pub probe(x: any) -> int { return x.bit_length(); }\n"
+                + "def:pub even(n: int) -> bool { if n == 0 { return True; } return odd(n - 1); }\n"
+        );
+        odd.write_text(
+            "import from even { even, probe }\n"
+                + "def odd(n: int) -> bool { if n == 0 { return False; } return even(n - 1); }\n"
+                + "def:pub odd_probe(n: int) -> int { return probe(n); }\n"
+        );
+        prog = JacProgram();
+        plan = build_link_plan(prog, [str(even)], _opts());
+        events = prog.analysis.cache_events;
+        assert events.get("native_dep_adopt_refused", 0) >= 1 , events;
+        odd_unit = plan.unit(str(odd.resolve()));
+        assert odd_unit is not None and "odd_probe" in odd_unit.iface.demoted;
+        for unit in plan.units {
+            consumed = prog.native_units().entries[unit.path].dep_digests;
+            for dep in unit.iface.deps {
+                dependency = plan.unit(dep);
+                assert dependency is not None;
+                assert consumed[dep] == dependency.digest;
+            }
+        }
+        if _can_link_host() {
+            suffix = ".dylib" if sys.platform == "darwin" else ".so";
+            out = str(Path(root_dir) / ("libeven" + suffix));
+            link_artifact(plan, out, ArtifactKind.SHARED);
+            import ctypes;
+            assert ctypes.CDLL(out).even(4) == 1;
+        }
+    }
+}
+
+test "a cycle unit that imports a demoted name without calling it keeps its single lowering" {
+    with tempfile.TemporaryDirectory(prefix="jac-native-cycle-unused-") as root_dir {
+        even = Path(root_dir) / "even.jac";
+        odd = Path(root_dir) / "odd.jac";
+        even.write_text(
+            "import from odd { odd }\n"
+                + "def:pub probe(x: any) -> int { return x.bit_length(); }\n"
+                + "def:pub even(n: int) -> bool { if n == 0 { return True; } return odd(n - 1); }\n"
+        );
+        odd.write_text(
+            "import from even { even, probe }\n"
+                + "def:pub odd(n: int) -> bool { if n == 0 { return False; } return even(n - 1); }\n"
+        );
+        prog = JacProgram();
+        plan = build_link_plan(prog, [str(even)], _opts());
+        events = prog.analysis.cache_events;
+        assert events.get("native_dep_adopt", 0) >= 1 , events;
+        assert events.get("native_dep_adopt_refused", 0) == 0 , events;
+        assert events.get("native_unit_lower", 0) == len(plan.units) , events;
+    }
+}
+
+def _target_object(triple: str, text: str) -> bytes {
+    import jaclang.compiler.backends.native.llvm.binding as llvm;
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    llvm.initialize_all_asmparsers();
+    tm = llvm.Target.from_triple(triple).create_target_machine(reloc="pic");
+    mod = llvm.parse_assembly(text);
+    mod.triple = triple;
+    mod.data_layout = str(tm.target_data);
+    return tm.emit_object(mod);
+}
+
+test "a link refuses unit objects that reference a symbol no unit defines" {
+    import from jaclang.compiler.backends.native.link_plan {
+        LinkPlan,
+        LinkUnit,
+        unresolved_unit_symbols
+    }
+    import from jaclang.compiler.driver.native_iface { NativeIface }
+    units = [
+        LinkUnit(
+            path=f"/units/{name}.jac",
+            prefix=name,
+            digest=name,
+            iface=NativeIface(module=name, prefix=name)
+        ) for name in ("caller_unit", "callee_unit")
+    ];
+    for triple in ("x86_64-unknown-linux-gnu", "arm64-apple-macosx11.0.0") {
+        caller = _target_object(
+            triple,
+            'declare void @"callee_unit.gone"()\n'
+                + 'declare void @"probe"()\n'
+                + 'declare void @"callee_unit.kept"()\n'
+                + 'declare i32 @"puts"(ptr)\n'
+                + 'define void @"caller_unit.run"() {\n'
+                + '  call void @"callee_unit.gone"()\n'
+                + '  call void @"probe"()\n'
+                + '  call void @"callee_unit.kept"()\n'
+                + '  %r = call i32 @"puts"(ptr null)\n'
+                + '  ret void\n}\n'
+        );
+        callee = _target_object(
+            triple,
+            'define void @"callee_unit.kept"() { ret void }\n'
+                + 'define void @"probe.__jac_demoted"() { ret void }\n'
+        );
+        glue = _target_object(
+            triple, 'define void @"jac_glue_marker"() { ret void }\n'
+        );
+        plan = LinkPlan(
+            prog=JacProgram(),
+            options=_opts(),
+            roots=[units[0].path],
+            units=units,
+            mode="objects",
+            triple=triple
+        );
+        found = unresolved_unit_symbols(plan, [caller, callee, glue]);
+        assert len(found) == 2 , (triple, found);
+        assert found[0].startswith("callee_unit.gone (not defined by callee_unit.jac")
+            and "used by caller_unit.jac" in found[0] , (triple, found);
+        assert found[1].startswith("probe (demoted to Python")
+            and "used by caller_unit.jac" in found[1] , (triple, found);
+        assert unresolved_unit_symbols(plan, [callee, glue]) == [];
+    }
+}
+
+test "object emission preserves the native record without an existing disk entry" {
+    import from jaclang.compiler.driver.jir {
+        get_module_cache_path,
+        ct_deps_section,
+        rebase_ct_deps_section
+    }
+    root_dir = _diamond_copy();
+    (prog, plan) = _plan_for(root_dir, NATIVE_LINK_MODE_BITCODE);
+    registry = prog.native_units();
+    path = plan.root_unit().path;
+    prior = registry.entries[path];
+    prior.compile_deps_base = root_dir;
+    prior.compile_deps = rebase_ct_deps_section(
+        ct_deps_section([os.path.join(root_dir, "base.jac")]), root_dir
+    );
+    get_module_cache_path(path).unlink();
+    assert registry.object_for(path, _opts()) is not None;
+    warm = JacProgram().native_units().ensure(
+        path, compile_on_miss=False, options=_opts()
+    );
+    assert warm is not None;
+    assert warm.digest == prior.digest;
+    assert warm.dep_digests == prior.dep_digests;
+    assert warm.bitcode == prior.bitcode;
+}
+
+test "cross-target build sessions preserve source identity and prepared interfaces" {
+    import from unittest.mock { patch }
+    import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+    import jaclang.compiler.backends.native.llvm.binding as llvm;
+    host = CompileOptions().effective_triple();
+    root_dir = _diamond_copy();
+    opts = _opts();
+    opts.native_target = "aarch64-unknown-linux-gnu";
+    prog = JacProgram();
+    plan = build_link_plan(prog, [os.path.join(root_dir, "top.jac")], opts);
+    registry = prog.native_units();
+    top = plan.root_unit().path;
+    prior = dict(registry.entries[top].dep_digests);
+    with patch.object(NativeUnitRegistry, "_module_jir", return_value=None) {
+        ent = registry.compile_unit(top, opts);
+    }
+    assert ent is not None , registry.failures;
+    assert ent.dep_digests == prior;
+    assert ent.bitcode is not None;
+    assert f'target triple = "{opts.native_target}"'
+        in str(llvm.parse_bitcode(ent.bitcode));
+    assert CompileOptions().effective_triple() == host;
+}
+
+test "native build CLI reuses warm artifacts under each memory profile" {
+    import from tests.support { native_build, native_run, NATIVE_MEMORY_PROFILES }
+    with tempfile.TemporaryDirectory(prefix="jac-native-cli-reuse-") as tmp {
+        src = os.path.join(tmp, "main.jac");
+        output = os.path.join(tmp, "program");
+        Path(src).write_text("with entry { print(7); }\n");
+        for memory in NATIVE_MEMORY_PROFILES {
+            cold = native_build(src, output, memory=memory);
+            assert "Recompiled 0 unit(s)" not in cold , cold;
+            assert native_run(output).strip() == "7";
+            warm = native_build(src, output, memory=memory);
+            assert "Recompiled 0 unit(s)" in warm , warm;
+            assert "Up to date:" in warm , warm;
+        }
+        native_build(src, output, extra=["--link-mode", "bitcode"]);
+        assert native_run(output).strip() == "7";
+    }
+}
+
+test "unhandled errors in a qualified native entry fail the executable" {
+    import from tests.support { native_build }
+    with tempfile.TemporaryDirectory(prefix="jac-native-entry-error-") as tmp {
+        src = os.path.join(tmp, "main.jac");
+        output = os.path.join(tmp, "program");
+        Path(src).write_text(
+            "def fail(v: int) { assert v > 0; }\nwith entry { fail(0); }\n"
+        );
+        for mode in [NATIVE_LINK_MODE_OBJECTS, NATIVE_LINK_MODE_BITCODE] {
+            native_build(src, output, memory="nogc", extra=["--link-mode", mode]);
+            result = subprocess.run([output], capture_output=True, text=True);
+            assert result.returncode != 0 , "an unhandled assertion silently succeeded";
+            assert "jac: unhandled exception:" in result.stdout + result.stderr , f"{mode}: exit={result.returncode}, stdout={result.stdout!r}, stderr={result.stderr!r}";
+        }
+    }
+}
+
+
+test "native source fingerprints are stable across caller cache contexts" {
+    import from jaclang.compiler.driver.compilation_context { cache_scope }
+    import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+    import from jaclang.compiler.frontend.codeinfo {
+        get_effective_default_codespace_override,
+        set_effective_default_codespace
+    }
+    import from jaclang.compiler.driver.compile_options {
+        push_native_target,
+        pop_native_target
+    }
+    with tempfile.TemporaryDirectory() as work {
+        source = Path(work) / "stable.jac";
+        source.write_text("def value() -> int { return 1; }\n");
+        with cache_scope(CompileOptions(target_app="caller")) {
+            before = NativeUnitRegistry._source_key(str(source));
+        }
+        with cache_scope(CompileOptions(target_app="dependency")) {
+            after = NativeUnitRegistry._source_key(str(source));
+        }
+        assert before is not None;
+        assert before == after;
+        prior_codespace = get_effective_default_codespace_override();
+        target_token = push_native_target('wasm32-unknown-unknown');
+        try {
+            for space in ['server', 'client', 'native'] {
+                set_effective_default_codespace(space);
+                assert NativeUnitRegistry._source_key(str(source)) == before;
+            }
+        } finally {
+            set_effective_default_codespace(prior_codespace);
+            pop_native_target(target_token);
+        }
+        source.write_text("def value() -> int { return 2; }\n");
+        assert NativeUnitRegistry._source_key(str(source)) != before;
+    }
+}
+
+test "a source edit during settlement aborts without persisting a stale unit" {
+    import from jaclang.compiler.driver.nativecache { NativeBuildSession }
+    with tempfile.TemporaryDirectory() as work {
+        source = Path(work) / "changed.jac";
+        source.write_text("def value() -> int { return 1; }\n");
+        prog = JacProgram();
+        registry = prog.native_units();
+        session = NativeBuildSession(registry=registry, options=_opts());
+        registry.session = session;
+        try {
+            assert session.lower(str(source)) is not None;
+            source.write_text("def value() -> int { return 2; }\n");
+            with testraises(RuntimeError, `match="source changed during analysis") {
+                session.finish([str(source.resolve())]);
+            }
+            assert not registry.compiled_paths;
+        } finally {
+            registry.session = None;
+            session.close();
+        }
+        plan = build_link_plan(prog, [str(source)], _opts());
+        assert plan.root_unit().path == str(source.resolve());
+        assert len(registry.compiled_paths) > 0;
+    }
+}
+
+
+test "alternating native configurations retain their reusable unit products" {
+    with tempfile.TemporaryDirectory() as cache_dir {
+        source = str(Path(cache_dir) / "configurations.jac");
+        Path(source).write_text("with entry { print(42); }\n");
+        standard = _opts(NATIVE_LINK_MODE_BITCODE);
+        alternate = _opts(NATIVE_LINK_MODE_BITCODE);
+        alternate.native_threads = int(standard.native_threads or 4) + 1;
+        first = JacProgram();
+        first.options = standard;
+        cold = build_link_plan(first, [source], standard);
+        other = JacProgram();
+        other.options = alternate;
+        build_link_plan(other, [source], alternate);
+        warm = JacProgram();
+        warm.options = standard;
+        plan = build_link_plan(warm, [source], standard);
+        assert not warm.native_units().compiled_paths , warm.native_units().compiled_paths;
+        assert plan.plan_digest() == cold.plan_digest();
+    }
+}
+
+test "concurrent JIR writers preserve every native variant and bytecode" {
+    import time;
+    import from concurrent.futures { ThreadPoolExecutor }
+    import from threading { Barrier }
+    import from unittest.mock { patch }
+    import jaclang.compiler.driver.jir as jir;
+    with tempfile.TemporaryDirectory() as cache_dir {
+        source = str(Path(cache_dir) / "concurrent.jac");
+        Path(source).write_text("with entry { print(42); }\n");
+        barrier = Barrier(8);
+        original = jir._mergeable_sections;
+        def slow_read(
+            path: Path,
+            keys: dict[int, bytes],
+            incoming: (dict[int, bytes] | None) = None
+        ) -> tuple[dict[int, bytes], int, bool] {
+            snapshot = original(path, keys, incoming);
+            time.sleep(0.02);
+            return snapshot;
+        }
+        def writer(index: int) -> bool {
+            barrier.wait(timeout=30);
+            stamp = jir.NativeStamp(
+                compiler_digest="compiler", codegen_identity=str(index), triple="target"
+            );
+            return jir.write_module_cache(
+                source,
+                None,
+                extra_sections={jir.SEC_NBITCODE: stamp.pack(str(index).encode())}
+            );
+        }
+        assert jir.write_module_cache(source, b"bytecode");
+        with patch.object(jir, "_mergeable_sections", side_effect=slow_read) {
+            with ThreadPoolExecutor(max_workers=8) as pool {
+                assert all(pool.map(writer, range(8)));
+            }
+        }
+        data = jir.get_module_cache_path(source).read_bytes();
+        assert jir.read_section_bytes(data, jir.SEC_BYTECODE) == b"bytecode";
+        section = jir.read_section_bytes(data, jir.SEC_NBITCODE);
+        for index in range(8) {
+            stamp = jir.NativeStamp(
+                compiler_digest="compiler", codegen_identity=str(index), triple="target"
+            );
+            assert jir.native_section_payload(section, stamp) == str(index).encode();
+        }
+        replacement = jir.NativeStamp(
+            compiler_digest="new compiler", codegen_identity="0", triple="target"
+        );
+        assert jir.write_module_cache(
+            source, None, extra_sections={jir.SEC_NBITCODE: replacement.pack(b"new")}
+        );
+        data = jir.get_module_cache_path(source).read_bytes();
+        section = jir.read_section_bytes(data, jir.SEC_NBITCODE);
+        assert len(jir.native_section_variants(section)) == 1;
+        assert jir.native_section_payload(section, replacement) == b"new";
+    }
+}
+
+
+test "replacing native bitcode invalidates its previous optional object" {
+    import jaclang.compiler.driver.jir as jir;
+    with tempfile.TemporaryDirectory() as cache_dir {
+        source = str(Path(cache_dir) / "products.jac");
+        Path(source).write_text("with entry { print(42); }\n");
+        stamp = jir.NativeStamp(
+            compiler_digest="compiler", codegen_identity="options", triple="target"
+        );
+        assert jir.write_module_cache(
+            source,
+            None,
+            extra_sections={
+                jir.SEC_NBITCODE: stamp.pack(b"old bitcode"),
+                jir.SEC_NOBJ: stamp.pack(b"old object")
+            }
+        );
+        assert jir.write_module_cache(
+            source, None, extra_sections={jir.SEC_NBITCODE: stamp.pack(b"new bitcode")}
+        );
+        data = jir.get_module_cache_path(source).read_bytes();
+        assert jir.native_section_payload(
+            jir.read_section_bytes(data, jir.SEC_NBITCODE), stamp
+        )
+            == b"new bitcode";
+        assert jir.native_section_payload(
+            jir.read_section_bytes(data, jir.SEC_NOBJ), stamp
+        )
+            is None;
+    }
+}
+
+test "shared artifacts reject Python imports before publishing" {
+    import from jaclang.compiler.backends.native.link_plan {
+        LinkPlan,
+        LinkUnit,
+        LinkPlanError
+    }
+    import from jaclang.compiler.driver.native_iface { NativeIface }
+    with tempfile.TemporaryDirectory() as directory {
+        path = str(Path(directory) / "unit.jac");
+        iface = NativeIface(module="unit", prefix="unit", python_imports=["helper"]);
+        unit = LinkUnit(
+            path=path, prefix="unit", digest=iface.digest(), iface=iface, is_root=True
+        );
+        plan = LinkPlan(
+            prog=JacProgram(),
+            options=_opts(),
+            roots=[path],
+            units=[unit],
+            mode="objects",
+            triple="x86_64-unknown-linux-gnu"
+        );
+        output = str(Path(directory) / "libunit.so");
+        raised = False;
+        try {
+            link_artifact(plan, output, ArtifactKind.SHARED);
+        } except LinkPlanError as exc {
+            raised = True;
+            assert path in str(exc)
+                and "helper" in str(exc)
+                and "JIT bridge" in str(exc);
+        }
+        assert raised;
+        assert not Path(output).exists();
+    }
+}
+
+test "imported strings keep their ABI across enforced and runtime units" {
+    if _can_link_host() {
+        with tempfile.TemporaryDirectory(prefix="jac-string-abi-") as root_dir {
+            (Path(root_dir) / "base.jac").write_text(
+                'def suffix(value: str) -> str { return value[1:] + "!"; }\n'
+            );
+            top = Path(root_dir) / "top.jac";
+            top.write_text(
+                'import from base { suffix }\n'
+                    + 'with entry { print(suffix("hello")); }\n'
+            );
+            for mode in (NATIVE_LINK_MODE_OBJECTS, NATIVE_LINK_MODE_BITCODE) {
+                options = _opts(mode);
+                options.memory_profile = "nogc";
+                options.memory_enforce = ["top"];
+                program = JacProgram();
+                program.options = options;
+                plan = build_link_plan(program, [str(top)], options, mode=mode);
+                output = os.path.join(root_dir, "program-" + mode);
+                link_artifact(plan, output, ArtifactKind.EXECUTABLE);
+                run = subprocess.run([output], capture_output=True, text=True);
+                assert run.returncode == 0 , run.stderr;
+                assert run.stdout == "ello!\n" , run.stdout;
+            }
+        }
+    }
+}
+
+test "the JIT reuses the optimized image of an unchanged link plan" {
+    import ctypes;
+    import from jaclang.compiler.backends.native.link_plan { jit_engine_for_cached }
+    with tempfile.TemporaryDirectory(prefix="jac-jit-image-") as cache_dir {
+        source = str(Path(cache_dir) / "reuse.jac");
+        Path(source).write_text("def:pub answer -> int { return 42; }\n");
+        opts = _opts(NATIVE_LINK_MODE_BITCODE);
+        first = JacProgram();
+        first.options = opts;
+        engine = jit_engine_for_cached(first, source, opts);
+        assert engine is not None;
+        events = first.analysis.cache_events;
+        assert events.get("jit_image_build", 0) == 1 , dict(events);
+        second = JacProgram();
+        second.options = opts;
+        again = jit_engine_for_cached(second, source, opts);
+        assert again is not None;
+        events = second.analysis.cache_events;
+        assert events.get("jit_image_hit", 0) == 1 , dict(events);
+        assert events.get("jit_image_build", 0) == 0 , dict(events);
+        address = again.get_function_address("answer");
+        assert address;
+        assert ctypes.CFUNCTYPE(ctypes.c_int64)(address)() == 42;
+    }
+}
+
+test "an analysis-only consumer records a dependency's interface without emitting its products" {
+    import from jaclang.compiler.driver.jir {
+        get_module_cache_path,
+        read_section_bytes,
+        SEC_NBITCODE,
+        SEC_NOBJ
+    }
+    tmp = _diamond_copy();
+    top = os.path.join(tmp, "top.jac");
+    prog = JacProgram();
+    opts = CompileOptions(
+        no_cgen=True,
+        native_required=True,
+        default_codespace='native',
+        skip_native_engine=True
+    );
+    prog.compile(file_path=top, options=opts);
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
+    events = prog.analysis.cache_events;
+    assert events.get("native_unit_analysis_only", 0) >= 1 , dict(events);
+    registry = prog.native_units();
+    for name in ["base.jac", "left.jac", "right.jac", "extra.jac"] {
+        dep = os.path.realpath(os.path.join(tmp, name));
+        ent = registry.entries.get(dep);
+        assert ent is not None and ent.iface is not None , name;
+        assert ent.bitcode is None and ent.object_bytes is None , name;
+        cache_path = get_module_cache_path(dep);
+        if cache_path.exists() {
+            data = cache_path.read_bytes();
+            assert read_section_bytes(data, SEC_NBITCODE) is None , name;
+            assert read_section_bytes(data, SEC_NOBJ) is None , name;
+        }
+    }
+}
+
+"""The facts an importer records for an imported function come from the
+dependency's own interface, so a unit lowered against a warm dependency
+records the same element keys as one lowered alongside it."""
+def _imported_ret_keys(root_dir: str) -> any {
+    prog = JacProgram();
+    opts = _opts(NATIVE_LINK_MODE_BITCODE);
+    prog.options = opts;
+    top = os.path.join(root_dir, "top.jac");
+    unit = prog.native_units().ensure(top, compile_on_miss=True, options=opts);
+    assert unit is not None and unit.iface.layout is not None;
+    record = unit.iface.layout.functions.get("evens");
+    return record.ret_elem_keys if record is not None else None;
+}
+
+test "an importer records an imported function's element keys from its interface" {
+    root_dir = tempfile.mkdtemp(prefix="jac-imported-keys-");
+    Path(root_dir, "lib.jac").write_text(
+        "def:pub evens(n: int) -> list[int] {\n"
+        "    return [i * 2 for i in range(n)];\n"
+        "}\n"
+    );
+    top = Path(root_dir, "top.jac");
+    top.write_text(
+        "import from .lib { evens }\n" "with entry { print(len(evens(3))); }\n"
+    );
+    cold = _imported_ret_keys(root_dir);
+    top.write_text(
+        "import from .lib { evens }\n" "with entry { print(len(evens(4))); }\n"
+    );
+    warm = _imported_ret_keys(root_dir);
+    assert cold == warm , f"cold {cold} vs warm {warm}";
+    assert cold == ["int"] , cold;
+}
+
+glob CASCADE_SOURCES: dict[str, str] = {
+         "tok.jac": "obj CancelToken {\n    has cancelled: bool = False;\n}\n",
+         "prog.jac": (
+             "import from .tok { CancelToken }\n"
+             "import from .graph { Graph }\n\n"
+             "obj Prog {\n    has name: str = \"p\",\n        adjacency: (Graph | None) = None;\n\n"
+             "    def parse(src: str, path: str, token: (CancelToken | None) = None) -> int;\n}\n\n"
+             "def helper(p: Prog) -> int {\n    import from .user { run }\n"
+             "    return run(1) if p.name == \"never\" else 0;\n}\n"
+         ),
+         "prog.impl.jac": (
+             "impl Prog.parse(src: str, path: str, token: (CancelToken | None) = None) -> int {\n"
+             "    if token is not None and token.cancelled {\n        return -1;\n    }\n"
+             "    return len(src) + len(path);\n}\n"
+         ),
+         "graph.jac": (
+             "import from .tok { CancelToken }\n\n"
+             "obj Adj {\n    has rows_out: list[int] = [],\n        owner: (CancelToken | None) = None;\n}\n\n"
+             "obj Graph {\n    has adj: dict[int, Adj] = {};\n\n"
+             "    def size -> int {\n        return len(self.adj);\n    }\n\n"
+             "    def parser_of -> int {\n        import from .prog { Prog }\n"
+             "        return Prog().parse(\"a\", \"b\");\n    }\n}\n"
+         ),
+         "walk.jac": (
+             "node Spot {\n    has val: int = 0;\n}\n\n"
+             "edge Link: Spot --> Spot {\n    has weight: int = 1;\n}\n\n"
+             "walker Counter {\n    has total: int = 0;\n\n"
+             "    can visit_spot with Spot entry {\n        self.total += here.val;\n        visit [-->];\n    }\n}\n\n"
+             "def:pub build_and_walk(n: int) -> int {\n    first = Spot(val=1);\n    cur = first;\n"
+             "    for i in range(n) {\n        nxt = Spot(val=i);\n        cur +>:Link(weight=i):+> nxt;\n"
+             "        cur = nxt;\n    }\n    w = Counter();\n    first spawn w;\n    return w.total;\n}\n"
+         ),
+         "user.jac": (
+             "import from .prog { Prog }\n"
+             "import from .graph { Graph, Adj }\n"
+             "import from .walk { build_and_walk }\n\n"
+             "def:pub run(n: int) -> int {\n    p = Prog();\n    g = Graph();\n"
+             "    g.adj[n] = Adj(rows_out=[n]);\n"
+             "    return p.parse(\"abc\", \"x.jac\") + g.size() + build_and_walk(n);\n}\n"
+         )
+     },
+     CASCADE_PLAN_SCRIPT: str = """
+import json, os, sys
+import jaclang
+from jaclang.compiler.driver.program import JacProgram
+from jaclang.compiler.backends.native.kernel_resolve import kernel_options
+from jaclang.compiler.backends.native.link_plan import build_link_plan
+prog = JacProgram()
+plan = build_link_plan(prog, [os.path.join(sys.argv[1], 'pkg', 'user.jac')], kernel_options(), native_unit=True)
+assert os.path.realpath(jaclang.__file__).startswith(os.path.realpath(sys.argv[2])), jaclang.__file__
+print(json.dumps({
+    'digests': {os.path.basename(u.path): u.digest for u in plan.units},
+    'lowered': sorted({os.path.basename(p) for p in prog.native_units().compiled_paths}),
+}))
+""";
+
+"""Each unit's interface digest after planning the cascade project from
+`root_dir`, and the units that build lowered. Every build runs in its own
+process: a dependency the parent already analyzed would hide a unit whose interface depends on how deeply its
+imports were read."""
+def _cascade_plan(root_dir: str) -> tuple[dict[str, str], list[str]] {
+    import json;
+    import from tests.support { compiler_python_command }
+    source_root = str(Path(str(jaclang.__file__)).resolve().parent.parent);
+    env = {
+        k: v
+        for (k, v) in os.environ.items()
+        if k != "JAC_STANDALONE"
+    };
+    run = subprocess.run(
+        compiler_python_command(CASCADE_PLAN_SCRIPT, root_dir, source_root),
+        capture_output=True,
+        text=True,
+        env=env
+    );
+    assert run.returncode == 0 , run.stderr[-3000:];
+    result = json.loads(run.stdout.strip().splitlines()[-1]);
+    return (result["digests"], result["lowered"]);
+}
+
+test "an edit inside one unit's body lowers that unit alone" {
+    root_dir = tempfile.mkdtemp(prefix="jac-cascade-");
+    Path(root_dir, "jac.toml").write_text(
+        "[project]\nname = \"cascade\"\nversion = \"0.1.0\"\n"
+    );
+    Path(root_dir, "pkg").mkdir();
+    Path(root_dir, "pkg", "__init__.jac").write_text("");
+    for (name, text) in CASCADE_SOURCES.items() {
+        Path(root_dir, "pkg", name).write_text(text);
+    }
+    (cold, _) = _cascade_plan(root_dir);
+    impl_path = Path(root_dir, "pkg", "prog.impl.jac");
+    impl_path.write_text(impl_path.read_text() + "\n# a comment changes nothing\n");
+    (warm, lowered) = _cascade_plan(root_dir);
+    assert lowered == ["prog.jac"] , f"lowered {lowered}";
+    assert warm == cold , {
+        name: (cold.get(name), warm.get(name))
+        for name in set(cold) | set(warm)
+        if cold.get(name) != warm.get(name)
+    };
+}
+
+"""The number of `NaIRGenPass` instances alive each time a unit starts
+lowering, over a cold build of `entry`. A dependency lowered inside its
+consumer's pass shows up as a live pass."""
+def _live_passes_at_lower(entry_path: str) -> tuple[list[int], set[str]] {
+    import gc;
+    prog = JacProgram();
+    opts = _opts();
+    opts.no_ir_cache = True;
+    prog.options = opts;
+    live_at_lower: list[int] = [];
+    def progress(line: str) {
+        if " lower " in line {
+            gc.collect();
+            live_at_lower.append(
+                sum(
+                    1
+                    for o in gc.get_objects()
+                    if type(o).__name__ == "NaIRGenPass"
+                )
+            );
+        }
+    }
+    prog.native_units().progress = progress;
+    plan = build_link_plan(prog, [entry_path], opts);
+    return (live_at_lower, {os.path.basename(u.path) for u in plan.units});
+}
+
+test "a dependency lowers only after its consumer's pass has let go of its IR" {
+    root_dir = _diamond_copy();
+    (live_at_lower, lowered) = _live_passes_at_lower(os.path.join(root_dir, "top.jac"));
+    assert set(UNITS) <= lowered , lowered;
+    assert live_at_lower , "no unit was lowered";
+    assert max(live_at_lower) == 0 , (
+        f"a lowering started inside another unit's pass: {live_at_lower}"
+    );
+}
+
+test "the OSP kernels lower before the unit that consults them" {
+    root_dir = tempfile.mkdtemp(prefix="jac-kernel-deps-");
+    Path(root_dir, "lib.jac").write_text(
+        "node Spot {\n    has v: int = 0;\n}\n\n"
+        "def label(x: int, name: str) -> str {\n    return f\"{name:>8}={x}\";\n}\n"
+    );
+    Path(root_dir, "top.jac").write_text(
+        "import from lib { Spot, label }\n\n"
+        "def run(n: int) -> str {\n    s = Spot(v=n);\n    return label(s.v, \"spot\");\n}\n"
+    );
+    (live_at_lower, lowered) = _live_passes_at_lower(os.path.join(root_dir, "top.jac"));
+    kernels = {"osp_kernel.jac", "osp_graph.jac"};
+    assert {"lib.jac", "top.jac"} | kernels <= lowered , lowered;
+    assert max(live_at_lower) == 0 , (
+        f"a kernel lowered inside a consumer's pass: {live_at_lower}"
+    );
+}
+
+"""Over a cold build of `entry`: how many times each unit's lowering built
+the runtime helpers, and how many LLVM functions each lowering attempt that
+stopped to have its dependencies lowered first had built by then."""
+def _work_per_attempt(entry_path: str) -> tuple[dict[str, int], list[tuple[str, int]]] {
+    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+    prog = JacProgram();
+    opts = _opts();
+    opts.no_ir_cache = True;
+    prog.options = opts;
+    helper_runs: dict[str, int] = {};
+    stopped: list[tuple[str, int]] = [];
+    emit_helpers: any = NaIRGenPass._emit_rc_helpers;
+    run_impl: any = NaIRGenPass._run_impl;
+    def counting_helpers(gen: NaIRGenPass) {
+        name = os.path.basename(gen.module.loc.mod_path);
+        helper_runs[name] = helper_runs.get(name, 0) + 1;
+        emit_helpers(gen);
+    }
+    def watching_run(gen: NaIRGenPass, ir_in: any) -> any {
+        out = run_impl(gen, ir_in);
+        if gen._deps_deferred {
+            stopped.append(
+                (
+                    os.path.basename(gen.module.loc.mod_path),
+                    len(gen.llvm_module.functions)
+                )
+            );
+        }
+        return out;
+    }
+    setattr(NaIRGenPass, "_emit_rc_helpers", counting_helpers);
+    setattr(NaIRGenPass, "_run_impl", watching_run);
+    try {
+        build_link_plan(prog, [entry_path], opts);
+    } finally {
+        setattr(NaIRGenPass, "_emit_rc_helpers", emit_helpers);
+        setattr(NaIRGenPass, "_run_impl", run_impl);
+    }
+    return (helper_runs, stopped);
+}
+
+test "a lowering that stops for its dependencies builds no IR, so each unit builds its runtime helpers once" {
+    root_dir = _diamond_copy();
+    (helper_runs, stopped) = _work_per_attempt(os.path.join(root_dir, "top.jac"));
+    assert set(UNITS) <= set(helper_runs) , helper_runs;
+    assert stopped , "no lowering stopped to have its dependencies lowered first";
+    assert all(count == 0 for (_, count) in stopped) , (
+        f"a stopped lowering built LLVM functions: {stopped}"
+    );
+    assert all(runs == 1 for runs in helper_runs.values()) , (
+        f"a unit built its runtime helpers more than once: {helper_runs}"
+    );
+}
+
+test "the formatting kernel lowers before a unit that parses an int or calls a bytes method" {
+    root_dir = tempfile.mkdtemp(prefix="jac-kernel-deps-");
+    Path(root_dir, "lib.jac").write_text(
+        "def parse(text: str) -> int {\n    return int(text);\n}\n\n"
+        "def hexed(data: bytes) -> str {\n    return data.hex();\n}\n"
+    );
+    Path(root_dir, "top.jac").write_text(
+        "import from lib { parse, hexed }\n\n"
+        "def run(text: str) -> str {\n    return hexed(b\"ab\") + str(parse(text));\n}\n"
+    );
+    (live_at_lower, lowered) = _live_passes_at_lower(os.path.join(root_dir, "top.jac"));
+    assert {"lib.jac", "top.jac", "fmt_kernel.jac"} <= lowered , lowered;
+    assert max(live_at_lower) == 0 , (
+        f"a kernel lowered inside a consumer's pass: {live_at_lower}"
+    );
+}

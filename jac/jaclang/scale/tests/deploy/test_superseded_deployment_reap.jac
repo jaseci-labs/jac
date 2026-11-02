@@ -1,18 +1,4 @@
 import from types { SimpleNamespace }
-import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-    KubernetesConfig
-}
-import from jaclang.scale.deploy.target.kubernetes.manifest_builder { ManifestBuilder }
-import from jaclang.scale.deploy.target.kubernetes.target {
-    KubernetesTarget,
-    restorable_pod_template,
-    app_bundle_digest,
-    releases_from_revisions,
-    fleet_targets_for_release,
-    fleet_revert_order,
-    deployment_rollout_complete
-}
 
 # A Deployment as a pre-0.34.9 toolchain wrote it: bare app name, no role label,
 # and the same pod selector the current one uses.
@@ -64,10 +50,15 @@ def _hand_rolled_canary(app: str) -> any {
 
 obj FakeAppsV1 {
     has items: list[any],
-        deleted: list[str] = [];
+        deleted: list[str] = [],
+        stateful_sets: list[any] = [];
 
     def list_namespaced_deployment(namespace: str, **kwargs: any) -> any {
         return SimpleNamespace(items=list(self.items));
+    }
+
+    def list_namespaced_stateful_set(namespace: str, **kwargs: any) -> any {
+        return SimpleNamespace(items=list(self.stateful_sets));
     }
 
     def delete_namespaced_deployment(name: str, namespace: str, **kwargs: any) {
@@ -446,16 +437,29 @@ def _rollout(
     replicas: int,
     updated: int,
     available: int,
-    desired: int = 1
+    desired: int = 1,
+    floor: (int | None) = None,
+    stuck: bool = False,
+    ready: (int | None) = None
 ) -> any {
+    annotations = {REPLICA_FLOOR_ANNOTATION: str(floor)} if floor is not None else None;
+    conditions = [
+        SimpleNamespace(
+            type="Progressing", reason="ProgressDeadlineExceeded", message="stuck"
+        )
+    ]
+        if stuck
+        else [];
     return SimpleNamespace(
-        metadata=SimpleNamespace(generation=generation),
+        metadata=SimpleNamespace(generation=generation, annotations=annotations),
         spec=SimpleNamespace(replicas=desired),
         status=SimpleNamespace(
             observed_generation=observed,
             replicas=replicas,
             updated_replicas=updated,
-            available_replicas=available
+            available_replicas=available,
+            ready_replicas=available if ready is None else ready,
+            conditions=conditions
         )
     );
 }
@@ -464,37 +468,349 @@ def _rollout(
 # The rollout waiter used to accept "at least one ready replica". Immediately
 # after a pod template is patched the OLD pods are still ready, so it returned
 # success before the reverted template had rolled out at all, and a revert that
-# never started -- or crash-looped once it did -- still reported success.
-test "a rollout is not complete while the old pods are the ready ones" {
-    assert not deployment_rollout_complete(
-        _rollout(generation=2, observed=1, replicas=1, updated=0, available=1)
-    ) , "the controller has not observed the patch yet";
-    assert not deployment_rollout_complete(
-        _rollout(generation=2, observed=2, replicas=1, updated=0, available=1)
-    ) , "no replica runs the reverted template yet";
-    assert not deployment_rollout_complete(
-        _rollout(generation=2, observed=2, replicas=2, updated=1, available=1)
-    ) , "an old replica is still serving beside the reverted one";
-    assert not deployment_rollout_complete(
-        _rollout(generation=2, observed=2, replicas=1, updated=1, available=0)
-    ) , "the reverted pod exists but has not become available";
+# never started -- or crash-looped once it did -- still reported success. The
+# same verdict now also has to tell a deliberately idle workload (replica floor
+# 0) from one that should be up, and a failed rollout from a slow one.
+test "assess_workload settles only on active or intentionally inactive" {
+    cases: list[tuple[any, str, bool, bool, str]] = [
+        (
+            _rollout(generation=2, observed=1, replicas=1, updated=0, available=1),
+            "activating",
+            False,
+            True,
+            "the controller has not observed the patch yet"
+        ),
+        (
+            _rollout(generation=2, observed=2, replicas=1, updated=0, available=1),
+            "activating",
+            False,
+            True,
+            "no replica runs the reverted template yet"
+        ),
+        (
+            _rollout(generation=2, observed=2, replicas=2, updated=1, available=1),
+            "activating",
+            False,
+            True,
+            "an old replica is still serving beside the reverted one"
+        ),
+        (
+            _rollout(generation=2, observed=2, replicas=1, updated=1, available=0),
+            "activating",
+            False,
+            False,
+            "the reverted pod exists but has not become available"
+        ),
+        (
+            _rollout(generation=2, observed=2, replicas=1, updated=1, available=1),
+            "active",
+            True,
+            True,
+            "every replica runs the new template"
+        ),
+        (
+            _rollout(
+                generation=3, observed=3, replicas=3, updated=3, available=3, desired=3
+            ),
+            "active",
+            True,
+            True,
+            "three of three"
+        ),
+        (
+            _rollout(
+                generation=3, observed=3, replicas=2, updated=2, available=2, desired=3
+            ),
+            "activating",
+            False,
+            True,
+            "a three replica service is not rolled out on two"
+        ),
+        (
+            _rollout(
+                generation=3, observed=3, replicas=3, updated=3, available=3, desired=1
+            ),
+            "deactivating",
+            False,
+            True,
+            "surplus replicas are still draining after a scale-down"
+        ),
+        (
+            _rollout(
+                generation=1, observed=1, replicas=0, updated=0, available=0, desired=0
+            ),
+            "degraded",
+            False,
+            False,
+            "zero replicas with no floor stamped is a workload that should be up"
+        ),
+        (
+            _rollout(
+                generation=1,
+                observed=1,
+                replicas=0,
+                updated=0,
+                available=0,
+                desired=0,
+                floor=0
+            ),
+            "inactive",
+            True,
+            True,
+            "zero replicas at a replica floor of zero is the idle resting state"
+        ),
+        (
+            _rollout(
+                generation=1,
+                observed=1,
+                replicas=1,
+                updated=1,
+                available=1,
+                desired=0,
+                floor=0
+            ),
+            "deactivating",
+            False,
+            True,
+            "the last replica is still draining down to idle"
+        ),
+        (
+            _rollout(
+                generation=2, observed=2, replicas=2, updated=1, available=1, stuck=True
+            ),
+            "degraded",
+            False,
+            False,
+            "a rollout past its progress deadline is broken even while the old replica serves"
+        ),
+        (
+            _rollout(
+                generation=1,
+                observed=1,
+                replicas=2,
+                updated=2,
+                available=2,
+                desired=2,
+                ready=0
+            ),
+            "active",
+            True,
+            True,
+            "active is serving whatever ready_replicas the apiserver reported"
+        )
+    ];
+    for (dep, expected, settled, serving, why) in cases {
+        health = assess_workload(dep);
+        assert health.status.value == expected , f"{why}: got {health.status.value}";
+        assert health.is_settled() == settled , f"{why}: settled={health.is_settled()}";
+        assert health.is_serving() == serving , f"{why}: serving={health.is_serving()}";
+    }
+    assert not assess_workload(
+        _rollout(generation=2, observed=2, replicas=1, updated=1, available=0),
+        crashlooping=True
+    ).is_settled();
+    assert assess_workload(
+        _rollout(generation=2, observed=2, replicas=1, updated=1, available=0),
+        crashlooping=True
+    ).reason
+        == "CrashLoopBackOff";
 }
 
 
-test "a rollout is complete once every replica runs the new template" {
-    assert deployment_rollout_complete(
-        _rollout(generation=2, observed=2, replicas=1, updated=1, available=1)
-    );
-    assert deployment_rollout_complete(
-        _rollout(
-            generation=3, observed=3, replicas=3, updated=3, available=3, desired=3
+obj FakeCoreV1 {
+    has pods: list[any];
+
+    def list_namespaced_pod(namespace: str, **kwargs: any) -> any {
+        return SimpleNamespace(items=list(self.pods));
+    }
+
+    def list_node(**kwargs: any) -> any {
+        return SimpleNamespace(items=[]);
+    }
+}
+
+
+def _container(
+    ready: bool,
+    restarts: int,
+    waiting: (str | None) = None,
+    last_terminated: bool = False
+) -> any {
+    return SimpleNamespace(
+        name="main",
+        ready=ready,
+        restart_count=restarts,
+        state=SimpleNamespace(
+            waiting=SimpleNamespace(reason=waiting) if waiting else None,
+            running=None if waiting else SimpleNamespace(),
+            terminated=None
+        ),
+        last_state=SimpleNamespace(
+            terminated=SimpleNamespace(exit_code=1) if last_terminated else None
         )
     );
-    assert not deployment_rollout_complete(
-        _rollout(
-            generation=3, observed=3, replicas=2, updated=2, available=2, desired=3
+}
+
+
+def _pod(
+    app: str,
+    ready: bool,
+    restarts: int,
+    waiting: (str | None) = None,
+    last_terminated: bool = False,
+    deleting: bool = False,
+    labeled: bool = True,
+    statuses: bool = True,
+    init_statuses: (list[any] | None) = None,
+    phase: str = "Running"
+) -> any {
+    return SimpleNamespace(
+        metadata=SimpleNamespace(
+            name=f"{app}-pod",
+            labels={"app": app} if labeled else None,
+            deletion_timestamp="2026-01-01T00:00:00Z" if deleting else None
+        ),
+        status=SimpleNamespace(
+            phase=phase,
+            init_container_statuses=init_statuses,
+            container_statuses=[_container(ready, restarts, waiting, last_terminated)]
+                if statuses
+                else None
         )
-    ) , "a three replica service is not rolled out on two";
+    );
+}
+
+
+# restart_count is the lifetime total and never goes down. `jac deploy status`
+# read any nonzero count as "crash-looping", so a pod that restarted once while
+# its volume attached read degraded through every later rollout. Only a
+# container (init containers included) that is not Ready now and has restarted
+# is crash-looping, which is the rule the deploy-wait path shares.
+test "status reads a container's current state, not its lifetime restart count" {
+    import unittest.mock;
+    # (label, the app's pod, expected status of a Deployment mid-rollout)
+    cases: list[tuple[str, any, str]] = [
+        (
+            "restarted twice, Ready now",
+            _pod("standup", ready=True, restarts=2),
+            "activating"
+        ),
+        (
+            "waiting in CrashLoopBackOff",
+            _pod("standup", ready=False, restarts=2, waiting="CrashLoopBackOff"),
+            "degraded"
+        ),
+        (
+            "not Ready and its last run terminated",
+            _pod("standup", ready=False, restarts=3, last_terminated=True),
+            "degraded"
+        ),
+        (
+            "not Ready, running, restarted, no last state recorded",
+            _pod("standup", ready=False, restarts=3),
+            "degraded"
+        ),
+        (
+            "an init container in CrashLoopBackOff",
+            _pod(
+                "standup",
+                ready=False,
+                restarts=0,
+                waiting="PodInitializing",
+                init_statuses=[_container(False, 2, waiting="CrashLoopBackOff")]
+            ),
+            "degraded"
+        ),
+        (
+            "an init container that finished after a restart",
+            _pod(
+                "standup",
+                ready=True,
+                restarts=0,
+                init_statuses=[_container(True, 2, last_terminated=True)]
+            ),
+            "activating"
+        ),
+        (
+            "still starting, never restarted",
+            _pod("standup", ready=False, restarts=0, waiting="ContainerCreating"),
+            "activating"
+        ),
+        (
+            "an outgoing pod being deleted",
+            _pod(
+                "standup",
+                ready=False,
+                restarts=5,
+                waiting="CrashLoopBackOff",
+                deleting=True
+            ),
+            "activating"
+        ),
+        (
+            "an evicted pod whose container had restarted",
+            _pod(
+                "standup", ready=False, restarts=1, last_terminated=True, phase="Failed"
+            ),
+            "activating"
+        ),
+        (
+            "another app's crash-looping pod",
+            _pod("other", ready=False, restarts=5, waiting="CrashLoopBackOff"),
+            "activating"
+        ),
+        (
+            "a pod with no labels",
+            _pod(
+                "standup",
+                ready=False,
+                restarts=5,
+                waiting="CrashLoopBackOff",
+                labeled=False
+            ),
+            "activating"
+        ),
+        (
+            "a pod that reports no container statuses yet",
+            _pod("standup", ready=False, restarts=0, statuses=False),
+            "activating"
+        )
+    ];
+    deployment = _rollout(generation=2, observed=2, replicas=2, updated=1, available=1);
+    deployment.metadata.name = "standup";
+    core = FakeCoreV1(pods=[]);
+    wrong: list[str] = [];
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.target.kubernetes.kubernetes_target.k8s_cluster_config"
+    ), unittest.mock.patch(
+        "jaclang.scale.deploy.target.kubernetes.kubernetes_target.client.AppsV1Api",
+        return_value=FakeAppsV1(items=[deployment])
+    ), unittest.mock.patch(
+        "jaclang.scale.deploy.target.kubernetes.kubernetes_target.client.CoreV1Api",
+        return_value=core
+    ) {
+        for (label, pod, expected) in cases {
+            core.pods = [pod];
+            status = _target().get_full_status("standup");
+            app = [
+                c
+                for c in status["components"]
+                if c["name"] == "Jaseci App"
+            ][0];
+            if app["status"] != expected {
+                wrong.append(f"{label}: expected {expected}, got {app['status']}");
+            }
+        }
+    }
+    assert wrong == [] , "\n".join(wrong);
+    # min_restarts is one threshold for every state, so a waiting container
+    # under it is tolerated and one at it is not.
+    assert not container_crashlooping(
+        _container(False, 1, waiting="CrashLoopBackOff"), 3
+    );
+    assert container_crashlooping(_container(False, 3, waiting="CrashLoopBackOff"), 3);
+    assert container_crashlooping(_container(False, 3), 3);
+    assert not container_crashlooping(_container(True, 9), 3);
 }
 
 
@@ -784,7 +1100,7 @@ obj _FakeClient {
 
 Three stand-ins: the kubernetes client the function builds, the kubeconfig load,
 and the post-revert rollout wait. The wait polls a live cluster on a sleep loop
-and has its own tests (deployment_rollout_complete above); what these exercise is
+and has its own tests (assess_workload above); what these exercise is
 which Deployments a revert touches and in what order."""
 def _rollback_with(api: any) -> any {
     with unittest.mock.patch.object(target_mod, "client", _FakeClient(apps=api)) {
@@ -907,4 +1223,20 @@ test "the retention keep-set refuses to answer from an unreadable cluster" {
         "an empty keep-set from an unreadable cluster tells a pruner to delete "
         "every bundle the app references"
     );
+}
+
+
+test "the autoscaler's view is reachable from the public SDK" {
+    # Before this, asking why a workload sat at zero meant importing internal
+    # module paths and wiring three Kubernetes API clients by hand, so the
+    # capability existed and no application could use it.
+    assert hasattr(ScaleClient, "autoscaler_status");
+    assert hasattr(ScaleClient, "watch_autoscaler_transitions");
+    assert AutoscalerRuntimeStatus is not None;
+    assert AutoscalerTransition is not None;
+
+    # The scale-target name a caller no longer has to know the shape of: which
+    # autoscaler resource is live depends on the scaling mode, and deriving it
+    # is what the abstraction is for.
+    assert ScaleClient()._scale_target_name("orders") == "orders-deployment";
 }

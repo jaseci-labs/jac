@@ -1,3 +1,4 @@
+import from jaclang.runtime.python.cpython_api { PyObject }
 import from jaclang.runtime.python.constant_output { constant_object }
 import from jaclang.runtime.python.objects {
     PyCode,
@@ -23,7 +24,7 @@ import from jaclang.runtime.python.compiler_integer {
     PyBigInt
 }
 
-def:pub probe_constants -> u64 {
+def:pub probe_constants -> ptr[PyObject] {
     same = PyStr(t="str", val="repeat");
     values: list[PyObj] = [
         py_none(),
@@ -75,15 +76,15 @@ def sample_code -> PyCode {
     );
 }
 
-def:pub code_object -> u64 {
+def:pub code_object -> ptr[PyObject] {
     return constant_object(sample_code());
 }
 
-def:pub nested_code_objects -> u64 {
+def:pub nested_code_objects -> ptr[PyObject] {
     return constant_object(PyTuple(t="tuple", items=[sample_code(), sample_code()]));
 }
 
-def:pub integer_arithmetic -> u64 {
+def:pub integer_arithmetic -> ptr[PyObject] {
     one = PyInt(t="int", val=1);
     large = integer_from_digits([0, 0, 0, 0, 0, 0, 1024], False);
     halfway = integer_add(large, integer_from_digits([0, 0, 0, 4], False));

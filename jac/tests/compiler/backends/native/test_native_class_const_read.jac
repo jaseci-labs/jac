@@ -23,18 +23,27 @@ something lowered. The other half -- `TypeBase.category.__get__` leaving its
 waiver when this landed -- was pinned by `test_type_system_seal_baseline`,
 deleted with the native seal (#8735).
 
-The last case is the one that stays broken on purpose. A flat imported
-ancestor with no vtable slot puts its first field at slot 0 while a subclass
-needs that slot for one, so the subclass's layout cannot hold the inherited
-name and a constructor keyword naming it is dropped. #8253 named the honest
-fix -- stop giving such a subclass a vtable slot it does not need -- and left
-it to its own change; the test pins the state so it cannot drift unnoticed.
+The last case pins the follow-up #8253 named. A flat imported ancestor with
+no vtable slot puts its first field at slot 0, and a subclass kept a vtable
+slot there only because it was an `isinstance` target, so its layout could
+not hold the inherited name and a constructor keyword naming it was dropped.
+A build whose allocations carry a header answers `isinstance` from the class
+name stamped there, so the slot is dropped and the subclass adopts its
+ancestor's slots verbatim.
 """
 
 import os;
 import subprocess;
 import tempfile;
-import from tests.support { jac_command, TESTS_DIR, native_force_opts }
+import from tests.support {
+    TESTS_DIR,
+    by_source_name,
+    jac_command,
+    names_global,
+    native_force_opts,
+    source_spelled,
+    unit_symbol
+}
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -116,9 +125,9 @@ test "the class-constant fixture lowers with no seam" {
 
 test "each declaring class gets its own constant" {
     (_prog, ir) = compile_native("class_const_read.jac");
-    text = str(ir.gen.llvm_ir);
+    text = source_spelled(str(ir.gen.llvm_ir));
     for name in ("Node.CATEGORY", "Leaf.CATEGORY", "Branch.CATEGORY") {
-        assert f'@"{name}"' in text , (
+        assert names_global(text, name) , (
             f"{name} was folded away instead of getting its own storage"
         );
     }
@@ -127,7 +136,7 @@ test "each declaring class gets its own constant" {
 
 test "a redefined constant is picked on the receiver's vtable" {
     (_prog, ir) = compile_native("class_const_read.jac");
-    text = str(ir.gen.llvm_ir);
+    text = source_spelled(str(ir.gen.llvm_ir));
     assert "cc.CATEGORY.Leaf" in text and "cc.CATEGORY.Branch" in text , (
         "the per-class read did not dispatch; a single load here would give "
         "every subclass the base's value"
@@ -137,7 +146,7 @@ test "a redefined constant is picked on the receiver's vtable" {
 
 test "a constant no subclass redefines stays a plain load" {
     (_prog, ir) = compile_native("class_const_read.jac");
-    text = str(ir.gen.llvm_ir);
+    text = source_spelled(str(ir.gen.llvm_ir));
     assert "cconst.WIDTH" in text , "the uniform read lost its direct load";
     assert "cc.WIDTH." not in text , (
         "a constant with no disagreeing subclass paid for a dispatch chain"
@@ -147,13 +156,15 @@ test "a constant no subclass redefines stays a plain load" {
 
 test "the annotation decides the constant's shape, not the literal" {
     (_prog, ir) = compile_native("class_const_read.jac");
-    text = str(ir.gen.llvm_ir);
-    assert '@"Metered.RATE" = global double' in text , (
+    text = source_spelled(str(ir.gen.llvm_ir));
+    assert f'@"{source_spelled(unit_symbol(ir, "Metered.RATE"))}" = global double'
+        in text , (
         "`RATE: ClassVar[float] = 0` took its shape from the integer literal, "
         "so every read of it answers with an integer and the subclass's "
         "double-valued global cannot be dispatched against it"
     );
-    assert '@"Fast.RATE" = global double' in text , "the override lost its shape";
+    assert f'@"{source_spelled(unit_symbol(ir, "Fast.RATE"))}" = global double'
+        in text , "the override lost its shape";
     assert "cc.RATE.Fast" in text , (
         "the float constant did not dispatch, which is what a shape "
         "disagreement between base and subclass looks like"
@@ -163,7 +174,7 @@ test "the annotation decides the constant's shape, not the literal" {
 
 test "a declaration with no value raises instead of defaulting" {
     (_prog, ir) = compile_native("class_const_read.jac");
-    text = str(ir.gen.llvm_ir);
+    text = source_spelled(str(ir.gen.llvm_ir));
     assert "cc.SIDES.Tri" in text and "cc.SIDES.Quad" in text , (
         "the abstract base's read did not dispatch to its subclasses"
     );
@@ -185,9 +196,12 @@ test "the class constants read the same on both lanes" {
 test "a consumer links the declaring module's constants rather than redefining them" {
     (prog, ir) = compile_native("class_const_xmod_main.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    text = str(ir.gen.llvm_ir);
+    text = source_spelled(str(ir.gen.llvm_ir));
     for line in text.split("\n") {
-        if line.startswith('@"Unit.SCALE"') or line.startswith('@"Double.SCALE"') {
+        if line.startswith(f'@"{source_spelled(unit_symbol(ir, "Unit.SCALE"))}"')
+            or line.startswith(
+                f'@"{source_spelled(unit_symbol(ir, "Double.SCALE"))}"'
+            ) {
             assert "external global" in line , (
                 f"the consumer defined an imported class's constant, which "
                 f"gives the link two definitions of one symbol: {line.strip()}"
@@ -201,22 +215,23 @@ test "a consumer links the declaring module's constants rather than redefining t
 }
 
 
-test "a flat imported ancestor still holds no slot for its field" {
+test "a subclass of a flat imported ancestor adopts its field slot" {
     prog = JacProgram();
     ir = prog.compile(
         file_path=os.path.join(FIXTURES, "xmod_isinstance_flat_main.jac"),
         options=native_force_opts()
     );
     reg = get_layout_registry(ir, prog);
-    kid = reg.get_layout("MainKid");
+    kid = by_source_name(reg.layouts).get("MainKid");
     assert kid is not None , "no layout for MainKid";
-    assert "x" not in dict(kid.field_index) , (
-        "MainKid adopted its flat ancestor's slot assignment; if that is "
-        "intended, the constructor-keyword drop below is now reachable and "
-        "this pin should become an equality check instead"
+    point = by_source_name(reg.layouts).get("Point");
+    assert point is not None , "no layout for Point";
+    assert dict(kid.field_index).get("x") == dict(point.field_index).get("x") , (
+        f"MainKid must read 'x' where Point put it: kid {dict(kid.field_index)}, "
+        f"point {dict(point.field_index)}"
     );
-    assert kid.has_vtable , (
-        "MainKid lost the vtable slot that makes the ancestor's slot 0 "
-        "unusable; #8253's follow-up landed and this pin is stale"
+    assert not kid.has_vtable , (
+        "MainKid is only an isinstance target; the allocation header answers "
+        "that, so it must not carry a vtable slot its flat ancestor lacks"
     );
 }

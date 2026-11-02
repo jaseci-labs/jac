@@ -5,15 +5,16 @@ the PyastBuildPass, and that specific conversions (docstrings, f-strings)
 are handled properly.
 """
 
-import from jaclang.compiler.passes.execution { run_walker }
-
 import ast as py_ast;
 import inspect;
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
-import from jaclang.compiler.passes.pyast_load_pass { PyastBuildPass }
-import from jaclang.compiler.tools.unparse_pass { unparse_module }
+import from jaclang.compiler.passes.pyast_load_pass {
+    PyastBuildPass,
+    build_python_module
+}
+import from jaclang.compiler.tools.jac_formatter_pass { unparse_module }
 import from jaclang.project.source { pascal_to_snake }
 import from jaclang.compiler.frontend.parser.lexer { tokenize_full }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -67,12 +68,11 @@ test "str2doc" {
         file_source = f.read();
     }
     code = unparse_module(
-        run_walker(
-            PyastBuildPass,
-            module=PythonModuleAst(
+        build_python_module(
+            PythonModuleAst(
                 py_ast.parse(file_source), orig_src=Source(file_source, "str2doc.py")
             )
-        ).module
+        )
     );
     assert '"""This is a test function."""\ndef foo()' in code;
     # \n and \t must remain as escape sequences, not real control characters
@@ -85,13 +85,12 @@ test "fstring triple quotes" {
         file_source = f.read();
     }
     code = unparse_module(
-        run_walker(
-            PyastBuildPass,
-            module=PythonModuleAst(
+        build_python_module(
+            PythonModuleAst(
                 py_ast.parse(file_source),
                 orig_src=Source(file_source, "py2jac_fstrings.py")
             )
-        ).module
+        )
     );
     assert 'f"""Hello\n{name}"""' in code;
     assert "f'''Hello\n{name}'''''''" not in code;
@@ -104,13 +103,12 @@ test "py2jac escape sequences" {
         file_source = f.read();
     }
     code = unparse_module(
-        run_walker(
-            PyastBuildPass,
-            module=PythonModuleAst(
+        build_python_module(
+            PythonModuleAst(
                 py_ast.parse(file_source),
                 orig_src=Source(file_source, "py2jac_escape_sequences.py")
             )
-        ).module
+        )
     );
 
     # No actual ESC character (0x1b) should leak into output
@@ -138,13 +136,12 @@ test "py2jac escape sequences" {
 test "py2jac named unicode escape stays loud" {
     file_source = "unicode_named = \"\\N{LATIN SMALL LETTER A}\"\n";
     code = unparse_module(
-        run_walker(
-            PyastBuildPass,
-            module=PythonModuleAst(
+        build_python_module(
+            PythonModuleAst(
                 py_ast.parse(file_source),
                 orig_src=Source(file_source, "py2jac_named_unicode.py")
             )
-        ).module,
+        ),
         requires_format=False
     );
     assert "\\N{LATIN SMALL LETTER A}" in code , (
@@ -171,13 +168,12 @@ test "py2jac line continuation string concat" {
         file_source = f.read();
     }
     code = unparse_module(
-        run_walker(
-            PyastBuildPass,
-            module=PythonModuleAst(
+        build_python_module(
+            PythonModuleAst(
                 py_ast.parse(file_source),
                 orig_src=Source(file_source, "py2jac_line_continuation.py")
             )
-        ).module,
+        ),
         requires_format=False
     );
 
@@ -207,13 +203,12 @@ test "py2jac binop operator precedence" {
         file_source = f.read();
     }
     code = unparse_module(
-        run_walker(
-            PyastBuildPass,
-            module=PythonModuleAst(
+        build_python_module(
+            PythonModuleAst(
                 py_ast.parse(file_source),
                 orig_src=Source(file_source, "py2jac_binop.py")
             )
-        ).module
+        )
     );
 
     assert "((a + b) + c)" not in code , f"Same-op chain not flattened in: {code}";

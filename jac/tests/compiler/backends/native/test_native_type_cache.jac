@@ -12,7 +12,7 @@ test "native type caching preserves primitive and class value storage in either 
     module = program.compile(
         file_path="type_storage.jac",
         use_str="def identity(value: int) -> int { return value; }",
-        options=CompileOptions(no_cgen=True, force_target_program=True)
+        options=CompileOptions(no_cgen=True)
     );
     assert isinstance(module, Module);
     assert not program.errors_had;
@@ -26,9 +26,12 @@ test "native type caching preserves primitive and class value storage in either 
     assert annotation.mangle() == class_value.mangle();
     for reverse in [False, True] {
         ctx = CompileContext(
-            current_node=module, from_pass=NaIRGenPass, pass_name="NaIRGenPass"
+            current_node=module,
+            from_pass=NaIRGenPass,
+            pass_name="NaIRGenPass",
+            program=program
         );
-        lowering = NaIRGenPass(module=module, prog=program, ctx=ctx);
+        lowering = NaIRGenPass(module=module, ctx=ctx);
         first = class_value if reverse else annotation;
         second = annotation if reverse else class_value;
         lowering._lower_type(first);

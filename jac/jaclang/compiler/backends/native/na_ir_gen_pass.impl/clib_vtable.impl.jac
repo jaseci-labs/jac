@@ -21,7 +21,7 @@ impl NaIRGenPass._clib_coerce_callback(
     val: ir.Value, c_fn_ty: ir.PointerType
 ) -> ir.Value {
     if self._closure_struct_of(val.type) is not None {
-        self.ctx.emit(
+        self.emit(
             E5092,
             kind="expression",
             name="Jac closure passed as a C function pointer",
@@ -29,9 +29,18 @@ impl NaIRGenPass._clib_coerce_callback(
         );
         return ir.Constant(c_fn_ty, None);
     }
+    if isinstance(val, ir.Function) and val.name.endswith(".jac") {
+        c_definition = self._clib_exports.get(val.name[:-len(".jac")]);
+        if c_definition is not None {
+            return self.builder.bitcast(c_definition, c_fn_ty, name="clibcb.cdef");
+        }
+    }
     if isinstance(val, ir.Function) {
-        if val.function_type == c_fn_ty.pointee {
+        if val.function_type == c_fn_ty.pointee and self._is_kernel_unit() {
             return self.builder.bitcast(val, c_fn_ty, name="clibcb.direct");
+        }
+        if self.clib_extern_fns.get(val.name) is val {
+            return self.builder.bitcast(val, c_fn_ty, name="clibcb.cfn");
         }
         tramp = self._emit_clib_c_trampoline(val, c_fn_ty);
         return self.builder.bitcast(tramp, c_fn_ty, name="clibcb.tramp");
@@ -43,7 +52,7 @@ impl NaIRGenPass._clib_coerce_callback(
 
     native_address = val.type == ir.IntType(64);
     if not typed_pointer and not null_pointer and not native_address {
-        self.ctx.emit(
+        self.emit(
             E5092,
             kind="expression",
             name="erased value passed as a C function pointer",
@@ -69,26 +78,72 @@ impl NaIRGenPass._clib_cb_coerce_scalar(
     return self._coerce_type(val, target_type);
 }
 
+impl NaIRGenPass._c_abi_key(sig: ir.FunctionType) -> str {
+    word = ir.IntType(64);
+    parts: list[str] = [];
+    for t in sig.args {
+        parts.append("w" if isinstance(t, ir.PointerType) or t == word else str(t));
+    }
+    ret = sig.return_type;
+    parts.append(
+        "w"
+            if isinstance(ret, (ir.PointerType, ir.VoidType)) or ret == word
+            else str(ret)
+    );
+    return ",".join(parts) + ("..." if sig.var_arg else "");
+}
+
 impl NaIRGenPass._emit_clib_c_trampoline(
     jac_fn: ir.Function, c_fn_ty: ir.PointerType
 ) -> ir.Function {
-    key = f"{jac_fn.name}|{c_fn_ty}";
+    c_sig = c_fn_ty.pointee;
+    assert isinstance(c_sig, ir.FunctionType);
+    key = f"{jac_fn.name}|{self._c_abi_key(c_sig)}";
     cached = self.clib_trampoline_funcs.get(key);
     if cached is not None {
         return cached;
     }
     n = len(self.clib_trampoline_funcs);
-    tramp = ir.Function(
-        self.llvm_module, c_fn_ty.pointee, name=f"{jac_fn.name}.__clibcb.{n}"
-    );
+    tramp = ir.Function(self.llvm_module, c_sig, name=f"{jac_fn.name}.__clibcb.{n}");
     tramp.linkage = "internal";
     `entry = tramp.append_basic_block("entry");
     saved_builder = self._builder;
     self._builder = ir.IRBuilder(`entry);
+    for (i, arg) in enumerate(tramp.args) {
+        arg.name = f"c.arg{i}";
+    }
+    if self._c_entry_tail_or_escape(tramp, jac_fn) {
+        self._builder = saved_builder;
+        self.clib_trampoline_funcs[key] = tramp;
+        return tramp;
+    }
+    if self._direct_c_entry(tramp) or not self._thunk_tail_callable(tramp, tramp) {
+        self._emit_clib_trampoline_call(tramp, jac_fn, True);
+    } else {
+        opened = self._region_open_test();
+        escape_bb = tramp.append_basic_block("centry.region.open");
+        call_bb = tramp.append_basic_block("centry.call");
+        self.builder.cbranch(opened, escape_bb, call_bb).set_weights([1, 2000]);
+        self.builder.position_at_end(call_bb);
+        self._emit_clib_trampoline_call(tramp, jac_fn, False);
+        esc = self._c_entry_escape_shell(tramp);
+        self.builder.position_at_end(escape_bb);
+        self._thunk_tail_call(tramp, esc);
+        self._builder = ir.IRBuilder(esc.append_basic_block("entry"));
+        self._emit_clib_trampoline_call(esc, jac_fn, True);
+    }
+    self._builder = saved_builder;
+    self.clib_trampoline_funcs[key] = tramp;
+    return tramp;
+}
+
+impl NaIRGenPass._emit_clib_trampoline_call(
+    tramp: ir.Function, jac_fn: ir.Function, bracket: bool
+) -> None {
+    c_sig = tramp.function_type;
     jac_params = jac_fn.function_type.args;
     call_args: list[ir.Value] = [];
     for (i, arg) in enumerate(tramp.args) {
-        arg.name = f"c.arg{i}";
         if i < len(jac_params) {
             call_args.append(self._clib_cb_coerce_scalar(arg, jac_params[i]));
         }
@@ -101,8 +156,10 @@ impl NaIRGenPass._emit_clib_c_trampoline(
             call_args.append(ir.Constant(pty, 0));
         }
     }
+    saved = self._region_c_entry_escape() if bracket else None;
     result = self.builder.call(jac_fn, call_args, name="clibcb.call");
-    c_ret = c_fn_ty.pointee.return_type;
+    self._region_c_entry_restore(saved);
+    c_ret = c_sig.return_type;
     if isinstance(c_ret, ir.VoidType) {
         self.builder.ret_void();
     } elif isinstance(jac_fn.function_type.return_type, ir.VoidType) {
@@ -114,14 +171,12 @@ impl NaIRGenPass._emit_clib_c_trampoline(
     } else {
         self.builder.ret(self._clib_cb_coerce_scalar(result, c_ret));
     }
-    self._builder = saved_builder;
-    self.clib_trampoline_funcs[key] = tramp;
-    return tramp;
 }
 
 impl NaIRGenPass._lower_clib_function_type(
     arch_name: str, fname: str, t: any
 ) -> ir.Type {
+    assert isinstance(t, SemanticFunctionType);
     i8p = ir.IntType(8).as_pointer();
     _sd = self._str_desc_ty;
     _bt = self._get_bytes_struct_type();
@@ -142,7 +197,7 @@ impl NaIRGenPass._lower_clib_function_type(
     if t.return_type is not None {
         _r = self._lower_type(t.return_type);
         if _r is not None {
-            if _sd is not None and _r == _sd {
+            if fname and _sd is not None and _r == _sd {
                 if arch_name not in self.clib_fnptr_str_ret {
                     self.clib_fnptr_str_ret[arch_name] = set();
                 }
@@ -151,9 +206,16 @@ impl NaIRGenPass._lower_clib_function_type(
             ret_type = c_scalar(_r);
         }
     }
+
     param_types: list[ir.Type] = [];
     for p in (t.parameters or []) {
-        param_types.append(c_scalar(self._lower_type(p.param_type)));
+        if isinstance(p.param_type, CallbackType) {
+            param_types.append(
+                self._lower_clib_function_type(arch_name, "", p.param_type)
+            );
+        } else {
+            param_types.append(c_scalar(self._lower_type(p.param_type)));
+        }
     }
     return ir.FunctionType(ret_type, param_types).as_pointer();
 }
@@ -168,6 +230,12 @@ impl NaIRGenPass._clib_fnptr_arg(val: ir.Value, target: ir.Type) -> ir.Value {
         if isinstance(val.type, ir.PointerType) and val.type == i8p {
             return self._membrane_str_out(self.builder, val);
         }
+    }
+
+    if isinstance(target, ir.PointerType)
+        and not target.is_opaque
+        and isinstance(target.pointee, ir.FunctionType) {
+        return self._clib_coerce_callback(val, target);
     }
     return self._coerce_type(val, target);
 }

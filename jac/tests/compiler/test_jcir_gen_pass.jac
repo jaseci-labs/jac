@@ -35,7 +35,25 @@ import from tests.support { JAC_ROOT }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.pipeline { get_py_code_gen }
+import from jaclang.compiler.driver.pipeline { product_passes }
+import from jaclang.compiler.driver.pipeline_types {
+    CompilationProduct,
+    ProductRequest
+}
+
+"""The passes a module's codegen requests, in order: the shared lowering, the Python IR, the structure freeze."""
+def codegen_lane(native: bool) -> list[type] {
+    lane: list[type] = [];
+    for product in (
+        CompilationProduct.CODEGEN,
+        CompilationProduct.PY_IR,
+        CompilationProduct.FROZEN
+    ) {
+        lane.extend(product_passes(product, ProductRequest(native=native)));
+    }
+    return lane;
+}
+
 import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
 import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
 import from jaclang.compiler.backends.py.codegen_shim { compile_ir, transcribe }
@@ -67,7 +85,7 @@ def dual_compile(src: str, path: str, *, codespace: str = "server") -> tuple[any
 """The same double emission, for a fixture that must be compiled from disk."""
 def dual_compile_file(path: str) -> tuple[any, ...] {
     prog = JacProgram();
-    mod = prog.compile(path, options=CompileOptions(no_ir_cache=True));
+    mod = prog.compile(path, options=CompileOptions());
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
     ref_tree = mod.gen.py_ast[0];
     emitter = run_walker(JcirGenPass, module=mod);
@@ -508,7 +526,7 @@ with entry {
     r4 = comprehension();
     r5 = iterable_scope();
     assert r3 == 8;
-    assert r4 == [3, 3];
+    assert r4 == [2, 3];
     assert r5 == [1, 2];
     assert _jac_lambda_1 == 123;
 }
@@ -581,22 +599,6 @@ with entry {
     (ref_tree, got_tree, _) = dual_compile(src, "enum_fixture.jac");
     assert_dump_equal(ref_tree, got_tree);
     exec_both(ref_tree, got_tree, "enum_fixture.jac", ["c", "s", "total"]);
-}
-
-test "python inline splice lands with jac line offsets" {
-    src = """
-with entry {
-    seed = 40;
-}
-
-::py::
-X = seed + 2
-Y = X * 2
-::py::
-""";
-    (ref_tree, got_tree, _) = dual_compile(src, "pyinline_fixture.jac");
-    assert_dump_equal(ref_tree, got_tree);
-    exec_both(ref_tree, got_tree, "pyinline_fixture.jac", ["seed", "X", "Y"]);
 }
 
 test "global vars and module code guard match" {
@@ -924,9 +926,9 @@ with entry {
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
     assert mod.gen.jcir , "a compiled module must carry its codegen container";
     assert mod.gen.py_bytecode;
-    sched = get_py_code_gen(native=False);
+    sched = codegen_lane(False);
     assert JcirGenPass in sched , f"jcir is not in the codegen schedule: {sched}";
-    assert JcirBytecodeGenPass in sched;
+    assert JcirBytecodeGenPass not in sched;
     for `entry in sched {
         assert "Pyast" not in `entry.__name__ and "PyBytecode" not in `entry.__name__ , (
             f"a legacy emitter is back in the codegen schedule: {`entry.__name__}"

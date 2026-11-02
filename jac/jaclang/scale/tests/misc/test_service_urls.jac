@@ -2,8 +2,6 @@ import os;
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.scale.admin.service_urls { service_base_url }
-import from jaclang.scale.config.config_loader { get_scale_config, reset_scale_config }
 
 
 def _seed_k8s_config(k8s_toml: str) -> str {

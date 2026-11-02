@@ -1,4 +1,9 @@
+import os;
 import from pathlib { Path }
+
+
+def deployed_tree(entry_path: str) -> tuple[str, str];
+
 
 obj AppConfig {
     has code_folder: str,
@@ -8,7 +13,5 @@ obj AppConfig {
         no_image: bool = False,
         served_app: str = "";
 
-    def get_code_path -> Path {
-        return Path(self.code_folder);
-    }
+    def get_code_path -> Path;
 }

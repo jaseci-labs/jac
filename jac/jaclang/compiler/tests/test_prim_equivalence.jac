@@ -1,16 +1,4 @@
 import ctypes;
-import from jaclang.testing.test { parametrize }
-import from jaclang.compiler.tests.xbackend_equiv {
-    run_with_both,
-    run_py_fixture,
-    compile_fixture_to_js,
-    run_js_function,
-    compile_native,
-    compile_native_errors,
-    get_func,
-    compare_results
-}
-import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
 
 # (case, fixture, py fn, cl fn, na fn, [backends that must run])
 """Rows `prim_str`'s native lane does not produce yet.
@@ -110,7 +98,17 @@ glob STR_NA_GAPS: list[any] = [
              "prim_complex.jac",
              "complex_ops_py",
              "complex_ops_cl",
-             "complex_ops_na"
+             "complex_ops_na",
+             ["na"]
+         ),
+         ("cmath", "prim_cmath.jac", "cmath_py", "cmath_cl", "cmath_na", ["na"]),
+         (
+             "complex mixed scalar ops",
+             "prim_complex_mixed.jac",
+             "cmixed_py",
+             "cmixed_cl",
+             "cmixed_na",
+             ["na"]
          ),
          ("str", "prim_str.jac", "str_py", "str_cl", "str_na", ["na"], STR_NA_GAPS),
          (
@@ -126,7 +124,9 @@ glob STR_NA_GAPS: list[any] = [
              "prim_bytes.jac",
              "bytes_search_py",
              "bytes_search_cl",
-             "bytes_search_na"
+             "bytes_search_na",
+             ["na"],
+             ["hex", "from_hex"]
          ),
          (
              "bytes modify",
@@ -148,6 +148,14 @@ glob STR_NA_GAPS: list[any] = [
              "bytes_test_py",
              "bytes_test_cl",
              "bytes_test_na"
+         ),
+         (
+             "bytes constructors",
+             "prim_bytearray.jac",
+             "bytes_ctor_py",
+             "bytes_ctor_cl",
+             "bytes_ctor_na",
+             ["na"]
          ),
          (
              "bytearray core",
@@ -466,6 +474,49 @@ glob STR_NA_GAPS: list[any] = [
              ["na"]
          ),
          (
+             "errno bundled",
+             "prim_errno.jac",
+             "errno_py",
+             "errno_cl",
+             "errno_na",
+             ["na"]
+         ),
+         (
+             "fcntl bundled",
+             "prim_fcntl.jac",
+             "fcntl_py",
+             "fcntl_cl",
+             "fcntl_na",
+             ["na"]
+         ),
+         (
+             "termios bundled",
+             "prim_termios.jac",
+             "termios_py",
+             "termios_cl",
+             "termios_na",
+             ["na"]
+         ),
+         ("tty bundled", "prim_tty.jac", "tty_py", "tty_cl", "tty_na", ["na"]),
+         (
+             "select bundled",
+             "prim_select.jac",
+             "select_py",
+             "select_cl",
+             "select_na",
+             ["na"]
+         ),
+         ("glob bundled", "prim_glob.jac", "glob_py", "glob_cl", "glob_na", ["na"]),
+         ("stat bundled", "prim_stat.jac", "stat_py", "stat_cl", "stat_na", ["na"]),
+         (
+             "platform bundled",
+             "prim_platform.jac",
+             "platform_py",
+             "platform_cl",
+             "platform_na",
+             ["na"]
+         ),
+         (
              "secrets bundled",
              "prim_secrets.jac",
              "secrets_py",
@@ -474,6 +525,62 @@ glob STR_NA_GAPS: list[any] = [
              ["na"]
          ),
          ("uuid bundled", "prim_uuid.jac", "uuid_py", "uuid_cl", "uuid_na", ["na"]),
+         (
+             "colorsys bundled",
+             "prim_colorsys.jac",
+             "colorsys_py",
+             "colorsys_cl",
+             "colorsys_na",
+             ["na"]
+         ),
+         (
+             "sched bundled",
+             "prim_sched.jac",
+             "sched_py",
+             "sched_cl",
+             "sched_na",
+             ["na"]
+         ),
+         (
+             "ipaddress bundled",
+             "prim_ipaddress.jac",
+             "ipaddress_py",
+             "ipaddress_cl",
+             "ipaddress_na",
+             ["na"]
+         ),
+         (
+             "mimetypes bundled",
+             "prim_mimetypes.jac",
+             "mimetypes_py",
+             "mimetypes_cl",
+             "mimetypes_na",
+             ["na"]
+         ),
+         (
+             "locale bundled",
+             "prim_locale.jac",
+             "locale_py",
+             "locale_cl",
+             "locale_na",
+             ["na"]
+         ),
+         (
+             "gettext bundled",
+             "prim_gettext.jac",
+             "gettext_py",
+             "gettext_cl",
+             "gettext_na",
+             ["na"]
+         ),
+         (
+             "logging bundled",
+             "prim_logging.jac",
+             "logging_py",
+             "logging_cl",
+             "logging_na",
+             ["na"]
+         ),
          (
              "static members",
              "prim_static_members.jac",
@@ -509,6 +616,14 @@ glob STR_NA_GAPS: list[any] = [
          ),
          ("csv bundled", "prim_csv.jac", "csv_py", "csv_cl", "csv_na", ["na"]),
          (
+             "itertools bundled",
+             "prim_itertools.jac",
+             "itertools_py",
+             "itertools_cl",
+             "itertools_na",
+             ["na"]
+         ),
+         (
              "pprint bundled",
              "prim_pprint.jac",
              "pprint_py",
@@ -524,7 +639,49 @@ glob STR_NA_GAPS: list[any] = [
              "difflib_na",
              ["na"]
          ),
+         (
+             "sqlite3 bundled",
+             "prim_sqlite3.jac",
+             "sqlite3_py",
+             "sqlite3_cl",
+             "sqlite3_na",
+             ["na"]
+         ),
+         (
+             "string bundled",
+             "prim_string.jac",
+             "string_py",
+             "string_cl",
+             "string_na",
+             ["na"]
+         ),
+         ("re bundled", "prim_re.jac", "re_py", "re_cl", "re_na", ["na"]),
+         ("re pins bundled", "prim_re.jac", "pins_py", "pins_cl", "pins_na", ["na"]),
+         (
+             "re fuzz bundled",
+             "prim_re_fuzz.jac",
+             "re_fuzz_py",
+             "re_fuzz_cl",
+             "re_fuzz_na",
+             ["na"]
+         ),
+         (
+             "reprlib bundled",
+             "prim_reprlib.jac",
+             "reprlib_py",
+             "reprlib_cl",
+             "reprlib_na",
+             ["na"]
+         ),
          ("random", "prim_random.jac", "random_py", "random_cl", "random_na", ["na"]),
+         (
+             "bare from-imported stdlib names",
+             "prim_from_imports.jac",
+             "from_imports_py",
+             "from_imports_cl",
+             "from_imports_na",
+             ["na"]
+         ),
          (
              "any dispatch",
              "prim_any.jac",
@@ -595,6 +752,14 @@ glob STR_NA_GAPS: list[any] = [
              "builtins_introspection_py",
              "builtins_introspection_cl",
              "builtins_introspection_na"
+         ),
+         (
+             "type identity",
+             "prim_builtins_introspection.jac",
+             "type_identity_py",
+             "type_identity_cl",
+             "builtins_introspection_na",
+             ["cl"]
          ),
          (
              "match sequence",
@@ -736,7 +901,10 @@ test "native gradual object keys demote, never pointer-sort (#9158)" {
     ];
     assert len(kept) == 0 , f"semantic str key must lower natively: {kept}";
     assert "__jac_str_cmp" in llvm_txt , "str-key control should use the semantic string comparator";
-    assert "strcmp" not in llvm_txt , "no raw pointer may reach libc strcmp (#9158)";
+    import re;
+    assert re.search(r'\bcall\s+i32\s+@"?strcmp"?\(', llvm_txt) is None , (
+        "no raw pointer may reach libc strcmp (#9158)"
+    );
 }
 
 test "annotated block lambda tails are type-checked (#9158)" {
@@ -972,4 +1140,14 @@ test "prim_runtime_errors" {
     _prim_runtime_errors__runtime_key_error_parent(_eng, _ir);
     _prim_runtime_errors__runtime_multi_handler(_eng, _ir);
     _prim_runtime_errors__runtime_error_with_finally(_eng, _ir);
+}
+
+test "native sort keys retain captured scalar and object parameters" {
+    run_with_both(
+        "prim_sort_capture.jac",
+        "sort_capture_py",
+        "",
+        "sort_capture_na",
+        require=["na"]
+    );
 }

@@ -1,12 +1,11 @@
 """Native consumers must invalidate when imported compile-time layouts change."""
-import json;
 import subprocess;
 import tempfile;
 import from pathlib { Path }
 import from tests.support { jac_command }
 
 
-def build_value(folder: Path, attempt: int) -> str {
+def build_value(folder: Path, attempt: int, reused: bool = False) -> str {
     binary = folder / ("probe" + str(attempt));
     built = subprocess.run(
         jac_command("build", str(folder / "main.jac"), "--native", "-o", str(binary)),
@@ -16,6 +15,13 @@ def build_value(folder: Path, attempt: int) -> str {
         timeout=120
     );
     assert built.returncode == 0 , built.stdout + built.stderr;
+    if reused {
+        assert "Recompiled 0 unit(s)" in built.stdout + built.stderr , (
+            "Unchanged builds should reuse every native unit: "
+            + built.stdout
+            + built.stderr
+        );
+    }
     result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10);
     assert result.returncode == 0 , result.stdout + result.stderr;
     return result.stdout.strip();
@@ -44,21 +50,12 @@ def check_layout_edit(kind: str, inherited: bool = False) {
             "with entry { print(read(Record(value=42))); }\n"
         );
         assert build_value(folder, 0) == "42";
-        entries = list(folder.rglob("reader.*.ir_meta"));
-        assert len(entries) == 1;
-        cached = entries[0];
-        stamp = cached.stat().st_mtime_ns;
-        assert build_value(folder, 1) == "42";
-        assert cached.stat().st_mtime_ns == stamp , "Unchanged reader should reuse its IR";
+        assert build_value(folder, 1, reused=True) == "42";
         provider.write_text(
             f"{kind} {name} {{ has padding: int = 99, value: int = 42; }}\n"
         );
         assert build_value(folder, 2) == "42" , "Reader used the old field offset";
-        metadata = json.loads(cached.read_text());
-        assert str(provider.resolve()) in metadata["ct_deps"];
-        stamp = cached.stat().st_mtime_ns;
-        assert build_value(folder, 3) == "42";
-        assert cached.stat().st_mtime_ns == stamp;
+        assert build_value(folder, 3, reused=True) == "42";
     }
 }
 
@@ -87,9 +84,9 @@ test "warm native consumers observe ordinary imported body changes" {
             "import from .provider { value }\nwith entry { print(value()); }\n"
         );
         assert build_value(folder, 0) == "1";
-        assert build_value(folder, 1) == "1";
+        assert build_value(folder, 1, reused=True) == "1";
         provider.write_text("def value() -> int { return 2; }\n");
         assert build_value(folder, 2) == "2";
-        assert build_value(folder, 3) == "2";
+        assert build_value(folder, 3, reused=True) == "2";
     }
 }

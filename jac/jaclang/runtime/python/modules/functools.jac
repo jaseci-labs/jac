@@ -1,88 +1,274 @@
-"""Native argument binding, reduction and least-recently-used cache policies.
+def:pub jacpy_reduce(
+    function: ptr[PyObject], iterable: ptr[PyObject], initial: ptr[PyObject]
+) -> ptr[PyObject];
 
-The object boundary retains Python callbacks and containers, including the
-runtime's ordered dictionary. No Python implementation of these policies runs.
-Derived from CPython 3.14.6; see ../LICENSE.cpython.
-"""
-import from jaclang.runtime.python.capi {
-    jacpy_release,
-    jacpy_retain,
-    jacpy_error_pending,
-    jacpy_error_is,
-    jacpy_iter,
-    jacpy_iter_next,
-    jacpy_call,
-    jacpy_call_one,
-    jacpy_call_two,
-    jacpy_compare,
-    jacpy_int,
-    jacpy_none,
-    jacpy_boolean,
-    jacpy_tuple_new,
-    jacpy_tuple_size,
-    jacpy_tuple_item,
-    jacpy_tuple_set_owned,
-    jacpy_sequence_tuple,
-    jacpy_is_tuple,
-    jacpy_is_exact_tuple,
-    jacpy_setitem,
-    jacpy_dict_new,
-    jacpy_dict_copy,
-    jacpy_dict_update,
-    jacpy_dict_entry,
-    jacpy_dict_size,
-    jacpy_dict_get,
-    jacpy_dict_set,
-    jacpy_dict_clear,
-    jacpy_is_dict,
-    jacpy_is_exact_dict,
-    jacpy_is_none,
-    jacpy_callable,
-    jacpy_is_exact_long,
-    jacpy_is_exact_unicode,
-    jacpy_object_type,
-    jacpy_object_hash,
-    jacpy_ordered_dict_new,
-    jacpy_getattr_string,
-    jacpy_integer_value,
-    jacpy_repr_enter,
-    jacpy_repr_leave,
-    jacpy_object_str,
-    object_error,
-    required,
-    checked,
-    boundary_failure,
-    text_object,
-    text_value,
-    repr_value,
-    type_name
+def:pub jacpy_cmp_key(
+    function: ptr[PyObject], left: ptr[PyObject], right: ptr[PyObject], operation: i64
+) -> ptr[PyObject];
+
+obj partial_state {
+    has function: ptr[PyObject] = NULL,
+        args: ptr[PyObject] = NULL,
+        keywords: ptr[PyObject] = NULL,
+        placeholder: ptr[PyObject] = NULL;
 }
 
-# A two-argument object call owns the callable arguments for the whole callback.
-def:pub jacpy_reduce(function: u64, iterable: u64, initial: u64) -> u64 {
-    iterator = jacpy_iter(iterable);
+def:pub jacpy_partial_new -> partial_state;
+
+def:pub jacpy_partial_field(state: partial_state, field: i64) -> ptr[PyObject];
+
+def:pub jacpy_partial_clear(state: partial_state);
+
+def:priv merge_args(
+    old: ptr[PyObject], args: ptr[PyObject], placeholder: ptr[PyObject], calling: bool
+) -> ptr[PyObject];
+
+def:priv validate_tail(args: ptr[PyObject], placeholder: ptr[PyObject]);
+
+def:pub jacpy_partial_init(
+    state: partial_state,
+    function: ptr[PyObject],
+    args: ptr[PyObject],
+    keywords: ptr[PyObject],
+    old_args: ptr[PyObject],
+    old_kw: ptr[PyObject],
+    placeholder: ptr[PyObject]
+) -> i64;
+
+def:pub jacpy_partial_call(
+    state: partial_state, args: ptr[PyObject], keywords: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:pub jacpy_partial_restore(
+    state: partial_state, saved: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:pub jacpy_partial_repr(
+    state: partial_state, owner: ptr[PyObject]
+) -> ptr[PyObject];
+
+import from c {
+    obj lru_list_elem {
+        has ob_base: _object,
+            prev: ptr[lru_list_elem],
+            next: ptr[lru_list_elem],
+            hash: i64,
+            key: ptr[PyObject],
+            result: ptr[PyObject];
+    }  obj lru_cache_object {
+        has ob_base: _object,
+            prev: ptr[lru_list_elem],
+            next: ptr[lru_list_elem],
+            hash: i64,
+            key: ptr[PyObject],
+            result: ptr[PyObject],
+            wrapper:
+                Callable[[ptr[PyObject], ptr[PyObject], ptr[PyObject]], ptr[PyObject]],
+            typed: i32,
+            cache: ptr[PyObject],
+            hits: i64,
+            func: ptr[PyObject],
+            maxsize: i64,
+            misses: i64,
+            kwd_mark: ptr[PyObject],
+            lru_list_elem_type: ptr[PyObject],
+            cache_info_type: ptr[PyObject],
+            dct: ptr[PyObject],
+            weakreflist: ptr[PyObject];
+    }  def _PyDict_GetItemRef_KnownHash(
+        op: ptr[PyObject], key: ptr[PyObject], hash: i64, result: &mut ptr[PyObject]
+    ) -> i32;  def _PyDict_SetItem_KnownHash(
+        op: ptr[PyObject], key: ptr[PyObject], value: ptr[PyObject], hash: i64
+    ) -> i32;  def _PyDict_Pop_KnownHash(
+        mp: ptr[PyObject], key: ptr[PyObject], hash: i64, result: &mut ptr[PyObject]
+    ) -> i32;
+}
+
+glob LRU_LIST_ELEM_SIZE: Final[i64] = 56,
+     LRU_CACHE_OBJECT_SIZE: Final[i64] = 152,
+     LRU_CACHE_OBJECT_DICT: Final[i64] = 136,
+     LRU_CACHE_OBJECT_WEAKREFLIST: Final[i64] = 144;
+
+def lru_list_elem_dealloc(op: ptr[PyObject]);
+
+def:priv lru_cache_make_key(
+    kwd_mark: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject], typed: i32
+) -> ptr[PyObject];
+
+def uncached_lru_cache_wrapper(
+    op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def infinite_lru_cache_wrapper(
+    op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv lru_cache_extract_link(link: ptr[lru_list_elem]);
+
+def:priv lru_cache_append_link(op: ptr[PyObject], link: ptr[lru_list_elem]);
+
+def:priv lru_cache_prepend_link(op: ptr[PyObject], link: ptr[lru_list_elem]);
+
+def:priv bounded_lru_cache_get_lock_held(
+    op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> (i32, ptr[PyObject], ptr[PyObject], i64);
+
+def:priv bounded_lru_cache_update_lock_held(
+    op: ptr[PyObject], result: ptr[PyObject], key: ptr[PyObject], hash: i64
+) -> ptr[PyObject];
+
+def bounded_lru_cache_wrapper(
+    op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def lru_cache_new(
+    type: ptr[PyObject],
+    func: ptr[PyObject],
+    maxsize_O: ptr[PyObject],
+    typed: i32,
+    cache_info_type: ptr[PyObject],
+    kwd_mark: ptr[PyObject],
+    lru_list_elem_type: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv lru_cache_unlink_list(op: ptr[PyObject]) -> ptr[lru_list_elem];
+
+def:priv lru_cache_clear_list(link: ptr[lru_list_elem]);
+
+def lru_cache_tp_clear(op: ptr[PyObject]) -> i32;
+
+def lru_cache_dealloc(op: ptr[PyObject]);
+
+def:pub jacpy_lru_call(
+    op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def lru_cache_descr_get(
+    self_: ptr[PyObject], obj_: ptr[PyObject], type: ptr[PyObject]
+) -> ptr[PyObject];
+
+def lru_cache_reduce(self_: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def lru_cache_copy(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def lru_cache_deepcopy(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def lru_cache_tp_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+import from c {
+    glob:priv lru_list_elem_type_slots: list[PyType_Slot] = [
+             PyType_Slot(slot=Py_tp_dealloc, pfunc=ptr(lru_list_elem_dealloc)),
+             PyType_Slot(slot=0, pfunc=ptr())
+         ]; glob lru_list_elem_type_spec: PyType_Spec = PyType_Spec(
+             name=ptr[u8]("functools._lru_list_elem"),
+             basicsize=i32(LRU_LIST_ELEM_SIZE),
+             itemsize=0,
+             flags=u32(
+                 Py_TPFLAGS_DEFAULT
+                     | Py_TPFLAGS_DISALLOW_INSTANTIATION
+                     | Py_TPFLAGS_IMMUTABLETYPE
+             ),
+             slots=addressof(lru_list_elem_type_slots)
+         ); glob:priv lru_cache_getsetlist: list[PyGetSetDef] = [
+             PyGetSetDef(
+                 name=ptr[u8]("__dict__"),
+                 get=PyObject_GenericGetDict,
+                 set=PyObject_GenericSetDict
+             ),
+             PyGetSetDef()
+         ],
+         lru_cache_memberlist: list[PyMemberDef] = [
+             PyMemberDef(
+                 name=ptr[u8]("__dictoffset__"),
+                 type_=Py_T_PYSSIZET,
+                 offset=LRU_CACHE_OBJECT_DICT,
+                 flags=Py_READONLY
+             ),
+             PyMemberDef(
+                 name=ptr[u8]("__weaklistoffset__"),
+                 type_=Py_T_PYSSIZET,
+                 offset=LRU_CACHE_OBJECT_WEAKREFLIST,
+                 flags=Py_READONLY
+             ),
+             PyMemberDef()
+         ],
+         lru_cache_type_slots: list[PyType_Slot] = [
+             PyType_Slot(slot=Py_tp_dealloc, pfunc=ptr(lru_cache_dealloc)),
+             PyType_Slot(slot=Py_tp_call, pfunc=ptr(jacpy_lru_call)),
+             PyType_Slot(slot=Py_tp_doc, pfunc=ptr()),
+             PyType_Slot(slot=Py_tp_traverse, pfunc=ptr(lru_cache_tp_traverse)),
+             PyType_Slot(slot=Py_tp_clear, pfunc=ptr(lru_cache_tp_clear)),
+             PyType_Slot(slot=Py_tp_methods, pfunc=ptr()),
+             PyType_Slot(
+                 slot=Py_tp_members, pfunc=ptr(addressof(lru_cache_memberlist))
+             ),
+             PyType_Slot(slot=Py_tp_getset, pfunc=ptr(addressof(lru_cache_getsetlist))),
+             PyType_Slot(slot=Py_tp_descr_get, pfunc=ptr(lru_cache_descr_get)),
+             PyType_Slot(slot=Py_tp_new, pfunc=ptr()),
+             PyType_Slot(slot=0, pfunc=ptr())
+         ]; glob lru_cache_type_spec: PyType_Spec = PyType_Spec(
+             name=ptr[u8]("functools._lru_cache_wrapper"),
+             basicsize=i32(LRU_CACHE_OBJECT_SIZE),
+             itemsize=0,
+             flags=u32(
+                 Py_TPFLAGS_DEFAULT
+                     | Py_TPFLAGS_HAVE_GC
+                     | Py_TPFLAGS_METHOD_DESCRIPTOR
+                     | Py_TPFLAGS_IMMUTABLETYPE
+             ),
+             slots=addressof(lru_cache_type_slots)
+         );
+}
+
+def lru_cache_install_slots(doc: ptr[u8], methods: ptr[PyMethodDef], new: ptr);
+
+def lru_cache_slots_ready -> bool;
+
+glob KeyWrapper_token = ClassToken();
+
+def _functools_reduce_impl(
+    module: ptr[PyObject],
+    function: ptr[PyObject],
+    iterable: ptr[PyObject],
+    initial: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _functools_cmp_to_key_impl(
+    module: ptr[PyObject], mycmp: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _functools__lru_cache_wrapper_cache_info_impl(
+    instance: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _functools__lru_cache_wrapper_cache_clear_impl(
+    instance: ptr[PyObject]
+) -> ptr[PyObject];
+
+impl jacpy_reduce(
+    function: ptr[PyObject], iterable: ptr[PyObject], initial: ptr[PyObject]
+) -> ptr[PyObject] {
+    iterator = PyObject_GetIter(iterable);
     if iterator == 0 {
-        if jacpy_error_is("TypeError") != 0 {
-            object_error("TypeError", "reduce() arg 2 must support iteration");
+        if PyErr_ExceptionMatches(PyExc_TypeError) != 0 {
+            object_error(PyExc_TypeError, "reduce() arg 2 must support iteration");
         }
-        return 0;
+        return NULL;
     }
-    accumulator: u64 = 0;
-    item: u64 = 0;
+    accumulator: ptr[PyObject] = NULL;
+    item: ptr[PyObject] = NULL;
     try {
-        accumulator = jacpy_retain(initial)
-            if initial != 0
-            else jacpy_iter_next(iterator);
+        accumulator = Py_NewRef(initial) if initial != 0 else PyIter_Next(iterator);
         if accumulator == 0 {
             if jacpy_error_pending() == 0 {
                 object_error(
-                    "TypeError", "reduce() of empty iterable with no initial value"
+                    PyExc_TypeError, "reduce() of empty iterable with no initial value"
                 );
             }
-            return 0;
+            return NULL;
         }
         while True {
-            item = jacpy_iter_next(iterator);
+            item = PyIter_Next(iterator);
             if item == 0 {
                 break;
             }
@@ -90,16 +276,16 @@ def:pub jacpy_reduce(function: u64, iterable: u64, initial: u64) -> u64 {
             jacpy_release(accumulator);
             accumulator = next_value;
             jacpy_release(item);
-            item = 0;
+            item = NULL;
         }
         if jacpy_error_pending() != 0 {
-            return 0;
+            return NULL;
         }
         result = accumulator;
-        accumulator = 0;
+        accumulator = NULL;
         return result;
     } except boundary_failure {
-        return 0;
+        return NULL;
     } finally {
         jacpy_release(iterator);
         jacpy_release(accumulator);
@@ -107,33 +293,28 @@ def:pub jacpy_reduce(function: u64, iterable: u64, initial: u64) -> u64 {
     }
 }
 
-def:pub jacpy_cmp_key(function: u64, left: u64, right: u64, operation: i64) -> u64 {
-    value: u64 = 0;
-    zero: u64 = 0;
+impl jacpy_cmp_key(
+    function: ptr[PyObject], left: ptr[PyObject], right: ptr[PyObject], operation: i64
+) -> ptr[PyObject] {
+    value: ptr[PyObject] = NULL;
+    zero: ptr[PyObject] = NULL;
     try {
         value = required(jacpy_call_two(function, left, right));
-        zero = required(jacpy_int(0));
-        return jacpy_compare(value, zero, operation);
+        zero = required(PyLong_FromLongLong(0));
+        return PyObject_RichCompare(value, zero, i32(operation));
     } except boundary_failure {
-        return 0;
+        return NULL;
     } finally {
         jacpy_release(value);
         jacpy_release(zero);
     }
 }
 
-obj partial_state {
-    has function: u64 = 0,
-        args: u64 = 0,
-        keywords: u64 = 0,
-        placeholder: u64 = 0;
-}
-
-def:pub jacpy_partial_new -> partial_state {
+impl jacpy_partial_new -> partial_state {
     return partial_state();
 }
 
-def:pub jacpy_partial_field(state: partial_state, field: i64) -> u64 {
+impl jacpy_partial_field(state: partial_state, field: i64) -> ptr[PyObject] {
     if field == 0 {
         return state.function;
     }
@@ -146,26 +327,26 @@ def:pub jacpy_partial_field(state: partial_state, field: i64) -> u64 {
     return state.placeholder;
 }
 
-def:pub jacpy_partial_clear(state: partial_state) {
+impl jacpy_partial_clear(state: partial_state) {
     fn = state.function;
     args = state.args;
     kw = state.keywords;
     ph = state.placeholder;
-    state.function = 0;
-    state.args = 0;
-    state.keywords = 0;
-    state.placeholder = 0;
+    state.function = NULL;
+    state.args = NULL;
+    state.keywords = NULL;
+    state.placeholder = NULL;
     jacpy_release(fn);
     jacpy_release(args);
     jacpy_release(kw);
     jacpy_release(ph);
 }
 
-# Produce a fresh tuple, filling holes left-to-right. Construction may preserve
-# holes; invocation must supply every hole, even when it supplies Placeholder.
-def:priv merge_args(old: u64, args: u64, placeholder: u64, calling: bool) -> u64 {
-    n = jacpy_tuple_size(args);
-    old_n = jacpy_tuple_size(old) if old != 0 else i64(0);
+impl merge_args(
+    old: ptr[PyObject], args: ptr[PyObject], placeholder: ptr[PyObject], calling: bool
+) -> ptr[PyObject] {
+    n = PyTuple_Size(args);
+    old_n = PyTuple_Size(old) if old != 0 else i64(0);
     holes: i64 = 0;
     for i in range(int(old_n)) {
         item = required(jacpy_tuple_item(old, i64(i)));
@@ -176,7 +357,7 @@ def:priv merge_args(old: u64, args: u64, placeholder: u64, calling: bool) -> u64
     }
     if calling and n < holes {
         object_error(
-            "TypeError",
+            PyExc_TypeError,
             "missing positional arguments in 'partial' call; expected at least "
                 + str(holes)
                 + ", got "
@@ -185,7 +366,7 @@ def:priv merge_args(old: u64, args: u64, placeholder: u64, calling: bool) -> u64
         raise boundary_failure();
     }
     size = old_n + n - min(n, holes);
-    result = required(jacpy_tuple_new(size));
+    result = required(PyTuple_New(size));
     used: i64 = 0;
     try {
         for i in range(int(old_n)) {
@@ -214,96 +395,83 @@ def:priv merge_args(old: u64, args: u64, placeholder: u64, calling: bool) -> u64
     }
 }
 
-def:priv validate_tail(args: u64, placeholder: u64) {
-    size = jacpy_tuple_size(args);
+impl validate_tail(args: ptr[PyObject], placeholder: ptr[PyObject]) {
+    size = PyTuple_Size(args);
     if size > 0 {
         last = required(jacpy_tuple_item(args, size - 1));
         invalid = last == placeholder;
         jacpy_release(last);
         if invalid {
-            object_error("TypeError", "trailing Placeholders are not allowed");
+            object_error(PyExc_TypeError, "trailing Placeholders are not allowed");
             raise boundary_failure();
         }
     }
 }
 
-def:pub jacpy_partial_init(
+impl jacpy_partial_init(
     state: partial_state,
-    function: u64,
-    args: u64,
-    keywords: u64,
-    old_args: u64,
-    old_kw: u64,
-    placeholder: u64
+    function: ptr[PyObject],
+    args: ptr[PyObject],
+    keywords: ptr[PyObject],
+    old_args: ptr[PyObject],
+    old_kw: ptr[PyObject],
+    placeholder: ptr[PyObject]
 ) -> i64 {
-    merged: u64 = 0;
-    kw: u64 = 0;
-    pair: u64 = 0;
+    merged: ptr[PyObject] = NULL;
+    kw: ptr[PyObject] = NULL;
     try {
         validate_tail(args, placeholder);
         if keywords != 0 {
             pos: i64 = 0;
-            while True {
-                pair = jacpy_dict_entry(keywords, pos);
-                if pair == 0 {
-                    break;
-                }
-                position = required(jacpy_tuple_item(pair, 0));
-                pos = jacpy_integer_value(position);
-                jacpy_release(position);
-                value = required(jacpy_tuple_item(pair, 2));
-                invalid = value == placeholder;
-                jacpy_release(value);
-                jacpy_release(pair);
-                pair = 0;
-                if invalid {
+            key: ptr[PyObject] = NULL;
+            value: ptr[PyObject] = NULL;
+            while PyDict_Next(keywords, &mut pos, &mut key, &mut value) != 0 {
+                if value == placeholder {
                     object_error(
-                        "TypeError",
+                        PyExc_TypeError,
                         "Placeholder cannot be passed as a keyword argument"
                     );
                     raise boundary_failure();
                 }
             }
-            if jacpy_error_pending() != 0 {
-                raise boundary_failure();
-            }
         }
         merged = required(merge_args(old_args, args, placeholder, False));
-        kw = required(jacpy_dict_copy(old_kw) if old_kw != 0 else jacpy_dict_new());
+        kw = required(PyDict_Copy(old_kw) if old_kw != 0 else PyDict_New());
         if keywords != 0 {
-            checked(jacpy_dict_update(kw, keywords));
+            checked(PyDict_Update(kw, keywords));
         }
-        state.function = jacpy_retain(function);
-        state.placeholder = jacpy_retain(placeholder);
+        state.function = Py_NewRef(function);
+        state.placeholder = Py_NewRef(placeholder);
         state.args = merged;
-        merged = 0;
+        merged = NULL;
         state.keywords = kw;
-        kw = 0;
+        kw = NULL;
         return 0;
     } except boundary_failure {
         return -1;
     } finally {
         jacpy_release(merged);
         jacpy_release(kw);
-        jacpy_release(pair);
     }
 }
 
-def:pub jacpy_partial_call(state: partial_state, args: u64, keywords: u64) -> u64 {
-    fn = jacpy_retain(state.function);
-    saved_args = jacpy_retain(state.args);
-    saved_kw = jacpy_retain(state.keywords);
-    merged: u64 = 0;
-    kw: u64 = 0;
+impl jacpy_partial_call(
+    state: partial_state, args: ptr[PyObject], keywords: ptr[PyObject]
+) -> ptr[PyObject] {
+    fn = Py_NewRef(state.function);
+    saved_args = Py_NewRef(state.args);
+    saved_kw = Py_NewRef(state.keywords);
+    merged: ptr[PyObject] = NULL;
+    kw: ptr[PyObject] = NULL;
     try {
         merged = required(merge_args(saved_args, args, state.placeholder, True));
-        kw = required(jacpy_dict_copy(saved_kw));
+        kw = required(PyDict_Copy(saved_kw));
         if keywords != 0 {
-            checked(jacpy_dict_update(kw, keywords));
+            checked(PyDict_Update(kw, keywords));
         }
-        return jacpy_call(fn, merged, kw);
+        return PyObject_Call(fn, merged, kw);
     } except boundary_failure {
-        return 0;
+        return NULL;
     } finally {
         jacpy_release(fn);
         jacpy_release(saved_args);
@@ -313,41 +481,41 @@ def:pub jacpy_partial_call(state: partial_state, args: u64, keywords: u64) -> u6
     }
 }
 
-# Return the normalized instance dictionary. Publish all callable fields before
-# releasing their old values, which may invoke arbitrary Python finalizers.
-def:pub jacpy_partial_restore(state: partial_state, saved: u64) -> u64 {
-    fn: u64 = 0;
-    args: u64 = 0;
-    kw: u64 = 0;
-    dictionary: u64 = 0;
+impl jacpy_partial_restore(
+    state: partial_state, saved: ptr[PyObject]
+) -> ptr[PyObject] {
+    fn: ptr[PyObject] = NULL;
+    args: ptr[PyObject] = NULL;
+    kw: ptr[PyObject] = NULL;
+    dictionary: ptr[PyObject] = NULL;
     try {
-        if jacpy_is_tuple(saved) == 0 or jacpy_tuple_size(saved) != 4 {
-            object_error("TypeError", "invalid partial state");
+        if jacpy_is_tuple(saved) == 0 or PyTuple_Size(saved) != 4 {
+            object_error(PyExc_TypeError, "invalid partial state");
             raise boundary_failure();
         }
         fn = required(jacpy_tuple_item(saved, 0));
         args = required(jacpy_tuple_item(saved, 1));
         kw = required(jacpy_tuple_item(saved, 2));
         dictionary = required(jacpy_tuple_item(saved, 3));
-        if jacpy_callable(fn) == 0
+        if PyCallable_Check(fn) == 0
             or jacpy_is_tuple(args) == 0
-            or (jacpy_is_none(kw) == 0 and jacpy_is_dict(kw) == 0)
-            or (jacpy_is_none(dictionary) == 0 and jacpy_is_dict(dictionary) == 0) {
-            object_error("TypeError", "invalid partial state");
+            or (kw != Py_None and jacpy_is_dict(kw) == 0)
+            or (dictionary != Py_None and jacpy_is_dict(dictionary) == 0) {
+            object_error(PyExc_TypeError, "invalid partial state");
             raise boundary_failure();
         }
         validate_tail(args, state.placeholder);
         if jacpy_is_exact_tuple(args) == 0 {
-            normalized = required(jacpy_sequence_tuple(args));
+            normalized = required(PySequence_Tuple(args));
             jacpy_release(args);
             args = normalized;
         }
-        if jacpy_is_none(kw) != 0 {
-            normalized_kw = required(jacpy_dict_new());
+        if kw == Py_None {
+            normalized_kw = required(PyDict_New());
             jacpy_release(kw);
             kw = normalized_kw;
         } elif jacpy_is_exact_dict(kw) == 0 {
-            normalized_kw = required(jacpy_dict_copy(kw));
+            normalized_kw = required(PyDict_Copy(kw));
             jacpy_release(kw);
             kw = normalized_kw;
         }
@@ -355,19 +523,19 @@ def:pub jacpy_partial_restore(state: partial_state, saved: u64) -> u64 {
         old_args = state.args;
         old_kw = state.keywords;
         state.function = fn;
-        fn = 0;
+        fn = NULL;
         state.args = args;
-        args = 0;
+        args = NULL;
         state.keywords = kw;
-        kw = 0;
+        kw = NULL;
         jacpy_release(old_fn);
         jacpy_release(old_args);
         jacpy_release(old_kw);
         result = dictionary;
-        dictionary = 0;
+        dictionary = NULL;
         return result;
     } except boundary_failure {
-        return 0;
+        return NULL;
     } finally {
         jacpy_release(fn);
         jacpy_release(args);
@@ -376,390 +544,604 @@ def:pub jacpy_partial_restore(state: partial_state, saved: u64) -> u64 {
     }
 }
 
-def:pub jacpy_partial_repr(state: partial_state, owner: u64) -> u64 {
-    entered = jacpy_repr_enter(owner);
+impl jacpy_partial_repr(state: partial_state, owner: ptr[PyObject]) -> ptr[PyObject] {
+    entered = Py_ReprEnter(owner);
     if entered < 0 {
-        return 0;
+        return NULL;
     }
     if entered > 0 {
         return text_object("...");
     }
-    fn = jacpy_retain(state.function);
-    args = jacpy_retain(state.args);
-    kw = jacpy_retain(state.keywords);
-    pair: u64 = 0;
-    item: u64 = 0;
-    key: u64 = 0;
-    text: u64 = 0;
+    fn = Py_NewRef(state.function);
+    args = Py_NewRef(state.args);
+    kw = Py_NewRef(state.keywords);
+    item: ptr[PyObject] = NULL;
+    key: ptr[PyObject] = NULL;
+    text: ptr[PyObject] = NULL;
     try {
         arguments = "";
-        for i in range(int(jacpy_tuple_size(args))) {
+        for i in range(int(PyTuple_Size(args))) {
             item = required(jacpy_tuple_item(args, i64(i)));
             arguments += ", " + repr_value(item);
             jacpy_release(item);
-            item = 0;
+            item = NULL;
         }
         pos: i64 = 0;
-        while True {
-            pair = jacpy_dict_entry(kw, pos);
-            if pair == 0 {
-                break;
-            }
-            item = required(jacpy_tuple_item(pair, 0));
-            pos = jacpy_integer_value(item);
-            jacpy_release(item);
-            item = 0;
-            key = required(jacpy_tuple_item(pair, 1));
-            item = required(jacpy_tuple_item(pair, 2));
-            text = required(jacpy_object_str(key));
+        entry_key: ptr[PyObject] = NULL;
+        entry_value: ptr[PyObject] = NULL;
+        while PyDict_Next(kw, &mut pos, &mut entry_key, &mut entry_value) != 0 {
+            key = Py_NewRef(entry_key);
+            item = Py_NewRef(entry_value);
+            text = required(PyObject_Str(key));
             arguments += ", " + text_value(text) + "=" + repr_value(item);
             jacpy_release(item);
-            item = 0;
+            item = NULL;
             jacpy_release(key);
-            key = 0;
+            key = NULL;
             jacpy_release(text);
-            text = 0;
-            jacpy_release(pair);
-            pair = 0;
-        }
-        if jacpy_error_pending() != 0 {
-            return 0;
+            text = NULL;
         }
         return text_object(
             type_name(owner, True) + "(" + repr_value(fn) + arguments + ")"
         );
     } except boundary_failure {
-        return 0;
+        return NULL;
     } finally {
         jacpy_release(fn);
         jacpy_release(args);
         jacpy_release(kw);
-        jacpy_release(pair);
         jacpy_release(item);
         jacpy_release(key);
         jacpy_release(text);
-        jacpy_repr_leave(owner);
+        Py_ReprLeave(owner);
     }
 }
 
-obj lru_state {
-    has key_factory: Callable[[u64, u64, i64], u64],
-        function: u64 = 0,
-        cache: u64 = 0,
-        marker: u64 = 0,
-        info_type: u64 = 0,
-        key_type: u64 = 0,
-        move: u64 = 0,
-        pop: u64 = 0,
-        maximum: i64 = 0,
-        typed: bool = False,
-        hits: i64 = 0,
-        misses: i64 = 0;
+impl _functools_reduce_impl(
+    module: ptr[PyObject],
+    function: ptr[PyObject],
+    iterable: ptr[PyObject],
+    initial: ptr[PyObject]
+) -> ptr[PyObject] {
+    return jacpy_reduce(function, iterable, initial);
 }
 
-def:pub jacpy_lru_field(state: lru_state, field: i64) -> u64 {
-    if field == 0 {
-        return state.function;
+impl _functools_cmp_to_key_impl(
+    module: ptr[PyObject], mycmp: ptr[PyObject]
+) -> ptr[PyObject] {
+    instance = jacpy_binding_allocate(jacpy_binding_state_get(module, 1));
+    if instance == 0 {
+        return NULL;
     }
-    if field == 1 {
-        return state.cache;
+    state = ReferenceState(references=[Py_NewRef(mycmp), NULL]);
+    if jacpy_binding_native_set(instance, KeyWrapper_token.handle, state) < 0 {
+        jacpy_release(instance);
+        return NULL;
     }
-    if field == 2 {
-        return state.marker;
-    }
-    if field == 3 {
-        return state.info_type;
-    }
-    if field == 4 {
-        return state.key_type;
-    }
-    if field == 5 {
-        return state.move;
-    }
-    return state.pop;
+    return instance;
 }
 
-def:pub jacpy_lru_destroy(state: lru_state) {
-    fn = state.function;
-    cache = state.cache;
-    marker = state.marker;
-    info = state.info_type;
-    key = state.key_type;
-    move = state.move;
-    pop = state.pop;
-    state.function = 0;
-    state.cache = 0;
-    state.marker = 0;
-    state.info_type = 0;
-    state.key_type = 0;
-    state.move = 0;
-    state.pop = 0;
-    jacpy_release(fn);
-    jacpy_release(cache);
-    jacpy_release(marker);
-    jacpy_release(info);
-    jacpy_release(key);
-    jacpy_release(move);
-    jacpy_release(pop);
+
+impl lru_list_elem_dealloc(op: ptr[PyObject]) {
+    link = ptr[lru_list_elem](op).view(1);
+    tp = object_type(op);
+    object_xdecref(link[0].key);
+    object_xdecref(link[0].result);
+    tp.view(1)[0].tp_free(ptr(op));
+    object_decref(ptr[PyObject](tp));
 }
 
-def:pub jacpy_lru_init(
-    state: lru_state,
-    function: u64,
-    maximum: i64,
-    typed: i64,
-    info_type: u64,
-    key_type: u64,
-    marker: u64
-) -> i64 {
-    state.function = jacpy_retain(function);
-    state.marker = jacpy_retain(marker);
-    state.info_type = jacpy_retain(info_type);
-    state.key_type = jacpy_retain(key_type);
-    state.maximum = maximum;
-    state.typed = typed != 0;
-    try {
-        state.cache = required(
-            jacpy_ordered_dict_new() if maximum > 0 else jacpy_dict_new()
-        );
-        if maximum > 0 {
-            state.move = required(jacpy_getattr_string(state.cache, "move_to_end"));
-            state.pop = required(jacpy_getattr_string(state.cache, "popitem"));
-        }
-        return 0;
-    } except boundary_failure {
-        return -1;
+impl lru_cache_make_key(
+    kwd_mark: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject], typed: i32
+) -> ptr[PyObject] {
+    kwds_size: i64 = 0;
+    if kwds {
+        kwds_size = PyDict_Size(kwds);
     }
+
+    if typed == 0 and kwds_size == 0 {
+        if object_size(args) == 1 {
+            key = tuple_get_item(args, 0);
+            if unicode_check_exact(key) or long_check_exact(key) {
+                return object_new_ref(key);
+            }
+        }
+        return object_new_ref(args);
+    }
+    nargs = object_size(args);
+    key_size = nargs;
+    if kwds_size != 0 {
+        key_size += kwds_size * 2 + 1;
+    }
+    if typed != 0 {
+        key_size += nargs + kwds_size;
+    }
+    key = PyTuple_New(key_size);
+    if not key {
+        return NULL;
+    }
+    key_pos: i64 = 0;
+    for index in range(nargs) {
+        tuple_set_item(key, key_pos, object_new_ref(tuple_get_item(args, index)));
+        key_pos += 1;
+    }
+    position: i64 = 0;
+    keyword: ptr[PyObject] = NULL;
+    value: ptr[PyObject] = NULL;
+    if kwds_size != 0 {
+        tuple_set_item(key, key_pos, object_new_ref(kwd_mark));
+        key_pos += 1;
+        while PyDict_Next(kwds, &mut position, &mut keyword, &mut value) != 0 {
+            tuple_set_item(key, key_pos, object_new_ref(keyword));
+            key_pos += 1;
+            tuple_set_item(key, key_pos, object_new_ref(value));
+            key_pos += 1;
+        }
+    }
+    if typed != 0 {
+        for index in range(nargs) {
+            item = ptr[PyObject](object_type(tuple_get_item(args, index)));
+            tuple_set_item(key, key_pos, object_new_ref(item));
+            key_pos += 1;
+        }
+        if kwds_size != 0 {
+            position = 0;
+            while PyDict_Next(kwds, &mut position, &mut keyword, &mut value) != 0 {
+                item = ptr[PyObject](object_type(value));
+                tuple_set_item(key, key_pos, object_new_ref(item));
+                key_pos += 1;
+            }
+        }
+    }
+    return key;
 }
 
-def:priv cache_key(state: lru_state, args: u64, keywords: u64) -> u64 {
-    n = jacpy_tuple_size(args);
-    nk = jacpy_dict_size(keywords) if keywords != 0 else i64(0);
-    if not state.typed and nk == 0 {
-        if n == 1 {
-            item = required(jacpy_tuple_item(args, 0));
-            if jacpy_is_exact_long(item) != 0 or jacpy_is_exact_unicode(item) != 0 {
-                return item;
-            }
-            jacpy_release(item);
-        }
-        return jacpy_retain(args);
-    }
-    count = n
-        + (2 * nk + 1 if nk > 0 else i64(0))
-        + (n + nk if state.typed else i64(0));
-    key = required(jacpy_tuple_new(count));
-    pair: u64 = 0;
-    item: u64 = 0;
-    try {
-        position: i64 = 0;
-        for i in range(int(n)) {
-            checked(
-                jacpy_tuple_set_owned(
-                    key, position, required(jacpy_tuple_item(args, i64(i)))
-                )
-            );
-            position += 1;
-        }
-        if nk > 0 {
-            checked(jacpy_tuple_set_owned(key, position, jacpy_retain(state.marker)));
-            position += 1;
-            pos: i64 = 0;
-            while True {
-                pair = jacpy_dict_entry(keywords, pos);
-                if pair == 0 {
-                    break;
-                }
-                item = required(jacpy_tuple_item(pair, 0));
-                pos = jacpy_integer_value(item);
-                jacpy_release(item);
-                item = 0;
-                checked(
-                    jacpy_tuple_set_owned(
-                        key, position, required(jacpy_tuple_item(pair, 1))
-                    )
-                );
-                position += 1;
-                checked(
-                    jacpy_tuple_set_owned(
-                        key, position, required(jacpy_tuple_item(pair, 2))
-                    )
-                );
-                position += 1;
-                jacpy_release(pair);
-                pair = 0;
-            }
-        }
-        if state.typed {
-            for i in range(int(n)) {
-                item = required(jacpy_tuple_item(args, i64(i)));
-                checked(
-                    jacpy_tuple_set_owned(
-                        key, position, required(jacpy_object_type(item))
-                    )
-                );
-                position += 1;
-                jacpy_release(item);
-                item = 0;
-            }
-            pos = i64(0);
-            while nk > 0 {
-                pair = jacpy_dict_entry(keywords, pos);
-                if pair == 0 {
-                    break;
-                }
-                item = required(jacpy_tuple_item(pair, 0));
-                pos = jacpy_integer_value(item);
-                jacpy_release(item);
-                item = required(jacpy_tuple_item(pair, 2));
-                checked(
-                    jacpy_tuple_set_owned(
-                        key, position, required(jacpy_object_type(item))
-                    )
-                );
-                position += 1;
-                jacpy_release(item);
-                item = 0;
-                jacpy_release(pair);
-                pair = 0;
-            }
-        }
-        if jacpy_error_pending() != 0 {
-            raise boundary_failure();
-        }
-        return key;
-    } except boundary_failure {
-        jacpy_release(key);
-        raise;
-    } finally {
-        jacpy_release(pair);
-        jacpy_release(item);
-    }
+impl uncached_lru_cache_wrapper(
+    op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    self_ = ptr[lru_cache_object](op).view(1);
+    self_[0].misses = self_[0].misses + 1;
+    return PyObject_Call(self_[0].func, args, kwds);
 }
 
-def:pub jacpy_lru_call(state: lru_state, args: u64, keywords: u64) -> u64 {
-    if state.maximum == 0 {
-        state.misses += 1;
-        return jacpy_call(state.function, args, keywords);
+impl infinite_lru_cache_wrapper(
+    op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    self_ = ptr[lru_cache_object](op).view(1);
+    key = lru_cache_make_key(self_[0].kwd_mark, args, kwds, self_[0].typed);
+    if not key {
+        return NULL;
     }
-    key: u64 = 0;
-    wrapped: u64 = 0;
-    record: u64 = 0;
-    value: u64 = 0;
-    canonical: u64 = 0;
-    moved: u64 = 0;
-    evicted: u64 = 0;
-    first: u64 = 0;
-    try {
-        key = required(cache_key(state, args, keywords));
-        hash = jacpy_object_hash(key);
-        if hash == -1 and jacpy_error_pending() != 0 {
-            raise boundary_failure();
-        }
-        wrapped = required(state.key_factory(state.key_type, key, hash));
-        record = jacpy_dict_get(state.cache, wrapped);
-        if record != 0 {
-            if state.maximum > 0 {
-                canonical = required(jacpy_tuple_item(record, 0));
-                value = required(jacpy_tuple_item(record, 1));
-                moved = required(jacpy_call_one(state.move, canonical));
-            } else {
-                value = jacpy_retain(record);
-            }
-            state.hits += 1;
-            result = value;
-            value = 0;
-            return result;
-        }
-        if jacpy_error_pending() != 0 {
-            raise boundary_failure();
-        }
-        state.misses += 1;
-        value = required(jacpy_call(state.function, args, keywords));
-        if state.maximum < 0 {
-            checked(jacpy_dict_set(state.cache, wrapped, value));
-        } else {
-            record = jacpy_dict_get(state.cache, wrapped);
-            if record == 0 {
-                if jacpy_error_pending() != 0 {
-                    raise boundary_failure();
-                }
-                if jacpy_dict_size(state.cache) >= state.maximum {
-                    first = required(jacpy_boolean(0));
-                    evicted = required(jacpy_call_one(state.pop, first));
-                }
-                record = required(jacpy_tuple_new(2));
-                checked(jacpy_tuple_set_owned(record, 0, jacpy_retain(wrapped)));
-                checked(jacpy_tuple_set_owned(record, 1, jacpy_retain(value)));
-                # PyDict_SetItem bypasses OrderedDict's ordering slots.
-                checked(jacpy_setitem(state.cache, wrapped, record));
-            }
-        }
-        result = value;
-        value = 0;
+    hash_ = PyObject_Hash(key);
+    if hash_ == -1 {
+        object_decref(key);
+        return NULL;
+    }
+    result: ptr[PyObject] = NULL;
+    res = _PyDict_GetItemRef_KnownHash(self_[0].cache, key, hash_, &mut result);
+    if res > 0 {
+        self_[0].hits = self_[0].hits + 1;
+        object_decref(key);
         return result;
-    } except boundary_failure {
-        return 0;
-    } finally {
-        jacpy_release(key);
-        jacpy_release(wrapped);
-        jacpy_release(record);
-        jacpy_release(value);
-        jacpy_release(canonical);
-        jacpy_release(moved);
-        jacpy_release(evicted);
-        jacpy_release(first);
     }
+    if res < 0 {
+        object_decref(key);
+        return NULL;
+    }
+    self_[0].misses = self_[0].misses + 1;
+    result = PyObject_Call(self_[0].func, args, kwds);
+    if not result {
+        object_decref(key);
+        return NULL;
+    }
+    if _PyDict_SetItem_KnownHash(self_[0].cache, key, result, hash_) < 0 {
+        object_decref(result);
+        object_decref(key);
+        return NULL;
+    }
+    object_decref(key);
+    return result;
 }
 
-def:pub jacpy_lru_clear(state: lru_state) -> i64 {
-    state.hits = 0;
-    state.misses = 0;
-    if state.maximum > 0 {
-        method: u64 = 0;
-        args: u64 = 0;
-        result: u64 = 0;
-        try {
-            method = required(jacpy_getattr_string(state.cache, "clear"));
-            args = required(jacpy_tuple_new(0));
-            result = required(jacpy_call(method, args, 0));
-            return 0;
-        } except boundary_failure {
-            return -1;
-        } finally {
-            jacpy_release(method);
-            jacpy_release(args);
-            jacpy_release(result);
+impl lru_cache_extract_link(link: ptr[lru_list_elem]) {
+    link_prev = link.view(1)[0].prev;
+    link_next = link.view(1)[0].next;
+    link_prev.view(1)[0].next = link.view(1)[0].next;
+    link_next.view(1)[0].prev = link.view(1)[0].prev;
+}
+
+impl lru_cache_append_link(op: ptr[PyObject], link: ptr[lru_list_elem]) {
+    top = ptr[lru_list_elem](op);
+    last = top.view(1)[0].prev;
+    top.view(1)[0].prev = link;
+    last.view(1)[0].next = link;
+    link.view(1)[0].prev = last;
+    link.view(1)[0].next = top;
+}
+
+impl lru_cache_prepend_link(op: ptr[PyObject], link: ptr[lru_list_elem]) {
+    top = ptr[lru_list_elem](op);
+    first = top.view(1)[0].next;
+    top.view(1)[0].next = link;
+    first.view(1)[0].prev = link;
+    link.view(1)[0].prev = top;
+    link.view(1)[0].next = first;
+}
+
+impl bounded_lru_cache_get_lock_held(
+    op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> (i32, ptr[PyObject], ptr[PyObject], i64) {
+    self_ = ptr[lru_cache_object](op).view(1);
+    key = lru_cache_make_key(self_[0].kwd_mark, args, kwds, self_[0].typed);
+    if not key {
+        return (i32(-1), NULL, NULL, i64(0));
+    }
+    hash_ = PyObject_Hash(key);
+    if hash_ == -1 {
+        object_decref(key);
+        return (i32(-1), NULL, NULL, i64(0));
+    }
+    found: ptr[PyObject] = NULL;
+    res = _PyDict_GetItemRef_KnownHash(self_[0].cache, key, hash_, &mut found);
+    if res > 0 {
+        link = ptr[lru_list_elem](found);
+        lru_cache_extract_link(link);
+        lru_cache_append_link(op, link);
+        result = link.view(1)[0].result;
+        self_[0].hits = self_[0].hits + 1;
+        object_incref(result);
+        object_decref(found);
+        object_decref(key);
+        return (i32(1), result, NULL, hash_);
+    }
+    if res < 0 {
+        object_decref(key);
+        return (i32(-1), NULL, NULL, i64(0));
+    }
+    self_[0].misses = self_[0].misses + 1;
+    return (i32(0), NULL, key, hash_);
+}
+
+impl bounded_lru_cache_update_lock_held(
+    op: ptr[PyObject], result: ptr[PyObject], key: ptr[PyObject], hash: i64
+) -> ptr[PyObject] {
+    self_ = ptr[lru_cache_object](op).view(1);
+    if not result {
+        object_decref(key);
+        return NULL;
+    }
+    testresult: ptr[PyObject] = NULL;
+    res = _PyDict_GetItemRef_KnownHash(self_[0].cache, key, hash, &mut testresult);
+    if res > 0 {
+        object_decref(testresult);
+        object_decref(key);
+        return result;
+    }
+    if res < 0 {
+        object_decref(key);
+        object_decref(result);
+        return NULL;
+    }
+
+    top = ptr[lru_list_elem](op);
+    if PyDict_Size(self_[0].cache) < self_[0].maxsize or self_[0].next == top {
+        fresh = _PyObject_New(self_[0].lru_list_elem_type);
+        if not fresh {
+            object_decref(key);
+            object_decref(result);
+            return NULL;
         }
+        link = ptr[lru_list_elem](fresh);
+        link.view(1)[0].hash = hash;
+        link.view(1)[0].key = key;
+        link.view(1)[0].result = result;
+
+        if _PyDict_SetItem_KnownHash(self_[0].cache, key, fresh, hash) < 0 {
+            object_decref(fresh);
+            return NULL;
+        }
+        lru_cache_append_link(op, link);
+        return object_new_ref(result);
     }
-    jacpy_dict_clear(state.cache);
-    return 0;
+
+    link = self_[0].next;
+    lru_cache_extract_link(link);
+
+    popresult: ptr[PyObject] = NULL;
+    res = _PyDict_Pop_KnownHash(
+        self_[0].cache, link.view(1)[0].key, link.view(1)[0].hash, &mut popresult
+    );
+    if res < 0 {
+        lru_cache_prepend_link(op, link);
+        object_decref(key);
+        object_decref(result);
+        return NULL;
+    }
+    if res == 0 {
+        object_decref(ptr[PyObject](link));
+        object_decref(key);
+        return result;
+    }
+
+    oldkey = link.view(1)[0].key;
+    oldresult = link.view(1)[0].result;
+
+    link.view(1)[0].hash = hash;
+    link.view(1)[0].key = key;
+    link.view(1)[0].result = result;
+
+    if _PyDict_SetItem_KnownHash(self_[0].cache, key, ptr[PyObject](link), hash) < 0 {
+        object_decref(popresult);
+        object_decref(ptr[PyObject](link));
+        object_decref(oldkey);
+        object_decref(oldresult);
+        return NULL;
+    }
+    lru_cache_append_link(op, link);
+    object_incref(result);
+    object_decref(popresult);
+    object_decref(oldkey);
+    object_decref(oldresult);
+    return result;
 }
 
-def:pub jacpy_lru_info(state: lru_state) -> u64 {
-    args: u64 = 0;
-    try {
-        args = required(jacpy_tuple_new(4));
-        checked(jacpy_tuple_set_owned(args, 0, required(jacpy_int(state.hits))));
-        checked(jacpy_tuple_set_owned(args, 1, required(jacpy_int(state.misses))));
-        checked(
-            jacpy_tuple_set_owned(
-                args,
-                2,
-                required(
-                    jacpy_none() if state.maximum < 0 else jacpy_int(state.maximum)
-                )
-            )
-        );
-        checked(
-            jacpy_tuple_set_owned(
-                args, 3, required(jacpy_int(jacpy_dict_size(state.cache)))
-            )
-        );
-        return jacpy_call(state.info_type, args, 0);
-    } except boundary_failure {
-        return 0;
-    } finally {
-        jacpy_release(args);
+impl bounded_lru_cache_wrapper(
+    op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    (res, result, key, hash_) = bounded_lru_cache_get_lock_held(op, args, kwds);
+    if res < 0 {
+        return NULL;
     }
+    if res > 0 {
+        return result;
+    }
+    called = PyObject_Call(ptr[lru_cache_object](op).view(1)[0].func, args, kwds);
+
+    return bounded_lru_cache_update_lock_held(op, called, key, hash_);
+}
+
+impl lru_cache_new(
+    type: ptr[PyObject],
+    func: ptr[PyObject],
+    maxsize_O: ptr[PyObject],
+    typed: i32,
+    cache_info_type: ptr[PyObject],
+    kwd_mark: ptr[PyObject],
+    lru_list_elem_type: ptr[PyObject]
+) -> ptr[PyObject] {
+    if PyCallable_Check(func) == 0 {
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("the first argument must be callable")
+        );
+        return NULL;
+    }
+
+    maxsize: i64 = -1;
+    kind = 0;
+    if maxsize_O == Py_None {
+        kind = 1;
+    } elif PyIndex_Check(maxsize_O) != 0 {
+        maxsize = PyNumber_AsSsize_t(maxsize_O, PyExc_OverflowError);
+        if maxsize == -1 and PyErr_Occurred() {
+            return NULL;
+        }
+        if maxsize < 0 {
+            maxsize = 0;
+        }
+        kind = 0 if maxsize == 0 else 2;
+    } else {
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("maxsize should be integer or None"));
+        return NULL;
+    }
+    cachedict = PyDict_New();
+    if not cachedict {
+        return NULL;
+    }
+    created = ptr[PyTypeObject](type).view(1)[0].tp_alloc(ptr[PyTypeObject](type), 0);
+    if not created {
+        object_decref(cachedict);
+        return NULL;
+    }
+    obj_ = ptr[lru_cache_object](created).view(1);
+    top = ptr[lru_list_elem](created);
+    obj_[0].prev = top;
+    obj_[0].next = top;
+    if kind == 1 {
+        obj_[0].wrapper = infinite_lru_cache_wrapper;
+    } elif kind == 0 {
+        obj_[0].wrapper = uncached_lru_cache_wrapper;
+    } else {
+        obj_[0].wrapper = bounded_lru_cache_wrapper;
+    }
+    obj_[0].typed = typed;
+    obj_[0].cache = cachedict;
+    obj_[0].func = object_new_ref(func);
+    obj_[0].misses = 0;
+    obj_[0].hits = 0;
+    obj_[0].maxsize = maxsize;
+    obj_[0].kwd_mark = object_new_ref(kwd_mark);
+    obj_[0].lru_list_elem_type = object_new_ref(lru_list_elem_type);
+    obj_[0].cache_info_type = object_new_ref(cache_info_type);
+    obj_[0].dct = NULL;
+    obj_[0].weakreflist = NULL;
+    return created;
+}
+
+impl lru_cache_unlink_list(op: ptr[PyObject]) -> ptr[lru_list_elem] {
+    top = ptr[lru_list_elem](op);
+    link = top.view(1)[0].next;
+    if link == top {
+        return ptr[lru_list_elem]();
+    }
+    top.view(1)[0].prev.view(1)[0].next = ptr[lru_list_elem]();
+    top.view(1)[0].next = top;
+    top.view(1)[0].prev = top;
+    return link;
+}
+
+impl lru_cache_clear_list(link: ptr[lru_list_elem]) {
+    while link {
+        next_link = link.view(1)[0].next;
+        object_decref(ptr[PyObject](link));
+        link = next_link;
+    }
+}
+
+impl lru_cache_tp_clear(op: ptr[PyObject]) -> i32 {
+    self_ = ptr[lru_cache_object](op).view(1);
+    lst = lru_cache_unlink_list(op);
+    cache = self_[0].cache;
+    self_[0].cache = NULL;
+    object_xdecref(cache);
+    func = self_[0].func;
+    self_[0].func = NULL;
+    object_xdecref(func);
+    kwd_mark = self_[0].kwd_mark;
+    self_[0].kwd_mark = NULL;
+    object_xdecref(kwd_mark);
+    elem_type = self_[0].lru_list_elem_type;
+    self_[0].lru_list_elem_type = NULL;
+    object_xdecref(elem_type);
+    info_type = self_[0].cache_info_type;
+    self_[0].cache_info_type = NULL;
+    object_xdecref(info_type);
+    dct = self_[0].dct;
+    self_[0].dct = NULL;
+    object_xdecref(dct);
+    lru_cache_clear_list(lst);
+    return i32(0);
+}
+
+impl lru_cache_dealloc(op: ptr[PyObject]) {
+    tp = object_type(op);
+
+    PyObject_GC_UnTrack(ptr(op));
+    if ptr[lru_cache_object](op).view(1)[0].weakreflist {
+        PyObject_ClearWeakRefs(op);
+    }
+    lru_cache_tp_clear(op);
+    tp.view(1)[0].tp_free(ptr(op));
+    object_decref(ptr[PyObject](tp));
+}
+
+impl jacpy_lru_call(
+    op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject] {
+    return ptr[lru_cache_object](op).view(1)[0].wrapper(op, args, kwds);
+}
+
+impl lru_cache_descr_get(
+    self_: ptr[PyObject], obj_: ptr[PyObject], type: ptr[PyObject]
+) -> ptr[PyObject] {
+    if obj_ == Py_None or not obj_ {
+        return object_new_ref(self_);
+    }
+    return PyMethod_New(self_, obj_);
+}
+
+impl _functools__lru_cache_wrapper_cache_info_impl(
+    instance: ptr[PyObject]
+) -> ptr[PyObject] {
+    lru = ptr[lru_cache_object](instance).view(1);
+    hits: i64 = lru[0].hits;
+    misses: i64 = lru[0].misses;
+    size: i64 = PyDict_Size(lru[0].cache);
+    if lru[0].maxsize == -1 {
+        return PyObject_CallFunction(
+            lru[0].cache_info_type, "nnOn", hits, misses, Py_None, size
+        );
+    }
+    maxsize: i64 = lru[0].maxsize;
+    return PyObject_CallFunction(
+        lru[0].cache_info_type, "nnnn", hits, misses, maxsize, size
+    );
+}
+
+impl _functools__lru_cache_wrapper_cache_clear_impl(
+    instance: ptr[PyObject]
+) -> ptr[PyObject] {
+    lru = ptr[lru_cache_object](instance).view(1);
+    lst = lru_cache_unlink_list(instance);
+    lru[0].hits = 0;
+    lru[0].misses = 0;
+    PyDict_Clear(lru[0].cache);
+    lru_cache_clear_list(lst);
+    return object_new_ref(Py_None);
+}
+
+impl lru_cache_reduce(self_: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+    return PyObject_GetAttrString(self_, ptr[u8]("__qualname__"));
+}
+
+impl lru_cache_copy(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return object_new_ref(self_);
+}
+
+impl lru_cache_deepcopy(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+    return object_new_ref(self_);
+}
+
+impl lru_cache_tp_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+    self_ = ptr[lru_cache_object](op).view(1);
+    status = visit_reference(ptr[PyObject](object_type(op)), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    top = ptr[lru_list_elem](op);
+    link = self_[0].next;
+    while link != top {
+        next_link = link.view(1)[0].next;
+        status = visit_reference(link.view(1)[0].key, visitor, arg);
+        if status != 0 {
+            return status;
+        }
+        status = visit_reference(link.view(1)[0].result, visitor, arg);
+        if status != 0 {
+            return status;
+        }
+        status = visit_reference(
+            ptr[PyObject](object_type(ptr[PyObject](link))), visitor, arg
+        );
+        if status != 0 {
+            return status;
+        }
+        link = next_link;
+    }
+    status = visit_reference(self_[0].cache, visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(self_[0].func, visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(self_[0].kwd_mark, visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(self_[0].lru_list_elem_type, visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(self_[0].cache_info_type, visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(self_[0].dct, visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    return i32(0);
+}
+
+impl lru_cache_slots_ready -> bool {
+    slots = ptr[PyType_Slot](addressof(lru_cache_type_slots));
+    return int((slots + 5).view(1)[0].pfunc) != 0;
+}
+
+impl lru_cache_install_slots(doc: ptr[u8], methods: ptr[PyMethodDef], new: ptr) {
+    slots = ptr[PyType_Slot](addressof(lru_cache_type_slots));
+    (slots + 2).view(1)[0].pfunc = ptr(doc);
+    (slots + 9).view(1)[0].pfunc = new;
+    (slots + 5).view(1)[0].pfunc = ptr(methods);
 }
