@@ -373,10 +373,6 @@ obj MirLowering {
     def temp_slot(type: MirType) -> MirValue;
     def spill(value: MirValue) -> MirValue;
     def name_slot(target: uni.Name) -> MirValue;
-    def arg_mark -> tuple[MirBlock, (MirInstr | None)];
-    def carry_args(
-        values: list[MirValue], marks: list[tuple[MirBlock, (MirInstr | None)]]
-    ) -> list[MirValue];
     def bound_values(args: list[any], params: list[MirType]) -> list[MirValue];
     def lower_string(nd: (uni.String | uni.MultiString)) -> MirValue;
     def str_concat(left: MirValue, right: MirValue) -> MirValue;

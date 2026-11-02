@@ -1218,7 +1218,6 @@ impl MirLowering.ctor_arguments(
         );
     }
     values: list[MirValue] = [];
-    marks: list[tuple[MirBlock, (MirInstr | None)]] = [];
     mask = 0;
     for (index, (pname, ptype, fallback)) in enumerate(params) {
         source = positional[index]
@@ -1226,7 +1225,6 @@ impl MirLowering.ctor_arguments(
             else named.get(pname);
         if source is None and fallback is not None {
             values.append(self.placeholder(ptype));
-            marks.append(self.arg_mark());
             continue;
         }
         if fallback is not None {
@@ -1238,9 +1236,7 @@ impl MirLowering.ctor_arguments(
             );
         }
         values.append(self.coerce(self.lower_expr(source), ptype, source));
-        marks.append(self.arg_mark());
     }
-    values = self.carry_args(values, marks);
     if self.ctor_takes_mask(params) {
         values.append(self.builder().const_int(mask, mir_int()));
     }

@@ -1580,53 +1580,8 @@ impl MirLowering.spill(value: MirValue) -> MirValue {
     return self.builder().load(slot, slot.type);
 }
 
-impl MirLowering.arg_mark -> tuple[MirBlock, (MirInstr | None)] {
-    blk = self.builder().block;
-    return (blk, blk.instrs[-1] if blk.instrs else None);
-}
-
-impl MirLowering.carry_args(
-    values: list[MirValue], marks: list[tuple[MirBlock, (MirInstr | None)]]
-) -> list[MirValue] {
-    now = self.builder().block;
-    moved: list[int] = [
-        index
-        for (index, value) in enumerate(values)
-        if marks[index][0] is not now
-            and value.owned
-            and mir_holds_ref(value.type)
-    ];
-    if not moved {
-        return values;
-    }
-    slots = {index: self.temp_slot(values[index].type) for index in moved};
-    for index in reversed(moved) {
-        (blk, last) = marks[index];
-        at = 0;
-        for (position, instr) in enumerate(blk.instrs) {
-            if instr is last {
-                at = position + 1;
-            }
-        }
-        blk.instrs.insert(
-            at, MirInstr(op=MirOp.STORE, operands=[slots[index], values[index]])
-        );
-    }
-    out = list(values);
-    for index in moved {
-        out[index] = self.builder().load(slots[index], slots[index].type);
-    }
-    return out;
-}
-
 impl MirLowering.bound_values(args: list[any], params: list[MirType]) -> list[MirValue] {
-    values: list[MirValue] = [];
-    marks: list[tuple[MirBlock, (MirInstr | None)]] = [];
-    for (arg, ptype) in zip(args, params) {
-        values.append(self.bound_value(arg, ptype));
-        marks.append(self.arg_mark());
-    }
-    return self.carry_args(values, marks);
+    return [self.bound_value(arg, ptype) for (arg, ptype) in zip(args, params)];
 }
 
 impl MirLowering.lower_string(nd: (uni.String | uni.MultiString)) -> MirValue {

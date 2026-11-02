@@ -23,7 +23,9 @@ impl MirRcState.run {
                     MirOp.TUPLE_GET,
                     MirOp.ANY_TAG,
                     MirOp.ANY_PAYLOAD,
-                    MirOp.FRAME_FIELD
+                    MirOp.FRAME_FIELD,
+                    MirOp.FIELD_ADDR,
+                    MirOp.PTR_OFFSET
                 )
                 and instr.result is not None {
                 self.parents[instr.result.id] = instr.operands[0].id;
@@ -34,10 +36,70 @@ impl MirRcState.run {
             }
         }
     }
+    self.carry_across_blocks();
     for blk in self.fn.blocks {
         self.rewrite(blk);
     }
     self.initialize_slots();
+}
+
+impl MirRcState.carry_across_blocks {
+    if self.fn.resumable {
+        return;
+    }
+    owned: set[int] = set();
+    home: dict[int, MirBlock] = {};
+    for blk in self.fn.blocks {
+        for instr in blk.instrs {
+            made = instr.result;
+            if made is None or made.is_slot or not mir_holds_ref(made.type) {
+                continue;
+            }
+            home[made.id] = blk;
+            if made.owned
+                or (instr.op == MirOp.LOAD and not instr.operands[0].is_slot)
+                or (
+                    instr.op
+                        in (MirOp.REF_CAST, MirOp.STR_MAKE, MirOp.OPT_MAKE, MirOp.ANY_BOX)
+                    and instr.operands
+                    and instr.operands[0].id in owned
+                ) {
+                owned.add(made.id);
+            }
+        }
+    }
+    crossing: list[int] = [];
+    for blk in self.fn.blocks {
+        for instr in blk.instrs {
+            for operand in instr.operands {
+                for used in (operand.id, self.base_of(operand.id)) {
+                    if used in owned
+                        and used not in self.immortal
+                        and home[used] is not blk
+                        and used not in crossing {
+                        crossing.append(used);
+                    }
+                }
+            }
+        }
+    }
+    for value_id in crossing {
+        blk = home[value_id];
+        for (index, instr) in enumerate(blk.instrs) {
+            if instr.result is not None and instr.result.id == value_id {
+                value = instr.result;
+                held = self.fn.new_value(value.type, "carried");
+                held.is_slot = True;
+                self.fn.blocks[0].instrs.insert(
+                    0, MirInstr(op=MirOp.SLOT, result=held, type_arg=value.type)
+                );
+                self.ref_slots.append(held);
+                at = blk.instrs.index(instr) + 1;
+                blk.instrs.insert(at, MirInstr(op=MirOp.STORE, operands=[held, value]));
+                break;
+            }
+        }
+    }
 }
 
 impl MirRcState.last_uses(blk: MirBlock) -> dict[int, int] {

@@ -18,6 +18,7 @@ obj MirRcState {
     def last_uses(blk: MirBlock) -> dict[int, int];
     def base_of(value_id: int) -> int;
     def initialize_slots;
+    def carry_across_blocks;
 }
 
 def mir_insert_rc(fn: MirFunction);
