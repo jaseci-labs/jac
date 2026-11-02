@@ -491,6 +491,10 @@ walker TypeEvaluator {
 
     def get_type_of_with_alias(item: ExprAsItem) -> TypeBase;
     def _native_iter_next_result(expr: FuncCall) -> TypeBase | None;
+    def struct_format_fields(
+        fmt: str
+    ) -> (tuple[list[tuple[str, int, int]], int, bool] | None);
+    def _native_struct_unpack_result(expr: FuncCall) -> TypeBase | None;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     def _edge_endpoint_declared(
         edge_type: ClassType, want_src: bool

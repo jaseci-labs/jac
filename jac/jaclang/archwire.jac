@@ -10961,6 +10961,7 @@ graph import compiler {
             ClassType,
             EnumMemberType,
             FunctionType,
+            ModuleType,
             TypeVarType,
             UnionType
         },

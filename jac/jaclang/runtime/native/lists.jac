@@ -12,7 +12,8 @@ glob KIND_INT: int = 0,
      KIND_STR: int = 3,
      KIND_REF: int = 4,
      KIND_TUPLE: int = 5,
-     KIND_ANY: int = 6;
+     KIND_ANY: int = 6,
+     KIND_UINT: int = 7;
 
 glob LIST_LEN: int = 0,
      LIST_CAP: int = 8,

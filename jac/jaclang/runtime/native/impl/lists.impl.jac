@@ -218,6 +218,9 @@ impl __jac_rt_elem_eq(a: int, b: int, kind: int) -> bool {
 }
 
 impl _elem_cmp(a: int, b: int, kind: int) -> int {
+    if kind == KIND_UINT {
+        return _elem_cmp(a ^ (-9223372036854775807 - 1), b ^ (-9223372036854775807 - 1), KIND_INT);
+    }
     if kind == KIND_TUPLE {
         return _tuple_cmp(a, b);
     }

@@ -992,3 +992,114 @@ impl TypeEvaluator._get_class_from_module(
     resolved = self._get_type_from_module(module, name);
     return resolved if isinstance(resolved, ClassType) else None;
 }
+
+impl TypeEvaluator.struct_format_fields(
+    fmt: str
+) -> (tuple[list[tuple[str, int, int]], int, bool] | None) {
+    big = False;
+    native = True;
+    body = fmt;
+    if body and body[0] in "@=<>!" {
+        native = body[0] == "@";
+        big = body[0] in ">!";
+        body = body[1:];
+    }
+    sizes: dict[str, int] = {
+        "x": 1,
+        "c": 1,
+        "b": 1,
+        "B": 1,
+        "?": 1,
+        "h": 2,
+        "H": 2,
+        "i": 4,
+        "I": 4,
+        "l": 8 if native else 4,
+        "L": 8 if native else 4,
+        "q": 8,
+        "Q": 8,
+        "n": 8,
+        "N": 8,
+        "f": 4,
+        "d": 8,
+        "s": 1
+    };
+    fields: list[tuple[str, int, int]] = [];
+    offset = 0;
+    count = "";
+    for ch in body {
+        if ch.isspace() {
+            continue;
+        }
+        if ch.isdigit() {
+            count += ch;
+            continue;
+        }
+        if ch not in sizes or (ch in "nN" and not native) {
+            return None;
+        }
+        repeat = int(count) if count else 1;
+        count = "";
+        size = sizes[ch];
+        if native and ch not in "xcbB?s" and offset % size {
+            offset += size - offset % size;
+        }
+        if ch == "s" {
+            fields.append((ch, offset, repeat, ));
+            offset += repeat;
+            continue;
+        }
+        for _ in range(repeat) {
+            if ch != "x" {
+                fields.append((ch, offset, size, ));
+            }
+            offset += size;
+        }
+    }
+    if count {
+        return None;
+    }
+    return (fields, offset, big, );
+}
+
+impl TypeEvaluator._native_struct_unpack_result(expr: FuncCall) -> TypeBase | None {
+    target = expr.target;
+    if not isinstance(target, AtomTrailer)
+        or not target.is_attr
+        or not isinstance(target.right, Name)
+        or target.right.value not in ("unpack", "unpack_from")
+        or not expr.params {
+        return None;
+    }
+    owner = self.get_type_of_expression(target.target);
+    if not isinstance(owner, ModuleType) or owner.mod_name != "struct" {
+        return None;
+    }
+    fmt = literal_string_value(expr.params[0]);
+    layout = self.struct_format_fields(fmt) if isinstance(fmt, str) else None;
+    if layout is None or not self.prefetch or not self.prefetch.tuple_class {
+        return None;
+    }
+    self._evaluate_call_args(expr);
+    members: list[TypeBase] = [];
+    for (code, _, _) in layout[0] {
+        made: (ClassType | None) = self.prefetch.int_class;
+        if code in "fd" {
+            made = self.prefetch.float_class;
+        } elif code == "?" {
+            made = self.prefetch.bool_class;
+        } elif code in "cs" {
+            made = self.prefetch.bytes_class;
+        }
+        if made is None {
+            return None;
+        }
+        members.append(self._convert_to_instance(made));
+    }
+    result = self._convert_to_instance(self.prefetch.tuple_class);
+    if not isinstance(result, ClassType) or not members {
+        return None;
+    }
+    result.private.type_args = members;
+    return result;
+}

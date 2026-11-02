@@ -45,6 +45,7 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      KIND_REF: int = 4,
      KIND_TUPLE: int = 5,
      KIND_ANY: int = 6,
+     KIND_UINT: int = 7,
      TUPLE_BOX_MEMBERS: int = 8,
      NO_VALUE_KIND: int = -1,
      LIST_INDEX_MESSAGE: str = "list index out of range",
@@ -431,6 +432,7 @@ obj MirLowering {
     def sized_wrap(nd: uni.FuncCall, name: str) -> MirValue;
     def wrapping_call(nd: uni.FuncCall, name: str, args: list[uni.Expr]) -> MirValue;
     def checked_cast(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
+    def struct_call(nd: uni.FuncCall, name: str) -> MirValue;
     def int_bytes_call(
         nd: uni.FuncCall, target: uni.AtomTrailer, name: str
     ) -> (MirValue | None);
@@ -441,6 +443,7 @@ obj MirLowering {
         op: str, left: MirValue, right: MirValue, in_place: bool, site: uni.UniNode
     ) -> (MirValue | None);
     def nullable_payload(t: MirType) -> bool;
+    def sort_kind(t: MirType, site: uni.UniNode) -> int;
     def container_method(
         receiver: MirValue, name: str, nd: uni.FuncCall
     ) -> (MirValue | None);

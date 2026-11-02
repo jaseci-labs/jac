@@ -97,7 +97,14 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
             self.exception_matches(type_id, clause.ex_type), handler, following
         );
         b.position(handler);
-        if clause.name is not None {
+        bound_sym = clause.name.sym if clause.name is not None else None;
+        binds = bound_sym is None
+            or any(
+            name.sym is bound_sym
+            for stmt in clause.body
+            for name in self.names_within(stmt)
+        );
+        if clause.name is not None and binds {
             if clause.name.sym is None {
                 raise MirRefused(
                     mir_refusal("exception binding", clause.name.value, clause)

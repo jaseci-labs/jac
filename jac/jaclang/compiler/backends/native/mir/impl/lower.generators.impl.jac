@@ -1431,7 +1431,9 @@ impl MirLowering.builtin_sorted(
         self.keyed_sort(held, key_fn, flag, nd);
         return held;
     }
-    self.runtime("__jac_rt_list_sort", [made, b.const_int(kind, mir_int()), flag]);
+    self.runtime(
+        "__jac_rt_list_sort", [made, b.const_int(self.sort_kind(elem, nd), mir_int()), flag]
+    );
     return made;
 }
 
@@ -1496,7 +1498,10 @@ impl MirLowering.keyed_sort(
     b.store(cursor, b.binary("add", at, b.const_int(1, mir_int())));
     b.branch(head);
     b.position(done);
-    self.runtime("__jac_rt_list_sort_keyed", [made, keys, key_kind, flag]);
+    self.runtime(
+        "__jac_rt_list_sort_keyed",
+        [made, keys, b.const_int(self.sort_kind(key_type, site), mir_int()), flag]
+    );
 }
 
 impl MirLowering.builtin_fold(

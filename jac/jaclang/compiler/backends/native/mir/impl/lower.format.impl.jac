@@ -1281,3 +1281,153 @@ impl MirLowering.int_bytes_call(
         True
     );
 }
+
+impl MirLowering.struct_call(nd: uni.FuncCall, name: str) -> MirValue {
+    b = self.builder();
+    (args, named) = self.split_args(nd);
+    fmt = uni.literal_string_value(args[0]) if args else None;
+    layout = self.prog.get_type_evaluator().struct_format_fields(fmt)
+        if isinstance(fmt, str)
+        else None;
+    if named or layout is None {
+        raise MirRefused(
+            mir_refusal(
+                "call",
+                f"struct.{name}",
+                nd,
+                "Native struct calls take a literal format of fixed-size codes and positional values."
+            )
+        );
+    }
+    (fields, total, big) = layout;
+    if name == "calcsize" and len(args) == 1 {
+        return b.const_int(total, mir_int());
+    }
+    big_flag = b.const_bool(big);
+    u8p = mir_c_ptr(mir_int(8, False));
+    if name == "pack" {
+        values = args[1:];
+        if len(values) != len(fields) {
+            raise MirRefused(
+                mir_refusal(
+                    "call",
+                    f"struct.pack with {len(values)} values for {len(fields)} fields",
+                    nd
+                )
+            );
+        }
+        made = self.spill(
+            b.ref_cast(
+                self.call_rt("__jac_rt_bytes_zero", [b.const_int(total, mir_int())]),
+                mir_bytes(),
+                True
+            )
+        );
+        (data, _) = self.byte_parts(made);
+        for ((code, offset, size), arg) in zip(fields, values) {
+            if code in "cs" {
+                raise MirRefused(mir_refusal("call", f"struct.pack of '{code}'", arg));
+            }
+            value = self.lower_expr(arg);
+            bits: MirValue;
+            if code in "fd" {
+                width = 32 if code == "f" else 64;
+                raw = self.emit_value(
+                    MirOp.BITCAST,
+                    mir_int(width, True, True),
+                    [b.convert(self.coerce(value, mir_float(), arg), mir_float(width))]
+                );
+                bits = b.convert(b.convert(raw, mir_int(width, False, True)), mir_int());
+            } else {
+                bits = self.coerce(self.enum_as_int(value, arg), mir_int(), arg);
+            }
+            self.runtime(
+                "__jac_rt_struct_put",
+                [
+                    self.emit_value(
+                        MirOp.PTR_OFFSET, u8p, [data, b.const_int(offset, mir_int())]
+                    ),
+                    bits,
+                    b.const_int(size, mir_int()),
+                    big_flag
+                ]
+            );
+        }
+        return made;
+    }
+    if name not in ("unpack", "unpack_from") or len(args) not in (2, 3) {
+        raise MirRefused(mir_refusal("call", f"struct.{name}", nd));
+    }
+    source = self.spill(self.lower_expr(args[1]));
+    if not self.is_byte_seq(source) {
+        raise MirRefused(
+            mir_refusal("call", f"struct.{name} of {source.type.render()}", nd)
+        );
+    }
+    (data, size) = self.byte_parts(source);
+    start = b.const_int(0, mir_int());
+    if name == "unpack_from" and len(args) == 3 {
+        start = self.coerce(self.lower_expr(args[2]), mir_int(), args[2]);
+    }
+    if name == "unpack" {
+        self.raise_if(
+            b.compare("ne", size, b.const_int(total, mir_int())),
+            "ValueError",
+            f"unpack requires a buffer of {total} bytes"
+        );
+    } else {
+        self.raise_if(
+            b.binary(
+                "or",
+                b.compare("lt", start, b.const_int(0, mir_int())),
+                b.compare(
+                    "gt", b.binary("add", start, b.const_int(total, mir_int())), size
+                )
+            ),
+            "ValueError",
+            f"unpack_from requires a buffer of at least {total} bytes"
+        );
+    }
+    result_type = self.expr_type(nd);
+    if result_type.kind != MirKind.TUPLE or len(result_type.args) != len(fields) {
+        raise MirRefused(mir_refusal("call", f"struct.{name} result", nd));
+    }
+    members: list[MirValue] = [];
+    for ((code, offset, width), member) in zip(fields, result_type.args) {
+        at = self.emit_value(
+            MirOp.PTR_OFFSET,
+            u8p,
+            [data, b.binary("add", start, b.const_int(offset, mir_int()))]
+        );
+        if code in "cs" {
+            made_bytes = b.ref_cast(
+                self.call_rt("__jac_rt_bytes_new", [at, b.const_int(width, mir_int())]),
+                mir_bytes(),
+                True
+            );
+            members.append(self.coerce(made_bytes, member, nd));
+            continue;
+        }
+        signed = code in "bhilqn";
+        raw = self.call_rt(
+            "__jac_rt_int_from_bytes",
+            [at, b.const_int(width, mir_int()), big_flag, b.const_bool(signed)]
+        );
+        if code in "fd" {
+            float_width = 32 if code == "f" else 64;
+            real = self.emit_value(
+                MirOp.BITCAST,
+                mir_float(float_width),
+                [b.convert(raw, mir_int(float_width, True, True))]
+            );
+            members.append(self.coerce(b.convert(real, mir_float()), member, nd));
+        } elif code == "?" {
+            members.append(
+                self.coerce(b.compare("ne", raw, b.const_int(0, mir_int())), member, nd)
+            );
+        } else {
+            members.append(self.coerce(raw, member, nd));
+        }
+    }
+    return self.emit_value(MirOp.TUPLE_MAKE, result_type, members);
+}

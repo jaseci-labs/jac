@@ -39,6 +39,8 @@ def:pub __jac_rt_int_from_bytes(data: ptr[u8], n: int, big: bool, signed: bool) 
 
 def:pub __jac_rt_int_to_bytes(value: int, n: int, big: bool, signed: bool) -> int;
 
+def:pub __jac_rt_struct_put(at: ptr[u8], bits: int, size: int, big: bool);
+
 def:pub __jac_rt_bytes_from_list(lst: int) -> int;
 
 def:pub __jac_rt_bytes_slice(

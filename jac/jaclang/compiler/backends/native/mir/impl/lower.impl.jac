@@ -2353,6 +2353,11 @@ impl MirLowering.method_call(
     if right.value == "wrap" and self.sized_type_name(target.target) is not None {
         return self.sized_wrap(nd, self.sized_type_name(target.target) or "");
     }
+    if isinstance(target.target, uni.Name)
+        and isinstance(target.target.type, ModuleType)
+        and target.target.type.mod_name == "struct" {
+        return self.struct_call(nd, right.value);
+    }
     if right.value in ("from_bytes", "to_bytes") {
         via_bytes = self.int_bytes_call(nd, target, right.value);
         if via_bytes is not None {

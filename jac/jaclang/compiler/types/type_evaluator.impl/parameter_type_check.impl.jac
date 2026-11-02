@@ -324,6 +324,10 @@ impl TypeEvaluator._validate_call_type(
         if na_iter_ret is not None {
             return na_iter_ret;
         }
+        na_struct_ret = self._native_struct_unpack_result(expr);
+        if na_struct_ret is not None {
+            return na_struct_ret;
+        }
     }
 
     if isinstance(caller_type, AnyType) {

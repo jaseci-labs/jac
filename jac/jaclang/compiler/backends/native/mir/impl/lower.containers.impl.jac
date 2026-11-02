@@ -92,10 +92,10 @@ impl MirLowering.to_bits(
         return self.address_of(self.any_to_box(value, site));
     }
     if elem.kind == MirKind.OPT {
-        held = self.spill(self.coerce(value, elem, site));
+        boxed_opt = self.spill(self.coerce(value, elem, site));
         return b.select(
-            self.opt_present(held),
-            self.address_of(self.opt_get(held)),
+            self.opt_present(boxed_opt),
+            self.address_of(self.opt_get(boxed_opt)),
             b.const_int(0, mir_int())
         );
     }
@@ -728,8 +728,7 @@ impl MirLowering.list_sort(lst: MirValue, nd: uni.FuncCall) -> (MirValue | None)
         self.keyed_sort(held, key_fn, flag, nd);
     } else {
         self.runtime(
-            "__jac_rt_list_sort",
-            [held, b.const_int(self.elem_kind(elem, nd), mir_int()), flag]
+            "__jac_rt_list_sort", [held, b.const_int(self.sort_kind(elem, nd), mir_int()), flag]
         );
     }
     return b.const_bool(False);
@@ -1406,4 +1405,11 @@ impl MirLowering.nullable_payload(t: MirType) -> bool {
             mir_holds_ref(t)
             and t.kind not in (MirKind.STR, MirKind.TUPLE, MirKind.ANY, MirKind.OPT)
         );
+}
+
+impl MirLowering.sort_kind(t: MirType, site: uni.UniNode) -> int {
+    if t.kind == MirKind.INT and not t.signed and t.width == 64 {
+        return KIND_UINT;
+    }
+    return self.elem_kind(t, site);
 }

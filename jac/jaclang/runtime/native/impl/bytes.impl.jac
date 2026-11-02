@@ -915,3 +915,13 @@ impl __jac_rt_int_to_bytes(value: int, n: int, big: bool, signed: bool) -> int {
     }
     return made;
 }
+
+impl __jac_rt_struct_put(at: ptr[u8], bits: int, size: int, big: bool) {
+    d = int(at);
+    i = 0;
+    while i < size {
+        byte = (bits >> (i * 8)) & 255 if i < 8 else 0;
+        __mem_store_i8(d + (size - 1 - i if big else i), i8.wrap(byte));
+        i += 1;
+    }
+}

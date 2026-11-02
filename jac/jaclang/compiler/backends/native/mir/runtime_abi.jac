@@ -196,6 +196,7 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_bytes_zero": ["ref", "int"],
          "__jac_rt_int_from_bytes": ["int", "ptr", "int", "bool", "bool"],
          "__jac_rt_int_to_bytes": ["ref", "int", "int", "bool", "bool"],
+         "__jac_rt_struct_put": ["none", "ptr", "int", "int", "bool"],
          "__jac_rt_bytes_from_list": ["ref", "ref"],
          "__jac_rt_bytes_slice": ["ref", "ptr", "int", "int", "int", "int", "int"],
          "__jac_rt_bytes_concat": ["ref", "ptr", "int", "ptr", "int"],
