@@ -38,8 +38,16 @@ impl match_pin(
     return '';
 }
 
+impl placement_pins_muted -> bool {
+    raw = os.environ.get('JAC_IGNORE_PLACEMENT_PINS', '').strip().lower();
+    return raw not in ('', '0', 'false', 'off', 'no');
+}
+
 impl config_pins_for(source_path: str) -> dict[str, str] {
     if not source_path {
+        return {};
+    }
+    if placement_pins_muted() {
         return {};
     }
     ws = active_host().workspace(source_path);
