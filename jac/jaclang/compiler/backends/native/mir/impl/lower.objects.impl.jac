@@ -719,6 +719,11 @@ impl MirLowering.field_place(
             )
         );
     }
+    if holder.type.kind == MirKind.OBJ
+        and holder.type.name != obj_def.name
+        and self.obj_extends(obj_def.name, holder.type.name) {
+        holder = self.builder().ref_cast(holder, mir_obj(obj_def.name), False);
+    }
     return self.emit_value(
         MirOp.FIELD_ADDR, mir_c_ptr(member.type), [holder], int_value=member.index
     );

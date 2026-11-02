@@ -261,7 +261,8 @@ obj MirDecl {
         owner: (uni.Archetype | None) = None,
         event: str = "",
         env: dict[str, TypeBase] = {},
-        c_variadic: bool = False;
+        c_variadic: bool = False,
+        c_symbol: str = "";
 }
 
 def mono_symbol_text(text: str) -> str;
@@ -399,6 +400,9 @@ obj MirLowering {
     def c_defines(decl: uni.UniNode) -> bool;
     def declare_c_definition(ab: uni.Ability);
     def va_arg(nd: uni.FuncCall, receiver: uni.Expr) -> MirValue;
+    def list_extend_in_place(
+        op: str, current: MirValue, value: MirValue, site: uni.UniNode
+    ) -> (MirValue | None);
     def pointer_arith(
         op: str, left: MirValue, right: MirValue, site: uni.UniNode
     ) -> (MirValue | None);
@@ -414,6 +418,7 @@ obj MirLowering {
     def method_call(nd: uni.FuncCall, target: uni.AtomTrailer) -> (MirValue | None);
     def call_args(nd: uni.FuncCall) -> list[uni.Expr];
     def coerce_place(place: MirValue) -> MirValue;
+    def struct_temp_place(nd: uni.Expr) -> MirValue;
     def declare_global(nd: uni.Name) -> (MirGlobal | None);
     def declare_c_data;
     def note_clib(imp: (uni.Import | None)) -> int;

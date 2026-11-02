@@ -131,6 +131,7 @@ impl MirLowering.declare_c_global(assign: uni.Assignment) -> MirGlobal {
         made.type = self.type_of(ctype, MirPosition.C_FIELD, assign);
     }
     initial = assign.value;
+    self.c_views[id(assign)] = made;
     if defines and isinstance(initial, uni.Expr) {
         made.linkage = "internal" if is_priv else "";
         made.c_init = self.c_const(initial, ctype, made.type, made.count);

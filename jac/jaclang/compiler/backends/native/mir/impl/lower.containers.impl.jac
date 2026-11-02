@@ -1444,3 +1444,26 @@ impl MirLowering.unbind_local(target: uni.Expr) -> bool {
     }
     return True;
 }
+
+impl MirLowering.list_extend_in_place(
+    op: str, current: MirValue, value: MirValue, site: uni.UniNode
+) -> (MirValue | None) {
+    if op != Tok.PLUS
+        or current.type.kind != MirKind.LIST
+        or value.type.kind != MirKind.LIST {
+        return None;
+    }
+    other = value
+        if value.type is current.type
+        else self.coerce(value, current.type, site);
+    elem = current.type.payload();
+    self.runtime(
+        "__jac_rt_list_extend",
+        [
+            current,
+            other,
+            self.builder().const_int(self.elem_kind(elem, site), mir_int())
+        ]
+    );
+    return current;
+}

@@ -10537,6 +10537,7 @@ graph import compiler.backends.native.mir {
         emit {
             MirBlock,
             MirConst,
+            MirExtern,
             MirFunction,
             MirGlobal,
             MirInstr,
