@@ -32526,6 +32526,9 @@ graph import runtime.python {
         interpreter.lock {
             EINTR,
             ETIMEDOUT,
+            PTHREAD_LOCK_COND,
+            PTHREAD_LOCK_MUTEX,
+            PTHREAD_LOCK_SIZE,
             PyInterpreterState_QSBR,
             PyThreadState_STATE,
             _PyThreadStateImpl_QSBR
@@ -33909,6 +33912,11 @@ graph import runtime.python {
     ]
     modules.contextvars ++> bindings.contextvars { _contextvars_copy_context_impl }
     modules.core_platform ++> [
+        interpreter.lock {
+            PYTHREAD_USE_SEMAPHORES,
+            cond_timedwait_relative,
+            semaphore_timedwait
+        },
         interpreter.thread {
             PYTHREAD_CONDATTR_MONOTONIC,
             PYTHREAD_USE_SEMAPHORES,
@@ -36703,7 +36711,7 @@ graph import runtime.python {
     modules.time_platform ++> bindings.time { HAS_PTHREAD_GETCPUCLOCKID }
     modules.time_records ++> [
         cpython_api | object_model.pytime { timespec, timeval, tm },
-        interpreter.thread { timespec },
+        interpreter.lock | interpreter.thread { timespec },
     ]
     modules.traceback_platform ++> object_model.traceback { symbol_info }
     modules.tracemalloc ++> bindings.clinic.tracemalloc {
