@@ -14,6 +14,31 @@ impl MirLowering.opt_get(value: MirValue) -> MirValue {
     return self.emit_value(MirOp.OPT_GET, value.type.payload(), [value]);
 }
 
+impl MirLowering.opt_unwrap_checked(value: MirValue, message: str) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    held = self.spill(value);
+    absent = fn.new_block("opt.isnone");
+    present = fn.new_block("opt.some");
+    b.cond_branch(self.opt_present(held), present, absent);
+    b.position(absent);
+    b.raise_builtin("TypeError", message);
+    b.position(present);
+    return self.opt_get(held);
+}
+
+impl MirLowering.narrowed_load(value: MirValue, nd: uni.Expr) -> MirValue {
+    if value.type.kind != MirKind.OPT
+        or nd.type is None
+        or isinstance(nd.type, (UnionType, AnyType)) {
+        return value;
+    }
+    if self.expr_type(nd).kind == MirKind.OPT {
+        return value;
+    }
+    return self.opt_unwrap_checked(value, "'NoneType' object found where a value was required");
+}
+
 impl MirLowering.opt_begin(
     value: MirValue, result: MirType
 ) -> tuple[MirValue, MirValue, MirBlock, MirBlock] {

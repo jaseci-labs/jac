@@ -20,6 +20,20 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
          "RSHIFT_EQ": "RSHIFT",
          "STAR_POW_EQ": "STAR_POW"
      },
+     OPERATOR_SYMBOLS: dict[str, str] = {
+         "PLUS": "+",
+         "MINUS": "-",
+         "STAR_MUL": "*",
+         "DIV": "/",
+         "FLOOR_DIV": "//",
+         "MOD": "%",
+         "STAR_POW": "**",
+         "BW_AND": "&",
+         "BW_OR": "|",
+         "BW_XOR": "^",
+         "LSHIFT": "<<",
+         "RSHIFT": ">>"
+     },
      SHIFT_MESSAGE: str = "shift count out of range",
      NEGATIVE_SHIFT_MESSAGE: str = "negative shift count",
      RANGE_STEP_MESSAGE: str = "range() arg 3 must not be zero",
@@ -410,6 +424,8 @@ obj MirLowering {
     def opt_wrap(value: MirValue, to: MirType) -> MirValue;
     def opt_present(value: MirValue) -> MirValue;
     def opt_get(value: MirValue) -> MirValue;
+    def opt_unwrap_checked(value: MirValue, message: str) -> MirValue;
+    def narrowed_load(value: MirValue, nd: uni.Expr) -> MirValue;
     def opt_begin(
         value: MirValue, result: MirType
     ) -> tuple[MirValue, MirValue, MirBlock, MirBlock];

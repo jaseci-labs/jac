@@ -750,6 +750,20 @@ impl MirLowering.arith(
     op: str, left: MirValue, right: MirValue, site: uni.UniNode
 ) -> MirValue {
     b = self.builder();
+    if left.type.kind == MirKind.OPT or right.type.kind == MirKind.OPT {
+        symbol = OPERATOR_SYMBOLS.get(op, op);
+        names = [
+            "NoneType" if side.type.kind == MirKind.OPT else side.type.render()
+            for side in (left, right)
+        ];
+        message = f"unsupported operand type(s) for {symbol}: '{names[0]}' and '{names[1]}'";
+        if left.type.kind == MirKind.OPT and left.type.payload().is_numeric() {
+            left = self.opt_unwrap_checked(left, message);
+        }
+        if right.type.kind == MirKind.OPT and right.type.payload().is_numeric() {
+            right = self.opt_unwrap_checked(right, message);
+        }
+    }
     if op == Tok.STAR_POW {
         return self.power(left, right, site);
     }
@@ -1873,7 +1887,7 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
         }
     }
     place = self.lower_place(nd);
-    return self.builder().load(place, self.place_elem(place));
+    return self.narrowed_load(self.builder().load(place, self.place_elem(place)), nd);
 }
 
 impl MirLowering.call_name(nd: uni.FuncCall) -> str {
