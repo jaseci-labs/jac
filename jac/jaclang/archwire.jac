@@ -6519,6 +6519,10 @@ graph import compiler {
         },
         backends.native.link_plan._write_sidecar { native_unit_identity },
         backends.native.mir.backend {
+            NativeFieldInfo,
+            NativeFuncLayout,
+            NativeModuleLayout,
+            NativeStructLayout,
             jaclang_pkg_root,
             native_entry_name,
             native_glob_init_name,
@@ -11759,6 +11763,7 @@ graph import compiler.backends.native.mir {
         lower { mir_osp_signature, mir_runtime_signature },
     ]
     types ++> [
+        backend { MirKind, MirType },
         emit { MirKind, MirType, mir_c_ptr, mir_holds_ref, mir_int, mir_is_container },
         generators {
             MirKind,

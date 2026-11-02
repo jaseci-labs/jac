@@ -47,7 +47,9 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
         target[0]
     );
     ir_in.gen.native_deps = list(deps);
+    ir_in.gen.native_layout = self.layout(lowering, lowered);
     ir_in.gen.native_iface = self.interface(lowered, deps);
+    ir_in.gen.native_iface.layout = ir_in.gen.native_layout;
     return ir_in;
 }
 
@@ -138,4 +140,134 @@ impl native_coverage(prog: JacProgram) -> dict[str, dict[str, any]] {
 
 impl mir_backend_selected -> bool {
     return os.environ.get("JAC_NATIVE_MIR", "") == "1";
+}
+
+impl MirNativePass.layout(lowering: MirLowering, mir: MirModule) -> NativeModuleLayout {
+    made = NativeModuleLayout(str_headerless=False);
+    for (name, obj_def) in mir.objects.items() {
+        if not obj_def.local {
+            continue;
+        }
+        made.structs[name] = NativeStructLayout(
+            name=name,
+            fields=[
+                NativeFieldInfo(
+                    name=member.name,
+                    llvm_type=mir_layout_type(member.type),
+                    index=member.index,
+                    enum_type=member.type.name
+                        if member.type.kind == MirKind.ENUM
+                        else None
+                )
+                for member in obj_def.fields
+            ],
+            has_vtable=bool(obj_def.vtable_symbol)
+        );
+    }
+    owners: dict[str, str] = {};
+    for decl in lowering.decls.values() {
+        if decl.event {
+            continue;
+        }
+        if decl.owner is None {
+            owners.setdefault(decl.symbol, "");
+        } elif decl.self_type is not None {
+            owners.setdefault(decl.symbol, decl.self_type.name);
+        }
+    }
+    for fn in mir.functions {
+        owner = owners.get(fn.symbol);
+        if fn.linkage == "internal" or fn.symbol in mir.demoted or owner is None {
+            continue;
+        }
+        params = [param.value.type for param in fn.params];
+        names = [param.name for param in fn.params];
+        ret = fn.ret;
+        record = NativeFuncLayout(
+            name=fn.symbol,
+            param_types=[mir_layout_type(param) for param in params],
+            param_names=names,
+            ret_type=mir_layout_type(ret),
+            ret_struct_name=ret.name
+                if ret.kind == MirKind.OBJ and ret.name != "*"
+                else None,
+            ret_enum_type=mir_layout_enum(ret),
+            ret_elem_keys=[mir_layout_key(arg) for arg in ret.args]
+                if ret.kind in (MirKind.LIST, MirKind.DICT, MirKind.SET)
+                else None
+        );
+        if owner {
+            made.methods[f"{owner}.{fn.name}"] = record;
+        } else {
+            made.functions[fn.name] = record;
+        }
+    }
+    return made;
+}
+
+impl mir_layout_type(t: MirType) -> str {
+    if t.kind == MirKind.BOOL {
+        return "i1";
+    }
+    if t.kind == MirKind.INT {
+        return f"i{t.width}";
+    }
+    if t.kind == MirKind.ENUM {
+        return "i64";
+    }
+    if t.kind == MirKind.FLOAT {
+        return "f32" if t.width == 32 else "f64";
+    }
+    if t.kind in (MirKind.NONE, MirKind.VOID) {
+        return "void";
+    }
+    if t.kind == MirKind.STR {
+        return "jacstr3";
+    }
+    if t.kind in (MirKind.OPT, MirKind.OPT_REF) {
+        return "opt." + mir_layout_type(t.payload());
+    }
+    if t.kind == MirKind.TUPLE {
+        return "Tuple";
+    }
+    if t.kind == MirKind.ANY {
+        return "JacVal";
+    }
+    if t.kind == MirKind.OBJ and t.name != "*" {
+        return f"{t.name}*";
+    }
+    if t.kind in (MirKind.LIST, MirKind.DICT, MirKind.SET) {
+        family = {MirKind.LIST: "List", MirKind.DICT: "Dict", MirKind.SET: "Set"}[t.kind];
+        return ".".join([family] + [mir_layout_key(arg) for arg in t.args]) + "*";
+    }
+    return "i8*";
+}
+
+impl mir_layout_key(t: MirType) -> str {
+    if t.kind == MirKind.INT and not t.is_sized() {
+        return "int";
+    }
+    if t.kind == MirKind.FLOAT and t.width == 64 {
+        return "float";
+    }
+    if t.kind in (MirKind.STR, MirKind.STR_REF) {
+        return "str";
+    }
+    if t.kind in (MirKind.BOOL, MirKind.ANY) {
+        return t.kind.value;
+    }
+    if t.name {
+        return t.name;
+    }
+    return t.render();
+}
+
+impl mir_layout_enum(t: MirType) -> (str | None) {
+    if t.kind == MirKind.ENUM {
+        return t.name;
+    }
+    if t.kind == MirKind.OPT and t.payload().kind == MirKind.ENUM {
+        return t.payload().name;
+    }
+    return None;
 }
