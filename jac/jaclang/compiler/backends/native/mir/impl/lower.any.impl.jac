@@ -298,12 +298,16 @@ impl MirLowering.isinstance_value(
     if names is None {
         return None;
     }
-    subject_type = value.type.payload() if value.type.kind == MirKind.OPT else value.type;
+    subject_type = value.type.payload()
+        if value.type.kind == MirKind.OPT
+        else value.type;
     static_name = STATIC_TYPE_NAMES.get(subject_type.kind.value, "");
     hit = static_name in names or (static_name == "bool" and "int" in names);
     if value.type.kind == MirKind.OPT {
         return b.select(
-            self.opt_present(value), b.const_bool(hit), b.const_bool("NoneType" in names)
+            self.opt_present(value),
+            b.const_bool(hit),
+            b.const_bool("NoneType" in names)
         );
     }
     return b.const_bool(hit);

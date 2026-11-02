@@ -47,7 +47,9 @@ impl MirLowering.builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None)
                 mir_refusal("call", f"dict of {source.type.render()}", nd)
             );
         }
-        made = self.spill(self.new_dict(made_type.args[0], made_type.args[1], made_type));
+        made = self.spill(
+            self.new_dict(made_type.args[0], made_type.args[1], made_type)
+        );
         self.merge_dict(made, source, args[0], False);
         return made;
     }

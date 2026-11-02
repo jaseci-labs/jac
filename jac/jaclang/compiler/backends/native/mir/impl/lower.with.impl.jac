@@ -436,7 +436,9 @@ impl MirLowering.match_test(
                 entry_pat
             );
         }
-        if rest is not None and isinstance(rest.name, uni.Name) and rest.name.sym is not None {
+        if rest is not None
+            and isinstance(rest.name, uni.Name)
+            and rest.name.sym is not None {
             value_type = subject.type.args[1];
             key_kind = b.const_int(self.elem_kind(key_type, rest), mir_int());
             value_kind = b.const_int(self.elem_kind(value_type, rest), mir_int());
@@ -533,9 +535,7 @@ impl MirLowering.match_star_sequence(
         self.match_test(part, element, fail, part);
     }
     for (index, part) in enumerate(tails) {
-        position = b.binary(
-            "sub", size, b.const_int(len(tails) - index, mir_int())
-        );
+        position = b.binary("sub", size, b.const_int(len(tails) - index, mir_int()));
         element = self.spill(self.list_read(subject, position));
         self.match_test(part, element, fail, part);
     }

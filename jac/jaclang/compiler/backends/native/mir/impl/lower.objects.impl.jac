@@ -545,12 +545,12 @@ impl MirLowering.lower_trace(obj_def: MirObjectDef) -> MirFunction {
         children: list[MirValue] = [loaded];
         if member.type.kind == MirKind.TUPLE {
             children = [
-                self.tuple_get(loaded, index)
-                for index in range(len(member.type.args))
+                self.tuple_get(loaded, index) for index in range(len(member.type.args))
             ];
         }
         for child in children {
-            if child.type.kind in (MirKind.STR, MirKind.STR_REF, MirKind.ANY, MirKind.TUPLE)
+            if child.type.kind
+                in (MirKind.STR, MirKind.STR_REF, MirKind.ANY, MirKind.TUPLE)
                 or not mir_holds_ref(child.type) {
                 continue;
             }
@@ -566,7 +566,10 @@ impl MirLowering.lower_trace(obj_def: MirObjectDef) -> MirFunction {
                 self.emit_value(
                     MirOp.CALL_FNPTR,
                     mir_none(),
-                    [visit_fn, self.emit_value(MirOp.PTR_CAST, i8p, [self.opt_get(child)])]
+                    [
+                        visit_fn,
+                        self.emit_value(MirOp.PTR_CAST, i8p, [self.opt_get(child)])
+                    ]
                 );
                 b.branch(after);
                 b.position(after);
@@ -809,9 +812,9 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
         }
         ordered = sorted(
             self.deferred_globals,
-            key=lambda (pair: tuple[MirGlobal, uni.Expr]) -> int {
-                pair[1].loc.pos_start;
-            }
+            key=lambda (pair: tuple[MirGlobal, uni.Expr]) -> int { pair[
+                1
+            ].loc.pos_start; }
         );
         for (glob_def, initial) in ordered {
             place = self.emit_value(

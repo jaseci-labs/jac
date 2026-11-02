@@ -36,7 +36,9 @@ impl MirLowering.narrowed_load(value: MirValue, nd: uni.Expr) -> MirValue {
     if self.expr_type(nd).kind == MirKind.OPT {
         return value;
     }
-    return self.opt_unwrap_checked(value, "'NoneType' object found where a value was required");
+    return self.opt_unwrap_checked(
+        value, "'NoneType' object found where a value was required"
+    );
 }
 
 impl MirLowering.narrow_down(value: MirValue, nd: uni.Expr) -> MirValue {

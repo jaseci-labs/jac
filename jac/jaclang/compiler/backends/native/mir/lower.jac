@@ -397,6 +397,7 @@ obj MirLowering {
     def each_begin(
         source: MirValue, site: uni.UniNode
     ) -> tuple[MirValue, MirIterCursor, MirBlock, MirBlock];
+
     def each_end(head: MirBlock, after: MirBlock);
     def container_add(made: MirValue, item: MirValue, site: uni.UniNode);
     def extend_from(made: MirValue, source: MirValue, site: uni.UniNode);
@@ -505,10 +506,12 @@ obj MirLowering {
     def bound_args(
         nd: uni.FuncCall, ab: uni.Ability, method: bool
     ) -> list[(uni.Expr | MirPacked | MirBound)];
+
     def has_spread(nd: uni.FuncCall) -> bool;
     def spread_args(
         nd: uni.FuncCall, ab: uni.Ability, sig: uni.FuncSignature, method: bool
     ) -> list[(uni.Expr | MirPacked | MirBound)];
+
     def bind_from_spreads(
         pv: uni.ParamVar,
         given: (MirBound | None),
@@ -526,7 +529,9 @@ obj MirLowering {
         nd: uni.FuncCall
     ) -> uni.Expr;
 
-    def bound_value(arg: (uni.Expr | MirPacked | MirBound), ptype: MirType) -> MirValue;
+    def bound_value(
+        arg: (uni.Expr | MirPacked | MirBound), ptype: MirType
+    ) -> MirValue;
     def constant_default(value: (uni.Expr | None)) -> bool;
     def builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def list_concat(left: MirValue, right: MirValue) -> MirValue;
@@ -821,6 +826,7 @@ obj MirLowering {
     def match_star_sequence(
         pat: uni.MatchSequence, at: int, subject: MirValue, fail: MirBlock
     );
+
     def match_arch(pat: uni.MatchArch, subject: MirValue, fail: MirBlock);
     def branch_unless(cond: MirValue, fail: MirBlock);
     def python_call(nd: uni.FuncCall) -> (MirValue | None);

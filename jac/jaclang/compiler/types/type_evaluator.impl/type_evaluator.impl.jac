@@ -6831,7 +6831,9 @@ impl TypeEvaluator._is_empty_container_expr(expr: Expr) -> bool {
     if isinstance(expr, DictVal) {
         return not expr.kv_pairs;
     }
-    if isinstance(expr, FuncCall) and not expr.params and isinstance(expr.target, Name) {
+    if isinstance(expr, FuncCall)
+        and not expr.params
+        and isinstance(expr.target, Name) {
         return expr.target.value in ("list", "set", "dict", "frozenset");
     }
     return False;
@@ -6863,7 +6865,9 @@ impl TypeEvaluator._match_position_type(pattern: MatchPattern) -> TypeBase {
         whole = self._match_position_type(parent);
         if isinstance(pattern, MatchStar) {
             element = self._get_iterable_element_type(whole, parent);
-            if element is None or self.prefetch is None or self.prefetch.list_class is None {
+            if element is None
+                or self.prefetch is None
+                or self.prefetch.list_class is None {
                 return UnknownType();
             }
             made = self._convert_to_instance(self.prefetch.list_class);

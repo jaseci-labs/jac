@@ -773,7 +773,9 @@ impl MirLowering.arith(
             "NoneType" if side.type.kind == MirKind.OPT else side.type.render()
             for side in (left, right)
         ];
-        message = f"unsupported operand type(s) for {symbol}: '{names[0]}' and '{names[1]}'";
+        message = f"unsupported operand type(s) for {symbol}: '{names[0]}' and '{names[
+            1
+        ]}'";
         if left.type.kind == MirKind.OPT and left.type.payload().is_numeric() {
             left = self.opt_unwrap_checked(left, message);
         }

@@ -3,7 +3,10 @@ impl _collecting -> bool {
 }
 
 impl _is_ref_kind(kind: int) -> bool {
-    return kind == KIND_STR or kind == KIND_REF or kind == KIND_TUPLE or kind == KIND_ANY;
+    return kind == KIND_STR
+        or kind == KIND_REF
+        or kind == KIND_TUPLE
+        or kind == KIND_ANY;
 }
 
 impl _any_numeric(tag: int) -> bool {

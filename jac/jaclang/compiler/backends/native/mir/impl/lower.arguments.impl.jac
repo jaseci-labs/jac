@@ -122,7 +122,9 @@ impl MirLowering.spread_args(
     sink_items: list[(uni.Expr | MirBound)] = [];
     for arg in list(nd.params or []) {
         if isinstance(arg, uni.KWPair) and arg.key is not None {
-            held = MirBound(value=self.spill(self.lower_expr(arg.value)), site=arg.value);
+            held = MirBound(
+                value=self.spill(self.lower_expr(arg.value)), site=arg.value
+            );
             named[arg.key.sym_name] = held;
             sink_names.append(arg.key.sym_name);
             sink_items.append(held);
@@ -236,7 +238,11 @@ impl MirLowering.spread_args(
         );
         return bound;
     }
-    unknown = [name for name in named if name not in bindable];
+    unknown = [
+        name
+        for name in named
+        if name not in bindable
+    ];
     if unknown {
         raise MirRefused(
             mir_refusal("call", f"{self.name_of(ab)} has no parameter {unknown[0]}", nd)
@@ -297,11 +303,14 @@ impl MirLowering.bind_from_spreads(
         );
         b.store(
             held,
-            self.coerce(self.dict_entry_value(source, found, spread.site), ptype, spread.site)
+            self.coerce(
+                self.dict_entry_value(source, found, spread.site), ptype, spread.site
+            )
         );
         b.store(bound_flag, b.const_bool(True));
         b.store(
-            matched, b.binary("add", b.load(matched, mir_int()), b.const_int(1, mir_int()))
+            matched,
+            b.binary("add", b.load(matched, mir_int()), b.const_int(1, mir_int()))
         );
         b.branch(miss);
         b.position(miss);
