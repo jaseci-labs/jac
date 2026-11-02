@@ -372,6 +372,458 @@ test "closure escape: a statement call through an any-typed field stays rejected
     );
 }
 
+test "typed callable: an Optional callable is called after a None check" {
+    (prog, ir) = compile_na_inline_ir(
+        "optional_callable_call",
+        """
+glob seen: list[int] = [];
+obj Hooks {
+    has f: (Callable[[int], int] | None) = None;
+    has on_event: (Callable[[int], None] | None) = None;
+    def go(x: int) -> int {
+        g = self.f;
+        if g is not None { return g(x); }
+        return -1;
+    }
+    def fire(x: int) {
+        if self.on_event is not None { self.on_event(x); }
+    }
+    def clear { self.f = None; }
+    def go_after_clear(x: int) -> int {
+        if self.f is not None {
+            self.clear();
+            return self.f(x);
+        }
+        return -1;
+    }
+}
+def dbl(x: int) -> int { return x * 2; }
+def note(x: int) { seen.append(x); }
+def set_hooks -> int {
+    h = Hooks(f=dbl, on_event=note);
+    h.fire(5);
+    h.fire(6);
+    e = Hooks();
+    e.fire(9);
+    return h.go(21) * 1000 + len(seen) * 100 + seen[0] + e.go(1);
+}
+def cleared_call -> int {
+    h = Hooks(f=dbl);
+    try {
+        return h.go_after_clear(1);
+    } except TypeError {
+        return -7;
+    }
+}
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    for fn in ["set_hooks", "cleared_call"] {
+        assert fn in ir.gen.native_layout.functions , f"{fn} demoted";
+    }
+    set_hooks = get_func(ir.gen.native_engine, "set_hooks", ctypes.c_int64);
+    assert set_hooks() == 42204;
+    cleared = get_func(ir.gen.native_engine, "cleared_call", ctypes.c_int64);
+    assert cleared() == -7 , "calling a None callable must raise TypeError";
+}
+
+test "typed callable: an Optional callable runs its arguments first and outlives them" {
+    (prog, ir) = compile_na_inline_ir(
+        "optional_callable_arg_order",
+        """
+glob noted: list[int] = [];
+obj Hooks {
+    has f: (Callable[[int], int] | None) = None;
+    def clear { self.f = None; }
+    def note(x: int) -> int {
+        noted.append(x);
+        return x;
+    }
+    def clear_then(x: int) -> int {
+        self.f = None;
+        junk = [str(i) + "-" + str(x) for i in range(64)];
+        return x + len(junk) - 64;
+    }
+    def call_after_clear(x: int) -> int {
+        if self.f is not None {
+            self.clear();
+            return self.f(self.note(x));
+        }
+        return -1;
+    }
+    def call_clearing(x: int) -> int {
+        if self.f is not None {
+            return self.f(self.clear_then(x));
+        }
+        return -1;
+    }
+}
+def dbl(x: int) -> int { return x * 2; }
+def raised_after_args -> int {
+    h = Hooks(f=dbl);
+    try {
+        return h.call_after_clear(4);
+    } except TypeError {
+        return len(noted) * 10 + noted[0];
+    }
+}
+def cleared_by_arg -> int {
+    total = 0;
+    for i in range(20) {
+        h = Hooks(f=dbl);
+        total += h.call_clearing(i);
+    }
+    return total;
+}
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    for fn in ["raised_after_args", "cleared_by_arg"] {
+        assert fn in ir.gen.native_layout.functions , f"{fn} demoted";
+    }
+    raised = get_func(ir.gen.native_engine, "raised_after_args", ctypes.c_int64);
+    assert raised() == 14 , "the argument must run before the None callable raises";
+    cleared = get_func(ir.gen.native_engine, "cleared_by_arg", ctypes.c_int64);
+    assert cleared() == 380 , "the callable read before its arguments must still run";
+}
+
+test "typed callable: an Optional Callable without a parameter list stays rejected" {
+    (prog, ir) = compile_na_inline_ir(
+        "optional_bare_callable",
+        """
+def dbl(x: int) -> int { return x * 2; }
+obj Hooks { has g: (Callable | None) = None; }
+def outer -> int {
+    h = Hooks(g=dbl);
+    if h.g is not None { return h.g(1); }
+    return 0;
+}
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
+    assert "outer" not in ir.gen.native_layout.functions , (
+        "a call through an unparameterized Callable must demote, never lower"
+    );
+}
+
+test "typed callable: a bound method converts to a closure over its receiver" {
+    (prog, ir) = compile_na_inline_ir(
+        "bound_method_value",
+        """
+glob dropped: int = 0;
+obj Counter {
+    has n: int = 0;
+    def bump(amt: int) -> int {
+        self.n += amt;
+        return self.n;
+    }
+    def drop { dropped += 1; }
+}
+obj Doubler(Counter) {
+    override def bump(amt: int) -> int {
+        self.n += amt * 2;
+        return self.n;
+    }
+}
+obj Holder { has f: Callable[[int], int]; }
+def apply(f: Callable[[int], int], x: int) -> int { return f(x); }
+def bound_local -> int {
+    c = Counter();
+    f: Callable[[int], int] = c.bump;
+    f(2);
+    return f(3);
+}
+def through_field -> int {
+    c = Counter();
+    h = Holder(f=c.bump);
+    h.f(2);
+    return apply(c.bump, 4) + c.n;
+}
+def overridden -> int {
+    c: Counter = Doubler();
+    f: Callable[[int], int] = c.bump;
+    return f(5);
+}
+def make_bumper(start: int) -> Callable[[int], int] {
+    return Counter(n=start).bump;
+}
+def escaped -> int {
+    b = make_bumper(100);
+    b(1);
+    return b(2);
+}
+def compares -> int {
+    c = Counter();
+    d = Counter();
+    f: Callable[[int], int] = c.bump;
+    r = 0;
+    if f == c.bump { r += 1; }
+    if c.bump != d.bump { r += 10; }
+    return r;
+}
+def drops -> int { return dropped; }
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    for fn in ["bound_local", "through_field", "overridden", "escaped", "compares"] {
+        assert fn in ir.gen.native_layout.functions , f"{fn} demoted";
+    }
+    eng = ir.gen.native_engine;
+    assert get_func(eng, "bound_local", ctypes.c_int64)() == 5;
+    assert get_func(eng, "through_field", ctypes.c_int64)() == 12;
+    assert get_func(eng, "overridden", ctypes.c_int64)() == 10 , (
+        "a bound method must dispatch on the receiver's runtime class"
+    );
+    assert get_func(eng, "compares", ctypes.c_int64)() == 11 , (
+        "bound methods compare equal by receiver and method, as in Python"
+    );
+    drops = get_func(eng, "drops", ctypes.c_int64);
+    before = drops();
+    assert get_func(eng, "escaped", ctypes.c_int64)() == 103;
+    assert drops() - before == 1 , (
+        "the closure must keep its receiver alive and release it exactly once"
+    );
+}
+
+test "typed callable: each new function value keeps its own identity" {
+    (prog, ir) = compile_na_inline_ir(
+        "fresh_function_identity",
+        """
+def make -> Callable[[int], int] {
+    def inner(x: int) -> int { return x + 1; }
+    return inner;
+}
+def make_lam -> Callable[[int], int] {
+    return lambda (x: int) -> int { x + 2; };
+}
+def plain(x: int) -> int { return x; }
+def identities -> int {
+    a = make();
+    b = make();
+    l1 = make_lam();
+    l2 = make_lam();
+    p: Callable[[int], int] = plain;
+    q: Callable[[int], int] = plain;
+    r = 0;
+    if a != b { r += 1; }
+    if a == a { r += 10; }
+    if l1 != l2 { r += 100; }
+    if p == q { r += 1000; }
+    return r * 10 + a(1) - l1(1) + 1;
+}
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    assert "identities" in ir.gen.native_layout.functions , "identities demoted";
+    got = get_func(ir.gen.native_engine, "identities", ctypes.c_int64)();
+    assert got == 11110 , (
+        f"separate function objects compare unequal, wraps of one function equal: {got}"
+    );
+}
+
+test "typed callable: reads of one function object compare equal" {
+    (prog, ir) = compile_na_inline_ir(
+        "same_function_identity",
+        """
+def reads -> int {
+    def inner(x: int) -> int { return x + 1; }
+    a: Callable[[int], int] = inner;
+    b: Callable[[int], int] = inner;
+    r = 0;
+    if a == b { r += 1; }
+    if a(1) == 2 and b(2) == 3 { r += 10; }
+    return r;
+}
+def register(cb: Callable[[int], int], cbs: list[Callable[[int], int]]) -> None {
+    cbs.append(cb);
+}
+def unregister(cb: Callable[[int], int], cbs: list[Callable[[int], int]]) -> int {
+    n = 0;
+    for c in cbs {
+        if c == cb { n += 1; }
+    }
+    return n;
+}
+def callback_removal -> int {
+    def inner(x: int) -> int { return x; }
+    cbs: list[Callable[[int], int]] = [];
+    register(inner, cbs);
+    return unregister(inner, cbs);
+}
+def in_branches(flag: bool) -> int {
+    def inner(x: int) -> int { return x; }
+    a: Callable[[int], int] = inner;
+    b: Callable[[int], int] = inner;
+    if flag {
+        b = inner;
+    }
+    return 1 if a == b else 0;
+}
+def per_execution -> int {
+    fs: list[Callable[[int], int]] = [];
+    same = 0;
+    for i in range(2) {
+        def inner(x: int) -> int { return x; }
+        a: Callable[[int], int] = inner;
+        b: Callable[[int], int] = inner;
+        if a == b { same += 1; }
+        fs.append(a);
+    }
+    return same * 10 + (1 if fs[0] != fs[1] else 0);
+}
+def churn -> int {
+    n = 0;
+    for i in range(100000) {
+        def inner(x: int) -> int { return x; }
+        a: Callable[[int], int] = inner;
+        b: Callable[[int], int] = inner;
+        if a == b { n += 1; }
+    }
+    return n;
+}
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    eng = ir.gen.native_engine;
+    assert get_func(eng, "reads", ctypes.c_int64)() == 11;
+    assert get_func(eng, "callback_removal", ctypes.c_int64)() == 1;
+    assert get_func(eng, "in_branches", ctypes.c_int64, ctypes.c_bool)(True) == 1;
+    assert get_func(eng, "in_branches", ctypes.c_int64, ctypes.c_bool)(False) == 1;
+    assert get_func(eng, "per_execution", ctypes.c_int64)() == 21 , (
+        "each execution of a def is a new function, read consistently within it"
+    );
+    assert get_func(eng, "churn", ctypes.c_int64)() == 100000;
+}
+
+test "typed callable: a method read through different static types compares equal" {
+    (prog, ir) = compile_na_inline_ir(
+        "bound_method_cross_type",
+        """
+obj Base {
+    has n: int = 0;
+    def bump(amt: int) -> int {
+        self.n += amt;
+        return self.n;
+    }
+    def other(amt: int) -> int { return amt; }
+}
+obj Mid(Base) {}
+obj Twice(Base) {
+    override def bump(amt: int) -> int {
+        self.n += amt * 2;
+        return self.n;
+    }
+}
+def same_mid(b: Base, m: Mid) -> bool { return b.bump == m.bump; }
+def same_twice(b: Base, t: Twice) -> bool { return b.bump == t.bump; }
+def through_base(b: Base) -> int {
+    f: Callable[[int], int] = b.bump;
+    return f(3);
+}
+def cross -> int {
+    m = Mid();
+    t = Twice();
+    r = 0;
+    if same_mid(m, m) { r += 1; }
+    if same_twice(t, t) { r += 10; }
+    if not same_mid(Mid(), m) { r += 100; }
+    if m.bump != m.other { r += 1000; }
+    return r * 10 + through_base(t);
+}
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    assert "cross" in ir.gen.native_layout.functions , "cross demoted";
+    got = get_func(ir.gen.native_engine, "cross", ctypes.c_int64)();
+    assert got == 11116 , (
+        f"one method on one receiver compares equal through any static type: {got}"
+    );
+}
+
+test "typed callable: a raising call releases the callable it saved" {
+    (prog, ir) = compile_na_inline_ir(
+        "optional_callable_raise_release",
+        """
+glob dropped: int = 0;
+obj Counter {
+    has n: int = 0;
+    def bump(amt: int) -> int {
+        if amt < 0 { raise ValueError("negative"); }
+        self.n += amt;
+        return self.n;
+    }
+    def drop { dropped += 1; }
+}
+obj Hooks {
+    has f: (Callable[[int], int] | None) = None;
+    def bad(x: int) -> int { raise ValueError("bad argument"); }
+    def fire(x: int) -> int {
+        if self.f is not None { return self.f(x); }
+        return 0;
+    }
+    def fire_bad_arg(x: int) -> int {
+        if self.f is not None { return self.f(self.bad(x)); }
+        return 0;
+    }
+}
+def raised_in_callee -> int {
+    h = Hooks(f=Counter().bump);
+    try {
+        h.fire(-1);
+    } except ValueError {
+        h.f = None;
+    }
+    return dropped;
+}
+def raised_in_arg -> int {
+    h = Hooks(f=Counter().bump);
+    try {
+        h.fire_bad_arg(1);
+    } except ValueError {
+        h.f = None;
+    }
+    return dropped;
+}
+def caught_in_frame -> int {
+    h = Hooks(f=Counter().bump);
+    hits = 0;
+    for i in range(3) {
+        if h.f is not None {
+            try {
+                h.f(-1);
+            } except ValueError {
+                hits += 1;
+            }
+        }
+    }
+    h.f = None;
+    return hits;
+}
+def drops -> int { return dropped; }
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    for fn in ["raised_in_callee", "raised_in_arg", "caught_in_frame"] {
+        assert fn in ir.gen.native_layout.functions , f"{fn} demoted";
+    }
+    eng = ir.gen.native_engine;
+    drops = get_func(eng, "drops", ctypes.c_int64);
+    before = drops();
+    assert get_func(eng, "raised_in_callee", ctypes.c_int64)() - before == 1 , (
+        "a callback that raises must not keep its receiver alive"
+    );
+    before = drops();
+    assert get_func(eng, "raised_in_arg", ctypes.c_int64)() - before == 1 , (
+        "an argument that raises must not keep the callback's receiver alive"
+    );
+    before = drops();
+    assert get_func(eng, "caught_in_frame", ctypes.c_int64)() == 3;
+    assert drops() - before == 1 , (
+        "a raise caught in the calling frame must release the callback once"
+    );
+}
+
 test "adapter: map with a capturing lambda callback" {
     (eng, _) = compile_native("closures_adapters.jac");
     f = get_func(eng, "scale_all", ctypes.c_int64, ctypes.c_int64);

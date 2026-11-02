@@ -37,12 +37,12 @@ def lchflags_call(path: ptr[u8], flags: u64) -> i32 {
 }
 
 def mkfifoat_available -> bool {
-    return bool(runtime_function("mkfifoat"));
+    return bool(runtime_function(ptr[u8]("mkfifoat")));
 }
 
 def mkfifoat_call(dir_fd: i32, path: ptr[u8], mode: u32) -> i32 {
     function = MkfifoatFunction();
-    function.call = int(runtime_function("mkfifoat"));
+    function.call = int(runtime_function(ptr[u8]("mkfifoat")));
     return function.call(dir_fd, path, mode);
 }
 
@@ -51,12 +51,12 @@ def mknod_call(path: ptr[u8], mode: u32, device: u64) -> i32 {
 }
 
 def mknodat_available -> bool {
-    return bool(runtime_function("mknodat"));
+    return bool(runtime_function(ptr[u8]("mknodat")));
 }
 
 def mknodat_call(dir_fd: i32, path: ptr[u8], mode: u32, device: u64) -> i32 {
     function = MknodatFunction();
-    function.call = int(runtime_function("mknodat"));
+    function.call = int(runtime_function(ptr[u8]("mknodat")));
     return function.call(dir_fd, path, mode, i32.wrap(device));
 }
 

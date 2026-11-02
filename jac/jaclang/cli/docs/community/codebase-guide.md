@@ -256,8 +256,9 @@ There are three documentation tiers with different contributor expectations:
 **Validating docs locally:**
 
 ```bash
-jac run scripts/validate_docs_code.jac        # syntax-check every code block
-cd jac && jac test tests/cli/test_docs_content.jac   # links, anchors, staleness
+cd jac
+jac test tests/cli/test_docs_code_blocks.jac   # syntax-check every code block
+jac test tests/cli/test_docs_content.jac       # links, anchors, staleness
 ```
 
 Adding or removing a page means updating `nav.json` in the same PR -- a test

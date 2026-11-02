@@ -20,6 +20,14 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "stack_promotion.jac"
+     ),
+     C_FIXTURE = os.path.join(
+         TESTS_DIR,
+         "compiler",
+         "backends",
+         "native",
+         "fixtures",
+         "stack_promotion_c.jac"
      );
 
 def _compile_ir(gc_mode: str, enforce: bool) -> str {
@@ -42,6 +50,17 @@ def _compile_ir(gc_mode: str, enforce: bool) -> str {
     } finally {
         pop_native_target(prev);
     }
+}
+
+def _compile_native_ir(path: str) -> str {
+    prog = JacProgram();
+    ir = prog.compile(
+        file_path=path,
+        options=CompileOptions(aot_mode=True, no_ir_cache=True, skip_native_engine=True)
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    assert ir is not None and ir.gen.llvm_ir is not None;
+    return str(ir.gen.llvm_ir);
 }
 
 def _fn_ir(ir: str, name: str) -> str {
@@ -87,4 +106,23 @@ test "jac explain memory reports the promoted count" {
     );
     assert res.returncode == 0 , res.stderr;
     assert "promoted=1" in res.stderr , res.stderr;
+}
+
+test "a C record of raw pointers lent to C lives on the stack, released by nothing" {
+    body = _fn_ir(_compile_native_ir(C_FIXTURE), "lend_slots");
+    assert "stk.PointerSlots" in body , body;
+    assert "malloc" not in body , body;
+    assert "unwind.node" not in body , body;
+}
+
+test "a local also bound to a heap record is still released" {
+    body = _fn_ir(_compile_native_ir(C_FIXTURE), "rebind_slots");
+    assert "__rc_release" in body , body;
+}
+
+test "a named function used as a Callable is a static closure" {
+    ir = _compile_native_ir(C_FIXTURE);
+    body = _fn_ir(ir, "apply_named");
+    assert "__jac_fnclos" in body , body;
+    assert "malloc" not in body and "__rc_alloc" not in body , body;
 }

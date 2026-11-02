@@ -571,8 +571,12 @@ impl Session.commit(anchor: (Anchor | None) = None) -> None {
             while True {
                 try {
                     self.flush(full=True);
+                    wrote = self._rows.in_flight();
                     self._commit_txn();
                     self._leave_queue();
+                    if wrote and self._active_units > 0 and self._ro_units > 0 {
+                        self._register_ro_writers();
+                    }
                     break;
                 } except Exception as e {
                     if not _is_serialization_conflict(e) {
