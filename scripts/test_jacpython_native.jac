@@ -191,7 +191,13 @@ def main -> int {
                 "runtime/python/constant_output.jac",
                 "compiler/frontend/python/syntax_error.jac"
             ]
-        ) {
+        );
+        if "runtime/python/impl/objects.impl.jac" not in staged {
+            raise AssertionError(
+                "native boundary probe omitted the Jac object implementation annex"
+            );
+        }
+        for relative in staged {
             destination = stage / "native_subject" / relative;
             destination.parent.mkdir(parents=True, exist_ok=True);
             destination.write_text(

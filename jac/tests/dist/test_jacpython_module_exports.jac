@@ -112,5 +112,6 @@ test "the export contract checks registered modules and static type globals" {
         globals={name: False for name in prepare.STATIC_TYPE_EXPORTS}
     );
     assert prepare.undefined_exports(merged, expected) == [];
-    assert prepare.undefined_exports(merged, prepare.STATIC_TYPE_EXPORTS, "global") == [];
+    assert prepare.undefined_exports(merged, prepare.STATIC_TYPE_EXPORTS, "global")
+        == [];
 }
