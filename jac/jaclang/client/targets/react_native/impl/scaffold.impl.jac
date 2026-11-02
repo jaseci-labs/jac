@@ -1,0 +1,402 @@
+impl _is_scaffold_managed(path: Path, managed_key: str = "") -> bool {
+    if not path.exists() {
+        return True;
+    }
+    try {
+        text = path.read_text(encoding="utf-8");
+    } except Exception {
+        return False;
+    }
+    if managed_key {
+        if managed_key.startswith("sidecar:") {
+            sidecar_name = managed_key.split(":", 1)[1];
+            sidecar = path.parent / sidecar_name;
+            return sidecar.exists();
+        }
+
+        try {
+            data = json.loads(text);
+            return managed_key in data;
+        } except Exception {
+            return False;
+        }
+    }
+    if _SCAFFOLD_MARKER in text {
+        return True;
+    }
+
+    if path.name in {"index.ts", "jac-app.js"}
+        and _AUTO_GENERATED_INDEX_BANNER in text {
+        return True;
+    }
+    return False;
+}
+
+impl _write_if_managed(
+    path: Path, contents: str, label: str, managed_key: str = ""
+) -> bool {
+    if path.exists() and not _is_scaffold_managed(path, managed_key) {
+        console.print(
+            f"  ✔ Preserving user-edited {label} ({path.name})", style="muted"
+        );
+        return False;
+    }
+    path.parent.mkdir(parents=True, exist_ok=True);
+    path.write_text(contents, encoding="utf-8");
+    if managed_key.startswith("sidecar:") {
+        sidecar_name = managed_key.split(":", 1)[1];
+        (path.parent / sidecar_name).write_text("managed\n", encoding="utf-8");
+    }
+    console.print(f"  ✔ Wrote {label}", style="success");
+    return True;
+}
+
+impl _project_native_deps(project_root: Path) -> dict[str, str] {
+    config = get_config_for_dir(str(project_root));
+    if config is None {
+        toml_path = project_root / "jac.toml";
+        if not toml_path.exists() {
+            return {};
+        }
+        try {
+            config = JacConfig.load(toml_path);
+        } except Exception as e {
+            console.warning(
+                f"  Could not read {toml_path} for [dependencies.npm.native]: {e}"
+            );
+            return {};
+        }
+    }
+    app = client_workspace_app(config);
+    if app is not None {
+        config = config.effective_for_app(app.name);
+    }
+    return manifest_plugin_subdeps(config, "npm", "native");
+}
+
+impl _build_package_json(app_slug: str, native_deps: dict[str, str]) -> str {
+    pkg = {
+        "name": app_slug,
+        "version": "1.0.0",
+        "private": True,
+        "main": "index.ts",
+        "scripts": {
+            "start": "expo start",
+            "android": "expo run:android",
+            "ios": "expo run:ios"
+        },
+        "dependencies": {
+            "expo": f"~{EXPO_SDK_VERSION}.0.0",
+            "expo-asset": "~57.0.16",
+            "expo-constants": "~57.0.17",
+            "expo-secure-store": "~57.0.3",
+            "expo-status-bar": "~57.0.1",
+            "react": "19.2.3",
+            "react-native": REACT_NATIVE_VERSION,
+            "@react-navigation/native": "^7.1.14",
+            "@react-navigation/native-stack": "^7.3.21",
+            "react-native-gesture-handler": "~2.32.0",
+            "react-native-safe-area-context": "~5.7.0",
+            "react-native-screens": "~4.26.0",
+            "react-error-boundary": "^4.1.2",
+            "react-hook-form": "^7.54.0",
+            "@hookform/resolvers": "^3.10.0",
+            "zod": "^3.24.0"
+        },
+        "devDependencies": {
+            "@babel/core": "^7.25.0",
+            "babel-preset-expo": f"~{EXPO_SDK_VERSION}.0.0",
+            "@types/react": "~19.2.4",
+            "typescript": "~6.0.3"
+        }
+    };
+    for (pkg_name, version) in native_deps.items() {
+        pkg["dependencies"][pkg_name] = version;
+    }
+    return json.dumps(pkg, indent=2) + "\n";
+}
+
+impl _build_app_json(app_slug: str, app_id: str, app_name: str) -> str {
+    cfg = {
+        "expo": {
+            "name": app_name,
+            "slug": app_slug,
+            "version": "1.0.0",
+            "orientation": "portrait",
+            "userInterfaceStyle": "light",
+            "ios": {"supportsTablet": True, "bundleIdentifier": app_id},
+            "android": {
+                "package": app_id,
+                "adaptiveIcon": {"backgroundColor": "#ffffff"}
+            },
+            "extra": {"apiBaseUrl": ""}
+        }
+    };
+    return json.dumps(cfg, indent=2) + "\n";
+}
+
+impl _build_metro_config -> str {
+    return (
+        _SCAFFOLD_MARKER
+        + "\n"
+        "const { getDefaultConfig } = require('expo/metro-config');\n"
+        "const path = require('path');\n"
+        "\n"
+        "const projectRoot = __dirname;\n"
+        "\n"
+        "const config = getDefaultConfig(projectRoot);\n"
+        "\n"
+        "// Resolve `@jac/runtime` to the *staged* native runtime that the\n"
+        "// build copies into the Expo project's jac-src/. This deliberately does NOT\n"
+        "// point at the shared .jac/client/compiled dir: during `jac run\n"
+        "// --dev` the Jac API backend rebuilds the *web* client into that\n"
+        "// same dir, which would overwrite client_runtime.js with a\n"
+        "// react-dom / react-router-dom bundle and break the native Metro\n"
+        "// graph (`Unable to resolve react-dom/client`). jac-src lives inside\n"
+        "// the Expo project and is only written by the native build/HMR, so\n"
+        "// it stays isolated. Metro watches projectRoot by default, so\n"
+        "// re-staging on a client .jac save still triggers Fast Refresh.\n"
+        "config.resolver = config.resolver || {};\n"
+        "config.resolver.extraNodeModules = {\n"
+        "  ...(config.resolver.extraNodeModules || {}),\n"
+        "  '@jac/runtime': path.resolve(projectRoot, 'jac-src', 'client_runtime.js'),\n"
+        "  '@jac/prelude': path.resolve(projectRoot, 'jac-src', 'jac_prelude.js'),\n"
+        "  // mobUI @jac/mobui primitives. On native `react-native` is the real\n"
+        "  // package (no alias) so View/Text are RN components; only the web\n"
+        "  // build rewrites react-native -> react-native-web.\n"
+        "  '@jac/mobui': path.resolve(projectRoot, 'jac-src', 'client_mobui.js'),\n"
+        "};\n"
+        "config.resolver.nodeModulesPaths = [\n"
+        "  path.resolve(projectRoot, 'node_modules'),\n"
+        "  ...(config.resolver.nodeModulesPaths || []),\n"
+        "];\n"
+        "\n"
+        "// `jac run --tunnel` serves the Jac API through Metro's origin so one\n"
+        "// tunnel reaches both: /__jac_api/* is forwarded to the local backend.\n"
+        "const jacApiProxy = process.env.JAC_RN_API_PROXY;\n"
+        "if (jacApiProxy) {\n"
+        "  const http = require('http');\n"
+        "  const upstream = new URL(jacApiProxy);\n"
+        "  const prefix = '/__jac_api';\n"
+        "  const priorEnhance = config.server && config.server.enhanceMiddleware;\n"
+        "  config.server = {\n"
+        "    ...(config.server || {}),\n"
+        "    enhanceMiddleware: (middleware, server) => {\n"
+        "      const inner = priorEnhance ? priorEnhance(middleware, server) : middleware;\n"
+        "      return (req, res, next) => {\n"
+        "        if (req.url !== prefix && !req.url.startsWith(prefix + '/')) {\n"
+        "          return inner(req, res, next);\n"
+        "        }\n"
+        "        const forward = http.request(\n"
+        "          {\n"
+        "            hostname: upstream.hostname,\n"
+        "            port: upstream.port,\n"
+        "            path: req.url.slice(prefix.length) || '/',\n"
+        "            method: req.method,\n"
+        "            headers: { ...req.headers, host: upstream.host },\n"
+        "          },\n"
+        "          (upstreamRes) => {\n"
+        "            res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);\n"
+        "            upstreamRes.pipe(res);\n"
+        "          }\n"
+        "        );\n"
+        "        forward.on('error', (err) => {\n"
+        "          res.statusCode = 502;\n"
+        "          res.end(String(err));\n"
+        "        });\n"
+        "        req.pipe(forward);\n"
+        "      };\n"
+        "    },\n"
+        "  };\n"
+        "}\n"
+        "\n"
+        "module.exports = config;\n"
+    );
+}
+
+impl _build_babel_config -> str {
+    return (
+        _SCAFFOLD_MARKER
+        + "\n"
+        "module.exports = function (api) {\n"
+        "  api.cache(true);\n"
+        "  return {\n"
+        "    presets: ['babel-preset-expo'],\n"
+        "  };\n"
+        "};\n"
+    );
+}
+
+impl _build_tsconfig -> str {
+    cfg = {
+        "extends": "expo/tsconfig.base",
+        "compilerOptions": {"strict": False, "allowJs": True}
+    };
+    return json.dumps(cfg, indent=2) + "\n";
+}
+
+impl _build_app_tsx -> str {
+    return (
+        _SCAFFOLD_MARKER
+        + "\n"
+        "import React from 'react';\n"
+        "import { StatusBar } from 'react-native';\n"
+        "import {\n"
+        "  SafeAreaProvider,\n"
+        "  SafeAreaView,\n"
+        "} from 'react-native-safe-area-context';\n"
+        "import {\n"
+        "  JacClientErrorBoundary,\n"
+        "  ErrorFallback,\n"
+        "  __jacReactErrorHandler,\n"
+        "  __jacInstallErrorHandlers,\n"
+        "// @ts-expect-error - Jac runtime has no .d.ts yet\n"
+        "} from '@jac/runtime';\n"
+        "// @ts-expect-error - Jac compiled bundle has no .d.ts.\n"
+        "import { app as JacApp } from '../jac-app';\n"
+        "\n"
+        "__jacInstallErrorHandlers();\n"
+        "\n"
+        "export default function App() {\n"
+        "  return (\n"
+        "    <JacClientErrorBoundary\n"
+        "      FallbackComponent={ErrorFallback}\n"
+        "      onError={__jacReactErrorHandler}\n"
+        "    >\n"
+        "      <SafeAreaProvider>\n"
+        "        <SafeAreaView style={{ flex: 1 }}>\n"
+        "          <StatusBar />\n"
+        "          <JacApp />\n"
+        "        </SafeAreaView>\n"
+        "      </SafeAreaProvider>\n"
+        "    </JacClientErrorBoundary>\n"
+        "  );\n"
+        "}\n"
+    );
+}
+
+impl _build_placeholder_index -> str {
+    return (
+        _SCAFFOLD_MARKER
+        + "\n"
+        "// Placeholder entry; replaced on every `jac build --platform <android|ios> <app>`.\n"
+        + build_native_index_entry_body()
+    );
+}
+
+impl _build_placeholder_jac_app -> str {
+    return (
+        _SCAFFOLD_MARKER
+        + "\n"
+        "import React from 'react';\n"
+        "import { View, Text } from 'react-native';\n"
+        "\n"
+        "export const app = () =>\n"
+        "  React.createElement(\n"
+        "    View,\n"
+        "    { style: { padding: 24 } },\n"
+        "    React.createElement(\n"
+        "      Text,\n"
+        "      null,\n"
+        "      'Run `jac build --platform <android|ios> <app>` to compile the Jac app.'\n"
+        "    )\n"
+        "  );\n"
+    );
+}
+
+impl _build_eas_json -> str {
+    cfg = {
+        "cli": {"version": f">={EAS_CLI_VERSION}.0.0", "appVersionSource": "remote"},
+        "build": {
+            "preview": {
+                "distribution": "internal",
+                "android": {"buildType": "apk"},
+                "ios": {"simulator": True}
+            },
+            "production": {}
+        },
+        "submit": {"production": {}}
+    };
+    return json.dumps(cfg, indent=2) + "\n";
+}
+
+impl _build_gitignore -> str {
+    return (
+        "# "
+        + _SCAFFOLD_MARKER
+        + "\n"
+        "node_modules/\n"
+        ".expo/\n"
+        "dist/\n"
+        "web-build/\n"
+        "android/\n"
+        "ios/\n"
+        "jac-src/\n"
+        "jac-assets/\n"
+        "jac-asset-registry.js\n"
+        ".eas-managed\n"
+        "*.tsbuildinfo\n"
+        ".DS_Store\n"
+    );
+}
+
+impl refresh_metro_config(rn_dir: Path) -> bool {
+    return _write_if_managed(
+        rn_dir / "metro.config.js", _build_metro_config(), "metro.config.js"
+    );
+}
+
+impl write_expo_scaffold(
+    rn_dir: Path,
+    project_root: Path,
+    app_name: str = DEFAULT_APP_NAME,
+    app_slug: str = DEFAULT_APP_SLUG,
+    app_id: str = DEFAULT_APP_ID
+) -> bool {
+    rn_dir.mkdir(parents=True, exist_ok=True);
+
+    (rn_dir / "assets").mkdir(parents=True, exist_ok=True);
+
+    any_written = False;
+    any_written |= _write_if_managed(
+        rn_dir / ".gitignore", _build_gitignore(), ".gitignore"
+    );
+    any_written |= _write_if_managed(
+        rn_dir / "package.json",
+        _build_package_json(app_slug, _project_native_deps(project_root)),
+        "package.json"
+    );
+    any_written |= _write_if_managed(
+        rn_dir / "app.json", _build_app_json(app_slug, app_id, app_name), "app.json"
+    );
+    any_written |= _write_if_managed(
+        rn_dir / "metro.config.js", _build_metro_config(), "metro.config.js"
+    );
+    any_written |= _write_if_managed(
+        rn_dir / "babel.config.js", _build_babel_config(), "babel.config.js"
+    );
+    any_written |= _write_if_managed(
+        rn_dir / "tsconfig.json", _build_tsconfig(), "tsconfig.json"
+    );
+    any_written |= _write_if_managed(
+        rn_dir / "index.ts", _build_placeholder_index(), "index.ts"
+    );
+    any_written |= _write_if_managed(
+        rn_dir / "app" / "App.tsx", _build_app_tsx(), "app/App.tsx"
+    );
+    any_written |= _write_if_managed(
+        rn_dir / "jac-app.js", _build_placeholder_jac_app(), "jac-app.js placeholder"
+    );
+    any_written |= _write_if_managed(
+        rn_dir / "eas.json",
+        _build_eas_json(),
+        "eas.json (EAS Build + Update)",
+        managed_key=f"sidecar:{_EAS_MANAGED_SIDECAR}"
+    );
+
+    return any_written;
+}
+
+impl ensure_native_deps_installed(rn_dir: Path) {
+    run_manifest_install(rn_dir);
+}

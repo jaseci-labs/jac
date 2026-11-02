@@ -20,7 +20,13 @@ import from engine.src.ffi.libuv {
     uv_default_loop
 }
 import from engine.src.ffi.libc { calloc }
-import from engine.src.runtime.mem { read_byte, byte_chr }
+import from engine.src.runtime.mem {
+    read_byte,
+    byte_chr,
+    str_bslice,
+    str_bslice_from,
+    str_nbytes
+}
 import from engine.src.runtime.jsvalue {
     JSValue,
     js_undefined,
@@ -214,8 +220,8 @@ def _path_from_arg(v: JSValue) -> str {
         href_v: JSValue = js_object_get(v, str_intern("href"));
         if jsv_is_string_cell(href_v) {
             p: str = str_from_id(jsv_to_table_id(href_v));
-            if len(p) >= 7 and p[0:7] == "file://" {
-                return p[7:];
+            if str_nbytes(p) >= 7 and str_bslice(p, 0, 7) == "file://" {
+                return str_bslice_from(p, 7);
             }
             return p;
         }

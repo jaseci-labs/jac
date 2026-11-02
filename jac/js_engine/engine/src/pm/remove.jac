@@ -31,11 +31,15 @@ import from engine.src.pm.fsx { fsx_is_file, fsx_write_str, fsx_perm, fsx_rm_rf 
 import from engine.src.pm.install { pm_install_project, TrustCtx }
 import from engine.src.pm.lockfile { Lockfile, lockfile_load, lockfile_root }
 
+import from engine.src.runtime.mem {
+    str_nbytes
+}
+
 def _out(s: str) {
-    write(1, s, len(s));
+    write(1, s, str_nbytes(s));
 }
 def _err(s: str) {
-    write(2, s, len(s));
+    write(2, s, str_nbytes(s));
 }
 
 """Remove `names` from every dependency group of the package.json object.

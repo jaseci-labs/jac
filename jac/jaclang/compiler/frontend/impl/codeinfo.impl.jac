@@ -2,6 +2,13 @@ impl InteropBinding.is_cross_module.getter -> bool {
     return (self.source_module is not None);
 }
 
+impl InteropBinding.native_callable.getter -> bool {
+    return self.source_context == InteropContext.SERVER
+        and InteropContext.NATIVE in self.callers
+        and self.kind == 'function'
+        and bool(self.symbol);
+}
+
 impl InteropManifest.boundary_types_for(scope: str) -> dict[str, BoundaryTypeInfo] {
     return {
         name: self.boundary_types[type_id]
@@ -23,8 +30,8 @@ impl InteropManifest.native_imports.getter -> list[InteropBinding] {
 impl InteropManifest.callable_native_imports.getter -> list[InteropBinding] {
     return [
         b
-        for b in self.native_imports
-        if b.kind == 'function'
+        for b in self.bindings.values()
+        if b.native_callable
     ];
 }
 
@@ -119,8 +126,12 @@ impl CodeGenTarget.interop_manifest.setter(value: InteropManifest) -> None {
     self._interop_manifest = value;
 }
 
-impl str_len_tag(length: int) -> int {
-    return (length << STR_LEN_TAG_SHIFT) | STR_LEN_TAG_BIT;
+impl str_len_tag(length: int, is_ascii: bool = False) -> int {
+    return (
+        (length << STR_LEN_TAG_SHIFT)
+        | (STR_ASCII_TAG_BIT if is_ascii else 0)
+        | STR_LEN_TAG_BIT
+    );
 }
 
 impl native_safe_sym(src: str) -> str {
@@ -185,18 +196,22 @@ impl _reserved_c_symbols -> frozenset[str] {
         "chmod chdir getcwd mkdir rmdir link symlink readlink unlink utime "
         "opendir readdir closedir getpid getpwuid_r getpwnam_r getuid uname "
         "gnu_get_libc_version errno __error "
-        "pipe poll waitpid posix_spawnp posix_spawn_file_actions_init "
+        "pipe poll fcntl ioctl isatty sigset tcgetattr tcsetattr cfgetispeed cfgetospeed cfsetispeed cfsetospeed waitpid posix_spawnp posix_spawn_file_actions_init "
         "posix_spawn_file_actions_destroy posix_spawn_file_actions_addopen "
         "posix_spawn_file_actions_addclose posix_spawn_file_actions_adddup2 "
         "posix_spawn_file_actions_addchdir_np "
         "__errno_location environ _NSGetExecutablePath "
         "pthread_create pthread_join pthread_key_create pthread_getspecific "
-        "pthread_setspecific "
+        "pthread_setspecific sched_yield "
         "socket connect send recv shutdown getaddrinfo freeaddrinfo gai_strerror "
         "dlopen dlsym dlclose dlerror "
-        "BCryptOpenAlgorithmProvider BCryptCreateHash BCryptHashData "
-        "BCryptDuplicateHash BCryptFinishHash BCryptDestroyHash BCryptGetProperty "
         "__jac_win_executable_path "
+        "__jac_errno __jac_stdio __jac_platform_id __jac_stat __jac_opendir "
+        "__jac_uncaught_exception "
+        "__jac_readdir __jac_closedir __jac_dirent_name __jac_at_fdcwd "
+        "__jac_home_dir __jac_executable_path __jac_addrinfo_layout "
+        "__jac_sockaddr_family __jac_clock_id __jac_sleep_ns __jac_malloc_size "
+        "__jac_fmadd __jac_va_list __jac_va_i64 __jac_va_f64 "
         "main _start __libc_start_main __getmainargs mainCRTStartup "
         "compress2 uncompress uncompress2 compressBound crc32_z adler32_z "
         "BZ2_bzBuffToBuffCompress BZ2_bzBuffToBuffDecompress "
@@ -205,13 +220,7 @@ impl _reserved_c_symbols -> frozenset[str] {
         "ZSTD_CCtx_setParameter ZSTD_compress2 ZSTD_freeDCtx ZSTD_DCtx_setParameter "
         "ZSTD_decompressStream_simpleArgs ZSTD_getFrameContentSize "
         "ZSTD_getDictID_fromFrame "
-        "RAND_bytes CRYPTO_memcmp EVP_MD_CTX_new EVP_MD_CTX_free EVP_MD_CTX_copy_ex "
-        "EVP_DigestInit_ex EVP_DigestUpdate EVP_DigestFinal_ex "
-        "EVP_md5 EVP_sha1 EVP_sha224 EVP_sha256 EVP_sha384 EVP_sha512 "
-        "EVP_sha3_224 EVP_sha3_256 EVP_sha3_384 EVP_sha3_512 "
-        "EVP_blake2b512 EVP_blake2s256 "
-        "HMAC_CTX_new HMAC_CTX_free HMAC_CTX_copy HMAC_Init_ex HMAC_Update "
-        "HMAC_Final TLS_client_method "
+        "RAND_bytes CRYPTO_memcmp TLS_client_method "
         "SSL_CTX_new SSL_CTX_set_verify SSL_CTX_load_verify_locations "
         "SSL_CTX_set_default_verify_paths SSL_CTX_free SSL_new SSL_set_fd SSL_ctrl "
         "SSL_set1_host SSL_connect SSL_get_verify_result SSL_get_error SSL_read "
@@ -421,10 +430,6 @@ impl native_unit_identity(path: str) -> str {
 }
 
 impl native_module_key(path: str) -> str {
-    """The key names a unit the same wherever its package lands: a module
-    under a sealed package, a `jac.toml` project or the jaclang package is
-    keyed by its path within that root, so the symbols a sealed unit
-    defines at build time are the ones consumers reference at run time.""";
     import os;
     rp = real_path(path);
     base = os.path.basename(rp);
@@ -436,6 +441,12 @@ impl native_module_key(path: str) -> str {
 
 impl native_unit_prefix(path: str) -> str {
     return native_safe_sym(native_module_key(path));
+}
+
+impl interop_callback_symbol(provider_path: str, name: str) -> str {
+    return f"__jac_na_import_{native_unit_prefix(provider_path)}_{native_safe_sym(
+        name
+    )}";
 }
 
 impl native_symbol_name(prefix: str, name: str) -> str {
@@ -823,15 +834,6 @@ impl is_selected_native_variant(path: str) -> bool {
 }
 
 impl is_native_variant_path(path: str) -> bool {
-    """Is `path` a platform variant of a portable module beside it?
-
-    `<name>.<os>.<arch>.jac`, `<name>.<arch>.jac` and `<name>.<os>.jac` are the
-    spellings `_native_variant_path` chooses between, and each exists only to
-    be lowered natively in place of `<name>.jac`. A variant is reached through
-    native module resolution alone, never by an import the checker reads, so
-    no import edge carries the portable module's placement to it: the variant
-    is a native unit by what it is.
-    """;
     import os;
     name = os.path.basename(path);
     if not name.endswith(".jac") {
@@ -925,7 +927,8 @@ impl resolve_native_module(
             _native_variant_path(candidate[:-len('.jac')]) or candidate
         );
         if (native_unit_compile_active() and in_native_scope_path(candidate))
-            or clean in SHARED_RUNTIME_MODULES {
+            or clean in SHARED_RUNTIME_MODULES
+            or clean.startswith("jaclang.osprey.") {
             return (candidate, candidate);
         }
         if allow_inferred {

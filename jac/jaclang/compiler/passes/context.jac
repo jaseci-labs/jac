@@ -91,6 +91,10 @@ walker CompilerPass {
 type PassSchedule = list[type[CompilerPass]];
 
 walker TreePass(CompilerPass, TreeWalker) {
+    has _decl_bodies: list[ImplDef] = [];
+
     can enter_walk with UniNode entry;
     can exit_walk with UniNode exit;
+    def walk_decl_body(decl: UniNode) -> None;
+    def reached_by_syntax(nd: UniNode) -> bool;
 }

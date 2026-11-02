@@ -210,6 +210,23 @@ impl JacClientConfig.get_assets_dir(
     );
 }
 
+impl JacClientConfig.get_public_dirs(
+    self: JacClientConfig, entry_path: str = ""
+) -> list[Path] {
+    project_dir = self.project_dir or Path.cwd();
+    app_root = client_app_root(
+        self.get_jac_config(), project_dir, entry_path or self.entry_path
+    );
+    dirs: list[Path] = [];
+    for candidate in (app_root / 'public', project_dir / 'public') {
+        if candidate.is_dir()
+            and candidate.resolve() not in [d.resolve() for d in dirs] {
+            dirs.append(candidate);
+        }
+    }
+    return dirs;
+}
+
 impl JacClientConfig.is_pwa_enabled(self: JacClientConfig) -> bool {
     pwa_config = self.get_pwa_config();
 
@@ -258,4 +275,49 @@ impl _package_npm_deps(jac_config: any) -> dict[str, str] {
 
 impl _npm_package_name(name: str) -> str {
     return f"@{name}" if "/" in name and not name.startswith("@") else name;
+}
+
+impl _migrate_legacy_meta_packages(
+    jac_config: any, npm_deps: dict[str, any], npm_dev_deps: dict[str, any]
+) -> tuple[dict[str, any], dict[str, any], bool] {
+    migrated = False;
+
+    if 'jac-client-node' in npm_deps {
+        console.warning(
+            "Migrating from jac-client-node meta-package to individual dependencies..."
+        );
+        jac_config.remove_dependency('jac-client-node', dev=False, dep_type='npm');
+        del npm_deps['jac-client-node'];
+
+        all_runtime = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
+        for (name, version) in all_runtime.items() {
+            if name not in npm_deps {
+                jac_config.add_dependency(name, version, dev=False, dep_type='npm');
+                npm_deps[name] = version;
+            }
+        }
+        console.success("Replaced jac-client-node with individual packages");
+        migrated = True;
+    }
+
+    if '@jac-client/dev-deps' in npm_dev_deps {
+        console.warning(
+            "Migrating from @jac-client/dev-deps meta-package to individual dependencies..."
+        );
+        jac_config.remove_dependency('@jac-client/dev-deps', dev=True, dep_type='npm');
+        del npm_dev_deps['@jac-client/dev-deps'];
+        for (name, version) in CORE_DEV_DEPS.items() {
+            if name not in npm_dev_deps {
+                jac_config.add_dependency(name, version, dev=True, dep_type='npm');
+                npm_dev_deps[name] = version;
+            }
+        }
+        console.success("Replaced @jac-client/dev-deps with individual packages");
+        migrated = True;
+    }
+
+    if migrated {
+        jac_config.save();
+    }
+    return (npm_deps, npm_dev_deps, migrated);
 }

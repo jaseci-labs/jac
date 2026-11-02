@@ -14,6 +14,11 @@ the broken code. Every scenario runs in both auth states (logged out must land o
     /layout-guarded  layout wraps `<Outlet/>` in the guard -> child renders
     /bare            neither children nor child routes -> no crash
 
+`/wrapped` also runs with a JWT `jac_token`: an unexpired one renders as logged
+in, and an expired one renders as logged out and is dropped from storage
+(`jacIsLoggedIn` once trusted any stored token, so a stale one left the UI
+"signed in" against a server that answered every call with 401).
+
 Real `bun install`, so this runs only under `JAC_CLIENT_INTEGRATION`; the entry
 (`test_react_backend.jac`) and react-native (`test_client_runtime_parity.jac`)
 are covered ungated elsewhere.
@@ -38,7 +43,16 @@ glob FIXTURES = str(Path(__file__).parent / "fixtures" / "react_auth"),
 import { JSDOM } from "jsdom";
 
 const [startUrl, authState] = process.argv.slice(2);
-const loggedIn = authState === "loggedIn";
+const jwtWithExp = (exp) =>
+  "eyJhbGciOiJIUzI1NiJ9." +
+  Buffer.from(JSON.stringify({ sub: "u", exp })).toString("base64url") +
+  ".sig";
+const TOKENS = {
+  loggedIn: "test-token",
+  jwtUnexpired: jwtWithExp(4102444800),
+  jwtExpired: jwtWithExp(1000000000),
+};
+const expectState = { jwtUnexpired: "loggedIn", jwtExpired: "loggedOut" }[authState] || authState;
 const tag = `[${startUrl} ${authState}]`;
 
 const dom = new JSDOM(
@@ -61,7 +75,7 @@ globalThis.requestAnimationFrame =
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame || clearTimeout;
 globalThis.IS_REACT_ACT_ENVIRONMENT = false;
 
-if (loggedIn) window.localStorage.setItem("jac_token", "test-token");
+if (TOKENS[authState]) window.localStorage.setItem("jac_token", TOKENS[authState]);
 else window.localStorage.removeItem("jac_token");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -129,12 +143,15 @@ try {
 }
 await sleep(150);
 
-const expect = EXPECT[`${startUrl}|${authState}`];
+const expect = EXPECT[`${startUrl}|${expectState}`];
 if (!expect) {
-  check(`known scenario ${startUrl}|${authState}`, false, "no expectation row");
+  check(`known scenario ${startUrl}|${expectState}`, false, "no expectation row");
   finish();
 }
 assertExpectation(expect, () => mount.innerHTML);
+if (authState === "jwtExpired") {
+  check("drops the expired jac_token", !window.localStorage.getItem("jac_token"));
+}
 finish();
 """;
 
@@ -175,9 +192,79 @@ test "react AuthGuard renders children, child routes, and nothing -- in jsdom" {
                 ["/layout-guarded", "loggedIn"],
                 ["/layout-guarded", "loggedOut"],
                 ["/bare", "loggedIn"],
-                ["/bare", "loggedOut"]
+                ["/bare", "loggedOut"],
+                ["/wrapped", "jwtUnexpired"],
+                ["/wrapped", "jwtExpired"]
             ],
             "manual-routing"
         );
+    }
+}
+
+
+glob _STALE_401_HARNESS: str = """
+import { JSDOM } from "jsdom";
+
+const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>", { url: "http://localhost/" });
+globalThis.window = dom.window;
+globalThis.document = dom.window.document;
+globalThis.localStorage = dom.window.localStorage;
+
+const failures = [];
+const check = (label, ok, detail) => {
+  console.log(`${ok ? "PASS" : "FAIL"}  ${label}${detail ? "  -- " + detail : ""}`);
+  if (!ok) failures.push(label);
+};
+
+const core = await import("./client_runtime_core.js");
+let answer;
+globalThis.fetch = () => new Promise((resolve) => {
+  answer = () => resolve(new Response("unauthorized", { status: 401 }));
+});
+const call = (token) => {
+  localStorage.setItem("jac_token", token);
+  const pending = core.__doWalkerFetch("w", "", {}, { app: "svc" }).then(
+    () => null,
+    (e) => e
+  );
+  return pending;
+};
+
+// A request sent with the old token answers 401 after the user signed in again.
+let pending = call("old-token");
+await new Promise((r) => setTimeout(r, 0));
+localStorage.setItem("jac_token", "new-token");
+answer();
+let err = await pending;
+check("a stale 401 keeps the newer login", localStorage.getItem("jac_token") === "new-token",
+  `jac_token=${localStorage.getItem("jac_token")}`);
+check("the stale call still raises a 401 BridgeRejected", !!err && err.status === 401, String(err));
+
+// A 401 for the token still in use drops it.
+pending = call("current-token");
+await new Promise((r) => setTimeout(r, 0));
+answer();
+err = await pending;
+check("a 401 for the current token drops it", !localStorage.getItem("jac_token"),
+  `jac_token=${localStorage.getItem("jac_token")}`);
+
+console.log(failures.length ? `FAILED: ${failures.join(", ")}` : "OK");
+process.exit(failures.length ? 1 : 0);
+""";
+
+"""A 401 only clears the token the failing request sent. A slow request that
+went out before the user signed in again must not erase the new login."""
+test "a delayed 401 from an old request keeps a newer login" {
+    require_client_integration("stale 401");
+    bun = js_runtime_or_none();
+    if bun is None {
+        testskip("bun is required but could not be located/installed");
+    }
+    with TemporaryDirectory() as tmp {
+        work = Path(tmp);
+        write_runtime(work);
+        (work / "harness.mjs").write_text(_STALE_401_HARNESS, encoding="utf-8");
+        bun_install(bun, work, "react-stale-401-jsdom-test");
+        run_harness(bun, work, [], "stale 401");
     }
 }

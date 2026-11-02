@@ -332,6 +332,9 @@ impl EndpointEffectPass._scan(nd: (UniNode | None)) -> None {
             self._scan(child);
         }
     }
+    for impl_def in nd.own_impls {
+        self._scan(impl_def);
+    }
 }
 
 impl EndpointEffectPass._call_target_symbol(call: FuncCall) -> (Symbol | None) {
@@ -411,8 +414,8 @@ impl EndpointEffectPass._callee_ability(call: FuncCall) -> (Ability | None) {
     if isinstance(defn_node, Ability) {
         return defn_node;
     }
-    if defn_node.parent and isinstance(defn_node.parent, Ability) {
-        return defn_node.parent;
+    if isinstance(defn_node.decl_parent, Ability) {
+        return defn_node.decl_parent;
     }
     return None;
 }

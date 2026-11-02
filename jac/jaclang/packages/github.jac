@@ -39,6 +39,7 @@ obj GitHub {
         repo: str, path: str, branch: str, text: str, message: str, sha: str | None
     );
 
+    def release(repo: str, tag: str) -> dict[str, any] | None;
     def release_for(repo: str, tag: str, target: str) -> dict[str, any];
     def upload_asset(release: dict[str, any], name: str, data: bytes) -> str;
     def open_pull(repo: str, head: str, base: str, title: str, body: str) -> str;

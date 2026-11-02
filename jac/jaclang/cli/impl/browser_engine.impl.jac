@@ -536,10 +536,24 @@ impl _real_click(cdp: CDP, x: float, y: float) {
     cdp.call("Input.dispatchMouseEvent", {"type": "mouseReleased"} | base);
 }
 
+impl _type_steps(text: str) -> list[dict[str, any]] {
+    steps: list[dict[str, any]] = [];
+    for ch in text.replace("\r\n", "\n") {
+        if ch in ("\n", "\r") {
+            down = _key_down("Enter");
+            steps.append(down);
+            steps.append({"type": "keyUp", "key": "Enter", "code": down["code"]});
+        } else {
+            steps.append({"type": "keyDown", "text": ch});
+            steps.append({"type": "keyUp"});
+        }
+    }
+    return steps;
+}
+
 impl _type_text(cdp: CDP, text: str) {
-    for ch in text {
-        cdp.call("Input.dispatchKeyEvent", {"type": "keyDown", "text": ch});
-        cdp.call("Input.dispatchKeyEvent", {"type": "keyUp"});
+    for step in _type_steps(text) {
+        cdp.call("Input.dispatchKeyEvent", step);
     }
 }
 
@@ -557,7 +571,7 @@ impl _key_code(ch: str) -> str {
     return ch;
 }
 
-impl _key_down(key: str, modifiers: int = 0) -> dict[str, any] {
+impl _key_down(key: str, modifiers: int = 0, platform: str = "") -> dict[str, any] {
     vk = KEY_CODES.get(key, 0);
     code = key;
     down: dict[str, any] = {"type": "keyDown", "key": key, "modifiers": modifiers};
@@ -574,7 +588,15 @@ impl _key_down(key: str, modifiers: int = 0) -> dict[str, any] {
         }
     }
     down["code"] = code;
+    command = MAC_EDIT_COMMANDS.get(key.lower());
+    if command and modifiers & 4 and (platform or sys.platform) == "darwin" {
+        down["commands"] = ["redo" if command == "undo" and modifiers & 8 else command];
+    }
     return down;
+}
+
+impl _select_all_modifier(platform: str = "") -> int {
+    return 4 if (platform or sys.platform) == "darwin" else 2;
 }
 
 impl _press(cdp: CDP, key: str, modifiers: int = 0) {
@@ -655,7 +677,7 @@ impl cmd_fill(session: str, selector: str, text: str) -> str {
     cdp = connect(session);
     (x, y) = _locate(cdp, session, selector);
     _real_click(cdp, x, y);
-    _press(cdp, "a", modifiers=2);
+    _press(cdp, "a", modifiers=_select_all_modifier());
     _press(cdp, "Delete");
     _insert_text(cdp, text);
     cdp.close();

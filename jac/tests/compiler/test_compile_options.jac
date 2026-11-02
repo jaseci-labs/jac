@@ -67,7 +67,8 @@ test "every codegen option flip changes the fingerprint" {
         _pinned_opts(native_target="wasm32-unknown-unknown"),
         _pinned_opts(native_debug=True),
         _pinned_opts(opt_level=0),
-        _pinned_opts(native_threads=7)
+        _pinned_opts(native_threads=7),
+        _pinned_opts(client_source_root="/apps/web")
     ];
     seen: set = {base_fp};
     for flipped in flips {
@@ -80,6 +81,23 @@ test "every codegen option flip changes the fingerprint" {
     assert len(seen) == len(flips) + 1 , "fingerprint collision between flips";
 }
 
+test "client layout survives a kernel request and separates dependency caches" {
+    import from jaclang.compiler.frontend.kernel_inputs {
+        request_of,
+        request_to_dict,
+        request_from_dict
+    }
+    first = _pinned_opts(client_source_root="/apps/first");
+    second = _pinned_opts(client_source_root="/apps/second");
+    restored = request_from_dict(request_to_dict(request_of(first))).to_options();
+    assert restored.client_source_root == first.client_source_root;
+    assert restored.codegen_fingerprint() == first.codegen_fingerprint();
+    assert first.dependency_projection("/shared/Card.jac")
+        != second.dependency_projection("/shared/Card.jac");
+    assert first.unit_codegen_identity("/shared/Card.jac")
+        == second.unit_codegen_identity("/shared/Card.jac");
+}
+
 test "diagnostic-only options do not enter the fingerprint" {
     base_fp = _pinned_opts().codegen_fingerprint();
     diag = _pinned_opts(
@@ -90,6 +108,12 @@ test "diagnostic-only options do not enter the fingerprint" {
         na_debug=True
     );
     assert diag.codegen_fingerprint() == base_fp;
+    # Strict dependency checking only changes diagnostics, so it keys the
+    # diagnostic profile, not the module's cache file.
+    strict = _pinned_opts();
+    strict.strict_dependencies = True;
+    assert strict.module_projection() == _pinned_opts().module_projection();
+    assert strict.analysis_identity() != _pinned_opts().analysis_identity();
 }
 
 

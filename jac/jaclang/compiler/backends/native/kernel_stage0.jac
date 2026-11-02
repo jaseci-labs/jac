@@ -36,7 +36,8 @@ def link_kernel(
     target: (KernelTarget | None) = None,
     prog: (JacProgram | None) = None,
     log: (Callable[[str], None] | None) = None,
-    link_mode: str = ""
+    link_mode: str = "",
+    spec: (TargetSpec | None) = None
 ) -> LinkResult;
 
 obj GcPauses {

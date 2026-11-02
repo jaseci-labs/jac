@@ -11,9 +11,13 @@ import from engine.src.runtime.jsvalue {
 import from engine.src.runtime.jsobject { js_object_get }
 import from engine.src.runtime.jsstring { str_intern, str_from_id }
 
+import from engine.src.runtime.mem {
+    str_nbytes
+}
+
 def:priv _uncaught_stderr_writeln(msg: str) {
     s: str = msg + "\n";
-    write(2, s, len(s));
+    write(2, s, str_nbytes(s));
 }
 
 """Format and print an uncaught exception value to stderr (Node/Bun style)."""

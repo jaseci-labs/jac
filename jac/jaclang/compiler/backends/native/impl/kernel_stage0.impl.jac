@@ -136,7 +136,8 @@ impl link_kernel(
     target: (KernelTarget | None) = None,
     prog: (JacProgram | None) = None,
     log: (Callable[[str], None] | None) = None,
-    link_mode: str = ""
+    link_mode: str = "",
+    spec: (TargetSpec | None) = None
 ) -> LinkResult {
     mode = link_mode
         or (target.link_mode if target is not None else "")
@@ -149,10 +150,13 @@ impl link_kernel(
         started = time.perf_counter();
         if log is not None {
             log(
-                f"  Planning the kernel ({mode} link): analyzing and lowering each unit"
+                f"  Planning the kernel for {(
+                    spec.triple if spec is not None else 'this host'
+                )} "
+                f"({mode} link): analyzing and lowering each unit"
             );
         }
-        plan = kernel_plan(program, mode=mode, target=target);
+        plan = kernel_plan(program, mode=mode, target=target, spec=spec);
         pkg_root = jaclang_pkg_root();
         if target is not None {
             pkg_root = str(target.root);
@@ -166,9 +170,7 @@ impl link_kernel(
             );
         }
         os.makedirs(os.path.dirname(os.path.abspath(dst)) or ".", exist_ok=True);
-        """The plan holds every unit's interface and the link needs only their
-        products, which the module cache holds, so the analyzed trees go
-        before the link's code generation needs the memory.""";
+
         program.release_compile_closure();
         result = link_artifact(plan, dst, ArtifactKind.SHARED, log=log);
         if log is not None {

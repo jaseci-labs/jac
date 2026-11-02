@@ -1,6 +1,16 @@
 glob DEFAULT_CPU_UTILIZATION_TARGET: int = 50,
      DEFAULT_MEMORY_UTILIZATION_TARGET: int = 80;
 
+glob RESOURCE_ONLY_TRIGGER_TYPES: set[str] = {"cpu", "memory"};
+
+
+def _is_real_trigger_type(trigger_type: any) -> bool;
+
+
+def triggers_can_reach_zero(
+    autoscaler_cfg: (dict[str, any] | None), engine: str
+) -> bool;
+
 obj TriggerAuth {
     has secret_refs: dict[str, dict[str, str]] = {};
 }

@@ -23,7 +23,11 @@ import from engine.src.runtime.mem {
     read_u16,
     read_ptr,
     write_i32,
-    write_byte
+    write_byte,
+    byte_chr,
+    str_bslice,
+    str_byte,
+    str_nbytes
 }
 
 def _dns_write_u16(ptr: int, off: int, value: int) {
@@ -275,8 +279,9 @@ def _dns_is_ipv4(host: str) -> bool {
     parts: list[str] = [];
     i: int = 0;
     cur: str = "";
-    while i < len(host) {
-        c: str = host[i];
+    _nb282_host: int = str_nbytes(host);
+    while i < _nb282_host {
+        c: str = byte_chr(str_byte(host, i));
         if c == "." {
             parts.append(cur);
             cur = "";
@@ -297,12 +302,13 @@ def _dns_is_ipv4(host: str) -> bool {
         }
         n: int = 0;
         j: int = 0;
-        while j < len(p) {
-            ch: str = p[j];
+        _nb304_p: int = str_nbytes(p);
+        while j < _nb304_p {
+            ch: str = byte_chr(str_byte(p, j));
             if ch < "0" or ch > "9" {
                 return False;
             }
-            n = n * 10 + (ord(ch) - 48);
+            n = n * 10 + (str_byte(ch, 0) - 48);
             j = j + 1;
         }
         if n < 0 or n > 255 {
@@ -318,16 +324,17 @@ def _dns_is_ipv4(host: str) -> bool {
 
 def _dns_normalize_host(host: str) -> str {
     h: str = host;
-    if len(h) >= 2 and h[0] == "[" and h[len(h) - 1] == "]" {
-        h = h[1:len(h) - 1];
+    if str_nbytes(h) >= 2 and byte_chr(str_byte(h, 0)) == "[" and byte_chr(str_byte(h, str_nbytes(h) - 1)) == "]" {
+        h = str_bslice(h, 1, str_nbytes(h) - 1);
     }
     return h;
 }
 
 def _dns_has_colon(s: str) -> bool {
     i: int = 0;
-    while i < len(s) {
-        if s[i] == ":" {
+    _nb333_s: int = str_nbytes(s);
+    while i < _nb333_s {
+        if byte_chr(str_byte(s, i)) == ":" {
             return True;
         }
         i = i + 1;

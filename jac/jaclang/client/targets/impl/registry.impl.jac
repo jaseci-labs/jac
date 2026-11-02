@@ -44,3 +44,14 @@ impl target_for_app(app: AppConfig, project_dir: Path) -> ClientTarget {
     kind = cfg.resolved_kind(app) if cfg is not None else app.kind;
     return target_for_kind(kind, project_dir);
 }
+
+impl get_target_registry -> TargetRegistry {
+    import from jaclang.client.targets.registry { TargetRegistry }
+    if _registry is None {
+        _registry = TargetRegistry();
+
+        import from jaclang.client.targets.register { register_targets }
+        register_targets();
+    }
+    return _registry;
+}

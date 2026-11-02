@@ -303,7 +303,8 @@ obj tok_token {
         end_lineno: int,
         end_col_offset: int,
         level: int = 0,
-        metadata: str | None = None;
+        metadata: str | None = None,
+        doubled_brace: bool = False;
 }
 
 def token_loc(tok: tok_token) -> tok_loc {

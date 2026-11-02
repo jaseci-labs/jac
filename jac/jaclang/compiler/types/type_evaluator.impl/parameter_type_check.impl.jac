@@ -391,15 +391,8 @@ impl TypeEvaluator._validate_call_type(
         }
 
         if caller_type.is_self {
-            _self_arch: Archetype | Enum | None = expr.find_parent_of_type(Archetype);
-            if _self_arch is None {
-                _self_impl = expr.find_parent_of_type(ImplDef);
-                if _self_impl is not None
-                    and isinstance(_self_impl.decl_link, Ability) {
-                    _self_arch = _self_impl.decl_link.method_owner;
-                }
-            }
-            if isinstance(_self_arch, Archetype) {
+            _self_arch = expr.enclosing_decl(Archetype);
+            if _self_arch is not None {
                 _self_cls = self.get_type_of_class(_self_arch);
                 if isinstance(_self_cls, ClassType) {
                     return _self_cls.clone_as_instance();

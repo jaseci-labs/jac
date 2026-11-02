@@ -17,10 +17,6 @@ obj CtValue {
     def __repr__ -> str;
 }
 
-impl CtValue.is_deferred.getter -> bool {
-    return isinstance(self, CtDeferred);
-}
-
 obj CtDeferred(CtValue) {}
 
 obj CtNone(CtValue) {}
