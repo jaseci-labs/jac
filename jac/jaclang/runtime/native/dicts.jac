@@ -9,6 +9,7 @@ glob KIND_INT: int = 0,
      KIND_BOOL: int = 2,
      KIND_STR: int = 3,
      KIND_REF: int = 4,
+     KIND_TUPLE: int = 5,
      KIND_NONE: int = -1;
 
 glob DICT_LEN: int = 0,
@@ -82,6 +83,8 @@ def _mix(z: int) -> int;
 def _str_hash(text: int) -> int;
 
 def _hash(bits: int, kind: int) -> int;
+
+def _tuple_hash(box: int) -> int;
 
 def _grow_cap(n: int) -> int;
 

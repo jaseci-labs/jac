@@ -99,7 +99,7 @@ impl MirLowering.cell_of(sym_id: int) -> (MirValue | None) {
 
 impl MirLowering.cell_read(cell: MirValue, value_type: MirType) -> MirValue {
     kind = self.elem_kind(value_type, self.module);
-    if kind in (KIND_STR, KIND_REF) {
+    if kind in (KIND_STR, KIND_REF, KIND_TUPLE) {
         handle = self.runtime("__jac_rt_cell_get_ref", [cell]);
         if handle is None {
             raise MirRefused(mir_refusal("closure", value_type.render()));

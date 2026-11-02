@@ -43,6 +43,8 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      KIND_BOOL: int = 2,
      KIND_STR: int = 3,
      KIND_REF: int = 4,
+     KIND_TUPLE: int = 5,
+     TUPLE_BOX_MEMBERS: int = 8,
      NO_VALUE_KIND: int = -1,
      LIST_INDEX_MESSAGE: str = "list index out of range",
      LIST_ASSIGN_MESSAGE: str = "list assignment index out of range",
@@ -369,6 +371,8 @@ obj MirLowering {
     def to_bits(value: MirValue, elem: MirType, site: uni.UniNode) -> MirValue;
     def scalar_from_bits(bits: MirValue, elem: MirType) -> MirValue;
     def owned_element(handle: MirValue, elem: MirType) -> MirValue;
+    def tuple_box(value: MirValue, site: uni.UniNode) -> MirValue;
+    def tuple_unbox(handle: MirValue, t: MirType) -> MirValue;
     def address_of(value: MirValue) -> MirValue;
     def container_len(value: MirValue) -> MirValue;
     def list_read(lst: MirValue, index: MirValue) -> MirValue;

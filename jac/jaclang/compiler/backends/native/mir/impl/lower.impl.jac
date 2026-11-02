@@ -602,9 +602,13 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
                 )
             );
         }
-        value = self.builder().const_int(bits, self.expr_type(nd));
+        value = self.builder().const_int(
+            bits, self.expr_type(nd) if nd.type is not None else mir_int()
+        );
     } elif isinstance(nd, uni.Float) {
-        value = self.builder().const_float(float(nd.value), self.expr_type(nd));
+        value = self.builder().const_float(
+            float(nd.value), self.expr_type(nd) if nd.type is not None else mir_float()
+        );
     } elif isinstance(nd, uni.Bool) {
         value = self.builder().const_bool(nd.value.lower() in ("true", "1"));
     } elif isinstance(nd, uni.Null) {

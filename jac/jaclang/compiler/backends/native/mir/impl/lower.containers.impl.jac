@@ -3,14 +3,10 @@ impl MirLowering.elem_kind(t: MirType, site: uni.UniNode) -> int {
         return KIND_INT;
     }
     if t.kind == MirKind.TUPLE {
-        raise MirRefused(
-            mir_refusal(
-                "container element",
-                t.render(),
-                site,
-                "A native container slot holds one machine word, and a tuple does not fit one."
-            )
-        );
+        for member in t.args {
+            self.elem_kind(member, site);
+        }
+        return KIND_TUPLE;
     }
     if t.kind == MirKind.FLOAT {
         return KIND_FLOAT;
@@ -27,6 +23,51 @@ impl MirLowering.elem_kind(t: MirType, site: uni.UniNode) -> int {
     raise MirRefused(mir_refusal("container element", t.render(), site));
 }
 
+impl MirLowering.tuple_box(value: MirValue, site: uni.UniNode) -> MirValue {
+    b = self.builder();
+    held = self.spill(value);
+    box = self.runtime_value(
+        "__jac_rt_tuple_new", [b.const_int(len(value.type.args), mir_int())]
+    );
+    for (index, member) in enumerate(value.type.args) {
+        self.runtime(
+            "__jac_rt_tuple_set",
+            [
+                box,
+                b.const_int(index, mir_int()),
+                self.to_bits(self.tuple_get(held, index), member, site),
+                b.const_int(self.elem_kind(member, site), mir_int())
+            ]
+        );
+    }
+    return box;
+}
+
+impl MirLowering.tuple_unbox(handle: MirValue, t: MirType) -> MirValue {
+    b = self.builder();
+    size = len(t.args);
+    members: list[MirValue] = [];
+    for (index, member) in enumerate(t.args) {
+        kind = self.elem_kind(member, self.module);
+        if kind in (KIND_STR, KIND_REF, KIND_TUPLE) {
+            got = self.runtime_value(
+                "__jac_rt_tuple_get_ref", [handle, b.const_int(index, mir_int())]
+            );
+            members.append(self.owned_element(got, member));
+            continue;
+        }
+        slot = b.binary(
+            "add",
+            self.address_of(handle),
+            b.const_int(TUPLE_BOX_MEMBERS + (size + index) * 8, mir_int())
+        );
+        members.append(
+            self.scalar_from_bits(self.emit_value(MirOp.MEM_LOAD, mir_int(), [slot]), member)
+        );
+    }
+    return self.emit_value(MirOp.TUPLE_MAKE, t, members);
+}
+
 impl MirLowering.address_of(value: MirValue) -> MirValue {
     return self.emit_value(MirOp.PTR_INT, mir_int(), [value]);
 }
@@ -38,6 +79,9 @@ impl MirLowering.to_bits(
     kind = self.elem_kind(elem, site);
     if elem.kind == MirKind.ANY {
         return self.address_of(self.any_to_box(value, site));
+    }
+    if kind == KIND_TUPLE {
+        return self.address_of(self.tuple_box(self.coerce(value, elem, site), site));
     }
     if kind == KIND_FLOAT {
         return self.emit_value(
@@ -81,6 +125,9 @@ impl MirLowering.owned_element(handle: MirValue, elem: MirType) -> MirValue {
     b = self.builder();
     if elem.kind == MirKind.ANY {
         return self.any_from_box(handle);
+    }
+    if elem.kind == MirKind.TUPLE {
+        return self.tuple_unbox(handle, elem);
     }
     if elem.kind in (MirKind.STR, MirKind.STR_REF) {
         text = b.ref_cast(handle, mir_str_ref(), True);
@@ -129,7 +176,7 @@ impl MirLowering.list_read(lst: MirValue, index: MirValue) -> MirValue {
     b = self.builder();
     elem = lst.type.payload();
     kind = self.elem_kind(elem, self.module);
-    if kind in (KIND_STR, KIND_REF) {
+    if kind in (KIND_STR, KIND_REF, KIND_TUPLE) {
         handle = self.runtime(
             "__jac_rt_list_get_ref", [lst, index, b.const_int(kind, mir_int())]
         );
@@ -267,7 +314,7 @@ impl MirLowering.dict_entry_value(d: MirValue, at: MirValue, site: uni.UniNode) 
     b = self.builder();
     value_type = d.type.args[1];
     kind = self.elem_kind(value_type, site);
-    if kind in (KIND_STR, KIND_REF) {
+    if kind in (KIND_STR, KIND_REF, KIND_TUPLE) {
         handle = self.runtime(
             "__jac_rt_dict_val_ref", [d, at, b.const_int(kind, mir_int())]
         );
@@ -579,7 +626,7 @@ impl MirLowering.list_method(
         if bits is None {
             return None;
         }
-        if self.elem_kind(elem, nd) in (KIND_STR, KIND_REF) {
+        if self.elem_kind(elem, nd) in (KIND_STR, KIND_REF, KIND_TUPLE) {
             return self.owned_element(b.ref_cast(bits, mir_ref(), True), elem);
         }
         return self.scalar_from_bits(bits, elem);
@@ -642,7 +689,7 @@ impl MirLowering.dict_method(
         done = fn.new_block("get.done");
         b.cond_branch(b.compare("ge", found, b.const_int(0, mir_int())), hit, miss);
         b.position(hit);
-        if self.elem_kind(value_type, nd) in (KIND_STR, KIND_REF) {
+        if self.elem_kind(value_type, nd) in (KIND_STR, KIND_REF, KIND_TUPLE) {
             handle = self.runtime("__jac_rt_dict_val_ref", [d, found, value_kind]);
             if handle is None {
                 return None;
@@ -692,7 +739,7 @@ impl MirLowering.dict_method(
             "KeyError",
             KEY_MESSAGE
         );
-        if self.elem_kind(value_type, nd) in (KIND_STR, KIND_REF) {
+        if self.elem_kind(value_type, nd) in (KIND_STR, KIND_REF, KIND_TUPLE) {
             return self.owned_element(b.ref_cast(bits, mir_ref(), True), value_type);
         }
         return self.scalar_from_bits(bits, value_type);
@@ -920,7 +967,7 @@ impl MirLowering.lower_for_container(nd: uni.InForStmt, holder: MirValue) {
         key = source.type.args[0];
         kind = self.elem_kind(key, nd);
         at = b.load(cursor, mir_int());
-        if kind in (KIND_STR, KIND_REF) {
+        if kind in (KIND_STR, KIND_REF, KIND_TUPLE) {
             handle = self.runtime(
                 "__jac_rt_dict_key_ref", [source, at, b.const_int(kind, mir_int())]
             );
@@ -979,7 +1026,7 @@ impl MirLowering.lower_delete(nd: uni.DeleteStmt) {
             bits = self.runtime("__jac_rt_list_pop", [holder, at]);
             if bits is not None
                 and self.elem_kind(holder.type.payload(), target)
-                    in (KIND_STR, KIND_REF) {
+                    in (KIND_STR, KIND_REF, KIND_TUPLE) {
                 self.owned_element(
                     b.ref_cast(bits, mir_ref(), True), holder.type.payload()
                 );

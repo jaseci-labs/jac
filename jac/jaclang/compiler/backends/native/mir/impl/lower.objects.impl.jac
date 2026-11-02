@@ -541,12 +541,43 @@ impl MirLowering.lower_trace(obj_def: MirObjectDef) -> MirFunction {
         place = self.emit_value(
             MirOp.FIELD_ADDR, mir_c_ptr(member.type), [this], int_value=member.index
         );
-        child = b.load(place, member.type);
-        self.emit_value(
-            MirOp.CALL_FNPTR,
-            mir_none(),
-            [visit_fn, self.emit_value(MirOp.PTR_CAST, i8p, [child])]
-        );
+        loaded = b.load(place, member.type);
+        children: list[MirValue] = [loaded];
+        if member.type.kind == MirKind.TUPLE {
+            children = [
+                self.tuple_get(loaded, index)
+                for index in range(len(member.type.args))
+            ];
+        }
+        for child in children {
+            if child.type.kind in (MirKind.STR, MirKind.STR_REF, MirKind.ANY, MirKind.TUPLE)
+                or not mir_holds_ref(child.type) {
+                continue;
+            }
+            if child.type.kind == MirKind.OPT {
+                if child.type.payload().kind
+                    in (MirKind.STR, MirKind.STR_REF, MirKind.ANY, MirKind.TUPLE) {
+                    continue;
+                }
+                present = fn.new_block("trace.some");
+                after = fn.new_block("trace.next");
+                b.cond_branch(self.opt_present(child), present, after);
+                b.position(present);
+                self.emit_value(
+                    MirOp.CALL_FNPTR,
+                    mir_none(),
+                    [visit_fn, self.emit_value(MirOp.PTR_CAST, i8p, [self.opt_get(child)])]
+                );
+                b.branch(after);
+                b.position(after);
+                continue;
+            }
+            self.emit_value(
+                MirOp.CALL_FNPTR,
+                mir_none(),
+                [visit_fn, self.emit_value(MirOp.PTR_CAST, i8p, [child])]
+            );
+        }
     }
     b.ret(None);
     self.state = saved;
