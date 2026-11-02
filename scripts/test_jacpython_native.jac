@@ -79,11 +79,15 @@ def verify(library_path: Path) {
 }
 
 
-# The staged units: `roots` and every runtime/python module they import,
+# The staged units: `roots` and every module archwire.jac wires into them,
 # transitively, with each module's platform variants and impl files, so the
 # copy resolves the same imports the package does.
 def staged_sources(sources: Path, roots: list[str]) -> list[str] {
-    import re;
+    import from jaclang.compiler.driver.wiring { wiring_for_path }
+    spec = wiring_for_path(str(sources / roots[0]));
+    if spec is None {
+        raise RuntimeError(f"No archwire.jac governs {sources}");
+    }
     staged: list[str] = [];
     pending = list(roots);
     while pending {
@@ -103,15 +107,11 @@ def staged_sources(sources: Path, roots: list[str]) -> list[str] {
                 pending.append(str(part.relative_to(sources)));
             }
         }
-        shared_impl = module.parent / "impl" / f"{stem}.impl.jac";
-        if shared_impl.is_file() {
-            pending.append(str(shared_impl.relative_to(sources)));
+        for part in sorted((module.parent / "impl").glob(f"{stem}.*.jac")) {
+            pending.append(str(part.relative_to(sources)));
         }
-        for name in re.findall(r"import from jaclang\.([\w.]+)", module.read_text()) {
-            target = name.replace(".", "/") + ".jac";
-            if target.startswith("runtime/python/") {
-                pending.append(target);
-            }
+        for wire in spec.consumer_wires(spec.module_name(str(module)) or "") {
+            pending.append(wire.provider.replace(".", "/") + ".jac");
         }
     }
     return staged;
@@ -131,6 +131,12 @@ def main -> int {
         stage = Path(temporary);
         # Keep these compilation units out of the compiler's own self-host
         # program. Preserve the package hierarchy and never edit the checkout.
+        # The package marker and archwire.jac make the copy a package whose
+        # modules receive the same wired imports as their originals.
+        package = stage / "native_subject";
+        package.mkdir();
+        (package / "__init__.jac").write_text("");
+        (package / "archwire.jac").write_text((sources / "archwire.jac").read_text());
         staged = staged_sources(
             sources,
             [
@@ -152,37 +158,9 @@ def main -> int {
         for relative in staged {
             destination = stage / "native_subject" / relative;
             destination.parent.mkdir(parents=True, exist_ok=True);
-            source_text = (sources / relative).read_text().replace(
-                "jaclang.", "native_subject."
+            destination.write_text(
+                (sources / relative).read_text().replace("jaclang.", "native_subject.")
             );
-            if relative == "runtime/python/constant_output.jac" {
-                # The main workspace provides these imports through archwire.
-                # The isolated native_subject tree has no archwire, so restore
-                # the module's exact dependencies from that graph here.
-                source_text = (
-                    "import from native_subject.runtime.python.capi {"
-                    " checked, required, text_object, write_buffer }\n"
-                    "import from native_subject.runtime.python.constant_keys {"
-                    " constant_key }\n"
-                    "import from native_subject.runtime.python.compiler_integer {"
-                    " PyBigInt }\n"
-                    "import from native_subject.runtime.python.cpython_api {"
-                    " NULL, PyBool_FromLong, PyComplex_FromDoubles,"
-                    " PyFloat_FromDouble, PyLong_FromLongLong,"
-                    " PyNumber_Negative, PyObject, PySlice_New, PyTuple_New,"
-                    " Py_Ellipsis, Py_NewRef, Py_None, jacpy_code_new,"
-                    " jacpy_long_from_bytes, jacpy_release, jacpy_set_new,"
-                    " jacpy_tuple_set_owned }\n"
-                    "import from native_subject.runtime.python.objects {"
-                    " PyBool, PyBytes, PyCode, PyComplex, PyEllipsis, PyFloat,"
-                    " PyInt, PyNoneType, PyObj, PySet, PySlice, PyStr, PyTuple }\n"
-                    "import from native_subject.runtime.python.opcode_meta {"
-                    " CO_FAST_CELL, CO_FAST_FREE, CO_FAST_HIDDEN,"
-                    " CO_FAST_LOCAL, CO_OPTIMIZED }\n\n"
-                )
-                    + source_text;
-            }
-            destination.write_text(source_text);
         }
         fixture = repo
             / "jac/tests/compiler/backends/native/fixtures/jacpython_constants.jac";

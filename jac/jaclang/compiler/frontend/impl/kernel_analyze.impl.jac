@@ -49,6 +49,15 @@ impl AnalysisReport.module(path: str) -> (ModuleReport | None) {
     return None;
 }
 
+impl AnalysisReport.entry_module -> (ModuleReport | None) {
+    for candidate in self.modules {
+        if candidate.path == self.entry_path {
+            return candidate;
+        }
+    }
+    return None;
+}
+
 impl AnalysisReport.to_dict -> dict[str, any] {
     return {
         "status": self.status,

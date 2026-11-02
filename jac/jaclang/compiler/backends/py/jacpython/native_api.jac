@@ -320,9 +320,7 @@ obj mangle_request(native_request) {
         name: ptr[PyObject];
 
     def run -> ptr[PyObject] {
-        return text_object(
-            mangle_name(text_value(self.private), text_value(self.name))
-        );
+        return text_object(cpy_mangle(text_value(self.private), text_value(self.name)));
     }
 }
 
