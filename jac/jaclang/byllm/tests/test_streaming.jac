@@ -85,10 +85,12 @@ test "a logging stream with no tools yields chunks then one usage event" {
 
 
 test "a logging stream with tools reports the call, the result, then the answer" {
+    answer = "Based on the information gathered, London is sunny at 25 degrees.";
     llm = MockLLM(
         outputs=[
             call("get_weather", {"city": "London"}),
-            finish("The weather in London is sunny, 25 degrees.")
+            finish("The weather in London is sunny, 25 degrees."),
+            say(answer)
         ]
     );
 

@@ -12,7 +12,7 @@ import from litellm.types.utils {
     Function,
     Message as LiteLLMMessage
 }
-import from support { call, calls, finish, mk_run, sent_messages }
+import from support { call, calls, finish, mk_run, say, sent_messages }
 
 
 def get_weather(city: str) -> str {
@@ -251,7 +251,9 @@ test "no tool call is left unanswered, wherever finish_tool sits in the batch" {
             where = f"{label}, events={events}";
             RAN.clear();
             history: list[dict[str, any]] = [];
-            llm = MockLLM(outputs=[calls(entries)]);
+            llm = MockLLM(
+                outputs=[calls(entries)] + ([say("FINAL")] if events else [])
+            );
 
             def ask(q: str) -> str by llm(
                 tools=[mul], conversation=history, stream=events, logging=events
@@ -387,7 +389,10 @@ def _flaky_finish -> any {
 test "a failed finish_tool retries with the call after it answered" {
     for events in [False, True] {
         RAN.clear();
-        llm = MockLLM(outputs=[calls([_fin(), _mul("c2")]), finish("second try")]);
+        llm = MockLLM(
+            outputs=[calls([_fin(), _mul("c2")]), finish("second try")]
+                + ([say("FINAL")] if events else [])
+        );
 
         def ask(q: str) -> str by llm(
             tools=[mul, _flaky_finish()], stream=events, logging=events
