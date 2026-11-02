@@ -26,6 +26,7 @@ import from engine.src.runtime.jsvalue {
     js_true,
     js_false,
     js_int,
+    js_nan,
     js_number,
     jsv_hole,
     jsv_is_hole,
@@ -80,6 +81,10 @@ import from engine.src.builtins.generators { js_iter_result }
 import from engine.src.builtins.native_kinds {
     NATIVE_KIND_ITERATOR_RETURN_THIS,
     NATIVE_KIND_MAP_SET_ITER_NEXT
+}
+
+import from engine.src.runtime.mem {
+    str_nbytes
 }
 
 # ── Hidden marker keys (canonical values in builtins/markers.na.jac) ─────────
@@ -306,96 +311,56 @@ def:pub js_weakmap_create_with_proto(proto: JSValue) -> JSValue {
     return m;
 }
 
-"""Stable hash-table key for Map key_index — tag+payload so 1 and true never collide."""
-def _map_key_id(key: JSValue) -> int {
-    if jsv_is_int32(key) {
-        return 0x40000000 | (jsv_to_int32(key) & 0x3FFFFFFF);
-    }
-    if jsv_is_bool(key) {
-        if jsv_to_bool(key) {
-            return 0x50000001;
-        }
-        return 0x50000000;
-    }
-    if jsv_is_double(key) {
-        kd: float = jsv_to_double(key);
-        if kd != kd {
-            return 0x60000000;
-        }
-        if kd == 0.0 {
-            return 0x60000001;
-        }
-        # An integral float64 in int32 range hashes like that int32: they are
-        # the same SameValueZero key (rollup's chunk assignment keys a Map by
-        # Array.from({length}) indices and missed every lookup).
-        if kd >= -2147483648.0 and kd <= 2147483647.0 {
-            kd_i: int = int(kd);
-            if float(kd_i) == kd {
-                return 0x40000000 | (kd_i & 0x3FFFFFFF);
-            }
-        }
-    }
-    if jsv_is_null(key) {
-        return 0x70000000;
-    }
-    if jsv_is_undefined(key) {
-        return 0x70000001;
-    }
+"""The key of Map's and Set's index for `key`: one 64-bit value per
+SameValueZero class, so equal keys give the same value and different keys
+different ones (the index holds one entry per value; a shared value used to
+make a later insert overwrite an earlier key's entry, losing it). A string is
+its interned id, boxed as a string (one text under several ids is one key);
+a number is its int32 form when integral and in int32 range (+0, -0 and 2.0
+included), one NaN for every NaN, and its own bits otherwise; every other
+value is its own bits, which carry the kind: undefined, null, booleans,
+symbols, BigInts (boxed by their interned decimal text), objects and
+functions."""
+def:pub js_svz_key(key: JSValue) -> int {
     if jsv_is_string_cell(key) {
-        # Canonicalize string keys by content: identical strings can live
-        # under multiple table ids (Buffer.toString/decoders mint fresh
-        # cells), and Map keys are SameValueZero — hashing the raw id made
-        # map.get(literal) miss a decoded-string key (rollup: exportDescriptions
-        # keyed by AST-decoded identifiers were unfindable).
-        mk_sid: int = jsv_to_table_id(key);
-        if mk_sid >= HEAP_STRING_BASE {
+        sk_sid: int = jsv_to_table_id(key);
+        if sk_sid >= HEAP_STRING_BASE {
             # Heap strings may be interior-pointer VIEWS (suffix slices); the
             # intern table retains its argument, so intern a COMPACT COPY —
             # interning a view dangles when its backing string is released
             # (the suffix-slice intern corruption class; caused nondeterministic
             # segfaults across the rollup suite when Map ops interned views).
-            mk_hs: str = str_from_id(mk_sid);
-            return str_intern(str_substr(mk_hs, 0, len(mk_hs)));
+            sk_hs: str = str_from_id(sk_sid);
+            sk_sid = str_intern(str_substr(sk_hs, 0, str_nbytes(sk_hs)));
         }
-        # id < HEAP_STRING_BASE is already the canonical interned id.
-        return mk_sid;
+        return jsv_from_string_id(sk_sid);
     }
-    return jsv_to_table_id(key);
+    if jsv_is_double(key) {
+        skd: float = jsv_to_double(key);
+        if skd != skd {
+            return js_nan();
+        }
+        # An integral float64 in int32 range is the int32 key: rollup's chunk
+        # assignment keys a Map by Array.from({length}) indices.
+        if skd >= -2147483648.0 and skd <= 2147483647.0 {
+            skd_i: int = int(skd);
+            if float(skd_i) == skd {
+                return js_int(skd_i);
+            }
+        }
+    }
+    return key;
 }
 
 def _map_find(ms: JSMapStorage, key: JSValue) -> int {
-    # SameValueZero keys that do not share a stable table id need a scan:
-    # NaN === NaN, and +0 (int32) === -0 (float64) across encodings.
-    need_scan: bool = False;
-    if jsv_is_double(key) {
-        kd: float = jsv_to_double(key);
-        if kd != kd or kd == 0.0 {
-            need_scan = True;
-        }
-    } elif jsv_is_int32(key) and jsv_to_int32(key) == 0 {
-        need_scan = True;
-    }
-    if need_scan {
-        ni: int = 0;
-        nn: int = len(ms.ekeys);
-        while ni < nn {
-            nk: JSValue = ms.ekeys[ni];
-            if not jsv_is_hole(nk) and _same_value_zero(nk, key) {
-                return ni;
-            }
-            ni = ni + 1;
-        }
-        return -1;
-    }
     if len(ms.key_index) == 0 {
         return -1;
     }
-    idx: int = ms.key_index.get(_map_key_id(key), -1);
-    if idx >= 0 and idx < len(ms.ekeys) {
-        ik: JSValue = ms.ekeys[idx];
-        if not jsv_is_hole(ik) and _same_value_zero(ik, key) {
-            return idx;
-        }
+    # (js_svz_key is exact: the entry an index value names holds a key of the
+    # same SameValueZero class, unless it was deleted)
+    idx: int = ms.key_index.get(js_svz_key(key), -1);
+    if idx >= 0 and idx < len(ms.ekeys) and not jsv_is_hole(ms.ekeys[idx]) {
+        return idx;
     }
     return -1;
 }
@@ -478,7 +443,7 @@ def:pub js_map_set(m: JSValue, key: JSValue, val: JSValue) -> JSValue {
     if ms.head < 0 {
         ms.head = ni;
     }
-    ms.key_index[_map_key_id(key)] = ni;
+    ms.key_index[js_svz_key(key)] = ni;
     ms.live_count = ms.live_count + 1;
     return m;
 }
@@ -502,7 +467,7 @@ def:pub js_map_delete(m: JSValue, key: JSValue) -> JSValue {
     }
     ms.ekeys[fi] = jsv_hole();
     ms.evals[fi] = js_undefined();
-    kid: int = _map_key_id(key);
+    kid: int = js_svz_key(key);
     if ms.key_index.get(kid, -1) == fi {
         del ms.key_index[kid];
     }

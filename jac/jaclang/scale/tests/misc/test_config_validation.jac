@@ -40,6 +40,13 @@ test "unknown nested key is flagged with a suggestion" {
     assert "did you mean 'cpu_limit'" in msgs[0] , msgs[0];
 }
 
+test "initial_cooldown_period is a known [scale.kubernetes.http_activation] key" {
+    msgs = validate_scale_config(
+        {"kubernetes": {"http_activation": {"initial_cooldown_period": 120}}}
+    );
+    assert msgs == [] , msgs;
+}
+
 test "gateway nested unknown key is flagged" {
     msgs = validate_scale_config({"gateway": {"gateway_prot": 8001}});
     assert len(msgs) == 1 , f"expected 1 finding, got {msgs}";

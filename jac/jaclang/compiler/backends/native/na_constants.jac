@@ -1,6 +1,5 @@
 glob FACT_SEP: str = "\x1e",
      FACT_TARGET: str = "target",
-     FACT_OS: str = "os",
      FACT_STRUCT_LAYOUTS: str = "struct_layouts",
      FACT_CODEC_TABLES: str = "codec_tables",
      FACT_CODEC_NAME: str = "codec_name",
@@ -23,6 +22,8 @@ glob NATIVE_OS_FUNCS: set[str] = {
          "unlink",
          "rename",
          "system",
+         "read",
+         "isatty",
 
      };
 glob NATIVE_OSPATH_FUNCS: set[str] = {
@@ -67,6 +68,10 @@ glob RC_COLOR_BLACK: int = 0,
      RC_COLOR_SHIFT: int = 48,
      RC_CYCLE_THRESHOLD: int = 1000,
      RC_CYCLE_PACE: int = 4;
+
+glob POOL_CLASS_SHIFT: int = 28,
+     POOL_CLASS_MASK: int = 15,
+     ALLOC_ID_MASK: int = 268435455;
 
 glob JACVAL_ELLIPSIS_TAG: int = 9;
 

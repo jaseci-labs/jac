@@ -123,9 +123,15 @@ def prebuild_native_closure(roots: list[str]) -> dict[(str, any)];
 
 def prebuild_native_units(roots: list[str]);
 
+glob SEAL_KERNEL_DIR_ENV: str = "JAC_SEAL_KERNEL_DIR";
+
 def seal_native(
     pkg_path: Path, out_dir: Path, pkg_name: str, manifest_modules: dict[str, any]
 ) -> (dict[str, any] | None);
+
+def adopt_kernel(
+    pkg_path: Path, out_dir: Path, manifest_modules: dict[str, any], kernel_dir: str
+) -> dict[str, any];
 
 def _refresh_native_twin(twin: Path, jac_path: str, pkg_root: str) -> None;
 

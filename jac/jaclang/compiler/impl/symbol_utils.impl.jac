@@ -1,3 +1,27 @@
+impl import_binds_name(nd: UniNode, name: str) -> bool {
+    mod = nd.find_parent_of_type(Module);
+    if mod is None {
+        return False;
+    }
+    for imp in mod.get_all_sub_nodes(Import) {
+        if imp.from_loc is None
+            or imp.is_absorb
+            or imp.find_parent_of_type(UniScopeNode) is not mod {
+            continue;
+        }
+        for item in imp.items {
+            if not isinstance(item, ModuleItem) {
+                continue;
+            }
+            bound = item.alias if item.alias is not None else item.name;
+            if isinstance(bound, Name) and bound.value == name {
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
 impl resolve_expr_symbol(
     expr: Expr, module: (Module | None) = None
 ) -> (Symbol | None) {
@@ -125,7 +149,8 @@ impl classify_call(nd: FuncCall) -> CallKind {
     }
 
     if isinstance(nd.target, Name)
-        and JAC_TYPE_REGISTRY.is_builtin(nd.target.sym_name) {
+        and JAC_TYPE_REGISTRY.is_builtin(nd.target.sym_name)
+        and not import_binds_name(nd, nd.target.sym_name) {
         return CallKind.BUILTIN;
     }
     return CallKind.FUNCTION;
@@ -383,7 +408,7 @@ impl report_placement_warnings(reporter: CompilerPass, mod: Module) {
             and stmt.codespace_dual
             and idx in written_glob_idxs
         ) {
-            es = ps.elements[idx] if idx < len(ps.elements) else None;
+            es = ps.element_at(idx);
             gname = es.name if es is not None else 'glob';
             if not _already_reported(reporter.prog, reporter, W6006, stmt) {
                 reporter.ctx.emit(W6006, node_override=stmt, name=gname);
@@ -436,14 +461,6 @@ impl _client_emitted_top(stmt: UniNode, extra_bound: set[str]) -> bool {
     );
 }
 
-impl _module_top_element(mod: Module, nd: UniNode) -> (UniNode | None) {
-    cur: (UniNode | None) = nd;
-    while (cur is not None and cur.parent is not mod) {
-        cur = cur.parent;
-    }
-    return cur;
-}
-
 impl client_bridged_endpoint(mod: Module, top: UniNode) -> bool {
     return (
         isinstance(top, Ability)
@@ -484,7 +501,7 @@ impl client_value_ref_targets(
             if decl is None {
                 continue;
             }
-            top = _module_top_element(mod, decl);
+            top = decl.element_in(mod);
             if (top is None or top is stmt or isinstance(top, Import)) {
                 continue;
             }

@@ -11,6 +11,15 @@ impl _positional(sig: dict[str, any]) -> list[str] {
     ];
 }
 
+impl _varargs(sig: dict[str, any]) -> str {
+    for p in sig.get("params", []) {
+        if p.get("kind") == "varargs" {
+            return p["name"];
+        }
+    }
+    return "";
+}
+
 impl diff_signature(
     path: str, old: dict[str, any], new: dict[str, any]
 ) -> list[ApiChange] {
@@ -63,20 +72,46 @@ impl diff_signature(
             );
         }
     }
+    old_slots = len(_positional(old));
+    new_pos = _positional(new);
+    collector = _varargs(old);
     for (name, q) in new_params.items() {
         if name in old_params {
             continue;
         }
         optional = q.get("default") or q.get("kind") in ("varargs", "kwargs");
+        if not optional {
+            out.append(
+                ApiChange(
+                    path=path, level=MAJOR, reason=f"required parameter '{name}' added"
+                )
+            );
+            continue;
+        }
+        position = new_pos.index(name) + 1 if name in new_pos else 0;
+        if position and position <= old_slots {
+            out.append(
+                ApiChange(
+                    path=path,
+                    level=MAJOR,
+                    reason=f"optional parameter '{name}' added at position {position}, shifting the positional arguments of existing calls"
+                )
+            );
+            continue;
+        }
+        if position and collector {
+            out.append(
+                ApiChange(
+                    path=path,
+                    level=MAJOR,
+                    reason=f"optional parameter '{name}' added before *{collector}, taking a positional argument it collected"
+                )
+            );
+            continue;
+        }
         out.append(
             ApiChange(
-                path=path,
-                level=MINOR if optional else MAJOR,
-                reason=(
-                    f"optional parameter '{name}' added"
-                        if optional
-                        else f"required parameter '{name}' added"
-                )
+                path=path, level=MINOR, reason=f"optional parameter '{name}' added"
             )
         );
     }
@@ -186,6 +221,82 @@ impl _diff_members(
     return out;
 }
 
+impl _diff_positional_fields(
+    path: str, old: dict[str, any], new: dict[str, any]
+) -> list[ApiChange] {
+    old_pos: list[str] | None = old.get("positional_fields");
+    new_pos: list[str] | None = new.get("positional_fields");
+    if old_pos is None or new_pos is None {
+        return [];
+    }
+    old_members: dict[str, any] = old.get("members", {});
+    new_members: dict[str, any] = new.get("members", {});
+    out: list[ApiChange] = [];
+    for (index, name) in enumerate(new_pos) {
+        if name in old_pos or index >= len(old_pos) {
+            continue;
+        }
+        added = new_members.get(name);
+        if added is not None and name not in old_members and not added.get("default") {
+            continue;
+        }
+        out.append(
+            ApiChange(
+                path=path,
+                level=MAJOR,
+                reason=f"field '{name}' takes constructor position {index
+                    + 1}, shifting the positional arguments of existing constructions"
+            )
+        );
+    }
+    for name in old_pos {
+        if name in new_pos or (name in old_members and name not in new_members) {
+            continue;
+        }
+        out.append(
+            ApiChange(
+                path=path,
+                level=MAJOR,
+                reason=f"field '{name}' is no longer a positional constructor argument, shifting the positional arguments of existing constructions"
+            )
+        );
+    }
+    old_required: list[str] = old.get("required_fields", []);
+    for name in new.get("required_fields", []) {
+        if name not in old_required and name not in new_members {
+            out.append(
+                ApiChange(
+                    path=path,
+                    level=MAJOR,
+                    reason=f"the constructor now requires inherited field '{name}' (existing constructions break)"
+                )
+            );
+        }
+    }
+    kept_old = [
+        n
+        for n in old_pos
+        if n in new_pos
+    ];
+    kept_new = [
+        n
+        for n in new_pos
+        if n in old_pos
+    ];
+    if kept_old != kept_new {
+        out.append(
+            ApiChange(
+                path=path,
+                level=MAJOR,
+                reason=f"constructor fields reordered ({', '.join(kept_old)} -> {', '.join(
+                    kept_new
+                )})"
+            )
+        );
+    }
+    return out;
+}
+
 impl _diff_symbol(
     path: str, old: dict[str, any], new: dict[str, any]
 ) -> list[ApiChange] {
@@ -229,6 +340,7 @@ impl _diff_symbol(
     out.extend(
         _diff_members(path, kind, old.get("members", {}), new.get("members", {}))
     );
+    out.extend(_diff_positional_fields(path, old, new));
     return out;
 }
 

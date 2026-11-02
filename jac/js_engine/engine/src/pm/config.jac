@@ -36,6 +36,15 @@ import from engine.src.pm.toml {
 }
 import from engine.src.pm.npmrc { NpmrcEntry, npmrc_parse }
 
+import from engine.src.runtime.mem {
+    str_bfind,
+    str_brfind,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
+}
+
 glob:pub PM_DEFAULT_REGISTRY: str = "https://registry.npmjs.org/";
 
 # ── Parsed command line (produced by cli.jac) ────────────────────────────────
@@ -209,8 +218,9 @@ def _cfg_int(v: str, dflt: int) -> int {
         return dflt;
     }
     i: int = 0;
-    while i < len(s) {
-        o: int = ord(s[i]);
+    _nb221_s: int = str_nbytes(s);
+    while i < _nb221_s {
+        o: int = str_byte(s, i);
         if o < 48 or o > 57 {
             return dflt;
         }
@@ -229,21 +239,21 @@ def:pub pm_config_apply_npmrc(cfg: PmConfig, entries: list[NpmrcEntry], source: 
             cfg.registry.source = source;
             _cfg_mark(cfg, "registry", source);
         } elif k.startswith("@") and k.endswith(":registry") {
-            r: PmRegistry = _cfg_scope(cfg, k[0:len(k) - 9]);
+            r: PmRegistry = _cfg_scope(cfg, str_bslice(k, 0, str_nbytes(k) - 9));
             r.url = e.value.strip();
             r.source = source;
         } elif k.startswith("//") {
-            colon: int = k.rfind(":");
+            colon: int = str_brfind(k, ":");
             if colon < 2 {
                 cfg.ignored_keys.append(source + ": " + k);
                 continue;
             }
-            prefix: str = k[2:colon];
+            prefix: str = str_bslice(k, 2, colon);
             if not prefix.endswith("/") {
                 prefix = prefix + "/";
             }
             a: PmAuthEntry = PmAuthEntry(
-                prefix=prefix, field=k[colon + 1:], value=e.value, source=source
+                prefix=prefix, field=str_bslice_from(k, colon + 1), value=e.value, source=source
             );
             cfg.auth_entries.append(a);
         } elif k == "cafile" {
@@ -297,11 +307,11 @@ def:pub pm_config_apply_bunfig(cfg: PmConfig, doc: TomlDoc, source: str) {
     # [install.scopes]  myorg = "url"  |  "@myorg" = { url = "...", token = "..." }
     seen_scopes: dict[str, bool] = {};
     for k in toml_keys_under(doc, "install.scopes") {
-        rest: str = k[len("install.scopes."):];
-        dot: int = rest.find(".");
+        rest: str = str_bslice_from(k, str_nbytes("install.scopes."));
+        dot: int = str_bfind(rest, ".");
         name: str = rest;
         if dot >= 0 {
-            name = rest[0:dot];
+            name = str_bslice(rest, 0, dot);
         }
         if name in seen_scopes {
             continue;
@@ -638,9 +648,9 @@ def:pub pm_config_apply_cli(cfg: PmConfig, args: PmArgs) {
 def _cfg_url_no_scheme(url: str) -> str {
     u: str = url.strip();
     if u.startswith("https://") {
-        u = u[8:];
+        u = str_bslice_from(u, 8);
     } elif u.startswith("http://") {
-        u = u[7:];
+        u = str_bslice_from(u, 7);
     }
     if not u.endswith("/") {
         u = u + "/";
@@ -713,7 +723,7 @@ def:pub pm_npmrc_auth_for(cfg: PmConfig, url: str) -> list[str] {
     for p in by_prefix {
         c: list[str] = by_prefix[p];
         usable: bool = c[0] != "" or c[1] != "" or c[2] != "";
-        if usable and (not found or len(p) > len(best)) {
+        if usable and (not found or str_nbytes(p) > str_nbytes(best)) {
             best = p;
             found = True;
         }
@@ -857,7 +867,7 @@ def _cfg_secret(v: str) -> str {
     if v == "" {
         return "(unset)";
     }
-    return "(set, " + str(len(v)) + " chars)";
+    return "(set, " + str(str_nbytes(v)) + " chars)";
 }
 
 def:pub pm_config_describe(cfg: PmConfig) -> str {

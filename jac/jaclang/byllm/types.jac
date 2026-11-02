@@ -84,7 +84,8 @@ obj MockRawResponse {
         usage: dict[str, any] | None = None,
         finish_reason: str = "",
         model: str = "",
-        unnamed_fragments: bool = False;
+        unnamed_fragments: bool = False,
+        fields: dict[str, any] = {};
 }
 
 obj MockError {

@@ -301,19 +301,19 @@ bitcode merged with the link glue that defines `jac_entry`, the way an
 executable's object is assembled before the platform linker sees it. Tests
 that hand a single relocatable object to a linker start from this text."""
 def program_ir(fixture: str, triple: str, static_musl: bool = False) -> str {
-    import os;
     import from jaclang.compiler.driver.program { JacProgram }
     import from jaclang.compiler.driver.compile_options {
         CompileOptions,
-        NATIVE_LINK_MODE_BITCODE
+        NATIVE_LINK_MODE_BITCODE,
+        push_native_target,
+        pop_native_target
     }
     import from jaclang.compiler.backends.native.link_plan {
         ArtifactKind,
         build_link_plan,
         whole_program_module
     }
-    prev = os.environ.get("JAC_NATIVE_TARGET", None);
-    os.environ["JAC_NATIVE_TARGET"] = triple;
+    prev = push_native_target(triple);
     try {
         prog = JacProgram();
         opts = CompileOptions(aot_mode=True, native_link_mode=NATIVE_LINK_MODE_BITCODE);
@@ -337,11 +337,7 @@ def program_ir(fixture: str, triple: str, static_musl: bool = False) -> str {
         (merged, _exports) = whole_program_module(plan, spec);
         return str(merged);
     } finally {
-        if prev is None {
-            os.environ.pop("JAC_NATIVE_TARGET", None);
-        } else {
-            os.environ["JAC_NATIVE_TARGET"] = prev;
-        }
+        pop_native_target(prev);
     }
 }
 
@@ -712,4 +708,13 @@ def same_lines(sv_text: str, na_text: str, what: str) {
             idx
         ]!r}";
     }
+}
+
+"""A module's source together with its impl annexes, the unit the compiler
+weaves, so a source-contract check reads a body wherever it lives."""
+def unit_source(path: Path | str) -> str {
+    import from jaclang.compiler.driver.bccache { discover_annex_files }
+
+    files = [str(path)] + discover_annex_files(str(path), ".impl.jac");
+    return "\n".join(Path(f).read_text() for f in files);
 }

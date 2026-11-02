@@ -320,7 +320,8 @@ impl _mock_response(turn: MockRawResponse, model: str) -> object {
                 "message": {
                     "role": "assistant",
                     "content": turn.content,
-                    "tool_calls": tool_calls or None
+                    "tool_calls": tool_calls or None,
+                    ** turn.fields
                 },
                 "finish_reason": _mock_finish_reason(turn)
             }
@@ -367,6 +368,19 @@ impl _MockStream.__next__ -> object {
 impl _mock_chunks(turn: MockRawResponse, model: str, size: int) -> list[object] {
     out: list[object] = [];
     first = True;
+    for (key, value) in turn.fields.items() {
+        pieces: list[any] = [value[i:i + size] for i in range(0, len(value), size)]
+            if isinstance(value, str)
+            else [value];
+        for piece in pieces {
+            field_delta: dict[str, any] = {key: piece};
+            if first {
+                field_delta["role"] = "assistant";
+            }
+            out.append(_mock_chunk(model, field_delta));
+            first = False;
+        }
+    }
     text = turn.content;
     for i in range(0, len(text), size) {
         delta: dict[str, any] = {"content": text[i:i + size]};

@@ -61,7 +61,8 @@ import from engine.src.runtime.mem {
     read_u16,
     read_ptr,
     write_i32,
-    write_byte
+    write_byte,
+    str_nbytes
 }
 import from engine.src.net.constants {
     AF_INET,
@@ -654,7 +655,7 @@ def:pub tcp_write(sock: TCPSocket, data: str) -> int {
     if sock.fd == 0 {
         return 0 - 1;
     }
-    n: int = len(data);
+    n: int = str_nbytes(data);
     rc: int = send(sock.fd, data, n, 0);
     # C int -1 zero-extends (WA-6.1-A)
     if _tcp_is_error(rc) {
@@ -686,7 +687,7 @@ def:pub tcp_write_bytes(sock: TCPSocket, data_ptr: int, data_len: int) -> int {
 
 Returns the total number of bytes written, or -1 on error."""
 def:pub tcp_write_all(sock: TCPSocket, data: str) -> int {
-    total: int = len(data);
+    total: int = str_nbytes(data);
     sent: int = 0;
     while sent < total {
         # We need to send the remaining bytes.  Since we can't do

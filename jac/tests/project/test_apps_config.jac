@@ -438,8 +438,9 @@ test "kind specs carry ui and has_server; the client axis is gone" {
     assert KIND_SPECS["web-static"].ui == "dom";
     assert not KIND_SPECS["web-static"].has_server;
     assert KIND_SPECS["mobile"].ui == "mobui";
-    assert KIND_SPECS["mobile"].flags == {} , (
-        "the mobile kind has no client flag: the kind is the target"
+    assert KIND_SPECS["mobile"].flags == {"dev": True} , (
+        "the mobile kind has no client flag (the kind is the target); its only "
+        "flag is the dev default jac run serves with"
     );
     assert KIND_SPECS["desktop"].ui == "dom";
     assert KIND_SPECS["desktop"].flags == {};
@@ -504,11 +505,15 @@ test "plan_workspace produces one plan per app" {
         assert web.flags["dev"] is True;
         assert web.command_line().startswith("jac run web");
         mobile = by_app["mobile"];
-        assert mobile.action == "build";
+        assert mobile.action == "serve" , "jac run serves a mobile app to Expo Go";
         assert mobile.spec.ui == "mobui";
         assert "client" not in mobile.flags , "plans carry no client flag";
-        assert mobile.flags == {"platform": "ios"};
-        assert mobile.command_line() == "jac build mobile --platform ios";
+        assert mobile.flags == {"dev": True, "platform": "ios", "port": 8090} , (
+            "a served mobile app takes the base [serve] port for its API"
+        );
+        assert mobile.command_line()
+            == "jac run mobile --dev --platform ios --port 8090";
+        assert mobile.build_line() == "jac build mobile --platform ios";
         assert mobile.entry_path == str(root_path / "mobile" / "main.jac");
         sg = by_app["social_graph"];
         assert sg.kind == "service";

@@ -46,9 +46,9 @@ def doc_corpora -> list[tuple[str, list[Guide]]];
 
 def corpus_blurb(ns: str) -> str;
 
-def nav_manifest -> dict[str, any];
+def nav_manifest(docs_root: Path | None = None) -> dict[str, any];
 
-def nav_pages -> list[NavPage];
+def nav_pages(docs_root: Path | None = None) -> list[NavPage];
 
 def get_guide(name: str) -> Guide | None;
 

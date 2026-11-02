@@ -73,9 +73,11 @@ The cost only lands in the query when the traversal is read on the spot. Bind it
 **Promote the fields you filter and order by.** Field predicates and orderings read a jsonb path, which is a scan unless the field has an index. Declare them and the compiler names the promoted column instead:
 
 ```toml
-[scale.database]
+[database]
 indexes = { Post = ["at", "published"], Msg = ["at", "seq"] }
 ```
+
+It is the top-level `[database]` table, not `[scale.database]` (which holds the deploy's connection settings): under `[scale.database]` the key is reported as unknown and ignored.
 
 Without this a `[?:Post, -at]` still returns the right rows -- correctness never depends on the declaration -- it just sorts the whole set to do it.
 

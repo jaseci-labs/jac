@@ -66,6 +66,12 @@ impl _cmd_model(action: str = "list", alias: str = "") -> int {
 
     if action in ("rm", "remove", "delete") {
         norm = alias.strip().lower();
+        if norm not in LOCAL_MODELS {
+            console.error(
+                f"unknown alias '{alias}'", hint="run `jac model list` for choices"
+            );
+            return 2;
+        }
         if remove_alias(norm) {
             console.info(f"removed cached weights for '{norm}'");
             return 0;

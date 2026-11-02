@@ -8,23 +8,6 @@ impl _zeros(n: int) -> list[int] {
     return out;
 }
 
-impl _str_gt(a: str, b: str) -> bool {
-    m: int = len(a);
-    if len(b) < m {
-        m = len(b);
-    }
-    i: int = 0;
-    while i < m {
-        ca: int = ord(a[i]);
-        cb: int = ord(b[i]);
-        if ca != cb {
-            return ca > cb;
-        }
-        i += 1;
-    }
-    return len(a) > len(b);
-}
-
 impl _popular_flags(b: str, autojunk: bool) -> list[int] {
     n: int = len(b);
     flags: list[int] = _zeros(n);
@@ -228,7 +211,7 @@ impl _before(ra: float, wa: str, rb: float, wb: str) -> bool {
     if ra < rb {
         return False;
     }
-    return _str_gt(wa, wb);
+    return str_gt(wa, wb);
 }
 
 impl get_close_matches(

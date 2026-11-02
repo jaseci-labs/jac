@@ -187,7 +187,10 @@ impl ProjectHost.lint_settings(path: str) -> LintSettings {
     config = (get_config_for_path(Path(path)) if path else get_explicit_config())
         or JacConfig();
     if path {
-        app = context_app(str(Path(path).resolve()));
+        owner = (self.base_file(path) or path)
+            if self.path_facts(path).is_annex
+            else path;
+        app = context_app(str(Path(owner).resolve()));
         if app is not None and not app.implicit and app.name in config.apps {
             config = config.effective_for_app(app.name);
         }
@@ -439,6 +442,46 @@ impl ProjectHost.keep_wiring_records(digest: str, text: str) {
     } except (OSError, RuntimeError) {}
 }
 
+def _native_scan_path(path: str, digest: str) -> str;
+
+impl ProjectHost.native_scan_record(path: str, digest: str) -> str {
+    import os;
+    try {
+        store = _native_scan_path(path, digest);
+        with open(store, "r", encoding="utf-8") as f {
+            text = f.read();
+        }
+    } except (OSError, RuntimeError, UnicodeDecodeError) {
+        return "";
+    }
+    try {
+        os.utime(store, None);
+    } except OSError {}
+    return text;
+}
+
+impl ProjectHost.keep_native_scan_record(path: str, digest: str, text: str) {
+    import os;
+    import tempfile;
+    try {
+        store = _native_scan_path(path, digest);
+        directory = os.path.dirname(store);
+        os.makedirs(directory, exist_ok=True);
+        (fd, scratch) = tempfile.mkstemp(dir=directory, suffix=".tmp");
+        try {
+            with os.fdopen(fd, "w", encoding="utf-8") as f {
+                f.write(text);
+            }
+            os.replace(scratch, store);
+        } except OSError {
+            os.unlink(scratch);
+        }
+    } except (OSError, RuntimeError) {
+        return;
+    }
+    maybe_sweep("jir-nativescan");
+}
+
 impl ProjectHost.is_seed_source(rel_path: str) -> bool {
     return is_seed_source(rel_path);
 }
@@ -562,6 +605,31 @@ impl ProjectHost.host_platform -> HostPlatform {
 impl ProjectHost.ct_environment -> CtEnvironment {
     import sys;
     import platform;
+
+    triple = effective_native_target().lower();
+    if triple {
+        arch = "";
+        if "aarch64" in triple or "arm64" in triple {
+            arch = "aarch64";
+        } elif "x86_64" in triple or "amd64" in triple {
+            arch = "x86_64";
+        }
+        if arch {
+            if "darwin" in triple or "apple" in triple or "macos" in triple {
+                return CtEnvironment(
+                    os="darwin", arch=("arm64" if arch == "aarch64" else arch)
+                );
+            }
+            if "windows" in triple or "msvc" in triple or "mingw" in triple {
+                return CtEnvironment(
+                    os="windows", arch=("AMD64" if arch == "x86_64" else arch)
+                );
+            }
+            if "linux" in triple {
+                return CtEnvironment(os="linux", arch=arch);
+            }
+        }
+    }
     host_os = "linux";
     if sys.platform.startswith("win") {
         host_os = "windows";
@@ -606,6 +674,15 @@ impl UnitCollectBudget.due -> bool {
         }
     }
     def peak_rss_mb -> int {
+        try {
+            with open("/proc/self/status", encoding="utf-8") as status {
+                for line in status {
+                    if line.startswith("VmHWM:") {
+                        return int(line.split()[1]) // 1024;
+                    }
+                }
+            }
+        } except (OSError, ValueError, IndexError) {}
         try {
             import resource;
         } except ImportError {
@@ -799,6 +876,17 @@ impl _git_ignored_under(root_dir: str) -> list[str] {
             for p in paths
             if p not in kept
         ]
+    );
+}
+
+impl _native_scan_path(path: str, digest: str) -> str {
+    import hashlib;
+    import os;
+    name = hashlib.sha256(
+        (digest + "\x00" + module_env_fingerprint(path)).encode()
+    ).hexdigest();
+    return os.path.join(
+        str(get_jir_cache_dir()), "nativescan", name[:2], name + ".txt"
     );
 }
 

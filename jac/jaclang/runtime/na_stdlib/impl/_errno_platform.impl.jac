@@ -1,3 +1,3 @@
 impl errno_address -> int {
-    return __errno_location();
+    return __jac_errno();
 }

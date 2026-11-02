@@ -6,3 +6,4 @@
 "test_closures.test_all_closures" = "client"
 "crossbound_server" = "server"
 "failload_server" = "server"
+"server_only_module" = "server"

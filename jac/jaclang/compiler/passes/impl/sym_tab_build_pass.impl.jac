@@ -90,38 +90,15 @@ impl SymTabBuildPass.exit_assignment with Assignment exit {
     if isinstance(here.parent, GlobalVars) {
         return;
     }
-    if here.type_tag is not None {
-        for i in here.target {
-            if isinstance(i, Name) {
-                scope = find_python_scope_node_of(i);
-                if scope is not None and i.sym_name in scope.implicit_rebinds {
-                    self.ctx.emit(E0064, node_override=i, name=i.sym_name);
-                }
-            }
-        }
+    for name in typed_rebind_names(here) {
+        self.ctx.emit(E0064, node_override=name, name=name.sym_name);
     }
     bind_assignment_targets(here);
 }
 
 impl SymTabBuildPass.exit_binary_expr with BinaryExpr exit {
-    if not (isinstance(here.op, Token) and (here.op.name == Tok.WALRUS_EQ)) {
-        return;
-    }
-    if isinstance(here.left, Name) {
-        target_scope = here.left.sym_tab;
-        owner: (UniNode | None) = here.parent;
-        while (owner is not None and not isinstance(owner, (Ability, LambdaExpr))) {
-            owner = owner.parent;
-        }
-        if owner is not None {
-            target_scope = owner.sym_tab;
-        }
-        if ((sym := target_scope.lookup(here.left.sym_name, deep=False)) is None) {
-            rebind_or_def_insert(here.left, target_scope, single_decl='walrus var');
-        } else {
-            sym.add_use(here.left.name_spec);
-            record_cross_scope_rebind(target_scope, here.left.sym_name, sym);
-        }
+    if is_walrus(here) and here.find_parent_of_type(ImplDef) is None {
+        bind_walrus_target(here);
     }
 }
 
@@ -340,7 +317,7 @@ impl SymTabBuildPass.exit_atom_trailer with AtomTrailer exit {
     }
     chain = here.as_attr_list;
 
-    ability = here.find_parent_of_type(Ability);
+    ability = here.enclosing_decl(Ability);
     if (ability and ability.method_owner) {
         archetype = ability.method_owner;
         if isinstance(archetype, Archetype) {
@@ -386,7 +363,7 @@ impl SymTabBuildPass._is_self_member_assignment(nd: AtomTrailer) -> bool {
         return False;
     }
 
-    ability = nd.find_parent_of_type(Ability);
+    ability = nd.enclosing_decl(Ability);
     if ability is not None {
         return (
             ability.is_method and not ability.is_static and not ability.is_cls_method

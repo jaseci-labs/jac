@@ -114,6 +114,17 @@ impl _members(sym: Symbol, evaluator: any) -> dict[str, dict[str, any]] {
     return out;
 }
 
+impl _synthesized_init(ctype: any, evaluator: any) -> any {
+    if not isinstance(ctype, ClassType) or not ctype.is_data_class() {
+        return None;
+    }
+    member = evaluator._lookup_class_member(ctype, "init");
+    if member is not None and member.class_type.shared.class_name != "object" {
+        return None;
+    }
+    return evaluator._create_object_init_method(ctype);
+}
+
 impl describe_symbol(sym: Symbol, evaluator: any) -> dict[str, any] | None {
     stype = sym.sym_type;
     if stype in ARCHETYPE_KINDS {
@@ -128,14 +139,30 @@ impl describe_symbol(sym: Symbol, evaluator: any) -> dict[str, any] | None {
                 }
             }
         }
-        return _with_doc(
-            {
-                "kind": ARCHETYPE_KINDS[stype],
-                "bases": bases,
-                "members": _members(sym, evaluator)
-            },
-            _decl_of(sym)
-        );
+        desc: dict[str, any] = {
+            "kind": ARCHETYPE_KINDS[stype],
+            "bases": bases,
+            "members": _members(sym, evaluator)
+        };
+        ctor = _synthesized_init(ctype, evaluator);
+        if ctor is not None {
+            params = [
+                p
+                for p in ctor.parameters
+                if not p.is_self
+            ];
+            desc["positional_fields"] = [
+                p.name
+                for p in params
+                if PARAM_KINDS.get(int(p.param_kind)) == "normal"
+            ];
+            desc["required_fields"] = [
+                p.name
+                for p in params
+                if p.default_value is None and not p.has_default
+            ];
+        }
+        return _with_doc(desc, _decl_of(sym));
     }
     if stype == SymbolType.ABILITY {
         decl = _decl_of(sym);
@@ -252,12 +279,32 @@ impl api_shape(surface: dict[str, any]) -> dict[str, any] {
     return out;
 }
 
-impl surface_digest(surface: dict[str, any]) -> str {
+impl _as_format(surface: dict[str, any], fmt: int) -> dict[str, any] {
+    if fmt >= 2 {
+        return surface;
+    }
+    out = dict(surface);
+    out["format"] = fmt;
+    out["modules"] = {
+        module: {
+            name: {
+                k: v
+                for (k, v) in d.items()
+                if k not in ("positional_fields", "required_fields")
+            } for (name, d) in symbols.items()
+        } for (module, symbols) in surface.get("modules", {}).items()
+    };
+    return out;
+}
+
+impl surface_digest(surface: dict[str, any], fmt: int = API_FORMAT) -> str {
     import hashlib;
     return "sha256:"
         + hashlib.sha256(
             json.dumps(
-                api_shape(surface), sort_keys=True, separators=(",", ":")
+                api_shape(_as_format(surface, fmt)),
+                sort_keys=True,
+                separators=(",", ":")
             ).encode()
         ).hexdigest();
 }

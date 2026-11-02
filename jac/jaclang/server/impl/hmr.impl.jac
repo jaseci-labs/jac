@@ -421,7 +421,7 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
             resolved_path = str(Path(file_path).resolve());
             for key in (file_path, resolved_path) {
                 if program is not None {
-                    program.invalidate_module(key);
+                    program.release_module(key);
                     program.drop_module_alerts(key);
                 }
             }
@@ -754,12 +754,20 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
     try {
         source_path = Path(file_path).resolve();
         base_dir = Path(self.base_path).resolve();
-        try {
-            rel_path = source_path.relative_to(base_dir);
-        } except ValueError {
-            rel_path = Path(source_path.name);
+        if self.client_compiler is not None {
+            jcc = self.client_compiler.jac_client_compiler;
+            compiler = jcc?.jac_compiler;
+            source_root = compiler?.source_root or base_dir;
+            output_path = jcc._output_path_for(source_path, source_root);
+        } else {
+            try {
+                rel_path = source_path.relative_to(base_dir);
+            } except ValueError {
+                rel_path = Path(source_path.name);
+            }
+            output_path = self._compiled_root() / rel_path;
         }
-        output_path = self._compiled_root() / rel_path;
+        rel_path = output_path.relative_to(self._compiled_root());
 
         if not source_path.exists() {
             if output_path.exists() {

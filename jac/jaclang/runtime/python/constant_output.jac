@@ -92,11 +92,11 @@ obj constant_writer {
     }
 
     def slice_of(value: PySlice) -> ptr[PyObject] {
-        start = self.write(value.start);
+        start = self.unshared(value.start);
         try {
-            stop = self.write(value.stop);
+            stop = self.unshared(value.stop);
             try {
-                step = self.write(value.step);
+                step = self.unshared(value.step);
                 try {
                     return required(PySlice_New(start, stop, step));
                 } finally {
@@ -110,6 +110,27 @@ obj constant_writer {
         }
     }
 
+    def unshared(constant: PyObj) -> ptr[PyObject] {
+        if isinstance(constant, (PyNoneType, PyEllipsis, PyBool)) {
+            return self.write(constant);
+        }
+        return self.create(constant);
+    }
+
+    def shared_names(values: list[str]) -> ptr[PyObject] {
+        key = constant_key(self.text_items(values));
+        existing = self.shared.get(key);
+        if existing is not None {
+            return Py_NewRef(existing);
+        }
+        created = required(PyTuple_New(i64(len(values))));
+        for (index, value) in enumerate(values) {
+            checked(jacpy_tuple_set_owned(created, i64(index), text_object(value)));
+        }
+        self.shared[key] = created;
+        return Py_NewRef(created);
+    }
+
     def filename_of(filename: str) -> ptr[PyObject] {
         if self.filename_handle == 0 or self.filename != filename {
             handle = text_object(filename);
@@ -120,42 +141,49 @@ obj constant_writer {
         return self.filename_handle;
     }
 
-    # CPython merges argument cells into their local slots, then appends the
-    # remaining cells and free variables in compiler-assigned order.
+    def shared_bytes(data: list[int]) -> ptr[PyObject] {
+        key = constant_key(PyBytes(t="bytes", val=data));
+        existing = self.shared.get(key);
+        if existing is not None {
+            return Py_NewRef(existing);
+        }
+        created = code_buffer(data);
+        self.shared[key] = created;
+        return Py_NewRef(created);
+    }
+
+    def text_items(values: list[str]) -> PyTuple {
+        items: list[PyObj] = [];
+        for value in values {
+            items.append(PyStr(t="str", val=value));
+        }
+        return PyTuple(t="tuple", items=items);
+    }
+
     def code_of(code: PyCode) -> ptr[PyObject] {
-        names: list[str] = [];
-        kinds: list[int] = [];
-        slots: dict[str, int] = {};
-        local_kind = CO_FAST_LOCAL
-            | (0 if code.flags & CO_OPTIMIZED else CO_FAST_HIDDEN);
-        for name in code.varnames {
-            slots[name] = len(names);
-            names.append(name[6:] if name.startswith(".comp.") else name);
-            kinds.append(local_kind);
-        }
-        for name in code.cellvars {
-            if name in slots {
-                kinds[slots[name]] |= CO_FAST_CELL;
-            } else {
-                names.append(name);
-                kinds.append(CO_FAST_CELL);
-            }
-        }
-        for name in code.freevars {
-            names.append(name);
-            kinds.append(CO_FAST_FREE);
-        }
+        names = code.localsplusnames;
+        kinds = code.localspluskinds;
         owned: list[ptr[PyObject]] = [];
         try {
-            bytecode = held(owned, write_buffer(bytes(code.co_code)));
-            consts = held(owned, self.tuple_of(code.consts));
-            code_names = held(owned, text_tuple(code.names));
-            localsplusnames = held(owned, text_tuple(names));
-            localspluskinds = held(owned, write_buffer(bytes(kinds)));
+            bytecode = held(owned, self.shared_bytes(code.co_code));
+            consts = held(owned, self.write(PyTuple(t="tuple", items=code.consts)));
+            code_names = held(owned, self.shared_names(code.names));
+            localsplusnames = held(
+                owned,
+                self.tuple_of(self.text_items(names).items)
+                    if code.unshared_localsplus
+                    else self.shared_names(names)
+            );
+            localspluskinds = held(owned, code_buffer(kinds));
             name = held(owned, text_object(code.name));
-            qualname = held(owned, text_object(code.qualname));
-            linetable = held(owned, write_buffer(bytes(code.linetable)));
-            exceptiontable = held(owned, write_buffer(bytes(code.exceptiontable)));
+            qualname = held(
+                owned,
+                text_object(code.qualname)
+                    if code.flags & CO_OPTIMIZED or code.name == "<module>"
+                    else self.write(PyStr(t="str", val=code.qualname))
+            );
+            linetable = held(owned, self.shared_bytes(code.linetable));
+            exceptiontable = held(owned, self.shared_bytes(code.exceptiontable));
             return required(
                 jacpy_code_new(
                     i64(code.argcount),
@@ -193,22 +221,18 @@ obj constant_writer {
     }
 }
 
+def code_buffer(data: list[int]) -> ptr[PyObject] {
+    if len(data) != 1 {
+        return write_buffer(bytes(data));
+    }
+    raw = required(PyBytes_FromStringAndSize(ptr[u8](), i64(1)));
+    ptr[u8](PyBytes_AsString(raw)).view(1)[0] = u8(data[0]);
+    return raw;
+}
+
 def held(owned: list[ptr[PyObject]], handle: ptr[PyObject]) -> ptr[PyObject] {
     owned.append(required(handle));
     return handle;
-}
-
-def text_tuple(values: list[str]) -> ptr[PyObject] {
-    result = required(PyTuple_New(i64(len(values))));
-    try {
-        for (index, value) in enumerate(values) {
-            checked(jacpy_tuple_set_owned(result, i64(index), text_object(value)));
-        }
-    } except Exception {
-        jacpy_release(result);
-        raise;
-    }
-    return result;
 }
 
 # Compiler integers keep 15-bit digits; CPython reads the little-endian

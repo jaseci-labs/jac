@@ -239,3 +239,23 @@ impl specialize(cls: type, **ct: any) -> type {
 impl _ct_sort_key(item: tuple[str, any]) -> str {
     return str(item[0]);
 }
+
+impl Codespace.is_server.getter -> bool {
+    return self.value == "server";
+}
+
+impl Codespace.is_client.getter -> bool {
+    return self.value == "client";
+}
+
+impl Codespace.is_native.getter -> bool {
+    return self.value == "native";
+}
+
+impl LazyRef.resolved.getter -> any {
+    cur: any = _import_module(self.module);
+    for part in self.qualname.split(".") {
+        cur = getattr(cur, part);
+    }
+    return cur;
+}

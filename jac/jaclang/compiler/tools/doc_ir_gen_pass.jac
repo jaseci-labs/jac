@@ -1,7 +1,10 @@
 walker DocIRGenPass(TreePass) {
     static has contract: PassContract = PassContract();
     has _live_comment_ids: (set[int] | None) = None,
-        _emitted_comment_ids: (set[int] | None) = None;
+        _emitted_comment_ids: (set[int] | None) = None,
+        _rescue_nd: (uni.Module | None) = None,
+        _rescue_idx: int = 0,
+        _rescue_own_ids: (set[int] | None) = None;
 
     def _comment_is_live(c: uni.CommentToken) -> bool;
     def _rescue_lost_comments(
@@ -147,7 +150,6 @@ walker DocIRGenPass(TreePass) {
     can exit_expr_as_item with uni.ExprAsItem exit;
     can exit_filter_compr with uni.FilterCompr exit;
     can exit_assign_compr with uni.AssignCompr exit;
-    can exit_py_inline_code with uni.PyInlineCode exit;
     can exit_test with uni.Test exit;
     can exit_match_stmt with uni.MatchStmt exit;
     can exit_match_case with uni.MatchCase exit;
