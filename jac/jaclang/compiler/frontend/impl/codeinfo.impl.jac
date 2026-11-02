@@ -505,10 +505,10 @@ impl kernel_unit_path(rel: str) -> str {
 
 impl is_mir_runtime_path(source_path: str) -> bool {
     import os;
-    root = real_path(jaclang_pkg_root());
+    package = real_path(jaclang_pkg_root());
     here = real_path(source_path);
-    return here.startswith(os.path.join(root, "runtime", "native") + os.sep)
-        or here == os.path.join(root, OSP_NATIVE_REL.replace("/", os.sep));
+    return here.startswith(os.path.join(package, "runtime", "native") + os.sep)
+        or here == os.path.join(package, OSP_NATIVE_REL.replace("/", os.sep));
 }
 
 impl kernel_unit_paths -> list[str] {
