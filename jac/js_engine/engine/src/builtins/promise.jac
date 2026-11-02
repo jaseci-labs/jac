@@ -308,21 +308,12 @@ def:pub js_promise_init_in_place(p: JSValue) {
 
 """Return True iff v is a Promise object."""
 def:pub js_is_promise(v: JSValue) -> bool {
-    # BRAND_PROMISE mirrors own _KEY_IS_PROMISE (0 for non-objects).
-    if (js_object_brand(v) & BRAND_PROMISE) == 0 {
-        return False;
-    }
-    # Guard against hidden-key collisions on ordinary objects.
-    if not js_object_has_own(v, _KEY_PSTATE) {
-        return False;
-    }
-    if not js_object_has_own(v, _KEY_PVALUE) {
-        return False;
-    }
-    if not js_object_has_own(v, _KEY_PREACTIONS) {
-        return False;
-    }
-    return True;
+    # BRAND_PROMISE mirrors own _KEY_IS_PROMISE (0 for non-objects). The marker
+    # is a reserved key id no script can name, set only by js_promise_create /
+    # js_promise_init_in_place together with the state, value and reactions
+    # slots, so the brand alone answers (it used to look the three slots up too:
+    # three by-name lookups on every promise test).
+    return (js_object_brand(v) & BRAND_PROMISE) != 0;
 }
 
 """Return the current promise state (PROMISE_PENDING / FULFILLED / REJECTED)."""

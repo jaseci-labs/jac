@@ -43,13 +43,15 @@ impl GitHub.call(
         data=payload,
         method=method,
         headers={
-            "Authorization": f"Bearer {self.token}",
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
             "User-Agent": "jac-publish",
             "Content-Type": content_type
         }
     );
+    if self.token {
+        request.add_header("Authorization", f"Bearer {self.token}");
+    }
     try {
         with urllib.request.urlopen(request, timeout=120) as response {
             raw = response.read();
@@ -133,6 +135,15 @@ impl GitHub.write_file(
         body["sha"] = sha;
     }
     self.call("PUT", f"/repos/{repo}/contents/{path}", body=body);
+}
+
+impl GitHub.release(repo: str, tag: str) -> (dict[str, any] | None) {
+    path = (
+        f"/repos/{repo}/releases/latest"
+            if not tag
+            else f"/repos/{repo}/releases/tags/{quote(tag)}"
+    );
+    return self.call("GET", path, allow_missing=True);
 }
 
 impl GitHub.release_for(repo: str, tag: str, target: str) -> dict[str, any] {

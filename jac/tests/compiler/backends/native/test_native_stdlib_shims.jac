@@ -186,3 +186,22 @@ test "a program's own Token lives beside the contextvars shim's token" {
     _same_lines(py_out, na_out, "contextvars own token");
     assert py_out.split() == ["ab=AB!@1", "3", "3", "cd=CD!@7", "3", "9", "0"] , py_out;
 }
+
+
+test "native unicodedata answers what CPython answers" {
+    (sv_out, _sv_err) = _sv_run("unicodedata_probe.jac");
+    (na_out, _na_err) = _na_run("unicodedata_probe.jac");
+    _same_lines(sv_out, na_out, "unicodedata");
+}
+
+
+test "native unicodedata uses pinned Unicode 16 properties at range edges" {
+    (na_out, _na_err) = _na_run("unicodedata_unicode16_probe.jac");
+    actual = [
+        line
+        for line in na_out.split("\n")
+        if line.strip()
+    ];
+    expected = ["Cn W", "Lo W", "Lo W", "Cn W", "Lo H", "Lu F"];
+    assert actual == expected , f"Unicode 16 property mismatch: {actual!r}";
+}

@@ -16,6 +16,8 @@ obj SSOUserInfo {
     def profile_fields -> dict[str, any];
 }
 
+obj GrantRefused(Exception) {}
+
 obj SSOProvider {
     async def initiate_auth(state: str | None = None) -> Response abst;
     async def handle_callback(request: Request) -> SSOUserInfo abst;
@@ -34,12 +36,17 @@ obj OAuth2CodeProvider(SSOProvider) {
     def token_url -> str;
     def scope -> str;
     def extra_authorize_params -> dict[str, str];
+    def connect_params -> dict[str, str];
+    def revoke_url -> str;
     async def fetch_user(
         access_token: str, token_payload: dict[str, any]
     ) -> SSOUserInfo;
 
     async def initiate_auth(state: str | None = None) -> Response;
     async def _exchange_code(code: str, code_verifier: str = '') -> dict[str, any];
+    async def _token_request(fields: dict[str, str]) -> dict[str, any];
+    async def refresh_grant(refresh_token: str) -> dict[str, any];
+    async def revoke_token(token: str) -> bool;
     static def _callback_param(request: Request, name: str) -> (str | None);
     async def handle_callback(request: Request) -> SSOUserInfo;
 }

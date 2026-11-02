@@ -76,7 +76,12 @@ import from engine.src.bytecode.op {
     opcode_to_int,
     opcode_from_int
 }
-import from engine.src.runtime.mem { io_alloc, write_byte, read_byte }
+import from engine.src.runtime.mem {
+    io_alloc,
+    write_byte,
+    read_byte,
+    str_byte
+}
 import from engine.src.runtime.jsstring { str_chars }
 import from engine.src.ffi.libc { memcpy }
 
@@ -135,7 +140,7 @@ obj JSBCModule {
 # ══════════════════════════════════════════════════════════════════════════════
 # Flags bitfield pack/unpack — the 7 bool fields of CompiledFunction.
 #   bit0 is_strict  bit1 is_async  bit2 is_generator  bit3 is_method
-#   bit4 has_rest   bit5 is_bound  bit6 is_field_init
+#   bit4 has_rest   bit5 is_bound  bit6 is_field_init  bit7 this_lazy
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _pack_flags(fn: CompiledFunction) -> int {
@@ -160,6 +165,9 @@ def _pack_flags(fn: CompiledFunction) -> int {
     }
     if fn.is_field_init {
         f = f + 64;
+    }
+    if fn.this_lazy == 1 {
+        f = f + 128;
     }
     return f;
 }
@@ -242,7 +250,7 @@ obj JSBCWriter {
         chars: list[str] = str_chars(s);
         self.w_i64(len(chars));
         for c in chars {
-            self.bytes.append(ord(c) & 255);
+            self.bytes.append(str_byte(c, 0) & 255);
         }
     }
 
@@ -536,6 +544,7 @@ def _decode_fn(r: JSBCReader) -> CompiledFunction {
     fn.has_rest = (flags & 16) != 0;
     fn.is_bound = (flags & 32) != 0;
     fn.is_field_init = (flags & 64) != 0;
+    fn.this_lazy = 1 if (flags & 128) != 0 else 0;
     fn.locals = r.r_str_list();
     fn.params = r.r_str_list();
     fn.free_vars = r.r_str_list();

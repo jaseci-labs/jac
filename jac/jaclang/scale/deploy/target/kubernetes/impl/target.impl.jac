@@ -358,8 +358,7 @@ impl KubernetesTarget._scan_for_crash_loop(
 
                 crashing = (
                     owned
-                    and restarts >= 3
-                    and not cs.ready
+                    and container_crashlooping(cs, 3)
                     and reason not in imagepull_reasons
                 );
                 if crashing and not pod_crash {
@@ -965,12 +964,6 @@ impl KubernetesTarget._resolve_service_triggers(
 impl KubernetesTarget._autoscaler_spec(
     svc_name: str, plan: dict[str, any], autoscaler: any, namespace: str
 ) -> AutoscalerSpec {
-    """Build the AutoscalerSpec for a METRIC-mode service from its already-
-        resolved scaling plan, so the scale target here is the same Deployment
-        name apply_manifests actually applied -- never re-derived from svc_name,
-        which is exactly the drift that caused apply_http_activation to 404 on
-        a real cluster before _resolve_scaling existed.
-        """;
     k8s_name = k8s_safe_name(svc_name);
     cfg: dict[str, any] = dict(plan.get("autoscaler", {}));
     cfg_idle = plan.get("idle_replicas", self.k8s_config.idle_replicas);
@@ -1058,7 +1051,9 @@ impl KubernetesTarget.apply_manifests(bundle: dict[str, any]) {
 
     injector = bundle.get("injector");
     if injector is not None {
-        injector.seed(k8s_safe_name(self.k8s_config.app_name), namespace);
+        injector.seed(
+            k8s_safe_name(self.k8s_config.app_name), namespace, self._kubectl
+        );
         if self.logger {
             self.logger.info(
                 "Seeded source bundle onto the bundle PVC",
@@ -1238,6 +1233,9 @@ impl KubernetesTarget.apply_manifests(bundle: dict[str, any]) {
 }
 
 impl KubernetesTarget._apply_ops_rbac(namespace: str, ops_rbac: dict[str, any]) {
+    self._apply_provider_service_account(
+        ops_rbac["service_account"], namespace, client.CoreV1Api()
+    );
     try {
         rbac_v1 = client.RbacAuthorizationV1Api();
         role = ops_rbac["role"];
@@ -1375,6 +1373,28 @@ impl KubernetesTarget._fleet_deployment_names(
         return [];
     }
     return fleet_revert_order(names);
+}
+
+impl KubernetesTarget._fleet_app_labels(apps_v1: any, namespace: str) -> list[str] {
+    apps: list[str] = [];
+    try {
+        listed = apps_v1.list_namespaced_deployment(
+            namespace=namespace, label_selector=FLEET_SELECTOR
+        );
+    } except ApiException as e {
+        if e.status == 404 {
+            return apps;
+        }
+        raise;
+    }
+    dep_items: list[any] = list(listed.items or []);
+    for dep in dep_items {
+        app_label: str = str((dep.metadata.labels or {}).get("app", ""));
+        if app_label and app_label not in apps {
+            apps.append(app_label);
+        }
+    }
+    return apps;
 }
 
 impl KubernetesTarget._owned_replica_sets(
@@ -1631,14 +1651,6 @@ impl KubernetesTarget.rollback_to(app_name: str, revision: int) -> DeploymentRes
 impl KubernetesTarget._deployment_patch_body(
     manifest: dict[str, any], plan: dict[str, any]
 ) -> (dict[str, any] | None) {
-    """The body an update PATCH gets, or None to send the manifest whole.
-
-        Every scaling mode hands `spec.replicas` to a controller -- the HPA
-        under METRIC, the ScaledObject or HTTP interceptor under
-        HTTP_ACTIVATION -- so both are patched without it and a redeploy cannot
-        reset the count that controller set. NONE is the only mode where the
-        manifest still owns the field.
-        """;
     if plan.get("mode", ScalingMode.NONE) == ScalingMode.NONE {
         return None;
     }
@@ -1660,15 +1672,6 @@ impl KubernetesTarget._apply_or_replace(
     manifest: dict[str, any],
     patch_body: (dict[str, any] | None) = None
 ) {
-    """patch_body, when given, is sent to `update` instead of `manifest` --
-        e.g. a copy with `spec.replicas` stripped so a strategic-merge PATCH
-        leaves an externally-scaled field (KEDA's ScaledObject) alone, while a
-        fresh `create` still gets the full manifest including that field.
-        Every scaling mode relies on this: the HPA, ScaledObject or HTTP
-        interceptor owns `replicas` once it manages a Deployment, and the
-        strategic-merge PATCH this omission produces is what keeps a redeploy
-        from resetting the live value the autoscaler set.
-        """;
     name: str = manifest["metadata"]["name"];
     try {
         getattr(api, read)(name=name, namespace=namespace);
@@ -1713,6 +1716,16 @@ impl KubernetesTarget._destroy_fleet_workloads(
 ) {
     ms_selector: str = "managed=jac-scale";
 
+    fleet_apps: list[str] = self._fleet_app_labels(apps_v1, namespace);
+    if fleet_apps {
+        self._sweep_budgets_and_services(
+            namespace,
+            core_v1,
+            policy_v1,
+            f"managed=jac-scale,!jac-scale.role,app in ({','.join(fleet_apps)})"
+        );
+    }
+
     try {
         apps_v1.delete_collection_namespaced_deployment(
             namespace=namespace, label_selector=FLEET_SELECTOR
@@ -1753,8 +1766,8 @@ impl KubernetesTarget._destroy_fleet_workloads(
     }
 
     try {
-        policy_v1.delete_collection_namespaced_pod_disruption_budget(
-            namespace=namespace, label_selector=ms_selector
+        networking_v1.delete_collection_namespaced_ingress(
+            namespace=namespace, label_selector=FLEET_SELECTOR
         );
     } except ApiException as e {
         if e.status != 404 {
@@ -1762,9 +1775,26 @@ impl KubernetesTarget._destroy_fleet_workloads(
         }
     }
 
+    self._sweep_budgets_and_services(namespace, core_v1, policy_v1, FLEET_SELECTOR);
+
     try {
-        networking_v1.delete_collection_namespaced_ingress(
-            namespace=namespace, label_selector=ms_selector
+        core_v1.delete_collection_namespaced_config_map(
+            namespace=namespace,
+            label_selector="managed=jac-scale,jac-scale.role=source"
+        );
+    } except ApiException as e {
+        if e.status != 404 {
+            raise;
+        }
+    }
+}
+
+impl KubernetesTarget._sweep_budgets_and_services(
+    namespace: str, core_v1: any, policy_v1: any, selector: str
+) {
+    try {
+        policy_v1.delete_collection_namespaced_pod_disruption_budget(
+            namespace=namespace, label_selector=selector
         );
     } except ApiException as e {
         if e.status != 404 {
@@ -1774,7 +1804,7 @@ impl KubernetesTarget._destroy_fleet_workloads(
 
     try {
         services = core_v1.list_namespaced_service(
-            namespace=namespace, label_selector=ms_selector
+            namespace=namespace, label_selector=selector
         );
         service_items: list[any] = services.items;
         for svc in service_items {
@@ -1788,17 +1818,6 @@ impl KubernetesTarget._destroy_fleet_workloads(
                 }
             }
         }
-    } except ApiException as e {
-        if e.status != 404 {
-            raise;
-        }
-    }
-
-    try {
-        core_v1.delete_collection_namespaced_config_map(
-            namespace=namespace,
-            label_selector="managed=jac-scale,jac-scale.role=source"
-        );
     } except ApiException as e {
         if e.status != 404 {
             raise;
@@ -1829,7 +1848,6 @@ impl KubernetesTarget._destroy_monitoring(
 }
 
 impl KubernetesTarget._postgres_pvc_name(app_name: str) -> str {
-    """Name the PVC the postgres volumeClaimTemplates entry creates.""";
     pg_name: str = f"{app_name}-postgres";
     return f"{pg_name}-data-{pg_name}-0";
 }
@@ -1908,7 +1926,6 @@ impl KubernetesTarget._destroy_shared_volume_pvcs(
 impl KubernetesTarget._list_managed(
     lister: any, namespace: str, selector: str
 ) -> list[any] {
-    """List the objects a lister returns, tolerating a kind the cluster lacks.""";
     try {
         return lister(namespace=namespace, label_selector=selector).items;
     } except ApiException as e {
@@ -1922,7 +1939,6 @@ impl KubernetesTarget._list_managed(
 impl KubernetesTarget._foreign_app_resources(
     app_name: str, namespace: str, apps_v1: any, core_v1: any
 ) -> list[str] {
-    """Name the jac-scale resources in this namespace another app owns.""";
     owner: str = k8s_safe_name(app_name);
     our_bundle: str = bundle_pvc_name(owner);
     our_postgres: str = f"{app_name}-postgres";
@@ -2000,6 +2016,31 @@ impl KubernetesTarget._destroy_ops_rbac(app_name: str, namespace: str) {
             }
         }
     }
+
+    core_v1 = client.CoreV1Api();
+    sa_name = ops_sa_name(app_name);
+    try {
+        existing = core_v1.read_namespaced_service_account(
+            name=sa_name, namespace=namespace
+        );
+        if ops_sa_is_ours(existing.metadata.labels, app_name) {
+            core_v1.delete_namespaced_service_account(
+                name=sa_name, namespace=namespace
+            );
+        } elif self.logger {
+            self.logger.warning(
+                f"Leaving ServiceAccount '{sa_name}' in place: it was not "
+                f"created by jac-scale for '{app_name}'"
+            );
+        }
+    } except ApiException as e {
+        if e.status != 404 and self.logger {
+            self.logger.warning(
+                f"Could not remove ServiceAccount '{sa_name}' ({e.status}); "
+                f"delete it by hand if the Ops Console was enabled"
+            );
+        }
+    }
 }
 
 impl KubernetesTarget._wait_for_namespace_deletion(
@@ -2024,7 +2065,7 @@ impl KubernetesTarget._wait_for_namespace_deletion(
 
 impl KubernetesTarget._reclaim_namespace(namespace: str, core_v1: any) -> bool {
     try {
-        delete_namespace(namespace);
+        delete_namespace(core_v1, namespace);
     } except ApiException as e {
         if e.status != 403 {
             raise;

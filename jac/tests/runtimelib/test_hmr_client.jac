@@ -1122,10 +1122,11 @@ test "failed preparation keeps the live module and recovers on the next edit" {
         client = JacTestClient.from_file(str(app_file), base_path=tmpdir);
         try {
             assert client.post('/function/message', json={}).ok;
-            previous = sys.modules['prepared_recovery'];
+            served = client.server.module_name;
+            previous = sys.modules[served];
             app_file.write_text("def:pub message -> str { return missing_symbol; }\n");
             client.reload();
-            assert sys.modules['prepared_recovery'] is previous;
+            assert sys.modules[served] is previous;
             response = client.post('/function/message', json={});
             assert response.ok;
             assert _as_any(response.data).get('result') == 'working';

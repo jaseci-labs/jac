@@ -76,6 +76,19 @@ def path_matches_exclude(
     file_path: str, patterns: list[str], project_root: str = ""
 ) -> bool;
 
+def is_secret_file(name: str) -> bool;
+
+glob SECRET_FILE_NAMES: set[str] = {"id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"},
+     SECRET_FILE_SUFFIXES: tuple[str, ...] = (
+         ".pem",
+         ".key",
+         ".crt",
+         ".cer",
+         ".p12",
+         ".pfx",
+         ".jks",
+         ".keystore"
+     );
 
 glob JACIGNORE_FILENAME: str = '.jacignore';
 

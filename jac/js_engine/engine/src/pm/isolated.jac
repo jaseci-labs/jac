@@ -114,6 +114,14 @@ import from engine.src.pm.depspec {
 import from engine.src.pm.platform { pm_current_os, pm_current_cpu }
 import from engine.src.ffi.libuv { uv_hrtime }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
+}
+
 # ── model ─────────────────────────────────────────────────────────────────────
 
 """One dependency edge as seen from a node: alias, behavior bits, resolved package."""
@@ -347,12 +355,13 @@ def _peer_hash(peers: list[IsoPeer]) -> str {
     for p in _sort_peers(peers) {
         s: str = p.pkg.name + "@" + p.pkg.version;
         i: int = 0;
-        while i < len(s) {
-            h = (h * 31 + ord(s[i])) & 72057594037927935;  # 2^56 - 1: keeps h*31 inside 64 bits
+        _nb358_s: int = str_nbytes(s);
+        while i < _nb358_s {
+            h = (h * 31 + str_byte(s, i)) & 72057594037927935;  # 2^56 - 1: keeps h*31 inside 64 bits
             i = i + 1;
         }
     }
-    return "+" + hex(h)[2:];
+    return "+" + str_bslice_from(hex(h), 2);
 }
 
 def _has_dep_named(nd: IsoNode, name: str) -> bool {
@@ -810,8 +819,8 @@ def _ensure_symlink(dest: str, target: str, expect_existing: bool) -> int {
             }  # not a symlink
             return _symlink_mkparent(dest, target);
         }
-        if len(cur) > 1 and cur[len(cur) - 1] == "/" {
-            cur = cur[0:len(cur) - 1];
+        if str_nbytes(cur) > 1 and byte_chr(str_byte(cur, str_nbytes(cur) - 1)) == "/" {
+            cur = str_bslice(cur, 0, str_nbytes(cur) - 1);
         }
         if cur == target {
             return 0;
@@ -842,7 +851,7 @@ def _link_hidden(root_dir: str, st: IsoStore, eid: int, is_new: bool) -> int {
 }
 
 def _rand_hex -> str {
-    h: str = hex(uv_hrtime() & 72057594037927935)[2:];
+    h: str = str_bslice_from(hex(uv_hrtime() & 72057594037927935), 2);
     return h.zfill(16);
 }
 

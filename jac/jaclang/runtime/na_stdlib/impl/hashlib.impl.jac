@@ -1,11 +1,9 @@
 impl Hash.update(data: bytes) {
-    ctx_require(self._ctx, "hash");
-    evp_ctx_update(self._ctx, data);
+    self._core.update(data);
 }
 
 impl Hash.digest -> bytes {
-    ctx_require(self._ctx, "hash");
-    return evp_ctx_digest(self._ctx);
+    return self._core.finish();
 }
 
 impl Hash.hexdigest -> str {
@@ -13,32 +11,23 @@ impl Hash.hexdigest -> str {
 }
 
 impl Hash.copy -> Hash {
-    ctx_require(self._ctx, "hash");
     return Hash(
-        _ctx=evp_ctx_clone(self._ctx),
+        _core=self._core.clone(),
         digest_size=self.digest_size,
         block_size=self.block_size,
         name=self.name
     );
 }
 
-impl Hash.drop {
-    if self._ctx != 0 {
-        evp_ctx_free(self._ctx);
-        self._ctx = 0;
-    }
-}
+impl Hash.drop {}
 
 impl new(name: str, data: bytes = b"") -> Hash {
-    md: int = evp_md_for(name);
-    if md == 0 {
+    core = new_core(name);
+    if core is None {
         raise ValueError("unsupported hash type " + name);
     }
     h = Hash(
-        _ctx=evp_ctx_new(md),
-        digest_size=digest_size_for(name),
-        block_size=block_size_for(name),
-        name=name
+        _core=core, digest_size=core.digest_size, block_size=core.block_size, name=name
     );
     h.update(data);
     return h;

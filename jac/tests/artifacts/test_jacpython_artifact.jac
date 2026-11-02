@@ -1,6 +1,6 @@
-"""JacPython is a build-time accelerator: a build makes a second jac on
-JacPython, and only a process that runs on it uses it. The jac that built it
-keeps running CPython, quietly, and the build still counts as current."""
+"""JacPython is the only Python: `jac native build jacpython` is `zig build`,
+which makes zig-out/bin/jac on it. A jac that predates it says where the build
+is, quietly, and the build still counts as current."""
 
 import io;
 import os;
@@ -29,13 +29,13 @@ def _resolve(running: bool, binary: str) -> tuple[any, str] {
     }
 }
 
-test "a CPython jac runs its floor quietly and names the JacPython build" {
+test "a jac that predates JacPython names the JacPython build quietly" {
     with TemporaryDirectory() as tmp {
-        binary = str(Path(tmp) / "jacpython" / "bin" / "jac");
+        binary = str(Path(tmp) / "bin" / "jac");
         (resolution, said) = _resolve(False, binary);
         assert resolution.on_floor();
         assert "jac native build jacpython" in resolution.reason , resolution.reason;
-        assert said == "" , "shipping CPython is the release plan, not a fault";
+        assert said == "" , "an older jac is not a fault";
         Path(binary).parent.mkdir(parents=True);
         Path(binary).write_text("");
         (resolution, said) = _resolve(False, binary);
@@ -66,21 +66,18 @@ test "the build is current once its binary exists, whatever this process runs" {
     }
 }
 
-test "a build makes a separate jac and leaves this one alone" {
+test "a build is a plain zig build of zig-out/bin/jac" {
     calls: list[list[str]] = [];
     def run(argv: list[str], **kwargs: any) -> any {
         calls.append(list(argv));
         return None;
     }
     with patch("subprocess.run", side_effect=run), patch.object(
-        interpreter,
-        "jacpython_binary",
-        return_value="/repo/jac/zig-out/jacpython/bin/jac"
+        interpreter, "jacpython_binary", return_value="/repo/jac/zig-out/bin/jac"
     ) {
         JacPythonArtifact().build(lambda (line: str) {}, False, False);
         JacPythonArtifact().build(lambda (line: str) {}, False, True);
     }
-    assert calls[0][:3] == ["zig", "build", "-Dpython=jacpython"] , calls;
-    assert calls[0][3:5] == ["--prefix", "/repo/jac/zig-out/jacpython"] , calls;
+    assert calls[0][:4] == ["zig", "build", "--prefix", "/repo/jac/zig-out"] , calls;
     assert "-Dreuse-python=true" in calls[0] and "-Dreuse-python=true" not in calls[1];
 }

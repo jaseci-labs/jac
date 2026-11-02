@@ -331,21 +331,25 @@ impl NaIRGenPass._clib_abi_signature(decl: uni.Ability) -> str {
     if not isinstance(sig, uni.FuncSignature) {
         return "";
     }
+    i64 = ir.IntType(64);
     params: list[str] = [];
     for p in sig.get_parameters() {
         if p.is_vararg or p.is_kwargs {
             continue;
         }
         if p.type_tag is not None and is_borrow_kind(p.type_tag.ownership) {
-            params.append("ptr");
+            params.append(str(i64));
         } else {
-            params.append(str(self._clib_param_type(p)));
+            ptype = self._clib_param_type(p);
+            params.append(str(i64 if isinstance(ptype, ir.PointerType) else ptype));
         }
     }
     if sig.varargs is not None {
         params.append("...");
     }
-    return f"({', '.join(params)}) -> {self._resolve_clib_type(sig.return_type)}";
+    rtype = self._resolve_clib_type(sig.return_type);
+    returned = str(i64 if isinstance(rtype, ir.PointerType) else rtype);
+    return f"({', '.join(params)}) -> {returned}";
 }
 
 impl NaIRGenPass._declare_clib_definitions -> None {
@@ -373,6 +377,16 @@ impl NaIRGenPass._declare_clib_definitions -> None {
     }
     for (name, decl) in self._clib_definitions.items() {
         if c_variadic_param(decl.signature) is not None {
+            self.clib_extern_fns.pop(name, None);
+            self.extern_funcs.pop(name, None);
+            existing = self.llvm_module.globals.get(name);
+            if isinstance(existing, ir.Function) and not existing.blocks {
+                self.scope.unbind_function(name);
+                self.llvm_module.globals.pop(name, None);
+                self.llvm_module.scope.release(name);
+            }
+            self.clib_extern_names.discard(name);
+            self._clib_symbol_lib.pop(name, None);
             self._maybe_declare_ability(decl, symbol=name);
             self._record_export(name, name, "function", True);
             if self.module?.gen and name not in self.module.gen._exported_symbols {
@@ -432,9 +446,7 @@ impl NaIRGenPass._emit_clib_export_thunk(name: str) -> None {
         b = self.builder;
         i32 = ir.IntType(32);
 
-        if _scalar_only
-            and self._c_entry_tail_or_escape(cfunc, jac_fn)
-            and self._is_kernel_unit() {
+        if _scalar_only and self._c_entry_tail_or_escape(cfunc, jac_fn) {
             return;
         }
         saved = self._region_c_entry_escape();
@@ -530,18 +542,6 @@ impl NaIRGenPass._emit_clib_export_thunk(name: str) -> None {
 }
 
 impl NaIRGenPass._thunk_tail_callable(cfunc: ir.Function, jac_fn: ir.Function) -> bool {
-    """Emit an exported C symbol's thunk as one `musttail` jump into its body.
-
-    A C function defined in Jac is a thunk around the internal Jac body. When
-    each C parameter reaches the body unchanged or as the same 64-bit word (a
-    C pointer the body reads as `ptr[T]`, an i64), the thunk only adds a
-    frame; a C function pointer dispatch (`return tail
-    table.view(1)[0].step(...)`) jumps into the thunk, so an ordinary call here
-    grows the stack by a frame per step on an unoptimized build and breaks the
-    tail-call guarantee. The call goes through the body's address typed with
-    the thunk's own prototype, which `musttail` requires, and passes the same
-    registers the body reads.
-    """;
     cty = cfunc.function_type;
     jty = jac_fn.function_type;
     triple = str(self.llvm_module.triple or "");
@@ -562,14 +562,20 @@ impl NaIRGenPass._thunk_tail_callable(cfunc: ir.Function, jac_fn: ir.Function) -
         if c_arg == j_arg {
             continue;
         }
-        if isinstance(c_arg, ir.PointerType) and j_arg == i64 {
+        if isinstance(c_arg, ir.PointerType)
+            and (j_arg == i64 or isinstance(j_arg, ir.PointerType)) {
             continue;
         }
         return False;
     }
     c_ret = cty.return_type;
     j_ret = jty.return_type;
-    return c_ret == j_ret or (isinstance(c_ret, ir.PointerType) and j_ret == i64);
+    return c_ret == j_ret
+        or (
+            isinstance(c_ret, ir.PointerType)
+            and (j_ret == i64 or isinstance(j_ret, ir.PointerType))
+        )
+        or (isinstance(c_ret, ir.VoidType) and j_ret == i64);
 }
 
 impl NaIRGenPass._c_entry_tail_or_escape(
@@ -578,19 +584,67 @@ impl NaIRGenPass._c_entry_tail_or_escape(
     if not self._thunk_tail_callable(c_entry, jac_fn) {
         return False;
     }
-    if self._is_kernel_unit() {
+    if self._direct_c_entry(c_entry) {
         self._thunk_tail_call(c_entry, jac_fn);
+        self._direct_c_entries.append((c_entry, jac_fn));
         return True;
     }
     b = self.builder;
     opened = self._region_open_test();
     escape_bb = c_entry.append_basic_block("centry.region.open");
     tail_bb = c_entry.append_basic_block("centry.tail");
-    b.cbranch(opened, escape_bb, tail_bb);
+    b.cbranch(opened, escape_bb, tail_bb).set_weights([1, 2000]);
     b.position_at_end(tail_bb);
     self._thunk_tail_call(c_entry, jac_fn);
     b.position_at_end(escape_bb);
+    self._thunk_tail_call(c_entry, self._c_entry_escape_fn(c_entry, jac_fn));
     return True;
+}
+
+impl NaIRGenPass._c_entry_escape_fn(
+    c_entry: ir.Function, jac_fn: ir.Function
+) -> ir.Function {
+    cty = c_entry.function_type;
+    esc = self._c_entry_escape_shell(c_entry);
+    saved_builder = self._builder;
+    self._builder = ir.IRBuilder(esc.append_basic_block("entry"));
+    try {
+        b = self.builder;
+        depth = b.call(
+            self._region_kernel_fn("__jac_region_escape"), [], name="region.escape"
+        );
+        target = jac_fn
+            if cty == jac_fn.function_type
+            else b.bitcast(jac_fn, cty.as_pointer(), name="cdef.body");
+        result = b.call(
+            target,
+            list(esc.args),
+            name="cdef.call",
+            cconv=c_entry.calling_convention or None
+        );
+        b.call(self._region_kernel_fn("__jac_region_restore"), [depth]);
+        if isinstance(cty.return_type, ir.VoidType) {
+            b.ret_void();
+        } else {
+            b.ret(result);
+        }
+    } finally {
+        self._builder = saved_builder;
+    }
+    return esc;
+}
+
+impl NaIRGenPass._c_entry_escape_shell(c_entry: ir.Function) -> ir.Function {
+    esc = ir.Function(
+        self.llvm_module,
+        c_entry.function_type,
+        name=self.llvm_module.scope.deduplicate(f"{c_entry.name}.escape")
+    );
+    esc.linkage = "internal";
+    esc.calling_convention = c_entry.calling_convention;
+    esc.attributes.add("noinline");
+    esc.attributes.add("cold");
+    return esc;
 }
 
 impl NaIRGenPass._thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> None {
@@ -600,11 +654,50 @@ impl NaIRGenPass._thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> No
     target = jac_fn
         if cty == jty
         else b.bitcast(jac_fn, cty.as_pointer(), name="cdef.body");
-    call = b.call(target, list(cfunc.args), name="cdef.call");
+    call = b.call(
+        target,
+        list(cfunc.args),
+        name="cdef.call",
+        cconv=cfunc.calling_convention or None
+    );
     call.tail = "musttail";
     if isinstance(cty.return_type, ir.VoidType) {
         b.ret_void();
     } else {
         b.ret(call);
     }
+}
+
+impl NaIRGenPass._fold_direct_c_entries -> None {
+    if not self._direct_c_entries {
+        return;
+    }
+    renamed: dict[str, ir.Function] = {};
+    dropped: set[str] = set();
+    for (c_entry, jac_fn) in self._direct_c_entries {
+        if len(c_entry.blocks) != 1 or jac_fn.name in dropped {
+            continue;
+        }
+        dropped.add(jac_fn.name);
+        renamed[c_entry.name] = jac_fn;
+    }
+    if not renamed {
+        return;
+    }
+    folded: dict[str, ir.GlobalValue] = {};
+    for (key, value) in self.llvm_module.globals.items() {
+        if key in dropped {
+            continue;
+        }
+        body = renamed.get(key);
+        if body is None {
+            folded[key] = value;
+            continue;
+        }
+        body._name = key;
+        body.linkage = "";
+        folded[key] = body;
+    }
+    self.llvm_module.globals = folded;
+    self._direct_c_entries = [];
 }

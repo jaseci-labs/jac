@@ -46,3 +46,33 @@ test "logs or tracing still request the stack without the monitoring switch" {
 test "nothing enabled requests nothing" {
     assert _target(monitoring=False)._observability_requested() == False;
 }
+
+
+test "kube-state-metrics reads no secrets or configmaps and watches only what it is granted" {
+    # A cluster-wide LIST on secrets or configmaps returns their data, so a
+    # grant there hands every tenant's credentials to this pod's token.
+    # `--resources` must match the grant, or kube-state-metrics keeps retrying
+    # the types it is forbidden from.
+    obs = _target(monitoring=True)._build_observability_config();
+    rbac = MonitoringDeployer(k8s_config=obs)._kube_state_metrics_rbac("t", "t-ns");
+    granted: list[str] = [];
+    for rule in rbac["cluster_role"]["rules"] {
+        assert sorted(rule["verbs"]) == ["list", "watch"] , rule;
+        for res in rule["resources"] {
+            granted.append(res);
+        }
+    }
+    for forbidden in ["secrets", "configmaps"] {
+        assert forbidden not in granted , forbidden;
+    }
+    watched = [
+        a
+        for a in rbac["args"]
+        if a.startswith("--resources=")
+    ];
+    assert len(watched) == 1 , rbac["args"];
+    assert sorted(watched[0].split("=", 1)[1].split(",")) == sorted(granted);
+    binding = rbac["cluster_role_binding"];
+    assert binding["roleRef"]["name"] == rbac["cluster_role"]["metadata"]["name"];
+    assert binding["subjects"][0]["namespace"] == "t-ns";
+}

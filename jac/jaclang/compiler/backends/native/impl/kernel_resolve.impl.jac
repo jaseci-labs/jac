@@ -1,15 +1,21 @@
 impl kernel_lib_name -> str {
-    if sys.platform == "darwin" {
-        return "libjac_compiler.dylib";
-    }
-    if sys.platform.startswith("win") {
-        return "jac_compiler.dll";
-    }
-    return "libjac_compiler.so";
+    return host_target_spec().kernel_file_name();
 }
 
 impl source_tree_kernel_path -> str {
     return os.path.join(jaclang_pkg_root(), "compiler", kernel_lib_name());
+}
+
+impl kernel_path_for(spec: TargetSpec) -> str {
+    if spec.osarch == host_target_spec().osarch {
+        return source_tree_kernel_path();
+    }
+    return os.path.join(
+        os.path.dirname(source_tree_kernel_path()),
+        "kernels",
+        spec.osarch,
+        spec.kernel_file_name()
+    );
 }
 
 impl read_sidecar(lib_path: str) -> (dict[str, any] | None) {
@@ -73,6 +79,22 @@ impl _from_sealed_image -> (ResolvedKernel | None) {
             f"sealed kernel {lib_path}: sidecar plan digest disagrees with the manifest"
         );
     }
+    built_for = triple_osarch(
+        str(record.get("triple", "") or sidecar.get("triple", ""))
+    );
+    host = host_target_spec().osarch;
+    if built_for != host {
+        raise KernelUnavailable(
+            f"sealed kernel {lib_path} was built for {built_for}, not this {host} host"
+        );
+    }
+    python = f"{sys.version_info.major}.{sys.version_info.minor}";
+    if str(sidecar.get("python", python)) != python {
+        raise KernelUnavailable(
+            f"sealed kernel {lib_path} was built for Python {sidecar.get('python')}, "
+            f"not {python}"
+        );
+    }
     return ResolvedKernel(
         lib_path=lib_path,
         layout=sidecar["classes"],
@@ -81,7 +103,7 @@ impl _from_sealed_image -> (ResolvedKernel | None) {
     );
 }
 
-impl kernel_options -> CompileOptions {
+impl kernel_options(spec: (TargetSpec | None) = None) -> CompileOptions {
     return CompileOptions(
         aot_mode=True,
         native_require=[],
@@ -91,7 +113,7 @@ impl kernel_options -> CompileOptions {
         native_unit=True,
         kernel_build=True,
         skip_native_engine=True,
-        native_target="",
+        native_target=(spec or host_target_spec()).triple,
         na_gc_mode="cycles",
         memory_profile="managed",
         nogc_enforce_all=False,
@@ -111,26 +133,17 @@ impl kernel_options -> CompileOptions {
 impl kernel_plan(
     prog: (JacProgram | None) = None,
     mode: str = "",
-    target: (KernelTarget | None) = None
+    target: (KernelTarget | None) = None,
+    spec: (TargetSpec | None) = None
 ) -> LinkPlan {
     program = prog if prog is not None else JacProgram();
-    options = kernel_options();
+    options = kernel_options(spec);
     root_path = target.root_module_path() if target is not None else kernel_root_path();
     return build_link_plan(program, [root_path], options, mode=mode, native_unit=True);
 }
 
 impl _sha256_file(path: str) -> str {
-    h = hashlib.sha256();
-    with open(path, "rb") as f {
-        while True {
-            chunk = f.read(1 << 20);
-            if not chunk {
-                break;
-            }
-            h.update(chunk);
-        }
-    }
-    return h.hexdigest();
+    return file_sha256(path);
 }
 
 impl _unit_label(path: str) -> str {
@@ -142,9 +155,12 @@ impl _unit_label(path: str) -> str {
 }
 
 impl unit_drift(
-    sidecar: dict[str, any], recorded: dict[str, any], units: list[str]
+    sidecar: dict[str, any],
+    recorded: dict[str, any],
+    units: list[str],
+    spec: (TargetSpec | None) = None
 ) -> list[str] {
-    options = kernel_options();
+    options = kernel_options(spec);
     drift: list[str] = [];
     if str(sidecar.get("compiler_digest", ""))
         not in (
@@ -190,7 +206,7 @@ impl unit_drift(
 }
 
 impl _inspect(
-    lib_path: str, expected_sha: str = ""
+    lib_path: str, expected_sha: str = "", spec: (TargetSpec | None) = None
 ) -> tuple[(dict[str, any] | None), list[str]] {
     sidecar = read_sidecar(lib_path);
     if sidecar is None or not os.path.isfile(lib_path) {
@@ -210,8 +226,68 @@ impl _inspect(
     if not units or not isinstance(recorded, dict) or not recorded {
         return (None, ["the kernel's record names no unit sources"]);
     }
-    drift = unit_drift(sidecar, recorded, units);
+    key = _verdict_key(lib_path, sidecar, units, spec);
+    stamp = _verdict_path(lib_path);
+    if key {
+        try {
+            with open(stamp) as f {
+                held = json.load(f);
+            }
+            if isinstance(held, dict) and held.get("key") == key {
+                kept = [str(d) for d in held.get("drift", [])];
+                return ((None if kept else sidecar), kept);
+            }
+        } except (OSError, ValueError) {}
+    }
+    drift = unit_drift(sidecar, recorded, units, spec);
+    if key {
+        try {
+            atomic_write(stamp, json.dumps({"key": key, "drift": drift}).encode());
+        } except OSError {}
+    }
     return ((None if drift else sidecar), drift);
+}
+
+impl _verdict_key(
+    lib_path: str,
+    sidecar: dict[str, any],
+    units: list[str],
+    spec: (TargetSpec | None) = None
+) -> str {
+    lib_id = file_identity(lib_path);
+    side_id = file_identity(lib_path + LAYOUT_SIDECAR_SUFFIX);
+    if lib_id is None or side_id is None {
+        return "";
+    }
+    options = kernel_options(spec);
+    pkg = jaclang_pkg_root();
+    (roots, roster) = compiler_input_rules(pkg);
+    h = hashlib.sha256();
+    for part in (
+        repr(lib_id),
+        repr(side_id),
+        running_compiler_digest(),
+        options.base_codegen_identity(),
+        options.effective_triple(),
+        f"{sys.version_info.major}.{sys.version_info.minor}"
+    ) {
+        h.update(part.encode());
+        h.update(b"\x00");
+    }
+    for unit in units {
+        rel = os.path.relpath(os.path.realpath(unit), pkg).replace(os.sep, "/");
+        covered = any([rel == r or rel.startswith(r + "/") for r in roots])
+            and not is_roster_input(rel, roster);
+        if not covered {
+            h.update(ct_dep_digest(os.path.realpath(unit), with_annexes=True).encode());
+        }
+    }
+    return h.hexdigest();
+}
+
+impl _verdict_path(lib_path: str) -> str {
+    tag = hashlib.sha256(os.path.realpath(lib_path).encode()).hexdigest()[:16];
+    return str(get_digest_ledger_dir() / f"kernel_verdict.{tag}");
 }
 
 impl _bundled_kernel -> tuple[str, dict[str, any]] | None {
@@ -227,8 +303,13 @@ impl _bundled_kernel -> tuple[str, dict[str, any]] | None {
     return (os.path.join(site_pkg, str(record.get("path", ""))), dict(record));
 }
 
-impl _probe(lib_path: str, source: Source, expected_sha: str = "") -> Probe {
-    (sidecar, drift) = _inspect(lib_path, expected_sha=expected_sha);
+impl _probe(
+    lib_path: str,
+    source: Source,
+    expected_sha: str = "",
+    spec: (TargetSpec | None) = None
+) -> Probe {
+    (sidecar, drift) = _inspect(lib_path, expected_sha=expected_sha, spec=spec);
     if sidecar is not None {
         return Probe.hit(source, lib_path, sidecar);
     }
@@ -246,6 +327,9 @@ impl KernelArtifact.unavailable_reason -> str {
 }
 
 impl KernelArtifact.probe_sealed -> (Probe | None) {
+    if not self.for_host() {
+        return None;
+    }
     sealed = _from_sealed_image();
     if sealed is None {
         return None;
@@ -256,10 +340,14 @@ impl KernelArtifact.probe_sealed -> (Probe | None) {
 }
 
 impl KernelArtifact.probe_checkout -> Probe {
-    return _probe(source_tree_kernel_path(), Source.CHECKOUT);
+    spec = self.spec();
+    return _probe(kernel_path_for(spec), Source.CHECKOUT, spec=spec);
 }
 
 impl KernelArtifact.probe_kit -> Probe {
+    if not self.for_host() {
+        return Probe.missing("a kit carries only its own target's kernel");
+    }
     found = _bundled_kernel();
     if found is None {
         return Probe.missing("this process runs on no kit that carries one");
@@ -269,7 +357,15 @@ impl KernelArtifact.probe_kit -> Probe {
 }
 
 impl KernelArtifact.checkout_path -> str {
-    return source_tree_kernel_path();
+    return kernel_path_for(self.spec());
+}
+
+impl KernelArtifact.spec -> TargetSpec {
+    return target_spec(self.variant) if self.variant else host_target_spec();
+}
+
+impl KernelArtifact.for_host -> bool {
+    return self.spec().osarch == host_target_spec().osarch;
 }
 
 impl KernelArtifact.build(log: Callable[[str], None], force: bool, exact: bool) {
@@ -277,7 +373,8 @@ impl KernelArtifact.build(log: Callable[[str], None], force: bool, exact: bool) 
         import from jaclang.compiler.driver.jir { require_exact_compiler_products }
         require_exact_compiler_products();
     }
-    build_kernel(source_tree_kernel_path(), log=log);
+    spec = self.spec();
+    build_kernel(kernel_path_for(spec), log=log, spec=spec);
 }
 
 impl refuse_unloadable {
@@ -319,20 +416,22 @@ impl resolve_kernel -> (ResolvedKernel | None) {
 impl build_kernel(
     dst: str = "",
     log: (Callable[[str], None] | None) = None,
-    link_mode: str = KERNEL_LINK_MODE
+    link_mode: str = KERNEL_LINK_MODE,
+    spec: (TargetSpec | None) = None
 ) -> LinkResult {
+    import shutil;
     destination = dst or source_tree_kernel_path();
-    tmp = f"{destination}.{os.getpid()}.tmp";
+    staging = os.path.join(
+        os.path.dirname(os.path.abspath(destination)), f".kernel-build.{os.getpid()}"
+    );
+    os.makedirs(staging, exist_ok=True);
+    tmp = os.path.join(staging, os.path.basename(destination));
     try {
-        result = link_kernel(tmp, log=log, link_mode=link_mode);
+        result = link_kernel(tmp, log=log, link_mode=link_mode, spec=spec);
         publish(tmp, destination, companions=(LAYOUT_SIDECAR_SUFFIX, ));
         result.output_path = destination;
     } finally {
-        for leftover in (tmp, tmp + LAYOUT_SIDECAR_SUFFIX, tmp + ".target.json") {
-            try {
-                os.remove(leftover);
-            } except OSError {}
-        }
+        shutil.rmtree(staging, ignore_errors=True);
     }
     return result;
 }

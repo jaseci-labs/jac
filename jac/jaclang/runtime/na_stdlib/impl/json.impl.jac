@@ -1,5 +1,6 @@
 impl loads(s: str) -> any {
-    p: _JsonParser = _JsonParser(src=s);
+    raw: bytes = s.encode("utf-8", "surrogatepass");
+    p: _JsonParser = _JsonParser(buf=raw, n=len(raw));
     return p._parse_value();
 }
 
@@ -23,10 +24,10 @@ impl dumps(
 }
 
 impl _JsonParser._cc -> int {
-    if self.pos >= len(self.src) {
+    if self.pos >= self.n {
         return -1;
     }
-    return ord(self.src[self.pos]);
+    return self.buf[self.pos];
 }
 
 impl _JsonParser._skip_ws {
@@ -69,12 +70,12 @@ impl _JsonParser._parse_value -> any {
 
 impl _JsonParser._parse_string -> str {
     self.pos += 1;
-    closing: int = self.src.find("\"", self.pos);
+    closing: int = self.buf.find(b"\"", self.pos);
     if closing >= 0 {
-        plain: str = self.src[self.pos:closing];
-        if plain.find("\\") < 0 {
+        plain: bytes = self.buf[self.pos:closing];
+        if plain.find(b"\\") < 0 {
             self.pos = closing + 1;
-            return plain;
+            return plain.decode("utf-8", "surrogatepass");
         }
     }
     parts: list[str] = [];
@@ -83,18 +84,25 @@ impl _JsonParser._parse_string -> str {
         c: int = self._cc();
         if c == 34 or c == -1 {
             if self.pos > run_start {
-                parts.append(self.src[run_start:self.pos]);
+                parts.append(
+                    self.buf[run_start:self.pos].decode("utf-8", "surrogatepass")
+                );
             }
             self.pos += 1;
             break;
         }
         if c == 92 {
             if self.pos > run_start {
-                parts.append(self.src[run_start:self.pos]);
+                parts.append(
+                    self.buf[run_start:self.pos].decode("utf-8", "surrogatepass")
+                );
             }
             self.pos += 1;
             e: int = self._cc();
             self.pos += 1;
+            while self.pos < self.n and (self.buf[self.pos] & 192) == 128 {
+                self.pos += 1;
+            }
             if e == 34 {
                 parts.append("\"");
             } elif e == 92 {
@@ -112,7 +120,7 @@ impl _JsonParser._parse_string -> str {
             } elif e == 102 {
                 parts.append(chr(12));
             } elif e == 117 {
-                parts.append(chr(self._hex4()));
+                parts.append(chr(self._hex4_pair()));
             }
             run_start = self.pos;
         } else {
@@ -145,6 +153,25 @@ impl _JsonParser._hex4 -> int {
     return v;
 }
 
+impl _JsonParser._hex4_pair -> int {
+    cp: int = self._hex4();
+    if cp < 55296
+        or cp >= 56320
+        or self._cc() != 92
+        or self.pos + 1 >= self.n
+        or self.buf[self.pos + 1] != 117 {
+        return cp;
+    }
+    mark: int = self.pos;
+    self.pos += 2;
+    low: int = self._hex4();
+    if low >= 56320 and low < 57344 {
+        return 65536 + (cp - 55296) * 1024 + (low - 56320);
+    }
+    self.pos = mark;
+    return cp;
+}
+
 impl _JsonParser._parse_number -> any {
     start: int = self.pos;
     is_float: int = 0;
@@ -173,7 +200,7 @@ impl _JsonParser._parse_number -> any {
             self.pos += 1;
         }
     }
-    numstr: str = self.src[start:self.pos];
+    numstr: str = self.buf[start:self.pos].decode();
     if is_float == 1 {
         return float(numstr);
     }
@@ -254,21 +281,27 @@ impl _hex4_str(n: int) -> str {
     );
 }
 
+impl _dump_plain(ch: int, ensure_ascii: bool) -> bool {
+    return ch >= 32 and ch != 34 and ch != 92 and (ch < 127 or not ensure_ascii);
+}
+
 impl _dump_str(s: str, ensure_ascii: bool) -> str {
+    plain: bool = True;
+    for c in s {
+        if not _dump_plain(ord(c), ensure_ascii) {
+            plain = False;
+            break;
+        }
+    }
+    if plain {
+        return "\"" + s + "\"";
+    }
     parts: list[str] = ["\""];
-    n: int = len(s);
-    i: int = 0;
-    start: int = 0;
-    while i < n {
-        ch: int = ord(s[i]);
-        if ch >= 32 and ch != 34 and ch != 92 and (ch < 127 or not ensure_ascii) {
-            i += 1;
-            continue;
-        }
-        if i > start {
-            parts.append(s[start:i]);
-        }
-        if ch == 34 {
+    for c in s {
+        ch: int = ord(c);
+        if _dump_plain(ch, ensure_ascii) {
+            parts.append(c);
+        } elif ch == 34 {
             parts.append("\\\"");
         } elif ch == 92 {
             parts.append("\\\\");
@@ -284,35 +317,15 @@ impl _dump_str(s: str, ensure_ascii: bool) -> str {
             parts.append("\\f");
         } elif ch < 32 {
             parts.append("\\u" + _hex4_str(ch));
-        } elif ensure_ascii and ch == 127 {
+        } elif ch == 127 {
             parts.append("\\u007f");
-        } elif ensure_ascii and ch > 127 {
-            width: int = 2 if ch < 224 else (3 if ch < 240 else 4);
-            code: int = ch % (64 if width == 2 else (32 if width == 3 else 16));
-            k: int = 1;
-            while k < width and i + k < n {
-                code = code * 64 + ord(s[i + k]) % 64;
-                k += 1;
-            }
-            i += width - 1;
-            if code > 65535 {
-                v: int = code - 65536;
-                parts.append("\\u" + _hex4_str(55296 + v // 1024));
-                parts.append("\\u" + _hex4_str(56320 + v % 1024));
-            } else {
-                parts.append("\\u" + _hex4_str(code));
-            }
+        } elif ch > 65535 {
+            v: int = ch - 65536;
+            parts.append("\\u" + _hex4_str(55296 + v // 1024));
+            parts.append("\\u" + _hex4_str(56320 + v % 1024));
         } else {
-            parts.append(s[i]);
+            parts.append("\\u" + _hex4_str(ch));
         }
-        i += 1;
-        start = i;
-    }
-    if start == 0 {
-        return "\"" + s + "\"";
-    }
-    if n > start {
-        parts.append(s[start:n]);
     }
     parts.append("\"");
     return "".join(parts);

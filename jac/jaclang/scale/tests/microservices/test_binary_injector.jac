@@ -427,6 +427,8 @@ test "admin console asset: verified download staged, cache reused, bad checksum 
             admin = Path(proj) / ".jac" / "admin";
             assert (admin / "index.html").is_file();
             assert (admin / "assets" / "app.js").is_file();
+            # The marker is what makes the pod trust this console over its cache.
+            assert (admin / ".staged").is_file();
             # The tarball vanished from the server: a fresh deploy stages
             # from the verified cache.
             os.remove(os.path.join(serve_dir, asset));

@@ -26,9 +26,9 @@ def _render_command_block(
     cmds: list[CommandSpec], col: int, use_color: bool
 ) -> list[str];
 
-impl format_verbose_help(prog: str = "jac") -> str {
+impl format_verbose_help(prog: str = "jac", include_hidden: bool = False) -> str {
     use_color = _use_color();
-    commands = iter_command_meta();
+    commands = iter_command_meta(include_hidden=include_hidden);
     commands.sort(key=_by_name);
     lines: list[str] = [];
     lines.append(_color('The Jac programming language', _TITLE, use_color));
@@ -44,16 +44,23 @@ impl format_verbose_help(prog: str = "jac") -> str {
     lines.append('          Print version info and exit');
     lines.append(f"  {_color('-h, --help', _CMD, use_color)}");
     lines.append('          Print help');
+    lines.append(f"      {_color('--all', _CMD, use_color)}");
+    lines.append('          With --help, also list hidden commands');
     lines.append('');
 
     grouped: dict[str, list[CommandSpec]] = {};
+    hidden: list[CommandSpec] = [];
     for cmd in commands {
-        grouped.setdefault(cmd.group or 'general', []).append(cmd);
+        if cmd.hidden {
+            hidden.append(cmd);
+        } else {
+            grouped.setdefault(cmd.group or 'general', []).append(cmd);
+        }
     }
 
     col = 12;
     for cmd in commands {
-        if len(cmd.name) >= col {
+        if len(cmd.name) + 2 > col {
             col = len(cmd.name) + 2;
         }
     }
@@ -76,6 +83,12 @@ impl format_verbose_help(prog: str = "jac") -> str {
         display = GROUP_DISPLAY.get(group, group.title());
         lines.append(_color(f"{display}:", _HEADER, use_color));
         lines.extend(_render_command_block(cmds, col, use_color));
+        lines.append('');
+    }
+
+    if hidden {
+        lines.append(_color('Hidden:', _HEADER, use_color));
+        lines.extend(_render_command_block(hidden, col, use_color));
         lines.append('');
     }
 

@@ -92,7 +92,7 @@ impl RegionInferPass._arch_of_call(expr: (UniNode | None)) -> (Archetype | None)
         return None;
     }
     decl = sym.decl;
-    arch = decl if isinstance(decl, Archetype) else decl.find_parent_of_type(Archetype);
+    arch = decl if isinstance(decl, Archetype) else decl.enclosing_decl(Archetype);
     if arch is not None and arch.name.value == expr.target.sym_name {
         return arch;
     }

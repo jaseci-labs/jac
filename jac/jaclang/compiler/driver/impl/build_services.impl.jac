@@ -30,11 +30,12 @@ impl CompilerBuildServices.prepare_dynamic_module(
 }
 
 impl CompilerBuildServices.hot_reloader(
-    base_path: str, module_name: str
+    base_path: str, module_name: str, entry_path: str = ""
 ) -> HotReloader {
     return HotReloader(
         base_path=base_path,
         module_name=module_name,
+        entry_path=entry_path,
         watcher=JacFileWatcher(watch_paths=[base_path])
     );
 }

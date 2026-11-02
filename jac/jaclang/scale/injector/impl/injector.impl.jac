@@ -2,7 +2,7 @@ impl Injector.prepare(app_name: str, namespace: str, project_dir: str) {
     raise NotImplementedError("prepare() must be implemented by an Injector");
 }
 
-impl Injector.seed(app_name: str, namespace: str) {
+impl Injector.seed(app_name: str, namespace: str, kubectl: KubectlCluster) {
     return;
 }
 

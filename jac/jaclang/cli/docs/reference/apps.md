@@ -206,6 +206,13 @@ is private to its own server and is not an endpoint at all. Bridging to a
 private element is **`E5106`**. There are no per-app grants, and no config
 entry changes exposure: `[placement.pins]` decides only where code runs.
 
+An entry does not have to declare its endpoints itself. Client code that
+imports a walker or function through the entry bridges to the entry's app even
+when the entry only re-imports it from one of its implementation modules, under
+its own name or an alias. The call always targets the declared name, and the
+exposure is read from the declaration, so a re-imported private element is
+still `E5106`.
+
 ## Routes
 
 An app with a server answers under its `route`, default `/api/<name>`. Routes
@@ -270,7 +277,7 @@ one shared `core/`:
 name = "jaclang_org"
 default-app = "web"
 
-[apps.web]                     # the site: landing, docs, leaderboard, socialize, wasm game
+[apps.web]                     # the site: landing, docs, JacYac, wasm game
 kind = "web-app"
 entry-point = "web.main"
 
@@ -278,7 +285,7 @@ entry-point = "web.main"
 kind = "mobile"
 entry-point = "mobile.main"
 
-[apps.cli]                     # a command-line client: offline scorer + docs/feed over the wire
+[apps.cli]                     # a command-line client: docs and feed over the wire
 kind = "cli"
 entry-point = "cli.main"
 
@@ -286,9 +293,9 @@ entry-point = "cli.main"
 kind = "service"
 entry-point = "core.social_graph"
 
-[apps.scoring]                 # file-rooted service app: owns the leaderboard scorer
+[apps.knowledge]               # file-rooted service app: the jac repo clone and ninjaclaw
 kind = "service"
-entry-point = "core.scoring_service"
+entry-point = "core.knowledge_service"
 
 [test]
 directories = ["core", "web", "cli"]
@@ -301,9 +308,9 @@ plugins = ["tailwindcss()"]
 jaclang_org/
   core/            shared domain + logic: NO JSX, NO DOM
     social_graph.jac       ← [apps.social_graph] claims exactly this file
-    scoring_service.jac    ← [apps.scoring] claims exactly this file
-    leaderboard/  docs/  source/  github.jac  utils.jac ...
-  web/             the site (main.jac, pages/, docs/, leaderboard/, socialize/, ui/ ...)
+    knowledge_service.jac  ← [apps.knowledge] claims exactly this file
+    knowledge/  ninjaclaw/  docs/  source/  github.jac  utils.jac ...
+  web/             the site (main.jac, pages/, docs/, socialize/, ui/ ...)
   mobile/          screens/, components/, theme.jac, icon.jac + icon.native.jac
   cli/             main.jac, commands/
 ```
@@ -318,10 +325,6 @@ HTTP as it always did; the `mobile` app's screens do the same from React
 Native; the `cli` app -- server-side Python, but not the provider -- gets a
 **typed-async stub** and `await`s the call. Nothing in the source says which
 is which.
-
-The `cli` app's `score` command imports `core.leaderboard.scoring` -- a pure
-shared module -- and runs it offline, in-process. Same import form, no bridge,
-because nothing server-placed is involved.
 
 ## The consistency model
 

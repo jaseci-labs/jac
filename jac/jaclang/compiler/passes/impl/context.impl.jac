@@ -72,7 +72,7 @@ impl DiagnosticPolicy.is_suppressed(
             or (kebab_name is not None and kebab_name in self.lint_ignore)
         );
 
-        non_default_codes: set[str] = {"E3012", "W3050", "W3051", "W3055"};
+        non_default_codes: set[str] = {"E3012", "W3050", "W3051", "W3055", "W3056"};
         enabled = False;
         if "all" in self.lint_select {
             enabled = True;
@@ -225,4 +225,21 @@ impl TreePass.enter_walk with UniNode entry {
 
 impl TreePass.exit_walk with UniNode exit {
     self.ctx.exit_node(here);
+}
+
+impl TreePass.walk_decl_body(decl: UniNode) -> None {
+    for impl_def in decl.own_impls {
+        self._decl_bodies.append(impl_def);
+        try {
+            self.ctx.walk_subtree(impl_def, self);
+        } finally {
+            self._decl_bodies.pop();
+        }
+    }
+}
+
+impl TreePass.reached_by_syntax(nd: UniNode) -> bool {
+    return isinstance(nd, ImplDef)
+        and nd.decl_link is not None
+        and nd not in self._decl_bodies;
 }

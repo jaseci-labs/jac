@@ -211,12 +211,6 @@ impl NaIRGenPass._codegen_with_recursive(
 }
 
 impl NaIRGenPass._emit_context_exit(cm: ir.Value, exit_fn: ir.Function) -> ir.Value {
-    """Call `__exit__` on the manager a `with` holds in its owner slot.
-
-    The manager is reloaded from the slot rather than reused as the value the
-    entry computed: inside a generator the body can suspend, and a resumed
-    frame reaches the exit without passing through the entry that defined it.
-    """;
     if isinstance(cm.type, ir.PointerType)
         and isinstance(cm.type.pointee, ir.PointerType) {
         cm = self.builder.load(cm, name="cm.owner");
@@ -237,7 +231,6 @@ impl NaIRGenPass._emit_context_exit(cm: ir.Value, exit_fn: ir.Function) -> ir.Va
 }
 
 impl NaIRGenPass._ctxmgr_callee(expr: (uni.UniNode | None)) -> (uni.Ability | None) {
-    """The `@contextmanager` ability a `with` item calls, if it calls one.""";
     if not isinstance(expr, uni.FuncCall) {
         return None;
     }
@@ -252,21 +245,6 @@ impl NaIRGenPass._codegen_with_ctxmgr(
     body: Sequence[uni.CodeBlockStmt],
     callee: uni.Ability
 ) -> None {
-    """Lower `with f(...) as x` where `f` is a `@contextlib.contextmanager`.
-
-    The decorated function is compiled as the plain generator it is, so the
-    manager is its iterator and `contextlib`'s protocol is spelled here, in
-    the caller: enter advances it to its first `yield` (binding the yielded
-    value to `as`), a normal exit advances it once more expecting it to
-    finish, and an exception from the body is thrown into it at the `yield`
-    -- the frame's pending-exception record, raised on resume -- so its
-    `finally` runs and its `except` may swallow the exception. A generator
-    that finishes after the throw suppresses the exception; one that lets it
-    (or another) escape propagates it; one that yields again is a
-    `RuntimeError`, as are a generator that never yields and one that yields
-    twice. Early exits from the body (`return`, `break`, `continue`) run the
-    normal exit through the finalizer stack.
-    """;
     expr_item = exprs[idx];
     call = expr_item.expr;
     func = self.builder.function;
@@ -390,7 +368,6 @@ impl NaIRGenPass._codegen_with_ctxmgr(
 }
 
 impl NaIRGenPass._emit_gen_context_exit(owner: ir.Value, out_type: ir.Type) -> None {
-    """Finish a generator-based manager after its body completed normally.""";
     i8p = ir.IntType(8).as_pointer();
     it_val = self.builder.load(owner, name="cm.gen.it");
     scratch = self._stack_entry_alloca(out_type, "cm.gen.exit.out");
@@ -403,14 +380,6 @@ impl NaIRGenPass._emit_gen_context_exit(owner: ir.Value, out_type: ir.Type) -> N
 impl NaIRGenPass._emit_gen_throw(
     owner: ir.Value, out_type: ir.Type, values: tuple[ir.Value, ir.Value, ir.Value]
 ) -> ir.Value {
-    """Throw `values` (type id, object, message) into a suspended generator.
-
-    Fills the frame's pending-exception record and resumes it; the resume
-    point raises it inside the generator. Answers whether the generator
-    yielded again. An exception the generator does not handle -- the thrown
-    one or a new one -- leaves through the resume call to the enclosing
-    handler, which is the propagation `contextlib` performs.
-    """;
     b = self.builder;
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);

@@ -18,18 +18,6 @@ enum Codespace {
     }
 }
 
-impl Codespace.is_server.getter -> bool {
-    return self.value == "server";
-}
-
-impl Codespace.is_client.getter -> bool {
-    return self.value == "client";
-}
-
-impl Codespace.is_native.getter -> bool {
-    return self.value == "native";
-}
-
 obj TargetInfo {
     has os: str,
         arch: str;
@@ -52,14 +40,6 @@ obj LazyRef {
     def __call__(*args: any, **kwargs: any) -> any;
     def __getattr__(name: str) -> any;
     def __repr__ -> str;
-}
-
-impl LazyRef.resolved.getter -> any {
-    cur: any = _import_module(self.module);
-    for part in self.qualname.split(".") {
-        cur = getattr(cur, part);
-    }
-    return cur;
 }
 
 def _host_os -> str;

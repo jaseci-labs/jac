@@ -79,6 +79,26 @@ test "native source workspaces never write into installed package assets" {
     }
 }
 
+test "source workspaces carry each module's impl annexes" {
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        source = base / "source";
+        (source / "impl").mkdir(parents=True);
+        (source / "binding.jac").write_text("def value -> int;");
+        (source / "impl" / "binding.impl.jac").write_text(
+            "impl value -> int { return 1; }"
+        );
+        with patch.dict(os.environ, {"JAC_CACHE_HOME": str(base / "cache")}) {
+            first = source_workspace(source, "binding");
+            assert (first / "impl" / "binding.impl.jac").is_file();
+            (source / "impl" / "binding.impl.jac").write_text(
+                "impl value -> int { return 2; }"
+            );
+            assert source_workspace(source, "binding") != first;
+        }
+    }
+}
+
 test "CEF refuses unsupported hosts instead of selecting Linux archives" {
     with TemporaryDirectory() as tmp {
         sums = Path(tmp) / "cef_sums.lock";

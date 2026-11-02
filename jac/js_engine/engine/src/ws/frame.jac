@@ -26,7 +26,13 @@ Bun Zig mapping:
 import from engine.src.ffi.libcrypto { SHA1, EVP_EncodeBlock, RAND_bytes }
 import from engine.src.ffi.libc { calloc, memcpy, send, recv }
 import from engine.src.ffi.libssl { SSL_read, SSL_write }
-import from engine.src.runtime.mem { io_alloc, read_byte, write_byte }
+import from engine.src.runtime.mem {
+    io_alloc,
+    read_byte,
+    write_byte,
+    str_byte,
+    str_nbytes
+}
 
 # ── WebSocket GUID (RFC 6455 §4.2.2) ────────────────────────────────────────
 glob WS_GUID: str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -50,7 +56,7 @@ def:pub ws_compute_accept_key(client_key: str) -> str {
     combined: str = client_key + WS_GUID;
     md_buf: int = io_alloc(20);
     combined_ptr: int = combined;  # jac:ignore[E1001] pointer reinterpret
-    SHA1(combined_ptr, len(combined), md_buf);
+    SHA1(combined_ptr, str_nbytes(combined), md_buf);
     b64_buf: int = io_alloc(32);
     EVP_EncodeBlock(b64_buf, md_buf, 20);
     result: str = b64_buf;  # jac:ignore[E1001] pointer reinterpret
@@ -75,7 +81,7 @@ def:pub ws_base64_encode_16_random -> str {
 """Build a WebSocket frame in a native buffer.
 Returns (buf_ptr, frame_len) as a list of 2 ints."""
 def _build_frame(opcode: int, payload: str, do_mask: bool) -> list[int] {
-    plen: int = len(payload);
+    plen: int = str_nbytes(payload);
 
     # Calculate header size
     header_size: int = 2;
@@ -134,7 +140,7 @@ def _build_frame(opcode: int, payload: str, do_mask: bool) -> list[int] {
         off = off + 4;
         i: int = 0;
         while i < plen {
-            b: int = ord(payload[i]);
+            b: int = str_byte(payload, i);
             m: int = i & 3;
             if m == 0 {
                 b = b ^ mk0;
@@ -399,7 +405,7 @@ def:pub ws_recv_buf_consume(rb: WSRecvBuf, nbytes: int) -> None {
 """Build a close frame payload from code + reason (string-based).
 Used for building close frames where code > 255 and the high byte is non-null."""
 def:pub ws_make_close_payload(code: int, reason: str) -> str {
-    rlen: int = len(reason);
+    rlen: int = str_nbytes(reason);
     buf: int = io_alloc(2 + rlen);
     write_byte(buf, 0, (code >> 8) & 255);
     write_byte(buf, 1, code & 255);

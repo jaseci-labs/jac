@@ -108,3 +108,36 @@ impl Path.resolve -> Path {
     }
     return Path(_collapse(os.path.realpath(base)));
 }
+
+impl Path.name.getter -> str {
+    parts: list[str] = _parts_of(self._p);
+    if not parts {
+        return "";
+    }
+    return parts[len(parts) - 1];
+}
+
+impl Path.stem.getter -> str {
+    nm: str = self.name;
+    cut: int = nm.rfind(".");
+    if cut <= 0 {
+        return nm;
+    }
+    lead: int = 0;
+    while lead < cut {
+        if nm[lead] != "." {
+            return nm[:cut];
+        }
+        lead += 1;
+    }
+    return nm;
+}
+
+impl Path.parent.getter -> Path {
+    parts: list[str] = _parts_of(self._p);
+    if not parts {
+        return self;
+    }
+    parts.pop();
+    return Path(_assemble(_root_of(self._p), parts));
+}

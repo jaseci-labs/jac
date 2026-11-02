@@ -13,7 +13,13 @@ archive (ptr, len) — the gunzipped registry tarball.
     the process umask decides the final mode), parents with 0o755.
 """
 
-import from engine.src.runtime.mem { read_byte }
+import from engine.src.runtime.mem {
+    read_byte,
+    str_bfind,
+    str_bslice,
+    str_bslice_from,
+    str_nbytes
+}
 import from engine.src.pm.bytes { bytes_to_str, bytes_eq_str }
 import from engine.src.pm.fsx {
     fsx_open_write,
@@ -132,19 +138,19 @@ def _parse_pax(ptr: int, off: int, n: int) -> tuple[str, str, int] {
         }
         body: str = bytes_to_str(ptr, sp + 1, pos + rec_len - (sp + 1));
         if body.endswith("\n") {
-            body = body[0:len(body) - 1];
+            body = str_bslice(body, 0, str_nbytes(body) - 1);
         }
-        eq: int = body.find("=");
+        eq: int = str_bfind(body, "=");
         if eq > 0 {
-            key: str = body[0:eq];
-            val: str = body[eq + 1:];
+            key: str = str_bslice(body, 0, eq);
+            val: str = str_bslice_from(body, eq + 1);
             if key == "path" {
                 path = val;
             } elif key == "linkpath" {
                 link = val;
             } elif key == "size" and val.isdigit() {
                 # 19+ digits would overflow an int: no archive is that big.
-                if len(val) > 18 {
+                if str_nbytes(val) > 18 {
                     size = 9223372036854775807;
                 } else {
                     size = int(val);
