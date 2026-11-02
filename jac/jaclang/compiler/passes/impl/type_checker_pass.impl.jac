@@ -40,6 +40,7 @@ impl TypeCheckPass.exit_name with Name exit {
     if here.sym is not None {
         self._check_comptime_only_use(here);
         self._check_type_only_value_use(here);
+        self._check_type_param_value_use(here);
         self._check_c_global_use(here);
     }
 }
@@ -1776,36 +1777,16 @@ impl TypeCheckPass.exit_in_for_stmt with InForStmt exit {
 impl TypeCheckPass.exit_raise_stmt with RaiseStmt exit {
     if here.cause {
         cause_type = self.evaluator.get_type_of_expression(here.cause);
-        param = self._type_param_label(here.cause);
-        if param is not None
-            or not self._is_exception_operand(cause_type, allow_none=False) {
-            self.ctx.emit(E1090, node_override=here, type=param or str(cause_type));
+        if not self._is_exception_operand(cause_type, allow_none=False) {
+            self.ctx.emit(E1090, node_override=here, type=str(cause_type));
         }
     }
     if here.from_target {
         from_type = self.evaluator.get_type_of_expression(here.from_target);
-        param = self._type_param_label(here.from_target);
-        if param is not None
-            or not self._is_exception_operand(from_type, allow_none=True) {
-            self.ctx.emit(
-                E1161, node_override=here.from_target, type=param or str(from_type)
-            );
+        if not self._is_exception_operand(from_type, allow_none=True) {
+            self.ctx.emit(E1161, node_override=here.from_target, type=str(from_type));
         }
     }
-}
-
-impl TypeCheckPass._type_param_label(expr: Expr) -> (str | None) {
-    while isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
-        expr = expr.value;
-    }
-    if not isinstance(expr, Name) or expr.sym is None {
-        return None;
-    }
-    owner = expr.sym.decl.name_of;
-    if isinstance(owner, TypeParam) and not owner.is_comptime {
-        return f"type parameter {expr.value}";
-    }
-    return None;
 }
 
 impl TypeCheckPass._is_exception_operand(ty: TypeBase, allow_none: bool) -> bool {
@@ -1984,6 +1965,17 @@ impl TypeCheckPass._check_type_only_value_use(nd: Name) -> None {
         return;
     }
     self.ctx.emit(E1132, node_override=nd, name=nd.sym_name);
+}
+
+impl TypeCheckPass._check_type_param_value_use(nd: Name) -> None {
+    if isinstance(nd.parent, AtomTrailer) and nd.parent.right is nd {
+        return;
+    }
+    param = type_param_of(nd);
+    if param is None or param.is_comptime or in_type_position(nd) {
+        return;
+    }
+    self.ctx.emit(E1163, node_override=nd, name=nd.sym_name);
 }
 
 impl TypeCheckPass.exit_if_stmt with IfStmt exit {

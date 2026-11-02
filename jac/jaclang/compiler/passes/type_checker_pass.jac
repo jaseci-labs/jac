@@ -69,7 +69,6 @@ walker TypeCheckPass(TreePass) {
     can exit_has_var with HasVar exit;
     can exit_in_for_stmt with InForStmt exit;
     can exit_raise_stmt with RaiseStmt exit;
-    def _type_param_label(expr: Expr) -> (str | None);
     def _is_exception_operand(ty: TypeBase, allow_none: bool) -> bool;
     can exit_except with Except exit;
     can exit_match_as with MatchAs exit;
@@ -82,6 +81,7 @@ walker TypeCheckPass(TreePass) {
     def _in_comptime_context(nd: UniNode) -> bool;
     def _check_comptime_only_use(nd: Name) -> None;
     def _check_type_only_value_use(nd: Name) -> None;
+    def _check_type_param_value_use(nd: Name) -> None;
     can exit_if_stmt with IfStmt exit;
     can exit_else_if with ElseIf exit;
     can exit_while_stmt with WhileStmt exit;

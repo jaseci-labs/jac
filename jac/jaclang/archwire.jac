@@ -7260,6 +7260,7 @@ graph import compiler {
             E1158,
             E1159,
             E1161,
+            E1163,
             E2015,
             W1036,
             W1037,
@@ -9213,7 +9214,6 @@ graph import compiler {
             Token,
             TupleVal,
             TypeAlias,
-            TypeParam,
             UnaryExpr,
             UniNode,
             VisitStmt,
@@ -9223,7 +9223,8 @@ graph import compiler {
             YieldExpr,
             find_python_scope_node_of,
             in_type_position,
-            type_only_import_of
+            type_only_import_of,
+            type_param_of
         },
         passes.variant_agreement_pass {
             Ability,

@@ -953,6 +953,19 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " requires that it actually has a runtime export.",
          blocks_codegen=True
      ),
+     E1163 = _err(
+         "E1163",
+         Category.TYPE,
+         "'{name}' is a type parameter and cannot be used as a value",
+         help="A type parameter names a type for the checker only: no backend"
+         " binds it at runtime to the class it stands for. The Python backend"
+         " drops a function's type parameters, so returning, assigning,"
+         " raising or passing '{name}' to `isinstance`/`issubclass` reaches a"
+         " name nothing binds; inside a class it is a bare `TypeVar`."
+         " Annotations, `as` casts, `has` field types, generic arguments and"
+         " `type` alias right-hand sides are type position and stay legal. To"
+         " use the class at runtime, pass it in as a value: `cls: type[{name}]`."
+     ),
      E1133 = _err(
          "E1133",
          Category.TYPE,
