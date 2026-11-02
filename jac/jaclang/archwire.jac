@@ -275,6 +275,7 @@ graph import {
             | toolchains.manager
             | toolchains.store { console },
         client.cli.run_client_build
+            | client.targets.web_target._copy_public_dirs
             | compiler.driver.application.prepare_dynamic_module
             | project.config._apply_memory_native_placement
             | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._install_app_deps
@@ -1993,6 +1994,7 @@ graph import {
             | server.server.JacAPIServer._ensure_client_bundle { client_app_dir_for },
         client.config_loader.JacClientConfig.get_assets_config { client_assets_config },
         client.config_loader.JacClientConfig.get_assets_dir { client_assets_dir },
+        client.config_loader.JacClientConfig.get_public_dirs { client_app_root },
         client.targets.react_native.scaffold._project_native_deps {
             client_workspace_app
         },
@@ -4288,6 +4290,9 @@ graph import {
     ]
     server.shared_store as pg_mod ++> scale.tests.misc.test_shared_store_failure;
     server.shared_store as store_mod ++> scale.tests.misc.test_state_backend_selection;
+    server.static_files ++> client.targets.web_target._copy_public_dirs {
+        ROOT_ASSET_EXTENSIONS
+    }
     server.sv_client ++> [
         client.targets.client_dev_common { headless_start_args },
         scale.runtime.orchestrator.process_manager.ServiceProcessManager.start_service {
@@ -5251,7 +5256,7 @@ graph import client.targets {
         run_manifest_install as _node_run_manifest_install
     }
     pwa_build --> [
-        web_target.WebTarget.build { apply_pwa },
+        web_target.WebTarget.build { apply_pwa, refresh_pwa_precache },
         web_target.WebTarget.setup { ensure_pwa_icons },
     ]
     react_native.build ++> mobile_target {
