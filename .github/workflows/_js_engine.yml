@@ -7,11 +7,19 @@ name: js_engine
 # binary to using it: `jac native status` must resolve it, the node suite and
 # a client build run on it, and test262 must pass everything its baseline does.
 #
-# Called by ci.yml (a pull request that changes the engine or the compiler,
-# one carrying the `native:js-engine` label, or a manual run) and nightly.yml.
+# Called by ci.yml (a pull request that changes the engine, one carrying the
+# `native:js-engine` label, the merge queue, or a manual run) and nightly.yml.
 
 on:
   workflow_call:
+    inputs:
+      kit:
+        description: >
+          Build on the calling run's kit (ci.yml's build-kit artifacts)
+          instead of building the jac binary again.
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -30,6 +38,7 @@ jobs:
           # `zig build js-engine` runs the checkout's compiler on the
           # source-built interpreter, which loads the shim.
           need-build-inputs: "true"
+          kit: ${{ inputs.kit }}
 
       - name: Set up Zig 0.16.0
         uses: mlugg/setup-zig@v2

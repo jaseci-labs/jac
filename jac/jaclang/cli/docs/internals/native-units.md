@@ -350,8 +350,8 @@ nightly and release kits always carry a kernel; the release smoke test
 asserts one is loaded. On such a kit the warm step checks that the first run
 resolves no kernel and leaves none beside the loader. A pull request that
 changes what the kernel is built from can ask for the full kit with the
-`native:kernel` label; otherwise the first build with a kernel is the one on
-main.
+`native:kernel` label; otherwise the first build with a kernel is the one in
+the merge queue, which every change passes before it reaches main.
 
 ### One builder, every target
 
