@@ -86,6 +86,7 @@ graph import {
             NON_DISPATCHED_METHODS,
             VTABLE_HEADER_SLOTS,
             archetype_native_name,
+            class_type_native_name,
             enum_decl_of,
             get_layout_registry,
             is_enum_class_type,

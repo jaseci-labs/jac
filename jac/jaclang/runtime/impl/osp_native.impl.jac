@@ -135,10 +135,10 @@ impl __jac_osp_skip {
 }
 
 impl __jac_osp_generic_edge -> int {
-    edge = __jac_rt_alloc(GENERIC_EDGE_SIZE);
-    __mem_store_i64(edge, 0);
-    __mem_store_i64(edge + TAG_OFFSET, GENERIC_EDGE_TAG);
-    return edge;
+    made = __jac_rt_alloc(GENERIC_EDGE_SIZE);
+    __mem_store_i64(made, 0);
+    __mem_store_i64(made + TAG_OFFSET, GENERIC_EDGE_TAG);
+    return made;
 }
 
 impl __jac_osp_connect(

@@ -1192,10 +1192,45 @@ impl MirLowering.type_of(
 ) -> MirType {
     self.ensure_c_types(t);
     made = mir_type_of(t, position, site, self.type_env or None);
+    self.ensure_objects(t);
     if made.kind == MirKind.ENUM and isinstance(t, ClassType) {
         self.enum_types.setdefault(made.name, t);
     }
     return made;
+}
+
+impl MirLowering.ensure_objects(t: (TypeBase | None)) {
+    if isinstance(t, FunctionType) {
+        for param in t.parameters {
+            self.ensure_objects(param.param_type);
+        }
+        self.ensure_objects(t.return_type);
+        return;
+    }
+    if isinstance(t, UnionType) {
+        for member in t.types {
+            self.ensure_objects(member);
+        }
+        return;
+    }
+    if not isinstance(t, ClassType) or t._shared is None {
+        return;
+    }
+    if t.private and t.private.type_args {
+        for arg in t.private.type_args {
+            self.ensure_objects(arg);
+        }
+    }
+    scope = t.shared.symbol_table;
+    if not isinstance(scope, uni.Archetype) or is_enum_class_type(t) {
+        return;
+    }
+    name = class_type_native_name(t);
+    if name and name not in self.mir.objects and not (
+        scope.loc is not None and scope.loc.mod_path.endswith(".pyi") and name == t.shared.class_name
+    ) {
+        self.object_def(scope);
+    }
 }
 
 impl MirLowering.ensure_c_types(t: (TypeBase | None)) {

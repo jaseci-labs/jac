@@ -771,10 +771,6 @@ impl MirEmitter.keyed_block_fn(label: str, size: int) -> ir.Function {
     ready_gv = ir.GlobalVariable(self.module, i32, name=f"{label}.ready");
     ready_gv.linkage = "weak";
     ready_gv.initializer = ir.Constant(i32, 0);
-    key_create = self.extern("pthread_key_create", i32, [i8p, i8p]);
-    get_specific = self.extern("pthread_getspecific", i8p, [i64]);
-    set_specific = self.extern("pthread_setspecific", i32, [i64, i8p]);
-    zalloc = self.extern("calloc", i8p, [i64, i64]);
     func = ir.Function(self.module, ir.FunctionType(i64, []), name=name);
     func.linkage = "linkonce_odr";
     first = func.append_basic_block("entry");
@@ -793,7 +789,9 @@ impl MirEmitter.keyed_block_fn(label: str, size: int) -> ir.Function {
     );
     b.cbranch(b.extract_value(pair, 1), make_key, spin);
     b.position_at_end(make_key);
-    b.call(key_create, [b.bitcast(key_gv, i8p), ir.Constant(i8p, None)]);
+    self.extern_call(
+        b, "pthread_key_create", i32, [i8p, i8p], [b.bitcast(key_gv, i8p), ir.Constant(i8p, None)]
+    );
     b.store_atomic(ir.Constant(i32, 2), ready_gv, "release", 4);
     b.branch(keyed);
     b.position_at_end(spin);
@@ -801,11 +799,11 @@ impl MirEmitter.keyed_block_fn(label: str, size: int) -> ir.Function {
     b.cbranch(b.icmp_unsigned("==", again, ir.Constant(i32, 2)), keyed, spin);
     b.position_at_end(keyed);
     key = b.load(key_gv);
-    held = b.call(get_specific, [key]);
+    held = self.extern_call(b, "pthread_getspecific", i8p, [i64], [key]);
     b.cbranch(b.icmp_unsigned("==", held, ir.Constant(i8p, None)), create, done);
     b.position_at_end(create);
-    made = b.call(zalloc, [ir.Constant(i64, 1), ir.Constant(i64, size)]);
-    b.call(set_specific, [key, made]);
+    made = self.extern_call(b, "calloc", i8p, [i64, i64], [ir.Constant(i64, 1), ir.Constant(i64, size)]);
+    self.extern_call(b, "pthread_setspecific", i32, [i64, i8p], [key, made]);
     b.branch(done);
     b.position_at_end(done);
     block = b.phi(i8p);
@@ -1032,13 +1030,46 @@ impl MirEmitter.emit_rc(b: ir.IRBuilder, instr: MirInstr) {
         target = b.select(present, target, ir.Constant(i8p, None));
     }
     if instr.op == MirOp.RETAIN {
-        b.call(self.extern(RETAIN_SYMBOL, ir.VoidType(), [i8p]), [target]);
+        self.rc_call(b, RETAIN_SYMBOL, target);
         self.bind(instr.result, self.value(subject));
         return;
     }
     acyclic = (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY);
     symbol = RELEASE_ACYCLIC_SYMBOL if held_type.kind in acyclic else RELEASE_SYMBOL;
-    b.call(self.extern(symbol, ir.VoidType(), [i8p]), [target]);
+    self.rc_call(b, symbol, target);
+}
+
+impl MirEmitter.rc_call(b: ir.IRBuilder, symbol: str, target: ir.Value) {
+    self.extern_call(b, symbol, ir.VoidType(), [ir.IntType(8).as_pointer()], [target]);
+}
+
+impl MirEmitter.extern_call(
+    b: ir.IRBuilder, symbol: str, ret: ir.Type, params: list[ir.Type], values: list[ir.Value]
+) -> ir.Value {
+    callee = self.extern(symbol, ret, params);
+    passed = [self.adapt(b, value, arg.type) for (value, arg) in zip(values, callee.args)];
+    made = b.call(callee, passed);
+    if isinstance(ret, ir.VoidType) {
+        return made;
+    }
+    return self.adapt(b, made, ret);
+}
+
+impl MirEmitter.adapt(b: ir.IRBuilder, value: ir.Value, wanted: ir.Type) -> ir.Value {
+    have = value.type;
+    if have == wanted {
+        return value;
+    }
+    if isinstance(wanted, ir.IntType) and isinstance(have, ir.PointerType) {
+        return b.ptrtoint(value, wanted);
+    }
+    if isinstance(wanted, ir.PointerType) and isinstance(have, ir.IntType) {
+        return b.inttoptr(value, wanted);
+    }
+    if isinstance(wanted, ir.IntType) and isinstance(have, ir.IntType) {
+        return b.trunc(value, wanted) if have.width > wanted.width else b.zext(value, wanted);
+    }
+    return b.bitcast(value, wanted);
 }
 
 impl MirEmitter.object_struct(name: str) -> ir.Type {

@@ -57,6 +57,7 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
     self.mir.objects[name] = made;
     self.archetypes[name] = arch;
     for member in layout.fields {
+        self.ensure_objects(member.semantic_type);
         made.fields.append(
             MirObjectField(
                 name=member.name,

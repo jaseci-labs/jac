@@ -311,6 +311,7 @@ obj MirLowering {
         t: (TypeBase | None), position: MirPosition, site: uni.UniNode
     ) -> MirType;
 
+    def ensure_objects(t: (TypeBase | None));
     def ensure_c_types(t: (TypeBase | None));
     def arch_fields(arch: uni.Archetype) -> list[uni.HasVar];
     def lower_place(nd: uni.UniNode) -> MirValue;

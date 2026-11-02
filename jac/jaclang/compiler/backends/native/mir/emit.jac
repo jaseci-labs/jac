@@ -93,6 +93,11 @@ obj MirEmitter {
     def str_literal(b: ir.IRBuilder, text: str) -> ir.Value;
     def bytes_literal(b: ir.IRBuilder, data: bytes) -> ir.Value;
     def emit_rc(b: ir.IRBuilder, instr: MirInstr);
+    def rc_call(b: ir.IRBuilder, symbol: str, target: ir.Value);
+    def extern_call(
+        b: ir.IRBuilder, symbol: str, ret: ir.Type, params: list[ir.Type], values: list[ir.Value]
+    ) -> ir.Value;
+    def adapt(b: ir.IRBuilder, value: ir.Value, wanted: ir.Type) -> ir.Value;
     def emit_c(b: ir.IRBuilder, instr: MirInstr);
     def emit_memory(b: ir.IRBuilder, instr: MirInstr);
     def c_struct(name: str) -> ir.Type;
