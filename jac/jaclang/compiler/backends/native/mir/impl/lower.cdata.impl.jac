@@ -356,17 +356,7 @@ impl MirLowering.c_function_symbol(expr: uni.Expr) -> str {
     }
     if clib_import_of(target) is not None {
         self.ensure_c_types(fn_type);
-        self.ensure_objects(fn_type);
-        symbol = self.name_of(target);
-        self.mir.externs[symbol] = MirExtern(
-            symbol=symbol,
-            ret=mir_type_of(fn_type.return_type, MirPosition.C_FIELD, expr),
-            params=[
-                mir_type_of(p.param_type, MirPosition.C_FIELD, expr)
-                for p in fn_type.parameters
-            ]
-        );
-        return symbol;
+        return self.c_extern(target, expr)[0];
     }
     path = target.loc.mod_path;
     if isinstance(target.parent, uni.Module) and path.endswith(".jac") {

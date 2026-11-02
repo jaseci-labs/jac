@@ -291,7 +291,11 @@ impl MirLowering.c_param_plan(
     t = self.c_declared_type(declared, fallback);
     self.ensure_c_types(t);
     if self.c_param_borrowed(pv) {
-        return (mir_c_ptr(mir_c_elem(t, site)), "lend");
+        lent = mir_c_elem(t, site);
+        if lent.kind == MirKind.C_PIN {
+            return (mir_c_ptr(lent.payload()), "pinned");
+        }
+        return (mir_c_ptr(lent), "lend");
     }
     if isinstance(t, ClassType) and t.shared.class_name in ("str", "bytes") {
         return (mir_c_ptr(mir_int(8, False)), t.shared.class_name);
@@ -414,6 +418,21 @@ impl MirLowering.c_arg(
     }
     if plan == "lend" {
         return self.c_lend(arg, to, True, copybacks);
+    }
+    if plan == "pinned" {
+        held = self.c_borrow_operand(arg);
+        box = self.lower_expr(held if held is not None else arg);
+        if box.type.kind != MirKind.C_PIN {
+            raise MirRefused(
+                mir_refusal(
+                    "C pointer argument",
+                    box.type.render(),
+                    arg,
+                    "A `&mut Pinned[T]` parameter lends the payload of a `Pinned[T]` box made by `pin(...)`."
+                )
+            );
+        }
+        return self.emit_value(MirOp.PTR_CAST, to, [box]);
     }
     if plan in ("str", "bytes") {
         return self.c_text_arg(self.lower_expr(arg), arg);
