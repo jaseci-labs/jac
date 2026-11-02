@@ -20,6 +20,12 @@ glob UTF8_CURSOR_MIN_BYTES: int = 64,
      UTF8_CURSOR_OFF: int = 6,
      UTF8_CURSOR_USED: int = 7;
 
+glob UNBOUND_ROLE_READ: int = 0,
+     UNBOUND_ROLE_ASSIGN: int = 1,
+     UNBOUND_ROLE_AUG: int = 2,
+     UNBOUND_ROLE_SKIP: int = 3,
+     UNBOUND_ROLE_EXCLUDE: int = 4;
+
 def _jc_optional_payload(semantic: (TypeBase | None)) -> (TypeBase | None);
 
 def _restore_entry[V](table: dict[str, V], key: str, prior: (V | None));
@@ -103,6 +109,13 @@ obj NativeBindingState {
         closure_cell_handles: dict[str, ir.Value];
 }
 
+obj NativeUnboundFacts {
+    has frame: uni.UniNode,
+        guarded: set[str],
+        reads: set[int],
+        augs: set[int];
+}
+
 obj NativeFunctionState {
     has bindings: NativeBindingState,
         _builder: ir.IRBuilder | None,
@@ -162,6 +175,9 @@ walker NaIRGenPass(CompilerPass) {
         local_vars: dict[str, ir.Value] = {},
         param_vars: set[str] = set(),
         _unlowered_locals: dict[str, set[str]] = {},
+        _unbound_memo: dict[int, NativeUnboundFacts] = {},
+        _unbound_flags: dict[str, ir.Value] = {},
+        _unbound_early: dict[str, ir.Value] = {},
         flow_future_meta: dict[int, tuple[ir.Type, ir.Type]] = {},
         drop_fn_registry: dict[str, ir.Function] = {},
         has_native_code: bool = False,
@@ -511,6 +527,8 @@ walker NaIRGenPass(CompilerPass) {
         _helper_structs: set[str] = set(),
         closure_thunks: dict[str, ir.Function] = {},
         _closure_uid: int = 0,
+        _fresh_fn_values: set[str] = set(),
+        _nested_fn_frames: dict[str, ir.Function] = {},
         _opt_struct_types: dict[str, ir.IdentifiedStructType] = {},
         _loop_rebind_memo: dict[tuple[int, str], bool] = {};
 
@@ -1086,6 +1104,9 @@ walker NaIRGenPass(CompilerPass) {
 
     def _closure_struct_of(val_type: ir.Type) -> (str | None);
     def _static_fn_closure(closure_name: str, fn: ir.Function) -> ir.Value;
+    def _fn_identity_struct -> str;
+    def _fn_identity_slot(fn: ir.Function) -> (str | None);
+    def _fn_value_env(fn: ir.Function) -> (ir.Value | None);
     def _wrap_fn_as_closure_value(val: ir.Value) -> ir.Value;
     def _is_bare_function_value(val: ir.Value) -> bool;
     def _closure_like_type(val_type: ir.Type) -> bool;
@@ -1113,7 +1134,10 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_closure_value(var_name: str, nd: uni.UniNode) -> (ir.Value | None);
     def _emit_closure_escape_error(var_name: str, nd: uni.UniNode) -> None;
     def _codegen_closure_call(
-        nd: uni.FuncCall, clos_val: ir.Value, struct_name: str
+        nd: uni.FuncCall,
+        clos_val: ir.Value,
+        struct_name: str,
+        none_guard: (ir.Value | None) = None
     ) -> (ir.Value | None);
 
     def _codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None);
@@ -1345,6 +1369,7 @@ walker NaIRGenPass(CompilerPass) {
     def _module_function_known(key: tuple[str, str]) -> bool;
     def _record_linked_decl(func: (ir.Function | None), decl: uni.Ability) -> None;
     def _ensure_dep_inference(dep_mod: uni.Module) -> None;
+    def _ensure_body_inference(method: uni.Ability) -> None;
     def _imported_function_demotions(imported_mod: uni.Module) -> (set | None);
     def _lower_module -> None;
     def _settle_module -> None;
@@ -3090,6 +3115,37 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_forever(nd: uni.ForeverStmt) -> None;
     def _none_initialized_local_type(nd: uni.Assignment) -> (ir.Type | None);
     def _codegen_assignment(nd: uni.Assignment) -> None;
+    def _codegen_assignment_core(nd: uni.Assignment) -> None;
+    def _unbound_root(nd: uni.UniNode) -> (uni.UniNode | None);
+    def _unbound_facts(nd: uni.UniNode) -> (NativeUnboundFacts | None);
+    def _unbound_scan(frame: uni.UniNode) -> NativeUnboundFacts;
+    def _unbound_is_nested(frame: uni.UniNode) -> bool;
+    def _unbound_params(frame: uni.UniNode) -> set[str];
+    def _unbound_block(nd: uni.UniNode) -> (Sequence[uni.UniNode] | None);
+    def _unbound_role(nm: uni.Name, frame: uni.UniNode, top: set[int]) -> int;
+    def _unbound_target_names(target: uni.UniNode, out: list[uni.Name]) -> None;
+    def _unbound_is_flow(nd: uni.InForStmt) -> bool;
+    def _unbound_inside(nd: (uni.UniNode | None), frame: uni.UniNode) -> bool;
+    def _unbound_dominated(
+        start: uni.UniNode,
+        name: str,
+        frame: uni.UniNode,
+        firsts: dict[int, dict[str, int]],
+        places: dict[int, int]
+    ) -> bool;
+
+    def _unbound_firsts(
+        owner: uni.UniNode, firsts: dict[int, dict[str, int]], places: dict[int, int]
+    ) -> dict[str, int];
+
+    def _unbound_key(name: str) -> str;
+    def _unbound_flag(name: str) -> ir.Value;
+    def _guard_unbound_read(nd: uni.Name) -> None;
+    def _guard_unbound_aug(nd: uni.Assignment) -> None;
+    def _emit_unbound_check(name: str, typed: uni.UniNode) -> None;
+    def _mark_unbound_targets(nd: uni.Assignment) -> None;
+    def _mark_target_bound(target: uni.UniNode) -> None;
+    def _mark_bound(name: str, at: uni.UniNode) -> None;
     def _codegen_dict_counter_update(nd: uni.Assignment) -> bool;
     def _same_pure_key(a: uni.UniNode, b: uni.UniNode) -> bool;
     def _codegen_ctrl(nd: uni.CtrlStmt) -> None;
@@ -3413,6 +3469,7 @@ walker NaIRGenPass(CompilerPass) {
         owner: ir.Value, value: (ir.Value | None)
     ) -> (ir.Value | None);
 
+    def _jacval_text_len(tag: ir.Value, payload: ir.Value, label: str) -> ir.Value;
     def _jacval_truthy(jv: ir.Value) -> ir.Value;
     def _jacval_is_none(jv: ir.Value, negate: bool) -> ir.Value;
     def _entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
@@ -3473,6 +3530,10 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (tuple[(ir.Value, ir.Value)] | None);
 
     def _is_static_method_func(func: ir.Function) -> bool;
+    def _bound_method_owner(
+        type_name: str, method_name: str, fnty: ir.FunctionType
+    ) -> str;
+
     def _emit_bound_method_value(
         receiver: ir.Value, type_name: str, method_name: str
     ) -> (ir.Value | None);

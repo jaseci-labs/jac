@@ -192,6 +192,7 @@ graph import {
             | toolchains.tools.ToolArtifact.checkout_path { bucket },
         cli.commands.cache { RETIRED, gc, purge, status, unmanaged },
         compiler.types.stubcat.locate.StubcatArtifact.build
+            | project.compiler_host.ProjectHost.keep_native_scan_record
             | scale.injector.binary._fetch_verified_asset { maybe_sweep },
         dist.jab | toolchains.store { bucket, maybe_sweep },
         packages.index.fetch_verified | scale.admin.console_build.console_cache_dir {
@@ -783,7 +784,8 @@ graph import {
             running_compiler_digest
         },
         client.jac_client_compiler.JacClientCompiler.emit_dependencies {
-            compute_content_sha256
+            compute_content_sha256,
+            ct_dep_digest
         },
         client.targets.desktop._dev_launch._dev_roots_from_env { dev_source },
         dist.precompile_bytecode {
@@ -847,6 +849,10 @@ graph import {
         },
         project.compiler_host.ProjectHost.in_compiler_tree { is_compiler_tree_path },
         project.compiler_host.ProjectHost.save_native_debug_ir { get_native_debug_dir },
+        project.compiler_host._native_scan_path {
+            get_jir_cache_dir,
+            module_env_fingerprint
+        },
         project.compiler_host._wiring_records_path
             | project.kernel_snapshot.interface_cache_file {
             get_jir_cache_dir,
@@ -2728,6 +2734,7 @@ graph import {
         compiler.backends.es.esast_gen_pass
             | compiler.backends.py.jcir_gen_pass
             | compiler.passes.comptime_resolve_pass
+            | compiler.passes.declaration_type_pass
             | compiler.passes.jsx_intrinsic_guard_pass
             | compiler.passes.scope_walk
             | compiler.tools.grammar_extract_pass { osp_skip_rest },
@@ -6171,9 +6178,13 @@ graph import compiler {
     driver.pass_driver as pass_driver ++> tests.test_pipeline_products;
     driver.pipeline ++> [
         backends.es.client_kernel_cache._lower
-            | backends.native.na_ir_gen_pass.NaIRGenPass._ensure_dep_inference
+            | backends.native.na_ir_gen_pass.NaIRGenPass._ensure_body_inference
             | passes.layout_pass.get_layout_registry
             | tools.lang_tools { CompilationProduct, require },
+        backends.native.na_ir_gen_pass.NaIRGenPass._ensure_dep_inference {
+            CompilationProduct,
+            require
+        },
         jc_unit { early_passes },
         tests.test_module_exports
             | tools.cfg_dot.cfg_dot_from_file
@@ -6225,6 +6236,7 @@ graph import compiler {
             | passes.cfg_build_pass
             | passes.comptime_resolve_pass
             | passes.decl_impl_match_pass
+            | passes.declaration_type_pass
             | passes.freeze_structure_pass
             | passes.import_wiring_pass
             | passes.ownership_check_pass
@@ -6901,7 +6913,7 @@ graph import compiler {
             is_borrow_kind
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._clib_place_ptr { is_borrow_kind },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment {
+        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment_core {
             SymbolStorage
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_clib_args {
@@ -7062,7 +7074,7 @@ graph import compiler {
         types.types { ParamKind },
     ]
     frontend.constant --> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment {
+        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment_core {
             OwnershipKind
         },
         backends.py.jcir_gen_pass.JcirGenPass._gen_native_interop_stubs {
@@ -7540,27 +7552,30 @@ graph import compiler {
             | driver.program.JacProgram.execution_hubs
             | driver.progstate.ModuleHub.is_fresh
             | passes.placement_pass.PlacementPass._run_undecided
-            | placement.placement_solver._native_dep_scan
+            | placement.placement_solver._keep_native_scan
             | tools.jac_auto_lint_pass.JacAutoLintPass.__post_init__
             | types.type_evaluator.TypeEvaluator._client_npm_base { active_host },
         driver.compilation_context.context_app
             | driver.program.JacProgram.jac_file_formatter
             | driver.progstate.ModuleHub.stamp
             | passes.placement_pass.settle_native_module
-            | placement.placement_solver.native_placement_candidate
+            | placement.placement_solver._native_dep_scan
             | tools.jac_auto_lint_pass.JacAutoLintPass._base_decl_archetypes
             | types.type_evaluator.TypeEvaluator._declared_missing_dependency {
             active_host
         },
         driver.pass_driver { CheckSettings, active_host },
         driver.program.JacProgram.jac_file_linter
+            | placement.placement_solver._native_scan_digest
             | tools.jac_auto_lint_pass.JacAutoLintPass._is_sibling_annex
             | types.type_evaluator.TypeEvaluator._jac_virtual_sibling_dts {
             active_host
         },
         driver.program.JacProgram.jac_str_formatter
+            | placement.placement_solver._read_native_scan
             | types.type_evaluator.TypeEvaluator._load_ts_declarations { active_host },
         driver.program.JacProgram.note_stub_tree_served
+            | placement.placement_solver.native_placement_candidate
             | types.type_evaluator.TypeEvaluator._resolve_client_npm_module {
             active_host
         },
@@ -8763,6 +8778,20 @@ graph import compiler {
             is_identifier_slot,
             typed_rebind_names
         },
+        passes.declaration_type_pass {
+            Ability,
+            Archetype,
+            CodeBlockStmt,
+            Enum,
+            Expr,
+            FuncSignature,
+            ImplDef,
+            Kid,
+            Module,
+            ModuleCode,
+            Test,
+            UniNode
+        },
         passes.endpoint_effect_pass {
             Ability,
             Archetype,
@@ -9941,6 +9970,12 @@ graph import compiler {
         symbol_utils { CompilerPass },
     ]
     passes.decl_impl_match_pass ++> driver.pipeline { DeclImplMatchPass }
+    passes.declaration_type_pass ++> [
+        backends.native.na_ir_gen_pass.NaIRGenPass._ensure_dep_inference {
+            importer_lowers_bodies
+        },
+        driver.pipeline.declaration_passes { DeclarationTypePass },
+    ]
     passes.endpoint_effect_pass ++> driver.pipeline { EndpointEffectPass }
     passes.execution ++> driver.pass_driver | tests.xbackend_equiv { run_walker }
     passes.freeze_structure_pass ++> driver.pipeline.frozen_passes {
@@ -10509,6 +10544,7 @@ graph import compiler {
             | backends.native.host_facts.primitive_methods_fact
             | backends.native.na_ir_gen_pass.NaIRGenPass.__post_init__
             | c_interop._spec_for_name
+            | passes.declaration_type_pass
             | passes.layout_pass
             | passes.mtir_gen_pass
             | passes.ownership_check_pass
@@ -10653,11 +10689,14 @@ graph import compiler {
         frontend.unitree { CtValue },
     ]
     types.fixed_width ++> [
+        passes.declaration_type_pass
+            | passes.type_checker_pass.TypeCheckPass._stamp_fixed_width {
+            numeric_name_of
+        },
         passes.type_checker_pass.TypeCheckPass._provably_in_range {
             interval_of_expr,
             interval_of_op
         },
-        passes.type_checker_pass.TypeCheckPass._stamp_fixed_width { numeric_name_of },
     ]
     types.operations ++> [
         backends.es.esast_gen_pass { AUG_TO_BINARY_MAP },
@@ -14097,7 +14136,9 @@ graph import compiler.passes {
         },
     ]
     scope_walk ++> static_analysis_pass { ScopeWalker }
-    type_checker_pass ++> comptime_resolve_pass { TypeCheckPass }
+    type_checker_pass ++> comptime_resolve_pass | declaration_type_pass {
+        TypeCheckPass
+    }
     wasm_contract --> [
         boundary_analysis_pass.BoundaryAnalysisPass._register_na_client_import {
             function_contract,
@@ -14121,14 +14162,13 @@ graph import compiler.placement {
             PLACEMENT_HOLD_EXEMPT_ROOTS,
             PlacementSummary,
             get_module_summary,
+            native_blocker_scan,
             record_placement_evidence,
-            scan_native_blockers,
             summary_store
         },
         placement_solver._endpoint_veto_applies { project_has_server },
     ]
     placement --> [
-        placement_solver.PlacementApplyPass._run_impl { native_blocker_scan },
         placement_solver._closure_pullable { module_has_root_access },
         placement_solver._pullable_by_client_reference { module_has_root_access },
     ]
@@ -14173,6 +14213,10 @@ graph import compiler.tests {
             run_py_fixture,
             run_with_both
         },
+        test_fn_identity_equivalence | test_osp_equivalence {
+            run_py_fixture,
+            run_with_both
+        },
         test_graph_fragment_equivalence {
             run_js_module_fixture,
             run_py_fixture,
@@ -14185,7 +14229,6 @@ graph import compiler.tests {
             run_with_both
         },
         test_native_list_search_equality { compile_native, get_func },
-        test_osp_equivalence { run_py_fixture, run_with_both },
         test_prim_equivalence {
             compare_results,
             compile_fixture_to_js,

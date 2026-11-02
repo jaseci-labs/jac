@@ -614,6 +614,9 @@ impl _scan_blockers_under(
         }
         for (name, path, is_bare, is_module_import) in targets {
             clean = name.lstrip('.') if name else '';
+            if path is not None {
+                scan.probes.append(os.path.abspath(path));
+            }
             if is_bare {
                 if clean and clean in NATIVE_SUPPORTED_STDLIB {
                     continue;
@@ -624,6 +627,9 @@ impl _scan_blockers_under(
                 if not (
                     is_module_import and path is not None and path.endswith('.jac')
                 ) {
+                    if path is None and not scan.module and not scan.sites {
+                        scan.unresolved = True;
+                    }
                     scan.sites.append((imp, f"non-native import '{clean}'"));
                     break;
                 }
@@ -648,10 +654,17 @@ impl _scan_blockers_under(
             if clean and is_bundled_native_module(clean) {
                 continue;
             }
-            if clean
-                and resolve_native_module(clean, base_dir, allow_inferred=False)[1]
-                    is not None {
-                continue;
+            if clean {
+                native_path = resolve_native_module(
+                    clean, base_dir, allow_inferred=False
+                )[1];
+                if native_path is not None {
+                    scan.probes.append(os.path.abspath(native_path));
+                    continue;
+                }
+            }
+            if path is None and not scan.module and not scan.sites {
+                scan.unresolved = True;
             }
             scan.sites.append((imp, f"unresolved import '{clean}'"));
             break;
