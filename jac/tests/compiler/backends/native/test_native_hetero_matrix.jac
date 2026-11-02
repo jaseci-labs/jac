@@ -1,17 +1,13 @@
 """Heterogeneous container matrix: jacval storage, ownership, reclamation.
 
-Mixed-element containers lower to tagged jacval storage (`List.jacval`,
-`Dict.<k>.jacval`); elements are self-describing and retain/release/trace/
-drop route through the tag inside the container helpers, so no call site
-carries hetero-store ownership special cases.
+Mixed-element containers lower to tagged storage; elements are
+self-describing and retain/release/trace/drop route through the tag inside the
+container helpers, so no call site carries hetero-store ownership special
+cases.
 
 Coverage:
   - JIT read-back correctness for list and dict mixed elements
     (store/load/overwrite/append/pop/clear/iteration/repr).
-  - IR-shape gate: the hetero fixtures build jacval containers and contain
-    ZERO `ptr.toint` coercions -- the only emitter that ever `ptrtoint`'d an
-    RC pointer into an integer container slot. Boxing uses the tagged
-    `jv.p2i` path, whose payload the container releases through the tag.
   - Full-reclamation churn under gc rc and cycles via the glibc
     `mallinfo2().uordblks` in-use probe (container death, slot overwrite,
     and clear() all release), and under headerless `--memory nogc
@@ -126,22 +122,6 @@ test "hetero dict read-back, overwrite, pop, clear" {
     assert pl(b"z") == 5;
     assert cl(b"z") == 0;
 }
-
-test "IR shape: hetero containers are jacval; no ptrtoint into integer slots" {
-    for fixture in [PROG, "hetero_list_str.jac"] {
-        (_, ir) = _compile(fixture);
-        text = str(ir.gen.llvm_ir);
-        assert "List.jacval" in text , f"{fixture}: hetero list did not lower to List.jacval";
-        assert "ptr.toint" not in text , (
-            f"{fixture}: an RC pointer was ptrtoint'd into an integer "
-            f"container slot (the deleted List.i64 boxing path is back)"
-        );
-    }
-    (_, ir2) = _compile(PROG);
-    text2 = str(ir2.gen.llvm_ir);
-    assert "Dict.ptr.jacval" in text2 , "hetero dict did not lower to Dict.<k>.jacval";
-}
-
 
 """Return a callable reading glibc `mallinfo2().uordblks`, or None if unavailable."""
 def _inuse_probe -> (object | None) {

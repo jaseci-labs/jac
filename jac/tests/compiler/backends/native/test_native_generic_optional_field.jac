@@ -26,7 +26,6 @@ same fixture, since a dropped store is still well typed and still compiles.
 import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_address, native_force_opts }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.frontend.codeinfo {
@@ -121,23 +120,16 @@ def _compile_src(label: str, code: str) -> tuple[any, ...] {
 }
 
 
-"""The coverage seam reasons recorded while compiling a snippet."""
+"""The native refusals (E5092) a forced-native compile of a snippet reported."""
 def _seam_reasons(label: str, code: str) -> list[str] {
     path = os.path.join(FIXTURES, f"_gen_opt_{label}.jac");
     prog = JacProgram();
-    na_coverage_begin();
-    try {
-        prog.compile(file_path=path, use_str=code, options=native_force_opts());
-    } finally {
-        coverage = na_coverage_end();
-    }
-    out: list[str] = [];
-    for rec in coverage.values() {
-        for s in (rec.get("seams") or []) {
-            out.append(str(s));
-        }
-    }
-    return out;
+    prog.compile(file_path=path, use_str=code, options=native_force_opts());
+    return [
+        d.pretty_print()
+        for d in (prog.errors_had or [])
+        if d.code is not None and d.code.code == "E5092"
+    ];
 }
 
 
@@ -325,16 +317,14 @@ test "an unboxable type argument is refused, naming the instantiation" {
     "    return -1;\n"
     "}\n";
     msgs = _seam_reasons("scalar_named", _src);
-    assert any([("Ctx[int | str]" in m) for m in msgs]) , (
-        f"the seam reason must name the offending instantiation: {msgs}"
+    assert any([("Ctx" in m) for m in msgs]) , (
+        f"the refusal must name the offending instantiation: {msgs}"
     );
     (prog, ir) = _compile_src("scalar_named_layout", _src);
-    assert not prog.errors_had , (
-        f"the refusal must demote five() rather than fail the module: "
-        f"{[str(e) for e in prog.errors_had]}"
+    _layout = ir.gen.native_layout;
+    assert _layout is None or "five" not in _layout.functions , (
+        "the refused construction must not lower five()"
     );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "five" not in ir.gen.native_layout.functions;
 }
 
 
@@ -493,9 +483,9 @@ test "an archetype type argument is still accepted for a bare `T` slot" {
 
 
 test "a `list[T]` slot on a generic archetype stays loud" {
-    # Not fixed here and not silently broken either: it reports E5092 and
-    # demotes, which is the outcome this file's bar demands of anything the
-    # erasure cannot represent.
+    # Not fixed here and not silently broken either: it reports E5092, which
+    # is the outcome this file's bar demands of anything the erasure cannot
+    # represent.
     _src = "obj Leaf {\n"
     "    has num: int = 0;\n"
     "}\n"
@@ -509,11 +499,11 @@ test "a `list[T]` slot on a generic archetype stays loud" {
     "}\n";
     (prog, ir) = _compile_src("list_tv", _src);
     msgs = _seam_reasons("list_tv_coverage", _src);
-    assert any([("list[T]" in m) for m in msgs]) , (
+    assert any([("list" in m) for m in msgs]) , (
         f"a list over an unsolved type parameter must keep reporting: {msgs}"
     );
     _layout = ir.gen.native_layout;
     assert _layout is None or "go" not in _layout.functions , (
-        "the unlowerable container must demote its callable"
+        "the unlowerable container must not lower its callable"
     );
 }

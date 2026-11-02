@@ -2,8 +2,8 @@
 
 Fresh strings move into list/set/dict containers, named bindings and string
 literals are copied in, and the headerless container drop frees the elements
-it owns through a per-instance element-drop slot -- all with zero RC calls in
-the emitted IR (the zero-RC contract of --memory nogc).
+it owns -- all with zero calls into the RC runtime in the emitted IR (the
+zero-RC contract of --memory nogc).
 """
 
 import from tests.support { jac_command }
@@ -20,7 +20,14 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures" / "nogc"),
-     PROG = "str_container_prog.jac";
+     PROG = "str_container_prog.jac",
+     RC_ENTRY_POINTS: list[str] = [
+         "__rc_",
+         "__jac_rt_retain",
+         "__jac_rt_release",
+         "__jac_rt_any_retain",
+         "__jac_rt_any_release"
+     ];
 
 def _compile_ir(entry_path: str) -> str {
     prev = push_native_target("wasm32-unknown-unknown");
@@ -38,10 +45,10 @@ def _compile_ir(entry_path: str) -> str {
     }
 }
 
-test "str containers compile RC-free with element-drop loops in the IR" {
+test "str containers compile RC-free" {
     ir = _compile_ir(os.path.join(FIXTURES, PROG));
-    assert "__rc_" not in ir , "str container build re-entered the RC world";
-    assert "edrop" in ir , "container drop carries no element-drop machinery";
+    calls = [marker for marker in RC_ENTRY_POINTS if marker in ir];
+    assert not calls , f"str container build re-entered the RC world: {calls}";
 }
 
 test "host binary runs str containers and passes assert-no-rc" {

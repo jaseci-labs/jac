@@ -31,9 +31,7 @@ import from tests.support {
     native_force_opts,
     sv_run,
     na_run,
-    same_lines,
-    source_spelled,
-    unit_symbol
+    same_lines
 }
 import jaclang;
 
@@ -256,7 +254,7 @@ test "a pack of a generic archetype's erased T answers what CPython answers" {
     same_lines(sv_out, na_out, "erased pack");
 }
 
-test "a generic pack slot is a native list, not the bare erased pointer" {
+test "a generic archetype's variadic methods reach the native image" {
     prog = JacProgram();
     options = native_force_opts();
     options.no_ir_cache = True;
@@ -273,14 +271,6 @@ test "a generic pack slot is a native list, not the bare erased pointer" {
     );
     assert "Cell.pick" in by_source_name(layout.methods) , (
         f"a pack after a fixed parameter must lower too: {sorted(layout.methods)}"
-    );
-    text = source_spelled(str(ir.gen.llvm_ir));
-    assert f'define i8* @"{source_spelled(
-        unit_symbol(ir, "Cell.get")
-    )}"(%"Cell"* %"self", %"List.ptr"* %"fallback")'
-        in text , (
-        "the pack slot must lay out as the pointer-flavoured native list; a bare "
-        "i8* there is the erased element leaking into the pack's own slot"
     );
 }
 

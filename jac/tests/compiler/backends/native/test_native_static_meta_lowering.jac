@@ -15,10 +15,18 @@ has` is class-level, so it takes no part in the instance dataclass field
 order and none of the instance layout rules.
 """
 
+import ctypes;
 import os;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { JAC_ROOT, source_spelled, unit_symbol }
+import from tests.support {
+    JAC_ROOT,
+    source_spelled,
+    unit_symbol,
+    get_func,
+    native_str_func,
+    compile_native as jit_native
+}
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "native", "fixtures"
@@ -70,16 +78,14 @@ test "class-level tuple metadata lowers natively" {
 
 
 test "class-level tuple metadata keeps the literal's layout" {
-    (_prog, ir) = compile_native("static_tuple_meta.jac");
-    text = source_spelled(str(ir.gen.llvm_ir));
-    assert f'@"{source_spelled(unit_symbol(ir, "Access.PROVIDES"))}" = global {{i8*}}*'
-        in text , (
+    (eng, _ir) = jit_native("static_tuple_meta.jac");
+    first = native_str_func(eng, "first_provided", ctypes.c_char_p);
+    assert first() == b"access-checks" , (
         "the widened `tuple` annotation did not narrow to the one-element "
-        "tuple of str its constant declares; a scalar slot here would make "
-        "every read of it garbage"
+        "tuple of str its constant declares; a read of it came back garbage"
     );
-    assert f'@"{source_spelled(unit_symbol(ir, "Stage.REQUIRES"))}" = global {{}}*'
-        in text , ("the empty tuple did not land on a zero-field struct");
+    run = get_func(eng, "run", ctypes.c_int64);
+    assert run() == 15;
 }
 
 
@@ -133,8 +139,11 @@ test "a widened tuple glob lowers from its constant" {
     (prog, ir) = compile_native("tuple_glob_meta.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert ir is not None and ir.gen.llvm_ir , "no native IR for the tuple glob";
-    assert f'@"{source_spelled(unit_symbol(ir, "MOVE_EXEMPT"))}" = global {{i8*, i8*}}*'
-        in source_spelled(str(ir.gen.llvm_ir)) , (
+    (eng, _jit) = jit_native("tuple_glob_meta.jac");
+    is_exempt = native_str_func(eng, "is_exempt", ctypes.c_bool, ctypes.c_char_p);
+    assert is_exempt("len") and is_exempt("id") , (
         "the glob did not take the two-element str layout its constant declares"
     );
+    assert not is_exempt("map");
+    assert get_func(eng, "run", ctypes.c_int64)() == 1;
 }

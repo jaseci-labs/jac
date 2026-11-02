@@ -12,7 +12,6 @@ values are what the full-scan store produced before the index existed.
 
 import ctypes;
 import os;
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
 import from jaclang.compiler.driver.program { JacProgram }
 import from tests.support { TESTS_DIR, native_address, native_force_opts }
 
@@ -23,23 +22,16 @@ glob FIXTURES = os.path.join(
 
 glob _MEMO: list[any] = [];
 
-"""Compile the fixture once and return (coverage record, errors, engine)."""
+"""Compile the fixture once and return (errors, engine)."""
 def measured -> tuple[any, ...] {
     if _MEMO {
         return _MEMO[0];
     }
     path = os.path.join(FIXTURES, FIXTURE);
     prog = JacProgram();
-    na_coverage_begin();
-    ir = None;
-    try {
-        ir = prog.compile(file_path=path, options=native_force_opts());
-    } finally {
-        coverage = na_coverage_end();
-    }
+    ir = prog.compile(file_path=path, options=native_force_opts());
     errors = [str(e) for e in (prog.errors_had or [])];
-    rec = coverage.get(os.path.realpath(path)) or coverage.get(path);
-    out = (rec, errors, (ir.gen.native_engine if ir is not None else None), );
+    out = (errors, (ir.gen.native_engine if ir is not None else None), );
     _MEMO.append(out);
     return out;
 }
@@ -52,29 +44,24 @@ def answer(eng: any, name: str) -> int {
 }
 
 test "the typed-adjacency fixture lowers natively" {
-    (rec, errors, eng) = measured();
-    assert not errors , f"the fixture must compile: {errors}";
-    assert rec is not None , "the fixture produced no native coverage record";
-    assert rec.get("outcome") == "native" , (
-        f"the fixture must lower natively, got {rec.get('outcome')}: "
-        f"{rec.get('code')} {rec.get('detail')}"
-    );
+    (errors, eng) = measured();
+    assert not errors , f"the fixture must lower natively: {errors}";
     assert eng is not None , "no JIT engine was produced for the fixture";
 }
 
 test "a base edge type gathers its subtypes in connect order" {
-    (_rec, _errors, eng) = measured();
+    (_errors, eng) = measured();
     assert answer(eng, "base_hop_merges_subtypes") == 1345;
 }
 
 test "exact and untyped hops keep connect order" {
-    (_rec, _errors, eng) = measured();
+    (_errors, eng) = measured();
     assert answer(eng, "exact_hops") == 1526007;
     assert answer(eng, "untyped_hop") == 1234567;
 }
 
 test "removals keep survivors in order and new edges follow them" {
-    (_rec, _errors, eng) = measured();
+    (_errors, eng) = measured();
     assert answer(eng, "removal_and_reuse") == 357926807;
     for _ in range(3) {
         assert answer(eng, "many_edges_one_rare") == 123206;
@@ -82,11 +69,11 @@ test "removals keep survivors in order and new edges follow them" {
 }
 
 test "undirected edges answer typed hops in both directions" {
-    (_rec, _errors, eng) = measured();
+    (_errors, eng) = measured();
     assert answer(eng, "undirected_both_ways") == 2334101;
 }
 
 test "a walker visits a typed hop in connect order" {
-    (_rec, _errors, eng) = measured();
+    (_errors, eng) = measured();
     assert answer(eng, "visit_order") == 1345;
 }
