@@ -4,7 +4,7 @@ import asyncio;
 import from litellm.exceptions { InternalServerError }
 import from jaclang.byllm.types { IterationAction, IterationContext, StreamEvent }
 import from jaclang.byllm.lib { MockLLM }
-import from support { call, event_types, fail, finish, mk_run, say }
+import from support { call, event_types, fail, mk_run, say }
 
 
 def save_data(name: str) -> str {
@@ -52,20 +52,18 @@ test "a retried answer replaces the attempt that failed" {
             [call("save_data", {"name": "x"})],
             {"on_iteration": _summarize_after_first}
         ),
-        "recovery": ([say("seven"), finish(7)], {}),
         "none": ([], {})
     };
     rows = [
         ("at max_react_iterations", "cutoff", say("full answer"), "full answer"),
         ("on ABORT_WITH_SUMMARY", "abort", say("full answer"), "full answer"),
-        ("after recovery", "recovery", say("full answer"), "full answer"),
         ("with no tools", "none", say("full answer"), "full answer"),
         ("with no tools, empty retry", "none", say(""), "")
     ];
     for (label, ending, retry, expected) in rows {
         (lead, params) = setups[ending];
         mt = mk_run(
-            resp_type=int if ending == "recovery" else str,
+            resp_type=str,
             tools=[] if ending == "none" else [save_data],
             stream=True,
             call_params=params

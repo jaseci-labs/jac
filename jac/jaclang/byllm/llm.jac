@@ -125,7 +125,7 @@ obj BaseLLM {
     ) -> AsyncIterator[object];
 
     def _stream_final_answer(
-        mt_run: MTRuntime, fallback: str | None = None, retractable: bool = False
+        mt_run: MTRuntime, retractable: bool = False
     ) -> Generator[str, None, None];
 
     def _force_final_answer(mt_run: MTRuntime) -> object;

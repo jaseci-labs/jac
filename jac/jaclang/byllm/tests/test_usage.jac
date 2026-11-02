@@ -816,8 +816,7 @@ test "usage_step fires for the recovery call" {
                 "finish_tool",
                 {"output": {"name": "Gus", "age": 29}},
                 usage={"prompt_tokens": 40, "completion_tokens": 8, "total_tokens": 48}
-            ),
-            say("Gus")
+            )
         ]
     );
     mt_run = mk_run(resp_type=_Person, tools=[step_a], stream=True);
@@ -828,7 +827,7 @@ test "usage_step fires for the recovery call" {
     assert llm.exhausted() , f"recovery never ran: {llm.outputs}";
     assert len(steps) == 1 , f"the recovery episode must report one usage_step: {steps}";
     kinds = [c["call_kind"] for c in steps[0]["per_call"]];
-    assert kinds == ["recovery", "final_answer_restream"] , (
+    assert kinds == ["recovery"] , (
         f"the usage_step must cover the recovery call, got call_kinds={kinds}"
     );
     assert steps[0]["total"]["total_tokens"] == 48;

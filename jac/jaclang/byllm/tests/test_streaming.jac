@@ -174,6 +174,22 @@ test "a finish_tool answer reaches the caller as committed, with no second call"
 }
 
 
+test "a typed answer recovered through finish_tool is returned as the value" {
+    # Recovery only runs for typed returns; the recovered finish_tool value is the
+    # answer, so it is neither restated nor turned into text.
+    seen: list[StreamEvent] = [];
+    llm = MockLLM(outputs=[say("seven"), finish(7), say("Seven, as text.")]);
+
+    def pick(task: str) -> int by llm(
+        tools=[get_weather], stream=True, stream_handler=seen.append
+    );
+
+    assert pick("go") == 7;
+    assert len(llm.seen) == 2 , f"expected 2 requests, got {len(llm.seen)}";
+    assert chunk_text(seen) == "" , f"a typed answer is not text: {chunk_text(seen)!r}";
+}
+
+
 test "a str answer that skips finish_tool still arrives on the chunk channel" {
     # A tool is offered so the ReAct loop is entered, but the model answers in
     # plain text instead of calling finish_tool. The terminal text must reach

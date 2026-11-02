@@ -1719,7 +1719,7 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
 
 
 impl BaseLLM._stream_final_answer(
-    mt_run: MTRuntime, fallback: str | None = None, retractable: bool = False
+    mt_run: MTRuntime, retractable: bool = False
 ) -> Generator[str, None, None] {
     final_instruction = Message(
         role=MessageRole.USER,
@@ -1743,16 +1743,6 @@ impl BaseLLM._stream_final_answer(
             }
             yield token;
         }
-        if not accumulated and fallback is not None {
-            accumulated = fallback;
-            yield fallback;
-        }
-    } except OutputTruncatedError {
-        if fallback is None {
-            raise;
-        }
-        accumulated = fallback;
-        yield fallback;
     } except Exception {
         accumulated = "";
         raise;
@@ -1824,25 +1814,18 @@ impl BaseLLM._yield_recovery_result(
     recovery_resp: CompletionResult, iter_count: int, mt_run: MTRuntime, usage_base: int
 ) -> Generator[StreamEvent, None, None] {
     finish_found = False;
-    committed = "";
     if recovery_resp.tool_calls {
         for tool_call in recovery_resp.tool_calls {
             if tool_call.is_finish_call() {
                 mt_run.add_message(tool_call());
-                committed = str(tool_call.get_output() or "");
+                _commit_answer(mt_run, tool_call.get_output());
                 finish_found = True;
                 break;
             }
         }
     }
     yield StreamEvent(event_type="steps_done", data={"iterations": iter_count});
-    if finish_found {
-        yield from _answer_events(
-            mt_run,
-            self._stream_final_answer(mt_run, fallback=committed, retractable=True),
-            iter_count
-        );
-    } elif recovery_resp.output {
+    if not finish_found and recovery_resp.output {
         yield StreamEvent(
             event_type="chunk", data={"content": str(recovery_resp.output)}
         );
