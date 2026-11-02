@@ -2069,6 +2069,37 @@ impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {
     return val;
 }
 
+impl NaIRGenPass._jacval_text_len(
+    tag: ir.Value, payload: ir.Value, label: str
+) -> ir.Value {
+    b = self.builder;
+    i64 = ir.IntType(64);
+    text = b.inttoptr(payload, ir.IntType(8).as_pointer(), name=f"{label}.textp");
+    is_bytes = None
+        if self._nogc_headerless()
+        else self._emit_buffer_isinstance(tag, payload, ["bytes"]);
+    if is_bytes is None {
+        return self._call_str_len(b, text, name=f"{label}.slen");
+    }
+    func = b.function;
+    text_bb = func.append_basic_block(name=f"{label}.text");
+    bytes_bb = func.append_basic_block(name=f"{label}.bytes");
+    done_bb = func.append_basic_block(name=f"{label}.textlen");
+    b.cbranch(is_bytes, bytes_bb, text_bb);
+    b.position_at_end(text_bb);
+    text_len = self._call_str_len(b, text, name=f"{label}.slen");
+    text_end = b.block;
+    b.branch(done_bb);
+    b.position_at_end(bytes_bb);
+    bytes_len = b.load(b.inttoptr(payload, i64.as_pointer()), name=f"{label}.blen");
+    b.branch(done_bb);
+    b.position_at_end(done_bb);
+    length = b.phi(i64, name=f"{label}.len");
+    length.add_incoming(text_len, text_end);
+    length.add_incoming(bytes_len, bytes_bb);
+    return length;
+}
+
 impl NaIRGenPass._jacval_truthy(jv: ir.Value) -> ir.Value {
     b = self.builder;
     i1 = ir.IntType(1);
@@ -2091,8 +2122,7 @@ impl NaIRGenPass._jacval_truthy(jv: ir.Value) -> ir.Value {
     b.cbranch(do_str, str_bb, cont_chk_bb);
 
     b.position_at_end(str_bb);
-    str_ptr = b.inttoptr(payload, i8.as_pointer(), name="jv.truthy.strp");
-    _slen = self._call_str_len(b, str_ptr, name="jv.truthy.slen");
+    _slen = self._jacval_text_len(tag, payload, "jv.truthy");
     str_res = b.icmp_unsigned("!=", _slen, ir.Constant(i64, 0), name="jv.truthy.snz");
     str_exit_bb = b.block;
     b.branch(merge_bb);
@@ -2771,8 +2801,13 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             _wi8p = ir.IntType(8).as_pointer();
             _wfn = val;
 
+            _wenv: ir.Value = ir.Constant(_wi8p, None);
             if isinstance(val, ir.Function) {
-                return self._static_fn_closure(_clos_tgt, val);
+                _fn_env = self._fn_value_env(val);
+                if _fn_env is None {
+                    return self._static_fn_closure(_clos_tgt, val);
+                }
+                _wenv = _fn_env;
             }
             if isinstance(_wfn.type, ir.FunctionType) {
                 _wfn = self.builder.bitcast(
@@ -2793,7 +2828,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
                 [ir.Constant(_wi32, 0), ir.Constant(_wi32, 1)],
                 name="clos.wrap.env.slot"
             );
-            self.builder.store(ir.Constant(_wi8p, None), _wenv_slot);
+            self.builder.store(_wenv, _wenv_slot);
             self._mark_owned(_wclos);
             return _wclos;
         }
@@ -5474,6 +5509,53 @@ impl NaIRGenPass._emit_comparison(
             } elif op == Tok.NE {
                 return self.builder.not_(complex_equal, name="ceq.ne");
             }
+        }
+
+        if op in (Tok.EE, Tok.NE)
+            and left.type == right.type
+            and self._closure_struct_of(left.type) is not None {
+            i32 = ir.IntType(32);
+            z0 = ir.Constant(i32, 0);
+            _null = ir.Constant(left.type, None);
+            _same = self.builder.icmp_unsigned("==", left, right, name="clos.same");
+            _both = self.builder.and_(
+                self.builder.icmp_unsigned("!=", left, _null, name="clos.l.nn"),
+                self.builder.icmp_unsigned("!=", right, _null, name="clos.r.nn"),
+                name="clos.both"
+            );
+            _pre_bb = self.builder.block;
+            _fn = self.builder.function;
+            _fields_bb = _fn.append_basic_block(name="clos.eq.fields");
+            _done_bb = _fn.append_basic_block(name="clos.eq.done");
+            self.builder.cbranch(_both, _fields_bb, _done_bb);
+            self.builder.position_at_end(_fields_bb);
+            _parts: list[ir.Value] = [];
+            for _i in (0, 1) {
+                _lv = self.builder.load(
+                    self.builder.gep(left, [z0, ir.Constant(i32, _i)], name="clos.l.p"),
+                    name="clos.l"
+                );
+                _rv = self.builder.load(
+                    self.builder.gep(
+                        right, [z0, ir.Constant(i32, _i)], name="clos.r.p"
+                    ),
+                    name="clos.r"
+                );
+                _parts.append(
+                    self.builder.icmp_unsigned("==", _lv, _rv, name="clos.part.eq")
+                );
+            }
+            _fields_eq = self.builder.and_(_parts[0], _parts[1], name="clos.fields.eq");
+            _fields_end = self.builder.block;
+            self.builder.branch(_done_bb);
+            self.builder.position_at_end(_done_bb);
+            _eq = self.builder.phi(ir.IntType(1), name="clos.eq");
+            _eq.add_incoming(_same, _pre_bb);
+            _eq.add_incoming(_fields_eq, _fields_end);
+            if op == Tok.NE {
+                return self.builder.not_(_eq, name="clos.ne");
+            }
+            return _eq;
         }
 
         if op == Tok.EE {
