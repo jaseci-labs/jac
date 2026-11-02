@@ -20,6 +20,20 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
          "RSHIFT_EQ": "RSHIFT",
          "STAR_POW_EQ": "STAR_POW"
      },
+     OPERATOR_SYMBOLS: dict[str, str] = {
+         "PLUS": "+",
+         "MINUS": "-",
+         "STAR_MUL": "*",
+         "DIV": "/",
+         "FLOOR_DIV": "//",
+         "MOD": "%",
+         "STAR_POW": "**",
+         "BW_AND": "&",
+         "BW_OR": "|",
+         "BW_XOR": "^",
+         "LSHIFT": "<<",
+         "RSHIFT": ">>"
+     },
      SHIFT_MESSAGE: str = "shift count out of range",
      NEGATIVE_SHIFT_MESSAGE: str = "negative shift count",
      RANGE_STEP_MESSAGE: str = "range() arg 3 must not be zero",
@@ -29,6 +43,9 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      KIND_BOOL: int = 2,
      KIND_STR: int = 3,
      KIND_REF: int = 4,
+     KIND_TUPLE: int = 5,
+     KIND_ANY: int = 6,
+     TUPLE_BOX_MEMBERS: int = 8,
      NO_VALUE_KIND: int = -1,
      LIST_INDEX_MESSAGE: str = "list index out of range",
      LIST_ASSIGN_MESSAGE: str = "list assignment index out of range",
@@ -214,11 +231,19 @@ obj MirFnState {
         specials: dict[str, MirValue] = {};
 }
 
+obj MirBound {
+    has value: MirValue,
+        site: uni.UniNode,
+        star: bool = False;
+}
+
 obj MirPacked {
-    has items: list[uni.Expr],
+    has items: list[(uni.Expr | MirBound)],
         site: uni.UniNode,
         keyword: bool = False,
-        names: list[str] = [];
+        names: list[str] = [],
+        bindable: list[str] = [],
+        unique: bool = False;
 }
 
 obj MirDecl {
@@ -337,6 +362,7 @@ obj MirLowering {
     def method_call(nd: uni.FuncCall, target: uni.AtomTrailer) -> (MirValue | None);
     def call_args(nd: uni.FuncCall) -> list[uni.Expr];
     def coerce_place(place: MirValue) -> MirValue;
+    def declare_global(nd: uni.Name) -> (MirGlobal | None);
     def global_place(nd: uni.Name) -> (MirValue | None);
     def global_declaration(sym: uni.Symbol) -> (uni.Assignment | None);
     def runtime(name: str, args: list[MirValue]) -> (MirValue | None);
@@ -351,6 +377,8 @@ obj MirLowering {
     def to_bits(value: MirValue, elem: MirType, site: uni.UniNode) -> MirValue;
     def scalar_from_bits(bits: MirValue, elem: MirType) -> MirValue;
     def owned_element(handle: MirValue, elem: MirType) -> MirValue;
+    def tuple_box(value: MirValue, site: uni.UniNode) -> MirValue;
+    def tuple_unbox(handle: MirValue, t: MirType) -> MirValue;
     def address_of(value: MirValue) -> MirValue;
     def container_len(value: MirValue) -> MirValue;
     def list_read(lst: MirValue, index: MirValue) -> MirValue;
@@ -369,6 +397,17 @@ obj MirLowering {
     );
 
     def dict_get(d: MirValue, key: MirValue, site: uni.UniNode) -> MirValue;
+    def dict_entry_value(d: MirValue, at: MirValue, site: uni.UniNode) -> MirValue;
+    def is_spread(item: uni.UniNode) -> bool;
+    def each_begin(
+        source: MirValue, site: uni.UniNode
+    ) -> tuple[MirValue, MirIterCursor, MirBlock, MirBlock];
+
+    def each_end(head: MirBlock, after: MirBlock);
+    def container_add(made: MirValue, item: MirValue, site: uni.UniNode);
+    def extend_from(made: MirValue, source: MirValue, site: uni.UniNode);
+    def container_rebuild(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
+    def merge_dict(made: MirValue, source: MirValue, site: uni.UniNode, unique: bool);
     def list_slice(lst: MirValue, part: uni.Slice, site: uni.UniNode) -> MirValue;
     def container_method(
         receiver: MirValue, name: str, nd: uni.FuncCall
@@ -400,6 +439,15 @@ obj MirLowering {
     ) -> list[tuple[str, MirType, (uni.Expr | None)]];
 
     def object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue;
+    def construct(
+        symbol: str,
+        obj_def: MirObjectDef,
+        owner: uni.Module,
+        params: list[tuple[str, MirType, (uni.Expr | None)]],
+        values: list[MirValue],
+        nd: uni.FuncCall
+    ) -> MirValue;
+
     def object_method(
         nd: uni.FuncCall, receiver: MirValue, arch: uni.Archetype, name: str
     ) -> (MirValue | None);
@@ -427,6 +475,11 @@ obj MirLowering {
     def opt_wrap(value: MirValue, to: MirType) -> MirValue;
     def opt_present(value: MirValue) -> MirValue;
     def opt_get(value: MirValue) -> MirValue;
+    def opt_unwrap_checked(value: MirValue, message: str) -> MirValue;
+    def narrowed_load(value: MirValue, nd: uni.Expr) -> MirValue;
+    def narrow_down(value: MirValue, nd: uni.Expr) -> MirValue;
+    def optional_eq(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
+    def lower_cast(nd: uni.CastExpr) -> MirValue;
     def opt_begin(
         value: MirValue, result: MirType
     ) -> tuple[MirValue, MirValue, MirBlock, MirBlock];
@@ -480,7 +533,21 @@ obj MirLowering {
     def identity(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
     def bound_args(
         nd: uni.FuncCall, ab: uni.Ability, method: bool
-    ) -> list[(uni.Expr | MirPacked)];
+    ) -> list[(uni.Expr | MirPacked | MirBound)];
+
+    def has_spread(nd: uni.FuncCall) -> bool;
+    def spread_args(
+        nd: uni.FuncCall, ab: uni.Ability, sig: uni.FuncSignature, method: bool
+    ) -> list[(uni.Expr | MirPacked | MirBound)];
+
+    def bind_from_spreads(
+        pv: uni.ParamVar,
+        given: (MirBound | None),
+        spreads: list[MirBound],
+        matched: MirValue,
+        ab: uni.Ability,
+        nd: uni.FuncCall
+    ) -> MirBound;
 
     def bind_by_name(
         ab: uni.Ability,
@@ -490,7 +557,10 @@ obj MirLowering {
         nd: uni.FuncCall
     ) -> uni.Expr;
 
-    def bound_value(arg: (uni.Expr | MirPacked), ptype: MirType) -> MirValue;
+    def bound_value(
+        arg: (uni.Expr | MirPacked | MirBound), ptype: MirType
+    ) -> MirValue;
+
     def constant_default(value: (uni.Expr | None)) -> bool;
     def builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def list_concat(left: MirValue, right: MirValue) -> MirValue;
@@ -754,7 +824,7 @@ obj MirLowering {
     def type_names(target: uni.Expr) -> (list[str] | None);
     def target_archetype(target: uni.Expr) -> (uni.Archetype | None);
     def isinstance_value(
-        subject: uni.Expr, target: uni.Expr, site: uni.UniNode
+        value: MirValue, target: uni.Expr, site: uni.UniNode
     ) -> (MirValue | None);
 
     def any_isinstance(
@@ -823,6 +893,10 @@ obj MirLowering {
     def lower_switch(nd: uni.SwitchStmt);
     def match_test(
         pat: uni.MatchPattern, subject: MirValue, fail: MirBlock, site: uni.UniNode
+    );
+
+    def match_star_sequence(
+        pat: uni.MatchSequence, at: int, subject: MirValue, fail: MirBlock
     );
 
     def match_arch(pat: uni.MatchArch, subject: MirValue, fail: MirBlock);

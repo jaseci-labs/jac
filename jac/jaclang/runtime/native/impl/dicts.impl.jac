@@ -57,6 +57,12 @@ impl _hash(bits: int, kind: int) -> int {
     if kind == KIND_STR {
         return _str_hash(bits) & HASH_MASK;
     }
+    if kind == KIND_TUPLE and bits != 0 {
+        return _tuple_hash(bits) & HASH_MASK;
+    }
+    if kind == KIND_ANY and bits != 0 {
+        return _any_hash(bits) & HASH_MASK;
+    }
     value = bits;
     if kind == KIND_FLOAT and value == NEG_ZERO_BITS {
         value = 0;
@@ -473,7 +479,8 @@ impl _drop_release(bits: int, kind: int, collecting: bool) {
     }
     if kind == KIND_STR {
         __jac_rt_release_acyclic(bits);
-    } elif kind == KIND_REF and not collecting {
+    } elif (kind == KIND_REF or kind == KIND_TUPLE or kind == KIND_ANY)
+        and not collecting {
         __jac_rt_release(bits);
     }
 }
@@ -484,10 +491,7 @@ impl _dict_drop(o: int, key_kind: int, val_kind: int) {
     keys = __mem_load_i64(o + DICT_KEYS);
     vals = __mem_load_i64(o + DICT_VALS);
     order = __mem_load_i64(o + DICT_ORDER);
-    if key_kind == KIND_STR
-        or key_kind == KIND_REF
-        or val_kind == KIND_STR
-        or val_kind == KIND_REF {
+    if _kind_class(key_kind) != KIND_INT or _kind_class(val_kind) != KIND_INT {
         e = 0;
         while e < used {
             if __mem_load_i64(order + e * SLOT) >= 0 {
@@ -590,6 +594,9 @@ impl _dict_trace_rr(o: int, visit_fn: int) {
 }
 
 impl _kind_class(kind: int) -> int {
+    if kind == KIND_TUPLE or kind == KIND_ANY {
+        return KIND_REF;
+    }
     if kind == KIND_STR or kind == KIND_REF {
         return kind;
     }
@@ -636,4 +643,37 @@ impl _register_traces -> None {
     __jac_rt_trace_register(int(_dict_drop_rs), int(_dict_trace_rs));
     __jac_rt_trace_register(int(_dict_drop_rr), int(_dict_trace_rr));
     __mem_store_i8(flag, i8(1));
+}
+
+impl _tuple_hash(box: int) -> int {
+    n = __mem_load_i64(box);
+    acc = _mix(n + 1);
+    i = 0;
+    while i < n {
+        member = __mem_load_i64(box + (n + i + 1) * SLOT);
+        acc = _mix(acc ^ _hash(member, __mem_load_i64(box + (i + 1) * SLOT)));
+        i += 1;
+    }
+    return acc;
+}
+
+impl _any_hash(box: int) -> int {
+    tag = __mem_load_i64(box);
+    payload = __mem_load_i64(box + SLOT);
+    if tag == TAG_STR {
+        return _str_hash(payload);
+    }
+    if tag == TAG_NONE {
+        return _mix(TAG_NONE);
+    }
+    if tag == TAG_FLOAT {
+        value = __bits_float(payload);
+        if value > -INT_FLOAT_LIMIT
+            and value < INT_FLOAT_LIMIT
+            and value == float(int(value)) {
+            return _mix(int(value));
+        }
+        return _hash(payload, KIND_FLOAT);
+    }
+    return _mix(payload);
 }

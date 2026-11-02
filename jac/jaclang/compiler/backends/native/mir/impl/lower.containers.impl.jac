@@ -3,14 +3,10 @@ impl MirLowering.elem_kind(t: MirType, site: uni.UniNode) -> int {
         return KIND_INT;
     }
     if t.kind == MirKind.TUPLE {
-        raise MirRefused(
-            mir_refusal(
-                "container element",
-                t.render(),
-                site,
-                "A native container slot holds one machine word, and a tuple does not fit one."
-            )
-        );
+        for member in t.args {
+            self.elem_kind(member, site);
+        }
+        return KIND_TUPLE;
     }
     if t.kind == MirKind.FLOAT {
         return KIND_FLOAT;
@@ -21,10 +17,60 @@ impl MirLowering.elem_kind(t: MirType, site: uni.UniNode) -> int {
     if t.kind in (MirKind.STR, MirKind.STR_REF) {
         return KIND_STR;
     }
+    if t.kind == MirKind.ANY {
+        return KIND_ANY;
+    }
     if mir_holds_ref(t) {
         return KIND_REF;
     }
     raise MirRefused(mir_refusal("container element", t.render(), site));
+}
+
+impl MirLowering.tuple_box(value: MirValue, site: uni.UniNode) -> MirValue {
+    b = self.builder();
+    held = value;
+    box = self.runtime_value(
+        "__jac_rt_tuple_new", [b.const_int(len(value.type.args), mir_int())]
+    );
+    for (index, member) in enumerate(value.type.args) {
+        self.runtime(
+            "__jac_rt_tuple_set",
+            [
+                box,
+                b.const_int(index, mir_int()),
+                self.to_bits(self.tuple_get(held, index), member, site),
+                b.const_int(self.elem_kind(member, site), mir_int())
+            ]
+        );
+    }
+    return box;
+}
+
+impl MirLowering.tuple_unbox(handle: MirValue, t: MirType) -> MirValue {
+    b = self.builder();
+    size = len(t.args);
+    members: list[MirValue] = [];
+    for (index, member) in enumerate(t.args) {
+        kind = self.elem_kind(member, self.module);
+        if kind in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
+            got = self.runtime_value(
+                "__jac_rt_tuple_get_ref", [handle, b.const_int(index, mir_int())]
+            );
+            members.append(self.owned_element(got, member));
+            continue;
+        }
+        slot = b.binary(
+            "add",
+            self.address_of(handle),
+            b.const_int(TUPLE_BOX_MEMBERS + (size + index) * 8, mir_int())
+        );
+        members.append(
+            self.scalar_from_bits(
+                self.emit_value(MirOp.MEM_LOAD, mir_int(), [slot]), member
+            )
+        );
+    }
+    return self.emit_value(MirOp.TUPLE_MAKE, t, members);
 }
 
 impl MirLowering.address_of(value: MirValue) -> MirValue {
@@ -38,6 +84,9 @@ impl MirLowering.to_bits(
     kind = self.elem_kind(elem, site);
     if elem.kind == MirKind.ANY {
         return self.address_of(self.any_to_box(value, site));
+    }
+    if kind == KIND_TUPLE {
+        return self.address_of(self.tuple_box(self.coerce(value, elem, site), site));
     }
     if kind == KIND_FLOAT {
         return self.emit_value(
@@ -81,6 +130,9 @@ impl MirLowering.owned_element(handle: MirValue, elem: MirType) -> MirValue {
     b = self.builder();
     if elem.kind == MirKind.ANY {
         return self.any_from_box(handle);
+    }
+    if elem.kind == MirKind.TUPLE {
+        return self.tuple_unbox(handle, elem);
     }
     if elem.kind in (MirKind.STR, MirKind.STR_REF) {
         text = b.ref_cast(handle, mir_str_ref(), True);
@@ -129,7 +181,7 @@ impl MirLowering.list_read(lst: MirValue, index: MirValue) -> MirValue {
     b = self.builder();
     elem = lst.type.payload();
     kind = self.elem_kind(elem, self.module);
-    if kind in (KIND_STR, KIND_REF) {
+    if kind in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
         handle = self.runtime(
             "__jac_rt_list_get_ref", [lst, index, b.const_int(kind, mir_int())]
         );
@@ -192,10 +244,12 @@ impl MirLowering.lower_list_literal(nd: uni.ListVal) -> MirValue {
     }
     elem = result_type.payload();
     made = self.spill(self.new_list(elem, max(len(nd.values), 4)));
-    kind = self.builder().const_int(self.elem_kind(elem, nd), mir_int());
     for item in nd.values {
-        bits = self.to_bits(self.lower_expr(item), elem, item);
-        self.runtime("__jac_rt_list_push", [made, bits, kind]);
+        if isinstance(item, uni.UnaryExpr) and self.is_spread(item) {
+            self.extend_from(made, self.lower_expr(item.operand), item);
+        } else {
+            self.container_add(made, self.lower_expr(item), item);
+        }
     }
     return made;
 }
@@ -207,20 +261,12 @@ impl MirLowering.lower_set_literal(nd: uni.SetVal) -> MirValue {
     }
     elem = result_type.payload();
     made = self.spill(self.new_dict(elem, None, result_type));
-    b = self.builder();
-    kind = b.const_int(self.elem_kind(elem, nd), mir_int());
     for item in list(nd.values or []) {
-        bits = self.to_bits(self.lower_expr(item), elem, item);
-        self.runtime(
-            "__jac_rt_dict_set",
-            [
-                made,
-                bits,
-                b.const_int(0, mir_int()),
-                kind,
-                b.const_int(NO_VALUE_KIND, mir_int())
-            ]
-        );
+        if isinstance(item, uni.UnaryExpr) and self.is_spread(item) {
+            self.extend_from(made, self.lower_expr(item.operand), item);
+        } else {
+            self.container_add(made, self.lower_expr(item), item);
+        }
     }
     return made;
 }
@@ -237,7 +283,8 @@ impl MirLowering.lower_dict_literal(nd: uni.DictVal) -> MirValue {
     value_kind = b.const_int(self.elem_kind(value, nd), mir_int());
     for pair in nd.kv_pairs {
         if pair.key is None {
-            raise MirRefused(mir_refusal("dict", "unpacking", pair));
+            self.merge_dict(made, self.lower_expr(pair.value), pair, False);
+            continue;
         }
         key_bits = self.to_bits(self.lower_expr(pair.key), key, pair.key);
         value_bits = self.to_bits(self.lower_expr(pair.value), value, pair.value);
@@ -265,21 +312,135 @@ impl MirLowering.dict_get(d: MirValue, key: MirValue, site: uni.UniNode) -> MirV
     self.raise_if(
         b.compare("lt", found, b.const_int(0, mir_int())), "KeyError", KEY_MESSAGE
     );
+    return self.dict_entry_value(d, found, site);
+}
+
+impl MirLowering.dict_entry_value(
+    d: MirValue, at: MirValue, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    value_type = d.type.args[1];
     kind = self.elem_kind(value_type, site);
-    if kind in (KIND_STR, KIND_REF) {
+    if kind in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
         handle = self.runtime(
-            "__jac_rt_dict_val_ref", [d, found, b.const_int(kind, mir_int())]
+            "__jac_rt_dict_val_ref", [d, at, b.const_int(kind, mir_int())]
         );
         if handle is None {
             raise MirRefused(mir_refusal("subscript", value_type.render(), site));
         }
         return self.owned_element(handle, value_type);
     }
-    bits = self.runtime("__jac_rt_dict_val_at", [d, found]);
+    bits = self.runtime("__jac_rt_dict_val_at", [d, at]);
     if bits is None {
         raise MirRefused(mir_refusal("subscript", value_type.render(), site));
     }
     return self.scalar_from_bits(bits, value_type);
+}
+
+impl MirLowering.is_spread(item: uni.UniNode) -> bool {
+    return isinstance(item, uni.UnaryExpr) and item.op.name == Tok.STAR_MUL;
+}
+
+impl MirLowering.each_begin(
+    source: MirValue, site: uni.UniNode
+) -> tuple[MirValue, MirIterCursor, MirBlock, MirBlock] {
+    b = self.builder();
+    fn = self.st().fn;
+    cursor = self.iter_open(source, site);
+    head = fn.new_block("each.head");
+    body = fn.new_block("each.body");
+    after = fn.new_block("each.exit");
+    b.branch(head);
+    b.position(head);
+    return (self.iter_step(cursor, body, after), cursor, head, after);
+}
+
+impl MirLowering.each_end(head: MirBlock, after: MirBlock) {
+    b = self.builder();
+    if not b.block.terminated() {
+        b.branch(head);
+    }
+    b.position(after);
+}
+
+impl MirLowering.container_add(made: MirValue, item: MirValue, site: uni.UniNode) {
+    b = self.builder();
+    elem = made.type.payload();
+    kind = b.const_int(self.elem_kind(elem, site), mir_int());
+    bits = self.to_bits(item, elem, site);
+    if made.type.kind == MirKind.LIST {
+        self.runtime("__jac_rt_list_push", [made, bits, kind]);
+        return;
+    }
+    self.runtime(
+        "__jac_rt_dict_set",
+        [
+            made,
+            bits,
+            b.const_int(0, mir_int()),
+            kind,
+            b.const_int(NO_VALUE_KIND, mir_int())
+        ]
+    );
+}
+
+impl MirLowering.extend_from(made: MirValue, source: MirValue, site: uni.UniNode) {
+    b = self.builder();
+    kind = b.const_int(self.elem_kind(made.type.payload(), site), mir_int());
+    if made.type.kind == MirKind.LIST and source.type is made.type {
+        self.runtime("__jac_rt_list_extend", [made, source, kind]);
+        return;
+    }
+    if made.type.kind == MirKind.SET and source.type is made.type {
+        self.runtime(
+            "__jac_rt_dict_update",
+            [made, source, kind, b.const_int(NO_VALUE_KIND, mir_int())]
+        );
+        return;
+    }
+    (item, _, head, after) = self.each_begin(source, site);
+    self.container_add(made, item, site);
+    self.each_end(head, after);
+}
+
+impl MirLowering.merge_dict(
+    made: MirValue, source: MirValue, site: uni.UniNode, unique: bool
+) {
+    b = self.builder();
+    if source.type.kind != MirKind.DICT {
+        raise MirRefused(mir_refusal("unpacking", source.type.render(), site));
+    }
+    (key, value) = (made.type.args[0], made.type.args[1]);
+    key_kind = b.const_int(self.elem_kind(key, site), mir_int());
+    value_kind = b.const_int(self.elem_kind(value, site), mir_int());
+    if source.type is made.type and not unique {
+        self.runtime("__jac_rt_dict_update", [made, source, key_kind, value_kind]);
+        return;
+    }
+    (entry_key, cursor, head, after) = self.each_begin(source, site);
+    held = cursor.source;
+    at = cursor.position;
+    if held is None or at is None {
+        raise RuntimeError("dict cursor has no source");
+    }
+    key_bits = self.to_bits(entry_key, key, site);
+    if unique {
+        fn = self.st().fn;
+        clash = fn.new_block("kwsp.dup");
+        fresh = fn.new_block("kwsp.fresh");
+        seen = self.runtime_value("__jac_rt_dict_find", [made, key_bits, key_kind]);
+        b.cond_branch(b.compare("ge", seen, b.const_int(0, mir_int())), clash, fresh);
+        b.position(clash);
+        b.raise_builtin("TypeError", "got multiple values for keyword argument");
+        b.position(fresh);
+    }
+    value_bits = self.to_bits(
+        self.dict_entry_value(held, b.load(at, mir_int()), site), value, site
+    );
+    self.runtime(
+        "__jac_rt_dict_set", [made, key_bits, value_bits, key_kind, value_kind]
+    );
+    self.each_end(head, after);
 }
 
 impl MirLowering.list_slice(
@@ -480,7 +641,7 @@ impl MirLowering.list_method(
         if bits is None {
             return None;
         }
-        if self.elem_kind(elem, nd) in (KIND_STR, KIND_REF) {
+        if self.elem_kind(elem, nd) in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
             return self.owned_element(b.ref_cast(bits, mir_ref(), True), elem);
         }
         return self.scalar_from_bits(bits, elem);
@@ -543,7 +704,8 @@ impl MirLowering.dict_method(
         done = fn.new_block("get.done");
         b.cond_branch(b.compare("ge", found, b.const_int(0, mir_int())), hit, miss);
         b.position(hit);
-        if self.elem_kind(value_type, nd) in (KIND_STR, KIND_REF) {
+        if self.elem_kind(value_type, nd)
+            in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
             handle = self.runtime("__jac_rt_dict_val_ref", [d, found, value_kind]);
             if handle is None {
                 return None;
@@ -593,7 +755,8 @@ impl MirLowering.dict_method(
             "KeyError",
             KEY_MESSAGE
         );
-        if self.elem_kind(value_type, nd) in (KIND_STR, KIND_REF) {
+        if self.elem_kind(value_type, nd)
+            in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
             return self.owned_element(b.ref_cast(bits, mir_ref(), True), value_type);
         }
         return self.scalar_from_bits(bits, value_type);
@@ -821,7 +984,7 @@ impl MirLowering.lower_for_container(nd: uni.InForStmt, holder: MirValue) {
         key = source.type.args[0];
         kind = self.elem_kind(key, nd);
         at = b.load(cursor, mir_int());
-        if kind in (KIND_STR, KIND_REF) {
+        if kind in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
             handle = self.runtime(
                 "__jac_rt_dict_key_ref", [source, at, b.const_int(kind, mir_int())]
             );
@@ -880,7 +1043,7 @@ impl MirLowering.lower_delete(nd: uni.DeleteStmt) {
             bits = self.runtime("__jac_rt_list_pop", [holder, at]);
             if bits is not None
                 and self.elem_kind(holder.type.payload(), target)
-                    in (KIND_STR, KIND_REF) {
+                    in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
                 self.owned_element(
                     b.ref_cast(bits, mir_ref(), True), holder.type.payload()
                 );
@@ -907,4 +1070,34 @@ impl MirLowering.lower_delete(nd: uni.DeleteStmt) {
             mir_refusal("statement", "del on " + holder.type.render(), target)
         );
     }
+}
+
+impl MirLowering.container_rebuild(
+    value: MirValue, to: MirType, site: uni.UniNode
+) -> MirValue {
+    same_storage = len(value.type.args) == len(to.args)
+        and all(
+            have is want
+                or (
+                    have.kind == MirKind.OBJ
+                    and want.kind == MirKind.OBJ
+                    and self.obj_extends(have.name, want.name)
+                ) for (have, want) in zip(value.type.args, to.args)
+        );
+    if same_storage {
+        return self.builder().ref_cast(value, to, False);
+    }
+    if to.kind == MirKind.LIST {
+        made = self.spill(self.new_list(to.payload(), 4));
+        self.extend_from(made, value, site);
+        return made;
+    }
+    if to.kind == MirKind.SET {
+        made = self.spill(self.new_dict(to.payload(), None, to));
+        self.extend_from(made, value, site);
+        return made;
+    }
+    made = self.spill(self.new_dict(to.args[0], to.args[1], to));
+    self.merge_dict(made, value, site, False);
+    return made;
 }

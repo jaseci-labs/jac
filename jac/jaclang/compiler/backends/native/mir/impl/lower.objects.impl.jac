@@ -298,11 +298,7 @@ impl MirLowering.constructor_params(
     init = self.find_method(arch, "init") or self.find_method(arch, "__init__");
     found: list[tuple[str, MirType, (uni.Expr | None)]] = [];
     if init is not None and isinstance(init.signature, uni.FuncSignature) {
-        for pv in list(init.signature.posonly_params)
-            + list(init.signature.params or []) {
-            if pv.name.value == "self" {
-                continue;
-            }
+        for pv in self.param_nodes(init.signature, True) {
             found.append((pv.name.value, self.symbol_type(pv.name.sym, pv), pv.value));
         }
         return found;
@@ -541,12 +537,46 @@ impl MirLowering.lower_trace(obj_def: MirObjectDef) -> MirFunction {
         place = self.emit_value(
             MirOp.FIELD_ADDR, mir_c_ptr(member.type), [this], int_value=member.index
         );
-        child = b.load(place, member.type);
-        self.emit_value(
-            MirOp.CALL_FNPTR,
-            mir_none(),
-            [visit_fn, self.emit_value(MirOp.PTR_CAST, i8p, [child])]
-        );
+        loaded = b.load(place, member.type);
+        children: list[MirValue] = [loaded];
+        if member.type.kind == MirKind.TUPLE {
+            children = [
+                self.tuple_get(loaded, index) for index in range(len(member.type.args))
+            ];
+        }
+        for child in children {
+            if child.type.kind
+                in (MirKind.STR, MirKind.STR_REF, MirKind.ANY, MirKind.TUPLE)
+                or not mir_holds_ref(child.type) {
+                continue;
+            }
+            if child.type.kind == MirKind.OPT {
+                if child.type.payload().kind
+                    in (MirKind.STR, MirKind.STR_REF, MirKind.ANY, MirKind.TUPLE) {
+                    continue;
+                }
+                present = fn.new_block("trace.some");
+                after = fn.new_block("trace.next");
+                b.cond_branch(self.opt_present(child), present, after);
+                b.position(present);
+                self.emit_value(
+                    MirOp.CALL_FNPTR,
+                    mir_none(),
+                    [
+                        visit_fn,
+                        self.emit_value(MirOp.PTR_CAST, i8p, [self.opt_get(child)])
+                    ]
+                );
+                b.branch(after);
+                b.position(after);
+                continue;
+            }
+            self.emit_value(
+                MirOp.CALL_FNPTR,
+                mir_none(),
+                [visit_fn, self.emit_value(MirOp.PTR_CAST, i8p, [child])]
+            );
+        }
     }
     b.ret(None);
     self.state = saved;
@@ -573,6 +603,30 @@ impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue 
         native_unit_prefix(owner.loc.mod_path), f"{obj_def.name}.__ctor"
     );
     params = self.constructor_params(arch);
+    init = self.find_method(arch, "init") or self.find_method(arch, "__init__");
+    if init is not None
+        and isinstance(init.signature, uni.FuncSignature)
+        and (
+            init.signature.varargs is not None
+            or init.signature.kwargs is not None
+            or init.signature.kwonlyargs
+            or self.has_spread(nd)
+        ) {
+        bound = self.bound_args(nd, init, True);
+        if len(bound) != len(params) {
+            raise MirRefused(
+                mir_refusal("call", f"{obj_def.name} with {len(bound)} arguments", nd)
+            );
+        }
+        return self.construct(
+            symbol,
+            obj_def,
+            owner,
+            params,
+            [self.bound_value(arg, param[1]) for (arg, param) in zip(bound, params)],
+            nd
+        );
+    }
     positional: list[uni.Expr] = [];
     named: dict[str, uni.Expr] = {};
     for arg in list(nd.params or []) {
@@ -604,6 +658,17 @@ impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue 
         }
         values.append(self.coerce(self.lower_expr(source), ptype, source));
     }
+    return self.construct(symbol, obj_def, owner, params, values, nd);
+}
+
+impl MirLowering.construct(
+    symbol: str,
+    obj_def: MirObjectDef,
+    owner: uni.Module,
+    params: list[tuple[str, MirType, (uni.Expr | None)]],
+    values: list[MirValue],
+    nd: uni.FuncCall
+) -> MirValue {
     if not obj_def.local {
         self.mir.externs[symbol] = MirExtern(
             symbol=symbol, ret=mir_obj(obj_def.name), params=[p[1] for p in params]
@@ -703,6 +768,11 @@ impl MirLowering.invoke_method(
 
 impl MirLowering.isinstance_check(value: MirValue, arch: uni.Archetype) -> MirValue {
     b = self.builder();
+    if value.type.kind == MirKind.OPT and value.type.payload().kind == MirKind.OBJ {
+        (held, payload, absent, done) = self.opt_begin(value, mir_bool());
+        self.opt_switch(held, self.isinstance_check(payload, arch), absent, done);
+        return self.opt_end(held, self.builder().const_bool(False), done);
+    }
     obj_def = self.object_def(arch);
     if not obj_def.vtable_symbol or value.type.kind != MirKind.OBJ {
         return b.const_bool(value.type is mir_obj(obj_def.name));
@@ -786,7 +856,20 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
         if self.osp_setup {
             b.call(self.osp_setup, [], mir_none());
         }
-        for (glob_def, initial) in self.deferred_globals {
+        index = 0;
+        while index < len(self.deferred_globals) {
+            for used in self.deferred_globals[index][1].get_all_sub_nodes(uni.Name) {
+                self.declare_global(used);
+            }
+            index += 1;
+        }
+        ordered = sorted(
+            self.deferred_globals,
+            key=lambda (pair: tuple[MirGlobal, uni.Expr]) -> int { pair[
+                1
+            ].loc.pos_start; }
+        );
+        for (glob_def, initial) in ordered {
             place = self.emit_value(
                 MirOp.GLOBAL_ADDR,
                 mir_c_ptr(glob_def.type),

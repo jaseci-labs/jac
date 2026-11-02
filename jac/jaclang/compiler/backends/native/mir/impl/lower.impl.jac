@@ -439,6 +439,14 @@ impl MirLowering.store_name(target: uni.Name, value: MirValue) {
             return;
         }
     }
+    if target.sym is not None and id(target.sym) not in self.st().locals {
+        place = self.global_place(target);
+        if place is not None {
+            elem = self.place_elem(place);
+            self.builder().store(place, self.coerce(value, elem, target));
+            return;
+        }
+    }
     slot = self.local_slot(target.sym, target);
     self.builder().store(slot, self.coerce(value, slot.type, target));
 }
@@ -603,9 +611,13 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
                 )
             );
         }
-        value = self.builder().const_int(bits, self.expr_type(nd));
+        value = self.builder().const_int(
+            bits, self.expr_type(nd) if nd.type is not None else mir_int()
+        );
     } elif isinstance(nd, uni.Float) {
-        value = self.builder().const_float(float(nd.value), self.expr_type(nd));
+        value = self.builder().const_float(
+            float(nd.value), self.expr_type(nd) if nd.type is not None else mir_float()
+        );
     } elif isinstance(nd, uni.Bool) {
         value = self.builder().const_bool(nd.value.lower() in ("true", "1"));
     } elif isinstance(nd, uni.Null) {
@@ -639,6 +651,8 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
         value = self.lower_expr(nd.value);
     } elif isinstance(nd, uni.CfgExpr) {
         value = self.lower_expr(nd.expr);
+    } elif isinstance(nd, uni.CastExpr) {
+        value = self.lower_cast(nd);
     } elif isinstance(nd, uni.BinaryExpr) {
         value = self.lower_binary(nd);
     } elif isinstance(nd, uni.CompareExpr) {
@@ -716,7 +730,10 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
     if loaded.type.kind == MirKind.OPT
         and nd.type is not None
         and not isinstance(nd.type, UnionType) {
-        return self.opt_get(loaded);
+        return self.narrow_down(self.opt_get(loaded), nd);
+    }
+    if loaded.type.kind == MirKind.OBJ {
+        return self.narrow_down(loaded, nd);
     }
     if loaded.type.kind == MirKind.ANY {
         return self.narrow(loaded, nd);
@@ -764,6 +781,22 @@ impl MirLowering.arith(
     op: str, left: MirValue, right: MirValue, site: uni.UniNode
 ) -> MirValue {
     b = self.builder();
+    if left.type.kind == MirKind.OPT or right.type.kind == MirKind.OPT {
+        symbol = OPERATOR_SYMBOLS.get(op, op);
+        names = [
+            "NoneType" if side.type.kind == MirKind.OPT else side.type.render()
+            for side in (left, right)
+        ];
+        message = f"unsupported operand type(s) for {symbol}: '{names[0]}' and '{names[
+            1
+        ]}'";
+        if left.type.kind == MirKind.OPT and left.type.payload().is_numeric() {
+            left = self.opt_unwrap_checked(left, message);
+        }
+        if right.type.kind == MirKind.OPT and right.type.payload().is_numeric() {
+            right = self.opt_unwrap_checked(right, message);
+        }
+    }
     if op == Tok.STAR_POW {
         return self.power(left, right, site);
     }
@@ -955,6 +988,10 @@ impl MirLowering.compare_values(
     name = COMPARE_OPERATORS.get(op);
     if name is None {
         raise MirRefused(mir_refusal("comparison", op, site));
+    }
+    if name in ("eq", "ne") and MirKind.OPT in (left.type.kind, right.type.kind) {
+        same = self.optional_eq(left, right, site);
+        return same if name == "eq" else self.builder().logical_not(same);
     }
     if self.is_text(left) and self.is_text(right) {
         (left, right) = self.text_operands(left, right);
@@ -1248,6 +1285,9 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
         and to.kind == MirKind.OBJ
         and self.obj_extends(value.type.name, to.name) {
         return self.builder().ref_cast(value, to, False);
+    }
+    if mir_is_container(to) and value.type.kind == to.kind {
+        return self.container_rebuild(value, to, site);
     }
     raise MirRefused(
         mir_refusal("conversion", f"{value.type.render()} to {to.render()}", site)
@@ -1594,7 +1634,8 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         raise MirRefused(mir_refusal("call", f"len of {value.type.render()}", nd));
     }
     if name == "isinstance" and len(args) == 2 {
-        boxed = self.isinstance_value(args[0], args[1], nd);
+        subject = self.lower_expr(args[0]);
+        boxed = self.isinstance_value(subject, args[1], nd);
         if boxed is not None {
             return boxed;
         }
@@ -1609,7 +1650,7 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
             wanted = holder if isinstance(holder, uni.Archetype) else None;
         }
         if wanted is not None {
-            return self.isinstance_check(self.lower_expr(args[0]), wanted);
+            return self.isinstance_check(subject, wanted);
         }
         raise MirRefused(mir_refusal("call", "isinstance of a non-archetype", nd));
     }
@@ -1898,7 +1939,7 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
         }
     }
     place = self.lower_place(nd);
-    return self.builder().load(place, self.place_elem(place));
+    return self.narrowed_load(self.builder().load(place, self.place_elem(place)), nd);
 }
 
 impl MirLowering.call_name(nd: uni.FuncCall) -> str {
@@ -2287,6 +2328,16 @@ impl MirLowering.global_declaration(sym: uni.Symbol) -> (uni.Assignment | None) 
 }
 
 impl MirLowering.global_place(nd: uni.Name) -> (MirValue | None) {
+    found = self.declare_global(nd);
+    if found is None {
+        return None;
+    }
+    return self.emit_value(
+        MirOp.GLOBAL_ADDR, mir_c_ptr(found.type), [], str_value=found.symbol
+    );
+}
+
+impl MirLowering.declare_global(nd: uni.Name) -> (MirGlobal | None) {
     sym = nd.sym;
     if sym is None {
         return None;
@@ -2329,7 +2380,5 @@ impl MirLowering.global_place(nd: uni.Name) -> (MirValue | None) {
         self.mir.globals[sym.sym_name] = made;
         found = made;
     }
-    return self.emit_value(
-        MirOp.GLOBAL_ADDR, mir_c_ptr(found.type), [], str_value=found.symbol
-    );
+    return found;
 }
