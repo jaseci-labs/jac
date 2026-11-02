@@ -21,13 +21,7 @@ impl MirLowering.builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None)
     }
     b = self.builder();
     if name == "id" {
-        value = self.lower_expr(args[0]);
-        if not mir_holds_ref(value.type)
-            or value.type.kind
-                in (MirKind.STR, MirKind.ANY, MirKind.OPT, MirKind.TUPLE) {
-            raise MirRefused(mir_refusal("call", f"id of {value.type.render()}", nd));
-        }
-        return self.address_of(value);
+        return self.identity_of(self.lower_expr(args[0]), nd);
     }
     if name in ("list", "reversed") {
         value = self.lower_expr(args[0]);
@@ -116,4 +110,35 @@ impl MirLowering.str_subscript(nd: uni.AtomTrailer) -> (MirValue | None) {
         raise MirRefused(mir_refusal("subscript", "str", nd));
     }
     return b.str_make(made, made, size);
+}
+
+impl MirLowering.identity_of(value: MirValue, site: uni.UniNode) -> MirValue {
+    b = self.builder();
+    t = value.type;
+    if t.kind == MirKind.OPT {
+        held = self.spill(value);
+        return b.select(
+            self.opt_present(held),
+            self.identity_of(self.opt_get(held), site),
+            b.const_int(0, mir_int())
+        );
+    }
+    if t.kind == MirKind.ANY {
+        return self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [value]);
+    }
+    if t.kind in (MirKind.INT, MirKind.BOOL, MirKind.ENUM) {
+        return b.convert(value, mir_int());
+    }
+    if t.kind == MirKind.FLOAT {
+        return self.emit_value(
+            MirOp.BITCAST, mir_int(), [b.convert(value, mir_float())]
+        );
+    }
+    if t.kind == MirKind.STR {
+        return self.address_of(b.str_part(value, "data"));
+    }
+    if mir_holds_ref(t) and t.kind != MirKind.TUPLE {
+        return self.address_of(value);
+    }
+    raise MirRefused(mir_refusal("call", f"id of {t.render()}", site));
 }

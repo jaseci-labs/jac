@@ -534,19 +534,24 @@ impl MirLowering.lower_trace(obj_def: MirObjectDef) -> MirFunction {
     fn.params.append(MirParam(name="visitor", value=visit_fn));
     this = b.ref_cast(raw, mir_obj(obj_def.name), False);
     for member in obj_def.fields {
-        if not mir_holds_ref(member.type)
-            or member.type.kind in (MirKind.STR, MirKind.STR_REF, MirKind.ANY) {
+        held = member.type.payload() if member.type.kind == MirKind.OPT else member.type;
+        if not mir_holds_ref(held)
+            or held.kind in (MirKind.STR, MirKind.STR_REF, MirKind.ANY) {
             continue;
         }
         place = self.emit_value(
             MirOp.FIELD_ADDR, mir_c_ptr(member.type), [this], int_value=member.index
         );
         child = b.load(place, member.type);
-        self.emit_value(
-            MirOp.CALL_FNPTR,
-            mir_none(),
-            [visit_fn, self.emit_value(MirOp.PTR_CAST, i8p, [child])]
+        target = self.emit_value(
+            MirOp.PTR_CAST,
+            i8p,
+            [self.opt_get(child) if member.type.kind == MirKind.OPT else child]
         );
+        if member.type.kind == MirKind.OPT {
+            target = b.select(self.opt_present(child), target, b.const_null(i8p));
+        }
+        self.emit_value(MirOp.CALL_FNPTR, mir_none(), [visit_fn, target]);
     }
     b.ret(None);
     self.state = saved;
