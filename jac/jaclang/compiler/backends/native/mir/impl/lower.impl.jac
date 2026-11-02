@@ -905,6 +905,10 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
     if loaded.type.kind == MirKind.OPT
         and nd.type is not None
         and not (
+            isinstance(nd.type, ClassType)
+            and nd.type.shared.class_name in ("NoneType", "None")
+        )
+        and not (
             isinstance(nd.type, UnionType)
             and any(
                 isinstance(member, ClassType)

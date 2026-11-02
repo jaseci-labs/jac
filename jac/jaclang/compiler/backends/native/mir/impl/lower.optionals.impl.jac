@@ -95,10 +95,31 @@ impl MirLowering.lower_cast(nd: uni.CastExpr) -> MirValue {
     if value.type.kind == MirKind.ANY {
         return self.any_unbox(value, wanted, nd);
     }
-    if value.type.kind == MirKind.OPT and wanted.kind != MirKind.OPT {
-        return self.narrow_down(
-            self.opt_unwrap_checked(value, "'NoneType' object cast to a value"), nd
-        );
+    if value.type.kind in (MirKind.OPT, MirKind.NONE)
+        and wanted.kind not in (MirKind.OPT, MirKind.NONE) {
+        exception = "TypeError";
+        message = "'NoneType' object cast to a value";
+        user: (uni.UniNode | None) = nd;
+        while isinstance(user.parent, uni.AtomUnit) {
+            user = user.parent;
+        }
+        access = user.parent;
+        if isinstance(access, uni.AtomTrailer)
+            and access.is_attr
+            and access.target is user
+            and isinstance(access.right, uni.Name) {
+            exception = "AttributeError";
+            message = f"'NoneType' object has no attribute '{access.right.value}'";
+        }
+        b = self.builder();
+        if value.type.kind == MirKind.NONE {
+            b.raise_builtin(exception, message);
+            b.position(self.st().fn.new_block("cast.dead"));
+            return b.const_null(wanted);
+        }
+        held = self.spill(value);
+        self.raise_if(b.logical_not(self.opt_present(held)), exception, message);
+        return self.narrow_down(self.opt_get(held), nd);
     }
     return self.narrow_down(value, nd);
 }
