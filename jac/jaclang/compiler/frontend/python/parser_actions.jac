@@ -442,7 +442,15 @@ def pa_concatenate_strings(parts: list[expr]) -> expr | None {
         merged.append(fig as expr);
         k = k + 1;
     }
-    figures = merged;
+    figures = [
+        fig
+        for fig in merged
+        if not (
+            isinstance(fig, Constant)
+            and isinstance(fig.value, PyStr)
+            and fig.value.val == ""
+        )
+    ];
     fpart = parts[0];
     lpart = parts[len(parts) - 1];
     fl: int | None = 0;
@@ -637,8 +645,8 @@ def pa_ast_binop(
         left=left,
         op=op,
         right=right,
-        lineno=left.lineno,
-        col_offset=left.col_offset,
+        lineno=lineno,
+        col_offset=col_offset,
         end_lineno=end_lineno,
         end_col_offset=end_col_offset
     );
@@ -670,17 +678,11 @@ def pa_ast_boolop(
     end_lineno: int,
     end_col_offset: int
 ) -> BoolOp {
-    start_lineno = lineno;
-    start_col = col_offset;
-    if len(values) > 0 {
-        start_lineno = values[0].lineno;
-        start_col = values[0].col_offset;
-    }
     return BoolOp(
         op=op,
         values=values,
-        lineno=start_lineno,
-        col_offset=start_col,
+        lineno=lineno,
+        col_offset=col_offset,
         end_lineno=end_lineno,
         end_col_offset=end_col_offset
     );
@@ -699,8 +701,8 @@ def pa_ast_compare(
         left=left,
         ops=ops,
         comparators=comparators,
-        lineno=left.lineno,
-        col_offset=left.col_offset,
+        lineno=lineno,
+        col_offset=col_offset,
         end_lineno=end_lineno,
         end_col_offset=end_col_offset
     );
@@ -720,8 +722,8 @@ def pa_ast_call(
         func=func,
         args=args,
         keywords=kws,
-        lineno=func.lineno,
-        col_offset=func.col_offset,
+        lineno=lineno,
+        col_offset=col_offset,
         end_lineno=end_lineno,
         end_col_offset=end_col_offset
     );
@@ -2161,13 +2163,86 @@ def pa_setup_full_format_spec(
     end_lineno: int,
     end_col_offset: int
 ) -> expr | None {
+    items = [
+        item
+        for item in spec
+        if not pa_is_empty_str(item)
+    ];
+    values = items;
+    if len(items) > 1 or (len(items) == 1 and not isinstance(items[0], Constant)) {
+        values = pa_concat_fstring_values(items);
+    }
     return JoinedStr(
-        values=pa_resize_fstring_parts(colon, spec),
+        values=values,
         lineno=lineno,
         col_offset=col_offset,
         end_lineno=end_lineno,
         end_col_offset=end_col_offset
     );
+}
+
+def pa_is_empty_str(item: expr) -> bool {
+    return isinstance(item, Constant)
+        and isinstance(item.value, PyStr)
+        and item.value.val == "";
+}
+
+def pa_concat_fstring_values(parts: list[expr]) -> list[expr] {
+    flat: list[expr] = [];
+    for part in parts {
+        if isinstance(part, JoinedStr) {
+            for v in part.values {
+                flat.append(v);
+            }
+        } elif isinstance(part, TemplateStr) {
+            for v in part.values {
+                flat.append(v);
+            }
+        } else {
+            flat.append(part);
+        }
+    }
+    values: list[expr] = [];
+    i = 0;
+    n = len(flat);
+    while i < n {
+        item = flat[i];
+        if isinstance(item, Constant) {
+            if i + 1 < n and isinstance(flat[i + 1], Constant) {
+                first = item;
+                last = item;
+                text = "";
+                j = i;
+                while j < n {
+                    cur = flat[j];
+                    if not isinstance(cur, Constant) {
+                        break;
+                    }
+                    if isinstance(cur.value, PyStr) {
+                        text += cur.value.val;
+                    }
+                    last = cur;
+                    j += 1;
+                }
+                i = j - 1;
+                item = Constant(
+                    value=PyStr(t="str", val=text),
+                    kind=first.kind,
+                    lineno=first.lineno,
+                    col_offset=first.col_offset,
+                    end_lineno=last.end_lineno,
+                    end_col_offset=last.end_col_offset
+                );
+            }
+            if pa_is_empty_str(item) {
+                i += 1;
+                continue;
+            }
+        }
+        values.append(item);
+        i += 1;
+    }
+    return values;
 }
 
 def pa_check_fstring_conversion(

@@ -2069,6 +2069,37 @@ impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {
     return val;
 }
 
+impl NaIRGenPass._jacval_text_len(
+    tag: ir.Value, payload: ir.Value, label: str
+) -> ir.Value {
+    b = self.builder;
+    i64 = ir.IntType(64);
+    text = b.inttoptr(payload, ir.IntType(8).as_pointer(), name=f"{label}.textp");
+    is_bytes = None
+        if self._nogc_headerless()
+        else self._emit_buffer_isinstance(tag, payload, ["bytes"]);
+    if is_bytes is None {
+        return self._call_str_len(b, text, name=f"{label}.slen");
+    }
+    func = b.function;
+    text_bb = func.append_basic_block(name=f"{label}.text");
+    bytes_bb = func.append_basic_block(name=f"{label}.bytes");
+    done_bb = func.append_basic_block(name=f"{label}.textlen");
+    b.cbranch(is_bytes, bytes_bb, text_bb);
+    b.position_at_end(text_bb);
+    text_len = self._call_str_len(b, text, name=f"{label}.slen");
+    text_end = b.block;
+    b.branch(done_bb);
+    b.position_at_end(bytes_bb);
+    bytes_len = b.load(b.inttoptr(payload, i64.as_pointer()), name=f"{label}.blen");
+    b.branch(done_bb);
+    b.position_at_end(done_bb);
+    length = b.phi(i64, name=f"{label}.len");
+    length.add_incoming(text_len, text_end);
+    length.add_incoming(bytes_len, bytes_bb);
+    return length;
+}
+
 impl NaIRGenPass._jacval_truthy(jv: ir.Value) -> ir.Value {
     b = self.builder;
     i1 = ir.IntType(1);
@@ -2091,8 +2122,7 @@ impl NaIRGenPass._jacval_truthy(jv: ir.Value) -> ir.Value {
     b.cbranch(do_str, str_bb, cont_chk_bb);
 
     b.position_at_end(str_bb);
-    str_ptr = b.inttoptr(payload, i8.as_pointer(), name="jv.truthy.strp");
-    _slen = self._call_str_len(b, str_ptr, name="jv.truthy.slen");
+    _slen = self._jacval_text_len(tag, payload, "jv.truthy");
     str_res = b.icmp_unsigned("!=", _slen, ir.Constant(i64, 0), name="jv.truthy.snz");
     str_exit_bb = b.block;
     b.branch(merge_bb);

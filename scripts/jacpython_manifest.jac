@@ -1,6 +1,6 @@
 """Recompute the line counts recorded in jac/bootstrap/python/cpython-sources.txt.
 
-Every `# removed:`, `# pruned:` and `# generated:` marker carries the pinned
+Every `# pruned:` and `# generated:` marker carries the pinned
 CPython source lines of its path (a directory counts every file below it), and
 the header repeats their totals. build_python.zig parses the markers but
 ignores these numbers, so this script owns them:
@@ -20,7 +20,7 @@ import tarfile;
 import from pathlib { Path }
 
 glob MARKER = re.compile(
-         r"^# (?P<path>\S+)(?P<gap>\s+)# (?P<kind>removed|pruned|generated): [\d,]+ source lines$"
+         r"^# (?P<path>\S+)(?P<gap>\s+)# (?P<kind>pruned|generated): [\d,]+ source lines$"
      );
 
 def locate_archive(repo: Path, explicit: str | None) -> Path {
@@ -90,11 +90,7 @@ with entry {
     counts = archive_lines(locate_archive(repo, args.archive));
 }
 
-glob totals = {
-         "removed": {"c": [0, 0], "h": [0, 0], "other": [0, 0], "all": [0, 0]},
-         "pruned": {"all": [0, 0]},
-         "generated": {"all": [0, 0]}
-     };
+glob totals = {"pruned": [0, 0], "generated": [0, 0]};
 
 with entry {
     lines = manifest.read_text().splitlines();
@@ -112,43 +108,25 @@ with entry {
         kind = found["kind"];
         files = marked_files(found["path"], counts);
         size = sum(counts[name] for name in files);
-        for name in files {
-            totals[kind]["all"][0] += 1;
-            totals[kind]["all"][1] += counts[name];
-            if kind == "removed" {
-                bucket = {".c": "c", ".h": "h"}.get(Path(name).suffix, "other");
-                totals[kind][bucket][0] += 1;
-                totals[kind][bucket][1] += counts[name];
-            }
-        }
+        totals[kind][0] += len(files);
+        totals[kind][1] += size;
         updated.append(
             f"# {found['path']}{found['gap']}# {kind}: {grouped(size)} source lines"
         );
     }
 }
 
-glob removed = totals["removed"],
-     pruned = totals["pruned"]["all"],
-     generated = totals["generated"]["all"];
+glob pruned = totals["pruned"],
+     generated = totals["generated"];
 
 with entry {
-    excluded = (
-        f"#   Excluded: {removed['c'][0]} C files / {grouped(removed['c'][1])} lines; "
-        + f"{removed['h'][0]} headers / {grouped(removed['h'][1])} lines; "
-        + f"{removed['other'][0]} other files / {grouped(removed['other'][1])} lines."
-    );
     summaries = [
-        f"#   Total: {removed['all'][0]} files / {grouped(
-            removed['all'][1]
-        )} source lines.",
         f"#   Total: {pruned[0]} files / {grouped(pruned[1])} source lines.",
         f"#   Total: {generated[0]} files / {grouped(generated[1])} source lines."
     ];
     seen = 0;
     for index in range(len(updated)) {
-        if updated[index].startswith("#   Excluded:") {
-            updated[index] = excluded;
-        } elif updated[index].startswith("#   Total:") and seen < len(summaries) {
+        if updated[index].startswith("#   Total:") and seen < len(summaries) {
             updated[index] = summaries[seen];
             seen += 1;
         }
