@@ -700,6 +700,14 @@ impl MirLowering.osp_edge_object(
         return b.ref_cast(self.osp_call("__jac_osp_generic_edge", []), mir_ref(), True);
     }
     obj_def = self.object_def(edge_arch);
+    if isinstance(co.conn_type, uni.FuncCall) {
+        built = self.object_call(co.conn_type, edge_arch);
+        for (field, value) in values.items() {
+            place = self.field_place(built, edge_arch, field, site);
+            b.store(place, self.coerce(value, self.place_elem(place), site));
+        }
+        return built;
+    }
     args: list[MirValue] = [];
     taken: set[str] = set();
     params = self.constructor_params(edge_arch);
