@@ -10,9 +10,9 @@ back as the slot's declared default and nothing was diagnosed: a wrong
 answer, not a gap, and the worst class in the ledger.
 
 Both fixtures answer 103 in the sv lane. Before the refusal both
-answered 5 natively, in silence. Now a forced-native compile refuses the
-construction (E5088 / E5092) instead of answering, and the reason is on the
-record.
+answered 5 natively, in silence. Now the construction refuses, which
+demotes the owning callable to its Python implementation -- so both lanes
+answer 103 again and the reason is on the record.
 
 The non-generic control is what places the fault. The compiler's own
 pass chain reached this path through `BaseTransform[T_in, T_out]`, which
@@ -46,15 +46,25 @@ glob FIXTURES = os.path.join(
      NO_BASE_POSTINIT = "pyb_gen_base_main.jac";
 
 
-"""The native refusals (E5088 / E5092) a forced-native compile of a fixture
-reported."""
+"""The refusals a forced-native compile of a fixture reported: each demotion
+it wrote to stderr, and any E5088 / E5092 error."""
 def _refusals(fixture: str) -> list[str] {
+    import contextlib;
+    import io;
     prog = JacProgram();
-    prog.compile(
-        file_path=os.path.join(FIXTURES, fixture),
-        options=CompileOptions(force_codespace='native')
-    );
+    buf = io.StringIO();
+    with contextlib.redirect_stderr(buf) {
+        prog.compile(
+            file_path=os.path.join(FIXTURES, fixture),
+            options=CompileOptions(force_codespace='native')
+        );
+    }
     return [
+        line
+        for line in buf.getvalue().splitlines()
+        if "demoting" in line
+    ]
+        + [
         str(e)
         for e in prog.errors_had
         if e.code is not None and e.code.code in ("E5088", "E5092")

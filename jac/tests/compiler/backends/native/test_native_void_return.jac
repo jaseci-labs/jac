@@ -75,31 +75,17 @@ test "the returned expression is still evaluated for its effects" {
 }
 
 
-test "a caller using a None call result as a value refuses or binds None, never crashes" {
+test "a caller using a None call result as a value demotes or binds None, never crashes" {
     path = os.path.join(FIXTURES, "void_binding.jac");
     prog = JacProgram();
     ir = prog.compile(file_path=path, options=native_force_opts());
-    refused = [
-        source_spelled(str(e))
-        for e in prog.errors_had
-        if e.code is not None and e.code.code == "E5092"
-    ];
-    other = [
-        str(e)
-        for e in prog.errors_had
-        if e.code is None or e.code.code != "E5092"
-    ];
-    assert not other , f"binding a None result must not be an internal error: {other}";
-    if refused {
-        lines = {
-            int(r.split(", line ")[1].split(",")[0])
-            for r in refused
-            if ", line " in r
-        };
-        assert {18, 23} <= lines , (
-            f"each caller must refuse the None result it uses: {refused}"
-        );
-    } else {
+    assert not prog.errors_had , (
+        f"binding a None result must demote or lower, never fail: {[
+            str(e) for e in prog.errors_had
+        ]}"
+    );
+    iface: any = ir.gen.native_iface;
+    if "caller" not in iface.demoted {
         eng: any = ir.gen.native_engine;
         assert eng is not None , "no JIT engine for the fixture";
         caller = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(

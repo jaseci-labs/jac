@@ -293,6 +293,7 @@ obj MirLowering {
         enum_types: dict[str, TypeBase] = {},
         enum_methods: dict[str, MirDecl] = {},
         bindings: list[InteropBinding] = [],
+        current: str = "",
         state: (MirFnState | None) = None;
 
     def lower -> MirModule;
@@ -366,6 +367,7 @@ obj MirLowering {
     def call_name(nd: uni.FuncCall) -> str;
     def c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue;
     def import_call(nd: uni.FuncCall, callee: uni.Ability) -> (MirValue | None);
+    def require_dep_native(path: str, symbol: str, site: uni.UniNode);
     def intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue;
     def intrinsic_operand(arg: uni.Expr, spec: str) -> MirValue;
     def memory_order(nd: uni.FuncCall, arg: uni.Expr, kind: str) -> str;

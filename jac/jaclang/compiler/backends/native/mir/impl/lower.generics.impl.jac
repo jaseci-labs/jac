@@ -252,7 +252,7 @@ impl MirLowering.lower_instances {
         made = self.lower_function(decl);
         self.type_env = saved;
         if made is None {
-            reasons = self.refusals.get(self.name_of(decl.ability), []);
+            reasons = self.refusals.get(decl.symbol, []);
             self.mir.demoted[decl.symbol] = f"{reasons[-1].kind} '{reasons[-1].name}'"
                 if reasons
                 else "its instantiation is not native";

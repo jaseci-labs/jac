@@ -240,6 +240,7 @@ impl MirLowering.foreign_method_decl(method: uni.Ability) -> (MirDecl | None) {
         ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, method);
     }
     symbol = self.method_symbol(owner, self.name_of(method));
+    self.require_dep_native(unit.loc.mod_path, symbol, method);
     self.mir.externs[symbol] = MirExtern(
         symbol=symbol, ret=ret, params=[self_type] + params
     );

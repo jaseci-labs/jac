@@ -91,6 +91,8 @@ test "an all-auto enum lowers with no refusal" {
     (prog, ir) = compile_native("enum_auto.jac");
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert ir is not None and ir.gen.llvm_ir , "no native IR for the fixture";
+    iface: any = ir.gen.native_iface;
+    assert not iface.demoted , f"a function of the fixture demoted: {iface.demoted}";
 }
 
 

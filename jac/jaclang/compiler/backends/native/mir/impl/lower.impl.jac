@@ -29,6 +29,7 @@ impl MirLowering.lower -> MirModule {
         }
     }
     for key in self.order {
+        self.current = self.decl_label(self.decls[key]);
         made = self.lower_function(self.decls[key]);
         if made is not None {
             self.mir.functions.append(made);
@@ -36,6 +37,7 @@ impl MirLowering.lower -> MirModule {
     }
     for nd in self.module.body {
         if isinstance(nd, uni.Test) {
+            self.current = nd.name.sym_name;
             tested = self.lower_test(nd);
             if tested is not None {
                 self.mir.functions.append(tested);
@@ -46,6 +48,7 @@ impl MirLowering.lower -> MirModule {
         if archetype_native_name(arch) not in self.mir.objects {
             continue;
         }
+        self.current = arch.name.value;
         self.mir.functions.extend(self.default_thunks(arch));
         made = self.lower_constructor(arch);
         if made is not None {
@@ -61,6 +64,7 @@ impl MirLowering.lower -> MirModule {
         self.mir.functions.append(self.lower_drop(obj_def, arch));
         self.mir.functions.append(self.lower_trace(obj_def));
     }
+    self.current = "with entry";
     self.lower_osp_module();
     self.mir.functions.extend(self.nested);
     self.nested = [];
@@ -270,7 +274,7 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
             }
         }
     } except MirRefused as err {
-        self.refusals.setdefault(fn.name, []).append(refusal_of(err));
+        self.refusals.setdefault(fn.symbol, []).append(refusal_of(err));
         self.state = None;
         return None;
     }
@@ -1148,6 +1152,24 @@ impl MirLowering.lower_unary(nd: uni.UnaryExpr) -> MirValue {
     op = nd.op.name;
     if op == Tok.NOT {
         return b.logical_not(self.truthy(self.lower_expr(nd.operand), nd.operand));
+    }
+    if op == Tok.MINUS {
+        inner: uni.UniNode = nd.operand;
+        while isinstance(inner, uni.AtomUnit) {
+            inner = inner.value;
+        }
+        if isinstance(inner, uni.Int)
+            and uni.int_literal_value(inner.value) == 1 << 63 {
+            dest = self.literal_destination(inner);
+            shape = shape_of(dest) if dest else None;
+            wanted = self.expr_type(nd) if nd.type is not None else mir_int();
+            if (shape is None or not shape.is_float)
+                and wanted.kind == MirKind.INT
+                and wanted.signed
+                and wanted.width == 64 {
+                return b.const_int(-(1 << 63), wanted);
+            }
+        }
     }
     value = self.enum_as_int(self.lower_expr(nd.operand), nd);
     if op == Tok.BW_AND and mir_holds_ref(value.type) {
@@ -2061,7 +2083,11 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
     }
     view = self.lower_expr(nd.target);
     if view.type.kind != MirKind.C_VIEW {
-        raise MirRefused(mir_refusal("subscript", view.type.render(), nd));
+        hint: (str | None) = None;
+        if view.type.kind == MirKind.LIST and view.type.payload().kind == MirKind.ANY {
+            hint = "The element type is `any`, so native code has no layout to read it through; filter the edge reference with `[?:Type]` or annotate the list so the element has a known type.";
+        }
+        raise MirRefused(mir_refusal("subscript", view.type.render(), nd, hint));
     }
     start = right.slices[0].start;
     if start is None {
@@ -2214,6 +2240,7 @@ impl MirLowering.import_call(
         ];
     ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, nd);
     symbol = self.unit_symbol(self.name_of(callee), callee.access, path);
+    self.require_dep_native(path, symbol, nd);
     self.mir.externs[symbol] = MirExtern(symbol=symbol, ret=ret, params=params);
     unit = os.path.realpath(path);
     if unit not in self.mir.deps {
@@ -2231,6 +2258,36 @@ impl MirLowering.import_call(
         return self.builder().const_bool(False);
     }
     return result;
+}
+
+impl MirLowering.require_dep_native(path: str, symbol: str, site: uni.UniNode) {
+    unit = os.path.realpath(path);
+    prefix = native_unit_prefix(path) + ".";
+    name = symbol[len(prefix):] if symbol.startswith(prefix) else symbol;
+    iface = active_host().native_dep_iface(self.prog, unit, self.prog.options);
+    if iface is None {
+        if unit in self.prog.native_units().building {
+            return;
+        }
+        raise MirRefused(
+            mir_refusal(
+                "function",
+                name,
+                site,
+                f"{os.path.basename(path)} did not lower to a native unit, so native code cannot call '{name}'; it runs in Python."
+            )
+        );
+    }
+    if name in iface.demoted {
+        raise MirRefused(
+            mir_refusal(
+                "function",
+                name,
+                site,
+                f"'{name}' was demoted to Python in {os.path.basename(path)}, so native code cannot call it."
+            )
+        );
+    }
 }
 
 impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {

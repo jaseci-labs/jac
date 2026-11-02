@@ -113,21 +113,31 @@ test "imported obj-field chain executes correctly" {
     assert result == 1020 , f"Expected 1020, got {result}";
 }
 
-test "an unlowerable field type is a loud refusal naming the field or its type" {
+test "an unlowerable field type demotes what touches it, naming the field or its type" {
+    import contextlib;
+    import io;
     prog = JacProgram();
     opts = CompileOptions(force_codespace='native', skip_native_engine=True);
-    prog.compile(file_path=os.path.join(FIXTURES, "unlowerable_field.jac"), options=opts);
-    refusals = [
-        source_spelled(e.pretty_print())
-        for e in prog.errors_had
-        if e.code is not None and e.code.code == "E5092"
-    ];
-    assert refusals , (
-        f"a field with no native lowering must be an E5092, got: {[
+    buf = io.StringIO();
+    with contextlib.redirect_stderr(buf) {
+        ir = prog.compile(
+            file_path=os.path.join(FIXTURES, "unlowerable_field.jac"), options=opts
+        );
+    }
+    log = source_spelled(buf.getvalue());
+    assert not prog.errors_had , (
+        f"forced native placement demotes rather than fails: {[
             str(e) for e in prog.errors_had
         ]}"
     );
-    assert any("memoryview" in r or "view" in r for r in refusals) , (
-        f"the refusal must name the erased field or its type: {refusals}"
+    iface: any = ir.gen.native_iface;
+    assert "read_view" in iface.demoted , (
+        f"a function reading a field with no native lowering must demote: {iface.demoted}"
+    );
+    assert "holder_tag" not in iface.demoted , (
+        f"a function that never touches the field keeps lowering: {iface.demoted}"
+    );
+    assert "memoryview" in log or "view" in log , (
+        f"the demotion must name the erased field or its type: {log}"
     );
 }

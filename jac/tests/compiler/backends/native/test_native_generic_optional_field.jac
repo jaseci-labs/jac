@@ -94,13 +94,16 @@ def _sv_module(fixture: str) -> object {
 }
 
 
-"""Every E5092 the native compile of a fixture reported."""
+"""Every function the native compile of a fixture demoted, and every E5092 it
+reported."""
 def _demotions(fixture: str) -> list[str] {
     prog = JacProgram();
-    prog.compile(
+    ir = prog.compile(
         file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
     );
-    return [
+    iface: any = ir.gen.native_iface if ir is not None else None;
+    return (list(iface.demoted) if iface is not None else [])
+        + [
         d.pretty_print()
         for d in (prog.errors_had or [])
         if d.code is not None and d.code.code == "E5092"
@@ -120,15 +123,21 @@ def _compile_src(label: str, code: str) -> tuple[any, ...] {
 }
 
 
-"""The native refusals (E5092) a forced-native compile of a snippet reported."""
+"""The demotion reasons a forced-native compile of a snippet reported on stderr,
+one per line."""
 def _seam_reasons(label: str, code: str) -> list[str] {
+    import contextlib;
+    import io;
     path = os.path.join(FIXTURES, f"_gen_opt_{label}.jac");
     prog = JacProgram();
-    prog.compile(file_path=path, use_str=code, options=native_force_opts());
+    buf = io.StringIO();
+    with contextlib.redirect_stderr(buf) {
+        prog.compile(file_path=path, use_str=code, options=native_force_opts());
+    }
     return [
-        d.pretty_print()
-        for d in (prog.errors_had or [])
-        if d.code is not None and d.code.code == "E5092"
+        line
+        for line in buf.getvalue().splitlines()
+        if "demoting" in line
     ];
 }
 
@@ -318,13 +327,15 @@ test "an unboxable type argument is refused, naming the instantiation" {
     "}\n";
     msgs = _seam_reasons("scalar_named", _src);
     assert any([("Ctx" in m) for m in msgs]) , (
-        f"the refusal must name the offending instantiation: {msgs}"
+        f"the demotion must name the offending instantiation: {msgs}"
     );
     (prog, ir) = _compile_src("scalar_named_layout", _src);
-    _layout = ir.gen.native_layout;
-    assert _layout is None or "five" not in _layout.functions , (
-        "the refused construction must not lower five()"
+    assert not prog.errors_had , (
+        f"the refusal must demote five() rather than fail the module: "
+        f"{[str(e) for e in prog.errors_had]}"
     );
+    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
+    assert "five" not in ir.gen.native_layout.functions;
 }
 
 
@@ -483,9 +494,9 @@ test "an archetype type argument is still accepted for a bare `T` slot" {
 
 
 test "a `list[T]` slot on a generic archetype stays loud" {
-    # Not fixed here and not silently broken either: it reports E5092, which
-    # is the outcome this file's bar demands of anything the erasure cannot
-    # represent.
+    # Not fixed here and not silently broken either: it demotes to Python with
+    # its reason reported, which is the outcome this file's bar demands of
+    # anything the erasure cannot represent.
     _src = "obj Leaf {\n"
     "    has num: int = 0;\n"
     "}\n"
@@ -502,8 +513,9 @@ test "a `list[T]` slot on a generic archetype stays loud" {
     assert any([("list" in m) for m in msgs]) , (
         f"a list over an unsolved type parameter must keep reporting: {msgs}"
     );
-    _layout = ir.gen.native_layout;
-    assert _layout is None or "go" not in _layout.functions , (
-        "the unlowerable container must not lower its callable"
+    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
+    assert "go" not in ir.gen.native_layout.functions , (
+        "the unlowerable container must demote its callable"
     );
 }

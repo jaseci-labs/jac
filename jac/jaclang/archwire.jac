@@ -6301,6 +6301,7 @@ graph import compiler {
             NativeFuncLayout,
             NativeModuleLayout,
             NativeStructLayout,
+            is_kernel_unit_path,
             jaclang_pkg_root,
             native_entry_name,
             native_glob_init_name,
@@ -6593,6 +6594,7 @@ graph import compiler {
             | tools.jac_auto_lint_pass
             | types.operations
             | types.type_evaluator.TypeEvaluator._find_predicate_for { Tokens as Tok },
+        backends.native.mir.backend { CodeContext },
         backends.py.jcir_gen_pass {
             CodeContext,
             OwnershipKind,
@@ -6758,9 +6760,8 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._warn_rpc_callable_params { W6005 },
         backends.es.esast_gen_pass.EsastGenPass.prepare
             | passes.placement_pass.PlacementPass._run_decided { E5096 },
-        backends.native.mir.backend | driver.module_compile.report_missing_native_ir {
-            E5092
-        },
+        backends.native.mir.backend { E5092, E9003 },
+        driver.module_compile.report_missing_native_ir { E5092 },
         backends.native.na_compile_pass { E5020, E5026 },
         backends.py.jcir_bc_gen_pass { E5040, E5043 },
         backends.py.jcir_gen_pass {
@@ -7146,7 +7147,8 @@ graph import compiler {
             | backends.es.free_ident_audit.client_ambient_globals
             | backends.es.jac_runtime_js.build_osp_core_js
             | backends.native.abi.struct_layouts
-            | backends.native.mir.backend.MirNativePass._run_impl
+            | backends.native.mir.backend
+            | backends.native.mir.lower.MirLowering.require_dep_native
             | backends.py.artifact_imports
             | driver.application._kernel_units
             | driver.boundary_classify
@@ -7301,6 +7303,7 @@ graph import compiler {
     ]
     frontend.module_facts ++> [
         backends.es.esast_gen_pass
+            | backends.native.mir.backend
             | backends.native.mir.lower
             | backends.py.jcir_gen_pass
             | driver.boundary_classify.is_server_anchored_module
@@ -9499,6 +9502,7 @@ graph import compiler {
     }
     passes.package_boundary_pass ++> driver.pipeline { PackageBoundaryPass }
     passes.placement_pass ++> [
+        backends.native.mir.backend { settle_native_module },
         backends.native.mir.lower_types { NativeRefusal },
         driver.pipeline.analysis_passes { PlacementPass },
     ]
@@ -9577,7 +9581,7 @@ graph import compiler {
             native_placement_hard
         },
         driver.unit_products.placement_record { module_spaces },
-        passes.placement_pass { native_placement_soft },
+        backends.native.mir.backend | passes.placement_pass { native_placement_soft },
         passes.placement_pass.PlacementPass._run_undecided { contexts_of },
         passes.placement_pass.settle_native_module { settle_server },
     ]

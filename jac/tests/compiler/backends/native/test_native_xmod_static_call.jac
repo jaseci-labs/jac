@@ -11,7 +11,10 @@ said nothing -- the silent-wrong-answer class (#7685 family, found by wave 1's
 parity canary weaving two statements where bytecode wove four).
 
 The two forms now land the same way, and where they land is #8206's
-partition: each refuses with an E5092 at the call, naming the callee.
+partition: the code that makes the call is refused, naming the callee, and
+under forced (not required) native placement it demotes to Python -- the entry
+block for a module-scope call, the owning function for a body-scoped one --
+while its siblings stay native.
 
 The control is the same three files with the Python base removed. It must
 still lower and still agree with the Python lane, so the refusal reads as a
@@ -38,7 +41,7 @@ glob FIXTURES = os.path.join(
      MERGED = 7;
 
 
-"""Forced-native options: every refusal is an E5092 error."""
+"""Forced-native options: a refusal demotes the code that holds it."""
 def _opts -> CompileOptions {
     return CompileOptions(force_codespace='native');
 }
@@ -49,6 +52,18 @@ def _compile_native(fixture: str) -> tuple[any, ...] {
     prog = JacProgram();
     ir = prog.compile(file_path=os.path.join(FIXTURES, fixture), options=_opts());
     return (prog, ir);
+}
+
+
+"""Compile a fixture on the native pathway; return (program, module, stderr)."""
+def _compile_logged(fixture: str) -> tuple[any, ...] {
+    import contextlib;
+    import io;
+    buf = io.StringIO();
+    with contextlib.redirect_stderr(buf) {
+        (prog, ir) = _compile_native(fixture);
+    }
+    return (prog, ir, source_spelled(buf.getvalue()));
 }
 
 
@@ -77,45 +92,41 @@ def _run_py_lane(stem: str, func_name: str) -> object {
 }
 
 
-test "a module-scope static call into a Python-side class refuses" {
-    (prog, ir) = _compile_native("xmod_static_pybase_main.jac");
-    texts = [str(e) for e in prog.errors_had];
-    codes = [
-        str(alrt.code.code)
-        for alrt in prog.errors_had
-        if alrt.code is not None
-    ];
-    assert "E5092" in codes , (
-        "the call resolved to no native `Merger`, so codegen dropped it and "
-        f"the entry block wove nothing: {texts}"
+test "a module-scope static call into a Python-side class demotes the entry" {
+    (prog, ir, log) = _compile_logged("xmod_static_pybase_main.jac");
+    assert not prog.errors_had , (
+        f"forced native placement demotes, it does not fail: {[str(e) for e in prog.errors_had]}"
     );
-    assert any("Merger.merge" in t for t in texts) , (
-        f"the diagnostic must name the callee it refuses, the way the "
-        f"free-function crossing names its function: {texts}"
+    iface: any = ir.gen.native_iface;
+    assert iface is not None and iface.entry_symbol == "" , (
+        "the call resolved to no native `Merger`, so the entry block must not "
+        "lower with the call quietly removed"
     );
-    assert ir.gen.llvm_ir is None , (
-        "a module whose entry silently loses a statement is worse than a "
-        "refusal, so nothing may lower here"
+    assert "Merger.merge" in log , (
+        f"the demotion must name the callee it refuses, the way the "
+        f"free-function crossing names its function: {log}"
     );
 }
 
 
-test "a body-scoped static call refuses at the call inside its owning function" {
-    (prog, ir) = _compile_native("xmod_static_pybase_seam.jac");
-    refusals = [
-        source_spelled(str(e))
-        for e in prog.errors_had
-        if e.code is not None and e.code.code == "E5092"
-    ];
-    assert refusals , (
-        "the call resolved to no native `Merger`, so it must refuse rather than "
-        f"lower with the call quietly removed: {[str(e) for e in prog.errors_had]}"
+test "a body-scoped static call demotes only its owning function" {
+    (prog, ir, log) = _compile_logged("xmod_static_pybase_seam.jac");
+    assert not prog.errors_had , (
+        f"a function owns this violation, so it demotes rather than failing "
+        f"the module: {[str(e) for e in prog.errors_had]}"
     );
-    assert all(", line 12," in r for r in refusals) , (
-        f"the refusal must point at the call inside probe: {refusals}"
+    layout = ir.gen.native_layout;
+    assert layout is not None , "whole-module native compile aborted";
+    assert "clean" in layout.functions , (
+        f"the clean sibling was lost: {sorted(layout.functions)}"
     );
-    assert any("Merger" in r for r in refusals) , (
-        f"the refusal must name the callee: {refusals}"
+    iface: any = ir.gen.native_iface;
+    assert "probe" in iface.demoted and "probe" not in layout.functions , (
+        "the calling function must be demoted out of the native layout, not "
+        "lowered with the call quietly removed"
+    );
+    assert "demoting probe" in log and "Merger" in log , (
+        f"the demotion reason must name the callee: {log}"
     );
 }
 

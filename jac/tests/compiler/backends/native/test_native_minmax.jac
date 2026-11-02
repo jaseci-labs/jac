@@ -104,16 +104,20 @@ test "unsupported keyword forms refuse lowering instead of discarding arguments"
             source.write_text(
                 "def probe -> int { x = " + expression + "; return 0; }"
             );
+            import contextlib;
+            import io;
             prog = JacProgram();
-            prog.compile(file_path=str(source), options=native_force_opts());
-            refusals = [
-                str(e)
-                for e in prog.errors_had
-                if e.code is not None and e.code.code == "E5092"
-            ];
-            assert any(f"'{fname}" in said for said in refusals) , (
-                f"must refuse {expression}: {[str(e) for e in prog.errors_had]}"
+            buf = io.StringIO();
+            with contextlib.redirect_stderr(buf) {
+                ir = prog.compile(file_path=str(source), options=native_force_opts());
+            }
+            said = buf.getvalue();
+            assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+            iface: any = ir.gen.native_iface;
+            assert iface is not None and "probe" in iface.demoted , (
+                f"must refuse {expression} and demote probe: {said}"
             );
+            assert f"'{fname}" in said , f"the demotion must name {fname}: {said}";
         }
     }
 }

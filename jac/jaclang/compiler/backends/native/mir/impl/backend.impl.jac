@@ -9,52 +9,112 @@ impl MirNativePass.run_walk with uni.Module entry {
 
 impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     path = ir_in.loc.mod_path;
+    if not ModuleFacts.has_native_context_stmts(ir_in) {
+        return ir_in;
+    }
     mir = MirModule(path=path, prefix=native_unit_prefix(path));
     lowering = MirLowering(prog=self.prog, module=ir_in, mir=mir);
-    lowered = lowering.lower();
+    try {
+        lowered = lowering.lower();
+    } except Exception as exc {
+        self.report_crash(lowering, exc);
+        return ir_in;
+    }
     runtime = mir_runtime_unit_paths();
     here = os.path.realpath(path);
-    if self.prog.options.native_required_for(path)
-        or self.prog.options.force_codespace == "native"
-        or here in runtime {
+    if self.native_required(path) {
         self.report_refusals(lowering);
         if self.ctx.errors_had {
             return ir_in;
         }
+    } elif ir_in.gen.placement_mode == "inferred"
+        and native_placement_soft(self.prog, ir_in) {
+        if self.settle_soft(lowering) {
+            return ir_in;
+        }
+        if ir_in.decided_codespace == "native" {
+            self.note_demotions(lowering, ir_in.gen.native_iface);
+        }
+    } else {
+        if self.refuse_events(lowering) {
+            return ir_in;
+        }
+        self.note_demotions(lowering, ir_in.gen.native_iface);
     }
-    for fn in lowered.functions {
-        mir_insert_rc(fn);
+    lowering.current = os.path.basename(path);
+    lowering.state = None;
+    deps: list[str] = [];
+    try {
+        for fn in lowered.functions {
+            mir_insert_rc(fn);
+        }
+        mir_lower_generators(lowered);
+        for binding in lowering.bindings {
+            ir_in.gen.interop_manifest.bindings[binding.name] = binding;
+        }
+        if here in runtime {
+            runtime = runtime[:runtime.index(here)];
+        }
+        deps = [
+            unit
+            for unit in runtime + lowered.deps
+            if unit != here
+        ];
+        target = active_host().native_fact(
+            FACT_TARGET, self.prog.options.native_target or ""
+        ).split(
+            FACT_SEP
+        );
+        ir_in.gen.llvm_ir = emit_mir_module(
+            lowered,
+            target[1]
+                if len(target) > 1 and target[1]
+                else self.prog.options.effective_triple(),
+            bool(self.prog.options.native_tls),
+            target[0]
+        );
+    } except Exception as exc {
+        self.report_crash(lowering, exc);
+        return ir_in;
     }
-    mir_lower_generators(lowered);
-    for binding in lowering.bindings {
-        ir_in.gen.interop_manifest.bindings[binding.name] = binding;
-    }
-    if here in runtime {
-        runtime = runtime[:runtime.index(here)];
-    }
-    deps = [
-        unit
-        for unit in runtime + lowered.deps
-        if unit != here
-    ];
-    target = active_host().native_fact(
-        FACT_TARGET, self.prog.options.native_target or ""
-    ).split(
-        FACT_SEP
-    );
-    ir_in.gen.llvm_ir = emit_mir_module(
-        lowered,
-        target[1]
-            if len(target) > 1 and target[1]
-            else self.prog.options.effective_triple(),
-        bool(self.prog.options.native_tls),
-        target[0]
-    );
     ir_in.gen.native_deps = list(deps);
     ir_in.gen.native_layout = self.layout(lowering, lowered);
     ir_in.gen.native_iface = self.interface(lowered, deps);
     ir_in.gen.native_iface.layout = ir_in.gen.native_layout;
     return ir_in;
+}
+
+impl MirNativePass.native_required(path: str) -> bool {
+    options = self.prog.options;
+    return options.native_required_for(path)
+        or bool(options.kernel_build)
+        or is_kernel_unit_path(path)
+        or os.path.realpath(path) in mir_runtime_unit_paths();
+}
+
+impl MirNativePass.report_crash(lowering: MirLowering, exc: Exception) {
+    name = lowering.current
+        or os.path.basename(lowering.module.loc.mod_path);
+    if lowering.state is not None {
+        name = lowering.state.fn.name;
+    }
+    kind = "module"
+        if name == os.path.basename(lowering.module.loc.mod_path)
+        else "function";
+    site: uni.UniNode = lowering.module;
+    for decl in lowering.decls.values() {
+        if not decl.event and lowering.decl_label(decl) == name {
+            site = decl.ability;
+            break;
+        }
+    }
+    self.ctx.emit(
+        E9003,
+        node_override=site,
+        kind=kind,
+        name=name,
+        details=f"{type(exc).__name__}: {exc}"
+    );
 }
 
 impl MirNativePass.report_refusals(lowering: MirLowering) {
@@ -64,7 +124,9 @@ impl MirNativePass.report_refusals(lowering: MirLowering) {
             site = refusal.site;
             shown = refusal.name;
             if site is not None and os.path.realpath(site.loc.mod_path) != here {
-                shown = f"{refusal.name} (at {site.loc.mod_path}:{site.loc.first_line}, reached from {name})";
+                shown = f"{refusal.name} (at {site.loc.mod_path}:{site.loc.first_line}, reached from {mir_demoted_name(
+                    lowering.mir, name
+                )})";
                 site = None;
             }
             self.ctx.emit(
@@ -76,6 +138,160 @@ impl MirNativePass.report_refusals(lowering: MirLowering) {
             );
         }
     }
+}
+
+impl MirNativePass.settle_soft(lowering: MirLowering) -> bool {
+    module = lowering.module;
+    mir = lowering.mir;
+    here = os.path.realpath(module.loc.mod_path);
+    whole = module.decided_codespace == "native";
+    owners: dict[str, uni.UniNode] = {};
+    events: set[str] = set();
+    for decl in lowering.decls.values() {
+        owners.setdefault(decl.symbol, decl.ability);
+        if decl.event {
+            events.add(decl.symbol);
+        }
+    }
+    for elem in module.body {
+        if isinstance(elem, uni.ModuleCode) {
+            owners.setdefault(native_entry_name(module.loc.mod_path), elem);
+        } elif isinstance(elem, uni.GlobalVars) {
+            owners.setdefault(native_glob_init_name(module.loc.mod_path), elem);
+        }
+    }
+    reported = False;
+    for (key, refusals) in lowering.refusals.items() {
+        for refusal in refusals {
+            site = refusal.site;
+            if site is not None and os.path.realpath(site.loc.mod_path) != here {
+                site = None;
+            }
+            anchor = site or owners.get(key);
+            if not mir_soft_blocks(mir_top_element(module, anchor), whole, key in events) {
+                continue;
+            }
+            self.ctx.emit(
+                E5092,
+                node_override=anchor or module,
+                kind=refusal.kind,
+                name=refusal.name,
+                help_text=refusal.help
+            );
+            reported = True;
+        }
+    }
+    for (symbol, reason) in mir.demoted.items() {
+        anchor = owners.get(symbol);
+        if symbol in lowering.refusals or anchor is None {
+            continue;
+        }
+        if not mir_soft_blocks(
+            mir_top_element(module, anchor), whole, symbol in events
+        ) {
+            continue;
+        }
+        self.ctx.emit(
+            E5092,
+            node_override=anchor,
+            kind="function",
+            name=mir_demoted_name(mir, symbol),
+            help_text=f"It {reason}, so it cannot run natively."
+        );
+        reported = True;
+    }
+    if not reported {
+        return False;
+    }
+    settle_native_module(module, self.prog, self.ctx.errors_had, self.ctx.warnings_had);
+    return True;
+}
+
+impl MirNativePass.refuse_events(lowering: MirLowering) -> bool {
+    refused = False;
+    for decl in lowering.decls.values() {
+        if not decl.event or decl.symbol not in lowering.mir.demoted {
+            continue;
+        }
+        found = lowering.refusals.get(decl.symbol, []);
+        why = found[0].headline() if found else lowering.mir.demoted[decl.symbol];
+        hint = found[0].help if found and found[0].help else "";
+        self.ctx.emit(
+            E5092,
+            node_override=decl.ability,
+            kind="event ability",
+            name=lowering.decl_label(decl),
+            help_text=(hint + " " if hint else "")
+                + f"This ability could not be lowered ({why}). A walker runs its abilities through the native graph engine, which has no caller to refuse, so the module cannot stay native with it."
+        );
+        refused = True;
+    }
+    return refused;
+}
+
+impl MirNativePass.note_demotions(lowering: MirLowering, prior: (NativeIface | None)) {
+    mir = lowering.mir;
+    noted = set(prior.demoted) if prior is not None else set();
+    if not mir.demoted {
+        return;
+    }
+    here = os.path.realpath(mir.path);
+    shown = self.prog.native_units().noted_demotions;
+    options = self.prog.options;
+    debug = bool(options.na_debug);
+    warn = debug or bool(options.native_debug);
+    if not warn {
+        defaults = active_host().project_defaults();
+        warn = defaults.check.warn_native_seams if defaults is not None else True;
+    }
+    if not warn {
+        return;
+    }
+    for (symbol, reason) in sorted(mir.demoted.items()) {
+        name = mir_demoted_name(mir, symbol);
+        if name in noted or shown.get(f"{here}:{name}") == reason {
+            continue;
+        }
+        shown[f"{here}:{name}"] = reason;
+        found = lowering.refusals.get(symbol, []);
+        why = "; ".join(refusal.located() for refusal in found) if found else reason;
+        if debug {
+            sys.stderr.write(f"NA_DEBUG demote {name}\n");
+            for refusal in found {
+                sys.stderr.write(f"NA_DEBUG   {refusal.full()}\n");
+            }
+        }
+        active_host().note(
+            f"native seam -- demoting {name} to Python-only (un-lowerable): {why}",
+            style="warning"
+        );
+    }
+}
+
+impl mir_demoted_name(mir: MirModule, symbol: str) -> str {
+    prefix = mir.prefix + ".";
+    return symbol[len(prefix):] if symbol.startswith(prefix) else symbol;
+}
+
+impl mir_soft_blocks(top: (uni.UniNode | None), whole: bool, event: bool) -> bool {
+    if isinstance(top, uni.ContextAwareNode) and top.code_context != CodeContext.NATIVE {
+        return False;
+    }
+    if not whole or event or top is None {
+        return True;
+    }
+    return isinstance(top, (uni.ModuleCode, uni.GlobalVars));
+}
+
+impl mir_top_element(module: uni.Module, nd: (uni.UniNode | None)) -> (uni.UniNode | None) {
+    cur = nd;
+    while cur is not None and cur.parent is not None and cur.parent is not module {
+        cur = cur.parent;
+    }
+    if cur is None or cur.parent is not module {
+        return None;
+    }
+    return cur;
 }
 
 impl MirNativePass.interface(mir: MirModule, deps: list[str]) -> NativeIface {
@@ -104,7 +320,7 @@ impl MirNativePass.interface(mir: MirModule, deps: list[str]) -> NativeIface {
         prefix=mir.prefix,
         exports=exports,
         deps=list(deps),
-        demoted=sorted(mir.demoted),
+        demoted=sorted({mir_demoted_name(mir, symbol) for symbol in mir.demoted}),
         python_imports=sorted(mir.python_imports),
         init_symbol=native_glob_init_name(mir.path)
             if mir.function(native_glob_init_name(mir.path)) is not None
@@ -137,12 +353,16 @@ impl native_coverage(prog: JacProgram) -> dict[str, dict[str, any]] {
             };
             continue;
         }
-        (first, reason) = sorted(lowered.demoted.items())[0];
+        named = {
+            mir_demoted_name(lowered, symbol): reason
+            for (symbol, reason) in lowered.demoted.items()
+        };
+        (first, reason) = sorted(named.items())[0];
         findings[os.path.realpath(path)] = {
             "outcome": "demoted",
             "code": "E5092",
             "detail": f"{first}: {reason}",
-            "demoted": dict(lowered.demoted)
+            "demoted": named
         };
     }
     return findings;

@@ -53,20 +53,21 @@ test "a slice of a None-narrowed optional string still lowers" {
     assert get_func(eng, "narrowed_str_tail", ctypes.c_int64)() == 3;
 }
 
-test "a fixed tuple slice is refused or built, never read as an index" {
+test "a fixed tuple slice demotes or is built, never read as an index" {
+    import contextlib;
+    import io;
     path = os.path.join(FIXTURES, "tuple_slice_refusal.jac");
     prog = JacProgram();
-    ir = prog.compile(file_path=path, options=native_force_opts());
-    refused = [
-        str(e)
-        for e in prog.errors_had
-        if e.code is not None and e.code.code == "E5092"
-    ];
-    if refused {
-        assert all(", line 9," in r or ", line 10," in r for r in refused) , refused;
-        assert any("slice" in r for r in refused) , refused;
+    buf = io.StringIO();
+    with contextlib.redirect_stderr(buf) {
+        ir = prog.compile(file_path=path, options=native_force_opts());
+    }
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
+    iface: any = ir.gen.native_iface;
+    if "tail_of_three" in iface.demoted {
+        log = buf.getvalue();
+        assert "demoting tail_of_three" in log and "slice" in log , log;
     } else {
-        assert not prog.errors_had , [str(e) for e in prog.errors_had];
         tail = get_func(ir.gen.native_engine, "tail_of_three", ctypes.c_int64);
         assert tail() == 267 , "t[1:3] must build (6, 7)";
     }
