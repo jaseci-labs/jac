@@ -283,6 +283,7 @@ impl cg_leave_annotations_scope(c: cpy_compiler, loc: srcloc) {
     co = cpy_compile_optimize_and_assemble(c, True);
     if len(co.localsplusnames) > 0 {
         co.localsplusnames[0] = "format";
+        co.unshared_localsplus = True;
     }
     if len(co.varnames) > 0 {
         co.varnames[0] = "format";

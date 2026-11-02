@@ -120,6 +120,17 @@ obj constant_writer {
         return self.filename_handle;
     }
 
+    def shared_bytes(data: list[int]) -> ptr[PyObject] {
+        key = constant_key(PyBytes(t="bytes", val=data));
+        existing = self.shared.get(key);
+        if existing is not None {
+            return Py_NewRef(existing);
+        }
+        created = code_buffer(data);
+        self.shared[key] = created;
+        return Py_NewRef(created);
+    }
+
     def text_items(values: list[str]) -> PyTuple {
         items: list[PyObj] = [];
         for value in values {
@@ -133,10 +144,15 @@ obj constant_writer {
         kinds = code.localspluskinds;
         owned: list[ptr[PyObject]] = [];
         try {
-            bytecode = held(owned, code_buffer(code.co_code));
+            bytecode = held(owned, self.shared_bytes(code.co_code));
             consts = held(owned, self.write(PyTuple(t="tuple", items=code.consts)));
             code_names = held(owned, self.write(self.text_items(code.names)));
-            localsplusnames = held(owned, self.write(self.text_items(names)));
+            localsplusnames = held(
+                owned,
+                self.tuple_of(self.text_items(names).items)
+                    if code.unshared_localsplus
+                    else self.write(self.text_items(names))
+            );
             localspluskinds = held(owned, code_buffer(kinds));
             name = held(owned, text_object(code.name));
             qualname = held(
@@ -145,8 +161,8 @@ obj constant_writer {
                     if code.flags & CO_OPTIMIZED or code.name == "<module>"
                     else self.write(PyStr(t="str", val=code.qualname))
             );
-            linetable = held(owned, code_buffer(code.linetable));
-            exceptiontable = held(owned, code_buffer(code.exceptiontable));
+            linetable = held(owned, self.shared_bytes(code.linetable));
+            exceptiontable = held(owned, self.shared_bytes(code.exceptiontable));
             return required(
                 jacpy_code_new(
                     i64(code.argcount),

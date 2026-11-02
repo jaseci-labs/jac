@@ -192,7 +192,8 @@ obj PyCode(PyObj) {
         linetable: list[int],
         exceptiontable: list[int],
         localsplusnames: list[str] = [],
-        localspluskinds: list[int] = [];
+        localspluskinds: list[int] = [],
+        unshared_localsplus: bool = False;
 
     def tp_hashkey -> PyObj;
     def tp_getattro(name: str) -> PyObj;
