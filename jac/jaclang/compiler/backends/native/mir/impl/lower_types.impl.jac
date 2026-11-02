@@ -273,6 +273,12 @@ impl mir_class_type(
     if name == "bytes" {
         return mir_bytes();
     }
+    if JAC_TYPE_REGISTRY.is_exception(name) and t.is_instance() {
+        if position in (MirPosition.VALUE, MirPosition.SIGNATURE) {
+            return mir_str();
+        }
+        return mir_str_ref();
+    }
     if name == "bytearray" {
         return mir_bytearray();
     }

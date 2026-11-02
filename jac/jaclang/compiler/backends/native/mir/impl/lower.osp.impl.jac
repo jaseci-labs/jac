@@ -713,12 +713,9 @@ impl MirLowering.osp_edge_object(
     params = self.constructor_params(edge_arch);
     mask = 0;
     for (index, (pname, ptype, fallback)) in enumerate(params) {
-        if pname in values {
+        if pname in values and fallback is None {
             args.append(self.coerce(values[pname], ptype, site));
             taken.add(pname);
-            if fallback is not None {
-                mask = mask | (1 << index);
-            }
         } elif fallback is not None {
             args.append(self.placeholder(ptype));
         } else {

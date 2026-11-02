@@ -10065,6 +10065,7 @@ graph import compiler {
         },
         backends.native.mir.emit { VTABLE_HEADER_SLOTS },
         backends.native.mir.lower {
+            EXC_MESSAGE_FIELD,
             NON_DISPATCHED_METHODS,
             VTABLE_HEADER_SLOTS,
             adopt_imported_bases,
@@ -10636,6 +10637,7 @@ graph import compiler {
             | backends.native.host_facts.primitive_methods_fact
             | backends.native.mir.emit
             | backends.native.mir.lower
+            | backends.native.mir.lower_types
             | backends.native.na_ir_gen_pass.NaIRGenPass.__post_init__
             | c_interop._spec_for_name
             | passes.declaration_type_pass

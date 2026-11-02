@@ -159,6 +159,9 @@ impl MirLowering.object_text(
         }
         return self.as_text(direct);
     }
+    if method == "__str__" and self.is_exception_arch(arch) {
+        return self.exception_text(value, arch);
+    }
     if method == "__str__" {
         return self.object_text(value, "__repr__", site);
     }

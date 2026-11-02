@@ -230,6 +230,7 @@ obj MirFnState {
         locals: dict[int, MirValue] = {},
         loops: list[MirLoopTarget] = [],
         caught: list[tuple[MirValue, MirValue, MirValue]] = [],
+        bound_caught: dict[int, tuple[MirValue, MirValue, MirValue]] = {},
         tries: list[tuple[MirValue, MirBlock, int]] = [],
         specials: dict[str, MirValue] = {};
 }
@@ -552,6 +553,16 @@ obj MirLowering {
     def rearm_tries;
     def exception_matches(type_id: MirValue, clause: uni.Expr) -> MirValue;
     def exception_name(nd: uni.Expr) -> str;
+    def exception_target(nd: uni.Expr) -> tuple[str, (uni.Archetype | None)];
+    def is_exception_arch(arch: uni.Archetype) -> bool;
+    def exception_ancestors(arch: uni.Archetype) -> list[int];
+    def raise_object(
+        value: MirValue, arch: uni.Archetype, site: uni.UniNode, dynamic: bool = False
+    );
+    def register_exception(arch: uni.Archetype);
+    def exception_message(value: MirValue, arch: uni.Archetype) -> MirValue;
+    def exception_text(value: MirValue, arch: uni.Archetype) -> MirValue;
+    def exception_object(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue;
     def any_tag(t: MirType, site: uni.UniNode) -> int;
     def any_box(value: MirValue, site: uni.UniNode) -> MirValue;
     def any_make(tag: MirValue, payload: MirValue) -> MirValue;

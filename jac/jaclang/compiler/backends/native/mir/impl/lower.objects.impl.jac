@@ -70,6 +70,12 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
     self.mir.objects[name] = made;
     self.archetypes[name] = arch;
     for member in layout.fields {
+        if member.name == EXC_MESSAGE_FIELD {
+            made.fields.append(
+                MirObjectField(name=member.name, type=mir_str_ref(), index=member.index)
+            );
+            continue;
+        }
         field_type = member.semantic_type or self.declared_field_type(member.decl_node);
         self.ensure_objects(field_type);
         made.fields.append(
@@ -318,7 +324,8 @@ impl MirLowering.constructor_params(
     obj_def = self.object_def(arch);
     for member in layout.fields {
         decl = member.decl_node;
-        if isinstance(decl, uni.HasVar) and decl.defer {
+        if (isinstance(decl, uni.HasVar) and decl.defer)
+            or member.name == EXC_MESSAGE_FIELD {
             continue;
         }
         default_value = member.default_expr
@@ -704,6 +711,11 @@ impl MirLowering.field_place(
 
 impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue {
     obj_def = self.object_def(arch);
+    if obj_def.field(EXC_MESSAGE_FIELD) is not None
+        and (self.find_method(arch, "init") or self.find_method(arch, "__init__"))
+        is None {
+        return self.exception_object(nd, arch);
+    }
     owner = arch.find_parent_of_type(uni.Module) or self.module;
     symbol = native_symbol_name(
         native_unit_prefix(owner.loc.mod_path), f"{obj_def.name}.__ctor"
