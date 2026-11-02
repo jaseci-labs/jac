@@ -54,6 +54,7 @@ enum MirOp {
     GLOBAL_BLOCK = "global.block",
     SIZEOF = "sizeof",
     EXC_FRAME = "exc.frame",
+    ALLOCA = "alloca",
     SETJMP = "setjmp",
     VTABLE_ADDR = "vtable.addr",
     CLASS_ADDR = "class.addr",
@@ -155,6 +156,7 @@ obj MirGlobal {
         c_data: bool = False,
         opaque: bool = False,
         count: int = -1,
+        thread_local: bool = False,
         c_init: (MirConst | None) = None;
 }
 

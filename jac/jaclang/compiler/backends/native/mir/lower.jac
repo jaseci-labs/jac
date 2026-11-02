@@ -293,6 +293,7 @@ obj MirLowering {
         enum_types: dict[str, TypeBase] = {},
         enum_methods: dict[str, MirDecl] = {},
         bindings: list[InteropBinding] = [],
+        c_views: dict[int, MirGlobal] = {},
         state: (MirFnState | None) = None;
 
     def lower -> MirModule;
@@ -379,6 +380,8 @@ obj MirLowering {
     def c_struct_call(nd: uni.FuncCall, struct_type: MirType) -> MirValue;
     def c_field_value(expr: uni.Expr, member: MirType) -> MirValue;
     def c_pin(nd: uni.FuncCall) -> MirValue;
+    def c_alloca(size: uni.Expr) -> MirValue;
+    def c_thread_local(nd: uni.FuncCall, name: str, args: list[uni.Expr]) -> MirValue;
     def c_function_value(expr: uni.Expr, member: MirType) -> MirValue;
     def declare_c_global(assign: uni.Assignment) -> MirGlobal;
     def c_array_count(value: uni.Expr, elem: TypeBase) -> int;

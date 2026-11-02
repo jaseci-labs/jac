@@ -55,7 +55,7 @@ impl MirLowering.declare_c_global(assign: uni.Assignment) -> MirGlobal {
         raise MirRefused(mir_refusal("C data object", "unnamed", assign));
     }
     name = target.sym_name;
-    found = self.mir.globals.get(name);
+    found = self.c_views.get(id(assign));
     if found is not None {
         return found;
     }
@@ -97,7 +97,11 @@ impl MirLowering.declare_c_global(assign: uni.Assignment) -> MirGlobal {
             self.mir.deps.append(unit);
         }
     }
-    self.mir.globals[name] = made;
+    self.c_views[id(assign)] = made;
+    held = self.mir.globals.get(name);
+    if held is None or (held.c_data and held.c_init is None and made.c_init is not None) {
+        self.mir.globals[name] = made;
+    }
     return made;
 }
 
@@ -308,6 +312,7 @@ impl MirLowering.c_function_symbol(expr: uni.Expr) -> str {
     }
     if clib_import_of(target) is not None {
         self.ensure_c_types(fn_type);
+        self.ensure_objects(fn_type);
         symbol = self.name_of(target);
         self.mir.externs[symbol] = MirExtern(
             symbol=symbol,
@@ -530,4 +535,67 @@ impl MirLowering.c_function_value(expr: uni.Expr, member: MirType) -> MirValue {
         return address;
     }
     return self.emit_value(MirOp.PTR_CAST, member, [address]);
+}
+
+impl MirLowering.c_thread_local(
+    nd: uni.FuncCall, name: str, args: list[uni.Expr]
+) -> MirValue {
+    label = c_string_literal(args[0]) if len(args) == 1 else None;
+    if not label {
+        raise MirRefused(
+            mir_refusal(
+                "intrinsic",
+                name,
+                nd,
+                "The C variable is named by a string literal.",
+                "E5095"
+            )
+        );
+    }
+    defining = name == "__thread_local";
+    found = self.mir.globals.get(label);
+    if found is None {
+        found = MirGlobal(
+            name=label,
+            symbol=label,
+            type=mir_int(64) if defining else mir_int(8, False),
+            linkage="weak" if defining else "external",
+            c_data=True,
+            thread_local=True
+        );
+        self.mir.globals[label] = found;
+    } elif not found.thread_local {
+        raise MirRefused(
+            mir_refusal(
+                "intrinsic",
+                name,
+                nd,
+                f"'{label}' is already declared and is not thread-local.",
+                "E5095"
+            )
+        );
+    } elif defining and found.linkage == "external" {
+        found.linkage = "weak";
+        found.type = mir_int(64);
+    }
+    place = self.emit_value(
+        MirOp.GLOBAL_ADDR, mir_c_ptr(found.type), [], str_value=found.symbol
+    );
+    return self.emit_value(MirOp.PTR_INT, mir_int(64, True, True), [place]);
+}
+
+impl MirLowering.c_alloca(size: uni.Expr) -> MirValue {
+    fn = self.st().fn;
+    words = mir_c_ptr(mir_int(64));
+    (ok, folded) = c_scalar_constant(size);
+    if ok and isinstance(folded, int) and not isinstance(folded, bool) and folded >= 0 {
+        made = fn.new_value(words);
+        fn.blocks[0].instrs.insert(
+            0, MirInstr(op=MirOp.ALLOCA, result=made, int_value=(folded + 7) // 8)
+        );
+    } else {
+        count = self.coerce(self.lower_expr(size), mir_int(64, True, True), size);
+        made = self.emit_value(MirOp.ALLOCA, words, [count]);
+    }
+    return self.emit_value(MirOp.PTR_INT, mir_int(64, True, True), [made]);
 }

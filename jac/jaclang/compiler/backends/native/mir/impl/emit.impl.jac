@@ -820,6 +820,16 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
                 b.call(self.keyed_block_fn(instr.str_value, instr.int_value), [])
             );
         }
+    } elif op == MirOp.ALLOCA {
+        i64 = ir.IntType(64);
+        if instr.operands {
+            count = self.value(instr.operands[0]);
+            words = b.sdiv(b.add(count, ir.Constant(i64, 7)), ir.Constant(i64, 8));
+            self.bind(instr.result, b.alloca(i64, size=words));
+        } else {
+            buffer = b.alloca(ir.ArrayType(i64, max(instr.int_value, 1)));
+            self.bind(instr.result, b.bitcast(buffer, i64.as_pointer()));
+        }
     } elif op == MirOp.EXC_FRAME {
         frame = b.alloca(ir.ArrayType(ir.IntType(64), EXC_FRAME_BYTES // 8));
         self.bind(instr.result, b.bitcast(frame, ir.IntType(8).as_pointer()));
@@ -915,6 +925,10 @@ impl MirEmitter.global_variable(glob_def: MirGlobal) -> ir.GlobalVariable {
     }
     made = ir.GlobalVariable(self.module, shape, name=glob_def.symbol);
     made.linkage = glob_def.linkage;
+    if glob_def.thread_local {
+        made.thread_local = True;
+        made.tls_model = "initialexec";
+    }
     if glob_def.linkage == "external" {
         return made;
     }

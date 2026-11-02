@@ -1610,6 +1610,12 @@ impl MirLowering.ensure_c_types(t: (TypeBase | None)) {
         self.ensure_c_types(t.return_type);
         return;
     }
+    if isinstance(t, UnionType) {
+        for member in t.types {
+            self.ensure_c_types(member);
+        }
+        return;
+    }
     kind = c_builtin_kind(t);
     if kind in ("ptr", "PtrView", "Pinned") {
         self.ensure_c_types(c_type_arg(t));
@@ -1617,6 +1623,11 @@ impl MirLowering.ensure_c_types(t: (TypeBase | None)) {
     }
     arch = foreign_struct_of_type(t);
     if arch is None {
+        if isinstance(t, ClassType) and t.private and t.private.type_args {
+            for arg in t.private.type_args {
+                self.ensure_c_types(arg);
+            }
+        }
         return;
     }
     name = arch.name.value;
@@ -1647,6 +1658,7 @@ impl MirLowering.ensure_c_types(t: (TypeBase | None)) {
         }
         field_type = evaluator.get_type_of_symbol(sym);
         self.ensure_c_types(field_type);
+        self.ensure_objects(field_type);
         made.fields.append(
             MirStructField(
                 name=hv.name.value,
@@ -2060,6 +2072,16 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
             raise MirRefused(mir_refusal("attribute access", holder.render(), nd));
         }
         layout = self.mir.structs[holder.name];
+        if not any(member.name == right.value for member in layout.fields) {
+            raise MirRefused(
+                mir_refusal(
+                    "C struct field",
+                    f"{holder.name}.{right.value}",
+                    nd,
+                    f"The C struct {holder.name} this module lays out has no field {right.value}."
+                )
+            );
+        }
         index = layout.index_of(right.value);
         return self.emit_value(
             MirOp.FIELD_ADDR,
@@ -2185,22 +2207,38 @@ impl MirLowering.c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue {
         raise MirRefused(mir_refusal("C call", self.name_of(callee), nd));
     }
     self.ensure_c_types(fn_type);
+    self.ensure_objects(fn_type);
     params = [
         mir_type_of(p.param_type, MirPosition.C_FIELD, nd) for p in fn_type.parameters
     ];
     ret = mir_type_of(fn_type.return_type, MirPosition.C_FIELD, nd);
     symbol = self.name_of(callee);
     self.mir.externs[symbol] = MirExtern(symbol=symbol, ret=ret, params=params);
-    args = self.call_args(nd);
-    if len(args) != len(params) {
-        raise MirRefused(
-            mir_refusal("C call", f"{symbol} with {len(args)} arguments", nd)
-        );
+    sig = callee.signature;
+    values: list[MirValue] = [];
+    if isinstance(sig, uni.FuncSignature)
+        and sig.varargs is None
+        and sig.kwargs is None
+        and any(isinstance(arg, uni.KWPair) for arg in list(nd.params or [])) {
+        bound = self.bound_args(nd, callee, False);
+        if len(bound) != len(params) {
+            raise MirRefused(
+                mir_refusal("C call", f"{symbol} with {len(bound)} arguments", nd)
+            );
+        }
+        values = self.bound_values(list(bound), params);
+    } else {
+        args = self.call_args(nd);
+        if len(args) != len(params) {
+            raise MirRefused(
+                mir_refusal("C call", f"{symbol} with {len(args)} arguments", nd)
+            );
+        }
+        values = [
+            self.coerce(self.lower_expr(arg), ptype, arg)
+            for (arg, ptype) in zip(args, params)
+        ];
     }
-    values = [
-        self.coerce(self.lower_expr(arg), ptype, arg)
-        for (arg, ptype) in zip(args, params)
-    ];
     result_type = mir_none() if ret.kind in (MirKind.NONE, MirKind.VOID) else ret;
     return self.emit_value(MirOp.CALL_C, result_type, values, callee=symbol);
 }
@@ -2273,6 +2311,12 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
         target = self.intrinsic_operand(args[0], "i64");
         subject = self.intrinsic_operand(args[1], "i64");
         return self.emit_value(MirOp.CALL_DTOR, mir_none(), [target, subject]);
+    }
+    if name == "__alloca" and len(args) == 1 {
+        return self.c_alloca(args[0]);
+    }
+    if name in ("__thread_local", "__c_thread_local") {
+        return self.c_thread_local(nd, name, args);
     }
     if name == "__thread_local_block" {
         label = c_string_literal(args[0]) if args else None;
