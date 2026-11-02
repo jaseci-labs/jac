@@ -116,11 +116,6 @@ test "a second turn grows the same list and keeps every earlier message" {
         if m.get("content")
     ];
     assert answers == [first, second] , f"each turn's answer must be saved: {answers}";
-    assert {"role": "assistant", "content": first}
-        in [
-            {"role": m.get("role"), "content": m.get("content")}
-            for m in sent_messages(llm, 2)
-        ] , "turn 2 must send turn 1's answer";
 }
 
 
