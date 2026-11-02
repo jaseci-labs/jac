@@ -85,6 +85,10 @@ def binder_rebinds {
     } except ValueError as title {  # <-- Error
         print(2);
     }
+    (kind, *title) = ("k", "x", "y");  # <-- Error
+    (title, title) = (Label(), "x");  # <-- Error: the second write
+    rest = ["r"];
+    (kind, *rest) = ("k", "x", "y");  # <-- Ok
     (kind, title) = ("k", Label());  # <-- Ok
     [first, second] = [Label(), Label()];  # <-- Ok: first binding
     pending = None;

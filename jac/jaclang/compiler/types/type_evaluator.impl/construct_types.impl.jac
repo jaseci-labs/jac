@@ -48,9 +48,31 @@ impl TypeEvaluator._get_type_of_lhs_assignment(expr: Name) -> TypeBase | None {
         return None;
     }
 
-    parent = expr.parent;
     lhs_root: UniNode = expr;
+    starred = False;
+    holder = expr.parent;
+    if isinstance(holder, UnaryExpr)
+        and isinstance(holder.op, Token)
+        and holder.op.name == Tok.STAR_MUL {
+        lhs_root = holder;
+        starred = True;
+    }
+    parent = lhs_root.parent;
+    path: list[int] = [];
     while isinstance(parent, (TupleVal, ListVal, AtomUnit)) {
+        if isinstance(parent, (TupleVal, ListVal)) {
+            idx = -1;
+            for (i, v) in enumerate(parent.values) {
+                if v is lhs_root {
+                    idx = i;
+                    break;
+                }
+            }
+            if idx < 0 {
+                return None;
+            }
+            path.insert(0, idx);
+        }
         lhs_root = parent;
         parent = parent.parent;
     }
@@ -79,13 +101,24 @@ impl TypeEvaluator._get_type_of_lhs_assignment(expr: Name) -> TypeBase | None {
         return self.get_type_of_expression(value);
     }
 
-    path = find_destructure_index_path(lhs_root, expr.value);
-    if path is None or len(path) == 0 {
+    if len(path) == 0 {
         return None;
     }
-    return self._extract_tuple_element_type_path(
-        self.get_type_of_expression(value), path
-    );
+    value_type = self.get_type_of_expression(value);
+    if not starred {
+        return self._extract_tuple_element_type_path(value_type, path);
+    }
+    container = self._extract_tuple_element_type_path(value_type, path[:-1]);
+    if container is None or self.prefetch.list_class is None {
+        return None;
+    }
+    elem = self._get_iterable_element_type(container, value);
+    if elem is None {
+        return None;
+    }
+    star_type = self.prefetch.list_class.clone_as_instance();
+    star_type.private.type_args = [elem];
+    return star_type;
 }
 
 impl TypeEvaluator._extract_tuple_element_type(

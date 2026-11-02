@@ -2566,7 +2566,7 @@ test "inferred_local_type_frozen" {
         os.path.join(CHECKER_FIXTURES, "checker_inferred_type_frozen.jac"),
         options=NO_TC
     );
-    assert len(program.errors_had) == 13 , f"Expected 13 type errors, but got {len(
+    assert len(program.errors_had) == 15 , f"Expected 15 type errors, but got {len(
         program.errors_had
     )}: "
         + "\n".join([err.pretty_print() for err in program.errors_had]);
@@ -2650,12 +2650,26 @@ test "inferred_local_type_frozen" {
         (
             11,
             """
+        (kind, *title) = ("k", "x", "y");  # <-- Error
+        Cannot assign list[
+    """
+        ),
+        (
+            12,
+            """
+        (title, title) = (Label(), "x");  # <-- Error: the second write
+        Cannot assign Literal["x"] to Label
+    """
+        ),
+        (
+            13,
+            """
         for [kind, title] in [["k", "x"]] {  # <-- Error
         Cannot assign str to Label
     """
         ),
         (
-            12,
+            14,
             """
         for (key, count) in {"ab": 1} {  # <-- Error
         Cannot assign LiteralString to int
