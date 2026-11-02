@@ -69,12 +69,12 @@ test "function-body imports lower and agree with sv" {
 
 # Supporting the body-scoped spelling must not smuggle unsupported modules in:
 # a Python-only import written in a body is the same capability violation a
-# module-level one is. Under a forced native compile it is refused (E5092) at
-# the import instead of lowering to a silent no-op statement, and a native
-# caller of the function is a structured E5092 as well.
-test "an unsupported body-scoped import is refused at the import, callers stay loud" {
+# module-level one is, but its owning function absorbs it: the function demotes
+# to its Python implementation, instead of lowering to a silent no-op
+# statement, and a native caller that cannot reach it demotes with it.
+test "an unsupported body-scoped import demotes its function, and its native caller" {
     prog = JacProgram();
-    prog.compile(
+    ir = prog.compile(
         file_path=os.path.join(FIXTURES, "_func_body_bad_import.jac"),
         use_str="def use() -> int {\n"
         "    import collections;\n"
@@ -83,36 +83,41 @@ test "an unsupported body-scoped import is refused at the import, callers stay l
         "}\n",
         options=native_force_opts()
     );
-    refused = [
-        str(e)
-        for e in prog.errors_had
-        if e.code is not None and e.code.code == "E5092"
-    ];
-    assert any("line 2," in said for said in refused) , (
-        f"the Python-only body import must be refused where it stands: {[
-            str(e) for e in prog.errors_had
-        ]}"
+    assert not prog.errors_had , f"a function-owned import violation must demote, got: {[
+        str(e) for e in prog.errors_had
+    ]}";
+    iface: any = ir.gen.native_iface;
+    assert iface is not None and "use" in iface.demoted , (
+        "the function with the Python-only import must be demoted to Python"
+    );
+    layout: any = ir.gen.native_layout;
+    assert "use" not in layout.functions , (
+        "the function with the Python-only import must leave the native layout"
     );
 
     caller = JacProgram();
-    caller.compile(
+    caller_ir = caller.compile(
         file_path=os.path.join(FIXTURES, "_func_body_bad_import_caller.jac"),
         use_str="def use() -> int {\n"
         "    import collections;\n"
         "    d = collections.OrderedDict();\n"
         "    return len(d);\n"
         "}\n"
-        "with entry { print(use()); }\n",
+        "def twice() -> int {\n"
+        "    return use() * 2;\n"
+        "}\n"
+        "with entry { print(1); }\n",
         options=native_force_opts()
     );
-    caller_codes = [
-        alrt.code.code
-        for alrt in caller.errors_had
-        if alrt.code is not None
-    ];
-    assert "E5092" in caller_codes , f"expected E5092 for the native caller of the demoted function, got: {[
+    assert not caller.errors_had , f"a native caller of a demoted function demotes, got: {[
         str(e) for e in caller.errors_had
     ]}";
+    caller_iface: any = caller_ir.gen.native_iface;
+    assert caller_iface is not None and "twice" in caller_iface.demoted , (
+        f"the native caller of the demoted function must demote with it: {caller_iface.demoted
+            if caller_iface
+            else None}"
+    );
 }
 
 # Widening guard. Seeing body-scoped imports must not widen what gets REGISTERED:

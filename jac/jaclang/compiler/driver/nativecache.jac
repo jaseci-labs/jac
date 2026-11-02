@@ -38,7 +38,8 @@ obj NativeUnitRegistry {
         stop_after: int = 0,
         lowered_units: int = 0,
         unit_lower_seconds: dict[str, float] = {},
-        unit_functions: dict[str, tuple[int, int]] = {};
+        unit_functions: dict[str, tuple[int, int]] = {},
+        noted_demotions: dict[str, str] = {};
 
     def postinit;
     def begin_parse(path: str);

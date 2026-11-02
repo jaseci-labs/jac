@@ -60,8 +60,8 @@ glob PIN_FIXTURE_DIR = os.path.join(
          "    return x * 2;\n"
          "}\n\n"
          "with entry {\n"
-         "    s = {1, \"a\"};\n"
-         "    print(other(2), len(s));\n"
+         "    d = {x: None for x in [1, 2]};\n"
+         "    print(other(2), len(d));\n"
          "}\n"
      ),
      CLEAN_SRC = (
@@ -169,8 +169,8 @@ glob PIN_FIXTURE_DIR = os.path.join(
          "    return json.dumps(x, indent=2);\n"
          "}\n\n"
          "def bad(n: int) -> int {\n"
-         "    s = {1, \"a\"};\n"
-         "    return len(s) + n;\n"
+         "    d = {x: None for x in [n]};\n"
+         "    return len(d) + n;\n"
          "}\n\n"
          "def double(n: int) -> int {\n"
          "    return n * 2;\n"
@@ -199,8 +199,8 @@ glob PIN_FIXTURE_DIR = os.path.join(
          "obj Foo {\n"
          "    has n: int = 1;\n\n"
          "    def size -> int {\n"
-         "        s = {1, \"a\"};\n"
-         "        return len(s) + self.n;\n"
+         "        d = {x: None for x in [self.n]};\n"
+         "        return len(d) + self.n;\n"
          "    }\n"
          "}\n\n"
          "with entry {\n"
@@ -591,7 +591,7 @@ test "a refusal inside an element pinned native is an error" {
 
 test "a late refusal inside an element pinned native is an error" {
     prog = compile_pinned_foo(PINNED_LATE_METHOD_SRC);
-    assert any("mixed element types" in str(e) for e in prog.errors_had) , (
+    assert any("container element" in str(e) for e in prog.errors_had) , (
         f"a method of a pinned archetype that refuses during lowering keeps its "
         f"error rather than an abort() body: {[str(e) for e in prog.errors_had]}"
     );

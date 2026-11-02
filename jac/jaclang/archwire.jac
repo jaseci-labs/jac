@@ -5493,10 +5493,9 @@ graph import compiler {
     type backends.native.llvm.binding ++> driver.compiler.JacCompiler._load_native_from_cache
         | frontend.codeinfo { ExecutionEngine }
     type backends.native.llvm.ir ++> frontend.codeinfo { Module as IRModule }
-    backends.native.lowering ++> [
-        driver.nativecache.NativeUnitRegistry.adopt_lowered { native_fallbacks_in_ir },
-        tests.test_prim_equivalence { native_lowering_issues },
-    ]
+    backends.native.lowering ++> driver.nativecache.NativeUnitRegistry.adopt_lowered {
+        native_fallbacks_in_ir
+    }
     type backends.native.lowering ++> frontend.codeinfo { NativeFallbacks }
     backends.native.mir.backend --> [
         driver.pipeline.codegen_passes { MirNativePass },
@@ -6334,6 +6333,7 @@ graph import compiler {
             NativeFuncLayout,
             NativeModuleLayout,
             NativeStructLayout,
+            is_kernel_unit_path,
             jaclang_pkg_root,
             native_entry_name,
             native_glob_init_name,
@@ -6613,6 +6613,20 @@ graph import compiler {
             | expr_keys.type_tag_borrows
             | passes.type_checker_pass.TypeCheckPass._check_c_function_def
             | types.type_evaluator.TypeEvaluator._c_lent_args { is_borrow_kind },
+        backends.native.mir.backend
+            | driver.ifacecache.IfaceRegistry._client_edges
+            | driver.module_compile
+            | driver.program.JacProgram.stamp_boundary_facts
+            | driver.unit_products
+            | jc_unit
+            | passes.boundary_analysis_pass
+            | passes.placement_pass
+            | passes.static_analysis_pass.StaticAnalysisPass._check_client_imports
+            | placement.placement.summarize_module
+            | placement.placement_export
+            | placement.placement_facts.settle_server
+            | placement.placement_solver
+            | symbol_utils.report_placement_warnings { CodeContext },
         backends.native.mir.lower { Tokens as Tok, is_borrow_kind },
         backends.py.jcir_gen_pass {
             CodeContext,
@@ -6644,19 +6658,6 @@ graph import compiler {
             | passes.rc_facts_pass.RcFactsPass._asn_makes_region_handle
             | passes.type_checker_pass.TypeCheckPass._borrowed_scalar_param
             | passes.wasm_contract { OwnershipKind },
-        driver.ifacecache.IfaceRegistry._client_edges
-            | driver.module_compile
-            | driver.program.JacProgram.stamp_boundary_facts
-            | driver.unit_products
-            | jc_unit
-            | passes.boundary_analysis_pass
-            | passes.placement_pass
-            | passes.static_analysis_pass.StaticAnalysisPass._check_client_imports
-            | placement.placement.summarize_module
-            | placement.placement_export
-            | placement.placement_facts.settle_server
-            | placement.placement_solver
-            | symbol_utils.report_placement_warnings { CodeContext },
         driver.module_analysis.run_analysis { CodeContext as _CodeCtx },
         native_bindings | types.type_utils { ParamKind, Tokens as Tok },
         passes.access_check_pass
@@ -6792,9 +6793,7 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._warn_rpc_callable_params { W6005 },
         backends.es.esast_gen_pass.EsastGenPass.prepare
             | passes.placement_pass.PlacementPass._run_decided { E5096 },
-        backends.native.mir.backend | driver.module_compile.report_missing_native_ir {
-            E5092
-        },
+        backends.native.mir.backend { E5092, E9003 },
         backends.native.na_compile_pass { E5020, E5026 },
         backends.py.jcir_bc_gen_pass { E5040, E5043 },
         backends.py.jcir_gen_pass {
@@ -6813,6 +6812,7 @@ graph import compiler {
         },
         driver.ifacecache._alert_from_record
             | native_compiler.NativeCompiler.take_pass_results { DIAGNOSTICS },
+        driver.module_compile.report_missing_native_ir { E5092 },
         driver.program.JacProgram.module_scoped_errors { Category },
         passes.access_check_pass {
             E2034,
@@ -7180,7 +7180,8 @@ graph import compiler {
             | backends.es.free_ident_audit.client_ambient_globals
             | backends.es.jac_runtime_js.build_osp_core_js
             | backends.native.abi.struct_layouts
-            | backends.native.mir.backend.MirNativePass._run_impl
+            | backends.native.mir.backend
+            | backends.native.mir.lower.MirLowering.require_dep_native
             | backends.py.artifact_imports
             | driver.application._kernel_units
             | driver.boundary_classify
@@ -7335,6 +7336,7 @@ graph import compiler {
     ]
     frontend.module_facts ++> [
         backends.es.esast_gen_pass
+            | backends.native.mir.backend
             | backends.native.mir.lower
             | backends.py.jcir_gen_pass
             | driver.boundary_classify.is_server_anchored_module
@@ -9536,6 +9538,7 @@ graph import compiler {
     }
     passes.package_boundary_pass ++> driver.pipeline { PackageBoundaryPass }
     passes.placement_pass ++> [
+        backends.native.mir.backend { settle_native_module },
         backends.native.mir.lower_types { NativeRefusal },
         driver.pipeline.analysis_passes { PlacementPass },
     ]
@@ -9602,6 +9605,7 @@ graph import compiler {
         frontend.kernel_host.KernelHost.python_module { summary_from_dict },
     ]
     placement.placement_facts ++> [
+        backends.native.mir.backend { native_placement_hard },
         driver.compiler.JacCompiler.kernel_native_entry { module_record },
         driver.module_compile.admits_native_checks { variant_selected },
         driver.program.JacProgram.declared_codespace {

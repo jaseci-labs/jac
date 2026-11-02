@@ -123,6 +123,7 @@ impl MirLowering.bridge_call(
 
 impl MirLowering.bridge_symbol(symbol: str) {
     if symbol in self.mir.bridged
+        or self.module.decided_codespace == "native"
         or self.prog.options.native_required_for(self.module.loc.mod_path) {
         return;
     }
