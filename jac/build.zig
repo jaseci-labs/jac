@@ -967,24 +967,27 @@ fn macosShim(
     cc.addArg("-dynamiclib");
     // Target the resolved arch explicitly rather than the host c++'s default, so a
     // Rosetta/emulated shell can't produce an x86_64 dylib against arm64 archives.
-    cc.addArgs(&.{ "-arch", switch (target.result.cpu.arch) {
+    const arch = switch (target.result.cpu.arch) {
         .aarch64 => "arm64",
         .x86_64 => "x86_64",
         else => @panic("jacllvm: unsupported macOS arch for the c++ shim link"),
-    } });
+    };
+    cc.addArgs(&.{ "-arch", arch });
     // Pin the shim's minos to the resolved target's floor, exactly like the
     // zig-built launcher: with -Dtarget=x86_64-macos.12.0 the whole shipped
     // binary floors at 12.0 instead of the build runner's macOS. Host-native
     // builds resolve to the host version, matching clang's own default.
     const macos_min = target.result.os.version_range.semver.min;
-    cc.addArg(b.fmt("-mmacosx-version-min={d}.{d}", .{ macos_min.major, macos_min.minor }));
+    const min_flag = b.fmt("-mmacosx-version-min={d}.{d}", .{ macos_min.major, macos_min.minor });
+    cc.addArg(min_flag);
     // Respect -Doptimize the way the Linux (Zig addLibrary) path does.
-    cc.addArg(switch (optimize) {
+    const opt_flag = switch (optimize) {
         .Debug => "-O0",
         .ReleaseSafe => "-O2",
         .ReleaseFast => "-O3",
         .ReleaseSmall => "-Oz",
-    });
+    };
+    cc.addArg(opt_flag);
     // Match the CMake visibility preset: hide everything, the LLVMPY_* API is
     // annotated default-visibility (native/core.h API_EXPORT) so it stays exported.
     cc.addArgs(&.{ "-fvisibility=hidden", "-fvisibility-inlines-hidden" });
@@ -1022,16 +1025,63 @@ fn macosShim(
         const lto_abs = if (std.fs.path.isAbsolute(lto_dylib)) lto_dylib else b.pathFromRoot(lto_dylib);
         cc.setEnvironmentVariable("LIBLTO_PATH", lto_abs);
         cc.addPrefixedFileArg("-Wl,-lto_library,", .{ .cwd_relative = lto_abs });
-        // LLVM's system deps. zstd comes from Homebrew (not on the default search
-        // path); z/xml2 are in the macOS SDK, and clang++ links libc++ itself.
+        // LLVM's system deps. z/xml2 are in the macOS SDK, and clang++ links libc++
+        // itself. macOS has no zstd, so the pinned source links in statically: a
+        // load command naming a package manager's copy would make the shipped
+        // shim load only on machines that happen to have it installed.
         cc.addArgs(&.{ "-lz", "-lxml2" });
-        // Homebrew's prefix is /opt/homebrew on Apple Silicon, /usr/local on Intel;
-        // HOMEBREW_PREFIX overrides both for a custom install.
-        const brew = b.graph.environ_map.get("HOMEBREW_PREFIX") orelse
-            (if (target.result.cpu.arch == .aarch64) "/opt/homebrew" else "/usr/local");
-        cc.addArgs(&.{ b.fmt("-I{s}/opt/zstd/include", .{brew}), b.fmt("-L{s}/opt/zstd/lib", .{brew}), "-lzstd" });
+        if (b.lazyDependency("zstd", .{})) |zstd| addShimZstd(b, cc, zstd, arch, min_flag, opt_flag);
     }
     cc.addArgs(&.{ "-Wl,-exported_symbol,_LLVMPY_*", "-Wl,-install_name,@rpath/libjacllvm.dylib" });
     cc.addArg("-o");
     return cc.addOutputFileArg("libjacllvm.dylib");
+}
+
+/// The zstd an upstream macOS slice's archives reference, as objects on the shim's
+/// link: its compression and decompression API, with no assembly, legacy formats
+/// or threads. Built by the system compiler with the shim's own arch and floor; an
+/// archive from Zig would not do, because ld64 ignores its unaligned 64-bit members.
+fn addShimZstd(
+    b: *std.Build,
+    link: *std.Build.Step.Run,
+    zstd: *std.Build.Dependency,
+    arch: []const u8,
+    min_flag: []const u8,
+    opt_flag: []const u8,
+) void {
+    const sources = [_][]const u8{
+        "common/debug.c",
+        "common/entropy_common.c",
+        "common/error_private.c",
+        "common/fse_decompress.c",
+        "common/pool.c",
+        "common/threading.c",
+        "common/xxhash.c",
+        "common/zstd_common.c",
+        "compress/fse_compress.c",
+        "compress/hist.c",
+        "compress/huf_compress.c",
+        "compress/zstd_compress.c",
+        "compress/zstd_compress_literals.c",
+        "compress/zstd_compress_sequences.c",
+        "compress/zstd_compress_superblock.c",
+        "compress/zstd_double_fast.c",
+        "compress/zstd_fast.c",
+        "compress/zstd_lazy.c",
+        "compress/zstd_ldm.c",
+        "compress/zstd_opt.c",
+        "compress/zstd_preSplit.c",
+        "compress/zstdmt_compress.c",
+        "decompress/huf_decompress.c",
+        "decompress/zstd_ddict.c",
+        "decompress/zstd_decompress.c",
+        "decompress/zstd_decompress_block.c",
+    };
+    for (sources) |source| {
+        const cc = b.addSystemCommand(&.{ "cc", "-c", "-arch", arch, min_flag, opt_flag });
+        cc.addArgs(&.{ "-fvisibility=hidden", "-DZSTD_DISABLE_ASM=1", "-DZSTD_LEGACY_SUPPORT=0" });
+        cc.addFileArg(zstd.path(b.fmt("lib/{s}", .{source})));
+        cc.addArg("-o");
+        link.addFileArg(cc.addOutputFileArg(b.fmt("{s}.o", .{std.fs.path.stem(source)})));
+    }
 }

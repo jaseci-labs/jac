@@ -4,9 +4,9 @@ Runs each expression in Jac and asserts the outputs match what CPython prints
 for the same expressions.
 """
 
-with entry {
-    jac_results: list[str] = [];
+glob jac_results: list[str] = [];
 
+with entry {
     # Bitwise AND vs comparison: should be (3 & 1) == 1, not 3 & (1 == 1)
     jac_results.append(str(3 & 1 == 1));
 
@@ -30,10 +30,13 @@ with entry {
 
     # Shift vs arithmetic preserved: should be 1 << (2 + 1)
     jac_results.append(str(1 << 2 + 1));
+}
 
-    # Python's results for the same expressions, in order
-    py_results: list[str] = ["True", "3", "0", "True", "True", "True", "7", "8"];
+glob
+     # Python's results for the same expressions, in order
+     py_results: list[str] = ["True", "3", "0", "True", "True", "True", "7", "8"];
 
+with entry {
     # Compare and report
     for i in range(len(jac_results)) {
         assert jac_results[i] == py_results[i] , (
