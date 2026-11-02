@@ -1803,22 +1803,10 @@ impl BaseLLM._attempt_recovery(mt_run: MTRuntime) -> CompletionResult | None {
 impl BaseLLM._yield_recovery_result(
     recovery_resp: CompletionResult, iter_count: int, mt_run: MTRuntime, usage_base: int
 ) -> Generator[StreamEvent, None, None] {
-    finish_found = False;
-    if recovery_resp.tool_calls {
-        for tool_call in recovery_resp.tool_calls {
-            if tool_call.is_finish_call() {
-                mt_run.add_message(tool_call());
-                _commit_answer(mt_run, tool_call.get_output(), tool_call.call_id);
-                finish_found = True;
-                break;
-            }
-        }
-    }
+    output = _recovered_answer(mt_run, recovery_resp);
     yield StreamEvent(event_type="steps_done", data={"iterations": iter_count});
-    if not finish_found and recovery_resp.output {
-        yield StreamEvent(
-            event_type="chunk", data={"content": str(recovery_resp.output)}
-        );
+    if not mt_run._has_final_output and output {
+        yield StreamEvent(event_type="chunk", data={"content": str(output)});
     }
     yield from _usage_step_events(mt_run, usage_base);
 }
