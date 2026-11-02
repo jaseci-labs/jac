@@ -103,6 +103,10 @@ def staged_sources(sources: Path, roots: list[str]) -> list[str] {
                 pending.append(str(part.relative_to(sources)));
             }
         }
+        shared_impl = module.parent / "impl" / f"{stem}.impl.jac";
+        if shared_impl.is_file() {
+            pending.append(str(shared_impl.relative_to(sources)));
+        }
         for name in re.findall(r"import from jaclang\.([\w.]+)", module.read_text()) {
             target = name.replace(".", "/") + ".jac";
             if target.startswith("runtime/python/") {
@@ -127,7 +131,7 @@ def main -> int {
         stage = Path(temporary);
         # Keep these compilation units out of the compiler's own self-host
         # program. Preserve the package hierarchy and never edit the checkout.
-        for relative in staged_sources(
+        staged = staged_sources(
             sources,
             [
                 "runtime/python/objects.jac",
@@ -139,7 +143,13 @@ def main -> int {
                 "runtime/python/constant_output.jac",
                 "compiler/frontend/python/syntax_error.jac"
             ]
-        ) {
+        );
+        if "runtime/python/impl/objects.impl.jac" not in staged {
+            raise AssertionError(
+                "native boundary probe omitted the Jac object implementation annex"
+            );
+        }
+        for relative in staged {
             destination = stage / "native_subject" / relative;
             destination.parent.mkdir(parents=True, exist_ok=True);
             destination.write_text(
