@@ -212,9 +212,6 @@ impl _rstrip(s: str) -> str {
     e: int = n;
     while e > 0 {
         if _is_ws(s, e - 1) {
-            while e > 0 and ord(s[e - 1]) >= 128 and ord(s[e - 1]) <= 191 {
-                e -= 1;
-            }
             e -= 1;
         } else {
             break;
