@@ -1841,8 +1841,25 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case IfElseExpr():
             self.get_type_of_expression(expr.condition.expr);
-            true_type = self.get_type_of_expression(expr.value.expr);
-            false_type = self.get_type_of_expression(expr.else_value.expr);
+            true_type = self.get_type_of_expression(
+                expr.value.expr, expected_type=expected_type
+            );
+            false_type = self.get_type_of_expression(
+                expr.else_value.expr, expected_type=expected_type
+            );
+            if expected_type is None {
+                true_empty = self._is_empty_container_expr(expr.value.expr);
+                false_empty = self._is_empty_container_expr(expr.else_value.expr);
+                if false_empty and not true_empty {
+                    false_type = self.get_type_of_expression(
+                        expr.else_value.expr, expected_type=true_type
+                    );
+                } elif true_empty and not false_empty {
+                    true_type = self.get_type_of_expression(
+                        expr.value.expr, expected_type=false_type
+                    );
+                }
+            }
 
             unique_types: list[TypeBase] = [];
             for branch_type in [true_type, false_type] {
@@ -6790,4 +6807,17 @@ impl _find_cfg_node_for(at_node: UniNode) -> UniCFGNode | None {
         cur = cur.parent;
     }
     return None;
+}
+
+impl TypeEvaluator._is_empty_container_expr(expr: Expr) -> bool {
+    if isinstance(expr, (ListVal, SetVal)) {
+        return not expr.values;
+    }
+    if isinstance(expr, DictVal) {
+        return not expr.kv_pairs;
+    }
+    if isinstance(expr, FuncCall) and not expr.params and isinstance(expr.target, Name) {
+        return expr.target.value in ("list", "set", "dict", "frozenset");
+    }
+    return False;
 }

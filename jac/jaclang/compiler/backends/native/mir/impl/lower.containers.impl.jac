@@ -1007,3 +1007,34 @@ impl MirLowering.lower_delete(nd: uni.DeleteStmt) {
         );
     }
 }
+
+impl MirLowering.container_rebuild(
+    value: MirValue, to: MirType, site: uni.UniNode
+) -> MirValue {
+    same_storage = len(value.type.args) == len(to.args)
+        and all(
+            have is want
+            or (
+                have.kind == MirKind.OBJ
+                and want.kind == MirKind.OBJ
+                and self.obj_extends(have.name, want.name)
+            )
+            for (have, want) in zip(value.type.args, to.args)
+        );
+    if same_storage {
+        return self.builder().ref_cast(value, to, False);
+    }
+    if to.kind == MirKind.LIST {
+        made = self.spill(self.new_list(to.payload(), 4));
+        self.extend_from(made, value, site);
+        return made;
+    }
+    if to.kind == MirKind.SET {
+        made = self.spill(self.new_dict(to.payload(), None, to));
+        self.extend_from(made, value, site);
+        return made;
+    }
+    made = self.spill(self.new_dict(to.args[0], to.args[1], to));
+    self.merge_dict(made, value, site, False);
+    return made;
+}

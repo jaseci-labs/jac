@@ -395,6 +395,7 @@ obj MirLowering {
     def each_end(head: MirBlock, after: MirBlock);
     def container_add(made: MirValue, item: MirValue, site: uni.UniNode);
     def extend_from(made: MirValue, source: MirValue, site: uni.UniNode);
+    def container_rebuild(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
     def merge_dict(made: MirValue, source: MirValue, site: uni.UniNode, unique: bool);
     def list_slice(lst: MirValue, part: uni.Slice, site: uni.UniNode) -> MirValue;
     def container_method(

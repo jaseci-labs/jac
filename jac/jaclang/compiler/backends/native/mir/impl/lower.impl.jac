@@ -1256,6 +1256,9 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
         and self.obj_extends(value.type.name, to.name) {
         return self.builder().ref_cast(value, to, False);
     }
+    if mir_is_container(to) and value.type.kind == to.kind {
+        return self.container_rebuild(value, to, site);
+    }
     raise MirRefused(
         mir_refusal("conversion", f"{value.type.render()} to {to.render()}", site)
     );
