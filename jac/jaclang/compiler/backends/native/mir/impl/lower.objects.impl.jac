@@ -1598,6 +1598,61 @@ impl MirLowering.member_owner(member: uni.Name) -> (uni.Archetype | None) {
     return sym.decl.find_parent_of_type(uni.Archetype);
 }
 
+impl MirLowering.union_archetypes(t: (TypeBase | None)) -> list[uni.Archetype] {
+    if not isinstance(t, UnionType) {
+        return [];
+    }
+    found: list[uni.Archetype] = [];
+    for member in t.types {
+        arch = self.arch_of_type(member);
+        if arch is None {
+            return [];
+        }
+        found.append(arch);
+    }
+    return found;
+}
+
+impl MirLowering.union_field_place(
+    holder: MirValue, members: list[uni.Archetype], name: str, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    held = self.spill(holder);
+    places: list[tuple[MirValue, MirValue]] = [];
+    for arch in members {
+        wanted = self.object_type(arch);
+        view = held;
+        if held.type is not wanted {
+            if held.type.kind != MirKind.ANY
+                and (
+                    held.type.kind != MirKind.OBJ
+                    or not self.obj_extends(wanted.name, held.type.name)
+                ) {
+                raise MirRefused(
+                    mir_refusal(
+                        "attribute access", f"{name} on {held.type.render()}", site
+                    )
+                );
+            }
+            view = b.ref_cast(held, wanted, False);
+        }
+        verdict = self.isinstance_check(
+            view if held.type.kind == MirKind.ANY else held, arch
+        );
+        places.append((verdict, self.field_place(view, arch, name, site)));
+    }
+    chosen = places[-1][1];
+    for (verdict, place) in reversed(places[:-1]) {
+        if place.type is not chosen.type {
+            raise MirRefused(
+                mir_refusal("attribute access", f"{name} of differing types", site)
+            );
+        }
+        chosen = b.select(verdict, place, chosen);
+    }
+    return chosen;
+}
+
 impl MirLowering.accessor_of(
     nd: uni.AtomTrailer, kind: str
 ) -> (tuple[uni.Archetype, MirDecl] | None) {

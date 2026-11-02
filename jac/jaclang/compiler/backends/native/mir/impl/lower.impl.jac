@@ -1192,16 +1192,55 @@ impl MirLowering.lower_unary(nd: uni.UnaryExpr) -> MirValue {
     raise MirRefused(mir_refusal("unary operator", op, nd));
 }
 
+impl MirLowering.condition_only(nd: uni.Expr) -> bool {
+    current: uni.UniNode = nd;
+    parent = nd.parent;
+    while isinstance(parent, (uni.AtomUnit, uni.CfgExpr)) {
+        current = parent;
+        parent = parent.parent;
+    }
+    if isinstance(parent, (uni.IfStmt, uni.WhileStmt, uni.IfElseExpr, uni.AssertStmt)) {
+        return parent.condition is current;
+    }
+    if isinstance(parent, uni.UnaryExpr) {
+        return parent.op.name == Tok.NOT;
+    }
+    if isinstance(parent, uni.InnerCompr) {
+        return any(cond is current for cond in list(parent.conditional or []));
+    }
+    if isinstance(parent, uni.BoolExpr) {
+        return self.condition_only(parent);
+    }
+    return False;
+}
+
 impl MirLowering.lower_bool(nd: uni.BoolExpr) -> MirValue {
     b = self.builder();
     fn = self.st().fn;
-    result_type = self.expr_type(nd);
+    tested = self.condition_only(nd);
+    result_type = mir_bool() if tested else self.expr_type(nd);
     result = self.temp_slot(result_type);
     done = fn.new_block("bool.done");
     is_and = nd.op.name == Tok.KW_AND;
     values = list(nd.values);
     for (index, operand_nd) in enumerate(values) {
         operand = self.lower_expr(operand_nd);
+        if tested {
+            verdict = self.truthy(operand, operand_nd);
+            b.store(result, verdict);
+            if index + 1 < len(values) {
+                more = fn.new_block("bool.next");
+                if is_and {
+                    b.cond_branch(verdict, more, done);
+                } else {
+                    b.cond_branch(verdict, done, more);
+                }
+                b.position(more);
+            } else {
+                b.branch(done);
+            }
+            continue;
+        }
         if index + 1 < len(values) {
             keep = fn.new_block("bool.keep");
             more = fn.new_block("bool.next");
@@ -2057,6 +2096,12 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
                 holder = self.builder().ref_cast(holder, wanted, False);
             }
             return self.field_place(holder, arch, right.value, nd);
+        }
+        members = self.union_archetypes(target_type);
+        if members {
+            return self.union_field_place(
+                self.lower_expr(nd.target), members, right.value, nd
+            );
         }
         if isinstance(nd.target, uni.Name)
             and nd.target.sym is not None

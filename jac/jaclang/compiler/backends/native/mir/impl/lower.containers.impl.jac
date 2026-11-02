@@ -790,6 +790,49 @@ impl MirLowering.dict_method(
         b.position(done);
         return b.load(held, result_type);
     }
+    if name == "setdefault" and len(args) in (1, 2) {
+        held = self.spill(d);
+        key = self.spill(self.lower_expr(args[0]));
+        fallback = self.spill(
+            self.coerce(
+                self.lower_expr(args[1]) if len(args) == 2 else self.none_value(),
+                value_type,
+                nd
+            )
+        );
+        found = self.runtime_value(
+            "__jac_rt_dict_find", [held, self.to_bits(key, key_type, args[0]), key_kind]
+        );
+        fn = self.st().fn;
+        miss = fn.new_block("setdefault.miss");
+        done = fn.new_block("setdefault.done");
+        b.cond_branch(b.compare("lt", found, b.const_int(0, mir_int())), miss, done);
+        b.position(miss);
+        self.runtime(
+            "__jac_rt_dict_set",
+            [
+                held,
+                self.to_bits(key, key_type, args[0]),
+                self.to_bits(fallback, value_type, nd),
+                key_kind,
+                value_kind
+            ]
+        );
+        b.branch(done);
+        b.position(done);
+        at = self.runtime_value(
+            "__jac_rt_dict_find", [held, self.to_bits(key, key_type, args[0]), key_kind]
+        );
+        if self.elem_kind(value_type, nd) in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
+            return self.owned_element(
+                self.runtime_value("__jac_rt_dict_val_ref", [held, at, value_kind]),
+                value_type
+            );
+        }
+        return self.scalar_from_bits(
+            self.runtime_value("__jac_rt_dict_val_at", [held, at]), value_type
+        );
+    }
     if name == "popitem" and not args {
         result_type = self.expr_type(nd);
         if result_type.kind != MirKind.TUPLE or len(result_type.args) != 2 {

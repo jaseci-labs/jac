@@ -28,12 +28,13 @@ impl MirLowering.opt_unwrap_checked(value: MirValue, message: str) -> MirValue {
 }
 
 impl MirLowering.narrowed_load(value: MirValue, nd: uni.Expr) -> MirValue {
+    seen = nd.narrowed_type if nd.narrowed_type is not None else nd.type;
     if value.type.kind != MirKind.OPT
-        or nd.type is None
-        or isinstance(nd.type, (UnionType, AnyType)) {
+        or seen is None
+        or isinstance(seen, (UnionType, AnyType)) {
         return value;
     }
-    if self.expr_type(nd).kind == MirKind.OPT {
+    if self.type_of(seen, MirPosition.VALUE, nd).kind == MirKind.OPT {
         return value;
     }
     return self.opt_unwrap_checked(
@@ -42,12 +43,13 @@ impl MirLowering.narrowed_load(value: MirValue, nd: uni.Expr) -> MirValue {
 }
 
 impl MirLowering.narrow_down(value: MirValue, nd: uni.Expr) -> MirValue {
+    seen = nd.narrowed_type if nd.narrowed_type is not None else nd.type;
     if value.type.kind != MirKind.OBJ
-        or nd.type is None
-        or isinstance(nd.type, (UnionType, AnyType)) {
+        or seen is None
+        or isinstance(seen, (UnionType, AnyType)) {
         return value;
     }
-    narrowed = self.expr_type(nd);
+    narrowed = self.type_of(seen, MirPosition.VALUE, nd);
     if narrowed.kind == MirKind.OBJ
         and narrowed is not value.type
         and self.obj_extends(narrowed.name, value.type.name) {
@@ -100,7 +102,19 @@ impl MirLowering.lower_cast(nd: uni.CastExpr) -> MirValue {
             self.opt_unwrap_checked(value, "'NoneType' object cast to a value"), nd
         );
     }
-    return self.narrow_down(value, nd);
+    narrowed = self.narrow_down(value, nd);
+    have = narrowed.type;
+    if have is not wanted
+        and have.kind == wanted.kind
+        and wanted.kind in (MirKind.OBJ, MirKind.LIST, MirKind.SET, MirKind.DICT)
+        and len(have.args) == len(wanted.args)
+        and all(
+            mine is theirs or (mine.kind == MirKind.OBJ and theirs.kind == MirKind.OBJ)
+            for (mine, theirs) in zip(have.args, wanted.args)
+        ) {
+        return self.builder().ref_cast(narrowed, wanted, False);
+    }
+    return narrowed;
 }
 
 impl MirLowering.opt_begin(

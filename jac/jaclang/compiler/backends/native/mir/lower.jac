@@ -492,6 +492,11 @@ obj MirLowering {
     def decl_label(decl: MirDecl) -> str;
     def refusal_key(decl: MirDecl) -> str;
     def member_owner(member: uni.Name) -> (uni.Archetype | None);
+    def union_archetypes(t: (TypeBase | None)) -> list[uni.Archetype];
+    def union_field_place(
+        holder: MirValue, members: list[uni.Archetype], name: str, site: uni.UniNode
+    ) -> MirValue;
+    def condition_only(nd: uni.Expr) -> bool;
     def accessor_of(
         nd: uni.AtomTrailer, kind: str
     ) -> (tuple[uni.Archetype, MirDecl] | None);
