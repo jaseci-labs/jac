@@ -106,16 +106,24 @@ import from jaclang.compiler.frontend.python.compiler_diagnostics {
 # Diagnose the source AST once, before lowering duplicates finally bodies or
 # folds constant branches. Traversal follows only AST fields, never Jac anchors.
 def check_ast_warnings(tree: ast_node, filename: str) {
-    pending: list[tuple[ast_node, bool, bool]] = [(tree, False, False)];
-    children = ast_child_buffer();
+    pending: list[ast_node] = [tree];
+    pending_flags: list[int] = [0];
+    children = ast_child_buffer(skip_leaves=True);
     while pending {
-        (item_node, return_in_finally, loop_exit_in_finally) = pending.pop();
+        item_node = pending.pop();
+        item_flags = pending_flags.pop();
+        return_in_finally = (item_flags & 1) != 0;
+        loop_exit_in_finally = (item_flags & 2) != 0;
+        node_kind = item_node.node_kind();
         exit_name = None;
-        if isinstance(item_node, Return) and return_in_finally {
+        if (node_kind == ast_kind.Return and isinstance(item_node, Return))
+            and return_in_finally {
             exit_name = "return";
-        } elif isinstance(item_node, Break) and loop_exit_in_finally {
+        } elif (node_kind == ast_kind.Break and isinstance(item_node, Break))
+            and loop_exit_in_finally {
             exit_name = "break";
-        } elif isinstance(item_node, Continue) and loop_exit_in_finally {
+        } elif (node_kind == ast_kind.Continue and isinstance(item_node, Continue))
+            and loop_exit_in_finally {
             exit_name = "continue";
         }
         if exit_name is not None and isinstance(item_node, stmt) {
@@ -126,7 +134,7 @@ def check_ast_warnings(tree: ast_node, filename: str) {
                 item_node.col_offset
             );
         }
-        if isinstance(item_node, Compare) {
+        if (node_kind == ast_kind.Compare and isinstance(item_node, Compare)) {
             left = item_node.left;
             for (op, right) in zip(item_node.ops, item_node.comparators) {
                 if isinstance(op, (Is, IsNot)) {
@@ -151,7 +159,7 @@ def check_ast_warnings(tree: ast_node, filename: str) {
                 }
                 left = right;
             }
-        } elif isinstance(item_node, Assert)
+        } elif (node_kind == ast_kind.Assert and isinstance(item_node, Assert))
             and isinstance(item_node.`test, Tuple)
             and item_node.`test.elts {
             syntax_warning(
@@ -161,20 +169,50 @@ def check_ast_warnings(tree: ast_node, filename: str) {
                 item_node.col_offset
             );
         }
-        for index in range(children.collect(item_node) - 1, -1, -1) {
+        count = children.collect(item_node);
+        if count == 0 {
+            continue;
+        }
+        item_kind = node_kind.value;
+        if item_kind >= 32 and item_kind <= 60 {
+            for index in range(count - 1, -1, -1) {
+                pending.append(children.nodes[index]);
+                pending_flags.append(item_flags);
+            }
+            continue;
+        }
+        is_definition = isinstance(
+            item_node, (FunctionDef, AsyncFunctionDef, ClassDef)
+        );
+        is_try = (
+            (node_kind == ast_kind.Try or node_kind == ast_kind.TryStar)
+            and isinstance(item_node, (Try, TryStar))
+        );
+        is_loop = (
+            (
+                node_kind == ast_kind.For
+                or node_kind == ast_kind.AsyncFor
+                or node_kind == ast_kind.While
+            )
+            and isinstance(item_node, (For, AsyncFor, While))
+        );
+        for index in range(count - 1, -1, -1) {
             key = children.fields[index];
             child_return = return_in_finally;
             child_loop_exit = loop_exit_in_finally;
-            if isinstance(item_node, (FunctionDef, AsyncFunctionDef, ClassDef)) {
+            if is_definition {
                 child_return = False;
                 child_loop_exit = False;
-            } elif isinstance(item_node, (Try, TryStar)) and key == "finalbody" {
+            } elif is_try and key == "finalbody" {
                 child_return = True;
                 child_loop_exit = True;
-            } elif isinstance(item_node, (For, AsyncFor, While)) and key == "body" {
+            } elif is_loop and key == "body" {
                 child_loop_exit = False;
             }
-            pending.append((children.nodes[index], child_return, child_loop_exit));
+            pending.append(children.nodes[index]);
+            pending_flags.append(
+                (1 if child_return else 0) | (2 if child_loop_exit else 0)
+            );
         }
     }
 }
@@ -200,16 +238,18 @@ def validation_error(
 # --- expression context ---
 
 def validate_load_expr(e: expr, in_function: bool) -> validation_result {
-    if isinstance(e, Yield) or isinstance(e, YieldFrom) {
+    e_kind = e.node_kind();
+    if (e_kind == ast_kind.Yield and isinstance(e, Yield))
+        or (e_kind == ast_kind.YieldFrom and isinstance(e, YieldFrom)) {
         if not in_function {
             lineno = 1;
             col = 0;
-            if isinstance(e, Yield) {
+            if (e_kind == ast_kind.Yield and isinstance(e, Yield)) {
                 yy = e as Yield;
                 lineno = yy.lineno;
                 col = yy.col_offset;
             }
-            if isinstance(e, YieldFrom) {
+            if (e_kind == ast_kind.YieldFrom and isinstance(e, YieldFrom)) {
                 yf = e as YieldFrom;
                 lineno = yf.lineno;
                 col = yf.col_offset;
@@ -217,13 +257,13 @@ def validate_load_expr(e: expr, in_function: bool) -> validation_result {
             return validation_error(
                 "SyntaxError",
                 "'yield from' outside function"
-                    if isinstance(e, YieldFrom)
+                    if (e_kind == ast_kind.YieldFrom and isinstance(e, YieldFrom))
                     else "'yield' outside function",
                 lineno,
                 col
             );
         }
-        if isinstance(e, Yield) {
+        if (e_kind == ast_kind.Yield and isinstance(e, Yield)) {
             y = e as Yield;
             if y.value is not None {
                 return validate_load_expr(y.value, in_function);
@@ -232,7 +272,7 @@ def validate_load_expr(e: expr, in_function: bool) -> validation_result {
         }
         return validate_load_expr((e as YieldFrom).value, in_function);
     }
-    if isinstance(e, Name) {
+    if (e_kind == ast_kind.Name and isinstance(e, Name)) {
         n = e as Name;
         if not isinstance(n.ctx, Load) {
             return validation_error(
@@ -244,7 +284,7 @@ def validate_load_expr(e: expr, in_function: bool) -> validation_result {
         }
         return validation_ok();
     }
-    if isinstance(e, Attribute) {
+    if (e_kind == ast_kind.Attribute and isinstance(e, Attribute)) {
         a = e as Attribute;
         if not isinstance(a.ctx, Load) {
             return validation_error(
@@ -257,7 +297,7 @@ def validate_load_expr(e: expr, in_function: bool) -> validation_result {
         }
         return validation_ok();
     }
-    if isinstance(e, Subscript) {
+    if (e_kind == ast_kind.Subscript and isinstance(e, Subscript)) {
         s = e as Subscript;
         if not isinstance(s.ctx, Load) {
             return validation_error(
@@ -270,10 +310,10 @@ def validate_load_expr(e: expr, in_function: bool) -> validation_result {
         }
         return validate_subscript_slice(s.slice, in_function);
     }
-    if isinstance(e, Constant) {
+    if (e_kind == ast_kind.Constant and isinstance(e, Constant)) {
         return validation_ok();
     }
-    if isinstance(e, BinOp) {
+    if (e_kind == ast_kind.BinOp and isinstance(e, BinOp)) {
         b = e as BinOp;
         left = validate_load_expr(b.left, in_function);
         if left.diag is not None {
@@ -281,10 +321,10 @@ def validate_load_expr(e: expr, in_function: bool) -> validation_result {
         }
         return validate_load_expr(b.right, in_function);
     }
-    if isinstance(e, UnaryOp) {
+    if (e_kind == ast_kind.UnaryOp and isinstance(e, UnaryOp)) {
         return validate_load_expr((e as UnaryOp).operand, in_function);
     }
-    if isinstance(e, Compare) {
+    if (e_kind == ast_kind.Compare and isinstance(e, Compare)) {
         c = e as Compare;
         left = validate_load_expr(c.left, in_function);
         if left.diag is not None {
@@ -300,7 +340,7 @@ def validate_load_expr(e: expr, in_function: bool) -> validation_result {
         }
         return validation_ok();
     }
-    if isinstance(e, Call) {
+    if (e_kind == ast_kind.Call and isinstance(e, Call)) {
         ca = e as Call;
         func = validate_load_expr(ca.func, in_function);
         if func.diag is not None {
@@ -320,7 +360,7 @@ def validate_load_expr(e: expr, in_function: bool) -> validation_result {
         }
         return validation_ok();
     }
-    if isinstance(e, BoolOp) {
+    if (e_kind == ast_kind.BoolOp and isinstance(e, BoolOp)) {
         bo = e as BoolOp;
         vi = 0;
         while vi < len(bo.values) {
@@ -332,7 +372,7 @@ def validate_load_expr(e: expr, in_function: bool) -> validation_result {
         }
         return validation_ok();
     }
-    if isinstance(e, List) {
+    if (e_kind == ast_kind.List and isinstance(e, List)) {
         li = e as List;
         li_elts = li.elts if li.elts is not None else [];
         ei = 0;
@@ -345,7 +385,7 @@ def validate_load_expr(e: expr, in_function: bool) -> validation_result {
         }
         return validation_ok();
     }
-    if isinstance(e, Tuple) {
+    if (e_kind == ast_kind.Tuple and isinstance(e, Tuple)) {
         tu = e as Tuple;
         tu_elts = tu.elts if tu.elts is not None else [];
         ei = 0;
@@ -358,10 +398,10 @@ def validate_load_expr(e: expr, in_function: bool) -> validation_result {
         }
         return validation_ok();
     }
-    if isinstance(e, Starred) {
+    if (e_kind == ast_kind.Starred and isinstance(e, Starred)) {
         return validate_load_expr((e as Starred).value, in_function);
     }
-    if isinstance(e, Slice) {
+    if (e_kind == ast_kind.Slice and isinstance(e, Slice)) {
         return validate_subscript_slice(e, in_function);
     }
     return validation_ok();
@@ -780,7 +820,7 @@ def validate_except_star_exits(body: list[stmt]) -> validation_result {
     pending: list[tuple[ast_node, bool, bool]] = [
         (item, False, False) for item in reversed(body)
     ];
-    children = ast_child_buffer();
+    children = ast_child_buffer(skip_leaves=True);
     while pending {
         (item, return_forbidden, loop_exit_forbidden) = pending.pop();
         if (isinstance(item, Return) and return_forbidden)
@@ -791,6 +831,10 @@ def validate_except_star_exits(body: list[stmt]) -> validation_result {
                 item.lineno,
                 item.col_offset
             );
+        }
+        item_kind = item.node_kind().value;
+        if item_kind >= 32 and item_kind <= 60 {
+            continue;
         }
         for index in range(children.collect(item) - 1, -1, -1) {
             key = children.fields[index];
@@ -816,16 +860,23 @@ def validate_except_star_exits(body: list[stmt]) -> validation_result {
 def validate_suspensions(
     roots: list[ast_node], allow_top_await: bool = False
 ) -> validation_result {
-    pending: list[tuple[ast_node, bool, bool, bool, bool]] = [
-        (item, False, allow_top_await, False, False) for item in reversed(roots)
-    ];
-    children = ast_child_buffer();
+    pending: list[ast_node] = [item for item in reversed(roots)];
+    root_flags = 2 if allow_top_await else 0;
+    pending_flags: list[int] = [root_flags for _ in roots];
+    children = ast_child_buffer(skip_leaves=True);
     while pending {
-        (item, in_function, in_async, in_comp, in_annotation) = pending.pop();
+        item = pending.pop();
+        item_flags = pending_flags.pop();
+        in_function = (item_flags & 1) != 0;
+        in_async = (item_flags & 2) != 0;
+        in_comp = (item_flags & 4) != 0;
+        in_annotation = (item_flags & 8) != 0;
+        node_kind = item.node_kind();
         message: str | None = None;
-        if isinstance(item, NamedExpr) and in_annotation {
+        if (node_kind == ast_kind.NamedExpr and isinstance(item, NamedExpr))
+            and in_annotation {
             message = "named expression cannot be used within an annotation";
-        } elif isinstance(item, Await) {
+        } elif (node_kind == ast_kind.Await and isinstance(item, Await)) {
             if in_annotation {
                 message = "await expression cannot be used within an annotation";
             } elif not in_async {
@@ -833,16 +884,20 @@ def validate_suspensions(
                     if in_function
                     else "'await' outside function";
             }
-        } elif isinstance(item, (Yield, YieldFrom)) {
+        } elif (
+            (node_kind == ast_kind.Yield or node_kind == ast_kind.YieldFrom)
+            and isinstance(item, (Yield, YieldFrom))
+        ) {
             if in_annotation {
                 message = "yield expression cannot be used within an annotation";
             } elif in_comp {
                 message = "'yield' inside comprehension";
             } elif not in_function {
                 message = "'yield from' outside function"
-                    if isinstance(item, YieldFrom)
+                    if (node_kind == ast_kind.YieldFrom and isinstance(item, YieldFrom))
                     else "'yield' outside function";
-            } elif in_async and isinstance(item, YieldFrom) {
+            } elif in_async
+                and (node_kind == ast_kind.YieldFrom and isinstance(item, YieldFrom)) {
                 message = "'yield from' inside async function";
             }
         }
@@ -852,8 +907,18 @@ def validate_suspensions(
                 "SyntaxError", message, located.lineno, located.col_offset
             );
         }
-        if isinstance(item, (ListComp, SetComp, DictComp, GeneratorExp)) {
-            is_gen = isinstance(item, GeneratorExp);
+        if (
+            (
+                node_kind == ast_kind.ListComp
+                or node_kind == ast_kind.SetComp
+                or node_kind == ast_kind.DictComp
+                or node_kind == ast_kind.GeneratorExp
+            )
+            and isinstance(item, (ListComp, SetComp, DictComp, GeneratorExp))
+        ) {
+            is_gen = (
+                node_kind == ast_kind.GeneratorExp and isinstance(item, GeneratorExp)
+            );
             if not is_gen
                 and not in_async
                 and any(gen.is_async for gen in item.generators) {
@@ -865,47 +930,73 @@ def validate_suspensions(
                 );
             }
             comp_async = in_async or is_gen;
+            inner_flags = 1 | (2 if comp_async else 0) | 4;
             for (index, gen) in enumerate(item.generators) {
-                pending.append(
-                    (
-                        gen.iter,
-                        in_function if index == 0 else True,
-                        in_async if index == 0 else comp_async,
-                        in_comp if index == 0 else True,
-                        in_annotation if index == 0 else False
-                    )
-                );
-                pending.append((gen.target, True, comp_async, True, False));
-                pending.extend(
-                    (condition, True, comp_async, True, False) for condition in gen.ifs
-                );
+                pending.append(gen.iter);
+                pending_flags.append(item_flags if index == 0 else inner_flags);
+                pending.append(gen.target);
+                pending_flags.append(inner_flags);
+                for condition in gen.ifs {
+                    pending.append(condition);
+                    pending_flags.append(inner_flags);
+                }
             }
             if isinstance(item, DictComp) {
-                pending.append((item.key, True, comp_async, True, False));
-                pending.append((item.value, True, comp_async, True, False));
+                pending.append(item.key);
+                pending_flags.append(inner_flags);
+                pending.append(item.value);
+                pending_flags.append(inner_flags);
             } else {
-                pending.append((item.elt, True, comp_async, True, False));
+                pending.append(item.elt);
+                pending_flags.append(inner_flags);
             }
             continue;
         }
-        for index in range(children.collect(item) - 1, -1, -1) {
+        count = children.collect(item);
+        if count == 0 {
+            continue;
+        }
+        item_kind = node_kind.value;
+        if item_kind >= 32
+            and item_kind <= 60
+            and not (node_kind == ast_kind.Lambda and isinstance(item, Lambda)) {
+            for index in range(count - 1, -1, -1) {
+                pending.append(children.nodes[index]);
+                pending_flags.append(item_flags);
+            }
+            continue;
+        }
+        is_scope = (
+            (
+                node_kind == ast_kind.FunctionDef
+                or node_kind == ast_kind.AsyncFunctionDef
+                or node_kind == ast_kind.Lambda
+                or node_kind == ast_kind.ClassDef
+            )
+            and isinstance(item, (FunctionDef, AsyncFunctionDef, Lambda, ClassDef))
+        );
+        for index in range(count - 1, -1, -1) {
             field = children.fields[index];
-            fn = in_function;
-            asynchronous = in_async;
-            comp = in_comp;
-            annotation = in_annotation or field in ("annotation", "returns");
-            if field in ("annotation", "returns") {
-                asynchronous = False;
-                comp = False;
+            child_flags = item_flags;
+            if field == "annotation" or field == "returns" {
+                child_flags = (child_flags & 1) | 8;
             }
-            if isinstance(item, (FunctionDef, AsyncFunctionDef, Lambda, ClassDef))
-                and field == "body" {
-                fn = not isinstance(item, ClassDef);
-                asynchronous = isinstance(item, AsyncFunctionDef);
-                comp = False;
-                annotation = False;
+            if is_scope and field == "body" {
+                child_flags = 0;
+                if not (
+                    node_kind == ast_kind.ClassDef and isinstance(item, ClassDef)
+                ) {
+                    child_flags = 1;
+                }
+                if (
+                    node_kind == ast_kind.AsyncFunctionDef
+                    and isinstance(item, AsyncFunctionDef)
+                ) {
+                    child_flags = child_flags | 2;
+                }
             }
-            pending.append((children.nodes[index], fn, asynchronous, comp, annotation));
+            pending.append(children.nodes[index]);
+            pending_flags.append(child_flags);
         }
     }
     return validation_ok();
@@ -990,7 +1081,7 @@ def future_features(
         return (flags, validation_ok());
     }
     pending: list[ast_node] = [item for item in reversed(body)];
-    children = ast_child_buffer();
+    children = ast_child_buffer(skip_leaves=True);
     while pending {
         item = pending.pop();
         if isinstance(item, ImportFrom)
@@ -1008,7 +1099,11 @@ def future_features(
             );
         }
         for index in range(children.collect(item) - 1, -1, -1) {
-            pending.append(children.nodes[index]);
+            child = children.nodes[index];
+            child_kind = child.node_kind().value;
+            if child_kind < 32 or child_kind > 60 {
+                pending.append(child);
+            }
         }
     }
     return (flags, validation_ok());

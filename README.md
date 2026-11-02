@@ -412,7 +412,7 @@ def:pub get_todos -> list[Todo] {
     return [root-->][?:Todo];
 }
 
-cl def:pub app -> JsxElement {
+def:pub app -> JsxElement {
     has todos: list[Todo] = [], text: str = "";
     async can with entry { todos = await get_todos(); }
     async def add {
@@ -423,7 +423,7 @@ cl def:pub app -> JsxElement {
     }
     return <div>
         <input value={text}
-            onChange={lambda e: ChangeEvent { text = e.target.value; }}
+            onChange={lambda(e: ChangeEvent) { text = e.target.value; }}
             placeholder="Add a todo..." />
         <button onClick={add}>Add</button>
         {[<p key={jid(t)}>{t.title}</p> for t in todos]}
@@ -431,7 +431,7 @@ cl def:pub app -> JsxElement {
 }
 ```
 
-Code in `cl` (the client **codespace**) compiles to a React/JSX bundle for the browser. Everything else compiles to Python for the server. That `await add_todo(...)` in the click handler is a real RPC: the compiler generates the HTTP call, serialization, and shared types across the boundary. `jac run` serves it, and `jac run --dev` adds hot reload. [Full-stack tutorial →](https://www.jaclang.org/docs/latest/build/fullstack-web)
+Code that returns `JsxElement` (like `app` here) is client-side -- it compiles to a React/JSX bundle for the browser. Everything else compiles to Python for the server. That `await add_todo(...)` in the click handler is a real RPC: the compiler generates the HTTP call, serialization, and shared types across the boundary. `jac run` serves it, and `jac run --dev` adds hot reload. [Full-stack tutorial →](https://www.jaclang.org/docs/latest/build/fullstack-web)
 
 For all three ideas in one file (an AI categorizer, a native-compiled scoring function, a persistent graph, and a React UI), see [`jac/examples/mini_todo`](jac/examples/mini_todo).
 

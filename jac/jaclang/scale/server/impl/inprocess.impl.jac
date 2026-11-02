@@ -11,6 +11,10 @@ impl PreparedInProcessRuntime.close {
         Jac.set_context(self._prior_ctx);
     }
     self._prior_ctx = None;
+    if self._sets_target {
+        Jac.set_full_target_path(self._prior_target);
+        self._sets_target = False;
+    }
 }
 
 impl _extensions_for(profile: str) -> list[ServerExtension] {
@@ -52,6 +56,10 @@ impl prepare_inprocess_runtime(
     os.makedirs(base_path, exist_ok=True);
     mark_scale_runtime();
     Jac.set_base_path(base_path);
+    prior_target = Jac.get_full_target_path();
+    if not static_only {
+        Jac.set_full_target_path(os.path.abspath(jac_file));
+    }
 
     prior_ctx = Jac.exec_ctx;
     mach = Jac.create_j_context(user_root=None);
@@ -114,7 +122,9 @@ impl prepare_inprocess_runtime(
             server=server,
             transport_kind=transport_kind,
             client=client,
-            _prior_ctx=prior_ctx
+            _prior_ctx=prior_ctx,
+            _prior_target=prior_target,
+            _sets_target=not static_only
         );
     } except Exception {
         if not static_only and mod in Jac.loaded_modules {
@@ -126,6 +136,9 @@ impl prepare_inprocess_runtime(
         Jac.set_shared_root_resolver(None);
         if prior_ctx is not None {
             Jac.set_context(prior_ctx);
+        }
+        if not static_only {
+            Jac.set_full_target_path(prior_target);
         }
         mach.close();
         raise;

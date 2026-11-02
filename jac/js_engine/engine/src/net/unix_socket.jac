@@ -26,7 +26,13 @@ import from engine.src.ffi.libc {
     close,
     get_errno
 }
-import from engine.src.runtime.mem { write_i32, write_byte, read_u16 }
+import from engine.src.runtime.mem {
+    write_i32,
+    write_byte,
+    read_u16,
+    str_byte,
+    str_nbytes
+}
 import from engine.src.net.constants { AF_UNIX, SOCK_STREAM }
 import from engine.src.net.tcp_socket { TCPSocket, TCPListener, SocketAddress }
 
@@ -52,12 +58,12 @@ def _unix_build_sockaddr_un(path: str) -> int {
     write_byte(buf, 1, 0);
     # Copy path bytes into sun_path at offset 2
     i: int = 0;
-    plen: int = len(path);
+    plen: int = str_nbytes(path);
     if plen > 107 {
         plen = 107;  # leave room for null terminator
     }
     while i < plen {
-        c: int = ord(path[i]);
+        c: int = str_byte(path, i);
         write_byte(buf, _SUN_PATH + i, c);
         i = i + 1;
     }
@@ -87,7 +93,7 @@ def:pub unix_connect(path: str) -> TCPSocket {
 
     addr: int = _unix_build_sockaddr_un(path);
     # addrlen = 2 (family) + strlen(path)
-    addrlen: int = 2 + len(path);
+    addrlen: int = 2 + str_nbytes(path);
     if addrlen > _SUN_SIZE {
         addrlen = _SUN_SIZE;
     }
@@ -121,7 +127,7 @@ def:pub unix_listen(path: str, backlog: int) -> TCPListener {
     }
 
     addr: int = _unix_build_sockaddr_un(path);
-    addrlen: int = 2 + len(path);
+    addrlen: int = 2 + str_nbytes(path);
     if addrlen > _SUN_SIZE {
         addrlen = _SUN_SIZE;
     }

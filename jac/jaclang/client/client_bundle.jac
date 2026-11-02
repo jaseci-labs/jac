@@ -34,7 +34,10 @@ obj ClientBundleBuilder {
     ) -> dict[str, any];
 
     def _compile_bundle(module: ModuleType, module_path: Path) -> ClientBundle;
-    def _compile_to_js(source_path: Path) -> ClientArtifact;
+    def _compile_to_js(
+        source_path: Path, source_root: Path | None = None
+    ) -> ClientArtifact;
+
     def _emitted_digest -> str;
     static def _signature(paths: Iterable[Path]) -> str;
 }

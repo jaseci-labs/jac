@@ -150,6 +150,7 @@ impl IfaceRegistry.on_closure_release {
 impl IfaceRegistry._event(name: str) {
     counters = self.prog.analysis.cache_events;
     counters[name] = counters.get(name, 0) + 1;
+    stat_note(name);
 }
 
 impl IfaceRegistry._pkg_dir -> str {
@@ -253,6 +254,13 @@ impl IfaceRegistry.dep_rows(resolved_path: str, mod: any) -> list[DepRow] {
     client = self._client_edges(mod) if mod is not None else set();
     out: list[DepRow] = [];
     for (path, digest) in bucket.items() {
+        if not digest {
+            try {
+                digest = SOURCE_DEP_PREFIX + module_cache_key(path);
+            } except Exception {
+                digest = "";
+            }
+        }
         out.append(
             DepRow(path=path, digest=digest, flags="c" if path in client else "")
         );
@@ -365,7 +373,7 @@ impl IfaceRegistry._module_jir_in_context(resolved: str) -> (tuple[bytes, str] |
     try {
         cache_path = get_module_cache_path(resolved);
         if is_module_cache_valid(resolved, cache_path) {
-            return (cache_path.read_bytes(), "", );
+            return (read_jir(cache_path), "", );
         }
     } except Exception {}
     try {
@@ -413,6 +421,16 @@ impl IfaceRegistry._deps_match(data: bytes, base_dir: str = "") -> bool {
             try {
                 import from jaclang.compiler.driver.jir { compute_stub_module_key }
                 if compute_stub_module_key(dep) != recorded {
+                    return False;
+                }
+            } except Exception {
+                return False;
+            }
+            continue;
+        }
+        if recorded.startswith(SOURCE_DEP_PREFIX) {
+            try {
+                if module_cache_key(dep) != recorded[len(SOURCE_DEP_PREFIX):] {
                     return False;
                 }
             } except Exception {
@@ -882,11 +900,13 @@ impl IfaceRegistry._persist_in_context(
             else b"";
     }
     sections[SEC_DEPS] = deps_section(self.dep_rows(resolved, mod));
-    try {
-        import from jaclang.compiler.placement.placement { get_module_summary }
-        import from jaclang.compiler.placement.placement_export { summary_to_bytes }
-        sections[SEC_PLACEMENT] = summary_to_bytes(get_module_summary(mod, self.prog));
-    } except Exception {}
+    import from jaclang.compiler.driver.unit_products { placement_record }
+    placement = placement_record(
+        mod, self.prog, solved=not self.prog.errors_had[err_start:]
+    );
+    if placement {
+        sections[SEC_PLACEMENT] = placement.encode("utf-8");
+    }
     ct_rows = module_ct_deps_section(mod);
     if ct_rows is not None {
         sections[SEC_CTDEPS] = ct_rows;
@@ -1208,7 +1228,7 @@ impl seed_dep_edges(prog: any, root_dir: str, limit: int = 5000) -> int {
                 if not cache_path.exists() {
                     continue;
                 }
-                data: bytes = cache_path.read_bytes();
+                data: bytes = read_jir(cache_path);
             } except Exception {
                 continue;
             }

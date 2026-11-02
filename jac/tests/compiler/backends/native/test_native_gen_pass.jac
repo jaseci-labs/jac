@@ -2764,6 +2764,9 @@ test "py interop py function not defined in native ir" {
             if 'py_double' in ln
         ]}"
     );
+    # py_note has no `-> T`: it returns None, so native declares it void
+    note = ir.gen.interop_manifest.bindings["py_note"].symbol;
+    assert re.search(r'declare void @"?' + note + r'"?\(', llvm_ir_str) is not None;
 }
 
 test "py interop py functions in python codegen" {
@@ -2857,11 +2860,17 @@ test "py interop full entry chain" {
         "__jac_interop_py_funcs__": ir.gen.interop_py_funcs
     };
     buf = io.StringIO();
+    err = io.StringIO();
     with contextlib.redirect_stdout(buf) {
-        exec(py_code, namespace);
+        with contextlib.redirect_stderr(err) {
+            exec(py_code, namespace);
+            # a None return crosses back from native, and py_note's None into native
+            assert namespace["native_note"](8) is None;
+        }
     }
     output = buf.getvalue().strip();
-    assert output == "11";
+    assert output.splitlines() == ["11", "7", "8"];
+    assert not err.getvalue() , err.getvalue();
 }
 
 # --- TestNativeMultiModuleInterop ---
@@ -4296,6 +4305,7 @@ test "an ELF executable carries DT_RUNPATH=$ORIGIN (issue #6353 gap 4)" {
     }
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
+    llvm.initialize_all_asmparsers();
     ir = "target triple = \"x86_64-unknown-linux-gnu\"\n"
         + "define void @_start() {\n  ret void\n}\n";
     mod = llvm.parse_assembly(ir);

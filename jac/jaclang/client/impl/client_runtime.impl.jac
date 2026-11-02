@@ -33,6 +33,24 @@ impl jacSsoLogin(platform: str, api_base: str = "", operation: str = "login") ->
     return await _jacSsoLogin(platform, api_base, operation);
 }
 
+impl jacSsoConnect(
+    platform: str, scopes: (list[str] | None) = None, api_base: str = ""
+) -> bool {
+    return await _jacSsoConnect(platform, scopes, api_base);
+}
+
+impl jacSsoFinish(api_base: str = "") -> dict[str, any] {
+    return await _jacSsoFinish(api_base);
+}
+
+impl jacSsoConnections(api_base: str = "") -> list[dict[str, any]] {
+    return await _jacSsoConnections(api_base);
+}
+
+impl jacSsoDisconnect(platform: str, api_base: str = "") -> bool {
+    return await _jacSsoDisconnect(platform, api_base);
+}
+
 impl jacSetToken(token: str) -> None {
     _jacSetToken(token);
 }

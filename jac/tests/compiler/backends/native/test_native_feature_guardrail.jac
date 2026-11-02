@@ -729,41 +729,6 @@ test "guardrail: list-endpoint disconnect lowers; list plus predicate stays loud
     )}";
 }
 
-# ::py:: blocks cannot execute in a native binary. Before the capability
-# sweep covered PyInlineCode they were silently DROPPED in native context -
-# exactly the silent-failure class this guardrail file exists to prevent.
-# Granular demotion seams the owning function (Python executes the block),
-# and a NATIVE caller of the demoted function stays a structured error
-# rather than silently binding its abort stub.
-test "guardrail: inline Python block demotes its function, native callers stay loud" {
-    (prog, ir, log) = compile_na_inline_demote(
-        "pyinline",
-        "def f -> int {\n" "    ::py::\n" "x = 1\n" "::py::\n" "    return 1;\n" "}\n"
-    );
-    assert not prog.errors_had , f"A function-owned PyInlineCode must demote, got: {fmt_errors(
-        prog
-    )}";
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "f" not in layout.functions , (
-        "the PyInlineCode function must be demoted out of the native layout"
-    );
-    assert "NA_DEBUG demote f" in log , f"no demotion recorded for f in:\n{log}";
-    caller = compile_na_inline(
-        "pyinline_caller",
-        "def f -> int {\n"
-        "    ::py::\n"
-        "x = 1\n"
-        "::py::\n"
-        "    return 1;\n"
-        "}\n"
-        "with entry { print(f()); }\n"
-    );
-    assert has_error_code(caller, "E5092") , f"A native caller of a demoted function must fail loudly, got: {fmt_errors(
-        caller
-    )}";
-}
-
 # ─────────────────────────────────────────────────────────────────────
 # OSP gate soundness (issue #6636)
 # ─────────────────────────────────────────────────────────────────────

@@ -672,6 +672,22 @@ def _read_name(st: tok_state) -> tok_token {
     start = st.pos;
     start_col = st.col_offset;
     _advance(st);
+    data = st.data;
+    end = st.pos;
+    size = len(data);
+    while end < size {
+        b = data[end];
+        if (b >= 97 and b <= 122)
+            or (b >= 65 and b <= 90)
+            or (b >= 48 and b <= 57)
+            or b == 95 {
+            end += 1;
+        } else {
+            break;
+        }
+    }
+    st.col_offset += end - st.pos;
+    st.pos = end;
     while _has_source(st) {
         c = _peek(st);
         if not _is_id_continue(c) and not (st.extra_tokens and c >= 128) {
@@ -1126,7 +1142,10 @@ def _read_string(st: tok_state) -> tok_token | tok_diag {
 def tokenizer_from_string(source: str, filename: str, exec_input: bool) -> tok_state {
     # File input gets a terminal newline before scanning; eval/single input
     # must retain physical EOF so incomplete-input flags can distinguish it.
-    buf = source.replace("\r\n", "\n").replace("\r", "\n");
+    buf = source;
+    if "\r" in source {
+        buf = source.replace("\r\n", "\n").replace("\r", "\n");
+    }
     if exec_input and buf and not buf.endswith("\n") {
         buf += "\n";
     }
@@ -1461,8 +1480,9 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
 
 def tokenizer_next(st: tok_state) -> tok_token | tok_diag {
     token = _tokenizer_next(st);
-    if isinstance(token, tok_token) {
-        token.level = st.paren_level;
+    if token is not st.error {
+        tok = token as tok_token;
+        tok.level = st.paren_level;
     }
     return token;
 }

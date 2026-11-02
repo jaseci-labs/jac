@@ -14,7 +14,7 @@ cp "$repo/jac/jaclang/compiler_inputs.txt" jac/jaclang/
 printf 'compiler\n' > jac/jaclang/compiler/pass.jac
 printf 'app\n' > jac/jaclang/scale/app.jac
 printf 'recipe\n' > jac/bootstrap/python/build.sh
-printf 'bridge\n' > jac/bootstrap/python/compiler_bridge.c
+printf 'emitter\n' > jac/bootstrap/python/prepare_native.py
 printf 'shim\n' > jac/native/shim.cpp
 printf 'dependencies\n' > jac/build.zig.zon
 git add .
@@ -68,8 +68,8 @@ after=$(keys)
 changed compiler; changed python_jacpython
 
 before=$after
-printf adapter >> jac/bootstrap/python/compiler_bridge.c
-commit adapter
+printf emitter >> jac/bootstrap/python/prepare_native.py
+commit emitter
 after=$(keys)
 same compiler; same python_cpython; changed python_jacpython; changed binary
 

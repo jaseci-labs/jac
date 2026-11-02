@@ -1,15 +1,15 @@
 """A base class that stays Python-side.
 
-The inline `::py::` block is what keeps this module out of any native
-closure: it is the statically-known native-incompatible construct, so a
+The `async` method is what keeps this module out of any native closure: an
+async ability is a statically-known native-incompatible construct, so a
 native unit inheriting `PyBase` must reach its members through the
 Python-object interop bridge rather than a native layout.
 
 The `ABC` base is kept because it is what the class means, not because it
 blocks placement -- it no longer does, since `ABC` is compile-time
-information the native lane erases. Stating the intent with a construct that
-is Python by definition keeps this fixture measuring the interop bridge
-rather than whichever import happens to be unsupported that week.
+information the native lane erases. Stating the intent with a construct the
+native lane refuses by definition keeps this fixture measuring the interop
+bridge rather than whichever import happens to be unsupported that week.
 """
 import from abc { ABC }
 
@@ -28,9 +28,7 @@ obj PyBase(ABC) {
         return self.count;
     }
 
-    def note_origin {
-        ::py::
-        self.trace = self.trace + "|py"
-        ::py::
+    async def note_origin {
+        self.trace = self.trace + "|py";
     }
 }

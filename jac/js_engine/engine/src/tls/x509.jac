@@ -30,7 +30,10 @@ import from engine.src.ffi.libcrypto {
     X509_digest
 }
 import from engine.src.ffi.libc { calloc, memcpy }
-import from engine.src.runtime.mem { byte_chr }
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_nbytes
+}
 
 # ── Buffer helper (same pattern as tls.na.jac / builtins/fs.na.jac) ──────────
 
@@ -270,7 +273,7 @@ def:pub x509_from_pem(pem: str) -> X509Cert {
     result: X509Cert = X509Cert();
 
     # Write PEM into a memory BIO
-    pem_len: int = len(pem);
+    pem_len: int = str_nbytes(pem);
     mem_meth: int = BIO_s_mem();
     bio: int = BIO_new(mem_meth);
     if bio == 0 {

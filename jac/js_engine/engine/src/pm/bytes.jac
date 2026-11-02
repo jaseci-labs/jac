@@ -8,7 +8,18 @@ Also here: base64 encoding and Subresource-Integrity checks ("sha512-<b64>"),
 both needed to verify registry tarballs against bun.lock / packument integrity.
 """
 
-import from engine.src.runtime.mem { io_alloc, io_free, read_byte, write_byte }
+import from engine.src.runtime.mem {
+    io_alloc,
+    io_free,
+    read_byte,
+    write_byte,
+    byte_chr,
+    str_bfind,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
+}
 import from engine.src.ffi.libc { memcpy }
 import from engine.src.ffi.libcrypto {
     EVP_get_digestbyname,
@@ -92,14 +103,14 @@ def:pub bytebuf_append_byte(b: ByteBuf, v: int) {
 
 """Append the UTF-8 bytes of `s` (engine str indexing is byte-wise)."""
 def:pub bytebuf_append_str(b: ByteBuf, s: str) -> None {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if n == 0 {
         return;
     }
     bytebuf_reserve(b, n);
     i: int = 0;
     while i < n {
-        write_byte(b.ptr, b.len + i, ord(s[i]));
+        write_byte(b.ptr, b.len + i, str_byte(s, i));
         i = i + 1;
     }
     b.len = b.len + n;
@@ -124,11 +135,11 @@ def:pub bytebuf_to_str(b: ByteBuf) -> str {
 
 """NUL-terminated C copy of `s` (io_alloc'd; caller frees with io_free)."""
 def:pub str_to_cbuf(s: str) -> int {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     p: int = io_alloc(n + 1);
     i: int = 0;
     while i < n {
-        write_byte(p, i, ord(s[i]));
+        write_byte(p, i, str_byte(s, i));
         i = i + 1;
     }
     write_byte(p, n, 0);
@@ -137,13 +148,13 @@ def:pub str_to_cbuf(s: str) -> int {
 
 """True when bytes [off, off+len(s)) of `ptr` equal `s` (and fit in `n`)."""
 def:pub bytes_eq_str(ptr: int, off: int, n: int, s: str) -> bool {
-    m: int = len(s);
+    m: int = str_nbytes(s);
     if off + m > n {
         return False;
     }
     i: int = 0;
     while i < m {
-        if read_byte(ptr, off + i) != ord(s[i]) {
+        if read_byte(ptr, off + i) != str_byte(s, i) {
             return False;
         }
         i = i + 1;
@@ -153,11 +164,11 @@ def:pub bytes_eq_str(ptr: int, off: int, n: int, s: str) -> bool {
 
 """Index of the first occurrence of `needle` in ptr[start..n), or -1."""
 def:pub bytes_find(ptr: int, n: int, start: int, needle: str) -> int {
-    m: int = len(needle);
+    m: int = str_nbytes(needle);
     if m == 0 {
         return start;
     }
-    first: int = ord(needle[0]);
+    first: int = str_byte(needle, 0);
     i: int = start;
     last: int = n - m;
     while i <= last {
@@ -182,25 +193,25 @@ def:pub b64_encode(ptr: int, n: int) -> str {
         b0: int = read_byte(ptr, i);
         b1: int = read_byte(ptr, i + 1);
         b2: int = read_byte(ptr, i + 2);
-        out.append(_B64[b0 >> 2]);
-        out.append(_B64[((b0 & 3) << 4) | (b1 >> 4)]);
-        out.append(_B64[((b1 & 15) << 2) | (b2 >> 6)]);
-        out.append(_B64[b2 & 63]);
+        out.append(byte_chr(str_byte(_B64, b0 >> 2)));
+        out.append(byte_chr(str_byte(_B64, ((b0 & 3) << 4) | (b1 >> 4))));
+        out.append(byte_chr(str_byte(_B64, ((b1 & 15) << 2) | (b2 >> 6))));
+        out.append(byte_chr(str_byte(_B64, b2 & 63)));
         i = i + 3;
     }
     rem: int = n - i;
     if rem == 1 {
         b0: int = read_byte(ptr, i);
-        out.append(_B64[b0 >> 2]);
-        out.append(_B64[(b0 & 3) << 4]);
+        out.append(byte_chr(str_byte(_B64, b0 >> 2)));
+        out.append(byte_chr(str_byte(_B64, (b0 & 3) << 4)));
         out.append("=");
         out.append("=");
     } elif rem == 2 {
         b0: int = read_byte(ptr, i);
         b1: int = read_byte(ptr, i + 1);
-        out.append(_B64[b0 >> 2]);
-        out.append(_B64[((b0 & 3) << 4) | (b1 >> 4)]);
-        out.append(_B64[(b1 & 15) << 2]);
+        out.append(byte_chr(str_byte(_B64, b0 >> 2)));
+        out.append(byte_chr(str_byte(_B64, ((b0 & 3) << 4) | (b1 >> 4))));
+        out.append(byte_chr(str_byte(_B64, (b1 & 15) << 2)));
         out.append("=");
     }
     return "".join(out);
@@ -228,13 +239,13 @@ def _b64_val(c: int) -> int {
 """Decode base64 (standard or url-safe, padding optional). Returns an empty
 buffer (len 0) for invalid input."""
 def:pub b64_decode(s: str) -> ByteBuf {
-    out: ByteBuf = bytebuf_new((len(s) * 3) // 4 + 3);
+    out: ByteBuf = bytebuf_new((str_nbytes(s) * 3) // 4 + 3);
     acc: int = 0;
     nbits: int = 0;
     i: int = 0;
-    n: int = len(s);
+    n: int = str_nbytes(s);
     while i < n {
-        c: int = ord(s[i]);
+        c: int = str_byte(s, i);
         i = i + 1;
         if c == 61 {
             break;
@@ -311,15 +322,15 @@ def:pub sri_sha512(ptr: int, n: int) -> str {
 """Check bytes against an SRI string ("sha512-…", "sha1-…", …). Unsupported
 algorithms count as a pass (bun ignores integrity tags it does not know)."""
 def:pub sri_matches(integrity: str, ptr: int, n: int) -> bool {
-    dash: int = integrity.find("-");
+    dash: int = str_bfind(integrity, "-");
     if dash <= 0 {
         return True;
     }
-    algo: str = integrity[0:dash].lower();
+    algo: str = str_bslice(integrity, 0, dash).lower();
     if algo != "sha512" and algo != "sha384" and algo != "sha256" and algo != "sha1" {
         return True;
     }
-    want: str = integrity[dash + 1:];
+    want: str = str_bslice_from(integrity, dash + 1);
     got: str = digest_b64(algo, ptr, n);
     if got == "" {
         return False;
@@ -350,8 +361,8 @@ def:pub bytes_hex(ptr: int, n: int) -> str {
     i: int = 0;
     while i < n {
         v: int = read_byte(ptr, i);
-        out.append(digits[v >> 4]);
-        out.append(digits[v & 15]);
+        out.append(byte_chr(str_byte(digits, v >> 4)));
+        out.append(byte_chr(str_byte(digits, v & 15)));
         i = i + 1;
     }
     return "".join(out);

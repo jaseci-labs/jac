@@ -58,6 +58,11 @@ def _date_js_str(s: str) -> JSValue {
 
 import from engine.src.builtins.markers { _KEY_IS_DATE }
 import from engine.src.runtime.gc_pin { gc_pin_value }
+import from engine.src.runtime.mem {
+    str_bslice,
+    str_nbytes
+}
+
 glob _DATE_NOW_ANCHORED: bool = False,
      _DATE_NOW_EPOCH_MS_BASE: int = 0,
      _DATE_NOW_HR_MS_BASE: int = 0;
@@ -426,7 +431,7 @@ def:pub js_Date_parse(args: list[JSValue]) -> JSValue {
 
 """Parse ISO 8601: YYYY-MM-DDTHH:mm:ss.sssZ or YYYY-MM-DD."""
 def _parse_iso(s: str) -> float {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if n < 4 {
         return MATH_NAN;
     }
@@ -437,7 +442,7 @@ def _parse_iso(s: str) -> float {
     yr: int = 0;
     off: int = 4;
     yr_sign: int = 1;
-    c0: str = s[0:1];
+    c0: str = str_bslice(s, 0, 1);
     if c0 == "+" or c0 == "-" {
         if n < 7 {
             return MATH_NAN;
@@ -470,7 +475,7 @@ def _parse_iso(s: str) -> float {
     ms: int = 0;
 
     if n >= off + 3 {
-        if s[off:off + 1] != "-" {
+        if str_bslice(s, off, off + 1) != "-" {
             return MATH_NAN;
         }
         mo = _parse_digits(s, off + 1, off + 3);
@@ -479,7 +484,7 @@ def _parse_iso(s: str) -> float {
         }
     }
     if n >= off + 6 {
-        if s[off + 3:off + 4] != "-" {
+        if str_bslice(s, off + 3, off + 4) != "-" {
             return MATH_NAN;
         }
         dy = _parse_digits(s, off + 4, off + 6);
@@ -488,7 +493,7 @@ def _parse_iso(s: str) -> float {
         }
     }
     if n >= off + 9 {
-        if s[off + 6:off + 7] != "T" and s[off + 6:off + 7] != "t" {
+        if str_bslice(s, off + 6, off + 7) != "T" and str_bslice(s, off + 6, off + 7) != "t" {
             return MATH_NAN;
         }
         hr = _parse_digits(s, off + 7, off + 9);
@@ -497,7 +502,7 @@ def _parse_iso(s: str) -> float {
         }
     }
     if n >= off + 12 {
-        if s[off + 9:off + 10] != ":" {
+        if str_bslice(s, off + 9, off + 10) != ":" {
             return MATH_NAN;
         }
         mn = _parse_digits(s, off + 10, off + 12);
@@ -506,7 +511,7 @@ def _parse_iso(s: str) -> float {
         }
     }
     if n >= off + 15 {
-        if s[off + 12:off + 13] != ":" {
+        if str_bslice(s, off + 12, off + 13) != ":" {
             return MATH_NAN;
         }
         sc = _parse_digits(s, off + 13, off + 15);
@@ -515,7 +520,7 @@ def _parse_iso(s: str) -> float {
         }
     }
     if n >= off + 19 {
-        if s[off + 15:off + 16] == "." {
+        if str_bslice(s, off + 15, off + 16) == "." {
             ms = _parse_digits(s, off + 16, off + 19);
             if ms < 0 {
                 return MATH_NAN;
@@ -564,7 +569,7 @@ def _parse_digits(s: str, start: int, end_: int) -> int {
     result: int = 0;
     i: int = start;
     while i < end_ {
-        d: int = _char_digit(s[i:i + 1]);
+        d: int = _char_digit(str_bslice(s, i, i + 1));
         if d < 0 {
             return -1;
         }
@@ -1291,7 +1296,7 @@ def _pad6(n: int) -> str {
         an = -an;
     }
     s: str = str(an);
-    while len(s) < 6 {
+    while str_nbytes(s) < 6 {
         s = "0" + s;
     }
     return s;

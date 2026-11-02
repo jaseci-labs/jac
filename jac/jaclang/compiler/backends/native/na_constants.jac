@@ -69,6 +69,10 @@ glob RC_COLOR_BLACK: int = 0,
      RC_CYCLE_THRESHOLD: int = 1000,
      RC_CYCLE_PACE: int = 4;
 
+glob POOL_CLASS_SHIFT: int = 28,
+     POOL_CLASS_MASK: int = 15,
+     ALLOC_ID_MASK: int = 268435455;
+
 glob JACVAL_ELLIPSIS_TAG: int = 9;
 
 glob CLASS_DISPLAY_OFF: int = 24;

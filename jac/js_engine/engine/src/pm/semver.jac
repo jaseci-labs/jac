@@ -11,6 +11,13 @@ Model:
   SemGroup        OR-list of queries            (bun: Group / List.next)
 """
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
+}
 glob:pub SEMVER_MAX: int = 4611686018427387903,
      OP_UNSET: int = 0,
      OP_EQL: int = 1,
@@ -104,7 +111,7 @@ def:pub semver_format(v: SemVer) -> str {
 
 """Parse a version number field (digits only; 'x'/'X'/'*' → None, i.e. -1)."""
 def _parse_number(s: str) -> int {
-    if len(s) > 20 {
+    if str_nbytes(s) > 20 {
         return -1;
     }
     v: int = 0;
@@ -132,12 +139,12 @@ def _parse_number(s: str) -> int {
 
 """bun's Tag.parseWithPreCount: returns (pre, build, consumed)."""
 def:pub semver_tag_parse(input: str, initial_pre_count: int) -> tuple[str, str, int] {
-    n: int = len(input);
+    n: int = str_nbytes(input);
     build_count: int = 0;
     pre_count: int = initial_pre_count;
     k: int = 0;
     while k < n {
-        c: int = ord(input[k]);
+        c: int = str_byte(input, k);
         if c == 32 {
             break;
         }
@@ -158,10 +165,10 @@ def:pub semver_tag_parse(input: str, initial_pre_count: int) -> tuple[str, str, 
     i: int = 0;
     broke: bool = False;
     while i < n {
-        c: int = ord(input[i]);
+        c: int = str_byte(input, i);
         if c == 43 {
             if state == 1 or (state == 0 and initial_pre_count > 0) {
-                pre = input[start:i];
+                pre = str_bslice(input, start, i);
             }
             if state != 2 {
                 state = 2;
@@ -176,10 +183,10 @@ def:pub semver_tag_parse(input: str, initial_pre_count: int) -> tuple[str, str, 
             # valid tag character
         } else {
             if state == 1 {
-                pre = input[start:i];
+                pre = str_bslice(input, start, i);
                 state = 0;
             } elif state == 2 {
-                build = input[start:i];
+                build = str_bslice(input, start, i);
                 state = 0;
             }
             broke = True;
@@ -195,9 +202,9 @@ def:pub semver_tag_parse(input: str, initial_pre_count: int) -> tuple[str, str, 
         start = 0;
     }
     if state == 1 {
-        pre = input[start:i];
+        pre = str_bslice(input, start, i);
     } elif state == 2 {
-        build = input[start:i];
+        build = str_bslice(input, start, i);
     }
     return (pre, build, i);
 }
@@ -207,7 +214,7 @@ def:pub semver_tag_parse(input: str, initial_pre_count: int) -> tuple[str, str, 
 """bun's Version.parse: lenient, partial-aware, reports the implied wildcard."""
 def:pub semver_parse_version(input: str) -> SemVerParse {
     r: SemVerParse = SemVerParse();
-    n: int = len(input);
+    n: int = str_nbytes(input);
     if n == 0 {
         r.valid = False;
         return r;
@@ -215,7 +222,7 @@ def:pub semver_parse_version(input: str) -> SemVerParse {
     i: int = 0;
     # leading whitespace / 'v' / '='
     while i < n {
-        c: int = ord(input[i]);
+        c: int = str_byte(input, i);
         if c == 32
             or c == 9
             or c == 10
@@ -236,7 +243,7 @@ def:pub semver_parse_version(input: str) -> SemVerParse {
     part_i: int = 0;
     is_done: bool = False;
     while i < n and not is_done {
-        c: int = ord(input[i]);
+        c: int = str_byte(input, i);
         if c == 32 {
             is_done = True;
             break;
@@ -251,10 +258,10 @@ def:pub semver_parse_version(input: str) -> SemVerParse {
         if _is_digit(c) {
             start: int = i;
             i = i + 1;
-            while i < n and _is_digit(ord(input[i])) {
+            while i < n and _is_digit(str_byte(input, i)) {
                 i = i + 1;
             }
-            num: int = _parse_number(input[start:i]);
+            num: int = _parse_number(str_bslice(input, start, i));
             if part_i == 0 {
                 r.ver.major = num;
                 r.has_major = num >= 0;
@@ -268,7 +275,7 @@ def:pub semver_parse_version(input: str) -> SemVerParse {
                 r.has_patch = num >= 0;
                 part_i = 3;
             }
-            if i < n and input[i] == "." and part_i != 3 {
+            if i < n and byte_chr(str_byte(input, i)) == "." and part_i != 3 {
                 i = i + 1;
             }
             continue;
@@ -284,7 +291,7 @@ def:pub semver_parse_version(input: str) -> SemVerParse {
                 is_done = True;
                 break;
             }
-            tg: tuple[str, str, int] = semver_tag_parse(input[i:], 0);
+            tg: tuple[str, str, int] = semver_tag_parse(str_bslice_from(input, i), 0);
             r.ver.pre = tg[0];
             r.ver.build = tg[1];
             i = i + tg[2];
@@ -292,10 +299,10 @@ def:pub semver_parse_version(input: str) -> SemVerParse {
         }
         if _is_wild(c) {
             i = i + 1;
-            while i < n and _is_wild(ord(input[i])) {
+            while i < n and _is_wild(str_byte(input, i)) {
                 i = i + 1;
             }
-            if i < n and input[i] == "." {
+            if i < n and byte_chr(str_byte(input, i)) == "." {
                 i = i + 1;
             }
             if r.wildcard == WILD_NONE {
@@ -314,7 +321,7 @@ def:pub semver_parse_version(input: str) -> SemVerParse {
         }
         # "1.0.0rc.1": letters right after the patch number are a prerelease
         if r.wildcard == WILD_NONE and part_i >= 2 and _is_alpha(c) {
-            tg2: tuple[str, str, int] = semver_tag_parse(input[i:], 1);
+            tg2: tuple[str, str, int] = semver_tag_parse(str_bslice_from(input, i), 1);
             r.ver.pre = tg2[0];
             r.ver.build = tg2[1];
             i = i + tg2[2];
@@ -361,7 +368,7 @@ def:pub semver_parse_exact(input: str) -> tuple[bool, SemVer] {
         or not p.has_patch {
         return (False, SemVer());
     }
-    if p.consumed != len(input.strip()) and p.consumed != len(input) {
+    if p.consumed != str_nbytes(input.strip()) and p.consumed != str_nbytes(input) {
         return (False, SemVer());
     }
     return (True, p.ver);
@@ -719,17 +726,17 @@ def _group_or_version(g: SemGroup, v: SemVer) -> None {
 }
 
 def _skip_spaces(input: str, i: int) -> int {
-    n: int = len(input);
-    while i < n and input[i] == " " {
+    n: int = str_nbytes(input);
+    while i < n and byte_chr(str_byte(input, i)) == " " {
         i = i + 1;
     }
     return i;
 }
 
 def _leading_ws(input: str, i: int) -> int {
-    n: int = len(input);
+    n: int = str_nbytes(input);
     while i < n {
-        c: int = ord(input[i]);
+        c: int = str_byte(input, i);
         if c == 32 or c == 9 or c == 10 or c == 13 or c == 11 or c == 12 {
             i = i + 1;
         } else {
@@ -744,7 +751,7 @@ def _leading_ws(input: str, i: int) -> int {
 def:pub semver_parse_range(input: str) -> SemGroup {
     g: SemGroup = SemGroup(input=input);
     g.lists.append(SemQuery(ranges=[SemRange()]));
-    n: int = len(input);
+    n: int = str_nbytes(input);
     i: int = 0;
     tag: int = _TAG_NONE;
     wildcard: int = WILD_NONE;
@@ -752,9 +759,9 @@ def:pub semver_parse_range(input: str) -> SemGroup {
     is_or: bool = False;
     while i < n {
         skip_round: bool = False;
-        c: int = ord(input[i]);
+        c: int = str_byte(input, i);
         if c == 62 {  # '>'
-            if i + 1 < n and input[i + 1] == "=" {
+            if i + 1 < n and byte_chr(str_byte(input, i + 1)) == "=" {
                 tag = _TAG_GTE;
                 i = i + 1;
             } else {
@@ -762,7 +769,7 @@ def:pub semver_parse_range(input: str) -> SemGroup {
             }
             i = _skip_spaces(input, i + 1);
         } elif c == 60 {  # '<'
-            if i + 1 < n and input[i + 1] == "=" {
+            if i + 1 < n and byte_chr(str_byte(input, i + 1)) == "=" {
                 tag = _TAG_LTE;
                 i = i + 1;
             } else {
@@ -776,7 +783,7 @@ def:pub semver_parse_range(input: str) -> SemGroup {
         } elif c == 126 {  # '~'
             tag = _TAG_TILDA;
             i = i + 1;
-            if i < n and input[i] == ">" {
+            if i < n and byte_chr(str_byte(input, i)) == ">" {
                 i = i + 1;
             }
             i = _skip_spaces(input, i);
@@ -788,7 +795,7 @@ def:pub semver_parse_range(input: str) -> SemGroup {
             is_or = True;
         } elif c == 124 {  # '|'
             i = i + 1;
-            while i < n and input[i] == "|" {
+            while i < n and byte_chr(str_byte(input, i)) == "|" {
                 i = i + 1;
             }
             i = _skip_spaces(input, i);
@@ -803,7 +810,7 @@ def:pub semver_parse_range(input: str) -> SemGroup {
         } else {
             i = i + 1;
             tag = _TAG_NONE;
-            while i < n and input[i] != " " and input[i] != "|" {
+            while i < n and byte_chr(str_byte(input, i)) != " " and byte_chr(str_byte(input, i)) != "|" {
                 i = i + 1;
             }
             skip_round = True;
@@ -812,7 +819,7 @@ def:pub semver_parse_range(input: str) -> SemGroup {
             continue;
         }
 
-        p: SemVerParse = semver_parse_version(input[i:]);
+        p: SemVerParse = semver_parse_version(str_bslice_from(input, i));
         version: SemVer = _partial_min(p);
         if version.build != "" {
             g.flag_build = True;
@@ -823,11 +830,11 @@ def:pub semver_parse_range(input: str) -> SemGroup {
         wildcard = p.wildcard;
         i = i + p.consumed;
         rollback: int = i;
-        maybe_hyphenate: bool = i < n and (input[i] == " " or input[i] == "-");
+        maybe_hyphenate: bool = i < n and (byte_chr(str_byte(input, i)) == " " or byte_chr(str_byte(input, i)) == "-");
         hyphenate: bool = False;
         if maybe_hyphenate {
             j: int = _leading_ws(input, i);
-            ok: bool = j < n and input[j] == "-";
+            ok: bool = j < n and byte_chr(str_byte(input, j)) == "-";
             if ok {
                 j = _leading_ws(input, j + 1);
                 if j >= n {
@@ -835,7 +842,7 @@ def:pub semver_parse_range(input: str) -> SemGroup {
                 }
             }
             if ok {
-                if input[j] == "v" or input[j] == "=" {
+                if byte_chr(str_byte(input, j)) == "v" or byte_chr(str_byte(input, j)) == "=" {
                     j = j + 1;
                 }
                 if j >= n {
@@ -849,7 +856,7 @@ def:pub semver_parse_range(input: str) -> SemGroup {
                 }
             }
             if ok {
-                cj: int = ord(input[j]);
+                cj: int = str_byte(input, j);
                 if not (_is_digit(cj) or _is_wild(cj)) {
                     ok = False;
                 }
@@ -863,7 +870,7 @@ def:pub semver_parse_range(input: str) -> SemGroup {
             i = rollback + 1;
         }
         if hyphenate {
-            second: SemVerParse = semver_parse_version(input[i:]);
+            second: SemVerParse = semver_parse_version(str_bslice_from(input, i));
             sv: SemVer = _partial_min(second);
             if sv.build != "" {
                 g.flag_build = True;

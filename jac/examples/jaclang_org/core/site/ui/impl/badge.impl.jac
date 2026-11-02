@@ -24,3 +24,7 @@ impl Badge(props: any) -> JsxElement {
             className={computedClass}
         />;
 }
+
+impl badgeVariants -> any {
+    return _badgeVariants;
+}

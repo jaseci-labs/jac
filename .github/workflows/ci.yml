@@ -24,7 +24,10 @@ name: CI
 on:
   workflow_dispatch:
   pull_request:
-    branches: [main]
+    # A backport onto a release line is judged by the same suites as main.
+    # `push` stays main-only: release/* branches are also the heads of release
+    # PRs into main, which this trigger already covers.
+    branches: [main, 'release/**']
     types: [opened, synchronize, reopened, labeled]
   push:
     branches: [main]
@@ -51,6 +54,7 @@ jobs:
       installer: ${{ steps.filter.outputs.installer }}
       native: ${{ steps.filter.outputs.native }}
       kernel: ${{ steps.filter.outputs.kernel }}
+      js_engine: ${{ steps.filter.outputs.js_engine }}
       pack_smoke: ${{ steps.filter.outputs.pack_smoke }}
       site_journey: ${{ steps.filter.outputs.site_journey }}
     steps:
@@ -88,6 +92,18 @@ jobs:
               # runs must run it -- same reasoning as `native` listing ci.yml.
               # Without this an edit to the installer test ships unexercised.
               - '.github/workflows/_installer.yml'
+            # Whatever the engine is or is lowered by: its sources, the whole
+            # compiler (frontend and passes decide layout and dispatch, not
+            # only the native backend), the native stdlib and toolchain, and
+            # the lane's own definition.
+            js_engine:
+              - 'jac/js_engine/**'
+              - 'jac/jaclang/compiler/**'
+              - 'jac/jaclang/runtime/na_stdlib/**'
+              - 'jac/native/**'
+              - 'jac/build.zig'
+              - 'jac/build.zig.zon'
+              - '.github/workflows/_js_engine.yml'
             # Narrowing filter: the aarch64 and launcher lanes only run when a
             # path that can move them changes (or on push/dispatch). The darwin
             # lane no longer reads this filter -- it is nightly + `macos`-label
@@ -176,6 +192,21 @@ jobs:
     needs: changes
     steps:
       - uses: actions/checkout@v5
+
+      # The runner label fixes the vCPU count, not the hardware behind it, and
+      # build times swing about 2x between hosts. Recording the host lets a
+      # slow kit be told apart from a slow change.
+      - name: Record the runner hardware
+        run: |
+          {
+            echo "### build-kit runner"
+            echo '```'
+            echo "vcpus: $(nproc)"
+            lscpu | grep -E '^(Model name|CPU family|Model:|BogoMIPS|CPU max MHz|CPU MHz|L3 cache|Thread\(s\) per core)' || true
+            free -g | awk '/^Mem:/ {print "memory_gb: total " $2 ", available " $7}'
+            echo "load_avg: $(cut -d' ' -f1-3 /proc/loadavg)"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Build the jac binary (cached)
         uses: ./.github/actions/setup-jac
@@ -330,7 +361,7 @@ jobs:
   jac-check:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     env:
       # Leave memory for the driver and self-hosted compiler on the 16 GB runner.
       JAC_CHECK_JOBS: "2"
@@ -541,7 +572,7 @@ jobs:
     name: Contribution Checks
     needs: changes
     if: ${{ github.event_name != 'push' || needs.changes.outputs.docs == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
@@ -591,12 +622,14 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PRE_COMMIT_FROM_REF: origin/${{ github.base_ref }}
+          PRE_COMMIT_TO_REF: HEAD
         run: bash scripts/check-release-notes.sh
 
   test-compiler:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -611,10 +644,20 @@ jobs:
             paths: tests/compiler/test_*.jac
             sealed: "1"
             jobs: "2"
-          - chunk: passes-native
-            paths: tests/compiler/backends/native tests/compiler/tools
+          # Split in three by measured runtime; together the globs cover every
+          # top-level test_*.jac in backends/native exactly once.
+          - chunk: passes-native-1
+            paths: "tests/compiler/backends/native/test_[!n]*.jac tests/compiler/backends/native/test_n[!a]*.jac tests/compiler/backends/native/test_na_*.jac tests/compiler/tools"
             sealed: "1"
             # Native workers retain LLVM state; keep headroom on the 16 GB runner.
+            jobs: "2"
+          - chunk: passes-native-2
+            paths: "tests/compiler/backends/native/test_native_[a-h]*.jac"
+            sealed: "1"
+            jobs: "2"
+          - chunk: passes-native-3
+            paths: "tests/compiler/backends/native/test_native_[i-z]*.jac"
+            sealed: "1"
             jobs: "2"
           # The equivalence suite builds fixture paths from jaclang.__file__,
           # which only resolve in the checkout: it runs through the reroute,
@@ -638,7 +681,7 @@ jobs:
         with:
           node-version: "20"
       - name: Set up Zig for compiler runtime and ELF fixtures
-        if: matrix.chunk == 'passes-native'
+        if: startsWith(matrix.chunk, 'passes-native')
         uses: mlugg/setup-zig@v2
         with:
           version: "0.16.0"
@@ -653,10 +696,10 @@ jobs:
           WORK="$(mktemp -d)"
           HOME="$WORK" JAC_TEST_RSS_LOG=1 JAC_TEST_JOBS=${{ matrix.jobs || 'auto' }} JAC_TEST_STRICT=1 jac test ${{ matrix.paths }}
       - name: Preserve failed native executables
-        if: failure() && matrix.chunk == 'passes-native'
+        if: failure() && startsWith(matrix.chunk, 'passes-native')
         uses: actions/upload-artifact@v4
         with:
-          name: native-test-failures
+          name: native-test-failures-${{ matrix.chunk }}
           path: ${{ runner.temp }}/native-test-artifacts
           if-no-files-found: ignore
 
@@ -664,7 +707,7 @@ jobs:
   test-runtime:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       # The deps installed below with --global land in the binary's runtime
@@ -716,7 +759,7 @@ jobs:
   test-in-package-sealed:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
@@ -772,7 +815,7 @@ jobs:
   test-client:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
@@ -812,7 +855,7 @@ jobs:
   test-packages-and-docs:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.docs == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
@@ -842,7 +885,7 @@ jobs:
   test-scale:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -901,7 +944,7 @@ jobs:
        needs.changes.outputs.core == 'true' ||
        needs.changes.outputs.scale == 'true') &&
       !contains(github.event.pull_request.labels.*.name, 'skip-k8s')
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     env:
       # The opt-in flag test_deploy_k8s gates on: this is the lane with a
       # cluster.
@@ -1008,7 +1051,7 @@ jobs:
   test-launcher-jac:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.native == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1058,7 +1101,7 @@ jobs:
   test-jac-pack-smoke:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.pack_smoke == 'true' || needs.changes.outputs.site_journey == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     # actions: read lets the performance report list main's runs and download
     # their pack-smoke-performance artifacts for the wall-time comparison.
     permissions:
@@ -1608,7 +1651,7 @@ jobs:
   test-jac-pack-eject:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.site_journey == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1738,11 +1781,14 @@ jobs:
     uses: ./.github/workflows/_macos-native.yml
 
   # The js_engine accelerator's lane: build it, install it, and hold the
-  # official binary to using it (node suite, a client build, test262). On
-  # request only -- the `native:js-engine` label or a manual run; nightly.yml
-  # runs it too.
+  # official binary to using it (node suite, a client build, test262). On a
+  # pull request that changes the engine or anything that compiles it (the
+  # `js_engine` filter), one carrying the `native:js-engine` label, or a
+  # manual run; nightly.yml runs it too. Everything Passed needs it, so a
+  # pull request it runs on cannot merge with the engine broken.
   js-engine:
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'native:js-engine')) }}
+    needs: changes
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && (needs.changes.outputs.js_engine == 'true' || contains(github.event.pull_request.labels.*.name, 'native:js-engine'))) }}
     uses: ./.github/workflows/_js_engine.yml
   # The JacPython accelerator's lane: its own kit and its upstream CPython
   # gates. On request only -- the `native:jacpython` label or a manual run;

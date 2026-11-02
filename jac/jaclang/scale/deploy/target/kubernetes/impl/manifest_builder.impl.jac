@@ -1229,15 +1229,18 @@ impl ManifestBuilder._build_env(
         if peer_name == svc_name or peer_name == GATEWAY_NAME {
             continue;
         }
-        if self._get_http_activation_config(peer_name) is not None {
-            continue;
-        }
         key = sv_client.peer_url_env_key(peer_name);
         if key in seen_peer_keys {
             continue;
         }
         seen_peer_keys.add(key);
-        env.append({"name": key, "value": self._peer_dns_url(peer_name)});
+
+        url = (
+            ""
+                if self._get_http_activation_config(peer_name) is not None
+                else self._peer_dns_url(peer_name)
+        );
+        env.append({"name": key, "value": url});
     }
 
     for `entry in self.deploy_context.env_list {
@@ -1366,11 +1369,15 @@ impl ManifestBuilder._build_prestop_hook -> dict[str, any] {
     return {"exec": {"command": ["sh", "-c", f"sleep {cushion}"]}};
 }
 
+impl ManifestBuilder._fleet_role(svc_name: str) -> str {
+    return "gateway" if svc_name == GATEWAY_NAME else "microservice";
+}
+
 impl ManifestBuilder._build_deployment_manifest(
     svc_name: str, pod_spec: dict[str, any]
 ) -> dict[str, any] {
     k8s_name = k8s_safe_name(svc_name);
-    role: str = "gateway" if svc_name == GATEWAY_NAME else "microservice";
+    role: str = self._fleet_role(svc_name);
     labels: dict[str, str] = {
         ** self._owner_labels(),
         "app": k8s_name,
@@ -1434,7 +1441,12 @@ impl ManifestBuilder._build_service_manifest(svc_name: str) -> dict[str, any] {
         "metadata": {
             "name": f"{k8s_name}-service",
             "namespace": self.k8s_config.namespace,
-            "labels": {** self._owner_labels(), "app": k8s_name, "managed": "jac-scale"}
+            "labels": {
+                ** self._owner_labels(),
+                "app": k8s_name,
+                "managed": "jac-scale",
+                "jac-scale.role": self._fleet_role(svc_name)
+            }
         },
         "spec": spec
     };
@@ -1470,6 +1482,7 @@ impl ManifestBuilder._resolve_scaling(
             "service_name": service_name,
             "autoscaler": {},
             "http_activation": http,
+            "engine": self.k8s_config.autoscaler_engine,
             "replica_floor": int(http.get("min_replicas", 0))
         };
     }
@@ -1491,6 +1504,7 @@ impl ManifestBuilder._resolve_scaling(
         keda = self.k8s_config.autoscaler_engine == "keda";
         return {
             "mode": ScalingMode.METRIC,
+            "engine": "keda" if keda else "hpa",
             "scale_target_name": scale_target,
             "service_name": service_name,
             "autoscaler": metric,
@@ -1503,6 +1517,7 @@ impl ManifestBuilder._resolve_scaling(
     }
     return {
         "mode": ScalingMode.NONE,
+        "engine": self.k8s_config.autoscaler_engine,
         "scale_target_name": scale_target,
         "service_name": service_name,
         "autoscaler": {},
@@ -1744,7 +1759,11 @@ impl ManifestBuilder._build_pdb_manifest(
         "metadata": {
             "name": f"{k8s_name}-pdb",
             "namespace": self.k8s_config.namespace,
-            "labels": {"app": k8s_name, "managed": "jac-scale"}
+            "labels": {
+                "app": k8s_name,
+                "managed": "jac-scale",
+                "jac-scale.role": self._fleet_role(svc_name)
+            }
         },
         "spec": spec
     };

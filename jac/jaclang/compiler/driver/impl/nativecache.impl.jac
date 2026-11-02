@@ -117,6 +117,7 @@ impl NativeUnitRegistry._miss(path: str, why: str) {
 impl NativeUnitRegistry._event(name: str) {
     counters = self.prog.analysis.cache_events;
     counters[name] = counters.get(name, 0) + 1;
+    stat_note(name);
 }
 
 impl NativeUnitRegistry._add_time(name: str, seconds: float) {
@@ -202,13 +203,13 @@ impl NativeUnitRegistry._module_jir(
     try {
         cache_path = get_module_cache_path(resolved);
         why = module_cache_invalid_reason(resolved, cache_path);
-        data = b"" if why else cache_path.read_bytes();
+        data = b"" if why else read_jir(cache_path);
         if stamp is not None
             and native_section_payload(read_section_bytes(data, SEC_NIFACE), stamp)
                 is None
             and self._carry(resolved, stamp) {
             why = module_cache_invalid_reason(resolved, cache_path);
-            data = b"" if why else cache_path.read_bytes();
+            data = b"" if why else read_jir(cache_path);
         }
         if not why {
             return (data, "", );
@@ -292,7 +293,7 @@ impl NativeUnitRegistry._explain_iface_change(
 ) {
     resolved = os.path.realpath(path);
     try {
-        data = get_module_cache_path(resolved).read_bytes();
+        data = read_jir(get_module_cache_path(resolved));
     } except Exception {
         return;
     }
@@ -936,7 +937,11 @@ impl NativeBuildSession.lower(
         opts.no_cgen = False;
         self.prog.options = opts;
         set_effective_default_codespace("native");
-        import from jaclang.compiler.driver.pipeline { invalidate, require }
+        import from jaclang.compiler.driver.pipeline {
+            invalidate,
+            require,
+            unavailable
+        }
         import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
         discover = True;
         attempted: set[str] = set();
@@ -977,8 +982,10 @@ impl NativeBuildSession.lower(
         self.registry._event("native_unit_lower");
         self.registry.note_slow_step("lowering", resolved, started);
         if len(self.prog.errors_had) > errors_before or mod.gen.native_iface is None {
-            if mod.gen.native_refusal {
-                self.registry.failures[resolved] = mod.gen.native_refusal;
+            refusal = mod.gen.native_refusal
+                or unavailable(CompilationProduct.NATIVE_LOWER);
+            if refusal {
+                self.registry.failures[resolved] = refusal;
             } elif mod.gen.native_iface is None {
                 self.registry.failures[resolved] = (
                     "lowering produced no native interface: the module has "
@@ -996,6 +1003,9 @@ impl NativeBuildSession.lower(
         self.lowered[resolved] = mod;
         ent = self.registry.record_module(mod, opts);
         self.registry._stash_products(resolved, mod.gen);
+        if self.compact_on_lower {
+            self.compact_ir([resolved]);
+        }
         self.settle_heap();
         self.registry.lowered_units += 1;
         if 0 < self.registry.stop_after <= self.registry.lowered_units {
@@ -1025,14 +1035,51 @@ impl NativeBuildSession.lower(
     }
 }
 
+impl NativeBuildSession.compact_ir(paths: list[str]) {
+    if self.options.native_debug
+        or self.options.dump_ir_path
+        or not (self.options.aot_mode or self.options.skip_native_engine) {
+        return;
+    }
+    import from jaclang.compiler.backends.native.na_compile_pass {
+        unit_bitcode,
+        unit_fallbacks
+    }
+    for path in paths {
+        resolved = os.path.realpath(path);
+        mod = self.lowered.get(resolved);
+        if mod is None or mod.gen.llvm_ir is None {
+            continue;
+        }
+        ir = mod.gen.llvm_ir;
+        symbols = _ir_symbols(ir);
+        if symbols is None {
+            continue;
+        }
+        _ = unit_fallbacks(mod.gen);
+        snapshot = NativeIRSnapshot(
+            bitcode=unit_bitcode(ir), defined=symbols[0], declared=symbols[1]
+        );
+        self.ir_snapshots[resolved] = snapshot;
+        mod.gen.ir_module = None;
+        mod.gen.llvm_ir = None;
+    }
+}
+
 impl NativeBuildSession.unbound_symbols(
     path: str, deps: list[str]
 ) -> (list[str] | None) {
-    consumer = self.lowered.get(os.path.realpath(path));
+    resolved_path = os.path.realpath(path);
+    consumer = self.lowered.get(resolved_path);
     if consumer is None {
         return None;
     }
-    bound = _ir_symbols(consumer.gen.llvm_ir);
+    consumer_snapshot = self.ir_snapshots.get(resolved_path);
+    bound = (
+        (consumer_snapshot.defined, consumer_snapshot.declared)
+            if consumer_snapshot is not None
+            else _ir_symbols(consumer.gen.llvm_ir)
+    );
     if bound is None {
         return None;
     }
@@ -1042,7 +1089,12 @@ impl NativeBuildSession.unbound_symbols(
         real = os.path.realpath(dep);
         provider = self.lowered.get(real);
         ent = self.registry.entries.get(real);
-        provided = _ir_symbols(provider.gen.llvm_ir if provider is not None else None);
+        provider_snapshot = self.ir_snapshots.get(real);
+        provided = (
+            (provider_snapshot.defined, provider_snapshot.declared)
+                if provider_snapshot is not None
+                else _ir_symbols(provider.gen.llvm_ir if provider is not None else None)
+        );
         if provided is None or ent is None {
             return None;
         }
@@ -1059,7 +1111,18 @@ impl NativeBuildSession.unbound_symbols(
         }
     }
     if unbound {
-        used = _ir_referenced_symbols(consumer.gen.llvm_ir);
+        used = (
+            consumer_snapshot.referenced
+                if consumer_snapshot is not None
+                else _ir_referenced_symbols(consumer.gen.llvm_ir)
+        );
+        if consumer_snapshot is not None and used is None {
+            import jaclang.compiler.backends.native.llvm.binding as llvm;
+            used = _ir_referenced_symbols(
+                llvm.parse_bitcode(consumer_snapshot.bitcode)
+            );
+            consumer_snapshot.referenced = used;
+        }
         unbound = {
             symbol
             for symbol in unbound
@@ -1072,6 +1135,7 @@ impl NativeBuildSession.unbound_symbols(
 impl NativeBuildSession.finish(paths: list[str]) {
     token = push_native_target(self.options.native_target or "");
     try {
+        self.compact_ir(paths);
         self._finish(paths);
     } finally {
         pop_native_target(token);
@@ -1086,38 +1150,51 @@ impl NativeBuildSession._optimize_in_parallel(paths: list[str]) -> set[str] {
         return set();
     }
     todo: list[tuple[str, Module]] = [];
+    optimized: set[str] = set();
     for path in paths {
         mod = self.lowered.get(path);
-        if mod is None or mod.gen.llvm_ir is None {
-            continue;
-        }
-        cached = self.registry.ensure(path, compile_on_miss=False, options=opts);
-        if cached is not None and cached.bitcode is not None {
+        if mod is None or (mod.gen.llvm_ir is None and path not in self.ir_snapshots) {
             continue;
         }
         if opts.native_required_for(path) {
             unit_fallbacks(mod.gen).require();
         }
+        cached = self.registry.ensure(path, compile_on_miss=False, options=opts);
+        if cached is not None and cached.bitcode is not None {
+            mod.gen.native_bitcode = cached.bitcode;
+            mod.gen.native_object = cached.object_bytes;
+            if path in self.ir_snapshots {
+                optimized.add(path);
+            }
+            continue;
+        }
         todo.append((path, mod));
     }
-    if len(todo) < 2 {
+    if not todo {
+        return optimized;
+    }
+    if len(todo) < 2 and not self.ir_snapshots {
         return set();
     }
     started = self.registry.note_step(
         "optimize", detail=f"{len(todo)} units in parallel"
     );
-    bitcodes = optimize_unit_bitcodes(
-        [unit_bitcode(mod.gen.llvm_ir) for (_, mod) in todo],
-        opts,
-        int(opts.opt_level or 0)
-    );
+    bitcodes: list[bytes] = [];
+    for (path, mod) in todo {
+        snapshot = self.ir_snapshots.get(path);
+        bitcodes.append(
+            snapshot.bitcode if snapshot is not None else unit_bitcode(mod.gen.llvm_ir)
+        );
+    }
+    bitcodes = optimize_unit_bitcodes(bitcodes, opts, int(opts.opt_level or 0));
     self.registry._timed("NATIVE_OPTIMIZE", started);
     self.registry.note_slow_step("optimizing", "", started);
     for ((path, mod), bitcode) in zip(todo, bitcodes) {
         mod.gen.native_bitcode = bitcode;
         self.registry.note_codegen(path, False);
+        optimized.add(path);
     }
-    return {path for (path, _) in todo};
+    return optimized;
 }
 
 impl NativeBuildSession._finish(paths: list[str]) {
@@ -1129,6 +1206,7 @@ impl NativeBuildSession._finish(paths: list[str]) {
         }
     }
     optimized = self._optimize_in_parallel(paths);
+    self.compact_on_lower = False;
     for path in paths {
         mod = self.lowered.get(path);
         if mod is None {
@@ -1175,6 +1253,7 @@ impl NativeBuildSession.close {
             self.registry._add_time("NATIVE_FRONTEND_" + phase, seconds);
         }
         self.lowered.clear();
+        self.ir_snapshots.clear();
         self.source_keys.clear();
         self.prog._natives = None;
         self.prog.release_compile_closure();
@@ -1215,65 +1294,6 @@ impl _ir_referenced_symbols(unit_ir: any) -> set[str] {
         }
     }
     return used;
-}
-
-impl _stat_key(path: str) -> (tuple[int, int] | None) {
-    try {
-        st = os.stat(path);
-        return (st.st_mtime_ns, st.st_size);
-    } except OSError {
-        return None;
-    }
-}
-
-impl _module_files_and_imports(path: str) -> tuple[list[str], list[str]] {
-    files = [path]
-        + discover_annex_files(path, '.impl.jac')
-        + discover_annex_files(path, '.test.jac');
-    fresh = tuple(_stat_key(f) for f in files);
-    cached = _closure_memo.get(path);
-    if cached is not None and cached[0] == fresh {
-        return (cached[1], cached[2]);
-    }
-    import from jaclang.project.textio { read_file_with_encoding }
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.frontend.parser.frontend { parse as rd_parse }
-    import from jaclang.compiler.placement.placement { jac_import_targets }
-    imports: list[str] = [];
-    for f in files {
-        try {
-            (mod, _had_err) = rd_parse(
-                read_file_with_encoding(f), f, prog=JacProgram()
-            );
-        } except Exception {
-            continue;
-        }
-        for target in jac_import_targets(mod) {
-            if target not in imports {
-                imports.append(target);
-            }
-        }
-    }
-    _closure_memo[path] = (fresh, files, imports);
-    return (files, imports);
-}
-
-impl _file_digest(path: str) -> str {
-    key = _stat_key(path);
-    if key is None {
-        return "";
-    }
-    cached = _dep_digest_memo.get(path);
-    if cached is not None and cached[0] == key {
-        return cached[1];
-    }
-    try {
-        digest = compute_content_sha256(path);
-    } except OSError {
-        return "";
-    }
-    _dep_digest_memo[path] = (key, digest);
-    return digest;
 }
 
 impl _interface_changes(before: any, after: any, path: str, out: list[str]) {

@@ -240,13 +240,16 @@ test "the packing config is on the injector before prepare runs" {
 
 
 test "a dry run injector refuses to seed placeholder bytes" {
+    import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
+        KubectlCluster
+    }
     with tempfile.TemporaryDirectory() as tmpdir {
         (injector, _) = binary_injector_mod.select_injector(
             "standard", "app", "ns", tmpdir, dry_run=True
         );
         seed_failed = False;
         try {
-            injector.seed("app", "ns");
+            injector.seed("app", "ns", KubectlCluster());
         } except ValueError {
             seed_failed = True;
         }

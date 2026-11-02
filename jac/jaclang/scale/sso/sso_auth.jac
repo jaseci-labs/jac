@@ -19,6 +19,7 @@ obj SSOAuth {
 
     def postinit;
     def get_sso(platform: str) -> SSOProvider | None;
+    def connect_scopes(platform: str, requested: list[str]) -> (list[str] | None);
     async def sso_initiate(
         platform: str, operation: str, client_callback: str | None = None
     ) -> Response | TransportResponse;

@@ -38,7 +38,8 @@ impl owner_scope_options(
     program: JacProgram, options: (CompileOptions | None) = None
 ) -> (CompileOptions | None) {
     chosen = options if options is not None else program.options;
-    if program.internal or chosen.package_canonical {
+    if program.internal
+        or (chosen.package_canonical and not chosen.client_source_root) {
         return None;
     }
     return chosen;
@@ -82,6 +83,9 @@ impl bind_options(
     if not new_entry and not bound.project_root {
         bound.project_root = program.options.project_root;
     }
+    if not bound.client_source_root {
+        bound.client_source_root = program.options.client_source_root;
+    }
     if not new_entry {
         bound.target_app = bound.target_app or program.options.target_app;
         bound.app_kind = bound.app_kind or program.options.app_kind;
@@ -117,7 +121,9 @@ impl bind_options(
 }
 
 impl context_identity(options: CompileOptions) -> str {
-    return hashlib.sha256(options.module_projection().encode()).hexdigest()[:20];
+    key = options.module_projection()
+        + (";strict_deps=1" if options.strict_dependencies else "");
+    return hashlib.sha256(key.encode()).hexdigest()[:20];
 }
 
 impl context_program(program: JacProgram, options: CompileOptions) -> JacProgram {

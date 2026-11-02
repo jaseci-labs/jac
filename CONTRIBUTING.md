@@ -103,8 +103,7 @@ exposes it as `jac://docs/*` resources, and the website renders the same
 corpus -- there is no separate docs build. Edit the markdown in place, then:
 
 ```bash
-jac run scripts/validate_docs_code.jac        # syntax-check the code blocks
-cd jac && JAC_TEST_JOBS=auto jac test tests/cli/test_docs_content.jac tests/cli/test_guide_docs.jac
+cd jac && JAC_TEST_JOBS=auto jac test tests/cli/test_docs_code_blocks.jac tests/cli/test_docs_content.jac tests/cli/test_guide_docs.jac
 ```
 
 Adding or removing a page means updating `jac/jaclang/cli/docs/nav.json` in
