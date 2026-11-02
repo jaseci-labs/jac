@@ -2,14 +2,10 @@ impl MirLowering.exception_name(nd: uni.Expr) -> str {
     return self.exception_target(nd)[0];
 }
 
-impl MirLowering.exception_target(
-    nd: uni.Expr
-) -> tuple[str, (uni.Archetype | None)] {
+impl MirLowering.exception_target(nd: uni.Expr) -> tuple[str, (uni.Archetype | None)] {
     target = nd.target if isinstance(nd, uni.FuncCall) else nd;
     arch = self.target_archetype(target) if isinstance(target, uni.Expr) else None;
-    if arch is not None
-        and not stub_archetype(arch)
-        and self.is_exception_arch(arch) {
+    if arch is not None and not stub_archetype(arch) and self.is_exception_arch(arch) {
         return (archetype_native_name(arch), arch);
     }
     if isinstance(target, uni.Name) and JAC_TYPE_REGISTRY.is_exception(target.value) {
@@ -630,7 +626,11 @@ impl MirLowering.lower_test(nd: uni.Test) -> (MirFunction | None) {
     line = nd.loc.first_line if nd.loc else 0;
     name = native_test_symbol(nd.name.sym_name, line);
     i8p = mir_c_ptr(mir_int(8, False));
-    fn = MirFunction(name=name, symbol=native_test_symbol(nd.name.sym_name, line, self.mir.prefix), ret=i8p);
+    fn = MirFunction(
+        name=name,
+        symbol=native_test_symbol(nd.name.sym_name, line, self.mir.prefix),
+        ret=i8p
+    );
     self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=fn.new_block("entry")));
     try {
         b = self.builder();
@@ -652,10 +652,12 @@ impl MirLowering.lower_test(nd: uni.Test) -> (MirFunction | None) {
         self.st().tries.pop();
         if not self.builder().block.terminated() {
             self.runtime("__jac_rt_exc_pop", [frame]);
+            self.flush_stdio();
             self.builder().ret(self.emit_value(MirOp.PTR_NULL, i8p, []));
         }
         self.builder().position(failed);
         self.runtime("__jac_rt_exc_pop", [frame]);
+        self.flush_stdio();
         address = self.address_of(frame);
         message = self.emit_value(
             MirOp.PTR_CAST,
@@ -664,7 +666,13 @@ impl MirLowering.lower_test(nd: uni.Test) -> (MirFunction | None) {
                 self.emit_value(
                     MirOp.MEM_LOAD,
                     mir_int(),
-                    [self.builder().binary("add", address, self.builder().const_int(EXC_MESSAGE_OFFSET, mir_int()))]
+                    [
+                        self.builder().binary(
+                            "add",
+                            address,
+                            self.builder().const_int(EXC_MESSAGE_OFFSET, mir_int())
+                        )
+                    ]
                 )
             ]
         );

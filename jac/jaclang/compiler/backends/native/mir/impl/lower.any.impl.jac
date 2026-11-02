@@ -389,7 +389,9 @@ impl MirLowering.any_isinstance(
                 MirOp.CSTR, mir_c_ptr(mir_int(8, False)), [], str_value=item.value
             );
             verdict = b.binary(
-                "or", verdict, self.runtime_value("__jac_rt_any_isa", [tag, payload, label])
+                "or",
+                verdict,
+                self.runtime_value("__jac_rt_any_isa", [tag, payload, label])
             );
             continue;
         }
@@ -514,7 +516,9 @@ impl MirLowering.hook_call(
             MirOp.PTR_OFFSET, mir_c_ptr(i8p), [table, b.const_int(index, mir_int())]
         );
         callee = self.emit_value(
-            MirOp.PTR_CAST, mir_c_fn([receiver.type], decl.ret), [b.load(entry_place, i8p)]
+            MirOp.PTR_CAST,
+            mir_c_fn([receiver.type], decl.ret),
+            [b.load(entry_place, i8p)]
         );
         result = self.emit_value(MirOp.CALL_FNPTR, decl.ret, [callee, receiver]);
         result.owned = mir_holds_ref(decl.ret);
@@ -540,7 +544,9 @@ impl MirLowering.enum_owns_int_tag(site: uni.UniNode, item: uni.Expr) -> bool {
     wanted = mir_type_of(
         item.type.clone_as_instance(), MirPosition.VALUE, site, self.type_env or None
     );
-    members = source.type.types if isinstance(source.type, UnionType) else [source.type];
+    members = source.type.types
+        if isinstance(source.type, UnionType)
+        else [source.type];
     for member in members {
         made = mir_type_of(member, MirPosition.VALUE, site, self.type_env or None);
         if made.kind == MirKind.ENUM and made.name != wanted.name {

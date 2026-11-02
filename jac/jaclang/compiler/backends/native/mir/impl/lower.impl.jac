@@ -830,7 +830,8 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
             isinstance(nd.type, UnionType)
             and any(
                 isinstance(member, ClassType)
-                    and member.shared.class_name in ("NoneType", "None") for member in nd.type.types
+                    and member.shared.class_name in ("NoneType", "None")
+                for member in nd.type.types
             )
         ) {
         return self.narrow_down(self.opt_get(loaded), nd);
@@ -982,7 +983,9 @@ impl MirLowering.arith(
         }
         if li.type.signed {
             minus_one = b.compare("eq", ri, b.const_int(-1, ri.type));
-            return b.binary("mod", li, b.select(minus_one, b.const_int(1, ri.type), ri));
+            return b.binary(
+                "mod", li, b.select(minus_one, b.const_int(1, ri.type), ri)
+            );
         }
         return b.binary("mod", li, ri);
     }
@@ -1295,7 +1298,12 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         and (
             callee is None
             or os.path.basename(callee.loc.mod_path)
-                in ("builtins.pyi", "builtins.jac", "na_builtins.pyi", "jac_builtins.pyi")
+                in (
+                    "builtins.pyi",
+                    "builtins.jac",
+                    "na_builtins.pyi",
+                    "jac_builtins.pyi"
+                )
         ) {
         builtin = self.builtin_call(nd, name);
         if builtin is not None {
@@ -1688,7 +1696,9 @@ impl MirLowering.spill(value: MirValue) -> MirValue {
     return self.builder().load(slot, slot.type);
 }
 
-impl MirLowering.bound_values(args: list[any], params: list[MirType]) -> list[MirValue] {
+impl MirLowering.bound_values(
+    args: list[any], params: list[MirType]
+) -> list[MirValue] {
     return [self.bound_value(arg, ptype) for (arg, ptype) in zip(args, params)];
 }
 
@@ -2119,7 +2129,9 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
     loaded = self.builder().load(place, self.place_elem(place));
     if nd.is_attr
         and loaded.type.kind == MirKind.ANY
-        and not (isinstance(nd.type, TypeVarType) and nd.type.name not in self.type_env) {
+        and not (
+            isinstance(nd.type, TypeVarType) and nd.type.name not in self.type_env
+        ) {
         wanted = self.expr_type(nd);
         if wanted.kind != MirKind.ANY {
             return self.any_unbox(loaded, wanted, nd);
@@ -2470,7 +2482,9 @@ impl MirLowering.method_call(
         return self.text_method(self.lower_expr(target.target), right.value, nd);
     }
     if receiver_type.kind == MirKind.ENUM {
-        via_enum = self.enum_method_call(nd, self.lower_expr(target.target), right.value);
+        via_enum = self.enum_method_call(
+            nd, self.lower_expr(target.target), right.value
+        );
         if via_enum is not None {
             return via_enum;
         }
@@ -2622,4 +2636,11 @@ impl MirLowering.literal_destination(nd: uni.Int) -> (str | None) {
         dest = up.target.value;
     }
     return dest;
+}
+
+impl MirLowering.flush_stdio {
+    b = self.builder();
+    for fd in (1, 2) {
+        self.runtime("__jac_rt_flush", [b.const_int(fd, mir_int())]);
+    }
 }

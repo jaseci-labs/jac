@@ -218,7 +218,11 @@ impl MirRcState.initialize_slots {
 }
 
 impl MirRcState.end_temporaries {
-    temps = [slot for slot in self.ref_slots if slot.is_temp];
+    temps = [
+        slot
+        for slot in self.ref_slots
+        if slot.is_temp
+    ];
     if not temps or not self.fn.blocks {
         return;
     }
@@ -237,7 +241,11 @@ impl MirRcState.end_temporaries {
     for blk in self.fn.blocks {
         tail = blk.instrs[-1] if blk.instrs else None;
         found = list(tail.targets) if tail is not None and tail.is_terminator() else [];
-        succs[blk.label] = [label for label in found if label in labels];
+        succs[blk.label] = [
+            label
+            for label in found
+            if label in labels
+        ];
         for label in succs[blk.label] {
             preds[label].append(blk.label);
         }

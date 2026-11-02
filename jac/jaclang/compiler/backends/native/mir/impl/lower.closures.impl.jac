@@ -254,7 +254,8 @@ impl MirLowering.callee_value(target: uni.Expr) -> MirValue {
     if isinstance(target, uni.AtomTrailer) and target.is_attr {
         place = self.lower_place(target);
         loaded = self.builder().load(place, self.place_elem(place));
-        if loaded.type.kind == MirKind.OPT and loaded.type.payload().kind == MirKind.FN {
+        if loaded.type.kind == MirKind.OPT
+            and loaded.type.payload().kind == MirKind.FN {
             return loaded;
         }
         return self.lower_expr(target);

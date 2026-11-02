@@ -39,10 +39,14 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     ];
     target = active_host().native_fact(
         FACT_TARGET, self.prog.options.native_target or ""
-    ).split(FACT_SEP);
+    ).split(
+        FACT_SEP
+    );
     ir_in.gen.llvm_ir = emit_mir_module(
         lowered,
-        target[1] if len(target) > 1 and target[1] else self.prog.options.effective_triple(),
+        target[1]
+            if len(target) > 1 and target[1]
+            else self.prog.options.effective_triple(),
         bool(self.prog.options.native_tls),
         target[0]
     );
@@ -160,8 +164,7 @@ impl MirNativePass.layout(lowering: MirLowering, mir: MirModule) -> NativeModule
                     enum_type=member.type.name
                         if member.type.kind == MirKind.ENUM
                         else None
-                )
-                for member in obj_def.fields
+                ) for member in obj_def.fields
             ],
             has_vtable=bool(obj_def.vtable_symbol)
         );
@@ -239,7 +242,9 @@ impl mir_layout_type(t: MirType) -> str {
         return f"{t.name}*";
     }
     if t.kind in (MirKind.LIST, MirKind.DICT, MirKind.SET) {
-        family = {MirKind.LIST: "List", MirKind.DICT: "Dict", MirKind.SET: "Set"}[t.kind];
+        family = {MirKind.LIST: "List", MirKind.DICT: "Dict", MirKind.SET: "Set"}[
+            t.kind
+        ];
         return ".".join([family] + [mir_layout_key(arg) for arg in t.args]) + "*";
     }
     return "i8*";

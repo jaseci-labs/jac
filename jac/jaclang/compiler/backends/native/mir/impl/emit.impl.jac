@@ -163,8 +163,7 @@ impl MirEmitter.emit_function(fn: MirFunction) {
                 raise err;
             } except Exception as err {
                 origins = [
-                    made.render()
-                    for other in fn.blocks
+                    made.render() for other in fn.blocks
                     for made in other.instrs
                     if made.result is not None
                         and any(made.result.id == used.id for used in instr.operands)

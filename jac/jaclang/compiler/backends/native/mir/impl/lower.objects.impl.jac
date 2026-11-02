@@ -339,7 +339,9 @@ impl MirLowering.constructor_params(
             else None;
         nearest = self.nearest_has_var(arch, member.name);
         if nearest is not None and nearest is not decl {
-            default_value = nearest.value if isinstance(nearest.value, uni.Expr) else None;
+            default_value = nearest.value
+                if isinstance(nearest.value, uni.Expr)
+                else None;
         }
         held = obj_def.field(member.name);
         if held is not None {
@@ -376,7 +378,9 @@ impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) 
                 if fallback is None {
                     continue;
                 }
-                values[index] = self.ctor_default(values[index], given, index, fallback);
+                values[index] = self.ctor_default(
+                    values[index], given, index, fallback
+                );
             }
         }
         size = fn.new_value(mir_int());
@@ -641,7 +645,9 @@ impl MirLowering.lower_trace(obj_def: MirObjectDef) -> MirFunction {
     fn.params.append(MirParam(name="visitor", value=visit_fn));
     this = b.ref_cast(raw, mir_obj(obj_def.name), False);
     for member in obj_def.fields {
-        held = member.type.payload() if member.type.kind == MirKind.OPT else member.type;
+        held = member.type.payload()
+            if member.type.kind == MirKind.OPT
+            else member.type;
         if not mir_holds_ref(held)
             or held.kind in (MirKind.STR, MirKind.STR_REF, MirKind.ANY) {
             continue;
@@ -706,7 +712,9 @@ impl MirLowering.field_place(
     if holder.type.kind not in (MirKind.OBJ, MirKind.OSP) {
         raise MirRefused(
             mir_refusal(
-                "attribute access", f"{obj_def.name}.{name} on {holder.type.render()}", site
+                "attribute access",
+                f"{obj_def.name}.{name} on {holder.type.render()}",
+                site
             )
         );
     }
@@ -719,7 +727,7 @@ impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue 
     obj_def = self.object_def(arch);
     if obj_def.field(EXC_MESSAGE_FIELD) is not None
         and (self.find_method(arch, "init") or self.find_method(arch, "__init__"))
-        is None {
+            is None {
         return self.exception_object(nd, arch);
     }
     owner = arch.find_parent_of_type(uni.Module) or self.module;
@@ -1032,6 +1040,7 @@ impl MirLowering.lower_module_entry -> (MirFunction | None) {
             self.lower_body(list(block.body or []));
         }
         if not self.builder().block.terminated() {
+            self.flush_stdio();
             self.builder().ret(None);
         }
         for blk in fn.blocks {
@@ -1165,7 +1174,11 @@ impl MirLowering.class_of(value: MirValue, site: uni.UniNode) -> MirValue {
 impl MirLowering.ctor_takes_mask(
     params: list[tuple[str, MirType, (uni.Expr | None)]]
 ) -> bool {
-    defaulted = [index for (index, param) in enumerate(params) if param[2] is not None];
+    defaulted = [
+        index
+        for (index, param) in enumerate(params)
+        if param[2] is not None
+    ];
     if defaulted and max(defaulted) >= CTOR_MASK_BITS {
         raise MirRefused(
             mir_refusal(
@@ -1212,9 +1225,7 @@ impl MirLowering.placeholder(t: MirType) -> MirValue {
 }
 
 impl MirLowering.ctor_arguments(
-    nd: uni.FuncCall,
-    label: str,
-    params: list[tuple[str, MirType, (uni.Expr | None)]]
+    nd: uni.FuncCall, label: str, params: list[tuple[str, MirType, (uni.Expr | None)]]
 ) -> list[MirValue] {
     positional: list[uni.Expr] = [];
     named: dict[str, uni.Expr] = {};
@@ -1238,9 +1249,7 @@ impl MirLowering.ctor_arguments(
     values: list[MirValue] = [];
     mask = 0;
     for (index, (pname, ptype, fallback)) in enumerate(params) {
-        source = positional[index]
-            if index < len(positional)
-            else named.get(pname);
+        source = positional[index] if index < len(positional) else named.get(pname);
         if source is None and fallback is not None {
             values.append(self.placeholder(ptype));
             continue;
@@ -1249,9 +1258,7 @@ impl MirLowering.ctor_arguments(
             mask = mask | (1 << index);
         }
         if source is None {
-            raise MirRefused(
-                mir_refusal("call", f"{label} missing {pname}", nd)
-            );
+            raise MirRefused(mir_refusal("call", f"{label} missing {pname}", nd));
         }
         values.append(self.coerce(self.lower_expr(source), ptype, source));
     }
@@ -1280,7 +1287,9 @@ impl MirLowering.class_value_call(nd: uni.FuncCall, bound: uni.Archetype) -> Mir
     self.raise_if(
         b.compare("eq", found, b.const_int(0, mir_int())),
         "TypeError",
-        f"this class cannot be constructed with the arguments of {obj_def.name.split('$')[0]}"
+        f"this class cannot be constructed with the arguments of {obj_def.name.split(
+            '$'
+        )[0]}"
     );
     made_type = mir_obj(obj_def.name);
     callee = self.emit_value(
@@ -1312,7 +1321,10 @@ impl MirLowering.class_entry(
     );
     result_type = mir_obj(bound_def.name);
     fn = MirFunction(
-        name=f"{obj_def.name}.__new_as", symbol=symbol, ret=result_type, linkage="internal"
+        name=f"{obj_def.name}.__new_as",
+        symbol=symbol,
+        ret=result_type,
+        linkage="internal"
     );
     first = fn.new_block("entry");
     saved = self.state;
@@ -1369,7 +1381,11 @@ impl MirLowering.class_entry(
         if made is None {
             raise MirRefused(mir_refusal("constructor", obj_def.name, arch));
         }
-        b.ret(b.ref_cast(made, result_type, True) if made.type is not result_type else made);
+        b.ret(
+            b.ref_cast(made, result_type, True)
+                if made.type is not result_type
+                else made
+        );
     } except MirRefused as err {
         self.state = saved;
         return None;
@@ -1391,7 +1407,9 @@ impl MirLowering.class_bound(t: (TypeBase | None)) -> (uni.Archetype | None) {
     return self.arch_of_type(bound);
 }
 
-impl MirLowering.nearest_has_var(arch: uni.Archetype, name: str) -> (uni.HasVar | None) {
+impl MirLowering.nearest_has_var(
+    arch: uni.Archetype, name: str
+) -> (uni.HasVar | None) {
     for holder in self.lineage(arch) {
         for var in holder.get_has_vars() {
             if var.name is not None and var.name.value == name {

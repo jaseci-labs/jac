@@ -425,12 +425,14 @@ obj MirLowering {
     def dict_entry(
         d: MirValue, at: MirValue, part: MirType, is_key: bool, site: uni.UniNode
     ) -> MirValue;
+
     def list_sort(lst: MirValue, nd: uni.FuncCall) -> (MirValue | None);
     def key_function(key_nd: uni.Expr) -> MirValue;
     def key_slot_type(key_fn: MirValue, site: uni.UniNode) -> MirType;
     def keyed_sort(
         made: MirValue, key_fn: MirValue, flag: MirValue, site: uni.UniNode
     );
+
     def extreme_named(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def sized_type_name(nd: uni.UniNode) -> (str | None);
     def int_bounds(t: MirType) -> tuple[int, int];
@@ -443,12 +445,15 @@ obj MirLowering {
     def int_bytes_call(
         nd: uni.FuncCall, target: uni.AtomTrailer, name: str
     ) -> (MirValue | None);
+
     def set_algebra(
         s: MirValue, other: MirValue, name: str, site: uni.UniNode
     ) -> MirValue;
+
     def set_operator(
         op: str, left: MirValue, right: MirValue, in_place: bool, site: uni.UniNode
     ) -> (MirValue | None);
+
     def nullable_payload(t: MirType) -> bool;
     def sort_kind(t: MirType, site: uni.UniNode) -> int;
     def container_method(
@@ -480,6 +485,7 @@ obj MirLowering {
     def accessor_of(
         nd: uni.AtomTrailer, kind: str
     ) -> (tuple[uni.Archetype, MirDecl] | None);
+
     def accessor_get(nd: uni.AtomTrailer) -> (MirValue | None);
     def accessor_set(target: uni.AtomTrailer, nd: uni.Assignment) -> bool;
     def lower_constructor(arch: uni.Archetype) -> (MirFunction | None);
@@ -530,6 +536,7 @@ obj MirLowering {
         label: str,
         params: list[tuple[str, MirType, (uni.Expr | None)]]
     ) -> list[MirValue];
+
     def class_value_call(nd: uni.FuncCall, bound: uni.Archetype) -> MirValue;
     def class_bound(t: (TypeBase | None)) -> (uni.Archetype | None);
     def nearest_has_var(arch: uni.Archetype, name: str) -> (uni.HasVar | None);
@@ -541,6 +548,7 @@ obj MirLowering {
     def ctor_default(
         value: MirValue, given: MirValue, index: int, fallback: uni.Expr
     ) -> MirValue;
+
     def class_of(value: MirValue, site: uni.UniNode) -> MirValue;
     def class_isinstance(value: MirValue, kind: MirValue) -> MirValue;
     def lower_module_init -> (MirFunction | None);
@@ -592,6 +600,7 @@ obj MirLowering {
     def callee_value(target: uni.Expr) -> MirValue;
     def function_value(decl: MirDecl, to: MirType) -> MirValue;
     def lower_try(nd: uni.TryStmt);
+    def flush_stdio;
     def lower_test(nd: uni.Test) -> (MirFunction | None);
     def lower_assert(nd: uni.AssertStmt);
     def raise_named(name: str, message_nd: (uni.UniNode | None), nd: uni.UniNode);
@@ -606,6 +615,7 @@ obj MirLowering {
     def raise_object(
         value: MirValue, arch: uni.Archetype, site: uni.UniNode, dynamic: bool = False
     );
+
     def register_exception(arch: uni.Archetype);
     def exception_message(value: MirValue, arch: uni.Archetype) -> MirValue;
     def exception_text(value: MirValue, arch: uni.Archetype) -> MirValue;
@@ -914,6 +924,7 @@ obj MirLowering {
     def isinstance_value(
         subject: uni.Expr, target: uni.Expr, site: uni.UniNode
     ) -> MirValue;
+
     def isinstance_test(
         value: MirValue, items: list[uni.Expr], site: uni.UniNode
     ) -> MirValue;
@@ -971,6 +982,7 @@ obj MirLowering {
     def enum_method_call(
         nd: uni.FuncCall, receiver: MirValue, name: str
     ) -> (MirValue | None);
+
     def enum_as_int(value: MirValue, site: uni.UniNode) -> MirValue;
     def enum_coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
     def enum_call(nd: uni.FuncCall) -> (MirValue | None);

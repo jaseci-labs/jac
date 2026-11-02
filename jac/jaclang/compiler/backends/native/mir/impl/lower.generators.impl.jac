@@ -564,7 +564,10 @@ impl MirLowering.iter_value(value: MirValue, site: uni.UniNode) -> MirValue {
     if iterated is not None {
         elem = self.user_next(iterated, site).elem;
         return self.iter_adapter(
-            "next", mir_str_ref() if elem.kind == MirKind.STR else elem, [iterated], site
+            "next",
+            mir_str_ref() if elem.kind == MirKind.STR else elem,
+            [iterated],
+            site
         );
     }
     raise MirRefused(mir_refusal("iteration", t.render(), site));
