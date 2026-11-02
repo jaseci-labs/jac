@@ -44,7 +44,77 @@ impl MirEmitter.emit -> ir.Module {
             self.class_global(obj_def);
         }
     }
+    for glob_def in self.mir.globals.values() {
+        if glob_def.c_init is not None {
+            held: any = self.module.globals[glob_def.symbol];
+            held.initializer = self.c_constant(glob_def.c_init, held.value_type);
+        }
+    }
     return self.module;
+}
+
+impl MirEmitter.c_constant(made: MirConst, shape: ir.Type) -> ir.Constant {
+    kind = made.kind;
+    if kind == "zero" or (kind == "int" and made.int_value == 0) {
+        return ir.Constant(shape, None);
+    }
+    if kind in ("int", "float") {
+        if isinstance(shape, ir.IntType) {
+            return ir.Constant(
+                shape, made.int_value if kind == "int" else int(made.float_value)
+            );
+        }
+        if isinstance(shape, ir.PointerType) {
+            return ir.Constant(ir.IntType(64), made.int_value).inttoptr(shape) as ir.Constant;
+        }
+        return ir.Constant(
+            shape, float(made.int_value) if kind == "int" else made.float_value
+        );
+    }
+    if kind == "bytes" {
+        return ir.Constant(shape, bytearray(made.data));
+    }
+    if kind == "aggregate" {
+        if isinstance(shape, ir.ArrayType) {
+            return ir.Constant(
+                shape, [self.c_constant(item, shape.element) for item in made.items]
+            );
+        }
+        laid: any = shape;
+        members = list(laid.elements);
+        return ir.Constant(
+            shape,
+            [
+                self.c_constant(item, member)
+                for (item, member) in zip(made.items, members)
+            ]
+        );
+    }
+    target: ir.Value;
+    if kind == "fn" {
+        target = self.functions[made.symbol];
+    } elif kind == "cstr" {
+        target = self.cstring_global(made.data.decode("utf-8")).gep(
+            [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)]
+        );
+    } else {
+        target = self.module.globals[made.symbol];
+        if made.offset {
+            addressed: any = target.type;
+            pointee = addressed.pointee;
+            steps = [
+                ir.Constant(ir.IntType(32), 0),
+                ir.Constant(ir.IntType(64), made.offset)
+            ]
+                if isinstance(pointee, ir.ArrayType)
+                else [ir.Constant(ir.IntType(64), made.offset)];
+            target = target.gep(steps);
+        }
+    }
+    if isinstance(shape, ir.IntType) {
+        return target.ptrtoint(shape) as ir.Constant;
+    }
+    return target.bitcast(shape) as ir.Constant;
 }
 
 impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
@@ -89,6 +159,9 @@ impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
     }
     if t.kind == MirKind.C_STRUCT {
         return self.c_struct(t.name);
+    }
+    if t.kind == MirKind.C_PIN {
+        return self.llvm_type(t.payload()).as_pointer();
     }
     if t.kind == MirKind.C_VIEW {
         return ir.LiteralStructType(
@@ -191,6 +264,10 @@ impl MirEmitter.bind(v: (MirValue | None), made: ir.Value) {
 }
 
 impl MirEmitter.cstring(b: ir.IRBuilder, text: str) -> ir.Value {
+    return b.bitcast(self.cstring_global(text), ir.IntType(8).as_pointer());
+}
+
+impl MirEmitter.cstring_global(text: str) -> ir.GlobalVariable {
     gv = self.strings.get(text);
     if gv is None {
         data = bytearray(text.encode("utf-8")) + bytearray([0]);
@@ -201,7 +278,7 @@ impl MirEmitter.cstring(b: ir.IRBuilder, text: str) -> ir.Value {
         gv.linkage = "private";
         self.strings[text] = gv;
     }
-    return b.bitcast(gv, ir.IntType(8).as_pointer());
+    return gv;
 }
 
 impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
@@ -728,7 +805,9 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
             )
         );
     } elif op == MirOp.GLOBAL_ADDR {
-        self.bind(instr.result, self.module.globals[instr.str_value]);
+        held = self.module.globals[instr.str_value];
+        wanted = self.llvm_type(result_of(instr).type);
+        self.bind(instr.result, held if held.type == wanted else held.bitcast(wanted));
     } elif op == MirOp.TLS_BLOCK {
         if self.native_tls {
             block = self.tls_block(instr.str_value, instr.int_value);
@@ -738,6 +817,16 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
                 instr.result,
                 b.call(self.keyed_block_fn(instr.str_value, instr.int_value), [])
             );
+        }
+    } elif op == MirOp.ALLOCA {
+        i64 = ir.IntType(64);
+        if instr.operands {
+            count = self.value(instr.operands[0]);
+            words = b.sdiv(b.add(count, ir.Constant(i64, 7)), ir.Constant(i64, 8));
+            self.bind(instr.result, b.alloca(i64, size=words));
+        } else {
+            buffer = b.alloca(ir.ArrayType(i64, max(instr.int_value, 1)));
+            self.bind(instr.result, b.bitcast(buffer, i64.as_pointer()));
         }
     } elif op == MirOp.EXC_FRAME {
         frame = b.alloca(ir.ArrayType(ir.IntType(64), EXC_FRAME_BYTES // 8));
@@ -829,12 +918,21 @@ impl MirEmitter.global_variable(glob_def: MirGlobal) -> ir.GlobalVariable {
         return found;
     }
     shape = self.llvm_type(glob_def.type);
+    if glob_def.count >= 0 {
+        shape = ir.ArrayType(shape, glob_def.count);
+    }
     made = ir.GlobalVariable(self.module, shape, name=glob_def.symbol);
     made.linkage = glob_def.linkage;
+    if glob_def.thread_local {
+        made.thread_local = True;
+        made.tls_model = "initialexec";
+    }
     if glob_def.linkage == "external" {
         return made;
     }
-    if glob_def.type.kind == MirKind.FLOAT {
+    if glob_def.c_data {
+        made.initializer = ir.Constant(shape, None);
+    } elif glob_def.type.kind == MirKind.FLOAT {
         made.initializer = ir.Constant(shape, glob_def.float_value);
     } elif glob_def.type.kind in (MirKind.INT, MirKind.BOOL) {
         made.initializer = ir.Constant(shape, glob_def.int_value);
@@ -1141,7 +1239,13 @@ impl MirEmitter.emit_rc(b: ir.IRBuilder, instr: MirInstr) {
         self.bind(instr.result, self.value(subject));
         return;
     }
-    acyclic = (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY);
+    acyclic = (
+        MirKind.STR,
+        MirKind.STR_REF,
+        MirKind.BYTES,
+        MirKind.BYTEARRAY,
+        MirKind.C_PIN
+    );
     symbol = RELEASE_ACYCLIC_SYMBOL if held_type.kind in acyclic else RELEASE_SYMBOL;
     self.rc_call(b, symbol, target);
 }

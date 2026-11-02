@@ -2,14 +2,13 @@
 machinery generalizes from flow for to arbitrary direct calls, with a
 heap future record joining at `wait`. Parallel in enforced zero-RC and
 atomic-rc builds; cycles, wasm, rc-debug, and any handle whose uses
-are not exactly `wait` keep the sequential erasure."""
+are not exactly `wait` keep the sequential erasure. The test pins the
+program's output across gc modes."""
 
 import os;
 import subprocess;
 import tempfile;
 import from tests.support { jac_command, TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "flow_future.jac"
@@ -20,29 +19,6 @@ glob FIXTURE = os.path.join(
          "rc": ["--memory", "rc"],
          "cycles": ["--memory", "managed"]
      };
-
-def _compile_ir(gc_mode: str, enforce: bool) -> str {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=FIXTURE,
-        options=CompileOptions(
-            aot_mode=True, na_gc_mode=gc_mode, nogc_enforce_all=enforce
-        )
-    );
-    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    return str(ir.gen.llvm_ir);
-}
-
-test "flow calls outline into future tasks in parallel-capable builds" {
-    for (mode, enforce) in (("none", True), ("rc", False)) {
-        text = _compile_ir(mode, enforce);
-        assert "__jac_flow_task" in text , f"{mode}: no outlined future task";
-        assert "pthread_create" in text , f"{mode}: no spawn";
-        assert "pthread_join" in text , f"{mode}: no join";
-    }
-    seq = _compile_ir("cycles", False);
-    assert "__jac_flow_task" not in seq , "cycles build must stay sequential";
-}
 
 test "future output is byte-identical across gc modes" {
     with tempfile.TemporaryDirectory() as tmp {

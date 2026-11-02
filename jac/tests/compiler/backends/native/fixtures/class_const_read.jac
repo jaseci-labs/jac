@@ -143,6 +143,11 @@ def run -> int {
     print(rate_of(Metered(n=0)));
     print(rate_of(Fast(n=0)));
     print(Node.CATEGORY == Kind.UNKNOWN);
+    try {
+        print(sides_of(Shape(n=0)));
+    } except AttributeError {
+        print("no SIDES");
+    }
     return 0;
 }
 

@@ -69,48 +69,29 @@ test "function-body imports lower and agree with sv" {
 
 # Supporting the body-scoped spelling must not smuggle unsupported modules in:
 # a Python-only import written in a body is the same capability violation a
-# module-level one is, but its owning function absorbs it as a granular seam
-# (epic #8201): the function demotes to its Python implementation with the
-# stdlib help text on the demotion diagnostic, instead of lowering to a
-# silent no-op statement -- and a native caller of the demoted function is a
-# structured E5092, never a silent bind to its abort stub.
-test "an unsupported body-scoped import demotes its function, callers stay loud" {
-    import contextlib;
-    import io;
+# module-level one is. Under a forced native compile it is refused (E5092) at
+# the import instead of lowering to a silent no-op statement, and a native
+# caller of the function is a structured E5092 as well.
+test "an unsupported body-scoped import is refused at the import, callers stay loud" {
     prog = JacProgram();
-    buf = io.StringIO();
-    _prev = os.environ.get("JAC_NA_DEBUG");
-    os.environ["JAC_NA_DEBUG"] = "1";
-    try {
-        with contextlib.redirect_stderr(buf) {
-            ir = prog.compile(
-                file_path=os.path.join(FIXTURES, "_func_body_bad_import.jac"),
-                use_str="def use() -> int {\n"
-                "    import collections;\n"
-                "    d = collections.OrderedDict();\n"
-                "    return len(d);\n"
-                "}\n",
-                options=native_force_opts()
-            );
-        }
-    } finally {
-        if _prev is None {
-            del os.environ["JAC_NA_DEBUG"];
-        } else {
-            os.environ["JAC_NA_DEBUG"] = _prev;
-        }
-    }
-    log = buf.getvalue();
-    assert not prog.errors_had , f"a function-owned import violation must demote, got: {[
-        str(e) for e in prog.errors_had
-    ]}";
-    assert ir.gen.native_layout is not None;
-    assert "use" not in ir.gen.native_layout.functions , (
-        "the function with the Python-only import must leave the native layout"
+    prog.compile(
+        file_path=os.path.join(FIXTURES, "_func_body_bad_import.jac"),
+        use_str="def use() -> int {\n"
+        "    import collections;\n"
+        "    d = collections.OrderedDict();\n"
+        "    return len(d);\n"
+        "}\n",
+        options=native_force_opts()
     );
-    assert "NA_DEBUG demote use" in log , f"no demotion recorded for use in:\n{log}";
-    assert "Native compilation supports these stdlib imports" in log , (
-        f"the demotion diagnostic should carry the stdlib help:\n{log}"
+    refused = [
+        str(e)
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == "E5092"
+    ];
+    assert any("line 2," in said for said in refused) , (
+        f"the Python-only body import must be refused where it stands: {[
+            str(e) for e in prog.errors_had
+        ]}"
     );
 
     caller = JacProgram();

@@ -68,13 +68,13 @@ its answer and a branch in the session's asker that produces it.
 
 ## Native hash containers
 
-Dictionaries and sets share `backends/native/na_ir_gen_pass.impl/hash_core.impl.jac`
-and `hash_order.impl.jac`. The order allocation contains `capacity` hash-slot
-indices, `capacity` inverse slot-to-position indices, then one extent word.
-Deletion marks its order position as -1 and trims trailing holes. Ordered reads
-compact holes once; insertion also compacts when the order allocation fills.
-Rehashing rebuilds both indices. This makes deletion amortized constant time,
-preserves insertion order, and bounds order storage during repeated mutations.
+Dictionaries and sets are one hash table in the Jac-written native runtime,
+`runtime/native/dicts.jac`. Entries live in dense key, value and order arrays in
+insertion order; an open-addressing index of 32-bit cells maps a probe to an
+entry. Deletion marks its cell deleted and its order slot -1; when deleted
+entries outnumber live ones the table is rebuilt, which compacts the arrays
+and the index. This keeps deletion amortized constant time and preserves
+insertion order.
 
 Dictionary lookup exposes a borrowed value slot: a null slot means the key is
 absent, while a present slot can contain zero or `None`. Native `dict.get()`
@@ -86,7 +86,7 @@ dictionary scaling and mutation tests cover these contracts.
 ## Native edge type values
 
 Graph operations accept edge classes passed as `type[Edge]` or a narrower
-bound. `backends/native/na_ir_gen_pass.impl/edge_types.impl.jac` resolves these
+bound. `backends/native/mir/impl/lower.osp.impl.jac` resolves these
 values using the existing native class-name identity. The shared graph runtime
 in `runtime/osp_graph.jac` registers each edge's tag and default-constructor
 callback. Literal edge classes retain constant-tag lookup; dynamic filters use
@@ -125,7 +125,8 @@ against `B`'s constructor signature, the contract the type checker enforces:
 `B`'s initializer parameters when an initializer is found through its MRO,
 otherwise its initializing `has` fields. `**` may unpack one str-keyed mapping;
 its keys must name parameters of that signature. The implementation lives in
-`backends/native/na_ir_gen_pass.impl/class_ctors.impl.jac`.
+`backends/native/mir/impl/lower.objects.impl.jac` (`class_value_call`,
+`class_entry`).
 
 Each module emits a construct entry for every archetype it declares. The entry
 takes a presence mask followed by the class's own constructor parameters.
@@ -269,7 +270,7 @@ A helper the passes and two backends all import belongs in `frontend/` or
 `backends/common/`, not in the backend that happened to write it first.
 
 **Every generator has the same shape.** One walker declaration
-(`jcir_gen_pass.jac`, `esast_gen_pass.jac`, `na_ir_gen_pass.jac`) holds the
+(`jcir_gen_pass.jac`, `esast_gen_pass.jac`, the native `mir/lower.jac`) holds the
 state fields and every method signature; the bodies live in
 `<name>.impl/<concern>.impl.jac`, one file per concern (expressions,
 statements, calls, declarations, module, and so on). There are no mixins and

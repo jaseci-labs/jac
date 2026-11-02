@@ -185,21 +185,12 @@ test "a spread and a literal keyword evaluate in source order" {
 }
 
 # CPython raises `TypeError: got multiple values for keyword argument` when a
-# spread collides with an already-bound key. The keys of a spread are only
-# known at runtime, so the check is a guard emitted per inserted entry rather
-# than a compile-time diagnostic. Asserted on the emitted IR: executing the
-# raise through the JIT would longjmp out of the ctypes frame.
-test "a spread emits a duplicate-key guard for every entry it inserts" {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, "kwargs_spread.jac")),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , str([str(e) for e in prog.errors_had]);
-    llvm_text = str(ir.gen.llvm_ir);
-    assert "kwsp.dup" in llvm_text , (
-        "expected a duplicate-key guard on the spread merge path"
-    );
+# spread collides with a key already headed for the **kwargs sink. The keys of
+# a spread are only known at runtime, so the check runs per inserted entry.
+test "a spread colliding with a key bound for the sink raises TypeError" {
+    (eng, _) = compile_native("kwargs_spread.jac");
+    f = get_func(eng, "collide_in_sink", ctypes.c_int64);
+    assert f() == 11 , f"a literal-vs-spread and a spread-vs-spread collision must both raise: {f()}";
 }
 
 # ─────────────────────────────────────────────────────────────────────

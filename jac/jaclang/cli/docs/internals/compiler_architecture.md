@@ -120,7 +120,7 @@ graph TD
     TYPECK --> INTEROP["BoundaryAnalysisPass<br/>(boundary discovery)"]
     INTEROP --> SV[JcirGenPass + JcirBytecodeGenPass]
     INTEROP --> CL[EsastGenPass]
-    INTEROP --> NA[NaIRGenPass + NativeCompilePass]
+    INTEROP --> NA[MirNativePass + NativeCompilePass]
 
     SV --> SVOUT[".pyc / in-memory CodeType"]
     CL --> CLOUT["module.gen.js + client bundle"]
@@ -622,8 +622,9 @@ rejection test retains a dataclasses import as test input, not an executed impor
 Builtins and language keywords ultimately resolve to methods on
 `JacRuntimeInterface` in [`runtime/runtime.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/runtime.jac).
 
-The primitive type contract for this backend lives in
-[`compiler/backends/es/primitives_es.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/es/primitives_es.jac) and [`compiler/backends/native/primitives_native.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/native/primitives_native.jac).
+The primitive type contract for the client backend lives in
+[`compiler/backends/es/primitives_es.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/es/primitives_es.jac);
+the native backend lowers primitives in its MIR lowering (see *Native backend*).
 
 ### Client backend
 
@@ -661,14 +662,18 @@ browser handles all rendering.
 
 | Pass | Source | Output |
 |------|--------|--------|
-| `NaIRGenPass` | [`compiler/backends/native/na_ir_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/native/na_ir_gen_pass.jac) | LLVM IR, built with the in-tree binding at [`compiler/backends/native/llvm/`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/native/llvm) over the `libjacllvm` shared library (llvmlite is not used) |
+| `MirNativePass` | [`compiler/backends/native/mir/`](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/compiler/backends/native/mir) | LLVM IR, emitted from MIR built with the in-tree binding at [`compiler/backends/native/llvm/`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/native/llvm) over the `libjacllvm` shared library (llvmlite is not used) |
 | `NativeCompilePass` | [`compiler/backends/native/na_compile_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/native/na_compile_pass.jac) | Object code (ELF or Mach-O) |
 
-`NaIRGenPass` is unusual in that it does **not** use the visitor pattern;
-LLVM requires instructions to be emitted into specific basic blocks in
-order, so it walks the AST manually. The pass derives directly from
-`ModuleCodegenPass`. Primitive types are defined in
-[`primitives_native.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/native/primitives_native.jac).
+`MirNativePass` lowers in two steps. **Lowering** turns the typed tree into a
+typed mid-level IR (MIR) and is the only place the backend decides how a value
+is represented natively and whether a function can be native at all; a
+construct it cannot lower is refused with E5092 before anything is emitted.
+**Emission** turns MIR into LLVM IR mechanically and never refuses. Retains
+and releases are inserted by an RC pass over MIR from value ownership. The
+native runtime (strings, lists, dicts, refcounting, exceptions) is Jac source
+under `runtime/native/`, compiled by the same backend and linked like any
+other unit. See [Native Mid-Level IR](native-mir.md).
 
 Linking is also self-contained: no system linker is invoked. LLD is
 linked into the bundled LLVM shim and runs in-process
@@ -679,16 +684,15 @@ object on ELF, a text stub (`.tbd`) on Mach-O, and an import library on
 Windows, all written by the shim.
 
 The native backend supplies its own memory management: a 32-byte
-allocation header with reference counts (see `HDR_*` globals in
-`na_ir_gen_pass.jac`). Cross-codespace calls between Python and native
+allocation header with reference counts (the header constants live in
+`compiler/frontend/codeinfo.jac` and the allocator in `runtime/native/rc.jac`). Cross-codespace calls between Python and native
 flow through the interop bridge generated from `BoundaryAnalysisPass`.
 
 ---
 
 ## Primitive Emitter Contract
 
-The two lowering backends (ECMAScript and native) implement the same
-abstract emitter interface, defined in
+The ECMAScript backend implements the abstract emitter interface defined in
 [`compiler/backends/common/primitives.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/common/primitives.jac).
 The server backend needs no emitters: it compiles to Python bytecode, so
 CPython itself provides the reference semantics the other backends must
@@ -710,15 +714,8 @@ graph TD
         EsStr[ES StrEmitter]
     end
 
-    subgraph "Native (primitives_native)"
-        NaInt[Native IntEmitter]
-        NaStr[Native StrEmitter]
-    end
-
     INT --> EsInt
-    INT --> NaInt
     STR --> EsStr
-    STR --> NaStr
 ```
 
 Thirteen emitter families are defined: one per primitive type (`int`,
@@ -726,8 +723,9 @@ Thirteen emitter families are defined: one per primitive type (`int`,
 `tuple`, `range`), plus `BuiltinEmitter` for top-level functions like
 `print()`, `len()`, `range()`, `sorted()`, and `ExceptionEmitter` for the
 exception machinery. The codegen pass calls `StrEmitter.emit_op_add(...)`
-and the backend's subclass produces an ES `BinaryExpression` or an LLVM
-`call @str_concat`; the Python backend emits an ordinary `BinOp` whose
+and the backend's subclass produces an ES `BinaryExpression`; the native
+backend lowers the same operation to a MIR call into its Jac-written runtime;
+the Python backend emits an ordinary `BinOp` whose
 semantics come from CPython directly.
 
 If a backend hasn't implemented an operation, the emitter returns `None`
@@ -747,7 +745,7 @@ user-facing reference, [Primitives & Codespace Semantics](../reference/language/
 |-----------|--------|--------------|
 | `cl → sv` | HTTP `POST` to the walker / function endpoint exposed by `jac run` | `EsastGenPass` emits `fetch(...)` against the URL recorded in the binding |
 | `sv → cl` | None at runtime -- the client mounts its own DOM. The server only ships the bootstrap payload | `JcirGenPass` emits the static-file route for the bundle |
-| `sv → na` | In-process `ctypes.CFUNCTYPE` over the JIT'd function address (MCJIT); an AOT `--lib` build is loaded across the process boundary instead | `JcirGenPass` emits the ctypes stub; `NaIRGenPass` exposes the function with C ABI |
+| `sv → na` | In-process `ctypes.CFUNCTYPE` over the JIT'd function address (MCJIT); an AOT `--lib` build is loaded across the process boundary instead | `JcirGenPass` emits the ctypes stub; `MirNativePass` exposes the function with C ABI |
 | `na → sv` | Python callback wrapped in a `ctypes.CFUNCTYPE` and registered as a JIT symbol (`llvm.add_symbol`), so MCJIT resolves the native call back into CPython | `interop_bridge.register_py_callbacks`, alongside the `sv → na` stub |
 | `na → na` | Direct symbol reference resolved by the bundled LLD | `BoundaryAnalysisPass` records the import; `NativeCompilePass` emits the relocation |
 | `sv → sv` (cross-app) | A typed-async stub keyed by the provider **app name** when an import's target is compiled in a different app context; in-process when the provider app is colocated, HTTP `POST` when it runs as its own process | `JcirGenPass` emits a generated `async` `__jac_sv_client` stub (`call` / `spawn_walker`; un-awaited statement spawns become `_deferred`, the outbox); the manifest's app edges drive the built-in `scale` subsystem's boot order |
@@ -904,7 +902,7 @@ A short index, organised by the role each file plays in the pipeline.
   -- the container format
 - [`compiler/driver/codegen_shim.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/codegen_shim.jac)
   -- `transcribe` / `compile_ir`
-- [`compiler/backends/es/primitives_es.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/es/primitives_es.jac) and [`compiler/backends/native/primitives_native.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/native/primitives_native.jac)
+- [`compiler/backends/es/primitives_es.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/es/primitives_es.jac)
 - [`runtime/runtime.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/runtime.jac)
   -- `JacRuntimeInterface`
 
@@ -921,10 +919,9 @@ A short index, organised by the role each file plays in the pipeline.
 
 **Native backend**
 
-- [`compiler/backends/native/na_ir_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/native/na_ir_gen_pass.jac)
+- [`compiler/backends/native/mir/`](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/compiler/backends/native/mir) -- MIR lowering, RC pass and LLVM emission
 - [`compiler/backends/native/na_compile_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/native/na_compile_pass.jac)
 - [`compiler/backends/native/native_link.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/native/native_link.jac)
-- [`compiler/backends/native/primitives_native.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/native/primitives_native.jac)
 
 **Interop**
 

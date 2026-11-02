@@ -6,9 +6,9 @@ methods is not evidence that the complete checker links or executes natively.
 
 ## Checkpoint: the native generator in the kernel (#9852)
 
-The native code generator (`backends/native/na_ir_gen_pass`), the primitive
-emitters and the LLVM IR builder (`backends/native/llvm/ir`) are kernel
-units. A module placed in the native codespace is lowered inside the kernel
+The native code generator (`backends/native/mir`: MIR lowering, the RC pass
+and LLVM emission) and the LLVM IR builder (`backends/native/llvm/ir`) are
+kernel units. A module placed in the native codespace is lowered inside the kernel
 session that analysed it. The session returns the module's LLVM IR text,
 native interface, layout and dependencies in its unit record; the host turns
 that record into machine code, cache sections and an engine
@@ -17,7 +17,7 @@ itself, the link and the caches stay on the host.
 
 What the generator needs from the host it asks for through one question,
 `native_fact`: the target's data layout and triple, struct offsets, the host
-OS, codec tables and the primitive emitters' method tables. A project
+OS and codec tables. A project
 dependency the host holds no native unit for is lowered in the same session
 and emitted as its own unit. Demotion to the server codespace happens inside
 the session, and the verdict, notes and coverage records come back in the

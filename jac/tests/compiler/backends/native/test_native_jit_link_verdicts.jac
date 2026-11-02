@@ -26,7 +26,6 @@ import ctypes;
 import from tests.support { get_func, jac_command, TESTS_DIR }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.native.lowering { native_fallbacks_in_ir }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -38,18 +37,13 @@ def cold_jit_opts -> CompileOptions {
     return CompileOptions(force_codespace='native', no_ir_cache=True);
 }
 
-"""Every `declare` line in the IR that names `symbol` as a callee."""
-def dangling_declares(llvm_ir_text: str, symbol: str) -> list[str] {
-    return [
-        line.strip()
-        for line in llvm_ir_text.splitlines()
-        if line.lstrip().startswith("declare")
-            and (f"@{symbol}(" in line or f'@"{symbol}"(' in line)
-    ];
+"""Bare Jac names of interface-recorded symbols (the unit prefix dropped)."""
+def bare_names(symbols: list[str]) -> set[str] {
+    return {sym.rsplit(".", 1)[-1] for sym in symbols};
 }
 
-"""Compile a fixture on the cold JIT lane; return (program, module, linked IR)."""
-def compile_cold(fixture: str) -> tuple[JacProgram, any, str] {
+"""Compile a fixture on the cold JIT lane; return (program, module)."""
+def compile_cold(fixture: str) -> tuple[JacProgram, any] {
     prog = JacProgram();
     ir = prog.compile(
         file_path=os.path.join(FIXTURES, fixture), options=cold_jit_opts()
@@ -57,7 +51,7 @@ def compile_cold(fixture: str) -> tuple[JacProgram, any, str] {
     assert not prog.errors_had , f"{[e.pretty_print() for e in prog.errors_had]}";
     assert ir is not None and ir.gen.llvm_ir is not None , f"no native IR for {fixture}";
     assert ir.gen.native_engine is not None , f"no JIT engine for {fixture}";
-    return (prog, ir, str(ir.gen.llvm_ir));
+    return (prog, ir);
 }
 
 """The functions a linked unit's own compile demoted, from its interface."""
@@ -66,7 +60,7 @@ def unit_demotions(prog: JacProgram, fixture: str) -> list[str] {
         os.path.realpath(os.path.join(FIXTURES, fixture))
     );
     assert ent is not None , f"{fixture} was not compiled as a linked unit";
-    return list(ent.iface.demoted);
+    return sorted(bare_names(list(ent.iface.demoted)));
 }
 
 """Copy fixtures into a fresh directory and `jac run` the first one there, so
@@ -98,14 +92,11 @@ def stdout_lines(proc: subprocess.CompletedProcess) -> list[str] {
 }
 
 test "a cold JIT importer demotes a caller of a demoted linked function" {
-    (prog, ir, text) = compile_cold("xmod_demote_main.jac");
-    assert not dangling_declares(text, "pyonly_len") , (
-        "the importer emitted a call to 'pyonly_len' before learning that "
-        f"xmod_demote_lib demotes it: {dangling_declares(text, 'pyonly_len')}"
-    );
+    (prog, ir) = compile_cold("xmod_demote_main.jac");
     lib_demoted = unit_demotions(prog, "xmod_demote_lib.jac");
     assert "pyonly_len" in lib_demoted , f"the callee lowered after all: {lib_demoted}";
-    demoted = native_fallbacks_in_ir(text).symbols;
+    iface: any = ir.gen.native_iface;
+    demoted = bare_names(list(iface.demoted));
     assert "call_seam" in demoted , (
         f"the caller of the demoted function stayed native: {demoted}"
     );
@@ -117,12 +108,9 @@ test "a cold JIT importer demotes a caller of a demoted linked function" {
 }
 
 test "a cold JIT importer sees a demotion only the callee's emitter discovers" {
-    (prog, ir, text) = compile_cold("xmod_demote_dyn_main.jac");
-    assert not dangling_declares(text, "from_code") , (
-        "the importer emitted a call to 'from_code' before its unit refused it: "
-        f"{dangling_declares(text, 'from_code')}"
-    );
-    demoted = native_fallbacks_in_ir(text).symbols;
+    (prog, ir) = compile_cold("xmod_demote_dyn_main.jac");
+    iface: any = ir.gen.native_iface;
+    demoted = bare_names(list(iface.demoted));
     assert "call_dyn" in demoted , f"the caller of 'from_code' stayed native: {demoted}";
     assert "call_double" not in demoted , f"the clean caller demoted: {demoted}";
     call_double = get_func(

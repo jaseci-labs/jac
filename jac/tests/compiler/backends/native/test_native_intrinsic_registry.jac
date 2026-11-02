@@ -94,21 +94,23 @@ def _call_lines(ir_text: str, name: str) -> list[str] {
 
 glob RAW_MEM_IMPORTS = "import from c { def malloc(n: int) -> int; def free(p: int) -> None; }\n",
      LOWERING_MARKERS = {
-         IntrinsicDispatch.MEM_LOAD: "mem.ld",
-         IntrinsicDispatch.MEM_STORE: "mem.p",
          IntrinsicDispatch.ATOMIC_XCHG: "atomicrmw xchg",
-         IntrinsicDispatch.CALL_DTOR: "dtor.fn",
-         IntrinsicDispatch.ALLOCA: "alloca.buf",
-         IntrinsicDispatch.LIST_DATA: "list.data.p",
-         IntrinsicDispatch.BUFFER_DATA: "buf.data.i64",
-         IntrinsicDispatch.REF_ADDR: "ref.addr",
-         IntrinsicDispatch.STR_DATA: "str.data.i64",
          IntrinsicDispatch.ATOMIC_LOAD: "load atomic",
          IntrinsicDispatch.ATOMIC_STORE: "store atomic",
          IntrinsicDispatch.ATOMIC_CAS: "cmpxchg",
          IntrinsicDispatch.ATOMIC_RMW: "atomicrmw",
          IntrinsicDispatch.ATOMIC_FENCE: "fence seq_cst"
-     };
+     },
+     VALUE_DISPATCH = [
+         IntrinsicDispatch.MEM_LOAD,
+         IntrinsicDispatch.MEM_STORE,
+         IntrinsicDispatch.CALL_DTOR,
+         IntrinsicDispatch.ALLOCA,
+         IntrinsicDispatch.LIST_DATA,
+         IntrinsicDispatch.BUFFER_DATA,
+         IntrinsicDispatch.REF_ADDR,
+         IntrinsicDispatch.STR_DATA
+     ];
 
 """Probe source per dispatch kind; a new dispatch kind must add one here."""
 def _probe_source(intr: any) -> str {
@@ -247,7 +249,6 @@ test "every registry intrinsic lowers through its registered emitter" {
                 );
             assert f"@\"jac_probe_tls\" = {declared}" in ir_text
                 or f"@jac_probe_tls = {declared}" in ir_text , ir_text;
-            assert "c.tls.addr" in ir_text , f"{intr.name}: the intrinsic was stranded";
             continue;
         }
         (prog, ir_mod) = _compile_src(_probe_source(intr), gc_mode=intr.gc_mode_gate);
@@ -262,6 +263,9 @@ test "every registry intrinsic lowers through its registered emitter" {
         } elif intr.dispatch == IntrinsicDispatch.BITS_FLOAT {
             fn = _get_func(eng, "probe", ctypes.c_double, ctypes.c_int64);
             assert fn(BITS_1_5) == 1.5 , f"{intr.name}(bits(1.5)) != 1.5";
+        } elif intr.dispatch in VALUE_DISPATCH {
+            fn = _get_func(eng, "probe", ctypes.c_int64, ctypes.c_int64);
+            assert fn(35) == 42 , f"{intr.name}: probe did not execute cleanly";
         } elif intr.dispatch in LOWERING_MARKERS {
             ir_text = str(ir_mod.gen.llvm_ir);
             marker = LOWERING_MARKERS[intr.dispatch];

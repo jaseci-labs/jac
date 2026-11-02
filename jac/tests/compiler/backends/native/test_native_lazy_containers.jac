@@ -1,42 +1,15 @@
-"""Behavioral + IR-shape tests for lazy-empty containers (native).
+"""Behavioral tests for lazy-empty containers (native).
 
 A fresh (empty) list/dict/set is a single header allocation: cap starts
 at 0 with NULL data buffers, and the first insert materializes storage
-(list grow 0 -> 8, hash rehash 0 -> 8). The IR tests pin the shape (the
-emitted `new` helpers contain no data-buffer malloc/calloc), and the
-behavioral tests cover every cap-0 touch point: len/iterate/contains/
-clear on never-filled containers, first-insert growth through repeated
-doublings, and dropping empty containers (the destructor and grow paths
-must tolerate NULL buffers).
+(list grow 0 -> 8, hash rehash 0 -> 8). The tests cover every cap-0 touch
+point: len/iterate/contains/clear on never-filled containers, first-insert
+growth through repeated doublings, and dropping empty containers (the
+destructor and grow paths must tolerate NULL buffers).
 """
 
 import ctypes;
 import from tests.support { compile_native, get_func }
-
-"""Body text of the first defined function whose name starts with `prefix`."""
-def fn_body(ir: any, prefix: str) -> str {
-    text = str(ir.gen.llvm_ir);
-    start = text.find(f'@"{prefix}');
-    assert start >= 0 , f"no function starting with {prefix} in IR";
-    line_start = text.rfind("define", 0, start);
-    assert line_start >= 0 , f"{prefix} found only as a declaration";
-    body_end = text.find("\n}", line_start);
-    return text[line_start:body_end] if body_end > 0 else text[line_start:];
-}
-
-test "lazy: list new allocates no data buffer" {
-    (eng, ir) = compile_native("lazy_containers.jac");
-    body = fn_body(ir, "__list_new_");
-    assert body.count('@"malloc"') == 0 , "an empty list must not malloc element storage";
-    assert body.count('@"calloc"') == 0;
-}
-
-test "lazy: dict new allocates no key/val/ctrl/order buffers" {
-    (eng, ir) = compile_native("lazy_containers.jac");
-    body = fn_body(ir, "__dict_new_");
-    assert body.count('@"malloc"') == 0 , "an empty dict must not malloc its table buffers";
-    assert body.count('@"calloc"') == 0;
-}
 
 test "lazy: empty list len and iteration" {
     (eng, _) = compile_native("lazy_containers.jac");

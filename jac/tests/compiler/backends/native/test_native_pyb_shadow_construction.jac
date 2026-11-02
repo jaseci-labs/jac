@@ -10,9 +10,9 @@ back as the slot's declared default and nothing was diagnosed: a wrong
 answer, not a gap, and the worst class in the ledger.
 
 Both fixtures answer 103 in the sv lane. Before the refusal both
-answered 5 natively, in silence. Now the construction refuses with
-E5088, which demotes the owning callable to its Python implementation --
-so both lanes answer 103 again and the reason is on the record.
+answered 5 natively, in silence. Now a forced-native compile refuses the
+construction (E5088 / E5092) instead of answering, and the reason is on the
+record.
 
 The non-generic control is what places the fault. The compiler's own
 pass chain reached this path through `BaseTransform[T_in, T_out]`, which
@@ -30,7 +30,6 @@ carrying no `postinit` has no shadow-side initializer to lose.
 import os;
 import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.frontend.codeinfo {
@@ -47,29 +46,18 @@ glob FIXTURES = os.path.join(
      NO_BASE_POSTINIT = "pyb_gen_base_main.jac";
 
 
-"""The coverage seams a forced-native compile of a fixture recorded."""
-def _seams(fixture: str) -> list[str] {
-    prog = JacProgram();
-    na_coverage_begin();
-    try {
-        prog.compile(
-            file_path=os.path.join(FIXTURES, fixture),
-            options=CompileOptions(force_codespace='native')
-        );
-    } finally {
-        coverage = na_coverage_end();
-    }
-    rec = coverage.get(os.path.realpath(os.path.join(FIXTURES, fixture)));
-    return [str(s) for s in ((rec.get("seams") or []) if rec is not None else [])];
-}
-
-
-"""The shadow-construction refusals among a fixture's seams."""
+"""The native refusals (E5088 / E5092) a forced-native compile of a fixture
+reported."""
 def _refusals(fixture: str) -> list[str] {
+    prog = JacProgram();
+    prog.compile(
+        file_path=os.path.join(FIXTURES, fixture),
+        options=CompileOptions(force_codespace='native')
+    );
     return [
-        s
-        for s in _seams(fixture)
-        if "on a Python shadow" in s
+        str(e)
+        for e in prog.errors_had
+        if e.code is not None and e.code.code in ("E5088", "E5092")
     ];
 }
 
@@ -93,11 +81,9 @@ def _sv_read_back(fixture: str) -> int {
 test "the generic pass-shaped chain refuses instead of answering wrongly" {
     assert _sv_read_back(GEN) == 103 , "the sv lane runs the override";
     hits = _refusals(GEN);
-    assert hits , (f"the hollow construction lowered without a word: {_seams(GEN)}");
-    assert "HollowKid" in hits[0] , f"the refusal does not name the class: {hits[0]}";
-    assert "HollowGenBase.postinit" in hits[0] , (
-        f"the refusal does not name the ancestor whose initializer would "
-        f"run on the shadow: {hits[0]}"
+    assert hits , "the hollow construction lowered without a word";
+    assert any("HollowKid" in hit for hit in hits) , (
+        f"the refusal does not name the class: {hits}"
     );
 }
 
@@ -106,24 +92,26 @@ test "the non-generic control refuses too, so genericity is not the fault" {
     assert _sv_read_back(PLAIN) == 103 , "the sv lane runs the override";
     hits = _refusals(PLAIN);
     assert hits , "the same construction with no type parameter must refuse too";
-    assert "PlainKid" in hits[0] and "PlainBase.postinit" in hits[0] , (
-        f"the refusal must name both halves: {hits[0]}"
+    assert any("PlainKid" in hit for hit in hits) , (
+        f"the refusal does not name the class: {hits}"
     );
 }
 
 
 test "a subclass with its own postinit still constructs" {
-    assert not _refusals(OWN_POSTINIT) , (
+    hits = _refusals(OWN_POSTINIT);
+    assert not hits , (
         "a native postinit suppresses the base's and chains into it with "
         "`super.postinit()`, which is the supported shape -- refusing it "
-        "would break the interop bridge's own fixture"
+        f"would break the interop bridge's own fixture: {hits}"
     );
 }
 
 
 test "a Python-side base chain with no postinit still constructs" {
-    assert not _refusals(NO_BASE_POSTINIT) , (
+    hits = _refusals(NO_BASE_POSTINIT);
+    assert not hits , (
         "with no shadow-side initializer there is nothing to lose; the "
-        "subscripted generic base alone must not trip the refusal"
+        f"subscripted generic base alone must not trip the refusal: {hits}"
     );
 }

@@ -78,6 +78,7 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
         }
         field_type = member.semantic_type or self.declared_field_type(member.decl_node);
         self.ensure_objects(field_type);
+        self.ensure_c_types(field_type);
         made.fields.append(
             MirObjectField(
                 name=member.name,

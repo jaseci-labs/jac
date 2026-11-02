@@ -81,7 +81,7 @@ from jaclang.artifacts import router
 from jaclang.artifacts.model import Probe, Source
 from jaclang.compiler.backends.native.llvm.shim_path import ShimArtifact
 from jaclang.compiler.driver.toolchain import native_pipeline_available, _native_env_memo
-heavy = ('jaclang.compiler.backends.native.na_ir_gen_pass',
+heavy = ('jaclang.compiler.backends.native.mir',
          'jaclang.compiler.backends.native.na_compile_pass',
          'jaclang.compiler.backends.native.llvm.binding')
 for probe, expected in [(Probe.missing(), False), (Probe.hit(Source.CHECKOUT, '/probe-shim', {}), True)]:
@@ -215,7 +215,7 @@ native verdict, for example a module pinned native in a project that places
 nothing native by inference, so no placement probe has consulted the shim yet.
 That verdict must come from the shim before the codegen schedule starts
 loading: inside the loading window the host defers to an optimistic answer and
-`NaIRGenPass` would be scheduled against a stale shim."""
+`MirNativePass` would be scheduled against a stale shim."""
 test "a native codegen request in a fresh process takes the shim's verdict" {
     script = f"""
 import sys
@@ -232,7 +232,7 @@ from jaclang.compiler.driver.toolchain import _native_env_memo
 assert not _native_env_memo, _native_env_memo
 schedule = resolve(CompilationProduct.CODEGEN, ProductRequest(native=True))[0]
 names = [p.__name__ for p in schedule or []]
-assert 'NaIRGenPass' not in names, names
+assert 'MirNativePass' not in names, names
 assert 'EsastGenPass' in names, names
 """;
     proc = subprocess.run(

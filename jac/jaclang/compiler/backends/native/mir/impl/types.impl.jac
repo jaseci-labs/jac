@@ -22,7 +22,8 @@ impl MirType.is_ref -> bool {
             MirKind.FN,
             MirKind.ITER,
             MirKind.RANGE,
-            MirKind.COMPLEX
+            MirKind.COMPLEX,
+            MirKind.C_PIN
         );
 }
 
@@ -201,6 +202,10 @@ impl mir_c_struct(name: str) -> MirType {
 
 impl mir_c_view(elem: MirType) -> MirType {
     return mir_type(MirKind.C_VIEW, args=[elem]);
+}
+
+impl mir_c_pin(elem: MirType) -> MirType {
+    return mir_type(MirKind.C_PIN, args=[elem]);
 }
 
 impl mir_c_fn(params: list[MirType], ret: MirType) -> MirType {
