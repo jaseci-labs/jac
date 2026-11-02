@@ -89,20 +89,19 @@ test "a consumer lays out a reloaded subclass with its base's slots" {
     assert slots_of(defining.fields) == SLOTS;
 }
 
-"""The body of `Pickup`'s struct type in `mod`'s lowered IR."""
-def pickup_struct(mod: uni.Module) -> str {
-    for line in str(mod.gen.llvm_ir or "").split("\n") {
-        if line.startswith('%"Pickup$') and " = type " in line {
-            return line.split(" = type ", 1)[1].strip();
-        }
-    }
-    return "";
+"""The slots of `Pickup` in the native layout `mod` exported."""
+def pickup_slots(mod: uni.Module) -> list[tuple[str, int]] {
+    exported = mod.gen.native_layout;
+    assert exported is not None , f"{mod.loc.mod_path} exported no native layout";
+    structs = by_source_name(exported.structs);
+    assert "Pickup" in structs , f"no Pickup struct in {list(structs)}";
+    return slots_of(structs["Pickup"].fields);
 }
 
 test "the consumer emits the struct its sibling importer emits" {
     (prog, level, save) = compile_after_reload();
-    sibling = pickup_struct(level);
-    consumer = pickup_struct(save);
-    assert sibling == "{i8**, i64, i64, double, i1, double, i8*}" , sibling;
+    sibling = pickup_slots(level);
+    consumer = pickup_slots(save);
+    assert sibling == SLOTS , sibling;
     assert consumer == sibling , f"consumer {consumer} vs sibling {sibling}";
 }

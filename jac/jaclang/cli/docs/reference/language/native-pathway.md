@@ -241,7 +241,7 @@ graph LR
 ```
 
 1. **Parsing & Semantic Analysis** -- standard Jac frontend (shared with the Python backend)
-2. **LLVM IR Generation** -- the `NaIRGenPass` walks the AST and emits LLVM IR using llvmlite's builder
+2. **LLVM IR Generation** -- `MirNativePass` lowers the typed AST into a typed mid-level IR (MIR), inserts reference counting, and emits LLVM IR through the in-tree LLVM binding (see [Native Mid-Level IR](../../internals/native-mir.md))
 3. **Machine Code Emission** -- llvmlite's MCJIT compiles IR to a relocatable object for the host architecture
 4. **Binary Packaging** -- a built-in platform-aware linker produces the final executable (ELF on Linux, Mach-O on macOS), with no external tools required
 
@@ -1083,25 +1083,15 @@ When any owned locals were stack-promoted (an `own` local whose only escaping-lo
 
 ### Reserved `__rc_*` runtime hooks
 
-Five names are **reserved intrinsics** on the native pathway: `__rc_debug_enable()`, `__rc_debug_disable()`, `__rc_gc_disable()`, `__rc_gc_enable()`, and `__rc_collect_cycles()`. A call to any of them is dispatched by name to the corresponding runtime helper *before* normal call classification and symbol resolution -- ahead of builtins, module functions, and locals. You therefore cannot define or import your own function under one of these names in native code and expect it to be called; the name is claimed by the RC runtime (defining one would also collide with the runtime's own emitted symbol). The dispatch lives in a single table in the native code generator (`_codegen_rc_intrinsic`). `__rc_debug_enable()` toggles tracing only in binaries compiled with `[native] debug = true` (or `--debug`) in the compiler's environment; in a default build the trace machinery is compiled out, `__rc_debug_disable()` is a no-op, and `__rc_debug_enable()` prints a one-line notice to stderr instead.
+Five names are **reserved intrinsics** on the native pathway: `__rc_debug_enable()`, `__rc_debug_disable()`, `__rc_gc_disable()`, `__rc_gc_enable()`, and `__rc_collect_cycles()`. A call to any of them is dispatched by name to the corresponding runtime helper *before* normal call classification and symbol resolution -- ahead of builtins, module functions, and locals. You therefore cannot define or import your own function under one of these names in native code and expect it to be called; the name is claimed by the RC runtime (defining one would also collide with the runtime's own emitted symbol). The dispatch lives in a single table, `INTRINSIC_REGISTRY` (`compiler/intrinsic_registry.jac`). `__rc_debug_enable()` toggles tracing only in binaries compiled with `[native] debug = true` (or `--debug`) in the compiler's environment; in a default build the trace machinery is compiled out, `__rc_debug_disable()` is a no-op, and `__rc_debug_enable()` prints a one-line notice to stderr instead.
 
 These hooks exist only in native code. On the Python backend they have no runtime implementation, and a call surfaces an unresolved-type diagnostic at check time rather than silently type-checking.
 
-### Reference-count elision
+### Reference counting
 
-A move assignment `b = a` would normally emit a defensive `__rc_retain` on the source so that both slots can be released independently. When the move is the *last* use of `a`, that retain is pure overhead: the reference can simply be handed to `b` and the source slot nulled, so `a`'s later cleanup release loads null and is a no-op and the object is freed exactly once.
+Retains and releases are inserted by MIR's RC pass (`compiler/backends/native/mir/impl/rc.impl.jac`), which runs over each lowered function before emission. Every value is either *owned* (a call result, a freshly built object, string or container) or *borrowed* (a load of a local, field or parameter). A consuming operation -- a store into a slot or a return -- takes an owned value as is and retains a borrowed one; an owned value that is never consumed is released after its last use, and a function's reference-holding slots are released when it exits. Constants are immortal and never counted.
 
-The elision is proven by the core `RcFactsPass` (`passes/rc_facts_pass.jac`), a small intraprocedural pass scheduled unconditionally in the native codegen path -- *before* `NaIRGenPass`. It runs a backward-liveness proof on the compiler's shared dataflow framework and stamps `Assignment.na_move_lowerable`, which the backend's reference-count lowering consumes. The proof reads the AST and the core CFG and serves annotated and unannotated code alike; because it always runs on the native path, the elision is identical whether or not ownership diagnostics were displayed.
-
-It is deliberately conservative -- it proves only the safe case and retains everywhere else. An assignment `b = a` is elided only when:
-
-- `b` is a single, plain, **local** name (never a field, subscript, global, or parameter);
-- the binding is not a `borrow`/`imm` binding;
-- `a` is a plain **local** name (an `own` *parameter* is never elided);
-- **every** use of `a` in its function is an alias-value into a plain local -- this one invariant excludes call-args, returns, field/container stores, `&a` borrows, and closure/concurrent captures, any of which is a use that is not an alias-value; and
-- `a` is **dead-out** at the move site, proven by backward liveness over the CFG. A later use reached through a loop back-edge without an intervening redefinition keeps `a` live and blocks the elision, so a `b = a` inside a loop is elided only when `a` is redefined each iteration before the move.
-
-The proof is scoped to the exact move site (`Assignment.na_move_lowerable`), not to a symbol, so a variable moved at its last use elides there even if it was aliased earlier.
+The core `RcFactsPass` (`passes/rc_facts_pass.jac`) still proves, on the native path, which `b = a` assignments are the last use of a plain local `a` and stamps `Assignment.na_move_lowerable`. The MIR RC pass does not consume that fact: such an assignment retains the value into `b`, and `a`'s slot releases its own reference.
 
 ---
 

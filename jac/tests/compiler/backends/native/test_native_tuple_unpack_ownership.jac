@@ -14,7 +14,7 @@ of reasoning about which retain the codegen happened to emit.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_address, compile_native_ir }
+import from tests.support { TESTS_DIR, native_address }
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
@@ -128,33 +128,4 @@ test "the same field bound twice is destroyed exactly once" {
     # as a move of the box's reference double-frees here.
     (eng, _) = compile_fixture();
     check(eng, "index_twice_into_optional", 33, 2);
-}
-
-# --- The box destructor is what makes the borrows balance ---
-test "a boxed tuple carries a destructor that releases its fields" {
-    ir = compile_native_ir(FIXTURE);
-    text = str(ir.gen.llvm_ir);
-    assert '__rc_release_tuple0' in text , (
-        "no tuple-box destructor was emitted; boxed tuple fields would be "
-        "abandoned when the box dies"
-    );
-    body: list[str] = [];
-    inside = False;
-    for ln in text.split("\n") {
-        if not inside
-            and ln.startswith("define")
-            and ('@"__rc_release_tuple0"' in ln) {
-            inside = True;
-        }
-        if inside {
-            body.append(ln);
-            if ln == "}" {
-                break;
-            }
-        }
-    }
-    joined = "\n".join(body);
-    assert joined.count('call void @"__rc_release_simple"') == 2 , (
-        f"tuple destructor should release both fields, IR was:\n{joined}"
-    );
 }

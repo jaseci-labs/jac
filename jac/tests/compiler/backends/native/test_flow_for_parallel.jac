@@ -3,8 +3,8 @@
 An binary provably contains no refcount operations and no
 OSP kernel, and the checker bans every unsound capture from a flow for
 body -- so threads are unconditionally safe there. The enforced build
-outlines the body, fans element ranges out over pthreads, and joins at
-the closing brace; managed modes keep the sequential lowering. Post-join
+fans element ranges out over pthreads and joins at the closing brace; the
+cycle-collected mode keeps the sequential lowering. Post-join
 state is deterministic (disjoint element writes), so output is
 byte-identical across thread counts and across gc modes.
 """
@@ -159,7 +159,6 @@ test "shared-capture rc stress is identical across widths and modes" {
 test "reduction accumulators keep the parallel fan-out" {
     enforced = _compile_ir_path(RED_FIXTURE, "none", True);
     assert "pthread_create" in enforced , "reductions must not force sequential";
-    assert "__jac_ffor_body" in enforced , "no outlined body for reduction loop";
     managed = _compile_ir_path(RED_FIXTURE, "cycles", False);
     assert "pthread_create" not in managed , "cycles build must stay sequential";
 }

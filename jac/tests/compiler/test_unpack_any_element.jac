@@ -76,7 +76,7 @@ test "unpacking through an any-valued chain binds Any, not Unknown" {
     errs = check_errors("unpack_any_element.jac");
     # `ctx: dict[str, any]` indexed twice yields builtin `Any`; each target
     # must bind `Any` so `takes_type(ty)` stays clean. This is the compiler's
-    # own `_gc["slots"][-1]` shape from na_ir_gen_pass closures.
+    # own `_gc["slots"][-1]` shape from the legacy native closure lowering.
     joined = " ".join(errs);
     assert "E1020" not in joined , f"any-valued chain unpack errored: {errs}";
     assert "E1053" not in joined , f"Unknown leaked out of the chain: {errs}";

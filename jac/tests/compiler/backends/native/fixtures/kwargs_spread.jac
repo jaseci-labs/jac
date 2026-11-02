@@ -159,6 +159,24 @@ def collide_two_spreads -> int {
     return -1;
 }
 
+def collide_in_sink -> int {
+    d: dict[str, int] = {"q": 3};
+    hits = 0;
+    try {
+        sink(0, q=2, **d);
+    } except TypeError {
+        hits += 10;
+    }
+    d1: dict[str, int] = {"r": 1};
+    d2: dict[str, int] = {"r": 2};
+    try {
+        sink(0, **d1, **d2);
+    } except TypeError {
+        hits += 1;
+    }
+    return hits;
+}
+
 def missing_required -> int {
     d: dict[str, int] = {"z": 1};
     try {

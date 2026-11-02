@@ -6,12 +6,9 @@ across gc modes, thread widths, and the Python backend (list views via
 the `_jac_chunks` runtime)."""
 
 import os;
-import re;
 import subprocess;
 import tempfile;
 import from tests.support { jac_command, TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "chunked_flow_for.jac"
@@ -21,23 +18,6 @@ glob FIXTURE = os.path.join(
          "rc": ["--memory", "rc"],
          "cycles": ["--memory", "managed"]
      };
-
-test "chunk bodies build view headers without allocating" {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=FIXTURE, options=CompileOptions(aot_mode=True, memory_profile="nogc")
-    );
-    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    text = str(ir.gen.llvm_ir);
-    m = re.search(
-        r'define[^\n]*@"__jac_ffor_body_\d+"\([^\n]*\n(.*?)\n\}', text, re.DOTALL
-    );
-    assert m , "no outlined flow-for body in IR";
-    body = m.group(1);
-    assert "chunk.hdr" not in body or "chunk.eb" in body , body[:400];
-    assert "chunk.eb" in text , "no chunk header construction in IR";
-    assert "__jac_halloc" not in m.group(1) , "chunk body allocates per chunk";
-}
 
 test "chunked output is identical across modes, widths, and python" {
     with tempfile.TemporaryDirectory() as tmp {

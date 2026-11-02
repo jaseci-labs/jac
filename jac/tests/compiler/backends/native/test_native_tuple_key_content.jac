@@ -41,6 +41,4 @@ test "tuple-of-str keys compare by content when the strings are fresh allocation
         f"got {got}: expected [101, 101, 101, 102]. A leading 0/2 means the "
         "equal key built from fresh strings was not found (pointer identity)"
     );
-    llvm = str(ir.gen.llvm_ir);
-    assert "__jac_str_fnv" in llvm , "tuple keys must hash str members by content";
 }

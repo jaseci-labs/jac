@@ -94,29 +94,26 @@ test "unsupported keyword forms refuse lowering instead of discarding arguments"
     import from pathlib { Path }
     import from tests.support { native_force_opts }
     import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.na_coverage {
-        na_coverage_begin,
-        na_coverage_end
-    }
-    for expression in [
-        "min([1, 2], key=abs)",
-        "max([1, 2], key=abs)",
-        "min([1, 2], `default='missing')"
+    for (fname, expression) in [
+        ("min", "min([1, 2], key=abs)"),
+        ("max", "max([1, 2], key=abs)"),
+        ("min", "min([1, 2], `default='missing')")
     ] {
         with tempfile.TemporaryDirectory() as directory {
             source = Path(directory) / "refuse.jac";
-            source.write_text("def probe -> any { return " + expression + "; }");
-            prog = JacProgram();
-            na_coverage_begin();
-            try {
-                prog.compile(file_path=str(source), options=native_force_opts());
-            } finally {
-                coverage = na_coverage_end();
-            }
-            said = " ".join(
-                str(seam) for rec in coverage.values() for seam in (rec["seams"] or [])
+            source.write_text(
+                "def probe -> int { x = " + expression + "; return 0; }"
             );
-            assert "builtin call" in said , f"must refuse {expression}: {said}";
+            prog = JacProgram();
+            prog.compile(file_path=str(source), options=native_force_opts());
+            refusals = [
+                str(e)
+                for e in prog.errors_had
+                if e.code is not None and e.code.code == "E5092"
+            ];
+            assert any(f"'{fname}" in said for said in refusals) , (
+                f"must refuse {expression}: {[str(e) for e in prog.errors_had]}"
+            );
         }
     }
 }

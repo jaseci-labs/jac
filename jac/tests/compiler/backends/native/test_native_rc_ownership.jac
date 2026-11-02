@@ -142,13 +142,16 @@ test "param shadow: loop-exit cleanup still releases same-named locals" {
     # locals; the loop-exit (iter_end) cleanup must still release both or the
     # final iteration's Boxes are never freed.
     (eng, _) = compile_native("rc_param_shadow_looptail.jac");
-    ir = compile_native_ir("rc_param_shadow_looptail.jac");
-    body = fn_ir(ir, "churn");
-    assert "iter.cleanup.a" in body , "loop-exit cleanup for local 'a' was suppressed";
-    assert "iter.cleanup.b" in body , "loop-exit cleanup for local 'b' was suppressed";
     churn = get_func(eng, "churn", ctypes.c_int64, ctypes.c_int64);
+    drop_count = get_func(eng, "drop_count", ctypes.c_int64);
+    before = drop_count();
     result = churn(10);
     assert result == 100 , f"Expected 100, got {result}";
+    freed = drop_count() - before;
+    assert freed == 20 , (
+        f"every iteration's two Boxes must be freed, the last one included: "
+        f"{freed} of 20 dropped"
+    );
 }
 
 # --- Heap-element containers under non-default gc modes (issue #7466, 3) ---
@@ -179,12 +182,6 @@ test "import sys compiles under --memory rc (argv list is a heap container)" {
 """Run the drop fixture and assert the hook fired once per destroyed Res."""
 def check_drop_parity(gc_mode: str | None) {
     (eng, _) = compile_native("rc_drop_hook.jac", gc_mode=gc_mode);
-    ir = compile_native_ir(
-        "rc_drop_hook.jac",
-        options=CompileOptions(force_codespace="native", na_gc_mode=gc_mode or "cycles")
-    );
-    body = fn_ir(ir, "__rc_release_Res");
-    assert 'call' in body and 'Res.drop' in body , "managed release fn does not invoke the drop hook";
     run_drops = get_func(eng, "run_drops", ctypes.c_int64);
     drop_count = get_func(eng, "drop_count", ctypes.c_int64);
     last_dropped = get_func(eng, "last_dropped", ctypes.c_int64);

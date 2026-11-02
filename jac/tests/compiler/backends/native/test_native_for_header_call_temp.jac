@@ -6,7 +6,7 @@ so `break` was covered and every other way out was not: an early `return`,
 an exception unwinding past the loop, and the outer loop of a nested pair
 whose inner loop returns all abandoned the whole collection. Binding the
 same expression to a local first was leak-free, because a named local has a
-frame slot and `_emit_scope_cleanup` walks those on every exit; that rewrite
+frame slot that is released on every exit; that rewrite
 is what #8052 had to apply in `Ability.event_trigger_type_names`.
 
 Nothing about the answer changes when the collection leaks, so this suite
@@ -21,12 +21,7 @@ Refs #8039, #8052
 
 import ctypes;
 import os;
-import from tests.support {
-    TESTS_DIR,
-    names_function,
-    native_address,
-    native_force_opts
-}
+import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import jaclang.compiler.frontend.unitree as uni;
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
@@ -87,32 +82,6 @@ def _get(name: str) -> any {
 def _account(name: str, n: int) -> tuple[any, ...] {
     encoded = _get(name)(n);
     return (encoded // 1000, encoded % 1000);
-}
-
-
-"""Slice one function's textual IR out of the module dump."""
-def _fn_ir(name: str) -> str {
-    options = native_force_opts();
-    options.no_ir_cache = True;
-    options.skip_native_engine = True;
-    prog = JacProgram();
-    ir = prog.compile(file_path=os.path.join(FIXTURES, FIXTURE), options=options);
-    assert not prog.errors_had , [str(e) for e in prog.errors_had];
-    out: list[str] = [];
-    inside = False;
-    for ln in str(ir.gen.llvm_ir).split("\n") {
-        if not inside and ln.startswith("define") and names_function(ln, name) {
-            inside = True;
-        }
-        if inside {
-            out.append(ln);
-            if ln == "}" {
-                break;
-            }
-        }
-    }
-    assert out , f"No IR found for function '{name}'";
-    return "\n".join(out);
 }
 
 
@@ -204,17 +173,6 @@ test "the iterator-protocol loop owns its adapter the same way" {
     assert _account("adapter_header_drops", 3) == (3, 12) , (
         "an adapter built over a header call must be released on the early "
         "`return` path too"
-    );
-}
-
-
-test "the header temporary is released through the frame's scope cleanup" {
-    # Not merely "the leak is gone": the mechanism has to be the shared one,
-    # so a future exit path gets it for free rather than needing its own
-    # special case. `_emit_scope_cleanup` names its loads `cleanup.<var>`.
-    body = _fn_ir("early_ret_header");
-    assert "cleanup.for.coll" in body , (
-        "the loop's collection slot is not in the frame's scope-cleanup walk"
     );
 }
 

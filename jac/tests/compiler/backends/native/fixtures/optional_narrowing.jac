@@ -296,6 +296,21 @@ def loop_unpack_rebind(n: int) -> int {
     return total;
 }
 
+def rebound_none_raises(which: int) -> int {
+    try {
+        if which == 0 {
+            callee_rebinds_attr(1);
+        } elif which == 1 {
+            back_edge_rewiden(2);
+        } else {
+            loop_unpack_rebind(2);
+        }
+    } except TypeError {
+        return 1;
+    }
+    return 0;
+}
+
 def match_narrowed_subject(n: int) -> int {
     x = pick_float(n);
     if x is None {

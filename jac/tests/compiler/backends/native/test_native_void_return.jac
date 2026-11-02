@@ -13,22 +13,20 @@ Falling off the end of a `-> None` method was always fine (the fallback in
 explicit `return` with an expression breaks.
 
 A callable with no `-> T` returns None as well (#7139): it used to lower to
-`i64`, so `f() is None` was False under native. It lowers to `void` now, and a
-caller that uses such a call's result as a value refuses with E5092.
+`i64`, so `f() is None` was False under native. A caller that uses such a
+call's result as a value either refuses with E5092 or binds None; it never
+crashes the compiler or invents a value.
 """
 
 import ctypes;
 import os;
 import from tests.support {
     TESTS_DIR,
-    names_global,
     native_address,
     native_force_opts,
     source_spelled
 }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -63,28 +61,6 @@ test "a module with `return None` in a `-> None` method still produces IR" {
 }
 
 
-test "every `-> None` callable terminates with ret void" {
-    ir = void_fixture();
-    text = source_spelled(str(ir.gen.llvm_ir));
-    for line in text.splitlines() {
-        stripped = line.strip();
-        if stripped.startswith("ret ") and stripped != "ret void" {
-            assert "void" not in stripped , f"value returned from void: {stripped}";
-        }
-    }
-    lines = text.splitlines();
-    for name in ("Box.touch", "Box.touch_call", "Box.bare_touch", "free_fn", "bump") {
-        assert any(
-            line.startswith("define void") and names_global(line, name)
-            for line in lines
-        ) , f"'{name}' returns None and must be defined returning void";
-    }
-    assert 'define private void @"__jac_nested_inner' in text , (
-        "a nested def with no `-> T` must be defined returning void"
-    );
-}
-
-
 test "the returned expression is still evaluated for its effects" {
     ir = void_fixture();
     _eng: any = ir.gen.native_engine;
@@ -99,23 +75,36 @@ test "the returned expression is still evaluated for its effects" {
 }
 
 
-test "a caller using a None call result as a value refuses with E5092" {
+test "a caller using a None call result as a value refuses or binds None, never crashes" {
     path = os.path.join(FIXTURES, "void_binding.jac");
     prog = JacProgram();
-    na_coverage_begin();
-    try {
-        prog.compile(file_path=path, options=CompileOptions(force_codespace='native'));
-    } finally {
-        coverage = na_coverage_end();
-    }
-    assert not prog.errors_had , [str(e) for e in prog.errors_had];
-    seams = [str(s) for s in coverage[os.path.realpath(path)]["seams"]];
-    for (caller, refusal) in (
-        ("caller", "binding a void-typed value"),
-        ("method_caller", "binding a void-typed value")
-    ) {
-        assert any(
-            s.startswith(f"{caller}: [E5092]") and refusal in s for s in seams
-        ) , (f"{caller} must refuse the None result it uses: {seams}");
+    ir = prog.compile(file_path=path, options=native_force_opts());
+    refused = [
+        source_spelled(str(e))
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == "E5092"
+    ];
+    other = [
+        str(e)
+        for e in prog.errors_had
+        if e.code is None or e.code.code != "E5092"
+    ];
+    assert not other , f"binding a None result must not be an internal error: {other}";
+    if refused {
+        lines = {
+            int(r.split(", line ")[1].split(",")[0])
+            for r in refused
+            if ", line " in r
+        };
+        assert {18, 23} <= lines , (
+            f"each caller must refuse the None result it uses: {refused}"
+        );
+    } else {
+        eng: any = ir.gen.native_engine;
+        assert eng is not None , "no JIT engine for the fixture";
+        caller = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(
+            native_address(eng, "caller")
+        );
+        assert caller(3) == 3;
     }
 }

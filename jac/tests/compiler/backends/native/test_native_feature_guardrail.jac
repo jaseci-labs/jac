@@ -1,10 +1,10 @@
 """Guardrail tests for the .jac / na {} native pipeline.
 
-These tests verify that NaIRGenPass raises a clear E5090 error on AST
+These tests verify that the native backend raises a clear error on AST
 node types it does not yet support, rather than silently dropping them
 and emitting empty function bodies.
 
-Each test below targets one feature that NaIRGenPass currently no-ops.
+Each test below targets one feature the native backend does not lower.
 When a feature gains real support, its test here should be deleted and
 a behavioral test added to test_native_gen_pass.jac -- unless the
 guardrail property survives the promotion in a stronger form, in which
@@ -39,7 +39,7 @@ glob FIXTURES_DIR = os.path.join(
 """Compile a snippet through the native pipeline and return the program.
 
 Uses a synthetic .jac path under the fixtures directory so the file
-extension routes the compile through NaIRGenPass.
+extension routes the compile through the native backend.
 """
 def compile_na_inline(label: str, code: str) -> JacProgram {
     path = os.path.join(FIXTURES_DIR, f"_guardrail_{label}.jac");
@@ -49,31 +49,35 @@ def compile_na_inline(label: str, code: str) -> JacProgram {
 }
 
 """Like `compile_na_inline`, but also hand back the compiled module (for
-layout assertions) and the JAC_NA_DEBUG stderr stream (for demotion-reason
-assertions -- granular demotion reports its cause there rather than as a
-program error)."""
+layout assertions) and the compile's stderr stream."""
 def compile_na_inline_demote(label: str, code: str) -> tuple[any, ...] {
     import contextlib;
     import io;
     path = os.path.join(FIXTURES_DIR, f"_guardrail_{label}.jac");
     prog = JacProgram();
     buf = io.StringIO();
-    _prev = os.environ.get("JAC_NA_DEBUG");
-    os.environ["JAC_NA_DEBUG"] = "1";
-    try {
-        with contextlib.redirect_stderr(buf) {
-            ir = prog.compile(
-                file_path=path, use_str=code, options=native_force_opts()
-            );
-        }
-    } finally {
-        if _prev is None {
-            del os.environ["JAC_NA_DEBUG"];
-        } else {
-            os.environ["JAC_NA_DEBUG"] = _prev;
-        }
+    with contextlib.redirect_stderr(buf) {
+        ir = prog.compile(file_path=path, use_str=code, options=native_force_opts());
     }
     return (prog, ir, source_spelled(buf.getvalue()), );
+}
+
+"""The E5092 refusals of a forced-native compile, with their help text."""
+def refusals(prog: JacProgram) -> list[str] {
+    return [
+        source_spelled(str(e)) + " " + (e.help_text or "")
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == "E5092"
+    ];
+}
+
+"""No internal compiler error leaked out of the compile."""
+def no_ice(prog: JacProgram) -> bool {
+    return not [
+        e
+        for e in prog.errors_had
+        if e.code is not None and e.code.code in ("E9001", "E9002", "E9003")
+    ];
 }
 
 """Compile a snippet through the FRONT-END check schedule (the `type_check`
@@ -239,8 +243,10 @@ test "guardrail: field access on an untyped (any) node-ref element refuses the a
     assert any("event ability" in r and "go" in r for r in refused) , (
         f"a walker with an ability that cannot lower must refuse the module: {refused}"
     );
-    assert "NA_DEBUG demote W.go" in log , f"no demotion recorded for W.go in:\n{log}";
-    assert "[?:" in log , f"the demotion diagnostic should suggest a `[?:Type]` filter:\n{log}";
+    hints = [str(e) + " " + (e.help_text or "") for e in prog.errors_had];
+    assert any("[?:" in h for h in hints) , (
+        f"the refusal should suggest a `[?:Type]` filter: {hints}"
+    );
 }
 
 
@@ -349,9 +355,6 @@ test "for-loop over a set lowers, and both lanes answer the same sum" {
     assert layout is not None , "whole-module native compile aborted";
     assert "run" in layout.functions , (
         "iterating a set lowers now; run must stay in the native layout"
-    );
-    assert "NA_DEBUG demote run" not in log , (
-        f"run must not demote for iterating a set:\n{log}"
     );
     native = native_answer(ir.gen.native_engine, "run");
     assert native == 6 , (
@@ -1023,9 +1026,9 @@ test "guardrail: a dict comprehension with untyped keys or always-None values is
 # crash, so the module silently ran as Python.
 test "a backend crash is E9003, never a refusal, and leaves the module nothing to run" {
     import from unittest.mock { patch }
-    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+    import from jaclang.compiler.backends.native.mir.lower { MirLowering }
     with patch.object(
-        NaIRGenPass, "_codegen_binary", side_effect=AssertionError("lowering exploded")
+        MirLowering, "lower_binary", side_effect=AssertionError("lowering exploded")
     ) {
         (prog, ir, log) = compile_na_inline_demote(
             "backend_crash", "def add(a: int, b: int) -> int {\n    return a + b;\n}\n"
@@ -1226,19 +1229,14 @@ test "clib decl with known types is not rejected" {
 
 # !r and dynamic format specs now lower natively (#7593 item 6); the !a
 # conversion still requires CPython-exact ascii() escaping and stays gated.
-test "guardrail: f-string !a conversion demotes its function" {
+test "guardrail: f-string !a conversion refuses its function" {
     (prog, ir, log) = compile_na_inline_demote(
         "fstr_ascii", "def f(s: str) -> str { return f\"{s!a}\"; }\n"
     );
-    assert not prog.errors_had , f"A function-owned !a violation must demote, got: {fmt_errors(
-        prog
-    )}";
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "f" not in layout.functions , (
-        "the !a function must be demoted out of the native layout"
+    assert no_ice(prog) , f"the !a conversion crashed the backend: {fmt_errors(prog)}";
+    assert refusals(prog) , (
+        f"a forced-native !a conversion must refuse with E5092, got: {fmt_errors(prog)}"
     );
-    assert "NA_DEBUG demote f" in log , f"no demotion recorded for f in:\n{log}";
 }
 
 # Positional arguments to an archetype WITHOUT an explicit init map onto the
@@ -1249,7 +1247,7 @@ test "guardrail: f-string !a conversion demotes its function" {
 # value. Both stay a structured E5092 that demotes the owning function --
 # never a silent wrong-value compile (sv raises TypeError at runtime for the
 # overflow form).
-test "guardrail: implicit-ctor positionals lower; dynamic new() demotes" {
+test "guardrail: implicit-ctor positionals lower; dynamic new() refuses" {
     ok = compile_na_inline(
         "pos_ctor",
         "obj Vec {\n"
@@ -1276,14 +1274,9 @@ test "guardrail: implicit-ctor positionals lower; dynamic new() demotes" {
         "}\n"
         "with entry {}\n"
     );
-    assert not over.errors_had , f"new() arity overflow must demote its function, got: {fmt_errors(
-        over
-    )}";
-    assert "make" not in over_ir.gen.native_layout.functions , (
-        "the new()-overflow function must be demoted out of the native layout"
-    );
-    assert "NA_DEBUG demote make" in over_log , (
-        f"no demotion recorded for make in:\n{over_log}"
+    assert no_ice(over) , f"new() arity overflow crashed the backend: {fmt_errors(over)}";
+    assert refusals(over) , (
+        f"new() arity overflow must refuse with E5092, got: {fmt_errors(over)}"
     );
     (dyn, dyn_ir, dyn_log) = compile_na_inline_demote(
         "new_dynamic",
@@ -1293,14 +1286,9 @@ test "guardrail: implicit-ctor positionals lower; dynamic new() demotes" {
         "}\n"
         "with entry {}\n"
     );
-    assert not dyn.errors_had , f"A dynamic new() class value must demote its function, got: {fmt_errors(
-        dyn
-    )}";
-    assert "make" not in dyn_ir.gen.native_layout.functions , (
-        "the dynamic-new() function must be demoted out of the native layout"
-    );
-    assert "NA_DEBUG demote make" in dyn_log , (
-        f"no demotion recorded for make in:\n{dyn_log}"
+    assert no_ice(dyn) , f"a dynamic new() crashed the backend: {fmt_errors(dyn)}";
+    assert refusals(dyn) , (
+        f"a dynamic new() class value must refuse with E5092, got: {fmt_errors(dyn)}"
     );
 }
 
@@ -1308,7 +1296,7 @@ test "guardrail: implicit-ctor positionals lower; dynamic new() demotes" {
 # nested-ability path must fail structurally, never with an AttributeError
 # ICE (EventSignature has no get_parameters); surfaced by the corpus probe
 # over mini_todo. The structured E5092 now demotes the owning function.
-test "guardrail: nested event ability demotes its function, not an ICE" {
+test "guardrail: nested event ability refuses its function, not an ICE" {
     (prog, ir, log) = compile_na_inline_demote(
         "nested_event_ability",
         "def widget -> int {\n"
@@ -1325,14 +1313,8 @@ test "guardrail: nested event ability demotes its function, not an ICE" {
             );
         }
     }
-    assert not prog.errors_had , f"A nested event ability must demote its function, got: {fmt_errors(
-        prog
-    )}";
-    assert "widget" not in ir.gen.native_layout.functions , (
-        "the function hosting the nested event ability must be demoted"
-    );
-    assert "NA_DEBUG demote widget" in log , (
-        f"no demotion recorded for widget in:\n{log}"
+    assert refusals(prog) , (
+        f"a nested event ability must refuse with E5092, got: {fmt_errors(prog)}"
     );
 }
 

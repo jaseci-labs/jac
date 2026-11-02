@@ -36,7 +36,6 @@ reverted alone.
 import ctypes;
 import os;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
 import from jaclang.compiler.driver.program { JacProgram }
 import from tests.support { JAC_ROOT, native_address, native_force_opts }
 
@@ -107,21 +106,15 @@ test "a tuple-keyed set dedups by value" {
 
 test "compr over or lowers, and its absent arm is falsy rather than a fault" {
     prog = JacProgram();
-    na_coverage_begin();
-    try {
-        ir = prog.compile(
-            file_path=os.path.join(FIXTURES, "compr_or_erased.jac"),
-            options=CompileOptions(force_codespace='native')
-        );
-    } finally {
-        coverage = na_coverage_end();
-    }
-    rec = coverage.get(os.path.realpath(os.path.join(FIXTURES, "compr_or_erased.jac")));
-    seams = [str(s) for s in ((rec.get("seams") or []) if rec is not None else [])];
-    assert not seams , (
-        f"the `or`-defaulted comprehension shapes all lower now, got: {seams}"
+    ir = prog.compile(
+        file_path=os.path.join(FIXTURES, "compr_or_erased.jac"),
+        options=CompileOptions(force_codespace='native')
     );
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+    assert not prog.errors_had , (
+        f"the `or`-defaulted comprehension shapes all lower now, got: {[
+            str(e) for e in prog.errors_had
+        ]}"
+    );
     assert ir.gen.native_layout is not None , "whole-module native compile aborted";
     for fn in [
         "compr_over_or",

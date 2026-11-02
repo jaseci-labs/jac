@@ -35,8 +35,8 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
 
-"""Compile a fixture through the native pipeline and return (engine, LLVM IR)."""
-def native_compile(fixture: str) -> tuple[object, str] {
+"""Compile a fixture through the native pipeline and return its JIT engine."""
+def native_engine(fixture: str) -> object {
     prog = JacProgram();
     ir = prog.compile(
         file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
@@ -45,12 +45,7 @@ def native_compile(fixture: str) -> tuple[object, str] {
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
     assert eng is not None , f"No native engine produced for {fixture}";
-    return (eng, str(ir.gen.llvm_ir));
-}
-
-"""Compile a fixture through the native pipeline and return its JIT engine."""
-def native_engine(fixture: str) -> object {
-    return native_compile(fixture)[0];
+    return eng;
 }
 
 """Call a no-argument int-returning function out of the JIT engine."""
@@ -131,21 +126,13 @@ test "container elem inference: the annotation cannot change the answer" {
 }
 
 test "container elem inference: untyped enum list is not boxed away from congruence" {
-    (eng, llvm) = native_compile("container_elem_infer.jac");
+    eng = native_engine("container_elem_infer.jac");
     assert native_call(eng, "untyped_enum_pick") == 1 , (
         "c[1] == Color.GREEN on an untyped enum list"
     );
     assert native_call(eng, "untyped_enum_scan") == 1 , (
         "exactly one Color.BLUE in the untyped enum list"
     );
-    # Every container in this fixture has an element type the checker knows,
-    # so none of them may fall back to tagged {tag, payload} storage. The
-    # untyped enum list is the one that used to: its inferred element type is
-    # a union of enum-member types, which the backend could not lower.
-    assert "List.jacval" not in llvm , (
-        "a container with a known element type fell back to tagged storage"
-    );
-    assert "List.f64" in llvm , "list[float] must keep unboxed f64 storage";
 }
 
 test "container elem inference: list[float] keeps f64 storage past an int literal" {

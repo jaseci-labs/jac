@@ -502,17 +502,17 @@ test "a native-only construct in code that cannot be placed native is an error" 
 
 test "a backend crash is a compiler error, never a placement decision" {
     import from unittest.mock { patch }
-    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
-    real_body: any = NaIRGenPass._codegen_body;
+    import from jaclang.compiler.backends.native.mir.lower { MirLowering }
+    real_lower: any = MirLowering.lower_function;
     calls: list[int] = [];
-    def crash_once(this: NaIRGenPass, *args: any) {
+    def crash_once(this: MirLowering, *args: any) -> any {
         calls.append(1);
         if len(calls) == 1 {
             raise RuntimeError("boom");
         }
-        real_body(this, *args);
+        return real_lower(this, *args);
     }
-    with patch.object(NaIRGenPass, "_codegen_body", crash_once) {
+    with patch.object(MirLowering, "lower_function", crash_once) {
         (prog, mod, path, parses) = compile_native_default(CLEAN_SRC);
     }
     crashes = [
