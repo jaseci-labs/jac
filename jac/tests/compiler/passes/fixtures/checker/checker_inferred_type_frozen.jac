@@ -88,13 +88,20 @@ def binder_rebinds {
     (kind, *title) = ("k", "x", "y");  # <-- Error
     (title, title) = (Label(), "x");  # <-- Error: the second write
     (kind, *middle, title) = ("k", Label(), "x");  # <-- Error: the last element
+    (fresh, fresh) = (Label(), "x");  # <-- Error: the second write
     rest = ["r"];
     (head, *rest) = (0, "x", "y");  # <-- Ok: only the captured elements
+    if (label := "a") and (label := "b") {  # <-- Ok: a walrus binding widens
+        print(head, middle, fresh, label);
+    }
+    small: u8 = 0;
+    spare = small=1;  # <-- Ok: the literal fits u8
+    (kind, small) = ("k", 2);  # <-- Ok
     (kind, title) = ("k", Label());  # <-- Ok
     [first, second] = [Label(), Label()];  # <-- Ok: first binding
     pending = None;
     (kind, pending) = ("k", 3);  # <-- Ok: None-sentinel
-    print(first, second, pending, head, middle);
+    print(first, second, pending, spare);
 }
 
 def for_unpack_rebinds {

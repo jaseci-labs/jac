@@ -402,7 +402,12 @@ impl TypeCheckPass._is_unannotated_rebind(prior: Symbol, target: Name) -> bool {
         site = site.parent;
     }
     return (isinstance(site, Assignment) and site.type_tag is None)
-        or isinstance(site, InForStmt);
+        or isinstance(site, InForStmt)
+        or (
+            isinstance(site, BinaryExpr)
+            and isinstance(site.op, Token)
+            and site.op.name == Tok.WALRUS_EQ
+        );
 }
 
 impl TypeCheckPass._is_exempt_rebind(
@@ -431,7 +436,6 @@ impl TypeCheckPass._flush_rebind_types -> None {
 }
 
 impl TypeCheckPass._judge_rebind_types(target: Expr, site: UniNode) -> None {
-    site_at = (site.loc.first_line, site.loc.col_start);
     for leaf in self._write_leaves(target) {
         if not isinstance(leaf, Name) or leaf.sym is None {
             continue;
@@ -441,7 +445,8 @@ impl TypeCheckPass._judge_rebind_types(target: Expr, site: UniNode) -> None {
             continue;
         }
         if not isinstance(prior.decl.name_of, ParamVar)
-            and (prior.decl.loc.first_line, prior.decl.loc.col_start) >= site_at {
+            and (prior.decl.loc.first_line, prior.decl.loc.col_start)
+                >= (leaf.loc.first_line, leaf.loc.col_start) {
             continue;
         }
         declared = self.evaluator.get_type_of_symbol(prior);
@@ -453,13 +458,15 @@ impl TypeCheckPass._judge_rebind_types(target: Expr, site: UniNode) -> None {
             or self._is_exempt_rebind(prior, leaf, declared) {
             continue;
         }
-        bound = self._rebound_value_type(leaf, site);
+        source = self._rebound_source(leaf, site);
+        bound = self._rebound_value_type(leaf, source, declared);
         if bound is None or isinstance(bound, UnknownType) {
             continue;
         }
-        if not self.evaluator.assign_type(
-            bound, declared, strict=self.evaluator._is_strict_site(site)
-        ) {
+        verdict = self.evaluator.assign_expr(
+            source, bound, declared, strict=self.evaluator._is_strict_site(site)
+        );
+        if not verdict.ok and not verdict.diagnosed {
             self.ctx.emit(
                 E1001, node_override=leaf, actual=str(bound), expected=str(declared)
             );
@@ -467,14 +474,28 @@ impl TypeCheckPass._judge_rebind_types(target: Expr, site: UniNode) -> None {
     }
 }
 
-impl TypeCheckPass._rebound_value_type(leaf: Name, site: UniNode) -> (TypeBase | None) {
+impl TypeCheckPass._rebound_source(leaf: Name, site: UniNode) -> (Expr | None) {
+    if leaf.sym is not None
+        and leaf.sym.decl is not None
+        and leaf.sym.decl.name_of is leaf {
+        return None;
+    }
+    if isinstance(site, BinaryExpr) {
+        return site.right;
+    }
+    return self.evaluator._get_source_of_unpack_target(leaf);
+}
+
+impl TypeCheckPass._rebound_value_type(
+    leaf: Name, source: (Expr | None), declared: TypeBase
+) -> (TypeBase | None) {
+    if source is not None {
+        return self.evaluator.get_type_of_expression(source, expected_type=declared);
+    }
     if leaf.sym is not None
         and leaf.sym.decl is not None
         and leaf.sym.decl.name_of is leaf {
         return self.evaluator.get_type_of_expression(leaf);
-    }
-    if isinstance(site, BinaryExpr) {
-        return self.evaluator.get_type_of_expression(site.right);
     }
     return self.evaluator._get_type_of_lhs_assignment(leaf);
 }
