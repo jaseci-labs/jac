@@ -185,6 +185,17 @@ impl mir_class_type(
     if name == "range" {
         return mir_range();
     }
+    if name == "enumerate" {
+        args = t.private.type_args if t.private else None;
+        if not args {
+            raise MirRefused(
+                mir_refusal("type", "enumerate without an element type", site)
+            );
+        }
+        return mir_iter(
+            mir_tuple([mir_int(), mir_type_of(args[0], MirPosition.VALUE, site, env)])
+        );
+    }
     if name in ITERATOR_CLASSES {
         args = t.private.type_args if t.private else None;
         if not args {

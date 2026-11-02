@@ -1112,7 +1112,8 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     if isinstance(nd.target, uni.Name)
         and (
             callee is None
-            or os.path.basename(callee.loc.mod_path) in ("builtins.pyi", "builtins.jac")
+            or os.path.basename(callee.loc.mod_path)
+                in ("builtins.pyi", "builtins.jac", "na_builtins.pyi")
         ) {
         builtin = self.builtin_call(nd, name);
         if builtin is not None {
@@ -1640,7 +1641,7 @@ impl MirLowering.lower_for(nd: uni.InForStmt) {
         callee = source.callee_decl;
         if callee is None
             or os.path.basename(callee.loc.mod_path)
-                in ("builtins.pyi", "builtins.jac") {
+                in ("builtins.pyi", "builtins.jac", "na_builtins.pyi") {
             bounds = self.call_args(source);
             if 1 <= len(bounds) <= 3 {
                 self.lower_range_for(nd, bounds);
