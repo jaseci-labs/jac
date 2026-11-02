@@ -102,4 +102,7 @@ def for_unpack_rebinds {
     for (key, count) in {"ab": 1} {  # <-- Error
         print(key);
     }
+    for (name, value) in {"ab": 1} {  # <-- Ok: both are characters of a key
+        print(name + value);
+    }
 }
