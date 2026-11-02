@@ -124,7 +124,7 @@ obj MirEmitter {
 }
 
 def emit_mir_module(
-    mir: MirModule, triple: str = "", native_tls: bool = False
+    mir: MirModule, triple: str = "", native_tls: bool = False, data_layout: str = ""
 ) -> ir.Module;
 
 def result_of(instr: MirInstr) -> MirValue;

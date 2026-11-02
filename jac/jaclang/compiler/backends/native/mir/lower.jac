@@ -404,6 +404,7 @@ obj MirLowering {
     ) -> MirValue;
 
     def isinstance_check(value: MirValue, arch: uni.Archetype) -> MirValue;
+    def erased_slot(t: (TypeBase | None)) -> bool;
     def lower_module_init -> (MirFunction | None);
     def lower_module_entry -> (MirFunction | None);
     def none_value -> MirValue;
@@ -688,6 +689,7 @@ obj MirLowering {
     def compr_emit(nd: (uni.ListCompr | uni.DictCompr), made: MirValue);
     def is_absent(value: MirValue) -> MirValue;
     def value_truthy(value: MirValue, site: uni.UniNode) -> (MirValue | None);
+    def hook_call(value: MirValue, arch: uni.Archetype, decl: MirDecl) -> MirValue;
     def any_to_str(value: MirValue, site: uni.UniNode) -> MirValue;
     def narrow(value: MirValue, nd: uni.Name) -> MirValue;
     def target_archetype(target: uni.Expr) -> (uni.Archetype | None);

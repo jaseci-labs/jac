@@ -7568,6 +7568,7 @@ graph import compiler {
         evaluate_version_condition
     }
     frontend.host ++> [
+        backends.native.mir.backend.MirNativePass._run_impl { active_host },
         backends.es.backends.registry.active_framework
             | backends.es.esast_gen_pass
             | backends.es.free_ident_audit.client_ambient_globals
@@ -11490,6 +11491,7 @@ graph import compiler.backends.native {
         wasm_build.prepare_wasm_module { optimize_unit },
     ]
     na_constants ++> [
+        mir.backend.MirNativePass._run_impl { FACT_SEP, FACT_TARGET },
         abi.struct_layouts { FACT_SEP, FACT_STRUCT_LAYOUTS },
         host_facts {
             FACT_CODEC_NAME,

@@ -107,8 +107,20 @@ impl MirLowering.any_unbox(
     if to.kind == MirKind.OPT {
         tag = self.emit_value(MirOp.ANY_TAG, mir_int(), [held]);
         present = b.compare("ne", tag, b.const_int(ANY_NONE_TAG, mir_int()));
-        inner = self.any_unbox(held, to.payload(), site);
-        return b.select(present, self.opt_wrap(inner, to), b.const_null(to));
+        fn = self.st().fn;
+        result = self.temp_slot(to);
+        some = fn.new_block("unbox.some");
+        absent = fn.new_block("unbox.none");
+        done = fn.new_block("unbox.done");
+        b.cond_branch(present, some, absent);
+        b.position(some);
+        b.store(result, self.opt_wrap(self.any_unbox(held, to.payload(), site), to));
+        b.branch(done);
+        b.position(absent);
+        b.store(result, b.const_null(to));
+        b.branch(done);
+        b.position(done);
+        return b.load(result, to);
     }
     if mir_holds_ref(to) and to.kind != MirKind.TUPLE {
         return b.ref_cast(held, to, False);
@@ -209,6 +221,22 @@ impl MirLowering.value_truthy(value: MirValue, site: uni.UniNode) -> (MirValue |
     if value.type.kind == MirKind.ENUM {
         return b.const_bool(True);
     }
+    if value.type.kind == MirKind.OBJ and value.type.name in self.archetypes {
+        arch = self.archetypes[value.type.name];
+        for hook in ("__bool__", "__len__") {
+            found = self.find_method(arch, hook);
+            if found is None {
+                continue;
+            }
+            decl = self.decls.get(id(found));
+            if decl is None or decl.params {
+                return None;
+            }
+            answer = self.hook_call(value, arch, decl);
+            return self.truthy(answer, site);
+        }
+        return b.const_bool(True);
+    }
     if value.type.kind == MirKind.RANGE {
         cursor = self.iter_open(value, site);
         if cursor.position is None or cursor.limit is None or cursor.stride is None {
@@ -272,8 +300,9 @@ impl MirLowering.target_archetype(target: uni.Expr) -> (uni.Archetype | None) {
 impl MirLowering.isinstance_value(
     subject: uni.Expr, target: uni.Expr, site: uni.UniNode
 ) -> MirValue {
-    if self.expr_type(subject).kind == MirKind.ANY {
-        return self.any_isinstance(self.lower_expr(subject), target, site);
+    value = self.lower_expr(subject);
+    if value.type.kind == MirKind.ANY {
+        return self.any_isinstance(value, target, site);
     }
     items = [
         part
@@ -282,7 +311,7 @@ impl MirLowering.isinstance_value(
     ]
         if isinstance(target, uni.TupleVal)
         else [target];
-    return self.isinstance_test(self.lower_expr(subject), items, site);
+    return self.isinstance_test(value, items, site);
 }
 
 impl MirLowering.isinstance_test(
@@ -430,4 +459,40 @@ impl MirLowering.class_name_str(value: MirValue) -> MirValue {
         [self.emit_value(MirOp.PTR_CAST, mir_c_ptr(mir_int(8, False)), [value])]
     );
     return b.str_make(text, text, self.runtime_value("__jac_rt_str_size", [text]));
+}
+
+impl MirLowering.hook_call(
+    value: MirValue, arch: uni.Archetype, decl: MirDecl
+) -> MirValue {
+    b = self.builder();
+    receiver = value;
+    if decl.self_type is not None and value.type is not decl.self_type {
+        receiver = b.ref_cast(value, decl.self_type, False);
+    }
+    obj_def = self.object_def(arch);
+    if obj_def.vtable_symbol and decl.symbol in obj_def.vtable_methods {
+        i8p = mir_c_ptr(mir_int(8, False));
+        slot_place = self.emit_value(
+            MirOp.FIELD_ADDR,
+            mir_c_ptr(mir_c_ptr(i8p)),
+            [value],
+            int_value=obj_def.vtable_slot
+        );
+        table = b.load(slot_place, mir_c_ptr(i8p));
+        index = obj_def.vtable_methods.index(decl.symbol) + VTABLE_HEADER_SLOTS;
+        entry_place = self.emit_value(
+            MirOp.PTR_OFFSET, mir_c_ptr(i8p), [table, b.const_int(index, mir_int())]
+        );
+        callee = self.emit_value(
+            MirOp.PTR_CAST, mir_c_fn([receiver.type], decl.ret), [b.load(entry_place, i8p)]
+        );
+        result = self.emit_value(MirOp.CALL_FNPTR, decl.ret, [callee, receiver]);
+        result.owned = mir_holds_ref(decl.ret);
+        return result;
+    }
+    direct = b.call(decl.symbol, [receiver], decl.ret);
+    if direct is None {
+        raise MirRefused(mir_refusal("method", decl.symbol));
+    }
+    return direct;
 }

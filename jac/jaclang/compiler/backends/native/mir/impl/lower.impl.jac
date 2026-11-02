@@ -1878,7 +1878,17 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
         }
     }
     place = self.lower_place(nd);
-    return self.builder().load(place, self.place_elem(place));
+    loaded = self.builder().load(place, self.place_elem(place));
+    if nd.is_attr and loaded.type.kind in (MirKind.ANY, MirKind.OPT) {
+        wanted = self.expr_type(nd);
+        if loaded.type.kind == MirKind.ANY and wanted.kind != MirKind.ANY {
+            return self.any_unbox(loaded, wanted, nd);
+        }
+        if loaded.type.kind == MirKind.OPT and wanted is loaded.type.payload() {
+            return self.opt_get(loaded);
+        }
+    }
+    return loaded;
 }
 
 impl MirLowering.call_name(nd: uni.FuncCall) -> str {

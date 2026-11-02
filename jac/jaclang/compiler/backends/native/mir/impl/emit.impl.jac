@@ -1,9 +1,12 @@
 impl emit_mir_module(
-    mir: MirModule, triple: str = "", native_tls: bool = False
+    mir: MirModule, triple: str = "", native_tls: bool = False, data_layout: str = ""
 ) -> ir.Module {
     module = ir.Module(name=mir.path, context=ir.Context());
     if triple {
         module.triple = triple;
+    }
+    if data_layout {
+        module.data_layout = data_layout;
     }
     return MirEmitter(mir=mir, module=module, native_tls=native_tls).emit();
 }

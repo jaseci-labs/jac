@@ -128,6 +128,7 @@ impl MirRcState.rewrite(blk: MirBlock) {
             self.out.append(instr);
         }
         seen: set[int] = set();
+        mark = len(self.out);
         for operand in instr.operands {
             for used in (operand.id, self.base_of(operand.id)) {
                 if used in seen {
@@ -138,6 +139,10 @@ impl MirRcState.rewrite(blk: MirBlock) {
                     self.release(self.pending.pop(used));
                 }
             }
+        }
+        if instr.is_terminator() and len(self.out) > mark and mark > 0 {
+            closing = self.out.pop(mark - 1);
+            self.out.append(closing);
         }
         result = instr.result;
         if result is not None

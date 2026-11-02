@@ -72,9 +72,11 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
         made.fields.append(
             MirObjectField(
                 name=member.name,
-                type=mir_type_of(
-                    field_type, MirPosition.FIELD, member.decl_node or arch
-                ),
+                type=mir_any()
+                    if self.erased_slot(field_type)
+                    else mir_type_of(
+                        field_type, MirPosition.FIELD, member.decl_node or arch
+                    ),
                 index=member.index
             )
         );
@@ -566,6 +568,13 @@ impl MirLowering.field_place(
     if member is None {
         raise MirRefused(mir_refusal("attribute", f"{obj_def.name}.{name}", site));
     }
+    if holder.type.kind not in (MirKind.OBJ, MirKind.OSP) {
+        raise MirRefused(
+            mir_refusal(
+                "attribute access", f"{obj_def.name}.{name} on {holder.type.render()}", site
+            )
+        );
+    }
     return self.emit_value(
         MirOp.FIELD_ADDR, mir_c_ptr(member.type), [holder], int_value=member.index
     );
@@ -827,4 +836,25 @@ impl MirLowering.lower_module_entry -> (MirFunction | None) {
     }
     self.state = None;
     return fn;
+}
+
+impl MirLowering.erased_slot(t: (TypeBase | None)) -> bool {
+    if isinstance(t, TypeVarType) {
+        return not t.is_self;
+    }
+    if not isinstance(t, UnionType) {
+        return False;
+    }
+    erased = False;
+    for member in t.types {
+        if isinstance(member, TypeVarType) and not member.is_self {
+            erased = True;
+        } elif not (
+            isinstance(member, ClassType)
+            and member.shared.class_name in ("NoneType", "None")
+        ) {
+            return False;
+        }
+    }
+    return erased;
 }
