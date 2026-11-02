@@ -1,31 +1,9 @@
-"""Number formatting runtime: float repr, format specs, parsing, rounding,
-powers and hashing.
-
-Floats are printed from their exact binary value with big-integer digit
-generation (Steele and White's free-format algorithm as Burger and Dybvig
-state it): mode DTOA_SHORTEST yields the shortest digits that read back to
-the same float, DTOA_DIGITS a given number of significant digits and
-DTOA_PLACES a given number of digits past the point, both correctly rounded
-with ties to even. A big integer is BIG_LIMBS limbs of LIMB_BITS bits, each in
-an 8-byte word, enough for every finite double scaled by its power of ten; the
-five of them live in a thread-local work block. Every operation stays within
-signed 64-bit arithmetic, since native int arithmetic is overflow-checked.
-
-`repr` uses exponent notation when the decimal point falls before the fourth
-leading zero or after the sixteenth digit, as Python does. Format specs follow
-Python's mini-language for int, float, str and bool; the parsed spec lives in
-a thread-local record (SP_* offsets). Errors raise ValueError with Python's
-messages.
-
-Hashes match CPython for int and float (reduction modulo 2**61 - 1, -1 maps to
--2) and combine tuple members with CPython's xxHash-based tuple hash; str and
-bytes hash with djb2 in text.jac, as the previous native backend did."""
 import from c {
     def malloc(n: int) -> int;  def free(p: int) -> None;  def memcpy(
         dst: int, src: int, n: int
-    ) -> int;  def strlen(text: int) -> int;  def strtod(text: int, end: int) -> float;  def pow(
-        x: float, y: float
-    ) -> float;
+    ) -> int;  def strlen(text: int) -> int;  def strtod(
+        text: int, end: int
+    ) -> float;  def pow(x: float, y: float) -> float;
 }
 
 glob BIG_LIMBS: int = 48,
@@ -154,7 +132,9 @@ def _fixed_into(sb: int, mag: float, prec: int, alt: bool);
 
 def _exp_into(sb: int, mag: float, prec: int, alt: bool, upper: bool);
 
-def _general_into(sb: int, mag: float, prec: int, alt: bool, upper: bool, add_dot: bool);
+def _general_into(
+    sb: int, mag: float, prec: int, alt: bool, upper: bool, add_dot: bool
+);
 
 def _is_align(c: int) -> bool;
 
@@ -174,7 +154,9 @@ def _emit_grouped(sb: int, zeros: int, digits: int, ip: int, group: int, gsize: 
 
 def _emit_fill(sb: int, fill_at: int, fill_len: int, count: int);
 
-def _finish(rec: int, body: int, ip: int, bn: int, neg: bool, prefix: int, gsize: int) -> ptr[u8];
+def _finish(
+    rec: int, body: int, ip: int, bn: int, neg: bool, prefix: int, gsize: int
+) -> ptr[u8];
 
 def _digits_into(sb: int, value: int, base: int, upper: bool);
 

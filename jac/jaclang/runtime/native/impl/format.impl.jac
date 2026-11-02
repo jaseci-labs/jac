@@ -405,7 +405,9 @@ impl _exp_into(sb: int, mag: float, prec: int, alt: bool, upper: bool) {
     __jac_rt_sb_drop(digits);
 }
 
-impl _general_into(sb: int, mag: float, prec: int, alt: bool, upper: bool, add_dot: bool) {
+impl _general_into(
+    sb: int, mag: float, prec: int, alt: bool, upper: bool, add_dot: bool
+) {
     p = prec if prec > 0 else 1;
     digits = __jac_rt_sb_new(p + 24);
     decpt = 1;
@@ -502,7 +504,8 @@ impl _spec_parse(spec: int, sn: int, kind: ptr[u8]) -> int {
             i = 1;
         }
     }
-    if i < sn and (_byte(spec + i) == 43 or _byte(spec + i) == 45 or _byte(spec + i) == 32) {
+    if i < sn
+        and (_byte(spec + i) == 43 or _byte(spec + i) == 45 or _byte(spec + i) == 32) {
         __mem_store_i64(rec + SP_SIGN, _byte(spec + i));
         i += 1;
     }
@@ -551,7 +554,9 @@ impl _spec_parse(spec: int, sn: int, kind: ptr[u8]) -> int {
         i += 1;
     }
     if i < sn {
-        raise ValueError(_message(ptr[u8]("Invalid format specifier '"), spec, sn, kind));
+        raise ValueError(
+            _message(ptr[u8]("Invalid format specifier '"), spec, sn, kind)
+        );
     }
     return rec;
 }
@@ -722,7 +727,9 @@ impl __jac_rt_format_int(v: int, spec: ptr[u8], sn: int) -> ptr[u8] {
         }
         if group != 0 {
             raise ValueError(
-                _message_with(ptr[u8]("Cannot specify '"), group, ptr[u8]("' with 'c'."))
+                _message_with(
+                    ptr[u8]("Cannot specify '"), group, ptr[u8]("' with 'c'.")
+                )
             );
         }
         if v < 0 or v > 1114111 {
@@ -816,7 +823,8 @@ impl __jac_rt_format_float(v: float, spec: ptr[u8], sn: int) -> ptr[u8] {
         if typ == 37 {
             __jac_rt_sb_byte(body, 37);
         }
-        if __mem_load_i64(rec + SP_ZERO) == 1 and __mem_load_i64(rec + SP_FILL_LEN) == 0 {
+        if __mem_load_i64(rec + SP_ZERO) == 1
+            and __mem_load_i64(rec + SP_FILL_LEN) == 0 {
             __mem_store_i64(rec + SP_FILL_AT, int(ptr[u8](" ")));
             __mem_store_i64(rec + SP_FILL_LEN, 1);
         }
@@ -1019,7 +1027,9 @@ impl __jac_rt_int_parse(data: ptr[u8], n: int, base: int) -> int {
         if c == 95 {
             if not under_ok {
                 raise ValueError(
-                    _bad_literal(d, n, ptr[u8]("invalid literal for int() with base "), base)
+                    _bad_literal(
+                        d, n, ptr[u8]("invalid literal for int() with base "), base
+                    )
                 );
             }
             under_ok = False;
@@ -1030,7 +1040,9 @@ impl __jac_rt_int_parse(data: ptr[u8], n: int, base: int) -> int {
         digit = _digit_value(c);
         if digit >= radix {
             raise ValueError(
-                _bad_literal(d, n, ptr[u8]("invalid literal for int() with base "), base)
+                _bad_literal(
+                    d, n, ptr[u8]("invalid literal for int() with base "), base
+                )
             );
         }
         if digit != 0 {
@@ -1124,7 +1136,9 @@ impl __jac_rt_float_parse(data: ptr[u8], n: int) -> float {
             __mem_store_i8(out + pos, i8(101));
             pos += 1;
             part = SCAN_EXP;
-        } elif (c == 43 or c == 45) and part == SCAN_EXP and (_byte(d + k - 1) | 32) == 101 {
+        } elif (c == 43 or c == 45)
+            and part == SCAN_EXP
+            and (_byte(d + k - 1) | 32) == 101 {
             __mem_store_i8(out + pos, i8(c));
             pos += 1;
         } else {

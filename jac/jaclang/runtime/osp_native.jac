@@ -1,17 +1,3 @@
-"""The OSP kernel's entry points for native code.
-
-Generated native code reaches object-spatial programming only through the pub
-`__jac_osp_*` functions here; their MIR signatures are `MIR_OSP_ABI` in
-`compiler/backends/native/mir/runtime_abi.jac`. This unit drives the kernel
-(`osp_kernel.jac`, `osp_graph.jac`) and holds what only native code needs: the
-runtime record whose callbacks read the type tag from an object's header,
-walker descriptors, and the references the graph and the walk stack pin.
-
-A node or edge handle is the object's address; its type tag is the i64 at +8
-(after the vtable pointer). The graph pins every node and edge it holds: a
-connect retains its endpoints and edge, and `_sync` applies the retains and
-releases the kernel queues for visits, walks and removed rows. This unit is
-native-only and is never loaded as bytecode."""
 obj OspNativeState {
     has runtime: (OspRuntime | None) = None,
         walkers: dict[int, OspWalkerDesc] = {},
@@ -62,7 +48,9 @@ def:pub __jac_osp_connect(
     src: int, tgt: int, eobj: int, undirected: bool, edge_tag: int
 );
 
-def:pub __jac_osp_refs(origin: int, dir: int, edge_tag: int, edges_only: bool) -> list[int];
+def:pub __jac_osp_refs(
+    origin: int, dir: int, edge_tag: int, edges_only: bool
+) -> list[int];
 
 def:pub __jac_osp_refs_many(
     origins: list[int], dir: int, edge_tag: int, edges_only: bool

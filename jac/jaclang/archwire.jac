@@ -22,381 +22,6 @@ graph import {
     edge Testing: testing.* --> cli.* | compiler.* | runtime.* | scale.*;
     edge Toolchains: toolchains.* --> client.* | compiler.* | data.* | dist.* | packages.* | scale.*;
 
-    runtime.osp_tag ++> compiler.backends.native.mir.lower { stable_osp_tag }
-    runtime.scalars ++> compiler.backends.native.mir.lower_types { shape_of }
-    compiler.backends.native.mir.backend --> compiler.driver.pipeline.codegen_passes
-        | compiler.driver.pipeline.native_ir_passes
-        | compiler.driver.pipeline.native_lower_passes { MirNativePass, mir_backend_selected }
-    compiler.c_interop ++> compiler.backends.native.mir.lower {
-            c_builtin_kind,
-            c_scalar_constant,
-            c_string_literal,
-            c_type_arg,
-            clib_import_of,
-            foreign_struct_of_type
-        }
-    compiler.c_interop ++> compiler.backends.native.mir.lower_types {
-            c_builtin_kind,
-            c_type_arg,
-            foreign_struct_of_type
-        }
-    compiler.driver.native_iface ++> compiler.backends.native.mir.backend {
-            NativeExport,
-            NativeIface
-        }
-    compiler.driver.pipeline_types ++> compiler.backends.native.mir.backend { AnalysisFact, PassContract }
-    type compiler.driver.program ++> compiler.backends.native.mir.backend
-        | compiler.backends.native.mir.lower { JacProgram }
-    compiler.erased_imports ++> compiler.backends.native.mir.lower { contextmanager_ability }
-    compiler.frontend.codeinfo ++> compiler.backends.native.mir.backend {
-            jaclang_pkg_root,
-            native_entry_name,
-            native_glob_init_name,
-            native_module_key,
-            native_unit_prefix
-        }
-    compiler.frontend.codeinfo ++> compiler.backends.native.mir.emit { RC_SENTINEL, str_len_tag }
-    compiler.frontend.codeinfo ++> compiler.backends.native.mir.lower {
-            InteropBinding,
-            InteropContext,
-            NATIVE_ERASED_BASES,
-            OSP_GRAPH_REL,
-            OSP_KERNEL_REL,
-            OSP_NATIVE_REL,
-            interop_callback_symbol,
-            kernel_unit_path,
-            native_def_symbol,
-            native_entry_name,
-            native_glob_init_name,
-            native_symbol_name,
-            native_unit_identity,
-            native_unit_prefix,
-            native_unit_spelling
-        }
-    compiler.frontend.constant ++> compiler.backends.native.mir.lower { Tokens as Tok }
-    compiler.frontend.diagnostics ++> compiler.backends.native.mir.backend { E5092 }
-    compiler.frontend.module_facts ++> compiler.backends.native.mir.lower { ModuleFacts }
-    compiler.frontend.unitree as uni ++> compiler.backends.native.mir.backend
-        | compiler.backends.native.mir.lower
-        | compiler.backends.native.mir.lower_types;
-    compiler.intrinsic_registry ++> compiler.backends.native.mir.lower { INTRINSIC_REGISTRY, IntrinsicDispatch }
-    compiler.passes.context ++> compiler.backends.native.mir.backend { CompilerPass }
-    compiler.passes.layout_pass ++> compiler.backends.native.mir.emit { VTABLE_HEADER_SLOTS }
-    compiler.passes.layout_pass ++> compiler.backends.native.mir.lower {
-            NON_DISPATCHED_METHODS,
-            VTABLE_HEADER_SLOTS,
-            adopt_imported_bases,
-            archetype_native_name,
-            class_type_native_name,
-            enum_decl_of,
-            get_layout_registry,
-            is_enum_class_type,
-            layout_slot_count,
-            merge_imported_layouts,
-            native_type_key
-        }
-    compiler.passes.layout_pass ++> compiler.backends.native.mir.lower_types {
-            class_type_native_name,
-            is_enum_class_type
-        }
-    type compiler.passes.layout_pass ++> compiler.backends.native.mir.lower { ArchetypeLayout, EnumLayout, EnumMemberLayout }
-    compiler.passes.osp_analysis ++> compiler.backends.native.mir.lower { OSP_ANY_TAGS, OspAnalysis }
-    type compiler.passes.osp_analysis ++> compiler.backends.native.mir.lower { OspModel, OspSlot }
-    compiler.passes.placement_pass ++> compiler.backends.native.mir.lower_types { NativeRefusal }
-    type compiler.passes.placement_pass ++> compiler.backends.native.mir.lower { NativeRefusal }
-    compiler.placement.placement_pins ++> compiler.backends.native.mir.lower { config_module_pin }
-    compiler.type_registry ++> compiler.backends.native.mir.emit
-        | compiler.backends.native.mir.lower { JAC_TYPE_REGISTRY }
-    compiler.types.ct_value ++> compiler.backends.native.mir.lower { CtBool, CtFloat, CtInt, int_host }
-    compiler.types.types ++> compiler.backends.native.mir.lower { FunctionType }
-    compiler.types.types ++> compiler.backends.native.mir.lower_types {
-            AnyType,
-            ClassType,
-            FunctionType,
-            TypeVarType,
-            UnionType
-        }
-    compiler.types.types ++> compiler.backends.native.mir.lower { AnyType, ClassType, TypeVarType, UnionType }
-    type compiler.types.types ++> compiler.backends.native.mir.lower
-        | compiler.backends.native.mir.lower_types { TypeBase }
-    compiler.backends.native.llvm.ir as ir ++> compiler.backends.native.mir.emit;
-    compiler.backends.native.mir.emit ++> compiler.backends.native.mir.backend { emit_mir_module }
-    compiler.backends.native.mir.generators ++> compiler.backends.native.mir.backend { mir_lower_generators }
-    compiler.backends.native.mir.rc ++> compiler.backends.native.mir.backend { mir_insert_rc }
-    compiler.backends.native.mir.runtime_abi ++> compiler.backends.native.mir.generators { mir_runtime_signature }
-    compiler.backends.native.mir.runtime_abi ++> compiler.backends.native.mir.lower { mir_osp_signature, mir_runtime_signature }
-    compiler.backends.native.mir.ir ++> compiler.backends.native.mir.backend { MirModule }
-    compiler.backends.native.mir.ir ++> compiler.backends.native.mir.generators {
-            MirBlock,
-            MirExtern,
-            MirFrame,
-            MirFunction,
-            MirInstr,
-            MirModule,
-            MirOp,
-            MirParam,
-            MirValue
-        }
-    compiler.backends.native.mir.ir ++> compiler.backends.native.mir.rc { MirBlock, MirFunction, MirInstr, MirOp, MirValue }
-    compiler.backends.native.mir.ir ++> compiler.backends.native.mir.emit {
-            MirFunction,
-            MirGlobal,
-            MirInstr,
-            MirModule,
-            MirObjectDef,
-            MirOp,
-            MirValue
-        }
-    compiler.backends.native.mir.ir ++> compiler.backends.native.mir.lower {
-            MirBlock,
-            MirBuilder,
-            MirExtern,
-            MirFunction,
-            MirGlobal,
-            MirInstr,
-            MirModule,
-            MirObjectDef,
-            MirObjectField,
-            MirOp,
-            MirParam,
-            MirStructDef,
-            MirStructField,
-            MirValue
-        }
-    compiler.backends.native.mir.lower ++> compiler.backends.native.mir.backend { MirLowering }
-    compiler.backends.native.mir.lower_types ++> compiler.backends.native.mir.lower {
-        MirPosition,
-        MirRefused,
-        mir_class_type_named,
-        mir_refusal,
-        mir_spec_type,
-        mir_type_of,
-        refusal_of,
-        stub_archetype
-    }
-    compiler.backends.native.mir.types ++> compiler.backends.native.mir.emit { MirKind, MirType, mir_c_ptr, mir_holds_ref, mir_int, mir_is_container }
-    compiler.backends.native.mir.types ++> compiler.backends.native.mir.generators {
-            MirKind,
-            MirType,
-            mir_bool,
-            mir_c_fn,
-            mir_c_ptr,
-            mir_holds_ref,
-            mir_int,
-            mir_none
-        }
-    compiler.backends.native.mir.types ++> compiler.backends.native.mir.ir {
-            MirKind,
-            MirType,
-            mir_bool,
-            mir_c_ptr,
-            mir_holds_ref,
-            mir_int,
-            mir_str
-        }
-    compiler.backends.native.mir.types ++> compiler.backends.native.mir.rc { mir_holds_ref }
-    compiler.backends.native.mir.types ++> compiler.backends.native.mir.runtime_abi {
-            MirType,
-            mir_any,
-            mir_bool,
-            mir_c_ptr,
-            mir_float,
-            mir_fn,
-            mir_int,
-            mir_list,
-            mir_none,
-            mir_opt,
-            mir_ref,
-            mir_str,
-            mir_str_ref
-        }
-    compiler.backends.native.mir.types ++> compiler.backends.native.mir.lower {
-            MirKind,
-            MirType,
-            mir_any,
-            mir_bool,
-            mir_bytearray,
-            mir_bytes,
-            mir_class,
-            mir_iter,
-            mir_range,
-            mir_c_fn,
-            mir_fn,
-            mir_holds_ref,
-            mir_is_container,
-            mir_list,
-            mir_obj,
-            mir_ref,
-            mir_str_ref,
-            mir_tuple,
-            mir_c_ptr,
-            mir_c_view,
-            mir_float,
-            mir_int,
-            mir_none,
-            mir_str,
-            mir_void
-        }
-    compiler.backends.native.mir.types ++> compiler.backends.native.mir.lower_types {
-            MirKind,
-            MirType,
-            mir_any,
-            mir_bool,
-            mir_bytearray,
-            mir_bytes,
-            mir_class,
-            mir_enum,
-            mir_iter,
-            mir_range,
-            mir_dict,
-            mir_fn,
-            mir_list,
-            mir_obj,
-            mir_opt,
-            mir_tuple,
-            mir_set,
-            mir_c_fn,
-            mir_c_ptr,
-            mir_c_struct,
-            mir_c_view,
-            mir_float,
-            mir_int,
-            mir_none,
-            mir_str,
-            mir_str_ref
-        }
-    runtime.native.rc ++> runtime.osp_native { __jac_rt_alloc, __jac_rt_release, __jac_rt_retain }
-    runtime.osp_graph ++> runtime.osp_native {
-        osp_conn,
-        osp_destroy,
-        osp_destroy_all,
-        osp_disconn_between,
-        osp_disconn_between_many,
-        osp_disconn_between_pred,
-        osp_filter,
-        osp_forget_edge,
-        osp_forget_node,
-        osp_is_a,
-        osp_is_dead,
-        osp_jid,
-        osp_keep_toward,
-        osp_pin_refs,
-        osp_refs,
-        osp_refs_edge_pred,
-        osp_refs_many,
-        osp_register_type,
-        osp_take_unpinned,
-        osp_unpinned_count
-    }
-    runtime.osp_kernel ++> runtime.osp_native {
-            OspNodeDesc,
-            OspRuntime,
-            OspSlot,
-            OspWalkScope,
-            OspWalkerDesc,
-            _current_scope,
-            osp_disengage,
-            osp_forget,
-            osp_forget_all,
-            osp_kernel_pending,
-            osp_kernel_pin_refs,
-            osp_node_desc,
-            osp_register_desc,
-            osp_report,
-            osp_skip_rest,
-            osp_spawn,
-            osp_take_acquired,
-            osp_take_released,
-            osp_visit
-        }
-    runtime.native.exceptions ++> runtime.native.bytes { __jac_rt_raise_builtin }
-    runtime.native.dicts ++> runtime.native.anys { __jac_rt_dict_len }
-    runtime.native.dicts ++> runtime.native.iterators { __jac_rt_dict_key_at, __jac_rt_dict_next }
-    runtime.native.lists ++> runtime.native.closures { __jac_rt_elem_release, __jac_rt_elem_retain }
-    runtime.native.lists ++> runtime.native.iterators { __jac_rt_elem_retain }
-    runtime.native.rc ++> runtime.native.anys {
-        __jac_rt_alloc,
-        __jac_rt_free_block,
-        __jac_rt_release,
-        __jac_rt_retain,
-        __jac_rt_set_type
-    }
-    runtime.native.rc ++> runtime.native.closures {
-        __jac_rt_alloc,
-        __jac_rt_free_block,
-        __jac_rt_release,
-        __jac_rt_retain,
-        __jac_rt_set_type
-    }
-    runtime.native.lists ++> runtime.native.dicts { __jac_rt_elem_eq, __jac_rt_elem_release, __jac_rt_elem_retain }
-    runtime.native.lists ++> runtime.native.text { __jac_rt_list_new, __jac_rt_list_push, __jac_rt_list_reverse }
-    runtime.native.lists ++> runtime.native.bytes { __jac_rt_list_new, __jac_rt_list_push }
-    runtime.native.text ++> runtime.native.format {
-            __jac_rt_sb_add,
-            __jac_rt_sb_byte,
-            __jac_rt_sb_data,
-            __jac_rt_sb_drop,
-            __jac_rt_sb_finish,
-            __jac_rt_sb_int,
-            __jac_rt_sb_len,
-            __jac_rt_sb_new,
-            __jac_rt_sb_truncate,
-            __jac_rt_str_chr,
-            __jac_rt_str_repr,
-            __jac_rt_utf8_width
-        }
-    runtime.native.text ++> runtime.native.bytes {
-            __jac_rt_sb_add,
-            __jac_rt_sb_byte,
-            __jac_rt_sb_data,
-            __jac_rt_sb_drop,
-            __jac_rt_sb_finish,
-            __jac_rt_sb_int,
-            __jac_rt_sb_len,
-            __jac_rt_sb_new,
-            __jac_rt_utf8_width
-        }
-    runtime.native.rc ++> runtime.native.text { __jac_rt_is_heap, __jac_rt_release_acyclic }
-    runtime.native.rc ++> runtime.native.format { __jac_rt_release_acyclic }
-    runtime.native.rc ++> runtime.native.bytes {
-            __jac_rt_alloc,
-            __jac_rt_free_block,
-            __jac_rt_release_acyclic,
-            __jac_rt_set_type
-        }
-    runtime.native.rc ++> runtime.native.dicts {
-            __jac_rt_alloc,
-            __jac_rt_free_block,
-            __jac_rt_release,
-            __jac_rt_release_acyclic,
-            __jac_rt_set_type,
-            __jac_rt_trace_register
-        }
-    runtime.native.rc ++> runtime.native.lists {
-            __jac_rt_alloc,
-            __jac_rt_free_block,
-            __jac_rt_release,
-            __jac_rt_release_acyclic,
-            __jac_rt_retain,
-            __jac_rt_set_type,
-            __jac_rt_trace_register
-        }
-    runtime.native.rc ++> runtime.native.strings { __jac_rt_alloc, __jac_rt_retain, __jac_rt_set_type }
-    runtime.native.rc ++> runtime.native.iterators {
-            __jac_rt_alloc,
-            __jac_rt_free_block,
-            __jac_rt_release,
-            __jac_rt_retain,
-            __jac_rt_set_type
-        }
-    runtime.native.strings ++> runtime.native.anys { __jac_rt_str_from_int, __jac_rt_str_new, __jac_rt_str_size }
-    runtime.native.strings ++> runtime.native.dicts { __jac_rt_str_size }
-    runtime.native.strings ++> runtime.native.iterators { __jac_rt_str_new, __jac_rt_str_size }
-    runtime.native.strings ++> runtime.native.lists { __jac_rt_str_cmp, __jac_rt_str_size }
-    runtime.native.strings ++> runtime.native.text { __jac_rt_str_new, __jac_rt_str_size }
-    runtime.native.strings ++> runtime.native.format { __jac_rt_str_new, __jac_rt_str_size }
-
-
     artifacts.kit ++> [
         client.js_runtime.BunArtifact.build
             | compiler.backends.native.native_link.floor_lib_dir { osarch },
@@ -3122,6 +2747,7 @@ graph import {
         isolate_request_walk_stack
     }
     runtime.osp_tag ++> compiler.backends.es.esast_gen_pass.EsastGenPass._build_osp_tags_js
+        | compiler.backends.native.mir.lower
         | compiler.backends.native.na_ir_gen_pass
         | compiler.backends.py.jcir_gen_pass.JcirGenPass.exit_module
         | compiler.jc_unit._alert_tag
@@ -3999,6 +3625,7 @@ graph import {
     runtime.scalars ++> [
         compiler.backends.es.esast_gen_pass.EsastGenPass._apply_fw_coercion
             | compiler.backends.es.primitives_es.ESBuiltinEmitter.emit_print
+            | compiler.backends.native.mir.lower_types
             | compiler.backends.py.jcir_gen_pass
             | compiler.types.ct_eval
             | comptime._scalar_size_align { shape_of },
@@ -5983,6 +5610,11 @@ graph import compiler {
         tests.test_prim_equivalence { native_lowering_issues },
     ]
     type backends.native.lowering ++> frontend.codeinfo { NativeFallbacks }
+    backends.native.mir.backend --> [
+        driver.pipeline.codegen_passes { MirNativePass, mir_backend_selected },
+        driver.pipeline.native_ir_passes { MirNativePass, mir_backend_selected },
+        driver.pipeline.native_lower_passes { MirNativePass, mir_backend_selected },
+    ]
     backends.native.na_compile_pass ++> [
         driver.nativecache.NativeBuildSession._optimize_in_parallel {
             optimize_unit_bitcodes,
@@ -6069,6 +5701,19 @@ graph import compiler {
         },
     ]
     c_interop ++> [
+        backends.native.mir.lower {
+            c_builtin_kind,
+            c_scalar_constant,
+            c_string_literal,
+            c_type_arg,
+            clib_import_of,
+            foreign_struct_of_type
+        },
+        backends.native.mir.lower_types {
+            c_builtin_kind,
+            c_type_arg,
+            foreign_struct_of_type
+        },
         backends.native.na_ir_gen_pass {
             c_array_elem,
             c_builtin_kind,
@@ -6527,7 +6172,10 @@ graph import compiler {
             layout_digest as layout_digest_of,
             merge_class_layouts
         },
-        backends.native.na_ir_gen_pass { NativeExport, NativeIface },
+        backends.native.mir.backend | backends.native.na_ir_gen_pass {
+            NativeExport,
+            NativeIface
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._export_native_iface {
             NativeClassLayout,
             NativeFieldSlot,
@@ -6605,7 +6253,8 @@ graph import compiler {
             | tools.jac_formatter_pass
             | tools.normalize_pass
             | tools.unparse_pass { PassContract },
-        backends.native.na_ir_gen_pass
+        backends.native.mir.backend
+            | backends.native.na_ir_gen_pass
             | passes.access_check_pass
             | passes.capability_check_pass
             | passes.cfg_build_pass
@@ -6681,6 +6330,8 @@ graph import compiler {
     type driver.program ++> backends.native.kernel_resolve
         | backends.native.kernel_stage0
         | backends.native.link_plan
+        | backends.native.mir.backend
+        | backends.native.mir.lower
         | capability_notes
         | frontend.host
         | frontend.parser.frontend
@@ -6740,11 +6391,12 @@ graph import compiler {
     ]
     driver.wiring --> frontend.parser.frontend.annex_sources { wiring_annex_for }
     erased_imports ++> [
+        backends.native.mir.lower
+            | backends.native.na_ir_gen_pass.NaIRGenPass._ctxmgr_callee {
+            contextmanager_ability
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_call {
             erased_identity_call_arg
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._ctxmgr_callee {
-            contextmanager_ability
         },
         field_semantics.is_field_marker { erased_import_binds },
     ]
@@ -6866,6 +6518,31 @@ graph import compiler {
             is_kernel_unit_path
         },
         backends.native.link_plan._write_sidecar { native_unit_identity },
+        backends.native.mir.backend {
+            jaclang_pkg_root,
+            native_entry_name,
+            native_glob_init_name,
+            native_module_key,
+            native_unit_prefix
+        },
+        backends.native.mir.emit { RC_SENTINEL, str_len_tag },
+        backends.native.mir.lower {
+            InteropBinding,
+            InteropContext,
+            NATIVE_ERASED_BASES,
+            OSP_GRAPH_REL,
+            OSP_KERNEL_REL,
+            OSP_NATIVE_REL,
+            interop_callback_symbol,
+            kernel_unit_path,
+            native_def_symbol,
+            native_entry_name,
+            native_glob_init_name,
+            native_symbol_name,
+            native_unit_identity,
+            native_unit_prefix,
+            native_unit_spelling
+        },
         backends.native.na_ir_gen_pass {
             HDR_ALLOC_ID_OFF,
             HDR_DTOR_OFF,
@@ -7264,6 +6941,22 @@ graph import compiler {
             | expr_keys.type_tag_borrows
             | passes.type_checker_pass.TypeCheckPass._check_c_function_def
             | types.type_evaluator.TypeEvaluator._c_lent_args { is_borrow_kind },
+        backends.native.mir.lower
+            | backends.native.na_ir_gen_pass.NaIRGenPass._flow_future_licensed
+            | backends.native.primitives_native
+            | c_interop.c_offset_address
+            | driver.wiring
+            | expr_keys
+            | passes.cfg_build_pass.CFGBuildPass.exit_ctrl_stmt
+            | passes.graph_lowering_pass
+            | passes.mtir_gen_pass
+            | passes.ownership_check_pass.OwnershipCheckPass._emit_flow_for_diagnostics
+            | passes.type_checker_pass.TypeCheckPass.exit_impl_def
+            | tools.cfg_dot.CoalesceBBPass._node_label
+            | tools.comment_attach_pass
+            | tools.jac_auto_lint_pass
+            | types.operations
+            | types.type_evaluator.TypeEvaluator._find_predicate_for { Tokens as Tok },
         backends.native.na_ir_gen_pass {
             CodeContext,
             OwnershipKind,
@@ -7302,21 +6995,6 @@ graph import compiler {
             | passes.capability_check_pass.PortabilityWarnPass._check_js_globals
             | passes.import_wiring_pass
             | tools.reactive_use_walk { ExprCtx },
-        backends.native.na_ir_gen_pass.NaIRGenPass._flow_future_licensed
-            | backends.native.primitives_native
-            | c_interop.c_offset_address
-            | driver.wiring
-            | expr_keys
-            | passes.cfg_build_pass.CFGBuildPass.exit_ctrl_stmt
-            | passes.graph_lowering_pass
-            | passes.mtir_gen_pass
-            | passes.ownership_check_pass.OwnershipCheckPass._emit_flow_for_diagnostics
-            | passes.type_checker_pass.TypeCheckPass.exit_impl_def
-            | tools.cfg_dot.CoalesceBBPass._node_label
-            | tools.comment_attach_pass
-            | tools.jac_auto_lint_pass
-            | types.operations
-            | types.type_evaluator.TypeEvaluator._find_predicate_for { Tokens as Tok },
         backends.native.na_ir_gen_pass.NaIRGenPass._hl_view_base_licensed
             | driver.boundary_classify.module_own_native_anchor
             | passes.ownership_hints
@@ -7490,6 +7168,9 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._warn_rpc_callable_params { W6005 },
         backends.es.esast_gen_pass.EsastGenPass.prepare
             | passes.placement_pass.PlacementPass._run_decided { E5096 },
+        backends.native.mir.backend
+            | backends.native.primitives_native
+            | driver.module_compile.report_missing_native_ir { E5092 },
         backends.native.na_compile_pass { E5020, E5026 },
         backends.native.na_ir_gen_pass {
             DiagnosticInfo,
@@ -7508,8 +7189,6 @@ graph import compiler {
             E9002,
             E9003
         },
-        backends.native.primitives_native
-            | driver.module_compile.report_missing_native_ir { E5092 },
         backends.py.jcir_bc_gen_pass { E5040, E5043 },
         backends.py.jcir_gen_pass {
             E5001,
@@ -8060,6 +7739,7 @@ graph import compiler {
     ]
     frontend.module_facts ++> [
         backends.es.esast_gen_pass
+            | backends.native.mir.lower
             | backends.native.na_ir_gen_pass
             | backends.py.jcir_gen_pass
             | driver.boundary_classify.is_server_anchored_module
@@ -10118,6 +9798,9 @@ graph import compiler {
         | backends.es.jsx_processor
         | backends.es.view_ir
         | backends.native.foreign
+        | backends.native.mir.backend
+        | backends.native.mir.lower
+        | backends.native.mir.lower_types
         | backends.native.na_compile_pass
         | backends.native.na_ir_gen_pass
         | driver.boundary_classify
@@ -10181,6 +9864,7 @@ graph import compiler {
         passes.endpoint_effect_pass.EndpointEffectPass._scan { unparse_node },
     ]
     intrinsic_registry ++> [
+        backends.native.mir.lower { INTRINSIC_REGISTRY, IntrinsicDispatch },
         backends.native.na_ir_gen_pass { IntrinsicEntry },
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_call
             | symbol_utils.intrinsic_registry_if_ready { INTRINSIC_REGISTRY },
@@ -10317,7 +10001,8 @@ graph import compiler {
             | tools.jac_auto_lint_pass
             | tools.normalize_pass
             | tools.unparse_pass { TreePass },
-        backends.native.na_compile_pass
+        backends.native.mir.backend
+            | backends.native.na_compile_pass
             | backends.py.jcir_bc_gen_pass
             | driver.context_passes
             | placement.placement_solver
@@ -10369,6 +10054,21 @@ graph import compiler {
             archetype_native_name,
             get_layout_registry
         },
+        backends.native.mir.emit { VTABLE_HEADER_SLOTS },
+        backends.native.mir.lower {
+            NON_DISPATCHED_METHODS,
+            VTABLE_HEADER_SLOTS,
+            adopt_imported_bases,
+            archetype_native_name,
+            class_type_native_name,
+            enum_decl_of,
+            get_layout_registry,
+            is_enum_class_type,
+            layout_slot_count,
+            merge_imported_layouts,
+            native_type_key
+        },
+        backends.native.mir.lower_types { class_type_native_name, is_enum_class_type },
         backends.native.na_ir_gen_pass {
             ACCESSOR_SLOT_SUFFIX,
             ArchetypeLayout,
@@ -10564,7 +10264,10 @@ graph import compiler {
             get_layout_registry as _sc_glr
         },
     ]
-    type passes.layout_pass ++> frontend.codeinfo { LayoutRegistry }
+    type passes.layout_pass ++> [
+        backends.native.mir.lower { ArchetypeLayout, EnumLayout, EnumMemberLayout },
+        frontend.codeinfo { LayoutRegistry },
+    ]
     passes.mtir_gen_pass --> driver.pipeline.ir_passes { MTIRGenPass }
     passes.osp_analysis ++> [
         backends.es.esast_gen_pass { OspAnalysis, OspModel, OspSlot },
@@ -10572,12 +10275,14 @@ graph import compiler {
             | backends.native.na_ir_gen_pass.NaIRGenPass._compute_osp_model {
             get_osp_model
         },
+        backends.native.mir.lower { OSP_ANY_TAGS, OspAnalysis },
         backends.native.na_ir_gen_pass { OSP_ANY_TAGS },
         backends.native.na_ir_gen_pass.NaIRGenPass._trigger_struct_names {
             OspAnalysis
         },
     ]
     type passes.osp_analysis ++> [
+        backends.native.mir.lower { OspModel, OspSlot },
         backends.native.na_ir_gen_pass { OspSlot },
         frontend.codeinfo { OspModel },
     ]
@@ -10586,6 +10291,7 @@ graph import compiler {
     }
     passes.package_boundary_pass ++> driver.pipeline { PackageBoundaryPass }
     passes.placement_pass ++> [
+        backends.native.mir.lower_types { NativeRefusal },
         backends.native.na_ir_gen_pass { NativeLegality, NativeRefusal, NativeRefused },
         backends.native.na_ir_gen_pass.NaIRGenPass._demote_method_if_unlowerable {
             refusal_from_alert
@@ -10604,6 +10310,7 @@ graph import compiler {
     passes.placement_pass --> backends.native.na_compile_pass.NativeCompilePass._run_impl {
         settle_native_module
     }
+    type passes.placement_pass ++> backends.native.mir.lower { NativeRefusal }
     passes.pyast_load_pass ++> [
         driver.pipeline.python_ast_passes | tools.lang_tools { PyastBuildPass },
         tools.lang_tools.AstTool.py_uni_nodes { PyastBuildPass },
@@ -10726,6 +10433,11 @@ graph import compiler {
         native_scope.package_host_edge { native_lowered, native_unit },
     ]
     placement.placement_pins ++> [
+        backends.native.mir.lower
+            | driver.program.JacProgram.stamp_boundary_facts
+            | passes.boundary_analysis_pass.BoundaryAnalysisPass._bind_server_callee {
+            config_module_pin
+        },
         driver.boundary_classify { BareImportVerdict, classify_bare_import },
         driver.boundary_classify.import_declares_native_target { effective_module_pin },
         driver.boundary_classify.native_only_import_target { effective_module_pin },
@@ -10737,10 +10449,6 @@ graph import compiler {
         driver.program.JacProgram.prefers_native_codespace {
             config_kind_space,
             effective_module_pin
-        },
-        driver.program.JacProgram.stamp_boundary_facts
-            | passes.boundary_analysis_pass.BoundaryAnalysisPass._bind_server_callee {
-            config_module_pin
         },
         passes.placement_pass.element_requirements {
             config_element_pin,
@@ -10917,6 +10625,8 @@ graph import compiler {
             | backends.es.jac_runtime_js._build_exc_runtime_js
             | backends.native.foreign
             | backends.native.host_facts.primitive_methods_fact
+            | backends.native.mir.emit
+            | backends.native.mir.lower
             | backends.native.na_ir_gen_pass.NaIRGenPass.__post_init__
             | c_interop._spec_for_name
             | passes.declaration_type_pass
@@ -10998,6 +10708,7 @@ graph import compiler {
             CtValue,
             int_host
         },
+        backends.native.mir.lower { CtBool, CtFloat, CtInt, int_host },
         backends.native.na_ir_gen_pass {
             CtBool,
             CtBytes,
@@ -11233,6 +10944,13 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._osp_expr_arch_name
             | backends.native.na_ir_gen_pass.NaIRGenPass._sort_key_orderable
             | passes.layout_pass.enum_class_of { ClassType },
+        backends.native.mir.lower | backends.native.mir.lower_types {
+            AnyType,
+            ClassType,
+            FunctionType,
+            TypeVarType,
+            UnionType
+        },
         backends.native.na_ir_gen_pass {
             ClassType,
             FunctionType as SemanticFunctionType,
@@ -11429,7 +11147,9 @@ graph import compiler {
         },
     ]
     type types.types ++> [
-        backends.native.primitives_native
+        backends.native.mir.lower
+            | backends.native.mir.lower_types
+            | backends.native.primitives_native
             | frontend.unitree
             | passes.ownership_check_pass { TypeBase },
         c_interop { ClassType, TypeBase },
@@ -11741,6 +11461,7 @@ graph import compiler.backends.native {
     llvm.ir as ir ++> abi
         | lexical_scope
         | lowering
+        | mir.emit
         | na_ir_gen_pass
         | primitives_native;
     llvm.ir.types ++> link_glue.bind_shared_callbacks { _wrapname }
@@ -11965,6 +11686,152 @@ graph import compiler.backends.native.llvm.ir {
     values --> types.ArrayType.wrap_constant_value { Constant, Value }
     values as values ++> builder | module;
     type values ++> types { Constant, Value }
+}
+
+graph import compiler.backends.native.mir {
+    emit ++> backend { emit_mir_module }
+    generators ++> backend { mir_lower_generators }
+    ir ++> [
+        backend { MirModule },
+        emit {
+            MirFunction,
+            MirGlobal,
+            MirInstr,
+            MirModule,
+            MirObjectDef,
+            MirOp,
+            MirValue
+        },
+        generators {
+            MirBlock,
+            MirExtern,
+            MirFrame,
+            MirFunction,
+            MirInstr,
+            MirModule,
+            MirOp,
+            MirParam,
+            MirValue
+        },
+        lower {
+            MirBlock,
+            MirBuilder,
+            MirExtern,
+            MirFunction,
+            MirGlobal,
+            MirInstr,
+            MirModule,
+            MirObjectDef,
+            MirObjectField,
+            MirOp,
+            MirParam,
+            MirStructDef,
+            MirStructField,
+            MirValue
+        },
+        rc { MirBlock, MirFunction, MirInstr, MirOp, MirValue },
+    ]
+    lower ++> backend { MirLowering }
+    lower_types ++> lower {
+        MirPosition,
+        MirRefused,
+        mir_class_type_named,
+        mir_refusal,
+        mir_spec_type,
+        mir_type_of,
+        refusal_of,
+        stub_archetype
+    }
+    rc ++> backend { mir_insert_rc }
+    runtime_abi ++> [
+        generators { mir_runtime_signature },
+        lower { mir_osp_signature, mir_runtime_signature },
+    ]
+    types ++> [
+        emit { MirKind, MirType, mir_c_ptr, mir_holds_ref, mir_int, mir_is_container },
+        generators {
+            MirKind,
+            MirType,
+            mir_bool,
+            mir_c_fn,
+            mir_c_ptr,
+            mir_holds_ref,
+            mir_int,
+            mir_none
+        },
+        ir { MirKind, MirType, mir_bool, mir_c_ptr, mir_holds_ref, mir_int, mir_str },
+        lower {
+            MirKind,
+            MirType,
+            mir_any,
+            mir_bool,
+            mir_bytearray,
+            mir_bytes,
+            mir_c_fn,
+            mir_c_ptr,
+            mir_c_view,
+            mir_class,
+            mir_float,
+            mir_fn,
+            mir_holds_ref,
+            mir_int,
+            mir_is_container,
+            mir_iter,
+            mir_list,
+            mir_none,
+            mir_obj,
+            mir_range,
+            mir_ref,
+            mir_str,
+            mir_str_ref,
+            mir_tuple,
+            mir_void
+        },
+        lower_types {
+            MirKind,
+            MirType,
+            mir_any,
+            mir_bool,
+            mir_bytearray,
+            mir_bytes,
+            mir_c_fn,
+            mir_c_ptr,
+            mir_c_struct,
+            mir_c_view,
+            mir_class,
+            mir_dict,
+            mir_enum,
+            mir_float,
+            mir_fn,
+            mir_int,
+            mir_iter,
+            mir_list,
+            mir_none,
+            mir_obj,
+            mir_opt,
+            mir_range,
+            mir_set,
+            mir_str,
+            mir_str_ref,
+            mir_tuple
+        },
+        rc { mir_holds_ref },
+        runtime_abi {
+            MirType,
+            mir_any,
+            mir_bool,
+            mir_c_ptr,
+            mir_float,
+            mir_fn,
+            mir_int,
+            mir_list,
+            mir_none,
+            mir_opt,
+            mir_ref,
+            mir_str,
+            mir_str_ref
+        },
+    ]
 }
 
 graph import compiler.backends.py {
@@ -16019,6 +15886,7 @@ graph import runtime {
         source_app._load_application { NativeLibrary, native_callback_of },
     ]
     memory ++> context { Memory }
+    native.rc ++> osp_native { __jac_rt_alloc, __jac_rt_release, __jac_rt_retain }
     object_interop ++> typecache { fields, is_record }
     object_model ++> [
         archetype { ObjectField, asdict, fields, is_jac_object, make_object },
@@ -16028,6 +15896,28 @@ graph import runtime {
         runtime { make_object },
     ]
     object_pydantic ++> object_model._pydantic_schema { object_schema }
+    osp_graph ++> osp_native {
+        osp_conn,
+        osp_destroy,
+        osp_destroy_all,
+        osp_disconn_between,
+        osp_disconn_between_many,
+        osp_disconn_between_pred,
+        osp_filter,
+        osp_forget_edge,
+        osp_forget_node,
+        osp_is_a,
+        osp_is_dead,
+        osp_jid,
+        osp_keep_toward,
+        osp_pin_refs,
+        osp_refs,
+        osp_refs_edge_pred,
+        osp_refs_many,
+        osp_register_type,
+        osp_take_unpinned,
+        osp_unpinned_count
+    }
     osp_graph as _graph ++> osp_graph_sv;
     osp_graph_sv ++> [
         graph_utils.traverse_graph { sv_register_hydrated },
@@ -16051,6 +15941,27 @@ graph import runtime {
             OspWalkScope,
             OspWalkerDesc,
             UNTYPED
+        },
+        osp_native {
+            OspNodeDesc,
+            OspRuntime,
+            OspSlot,
+            OspWalkScope,
+            OspWalkerDesc,
+            _current_scope,
+            osp_disengage,
+            osp_forget,
+            osp_forget_all,
+            osp_kernel_pending,
+            osp_kernel_pin_refs,
+            osp_node_desc,
+            osp_register_desc,
+            osp_report,
+            osp_skip_rest,
+            osp_spawn,
+            osp_take_acquired,
+            osp_take_released,
+            osp_visit
         },
         runtime.JacBuiltin.log_report { _current_scope, osp_report },
         runtime.JacGraph.clear_edges { osp_forget },
@@ -16528,6 +16439,89 @@ graph import runtime.na_stdlib {
         tcgetattr,
         tcsetattr
     }
+}
+
+graph import runtime.native {
+    dicts ++> [
+        anys { __jac_rt_dict_len },
+        iterators { __jac_rt_dict_key_at, __jac_rt_dict_next },
+    ]
+    exceptions ++> bytes { __jac_rt_raise_builtin }
+    lists ++> [
+        bytes { __jac_rt_list_new, __jac_rt_list_push },
+        closures { __jac_rt_elem_release, __jac_rt_elem_retain },
+        dicts { __jac_rt_elem_eq, __jac_rt_elem_release, __jac_rt_elem_retain },
+        iterators { __jac_rt_elem_retain },
+        text { __jac_rt_list_new, __jac_rt_list_push, __jac_rt_list_reverse },
+    ]
+    rc ++> [
+        anys | closures | iterators {
+            __jac_rt_alloc,
+            __jac_rt_free_block,
+            __jac_rt_release,
+            __jac_rt_retain,
+            __jac_rt_set_type
+        },
+        bytes {
+            __jac_rt_alloc,
+            __jac_rt_free_block,
+            __jac_rt_release_acyclic,
+            __jac_rt_set_type
+        },
+        dicts {
+            __jac_rt_alloc,
+            __jac_rt_free_block,
+            __jac_rt_release,
+            __jac_rt_release_acyclic,
+            __jac_rt_set_type,
+            __jac_rt_trace_register
+        },
+        format { __jac_rt_release_acyclic },
+        lists {
+            __jac_rt_alloc,
+            __jac_rt_free_block,
+            __jac_rt_release,
+            __jac_rt_release_acyclic,
+            __jac_rt_retain,
+            __jac_rt_set_type,
+            __jac_rt_trace_register
+        },
+        strings { __jac_rt_alloc, __jac_rt_retain, __jac_rt_set_type },
+        text { __jac_rt_is_heap, __jac_rt_release_acyclic },
+    ]
+    strings ++> [
+        anys { __jac_rt_str_from_int, __jac_rt_str_new, __jac_rt_str_size },
+        dicts { __jac_rt_str_size },
+        format | iterators | text { __jac_rt_str_new, __jac_rt_str_size },
+        lists { __jac_rt_str_cmp, __jac_rt_str_size },
+    ]
+    text ++> [
+        bytes {
+            __jac_rt_sb_add,
+            __jac_rt_sb_byte,
+            __jac_rt_sb_data,
+            __jac_rt_sb_drop,
+            __jac_rt_sb_finish,
+            __jac_rt_sb_int,
+            __jac_rt_sb_len,
+            __jac_rt_sb_new,
+            __jac_rt_utf8_width
+        },
+        format {
+            __jac_rt_sb_add,
+            __jac_rt_sb_byte,
+            __jac_rt_sb_data,
+            __jac_rt_sb_drop,
+            __jac_rt_sb_finish,
+            __jac_rt_sb_int,
+            __jac_rt_sb_len,
+            __jac_rt_sb_new,
+            __jac_rt_sb_truncate,
+            __jac_rt_str_chr,
+            __jac_rt_str_repr,
+            __jac_rt_utf8_width
+        },
+    ]
 }
 
 graph import runtime.python {

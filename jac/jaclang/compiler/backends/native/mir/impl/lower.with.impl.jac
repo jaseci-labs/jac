@@ -49,14 +49,20 @@ impl MirLowering.with_items(
     leave_decl = self.decls.get(id(leave_method)) if leave_method is not None else None;
     if enter_decl is None or leave_decl is None {
         raise MirRefused(
-            mir_refusal("with", f"{archetype_native_name(arch)} without native __enter__ and __exit__", item)
+            mir_refusal(
+                "with",
+                f"{archetype_native_name(arch)} without native __enter__ and __exit__",
+                item
+            )
         );
     }
     held = self.spill(manager);
     entered = b.call(enter_decl.symbol, [held], enter_decl.ret);
     if item.alias is not None {
         if entered is None {
-            raise MirRefused(mir_refusal("with", "alias of __enter__ returning nothing", item));
+            raise MirRefused(
+                mir_refusal("with", "alias of __enter__ returning nothing", item)
+            );
         }
         self.bind_target(item.alias, entered);
     }
@@ -99,17 +105,24 @@ impl MirLowering.with_generator(
     }
     out = self.temp_slot(mir_int());
     self.raise_if(
-        b.logical_not(self.iter_advance(it, out)), "RuntimeError", "generator didn't yield"
+        b.logical_not(self.iter_advance(it, out)),
+        "RuntimeError",
+        "generator didn't yield"
     );
     if item.alias is not None {
-        self.bind_target(item.alias, self.element_from_bits(b.load(out, mir_int()), it.type.payload()));
+        self.bind_target(
+            item.alias,
+            self.element_from_bits(b.load(out, mir_int()), it.type.payload())
+        );
     }
     (frame, dispatch) = self.guard_open();
     self.with_items(items, index + 1, body);
     after = fn.new_block("with.gen.done");
     if not self.builder().block.terminated() {
         self.runtime("__jac_rt_exc_pop", [frame]);
-        self.raise_if(self.iter_advance(it, out), "RuntimeError", "generator didn't stop");
+        self.raise_if(
+            self.iter_advance(it, out), "RuntimeError", "generator didn't stop"
+        );
         self.builder().branch(after);
     }
     b.position(dispatch);
@@ -120,7 +133,9 @@ impl MirLowering.with_generator(
     b.position(after);
 }
 
-impl MirLowering.call_exit(decl: MirDecl, held: MirValue, site: uni.UniNode) -> MirValue {
+impl MirLowering.call_exit(
+    decl: MirDecl, held: MirValue, site: uni.UniNode
+) -> MirValue {
     b = self.builder();
     args = [held] + [self.none_arg(ptype, site) for ptype in decl.params];
     result = b.call(decl.symbol, args, decl.ret);
@@ -180,11 +195,13 @@ impl MirLowering.guard_caught(frame: MirValue) -> tuple[MirValue, MirValue, MirV
     message = self.emit_value(
         MirOp.PTR_CAST,
         i8p,
-        [self.emit_value(
-            MirOp.MEM_LOAD,
-            mir_int(),
-            [b.binary("add", address, b.const_int(EXC_MESSAGE_OFFSET, mir_int()))]
-        )]
+        [
+            self.emit_value(
+                MirOp.MEM_LOAD,
+                mir_int(),
+                [b.binary("add", address, b.const_int(EXC_MESSAGE_OFFSET, mir_int()))]
+            )
+        ]
     );
     origin = self.emit_value(
         MirOp.PTR_CAST, i8p, [self.emit_value(MirOp.MEM_LOAD, mir_int(), [address])]
@@ -224,7 +241,9 @@ impl MirLowering.lower_match(nd: uni.MatchStmt) {
         self.match_test(arm.pattern, subject, fail, arm);
         if arm.guard is not None {
             chosen = fn.new_block("match.body");
-            b.cond_branch(self.truthy(self.lower_expr(arm.guard), arm.guard), chosen, fail);
+            b.cond_branch(
+                self.truthy(self.lower_expr(arm.guard), arm.guard), chosen, fail
+            );
             b.position(chosen);
         }
         self.lower_body(arm.body);
@@ -342,33 +361,47 @@ impl MirLowering.match_test(
         if subject.type.kind == MirKind.LIST {
             self.branch_unless(
                 b.compare(
-                    "eq", self.container_len(subject), b.const_int(len(pat.values), mir_int())
+                    "eq",
+                    self.container_len(subject),
+                    b.const_int(len(pat.values), mir_int())
                 ),
                 fail
             );
             for (index, part) in enumerate(pat.values) {
-                element = self.spill(self.list_read(subject, b.const_int(index, mir_int())));
+                element = self.spill(
+                    self.list_read(subject, b.const_int(index, mir_int()))
+                );
                 self.match_test(part, element, fail, part);
             }
             return;
         }
-        raise MirRefused(mir_refusal("match pattern", f"sequence over {subject.type.render()}", pat));
+        raise MirRefused(
+            mir_refusal("match pattern", f"sequence over {subject.type.render()}", pat)
+        );
     }
     if isinstance(pat, uni.MatchMapping) {
         if subject.type.kind != MirKind.DICT {
-            raise MirRefused(mir_refusal("match pattern", f"mapping over {subject.type.render()}", pat));
+            raise MirRefused(
+                mir_refusal(
+                    "match pattern", f"mapping over {subject.type.render()}", pat
+                )
+            );
         }
         key_type = subject.type.args[0];
         for entry_pat in pat.values {
             if not isinstance(entry_pat, uni.MatchKVPair) {
-                raise MirRefused(mir_refusal("match pattern", "** in a mapping", entry_pat));
+                raise MirRefused(
+                    mir_refusal("match pattern", "** in a mapping", entry_pat)
+                );
             }
             key_node: uni.UniNode = entry_pat.key;
             if isinstance(key_node, uni.MatchValue) {
                 key_node = key_node.value;
             }
             if not isinstance(key_node, uni.Expr) {
-                raise MirRefused(mir_refusal("match pattern", "mapping key", entry_pat));
+                raise MirRefused(
+                    mir_refusal("match pattern", "mapping key", entry_pat)
+                );
             }
             key = self.spill(self.lower_expr(key_node));
             found = self.runtime_value(
@@ -381,7 +414,10 @@ impl MirLowering.match_test(
             );
             self.branch_unless(b.compare("ge", found, b.const_int(0, mir_int())), fail);
             self.match_test(
-                entry_pat.value, self.spill(self.dict_get(subject, key, entry_pat)), fail, entry_pat
+                entry_pat.value,
+                self.spill(self.dict_get(subject, key, entry_pat)),
+                fail,
+                entry_pat
             );
         }
         return;
@@ -397,7 +433,9 @@ impl MirLowering.match_arch(pat: uni.MatchArch, subject: MirValue, fail: MirBloc
     b = self.builder();
     arch = self.target_archetype(pat.name);
     if arch is None {
-        raise MirRefused(mir_refusal("match pattern", "class pattern of a non-archetype", pat));
+        raise MirRefused(
+            mir_refusal("match pattern", "class pattern of a non-archetype", pat)
+        );
     }
     wanted = self.object_type(arch);
     shaped: MirValue;
@@ -408,13 +446,23 @@ impl MirLowering.match_arch(pat: uni.MatchArch, subject: MirValue, fail: MirBloc
         self.branch_unless(self.isinstance_check(subject, arch), fail);
         shaped = b.ref_cast(subject, wanted, False);
     } else {
-        raise MirRefused(mir_refusal("match pattern", f"class pattern on {subject.type.render()}", pat));
+        raise MirRefused(
+            mir_refusal(
+                "match pattern", f"class pattern on {subject.type.render()}", pat
+            )
+        );
     }
     fields = self.object_def(arch).fields;
     checks: list[tuple[str, uni.MatchPattern]] = [];
     for (index, part) in enumerate(list(pat.arg_patterns or [])) {
         if index >= len(fields) {
-            raise MirRefused(mir_refusal("match pattern", f"{len(fields)} fields of {archetype_native_name(arch)}", pat));
+            raise MirRefused(
+                mir_refusal(
+                    "match pattern",
+                    f"{len(fields)} fields of {archetype_native_name(arch)}",
+                    pat
+                )
+            );
         }
         checks.append((fields[index].name, part));
     }
@@ -427,6 +475,8 @@ impl MirLowering.match_arch(pat: uni.MatchArch, subject: MirValue, fail: MirBloc
     }
     for (field_name, part) in checks {
         place = self.field_place(shaped, arch, field_name, pat);
-        self.match_test(part, self.spill(b.load(place, self.place_elem(place))), fail, part);
+        self.match_test(
+            part, self.spill(b.load(place, self.place_elem(place))), fail, part
+        );
     }
 }

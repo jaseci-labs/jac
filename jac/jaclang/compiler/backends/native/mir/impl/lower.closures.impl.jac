@@ -5,7 +5,9 @@ impl MirLowering.function_of(nd: uni.UniNode) -> (uni.UniNode | None) {
             return cursor;
         }
         if isinstance(cursor, uni.ImplDef) {
-            return cursor.decl_link if isinstance(cursor.decl_link, uni.Ability) else None;
+            return cursor.decl_link
+                if isinstance(cursor.decl_link, uni.Ability)
+                else None;
         }
         if isinstance(cursor, uni.Module) {
             return None;
@@ -39,7 +41,8 @@ impl MirLowering.captured_symbols(
             if sym is None or id(sym) in seen or sym.decl is None {
                 continue;
             }
-            if self.function_of(name) is owner or self.function_of(sym.decl) is not owner {
+            if self.function_of(name) is owner
+                or self.function_of(sym.decl) is not owner {
                 continue;
             }
             seen.add(id(sym));
@@ -54,7 +57,8 @@ impl MirLowering.prepare_cells(owner: uni.UniNode, body: Sequence[uni.UniNode]) 
     for sym in self.captured_symbols(owner, body) {
         value_type = self.symbol_type(sym, owner);
         cell = self.runtime(
-            "__jac_rt_cell_new", [b.const_int(self.elem_kind(value_type, owner), mir_int())]
+            "__jac_rt_cell_new",
+            [b.const_int(self.elem_kind(value_type, owner), mir_int())]
         );
         if cell is None {
             raise MirRefused(mir_refusal("closure", sym.sym_name, owner));
@@ -65,7 +69,9 @@ impl MirLowering.prepare_cells(owner: uni.UniNode, body: Sequence[uni.UniNode]) 
         self.st().captured[id(sym)] = slot;
         self.st().cell_types[id(sym)] = value_type;
         if bound is not None {
-            self.cell_write(b.load(slot, mir_ref()), b.load(bound, bound.type), value_type, owner);
+            self.cell_write(
+                b.load(slot, mir_ref()), b.load(bound, bound.type), value_type, owner
+            );
         }
     }
 }
@@ -82,9 +88,13 @@ impl MirLowering.cell_of(sym_id: int) -> (MirValue | None) {
         return None;
     }
     address = b.binary(
-        "add", self.address_of(env), b.const_int(CLOSURE_CELLS_OFFSET + index * 8, mir_int())
+        "add",
+        self.address_of(env),
+        b.const_int(CLOSURE_CELLS_OFFSET + index * 8, mir_int())
     );
-    return b.ref_cast(self.emit_value(MirOp.MEM_LOAD, mir_int(), [address]), mir_ref(), False);
+    return b.ref_cast(
+        self.emit_value(MirOp.MEM_LOAD, mir_int(), [address]), mir_ref(), False
+    );
 }
 
 impl MirLowering.cell_read(cell: MirValue, value_type: MirType) -> MirValue {
@@ -122,7 +132,9 @@ impl MirLowering.lower_closure(
     label: str
 ) -> MirValue {
     outer = self.st();
-    statements: list[uni.UniNode] = [body] if isinstance(body, uni.Expr) else list(body);
+    statements: list[uni.UniNode] = [body]
+        if isinstance(body, uni.Expr)
+        else list(body);
     captures: list[int] = [];
     for stmt in statements {
         for name in self.names_within(stmt) {
@@ -191,9 +203,13 @@ impl MirLowering.lower_closure(
     b = self.builder();
     code_type = mir_c_fn([i8p] + params, ret);
     code = self.emit_value(
-        MirOp.PTR_INT, mir_int(), [self.emit_value(MirOp.FN_ADDR, code_type, [], callee=fn.symbol)]
+        MirOp.PTR_INT,
+        mir_int(),
+        [self.emit_value(MirOp.FN_ADDR, code_type, [], callee=fn.symbol)]
     );
-    made = self.runtime("__jac_rt_closure_new", [code, b.const_int(len(captures), mir_int())]);
+    made = self.runtime(
+        "__jac_rt_closure_new", [code, b.const_int(len(captures), mir_int())]
+    );
     if made is None {
         raise MirRefused(mir_refusal("closure", label, owner));
     }
@@ -203,7 +219,9 @@ impl MirLowering.lower_closure(
         if cell is None {
             raise MirRefused(mir_refusal("closure", label, owner));
         }
-        self.runtime("__jac_rt_closure_set", [held, b.const_int(index, mir_int()), cell]);
+        self.runtime(
+            "__jac_rt_closure_set", [held, b.const_int(index, mir_int()), cell]
+        );
     }
     return b.ref_cast(held, fn_type, False);
 }
@@ -213,16 +231,23 @@ impl MirLowering.closure_call(nd: uni.FuncCall, callee: MirValue) -> MirValue {
     params = callee.type.args[1:];
     args = self.call_args(nd);
     if len(args) != len(params) {
-        raise MirRefused(mir_refusal("call", f"function value with {len(args)} arguments", nd));
+        raise MirRefused(
+            mir_refusal("call", f"function value with {len(args)} arguments", nd)
+        );
     }
     i8p = mir_c_ptr(mir_int(8, False));
     held = self.spill(callee);
-    values = [self.coerce(self.lower_expr(arg), ptype, arg) for (arg, ptype) in zip(args, params)];
+    values = [
+        self.coerce(self.lower_expr(arg), ptype, arg)
+        for (arg, ptype) in zip(args, params)
+    ];
     code = self.emit_value(MirOp.MEM_LOAD, mir_int(), [self.address_of(held)]);
     target = self.emit_value(MirOp.PTR_CAST, mir_c_fn([i8p] + params, ret), [code]);
     result_type = mir_none() if ret.kind in (MirKind.NONE, MirKind.VOID) else ret;
     result = self.emit_value(
-        MirOp.CALL_FNPTR, result_type, [target, self.emit_value(MirOp.PTR_CAST, i8p, [held])] + values
+        MirOp.CALL_FNPTR,
+        result_type,
+        [target, self.emit_value(MirOp.PTR_CAST, i8p, [held])] + values
     );
     result.owned = mir_holds_ref(result_type);
     return result;
@@ -233,7 +258,9 @@ impl MirLowering.function_value(decl: MirDecl, to: MirType) -> MirValue {
     adapter = self.adapters.get(decl.symbol);
     if adapter is None {
         adapter = f"{decl.symbol}.__value";
-        fn = MirFunction(name=f"{self.name_of(decl.ability)}.__value", symbol=adapter, ret=decl.ret);
+        fn = MirFunction(
+            name=f"{self.name_of(decl.ability)}.__value", symbol=adapter, ret=decl.ret
+        );
         first = fn.new_block("entry");
         fn.params.append(MirParam(name="env", value=fn.new_value(i8p, "env")));
         forwarded: list[MirValue] = [];
@@ -256,7 +283,14 @@ impl MirLowering.function_value(decl: MirDecl, to: MirType) -> MirValue {
     code = self.emit_value(
         MirOp.PTR_INT,
         mir_int(),
-        [self.emit_value(MirOp.FN_ADDR, mir_c_fn([i8p] + decl.params, decl.ret), [], callee=adapter)]
+        [
+            self.emit_value(
+                MirOp.FN_ADDR,
+                mir_c_fn([i8p] + decl.params, decl.ret),
+                [],
+                callee=adapter
+            )
+        ]
     );
     made = self.runtime("__jac_rt_closure_new", [code, b.const_int(0, mir_int())]);
     if made is None {

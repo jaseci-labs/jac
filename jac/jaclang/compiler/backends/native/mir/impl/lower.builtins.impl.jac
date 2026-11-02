@@ -23,7 +23,8 @@ impl MirLowering.builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None)
     if name == "id" {
         value = self.lower_expr(args[0]);
         if not mir_holds_ref(value.type)
-            or value.type.kind in (MirKind.STR, MirKind.ANY, MirKind.OPT, MirKind.TUPLE) {
+            or value.type.kind
+                in (MirKind.STR, MirKind.ANY, MirKind.OPT, MirKind.TUPLE) {
             raise MirRefused(mir_refusal("call", f"id of {value.type.render()}", nd));
         }
         return self.address_of(value);
@@ -33,12 +34,16 @@ impl MirLowering.builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None)
         if name == "list" and value.type.kind != MirKind.LIST {
             made_type = self.expr_type(nd);
             if made_type.kind != MirKind.LIST {
-                raise MirRefused(mir_refusal("call", f"list as {made_type.render()}", nd));
+                raise MirRefused(
+                    mir_refusal("call", f"list as {made_type.render()}", nd)
+                );
             }
             return self.drain(value, made_type.payload(), nd);
         }
         if value.type.kind != MirKind.LIST {
-            raise MirRefused(mir_refusal("call", f"{name} of {value.type.render()}", nd));
+            raise MirRefused(
+                mir_refusal("call", f"{name} of {value.type.render()}", nd)
+            );
         }
         handle = self.runtime(
             "__jac_rt_list_copy",
@@ -103,7 +108,8 @@ impl MirLowering.str_subscript(nd: uni.AtomTrailer) -> (MirValue | None) {
         STR_INDEX_MESSAGE
     );
     made = self.runtime(
-        "__jac_rt_str_char_at", [b.str_part(text, "data"), b.str_part(text, "len"), wrapped]
+        "__jac_rt_str_char_at",
+        [b.str_part(text, "data"), b.str_part(text, "len"), wrapped]
     );
     size = self.runtime("__jac_rt_str_size", [made]) if made is not None else None;
     if made is None or size is None {

@@ -1,20 +1,5 @@
-"""`any` runtime: the `JacVal` value and its heap box.
+import from c { def strlen(p: int) -> int;  def strcmp(a: int, b: int) -> int;  }
 
-An `any` value is a `JacVal {i8 tag, i64 payload}` held by value. The tag says
-what the payload is: 0 int, 1 float (its f64 bits), 2 str, 3 list, 4 dict,
-5 set, 6 another object, 7 bool and 8 None. Tags 2 to 6 carry a refcounted
-pointer, which the value owns.
-
-A container slot is 8 bytes, so an `any` element is stored as a box: 16 bytes
-from `__jac_rt_alloc` with the tag at +0 and the payload at +8. The box owns
-its payload and releases it when it is dropped.
-
-The queries below answer what generated code asks of a value whose type is
-only known at run time: its truth, its text, its type name (an object's comes
-from its header), and whether it is an instance of a named archetype."""
-import from c {
-    def strlen(p: int) -> int;  def strcmp(a: int, b: int) -> int;
-}
 glob ANY_TAG_INT: int = 0,
      ANY_TAG_FLOAT: int = 1,
      ANY_TAG_STR: int = 2,

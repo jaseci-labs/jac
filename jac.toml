@@ -82,6 +82,13 @@ exclude = [
     "checker_*.jac",
     "*_err.jac",
 
+    # The Jac native runtime is written for the MIR backend, which is selected
+    # with JAC_NATIVE_MIR=1 until it replaces NaIRGenPass (#10471); the legacy
+    # backend cannot lower it. Delete these two lines when MIR becomes the
+    # default.
+    "jac/jaclang/runtime/native/*",
+    "jac/jaclang/runtime/osp_native.jac",
+
     # js_engine is a separate native project with its own jac.toml; its
     # regression suite and test262 gate it, not this check.
     "jac/js_engine/*",

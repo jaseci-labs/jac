@@ -46,7 +46,11 @@ impl MirLowering.any_box(value: MirValue, site: uni.UniNode) -> MirValue {
     if value.type.kind == MirKind.STR {
         made = self.runtime(
             "__jac_rt_str_ref",
-            [b.str_part(value, "root"), b.str_part(value, "data"), b.str_part(value, "len")]
+            [
+                b.str_part(value, "root"),
+                b.str_part(value, "data"),
+                b.str_part(value, "len")
+            ]
         );
         if made is None {
             raise MirRefused(mir_refusal("conversion", "str to any", site));
@@ -64,12 +68,16 @@ impl MirLowering.any_make(tag: MirValue, payload: MirValue) -> MirValue {
 
 impl MirLowering.any_none -> MirValue {
     b = self.builder();
-    made = self.any_make(b.const_int(ANY_NONE_TAG, mir_int()), b.const_int(0, mir_int()));
+    made = self.any_make(
+        b.const_int(ANY_NONE_TAG, mir_int()), b.const_int(0, mir_int())
+    );
     made.owned = True;
     return made;
 }
 
-impl MirLowering.any_unbox(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue {
+impl MirLowering.any_unbox(
+    value: MirValue, to: MirType, site: uni.UniNode
+) -> MirValue {
     b = self.builder();
     if to.kind == MirKind.ANY {
         return value;
@@ -136,7 +144,9 @@ impl MirLowering.any_from_box(handle: MirValue) -> MirValue {
     return made;
 }
 
-impl MirLowering.identity(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue {
+impl MirLowering.identity(
+    left: MirValue, right: MirValue, site: uni.UniNode
+) -> MirValue {
     b = self.builder();
     if left.type.kind == MirKind.ANY or right.type.kind == MirKind.ANY {
         l = self.any_box(left, site);
@@ -164,7 +174,9 @@ impl MirLowering.identity(left: MirValue, right: MirValue, site: uni.UniNode) ->
         return b.compare("eq", l, r);
     }
     raise MirRefused(
-        mir_refusal("comparison", f"{left.type.render()} is {right.type.render()}", site)
+        mir_refusal(
+            "comparison", f"{left.type.render()} is {right.type.render()}", site
+        )
     );
 }
 
@@ -205,7 +217,9 @@ impl MirLowering.value_truthy(value: MirValue, site: uni.UniNode) -> (MirValue |
         now = b.load(cursor.position, mir_int());
         end = b.load(cursor.limit, mir_int());
         return b.select(
-            b.compare("gt", b.load(cursor.stride, mir_int()), b.const_int(0, mir_int())),
+            b.compare(
+                "gt", b.load(cursor.stride, mir_int()), b.const_int(0, mir_int())
+            ),
             b.compare("lt", now, end),
             b.compare("gt", now, end)
         );
@@ -244,7 +258,11 @@ impl MirLowering.narrow(value: MirValue, nd: uni.Name) -> MirValue {
 }
 
 impl MirLowering.type_names(target: uni.Expr) -> (list[str] | None) {
-    items = [part for part in target.values if isinstance(part, uni.Expr)]
+    items = [
+        part
+        for part in target.values
+        if isinstance(part, uni.Expr)
+    ]
         if isinstance(target, uni.TupleVal)
         else [target];
     names: list[str] = [];
@@ -259,7 +277,9 @@ impl MirLowering.type_names(target: uni.Expr) -> (list[str] | None) {
 
 impl MirLowering.target_archetype(target: uni.Expr) -> (uni.Archetype | None) {
     wanted = self.arch_of_type(target.type);
-    if wanted is None and isinstance(target, uni.Name) and isinstance(target.sym, uni.Symbol) {
+    if wanted is None
+        and isinstance(target, uni.Name)
+        and isinstance(target.sym, uni.Symbol) {
         decl = target.sym.decl;
         holder = decl.parent if decl is not None else None;
         wanted = holder if isinstance(holder, uni.Archetype) else None;
@@ -290,7 +310,11 @@ impl MirLowering.any_isinstance(
     b = self.builder();
     tag = self.emit_value(MirOp.ANY_TAG, mir_int(), [value]);
     payload = self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [value]);
-    items = [part for part in target.values if isinstance(part, uni.Expr)]
+    items = [
+        part
+        for part in target.values
+        if isinstance(part, uni.Expr)
+    ]
         if isinstance(target, uni.TupleVal)
         else [target];
     verdict = b.const_bool(False);
@@ -322,7 +346,9 @@ impl MirLowering.any_isinstance(
                 MirOp.CSTR, mir_c_ptr(mir_int(8, False)), [], str_value=member
             );
             verdict = b.binary(
-                "or", verdict, self.runtime_value("__jac_rt_any_isa", [tag, payload, label])
+                "or",
+                verdict,
+                self.runtime_value("__jac_rt_any_isa", [tag, payload, label])
             );
         }
     }

@@ -1,20 +1,3 @@
-"""List runtime: a growable array of 8-byte slots.
-
-A list object is 24 bytes from `__jac_rt_alloc`: len (i64 at +0), cap (i64 at
-+8) and data (at +16), a malloc'd array of cap slots, or 0 while cap is 0. A
-slot holds raw bits: ints and bools as i64, floats as their f64 bits, strings
-and other refcounted values as a pointer. The `kind` argument (KIND_*) says how
-to treat a slot; dicts and sets use the same numbers.
-
-Storing borrows the value and retains it when its kind is refcounted;
-overwriting or removing a stored value releases it. `*_get_ref` returns a
-retained value, pop transfers the list's reference to the caller.
-
-The drop installed by `__jac_rt_list_new` depends on the kind. A KIND_REF list
-also has a trace function, registered once against its drop, so the cycle
-collector can see its elements; its drop does not release them while the
-collector is collecting. Strings are never traced, so a KIND_STR list's drop
-always releases its elements."""
 import from c {
     def malloc(n: int) -> int;  def realloc(p: int, n: int) -> int;  def free(
         p: int

@@ -14,7 +14,9 @@ impl MirLowering.enum_layout(t: (TypeBase | None), site: uni.UniNode) -> EnumLay
     owner = decl.find_parent_of_type(uni.Module) or self.module;
     found = get_layout_registry(owner, self.prog).get_enum_layout(name);
     if found is None or not found.members {
-        raise MirRefused(mir_refusal("enum", name, site, "The enum has no native layout."));
+        raise MirRefused(
+            mir_refusal("enum", name, site, "The enum has no native layout.")
+        );
     }
     if not found.all_values_known {
         raise MirRefused(
@@ -50,7 +52,9 @@ impl MirLowering.is_enum_class(nd: uni.UniNode) -> bool {
 }
 
 impl MirLowering.attr_special(nd: uni.AtomTrailer) -> (MirValue | None) {
-    if not nd.is_attr or not isinstance(nd.right, uni.Name) or not isinstance(nd.target, uni.Expr) {
+    if not nd.is_attr
+        or not isinstance(nd.right, uni.Name)
+        or not isinstance(nd.target, uni.Expr) {
         return None;
     }
     member = self.enum_member(nd);
@@ -74,16 +78,22 @@ impl MirLowering.enum_member(nd: uni.AtomTrailer) -> (MirValue | None) {
     layout = self.enum_layout(nd.target.type, nd);
     for member in layout.members {
         if member.name == nd.right.value {
-            return self.builder().const_int(self.enum_payload(layout, member), self.expr_type(nd));
+            return self.builder().const_int(
+                self.enum_payload(layout, member), self.expr_type(nd)
+            );
         }
     }
     raise MirRefused(mir_refusal("enum member", f"{layout.name}.{nd.right.value}", nd));
 }
 
-impl MirLowering.enum_attr(value: MirValue, name: str, site: uni.AtomTrailer) -> MirValue {
+impl MirLowering.enum_attr(
+    value: MirValue, name: str, site: uni.AtomTrailer
+) -> MirValue {
     layout = self.enum_layout(site.target.type, site);
     if name == "name" {
-        return self.enum_select(value, layout, [member.name for member in layout.members]);
+        return self.enum_select(
+            value, layout, [member.name for member in layout.members]
+        );
     }
     if layout.is_string_enum {
         return self.enum_select(
@@ -126,7 +136,9 @@ impl MirLowering.compare_special(
         if left.type is not right.type {
             raise MirRefused(
                 mir_refusal(
-                    "comparison", f"{left.type.render()} {op} {right.type.render()}", site
+                    "comparison",
+                    f"{left.type.render()} {op} {right.type.render()}",
+                    site
                 )
             );
         }
@@ -137,14 +149,22 @@ impl MirLowering.compare_special(
             return b.compare("ne", left, right);
         }
         raise MirRefused(
-            mir_refusal("comparison", f"{op} on enum {left.type.name}", site, "Enum members compare by identity only.")
+            mir_refusal(
+                "comparison",
+                f"{op} on enum {left.type.name}",
+                site,
+                "Enum members compare by identity only."
+            )
         );
     }
     if left.type.kind == MirKind.CLASS and right.type.kind == MirKind.CLASS {
         i8p = mir_c_ptr(mir_int(8, False));
         same = self.runtime_value(
             "__jac_rt_cstr_eq",
-            [self.emit_value(MirOp.PTR_CAST, i8p, [left]), self.emit_value(MirOp.PTR_CAST, i8p, [right])]
+            [
+                self.emit_value(MirOp.PTR_CAST, i8p, [left]),
+                self.emit_value(MirOp.PTR_CAST, i8p, [right])
+            ]
         );
         if op in (Tok.EE, Tok.KW_IS) {
             return same;
@@ -157,7 +177,9 @@ impl MirLowering.compare_special(
     return None;
 }
 
-impl MirLowering.enum_coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue {
+impl MirLowering.enum_coerce(
+    value: MirValue, to: MirType, site: uni.UniNode
+) -> MirValue {
     raise MirRefused(
         mir_refusal(
             "conversion",
@@ -203,7 +225,9 @@ impl MirLowering.enum_call(nd: uni.FuncCall) -> (MirValue | None) {
         }
         ordinal = b.const_int(-1, mir_int());
         for member in reversed(layout.members) {
-            hit = self.str_compare("eq", value, b.const_str(member.str_value or "", mir_str()));
+            hit = self.str_compare(
+                "eq", value, b.const_str(member.str_value or "", mir_str())
+            );
             ordinal = b.select(hit, b.const_int(member.ordinal, mir_int()), ordinal);
         }
         self.raise_if(

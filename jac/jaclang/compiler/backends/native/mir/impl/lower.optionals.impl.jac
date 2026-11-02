@@ -38,7 +38,9 @@ impl MirLowering.opt_switch(
     b.position(absent);
 }
 
-impl MirLowering.opt_end(held: MirValue, absent_value: MirValue, done: MirBlock) -> MirValue {
+impl MirLowering.opt_end(
+    held: MirValue, absent_value: MirValue, done: MirBlock
+) -> MirValue {
     b = self.builder();
     b.store(held, self.coerce(absent_value, held.type, self.module));
     b.branch(done);

@@ -141,9 +141,7 @@ impl __jac_osp_generic_edge -> int {
     return made;
 }
 
-impl __jac_osp_connect(
-    src: int, tgt: int, eobj: int, undirected: bool, edge_tag: int
-) {
+impl __jac_osp_connect(src: int, tgt: int, eobj: int, undirected: bool, edge_tag: int) {
     _runtime();
     if osp_conn(src, tgt, eobj, 1 if undirected else 0, edge_tag, 0, 0) == -1 {
         raise RuntimeError("cannot connect a destroyed node");
@@ -153,7 +151,9 @@ impl __jac_osp_connect(
     __jac_rt_retain(eobj);
 }
 
-impl __jac_osp_refs(origin: int, dir: int, edge_tag: int, edges_only: bool) -> list[int] {
+impl __jac_osp_refs(
+    origin: int, dir: int, edge_tag: int, edges_only: bool
+) -> list[int] {
     return osp_refs(origin, dir, edge_tag, 1 if edges_only else 0);
 }
 

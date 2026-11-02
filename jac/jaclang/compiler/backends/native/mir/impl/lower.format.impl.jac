@@ -44,7 +44,9 @@ impl MirLowering.repr_of(value: MirValue, site: uni.UniNode) -> MirValue {
     if kind in (MirKind.STR, MirKind.STR_REF) {
         text = self.as_text(value);
         return self.owned_text(
-            self.call_rt("__jac_rt_str_repr", [b.str_part(text, "data"), b.str_part(text, "len")])
+            self.call_rt(
+                "__jac_rt_str_repr", [b.str_part(text, "data"), b.str_part(text, "len")]
+            )
         );
     }
     if kind in (MirKind.INT, MirKind.BOOL, MirKind.NONE, MirKind.FLOAT) {
@@ -69,7 +71,9 @@ impl MirLowering.repr_of(value: MirValue, site: uni.UniNode) -> MirValue {
             }
             result = self.str_concat(result, text);
         }
-        return self.str_concat(result, b.const_str(",)" if count == 1 else ")", mir_str()));
+        return self.str_concat(
+            result, b.const_str(",)" if count == 1 else ")", mir_str())
+        );
     }
     if kind in (MirKind.BYTES, MirKind.BYTEARRAY) {
         held = self.spill(value);
@@ -100,27 +104,40 @@ impl MirLowering.ascii_of(value: MirValue, site: uni.UniNode) -> MirValue {
     b = self.builder();
     text = self.repr_of(value, site);
     return self.owned_text(
-        self.call_rt("__jac_rt_str_ascii", [b.str_part(text, "data"), b.str_part(text, "len")])
+        self.call_rt(
+            "__jac_rt_str_ascii", [b.str_part(text, "data"), b.str_part(text, "len")]
+        )
     );
 }
 
-impl MirLowering.object_text(value: MirValue, method: str, site: uni.UniNode) -> MirValue {
+impl MirLowering.object_text(
+    value: MirValue, method: str, site: uni.UniNode
+) -> MirValue {
     b = self.builder();
     arch = self.archetypes.get(value.type.name);
     if arch is None {
-        raise MirRefused(mir_refusal("conversion", f"{method} of {value.type.render()}", site));
+        raise MirRefused(
+            mir_refusal("conversion", f"{method} of {value.type.render()}", site)
+        );
     }
     found = self.find_method(arch, method);
     if found is not None {
         decl = self.decls.get(id(found));
-        if decl is None or decl.params or decl.ret.kind not in (MirKind.STR, MirKind.STR_REF) {
-            raise MirRefused(mir_refusal("method", f"{arch.name.value}.{method}", site));
+        if decl is None
+            or decl.params
+            or decl.ret.kind not in (MirKind.STR, MirKind.STR_REF) {
+            raise MirRefused(
+                mir_refusal("method", f"{arch.name.value}.{method}", site)
+            );
         }
         obj_def = self.object_def(arch);
         if obj_def.vtable_symbol and decl.symbol in obj_def.vtable_methods {
             i8p = mir_c_ptr(mir_int(8, False));
             slot_place = self.emit_value(
-                MirOp.FIELD_ADDR, mir_c_ptr(mir_c_ptr(i8p)), [value], int_value=obj_def.vtable_slot
+                MirOp.FIELD_ADDR,
+                mir_c_ptr(mir_c_ptr(i8p)),
+                [value],
+                int_value=obj_def.vtable_slot
             );
             table = b.load(slot_place, mir_c_ptr(i8p));
             index = obj_def.vtable_methods.index(decl.symbol) + VTABLE_HEADER_SLOTS;
@@ -128,7 +145,9 @@ impl MirLowering.object_text(value: MirValue, method: str, site: uni.UniNode) ->
                 MirOp.PTR_OFFSET, mir_c_ptr(i8p), [table, b.const_int(index, mir_int())]
             );
             callee = self.emit_value(
-                MirOp.PTR_CAST, mir_c_fn([value.type], decl.ret), [b.load(entry_place, i8p)]
+                MirOp.PTR_CAST,
+                mir_c_fn([value.type], decl.ret),
+                [b.load(entry_place, i8p)]
             );
             result = self.emit_value(MirOp.CALL_FNPTR, decl.ret, [callee, value]);
             result.owned = True;
@@ -149,7 +168,10 @@ impl MirLowering.object_text(value: MirValue, method: str, site: uni.UniNode) ->
                 "__jac_rt_obj_text",
                 [
                     self.emit_value(
-                        MirOp.CSTR, mir_c_ptr(mir_int(8, False)), [], str_value=arch.name.value
+                        MirOp.CSTR,
+                        mir_c_ptr(mir_int(8, False)),
+                        [],
+                        str_value=arch.name.value
                     ),
                     self.address_of(value)
                 ]
@@ -170,7 +192,12 @@ impl MirLowering.text_fn(value_type: MirType, site: uni.UniNode) -> str {
     }
     symbol = f"{self.mir.prefix}.__repr.{len(self.text_fns)}";
     self.text_fns[value_type.key] = symbol;
-    fn = MirFunction(name=f"__repr.{value_type.render()}", symbol=symbol, ret=mir_str(), linkage="internal");
+    fn = MirFunction(
+        name=f"__repr.{value_type.render()}",
+        symbol=symbol,
+        ret=mir_str(),
+        linkage="internal"
+    );
     first = fn.new_block("entry");
     param = fn.new_value(value_type, "value");
     fn.params.append(MirParam(name="value", value=param));
@@ -199,10 +226,14 @@ impl MirLowering.sb_text(sb: MirValue, text: str) {
 
 impl MirLowering.sb_value(sb: MirValue, text: MirValue) {
     b = self.builder();
-    self.runtime("__jac_rt_sb_add", [sb, b.str_part(text, "data"), b.str_part(text, "len")]);
+    self.runtime(
+        "__jac_rt_sb_add", [sb, b.str_part(text, "data"), b.str_part(text, "len")]
+    );
 }
 
-impl MirLowering.dict_part(d: MirValue, at: MirValue, part: MirType, is_key: bool) -> MirValue {
+impl MirLowering.dict_part(
+    d: MirValue, at: MirValue, part: MirType, is_key: bool
+) -> MirValue {
     b = self.builder();
     kind = self.elem_kind(part, self.module);
     if kind in (KIND_STR, KIND_REF) {
@@ -212,7 +243,9 @@ impl MirLowering.dict_part(d: MirValue, at: MirValue, part: MirType, is_key: boo
         );
         return self.owned_element(handle, part);
     }
-    bits = self.call_rt("__jac_rt_dict_key_at" if is_key else "__jac_rt_dict_val_at", [d, at]);
+    bits = self.call_rt(
+        "__jac_rt_dict_key_at" if is_key else "__jac_rt_dict_val_at", [d, at]
+    );
     return self.scalar_from_bits(bits, part);
 }
 
@@ -268,7 +301,9 @@ impl MirLowering.container_repr_body(param: MirValue, site: uni.UniNode) {
         if kind == MirKind.DICT {
             self.sb_text(sb, ": ");
             entry_at = self.builder().load(cursor, mir_int());
-            item = self.spill(self.dict_part(param, entry_at, param.type.args[1], False));
+            item = self.spill(
+                self.dict_part(param, entry_at, param.type.args[1], False)
+            );
             self.sb_value(sb, self.repr_of(item, site));
         }
     }
@@ -327,7 +362,9 @@ impl MirLowering.fstring_value(nd: uni.FString) -> MirValue {
         } elif part.conversion == FSTRING_STR {
             value = self.str_value(value, part);
         } elif part.conversion != -1 {
-            raise MirRefused(mir_refusal("f-string", f"conversion {part.conversion}", part));
+            raise MirRefused(
+                mir_refusal("f-string", f"conversion {part.conversion}", part)
+            );
         }
         spec = self.spill(self.as_text(self.lower_expr(part.format_spec)))
             if part.format_spec is not None
@@ -356,15 +393,21 @@ impl MirLowering.format_value(
     kind = value.type.kind;
     if kind == MirKind.INT {
         return self.owned_text(
-            self.call_rt("__jac_rt_format_int", [b.convert(value, mir_int()), data, size])
+            self.call_rt(
+                "__jac_rt_format_int", [b.convert(value, mir_int()), data, size]
+            )
         );
     }
     if kind == MirKind.BOOL {
-        return self.owned_text(self.call_rt("__jac_rt_format_bool", [value, data, size]));
+        return self.owned_text(
+            self.call_rt("__jac_rt_format_bool", [value, data, size])
+        );
     }
     if kind == MirKind.FLOAT {
         return self.owned_text(
-            self.call_rt("__jac_rt_format_float", [b.convert(value, mir_float()), data, size])
+            self.call_rt(
+                "__jac_rt_format_float", [b.convert(value, mir_float()), data, size]
+            )
         );
     }
     if kind in (MirKind.STR, MirKind.STR_REF) {
@@ -409,9 +452,13 @@ impl MirLowering.print_call(nd: uni.FuncCall) -> MirValue {
         }
         key = arg.key.sym_name if arg.key is not None else "";
         if key in ("sep", "end") {
-            text = None if isinstance(arg.value, uni.Null) else self.spill(self.as_text(self.lower_expr(arg.value)));
+            text = None
+                if isinstance(arg.value, uni.Null)
+                else self.spill(self.as_text(self.lower_expr(arg.value)));
             if text is not None and text.type.kind != MirKind.STR {
-                raise MirRefused(mir_refusal("print", f"{key} of {text.type.render()}", arg));
+                raise MirRefused(
+                    mir_refusal("print", f"{key} of {text.type.render()}", arg)
+                );
             }
             if key == "sep" {
                 sep = text;
@@ -423,7 +470,9 @@ impl MirLowering.print_call(nd: uni.FuncCall) -> MirValue {
         } elif key == "flush" {
             folded = arg.value.ct_value;
             if not isinstance(folded, CtBool) {
-                raise MirRefused(mir_refusal("print", "flush that is not a constant", arg));
+                raise MirRefused(
+                    mir_refusal("print", "flush that is not a constant", arg)
+                );
             }
             flush = folded.value;
         } else {
@@ -432,7 +481,9 @@ impl MirLowering.print_call(nd: uni.FuncCall) -> MirValue {
     }
     for (index, value) in enumerate(values) {
         if index > 0 {
-            self.write_value(sep if sep is not None else b.const_str(" ", mir_str()), fd, nd);
+            self.write_value(
+                sep if sep is not None else b.const_str(" ", mir_str()), fd, nd
+            );
         }
         self.write_value(value, fd, nd);
     }
@@ -453,7 +504,9 @@ impl MirLowering.stream_fd(nd: uni.Expr) -> int {
         return 1 if nd.right.value == "stdout" else 2;
     }
     raise MirRefused(
-        mir_refusal("print", "file", nd, "Native print writes to sys.stdout or sys.stderr.")
+        mir_refusal(
+            "print", "file", nd, "Native print writes to sys.stdout or sys.stderr."
+        )
     );
 }
 
@@ -465,16 +518,23 @@ impl MirLowering.write_value(value: MirValue, fd: int, site: uni.UniNode) {
         return;
     }
     text = self.str_value(value, site);
-    self.runtime("__jac_rt_write", [out, b.str_part(text, "data"), b.str_part(text, "len")]);
+    self.runtime(
+        "__jac_rt_write", [out, b.str_part(text, "data"), b.str_part(text, "len")]
+    );
 }
 
 impl MirLowering.text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) {
     b = self.builder();
     params = list(nd.params or []);
-    if name not in TEXT_BUILTINS or any(isinstance(arg, uni.KWPair) for arg in params) {
+    if name not in TEXT_BUILTINS
+        or any(isinstance(arg, uni.KWPair) for arg in params) {
         return None;
     }
-    args: list[uni.Expr] = [arg for arg in params if isinstance(arg, uni.Expr)];
+    args: list[uni.Expr] = [
+        arg
+        for arg in params
+        if isinstance(arg, uni.Expr)
+    ];
     if name == "str" {
         if not args {
             return b.const_str("", mir_str());
@@ -484,7 +544,9 @@ impl MirLowering.text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         }
         held = self.spill(self.lower_expr(args[0]));
         if not self.is_byte_seq(held) {
-            raise MirRefused(mir_refusal("call", f"str of {held.type.render()} with an encoding", nd));
+            raise MirRefused(
+                mir_refusal("call", f"str of {held.type.render()} with an encoding", nd)
+            );
         }
         codec = self.codec_arg(args[1], TEXT_CODECS, nd);
         errors = self.codec_arg(args[2] if len(args) > 2 else None, TEXT_ERRORS, nd);
@@ -497,17 +559,21 @@ impl MirLowering.text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         );
     }
     if name == "len" {
-        if len(args) == 1 and self.expr_type(args[0]).kind in (MirKind.BYTES, MirKind.BYTEARRAY) {
+        if len(args) == 1
+            and self.expr_type(args[0]).kind in (MirKind.BYTES, MirKind.BYTEARRAY) {
             return self.byte_len(self.lower_expr(args[0]));
         }
         return None;
     }
     if name in ("int", "float") {
         if not args {
-            return b.const_int(0, mir_int()) if name == "int" else b.const_float(0.0, mir_float());
+            return b.const_int(0, mir_int())
+                if name == "int"
+                else b.const_float(0.0, mir_float());
         }
         source_kind = self.expr_type(args[0]).kind;
-        if source_kind not in (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY) {
+        if source_kind
+            not in (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY) {
             return None;
         }
         source = self.spill(self.lower_expr(args[0]));
@@ -528,7 +594,11 @@ impl MirLowering.text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         return self.truthy(self.lower_expr(args[0]), args[0]);
     }
     if len(args) == 0 and name in ("bytes", "bytearray") {
-        empty = b.ref_cast(self.call_rt("__jac_rt_bytes_zero", [b.const_int(0, mir_int())]), mir_bytes(), True);
+        empty = b.ref_cast(
+            self.call_rt("__jac_rt_bytes_zero", [b.const_int(0, mir_int())]),
+            mir_bytes(),
+            True
+        );
         return empty if name == "bytes" else self.to_bytearray(empty);
     }
     if not args {
@@ -546,7 +616,9 @@ impl MirLowering.text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         return self.ascii_of(first, nd);
     }
     if name == "format" {
-        spec = self.spill(self.as_text(self.lower_expr(args[1]))) if len(args) > 1 else None;
+        spec = self.spill(self.as_text(self.lower_expr(args[1])))
+            if len(args) > 1
+            else None;
         if spec is None {
             return self.str_value(first, nd);
         }
@@ -562,17 +634,24 @@ impl MirLowering.text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         }
         return self.call_rt(
             "__jac_rt_str_ord",
-            [b.str_part(text, "root"), b.str_part(text, "data"), b.str_part(text, "len")]
+            [
+                b.str_part(text, "root"),
+                b.str_part(text, "data"),
+                b.str_part(text, "len")
+            ]
         );
     }
     if name == "chr" {
-        return self.owned_text(self.call_rt("__jac_rt_str_chr", [self.coerce(first, mir_int(), nd)]));
+        return self.owned_text(
+            self.call_rt("__jac_rt_str_chr", [self.coerce(first, mir_int(), nd)])
+        );
     }
     if name in ("hex", "oct", "bin") {
         radix = 16 if name == "hex" else (8 if name == "oct" else 2);
         return self.owned_text(
             self.call_rt(
-                "__jac_rt_int_text", [self.coerce(first, mir_int(), nd), b.const_int(radix, mir_int())]
+                "__jac_rt_int_text",
+                [self.coerce(first, mir_int(), nd), b.const_int(radix, mir_int())]
             )
         );
     }
@@ -610,7 +689,9 @@ impl MirLowering.bytes_from(args: list[uni.Expr], nd: uni.FuncCall) -> MirValue 
     handle: MirValue;
     if kind in (MirKind.STR, MirKind.STR_REF) {
         if len(args) < 2 {
-            raise MirRefused(mir_refusal("call", "bytes of str without an encoding", nd));
+            raise MirRefused(
+                mir_refusal("call", "bytes of str without an encoding", nd)
+            );
         }
         text = self.as_text(source);
         codec = self.codec_arg(args[1], TEXT_CODECS, nd);
@@ -630,7 +711,8 @@ impl MirLowering.bytes_from(args: list[uni.Expr], nd: uni.FuncCall) -> MirValue 
     } elif self.is_byte_seq(source) {
         (data, size) = self.byte_parts(source);
         handle = self.call_rt("__jac_rt_bytes_new", [data, size]);
-    } elif kind == MirKind.LIST and source.type.payload().kind in (MirKind.INT, MirKind.BOOL) {
+    } elif kind == MirKind.LIST
+        and source.type.payload().kind in (MirKind.INT, MirKind.BOOL) {
         handle = self.call_rt("__jac_rt_bytes_from_list", [source]);
     } else {
         raise MirRefused(mir_refusal("call", f"bytes of {source.type.render()}", nd));
@@ -641,9 +723,13 @@ impl MirLowering.bytes_from(args: list[uni.Expr], nd: uni.FuncCall) -> MirValue 
 impl MirLowering.absolute(value: MirValue, site: uni.UniNode) -> MirValue {
     b = self.builder();
     if value.type.kind == MirKind.FLOAT {
-        bits = self.emit_value(MirOp.BITCAST, mir_int(value.type.width, True, True), [value]);
+        bits = self.emit_value(
+            MirOp.BITCAST, mir_int(value.type.width, True, True), [value]
+        );
         mask = b.const_int((1 << (value.type.width - 1)) - 1, bits.type);
-        return self.emit_value(MirOp.BITCAST, value.type, [b.binary("and", bits, mask)]);
+        return self.emit_value(
+            MirOp.BITCAST, value.type, [b.binary("and", bits, mask)]
+        );
     }
     if value.type.kind not in (MirKind.INT, MirKind.BOOL) {
         raise MirRefused(mir_refusal("call", f"abs of {value.type.render()}", site));
@@ -655,7 +741,9 @@ impl MirLowering.absolute(value: MirValue, site: uni.UniNode) -> MirValue {
     zero = b.const_int(0, whole.type);
     negative = b.compare("lt", whole, zero);
     self.raise_if(
-        b.binary("and", negative, b.overflows("sub", zero, whole)), "OverflowError", OVERFLOW_MESSAGE
+        b.binary("and", negative, b.overflows("sub", zero, whole)),
+        "OverflowError",
+        OVERFLOW_MESSAGE
     );
     return b.select(negative, b.binary("sub", zero, whole), whole);
 }
@@ -667,7 +755,9 @@ impl MirLowering.extreme(
     order = "gt" if name == "max" else "lt";
     if not rest {
         if first.type.kind != MirKind.LIST or not first.type.payload().is_numeric() {
-            raise MirRefused(mir_refusal("call", f"{name} of {first.type.render()}", site));
+            raise MirRefused(
+                mir_refusal("call", f"{name} of {first.type.render()}", site)
+            );
         }
         items = self.spill(first);
         size = self.container_len(items);
@@ -692,7 +782,9 @@ impl MirLowering.extreme(
         b.position(body);
         candidate = self.list_read(items, at);
         current = b.load(best, elem);
-        b.store(best, b.select(b.compare(order, candidate, current), candidate, current));
+        b.store(
+            best, b.select(b.compare(order, candidate, current), candidate, current)
+        );
         b.store(cursor, b.binary("add", at, b.const_int(1, mir_int())));
         b.branch(head);
         b.position(done);
@@ -710,25 +802,33 @@ impl MirLowering.extreme(
     return best;
 }
 
-impl MirLowering.rounded(value: MirValue, digits_nd: (uni.Expr | None), site: uni.UniNode) -> MirValue {
+impl MirLowering.rounded(
+    value: MirValue, digits_nd: (uni.Expr | None), site: uni.UniNode
+) -> MirValue {
     b = self.builder();
     if value.type.kind not in (MirKind.INT, MirKind.BOOL, MirKind.FLOAT) {
         raise MirRefused(mir_refusal("call", f"round of {value.type.render()}", site));
     }
     if digits_nd is None or not self.present(digits_nd) {
         if value.type.kind == MirKind.FLOAT {
-            return self.call_rt("__jac_rt_float_round_int", [b.convert(value, mir_float())]);
+            return self.call_rt(
+                "__jac_rt_float_round_int", [b.convert(value, mir_float())]
+            );
         }
         return b.convert(value, mir_int());
     }
     digits = self.coerce(self.lower_expr(digits_nd), mir_int(), digits_nd);
     if value.type.kind == MirKind.FLOAT {
-        return self.call_rt("__jac_rt_float_round", [b.convert(value, mir_float()), digits]);
+        return self.call_rt(
+            "__jac_rt_float_round", [b.convert(value, mir_float()), digits]
+        );
     }
     return self.call_rt("__jac_rt_int_round", [b.convert(value, mir_int()), digits]);
 }
 
-impl MirLowering.divmod_value(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue {
+impl MirLowering.divmod_value(
+    left: MirValue, right: MirValue, site: uni.UniNode
+) -> MirValue {
     b = self.builder();
     if not left.type.is_numeric() or not right.type.is_numeric() {
         raise MirRefused(mir_refusal("call", f"divmod of {left.type.render()}", site));
@@ -736,30 +836,48 @@ impl MirLowering.divmod_value(left: MirValue, right: MirValue, site: uni.UniNode
     if left.type.kind == MirKind.FLOAT or right.type.kind == MirKind.FLOAT {
         (l, r) = self.unify_numeric(left, right, site);
         self.raise_if(
-            b.compare("eq", r, b.const_float(0.0, r.type)), "ZeroDivisionError", "float divmod()"
+            b.compare("eq", r, b.const_float(0.0, r.type)),
+            "ZeroDivisionError",
+            "float divmod()"
         );
         quotient = self.arith(Tok.FLOOR_DIV, l, r, site);
         remainder = self.arith(Tok.MOD, l, r, site);
-        return self.emit_value(MirOp.TUPLE_MAKE, mir_tuple([quotient.type, remainder.type]), [quotient, remainder]);
+        return self.emit_value(
+            MirOp.TUPLE_MAKE,
+            mir_tuple([quotient.type, remainder.type]),
+            [quotient, remainder]
+        );
     }
     quotient = self.arith(Tok.FLOOR_DIV, left, right, site);
     remainder = self.arith(Tok.MOD, left, right, site);
-    return self.emit_value(MirOp.TUPLE_MAKE, mir_tuple([quotient.type, remainder.type]), [quotient, remainder]);
+    return self.emit_value(
+        MirOp.TUPLE_MAKE,
+        mir_tuple([quotient.type, remainder.type]),
+        [quotient, remainder]
+    );
 }
 
 impl MirLowering.power(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue {
     b = self.builder();
     if not left.type.is_numeric() or not right.type.is_numeric() {
-        raise MirRefused(mir_refusal("binary operator", f"** on {left.type.render()}", site));
+        raise MirRefused(
+            mir_refusal("binary operator", f"** on {left.type.render()}", site)
+        );
     }
     if left.type.is_sized() or right.type.is_sized() {
         raise MirRefused(
-            mir_refusal("binary operator", "** on a fixed-width int", site, "Convert the operands to int first.")
+            mir_refusal(
+                "binary operator",
+                "** on a fixed-width int",
+                site,
+                "Convert the operands to int first."
+            )
         );
     }
     if left.type.kind == MirKind.FLOAT or right.type.kind == MirKind.FLOAT {
         return self.call_rt(
-            "__jac_rt_float_pow", [b.convert(left, mir_float()), b.convert(right, mir_float())]
+            "__jac_rt_float_pow",
+            [b.convert(left, mir_float()), b.convert(right, mir_float())]
         );
     }
     base = b.convert(left, mir_int());
@@ -808,7 +926,8 @@ impl MirLowering.hash_value(value: MirValue, site: uni.UniNode) -> MirValue {
             acc = self.call_rt("__jac_rt_hash_tuple_add", [acc, lane]);
         }
         return self.call_rt(
-            "__jac_rt_hash_tuple_end", [acc, b.const_int(len(value.type.args), mir_int())]
+            "__jac_rt_hash_tuple_end",
+            [acc, b.const_int(len(value.type.args), mir_int())]
         );
     }
     if kind == MirKind.OBJ {
@@ -817,7 +936,9 @@ impl MirLowering.hash_value(value: MirValue, site: uni.UniNode) -> MirValue {
         if method is not None {
             decl = self.decls.get(id(method));
             if decl is None or decl.params {
-                raise MirRefused(mir_refusal("method", f"{value.type.name}.__hash__", site));
+                raise MirRefused(
+                    mir_refusal("method", f"{value.type.name}.__hash__", site)
+                );
             }
             hashed = b.call(decl.symbol, [value], decl.ret);
             if hashed is None {
@@ -828,7 +949,9 @@ impl MirLowering.hash_value(value: MirValue, site: uni.UniNode) -> MirValue {
         return self.call_rt("__jac_rt_hash_pointer", [self.address_of(value)]);
     }
     if kind in (MirKind.BYTEARRAY, MirKind.LIST, MirKind.DICT, MirKind.SET) {
-        b.raise_builtin("TypeError", f"unhashable type: '{self.type_label(value.type)}'");
+        b.raise_builtin(
+            "TypeError", f"unhashable type: '{self.type_label(value.type)}'"
+        );
         b.position(self.st().fn.new_block("dead"));
         return b.const_int(0, mir_int());
     }

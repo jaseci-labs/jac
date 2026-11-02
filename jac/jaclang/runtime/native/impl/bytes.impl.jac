@@ -370,7 +370,9 @@ impl _utf8_valid(d: int, n: int, i: int) -> int {
     return need + 1;
 }
 
-impl _decode_error(codec: ptr[u8], byte: int, position: int, reason: ptr[u8]) -> ptr[u8] {
+impl _decode_error(
+    codec: ptr[u8], byte: int, position: int, reason: ptr[u8]
+) -> ptr[u8] {
     sb = __jac_rt_sb_new(96);
     __jac_rt_sb_byte(sb, 39);
     _sb_text(sb, codec);
@@ -412,21 +414,31 @@ impl __jac_rt_bytes_decode(
             __jac_rt_sb_drop(sb);
             if codec == CODEC_ASCII {
                 __jac_rt_raise_builtin(
-                    failure, _decode_error(ptr[u8]("ascii"), c, i, ptr[u8]("ordinal not in range(128)"))
+                    failure,
+                    _decode_error(
+                        ptr[u8]("ascii"), c, i, ptr[u8]("ordinal not in range(128)")
+                    )
                 );
             }
             if w == 0 {
                 __jac_rt_raise_builtin(
-                    failure, _decode_error(ptr[u8]("utf-8"), c, i, ptr[u8]("invalid start byte"))
+                    failure,
+                    _decode_error(ptr[u8]("utf-8"), c, i, ptr[u8]("invalid start byte"))
                 );
             }
             if i - w >= n {
                 __jac_rt_raise_builtin(
-                    failure, _decode_error(ptr[u8]("utf-8"), c, i, ptr[u8]("unexpected end of data"))
+                    failure,
+                    _decode_error(
+                        ptr[u8]("utf-8"), c, i, ptr[u8]("unexpected end of data")
+                    )
                 );
             }
             __jac_rt_raise_builtin(
-                failure, _decode_error(ptr[u8]("utf-8"), c, i, ptr[u8]("invalid continuation byte"))
+                failure,
+                _decode_error(
+                    ptr[u8]("utf-8"), c, i, ptr[u8]("invalid continuation byte")
+                )
             );
         }
         if errors == ERRORS_REPLACE {
@@ -501,7 +513,8 @@ impl __jac_rt_str_encode(
             }
             if codec == CODEC_ASCII {
                 __jac_rt_raise_builtin(
-                    failure, _encode_error(ptr[u8]("ascii"), cp, position, ptr[u8]("128"))
+                    failure,
+                    _encode_error(ptr[u8]("ascii"), cp, position, ptr[u8]("128"))
                 );
             }
             __jac_rt_raise_builtin(
@@ -722,7 +735,9 @@ impl __jac_rt_bytes_join(sep: ptr[u8], sn: int, parts: int) -> int {
             __jac_rt_sb_add(sb, sep, sn);
         }
         item = __mem_load_i64(items + k * 8);
-        __jac_rt_sb_add(sb, ptr[u8](item + BYTES_DATA), __mem_load_i64(item + BYTES_LEN));
+        __jac_rt_sb_add(
+            sb, ptr[u8](item + BYTES_DATA), __mem_load_i64(item + BYTES_LEN)
+        );
         k += 1;
     }
     return _from_sb(sb);

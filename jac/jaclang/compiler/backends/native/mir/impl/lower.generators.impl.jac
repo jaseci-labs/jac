@@ -17,7 +17,9 @@ impl MirLowering.alias_twins(ab: uni.Ability, sig: uni.FuncSignature, skip_self:
     if declared is None or declared is sig {
         return;
     }
-    for (twin, pv) in zip(self.param_nodes(declared, skip_self), self.param_nodes(sig, skip_self)) {
+    for (twin, pv) in zip(
+        self.param_nodes(declared, skip_self), self.param_nodes(sig, skip_self)
+    ) {
         if twin.name.sym is not None and pv.name.sym is not None {
             found = self.st().locals.get(id(pv.name.sym));
             if found is not None {
@@ -58,7 +60,8 @@ impl MirLowering.lower_generator(decl: MirDecl) -> (MirFunction | None) {
             sig = spec if isinstance(spec, uni.FuncSignature) else None;
             body = body.body;
         }
-        if not isinstance(sig, uni.FuncSignature) or not isinstance(body, (list, tuple)) {
+        if not isinstance(sig, uni.FuncSignature)
+            or not isinstance(body, (list, tuple)) {
             raise MirRefused(mir_refusal("function", "generator body", ab));
         }
         frame = resume.new_value(i8p, "frame");
@@ -96,7 +99,9 @@ impl MirLowering.lower_generator(decl: MirDecl) -> (MirFunction | None) {
                 self.builder().unreachable();
             }
         }
-        self.state = MirFnState(fn=start, b=MirBuilder(fn=start, block=start.new_block("entry")));
+        self.state = MirFnState(
+            fn=start, b=MirBuilder(fn=start, block=start.new_block("entry"))
+        );
         b = self.builder();
         values: list[MirValue] = [];
         if decl.self_type is not None {
@@ -132,9 +137,14 @@ impl MirLowering.lower_generator(decl: MirDecl) -> (MirFunction | None) {
         code = self.emit_value(
             MirOp.PTR_INT,
             mir_int(),
-            [self.emit_value(
-                MirOp.FN_ADDR, mir_c_fn([i8p, i8p], mir_bool()), [], callee=resume.symbol
-            )]
+            [
+                self.emit_value(
+                    MirOp.FN_ADDR,
+                    mir_c_fn([i8p, i8p], mir_bool()),
+                    [],
+                    callee=resume.symbol
+                )
+            ]
         );
         made = self.runtime_value("__jac_rt_iter_new", [code, frame_obj]);
         b.ret(b.ref_cast(made, decl.ret, True));
@@ -281,13 +291,17 @@ impl MirLowering.iter_open(value: MirValue, site: uni.UniNode) -> MirIterCursor 
         b.store(
             limit,
             self.emit_value(
-                MirOp.MEM_LOAD, mir_int(), [b.binary("add", base, b.const_int(8, mir_int()))]
+                MirOp.MEM_LOAD,
+                mir_int(),
+                [b.binary("add", base, b.const_int(8, mir_int()))]
             )
         );
         b.store(
             stride,
             self.emit_value(
-                MirOp.MEM_LOAD, mir_int(), [b.binary("add", base, b.const_int(16, mir_int()))]
+                MirOp.MEM_LOAD,
+                mir_int(),
+                [b.binary("add", base, b.const_int(16, mir_int()))]
             )
         );
         return MirIterCursor(
@@ -320,7 +334,9 @@ impl MirLowering.iter_step(
         b.store(cursor.position, following);
         if cursor.kind == "enum" {
             b.cond_branch(
-                b.compare("lt", following, b.const_int(len(cursor.payloads), mir_int())),
+                b.compare(
+                    "lt", following, b.const_int(len(cursor.payloads), mir_int())
+                ),
                 body,
                 done
             );
@@ -340,11 +356,15 @@ impl MirLowering.iter_step(
         if source is None {
             raise RuntimeError("list cursor has no source");
         }
-        b.cond_branch(b.compare("lt", following, self.container_len(source)), body, done);
+        b.cond_branch(
+            b.compare("lt", following, self.container_len(source)), body, done
+        );
         b.position(body);
         return self.list_read(source, b.load(cursor.position, mir_int()));
     }
-    if cursor.kind == "keys" and cursor.position is not None and cursor.source is not None {
+    if cursor.kind == "keys"
+        and cursor.position is not None
+        and cursor.source is not None {
         source = cursor.source;
         upcoming = self.runtime_value(
             "__jac_rt_dict_next", [source, b.load(cursor.position, mir_int())]
@@ -372,7 +392,9 @@ impl MirLowering.iter_step(
         end = b.load(cursor.limit, mir_int());
         pace = b.load(cursor.stride, mir_int());
         more = b.select(
-            b.compare("gt", pace, zero), b.compare("lt", now, end), b.compare("gt", now, end)
+            b.compare("gt", pace, zero),
+            b.compare("lt", now, end),
+            b.compare("gt", now, end)
         );
         b.cond_branch(more, body, done);
         b.position(body);
@@ -404,9 +426,13 @@ impl MirLowering.iter_advance(it: MirValue, out: MirValue) -> MirValue {
     state = self.emit_value(
         MirOp.PTR_CAST,
         i8p,
-        [self.emit_value(
-            MirOp.MEM_LOAD, mir_int(), [b.binary("add", base, b.const_int(8, mir_int()))]
-        )]
+        [
+            self.emit_value(
+                MirOp.MEM_LOAD,
+                mir_int(),
+                [b.binary("add", base, b.const_int(8, mir_int()))]
+            )
+        ]
     );
     target = self.emit_value(MirOp.PTR_CAST, mir_c_fn([i8p, i8p], mir_bool()), [code]);
     return self.emit_value(
@@ -470,7 +496,11 @@ impl MirLowering.iter_value(value: MirValue, site: uni.UniNode) -> MirValue {
     if t.kind == MirKind.STR {
         held = self.runtime_value(
             "__jac_rt_str_ref",
-            [b.str_part(value, "root"), b.str_part(value, "data"), b.str_part(value, "len")]
+            [
+                b.str_part(value, "root"),
+                b.str_part(value, "data"),
+                b.str_part(value, "len")
+            ]
         );
         made = self.runtime_value("__jac_rt_iter_str", [held]);
         return b.ref_cast(made, mir_iter(mir_str()), True);
@@ -478,7 +508,9 @@ impl MirLowering.iter_value(value: MirValue, site: uni.UniNode) -> MirValue {
     raise MirRefused(mir_refusal("iteration", t.render(), site));
 }
 
-impl MirLowering.iter_coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue {
+impl MirLowering.iter_coerce(
+    value: MirValue, to: MirType, site: uni.UniNode
+) -> MirValue {
     made = self.iter_value(value, site);
     if made.type is not to {
         raise MirRefused(
@@ -497,14 +529,16 @@ impl MirLowering.builtin_source(nd: uni.UniNode, names: list[str]) -> str {
     }
     callee = nd.callee_decl;
     if callee is not None
-        and os.path.basename(callee.loc.mod_path) not in ("builtins.pyi", "builtins.jac") {
+        and os.path.basename(callee.loc.mod_path)
+            not in ("builtins.pyi", "builtins.jac") {
         return "";
     }
     return nd.target.value;
 }
 
 impl MirLowering.is_special_source(nd: uni.Expr) -> bool {
-    return bool(self.builtin_source(nd, ["enumerate", "zip"])) or self.is_enum_class(nd);
+    return bool(self.builtin_source(nd, ["enumerate", "zip"]))
+        or self.is_enum_class(nd);
 }
 
 impl MirLowering.open_sources(
@@ -537,7 +571,9 @@ impl MirLowering.open_sources(
         return ([self.iter_open(self.lower_expr(args[0]), args[0])], counter);
     }
     if named {
-        raise MirRefused(mir_refusal("call", f"{name} with keyword arguments", collection));
+        raise MirRefused(
+            mir_refusal("call", f"{name} with keyword arguments", collection)
+        );
     }
     return ([self.iter_open(self.lower_expr(arg), arg) for arg in args], None);
 }
@@ -561,7 +597,9 @@ impl MirLowering.step_sources(
     return values;
 }
 
-impl MirLowering.bind_values(target: uni.Expr, values: list[MirValue], site: uni.UniNode) {
+impl MirLowering.bind_values(
+    target: uni.Expr, values: list[MirValue], site: uni.UniNode
+) {
     if len(values) == 1 {
         self.bind_target(target, values[0]);
         return;
@@ -595,7 +633,15 @@ impl MirLowering.bind_target(target: uni.Expr, value: MirValue) {
     } elif isinstance(target, uni.AtomUnit) and isinstance(target.value, uni.Expr) {
         self.bind_target(target.value, value);
     } elif isinstance(target, uni.TupleVal) {
-        self.unpack_into([part for part in target.values if isinstance(part, uni.Expr)], value, target);
+        self.unpack_into(
+            [
+                part
+                for part in target.values
+                if isinstance(part, uni.Expr)
+            ],
+            value,
+            target
+        );
     } else {
         raise MirRefused(mir_refusal("for target", type(target).__name__, target));
     }
@@ -625,13 +671,17 @@ impl MirLowering.lower_for_sources(nd: uni.InForStmt, holder: (MirValue | None))
     b.position(after);
 }
 
-impl MirLowering.split_args(nd: uni.FuncCall) -> tuple[list[uni.Expr], dict[str, uni.Expr]] {
+impl MirLowering.split_args(
+    nd: uni.FuncCall
+) -> tuple[list[uni.Expr], dict[str, uni.Expr]] {
     args: list[uni.Expr] = [];
     named: dict[str, uni.Expr] = {};
     for arg in list(nd.params or []) {
         if isinstance(arg, uni.KWPair) {
             if arg.key is None {
-                raise MirRefused(mir_refusal("call argument", "keyword unpacking", arg));
+                raise MirRefused(
+                    mir_refusal("call argument", "keyword unpacking", arg)
+                );
             }
             named[arg.key.sym_name] = arg.value;
         } else {
@@ -642,7 +692,18 @@ impl MirLowering.split_args(nd: uni.FuncCall) -> tuple[list[uni.Expr], dict[str,
 }
 
 impl MirLowering.iter_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) {
-    if name not in ("iter", "next", "range", "sorted", "sum", "any", "all", "enumerate", "zip") {
+    if name
+        not in (
+            "iter",
+            "next",
+            "range",
+            "sorted",
+            "sum",
+            "any",
+            "all",
+            "enumerate",
+            "zip"
+        ) {
         return None;
     }
     b = self.builder();
@@ -713,7 +774,9 @@ impl MirLowering.builtin_next(nd: uni.FuncCall, args: list[uni.Expr]) -> MirValu
     b.store(
         held,
         self.coerce(
-            self.element_from_bits(b.load(out, mir_int()), it.type.payload()), result_type, nd
+            self.element_from_bits(b.load(out, mir_int()), it.type.payload()),
+            result_type,
+            nd
         )
     );
     b.branch(done);
@@ -750,14 +813,21 @@ impl MirLowering.builtin_sorted(
     kind = self.elem_kind(elem, nd);
     if kind == KIND_REF {
         raise MirRefused(
-            mir_refusal("call", f"sorted of {elem.render()}", nd, "Native sorting orders ints, floats, bools and strings.")
+            mir_refusal(
+                "call",
+                f"sorted of {elem.render()}",
+                nd,
+                "Native sorting orders ints, floats, bools and strings."
+            )
         );
     }
     source = self.lower_expr(args[0]);
     made: MirValue;
     if source.type is result_type {
         made = b.ref_cast(
-            self.runtime_value("__jac_rt_list_copy", [source, b.const_int(kind, mir_int())]),
+            self.runtime_value(
+                "__jac_rt_list_copy", [source, b.const_int(kind, mir_int())]
+            ),
             result_type,
             True
         );
@@ -773,7 +843,9 @@ impl MirLowering.builtin_sorted(
     return made;
 }
 
-impl MirLowering.builtin_fold(nd: uni.FuncCall, name: str, source: uni.Expr) -> MirValue {
+impl MirLowering.builtin_fold(
+    nd: uni.FuncCall, name: str, source: uni.Expr
+) -> MirValue {
     b = self.builder();
     fn = self.st().fn;
     result_type = self.expr_type(nd);
@@ -799,7 +871,9 @@ impl MirLowering.builtin_fold(nd: uni.FuncCall, name: str, source: uni.Expr) -> 
         b.store(
             held,
             self.coerce(
-                self.arith(Tok.PLUS, b.load(held, result_type), values[0], nd), result_type, nd
+                self.arith(Tok.PLUS, b.load(held, result_type), values[0], nd),
+                result_type,
+                nd
             )
         );
         b.branch(head);
@@ -834,7 +908,10 @@ impl MirLowering.drain(value: MirValue, elem: MirType, site: uni.UniNode) -> Mir
     b.branch(head);
     b.position(head);
     element = self.iter_step(walker_state, body, after);
-    self.runtime("__jac_rt_list_push", [made, self.to_bits(self.coerce(element, elem, site), elem, site), kind]);
+    self.runtime(
+        "__jac_rt_list_push",
+        [made, self.to_bits(self.coerce(element, elem, site), elem, site), kind]
+    );
     b.branch(head);
     b.position(after);
     return made;

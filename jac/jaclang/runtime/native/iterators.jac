@@ -1,20 +1,3 @@
-"""Iterator runtime: the `JacIter` object, the iterator states over lists,
-dicts, sets, strings and ranges, generator frames and range values.
-
-A JacIter is 16 bytes from `__jac_rt_alloc`: the address of its next function
-at +0 and its state at +8, a refcounted object the iterator holds. A next
-function takes the state and the address of an 8-byte cell and returns whether
-it produced an element; it writes the element's bits into the cell (as in a
-container slot), retained when its kind is refcounted, so the caller owns what
-it receives.
-
-A list, dict-key or string iterator's state is 24 bytes: the collection, the
-position and the element kind. A range iterator's state and a range value are
-24 bytes: start (the next value, for an iterator), stop and step.
-
-A generator's state is its frame: `__jac_rt_gen_frame` allocates it zeroed,
-with the resume point at +0 and the pending-exception header after it, and
-installs the drop function the generator pass emitted for it."""
 glob ITER_NEXT: int = 0,
      ITER_STATE: int = 8,
      ITER_SIZE: int = 16,

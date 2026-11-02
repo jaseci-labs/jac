@@ -4,22 +4,32 @@ impl MirLowering.lower_comprehension(nd: (uni.ListCompr | uni.DictCompr)) -> Mir
     made: MirValue;
     if isinstance(nd, uni.DictCompr) {
         if result_type.kind != MirKind.DICT {
-            raise MirRefused(mir_refusal("dict comprehension", result_type.render(), nd));
+            raise MirRefused(
+                mir_refusal("dict comprehension", result_type.render(), nd)
+            );
         }
-        made = self.spill(self.new_dict(result_type.args[0], result_type.args[1], result_type));
+        made = self.spill(
+            self.new_dict(result_type.args[0], result_type.args[1], result_type)
+        );
     } elif isinstance(nd, uni.SetCompr) {
         if result_type.kind != MirKind.SET {
-            raise MirRefused(mir_refusal("set comprehension", result_type.render(), nd));
+            raise MirRefused(
+                mir_refusal("set comprehension", result_type.render(), nd)
+            );
         }
         made = self.spill(self.new_dict(result_type.payload(), None, result_type));
     } elif isinstance(nd, uni.GenCompr) {
         if result_type.kind != MirKind.ITER {
-            raise MirRefused(mir_refusal("generator expression", result_type.render(), nd));
+            raise MirRefused(
+                mir_refusal("generator expression", result_type.render(), nd)
+            );
         }
         made = self.spill(self.new_list(result_type.payload(), 8));
     } else {
         if result_type.kind != MirKind.LIST {
-            raise MirRefused(mir_refusal("list comprehension", result_type.render(), nd));
+            raise MirRefused(
+                mir_refusal("list comprehension", result_type.render(), nd)
+            );
         }
         made = self.spill(self.new_list(result_type.payload(), 8));
     }
@@ -27,7 +37,8 @@ impl MirLowering.lower_comprehension(nd: (uni.ListCompr | uni.DictCompr)) -> Mir
     if isinstance(nd, uni.GenCompr) {
         elem = result_type.payload();
         handle = self.runtime_value(
-            "__jac_rt_iter_list", [made, b.const_int(self.elem_kind(elem, nd), mir_int())]
+            "__jac_rt_iter_list",
+            [made, b.const_int(self.elem_kind(elem, nd), mir_int())]
         );
         return b.ref_cast(handle, result_type, True);
     }
@@ -97,7 +108,13 @@ impl MirLowering.compr_emit(nd: (uni.ListCompr | uni.DictCompr), made: MirValue)
     if made.type.kind == MirKind.SET {
         self.runtime(
             "__jac_rt_dict_set",
-            [made, bits, b.const_int(0, mir_int()), kind, b.const_int(NO_VALUE_KIND, mir_int())]
+            [
+                made,
+                bits,
+                b.const_int(0, mir_int()),
+                kind,
+                b.const_int(NO_VALUE_KIND, mir_int())
+            ]
         );
         return;
     }

@@ -6,7 +6,12 @@ glob RAISE_BUILTIN_SYMBOL: str = "__jac_rt_raise_builtin",
      RELEASE_ACYCLIC_SYMBOL: str = "__jac_rt_release_acyclic",
      ANY_RETAIN_SYMBOL: str = "__jac_rt_any_retain",
      ANY_RELEASE_SYMBOL: str = "__jac_rt_any_release",
-     ANY_OPS: list[MirOp] = [MirOp.ANY_BOX, MirOp.ANY_MAKE, MirOp.ANY_TAG, MirOp.ANY_PAYLOAD],
+     ANY_OPS: list[MirOp] = [
+         MirOp.ANY_BOX,
+         MirOp.ANY_MAKE,
+         MirOp.ANY_TAG,
+         MirOp.ANY_PAYLOAD
+     ],
      C_OPS: list[MirOp] = [
          MirOp.PTR_CAST,
          MirOp.PTR_INT,
@@ -95,9 +100,17 @@ obj MirEmitter {
     def emit_rc(b: ir.IRBuilder, instr: MirInstr);
     def rc_call(b: ir.IRBuilder, symbol: str, target: ir.Value);
     def extern_call(
-        b: ir.IRBuilder, symbol: str, ret: ir.Type, params: list[ir.Type], values: list[ir.Value]
+        b: ir.IRBuilder,
+        symbol: str,
+        ret: ir.Type,
+        params: list[ir.Type],
+        values: list[ir.Value]
     ) -> ir.Value;
-    def call_declared(b: ir.IRBuilder, callee: ir.Function, instr: MirInstr) -> ir.Value;
+
+    def call_declared(
+        b: ir.IRBuilder, callee: ir.Function, instr: MirInstr
+    ) -> ir.Value;
+
     def adapt(b: ir.IRBuilder, value: ir.Value, wanted: ir.Type) -> ir.Value;
     def emit_c(b: ir.IRBuilder, instr: MirInstr);
     def emit_memory(b: ir.IRBuilder, instr: MirInstr);

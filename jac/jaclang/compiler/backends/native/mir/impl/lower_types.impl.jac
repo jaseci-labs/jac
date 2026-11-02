@@ -88,7 +88,10 @@ impl mir_union_type(
     members = [
         member
         for member in t.types
-        if not (isinstance(member, ClassType) and member.shared.class_name in ("NoneType", "None"))
+        if not (
+            isinstance(member, ClassType)
+            and member.shared.class_name in ("NoneType", "None")
+        )
     ];
     has_none = len(members) < len(t.types);
     lowered = [mir_type_of(member, position, site, env) for member in members];
@@ -98,9 +101,8 @@ impl mir_union_type(
     shared = lowered[0];
     if all(
         member.kind == MirKind.INT
-        and member.width == shared.width
-        and member.signed == shared.signed
-        for member in lowered
+            and member.width == shared.width
+            and member.signed == shared.signed for member in lowered
     ) {
         merged = mir_int(
             shared.width, shared.signed, all(member.is_sized() for member in lowered)
@@ -174,7 +176,10 @@ impl mir_class_type(
     if name in ("NoneType", "None") {
         return mir_none();
     }
-    if name == "object" or (name == "Any" and isinstance(scope, uni.Archetype) and stub_archetype(scope)) {
+    if name == "object"
+        or (
+            name == "Any" and isinstance(scope, uni.Archetype) and stub_archetype(scope)
+        ) {
         return mir_any();
     }
     if name == "range" {
@@ -235,7 +240,9 @@ impl mir_class_type(
                 )
             );
         }
-        element_types = [mir_type_of(arg, MirPosition.ELEMENT, site, env) for arg in args];
+        element_types = [
+            mir_type_of(arg, MirPosition.ELEMENT, site, env) for arg in args
+        ];
         if name == "list" {
             return mir_list(element_types[0]);
         }

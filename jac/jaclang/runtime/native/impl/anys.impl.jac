@@ -26,7 +26,9 @@ impl __jac_rt_any_box(tag: int, payload: int) -> int {
 
 impl _box_drop(box: ptr[u8]) {
     at = int(box);
-    __jac_rt_any_release(__mem_load_i64(at + BOX_TAG), __mem_load_i64(at + BOX_PAYLOAD));
+    __jac_rt_any_release(
+        __mem_load_i64(at + BOX_TAG), __mem_load_i64(at + BOX_PAYLOAD)
+    );
     __jac_rt_free_block(at - HDR_TOTAL);
 }
 

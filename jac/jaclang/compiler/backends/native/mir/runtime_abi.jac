@@ -1,7 +1,3 @@
-"""The runtime functions generated code calls, by symbol, with their MIR
-signatures: the return spec first, then the parameters. The runtime units in
-jaclang/runtime/native define them in Jac. A `str.ref` result is an owned
-string the caller releases."""
 glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_str_cmp": ["int", "ptr", "int", "ptr", "int"],
          "__jac_rt_str_len": ["int", "ptr", "ptr", "int"],
@@ -82,23 +78,75 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_sb_add": ["none", "int", "ptr", "int"],
          "__jac_rt_sb_finish": ["str.ref", "int"],
          "__jac_rt_str_index": ["str.ref", "ptr", "ptr", "int", "int"],
-         "__jac_rt_str_slice": ["str.ref", "ptr", "ptr", "int", "int", "int", "int", "int"],
-         "__jac_rt_str_find": ["int", "ptr", "ptr", "int", "ptr", "int", "int", "int", "bool"],
+         "__jac_rt_str_slice": [
+             "str.ref",
+             "ptr",
+             "ptr",
+             "int",
+             "int",
+             "int",
+             "int",
+             "int"
+         ],
+         "__jac_rt_str_find": [
+             "int",
+             "ptr",
+             "ptr",
+             "int",
+             "ptr",
+             "int",
+             "int",
+             "int",
+             "bool"
+         ],
          "__jac_rt_str_count": ["int", "ptr", "ptr", "int", "ptr", "int", "int", "int"],
          "__jac_rt_str_contains": ["bool", "ptr", "int", "ptr", "int"],
          "__jac_rt_str_affix": [
-             "bool", "ptr", "ptr", "int", "ptr", "int", "int", "int", "bool"
+             "bool",
+             "ptr",
+             "ptr",
+             "int",
+             "ptr",
+             "int",
+             "int",
+             "int",
+             "bool"
          ],
          "__jac_rt_str_repeat": ["str.ref", "ptr", "int", "int"],
          "__jac_rt_str_replace": [
-             "str.ref", "ptr", "int", "ptr", "int", "ptr", "int", "int"
+             "str.ref",
+             "ptr",
+             "int",
+             "ptr",
+             "int",
+             "ptr",
+             "int",
+             "int"
          ],
          "__jac_rt_str_case": ["str.ref", "ptr", "int", "int"],
          "__jac_rt_str_test": ["bool", "ptr", "int", "int"],
          "__jac_rt_str_strip": ["str.ref", "ptr", "int", "ptr", "int", "bool", "int"],
-         "__jac_rt_str_pad": ["str.ref", "ptr", "ptr", "int", "int", "ptr", "int", "int"],
+         "__jac_rt_str_pad": [
+             "str.ref",
+             "ptr",
+             "ptr",
+             "int",
+             "int",
+             "ptr",
+             "int",
+             "int"
+         ],
          "__jac_rt_str_zfill": ["str.ref", "ptr", "int", "int"],
-         "__jac_rt_str_split": ["ref", "ptr", "int", "ptr", "int", "bool", "int", "bool"],
+         "__jac_rt_str_split": [
+             "ref",
+             "ptr",
+             "int",
+             "ptr",
+             "int",
+             "bool",
+             "int",
+             "bool"
+         ],
          "__jac_rt_str_splitlines": ["ref", "ptr", "int", "bool"],
          "__jac_rt_str_join": ["str.ref", "ptr", "int", "ref"],
          "__jac_rt_str_partition": ["int", "ptr", "int", "ptr", "int", "bool"],
@@ -138,10 +186,28 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_bytes_slice": ["ref", "ptr", "int", "int", "int", "int", "int"],
          "__jac_rt_bytes_concat": ["ref", "ptr", "int", "ptr", "int"],
          "__jac_rt_bytes_repeat": ["ref", "ptr", "int", "int"],
-         "__jac_rt_bytes_find": ["int", "ptr", "int", "ptr", "int", "int", "int", "bool"],
+         "__jac_rt_bytes_find": [
+             "int",
+             "ptr",
+             "int",
+             "ptr",
+             "int",
+             "int",
+             "int",
+             "bool"
+         ],
          "__jac_rt_bytes_count": ["int", "ptr", "int", "ptr", "int", "int", "int"],
          "__jac_rt_bytes_has": ["bool", "ptr", "int", "int"],
-         "__jac_rt_bytes_affix": ["bool", "ptr", "int", "ptr", "int", "int", "int", "bool"],
+         "__jac_rt_bytes_affix": [
+             "bool",
+             "ptr",
+             "int",
+             "ptr",
+             "int",
+             "int",
+             "int",
+             "bool"
+         ],
          "__jac_rt_bytes_decode": ["str.ref", "ptr", "int", "int", "int", "i32"],
          "__jac_rt_str_encode": ["ref", "ptr", "int", "int", "int", "i32"],
          "__jac_rt_bytes_hex": ["str.ref", "ptr", "int"],
@@ -149,7 +215,16 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_bytes_case": ["ref", "ptr", "int", "int"],
          "__jac_rt_bytes_strip": ["ref", "ptr", "int", "ptr", "int", "bool", "int"],
          "__jac_rt_bytes_split": ["ref", "ptr", "int", "ptr", "int", "bool", "int"],
-         "__jac_rt_bytes_replace": ["ref", "ptr", "int", "ptr", "int", "ptr", "int", "int"],
+         "__jac_rt_bytes_replace": [
+             "ref",
+             "ptr",
+             "int",
+             "ptr",
+             "int",
+             "ptr",
+             "int",
+             "int"
+         ],
          "__jac_rt_bytes_join": ["ref", "ptr", "int", "ref"],
          "__jac_rt_bytes_repr": ["str.ref", "ptr", "int"],
          "__jac_rt_bytearray_new": ["ref", "ptr", "int"],
@@ -158,14 +233,8 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_bytearray_extend": ["none", "ref", "ptr", "int"],
          "__jac_rt_bytearray_pop": ["int", "ref", "int"],
          "__jac_rt_bytearray_clear": ["none", "ref"]
-     };
-
-"""The OSP functions generated code calls, by symbol, with their MIR
-signatures in the same form as `MIR_RUNTIME_ABI`. They are the pub functions
-of `runtime/osp_native.jac`, which drives the OSP kernel (`osp_kernel.jac`,
-`osp_graph.jac`) for native code; a unit that calls one depends on those three
-units. Node and edge handles are their object addresses."""
-glob MIR_OSP_ABI: dict[str, list[str]] = {
+     },
+     MIR_OSP_ABI: dict[str, list[str]] = {
          "__jac_osp_register": ["none", "int", "list.int", "bool"],
          "__jac_osp_slot": ["none", "int", "bool", "int", "fn.slot"],
          "__jac_osp_spawn": ["opt.list.any", "any", "int", "int"],
@@ -177,9 +246,23 @@ glob MIR_OSP_ABI: dict[str, list[str]] = {
          "__jac_osp_connect": ["none", "int", "int", "int", "bool", "int"],
          "__jac_osp_refs": ["list.int", "int", "int", "int", "bool"],
          "__jac_osp_refs_many": ["list.int", "list.int", "int", "int", "bool"],
-         "__jac_osp_refs_pred": ["list.int", "list.int", "int", "int", "bool", "fn.pred"],
+         "__jac_osp_refs_pred": [
+             "list.int",
+             "list.int",
+             "int",
+             "int",
+             "bool",
+             "fn.pred"
+         ],
          "__jac_osp_filter": ["list.int", "list.int", "fn.pred"],
-         "__jac_osp_keep_toward": ["list.int", "list.int", "list.int", "int", "bool", "list.int"],
+         "__jac_osp_keep_toward": [
+             "list.int",
+             "list.int",
+             "list.int",
+             "int",
+             "bool",
+             "list.int"
+         ],
          "__jac_osp_disconnect": ["bool", "int", "int", "int", "int"],
          "__jac_osp_disconnect_pred": ["bool", "int", "int", "int", "int", "fn.pred"],
          "__jac_osp_disconnect_many": ["bool", "list.int", "list.int", "int", "int"],
@@ -196,11 +279,17 @@ def mir_runtime_signature(name: str) -> tuple[list[MirType], MirType];
 
 def mir_runtime_spec(spec: str) -> MirType;
 
-"""The methods of builtin types that native code lowers, by type name. The
-checker and placement read this to know which method calls stay native."""
 glob MIR_PRIMITIVE_METHODS: dict[str, list[str]] = {
          "list": [
-             "append", "clear", "copy", "extend", "index", "insert", "pop", "reverse", "sort"
+             "append",
+             "clear",
+             "copy",
+             "extend",
+             "index",
+             "insert",
+             "pop",
+             "reverse",
+             "sort"
          ],
          "dict": ["clear", "copy", "get", "keys", "pop", "update", "values"],
          "set": ["add", "clear", "copy", "discard", "remove", "update"],

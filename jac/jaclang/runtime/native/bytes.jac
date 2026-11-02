@@ -1,21 +1,11 @@
-"""Bytes and bytearray runtime.
-
-A bytes object keeps the previous backend's `jacbytes` layout: from
-`__jac_rt_alloc`, its byte length (i64 at +0) followed by the bytes (from +8),
-with no drop function. A literal is an immortal global of the same shape. A
-bytearray keeps the `List.u8` layout: 24 bytes of len (+0), cap (+8) and a
-malloc'd byte array (+16); its drop frees the array.
-
-Functions take a byte range (data, n) where bytes and bytearray behave alike,
-so generated code passes either kind's data pointer and length. Codecs are
-numbered CODEC_* and error handlers ERRORS_*; decoding and encoding follow
-CPython's messages for utf-8, ascii and latin-1."""
 import from c {
     def realloc(p: int, n: int) -> int;  def free(p: int) -> None;  def memcpy(
         dst: int, src: int, n: int
     ) -> int;  def memmove(dst: int, src: int, n: int) -> int;  def memcmp(
         a: int, b: int, n: int
-    ) -> i32;  def memset(p: int, c: i32, n: int) -> int;  def strlen(text: int) -> int;
+    ) -> i32;  def memset(p: int, c: i32, n: int) -> int;  def strlen(
+        text: int
+    ) -> int;
 }
 
 glob BYTES_LEN: int = 0,
@@ -47,23 +37,35 @@ def:pub __jac_rt_bytes_zero(n: int) -> int;
 
 def:pub __jac_rt_bytes_from_list(lst: int) -> int;
 
-def:pub __jac_rt_bytes_slice(data: ptr[u8], n: int, start: int, stop: int, step: int, given: int) -> int;
+def:pub __jac_rt_bytes_slice(
+    data: ptr[u8], n: int, start: int, stop: int, step: int, given: int
+) -> int;
 
 def:pub __jac_rt_bytes_concat(a: ptr[u8], an: int, b: ptr[u8], bn: int) -> int;
 
 def:pub __jac_rt_bytes_repeat(data: ptr[u8], n: int, times: int) -> int;
 
-def:pub __jac_rt_bytes_find(data: ptr[u8], n: int, sub: ptr[u8], sn: int, start: int, stop: int, reverse: bool) -> int;
+def:pub __jac_rt_bytes_find(
+    data: ptr[u8], n: int, sub: ptr[u8], sn: int, start: int, stop: int, reverse: bool
+) -> int;
 
-def:pub __jac_rt_bytes_count(data: ptr[u8], n: int, sub: ptr[u8], sn: int, start: int, stop: int) -> int;
+def:pub __jac_rt_bytes_count(
+    data: ptr[u8], n: int, sub: ptr[u8], sn: int, start: int, stop: int
+) -> int;
 
 def:pub __jac_rt_bytes_has(data: ptr[u8], n: int, value: int) -> bool;
 
-def:pub __jac_rt_bytes_affix(data: ptr[u8], n: int, x: ptr[u8], xn: int, start: int, stop: int, suffix: bool) -> bool;
+def:pub __jac_rt_bytes_affix(
+    data: ptr[u8], n: int, x: ptr[u8], xn: int, start: int, stop: int, suffix: bool
+) -> bool;
 
-def:pub __jac_rt_bytes_decode(data: ptr[u8], n: int, codec: int, errors: int, failure: i32) -> ptr[u8];
+def:pub __jac_rt_bytes_decode(
+    data: ptr[u8], n: int, codec: int, errors: int, failure: i32
+) -> ptr[u8];
 
-def:pub __jac_rt_str_encode(data: ptr[u8], n: int, codec: int, errors: int, failure: i32) -> int;
+def:pub __jac_rt_str_encode(
+    data: ptr[u8], n: int, codec: int, errors: int, failure: i32
+) -> int;
 
 def:pub __jac_rt_bytes_hex(data: ptr[u8], n: int) -> ptr[u8];
 
@@ -71,11 +73,17 @@ def:pub __jac_rt_bytes_fromhex(data: ptr[u8], n: int) -> int;
 
 def:pub __jac_rt_bytes_case(data: ptr[u8], n: int, mode: int) -> int;
 
-def:pub __jac_rt_bytes_strip(data: ptr[u8], n: int, chars: ptr[u8], cn: int, has_chars: bool, which: int) -> int;
+def:pub __jac_rt_bytes_strip(
+    data: ptr[u8], n: int, chars: ptr[u8], cn: int, has_chars: bool, which: int
+) -> int;
 
-def:pub __jac_rt_bytes_split(data: ptr[u8], n: int, sep: ptr[u8], sn: int, has_sep: bool, maxsplit: int) -> int;
+def:pub __jac_rt_bytes_split(
+    data: ptr[u8], n: int, sep: ptr[u8], sn: int, has_sep: bool, maxsplit: int
+) -> int;
 
-def:pub __jac_rt_bytes_replace(data: ptr[u8], n: int, old: ptr[u8], on: int, repl: ptr[u8], rn: int, count: int) -> int;
+def:pub __jac_rt_bytes_replace(
+    data: ptr[u8], n: int, old: ptr[u8], on: int, repl: ptr[u8], rn: int, count: int
+) -> int;
 
 def:pub __jac_rt_bytes_join(sep: ptr[u8], sn: int, parts: int) -> int;
 
@@ -109,7 +117,9 @@ def _find(hay: int, lo: int, hi: int, needle: int, nn: int, reverse: bool) -> in
 
 def _utf8_valid(d: int, n: int, i: int) -> int;
 
-def _decode_error(codec: ptr[u8], byte: int, position: int, reason: ptr[u8]) -> ptr[u8];
+def _decode_error(
+    codec: ptr[u8], byte: int, position: int, reason: ptr[u8]
+) -> ptr[u8];
 
 def _encode_error(codec: ptr[u8], cp: int, position: int, limit: ptr[u8]) -> ptr[u8];
 

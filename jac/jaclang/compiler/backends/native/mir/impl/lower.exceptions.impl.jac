@@ -16,14 +16,18 @@ impl MirLowering.exception_name(nd: uni.Expr) -> str {
 impl MirLowering.exception_matches(type_id: MirValue, clause: uni.Expr) -> MirValue {
     b = self.builder();
     names = [
-        self.exception_name(item) for item in clause.values if isinstance(item, uni.Expr)
+        self.exception_name(item)
+        for item in clause.values
+        if isinstance(item, uni.Expr)
     ]
         if isinstance(clause, uni.TupleVal)
         else [self.exception_name(clause)];
     verdict = b.const_bool(False);
     for name in names {
         for member in [name] + JAC_TYPE_REGISTRY.exception_descendants(name) {
-            wanted = b.const_int(JAC_TYPE_REGISTRY.exception_type_id(member), type_id.type);
+            wanted = b.const_int(
+                JAC_TYPE_REGISTRY.exception_type_id(member), type_id.type
+            );
             verdict = b.binary("or", verdict, b.compare("eq", type_id, wanted));
         }
     }
@@ -36,7 +40,9 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
     if nd.finally_body is not None {
         for found in nd.finally_body.body {
             if isinstance(found, (uni.ReturnStmt, uni.CtrlStmt)) {
-                raise MirRefused(mir_refusal("statement", "jump out of finally", found));
+                raise MirRefused(
+                    mir_refusal("statement", "jump out of finally", found)
+                );
             }
         }
     }
@@ -69,11 +75,13 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
     message = self.emit_value(
         MirOp.PTR_CAST,
         mir_c_ptr(mir_int(8, False)),
-        [self.emit_value(
-            MirOp.MEM_LOAD,
-            mir_int(),
-            [b.binary("add", address, b.const_int(EXC_MESSAGE_OFFSET, mir_int()))]
-        )]
+        [
+            self.emit_value(
+                MirOp.MEM_LOAD,
+                mir_int(),
+                [b.binary("add", address, b.const_int(EXC_MESSAGE_OFFSET, mir_int()))]
+            )
+        ]
     );
     origin = self.emit_value(
         MirOp.PTR_CAST,
@@ -83,13 +91,26 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
     for clause in nd.excepts {
         handler = fn.new_block("except.body");
         following = fn.new_block("except.next");
-        b.cond_branch(self.exception_matches(type_id, clause.ex_type), handler, following);
+        b.cond_branch(
+            self.exception_matches(type_id, clause.ex_type), handler, following
+        );
         b.position(handler);
         if clause.name is not None {
             if clause.name.sym is None {
-                raise MirRefused(mir_refusal("exception binding", clause.name.value, clause));
+                raise MirRefused(
+                    mir_refusal("exception binding", clause.name.value, clause)
+                );
             }
-            text = self.runtime("__jac_rt_str_new", [message, self.runtime("__jac_rt_str_size", [b.ref_cast(message, mir_str_ref(), False)]) or b.const_int(0, mir_int())]);
+            text = self.runtime(
+                "__jac_rt_str_new",
+                [
+                    message,
+                    self.runtime(
+                        "__jac_rt_str_size", [b.ref_cast(message, mir_str_ref(), False)]
+                    )
+                        or b.const_int(0, mir_int())
+                ]
+            );
             if text is not None {
                 slot = self.local_slot(clause.name.sym, clause.name);
                 if slot.type.kind != MirKind.STR {
@@ -148,13 +169,17 @@ impl MirLowering.lower_assert(nd: uni.AssertStmt) {
     fn = self.st().fn;
     failed = fn.new_block("assert.fail");
     passed = fn.new_block("assert.ok");
-    b.cond_branch(self.truthy(self.lower_expr(nd.condition), nd.condition), passed, failed);
+    b.cond_branch(
+        self.truthy(self.lower_expr(nd.condition), nd.condition), passed, failed
+    );
     b.position(failed);
     self.raise_named("AssertionError", nd.error_msg, nd);
     b.position(passed);
 }
 
-impl MirLowering.raise_named(name: str, message_nd: (uni.UniNode | None), nd: uni.UniNode) {
+impl MirLowering.raise_named(
+    name: str, message_nd: (uni.UniNode | None), nd: uni.UniNode
+) {
     b = self.builder();
     if message_nd is None {
         b.raise_builtin(name, "");
@@ -168,14 +193,20 @@ impl MirLowering.raise_named(name: str, message_nd: (uni.UniNode | None), nd: un
     if message.type.kind == MirKind.C_PTR {
         self.runtime(
             "__jac_rt_raise_builtin",
-            [b.const_int(JAC_TYPE_REGISTRY.exception_type_id(name), mir_int(32, True, True)), message]
+            [
+                b.const_int(
+                    JAC_TYPE_REGISTRY.exception_type_id(name), mir_int(32, True, True)
+                ),
+                message
+            ]
         );
         b.unreachable();
         return;
     }
     text = self.to_str(message, message_nd);
     held = self.runtime(
-        "__jac_rt_str_ref", [b.str_part(text, "root"), b.str_part(text, "data"), b.str_part(text, "len")]
+        "__jac_rt_str_ref",
+        [b.str_part(text, "root"), b.str_part(text, "data"), b.str_part(text, "len")]
     );
     if held is None {
         raise MirRefused(mir_refusal("statement", "raise", nd));
@@ -183,7 +214,13 @@ impl MirLowering.raise_named(name: str, message_nd: (uni.UniNode | None), nd: un
     data = self.emit_value(MirOp.PTR_CAST, mir_c_ptr(mir_int(8, False)), [held]);
     self.runtime(
         "__jac_rt_raise",
-        [data, b.const_int(JAC_TYPE_REGISTRY.exception_type_id(name), mir_int(32, True, True)), data]
+        [
+            data,
+            b.const_int(
+                JAC_TYPE_REGISTRY.exception_type_id(name), mir_int(32, True, True)
+            ),
+            data
+        ]
     );
     b.unreachable();
 }

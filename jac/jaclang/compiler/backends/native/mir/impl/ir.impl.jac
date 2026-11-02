@@ -210,7 +210,9 @@ impl MirBuilder.call(
 impl MirBuilder.call_runtime(
     callee: str, args: list[MirValue], ret: MirType
 ) -> (MirValue | None) {
-    result = None if ret.kind in (MirKind.VOID, MirKind.NONE) else self.fn.new_value(ret);
+    result = None
+        if ret.kind in (MirKind.VOID, MirKind.NONE)
+        else self.fn.new_value(ret);
     if result is not None and mir_holds_ref(ret) {
         result.owned = True;
     }
@@ -237,9 +239,7 @@ impl MirBuilder.const_null(type: MirType) -> MirValue {
 impl MirBuilder.str_part(value: MirValue, part: str) -> MirValue {
     part_type = mir_int() if part == "len" else mir_c_ptr(mir_int(8, False));
     result = self.fn.new_value(part_type);
-    self.emit(
-        MirInstr(op=MirOp.STR_PART, result=result, operands=[value], sub=part)
-    );
+    self.emit(MirInstr(op=MirOp.STR_PART, result=result, operands=[value], sub=part));
     return result;
 }
 

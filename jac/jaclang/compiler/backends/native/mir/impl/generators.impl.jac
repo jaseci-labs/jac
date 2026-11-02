@@ -27,7 +27,9 @@ impl mir_frame_bytes(t: MirType, mir: MirModule) -> int {
         if layout is None {
             raise MirGenError(f"no layout for C struct {t.name}");
         }
-        return max(8, sum(mir_frame_bytes(member.type, mir) for member in layout.fields));
+        return max(
+            8, sum(mir_frame_bytes(member.type, mir) for member in layout.fields)
+        );
     }
     return 8;
 }
@@ -36,14 +38,20 @@ impl mir_frame_field(
     fn: MirFunction, out: list[MirInstr], base: MirValue, offset: int, t: MirType
 ) -> MirValue {
     address = fn.new_value(mir_int());
-    out.append(MirInstr(op=MirOp.PTR_INT, result=address, operands=[base], type_arg=mir_int()));
+    out.append(
+        MirInstr(op=MirOp.PTR_INT, result=address, operands=[base], type_arg=mir_int())
+    );
     distance = fn.new_value(mir_int());
     out.append(MirInstr(op=MirOp.CONST_INT, result=distance, int_value=offset));
     moved = fn.new_value(mir_int());
-    out.append(MirInstr(op=MirOp.BIN, result=moved, operands=[address, distance], sub="add"));
+    out.append(
+        MirInstr(op=MirOp.BIN, result=moved, operands=[address, distance], sub="add")
+    );
     place = fn.new_value(mir_c_ptr(t));
     out.append(
-        MirInstr(op=MirOp.PTR_CAST, result=place, operands=[moved], type_arg=mir_c_ptr(t))
+        MirInstr(
+            op=MirOp.PTR_CAST, result=place, operands=[moved], type_arg=mir_c_ptr(t)
+        )
     );
     return place;
 }
@@ -72,7 +80,9 @@ impl MirGenState.run {
             if mir_holds_ref(slot.type) {
                 self.held.append(slot);
             }
-            self.addresses[slot.id] = mir_frame_field(fn, prologue, frame, offset, slot.type);
+            self.addresses[slot.id] = mir_frame_field(
+                fn, prologue, frame, offset, slot.type
+            );
         } elif instr.op == MirOp.EXC_FRAME {
             prologue.insert(0, instr);
         } else {
@@ -114,7 +124,9 @@ impl MirGenState.rewrite_returns(blk: MirBlock, frame: MirValue) {
         }
         address = fn.new_value(mir_int());
         rewritten.append(
-            MirInstr(op=MirOp.PTR_INT, result=address, operands=[frame], type_arg=mir_int())
+            MirInstr(
+                op=MirOp.PTR_INT, result=address, operands=[frame], type_arg=mir_int()
+            )
         );
         mark = fn.new_value(mir_int());
         rewritten.append(MirInstr(op=MirOp.CONST_INT, result=mark, int_value=GEN_DONE));
@@ -147,10 +159,14 @@ impl MirGenState.split(
     point = len(self.resumes);
     head = blk.instrs[:at];
     cell = fn.new_value(mir_int());
-    head.append(MirInstr(op=MirOp.PTR_INT, result=cell, operands=[out], type_arg=mir_int()));
+    head.append(
+        MirInstr(op=MirOp.PTR_INT, result=cell, operands=[out], type_arg=mir_int())
+    );
     head.append(MirInstr(op=MirOp.MEM_STORE, operands=[cell, suspended.operands[0]]));
     address = fn.new_value(mir_int());
-    head.append(MirInstr(op=MirOp.PTR_INT, result=address, operands=[frame], type_arg=mir_int()));
+    head.append(
+        MirInstr(op=MirOp.PTR_INT, result=address, operands=[frame], type_arg=mir_int())
+    );
     mark = fn.new_value(mir_int());
     head.append(MirInstr(op=MirOp.CONST_INT, result=mark, int_value=point));
     head.append(MirInstr(op=MirOp.MEM_STORE, operands=[address, mark]));
@@ -164,7 +180,9 @@ impl MirGenState.split(
 impl MirGenState.substitute_slots {
     for blk in self.fn.blocks {
         for instr in blk.instrs {
-            instr.operands = [self.addresses.get(operand.id, operand) for operand in instr.operands];
+            instr.operands = [
+                self.addresses.get(operand.id, operand) for operand in instr.operands
+            ];
         }
     }
 }
@@ -173,7 +191,11 @@ impl MirGenState.reachable_avoiding(
     home: str, successors: dict[str, list[str]]
 ) -> set[str] {
     seen: set[str] = set();
-    pending: list[str] = [blk.label for blk in self.resumes if blk.label != home];
+    pending: list[str] = [
+        blk.label
+        for blk in self.resumes
+        if blk.label != home
+    ];
     while pending {
         label = pending.pop();
         if label in seen or label == home {
@@ -227,17 +249,25 @@ impl MirGenState.spill_live_values(frame: MirValue) {
                 if operand.id in spilled
                     and homes.get(operand.id) != blk.label
                     and operand.id not in renamed {
-                    place = mir_frame_field(fn, loads, frame, spilled[operand.id], operand.type);
+                    place = mir_frame_field(
+                        fn, loads, frame, spilled[operand.id], operand.type
+                    );
                     fresh = fn.new_value(operand.type);
-                    loads.append(MirInstr(op=MirOp.LOAD, result=fresh, operands=[place]));
+                    loads.append(
+                        MirInstr(op=MirOp.LOAD, result=fresh, operands=[place])
+                    );
                     renamed[operand.id] = fresh;
                 }
             }
-            instr.operands = [renamed.get(operand.id, operand) for operand in instr.operands];
+            instr.operands = [
+                renamed.get(operand.id, operand) for operand in instr.operands
+            ];
             rewritten.append(instr);
             result = instr.result;
             if result is not None and result.id in spilled {
-                place = mir_frame_field(fn, rewritten, frame, spilled[result.id], result.type);
+                place = mir_frame_field(
+                    fn, rewritten, frame, spilled[result.id], result.type
+                );
                 rewritten.append(MirInstr(op=MirOp.STORE, operands=[place, result]));
             }
         }
@@ -254,20 +284,26 @@ impl MirGenState.dispatch(prologue: list[MirInstr], frame: MirValue, first: MirB
     );
     point = fn.new_value(mir_int());
     dispatch_block.instrs.append(
-        MirInstr(op=MirOp.MEM_LOAD, result=point, operands=[address], type_arg=mir_int())
+        MirInstr(
+            op=MirOp.MEM_LOAD, result=point, operands=[address], type_arg=mir_int()
+        )
     );
     current = dispatch_block;
     for (index, target) in enumerate([first] + self.resumes) {
         following = fn.new_block("dispatch.next");
         wanted = fn.new_value(mir_int());
-        current.instrs.append(MirInstr(op=MirOp.CONST_INT, result=wanted, int_value=index));
+        current.instrs.append(
+            MirInstr(op=MirOp.CONST_INT, result=wanted, int_value=index)
+        );
         same = fn.new_value(mir_bool());
         current.instrs.append(
             MirInstr(op=MirOp.CMP, result=same, operands=[point, wanted], sub="eq")
         );
         current.instrs.append(
             MirInstr(
-                op=MirOp.COND_BR, operands=[same], targets=[target.label, following.label]
+                op=MirOp.COND_BR,
+                operands=[same],
+                targets=[target.label, following.label]
             )
         );
         current = following;
@@ -291,7 +327,9 @@ impl MirGenState.drop_function -> MirFunction {
     made.params.append(MirParam(name="frame", value=frame));
     blk = made.new_block("entry");
     for slot in self.held {
-        place = mir_frame_field(made, blk.instrs, frame, self.offsets[slot.id], slot.type);
+        place = mir_frame_field(
+            made, blk.instrs, frame, self.offsets[slot.id], slot.type
+        );
         value = made.new_value(slot.type);
         blk.instrs.append(MirInstr(op=MirOp.LOAD, result=value, operands=[place]));
         blk.instrs.append(MirInstr(op=MirOp.RELEASE, operands=[value]));
@@ -303,7 +341,9 @@ impl MirGenState.drop_function -> MirFunction {
     header = made.new_value(mir_int());
     blk.instrs.append(MirInstr(op=MirOp.CONST_INT, result=header, int_value=32));
     raw = made.new_value(mir_int());
-    blk.instrs.append(MirInstr(op=MirOp.BIN, result=raw, operands=[address, header], sub="sub"));
+    blk.instrs.append(
+        MirInstr(op=MirOp.BIN, result=raw, operands=[address, header], sub="sub")
+    );
     (params, ret) = mir_runtime_signature("__jac_rt_free_block");
     self.mir.externs["__jac_rt_free_block"] = MirExtern(
         symbol="__jac_rt_free_block", ret=ret, params=params
@@ -326,12 +366,16 @@ impl mir_lower_frames(mir: MirModule, fn: MirFunction) {
             }
             frame_info = mir.frames.get(instr.callee);
             if frame_info is None {
-                raise MirGenError(f"{fn.symbol} names the frame of {instr.callee}, which has none");
+                raise MirGenError(
+                    f"{fn.symbol} names the frame of {instr.callee}, which has none"
+                );
             }
             if instr.op == MirOp.FRAME_FIELD {
                 offset = frame_info.offsets.get(instr.int_value);
                 if offset is None or instr.result is None {
-                    raise MirGenError(f"{fn.symbol} names a slot the frame of {instr.callee} lacks");
+                    raise MirGenError(
+                        f"{fn.symbol} names a slot the frame of {instr.callee} lacks"
+                    );
                 }
                 address = fn.new_value(mir_int());
                 rewritten.append(
@@ -343,10 +387,17 @@ impl mir_lower_frames(mir: MirModule, fn: MirFunction) {
                     )
                 );
                 distance = fn.new_value(mir_int());
-                rewritten.append(MirInstr(op=MirOp.CONST_INT, result=distance, int_value=offset));
+                rewritten.append(
+                    MirInstr(op=MirOp.CONST_INT, result=distance, int_value=offset)
+                );
                 moved = fn.new_value(mir_int());
                 rewritten.append(
-                    MirInstr(op=MirOp.BIN, result=moved, operands=[address, distance], sub="add")
+                    MirInstr(
+                        op=MirOp.BIN,
+                        result=moved,
+                        operands=[address, distance],
+                        sub="add"
+                    )
                 );
                 rewritten.append(
                     MirInstr(
@@ -359,7 +410,9 @@ impl mir_lower_frames(mir: MirModule, fn: MirFunction) {
                 continue;
             }
             size = fn.new_value(mir_int());
-            rewritten.append(MirInstr(op=MirOp.CONST_INT, result=size, int_value=frame_info.size));
+            rewritten.append(
+                MirInstr(op=MirOp.CONST_INT, result=size, int_value=frame_info.size)
+            );
             drop = fn.new_value(mir_c_fn([i8p], mir_none()));
             rewritten.append(
                 MirInstr(
@@ -371,7 +424,12 @@ impl mir_lower_frames(mir: MirModule, fn: MirFunction) {
             );
             drop_code = fn.new_value(mir_int());
             rewritten.append(
-                MirInstr(op=MirOp.PTR_INT, result=drop_code, operands=[drop], type_arg=mir_int())
+                MirInstr(
+                    op=MirOp.PTR_INT,
+                    result=drop_code,
+                    operands=[drop],
+                    type_arg=mir_int()
+                )
             );
             (params, ret) = mir_runtime_signature("__jac_rt_gen_frame");
             mir.externs["__jac_rt_gen_frame"] = MirExtern(

@@ -1,8 +1,7 @@
-"""String runtime: comparison, length, size and output over the `JacStr`
-descriptor's parts. A string's bytes are UTF-8 and its header word at -8 holds
-the tagged byte length (bit 0 set, the ASCII flag in bit 63)."""
 import from c {
-    def memcpy(dst: ptr[u8], src: ptr[u8], n: i64) -> ptr[u8];  def memcmp(a: ptr[u8], b: ptr[u8], n: i64) -> i32;  def strlen(text: ptr[u8]) -> i64;  def fwrite(
+    def memcpy(dst: ptr[u8], src: ptr[u8], n: i64) -> ptr[u8];  def memcmp(
+        a: ptr[u8], b: ptr[u8], n: i64
+    ) -> i32;  def strlen(text: ptr[u8]) -> i64;  def fwrite(
         data: ptr[u8], size: i64, count: i64, stream: ptr[u8]
     ) -> i64;  def __jac_stdio(fd: i32) -> ptr[u8];
 }

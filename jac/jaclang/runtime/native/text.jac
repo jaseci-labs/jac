@@ -1,30 +1,3 @@
-"""Text runtime: a byte builder, code point indexing over UTF-8 with the
-per-thread cursor cache, and the str methods.
-
-A str is the `JacStr` descriptor's parts: the owning object, the first
-byte (data) and the byte length. Every function here takes those parts and
-returns a fresh string (`ptr[u8]`, owned by the caller), so a result never
-aliases its input.
-
-Code point positions: an ASCII string (its header tag at -8 has the ASCII bit
-and covers exactly the bytes asked about) maps a position to the same byte
-offset. Other strings walk the bytes. A heap string of at least
-UTF8_CURSOR_MIN_BYTES bytes that is not ASCII keeps a cursor in the calling
-thread's cache: a block of 1 + 4 * 8 words reached through the pthread key at
-`__jac_utf8_tls_key` (ready once `__jac_utf8_tls_state` is 1). Word 0 is a
-clock; each of the four ways holds base, data, len, epoch, total code points
-(-1 until counted), the cursor's code point and byte offset, and the clock
-value of its last use. A way is valid only while its epoch equals
-`__jac_utf8_epoch`; rc.jac's `_utf8_forget` bumps the epoch whenever such a
-string is freed and clears the ways that named it, so a reused address never
-reads a stale cursor.
-
-A builder is a malloc'd 24-byte record {len, cap, data}, not a refcounted
-object: `__jac_rt_sb_finish` turns it into a string and frees it.
-
-Whitespace and line breaks follow Python's str methods (ASCII whitespace with
-\\x1c-\\x1f, plus the Unicode spaces), and the case and character-class
-methods map ASCII letters only, as the C library does in the C locale."""
 import from c {
     def malloc(n: int) -> int;  def realloc(p: int, n: int) -> int;  def free(
         p: int
@@ -116,39 +89,85 @@ def:pub __jac_rt_sb_finish(sb: int) -> ptr[u8];
 
 def:pub __jac_rt_str_index(owner: ptr[u8], data: ptr[u8], n: int, i: int) -> ptr[u8];
 
-def:pub __jac_rt_str_slice(owner: ptr[u8], data: ptr[u8], n: int, start: int, stop: int, step: int, given: int) -> ptr[u8];
+def:pub __jac_rt_str_slice(
+    owner: ptr[u8], data: ptr[u8], n: int, start: int, stop: int, step: int, given: int
+) -> ptr[u8];
 
-def:pub __jac_rt_str_find(owner: ptr[u8], data: ptr[u8], n: int, sub: ptr[u8], sn: int, start: int, stop: int, reverse: bool) -> int;
+def:pub __jac_rt_str_find(
+    owner: ptr[u8],
+    data: ptr[u8],
+    n: int,
+    sub: ptr[u8],
+    sn: int,
+    start: int,
+    stop: int,
+    reverse: bool
+) -> int;
 
-def:pub __jac_rt_str_count(owner: ptr[u8], data: ptr[u8], n: int, sub: ptr[u8], sn: int, start: int, stop: int) -> int;
+def:pub __jac_rt_str_count(
+    owner: ptr[u8], data: ptr[u8], n: int, sub: ptr[u8], sn: int, start: int, stop: int
+) -> int;
 
 def:pub __jac_rt_str_contains(data: ptr[u8], n: int, sub: ptr[u8], sn: int) -> bool;
 
-def:pub __jac_rt_str_affix(owner: ptr[u8], data: ptr[u8], n: int, x: ptr[u8], xn: int, start: int, stop: int, suffix: bool) -> bool;
+def:pub __jac_rt_str_affix(
+    owner: ptr[u8],
+    data: ptr[u8],
+    n: int,
+    x: ptr[u8],
+    xn: int,
+    start: int,
+    stop: int,
+    suffix: bool
+) -> bool;
 
 def:pub __jac_rt_str_repeat(data: ptr[u8], n: int, times: int) -> ptr[u8];
 
-def:pub __jac_rt_str_replace(data: ptr[u8], n: int, old: ptr[u8], on: int, repl: ptr[u8], rn: int, count: int) -> ptr[u8];
+def:pub __jac_rt_str_replace(
+    data: ptr[u8], n: int, old: ptr[u8], on: int, repl: ptr[u8], rn: int, count: int
+) -> ptr[u8];
 
 def:pub __jac_rt_str_case(data: ptr[u8], n: int, mode: int) -> ptr[u8];
 
 def:pub __jac_rt_str_test(data: ptr[u8], n: int, mode: int) -> bool;
 
-def:pub __jac_rt_str_strip(data: ptr[u8], n: int, chars: ptr[u8], cn: int, has_chars: bool, which: int) -> ptr[u8];
+def:pub __jac_rt_str_strip(
+    data: ptr[u8], n: int, chars: ptr[u8], cn: int, has_chars: bool, which: int
+) -> ptr[u8];
 
-def:pub __jac_rt_str_pad(owner: ptr[u8], data: ptr[u8], n: int, width: int, fill: ptr[u8], fn_len: int, mode: int) -> ptr[u8];
+def:pub __jac_rt_str_pad(
+    owner: ptr[u8],
+    data: ptr[u8],
+    n: int,
+    width: int,
+    fill: ptr[u8],
+    fn_len: int,
+    mode: int
+) -> ptr[u8];
 
 def:pub __jac_rt_str_zfill(data: ptr[u8], n: int, width: int) -> ptr[u8];
 
-def:pub __jac_rt_str_split(data: ptr[u8], n: int, sep: ptr[u8], sn: int, has_sep: bool, maxsplit: int, reverse: bool) -> int;
+def:pub __jac_rt_str_split(
+    data: ptr[u8],
+    n: int,
+    sep: ptr[u8],
+    sn: int,
+    has_sep: bool,
+    maxsplit: int,
+    reverse: bool
+) -> int;
 
 def:pub __jac_rt_str_splitlines(data: ptr[u8], n: int, keep: bool) -> int;
 
 def:pub __jac_rt_str_join(sep: ptr[u8], sn: int, parts: int) -> ptr[u8];
 
-def:pub __jac_rt_str_partition(data: ptr[u8], n: int, sep: ptr[u8], sn: int, reverse: bool) -> int;
+def:pub __jac_rt_str_partition(
+    data: ptr[u8], n: int, sep: ptr[u8], sn: int, reverse: bool
+) -> int;
 
-def:pub __jac_rt_str_remove_affix(data: ptr[u8], n: int, x: ptr[u8], xn: int, suffix: bool) -> ptr[u8];
+def:pub __jac_rt_str_remove_affix(
+    data: ptr[u8], n: int, x: ptr[u8], xn: int, suffix: bool
+) -> ptr[u8];
 
 def:pub __jac_rt_str_ord(owner: ptr[u8], data: ptr[u8], n: int) -> int;
 

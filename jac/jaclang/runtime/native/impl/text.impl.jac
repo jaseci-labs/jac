@@ -924,7 +924,13 @@ impl __jac_rt_str_strip(
 }
 
 impl __jac_rt_str_pad(
-    owner: ptr[u8], data: ptr[u8], n: int, width: int, fill: ptr[u8], fn_len: int, mode: int
+    owner: ptr[u8],
+    data: ptr[u8],
+    n: int,
+    width: int,
+    fill: ptr[u8],
+    fn_len: int,
+    mode: int
 ) -> ptr[u8] {
     f = int(fill);
     if _count_starts(f, 0, fn_len) != 1 {
@@ -976,7 +982,13 @@ impl _push_text(lst: int, data: int, n: int) {
 }
 
 impl __jac_rt_str_split(
-    data: ptr[u8], n: int, sep: ptr[u8], sn: int, has_sep: bool, maxsplit: int, reverse: bool
+    data: ptr[u8],
+    n: int,
+    sep: ptr[u8],
+    sn: int,
+    has_sep: bool,
+    maxsplit: int,
+    reverse: bool
 ) -> int {
     if has_sep and sn == 0 {
         raise ValueError("empty separator");

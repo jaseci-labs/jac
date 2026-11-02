@@ -41,7 +41,9 @@ impl __jac_rt_closure_set(closure: int, index: int, cell: int) {
 
 impl _cell_drop(cell: ptr[u8]) {
     at = int(cell);
-    __jac_rt_elem_release(__mem_load_i64(at + CELL_BITS), __mem_load_i64(at + CELL_KIND));
+    __jac_rt_elem_release(
+        __mem_load_i64(at + CELL_BITS), __mem_load_i64(at + CELL_KIND)
+    );
     __jac_rt_free_block(at - HDR_TOTAL);
 }
 

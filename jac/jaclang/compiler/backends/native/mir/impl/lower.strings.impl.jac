@@ -35,7 +35,11 @@ impl MirLowering.text_position(value: MirValue, to: MirType) -> (MirValue | None
         b = self.builder();
         return self.call_rt(
             "__jac_rt_str_ref",
-            [b.str_part(value, "root"), b.str_part(value, "data"), b.str_part(value, "len")]
+            [
+                b.str_part(value, "root"),
+                b.str_part(value, "data"),
+                b.str_part(value, "len")
+            ]
         );
     }
     return None;
@@ -59,14 +63,18 @@ impl MirLowering.present(arg: (uni.Expr | None)) -> bool {
     return arg is not None and not isinstance(arg, uni.Null);
 }
 
-impl MirLowering.bind_args(nd: uni.FuncCall, names: list[str]) -> list[(uni.Expr | None)] {
+impl MirLowering.bind_args(
+    nd: uni.FuncCall, names: list[str]
+) -> list[(uni.Expr | None)] {
     bound: list[(uni.Expr | None)] = [None for _ in names];
     at = 0;
     for arg in list(nd.params or []) {
         if isinstance(arg, uni.KWPair) {
             key = arg.key.sym_name if arg.key is not None else "";
             if key not in names {
-                raise MirRefused(mir_refusal("call argument", key or "keyword unpacking", arg));
+                raise MirRefused(
+                    mir_refusal("call argument", key or "keyword unpacking", arg)
+                );
             }
             bound[names.index(key)] = arg.value;
             continue;
@@ -116,7 +124,12 @@ impl MirLowering.codec_arg(
     name = self.literal_text(arg);
     if name is None {
         raise MirRefused(
-            mir_refusal("codec", "not a literal", arg, "Native code takes the codec name as a string literal.")
+            mir_refusal(
+                "codec",
+                "not a literal",
+                arg,
+                "Native code takes the codec name as a string literal."
+            )
         );
     }
     found = table.get(name.lower().replace("_", "-"));
@@ -139,7 +152,8 @@ impl MirLowering.literal_text(nd: (uni.UniNode | None)) -> (str | None) {
     if isinstance(nd, uni.MultiString) {
         pieces: list[str] = [];
         for part in nd.strings {
-            if not isinstance(part, uni.String) or not isinstance(part.lit_value, str) {
+            if not isinstance(part, uni.String)
+                or not isinstance(part.lit_value, str) {
                 return None;
             }
             pieces.append(part.lit_value);
@@ -168,7 +182,8 @@ impl MirLowering.text_method(
         if name in TEXT_CASES {
             return self.owned_text(
                 self.call_rt(
-                    "__jac_rt_str_case", [data, size, b.const_int(TEXT_CASES[name], mir_int())]
+                    "__jac_rt_str_case",
+                    [data, size, b.const_int(TEXT_CASES[name], mir_int())]
                 )
             );
         }
@@ -216,10 +231,14 @@ impl MirLowering.text_method(
         if name == "count" {
             return self.call_rt("__jac_rt_str_count", parts);
         }
-        at = self.call_rt("__jac_rt_str_find", parts + [b.const_bool(name.startswith("r"))]);
+        at = self.call_rt(
+            "__jac_rt_str_find", parts + [b.const_bool(name.startswith("r"))]
+        );
         if name.endswith("index") {
             self.raise_if(
-                b.compare("lt", at, b.const_int(0, mir_int())), "ValueError", "substring not found"
+                b.compare("lt", at, b.const_int(0, mir_int())),
+                "ValueError",
+                "substring not found"
             );
         }
         return at;
@@ -243,7 +262,9 @@ impl MirLowering.text_method(
             if given.type.kind == MirKind.TUPLE {
                 held = self.spill(given);
                 for index in range(len(given.type.args)) {
-                    candidates.append(self.spill(self.as_text(self.tuple_get(held, index))));
+                    candidates.append(
+                        self.spill(self.as_text(self.tuple_get(held, index)))
+                    );
                 }
             } else {
                 candidates.append(self.spill(self.as_text(given)));
@@ -254,7 +275,9 @@ impl MirLowering.text_method(
         verdict = b.const_bool(False);
         for candidate in candidates {
             if candidate.type.kind != MirKind.STR {
-                raise MirRefused(mir_refusal("call argument", candidate.type.render(), nd));
+                raise MirRefused(
+                    mir_refusal("call argument", candidate.type.render(), nd)
+                );
             }
             hit = self.call_rt(
                 "__jac_rt_str_affix",
@@ -320,7 +343,8 @@ impl MirLowering.text_method(
         keep_nd = self.bind_args(nd, ["keepends"])[0];
         keep = self.bool_arg(keep_nd, False);
         handle = self.call_rt(
-            "__jac_rt_str_splitlines", [b.str_part(text, "data"), b.str_part(text, "len"), keep]
+            "__jac_rt_str_splitlines",
+            [b.str_part(text, "data"), b.str_part(text, "len"), keep]
         );
         return self.typed_handle(handle, nd);
     }
@@ -333,21 +357,31 @@ impl MirLowering.text_method(
         if items.type.kind != MirKind.LIST
             or items.type.payload().kind not in (MirKind.STR, MirKind.STR_REF) {
             raise MirRefused(
-                mir_refusal("call", f"join of {items.type.render()}", nd, "Native join takes a list[str].")
+                mir_refusal(
+                    "call",
+                    f"join of {items.type.render()}",
+                    nd,
+                    "Native join takes a list[str]."
+                )
             );
         }
         return self.owned_text(
             self.call_rt(
-                "__jac_rt_str_join", [b.str_part(text, "data"), b.str_part(text, "len"), items]
+                "__jac_rt_str_join",
+                [b.str_part(text, "data"), b.str_part(text, "len"), items]
             )
         );
     }
     if name in ("partition", "rpartition") {
         sep_nd = self.bind_args(nd, ["sep"])[0];
-        return self.text_partition(text, self.text_arg(sep_nd, nd), name == "rpartition");
+        return self.text_partition(
+            text, self.text_arg(sep_nd, nd), name == "rpartition"
+        );
     }
     if name in ("removeprefix", "removesuffix") {
-        affix_nd = self.bind_args(nd, ["prefix" if name == "removeprefix" else "suffix"])[0];
+        affix_nd = self.bind_args(
+            nd, ["prefix" if name == "removeprefix" else "suffix"]
+        )[0];
         affix = self.text_arg(affix_nd, nd);
         return self.owned_text(
             self.call_rt(
@@ -367,7 +401,8 @@ impl MirLowering.text_method(
         width = self.int_arg(width_nd, 0);
         return self.owned_text(
             self.call_rt(
-                "__jac_rt_str_zfill", [b.str_part(text, "data"), b.str_part(text, "len"), width]
+                "__jac_rt_str_zfill",
+                [b.str_part(text, "data"), b.str_part(text, "len"), width]
             )
         );
     }
@@ -414,7 +449,9 @@ impl MirLowering.text_method(
     return None;
 }
 
-impl MirLowering.text_partition(text: MirValue, sep: MirValue, reverse: bool) -> MirValue {
+impl MirLowering.text_partition(
+    text: MirValue, sep: MirValue, reverse: bool
+) -> MirValue {
     b = self.builder();
     data = b.str_part(text, "data");
     size = b.str_part(text, "len");
@@ -434,11 +471,14 @@ impl MirLowering.text_partition(text: MirValue, sep: MirValue, reverse: bool) ->
     mid = self.owned_text(self.call_rt("__jac_rt_str_new", [sep_data, mid_len]));
     tail = self.owned_text(
         self.call_rt(
-            "__jac_rt_str_new", [self.emit_value(MirOp.PTR_OFFSET, data.type, [data, tail_start]), tail_len]
+            "__jac_rt_str_new",
+            [self.emit_value(MirOp.PTR_OFFSET, data.type, [data, tail_start]), tail_len]
         )
     );
     return self.emit_value(
-        MirOp.TUPLE_MAKE, mir_tuple([mir_str(), mir_str(), mir_str()]), [head, mid, tail]
+        MirOp.TUPLE_MAKE,
+        mir_tuple([mir_str(), mir_str(), mir_str()]),
+        [head, mid, tail]
     );
 }
 
@@ -481,7 +521,12 @@ impl MirLowering.text_subscript(
         return self.owned_text(
             self.call_rt(
                 "__jac_rt_str_index",
-                [b.str_part(text, "root"), b.str_part(text, "data"), b.str_part(text, "len"), index]
+                [
+                    b.str_part(text, "root"),
+                    b.str_part(text, "data"),
+                    b.str_part(text, "len"),
+                    index
+                ]
             )
         );
     }
@@ -502,7 +547,9 @@ impl MirLowering.text_subscript(
     );
 }
 
-impl MirLowering.text_contains(item: MirValue, holder: MirValue, site: uni.UniNode) -> MirValue {
+impl MirLowering.text_contains(
+    item: MirValue, holder: MirValue, site: uni.UniNode
+) -> MirValue {
     b = self.builder();
     if self.is_byte_seq(holder) {
         held = self.spill(holder);
@@ -513,7 +560,9 @@ impl MirLowering.text_contains(item: MirValue, holder: MirValue, site: uni.UniNo
             );
         }
         if not self.is_byte_seq(item) {
-            raise MirRefused(mir_refusal("comparison", f"{item.type.render()} in bytes", site));
+            raise MirRefused(
+                mir_refusal("comparison", f"{item.type.render()} in bytes", site)
+            );
         }
         needle = self.spill(item);
         (needle_data, needle_len) = self.byte_parts(needle);
@@ -535,7 +584,9 @@ impl MirLowering.text_contains(item: MirValue, holder: MirValue, site: uni.UniNo
     text = self.spill(self.as_text(holder));
     needle = self.as_text(item);
     if needle.type.kind != MirKind.STR {
-        raise MirRefused(mir_refusal("comparison", f"{item.type.render()} in str", site));
+        raise MirRefused(
+            mir_refusal("comparison", f"{item.type.render()} in str", site)
+        );
     }
     return self.call_rt(
         "__jac_rt_str_contains",
@@ -566,12 +617,18 @@ impl MirLowering.text_binary(
             return self.owned_text(
                 self.call_rt(
                     "__jac_rt_str_repeat",
-                    [b.str_part(text, "data"), b.str_part(text, "len"), b.convert(times, mir_int())]
+                    [
+                        b.str_part(text, "data"),
+                        b.str_part(text, "len"),
+                        b.convert(times, mir_int())
+                    ]
                 )
             );
         }
         if op == Tok.MOD and self.is_text(left) {
-            template = self.literal_text(site.left) if isinstance(site, uni.BinaryExpr) else None;
+            template = self.literal_text(site.left)
+                if isinstance(site, uni.BinaryExpr)
+                else None;
             if template is None {
                 raise MirRefused(
                     mir_refusal(
@@ -598,20 +655,28 @@ impl MirLowering.text_binary(
         );
         return joined if left.type.kind == MirKind.BYTES else self.to_bytearray(joined);
     }
-    if self.is_byte_seq(left) and op == Tok.STAR_MUL and right.type.kind in (MirKind.INT, MirKind.BOOL) {
+    if self.is_byte_seq(left)
+        and op == Tok.STAR_MUL
+        and right.type.kind in (MirKind.INT, MirKind.BOOL) {
         held = self.spill(left);
         (data, size) = self.byte_parts(held);
         repeated = b.ref_cast(
-            self.call_rt("__jac_rt_bytes_repeat", [data, size, b.convert(right, mir_int())]),
+            self.call_rt(
+                "__jac_rt_bytes_repeat", [data, size, b.convert(right, mir_int())]
+            ),
             mir_bytes(),
             True
         );
-        return repeated if left.type.kind == MirKind.BYTES else self.to_bytearray(repeated);
+        return repeated
+            if left.type.kind == MirKind.BYTES
+            else self.to_bytearray(repeated);
     }
     return None;
 }
 
-impl MirLowering.percent_format(template: str, values: MirValue, site: uni.UniNode) -> MirValue {
+impl MirLowering.percent_format(
+    template: str, values: MirValue, site: uni.UniNode
+) -> MirValue {
     b = self.builder();
     members: list[MirValue] = [];
     if values.type.kind == MirKind.TUPLE {
@@ -682,7 +747,11 @@ impl MirLowering.percent_format(template: str, values: MirValue, site: uni.UniNo
         if code in "sra" {
             text = self.repr_of(value, site)
                 if code == "r"
-                else (self.ascii_of(value, site) if code == "a" else self.str_value(value, site));
+                else (
+                    self.ascii_of(value, site)
+                        if code == "a"
+                        else self.str_value(value, site)
+                );
             spec = (align or ">") + width + precision;
             pieces.append(self.format_value(text, b.const_str(spec, mir_str()), site));
         } elif code in "diu" {
@@ -691,34 +760,48 @@ impl MirLowering.percent_format(template: str, values: MirValue, site: uni.UniNo
             pieces.append(self.format_value(whole, b.const_str(spec, mir_str()), site));
         } elif code in "xXo" {
             if value.type.kind not in (MirKind.INT, MirKind.BOOL) {
-                raise MirRefused(mir_refusal("%-format", f"%{code} of {value.type.render()}", site));
+                raise MirRefused(
+                    mir_refusal("%-format", f"%{code} of {value.type.render()}", site)
+                );
             }
             spec = align + sign + alt + zero + width + code;
             pieces.append(
-                self.format_value(b.convert(value, mir_int()), b.const_str(spec, mir_str()), site)
+                self.format_value(
+                    b.convert(value, mir_int()), b.const_str(spec, mir_str()), site
+                )
             );
         } elif code in "eEfFgG" {
             spec = align + sign + alt + zero + width + precision + code;
             pieces.append(
                 self.format_value(
-                    self.coerce(value, mir_float(), site), b.const_str(spec, mir_str()), site
+                    self.coerce(value, mir_float(), site),
+                    b.const_str(spec, mir_str()),
+                    site
                 )
             );
         } elif code == "c" {
             text = value
                 if self.is_text(value)
                 else self.owned_text(
-                    self.call_rt("__jac_rt_str_chr", [self.coerce(value, mir_int(), site)])
+                    self.call_rt(
+                        "__jac_rt_str_chr", [self.coerce(value, mir_int(), site)]
+                    )
                 );
             spec = (align or ">") + width;
-            pieces.append(self.format_value(self.as_text(text), b.const_str(spec, mir_str()), site));
+            pieces.append(
+                self.format_value(
+                    self.as_text(text), b.const_str(spec, mir_str()), site
+                )
+            );
         } else {
             raise MirRefused(mir_refusal("%-format", f"conversion %{code}", site));
         }
         pieces[-1] = self.spill(pieces[-1]);
     }
     if used < len(members) {
-        b.raise_builtin("TypeError", "not all arguments converted during string formatting");
+        b.raise_builtin(
+            "TypeError", "not all arguments converted during string formatting"
+        );
         b.position(self.st().fn.new_block("dead"));
         return b.const_str("", mir_str());
     }
@@ -754,7 +837,8 @@ impl MirLowering.lower_for_text(nd: uni.InForStmt, holder: MirValue) {
         b.store(cursor, b.binary("add", at, width));
         item = self.owned_text(
             self.call_rt(
-                "__jac_rt_str_new", [self.emit_value(MirOp.PTR_OFFSET, data.type, [data, at]), width]
+                "__jac_rt_str_new",
+                [self.emit_value(MirOp.PTR_OFFSET, data.type, [data, at]), width]
             )
         );
         self.store_name(nd.target, item);
@@ -776,7 +860,9 @@ impl MirLowering.lower_for_text(nd: uni.InForStmt, holder: MirValue) {
     b.position(after);
 }
 
-impl MirLowering.bytes_literal(nd: (uni.String | uni.MultiString)) -> (MirValue | None) {
+impl MirLowering.bytes_literal(
+    nd: (uni.String | uni.MultiString)
+) -> (MirValue | None) {
     parts = nd.strings if isinstance(nd, uni.MultiString) else [nd];
     data = b"";
     for part in parts {
@@ -785,7 +871,9 @@ impl MirLowering.bytes_literal(nd: (uni.String | uni.MultiString)) -> (MirValue 
         }
         data += part.lit_value;
     }
-    return self.emit_value(MirOp.CONST_BYTES, mir_bytes(), [], str_value=data.decode("latin-1"));
+    return self.emit_value(
+        MirOp.CONST_BYTES, mir_bytes(), [], str_value=data.decode("latin-1")
+    );
 }
 
 impl MirLowering.byte_parts(held: MirValue) -> tuple[MirValue, MirValue] {
@@ -794,11 +882,15 @@ impl MirLowering.byte_parts(held: MirValue) -> tuple[MirValue, MirValue] {
     address = self.address_of(held);
     size = self.emit_value(MirOp.MEM_LOAD, mir_int(), [address]);
     if held.type.kind == MirKind.BYTES {
-        data = self.emit_value(MirOp.PTR_CAST, u8p, [b.binary("add", address, b.const_int(8, mir_int()))]);
+        data = self.emit_value(
+            MirOp.PTR_CAST, u8p, [b.binary("add", address, b.const_int(8, mir_int()))]
+        );
         return (data, size);
     }
     stored = self.emit_value(
-        MirOp.MEM_LOAD, mir_int(), [b.binary("add", address, b.const_int(16, mir_int()))]
+        MirOp.MEM_LOAD,
+        mir_int(),
+        [b.binary("add", address, b.const_int(16, mir_int()))]
     );
     return (self.emit_value(MirOp.PTR_CAST, u8p, [stored]), size);
 }
@@ -811,7 +903,9 @@ impl MirLowering.byte_at(data: MirValue, index: MirValue) -> MirValue {
 }
 
 impl MirLowering.byte_len(value: MirValue) -> MirValue {
-    return self.emit_value(MirOp.MEM_LOAD, mir_int(), [self.address_of(self.spill(value))]);
+    return self.emit_value(
+        MirOp.MEM_LOAD, mir_int(), [self.address_of(self.spill(value))]
+    );
 }
 
 impl MirLowering.to_bytearray(value: MirValue) -> MirValue {
@@ -822,7 +916,9 @@ impl MirLowering.to_bytearray(value: MirValue) -> MirValue {
     );
 }
 
-impl MirLowering.byte_index(size: MirValue, index_nd: uni.Expr, message: str) -> MirValue {
+impl MirLowering.byte_index(
+    size: MirValue, index_nd: uni.Expr, message: str
+) -> MirValue {
     b = self.builder();
     at = self.coerce(self.lower_expr(index_nd), mir_int(), index_nd);
     zero = b.const_int(0, mir_int());
@@ -862,7 +958,9 @@ impl MirLowering.bytes_subscript(
     return made if held.type.kind == MirKind.BYTES else self.to_bytearray(made);
 }
 
-impl MirLowering.bytearray_store(target: uni.AtomTrailer, value_nd: uni.Expr, site: uni.UniNode) {
+impl MirLowering.bytearray_store(
+    target: uni.AtomTrailer, value_nd: uni.Expr, site: uni.UniNode
+) {
     b = self.builder();
     holder = self.spill(self.lower_expr(target.target));
     slice = target.right;
@@ -878,7 +976,9 @@ impl MirLowering.bytearray_store(target: uni.AtomTrailer, value_nd: uni.Expr, si
     self.runtime("__jac_rt_bytearray_set", [holder, at, value]);
 }
 
-impl MirLowering.bytes_arg(arg: (uni.Expr | None), site: uni.UniNode) -> tuple[MirValue, MirValue] {
+impl MirLowering.bytes_arg(
+    arg: (uni.Expr | None), site: uni.UniNode
+) -> tuple[MirValue, MirValue] {
     if arg is None {
         raise MirRefused(mir_refusal("call", "missing bytes argument", site));
     }
@@ -916,7 +1016,8 @@ impl MirLowering.bytes_method(
         self.bind_args(nd, []);
         (data, size) = self.byte_parts(held);
         made = self.call_rt(
-            "__jac_rt_bytes_case", [data, size, b.const_int(TEXT_CASES[name], mir_int())]
+            "__jac_rt_bytes_case",
+            [data, size, b.const_int(TEXT_CASES[name], mir_int())]
         );
     } elif name in TEXT_STRIPS {
         chars_nd = self.bind_args(nd, ["chars"])[0];
@@ -928,7 +1029,14 @@ impl MirLowering.bytes_method(
         (data, size) = self.byte_parts(held);
         made = self.call_rt(
             "__jac_rt_bytes_strip",
-            [data, size, chars_data, chars_len, b.const_bool(supplied), b.const_int(TEXT_STRIPS[name], mir_int())]
+            [
+                data,
+                size,
+                chars_data,
+                chars_len,
+                b.const_bool(supplied),
+                b.const_int(TEXT_STRIPS[name], mir_int())
+            ]
         );
     } elif name == "replace" {
         (old_nd, new_nd, count_nd) = self.bind_args(nd, ["old", "new", "count"]);
@@ -937,7 +1045,8 @@ impl MirLowering.bytes_method(
         count = self.int_arg(count_nd, -1);
         (data, size) = self.byte_parts(held);
         made = self.call_rt(
-            "__jac_rt_bytes_replace", [data, size, old_data, old_len, new_data, new_len, count]
+            "__jac_rt_bytes_replace",
+            [data, size, old_data, old_len, new_data, new_len, count]
         );
     } elif name == "join" {
         items_nd = self.bind_args(nd, ["iterable_of_bytes"])[0];
@@ -945,7 +1054,8 @@ impl MirLowering.bytes_method(
             raise MirRefused(mir_refusal("call", "join without an argument", nd));
         }
         items = self.spill(self.lower_expr(items_nd));
-        if items.type.kind != MirKind.LIST or items.type.payload().kind != MirKind.BYTES {
+        if items.type.kind != MirKind.LIST
+            or items.type.payload().kind != MirKind.BYTES {
             raise MirRefused(mir_refusal("call", f"join of {items.type.render()}", nd));
         }
         (data, size) = self.byte_parts(held);
@@ -961,7 +1071,8 @@ impl MirLowering.bytes_method(
         (data, size) = self.byte_parts(held);
         return self.typed_handle(
             self.call_rt(
-                "__jac_rt_bytes_split", [data, size, sep_data, sep_len, b.const_bool(supplied), limit]
+                "__jac_rt_bytes_split",
+                [data, size, sep_data, sep_len, b.const_bool(supplied), limit]
             ),
             nd
         );
@@ -970,29 +1081,52 @@ impl MirLowering.bytes_method(
         result = b.ref_cast(made, mir_bytes(), True);
         return self.to_bytearray(result) if keep_kind else result;
     }
-    if name in ("find", "rfind", "index", "rindex", "count", "startswith", "endswith") {
-        first = "prefix" if name == "startswith" else ("suffix" if name == "endswith" else "sub");
+    if name
+        in ("find", "rfind", "index", "rindex", "count", "startswith", "endswith") {
+        first = "prefix"
+            if name == "startswith"
+            else ("suffix" if name == "endswith" else "sub");
         (sub_nd, start_nd, end_nd) = self.bind_args(nd, [first, "start", "end"]);
         (sub_data, sub_len) = self.bytes_arg(sub_nd, nd);
         start = self.int_arg(start_nd, 0);
         stop = self.int_arg(end_nd, TEXT_STOP);
         (data, size) = self.byte_parts(held);
         if name == "count" {
-            return self.call_rt("__jac_rt_bytes_count", [data, size, sub_data, sub_len, start, stop]);
+            return self.call_rt(
+                "__jac_rt_bytes_count", [data, size, sub_data, sub_len, start, stop]
+            );
         }
         if name in ("startswith", "endswith") {
             return self.call_rt(
                 "__jac_rt_bytes_affix",
-                [data, size, sub_data, sub_len, start, stop, b.const_bool(name == "endswith")]
+                [
+                    data,
+                    size,
+                    sub_data,
+                    sub_len,
+                    start,
+                    stop,
+                    b.const_bool(name == "endswith")
+                ]
             );
         }
         at = self.call_rt(
             "__jac_rt_bytes_find",
-            [data, size, sub_data, sub_len, start, stop, b.const_bool(name.startswith("r"))]
+            [
+                data,
+                size,
+                sub_data,
+                sub_len,
+                start,
+                stop,
+                b.const_bool(name.startswith("r"))
+            ]
         );
         if name.endswith("index") {
             self.raise_if(
-                b.compare("lt", at, b.const_int(0, mir_int())), "ValueError", "subsection not found"
+                b.compare("lt", at, b.const_int(0, mir_int())),
+                "ValueError",
+                "subsection not found"
             );
         }
         return at;
@@ -1020,7 +1154,9 @@ impl MirLowering.bytes_method(
         index_nd = self.bind_args(nd, ["index"])[0];
         (_, size) = self.byte_parts(held);
         self.raise_if(
-            b.compare("eq", size, b.const_int(0, mir_int())), "IndexError", "pop from empty bytearray"
+            b.compare("eq", size, b.const_int(0, mir_int())),
+            "IndexError",
+            "pop from empty bytearray"
         );
         at = b.binary("sub", size, b.const_int(1, mir_int()));
         if index_nd is not None and self.present(index_nd) {

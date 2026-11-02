@@ -128,4 +128,3 @@ def mir_holds_ref(t: MirType) -> bool;
 def mir_ref -> MirType;
 
 def mir_is_container(t: MirType) -> bool;
-

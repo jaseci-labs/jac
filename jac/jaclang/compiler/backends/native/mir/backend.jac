@@ -1,12 +1,7 @@
 import os;
 
-"""Selects MIR as the native backend while it replaces NaIRGenPass (#10471):
-on with JAC_NATIVE_MIR=1. The switch exists only until MIR covers the native
-tests; then NaIRGenPass and the switch are deleted together."""
 def mir_backend_selected -> bool;
 
-"""Runtime units in link order: each one may call the units listed before it,
-and every other unit links against all of them."""
 glob MIR_RUNTIME_UNITS: list[str] = [
          "runtime/native/exceptions.jac",
          "runtime/native/rc.jac",
@@ -34,7 +29,4 @@ walker MirNativePass(CompilerPass) {
     can run_walk with uni.Module entry;
 }
 
-"""What the decision step makes of every analysed module in `prog`: lowering
-to MIR without emission, and the demoted set it settles. This is what
-`jac check --native-coverage` reports."""
 def native_coverage(prog: JacProgram) -> dict[str, dict[str, any]];

@@ -36,7 +36,9 @@ impl MirLowering.mentions_typevar(t: (TypeBase | None)) -> bool {
         return any(self.mentions_typevar(member) for member in t.types);
     }
     if isinstance(t, ClassType) and t.private {
-        return any(self.mentions_typevar(arg) for arg in list(t.private.type_args or []));
+        return any(
+            self.mentions_typevar(arg) for arg in list(t.private.type_args or [])
+        );
     }
     return False;
 }
@@ -64,7 +66,9 @@ impl MirLowering.unify(
         return;
     }
     if isinstance(declared, ClassType) and isinstance(actual, ClassType) {
-        declared_args = list(declared.private.type_args or []) if declared.private else [];
+        declared_args = list(declared.private.type_args or [])
+            if declared.private
+            else [];
         actual_args = list(actual.private.type_args or []) if actual.private else [];
         if declared.shared.class_name == "type"
             and declared_args
@@ -98,7 +102,13 @@ impl MirLowering.type_param_names(ab: uni.Ability) -> list[str] {
     pending: list[TypeBase] = [];
     fn_type = self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(ab));
     if isinstance(fn_type, FunctionType) {
-        pending.extend([p.param_type for p in fn_type.parameters if p.param_type is not None]);
+        pending.extend(
+            [
+                p.param_type
+                for p in fn_type.parameters
+                if p.param_type is not None
+            ]
+        );
         if fn_type.return_type is not None {
             pending.append(fn_type.return_type);
         }
@@ -106,7 +116,9 @@ impl MirLowering.type_param_names(ab: uni.Ability) -> list[str] {
     while pending {
         current = pending.pop();
         if isinstance(current, TypeVarType) {
-            if not current.is_self and current.name not in names and current.name not in self.type_env {
+            if not current.is_self
+                and current.name not in names
+                and current.name not in self.type_env {
                 names.append(current.name);
             }
         } elif isinstance(current, UnionType) {
@@ -135,7 +147,9 @@ impl MirLowering.generic_call(
     solution: dict[str, TypeBase] = {};
     for (pv, chosen) in zip(nodes, self.bound_args(nd, ab, receiver is not None)) {
         if pv.name.sym is not None and not isinstance(chosen, MirPacked) {
-            self.unify(evaluator.get_type_of_symbol(pv.name.sym), chosen.type, solution);
+            self.unify(
+                evaluator.get_type_of_symbol(pv.name.sym), chosen.type, solution
+            );
         }
     }
     for wanted in self.type_param_names(ab) {
@@ -152,15 +166,18 @@ impl MirLowering.generic_call(
     }
     env: dict[str, TypeBase] = dict(self.type_env);
     env.update(solution);
-    key = f"{label}|" + ",".join(
-        sorted(
-            f"{param}={mir_type_of(bound, MirPosition.VALUE, nd, env).render()}"
-            for (param, bound) in solution.items()
-        )
-    );
+    key = f"{label}|"
+        + ",".join(
+            sorted(
+                f"{param}={mir_type_of(bound, MirPosition.VALUE, nd, env).render()}"
+                for (param, bound) in solution.items()
+            )
+        );
     decl = self.instances.get(key);
     if decl is None {
-        parts = sorted(f"{param}={native_type_key(bound)}" for (param, bound) in solution.items());
+        parts = sorted(
+            f"{param}={native_type_key(bound)}" for (param, bound) in solution.items()
+        );
         memo = f"{label}|" + ",".join(parts);
         digest = hashlib.sha256(memo.encode()).hexdigest()[:8];
         stem = f"{archetype_native_name(owner)}_{name}" if owner is not None else name;
@@ -171,12 +188,11 @@ impl MirLowering.generic_call(
     }
     bound = self.bound_args(nd, ab, receiver is not None);
     if len(bound) != len(decl.params) {
-        raise MirRefused(mir_refusal("call", f"{label} with {len(bound)} arguments", nd));
+        raise MirRefused(
+            mir_refusal("call", f"{label} with {len(bound)} arguments", nd)
+        );
     }
-    values = [
-        self.bound_value(arg, ptype)
-        for (arg, ptype) in zip(bound, decl.params)
-    ];
+    values = [self.bound_value(arg, ptype) for (arg, ptype) in zip(bound, decl.params)];
     if receiver is not None {
         values.insert(0, receiver);
     }
@@ -204,7 +220,9 @@ impl MirLowering.declare_instance(
             self.symbol_type(pv.name.sym, pv)
             for pv in self.param_nodes(sig, owner is not None)
         ];
-        fn_type = self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(ab));
+        fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
+            self.ability_sym(ab)
+        );
         ret = mir_none();
         if isinstance(fn_type, FunctionType) {
             ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, ab);

@@ -126,8 +126,6 @@ def extended_mro(reg: LayoutRegistry, lay: ArchetypeLayout) -> list[str];
 
 def adopt_imported_bases(module: Module, header_identity: bool = True) -> list[str];
 
-"""Copies the class hierarchy and layouts that `imported` declares into
-`consumer`'s registry, so inherited slots resolve across units."""
 def merge_imported_layouts(consumer: Module, imported: Module, prog: JacProgram);
 
 def adopt_ancestor_slots(lay: ArchetypeLayout, ancestors: list[ArchetypeLayout]);

@@ -160,10 +160,6 @@ obj MirObjectField {
         index: int;
 }
 
-"""A Jac archetype's native layout, read from the layout registry: the header
-slots (vtable pointer, OSP type tag, walker reports), then the fields at
-their layout indices. `local` objects get their vtable, drop and trace
-functions emitted in this module."""
 obj MirObjectDef {
     has name: str,
         slot_count: int,
@@ -183,9 +179,6 @@ obj MirObjectDef {
     def field(name: str) -> (MirObjectField | None);
 }
 
-"""A generator's frame, decided by the generator pass: its size in bytes, the
-offset of every local slot of its resume function keyed by the slot's value
-id, and the function that releases the slots when the frame is dropped."""
 obj MirFrame {
     has size: int,
         drop_symbol: str,
@@ -236,6 +229,7 @@ obj MirBuilder {
     def call_runtime(
         callee: str, args: list[MirValue], ret: MirType
     ) -> (MirValue | None);
+
     def const_str(text: str, type: MirType) -> MirValue;
     def const_null(type: MirType) -> MirValue;
     def str_part(value: MirValue, part: str) -> MirValue;

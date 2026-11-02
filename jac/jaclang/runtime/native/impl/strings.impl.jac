@@ -27,9 +27,7 @@ impl __jac_rt_str_len(owner: ptr[u8], data: ptr[u8], n: int) -> int {
     }
     if int(owner) == int(data) and int(owner) != 0 {
         tag = __mem_load_i64(int(owner) + STR_TAG_OFF);
-        if (tag & 1) != 0
-            and tag < 0
-            and ((tag & STR_LEN_PAYLOAD_MASK) >> 1) == n {
+        if (tag & 1) != 0 and tag < 0 and ((tag & STR_LEN_PAYLOAD_MASK) >> 1) == n {
             return n;
         }
     }

@@ -5,9 +5,7 @@ import from c {
         p: int, n: int
     ) -> int;  def calloc(n: int, size: int) -> int;  def memset(
         p: int, value: i32, n: int
-    ) -> int;  def pthread_getspecific(
-        key: int
-    ) -> int;
+    ) -> int;  def pthread_getspecific(key: int) -> int;
 }
 
 glob HDR_ALLOC_ID_BACK: int = 32,

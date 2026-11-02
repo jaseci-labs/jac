@@ -8,7 +8,8 @@ impl MirLowering.python_call(nd: uni.FuncCall) -> (MirValue | None) {
         return None;
     }
     callee = nd.callee_decl;
-    if not isinstance(callee, uni.Ability) and isinstance(binding.ast_node, uni.Ability) {
+    if not isinstance(callee, uni.Ability)
+        and isinstance(binding.ast_node, uni.Ability) {
         callee = binding.ast_node;
     }
     sig = self.ability_sig(callee) if isinstance(callee, uni.Ability) else None;
@@ -26,18 +27,20 @@ impl MirLowering.python_call(nd: uni.FuncCall) -> (MirValue | None) {
         );
     }
     params = [self.symbol_type(pv.name.sym, pv) for pv in self.param_nodes(sig, False)];
-    fn_type = self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(callee));
+    fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
+        self.ability_sym(callee)
+    );
     ret = mir_none();
     if isinstance(fn_type, FunctionType) {
         ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, nd);
     }
     bound = self.bound_args(nd, callee, False);
     if len(bound) != len(params) {
-        raise MirRefused(mir_refusal("call", f"{name} with {len(bound)} arguments", nd));
+        raise MirRefused(
+            mir_refusal("call", f"{name} with {len(bound)} arguments", nd)
+        );
     }
-    args = [
-        self.bound_value(arg, ptype) for (arg, ptype) in zip(bound, params)
-    ];
+    args = [self.bound_value(arg, ptype) for (arg, ptype) in zip(bound, params)];
     return self.bridge_call(binding.symbol, binding.name, args, ret, nd);
 }
 
@@ -89,7 +92,11 @@ impl MirLowering.bridge_call(
             text = self.coerce(arg, mir_str(), site);
             held = self.runtime_value(
                 "__jac_rt_str_ref",
-                [b.str_part(text, "root"), b.str_part(text, "data"), b.str_part(text, "len")]
+                [
+                    b.str_part(text, "root"),
+                    b.str_part(text, "data"),
+                    b.str_part(text, "len")
+                ]
             );
             wire.append(self.emit_value(MirOp.PTR_CAST, i8p, [held]));
         } else {
@@ -150,7 +157,9 @@ impl MirLowering.bridge_symbol(symbol: str) {
     bridge = interop_callback_symbol(self.module.loc.mod_path, name);
     adapter = MirFunction(name=name, symbol=symbol, ret=decl.ret);
     saved = self.state;
-    self.state = MirFnState(fn=adapter, b=MirBuilder(fn=adapter, block=adapter.new_block("entry")));
+    self.state = MirFnState(
+        fn=adapter, b=MirBuilder(fn=adapter, block=adapter.new_block("entry"))
+    );
     try {
         args: list[MirValue] = [];
         for (index, ptype) in enumerate(decl.params) {
@@ -159,11 +168,18 @@ impl MirLowering.bridge_symbol(symbol: str) {
             args.append(value);
         }
         result = self.bridge_call(bridge, name, args, decl.ret, decl.ability);
-        self.builder().ret(None if decl.ret.kind in (MirKind.NONE, MirKind.VOID) else result);
+        self.builder().ret(
+            None if decl.ret.kind in (MirKind.NONE, MirKind.VOID) else result
+        );
     } finally {
         self.state = saved;
     }
-    self.mir.functions = [fn for fn in self.mir.functions if fn.symbol != symbol] + [adapter];
+    self.mir.functions = [
+        fn
+        for fn in self.mir.functions
+        if fn.symbol != symbol
+    ]
+        + [adapter];
     self.mir.bridged[symbol] = bridge;
     nodes = self.param_nodes(sig, False);
     self.bindings.append(
@@ -183,17 +199,20 @@ impl MirLowering.bridge_symbol(symbol: str) {
 
 impl MirLowering.python_base_of(arch: uni.Archetype) -> (str | None) {
     for base_expr in list(arch.base_classes or []) {
-        if isinstance(base_expr, uni.AtomTrailer) and isinstance(base_expr.right, uni.IndexSlice) {
+        if isinstance(base_expr, uni.AtomTrailer)
+            and isinstance(base_expr.right, uni.IndexSlice) {
             base_expr = base_expr.target;
         }
-        if not isinstance(base_expr, uni.Name) or base_expr.value in NATIVE_ERASED_BASES {
+        if not isinstance(base_expr, uni.Name)
+            or base_expr.value in NATIVE_ERASED_BASES {
             continue;
         }
         base_type = base_expr.type;
         if not isinstance(base_type, ClassType) {
             continue;
         }
-        if is_enum_class_type(base_type) or JAC_TYPE_REGISTRY.is_exception(base_expr.value) {
+        if is_enum_class_type(base_type)
+            or JAC_TYPE_REGISTRY.is_exception(base_expr.value) {
             continue;
         }
         scope = base_type.shared.symbol_table;

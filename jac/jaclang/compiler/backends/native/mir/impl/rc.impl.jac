@@ -103,12 +103,18 @@ impl MirRcState.rewrite(blk: MirBlock) {
                 self.consume(member) if mir_holds_ref(member.type) else member
                 for member in instr.operands
             ];
-            made = MirInstr(op=MirOp.TUPLE_MAKE, result=instr.result, operands=members, type_arg=instr.type_arg);
+            made = MirInstr(
+                op=MirOp.TUPLE_MAKE,
+                result=instr.result,
+                operands=members,
+                type_arg=instr.type_arg
+            );
             if instr.result is not None {
                 instr.result.owned = mir_holds_ref(instr.result.type);
             }
             self.out.append(made);
-        } elif instr.op in (MirOp.STR_MAKE, MirOp.REF_CAST, MirOp.OPT_MAKE, MirOp.ANY_BOX) {
+        } elif instr.op
+            in (MirOp.STR_MAKE, MirOp.REF_CAST, MirOp.OPT_MAKE, MirOp.ANY_BOX) {
             owner = instr.operands[0];
             result = instr.result;
             if result is not None and owner.id in self.pending {
@@ -189,7 +195,8 @@ impl MirRcState.initialize_slots {
     }
     first = self.fn.blocks[0];
     at = 0;
-    while at < len(first.instrs) and first.instrs[at].op in (MirOp.SLOT, MirOp.EXC_FRAME) {
+    while at < len(first.instrs)
+        and first.instrs[at].op in (MirOp.SLOT, MirOp.EXC_FRAME) {
         at += 1;
     }
     made: list[MirInstr] = [];

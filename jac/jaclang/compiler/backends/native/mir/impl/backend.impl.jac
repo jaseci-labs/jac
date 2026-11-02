@@ -32,7 +32,11 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     if here in runtime {
         runtime = runtime[:runtime.index(here)];
     }
-    deps = [unit for unit in runtime + lowered.deps if unit != here];
+    deps = [
+        unit
+        for unit in runtime + lowered.deps
+        if unit != here
+    ];
     ir_in.gen.llvm_ir = emit_mir_module(
         lowered,
         self.prog.options.effective_triple(),
@@ -103,11 +107,18 @@ impl native_coverage(prog: JacProgram) -> dict[str, dict[str, any]] {
             continue;
         }
         lowering = MirLowering(
-            prog=prog, module=module, mir=MirModule(path=path, prefix=native_unit_prefix(path))
+            prog=prog,
+            module=module,
+            mir=MirModule(path=path, prefix=native_unit_prefix(path))
         );
         lowered = lowering.lower();
         if not lowered.demoted {
-            findings[os.path.realpath(path)] = {"outcome": "native", "code": "", "detail": "", "demoted": {}};
+            findings[os.path.realpath(path)] = {
+                "outcome": "native",
+                "code": "",
+                "detail": "",
+                "demoted": {}
+            };
             continue;
         }
         (first, reason) = sorted(lowered.demoted.items())[0];
