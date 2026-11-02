@@ -1088,10 +1088,7 @@ impl MirLowering.lower_bool(nd: uni.BoolExpr) -> MirValue {
     b = self.builder();
     fn = self.st().fn;
     result_type = self.expr_type(nd);
-    result = fn.new_value(result_type, "bool.result");
-    fn.blocks[0].instrs.insert(
-        0, MirInstr(op=MirOp.SLOT, result=result, type_arg=result_type)
-    );
+    result = self.temp_slot(result_type);
     done = fn.new_block("bool.done");
     is_and = nd.op.name == Tok.KW_AND;
     values = list(nd.values);
@@ -1565,6 +1562,7 @@ impl MirLowering.temp_slot(type: MirType) -> MirValue {
     fn = self.st().fn;
     made = fn.new_value(type, "tmp");
     made.is_slot = True;
+    made.is_temp = True;
     if type.kind != MirKind.NONE {
         fn.blocks[0].instrs.insert(
             0, MirInstr(op=MirOp.SLOT, result=made, type_arg=type)

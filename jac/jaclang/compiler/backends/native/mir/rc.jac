@@ -18,6 +18,13 @@ obj MirRcState {
     def last_uses(blk: MirBlock) -> dict[int, int];
     def base_of(value_id: int) -> int;
     def initialize_slots;
+    def carry_crossing;
+    def owned_here(instr: MirInstr) -> bool;
+    def end_temporaries;
+    def temp_keeps(bits: dict[int, int]) -> dict[int, int];
+    def temp_uses(instr: MirInstr, keeps: dict[int, int]) -> int;
+    def temp_defs(instr: MirInstr, bits: dict[int, int]) -> int;
+    def temp_end(slot: MirValue) -> list[MirInstr];
 }
 
 def mir_insert_rc(fn: MirFunction);

@@ -77,6 +77,7 @@ obj MirValue {
         type: MirType,
         name: str = "",
         is_slot: bool = False,
+        is_temp: bool = False,
         owned: bool = False;
 
     def render -> str;
