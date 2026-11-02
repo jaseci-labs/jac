@@ -427,8 +427,7 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
         if op is None {
             raise MirRefused(mir_refusal("augmented assignment", nd.aug_op.value, nd));
         }
-        slot = self.local_slot(target.sym, target);
-        current = self.builder().load(slot, slot.type);
+        current = self.lower_name(target);
         if current.type.kind == MirKind.STR and op == Tok.PLUS {
             value = self.str_concat(current, self.coerce(value, mir_str(), nd));
         } else {
@@ -472,6 +471,7 @@ impl MirLowering.local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirV
     first = fn.blocks[0];
     made = fn.new_value(slot_type, sym.sym_name);
     made.is_slot = True;
+    made.is_temp = self.loop_scoped(sym);
     if slot_type.kind != MirKind.NONE {
         first.instrs.insert(
             0, MirInstr(op=MirOp.SLOT, result=made, type_arg=slot_type)
@@ -479,6 +479,41 @@ impl MirLowering.local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirV
     }
     self.st().locals[key] = made;
     return made;
+}
+
+impl MirLowering.loop_scoped(sym: uni.Symbol) -> bool {
+    if not sym.defn {
+        return False;
+    }
+    child: uni.UniNode = sym.defn[0];
+    walk = child.parent;
+    while walk is not None
+        and not isinstance(walk, (uni.Ability, uni.LambdaExpr, uni.Module)) {
+        if isinstance(walk, (uni.WhileStmt, uni.InForStmt, uni.IterForStmt))
+            and any(child is stmt for stmt in walk.body)
+            and all(self.within_body(use, walk) for use in sym.uses) {
+            return True;
+        }
+        child = walk;
+        walk = walk.parent;
+    }
+    return False;
+}
+
+impl MirLowering.within_body(nd: uni.UniNode, loop: uni.UniNode) -> bool {
+    child = nd;
+    walk = nd.parent;
+    while walk is not None {
+        if walk is loop {
+            return any(child is stmt for stmt in loop.body);
+        }
+        if isinstance(walk, (uni.Ability, uni.LambdaExpr)) {
+            return False;
+        }
+        child = walk;
+        walk = walk.parent;
+    }
+    return False;
 }
 
 impl MirLowering.lower_return(nd: uni.ReturnStmt) {
