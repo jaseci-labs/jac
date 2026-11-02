@@ -2685,7 +2685,7 @@ impl MirLowering.declare_global(nd: uni.Name) -> (MirGlobal | None) {
     if owner is not None
         and owner.loc.mod_path.endswith(".jac")
         and os.path.realpath(owner.loc.mod_path)
-        != os.path.realpath(self.module.loc.mod_path) {
+            != os.path.realpath(self.module.loc.mod_path) {
         group = declaration.parent;
         access = group.access if isinstance(group, uni.GlobalVars) else None;
         defined = declaration.target[0] if declaration.target else None;

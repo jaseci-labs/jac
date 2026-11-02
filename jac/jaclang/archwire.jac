@@ -10610,7 +10610,6 @@ graph import compiler.backends.native.mir {
             mir_bytearray,
             mir_bytes,
             mir_c_fn,
-            mir_c_pin,
             mir_c_ptr,
             mir_c_view,
             mir_class,

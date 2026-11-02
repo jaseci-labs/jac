@@ -31,9 +31,8 @@ walker MirNativePass(CompilerPass) {
 
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     def report_refusals(lowering: MirLowering);
-    def interface(
-        mir: MirModule, deps: list[str], triple: str = ""
-    ) -> NativeIface;
+    def interface(mir: MirModule, deps: list[str], triple: str = "") -> NativeIface;
+
     def layout(lowering: MirLowering, mir: MirModule) -> NativeModuleLayout;
     can run_walk with uni.Module entry;
 }

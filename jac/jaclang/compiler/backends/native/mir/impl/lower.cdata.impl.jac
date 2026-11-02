@@ -484,7 +484,9 @@ impl MirLowering.c_struct_call(nd: uni.FuncCall, struct_type: MirType) -> MirVal
         } else {
             raise MirRefused(
                 mir_refusal(
-                    "call", f"{arch.name.value} with {len(nd.params)} arguments", nd
+                    "call",
+                    f"{arch.name.value} with {len(list(nd.params or []))} arguments",
+                    nd
                 )
             );
         }
