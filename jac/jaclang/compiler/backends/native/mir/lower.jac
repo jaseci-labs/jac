@@ -210,6 +210,7 @@ obj MirFnState {
         locals: dict[int, MirValue] = {},
         loops: list[MirLoopTarget] = [],
         caught: list[tuple[MirValue, MirValue, MirValue]] = [],
+        tries: list[tuple[MirValue, MirBlock, int]] = [],
         specials: dict[str, MirValue] = {};
 }
 
@@ -465,6 +466,8 @@ obj MirLowering {
     def lower_assert(nd: uni.AssertStmt);
     def raise_named(name: str, message_nd: (uni.UniNode | None), nd: uni.UniNode);
     def lower_raise(nd: uni.RaiseStmt);
+    def leave_tries(loop_depth: int);
+    def rearm_tries;
     def exception_matches(type_id: MirValue, clause: uni.Expr) -> MirValue;
     def exception_name(nd: uni.Expr) -> str;
     def any_tag(t: MirType, site: uni.UniNode) -> int;

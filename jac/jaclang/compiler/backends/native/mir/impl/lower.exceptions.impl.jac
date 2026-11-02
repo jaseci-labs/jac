@@ -59,7 +59,9 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
     after = fn.new_block("try.done");
     b.cond_branch(b.compare("eq", armed, b.const_int(0, armed.type)), body, dispatch);
     b.position(body);
+    self.st().tries.append((frame, dispatch, len(self.st().loops)));
     self.lower_body(nd.body);
+    self.st().tries.pop();
     if not self.builder().block.terminated() {
         self.runtime("__jac_rt_exc_pop", [frame]);
         self.lower_else(nd.else_body, after);
@@ -145,6 +147,32 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
     b.position(after);
     if nd.finally_body is not None {
         self.lower_body(nd.finally_body.body);
+    }
+}
+
+impl MirLowering.leave_tries(loop_depth: int) {
+    for (frame, _, depth) in reversed(self.st().tries) {
+        if depth >= loop_depth {
+            self.runtime("__jac_rt_exc_pop", [frame]);
+        }
+    }
+}
+
+impl MirLowering.rearm_tries {
+    b = self.builder();
+    fn = self.st().fn;
+    for (frame, dispatch, _) in self.st().tries {
+        self.runtime("__jac_rt_exc_push", [frame]);
+        armed = self.emit_value(
+            MirOp.SETJMP,
+            mir_int(32, True, True),
+            [self.runtime_value("__jac_rt_exc_jmp_buf", [frame])]
+        );
+        resumed = fn.new_block("try.resume");
+        b.cond_branch(
+            b.compare("eq", armed, b.const_int(0, armed.type)), resumed, dispatch
+        );
+        b.position(resumed);
     }
 }
 

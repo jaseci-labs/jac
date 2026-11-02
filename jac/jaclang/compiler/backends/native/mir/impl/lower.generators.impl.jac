@@ -172,13 +172,13 @@ impl MirLowering.lower_yield(nd: uni.YieldExpr) {
     }
     cursor = nd.parent;
     while cursor is not None and not isinstance(cursor, (uni.Ability, uni.Module)) {
-        if isinstance(cursor, (uni.TryStmt, uni.WithStmt)) {
+        if isinstance(cursor, uni.WithStmt) {
             raise MirRefused(
                 mir_refusal(
                     "expression",
-                    "yield inside try or with",
+                    "yield inside with",
                     nd,
-                    "A native generator resumes in a fresh activation, so a handler or context around its yield would not be armed again; move the yield out of the try or with."
+                    "A native generator resumes in a fresh activation, so a context around its yield would not be entered again; move the yield out of the with."
                 )
             );
         }
@@ -243,7 +243,9 @@ impl MirLowering.yield_value(value: MirValue, site: uni.UniNode) {
             [bits, b.const_int(self.elem_kind(info.elem, site), mir_int())]
         );
     }
+    self.leave_tries(0);
     b.emit(MirInstr(op=MirOp.YIELD, operands=[shared]));
+    self.rearm_tries();
 }
 
 impl MirLowering.yield_expression(nd: uni.YieldExpr) -> MirValue {

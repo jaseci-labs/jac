@@ -457,7 +457,11 @@ impl MirLowering.local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirV
     first = fn.blocks[0];
     made = fn.new_value(slot_type, sym.sym_name);
     made.is_slot = True;
-    first.instrs.insert(0, MirInstr(op=MirOp.SLOT, result=made, type_arg=slot_type));
+    if slot_type.kind != MirKind.NONE {
+        first.instrs.insert(
+            0, MirInstr(op=MirOp.SLOT, result=made, type_arg=slot_type)
+        );
+    }
     self.st().locals[key] = made;
     return made;
 }
@@ -468,10 +472,12 @@ impl MirLowering.lower_return(nd: uni.ReturnStmt) {
         if ret.kind != MirKind.NONE {
             raise MirRefused(mir_refusal("return", "missing value", nd));
         }
+        self.leave_tries(0);
         self.builder().ret(None);
         return;
     }
     value = self.lower_expr(nd.expr);
+    self.leave_tries(0);
     if ret.kind == MirKind.NONE {
         self.builder().ret(None);
         return;
@@ -571,6 +577,9 @@ impl MirLowering.lower_ctrl(nd: uni.CtrlStmt) {
         raise MirRefused(mir_refusal("statement", nd.ctrl.value, nd));
     }
     target = self.st().loops[-1];
+    if nd.ctrl.name in (Tok.KW_BREAK, Tok.KW_CONTINUE) {
+        self.leave_tries(len(self.st().loops));
+    }
     if nd.ctrl.name == Tok.KW_BREAK {
         self.builder().branch(target.after);
     } elif nd.ctrl.name == Tok.KW_CONTINUE {
@@ -1479,7 +1488,11 @@ impl MirLowering.temp_slot(type: MirType) -> MirValue {
     fn = self.st().fn;
     made = fn.new_value(type, "tmp");
     made.is_slot = True;
-    fn.blocks[0].instrs.insert(0, MirInstr(op=MirOp.SLOT, result=made, type_arg=type));
+    if type.kind != MirKind.NONE {
+        fn.blocks[0].instrs.insert(
+            0, MirInstr(op=MirOp.SLOT, result=made, type_arg=type)
+        );
+    }
     return made;
 }
 

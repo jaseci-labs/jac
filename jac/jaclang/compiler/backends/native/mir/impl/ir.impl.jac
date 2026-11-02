@@ -135,12 +135,16 @@ impl MirBuilder.slot(type: MirType, name: str = "") -> MirValue {
 
 impl MirBuilder.load(slot: MirValue, type: MirType) -> MirValue {
     result = self.fn.new_value(type);
-    self.emit(MirInstr(op=MirOp.LOAD, result=result, operands=[slot]));
+    if type.kind != MirKind.NONE {
+        self.emit(MirInstr(op=MirOp.LOAD, result=result, operands=[slot]));
+    }
     return result;
 }
 
 impl MirBuilder.store(slot: MirValue, value: MirValue) {
-    self.emit(MirInstr(op=MirOp.STORE, operands=[slot, value]));
+    if value.type.kind != MirKind.NONE {
+        self.emit(MirInstr(op=MirOp.STORE, operands=[slot, value]));
+    }
 }
 
 impl MirBuilder.binary(op: str, left: MirValue, right: MirValue) -> MirValue {
