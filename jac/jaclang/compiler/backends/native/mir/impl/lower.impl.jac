@@ -457,7 +457,11 @@ impl MirLowering.local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirV
     first = fn.blocks[0];
     made = fn.new_value(slot_type, sym.sym_name);
     made.is_slot = True;
-    first.instrs.insert(0, MirInstr(op=MirOp.SLOT, result=made, type_arg=slot_type));
+    if slot_type.kind != MirKind.NONE {
+        first.instrs.insert(
+            0, MirInstr(op=MirOp.SLOT, result=made, type_arg=slot_type)
+        );
+    }
     self.st().locals[key] = made;
     return made;
 }
@@ -468,10 +472,12 @@ impl MirLowering.lower_return(nd: uni.ReturnStmt) {
         if ret.kind != MirKind.NONE {
             raise MirRefused(mir_refusal("return", "missing value", nd));
         }
+        self.leave_tries(0);
         self.builder().ret(None);
         return;
     }
     value = self.lower_expr(nd.expr);
+    self.leave_tries(0);
     if ret.kind == MirKind.NONE {
         self.builder().ret(None);
         return;
@@ -571,6 +577,9 @@ impl MirLowering.lower_ctrl(nd: uni.CtrlStmt) {
         raise MirRefused(mir_refusal("statement", nd.ctrl.value, nd));
     }
     target = self.st().loops[-1];
+    if nd.ctrl.name in (Tok.KW_BREAK, Tok.KW_CONTINUE) {
+        self.leave_tries(len(self.st().loops));
+    }
     if nd.ctrl.name == Tok.KW_BREAK {
         self.builder().branch(target.after);
     } elif nd.ctrl.name == Tok.KW_CONTINUE {
@@ -604,8 +613,13 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
     } elif isinstance(nd, uni.TupleVal) {
         value = self.lower_tuple(nd);
     } elif isinstance(nd, uni.LambdaExpr) {
+        tail = nd.body if isinstance(nd.body, uni.Expr) else nd.tail_return_expr();
         value = self.lower_closure(
-            nd, nd.signature, nd.body, self.expr_type(nd), f"lambda{len(self.nested)}"
+            nd,
+            nd.signature,
+            tail if tail is not None else nd.body,
+            self.expr_type(nd),
+            f"lambda{len(self.nested)}"
         );
     } elif isinstance(nd, (uni.ListCompr, uni.DictCompr)) {
         value = self.lower_comprehension(nd);
@@ -1112,7 +1126,8 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     if isinstance(nd.target, uni.Name)
         and (
             callee is None
-            or os.path.basename(callee.loc.mod_path) in ("builtins.pyi", "builtins.jac")
+            or os.path.basename(callee.loc.mod_path)
+                in ("builtins.pyi", "builtins.jac", "na_builtins.pyi")
         ) {
         builtin = self.builtin_call(nd, name);
         if builtin is not None {
@@ -1473,7 +1488,11 @@ impl MirLowering.temp_slot(type: MirType) -> MirValue {
     fn = self.st().fn;
     made = fn.new_value(type, "tmp");
     made.is_slot = True;
-    fn.blocks[0].instrs.insert(0, MirInstr(op=MirOp.SLOT, result=made, type_arg=type));
+    if type.kind != MirKind.NONE {
+        fn.blocks[0].instrs.insert(
+            0, MirInstr(op=MirOp.SLOT, result=made, type_arg=type)
+        );
+    }
     return made;
 }
 
@@ -1640,7 +1659,7 @@ impl MirLowering.lower_for(nd: uni.InForStmt) {
         callee = source.callee_decl;
         if callee is None
             or os.path.basename(callee.loc.mod_path)
-                in ("builtins.pyi", "builtins.jac") {
+                in ("builtins.pyi", "builtins.jac", "na_builtins.pyi") {
             bounds = self.call_args(source);
             if 1 <= len(bounds) <= 3 {
                 self.lower_range_for(nd, bounds);
@@ -1650,6 +1669,12 @@ impl MirLowering.lower_for(nd: uni.InForStmt) {
     }
     if self.is_special_source(source) {
         self.lower_for_sources(nd, None);
+        return;
+    }
+    if isinstance(source, uni.TupleVal) and not source.values {
+        after = self.st().fn.new_block("each.exit");
+        self.lower_else(nd.else_body, after);
+        self.builder().position(after);
         return;
     }
     holder = self.lower_expr(source);

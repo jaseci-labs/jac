@@ -185,7 +185,11 @@ obj MirIterCursor {
         limit: (MirValue | None) = None,
         stride: (MirValue | None) = None,
         out: (MirValue | None) = None,
-        payloads: list[int] = [];
+        payloads: list[int] = [],
+        parts: list[MirIterCursor] = [],
+        counter: (MirValue | None) = None,
+        callee: (MirValue | None) = None,
+        site: (uni.UniNode | None) = None;
 }
 
 obj MirGenInfo {
@@ -206,6 +210,7 @@ obj MirFnState {
         locals: dict[int, MirValue] = {},
         loops: list[MirLoopTarget] = [],
         caught: list[tuple[MirValue, MirValue, MirValue]] = [],
+        tries: list[tuple[MirValue, MirBlock, int]] = [],
         specials: dict[str, MirValue] = {};
 }
 
@@ -399,6 +404,18 @@ obj MirLowering {
         nd: uni.FuncCall, receiver: MirValue, arch: uni.Archetype, name: str
     ) -> (MirValue | None);
 
+    def method_decl(
+        arch: uni.Archetype, method: uni.Ability, name: str, site: uni.UniNode
+    ) -> MirDecl;
+
+    def method_receiver(
+        decl: MirDecl, arch: uni.Archetype, receiver: MirValue, site: uni.UniNode
+    ) -> MirValue;
+
+    def invoke_method(
+        decl: MirDecl, arch: uni.Archetype, name: str, values: list[MirValue]
+    ) -> MirValue;
+
     def field_place(
         holder: MirValue, arch: uni.Archetype, name: str, site: uni.UniNode
     ) -> MirValue;
@@ -449,6 +466,8 @@ obj MirLowering {
     def lower_assert(nd: uni.AssertStmt);
     def raise_named(name: str, message_nd: (uni.UniNode | None), nd: uni.UniNode);
     def lower_raise(nd: uni.RaiseStmt);
+    def leave_tries(loop_depth: int);
+    def rearm_tries;
     def exception_matches(type_id: MirValue, clause: uni.Expr) -> MirValue;
     def exception_name(nd: uni.Expr) -> str;
     def any_tag(t: MirType, site: uni.UniNode) -> int;
@@ -667,6 +686,49 @@ obj MirLowering {
     def bind_values(target: uni.Expr, values: list[MirValue], site: uni.UniNode);
     def bind_target(target: uni.Expr, value: MirValue);
     def lower_for_sources(nd: uni.InForStmt, holder: (MirValue | None));
+    def open_cursor(source: uni.Expr) -> MirIterCursor;
+    def step_parts(
+        parts: list[MirIterCursor],
+        counter: (MirValue | None),
+        body: MirBlock,
+        done: MirBlock
+    ) -> list[MirValue];
+
+    def step_group(cursor: MirIterCursor, body: MirBlock, done: MirBlock) -> MirValue;
+    def step_filter(cursor: MirIterCursor, body: MirBlock, done: MirBlock) -> MirValue;
+    def step_user(cursor: MirIterCursor, body: MirBlock, done: MirBlock) -> MirValue;
+    def call_closure(
+        callee: MirValue, values: list[MirValue], site: uni.UniNode
+    ) -> MirValue;
+
+    def iter_adapter(
+        kind: str, elem: MirType, inputs: list[MirValue], site: uni.UniNode
+    ) -> MirValue;
+
+    def adapter_cursor(
+        kind: str, elem: MirType, inputs: list[MirValue], site: uni.UniNode
+    ) -> MirIterCursor;
+
+    def adapter_value(nd: uni.FuncCall, name: str) -> MirValue;
+    def adapter_callee(arg: uni.Expr, name: str) -> MirValue;
+    def map_cursor(
+        callee: MirValue, parts: list[MirIterCursor], site: uni.UniNode
+    ) -> MirIterCursor;
+
+    def filter_cursor(
+        callee: (MirValue | None), part: MirIterCursor, site: uni.UniNode
+    ) -> MirIterCursor;
+
+    def user_cursor(value: MirValue, site: uni.UniNode) -> (MirIterCursor | None);
+    def user_next(it: MirValue, site: uni.UniNode) -> MirIterCursor;
+    def user_method(
+        receiver: MirValue, name: str, site: uni.UniNode
+    ) -> (MirValue | None);
+
+    def tuple_items(value: MirValue, site: uni.UniNode) -> MirValue;
+    def tuple_elem(value: MirValue, site: uni.UniNode) -> MirType;
+    def tuple_cursor(value: MirValue, elem: MirType) -> MirIterCursor;
+    def step_tuple(cursor: MirIterCursor, body: MirBlock, done: MirBlock) -> MirValue;
     def split_args(nd: uni.FuncCall) -> tuple[list[uni.Expr], dict[str, uni.Expr]];
     def iter_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def builtin_next(nd: uni.FuncCall, args: list[uni.Expr]) -> MirValue;

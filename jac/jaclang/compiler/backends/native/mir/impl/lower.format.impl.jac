@@ -714,6 +714,10 @@ impl MirLowering.bytes_from(args: list[uni.Expr], nd: uni.FuncCall) -> MirValue 
     } elif kind == MirKind.LIST
         and source.type.payload().kind in (MirKind.INT, MirKind.BOOL) {
         handle = self.call_rt("__jac_rt_bytes_from_list", [source]);
+    } elif kind in (MirKind.RANGE, MirKind.ITER, MirKind.TUPLE, MirKind.SET) {
+        handle = self.call_rt(
+            "__jac_rt_bytes_from_list", [self.spill(self.drain(source, mir_int(), nd))]
+        );
     } else {
         raise MirRefused(mir_refusal("call", f"bytes of {source.type.render()}", nd));
     }

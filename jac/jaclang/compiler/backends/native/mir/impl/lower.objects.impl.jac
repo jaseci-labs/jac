@@ -630,24 +630,46 @@ impl MirLowering.object_method(
     if id(method) in self.templates {
         return self.generic_call(nd, method, receiver, arch);
     }
-    decl = self.decls.get(id(method)) or self.foreign_method_decl(method);
-    if decl is None {
-        raise MirRefused(
-            mir_refusal("method", f"{archetype_native_name(arch)}.{name}", nd)
-        );
-    }
-    if decl.self_type is not None and receiver.type is not decl.self_type {
-        receiver = self.builder().ref_cast(receiver, decl.self_type, False)
-            if receiver.type.kind == MirKind.OBJ
-                and self.obj_extends(archetype_native_name(arch), decl.self_type.name)
-            else self.coerce(receiver, decl.self_type, nd);
-    }
+    decl = self.method_decl(arch, method, name, nd);
+    receiver = self.method_receiver(decl, arch, receiver, nd);
     args = self.bound_args(nd, method, True);
     if len(args) != len(decl.params) {
         raise MirRefused(mir_refusal("call", f"{name} with {len(args)} arguments", nd));
     }
     values = [receiver]
         + [self.bound_value(arg, ptype) for (arg, ptype) in zip(args, decl.params)];
+    return self.invoke_method(decl, arch, name, values);
+}
+
+impl MirLowering.method_decl(
+    arch: uni.Archetype, method: uni.Ability, name: str, site: uni.UniNode
+) -> MirDecl {
+    decl = self.decls.get(id(method)) or self.foreign_method_decl(method);
+    if decl is None {
+        raise MirRefused(
+            mir_refusal("method", f"{archetype_native_name(arch)}.{name}", site)
+        );
+    }
+    return decl;
+}
+
+impl MirLowering.method_receiver(
+    decl: MirDecl, arch: uni.Archetype, receiver: MirValue, site: uni.UniNode
+) -> MirValue {
+    if decl.self_type is None or receiver.type is decl.self_type {
+        return receiver;
+    }
+    if receiver.type.kind == MirKind.OBJ
+        and self.obj_extends(archetype_native_name(arch), decl.self_type.name) {
+        return self.builder().ref_cast(receiver, decl.self_type, False);
+    }
+    return self.coerce(receiver, decl.self_type, site);
+}
+
+impl MirLowering.invoke_method(
+    decl: MirDecl, arch: uni.Archetype, name: str, values: list[MirValue]
+) -> MirValue {
+    receiver = values[0];
     obj_def = self.object_def(arch);
     if obj_def.vtable_symbol
         and decl.symbol in obj_def.vtable_methods

@@ -11734,6 +11734,7 @@ graph import compiler.backends.native.mir {
     ]
     lower ++> backend { MirLowering }
     lower_types ++> lower {
+        ANY_BOXABLE,
         MirPosition,
         MirRefused,
         mir_class_type_named,
