@@ -1569,6 +1569,11 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
             )
         );
     }
+    if to.kind == MirKind.C_PTR and value.type.kind == MirKind.BOOL {
+        return self.emit_value(
+            MirOp.PTR_CAST, to, [self.builder().convert(value, mir_int())]
+        );
+    }
     if to.kind in (MirKind.C_PTR, MirKind.C_FN)
         and value.type.kind in (MirKind.C_PTR, MirKind.C_FN, MirKind.INT) {
         return self.emit_value(MirOp.PTR_CAST, to, [value]);
@@ -2670,6 +2675,10 @@ impl MirLowering.type_call(nd: uni.FuncCall) -> (MirValue | None) {
                 raise MirRefused(mir_refusal("C string", "not a literal", source));
             }
             return self.emit_value(MirOp.CSTR, result_type, [], str_value=text);
+        }
+        lent = self.c_borrow_operand(source);
+        if lent is not None {
+            return self.c_address(self.lower_place(lent), result_type);
         }
         value = self.lower_expr(source);
         if value.type.kind in (MirKind.INT, MirKind.C_PTR, MirKind.C_FN) {
