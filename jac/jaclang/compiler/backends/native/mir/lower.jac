@@ -20,6 +20,20 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
          "RSHIFT_EQ": "RSHIFT",
          "STAR_POW_EQ": "STAR_POW"
      },
+     OPERATOR_SYMBOLS: dict[str, str] = {
+         "PLUS": "+",
+         "MINUS": "-",
+         "STAR_MUL": "*",
+         "DIV": "/",
+         "FLOOR_DIV": "//",
+         "MOD": "%",
+         "STAR_POW": "**",
+         "BW_AND": "&",
+         "BW_OR": "|",
+         "BW_XOR": "^",
+         "LSHIFT": "<<",
+         "RSHIFT": ">>"
+     },
      SHIFT_MESSAGE: str = "shift count out of range",
      NEGATIVE_SHIFT_MESSAGE: str = "negative shift count",
      RANGE_STEP_MESSAGE: str = "range() arg 3 must not be zero",
@@ -29,6 +43,9 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      KIND_BOOL: int = 2,
      KIND_STR: int = 3,
      KIND_REF: int = 4,
+     KIND_TUPLE: int = 5,
+     KIND_ANY: int = 6,
+     TUPLE_BOX_MEMBERS: int = 8,
      NO_VALUE_KIND: int = -1,
      LIST_INDEX_MESSAGE: str = "list index out of range",
      LIST_ASSIGN_MESSAGE: str = "list assignment index out of range",
@@ -187,7 +204,11 @@ obj MirIterCursor {
         limit: (MirValue | None) = None,
         stride: (MirValue | None) = None,
         out: (MirValue | None) = None,
-        payloads: list[int] = [];
+        payloads: list[int] = [],
+        parts: list[MirIterCursor] = [],
+        counter: (MirValue | None) = None,
+        callee: (MirValue | None) = None,
+        site: (uni.UniNode | None) = None;
 }
 
 obj MirGenInfo {
@@ -208,14 +229,23 @@ obj MirFnState {
         locals: dict[int, MirValue] = {},
         loops: list[MirLoopTarget] = [],
         caught: list[tuple[MirValue, MirValue, MirValue]] = [],
+        tries: list[tuple[MirValue, MirBlock, int]] = [],
         specials: dict[str, MirValue] = {};
 }
 
+obj MirBound {
+    has value: MirValue,
+        site: uni.UniNode,
+        star: bool = False;
+}
+
 obj MirPacked {
-    has items: list[uni.Expr],
+    has items: list[(uni.Expr | MirBound)],
         site: uni.UniNode,
         keyword: bool = False,
-        names: list[str] = [];
+        names: list[str] = [],
+        bindable: list[str] = [],
+        unique: bool = False;
 }
 
 obj MirDecl {
@@ -335,6 +365,7 @@ obj MirLowering {
     def method_call(nd: uni.FuncCall, target: uni.AtomTrailer) -> (MirValue | None);
     def call_args(nd: uni.FuncCall) -> list[uni.Expr];
     def coerce_place(place: MirValue) -> MirValue;
+    def declare_global(nd: uni.Name) -> (MirGlobal | None);
     def global_place(nd: uni.Name) -> (MirValue | None);
     def global_declaration(sym: uni.Symbol) -> (uni.Assignment | None);
     def runtime(name: str, args: list[MirValue]) -> (MirValue | None);
@@ -349,6 +380,8 @@ obj MirLowering {
     def to_bits(value: MirValue, elem: MirType, site: uni.UniNode) -> MirValue;
     def scalar_from_bits(bits: MirValue, elem: MirType) -> MirValue;
     def owned_element(handle: MirValue, elem: MirType) -> MirValue;
+    def tuple_box(value: MirValue, site: uni.UniNode) -> MirValue;
+    def tuple_unbox(handle: MirValue, t: MirType) -> MirValue;
     def address_of(value: MirValue) -> MirValue;
     def container_len(value: MirValue) -> MirValue;
     def list_read(lst: MirValue, index: MirValue) -> MirValue;
@@ -367,6 +400,17 @@ obj MirLowering {
     );
 
     def dict_get(d: MirValue, key: MirValue, site: uni.UniNode) -> MirValue;
+    def dict_entry_value(d: MirValue, at: MirValue, site: uni.UniNode) -> MirValue;
+    def is_spread(item: uni.UniNode) -> bool;
+    def each_begin(
+        source: MirValue, site: uni.UniNode
+    ) -> tuple[MirValue, MirIterCursor, MirBlock, MirBlock];
+
+    def each_end(head: MirBlock, after: MirBlock);
+    def container_add(made: MirValue, item: MirValue, site: uni.UniNode);
+    def extend_from(made: MirValue, source: MirValue, site: uni.UniNode);
+    def container_rebuild(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
+    def merge_dict(made: MirValue, source: MirValue, site: uni.UniNode, unique: bool);
     def list_slice(lst: MirValue, part: uni.Slice, site: uni.UniNode) -> MirValue;
     def container_method(
         receiver: MirValue, name: str, nd: uni.FuncCall
@@ -398,9 +442,30 @@ obj MirLowering {
     ) -> list[tuple[str, MirType, (uni.Expr | None)]];
 
     def object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue;
+    def construct(
+        symbol: str,
+        obj_def: MirObjectDef,
+        owner: uni.Module,
+        params: list[tuple[str, MirType, (uni.Expr | None)]],
+        values: list[MirValue],
+        nd: uni.FuncCall
+    ) -> MirValue;
+
     def object_method(
         nd: uni.FuncCall, receiver: MirValue, arch: uni.Archetype, name: str
     ) -> (MirValue | None);
+
+    def method_decl(
+        arch: uni.Archetype, method: uni.Ability, name: str, site: uni.UniNode
+    ) -> MirDecl;
+
+    def method_receiver(
+        decl: MirDecl, arch: uni.Archetype, receiver: MirValue, site: uni.UniNode
+    ) -> MirValue;
+
+    def invoke_method(
+        decl: MirDecl, arch: uni.Archetype, name: str, values: list[MirValue]
+    ) -> MirValue;
 
     def field_place(
         holder: MirValue, arch: uni.Archetype, name: str, site: uni.UniNode
@@ -435,6 +500,11 @@ obj MirLowering {
     def opt_wrap(value: MirValue, to: MirType) -> MirValue;
     def opt_present(value: MirValue) -> MirValue;
     def opt_get(value: MirValue) -> MirValue;
+    def opt_unwrap_checked(value: MirValue, message: str) -> MirValue;
+    def narrowed_load(value: MirValue, nd: uni.Expr) -> MirValue;
+    def narrow_down(value: MirValue, nd: uni.Expr) -> MirValue;
+    def optional_eq(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
+    def lower_cast(nd: uni.CastExpr) -> MirValue;
     def opt_begin(
         value: MirValue, result: MirType
     ) -> tuple[MirValue, MirValue, MirBlock, MirBlock];
@@ -474,6 +544,8 @@ obj MirLowering {
     def lower_assert(nd: uni.AssertStmt);
     def raise_named(name: str, message_nd: (uni.UniNode | None), nd: uni.UniNode);
     def lower_raise(nd: uni.RaiseStmt);
+    def leave_tries(loop_depth: int);
+    def rearm_tries;
     def exception_matches(type_id: MirValue, clause: uni.Expr) -> MirValue;
     def exception_name(nd: uni.Expr) -> str;
     def any_tag(t: MirType, site: uni.UniNode) -> int;
@@ -486,7 +558,21 @@ obj MirLowering {
     def identity(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
     def bound_args(
         nd: uni.FuncCall, ab: uni.Ability, method: bool
-    ) -> list[(uni.Expr | MirPacked)];
+    ) -> list[(uni.Expr | MirPacked | MirBound)];
+
+    def has_spread(nd: uni.FuncCall) -> bool;
+    def spread_args(
+        nd: uni.FuncCall, ab: uni.Ability, sig: uni.FuncSignature, method: bool
+    ) -> list[(uni.Expr | MirPacked | MirBound)];
+
+    def bind_from_spreads(
+        pv: uni.ParamVar,
+        given: (MirBound | None),
+        spreads: list[MirBound],
+        matched: MirValue,
+        ab: uni.Ability,
+        nd: uni.FuncCall
+    ) -> MirBound;
 
     def bind_by_name(
         ab: uni.Ability,
@@ -496,7 +582,10 @@ obj MirLowering {
         nd: uni.FuncCall
     ) -> uni.Expr;
 
-    def bound_value(arg: (uni.Expr | MirPacked), ptype: MirType) -> MirValue;
+    def bound_value(
+        arg: (uni.Expr | MirPacked | MirBound), ptype: MirType
+    ) -> MirValue;
+
     def constant_default(value: (uni.Expr | None)) -> bool;
     def builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def identity_of(value: MirValue, site: uni.UniNode) -> MirValue;
@@ -693,6 +782,49 @@ obj MirLowering {
     def bind_values(target: uni.Expr, values: list[MirValue], site: uni.UniNode);
     def bind_target(target: uni.Expr, value: MirValue);
     def lower_for_sources(nd: uni.InForStmt, holder: (MirValue | None));
+    def open_cursor(source: uni.Expr) -> MirIterCursor;
+    def step_parts(
+        parts: list[MirIterCursor],
+        counter: (MirValue | None),
+        body: MirBlock,
+        done: MirBlock
+    ) -> list[MirValue];
+
+    def step_group(cursor: MirIterCursor, body: MirBlock, done: MirBlock) -> MirValue;
+    def step_filter(cursor: MirIterCursor, body: MirBlock, done: MirBlock) -> MirValue;
+    def step_user(cursor: MirIterCursor, body: MirBlock, done: MirBlock) -> MirValue;
+    def call_closure(
+        callee: MirValue, values: list[MirValue], site: uni.UniNode
+    ) -> MirValue;
+
+    def iter_adapter(
+        kind: str, elem: MirType, inputs: list[MirValue], site: uni.UniNode
+    ) -> MirValue;
+
+    def adapter_cursor(
+        kind: str, elem: MirType, inputs: list[MirValue], site: uni.UniNode
+    ) -> MirIterCursor;
+
+    def adapter_value(nd: uni.FuncCall, name: str) -> MirValue;
+    def adapter_callee(arg: uni.Expr, name: str) -> MirValue;
+    def map_cursor(
+        callee: MirValue, parts: list[MirIterCursor], site: uni.UniNode
+    ) -> MirIterCursor;
+
+    def filter_cursor(
+        callee: (MirValue | None), part: MirIterCursor, site: uni.UniNode
+    ) -> MirIterCursor;
+
+    def user_cursor(value: MirValue, site: uni.UniNode) -> (MirIterCursor | None);
+    def user_next(it: MirValue, site: uni.UniNode) -> MirIterCursor;
+    def user_method(
+        receiver: MirValue, name: str, site: uni.UniNode
+    ) -> (MirValue | None);
+
+    def tuple_items(value: MirValue, site: uni.UniNode) -> MirValue;
+    def tuple_elem(value: MirValue, site: uni.UniNode) -> MirType;
+    def tuple_cursor(value: MirValue, elem: MirType) -> MirIterCursor;
+    def step_tuple(cursor: MirIterCursor, body: MirBlock, done: MirBlock) -> MirValue;
     def split_args(nd: uni.FuncCall) -> tuple[list[uni.Expr], dict[str, uni.Expr]];
     def iter_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def builtin_next(nd: uni.FuncCall, args: list[uni.Expr]) -> MirValue;
@@ -790,6 +922,10 @@ obj MirLowering {
     def lower_switch(nd: uni.SwitchStmt);
     def match_test(
         pat: uni.MatchPattern, subject: MirValue, fail: MirBlock, site: uni.UniNode
+    );
+
+    def match_star_sequence(
+        pat: uni.MatchSequence, at: int, subject: MirValue, fail: MirBlock
     );
 
     def match_arch(pat: uni.MatchArch, subject: MirValue, fail: MirBlock);

@@ -236,7 +236,7 @@ impl MirLowering.dict_part(
 ) -> MirValue {
     b = self.builder();
     kind = self.elem_kind(part, self.module);
-    if kind in (KIND_STR, KIND_REF) {
+    if kind in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
         handle = self.call_rt(
             "__jac_rt_dict_key_ref" if is_key else "__jac_rt_dict_val_ref",
             [d, at, b.const_int(kind, mir_int())]
@@ -714,6 +714,10 @@ impl MirLowering.bytes_from(args: list[uni.Expr], nd: uni.FuncCall) -> MirValue 
     } elif kind == MirKind.LIST
         and source.type.payload().kind in (MirKind.INT, MirKind.BOOL) {
         handle = self.call_rt("__jac_rt_bytes_from_list", [source]);
+    } elif kind in (MirKind.RANGE, MirKind.ITER, MirKind.TUPLE, MirKind.SET) {
+        handle = self.call_rt(
+            "__jac_rt_bytes_from_list", [self.spill(self.drain(source, mir_int(), nd))]
+        );
     } else {
         raise MirRefused(mir_refusal("call", f"bytes of {source.type.render()}", nd));
     }

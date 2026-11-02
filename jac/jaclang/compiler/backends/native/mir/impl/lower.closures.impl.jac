@@ -99,7 +99,7 @@ impl MirLowering.cell_of(sym_id: int) -> (MirValue | None) {
 
 impl MirLowering.cell_read(cell: MirValue, value_type: MirType) -> MirValue {
     kind = self.elem_kind(value_type, self.module);
-    if kind in (KIND_STR, KIND_REF) {
+    if kind in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
         handle = self.runtime("__jac_rt_cell_get_ref", [cell]);
         if handle is None {
             raise MirRefused(mir_refusal("closure", value_type.render()));
@@ -227,7 +227,6 @@ impl MirLowering.lower_closure(
 }
 
 impl MirLowering.closure_call(nd: uni.FuncCall, callee: MirValue) -> MirValue {
-    ret = callee.type.args[0];
     params = callee.type.args[1:];
     args = self.call_args(nd);
     if len(args) != len(params) {
@@ -235,11 +234,28 @@ impl MirLowering.closure_call(nd: uni.FuncCall, callee: MirValue) -> MirValue {
             mir_refusal("call", f"function value with {len(args)} arguments", nd)
         );
     }
-    i8p = mir_c_ptr(mir_int(8, False));
     held = self.spill(callee);
     values = [
         self.coerce(self.lower_expr(arg), ptype, arg)
         for (arg, ptype) in zip(args, params)
+    ];
+    return self.call_closure(held, values, nd);
+}
+
+impl MirLowering.call_closure(
+    callee: MirValue, values: list[MirValue], site: uni.UniNode
+) -> MirValue {
+    ret = callee.type.args[0];
+    params = callee.type.args[1:];
+    if len(values) != len(params) {
+        raise MirRefused(
+            mir_refusal("call", f"function value with {len(values)} arguments", site)
+        );
+    }
+    i8p = mir_c_ptr(mir_int(8, False));
+    held = self.spill(callee);
+    coerced = [
+        self.coerce(value, ptype, site) for (value, ptype) in zip(values, params)
     ];
     code = self.emit_value(MirOp.MEM_LOAD, mir_int(), [self.address_of(held)]);
     target = self.emit_value(MirOp.PTR_CAST, mir_c_fn([i8p] + params, ret), [code]);
@@ -247,7 +263,7 @@ impl MirLowering.closure_call(nd: uni.FuncCall, callee: MirValue) -> MirValue {
     result = self.emit_value(
         MirOp.CALL_FNPTR,
         result_type,
-        [target, self.emit_value(MirOp.PTR_CAST, i8p, [held])] + values
+        [target, self.emit_value(MirOp.PTR_CAST, i8p, [held])] + coerced
     );
     result.owned = mir_holds_ref(result_type);
     return result;

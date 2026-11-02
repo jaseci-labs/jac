@@ -569,6 +569,13 @@ impl SymTabBuildPass.exit_inner_compr with InnerCompr exit {
 
 impl SymTabBuildPass.enter_match_case with MatchCase entry {
     self.push_scope_and_link(here);
+    for pat in here.pattern.flatten() {
+        if isinstance(pat, (MatchAs, MatchStar))
+            and isinstance(pat.name, Name)
+            and pat.name.value != "_" {
+            here.sym_tab.def_insert(pat.name, single_decl='match capture');
+        }
+    }
 }
 
 impl SymTabBuildPass.exit_match_case with MatchCase exit {

@@ -119,7 +119,7 @@ impl __jac_rt_cstr_eq(a: ptr[u8], b: ptr[u8]) -> bool {
     if int(a) == 0 or int(b) == 0 {
         return False;
     }
-    return strcmp(int(a), int(b)) == 0;
+    return strcmp(a, b) == i32(0);
 }
 
 impl __jac_rt_class_name(text: ptr[u8]) -> ptr[u8] {
@@ -138,5 +138,5 @@ impl __jac_rt_str_from_cstr(text: ptr[u8]) -> ptr[u8] {
     if int(text) == 0 {
         return __jac_rt_str_new(text, 0);
     }
-    return __jac_rt_str_new(text, strlen(int(text)));
+    return __jac_rt_str_new(text, int(strlen(text)));
 }

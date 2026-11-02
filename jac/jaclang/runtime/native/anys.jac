@@ -1,4 +1,6 @@
-import from c { def strlen(p: int) -> int;  def strcmp(a: int, b: int) -> int;  }
+import from c {
+    def strlen(p: ptr[u8]) -> i64;  def strcmp(a: ptr[u8], b: ptr[u8]) -> i32;
+}
 
 glob ANY_TAG_INT: int = 0,
      ANY_TAG_FLOAT: int = 1,

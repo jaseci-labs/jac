@@ -303,11 +303,7 @@ impl MirLowering.constructor_params(
     init = self.find_method(arch, "init") or self.find_method(arch, "__init__");
     found: list[tuple[str, MirType, (uni.Expr | None)]] = [];
     if init is not None and isinstance(init.signature, uni.FuncSignature) {
-        for pv in list(init.signature.posonly_params)
-            + list(init.signature.params or []) {
-            if pv.name.value == "self" {
-                continue;
-            }
+        for pv in self.param_nodes(init.signature, True) {
             found.append((pv.name.value, self.symbol_type(pv.name.sym, pv), pv.value));
         }
         return found;
@@ -565,16 +561,46 @@ impl MirLowering.lower_trace(obj_def: MirObjectDef) -> MirFunction {
         place = self.emit_value(
             MirOp.FIELD_ADDR, mir_c_ptr(member.type), [this], int_value=member.index
         );
-        child = b.load(place, member.type);
-        target = self.emit_value(
-            MirOp.PTR_CAST,
-            i8p,
-            [self.opt_get(child) if member.type.kind == MirKind.OPT else child]
-        );
-        if member.type.kind == MirKind.OPT {
-            target = b.select(self.opt_present(child), target, b.const_null(i8p));
+        loaded = b.load(place, member.type);
+        children: list[MirValue] = [loaded];
+        if member.type.kind == MirKind.TUPLE {
+            children = [
+                self.tuple_get(loaded, index) for index in range(len(member.type.args))
+            ];
         }
-        self.emit_value(MirOp.CALL_FNPTR, mir_none(), [visit_fn, target]);
+        for child in children {
+            if child.type.kind
+                in (MirKind.STR, MirKind.STR_REF, MirKind.ANY, MirKind.TUPLE)
+                or not mir_holds_ref(child.type) {
+                continue;
+            }
+            if child.type.kind == MirKind.OPT {
+                if child.type.payload().kind
+                    in (MirKind.STR, MirKind.STR_REF, MirKind.ANY, MirKind.TUPLE) {
+                    continue;
+                }
+                present = fn.new_block("trace.some");
+                after = fn.new_block("trace.next");
+                b.cond_branch(self.opt_present(child), present, after);
+                b.position(present);
+                self.emit_value(
+                    MirOp.CALL_FNPTR,
+                    mir_none(),
+                    [
+                        visit_fn,
+                        self.emit_value(MirOp.PTR_CAST, i8p, [self.opt_get(child)])
+                    ]
+                );
+                b.branch(after);
+                b.position(after);
+                continue;
+            }
+            self.emit_value(
+                MirOp.CALL_FNPTR,
+                mir_none(),
+                [visit_fn, self.emit_value(MirOp.PTR_CAST, i8p, [child])]
+            );
+        }
     }
     b.ret(None);
     self.state = saved;
@@ -608,7 +634,47 @@ impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue 
         native_unit_prefix(owner.loc.mod_path), f"{obj_def.name}.__ctor"
     );
     params = self.constructor_params(arch);
+    init = self.find_method(arch, "init") or self.find_method(arch, "__init__");
+    if init is not None
+        and isinstance(init.signature, uni.FuncSignature)
+        and (
+            init.signature.varargs is not None
+            or init.signature.kwargs is not None
+            or init.signature.kwonlyargs
+            or self.has_spread(nd)
+        ) {
+        bound = self.bound_args(nd, init, True);
+        if len(bound) != len(params) {
+            raise MirRefused(
+                mir_refusal("call", f"{obj_def.name} with {len(bound)} arguments", nd)
+            );
+        }
+        values = [
+            self.bound_value(arg, param[1]) for (arg, param) in zip(bound, params)
+        ];
+        if self.ctor_takes_mask(params) {
+            given = 0;
+            for (index, param) in enumerate(params) {
+                if param[2] is not None {
+                    given = given | (1 << index);
+                }
+            }
+            values.append(self.builder().const_int(given, mir_int()));
+        }
+        return self.construct(symbol, obj_def, owner, params, values, nd);
+    }
     values = self.ctor_arguments(nd, obj_def.name, params);
+    return self.construct(symbol, obj_def, owner, params, values, nd);
+}
+
+impl MirLowering.construct(
+    symbol: str,
+    obj_def: MirObjectDef,
+    owner: uni.Module,
+    params: list[tuple[str, MirType, (uni.Expr | None)]],
+    values: list[MirValue],
+    nd: uni.FuncCall
+) -> MirValue {
     if not obj_def.local {
         self.mir.externs[symbol] = MirExtern(
             symbol=symbol,
@@ -638,24 +704,46 @@ impl MirLowering.object_method(
     if id(method) in self.templates {
         return self.generic_call(nd, method, receiver, arch);
     }
-    decl = self.decls.get(id(method)) or self.foreign_method_decl(method);
-    if decl is None {
-        raise MirRefused(
-            mir_refusal("method", f"{archetype_native_name(arch)}.{name}", nd)
-        );
-    }
-    if decl.self_type is not None and receiver.type is not decl.self_type {
-        receiver = self.builder().ref_cast(receiver, decl.self_type, False)
-            if receiver.type.kind == MirKind.OBJ
-                and self.obj_extends(archetype_native_name(arch), decl.self_type.name)
-            else self.coerce(receiver, decl.self_type, nd);
-    }
+    decl = self.method_decl(arch, method, name, nd);
+    receiver = self.method_receiver(decl, arch, receiver, nd);
     args = self.bound_args(nd, method, True);
     if len(args) != len(decl.params) {
         raise MirRefused(mir_refusal("call", f"{name} with {len(args)} arguments", nd));
     }
     values = [receiver]
         + [self.bound_value(arg, ptype) for (arg, ptype) in zip(args, decl.params)];
+    return self.invoke_method(decl, arch, name, values);
+}
+
+impl MirLowering.method_decl(
+    arch: uni.Archetype, method: uni.Ability, name: str, site: uni.UniNode
+) -> MirDecl {
+    decl = self.decls.get(id(method)) or self.foreign_method_decl(method);
+    if decl is None {
+        raise MirRefused(
+            mir_refusal("method", f"{archetype_native_name(arch)}.{name}", site)
+        );
+    }
+    return decl;
+}
+
+impl MirLowering.method_receiver(
+    decl: MirDecl, arch: uni.Archetype, receiver: MirValue, site: uni.UniNode
+) -> MirValue {
+    if decl.self_type is None or receiver.type is decl.self_type {
+        return receiver;
+    }
+    if receiver.type.kind == MirKind.OBJ
+        and self.obj_extends(archetype_native_name(arch), decl.self_type.name) {
+        return self.builder().ref_cast(receiver, decl.self_type, False);
+    }
+    return self.coerce(receiver, decl.self_type, site);
+}
+
+impl MirLowering.invoke_method(
+    decl: MirDecl, arch: uni.Archetype, name: str, values: list[MirValue]
+) -> MirValue {
+    receiver = values[0];
     obj_def = self.object_def(arch);
     if obj_def.vtable_symbol
         and decl.symbol in obj_def.vtable_methods
@@ -689,6 +777,11 @@ impl MirLowering.object_method(
 
 impl MirLowering.isinstance_check(value: MirValue, arch: uni.Archetype) -> MirValue {
     b = self.builder();
+    if value.type.kind == MirKind.OPT and value.type.payload().kind == MirKind.OBJ {
+        (held, payload, absent, done) = self.opt_begin(value, mir_bool());
+        self.opt_switch(held, self.isinstance_check(payload, arch), absent, done);
+        return self.opt_end(held, self.builder().const_bool(False), done);
+    }
     obj_def = self.object_def(arch);
     if not obj_def.vtable_symbol or value.type.kind != MirKind.OBJ {
         return b.const_bool(value.type is mir_obj(obj_def.name));
@@ -793,7 +886,20 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
         if self.osp_setup {
             b.call(self.osp_setup, [], mir_none());
         }
-        for (glob_def, initial) in self.deferred_globals {
+        index = 0;
+        while index < len(self.deferred_globals) {
+            for used in self.deferred_globals[index][1].get_all_sub_nodes(uni.Name) {
+                self.declare_global(used);
+            }
+            index += 1;
+        }
+        ordered = sorted(
+            self.deferred_globals,
+            key=lambda (pair: tuple[MirGlobal, uni.Expr]) -> int { pair[
+                1
+            ].loc.pos_start; }
+        );
+        for (glob_def, initial) in ordered {
             place = self.emit_value(
                 MirOp.GLOBAL_ADDR,
                 mir_c_ptr(glob_def.type),

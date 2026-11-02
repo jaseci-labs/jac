@@ -1,6 +1,13 @@
 enum MirPosition { VALUE, FIELD, SIGNATURE, ELEMENT, C_FIELD }
 
-glob ITERATOR_CLASSES: list[str] = ["Iterator", "Generator", "reversed"],
+glob ITERATOR_CLASSES: list[str] = [
+         "Iterator",
+         "Generator",
+         "reversed",
+         "map",
+         "filter",
+         "zip"
+     ],
      ANY_BOXABLE: list[MirKind] = [
          MirKind.ANY,
          MirKind.INT,

@@ -6558,6 +6558,7 @@ graph import compiler {
             STR_LEN_PAYLOAD_MASK,
             STR_LEN_TAG_BIT,
             STR_LEN_TAG_SHIFT,
+            is_mir_runtime_path,
             is_package_keyed_path,
             native_unit_identity,
             real_path,
@@ -9313,7 +9314,9 @@ graph import compiler {
             IterForStmt,
             LambdaExpr,
             ListCompr,
+            MatchAs,
             MatchCase,
+            MatchStar,
             Module,
             ModuleItem,
             ModulePath,
@@ -9649,6 +9652,7 @@ graph import compiler {
         },
         types.type_evaluator {
             Ability,
+            ArchHas,
             ArchSpec,
             Archetype,
             AssertStmt,
@@ -9713,8 +9717,12 @@ graph import compiler {
             MatchArch,
             MatchAs,
             MatchCase,
+            MatchKVPair,
+            MatchMapping,
             MatchOr,
             MatchPattern,
+            MatchSequence,
+            MatchStar,
             MatchStmt,
             MatchWild,
             Module,
@@ -11735,6 +11743,7 @@ graph import compiler.backends.native.mir {
     ]
     lower ++> backend { MirLowering }
     lower_types ++> lower {
+        ANY_BOXABLE,
         MirPosition,
         MirRefused,
         mir_class_type_named,

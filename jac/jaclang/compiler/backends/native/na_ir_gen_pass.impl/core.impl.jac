@@ -2584,6 +2584,10 @@ impl NaIRGenPass._ct_ctor_slots(target: uni.UniNode) -> list[tuple[str, uni.UniN
 }
 
 impl NaIRGenPass.run_walk with uni.Module entry {
+    if is_mir_runtime_path(here.loc.mod_path) {
+        self.module = here;
+        return;
+    }
     self.module = self._run_impl(here);
     if self.ctx.errors_had {
         self._publish_lowering_failure(here);
