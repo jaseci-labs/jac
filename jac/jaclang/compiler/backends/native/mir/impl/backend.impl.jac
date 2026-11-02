@@ -131,7 +131,3 @@ impl native_coverage(prog: JacProgram) -> dict[str, dict[str, any]] {
     }
     return findings;
 }
-
-impl mir_backend_selected -> bool {
-    return os.environ.get("JAC_NATIVE_MIR", "") == "1";
-}

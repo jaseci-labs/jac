@@ -1,7 +1,5 @@
 import os;
 
-def mir_backend_selected -> bool;
-
 glob MIR_RUNTIME_UNITS: list[str] = [
          "runtime/native/exceptions.jac",
          "runtime/native/rc.jac",

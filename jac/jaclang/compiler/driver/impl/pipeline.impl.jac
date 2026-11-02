@@ -101,11 +101,8 @@ impl layout_passes(request: ProductRequest) -> PassSchedule {
 impl codegen_passes(request: ProductRequest) -> PassSchedule {
     passes: PassSchedule = [RcFactsPass, EsastGenPass];
     if request.native and not unavailable(CompilationProduct.NATIVE_LOWER) {
-        import from jaclang.compiler.backends.native.mir.backend {
-            MirNativePass,
-            mir_backend_selected
-        }
-        if mir_backend_selected() {
+        if native_mir_selected() {
+            import from jaclang.compiler.backends.native.mir.backend { MirNativePass }
             passes.append(MirNativePass);
         } else {
             import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
@@ -129,11 +126,8 @@ impl bytecode_passes(request: ProductRequest) -> PassSchedule {
 
 impl native_ir_passes(request: ProductRequest) -> PassSchedule {
     schedule: PassSchedule = [NativeImportFactsPass, RcFactsPass];
-    import from jaclang.compiler.backends.native.mir.backend {
-        MirNativePass,
-        mir_backend_selected
-    }
-    if mir_backend_selected() {
+    if native_mir_selected() {
+        import from jaclang.compiler.backends.native.mir.backend { MirNativePass }
         schedule.append(MirNativePass);
     } else {
         schedule.append(NaIRGenPass);
@@ -143,11 +137,8 @@ impl native_ir_passes(request: ProductRequest) -> PassSchedule {
 
 impl native_lower_passes(request: ProductRequest) -> PassSchedule {
     schedule: PassSchedule = [RcFactsPass];
-    import from jaclang.compiler.backends.native.mir.backend {
-        MirNativePass,
-        mir_backend_selected
-    }
-    if mir_backend_selected() {
+    if native_mir_selected() {
+        import from jaclang.compiler.backends.native.mir.backend { MirNativePass }
         schedule.append(MirNativePass);
     } else {
         schedule.append(NaIRGenPass);
