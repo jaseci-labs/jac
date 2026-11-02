@@ -7,6 +7,8 @@ record must equal what the host's own compile of the same module produces:
 the same JCIR, interop, client artifact, placement summary and MTIR graph.
 The in-process cases run the kernel's code under Python and need no kernel
 lib; the native cases skip where no kernel with `jc_compile` is loaded."""
+import base64;
+import json;
 import os;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
@@ -22,6 +24,7 @@ import from jaclang.compiler.frontend.kernel_analyze {
     run_kernel_compile
 }
 import from jaclang.compiler.frontend.kernel_host { HostAsker }
+import from jaclang.compiler.frontend.kernel_inputs { PythonInterface }
 import from jaclang.project.kernel_snapshot {
     COMPILE_ENTRY,
     call_with_asker,
@@ -1215,5 +1218,64 @@ test "an integer literal wider than 64 bits compiles in the kernel" {
             assert from_kernel is not None , native.analysis.modules;
             assert_same_products(from_kernel, expected);
         }
+    }
+}
+
+"""A module served from a seed brings the endpoint effects its interface
+carries. A public function that calls a served writer is a writer that touches
+the node it writes, on the native kernel as in the host."""
+test "the native kernel reads the endpoint effects of a module served from a seed" {
+    kernel = loaded_kernel();
+    if kernel is None {
+        return;
+    }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'notes.jac').write_text(
+            'node Note { has text: str = ""; }\n\n'
+                + 'def add_note(text: str) -> str {\n'
+                + '    root ++> Note(text=text);\n    return text;\n}\n'
+        );
+        (base / 'main.jac').write_text(
+            'import from notes { add_note }\n\nwith entry { add_note("a"); }\n'
+        );
+        (base / 'page.jac').write_text(
+            'import from notes { add_note }\n\n'
+                + 'def:pub post(text: str) -> str {\n    return add_note(text);\n}\n'
+        );
+        entry_file = str(base / 'main.jac');
+        app_session = kernel_snapshot(
+            active_host(),
+            JacProgram(),
+            entry_file,
+            compile_options(),
+            emit_closure=True
+        );
+        app = CompileReport.from_json(
+            call_with_asker(kernel, COMPILE_ENTRY, app_session, entry_file, None, False)
+        );
+        assert app.analysis.status == ANALYSIS_OK , app.analysis.message;
+        notes = app.unit(str(base / 'notes.jac'));
+        assert notes is not None and notes.iface and notes.effects , notes;
+        seed = PythonInterface(
+            path=notes.path,
+            pkg_dir=str(base),
+            data=base64.b64decode(notes.iface),
+            placement=notes.placement,
+            effects=notes.effects
+        );
+        page_file = str(base / 'page.jac');
+        session = kernel_snapshot(
+            active_host(), JacProgram(), page_file, compile_options(), seeds=[seed]
+        );
+        outcome = CompileReport.from_json(
+            call_with_asker(kernel, COMPILE_ENTRY, session, page_file, None, False)
+        );
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        page = outcome.unit(page_file);
+        assert page is not None;
+        facts = json.loads(page.effects).get("post", {});
+        assert facts.get("writer") and "Note" in facts.get("touches", []) , page.effects;
     }
 }
