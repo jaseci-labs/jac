@@ -275,6 +275,7 @@ graph import {
             | toolchains.manager
             | toolchains.store { console },
         client.cli.run_client_build
+            | client.targets.web_target._copy_public_dirs
             | compiler.driver.application.prepare_dynamic_module
             | project.config._apply_memory_native_placement
             | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._install_app_deps
@@ -4406,6 +4407,9 @@ graph import {
     ]
     server.shared_store as pg_mod ++> scale.tests.misc.test_shared_store_failure;
     server.shared_store as store_mod ++> scale.tests.misc.test_state_backend_selection;
+    server.static_files ++> client.targets.web_target._copy_public_dirs {
+        ROOT_ASSET_EXTENSIONS
+    }
     server.sv_client ++> [
         client.targets.client_dev_common { headless_start_args },
         scale.runtime.orchestrator.process_manager.ServiceProcessManager.start_service {

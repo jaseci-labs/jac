@@ -221,9 +221,16 @@ impl _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str] {
     }
     ledger.unlink(missing_ok=True);
     planned: dict[str, Path] = {};
+    skipped: list[str] = [];
     for public_dir in public_dirs {
         for (rel, source) in _public_files(public_dir) {
             if rel in planned {
+                continue;
+            }
+            if Path(rel).suffix.lower() not in ROOT_ASSET_EXTENSIONS {
+                if not Path(rel).name.startswith('.') and rel not in skipped {
+                    skipped.append(rel);
+                }
                 continue;
             }
             if (dist_dir / rel).exists() {
@@ -261,6 +268,12 @@ impl _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str] {
     }
     if planned {
         ledger.write_text('\n'.join(sorted(planned)));
+    }
+    if skipped {
+        console.warning(
+            f"  Not copied from public/: {', '.join(skipped)}. The site root serves "
+            f"only {' '.join(sorted(ROOT_ASSET_EXTENSIONS))} files."
+        );
     }
     return sorted(planned);
 }
