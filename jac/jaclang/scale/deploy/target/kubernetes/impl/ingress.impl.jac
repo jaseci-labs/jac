@@ -463,7 +463,11 @@ impl IngressDeployer._deploy_ingress_resource(
         'metadata': {
             'name': ingress_name,
             'namespace': namespace,
-            'labels': {'app': app_name, 'managed': 'jac-scale'},
+            'labels': {
+                'app': app_name,
+                'managed': 'jac-scale',
+                'jac-scale.role': 'gateway'
+            },
             'annotations': ingress_annotations
         },
         'spec': main_spec

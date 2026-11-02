@@ -197,7 +197,9 @@ impl ViteCompiler._create_pages_entry_content(
 }
 
 impl ViteCompiler._entry_module_name(self: ViteCompiler, module_path: Path) -> str {
-    app_js = self.jac_client_compiler._output_path_for(module_path, self.project_dir);
+    app_js = self.jac_client_compiler._output_path_for(
+        module_path, self.jac_compiler.source_root or self.project_dir
+    );
     try {
         rel = app_js.relative_to(self.compiled_dir).as_posix();
     } except ValueError {
@@ -287,7 +289,7 @@ impl ViteCompiler.init(
     vite_output_dir: (Path | None) = None,
     vite_minify: bool = False,
     runtime_path: (Path | None) = None,
-    compile_to_js_func: Callable[[Path], ClientArtifact],
+    compile_to_js_func: Callable[[Path, Path | None], ClientArtifact],
     extract_exports_func: Callable[[ClientManifest | None], list[str]],
     extract_globals_func:
         Callable[[ClientManifest | None, ModuleType | None], dict[str, any]],

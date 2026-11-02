@@ -1,9 +1,11 @@
 """A web build copies `public/` into `dist/`, so a deployment that serves only `dist/`
 answers the same root URLs (`/robots.txt`, `/logo.png`) as `jac run --serve` (#9456)."""
 
+import io;
 import json;
 import subprocess;
 import tempfile;
+import from contextlib { redirect_stderr }
 import from pathlib { Path }
 import from unittest.mock { patch }
 import from jaclang.client.targets.web_target { WebTarget }
@@ -61,6 +63,16 @@ test "a web build copies public/ into dist, keeping subfolders" {
             assert copied.is_file() , f"public/{rel} is missing from {dist}";
             assert copied.read_text() == text , f"public/{rel} was not copied verbatim";
         }
+        (project_dir / "public" / "robots.txt").write_text("User-agent: bot\n");
+        (project_dir / "public" / "img" / "logo.svg").unlink();
+        dist = build_web(project_dir, entry_path);
+        assert (dist / "robots.txt").read_text() == "User-agent: bot\n" , (
+            "a rebuild over the last build's dist did not refresh public/robots.txt"
+        );
+        assert not (dist / "img").exists() , (
+            "a file deleted from public/ survived the rebuild in dist"
+        );
+        assert (dist / "sitemap.xml").is_file();
     }
 }
 
@@ -94,22 +106,61 @@ test "a public/ file that would overwrite a build output fails the build" {
     with tempfile.TemporaryDirectory() as tmp {
         project_dir = Path(tmp).resolve();
         entry_path = single_app(
-            project_dir, {"index.html": "<p>stale</p>", "robots.txt": "User-agent: *\n"}
+            project_dir, {"client.test.js": "stale", "robots.txt": "User-agent: *\n"}
         );
         try {
             build_web(project_dir, entry_path);
-            assert False , "the build accepted a public/index.html that collides with its own";
+            assert False , "the build accepted a public/client.test.js that collides with its bundle";
         } except RuntimeError as err {
-            assert "index.html" in str(err) , f"the error does not name the file: {err}";
+            assert "client.test.js" in str(err) , f"the error does not name the file: {err}";
             assert "public/" in str(err) , f"the error does not say how to fix it: {err}";
         }
-        built = list((project_dir / ".jac").rglob("index.html"));
-        assert built , "the build did not get as far as writing index.html";
-        assert all("stale" not in p.read_text() for p in built) , (
-            "public/index.html overwrote the built index.html"
+        built = list((project_dir / ".jac").rglob("client.test.js"));
+        assert built , "the build did not get as far as writing its bundle";
+        assert all(p.read_text() != "stale" for p in built) , (
+            "public/client.test.js overwrote the built bundle"
         );
         assert not list((project_dir / ".jac").rglob("robots.txt")) , (
             "a failed build still copied part of public/"
+        );
+    }
+}
+
+test "public/ files the site root does not serve are not copied, and the build says so" {
+    with tempfile.TemporaryDirectory() as tmp {
+        project_dir = Path(tmp).resolve();
+        entry_path = single_app(
+            project_dir,
+            {
+                "robots.txt": "User-agent: *\n",
+                ".well-known/security.txt": "Contact: mailto:a@b.c\n",
+                ".env": "SECRET=1\n",
+                ".DS_Store": "finder\n",
+                "site.webmanifest": "{}\n",
+                "index.html": "<p>stale</p>"
+            }
+        );
+        buf = io.StringIO();
+        with redirect_stderr(buf) {
+            dist = build_web(project_dir, entry_path);
+        }
+        warning = buf.getvalue();
+        for rel in ("robots.txt", ".well-known/security.txt") {
+            assert (dist / rel).is_file() , f"public/{rel} is missing from {dist}";
+        }
+        for rel in (".env", ".DS_Store", "site.webmanifest") {
+            assert not (dist / rel).exists() , (
+                f"public/{rel} was copied, but jac run --serve does not serve it"
+            );
+        }
+        assert "stale" not in (dist / "index.html").read_text() , (
+            "public/index.html replaced the built page"
+        );
+        assert "site.webmanifest" in warning and "index.html" in warning , (
+            f"the build did not name the files it left out: {warning!r}"
+        );
+        assert ".env" not in warning and ".DS_Store" not in warning , (
+            f"hidden files are noise in the warning: {warning!r}"
         );
     }
 }

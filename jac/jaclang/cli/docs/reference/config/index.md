@@ -320,7 +320,7 @@ port = 8000              # Server port
 session = ""             # Session name
 main = true              # Run as main module
 docs_enabled = true      # /docs and /openapi.json
-graph_enabled = true     # /graph and /graph/data (turn off in production)
+graph_enabled = true     # /graph, /graph/node and /graph/neighbors (turn off in production)
 cors_origins = ["*"]     # Origins allowed by the CORS middleware
 
 # Optimistic-concurrency policy for concurrent check-then-create races

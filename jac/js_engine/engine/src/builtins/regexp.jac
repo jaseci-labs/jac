@@ -34,7 +34,18 @@ import from engine.src.ffi.libpcre2 {
     pcre2_pattern_info_8,
     pcre2_code_free_8
 }
-import from engine.src.runtime.mem { io_alloc, io_free, write_byte, read_u64, read_u32, byte_chr }
+import from engine.src.runtime.mem {
+    io_alloc,
+    io_free,
+    write_byte,
+    read_u64,
+    read_u32,
+    byte_chr,
+    str_bfind,
+    str_bslice,
+    str_byte,
+    str_nbytes
+}
 import from engine.src.runtime.jsvalue {
     JSValue,
     js_undefined,
@@ -72,7 +83,8 @@ import from engine.src.runtime.jsstring {
     u16ix_byte_to_unit,
     u16ix_unit_to_byte,
     U16Index,
-    utf8_encode_scalar
+    utf8_encode_scalar,
+    str_cell_len
 }
 import from engine.src.runtime.jsobject {
     js_object_create_null,
@@ -218,8 +230,9 @@ def _extract_group_names(pattern: str) -> list[str] {
     i: int = 0;
     escaped: bool = False;
     in_class: bool = False;
-    while i < len(pattern) {
-        ch: str = pattern[i];
+    _nb232_pattern: int = str_nbytes(pattern);
+    while i < _nb232_pattern {
+        ch: str = byte_chr(str_byte(pattern, i));
         if escaped {
             escaped = False;
             i = i + 1;
@@ -246,35 +259,36 @@ def _extract_group_names(pattern: str) -> list[str] {
         }
         if ch == "(" {
             # `(?<=` / `(?<!` before `(?<name>` — same `(?<` prefix; lookbehind is not a named group.
-            if i + 3 < len(pattern)
-                and pattern[i + 1] == "?"
-                and pattern[i + 2] == "<"
-                and (pattern[i + 3] == "=" or pattern[i + 3] == "!") {
+            if i + 3 < str_nbytes(pattern)
+                and byte_chr(str_byte(pattern, i + 1)) == "?"
+                and byte_chr(str_byte(pattern, i + 2)) == "<"
+                and (byte_chr(str_byte(pattern, i + 3)) == "=" or byte_chr(str_byte(pattern, i + 3)) == "!") {
                 i = i + 1;
                 continue;
-            } elif i + 2 < len(pattern)
-                and pattern[i + 1] == "?"
-                and pattern[i + 2] == "<" {
+            } elif i + 2 < str_nbytes(pattern)
+                and byte_chr(str_byte(pattern, i + 1)) == "?"
+                and byte_chr(str_byte(pattern, i + 2)) == "<" {
                 j: int = i + 3;
                 nm: str = "";
-                while j < len(pattern) and pattern[j] != ">" {
-                    nm = nm + pattern[j];
+                _nb271_pattern: int = str_nbytes(pattern);
+                while j < _nb271_pattern and byte_chr(str_byte(pattern, j)) != ">" {
+                    nm = nm + byte_chr(str_byte(pattern, j));
                     j = j + 1;
                 }
-                if j < len(pattern) {
+                if j < str_nbytes(pattern) {
                     names.append(nm);
                     i = j + 1;
                     continue;
                 }
                 names.append("");
-            } elif i + 2 < len(pattern)
-                and pattern[i + 1] == "?"
-                and pattern[i + 2] == ":" {
+            } elif i + 2 < str_nbytes(pattern)
+                and byte_chr(str_byte(pattern, i + 1)) == "?"
+                and byte_chr(str_byte(pattern, i + 2)) == ":" {
                 i = i + 1;
                 continue;
-            } elif i + 2 < len(pattern)
-                and pattern[i + 1] == "?"
-                and (pattern[i + 2] == "=" or pattern[i + 2] == "!") {
+            } elif i + 2 < str_nbytes(pattern)
+                and byte_chr(str_byte(pattern, i + 1)) == "?"
+                and (byte_chr(str_byte(pattern, i + 2)) == "=" or byte_chr(str_byte(pattern, i + 2)) == "!") {
                 i = i + 1;
                 continue;
             } else {
@@ -316,19 +330,19 @@ classes ([*]) are handled correctly.
 def _transform_vlb_quantifiers(pattern: str) -> str {
     result: str = "";
     i: int = 0;
-    n: int = len(pattern);
+    n: int = str_nbytes(pattern);
     in_charclass: bool = False;
     # Stack: 1 if this group is a lookbehind ((?<= or (?<!), 0 otherwise.
     vlb_stack: list[int] = [];
 
     while i < n {
-        c: str = pattern[i];
+        c: str = byte_chr(str_byte(pattern, i));
 
         # ── Inside a character class: pass through until unescaped ] ──────
         if in_charclass {
             result = result + c;
             if c == "\\" and i + 1 < n {
-                result = result + pattern[i + 1];
+                result = result + byte_chr(str_byte(pattern, i + 1));
                 i = i + 2;
             } elif c == "]" {
                 in_charclass = False;
@@ -343,7 +357,7 @@ def _transform_vlb_quantifiers(pattern: str) -> str {
         if c == "\\" {
             result = result + c;
             if i + 1 < n {
-                result = result + pattern[i + 1];
+                result = result + byte_chr(str_byte(pattern, i + 1));
                 i = i + 2;
             } else {
                 i = i + 1;
@@ -364,8 +378,8 @@ def _transform_vlb_quantifiers(pattern: str) -> str {
             is_vlb: int = 0;
             # Detect (?<= and (?<!  (lookbehind markers)
             if i + 3 < n {
-                if pattern[i + 1] == "?" and pattern[i + 2] == "<" {
-                    if pattern[i + 3] == "=" or pattern[i + 3] == "!" {
+                if byte_chr(str_byte(pattern, i + 1)) == "?" and byte_chr(str_byte(pattern, i + 2)) == "<" {
+                    if byte_chr(str_byte(pattern, i + 3)) == "=" or byte_chr(str_byte(pattern, i + 3)) == "!" {
                         is_vlb = 1;
                     }
                 }
@@ -413,7 +427,7 @@ def _transform_vlb_quantifiers(pattern: str) -> str {
             j: int = i + 1;
             digits: str = "";
             while j < n {
-                cj: str = pattern[j];
+                cj: str = byte_chr(str_byte(pattern, j));
                 if cj >= "0" and cj <= "9" {
                     digits = digits + cj;
                     j = j + 1;
@@ -421,11 +435,11 @@ def _transform_vlb_quantifiers(pattern: str) -> str {
                     break;
                 }
             }
-            if j < n and pattern[j] == "," {
+            if j < n and byte_chr(str_byte(pattern, j)) == "," {
                 j2: int = j + 1;
                 upper: str = "";
                 while j2 < n {
-                    cj2: str = pattern[j2];
+                    cj2: str = byte_chr(str_byte(pattern, j2));
                     if cj2 >= "0" and cj2 <= "9" {
                         upper = upper + cj2;
                         j2 = j2 + 1;
@@ -433,7 +447,7 @@ def _transform_vlb_quantifiers(pattern: str) -> str {
                         break;
                     }
                 }
-                if j2 < n and pattern[j2] == "}" and upper == "" {
+                if j2 < n and byte_chr(str_byte(pattern, j2)) == "}" and upper == "" {
                     # `{n,}` or `{,}` → `{n,BOUND}` / `{0,BOUND}`
                     lo: str = digits;
                     if lo == "" {
@@ -474,7 +488,7 @@ glob:priv _US_S: str = "",
 def _us_reset(s: str) {
     _US_S = s;
     _US_I = 0;
-    _US_N = len(s);
+    _US_N = str_nbytes(s);
     _US_ERR = False;
     _US_LAST_QALTS = [];
 }
@@ -483,17 +497,17 @@ def _us_peek -> str {
     if _US_I >= _US_N {
         return "";
     }
-    return _US_S[_US_I];
+    return byte_chr(str_byte(_US_S, _US_I));
 }
 
 def _us_starts(lit: str) -> bool {
-    n: int = len(lit);
+    n: int = str_nbytes(lit);
     if _US_I + n > _US_N {
         return False;
     }
     j: int = 0;
     while j < n {
-        if _US_S[_US_I + j] != lit[j] {
+        if byte_chr(str_byte(_US_S, _US_I + j)) != byte_chr(str_byte(lit, j)) {
             return False;
         }
         j = j + 1;
@@ -534,21 +548,21 @@ def _us_pos_alts(name: str) -> list[str] {
 """True if a /v class body needs set-notation lowering."""
 def _us_body_needs_rewrite(body: str) -> bool {
     i: int = 0;
-    n: int = len(body);
+    n: int = str_nbytes(body);
     while i < n {
-        c: str = body[i];
+        c: str = byte_chr(str_byte(body, i));
         if c == "\\" and i + 1 < n {
-            nxt: str = body[i + 1];
+            nxt: str = byte_chr(str_byte(body, i + 1));
             if nxt == "q" {
                 return True;
             }
             if nxt == "p" or nxt == "P" {
                 # \p{Name} / \P{Name} — rewrite when Name is property-of-strings.
-                if i + 2 < n and body[i + 2] == "{" {
+                if i + 2 < n and byte_chr(str_byte(body, i + 2)) == "{" {
                     j: int = i + 3;
                     nm: str = "";
-                    while j < n and body[j] != "}" {
-                        nm = nm + body[j];
+                    while j < n and byte_chr(str_byte(body, j)) != "}" {
+                        nm = nm + byte_chr(str_byte(body, j));
                         j = j + 1;
                     }
                     if _us_is_pos_name(nm) {
@@ -562,10 +576,10 @@ def _us_body_needs_rewrite(body: str) -> bool {
         if c == "[" {
             return True;
         }
-        if c == "&" and i + 1 < n and body[i + 1] == "&" {
+        if c == "&" and i + 1 < n and byte_chr(str_byte(body, i + 1)) == "&" {
             return True;
         }
-        if c == "-" and i + 1 < n and body[i + 1] == "-" {
+        if c == "-" and i + 1 < n and byte_chr(str_byte(body, i + 1)) == "-" {
             return True;
         }
         i = i + 1;
@@ -577,41 +591,41 @@ def _us_body_needs_rewrite(body: str) -> bool {
 def _us_escape_outside(s: str) -> str {
     out: str = "";
     i: int = 0;
-    n: int = len(s);
+    n: int = str_nbytes(s);
     while i < n {
-        if s[i] == "\\" and i + 1 < n {
+        if byte_chr(str_byte(s, i)) == "\\" and i + 1 < n {
             out = out + "\\";
             i = i + 1;
-            c: str = s[i];
+            c: str = byte_chr(str_byte(s, i));
             out = out + c;
             i = i + 1;
-            if (c == "p" or c == "P") and i < n and s[i] == "{" {
+            if (c == "p" or c == "P") and i < n and byte_chr(str_byte(s, i)) == "{" {
                 out = out + "{";
                 i = i + 1;
-                while i < n and s[i] != "}" {
-                    out = out + s[i];
+                while i < n and byte_chr(str_byte(s, i)) != "}" {
+                    out = out + byte_chr(str_byte(s, i));
                     i = i + 1;
                 }
-                if i < n and s[i] == "}" {
+                if i < n and byte_chr(str_byte(s, i)) == "}" {
                     out = out + "}";
                     i = i + 1;
                 }
             } elif c == "u" {
-                if i < n and s[i] == "{" {
+                if i < n and byte_chr(str_byte(s, i)) == "{" {
                     out = out + "{";
                     i = i + 1;
-                    while i < n and s[i] != "}" {
-                        out = out + s[i];
+                    while i < n and byte_chr(str_byte(s, i)) != "}" {
+                        out = out + byte_chr(str_byte(s, i));
                         i = i + 1;
                     }
-                    if i < n and s[i] == "}" {
+                    if i < n and byte_chr(str_byte(s, i)) == "}" {
                         out = out + "}";
                         i = i + 1;
                     }
                 } else {
                     k: int = 0;
                     while k < 4 and i < n {
-                        out = out + s[i];
+                        out = out + byte_chr(str_byte(s, i));
                         i = i + 1;
                         k = k + 1;
                     }
@@ -619,14 +633,14 @@ def _us_escape_outside(s: str) -> str {
             } elif c == "x" {
                 k2: int = 0;
                 while k2 < 2 and i < n {
-                    out = out + s[i];
+                    out = out + byte_chr(str_byte(s, i));
                     i = i + 1;
                     k2 = k2 + 1;
                 }
             }
             continue;
         }
-        c2: str = s[i];
+        c2: str = byte_chr(str_byte(s, i));
         if (
             c2 == "\\"
             or c2 == "."
@@ -661,7 +675,7 @@ def _us_consume_escape_or_char -> str {
     }
     if _us_peek() != "\\" {
         _us_adv(1);
-        return _US_S[start:_US_I];
+        return str_bslice(_US_S, start, _US_I);
     }
     _us_adv(1);
     if _US_I >= _US_N {
@@ -708,7 +722,7 @@ def _us_consume_escape_or_char -> str {
         }
     }
     # else: single-char escape (\d, \w, \n, …) — already consumed
-    return _US_S[start:_US_I];
+    return str_bslice(_US_S, start, _US_I);
 }
 
 """True if a \q alternative is a single code point (possibly via \\u / \\x)."""
@@ -716,39 +730,40 @@ def _us_alt_is_single_cp(alt: str) -> bool {
     if alt == "" {
         return False;
     }
-    if alt[0] != "\\" {
-        if len(alt) > 4 {
+    if byte_chr(str_byte(alt, 0)) != "\\" {
+        if str_nbytes(alt) > 4 {
             return False;
         }
-        if len(alt) == 1 {
+        if str_nbytes(alt) == 1 {
             return True;
         }
-        b0: int = ord(alt[0]);
-        if b0 >= 192 and b0 < 224 and len(alt) == 2 {
+        b0: int = str_byte(alt, 0);
+        if b0 >= 192 and b0 < 224 and str_nbytes(alt) == 2 {
             return True;
         }
-        if b0 >= 224 and b0 < 240 and len(alt) == 3 {
+        if b0 >= 224 and b0 < 240 and str_nbytes(alt) == 3 {
             return True;
         }
-        if b0 >= 240 and b0 < 248 and len(alt) == 4 {
+        if b0 >= 240 and b0 < 248 and str_nbytes(alt) == 4 {
             return True;
         }
         return False;
     }
-    if len(alt) >= 2 and alt[1] == "u" {
-        if len(alt) >= 3 and alt[2] == "{" {
+    if str_nbytes(alt) >= 2 and byte_chr(str_byte(alt, 1)) == "u" {
+        if str_nbytes(alt) >= 3 and byte_chr(str_byte(alt, 2)) == "{" {
             j: int = 3;
-            while j < len(alt) and alt[j] != "}" {
+            _nb752_alt: int = str_nbytes(alt);
+            while j < _nb752_alt and byte_chr(str_byte(alt, j)) != "}" {
                 j = j + 1;
             }
-            return j < len(alt) and j + 1 == len(alt);
+            return j < str_nbytes(alt) and j + 1 == str_nbytes(alt);
         }
-        return len(alt) == 6;
+        return str_nbytes(alt) == 6;
     }
-    if len(alt) >= 2 and alt[1] == "x" {
-        return len(alt) == 4;
+    if str_nbytes(alt) >= 2 and byte_chr(str_byte(alt, 1)) == "x" {
+        return str_nbytes(alt) == 4;
     }
-    return len(alt) == 2;
+    return str_nbytes(alt) == 2;
 }
 
 def _us_emit_union(parts: list[str]) -> str {
@@ -1002,8 +1017,8 @@ def _us_peek_prop_name -> str {
     }
     j: int = _US_I + 3;
     nm: str = "";
-    while j < _US_N and _US_S[j] != "}" {
-        nm = nm + _US_S[j];
+    while j < _US_N and byte_chr(str_byte(_US_S, j)) != "}" {
+        nm = nm + byte_chr(str_byte(_US_S, j));
         j = j + 1;
     }
     if j >= _US_N {
@@ -1049,7 +1064,7 @@ def _us_parse_operand -> str {
         and _us_peek() != "]"
     ) {
         if _US_I + 1 < _US_N {
-            nxt: str = _US_S[_US_I + 1];
+            nxt: str = byte_chr(str_byte(_US_S, _US_I + 1));
             if nxt != "]" and nxt != "" {
                 _us_adv(1);
                 _us_consume_escape_or_char();
@@ -1059,7 +1074,7 @@ def _us_parse_operand -> str {
             }
         }
     }
-    return "[" + _US_S[start:_US_I] + "]";
+    return "[" + str_bslice(_US_S, start, _US_I) + "]";
 }
 
 def _us_parse_expr -> str {
@@ -1162,7 +1177,7 @@ def _us_parse_class -> str {
         }
         if c == "]" {
             if depth == 0 {
-                body: str = _US_S[body_start:_US_I];
+                body: str = str_bslice(_US_S, body_start, _US_I);
                 _us_adv(1);
                 if not _us_body_needs_rewrite(body) {
                     if neg {
@@ -1228,7 +1243,7 @@ def _rewrite_unicode_sets(pattern: str) -> str {
             if _US_ERR {
                 return pattern;
             }
-            out = out + _US_S[start:_US_I];
+            out = out + str_bslice(_US_S, start, _US_I);
             continue;
         }
         if c == "[" {
@@ -1281,8 +1296,9 @@ def _dup_named_group_conflict(pattern: str) -> str {
     i: int = 0;
     escaped: bool = False;
     in_class: bool = False;
-    while i < len(pattern) {
-        ch: str = pattern[i];
+    _nb1295_pattern: int = str_nbytes(pattern);
+    while i < _nb1295_pattern {
+        ch: str = byte_chr(str_byte(pattern, i));
         if escaped {
             escaped = False;
             i = i + 1;
@@ -1323,20 +1339,21 @@ def _dup_named_group_conflict(pattern: str) -> str {
         if ch == "(" {
             is_named: bool = False;
             nm: str = "";
-            if i + 3 < len(pattern)
-                and pattern[i + 1] == "?"
-                and pattern[i + 2] == "<"
-                and (pattern[i + 3] == "=" or pattern[i + 3] == "!") {
+            if i + 3 < str_nbytes(pattern)
+                and byte_chr(str_byte(pattern, i + 1)) == "?"
+                and byte_chr(str_byte(pattern, i + 2)) == "<"
+                and (byte_chr(str_byte(pattern, i + 3)) == "=" or byte_chr(str_byte(pattern, i + 3)) == "!") {
                 # lookbehind — not a named group
-            } elif i + 2 < len(pattern)
-                and pattern[i + 1] == "?"
-                and pattern[i + 2] == "<" {
+            } elif i + 2 < str_nbytes(pattern)
+                and byte_chr(str_byte(pattern, i + 1)) == "?"
+                and byte_chr(str_byte(pattern, i + 2)) == "<" {
                 j: int = i + 3;
-                while j < len(pattern) and pattern[j] != ">" {
-                    nm = nm + pattern[j];
+                _nb1346_pattern: int = str_nbytes(pattern);
+                while j < _nb1346_pattern and byte_chr(str_byte(pattern, j)) != ">" {
+                    nm = nm + byte_chr(str_byte(pattern, j));
                     j = j + 1;
                 }
-                if j < len(pattern) {
+                if j < str_nbytes(pattern) {
                     is_named = True;
                 }
             }
@@ -1375,10 +1392,10 @@ def _dup_named_group_conflict(pattern: str) -> str {
 
 """True if `pattern[i:]` starts a class escape `\d \D \w \W \s \S`."""
 def _is_class_escape_at(pattern: str, i: int) -> bool {
-    if i + 1 >= len(pattern) or pattern[i] != "\\" {
+    if i + 1 >= str_nbytes(pattern) or byte_chr(str_byte(pattern, i)) != "\\" {
         return False;
     }
-    ce: str = pattern[i + 1];
+    ce: str = byte_chr(str_byte(pattern, i + 1));
     return ce == "d" or ce == "D" or ce == "w" or ce == "W" or ce == "s" or ce == "S";
 }
 
@@ -1388,20 +1405,20 @@ class escape on either side is a literal hyphen, not a range — `[\w- ]` is
 PCRE2 rejects such a hyphen unless it is last in the class, so escape it.
 `]` right after `[` / `[^` ends the class, as in JS."""
 def _annexb_class_dash_literal(pattern: str) -> str {
-    n: int = len(pattern);
+    n: int = str_nbytes(pattern);
     out: str = "";
     i: int = 0;
     in_class: bool = False;
     first_atom: bool = False;
     prev_class_esc: bool = False;
     while i < n {
-        c: str = pattern[i];
+        c: str = byte_chr(str_byte(pattern, i));
         if c == "\\" and i + 1 < n {
             if in_class {
                 prev_class_esc = _is_class_escape_at(pattern, i);
                 first_atom = False;
             }
-            out = out + pattern[i:i + 2];
+            out = out + str_bslice(pattern, i, i + 2);
             i = i + 2;
             continue;
         }
@@ -1412,7 +1429,7 @@ def _annexb_class_dash_literal(pattern: str) -> str {
                 prev_class_esc = False;
                 out = out + c;
                 i = i + 1;
-                if i < n and pattern[i] == "^" {
+                if i < n and byte_chr(str_byte(pattern, i)) == "^" {
                     out = out + "^";
                     i = i + 1;
                 }
@@ -1428,7 +1445,7 @@ def _annexb_class_dash_literal(pattern: str) -> str {
             i = i + 1;
             continue;
         }
-        if c == "-" and not first_atom and i + 1 < n and pattern[i + 1] != "]" {
+        if c == "-" and not first_atom and i + 1 < n and byte_chr(str_byte(pattern, i + 1)) != "]" {
             if prev_class_esc or _is_class_escape_at(pattern, i + 1) {
                 out = out + "\\-";
                 prev_class_esc = False;
@@ -1483,8 +1500,9 @@ def _pcre2_compile(pattern: str, flags: str) -> JSRegExpState {
     fd: bool = False;
     fv: bool = False;
     i_fl: int = 0;
-    while i_fl < len(flags) {
-        c: str = flags[i_fl];
+    _nb1497_flags: int = str_nbytes(flags);
+    while i_fl < _nb1497_flags {
+        c: str = byte_chr(str_byte(flags, i_fl));
         if c == "g" {
             fg = True;
         } elif c == "i" {
@@ -1551,7 +1569,7 @@ def _pcre2_compile(pattern: str, flags: str) -> JSRegExpState {
     }
 
     code_ptr: int = pcre2_compile_8(
-        compile_pat, len(compile_pat), options, err_code_buf, err_off_buf, cctx
+        compile_pat, str_nbytes(compile_pat), options, err_code_buf, err_off_buf, cctx
     );
 
     if cctx != 0 {
@@ -1593,15 +1611,16 @@ def _is_decimal_digit(c: str) -> bool {
 def _hex_to_int(hexs: str) -> int {
     n: int = 0;
     i: int = 0;
-    while i < len(hexs) {
-        c: str = hexs[i];
+    _nb1607_hexs: int = str_nbytes(hexs);
+    while i < _nb1607_hexs {
+        c: str = byte_chr(str_byte(hexs, i));
         v: int = 0;
         if c >= "0" and c <= "9" {
-            v = ord(c) - ord("0");
+            v = str_byte(c, 0) - ord("0");
         } elif c >= "a" and c <= "f" {
-            v = 10 + (ord(c) - ord("a"));
+            v = 10 + (str_byte(c, 0) - ord("a"));
         } elif c >= "A" and c <= "F" {
-            v = 10 + (ord(c) - ord("A"));
+            v = 10 + (str_byte(c, 0) - ord("A"));
         }
         n = n * 16 + v;
         i = i + 1;
@@ -1612,26 +1631,26 @@ def _hex_to_int(hexs: str) -> int {
 """Length of a U+0000 escape at p[i] (`\\0` not followed by a digit → 2,
 `\\x00` → 4, `\\u0000` → 6), else 0."""
 def _re_nul_escape_len(p: str, i: int) -> int {
-    n: int = len(p);
-    if i + 1 >= n or p[i] != "\\" {
+    n: int = str_nbytes(p);
+    if i + 1 >= n or byte_chr(str_byte(p, i)) != "\\" {
         return 0;
     }
-    c1: str = p[i + 1];
+    c1: str = byte_chr(str_byte(p, i + 1));
     if c1 == "0" {
-        if i + 2 < n and _is_decimal_digit(p[i + 2]) {
+        if i + 2 < n and _is_decimal_digit(byte_chr(str_byte(p, i + 2))) {
             return 0;
         }
         return 2;
     }
-    if c1 == "x" and i + 3 < n and p[i + 2] == "0" and p[i + 3] == "0" {
+    if c1 == "x" and i + 3 < n and byte_chr(str_byte(p, i + 2)) == "0" and byte_chr(str_byte(p, i + 3)) == "0" {
         return 4;
     }
     if c1 == "u"
         and i + 5 < n
-        and p[i + 2] == "0"
-        and p[i + 3] == "0"
-        and p[i + 4] == "0"
-        and p[i + 5] == "0" {
+        and byte_chr(str_byte(p, i + 2)) == "0"
+        and byte_chr(str_byte(p, i + 3)) == "0"
+        and byte_chr(str_byte(p, i + 4)) == "0"
+        and byte_chr(str_byte(p, i + 5)) == "0" {
         return 6;
     }
     return 0;
@@ -1639,12 +1658,12 @@ def _re_nul_escape_len(p: str, i: int) -> int {
 
 """True when pattern[pos:pos+4] is four hex digits."""
 def _re_is_hex4(pattern: str, pos: int) -> bool {
-    if pos + 4 > len(pattern) {
+    if pos + 4 > str_nbytes(pattern) {
         return False;
     }
     k: int = pos;
     while k < pos + 4 {
-        c: str = pattern[k];
+        c: str = byte_chr(str_byte(pattern, k));
         if not (
             (c >= "0" and c <= "9")
             or (c >= "a" and c <= "f")
@@ -1672,7 +1691,8 @@ def _normalize_unicode_pattern(
     # was mangled to `[[^\s\S]`, so `removeBrackets`'s `/[<[]/` matched every
     # char — which broke vite's CLI command routing (`vite build` → dev/preview).
     nz_in_class: bool = False;
-    while i < len(pattern) {
+    _nb1686_pattern: int = str_nbytes(pattern);
+    while i < _nb1686_pattern {
         # An escaped char (`\X`) is two chars that toggle no class state — but
         # `\u`/`\u{}` still need the normalization below, so only fast-path
         # NON-`\u` escapes here (e.g. `\[`, `\]`, `\.`). This keeps `\]` from
@@ -1682,7 +1702,7 @@ def _normalize_unicode_pattern(
         # (_dm_converted), so every NUL form compiles to PCRE2's `\\x00` — a
         # literal NUL in the pattern (sentinel bytes) included. Inside a class
         # `\\0` / `\\x00` are already PCRE2's NUL.
-        if ord(pattern[i]) == 192 and i + 1 < len(pattern) and ord(pattern[i + 1]) == 128 {
+        if str_byte(pattern, i) == 192 and i + 1 < str_nbytes(pattern) and str_byte(pattern, i + 1) == 128 {
             out = out + "\\x00";
             i = i + 2;
             continue;
@@ -1696,11 +1716,11 @@ def _normalize_unicode_pattern(
         # lacks U+FEFF); spell out ECMAScript WhiteSpace + LineTerminator. A `\\S`
         # inside a class has no set form there and stays PCRE2's.
         if use_unicode
-            and pattern[i] == "\\"
-            and i + 1 < len(pattern)
-            and (pattern[i + 1] == "s" or pattern[i + 1] == "S") {
+            and byte_chr(str_byte(pattern, i)) == "\\"
+            and i + 1 < str_nbytes(pattern)
+            and (byte_chr(str_byte(pattern, i + 1)) == "s" or byte_chr(str_byte(pattern, i + 1)) == "S") {
             if not nz_in_class {
-                if pattern[i + 1] == "s" {
+                if byte_chr(str_byte(pattern, i + 1)) == "s" {
                     out = out + "[" + _RE_JS_WS + "]";
                 } else {
                     out = out + "[^" + _RE_JS_WS + "]";
@@ -1708,14 +1728,14 @@ def _normalize_unicode_pattern(
                 i = i + 2;
                 continue;
             }
-            if pattern[i + 1] == "s" {
+            if byte_chr(str_byte(pattern, i + 1)) == "s" {
                 out = out + _RE_JS_WS;
                 i = i + 2;
                 continue;
             }
         }
-        if pattern[i] == "\\" and i + 1 < len(pattern) and pattern[i + 1] != "u" {
-            out = out + pattern[i] + pattern[i + 1];
+        if byte_chr(str_byte(pattern, i)) == "\\" and i + 1 < str_nbytes(pattern) and byte_chr(str_byte(pattern, i + 1)) != "u" {
+            out = out + byte_chr(str_byte(pattern, i)) + byte_chr(str_byte(pattern, i + 1));
             i = i + 2;
             continue;
         }
@@ -1728,35 +1748,35 @@ def _normalize_unicode_pattern(
         if not nz_in_class {
             # [^] → [\s\S]: JS empty negated class = "any char incl. newlines";
             # PCRE2 rejects [^], so rewrite it.
-            if i + 2 < len(pattern)
-                and pattern[i] == "["
-                and pattern[i + 1] == "^"
-                and pattern[i + 2] == "]" {
+            if i + 2 < str_nbytes(pattern)
+                and byte_chr(str_byte(pattern, i)) == "["
+                and byte_chr(str_byte(pattern, i + 1)) == "^"
+                and byte_chr(str_byte(pattern, i + 2)) == "]" {
                 out = out + "[\\s\\S]";
                 i = i + 3;
                 continue;
             }
             # [] → [^\s\S]: JS empty class matches nothing; PCRE2 rejects bare [].
-            if i + 1 < len(pattern) and pattern[i] == "[" and pattern[i + 1] == "]" {
+            if i + 1 < str_nbytes(pattern) and byte_chr(str_byte(pattern, i)) == "[" and byte_chr(str_byte(pattern, i + 1)) == "]" {
                 out = out + "[^\\s\\S]";
                 i = i + 2;
                 continue;
             }
-            if pattern[i] == "[" {
+            if byte_chr(str_byte(pattern, i)) == "[" {
                 nz_in_class = True;
             }
         } else {
             # A `\]` inside a class does not close it — the escape branch below
             # consumes it. A bare `]` closes the class.
-            if pattern[i] == "]" {
+            if byte_chr(str_byte(pattern, i)) == "]" {
                 nz_in_class = False;
             }
         }
-        if i + 5 < len(pattern) and pattern[i] == "\\" and pattern[i + 1] == "u" {
-            h0: str = pattern[i + 2];
-            h1: str = pattern[i + 3];
-            h2: str = pattern[i + 4];
-            h3: str = pattern[i + 5];
+        if i + 5 < str_nbytes(pattern) and byte_chr(str_byte(pattern, i)) == "\\" and byte_chr(str_byte(pattern, i + 1)) == "u" {
+            h0: str = byte_chr(str_byte(pattern, i + 2));
+            h1: str = byte_chr(str_byte(pattern, i + 3));
+            h2: str = byte_chr(str_byte(pattern, i + 4));
+            h3: str = byte_chr(str_byte(pattern, i + 5));
             is4hex: bool = (
                 (
                     (h0 >= "0" and h0 <= "9")
@@ -1786,11 +1806,11 @@ def _normalize_unicode_pattern(
                 if use_unicode
                     and cp4 >= 55296
                     and cp4 <= 56319
-                    and i + 11 < len(pattern)
-                    and pattern[i + 6] == "\\"
-                    and pattern[i + 7] == "u"
+                    and i + 11 < str_nbytes(pattern)
+                    and byte_chr(str_byte(pattern, i + 6)) == "\\"
+                    and byte_chr(str_byte(pattern, i + 7)) == "u"
                     and _re_is_hex4(pattern, i + 8) {
-                    lo4: int = _hex_to_int(pattern[i + 8:i + 12]);
+                    lo4: int = _hex_to_int(str_bslice(pattern, i + 8, i + 12));
                     if lo4 >= 56320 and lo4 <= 57343 {
                         out = out
                             + utf8_encode_scalar(
@@ -1820,15 +1840,16 @@ def _normalize_unicode_pattern(
                 continue;
             }
         }
-        if i + 3 < len(pattern)
-            and pattern[i] == "\\"
-            and pattern[i + 1] == "u"
-            and pattern[i + 2] == "{" {
+        if i + 3 < str_nbytes(pattern)
+            and byte_chr(str_byte(pattern, i)) == "\\"
+            and byte_chr(str_byte(pattern, i + 1)) == "u"
+            and byte_chr(str_byte(pattern, i + 2)) == "{" {
             j: int = i + 3;
             hexs: str = "";
             ok: bool = True;
-            while j < len(pattern) and pattern[j] != "}" {
-                ch: str = pattern[j];
+            _nb1841_pattern: int = str_nbytes(pattern);
+            while j < _nb1841_pattern and byte_chr(str_byte(pattern, j)) != "}" {
+                ch: str = byte_chr(str_byte(pattern, j));
                 if (ch >= "0" and ch <= "9")
                     or (ch >= "a" and ch <= "f")
                     or (ch >= "A" and ch <= "F") {
@@ -1838,7 +1859,7 @@ def _normalize_unicode_pattern(
                 }
                 j = j + 1;
             }
-            if ok and j < len(pattern) and len(hexs) > 0 {
+            if ok and j < str_nbytes(pattern) and len(hexs) > 0 {
                 if use_unicode {
                     cp: int = _hex_to_int(hexs);
                     if cp >= 55296 and cp <= 57343 {
@@ -1858,7 +1879,7 @@ def _normalize_unicode_pattern(
                 continue;
             }
         }
-        out = out + pattern[i];
+        out = out + byte_chr(str_byte(pattern, i));
         i = i + 1;
     }
     return out;
@@ -1874,8 +1895,9 @@ def _canonicalize_flags(flags: str) -> str {
     seen_d: bool = False;
     seen_v: bool = False;
     i: int = 0;
-    while i < len(flags) {
-        c: str = flags[i];
+    _nb1888_flags: int = str_nbytes(flags);
+    while i < _nb1888_flags {
+        c: str = byte_chr(str_byte(flags, i));
         if c == "g" {
             if seen_g {
                 vm_throw_native(
@@ -2101,7 +2123,7 @@ lone half stays as it is. Every rewrite shrinks the copy, so _DM_CV_END[k] (the
 copy's offset just past rewrite k) and _DM_CV_CUM[k] (original minus copy offset
 from there on) map offsets both ways. Cached per subject (see _DM_SUBJ_ID)."""
 def _dm_converted(s: str, pairs: bool) -> bool {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if _DM_SUBJ_ID >= 0
         and _DM_SUBJ_ID == _DM_CV_ID
         and n == _DM_CV_LEN
@@ -2121,7 +2143,7 @@ def _dm_converted(s: str, pairs: bool) -> bool {
     _DM_CV_LEN = n;
     _DM_CV_PAIRS = pairs;
     _DM_CV_EPOCH = _RE_REALM.gc_epoch;
-    _DM_CV_ON = s.find(_DM_NUL) >= 0 or (pairs and s.find(_DM_ED) >= 0);
+    _DM_CV_ON = str_bfind(s, _DM_NUL) >= 0 or (pairs and str_bfind(s, _DM_ED) >= 0);
     if not _DM_CV_ON {
         return False;
     }
@@ -2132,8 +2154,8 @@ def _dm_converted(s: str, pairs: bool) -> bool {
     i: int = 0;
     o: int = 0;
     while i < n {
-        b: int = ord(s[i]);
-        if b == 192 and i + 1 < n and ord(s[i + 1]) == 128 {
+        b: int = str_byte(s, i);
+        if b == 192 and i + 1 < n and str_byte(s, i + 1) == 128 {
             write_byte(buf, o, 0);
             i = i + 2;
             o = o + 1;
@@ -2143,11 +2165,11 @@ def _dm_converted(s: str, pairs: bool) -> bool {
             continue;
         }
         if pairs and b == 237 and i + 5 < n {
-            b1: int = ord(s[i + 1]);
-            b4: int = ord(s[i + 4]);
-            if b1 >= 160 and b1 <= 175 and ord(s[i + 3]) == 237 and b4 >= 176 and b4 <= 191 {
-                hs: int = 53248 | ((b1 & 63) << 6) | (ord(s[i + 2]) & 63);
-                ls: int = 53248 | ((b4 & 63) << 6) | (ord(s[i + 5]) & 63);
+            b1: int = str_byte(s, i + 1);
+            b4: int = str_byte(s, i + 4);
+            if b1 >= 160 and b1 <= 175 and str_byte(s, i + 3) == 237 and b4 >= 176 and b4 <= 191 {
+                hs: int = 53248 | ((b1 & 63) << 6) | (str_byte(s, i + 2) & 63);
+                ls: int = 53248 | ((b4 & 63) << 6) | (str_byte(s, i + 5) & 63);
                 sc: int = 65536 + ((hs - 55296) << 10) + (ls - 56320);
                 write_byte(buf, o, 240 | (sc >> 18));
                 write_byte(buf, o + 1, 128 | ((sc >> 12) & 63));
@@ -2223,7 +2245,7 @@ def _do_match_buf(re: JSRegExpState, p: int, n: int, start: int) -> list[int] {
 }
 
 def _do_match_raw(re: JSRegExpState, subj: str, start: int) -> list[int] {
-    return _do_match_on(re, subj, len(subj), start);
+    return _do_match_on(re, subj, str_nbytes(subj), start);
 }
 
 def _do_match_on(re: JSRegExpState, subj: str, slen: int, start: int) -> list[int] {
@@ -2361,7 +2383,15 @@ cached U16Index can map offsets: a checkpoint lookup instead of a walk from
 byte 0, which made each exec / match result on a large non-ASCII subject cost
 O(subject) (~4% of a vite build)."""
 def _re_subject_indexed(s: str) -> bool {
-    return _DM_SUBJ_ID >= 0 and len(str_from_id(_DM_SUBJ_ID)) == len(s);
+    if _DM_SUBJ_ID < 0 {
+        return False;
+    }
+    # The same string object: no length to measure (a strlen per call for a
+    # non-ASCII subject).
+    if __str_data(str_from_id(_DM_SUBJ_ID)) == __str_data(s) {
+        return True;
+    }
+    return str_cell_len(_DM_SUBJ_ID) == str_nbytes(s);
 }
 
 """UTF-16 unit index → byte offset; -1 when the index lies past the end (a
@@ -2371,7 +2401,7 @@ def _re_u2b(s: str, units: int, asc: bool) -> int {
         return 0;
     }
     if asc {
-        if units > len(s) {
+        if units > str_nbytes(s) {
             return -1;
         }
         return units;
@@ -2508,10 +2538,10 @@ def _escape_regexp_pattern(pattern: str) -> str {
     }
     out: str = "";
     i: int = 0;
-    n: int = len(pattern);
+    n: int = str_nbytes(pattern);
     escaped: bool = False;
     while i < n {
-        c: str = pattern[i];
+        c: str = byte_chr(str_byte(pattern, i));
         if escaped {
             out = out + c;
             escaped = False;
@@ -2539,17 +2569,19 @@ def _escape_regexp_pattern(pattern: str) -> str {
             i = i + 1;
             continue;
         }
-        cp: int = ord(c);
-        if cp == 8232 {
-            out = out + "\\u2028";
-            i = i + 1;
+        # U+2028 LINE SEPARATOR / U+2029 PARAGRAPH SEPARATOR: E2 80 A8 / A9.
+        if str_byte(pattern, i) == 0xE2
+            and i + 2 < n
+            and str_byte(pattern, i + 1) == 0x80
+            and (str_byte(pattern, i + 2) == 0xA8 or str_byte(pattern, i + 2) == 0xA9) {
+            if str_byte(pattern, i + 2) == 0xA8 {
+                out = out + "\\u2028";
+            } else {
+                out = out + "\\u2029";
+            }
+            i = i + 3;
             continue;
-        }  # LINE SEPARATOR
-        if cp == 8233 {
-            out = out + "\\u2029";
-            i = i + 1;
-            continue;
-        }  # PARAGRAPH SEPARATOR
+        }
         out = out + c;
         i = i + 1;
     }
@@ -3105,11 +3137,11 @@ def:pub js_RegExp_ctor_nt(args: list[JSValue], is_call: bool) -> JSValue {
 def _expand_replacement(repl: str, s: str, ov: list[int], re_st: JSRegExpState) -> str {
     out: str = "";
     i: int = 0;
-    n: int = len(repl);
+    n: int = str_nbytes(repl);
     while i < n {
-        c: str = repl[i];
+        c: str = byte_chr(str_byte(repl, i));
         if c == "$" and i + 1 < n {
-            nc: str = repl[i + 1];
+            nc: str = byte_chr(str_byte(repl, i + 1));
             if nc == "&" {
                 out = out + str_substr(s, ov[0], ov[1]);
                 i = i + 2;
@@ -3119,17 +3151,17 @@ def _expand_replacement(repl: str, s: str, ov: list[int], re_st: JSRegExpState) 
                 i = i + 2;
                 continue;
             } elif nc == "'" {
-                out = out + str_substr(s, ov[1], len(s));
+                out = out + str_substr(s, ov[1], str_nbytes(s));
                 i = i + 2;
                 continue;
             } elif nc >= "0" and nc <= "9" {
                 # $n / $nn — a one- or two-digit capture index (§22.2.5.9). The
                 # two-digit form 01–99 is tried first; a leading-zero single digit
                 # ($0) is not a valid group, so it falls through to a literal.
-                gn: int = ord(nc) - 48;
+                gn: int = str_byte(nc, 0) - 48;
                 consumed2: bool = False;
-                if i + 2 < n and _is_decimal_digit(repl[i + 2]) {
-                    gn2: int = gn * 10 + (ord(repl[i + 2]) - 48);
+                if i + 2 < n and _is_decimal_digit(byte_chr(str_byte(repl, i + 2))) {
+                    gn2: int = gn * 10 + (str_byte(repl, i + 2) - 48);
                     if gn2 >= 1 and gn2 <= re_st.num_groups {
                         gn = gn2;
                         consumed2 = True;
@@ -3151,8 +3183,8 @@ def _expand_replacement(repl: str, s: str, ov: list[int], re_st: JSRegExpState) 
                 names: list[str] = re_st.group_names;
                 jn: int = i + 2;
                 nm2: str = "";
-                while jn < n and repl[jn] != ">" {
-                    nm2 = nm2 + repl[jn];
+                while jn < n and byte_chr(str_byte(repl, jn)) != ">" {
+                    nm2 = nm2 + byte_chr(str_byte(repl, jn));
                     jn = jn + 1;
                 }
                 if jn < n {
@@ -3205,7 +3237,7 @@ def:pub js_str_match_re(s_val: JSValue, re_val: JSValue) -> JSValue {
     # Global: collect all full-match strings into a real Array.
     elems_m: list[JSValue] = [];
     pos: int = 0;
-    slen: int = len(s);
+    slen: int = str_nbytes(s);
     _DM_ASCII = _dm_subject_ascii(s_val);
     while pos <= slen {
         res: list[int] = _do_match(re7, s, pos);
@@ -3254,7 +3286,7 @@ def:pub js_str_matchAll_re(s_val: JSValue, re_val: JSValue) -> JSValue {
     out: JSValue = js_array_create([]);
     pos: int = 0;
     cnt: int = 0;
-    slen: int = len(s);
+    slen: int = str_nbytes(s);
     _DM_ASCII = _dm_subject_ascii(s_val);
     asc_m: bool = _DM_ASCII;
     while pos <= slen {
@@ -3346,7 +3378,7 @@ def:pub js_str_replace_re(
     } else {
         r7 = js_to_string_prim(repl3);
     }
-    slen7: int = len(s7);
+    slen7: int = str_nbytes(s7);
     _DM_ASCII = _dm_subject_ascii(s_val3);
 
     if not re10.flag_g {
@@ -3368,8 +3400,8 @@ def:pub js_str_replace_re(
 (was `out = out + piece` — O(n²) copying and a leaked intermediate per match)."""
 def _re_replace_global_build(re10: JSRegExpState, s7: str, r7: str, asc: bool) -> str {
     parts: list[str] = [];
-    has_dollar: bool = r7.find("$") >= 0;
-    slen7: int = len(s7);
+    has_dollar: bool = str_bfind(r7, "$") >= 0;
+    slen7: int = str_nbytes(s7);
     pos7: int = 0;
     # nextSourcePosition (§22.2.6.11 step 14): the subject copied up to each
     # match, the replacement for it, then from the match's end.
@@ -3401,10 +3433,10 @@ def _re_replace_global_build(re10: JSRegExpState, s7: str, r7: str, asc: bool) -
 """Byte length of the UTF-8 character at byte `i` of `s` (1 past the end):
 the matchers' AdvanceStringIndex step."""
 def _re_char_len(s: str, i: int) -> int {
-    if i >= len(s) {
+    if i >= str_nbytes(s) {
         return 1;
     }
-    cl_b: int = ord(s[i]);
+    cl_b: int = str_byte(s, i);
     if cl_b < 192 {
         return 1;
     }
@@ -3454,7 +3486,7 @@ def:pub js_str_split_re(s_val4: JSValue, sep4: JSValue, limit_v4: JSValue) -> JS
     # RegExp.prototype[@@split] — ECMAScript §22.2.5.11. Build a real Array via
     # js_array_create so it inherits Array.prototype.
     elems10: list[JSValue] = [];
-    slen10: int = len(s9);
+    slen10: int = str_nbytes(s9);
 
     # lim == 0 → empty array (spec step 12).
     if lim9 == 0 {

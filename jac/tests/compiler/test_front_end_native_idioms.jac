@@ -451,7 +451,7 @@ test "placement blocker tables carry the real class name" {
             seen += 1;
         }
     }
-    assert seen == 3 , f"expected 3 tabled node types, saw {seen}";
+    assert seen == 2 , f"expected 2 tabled node types, saw {seen}";
 }
 
 test "scan_native_blockers names the offending node from the table" {

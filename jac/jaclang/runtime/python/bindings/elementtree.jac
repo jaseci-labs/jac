@@ -1,7 +1,3 @@
-"""The _elementtree module: Element, SubElement, TreeBuilder, XMLParser,
-ParseError and the element iterator."""
-
-# element_methods, in _elementtree.c's order.
 glob:priv ELEMENT_METHOD_ORDER: list[str] = [
          "clear",
          "get",
@@ -43,17 +39,7 @@ glob:priv ELEMENT_METHOD_ORDER: list[str] = [
 
 def:priv ordered(
     methods: list[MethodDefinition], order: list[str]
-) -> list[MethodDefinition] {
-    result: list[MethodDefinition] = [];
-    for name in order {
-        for method in methods {
-            if method.name == name {
-                result.append(method);
-            }
-        }
-    }
-    return result;
-}
+) -> list[MethodDefinition];
 
 glob:priv GC_IMMUTABLE: u64 = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
      element_type = TypeDefinition(
@@ -103,8 +89,6 @@ glob:priv GC_IMMUTABLE: u64 = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value
          ],
          record_size=ELEMENT_RECORD_SIZE
      ),
-     # The module's name, since the pure-Python implementation has no such
-     # type.
      element_iter_type = TypeDefinition(
          "_elementtree._element_iterator",
          "",
@@ -153,11 +137,39 @@ glob:priv GC_IMMUTABLE: u64 = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value
          record_size=XMLPARSER_RECORD_SIZE
      );
 
-def:priv interned(name: str) -> ptr[PyObject] {
-    return PyUnicode_InternFromString(name);
+def:priv interned(name: str) -> ptr[PyObject];
+
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+glob:priv methods: list[MethodDefinition] = [
+         MethodDefinition("SubElement", MethodCallbacks(keywords=subelement), "", 3)
+     ]
+         + module_methods,
+     definition = ModuleDefinition(
+         "_elementtree", "", methods, ModuleHooks(execute=execute)
+     );
+
+def:pub PyInit__elementtree -> ptr[PyObject];
+
+impl ordered(
+    methods: list[MethodDefinition], order: list[str]
+) -> list[MethodDefinition] {
+    result: list[MethodDefinition] = [];
+    for name in order {
+        for method in methods {
+            if method.name == name {
+                result.append(method);
+            }
+        }
+    }
+    return result;
 }
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+impl interned(name: str) -> ptr[PyObject] {
+    return jacpy_unicode_intern_text(name);
+}
+
+impl execute(module: ptr[PyObject]) -> i32 {
     module_definition.handle = definition.handle;
     Element_token.handle = element_type.handle;
     ElementIter_token.handle = element_iter_type.handle;
@@ -165,7 +177,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     XMLParser_token.handle = xmlparser_type.handle;
     state = ElementTreeState();
     jacpy_binding_module_native_set(module, state);
-    # The object types.
+
     state.ElementIter_Type = element_iter_type.create(module);
     if not state.ElementIter_Type {
         return i32(-1);
@@ -182,15 +194,17 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     if not state.XMLParser_Type {
         return i32(-1);
     }
-    state.deepcopy_obj = PyImport_ImportModuleAttrString("copy", "deepcopy");
+    state.deepcopy_obj = PyImport_ImportModuleAttrString(
+        ptr[u8]("copy"), ptr[u8]("deepcopy")
+    );
     if not state.deepcopy_obj {
         return i32(-1);
     }
-    state.elementpath_obj = PyImport_ImportModule("xml.etree.ElementPath");
+    state.elementpath_obj = PyImport_ImportModule(ptr[u8]("xml.etree.ElementPath"));
     if not state.elementpath_obj {
         return i32(-1);
     }
-    # Link against pyexpat.
+
     if not import_expat_capi(state) {
         return i32(-1);
     }
@@ -215,7 +229,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     state.parseerror_obj = jacpy_binding_exception(
         "xml.etree.ElementTree.ParseError", PyExc_SyntaxError, ""
     );
-    if PyModule_AddObjectRef(module, "ParseError", state.parseerror_obj) < 0 {
+    if PyModule_AddObjectRef(module, ptr[u8]("ParseError"), state.parseerror_obj) < 0 {
         return i32(-1);
     }
     for (name, type) in [
@@ -223,21 +237,13 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         ("TreeBuilder", state.TreeBuilder_Type),
         ("XMLParser", state.XMLParser_Type)
     ] {
-        if PyModule_AddObjectRef(module, name, type) < 0 {
+        if jacpy_module_add_object_ref_text(module, name, type) < 0 {
             return i32(-1);
         }
     }
     return i32(0);
 }
 
-glob:priv methods: list[MethodDefinition] = [
-         MethodDefinition("SubElement", MethodCallbacks(keywords=subelement), "", 3)
-     ]
-         + module_methods,
-     definition = ModuleDefinition(
-         "_elementtree", "", methods, ModuleHooks(execute=execute)
-     );
-
-def:pub PyInit__elementtree -> ptr[PyObject] {
+impl PyInit__elementtree -> ptr[PyObject] {
     return definition.initialize();
 }

@@ -1,182 +1,37 @@
-"""The itertools module: its types, built from itertoolsmodule.c's docs and
-method tables, over the construction modules/itertools.jac keeps."""
+def:priv install_method_tables -> bool;
 
-# Each type's tp_doc.
-glob:priv docs = [
-         accumulate_doc,
-         batched_doc,
-         chain_doc,
-         compress_doc,
-         count_doc,
-         cycle_doc,
-         dropwhile_doc,
-         filterfalse_doc,
-         islice_doc,
-         pairwise_doc,
-         repeat_doc,
-         starmap_doc,
-         takewhile_doc,
-         zip_longest_doc,
-         product_doc,
-         combinations_doc,
-         combinations_with_replacement_doc,
-         permutations_doc,
-         groupby_doc,
-         "",
-         _tee_doc,
-         teedataobject_doc
-     ];
+def:pub PyInit_itertools -> ptr[PyObject];
 
-
-def:priv make_types -> list[TypeDefinition] {
-    result: list[TypeDefinition] = [];
-    for kind in range(len(names)) {
-        methods: list[MethodDefinition] = [];
-        flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value);
-        hooks = TypeHooks(
-            create=iterator_new,
-            dealloc=iterator_dealloc,
-            traverse=iterator_traverse,
-            clear=iterator_clear,
-            iter=iterator_self,
-            next=iterator_next
-        );
-        # clinic's __new__ glue; C's hand-written tp_new (chain, islice,
-        # product, repeat, zip_longest) otherwise.
-        if kind == Kind.ACCUMULATE.value {
-            hooks.create = itertools_accumulate_new;
-        } elif kind == Kind.BATCHED.value {
-            hooks.create = batched_new_new;
-        } elif kind == Kind.COMPRESS.value {
-            hooks.create = itertools_compress_new;
-        } elif kind == Kind.COUNT.value {
-            hooks.create = itertools_count_new;
-        } elif kind == Kind.CYCLE.value {
-            hooks.create = itertools_cycle_new;
-        } elif kind == Kind.DROPWHILE.value {
-            hooks.create = itertools_dropwhile_new;
-        } elif kind == Kind.FILTERFALSE.value {
-            hooks.create = itertools_filterfalse_new;
-        } elif kind == Kind.PAIRWISE.value {
-            hooks.create = pairwise_new_new;
-        } elif kind == Kind.STARMAP.value {
-            hooks.create = itertools_starmap_new;
-        } elif kind == Kind.TAKEWHILE.value {
-            hooks.create = itertools_takewhile_new;
-        } elif kind == Kind.COMBINATIONS.value {
-            hooks.create = itertools_combinations_new;
-        } elif kind == Kind.CWR.value {
-            hooks.create = itertools_combinations_with_replacement_new;
-        } elif kind == Kind.PERMUTATIONS.value {
-            hooks.create = itertools_permutations_new;
-        } elif kind == Kind.GROUPBY.value {
-            hooks.create = itertools_groupby_new;
-        } elif kind == Kind.GROUPER.value {
-            hooks.create = itertools__grouper_new;
-        } elif kind == Kind.TEE.value {
-            hooks.create = itertools__tee_new;
-        } elif kind == Kind.TEE_DATA.value {
-            hooks.create = itertools_teedataobject_new;
-        }
-        if kind <= Kind.ZIP_LONGEST.value {
-            hooks.next = pipeline_iterator_next;
-        }
-        if kind <= Kind.GROUPBY.value {
-            flags = flags | u64(TypeFlags.BASETYPE.value);
-        }
-        if kind == Kind.COUNT.value or kind == Kind.REPEAT.value {
-            hooks.repr = iterator_repr;
-        }
-        if kind >= Kind.PRODUCT.value and kind <= Kind.PERMUTATIONS.value {
-            methods.append(
-                MethodDefinition(
-                    "__sizeof__",
-                    MethodCallbacks(positional=combination_size),
-                    sizeof_doc,
-                    flags=4
-                )
-            );
-        }
-        if kind == Kind.REPEAT.value {
-            methods.append(
-                MethodDefinition(
-                    "__length_hint__",
-                    MethodCallbacks(positional=repeat_length),
-                    length_hint_doc,
-                    flags=4
-                )
-            );
-        }
-        if kind == Kind.CHAIN.value {
-            methods = chain_methods
-                + [
-                    MethodDefinition(
-                        "__class_getitem__",
-                        MethodCallbacks(positional=Py_GenericAlias),
-                        chain_class_getitem_doc,
-                        flags=24
-                    )
-                ];
-        }
-        if kind == Kind.TEE.value {
-            methods.append(
-                MethodDefinition(
-                    "__copy__",
-                    MethodCallbacks(positional=tee_copy),
-                    teecopy_doc,
-                    flags=4
-                )
-            );
-        }
-        if kind == Kind.TEE_DATA.value {
-            hooks = TypeHooks(
-                create=itertools_teedataobject_new,
-                dealloc=data_dealloc,
-                traverse=iterator_traverse,
-                clear=iterator_clear
-            );
-        }
-        # Every type but _tee sets Py_tp_getattro to PyObject_GenericGetAttr;
-        # _tee keeps a weakref list.
-        result.append(
-            TypeDefinition(
-                "itertools." + names[kind],
-                docs[kind],
-                methods,
-                flags,
-                hooks,
-                weaklist=kind == Kind.TEE.value,
-                generic_getattr=kind != Kind.TEE.value
-            )
-        );
+impl install_method_tables -> bool {
+    module_def = addressof(itertoolsmodule);
+    if module_def.view(1)[0].m_methods {
+        return True;
     }
-    return result;
+    chain_table_methods = list(chain_methods);
+    chain_table_methods.append(
+        MethodDefinition(
+            "__class_getitem__",
+            MethodCallbacks(positional=Py_GenericAlias),
+            chain_class_getitem_doc,
+            i64(METH_O | METH_CLASS)
+        )
+    );
+    chain_table = method_table(chain_table_methods);
+    if not chain_table {
+        return False;
+    }
+    module_table = method_table(module_methods);
+    if not module_table {
+        return False;
+    }
+    addressof(chain_slots).view(1)[0].pfunc = ptr(chain_table);
+    module_def.view(1)[0].m_methods = module_table;
+    return True;
 }
 
-glob:priv types = make_types();
-def:priv execute(module: ptr[PyObject]) -> i32 {
-    for index in range(len(types)) {
-        kind_tokens[index].handle = types[index].handle;
+impl PyInit_itertools -> ptr[PyObject] {
+    if not install_method_tables() {
+        return NULL;
     }
-    itertools_module_token.handle = definition.handle;
-    for index in range(len(types)) {
-        if not add_state_owned(
-            module, index, names[index], types[index].create(module)
-        ) {
-            return i32(-1);
-        }
-    }
-    return i32(0);
-}
-
-glob:priv definition = ModuleDefinition(
-         "itertools",
-         module_doc,
-         module_methods,
-         hooks=ModuleHooks(execute=execute),
-         state_count=22
-     );
-
-def:pub PyInit_itertools -> ptr[PyObject] {
-    return definition.initialize();
+    return PyModuleDef_Init(ptr[PyModuleDef](addressof(itertoolsmodule)));
 }

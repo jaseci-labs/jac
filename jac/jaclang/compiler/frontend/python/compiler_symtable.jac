@@ -195,10 +195,7 @@ def sym_set_scope(flags: int, scope: int) -> int {
 }
 
 def sym_dict_get(d: dict[str, int], key: str, fallback: int = 0) -> int {
-    if key in d {
-        return d[key];
-    }
-    return fallback;
+    return d.get(key, fallback);
 }
 
 def sym_set_add(s: dict[str, int], name: str) {
@@ -235,11 +232,16 @@ def sym_sorted_names(d: dict[str, int]) -> list[str] {
 }
 
 def sym_block_tuple_names(d: dict[str, int], pred_scope: int) -> list[str] {
-    return [
-        name
-        for name in sym_sorted_names(d)
-        if sym_scope_of(d[name]) == pred_scope
-    ];
+    names: list[str] = [];
+    for name in d.keys() {
+        if sym_scope_of(d[name]) == pred_scope {
+            names.append(name);
+        }
+    }
+    if len(names) > 1 {
+        names.sort();
+    }
+    return names;
 }
 
 def mangle_name(private: str | None, name: str) -> str {
@@ -564,11 +566,17 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
     if b.diag is not None {
         return False;
     }
+    e_kind = e.node_kind();
     forbidden = "named expression"
-        if isinstance(e, NamedExpr)
+        if (e_kind == ast_kind.NamedExpr and isinstance(e, NamedExpr))
         else "yield expression"
-            if isinstance(e, (Yield, YieldFrom))
-            else "await expression" if isinstance(e, Await) else "";
+            if (
+                (e_kind == ast_kind.Yield or e_kind == ast_kind.YieldFrom)
+                and isinstance(e, (Yield, YieldFrom))
+            )
+            else "await expression"
+                if (e_kind == ast_kind.Await and isinstance(e, Await))
+                else "";
     if forbidden and b.cur.scope_info != scope_info_kind.NONE {
         return b.fail(
             "SyntaxError",
@@ -577,14 +585,17 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
             e.col_offset
         );
     }
-    if isinstance(e, (Yield, YieldFrom))
+    if (
+        (e_kind == ast_kind.Yield or e_kind == ast_kind.YieldFrom)
+        and isinstance(e, (Yield, YieldFrom))
+    )
         and b.cur.comprehension != comprehension_kind.NONE {
         description = comprehension_description(b.cur.comprehension);
         return b.fail(
             "SyntaxError", "'yield' inside " + description, e.lineno, e.col_offset
         );
     }
-    if isinstance(e, Name) {
+    if (e_kind == ast_kind.Name and isinstance(e, Name)) {
         if b.cur.unevaluated_annotation {
             return True;
         }
@@ -596,17 +607,17 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
         }
         return ok;
     }
-    if isinstance(e, Attribute) {
+    if (e_kind == ast_kind.Attribute and isinstance(e, Attribute)) {
         return sym_visit_load_expr(b, (e as Attribute).value);
     }
-    if isinstance(e, Subscript) {
+    if (e_kind == ast_kind.Subscript and isinstance(e, Subscript)) {
         s = e as Subscript;
         if not sym_visit_load_expr(b, s.value) {
             return False;
         }
         return sym_visit_load_expr(b, s.slice);
     }
-    if isinstance(e, Slice) {
+    if (e_kind == ast_kind.Slice and isinstance(e, Slice)) {
         sl = e as Slice;
         if sl.lower is not None and not sym_visit_load_expr(b, sl.lower) {
             return False;
@@ -619,17 +630,17 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
         }
         return True;
     }
-    if isinstance(e, BinOp) {
+    if (e_kind == ast_kind.BinOp and isinstance(e, BinOp)) {
         bo = e as BinOp;
         if not sym_visit_load_expr(b, bo.left) {
             return False;
         }
         return sym_visit_load_expr(b, bo.right);
     }
-    if isinstance(e, UnaryOp) {
+    if (e_kind == ast_kind.UnaryOp and isinstance(e, UnaryOp)) {
         return sym_visit_load_expr(b, (e as UnaryOp).operand);
     }
-    if isinstance(e, Compare) {
+    if (e_kind == ast_kind.Compare and isinstance(e, Compare)) {
         c = e as Compare;
         if not sym_visit_load_expr(b, c.left) {
             return False;
@@ -643,7 +654,7 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
         }
         return True;
     }
-    if isinstance(e, Call) {
+    if (e_kind == ast_kind.Call and isinstance(e, Call)) {
         ca = e as Call;
         if not sym_visit_load_expr(b, ca.func) {
             return False;
@@ -666,7 +677,7 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
         }
         return True;
     }
-    if isinstance(e, BoolOp) {
+    if (e_kind == ast_kind.BoolOp and isinstance(e, BoolOp)) {
         bop = e as BoolOp;
         vi = 0;
         while vi < len(bop.values) {
@@ -677,12 +688,13 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
         }
         return True;
     }
-    if isinstance(e, IfExp) {
+    if (e_kind == ast_kind.IfExp and isinstance(e, IfExp)) {
         return sym_visit_load_expr(b, e.test)
             and sym_visit_load_expr(b, e.body)
             and sym_visit_load_expr(b, e.orelse);
     }
-    if isinstance(e, JoinedStr) or isinstance(e, TemplateStr) {
+    if (e_kind == ast_kind.JoinedStr and isinstance(e, JoinedStr))
+        or (e_kind == ast_kind.TemplateStr and isinstance(e, TemplateStr)) {
         for value in e.values {
             if not sym_visit_load_expr(b, value) {
                 return False;
@@ -690,15 +702,17 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
         }
         return True;
     }
-    if isinstance(e, FormattedValue) or isinstance(e, Interpolation) {
+    if (e_kind == ast_kind.FormattedValue and isinstance(e, FormattedValue))
+        or (e_kind == ast_kind.Interpolation and isinstance(e, Interpolation)) {
         if not sym_visit_load_expr(b, e.value) {
             return False;
         }
         return e.format_spec is None or sym_visit_load_expr(b, e.format_spec);
     }
-    if isinstance(e, Tuple) or isinstance(e, List) {
+    if (e_kind == ast_kind.Tuple and isinstance(e, Tuple))
+        or (e_kind == ast_kind.List and isinstance(e, List)) {
         elts: list[expr];
-        if isinstance(e, Tuple) {
+        if (e_kind == ast_kind.Tuple and isinstance(e, Tuple)) {
             elts = (e as Tuple).elts;
         } else {
             le = (e as List).elts;
@@ -713,10 +727,10 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
         }
         return True;
     }
-    if isinstance(e, Starred) {
+    if (e_kind == ast_kind.Starred and isinstance(e, Starred)) {
         return sym_visit_load_expr(b, (e as Starred).value);
     }
-    if isinstance(e, Set) {
+    if (e_kind == ast_kind.Set and isinstance(e, Set)) {
         selts = (e as Set).elts;
         si = 0;
         while si < len(selts) {
@@ -727,7 +741,7 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
         }
         return True;
     }
-    if isinstance(e, Dict) {
+    if (e_kind == ast_kind.Dict and isinstance(e, Dict)) {
         d = e as Dict;
         di = 0;
         while di < len(d.keys) {
@@ -744,7 +758,7 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
         }
         return True;
     }
-    if isinstance(e, NamedExpr) {
+    if (e_kind == ast_kind.NamedExpr and isinstance(e, NamedExpr)) {
         ne = e as NamedExpr;
         if b.cur.comprehension != comprehension_kind.NONE
             and isinstance(ne.target, Name) {
@@ -816,19 +830,19 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
         }
         return sym_visit_load_expr(b, ne.value);
     }
-    if isinstance(e, ListComp) {
+    if (e_kind == ast_kind.ListComp and isinstance(e, ListComp)) {
         lc = e as ListComp;
         return sym_visit_inline_comprehension(
             b, lc, lc.generators, lc.elt, None, comprehension_kind.LIST
         );
     }
-    if isinstance(e, SetComp) {
+    if (e_kind == ast_kind.SetComp and isinstance(e, SetComp)) {
         sc = e as SetComp;
         return sym_visit_inline_comprehension(
             b, sc, sc.generators, sc.elt, None, comprehension_kind.SET
         );
     }
-    if isinstance(e, DictComp) {
+    if (e_kind == ast_kind.DictComp and isinstance(e, DictComp)) {
         dc = e as DictComp;
         if not sym_visit_inline_comprehension(
             b, dc, dc.generators, dc.key, dc.value, comprehension_kind.DICT
@@ -837,10 +851,10 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
         }
         return True;
     }
-    if isinstance(e, GeneratorExp) {
+    if (e_kind == ast_kind.GeneratorExp and isinstance(e, GeneratorExp)) {
         return sym_visit_genexp(b, e as GeneratorExp);
     }
-    if isinstance(e, Lambda) {
+    if (e_kind == ast_kind.Lambda and isinstance(e, Lambda)) {
         lam = e as Lambda;
         if not sym_visit_arg_defaults(b, lam.args) {
             return False;
@@ -863,7 +877,7 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
         }
         return b.pop_block();
     }
-    if isinstance(e, Yield) {
+    if (e_kind == ast_kind.Yield and isinstance(e, Yield)) {
         b.cur.generator = True;
         y = e as Yield;
         if y.value is not None {
@@ -871,11 +885,11 @@ def sym_visit_load_expr(b: sym_builder, e: expr) -> bool {
         }
         return True;
     }
-    if isinstance(e, YieldFrom) {
+    if (e_kind == ast_kind.YieldFrom and isinstance(e, YieldFrom)) {
         b.cur.generator = True;
         return sym_visit_load_expr(b, (e as YieldFrom).value);
     }
-    if isinstance(e, Await) {
+    if (e_kind == ast_kind.Await and isinstance(e, Await)) {
         if not sym_allows_async(b.cur) {
             return b.fail(
                 "SyntaxError",
@@ -1438,7 +1452,8 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
     if b.diag is not None {
         return False;
     }
-    if isinstance(s, Assign) {
+    s_kind = s.node_kind();
+    if (s_kind == ast_kind.Assign and isinstance(s, Assign)) {
         a = s as Assign;
         # CPython's symtable defines the value side before the assignment
         # targets, so a PEP 572 walrus target inside the value lands in
@@ -1455,14 +1470,14 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         }
         return True;
     }
-    if isinstance(s, AugAssign) {
+    if (s_kind == ast_kind.AugAssign and isinstance(s, AugAssign)) {
         aa = s as AugAssign;
         if not sym_visit_store_target(b, aa.target) {
             return False;
         }
         return sym_visit_load_expr(b, aa.value);
     }
-    if isinstance(s, AnnAssign) {
+    if (s_kind == ast_kind.AnnAssign and isinstance(s, AnnAssign)) {
         an = s as AnnAssign;
         if isinstance(an.target, Name) {
             tn = (an.target as Name).id;
@@ -1490,20 +1505,20 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         }
         return True;
     }
-    if isinstance(s, Expr) {
+    if (s_kind == ast_kind.Expr and isinstance(s, Expr)) {
         return sym_visit_load_expr(b, (s as Expr).value);
     }
-    if isinstance(s, Pass) {
+    if (s_kind == ast_kind.Pass and isinstance(s, Pass)) {
         return True;
     }
-    if isinstance(s, Return) {
+    if (s_kind == ast_kind.Return and isinstance(s, Return)) {
         r = s as Return;
         if r.value is not None {
             return sym_visit_load_expr(b, r.value);
         }
         return True;
     }
-    if isinstance(s, Yield) {
+    if (s_kind == ast_kind.Yield and isinstance(s, Yield)) {
         b.cur.generator = True;
         y = s as Yield;
         if y.value is not None {
@@ -1511,11 +1526,11 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         }
         return True;
     }
-    if isinstance(s, YieldFrom) {
+    if (s_kind == ast_kind.YieldFrom and isinstance(s, YieldFrom)) {
         b.cur.generator = True;
         return sym_visit_load_expr(b, (s as YieldFrom).value);
     }
-    if isinstance(s, Delete) {
+    if (s_kind == ast_kind.Delete and isinstance(s, Delete)) {
         d = s as Delete;
         ti = 0;
         while ti < len(d.targets) {
@@ -1526,7 +1541,7 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         }
         return True;
     }
-    if isinstance(s, Raise) {
+    if (s_kind == ast_kind.Raise and isinstance(s, Raise)) {
         raise_stmt = s as Raise;
         if raise_stmt.exc is not None {
             if not sym_visit_load_expr(b, raise_stmt.exc) {
@@ -1540,7 +1555,7 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         }
         return True;
     }
-    if isinstance(s, Assert) {
+    if (s_kind == ast_kind.Assert and isinstance(s, Assert)) {
         assert_stmt = s as Assert;
         if not sym_visit_load_expr(b, assert_stmt.`test) {
             return False;
@@ -1552,7 +1567,7 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         }
         return True;
     }
-    if isinstance(s, Global) {
+    if (s_kind == ast_kind.Global and isinstance(s, Global)) {
         g = s as Global;
         ni = 0;
         while ni < len(g.names) {
@@ -1563,7 +1578,7 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         }
         return True;
     }
-    if isinstance(s, Nonlocal) {
+    if (s_kind == ast_kind.Nonlocal and isinstance(s, Nonlocal)) {
         nl = s as Nonlocal;
         if b.cur.kind == scope_kind.MODULE {
             return b.fail(
@@ -1582,11 +1597,14 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         }
         return True;
     }
-    if isinstance(s, For)
-        or isinstance(s, AsyncFor)
-        or isinstance(s, While)
-        or isinstance(s, If)
-        or isinstance(s, (Try, TryStar)) {
+    if (s_kind == ast_kind.For and isinstance(s, For))
+        or (s_kind == ast_kind.AsyncFor and isinstance(s, AsyncFor))
+        or (s_kind == ast_kind.While and isinstance(s, While))
+        or (s_kind == ast_kind.If and isinstance(s, If))
+        or (
+            (s_kind == ast_kind.Try or s_kind == ast_kind.TryStar)
+            and isinstance(s, (Try, TryStar))
+        ) {
         body: list[stmt];
         orelse: list[stmt] = [];
         if isinstance(s, For) {
@@ -1688,7 +1706,7 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         }
         return True;
     }
-    if isinstance(s, With) {
+    if (s_kind == ast_kind.With and isinstance(s, With)) {
         wi = s as With;
         ii = 0;
         while ii < len(wi.items) {
@@ -1712,7 +1730,7 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         }
         return True;
     }
-    if isinstance(s, AsyncWith) {
+    if (s_kind == ast_kind.AsyncWith and isinstance(s, AsyncWith)) {
         if not sym_allows_async(b.cur) {
             return b.fail(
                 "SyntaxError",
@@ -1745,7 +1763,10 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         }
         return True;
     }
-    if isinstance(s, (FunctionDef, AsyncFunctionDef)) {
+    if (
+        (s_kind == ast_kind.FunctionDef or s_kind == ast_kind.AsyncFunctionDef)
+        and isinstance(s, (FunctionDef, AsyncFunctionDef))
+    ) {
         fd = s;
         if not b.add_def(fd.name, DEF_LOCAL, fd.lineno, fd.col_offset) {
             return False;
@@ -1790,7 +1811,7 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         }
         return not generic or b.pop_block();
     }
-    if isinstance(s, ClassDef) {
+    if (s_kind == ast_kind.ClassDef and isinstance(s, ClassDef)) {
         cd = s as ClassDef;
         if not b.add_def(cd.name, DEF_LOCAL, cd.lineno, cd.col_offset) {
             return False;
@@ -1854,7 +1875,7 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         }
         return not generic or b.pop_block();
     }
-    if isinstance(s, TypeAlias) {
+    if (s_kind == ast_kind.TypeAlias and isinstance(s, TypeAlias)) {
         ta = s as TypeAlias;
         if not isinstance(ta.name, Name) {
             return b.fail(
@@ -1943,7 +1964,7 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         }
         return b.pop_block();
     }
-    if isinstance(s, Import) {
+    if (s_kind == ast_kind.Import and isinstance(s, Import)) {
         imp = s as Import;
         ni = 0;
         while ni < len(imp.names) {
@@ -1955,7 +1976,7 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         }
         return True;
     }
-    if isinstance(s, ImportFrom) {
+    if (s_kind == ast_kind.ImportFrom and isinstance(s, ImportFrom)) {
         imp_from = s as ImportFrom;
         ni = 0;
         while ni < len(imp_from.names) {
@@ -1979,7 +2000,7 @@ def sym_visit_stmt(b: sym_builder, s: stmt) -> bool {
         }
         return True;
     }
-    if isinstance(s, Match) {
+    if (s_kind == ast_kind.Match and isinstance(s, Match)) {
         m = s as Match;
         if not sym_visit_load_expr(b, m.subject) {
             return False;

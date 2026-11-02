@@ -16,6 +16,18 @@ glob logger = logging.getLogger(__name__),
          2.5,
          5.0,
          10.0
+     ),
+     SCHEDULED_RUN_BUCKETS: tuple[float, ...] = (
+         0.01,
+         0.1,
+         0.5,
+         1.0,
+         5.0,
+         15.0,
+         60.0,
+         300.0,
+         900.0,
+         3600.0
      );
 
 def _merges_across_workers -> bool;
@@ -36,10 +48,17 @@ obj PrometheusMetricsCollector(MetricsCollector) {
         _ws_connections_active: any = None,
         _ws_broadcasts_total: any = None,
         _read_tier_retries: any = None,
+        _scheduled_runs: any = None,
+        _scheduled_run_latency: any = None,
+        _scheduled_skips: any = None,
         _jac_info: any = None;
 
     def postinit;
     def record_read_tier_retry(unit_key: str);
+    def record_scheduled_run(
+        task: str, status: str, reason: str, duration_seconds: float
+    );
+
     def record_ws_connection_opened;
     def record_ws_connection_closed;
     def record_ws_broadcast;

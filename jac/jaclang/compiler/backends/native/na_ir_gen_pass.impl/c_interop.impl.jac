@@ -278,7 +278,7 @@ impl NaIRGenPass._c_interop_store(
             nd.value,
             target_type=target.type,
             unsigned=self._is_unsigned_node(target),
-            checked=self._is_sized_node(target) or self._is_sized_node(nd.value)
+            sized=self._is_sized_node(target)
         );
         if updated is None {
             self.ctx.emit(
@@ -439,6 +439,11 @@ impl NaIRGenPass._codegen_c_interop_call(
         }
         count = self._coerce_type(count, i64);
         b = self.builder;
+        if self._unchecked_views_on() {
+            empty_view: ir.Value = ir.Constant(self._ptr_view_type(), None);
+            addr_view = b.insert_value(empty_view, addr, 0, name="c.view.addr");
+            return (True, b.insert_value(addr_view, count, 1, name="c.view.n"));
+        }
         negative = b.icmp_signed("<", count, ir.Constant(i64, 0), name="c.view.nneg");
         self._emit_runtime_raise(
             negative, "ValueError", "PtrView length must not be negative"
@@ -632,6 +637,18 @@ impl NaIRGenPass._codegen_clib_args(
             continue;
         }
         if info.get("borrow") != "scalar" {
+            if isinstance(arg, uni.UnaryExpr)
+                and is_borrow_kind(arg.ownership)
+                and (
+                    is_ptr_type(arg.operand.type)
+                    or self._c_scalar_llvm(arg.operand.type) is not None
+                ) {
+                lent = self._clib_place_ptr(arg);
+                if lent is not None and isinstance(lent.type, ir.PointerType) {
+                    out.append(self.builder.bitcast(lent, i8p, name=f"clib.lend.{i}"));
+                    continue;
+                }
+            }
             val = self._codegen_expr(arg);
             if val is None {
                 return out;
@@ -1127,11 +1144,40 @@ impl NaIRGenPass._c_const_address(expr: uni.Expr) -> (ir.Constant | None) {
             if literal is not None {
                 return literal;
             }
+            (base, count) = c_offset_address(arg);
+            if base is not None {
+                return self._c_const_offset_address(base, count);
+            }
             return self._c_const_address(arg);
         }
         return None;
     }
     return self._c_const_scalar(expr, i64);
+}
+
+impl NaIRGenPass._c_const_offset_address(
+    call: uni.UniNode, count: int
+) -> (ir.Constant | None) {
+    params = list(call.params or []) if isinstance(call, uni.FuncCall) else [];
+    symbol = params[0] if len(params) == 1 else None;
+    found = self.clib_globals.get(symbol.sym_name)
+        if isinstance(symbol, uni.Name) and clib_global_of_name(symbol) is not None
+        else None;
+    if found is None {
+        return None;
+    }
+    target = found[0];
+    ptype = target.type;
+    if not isinstance(ptype, ir.PointerType) {
+        return None;
+    }
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    pointee = ptype.pointee;
+    steps = [ir.Constant(i32, 0), ir.Constant(i64, count)]
+        if isinstance(pointee, ir.ArrayType)
+        else [ir.Constant(i64, count)];
+    return target.gep(steps).ptrtoint(i64) as ir.Constant;
 }
 
 impl NaIRGenPass._c_literal_address(arg: uni.UniNode) -> (ir.Constant | None) {
@@ -1251,8 +1297,8 @@ impl NaIRGenPass._c_global_store(
             nd.aug_op.value,
             nd.value,
             unsigned=self._is_unsigned_node(target),
-            checked=self._is_sized_node(target) or self._is_sized_node(nd.value),
-            target_type=ctype
+            target_type=ctype,
+            sized=self._is_sized_node(target)
         );
         if updated is None {
             self.ctx.emit(

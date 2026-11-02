@@ -1,0 +1,18 @@
+--- a/Makefile.pre.in
++++ b/Makefile.pre.in
+@@ -466,15 +466,12 @@
+ 		Python/intrinsics.o \
+-		Python/jit.o \
+ 		Python/legacy_tracing.o \
+ 		Python/lock.o \
+ 		Python/marshal.o \
+ 		Python/modsupport.o \
+ 		Python/mysnprintf.o \
+ 		Python/mystrtoul.o \
+ 		Python/object_stack.o \
+ 		Python/optimizer.o \
+-		Python/optimizer_analysis.o \
+-		Python/optimizer_symbols.o \
+ 		Python/parking_lot.o \
+ 		Python/pathconfig.o \
+ 		Python/preconfig.o \

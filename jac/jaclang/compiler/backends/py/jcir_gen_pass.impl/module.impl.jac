@@ -429,26 +429,6 @@ impl JcirGenPass.exit_module_code with ModuleCode exit {
     self.set_out(here, stmts);
 }
 
-impl JcirGenPass.exit_py_inline_code with PyInlineCode exit {
-    if here.doc {
-        doc = self.nod('Expr', ['value'], [self.val(here.doc)], jac_node=here.doc);
-        shift = here.loc.first_line;
-        inner = doc.get('value');
-        doc.l1 = doc.l1 + shift;
-        doc.l2 = doc.l2 + shift;
-        if isinstance(inner, CgNode) {
-            inner.l1 = inner.l1 + shift;
-            inner.l2 = inner.l2 + shift;
-        }
-        self.set_out(here, [doc, CgSplice(src=here.code.value, offset=shift)]);
-    } else {
-        self.set_out(
-            here,
-            [CgSplice(src=textwrap.dedent(here.code.value), offset=here.loc.first_line)]
-        );
-    }
-}
-
 impl JcirGenPass.exit_import with Import exit {
     if (
         import_binds_client_native(here, self.module.gen.interop_manifest)

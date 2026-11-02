@@ -327,7 +327,7 @@ impl NaIRGenPass._emit_yield_suspend(v: ir.Value) -> None {
             exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name=f"rearm.env.{k}"
         );
         env_i8p = self.builder.bitcast(env_ptr, i8p, name=f"rearm.envp.{k}");
-        sj = self.builder.call(self._exc_setjmp_fn(), [env_i8p], name=f"rearm.sj.{k}");
+        sj = self._emit_exc_arm(self.builder, env_i8p, f"rearm.sj.{k}");
         is_exc = self.builder.icmp_signed(
             "!=", sj, ir.Constant(i32, 0), name=f"rearm.isexc.{k}"
         );
@@ -458,11 +458,11 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     if isinstance(nd.type, SemanticFunctionType) and nd.type.return_type is not None {
         inferred = self._lower_type(nd.type.return_type);
         if inferred is not None {
-            ret_type = inferred;
+            ret_type = self._byvalue_ret_type(inferred);
         }
     }
     if sig is not None and sig.return_type is not None {
-        ret_type = self._resolve_jac_type(sig.return_type);
+        ret_type = self._byvalue_ret_type(self._resolve_jac_type(sig.return_type));
     }
 
     captures: list[tuple[str, ir.Value, ir.Type]] = [];
@@ -492,6 +492,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     fn_type = ir.FunctionType(ret_type, all_param_types);
     anon_fn = ir.Function(self.llvm_module, fn_type, name=anon_name);
     anon_fn.linkage = "private";
+    self._fresh_fn_values.add(anon_name);
     self._register_pass_links(nd, anon_fn);
     for (i, arg) in enumerate(anon_fn.args) {
         if i < len(all_param_names) {
@@ -646,6 +647,7 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
             return None;
         }
     }
+    self._guard_unbound_read(nd);
     if var_name in self.local_vars {
         alloca = self.local_vars[var_name];
         value = self.builder.load(alloca, name=var_name);
@@ -760,7 +762,7 @@ impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
         self.builder.store(value, alloca);
         self.local_vars[var_name] = alloca;
     }
-
+    self._mark_bound(var_name, nd);
     return self.builder.load(alloca, name=var_name);
 }
 
@@ -793,18 +795,19 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
     }
     result: (ir.Value | None);
     _unsigned = self._is_unsigned_node(nd) or self._is_unsigned_node(nd.left);
-    _checked = (
-        self._is_sized_node(nd)
-        or self._is_sized_node(nd.left)
-        or self._is_sized_node(nd.right)
-    );
     if op == Tok.STAR_POW {
-        result = self._codegen_pow(
-            left, right, nd.right, unsigned=_unsigned, checked=_checked
-        );
+        result = self._codegen_pow(left, right, nd.right, unsigned=_unsigned);
     } else {
         result = self._emit_binary_op(
-            op, left, right, unsigned=_unsigned, checked=_checked
+            op,
+            left,
+            right,
+            unsigned=_unsigned,
+            sized=(
+                self._is_sized_node(nd)
+                or self._is_sized_node(nd.left)
+                or self._is_sized_node(nd.right)
+            )
         );
     }
 
@@ -2036,6 +2039,22 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
     if lent is not None {
         return self._c_lent_address(nd, lent);
     }
+
+    if is_borrow_kind(nd.ownership) {
+        borrow_param = c_lent_param(nd, allow_borrow=True);
+        if borrow_param is not None and nd.parent is not None {
+            slot = self._clib_place_ptr(nd);
+            want = self._c_scalar_llvm(c_param_type(nd.parent, borrow_param));
+            if slot is not None
+                and want is not None
+                and isinstance(slot.type, ir.PointerType)
+                and slot.type.pointee == want {
+                return self.builder.ptrtoint(
+                    slot, ir.IntType(64), name="c.lend.borrow"
+                );
+            }
+        }
+    }
     _magnitude: (uni.UniNode | None) = nd.operand;
     while isinstance(_magnitude, uni.AtomUnit) {
         _magnitude = _magnitude.value;
@@ -2083,14 +2102,12 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
             if isinstance(operand, ir.Constant) and isinstance(operand.constant, int) {
                 width = operand.type.width;
                 negated = -operand.constant;
-                if -(1 << (width - 1)) <= negated < (1 << (width - 1)) {
+                if _int_min_bits(width) <= negated
+                    and negated <= _int_max_bits(width) {
                     return ir.Constant(operand.type, negated);
                 }
             }
-            if self._is_sized_node(nd) or self._is_sized_node(nd.operand) {
-                return self._emit_checked_neg(operand);
-            }
-            return self.builder.neg(operand, name="neg");
+            return self._emit_checked_neg(operand);
         } elif operand.type == self.complex_struct_type.as_pointer() {
             (r, im) = self._load_complex_parts(operand);
             nr = self.builder.fneg(r, name="cneg.nr");
@@ -3049,9 +3066,11 @@ impl NaIRGenPass._codegen_plain_trailer(nd: uni.AtomTrailer) -> (ir.Value | None
                 and right_name not in self.struct_field_indices.get(type_name, {})
                 and self._accessor_slot_of(type_name, right_name, "property") is None
                 and self._resolve_method(type_name, right_name) is not None {
-                bound = self._emit_bound_method_value(
-                    self._opt_unwrap_attr(obj_val), type_name, right_name
-                );
+                _recv = self._opt_unwrap_attr(obj_val);
+                if self._is_owned(obj_val) {
+                    self._mark_owned(_recv);
+                }
+                bound = self._emit_bound_method_value(_recv, type_name, right_name);
                 if bound is not None {
                     return bound;
                 }
@@ -3360,9 +3379,17 @@ impl NaIRGenPass._codegen_plain_trailer(nd: uni.AtomTrailer) -> (ir.Value | None
                             idx_val = self._codegen_expr(idx_node.start);
                         }
                         if idx_val is not None {
-                            return self._codegen_tuple_index(
+                            _tup_item = self._codegen_tuple_index(
                                 target_val, idx_val, tsub_struct
                             );
+
+                            if _tup_item is not None
+                                and isinstance(target_val.type, ir.PointerType) {
+                                return self._finish_borrowed_read(
+                                    target_val, _tup_item
+                                );
+                            }
+                            return _tup_item;
                         }
                     }
                 }
@@ -3512,11 +3539,7 @@ impl NaIRGenPass._final_scalar_value(
         and value_type.width > 1
         and isinstance(folded, int)
         and not isinstance(folded, bool) {
-        bits = folded & ((1 << value_type.width) - 1);
-        if bits >= (1 << (value_type.width - 1)) {
-            bits -= 1 << value_type.width;
-        }
-        return ir.Constant(value_type, bits);
+        return ir.Constant(value_type, _signed_repr(value_type.width, folded));
     }
     if isinstance(value_type, (ir.DoubleType, ir.FloatType)) {
         if isinstance(folded, float) {

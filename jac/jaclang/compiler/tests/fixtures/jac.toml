@@ -6,6 +6,8 @@
 "bundled_stdlib_sig.import:json" = "native"
 "cl_string_escapes.escapes_cl" = "client"
 "cl_string_escapes.escapes_na" = "native"
+"fn_identity.fn_identity_cl" = "client"
+"fn_identity.fn_identity_na" = "native"
 "fw_conformance.fw_cl" = "client"
 "fw_conformance.fw_json_cl" = "client"
 "fw_conformance.fw_na" = "native"

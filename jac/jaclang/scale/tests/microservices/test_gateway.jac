@@ -295,17 +295,36 @@ test "browser navigation to a client route gets the SPA index (history fallback)
     );
 }
 
-"""Serve `payload` as JSON on every GET; returns (server, port)."""
-def _serve_fragment(payload: dict[str, any]) -> tuple[any, ...] {
+"""Serve the JSON payload `answers` holds for each `path?query` and 404 anything
+else, gzipping the body whenever the request accepts it, the way a real
+service's compression middleware does; returns (server, port)."""
+def _serve_owned(answers: dict[str, any]) -> tuple[any, ...] {
+    import gzip;
     import http.server;
     import json;
     import threading;
 
-    body = json.dumps(payload).encode();
-
     def _do_get(handler_self: any) {
-        handler_self.send_response(200);
+        payload = answers.get(handler_self.path);
+        status = 200 if payload is not None else 404;
+        if isinstance(payload, dict) and "__status__" in payload {
+            status = payload["__status__"];
+            payload = {
+                k: v
+                for (k, v) in payload.items()
+                if k != "__status__"
+            };
+        }
+        body = json.dumps(payload or {"error": "Node not found"}).encode();
+        zipped = "gzip" in handler_self.headers.get("Accept-Encoding", "");
+        if zipped {
+            body = gzip.compress(body);
+        }
+        handler_self.send_response(status);
         handler_self.send_header("Content-Type", "application/json");
+        if zipped {
+            handler_self.send_header("Content-Encoding", "gzip");
+        }
         handler_self.send_header("Content-Length", str(len(body)));
         handler_self.end_headers();
         handler_self.wfile.write(body);
@@ -314,7 +333,7 @@ def _serve_fragment(payload: dict[str, any]) -> tuple[any, ...] {
     def _log_quiet(handler_self: any, fmt: str, *args: any) {}
 
     handler_cls = type(
-        "_FragmentHandler",
+        "_OwnedHandler",
         (http.server.BaseHTTPRequestHandler, ),
         {"do_GET": _do_get, "log_message": _log_quiet}
     );
@@ -324,39 +343,95 @@ def _serve_fragment(payload: dict[str, any]) -> tuple[any, ...] {
     return (srv, srv.server_address[1]);
 }
 
-test "/graph/data merges the graph fragments of every healthy service" {
-    frag_a = {
-        "version": "1.0",
-        "nodes": [{"id": "r", "label": "root"}, {"id": "a", "label": "A"}],
-        "edges": [{"from": "r", "to": "a"}]
-    };
-    frag_b = {
-        "version": "1.0",
-        "nodes": [{"id": "r", "label": "root"}, {"id": "b", "label": "B"}],
-        "edges": [{"from": "r", "to": "b"}]
-    };
-    (srv_a, port_a) = _serve_fragment(frag_a);
-    (srv_b, port_b) = _serve_fragment(frag_b);
 
-    reg = ServiceRegistry();
-    reg.register(
-        ServiceEntry(
-            name="analytics",
-            file="analytics.jac",
-            prefix="/analytics",
-            port=port_a,
-            url=f"http://127.0.0.1:{port_a}",
-            status=ServiceStatus.HEALTHY
-        )
+def _json_body(resp: any) -> any {
+    import gzip;
+    import json;
+    raw = resp.content;
+    if resp.headers.get("content-encoding") == "gzip" {
+        raw = gzip.decompress(raw);
+    }
+    return json.loads(raw);
+}
+
+
+"""One service's page of `r`'s neighbors: an edge per (seq, node) pair."""
+def _neighbors(
+    rows: list[tuple[int, str]], more: bool, resume: (str | None) = None
+) -> dict[str, any] {
+    edges = [
+        {"id": f"e{seq}", "from": "r", "to": nid, "cursor": f"{seq}.e{seq}"}
+        for (seq, nid) in rows
+    ];
+    return {
+        "id": "r",
+        "dir": "out",
+        "nodes": [{"id": nid, "type": "Doc"} for (_, nid) in rows],
+        "edges": edges,
+        "next_cursor": resume or (edges[-1]["cursor"] if more and edges else None)
+    };
+}
+
+
+test "graph reads reach every service that can read the node, compressed or not" {
+    # Both services share root r but each loads only its own neighbors, so a
+    # page is the edge-ordered merge of both services' pages for the same
+    # cursor; a node only one service can read is answered by that one.
+    (srv_a, port_a) = _serve_owned(
+        {
+            "/graph/node?id=a": {"id": "a"},
+            "/graph/neighbors?id=r&limit=2": _neighbors([(1, "a"), (3, "c")], True),
+            "/graph/neighbors?id=r&limit=5": _neighbors([(1, "a"), (3, "c")], False),
+            "/graph/neighbors?id=r&limit=2&cursor=2.e2": _neighbors([(3, "c")], False),
+            "/graph/neighbors?id=r&limit=3": _neighbors([], False, "5.e5"),
+            "/graph/neighbors?id=r&type=Task": {
+                "__status__": 400,
+                "error": "Unknown node type",
+                "code": "unknown_type"
+            },
+            "/graph/neighbors?id=r&type=Nope": {
+                "__status__": 400,
+                "error": "Unknown node type",
+                "code": "unknown_type"
+            }
+        }
     );
+    (srv_b, port_b) = _serve_owned(
+        {
+            "/graph/node?id=b": {"id": "b"},
+            "/graph/neighbors?id=r&limit=2": _neighbors([(2, "b"), (4, "d")], False),
+            "/graph/neighbors?id=r&limit=5": _neighbors([(2, "b"), (4, "d")], False),
+            "/graph/neighbors?id=r&limit=2&cursor=2.e2": _neighbors([(4, "d")], False),
+            "/graph/neighbors?id=r&limit=3": _neighbors([(2, "b"), (7, "g")], False),
+            "/graph/neighbors?id=r&type=Task": _neighbors([(2, "b")], False),
+            "/graph/neighbors?id=r&type=Nope": {
+                "__status__": 400,
+                "error": "Unknown node type",
+                "code": "unknown_type"
+            }
+        }
+    );
+    reg = ServiceRegistry();
+    for (name, port) in [("analytics", port_a), ("guestbook", port_b)] {
+        reg.register(
+            ServiceEntry(
+                name=name,
+                file=f"{name}.jac",
+                prefix=f"/{name}",
+                port=port,
+                url=f"http://127.0.0.1:{port}",
+                status=ServiceStatus.HEALTHY
+            )
+        );
+    }
     reg.register(
         ServiceEntry(
-            name="guestbook",
-            file="guestbook.jac",
-            prefix="/guestbook",
-            port=port_b,
-            url=f"http://127.0.0.1:{port_b}",
-            status=ServiceStatus.HEALTHY
+            name="stopped",
+            file="stopped.jac",
+            prefix="/stopped",
+            port=1,
+            url="http://127.0.0.1:1",
+            status=ServiceStatus.STOPPED
         )
     );
     gw = MicroserviceGateway(registry=reg);
@@ -364,69 +439,74 @@ test "/graph/data merges the graph fragments of every healthy service" {
 
     import from jaclang.testing.testkit { ServingTestClient as TestClient }
     client = TestClient(gw.app);
+    # (path, Accept-Encoding, status, node ids, next cursor): the browser's gzip
+    # never breaks the merge, a stopped service is skipped.
+    rows = [
+        ("/graph/node?id=a", "identity", 200, None, None),
+        ("/graph/node?id=b", "gzip, deflate, br", 200, None, None),
+        ("/graph/neighbors?id=r&limit=2", "gzip, deflate, br", 200, ["a", "b"], "2.e2"),
+        ("/graph/neighbors?id=r&limit=2&cursor=2.e2", "gzip", 200, ["c", "d"], None),
+        ("/graph/neighbors?id=r&limit=5", "identity", 200, ["a", "b", "c", "d"], None),
+        # A service that stopped early at 5 has not ruled out rows before 7.
+        ("/graph/neighbors?id=r&limit=3", "identity", 200, ["b"], "5.e5"),
+        # Only one service loads Task; the other's "unknown type" is not an error.
+        ("/graph/neighbors?id=r&type=Task", "identity", 200, ["b"], None),
+        ("/graph/neighbors?id=r&type=Nope", "identity", 400, None, None),
+        ("/graph/node?id=nobody", "gzip, deflate, br", 404, None, None),
+        ("/graph/neighbors?id=nobody", "gzip, deflate, br", 404, None, None)
+    ];
     try {
-        resp = client.get("/graph/data");
-        assert resp.status_code == 200;
-        data = resp.json();
-        node_ids = {n["id"] for n in data["nodes"]};
-        assert node_ids == {"r", "a", "b"} , (
-            f"each service only resolves its own archetypes, so /graph/data "
-            f"must merge ALL services' fragments, got nodes: {node_ids}"
+        for (path, encoding, status, ids, cursor) in rows {
+            resp = client.get(path, headers={"Accept-Encoding": encoding});
+            assert resp.status_code == status , (path, encoding, resp.status_code);
+            if status != 200 {
+                continue;
+            }
+            body = _json_body(resp);
+            if ids is None {
+                assert body["id"] == path.split("=")[1] , (path, body);
+            } else {
+                assert [n["id"] for n in body["nodes"]] == ids , (path, body);
+                assert body["next_cursor"] == cursor , (path, body);
+            }
+        }
+        # A routable service that does not answer must not let the others
+        # advance the shared cursor past rows it still holds.
+        down = ServiceRegistry();
+        down.register(
+            ServiceEntry(
+                name="analytics",
+                file="analytics.jac",
+                prefix="/analytics",
+                port=port_a,
+                url=f"http://127.0.0.1:{port_a}",
+                status=ServiceStatus.HEALTHY
+            )
         );
-        assert len(data["nodes"]) == 3 , (
-            f"shared nodes must be deduplicated by id: {data['nodes']}"
+        down.register(
+            ServiceEntry(
+                name="silent",
+                file="silent.jac",
+                prefix="/silent",
+                port=1,
+                url="http://127.0.0.1:1",
+                status=ServiceStatus.HEALTHY
+            )
         );
-        edge_pairs = {(e["from"], e["to"]) for e in data["edges"]};
-        assert edge_pairs == {("r", "a"), ("r", "b")};
+        gw_down = MicroserviceGateway(registry=down);
+        gw_down.setup();
+        resp = TestClient(gw_down.app).get("/graph/neighbors?id=r&limit=2");
+        assert resp.status_code == 503 , (resp.status_code, resp.text);
     } finally {
         srv_a.shutdown();
         srv_b.shutdown();
     }
 }
 
-test "/graph/data still answers when one service is down (partial merge)" {
-    frag_a = {"version": "1.0", "nodes": [{"id": "r", "label": "root"}], "edges": []};
-    (srv_a, port_a) = _serve_fragment(frag_a);
-
-    reg = ServiceRegistry();
-    reg.register(
-        ServiceEntry(
-            name="analytics",
-            file="analytics.jac",
-            prefix="/analytics",
-            port=port_a,
-            url=f"http://127.0.0.1:{port_a}",
-            status=ServiceStatus.HEALTHY
-        )
-    );
-    reg.register(
-        ServiceEntry(
-            name="guestbook",
-            file="guestbook.jac",
-            prefix="/guestbook",
-            port=1,
-            url="http://127.0.0.1:1",
-            status=ServiceStatus.HEALTHY
-        )
-    );
-    gw = MicroserviceGateway(registry=reg);
-    gw.setup();
-
-    import from jaclang.testing.testkit { ServingTestClient as TestClient }
-    client = TestClient(gw.app);
-    try {
-        resp = client.get("/graph/data");
-        assert resp.status_code == 200;
-        node_ids = {n["id"] for n in resp.json()["nodes"]};
-        assert node_ids == {"r"};
-    } finally {
-        srv_a.shutdown();
-    }
-}
-
-"""Serves `payload` as JSON on every GET and records the Host header each
-request actually carried, so a test can verify the header genuinely reached
-the wire -- not just that a headers dict was built correctly in memory."""
+"""Answers every GET with `payload` as a JSON 404, so a probing gateway asks
+each service in turn, and records the Host header each request actually
+carried, so a test can verify the header genuinely reached the wire -- not just
+that a headers dict was built correctly in memory."""
 def _serve_capturing(payload: dict[str, any]) -> tuple[any, ...] {
     import http.server;
     import json;
@@ -437,7 +517,7 @@ def _serve_capturing(payload: dict[str, any]) -> tuple[any, ...] {
 
     def _do_get(handler_self: any) {
         observed_hosts.append(handler_self.headers.get("Host", ""));
-        handler_self.send_response(200);
+        handler_self.send_response(404);
         handler_self.send_header("Content-Type", "application/json");
         handler_self.send_header("Content-Length", str(len(body)));
         handler_self.end_headers();
@@ -465,8 +545,7 @@ def _serve_capturing(payload: dict[str, any]) -> tuple[any, ...] {
 # one per service, exactly the mechanism the interceptor relies on to tell
 # which HTTP-activated target a request is actually for.
 test "forwarded requests carry each service's own host_override as the wire Host header" {
-    frag = {"version": "1.0", "nodes": [{"id": "r", "label": "root"}], "edges": []};
-    (srv, port, observed_hosts) = _serve_capturing(frag);
+    (srv, port, observed_hosts) = _serve_capturing({"error": "Node not found"});
 
     reg = ServiceRegistry();
     reg.register(
@@ -497,8 +576,8 @@ test "forwarded requests carry each service's own host_override as the wire Host
     import from jaclang.testing.testkit { ServingTestClient as TestClient }
     client = TestClient(gw.app);
     try {
-        resp = client.get("/graph/data");
-        assert resp.status_code == 200;
+        resp = client.get("/graph/node?id=unowned");
+        assert resp.status_code == 404;
         assert set(observed_hosts)
             == {
                 "orders-app-service.shop.svc.cluster.local",
@@ -1958,7 +2037,7 @@ test "identity fallthrough POST is delivered exactly once" {
 test "replicated auth families are delivered once and never learned" {
     hits_a: dict[str, any] = {};
     hits_b: dict[str, any] = {};
-    spec = _spec(["/api-key/create", "/sso/firebase/token", "/graph/data"]);
+    spec = _spec(["/api-key/create", "/sso/firebase/token", "/user/login"]);
     (srv_a, port_a) = _start_backend(hits_a, {"GET /openapi.json": spec});
     (srv_b, port_b) = _start_backend(hits_b, {"GET /openapi.json": spec});
     try {
@@ -1966,7 +2045,7 @@ test "replicated auth families are delivered once and never learned" {
             [_entry("svc_a", "/api/a", port_a), _entry("svc_b", "/api/b", port_b)]
         );
         assert client.post("/walker/anything", json={}).status_code == 404;
-        for prefix in ["/api-key/create", "/sso/firebase/token", "/graph/data"] {
+        for prefix in ["/api-key/create", "/sso/firebase/token", "/user/login"] {
             assert gw.route_table.owner(prefix) == "" , (
                 f"{prefix} is served identically by every service; ownership "
                 f"is meaningless and must not be learned"
@@ -2194,7 +2273,7 @@ def gw_route_table_for_poison_test -> any {
             "/sso/{platform}/callback",
             "/api-key/create",
             "/jobs",
-            "/graph/data"
+            "/graph/neighbors"
         ]
     );
     return table;

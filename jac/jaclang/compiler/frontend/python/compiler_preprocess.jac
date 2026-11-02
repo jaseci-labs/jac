@@ -222,19 +222,39 @@ obj ast_preprocessor(ast_rewriter) {
         fold: bool;
 
     def visit_field(owner: ast_node, field: str) -> bool {
-        if isinstance(owner, MatchMapping) and field == "keys" {
+        owner_kind = owner.node_kind();
+        if (owner_kind == ast_kind.MatchMapping and isinstance(owner, MatchMapping))
+            and field == "keys" {
             return False;
         }
         if field == "body"
-            and isinstance(owner, (Module, FunctionDef, AsyncFunctionDef, ClassDef)) {
+            and (
+                (
+                    owner_kind == ast_kind.Module
+                    or owner_kind == ast_kind.FunctionDef
+                    or owner_kind == ast_kind.AsyncFunctionDef
+                    or owner_kind == ast_kind.ClassDef
+                )
+                and isinstance(owner, (Module, FunctionDef, AsyncFunctionDef, ClassDef))
+            ) {
             return False;
         }
         if self.flags & 0x1000000 {
-            if field == "annotation" and isinstance(owner, (arg, AnnAssign)) {
+            if field == "annotation"
+                and (
+                    (owner_kind == ast_kind.arg or owner_kind == ast_kind.AnnAssign)
+                    and isinstance(owner, (arg, AnnAssign))
+                ) {
                 return False;
             }
             if field == "returns"
-                and isinstance(owner, (FunctionDef, AsyncFunctionDef)) {
+                and (
+                    (
+                        owner_kind == ast_kind.FunctionDef
+                        or owner_kind == ast_kind.AsyncFunctionDef
+                    )
+                    and isinstance(owner, (FunctionDef, AsyncFunctionDef))
+                ) {
                 return False;
             }
         }
@@ -242,29 +262,39 @@ obj ast_preprocessor(ast_rewriter) {
     }
 
     def transform(value: ast_node) -> ast_node {
-        if isinstance(value, FunctionType) {
+        value_kind = value.node_kind();
+        if (value_kind == ast_kind.FunctionType and isinstance(value, FunctionType)) {
             return value;
         }
-        if isinstance(value, MatchValue) {
+        if (value_kind == ast_kind.MatchValue and isinstance(value, MatchValue)) {
             if self.fold {
                 value.value = fold_pattern(value.value);
             }
             return value;
         }
-        if isinstance(value, MatchMapping) and self.fold {
+        if (value_kind == ast_kind.MatchMapping and isinstance(value, MatchMapping))
+            and self.fold {
             value.keys = [fold_pattern(item) for item in value.keys];
         }
-        if isinstance(value, (Module, FunctionDef, AsyncFunctionDef, ClassDef)) {
+        if (
+            (
+                value_kind == ast_kind.Module
+                or value_kind == ast_kind.FunctionDef
+                or value_kind == ast_kind.AsyncFunctionDef
+                or value_kind == ast_kind.ClassDef
+            )
+            and isinstance(value, (Module, FunctionDef, AsyncFunctionDef, ClassDef))
+        ) {
             preprocess_body(value.body, self.optimize, self.flags, self.fold);
         }
         rewrite_ast_children(value, self);
         if self.fold
-            and isinstance(value, Name)
+            and (value_kind == ast_kind.Name and isinstance(value, Name))
             and isinstance(value.ctx, Load)
             and value.id == "__debug__" {
             return ast_constant(PyBool(t="bool", val=self.optimize == 0), value);
         }
-        if self.fold and isinstance(value, BinOp) {
+        if self.fold and (value_kind == ast_kind.BinOp and isinstance(value, BinOp)) {
             return fold_percent_format(value);
         }
         return value;

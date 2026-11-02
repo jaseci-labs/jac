@@ -59,6 +59,7 @@ import from engine.src.runtime.jsstring {
     str_heap,
     str_from_id,
     str_substr,
+    str_substr_in,
     str_char_at,
     utf8_encode_scalar
 }
@@ -88,6 +89,14 @@ import from engine.src.builtins.number {
 }
 import from engine.src.runtime.gc_pin { gc_pin_value, gc_unpin_value }
 import from engine.src.runtime.dtoa { number_to_string_radix10 }
+
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bfind,
+    str_byte,
+    str_nbytes,
+    str_bslice_in
+}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 1.  Constants
@@ -141,7 +150,10 @@ obj JSONParser {
 
 """Return the character at the current position, or "" if at/past the end."""
 def _peek(p: JSONParser) -> str {
-    return str_char_at(p.src, p.pos);
+    if p.pos < 0 or p.pos >= p.src_len {
+        return "";
+    }
+    return byte_chr(str_byte(p.src, p.pos));
 }
 
 """Advance the cursor by one character."""
@@ -151,7 +163,7 @@ def _advance(p: JSONParser) {
 
 """Return the current character and advance the cursor."""
 def _read(p: JSONParser) -> str {
-    ch: str = str_char_at(p.src, p.pos);
+    ch: str = _peek(p);
     p.pos = p.pos + 1;
     return ch;
 }
@@ -201,7 +213,7 @@ def _parse_value_ex(p: JSONParser, depth: int) -> list[JSValue] {
         # Source node only when a reviver will observe it (see want_source): the
         # str_substr + str_heap of every literal's span is the JSON leak driver.
         if p.want_source {
-            src_lit: str = str_substr(p.src, start, p.pos);
+            src_lit: str = str_substr_in(p.src, start, p.pos);
             return [
                 jsv_from_string_id(str_heap(raw_s)),  # G1.5: JSON string VALUE (key path interns separately)
                 jsv_from_string_id(str_heap(src_lit))  # G1.5: JSON source-text value
@@ -218,21 +230,21 @@ def _parse_value_ex(p: JSONParser, depth: int) -> list[JSValue] {
     if ch == "t" {
         kv: JSValue = _check_keyword(p, "true");
         if p.want_source {
-            return [kv, jsv_from_string_id(str_heap(str_substr(p.src, start, p.pos)))];
+            return [kv, jsv_from_string_id(str_heap(str_substr_in(p.src, start, p.pos)))];
         }
         return [kv, js_undefined()];
     }
     if ch == "f" {
         kv2: JSValue = _check_keyword(p, "false");
         if p.want_source {
-            return [kv2, jsv_from_string_id(str_heap(str_substr(p.src, start, p.pos)))];
+            return [kv2, jsv_from_string_id(str_heap(str_substr_in(p.src, start, p.pos)))];
         }
         return [kv2, js_undefined()];
     }
     if ch == "n" {
         kv3: JSValue = _check_keyword(p, "null");
         if p.want_source {
-            return [kv3, jsv_from_string_id(str_heap(str_substr(p.src, start, p.pos)))];
+            return [kv3, jsv_from_string_id(str_heap(str_substr_in(p.src, start, p.pos)))];
         }
         return [kv3, js_undefined()];
     }
@@ -241,7 +253,7 @@ def _parse_value_ex(p: JSONParser, depth: int) -> list[JSValue] {
         if p.want_source {
             return [
                 num_v,
-                jsv_from_string_id(str_heap(str_substr(p.src, start, p.pos)))
+                jsv_from_string_id(str_heap(str_substr_in(p.src, start, p.pos)))
             ];
         }
         return [num_v, js_undefined()];
@@ -262,8 +274,12 @@ kw must be one of "true", "false", "null".
 Constructs the JSValue locally to avoid the imported-struct-as-param codegen issue.
 """
 def _check_keyword(p: JSONParser, kw: str) -> JSValue {
-    n: int = len(kw);
-    actual: str = str_substr(p.src, p.pos, p.pos + n);
+    n: int = str_nbytes(kw);
+    kw_end: int = p.pos + n;
+    if kw_end > p.src_len {
+        kw_end = p.src_len;
+    }
+    actual: str = str_substr_in(p.src, p.pos, kw_end);
     if actual == kw {
         p.pos = p.pos + n;
         if kw == "true" {
@@ -294,31 +310,28 @@ def _parse_string(p: JSONParser) -> str {
     # parse, and Vite's dev server re-parses it on every transform of that dep.
     _advance(p);  # consume opening "
     src: str = p.src;
-    if p.src_len < 0 {
-        p.src_len = len(src);
-    }
     n: int = p.src_len;
     parts: list[str] = [];
     run_start: int = p.pos;
     while True {
         if p.pos >= n {
             if p.pos > run_start {
-                parts.append(str_substr(src, run_start, p.pos));
+                parts.append(str_substr_in(src, run_start, p.pos));
             }
             _set_error(p, "Unterminated string literal");
             return "".join(parts);
         }
-        b: int = ord(src[p.pos]);
+        b: int = str_byte(src, p.pos);
         if b == 34 {  # closing "
             if p.pos > run_start {
-                parts.append(str_substr(src, run_start, p.pos));
+                parts.append(str_substr_in(src, run_start, p.pos));
             }
             p.pos = p.pos + 1;
             return "".join(parts);
         }
         if b == 92 {  # backslash escape
             if p.pos > run_start {
-                parts.append(str_substr(src, run_start, p.pos));
+                parts.append(str_substr_in(src, run_start, p.pos));
             }
             p.pos = p.pos + 1;
             esc: str = _read(p);
@@ -342,8 +355,12 @@ def _parse_string(p: JSONParser) -> str {
                 parts.append("\t");
             } elif esc == "u" {
                 # \uXXXX — consume 4 hexadecimal digits
-                hex4: str = str_substr(src, p.pos, p.pos + 4);
-                if len(hex4) < 4 {
+                if p.pos + 4 > n {
+                    _set_error(p, "Invalid \\u escape in string");
+                    return "".join(parts);
+                }
+                hex4: str = str_substr_in(src, p.pos, p.pos + 4);
+                if str_nbytes(hex4) < 4 {
                     _set_error(p, "Invalid \\u escape in string");
                     return "".join(parts);
                 }
@@ -360,9 +377,9 @@ def _parse_string(p: JSONParser) -> str {
                 if cp >= 55296
                     and cp <= 56319
                     and p.pos + 6 <= n
-                    and ord(src[p.pos]) == 92
-                    and src[p.pos + 1] == "u" {
-                    lo4: int = _hex4_to_int(str_substr(src, p.pos + 2, p.pos + 6));
+                    and str_byte(src, p.pos) == 92
+                    and byte_chr(str_byte(src, p.pos + 1)) == "u" {
+                    lo4: int = _hex4_to_int(str_substr_in(src, p.pos + 2, p.pos + 6));
                     if lo4 >= 56320 and lo4 <= 57343 {
                         cp = 65536 + (cp - 55296) * 1024 + (lo4 - 56320);
                         p.pos = p.pos + 6;
@@ -381,9 +398,9 @@ def _parse_string(p: JSONParser) -> str {
         # tab/newline inside a string is a SyntaxError, not content. (Bytes of a
         # multi-byte UTF-8 character are all >= 0x80; U+0000 is stored as the
         # sentinel C0 80.)
-        if b < 32 or (b == 192 and p.pos + 1 < n and ord(src[p.pos + 1]) == 128) {
+        if b < 32 or (b == 192 and p.pos + 1 < n and str_byte(src, p.pos + 1) == 128) {
             if p.pos > run_start {
-                parts.append(str_substr(src, run_start, p.pos));
+                parts.append(str_substr_in(src, run_start, p.pos));
             }
             _set_error(p, "Unescaped control character in string");
             return "".join(parts);
@@ -403,11 +420,11 @@ def _hex4_to_int(s: str) -> int {
     while i < 4 {
         c: str = str_char_at(s, i);
         if c >= "0" and c <= "9" {
-            result = result * 16 + (ord(c) - ord("0"));
+            result = result * 16 + (str_byte(c, 0) - ord("0"));
         } elif c >= "a" and c <= "f" {
-            result = result * 16 + 10 + (ord(c) - ord("a"));
+            result = result * 16 + 10 + (str_byte(c, 0) - ord("a"));
         } elif c >= "A" and c <= "F" {
-            result = result * 16 + 10 + (ord(c) - ord("A"));
+            result = result * 16 + 10 + (str_byte(c, 0) - ord("A"));
         } else {
             return -1;
         }
@@ -485,7 +502,7 @@ def _parse_number(p: JSONParser) -> JSValue {
         }
     }
 
-    num_str: str = str_substr(p.src, start, p.pos);
+    num_str: str = str_substr_in(p.src, start, p.pos);
     if is_int {
         n_i: int = int(num_str);
         if n_i >= -2147483648 and n_i <= 2147483647 {
@@ -790,68 +807,65 @@ glob _JSON_ESC_BSL: str = "\\" + "\\",
 def _strf_string(s: str) -> str {
     # Printable ASCII (0x20..0x7E: no control characters, no CESU-8 lead
     # byte) without `"` or `\\` needs no escape: one copy (V4.19).
-    if s.isprintable() and s.find("\"") < 0 and s.find("\\") < 0 {
+    if s.isprintable() and str_bfind(s, "\"") < 0 and str_bfind(s, "\\") < 0 {
         return "\"" + s + "\"";
     }
-    # list[str] + join avoids O(n^2) host string concat on large payloads.
+    # list[str] + join avoids O(n^2) host string concat on large payloads. The
+    # bytes between escapes are copied as one run; `s` is measured once.
     parts: list[str] = [];
     parts.append("\"");
+    n: int = str_nbytes(s);
     i: int = 0;
-    n: int = len(s);
+    run: int = 0;
     while i < n {
-        ch: str = str_char_at(s, i);
-        o: int = ord(ch);
-        if ch == "\"" {
-            parts.append(_JSON_ESC_QUOT);
-        } elif ch == "\\" {
+        o: int = str_byte(s, i);
+        esc: str = "";
+        w: int = 1;
+        if o == 34 {
+            esc = _JSON_ESC_QUOT;
+        } elif o == 92 {
             # A backslash is always text here: U+0000 is the C0 80 sentinel
             # (handled below), so `\x00` in a string is four real characters.
-            parts.append(_JSON_ESC_BSL);
-        } elif ch == "\n" {
-            parts.append(_JSON_ESC_N);
+            esc = _JSON_ESC_BSL;
+        } elif o == 10 {
+            esc = _JSON_ESC_N;
         } elif o == 13 {
-            parts.append(_JSON_ESC_R);
+            esc = _JSON_ESC_R;
         } elif o == 9 {
-            parts.append(_JSON_ESC_T);
+            esc = _JSON_ESC_T;
         } elif o == 8 {
-            # Backspace — compare via code point; Jac "\\b" literals are unreliable.
-            parts.append(_JSON_ESC_B);
+            esc = _JSON_ESC_B;
         } elif o == 12 {
-            # Form feed
-            parts.append(_JSON_ESC_F);
+            esc = _JSON_ESC_F;
         } elif o < 32 {
             # Other control characters → \u00XX
-            parts.append(_JSON_ESC_U);
-            parts.append("00");
-            parts.append(_hex2(o));
-        } elif o == 0xC0 and i + 1 < n and ord(str_char_at(s, i + 1)) == 0x80 {
+            esc = _JSON_ESC_U + "00" + _hex2(o);
+        } elif o == 0xC0 and i + 1 < n and str_byte(s, i + 1) == 0x80 {
             # U+0000 (the engine's NUL sentinel C0 80) → \u0000
-            parts.append(_JSON_ESC_U);
-            parts.append("0000");
-            i = i + 2;
+            esc = _JSON_ESC_U + "0000";
+            w = 2;
+        } elif o == 0xED and i + 2 < n {
+            # A CESU-8 lone surrogate (U+D800..U+DFFF): ED [A0-BF] [80-BF]
+            b1: int = str_byte(s, i + 1);
+            b2: int = str_byte(s, i + 2);
+            if b1 >= 0xA0 and b1 <= 0xBF and b2 >= 0x80 and b2 <= 0xBF {
+                esc = _JSON_ESC_U + _hex4(0xD000 | ((b1 & 0x3F) << 6) | (b2 & 0x3F));
+                w = 3;
+            }
+        }
+        if esc != "" {
+            if i > run {
+                parts.append(str_bslice_in(s, run, i));
+            }
+            parts.append(esc);
+            i = i + w;
+            run = i;
             continue;
-        } elif o == 0xED {
-            # Potential CESU-8 lone surrogate (U+D800..U+DFFF): 3-byte pattern ED [A0-BF] [80-BF]
-            sur_ok: bool = False;
-            if i + 2 < n {
-                b1: int = ord(str_char_at(s, i + 1));
-                b2: int = ord(str_char_at(s, i + 2));
-                if b1 >= 0xA0 and b1 <= 0xBF and b2 >= 0x80 and b2 <= 0xBF {
-                    cp_s: int = 0xD000 | ((b1 & 0x3F) << 6) | (b2 & 0x3F);
-                    parts.append(_JSON_ESC_U);
-                    parts.append(_hex4(cp_s));
-                    i = i + 3;
-                    sur_ok = True;
-                    continue;
-                }
-            }
-            if not sur_ok {
-                parts.append(ch);
-            }
-        } else {
-            parts.append(ch);
         }
         i = i + 1;
+    }
+    if n > run {
+        parts.append(str_bslice_in(s, run, n));
     }
     parts.append("\"");
     return "".join(parts);
@@ -868,7 +882,7 @@ def _hex4(n: int) -> str {
 
 """Return the integer value 0-15 for a hex digit character, or -1 if not a hex digit."""
 def _hex_val_char(c: str) -> int {
-    o: int = ord(c);
+    o: int = str_byte(c, 0);
     if o >= 48 and o <= 57 {
         return o - 48;
     }  # '0'-'9'
@@ -1110,7 +1124,12 @@ def:pub json_parse_core(args: list[JSValue]) -> JSValue {
         and not jsv_is_undefined(args[1])
         and not jsv_is_null(args[1]);
     state: JSONParser = JSONParser(
-        src=src_s, pos=0, had_error=False, error_msg="", want_source=want_src
+        src=src_s,
+        pos=0,
+        had_error=False,
+        error_msg="",
+        want_source=want_src,
+        src_len=str_nbytes(src_s)
     );
     pair_p: list[JSValue] = _parse_value_ex(state, 0);
     result_v: JSValue = pair_p[0];
@@ -1185,7 +1204,7 @@ def:pub json_stringify_core(args: list[JSValue]) -> JSValue {
         indent_s = _repeat(" ", sp_nf);
     } elif jsv_is_string_cell(space_v) {
         sp_str: str = str_from_id(jsv_to_table_id(space_v));
-        n_sp: int = len(sp_str);
+        n_sp: int = str_nbytes(sp_str);
         if n_sp > 10 {
             n_sp = 10;
         }

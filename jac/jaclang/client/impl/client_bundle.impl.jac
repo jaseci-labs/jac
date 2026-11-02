@@ -106,8 +106,17 @@ impl ClientBundleBuilder._compile_bundle(
     );
 }
 
-impl ClientBundleBuilder._compile_to_js(source_path: Path) -> ClientArtifact {
+impl ClientBundleBuilder._compile_to_js(
+    source_path: Path, source_root: Path | None = None
+) -> ClientArtifact {
     program = client_program(self.program);
+    if source_root is not None {
+        import copy;
+        import from jaclang.compiler.driver.compilation_context { context_program }
+        options = copy.copy(program.options);
+        options.client_source_root = str(source_root.resolve());
+        program = context_program(program, options);
+    }
     compiler = program._get_compiler();
     diagnostic_program = compiler.product_program(str(source_path), program);
     prev_error_count = len(diagnostic_program.errors_had);

@@ -151,7 +151,7 @@ def:pub js_function_create_src(
     if gc_gen_on() {
         _FN_REALM.gc_young_closures.append(len(_FN_REALM.closures) - 1);
     }
-    gc_note_alloc(_FN_REALM);  # G0.4: account closure allocation
+    gc_note_alloc(_FN_REALM, 256);  # G0.4: account closure allocation
 
     # Pad _FN_REALM.functions with dummy entries for any closures that were created
     # earlier (by the VM's MAKE_FUNCTION opcode) without going through here.
@@ -462,7 +462,7 @@ def:pub js_Function_prototype_bind(
     if gc_gen_on() {
         _FN_REALM.gc_young_closures.append(len(_FN_REALM.closures) - 1);
     }
-    gc_note_alloc(_FN_REALM);  # G0.4: account closure allocation
+    gc_note_alloc(_FN_REALM, 256);  # G0.4: account closure allocation
     idx: int = len(_FN_REALM.closures) - 1;
 
     # Compute result .length = max(0, target.length - len(partial_args))

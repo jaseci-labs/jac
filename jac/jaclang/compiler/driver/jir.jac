@@ -4,6 +4,7 @@ import os;
 import struct;
 import sys;
 import zlib;
+import from contextlib { contextmanager }
 import from contextvars { ContextVar }
 import from pathlib { Path }
 
@@ -218,11 +219,19 @@ def _module_projection(source_path: str) -> str;
 
 glob _PREPARE_MEMO: ContextVar[dict[str, str] | None] = ContextVar(
          'jac_prepare_memo', `default=None
+     ),
+     _COMPILED_CONTENT: ContextVar[dict[str, str] | None] = ContextVar(
+         'jac_compiled_content', `default=None
      );
 
 def begin_prepare_memo -> any;
 
 def end_prepare_memo(token: any);
+
+def hold_compiled_content(digests: dict[str, str]);
+
+@contextmanager
+def content_on_disk -> Iterator[None];
 
 def _memoized(kind: str, source_path: str, compute: any) -> str;
 

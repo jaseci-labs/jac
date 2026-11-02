@@ -478,9 +478,13 @@ impl KubernetesTargetBase.get_full_status(app_name: str) -> dict[str, any] {
             pod_labels: (dict[str, str] | None) = pod.metadata.labels;
             if pod_labels and 'app' in pod_labels {
                 pod_app = pod_labels['app'];
-                if pod.status and pod.status.container_statuses {
-                    for cs in pod.status.container_statuses {
-                        if cs.restart_count and cs.restart_count > 0 {
+                if pod.status
+                    and not pod.metadata.deletion_timestamp
+                    and pod.status.phase not in ("Failed", "Succeeded") {
+                    statuses: list[any] = list(pod.status.init_container_statuses or [])
+                        + list(pod.status.container_statuses or []);
+                    for cs in statuses {
+                        if container_crashlooping(cs) {
                             restarting_apps[pod_app] = True;
                         }
                     }

@@ -47,6 +47,12 @@ import from engine.src.runtime.error {
     vm_throw_native
 }
 
+import from engine.src.runtime.mem {
+    str_bslice,
+    str_byte,
+    str_nbytes
+}
+
 glob:priv _JS_BIGINT_SAFE_MAX: float = 9007199254740992.0;  # 2^53
 
 def:priv _bigint_str_is_decimal(s: str) -> bool {
@@ -54,14 +60,15 @@ def:priv _bigint_str_is_decimal(s: str) -> bool {
         return False;
     }
     i: int = 0;
-    if s[0:1] == "-" {
+    if str_bslice(s, 0, 1) == "-" {
         i = 1;
     }
-    if i >= len(s) {
+    if i >= str_nbytes(s) {
         return False;
     }
-    while i < len(s) {
-        ch: str = s[i:i + 1];
+    _nb69_s: int = str_nbytes(s);
+    while i < _nb69_s {
+        ch: str = str_bslice(s, i, i + 1);
         if ch < "0" or ch > "9" {
             return False;
         }
@@ -138,10 +145,10 @@ def:priv _hex_digit(ch: str) -> int {
         return int(ch);
     }
     if ch >= "a" and ch <= "f" {
-        return 10 + (ord(ch) - ord("a"));
+        return 10 + (str_byte(ch, 0) - ord("a"));
     }
     if ch >= "A" and ch <= "F" {
-        return 10 + (ord(ch) - ord("A"));
+        return 10 + (str_byte(ch, 0) - ord("A"));
     }
     return -1;
 }
@@ -150,8 +157,9 @@ def:priv _hex_digit(ch: str) -> int {
 def:priv _bn_parse_radix(digits: str, radix: int) -> list[int] {
     acc: list[int] = bn_zero();
     i: int = 0;
-    while i < len(digits) {
-        ch: str = digits[i:i + 1];
+    _nb159_digits: int = str_nbytes(digits);
+    while i < _nb159_digits {
+        ch: str = str_bslice(digits, i, i + 1);
         d: int = -1;
         if radix == 16 {
             d = _hex_digit(ch);
@@ -176,55 +184,55 @@ Whitespace-only / empty → 0n.
 Supports decimal, 0b/0B, 0o/0O, 0x/0X prefixes.
 """
 def:pub js_string_to_bigint(s: str) -> JSValue {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     i: int = 0;
-    while i < n and _is_ws(s[i:i + 1]) {
+    while i < n and _is_ws(str_bslice(s, i, i + 1)) {
         i = i + 1;
     }
     j: int = n;
-    while j > i and _is_ws(s[j - 1:j]) {
+    while j > i and _is_ws(str_bslice(s, j - 1, j)) {
         j = j - 1;
     }
     if i >= j {
         return js_bigint_from_decimal_str("0");
     }
-    body: str = s[i:j];
+    body: str = str_bslice(s, i, j);
     sign: int = 0;
-    if body[0:1] == "+" {
-        body = body[1:len(body)];
+    if str_bslice(body, 0, 1) == "+" {
+        body = str_bslice(body, 1, str_nbytes(body));
         if len(body) == 0 {
             return js_undefined();
         }
-    } elif body[0:1] == "-" {
+    } elif str_bslice(body, 0, 1) == "-" {
         sign = 1;
-        body = body[1:len(body)];
+        body = str_bslice(body, 1, str_nbytes(body));
         if len(body) == 0 {
             return js_undefined();
         }
     }
     radix: int = 10;
     digits: str = body;
-    if len(body) >= 2 and body[0:1] == "0" {
-        pfx: str = body[1:2];
+    if str_nbytes(body) >= 2 and str_bslice(body, 0, 1) == "0" {
+        pfx: str = str_bslice(body, 1, 2);
         if pfx == "b" or pfx == "B" {
             # test262 / StringIntegerLiteral: signed 0b/0o/0x forms are invalid.
             if sign == 1 {
                 return js_undefined();
             }
             radix = 2;
-            digits = body[2:len(body)];
+            digits = str_bslice(body, 2, str_nbytes(body));
         } elif pfx == "o" or pfx == "O" {
             if sign == 1 {
                 return js_undefined();
             }
             radix = 8;
-            digits = body[2:len(body)];
+            digits = str_bslice(body, 2, str_nbytes(body));
         } elif pfx == "x" or pfx == "X" {
             if sign == 1 {
                 return js_undefined();
             }
             radix = 16;
-            digits = body[2:len(body)];
+            digits = str_bslice(body, 2, str_nbytes(body));
         }
     }
     if len(digits) == 0 {
@@ -233,8 +241,9 @@ def:pub js_string_to_bigint(s: str) -> JSValue {
     # Decimal: no dots / exponents / non-digits.
     if radix == 10 {
         k: int = 0;
-        while k < len(digits) {
-            chd: str = digits[k:k + 1];
+        _nb242_digits: int = str_nbytes(digits);
+        while k < _nb242_digits {
+            chd: str = str_bslice(digits, k, k + 1);
             if chd < "0" or chd > "9" {
                 return js_undefined();
             }
