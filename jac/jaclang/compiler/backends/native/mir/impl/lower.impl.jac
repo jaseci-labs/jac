@@ -805,6 +805,27 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
         if isinstance(folded, CtFloat) {
             return self.builder().const_float(folded.value, self.expr_type(nd));
         }
+        final_value = final_glob_value(nd);
+        (settled, scalar) = c_scalar_constant(final_value)
+            if final_value is not None
+            else (False, None);
+        if settled and isinstance(scalar, bool) {
+            return self.builder().const_bool(scalar);
+        }
+        if settled
+            and isinstance(scalar, int)
+            and -(1 << 63) <= scalar < (1 << 64)
+            and self.expr_type(nd).kind == MirKind.INT {
+            return self.builder().const_int(
+                scalar - (1 << 64) if scalar >= (1 << 63) else scalar,
+                self.expr_type(nd)
+            );
+        }
+        if settled
+            and isinstance(scalar, float)
+            and self.expr_type(nd).kind == MirKind.FLOAT {
+            return self.builder().const_float(scalar, self.expr_type(nd));
+        }
         place = self.global_place(nd);
         if place is not None {
             return self.builder().load(place, self.place_elem(place));
@@ -2214,6 +2235,7 @@ impl MirLowering.c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue {
     ret = mir_type_of(fn_type.return_type, MirPosition.C_FIELD, nd);
     symbol = self.name_of(callee);
     self.mir.externs[symbol] = MirExtern(symbol=symbol, ret=ret, params=params);
+    self.note_clib(clib_import_of(callee));
     sig = callee.signature;
     values: list[MirValue] = [];
     if isinstance(sig, uni.FuncSignature)
@@ -2613,6 +2635,9 @@ impl MirLowering.coerce_place(place: MirValue) -> MirValue {
 
 impl MirLowering.global_declaration(sym: uni.Symbol) -> (uni.Assignment | None) {
     cursor: (uni.UniNode | None) = sym.decl;
+    if sym.imported {
+        cursor = uni.resolved_decl_of(sym) or sym.decl;
+    }
     while cursor is not None and not isinstance(cursor, uni.Assignment) {
         cursor = cursor.parent;
     }
@@ -2656,27 +2681,36 @@ impl MirLowering.declare_global(nd: uni.Name) -> (MirGlobal | None) {
     if declaration is None {
         return None;
     }
-    found = self.mir.globals.get(sym.sym_name);
     owner = declaration.find_parent_of_type(uni.Module);
-    if found is None
-        and owner is not None
+    if owner is not None
         and owner.loc.mod_path.endswith(".jac")
         and os.path.realpath(owner.loc.mod_path)
         != os.path.realpath(self.module.loc.mod_path) {
         group = declaration.parent;
         access = group.access if isinstance(group, uni.GlobalVars) else None;
-        found = MirGlobal(
-            name=sym.sym_name,
-            symbol=self.unit_symbol(sym.sym_name, access, owner.loc.mod_path),
-            type=self.symbol_type(sym, nd),
-            linkage="external"
+        defined = declaration.target[0] if declaration.target else None;
+        symbol = self.unit_symbol(
+            defined.sym_name if isinstance(defined, uni.Name) else sym.sym_name,
+            access,
+            owner.loc.mod_path
         );
-        self.mir.globals[sym.sym_name] = found;
-        unit = os.path.realpath(owner.loc.mod_path);
-        if unit not in self.mir.deps {
-            self.mir.deps.append(unit);
+        held = self.mir.globals.get(symbol);
+        if held is None {
+            held = MirGlobal(
+                name=sym.sym_name,
+                symbol=symbol,
+                type=self.symbol_type(sym, nd),
+                linkage="external"
+            );
+            self.mir.globals[symbol] = held;
+            unit = os.path.realpath(owner.loc.mod_path);
+            if unit not in self.mir.deps {
+                self.mir.deps.append(unit);
+            }
         }
+        return held;
     }
+    found = self.mir.globals.get(sym.sym_name);
     if found is None {
         value_type = self.symbol_type(sym, nd);
         group = declaration.parent;

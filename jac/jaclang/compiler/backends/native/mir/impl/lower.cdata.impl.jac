@@ -20,11 +20,57 @@ impl MirLowering.declare_module_globals {
     }
 }
 
+impl MirLowering.note_clib(imp: (uni.Import | None)) -> int {
+    if imp is None or imp.from_loc is None or not imp.from_loc.path {
+        return -1;
+    }
+    found: list[tuple[str, list[str], int]] = [];
+    names: list[str] = [];
+    for part in imp.from_loc.path {
+        if isinstance(part, uni.String) {
+            raw = part.value;
+            if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'" {
+                raw = raw[1:-1];
+            }
+            found.append(("raw", [raw], 0));
+        } elif isinstance(part, uni.Name) {
+            names.append(part.value);
+        }
+    }
+    if names {
+        found.append(("name", names, imp.from_loc.level));
+    }
+    index = -1;
+    for spec in found {
+        if spec not in self.mir.clib_specs {
+            self.mir.clib_specs.append(spec);
+        }
+        index = self.mir.clib_specs.index(spec);
+    }
+    if index < 0 {
+        return index;
+    }
+    for decl in imp.clib_decls {
+        if isinstance(decl, uni.GlobalVars) {
+            for assign in decl.assignments {
+                target = assign.target[0] if assign.target else None;
+                if isinstance(target, uni.Name) {
+                    self.mir.clib_symbols.setdefault(target.sym_name, index);
+                }
+            }
+        } elif isinstance(decl, uni.Ability) and decl.name_ref is not None {
+            self.mir.clib_symbols.setdefault(decl.name_ref.sym_name, index);
+        }
+    }
+    return index;
+}
+
 impl MirLowering.declare_c_data {
     for imp in self.module.get_all_sub_nodes(typ=uni.Import) {
         if not imp.clib_decls {
             continue;
         }
+        self.note_clib(imp);
         for decl in imp.clib_decls {
             if not isinstance(decl, uni.GlobalVars) {
                 continue;
@@ -60,20 +106,17 @@ impl MirLowering.declare_c_global(assign: uni.Assignment) -> MirGlobal {
         return found;
     }
     ctype = self.prog.get_type_evaluator().get_type_of_symbol(target.sym);
+    self.note_clib(clib_import_of(assign));
     owner = assign.find_parent_of_type(uni.Module);
     defines = assign.value is not None
         and owner is not None
         and os.path.realpath(owner.loc.mod_path)
-        == os.path.realpath(self.module.loc.mod_path);
+            == os.path.realpath(self.module.loc.mod_path);
     group = assign.parent;
     access = group.access if isinstance(group, uni.GlobalVars) else None;
     is_priv = bool(access and access.tag.name == Tok.KW_PRIV);
     made = MirGlobal(
-        name=name,
-        symbol=name,
-        type=mir_int(8, False),
-        linkage="external",
-        c_data=True
+        name=name, symbol=name, type=mir_int(8, False), linkage="external", c_data=True
     );
     elem = c_array_elem(ctype);
     if elem is not None {
@@ -99,7 +142,8 @@ impl MirLowering.declare_c_global(assign: uni.Assignment) -> MirGlobal {
     }
     self.c_views[id(assign)] = made;
     held = self.mir.globals.get(name);
-    if held is None or (held.c_data and held.c_init is None and made.c_init is not None) {
+    if held is None
+        or (held.c_data and held.c_init is None and made.c_init is not None) {
         self.mir.globals[name] = made;
     }
     return made;
@@ -384,7 +428,8 @@ impl MirLowering.c_global_settle {
         lost = self.c_const_lost(glob_def.c_init);
         if lost {
             self.mir.demoted.setdefault(
-                glob_def.symbol, f"its initializer takes the address of {lost}, which is not native"
+                glob_def.symbol,
+                f"its initializer takes the address of {lost}, which is not native"
             );
         }
     }
@@ -424,8 +469,7 @@ impl MirLowering.c_struct_call(nd: uni.FuncCall, struct_type: MirType) -> MirVal
                 );
             }
             key = param.key.sym_name;
-            if key in given
-                or not any(hv.name.sym_name == key for hv in fields) {
+            if key in given or not any(hv.name.sym_name == key for hv in fields) {
                 raise MirRefused(
                     mir_refusal("call", f"{arch.name.value} argument {key}", param)
                 );
@@ -475,7 +519,10 @@ impl MirLowering.c_field_value(expr: uni.Expr, member: MirType) -> MirValue {
             return self.builder().const_null(member);
         }
         (ok, folded) = c_scalar_constant(expr);
-        if ok and isinstance(folded, int) and not isinstance(folded, bool) and folded == 0 {
+        if ok
+            and isinstance(folded, int)
+            and not isinstance(folded, bool)
+            and folded == 0 {
             return self.builder().const_null(member);
         }
     }
@@ -588,7 +635,10 @@ impl MirLowering.c_alloca(size: uni.Expr) -> MirValue {
     fn = self.st().fn;
     words = mir_c_ptr(mir_int(64));
     (ok, folded) = c_scalar_constant(size);
-    if ok and isinstance(folded, int) and not isinstance(folded, bool) and folded >= 0 {
+    if ok
+        and isinstance(folded, int)
+        and not isinstance(folded, bool)
+        and folded >= 0 {
         made = fn.new_value(words);
         fn.blocks[0].instrs.insert(
             0, MirInstr(op=MirOp.ALLOCA, result=made, int_value=(folded + 7) // 8)

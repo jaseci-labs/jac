@@ -5587,6 +5587,7 @@ graph import compiler {
             c_type_arg,
             clib_global_of_name,
             clib_import_of,
+            final_glob_value,
             foreign_struct_of_type,
             is_builtin_addressof_call,
             is_builtin_pin_call,

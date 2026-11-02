@@ -218,7 +218,9 @@ obj MirModule {
         bridged: dict[str, str] = {},
         python_imports: list[str] = [],
         frames: dict[str, MirFrame] = {},
-        deps: list[str] = [];
+        deps: list[str] = [],
+        clib_specs: list[tuple[str, list[str], int]] = [],
+        clib_symbols: dict[str, int] = {};
 
     def function(symbol: str) -> (MirFunction | None);
     def render -> str;

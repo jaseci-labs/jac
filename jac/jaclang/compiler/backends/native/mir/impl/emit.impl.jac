@@ -61,17 +61,14 @@ impl MirEmitter.c_constant(made: MirConst, shape: ir.Type) -> ir.Constant {
     if kind in ("int", "float") {
         if isinstance(shape, ir.IntType) {
             return ir.Constant(
-                shape,
-                made.int_value if kind == "int" else int(made.float_value)
+                shape, made.int_value if kind == "int" else int(made.float_value)
             );
         }
         if isinstance(shape, ir.PointerType) {
-            return ir.Constant(ir.IntType(64), made.int_value).inttoptr(shape)
-                as ir.Constant;
+            return ir.Constant(ir.IntType(64), made.int_value).inttoptr(shape) as ir.Constant;
         }
         return ir.Constant(
-            shape,
-            float(made.int_value) if kind == "int" else made.float_value
+            shape, float(made.int_value) if kind == "int" else made.float_value
         );
     }
     if kind == "bytes" {
@@ -106,7 +103,8 @@ impl MirEmitter.c_constant(made: MirConst, shape: ir.Type) -> ir.Constant {
             addressed: any = target.type;
             pointee = addressed.pointee;
             steps = [
-                ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(64), made.offset)
+                ir.Constant(ir.IntType(32), 0),
+                ir.Constant(ir.IntType(64), made.offset)
             ]
                 if isinstance(pointee, ir.ArrayType)
                 else [ir.Constant(ir.IntType(64), made.offset)];
@@ -1242,7 +1240,11 @@ impl MirEmitter.emit_rc(b: ir.IRBuilder, instr: MirInstr) {
         return;
     }
     acyclic = (
-        MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY, MirKind.C_PIN
+        MirKind.STR,
+        MirKind.STR_REF,
+        MirKind.BYTES,
+        MirKind.BYTEARRAY,
+        MirKind.C_PIN
     );
     symbol = RELEASE_ACYCLIC_SYMBOL if held_type.kind in acyclic else RELEASE_SYMBOL;
     self.rc_call(b, symbol, target);

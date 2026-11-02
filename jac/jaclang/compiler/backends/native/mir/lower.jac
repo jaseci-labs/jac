@@ -376,6 +376,7 @@ obj MirLowering {
     def coerce_place(place: MirValue) -> MirValue;
     def declare_global(nd: uni.Name) -> (MirGlobal | None);
     def declare_c_data;
+    def note_clib(imp: (uni.Import | None)) -> int;
     def declare_module_globals;
     def c_struct_call(nd: uni.FuncCall, struct_type: MirType) -> MirValue;
     def c_field_value(expr: uni.Expr, member: MirType) -> MirValue;
@@ -388,6 +389,7 @@ obj MirLowering {
     def c_const(
         expr: uni.Expr, ctype: (TypeBase | None), target: MirType, count: int = -1
     ) -> MirConst;
+
     def c_const_refusal(expr: uni.UniNode) -> NativeRefusal;
     def c_const_struct(expr: uni.Expr, arch: uni.Archetype) -> MirConst;
     def c_const_address(expr: uni.Expr) -> MirConst;
