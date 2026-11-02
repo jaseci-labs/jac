@@ -160,11 +160,13 @@ glob JAC_ENTRY_SYMBOL: str = "jac_entry",
 glob KERNEL_UNIT_REL: tuple[str, ...] = (
          "runtime/osp_kernel.jac",
          "runtime/osp_graph.jac",
+         "runtime/osp_native.jac",
          "runtime/region_native.jac",
          "compiler/backends/common/fmt_kernel.jac"
      ),
      OSP_KERNEL_REL: str = "runtime/osp_kernel.jac",
      OSP_GRAPH_REL: str = "runtime/osp_graph.jac",
+     OSP_NATIVE_REL: str = "runtime/osp_native.jac",
      REGION_KERNEL_REL: str = "runtime/region_native.jac",
      FMT_KERNEL_REL: str = "compiler/backends/common/fmt_kernel.jac";
 
