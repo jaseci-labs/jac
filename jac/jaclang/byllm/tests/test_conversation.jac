@@ -12,11 +12,17 @@ import from litellm.types.utils {
     Function,
     Message as LiteLLMMessage
 }
-import from support { call, calls, finish, mk_run, sent_messages }
+import from support { call, calls, finish, mk_run, say, sent_messages }
 
 
 def get_weather(city: str) -> str {
     return f"sunny in {city}";
+}
+
+
+obj Forecast {
+    has city: str,
+        sunny: bool;
 }
 
 
@@ -403,5 +409,73 @@ test "a failed finish_tool retries with the call after it answered" {
         assert "not executed" in notes.get("c2", "").lower() , f"events={events}: {notes}";
         assert "finish failed once" in notes.get("cf", "") , f"events={events}: {notes}";
         assert RAN == [] , f"events={events}: a call after finish_tool ran: {RAN}";
+    }
+}
+
+
+"""The non-empty assistant answers in `messages`, in order."""
+def answers(messages: list[any]) -> list[str] {
+    return [
+        str(m.get("content"))
+        for m in messages
+        if m.get("role") == "assistant" and m.get("content")
+    ];
+}
+
+
+test "every way a turn can end saves its answer, and the next turn sends it" {
+    # finish_tool messages are plumbing and are not saved, so each exit has to
+    # save the answer itself. A typed answer is saved as JSON.
+    forecast = {"city": "Paris", "sunny": True};
+    as_json = '{"city":"Paris","sunny":true}';
+    for (label, mode, cap, turn_one, expected) in [
+        ("finish_tool", "text", 0, [finish("Paris is sunny.")], "Paris is sunny."),
+        (
+            "answer forced at max_react_iterations",
+            "text",
+            1,
+            [call("get_weather", {"city": "Paris"}), finish("Paris is sunny.")],
+            "Paris is sunny."
+        ),
+        ("typed finish_tool", "typed", 0, [finish(forecast)], as_json),
+        (
+            "typed recovery",
+            "typed",
+            0,
+            [say("It is sunny."), finish(forecast)],
+            as_json
+        ),
+        ("typed, streamed to a handler", "handler", 0, [finish(forecast)], as_json)
+    ] {
+        history: list[dict[str, any]] = [];
+        seen: list[any] = [];
+        llm = MockLLM(
+            outputs=turn_one + [finish(forecast if mode != "text" else "ok")]
+        );
+
+        def ask(q: str) -> str by llm(
+            tools=[get_weather], conversation=history, max_react_iterations=cap
+        );
+
+        def ask_typed(q: str) -> Forecast by llm(
+            tools=[get_weather], conversation=history, max_react_iterations=cap
+        );
+
+        def ask_handled(q: str) -> Forecast by llm(
+            tools=[get_weather],
+            conversation=history,
+            stream=True,
+            stream_handler=seen.append
+        );
+
+        turn = {"text": ask, "typed": ask_typed, "handler": ask_handled}[mode];
+        turn("How is Paris?");
+        # Recovery also keeps the reply that failed to parse, before the answer.
+        assert answers(history)[-1:] == [expected] , f"{label}: saved {answers(
+            history
+        )}";
+        turn("Still sunny?");
+        sent = sent_messages(llm, len(llm.seen) - 1);
+        assert expected in answers(sent) , f"{label}: turn 2 sent {answers(sent)}";
     }
 }

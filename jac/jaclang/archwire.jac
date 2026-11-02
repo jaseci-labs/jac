@@ -4573,7 +4573,7 @@ graph import byllm {
     _optdeps.loguru ++> llm | visit_routing { logger }
     _optdeps.openai ++> llm { AsyncOpenAI, OpenAI, openai }
     _optdeps.pillow ++> types { PILImageCls, open_image }
-    _optdeps.pydantic ++> schema | types { TypeAdapter }
+    _optdeps.pydantic ++> llm | schema | types { TypeAdapter }
     config_loader ++> llm | mtir { get_byllm_config }
     deadline ++> llm | mtir { CallDeadline }
     exceptions ++> [

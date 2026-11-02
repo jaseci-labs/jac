@@ -136,6 +136,12 @@ def _answer_events(
 def _commit_answer(mt_run: MTRuntime, output: object) -> str;
 
 
+def _answer_text(mt_run: MTRuntime, output: object) -> str;
+
+
+def _recovered_answer(mt_run: MTRuntime, recovery_resp: CompletionResult) -> object;
+
+
 def _message_role(msg: dict[str, any]) -> str;
 
 
@@ -823,15 +829,7 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
             if recovery_resp is None {
                 raise;
             }
-            if recovery_resp.tool_calls {
-                for tool_call in recovery_resp.tool_calls {
-                    if tool_call.is_finish_call() {
-                        mt_run.add_message(tool_call());
-                        return tool_call.get_output();
-                    }
-                }
-            }
-            return recovery_resp.output;
+            return _recovered_answer(mt_run, recovery_resp);
         }
         usage: dict[str, any] = resp.usage or {};
         total_tokens += int(
@@ -883,25 +881,15 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
                     continue;
                 }
                 mt_run.add_message(finish_msg);
-                if mt_run.stream {
-                    return _commit_answer(mt_run, final_output);
-                }
-                return final_output;
+                answer = _commit_answer(mt_run, final_output);
+                return answer if mt_run.stream else final_output;
             }
         } else {
             recovery_resp = self._attempt_recovery(mt_run);
             if recovery_resp is None {
                 break;
             }
-            if recovery_resp.tool_calls {
-                for tool_call in recovery_resp.tool_calls {
-                    if tool_call.is_finish_call() {
-                        mt_run.add_message(tool_call());
-                        return tool_call.get_output();
-                    }
-                }
-            }
-            return recovery_resp.output;
+            return _recovered_answer(mt_run, recovery_resp);
         }
     }
     return resp.output;
@@ -1703,7 +1691,9 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
             for tool_call in final_resp.tool_calls {
                 if tool_call.is_finish_call() {
                     mt_run.add_scaffolding_message(tool_call());
-                    return tool_call.get_output();
+                    output = tool_call.get_output();
+                    _commit_answer(mt_run, output);
+                    return output;
                 }
             }
         }
@@ -2708,11 +2698,8 @@ impl _answer_events(
 impl _commit_answer(mt_run: MTRuntime, output: object) -> str {
     mt_run._final_output = output;
     mt_run._has_final_output = True;
-    if mt_run.resp_type is not None and mt_run.resp_type is not str {
-        return "";
-    }
-    answer = str(output or "");
-    if answer {
+    text = _answer_text(mt_run, output);
+    if text {
         final: dict[str, any] = {"role": "assistant"};
         for msg in reversed(mt_run.messages) {
             if isinstance(msg, dict) and msg.get("role") == "assistant" {
@@ -2721,10 +2708,39 @@ impl _commit_answer(mt_run: MTRuntime, output: object) -> str {
             }
         }
         final.pop("tool_calls", None);
-        final["content"] = answer;
+        final["content"] = text;
         mt_run.add_message(final);
     }
-    return answer;
+    if mt_run.resp_type is not None and mt_run.resp_type is not str {
+        return "";
+    }
+    return text;
+}
+
+
+impl _answer_text(mt_run: MTRuntime, output: object) -> str {
+    if mt_run.resp_type is None or mt_run.resp_type is str {
+        return str(output or "");
+    }
+    try {
+        return TypeAdapter(mt_run.resp_type).dump_json(output).decode();
+    } except Exception as e {
+        logger.debug(f"typed answer is not JSON-serialisable, keeping its text: {e}");
+        return str(output);
+    }
+}
+
+
+impl _recovered_answer(mt_run: MTRuntime, recovery_resp: CompletionResult) -> object {
+    for tool_call in recovery_resp.tool_calls or [] {
+        if tool_call.is_finish_call() {
+            mt_run.add_message(tool_call());
+            output = tool_call.get_output();
+            _commit_answer(mt_run, output);
+            return output;
+        }
+    }
+    return recovery_resp.output;
 }
 
 
