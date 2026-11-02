@@ -17,6 +17,9 @@ impl MirLowering.elem_kind(t: MirType, site: uni.UniNode) -> int {
     if t.kind in (MirKind.STR, MirKind.STR_REF) {
         return KIND_STR;
     }
+    if t.kind == MirKind.ANY {
+        return KIND_ANY;
+    }
     if mir_holds_ref(t) {
         return KIND_REF;
     }
@@ -49,7 +52,7 @@ impl MirLowering.tuple_unbox(handle: MirValue, t: MirType) -> MirValue {
     members: list[MirValue] = [];
     for (index, member) in enumerate(t.args) {
         kind = self.elem_kind(member, self.module);
-        if kind in (KIND_STR, KIND_REF, KIND_TUPLE) {
+        if kind in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
             got = self.runtime_value(
                 "__jac_rt_tuple_get_ref", [handle, b.const_int(index, mir_int())]
             );
@@ -176,7 +179,7 @@ impl MirLowering.list_read(lst: MirValue, index: MirValue) -> MirValue {
     b = self.builder();
     elem = lst.type.payload();
     kind = self.elem_kind(elem, self.module);
-    if kind in (KIND_STR, KIND_REF, KIND_TUPLE) {
+    if kind in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
         handle = self.runtime(
             "__jac_rt_list_get_ref", [lst, index, b.const_int(kind, mir_int())]
         );
@@ -314,7 +317,7 @@ impl MirLowering.dict_entry_value(d: MirValue, at: MirValue, site: uni.UniNode) 
     b = self.builder();
     value_type = d.type.args[1];
     kind = self.elem_kind(value_type, site);
-    if kind in (KIND_STR, KIND_REF, KIND_TUPLE) {
+    if kind in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
         handle = self.runtime(
             "__jac_rt_dict_val_ref", [d, at, b.const_int(kind, mir_int())]
         );
@@ -626,7 +629,7 @@ impl MirLowering.list_method(
         if bits is None {
             return None;
         }
-        if self.elem_kind(elem, nd) in (KIND_STR, KIND_REF, KIND_TUPLE) {
+        if self.elem_kind(elem, nd) in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
             return self.owned_element(b.ref_cast(bits, mir_ref(), True), elem);
         }
         return self.scalar_from_bits(bits, elem);
@@ -689,7 +692,7 @@ impl MirLowering.dict_method(
         done = fn.new_block("get.done");
         b.cond_branch(b.compare("ge", found, b.const_int(0, mir_int())), hit, miss);
         b.position(hit);
-        if self.elem_kind(value_type, nd) in (KIND_STR, KIND_REF, KIND_TUPLE) {
+        if self.elem_kind(value_type, nd) in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
             handle = self.runtime("__jac_rt_dict_val_ref", [d, found, value_kind]);
             if handle is None {
                 return None;
@@ -739,7 +742,7 @@ impl MirLowering.dict_method(
             "KeyError",
             KEY_MESSAGE
         );
-        if self.elem_kind(value_type, nd) in (KIND_STR, KIND_REF, KIND_TUPLE) {
+        if self.elem_kind(value_type, nd) in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
             return self.owned_element(b.ref_cast(bits, mir_ref(), True), value_type);
         }
         return self.scalar_from_bits(bits, value_type);
@@ -967,7 +970,7 @@ impl MirLowering.lower_for_container(nd: uni.InForStmt, holder: MirValue) {
         key = source.type.args[0];
         kind = self.elem_kind(key, nd);
         at = b.load(cursor, mir_int());
-        if kind in (KIND_STR, KIND_REF, KIND_TUPLE) {
+        if kind in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
             handle = self.runtime(
                 "__jac_rt_dict_key_ref", [source, at, b.const_int(kind, mir_int())]
             );
@@ -1026,7 +1029,7 @@ impl MirLowering.lower_delete(nd: uni.DeleteStmt) {
             bits = self.runtime("__jac_rt_list_pop", [holder, at]);
             if bits is not None
                 and self.elem_kind(holder.type.payload(), target)
-                    in (KIND_STR, KIND_REF, KIND_TUPLE) {
+                    in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
                 self.owned_element(
                     b.ref_cast(bits, mir_ref(), True), holder.type.payload()
                 );

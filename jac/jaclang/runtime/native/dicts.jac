@@ -10,6 +10,13 @@ glob KIND_INT: int = 0,
      KIND_STR: int = 3,
      KIND_REF: int = 4,
      KIND_TUPLE: int = 5,
+     KIND_ANY: int = 6,
+     TAG_INT: int = 0,
+     TAG_FLOAT: int = 1,
+     TAG_STR: int = 2,
+     TAG_BOOL: int = 7,
+     TAG_NONE: int = 8,
+     INT_FLOAT_LIMIT: float = 9.0e18,
      KIND_NONE: int = -1;
 
 glob DICT_LEN: int = 0,
@@ -85,6 +92,8 @@ def _str_hash(text: int) -> int;
 def _hash(bits: int, kind: int) -> int;
 
 def _tuple_hash(box: int) -> int;
+
+def _any_hash(box: int) -> int;
 
 def _grow_cap(n: int) -> int;
 

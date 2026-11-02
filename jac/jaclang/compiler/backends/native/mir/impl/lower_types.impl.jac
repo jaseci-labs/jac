@@ -231,14 +231,10 @@ impl mir_class_type(
     if name in ("list", "dict", "set") {
         args = t.private.type_args if t.private else None;
         if not args {
-            raise MirRefused(
-                mir_refusal(
-                    "type",
-                    f"{name} without element types",
-                    site,
-                    "Native containers need their element types; annotate the value."
-                )
-            );
+            if name == "dict" {
+                return mir_dict(mir_any(), mir_any());
+            }
+            return mir_list(mir_any()) if name == "list" else mir_set(mir_any());
         }
         element_types = [
             mir_type_of(arg, MirPosition.ELEMENT, site, env) for arg in args

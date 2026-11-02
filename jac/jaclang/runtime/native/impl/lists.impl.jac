@@ -3,7 +3,63 @@ impl _collecting -> bool {
 }
 
 impl _is_ref_kind(kind: int) -> bool {
-    return kind == KIND_STR or kind == KIND_REF or kind == KIND_TUPLE;
+    return kind == KIND_STR or kind == KIND_REF or kind == KIND_TUPLE or kind == KIND_ANY;
+}
+
+impl _any_numeric(tag: int) -> bool {
+    return tag == TAG_INT or tag == TAG_BOOL or tag == TAG_FLOAT;
+}
+
+impl _any_float(tag: int, payload: int) -> float {
+    if tag == TAG_FLOAT {
+        return __bits_float(payload);
+    }
+    return float(payload);
+}
+
+impl __jac_rt_any_eq(a: int, b: int) -> bool {
+    ta = __mem_load_i64(a + BOX_TAG);
+    tb = __mem_load_i64(b + BOX_TAG);
+    pa = __mem_load_i64(a + BOX_PAYLOAD);
+    pb = __mem_load_i64(b + BOX_PAYLOAD);
+    if _any_numeric(ta) and _any_numeric(tb) {
+        if ta != TAG_FLOAT and tb != TAG_FLOAT {
+            return pa == pb;
+        }
+        return _any_float(ta, pa) == _any_float(tb, pb);
+    }
+    if ta != tb {
+        return False;
+    }
+    if ta == TAG_NONE {
+        return True;
+    }
+    return __jac_rt_elem_eq(pa, pb, KIND_STR if ta == TAG_STR else KIND_REF);
+}
+
+impl _any_cmp(a: int, b: int) -> int {
+    ta = __mem_load_i64(a + BOX_TAG);
+    tb = __mem_load_i64(b + BOX_TAG);
+    pa = __mem_load_i64(a + BOX_PAYLOAD);
+    pb = __mem_load_i64(b + BOX_PAYLOAD);
+    if _any_numeric(ta) and _any_numeric(tb) {
+        if ta != TAG_FLOAT and tb != TAG_FLOAT {
+            return _elem_cmp(pa, pb, KIND_INT);
+        }
+        fa = _any_float(ta, pa);
+        fb = _any_float(tb, pb);
+        if fa < fb {
+            return -1;
+        }
+        if fa > fb {
+            return 1;
+        }
+        return 0;
+    }
+    if ta == TAG_STR and tb == TAG_STR {
+        return _elem_cmp(pa, pb, KIND_STR);
+    }
+    return _elem_cmp(pa, pb, KIND_INT);
 }
 
 impl __jac_rt_elem_retain(bits: int, kind: int) {
@@ -18,7 +74,7 @@ impl __jac_rt_elem_release(bits: int, kind: int) {
     }
     if kind == KIND_STR {
         __jac_rt_release_acyclic(bits);
-    } elif kind == KIND_REF or kind == KIND_TUPLE {
+    } elif kind == KIND_REF or kind == KIND_TUPLE or kind == KIND_ANY {
         __jac_rt_release(bits);
     }
 }
@@ -147,6 +203,9 @@ impl __jac_rt_elem_eq(a: int, b: int, kind: int) -> bool {
     if kind == KIND_TUPLE and a != 0 and b != 0 {
         return __jac_rt_tuple_eq(a, b);
     }
+    if kind == KIND_ANY and a != 0 and b != 0 {
+        return __jac_rt_any_eq(a, b);
+    }
     if kind == KIND_STR and a != 0 and b != 0 {
         an = __jac_rt_str_size(ptr[u8](a));
         bn = __jac_rt_str_size(ptr[u8](b));
@@ -158,6 +217,9 @@ impl __jac_rt_elem_eq(a: int, b: int, kind: int) -> bool {
 impl _elem_cmp(a: int, b: int, kind: int) -> int {
     if kind == KIND_TUPLE {
         return _tuple_cmp(a, b);
+    }
+    if kind == KIND_ANY {
+        return _any_cmp(a, b);
     }
     if kind == KIND_FLOAT {
         fa = __bits_float(a);
@@ -254,7 +316,7 @@ impl __jac_rt_list_new(cap: int, kind: int) -> int {
     dtor = int(_list_drop_plain);
     if kind == KIND_STR {
         dtor = int(_list_drop_str);
-    } elif kind == KIND_REF or kind == KIND_TUPLE {
+    } elif kind == KIND_REF or kind == KIND_TUPLE or kind == KIND_ANY {
         dtor = int(_list_drop_ref);
         flag = __global_block("__jac_rt_list_traced", 1);
         if int(__mem_load_i8(flag)) == 0 {

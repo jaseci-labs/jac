@@ -236,7 +236,7 @@ impl MirLowering.dict_part(
 ) -> MirValue {
     b = self.builder();
     kind = self.elem_kind(part, self.module);
-    if kind in (KIND_STR, KIND_REF, KIND_TUPLE) {
+    if kind in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
         handle = self.call_rt(
             "__jac_rt_dict_key_ref" if is_key else "__jac_rt_dict_val_ref",
             [d, at, b.const_int(kind, mir_int())]

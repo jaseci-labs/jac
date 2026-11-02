@@ -60,6 +60,9 @@ impl _hash(bits: int, kind: int) -> int {
     if kind == KIND_TUPLE and bits != 0 {
         return _tuple_hash(bits) & HASH_MASK;
     }
+    if kind == KIND_ANY and bits != 0 {
+        return _any_hash(bits) & HASH_MASK;
+    }
     value = bits;
     if kind == KIND_FLOAT and value == NEG_ZERO_BITS {
         value = 0;
@@ -476,7 +479,8 @@ impl _drop_release(bits: int, kind: int, collecting: bool) {
     }
     if kind == KIND_STR {
         __jac_rt_release_acyclic(bits);
-    } elif (kind == KIND_REF or kind == KIND_TUPLE) and not collecting {
+    } elif (kind == KIND_REF or kind == KIND_TUPLE or kind == KIND_ANY)
+        and not collecting {
         __jac_rt_release(bits);
     }
 }
@@ -590,7 +594,7 @@ impl _dict_trace_rr(o: int, visit_fn: int) {
 }
 
 impl _kind_class(kind: int) -> int {
-    if kind == KIND_TUPLE {
+    if kind == KIND_TUPLE or kind == KIND_ANY {
         return KIND_REF;
     }
     if kind == KIND_STR or kind == KIND_REF {
@@ -651,4 +655,25 @@ impl _tuple_hash(box: int) -> int {
         i += 1;
     }
     return acc;
+}
+
+impl _any_hash(box: int) -> int {
+    tag = __mem_load_i64(box);
+    payload = __mem_load_i64(box + SLOT);
+    if tag == TAG_STR {
+        return _str_hash(payload);
+    }
+    if tag == TAG_NONE {
+        return _mix(TAG_NONE);
+    }
+    if tag == TAG_FLOAT {
+        value = __bits_float(payload);
+        if value > -INT_FLOAT_LIMIT
+            and value < INT_FLOAT_LIMIT
+            and value == float(int(value)) {
+            return _mix(int(value));
+        }
+        return _hash(payload, KIND_FLOAT);
+    }
+    return _mix(payload);
 }
