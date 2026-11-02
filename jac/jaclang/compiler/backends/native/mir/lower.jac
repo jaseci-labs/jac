@@ -739,7 +739,7 @@ obj MirLowering {
     def type_names(target: uni.Expr) -> (list[str] | None);
     def target_archetype(target: uni.Expr) -> (uni.Archetype | None);
     def isinstance_value(
-        subject: uni.Expr, target: uni.Expr, site: uni.UniNode
+        value: MirValue, target: uni.Expr, site: uni.UniNode
     ) -> (MirValue | None);
 
     def any_isinstance(

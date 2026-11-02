@@ -288,20 +288,25 @@ impl MirLowering.target_archetype(target: uni.Expr) -> (uni.Archetype | None) {
 }
 
 impl MirLowering.isinstance_value(
-    subject: uni.Expr, target: uni.Expr, site: uni.UniNode
+    value: MirValue, target: uni.Expr, site: uni.UniNode
 ) -> (MirValue | None) {
-    names = self.type_names(target);
-    subject_type = self.expr_type(subject);
-    if subject_type.kind == MirKind.ANY {
-        return self.any_isinstance(self.lower_expr(subject), target, site);
+    b = self.builder();
+    if value.type.kind == MirKind.ANY {
+        return self.any_isinstance(value, target, site);
     }
+    names = self.type_names(target);
     if names is None {
         return None;
     }
-    self.lower_expr(subject);
+    subject_type = value.type.payload() if value.type.kind == MirKind.OPT else value.type;
     static_name = STATIC_TYPE_NAMES.get(subject_type.kind.value, "");
     hit = static_name in names or (static_name == "bool" and "int" in names);
-    return self.builder().const_bool(hit);
+    if value.type.kind == MirKind.OPT {
+        return b.select(
+            self.opt_present(value), b.const_bool(hit), b.const_bool("NoneType" in names)
+        );
+    }
+    return b.const_bool(hit);
 }
 
 impl MirLowering.any_isinstance(

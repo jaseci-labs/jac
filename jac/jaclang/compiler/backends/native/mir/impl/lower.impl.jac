@@ -1600,7 +1600,8 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         raise MirRefused(mir_refusal("call", f"len of {value.type.render()}", nd));
     }
     if name == "isinstance" and len(args) == 2 {
-        boxed = self.isinstance_value(args[0], args[1], nd);
+        subject = self.lower_expr(args[0]);
+        boxed = self.isinstance_value(subject, args[1], nd);
         if boxed is not None {
             return boxed;
         }
@@ -1615,7 +1616,7 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
             wanted = holder if isinstance(holder, uni.Archetype) else None;
         }
         if wanted is not None {
-            return self.isinstance_check(self.lower_expr(args[0]), wanted);
+            return self.isinstance_check(subject, wanted);
         }
         raise MirRefused(mir_refusal("call", "isinstance of a non-archetype", nd));
     }
