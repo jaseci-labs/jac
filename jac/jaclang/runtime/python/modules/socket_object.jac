@@ -2132,9 +2132,9 @@ impl sock_init(
             error = jacpy_errno();
             if sock_cloexec_works == -1 {
                 if fd >= 0 {
-                    sock_cloexec_works = i32(1);
+                    set_sock_cloexec_works(i32(1));
                 } elif error == EINVAL {
-                    sock_cloexec_works = i32(0);
+                    set_sock_cloexec_works(i32(0));
                     fd = socket(i32(fam), i32(typ), i32(pro));
                     error = jacpy_errno();
                 }
@@ -2164,7 +2164,7 @@ impl set_inheritable_new(fd: i32) -> int {
     if HAS_SOCK_CLOEXEC {
         works = sock_cloexec_works;
         status = _Py_set_inheritable(fd, 0, &mut works);
-        sock_cloexec_works = works;
+        set_sock_cloexec_works(works);
         return int(status);
     }
     return int(_Py_set_inheritable(fd, 0, None));

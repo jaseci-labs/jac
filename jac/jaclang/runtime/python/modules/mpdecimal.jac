@@ -413,6 +413,21 @@ import from c {
     }
 }
 
+"""Install libmpdec's allocator hooks; process-wide, as the C statics are."""
+def set_mpd_memory_hooks(
+    malloc_hook: ptr, realloc_hook: ptr, calloc_hook: ptr, free_hook: ptr
+) {
+    mpd_mallocfunc = malloc_hook;
+    mpd_reallocfunc = realloc_hook;
+    mpd_callocfunc = calloc_hook;
+    mpd_free = free_hook;
+}
+
+"""Install libmpdec's trap handler; process-wide, as the C static is."""
+def set_mpd_trap_handler(handler: ptr) {
+    mpd_traphandler = handler;
+}
+
 """mpd_free(p): release memory libmpdec allocated, through its hook."""
 def mpd_free_memory(address: ptr) {
     hook = FreeHook();
