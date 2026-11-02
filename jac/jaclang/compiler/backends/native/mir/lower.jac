@@ -318,7 +318,10 @@ obj MirLowering {
     def store_name(target: uni.Name, value: MirValue);
     def local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirValue;
     def loop_scoped(sym: uni.Symbol) -> bool;
-    def within_body(nd: uni.UniNode, loop: uni.UniNode) -> bool;
+    def within_body(
+        nd: uni.UniNode, loop: (uni.WhileStmt | uni.InForStmt | uni.IterForStmt)
+    ) -> bool;
+
     def lower_return(nd: uni.ReturnStmt);
     def lower_if(nd: (uni.IfStmt | uni.ElseIf));
     def lower_else(nd: (uni.ElseStmt | uni.ElseIf | None), done: MirBlock);

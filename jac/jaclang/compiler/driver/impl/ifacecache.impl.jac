@@ -47,7 +47,9 @@ impl _interface_source_path(path: str) -> bool {
 }
 
 impl native_lowering_reads(path: str) -> bool {
-    return not is_compiler_source_path(path) or is_native_by_location(path);
+    return not is_compiler_source_path(path)
+        or is_native_by_location(path)
+        or is_native_compiler_unit(path);
 }
 
 impl _span_record(span: any) -> list[str | int | None] {

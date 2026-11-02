@@ -536,7 +536,9 @@ impl MirLowering.loop_scoped(sym: uni.Symbol) -> bool {
     return False;
 }
 
-impl MirLowering.within_body(nd: uni.UniNode, loop: uni.UniNode) -> bool {
+impl MirLowering.within_body(
+    nd: uni.UniNode, loop: (uni.WhileStmt | uni.InForStmt | uni.IterForStmt)
+) -> bool {
     child = nd;
     walk = nd.parent;
     while walk is not None {

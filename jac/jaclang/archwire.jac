@@ -6374,7 +6374,8 @@ graph import compiler {
         },
         driver.ifacecache.native_lowering_reads {
             is_compiler_source_path,
-            is_native_by_location
+            is_native_by_location,
+            is_native_compiler_unit
         },
         driver.jir {
             is_compiler_source_path,

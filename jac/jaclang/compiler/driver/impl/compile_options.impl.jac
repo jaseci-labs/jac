@@ -346,4 +346,3 @@ impl push_native_target(triple: str) -> (str | None) {
 impl pop_native_target(prev: (str | None)) {
     _native_target_ctx.set(prev);
 }
-

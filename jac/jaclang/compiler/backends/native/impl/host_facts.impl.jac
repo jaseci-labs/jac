@@ -101,4 +101,3 @@ impl codec_tables_fact -> str {
     }
     return bytes(alias_rows).hex() + FACT_SEP + bytes(module_rows).hex();
 }
-
