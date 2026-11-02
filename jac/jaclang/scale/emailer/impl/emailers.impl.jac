@@ -1,3 +1,23 @@
+impl AsciiFoldingPolicy.fold(self: AsciiFoldingPolicy, name: str, value: str) -> str {
+    folded = super.fold(name, value);
+    text = str(value);
+    if '=?' not in folded or '=?' in text or not text.isascii() {
+        return folded;
+    }
+    lines = [f"{name}:"];
+    for word in text.split() {
+        if len(lines[-1]) + 1 + len(word) <= self.max_line_length {
+            lines[-1] += f" {word}";
+        } else {
+            lines.append(f" {word}");
+        }
+    }
+    if max([len(line) for line in lines]) > MAX_HEADER_LINE {
+        return folded;
+    }
+    return self.linesep.join(lines) + self.linesep;
+}
+
 impl SMTPEmailer.postinit -> None {
     smtp_cfg = self.config.get('smtp', {});
     self.host = smtp_cfg.get('host', self.host);
@@ -19,7 +39,8 @@ impl SMTPEmailer.send_email(
     body_html: (str | None) = None,
     from_addr: (str | None) = None,
     reply_to: (str | None) = None,
-    attachments: (list[EmailAttachment] | None) = None
+    attachments: (list[EmailAttachment] | None) = None,
+    headers: (dict[str, str] | None) = None
 ) -> bool {
     if not self.enabled {
         logger.warning("SMTPEmailer is disabled, skipping send to %s", to_addr);
@@ -32,7 +53,14 @@ impl SMTPEmailer.send_email(
     }
     try {
         msg = self._build_message(
-            sender, to_addr, subject, body_text, body_html, reply_to, attachments or []
+            sender,
+            to_addr,
+            subject,
+            body_text,
+            body_html,
+            reply_to,
+            attachments or [],
+            headers
         );
         with smtplib.SMTP(self.host, self.port, timeout=self.timeout) as smtp {
             smtp.ehlo();
@@ -60,14 +88,18 @@ impl SMTPEmailer._build_message(
     body_text: str,
     body_html: (str | None),
     reply_to: (str | None),
-    attachments: list[EmailAttachment]
+    attachments: list[EmailAttachment],
+    headers: (dict[str, str] | None) = None
 ) -> EmailMessage {
-    msg = EmailMessage();
+    msg = EmailMessage(policy=MAIL_POLICY);
     msg['Subject'] = subject;
     msg['From'] = sender;
     msg['To'] = to_addr;
     if reply_to {
         msg['Reply-To'] = reply_to;
+    }
+    for (name, value) in self.checked_headers(headers).items() {
+        msg[name] = value;
     }
     msg.set_content(body_text);
     if body_html {

@@ -18,7 +18,8 @@ obj _RecordingEmailer(Emailer) {
         body_html: (str | None) = None,
         from_addr: (str | None) = None,
         reply_to: (str | None) = None,
-        attachments: (list[EmailAttachment] | None) = None
+        attachments: (list[EmailAttachment] | None) = None,
+        headers: (dict[str, str] | None) = None
     ) -> bool {
         self.sent.append(
             {
@@ -28,10 +29,29 @@ obj _RecordingEmailer(Emailer) {
                 "body_html": body_html,
                 "from": from_addr or self.from_address,
                 "reply_to": reply_to,
-                "attachments": attachments or []
+                "attachments": attachments or [],
+                "headers": headers or {}
             }
         );
         return True;
+    }
+}
+
+obj _HeaderSpySMTP(SMTPEmailer) {
+    has seen: (dict[str, str] | None) = None;
+
+    override def _build_message(
+        sender: str,
+        to_addr: str,
+        subject: str,
+        body_text: str,
+        body_html: (str | None),
+        reply_to: (str | None),
+        attachments: list[EmailAttachment],
+        headers: (dict[str, str] | None) = None
+    ) -> EmailMessage {
+        self.seen = headers;
+        raise ValueError("stop before connecting");
     }
 }
 
@@ -177,6 +197,99 @@ test "smtp_send_returns_false_for_a_header_with_a_line_break" {
         "noreply@example.com", "user@x.y", "Hi", "body", None, "ok@x.y", []
     );
     assert built["Reply-To"] == "ok@x.y";
+}
+
+test "smtp_custom_header_reaches_the_wire_unencoded_at_any_length" {
+    token = "t" * 200;
+    long_url = f"<https://app.example/unsubscribe?t={token}>";
+    cases = {
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        "X-Short": "<https://app.example/unsubscribe?t=abc>",
+        "List-Unsubscribe": long_url,
+        "X-Url-And-Mailto": f"<mailto:u@app.example?subject=unsub>, {long_url}",
+        "Message-ID": f"<{'m' * 120}@app.example>"
+    };
+    subject = "Résumé " * 40;
+    raw = _unreachable_smtp()._build_message(
+        "noreply@example.com", "user@x.y", subject, "body", None, None, [], cases
+    ).as_string();
+    head = raw.split("\n\n")[0];
+    unfolded = head.replace("\n ", " ");
+    for (name, value) in cases.items() {
+        assert f"{name}: {value}" in unfolded , name;
+    }
+    encoded_lines = [
+        line
+        for line in head.splitlines()
+        if "=?" in line
+    ];
+    assert encoded_lines and max([len(line) for line in encoded_lines]) <= 78;
+    assert all([not any([name in line for name in cases]) for line in encoded_lines]);
+    read_back = message_from_string(raw, policy=policy.default);
+    assert read_back["Subject"].split() == subject.split();
+    assert read_back["From"] == "noreply@example.com";
+    spy = _HeaderSpySMTP(
+        config={"smtp": {"host": "smtp.example.com"}},
+        from_address="noreply@example.com"
+    );
+    assert not spy.send_email(
+        to_addr="u@x.y", subject="s", body_text="b", headers=cases
+    );
+    assert spy.seen == cases;
+}
+
+test "smtp_custom_header_cannot_take_over_the_message_and_bad_ones_are_refused" {
+    refused = {
+        "From": "evil@x.y",
+        "FROM": "evil@x.y",
+        "To": "evil@x.y",
+        "Cc": "other@x.y",
+        "Bcc": "hidden@x.y",
+        "Subject": "other",
+        "Reply-To": "evil@x.y",
+        "Sender": "evil@x.y",
+        "MIME-Version": "2.0",
+        "Content-Type": "text/html",
+        "Content-Transfer-Encoding": "base64",
+        "content-disposition": "attachment",
+        "Resent-From": "evil@x.y",
+        "": "empty name",
+        "From ": "stray space",
+        "X-A: v": "colon in name",
+        "X-Naïve": "not ascii",
+        "X-A\r\nBcc": "evil@x.y",
+        "X-Break": "v\r\nBcc: evil@x.y",
+        "X-Too-Long": "<" + "t" * 998 + ">"
+    };
+    for (name, value) in refused.items() {
+        emailer = _unreachable_smtp();
+        raised = False;
+        try {
+            emailer.checked_headers({name: value});
+        } except ValueError {
+            raised = True;
+        }
+        assert raised , name;
+        raised = False;
+        try {
+            emailer._build_message(
+                "noreply@example.com",
+                "user@x.y",
+                "Hi",
+                "body",
+                None,
+                None,
+                [],
+                {name: value}
+            );
+        } except ValueError {
+            raised = True;
+        }
+        assert raised , name;
+    }
+    fine = {"Date": "Thu, 01 Jan 2026 00:00:00 +0000", "X-Tag": "weekly"};
+    assert _RecordingEmailer().checked_headers(fine) == fine;
+    assert _RecordingEmailer().checked_headers(None) == {};
 }
 
 test "attachment_media_type_is_type_slash_subtype_or_octet_stream" {
