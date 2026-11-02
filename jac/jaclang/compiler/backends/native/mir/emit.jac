@@ -79,6 +79,8 @@ obj MirEmitter {
     def value(v: MirValue) -> ir.Value;
     def bind(v: (MirValue | None), made: ir.Value);
     def cstring(b: ir.IRBuilder, text: str) -> ir.Value;
+    def cstring_global(text: str) -> ir.GlobalVariable;
+    def c_constant(made: MirConst, shape: ir.Type) -> ir.Constant;
     def emit_bin(b: ir.IRBuilder, instr: MirInstr) -> ir.Value;
     def emit_floordiv(
         b: ir.IRBuilder, l: ir.Value, r: ir.Value, signed: bool

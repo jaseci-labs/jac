@@ -374,6 +374,21 @@ obj MirLowering {
     def call_args(nd: uni.FuncCall) -> list[uni.Expr];
     def coerce_place(place: MirValue) -> MirValue;
     def declare_global(nd: uni.Name) -> (MirGlobal | None);
+    def declare_c_data;
+    def declare_module_globals;
+    def declare_c_global(assign: uni.Assignment) -> MirGlobal;
+    def c_array_count(value: uni.Expr, elem: TypeBase) -> int;
+    def c_const(
+        expr: uni.Expr, ctype: (TypeBase | None), target: MirType, count: int = -1
+    ) -> MirConst;
+    def c_const_refusal(expr: uni.UniNode) -> NativeRefusal;
+    def c_const_struct(expr: uni.Expr, arch: uni.Archetype) -> MirConst;
+    def c_const_address(expr: uni.Expr) -> MirConst;
+    def c_function_symbol(expr: uni.Expr) -> str;
+    def c_addressed(nd: uni.FuncCall) -> MirGlobal;
+    def c_addressof(nd: uni.FuncCall) -> MirValue;
+    def c_global_settle;
+    def c_const_lost(made: MirConst) -> str;
     def global_place(nd: uni.Name) -> (MirValue | None);
     def global_declaration(sym: uni.Symbol) -> (uni.Assignment | None);
     def runtime(name: str, args: list[MirValue]) -> (MirValue | None);

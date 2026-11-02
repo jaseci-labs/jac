@@ -5576,12 +5576,22 @@ graph import compiler {
     ]
     c_interop ++> [
         backends.native.mir.lower {
+            c_array_elem,
             c_builtin_kind,
+            c_bytes_array_values,
+            c_bytes_elem_shape,
+            c_bytes_literal,
+            c_offset_address,
             c_scalar_constant,
             c_string_literal,
             c_type_arg,
+            clib_global_of_name,
             clib_import_of,
-            foreign_struct_of_type
+            foreign_struct_of_type,
+            is_builtin_addressof_call,
+            is_ptr_type,
+            named_function_of,
+            opaque_c_of_type
         },
         backends.native.mir.lower_types {
             c_builtin_kind,
@@ -10519,6 +10529,7 @@ graph import compiler.backends.native.mir {
         backend { MirModule },
         emit {
             MirBlock,
+            MirConst,
             MirFunction,
             MirGlobal,
             MirInstr,
@@ -10541,6 +10552,7 @@ graph import compiler.backends.native.mir {
         lower {
             MirBlock,
             MirBuilder,
+            MirConst,
             MirExtern,
             MirFunction,
             MirGlobal,

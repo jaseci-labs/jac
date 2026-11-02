@@ -28,6 +28,8 @@ impl MirLowering.lower -> MirModule {
             self.refusals.setdefault(arch.name.value, []).append(refusal_of(err));
         }
     }
+    self.declare_c_data();
+    self.declare_module_globals();
     for key in self.order {
         made = self.lower_function(self.decls[key]);
         if made is not None {
@@ -74,6 +76,7 @@ impl MirLowering.lower -> MirModule {
     self.nested = [];
     self.lower_instances();
     self.settle();
+    self.c_global_settle();
     return self.mir;
 }
 
@@ -1212,6 +1215,9 @@ impl MirLowering.lower_bool(nd: uni.BoolExpr) -> MirValue {
 }
 
 impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
+    if is_builtin_addressof_call(nd) {
+        return self.c_addressof(nd);
+    }
     callee = nd.callee_decl;
     if callee is not None and id(callee) in self.templates {
         return self.generic_call(nd, callee, None, None);
@@ -2563,6 +2569,16 @@ impl MirLowering.global_place(nd: uni.Name) -> (MirValue | None) {
     if found is None {
         return None;
     }
+    if found.opaque or found.count >= 0 {
+        raise MirRefused(
+            mir_refusal(
+                "C data object",
+                found.name,
+                nd,
+                "An opaque C object or a C array is reached through its address: `addressof(name)`."
+            )
+        );
+    }
     return self.emit_value(
         MirOp.GLOBAL_ADDR, mir_c_ptr(found.type), [], str_value=found.symbol
     );
@@ -2573,11 +2589,35 @@ impl MirLowering.declare_global(nd: uni.Name) -> (MirGlobal | None) {
     if sym is None {
         return None;
     }
+    c_assign = clib_global_of_name(nd);
+    if c_assign is not None {
+        return self.declare_c_global(c_assign);
+    }
     declaration = self.global_declaration(sym);
     if declaration is None {
         return None;
     }
     found = self.mir.globals.get(sym.sym_name);
+    owner = declaration.find_parent_of_type(uni.Module);
+    if found is None
+        and owner is not None
+        and owner.loc.mod_path.endswith(".jac")
+        and os.path.realpath(owner.loc.mod_path)
+        != os.path.realpath(self.module.loc.mod_path) {
+        group = declaration.parent;
+        access = group.access if isinstance(group, uni.GlobalVars) else None;
+        found = MirGlobal(
+            name=sym.sym_name,
+            symbol=self.unit_symbol(sym.sym_name, access, owner.loc.mod_path),
+            type=self.symbol_type(sym, nd),
+            linkage="external"
+        );
+        self.mir.globals[sym.sym_name] = found;
+        unit = os.path.realpath(owner.loc.mod_path);
+        if unit not in self.mir.deps {
+            self.mir.deps.append(unit);
+        }
+    }
     if found is None {
         value_type = self.symbol_type(sym, nd);
         group = declaration.parent;

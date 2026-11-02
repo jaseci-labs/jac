@@ -135,13 +135,27 @@ obj MirExtern {
         params: list[MirType] = [];
 }
 
+obj MirConst {
+    has kind: str,
+        int_value: int = 0,
+        float_value: float = 0.0,
+        symbol: str = "",
+        data: bytes = b"",
+        items: list[MirConst] = [],
+        offset: int = 0;
+}
+
 obj MirGlobal {
     has name: str,
         symbol: str,
         type: MirType,
         int_value: int = 0,
         float_value: float = 0.0,
-        linkage: str = "";
+        linkage: str = "",
+        c_data: bool = False,
+        opaque: bool = False,
+        count: int = -1,
+        c_init: (MirConst | None) = None;
 }
 
 obj MirStructField {
