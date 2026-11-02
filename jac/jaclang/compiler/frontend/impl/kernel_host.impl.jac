@@ -1,6 +1,17 @@
-impl HostAsker.record_interface(
-    program: JacProgram, module: Module, products: UnitProducts
-) {}
+impl record_interface(program: JacProgram, module: Module, products: UnitProducts) {
+    import base64;
+
+    evaluator = program.get_type_evaluator();
+    pkg_dir = os.path.dirname(os.path.realpath(module.loc.mod_path));
+    try {
+        data = build_module_iface(module, evaluator, pkg_dir);
+        shape = module_iface_shape(module, evaluator, pkg_dir);
+    } except IncoherentInterface {
+        return;
+    }
+    products.iface = base64.b64encode(data).decode("ascii");
+    products.iface_shape = shape;
+}
 
 impl HostCensus.count(method: str) {
     if self.trace {
@@ -364,9 +375,8 @@ impl KernelHost.record_unit(task: ModuleAnalysis) {
     if lowered is not None and lowered is not module and not products.native_ir {
         native_products(lowered, products);
     }
-    asker = self.asker;
-    if real.endswith(".jac") and asker is not None {
-        asker.record_interface(task.program, module, products);
+    if real.endswith(".jac") {
+        record_interface(task.program, module, products);
     }
     self.units[real] = products;
 }

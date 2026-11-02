@@ -453,6 +453,13 @@ impl Parameter.init(
     self.default_value = default_value;
 }
 
+impl Parameter.category_code -> int {
+    if self.category is None {
+        return 0;
+    }
+    return int(self.category);
+}
+
 impl Parameter.param_type.getter -> (TypeBase | None) {
     c = self._acc_cache;
     if (c is not None) and ("param_type" in c) {
