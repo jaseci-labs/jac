@@ -9581,7 +9581,8 @@ graph import compiler {
             native_placement_hard
         },
         driver.unit_products.placement_record { module_spaces },
-        backends.native.mir.backend | passes.placement_pass { native_placement_soft },
+        backends.native.mir.backend { native_placement_hard },
+        passes.placement_pass { native_placement_soft },
         passes.placement_pass.PlacementPass._run_undecided { contexts_of },
         passes.placement_pass.settle_native_module { settle_server },
     ]

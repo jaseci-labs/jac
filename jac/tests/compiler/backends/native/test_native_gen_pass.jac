@@ -472,30 +472,28 @@ test "native partial class: demotion warns on the terminal by default (#6934)" {
     assert "Python-only" in _out;
 }
 
-test "native partial class: native caller of a demoted method errors, not silent" {
+test "native partial class: native caller of a demoted method demotes, not silent" {
     # A method demoted to Python-only is not callable from native code: the
     # native pathway cannot fall back to Python mid-stream. The free function
-    # that calls it cascades into a seam of its own (granular demotion), and
-    # the module entry that calls THAT function stays a loud E5092 naming its
-    # call site instead of silently dropping to a null result.
+    # that calls it cascades into a demotion of its own, and so does the module
+    # entry that calls THAT function -- each is placed in Python rather than
+    # silently dropping to a null result. Forced native placement is not a
+    # requirement, so none of this is an error.
     prog = JacProgram();
-    prog.compile(
+    ir = prog.compile(
         file_path=str(os.path.join(FIXTURES, "partial_native_native_caller.jac")),
         options=native_force_opts()
     );
-    codes = [
-        e.code.code
-        for e in (prog.errors_had or [])
-        if e.code
-    ];
-    assert "E5092" in codes , (
-        f"expected E5092 for the native call chain into a demoted method, "
-        f"got {codes}"
-    );
-    # The diagnostic names the demoted callable at the surviving call site,
-    # not the discarded eval body that was demoted away.
-    msgs = " ".join(str(e) for e in (prog.errors_had or []));
-    assert "call_evaluate" in msgs , (f"E5092 should name call_evaluate, got: {msgs}");
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
+    iface: any = ir.gen.native_iface;
+    assert iface is not None , "the module must still lower its native part";
+    for name in ("Box.evaluate", "call_evaluate") {
+        assert name in iface.demoted , (
+            f"{name} must demote along the native call chain: {iface.demoted}"
+        );
+    }
+    assert iface.entry_symbol == "" , "the entry calls a demoted function natively";
+    assert "Box.length" in by_source_name(ir.gen.native_layout.methods);
 }
 
 test "native partial class: un-lowerable virtual method demotes to a stub slot" {

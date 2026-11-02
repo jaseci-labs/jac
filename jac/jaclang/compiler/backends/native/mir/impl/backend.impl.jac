@@ -28,7 +28,7 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
             return ir_in;
         }
     } elif ir_in.gen.placement_mode == "inferred"
-        and native_placement_soft(self.prog, ir_in) {
+        and not native_placement_hard(self.prog, path) {
         if self.settle_soft(lowering) {
             return ir_in;
         }
@@ -164,7 +164,10 @@ impl MirNativePass.settle_soft(lowering: MirLowering) -> bool {
     for (key, refusals) in lowering.refusals.items() {
         for refusal in refusals {
             site = refusal.site;
-            if site is not None and os.path.realpath(site.loc.mod_path) != here {
+            if site is module
+                or (
+                    site is not None and os.path.realpath(site.loc.mod_path) != here
+                ) {
                 site = None;
             }
             anchor = site or owners.get(key);

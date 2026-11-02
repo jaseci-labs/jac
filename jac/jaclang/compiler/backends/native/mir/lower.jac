@@ -294,6 +294,7 @@ obj MirLowering {
         enum_methods: dict[str, MirDecl] = {},
         bindings: list[InteropBinding] = [],
         current: str = "",
+        dep_verdicts: dict[str, (list[str] | None)] = {},
         state: (MirFnState | None) = None;
 
     def lower -> MirModule;

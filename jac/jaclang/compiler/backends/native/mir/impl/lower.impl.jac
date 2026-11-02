@@ -2264,8 +2264,12 @@ impl MirLowering.require_dep_native(path: str, symbol: str, site: uni.UniNode) {
     unit = os.path.realpath(path);
     prefix = native_unit_prefix(path) + ".";
     name = symbol[len(prefix):] if symbol.startswith(prefix) else symbol;
-    iface = active_host().native_dep_iface(self.prog, unit, self.prog.options);
-    if iface is None {
+    if unit not in self.dep_verdicts {
+        iface = active_host().native_dep_iface(self.prog, unit, self.prog.options);
+        self.dep_verdicts[unit] = list(iface.demoted) if iface is not None else None;
+    }
+    demoted = self.dep_verdicts[unit];
+    if demoted is None {
         if unit in self.prog.native_units().building {
             return;
         }
@@ -2278,7 +2282,7 @@ impl MirLowering.require_dep_native(path: str, symbol: str, site: uni.UniNode) {
             )
         );
     }
-    if name in iface.demoted {
+    if name in demoted {
         raise MirRefused(
             mir_refusal(
                 "function",
