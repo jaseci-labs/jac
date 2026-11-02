@@ -1272,9 +1272,16 @@ impl MirEmitter.vtable_global(obj_def: MirObjectDef) -> ir.GlobalVariable {
     for symbol in lineage {
         holder = self.module.globals.get(symbol);
         if holder is None {
-            holder = ir.GlobalVariable(
-                self.module, ir.ArrayType(i8p, VTABLE_HEADER_SLOTS), name=symbol
-            );
+            owners = [
+                other
+                for other in self.mir.objects.values()
+                if other.vtable_symbol == symbol and other is not obj_def
+            ];
+            holder = self.vtable_global(owners[0])
+                if owners
+                else ir.GlobalVariable(
+                    self.module, ir.ArrayType(i8p, VTABLE_HEADER_SLOTS), name=symbol
+                );
         }
         members.append(holder.bitcast(i8p));
     }
