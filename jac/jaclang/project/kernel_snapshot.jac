@@ -86,10 +86,6 @@ obj KernelSnapshot(HostAsker) {
         other_compiler: str = "";
 
     def inputs -> KernelInputs;
-    override def record_interface(
-        program: JacProgram, module: uni.Module, products: UnitProducts
-    );
-
     def text -> str;
     def ask(method: str, key: str) -> str;
     def answer(learner: KernelHost, method: str, fields: list[str]) -> str;

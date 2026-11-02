@@ -155,12 +155,18 @@ impl host_kernel_compile(
     if not routed or options.skip_analysis {
         return None;
     }
-    ready = _APPLICATION_UNITS.pop(os.path.realpath(path), None);
+    real = os.path.realpath(path);
+    ready = _APPLICATION_UNITS.pop(real, None);
     if ready is not None {
         return CompileReport(analysis=AnalysisReport(entry_path=path), units=[ready]);
     }
+    seeds = [
+        seed
+        for (seed_path, seed) in _APPLICATION_SEEDS.items()
+        if seed_path != real
+    ];
     return kernel_compile_reported(
-        host, program, path, options, in_process, True, emit_cached=False
+        host, program, path, options, in_process, True, emit_cached=False, seeds=seeds
     );
 }
 
@@ -182,13 +188,33 @@ impl kernel_compile_application(
         return None;
     }
     for unit in compiled.units {
-        _APPLICATION_UNITS[os.path.realpath(unit.path)] = unit;
+        real = os.path.realpath(unit.path);
+        _APPLICATION_UNITS[real] = unit;
+        seed = unit_seed(real, unit);
+        if seed is not None {
+            _APPLICATION_SEEDS[real] = seed;
+        }
     }
     return compiled;
 }
 
+impl unit_seed(path: str, unit: UnitProducts) -> (PythonInterface | None) {
+    import base64;
+    if not path.endswith(".jac") or not unit.iface {
+        return None;
+    }
+    return PythonInterface(
+        path=path,
+        pkg_dir=os.path.dirname(path),
+        data=base64.b64decode(unit.iface),
+        placement=unit.placement,
+        effects=unit.effects
+    );
+}
+
 impl forget_application_units {
     _APPLICATION_UNITS.clear();
+    _APPLICATION_SEEDS.clear();
 }
 
 impl host_preparing(entry_path: str) {
@@ -197,4 +223,5 @@ impl host_preparing(entry_path: str) {
 
 impl host_prepared {
     _HOST_PREPARING.clear();
+    _APPLICATION_SEEDS.clear();
 }

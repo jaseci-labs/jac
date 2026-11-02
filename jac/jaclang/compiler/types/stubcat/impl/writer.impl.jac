@@ -63,7 +63,7 @@ impl live_scopes(scope: UniScopeNode) -> set[int] {
     return out;
 }
 
-impl enclosing_scope(nd: any) -> (UniScopeNode | None) {
+impl enclosing_scope(nd: UniNode) -> (UniScopeNode | None) {
     cur = nd.parent;
     while cur is not None and not isinstance(cur, UniScopeNode) {
         cur = cur.parent;
@@ -72,7 +72,7 @@ impl enclosing_scope(nd: any) -> (UniScopeNode | None) {
 }
 
 impl star_import_members(
-    mod: Module, evaluator: any, visited: (set[int] | None) = None
+    mod: Module, evaluator: TypeEvaluator, visited: (set[int] | None) = None
 ) -> dict[str, Symbol] {
     seen: set[int] = visited if visited is not None else set();
     out: dict[str, Symbol] = {};
@@ -122,12 +122,12 @@ impl star_import_members(
     return out;
 }
 
-impl metaclass_of_scope(scope: UniScopeNode, evaluator: any) -> (TypeBase | None) {
-    if hasattr(scope, "cat_metaclass") {
+impl metaclass_of_scope(
+    scope: UniScopeNode, evaluator: TypeEvaluator
+) -> (TypeBase | None) {
+    if isinstance(scope, CatScope) {
         try {
-            cat_meta: any = getattr(scope, "metaclass_type");
-            found = cat_meta();
-            return found if isinstance(found, TypeBase) else None;
+            return scope.metaclass_type();
         } except Exception {
             return None;
         }
@@ -170,6 +170,14 @@ impl module_of(scope: (UniScopeNode | None)) -> (Module | None) {
     return None;
 }
 
+impl ident_key(parts: list[str]) -> str {
+    out: list[str] = [];
+    for part in parts {
+        out.append(f"{len(part)}:{part}");
+    }
+    return "".join(out);
+}
+
 impl CatalogWriter.postinit {
     self.strings = {};
     self.str_list = [];
@@ -202,6 +210,7 @@ impl CatalogWriter.postinit {
     self.external_modules = set();
     self._ident_visiting = set();
     self._type_ident_memo = {};
+    self._type_tokens = {};
 }
 
 impl CatalogWriter._real_path(path: str) -> str {
@@ -235,75 +244,89 @@ impl CatalogWriter.in_boundary(mod: (Module | None)) -> bool {
     }
 }
 
-impl CatalogWriter._mod_ident(mod: (Module | None)) -> any {
+impl CatalogWriter._mod_ident(mod: (Module | None)) -> str {
     if mod is None {
-        return -1;
+        return ident_key(["none"]);
     }
     if self.boundary is None {
-        return id(mod);
+        return ident_key(["id", str(id(mod))]);
     }
+    mpath = "";
     try {
         mpath = mod.loc.mod_path if mod.loc else "";
     } except Exception {
         mpath = "";
     }
     if mpath {
-        return self._real_path(mpath);
+        return ident_key(["path", self._real_path(mpath)]);
     }
-    return id(mod);
+    return ident_key(["id", str(id(mod))]);
 }
 
-impl CatalogWriter._scope_ident(scope: (UniScopeNode | None)) -> any {
+impl CatalogWriter._scope_ident(scope: (UniScopeNode | None)) -> str {
     if scope is None {
-        return -1;
+        return ident_key(["none"]);
     }
     if self.boundary is None {
-        return id(scope);
+        return ident_key(["id", str(id(scope))]);
     }
     mod = module_of(scope);
     if mod is None {
-        return id(scope);
+        return ident_key(["id", str(id(scope))]);
     }
     loc = scope.loc;
-    span = (
-        (loc.first_line, loc.col_start, loc.last_line, loc.col_end)
-            if loc
-            else (0, 0, 0, 0)
-    );
-    return (
-        self._mod_ident(mod),
-        self.scope_dotted_path(scope),
-        type(scope).__name__,
-        span,
-
+    span = [
+        str(loc.first_line),
+        str(loc.col_start),
+        str(loc.last_line),
+        str(loc.col_end)
+    ]
+        if loc
+        else ["0", "0", "0", "0"];
+    return ident_key(
+        [
+            "scope",
+            self._mod_ident(mod),
+            self.scope_dotted_path(scope),
+            type(scope).__name__,
+            ident_key(span)
+        ]
     );
 }
 
-impl CatalogWriter._sym_ident(sym: Symbol) -> any {
+impl CatalogWriter._sym_ident(sym: Symbol) -> str {
     if self.boundary is None {
-        return id(sym);
+        return ident_key(["id", str(id(sym))]);
     }
     home = home_scope(sym);
     mod = module_of(home);
     if home is None or mod is None {
-        return id(sym);
+        return ident_key(["id", str(id(sym))]);
     }
     loc = sym.decl.loc if sym.decl else None;
     if loc is None {
-        return id(sym);
+        return ident_key(["id", str(id(sym))]);
     }
-
-    return (
-        self._scope_ident(home),
-        sym.sym_name,
-        (loc.first_line, loc.col_start, loc.last_line, loc.col_end),
-
+    return ident_key(
+        [
+            "sym",
+            self._scope_ident(home),
+            sym.sym_name,
+            ident_key(
+                [
+                    str(loc.first_line),
+                    str(loc.col_start),
+                    str(loc.last_line),
+                    str(loc.col_end)
+                ]
+            )
+        ]
     );
 }
 
-impl CatalogWriter._shared_ident(shared: ClassDetailsShared) -> any {
+impl CatalogWriter._shared_ident(shared: ClassDetailsShared) -> str {
     if self.boundary is None {
-        return id(shared);
+        return ident_key(["id", str(id(shared))]);
     }
     tab: (UniScopeNode | None) = None;
     try {
@@ -313,25 +336,34 @@ impl CatalogWriter._shared_ident(shared: ClassDetailsShared) -> any {
     }
     mod = module_of(tab) if tab is not None else None;
     if tab is None or mod is None {
-        return id(shared);
+        return ident_key(["id", str(id(shared))]);
     }
     if not self.in_boundary(mod) {
-        return (
-            "xref",
-            self._mod_ident(mod),
-            self.scope_dotted_path(tab),
-            shared.class_name,
-            shared.canonical_key()
+        canonical = shared.canonical_key();
+        return ident_key(
+            [
+                "xref",
+                self._mod_ident(mod),
+                self.scope_dotted_path(tab),
+                shared.class_name,
+                ident_key(
+                    [canonical[0], str(canonical[1]), str(canonical[2]), canonical[3]]
+                )
+                    if canonical is not None
+                    else ident_key(["none"])
+            ]
         );
     }
-    return (self._scope_ident(tab), shared.class_name, );
+    return ident_key(["shared", self._scope_ident(tab), shared.class_name]);
 }
 
 impl CatalogWriter.scope_dotted_path(scope: (UniScopeNode | None)) -> str {
     parts: list[str] = [];
     cur = scope;
     while cur is not None and not isinstance(cur, Module) {
-        if UniScopeNode.is_python_scoping(cur) or hasattr(cur, "cat_kind") {
+        if UniScopeNode.is_python_scoping(cur) {
+            parts.append(cur.scope_name);
+        } elif isinstance(cur, CatScope) {
             parts.append(cur.scope_name);
         }
         cur = cur.parent_scope;
@@ -360,7 +392,7 @@ impl CatalogWriter.rel_of(path: str) -> str {
     if real.startswith(prefix) {
         return real[len(prefix):].replace(os.sep, "/");
     }
-    return self.path_mapper(real) if self.path_mapper is not None else real;
+    return self.path_mapper.map(real) if self.path_mapper is not None else real;
 }
 
 impl CatalogWriter.add_module(mod: Module, dotted: str) -> None {
@@ -515,7 +547,7 @@ impl CatalogWriter.force_symbol(sym: Symbol) -> None {
         own_scope = None;
     }
     if own_scope is not None
-        and (isinstance(own_scope, (Archetype, Enum)) or hasattr(own_scope, "cat_kind"))
+        and isinstance(own_scope, (Archetype, Enum, CatScope))
         and self.in_boundary(module_of(own_scope)) {
         self.force_scope(own_scope);
     }
@@ -534,9 +566,13 @@ impl CatalogWriter._jac_method_of(sym: Symbol) -> (Ability | None) {
     if isinstance(sig, FuncSignature) and sig.is_in_py_class {
         return None;
     }
-    for dec in (node_.decorators or ()) {
-        if isinstance(dec, Name) and dec.sym_name in ("staticmethod", "classmethod") {
-            return None;
+    decorators = node_.decorators;
+    if decorators is not None {
+        for dec in decorators {
+            if isinstance(dec, Name)
+                and dec.sym_name in ("staticmethod", "classmethod") {
+                return None;
+            }
         }
     }
     return node_;
@@ -601,158 +637,178 @@ impl CatalogWriter.ref_symbol(sym: (Symbol | None)) -> int {
     return idx;
 }
 
-impl CatalogWriter._type_ident(t: TypeBase) -> any {
+impl CatalogWriter._type_ident(t: TypeBase) -> str {
     tid = id(t);
     if self.boundary is None {
-        return tid;
+        return ident_key(["id", str(tid)]);
     }
     memo = self._type_ident_memo.get(tid);
     if memo is not None {
         return memo[1];
     }
     if tid in self._ident_visiting {
-        return tid;
+        return ident_key(["id", str(tid)]);
     }
     self._ident_visiting.add(tid);
+    key = "";
     try {
         key = self._type_ident_uncached(t);
     } finally {
         self._ident_visiting.discard(tid);
     }
-    self._type_ident_memo[tid] = (t, key);
-    return key;
+    token = self._type_tokens.get(key);
+    if token is None {
+        token = ident_key(["t", str(len(self._type_tokens))]);
+        self._type_tokens[key] = token;
+    }
+    self._type_ident_memo[tid] = (t, token);
+    return token;
 }
 
-impl CatalogWriter._type_ident_uncached(t: TypeBase) -> any {
+impl CatalogWriter._type_ident_uncached(t: TypeBase) -> str {
     tid = id(t);
+    none_key = ident_key(["none"]);
     try {
-        flags = int(t.flags);
+        flags = str(int(t.flags));
         if isinstance(t, ClassType) {
             shared = t._shared;
             if shared is None {
-                return ("unknown", flags, );
+                return ident_key(["unknown", flags]);
             }
-            return (
-                "class",
-                flags,
-                self._shared_ident(shared),
-                self._types_ident(t.private.type_args),
-                t.private.alias_name or "",
-                self._literal_ident(t.private.literal_value),
-                t.private.distinct_key or "",
-
+            return ident_key(
+                [
+                    "class",
+                    flags,
+                    self._shared_ident(shared),
+                    self._types_ident(t.private.type_args),
+                    t.private.alias_name or "",
+                    self._literal_ident(t.private.literal_value),
+                    t.private.distinct_key or ""
+                ]
             );
         }
         if isinstance(t, FunctionType) {
-            params: list[tuple[str, int, int, any, bool, bool, bool, bool]] = [];
-            for p in (t.parameters or []) {
+            params: list[str] = [];
+            for p in t.parameters {
                 params.append(
-                    (
-                        p.name or "",
-                        int(p.category) if p.category is not None else 0,
-                        int(p.param_kind),
-                        self._type_ident(p.param_type)
-                            if p.param_type is not None
-                            else -1,
-                        bool(p.is_self),
-                        bool(p.is_cls),
-                        bool(p.has_default or p.default_value is not None),
-                        bool(p.is_comptime),
-
+                    ident_key(
+                        [
+                            p.name or "",
+                            str(p.category_code()),
+                            str(int(p.param_kind)),
+                            self._type_ident(p.param_type)
+                                if p.param_type is not None
+                                else none_key,
+                            "1" if p.is_self else "0",
+                            "1" if p.is_cls else "0",
+                            "1"
+                                if (p.has_default or p.default_value is not None)
+                                else "0",
+                            "1" if p.is_comptime else "0"
+                        ]
                     )
                 );
             }
-            return (
-                "fn",
-                flags,
-                t.func_name or "",
-                int(t.function_flags),
-                bool(t.is_async),
-                bool(t.type_guard_is_strict),
-                self._type_ident(t.return_type) if t.return_type is not None else -1,
-                self._type_ident(t.type_guard) if t.type_guard is not None else -1,
-                self._types_ident([tv for tv in (t.type_params or [])]),
-                tuple(params),
-
+            return ident_key(
+                [
+                    "fn",
+                    flags,
+                    t.func_name or "",
+                    str(int(t.function_flags)),
+                    "1" if t.is_async else "0",
+                    "1" if t.type_guard_is_strict else "0",
+                    self._type_ident(t.return_type)
+                        if t.return_type is not None
+                        else none_key,
+                    self._type_ident(t.type_guard)
+                        if t.type_guard is not None
+                        else none_key,
+                    self._types_ident([tv for tv in t.type_params]),
+                    ident_key(params)
+                ]
             );
         }
         if isinstance(t, OverloadedType) {
-            return (
-                "overload",
-                flags,
-                self._types_ident([fn for fn in (t.overloads or [])]),
-
+            return ident_key(
+                ["overload", flags, self._types_ident([fn for fn in t.overloads])]
             );
         }
         if isinstance(t, UnionType) {
-            return ("union", flags, self._types_ident(t.types), );
+            return ident_key(["union", flags, self._types_ident(t.types)]);
         }
         if isinstance(t, TypeVarType) {
-            return (
-                "typevar",
-                flags,
-                t.name or "",
-                bool(t.is_covariant),
-                bool(t.is_contravariant),
-                bool(t.is_self),
-                bool(t.is_param_spec),
-                bool(t.is_class_type_param),
-                self._type_ident(t.bound) if t.bound is not None else -1,
-                self._types_ident(t.constraints),
-
+            return ident_key(
+                [
+                    "typevar",
+                    flags,
+                    t.name or "",
+                    "1" if t.is_covariant else "0",
+                    "1" if t.is_contravariant else "0",
+                    "1" if t.is_self else "0",
+                    "1" if t.is_param_spec else "0",
+                    "1" if t.is_class_type_param else "0",
+                    self._type_ident(t.bound) if t.bound is not None else none_key,
+                    self._types_ident(t.constraints)
+                ]
             );
         }
         if isinstance(t, ModuleType) {
             tab = t.symbol_table;
-            return (
-                "module",
-                flags,
-                t.mod_name or "",
-                str(t.file_uri) if t.file_uri else "",
-                bool(t.is_external),
-                self._mod_ident(tab) if isinstance(tab, Module) else -1,
-
+            return ident_key(
+                [
+                    "module",
+                    flags,
+                    t.mod_name or "",
+                    str(t.file_uri) if t.file_uri else "",
+                    "1" if t.is_external else "0",
+                    self._mod_ident(tab) if isinstance(tab, Module) else none_key
+                ]
             );
         }
         if isinstance(t, EnumMemberType) {
             info = t.member_info;
-            return (
-                "enum_member",
-                flags,
-                self._type_ident(t.enum_class) if t.enum_class is not None else -1,
-                info.member_name if info else "",
-                self._type_ident(info.value_type)
-                    if (info and info.value_type is not None)
-                    else -1,
-                self._literal_ident(info.literal_value if info else None),
-
+            return ident_key(
+                [
+                    "enum_member",
+                    flags,
+                    self._type_ident(t.enum_class)
+                        if t.enum_class is not None
+                        else none_key,
+                    info.member_name if info else "",
+                    self._type_ident(info.value_type)
+                        if (info and info.value_type is not None)
+                        else none_key,
+                    self._literal_ident(info.literal_value if info else None)
+                ]
             );
         }
         if isinstance(t, NeverType) {
-            return ("never", flags, );
+            return ident_key(["never", flags]);
         }
         if isinstance(t, AnyType) {
-            return ("any", flags, bool(t.is_foreign), t.foreign_scalar or "", );
+            return ident_key(
+                ["any", flags, "1" if t.is_foreign else "0", t.foreign_scalar or ""]
+            );
         }
-        return tid;
+        return ident_key(["id", str(tid)]);
     } except Exception {
-        return tid;
+        return ident_key(["id", str(tid)]);
     }
 }
 
-impl CatalogWriter._types_ident(ts: (list[TypeBase] | None)) -> tuple[any, ...] {
-    out: list[any] = [];
-    for x in (ts or []) {
-        out.append(self._type_ident(x) if x is not None else -1);
+impl CatalogWriter._types_ident(ts: (list[TypeBase] | None)) -> str {
+    out: list[str] = [];
+    if ts is None {
+        return ident_key(out);
     }
-    return tuple(out);
+    for x in ts {
+        out.append(self._type_ident(x) if x is not None else ident_key(["none"]));
+    }
+    return ident_key(out);
 }
 
-impl CatalogWriter._literal_ident(value: any) -> any {
-    if value is None or isinstance(value, (bool, int, str, float)) {
-        return (type(value).__name__, value, );
-    }
-    return (type(value).__name__, repr(value), );
+impl CatalogWriter._literal_ident(value: any) -> str {
+    return ident_key([type(value).__name__, repr(value)]);
 }
 
 impl CatalogWriter.ref_type(t: (TypeBase | None)) -> int {
@@ -774,7 +830,10 @@ impl CatalogWriter.ref_type(t: (TypeBase | None)) -> int {
 
 impl CatalogWriter.ref_types(ts: (list[TypeBase] | None)) -> list[int] {
     out: list[int] = [];
-    for t in (ts or []) {
+    if ts is None {
+        return out;
+    }
+    for t in ts {
         out.append(self.ref_type(t));
     }
     return out;
@@ -862,12 +921,11 @@ impl CatalogWriter.encode_scope(idx: int) -> bytes {
     } elif isinstance(scope, Ability) {
         kind = SC_FUNCTION;
         owner = scope.name_spec.sym;
-    } elif hasattr(scope, "cat_kind") {
-        kind = int(getattr(scope, "cat_kind"));
-        arch_kind = int(getattr(scope, "cat_arch_kind"));
-        cat_owner: any = scope?.cat_owner_sym;
-        if isinstance(cat_owner, Symbol) {
-            owner = cat_owner;
+    } elif isinstance(scope, CatScope) {
+        kind = scope.cat_kind;
+        arch_kind = scope.cat_arch_kind;
+        if scope.cat_owner_sym is not None {
+            owner = scope.cat_owner_sym;
         }
     }
     put_uvar(out, kind);
@@ -920,10 +978,7 @@ impl CatalogWriter.encode_scope(idx: int) -> bytes {
         } except Exception {
             own_scope = None;
         }
-        if (
-            isinstance(own_scope, (Archetype, Enum, Ability))
-            or hasattr(own_scope, "cat_kind")
-        )
+        if isinstance(own_scope, (Archetype, Enum, Ability, CatScope))
             and self.in_boundary(module_of(own_scope)) {
             seen_kids.add(name);
             kids.append((name, self.ref_scope(own_scope)));
@@ -1095,7 +1150,7 @@ impl CatalogWriter.encode_type(idx: int) -> bytes {
         put_ref(out, self.ref_type(t.return_type));
         put_ref(out, self.ref_type(t.type_guard));
         tps: list[TypeBase] = [];
-        for tv in (t.type_params or []) {
+        for tv in t.type_params {
             tps.append(tv);
         }
         put_refs(out, self.ref_types(tps));
@@ -1103,7 +1158,7 @@ impl CatalogWriter.encode_type(idx: int) -> bytes {
         put_uvar(out, len(params));
         for p in params {
             put_uvar(out, self.sid(p.name or ""));
-            put_uvar(out, int(p.category) if p.category is not None else 0);
+            put_uvar(out, p.category_code());
             put_uvar(out, int(p.param_kind));
             put_ref(out, self.ref_type(p.param_type));
             bits = 0;
@@ -1127,7 +1182,7 @@ impl CatalogWriter.encode_type(idx: int) -> bytes {
         put_uvar(out, TY_OVERLOAD);
         put_uvar(out, flags);
         fns: list[TypeBase] = [];
-        for fn in (t.overloads or []) {
+        for fn in t.overloads {
             fns.append(fn);
         }
         put_refs(out, self.ref_types(fns));
@@ -1271,12 +1326,12 @@ impl CatalogWriter.encode_shared(idx: int) -> bytes {
     }
     put_ref(out, scope_ref);
     mro: list[TypeBase] = [];
-    for cls in (sh.mro or []) {
+    for cls in sh.mro {
         mro.append(cls);
     }
     put_refs(out, self.ref_types(mro));
     tps: list[TypeBase] = [];
-    for tv in (sh.type_params or []) {
+    for tv in sh.type_params {
         tps.append(tv);
     }
     put_refs(out, self.ref_types(tps));
@@ -1378,13 +1433,14 @@ impl CatalogWriter.emit(key: str, ambient: dict[str, set[str]]) -> bytes {
     sharedtab = lay(self.shared_recs);
 
     strblob = bytearray();
-    strtab_parts: list[bytes] = [];
+    strtab_buf = bytearray();
     for s in self.str_list {
         encoded = s.encode("utf-8");
-        strtab_parts.append(struct.pack("<II", len(strblob), len(encoded)));
+        put_u32(strtab_buf, len(strblob));
+        put_u32(strtab_buf, len(encoded));
         strblob.extend(encoded);
     }
-    strtab = b"".join(strtab_parts);
+    strtab = bytes(strtab_buf);
 
     h = Header();
     h.n_strings = len(self.str_list);
@@ -1440,29 +1496,41 @@ impl CatalogWriter.manifest -> dict[str, any] {
     };
 }
 
-impl IncoherentInterface.init(
-    self: IncoherentInterface,
-    mod_path: str,
-    orphans: list[str],
-    failures: list[str] | None = None
-) {
-    RuntimeError.__init__(
-        self,
-        f"interface of {mod_path} references {len(orphans)} class scope(s) "
-        "with no live module: "
-            + ", ".join(orphans)
-            + ("; type evaluation failed: " + "; ".join(failures) if failures else "")
-    );
-    self.mod_path = mod_path;
-    self.orphans = list(orphans);
-    self.failures = list(failures or []);
+impl PathMapper.map(path: str) -> str {
+    return path;
+}
+
+impl encode_package_path(
+    path: str, base_dir: str, package_dir: str, sentinel: str
+) -> str {
+    if not base_dir or not package_dir or not os.path.isabs(path) {
+        return path;
+    }
+    if path == package_dir or path.startswith(package_dir + os.sep) {
+        return sentinel + "/" + os.path.relpath(path, base_dir).replace(os.sep, "/");
+    }
+    return path;
+}
+
+impl PackagePathMapper.map(path: str) -> str {
+    return encode_package_path(path, self.base_dir, self.package_dir, self.sentinel);
+}
+
+impl incoherent_message(mod_path: str, orphans: list[str], failures: list[str]) -> str {
+    message = f"interface of {mod_path} references {len(orphans)} class scope(s) "
+        + "with no live module: "
+        + ", ".join(orphans);
+    if failures {
+        message += "; type evaluation failed: " + "; ".join(failures);
+    }
+    return message;
 }
 
 impl build_module_iface(
     mod: Module,
-    evaluator: any,
+    evaluator: TypeEvaluator,
     pkg_dir: str,
-    path_mapper: Callable[[str], str] | None = None,
+    path_mapper: (PathMapper | None) = None,
     spans: bool = True
 ) -> bytes {
     body = module_iface_body(mod, evaluator, pkg_dir, path_mapper, spans);
@@ -1470,7 +1538,7 @@ impl build_module_iface(
     return digest.encode("utf-8") + body;
 }
 
-impl module_iface_shape(mod: Module, evaluator: any, pkg_dir: str) -> str {
+impl module_iface_shape(mod: Module, evaluator: TypeEvaluator, pkg_dir: str) -> str {
     return hashlib.sha256(
         module_iface_body(mod, evaluator, pkg_dir, None, False)
     ).hexdigest();
@@ -1478,9 +1546,9 @@ impl module_iface_shape(mod: Module, evaluator: any, pkg_dir: str) -> str {
 
 impl module_iface_body(
     mod: Module,
-    evaluator: any,
+    evaluator: TypeEvaluator,
     pkg_dir: str,
-    path_mapper: Callable[[str], str] | None,
+    path_mapper: (PathMapper | None),
     spans: bool
 ) -> bytes {
     writer = CatalogWriter(
@@ -1496,7 +1564,9 @@ impl module_iface_body(
     key = mod.loc.mod_path if mod.loc else dotted;
     body = writer.emit(writer.rel_of(key), {});
     if writer.orphans or writer.failures {
-        raise IncoherentInterface(key, writer.orphans, writer.failure_log);
+        raise IncoherentInterface(
+            incoherent_message(key, writer.orphans, writer.failure_log)
+        );
     }
     return body;
 }

@@ -126,6 +126,7 @@ obj KernelInputs {
         client_stub_globals_known: bool = False,
         stub_catalog_active: bool = False,
         stub_catalog_dir: str = "",
+        path_sentinel: str = "",
         stub_catalog_file: str = "",
         stub_catalog_offset: int = 0,
         stub_catalog_length: int = 0,

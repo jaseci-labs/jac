@@ -545,6 +545,7 @@ impl products_record(products: UnitProducts) -> dict[str, any] {
         "native_deps": list(products.native_deps),
         "iface": products.iface,
         "iface_shape": products.iface_shape,
+        "iface_jir": products.iface_jir,
         "effects": products.effects,
         "jac_deps": list(products.jac_deps)
     };
@@ -572,6 +573,7 @@ impl products_from_record(raw: dict[str, any]) -> UnitProducts {
         native_deps=json_str_list(raw.get("native_deps")),
         iface=str(raw.get("iface", "")),
         iface_shape=str(raw.get("iface_shape", "")),
+        iface_jir=str(raw.get("iface_jir", "")),
         effects=str(raw.get("effects", "")),
         jac_deps=json_str_list(raw.get("jac_deps"))
     );

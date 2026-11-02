@@ -1426,5 +1426,13 @@ impl unit_sections(
             definitions=definition_deps(products)
         );
     }
+    if products.iface_jir {
+        import base64;
+        sections[SEC_IFACE] = base64.b64decode(products.iface_jir);
+        sections[SEC_PATH_ROOT] = JirPaths(
+            base_dir=os.path.dirname(os.path.realpath(products.path))
+        ).to_bytes();
+        sections[SEC_DEPS] = deps_section([DepRow(path=products.path, digest="")]);
+    }
     return sections;
 }

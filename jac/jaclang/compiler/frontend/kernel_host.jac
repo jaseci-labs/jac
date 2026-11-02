@@ -15,8 +15,15 @@ class HostOnlyError(RuntimeError) {}
 
 obj HostAsker {
     def ask(method: str, key: str) -> str abst;
-    def record_interface(program: JacProgram, module: Module, products: UnitProducts);
 }
+
+def record_interface(
+    program: JacProgram,
+    module: Module,
+    products: UnitProducts,
+    catalog_dir: str = "",
+    sentinel: str = ""
+);
 
 enum HostEventKind { NOTE, COVERAGE, COLLECT }
 

@@ -816,11 +816,15 @@ impl IfaceRegistry._encode_iface(
         package_dir = os.path.realpath(
             self.prog.options.project_root or paths.base_dir
         );
-        def encode_path(path: str) -> str {
-            return paths.encode(path, package_dir);
-        }
         return codec.build_module_iface(
-            mod, self.prog.get_type_evaluator(), self._pkg_dir(), encode_path
+            mod,
+            self.prog.get_type_evaluator(),
+            self._pkg_dir(),
+            PackagePathMapper(
+                base_dir=paths.base_dir,
+                package_dir=package_dir,
+                sentinel=PRECOMPILE_SENTINEL
+            )
         );
     } except IncoherentInterface {
         self._event("iface_incoherent");
