@@ -40,6 +40,15 @@ def verify(library_path: Path) {
     library.integer_probe.argtypes = [];
     library.integer_probe.restype = ctypes.c_int64;
     assert library.integer_probe() == 0;
+    direct_none = library.none_direct_probe;
+    direct_none.argtypes = [];
+    direct_none.restype = ctypes.c_void_p;
+    raw_none = direct_none();
+    assert raw_none is not None;
+    is_true = ctypes.pythonapi.PyObject_IsTrue;
+    is_true.argtypes = [ctypes.c_void_p];
+    is_true.restype = ctypes.c_int;
+    assert is_true(raw_none) == 0;
     assert take_object(library, "none_direct_probe") is None;
     assert take_object(library, "none_probe") is None;
     constants = take_object(library, "probe_constants");
