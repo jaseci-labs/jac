@@ -451,6 +451,7 @@ obj MirLowering {
     def opt_unwrap_checked(value: MirValue, message: str) -> MirValue;
     def narrowed_load(value: MirValue, nd: uni.Expr) -> MirValue;
     def narrow_down(value: MirValue, nd: uni.Expr) -> MirValue;
+    def optional_eq(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
     def opt_begin(
         value: MirValue, result: MirType
     ) -> tuple[MirValue, MirValue, MirBlock, MirBlock];

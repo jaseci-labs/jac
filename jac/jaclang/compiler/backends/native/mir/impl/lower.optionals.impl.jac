@@ -54,6 +54,33 @@ impl MirLowering.narrow_down(value: MirValue, nd: uni.Expr) -> MirValue {
     return value;
 }
 
+impl MirLowering.optional_eq(
+    left: MirValue, right: MirValue, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    held = self.temp_slot(mir_bool());
+    lh = self.spill(left);
+    rh = self.spill(right);
+    left_some = self.opt_present(lh)
+        if lh.type.kind == MirKind.OPT
+        else b.const_bool(True);
+    right_some = self.opt_present(rh)
+        if rh.type.kind == MirKind.OPT
+        else b.const_bool(True);
+    b.store(held, b.compare("eq", left_some, right_some));
+    both = fn.new_block("opt.eq.both");
+    done = fn.new_block("opt.eq.done");
+    b.cond_branch(b.binary("and", left_some, right_some), both, done);
+    b.position(both);
+    lv = self.opt_get(lh) if lh.type.kind == MirKind.OPT else lh;
+    rv = self.opt_get(rh) if rh.type.kind == MirKind.OPT else rh;
+    b.store(held, self.compare_values(Tok.EE, lv, rv, site));
+    self.builder().branch(done);
+    b.position(done);
+    return b.load(held, mir_bool());
+}
+
 impl MirLowering.opt_begin(
     value: MirValue, result: MirType
 ) -> tuple[MirValue, MirValue, MirBlock, MirBlock] {

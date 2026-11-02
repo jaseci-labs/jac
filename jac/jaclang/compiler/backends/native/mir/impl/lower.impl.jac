@@ -971,6 +971,10 @@ impl MirLowering.compare_values(
     if name is None {
         raise MirRefused(mir_refusal("comparison", op, site));
     }
+    if name in ("eq", "ne") and MirKind.OPT in (left.type.kind, right.type.kind) {
+        same = self.optional_eq(left, right, site);
+        return same if name == "eq" else self.builder().logical_not(same);
+    }
     if self.is_text(left) and self.is_text(right) {
         (left, right) = self.text_operands(left, right);
         return self.str_compare(name, left, right);
