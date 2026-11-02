@@ -5,220 +5,331 @@ and all collection algorithms execute in Jac. Derived from CPython 3.14.6;
 see ../LICENSE.cpython.
 """
 
-obj deque_state {
-    has items: object_ring = object_ring(),
-        maxlen: i64 = -1,
-        version: u64 = 0;
-
-    def changed {
-        self.version += u64(1);
-    }
-
-    def push(value: ptr[PyObject], left: bool, limit: i64) {
-        self.items.push(value, left);
-        self.changed();
-        if limit >= 0 and i64(self.items.count) > limit {
-            removed = self.items.pop(not left);
-            jacpy_release(removed);
-        }
+import from c {
+    def _PyDict_GetItem_KnownHash(
+        op: ptr[PyObject], key: ptr[PyObject], hash: i64
+    ) -> ptr[PyObject];  def _PyDict_SetItem_KnownHash(
+        op: ptr[PyObject], key: ptr[PyObject], value: ptr[PyObject], hash: i64
+    ) -> i32;  obj deque_record {
+        has items: ptr[ptr[PyObject]],
+            capacity: i64,
+            head: i64,
+            count: i64,
+            maxlen: i64,
+            version: u64;
     }
 }
 
+
+glob DEQUE_MIN_CAPACITY: Final[i64] = 8;
+
 obj deque_cursor {
-    has state: deque_state,
+    has record: ptr[deque_record],
         version: u64,
-        index: int,
-        remaining: int,
+        index: i64,
+        remaining: i64,
         reverse: bool;
 }
 
-def:pub jacpy_deque_new -> deque_state {
-    return deque_state();
+def:priv deque_slot(d: ptr[deque_record], index: i64) -> ptr[ptr[PyObject]] {
+    return d.view(1)[0].items
+        + ((d.view(1)[0].head + index) & (d.view(1)[0].capacity - 1));
 }
 
-def:pub jacpy_deque_size(state: deque_state) -> i64 {
-    return i64(state.items.count);
-}
-
-def:pub jacpy_deque_limit(state: deque_state) -> i64 {
-    return state.maxlen;
-}
-
-def:pub jacpy_deque_set_limit(state: deque_state, limit: i64) {
-    state.maxlen = limit;
-}
-
-def:pub jacpy_deque_borrow(state: deque_state, index: i64) -> ptr[PyObject] {
-    return state.items.borrow(int(index));
-}
-
-def:pub jacpy_deque_memory(state: deque_state) -> i64 {
-    return jac_heap_size(u64(id(state)))
-        + jac_heap_size(u64(id(state.items)))
-        + jac_list_heap_size(u64(id(state.items.slots)));
-}
-
-def:pub jacpy_deque_clear(state: deque_state) {
-    if state.items.count == 0 {
-        return;
+def:priv deque_resize(d: ptr[deque_record], capacity: i64, loud: bool) -> i32 {
+    items = ptr[ptr[PyObject]](PyMem_Malloc(u64(capacity * 8)));
+    if items.is_null() {
+        if loud {
+            PyErr_NoMemory();
+        }
+        return i32(-1);
     }
-    old = state.items;
-    state.items = object_ring();
-    state.changed();
-    while old.count > 0 {
-        jacpy_release(old.pop(True));
+    count = d.view(1)[0].count;
+    i: i64 = 0;
+    while i < count {
+        (items + i).view(1)[0] = deque_slot(d, i).view(1)[0];
+        i += 1;
+    }
+    PyMem_Free(ptr(d.view(1)[0].items));
+    d.view(1)[0].items = items;
+    d.view(1)[0].capacity = capacity;
+    d.view(1)[0].head = 0;
+    return i32(0);
+}
+
+def:priv deque_take(d: ptr[deque_record], left: bool) -> ptr[PyObject] {
+    capacity = d.view(1)[0].capacity;
+    mask = capacity - 1;
+    index: i64 = 0;
+    if left {
+        index = d.view(1)[0].head;
+        d.view(1)[0].head = (index + 1) & mask;
+    } else {
+        index = (d.view(1)[0].head + d.view(1)[0].count - 1) & mask;
+    }
+    slot = d.view(1)[0].items + index;
+    value = slot.view(1)[0];
+    slot.view(1)[0] = NULL;
+    count = d.view(1)[0].count - 1;
+    d.view(1)[0].count = count;
+    d.view(1)[0].version += u64(1);
+    return value;
+}
+
+def:priv deque_place(d: ptr[deque_record], value: ptr[PyObject], left: bool) {
+    mask = d.view(1)[0].capacity - 1;
+    if left {
+        head = (d.view(1)[0].head - 1) & mask;
+        d.view(1)[0].head = head;
+        (d.view(1)[0].items + head).view(1)[0] = value;
+    } else {
+        (d.view(1)[0].items + ((d.view(1)[0].head + d.view(1)[0].count) & mask)).view(1)[
+            0
+        ] = value;
+    }
+    d.view(1)[0].count += 1;
+    d.view(1)[0].version += u64(1);
+}
+
+def:priv deque_shrink(d: ptr[deque_record]) {
+    capacity = d.view(1)[0].capacity;
+    if capacity > 64 and d.view(1)[0].count < capacity // 4 {
+        deque_resize(d, capacity // 2, False);
     }
 }
 
-def:pub jacpy_deque_append(state: deque_state, value: ptr[PyObject], left: i64) {
-    state.push(Py_NewRef(value), left != 0, state.maxlen);
+def:pub deque_of(instance: ptr[PyObject]) -> ptr[deque_record] {
+    record = ptr[deque_record](jacpy_binding_record(instance, deque_token.handle));
+    if record.is_null() {
+        object_error(PyExc_SystemError, "native deque state is unavailable");
+    }
+    return record;
 }
 
-def:pub jacpy_deque_pop(state: deque_state, left: i64) -> ptr[PyObject] {
-    if state.items.count == 0 {
+def:pub jacpy_deque_init(d: ptr[deque_record]) {
+    d.view(1)[0].items = ptr[ptr[PyObject]]();
+    d.view(1)[0].capacity = 0;
+    d.view(1)[0].head = 0;
+    d.view(1)[0].count = 0;
+    d.view(1)[0].maxlen = -1;
+    d.view(1)[0].version = u64(0);
+}
+
+def:pub jacpy_deque_size(d: ptr[deque_record]) -> i64 {
+    return d.view(1)[0].count;
+}
+
+def:pub jacpy_deque_limit(d: ptr[deque_record]) -> i64 {
+    return d.view(1)[0].maxlen;
+}
+
+def:pub jacpy_deque_set_limit(d: ptr[deque_record], limit: i64) {
+    d.view(1)[0].maxlen = limit;
+}
+
+def:pub jacpy_deque_borrow(d: ptr[deque_record], index: i64) -> ptr[PyObject] {
+    return deque_slot(d, index).view(1)[0];
+}
+
+def:pub jacpy_deque_memory(d: ptr[deque_record]) -> i64 {
+    return d.view(1)[0].capacity * 8;
+}
+
+def:pub jacpy_deque_clear(d: ptr[deque_record]) {
+    items = d.view(1)[0].items;
+    capacity = d.view(1)[0].capacity;
+    head = d.view(1)[0].head;
+    count = d.view(1)[0].count;
+    d.view(1)[0].items = ptr[ptr[PyObject]]();
+    d.view(1)[0].capacity = 0;
+    d.view(1)[0].head = 0;
+    d.view(1)[0].count = 0;
+    d.view(1)[0].version += u64(1);
+    i: i64 = 0;
+    while i < count {
+        jacpy_release((items + ((head + i) & (capacity - 1))).view(1)[0]);
+        i += 1;
+    }
+    PyMem_Free(ptr(items));
+}
+
+def:pub jacpy_deque_push(
+    d: ptr[deque_record], value: ptr[PyObject], left: bool
+) -> i32 {
+    count = d.view(1)[0].count;
+    capacity = d.view(1)[0].capacity;
+    if count == capacity {
+        if deque_resize(d, DEQUE_MIN_CAPACITY if capacity == 0 else capacity * 2, True)
+            < 0 {
+            jacpy_release(value);
+            return i32(-1);
+        }
+    }
+    deque_place(d, value, left);
+    maxlen = d.view(1)[0].maxlen;
+    if maxlen >= 0 and d.view(1)[0].count > maxlen {
+        jacpy_release(deque_take(d, not left));
+    }
+    return i32(0);
+}
+
+def:pub jacpy_deque_pop(d: ptr[deque_record], left: bool) -> ptr[PyObject] {
+    if d.view(1)[0].count == 0 {
         object_error(PyExc_IndexError, "pop from an empty deque");
         return NULL;
     }
-    result = state.items.pop(left != 0);
-    state.changed();
-    return result;
+    value = deque_take(d, left);
+    deque_shrink(d);
+    return value;
 }
 
 def:pub jacpy_deque_extend(
-    state: deque_state, owner: ptr[PyObject], iterable: ptr[PyObject], left: i64
+    d: ptr[deque_record], owner: ptr[PyObject], iterable: ptr[PyObject], left: bool
 ) -> i64 {
-    source: ptr[PyObject] = NULL;
-    iterator: ptr[PyObject] = NULL;
-    limit = state.maxlen;
-    try {
-        source = required(
-            PySequence_List(owner) if owner == iterable else Py_NewRef(iterable)
-        );
-        iterator = required(PyObject_GetIter(source));
-        while True {
-            item = PyIter_Next(iterator);
-            if item == 0 {
-                break;
-            }
-            if limit == 0 {
-                jacpy_release(item);
-            } else {
-                state.push(item, left != 0, limit);
-            }
-        }
-        if jacpy_error_pending() != 0 {
-            return -1;
-        }
-        return 0;
-    } except boundary_failure {
+    source = PySequence_List(owner) if owner == iterable else Py_NewRef(iterable);
+    if source == 0 {
         return -1;
-    } finally {
-        jacpy_release(iterator);
-        jacpy_release(source);
     }
+    iterator = PyObject_GetIter(source);
+    jacpy_release(source);
+    if iterator == 0 {
+        return -1;
+    }
+    status: i64 = 0;
+    while True {
+        item = PyIter_Next(iterator);
+        if item == 0 {
+            break;
+        }
+        if d.view(1)[0].maxlen == 0 {
+            jacpy_release(item);
+        } elif jacpy_deque_push(d, item, left) < 0 {
+            status = -1;
+            break;
+        }
+    }
+    jacpy_release(iterator);
+    if status == 0 and jacpy_error_pending() != 0 {
+        status = -1;
+    }
+    return status;
 }
 
-def:pub jacpy_deque_item(state: deque_state, index: i64) -> ptr[PyObject] {
-    if index < 0 or index >= i64(state.items.count) {
+def:pub jacpy_deque_item(d: ptr[deque_record], index: i64) -> ptr[PyObject] {
+    if index < 0 or index >= d.view(1)[0].count {
         object_error(PyExc_IndexError, "deque index out of range");
         return NULL;
     }
-    return Py_NewRef(state.items.borrow(int(index)));
+    return Py_NewRef(deque_slot(d, index).view(1)[0]);
 }
 
 def:pub jacpy_deque_assign(
-    state: deque_state, index: i64, value: ptr[PyObject]
+    d: ptr[deque_record], index: i64, value: ptr[PyObject]
 ) -> i64 {
-    if index < 0 or index >= i64(state.items.count) {
+    count = d.view(1)[0].count;
+    if index < 0 or index >= count {
         object_error(PyExc_IndexError, "deque index out of range");
         return -1;
     }
-    i = int(index);
+    i = index;
     if value != 0 {
-        previous = state.items.exchange(i, Py_NewRef(value));
+        slot = deque_slot(d, i);
+        previous = slot.view(1)[0];
+        slot.view(1)[0] = Py_NewRef(value);
         jacpy_release(previous);
-    } else {
-        previous = state.items.borrow(i);
-        if i < state.items.count // 2 {
-            while i > 0 {
-                state.items.exchange(i, state.items.borrow(i - 1));
-                i -= 1;
-            }
-            state.items.pop(True);
-        } else {
-            while i + 1 < state.items.count {
-                state.items.exchange(i, state.items.borrow(i + 1));
-                i += 1;
-            }
-            state.items.pop(False);
-        }
-        state.changed();
-        jacpy_release(previous);
+        return 0;
     }
+    previous = deque_slot(d, i).view(1)[0];
+    if i < count // 2 {
+        while i > 0 {
+            deque_slot(d, i).view(1)[0] = deque_slot(d, i - 1).view(1)[0];
+            i -= 1;
+        }
+        deque_take(d, True);
+    } else {
+        while i + 1 < count {
+            deque_slot(d, i).view(1)[0] = deque_slot(d, i + 1).view(1)[0];
+            i += 1;
+        }
+        deque_take(d, False);
+    }
+    deque_shrink(d);
+    jacpy_release(previous);
     return 0;
 }
 
-def:pub jacpy_deque_rotate(state: deque_state, amount: i64) {
-    count = state.items.count;
+def:pub jacpy_deque_rotate(d: ptr[deque_record], amount: i64) {
+    count = d.view(1)[0].count;
     if count <= 1 {
         return;
     }
-    n = int(amount % i64(count));
-    if n > count // 2 {
+    half = count // 2;
+    n = amount % count;
+    if n > half {
         n -= count;
     }
-    if n < -(count // 2) {
+    if n < -half {
         n += count;
     }
-    state.changed();
+    d.view(1)[0].version += u64(1);
     while n > 0 {
-        state.items.push(state.items.pop(False), True);
+        deque_place(d, deque_take(d, False), True);
         n -= 1;
     }
     while n < 0 {
-        state.items.push(state.items.pop(True), False);
+        deque_place(d, deque_take(d, True), False);
         n += 1;
     }
 }
 
-def:pub jacpy_deque_reverse(state: deque_state) {
-    for i in range(state.items.count // 2) {
-        j = state.items.count - i - 1;
-        first = state.items.exchange(i, state.items.borrow(j));
-        state.items.exchange(j, first);
+def:pub jacpy_deque_reverse(d: ptr[deque_record]) {
+    count = d.view(1)[0].count;
+    i: i64 = 0;
+    while i < count // 2 {
+        first = deque_slot(d, i);
+        second = deque_slot(d, count - i - 1);
+        value = first.view(1)[0];
+        first.view(1)[0] = second.view(1)[0];
+        second.view(1)[0] = value;
+        i += 1;
     }
 }
 
 def:pub jacpy_deque_insert(
-    state: deque_state, index: i64, value: ptr[PyObject]
+    d: ptr[deque_record], index: i64, value: ptr[PyObject]
 ) -> i64 {
-    if state.maxlen >= 0 and i64(state.items.count) >= state.maxlen {
+    maxlen = d.view(1)[0].maxlen;
+    count = d.view(1)[0].count;
+    if maxlen >= 0 and count >= maxlen {
         object_error(PyExc_IndexError, "deque already at its maximum size");
         return -1;
     }
     at = index;
     if at < 0 {
-        at += i64(state.items.count);
+        at += count;
     }
-    at = max(i64(0), min(at, i64(state.items.count)));
-    i = int(at);
-    state.items.push(Py_NewRef(value));
-    j = state.items.count - 1;
-    while j > i {
-        state.items.exchange(j, state.items.borrow(j - 1));
+    if at < 0 {
+        at = 0;
+    }
+    if at > count {
+        at = count;
+    }
+    if jacpy_deque_push(d, Py_NewRef(value), False) < 0 {
+        return -1;
+    }
+    j = d.view(1)[0].count - 1;
+    while j > at {
+        deque_slot(d, j).view(1)[0] = deque_slot(d, j - 1).view(1)[0];
         j -= 1;
     }
-    state.items.exchange(i, value);
-    state.changed();
+    deque_slot(d, at).view(1)[0] = value;
     return 0;
 }
 
-# mode: count, contains, index, remove. Mutation checks intentionally differ:
-# a successful contains/index may return immediately, while remove must validate.
 def:pub jacpy_deque_search(
-    state: deque_state, value: ptr[PyObject], start: i64, stop: i64, mode: i64
+    d: ptr[deque_record], value: ptr[PyObject], start: i64, stop: i64, mode: i64
 ) -> i64 {
-    size = i64(state.items.count);
+    size = d.view(1)[0].count;
     first = start;
     last = stop;
     if first < 0 {
@@ -229,19 +340,20 @@ def:pub jacpy_deque_search(
     }
     first = max(i64(0), min(first, size));
     last = max(i64(0), min(last, size));
-    version = state.version;
+    version = d.view(1)[0].version;
     total: i64 = 0;
-    for i in range(int(first), int(last)) {
-        item = Py_NewRef(state.items.borrow(i));
+    i = first;
+    while i < last {
+        item = Py_NewRef(deque_slot(d, i).view(1)[0]);
         equal = PyObject_RichCompareBool(item, value, 2);
         jacpy_release(item);
         if equal < 0 {
             return -1;
         }
         if equal > 0 and (mode == 1 or mode == 2) {
-            return i64(1) if mode == 1 else i64(i);
+            return i64(1) if mode == 1 else i;
         }
-        if state.version != version {
+        if d.view(1)[0].version != version {
             object_error(
                 PyExc_IndexError if mode == 3 else PyExc_RuntimeError,
                 "deque mutated during iteration"
@@ -250,10 +362,11 @@ def:pub jacpy_deque_search(
         }
         if equal > 0 {
             if mode == 3 {
-                return jacpy_deque_assign(state, i64(i), NULL);
+                return jacpy_deque_assign(d, i, NULL);
             }
             total += 1;
         }
+        i += 1;
     }
     if mode >= 2 {
         object_error(
@@ -268,20 +381,22 @@ def:pub jacpy_deque_search(
 }
 
 def:pub jacpy_deque_cursor(
-    state: deque_state, reverse: i64, consumed_count: i64
+    d: ptr[deque_record], reverse: i64, consumed_count: i64
 ) -> deque_cursor {
-    consumed = int(max(i64(0), min(consumed_count, i64(state.items.count))));
+    count = d.view(1)[0].count;
+    consumed = max(i64(0), min(consumed_count, count));
     return deque_cursor(
-        state=state,
-        version=state.version,
-        index=state.items.count - consumed - 1 if reverse != 0 else consumed,
-        remaining=state.items.count - consumed,
+        record=d,
+        version=d.view(1)[0].version,
+        index=count - consumed - 1 if reverse != 0 else consumed,
+        remaining=count - consumed,
         reverse=reverse != 0
     );
 }
 
 def:pub jacpy_deque_next(cursor: deque_cursor) -> ptr[PyObject] {
-    if cursor.version != cursor.state.version {
+    d = cursor.record;
+    if cursor.version != d.view(1)[0].version {
         cursor.remaining = 0;
         object_error(PyExc_RuntimeError, "deque mutated during iteration");
         return NULL;
@@ -289,23 +404,23 @@ def:pub jacpy_deque_next(cursor: deque_cursor) -> ptr[PyObject] {
     if cursor.remaining == 0 {
         return NULL;
     }
-    result = Py_NewRef(cursor.state.items.borrow(cursor.index));
+    result = Py_NewRef(deque_slot(d, cursor.index).view(1)[0]);
     cursor.remaining -= 1;
     cursor.index += -1 if cursor.reverse else 1;
     return result;
 }
 
 def:pub jacpy_deque_remaining(cursor: deque_cursor) -> i64 {
-    return i64(cursor.remaining);
+    return cursor.remaining;
 }
 
 def:pub jacpy_deque_consumed(cursor: deque_cursor) -> i64 {
-    return i64(cursor.state.items.count - cursor.remaining);
+    return cursor.record.view(1)[0].count - cursor.remaining;
 }
 
 def:pub jacpy_deque_compare(
-    first: deque_state,
-    second: deque_state,
+    first: ptr[deque_record],
+    second: ptr[deque_record],
     a_owner: ptr[PyObject],
     b_owner: ptr[PyObject],
     operation: i64
@@ -314,7 +429,7 @@ def:pub jacpy_deque_compare(
         if a_owner == b_owner {
             return PyBool_FromLong(1 if operation == 2 else 0);
         }
-        if first.items.count != second.items.count {
+        if first.view(1)[0].count != second.view(1)[0].count {
             return PyBool_FromLong(1 if operation == 3 else 0);
         }
     }
@@ -375,51 +490,70 @@ def:pub jacpy_deque_compare(
     return NULL;
 }
 
-def:pub jacpy_deque_repeat(state: deque_state, repetitions: i64) -> i64 {
-    size = state.items.count;
+def:pub jacpy_deque_repeat(d: ptr[deque_record], repetitions: i64) -> i64 {
+    size = d.view(1)[0].count;
     if size == 0 or repetitions == 1 {
         return 0;
     }
     if repetitions <= 0 {
-        jacpy_deque_clear(state);
+        jacpy_deque_clear(d);
         return 0;
     }
-    if repetitions > i64(9223372036854775807) // i64(size) {
+    if repetitions > i64(9223372036854775807) // size {
         object_error(PyExc_MemoryError, "");
         return -1;
     }
-    total = repetitions * i64(size);
-    if state.maxlen >= 0 {
-        total = min(total, state.maxlen);
+    total = repetitions * size;
+    maxlen = d.view(1)[0].maxlen;
+    if maxlen >= 0 and total > maxlen {
+        total = maxlen;
     }
-    replacement = object_ring();
-    start = (repetitions * i64(size) - total) % i64(size);
-    for i in range(int(total)) {
-        replacement.push(
-            Py_NewRef(state.items.borrow(int((start + i64(i)) % i64(size))))
+    capacity = DEQUE_MIN_CAPACITY;
+    while capacity < total {
+        capacity *= 2;
+    }
+    items = ptr[ptr[PyObject]](PyMem_Malloc(u64(capacity * 8)));
+    if items.is_null() {
+        PyErr_NoMemory();
+        return -1;
+    }
+    start = (repetitions * size - total) % size;
+    i: i64 = 0;
+    while i < total {
+        (items + i).view(1)[0] = Py_NewRef(
+            deque_slot(d, (start + i) % size).view(1)[0]
         );
+        i += 1;
     }
-    old = state.items;
-    state.items = replacement;
-    state.changed();
-    while old.count > 0 {
-        jacpy_release(old.pop(True));
+    old_items = d.view(1)[0].items;
+    old_capacity = d.view(1)[0].capacity;
+    old_head = d.view(1)[0].head;
+    d.view(1)[0].items = items;
+    d.view(1)[0].capacity = capacity;
+    d.view(1)[0].head = 0;
+    d.view(1)[0].count = total;
+    d.view(1)[0].version += u64(1);
+    i = 0;
+    while i < size {
+        jacpy_release((old_items + ((old_head + i) & (old_capacity - 1))).view(1)[0]);
+        i += 1;
     }
+    PyMem_Free(ptr(old_items));
     return 0;
 }
 
-def:pub jacpy_deque_repr(state: deque_state, owner: ptr[PyObject]) -> ptr[PyObject] {
+def:pub jacpy_deque_repr(d: ptr[deque_record], owner: ptr[PyObject]) -> ptr[PyObject] {
     entered = Py_ReprEnter(owner);
     if entered < 0 {
         return NULL;
     }
     if entered > 0 {
-        return text_object("[...]");
+        return PyUnicode_FromString(ptr[u8]("[...]"));
     }
     values: ptr[PyObject] = NULL;
     try {
         values = required(PySequence_List(owner));
-        limit = state.maxlen;
+        limit = d.view(1)[0].maxlen;
         suffix = ", maxlen=" + str(limit) if limit >= 0 else "";
         return text_object(
             type_name(owner).split(".")[-1] + "(" + repr_value(values) + suffix + ")"
@@ -458,50 +592,135 @@ def:pub jacpy_default_missing(
     return result;
 }
 
-def:pub jacpy_count_elements(mapping: ptr[PyObject], iterable: ptr[PyObject]) -> i64 {
-    iterator: ptr[PyObject] = NULL;
-    get_method: ptr[PyObject] = NULL;
-    name: ptr[PyObject] = NULL;
-    one: ptr[PyObject] = NULL;
-    zero: ptr[PyObject] = NULL;
-    try {
-        iterator = required(PyObject_GetIter(iterable));
-        name = text_object("get");
-        get_method = required(PyObject_GetAttr(mapping, name));
-        one = required(PyLong_FromLongLong(1));
-        zero = required(PyLong_FromLongLong(0));
-        while True {
-            key = PyIter_Next(iterator);
-            if key == 0 {
-                break;
-            }
-            args: ptr[PyObject] = NULL;
-            value: ptr[PyObject] = NULL;
-            increment: ptr[PyObject] = NULL;
-            try {
-                args = required(PyTuple_New(2));
-                jacpy_tuple_set_owned(args, 0, Py_NewRef(key));
-                jacpy_tuple_set_owned(args, 1, Py_NewRef(zero));
-                value = required(PyObject_Call(get_method, args, NULL));
-                increment = required(PyNumber_Add(value, one));
-                checked(PyObject_SetItem(mapping, key, increment));
-            } finally {
-                jacpy_release(args);
-                jacpy_release(value);
-                jacpy_release(increment);
-                jacpy_release(key);
-            }
+def:priv count_known_dict(
+    mapping: ptr[PyObject], iterator: ptr[PyObject], one: ptr[PyObject]
+) -> i64 {
+    while True {
+        key = PyIter_Next(iterator);
+        if key == 0 {
+            break;
         }
-        return -1 if jacpy_error_pending() != 0 else 0;
-    } except boundary_failure {
-        return -1;
-    } finally {
-        jacpy_release(iterator);
-        jacpy_release(get_method);
-        jacpy_release(name);
-        jacpy_release(one);
-        jacpy_release(zero);
+        hash = PyObject_Hash(key);
+        if hash == -1 {
+            jacpy_release(key);
+            return -1;
+        }
+        oldval = _PyDict_GetItem_KnownHash(mapping, key, hash);
+        status: i32 = 0;
+        if oldval == 0 {
+            if jacpy_error_pending() != 0 {
+                jacpy_release(key);
+                return -1;
+            }
+            status = _PyDict_SetItem_KnownHash(mapping, key, one, hash);
+        } else {
+            newval = PyNumber_Add(oldval, one);
+            if newval == 0 {
+                jacpy_release(key);
+                return -1;
+            }
+            status = _PyDict_SetItem_KnownHash(mapping, key, newval, hash);
+            jacpy_release(newval);
+        }
+        jacpy_release(key);
+        if status < 0 {
+            return -1;
+        }
     }
+    return -1 if jacpy_error_pending() != 0 else 0;
+}
+
+def:priv count_mapping(
+    mapping: ptr[PyObject], iterator: ptr[PyObject], one: ptr[PyObject]
+) -> i64 {
+    get_name = PyUnicode_InternFromString(ptr[u8]("get"));
+    if get_name == 0 {
+        return -1;
+    }
+    bound_get = PyObject_GetAttr(mapping, get_name);
+    jacpy_release(get_name);
+    if bound_get == 0 {
+        return -1;
+    }
+    zero = PyLong_FromLongLong(0);
+    if zero == 0 {
+        jacpy_release(bound_get);
+        return -1;
+    }
+    status: i64 = 0;
+    while True {
+        key = PyIter_Next(iterator);
+        if key == 0 {
+            break;
+        }
+        oldval = PyObject_CallFunctionObjArgs(bound_get, key, zero, NULL);
+        if oldval == 0 {
+            jacpy_release(key);
+            status = -1;
+            break;
+        }
+        newval: ptr[PyObject] = NULL;
+        if oldval == zero {
+            newval = Py_NewRef(one);
+        } else {
+            newval = PyNumber_Add(oldval, one);
+        }
+        jacpy_release(oldval);
+        if newval == 0 {
+            jacpy_release(key);
+            status = -1;
+            break;
+        }
+        stored = PyObject_SetItem(mapping, key, newval);
+        jacpy_release(newval);
+        jacpy_release(key);
+        if stored < 0 {
+            status = -1;
+            break;
+        }
+    }
+    jacpy_release(zero);
+    jacpy_release(bound_get);
+    if status == 0 and jacpy_error_pending() != 0 {
+        status = -1;
+    }
+    return status;
+}
+
+def:pub jacpy_count_elements(mapping: ptr[PyObject], iterable: ptr[PyObject]) -> i64 {
+    iterator = PyObject_GetIter(iterable);
+    if iterator == 0 {
+        return -1;
+    }
+    one = PyLong_FromLongLong(1);
+    get_name = PyUnicode_InternFromString(ptr[u8]("get"));
+    set_name = PyUnicode_InternFromString(ptr[u8]("__setitem__"));
+    status: i64 = -1;
+    if one != 0 and get_name != 0 and set_name != 0 {
+        dict_type = ptr[PyObject](addressof(PyDict_Type));
+        mapping_get = _PyType_LookupRef(Py_TYPE(mapping), get_name);
+        dict_get = _PyType_LookupRef(dict_type, get_name);
+        mapping_set = _PyType_LookupRef(Py_TYPE(mapping), set_name);
+        dict_set = _PyType_LookupRef(dict_type, set_name);
+        if mapping_get != 0
+            and mapping_get == dict_get
+            and mapping_set != 0
+            and mapping_set == dict_set
+            and jacpy_is_dict(mapping) != 0 {
+            status = count_known_dict(mapping, iterator, one);
+        } elif jacpy_error_pending() == 0 {
+            status = count_mapping(mapping, iterator, one);
+        }
+        jacpy_release(mapping_get);
+        jacpy_release(dict_get);
+        jacpy_release(mapping_set);
+        jacpy_release(dict_set);
+    }
+    jacpy_release(set_name);
+    jacpy_release(get_name);
+    jacpy_release(one);
+    jacpy_release(iterator);
+    return status;
 }
 
 def:pub jacpy_default_repr(
@@ -551,20 +770,23 @@ glob deque_token = ClassToken(),
      collections_module_token = ClassToken();
 
 obj DequeState(NativeState) {
-    has native: deque_state;
+    has native: ptr[deque_record];
 
     def clear {
         jacpy_deque_clear(self.native);
     }
 
     def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
-        for i in range(int(jacpy_deque_size(self.native))) {
+        count = jacpy_deque_size(self.native);
+        i: i64 = 0;
+        while i < count {
             status = visit_reference(
-                jacpy_deque_borrow(self.native, i64(i)), visitor, context
+                jacpy_deque_borrow(self.native, i), visitor, context
             );
             if status != 0 {
                 return status;
             }
+            i += 1;
         }
         return i32(0);
     }
@@ -591,17 +813,6 @@ def module_for(type: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_binding_owner(type, collections_module_token.handle);
 }
 
-def deque_value(instance: ptr[PyObject]) -> (DequeState | None) {
-    if jacpy_binding_native_present(instance, deque_token.handle) != 0 {
-        state = jacpy_binding_native_get(instance, deque_token.handle);
-        if isinstance(state, DequeState) {
-            return state;
-        }
-    }
-    object_error(PyExc_SystemError, "native deque state is unavailable");
-    return None;
-}
-
 def allocate(
     type: ptr[PyObject], definition: ptr, state: NativeState
 ) -> ptr[PyObject] {
@@ -613,96 +824,124 @@ def allocate(
     return instance;
 }
 
+def:pub deque_allocate(type: ptr[PyObject]) -> ptr[PyObject] {
+    instance = jacpy_binding_allocate(type);
+    if instance == 0 {
+        return NULL;
+    }
+    record = deque_of(instance);
+    if record.is_null() {
+        jacpy_release(instance);
+        return NULL;
+    }
+    jacpy_deque_init(record);
+    if jacpy_binding_native_set(instance, deque_token.handle, DequeState(native=record))
+        < 0 {
+        jacpy_release(instance);
+        return NULL;
+    }
+    return instance;
+}
+
 def search(
     instance: ptr[PyObject], value: ptr[PyObject], first: i64, last: i64, kind: i64
 ) -> i64 {
-    state = deque_value(instance);
-    return jacpy_deque_search(state.native, value, first, last, kind)
-        if state is not None
-        else i64(-1);
+    d = deque_of(instance);
+    if d.is_null() {
+        return -1;
+    }
+    return jacpy_deque_search(d, value, first, last, kind);
 }
 
 def iterator_create(
     type: ptr[PyObject], owner: ptr[PyObject], reverse: bool, advance: i64
 ) -> ptr[PyObject] {
-    native = deque_value(owner);
-    if native is None {
+    d = deque_of(owner);
+    if d.is_null() {
         return NULL;
     }
     state = DequeIteratorState(
         references=[Py_NewRef(owner)],
-        cursor=jacpy_deque_cursor(native.native, i64(reverse), advance)
+        cursor=jacpy_deque_cursor(d, i64(reverse), advance)
     );
     return allocate(
         type, dequereviter_token.handle if reverse else dequeiter_token.handle, state
     );
 }
 
-def:priv deque_push(
-    instance: ptr[PyObject], value: ptr[PyObject], left: i64
+def:priv deque_push_method(
+    instance: ptr[PyObject], value: ptr[PyObject], left: bool
 ) -> ptr[PyObject] {
-    state = deque_value(instance);
-    if state is None {
+    d = deque_of(instance);
+    if d.is_null() or jacpy_deque_push(d, Py_NewRef(value), left) < 0 {
         return NULL;
     }
-    jacpy_deque_append(state.native, value, left);
     return Py_NewRef(Py_None);
 }
 
-def:priv deque_take(instance: ptr[PyObject], left: i64) -> ptr[PyObject] {
-    state = deque_value(instance);
-    return jacpy_deque_pop(state.native, left) if state is not None else NULL;
+def:priv deque_pop_method(instance: ptr[PyObject], left: bool) -> ptr[PyObject] {
+    d = deque_of(instance);
+    if d.is_null() {
+        return NULL;
+    }
+    return jacpy_deque_pop(d, left);
 }
 
 def:priv deque_grow(
-    instance: ptr[PyObject], iterable: ptr[PyObject], left: i64
+    instance: ptr[PyObject], iterable: ptr[PyObject], left: bool
 ) -> ptr[PyObject] {
-    state = deque_value(instance);
-    if state is None {
+    d = deque_of(instance);
+    if d.is_null() or jacpy_deque_extend(d, instance, iterable, left) < 0 {
         return NULL;
     }
-    return Py_NewRef(Py_None)
-        if jacpy_deque_extend(state.native, instance, iterable, left) == 0
-        else NULL;
+    return Py_NewRef(Py_None);
 }
 
-# The Argument Clinic _impl functions.
 def deque_pop_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
-    return deque_take(instance, 0);
+    return deque_pop_method(instance, False);
 }
 
 def deque_popleft_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
-    return deque_take(instance, 1);
+    return deque_pop_method(instance, True);
 }
 
 def deque_append_impl(instance: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
-    return deque_push(instance, item, 0);
+    return deque_push_method(instance, item, False);
 }
 
 def deque_appendleft_impl(
     instance: ptr[PyObject], item: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return deque_push(instance, item, 1);
+    return deque_push_method(instance, item, True);
 }
 
 def deque_extend_impl(
     instance: ptr[PyObject], iterable: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return deque_grow(instance, iterable, 0);
+    return deque_grow(instance, iterable, False);
 }
 
 def deque_extendleft_impl(
     instance: ptr[PyObject], iterable: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return deque_grow(instance, iterable, 1);
+    return deque_grow(instance, iterable, True);
+}
+
+def:priv copy_type_error(instance: ptr[PyObject], result: ptr[PyObject]) {
+    try {
+        object_error(
+            PyExc_TypeError,
+            f"{type_name(instance)[:200]}() must return a deque, not {type_name(result)[:200]}"
+        );
+    } except boundary_failure {}
 }
 
 def deque_copy_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
-    state = deque_value(instance);
-    if state is None {
+    d = deque_of(instance);
+    if d.is_null() {
         return NULL;
     }
-    limit = jacpy_deque_limit(state.native);
+    limit = jacpy_deque_limit(d);
     args = owned_tuple([Py_NewRef(instance)])
         if limit < 0
         else owned_tuple([Py_NewRef(instance), PyLong_FromLongLong(limit)]);
@@ -712,10 +951,7 @@ def deque_copy_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     result = PyObject_Call(Py_TYPE(instance), args, NULL);
     jacpy_release(args);
     if result != 0 and jacpy_binding_matches(result, deque_token.handle) == 0 {
-        object_error(
-            PyExc_TypeError,
-            f"{type_name(instance)[:200]}() must return a deque, not {type_name(result)[:200]}"
-        );
+        copy_type_error(instance, result);
         jacpy_release(result);
         return NULL;
     }
@@ -727,25 +963,29 @@ def deque___copy___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
 }
 
 def deque_clearmethod_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
-    clear_payload(instance, deque_token.handle);
+    d = deque_of(instance);
+    if d.is_null() {
+        return NULL;
+    }
+    jacpy_deque_clear(d);
     return Py_NewRef(Py_None);
 }
 
 def deque_rotate_impl(instance: ptr[PyObject], n: i64) -> ptr[PyObject] {
-    state = deque_value(instance);
-    if state is None {
+    d = deque_of(instance);
+    if d.is_null() {
         return NULL;
     }
-    jacpy_deque_rotate(state.native, n);
+    jacpy_deque_rotate(d, n);
     return Py_NewRef(Py_None);
 }
 
 def deque_reverse_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
-    state = deque_value(instance);
-    if state is None {
+    d = deque_of(instance);
+    if d.is_null() {
         return NULL;
     }
-    jacpy_deque_reverse(state.native);
+    jacpy_deque_reverse(d);
     return Py_NewRef(Py_None);
 }
 
@@ -764,13 +1004,11 @@ def deque_index_impl(
 def deque_insert_impl(
     instance: ptr[PyObject], index: i64, value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    state = deque_value(instance);
-    if state is None {
+    d = deque_of(instance);
+    if d.is_null() or jacpy_deque_insert(d, index, value) < 0 {
         return NULL;
     }
-    return Py_NewRef(Py_None)
-        if jacpy_deque_insert(state.native, index, value) == 0
-        else NULL;
+    return Py_NewRef(Py_None);
 }
 
 def deque_remove_impl(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
@@ -780,11 +1018,11 @@ def deque_remove_impl(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyOb
 }
 
 def deque___reduce___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
-    state = deque_value(instance);
-    if state is None {
+    d = deque_of(instance);
+    if d.is_null() {
         return NULL;
     }
-    limit = jacpy_deque_limit(state.native);
+    limit = jacpy_deque_limit(d);
     saved = _PyObject_GetState(instance);
     iterator = PyObject_GetIter(instance);
     args = PyTuple_New(0)
@@ -793,7 +1031,6 @@ def deque___reduce___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     return owned_tuple([Py_NewRef(Py_TYPE(instance)), args, saved, iterator]);
 }
 
-# deque.__init__ returns clinic's int: -1 with the exception set.
 def deque_init_impl(
     instance: ptr[PyObject], iterable: ptr[PyObject], maxlenobj: ptr[PyObject]
 ) -> i32 {
@@ -808,27 +1045,25 @@ def deque_init_impl(
             return i32(-1);
         }
     }
-    state = deque_value(instance);
-    if state is None {
+    d = deque_of(instance);
+    if d.is_null() {
         return i32(-1);
     }
-    jacpy_deque_set_limit(state.native, limit);
-    jacpy_deque_clear(state.native);
-    if iterable != 0 and jacpy_deque_extend(state.native, instance, iterable, 0) < 0 {
+    jacpy_deque_set_limit(d, limit);
+    jacpy_deque_clear(d);
+    if iterable != 0 and jacpy_deque_extend(d, instance, iterable, False) < 0 {
         return i32(-1);
     }
     return i32(0);
 }
 
 def deque___sizeof___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
-    state = deque_value(instance);
-    if state is None {
+    d = deque_of(instance);
+    if d.is_null() {
         return NULL;
     }
     return PyLong_FromLongLong(
-        jacpy_binding_basicsize(instance)
-            + jac_heap_size(u64(id(state)))
-            + jacpy_deque_memory(state.native)
+        jacpy_binding_basicsize(instance) + jacpy_deque_memory(d)
     );
 }
 

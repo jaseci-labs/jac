@@ -75,8 +75,6 @@ def printgraph(
     format: str = 'dot'
 ) -> str;
 
-def _jac_graph_json(file: (str | None) = None) -> str;
-
 def restspec(**specs: any) -> Callable;
 
 def schedule(**kwargs: any) -> Callable;

@@ -7,7 +7,15 @@ we import from that stub since it is always present even on modern glibc.
 Bun reference: Bun dlopen is via std.DynLib (Zig stdlib), not exposed to NAPI.
 """
 
-import from engine.src.runtime.mem { Ptr, io_alloc, io_free, read_ptr, str_from_foreign_cstr }
+import from engine.src.runtime.mem {
+    Ptr,
+    io_alloc,
+    io_free,
+    read_ptr,
+    str_from_foreign_cstr,
+    str_brfind,
+    str_bslice
+}
 
 import from "libdl.so.2" {
     def dlopen(path: str, flags: int) -> int;  def dlsym(
@@ -31,7 +39,7 @@ def:pub engine_library_dir -> str {
             path = str_from_foreign_cstr(read_ptr(info, 0));
         }
         io_free(info);
-        _ENGINE_LIBRARY_DIR = path[:path.rfind("/")] if path.rfind("/") > 0 else ".";
+        _ENGINE_LIBRARY_DIR = str_bslice(path, 0, str_brfind(path, "/")) if str_brfind(path, "/") > 0 else ".";
     }
     return _ENGINE_LIBRARY_DIR;
 }

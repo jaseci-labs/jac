@@ -177,7 +177,11 @@ impl JacConfig.apply_profile(
 
     section_map = self._section_map();
     for (section, obj) in section_map.items() {
-        if section in profile {
+        if section == "serve" and section in profile {
+            _apply_serve_table(
+                self.serve, profile[section], f"environments.{profile_name}.serve"
+            );
+        } elif section in profile {
             profile_section: dict[str, any] = profile[section];
             for (key, value) in profile_section.items() {
                 if not hasattr(obj, key) {
@@ -294,7 +298,13 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
     self.unresolved = self.unresolved + refs;
     section_map = self._section_map();
     for (section, obj) in section_map.items() {
-        if section in data {
+        if section == "serve" and section in data {
+            try {
+                _apply_serve_table(self.serve, data[section], "serve");
+            } except ServeConfigError as e {
+                raise ServeConfigError(f"{toml_path.name}: {e}") from e;
+            }
+        } elif section in data {
             data_section: dict[str, any] = data[section];
             for (key, value) in data_section.items() {
                 if hasattr(obj, key) {
@@ -882,107 +892,7 @@ impl _parse_toml_data(
         );
     }
     if "serve" in data {
-        serve_data = data["serve"];
-
-        on_conflict = str(serve_data.get("on_conflict", "retry")).strip().lower();
-        if on_conflict not in ("retry", "fail") {
-            import from jaclang.cli.console { console }
-            console.warning(
-                f"[serve] on_conflict='{serve_data.get('on_conflict')}' is not "
-                "'retry' or 'fail'; defaulting to 'retry'."
-            );
-            on_conflict = "retry";
-        }
-        workers_raw = serve_data.get("workers", {});
-        workers_data: dict[str, any] = (
-            workers_raw if isinstance(workers_raw, dict) else {"count": workers_raw}
-        );
-        tls_data: dict[str, any] = serve_data.get("tls", {}) or {};
-        proxy_data: dict[str, any] = serve_data.get("proxy", {}) or {};
-        limits_data: dict[str, any] = serve_data.get("limits", {}) or {};
-        timeouts_data: dict[str, any] = serve_data.get("timeouts", {}) or {};
-        access_data: dict[str, any] = serve_data.get("access_log", {}) or {};
-        compression_data: dict[str, any] = serve_data.get("compression", {}) or {};
-        ws_data: dict[str, any] = serve_data.get("websocket", {}) or {};
-        auth_data = serve_data.get("auth", {});
-        if not isinstance(auth_data, dict) {
-            raise ValueError(
-                f"[serve.auth] must be a table, got {type(auth_data).__name__}"
-            );
-        }
-        cors_raw = serve_data.get("cors_origins", ["*"]);
-        config.serve = ServeConfig(
-            host=str(serve_data.get("host", "0.0.0.0")),
-            port=serve_data.get("port", 8000),
-            session=serve_data.get("session", ""),
-            main=serve_data.get("main", True),
-            docs_enabled=bool(serve_data.get("docs_enabled", True)),
-            graph_enabled=bool(serve_data.get("graph_enabled", True)),
-            cors_origins=[str(_o) for _o in cors_raw]
-                if isinstance(cors_raw, list)
-                else [str(cors_raw)],
-            public_origin=str(serve_data.get("public_origin", "")),
-            on_conflict=on_conflict,
-            conflict_max_attempts=serve_data.get("conflict_max_attempts", 5),
-            conflict_backoff_ms=serve_data.get("conflict_backoff_ms", 0),
-            workers=ServeWorkersConfig(
-                count=str(workers_data.get("count", "")),
-                threads=str(workers_data.get("threads", "auto")),
-                max_requests=int(workers_data.get("max_requests", 0)),
-                max_requests_jitter=int(workers_data.get("max_requests_jitter", 0)),
-                request_timeout=float(workers_data.get("request_timeout", 0.0)),
-                boot_timeout=float(workers_data.get("boot_timeout", 120.0)),
-                hang_timeout=float(workers_data.get("hang_timeout", 30.0))
-            ),
-            tls=ServeTlsConfig(
-                certfile=str(tls_data.get("certfile", "")),
-                keyfile=str(tls_data.get("keyfile", "")),
-                ca_certs=str(tls_data.get("ca_certs", "")),
-                min_version=str(tls_data.get("min_version", "1.2"))
-            ),
-            proxy=ServeProxyConfig(
-                trusted=[str(_p) for _p in proxy_data.get("trusted", [])]
-            ),
-            limits=ServeLimitsConfig(
-                max_connections=int(limits_data.get("max_connections", 0)),
-                backlog=int(limits_data.get("backlog", 2048)),
-                max_body_bytes=int(limits_data.get("max_body_bytes", 104857600)),
-                max_header_bytes=int(limits_data.get("max_header_bytes", 65536)),
-                max_header_count=int(limits_data.get("max_header_count", 100)),
-                max_request_line_bytes=int(
-                    limits_data.get("max_request_line_bytes", 8192)
-                ),
-                multipart_spool_bytes=int(
-                    limits_data.get("multipart_spool_bytes", 1048576)
-                )
-            ),
-            timeouts=ServeTimeoutsConfig(
-                header=float(timeouts_data.get("header", 30.0)),
-                body=float(timeouts_data.get("body", 60.0)),
-                keepalive=float(timeouts_data.get("keepalive", 65.0)),
-                drain=float(timeouts_data.get("drain", 10.0)),
-                close=float(timeouts_data.get("close", 5.0))
-            ),
-            access_log=ServeAccessLogConfig(
-                enabled=bool(access_data.get("enabled", True)),
-                format=str(access_data.get("format", "text")),
-                suppress_health_checks=bool(
-                    access_data.get("suppress_health_checks", False)
-                )
-            ),
-            compression=ServeCompressionConfig(
-                enabled=bool(compression_data.get("enabled", True)),
-                min_bytes=int(compression_data.get("min_bytes", 1024)),
-                level=int(compression_data.get("level", 4))
-            ),
-            websocket=ServeWebSocketConfig(
-                allowed_origins=[str(_o) for _o in ws_data.get("allowed_origins", [])],
-                max_message_bytes=int(ws_data.get("max_message_bytes", 0)),
-                ping_interval=float(ws_data.get("ping_interval", 20.0)),
-                ping_timeout=float(ws_data.get("ping_timeout", 20.0))
-            ),
-            auth=auth_data
-        );
+        _apply_serve_table(config.serve, data["serve"], "serve");
     }
     if "format" in data {
         fmt = data["format"];
@@ -1412,6 +1322,103 @@ impl _deep_merge(base: dict[str, any], `override: dict[str, any]) -> dict[str, a
         }
     }
     return result;
+}
+
+impl table_value(current: any, raw: any, label: str) -> any {
+    if isinstance(current, bool) {
+        if not isinstance(raw, bool) {
+            raise ServeConfigError(f"{label} must be true or false, got {raw!r}");
+        }
+        return raw;
+    }
+    if isinstance(current, int) {
+        if isinstance(raw, bool) or not isinstance(raw, int) {
+            raise ServeConfigError(f"{label} must be an integer, got {raw!r}");
+        }
+        return raw;
+    }
+    if isinstance(current, float) {
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)) {
+            raise ServeConfigError(f"{label} must be a number, got {raw!r}");
+        }
+        return float(raw);
+    }
+    if isinstance(current, list) {
+        if not isinstance(raw, list)
+            or not all(isinstance(item, str) for item in raw) {
+            raise ServeConfigError(f"{label} must be a list of strings, got {raw!r}");
+        }
+        return list(raw);
+    }
+    if not isinstance(raw, str) {
+        raise ServeConfigError(f"{label} must be a string, got {raw!r}");
+    }
+    return raw;
+}
+
+impl apply_table(
+    target: object, table: dict[str, any], section: str, moved: dict[str, str]
+) -> None {
+    names = [f.name for f in fields(target)];
+    for key in table {
+        if key in names {
+            continue;
+        }
+        if key in moved {
+            raise ServeConfigError(f"[{section}] {key} has moved to {moved[key]}");
+        }
+        raise ServeConfigError(
+            f"[{section}] has no key {key!r}; its keys are {', '.join(names)}"
+        );
+    }
+    for (name, raw) in table.items() {
+        current = getattr(target, name);
+        if not (is_record(current) or isinstance(current, dict)) {
+            setattr(target, name, table_value(current, raw, f"[{section}] {name}"));
+        } elif not isinstance(raw, dict) {
+            raise ServeConfigError(f"[{section}.{name}] must be a table");
+        } elif is_record(current) {
+            apply_table(current, raw, f"{section}.{name}", {});
+        } else {
+            setattr(target, name, _deep_merge(current, raw));
+        }
+    }
+}
+
+impl _apply_serve_table(serve: ServeConfig, raw: any, section: str) -> None {
+    if not isinstance(raw, dict) {
+        raise ServeConfigError(f"[{section}] must be a table");
+    }
+    table = dict(raw);
+    workers = table.get("workers");
+    if workers is not None and not isinstance(workers, dict) {
+        workers = {"count": workers};
+    }
+    if isinstance(workers, dict) {
+        table["workers"] = {
+            key: str(value)
+                if key in ("count", "threads")
+                    and isinstance(value, int)
+                    and not isinstance(value, bool)
+                else value for (key, value) in workers.items()
+        };
+    }
+    if isinstance(table.get("cors_origins"), str) {
+        table["cors_origins"] = [table["cors_origins"]];
+    }
+    apply_table(serve, table, section, SERVE_MOVED_KEYS);
+    if "on_conflict" in table {
+        mode = serve.on_conflict.strip().lower();
+        if mode not in ("retry", "fail") {
+            import from jaclang.cli.console { console }
+            console.warning(
+                f"[{section}] on_conflict='{serve.on_conflict}' is not "
+                "'retry' or 'fail'; defaulting to 'retry'."
+            );
+            mode = "retry";
+        }
+        serve.on_conflict = mode;
+    }
 }
 
 impl _dependency_doc(config: JacConfig, dev: bool) -> dict[str, any] {

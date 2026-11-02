@@ -919,20 +919,13 @@ impl EsastGenPass._build_osp_disconnect_call(
 impl EsastGenPass._build_spawn_runtime_call(
     nd: uni.BinaryExpr, parts: SpawnCallParts
 ) -> es.AwaitExpression {
-    walker_literal = self.sync_loc(
-        es.Literal(value=parts.`walker.walker_name), jac_node=parts.`walker.call_node
-    );
-    spawn_args: list[es.Expression | es.SpreadElement] = [
-        walker_literal,
-        parts.target.expression,
-        parts.`walker.fields_object
-    ];
     call_target = parts.`walker.call_node.target;
     walker_sym = call_target.sym if isinstance(call_target, uni.AtomExpr) else None;
     item: (uni.ModuleItem | None) = None;
     if walker_sym is not None and walker_sym.defn {
         candidate = walker_sym.defn[0].parent;
-        if isinstance(candidate, uni.ModuleItem) {
+        if isinstance(candidate, uni.ModuleItem)
+            and candidate.find_parent_of_type(uni.Module) is self.module {
             item = candidate;
         }
     }
@@ -959,6 +952,15 @@ impl EsastGenPass._build_spawn_runtime_call(
             endpoint_name = scope.scope_name;
         }
     }
+    walker_literal = self.sync_loc(
+        es.Literal(value=endpoint_name or parts.`walker.walker_name),
+        jac_node=parts.`walker.call_node
+    );
+    spawn_args: list[es.Expression | es.SpreadElement] = [
+        walker_literal,
+        parts.target.expression,
+        parts.`walker.fields_object
+    ];
     if source_module is not None and isinstance(provider_opts, es.ObjectExpression) {
         key = endpoint_key(source_module, "walker", endpoint_name);
         provider_opts.properties.append(

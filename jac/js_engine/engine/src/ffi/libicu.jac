@@ -64,7 +64,12 @@ import from "libjs_native.so" {
     ) -> int;
 }
 
-import from engine.src.runtime.mem { io_alloc, read_byte, read_i32 }
+import from engine.src.runtime.mem {
+    io_alloc,
+    read_byte,
+    read_i32,
+    str_nbytes
+}
 import from engine.src.runtime.jsstring { str_substr }
 
 glob:priv _ICU_OUT_CAP: int = 2048,
@@ -294,8 +299,8 @@ the source string is empty."""
 def:pub icu_normalize_str(form: str, text: str) -> str {
     # Long strings may exceed the default buffer; allocate a generous one.
     cap: int = _ICU_OUT_CAP;
-    if len(text) * 4 + 16 > cap {
-        cap = len(text) * 4 + 16;
+    if str_nbytes(text) * 4 + 16 > cap {
+        cap = str_nbytes(text) * 4 + 16;
     }
     buf: int = io_alloc(cap);
     rc: int = icu_normalize(form, text, buf, cap);

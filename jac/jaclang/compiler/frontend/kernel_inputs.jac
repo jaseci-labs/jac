@@ -31,6 +31,7 @@ obj RequestOptions {
         entry_point: str = "",
         ui: str = "",
         project_root: (str | None) = None,
+        client_source_root: str = "",
         strict_dependencies: bool = False,
         package_canonical: bool = False,
         na_gc_mode: str = "",

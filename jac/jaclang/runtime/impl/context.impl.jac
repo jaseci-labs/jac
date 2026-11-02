@@ -105,6 +105,21 @@ impl ExecutionContext.close -> None {
     self.run_pending_effects();
 }
 
+impl ExecutionContext.aclose -> None {
+    if self._parent is not None and self.mem is self._parent.mem {
+        return;
+    }
+
+    try {
+        await self.mem.aclose();
+    } except asyncio.CancelledError {
+        self.run_pending_effects();
+        raise;
+    }
+
+    self.run_pending_effects();
+}
+
 impl ExecutionContext.on_commit(callback: Callable) -> None {
     self.pending_effects.append(callback);
 }

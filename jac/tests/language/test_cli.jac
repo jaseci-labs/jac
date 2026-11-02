@@ -27,6 +27,7 @@ import from jaclang.compiler.frontend.diagnostic_utils { resolve_diagnostic_toke
 import from jaclang.compiler.tools.jac_formatter_pass { unparse_module }
 import from jaclang.project.config { set_config }
 import from jaclang.runtime.builtin { printgraph }
+import from jaclang.testing.test_runner { _build_selector }
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      _template_state = {"initialized": False},
@@ -698,6 +699,21 @@ test "run specific test only" {
     assert "1 passed" in out;
     assert "from 2 to 10" in out;
     assert "first two" not in out;
+}
+
+
+"""`--test_name` is a name, not a filter expression: words that are also filter
+operators (`and`, `or`, `not`) still have to appear in the test's name.
+`--filter` keeps them as operators."""
+test "test_name matches every word literally, including and/or/not" {
+    by_name = _build_selector("loads and reports or not", "");
+    assert by_name is not None;
+    assert by_name.matches("native command loads and reports or not");
+    assert not by_name.matches("native command loads reports");
+    by_filter = _build_selector("", "loads and not reports");
+    assert by_filter is not None;
+    assert by_filter.matches("native command loads status");
+    assert not by_filter.matches("native command loads and reports status");
 }
 
 

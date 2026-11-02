@@ -15,6 +15,8 @@ import sys;
 import sysconfig;
 import tempfile;
 import from pathlib { Path }
+import from jaclang.toolchains.desktop { stage_module }
+import from tests.support { unit_source }
 
 """The executable magic and the libwebview link a host must carry on this OS."""
 def _native_executable(data: bytes) {
@@ -83,9 +85,7 @@ def _compile_host(
     jac = shutil.which("jac") or "jac";
     tmp = tempfile.mkdtemp();
     try {
-        shutil.copy2(
-            str(_webview_dir() / "webview.jac"), os.path.join(tmp, "webview.jac")
-        );
+        stage_module(_webview_dir() / "webview.jac", Path(tmp));
         if extra_files is not None {
             for (name, content) in extra_files.items() {
                 fpath = os.path.join(tmp, name);
@@ -159,7 +159,7 @@ test "embedded-python host compiles and links libpython" {
 """Locate the native plugin bridge file for tests."""
 def _bridge_src -> str {
     bridge = _native_dir() / "plugin_bridge.jac";
-    return bridge.read_text();
+    return unit_source(bridge);
 }
 
 """Entry-level webview_create + LAST_WEBVIEW_HANDLE is the desktop host pattern."""

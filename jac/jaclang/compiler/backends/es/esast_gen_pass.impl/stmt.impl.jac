@@ -276,8 +276,8 @@ impl EsastGenPass.exit_ctrl_stmt with uni.CtrlStmt exit {
                 ),
                 jac_node=here
             );
-        } elif (not isinstance(breakable, uni.SwitchStmt) and self._loop_label_stack) {
-            label = self._loop_label_stack[-1];
+        } elif breakable is not None and not isinstance(breakable, uni.SwitchStmt) {
+            label = self._loop_labels.get(id(breakable), '');
             if label != '' {
                 stmt = self.sync_loc(
                     es.BreakStatement(
@@ -308,21 +308,23 @@ impl EsastGenPass.exit_ctrl_stmt with uni.CtrlStmt exit {
 impl EsastGenPass._innermost_breakable(nd: uni.CtrlStmt) -> (uni.UniNode | None) {
     parent = nd.parent;
     while parent is not None {
-        if isinstance(
-            parent,
-            (
-                uni.InForStmt,
-                uni.IterForStmt,
-                uni.WhileStmt,
-                uni.ForeverStmt,
-                uni.SwitchStmt,
-                uni.MatchStmt
-            )
-        ) {
-            return parent;
-        }
-        if isinstance(parent, (uni.Ability, uni.LambdaExpr, uni.Module)) {
-            return None;
+        if not in_loop_else(nd, parent) {
+            if isinstance(
+                parent,
+                (
+                    uni.InForStmt,
+                    uni.IterForStmt,
+                    uni.WhileStmt,
+                    uni.ForeverStmt,
+                    uni.SwitchStmt,
+                    uni.MatchStmt
+                )
+            ) {
+                return parent;
+            }
+            if isinstance(parent, (uni.Ability, uni.LambdaExpr, uni.Module)) {
+                return None;
+            }
         }
         parent = parent.parent;
     }

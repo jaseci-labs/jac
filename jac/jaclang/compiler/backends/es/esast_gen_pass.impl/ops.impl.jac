@@ -66,7 +66,14 @@ impl EsastGenPass._operand_str(
     rendered = unparser.generate(es_node);
     if isinstance(
         es_node,
-        (es.AssignmentExpression, es.ConditionalExpression, es.ArrowFunctionExpression)
+        (
+            es.AssignmentExpression,
+            es.ConditionalExpression,
+            es.ArrowFunctionExpression,
+            es.AwaitExpression,
+            es.YieldExpression,
+            es.UnaryExpression
+        )
     ) {
         return "(" + rendered + ")";
     }
@@ -566,6 +573,8 @@ impl EsastGenPass.exit_binary_expr with uni.BinaryExpr exit {
             es.LogicalExpression(operator=logical_op, left=left, right=right),
             jac_node=here
         );
+    } elif op_name == Tok.FLOOR_DIV {
+        bin_expr = self._floor_div(left, right, here);
     } else {
         operator = ES_BINARY_OPS.get(op_name) if op_name else '+';
         operator = operator or '+';
@@ -609,6 +618,18 @@ impl EsastGenPass._fw_js_binop(
     );
 }
 
+impl EsastGenPass._floor_div(
+    left: es.Expression, right: es.Expression, jac_node: uni.UniNode
+) -> es.Expression {
+    return self.sync_loc(
+        es.CallExpression(
+            callee=self._build_jac_ref(["Math", "floor"], jac_node),
+            arguments=[self._fw_js_binop("/", left, right, jac_node)]
+        ),
+        jac_node=jac_node
+    );
+}
+
 impl EsastGenPass._fw_to_number(
     expr: es.Expression, jac_node: uni.UniNode
 ) -> es.Expression {
@@ -631,17 +652,27 @@ impl EsastGenPass._apply_fw_coercion(nd: uni.Expr) -> None {
     if dst_shape is None {
         return;
     }
+    literal: (uni.UniNode | None) = nd;
+    while isinstance(literal, uni.AtomUnit) {
+        literal = literal.value;
+    }
+    big: (es.Literal | None) = None;
+    if isinstance(cur, es.Literal) {
+        if isinstance(cur.value, int) and not isinstance(cur.value, bool) {
+            big = es.Literal(value=cur.value, raw=f"{cur.value}n");
+        } elif cur.value is None and isinstance(literal, uni.Int) {
+            big = es.Literal(
+                value=None, raw=f"{self._js_int_spelling(literal.value)}n"
+            );
+        }
+    }
     if (
         dst_shape.sized
         and not dst_shape.is_float
         and dst_shape.width == 64
-        and isinstance(cur, es.Literal)
-        and isinstance(cur.value, int)
-        and not isinstance(cur.value, bool)
+        and big is not None
     ) {
-        nd.gen.es_ast = self.sync_loc(
-            es.Literal(value=cur.value, raw=f"{cur.value}n"), jac_node=nd
-        );
+        nd.gen.es_ast = self.sync_loc(big, jac_node=nd);
         return;
     }
     parent = nd.parent;
@@ -721,4 +752,11 @@ impl EsastGenPass._fw_binary(
         return None;
     }
     return self._fw_call(f"{helper}_{name}", [left, right], nd);
+}
+
+impl EsastGenPass._js_int_spelling(text: str) -> str {
+    if len(text) > 2 and text[0] == "0" and text[1] in "xXoObB" and text[2] == "_" {
+        return text[:2] + text[3:];
+    }
+    return text;
 }

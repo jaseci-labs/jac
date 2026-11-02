@@ -27,7 +27,7 @@ Every import follows the same template. Square brackets mark optional parts:
 
 A plain whole-module import (`import os;`) takes a trailing semicolon. The `import from ... { ... }` brace form does not.
 
-A project can also declare its imports between its own modules once, in an `archwire.jac` beside `jac.toml`, where a wire such as `core.github --> core.scoring_service { RepoMeta }` generates the import into the consumer at compile time and checks the module against it. External imports stay in the module file. See [Project Wiring](wiring.md).
+A project can also declare its imports between its own modules once, in an `archwire.jac` beside `jac.toml`, where a wire such as `core.knowledge.repo --> core.knowledge_service { ensure_repo }` generates the import into the consumer at compile time and checks the module against it. External imports stay in the module file. See [Project Wiring](wiring.md).
 
 ---
 
@@ -105,9 +105,6 @@ import type from .models { Task }
 # include -- absorbs every public name from the module into this namespace.
 include math_helpers;
 ```
-
-!!! note "Inline Python escape hatch"
-    For Python-only APIs or legacy code, you can embed raw Python in a `::py:: ... ::py::` block instead of importing. Prefer a normal `import` for anything new.
 
 ---
 

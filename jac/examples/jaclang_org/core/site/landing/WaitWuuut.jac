@@ -21,14 +21,14 @@ glob GROUPS: list[dict[str, any]] = [
                  {
                      "tag": "apps, same trick",
                      "title": "One import crosses an app boundary",
-                     "body": "The same import that erases the client/server line erases the service line. jac.toml declares this workspace's apps, and core/social_graph.jac is one of them: a file-rooted service app that the web app, the mobile app, and the cli app all consume by importing it. The boundary is structural, so it compiles and type-checks as a cut no matter how it is deployed; the topology is a profile, so it shares one process under jac run and runs as its own process behind the gateway in the fleet. The scorer works the same way: JacYac submits a repository to the scoring service and displays its typed score breakdown. The shared state module below is consumed by both the web and React Native renderers.",
+                     "body": "The same import that erases the client/server line erases the service line. jac.toml declares this workspace's apps, and core/social_graph.jac is one of them: a file-rooted service app that the web app, the mobile app, and the cli app all consume by importing it. The boundary is structural, so it compiles and type-checks as a cut no matter how it is deployed; the topology is a profile, so it shares one process under jac run and runs as its own process behind the gateway in the fleet. The knowledge service works the same way: it owns one clone of the jac repo, and the docs reader asks it for the docs of earlier release lines. The shared state module below is consumed by both the web and React Native renderers.",
                      "path": "jac.toml",
                      "needle": "[apps.social_graph]",
                      "hl": 3,
                      "before": 2,
                      "after": 8,
-                     "path2": "core/jacyac/state.jac",
-                     "needle2": "    setup_profile,",
+                     "path2": "core/jacyac/impl/state.impl.jac",
+                     "needle2": "result = root spawn setup_profile(username=stored_username());",
                      "hl2": 1,
                      "before2": 1,
                      "after2": 12,
@@ -37,14 +37,14 @@ glob GROUPS: list[dict[str, any]] = [
                  {
                      "tag": "native codegen",
                      "title": "One import compiles to a game",
-                     "body": "The rocket arena on the landing page is native code, and nothing about this import says so. The compiler knows arena is a native module, so the edge itself decides: the build compiles the game and the three modules behind it to WebAssembly through Jac's own LLVM backend and wasm linker, serves the artifact from /static, and binds each name to a stub that instantiates it on first call. The second window is the payoff: the first call awaits instantiation, and after that init is just a function you call.",
-                     "path": "core/site/game/webgl_host.jac",
-                     "needle": "import from .arena { init }",
+                     "body": "The rocket arena on the tech demo page is native code, and nothing about the wire that imports it says so. The compiler knows arena is a native module, so the edge itself decides: the build compiles the game and the three modules behind it to WebAssembly through Jac's own LLVM backend and wasm linker, serves the artifact from /static, and binds each name to a stub that instantiates it on first call. The second window is the payoff: the first call awaits instantiation, and after that init is just a function you call.",
+                     "path": "archwire.jac",
+                     "needle": "arena ++> webgl_host {",
                      "hl": 1,
                      "before": 1,
-                     "after": 12,
+                     "after": 4,
                      "path2": "core/site/game/webgl_host.jac",
-                     "needle2": "game = (await init()) as int;",
+                     "needle2": "game = await init();",
                      "hl2": 1,
                      "before2": 4,
                      "after2": 4,
@@ -82,7 +82,7 @@ glob GROUPS: list[dict[str, any]] = [
              "pre": "",
              "hot": "Topokinetic",
              "post": ": computation moves to the data",
-             "blurb": "The docs and JacYac projects are persistent graphs, and the code that serves them travels: walkers descend, fold, and climb the topology instead of querying it from a distance.",
+             "blurb": "The docs and JacYac are persistent graphs, and the code that serves them travels: walkers descend, fold, and climb the topology instead of querying it from a distance.",
              "define": "topokinetic",
              "sections": [
                  {
@@ -146,7 +146,7 @@ glob GROUPS: list[dict[str, any]] = [
                      "title": "The type switch that walked away",
                      "body": "Deriving a page's URL used to be a function with an isinstance ladder inside. Now it is a walker spawned on the node that climbs the Contains edges upward: the type of wherever it lands picks the ability that runs, and the version node's empty ability is the stop condition, because a walker that does not visit simply halts.",
                      "path": "core/docs/graph.jac",
-                     "needle": "walker trace_route {",
+                     "needle": "walker:protect trace_route {",
                      "hl": 1,
                      "before": 8,
                      "after": 10,
@@ -167,7 +167,7 @@ glob GROUPS: list[dict[str, any]] = [
                      "tag": "persistence, free",
                      "title": "A server call, in passing",
                      "body": "One line inside the navbar keeps the install script fresh: await a server function and move on. Behind it, that function stamps its bookkeeping on root, the persistent graph, so there is no database setup, no ORM, no migration script. State that should outlive a request simply does.",
-                     "path": "core/site/ui/Navbar.jac",
+                     "path": "core/site/ui/impl/Navbar.impl.jac",
                      "needle": "await ensure_install()",
                      "hl": 1,
                      "before": 4,
@@ -177,9 +177,9 @@ glob GROUPS: list[dict[str, any]] = [
                  {
                      "tag": "queries are paths",
                      "title": "The lookup is one expression",
-                     "body": "Importing historical Ninja Scores finds an existing project under its archive profile with one expression. The bracketed edge reference is a small query algebra: direction, edge type, node type, field predicate, one expression. Assign it to a variable and it is a query; hand it to visit and it is an itinerary.",
+                     "body": "A JacYac feed is one path: from your profile across Follow edges to the profiles you follow, then on to their tweets. The bracketed edge reference is a small query algebra: direction, edge type, node type, field predicate, one expression. Assign it to a variable and it is a query; hand it to visit and it is an itinerary.",
                      "path": "core/social_graph.jac",
-                     "needle": "existing = [archive->:Owns:->[?:Project, full==item.full]];",
+                     "needle": "visit [me->:Follow:->[?:Profile]-->[?:Tweet]];",
                      "hl": 1,
                      "before": 2,
                      "after": 6,
@@ -305,13 +305,13 @@ glob GROUPS: list[dict[str, any]] = [
                      "tag": "decl vs impl",
                      "title": "The what and the how, apart",
                      "body": "Any declaration can push its body into an impl file, and this site uses adjacent impl folders where separating the interface makes the code easier to read. The first window is the what: a one-line decl inside the component, ending in a semicolon. The second is the how, living in the impl folder next door. The compiler stitches them back together as one unit.",
-                     "path": "core/site/landing/Showcase.jac",
-                     "needle": "async def load_samples -> None;",
+                     "path": "core/site/landing/impl/WasmGame.impl.jac",
+                     "needle": "def launch(_e: MouseEvent);",
                      "hl": 1,
                      "before": 3,
-                     "after": 12,
-                     "path2": "core/site/landing/impl/Showcase.impl.jac",
-                     "needle2": "impl Showcase.load_samples",
+                     "after": 7,
+                     "path2": "core/site/landing/impl/WasmGame.impl.jac",
+                     "needle2": "impl WasmGame.launch",
                      "hl2": 1,
                      "before2": 0,
                      "after2": 8,
@@ -337,7 +337,7 @@ glob GROUPS: list[dict[str, any]] = [
      ABSENT: list[dict[str, any]] = [
          {
              "thing": "a database",
-             "why": "The docs and JacYac projects live in a persistent graph. root outlives every request with no schema, no connection string, no setup."
+             "why": "The docs and JacYac live in a persistent graph. root outlives every request with no schema, no connection string, no setup."
          },
          {
              "thing": "an ORM or migrations",
@@ -444,311 +444,16 @@ glob GROUPS: list[dict[str, any]] = [
 
 def Definition(
     term: str, pos: str, body: str, ipa: str = "", ety: str = "", num: int = 0
-) -> JsxElement {
-    return
-        <div
-            className="relative overflow-hidden rounded-xl border border-border/50 bg-card/40 pl-6 pr-5 pt-4 pb-4 text-left"
-        >
-            <div
-                className="absolute inset-y-0 left-0 w-[3px] bg-gradient-to-b from-[#f7931e] via-[#ff6b35] to-[#e8442c]"
-            ></div>
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <span className="text-gradient text-xl font-bold tracking-tight">
-                    {term}
-                </span>
-                {if ipa != "" {
-                    <span className="font-mono text-xs text-muted-foreground/60">
-                        {ipa}
-                    </span>
-                }}
-                <span className="text-xs italic text-muted-foreground/70">{pos}</span>
-                {if num > 0 {
-                    <span
-                        className="ml-auto font-mono text-[10px] uppercase tracking-widest text-muted-foreground/40"
-                    >
-                        {"dfn "}{str(num)}
-                    </span>
-                }}
-            </div>
-            {if ety != "" {
-                <p className="mt-1 text-xs italic text-muted-foreground/50">{ety}</p>
-            }}
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
-        </div>;
-}
+) -> JsxElement;
 
-def DefCard(k: str) -> JsxElement {
-    d = DEFS[k] as dict[str, any];
-    return
-        <Definition
-            term={d["term"] as str}
-            pos={d["pos"] as str}
-            body={d["body"] as str}
-            ipa={d["ipa"] as str}
-            ety={d["ety"] as str}
-            num={d["num"] as int}
-        />;
-}
+def DefCard(k: str) -> JsxElement;
 
-def LexiconSection -> JsxElement {
-    return
-        <div id="g-lexicon" className="scroll-mt-24">
-            <div className="mx-auto max-w-5xl pl-4 pr-4 pt-24 pb-8 sm:pl-6 sm:pr-6">
-                <Reveal>
-                    <div className="mx-auto max-w-2xl text-center">
-                        <h2
-                            className="text-balance text-3xl font-bold tracking-tight sm:text-4xl"
-                        >
-                            Jac's contribution is{" "}
-                            <span className="text-gradient">fundamental</span>
-                        </h2>
-                        <p className="mt-3 text-balance text-muted-foreground">
-                            Jac is not a language that recombines familiar features, it introduces concepts programming languages have not had before. The working lexicon, in one place:
-                        </p>
-                    </div>
-                    <div className="mx-auto mt-10 flex max-w-3xl flex-col gap-4">
-                        {for k in LEX_ORDER {
-                            <div key={k as str}>
-                                <DefCard k={k as str}/>
-                            </div>
-                        }}
-                    </div>
-                    <p
-                        className="mx-auto mt-8 max-w-2xl text-center text-sm text-muted-foreground/70"
-                    >
-                        Every definition above was demonstrated by running code from this site's own source before it was restated here.
-                    </p>
-                </Reveal>
-            </div>
-        </div>;
-}
+def LexiconSection -> JsxElement;
 
-def AbsentSection -> JsxElement {
-    return
-        <div id="g-absent" className="scroll-mt-24">
-            <div className="mx-auto max-w-5xl pl-4 pr-4 pt-20 pb-6 sm:pl-6 sm:pr-6">
-                <Reveal>
-                    <div className="mx-auto max-w-2xl text-center">
-                        <h2
-                            className="text-balance text-3xl font-bold tracking-tight sm:text-4xl"
-                        >
-                            What you{" "}
-                            <span className="text-gradient">won't see</span>
-                        </h2>
-                        <p className="mt-3 text-balance text-muted-foreground">
-                            A full-stack site usually drags an entourage. Everything below is genuinely absent from this source tree: not generated and hidden, absorbed by the language.
-                        </p>
-                    </div>
-                    <div
-                        className="mx-auto mt-10 grid max-w-4xl grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
-                    >
-                        {for (i, a) in enumerate(ABSENT) {
-                            <div
-                                key={str(i)}
-                                className="rounded-xl border border-border/50 bg-card/40 p-4 text-left"
-                            >
-                                <p
-                                    className="font-mono text-sm text-muted-foreground/60 line-through decoration-primary/60"
-                                >
-                                    {a["thing"] as str}
-                                </p>
-                                <p className="mt-1.5 text-xs text-muted-foreground">
-                                    {a["why"] as str}
-                                </p>
-                            </div>
-                        }}
-                    </div>
-                </Reveal>
-            </div>
-        </div>;
-}
+def AbsentSection -> JsxElement;
 
-def GroupHeader(gkey: str, pre: str, hot: str, post: str, blurb: str) -> JsxElement {
-    return
-        <div className="mx-auto max-w-5xl pl-4 pr-4 pt-24 pb-2 sm:pl-6 sm:pr-6">
-            <Reveal>
-                <div className="mx-auto max-w-2xl text-center">
-                    <h2
-                        className="text-balance text-3xl font-bold tracking-tight sm:text-4xl"
-                    >
-                        {pre}
-                        <span className="text-gradient">{hot}</span>
-                        {post}
-                    </h2>
-                    <p className="mt-3 text-balance text-muted-foreground">{blurb}</p>
-                </div>
-                <div className="mx-auto mt-10 max-w-3xl">
-                    {if gkey == "synechic" {
-                        <SynechicDiagram/>
-                    } elif gkey == "topokinetic" {
-                        <TopokineticDiagram/>
-                    } elif gkey == "ownership" {
-                        <GradualBorrowDiagram/>
-                    } else {
-                        <PolypilerDiagram/>
-                    }   }
-                </div>
-            </Reveal>
-        </div>;
-}
+def GroupHeader(pre: str, hot: str, post: str, blurb: str) -> JsxElement;
 
-def FeatureSection(idx: int, data: dict[str, any], on_pop: any) -> JsxElement {
-    flipped = idx % 2 == 1;
-    return
-        <section className="border-t border-border/40 pt-14 pb-14">
-            <Reveal>
-                <div
-                    className={"mx-auto flex max-w-7xl flex-col gap-8 pl-4 pr-4 sm:pl-6 sm:pr-6 lg:items-center lg:gap-14 lg:pl-8 lg:pr-8 "
-                        + ("lg:flex-row-reverse" if flipped else "lg:flex-row")}
-                >
-                    <div className="shrink-0 lg:w-[38%]">
-                        <Badge variant="outline" className="mb-4 font-mono">
-                            {str(idx + 1)}{" · "}{data["tag"] as str}
-                        </Badge>
-                        <h3
-                            className="text-balance text-2xl font-bold tracking-tight sm:text-3xl"
-                        >
-                            {data["title"] as str}
-                        </h3>
-                        <p className="mt-4 text-muted-foreground">
-                            {data["body"] as str}
-                        </p>
-                        <p className="mt-3 font-mono text-xs text-muted-foreground/70">
-                            {data["path"] as str}
-                        </p>
-                        {if "path2" in data {
-                            <p
-                                className="mt-1 font-mono text-xs text-muted-foreground/70"
-                            >
-                                {"+ "}{data["path2"] as str}
-                            </p>
-                        }}
-                    </div>
-                    {if "path2" in data {
-                        <div className="flex min-w-0 flex-1 flex-col gap-4">
-                            <CodeSpotlight
-                                path={data["path"] as str}
-                                needle={data["needle"] as str}
-                                hl_lines={data["hl"] as int}
-                                before={data["before"] as int}
-                                after={data["after"] as int}
-                                on_pop={on_pop}
-                            />
-                            <CodeSpotlight
-                                path={data["path2"] as str}
-                                needle={data["needle2"] as str}
-                                hl_lines={data["hl2"] as int}
-                                before={data["before2"] as int}
-                                after={data["after2"] as int}
-                                on_pop={on_pop}
-                                compact={True}
-                            />
-                        </div>
-                    } else {
-                        <CodeSpotlight
-                            className="min-w-0 flex-1"
-                            path={data["path"] as str}
-                            needle={data["needle"] as str}
-                            hl_lines={data["hl"] as int}
-                            before={data["before"] as int}
-                            after={data["after"] as int}
-                            on_pop={on_pop}
-                        />
-                    } }
-                </div>
-            </Reveal>
-        </section>;
-}
+def FeatureSection(idx: int, data: dict[str, any], on_pop: any) -> JsxElement;
 
-def:pub WaitWuuut -> JsxElement {
-    has popped: str = "",
-        pop_seq: int = 0;
-
-    def handle_pop(path: str) {
-        popped = path;
-        pop_seq = pop_seq + 1;
-    }
-
-    bases: list[int] = [];
-    running = 0;
-    for grp in GROUPS {
-        bases.append(running);
-        running += len(grp["sections"] as list[dict[str, any]]);
-    }
-    return
-        <div className="pb-24">
-            <section className="pt-32 pb-4 sm:pt-40">
-                <div
-                    className="mx-auto max-w-3xl pl-4 pr-4 text-center sm:pl-6 sm:pr-6"
-                >
-                    <Badge variant="outline" className="mb-4">Feature Deep Dive</Badge>
-                    <h1
-                        className="text-balance text-4xl font-bold tracking-tight sm:text-6xl"
-                    >
-                        Wait,{" "}
-                        <span className="text-gradient">Wuuut?!</span>
-                    </h1>
-                    <p className="mt-5 text-balance text-lg text-muted-foreground">
-                        A tour of the language features running this exact site. Every window below is a real source file of jaclang.org, fetched live from the server you are on and scrolled to the lines that do the thing. Scroll around in any window and it will drift back home; pop one out to roam the whole tree. Nothing is a mock; if we broke a file, its section would say so.
-                    </p>
-                </div>
-            </section>
-            <AbsentSection/>
-            <SectionRail items={NAV_ITEMS}/>
-            {for (gi, grp) in enumerate(GROUPS) {
-                <div
-                    key={grp["key"] as str}
-                    id={"g-" + (grp["key"] as str)}
-                    className="scroll-mt-24"
-                >
-                    <GroupHeader
-                        gkey={grp["key"] as str}
-                        pre={grp["pre"] as str}
-                        hot={grp["hot"] as str}
-                        post={grp["post"] as str}
-                        blurb={grp["blurb"] as str}
-                    />
-                    {if "define" in grp {
-                        <div
-                            className="mx-auto max-w-3xl pl-4 pr-4 pt-8 sm:pl-6 sm:pr-6"
-                        >
-                            <Reveal>
-                                <DefCard k={grp["define"] as str}/>
-                            </Reveal>
-                        </div>
-                    }}
-                    {for (si, s) in enumerate(
-                        grp["sections"] as list[dict[str, any]]
-                    ) {
-                        <div key={str(si)}>
-                            {if "define" in (s as dict[str, any]) {
-                                <div
-                                    className="mx-auto max-w-3xl pl-4 pr-4 pt-10 pb-2 sm:pl-6 sm:pr-6"
-                                >
-                                    <Reveal>
-                                        <DefCard
-                                            k={(s as dict[str, any])["define"] as str}
-                                        />
-                                    </Reveal>
-                                </div>
-                            }}
-                            <FeatureSection
-                                idx={(bases[gi] as int) + si}
-                                data={s as dict[str, any]}
-                                on_pop={handle_pop}
-                            />
-                        </div>
-                    }}
-                </div>
-            }}
-            <LexiconSection/>
-            {if popped != "" {
-                <FloatingSource
-                    key={popped + str(pop_seq)}
-                    always_float={True}
-                    closable={True}
-                    initial_path={popped}
-                />
-            }}
-        </div>;
-}
+def:pub WaitWuuut -> JsxElement;

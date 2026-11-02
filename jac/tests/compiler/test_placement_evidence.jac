@@ -38,9 +38,9 @@ test "authenticated endpoints bridge within their app without placement pins" {
     for access in ["protect"] {
         d = _proj(
             {
-                "api.jac": "def:"
+                "api.jac": "import os;\ndef:"
                     + access
-                    + " read_value -> int { ::py::\nvalue = 1\n::py::\nreturn 1; }\n",
+                    + " read_value -> int { return len(os.sep); }\n",
                 "main.jac": "import from .api { read_value }\n"
                     + "def:pub app -> JsxElement { return <div>{read_value()}</div>; }\n"
             }
@@ -69,7 +69,7 @@ test "authenticated endpoints bridge within their app without placement pins" {
 test "a :priv function is private: client imports do not bridge it" {
     d = _proj(
         {
-            "api.jac": "def:priv read_value -> int { ::py::\nvalue = 1\n::py::\nreturn 1; }\n",
+            "api.jac": "import os;\ndef:priv read_value -> int { return len(os.sep); }\n",
             "main.jac": "import from .api { read_value }\n"
                 + "def:pub app -> JsxElement { return <div>{read_value()}</div>; }\n"
         }
@@ -99,7 +99,7 @@ test "a :priv function is private: client imports do not bridge it" {
 test "private functions remain unavailable across app boundaries" {
     d = _proj(
         {
-            "api.jac": "def:priv read_value -> int { ::py::\nvalue = 1\n::py::\nreturn 1; }\n",
+            "api.jac": "import os;\ndef:priv read_value -> int { return len(os.sep); }\n",
             "main.jac": "import from .api { read_value }\n"
                 + "def:pub app -> JsxElement { return <div>{read_value()}</div>; }\n"
         }
@@ -239,21 +239,10 @@ test "unpinned rootless archetypes pull into client closures" {
 }
 
 # Edge disconnect (`a del --> b`) lowers natively now (osp_disconn_between),
-# so it no longer blocks native placement; inline ::py:: remains the
+# so it no longer blocks native placement; an async ability remains a
 # statically-known native-incompatible construct.
 test "solver does not propose native for capability-violating modules" {
-    d = _proj(
-        {
-            "pymod.jac": (
-                "def f -> int {\n"
-                + "    ::py::\n"
-                + "x = 1\n"
-                + "::py::\n"
-                + "    return 1;\n"
-                + "}\n"
-            )
-        }
-    );
+    d = _proj({"pymod.jac": "async def f -> int {\n    return 1;\n}\n"});
     import from jaclang.compiler.frontend.codeinfo {
         get_effective_default_codespace_override,
         set_effective_default_codespace
@@ -274,9 +263,9 @@ test "solver does not propose native for capability-violating modules" {
         ][0];
         assert f_elem.code_context.value == 'server';
         assert not mod.gen.native_undecided , (
-            "inline Python closes the module's native preference before typing"
+            "an async ability closes the module's native preference before typing"
         );
-        assert "PyInlineCode" in mod.gen.native_closed_why , mod.gen.native_closed_why;
+        assert "async ability" in mod.gen.native_closed_why , mod.gen.native_closed_why;
     } finally {
         set_effective_default_codespace(previous);
         shutil.rmtree(d, ignore_errors=True);

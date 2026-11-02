@@ -87,6 +87,13 @@ import from engine.src.parser.ast {
     is_null_node
 }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bslice,
+    str_byte,
+    str_nbytes
+}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Debug tracing
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2345,15 +2352,15 @@ obj:pub Parser {
             # so the compiler receives a clean decimal string.
             raw_bi: str = self._cur.value;
             self._advance();
-            bi_len: int = len(raw_bi);
+            bi_len: int = str_nbytes(raw_bi);
             bi_val: str = "";
             bi_i: int = 0;
             bi_end: int = bi_len;
-            if bi_len > 0 and raw_bi[bi_len - 1] == "n" {
+            if bi_len > 0 and byte_chr(str_byte(raw_bi, bi_len - 1)) == "n" {
                 bi_end = bi_len - 1;
             }
             while bi_i < bi_end {
-                bi_val = bi_val + raw_bi[bi_i];
+                bi_val = bi_val + byte_chr(str_byte(raw_bi, bi_i));
                 bi_i = bi_i + 1;
             }
             lit_bi: ASTNode = make_literal(bi_val, raw_bi, self._span(start));
@@ -3269,23 +3276,23 @@ ECMAScript / Node treat the entire first line as a comment when it begins with #
 Without this, `#!/usr/bin/env node` is lexed as RegExp `/usr/` + flags `bin`.
 """
 def _strip_hashbang(source: str) -> str {
-    slen: int = len(source);
+    slen: int = str_nbytes(source);
     if slen < 2 {
         return source;
     }
-    if source[0] != "#" or source[1] != "!" {
+    if byte_chr(str_byte(source, 0)) != "#" or byte_chr(str_byte(source, 1)) != "!" {
         return source;
     }
     i: int = 2;
     while i < slen {
-        c: str = source[i];
+        c: str = byte_chr(str_byte(source, i));
         if c == "\n" {
             i = i + 1;
             break;
         }
         if c == chr(13) {
             i = i + 1;
-            if i < slen and source[i] == "\n" {
+            if i < slen and byte_chr(str_byte(source, i)) == "\n" {
                 i = i + 1;
             }
             break;
@@ -3295,7 +3302,7 @@ def _strip_hashbang(source: str) -> str {
     if i >= slen {
         return "";
     }
-    return source[i:slen];
+    return str_bslice(source, i, slen);
 }
 
 """
@@ -3380,7 +3387,7 @@ def:pub parse(
     _PARSE_HAD_ERRORS = False;
     source = _strip_hashbang(source);
     if PARSER_DEBUG_MODE {
-        parser_debug("→ parse  src_len=" + str(len(source)));
+        parser_debug("→ parse  src_len=" + str(str_nbytes(source)));
     }
     p2: Parser = make_parser(source);
     # Module-goal detection: a module permits top-level `await` as an operator (TLA).

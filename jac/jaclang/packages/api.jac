@@ -3,7 +3,7 @@ import json;
 import os;
 import from pathlib { Path }
 
-glob API_FORMAT: int = 1,
+glob API_FORMAT: int = 2,
      DOC_KEYS: tuple[str, ...] = ("doc", "value"),
      MODULE_DOCS: str = "module_docs",
      ARCHETYPE_KINDS: dict[SymbolType, str] = {
@@ -43,6 +43,8 @@ def _field(sym: Symbol, mtype: any) -> dict[str, any];
 
 def _members(sym: Symbol, evaluator: any) -> dict[str, dict[str, any]];
 
+def _synthesized_init(ctype: any, evaluator: any) -> any;
+
 def describe_symbol(sym: Symbol, evaluator: any) -> dict[str, any] | None;
 
 def module_surface(mod: Module, evaluator: any) -> dict[str, dict[str, any]];
@@ -55,4 +57,6 @@ def _undocumented(desc: dict[str, any]) -> dict[str, any];
 
 def api_shape(surface: dict[str, any]) -> dict[str, any];
 
-def surface_digest(surface: dict[str, any]) -> str;
+def _as_format(surface: dict[str, any], fmt: int) -> dict[str, any];
+
+def surface_digest(surface: dict[str, any], fmt: int = API_FORMAT) -> str;

@@ -75,7 +75,10 @@ impl run_client_dependencies(task: ModuleAnalysis) {
 impl admits_interface(task: ModuleAnalysis) -> bool {
     options = task.options;
     closure = session_of(task).closure_options() or options;
-    if task.parse_failed or task.blocked or task.source is not None {
+    if task.parse_failed
+        or task.blocked
+        or task.source is not None
+        or not options.keeps_interfaces() {
         return False;
     }
     return (options.no_cgen and not options.symtab_ir_only)
@@ -123,11 +126,9 @@ impl run_codegen(task: ModuleAnalysis) {
     task.require(CompilationProduct.PY_IR);
     task.require(CompilationProduct.FROZEN);
     session_of(task).assemble_python(program, module);
-    if module.decided_codespace == 'native' {
-        scrubbed = scrub_native_artifacts_on_error(program, module);
-        if options.aot_mode and not scrubbed {
-            report_missing_native_ir(program, module);
-        }
+    dropped = drop_products_on_error(program, module);
+    if module.decided_codespace == 'native' and options.aot_mode and not dropped {
+        report_missing_native_ir(program, module);
     }
 }
 
@@ -151,12 +152,21 @@ impl client_import_paths(module: uni.Module) -> list[str] {
     return out;
 }
 
-impl scrub_native_artifacts_on_error(program: JacProgram, mod: uni.Module) -> bool {
+impl drop_products_on_error(program: JacProgram, mod: uni.Module) -> bool {
     mod_path = mod.loc.mod_path if mod?.loc else '';
-    if not mod_path or not program.module_scoped_errors(mod_path) {
+    if not mod_path {
+        return False;
+    }
+    blocked = program.count_module_blocking_errors(os.path.normpath(mod_path)) > 0;
+    if not blocked
+        and (
+            mod.decided_codespace != 'native'
+            or not program.module_scoped_errors(mod_path)
+        ) {
         return False;
     }
     gen = mod.gen;
+    gen.jcir = None;
     gen.py_bytecode = None;
     gen.drop_native_ir();
     gen.native_engine = None;

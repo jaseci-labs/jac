@@ -1,9 +1,7 @@
 import hashlib;
 import os;
-import sys;
 
-glob WASM_FLOOR_MANIFEST: str = "SOURCES.sha256",
-     PYTHON_VARIANTS: tuple[str, ...] = ("cpython", "jacpython");
+glob WASM_FLOOR_MANIFEST: str = "SOURCES.sha256";
 
 def _repo_root -> str;
 
@@ -16,8 +14,6 @@ def _zig_build(step: str);
 def _floor_tier(
     sealed: bool, rel: str, source: Source, check: Callable[[str], bool]
 ) -> Probe;
-
-def _running_python_variant -> str;
 
 obj CFloorArtifact(Artifact) {
     has name: str = "c-floor",

@@ -2503,7 +2503,7 @@ for (const row of ROWS) {
     token: Boolean(localStorage.getItem("jac_token")),
     badge: document.getElementById("mode-badge").textContent,
     error: errorEl.style.display === "block" ? errorEl.textContent : null,
-    authedGraph: calls.some((c) => c.url.endsWith("/graph/data") && Boolean(c.auth)),
+    authedGraph: calls.some((c) => c.url.includes("/graph/node?") && Boolean(c.auth)),
   };
   const want = { token: row.token, badge: row.badge, error: row.error, authedGraph: row.token };
   const ok = JSON.stringify(seen) === JSON.stringify(want);
@@ -2561,12 +2561,16 @@ test "an unset worker count picks as many as fit; an explicit one is kept" {
 }
 
 
-test "a [serve] table without a worker count leaves the count unset" {
+test "a [serve] table stands where it omits a key or a JAC_SERVE_* variable is blank" {
+    import from unittest.mock { patch }
     import from jaclang.project.config { JacConfig }
+    import from jaclang.server.settings { ServeConfigError }
     with TemporaryDirectory() as tmpdir {
         manifest = Path(tmpdir) / "jac.toml";
         manifest.write_text(
-            '[project]\nname = "workers-unset"\n\n[serve]\nport = 9123\n'
+            '[project]\nname = "workers-unset"\n\n'
+            '[serve]\nport = 9123\ngraph_enabled = false\n'
+            'cors_origins = ["https://app.example"]\n'
         );
         config = JacConfig.load(manifest);
         assert config.serve.port == 9123;
@@ -2577,6 +2581,27 @@ test "a [serve] table without a worker count leaves the count unset" {
         assert settings.workers.count_by_default , (
             "a [serve] port pinned the app to an explicit worker count"
         );
+        blank = {
+            name: ""
+            for name in ["JAC_SERVE_GRAPH", "JAC_SERVE_PORT", "JAC_SERVE_CORS_ORIGINS"]
+        };
+        with patch.dict(os.environ, blank) {
+            loaded = _settings_without_worker_env(tmpdir, config=config);
+        }
+        seen = (loaded.graph_enabled, loaded.port, loaded.cors_origins);
+        assert seen == (False, 9123, ["https://app.example"]) , (
+            f"a blank JAC_SERVE_* variable overrode jac.toml: {seen}"
+        );
+        with patch.dict(os.environ, {"JAC_SERVE_GRAPH": "disabled"}) {
+            try {
+                _settings_without_worker_env(tmpdir, config=config);
+                assert False , "JAC_SERVE_GRAPH=disabled was read as a boolean";
+            } except ServeConfigError as refused {
+                assert "JAC_SERVE_GRAPH must be true or false" in str(refused) , (
+                    str(refused)
+                );
+            }
+        }
     }
 }
 
@@ -2616,8 +2641,9 @@ test "an unset worker count falls back to one worker where more would be refused
 }
 
 
-"""The stdlib server serves /graph, /graph/data and /docs, and the /graph login
-modal signs in against it (#8951)."""
+"""The stdlib server serves /graph, the explorer's /graph/node and
+/graph/neighbors, and /docs, and the /graph login modal signs in against it
+(#8951)."""
 test "stdlib server serves graph visualizer and docs" {
     import from tests.support { js_runtime_or_none }
     import from jaclang.server.settings { ServeSettings }
@@ -2632,11 +2658,13 @@ test "stdlib server serves graph visualizer and docs" {
         assert "<html" in page.text.lower() , "/graph should serve the visualizer html";
         seeded = client.post("/walker/leave_note", json={"text": "hi"});
         assert seeded.ok , f"seed walker failed: {seeded.text}";
-        data = client.get("/graph/data");
-        assert data.status_code == 200 , f"/graph/data: {data.text}";
-        payload = data.json();
-        assert "nodes" in payload and "edges" in payload , f"payload: {data.text}";
-        assert len(payload["nodes"]) >= 1 , "graph data should include the root node";
+        opened = client.get("/graph/node");
+        assert opened.status_code == 200 , f"/graph/node: {opened.text}";
+        assert opened.json()["root"] is True , f"/graph/node opens on the root: {opened.text}";
+        page = client.get(f"/graph/neighbors?id={opened.json()['id']}");
+        assert page.status_code == 200 , f"/graph/neighbors: {page.text}";
+        payload = page.json();
+        assert "nodes" in payload and "edges" in payload , f"payload: {page.text}";
         docs = client.get("/docs");
         assert docs.status_code == 200 , f"/docs: {docs.status_code}";
         assert "swagger-ui" in docs.text.lower() , "/docs should serve the API explorer";
@@ -3098,7 +3126,7 @@ test "serve: X-Jac-Idempotency-Key replays the first response for a repeated cal
             );
             assert first.ok , f"greet should be callable: {first.data}";
             scoped = scoped_idempotency_key(
-                "outbox-entry-1", Con.GUEST.value, "serve_api", "greet"
+                "outbox-entry-1", Con.GUEST.value, client.server.module_name, "greet"
             );
             assert cached_result(scoped) is not None , (
                 "a successful keyed call is remembered in the outbox seen-table "

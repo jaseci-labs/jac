@@ -28,10 +28,6 @@ impl compute_fact(kind: str, key: str) -> str {
     if kind == FACT_TARGET {
         return target_fact(key);
     }
-    if kind == FACT_OS {
-        import platform;
-        return platform.system();
-    }
     if kind == FACT_CODEC_TABLES {
         return codec_tables_fact();
     }

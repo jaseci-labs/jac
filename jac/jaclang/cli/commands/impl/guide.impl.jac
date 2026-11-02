@@ -102,8 +102,21 @@ impl guide(
                     if e.title.lower() == section.lower()
                 ];
             }
+            if not matches {
+                wanted = section.lower();
+                matches = [
+                    e
+                    for e in entries
+                    if e.slug.startswith(wanted) or e.title.lower().startswith(wanted)
+                ];
+            }
             if len(matches) != 1 {
-                message = f"Section '{section}' not found or ambiguous. Use 'jac guide {g.name} --sections' for exact slugs.";
+                message = f"Section '{section}' not found. Use 'jac guide {g.name} --sections' for exact slugs.";
+                if len(matches) > 1 {
+                    message = f"Section '{section}' is ambiguous: "
+                        + ", ".join([e.slug for e in matches])
+                        + ".";
+                }
                 if as_json {
                     _emit(json.dumps({"error": message}));
                 } else {

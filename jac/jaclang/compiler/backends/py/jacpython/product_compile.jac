@@ -1,4 +1,5 @@
-# Python source/AST -> PyCode through Jac validation, codegen and assembly.
+# Python source/AST -> PyCode through CPython's pipeline: parse, then
+# _PyAST_Compile (future, preprocess, symtable, codegen, flowgraph, assemble).
 
 def compile_source(
     source: str, filename: str, mode: str, optimize: int, flags: int = 0
@@ -6,19 +7,25 @@ def compile_source(
     if optimize not in (0, 1, 2) {
         return py_error("ValueError", "compile(): invalid optimize value");
     }
-    context = compile_context(optimize=optimize, flags=flags);
-    if mode == "eval" {
-        return compile_eval_path(source, filename, mode, context);
-    } elif mode == "single" {
-        tree = parse_interactive(source, filename, context.flags);
-        if tree is None {
-            return py_error("SyntaxError", "invalid syntax");
+    tree: mod | None = None;
+    if mode == "exec" {
+        tree = parse_file(source, filename, flags);
+    } elif mode == "eval" {
+        e = parse_eval_expr(source, filename, flags);
+        if e is not None {
+            tree = Expression(body=e);
         }
-        return compile_exec_ast(
-            Module(body=tree.body, type_ignores=[]), filename, True, context
+    } elif mode == "single" {
+        tree = parse_interactive(source, filename, flags);
+    } else {
+        return py_error(
+            "ValueError", "compile() mode must be 'exec', 'eval' or 'single'"
         );
     }
-    return compile_exec_path(source, filename, mode, context);
+    if tree is None {
+        return py_error("SyntaxError", "invalid syntax");
+    }
+    return cpy_ast_compile(tree, filename, flags, optimize);
 }
 
 def compile_ast(
@@ -27,15 +34,10 @@ def compile_ast(
     if optimize not in (0, 1, 2) {
         return py_error("ValueError", "compile(): invalid optimize value");
     }
-    context = compile_context(optimize=optimize, flags=flags);
-    if mode == "eval" and isinstance(tree, Expression) {
-        return compile_eval_ast(tree.body, filename, context);
-    } elif mode == "exec" and isinstance(tree, Module) {
-        return compile_exec_ast(tree, filename, False, context);
-    } elif mode == "single" and isinstance(tree, Interactive) {
-        return compile_exec_ast(
-            Module(body=tree.body, type_ignores=[]), filename, True, context
-        );
+    if (mode == "eval" and isinstance(tree, Expression))
+        or (mode == "exec" and isinstance(tree, Module))
+        or (mode == "single" and isinstance(tree, Interactive)) {
+        return cpy_ast_compile(tree, filename, flags, optimize);
     }
     return py_error("TypeError", "AST root does not match compilation mode");
 }
@@ -43,115 +45,6 @@ def compile_ast(
 def prepare_ast_output(
     tree: mod, filename: str, optimize: int, flags: int
 ) -> mod | PyObj {
-    if isinstance(tree, (Module, Interactive)) {
-        (features, result) = future_features(tree.body, False);
-        if result.diag is not None {
-            return compiler_diag_to_pyobj(result.diag);
-        }
-        flags |= features;
-    }
+    flags |= cpy_future_from_ast(tree, filename);
     return preprocess_node(tree, optimize, flags, bool(flags & 0x8000)) as mod;
-}
-
-def compile_eval_path(
-    source: str, filename: str, mode: str, context: compile_context
-) -> PyObj {
-    if mode != "eval" {
-        return py_error(
-            "NotImplementedError",
-            "compile_source: mode '" + mode + "' not yet supported (Phase C)"
-        );
-    }
-    e = parse_eval_expr(source, filename, context.flags);
-    if e is None {
-        return py_error(
-            "SyntaxError", "compile_source: failed to parse eval expression"
-        );
-    }
-    return compile_eval_ast(e, filename, context);
-}
-
-def compile_eval_ast(e: expr, filename: str, context: compile_context) -> PyObj {
-    vr = validate_eval_expr(e, bool(context.flags & 0x2000));
-    if vr.diag is not None {
-        return compiler_diag_to_pyobj(vr.diag);
-    }
-    e = preprocess_node(e, context.optimize, context.flags, True) as expr;
-    check_ast_warnings(e, filename);
-    sr = build_module_symtable(
-        [
-            Expr(
-                value=e,
-                lineno=e.lineno,
-                col_offset=e.col_offset,
-                end_lineno=e.end_lineno,
-                end_col_offset=e.end_col_offset
-            )
-        ],
-        context
-    );
-    if sr.diag is not None {
-        return compiler_diag_to_pyobj(sr.diag);
-    }
-    u = compile_eval(e, filename, "<module>", 1, sr.top);
-    if u.diag is not None {
-        return compiler_diag_to_pyobj(u.diag);
-    }
-    cfg = verify_cfg(u);
-    if cfg.diag is not None {
-        return compiler_diag_to_pyobj(cfg.diag);
-    }
-    return assemble(cfg);
-}
-
-# exec-mode native front end (PLAN.md P0.12 band 2: straight-line modules).
-# parse_file -> validate -> symtable -> compile_exec -> verify_cfg -> assemble.
-def compile_exec_path(
-    source: str, filename: str, mode: str, context: compile_context
-) -> PyObj {
-    if mode != "exec" {
-        return py_error(
-            "NotImplementedError",
-            "compile_source: mode '" + mode + "' not yet supported"
-        );
-    }
-    m = parse_file(source, filename, context.flags);
-    if m is None {
-        return py_error("SyntaxError", "compile_source: failed to parse exec module");
-    }
-    return compile_exec_ast(m, filename, False, context);
-}
-
-def compile_exec_ast(
-    m: Module, filename: str, interactive: bool, context: compile_context
-) -> PyObj {
-    (features, future_result) = future_features(m.body);
-    if future_result.diag is not None {
-        return compiler_diag_to_pyobj(future_result.diag);
-    }
-    context.flags |= features;
-    vr = validate_module_body(m.body, bool(context.flags & 0x2000));
-    if vr.diag is not None {
-        return compiler_diag_to_pyobj(vr.diag);
-    }
-    preprocess_node(m, context.optimize, context.flags, True);
-    check_ast_warnings(m, filename);
-    sr = build_module_symtable(m.body, context);
-    if sr.diag is not None {
-        return compiler_diag_to_pyobj(sr.diag);
-    }
-    # Scope analysis still validates annotation expressions and their binding
-    # forms before the future flag turns those expressions into strings.
-    if context.flags & 0x1000000 {
-        stringify_future_annotations(m, filename);
-    }
-    u = compile_exec(m.body, filename, "<module>", 1, sr.top, interactive);
-    if u.diag is not None {
-        return compiler_diag_to_pyobj(u.diag);
-    }
-    cfg = verify_cfg(u);
-    if cfg.diag is not None {
-        return compiler_diag_to_pyobj(cfg.diag);
-    }
-    return assemble(cfg);
 }

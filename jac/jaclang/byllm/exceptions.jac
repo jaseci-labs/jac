@@ -4,10 +4,6 @@ obj ByLLMError(Exception) {
     def postinit -> None;
 }
 
-impl ByLLMError.postinit -> None {
-    Exception.__init__(self, self.message);
-}
-
 obj AuthenticationError(ByLLMError) {}
 
 obj RateLimitError(ByLLMError) {}
@@ -23,14 +19,6 @@ obj LLMTimeout(ByLLMError) {
 
     def postinit -> None;
     def __str__ -> str;
-}
-
-impl LLMTimeout.postinit -> None {
-    Exception.__init__(self, self.message);
-}
-
-impl LLMTimeout.__str__ -> str {
-    return self.message;
 }
 
 def _adopt_provider_timeout(module: any);

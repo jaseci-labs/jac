@@ -431,12 +431,12 @@ glob RULE__gather_101: int = NT_OFFSET + 0,
      RULE_yield_stmt: int = NT_OFFSET + 424;
 
 def rule__gather_101(p: peg_parser) -> list[kp_pair] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_101 = _rule__gather_101(p);
-    p.level -= 1;
-    return res_rule__gather_101;
+    p.level += 1;
+    return _rule__gather_101(p);
 }
 
 def:priv _rule__gather_101(p: peg_parser) -> list[kp_pair] | None {
@@ -447,20 +447,22 @@ def:priv _rule__gather_101(p: peg_parser) -> list[kp_pair] | None {
         seq = rule__loop0_100(p);
         if seq is not None {
             res = pa_seq_insert_front_kvpattern(elem as kp_pair, seq) as list[kp_pair];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_104(p: peg_parser) -> list[kp_pair] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_104 = _rule__gather_104(p);
-    p.level -= 1;
-    return res_rule__gather_104;
+    p.level += 1;
+    return _rule__gather_104(p);
 }
 
 def:priv _rule__gather_104(p: peg_parser) -> list[kp_pair] | None {
@@ -471,20 +473,22 @@ def:priv _rule__gather_104(p: peg_parser) -> list[kp_pair] | None {
         seq = rule__loop0_103(p);
         if seq is not None {
             res = pa_seq_insert_front_kvpattern(elem as kp_pair, seq) as list[kp_pair];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_106(p: peg_parser) -> list[keyword_or_starred_node] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_106 = _rule__gather_106(p);
-    p.level -= 1;
-    return res_rule__gather_106;
+    p.level += 1;
+    return _rule__gather_106(p);
 }
 
 def:priv _rule__gather_106(p: peg_parser) -> list[keyword_or_starred_node] | None {
@@ -497,20 +501,22 @@ def:priv _rule__gather_106(p: peg_parser) -> list[keyword_or_starred_node] | Non
             res = pa_seq_insert_front_kw_or_starred(
                 elem as keyword_or_starred_node, seq
             ) as list[keyword_or_starred_node];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_108(p: peg_parser) -> list[keyword_or_starred_node] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_108 = _rule__gather_108(p);
-    p.level -= 1;
-    return res_rule__gather_108;
+    p.level += 1;
+    return _rule__gather_108(p);
 }
 
 def:priv _rule__gather_108(p: peg_parser) -> list[keyword_or_starred_node] | None {
@@ -523,20 +529,22 @@ def:priv _rule__gather_108(p: peg_parser) -> list[keyword_or_starred_node] | Non
             res = pa_seq_insert_front_kw_or_starred(
                 elem as keyword_or_starred_node, seq
             ) as list[keyword_or_starred_node];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_113(p: peg_parser) -> list[pattern] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_113 = _rule__gather_113(p);
-    p.level -= 1;
-    return res_rule__gather_113;
+    p.level += 1;
+    return _rule__gather_113(p);
 }
 
 def:priv _rule__gather_113(p: peg_parser) -> list[pattern] | None {
@@ -547,20 +555,22 @@ def:priv _rule__gather_113(p: peg_parser) -> list[pattern] | None {
         seq = rule__loop0_112(p);
         if seq is not None {
             res = pa_seq_insert_front_pattern(elem as pattern, seq) as list[pattern];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_115(p: peg_parser) -> list[pattern] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_115 = _rule__gather_115(p);
-    p.level -= 1;
-    return res_rule__gather_115;
+    p.level += 1;
+    return _rule__gather_115(p);
 }
 
 def:priv _rule__gather_115(p: peg_parser) -> list[pattern] | None {
@@ -571,20 +581,22 @@ def:priv _rule__gather_115(p: peg_parser) -> list[pattern] | None {
         seq = rule__loop0_114(p);
         if seq is not None {
             res = pa_seq_insert_front_pattern(elem as pattern, seq) as list[pattern];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_118(p: peg_parser) -> list[pattern] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_118 = _rule__gather_118(p);
-    p.level -= 1;
-    return res_rule__gather_118;
+    p.level += 1;
+    return _rule__gather_118(p);
 }
 
 def:priv _rule__gather_118(p: peg_parser) -> list[pattern] | None {
@@ -595,20 +607,22 @@ def:priv _rule__gather_118(p: peg_parser) -> list[pattern] | None {
         seq = rule__loop0_117(p);
         if seq is not None {
             res = pa_seq_insert_front_pattern(elem as pattern, seq) as list[pattern];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_121(p: peg_parser) -> list[stmt] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_121 = _rule__gather_121(p);
-    p.level -= 1;
-    return res_rule__gather_121;
+    p.level += 1;
+    return _rule__gather_121(p);
 }
 
 def:priv _rule__gather_121(p: peg_parser) -> list[stmt] | None {
@@ -619,20 +633,22 @@ def:priv _rule__gather_121(p: peg_parser) -> list[stmt] | None {
         seq = rule__loop0_120(p);
         if seq is not None {
             res = pa_seq_insert_front_stmt(elem as stmt, seq) as list[stmt];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_124(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_124 = _rule__gather_124(p);
-    p.level -= 1;
-    return res_rule__gather_124;
+    p.level += 1;
+    return _rule__gather_124(p);
 }
 
 def:priv _rule__gather_124(p: peg_parser) -> list[expr] | None {
@@ -643,20 +659,22 @@ def:priv _rule__gather_124(p: peg_parser) -> list[expr] | None {
         seq = rule__loop0_123(p);
         if seq is not None {
             res = pa_seq_insert_front_expr(elem as expr, seq) as list[expr];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_127(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_127 = _rule__gather_127(p);
-    p.level -= 1;
-    return res_rule__gather_127;
+    p.level += 1;
+    return _rule__gather_127(p);
 }
 
 def:priv _rule__gather_127(p: peg_parser) -> list[expr] | None {
@@ -667,20 +685,22 @@ def:priv _rule__gather_127(p: peg_parser) -> list[expr] | None {
         seq = rule__loop0_126(p);
         if seq is not None {
             res = pa_seq_insert_front_expr(elem as expr, seq) as list[expr];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_131(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_131 = _rule__gather_131(p);
-    p.level -= 1;
-    return res_rule__gather_131;
+    p.level += 1;
+    return _rule__gather_131(p);
 }
 
 def:priv _rule__gather_131(p: peg_parser) -> list[expr] | None {
@@ -691,20 +711,22 @@ def:priv _rule__gather_131(p: peg_parser) -> list[expr] | None {
         seq = rule__loop0_130(p);
         if seq is not None {
             res = pa_seq_insert_front_expr(elem as expr, seq) as list[expr];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_138(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_138 = _rule__gather_138(p);
-    p.level -= 1;
-    return res_rule__gather_138;
+    p.level += 1;
+    return _rule__gather_138(p);
 }
 
 def:priv _rule__gather_138(p: peg_parser) -> list[expr] | None {
@@ -715,20 +737,22 @@ def:priv _rule__gather_138(p: peg_parser) -> list[expr] | None {
         seq = rule__loop0_137(p);
         if seq is not None {
             res = pa_seq_insert_front_expr(elem as expr, seq) as list[expr];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_140(p: peg_parser) -> list[type_param] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_140 = _rule__gather_140(p);
-    p.level -= 1;
-    return res_rule__gather_140;
+    p.level += 1;
+    return _rule__gather_140(p);
 }
 
 def:priv _rule__gather_140(p: peg_parser) -> list[type_param] | None {
@@ -741,20 +765,22 @@ def:priv _rule__gather_140(p: peg_parser) -> list[type_param] | None {
             res = pa_seq_insert_front_type_param(elem as type_param, seq) as list[
                 type_param
             ];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_142(p: peg_parser) -> list[withitem] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_142 = _rule__gather_142(p);
-    p.level -= 1;
-    return res_rule__gather_142;
+    p.level += 1;
+    return _rule__gather_142(p);
 }
 
 def:priv _rule__gather_142(p: peg_parser) -> list[withitem] | None {
@@ -765,20 +791,22 @@ def:priv _rule__gather_142(p: peg_parser) -> list[withitem] | None {
         seq = rule__loop0_141(p);
         if seq is not None {
             res = pa_seq_insert_front_withitem(elem as withitem, seq) as list[withitem];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_17(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_17 = _rule__gather_17(p);
-    p.level -= 1;
-    return res_rule__gather_17;
+    p.level += 1;
+    return _rule__gather_17(p);
 }
 
 def:priv _rule__gather_17(p: peg_parser) -> list[expr] | None {
@@ -789,20 +817,22 @@ def:priv _rule__gather_17(p: peg_parser) -> list[expr] | None {
         seq = rule__loop0_16(p);
         if seq is not None {
             res = pa_seq_insert_front_expr(elem as expr, seq) as list[expr];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_21(p: peg_parser) -> list[alias] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_21 = _rule__gather_21(p);
-    p.level -= 1;
-    return res_rule__gather_21;
+    p.level += 1;
+    return _rule__gather_21(p);
 }
 
 def:priv _rule__gather_21(p: peg_parser) -> list[alias] | None {
@@ -813,20 +843,22 @@ def:priv _rule__gather_21(p: peg_parser) -> list[alias] | None {
         seq = rule__loop0_20(p);
         if seq is not None {
             res = pa_seq_insert_front_alias(elem as alias, seq) as list[alias];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_23(p: peg_parser) -> list[kv_pair] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_23 = _rule__gather_23(p);
-    p.level -= 1;
-    return res_rule__gather_23;
+    p.level += 1;
+    return _rule__gather_23(p);
 }
 
 def:priv _rule__gather_23(p: peg_parser) -> list[kv_pair] | None {
@@ -837,20 +869,22 @@ def:priv _rule__gather_23(p: peg_parser) -> list[kv_pair] | None {
         seq = rule__loop0_22(p);
         if seq is not None {
             res = pa_seq_insert_front_kvpair(elem as kv_pair, seq) as list[kv_pair];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_3(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_3 = _rule__gather_3(p);
-    p.level -= 1;
-    return res_rule__gather_3;
+    p.level += 1;
+    return _rule__gather_3(p);
 }
 
 def:priv _rule__gather_3(p: peg_parser) -> list[expr] | None {
@@ -861,20 +895,22 @@ def:priv _rule__gather_3(p: peg_parser) -> list[expr] | None {
         seq = rule__loop0_1(p);
         if seq is not None {
             res = pa_seq_insert_front_expr(elem as expr, seq) as list[expr];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_33(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_33 = _rule__gather_33(p);
-    p.level -= 1;
-    return res_rule__gather_33;
+    p.level += 1;
+    return _rule__gather_33(p);
 }
 
 def:priv _rule__gather_33(p: peg_parser) -> list[expr] | None {
@@ -885,20 +921,22 @@ def:priv _rule__gather_33(p: peg_parser) -> list[expr] | None {
         seq = rule__loop0_32(p);
         if seq is not None {
             res = pa_seq_insert_front_expr(elem as expr, seq) as list[expr];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_38(p: peg_parser) -> list[alias] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_38 = _rule__gather_38(p);
-    p.level -= 1;
-    return res_rule__gather_38;
+    p.level += 1;
+    return _rule__gather_38(p);
 }
 
 def:priv _rule__gather_38(p: peg_parser) -> list[alias] | None {
@@ -909,20 +947,22 @@ def:priv _rule__gather_38(p: peg_parser) -> list[alias] | None {
         seq = rule__loop0_37(p);
         if seq is not None {
             res = pa_seq_insert_front_alias(elem as alias, seq) as list[alias];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_42(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_42 = _rule__gather_42(p);
-    p.level -= 1;
-    return res_rule__gather_42;
+    p.level += 1;
+    return _rule__gather_42(p);
 }
 
 def:priv _rule__gather_42(p: peg_parser) -> list[expr] | None {
@@ -933,20 +973,22 @@ def:priv _rule__gather_42(p: peg_parser) -> list[expr] | None {
         seq = rule__loop0_41(p);
         if seq is not None {
             res = pa_seq_insert_front_expr(elem as expr, seq) as list[expr];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_62(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_62 = _rule__gather_62(p);
-    p.level -= 1;
-    return res_rule__gather_62;
+    p.level += 1;
+    return _rule__gather_62(p);
 }
 
 def:priv _rule__gather_62(p: peg_parser) -> list[expr] | None {
@@ -957,20 +999,22 @@ def:priv _rule__gather_62(p: peg_parser) -> list[expr] | None {
         seq = rule__loop0_61(p);
         if seq is not None {
             res = pa_seq_insert_front_expr(elem as expr, seq) as list[expr];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_70(p: peg_parser) -> list[arg] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_70 = _rule__gather_70(p);
-    p.level -= 1;
-    return res_rule__gather_70;
+    p.level += 1;
+    return _rule__gather_70(p);
 }
 
 def:priv _rule__gather_70(p: peg_parser) -> list[arg] | None {
@@ -981,20 +1025,22 @@ def:priv _rule__gather_70(p: peg_parser) -> list[arg] | None {
         seq = rule__loop0_69(p);
         if seq is not None {
             res = pa_seq_insert_front_arg(elem as arg, seq) as list[arg];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_97(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_97 = _rule__gather_97(p);
-    p.level -= 1;
-    return res_rule__gather_97;
+    p.level += 1;
+    return _rule__gather_97(p);
 }
 
 def:priv _rule__gather_97(p: peg_parser) -> list[expr] | None {
@@ -1005,20 +1051,22 @@ def:priv _rule__gather_97(p: peg_parser) -> list[expr] | None {
         seq = rule__loop0_95(p);
         if seq is not None {
             res = pa_seq_insert_front_expr(elem as expr, seq) as list[expr];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__gather_99(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__gather_99 = _rule__gather_99(p);
-    p.level -= 1;
-    return res_rule__gather_99;
+    p.level += 1;
+    return _rule__gather_99(p);
 }
 
 def:priv _rule__gather_99(p: peg_parser) -> list[expr] | None {
@@ -1029,20 +1077,22 @@ def:priv _rule__gather_99(p: peg_parser) -> list[expr] | None {
         seq = rule__loop0_98(p);
         if seq is not None {
             res = pa_seq_insert_front_expr(elem as expr, seq) as list[expr];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__loop0_1(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_1 = _rule__loop0_1(p);
-    p.level -= 1;
-    return res_rule__loop0_1;
+    p.level += 1;
+    return _rule__loop0_1(p);
 }
 
 def:priv _rule__loop0_1(p: peg_parser) -> list[expr] | None {
@@ -1062,16 +1112,17 @@ def:priv _rule__loop0_1(p: peg_parser) -> list[expr] | None {
         children.append(elem as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop0_100(p: peg_parser) -> list[kp_pair] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_100 = _rule__loop0_100(p);
-    p.level -= 1;
-    return res_rule__loop0_100;
+    p.level += 1;
+    return _rule__loop0_100(p);
 }
 
 def:priv _rule__loop0_100(p: peg_parser) -> list[kp_pair] | None {
@@ -1091,16 +1142,17 @@ def:priv _rule__loop0_100(p: peg_parser) -> list[kp_pair] | None {
         children.append(elem as kp_pair);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[kp_pair];
 }
 
 def rule__loop0_103(p: peg_parser) -> list[kp_pair] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_103 = _rule__loop0_103(p);
-    p.level -= 1;
-    return res_rule__loop0_103;
+    p.level += 1;
+    return _rule__loop0_103(p);
 }
 
 def:priv _rule__loop0_103(p: peg_parser) -> list[kp_pair] | None {
@@ -1120,16 +1172,17 @@ def:priv _rule__loop0_103(p: peg_parser) -> list[kp_pair] | None {
         children.append(elem as kp_pair);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[kp_pair];
 }
 
 def rule__loop0_105(p: peg_parser) -> list[keyword_or_starred_node] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_105 = _rule__loop0_105(p);
-    p.level -= 1;
-    return res_rule__loop0_105;
+    p.level += 1;
+    return _rule__loop0_105(p);
 }
 
 def:priv _rule__loop0_105(p: peg_parser) -> list[keyword_or_starred_node] | None {
@@ -1149,16 +1202,17 @@ def:priv _rule__loop0_105(p: peg_parser) -> list[keyword_or_starred_node] | None
         children.append(elem as keyword_or_starred_node);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[keyword_or_starred_node];
 }
 
 def rule__loop0_107(p: peg_parser) -> list[keyword_or_starred_node] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_107 = _rule__loop0_107(p);
-    p.level -= 1;
-    return res_rule__loop0_107;
+    p.level += 1;
+    return _rule__loop0_107(p);
 }
 
 def:priv _rule__loop0_107(p: peg_parser) -> list[keyword_or_starred_node] | None {
@@ -1178,16 +1232,17 @@ def:priv _rule__loop0_107(p: peg_parser) -> list[keyword_or_starred_node] | None
         children.append(elem as keyword_or_starred_node);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[keyword_or_starred_node];
 }
 
 def rule__loop0_109(p: peg_parser) -> list[name_default_pair] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_109 = _rule__loop0_109(p);
-    p.level -= 1;
-    return res_rule__loop0_109;
+    p.level += 1;
+    return _rule__loop0_109(p);
 }
 
 def:priv _rule__loop0_109(p: peg_parser) -> list[name_default_pair] | None {
@@ -1202,16 +1257,17 @@ def:priv _rule__loop0_109(p: peg_parser) -> list[name_default_pair] | None {
         children.append(lambda_param_with_default as name_default_pair);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[name_default_pair];
 }
 
 def rule__loop0_112(p: peg_parser) -> list[pattern] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_112 = _rule__loop0_112(p);
-    p.level -= 1;
-    return res_rule__loop0_112;
+    p.level += 1;
+    return _rule__loop0_112(p);
 }
 
 def:priv _rule__loop0_112(p: peg_parser) -> list[pattern] | None {
@@ -1231,16 +1287,17 @@ def:priv _rule__loop0_112(p: peg_parser) -> list[pattern] | None {
         children.append(elem as pattern);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[pattern];
 }
 
 def rule__loop0_114(p: peg_parser) -> list[pattern] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_114 = _rule__loop0_114(p);
-    p.level -= 1;
-    return res_rule__loop0_114;
+    p.level += 1;
+    return _rule__loop0_114(p);
 }
 
 def:priv _rule__loop0_114(p: peg_parser) -> list[pattern] | None {
@@ -1260,16 +1317,17 @@ def:priv _rule__loop0_114(p: peg_parser) -> list[pattern] | None {
         children.append(elem as pattern);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[pattern];
 }
 
 def rule__loop0_116(p: peg_parser) -> list[name_default_pair] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_116 = _rule__loop0_116(p);
-    p.level -= 1;
-    return res_rule__loop0_116;
+    p.level += 1;
+    return _rule__loop0_116(p);
 }
 
 def:priv _rule__loop0_116(p: peg_parser) -> list[name_default_pair] | None {
@@ -1284,16 +1342,17 @@ def:priv _rule__loop0_116(p: peg_parser) -> list[name_default_pair] | None {
         children.append(param_with_default as name_default_pair);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[name_default_pair];
 }
 
 def rule__loop0_117(p: peg_parser) -> list[pattern] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_117 = _rule__loop0_117(p);
-    p.level -= 1;
-    return res_rule__loop0_117;
+    p.level += 1;
+    return _rule__loop0_117(p);
 }
 
 def:priv _rule__loop0_117(p: peg_parser) -> list[pattern] | None {
@@ -1313,16 +1372,17 @@ def:priv _rule__loop0_117(p: peg_parser) -> list[pattern] | None {
         children.append(elem as pattern);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[pattern];
 }
 
 def rule__loop0_120(p: peg_parser) -> list[stmt] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_120 = _rule__loop0_120(p);
-    p.level -= 1;
-    return res_rule__loop0_120;
+    p.level += 1;
+    return _rule__loop0_120(p);
 }
 
 def:priv _rule__loop0_120(p: peg_parser) -> list[stmt] | None {
@@ -1342,16 +1402,17 @@ def:priv _rule__loop0_120(p: peg_parser) -> list[stmt] | None {
         children.append(elem as stmt);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[stmt];
 }
 
 def rule__loop0_123(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_123 = _rule__loop0_123(p);
-    p.level -= 1;
-    return res_rule__loop0_123;
+    p.level += 1;
+    return _rule__loop0_123(p);
 }
 
 def:priv _rule__loop0_123(p: peg_parser) -> list[expr] | None {
@@ -1371,16 +1432,17 @@ def:priv _rule__loop0_123(p: peg_parser) -> list[expr] | None {
         children.append(elem as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop0_126(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_126 = _rule__loop0_126(p);
-    p.level -= 1;
-    return res_rule__loop0_126;
+    p.level += 1;
+    return _rule__loop0_126(p);
 }
 
 def:priv _rule__loop0_126(p: peg_parser) -> list[expr] | None {
@@ -1400,16 +1462,17 @@ def:priv _rule__loop0_126(p: peg_parser) -> list[expr] | None {
         children.append(elem as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop0_129(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_129 = _rule__loop0_129(p);
-    p.level -= 1;
-    return res_rule__loop0_129;
+    p.level += 1;
+    return _rule__loop0_129(p);
 }
 
 def:priv _rule__loop0_129(p: peg_parser) -> list[expr] | None {
@@ -1424,16 +1487,17 @@ def:priv _rule__loop0_129(p: peg_parser) -> list[expr] | None {
         children.append(rhs as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop0_130(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_130 = _rule__loop0_130(p);
-    p.level -= 1;
-    return res_rule__loop0_130;
+    p.level += 1;
+    return _rule__loop0_130(p);
 }
 
 def:priv _rule__loop0_130(p: peg_parser) -> list[expr] | None {
@@ -1453,16 +1517,17 @@ def:priv _rule__loop0_130(p: peg_parser) -> list[expr] | None {
         children.append(elem as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop0_134(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_134 = _rule__loop0_134(p);
-    p.level -= 1;
-    return res_rule__loop0_134;
+    p.level += 1;
+    return _rule__loop0_134(p);
 }
 
 def:priv _rule__loop0_134(p: peg_parser) -> list[expr] | None {
@@ -1477,16 +1542,17 @@ def:priv _rule__loop0_134(p: peg_parser) -> list[expr] | None {
         children.append(tstring_middle as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop0_135(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_135 = _rule__loop0_135(p);
-    p.level -= 1;
-    return res_rule__loop0_135;
+    p.level += 1;
+    return _rule__loop0_135(p);
 }
 
 def:priv _rule__loop0_135(p: peg_parser) -> list[expr] | None {
@@ -1501,16 +1567,17 @@ def:priv _rule__loop0_135(p: peg_parser) -> list[expr] | None {
         children.append(tstring_format_spec as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop0_137(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_137 = _rule__loop0_137(p);
-    p.level -= 1;
-    return res_rule__loop0_137;
+    p.level += 1;
+    return _rule__loop0_137(p);
 }
 
 def:priv _rule__loop0_137(p: peg_parser) -> list[expr] | None {
@@ -1530,16 +1597,17 @@ def:priv _rule__loop0_137(p: peg_parser) -> list[expr] | None {
         children.append(elem as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop0_139(p: peg_parser) -> list[type_param] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_139 = _rule__loop0_139(p);
-    p.level -= 1;
-    return res_rule__loop0_139;
+    p.level += 1;
+    return _rule__loop0_139(p);
 }
 
 def:priv _rule__loop0_139(p: peg_parser) -> list[type_param] | None {
@@ -1559,16 +1627,17 @@ def:priv _rule__loop0_139(p: peg_parser) -> list[type_param] | None {
         children.append(elem as type_param);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[type_param];
 }
 
 def rule__loop0_141(p: peg_parser) -> list[withitem] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_141 = _rule__loop0_141(p);
-    p.level -= 1;
-    return res_rule__loop0_141;
+    p.level += 1;
+    return _rule__loop0_141(p);
 }
 
 def:priv _rule__loop0_141(p: peg_parser) -> list[withitem] | None {
@@ -1588,16 +1657,17 @@ def:priv _rule__loop0_141(p: peg_parser) -> list[withitem] | None {
         children.append(elem as withitem);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[withitem];
 }
 
 def rule__loop0_16(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_16 = _rule__loop0_16(p);
-    p.level -= 1;
-    return res_rule__loop0_16;
+    p.level += 1;
+    return _rule__loop0_16(p);
 }
 
 def:priv _rule__loop0_16(p: peg_parser) -> list[expr] | None {
@@ -1617,16 +1687,17 @@ def:priv _rule__loop0_16(p: peg_parser) -> list[expr] | None {
         children.append(elem as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop0_20(p: peg_parser) -> list[alias] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_20 = _rule__loop0_20(p);
-    p.level -= 1;
-    return res_rule__loop0_20;
+    p.level += 1;
+    return _rule__loop0_20(p);
 }
 
 def:priv _rule__loop0_20(p: peg_parser) -> list[alias] | None {
@@ -1646,16 +1717,17 @@ def:priv _rule__loop0_20(p: peg_parser) -> list[alias] | None {
         children.append(elem as alias);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[alias];
 }
 
 def rule__loop0_22(p: peg_parser) -> list[kv_pair] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_22 = _rule__loop0_22(p);
-    p.level -= 1;
-    return res_rule__loop0_22;
+    p.level += 1;
+    return _rule__loop0_22(p);
 }
 
 def:priv _rule__loop0_22(p: peg_parser) -> list[kv_pair] | None {
@@ -1675,16 +1747,17 @@ def:priv _rule__loop0_22(p: peg_parser) -> list[kv_pair] | None {
         children.append(elem as kv_pair);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[kv_pair];
 }
 
 def rule__loop0_24(p: peg_parser) -> list[peg_token] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_24 = _rule__loop0_24(p);
-    p.level -= 1;
-    return res_rule__loop0_24;
+    p.level += 1;
+    return _rule__loop0_24(p);
 }
 
 def:priv _rule__loop0_24(p: peg_parser) -> list[peg_token] | None {
@@ -1699,16 +1772,17 @@ def:priv _rule__loop0_24(p: peg_parser) -> list[peg_token] | None {
         children.append(_newline as peg_token);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[peg_token];
 }
 
 def rule__loop0_26(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_26 = _rule__loop0_26(p);
-    p.level -= 1;
-    return res_rule__loop0_26;
+    p.level += 1;
+    return _rule__loop0_26(p);
 }
 
 def:priv _rule__loop0_26(p: peg_parser) -> list[expr] | None {
@@ -1723,16 +1797,17 @@ def:priv _rule__loop0_26(p: peg_parser) -> list[expr] | None {
         children.append(rhs as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop0_28(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_28 = _rule__loop0_28(p);
-    p.level -= 1;
-    return res_rule__loop0_28;
+    p.level += 1;
+    return _rule__loop0_28(p);
 }
 
 def:priv _rule__loop0_28(p: peg_parser) -> list[expr] | None {
@@ -1747,16 +1822,17 @@ def:priv _rule__loop0_28(p: peg_parser) -> list[expr] | None {
         children.append(fstring_middle as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop0_29(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_29 = _rule__loop0_29(p);
-    p.level -= 1;
-    return res_rule__loop0_29;
+    p.level += 1;
+    return _rule__loop0_29(p);
 }
 
 def:priv _rule__loop0_29(p: peg_parser) -> list[expr] | None {
@@ -1771,16 +1847,17 @@ def:priv _rule__loop0_29(p: peg_parser) -> list[expr] | None {
         children.append(fstring_format_spec as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop0_32(p: peg_parser) -> list[Name] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_32 = _rule__loop0_32(p);
-    p.level -= 1;
-    return res_rule__loop0_32;
+    p.level += 1;
+    return _rule__loop0_32(p);
 }
 
 def:priv _rule__loop0_32(p: peg_parser) -> list[Name] | None {
@@ -1800,16 +1877,17 @@ def:priv _rule__loop0_32(p: peg_parser) -> list[Name] | None {
         children.append(elem as Name);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[Name];
 }
 
 def rule__loop0_35(p: peg_parser) -> list[peg_token] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_35 = _rule__loop0_35(p);
-    p.level -= 1;
-    return res_rule__loop0_35;
+    p.level += 1;
+    return _rule__loop0_35(p);
 }
 
 def:priv _rule__loop0_35(p: peg_parser) -> list[peg_token] | None {
@@ -1824,16 +1902,17 @@ def:priv _rule__loop0_35(p: peg_parser) -> list[peg_token] | None {
         children.append(rhs as peg_token);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[peg_token];
 }
 
 def rule__loop0_37(p: peg_parser) -> list[alias] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_37 = _rule__loop0_37(p);
-    p.level -= 1;
-    return res_rule__loop0_37;
+    p.level += 1;
+    return _rule__loop0_37(p);
 }
 
 def:priv _rule__loop0_37(p: peg_parser) -> list[alias] | None {
@@ -1853,16 +1932,17 @@ def:priv _rule__loop0_37(p: peg_parser) -> list[alias] | None {
         children.append(elem as alias);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[alias];
 }
 
 def rule__loop0_41(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_41 = _rule__loop0_41(p);
-    p.level -= 1;
-    return res_rule__loop0_41;
+    p.level += 1;
+    return _rule__loop0_41(p);
 }
 
 def:priv _rule__loop0_41(p: peg_parser) -> list[expr] | None {
@@ -1882,16 +1962,17 @@ def:priv _rule__loop0_41(p: peg_parser) -> list[expr] | None {
         children.append(elem as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop0_46(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_46 = _rule__loop0_46(p);
-    p.level -= 1;
-    return res_rule__loop0_46;
+    p.level += 1;
+    return _rule__loop0_46(p);
 }
 
 def:priv _rule__loop0_46(p: peg_parser) -> list[expr] | None {
@@ -1906,16 +1987,17 @@ def:priv _rule__loop0_46(p: peg_parser) -> list[expr] | None {
         children.append(star_named_expressions as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop0_47(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_47 = _rule__loop0_47(p);
-    p.level -= 1;
-    return res_rule__loop0_47;
+    p.level += 1;
+    return _rule__loop0_47(p);
 }
 
 def:priv _rule__loop0_47(p: peg_parser) -> list[expr] | None {
@@ -1930,16 +2012,17 @@ def:priv _rule__loop0_47(p: peg_parser) -> list[expr] | None {
         children.append(rhs as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop0_59(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_59 = _rule__loop0_59(p);
-    p.level -= 1;
-    return res_rule__loop0_59;
+    p.level += 1;
+    return _rule__loop0_59(p);
 }
 
 def:priv _rule__loop0_59(p: peg_parser) -> list[expr] | None {
@@ -1954,16 +2037,17 @@ def:priv _rule__loop0_59(p: peg_parser) -> list[expr] | None {
         children.append(rhs as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop0_61(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_61 = _rule__loop0_61(p);
-    p.level -= 1;
-    return res_rule__loop0_61;
+    p.level += 1;
+    return _rule__loop0_61(p);
 }
 
 def:priv _rule__loop0_61(p: peg_parser) -> list[expr] | None {
@@ -1983,16 +2067,17 @@ def:priv _rule__loop0_61(p: peg_parser) -> list[expr] | None {
         children.append(elem as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop0_67(p: peg_parser) -> list[name_default_pair] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_67 = _rule__loop0_67(p);
-    p.level -= 1;
-    return res_rule__loop0_67;
+    p.level += 1;
+    return _rule__loop0_67(p);
 }
 
 def:priv _rule__loop0_67(p: peg_parser) -> list[name_default_pair] | None {
@@ -2007,16 +2092,17 @@ def:priv _rule__loop0_67(p: peg_parser) -> list[name_default_pair] | None {
         children.append(lambda_param_maybe_default as name_default_pair);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[name_default_pair];
 }
 
 def rule__loop0_68(p: peg_parser) -> list[arg] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_68 = _rule__loop0_68(p);
-    p.level -= 1;
-    return res_rule__loop0_68;
+    p.level += 1;
+    return _rule__loop0_68(p);
 }
 
 def:priv _rule__loop0_68(p: peg_parser) -> list[arg] | None {
@@ -2031,16 +2117,17 @@ def:priv _rule__loop0_68(p: peg_parser) -> list[arg] | None {
         children.append(lambda_param_no_default as arg);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[arg];
 }
 
 def rule__loop0_69(p: peg_parser) -> list[arg] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_69 = _rule__loop0_69(p);
-    p.level -= 1;
-    return res_rule__loop0_69;
+    p.level += 1;
+    return _rule__loop0_69(p);
 }
 
 def:priv _rule__loop0_69(p: peg_parser) -> list[arg] | None {
@@ -2060,16 +2147,17 @@ def:priv _rule__loop0_69(p: peg_parser) -> list[arg] | None {
         children.append(elem as arg);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[arg];
 }
 
 def rule__loop0_79(p: peg_parser) -> list[name_default_pair] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_79 = _rule__loop0_79(p);
-    p.level -= 1;
-    return res_rule__loop0_79;
+    p.level += 1;
+    return _rule__loop0_79(p);
 }
 
 def:priv _rule__loop0_79(p: peg_parser) -> list[name_default_pair] | None {
@@ -2084,16 +2172,17 @@ def:priv _rule__loop0_79(p: peg_parser) -> list[name_default_pair] | None {
         children.append(param_maybe_default as name_default_pair);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[name_default_pair];
 }
 
 def rule__loop0_80(p: peg_parser) -> list[arg] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_80 = _rule__loop0_80(p);
-    p.level -= 1;
-    return res_rule__loop0_80;
+    p.level += 1;
+    return _rule__loop0_80(p);
 }
 
 def:priv _rule__loop0_80(p: peg_parser) -> list[arg] | None {
@@ -2108,16 +2197,17 @@ def:priv _rule__loop0_80(p: peg_parser) -> list[arg] | None {
         children.append(param_no_default as arg);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[arg];
 }
 
 def rule__loop0_91(p: peg_parser) -> list[stmt] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_91 = _rule__loop0_91(p);
-    p.level -= 1;
-    return res_rule__loop0_91;
+    p.level += 1;
+    return _rule__loop0_91(p);
 }
 
 def:priv _rule__loop0_91(p: peg_parser) -> list[stmt] | None {
@@ -2132,16 +2222,17 @@ def:priv _rule__loop0_91(p: peg_parser) -> list[stmt] | None {
         children.append(block as stmt);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[stmt];
 }
 
 def rule__loop0_95(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_95 = _rule__loop0_95(p);
-    p.level -= 1;
-    return res_rule__loop0_95;
+    p.level += 1;
+    return _rule__loop0_95(p);
 }
 
 def:priv _rule__loop0_95(p: peg_parser) -> list[expr] | None {
@@ -2161,16 +2252,17 @@ def:priv _rule__loop0_95(p: peg_parser) -> list[expr] | None {
         children.append(elem as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop0_98(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop0_98 = _rule__loop0_98(p);
-    p.level -= 1;
-    return res_rule__loop0_98;
+    p.level += 1;
+    return _rule__loop0_98(p);
 }
 
 def:priv _rule__loop0_98(p: peg_parser) -> list[expr] | None {
@@ -2190,16 +2282,17 @@ def:priv _rule__loop0_98(p: peg_parser) -> list[expr] | None {
         children.append(elem as expr);
         mark = peg_mark(p);
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop1_110(p: peg_parser) -> list[arg] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_110 = _rule__loop1_110(p);
-    p.level -= 1;
-    return res_rule__loop1_110;
+    p.level += 1;
+    return _rule__loop1_110(p);
 }
 
 def:priv _rule__loop1_110(p: peg_parser) -> list[arg] | None {
@@ -2215,18 +2308,20 @@ def:priv _rule__loop1_110(p: peg_parser) -> list[arg] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[arg];
 }
 
 def rule__loop1_111(p: peg_parser) -> list[match_case] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_111 = _rule__loop1_111(p);
-    p.level -= 1;
-    return res_rule__loop1_111;
+    p.level += 1;
+    return _rule__loop1_111(p);
 }
 
 def:priv _rule__loop1_111(p: peg_parser) -> list[match_case] | None {
@@ -2242,18 +2337,20 @@ def:priv _rule__loop1_111(p: peg_parser) -> list[match_case] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[match_case];
 }
 
 def rule__loop1_125(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_125 = _rule__loop1_125(p);
-    p.level -= 1;
-    return res_rule__loop1_125;
+    p.level += 1;
+    return _rule__loop1_125(p);
 }
 
 def:priv _rule__loop1_125(p: peg_parser) -> list[expr] | None {
@@ -2269,18 +2366,20 @@ def:priv _rule__loop1_125(p: peg_parser) -> list[expr] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop1_13(p: peg_parser) -> list[pa_cmpop_expr_pair] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_13 = _rule__loop1_13(p);
-    p.level -= 1;
-    return res_rule__loop1_13;
+    p.level += 1;
+    return _rule__loop1_13(p);
 }
 
 def:priv _rule__loop1_13(p: peg_parser) -> list[pa_cmpop_expr_pair] | None {
@@ -2296,18 +2395,20 @@ def:priv _rule__loop1_13(p: peg_parser) -> list[pa_cmpop_expr_pair] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[pa_cmpop_expr_pair];
 }
 
 def rule__loop1_132(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_132 = _rule__loop1_132(p);
-    p.level -= 1;
-    return res_rule__loop1_132;
+    p.level += 1;
+    return _rule__loop1_132(p);
 }
 
 def:priv _rule__loop1_132(p: peg_parser) -> list[expr] | None {
@@ -2323,18 +2424,20 @@ def:priv _rule__loop1_132(p: peg_parser) -> list[expr] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop1_133(p: peg_parser) -> list[list[stmt]] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_133 = _rule__loop1_133(p);
-    p.level -= 1;
-    return res_rule__loop1_133;
+    p.level += 1;
+    return _rule__loop1_133(p);
 }
 
 def:priv _rule__loop1_133(p: peg_parser) -> list[list[stmt]] | None {
@@ -2350,18 +2453,20 @@ def:priv _rule__loop1_133(p: peg_parser) -> list[list[stmt]] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children;
 }
 
 def rule__loop1_14(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_14 = _rule__loop1_14(p);
-    p.level -= 1;
-    return res_rule__loop1_14;
+    p.level += 1;
+    return _rule__loop1_14(p);
 }
 
 def:priv _rule__loop1_14(p: peg_parser) -> list[expr] | None {
@@ -2377,18 +2482,20 @@ def:priv _rule__loop1_14(p: peg_parser) -> list[expr] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop1_15(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_15 = _rule__loop1_15(p);
-    p.level -= 1;
-    return res_rule__loop1_15;
+    p.level += 1;
+    return _rule__loop1_15(p);
 }
 
 def:priv _rule__loop1_15(p: peg_parser) -> list[expr] | None {
@@ -2404,18 +2511,20 @@ def:priv _rule__loop1_15(p: peg_parser) -> list[expr] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop1_18(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_18 = _rule__loop1_18(p);
-    p.level -= 1;
-    return res_rule__loop1_18;
+    p.level += 1;
+    return _rule__loop1_18(p);
 }
 
 def:priv _rule__loop1_18(p: peg_parser) -> list[expr] | None {
@@ -2431,18 +2540,20 @@ def:priv _rule__loop1_18(p: peg_parser) -> list[expr] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop1_25(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_25 = _rule__loop1_25(p);
-    p.level -= 1;
-    return res_rule__loop1_25;
+    p.level += 1;
+    return _rule__loop1_25(p);
 }
 
 def:priv _rule__loop1_25(p: peg_parser) -> list[expr] | None {
@@ -2458,18 +2569,20 @@ def:priv _rule__loop1_25(p: peg_parser) -> list[expr] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop1_27(p: peg_parser) -> list[comprehension] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_27 = _rule__loop1_27(p);
-    p.level -= 1;
-    return res_rule__loop1_27;
+    p.level += 1;
+    return _rule__loop1_27(p);
 }
 
 def:priv _rule__loop1_27(p: peg_parser) -> list[comprehension] | None {
@@ -2485,18 +2598,20 @@ def:priv _rule__loop1_27(p: peg_parser) -> list[comprehension] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[comprehension];
 }
 
 def rule__loop1_36(p: peg_parser) -> list[peg_token] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_36 = _rule__loop1_36(p);
-    p.level -= 1;
-    return res_rule__loop1_36;
+    p.level += 1;
+    return _rule__loop1_36(p);
 }
 
 def:priv _rule__loop1_36(p: peg_parser) -> list[peg_token] | None {
@@ -2512,18 +2627,20 @@ def:priv _rule__loop1_36(p: peg_parser) -> list[peg_token] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[peg_token];
 }
 
 def rule__loop1_54(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_54 = _rule__loop1_54(p);
-    p.level -= 1;
-    return res_rule__loop1_54;
+    p.level += 1;
+    return _rule__loop1_54(p);
 }
 
 def:priv _rule__loop1_54(p: peg_parser) -> list[expr] | None {
@@ -2539,18 +2656,20 @@ def:priv _rule__loop1_54(p: peg_parser) -> list[expr] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop1_72(p: peg_parser) -> list[name_default_pair] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_72 = _rule__loop1_72(p);
-    p.level -= 1;
-    return res_rule__loop1_72;
+    p.level += 1;
+    return _rule__loop1_72(p);
 }
 
 def:priv _rule__loop1_72(p: peg_parser) -> list[name_default_pair] | None {
@@ -2566,18 +2685,20 @@ def:priv _rule__loop1_72(p: peg_parser) -> list[name_default_pair] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[name_default_pair];
 }
 
 def rule__loop1_73(p: peg_parser) -> list[name_default_pair] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_73 = _rule__loop1_73(p);
-    p.level -= 1;
-    return res_rule__loop1_73;
+    p.level += 1;
+    return _rule__loop1_73(p);
 }
 
 def:priv _rule__loop1_73(p: peg_parser) -> list[name_default_pair] | None {
@@ -2593,18 +2714,20 @@ def:priv _rule__loop1_73(p: peg_parser) -> list[name_default_pair] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[name_default_pair];
 }
 
 def rule__loop1_8(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_8 = _rule__loop1_8(p);
-    p.level -= 1;
-    return res_rule__loop1_8;
+    p.level += 1;
+    return _rule__loop1_8(p);
 }
 
 def:priv _rule__loop1_8(p: peg_parser) -> list[expr] | None {
@@ -2620,18 +2743,20 @@ def:priv _rule__loop1_8(p: peg_parser) -> list[expr] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop1_81(p: peg_parser) -> list[arg] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_81 = _rule__loop1_81(p);
-    p.level -= 1;
-    return res_rule__loop1_81;
+    p.level += 1;
+    return _rule__loop1_81(p);
 }
 
 def:priv _rule__loop1_81(p: peg_parser) -> list[arg] | None {
@@ -2647,18 +2772,20 @@ def:priv _rule__loop1_81(p: peg_parser) -> list[arg] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[arg];
 }
 
 def rule__loop1_83(p: peg_parser) -> list[name_default_pair] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_83 = _rule__loop1_83(p);
-    p.level -= 1;
-    return res_rule__loop1_83;
+    p.level += 1;
+    return _rule__loop1_83(p);
 }
 
 def:priv _rule__loop1_83(p: peg_parser) -> list[name_default_pair] | None {
@@ -2674,18 +2801,20 @@ def:priv _rule__loop1_83(p: peg_parser) -> list[name_default_pair] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[name_default_pair];
 }
 
 def rule__loop1_84(p: peg_parser) -> list[name_default_pair] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_84 = _rule__loop1_84(p);
-    p.level -= 1;
-    return res_rule__loop1_84;
+    p.level += 1;
+    return _rule__loop1_84(p);
 }
 
 def:priv _rule__loop1_84(p: peg_parser) -> list[name_default_pair] | None {
@@ -2701,18 +2830,20 @@ def:priv _rule__loop1_84(p: peg_parser) -> list[name_default_pair] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[name_default_pair];
 }
 
 def rule__loop1_88(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_88 = _rule__loop1_88(p);
-    p.level -= 1;
-    return res_rule__loop1_88;
+    p.level += 1;
+    return _rule__loop1_88(p);
 }
 
 def:priv _rule__loop1_88(p: peg_parser) -> list[expr] | None {
@@ -2728,18 +2859,20 @@ def:priv _rule__loop1_88(p: peg_parser) -> list[expr] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop1_89(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_89 = _rule__loop1_89(p);
-    p.level -= 1;
-    return res_rule__loop1_89;
+    p.level += 1;
+    return _rule__loop1_89(p);
 }
 
 def:priv _rule__loop1_89(p: peg_parser) -> list[expr] | None {
@@ -2755,18 +2888,20 @@ def:priv _rule__loop1_89(p: peg_parser) -> list[expr] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[expr];
 }
 
 def rule__loop1_92(p: peg_parser) -> list[excepthandler] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_92 = _rule__loop1_92(p);
-    p.level -= 1;
-    return res_rule__loop1_92;
+    p.level += 1;
+    return _rule__loop1_92(p);
 }
 
 def:priv _rule__loop1_92(p: peg_parser) -> list[excepthandler] | None {
@@ -2782,18 +2917,20 @@ def:priv _rule__loop1_92(p: peg_parser) -> list[excepthandler] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[excepthandler];
 }
 
 def rule__loop1_93(p: peg_parser) -> list[excepthandler] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__loop1_93 = _rule__loop1_93(p);
-    p.level -= 1;
-    return res_rule__loop1_93;
+    p.level += 1;
+    return _rule__loop1_93(p);
 }
 
 def:priv _rule__loop1_93(p: peg_parser) -> list[excepthandler] | None {
@@ -2809,18 +2946,20 @@ def:priv _rule__loop1_93(p: peg_parser) -> list[excepthandler] | None {
         mark = peg_mark(p);
     }
     if len(children) == 0 {
+        p.level -= 1;
         return None;
     }
+    p.level -= 1;
     return children as list[excepthandler];
 }
 
 def rule__tmp_10(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_10 = _rule__tmp_10(p);
-    p.level -= 1;
-    return res_rule__tmp_10;
+    p.level += 1;
+    return _rule__tmp_10(p);
 }
 
 def:priv _rule__tmp_10(p: peg_parser) -> expr | None {
@@ -2829,25 +2968,28 @@ def:priv _rule__tmp_10(p: peg_parser) -> expr | None {
     list = rule_list(p);
     if list is not None {
         res = list;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     listcomp = rule_listcomp(p);
     if listcomp is not None {
         res = listcomp;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_102(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_102 = _rule__tmp_102(p);
-    p.level -= 1;
-    return res_rule__tmp_102;
+    p.level += 1;
+    return _rule__tmp_102(p);
 }
 
 def:priv _rule__tmp_102(p: peg_parser) -> expr | None {
@@ -2856,25 +2998,28 @@ def:priv _rule__tmp_102(p: peg_parser) -> expr | None {
     literal_expr = rule_literal_expr(p);
     if literal_expr is not None {
         res = literal_expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     attr = rule_attr(p);
     if attr is not None {
         res = attr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_11(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_11 = _rule__tmp_11(p);
-    p.level -= 1;
-    return res_rule__tmp_11;
+    p.level += 1;
+    return _rule__tmp_11(p);
 }
 
 def:priv _rule__tmp_11(p: peg_parser) -> expr | None {
@@ -2883,37 +3028,42 @@ def:priv _rule__tmp_11(p: peg_parser) -> expr | None {
     dict = rule_dict(p);
     if dict is not None {
         res = dict;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     set = rule_set(p);
     if set is not None {
         res = set;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     dictcomp = rule_dictcomp(p);
     if dictcomp is not None {
         res = dictcomp;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     setcomp = rule_setcomp(p);
     if setcomp is not None {
         res = setcomp;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_119(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_119 = _rule__tmp_119(p);
-    p.level -= 1;
-    return res_rule__tmp_119;
+    p.level += 1;
+    return _rule__tmp_119(p);
 }
 
 def:priv _rule__tmp_119(p: peg_parser) -> expr | None {
@@ -2924,20 +3074,22 @@ def:priv _rule__tmp_119(p: peg_parser) -> expr | None {
         z = rule_expression(p);
         if z is not None {
             res = z;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_12(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_12 = _rule__tmp_12(p);
-    p.level -= 1;
-    return res_rule__tmp_12;
+    p.level += 1;
+    return _rule__tmp_12(p);
 }
 
 def:priv _rule__tmp_12(p: peg_parser) -> expr | None {
@@ -2949,20 +3101,22 @@ def:priv _rule__tmp_12(p: peg_parser) -> expr | None {
         lit_1 = peg_expect_token(p, 8);
         if lit_1 is not None {
             res = z;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_122(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_122 = _rule__tmp_122(p);
-    p.level -= 1;
-    return res_rule__tmp_122;
+    p.level += 1;
+    return _rule__tmp_122(p);
 }
 
 def:priv _rule__tmp_122(p: peg_parser) -> expr | None {
@@ -2972,19 +3126,21 @@ def:priv _rule__tmp_122(p: peg_parser) -> expr | None {
     if lit is not None {
         d = rule_expression(p);
         res = d;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_128(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_128 = _rule__tmp_128(p);
-    p.level -= 1;
-    return res_rule__tmp_128;
+    p.level += 1;
+    return _rule__tmp_128(p);
 }
 
 def:priv _rule__tmp_128(p: peg_parser) -> expr | None {
@@ -2994,20 +3150,22 @@ def:priv _rule__tmp_128(p: peg_parser) -> expr | None {
         star_target = rule_star_target(p);
         if star_target is not None {
             res = star_target;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_136(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_136 = _rule__tmp_136(p);
-    p.level -= 1;
-    return res_rule__tmp_136;
+    p.level += 1;
+    return _rule__tmp_136(p);
 }
 
 def:priv _rule__tmp_136(p: peg_parser) -> list[expr] | None {
@@ -3019,20 +3177,22 @@ def:priv _rule__tmp_136(p: peg_parser) -> list[expr] | None {
         if lit is not None {
             z = rule_star_named_expressions(p);
             res = pa_seq_insert_front_expr(y, z);
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_143(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_143 = _rule__tmp_143(p);
-    p.level -= 1;
-    return res_rule__tmp_143;
+    p.level += 1;
+    return _rule__tmp_143(p);
 }
 
 def:priv _rule__tmp_143(p: peg_parser) -> expr | None {
@@ -3041,25 +3201,28 @@ def:priv _rule__tmp_143(p: peg_parser) -> expr | None {
     slice = rule_slice(p);
     if slice is not None {
         res = slice;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     starred_expression = rule_starred_expression(p);
     if starred_expression is not None {
         res = starred_expression;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_144(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_144 = _rule__tmp_144(p);
-    p.level -= 1;
-    return res_rule__tmp_144;
+    p.level += 1;
+    return _rule__tmp_144(p);
 }
 
 def:priv _rule__tmp_144(p: peg_parser) -> expr | None {
@@ -3068,6 +3231,7 @@ def:priv _rule__tmp_144(p: peg_parser) -> expr | None {
     starred_expression = rule_starred_expression(p);
     if starred_expression is not None {
         res = starred_expression;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -3075,20 +3239,22 @@ def:priv _rule__tmp_144(p: peg_parser) -> expr | None {
     if rhs is not None {
         if (peg_negative_lookahead_token(p, 22)) {
             res = rhs;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_145(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_145 = _rule__tmp_145(p);
-    p.level -= 1;
-    return res_rule__tmp_145;
+    p.level += 1;
+    return _rule__tmp_145(p);
 }
 
 def:priv _rule__tmp_145(p: peg_parser) -> expr | None {
@@ -3098,20 +3264,22 @@ def:priv _rule__tmp_145(p: peg_parser) -> expr | None {
     if starred_expression is not None {
         if (peg_negative_lookahead_token(p, 22)) {
             res = starred_expression;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_146(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_146 = _rule__tmp_146(p);
-    p.level -= 1;
-    return res_rule__tmp_146;
+    p.level += 1;
+    return _rule__tmp_146(p);
 }
 
 def:priv _rule__tmp_146(p: peg_parser) -> object | None {
@@ -3121,19 +3289,21 @@ def:priv _rule__tmp_146(p: peg_parser) -> object | None {
     if expression is not None {
         rhs = rule__tmp_96(p);
         res = [expression, rhs];
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_147(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_147 = _rule__tmp_147(p);
-    p.level -= 1;
-    return res_rule__tmp_147;
+    p.level += 1;
+    return _rule__tmp_147(p);
 }
 
 def:priv _rule__tmp_147(p: peg_parser) -> object | None {
@@ -3143,19 +3313,21 @@ def:priv _rule__tmp_147(p: peg_parser) -> object | None {
     if expressions is not None {
         rhs = rule__tmp_96(p);
         res = [expressions, rhs];
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_148(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_148 = _rule__tmp_148(p);
-    p.level -= 1;
-    return res_rule__tmp_148;
+    p.level += 1;
+    return _rule__tmp_148(p);
 }
 
 def:priv _rule__tmp_148(p: peg_parser) -> expr | None {
@@ -3166,20 +3338,22 @@ def:priv _rule__tmp_148(p: peg_parser) -> expr | None {
         c = rule_star_target(p);
         if c is not None {
             res = c;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_149(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_149 = _rule__tmp_149(p);
-    p.level -= 1;
-    return res_rule__tmp_149;
+    p.level += 1;
+    return _rule__tmp_149(p);
 }
 
 def:priv _rule__tmp_149(p: peg_parser) -> expr | None {
@@ -3190,20 +3364,22 @@ def:priv _rule__tmp_149(p: peg_parser) -> expr | None {
         z = rule_disjunction(p);
         if z is not None {
             res = z;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_150(p: peg_parser) -> peg_token | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_150 = _rule__tmp_150(p);
-    p.level -= 1;
-    return res_rule__tmp_150;
+    p.level += 1;
+    return _rule__tmp_150(p);
 }
 
 def:priv _rule__tmp_150(p: peg_parser) -> peg_token | None {
@@ -3212,25 +3388,28 @@ def:priv _rule__tmp_150(p: peg_parser) -> peg_token | None {
     lit = peg_expect_token(p, 23);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 52);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_151(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_151 = _rule__tmp_151(p);
-    p.level -= 1;
-    return res_rule__tmp_151;
+    p.level += 1;
+    return _rule__tmp_151(p);
 }
 
 def:priv _rule__tmp_151(p: peg_parser) -> expr | None {
@@ -3241,20 +3420,22 @@ def:priv _rule__tmp_151(p: peg_parser) -> expr | None {
         lit = peg_expect_token(p, 22);
         if lit is not None {
             res = star_targets;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_152(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_152 = _rule__tmp_152(p);
-    p.level -= 1;
-    return res_rule__tmp_152;
+    p.level += 1;
+    return _rule__tmp_152(p);
 }
 
 def:priv _rule__tmp_152(p: peg_parser) -> expr | None {
@@ -3265,20 +3446,22 @@ def:priv _rule__tmp_152(p: peg_parser) -> expr | None {
         bitwise_or = rule_bitwise_or(p);
         if bitwise_or is not None {
             res = bitwise_or;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_153(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_153 = _rule__tmp_153(p);
-    p.level -= 1;
-    return res_rule__tmp_153;
+    p.level += 1;
+    return _rule__tmp_153(p);
 }
 
 def:priv _rule__tmp_153(p: peg_parser) -> expr | None {
@@ -3289,20 +3472,22 @@ def:priv _rule__tmp_153(p: peg_parser) -> expr | None {
         c = rule_star_expression(p);
         if c is not None {
             res = c;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_154(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_154 = _rule__tmp_154(p);
-    p.level -= 1;
-    return res_rule__tmp_154;
+    p.level += 1;
+    return _rule__tmp_154(p);
 }
 
 def:priv _rule__tmp_154(p: peg_parser) -> expr | None {
@@ -3313,20 +3498,22 @@ def:priv _rule__tmp_154(p: peg_parser) -> expr | None {
         c = rule_inversion(p);
         if c is not None {
             res = c;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_155(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_155 = _rule__tmp_155(p);
-    p.level -= 1;
-    return res_rule__tmp_155;
+    p.level += 1;
+    return _rule__tmp_155(p);
 }
 
 def:priv _rule__tmp_155(p: peg_parser) -> expr | None {
@@ -3339,21 +3526,23 @@ def:priv _rule__tmp_155(p: peg_parser) -> expr | None {
             _newline = peg_expect_token(p, NEWLINE);
             if _newline is not None {
                 res = f;
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_156(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_156 = _rule__tmp_156(p);
-    p.level -= 1;
-    return res_rule__tmp_156;
+    p.level += 1;
+    return _rule__tmp_156(p);
 }
 
 def:priv _rule__tmp_156(p: peg_parser) -> expr | None {
@@ -3364,20 +3553,22 @@ def:priv _rule__tmp_156(p: peg_parser) -> expr | None {
         c = rule_conjunction(p);
         if c is not None {
             res = c;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_157(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_157 = _rule__tmp_157(p);
-    p.level -= 1;
-    return res_rule__tmp_157;
+    p.level += 1;
+    return _rule__tmp_157(p);
 }
 
 def:priv _rule__tmp_157(p: peg_parser) -> expr | None {
@@ -3387,20 +3578,22 @@ def:priv _rule__tmp_157(p: peg_parser) -> expr | None {
         expression_without_invalid = rule_expression_without_invalid(p);
         if expression_without_invalid is not None {
             res = expression_without_invalid;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_19(p: peg_parser) -> Name | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_19 = _rule__tmp_19(p);
-    p.level -= 1;
-    return res_rule__tmp_19;
+    p.level += 1;
+    return _rule__tmp_19(p);
 }
 
 def:priv _rule__tmp_19(p: peg_parser) -> Name | None {
@@ -3411,20 +3604,22 @@ def:priv _rule__tmp_19(p: peg_parser) -> Name | None {
         z = pa_name_from_token(peg_expect_token(p, NAME));
         if z is not None {
             res = z;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_2(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_2 = _rule__tmp_2(p);
-    p.level -= 1;
-    return res_rule__tmp_2;
+    p.level += 1;
+    return _rule__tmp_2(p);
 }
 
 def:priv _rule__tmp_2(p: peg_parser) -> expr | None {
@@ -3433,6 +3628,7 @@ def:priv _rule__tmp_2(p: peg_parser) -> expr | None {
     assignment_expression = rule_assignment_expression(p);
     if assignment_expression is not None {
         res = assignment_expression;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -3440,20 +3636,22 @@ def:priv _rule__tmp_2(p: peg_parser) -> expr | None {
     if expression is not None {
         if (peg_negative_lookahead_token(p, 53)) {
             res = expression;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_30(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_30 = _rule__tmp_30(p);
-    p.level -= 1;
-    return res_rule__tmp_30;
+    p.level += 1;
+    return _rule__tmp_30(p);
 }
 
 def:priv _rule__tmp_30(p: peg_parser) -> object | None {
@@ -3464,20 +3662,22 @@ def:priv _rule__tmp_30(p: peg_parser) -> object | None {
         _indent = peg_expect_token(p, INDENT);
         if _indent is not None {
             res = [_newline, _indent];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_31(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_31 = _rule__tmp_31(p);
-    p.level -= 1;
-    return res_rule__tmp_31;
+    p.level += 1;
+    return _rule__tmp_31(p);
 }
 
 def:priv _rule__tmp_31(p: peg_parser) -> expr | None {
@@ -3488,20 +3688,22 @@ def:priv _rule__tmp_31(p: peg_parser) -> expr | None {
         z = rule_expression(p);
         if z is not None {
             res = z;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_34(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_34 = _rule__tmp_34(p);
-    p.level -= 1;
-    return res_rule__tmp_34;
+    p.level += 1;
+    return _rule__tmp_34(p);
 }
 
 def:priv _rule__tmp_34(p: peg_parser) -> expr | None {
@@ -3510,25 +3712,28 @@ def:priv _rule__tmp_34(p: peg_parser) -> expr | None {
     yield_expr = rule_yield_expr(p);
     if yield_expr is not None {
         res = yield_expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     named_expression = rule_named_expression(p);
     if named_expression is not None {
         res = named_expression;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_39(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_39 = _rule__tmp_39(p);
-    p.level -= 1;
-    return res_rule__tmp_39;
+    p.level += 1;
+    return _rule__tmp_39(p);
 }
 
 def:priv _rule__tmp_39(p: peg_parser) -> object | None {
@@ -3537,25 +3742,28 @@ def:priv _rule__tmp_39(p: peg_parser) -> object | None {
     rhs = rule__tmp_40(p);
     if rhs is not None {
         res = rhs as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     kwargs = rule_kwargs(p);
     if kwargs is not None {
         res = kwargs as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_4(p: peg_parser) -> list[keyword_or_starred_node] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_4 = _rule__tmp_4(p);
-    p.level -= 1;
-    return res_rule__tmp_4;
+    p.level += 1;
+    return _rule__tmp_4(p);
 }
 
 def:priv _rule__tmp_4(p: peg_parser) -> list[keyword_or_starred_node] | None {
@@ -3566,20 +3774,22 @@ def:priv _rule__tmp_4(p: peg_parser) -> list[keyword_or_starred_node] | None {
         k = rule_kwargs(p);
         if k is not None {
             res = k;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_40(p: peg_parser) -> list[object] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_40 = _rule__tmp_40(p);
-    p.level -= 1;
-    return res_rule__tmp_40;
+    p.level += 1;
+    return _rule__tmp_40(p);
 }
 
 def:priv _rule__tmp_40(p: peg_parser) -> list[object] | None {
@@ -3592,21 +3802,23 @@ def:priv _rule__tmp_40(p: peg_parser) -> list[object] | None {
             kwargs = rule_kwargs(p);
             if kwargs is not None {
                 res = [gather, lit, kwargs];
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_43(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_43 = _rule__tmp_43(p);
-    p.level -= 1;
-    return res_rule__tmp_43;
+    p.level += 1;
+    return _rule__tmp_43(p);
 }
 
 def:priv _rule__tmp_43(p: peg_parser) -> object | None {
@@ -3615,6 +3827,7 @@ def:priv _rule__tmp_43(p: peg_parser) -> object | None {
     args = rule_args(p);
     if args is not None {
         res = args as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -3623,20 +3836,22 @@ def:priv _rule__tmp_43(p: peg_parser) -> object | None {
         for_if_clauses = rule_for_if_clauses(p);
         if for_if_clauses is not None {
             res = [expression, for_if_clauses];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_44(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_44 = _rule__tmp_44(p);
-    p.level -= 1;
-    return res_rule__tmp_44;
+    p.level += 1;
+    return _rule__tmp_44(p);
 }
 
 def:priv _rule__tmp_44(p: peg_parser) -> expr | None {
@@ -3647,20 +3862,22 @@ def:priv _rule__tmp_44(p: peg_parser) -> expr | None {
         lit = peg_expect_token(p, 12);
         if lit is not None {
             res = args;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_45(p: peg_parser) -> peg_token | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_45 = _rule__tmp_45(p);
-    p.level -= 1;
-    return res_rule__tmp_45;
+    p.level += 1;
+    return _rule__tmp_45(p);
 }
 
 def:priv _rule__tmp_45(p: peg_parser) -> peg_token | None {
@@ -3669,55 +3886,63 @@ def:priv _rule__tmp_45(p: peg_parser) -> peg_token | None {
     lit = peg_expect_token(p, 14);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 15);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 16);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 17);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 24);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 47);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 49);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_48(p: peg_parser) -> list[pattern] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_48 = _rule__tmp_48(p);
-    p.level -= 1;
-    return res_rule__tmp_48;
+    p.level += 1;
+    return _rule__tmp_48(p);
 }
 
 def:priv _rule__tmp_48(p: peg_parser) -> list[pattern] | None {
@@ -3728,20 +3953,22 @@ def:priv _rule__tmp_48(p: peg_parser) -> list[pattern] | None {
         lit = peg_expect_token(p, 12);
         if lit is not None {
             res = positional_patterns;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_49(p: peg_parser) -> peg_token | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_49 = _rule__tmp_49(p);
-    p.level -= 1;
-    return res_rule__tmp_49;
+    p.level += 1;
+    return _rule__tmp_49(p);
 }
 
 def:priv _rule__tmp_49(p: peg_parser) -> peg_token | None {
@@ -3750,31 +3977,35 @@ def:priv _rule__tmp_49(p: peg_parser) -> peg_token | None {
     lit = peg_expect_token(p, 9);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 7);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 25);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_5(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_5 = _rule__tmp_5(p);
-    p.level -= 1;
-    return res_rule__tmp_5;
+    p.level += 1;
+    return _rule__tmp_5(p);
 }
 
 def:priv _rule__tmp_5(p: peg_parser) -> expr | None {
@@ -3785,20 +4016,22 @@ def:priv _rule__tmp_5(p: peg_parser) -> expr | None {
         z = rule_expression(p);
         if z is not None {
             res = z;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_50(p: peg_parser) -> peg_token | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_50 = _rule__tmp_50(p);
-    p.level -= 1;
-    return res_rule__tmp_50;
+    p.level += 1;
+    return _rule__tmp_50(p);
 }
 
 def:priv _rule__tmp_50(p: peg_parser) -> peg_token | None {
@@ -3807,25 +4040,28 @@ def:priv _rule__tmp_50(p: peg_parser) -> peg_token | None {
     lit = peg_expect_token(p, 9);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 25);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_51(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_51 = _rule__tmp_51(p);
-    p.level -= 1;
-    return res_rule__tmp_51;
+    p.level += 1;
+    return _rule__tmp_51(p);
 }
 
 def:priv _rule__tmp_51(p: peg_parser) -> object | None {
@@ -3836,20 +4072,22 @@ def:priv _rule__tmp_51(p: peg_parser) -> object | None {
         rhs = rule__tmp_52(p);
         if rhs is not None {
             res = [name_var, rhs];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_52(p: peg_parser) -> peg_token | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_52 = _rule__tmp_52(p);
-    p.level -= 1;
-    return res_rule__tmp_52;
+    p.level += 1;
+    return _rule__tmp_52(p);
 }
 
 def:priv _rule__tmp_52(p: peg_parser) -> peg_token | None {
@@ -3858,37 +4096,42 @@ def:priv _rule__tmp_52(p: peg_parser) -> peg_token | None {
     lit = peg_expect_token(p, 12);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 8);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 13);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     _newline = peg_expect_token(p, NEWLINE);
     if _newline is not None {
         res = _newline;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_53(p: peg_parser) -> peg_token | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_53 = _rule__tmp_53(p);
-    p.level -= 1;
-    return res_rule__tmp_53;
+    p.level += 1;
+    return _rule__tmp_53(p);
 }
 
 def:priv _rule__tmp_53(p: peg_parser) -> peg_token | None {
@@ -3897,25 +4140,28 @@ def:priv _rule__tmp_53(p: peg_parser) -> peg_token | None {
     _newline = peg_expect_token(p, NEWLINE);
     if _newline is not None {
         res = _newline;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 11);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_55(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_55 = _rule__tmp_55(p);
-    p.level -= 1;
-    return res_rule__tmp_55;
+    p.level += 1;
+    return _rule__tmp_55(p);
 }
 
 def:priv _rule__tmp_55(p: peg_parser) -> object | None {
@@ -3926,6 +4172,7 @@ def:priv _rule__tmp_55(p: peg_parser) -> object | None {
         string_var = peg_expect_token(p, STRING);
         if string_var is not None {
             res = [name_var, string_var];
+            p.level -= 1;
             return res;
         }
     }
@@ -3933,19 +4180,21 @@ def:priv _rule__tmp_55(p: peg_parser) -> object | None {
     soft_kw = peg_expect_soft_keyword(p, "");
     if soft_kw is not None {
         res = soft_kw as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_56(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_56 = _rule__tmp_56(p);
-    p.level -= 1;
-    return res_rule__tmp_56;
+    p.level += 1;
+    return _rule__tmp_56(p);
 }
 
 def:priv _rule__tmp_56(p: peg_parser) -> stmt | None {
@@ -3954,31 +4203,35 @@ def:priv _rule__tmp_56(p: peg_parser) -> stmt | None {
     pass_stmt = rule_pass_stmt(p);
     if pass_stmt is not None {
         res = pass_stmt;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     break_stmt = rule_break_stmt(p);
     if break_stmt is not None {
         res = break_stmt;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     continue_stmt = rule_continue_stmt(p);
     if continue_stmt is not None {
         res = continue_stmt;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_57(p: peg_parser) -> peg_token | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_57 = _rule__tmp_57(p);
-    p.level -= 1;
-    return res_rule__tmp_57;
+    p.level += 1;
+    return _rule__tmp_57(p);
 }
 
 def:priv _rule__tmp_57(p: peg_parser) -> peg_token | None {
@@ -3987,31 +4240,35 @@ def:priv _rule__tmp_57(p: peg_parser) -> peg_token | None {
     lit = peg_expect_token(p, 14);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 15);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 31);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_58(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_58 = _rule__tmp_58(p);
-    p.level -= 1;
-    return res_rule__tmp_58;
+    p.level += 1;
+    return _rule__tmp_58(p);
 }
 
 def:priv _rule__tmp_58(p: peg_parser) -> object | None {
@@ -4023,20 +4280,22 @@ def:priv _rule__tmp_58(p: peg_parser) -> object | None {
         if seq is not None {
             lit = peg_expect_token(p, 12);
             res = [bitwise_or, seq, lit];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_6(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_6 = _rule__tmp_6(p);
-    p.level -= 1;
-    return res_rule__tmp_6;
+    p.level += 1;
+    return _rule__tmp_6(p);
 }
 
 def:priv _rule__tmp_6(p: peg_parser) -> expr | None {
@@ -4047,20 +4306,22 @@ def:priv _rule__tmp_6(p: peg_parser) -> expr | None {
         d = rule_annotated_rhs(p);
         if d is not None {
             res = d;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_60(p: peg_parser) -> Name | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_60 = _rule__tmp_60(p);
-    p.level -= 1;
-    return res_rule__tmp_60;
+    p.level += 1;
+    return _rule__tmp_60(p);
 }
 
 def:priv _rule__tmp_60(p: peg_parser) -> Name | None {
@@ -4071,20 +4332,22 @@ def:priv _rule__tmp_60(p: peg_parser) -> Name | None {
         name_var = pa_name_from_token(peg_expect_token(p, NAME));
         if name_var is not None {
             res = name_var;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_63(p: peg_parser) -> peg_token | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_63 = _rule__tmp_63(p);
-    p.level -= 1;
-    return res_rule__tmp_63;
+    p.level += 1;
+    return _rule__tmp_63(p);
 }
 
 def:priv _rule__tmp_63(p: peg_parser) -> peg_token | None {
@@ -4093,31 +4356,35 @@ def:priv _rule__tmp_63(p: peg_parser) -> peg_token | None {
     kw = peg_expect_token(p, 668);
     if kw is not None {
         res = kw;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     kw = peg_expect_token(p, 669);
     if kw is not None {
         res = kw;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     kw = peg_expect_token(p, 667);
     if kw is not None {
         res = kw;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_64(p: peg_parser) -> Name | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_64 = _rule__tmp_64(p);
-    p.level -= 1;
-    return res_rule__tmp_64;
+    p.level += 1;
+    return _rule__tmp_64(p);
 }
 
 def:priv _rule__tmp_64(p: peg_parser) -> Name | None {
@@ -4128,20 +4395,22 @@ def:priv _rule__tmp_64(p: peg_parser) -> Name | None {
         lit = peg_expect_token(p, 22);
         if lit is not None {
             res = name_var;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_65(p: peg_parser) -> peg_token | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_65 = _rule__tmp_65(p);
-    p.level -= 1;
-    return res_rule__tmp_65;
+    p.level += 1;
+    return _rule__tmp_65(p);
 }
 
 def:priv _rule__tmp_65(p: peg_parser) -> peg_token | None {
@@ -4150,31 +4419,35 @@ def:priv _rule__tmp_65(p: peg_parser) -> peg_token | None {
     lit = peg_expect_token(p, 16);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 35);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 17);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_66(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_66 = _rule__tmp_66(p);
-    p.level -= 1;
-    return res_rule__tmp_66;
+    p.level += 1;
+    return _rule__tmp_66(p);
 }
 
 def:priv _rule__tmp_66(p: peg_parser) -> object | None {
@@ -4183,25 +4456,28 @@ def:priv _rule__tmp_66(p: peg_parser) -> object | None {
     lambda_slash_no_default = rule_lambda_slash_no_default(p);
     if lambda_slash_no_default is not None {
         res = lambda_slash_no_default as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lambda_slash_with_default = rule_lambda_slash_with_default(p);
     if lambda_slash_with_default is not None {
         res = lambda_slash_with_default;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_7(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_7 = _rule__tmp_7(p);
-    p.level -= 1;
-    return res_rule__tmp_7;
+    p.level += 1;
+    return _rule__tmp_7(p);
 }
 
 def:priv _rule__tmp_7(p: peg_parser) -> expr | None {
@@ -4214,6 +4490,7 @@ def:priv _rule__tmp_7(p: peg_parser) -> expr | None {
             lit_1 = peg_expect_token(p, 8);
             if lit_1 is not None {
                 res = b;
+                p.level -= 1;
                 return res;
             }
         }
@@ -4222,19 +4499,21 @@ def:priv _rule__tmp_7(p: peg_parser) -> expr | None {
     single_subscript_attribute_target = rule_single_subscript_attribute_target(p);
     if single_subscript_attribute_target is not None {
         res = single_subscript_attribute_target;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_71(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_71 = _rule__tmp_71(p);
-    p.level -= 1;
-    return res_rule__tmp_71;
+    p.level += 1;
+    return _rule__tmp_71(p);
 }
 
 def:priv _rule__tmp_71(p: peg_parser) -> object | None {
@@ -4243,25 +4522,28 @@ def:priv _rule__tmp_71(p: peg_parser) -> object | None {
     lit = peg_expect_token(p, 12);
     if lit is not None {
         res = lit as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lambda_param_no_default = rule_lambda_param_no_default(p);
     if lambda_param_no_default is not None {
         res = lambda_param_no_default as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_74(p: peg_parser) -> peg_token | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_74 = _rule__tmp_74(p);
-    p.level -= 1;
-    return res_rule__tmp_74;
+    p.level += 1;
+    return _rule__tmp_74(p);
 }
 
 def:priv _rule__tmp_74(p: peg_parser) -> peg_token | None {
@@ -4270,6 +4552,7 @@ def:priv _rule__tmp_74(p: peg_parser) -> peg_token | None {
     lit = peg_expect_token(p, 11);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -4278,20 +4561,22 @@ def:priv _rule__tmp_74(p: peg_parser) -> peg_token | None {
         rhs = rule__tmp_75(p);
         if rhs is not None {
             res = rhs;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_75(p: peg_parser) -> peg_token | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_75 = _rule__tmp_75(p);
-    p.level -= 1;
-    return res_rule__tmp_75;
+    p.level += 1;
+    return _rule__tmp_75(p);
 }
 
 def:priv _rule__tmp_75(p: peg_parser) -> peg_token | None {
@@ -4300,25 +4585,28 @@ def:priv _rule__tmp_75(p: peg_parser) -> peg_token | None {
     lit = peg_expect_token(p, 11);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 35);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_76(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_76 = _rule__tmp_76(p);
-    p.level -= 1;
-    return res_rule__tmp_76;
+    p.level += 1;
+    return _rule__tmp_76(p);
 }
 
 def:priv _rule__tmp_76(p: peg_parser) -> object | None {
@@ -4327,25 +4615,28 @@ def:priv _rule__tmp_76(p: peg_parser) -> object | None {
     lambda_param_no_default = rule_lambda_param_no_default(p);
     if lambda_param_no_default is not None {
         res = lambda_param_no_default as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 12);
     if lit is not None {
         res = lit as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_77(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_77 = _rule__tmp_77(p);
-    p.level -= 1;
-    return res_rule__tmp_77;
+    p.level += 1;
+    return _rule__tmp_77(p);
 }
 
 def:priv _rule__tmp_77(p: peg_parser) -> object | None {
@@ -4354,49 +4645,56 @@ def:priv _rule__tmp_77(p: peg_parser) -> object | None {
     list = rule_list(p);
     if list is not None {
         res = list as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     tuple = rule_tuple(p);
     if tuple is not None {
         res = tuple as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     genexp = rule_genexp(p);
     if genexp is not None {
         res = genexp as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     kw = peg_expect_token(p, 668);
     if kw is not None {
         res = kw as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     kw = peg_expect_token(p, 667);
     if kw is not None {
         res = kw as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     kw = peg_expect_token(p, 669);
     if kw is not None {
         res = kw as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_78(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_78 = _rule__tmp_78(p);
-    p.level -= 1;
-    return res_rule__tmp_78;
+    p.level += 1;
+    return _rule__tmp_78(p);
 }
 
 def:priv _rule__tmp_78(p: peg_parser) -> object | None {
@@ -4405,25 +4703,28 @@ def:priv _rule__tmp_78(p: peg_parser) -> object | None {
     slash_no_default = rule_slash_no_default(p);
     if slash_no_default is not None {
         res = slash_no_default as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     slash_with_default = rule_slash_with_default(p);
     if slash_with_default is not None {
         res = slash_with_default;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_82(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_82 = _rule__tmp_82(p);
-    p.level -= 1;
-    return res_rule__tmp_82;
+    p.level += 1;
+    return _rule__tmp_82(p);
 }
 
 def:priv _rule__tmp_82(p: peg_parser) -> object | None {
@@ -4432,25 +4733,28 @@ def:priv _rule__tmp_82(p: peg_parser) -> object | None {
     lit = peg_expect_token(p, 12);
     if lit is not None {
         res = lit as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     param_no_default = rule_param_no_default(p);
     if param_no_default is not None {
         res = param_no_default as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_85(p: peg_parser) -> peg_token | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_85 = _rule__tmp_85(p);
-    p.level -= 1;
-    return res_rule__tmp_85;
+    p.level += 1;
+    return _rule__tmp_85(p);
 }
 
 def:priv _rule__tmp_85(p: peg_parser) -> peg_token | None {
@@ -4459,6 +4763,7 @@ def:priv _rule__tmp_85(p: peg_parser) -> peg_token | None {
     lit = peg_expect_token(p, 8);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -4467,20 +4772,22 @@ def:priv _rule__tmp_85(p: peg_parser) -> peg_token | None {
         rhs = rule__tmp_86(p);
         if rhs is not None {
             res = rhs;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_86(p: peg_parser) -> peg_token | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_86 = _rule__tmp_86(p);
-    p.level -= 1;
-    return res_rule__tmp_86;
+    p.level += 1;
+    return _rule__tmp_86(p);
 }
 
 def:priv _rule__tmp_86(p: peg_parser) -> peg_token | None {
@@ -4489,25 +4796,28 @@ def:priv _rule__tmp_86(p: peg_parser) -> peg_token | None {
     lit = peg_expect_token(p, 8);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 35);
     if lit is not None {
         res = lit;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_87(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_87 = _rule__tmp_87(p);
-    p.level -= 1;
-    return res_rule__tmp_87;
+    p.level += 1;
+    return _rule__tmp_87(p);
 }
 
 def:priv _rule__tmp_87(p: peg_parser) -> object | None {
@@ -4516,25 +4826,28 @@ def:priv _rule__tmp_87(p: peg_parser) -> object | None {
     param_no_default = rule_param_no_default(p);
     if param_no_default is not None {
         res = param_no_default as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 12);
     if lit is not None {
         res = lit as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_9(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_9 = _rule__tmp_9(p);
-    p.level -= 1;
-    return res_rule__tmp_9;
+    p.level += 1;
+    return _rule__tmp_9(p);
 }
 
 def:priv _rule__tmp_9(p: peg_parser) -> expr | None {
@@ -4543,31 +4856,35 @@ def:priv _rule__tmp_9(p: peg_parser) -> expr | None {
     tuple = rule_tuple(p);
     if tuple is not None {
         res = tuple;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     group = rule_group(p);
     if group is not None {
         res = group;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     genexp = rule_genexp(p);
     if genexp is not None {
         res = genexp;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_90(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_90 = _rule__tmp_90(p);
-    p.level -= 1;
-    return res_rule__tmp_90;
+    p.level += 1;
+    return _rule__tmp_90(p);
 }
 
 def:priv _rule__tmp_90(p: peg_parser) -> expr | None {
@@ -4576,25 +4893,28 @@ def:priv _rule__tmp_90(p: peg_parser) -> expr | None {
     fstring = rule_fstring(p);
     if fstring is not None {
         res = fstring;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     string = rule_string(p);
     if string is not None {
         res = string;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_94(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_94 = _rule__tmp_94(p);
-    p.level -= 1;
-    return res_rule__tmp_94;
+    p.level += 1;
+    return _rule__tmp_94(p);
 }
 
 def:priv _rule__tmp_94(p: peg_parser) -> object | None {
@@ -4605,19 +4925,21 @@ def:priv _rule__tmp_94(p: peg_parser) -> object | None {
         rhs = rule__tmp_19(p);
         items: list[object] = [expression, rhs];
         res = items;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule__tmp_96(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule__tmp_96 = _rule__tmp_96(p);
-    p.level -= 1;
-    return res_rule__tmp_96;
+    p.level += 1;
+    return _rule__tmp_96(p);
 }
 
 def:priv _rule__tmp_96(p: peg_parser) -> object | None {
@@ -4628,20 +4950,22 @@ def:priv _rule__tmp_96(p: peg_parser) -> object | None {
         star_target = rule_star_target(p);
         if star_target is not None {
             res = [kw, star_target];
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_annotated_rhs(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_annotated_rhs = _rule_annotated_rhs(p);
-    p.level -= 1;
-    return res_rule_annotated_rhs;
+    p.level += 1;
+    return _rule_annotated_rhs(p);
 }
 
 def:priv _rule_annotated_rhs(p: peg_parser) -> expr | None {
@@ -4650,25 +4974,28 @@ def:priv _rule_annotated_rhs(p: peg_parser) -> expr | None {
     yield_expr = rule_yield_expr(p);
     if yield_expr is not None {
         res = yield_expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     star_expressions = rule_star_expressions(p);
     if star_expressions is not None {
         res = star_expressions;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_annotation(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_annotation = _rule_annotation(p);
-    p.level -= 1;
-    return res_rule_annotation;
+    p.level += 1;
+    return _rule_annotation(p);
 }
 
 def:priv _rule_annotation(p: peg_parser) -> expr | None {
@@ -4679,20 +5006,22 @@ def:priv _rule_annotation(p: peg_parser) -> expr | None {
         a = rule_expression(p);
         if a is not None {
             res = a;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_args(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_args = _rule_args(p);
-    p.level -= 1;
-    return res_rule_args;
+    p.level += 1;
+    return _rule_args(p);
 }
 
 def:priv _rule_args(p: peg_parser) -> expr | None {
@@ -4714,6 +5043,7 @@ def:priv _rule_args(p: peg_parser) -> expr | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -4721,6 +5051,7 @@ def:priv _rule_args(p: peg_parser) -> expr | None {
         res = pa_collect_call_seqs(
             a, b, start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -4730,6 +5061,7 @@ def:priv _rule_args(p: peg_parser) -> expr | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -4743,26 +5075,28 @@ def:priv _rule_args(p: peg_parser) -> expr | None {
             end_lineno,
             end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_arguments(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_arguments = _rule_arguments(p);
-    p.level -= 1;
-    return res_rule_arguments;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_arguments) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_arguments(p);
 }
 
 def:priv _rule_arguments(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_arguments);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     res: expr | None = None;
     a = rule_args(p);
@@ -4771,6 +5105,7 @@ def:priv _rule_arguments(p: peg_parser) -> expr | None {
         if (peg_positive_lookahead_token(p, 8)) {
             res = a;
             peg_insert_memo(p, mark, RULE_arguments, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -4779,20 +5114,22 @@ def:priv _rule_arguments(p: peg_parser) -> expr | None {
     if invalid_arguments is not None {
         res = invalid_arguments as expr;
         peg_insert_memo(p, mark, RULE_arguments, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_arguments, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_as_pattern(p: peg_parser) -> pattern | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_as_pattern = _rule_as_pattern(p);
-    p.level -= 1;
-    return res_rule_as_pattern;
+    p.level += 1;
+    return _rule_as_pattern(p);
 }
 
 def:priv _rule_as_pattern(p: peg_parser) -> pattern | None {
@@ -4817,6 +5154,7 @@ def:priv _rule_as_pattern(p: peg_parser) -> pattern | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -4829,6 +5167,7 @@ def:priv _rule_as_pattern(p: peg_parser) -> pattern | None {
                     end_lineno=end_lineno,
                     end_col_offset=end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -4837,19 +5176,21 @@ def:priv _rule_as_pattern(p: peg_parser) -> pattern | None {
     invalid_as_pattern = rule_invalid_as_pattern(p);
     if invalid_as_pattern is not None {
         res = invalid_as_pattern as pattern;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_assert_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_assert_stmt = _rule_assert_stmt(p);
-    p.level -= 1;
-    return res_rule_assert_stmt;
+    p.level += 1;
+    return _rule_assert_stmt(p);
 }
 
 def:priv _rule_assert_stmt(p: peg_parser) -> stmt | None {
@@ -4873,6 +5214,7 @@ def:priv _rule_assert_stmt(p: peg_parser) -> stmt | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -4885,20 +5227,22 @@ def:priv _rule_assert_stmt(p: peg_parser) -> stmt | None {
                 end_lineno=end_lineno,
                 end_col_offset=end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_assignment(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_assignment = _rule_assignment(p);
-    p.level -= 1;
-    return res_rule_assignment;
+    p.level += 1;
+    return _rule_assignment(p);
 }
 
 def:priv _rule_assignment(p: peg_parser) -> stmt | None {
@@ -4924,6 +5268,7 @@ def:priv _rule_assignment(p: peg_parser) -> stmt | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -4938,6 +5283,7 @@ def:priv _rule_assignment(p: peg_parser) -> stmt | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -4954,6 +5300,7 @@ def:priv _rule_assignment(p: peg_parser) -> stmt | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -4968,6 +5315,7 @@ def:priv _rule_assignment(p: peg_parser) -> stmt | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -4983,6 +5331,7 @@ def:priv _rule_assignment(p: peg_parser) -> stmt | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -4991,6 +5340,7 @@ def:priv _rule_assignment(p: peg_parser) -> stmt | None {
                     a_3, b, start_lineno, start_col_offset, end_lineno, end_col_offset
                 );
                 res.type_comment = tc.spelling if tc is not None else None;
+                p.level -= 1;
                 return res;
             }
         }
@@ -5007,6 +5357,7 @@ def:priv _rule_assignment(p: peg_parser) -> stmt | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -5020,6 +5371,7 @@ def:priv _rule_assignment(p: peg_parser) -> stmt | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -5028,19 +5380,21 @@ def:priv _rule_assignment(p: peg_parser) -> stmt | None {
     invalid_assignment = rule_invalid_assignment(p);
     if invalid_assignment is not None {
         res = invalid_assignment as stmt;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_assignment_expression(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_assignment_expression = _rule_assignment_expression(p);
-    p.level -= 1;
-    return res_rule_assignment_expression;
+    p.level += 1;
+    return _rule_assignment_expression(p);
 }
 
 def:priv _rule_assignment_expression(p: peg_parser) -> expr | None {
@@ -5066,6 +5420,7 @@ def:priv _rule_assignment_expression(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -5078,21 +5433,23 @@ def:priv _rule_assignment_expression(p: peg_parser) -> expr | None {
                     end_lineno=end_lineno,
                     end_col_offset=end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_atom(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_atom = _rule_atom(p);
-    p.level -= 1;
-    return res_rule_atom;
+    p.level += 1;
+    return _rule_atom(p);
 }
 
 def:priv _rule_atom(p: peg_parser) -> expr | None {
@@ -5110,6 +5467,7 @@ def:priv _rule_atom(p: peg_parser) -> expr | None {
     name_var = pa_name_from_token(peg_expect_token(p, NAME));
     if name_var is not None {
         res = name_var as expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -5119,6 +5477,7 @@ def:priv _rule_atom(p: peg_parser) -> expr | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -5126,6 +5485,7 @@ def:priv _rule_atom(p: peg_parser) -> expr | None {
         res = pa_constant_bool(
             True, start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -5135,6 +5495,7 @@ def:priv _rule_atom(p: peg_parser) -> expr | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -5142,6 +5503,7 @@ def:priv _rule_atom(p: peg_parser) -> expr | None {
         res = pa_constant_bool(
             False, start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -5151,6 +5513,7 @@ def:priv _rule_atom(p: peg_parser) -> expr | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -5158,6 +5521,7 @@ def:priv _rule_atom(p: peg_parser) -> expr | None {
         res = pa_constant_none(
             start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -5171,6 +5535,7 @@ def:priv _rule_atom(p: peg_parser) -> expr | None {
         strings = rule_strings(p);
         if strings is not None {
             res = strings;
+            p.level -= 1;
             return res;
         }
     }
@@ -5178,6 +5543,7 @@ def:priv _rule_atom(p: peg_parser) -> expr | None {
     number_var = pa_number_from_token(peg_expect_token(p, NUMBER));
     if number_var is not None {
         res = number_var;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -5185,6 +5551,7 @@ def:priv _rule_atom(p: peg_parser) -> expr | None {
         rhs = rule__tmp_9(p);
         if rhs is not None {
             res = rhs;
+            p.level -= 1;
             return res;
         }
     }
@@ -5193,6 +5560,7 @@ def:priv _rule_atom(p: peg_parser) -> expr | None {
         rhs = rule__tmp_10(p);
         if rhs is not None {
             res = rhs;
+            p.level -= 1;
             return res;
         }
     }
@@ -5201,6 +5569,7 @@ def:priv _rule_atom(p: peg_parser) -> expr | None {
         rhs = rule__tmp_11(p);
         if rhs is not None {
             res = rhs;
+            p.level -= 1;
             return res;
         }
     }
@@ -5211,6 +5580,7 @@ def:priv _rule_atom(p: peg_parser) -> expr | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -5218,26 +5588,28 @@ def:priv _rule_atom(p: peg_parser) -> expr | None {
         res = pa_constant_ellipsis(
             start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_attr(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_attr = _rule_attr(p);
-    p.level -= 1;
-    return res_rule_attr;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_attr) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_attr(p);
 }
 
 def:priv _rule_attr(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_attr);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     res: expr | None = None;
     resmark = mark;
@@ -5246,6 +5618,7 @@ def:priv _rule_attr(p: peg_parser) -> expr | None {
         peg_reset(p, mark);
         raw = rule_attr_raw(p);
         if peg_has_error(p) {
+            p.level -= 1;
             return None;
         }
         if raw is None or peg_mark(p) <= resmark {
@@ -5254,16 +5627,18 @@ def:priv _rule_attr(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr | None;
+    res_level_1 = peg_left_rec_finish(p, resmark, res) as expr | None;
+    p.level -= 1;
+    return res_level_1;
 }
 
 def rule_attr_raw(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_attr_raw = _rule_attr_raw(p);
-    p.level -= 1;
-    return res_rule_attr_raw;
+    p.level += 1;
+    return _rule_attr_raw(p);
 }
 
 def:priv _rule_attr_raw(p: peg_parser) -> expr | None {
@@ -5288,6 +5663,7 @@ def:priv _rule_attr_raw(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -5301,21 +5677,23 @@ def:priv _rule_attr_raw(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_augassign(p: peg_parser) -> operator | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_augassign = _rule_augassign(p);
-    p.level -= 1;
-    return res_rule_augassign;
+    p.level += 1;
+    return _rule_augassign(p);
 }
 
 def:priv _rule_augassign(p: peg_parser) -> operator | None {
@@ -5324,98 +5702,112 @@ def:priv _rule_augassign(p: peg_parser) -> operator | None {
     lit = peg_expect_token(p, 36);
     if lit is not None {
         res = Add();
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 37);
     if lit is not None {
         res = Sub();
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 38);
     if lit is not None {
         res = Mult();
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 50);
     if lit is not None {
         res = MatMult();
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 39);
     if lit is not None {
         res = Div();
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 40);
     if lit is not None {
         res = Mod();
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 41);
     if lit is not None {
         res = BitAnd();
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 42);
     if lit is not None {
         res = BitOr();
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 43);
     if lit is not None {
         res = BitXor();
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 44);
     if lit is not None {
         res = LShift();
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 45);
     if lit is not None {
         res = RShift();
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 46);
     if lit is not None {
         res = Pow();
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lit = peg_expect_token(p, 48);
     if lit is not None {
         res = FloorDiv();
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_await_primary(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_await_primary = _rule_await_primary(p);
-    p.level -= 1;
-    return res_rule_await_primary;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_await_primary) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_await_primary(p);
 }
 
 def:priv _rule_await_primary(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_await_primary);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     start_lineno = 1;
     start_col_offset = 0;
@@ -5435,6 +5827,7 @@ def:priv _rule_await_primary(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -5447,6 +5840,7 @@ def:priv _rule_await_primary(p: peg_parser) -> expr | None {
                 end_col_offset=end_col_offset
             );
             peg_insert_memo(p, mark, RULE_await_primary, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -5455,27 +5849,29 @@ def:priv _rule_await_primary(p: peg_parser) -> expr | None {
     if primary is not None {
         res = primary;
         peg_insert_memo(p, mark, RULE_await_primary, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_await_primary, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_bitwise_and(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_bitwise_and = _rule_bitwise_and(p);
-    p.level -= 1;
-    return res_rule_bitwise_and;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_bitwise_and) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_bitwise_and(p);
 }
 
 def:priv _rule_bitwise_and(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_bitwise_and);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     res: expr | None = None;
     resmark = mark;
@@ -5484,6 +5880,7 @@ def:priv _rule_bitwise_and(p: peg_parser) -> expr | None {
         peg_reset(p, mark);
         raw = rule_bitwise_and_raw(p);
         if peg_has_error(p) {
+            p.level -= 1;
             return None;
         }
         if raw is None or peg_mark(p) <= resmark {
@@ -5492,16 +5889,18 @@ def:priv _rule_bitwise_and(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr | None;
+    res_level_2 = peg_left_rec_finish(p, resmark, res) as expr | None;
+    p.level -= 1;
+    return res_level_2;
 }
 
 def rule_bitwise_and_raw(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_bitwise_and_raw = _rule_bitwise_and_raw(p);
-    p.level -= 1;
-    return res_rule_bitwise_and_raw;
+    p.level += 1;
+    return _rule_bitwise_and_raw(p);
 }
 
 def:priv _rule_bitwise_and_raw(p: peg_parser) -> expr | None {
@@ -5526,6 +5925,7 @@ def:priv _rule_bitwise_and_raw(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -5539,6 +5939,7 @@ def:priv _rule_bitwise_and_raw(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -5547,26 +5948,179 @@ def:priv _rule_bitwise_and_raw(p: peg_parser) -> expr | None {
     shift_expr = rule_shift_expr(p);
     if shift_expr is not None {
         res = shift_expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_bitwise_or(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_bitwise_or = _rule_bitwise_or(p);
+    p.level += 1;
+    if peg_memo_hit(p, RULE_bitwise_or) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    if not p.call_invalid_rules {
+        return _binop_chain(p);
+    }
+    return _rule_bitwise_or(p);
+}
+
+def:priv _binop_chain(p: peg_parser) -> expr | None {
+    mark = p.mark;
+    res = _binop_climb(p, 0);
+    if p.error_indicator {
+        p.level -= 1;
+        return None;
+    }
+    if res is None {
+        p.mark = mark;
+    }
+    peg_insert_memo(p, mark, RULE_bitwise_or, res);
     p.level -= 1;
-    return res_rule_bitwise_or;
+    return res;
+}
+
+def:priv _binop_prec(tok_type: int) -> int {
+    if tok_type == 16
+        or tok_type == 17
+        or tok_type == 47
+        or tok_type == 24
+        or tok_type == 49 {
+        return 5;
+    }
+    if tok_type == 14 or tok_type == 15 {
+        return 4;
+    }
+    if tok_type == 33 or tok_type == 34 {
+        return 3;
+    }
+    if tok_type == 19 {
+        return 2;
+    }
+    if tok_type == 32 {
+        return 1;
+    }
+    if tok_type == 18 {
+        return 0;
+    }
+    return -1;
+}
+
+def:priv _binop_operator(tok_type: int) -> operator {
+    if tok_type == 16 {
+        return Mult();
+    }
+    if tok_type == 17 {
+        return Div();
+    }
+    if tok_type == 47 {
+        return FloorDiv();
+    }
+    if tok_type == 24 {
+        return Mod();
+    }
+    if tok_type == 49 {
+        return MatMult();
+    }
+    if tok_type == 14 {
+        return Add();
+    }
+    if tok_type == 15 {
+        return Sub();
+    }
+    if tok_type == 33 {
+        return LShift();
+    }
+    if tok_type == 34 {
+        return RShift();
+    }
+    if tok_type == 19 {
+        return BitAnd();
+    }
+    if tok_type == 32 {
+        return BitXor();
+    }
+    return BitOr();
+}
+
+def:priv _binop_climb(p: peg_parser, min_prec: int) -> expr | None {
+    mark = p.mark;
+    start_lineno = 1;
+    start_col_offset = 0;
+    if peg_fill_token(p) {
+        t0 = p.tokens[p.mark];
+        start_lineno = t0.lineno;
+        start_col_offset = t0.col_offset;
+    }
+    p.level += 11;
+    first = rule_factor(p);
+    p.level -= 11;
+    res: expr | None = None;
+    if first is not None {
+        res = _binop_fold(p, first, min_prec, mark, start_lineno, start_col_offset);
+    } else {
+        p.mark = mark;
+    }
+    return res;
+}
+
+def:priv _binop_fold(
+    p: peg_parser,
+    first: expr,
+    min_prec: int,
+    mark: int,
+    start_lineno: int,
+    start_col_offset: int
+) -> expr | None {
+    left: expr = first;
+    while True {
+        op_mark = p.mark;
+        if not peg_fill_token(p) {
+            return None;
+        }
+        tok_type = p.tokens[op_mark].tok_type;
+        prec = _binop_prec(tok_type);
+        if prec < min_prec {
+            break;
+        }
+        p.mark = op_mark + 1;
+        right = _binop_climb(p, prec + 1);
+        if p.error_indicator {
+            return None;
+        }
+        if right is not None {
+            end_tok = peg_get_last_nonnwhitespace_token(p);
+            if end_tok is not None {
+                left = pa_ast_binop(
+                    left,
+                    _binop_operator(tok_type),
+                    right,
+                    start_lineno,
+                    start_col_offset,
+                    end_tok.end_lineno,
+                    end_tok.end_col_offset
+                );
+            } else {
+                p.error_indicator = True;
+                p.mark = mark;
+                return None;
+            }
+        } else {
+            p.mark = op_mark;
+            break;
+        }
+    }
+    return left;
 }
 
 def:priv _rule_bitwise_or(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_bitwise_or);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     res: expr | None = None;
     resmark = mark;
@@ -5575,6 +6129,7 @@ def:priv _rule_bitwise_or(p: peg_parser) -> expr | None {
         peg_reset(p, mark);
         raw = rule_bitwise_or_raw(p);
         if peg_has_error(p) {
+            p.level -= 1;
             return None;
         }
         if raw is None or peg_mark(p) <= resmark {
@@ -5583,16 +6138,18 @@ def:priv _rule_bitwise_or(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr | None;
+    res_level_3 = peg_left_rec_finish(p, resmark, res) as expr | None;
+    p.level -= 1;
+    return res_level_3;
 }
 
 def rule_bitwise_or_raw(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_bitwise_or_raw = _rule_bitwise_or_raw(p);
-    p.level -= 1;
-    return res_rule_bitwise_or_raw;
+    p.level += 1;
+    return _rule_bitwise_or_raw(p);
 }
 
 def:priv _rule_bitwise_or_raw(p: peg_parser) -> expr | None {
@@ -5617,6 +6174,7 @@ def:priv _rule_bitwise_or_raw(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -5630,6 +6188,7 @@ def:priv _rule_bitwise_or_raw(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -5638,26 +6197,28 @@ def:priv _rule_bitwise_or_raw(p: peg_parser) -> expr | None {
     bitwise_xor = rule_bitwise_xor(p);
     if bitwise_xor is not None {
         res = bitwise_xor;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_bitwise_xor(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_bitwise_xor = _rule_bitwise_xor(p);
-    p.level -= 1;
-    return res_rule_bitwise_xor;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_bitwise_xor) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_bitwise_xor(p);
 }
 
 def:priv _rule_bitwise_xor(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_bitwise_xor);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     res: expr | None = None;
     resmark = mark;
@@ -5666,6 +6227,7 @@ def:priv _rule_bitwise_xor(p: peg_parser) -> expr | None {
         peg_reset(p, mark);
         raw = rule_bitwise_xor_raw(p);
         if peg_has_error(p) {
+            p.level -= 1;
             return None;
         }
         if raw is None or peg_mark(p) <= resmark {
@@ -5674,16 +6236,18 @@ def:priv _rule_bitwise_xor(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr | None;
+    res_level_4 = peg_left_rec_finish(p, resmark, res) as expr | None;
+    p.level -= 1;
+    return res_level_4;
 }
 
 def rule_bitwise_xor_raw(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_bitwise_xor_raw = _rule_bitwise_xor_raw(p);
-    p.level -= 1;
-    return res_rule_bitwise_xor_raw;
+    p.level += 1;
+    return _rule_bitwise_xor_raw(p);
 }
 
 def:priv _rule_bitwise_xor_raw(p: peg_parser) -> expr | None {
@@ -5708,6 +6272,7 @@ def:priv _rule_bitwise_xor_raw(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -5721,6 +6286,7 @@ def:priv _rule_bitwise_xor_raw(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -5729,26 +6295,28 @@ def:priv _rule_bitwise_xor_raw(p: peg_parser) -> expr | None {
     bitwise_and = rule_bitwise_and(p);
     if bitwise_and is not None {
         res = bitwise_and;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_block(p: peg_parser) -> list[stmt] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_block = _rule_block(p);
-    p.level -= 1;
-    return res_rule_block;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_block) {
+        p.level -= 1;
+        return p.memo_value as list[stmt] | None;
+    }
+    return _rule_block(p);
 }
 
 def:priv _rule_block(p: peg_parser) -> list[stmt] | None {
-    memo = peg_check_memo(p, RULE_block);
-    if memo is not None {
-        return memo.result as list[stmt] | None;
-    }
     mark = peg_mark(p);
     res: list[stmt] | None = None;
     _newline = peg_expect_token(p, NEWLINE);
@@ -5761,6 +6329,7 @@ def:priv _rule_block(p: peg_parser) -> list[stmt] | None {
                 if _dedent is not None {
                     res = a;
                     peg_insert_memo(p, mark, RULE_block, res);
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -5771,6 +6340,7 @@ def:priv _rule_block(p: peg_parser) -> list[stmt] | None {
     if simple_stmts is not None {
         res = simple_stmts;
         peg_insert_memo(p, mark, RULE_block, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -5778,20 +6348,22 @@ def:priv _rule_block(p: peg_parser) -> list[stmt] | None {
     if invalid_block is not None {
         res = invalid_block as list[stmt];
         peg_insert_memo(p, mark, RULE_block, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_block, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_break_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_break_stmt = _rule_break_stmt(p);
-    p.level -= 1;
-    return res_rule_break_stmt;
+    p.level += 1;
+    return _rule_break_stmt(p);
 }
 
 def:priv _rule_break_stmt(p: peg_parser) -> stmt | None {
@@ -5812,24 +6384,27 @@ def:priv _rule_break_stmt(p: peg_parser) -> stmt | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
         end_col_offset = end_tok.end_col_offset;
         res = pa_ast_break(start_lineno, start_col_offset, end_lineno, end_col_offset);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_capture_pattern(p: peg_parser) -> pattern | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_capture_pattern = _rule_capture_pattern(p);
-    p.level -= 1;
-    return res_rule_capture_pattern;
+    p.level += 1;
+    return _rule_capture_pattern(p);
 }
 
 def:priv _rule_capture_pattern(p: peg_parser) -> pattern | None {
@@ -5850,6 +6425,7 @@ def:priv _rule_capture_pattern(p: peg_parser) -> pattern | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -5862,19 +6438,21 @@ def:priv _rule_capture_pattern(p: peg_parser) -> pattern | None {
             end_lineno=end_lineno,
             end_col_offset=end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_case_block(p: peg_parser) -> match_case | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_case_block = _rule_case_block(p);
-    p.level -= 1;
-    return res_rule_case_block;
+    p.level += 1;
+    return _rule_case_block(p);
 }
 
 def:priv _rule_case_block(p: peg_parser) -> match_case | None {
@@ -5883,6 +6461,7 @@ def:priv _rule_case_block(p: peg_parser) -> match_case | None {
     invalid_case_block = rule_invalid_case_block(p);
     if invalid_case_block is not None {
         res = invalid_case_block as match_case;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -5900,22 +6479,24 @@ def:priv _rule_case_block(p: peg_parser) -> match_case | None {
                         guard=guard,
                         body=(body if body is not None else [])
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_class_def(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_class_def = _rule_class_def(p);
-    p.level -= 1;
-    return res_rule_class_def;
+    p.level += 1;
+    return _rule_class_def(p);
 }
 
 def:priv _rule_class_def(p: peg_parser) -> stmt | None {
@@ -5926,6 +6507,7 @@ def:priv _rule_class_def(p: peg_parser) -> stmt | None {
         b = rule_class_def_raw(p);
         if b is not None {
             res = pa_class_def_decorators(a, b);
+            p.level -= 1;
             return res;
         }
     }
@@ -5933,19 +6515,21 @@ def:priv _rule_class_def(p: peg_parser) -> stmt | None {
     class_def_raw = rule_class_def_raw(p);
     if class_def_raw is not None {
         res = class_def_raw;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_class_def_raw(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_class_def_raw = _rule_class_def_raw(p);
-    p.level -= 1;
-    return res_rule_class_def_raw;
+    p.level += 1;
+    return _rule_class_def_raw(p);
 }
 
 def:priv _rule_class_def_raw(p: peg_parser) -> stmt | None {
@@ -5963,6 +6547,7 @@ def:priv _rule_class_def_raw(p: peg_parser) -> stmt | None {
     invalid_class_def_raw = rule_invalid_class_def_raw(p);
     if invalid_class_def_raw is not None {
         res = invalid_class_def_raw as stmt;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -5980,6 +6565,7 @@ def:priv _rule_class_def_raw(p: peg_parser) -> stmt | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -6006,22 +6592,24 @@ def:priv _rule_class_def_raw(p: peg_parser) -> stmt | None {
                         end_lineno=end_lineno,
                         end_col_offset=end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_class_pattern(p: peg_parser) -> pattern | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_class_pattern = _rule_class_pattern(p);
-    p.level -= 1;
-    return res_rule_class_pattern;
+    p.level += 1;
+    return _rule_class_pattern(p);
 }
 
 def:priv _rule_class_pattern(p: peg_parser) -> pattern | None {
@@ -6046,6 +6634,7 @@ def:priv _rule_class_pattern(p: peg_parser) -> pattern | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -6060,6 +6649,7 @@ def:priv _rule_class_pattern(p: peg_parser) -> pattern | None {
                     end_lineno=end_lineno,
                     end_col_offset=end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -6078,6 +6668,7 @@ def:priv _rule_class_pattern(p: peg_parser) -> pattern | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -6092,6 +6683,7 @@ def:priv _rule_class_pattern(p: peg_parser) -> pattern | None {
                         end_lineno=end_lineno,
                         end_col_offset=end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -6111,6 +6703,7 @@ def:priv _rule_class_pattern(p: peg_parser) -> pattern | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -6147,6 +6740,7 @@ def:priv _rule_class_pattern(p: peg_parser) -> pattern | None {
                         end_lineno=end_lineno,
                         end_col_offset=end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -6170,6 +6764,7 @@ def:priv _rule_class_pattern(p: peg_parser) -> pattern | None {
                             if end_tok is None {
                                 p.error_indicator = True;
                                 peg_reset(p, mark);
+                                p.level -= 1;
                                 return None;
                             }
                             end_lineno = end_tok.end_lineno;
@@ -6208,6 +6803,7 @@ def:priv _rule_class_pattern(p: peg_parser) -> pattern | None {
                                 end_lineno=end_lineno,
                                 end_col_offset=end_col_offset
                             );
+                            p.level -= 1;
                             return res;
                         }
                     }
@@ -6219,32 +6815,35 @@ def:priv _rule_class_pattern(p: peg_parser) -> pattern | None {
     invalid_class_pattern = rule_invalid_class_pattern(p);
     if invalid_class_pattern is not None {
         res = invalid_class_pattern as pattern;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_closed_pattern(p: peg_parser) -> pattern | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_closed_pattern = _rule_closed_pattern(p);
-    p.level -= 1;
-    return res_rule_closed_pattern;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_closed_pattern) {
+        p.level -= 1;
+        return p.memo_value as pattern | None;
+    }
+    return _rule_closed_pattern(p);
 }
 
 def:priv _rule_closed_pattern(p: peg_parser) -> pattern | None {
-    memo = peg_check_memo(p, RULE_closed_pattern);
-    if memo is not None {
-        return memo.result as pattern | None;
-    }
     mark = peg_mark(p);
     res: pattern | None = None;
     literal_pattern = rule_literal_pattern(p);
     if literal_pattern is not None {
         res = literal_pattern;
         peg_insert_memo(p, mark, RULE_closed_pattern, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -6252,6 +6851,7 @@ def:priv _rule_closed_pattern(p: peg_parser) -> pattern | None {
     if capture_pattern is not None {
         res = capture_pattern;
         peg_insert_memo(p, mark, RULE_closed_pattern, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -6259,6 +6859,7 @@ def:priv _rule_closed_pattern(p: peg_parser) -> pattern | None {
     if wildcard_pattern is not None {
         res = wildcard_pattern;
         peg_insert_memo(p, mark, RULE_closed_pattern, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -6266,6 +6867,7 @@ def:priv _rule_closed_pattern(p: peg_parser) -> pattern | None {
     if value_pattern is not None {
         res = value_pattern;
         peg_insert_memo(p, mark, RULE_closed_pattern, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -6273,6 +6875,7 @@ def:priv _rule_closed_pattern(p: peg_parser) -> pattern | None {
     if group_pattern is not None {
         res = group_pattern;
         peg_insert_memo(p, mark, RULE_closed_pattern, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -6280,6 +6883,7 @@ def:priv _rule_closed_pattern(p: peg_parser) -> pattern | None {
     if sequence_pattern is not None {
         res = sequence_pattern;
         peg_insert_memo(p, mark, RULE_closed_pattern, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -6287,6 +6891,7 @@ def:priv _rule_closed_pattern(p: peg_parser) -> pattern | None {
     if mapping_pattern is not None {
         res = mapping_pattern;
         peg_insert_memo(p, mark, RULE_closed_pattern, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -6294,20 +6899,22 @@ def:priv _rule_closed_pattern(p: peg_parser) -> pattern | None {
     if class_pattern is not None {
         res = class_pattern;
         peg_insert_memo(p, mark, RULE_closed_pattern, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_closed_pattern, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_compare_op_bitwise_or_pair(p: peg_parser) -> pa_cmpop_expr_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_compare_op_bitwise_or_pair = _rule_compare_op_bitwise_or_pair(p);
-    p.level -= 1;
-    return res_rule_compare_op_bitwise_or_pair;
+    p.level += 1;
+    return _rule_compare_op_bitwise_or_pair(p);
 }
 
 def:priv _rule_compare_op_bitwise_or_pair(p: peg_parser) -> pa_cmpop_expr_pair | None {
@@ -6316,73 +6923,104 @@ def:priv _rule_compare_op_bitwise_or_pair(p: peg_parser) -> pa_cmpop_expr_pair |
     eq_bitwise_or = rule_eq_bitwise_or(p);
     if eq_bitwise_or is not None {
         res = eq_bitwise_or;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     noteq_bitwise_or = rule_noteq_bitwise_or(p);
     if noteq_bitwise_or is not None {
         res = noteq_bitwise_or;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lte_bitwise_or = rule_lte_bitwise_or(p);
     if lte_bitwise_or is not None {
         res = lte_bitwise_or;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lt_bitwise_or = rule_lt_bitwise_or(p);
     if lt_bitwise_or is not None {
         res = lt_bitwise_or;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     gte_bitwise_or = rule_gte_bitwise_or(p);
     if gte_bitwise_or is not None {
         res = gte_bitwise_or;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     gt_bitwise_or = rule_gt_bitwise_or(p);
     if gt_bitwise_or is not None {
         res = gt_bitwise_or;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     notin_bitwise_or = rule_notin_bitwise_or(p);
     if notin_bitwise_or is not None {
         res = notin_bitwise_or;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     in_bitwise_or = rule_in_bitwise_or(p);
     if in_bitwise_or is not None {
         res = in_bitwise_or;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     isnot_bitwise_or = rule_isnot_bitwise_or(p);
     if isnot_bitwise_or is not None {
         res = isnot_bitwise_or;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     is_bitwise_or = rule_is_bitwise_or(p);
     if is_bitwise_or is not None {
         res = is_bitwise_or;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
+def:priv _next_tok_type(p: peg_parser) -> int {
+    if not peg_fill_token(p) {
+        return -1;
+    }
+    return p.tokens[p.mark].tok_type;
+}
+
+def:priv _at_compare_op(p: peg_parser) -> bool {
+    tok_type = _next_tok_type(p);
+    return tok_type == 27
+        or tok_type == 28
+        or tok_type == 29
+        or tok_type == 20
+        or tok_type == 30
+        or tok_type == 21
+        or tok_type == 671
+        or tok_type == 672
+        or tok_type == 661;
+}
+
 def rule_comparison(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_comparison = _rule_comparison(p);
-    p.level -= 1;
-    return res_rule_comparison;
+    p.level += 1;
+    return _rule_comparison(p);
 }
 
 def:priv _rule_comparison(p: peg_parser) -> expr | None {
@@ -6399,12 +7037,20 @@ def:priv _rule_comparison(p: peg_parser) -> expr | None {
     res: expr | None = None;
     a = rule_bitwise_or(p);
     if a is not None {
+        if not p.call_invalid_rules
+            and not _at_compare_op(p)
+            and not p.error_indicator {
+            res = a;
+            p.level -= 1;
+            return res;
+        }
         b = rule__loop1_13(p);
         if b is not None {
             end_tok = peg_get_last_nonnwhitespace_token(p);
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -6418,6 +7064,7 @@ def:priv _rule_comparison(p: peg_parser) -> expr | None {
                 end_lineno,
                 end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -6425,19 +7072,21 @@ def:priv _rule_comparison(p: peg_parser) -> expr | None {
     bitwise_or = rule_bitwise_or(p);
     if bitwise_or is not None {
         res = bitwise_or;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_complex_number(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_complex_number = _rule_complex_number(p);
-    p.level -= 1;
-    return res_rule_complex_number;
+    p.level += 1;
+    return _rule_complex_number(p);
 }
 
 def:priv _rule_complex_number(p: peg_parser) -> expr | None {
@@ -6462,6 +7111,7 @@ def:priv _rule_complex_number(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -6475,6 +7125,7 @@ def:priv _rule_complex_number(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -6490,6 +7141,7 @@ def:priv _rule_complex_number(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -6503,21 +7155,23 @@ def:priv _rule_complex_number(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_compound_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_compound_stmt = _rule_compound_stmt(p);
-    p.level -= 1;
-    return res_rule_compound_stmt;
+    p.level += 1;
+    return _rule_compound_stmt(p);
 }
 
 def:priv _rule_compound_stmt(p: peg_parser) -> stmt | None {
@@ -6533,6 +7187,7 @@ def:priv _rule_compound_stmt(p: peg_parser) -> stmt | None {
         function_def = rule_function_def(p);
         if function_def is not None {
             res = function_def;
+            p.level -= 1;
             return res;
         }
     }
@@ -6541,6 +7196,7 @@ def:priv _rule_compound_stmt(p: peg_parser) -> stmt | None {
         if_stmt = rule_if_stmt(p);
         if if_stmt is not None {
             res = if_stmt;
+            p.level -= 1;
             return res;
         }
     }
@@ -6551,6 +7207,7 @@ def:priv _rule_compound_stmt(p: peg_parser) -> stmt | None {
         class_def = rule_class_def(p);
         if class_def is not None {
             res = class_def;
+            p.level -= 1;
             return res;
         }
     }
@@ -6561,6 +7218,7 @@ def:priv _rule_compound_stmt(p: peg_parser) -> stmt | None {
         with_stmt = rule_with_stmt(p);
         if with_stmt is not None {
             res = with_stmt;
+            p.level -= 1;
             return res;
         }
     }
@@ -6571,6 +7229,7 @@ def:priv _rule_compound_stmt(p: peg_parser) -> stmt | None {
         for_stmt = rule_for_stmt(p);
         if for_stmt is not None {
             res = for_stmt;
+            p.level -= 1;
             return res;
         }
     }
@@ -6579,6 +7238,7 @@ def:priv _rule_compound_stmt(p: peg_parser) -> stmt | None {
         try_stmt = rule_try_stmt(p);
         if try_stmt is not None {
             res = try_stmt;
+            p.level -= 1;
             return res;
         }
     }
@@ -6587,6 +7247,7 @@ def:priv _rule_compound_stmt(p: peg_parser) -> stmt | None {
         while_stmt = rule_while_stmt(p);
         if while_stmt is not None {
             res = while_stmt;
+            p.level -= 1;
             return res;
         }
     }
@@ -6594,26 +7255,28 @@ def:priv _rule_compound_stmt(p: peg_parser) -> stmt | None {
     match_stmt = rule_match_stmt(p);
     if match_stmt is not None {
         res = match_stmt;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_conjunction(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_conjunction = _rule_conjunction(p);
-    p.level -= 1;
-    return res_rule_conjunction;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_conjunction) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_conjunction(p);
 }
 
 def:priv _rule_conjunction(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_conjunction);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     start_lineno = 1;
     start_col_offset = 0;
@@ -6627,12 +7290,19 @@ def:priv _rule_conjunction(p: peg_parser) -> expr | None {
     res: expr | None = None;
     a = rule_inversion(p);
     if a is not None {
+        if _next_tok_type(p) != 518 and not p.error_indicator {
+            res = a;
+            peg_insert_memo(p, mark, RULE_conjunction, res);
+            p.level -= 1;
+            return res;
+        }
         b = rule__loop1_14(p);
         if b is not None {
             end_tok = peg_get_last_nonnwhitespace_token(p);
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -6646,6 +7316,7 @@ def:priv _rule_conjunction(p: peg_parser) -> expr | None {
                 end_col_offset
             );
             peg_insert_memo(p, mark, RULE_conjunction, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -6654,20 +7325,22 @@ def:priv _rule_conjunction(p: peg_parser) -> expr | None {
     if inversion is not None {
         res = inversion;
         peg_insert_memo(p, mark, RULE_conjunction, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_conjunction, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_continue_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_continue_stmt = _rule_continue_stmt(p);
-    p.level -= 1;
-    return res_rule_continue_stmt;
+    p.level += 1;
+    return _rule_continue_stmt(p);
 }
 
 def:priv _rule_continue_stmt(p: peg_parser) -> stmt | None {
@@ -6688,6 +7361,7 @@ def:priv _rule_continue_stmt(p: peg_parser) -> stmt | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -6695,19 +7369,21 @@ def:priv _rule_continue_stmt(p: peg_parser) -> stmt | None {
         res = pa_ast_continue(
             start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_decorators(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_decorators = _rule_decorators(p);
-    p.level -= 1;
-    return res_rule_decorators;
+    p.level += 1;
+    return _rule_decorators(p);
 }
 
 def:priv _rule_decorators(p: peg_parser) -> list[expr] | None {
@@ -6716,19 +7392,21 @@ def:priv _rule_decorators(p: peg_parser) -> list[expr] | None {
     a = rule__loop1_15(p);
     if a is not None {
         res = a as list[expr];
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_default(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_default = _rule_default(p);
-    p.level -= 1;
-    return res_rule_default;
+    p.level += 1;
+    return _rule_default(p);
 }
 
 def:priv _rule_default(p: peg_parser) -> expr | None {
@@ -6739,6 +7417,7 @@ def:priv _rule_default(p: peg_parser) -> expr | None {
         a = rule_expression(p);
         if a is not None {
             res = a;
+            p.level -= 1;
             return res;
         }
     }
@@ -6746,19 +7425,21 @@ def:priv _rule_default(p: peg_parser) -> expr | None {
     invalid_default = rule_invalid_default(p);
     if invalid_default is not None {
         res = invalid_default as expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_del_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_del_stmt = _rule_del_stmt(p);
-    p.level -= 1;
-    return res_rule_del_stmt;
+    p.level += 1;
+    return _rule_del_stmt(p);
 }
 
 def:priv _rule_del_stmt(p: peg_parser) -> stmt | None {
@@ -6787,6 +7468,7 @@ def:priv _rule_del_stmt(p: peg_parser) -> stmt | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -6794,6 +7476,7 @@ def:priv _rule_del_stmt(p: peg_parser) -> stmt | None {
                 res = pa_ast_delete(
                     a, start_lineno, start_col_offset, end_lineno, end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -6802,19 +7485,21 @@ def:priv _rule_del_stmt(p: peg_parser) -> stmt | None {
     invalid_del_stmt = rule_invalid_del_stmt(p);
     if invalid_del_stmt is not None {
         res = invalid_del_stmt as stmt;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_del_t_atom(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_del_t_atom = _rule_del_t_atom(p);
-    p.level -= 1;
-    return res_rule_del_t_atom;
+    p.level += 1;
+    return _rule_del_t_atom(p);
 }
 
 def:priv _rule_del_t_atom(p: peg_parser) -> expr | None {
@@ -6832,6 +7517,7 @@ def:priv _rule_del_t_atom(p: peg_parser) -> expr | None {
     a = pa_name_from_token(peg_expect_token(p, NAME));
     if a is not None {
         res = pa_set_context(a, Del());
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -6842,6 +7528,7 @@ def:priv _rule_del_t_atom(p: peg_parser) -> expr | None {
             lit_1 = peg_expect_token(p, 8);
             if lit_1 is not None {
                 res = pa_set_context(a_2, Del());
+                p.level -= 1;
                 return res;
             }
         }
@@ -6856,6 +7543,7 @@ def:priv _rule_del_t_atom(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -6863,6 +7551,7 @@ def:priv _rule_del_t_atom(p: peg_parser) -> expr | None {
             res = pa_ast_tuple(
                 a_3, Del(), start_lineno, start_col_offset, end_lineno, end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -6876,6 +7565,7 @@ def:priv _rule_del_t_atom(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -6888,27 +7578,29 @@ def:priv _rule_del_t_atom(p: peg_parser) -> expr | None {
                 end_lineno=end_lineno,
                 end_col_offset=end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_del_target(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_del_target = _rule_del_target(p);
-    p.level -= 1;
-    return res_rule_del_target;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_del_target) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_del_target(p);
 }
 
 def:priv _rule_del_target(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_del_target);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     start_lineno = 1;
     start_col_offset = 0;
@@ -6931,6 +7623,7 @@ def:priv _rule_del_target(p: peg_parser) -> expr | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -6945,6 +7638,7 @@ def:priv _rule_del_target(p: peg_parser) -> expr | None {
                         end_col_offset
                     );
                     peg_insert_memo(p, mark, RULE_del_target, res);
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -6964,6 +7658,7 @@ def:priv _rule_del_target(p: peg_parser) -> expr | None {
                         if end_tok is None {
                             p.error_indicator = True;
                             peg_reset(p, mark);
+                            p.level -= 1;
                             return None;
                         }
                         end_lineno = end_tok.end_lineno;
@@ -6978,6 +7673,7 @@ def:priv _rule_del_target(p: peg_parser) -> expr | None {
                             end_col_offset
                         );
                         peg_insert_memo(p, mark, RULE_del_target, res);
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -6989,20 +7685,22 @@ def:priv _rule_del_target(p: peg_parser) -> expr | None {
     if del_t_atom is not None {
         res = del_t_atom;
         peg_insert_memo(p, mark, RULE_del_target, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_del_target, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_del_targets(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_del_targets = _rule_del_targets(p);
-    p.level -= 1;
-    return res_rule_del_targets;
+    p.level += 1;
+    return _rule_del_targets(p);
 }
 
 def:priv _rule_del_targets(p: peg_parser) -> list[expr] | None {
@@ -7012,19 +7710,21 @@ def:priv _rule_del_targets(p: peg_parser) -> list[expr] | None {
     if a is not None {
         lit = peg_expect_token(p, 12);
         res = a;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_dict(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_dict = _rule_dict(p);
-    p.level -= 1;
-    return res_rule_dict;
+    p.level += 1;
+    return _rule_dict(p);
 }
 
 def:priv _rule_dict(p: peg_parser) -> expr | None {
@@ -7048,6 +7748,7 @@ def:priv _rule_dict(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -7068,6 +7769,7 @@ def:priv _rule_dict(p: peg_parser) -> expr | None {
                 end_lineno=end_lineno,
                 end_col_offset=end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -7079,21 +7781,23 @@ def:priv _rule_dict(p: peg_parser) -> expr | None {
             lit_1 = peg_expect_token(p, 26);
             if lit_1 is not None {
                 res = invalid_double_starred_kvpairs as expr;
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_dictcomp(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_dictcomp = _rule_dictcomp(p);
-    p.level -= 1;
-    return res_rule_dictcomp;
+    p.level += 1;
+    return _rule_dictcomp(p);
 }
 
 def:priv _rule_dictcomp(p: peg_parser) -> expr | None {
@@ -7120,6 +7824,7 @@ def:priv _rule_dictcomp(p: peg_parser) -> expr | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -7133,6 +7838,7 @@ def:priv _rule_dictcomp(p: peg_parser) -> expr | None {
                         end_lineno=end_lineno,
                         end_col_offset=end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -7142,26 +7848,28 @@ def:priv _rule_dictcomp(p: peg_parser) -> expr | None {
     invalid_dict_comprehension = rule_invalid_dict_comprehension(p);
     if invalid_dict_comprehension is not None {
         res = invalid_dict_comprehension as expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_disjunction(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_disjunction = _rule_disjunction(p);
-    p.level -= 1;
-    return res_rule_disjunction;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_disjunction) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_disjunction(p);
 }
 
 def:priv _rule_disjunction(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_disjunction);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     start_lineno = 1;
     start_col_offset = 0;
@@ -7175,12 +7883,19 @@ def:priv _rule_disjunction(p: peg_parser) -> expr | None {
     res: expr | None = None;
     a = rule_conjunction(p);
     if a is not None {
+        if _next_tok_type(p) != 521 and not p.error_indicator {
+            res = a;
+            peg_insert_memo(p, mark, RULE_disjunction, res);
+            p.level -= 1;
+            return res;
+        }
         b = rule__loop1_18(p);
         if b is not None {
             end_tok = peg_get_last_nonnwhitespace_token(p);
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -7194,6 +7909,7 @@ def:priv _rule_disjunction(p: peg_parser) -> expr | None {
                 end_col_offset
             );
             peg_insert_memo(p, mark, RULE_disjunction, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -7202,20 +7918,22 @@ def:priv _rule_disjunction(p: peg_parser) -> expr | None {
     if conjunction is not None {
         res = conjunction;
         peg_insert_memo(p, mark, RULE_disjunction, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_disjunction, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_dotted_as_name(p: peg_parser) -> alias | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_dotted_as_name = _rule_dotted_as_name(p);
-    p.level -= 1;
-    return res_rule_dotted_as_name;
+    p.level += 1;
+    return _rule_dotted_as_name(p);
 }
 
 def:priv _rule_dotted_as_name(p: peg_parser) -> alias | None {
@@ -7233,6 +7951,7 @@ def:priv _rule_dotted_as_name(p: peg_parser) -> alias | None {
     invalid_dotted_as_name = rule_invalid_dotted_as_name(p);
     if invalid_dotted_as_name is not None {
         res = invalid_dotted_as_name as alias;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -7243,6 +7962,7 @@ def:priv _rule_dotted_as_name(p: peg_parser) -> alias | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -7255,19 +7975,21 @@ def:priv _rule_dotted_as_name(p: peg_parser) -> alias | None {
             end_lineno=end_lineno,
             end_col_offset=end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_dotted_as_names(p: peg_parser) -> list[alias] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_dotted_as_names = _rule_dotted_as_names(p);
-    p.level -= 1;
-    return res_rule_dotted_as_names;
+    p.level += 1;
+    return _rule_dotted_as_names(p);
 }
 
 def:priv _rule_dotted_as_names(p: peg_parser) -> list[alias] | None {
@@ -7276,26 +7998,28 @@ def:priv _rule_dotted_as_names(p: peg_parser) -> list[alias] | None {
     a = rule__gather_21(p);
     if a is not None {
         res = a;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_dotted_name(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_dotted_name = _rule_dotted_name(p);
-    p.level -= 1;
-    return res_rule_dotted_name;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_dotted_name) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_dotted_name(p);
 }
 
 def:priv _rule_dotted_name(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_dotted_name);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     res: expr | None = None;
     resmark = mark;
@@ -7304,6 +8028,7 @@ def:priv _rule_dotted_name(p: peg_parser) -> expr | None {
         peg_reset(p, mark);
         raw = rule_dotted_name_raw(p);
         if peg_has_error(p) {
+            p.level -= 1;
             return None;
         }
         if raw is None or peg_mark(p) <= resmark {
@@ -7312,16 +8037,18 @@ def:priv _rule_dotted_name(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr | None;
+    res_level_5 = peg_left_rec_finish(p, resmark, res) as expr | None;
+    p.level -= 1;
+    return res_level_5;
 }
 
 def rule_dotted_name_raw(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_dotted_name_raw = _rule_dotted_name_raw(p);
-    p.level -= 1;
-    return res_rule_dotted_name_raw;
+    p.level += 1;
+    return _rule_dotted_name_raw(p);
 }
 
 def:priv _rule_dotted_name_raw(p: peg_parser) -> expr | None {
@@ -7334,6 +8061,7 @@ def:priv _rule_dotted_name_raw(p: peg_parser) -> expr | None {
             b = pa_name_from_token(peg_expect_token(p, NAME));
             if b is not None {
                 res = pa_join_names_with_dot(a, b);
+                p.level -= 1;
                 return res;
             }
         }
@@ -7342,19 +8070,21 @@ def:priv _rule_dotted_name_raw(p: peg_parser) -> expr | None {
     name_var = pa_name_from_token(peg_expect_token(p, NAME));
     if name_var is not None {
         res = name_var as expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_double_star_pattern(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_double_star_pattern = _rule_double_star_pattern(p);
-    p.level -= 1;
-    return res_rule_double_star_pattern;
+    p.level += 1;
+    return _rule_double_star_pattern(p);
 }
 
 def:priv _rule_double_star_pattern(p: peg_parser) -> expr | None {
@@ -7365,20 +8095,22 @@ def:priv _rule_double_star_pattern(p: peg_parser) -> expr | None {
         target = rule_pattern_capture_target(p);
         if target is not None {
             res = target;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_double_starred_kvpair(p: peg_parser) -> kv_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_double_starred_kvpair = _rule_double_starred_kvpair(p);
-    p.level -= 1;
-    return res_rule_double_starred_kvpair;
+    p.level += 1;
+    return _rule_double_starred_kvpair(p);
 }
 
 def:priv _rule_double_starred_kvpair(p: peg_parser) -> kv_pair | None {
@@ -7400,6 +8132,7 @@ def:priv _rule_double_starred_kvpair(p: peg_parser) -> kv_pair | None {
             res = pa_key_value_pair(
                 None, a, start_lineno, start_col_offset, end_lineno, end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -7407,19 +8140,21 @@ def:priv _rule_double_starred_kvpair(p: peg_parser) -> kv_pair | None {
     kvpair = rule_kvpair(p);
     if kvpair is not None {
         res = kvpair;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_double_starred_kvpairs(p: peg_parser) -> list[kv_pair] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_double_starred_kvpairs = _rule_double_starred_kvpairs(p);
-    p.level -= 1;
-    return res_rule_double_starred_kvpairs;
+    p.level += 1;
+    return _rule_double_starred_kvpairs(p);
 }
 
 def:priv _rule_double_starred_kvpairs(p: peg_parser) -> list[kv_pair] | None {
@@ -7429,19 +8164,21 @@ def:priv _rule_double_starred_kvpairs(p: peg_parser) -> list[kv_pair] | None {
     if a is not None {
         lit = peg_expect_token(p, 12);
         res = a;
+        p.level -= 1;
         return res as list[kv_pair];
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_elif_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_elif_stmt = _rule_elif_stmt(p);
-    p.level -= 1;
-    return res_rule_elif_stmt;
+    p.level += 1;
+    return _rule_elif_stmt(p);
 }
 
 def:priv _rule_elif_stmt(p: peg_parser) -> stmt | None {
@@ -7459,6 +8196,7 @@ def:priv _rule_elif_stmt(p: peg_parser) -> stmt | None {
     invalid_elif_stmt = rule_invalid_elif_stmt(p);
     if invalid_elif_stmt is not None {
         res = invalid_elif_stmt as stmt;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -7476,6 +8214,7 @@ def:priv _rule_elif_stmt(p: peg_parser) -> stmt | None {
                         if end_tok is None {
                             p.error_indicator = True;
                             peg_reset(p, mark);
+                            p.level -= 1;
                             return None;
                         }
                         end_lineno = end_tok.end_lineno;
@@ -7491,6 +8230,7 @@ def:priv _rule_elif_stmt(p: peg_parser) -> stmt | None {
                             end_lineno=end_lineno,
                             end_col_offset=end_col_offset
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -7511,6 +8251,7 @@ def:priv _rule_elif_stmt(p: peg_parser) -> stmt | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -7524,22 +8265,24 @@ def:priv _rule_elif_stmt(p: peg_parser) -> stmt | None {
                         end_lineno=end_lineno,
                         end_col_offset=end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_else_block(p: peg_parser) -> list[stmt] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_else_block = _rule_else_block(p);
-    p.level -= 1;
-    return res_rule_else_block;
+    p.level += 1;
+    return _rule_else_block(p);
 }
 
 def:priv _rule_else_block(p: peg_parser) -> list[stmt] | None {
@@ -7548,6 +8291,7 @@ def:priv _rule_else_block(p: peg_parser) -> list[stmt] | None {
     invalid_else_stmt = rule_invalid_else_stmt(p);
     if invalid_else_stmt is not None {
         res = invalid_else_stmt as list[stmt];
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -7558,21 +8302,23 @@ def:priv _rule_else_block(p: peg_parser) -> list[stmt] | None {
             b = rule_block(p);
             if b is not None {
                 res = b;
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_eq_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_eq_bitwise_or = _rule_eq_bitwise_or(p);
-    p.level -= 1;
-    return res_rule_eq_bitwise_or;
+    p.level += 1;
+    return _rule_eq_bitwise_or(p);
 }
 
 def:priv _rule_eq_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
@@ -7583,20 +8329,22 @@ def:priv _rule_eq_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
         a = rule_bitwise_or(p);
         if a is not None {
             res = pa_make_cmpop_pair(Eq(), a);
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_eval(p: peg_parser) -> mod | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_eval = _rule_eval(p);
-    p.level -= 1;
-    return res_rule_eval;
+    p.level += 1;
+    return _rule_eval(p);
 }
 
 def:priv _rule_eval(p: peg_parser) -> mod | None {
@@ -7609,21 +8357,23 @@ def:priv _rule_eval(p: peg_parser) -> mod | None {
             _endmarker = peg_expect_token(p, ENDMARKER);
             if _endmarker is not None {
                 res = pa_ast_expression(a);
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_except_block(p: peg_parser) -> excepthandler | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_except_block = _rule_except_block(p);
-    p.level -= 1;
-    return res_rule_except_block;
+    p.level += 1;
+    return _rule_except_block(p);
 }
 
 def:priv _rule_except_block(p: peg_parser) -> excepthandler | None {
@@ -7641,6 +8391,7 @@ def:priv _rule_except_block(p: peg_parser) -> excepthandler | None {
     invalid_except_stmt_indent = rule_invalid_except_stmt_indent(p);
     if invalid_except_stmt_indent is not None {
         res = invalid_except_stmt_indent as excepthandler;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -7656,6 +8407,7 @@ def:priv _rule_except_block(p: peg_parser) -> excepthandler | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -7669,6 +8421,7 @@ def:priv _rule_except_block(p: peg_parser) -> excepthandler | None {
                         end_lineno=end_lineno,
                         end_col_offset=end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -7691,6 +8444,7 @@ def:priv _rule_except_block(p: peg_parser) -> excepthandler | None {
                             if end_tok is None {
                                 p.error_indicator = True;
                                 peg_reset(p, mark);
+                                p.level -= 1;
                                 return None;
                             }
                             end_lineno = end_tok.end_lineno;
@@ -7704,6 +8458,7 @@ def:priv _rule_except_block(p: peg_parser) -> excepthandler | None {
                                 end_lineno=end_lineno,
                                 end_col_offset=end_col_offset
                             );
+                            p.level -= 1;
                             return res;
                         }
                     }
@@ -7724,6 +8479,7 @@ def:priv _rule_except_block(p: peg_parser) -> excepthandler | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -7745,6 +8501,7 @@ def:priv _rule_except_block(p: peg_parser) -> excepthandler | None {
                             offset=start_col_offset + 1
                         );
                     }
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -7761,6 +8518,7 @@ def:priv _rule_except_block(p: peg_parser) -> excepthandler | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -7774,6 +8532,7 @@ def:priv _rule_except_block(p: peg_parser) -> excepthandler | None {
                     end_lineno=end_lineno,
                     end_col_offset=end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -7782,19 +8541,21 @@ def:priv _rule_except_block(p: peg_parser) -> excepthandler | None {
     invalid_except_stmt = rule_invalid_except_stmt(p);
     if invalid_except_stmt is not None {
         res = invalid_except_stmt as excepthandler;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_except_star_block(p: peg_parser) -> excepthandler | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_except_star_block = _rule_except_star_block(p);
-    p.level -= 1;
-    return res_rule_except_star_block;
+    p.level += 1;
+    return _rule_except_star_block(p);
 }
 
 def:priv _rule_except_star_block(p: peg_parser) -> excepthandler | None {
@@ -7812,6 +8573,7 @@ def:priv _rule_except_star_block(p: peg_parser) -> excepthandler | None {
     invalid_except_star_stmt_indent = rule_invalid_except_star_stmt_indent(p);
     if invalid_except_star_stmt_indent is not None {
         res = invalid_except_star_stmt_indent as excepthandler;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -7829,6 +8591,7 @@ def:priv _rule_except_star_block(p: peg_parser) -> excepthandler | None {
                         if end_tok is None {
                             p.error_indicator = True;
                             peg_reset(p, mark);
+                            p.level -= 1;
                             return None;
                         }
                         end_lineno = end_tok.end_lineno;
@@ -7842,6 +8605,7 @@ def:priv _rule_except_star_block(p: peg_parser) -> excepthandler | None {
                             end_lineno=end_lineno,
                             end_col_offset=end_col_offset
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -7867,6 +8631,7 @@ def:priv _rule_except_star_block(p: peg_parser) -> excepthandler | None {
                                 if end_tok is None {
                                     p.error_indicator = True;
                                     peg_reset(p, mark);
+                                    p.level -= 1;
                                     return None;
                                 }
                                 end_lineno = end_tok.end_lineno;
@@ -7880,6 +8645,7 @@ def:priv _rule_except_star_block(p: peg_parser) -> excepthandler | None {
                                     end_lineno=end_lineno,
                                     end_col_offset=end_col_offset
                                 );
+                                p.level -= 1;
                                 return res;
                             }
                         }
@@ -7903,6 +8669,7 @@ def:priv _rule_except_star_block(p: peg_parser) -> excepthandler | None {
                         if end_tok is None {
                             p.error_indicator = True;
                             peg_reset(p, mark);
+                            p.level -= 1;
                             return None;
                         }
                         end_lineno = end_tok.end_lineno;
@@ -7924,6 +8691,7 @@ def:priv _rule_except_star_block(p: peg_parser) -> excepthandler | None {
                                 offset=start_col_offset + 1
                             );
                         }
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -7934,26 +8702,28 @@ def:priv _rule_except_star_block(p: peg_parser) -> excepthandler | None {
     invalid_except_star_stmt = rule_invalid_except_star_stmt(p);
     if invalid_except_star_stmt is not None {
         res = invalid_except_star_stmt as excepthandler;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_expression(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_expression = _rule_expression(p);
-    p.level -= 1;
-    return res_rule_expression;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_expression) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_expression(p);
 }
 
 def:priv _rule_expression(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_expression);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     start_lineno = 1;
     start_col_offset = 0;
@@ -7969,6 +8739,7 @@ def:priv _rule_expression(p: peg_parser) -> expr | None {
     if invalid_expression is not None {
         res = invalid_expression as expr;
         peg_insert_memo(p, mark, RULE_expression, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -7976,6 +8747,7 @@ def:priv _rule_expression(p: peg_parser) -> expr | None {
     if invalid_legacy_expression is not None {
         res = invalid_legacy_expression as expr;
         peg_insert_memo(p, mark, RULE_expression, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -7993,6 +8765,7 @@ def:priv _rule_expression(p: peg_parser) -> expr | None {
                         if end_tok is None {
                             p.error_indicator = True;
                             peg_reset(p, mark);
+                            p.level -= 1;
                             return None;
                         }
                         end_lineno = end_tok.end_lineno;
@@ -8007,6 +8780,7 @@ def:priv _rule_expression(p: peg_parser) -> expr | None {
                             end_col_offset
                         );
                         peg_insert_memo(p, mark, RULE_expression, res);
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -8018,6 +8792,7 @@ def:priv _rule_expression(p: peg_parser) -> expr | None {
     if disjunction is not None {
         res = disjunction;
         peg_insert_memo(p, mark, RULE_expression, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -8025,20 +8800,22 @@ def:priv _rule_expression(p: peg_parser) -> expr | None {
     if lambdef is not None {
         res = lambdef;
         peg_insert_memo(p, mark, RULE_expression, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_expression, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_expression_without_invalid(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_expression_without_invalid = _rule_expression_without_invalid(p);
-    p.level -= 1;
-    return res_rule_expression_without_invalid;
+    p.level += 1;
+    return _rule_expression_without_invalid(p);
 }
 
 def:priv _rule_expression_without_invalid(p: peg_parser) -> expr | None {
@@ -8067,6 +8844,7 @@ def:priv _rule_expression_without_invalid(p: peg_parser) -> expr | None {
                         if end_tok is None {
                             p.error_indicator = True;
                             peg_reset(p, mark);
+                            p.level -= 1;
                             return None;
                         }
                         end_lineno = end_tok.end_lineno;
@@ -8080,6 +8858,7 @@ def:priv _rule_expression_without_invalid(p: peg_parser) -> expr | None {
                             end_lineno,
                             end_col_offset
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -8090,25 +8869,28 @@ def:priv _rule_expression_without_invalid(p: peg_parser) -> expr | None {
     disjunction = rule_disjunction(p);
     if disjunction is not None {
         res = disjunction;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lambdef = rule_lambdef(p);
     if lambdef is not None {
         res = lambdef;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_expressions(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_expressions = _rule_expressions(p);
-    p.level -= 1;
-    return res_rule_expressions;
+    p.level += 1;
+    return _rule_expressions(p);
 }
 
 def:priv _rule_expressions(p: peg_parser) -> expr | None {
@@ -8132,6 +8914,7 @@ def:priv _rule_expressions(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -8144,6 +8927,7 @@ def:priv _rule_expressions(p: peg_parser) -> expr | None {
                 end_lineno,
                 end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -8156,6 +8940,7 @@ def:priv _rule_expressions(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -8168,6 +8953,7 @@ def:priv _rule_expressions(p: peg_parser) -> expr | None {
                 end_lineno,
                 end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -8175,26 +8961,28 @@ def:priv _rule_expressions(p: peg_parser) -> expr | None {
     expression = rule_expression(p);
     if expression is not None {
         res = expression;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_factor(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_factor = _rule_factor(p);
-    p.level -= 1;
-    return res_rule_factor;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_factor) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_factor(p);
 }
 
 def:priv _rule_factor(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_factor);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     start_lineno = 1;
     start_col_offset = 0;
@@ -8214,6 +9002,7 @@ def:priv _rule_factor(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -8222,6 +9011,7 @@ def:priv _rule_factor(p: peg_parser) -> expr | None {
                 UAdd(), a, start_lineno, start_col_offset, end_lineno, end_col_offset
             );
             peg_insert_memo(p, mark, RULE_factor, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -8234,6 +9024,7 @@ def:priv _rule_factor(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -8242,6 +9033,7 @@ def:priv _rule_factor(p: peg_parser) -> expr | None {
                 USub(), a, start_lineno, start_col_offset, end_lineno, end_col_offset
             );
             peg_insert_memo(p, mark, RULE_factor, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -8254,6 +9046,7 @@ def:priv _rule_factor(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -8262,6 +9055,7 @@ def:priv _rule_factor(p: peg_parser) -> expr | None {
                 Invert(), a, start_lineno, start_col_offset, end_lineno, end_col_offset
             );
             peg_insert_memo(p, mark, RULE_factor, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -8270,20 +9064,22 @@ def:priv _rule_factor(p: peg_parser) -> expr | None {
     if power is not None {
         res = power;
         peg_insert_memo(p, mark, RULE_factor, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_factor, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_file(p: peg_parser) -> mod | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_file = _rule_file(p);
-    p.level -= 1;
-    return res_rule_file;
+    p.level += 1;
+    return _rule_file(p);
 }
 
 def:priv _rule_file(p: peg_parser) -> mod | None {
@@ -8293,19 +9089,21 @@ def:priv _rule_file(p: peg_parser) -> mod | None {
     _endmarker = peg_expect_token(p, ENDMARKER);
     if _endmarker is not None {
         res = pa_make_module(a);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_finally_block(p: peg_parser) -> list[stmt] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_finally_block = _rule_finally_block(p);
-    p.level -= 1;
-    return res_rule_finally_block;
+    p.level += 1;
+    return _rule_finally_block(p);
 }
 
 def:priv _rule_finally_block(p: peg_parser) -> list[stmt] | None {
@@ -8314,6 +9112,7 @@ def:priv _rule_finally_block(p: peg_parser) -> list[stmt] | None {
     invalid_finally_stmt = rule_invalid_finally_stmt(p);
     if invalid_finally_stmt is not None {
         res = invalid_finally_stmt as list[stmt];
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -8324,21 +9123,23 @@ def:priv _rule_finally_block(p: peg_parser) -> list[stmt] | None {
             a = rule_block(p);
             if a is not None {
                 res = a;
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_for_if_clause(p: peg_parser) -> comprehension | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_for_if_clause = _rule_for_if_clause(p);
-    p.level -= 1;
-    return res_rule_for_if_clause;
+    p.level += 1;
+    return _rule_for_if_clause(p);
 }
 
 def:priv _rule_for_if_clause(p: peg_parser) -> comprehension | None {
@@ -8363,6 +9164,7 @@ def:priv _rule_for_if_clause(p: peg_parser) -> comprehension | None {
                                 ifs=(c if c is not None else []),
                                 is_async=1
                             );
+                            p.level -= 1;
                             return res;
                         }
                     }
@@ -8388,6 +9190,7 @@ def:priv _rule_for_if_clause(p: peg_parser) -> comprehension | None {
                             ifs=(c if c is not None else []),
                             is_async=0
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -8398,25 +9201,28 @@ def:priv _rule_for_if_clause(p: peg_parser) -> comprehension | None {
     invalid_for_if_clause = rule_invalid_for_if_clause(p);
     if invalid_for_if_clause is not None {
         res = invalid_for_if_clause as comprehension;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     invalid_for_target = rule_invalid_for_target(p);
     if invalid_for_target is not None {
         res = invalid_for_target as comprehension;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_for_if_clauses(p: peg_parser) -> list[comprehension] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_for_if_clauses = _rule_for_if_clauses(p);
-    p.level -= 1;
-    return res_rule_for_if_clauses;
+    p.level += 1;
+    return _rule_for_if_clauses(p);
 }
 
 def:priv _rule_for_if_clauses(p: peg_parser) -> list[comprehension] | None {
@@ -8425,19 +9231,21 @@ def:priv _rule_for_if_clauses(p: peg_parser) -> list[comprehension] | None {
     a = rule__loop1_27(p);
     if a is not None {
         res = a;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_for_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_for_stmt = _rule_for_stmt(p);
-    p.level -= 1;
-    return res_rule_for_stmt;
+    p.level += 1;
+    return _rule_for_stmt(p);
 }
 
 def:priv _rule_for_stmt(p: peg_parser) -> stmt | None {
@@ -8455,6 +9263,7 @@ def:priv _rule_for_stmt(p: peg_parser) -> stmt | None {
     invalid_for_stmt = rule_invalid_for_stmt(p);
     if invalid_for_stmt is not None {
         res = invalid_for_stmt as stmt;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -8477,6 +9286,7 @@ def:priv _rule_for_stmt(p: peg_parser) -> stmt | None {
                             if end_tok is None {
                                 p.error_indicator = True;
                                 peg_reset(p, mark);
+                                p.level -= 1;
                                 return None;
                             }
                             end_lineno = end_tok.end_lineno;
@@ -8492,6 +9302,7 @@ def:priv _rule_for_stmt(p: peg_parser) -> stmt | None {
                                 end_lineno=end_lineno,
                                 end_col_offset=end_col_offset
                             );
+                            p.level -= 1;
                             return res;
                         }
                     }
@@ -8521,6 +9332,7 @@ def:priv _rule_for_stmt(p: peg_parser) -> stmt | None {
                                 if end_tok is None {
                                     p.error_indicator = True;
                                     peg_reset(p, mark);
+                                    p.level -= 1;
                                     return None;
                                 }
                                 end_lineno = end_tok.end_lineno;
@@ -8538,6 +9350,7 @@ def:priv _rule_for_stmt(p: peg_parser) -> stmt | None {
                                     end_lineno=end_lineno,
                                     end_col_offset=end_col_offset
                                 );
+                                p.level -= 1;
                                 return res;
                             }
                         }
@@ -8550,19 +9363,21 @@ def:priv _rule_for_stmt(p: peg_parser) -> stmt | None {
     invalid_for_target = rule_invalid_for_target(p);
     if invalid_for_target is not None {
         res = invalid_for_target as stmt;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_fstring(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_fstring = _rule_fstring(p);
-    p.level -= 1;
-    return res_rule_fstring;
+    p.level += 1;
+    return _rule_fstring(p);
 }
 
 def:priv _rule_fstring(p: peg_parser) -> expr | None {
@@ -8593,21 +9408,23 @@ def:priv _rule_fstring(p: peg_parser) -> expr | None {
                     end_tok.end_lineno,
                     end_tok.end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_fstring_conversion(p: peg_parser) -> Name | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_fstring_conversion = _rule_fstring_conversion(p);
-    p.level -= 1;
-    return res_rule_fstring_conversion;
+    p.level += 1;
+    return _rule_fstring_conversion(p);
 }
 
 def:priv _rule_fstring_conversion(p: peg_parser) -> Name | None {
@@ -8618,20 +9435,22 @@ def:priv _rule_fstring_conversion(p: peg_parser) -> Name | None {
         conv = pa_name_from_token(peg_expect_token(p, NAME));
         if conv is not None {
             res = pa_check_fstring_conversion(p, conv_token, conv);
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_fstring_format_spec(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_fstring_format_spec = _rule_fstring_format_spec(p);
-    p.level -= 1;
-    return res_rule_fstring_format_spec;
+    p.level += 1;
+    return _rule_fstring_format_spec(p);
 }
 
 def:priv _rule_fstring_format_spec(p: peg_parser) -> expr | None {
@@ -8640,25 +9459,28 @@ def:priv _rule_fstring_format_spec(p: peg_parser) -> expr | None {
     t = peg_expect_token(p, FSTRING_MIDDLE);
     if t is not None {
         res = pa_decoded_constant_from_token(t);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     fstring_replacement_field = rule_fstring_replacement_field(p);
     if fstring_replacement_field is not None {
         res = fstring_replacement_field;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_fstring_full_format_spec(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_fstring_full_format_spec = _rule_fstring_full_format_spec(p);
-    p.level -= 1;
-    return res_rule_fstring_full_format_spec;
+    p.level += 1;
+    return _rule_fstring_full_format_spec(p);
 }
 
 def:priv _rule_fstring_full_format_spec(p: peg_parser) -> expr | None {
@@ -8681,6 +9503,7 @@ def:priv _rule_fstring_full_format_spec(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -8688,20 +9511,22 @@ def:priv _rule_fstring_full_format_spec(p: peg_parser) -> expr | None {
             res = pa_setup_full_format_spec(
                 colon, spec, start_lineno, start_col_offset, end_lineno, end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_fstring_middle(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_fstring_middle = _rule_fstring_middle(p);
-    p.level -= 1;
-    return res_rule_fstring_middle;
+    p.level += 1;
+    return _rule_fstring_middle(p);
 }
 
 def:priv _rule_fstring_middle(p: peg_parser) -> expr | None {
@@ -8710,25 +9535,28 @@ def:priv _rule_fstring_middle(p: peg_parser) -> expr | None {
     fstring_replacement_field = rule_fstring_replacement_field(p);
     if fstring_replacement_field is not None {
         res = fstring_replacement_field;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     t = peg_expect_token(p, FSTRING_MIDDLE);
     if t is not None {
         res = pa_constant_from_fstring_middle(t, False);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_fstring_replacement_field(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_fstring_replacement_field = _rule_fstring_replacement_field(p);
-    p.level -= 1;
-    return res_rule_fstring_replacement_field;
+    p.level += 1;
+    return _rule_fstring_replacement_field(p);
 }
 
 def:priv _rule_fstring_replacement_field(p: peg_parser) -> expr | None {
@@ -8756,6 +9584,7 @@ def:priv _rule_fstring_replacement_field(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -8772,6 +9601,7 @@ def:priv _rule_fstring_replacement_field(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -8780,19 +9610,21 @@ def:priv _rule_fstring_replacement_field(p: peg_parser) -> expr | None {
     invalid_fstring_replacement_field = rule_invalid_fstring_replacement_field(p);
     if invalid_fstring_replacement_field is not None {
         res = invalid_fstring_replacement_field as expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_func_type(p: peg_parser) -> mod | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_func_type = _rule_func_type(p);
-    p.level -= 1;
-    return res_rule_func_type;
+    p.level += 1;
+    return _rule_func_type(p);
 }
 
 def:priv _rule_func_type(p: peg_parser) -> mod | None {
@@ -8814,6 +9646,7 @@ def:priv _rule_func_type(p: peg_parser) -> mod | None {
                             res = FunctionType(
                                 argtypes=(a if a is not None else []), returns=b
                             );
+                            p.level -= 1;
                             return res;
                         }
                     }
@@ -8822,16 +9655,17 @@ def:priv _rule_func_type(p: peg_parser) -> mod | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_func_type_comment(p: peg_parser) -> peg_token | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_func_type_comment = _rule_func_type_comment(p);
-    p.level -= 1;
-    return res_rule_func_type_comment;
+    p.level += 1;
+    return _rule_func_type_comment(p);
 }
 
 def:priv _rule_func_type_comment(p: peg_parser) -> peg_token | None {
@@ -8846,6 +9680,7 @@ def:priv _rule_func_type_comment(p: peg_parser) -> peg_token | None {
             peg_reset(p, lookahead);
             if matched {
                 res = t;
+                p.level -= 1;
                 return res;
             }
         }
@@ -8854,25 +9689,28 @@ def:priv _rule_func_type_comment(p: peg_parser) -> peg_token | None {
     invalid_double_type_comments = rule_invalid_double_type_comments(p);
     if invalid_double_type_comments is not None {
         res = invalid_double_type_comments as peg_token;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     type_comment_tok = peg_expect_token(p, TYPE_COMMENT);
     if type_comment_tok is not None {
         res = type_comment_tok;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_function_def(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_function_def = _rule_function_def(p);
-    p.level -= 1;
-    return res_rule_function_def;
+    p.level += 1;
+    return _rule_function_def(p);
 }
 
 def:priv _rule_function_def(p: peg_parser) -> stmt | None {
@@ -8883,6 +9721,7 @@ def:priv _rule_function_def(p: peg_parser) -> stmt | None {
         f = rule_function_def_raw(p);
         if f is not None {
             res = pa_function_def_decorators(d, f);
+            p.level -= 1;
             return res;
         }
     }
@@ -8890,19 +9729,21 @@ def:priv _rule_function_def(p: peg_parser) -> stmt | None {
     function_def_raw = rule_function_def_raw(p);
     if function_def_raw is not None {
         res = function_def_raw;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_function_def_raw(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_function_def_raw = _rule_function_def_raw(p);
-    p.level -= 1;
-    return res_rule_function_def_raw;
+    p.level += 1;
+    return _rule_function_def_raw(p);
 }
 
 def:priv _rule_function_def_raw(p: peg_parser) -> stmt | None {
@@ -8937,6 +9778,7 @@ def:priv _rule_function_def_raw(p: peg_parser) -> stmt | None {
                             if end_tok is None {
                                 p.error_indicator = True;
                                 peg_reset(p, mark);
+                                p.level -= 1;
                                 return None;
                             }
                             end_lineno = end_tok.end_lineno;
@@ -8958,6 +9800,7 @@ def:priv _rule_function_def_raw(p: peg_parser) -> stmt | None {
                                 end_lineno=end_lineno,
                                 end_col_offset=end_col_offset
                             );
+                            p.level -= 1;
                             return res;
                         }
                     }
@@ -8988,6 +9831,7 @@ def:priv _rule_function_def_raw(p: peg_parser) -> stmt | None {
                                 if end_tok is None {
                                     p.error_indicator = True;
                                     peg_reset(p, mark);
+                                    p.level -= 1;
                                     return None;
                                 }
                                 end_lineno = end_tok.end_lineno;
@@ -9013,6 +9857,7 @@ def:priv _rule_function_def_raw(p: peg_parser) -> stmt | None {
                                     end_lineno=end_lineno,
                                     end_col_offset=end_col_offset
                                 );
+                                p.level -= 1;
                                 return res;
                             }
                         }
@@ -9025,19 +9870,21 @@ def:priv _rule_function_def_raw(p: peg_parser) -> stmt | None {
     invalid_def_raw = rule_invalid_def_raw(p);
     if invalid_def_raw is not None {
         res = invalid_def_raw as stmt;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_genexp(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_genexp = _rule_genexp(p);
-    p.level -= 1;
-    return res_rule_genexp;
+    p.level += 1;
+    return _rule_genexp(p);
 }
 
 def:priv _rule_genexp(p: peg_parser) -> expr | None {
@@ -9064,6 +9911,7 @@ def:priv _rule_genexp(p: peg_parser) -> expr | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -9076,6 +9924,7 @@ def:priv _rule_genexp(p: peg_parser) -> expr | None {
                         end_lineno=end_lineno,
                         end_col_offset=end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -9085,19 +9934,21 @@ def:priv _rule_genexp(p: peg_parser) -> expr | None {
     invalid_comprehension = rule_invalid_comprehension(p);
     if invalid_comprehension is not None {
         res = invalid_comprehension as expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_global_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_global_stmt = _rule_global_stmt(p);
-    p.level -= 1;
-    return res_rule_global_stmt;
+    p.level += 1;
+    return _rule_global_stmt(p);
 }
 
 def:priv _rule_global_stmt(p: peg_parser) -> stmt | None {
@@ -9120,6 +9971,7 @@ def:priv _rule_global_stmt(p: peg_parser) -> stmt | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -9135,20 +9987,22 @@ def:priv _rule_global_stmt(p: peg_parser) -> stmt | None {
                 end_lineno=end_lineno,
                 end_col_offset=end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_group(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_group = _rule_group(p);
-    p.level -= 1;
-    return res_rule_group;
+    p.level += 1;
+    return _rule_group(p);
 }
 
 def:priv _rule_group(p: peg_parser) -> expr | None {
@@ -9161,6 +10015,7 @@ def:priv _rule_group(p: peg_parser) -> expr | None {
             lit_1 = peg_expect_token(p, 8);
             if lit_1 is not None {
                 res = a;
+                p.level -= 1;
                 return res;
             }
         }
@@ -9169,19 +10024,21 @@ def:priv _rule_group(p: peg_parser) -> expr | None {
     invalid_group = rule_invalid_group(p);
     if invalid_group is not None {
         res = invalid_group as expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_group_pattern(p: peg_parser) -> pattern | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_group_pattern = _rule_group_pattern(p);
-    p.level -= 1;
-    return res_rule_group_pattern;
+    p.level += 1;
+    return _rule_group_pattern(p);
 }
 
 def:priv _rule_group_pattern(p: peg_parser) -> pattern | None {
@@ -9194,21 +10051,23 @@ def:priv _rule_group_pattern(p: peg_parser) -> pattern | None {
             lit_1 = peg_expect_token(p, 8);
             if lit_1 is not None {
                 res = pattern;
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_gt_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_gt_bitwise_or = _rule_gt_bitwise_or(p);
-    p.level -= 1;
-    return res_rule_gt_bitwise_or;
+    p.level += 1;
+    return _rule_gt_bitwise_or(p);
 }
 
 def:priv _rule_gt_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
@@ -9219,20 +10078,22 @@ def:priv _rule_gt_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
         a = rule_bitwise_or(p);
         if a is not None {
             res = pa_make_cmpop_pair(Gt(), a);
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_gte_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_gte_bitwise_or = _rule_gte_bitwise_or(p);
-    p.level -= 1;
-    return res_rule_gte_bitwise_or;
+    p.level += 1;
+    return _rule_gte_bitwise_or(p);
 }
 
 def:priv _rule_gte_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
@@ -9243,20 +10104,22 @@ def:priv _rule_gte_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
         a = rule_bitwise_or(p);
         if a is not None {
             res = pa_make_cmpop_pair(GtE(), a);
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_guard(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_guard = _rule_guard(p);
-    p.level -= 1;
-    return res_rule_guard;
+    p.level += 1;
+    return _rule_guard(p);
 }
 
 def:priv _rule_guard(p: peg_parser) -> expr | None {
@@ -9267,20 +10130,22 @@ def:priv _rule_guard(p: peg_parser) -> expr | None {
         guard = rule_named_expression(p);
         if guard is not None {
             res = guard;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_if_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_if_stmt = _rule_if_stmt(p);
-    p.level -= 1;
-    return res_rule_if_stmt;
+    p.level += 1;
+    return _rule_if_stmt(p);
 }
 
 def:priv _rule_if_stmt(p: peg_parser) -> stmt | None {
@@ -9298,6 +10163,7 @@ def:priv _rule_if_stmt(p: peg_parser) -> stmt | None {
     invalid_if_stmt = rule_invalid_if_stmt(p);
     if invalid_if_stmt is not None {
         res = invalid_if_stmt as stmt;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -9315,6 +10181,7 @@ def:priv _rule_if_stmt(p: peg_parser) -> stmt | None {
                         if end_tok is None {
                             p.error_indicator = True;
                             peg_reset(p, mark);
+                            p.level -= 1;
                             return None;
                         }
                         end_lineno = end_tok.end_lineno;
@@ -9330,6 +10197,7 @@ def:priv _rule_if_stmt(p: peg_parser) -> stmt | None {
                             end_lineno=end_lineno,
                             end_col_offset=end_col_offset
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -9350,6 +10218,7 @@ def:priv _rule_if_stmt(p: peg_parser) -> stmt | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -9363,22 +10232,24 @@ def:priv _rule_if_stmt(p: peg_parser) -> stmt | None {
                         end_lineno=end_lineno,
                         end_col_offset=end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_imaginary_number(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_imaginary_number = _rule_imaginary_number(p);
-    p.level -= 1;
-    return res_rule_imaginary_number;
+    p.level += 1;
+    return _rule_imaginary_number(p);
 }
 
 def:priv _rule_imaginary_number(p: peg_parser) -> expr | None {
@@ -9387,19 +10258,21 @@ def:priv _rule_imaginary_number(p: peg_parser) -> expr | None {
     imag = pa_number_from_token(peg_expect_token(p, NUMBER));
     if imag is not None {
         res = pa_ensure_imaginary(p, imag);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_import_from(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_import_from = _rule_import_from(p);
-    p.level -= 1;
-    return res_rule_import_from;
+    p.level += 1;
+    return _rule_import_from(p);
 }
 
 def:priv _rule_import_from(p: peg_parser) -> stmt | None {
@@ -9428,6 +10301,7 @@ def:priv _rule_import_from(p: peg_parser) -> stmt | None {
                         if end_tok is None {
                             p.error_indicator = True;
                             peg_reset(p, mark);
+                            p.level -= 1;
                             return None;
                         }
                         end_lineno = end_tok.end_lineno;
@@ -9442,6 +10316,7 @@ def:priv _rule_import_from(p: peg_parser) -> stmt | None {
                             end_lineno,
                             end_col_offset
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -9461,6 +10336,7 @@ def:priv _rule_import_from(p: peg_parser) -> stmt | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -9474,22 +10350,24 @@ def:priv _rule_import_from(p: peg_parser) -> stmt | None {
                         end_lineno=end_lineno,
                         end_col_offset=end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_import_from_as_name(p: peg_parser) -> alias | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_import_from_as_name = _rule_import_from_as_name(p);
-    p.level -= 1;
-    return res_rule_import_from_as_name;
+    p.level += 1;
+    return _rule_import_from_as_name(p);
 }
 
 def:priv _rule_import_from_as_name(p: peg_parser) -> alias | None {
@@ -9507,6 +10385,7 @@ def:priv _rule_import_from_as_name(p: peg_parser) -> alias | None {
     invalid_import_from_as_name = rule_invalid_import_from_as_name(p);
     if invalid_import_from_as_name is not None {
         res = invalid_import_from_as_name as alias;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -9517,6 +10396,7 @@ def:priv _rule_import_from_as_name(p: peg_parser) -> alias | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -9529,19 +10409,21 @@ def:priv _rule_import_from_as_name(p: peg_parser) -> alias | None {
             end_lineno=end_lineno,
             end_col_offset=end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_import_from_as_names(p: peg_parser) -> list[alias] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_import_from_as_names = _rule_import_from_as_names(p);
-    p.level -= 1;
-    return res_rule_import_from_as_names;
+    p.level += 1;
+    return _rule_import_from_as_names(p);
 }
 
 def:priv _rule_import_from_as_names(p: peg_parser) -> list[alias] | None {
@@ -9550,19 +10432,21 @@ def:priv _rule_import_from_as_names(p: peg_parser) -> list[alias] | None {
     a = rule__gather_38(p);
     if a is not None {
         res = a;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_import_from_targets(p: peg_parser) -> list[alias] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_import_from_targets = _rule_import_from_targets(p);
-    p.level -= 1;
-    return res_rule_import_from_targets;
+    p.level += 1;
+    return _rule_import_from_targets(p);
 }
 
 def:priv _rule_import_from_targets(p: peg_parser) -> list[alias] | None {
@@ -9585,6 +10469,7 @@ def:priv _rule_import_from_targets(p: peg_parser) -> list[alias] | None {
             lit_2 = peg_expect_token(p, 8);
             if lit_2 is not None {
                 res = a;
+                p.level -= 1;
                 return res;
             }
         }
@@ -9594,6 +10479,7 @@ def:priv _rule_import_from_targets(p: peg_parser) -> list[alias] | None {
     if import_from_as_names is not None {
         if (peg_negative_lookahead_token(p, 12)) {
             res = import_from_as_names;
+            p.level -= 1;
             return res;
         }
     }
@@ -9604,6 +10490,7 @@ def:priv _rule_import_from_targets(p: peg_parser) -> list[alias] | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -9615,25 +10502,28 @@ def:priv _rule_import_from_targets(p: peg_parser) -> list[alias] | None {
                 )
             ) as alias
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     invalid_import_from_targets = rule_invalid_import_from_targets(p);
     if invalid_import_from_targets is not None {
         res = invalid_import_from_targets as list[alias];
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_import_name(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_import_name = _rule_import_name(p);
-    p.level -= 1;
-    return res_rule_import_name;
+    p.level += 1;
+    return _rule_import_name(p);
 }
 
 def:priv _rule_import_name(p: peg_parser) -> stmt | None {
@@ -9656,6 +10546,7 @@ def:priv _rule_import_name(p: peg_parser) -> stmt | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -9667,20 +10558,22 @@ def:priv _rule_import_name(p: peg_parser) -> stmt | None {
                 end_lineno=end_lineno,
                 end_col_offset=end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_import_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_import_stmt = _rule_import_stmt(p);
-    p.level -= 1;
-    return res_rule_import_stmt;
+    p.level += 1;
+    return _rule_import_stmt(p);
 }
 
 def:priv _rule_import_stmt(p: peg_parser) -> stmt | None {
@@ -9689,31 +10582,35 @@ def:priv _rule_import_stmt(p: peg_parser) -> stmt | None {
     invalid_import = rule_invalid_import(p);
     if invalid_import is not None {
         res = invalid_import as stmt;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     import_name = rule_import_name(p);
     if import_name is not None {
         res = import_name;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     import_from = rule_import_from(p);
     if import_from is not None {
         res = import_from;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_in_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_in_bitwise_or = _rule_in_bitwise_or(p);
-    p.level -= 1;
-    return res_rule_in_bitwise_or;
+    p.level += 1;
+    return _rule_in_bitwise_or(p);
 }
 
 def:priv _rule_in_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
@@ -9724,20 +10621,22 @@ def:priv _rule_in_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
         a = rule_bitwise_or(p);
         if a is not None {
             res = pa_make_cmpop_pair(In(), a);
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_interactive(p: peg_parser) -> mod | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_interactive = _rule_interactive(p);
-    p.level -= 1;
-    return res_rule_interactive;
+    p.level += 1;
+    return _rule_interactive(p);
 }
 
 def:priv _rule_interactive(p: peg_parser) -> mod | None {
@@ -9746,23 +10645,29 @@ def:priv _rule_interactive(p: peg_parser) -> mod | None {
     a = rule_statement_newline(p);
     if a is not None {
         res = Interactive(body=a);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_ann_assign_target(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_ann_assign_target = _rule_invalid_ann_assign_target(p);
-    p.level -= 1;
-    return res_rule_invalid_ann_assign_target;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_ann_assign_target(p);
 }
 
 def:priv _rule_invalid_ann_assign_target(p: peg_parser) -> expr | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -9770,12 +10675,14 @@ def:priv _rule_invalid_ann_assign_target(p: peg_parser) -> expr | None {
     list = rule_list(p);
     if list is not None {
         res = list;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     tuple = rule_tuple(p);
     if tuple is not None {
         res = tuple;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -9786,25 +10693,31 @@ def:priv _rule_invalid_ann_assign_target(p: peg_parser) -> expr | None {
             lit_1 = peg_expect_token(p, 8);
             if lit_1 is not None {
                 res = a;
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_arguments(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_arguments = _rule_invalid_arguments(p);
-    p.level -= 1;
-    return res_rule_invalid_arguments;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_arguments(p);
 }
 
 def:priv _rule_invalid_arguments(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -9821,6 +10734,7 @@ def:priv _rule_invalid_arguments(p: peg_parser) -> object | None {
                     a,
                     "iterable argument unpacking follows keyword argument unpacking"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -9840,6 +10754,7 @@ def:priv _rule_invalid_arguments(p: peg_parser) -> object | None {
                     pa_get_last_comprehension_item(pa_seq_last(b)),
                     "Generator expression must be parenthesized"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -9860,6 +10775,7 @@ def:priv _rule_invalid_arguments(p: peg_parser) -> object | None {
                         b_3,
                         "invalid syntax. Maybe you meant '==' or ':=' instead of '='?"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -9880,6 +10796,7 @@ def:priv _rule_invalid_arguments(p: peg_parser) -> object | None {
                 res = pa_raise_syntax_known_range(
                     p, False, a_4, b_4, "expected argument value expression"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -9890,6 +10807,7 @@ def:priv _rule_invalid_arguments(p: peg_parser) -> object | None {
         b = rule_for_if_clauses(p);
         if b is not None {
             res = pa_nonparen_genexp_in_call(a_5, b);
+            p.level -= 1;
             return res;
         }
     }
@@ -9909,6 +10827,7 @@ def:priv _rule_invalid_arguments(p: peg_parser) -> object | None {
                         pa_get_last_comprehension_item(pa_seq_last(b)),
                         "Generator expression must be parenthesized"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -9922,25 +10841,31 @@ def:priv _rule_invalid_arguments(p: peg_parser) -> object | None {
             args = rule_args(p);
             if args is not None {
                 res = pa_arguments_parsing_error(a_7);
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_arithmetic(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_arithmetic = _rule_invalid_arithmetic(p);
-    p.level -= 1;
-    return res_rule_invalid_arithmetic;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_arithmetic(p);
 }
 
 def:priv _rule_invalid_arithmetic(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -9956,26 +10881,32 @@ def:priv _rule_invalid_arithmetic(p: peg_parser) -> object | None {
                     res = pa_raise_syntax_known_range(
                         p, False, a, b, "'not' after an operator must be parenthesized"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_as_pattern(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_as_pattern = _rule_invalid_as_pattern(p);
-    p.level -= 1;
-    return res_rule_invalid_as_pattern;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_as_pattern(p);
 }
 
 def:priv _rule_invalid_as_pattern(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -9989,6 +10920,7 @@ def:priv _rule_invalid_as_pattern(p: peg_parser) -> object | None {
                 res = pa_raise_syntax_known_expr(
                     p, False, a, "cannot use '_' as a target"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -10003,25 +10935,31 @@ def:priv _rule_invalid_as_pattern(p: peg_parser) -> object | None {
                 res = pa_raise_syntax_known_expr(
                     p, False, a_2, "cannot use %s as pattern target"
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_assignment(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_assignment = _rule_invalid_assignment(p);
-    p.level -= 1;
-    return res_rule_invalid_assignment;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_assignment(p);
 }
 
 def:priv _rule_invalid_assignment(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -10035,6 +10973,7 @@ def:priv _rule_invalid_assignment(p: peg_parser) -> object | None {
                 res = pa_raise_syntax_known_expr(
                     p, False, a, "only single target (not %s) can be annotated"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -10056,6 +10995,7 @@ def:priv _rule_invalid_assignment(p: peg_parser) -> object | None {
                             a,
                             "only single target (not tuple) can be annotated"
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -10072,6 +11012,7 @@ def:priv _rule_invalid_assignment(p: peg_parser) -> object | None {
                 res = pa_raise_syntax_known_expr(
                     p, False, a, "illegal target for annotation"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -10084,6 +11025,7 @@ def:priv _rule_invalid_assignment(p: peg_parser) -> object | None {
             lit = peg_expect_token(p, 22);
             if lit is not None {
                 res = pa_raise_invalid_target(p, STAR_TARGETS, a);
+                p.level -= 1;
                 return res;
             }
         }
@@ -10098,6 +11040,7 @@ def:priv _rule_invalid_assignment(p: peg_parser) -> object | None {
                 res = pa_raise_syntax_known_expr(
                     p, False, a, "assignment to yield expression not possible"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -10115,25 +11058,31 @@ def:priv _rule_invalid_assignment(p: peg_parser) -> object | None {
                     a,
                     "'%s' is an illegal expression for augmented assignment"
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_block(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_block = _rule_invalid_block(p);
-    p.level -= 1;
-    return res_rule_invalid_block;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_block(p);
 }
 
 def:priv _rule_invalid_block(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -10142,24 +11091,30 @@ def:priv _rule_invalid_block(p: peg_parser) -> object | None {
     if _newline is not None {
         if (peg_negative_lookahead_token(p, INDENT)) {
             res = pa_raise_syntax(p, False, "expected an indented block");
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_case_block(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_case_block = _rule_invalid_case_block(p);
-    p.level -= 1;
-    return res_rule_invalid_case_block;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_case_block(p);
 }
 
 def:priv _rule_invalid_case_block(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -10172,6 +11127,7 @@ def:priv _rule_invalid_case_block(p: peg_parser) -> object | None {
             _newline = peg_expect_token(p, NEWLINE);
             if _newline is not None {
                 res = pa_raise_syntax(p, False, "expected ':'");
+                p.level -= 1;
                 return res;
             }
         }
@@ -10192,6 +11148,7 @@ def:priv _rule_invalid_case_block(p: peg_parser) -> object | None {
                             False,
                             "expected an indented block after 'case' statement on line %d"
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -10199,20 +11156,25 @@ def:priv _rule_invalid_case_block(p: peg_parser) -> object | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_class_argument_pattern(p: peg_parser) -> list[pattern] | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_class_argument_pattern = _rule_invalid_class_argument_pattern(p);
-    p.level -= 1;
-    return res_rule_invalid_class_argument_pattern;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_class_argument_pattern(p);
 }
 
 def:priv _rule_invalid_class_argument_pattern(p: peg_parser) -> list[pattern] | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -10225,25 +11187,31 @@ def:priv _rule_invalid_class_argument_pattern(p: peg_parser) -> list[pattern] | 
             a = rule_positional_patterns(p);
             if a is not None {
                 res = a;
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_class_def_raw(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_class_def_raw = _rule_invalid_class_def_raw(p);
-    p.level -= 1;
-    return res_rule_invalid_class_def_raw;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_class_def_raw(p);
 }
 
 def:priv _rule_invalid_class_def_raw(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -10257,6 +11225,7 @@ def:priv _rule_invalid_class_def_raw(p: peg_parser) -> object | None {
             _newline = peg_expect_token(p, NEWLINE);
             if _newline is not None {
                 res = pa_raise_syntax(p, False, "expected ':'");
+                p.level -= 1;
                 return res;
             }
         }
@@ -10278,6 +11247,7 @@ def:priv _rule_invalid_class_def_raw(p: peg_parser) -> object | None {
                             False,
                             "expected an indented block after class definition on line %d"
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -10285,20 +11255,25 @@ def:priv _rule_invalid_class_def_raw(p: peg_parser) -> object | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_class_pattern(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_class_pattern = _rule_invalid_class_pattern(p);
-    p.level -= 1;
-    return res_rule_invalid_class_pattern;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_class_pattern(p);
 }
 
 def:priv _rule_invalid_class_pattern(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -10316,25 +11291,31 @@ def:priv _rule_invalid_class_pattern(p: peg_parser) -> object | None {
                     pa_seq_last(a),
                     "positional patterns follow keyword patterns"
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_comprehension(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_comprehension = _rule_invalid_comprehension(p);
-    p.level -= 1;
-    return res_rule_invalid_comprehension;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_comprehension(p);
 }
 
 def:priv _rule_invalid_comprehension(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -10348,6 +11329,7 @@ def:priv _rule_invalid_comprehension(p: peg_parser) -> object | None {
                 res = pa_raise_syntax_known_expr(
                     p, False, a, "iterable unpacking cannot be used in comprehension"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -10370,6 +11352,7 @@ def:priv _rule_invalid_comprehension(p: peg_parser) -> object | None {
                             pa_seq_last(b),
                             "did you forget parentheses around the comprehension target?"
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -10392,26 +11375,32 @@ def:priv _rule_invalid_comprehension(p: peg_parser) -> object | None {
                         b_3,
                         "did you forget parentheses around the comprehension target?"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_def_raw(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_def_raw = _rule_invalid_def_raw(p);
-    p.level -= 1;
-    return res_rule_invalid_def_raw;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_def_raw(p);
 }
 
 def:priv _rule_invalid_def_raw(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -10438,6 +11427,7 @@ def:priv _rule_invalid_def_raw(p: peg_parser) -> object | None {
                                     False,
                                     "expected an indented block after function definition on line %d"
                                 );
+                                p.level -= 1;
                                 return res;
                             }
                         }
@@ -10468,12 +11458,14 @@ def:priv _rule_invalid_def_raw(p: peg_parser) -> object | None {
                             # delimiters. finish_parse discards its result;
                             # use a typed statement sentinel instead of the
                             # generator's heterogeneous dummy-value list.
-                            return Pass(
+                            res_level_6 = Pass(
                                 lineno=kw_1.lineno,
                                 col_offset=kw_1.col_offset,
                                 end_lineno=kw_1.end_lineno,
                                 end_col_offset=kw_1.end_col_offset
                             );
+                            p.level -= 1;
+                            return res_level_6;
                         }
                     }
                 }
@@ -10481,20 +11473,25 @@ def:priv _rule_invalid_def_raw(p: peg_parser) -> object | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_default(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_default = _rule_invalid_default(p);
-    p.level -= 1;
-    return res_rule_invalid_default;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_default(p);
 }
 
 def:priv _rule_invalid_default(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -10507,24 +11504,30 @@ def:priv _rule_invalid_default(p: peg_parser) -> object | None {
             res = pa_raise_syntax_known_expr(
                 p, False, a, "expected default value expression"
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_del_stmt(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_del_stmt = _rule_invalid_del_stmt(p);
-    p.level -= 1;
-    return res_rule_invalid_del_stmt;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_del_stmt(p);
 }
 
 def:priv _rule_invalid_del_stmt(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -10534,24 +11537,30 @@ def:priv _rule_invalid_del_stmt(p: peg_parser) -> object | None {
         a = rule_star_expressions(p);
         if a is not None {
             res = pa_raise_invalid_target(p, DEL_TARGETS, a);
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_dict_comprehension(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_dict_comprehension = _rule_invalid_dict_comprehension(p);
-    p.level -= 1;
-    return res_rule_invalid_dict_comprehension;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_dict_comprehension(p);
 }
 
 def:priv _rule_invalid_dict_comprehension(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -10572,6 +11581,7 @@ def:priv _rule_invalid_dict_comprehension(p: peg_parser) -> object | None {
                             a,
                             "dict unpacking cannot be used in dict comprehension"
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -10579,20 +11589,25 @@ def:priv _rule_invalid_dict_comprehension(p: peg_parser) -> object | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_dotted_as_name(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_dotted_as_name = _rule_invalid_dotted_as_name(p);
-    p.level -= 1;
-    return res_rule_invalid_dotted_as_name;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_dotted_as_name(p);
 }
 
 def:priv _rule_invalid_dotted_as_name(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -10607,26 +11622,32 @@ def:priv _rule_invalid_dotted_as_name(p: peg_parser) -> object | None {
                     res = pa_raise_syntax_known_expr(
                         p, False, a, "cannot use %s as import target"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_double_starred_kvpairs(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_double_starred_kvpairs = _rule_invalid_double_starred_kvpairs(p);
-    p.level -= 1;
-    return res_rule_invalid_double_starred_kvpairs;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_double_starred_kvpairs(p);
 }
 
 def:priv _rule_invalid_double_starred_kvpairs(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -10638,6 +11659,7 @@ def:priv _rule_invalid_double_starred_kvpairs(p: peg_parser) -> object | None {
             invalid_kvpair = rule_invalid_kvpair(p);
             if invalid_kvpair is not None {
                 res = [gather, lit, invalid_kvpair];
+                p.level -= 1;
                 return res;
             }
         }
@@ -10657,6 +11679,7 @@ def:priv _rule_invalid_double_starred_kvpairs(p: peg_parser) -> object | None {
                         a,
                         "cannot use a starred expression in a dictionary value"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -10676,25 +11699,31 @@ def:priv _rule_invalid_double_starred_kvpairs(p: peg_parser) -> object | None {
                 res = pa_raise_syntax_known_expr(
                     p, False, a, "expression expected after dictionary key and ':'"
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_double_type_comments(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_double_type_comments = _rule_invalid_double_type_comments(p);
-    p.level -= 1;
-    return res_rule_invalid_double_type_comments;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_double_type_comments(p);
 }
 
 def:priv _rule_invalid_double_type_comments(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -10712,6 +11741,7 @@ def:priv _rule_invalid_double_type_comments(p: peg_parser) -> object | None {
                         res = pa_raise_syntax(
                             p, False, "Cannot have two type comments on def"
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -10719,20 +11749,25 @@ def:priv _rule_invalid_double_type_comments(p: peg_parser) -> object | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_elif_stmt(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_elif_stmt = _rule_invalid_elif_stmt(p);
-    p.level -= 1;
-    return res_rule_invalid_elif_stmt;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_elif_stmt(p);
 }
 
 def:priv _rule_invalid_elif_stmt(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -10744,6 +11779,7 @@ def:priv _rule_invalid_elif_stmt(p: peg_parser) -> object | None {
             _newline = peg_expect_token(p, NEWLINE);
             if _newline is not None {
                 res = pa_raise_syntax(p, False, "expected ':'");
+                p.level -= 1;
                 return res;
             }
         }
@@ -10763,6 +11799,7 @@ def:priv _rule_invalid_elif_stmt(p: peg_parser) -> object | None {
                             False,
                             "expected an indented block after 'elif' statement on line %d"
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -10770,20 +11807,25 @@ def:priv _rule_invalid_elif_stmt(p: peg_parser) -> object | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_else_stmt(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_else_stmt = _rule_invalid_else_stmt(p);
-    p.level -= 1;
-    return res_rule_invalid_else_stmt;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_else_stmt(p);
 }
 
 def:priv _rule_invalid_else_stmt(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -10800,6 +11842,7 @@ def:priv _rule_invalid_else_stmt(p: peg_parser) -> object | None {
                         False,
                         "expected an indented block after 'else' statement on line %d"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -10817,26 +11860,32 @@ def:priv _rule_invalid_else_stmt(p: peg_parser) -> object | None {
                     res = pa_raise_syntax(
                         p, False, "'elif' block follows an 'else' block"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_except_star_stmt(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_except_star_stmt = _rule_invalid_except_star_stmt(p);
-    p.level -= 1;
-    return res_rule_invalid_except_star_stmt;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_except_star_stmt(p);
 }
 
 def:priv _rule_invalid_except_star_stmt(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -10863,6 +11912,7 @@ def:priv _rule_invalid_except_star_stmt(p: peg_parser) -> object | None {
                                         a,
                                         "multiple exception types must be parenthesized when using 'as'"
                                     );
+                                    p.level -= 1;
                                     return res;
                                 }
                             }
@@ -10883,6 +11933,7 @@ def:priv _rule_invalid_except_star_stmt(p: peg_parser) -> object | None {
                 _newline = peg_expect_token(p, NEWLINE);
                 if _newline is not None {
                     res = pa_raise_syntax(p, False, "expected ':'");
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -10896,6 +11947,7 @@ def:priv _rule_invalid_except_star_stmt(p: peg_parser) -> object | None {
             rhs_3 = rule__tmp_53(p);
             if rhs_3 is not None {
                 res = pa_raise_syntax(p, False, "expected one or more exception types");
+                p.level -= 1;
                 return res;
             }
         }
@@ -10918,6 +11970,7 @@ def:priv _rule_invalid_except_star_stmt(p: peg_parser) -> object | None {
                                 res = pa_raise_syntax_known_expr(
                                     p, False, a, "cannot use except* statement with %s"
                                 );
+                                p.level -= 1;
                                 return res;
                             }
                         }
@@ -10927,20 +11980,25 @@ def:priv _rule_invalid_except_star_stmt(p: peg_parser) -> object | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_except_star_stmt_indent(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_except_star_stmt_indent = _rule_invalid_except_star_stmt_indent(p);
-    p.level -= 1;
-    return res_rule_invalid_except_star_stmt_indent;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_except_star_stmt_indent(p);
 }
 
 def:priv _rule_invalid_except_star_stmt_indent(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -10962,6 +12020,7 @@ def:priv _rule_invalid_except_star_stmt_indent(p: peg_parser) -> object | None {
                                 False,
                                 "expected an indented block after 'except*' statement on line %d"
                             );
+                            p.level -= 1;
                             return res;
                         }
                     }
@@ -10970,20 +12029,25 @@ def:priv _rule_invalid_except_star_stmt_indent(p: peg_parser) -> object | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_except_stmt(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_except_stmt = _rule_invalid_except_stmt(p);
-    p.level -= 1;
-    return res_rule_invalid_except_stmt;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_except_stmt(p);
 }
 
 def:priv _rule_invalid_except_stmt(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -11008,6 +12072,7 @@ def:priv _rule_invalid_except_stmt(p: peg_parser) -> object | None {
                                     a,
                                     "multiple exception types must be parenthesized when using 'as'"
                                 );
+                                p.level -= 1;
                                 return res;
                             }
                         }
@@ -11025,6 +12090,7 @@ def:priv _rule_invalid_except_stmt(p: peg_parser) -> object | None {
             _newline = peg_expect_token(p, NEWLINE);
             if _newline is not None {
                 res = pa_raise_syntax(p, False, "expected ':'");
+                p.level -= 1;
                 return res;
             }
         }
@@ -11035,6 +12101,7 @@ def:priv _rule_invalid_except_stmt(p: peg_parser) -> object | None {
         _newline = peg_expect_token(p, NEWLINE);
         if _newline is not None {
             res = pa_raise_syntax(p, False, "expected ':'");
+            p.level -= 1;
             return res;
         }
     }
@@ -11054,6 +12121,7 @@ def:priv _rule_invalid_except_stmt(p: peg_parser) -> object | None {
                             res = pa_raise_syntax_known_expr(
                                 p, False, a, "cannot use except statement with %s"
                             );
+                            p.level -= 1;
                             return res;
                         }
                     }
@@ -11062,20 +12130,25 @@ def:priv _rule_invalid_except_stmt(p: peg_parser) -> object | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_except_stmt_indent(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_except_stmt_indent = _rule_invalid_except_stmt_indent(p);
-    p.level -= 1;
-    return res_rule_invalid_except_stmt_indent;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_except_stmt_indent(p);
 }
 
 def:priv _rule_invalid_except_stmt_indent(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -11095,6 +12168,7 @@ def:priv _rule_invalid_except_stmt_indent(p: peg_parser) -> object | None {
                             False,
                             "expected an indented block after 'except' statement on line %d"
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -11114,26 +12188,32 @@ def:priv _rule_invalid_except_stmt_indent(p: peg_parser) -> object | None {
                         False,
                         "expected an indented block after 'except' statement on line %d"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_expression(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_expression = _rule_invalid_expression(p);
-    p.level -= 1;
-    return res_rule_invalid_expression;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_expression(p);
 }
 
 def:priv _rule_invalid_expression(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -11151,6 +12231,7 @@ def:priv _rule_invalid_expression(p: peg_parser) -> object | None {
                     pa_seq_last(a),
                     "invalid syntax. Is this intended to be part of the string?"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -11162,6 +12243,7 @@ def:priv _rule_invalid_expression(p: peg_parser) -> object | None {
             b = rule_expression_without_invalid(p);
             if b is not None {
                 res = pa_check_legacy_stmt_or_raise(p, a_2, b);
+                p.level -= 1;
                 return res;
             }
         }
@@ -11182,6 +12264,7 @@ def:priv _rule_invalid_expression(p: peg_parser) -> object | None {
                     res = pa_raise_syntax_known_range(
                         p, False, a_3, b, "expected 'else' after 'if' expression"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -11202,6 +12285,7 @@ def:priv _rule_invalid_expression(p: peg_parser) -> object | None {
                             True,
                             "expected expression after 'else', but statement is given"
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -11225,6 +12309,7 @@ def:priv _rule_invalid_expression(p: peg_parser) -> object | None {
                             a_5,
                             "expected expression before 'if', but statement is given"
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -11245,6 +12330,7 @@ def:priv _rule_invalid_expression(p: peg_parser) -> object | None {
                     b_6,
                     "f-string: lambda expressions are not allowed without parentheses"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -11263,25 +12349,31 @@ def:priv _rule_invalid_expression(p: peg_parser) -> object | None {
                     b_7,
                     "t-string: lambda expressions are not allowed without parentheses"
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_factor(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_factor = _rule_invalid_factor(p);
-    p.level -= 1;
-    return res_rule_invalid_factor;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_factor(p);
 }
 
 def:priv _rule_invalid_factor(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -11295,25 +12387,31 @@ def:priv _rule_invalid_factor(p: peg_parser) -> object | None {
                 res = pa_raise_syntax_known_range(
                     p, False, a, b, "'not' after an operator must be parenthesized"
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_finally_stmt(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_finally_stmt = _rule_invalid_finally_stmt(p);
-    p.level -= 1;
-    return res_rule_invalid_finally_stmt;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_finally_stmt(p);
 }
 
 def:priv _rule_invalid_finally_stmt(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -11330,26 +12428,32 @@ def:priv _rule_invalid_finally_stmt(p: peg_parser) -> object | None {
                         False,
                         "expected an indented block after 'finally' statement on line %d"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_for_if_clause(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_for_if_clause = _rule_invalid_for_if_clause(p);
-    p.level -= 1;
-    return res_rule_invalid_for_if_clause;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_for_if_clause(p);
 }
 
 def:priv _rule_invalid_for_if_clause(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -11363,25 +12467,31 @@ def:priv _rule_invalid_for_if_clause(p: peg_parser) -> object | None {
                 res = pa_raise_syntax(
                     p, False, "'in' expected after for-loop variables"
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_for_stmt(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_for_stmt = _rule_invalid_for_stmt(p);
-    p.level -= 1;
-    return res_rule_invalid_for_stmt;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_for_stmt(p);
 }
 
 def:priv _rule_invalid_for_stmt(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -11398,6 +12508,7 @@ def:priv _rule_invalid_for_stmt(p: peg_parser) -> object | None {
                     _newline = peg_expect_token(p, NEWLINE);
                     if _newline is not None {
                         res = pa_raise_syntax(p, False, "expected ':'");
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -11424,6 +12535,7 @@ def:priv _rule_invalid_for_stmt(p: peg_parser) -> object | None {
                                     False,
                                     "expected an indented block after 'for' statement on line %d"
                                 );
+                                p.level -= 1;
                                 return res;
                             }
                         }
@@ -11433,20 +12545,25 @@ def:priv _rule_invalid_for_stmt(p: peg_parser) -> object | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_for_target(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_for_target = _rule_invalid_for_target(p);
-    p.level -= 1;
-    return res_rule_invalid_for_target;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_for_target(p);
 }
 
 def:priv _rule_invalid_for_target(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -11457,26 +12574,30 @@ def:priv _rule_invalid_for_target(p: peg_parser) -> object | None {
         a = rule_star_expressions(p);
         if a is not None {
             res = pa_raise_invalid_target(p, FOR_TARGETS, a);
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_fstring_conversion_character(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_fstring_conversion_character = _rule_invalid_fstring_conversion_character(
-        p
-    );
-    p.level -= 1;
-    return res_rule_invalid_fstring_conversion_character;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_fstring_conversion_character(p);
 }
 
 def:priv _rule_invalid_fstring_conversion_character(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -11487,6 +12608,7 @@ def:priv _rule_invalid_fstring_conversion_character(p: peg_parser) -> object | N
             (peg_positive_lookahead_token(p, 11) or peg_positive_lookahead_token(p, 26))
         ) {
             res = pa_raise_syntax(p, True, "f-string: missing conversion character");
+            p.level -= 1;
             return res;
         }
     }
@@ -11495,26 +12617,30 @@ def:priv _rule_invalid_fstring_conversion_character(p: peg_parser) -> object | N
     if lit is not None {
         if (peg_negative_lookahead_token(p, NAME)) {
             res = pa_raise_syntax(p, True, "f-string: invalid conversion character");
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_fstring_replacement_field(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_fstring_replacement_field = _rule_invalid_fstring_replacement_field(
-        p
-    );
-    p.level -= 1;
-    return res_rule_invalid_fstring_replacement_field;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_fstring_replacement_field(p);
 }
 
 def:priv _rule_invalid_fstring_replacement_field(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -11526,6 +12652,7 @@ def:priv _rule_invalid_fstring_replacement_field(p: peg_parser) -> object | None
             res = pa_raise_syntax_known_expr(
                 p, False, a, "f-string: valid expression required before '='"
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -11537,6 +12664,7 @@ def:priv _rule_invalid_fstring_replacement_field(p: peg_parser) -> object | None
             res = pa_raise_syntax_known_expr(
                 p, False, a, "f-string: valid expression required before '!'"
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -11548,6 +12676,7 @@ def:priv _rule_invalid_fstring_replacement_field(p: peg_parser) -> object | None
             res = pa_raise_syntax_known_expr(
                 p, False, a, "f-string: valid expression required before ':'"
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -11559,6 +12688,7 @@ def:priv _rule_invalid_fstring_replacement_field(p: peg_parser) -> object | None
             res = pa_raise_syntax_known_expr(
                 p, False, a, "f-string: valid expression required before '}'"
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -11569,6 +12699,7 @@ def:priv _rule_invalid_fstring_replacement_field(p: peg_parser) -> object | None
             res = pa_raise_syntax(
                 p, True, "f-string: expecting a valid expression after '{'"
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -11592,6 +12723,7 @@ def:priv _rule_invalid_fstring_replacement_field(p: peg_parser) -> object | None
                             p, True, "f-string: expecting '=', or '!', or ':', or '}'"
                         )
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -11617,6 +12749,7 @@ def:priv _rule_invalid_fstring_replacement_field(p: peg_parser) -> object | None
                                 p, True, "f-string: expecting '!', or ':', or '}'"
                             )
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -11633,6 +12766,7 @@ def:priv _rule_invalid_fstring_replacement_field(p: peg_parser) -> object | None
             );
             if invalid_fstring_conversion_character is not None {
                 res = [lit, annotated_rhs, lit_1, invalid_fstring_conversion_character];
+                p.level -= 1;
                 return res;
             }
         }
@@ -11655,6 +12789,7 @@ def:priv _rule_invalid_fstring_replacement_field(p: peg_parser) -> object | None
                         if pa_err_occurred(p)
                         else pa_raise_syntax(p, True, "f-string: expecting ':' or '}'")
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -11678,6 +12813,7 @@ def:priv _rule_invalid_fstring_replacement_field(p: peg_parser) -> object | None
                                     p, True, "f-string: expecting '}', or format specs"
                                 )
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -11697,25 +12833,31 @@ def:priv _rule_invalid_fstring_replacement_field(p: peg_parser) -> object | None
                         if pa_err_occurred(p)
                         else pa_raise_syntax(p, True, "f-string: expecting '}'")
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_group(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_group = _rule_invalid_group(p);
-    p.level -= 1;
-    return res_rule_invalid_group;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_group(p);
 }
 
 def:priv _rule_invalid_group(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -11729,6 +12871,7 @@ def:priv _rule_invalid_group(p: peg_parser) -> object | None {
                 res = pa_raise_syntax_known_expr(
                     p, False, a, "cannot use starred expression here"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -11745,26 +12888,32 @@ def:priv _rule_invalid_group(p: peg_parser) -> object | None {
                     res = pa_raise_syntax_known_expr(
                         p, False, a_2, "cannot use double starred expression here"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_if_stmt(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_if_stmt = _rule_invalid_if_stmt(p);
-    p.level -= 1;
-    return res_rule_invalid_if_stmt;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_if_stmt(p);
 }
 
 def:priv _rule_invalid_if_stmt(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -11776,6 +12925,7 @@ def:priv _rule_invalid_if_stmt(p: peg_parser) -> object | None {
             _newline = peg_expect_token(p, NEWLINE);
             if _newline is not None {
                 res = pa_raise_syntax(p, False, "expected ':'");
+                p.level -= 1;
                 return res;
             }
         }
@@ -11795,6 +12945,7 @@ def:priv _rule_invalid_if_stmt(p: peg_parser) -> object | None {
                             False,
                             "expected an indented block after 'if' statement on line %d"
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -11802,20 +12953,25 @@ def:priv _rule_invalid_if_stmt(p: peg_parser) -> object | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_import(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_import = _rule_invalid_import(p);
-    p.level -= 1;
-    return res_rule_invalid_import;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_import(p);
 }
 
 def:priv _rule_invalid_import(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -11834,6 +12990,7 @@ def:priv _rule_invalid_import(p: peg_parser) -> object | None {
                         a,
                         "Did you mean to use 'from ... import ...' instead?"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -11847,24 +13004,30 @@ def:priv _rule_invalid_import(p: peg_parser) -> object | None {
             res = pa_raise_syntax_known_expr(
                 p, False, token, "Expected one or more names after 'import'"
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_import_from_as_name(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_import_from_as_name = _rule_invalid_import_from_as_name(p);
-    p.level -= 1;
-    return res_rule_invalid_import_from_as_name;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_import_from_as_name(p);
 }
 
 def:priv _rule_invalid_import_from_as_name(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -11879,26 +13042,32 @@ def:priv _rule_invalid_import_from_as_name(p: peg_parser) -> object | None {
                     res = pa_raise_syntax_known_expr(
                         p, False, a, "cannot use %s as import target"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_import_from_targets(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_import_from_targets = _rule_invalid_import_from_targets(p);
-    p.level -= 1;
-    return res_rule_invalid_import_from_targets;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_import_from_targets(p);
 }
 
 def:priv _rule_invalid_import_from_targets(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -11914,6 +13083,7 @@ def:priv _rule_invalid_import_from_targets(p: peg_parser) -> object | None {
                     False,
                     "trailing comma not allowed without surrounding parentheses"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -11924,23 +13094,29 @@ def:priv _rule_invalid_import_from_targets(p: peg_parser) -> object | None {
         res = pa_raise_syntax_known_expr(
             p, False, token, "Expected one or more names after 'import'"
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_kvpair(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_kvpair = _rule_invalid_kvpair(p);
-    p.level -= 1;
-    return res_rule_invalid_kvpair;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_kvpair(p);
 }
 
 def:priv _rule_invalid_kvpair(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -11949,6 +13125,7 @@ def:priv _rule_invalid_kvpair(p: peg_parser) -> object | None {
     if a is not None {
         if (peg_negative_lookahead_token(p, 11)) {
             res = pa_raise_kvpair_error(p, a);
+            p.level -= 1;
             return res;
         }
     }
@@ -11967,6 +13144,7 @@ def:priv _rule_invalid_kvpair(p: peg_parser) -> object | None {
                         a_2,
                         "cannot use a_2 starred expression in a_2 dictionary value"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -11986,25 +13164,31 @@ def:priv _rule_invalid_kvpair(p: peg_parser) -> object | None {
                 res = pa_raise_syntax_known_expr(
                     p, False, a_3, "expression expected after dictionary key and ':'"
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_kwarg(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_kwarg = _rule_invalid_kwarg(p);
-    p.level -= 1;
-    return res_rule_invalid_kwarg;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_kwarg(p);
 }
 
 def:priv _rule_invalid_kwarg(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -12014,6 +13198,7 @@ def:priv _rule_invalid_kwarg(p: peg_parser) -> object | None {
         b = peg_expect_token(p, 22);
         if b is not None {
             res = pa_raise_syntax_known_range(p, False, a, b, "cannot assign to %s");
+            p.level -= 1;
             return res;
         }
     }
@@ -12033,6 +13218,7 @@ def:priv _rule_invalid_kwarg(p: peg_parser) -> object | None {
                         b,
                         "invalid syntax. Maybe you meant '==' or ':=' instead of '='?"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -12051,6 +13237,7 @@ def:priv _rule_invalid_kwarg(p: peg_parser) -> object | None {
                     b,
                     "expression cannot contain assignment, perhaps you meant \\\"==\\\"?"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -12067,26 +13254,32 @@ def:priv _rule_invalid_kwarg(p: peg_parser) -> object | None {
                     res = pa_raise_syntax_known_range(
                         p, False, a, b_4, "cannot assign to keyword argument unpacking"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_kwds(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_kwds = _rule_invalid_kwds(p);
-    p.level -= 1;
-    return res_rule_invalid_kwds;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_kwds(p);
 }
 
 def:priv _rule_invalid_kwds(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -12100,6 +13293,7 @@ def:priv _rule_invalid_kwds(p: peg_parser) -> object | None {
                 res = pa_raise_syntax_known_expr(
                     p, False, a, "var-keyword argument cannot have default value"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -12116,6 +13310,7 @@ def:priv _rule_invalid_kwds(p: peg_parser) -> object | None {
                     res = pa_raise_syntax_known_expr(
                         p, False, a_2, "arguments cannot follow var-keyword argument"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -12133,26 +13328,32 @@ def:priv _rule_invalid_kwds(p: peg_parser) -> object | None {
                     res = pa_raise_syntax_known_expr(
                         p, False, a, "arguments cannot follow var-keyword argument"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_lambda_kwds(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_lambda_kwds = _rule_invalid_lambda_kwds(p);
-    p.level -= 1;
-    return res_rule_invalid_lambda_kwds;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_lambda_kwds(p);
 }
 
 def:priv _rule_invalid_lambda_kwds(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -12166,6 +13367,7 @@ def:priv _rule_invalid_lambda_kwds(p: peg_parser) -> object | None {
                 res = pa_raise_syntax_known_expr(
                     p, False, a, "var-keyword argument cannot have default value"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -12182,6 +13384,7 @@ def:priv _rule_invalid_lambda_kwds(p: peg_parser) -> object | None {
                     res = pa_raise_syntax_known_expr(
                         p, False, a_2, "arguments cannot follow var-keyword argument"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -12199,26 +13402,32 @@ def:priv _rule_invalid_lambda_kwds(p: peg_parser) -> object | None {
                     res = pa_raise_syntax_known_expr(
                         p, False, a, "arguments cannot follow var-keyword argument"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_lambda_parameters(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_lambda_parameters = _rule_invalid_lambda_parameters(p);
-    p.level -= 1;
-    return res_rule_invalid_lambda_parameters;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_lambda_parameters(p);
 }
 
 def:priv _rule_invalid_lambda_parameters(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -12230,6 +13439,7 @@ def:priv _rule_invalid_lambda_parameters(p: peg_parser) -> object | None {
             res = pa_raise_syntax_known_expr(
                 p, False, a, "at least one argument must precede /"
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -12241,6 +13451,7 @@ def:priv _rule_invalid_lambda_parameters(p: peg_parser) -> object | None {
             a = peg_expect_token(p, 17);
             if a is not None {
                 res = pa_raise_syntax_known_expr(p, False, a, "/ may appear only once");
+                p.level -= 1;
                 return res;
             }
         }
@@ -12259,6 +13470,7 @@ def:priv _rule_invalid_lambda_parameters(p: peg_parser) -> object | None {
                     a_3,
                     "parameter without a_3 default follows parameter with a_3 default"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -12280,6 +13492,7 @@ def:priv _rule_invalid_lambda_parameters(p: peg_parser) -> object | None {
                         b,
                         "Lambda expression parameters cannot be parenthesized"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -12300,6 +13513,7 @@ def:priv _rule_invalid_lambda_parameters(p: peg_parser) -> object | None {
                         res = pa_raise_syntax_known_expr(
                             p, False, a, "/ must be ahead of *"
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -12316,27 +13530,31 @@ def:priv _rule_invalid_lambda_parameters(p: peg_parser) -> object | None {
                 res = pa_raise_syntax_known_expr(
                     p, False, a, "expected comma between / and *"
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_lambda_parameters_helper(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_lambda_parameters_helper = _rule_invalid_lambda_parameters_helper(
-        p
-    );
-    p.level -= 1;
-    return res_rule_invalid_lambda_parameters_helper;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_lambda_parameters_helper(p);
 }
 
 def:priv _rule_invalid_lambda_parameters_helper(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -12344,29 +13562,36 @@ def:priv _rule_invalid_lambda_parameters_helper(p: peg_parser) -> object | None 
     a = rule_lambda_slash_with_default(p);
     if a is not None {
         res = pa_singleton_seq(a);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     seq = rule__loop1_73(p);
     if seq is not None {
         res = seq as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_lambda_star_etc(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_lambda_star_etc = _rule_invalid_lambda_star_etc(p);
-    p.level -= 1;
-    return res_rule_invalid_lambda_star_etc;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_lambda_star_etc(p);
 }
 
 def:priv _rule_invalid_lambda_star_etc(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -12376,6 +13601,7 @@ def:priv _rule_invalid_lambda_star_etc(p: peg_parser) -> object | None {
         rhs = rule__tmp_74(p);
         if rhs is not None {
             res = pa_raise_syntax(p, False, "named arguments must follow bare *");
+            p.level -= 1;
             return res;
         }
     }
@@ -12389,6 +13615,7 @@ def:priv _rule_invalid_lambda_star_etc(p: peg_parser) -> object | None {
                 res = pa_raise_syntax_known_expr(
                     p, False, a, "var-positional argument cannot have default value"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -12407,6 +13634,7 @@ def:priv _rule_invalid_lambda_star_etc(p: peg_parser) -> object | None {
                         res = pa_raise_syntax_known_expr(
                             p, False, a, "* argument may appear only once"
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -12414,20 +13642,25 @@ def:priv _rule_invalid_lambda_star_etc(p: peg_parser) -> object | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_legacy_expression(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_legacy_expression = _rule_invalid_legacy_expression(p);
-    p.level -= 1;
-    return res_rule_invalid_legacy_expression;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_legacy_expression(p);
 }
 
 def:priv _rule_invalid_legacy_expression(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -12446,25 +13679,31 @@ def:priv _rule_invalid_legacy_expression(p: peg_parser) -> object | None {
                 )
                     if pa_check_legacy_stmt(p, a)
                     else None;
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_match_stmt(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_match_stmt = _rule_invalid_match_stmt(p);
-    p.level -= 1;
-    return res_rule_invalid_match_stmt;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_match_stmt(p);
 }
 
 def:priv _rule_invalid_match_stmt(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -12476,6 +13715,7 @@ def:priv _rule_invalid_match_stmt(p: peg_parser) -> object | None {
             _newline = peg_expect_token(p, NEWLINE);
             if _newline is not None {
                 res = pa_raise_syntax(p, False, "expected ':'");
+                p.level -= 1;
                 return res;
             }
         }
@@ -12495,6 +13735,7 @@ def:priv _rule_invalid_match_stmt(p: peg_parser) -> object | None {
                             False,
                             "expected an indented block after 'match' statement on line %d"
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -12502,24 +13743,30 @@ def:priv _rule_invalid_match_stmt(p: peg_parser) -> object | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_named_expression(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_named_expression = _rule_invalid_named_expression(p);
-    p.level -= 1;
-    return res_rule_invalid_named_expression;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_named_expression(p);
 }
 
 def:priv _rule_invalid_named_expression(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     memo = peg_check_memo(p, RULE_invalid_named_expression);
     if memo is not None {
+        p.level -= 1;
         return memo.result as object | None;
     }
     mark = peg_mark(p);
@@ -12534,6 +13781,7 @@ def:priv _rule_invalid_named_expression(p: peg_parser) -> object | None {
                     p, False, a, "cannot use assignment expressions with %s"
                 );
                 peg_insert_memo(p, mark, RULE_invalid_named_expression, res);
+                p.level -= 1;
                 return res;
             }
         }
@@ -12559,6 +13807,7 @@ def:priv _rule_invalid_named_expression(p: peg_parser) -> object | None {
                         "invalid syntax. Maybe you meant '==' or ':=' instead of '='?"
                     );
                     peg_insert_memo(p, mark, RULE_invalid_named_expression, res);
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -12585,6 +13834,7 @@ def:priv _rule_invalid_named_expression(p: peg_parser) -> object | None {
                             "cannot assign to %s here. Maybe you meant '==' instead of '='?"
                         );
                         peg_insert_memo(p, mark, RULE_invalid_named_expression, res);
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -12593,20 +13843,25 @@ def:priv _rule_invalid_named_expression(p: peg_parser) -> object | None {
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_invalid_named_expression, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_parameters(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_parameters = _rule_invalid_parameters(p);
-    p.level -= 1;
-    return res_rule_invalid_parameters;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_parameters(p);
 }
 
 def:priv _rule_invalid_parameters(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -12618,6 +13873,7 @@ def:priv _rule_invalid_parameters(p: peg_parser) -> object | None {
             res = pa_raise_syntax_known_expr(
                 p, False, a, "at least one argument must precede /"
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -12629,6 +13885,7 @@ def:priv _rule_invalid_parameters(p: peg_parser) -> object | None {
             a = peg_expect_token(p, 17);
             if a is not None {
                 res = pa_raise_syntax_known_expr(p, False, a, "/ may appear only once");
+                p.level -= 1;
                 return res;
             }
         }
@@ -12647,6 +13904,7 @@ def:priv _rule_invalid_parameters(p: peg_parser) -> object | None {
                     a_3,
                     "parameter without a_3 default follows parameter with a_3 default"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -12664,6 +13922,7 @@ def:priv _rule_invalid_parameters(p: peg_parser) -> object | None {
                     res = pa_raise_syntax_known_range(
                         p, False, a, b, "Function parameters cannot be parenthesized"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -12684,6 +13943,7 @@ def:priv _rule_invalid_parameters(p: peg_parser) -> object | None {
                         res = pa_raise_syntax_known_expr(
                             p, False, a, "/ must be ahead of *"
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -12700,25 +13960,31 @@ def:priv _rule_invalid_parameters(p: peg_parser) -> object | None {
                 res = pa_raise_syntax_known_expr(
                     p, False, a, "expected comma between / and *"
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_parameters_helper(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_parameters_helper = _rule_invalid_parameters_helper(p);
-    p.level -= 1;
-    return res_rule_invalid_parameters_helper;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_parameters_helper(p);
 }
 
 def:priv _rule_invalid_parameters_helper(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -12726,29 +13992,36 @@ def:priv _rule_invalid_parameters_helper(p: peg_parser) -> object | None {
     a = rule_slash_with_default(p);
     if a is not None {
         res = pa_singleton_seq(a);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     seq = rule__loop1_84(p);
     if seq is not None {
         res = seq as object;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_star_etc(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_star_etc = _rule_invalid_star_etc(p);
-    p.level -= 1;
-    return res_rule_invalid_star_etc;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_star_etc(p);
 }
 
 def:priv _rule_invalid_star_etc(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -12760,6 +14033,7 @@ def:priv _rule_invalid_star_etc(p: peg_parser) -> object | None {
             res = pa_raise_syntax_known_expr(
                 p, False, a, "named arguments must follow bare *"
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -12771,6 +14045,7 @@ def:priv _rule_invalid_star_etc(p: peg_parser) -> object | None {
             type_comment_tok = peg_expect_token(p, TYPE_COMMENT);
             if type_comment_tok is not None {
                 res = pa_raise_syntax(p, False, "bare * has associated type comment");
+                p.level -= 1;
                 return res;
             }
         }
@@ -12785,6 +14060,7 @@ def:priv _rule_invalid_star_etc(p: peg_parser) -> object | None {
                 res = pa_raise_syntax_known_expr(
                     p, False, a, "var-positional argument cannot have default value"
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -12803,6 +14079,7 @@ def:priv _rule_invalid_star_etc(p: peg_parser) -> object | None {
                         res = pa_raise_syntax_known_expr(
                             p, False, a, "* argument may appear only once"
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -12810,20 +14087,25 @@ def:priv _rule_invalid_star_etc(p: peg_parser) -> object | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_starred_expression(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_starred_expression = _rule_invalid_starred_expression(p);
-    p.level -= 1;
-    return res_rule_invalid_starred_expression;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_starred_expression(p);
 }
 
 def:priv _rule_invalid_starred_expression(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -12831,25 +14113,29 @@ def:priv _rule_invalid_starred_expression(p: peg_parser) -> object | None {
     lit = peg_expect_token(p, 16);
     if lit is not None {
         res = pa_raise_syntax(p, False, "Invalid star expression");
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_starred_expression_unpacking(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_starred_expression_unpacking = _rule_invalid_starred_expression_unpacking(
-        p
-    );
-    p.level -= 1;
-    return res_rule_invalid_starred_expression_unpacking;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_starred_expression_unpacking(p);
 }
 
 def:priv _rule_invalid_starred_expression_unpacking(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -12865,26 +14151,32 @@ def:priv _rule_invalid_starred_expression_unpacking(p: peg_parser) -> object | N
                     res = pa_raise_syntax_known_range(
                         p, False, a, b, "cannot assign to iterable argument unpacking"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_string_tstring_concat(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_string_tstring_concat = _rule_invalid_string_tstring_concat(p);
-    p.level -= 1;
-    return res_rule_invalid_string_tstring_concat;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_string_tstring_concat(p);
 }
 
 def:priv _rule_invalid_string_tstring_concat(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -12900,6 +14192,7 @@ def:priv _rule_invalid_string_tstring_concat(p: peg_parser) -> object | None {
                 b,
                 "cannot mix t-string literals with string or bytes literals"
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -12915,24 +14208,30 @@ def:priv _rule_invalid_string_tstring_concat(p: peg_parser) -> object | None {
                 b,
                 "cannot mix t-string literals with string or bytes literals"
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_try_stmt(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_try_stmt = _rule_invalid_try_stmt(p);
-    p.level -= 1;
-    return res_rule_invalid_try_stmt;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_try_stmt(p);
 }
 
 def:priv _rule_invalid_try_stmt(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -12949,6 +14248,7 @@ def:priv _rule_invalid_try_stmt(p: peg_parser) -> object | None {
                         False,
                         "expected an indented block after 'try' statement on line %d"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -12970,6 +14270,7 @@ def:priv _rule_invalid_try_stmt(p: peg_parser) -> object | None {
                     res = pa_raise_syntax(
                         p, False, "expected 'except' or 'finally' block"
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -13000,6 +14301,7 @@ def:priv _rule_invalid_try_stmt(p: peg_parser) -> object | None {
                                         b,
                                         "cannot have both 'except' and 'except*' on the same 'try'"
                                     );
+                                    p.level -= 1;
                                     return res;
                                 }
                             }
@@ -13029,6 +14331,7 @@ def:priv _rule_invalid_try_stmt(p: peg_parser) -> object | None {
                                 a,
                                 "cannot have both 'except' and 'except*' on the same 'try'"
                             );
+                            p.level -= 1;
                             return res;
                         }
                     }
@@ -13037,22 +14340,25 @@ def:priv _rule_invalid_try_stmt(p: peg_parser) -> object | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_tstring_conversion_character(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_tstring_conversion_character = _rule_invalid_tstring_conversion_character(
-        p
-    );
-    p.level -= 1;
-    return res_rule_invalid_tstring_conversion_character;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_tstring_conversion_character(p);
 }
 
 def:priv _rule_invalid_tstring_conversion_character(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -13063,6 +14369,7 @@ def:priv _rule_invalid_tstring_conversion_character(p: peg_parser) -> object | N
             (peg_positive_lookahead_token(p, 11) or peg_positive_lookahead_token(p, 26))
         ) {
             res = pa_raise_syntax(p, True, "t-string: missing conversion character");
+            p.level -= 1;
             return res;
         }
     }
@@ -13071,26 +14378,30 @@ def:priv _rule_invalid_tstring_conversion_character(p: peg_parser) -> object | N
     if lit is not None {
         if (peg_negative_lookahead_token(p, NAME)) {
             res = pa_raise_syntax(p, True, "t-string: invalid conversion character");
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_tstring_replacement_field(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_tstring_replacement_field = _rule_invalid_tstring_replacement_field(
-        p
-    );
-    p.level -= 1;
-    return res_rule_invalid_tstring_replacement_field;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_tstring_replacement_field(p);
 }
 
 def:priv _rule_invalid_tstring_replacement_field(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -13102,6 +14413,7 @@ def:priv _rule_invalid_tstring_replacement_field(p: peg_parser) -> object | None
             res = pa_raise_syntax_known_expr(
                 p, False, a, "t-string: valid expression required before '='"
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -13113,6 +14425,7 @@ def:priv _rule_invalid_tstring_replacement_field(p: peg_parser) -> object | None
             res = pa_raise_syntax_known_expr(
                 p, False, a, "t-string: valid expression required before '!'"
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -13124,6 +14437,7 @@ def:priv _rule_invalid_tstring_replacement_field(p: peg_parser) -> object | None
             res = pa_raise_syntax_known_expr(
                 p, False, a, "t-string: valid expression required before ':'"
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -13135,6 +14449,7 @@ def:priv _rule_invalid_tstring_replacement_field(p: peg_parser) -> object | None
             res = pa_raise_syntax_known_expr(
                 p, False, a, "t-string: valid expression required before '}'"
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -13145,6 +14460,7 @@ def:priv _rule_invalid_tstring_replacement_field(p: peg_parser) -> object | None
             res = pa_raise_syntax(
                 p, True, "t-string: expecting a valid expression after '{'"
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -13168,6 +14484,7 @@ def:priv _rule_invalid_tstring_replacement_field(p: peg_parser) -> object | None
                             p, True, "t-string: expecting '=', or '!', or ':', or '}'"
                         )
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -13193,6 +14510,7 @@ def:priv _rule_invalid_tstring_replacement_field(p: peg_parser) -> object | None
                                 p, True, "t-string: expecting '!', or ':', or '}'"
                             )
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -13209,6 +14527,7 @@ def:priv _rule_invalid_tstring_replacement_field(p: peg_parser) -> object | None
             );
             if invalid_tstring_conversion_character is not None {
                 res = [lit, annotated_rhs, lit_1, invalid_tstring_conversion_character];
+                p.level -= 1;
                 return res;
             }
         }
@@ -13231,6 +14550,7 @@ def:priv _rule_invalid_tstring_replacement_field(p: peg_parser) -> object | None
                         if pa_err_occurred(p)
                         else pa_raise_syntax(p, True, "t-string: expecting ':' or '}'")
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -13254,6 +14574,7 @@ def:priv _rule_invalid_tstring_replacement_field(p: peg_parser) -> object | None
                                     p, True, "t-string: expecting '}', or format specs"
                                 )
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -13273,25 +14594,31 @@ def:priv _rule_invalid_tstring_replacement_field(p: peg_parser) -> object | None
                         if pa_err_occurred(p)
                         else pa_raise_syntax(p, True, "t-string: expecting '}'")
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_type_param(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_type_param = _rule_invalid_type_param(p);
-    p.level -= 1;
-    return res_rule_invalid_type_param;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_type_param(p);
 }
 
 def:priv _rule_invalid_type_param(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -13305,6 +14632,7 @@ def:priv _rule_invalid_type_param(p: peg_parser) -> object | None {
                 e = rule_expression(p);
                 if e is not None {
                     res = pa_raise_type_param_error(p, colon, e, True);
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -13320,26 +14648,32 @@ def:priv _rule_invalid_type_param(p: peg_parser) -> object | None {
                 e = rule_expression(p);
                 if e is not None {
                     res = pa_raise_type_param_error(p, colon, e, False);
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_type_params(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_type_params = _rule_invalid_type_params(p);
-    p.level -= 1;
-    return res_rule_invalid_type_params;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_type_params(p);
 }
 
 def:priv _rule_invalid_type_params(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -13351,24 +14685,30 @@ def:priv _rule_invalid_type_params(p: peg_parser) -> object | None {
             res = pa_raise_syntax_known_expr(
                 p, False, token, "Type parameter list cannot be empty"
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_while_stmt(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_while_stmt = _rule_invalid_while_stmt(p);
-    p.level -= 1;
-    return res_rule_invalid_while_stmt;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_while_stmt(p);
 }
 
 def:priv _rule_invalid_while_stmt(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -13380,6 +14720,7 @@ def:priv _rule_invalid_while_stmt(p: peg_parser) -> object | None {
             _newline = peg_expect_token(p, NEWLINE);
             if _newline is not None {
                 res = pa_raise_syntax(p, False, "expected ':'");
+                p.level -= 1;
                 return res;
             }
         }
@@ -13399,6 +14740,7 @@ def:priv _rule_invalid_while_stmt(p: peg_parser) -> object | None {
                             False,
                             "expected an indented block after 'while' statement on line %d"
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -13406,20 +14748,25 @@ def:priv _rule_invalid_while_stmt(p: peg_parser) -> object | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_with_item(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_with_item = _rule_invalid_with_item(p);
-    p.level -= 1;
-    return res_rule_invalid_with_item;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_with_item(p);
 }
 
 def:priv _rule_invalid_with_item(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -13438,26 +14785,32 @@ def:priv _rule_invalid_with_item(p: peg_parser) -> object | None {
                     )
                 ) {
                     res = pa_raise_invalid_target(p, STAR_TARGETS, a);
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_with_stmt(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_with_stmt = _rule_invalid_with_stmt(p);
-    p.level -= 1;
-    return res_rule_invalid_with_stmt;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_with_stmt(p);
 }
 
 def:priv _rule_invalid_with_stmt(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -13470,6 +14823,7 @@ def:priv _rule_invalid_with_stmt(p: peg_parser) -> object | None {
             _newline = peg_expect_token(p, NEWLINE);
             if _newline is not None {
                 res = pa_raise_syntax(p, False, "expected ':'");
+                p.level -= 1;
                 return res;
             }
         }
@@ -13488,6 +14842,7 @@ def:priv _rule_invalid_with_stmt(p: peg_parser) -> object | None {
                     _newline = peg_expect_token(p, NEWLINE);
                     if _newline is not None {
                         res = pa_raise_syntax(p, False, "expected ':'");
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -13495,20 +14850,25 @@ def:priv _rule_invalid_with_stmt(p: peg_parser) -> object | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_invalid_with_stmt_indent(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if not p.call_invalid_rules {
         return None;
     }
-    res_rule_invalid_with_stmt_indent = _rule_invalid_with_stmt_indent(p);
-    p.level -= 1;
-    return res_rule_invalid_with_stmt_indent;
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
+        return None;
+    }
+    p.level += 1;
+    return _rule_invalid_with_stmt_indent(p);
 }
 
 def:priv _rule_invalid_with_stmt_indent(p: peg_parser) -> object | None {
     if not p.call_invalid_rules {
+        p.level -= 1;
         return None;
     }
     mark = peg_mark(p);
@@ -13528,6 +14888,7 @@ def:priv _rule_invalid_with_stmt_indent(p: peg_parser) -> object | None {
                             False,
                             "expected an indented block after 'with' statement on line %d"
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -13555,6 +14916,7 @@ def:priv _rule_invalid_with_stmt_indent(p: peg_parser) -> object | None {
                                     False,
                                     "expected an indented block after 'with' statement on line %d"
                                 );
+                                p.level -= 1;
                                 return res;
                             }
                         }
@@ -13564,23 +14926,24 @@ def:priv _rule_invalid_with_stmt_indent(p: peg_parser) -> object | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_inversion(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_inversion = _rule_inversion(p);
-    p.level -= 1;
-    return res_rule_inversion;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_inversion) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_inversion(p);
 }
 
 def:priv _rule_inversion(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_inversion);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     start_lineno = 1;
     start_col_offset = 0;
@@ -13600,6 +14963,7 @@ def:priv _rule_inversion(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -13608,6 +14972,7 @@ def:priv _rule_inversion(p: peg_parser) -> expr | None {
                 Not(), a, start_lineno, start_col_offset, end_lineno, end_col_offset
             );
             peg_insert_memo(p, mark, RULE_inversion, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -13616,20 +14981,22 @@ def:priv _rule_inversion(p: peg_parser) -> expr | None {
     if comparison is not None {
         res = comparison;
         peg_insert_memo(p, mark, RULE_inversion, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_inversion, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_is_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_is_bitwise_or = _rule_is_bitwise_or(p);
-    p.level -= 1;
-    return res_rule_is_bitwise_or;
+    p.level += 1;
+    return _rule_is_bitwise_or(p);
 }
 
 def:priv _rule_is_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
@@ -13640,20 +15007,22 @@ def:priv _rule_is_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
         a = rule_bitwise_or(p);
         if a is not None {
             res = pa_make_cmpop_pair(Is(), a);
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_isnot_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_isnot_bitwise_or = _rule_isnot_bitwise_or(p);
-    p.level -= 1;
-    return res_rule_isnot_bitwise_or;
+    p.level += 1;
+    return _rule_isnot_bitwise_or(p);
 }
 
 def:priv _rule_isnot_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
@@ -13666,21 +15035,23 @@ def:priv _rule_isnot_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
             a = rule_bitwise_or(p);
             if a is not None {
                 res = pa_make_cmpop_pair(IsNot(), a);
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_items_pattern(p: peg_parser) -> list[pattern] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_items_pattern = _rule_items_pattern(p);
-    p.level -= 1;
-    return res_rule_items_pattern;
+    p.level += 1;
+    return _rule_items_pattern(p);
 }
 
 def:priv _rule_items_pattern(p: peg_parser) -> list[pattern] | None {
@@ -13689,19 +15060,21 @@ def:priv _rule_items_pattern(p: peg_parser) -> list[pattern] | None {
     gather = rule__gather_101(p);
     if gather is not None {
         res = gather as list[pattern];
+        p.level -= 1;
         return res as list[pattern];
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_key_value_pattern(p: peg_parser) -> kp_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_key_value_pattern = _rule_key_value_pattern(p);
-    p.level -= 1;
-    return res_rule_key_value_pattern;
+    p.level += 1;
+    return _rule_key_value_pattern(p);
 }
 
 def:priv _rule_key_value_pattern(p: peg_parser) -> kp_pair | None {
@@ -13730,21 +15103,23 @@ def:priv _rule_key_value_pattern(p: peg_parser) -> kp_pair | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_keyword_pattern(p: peg_parser) -> kp_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_keyword_pattern = _rule_keyword_pattern(p);
-    p.level -= 1;
-    return res_rule_keyword_pattern;
+    p.level += 1;
+    return _rule_keyword_pattern(p);
 }
 
 def:priv _rule_keyword_pattern(p: peg_parser) -> kp_pair | None {
@@ -13773,21 +15148,23 @@ def:priv _rule_keyword_pattern(p: peg_parser) -> kp_pair | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_keyword_patterns(p: peg_parser) -> list[pattern] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_keyword_patterns = _rule_keyword_patterns(p);
-    p.level -= 1;
-    return res_rule_keyword_patterns;
+    p.level += 1;
+    return _rule_keyword_patterns(p);
 }
 
 def:priv _rule_keyword_patterns(p: peg_parser) -> list[pattern] | None {
@@ -13796,19 +15173,21 @@ def:priv _rule_keyword_patterns(p: peg_parser) -> list[pattern] | None {
     gather = rule__gather_104(p);
     if gather is not None {
         res = gather as list[pattern];
+        p.level -= 1;
         return res as list[pattern];
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_kvpair(p: peg_parser) -> kv_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_kvpair = _rule_kvpair(p);
-    p.level -= 1;
-    return res_rule_kvpair;
+    p.level += 1;
+    return _rule_kvpair(p);
 }
 
 def:priv _rule_kvpair(p: peg_parser) -> kv_pair | None {
@@ -13832,21 +15211,23 @@ def:priv _rule_kvpair(p: peg_parser) -> kv_pair | None {
                 res = pa_key_value_pair(
                     a, b, start_lineno, start_col_offset, end_lineno, end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_kwarg_or_double_starred(p: peg_parser) -> keyword_or_starred_node | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_kwarg_or_double_starred = _rule_kwarg_or_double_starred(p);
-    p.level -= 1;
-    return res_rule_kwarg_or_double_starred;
+    p.level += 1;
+    return _rule_kwarg_or_double_starred(p);
 }
 
 def:priv _rule_kwarg_or_double_starred(
@@ -13866,6 +15247,7 @@ def:priv _rule_kwarg_or_double_starred(
     invalid_kwarg = rule_invalid_kwarg(p);
     if invalid_kwarg is not None {
         res = invalid_kwarg as keyword_or_starred_node;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -13879,6 +15261,7 @@ def:priv _rule_kwarg_or_double_starred(
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -13900,6 +15283,7 @@ def:priv _rule_kwarg_or_double_starred(
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -13913,6 +15297,7 @@ def:priv _rule_kwarg_or_double_starred(
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -13934,20 +15319,22 @@ def:priv _rule_kwarg_or_double_starred(
                 end_lineno,
                 end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_kwarg_or_starred(p: peg_parser) -> keyword_or_starred_node | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_kwarg_or_starred = _rule_kwarg_or_starred(p);
-    p.level -= 1;
-    return res_rule_kwarg_or_starred;
+    p.level += 1;
+    return _rule_kwarg_or_starred(p);
 }
 
 def:priv _rule_kwarg_or_starred(p: peg_parser) -> keyword_or_starred_node | None {
@@ -13965,6 +15352,7 @@ def:priv _rule_kwarg_or_starred(p: peg_parser) -> keyword_or_starred_node | None
     invalid_kwarg = rule_invalid_kwarg(p);
     if invalid_kwarg is not None {
         res = invalid_kwarg as keyword_or_starred_node;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -13978,6 +15366,7 @@ def:priv _rule_kwarg_or_starred(p: peg_parser) -> keyword_or_starred_node | None
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -13999,6 +15388,7 @@ def:priv _rule_kwarg_or_starred(p: peg_parser) -> keyword_or_starred_node | None
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -14009,19 +15399,21 @@ def:priv _rule_kwarg_or_starred(p: peg_parser) -> keyword_or_starred_node | None
         res = pa_keyword_or_starred(
             a_3, 0, start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_kwargs(p: peg_parser) -> list[keyword_or_starred_node] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_kwargs = _rule_kwargs(p);
-    p.level -= 1;
-    return res_rule_kwargs;
+    p.level += 1;
+    return _rule_kwargs(p);
 }
 
 def:priv _rule_kwargs(p: peg_parser) -> list[keyword_or_starred_node] | None {
@@ -14034,6 +15426,7 @@ def:priv _rule_kwargs(p: peg_parser) -> list[keyword_or_starred_node] | None {
             b = rule__gather_108(p);
             if b is not None {
                 res = pa_join_sequences_kw_or_starred(a, b);
+                p.level -= 1;
                 return res as list[keyword_or_starred_node];
             }
         }
@@ -14042,25 +15435,28 @@ def:priv _rule_kwargs(p: peg_parser) -> list[keyword_or_starred_node] | None {
     gather = rule__gather_106(p);
     if gather is not None {
         res = gather;
+        p.level -= 1;
         return res as list[keyword_or_starred_node];
     }
     peg_reset(p, mark);
     gather = rule__gather_108(p);
     if gather is not None {
         res = gather;
+        p.level -= 1;
         return res as list[keyword_or_starred_node];
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_kwds(p: peg_parser) -> arg | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_kwds = _rule_kwds(p);
-    p.level -= 1;
-    return res_rule_kwds;
+    p.level += 1;
+    return _rule_kwds(p);
 }
 
 def:priv _rule_kwds(p: peg_parser) -> arg | None {
@@ -14069,6 +15465,7 @@ def:priv _rule_kwds(p: peg_parser) -> arg | None {
     invalid_kwds = rule_invalid_kwds(p);
     if invalid_kwds is not None {
         res = invalid_kwds as arg;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -14077,20 +15474,22 @@ def:priv _rule_kwds(p: peg_parser) -> arg | None {
         a = rule_param_no_default(p);
         if a is not None {
             res = a;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_lambda_kwds(p: peg_parser) -> arg | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_lambda_kwds = _rule_lambda_kwds(p);
-    p.level -= 1;
-    return res_rule_lambda_kwds;
+    p.level += 1;
+    return _rule_lambda_kwds(p);
 }
 
 def:priv _rule_lambda_kwds(p: peg_parser) -> arg | None {
@@ -14099,6 +15498,7 @@ def:priv _rule_lambda_kwds(p: peg_parser) -> arg | None {
     invalid_lambda_kwds = rule_invalid_lambda_kwds(p);
     if invalid_lambda_kwds is not None {
         res = invalid_lambda_kwds as arg;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -14107,20 +15507,22 @@ def:priv _rule_lambda_kwds(p: peg_parser) -> arg | None {
         a = rule_lambda_param_no_default(p);
         if a is not None {
             res = a;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_lambda_param(p: peg_parser) -> arg | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_lambda_param = _rule_lambda_param(p);
-    p.level -= 1;
-    return res_rule_lambda_param;
+    p.level += 1;
+    return _rule_lambda_param(p);
 }
 
 def:priv _rule_lambda_param(p: peg_parser) -> arg | None {
@@ -14141,6 +15543,7 @@ def:priv _rule_lambda_param(p: peg_parser) -> arg | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -14154,19 +15557,21 @@ def:priv _rule_lambda_param(p: peg_parser) -> arg | None {
             end_lineno=end_lineno,
             end_col_offset=end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_lambda_param_maybe_default(p: peg_parser) -> name_default_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_lambda_param_maybe_default = _rule_lambda_param_maybe_default(p);
-    p.level -= 1;
-    return res_rule_lambda_param_maybe_default;
+    p.level += 1;
+    return _rule_lambda_param_maybe_default(p);
 }
 
 def:priv _rule_lambda_param_maybe_default(p: peg_parser) -> name_default_pair | None {
@@ -14189,6 +15594,7 @@ def:priv _rule_lambda_param_maybe_default(p: peg_parser) -> name_default_pair | 
             res = pa_name_default_pair(
                 a, c, start_lineno, start_col_offset, end_lineno, end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -14200,20 +15606,22 @@ def:priv _rule_lambda_param_maybe_default(p: peg_parser) -> name_default_pair | 
             res = pa_name_default_pair(
                 a, c, start_lineno, start_col_offset, end_lineno, end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_lambda_param_no_default(p: peg_parser) -> arg | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_lambda_param_no_default = _rule_lambda_param_no_default(p);
-    p.level -= 1;
-    return res_rule_lambda_param_no_default;
+    p.level += 1;
+    return _rule_lambda_param_no_default(p);
 }
 
 def:priv _rule_lambda_param_no_default(p: peg_parser) -> arg | None {
@@ -14224,6 +15632,7 @@ def:priv _rule_lambda_param_no_default(p: peg_parser) -> arg | None {
         lit = peg_expect_token(p, 12);
         if lit is not None {
             res = a;
+            p.level -= 1;
             return res;
         }
     }
@@ -14232,20 +15641,22 @@ def:priv _rule_lambda_param_no_default(p: peg_parser) -> arg | None {
     if a is not None {
         if (peg_positive_lookahead_token(p, 11)) {
             res = a;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_lambda_param_with_default(p: peg_parser) -> name_default_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_lambda_param_with_default = _rule_lambda_param_with_default(p);
-    p.level -= 1;
-    return res_rule_lambda_param_with_default;
+    p.level += 1;
+    return _rule_lambda_param_with_default(p);
 }
 
 def:priv _rule_lambda_param_with_default(p: peg_parser) -> name_default_pair | None {
@@ -14269,6 +15680,7 @@ def:priv _rule_lambda_param_with_default(p: peg_parser) -> name_default_pair | N
                 res = pa_name_default_pair(
                     a, c, start_lineno, start_col_offset, end_lineno, end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -14282,21 +15694,23 @@ def:priv _rule_lambda_param_with_default(p: peg_parser) -> name_default_pair | N
                 res = pa_name_default_pair(
                     a, c, start_lineno, start_col_offset, end_lineno, end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_lambda_parameters(p: peg_parser) -> arguments | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_lambda_parameters = _rule_lambda_parameters(p);
-    p.level -= 1;
-    return res_rule_lambda_parameters;
+    p.level += 1;
+    return _rule_lambda_parameters(p);
 }
 
 def:priv _rule_lambda_parameters(p: peg_parser) -> arguments | None {
@@ -14329,6 +15743,7 @@ def:priv _rule_lambda_parameters(p: peg_parser) -> arguments | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -14350,6 +15765,7 @@ def:priv _rule_lambda_parameters(p: peg_parser) -> arguments | None {
                 end_lineno,
                 end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -14370,6 +15786,7 @@ def:priv _rule_lambda_parameters(p: peg_parser) -> arguments | None {
                 end_lineno,
                 end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -14388,6 +15805,7 @@ def:priv _rule_lambda_parameters(p: peg_parser) -> arguments | None {
             end_lineno,
             end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -14404,19 +15822,21 @@ def:priv _rule_lambda_parameters(p: peg_parser) -> arguments | None {
             end_lineno,
             end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_lambda_params(p: peg_parser) -> arguments | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_lambda_params = _rule_lambda_params(p);
-    p.level -= 1;
-    return res_rule_lambda_params;
+    p.level += 1;
+    return _rule_lambda_params(p);
 }
 
 def:priv _rule_lambda_params(p: peg_parser) -> arguments | None {
@@ -14425,25 +15845,28 @@ def:priv _rule_lambda_params(p: peg_parser) -> arguments | None {
     invalid_lambda_parameters = rule_invalid_lambda_parameters(p);
     if invalid_lambda_parameters is not None {
         res = invalid_lambda_parameters as arguments;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     lambda_parameters = rule_lambda_parameters(p);
     if lambda_parameters is not None {
         res = lambda_parameters;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_lambda_slash_no_default(p: peg_parser) -> list[arg] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_lambda_slash_no_default = _rule_lambda_slash_no_default(p);
-    p.level -= 1;
-    return res_rule_lambda_slash_no_default;
+    p.level += 1;
+    return _rule_lambda_slash_no_default(p);
 }
 
 def:priv _rule_lambda_slash_no_default(p: peg_parser) -> list[arg] | None {
@@ -14456,6 +15879,7 @@ def:priv _rule_lambda_slash_no_default(p: peg_parser) -> list[arg] | None {
             lit_1 = peg_expect_token(p, 12);
             if lit_1 is not None {
                 res = a;
+                p.level -= 1;
                 return res;
             }
         }
@@ -14467,21 +15891,23 @@ def:priv _rule_lambda_slash_no_default(p: peg_parser) -> list[arg] | None {
         if lit is not None {
             if (peg_positive_lookahead_token(p, 11)) {
                 res = a;
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_lambda_slash_with_default(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_lambda_slash_with_default = _rule_lambda_slash_with_default(p);
-    p.level -= 1;
-    return res_rule_lambda_slash_with_default;
+    p.level += 1;
+    return _rule_lambda_slash_with_default(p);
 }
 
 def:priv _rule_lambda_slash_with_default(p: peg_parser) -> object | None {
@@ -14507,6 +15933,7 @@ def:priv _rule_lambda_slash_with_default(p: peg_parser) -> object | None {
                     res = pa_slash_with_default(
                         a, b, start_lineno, start_col_offset, end_lineno, end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -14523,22 +15950,24 @@ def:priv _rule_lambda_slash_with_default(p: peg_parser) -> object | None {
                     res = pa_slash_with_default(
                         a, b, start_lineno, start_col_offset, end_lineno, end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_lambda_star_etc(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_lambda_star_etc = _rule_lambda_star_etc(p);
-    p.level -= 1;
-    return res_rule_lambda_star_etc;
+    p.level += 1;
+    return _rule_lambda_star_etc(p);
 }
 
 def:priv _rule_lambda_star_etc(p: peg_parser) -> object | None {
@@ -14556,6 +15985,7 @@ def:priv _rule_lambda_star_etc(p: peg_parser) -> object | None {
     invalid_lambda_star_etc = rule_invalid_lambda_star_etc(p);
     if invalid_lambda_star_etc is not None {
         res = invalid_lambda_star_etc;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -14569,6 +15999,7 @@ def:priv _rule_lambda_star_etc(p: peg_parser) -> object | None {
                 res = pa_star_etc(
                     a, b, c, start_lineno, start_col_offset, end_lineno, end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -14590,6 +16021,7 @@ def:priv _rule_lambda_star_etc(p: peg_parser) -> object | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -14600,19 +16032,21 @@ def:priv _rule_lambda_star_etc(p: peg_parser) -> object | None {
         res = pa_star_etc(
             None, None, a, start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_lambdef(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_lambdef = _rule_lambdef(p);
-    p.level -= 1;
-    return res_rule_lambdef;
+    p.level += 1;
+    return _rule_lambdef(p);
 }
 
 def:priv _rule_lambdef(p: peg_parser) -> expr | None {
@@ -14638,6 +16072,7 @@ def:priv _rule_lambdef(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -14654,21 +16089,23 @@ def:priv _rule_lambdef(p: peg_parser) -> expr | None {
                     end_lineno=end_lineno,
                     end_col_offset=end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_list(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_list = _rule_list(p);
-    p.level -= 1;
-    return res_rule_list;
+    p.level += 1;
+    return _rule_list(p);
 }
 
 def:priv _rule_list(p: peg_parser) -> expr | None {
@@ -14692,6 +16129,7 @@ def:priv _rule_list(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -14704,20 +16142,22 @@ def:priv _rule_list(p: peg_parser) -> expr | None {
                 end_lineno=end_lineno,
                 end_col_offset=end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_listcomp(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_listcomp = _rule_listcomp(p);
-    p.level -= 1;
-    return res_rule_listcomp;
+    p.level += 1;
+    return _rule_listcomp(p);
 }
 
 def:priv _rule_listcomp(p: peg_parser) -> expr | None {
@@ -14744,6 +16184,7 @@ def:priv _rule_listcomp(p: peg_parser) -> expr | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -14756,6 +16197,7 @@ def:priv _rule_listcomp(p: peg_parser) -> expr | None {
                         end_lineno=end_lineno,
                         end_col_offset=end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -14765,19 +16207,21 @@ def:priv _rule_listcomp(p: peg_parser) -> expr | None {
     invalid_comprehension = rule_invalid_comprehension(p);
     if invalid_comprehension is not None {
         res = invalid_comprehension as expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_literal_expr(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_literal_expr = _rule_literal_expr(p);
-    p.level -= 1;
-    return res_rule_literal_expr;
+    p.level += 1;
+    return _rule_literal_expr(p);
 }
 
 def:priv _rule_literal_expr(p: peg_parser) -> expr | None {
@@ -14801,6 +16245,7 @@ def:priv _rule_literal_expr(p: peg_parser) -> expr | None {
             )
         ) {
             res = signed_number;
+            p.level -= 1;
             return res;
         }
     }
@@ -14808,6 +16253,7 @@ def:priv _rule_literal_expr(p: peg_parser) -> expr | None {
     complex_number = rule_complex_number(p);
     if complex_number is not None {
         res = complex_number;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -14821,6 +16267,7 @@ def:priv _rule_literal_expr(p: peg_parser) -> expr | None {
         strings = rule_strings(p);
         if strings is not None {
             res = strings;
+            p.level -= 1;
             return res;
         }
     }
@@ -14831,6 +16278,7 @@ def:priv _rule_literal_expr(p: peg_parser) -> expr | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -14838,6 +16286,7 @@ def:priv _rule_literal_expr(p: peg_parser) -> expr | None {
         res = pa_constant_none(
             start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -14847,6 +16296,7 @@ def:priv _rule_literal_expr(p: peg_parser) -> expr | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -14854,6 +16304,7 @@ def:priv _rule_literal_expr(p: peg_parser) -> expr | None {
         res = pa_constant_bool(
             True, start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -14863,6 +16314,7 @@ def:priv _rule_literal_expr(p: peg_parser) -> expr | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -14870,19 +16322,21 @@ def:priv _rule_literal_expr(p: peg_parser) -> expr | None {
         res = pa_constant_bool(
             False, start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_literal_pattern(p: peg_parser) -> pattern | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_literal_pattern = _rule_literal_pattern(p);
-    p.level -= 1;
-    return res_rule_literal_pattern;
+    p.level += 1;
+    return _rule_literal_pattern(p);
 }
 
 def:priv _rule_literal_pattern(p: peg_parser) -> pattern | None {
@@ -14909,6 +16363,7 @@ def:priv _rule_literal_pattern(p: peg_parser) -> pattern | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -14920,6 +16375,7 @@ def:priv _rule_literal_pattern(p: peg_parser) -> pattern | None {
                 end_lineno=end_lineno,
                 end_col_offset=end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -14930,6 +16386,7 @@ def:priv _rule_literal_pattern(p: peg_parser) -> pattern | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -14941,6 +16398,7 @@ def:priv _rule_literal_pattern(p: peg_parser) -> pattern | None {
             end_lineno=end_lineno,
             end_col_offset=end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -14950,6 +16408,7 @@ def:priv _rule_literal_pattern(p: peg_parser) -> pattern | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -14961,6 +16420,7 @@ def:priv _rule_literal_pattern(p: peg_parser) -> pattern | None {
             end_lineno=end_lineno,
             end_col_offset=end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -14970,6 +16430,7 @@ def:priv _rule_literal_pattern(p: peg_parser) -> pattern | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -14977,6 +16438,7 @@ def:priv _rule_literal_pattern(p: peg_parser) -> pattern | None {
         res = pa_match_singleton(
             None, start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -14986,6 +16448,7 @@ def:priv _rule_literal_pattern(p: peg_parser) -> pattern | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -14993,6 +16456,7 @@ def:priv _rule_literal_pattern(p: peg_parser) -> pattern | None {
         res = pa_match_singleton(
             True, start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -15002,6 +16466,7 @@ def:priv _rule_literal_pattern(p: peg_parser) -> pattern | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -15009,19 +16474,21 @@ def:priv _rule_literal_pattern(p: peg_parser) -> pattern | None {
         res = pa_match_singleton(
             False, start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_lt_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_lt_bitwise_or = _rule_lt_bitwise_or(p);
-    p.level -= 1;
-    return res_rule_lt_bitwise_or;
+    p.level += 1;
+    return _rule_lt_bitwise_or(p);
 }
 
 def:priv _rule_lt_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
@@ -15032,20 +16499,22 @@ def:priv _rule_lt_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
         a = rule_bitwise_or(p);
         if a is not None {
             res = pa_make_cmpop_pair(Lt(), a);
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_lte_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_lte_bitwise_or = _rule_lte_bitwise_or(p);
-    p.level -= 1;
-    return res_rule_lte_bitwise_or;
+    p.level += 1;
+    return _rule_lte_bitwise_or(p);
 }
 
 def:priv _rule_lte_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
@@ -15056,20 +16525,22 @@ def:priv _rule_lte_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
         a = rule_bitwise_or(p);
         if a is not None {
             res = pa_make_cmpop_pair(LtE(), a);
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_mapping_pattern(p: peg_parser) -> pattern | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_mapping_pattern = _rule_mapping_pattern(p);
-    p.level -= 1;
-    return res_rule_mapping_pattern;
+    p.level += 1;
+    return _rule_mapping_pattern(p);
 }
 
 def:priv _rule_mapping_pattern(p: peg_parser) -> pattern | None {
@@ -15092,6 +16563,7 @@ def:priv _rule_mapping_pattern(p: peg_parser) -> pattern | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -15105,6 +16577,7 @@ def:priv _rule_mapping_pattern(p: peg_parser) -> pattern | None {
                 end_lineno=end_lineno,
                 end_col_offset=end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -15120,6 +16593,7 @@ def:priv _rule_mapping_pattern(p: peg_parser) -> pattern | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -15133,6 +16607,7 @@ def:priv _rule_mapping_pattern(p: peg_parser) -> pattern | None {
                     end_lineno=end_lineno,
                     end_col_offset=end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -15153,6 +16628,7 @@ def:priv _rule_mapping_pattern(p: peg_parser) -> pattern | None {
                         if end_tok is None {
                             p.error_indicator = True;
                             peg_reset(p, mark);
+                            p.level -= 1;
                             return None;
                         }
                         end_lineno = end_tok.end_lineno;
@@ -15178,6 +16654,7 @@ def:priv _rule_mapping_pattern(p: peg_parser) -> pattern | None {
                             end_lineno=end_lineno,
                             end_col_offset=end_col_offset
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -15196,6 +16673,7 @@ def:priv _rule_mapping_pattern(p: peg_parser) -> pattern | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -15219,21 +16697,23 @@ def:priv _rule_mapping_pattern(p: peg_parser) -> pattern | None {
                     end_lineno=end_lineno,
                     end_col_offset=end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_match_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_match_stmt = _rule_match_stmt(p);
-    p.level -= 1;
-    return res_rule_match_stmt;
+    p.level += 1;
+    return _rule_match_stmt(p);
 }
 
 def:priv _rule_match_stmt(p: peg_parser) -> stmt | None {
@@ -15266,6 +16746,7 @@ def:priv _rule_match_stmt(p: peg_parser) -> stmt | None {
                                 if end_tok is None {
                                     p.error_indicator = True;
                                     peg_reset(p, mark);
+                                    p.level -= 1;
                                     return None;
                                 }
                                 end_lineno = end_tok.end_lineno;
@@ -15278,6 +16759,7 @@ def:priv _rule_match_stmt(p: peg_parser) -> stmt | None {
                                     end_lineno=end_lineno,
                                     end_col_offset=end_col_offset
                                 );
+                                p.level -= 1;
                                 return res;
                             }
                         }
@@ -15290,19 +16772,21 @@ def:priv _rule_match_stmt(p: peg_parser) -> stmt | None {
     invalid_match_stmt = rule_invalid_match_stmt(p);
     if invalid_match_stmt is not None {
         res = invalid_match_stmt as stmt;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_maybe_sequence_pattern(p: peg_parser) -> list[pattern] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_maybe_sequence_pattern = _rule_maybe_sequence_pattern(p);
-    p.level -= 1;
-    return res_rule_maybe_sequence_pattern;
+    p.level += 1;
+    return _rule_maybe_sequence_pattern(p);
 }
 
 def:priv _rule_maybe_sequence_pattern(p: peg_parser) -> list[pattern] | None {
@@ -15312,19 +16796,21 @@ def:priv _rule_maybe_sequence_pattern(p: peg_parser) -> list[pattern] | None {
     if patterns is not None {
         lit = peg_expect_token(p, 12);
         res = patterns;
+        p.level -= 1;
         return res as list[pattern];
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_maybe_star_pattern(p: peg_parser) -> pattern | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_maybe_star_pattern = _rule_maybe_star_pattern(p);
-    p.level -= 1;
-    return res_rule_maybe_star_pattern;
+    p.level += 1;
+    return _rule_maybe_star_pattern(p);
 }
 
 def:priv _rule_maybe_star_pattern(p: peg_parser) -> pattern | None {
@@ -15333,38 +16819,43 @@ def:priv _rule_maybe_star_pattern(p: peg_parser) -> pattern | None {
     star_pattern = rule_star_pattern(p);
     if star_pattern is not None {
         res = star_pattern;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     pattern = rule_pattern(p);
     if pattern is not None {
         res = pattern;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_name_or_attr(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_name_or_attr = _rule_name_or_attr(p);
-    p.level -= 1;
-    return res_rule_name_or_attr;
+    p.level += 1;
+    return _rule_name_or_attr(p);
 }
 
 def:priv _rule_name_or_attr(p: peg_parser) -> expr | None {
-    return rule_name_or_attr_raw(p);
+    res_level_7 = rule_name_or_attr_raw(p);
+    p.level -= 1;
+    return res_level_7;
 }
 
 def rule_name_or_attr_raw(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_name_or_attr_raw = _rule_name_or_attr_raw(p);
-    p.level -= 1;
-    return res_rule_name_or_attr_raw;
+    p.level += 1;
+    return _rule_name_or_attr_raw(p);
 }
 
 def:priv _rule_name_or_attr_raw(p: peg_parser) -> expr | None {
@@ -15373,25 +16864,28 @@ def:priv _rule_name_or_attr_raw(p: peg_parser) -> expr | None {
     attr = rule_attr(p);
     if attr is not None {
         res = attr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     name_var = pa_name_from_token(peg_expect_token(p, NAME));
     if name_var is not None {
         res = name_var as expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_named_expression(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_named_expression = _rule_named_expression(p);
-    p.level -= 1;
-    return res_rule_named_expression;
+    p.level += 1;
+    return _rule_named_expression(p);
 }
 
 def:priv _rule_named_expression(p: peg_parser) -> expr | None {
@@ -15400,12 +16894,14 @@ def:priv _rule_named_expression(p: peg_parser) -> expr | None {
     assignment_expression = rule_assignment_expression(p);
     if assignment_expression is not None {
         res = assignment_expression;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     invalid_named_expression = rule_invalid_named_expression(p);
     if invalid_named_expression is not None {
         res = invalid_named_expression as expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -15413,20 +16909,22 @@ def:priv _rule_named_expression(p: peg_parser) -> expr | None {
     if expression is not None {
         if (peg_negative_lookahead_token(p, 53)) {
             res = expression;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_nonlocal_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_nonlocal_stmt = _rule_nonlocal_stmt(p);
-    p.level -= 1;
-    return res_rule_nonlocal_stmt;
+    p.level += 1;
+    return _rule_nonlocal_stmt(p);
 }
 
 def:priv _rule_nonlocal_stmt(p: peg_parser) -> stmt | None {
@@ -15449,6 +16947,7 @@ def:priv _rule_nonlocal_stmt(p: peg_parser) -> stmt | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -15464,20 +16963,22 @@ def:priv _rule_nonlocal_stmt(p: peg_parser) -> stmt | None {
                 end_lineno=end_lineno,
                 end_col_offset=end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_noteq_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_noteq_bitwise_or = _rule_noteq_bitwise_or(p);
-    p.level -= 1;
-    return res_rule_noteq_bitwise_or;
+    p.level += 1;
+    return _rule_noteq_bitwise_or(p);
 }
 
 def:priv _rule_noteq_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
@@ -15495,25 +16996,28 @@ def:priv _rule_noteq_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
                     if barry
                     else "invalid syntax"
             );
+            p.level -= 1;
             return None;
         }
         a = rule_bitwise_or(p);
         if a is not None {
             res = pa_make_cmpop_pair(NotEq(), a);
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_notin_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_notin_bitwise_or = _rule_notin_bitwise_or(p);
-    p.level -= 1;
-    return res_rule_notin_bitwise_or;
+    p.level += 1;
+    return _rule_notin_bitwise_or(p);
 }
 
 def:priv _rule_notin_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
@@ -15526,21 +17030,23 @@ def:priv _rule_notin_bitwise_or(p: peg_parser) -> pa_cmpop_expr_pair | None {
             a = rule_bitwise_or(p);
             if a is not None {
                 res = pa_make_cmpop_pair(NotIn(), a);
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_open_sequence_pattern(p: peg_parser) -> list[pattern] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_open_sequence_pattern = _rule_open_sequence_pattern(p);
-    p.level -= 1;
-    return res_rule_open_sequence_pattern;
+    p.level += 1;
+    return _rule_open_sequence_pattern(p);
 }
 
 def:priv _rule_open_sequence_pattern(p: peg_parser) -> list[pattern] | None {
@@ -15552,20 +17058,22 @@ def:priv _rule_open_sequence_pattern(p: peg_parser) -> list[pattern] | None {
         if lit is not None {
             patterns = pa_pattern_list(rule_maybe_sequence_pattern(p));
             res = pa_pattern_list(pa_seq_insert_front_pattern(first, patterns));
+            p.level -= 1;
             return res as list[pattern];
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_or_pattern(p: peg_parser) -> pattern | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_or_pattern = _rule_or_pattern(p);
-    p.level -= 1;
-    return res_rule_or_pattern;
+    p.level += 1;
+    return _rule_or_pattern(p);
 }
 
 def:priv _rule_or_pattern(p: peg_parser) -> pattern | None {
@@ -15586,6 +17094,7 @@ def:priv _rule_or_pattern(p: peg_parser) -> pattern | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -15593,19 +17102,21 @@ def:priv _rule_or_pattern(p: peg_parser) -> pattern | None {
         res = pa_or_pattern_singleton(
             patterns, start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_param(p: peg_parser) -> arg | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_param = _rule_param(p);
-    p.level -= 1;
-    return res_rule_param;
+    p.level += 1;
+    return _rule_param(p);
 }
 
 def:priv _rule_param(p: peg_parser) -> arg | None {
@@ -15627,6 +17138,7 @@ def:priv _rule_param(p: peg_parser) -> arg | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -15640,19 +17152,21 @@ def:priv _rule_param(p: peg_parser) -> arg | None {
             end_lineno=end_lineno,
             end_col_offset=end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_param_maybe_default(p: peg_parser) -> name_default_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_param_maybe_default = _rule_param_maybe_default(p);
-    p.level -= 1;
-    return res_rule_param_maybe_default;
+    p.level += 1;
+    return _rule_param_maybe_default(p);
 }
 
 def:priv _rule_param_maybe_default(p: peg_parser) -> name_default_pair | None {
@@ -15681,6 +17195,7 @@ def:priv _rule_param_maybe_default(p: peg_parser) -> name_default_pair | None {
                 end_lineno,
                 end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -15698,20 +17213,22 @@ def:priv _rule_param_maybe_default(p: peg_parser) -> name_default_pair | None {
                 end_lineno,
                 end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_param_no_default(p: peg_parser) -> arg | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_param_no_default = _rule_param_no_default(p);
-    p.level -= 1;
-    return res_rule_param_no_default;
+    p.level += 1;
+    return _rule_param_no_default(p);
 }
 
 def:priv _rule_param_no_default(p: peg_parser) -> arg | None {
@@ -15723,6 +17240,7 @@ def:priv _rule_param_no_default(p: peg_parser) -> arg | None {
         if lit is not None {
             tc = peg_expect_token(p, TYPE_COMMENT);
             res = pa_add_type_comment_to_arg(a, tc);
+            p.level -= 1;
             return res;
         }
     }
@@ -15732,22 +17250,22 @@ def:priv _rule_param_no_default(p: peg_parser) -> arg | None {
         tc = peg_expect_token(p, TYPE_COMMENT);
         if (peg_positive_lookahead_token(p, 8)) {
             res = pa_add_type_comment_to_arg(a, tc);
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_param_no_default_star_annotation(p: peg_parser) -> arg | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_param_no_default_star_annotation = _rule_param_no_default_star_annotation(
-        p
-    );
-    p.level -= 1;
-    return res_rule_param_no_default_star_annotation;
+    p.level += 1;
+    return _rule_param_no_default_star_annotation(p);
 }
 
 def:priv _rule_param_no_default_star_annotation(p: peg_parser) -> arg | None {
@@ -15759,6 +17277,7 @@ def:priv _rule_param_no_default_star_annotation(p: peg_parser) -> arg | None {
         if lit is not None {
             tc = peg_expect_token(p, TYPE_COMMENT);
             res = pa_add_type_comment_to_arg(a, tc);
+            p.level -= 1;
             return res;
         }
     }
@@ -15768,20 +17287,22 @@ def:priv _rule_param_no_default_star_annotation(p: peg_parser) -> arg | None {
         tc = peg_expect_token(p, TYPE_COMMENT);
         if (peg_positive_lookahead_token(p, 8)) {
             res = pa_add_type_comment_to_arg(a, tc);
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_param_star_annotation(p: peg_parser) -> arg | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_param_star_annotation = _rule_param_star_annotation(p);
-    p.level -= 1;
-    return res_rule_param_star_annotation;
+    p.level += 1;
+    return _rule_param_star_annotation(p);
 }
 
 def:priv _rule_param_star_annotation(p: peg_parser) -> arg | None {
@@ -15804,6 +17325,7 @@ def:priv _rule_param_star_annotation(p: peg_parser) -> arg | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -15817,20 +17339,22 @@ def:priv _rule_param_star_annotation(p: peg_parser) -> arg | None {
                 end_lineno=end_lineno,
                 end_col_offset=end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_param_with_default(p: peg_parser) -> name_default_pair | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_param_with_default = _rule_param_with_default(p);
-    p.level -= 1;
-    return res_rule_param_with_default;
+    p.level += 1;
+    return _rule_param_with_default(p);
 }
 
 def:priv _rule_param_with_default(p: peg_parser) -> name_default_pair | None {
@@ -15860,6 +17384,7 @@ def:priv _rule_param_with_default(p: peg_parser) -> name_default_pair | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -15879,21 +17404,23 @@ def:priv _rule_param_with_default(p: peg_parser) -> name_default_pair | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_parameters(p: peg_parser) -> arguments | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_parameters = _rule_parameters(p);
-    p.level -= 1;
-    return res_rule_parameters;
+    p.level += 1;
+    return _rule_parameters(p);
 }
 
 def:priv _rule_parameters(p: peg_parser) -> arguments | None {
@@ -15926,6 +17453,7 @@ def:priv _rule_parameters(p: peg_parser) -> arguments | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -15947,6 +17475,7 @@ def:priv _rule_parameters(p: peg_parser) -> arguments | None {
                 end_lineno,
                 end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -15967,6 +17496,7 @@ def:priv _rule_parameters(p: peg_parser) -> arguments | None {
                 end_lineno,
                 end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -15985,6 +17515,7 @@ def:priv _rule_parameters(p: peg_parser) -> arguments | None {
             end_lineno,
             end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -16001,19 +17532,21 @@ def:priv _rule_parameters(p: peg_parser) -> arguments | None {
             end_lineno,
             end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_params(p: peg_parser) -> arguments | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_params = _rule_params(p);
-    p.level -= 1;
-    return res_rule_params;
+    p.level += 1;
+    return _rule_params(p);
 }
 
 def:priv _rule_params(p: peg_parser) -> arguments | None {
@@ -16022,25 +17555,28 @@ def:priv _rule_params(p: peg_parser) -> arguments | None {
     invalid_parameters = rule_invalid_parameters(p);
     if invalid_parameters is not None {
         res = invalid_parameters as arguments;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     parameters = rule_parameters(p);
     if parameters is not None {
         res = parameters;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_pass_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_pass_stmt = _rule_pass_stmt(p);
-    p.level -= 1;
-    return res_rule_pass_stmt;
+    p.level += 1;
+    return _rule_pass_stmt(p);
 }
 
 def:priv _rule_pass_stmt(p: peg_parser) -> stmt | None {
@@ -16061,24 +17597,27 @@ def:priv _rule_pass_stmt(p: peg_parser) -> stmt | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
         end_col_offset = end_tok.end_col_offset;
         res = pa_ast_pass(start_lineno, start_col_offset, end_lineno, end_col_offset);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_pattern(p: peg_parser) -> pattern | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_pattern = _rule_pattern(p);
-    p.level -= 1;
-    return res_rule_pattern;
+    p.level += 1;
+    return _rule_pattern(p);
 }
 
 def:priv _rule_pattern(p: peg_parser) -> pattern | None {
@@ -16087,25 +17626,28 @@ def:priv _rule_pattern(p: peg_parser) -> pattern | None {
     as_pattern = rule_as_pattern(p);
     if as_pattern is not None {
         res = as_pattern;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     or_pattern = rule_or_pattern(p);
     if or_pattern is not None {
         res = or_pattern;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_pattern_capture_target(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_pattern_capture_target = _rule_pattern_capture_target(p);
-    p.level -= 1;
-    return res_rule_pattern_capture_target;
+    p.level += 1;
+    return _rule_pattern_capture_target(p);
 }
 
 def:priv _rule_pattern_capture_target(p: peg_parser) -> expr | None {
@@ -16122,21 +17664,23 @@ def:priv _rule_pattern_capture_target(p: peg_parser) -> expr | None {
                 )
             ) {
                 res = pa_set_context(name, Store());
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_patterns(p: peg_parser) -> pattern | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_patterns = _rule_patterns(p);
-    p.level -= 1;
-    return res_rule_patterns;
+    p.level += 1;
+    return _rule_patterns(p);
 }
 
 def:priv _rule_patterns(p: peg_parser) -> pattern | None {
@@ -16158,6 +17702,7 @@ def:priv _rule_patterns(p: peg_parser) -> pattern | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -16169,25 +17714,28 @@ def:priv _rule_patterns(p: peg_parser) -> pattern | None {
             end_lineno=end_lineno,
             end_col_offset=end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     pattern = rule_pattern(p);
     if pattern is not None {
         res = pattern;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_positional_patterns(p: peg_parser) -> list[pattern] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_positional_patterns = _rule_positional_patterns(p);
-    p.level -= 1;
-    return res_rule_positional_patterns;
+    p.level += 1;
+    return _rule_positional_patterns(p);
 }
 
 def:priv _rule_positional_patterns(p: peg_parser) -> list[pattern] | None {
@@ -16196,19 +17744,21 @@ def:priv _rule_positional_patterns(p: peg_parser) -> list[pattern] | None {
     args = rule__gather_118(p);
     if args is not None {
         res = args;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_power(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_power = _rule_power(p);
-    p.level -= 1;
-    return res_rule_power;
+    p.level += 1;
+    return _rule_power(p);
 }
 
 def:priv _rule_power(p: peg_parser) -> expr | None {
@@ -16233,6 +17783,7 @@ def:priv _rule_power(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -16246,6 +17797,7 @@ def:priv _rule_power(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -16254,26 +17806,158 @@ def:priv _rule_power(p: peg_parser) -> expr | None {
     await_primary = rule_await_primary(p);
     if await_primary is not None {
         res = await_primary;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_primary(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_primary = _rule_primary(p);
+    p.level += 1;
+    if peg_memo_hit(p, RULE_primary) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    if not p.call_invalid_rules {
+        return _primary_loop(p);
+    }
+    return _rule_primary(p);
+}
+
+def:priv _primary_loop(p: peg_parser) -> expr | None {
+    mark = p.mark;
+    start_lineno = 1;
+    start_col_offset = 0;
+    if peg_fill_token(p) {
+        t0 = p.tokens[p.mark];
+        start_lineno = t0.lineno;
+        start_col_offset = t0.col_offset;
+    }
+    p.level += 1;
+    res: expr | None = None;
+    atom = rule_atom(p);
+    if atom is not None {
+        res = _primary_suffixes(p, atom, start_lineno, start_col_offset);
+    }
     p.level -= 1;
-    return res_rule_primary;
+    if p.error_indicator {
+        p.level -= 1;
+        return None;
+    }
+    if res is None {
+        p.mark = mark;
+    }
+    peg_insert_memo(p, mark, RULE_primary, res);
+    p.level -= 1;
+    return res;
+}
+
+def:priv _primary_suffixes(
+    p: peg_parser, first: expr, start_lineno: int, start_col_offset: int
+) -> expr {
+    cur: expr = first;
+    while True {
+        op_mark = p.mark;
+        if not peg_fill_token(p) {
+            break;
+        }
+        tok_type = p.tokens[op_mark].tok_type;
+        if tok_type == 23 {
+            p.mark = op_mark + 1;
+            b = pa_name_from_token(peg_expect_token(p, NAME));
+            if b is not None {
+                end_tok = peg_get_last_nonnwhitespace_token(p);
+                if end_tok is not None {
+                    cur = pa_ast_attribute(
+                        cur,
+                        pa_name_id(b),
+                        Load(),
+                        start_lineno,
+                        start_col_offset,
+                        end_tok.end_lineno,
+                        end_tok.end_col_offset
+                    );
+                    continue;
+                }
+                p.error_indicator = True;
+                break;
+            }
+        } elif tok_type == 7 {
+            b_2 = rule_genexp(p);
+            if b_2 is not None {
+                end_tok = peg_get_last_nonnwhitespace_token(p);
+                if end_tok is not None {
+                    cur = pa_ast_call(
+                        cur,
+                        pa_check(pa_singleton_seq_expr(b_2)) as list[expr],
+                        None,
+                        start_lineno,
+                        start_col_offset,
+                        end_tok.end_lineno,
+                        end_tok.end_col_offset
+                    );
+                    continue;
+                }
+                p.error_indicator = True;
+                break;
+            }
+            p.mark = op_mark;
+            if peg_expect_token(p, 7) is not None {
+                b_3 = rule_arguments(p);
+                if peg_expect_token(p, 8) is not None {
+                    end_tok = peg_get_last_nonnwhitespace_token(p);
+                    if end_tok is not None {
+                        cur = pa_ast_call(
+                            cur,
+                            (pa_call_args(b_3) if b_3 is not None else []),
+                            (pa_call_keywords(b_3) if b_3 is not None else []),
+                            start_lineno,
+                            start_col_offset,
+                            end_tok.end_lineno,
+                            end_tok.end_col_offset
+                        );
+                        continue;
+                    }
+                    p.error_indicator = True;
+                    break;
+                }
+            }
+        } elif tok_type == 9 {
+            p.mark = op_mark + 1;
+            b_4 = rule_slices(p);
+            if b_4 is not None {
+                if peg_expect_token(p, 10) is not None {
+                    end_tok = peg_get_last_nonnwhitespace_token(p);
+                    if end_tok is not None {
+                        cur = pa_ast_subscript(
+                            cur,
+                            b_4,
+                            Load(),
+                            start_lineno,
+                            start_col_offset,
+                            end_tok.end_lineno,
+                            end_tok.end_col_offset
+                        );
+                        continue;
+                    }
+                    p.error_indicator = True;
+                    break;
+                }
+            }
+        }
+        p.mark = op_mark;
+        break;
+    }
+    return cur;
 }
 
 def:priv _rule_primary(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_primary);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     res: expr | None = None;
     resmark = mark;
@@ -16282,6 +17966,7 @@ def:priv _rule_primary(p: peg_parser) -> expr | None {
         peg_reset(p, mark);
         raw = rule_primary_raw(p);
         if peg_has_error(p) {
+            p.level -= 1;
             return None;
         }
         if raw is None or peg_mark(p) <= resmark {
@@ -16290,16 +17975,18 @@ def:priv _rule_primary(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr | None;
+    res_level_8 = peg_left_rec_finish(p, resmark, res) as expr | None;
+    p.level -= 1;
+    return res_level_8;
 }
 
 def rule_primary_raw(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_primary_raw = _rule_primary_raw(p);
-    p.level -= 1;
-    return res_rule_primary_raw;
+    p.level += 1;
+    return _rule_primary_raw(p);
 }
 
 def:priv _rule_primary_raw(p: peg_parser) -> expr | None {
@@ -16324,6 +18011,7 @@ def:priv _rule_primary_raw(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -16337,6 +18025,7 @@ def:priv _rule_primary_raw(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -16350,6 +18039,7 @@ def:priv _rule_primary_raw(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -16363,6 +18053,7 @@ def:priv _rule_primary_raw(p: peg_parser) -> expr | None {
                 end_lineno,
                 end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -16378,6 +18069,7 @@ def:priv _rule_primary_raw(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -16391,6 +18083,7 @@ def:priv _rule_primary_raw(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -16408,6 +18101,7 @@ def:priv _rule_primary_raw(p: peg_parser) -> expr | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -16421,6 +18115,7 @@ def:priv _rule_primary_raw(p: peg_parser) -> expr | None {
                         end_lineno,
                         end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -16430,19 +18125,21 @@ def:priv _rule_primary_raw(p: peg_parser) -> expr | None {
     atom = rule_atom(p);
     if atom is not None {
         res = atom;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_raise_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_raise_stmt = _rule_raise_stmt(p);
-    p.level -= 1;
-    return res_rule_raise_stmt;
+    p.level += 1;
+    return _rule_raise_stmt(p);
 }
 
 def:priv _rule_raise_stmt(p: peg_parser) -> stmt | None {
@@ -16466,6 +18163,7 @@ def:priv _rule_raise_stmt(p: peg_parser) -> stmt | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -16478,6 +18176,7 @@ def:priv _rule_raise_stmt(p: peg_parser) -> stmt | None {
                 end_lineno=end_lineno,
                 end_col_offset=end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -16488,6 +18187,7 @@ def:priv _rule_raise_stmt(p: peg_parser) -> stmt | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -16500,19 +18200,21 @@ def:priv _rule_raise_stmt(p: peg_parser) -> stmt | None {
             end_lineno=end_lineno,
             end_col_offset=end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_real_number(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_real_number = _rule_real_number(p);
-    p.level -= 1;
-    return res_rule_real_number;
+    p.level += 1;
+    return _rule_real_number(p);
 }
 
 def:priv _rule_real_number(p: peg_parser) -> expr | None {
@@ -16521,19 +18223,21 @@ def:priv _rule_real_number(p: peg_parser) -> expr | None {
     real = pa_number_from_token(peg_expect_token(p, NUMBER));
     if real is not None {
         res = pa_ensure_real(p, real);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_return_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_return_stmt = _rule_return_stmt(p);
-    p.level -= 1;
-    return res_rule_return_stmt;
+    p.level += 1;
+    return _rule_return_stmt(p);
 }
 
 def:priv _rule_return_stmt(p: peg_parser) -> stmt | None {
@@ -16555,6 +18259,7 @@ def:priv _rule_return_stmt(p: peg_parser) -> stmt | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -16562,19 +18267,21 @@ def:priv _rule_return_stmt(p: peg_parser) -> stmt | None {
         res = pa_ast_return(
             a, start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_sequence_pattern(p: peg_parser) -> pattern | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_sequence_pattern = _rule_sequence_pattern(p);
-    p.level -= 1;
-    return res_rule_sequence_pattern;
+    p.level += 1;
+    return _rule_sequence_pattern(p);
 }
 
 def:priv _rule_sequence_pattern(p: peg_parser) -> pattern | None {
@@ -16598,6 +18305,7 @@ def:priv _rule_sequence_pattern(p: peg_parser) -> pattern | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -16609,6 +18317,7 @@ def:priv _rule_sequence_pattern(p: peg_parser) -> pattern | None {
                 end_lineno=end_lineno,
                 end_col_offset=end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -16622,6 +18331,7 @@ def:priv _rule_sequence_pattern(p: peg_parser) -> pattern | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -16633,20 +18343,22 @@ def:priv _rule_sequence_pattern(p: peg_parser) -> pattern | None {
                 end_lineno=end_lineno,
                 end_col_offset=end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_set(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_set = _rule_set(p);
-    p.level -= 1;
-    return res_rule_set;
+    p.level += 1;
+    return _rule_set(p);
 }
 
 def:priv _rule_set(p: peg_parser) -> expr | None {
@@ -16671,6 +18383,7 @@ def:priv _rule_set(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -16682,21 +18395,23 @@ def:priv _rule_set(p: peg_parser) -> expr | None {
                     end_lineno=end_lineno,
                     end_col_offset=end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_setcomp(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_setcomp = _rule_setcomp(p);
-    p.level -= 1;
-    return res_rule_setcomp;
+    p.level += 1;
+    return _rule_setcomp(p);
 }
 
 def:priv _rule_setcomp(p: peg_parser) -> expr | None {
@@ -16723,6 +18438,7 @@ def:priv _rule_setcomp(p: peg_parser) -> expr | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -16735,6 +18451,7 @@ def:priv _rule_setcomp(p: peg_parser) -> expr | None {
                         end_lineno=end_lineno,
                         end_col_offset=end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -16744,26 +18461,28 @@ def:priv _rule_setcomp(p: peg_parser) -> expr | None {
     invalid_comprehension = rule_invalid_comprehension(p);
     if invalid_comprehension is not None {
         res = invalid_comprehension as expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_shift_expr(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_shift_expr = _rule_shift_expr(p);
-    p.level -= 1;
-    return res_rule_shift_expr;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_shift_expr) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_shift_expr(p);
 }
 
 def:priv _rule_shift_expr(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_shift_expr);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     res: expr | None = None;
     resmark = mark;
@@ -16772,6 +18491,7 @@ def:priv _rule_shift_expr(p: peg_parser) -> expr | None {
         peg_reset(p, mark);
         raw = rule_shift_expr_raw(p);
         if peg_has_error(p) {
+            p.level -= 1;
             return None;
         }
         if raw is None or peg_mark(p) <= resmark {
@@ -16780,16 +18500,18 @@ def:priv _rule_shift_expr(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr | None;
+    res_level_9 = peg_left_rec_finish(p, resmark, res) as expr | None;
+    p.level -= 1;
+    return res_level_9;
 }
 
 def rule_shift_expr_raw(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_shift_expr_raw = _rule_shift_expr_raw(p);
-    p.level -= 1;
-    return res_rule_shift_expr_raw;
+    p.level += 1;
+    return _rule_shift_expr_raw(p);
 }
 
 def:priv _rule_shift_expr_raw(p: peg_parser) -> expr | None {
@@ -16814,6 +18536,7 @@ def:priv _rule_shift_expr_raw(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -16827,6 +18550,7 @@ def:priv _rule_shift_expr_raw(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -16842,6 +18566,7 @@ def:priv _rule_shift_expr_raw(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -16855,6 +18580,7 @@ def:priv _rule_shift_expr_raw(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -16863,25 +18589,28 @@ def:priv _rule_shift_expr_raw(p: peg_parser) -> expr | None {
     invalid_arithmetic = rule_invalid_arithmetic(p);
     if invalid_arithmetic is not None {
         res = invalid_arithmetic as expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     sum = rule_sum(p);
     if sum is not None {
         res = sum;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_signed_number(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_signed_number = _rule_signed_number(p);
-    p.level -= 1;
-    return res_rule_signed_number;
+    p.level += 1;
+    return _rule_signed_number(p);
 }
 
 def:priv _rule_signed_number(p: peg_parser) -> expr | None {
@@ -16899,6 +18628,7 @@ def:priv _rule_signed_number(p: peg_parser) -> expr | None {
     number_var = pa_number_from_token(peg_expect_token(p, NUMBER));
     if number_var is not None {
         res = number_var;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -16910,6 +18640,7 @@ def:priv _rule_signed_number(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -16922,20 +18653,22 @@ def:priv _rule_signed_number(p: peg_parser) -> expr | None {
                 end_lineno,
                 end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_signed_real_number(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_signed_real_number = _rule_signed_real_number(p);
-    p.level -= 1;
-    return res_rule_signed_real_number;
+    p.level += 1;
+    return _rule_signed_real_number(p);
 }
 
 def:priv _rule_signed_real_number(p: peg_parser) -> expr | None {
@@ -16953,6 +18686,7 @@ def:priv _rule_signed_real_number(p: peg_parser) -> expr | None {
     real_number = rule_real_number(p);
     if real_number is not None {
         res = real_number;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -16964,6 +18698,7 @@ def:priv _rule_signed_real_number(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -16971,27 +18706,29 @@ def:priv _rule_signed_real_number(p: peg_parser) -> expr | None {
             res = pa_ast_unaryop(
                 USub(), real, start_lineno, start_col_offset, end_lineno, end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_simple_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_simple_stmt = _rule_simple_stmt(p);
-    p.level -= 1;
-    return res_rule_simple_stmt;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_simple_stmt) {
+        p.level -= 1;
+        return p.memo_value as stmt | None;
+    }
+    return _rule_simple_stmt(p);
 }
 
 def:priv _rule_simple_stmt(p: peg_parser) -> stmt | None {
-    memo = peg_check_memo(p, RULE_simple_stmt);
-    if memo is not None {
-        return memo.result as stmt | None;
-    }
     mark = peg_mark(p);
     start_lineno = 1;
     start_col_offset = 0;
@@ -17007,6 +18744,7 @@ def:priv _rule_simple_stmt(p: peg_parser) -> stmt | None {
     if assignment is not None {
         res = assignment;
         peg_insert_memo(p, mark, RULE_simple_stmt, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -17015,6 +18753,7 @@ def:priv _rule_simple_stmt(p: peg_parser) -> stmt | None {
         if return_stmt is not None {
             res = return_stmt;
             peg_insert_memo(p, mark, RULE_simple_stmt, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -17024,6 +18763,7 @@ def:priv _rule_simple_stmt(p: peg_parser) -> stmt | None {
         if pass_stmt is not None {
             res = pass_stmt;
             peg_insert_memo(p, mark, RULE_simple_stmt, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -17032,6 +18772,7 @@ def:priv _rule_simple_stmt(p: peg_parser) -> stmt | None {
     if type_alias is not None {
         res = type_alias;
         peg_insert_memo(p, mark, RULE_simple_stmt, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -17040,6 +18781,7 @@ def:priv _rule_simple_stmt(p: peg_parser) -> stmt | None {
         if del_stmt is not None {
             res = del_stmt;
             peg_insert_memo(p, mark, RULE_simple_stmt, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -17050,6 +18792,7 @@ def:priv _rule_simple_stmt(p: peg_parser) -> stmt | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -17058,6 +18801,7 @@ def:priv _rule_simple_stmt(p: peg_parser) -> stmt | None {
             e, start_lineno, start_col_offset, end_lineno, end_col_offset
         );
         peg_insert_memo(p, mark, RULE_simple_stmt, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -17068,6 +18812,7 @@ def:priv _rule_simple_stmt(p: peg_parser) -> stmt | None {
         if import_stmt is not None {
             res = import_stmt;
             peg_insert_memo(p, mark, RULE_simple_stmt, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -17077,6 +18822,7 @@ def:priv _rule_simple_stmt(p: peg_parser) -> stmt | None {
         if raise_stmt is not None {
             res = raise_stmt;
             peg_insert_memo(p, mark, RULE_simple_stmt, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -17086,6 +18832,7 @@ def:priv _rule_simple_stmt(p: peg_parser) -> stmt | None {
         if yield_stmt is not None {
             res = yield_stmt;
             peg_insert_memo(p, mark, RULE_simple_stmt, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -17095,6 +18842,7 @@ def:priv _rule_simple_stmt(p: peg_parser) -> stmt | None {
         if assert_stmt is not None {
             res = assert_stmt;
             peg_insert_memo(p, mark, RULE_simple_stmt, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -17104,6 +18852,7 @@ def:priv _rule_simple_stmt(p: peg_parser) -> stmt | None {
         if break_stmt is not None {
             res = break_stmt;
             peg_insert_memo(p, mark, RULE_simple_stmt, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -17113,6 +18862,7 @@ def:priv _rule_simple_stmt(p: peg_parser) -> stmt | None {
         if continue_stmt is not None {
             res = continue_stmt;
             peg_insert_memo(p, mark, RULE_simple_stmt, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -17122,6 +18872,7 @@ def:priv _rule_simple_stmt(p: peg_parser) -> stmt | None {
         if global_stmt is not None {
             res = global_stmt;
             peg_insert_memo(p, mark, RULE_simple_stmt, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -17131,21 +18882,23 @@ def:priv _rule_simple_stmt(p: peg_parser) -> stmt | None {
         if nonlocal_stmt is not None {
             res = nonlocal_stmt;
             peg_insert_memo(p, mark, RULE_simple_stmt, res);
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_simple_stmt, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_simple_stmts(p: peg_parser) -> list[stmt] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_simple_stmts = _rule_simple_stmts(p);
-    p.level -= 1;
-    return res_rule_simple_stmts;
+    p.level += 1;
+    return _rule_simple_stmts(p);
 }
 
 def:priv _rule_simple_stmts(p: peg_parser) -> list[stmt] | None {
@@ -17157,6 +18910,7 @@ def:priv _rule_simple_stmts(p: peg_parser) -> list[stmt] | None {
             _newline = peg_expect_token(p, NEWLINE);
             if _newline is not None {
                 res = pa_singleton_seq_stmt(a);
+                p.level -= 1;
                 return res;
             }
         }
@@ -17168,20 +18922,22 @@ def:priv _rule_simple_stmts(p: peg_parser) -> list[stmt] | None {
         _newline = peg_expect_token(p, NEWLINE);
         if _newline is not None {
             res = a_2;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_single_compound_stmt(p: peg_parser) -> list[stmt] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_single_compound_stmt = _rule_single_compound_stmt(p);
-    p.level -= 1;
-    return res_rule_single_compound_stmt;
+    p.level += 1;
+    return _rule_single_compound_stmt(p);
 }
 
 def:priv _rule_single_compound_stmt(p: peg_parser) -> list[stmt] | None {
@@ -17190,21 +18946,21 @@ def:priv _rule_single_compound_stmt(p: peg_parser) -> list[stmt] | None {
     a = rule_compound_stmt(p);
     if a is not None {
         res = pa_singleton_seq_stmt(a);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_single_subscript_attribute_target(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_single_subscript_attribute_target = _rule_single_subscript_attribute_target(
-        p
-    );
-    p.level -= 1;
-    return res_rule_single_subscript_attribute_target;
+    p.level += 1;
+    return _rule_single_subscript_attribute_target(p);
 }
 
 def:priv _rule_single_subscript_attribute_target(p: peg_parser) -> expr | None {
@@ -17230,6 +18986,7 @@ def:priv _rule_single_subscript_attribute_target(p: peg_parser) -> expr | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -17243,6 +19000,7 @@ def:priv _rule_single_subscript_attribute_target(p: peg_parser) -> expr | None {
                         end_lineno,
                         end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -17262,6 +19020,7 @@ def:priv _rule_single_subscript_attribute_target(p: peg_parser) -> expr | None {
                         if end_tok is None {
                             p.error_indicator = True;
                             peg_reset(p, mark);
+                            p.level -= 1;
                             return None;
                         }
                         end_lineno = end_tok.end_lineno;
@@ -17275,6 +19034,7 @@ def:priv _rule_single_subscript_attribute_target(p: peg_parser) -> expr | None {
                             end_lineno,
                             end_col_offset
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -17282,16 +19042,17 @@ def:priv _rule_single_subscript_attribute_target(p: peg_parser) -> expr | None {
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_single_target(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_single_target = _rule_single_target(p);
-    p.level -= 1;
-    return res_rule_single_target;
+    p.level += 1;
+    return _rule_single_target(p);
 }
 
 def:priv _rule_single_target(p: peg_parser) -> expr | None {
@@ -17300,12 +19061,14 @@ def:priv _rule_single_target(p: peg_parser) -> expr | None {
     single_subscript_attribute_target = rule_single_subscript_attribute_target(p);
     if single_subscript_attribute_target is not None {
         res = single_subscript_attribute_target;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     a = pa_name_from_token(peg_expect_token(p, NAME));
     if a is not None {
         res = pa_set_context(a, Store());
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -17316,21 +19079,23 @@ def:priv _rule_single_target(p: peg_parser) -> expr | None {
             lit_1 = peg_expect_token(p, 8);
             if lit_1 is not None {
                 res = a_3;
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_slash_no_default(p: peg_parser) -> list[arg] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_slash_no_default = _rule_slash_no_default(p);
-    p.level -= 1;
-    return res_rule_slash_no_default;
+    p.level += 1;
+    return _rule_slash_no_default(p);
 }
 
 def:priv _rule_slash_no_default(p: peg_parser) -> list[arg] | None {
@@ -17343,6 +19108,7 @@ def:priv _rule_slash_no_default(p: peg_parser) -> list[arg] | None {
             lit_1 = peg_expect_token(p, 12);
             if lit_1 is not None {
                 res = a;
+                p.level -= 1;
                 return res;
             }
         }
@@ -17354,21 +19120,23 @@ def:priv _rule_slash_no_default(p: peg_parser) -> list[arg] | None {
         if lit is not None {
             if (peg_positive_lookahead_token(p, 8)) {
                 res = a;
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_slash_with_default(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_slash_with_default = _rule_slash_with_default(p);
-    p.level -= 1;
-    return res_rule_slash_with_default;
+    p.level += 1;
+    return _rule_slash_with_default(p);
 }
 
 def:priv _rule_slash_with_default(p: peg_parser) -> object | None {
@@ -17394,6 +19162,7 @@ def:priv _rule_slash_with_default(p: peg_parser) -> object | None {
                     res = pa_slash_with_default(
                         a, b, start_lineno, start_col_offset, end_lineno, end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -17410,22 +19179,24 @@ def:priv _rule_slash_with_default(p: peg_parser) -> object | None {
                     res = pa_slash_with_default(
                         a, b, start_lineno, start_col_offset, end_lineno, end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_slice(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_slice = _rule_slice(p);
-    p.level -= 1;
-    return res_rule_slice;
+    p.level += 1;
+    return _rule_slice(p);
 }
 
 def:priv _rule_slice(p: peg_parser) -> expr | None {
@@ -17449,6 +19220,7 @@ def:priv _rule_slice(p: peg_parser) -> expr | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -17456,25 +19228,28 @@ def:priv _rule_slice(p: peg_parser) -> expr | None {
         res = pa_ast_slice(
             a, b, c, start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     a = rule_named_expression(p);
     if a is not None {
         res = a;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_slices(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_slices = _rule_slices(p);
-    p.level -= 1;
-    return res_rule_slices;
+    p.level += 1;
+    return _rule_slices(p);
 }
 
 def:priv _rule_slices(p: peg_parser) -> expr | None {
@@ -17493,6 +19268,7 @@ def:priv _rule_slices(p: peg_parser) -> expr | None {
     if a is not None {
         if (peg_negative_lookahead_token(p, 12)) {
             res = a;
+            p.level -= 1;
             return res;
         }
     }
@@ -17504,6 +19280,7 @@ def:priv _rule_slices(p: peg_parser) -> expr | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -17511,19 +19288,21 @@ def:priv _rule_slices(p: peg_parser) -> expr | None {
         res = pa_ast_tuple(
             a_2, Load(), start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_star_annotation(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_star_annotation = _rule_star_annotation(p);
-    p.level -= 1;
-    return res_rule_star_annotation;
+    p.level += 1;
+    return _rule_star_annotation(p);
 }
 
 def:priv _rule_star_annotation(p: peg_parser) -> expr | None {
@@ -17534,20 +19313,22 @@ def:priv _rule_star_annotation(p: peg_parser) -> expr | None {
         a = rule_star_expression(p);
         if a is not None {
             res = a;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_star_atom(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_star_atom = _rule_star_atom(p);
-    p.level -= 1;
-    return res_rule_star_atom;
+    p.level += 1;
+    return _rule_star_atom(p);
 }
 
 def:priv _rule_star_atom(p: peg_parser) -> expr | None {
@@ -17565,6 +19346,7 @@ def:priv _rule_star_atom(p: peg_parser) -> expr | None {
     a = pa_name_from_token(peg_expect_token(p, NAME));
     if a is not None {
         res = pa_set_context(a, Store());
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -17575,6 +19357,7 @@ def:priv _rule_star_atom(p: peg_parser) -> expr | None {
             lit_1 = peg_expect_token(p, 8);
             if lit_1 is not None {
                 res = pa_set_context(a_2, Store());
+                p.level -= 1;
                 return res;
             }
         }
@@ -17589,6 +19372,7 @@ def:priv _rule_star_atom(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -17596,6 +19380,7 @@ def:priv _rule_star_atom(p: peg_parser) -> expr | None {
             res = pa_ast_tuple(
                 a_3, Store(), start_lineno, start_col_offset, end_lineno, end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -17609,6 +19394,7 @@ def:priv _rule_star_atom(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -17621,20 +19407,22 @@ def:priv _rule_star_atom(p: peg_parser) -> expr | None {
                 end_lineno=end_lineno,
                 end_col_offset=end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_star_etc(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_star_etc = _rule_star_etc(p);
-    p.level -= 1;
-    return res_rule_star_etc;
+    p.level += 1;
+    return _rule_star_etc(p);
 }
 
 def:priv _rule_star_etc(p: peg_parser) -> object | None {
@@ -17652,6 +19440,7 @@ def:priv _rule_star_etc(p: peg_parser) -> object | None {
     invalid_star_etc = rule_invalid_star_etc(p);
     if invalid_star_etc is not None {
         res = invalid_star_etc;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -17665,6 +19454,7 @@ def:priv _rule_star_etc(p: peg_parser) -> object | None {
                 res = pa_star_etc(
                     a, b, c, start_lineno, start_col_offset, end_lineno, end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -17680,6 +19470,7 @@ def:priv _rule_star_etc(p: peg_parser) -> object | None {
                 res = pa_star_etc(
                     a, b, c, start_lineno, start_col_offset, end_lineno, end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -17701,6 +19492,7 @@ def:priv _rule_star_etc(p: peg_parser) -> object | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -17711,26 +19503,28 @@ def:priv _rule_star_etc(p: peg_parser) -> object | None {
         res = pa_star_etc(
             None, None, a, start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_star_expression(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_star_expression = _rule_star_expression(p);
-    p.level -= 1;
-    return res_rule_star_expression;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_star_expression) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_star_expression(p);
 }
 
 def:priv _rule_star_expression(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_star_expression);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     start_lineno = 1;
     start_col_offset = 0;
@@ -17750,6 +19544,7 @@ def:priv _rule_star_expression(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -17758,6 +19553,7 @@ def:priv _rule_star_expression(p: peg_parser) -> expr | None {
                 a, start_lineno, start_col_offset, end_lineno, end_col_offset
             );
             peg_insert_memo(p, mark, RULE_star_expression, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -17766,20 +19562,22 @@ def:priv _rule_star_expression(p: peg_parser) -> expr | None {
     if expression is not None {
         res = expression;
         peg_insert_memo(p, mark, RULE_star_expression, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_star_expression, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_star_expressions(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_star_expressions = _rule_star_expressions(p);
-    p.level -= 1;
-    return res_rule_star_expressions;
+    p.level += 1;
+    return _rule_star_expressions(p);
 }
 
 def:priv _rule_star_expressions(p: peg_parser) -> expr | None {
@@ -17803,6 +19601,7 @@ def:priv _rule_star_expressions(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -17815,6 +19614,7 @@ def:priv _rule_star_expressions(p: peg_parser) -> expr | None {
                 end_lineno,
                 end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -17827,6 +19627,7 @@ def:priv _rule_star_expressions(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -17839,6 +19640,7 @@ def:priv _rule_star_expressions(p: peg_parser) -> expr | None {
                 end_lineno,
                 end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -17846,19 +19648,21 @@ def:priv _rule_star_expressions(p: peg_parser) -> expr | None {
     star_expression = rule_star_expression(p);
     if star_expression is not None {
         res = star_expression;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_star_named_expression(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_star_named_expression = _rule_star_named_expression(p);
-    p.level -= 1;
-    return res_rule_star_named_expression;
+    p.level += 1;
+    return _rule_star_named_expression(p);
 }
 
 def:priv _rule_star_named_expression(p: peg_parser) -> expr | None {
@@ -17881,6 +19685,7 @@ def:priv _rule_star_named_expression(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -17888,6 +19693,7 @@ def:priv _rule_star_named_expression(p: peg_parser) -> expr | None {
             res = pa_ast_starred(
                 a, start_lineno, start_col_offset, end_lineno, end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -17895,19 +19701,21 @@ def:priv _rule_star_named_expression(p: peg_parser) -> expr | None {
     named_expression = rule_named_expression(p);
     if named_expression is not None {
         res = named_expression;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_star_named_expressions(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_star_named_expressions = _rule_star_named_expressions(p);
-    p.level -= 1;
-    return res_rule_star_named_expressions;
+    p.level += 1;
+    return _rule_star_named_expressions(p);
 }
 
 def:priv _rule_star_named_expressions(p: peg_parser) -> list[expr] | None {
@@ -17917,26 +19725,28 @@ def:priv _rule_star_named_expressions(p: peg_parser) -> list[expr] | None {
     if a is not None {
         lit = peg_expect_token(p, 12);
         res = a;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_star_pattern(p: peg_parser) -> pattern | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_star_pattern = _rule_star_pattern(p);
-    p.level -= 1;
-    return res_rule_star_pattern;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_star_pattern) {
+        p.level -= 1;
+        return p.memo_value as pattern | None;
+    }
+    return _rule_star_pattern(p);
 }
 
 def:priv _rule_star_pattern(p: peg_parser) -> pattern | None {
-    memo = peg_check_memo(p, RULE_star_pattern);
-    if memo is not None {
-        return memo.result as pattern | None;
-    }
     mark = peg_mark(p);
     start_lineno = 1;
     start_col_offset = 0;
@@ -17956,6 +19766,7 @@ def:priv _rule_star_pattern(p: peg_parser) -> pattern | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -17968,6 +19779,7 @@ def:priv _rule_star_pattern(p: peg_parser) -> pattern | None {
                 end_col_offset=end_col_offset
             );
             peg_insert_memo(p, mark, RULE_star_pattern, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -17980,6 +19792,7 @@ def:priv _rule_star_pattern(p: peg_parser) -> pattern | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -17992,28 +19805,30 @@ def:priv _rule_star_pattern(p: peg_parser) -> pattern | None {
                 end_col_offset=end_col_offset
             );
             peg_insert_memo(p, mark, RULE_star_pattern, res);
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_star_pattern, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_star_target(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_star_target = _rule_star_target(p);
-    p.level -= 1;
-    return res_rule_star_target;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_star_target) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_star_target(p);
 }
 
 def:priv _rule_star_target(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_star_target);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     start_lineno = 1;
     start_col_offset = 0;
@@ -18033,6 +19848,7 @@ def:priv _rule_star_target(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -18046,6 +19862,7 @@ def:priv _rule_star_target(p: peg_parser) -> expr | None {
                 ctx=Store()
             );
             peg_insert_memo(p, mark, RULE_star_target, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -18054,20 +19871,22 @@ def:priv _rule_star_target(p: peg_parser) -> expr | None {
     if target_with_star_atom is not None {
         res = target_with_star_atom;
         peg_insert_memo(p, mark, RULE_star_target, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_star_target, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_star_targets(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_star_targets = _rule_star_targets(p);
-    p.level -= 1;
-    return res_rule_star_targets;
+    p.level += 1;
+    return _rule_star_targets(p);
 }
 
 def:priv _rule_star_targets(p: peg_parser) -> expr | None {
@@ -18086,6 +19905,7 @@ def:priv _rule_star_targets(p: peg_parser) -> expr | None {
     if a is not None {
         if (peg_negative_lookahead_token(p, 12)) {
             res = a;
+            p.level -= 1;
             return res;
         }
     }
@@ -18099,6 +19919,7 @@ def:priv _rule_star_targets(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -18111,20 +19932,22 @@ def:priv _rule_star_targets(p: peg_parser) -> expr | None {
                 end_lineno,
                 end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_star_targets_list_seq(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_star_targets_list_seq = _rule_star_targets_list_seq(p);
-    p.level -= 1;
-    return res_rule_star_targets_list_seq;
+    p.level += 1;
+    return _rule_star_targets_list_seq(p);
 }
 
 def:priv _rule_star_targets_list_seq(p: peg_parser) -> list[expr] | None {
@@ -18134,19 +19957,21 @@ def:priv _rule_star_targets_list_seq(p: peg_parser) -> list[expr] | None {
     if a is not None {
         lit = peg_expect_token(p, 12);
         res = a;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_star_targets_tuple_seq(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_star_targets_tuple_seq = _rule_star_targets_tuple_seq(p);
-    p.level -= 1;
-    return res_rule_star_targets_tuple_seq;
+    p.level += 1;
+    return _rule_star_targets_tuple_seq(p);
 }
 
 def:priv _rule_star_targets_tuple_seq(p: peg_parser) -> list[expr] | None {
@@ -18158,6 +19983,7 @@ def:priv _rule_star_targets_tuple_seq(p: peg_parser) -> list[expr] | None {
         if b is not None {
             lit = peg_expect_token(p, 12);
             res = pa_seq_insert_front_expr(a, b);
+            p.level -= 1;
             return res;
         }
     }
@@ -18167,20 +19993,22 @@ def:priv _rule_star_targets_tuple_seq(p: peg_parser) -> list[expr] | None {
         lit = peg_expect_token(p, 12);
         if lit is not None {
             res = pa_singleton_seq_expr(a);
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_starred_expression(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_starred_expression = _rule_starred_expression(p);
-    p.level -= 1;
-    return res_rule_starred_expression;
+    p.level += 1;
+    return _rule_starred_expression(p);
 }
 
 def:priv _rule_starred_expression(p: peg_parser) -> expr | None {
@@ -18198,6 +20026,7 @@ def:priv _rule_starred_expression(p: peg_parser) -> expr | None {
     invalid_starred_expression_unpacking = rule_invalid_starred_expression_unpacking(p);
     if invalid_starred_expression_unpacking is not None {
         res = invalid_starred_expression_unpacking as expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -18209,6 +20038,7 @@ def:priv _rule_starred_expression(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -18216,6 +20046,7 @@ def:priv _rule_starred_expression(p: peg_parser) -> expr | None {
             res = pa_ast_starred(
                 a, start_lineno, start_col_offset, end_lineno, end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -18223,19 +20054,21 @@ def:priv _rule_starred_expression(p: peg_parser) -> expr | None {
     invalid_starred_expression = rule_invalid_starred_expression(p);
     if invalid_starred_expression is not None {
         res = invalid_starred_expression as expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_statement(p: peg_parser) -> list[stmt] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_statement = _rule_statement(p);
-    p.level -= 1;
-    return res_rule_statement;
+    p.level += 1;
+    return _rule_statement(p);
 }
 
 def:priv _rule_statement(p: peg_parser) -> list[stmt] | None {
@@ -18244,25 +20077,28 @@ def:priv _rule_statement(p: peg_parser) -> list[stmt] | None {
     a = rule_compound_stmt(p);
     if a is not None {
         res = pa_singleton_seq_stmt(a);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     a_2 = rule_simple_stmts(p);
     if a_2 is not None {
         res = a_2;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_statement_newline(p: peg_parser) -> list[stmt] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_statement_newline = _rule_statement_newline(p);
-    p.level -= 1;
-    return res_rule_statement_newline;
+    p.level += 1;
+    return _rule_statement_newline(p);
 }
 
 def:priv _rule_statement_newline(p: peg_parser) -> list[stmt] | None {
@@ -18282,6 +20118,7 @@ def:priv _rule_statement_newline(p: peg_parser) -> list[stmt] | None {
         _newline = peg_expect_token(p, NEWLINE);
         if _newline is not None {
             res = a;
+            p.level -= 1;
             return res;
         }
     }
@@ -18289,6 +20126,7 @@ def:priv _rule_statement_newline(p: peg_parser) -> list[stmt] | None {
     simple_stmts = rule_simple_stmts(p);
     if simple_stmts is not None {
         res = simple_stmts;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -18298,6 +20136,7 @@ def:priv _rule_statement_newline(p: peg_parser) -> list[stmt] | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -18307,25 +20146,28 @@ def:priv _rule_statement_newline(p: peg_parser) -> list[stmt] | None {
                 pa_ast_pass(start_lineno, start_col_offset, end_lineno, end_col_offset)
             ) as stmt
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     _endmarker = peg_expect_token(p, ENDMARKER);
     if _endmarker is not None {
         res = pa_interactive_exit(p);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_statements(p: peg_parser) -> list[stmt] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_statements = _rule_statements(p);
-    p.level -= 1;
-    return res_rule_statements;
+    p.level += 1;
+    return _rule_statements(p);
 }
 
 def:priv _rule_statements(p: peg_parser) -> list[stmt] | None {
@@ -18334,19 +20176,21 @@ def:priv _rule_statements(p: peg_parser) -> list[stmt] | None {
     a = rule__loop1_133(p);
     if a is not None {
         res = pa_seq_flatten(a);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_string(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_string = _rule_string(p);
-    p.level -= 1;
-    return res_rule_string;
+    p.level += 1;
+    return _rule_string(p);
 }
 
 def:priv _rule_string(p: peg_parser) -> expr | None {
@@ -18355,26 +20199,28 @@ def:priv _rule_string(p: peg_parser) -> expr | None {
     s = peg_expect_token(p, STRING);
     if s is not None {
         res = pa_constant_from_string(s);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_strings(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_strings = _rule_strings(p);
-    p.level -= 1;
-    return res_rule_strings;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_strings) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_strings(p);
 }
 
 def:priv _rule_strings(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_strings);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     start_lineno = 1;
     start_col_offset = 0;
@@ -18390,6 +20236,7 @@ def:priv _rule_strings(p: peg_parser) -> expr | None {
     if invalid_string_tstring_concat is not None {
         res = invalid_string_tstring_concat as expr;
         peg_insert_memo(p, mark, RULE_strings, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -18399,12 +20246,14 @@ def:priv _rule_strings(p: peg_parser) -> expr | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
         end_col_offset = end_tok.end_col_offset;
         res = pa_concatenate_strings(a);
         peg_insert_memo(p, mark, RULE_strings, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -18414,26 +20263,29 @@ def:priv _rule_strings(p: peg_parser) -> expr | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
         end_col_offset = end_tok.end_col_offset;
         res = pa_concatenate_tstrings(a);
         peg_insert_memo(p, mark, RULE_strings, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_strings, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_subject_expr(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_subject_expr = _rule_subject_expr(p);
-    p.level -= 1;
-    return res_rule_subject_expr;
+    p.level += 1;
+    return _rule_subject_expr(p);
 }
 
 def:priv _rule_subject_expr(p: peg_parser) -> expr | None {
@@ -18457,6 +20309,7 @@ def:priv _rule_subject_expr(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -18469,6 +20322,7 @@ def:priv _rule_subject_expr(p: peg_parser) -> expr | None {
                 end_lineno,
                 end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
@@ -18476,26 +20330,28 @@ def:priv _rule_subject_expr(p: peg_parser) -> expr | None {
     named_expression = rule_named_expression(p);
     if named_expression is not None {
         res = named_expression;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_sum(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_sum = _rule_sum(p);
-    p.level -= 1;
-    return res_rule_sum;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_sum) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_sum(p);
 }
 
 def:priv _rule_sum(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_sum);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     res: expr | None = None;
     resmark = mark;
@@ -18504,6 +20360,7 @@ def:priv _rule_sum(p: peg_parser) -> expr | None {
         peg_reset(p, mark);
         raw = rule_sum_raw(p);
         if peg_has_error(p) {
+            p.level -= 1;
             return None;
         }
         if raw is None or peg_mark(p) <= resmark {
@@ -18512,16 +20369,18 @@ def:priv _rule_sum(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr | None;
+    res_level_10 = peg_left_rec_finish(p, resmark, res) as expr | None;
+    p.level -= 1;
+    return res_level_10;
 }
 
 def rule_sum_raw(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_sum_raw = _rule_sum_raw(p);
-    p.level -= 1;
-    return res_rule_sum_raw;
+    p.level += 1;
+    return _rule_sum_raw(p);
 }
 
 def:priv _rule_sum_raw(p: peg_parser) -> expr | None {
@@ -18546,6 +20405,7 @@ def:priv _rule_sum_raw(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -18559,6 +20419,7 @@ def:priv _rule_sum_raw(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -18574,6 +20435,7 @@ def:priv _rule_sum_raw(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -18587,6 +20449,7 @@ def:priv _rule_sum_raw(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -18595,19 +20458,21 @@ def:priv _rule_sum_raw(p: peg_parser) -> expr | None {
     term = rule_term(p);
     if term is not None {
         res = term;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_t_lookahead(p: peg_parser) -> object | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_t_lookahead = _rule_t_lookahead(p);
-    p.level -= 1;
-    return res_rule_t_lookahead;
+    p.level += 1;
+    return _rule_t_lookahead(p);
 }
 
 def:priv _rule_t_lookahead(p: peg_parser) -> object | None {
@@ -18617,6 +20482,7 @@ def:priv _rule_t_lookahead(p: peg_parser) -> object | None {
     if lit is not None {
         res = lit as object;
         peg_reset(p, mark);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -18624,6 +20490,7 @@ def:priv _rule_t_lookahead(p: peg_parser) -> object | None {
     if lit is not None {
         res = lit as object;
         peg_reset(p, mark);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -18631,26 +20498,168 @@ def:priv _rule_t_lookahead(p: peg_parser) -> object | None {
     if lit is not None {
         res = lit as object;
         peg_reset(p, mark);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_t_primary(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_t_primary = _rule_t_primary(p);
+    p.level += 1;
+    if peg_memo_hit(p, RULE_t_primary) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    if not p.call_invalid_rules {
+        return _t_primary_loop(p);
+    }
+    return _rule_t_primary(p);
+}
+
+def:priv _t_primary_loop(p: peg_parser) -> expr | None {
+    mark = p.mark;
+    start_lineno = 1;
+    start_col_offset = 0;
+    if peg_fill_token(p) {
+        t0 = p.tokens[p.mark];
+        start_lineno = t0.lineno;
+        start_col_offset = t0.col_offset;
+    }
+    p.level += 1;
+    res: expr | None = None;
+    atom = rule_atom(p);
+    if atom is not None {
+        if rule_t_lookahead(p) is not None {
+            res = _t_primary_suffixes(p, atom, start_lineno, start_col_offset);
+        }
+    }
     p.level -= 1;
-    return res_rule_t_primary;
+    if p.error_indicator {
+        p.level -= 1;
+        return None;
+    }
+    if res is None {
+        p.mark = mark;
+    }
+    peg_insert_memo(p, mark, RULE_t_primary, res);
+    p.level -= 1;
+    return res;
+}
+
+def:priv _t_primary_suffixes(
+    p: peg_parser, first: expr, start_lineno: int, start_col_offset: int
+) -> expr {
+    cur: expr = first;
+    while True {
+        op_mark = p.mark;
+        if not peg_fill_token(p) {
+            break;
+        }
+        tok_type = p.tokens[op_mark].tok_type;
+        if tok_type == 23 {
+            p.mark = op_mark + 1;
+            b = pa_name_from_token(peg_expect_token(p, NAME));
+            if b is not None {
+                if rule_t_lookahead(p) is not None {
+                    end_tok = peg_get_last_nonnwhitespace_token(p);
+                    if end_tok is not None {
+                        cur = pa_ast_attribute(
+                            cur,
+                            pa_name_id(b),
+                            Load(),
+                            start_lineno,
+                            start_col_offset,
+                            end_tok.end_lineno,
+                            end_tok.end_col_offset
+                        );
+                        continue;
+                    }
+                    p.error_indicator = True;
+                    break;
+                }
+            }
+        } elif tok_type == 9 {
+            p.mark = op_mark + 1;
+            b_2 = rule_slices(p);
+            if b_2 is not None {
+                if peg_expect_token(p, 10) is not None {
+                    if rule_t_lookahead(p) is not None {
+                        end_tok = peg_get_last_nonnwhitespace_token(p);
+                        if end_tok is not None {
+                            cur = pa_ast_subscript(
+                                cur,
+                                b_2,
+                                Load(),
+                                start_lineno,
+                                start_col_offset,
+                                end_tok.end_lineno,
+                                end_tok.end_col_offset
+                            );
+                            continue;
+                        }
+                        p.error_indicator = True;
+                        break;
+                    }
+                }
+            }
+        } elif tok_type == 7 {
+            b_3 = rule_genexp(p);
+            if b_3 is not None {
+                if rule_t_lookahead(p) is not None {
+                    end_tok = peg_get_last_nonnwhitespace_token(p);
+                    if end_tok is not None {
+                        cur = pa_ast_call(
+                            cur,
+                            pa_check(pa_singleton_seq_expr(b_3)) as list[expr],
+                            None,
+                            start_lineno,
+                            start_col_offset,
+                            end_tok.end_lineno,
+                            end_tok.end_col_offset
+                        );
+                        continue;
+                    }
+                    p.error_indicator = True;
+                    break;
+                }
+            }
+            p.mark = op_mark;
+            if peg_expect_token(p, 7) is not None {
+                b_4 = rule_arguments(p);
+                if peg_expect_token(p, 8) is not None {
+                    if rule_t_lookahead(p) is not None {
+                        end_tok = peg_get_last_nonnwhitespace_token(p);
+                        if end_tok is not None {
+                            cur = pa_ast_call(
+                                cur,
+                                (pa_call_args(b_4) if b_4 is not None else []),
+                                (pa_call_keywords(b_4) if b_4 is not None else []),
+                                start_lineno,
+                                start_col_offset,
+                                end_tok.end_lineno,
+                                end_tok.end_col_offset
+                            );
+                            continue;
+                        }
+                        p.error_indicator = True;
+                        break;
+                    }
+                }
+            }
+        }
+        p.mark = op_mark;
+        break;
+    }
+    return cur;
 }
 
 def:priv _rule_t_primary(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_t_primary);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     res: expr | None = None;
     resmark = mark;
@@ -18659,6 +20668,7 @@ def:priv _rule_t_primary(p: peg_parser) -> expr | None {
         peg_reset(p, mark);
         raw = rule_t_primary_raw(p);
         if peg_has_error(p) {
+            p.level -= 1;
             return None;
         }
         if raw is None or peg_mark(p) <= resmark {
@@ -18667,16 +20677,18 @@ def:priv _rule_t_primary(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr | None;
+    res_level_11 = peg_left_rec_finish(p, resmark, res) as expr | None;
+    p.level -= 1;
+    return res_level_11;
 }
 
 def rule_t_primary_raw(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_t_primary_raw = _rule_t_primary_raw(p);
-    p.level -= 1;
-    return res_rule_t_primary_raw;
+    p.level += 1;
+    return _rule_t_primary_raw(p);
 }
 
 def:priv _rule_t_primary_raw(p: peg_parser) -> expr | None {
@@ -18702,6 +20714,7 @@ def:priv _rule_t_primary_raw(p: peg_parser) -> expr | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -18715,6 +20728,7 @@ def:priv _rule_t_primary_raw(p: peg_parser) -> expr | None {
                         end_lineno,
                         end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -18734,6 +20748,7 @@ def:priv _rule_t_primary_raw(p: peg_parser) -> expr | None {
                         if end_tok is None {
                             p.error_indicator = True;
                             peg_reset(p, mark);
+                            p.level -= 1;
                             return None;
                         }
                         end_lineno = end_tok.end_lineno;
@@ -18747,6 +20762,7 @@ def:priv _rule_t_primary_raw(p: peg_parser) -> expr | None {
                             end_lineno,
                             end_col_offset
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -18763,6 +20779,7 @@ def:priv _rule_t_primary_raw(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -18776,6 +20793,7 @@ def:priv _rule_t_primary_raw(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -18793,6 +20811,7 @@ def:priv _rule_t_primary_raw(p: peg_parser) -> expr | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -18806,6 +20825,7 @@ def:priv _rule_t_primary_raw(p: peg_parser) -> expr | None {
                         end_lineno,
                         end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -18816,27 +20836,29 @@ def:priv _rule_t_primary_raw(p: peg_parser) -> expr | None {
     if a is not None {
         if ((rule_t_lookahead(p) is not None)) {
             res = a;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_target_with_star_atom(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_target_with_star_atom = _rule_target_with_star_atom(p);
-    p.level -= 1;
-    return res_rule_target_with_star_atom;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_target_with_star_atom) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_target_with_star_atom(p);
 }
 
 def:priv _rule_target_with_star_atom(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_target_with_star_atom);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     start_lineno = 1;
     start_col_offset = 0;
@@ -18859,6 +20881,7 @@ def:priv _rule_target_with_star_atom(p: peg_parser) -> expr | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -18873,6 +20896,7 @@ def:priv _rule_target_with_star_atom(p: peg_parser) -> expr | None {
                         end_col_offset
                     );
                     peg_insert_memo(p, mark, RULE_target_with_star_atom, res);
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -18892,6 +20916,7 @@ def:priv _rule_target_with_star_atom(p: peg_parser) -> expr | None {
                         if end_tok is None {
                             p.error_indicator = True;
                             peg_reset(p, mark);
+                            p.level -= 1;
                             return None;
                         }
                         end_lineno = end_tok.end_lineno;
@@ -18906,6 +20931,7 @@ def:priv _rule_target_with_star_atom(p: peg_parser) -> expr | None {
                             end_col_offset
                         );
                         peg_insert_memo(p, mark, RULE_target_with_star_atom, res);
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -18917,27 +20943,29 @@ def:priv _rule_target_with_star_atom(p: peg_parser) -> expr | None {
     if star_atom is not None {
         res = star_atom;
         peg_insert_memo(p, mark, RULE_target_with_star_atom, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_target_with_star_atom, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_term(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_term = _rule_term(p);
-    p.level -= 1;
-    return res_rule_term;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_term) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_term(p);
 }
 
 def:priv _rule_term(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_term);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     res: expr | None = None;
     resmark = mark;
@@ -18946,6 +20974,7 @@ def:priv _rule_term(p: peg_parser) -> expr | None {
         peg_reset(p, mark);
         raw = rule_term_raw(p);
         if peg_has_error(p) {
+            p.level -= 1;
             return None;
         }
         if raw is None or peg_mark(p) <= resmark {
@@ -18954,16 +20983,18 @@ def:priv _rule_term(p: peg_parser) -> expr | None {
         resmark = peg_mark(p);
         res = raw;
     }
-    return peg_left_rec_finish(p, resmark, res) as expr | None;
+    res_level_12 = peg_left_rec_finish(p, resmark, res) as expr | None;
+    p.level -= 1;
+    return res_level_12;
 }
 
 def rule_term_raw(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_term_raw = _rule_term_raw(p);
-    p.level -= 1;
-    return res_rule_term_raw;
+    p.level += 1;
+    return _rule_term_raw(p);
 }
 
 def:priv _rule_term_raw(p: peg_parser) -> expr | None {
@@ -18988,6 +21019,7 @@ def:priv _rule_term_raw(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -19001,6 +21033,7 @@ def:priv _rule_term_raw(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -19016,6 +21049,7 @@ def:priv _rule_term_raw(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -19029,6 +21063,7 @@ def:priv _rule_term_raw(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -19044,6 +21079,7 @@ def:priv _rule_term_raw(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -19057,6 +21093,7 @@ def:priv _rule_term_raw(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -19072,6 +21109,7 @@ def:priv _rule_term_raw(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -19085,6 +21123,7 @@ def:priv _rule_term_raw(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -19100,6 +21139,7 @@ def:priv _rule_term_raw(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -19113,6 +21153,7 @@ def:priv _rule_term_raw(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -19121,25 +21162,28 @@ def:priv _rule_term_raw(p: peg_parser) -> expr | None {
     invalid_factor = rule_invalid_factor(p);
     if invalid_factor is not None {
         res = invalid_factor as expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     factor = rule_factor(p);
     if factor is not None {
         res = factor;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_try_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_try_stmt = _rule_try_stmt(p);
-    p.level -= 1;
-    return res_rule_try_stmt;
+    p.level += 1;
+    return _rule_try_stmt(p);
 }
 
 def:priv _rule_try_stmt(p: peg_parser) -> stmt | None {
@@ -19157,6 +21201,7 @@ def:priv _rule_try_stmt(p: peg_parser) -> stmt | None {
     invalid_try_stmt = rule_invalid_try_stmt(p);
     if invalid_try_stmt is not None {
         res = invalid_try_stmt as stmt;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -19172,6 +21217,7 @@ def:priv _rule_try_stmt(p: peg_parser) -> stmt | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -19186,6 +21232,7 @@ def:priv _rule_try_stmt(p: peg_parser) -> stmt | None {
                         end_lineno=end_lineno,
                         end_col_offset=end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -19206,6 +21253,7 @@ def:priv _rule_try_stmt(p: peg_parser) -> stmt | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -19220,6 +21268,7 @@ def:priv _rule_try_stmt(p: peg_parser) -> stmt | None {
                         end_lineno=end_lineno,
                         end_col_offset=end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -19240,6 +21289,7 @@ def:priv _rule_try_stmt(p: peg_parser) -> stmt | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -19254,29 +21304,31 @@ def:priv _rule_try_stmt(p: peg_parser) -> stmt | None {
                         end_lineno=end_lineno,
                         end_col_offset=end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_tstring(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_tstring = _rule_tstring(p);
-    p.level -= 1;
-    return res_rule_tstring;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_tstring) {
+        p.level -= 1;
+        return p.memo_value as expr | None;
+    }
+    return _rule_tstring(p);
 }
 
 def:priv _rule_tstring(p: peg_parser) -> expr | None {
-    memo = peg_check_memo(p, RULE_tstring);
-    if memo is not None {
-        return memo.result as expr | None;
-    }
     mark = peg_mark(p);
     start_lineno = 1;
     start_col_offset = 0;
@@ -19298,22 +21350,24 @@ def:priv _rule_tstring(p: peg_parser) -> expr | None {
                     a, b, c, start_lineno, start_col_offset, end_lineno, end_col_offset
                 );
                 peg_insert_memo(p, mark, RULE_tstring, res);
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_tstring, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_tstring_format_spec(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_tstring_format_spec = _rule_tstring_format_spec(p);
-    p.level -= 1;
-    return res_rule_tstring_format_spec;
+    p.level += 1;
+    return _rule_tstring_format_spec(p);
 }
 
 def:priv _rule_tstring_format_spec(p: peg_parser) -> expr | None {
@@ -19322,6 +21376,7 @@ def:priv _rule_tstring_format_spec(p: peg_parser) -> expr | None {
     t = peg_expect_token(p, TSTRING_MIDDLE);
     if t is not None {
         res = pa_decoded_constant_from_token(t);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -19330,21 +21385,21 @@ def:priv _rule_tstring_format_spec(p: peg_parser) -> expr | None {
     );
     if tstring_format_spec_replacement_field is not None {
         res = tstring_format_spec_replacement_field;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_tstring_format_spec_replacement_field(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_tstring_format_spec_replacement_field = _rule_tstring_format_spec_replacement_field(
-        p
-    );
-    p.level -= 1;
-    return res_rule_tstring_format_spec_replacement_field;
+    p.level += 1;
+    return _rule_tstring_format_spec_replacement_field(p);
 }
 
 def:priv _rule_tstring_format_spec_replacement_field(p: peg_parser) -> expr | None {
@@ -19372,6 +21427,7 @@ def:priv _rule_tstring_format_spec_replacement_field(p: peg_parser) -> expr | No
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -19388,6 +21444,7 @@ def:priv _rule_tstring_format_spec_replacement_field(p: peg_parser) -> expr | No
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -19396,19 +21453,21 @@ def:priv _rule_tstring_format_spec_replacement_field(p: peg_parser) -> expr | No
     invalid_tstring_replacement_field = rule_invalid_tstring_replacement_field(p);
     if invalid_tstring_replacement_field is not None {
         res = invalid_tstring_replacement_field as expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_tstring_full_format_spec(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_tstring_full_format_spec = _rule_tstring_full_format_spec(p);
-    p.level -= 1;
-    return res_rule_tstring_full_format_spec;
+    p.level += 1;
+    return _rule_tstring_full_format_spec(p);
 }
 
 def:priv _rule_tstring_full_format_spec(p: peg_parser) -> expr | None {
@@ -19431,6 +21490,7 @@ def:priv _rule_tstring_full_format_spec(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -19438,20 +21498,22 @@ def:priv _rule_tstring_full_format_spec(p: peg_parser) -> expr | None {
             res = pa_setup_full_format_spec(
                 colon, spec, start_lineno, start_col_offset, end_lineno, end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_tstring_middle(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_tstring_middle = _rule_tstring_middle(p);
-    p.level -= 1;
-    return res_rule_tstring_middle;
+    p.level += 1;
+    return _rule_tstring_middle(p);
 }
 
 def:priv _rule_tstring_middle(p: peg_parser) -> expr | None {
@@ -19460,25 +21522,28 @@ def:priv _rule_tstring_middle(p: peg_parser) -> expr | None {
     tstring_replacement_field = rule_tstring_replacement_field(p);
     if tstring_replacement_field is not None {
         res = tstring_replacement_field;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     t = peg_expect_token(p, TSTRING_MIDDLE);
     if t is not None {
         res = pa_constant_from_token(t);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_tstring_replacement_field(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_tstring_replacement_field = _rule_tstring_replacement_field(p);
-    p.level -= 1;
-    return res_rule_tstring_replacement_field;
+    p.level += 1;
+    return _rule_tstring_replacement_field(p);
 }
 
 def:priv _rule_tstring_replacement_field(p: peg_parser) -> expr | None {
@@ -19506,6 +21571,7 @@ def:priv _rule_tstring_replacement_field(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -19522,6 +21588,7 @@ def:priv _rule_tstring_replacement_field(p: peg_parser) -> expr | None {
                     end_lineno,
                     end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -19530,19 +21597,21 @@ def:priv _rule_tstring_replacement_field(p: peg_parser) -> expr | None {
     invalid_tstring_replacement_field = rule_invalid_tstring_replacement_field(p);
     if invalid_tstring_replacement_field is not None {
         res = invalid_tstring_replacement_field as expr;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_tuple(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_tuple = _rule_tuple(p);
-    p.level -= 1;
-    return res_rule_tuple;
+    p.level += 1;
+    return _rule_tuple(p);
 }
 
 def:priv _rule_tuple(p: peg_parser) -> expr | None {
@@ -19566,6 +21635,7 @@ def:priv _rule_tuple(p: peg_parser) -> expr | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -19573,20 +21643,22 @@ def:priv _rule_tuple(p: peg_parser) -> expr | None {
             res = pa_ast_tuple(
                 a, Load(), start_lineno, start_col_offset, end_lineno, end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_type_alias(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_type_alias = _rule_type_alias(p);
-    p.level -= 1;
-    return res_rule_type_alias;
+    p.level += 1;
+    return _rule_type_alias(p);
 }
 
 def:priv _rule_type_alias(p: peg_parser) -> stmt | None {
@@ -19614,6 +21686,7 @@ def:priv _rule_type_alias(p: peg_parser) -> stmt | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -19627,22 +21700,24 @@ def:priv _rule_type_alias(p: peg_parser) -> stmt | None {
                         end_lineno=end_lineno,
                         end_col_offset=end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_type_expressions(p: peg_parser) -> list[expr] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_type_expressions = _rule_type_expressions(p);
-    p.level -= 1;
-    return res_rule_type_expressions;
+    p.level += 1;
+    return _rule_type_expressions(p);
 }
 
 def:priv _rule_type_expressions(p: peg_parser) -> list[expr] | None {
@@ -19668,6 +21743,7 @@ def:priv _rule_type_expressions(p: peg_parser) -> list[expr] | None {
                                     ],
                                     c
                                 );
+                                p.level -= 1;
                                 return res;
                             }
                         }
@@ -19686,6 +21762,7 @@ def:priv _rule_type_expressions(p: peg_parser) -> list[expr] | None {
                 b = rule_expression(p);
                 if b is not None {
                     res = pa_seq_append_to_end_expr(a, b);
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -19701,6 +21778,7 @@ def:priv _rule_type_expressions(p: peg_parser) -> list[expr] | None {
                 b = rule_expression(p);
                 if b is not None {
                     res = pa_seq_append_to_end_expr(a, b);
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -19720,6 +21798,7 @@ def:priv _rule_type_expressions(p: peg_parser) -> list[expr] | None {
                         res = pa_seq_append_to_end_expr(
                             pa_check(pa_singleton_seq_expr(a_4)) as list[expr], b
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -19732,6 +21811,7 @@ def:priv _rule_type_expressions(p: peg_parser) -> list[expr] | None {
         a_5 = rule_expression(p);
         if a_5 is not None {
             res = pa_singleton_seq_expr(a_5);
+            p.level -= 1;
             return res;
         }
     }
@@ -19741,6 +21821,7 @@ def:priv _rule_type_expressions(p: peg_parser) -> list[expr] | None {
         a_6 = rule_expression(p);
         if a_6 is not None {
             res = pa_singleton_seq_expr(a_6);
+            p.level -= 1;
             return res;
         }
     }
@@ -19748,26 +21829,28 @@ def:priv _rule_type_expressions(p: peg_parser) -> list[expr] | None {
     a = rule__gather_138(p);
     if a is not None {
         res = a;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_type_param(p: peg_parser) -> type_param | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_type_param = _rule_type_param(p);
-    p.level -= 1;
-    return res_rule_type_param;
+    p.level += 1;
+    if peg_memo_hit(p, RULE_type_param) {
+        p.level -= 1;
+        return p.memo_value as type_param | None;
+    }
+    return _rule_type_param(p);
 }
 
 def:priv _rule_type_param(p: peg_parser) -> type_param | None {
-    memo = peg_check_memo(p, RULE_type_param);
-    if memo is not None {
-        return memo.result as type_param | None;
-    }
     mark = peg_mark(p);
     start_lineno = 1;
     start_col_offset = 0;
@@ -19787,6 +21870,7 @@ def:priv _rule_type_param(p: peg_parser) -> type_param | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -19801,6 +21885,7 @@ def:priv _rule_type_param(p: peg_parser) -> type_param | None {
             end_col_offset=end_col_offset
         );
         peg_insert_memo(p, mark, RULE_type_param, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -19808,6 +21893,7 @@ def:priv _rule_type_param(p: peg_parser) -> type_param | None {
     if invalid_type_param is not None {
         res = invalid_type_param as type_param;
         peg_insert_memo(p, mark, RULE_type_param, res);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -19820,6 +21906,7 @@ def:priv _rule_type_param(p: peg_parser) -> type_param | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -19833,6 +21920,7 @@ def:priv _rule_type_param(p: peg_parser) -> type_param | None {
                 end_col_offset=end_col_offset
             );
             peg_insert_memo(p, mark, RULE_type_param, res);
+            p.level -= 1;
             return res;
         }
     }
@@ -19846,6 +21934,7 @@ def:priv _rule_type_param(p: peg_parser) -> type_param | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -19859,21 +21948,23 @@ def:priv _rule_type_param(p: peg_parser) -> type_param | None {
                 end_col_offset=end_col_offset
             );
             peg_insert_memo(p, mark, RULE_type_param, res);
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
     peg_insert_memo(p, mark, RULE_type_param, None);
+    p.level -= 1;
     return None;
 }
 
 def rule_type_param_bound(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_type_param_bound = _rule_type_param_bound(p);
-    p.level -= 1;
-    return res_rule_type_param_bound;
+    p.level += 1;
+    return _rule_type_param_bound(p);
 }
 
 def:priv _rule_type_param_bound(p: peg_parser) -> expr | None {
@@ -19884,20 +21975,22 @@ def:priv _rule_type_param_bound(p: peg_parser) -> expr | None {
         e = rule_expression(p);
         if e is not None {
             res = e;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_type_param_default(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_type_param_default = _rule_type_param_default(p);
-    p.level -= 1;
-    return res_rule_type_param_default;
+    p.level += 1;
+    return _rule_type_param_default(p);
 }
 
 def:priv _rule_type_param_default(p: peg_parser) -> expr | None {
@@ -19908,20 +22001,22 @@ def:priv _rule_type_param_default(p: peg_parser) -> expr | None {
         e = rule_expression(p);
         if e is not None {
             res = e;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_type_param_seq(p: peg_parser) -> list[type_param] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_type_param_seq = _rule_type_param_seq(p);
-    p.level -= 1;
-    return res_rule_type_param_seq;
+    p.level += 1;
+    return _rule_type_param_seq(p);
 }
 
 def:priv _rule_type_param_seq(p: peg_parser) -> list[type_param] | None {
@@ -19931,19 +22026,21 @@ def:priv _rule_type_param_seq(p: peg_parser) -> list[type_param] | None {
     if a is not None {
         lit = peg_expect_token(p, 12);
         res = a;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_type_param_starred_default(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_type_param_starred_default = _rule_type_param_starred_default(p);
-    p.level -= 1;
-    return res_rule_type_param_starred_default;
+    p.level += 1;
+    return _rule_type_param_starred_default(p);
 }
 
 def:priv _rule_type_param_starred_default(p: peg_parser) -> expr | None {
@@ -19954,20 +22051,22 @@ def:priv _rule_type_param_starred_default(p: peg_parser) -> expr | None {
         e = rule_star_expression(p);
         if e is not None {
             res = e;
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_type_params(p: peg_parser) -> list[type_param] | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_type_params = _rule_type_params(p);
-    p.level -= 1;
-    return res_rule_type_params;
+    p.level += 1;
+    return _rule_type_params(p);
 }
 
 def:priv _rule_type_params(p: peg_parser) -> list[type_param] | None {
@@ -19976,6 +22075,7 @@ def:priv _rule_type_params(p: peg_parser) -> list[type_param] | None {
     invalid_type_params = rule_invalid_type_params(p);
     if invalid_type_params is not None {
         res = invalid_type_params as list[type_param];
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -19986,21 +22086,23 @@ def:priv _rule_type_params(p: peg_parser) -> list[type_param] | None {
             lit_1 = peg_expect_token(p, 10);
             if lit_1 is not None {
                 res = t;
+                p.level -= 1;
                 return res;
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_value_pattern(p: peg_parser) -> pattern | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_value_pattern = _rule_value_pattern(p);
-    p.level -= 1;
-    return res_rule_value_pattern;
+    p.level += 1;
+    return _rule_value_pattern(p);
 }
 
 def:priv _rule_value_pattern(p: peg_parser) -> pattern | None {
@@ -20028,6 +22130,7 @@ def:priv _rule_value_pattern(p: peg_parser) -> pattern | None {
             if end_tok is None {
                 p.error_indicator = True;
                 peg_reset(p, mark);
+                p.level -= 1;
                 return None;
             }
             end_lineno = end_tok.end_lineno;
@@ -20039,20 +22142,22 @@ def:priv _rule_value_pattern(p: peg_parser) -> pattern | None {
                 end_lineno=end_lineno,
                 end_col_offset=end_col_offset
             );
+            p.level -= 1;
             return res;
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_while_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_while_stmt = _rule_while_stmt(p);
-    p.level -= 1;
-    return res_rule_while_stmt;
+    p.level += 1;
+    return _rule_while_stmt(p);
 }
 
 def:priv _rule_while_stmt(p: peg_parser) -> stmt | None {
@@ -20070,6 +22175,7 @@ def:priv _rule_while_stmt(p: peg_parser) -> stmt | None {
     invalid_while_stmt = rule_invalid_while_stmt(p);
     if invalid_while_stmt is not None {
         res = invalid_while_stmt as stmt;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -20086,6 +22192,7 @@ def:priv _rule_while_stmt(p: peg_parser) -> stmt | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -20099,22 +22206,24 @@ def:priv _rule_while_stmt(p: peg_parser) -> stmt | None {
                         end_lineno=end_lineno,
                         end_col_offset=end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
         }
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_wildcard_pattern(p: peg_parser) -> pattern | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_wildcard_pattern = _rule_wildcard_pattern(p);
-    p.level -= 1;
-    return res_rule_wildcard_pattern;
+    p.level += 1;
+    return _rule_wildcard_pattern(p);
 }
 
 def:priv _rule_wildcard_pattern(p: peg_parser) -> pattern | None {
@@ -20135,6 +22244,7 @@ def:priv _rule_wildcard_pattern(p: peg_parser) -> pattern | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -20147,19 +22257,21 @@ def:priv _rule_wildcard_pattern(p: peg_parser) -> pattern | None {
             end_lineno=end_lineno,
             end_col_offset=end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_with_item(p: peg_parser) -> withitem | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_with_item = _rule_with_item(p);
-    p.level -= 1;
-    return res_rule_with_item;
+    p.level += 1;
+    return _rule_with_item(p);
 }
 
 def:priv _rule_with_item(p: peg_parser) -> withitem | None {
@@ -20179,6 +22291,7 @@ def:priv _rule_with_item(p: peg_parser) -> withitem | None {
                     )
                 ) {
                     res = withitem(context_expr=e, optional_vars=t);
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -20188,25 +22301,28 @@ def:priv _rule_with_item(p: peg_parser) -> withitem | None {
     invalid_with_item = rule_invalid_with_item(p);
     if invalid_with_item is not None {
         res = invalid_with_item as withitem;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
     e = rule_expression(p);
     if e is not None {
         res = withitem(context_expr=e, optional_vars=None);
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_with_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_with_stmt = _rule_with_stmt(p);
-    p.level -= 1;
-    return res_rule_with_stmt;
+    p.level += 1;
+    return _rule_with_stmt(p);
 }
 
 def:priv _rule_with_stmt(p: peg_parser) -> stmt | None {
@@ -20224,6 +22340,7 @@ def:priv _rule_with_stmt(p: peg_parser) -> stmt | None {
     invalid_with_stmt_indent = rule_invalid_with_stmt_indent(p);
     if invalid_with_stmt_indent is not None {
         res = invalid_with_stmt_indent as stmt;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
@@ -20245,6 +22362,7 @@ def:priv _rule_with_stmt(p: peg_parser) -> stmt | None {
                             if end_tok is None {
                                 p.error_indicator = True;
                                 peg_reset(p, mark);
+                                p.level -= 1;
                                 return None;
                             }
                             end_lineno = end_tok.end_lineno;
@@ -20258,6 +22376,7 @@ def:priv _rule_with_stmt(p: peg_parser) -> stmt | None {
                                 end_lineno=end_lineno,
                                 end_col_offset=end_col_offset
                             );
+                            p.level -= 1;
                             return res;
                         }
                     }
@@ -20279,6 +22398,7 @@ def:priv _rule_with_stmt(p: peg_parser) -> stmt | None {
                     if end_tok is None {
                         p.error_indicator = True;
                         peg_reset(p, mark);
+                        p.level -= 1;
                         return None;
                     }
                     end_lineno = end_tok.end_lineno;
@@ -20292,6 +22412,7 @@ def:priv _rule_with_stmt(p: peg_parser) -> stmt | None {
                         end_lineno=end_lineno,
                         end_col_offset=end_col_offset
                     );
+                    p.level -= 1;
                     return res;
                 }
             }
@@ -20317,6 +22438,7 @@ def:priv _rule_with_stmt(p: peg_parser) -> stmt | None {
                                 if end_tok is None {
                                     p.error_indicator = True;
                                     peg_reset(p, mark);
+                                    p.level -= 1;
                                     return None;
                                 }
                                 end_lineno = end_tok.end_lineno;
@@ -20330,6 +22452,7 @@ def:priv _rule_with_stmt(p: peg_parser) -> stmt | None {
                                     end_lineno=end_lineno,
                                     end_col_offset=end_col_offset
                                 );
+                                p.level -= 1;
                                 return res;
                             }
                         }
@@ -20354,6 +22477,7 @@ def:priv _rule_with_stmt(p: peg_parser) -> stmt | None {
                         if end_tok is None {
                             p.error_indicator = True;
                             peg_reset(p, mark);
+                            p.level -= 1;
                             return None;
                         }
                         end_lineno = end_tok.end_lineno;
@@ -20367,6 +22491,7 @@ def:priv _rule_with_stmt(p: peg_parser) -> stmt | None {
                             end_lineno=end_lineno,
                             end_col_offset=end_col_offset
                         );
+                        p.level -= 1;
                         return res;
                     }
                 }
@@ -20377,19 +22502,21 @@ def:priv _rule_with_stmt(p: peg_parser) -> stmt | None {
     invalid_with_stmt = rule_invalid_with_stmt(p);
     if invalid_with_stmt is not None {
         res = invalid_with_stmt as stmt;
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_yield_expr(p: peg_parser) -> expr | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_yield_expr = _rule_yield_expr(p);
-    p.level -= 1;
-    return res_rule_yield_expr;
+    p.level += 1;
+    return _rule_yield_expr(p);
 }
 
 def:priv _rule_yield_expr(p: peg_parser) -> expr | None {
@@ -20414,6 +22541,7 @@ def:priv _rule_yield_expr(p: peg_parser) -> expr | None {
                 if end_tok is None {
                     p.error_indicator = True;
                     peg_reset(p, mark);
+                    p.level -= 1;
                     return None;
                 }
                 end_lineno = end_tok.end_lineno;
@@ -20425,6 +22553,7 @@ def:priv _rule_yield_expr(p: peg_parser) -> expr | None {
                     end_lineno=end_lineno,
                     end_col_offset=end_col_offset
                 );
+                p.level -= 1;
                 return res;
             }
         }
@@ -20437,6 +22566,7 @@ def:priv _rule_yield_expr(p: peg_parser) -> expr | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -20448,19 +22578,21 @@ def:priv _rule_yield_expr(p: peg_parser) -> expr | None {
             end_lineno=end_lineno,
             end_col_offset=end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 
 def rule_yield_stmt(p: peg_parser) -> stmt | None {
-    if peg_enter_rule(p) {
+    if p.level >= MAXSTACK or p.error_indicator {
+        peg_rule_abort(p);
         return None;
     }
-    res_rule_yield_stmt = _rule_yield_stmt(p);
-    p.level -= 1;
-    return res_rule_yield_stmt;
+    p.level += 1;
+    return _rule_yield_stmt(p);
 }
 
 def:priv _rule_yield_stmt(p: peg_parser) -> stmt | None {
@@ -20481,6 +22613,7 @@ def:priv _rule_yield_stmt(p: peg_parser) -> stmt | None {
         if end_tok is None {
             p.error_indicator = True;
             peg_reset(p, mark);
+            p.level -= 1;
             return None;
         }
         end_lineno = end_tok.end_lineno;
@@ -20488,9 +22621,11 @@ def:priv _rule_yield_stmt(p: peg_parser) -> stmt | None {
         res = pa_ast_expr_stmt(
             y, start_lineno, start_col_offset, end_lineno, end_col_offset
         );
+        p.level -= 1;
         return res;
     }
     peg_reset(p, mark);
+    p.level -= 1;
     return None;
 }
 

@@ -626,8 +626,6 @@ impl edge_subtypes(cls: type) -> tuple[type, ...] {
 }
 
 impl _as_refs(held: any) -> any {
-    """An incoming light entry with one source holds the weak reference
-    itself rather than a one-element list: a tree node's parent.""";
     return [held] if isinstance(held, weakref.ref) else held;
 }
 
