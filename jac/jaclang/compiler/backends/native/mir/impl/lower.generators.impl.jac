@@ -394,7 +394,7 @@ impl MirLowering.iter_step(
         b.position(body);
         at = b.load(cursor.position, mir_int());
         kind = self.elem_kind(cursor.elem, self.module);
-        if kind in (KIND_STR, KIND_REF) {
+        if kind in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
             handle = self.runtime_value(
                 "__jac_rt_dict_key_ref", [source, at, b.const_int(kind, mir_int())]
             );
@@ -493,7 +493,7 @@ impl MirLowering.element_from_bits(bits: MirValue, elem: MirType) -> MirValue {
         return self.none_value();
     }
     kind = self.elem_kind(elem, self.module);
-    if kind in (KIND_STR, KIND_REF) {
+    if kind in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
         return self.owned_element(self.builder().ref_cast(bits, mir_ref(), True), elem);
     }
     return self.scalar_from_bits(bits, elem);

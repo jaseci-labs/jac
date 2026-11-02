@@ -2,8 +2,71 @@ impl _collecting -> bool {
     return int(__mem_load_i8(__global_block("__rc_collecting", 1))) != 0;
 }
 
+impl _is_ref_kind(kind: int) -> bool {
+    return kind == KIND_STR
+        or kind == KIND_REF
+        or kind == KIND_TUPLE
+        or kind == KIND_ANY;
+}
+
+impl _any_numeric(tag: int) -> bool {
+    return tag == TAG_INT or tag == TAG_BOOL or tag == TAG_FLOAT;
+}
+
+impl _any_float(tag: int, payload: int) -> float {
+    if tag == TAG_FLOAT {
+        return __bits_float(payload);
+    }
+    return float(payload);
+}
+
+impl __jac_rt_any_eq(a: int, b: int) -> bool {
+    ta = __mem_load_i64(a + BOX_TAG);
+    tb = __mem_load_i64(b + BOX_TAG);
+    pa = __mem_load_i64(a + BOX_PAYLOAD);
+    pb = __mem_load_i64(b + BOX_PAYLOAD);
+    if _any_numeric(ta) and _any_numeric(tb) {
+        if ta != TAG_FLOAT and tb != TAG_FLOAT {
+            return pa == pb;
+        }
+        return _any_float(ta, pa) == _any_float(tb, pb);
+    }
+    if ta != tb {
+        return False;
+    }
+    if ta == TAG_NONE {
+        return True;
+    }
+    return __jac_rt_elem_eq(pa, pb, KIND_STR if ta == TAG_STR else KIND_REF);
+}
+
+impl _any_cmp(a: int, b: int) -> int {
+    ta = __mem_load_i64(a + BOX_TAG);
+    tb = __mem_load_i64(b + BOX_TAG);
+    pa = __mem_load_i64(a + BOX_PAYLOAD);
+    pb = __mem_load_i64(b + BOX_PAYLOAD);
+    if _any_numeric(ta) and _any_numeric(tb) {
+        if ta != TAG_FLOAT and tb != TAG_FLOAT {
+            return _elem_cmp(pa, pb, KIND_INT);
+        }
+        fa = _any_float(ta, pa);
+        fb = _any_float(tb, pb);
+        if fa < fb {
+            return -1;
+        }
+        if fa > fb {
+            return 1;
+        }
+        return 0;
+    }
+    if ta == TAG_STR and tb == TAG_STR {
+        return _elem_cmp(pa, pb, KIND_STR);
+    }
+    return _elem_cmp(pa, pb, KIND_INT);
+}
+
 impl __jac_rt_elem_retain(bits: int, kind: int) {
-    if bits != 0 and (kind == KIND_STR or kind == KIND_REF) {
+    if bits != 0 and _is_ref_kind(kind) {
         __jac_rt_retain(bits);
     }
 }
@@ -14,8 +77,122 @@ impl __jac_rt_elem_release(bits: int, kind: int) {
     }
     if kind == KIND_STR {
         __jac_rt_release_acyclic(bits);
-    } elif kind == KIND_REF {
+    } elif kind == KIND_REF or kind == KIND_TUPLE or kind == KIND_ANY {
         __jac_rt_release(bits);
+    }
+}
+
+impl __jac_rt_tuple_new(n: int) -> int {
+    box = __jac_rt_alloc(TUPLE_KINDS + n * 2 * SLOT);
+    __jac_rt_set_type(box, int(ptr[u8]("tuple")));
+    __mem_store_i64(box + TUPLE_LEN, n);
+    i = 0;
+    while i < n {
+        __mem_store_i64(box + TUPLE_KINDS + i * SLOT, KIND_INT);
+        __mem_store_i64(box + TUPLE_KINDS + (n + i) * SLOT, 0);
+        i += 1;
+    }
+    flag = __global_block("__jac_rt_tuple_traced", 1);
+    if int(__mem_load_i8(flag)) == 0 {
+        __jac_rt_trace_register(int(_tuple_drop), int(_tuple_trace));
+        __mem_store_i8(flag, i8(1));
+    }
+    __mem_store_i64(box - HDR_DTOR_BACK, int(_tuple_drop));
+    return box;
+}
+
+impl __jac_rt_tuple_set(box: int, i: int, bits: int, kind: int) {
+    n = __mem_load_i64(box + TUPLE_LEN);
+    slot = box + TUPLE_KINDS + (n + i) * SLOT;
+    __jac_rt_elem_retain(bits, kind);
+    __jac_rt_elem_release(
+        __mem_load_i64(slot), __mem_load_i64(box + TUPLE_KINDS + i * SLOT)
+    );
+    __mem_store_i64(box + TUPLE_KINDS + i * SLOT, kind);
+    __mem_store_i64(slot, bits);
+}
+
+impl __jac_rt_tuple_get_ref(box: int, i: int) -> int {
+    n = __mem_load_i64(box + TUPLE_LEN);
+    bits = __mem_load_i64(box + TUPLE_KINDS + (n + i) * SLOT);
+    __jac_rt_elem_retain(bits, __mem_load_i64(box + TUPLE_KINDS + i * SLOT));
+    return bits;
+}
+
+impl __jac_rt_tuple_eq(a: int, b: int) -> bool {
+    n = __mem_load_i64(a + TUPLE_LEN);
+    if n != __mem_load_i64(b + TUPLE_LEN) {
+        return False;
+    }
+    i = 0;
+    while i < n {
+        kind = __mem_load_i64(a + TUPLE_KINDS + i * SLOT);
+        if kind != __mem_load_i64(b + TUPLE_KINDS + i * SLOT) {
+            return False;
+        }
+        if not __jac_rt_elem_eq(
+            __mem_load_i64(a + TUPLE_KINDS + (n + i) * SLOT),
+            __mem_load_i64(b + TUPLE_KINDS + (n + i) * SLOT),
+            kind
+        ) {
+            return False;
+        }
+        i += 1;
+    }
+    return True;
+}
+
+impl _tuple_cmp(a: int, b: int) -> int {
+    na = __mem_load_i64(a + TUPLE_LEN);
+    nb = __mem_load_i64(b + TUPLE_LEN);
+    i = 0;
+    while i < na and i < nb {
+        kind = __mem_load_i64(a + TUPLE_KINDS + i * SLOT);
+        order = _elem_cmp(
+            __mem_load_i64(a + TUPLE_KINDS + (na + i) * SLOT),
+            __mem_load_i64(b + TUPLE_KINDS + (nb + i) * SLOT),
+            kind
+        );
+        if order != 0 {
+            return order;
+        }
+        i += 1;
+    }
+    if na < nb {
+        return -1;
+    }
+    if na > nb {
+        return 1;
+    }
+    return 0;
+}
+
+impl _tuple_drop(box: int) {
+    collecting = _collecting();
+    n = __mem_load_i64(box + TUPLE_LEN);
+    i = 0;
+    while i < n {
+        kind = __mem_load_i64(box + TUPLE_KINDS + i * SLOT);
+        if kind == KIND_STR or not collecting {
+            __jac_rt_elem_release(
+                __mem_load_i64(box + TUPLE_KINDS + (n + i) * SLOT), kind
+            );
+        }
+        i += 1;
+    }
+    __jac_rt_free_block(box - HDR_TOTAL);
+}
+
+impl _tuple_trace(box: int, visit_fn: int) {
+    n = __mem_load_i64(box + TUPLE_LEN);
+    i = 0;
+    while i < n {
+        kind = __mem_load_i64(box + TUPLE_KINDS + i * SLOT);
+        bits = __mem_load_i64(box + TUPLE_KINDS + (n + i) * SLOT);
+        if bits != 0 and (kind == KIND_REF or kind == KIND_TUPLE) {
+            __mem_call_dtor(visit_fn, bits);
+        }
+        i += 1;
     }
 }
 
@@ -26,6 +203,12 @@ impl __jac_rt_elem_eq(a: int, b: int, kind: int) -> bool {
     if kind == KIND_FLOAT {
         return __bits_float(a) == __bits_float(b);
     }
+    if kind == KIND_TUPLE and a != 0 and b != 0 {
+        return __jac_rt_tuple_eq(a, b);
+    }
+    if kind == KIND_ANY and a != 0 and b != 0 {
+        return __jac_rt_any_eq(a, b);
+    }
     if kind == KIND_STR and a != 0 and b != 0 {
         an = __jac_rt_str_size(ptr[u8](a));
         bn = __jac_rt_str_size(ptr[u8](b));
@@ -35,6 +218,12 @@ impl __jac_rt_elem_eq(a: int, b: int, kind: int) -> bool {
 }
 
 impl _elem_cmp(a: int, b: int, kind: int) -> int {
+    if kind == KIND_TUPLE {
+        return _tuple_cmp(a, b);
+    }
+    if kind == KIND_ANY {
+        return _any_cmp(a, b);
+    }
     if kind == KIND_FLOAT {
         fa = __bits_float(a);
         fb = __bits_float(b);
@@ -130,7 +319,7 @@ impl __jac_rt_list_new(cap: int, kind: int) -> int {
     dtor = int(_list_drop_plain);
     if kind == KIND_STR {
         dtor = int(_list_drop_str);
-    } elif kind == KIND_REF {
+    } elif kind == KIND_REF or kind == KIND_TUPLE or kind == KIND_ANY {
         dtor = int(_list_drop_ref);
         flag = __global_block("__jac_rt_list_traced", 1);
         if int(__mem_load_i8(flag)) == 0 {
@@ -215,7 +404,7 @@ impl __jac_rt_list_clear(lst: int, kind: int) {
     __mem_store_i64(lst + LIST_LEN, 0);
     __mem_store_i64(lst + LIST_CAP, 0);
     __mem_store_i64(lst + LIST_DATA, 0);
-    if kind == KIND_STR or kind == KIND_REF {
+    if _is_ref_kind(kind) {
         i = 0;
         while i < n {
             __jac_rt_elem_release(__mem_load_i64(data + i * SLOT), kind);
@@ -232,7 +421,7 @@ impl __jac_rt_list_copy(lst: int, kind: int) -> int {
         data = __mem_load_i64(made + LIST_DATA);
         memcpy(data, __mem_load_i64(lst + LIST_DATA), n * SLOT);
         __mem_store_i64(made + LIST_LEN, n);
-        if kind == KIND_STR or kind == KIND_REF {
+        if _is_ref_kind(kind) {
             i = 0;
             while i < n {
                 __jac_rt_elem_retain(__mem_load_i64(data + i * SLOT), kind);
@@ -271,7 +460,7 @@ impl __jac_rt_list_extend(dst: int, src: int, kind: int) {
     data = __mem_load_i64(dst + LIST_DATA);
     memcpy(data + base * SLOT, __mem_load_i64(src + LIST_DATA), n * SLOT);
     __mem_store_i64(dst + LIST_LEN, base + n);
-    if kind == KIND_STR or kind == KIND_REF {
+    if _is_ref_kind(kind) {
         i = base;
         while i < base + n {
             __jac_rt_elem_retain(__mem_load_i64(data + i * SLOT), kind);

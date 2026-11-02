@@ -533,6 +533,7 @@ walker TypeEvaluator {
 
     def _type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool;
     def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;
+    def _is_empty_container_expr(expr: Expr) -> bool;
     def _get_expected_container_type(
         expected_type: TypeBase | None, container_class: TypeBase
     ) -> ClassType | None;
@@ -795,6 +796,8 @@ walker TypeEvaluator {
 
     def exclude_type_from_union(original: TypeBase, to_exclude: TypeBase) -> TypeBase;
     def _get_type_from_match_pattern(pattern: MatchPattern) -> TypeBase | None;
+    def _get_type_of_match_capture(pattern: MatchPattern) -> TypeBase;
+    def _match_position_type(pattern: MatchPattern) -> TypeBase;
     def _union_contains_none(union_type: TypeBase) -> bool;
     def _extract_isinstance_info(condition: Expr) -> tuple[str, TypeBase, bool] | None;
     def _isinstance_classinfo_is_exact(expr: Expr) -> bool;

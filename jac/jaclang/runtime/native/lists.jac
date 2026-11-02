@@ -10,7 +10,9 @@ glob KIND_INT: int = 0,
      KIND_FLOAT: int = 1,
      KIND_BOOL: int = 2,
      KIND_STR: int = 3,
-     KIND_REF: int = 4;
+     KIND_REF: int = 4,
+     KIND_TUPLE: int = 5,
+     KIND_ANY: int = 6;
 
 glob LIST_LEN: int = 0,
      LIST_CAP: int = 8,
@@ -19,13 +21,46 @@ glob LIST_LEN: int = 0,
      LIST_MIN_CAP: int = 4,
      SLOT: int = 8,
      HDR_DTOR_BACK: int = 8,
-     HDR_TOTAL: int = 32;
+     HDR_TOTAL: int = 32,
+     TUPLE_LEN: int = 0,
+     TUPLE_KINDS: int = 8,
+     BOX_TAG: int = 0,
+     BOX_PAYLOAD: int = 8,
+     TAG_INT: int = 0,
+     TAG_FLOAT: int = 1,
+     TAG_STR: int = 2,
+     TAG_BOOL: int = 7,
+     TAG_NONE: int = 8;
 
 def:pub __jac_rt_elem_retain(bits: int, kind: int);
 
 def:pub __jac_rt_elem_release(bits: int, kind: int);
 
 def:pub __jac_rt_elem_eq(a: int, b: int, kind: int) -> bool;
+
+def:pub __jac_rt_tuple_new(n: int) -> int;
+
+def:pub __jac_rt_tuple_set(box: int, i: int, bits: int, kind: int);
+
+def:pub __jac_rt_tuple_get_ref(box: int, i: int) -> int;
+
+def:pub __jac_rt_tuple_eq(a: int, b: int) -> bool;
+
+def _tuple_cmp(a: int, b: int) -> int;
+
+def _tuple_drop(box: int);
+
+def _tuple_trace(box: int, visit_fn: int);
+
+def _is_ref_kind(kind: int) -> bool;
+
+def __jac_rt_any_eq(a: int, b: int) -> bool;
+
+def _any_cmp(a: int, b: int) -> int;
+
+def _any_numeric(tag: int) -> bool;
+
+def _any_float(tag: int, payload: int) -> float;
 
 def:pub __jac_rt_list_new(cap: int, kind: int) -> int;
 

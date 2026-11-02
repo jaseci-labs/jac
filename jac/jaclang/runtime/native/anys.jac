@@ -1,4 +1,6 @@
-import from c { def strlen(p: int) -> int;  def strcmp(a: int, b: int) -> int;  }
+import from c {
+    def strlen(p: ptr[u8]) -> i64;  def strcmp(a: ptr[u8], b: ptr[u8]) -> i32;
+}
 
 glob ANY_TAG_INT: int = 0,
      ANY_TAG_FLOAT: int = 1,
@@ -38,6 +40,8 @@ def:pub __jac_rt_any_isa(tag: int, payload: int, name: ptr[u8]) -> bool;
 def:pub __jac_rt_cstr_eq(a: ptr[u8], b: ptr[u8]) -> bool;
 
 def:pub __jac_rt_str_from_cstr(text: ptr[u8]) -> ptr[u8];
+
+def:pub __jac_rt_class_name(text: ptr[u8]) -> ptr[u8];
 
 def _holds_ref(tag: int) -> bool;
 

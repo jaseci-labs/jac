@@ -21,44 +21,31 @@ impl MirLowering.builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None)
     }
     b = self.builder();
     if name == "id" {
-        value = self.lower_expr(args[0]);
-        if not mir_holds_ref(value.type)
-            or value.type.kind
-                in (MirKind.STR, MirKind.ANY, MirKind.OPT, MirKind.TUPLE) {
-            raise MirRefused(mir_refusal("call", f"id of {value.type.render()}", nd));
-        }
-        return self.address_of(value);
+        return self.identity_of(self.lower_expr(args[0]), nd);
     }
     if name == "set" {
         made_type = self.expr_type(nd);
         if made_type.kind != MirKind.SET {
             raise MirRefused(mir_refusal("call", f"set as {made_type.render()}", nd));
         }
-        elem = made_type.payload();
         source = self.lower_expr(args[0]);
-        made = self.spill(self.new_dict(elem, None, made_type));
-        kind = b.const_int(self.elem_kind(elem, nd), mir_int());
-        fn = self.st().fn;
-        walker_state = self.iter_open(source, nd);
-        head = fn.new_block("set.head");
-        body = fn.new_block("set.body");
-        after = fn.new_block("set.exit");
-        b.branch(head);
-        b.position(head);
-        element = self.iter_step(walker_state, body, after);
-        self.runtime(
-            "__jac_rt_dict_set",
-            [
-                made,
-                self.to_bits(self.coerce(element, elem, nd), elem, nd),
-                b.const_int(0, mir_int()),
-                kind,
-                b.const_int(NO_VALUE_KIND, mir_int())
-            ]
+        built = self.spill(self.new_dict(made_type.payload(), None, made_type));
+        self.extend_from(built, source, args[0]);
+        return built;
+    }
+    if name == "dict" {
+        made_type = self.expr_type(nd);
+        source = self.lower_expr(args[0]);
+        if made_type.kind != MirKind.DICT or source.type.kind != MirKind.DICT {
+            raise MirRefused(
+                mir_refusal("call", f"dict of {source.type.render()}", nd)
+            );
+        }
+        built = self.spill(
+            self.new_dict(made_type.args[0], made_type.args[1], made_type)
         );
-        b.branch(head);
-        b.position(after);
-        return made;
+        self.merge_dict(built, source, args[0], False);
+        return built;
     }
     if name in ("list", "reversed") {
         value = self.lower_expr(args[0]);
@@ -147,4 +134,35 @@ impl MirLowering.str_subscript(nd: uni.AtomTrailer) -> (MirValue | None) {
         raise MirRefused(mir_refusal("subscript", "str", nd));
     }
     return b.str_make(made, made, size);
+}
+
+impl MirLowering.identity_of(value: MirValue, site: uni.UniNode) -> MirValue {
+    b = self.builder();
+    t = value.type;
+    if t.kind == MirKind.OPT {
+        held = self.spill(value);
+        return b.select(
+            self.opt_present(held),
+            self.identity_of(self.opt_get(held), site),
+            b.const_int(0, mir_int())
+        );
+    }
+    if t.kind == MirKind.ANY {
+        return self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [value]);
+    }
+    if t.kind in (MirKind.INT, MirKind.BOOL, MirKind.ENUM) {
+        return b.convert(value, mir_int());
+    }
+    if t.kind == MirKind.FLOAT {
+        return self.emit_value(
+            MirOp.BITCAST, mir_int(), [b.convert(value, mir_float())]
+        );
+    }
+    if t.kind == MirKind.STR {
+        return self.address_of(b.str_part(value, "data"));
+    }
+    if mir_holds_ref(t) and t.kind != MirKind.TUPLE {
+        return self.address_of(value);
+    }
+    raise MirRefused(mir_refusal("call", f"id of {t.render()}", site));
 }

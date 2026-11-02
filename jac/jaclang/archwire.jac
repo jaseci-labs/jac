@@ -6558,6 +6558,7 @@ graph import compiler {
             STR_LEN_PAYLOAD_MASK,
             STR_LEN_TAG_BIT,
             STR_LEN_TAG_SHIFT,
+            is_mir_runtime_path,
             is_package_keyed_path,
             native_unit_identity,
             real_path,
@@ -7568,6 +7569,7 @@ graph import compiler {
         evaluate_version_condition
     }
     frontend.host ++> [
+        backends.native.mir.backend.MirNativePass._run_impl { active_host },
         backends.es.backends.registry.active_framework
             | backends.es.esast_gen_pass
             | backends.es.free_ident_audit.client_ambient_globals
@@ -7652,7 +7654,6 @@ graph import compiler {
         passes.package_boundary_pass { ProjectFacts, active_host },
         types.type_evaluator.TypeEvaluator.get_type_of_module { active_host },
     ]
-    frontend.host ++> backends.native.mir.backend { active_host }
     frontend.host --> [
         backends.es.client_paths.client_output_path
             | backends.native.na_ir_gen_pass.NaIRGenPass._opaque_field_if_unlowerable
@@ -9313,7 +9314,9 @@ graph import compiler {
             IterForStmt,
             LambdaExpr,
             ListCompr,
+            MatchAs,
             MatchCase,
+            MatchStar,
             Module,
             ModuleItem,
             ModulePath,
@@ -9649,6 +9652,7 @@ graph import compiler {
         },
         types.type_evaluator {
             Ability,
+            ArchHas,
             ArchSpec,
             Archetype,
             AssertStmt,
@@ -9713,8 +9717,12 @@ graph import compiler {
             MatchArch,
             MatchAs,
             MatchCase,
+            MatchKVPair,
+            MatchMapping,
             MatchOr,
             MatchPattern,
+            MatchSequence,
+            MatchStar,
             MatchStmt,
             MatchWild,
             Module,
@@ -11490,8 +11498,8 @@ graph import compiler.backends.native {
         },
         wasm_build.prepare_wasm_module { optimize_unit },
     ]
-    na_constants ++> mir.backend { FACT_SEP, FACT_TARGET }
     na_constants ++> [
+        mir.backend.MirNativePass._run_impl { FACT_SEP, FACT_TARGET },
         abi.struct_layouts { FACT_SEP, FACT_STRUCT_LAYOUTS },
         host_facts {
             FACT_CODEC_NAME,

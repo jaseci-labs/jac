@@ -160,7 +160,6 @@ glob JAC_ENTRY_SYMBOL: str = "jac_entry",
 glob KERNEL_UNIT_REL: tuple[str, ...] = (
          "runtime/osp_kernel.jac",
          "runtime/osp_graph.jac",
-         "runtime/osp_native.jac",
          "runtime/region_native.jac",
          "compiler/backends/common/fmt_kernel.jac"
      ),
@@ -181,6 +180,8 @@ def kernel_unit_rels -> list[str];
 def is_package_keyed_path(source_path: str) -> bool;
 
 def kernel_unit_path(rel: str) -> str;
+
+def is_mir_runtime_path(source_path: str) -> bool;
 
 def kernel_unit_paths -> list[str];
 
