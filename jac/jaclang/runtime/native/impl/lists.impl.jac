@@ -434,7 +434,7 @@ impl __jac_rt_list_copy(lst: int, kind: int) -> int {
 
 impl __jac_rt_list_box(lst: int, tag: int) -> int {
     n = __mem_load_i64(lst + LIST_LEN);
-    made = __jac_rt_list_new(n, KIND_REF);
+    made = __jac_rt_list_new(n, KIND_ANY);
     if n > 0 {
         src = __mem_load_i64(lst + LIST_DATA);
         data = __mem_load_i64(made + LIST_DATA);

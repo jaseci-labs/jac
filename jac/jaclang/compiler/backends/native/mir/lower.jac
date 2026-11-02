@@ -232,6 +232,7 @@ obj MirFnState {
         caught: list[tuple[MirValue, MirValue, MirValue]] = [],
         bound_caught: dict[int, tuple[MirValue, MirValue, MirValue]] = {},
         tries: list[tuple[MirValue, MirBlock, int]] = [],
+        finals: list[tuple[list[uni.UniNode], int, int]] = [],
         specials: dict[str, MirValue] = {};
 }
 

@@ -129,6 +129,11 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
             }
         }
     }
+    if nd.finally_body is not None {
+        self.st().finals.append(
+            (list(nd.finally_body.body), len(self.st().loops), len(self.st().tries))
+        );
+    }
     frame = fn.new_value(mir_c_ptr(mir_int(8, False)), "exc.frame");
     fn.blocks[0].instrs.insert(0, MirInstr(op=MirOp.EXC_FRAME, result=frame));
     self.runtime("__jac_rt_exc_push", [frame]);
@@ -245,6 +250,7 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
         b.position(following);
     }
     if nd.finally_body is not None {
+        self.st().finals.pop();
         self.lower_body(nd.finally_body.body);
     }
     self.runtime("__jac_rt_raise", [origin, type_id, message]);
@@ -256,9 +262,27 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
 }
 
 impl MirLowering.leave_tries(loop_depth: int) {
-    for (frame, _, depth) in reversed(self.st().tries) {
-        if depth >= loop_depth {
-            self.runtime("__jac_rt_exc_pop", [frame]);
+    tries = list(self.st().tries);
+    finals = list(self.st().finals);
+    at_final = len(finals) - 1;
+    at_try = len(tries) - 1;
+    while at_final >= 0 or at_try >= 0 {
+        if at_final >= 0 and (at_try < 0 or finals[at_final][2] > at_try) {
+            (body, depth, _) = finals[at_final];
+            if depth >= loop_depth {
+                self.st().finals = finals[:at_final];
+                self.st().tries = tries[:at_try + 1];
+                self.lower_body(body);
+                self.st().finals = finals;
+                self.st().tries = tries;
+            }
+            at_final -= 1;
+        } else {
+            (frame, _, depth) = tries[at_try];
+            if depth >= loop_depth {
+                self.runtime("__jac_rt_exc_pop", [frame]);
+            }
+            at_try -= 1;
         }
     }
 }

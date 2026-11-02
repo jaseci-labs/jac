@@ -44,7 +44,8 @@ impl MirLowering.lower -> MirModule {
     self.lower_osp_module();
     self.mir.functions.extend(self.nested);
     self.nested = [];
-    for extra in (self.lower_module_init(), self.lower_module_entry()) {
+    module_entry = self.lower_module_entry();
+    for extra in (self.lower_module_init(), module_entry) {
         if extra is not None {
             self.mir.functions.append(extra);
         }
@@ -698,7 +699,9 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
     if nd.value == "self" and receiver is not None {
         return receiver;
     }
-    if isinstance(nd, uni.SpecialVarRef) and nd.value in ("here", "visitor", "root") {
+    if isinstance(nd, uni.SpecialVarRef)
+        and nd.value in ("here", "visitor", "root")
+        and (nd.sym is None or id(nd.sym) not in self.st().locals) {
         return self.osp_special(nd);
     }
     if nd.sym is not None {
@@ -1196,7 +1199,7 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         and (
             callee is None
             or os.path.basename(callee.loc.mod_path)
-                in ("builtins.pyi", "builtins.jac", "na_builtins.pyi")
+                in ("builtins.pyi", "builtins.jac", "na_builtins.pyi", "jac_builtins.pyi")
         ) {
         builtin = self.builtin_call(nd, name);
         if builtin is not None {
