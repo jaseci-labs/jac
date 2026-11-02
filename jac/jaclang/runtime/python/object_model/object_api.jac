@@ -100,9 +100,9 @@ import from c {
         dir_fd: i32, path: ptr[u8], status: ptr, flags: i32
     ) -> i32;  def __jac_statfs_record(path: ptr[u8], buffer: ptr) -> i32;  def __jac_fstatfs_record(
         fd: i32, buffer: ptr
-    ) -> i32;  def __jac_cpuid(leaf: u32, subleaf: u32, out: ptr[u32]);  def __jac_system_log(
-        type: i32, text: ptr[u8]
-    );  def PyImport_ImportModule(name: ptr[u8]) -> ptr[PyObject];  def PyCFunction_NewEx(
+    ) -> i32;  def __jac_system_log(type: i32, text: ptr[u8]);  def PyImport_ImportModule(
+        name: ptr[u8]
+    ) -> ptr[PyObject];  def PyCFunction_NewEx(
         method: ptr[PyMethodDef], receiver: ptr[PyObject], module: ptr[PyObject]
     ) -> ptr[PyObject];  def PyObject_CallMethod(
         obj_: ptr[PyObject], name: ptr[u8], format: ptr[u8], *args: any
@@ -1046,29 +1046,6 @@ import from c {
         return i64(ok);
     }  def jacpy_long_address(value: ptr[PyObject]) -> u64 {
         return u64(int(PyLong_AsVoidPtr(value)));
-    }  def jacpy_hacl_simd_features -> i64 {
-        if SYS_ARCH_X86_64 == 0 {
-            return 0;
-        }
-        regs = ptr[u32](__alloca(32));
-        __jac_cpuid(u32(1), u32(0), regs);
-        __jac_cpuid(u32(7), u32(0), regs + 4);
-        ecx1 = (regs + 2).view(1)[0];
-        edx1 = (regs + 3).view(1)[0];
-        ebx7 = (regs + 5).view(1)[0];
-        features: i64 = 0;
-        if (edx1 & u32(1 << 25)) != u32(0)
-            and (edx1 & u32(1 << 26)) != u32(0)
-            and (ecx1 & u32(1)) != u32(0)
-            and (ecx1 & u32(1 << 19)) != u32(0)
-            and (ecx1 & u32(1 << 20)) != u32(0)
-            and (edx1 & u32(1 << 15)) != u32(0) {
-            features = features | 1;
-        }
-        if (ecx1 & u32(1 << 28)) != u32(0) and (ebx7 & u32(1 << 5)) != u32(0) {
-            features = features | 2;
-        }
-        return features;
     }  def jacpy_unicode_init_static_strings(interp: ptr[PyInterpreterState]) {
         runtime = ptr[u8](addressof(_PyRuntime));
         slot = ptr[ptr[PyObject]](__alloca(8));

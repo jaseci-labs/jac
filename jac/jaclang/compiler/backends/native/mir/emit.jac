@@ -66,7 +66,8 @@ obj MirEmitter {
         defined: set[str] = set(),
         literals: dict[str, ir.GlobalVariable] = {},
         byte_literals: dict[str, ir.GlobalVariable] = {},
-        native_tls: bool = False;
+        native_tls: bool = False,
+        volatile_slots: bool = False;
 
     def emit -> ir.Module;
     def llvm_type(t: MirType) -> ir.Type;

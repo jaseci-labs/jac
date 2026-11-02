@@ -5,7 +5,7 @@
 # here (not from a Python pyproject backend).
 [project]
 name = "jaclang"
-version = "0.38.3"
+version = "0.39.0"
 description = "Jac programming language - Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code with novel constructs for AI-integrated programming."
 license = "MIT"
 readme = "jac/README.md"
@@ -82,12 +82,6 @@ exclude = [
     "checker_*.jac",
     "*_err.jac",
 
-    # The Jac native runtime is written for the MIR backend, which is selected
-    # with JAC_NATIVE_MIR=1 until it replaces NaIRGenPass (#10471); the legacy
-    # backend cannot lower it. Delete these two lines when MIR becomes the
-    # default.
-    "jac/jaclang/runtime/native/*",
-    "jac/jaclang/runtime/osp_native.jac",
 
     # js_engine is a separate native project with its own jac.toml; its
     # regression suite and test262 gate it, not this check.

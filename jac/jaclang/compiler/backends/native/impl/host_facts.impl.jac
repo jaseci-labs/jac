@@ -39,9 +39,6 @@ impl compute_fact(kind: str, key: str) -> str {
             return "";
         }
     }
-    if kind == FACT_PRIMITIVE_METHODS {
-        return primitive_methods_fact(key);
-    }
     if kind == FACT_SEALED_RUNTIME {
         try {
             import from jaclang.jac0core { sealed }
@@ -105,26 +102,3 @@ impl codec_tables_fact -> str {
     return bytes(alias_rows).hex() + FACT_SEP + bytes(module_rows).hex();
 }
 
-impl primitive_methods_fact(type_name: str) -> str {
-    import inspect;
-
-    found: any = None;
-    for (name_of_type, suffix) in JAC_TYPE_REGISTRY.emitter_items() {
-        if name_of_type == type_name {
-            found = getattr(emitters, "Native" + suffix, None);
-        }
-    }
-    if found is None {
-        return "";
-    }
-    emitter = found();
-    names: list[str] = [];
-    for name in dir(emitter) {
-        if name.startswith("emit_") and not name.startswith("emit_op_") {
-            if len(inspect.signature(getattr(emitter, name)).parameters) >= 3 {
-                names.append(name.removeprefix("emit_"));
-            }
-        }
-    }
-    return ",".join(sorted(names));
-}

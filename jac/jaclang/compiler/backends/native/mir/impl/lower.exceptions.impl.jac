@@ -1,34 +1,117 @@
 impl MirLowering.exception_name(nd: uni.Expr) -> str {
+    return self.exception_target(nd)[0];
+}
+
+impl MirLowering.exception_target(
+    nd: uni.Expr
+) -> tuple[str, (uni.Archetype | None)] {
     target = nd.target if isinstance(nd, uni.FuncCall) else nd;
+    arch = self.target_archetype(target) if isinstance(target, uni.Expr) else None;
+    if arch is not None
+        and not stub_archetype(arch)
+        and self.is_exception_arch(arch) {
+        return (archetype_native_name(arch), arch);
+    }
     if isinstance(target, uni.Name) and JAC_TYPE_REGISTRY.is_exception(target.value) {
-        return target.value;
+        return (target.value, None);
     }
     raise MirRefused(
         mir_refusal(
             "exception",
             type(target).__name__,
             nd,
-            "Native code raises and catches builtin exception types so far."
+            "Native code raises and catches builtin exception types and archetypes that derive from them."
         )
     );
 }
 
+impl MirLowering.is_exception_arch(arch: uni.Archetype) -> bool {
+    sym = arch.name.sym if arch.name is not None else None;
+    made = self.prog.get_type_evaluator().get_type_of_symbol(sym)
+        if sym is not None
+        else None;
+    if not isinstance(made, ClassType) or made._shared is None {
+        return False;
+    }
+    for ancestor in made.shared.mro {
+        if ancestor._shared is None {
+            continue;
+        }
+        scope = ancestor.shared.symbol_table;
+        if isinstance(scope, uni.Archetype) and not stub_archetype(scope) {
+            continue;
+        }
+        if JAC_TYPE_REGISTRY.is_exception(ancestor.shared.class_name) {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl MirLowering.exception_ancestors(arch: uni.Archetype) -> list[int] {
+    sym = arch.name.sym if arch.name is not None else None;
+    made = self.prog.get_type_evaluator().get_type_of_symbol(sym)
+        if sym is not None
+        else None;
+    tid = JAC_TYPE_REGISTRY.exception_type_id(archetype_native_name(arch));
+    found: list[int] = [];
+    if not isinstance(made, ClassType) or made._shared is None {
+        return found;
+    }
+    for ancestor in list(made.shared.mro)[1:] {
+        if ancestor._shared is None {
+            continue;
+        }
+        scope = ancestor.shared.symbol_table;
+        name = "";
+        if isinstance(scope, uni.Archetype) and not stub_archetype(scope) {
+            name = archetype_native_name(scope);
+        } elif JAC_TYPE_REGISTRY.is_exception(ancestor.shared.class_name) {
+            name = ancestor.shared.class_name;
+        }
+        if not name or name in ("Exception", "BaseException") {
+            continue;
+        }
+        wanted = JAC_TYPE_REGISTRY.exception_type_id(name);
+        if wanted != tid and wanted not in found {
+            found.append(wanted);
+        }
+    }
+    return found;
+}
+
 impl MirLowering.exception_matches(type_id: MirValue, clause: uni.Expr) -> MirValue {
     b = self.builder();
-    names = [
-        self.exception_name(item)
+    items = [
+        item
         for item in clause.values
         if isinstance(item, uni.Expr)
     ]
         if isinstance(clause, uni.TupleVal)
-        else [self.exception_name(clause)];
+        else [clause];
     verdict = b.const_bool(False);
-    for name in names {
-        for member in [name] + JAC_TYPE_REGISTRY.exception_descendants(name) {
-            wanted = b.const_int(
-                JAC_TYPE_REGISTRY.exception_type_id(member), type_id.type
-            );
-            verdict = b.binary("or", verdict, b.compare("eq", type_id, wanted));
+    for item in items {
+        (name, arch) = self.exception_target(item);
+        if arch is None and name in ("Exception", "BaseException") {
+            return b.const_bool(True);
+        }
+        if arch is None {
+            for member in [name] + JAC_TYPE_REGISTRY.exception_descendants(name) {
+                wanted = b.const_int(
+                    JAC_TYPE_REGISTRY.exception_type_id(member), type_id.type
+                );
+                verdict = b.binary("or", verdict, b.compare("eq", type_id, wanted));
+            }
+        }
+        lineage = self.runtime(
+            "__jac_rt_exc_isa",
+            [
+                b.convert(type_id, mir_int()),
+                b.const_int(JAC_TYPE_REGISTRY.exception_type_id(name), mir_int())
+            ]
+        );
+        if lineage is not None {
+            verdict = b.binary("or", verdict, lineage);
         }
     }
     return verdict;
@@ -45,6 +128,11 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
                 );
             }
         }
+    }
+    if nd.finally_body is not None {
+        self.st().finals.append(
+            (list(nd.finally_body.body), len(self.st().loops), len(self.st().tries))
+        );
     }
     frame = fn.new_value(mir_c_ptr(mir_int(8, False)), "exc.frame");
     fn.blocks[0].instrs.insert(0, MirInstr(op=MirOp.EXC_FRAME, result=frame));
@@ -103,7 +191,18 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
                 name.sym is bound_sym for stmt in clause.body
                 for name in self.names_within(stmt)
             );
-        if clause.name is not None and binds {
+        bound_arch: (uni.Archetype | None) = None;
+        bound_name = clause.name;
+        if binds and bound_name is not None and bound_name.sym is not None {
+            bound_type = self.symbol_type(bound_name.sym, bound_name);
+            if bound_type.kind == MirKind.OBJ {
+                bound_arch = self.archetypes.get(bound_type.name);
+            }
+        }
+        if bound_arch is not None and bound_name is not None {
+            slot = self.local_slot(bound_name.sym, bound_name);
+            b.store(slot, b.ref_cast(origin, slot.type, True));
+        } elif clause.name is not None and binds {
             if clause.name.sym is None {
                 raise MirRefused(
                     mir_refusal("exception binding", clause.name.value, clause)
@@ -121,7 +220,7 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
             );
             if text is not None {
                 slot = self.local_slot(clause.name.sym, clause.name);
-                if slot.type.kind != MirKind.STR {
+                if slot.type.kind not in (MirKind.STR, MirKind.ANY) {
                     raise MirRefused(
                         mir_refusal(
                             "exception binding",
@@ -133,12 +232,24 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
                 }
                 size = self.runtime("__jac_rt_str_size", [text]);
                 if size is not None {
-                    b.store(slot, b.str_make(text, text, size));
+                    b.store(
+                        slot,
+                        self.coerce(b.str_make(text, text, size), slot.type, clause)
+                    );
                 }
             }
         }
         self.st().caught.append((origin, type_id, message));
+        bound_key = id(clause.name.sym)
+            if clause.name is not None and clause.name.sym is not None
+            else 0;
+        if bound_key {
+            self.st().bound_caught[bound_key] = (origin, type_id, message);
+        }
         self.lower_body(clause.body);
+        if bound_key {
+            self.st().bound_caught.pop(bound_key, None);
+        }
         self.st().caught.pop();
         if not self.builder().block.terminated() {
             self.builder().branch(after);
@@ -146,6 +257,7 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
         b.position(following);
     }
     if nd.finally_body is not None {
+        self.st().finals.pop();
         self.lower_body(nd.finally_body.body);
     }
     self.runtime("__jac_rt_raise", [origin, type_id, message]);
@@ -156,10 +268,28 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
     }
 }
 
-impl MirLowering.leave_tries(loop_depth: int) {
-    for (frame, _, depth) in reversed(self.st().tries) {
-        if depth >= loop_depth {
-            self.runtime("__jac_rt_exc_pop", [frame]);
+impl MirLowering.leave_tries(loop_depth: int, run_finals: bool = True) {
+    tries = list(self.st().tries);
+    finals = list(self.st().finals) if run_finals else [];
+    at_final = len(finals) - 1;
+    at_try = len(tries) - 1;
+    while at_final >= 0 or at_try >= 0 {
+        if at_final >= 0 and (at_try < 0 or finals[at_final][2] > at_try) {
+            (body, depth, _) = finals[at_final];
+            if depth >= loop_depth {
+                self.st().finals = finals[:at_final];
+                self.st().tries = tries[:at_try + 1];
+                self.lower_body(body);
+                self.st().finals = finals;
+                self.st().tries = tries;
+            }
+            at_final -= 1;
+        } else {
+            (frame, _, depth) = tries[at_try];
+            if depth >= loop_depth {
+                self.runtime("__jac_rt_exc_pop", [frame]);
+            }
+            at_try -= 1;
         }
     }
 }
@@ -193,9 +323,246 @@ impl MirLowering.lower_raise(nd: uni.RaiseStmt) {
         b.unreachable();
         return;
     }
-    name = self.exception_name(nd.cause);
-    args = self.call_args(nd.cause) if isinstance(nd.cause, uni.FuncCall) else [];
-    self.raise_named(name, args[0] if args else None, nd);
+    cause = nd.cause;
+    if isinstance(cause, uni.Name)
+        and cause.sym is not None
+        and id(cause.sym) in self.st().bound_caught {
+        (origin, type_id, message) = self.st().bound_caught[id(cause.sym)];
+        self.runtime("__jac_rt_raise", [origin, type_id, message]);
+        b.unreachable();
+        return;
+    }
+    callee_class = isinstance(cause, uni.FuncCall)
+        and isinstance(cause.target, uni.Expr)
+        and (
+            (
+                isinstance(cause.target, uni.Name)
+                and JAC_TYPE_REGISTRY.is_exception(cause.target.value)
+            )
+            or (
+                self.target_archetype(cause.target) is not None
+                and isinstance(cause.target.type, ClassType)
+                and not cause.target.type.is_instance()
+            )
+        );
+    if isinstance(cause, uni.FuncCall) and callee_class {
+        (name, arch) = self.exception_target(cause);
+        if arch is not None {
+            self.raise_object(self.exception_object(cause, arch), arch, nd);
+            return;
+        }
+        args = self.call_args(cause);
+        self.raise_named(name, args[0] if args else None, nd);
+        return;
+    }
+    held_type = self.expr_type(cause);
+    if held_type.kind == MirKind.OBJ {
+        arch = self.archetypes.get(held_type.name);
+        if arch is not None and self.is_exception_arch(arch) {
+            self.raise_object(self.lower_expr(cause), arch, nd, True);
+            return;
+        }
+    }
+    if held_type.kind == MirKind.STR
+        and isinstance(cause.type, ClassType)
+        and JAC_TYPE_REGISTRY.is_exception(cause.type.shared.class_name) {
+        self.raise_named(cause.type.shared.class_name, cause, nd);
+        return;
+    }
+    (name, arch) = self.exception_target(cause);
+    if arch is not None {
+        self.raise_object(self.exception_object(None, arch), arch, nd);
+        return;
+    }
+    self.raise_named(name, None, nd);
+}
+
+impl MirLowering.exception_message(value: MirValue, arch: uni.Archetype) -> MirValue {
+    b = self.builder();
+    obj_def = self.object_def(arch);
+    if obj_def.field(EXC_MESSAGE_FIELD) is None {
+        return b.const_int(0, mir_int());
+    }
+    place = self.field_place(value, arch, EXC_MESSAGE_FIELD, arch);
+    return self.emit_value(MirOp.MEM_LOAD, mir_int(), [self.address_of(place)]);
+}
+
+impl MirLowering.exception_text(value: MirValue, arch: uni.Archetype) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    stored = self.exception_message(value, arch);
+    held = self.temp_slot(mir_str());
+    some = fn.new_block("exc.text");
+    none = fn.new_block("exc.empty");
+    done = fn.new_block("exc.text.done");
+    b.cond_branch(b.compare("ne", stored, b.const_int(0, mir_int())), some, none);
+    b.position(some);
+    text = b.ref_cast(stored, mir_str_ref(), False);
+    self.runtime("__jac_rt_retain", [text]);
+    size = self.runtime("__jac_rt_str_size", [text]);
+    if size is None {
+        raise MirRefused(mir_refusal("conversion", "exception text", arch));
+    }
+    made = b.str_make(b.ref_cast(stored, mir_str_ref(), True), text, size);
+    b.store(held, made);
+    b.branch(done);
+    b.position(none);
+    b.store(held, b.const_str("", mir_str()));
+    b.branch(done);
+    b.position(done);
+    return b.load(held, mir_str());
+}
+
+impl MirLowering.exception_object(
+    nd: (uni.FuncCall | None), arch: uni.Archetype
+) -> MirValue {
+    b = self.builder();
+    obj_def = self.object_def(arch);
+    params = self.constructor_params(arch);
+    positional: list[uni.Expr] = [];
+    named: dict[str, uni.Expr] = {};
+    for arg in list(nd.params or []) if nd is not None else [] {
+        if isinstance(arg, uni.KWPair) {
+            if arg.key is None {
+                raise MirRefused(
+                    mir_refusal("call argument", "keyword unpacking", arg)
+                );
+            }
+            named[arg.key.sym_name] = arg.value;
+        } else {
+            positional.append(arg);
+        }
+    }
+    if nd is None {
+        raise MirRefused(
+            mir_refusal(
+                "exception",
+                f"{obj_def.name} raised without a call",
+                arch,
+                "Raise an instance: `raise E()`."
+            )
+        );
+    }
+    has_init = (self.find_method(arch, "init") or self.find_method(arch, "__init__"))
+        is not None;
+    if has_init or obj_def.field(EXC_MESSAGE_FIELD) is None {
+        return self.object_call(nd, arch);
+    }
+    lowered = [self.spill(self.lower_expr(arg)) for arg in positional];
+    values: list[MirValue] = [];
+    mask = 0;
+    site = nd;
+    for (index, (pname, ptype, fallback)) in enumerate(params) {
+        if index < len(lowered) {
+            values.append(self.coerce(lowered[index], ptype, positional[index]));
+            if fallback is not None {
+                mask = mask | (1 << index);
+            }
+            continue;
+        }
+        source = named.get(pname);
+        if source is None and fallback is not None {
+            values.append(self.placeholder(ptype));
+            continue;
+        }
+        if source is None {
+            raise MirRefused(
+                mir_refusal("call", f"{obj_def.name} missing {pname}", site)
+            );
+        }
+        if fallback is not None {
+            mask = mask | (1 << index);
+        }
+        values.append(self.coerce(self.lower_expr(source), ptype, source));
+    }
+    if self.ctor_takes_mask(params) {
+        values.append(b.const_int(mask, mir_int()));
+    }
+    owner = arch.find_parent_of_type(uni.Module) or self.module;
+    symbol = native_symbol_name(
+        native_unit_prefix(owner.loc.mod_path), f"{obj_def.name}.__ctor"
+    );
+    made = self.spill(self.construct(symbol, obj_def, owner, params, values, site));
+    self.register_exception(arch);
+    if not lowered {
+        return made;
+    }
+    text: MirValue;
+    if len(lowered) == 1 {
+        text = self.to_str(lowered[0], positional[0]);
+    } else {
+        text = b.const_str("(", mir_str());
+        for (index, value) in enumerate(lowered) {
+            if index > 0 {
+                text = self.str_concat(text, b.const_str(", ", mir_str()));
+            }
+            text = self.str_concat(text, self.repr_of(value, positional[index]));
+        }
+        text = self.str_concat(text, b.const_str(")", mir_str()));
+    }
+    place = self.field_place(made, arch, EXC_MESSAGE_FIELD, site);
+    b.store(place, self.coerce(text, self.place_elem(place), site));
+    return made;
+}
+
+impl MirLowering.register_exception(arch: uni.Archetype) {
+    b = self.builder();
+    tid = JAC_TYPE_REGISTRY.exception_type_id(archetype_native_name(arch));
+    for ancestor in self.exception_ancestors(arch) {
+        self.runtime(
+            "__jac_rt_exc_lineage_add",
+            [b.const_int(tid, mir_int()), b.const_int(ancestor, mir_int())]
+        );
+    }
+    self.runtime(
+        "__jac_rt_exc_class_add",
+        [
+            self.emit_value(
+                MirOp.CSTR,
+                mir_c_ptr(mir_int(8, False)),
+                [],
+                str_value=self.object_def(arch).name
+            ),
+            b.const_int(tid, mir_int())
+        ]
+    );
+}
+
+impl MirLowering.raise_object(
+    value: MirValue, arch: uni.Archetype, site: uni.UniNode, dynamic: bool = False
+) {
+    b = self.builder();
+    i8p = mir_c_ptr(mir_int(8, False));
+    held = value;
+    if not value.owned {
+        self.runtime("__jac_rt_retain", [held]);
+    }
+    tid = JAC_TYPE_REGISTRY.exception_type_id(archetype_native_name(arch));
+    self.register_exception(arch);
+    raised: MirValue = b.const_int(tid, mir_int(32, True, True));
+    if dynamic {
+        found = self.runtime(
+            "__jac_rt_exc_class_of",
+            [self.address_of(held), b.const_int(tid, mir_int())]
+        );
+        if found is not None {
+            raised = b.convert(found, mir_int(32, True, True));
+        }
+    }
+    stored = self.exception_message(held, arch);
+    fallback = self.address_of(b.const_str(arch.name.value, mir_str_ref()));
+    message = b.select(
+        b.compare("ne", stored, b.const_int(0, mir_int())), stored, fallback
+    );
+    self.runtime(
+        "__jac_rt_raise",
+        [
+            self.emit_value(MirOp.PTR_CAST, i8p, [held]),
+            raised,
+            self.emit_value(MirOp.PTR_CAST, i8p, [message])
+        ]
+    );
+    b.unreachable();
 }
 
 impl MirLowering.lower_assert(nd: uni.AssertStmt) {
@@ -257,4 +624,62 @@ impl MirLowering.raise_named(
         ]
     );
     b.unreachable();
+}
+
+impl MirLowering.lower_test(nd: uni.Test) -> (MirFunction | None) {
+    line = nd.loc.first_line if nd.loc else 0;
+    name = native_test_symbol(nd.name.sym_name, line);
+    i8p = mir_c_ptr(mir_int(8, False));
+    fn = MirFunction(name=name, symbol=native_test_symbol(nd.name.sym_name, line, self.mir.prefix), ret=i8p);
+    self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=fn.new_block("entry")));
+    try {
+        b = self.builder();
+        frame = fn.new_value(i8p, "exc.frame");
+        fn.blocks[0].instrs.insert(0, MirInstr(op=MirOp.EXC_FRAME, result=frame));
+        self.runtime("__jac_rt_exc_push", [frame]);
+        buffer = self.runtime("__jac_rt_exc_jmp_buf", [frame]);
+        if buffer is None {
+            raise MirRefused(mir_refusal("test", nd.name.sym_name, nd));
+        }
+        armed = self.emit_value(MirOp.SETJMP, mir_int(32, True, True), [buffer]);
+        body = fn.new_block("test.body");
+        failed = fn.new_block("test.fail");
+        b.cond_branch(b.compare("eq", armed, b.const_int(0, armed.type)), body, failed);
+        b.position(body);
+        self.st().tries.append((frame, failed, 0));
+        self.prepare_cells(nd, list(nd.body or []));
+        self.lower_body(list(nd.body or []));
+        self.st().tries.pop();
+        if not self.builder().block.terminated() {
+            self.runtime("__jac_rt_exc_pop", [frame]);
+            self.builder().ret(self.emit_value(MirOp.PTR_NULL, i8p, []));
+        }
+        self.builder().position(failed);
+        self.runtime("__jac_rt_exc_pop", [frame]);
+        address = self.address_of(frame);
+        message = self.emit_value(
+            MirOp.PTR_CAST,
+            i8p,
+            [
+                self.emit_value(
+                    MirOp.MEM_LOAD,
+                    mir_int(),
+                    [self.builder().binary("add", address, self.builder().const_int(EXC_MESSAGE_OFFSET, mir_int()))]
+                )
+            ]
+        );
+        self.builder().ret(message);
+        for blk in fn.blocks {
+            if not blk.terminated() {
+                self.builder().position(blk);
+                self.builder().unreachable();
+            }
+        }
+    } except MirRefused as err {
+        self.refusals.setdefault(name, []).append(refusal_of(err));
+        self.state = None;
+        return None;
+    }
+    self.state = None;
+    return fn;
 }

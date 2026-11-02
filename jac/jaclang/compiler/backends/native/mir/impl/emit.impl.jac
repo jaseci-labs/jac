@@ -150,11 +150,29 @@ impl MirEmitter.emit_function(fn: MirFunction) {
         arg.name = param.name;
         self.values[param.value.id] = arg;
     }
+    self.volatile_slots = any(
+        instr.op == MirOp.SETJMP for blk in fn.blocks for instr in blk.instrs
+    );
     b = ir.IRBuilder();
     for blk in emission_order(fn) {
         b.position_at_end(self.blocks[blk.label]);
         for instr in blk.instrs {
-            self.emit_instr(b, instr);
+            try {
+                self.emit_instr(b, instr);
+            } except MirEmitError as err {
+                raise err;
+            } except Exception as err {
+                origins = [
+                    made.render()
+                    for other in fn.blocks
+                    for made in other.instrs
+                    if made.result is not None
+                        and any(made.result.id == used.id for used in instr.operands)
+                ];
+                raise MirEmitError(
+                    f"{fn.symbol}: {instr.render()} in {blk.label} (operands from {origins}): {err}"
+                ) from err;
+            }
         }
     }
 }
@@ -207,9 +225,16 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
             b.alloca(self.llvm_type(type_arg_of(instr)), name=result_of(instr).name)
         );
     } elif op == MirOp.LOAD {
-        self.bind(instr.result, b.load(self.value(instr.operands[0])));
+        loaded = b.load(self.value(instr.operands[0]));
+        if self.volatile_slots and instr.operands[0].is_slot {
+            setattr(loaded, "volatile", True);
+        }
+        self.bind(instr.result, loaded);
     } elif op == MirOp.STORE {
-        b.store(self.value(instr.operands[1]), self.value(instr.operands[0]));
+        stored = b.store(self.value(instr.operands[1]), self.value(instr.operands[0]));
+        if self.volatile_slots and instr.operands[0].is_slot {
+            setattr(stored, "volatile", True);
+        }
     } elif op == MirOp.BIN {
         self.bind(instr.result, self.emit_bin(b, instr));
     } elif op == MirOp.OVF {

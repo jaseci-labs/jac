@@ -81,6 +81,8 @@ def:pub __jac_rt_list_clear(lst: int, kind: int);
 
 def:pub __jac_rt_list_copy(lst: int, kind: int) -> int;
 
+def:pub __jac_rt_list_box(lst: int, tag: int) -> int;
+
 def:pub __jac_rt_list_extend(dst: int, src: int, kind: int);
 
 def:pub __jac_rt_list_reverse(lst: int);

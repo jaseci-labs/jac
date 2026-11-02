@@ -78,6 +78,7 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      OSP_DISCONNECT_LIST_HELP: str = "a disconnect with both list operands and attribute predicates is not lowered natively; loop over the nodes and disconnect each pair.",
      EXC_TYPE_OFFSET: int = 8,
      EXC_MESSAGE_OFFSET: int = 24,
+     DROP_RC_SENTINEL: int = 9223372036854775807,
      MEMORY_ORDERS: list[str] = [
          "monotonic",
          "acquire",
@@ -230,7 +231,9 @@ obj MirFnState {
         locals: dict[int, MirValue] = {},
         loops: list[MirLoopTarget] = [],
         caught: list[tuple[MirValue, MirValue, MirValue]] = [],
+        bound_caught: dict[int, tuple[MirValue, MirValue, MirValue]] = {},
         tries: list[tuple[MirValue, MirBlock, int]] = [],
+        finals: list[tuple[list[uni.UniNode], int, int]] = [],
         specials: dict[str, MirValue] = {};
 }
 
@@ -314,6 +317,8 @@ obj MirLowering {
     def lower_assignment(nd: uni.Assignment);
     def store_name(target: uni.Name, value: MirValue);
     def local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirValue;
+    def loop_scoped(sym: uni.Symbol) -> bool;
+    def within_body(nd: uni.UniNode, loop: uni.UniNode) -> bool;
     def lower_return(nd: uni.ReturnStmt);
     def lower_if(nd: (uni.IfStmt | uni.ElseIf));
     def lower_else(nd: (uni.ElseStmt | uni.ElseIf | None), done: MirBlock);
@@ -374,6 +379,8 @@ obj MirLowering {
     def runtime(name: str, args: list[MirValue]) -> (MirValue | None);
     def temp_slot(type: MirType) -> MirValue;
     def spill(value: MirValue) -> MirValue;
+    def name_slot(target: uni.Name) -> MirValue;
+    def bound_values(args: list[any], params: list[MirType]) -> list[MirValue];
     def lower_string(nd: (uni.String | uni.MultiString)) -> MirValue;
     def str_concat(left: MirValue, right: MirValue) -> MirValue;
     def str_compare(op: str, left: MirValue, right: MirValue) -> MirValue;
@@ -455,6 +462,7 @@ obj MirLowering {
     def container_eq(left: MirValue, right: MirValue) -> MirValue;
     def lower_for_container(nd: uni.InForStmt, holder: MirValue);
     def lower_delete(nd: uni.DeleteStmt);
+    def unbind_local(target: uni.Expr) -> bool;
     def module_archetypes -> list[uni.Archetype];
     def arch_of_type(t: (TypeBase | None)) -> (uni.Archetype | None);
     def object_def(arch: uni.Archetype) -> MirObjectDef;
@@ -475,7 +483,8 @@ obj MirLowering {
     def accessor_get(nd: uni.AtomTrailer) -> (MirValue | None);
     def accessor_set(target: uni.AtomTrailer, nd: uni.Assignment) -> bool;
     def lower_constructor(arch: uni.Archetype) -> (MirFunction | None);
-    def lower_drop(obj_def: MirObjectDef) -> MirFunction;
+    def lower_drop(obj_def: MirObjectDef, arch: uni.Archetype) -> MirFunction;
+    def drop_hook(arch: uni.Archetype, raw: MirValue);
     def lower_trace(obj_def: MirObjectDef) -> MirFunction;
     def constructor_params(
         arch: uni.Archetype
@@ -580,15 +589,27 @@ obj MirLowering {
     ) -> MirValue;
 
     def closure_call(nd: uni.FuncCall, callee: MirValue) -> MirValue;
+    def callee_value(target: uni.Expr) -> MirValue;
     def function_value(decl: MirDecl, to: MirType) -> MirValue;
     def lower_try(nd: uni.TryStmt);
+    def lower_test(nd: uni.Test) -> (MirFunction | None);
     def lower_assert(nd: uni.AssertStmt);
     def raise_named(name: str, message_nd: (uni.UniNode | None), nd: uni.UniNode);
     def lower_raise(nd: uni.RaiseStmt);
-    def leave_tries(loop_depth: int);
+    def leave_tries(loop_depth: int, run_finals: bool = True);
     def rearm_tries;
     def exception_matches(type_id: MirValue, clause: uni.Expr) -> MirValue;
     def exception_name(nd: uni.Expr) -> str;
+    def exception_target(nd: uni.Expr) -> tuple[str, (uni.Archetype | None)];
+    def is_exception_arch(arch: uni.Archetype) -> bool;
+    def exception_ancestors(arch: uni.Archetype) -> list[int];
+    def raise_object(
+        value: MirValue, arch: uni.Archetype, site: uni.UniNode, dynamic: bool = False
+    );
+    def register_exception(arch: uni.Archetype);
+    def exception_message(value: MirValue, arch: uni.Archetype) -> MirValue;
+    def exception_text(value: MirValue, arch: uni.Archetype) -> MirValue;
+    def exception_object(nd: (uni.FuncCall | None), arch: uni.Archetype) -> MirValue;
     def any_tag(t: MirType, site: uni.UniNode) -> int;
     def any_box(value: MirValue, site: uni.UniNode) -> MirValue;
     def any_make(tag: MirValue, payload: MirValue) -> MirValue;

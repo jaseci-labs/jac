@@ -100,3 +100,4 @@ def env_typed_pointers_enabled -> bool;
 def push_native_target(triple: str) -> (str | None);
 
 def pop_native_target(prev: (str | None));
+

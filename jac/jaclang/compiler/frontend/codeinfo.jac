@@ -181,7 +181,6 @@ def is_package_keyed_path(source_path: str) -> bool;
 
 def kernel_unit_path(rel: str) -> str;
 
-def is_mir_runtime_path(source_path: str) -> bool;
 
 def kernel_unit_paths -> list[str];
 

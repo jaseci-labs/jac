@@ -1,7 +1,7 @@
 #this file is part of formatter tests and is not meant to be run
 class SemTokManager {
     """Initialize semantic token manager."""
-    def init(self: SemTokManager, ir: uni.Module) -> None {
+    def init(self: SemTokManager, ir: uni.Module) {
         self.aaaaastatic_sem_tokens:
             List[Tuple[lspt.Position, int, int, uni.AstSymbolNode]] = self.gen_sem_tok_node(
             ir
@@ -9,7 +9,7 @@ class SemTokManager {
     }
 }
 
-def walrus_example() {
+def walrus_example {
     if ((x := 10) > 5) {
         print(x);
         b = a(
@@ -41,7 +41,7 @@ with entry {
 }
 
 class ModuleManager {
-    def clear_alerts_for_file(self: ModuleManager, file_path_fs: str) -> None {
+    def clear_alerts_for_file(self: ModuleManager, file_path_fs: str) {
         #list comprehension example
         self.warnings_had = [
             w
@@ -101,7 +101,7 @@ with entry {
 def func_with_very_long_params(
     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: int,
     bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb: int,
-) -> None {
+) {
     print(
         aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,
         bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,
@@ -110,13 +110,13 @@ def func_with_very_long_params(
 
 def func_with_long_params(
     aaaaaaaaaaaaaaaaaaaaaa: int, bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb: int,
-) -> None {
+) {
     print(
         aaaaaaaaaaaaaaaaaaaaaa, bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, 1111111111111
     );
 }
 
-def func_with_short_params(a: int, b: int) -> None {
+def func_with_short_params(a: int, b: int) {
     print(a + b + c[5:]);
 }
 
@@ -132,10 +132,14 @@ with entry {
     } else {
         self_symbol = [];
     }
-    x = (
-        1222222222
-        and 2222222222222222222222222222222222222222222222222222222222222222222222222222222222222222
-    );
+}
+
+glob x = (
+         1222222222
+         and 2222222222222222222222222222222222222222222222222222222222222222222222222222222222222222
+     );
+
+with entry {
     a = 4 if True else 4;
 }
 
@@ -166,7 +170,7 @@ def gen_diagnostics(
 }
 
 @decorator
-def x() {
+def x {
     assert gg == 7;
 }
 
@@ -188,7 +192,7 @@ class X {}
 
 # comment
 @decorator
-def xxx() {}
+def xxx {}
 
 # ddd
 glob a = 7;
@@ -198,7 +202,7 @@ def get_node_info(self: JacLangServer, sym_node: uni.AstSymbolNode) -> Optional[
             sym_node = sym_node.name_of;
         }
         access = (sym_node.sym.access.value + ' ') if sym_node.sym else None;
-        node_info = f"'('{(access if access else '')}{sym_node.sym_category.value}') '{sym_node.sym_name}";
+        node_info = f"'('{(access or '')}{sym_node.sym_category.value}') '{sym_node.sym_name}";
         if sym_node.name_spec.clean_type {
             node_info += f"': '{sym_node.name_spec.clean_type}";
         }
@@ -227,7 +231,7 @@ class foo {
     ) -> Optional[str] {
         if isinstance(sym_node, uni.AstVarNode) {
             var_name = sym_node.name;
-            var_type = sym_node.var_type if sym_node.var_type else 'unknown';
+            var_type = sym_node.var_type or 'unknown';
             return f" 'Variable: ' {var_name} ', Type: ' {var_type} ";
         } elif isinstance(sym_node, uni.AstFuncNode) {
             func_name = sym_node.name;
@@ -239,7 +243,7 @@ class foo {
     }
 }
 
-def x3() {
+def x3 {
     if dest_type.is_class_instance() and src_type.is_class_instance() {
         print("x");
     }
@@ -256,7 +260,7 @@ def x3() {
 }
 
 class HH {
-    def `test() -> Optional[str] {
+    def `test -> Optional[str] {
         a: str = """!
 hello
 hru
@@ -281,7 +285,7 @@ enum Y {
 }
 
 # 121212
-def main() {
+def main {
     print("Hello, World!");  # C1
     # This is a comment
     print(
@@ -301,7 +305,7 @@ obj Vehicle(ssdsd) {  # Has statements with type annotations (instance variables
 }
 
 """Type check with thread cancellation and proper debouncing."""
-async def type_check(self: JacLangServer, file_path: str) -> None {
+async def type_check(self: JacLangServer, file_path: str) {
     # Cancel existing debounce timer for this file
     if file_path in self.debounce_timers {
         # Cancel existing type check thread for this file if running
@@ -320,7 +324,7 @@ async def type_check(self: JacLangServer, file_path: str) -> None {
     # self.cancel_tokens[file_path] = mythreading.Event();
 
     # Create a debounced function that will run the actual type check
-    def debounced_type_check() -> None {
+    def debounced_type_check {
         # Start new thread for type checking
         print(" debounced_type_check ->", time.time(), file=sys.stderr);
         self.type_check_threads[file_path] = threading.Thread(
@@ -351,17 +355,17 @@ import from "@jac/runtime" {
 
 
 # Reactive state management
-glob _state = createState({"tweets": [], "loading": False});
-glob appState = _state[0];
-glob setAppState = _state[1];
+glob _state = createState({"tweets": [], "loading": False}),
+     appState = _state[0],
+     setAppState = _state[1];
 
 # Shared data model for client/server
 obj ClientTweet {
-    has username: str = "";
-    has id: str = "";
-    has content: str = "";
-    has likes: list[any] = [];
-    has comments: list[any] = [];
+    has username: str = "",
+        id: str = "",
+        content: str = "",
+        likes: list[any] = [],
+        comments: list[any] = [];
 }
 
 # UI Components - Render a single tweet card
@@ -435,21 +439,20 @@ async def like_tweet_action(tweet_id: str) -> any {
 }
 
 
-def x(
-    # comment
-) {
+def x {
     print(
         "111"  #
     );
 }
 
-def gg() {
+# comment
+def gg {
     #1234
 }
 
 obj A {
     # 123
-    def x() {
+    def x {
         # 123
     }
 }

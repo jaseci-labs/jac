@@ -64,6 +64,7 @@ obj AnalysisReport {
         reads: list[list[str]] = [];
 
     def module(path: str) -> (ModuleReport | None);
+    def entry_module -> (ModuleReport | None);
     def to_dict -> dict[str, any];
     def to_json -> str;
     static def from_json(text: str) -> AnalysisReport;

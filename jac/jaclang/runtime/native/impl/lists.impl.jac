@@ -437,6 +437,24 @@ impl __jac_rt_list_copy(lst: int, kind: int) -> int {
     return made;
 }
 
+impl __jac_rt_list_box(lst: int, tag: int) -> int {
+    n = __mem_load_i64(lst + LIST_LEN);
+    made = __jac_rt_list_new(n, KIND_ANY);
+    if n > 0 {
+        src = __mem_load_i64(lst + LIST_DATA);
+        data = __mem_load_i64(made + LIST_DATA);
+        i = 0;
+        while i < n {
+            __mem_store_i64(
+                data + i * SLOT, __jac_rt_any_box(tag, __mem_load_i64(src + i * SLOT))
+            );
+            i += 1;
+        }
+        __mem_store_i64(made + LIST_LEN, n);
+    }
+    return made;
+}
+
 impl __jac_rt_list_extend(dst: int, src: int, kind: int) {
     n = __mem_load_i64(src + LIST_LEN);
     if n <= 0 {
