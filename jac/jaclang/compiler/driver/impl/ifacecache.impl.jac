@@ -646,7 +646,8 @@ impl IfaceRegistry._serve_in_context(
     if not options.iface_ok or options.need_full_ast or not self.ready() {
         return None;
     }
-    if options.native_tree_demand and native_lowering_reads(resolved) {
+    if options.native_tree_demand
+        and (native_lowering_reads(resolved) or options.native_required_for(resolved)) {
         return None;
     }
     if resolved in self.building {

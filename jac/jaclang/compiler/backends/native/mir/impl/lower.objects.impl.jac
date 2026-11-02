@@ -483,7 +483,7 @@ impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) 
         }
         b.ret(this);
     } except MirRefused as err {
-        self.refusals.setdefault(fn.name, []).append(refusal_of(err));
+        self.refusals.setdefault(fn.symbol, []).append(refusal_of(err));
         self.state = saved;
         return None;
     }
@@ -1579,6 +1579,15 @@ impl MirLowering.decl_label(decl: MirDecl) -> str {
         return accessor_slot_name(field, ab) or field;
     }
     return self.name_of(ab);
+}
+
+impl MirLowering.refusal_key(decl: MirDecl) -> str {
+    label = self.decl_label(decl);
+    owner = decl.owner;
+    if owner is not None and owner.name is not None {
+        return f"{owner.name.value}.{label}";
+    }
+    return label;
 }
 
 impl MirLowering.accessor_of(

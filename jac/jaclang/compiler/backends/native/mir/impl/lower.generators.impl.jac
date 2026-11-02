@@ -153,7 +153,7 @@ impl MirLowering.lower_generator(decl: MirDecl) -> (MirFunction | None) {
         made = self.runtime_value("__jac_rt_iter_new", [code, frame_obj]);
         b.ret(b.ref_cast(made, decl.ret, True));
     } except MirRefused as err {
-        self.refusals.setdefault(name, []).append(refusal_of(err));
+        self.refusals.setdefault(self.refusal_key(decl), []).append(refusal_of(err));
         self.state = saved;
         return None;
     }

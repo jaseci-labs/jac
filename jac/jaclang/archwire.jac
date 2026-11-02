@@ -9998,12 +9998,20 @@ graph import compiler {
             | passes.ownership_check_pass._is_class_object { ClassType },
         backends.es.esast_gen_pass.EsastGenPass._osp_expr_arch_name
             | passes.layout_pass.enum_class_of { ClassType },
-        backends.native.mir.lower | backends.native.mir.lower_types {
+        backends.native.mir.lower {
             AnyType,
             ClassType,
             EnumMemberType,
             FunctionType,
             ModuleType,
+            TypeVarType,
+            UnionType
+        },
+        backends.native.mir.lower_types {
+            AnyType,
+            ClassType,
+            EnumMemberType,
+            FunctionType,
             TypeVarType,
             UnionType
         },

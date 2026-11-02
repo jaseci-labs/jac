@@ -97,7 +97,7 @@ impl MirLowering.callees_of(fn: MirFunction) -> list[str] {
 impl MirLowering.settle {
     symbols: dict[str, str] = {};
     for decl in self.decls.values() {
-        symbols[self.decl_label(decl)] = decl.symbol;
+        symbols[self.refusal_key(decl)] = decl.symbol;
     }
     for (name, reasons) in self.refusals.items() {
         symbol = symbols.get(name, name);
@@ -270,7 +270,7 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
             }
         }
     } except MirRefused as err {
-        self.refusals.setdefault(fn.name, []).append(refusal_of(err));
+        self.refusals.setdefault(self.refusal_key(decl), []).append(refusal_of(err));
         self.state = None;
         return None;
     }
@@ -363,7 +363,7 @@ impl MirLowering.lower_stmt(nd: uni.UniNode) {
         self.lower_assert(nd);
     } elif isinstance(nd, (uni.VisitStmt, uni.ReportStmt, uni.DisengageStmt)) {
         self.lower_osp_stmt(nd);
-    } else {
+    } elif not isinstance(nd, uni.Import) {
         raise MirRefused(mir_refusal("statement", type(nd).__name__, nd));
     }
 }
@@ -1129,10 +1129,17 @@ impl MirLowering.compare_values(
         same = self.container_eq(left, right);
         return same if name == "eq" else self.builder().logical_not(same);
     }
-    if left.type.kind == MirKind.C_PTR and right.type.kind == MirKind.C_PTR {
-        li = self.emit_value(MirOp.PTR_INT, mir_int(64, False), [left]);
-        ri = self.emit_value(MirOp.PTR_INT, mir_int(64, False), [right]);
-        return self.builder().compare(name, li, ri);
+    if MirKind.C_PTR in (left.type.kind, right.type.kind)
+        and all(
+            side.type.kind in (MirKind.C_PTR, MirKind.INT) for side in (left, right)
+        ) {
+        words = [
+            self.emit_value(MirOp.PTR_INT, mir_int(64, False), [side])
+                if side.type.kind == MirKind.C_PTR
+                else self.builder().convert(side, mir_int(64, False))
+            for side in (left, right)
+        ];
+        return self.builder().compare(name, words[0], words[1]);
     }
     if not left.type.is_numeric() or not right.type.is_numeric() {
         raise MirRefused(
@@ -2175,7 +2182,10 @@ impl MirLowering.c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue {
     params = [
         mir_type_of(p.param_type, MirPosition.C_FIELD, nd) for p in fn_type.parameters
     ];
-    ret = mir_type_of(fn_type.return_type, MirPosition.C_FIELD, nd);
+    sig = self.ability_sig(callee);
+    ret = mir_type_of(fn_type.return_type, MirPosition.C_FIELD, nd)
+        if sig is None or sig.return_type is not None
+        else mir_none();
     symbol = self.name_of(callee);
     self.mir.externs[symbol] = MirExtern(symbol=symbol, ret=ret, params=params);
     args = self.call_args(nd);
