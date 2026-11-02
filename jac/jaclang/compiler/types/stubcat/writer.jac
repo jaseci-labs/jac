@@ -102,11 +102,11 @@ obj CatalogWriter {
     def _type_ident(t: TypeBase) -> str;
     def _type_ident_uncached(t: TypeBase) -> str;
     def _types_ident(ts: (list[TypeBase] | None)) -> str;
-    def _literal_ident(value: any) -> str;
+    def _literal_ident(value: (str | int | bool | None)) -> str;
     def ref_type(t: (TypeBase | None)) -> int;
     def ref_types(ts: (list[TypeBase] | None)) -> list[int];
     def ref_shared(shared: (ClassDetailsShared | None)) -> int;
-    def put_literal(out: bytearray, value: any);
+    def put_literal(out: bytearray, value: (str | int | bool | None));
     def encode_module(idx: int) -> bytes;
     def encode_scope(idx: int) -> bytes;
     def encode_symbol(idx: int) -> bytes;
