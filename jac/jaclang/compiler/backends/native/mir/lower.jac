@@ -547,6 +547,7 @@ obj MirLowering {
     ) -> MirValue;
 
     def closure_call(nd: uni.FuncCall, callee: MirValue) -> MirValue;
+    def callee_value(target: uni.Expr) -> MirValue;
     def function_value(decl: MirDecl, to: MirType) -> MirValue;
     def lower_try(nd: uni.TryStmt);
     def lower_assert(nd: uni.AssertStmt);

@@ -227,7 +227,8 @@ impl MirLowering.lower_closure(
 }
 
 impl MirLowering.closure_call(nd: uni.FuncCall, callee: MirValue) -> MirValue {
-    params = callee.type.args[1:];
+    fn_type = callee.type.payload() if callee.type.kind == MirKind.OPT else callee.type;
+    params = fn_type.args[1:];
     args = self.call_args(nd);
     if len(args) != len(params) {
         raise MirRefused(
@@ -239,7 +240,31 @@ impl MirLowering.closure_call(nd: uni.FuncCall, callee: MirValue) -> MirValue {
         self.coerce(self.lower_expr(arg), ptype, arg)
         for (arg, ptype) in zip(args, params)
     ];
+    if held.type.kind == MirKind.OPT {
+        held = self.opt_unwrap_checked(held, "'NoneType' object is not callable");
+    }
     return self.call_closure(held, values, nd);
+}
+
+impl MirLowering.callee_value(target: uni.Expr) -> MirValue {
+    if isinstance(target, uni.AtomTrailer) and target.is_attr {
+        place = self.lower_place(target);
+        loaded = self.builder().load(place, self.place_elem(place));
+        if loaded.type.kind == MirKind.OPT and loaded.type.payload().kind == MirKind.FN {
+            return loaded;
+        }
+        return self.lower_expr(target);
+    }
+    if isinstance(target, uni.Name) and target.sym is not None {
+        slot = self.st().locals.get(id(target.sym));
+        if slot is not None
+            and self.cell_of(id(target.sym)) is None
+            and slot.type.kind == MirKind.OPT
+            and slot.type.payload().kind == MirKind.FN {
+            return self.builder().load(slot, slot.type);
+        }
+    }
+    return self.lower_expr(target);
 }
 
 impl MirLowering.call_closure(

@@ -1254,7 +1254,7 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     if isinstance(target, uni.Expr)
         and isinstance(target.type, FunctionType)
         and self.expr_type(target).kind == MirKind.FN {
-        return self.closure_call(nd, self.lower_expr(target));
+        return self.closure_call(nd, self.callee_value(target));
     }
     via_type = self.type_call(nd);
     if via_type is not None {
@@ -1263,7 +1263,7 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     if isinstance(target, uni.Expr) and target.type is not None {
         target_type = self.expr_type(target);
         if target_type.kind == MirKind.FN {
-            return self.closure_call(nd, self.lower_expr(target));
+            return self.closure_call(nd, self.callee_value(target));
         }
     }
     bridged = self.python_call(nd);
