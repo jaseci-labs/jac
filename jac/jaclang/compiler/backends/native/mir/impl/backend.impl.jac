@@ -14,7 +14,9 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     lowered = lowering.lower();
     runtime = mir_runtime_unit_paths();
     here = os.path.realpath(path);
-    if self.prog.options.native_required_for(path) or here in runtime {
+    if self.prog.options.native_required_for(path)
+        or self.prog.options.force_codespace == "native"
+        or here in runtime {
         self.report_refusals(lowering);
         if self.ctx.errors_had {
             return ir_in;
