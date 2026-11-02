@@ -12,8 +12,11 @@ typed dict through `any`, a nested list inside an any-dict, pointer, float
 and bool element families, a member narrow, a view taken in a loop, and a
 `json.dumps` / `json.loads` round trip, all against the Python backend.
 """
+import os;
+import subprocess;
+import tempfile;
 import from pathlib { Path }
-import from tests.support { assert_native_identity, native_outputs }
+import from tests.support { assert_native_identity, jac_command, native_outputs }
 
 test "typed containers narrowed from any to containers of any match Python" {
     source = str(
@@ -53,4 +56,51 @@ test "an any bound to a typed container passes a matching layout and refuses ano
             out
         );
     }
+}
+
+def _built(fixture: str, extra: list[str] | None = None) -> str {
+    out_bin = os.path.join(tempfile.mkdtemp(), "probe.bin");
+    comp = subprocess.run(
+        jac_command(
+            "build",
+            "--native",
+            str(Path(__file__).resolve().parent / "fixtures" / fixture),
+            "-o",
+            out_bin
+        )
+            + list(extra or []),
+        capture_output=True,
+        text=True,
+        timeout=900
+    );
+    assert comp.returncode == 0 , comp.stderr[-800:];
+    return out_bin;
+}
+
+"""A refused bind releases the container it refused: the parsed dict is not
+kept alive by the raise."""
+test "a refused bind of an any container releases it" {
+    out_bin = _built("any_bind_refused_leaks.jac", ["--debug"]);
+    proc = subprocess.run([out_bin], capture_output=True, text=True, timeout=120);
+    assert proc.returncode == 0 , proc.stderr[-400:];
+    out = proc.stdout;
+    assert out.split("\n")[0] == "10" , out[:200];
+    assert "RC LIVE OBJECTS at exit" in out , out[-400:];
+    leaks = [
+        line
+        for line in out.split("\n")
+        if "<- LEAK" in line
+    ];
+    assert not leaks , leaks;
+}
+
+"""A typed global bound from a borrowed `any` is checked like a local: the
+mismatched layout raises at its initializer instead of storing null, and the
+program stops there."""
+test "a typed global bound from a mismatched any raises TypeError" {
+    out_bin = _built("any_bind_refused_global.jac");
+    proc = subprocess.run([out_bin], capture_output=True, text=True, timeout=120);
+    assert proc.returncode != 0 , proc.stdout;
+    assert "a container held as `any` is not a dict_" in proc.stderr , proc.stderr;
+    assert "reached" not in proc.stdout , proc.stdout;
 }
