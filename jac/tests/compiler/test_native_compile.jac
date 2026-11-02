@@ -1279,3 +1279,51 @@ test "the native kernel reads the endpoint effects of a module served from a see
         assert facts.get("writer") and "Note" in facts.get("touches", []) , page.effects;
     }
 }
+
+"""A module served from a seed has no function bodies, so a compile that needs
+one evaluated at compile time asks for the module's tree. The kernel answers
+that request from source instead of handing back the seed's interface."""
+test "a comptime call into a seed-served module evaluates its body" {
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'helpers.jac').write_text(
+            'comptime def triple(n: int) -> int {\n    return n * 3;\n}\n'
+        );
+        (base / 'main.jac').write_text(
+            'import from helpers { triple }\n\nwith entry { print(triple(2)); }\n'
+        );
+        (base / 'page.jac').write_text(
+            'import from helpers { triple }\n\n'
+                + 'comptime NINE: int = triple(3);\n'
+                + 'comptime assert NINE == 9;\n\n'
+                + 'with entry { print(NINE); }\n'
+        );
+        entry_file = str(base / 'main.jac');
+        app_session = kernel_snapshot(
+            active_host(),
+            JacProgram(),
+            entry_file,
+            compile_options(),
+            emit_closure=True
+        );
+        app = run_kernel_compile(app_session.text(), entry_file, None, app_session);
+        assert app.analysis.status == ANALYSIS_OK , app.analysis.message;
+        helpers = app.unit(str(base / 'helpers.jac'));
+        assert helpers is not None and helpers.iface , helpers;
+        seed = PythonInterface(
+            path=helpers.path,
+            pkg_dir=str(base),
+            data=base64.b64decode(helpers.iface),
+            placement=helpers.placement,
+            effects=helpers.effects
+        );
+        page_file = str(base / 'page.jac');
+        session = kernel_snapshot(
+            active_host(), JacProgram(), page_file, compile_options(), seeds=[seed]
+        );
+        outcome = run_kernel_compile(session.text(), page_file, None, session);
+        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
+        assert not outcome.analysis.errors , [str(e) for e in outcome.analysis.errors];
+    }
+}
