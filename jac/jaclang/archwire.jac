@@ -10543,6 +10543,7 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._sort_key_unsigned {
             primitive_type_name_of
         },
+        native_bindings { collect_member_syms },
         passes.rc_facts_pass.RcFactsPass._asn_makes_region_handle {
             expr_is_builtin_region
         },
@@ -13706,7 +13707,10 @@ graph import compiler.tests {
             run_py_fixture
         },
     ]
-    xbackend_equiv --> test_osp_equivalence { compile_native, run_native_function }
+    xbackend_equiv --> [
+        test_native_functools { compile_native, get_func },
+        test_osp_equivalence { compile_native, run_native_function },
+    ]
 }
 
 graph import compiler.tools {
@@ -14099,6 +14103,7 @@ graph import compiler.types {
             apply_solved_type_vars,
             build_type_var_solution
         },
+        stubcat.writer { origin_of_local_name },
         type_evaluator {
             ClassMember,
             ParamAssignmentTracker,
@@ -46910,6 +46915,7 @@ graph import server {
         server.JacAPIServer._ensure_internal_users { SYSTEM_USER, UserRole },
         server.JacAPIServer._register_scheduled_tasks { SYSTEM_USER },
     ]
+    impl.pruned_inotify --> watcher.JacFileWatcher.start { SharedPrunedInotifyObserver }
     middleware ++> [
         endpoints.auth | endpoints.second_factor { bearer_token, require_user },
         endpoints.introspection { unauthorized },
