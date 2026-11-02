@@ -1099,12 +1099,17 @@ impl NativeBuildSession.unbound_symbols(
             return None;
         }
         defined = provided[0];
+        demoted = set(ent.iface.demoted);
         prefix = f"{ent.iface.prefix}." if ent.iface.prefix else "";
         for symbol in declared {
-            if symbol not in defined
-                and (
-                    (prefix and symbol.startswith(prefix))
-                    or (symbol + DEMOTED_SYMBOL_SUFFIX) in defined
+            if symbol in demoted
+                or (prefix and symbol[len(prefix):] in demoted)
+                or (
+                    symbol not in defined
+                    and (
+                        (prefix and symbol.startswith(prefix))
+                        or (symbol + DEMOTED_SYMBOL_SUFFIX) in defined
+                    )
                 ) {
                 unbound.add(symbol);
             }

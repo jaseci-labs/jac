@@ -802,7 +802,9 @@ test "a cycle unit lowered before its dependency demoted a name it calls lowers 
             out = str(Path(root_dir) / ("libeven" + suffix));
             link_artifact(plan, out, ArtifactKind.SHARED);
             import ctypes;
-            assert ctypes.CDLL(out).even(4) == 1;
+            lib = ctypes.CDLL(out);
+            lib.even.restype = ctypes.c_bool;
+            assert lib.even(4) is True;
         }
     }
 }

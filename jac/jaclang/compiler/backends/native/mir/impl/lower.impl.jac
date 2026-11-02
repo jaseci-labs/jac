@@ -2692,7 +2692,8 @@ impl MirLowering.require_dep_native(path: str, symbol: str, site: uni.UniNode) {
     }
     demoted = self.dep_verdicts[unit];
     if demoted is None {
-        if unit in self.prog.native_units().building {
+        if unit in self.prog.native_units().building
+            or active_host().native_dep_discovery_open(self.prog) {
             return;
         }
         raise MirRefused(
