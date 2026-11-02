@@ -370,6 +370,7 @@ obj MirLowering {
 
     def ensure_objects(t: (TypeBase | None));
     def ensure_c_types(t: (TypeBase | None));
+    def c_struct_same(arch: uni.Archetype, name: str) -> bool;
     def arch_fields(arch: uni.Archetype) -> list[uni.HasVar];
     def lower_place(nd: uni.UniNode) -> MirValue;
     def place_elem(place: MirValue) -> MirType;

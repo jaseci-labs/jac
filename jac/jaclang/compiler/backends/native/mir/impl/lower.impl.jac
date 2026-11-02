@@ -890,6 +890,15 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
         if c_function is not None {
             return c_function;
         }
+        if named_function_of(nd) is not None {
+            symbol = self.c_function_symbol(nd);
+            held = self.mir.externs.get(symbol);
+            if held is not None {
+                return self.emit_value(
+                    MirOp.FN_ADDR, mir_c_fn(held.params, held.ret), [], callee=symbol
+                );
+            }
+        }
         raise MirRefused(mir_refusal("name", nd.value, nd));
     }
     slot = self.st().locals[id(nd.sym)];
@@ -1576,7 +1585,7 @@ impl MirLowering.truthy(value: MirValue, site: uni.UniNode) -> MirValue {
     if value.type.kind == MirKind.FLOAT {
         return b.compare("ne", value, b.const_float(0.0, value.type));
     }
-    if value.type.kind == MirKind.C_PTR {
+    if value.type.kind in (MirKind.C_PTR, MirKind.C_FN) {
         address = self.emit_value(MirOp.PTR_INT, mir_int(64, False), [value]);
         return b.compare("ne", address, b.const_int(0, address.type));
     }
@@ -1870,7 +1879,7 @@ impl MirLowering.ensure_c_types(t: (TypeBase | None)) {
     site = f"{arch.loc.mod_path}:{arch.loc.first_line}:{arch.loc.col_start}";
     held = self.c_struct_sites.get(name);
     if held is not None {
-        if held != site {
+        if held != site and not self.c_struct_same(arch, name) {
             raise MirRefused(
                 mir_refusal(
                     "C struct",
@@ -1902,6 +1911,29 @@ impl MirLowering.ensure_c_types(t: (TypeBase | None)) {
             )
         );
     }
+}
+
+impl MirLowering.c_struct_same(arch: uni.Archetype, name: str) -> bool {
+    known = self.mir.structs.get(name);
+    if known is None {
+        return False;
+    }
+    fields = self.arch_fields(arch);
+    if len(fields) != len(known.fields) {
+        return False;
+    }
+    evaluator = self.prog.get_type_evaluator();
+    for (hv, member) in zip(fields, known.fields) {
+        sym = hv.name.sym;
+        if sym is None or hv.name.value != member.name {
+            return False;
+        }
+        if mir_type_of(evaluator.get_type_of_symbol(sym), MirPosition.C_FIELD, hv)
+            is not member.type {
+            return False;
+        }
+    }
+    return True;
 }
 
 impl MirLowering.arch_fields(arch: uni.Archetype) -> list[uni.HasVar] {
