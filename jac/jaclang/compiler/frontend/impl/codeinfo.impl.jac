@@ -791,6 +791,35 @@ impl native_target_arch -> str {
 }
 
 impl _native_variant_path(base_no_ext: str) -> (str | None) {
+    key = "native-variant\x1f"
+        + native_target_os()
+        + "\x1f"
+        + native_target_arch()
+        + "\x1f"
+        + base_no_ext;
+    found = _build_memo_get(key);
+    if found is None {
+        found = _native_variant_path_uncached(base_no_ext);
+        _build_memo_put(key, found);
+    }
+    return found or None;
+}
+
+impl _build_memo_get(key: str) -> (str | None) {
+    import from jaclang.compiler.driver.jir { _PREPARE_MEMO }
+    memo = _PREPARE_MEMO.get();
+    return memo.get(key) if memo is not None else None;
+}
+
+impl _build_memo_put(key: str, value: str) {
+    import from jaclang.compiler.driver.jir { _PREPARE_MEMO }
+    memo = _PREPARE_MEMO.get();
+    if memo is not None {
+        memo[key] = value;
+    }
+}
+
+impl _native_variant_path_uncached(base_no_ext: str) -> str {
     import os;
     _osarchv = f"{base_no_ext}.{native_target_os()}.{native_target_arch()}.jac";
     if os.path.exists(_osarchv) {
@@ -815,7 +844,7 @@ impl _native_variant_path(base_no_ext: str) -> (str | None) {
     if os.path.exists(_plain) {
         return _plain;
     }
-    return None;
+    return "";
 }
 
 impl is_selected_native_variant(path: str) -> bool {
@@ -868,12 +897,28 @@ impl _inferred_native_path(candidate: (str | None)) -> (str | None) {
     if candidate is None {
         return None;
     }
+    import from jaclang.compiler.frontend.host { active_host }
+    key = "native-inferred\x1f"
+        + str(native_unit_compile_active())
+        + "\x1f"
+        + str(id(active_host()))
+        + "\x1f"
+        + candidate;
+    found = _build_memo_get(key);
+    if found is None {
+        found = _inferred_native_path_uncached(candidate);
+        _build_memo_put(key, found);
+    }
+    return found or None;
+}
+
+impl _inferred_native_path_uncached(candidate: str) -> str {
     import from jaclang.compiler.native_scope { scope_allows_inferred_path }
     if not scope_allows_inferred_path(candidate) {
-        return None;
+        return "";
     }
     import from jaclang.compiler.placement.placement_solver { native_default_path_ok }
-    return candidate if native_default_path_ok(candidate) else None;
+    return candidate if native_default_path_ok(candidate) else "";
 }
 
 impl resolve_native_module(
