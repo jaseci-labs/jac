@@ -746,3 +746,34 @@ test "a relative cache root keeps the runtime's digests across a copy" {
         os.chdir(cwd);
     }
 }
+
+test "a symlinked cache root keeps the runtime's digests across a copy" {
+    (base, env) = private_root();
+    real = base / "real";
+    site = real / "rt" / "0123456789abcdef" / "site" / "jaclang";
+    site.mkdir(parents=True);
+    link = base / "link";
+    link.symlink_to(real, target_is_directory=True);
+    # The compiler hashes resolved paths, so the files are named through `real`.
+    runtime = [site / "a.jac", site / "b.jac"];
+    for (n, f) in enumerate(runtime) {
+        f.write_text(f"glob x{n}: int = {n};\n");
+        os.utime(f, ns=(0, 0));
+    }
+    linked = dict(env);
+    linked["JAC_CACHE_HOME"] = str(link);
+    with patch.dict(os.environ, linked), patch.multiple(
+        cache_paths,
+        _DIGEST_RACY_NS=-1,
+        _digest_memo={},
+        _digest_shards={},
+        _digest_dirty=set()
+    ) {
+        assert hashes_read(runtime) == 2;
+        flush_file_digests();
+        forget_file_digests();
+        recopy(real);
+        rehashed = hashes_read(runtime);
+        assert rehashed == 0 , f"{rehashed} runtime file(s) re-hashed after a copy under a symlinked cache root";
+    }
+}
