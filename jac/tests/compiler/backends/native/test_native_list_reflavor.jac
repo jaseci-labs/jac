@@ -88,3 +88,16 @@ test "scalar elements take the opposite direction cleanly" {
     assert fn(True) == 17 , f"scalar sum {fn(True)}, expected 17";
     assert fn(False) == 7 , f"scalar sum {fn(False)}, expected 7";
 }
+
+
+test "pointer elements keep their kind when boxed into a str union list" {
+    for (name, flag, want) in [
+        ("union_obj_elems", True, 7),
+        ("union_obj_elems", False, 10),
+        ("union_str_elems", True, 300),
+        ("union_str_elems", False, 400)
+    ] {
+        got = flag_fn(name)(flag);
+        assert got == want , f"{name}({flag}) gave {got}, expected {want}";
+    }
+}

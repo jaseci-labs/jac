@@ -110,6 +110,17 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
     };
 }
 
+impl _scope_text(value: any) -> str {
+    if isinstance(value, (list, tuple)) {
+        return ' '.join(
+            str(v).strip()
+            for v in value
+            if str(v).strip()
+        );
+    }
+    return ' '.join(str(value or '').replace(',', ' ').split());
+}
+
 impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     sso_config = config.get('sso', {});
@@ -122,15 +133,18 @@ impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, any] {
         'client_auth_callback_url': sso_config.get('client_auth_callback_url', ''),
         'google': {
             'client_id': google_config.get('client_id', ''),
-            'client_secret': google_config.get('client_secret', '')
+            'client_secret': google_config.get('client_secret', ''),
+            'scopes': _scope_text(google_config.get('scopes', ''))
         },
         'apple': {
             'client_id': apple_config.get('client_id', ''),
-            'client_secret': apple_config.get('client_secret', '')
+            'client_secret': apple_config.get('client_secret', ''),
+            'scopes': _scope_text(apple_config.get('scopes', ''))
         },
         'github': {
             'client_id': github_config.get('client_id', ''),
-            'client_secret': github_config.get('client_secret', '')
+            'client_secret': github_config.get('client_secret', ''),
+            'scopes': _scope_text(github_config.get('scopes', ''))
         },
         'firebase': {
             'project_id': resolve_firebase_project_id(

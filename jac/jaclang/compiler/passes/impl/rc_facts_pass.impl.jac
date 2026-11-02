@@ -12,15 +12,15 @@ impl RcFactsPass._run_impl(ir_in: Module) -> Module {
 impl RcFactsPass._enclosing_fn_scope(
     nd: UniNode, stop_at_comprehension: bool = False
 ) -> UniNode | None {
-    cur = nd.parent;
-    while cur is not None {
-        if isinstance(cur, (Ability, ImplDef, LambdaExpr, Test, ModuleCode)) {
+    cur = nd.decl_parent;
+    while cur is not None and not isinstance(cur, Module) {
+        if is_frame(cur) {
             return cur;
         }
         if stop_at_comprehension and isinstance(cur, (ListCompr, DictCompr)) {
             return cur;
         }
-        cur = cur.parent;
+        cur = cur.decl_parent;
     }
     return None;
 }
@@ -223,10 +223,11 @@ impl RcFactsPass._stamp_region_handles(ir_in: Module) -> None {
 
 impl RcFactsPass._stamp_last_use(ir_in: Module) -> None {
     out: dict[int, list[str]] = {};
+    self._last_use_pinned = self._borrow_roots(ir_in);
     for ab in ir_in.get_all_sub_nodes(Ability) {
-        if isinstance(ab.signature, FuncSignature)
-            and isinstance(ab.body, (list, tuple)) {
-            self._collect_last_use(ab, ab.body, out);
+        stmts = ModuleFacts.unwrap_body(ab);
+        if isinstance(ab.signature, FuncSignature) and stmts is not None {
+            self._collect_last_use(ab, stmts, out);
         }
     }
     for mc in ir_in.get_all_sub_nodes(ModuleCode) {
@@ -241,23 +242,30 @@ impl RcFactsPass._collect_last_use(
     owner: UniNode, body: Sequence[UniNode], out: dict[int, list[str]]
 ) -> None {
     sym_last: dict[int, tuple[int, str]] = {};
+    lent: dict[int, bool] = {};
     for (idx, stmt) in enumerate(body) {
         for nm in stmt.get_all_sub_nodes(Name) {
             sym = nm.sym;
             if sym is None
                 or sym.na_escapes
                 or (nm.sym_name == "self" and sym.ownership != OwnershipKind.OWN)
-                or not self._last_use_tracked(sym) {
+                or not self._last_use_tracked(sym)
+                or id(sym) in self._last_use_pinned {
                 continue;
             }
-            if not same_lexical_scope(self._enclosing_fn_scope(nm), owner) {
+            if id(sym) not in lent {
+                lent[id(sym)] = self._lent_to_c(sym);
+            }
+            if lent[id(sym)] {
+                continue;
+            }
+            if self._enclosing_fn_scope(nm) is not owner {
                 continue;
             }
             decl = sym.decl;
             if decl is None
-                or not same_lexical_scope(
-                    self._enclosing_fn_scope(decl, stop_at_comprehension=True), owner
-                ) {
+                or self._enclosing_fn_scope(decl, stop_at_comprehension=True)
+                    is not owner {
                 continue;
             }
             sym_last[id(sym)] = (idx, nm.sym_name);
@@ -274,6 +282,61 @@ impl RcFactsPass._collect_last_use(
             out[key].append(_name);
         }
     }
+}
+
+impl RcFactsPass._borrow_roots(ir_in: Module) -> set[int] {
+    roots: set[int] = set();
+    binds = ir_in.managed_borrow_binds;
+    if not binds {
+        return roots;
+    }
+    for nd in ir_in.get_all_sub_nodes(Assignment) {
+        if id(nd) in binds and nd.value is not None {
+            self._add_borrow_root(nd.value, roots);
+        }
+    }
+    for st in ir_in.get_all_sub_nodes(InForStmt) {
+        if id(st) in binds {
+            self._add_borrow_root(st.collection, roots);
+        }
+    }
+    return roots;
+}
+
+impl RcFactsPass._add_borrow_root(e: Expr, roots: set[int]) -> None {
+    cur: Expr = e;
+    while isinstance(cur, AtomTrailer) {
+        cur = cur.target;
+    }
+    if isinstance(cur, Name) and cur.sym is not None {
+        roots.add(id(cur.sym));
+    }
+}
+
+impl RcFactsPass._lent_to_c(sym: Symbol) -> bool {
+    for u in sym.uses {
+        p = u.parent;
+        if not isinstance(p, UnaryExpr) or not is_borrow_kind(p.ownership) {
+            continue;
+        }
+        call = p.find_parent_of_type(FuncCall);
+        if call is None {
+            continue;
+        }
+        callee = call.callee_decl;
+        if callee is None {
+            return True;
+        }
+        owner = self._c_import_of(callee);
+        if owner is not None and owner.has_clib_decls {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl RcFactsPass._c_import_of(decl: UniNode) -> (Import | None) {
+    return decl.find_parent_of_type(Import);
 }
 
 impl RcFactsPass._last_use_tracked(sym: Symbol) -> bool {
@@ -369,9 +432,7 @@ impl RcFactsPass._stamp_param_rebound(ir_in: Module) -> None {
             continue;
         }
         owner = self._enclosing_fn_scope(pv);
-        body = owner.body if isinstance(owner, Ability) else None;
-        sym.param_rebound = (id(owner), sym.sym_name) in bound
-            or (isinstance(body, ImplDef) and (id(body), sym.sym_name) in bound);
+        sym.param_rebound = (id(owner), sym.sym_name) in bound;
     }
 }
 
@@ -430,8 +491,34 @@ impl RcFactsPass._stamp_move_lowerable(ir_in: Module) -> None {
         return;
     }
 
+    sites_by_sym: dict[SymId, list[Assignment]] = {};
+    for (nd, sid) in candidates {
+        if sid in sites_by_sym {
+            sites_by_sym[sid].append(nd);
+        } else {
+            sites_by_sym[sid] = [nd];
+        }
+    }
+    mv_opts = self.prog?.options;
+    flow_moves = mv_opts is None or mv_opts.na_move_flow;
+    gap_fns: set[int] = set();
+    for cn in cfg_nodes {
+        if isinstance(cn, CtrlStmt)
+            and cn.ctrl.name == Tok.KW_BREAK
+            and not cn.bb_out {
+            gap_fn = self._enclosing_fn_scope(cn);
+            gap_fns.add(0 if gap_fn is None else id(gap_fn));
+        }
+    }
     qualified: set[SymId] = set();
     for sid in tracked {
+        sid_sites = sites_by_sym.get(sid, []);
+        if sid_sites {
+            sid_fn = self._enclosing_fn_scope(sid_sites[0]);
+            if (0 if sid_fn is None else id(sid_fn)) in gap_fns {
+                continue;
+            }
+        }
         ok = True;
         for u in uses_by_sym.get(sid, []) {
             if not self._is_alias_value(u) {
@@ -439,7 +526,13 @@ impl RcFactsPass._stamp_move_lowerable(ir_in: Module) -> None {
                 break;
             }
         }
-        if ok {
+        if ok
+            or (
+                flow_moves
+                and self._move_flow_safe(
+                    uses_by_sym.get(sid, []), sites_by_sym.get(sid, [])
+                )
+            ) {
             qualified.add(sid);
         }
     }
@@ -459,6 +552,48 @@ impl RcFactsPass._stamp_move_lowerable(ir_in: Module) -> None {
             nd.na_move_lowerable = True;
         }
     }
+}
+
+impl RcFactsPass._move_flow_safe(uses: list[Name], sites: list[Assignment]) -> bool {
+    if not sites {
+        return False;
+    }
+    owner = self._enclosing_fn_scope(sites[0]);
+    nodes: list[UniNode] = [];
+    for u in uses {
+        nodes.append(u);
+    }
+    for nd in sites {
+        nodes.append(nd);
+    }
+    for nd in nodes {
+        if self._enclosing_fn_scope(nd) is not owner {
+            return False;
+        }
+        if isinstance(nd.parent, UnaryExpr) and is_borrow_kind(nd.parent.ownership) {
+            return False;
+        }
+        cur = nd.parent;
+        prev: UniNode = nd;
+        while cur is not None and cur is not owner {
+            if isinstance(cur, IterForStmt)
+                and (prev is cur.iter or prev is cur.count_by) {
+                return False;
+            }
+            if isinstance(
+                cur,
+                (TryStmt, WithStmt, LambdaExpr, ListCompr, DictCompr, ConcurrentExpr)
+            ) {
+                return False;
+            }
+            if isinstance(cur, AstAsyncNode) and cur.is_async {
+                return False;
+            }
+            prev = cur;
+            cur = cur.parent;
+        }
+    }
+    return True;
 }
 
 impl RcFactsPass._cfg_owner(sub: UniNode) -> (UniCFGNode | None) {
@@ -569,12 +704,12 @@ impl RcFactsPass._stamp_scope_cleanup(ir_in: Module) -> None {
         names: list[str] = [];
         borrows: list[str] = [];
         seen: set[int] = set();
-        for nm in ability.get_all_sub_nodes(Name) {
+        for nm in ability.element_sub_nodes(Name) {
             sym = nm.sym;
             if sym is None
                 or id(sym) in seen
                 or sym.storage not in (SymbolStorage.LOCAL, SymbolStorage.PARAM)
-                or nm.find_parent_of_type(Ability) is not ability {
+                or nm.enclosing_decl(Ability) is not ability {
                 continue;
             }
             seen.add(id(sym));
@@ -617,25 +752,15 @@ impl method_returns_borrow(callee: (Ability | None)) -> bool {
     if type_tag_borrows(callee.signature.return_type) {
         return True;
     }
-    _bodies: list[UniNode] = [callee];
-    if isinstance(callee.body, ImplDef) {
-        _bodies.append(callee.body);
-    }
     _found = False;
-    for _body in _bodies {
-        for _ret in _body.get_all_sub_nodes(ReturnStmt) {
-            _owner = _ret.find_parent_of_type(Ability);
-            if _owner is not callee and _owner is not None {
-                continue;
-            }
-            if _ret.find_parent_of_type(LambdaExpr) is not None {
-                continue;
-            }
-            if not (isinstance(_ret.expr, Name) and _ret.expr.value == "self") {
-                return False;
-            }
-            _found = True;
+    for _ret in callee.element_sub_nodes(ReturnStmt) {
+        if _ret.enclosing_frame is not callee {
+            continue;
         }
+        if not (isinstance(_ret.expr, Name) and _ret.expr.value == "self") {
+            return False;
+        }
+        _found = True;
     }
     return _found;
 }

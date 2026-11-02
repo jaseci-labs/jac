@@ -11,6 +11,10 @@
 
 import from engine.src.pm.json { JVal, jv_str_list, JV_MISSING, JV_NULL }
 
+import from engine.src.runtime.mem {
+    str_bslice_from
+}
+
 glob:priv _OS_NAMES: list[str] = [
          "aix",
          "darwin",
@@ -65,7 +69,7 @@ def _negatable_matches(values: list[str], known: list[str], current: str) -> boo
         }
         neg: bool = v.startswith("!");
         if neg {
-            v = v[1:];
+            v = str_bslice_from(v, 1);
         }
         if not (v in known) {
             if not neg {

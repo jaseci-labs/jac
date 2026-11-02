@@ -751,14 +751,7 @@ impl JacLangServer.get_node_info(sym_node: uni.AstSymbolNode) -> Optional[str] {
             node_info += f"\n{unparse_node(sym_node.signature)}";
         }
         try {
-            top: (uni.UniNode | None) = sym_node;
-            while (
-                top is not None
-                and not isinstance(top.parent, uni.Module)
-                and top.parent is not None
-            ) {
-                top = top.parent;
-            }
+            top = sym_node.top_element or sym_node;
             if isinstance(top, uni.ContextAwareNode) {
                 space = sym_node.codespace().value;
                 tags: list[str] = [];
@@ -791,7 +784,7 @@ impl JacLangServer.get_inlay_hints(
         }
         out.append(
             lspt.InlayHint(
-                position=lspt.Position(line=line, character=h.col),
+                position=lspt.Position(line=line, character=max(h.col - 1, 0)),
                 label=h.label,
                 kind=(
                     lspt.InlayHintKind.Parameter

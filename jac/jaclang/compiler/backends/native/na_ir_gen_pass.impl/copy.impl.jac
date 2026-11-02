@@ -350,7 +350,7 @@ impl NaIRGenPass._copy_class_refusal(
         if not deep {
             continue;
         }
-        if "wasm" in str(self.llvm_module.triple or "") {
+        if self._target_is_wasm() {
             return f"{_label} on a wasm target, where the class dispatch of a deep copy cannot raise";
         }
         for (fname, ftype) in self.struct_field_types[cand].items() {

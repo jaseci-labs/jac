@@ -2,7 +2,9 @@ impl package_copy_ignore(directory: str, items: list[str]) -> list[str] {
     return [
         it
         for it in items
-        if it in PACKAGE_EXCLUDES or it.endswith("-seal-stage")
+        if it in PACKAGE_EXCLUDES
+            or it.endswith("-seal-stage")
+            or (is_secret_file(it) and os.path.isfile(os.path.join(directory, it)))
     ];
 }
 

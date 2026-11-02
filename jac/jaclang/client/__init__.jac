@@ -4,7 +4,6 @@ glob __all__ = [
          'ensure_client_deps',
          'AssetProcessor',
          'JacClientConfig',
-         'ImportProcessor',
          'JacToJSCompiler',
          'ViteBundler',
          'RouteScanner',
@@ -19,7 +18,6 @@ glob __all__ = [
          'ensure_client_deps': 'jaclang.client.client_deps',
          'AssetProcessor': 'jaclang.client.asset_processor',
          'JacClientConfig': 'jaclang.client.config_loader',
-         'ImportProcessor': 'jaclang.client.import_processor',
          'JacToJSCompiler': 'jaclang.client.jac_to_js',
          'ViteBundler': 'jaclang.client.vite_bundler',
          'RouteScanner': 'jaclang.client.route_scanner',
@@ -30,14 +28,3 @@ glob __all__ = [
      };
 
 def __getattr__(name: str) -> object;
-
-impl __getattr__(name: str) -> object {
-    mod_path = _LAZY_EXPORTS.get(name);
-    if mod_path is None {
-        raise AttributeError(f"module 'jaclang.client' has no attribute {name!r}");
-    }
-    import importlib;
-    value = getattr(importlib.import_module(mod_path), name);
-    globals()[name] = value;
-    return value;
-}

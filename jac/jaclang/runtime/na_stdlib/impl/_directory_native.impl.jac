@@ -1,5 +1,5 @@
 impl directory_names(path: str) -> list[str] {
-    directory = opendir(path);
+    directory = __jac_opendir(path);
     if directory == 0 {
         raise_os_error("opendir", path, last_errno());
     }
@@ -7,7 +7,7 @@ impl directory_names(path: str) -> list[str] {
     try {
         while True {
             clear_errno();
-            ent = readdir(directory);
+            ent = __jac_readdir(directory);
             if ent == 0 {
                 error = last_errno();
                 if error != 0 {
@@ -21,25 +21,25 @@ impl directory_names(path: str) -> list[str] {
             }
         }
     } finally {
-        closedir(directory);
+        __jac_closedir(directory);
     }
     return names;
 }
 
 impl try_directory_names(path: str) -> list[str] {
     names: list[str] = [];
-    directory = opendir(path);
+    directory = __jac_opendir(path);
     if directory == 0 {
         return names;
     }
-    ent = readdir(directory);
+    ent = __jac_readdir(directory);
     while ent != 0 {
         name = dirent_name(ent);
         if name != "." and name != ".." {
             names.append(name);
         }
-        ent = readdir(directory);
+        ent = __jac_readdir(directory);
     }
-    closedir(directory);
+    __jac_closedir(directory);
     return names;
 }

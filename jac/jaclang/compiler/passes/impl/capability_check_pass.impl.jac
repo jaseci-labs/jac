@@ -181,10 +181,7 @@ impl name_erased_natively(name_nd: UniNode) -> bool {
     if in_type_position(name_nd, include_subscripts=False) {
         return True;
     }
-    for _decl in [
-        name_nd.find_parent_of_type(Archetype),
-        name_nd.find_parent_of_type(Enum)
-    ] {
+    for _decl in [name_nd.enclosing_decl(Archetype), name_nd.enclosing_decl(Enum)] {
         if _decl is None {
             continue;
         }
@@ -288,8 +285,7 @@ impl native_capability_violations(
     );
     _native_imports = ModuleFacts.iter_module_imports(mod, CodeContext.NATIVE)
         + ModuleFacts.iter_nested_imports(mod, CodeContext.NATIVE);
-    """Only a name an import binds is asked whether its uses are all erased,
-    so only those names are classified.""";
+
     _import_bound: set[str] = set();
     for stmt in _native_imports {
         if stmt.clib_decls or not stmt.items {
@@ -407,11 +403,6 @@ impl native_capability_violations(
             if isinstance(nd, Import) {
                 continue;
             }
-            if isinstance(nd, NATIVE_REJECT_NODES) {
-                kind = "expression" if isinstance(nd, Expr) else "statement";
-                out.append((nd, kind, type(nd).__name__, None));
-                continue;
-            }
             if isinstance(nd, Assignment) {
                 _targets = (
                     nd.target if isinstance(nd.target, (list, tuple)) else [nd.target]
@@ -446,14 +437,9 @@ impl native_capability_violations(
             if isinstance(nd, CtrlStmt)
                 and isinstance(nd.ctrl, Token)
                 and (nd.ctrl.name == Tok.KW_SKIP) {
-                _encl = nd.find_parent_of_type(Ability);
+                _encl = nd.enclosing_decl(Ability);
                 _in_event = (_encl is not None)
                     and isinstance(_encl.signature, EventSignature);
-                if (_encl is None) {
-                    _encl_impl = nd.find_parent_of_type(ImplDef);
-                    _in_event = (_encl_impl is not None)
-                        and isinstance(_encl_impl.spec, EventSignature);
-                }
                 if not _in_event {
                     out.append((nd, "statement", "SkipStmt", _NATIVE_SKIP_HELP));
                 }
@@ -463,8 +449,8 @@ impl native_capability_violations(
             if isinstance(nd, (Ability, ArchSpec, ImplDef)) and nd.decorators {
                 _dec_static_fn = (
                     isinstance(nd, Ability)
-                    and not isinstance(nd.parent, Archetype)
-                    and nd.find_parent_of_type(Ability) is None
+                    and nd.method_owner is None
+                    and nd.enclosing_decl(Ability) is None
                     and not nd.get_all_sub_nodes(typ=YieldExpr)
                 );
                 if _dec_static_fn {
@@ -512,14 +498,7 @@ impl native_capability_violations(
 
             if isinstance(nd, ParamVar) and nd.unpack is not None {
                 _vp_name = f"{nd.unpack.value}{nd.name.value if nd.name else ''}";
-                _vp_encl = nd.find_parent_of_type(Ability);
-                if _vp_encl is None {
-                    _vp_impl = nd.find_parent_of_type(ImplDef);
-                    if _vp_impl is not None
-                        and isinstance(_vp_impl.decl_link, Ability) {
-                        _vp_encl = _vp_impl.decl_link;
-                    }
-                }
+                _vp_encl = nd.enclosing_decl(Ability);
                 if nd.type_tag is None {
                     out.append(
                         (
@@ -729,17 +708,7 @@ impl native_capability_demotion_owner(viol_node: UniNode) -> (Ability | None) {
     _owner: (Ability | None) = viol_node if isinstance(viol_node, Ability) else None;
     _cur: UniNode = viol_node;
     while True {
-        _nxt = _cur.find_parent_of_type(Ability);
-        if _nxt is None {
-            _impl = _cur.find_parent_of_type(ImplDef);
-            if (
-                _impl is not None
-                and isinstance(_impl.decl_link, Ability)
-                and _impl.decl_link is not _cur
-            ) {
-                _nxt = _impl.decl_link;
-            }
-        }
+        _nxt = _cur.enclosing_decl(Ability);
         if _nxt is None {
             break;
         }

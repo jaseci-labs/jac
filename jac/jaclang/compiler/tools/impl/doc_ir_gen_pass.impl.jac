@@ -418,7 +418,10 @@ impl DocIRGenPass.exit_impl_def with uni.ImplDef exit {
             parts.append(self.hard_line());
         } elif self.is_within(i, here.target) {
             parts.append(i.gen.doc_ir);
-            if here.spec is None and here.target and i is here.target[-1] {
+            if here.spec is None
+                and not here.type_params
+                and here.target
+                and i is here.target[-1] {
                 parts.append(self.space());
             }
         } elif (
@@ -428,6 +431,18 @@ impl DocIRGenPass.exit_impl_def with uni.ImplDef exit {
             and len(here.target) > 1
         ) {
             parts.append(i.gen.doc_ir);
+        } elif isinstance(i, uni.TypeParam) and i in here.type_params {
+            parts.append(i.gen.doc_ir);
+        } elif (
+            isinstance(i, uni.Token)
+            and i.name in (Tok.LSQUARE, Tok.RSQUARE)
+            and here.type_params
+            and not in_body
+        ) {
+            parts.append(i.gen.doc_ir);
+            if i.name == Tok.RSQUARE and here.spec is None {
+                parts.append(self.space());
+            }
         } elif (
             in_body
             or (isinstance(here.body, Sequence) and here.body and (i == here.body[0]))
@@ -778,25 +793,6 @@ impl DocIRGenPass.exit_test with uni.Test exit {
         } elif in_body {
             self.add_body_stmt_with_spacing(body_parts, i, prev_body_item);
             prev_body_item = i;
-        } else {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        }
-    }
-    here.gen.doc_ir = self.group(self.concat(parts, ast_node=here), ast_node=here);
-}
-
-impl DocIRGenPass.exit_py_inline_code with uni.PyInlineCode exit {
-    parts: list[doc.DocType] = [];
-    for i in [here->:Kid:->] {
-        if (i == here.doc) {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.hard_line());
-        } elif (isinstance(i, uni.Token) and (i.name == Tok.PYNLINE)) {
-            parts.append(self.text('::py::'));
-            parts.append(i.gen.doc_ir);
-            parts.append(self.text('::py::'));
-            parts.append(self.hard_line());
         } else {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
@@ -1727,6 +1723,13 @@ impl DocIRGenPass.exit_binary_expr with uni.BinaryExpr exit {
         self._assign_space_group(here);
         return;
     }
+    if (
+        isinstance(here.parent, uni.BinaryExpr)
+        and isinstance(here.parent.op, uni.Token)
+        and (here.parent.op.name == here.op.name)
+    ) {
+        return;
+    }
     operands: list[uni.UniNode] = [];
     ops: list[uni.UniNode] = [];
     def __flatten(expr: uni.UniNode) {
@@ -2279,24 +2282,32 @@ impl DocIRGenPass._rescue_lost_comments(
     if self._emitted_comment_ids is None {
         self._emitted_comment_ids = set();
     }
-    mod_dc = nd.gen.doc_comments;
-    own_ids: set[int] = set();
-    if mod_dc is not None {
-        for c in (mod_dc.leading + mod_dc.trailing_inline + mod_dc.trailing_own) {
-            own_ids.add(id(c));
+    if self._rescue_nd is not nd {
+        self._rescue_nd = nd;
+        self._rescue_idx = 0;
+        mod_dc = nd.gen.doc_comments;
+        self._rescue_own_ids = set();
+        if mod_dc is not None {
+            for c in (mod_dc.leading + mod_dc.trailing_inline + mod_dc.trailing_own) {
+                self._rescue_own_ids.add(id(c));
+            }
         }
     }
+    comments = nd.source.comments;
     limit = self.effective_first_line(next_kid) if (next_kid is not None) else None;
     prev_line: (int | None) = None;
-    for c in nd.source.comments {
-        if ((id(c) in self._emitted_comment_ids) or (id(c) in own_ids)) {
+    while self._rescue_idx < len(comments) {
+        c = comments[self._rescue_idx];
+        if (id(c) in self._emitted_comment_ids) or (id(c) in self._rescue_own_ids) {
+            self._rescue_idx += 1;
             continue;
         }
         if not self._comment_is_live(c) {
+            self._rescue_idx += 1;
             continue;
         }
         if (limit is not None and (c.loc.first_line >= limit)) {
-            continue;
+            break;
         }
         if (prev_line is not None and ((prev_line + 1) < c.loc.first_line)) {
             parts.append(self.hard_line());
@@ -2305,6 +2316,7 @@ impl DocIRGenPass._rescue_lost_comments(
         parts.append(self.hard_line());
         self._emitted_comment_ids.add(id(c));
         prev_line = c.loc.last_line;
+        self._rescue_idx += 1;
     }
 }
 

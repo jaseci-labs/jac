@@ -5,6 +5,7 @@ These tests verify byLLM-specific MTIR functionality:
 2. Tool schema generation with MTIR info
 3. MTIR caching works correctly
 4. Python library fallback mode works when MTIR is unavailable
+5. Compiled MTIR reaches a by-llm call site with its lists intact
 
 Note: MTIR extraction from compiled code is tested in:
   jac/tests/compiler/passes/test_mtir_gen_pass.py
@@ -833,6 +834,34 @@ test "submodule MTIR keyed by import fullname" {
             f"JacRuntime.fetch_mtir({alias}) did not return the entry at {key}"
         );
     }
+    # `jac test` resets runtime state before each test case but keeps loaded
+    # modules; their by-llm calls must still find the same semantics.
+    import from jaclang.testing.test_runner { _fresh_jac_state }
+    _fresh_jac_state(clear_modules=False);
+    for (alias, key) in [
+        ("alpha_process", "scope_dir.module_alpha.process_data"),
+        ("beta_process", "scope_dir.module_beta.process_data")
+    ] {
+        assert JacRuntime.fetch_mtir(getattr(main, alias)) is mtir_map[key] , (
+            f"MTIR for {alias} was lost across the per-test reset"
+        );
+    }
+}
+
+test "compiled MTIR keeps the params, tools and fields a call site needs" {
+    need_outside_jaclang(fixture_path("call_site_lists.jac"));
+    mod = load_fixture("call_site_lists");
+    describe = JacRuntime.fetch_mtir(mod.describe);
+    assert isinstance(describe, FunctionInfo);
+    assert [p.name for p in describe.params] == ["text", "limit"];
+    assert describe.params[0].semstr == "Text to describe.";
+    assert [t.name for t in describe.tools] == ["lookup"];
+    make_person = JacRuntime.fetch_mtir(mod.make_person);
+    assert isinstance(make_person, FunctionInfo);
+    person = make_person.return_type;
+    assert isinstance(person, ClassInfo);
+    assert [f.name for f in person.fields] == ["name", "age"];
+    assert mod.describe("an engineer", 3) == "Ada";
 }
 
 test "runtime scope resolution matches compile time" {

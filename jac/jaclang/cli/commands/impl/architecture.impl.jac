@@ -405,9 +405,9 @@ impl _render_mermaid(spec: WiringSpec) -> str {
     for name in sorted(modules) {
         packages.setdefault(name.split(".")[0], []).append(name);
     }
-    for (pkg, names) in sorted(packages.items()) {
+    for (pkg, members) in sorted(packages.items()) {
         lines.append(f"    subgraph {pkg}");
-        for name in names {
+        for name in members {
             lines.append(f"        {_node_id(name)}[{name}]");
         }
         lines.append("    end");

@@ -9,7 +9,13 @@ Independent of the JS engine's JSON.parse: no JSValue, heap or GC involvement,
 so it can run before the runtime is initialised (the PM dispatches first).
 """
 
-import from engine.src.runtime.mem { read_byte }
+import from engine.src.runtime.mem {
+    read_byte,
+    byte_chr,
+    str_bslice,
+    str_byte,
+    str_nbytes
+}
 import from engine.src.pm.bytes { bytes_to_str, str_to_cbuf }
 import from engine.src.runtime.mem { io_free }
 
@@ -222,7 +228,7 @@ def:pub json_parse_bytes(ptr: int, n: int) -> JsonDoc {
 }
 
 def:pub json_parse_str(text: str) -> JsonDoc {
-    n: int = len(text);
+    n: int = str_nbytes(text);
     p: int = str_to_cbuf(text);
     doc: JsonDoc = json_parse_bytes(p, n);
     io_free(p);
@@ -314,10 +320,10 @@ def _parse_value(p: JsonParser, depth: int) -> JVal {
 }
 
 def _parse_literal(p: JsonParser, word: str, v: JVal) -> JVal {
-    m: int = len(word);
+    m: int = str_nbytes(word);
     i: int = 0;
     while i < m {
-        if p.pos + i >= p.n or read_byte(p.ptr, p.pos + i) != ord(word[i]) {
+        if p.pos + i >= p.n or read_byte(p.ptr, p.pos + i) != str_byte(word, i) {
             p.error = "invalid literal";
             return JVal();
         }
@@ -350,7 +356,7 @@ def _parse_number(p: JsonParser) -> JVal {
         return JVal();
     }
     v: JVal = JVal(kind=JV_NUM);
-    if is_int and len(text) < 18 {
+    if is_int and str_nbytes(text) < 18 {
         try {
             v.i = int(text);
             v.is_int = True;
@@ -600,11 +606,11 @@ def _parse_object(p: JsonParser, depth: int) -> JVal {
 \" \\ and control characters; non-ASCII is emitted raw (UTF-8)."""
 def:pub json_quote(s: str) -> str {
     out: list[str] = ["\""];
-    n: int = len(s);
+    n: int = str_nbytes(s);
     i: int = 0;
     run_start: int = 0;
     while i < n {
-        c: int = ord(s[i]);
+        c: int = str_byte(s, i);
         esc: str = "";
         if c == 34 {
             esc = "\\\"";
@@ -622,11 +628,11 @@ def:pub json_quote(s: str) -> str {
             esc = "\\f";
         } elif c < 32 {
             hexd: str = "0123456789abcdef";
-            esc = "\\u00" + hexd[c >> 4] + hexd[c & 15];
+            esc = "\\u00" + byte_chr(str_byte(hexd, c >> 4)) + byte_chr(str_byte(hexd, c & 15));
         }
         if esc != "" {
             if i > run_start {
-                out.append(s[run_start:i]);
+                out.append(str_bslice(s, run_start, i));
             }
             out.append(esc);
             run_start = i + 1;
@@ -634,7 +640,7 @@ def:pub json_quote(s: str) -> str {
         i = i + 1;
     }
     if n > run_start {
-        out.append(s[run_start:n]);
+        out.append(str_bslice(s, run_start, n));
     }
     out.append("\"");
     return "".join(out);

@@ -32,6 +32,8 @@ def _crosses_server_boundary(mod: any) -> bool;
 
 def _compile_module(program: any, path: Path) -> any;
 
+def _link_modules(program: any, modules: dict[Path, any]) -> dict[Path, ClientLink];
+
 impl collect_npm_sources(
     config: JacConfig, project_root: Path | None = None,
 ) -> list[NpmSourceFile] {
@@ -52,6 +54,7 @@ impl collect_npm_sources(
 
     runtime_pkg = runtime_pkg_name(config);
     result: list[NpmSourceFile] = [];
+    compiled: list[tuple[Path, str, any]] = [];
     seen: set[str] = set();
 
     for pkg_dir in _package_dirs(config, proj_root) {
@@ -78,24 +81,55 @@ impl collect_npm_sources(
                     "(no server-bound imports/calls)."
                 );
             }
-            blocks = jsdoc_for_module(mod);
-            js = inject_jsdoc(js, blocks);
-            (js, externals) = _wire_externals(js, runtime_pkg);
-            dts = dts_for_module(mod);
             seen.add(npm_path);
-            result.append(
-                NpmSourceFile(
-                    npm_path=npm_path,
-                    source_path=src,
-                    js=js,
-                    dts=dts,
-                    external_imports=externals,
-                )
-            );
+            compiled.append((src, npm_path, mod));
         }
     }
 
+    links = _link_modules(
+        program, {src.resolve(): mod for (src, _path, mod) in compiled}
+    );
+    for (src, npm_path, mod) in compiled {
+        link = links.get(src.resolve());
+        js = append_link(mod.gen.js, link);
+        blocks = jsdoc_for_module(mod);
+        js = inject_jsdoc(js, blocks);
+        (js, externals) = _wire_externals(js, runtime_pkg);
+        dts = dts_for_module(mod, link.names if link else None);
+        if link is not None {
+            dts += link_tail(ClientLink(forwards=link.forwards));
+        }
+        result.append(
+            NpmSourceFile(
+                npm_path=npm_path,
+                source_path=src,
+                js=js,
+                dts=dts,
+                external_imports=externals,
+            )
+        );
+    }
     return result;
+}
+
+impl _link_modules(program: any, modules: dict[Path, any]) -> dict[Path, ClientLink] {
+    def artifact_of(path: Path) -> ClientArtifact {
+        mod = modules.get(path) or _compile_module(program, path);
+        manifest = mod.gen.client_manifest if mod and mod.gen else None;
+        return ClientArtifact(
+            js=(mod.gen.js if mod and mod.gen else "") or "",
+            manifest=manifest if manifest is not None else ClientManifest()
+        );
+    }
+    def same(path: Path) -> Path {
+        return path;
+    }
+    try {
+        closure = collect_client_graph(list(modules), artifact_of, same, set(), set());
+    } except ClientBundleError as error {
+        raise ValueError(f"Failed to link npm bundle:\n{error}") from None;
+    }
+    return closure.links;
 }
 
 impl resolve_npm_entry(config: JacConfig, files: list[NpmSourceFile],) -> str | None {

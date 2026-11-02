@@ -27,8 +27,8 @@ impl _contains_borrow(ty: TypeBase | None, visiting: set[int]) -> bool {
     if not isinstance(arch, Archetype) {
         return False;
     }
-    for field in arch.get_all_sub_nodes(HasVar) {
-        if field.find_parent_of_type(Archetype) is not arch or field.type_tag is None {
+    for field in arch.element_sub_nodes(HasVar) {
+        if field.enclosing_decl(Archetype) is not arch or field.type_tag is None {
             continue;
         }
         if type_tag_borrows(field.type_tag) {

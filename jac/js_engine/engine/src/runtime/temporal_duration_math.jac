@@ -25,6 +25,11 @@ import from engine.src.runtime.temporal_iso {
     iso_validate_relativeto_ymd
 }
 
+import from engine.src.runtime.mem {
+    str_bslice,
+    str_nbytes
+}
+
 glob DUR_YEARS: int = 0,
      DUR_MONTHS: int = 1,
      DUR_WEEKS: int = 2,
@@ -1062,14 +1067,14 @@ def:pub _dur_pow10(n: int) -> int {
 }
 
 def:priv _dur_trim_trailing_zeros(s: str) -> str {
-    while len(s) > 0 and s[len(s) - 1:len(s)] == "0" {
-        s = s[0:len(s) - 1];
+    while len(s) > 0 and str_bslice(s, str_nbytes(s) - 1, str_nbytes(s)) == "0" {
+        s = str_bslice(s, 0, str_nbytes(s) - 1);
     }
     return s;
 }
 
 def:priv _dur_pad_left(s: str, n: int) -> str {
-    while len(s) < n {
+    while str_nbytes(s) < n {
         s = "0" + s;
     }
     return s;

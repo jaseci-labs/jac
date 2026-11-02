@@ -1,4 +1,4 @@
-"""Paths, the pinned CPython archive and formatting shared by the JacPython generators.
+"""Paths, the pinned CPython archive, op definitions and formatting for the JacPython generators.
 
 The generators write Jac that `jac fmt --check --lintfix` must accept, and
 their own `--check` must agree with it, so every output goes through
@@ -7,6 +7,7 @@ format_jac() exactly as it would be formatted in place.
 import hashlib;
 import json;
 import os;
+import re;
 import shutil;
 import subprocess;
 import sys;
@@ -18,6 +19,7 @@ glob REPO: Path = Path(__file__).resolve().parents[2],
      JAC: Path = REPO / "jac",
      BOOTSTRAP: Path = JAC / "bootstrap/python",
      RUNTIME: Path = JAC / "jaclang/runtime/python",
+     INTERPRETER: Path = RUNTIME / "interpreter",
      SOURCES: list[Path] = [
          JAC / "jaclang/runtime/python",
          JAC / "jaclang/compiler/frontend/python",
@@ -43,8 +45,22 @@ def archive_path -> Path {
     return path;
 }
 
+# The archive's headers are not an input: every header under Include/ is
+# generated from Jac definitions (gen_include.jac, gen_opcode_meta.jac) and
+# read from its checked-in copy.
+def no_archive_headers(prefixes: tuple[str, ...]) {
+    for prefix in prefixes {
+        if prefix.startswith("Include") or "Include/".startswith(prefix) {
+            sys.exit(
+                f"{prefix!r} reaches the archive's Include/; the headers are generated (bootstrap/python/generated/Include)"
+            );
+        }
+    }
+}
+
 # Files of the pinned archive whose relative path starts with one of `prefixes`.
 def archive_texts(prefixes: tuple[str, ...]) -> dict[str, str] {
+    no_archive_headers(prefixes);
     found: dict[str, str] = {};
     with tarfile.open(archive_path()) as bundle {
         for member in bundle.getmembers() {
@@ -60,8 +76,29 @@ def archive_texts(prefixes: tuple[str, ...]) -> dict[str, str] {
     return found;
 }
 
+# The paths cpython-sources.txt marks `generated`: a Jac generator writes each
+# as bootstrap/python/generated/<path>.in and the build stages that copy in
+# place of the archive's.
+def generated_paths -> list[str] {
+    marker = re.compile(r"^# (\S+)\s+# generated: [\d,]+ source lines$");
+    found: list[str] = [];
+    for line in (BOOTSTRAP / "cpython-sources.txt").read_text().splitlines() {
+        hit = marker.match(line);
+        if hit {
+            found.append(hit.group(1));
+        }
+    }
+    return found;
+}
+
+# The checked-in copy the build stages for a generated path.
+def generated_copy(path: str) -> Path {
+    return BOOTSTRAP / "generated" / f"{path}.in";
+}
+
 # Extract the archive members under `prefixes` into `target`; returns the tree root.
 def extract_tree(target: Path, prefixes: tuple[str, ...]) -> Path {
+    no_archive_headers(prefixes);
     with tarfile.open(archive_path()) as bundle {
         members = [
             m
@@ -71,6 +108,111 @@ def extract_tree(target: Path, prefixes: tuple[str, ...]) -> Path {
         bundle.extractall(target, members=members, filter="data");
     }
     return next(target.iterdir());
+}
+
+# An op definition's signature in ops.jac.
+obj Signature {
+    has params: list[tuple[str, str]],
+        returns: str,
+        body: str = "",
+        module: str = "";
+}
+
+# The modules holding op bodies: interpreter/ops.jac and ops_<group>.jac.
+def op_sources -> list[Path] {
+    return sorted(INTERPRETER.glob("ops*.jac"));
+}
+
+# Read every top-level definition's parameters and return type from the op
+# modules.
+def read_signatures -> dict[str, Signature] {
+    out: dict[str, Signature] = {};
+    for source in op_sources() {
+        for (name, sig) in read_module_signatures(source).items() {
+            if name in out and name.isupper() {
+                sys.exit(
+                    f"op {name} is defined in {out[name].module} and {sig.module}"
+                );
+            }
+            out[name] = sig;
+        }
+    }
+    return out;
+}
+
+# A top-level definition is either `def name(params) -> T { body }` or, as
+# `jac fmt --lintfix` writes it, a declaration `def name(params) -> T;` with
+# an `impl name(params) -> T { body }` block.
+def read_module_signatures(source: Path) -> dict[str, Signature] {
+    text = source.read_text();
+    pattern = re.compile(
+        r"^(def|impl) (\w+)\s*(?:\((.*?)\))?\s*(?:->\s*([^{;]*?))?\s*([{;])",
+        re.M | re.S
+    );
+    out: dict[str, Signature] = {};
+    for m in pattern.finditer(text) {
+        name = m.group(2);
+        body = "";
+        if m.group(5) == "{" {
+            body = block_body(text, m.end());
+        }
+        if m.group(1) == "impl" {
+            if name in out {
+                out[name].body = body;
+            }
+            continue;
+        }
+        out[name] = Signature(
+            params=split_params((m.group(3) or "").strip()),
+            returns=(m.group(4) or "None").strip(),
+            body=body,
+            module=source.stem
+        );
+    }
+    return out;
+}
+
+# The text of a block whose `{` ends just before `start`.
+def block_body(text: str, start: int) -> str {
+    depth = 1;
+    end = start;
+    while depth and end < len(text) {
+        if text[end] == "{" {
+            depth += 1;
+        } elif text[end] == "}" {
+            depth -= 1;
+        }
+        end += 1;
+    }
+    return text[start:end];
+}
+
+def split_params(body: str) -> list[tuple[str, str]] {
+    depth = 0;
+    current = "";
+    parts: list[str] = [];
+    for ch in body {
+        if ch == "[" {
+            depth += 1;
+        } elif ch == "]" {
+            depth -= 1;
+        }
+        if ch == "," and depth == 0 {
+            parts.append(current);
+            current = "";
+        } else {
+            current += ch;
+        }
+    }
+    if current.strip() {
+        parts.append(current);
+    }
+    params: list[tuple[str, str]] = [];
+    for part in parts {
+        (pname, ptype) = part.split(":", 1);
+        params.append((pname.strip(), ptype.strip()));
+    }
+    return params;
 }
 
 # Format `text` as `jac fmt --lintfix` formats it at `target`.

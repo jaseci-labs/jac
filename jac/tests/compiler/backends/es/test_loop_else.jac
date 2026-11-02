@@ -14,6 +14,9 @@ import jaclang.compiler.backends.es.estree as es;
 import from jaclang.compiler.backends.es.es_unparse { es_to_js }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.pass_driver { run_pass }
+import json;
+import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.compiler.backends.es.codegen_helpers { run_js_module }
 
 glob FIXTURE_SOURCE = '''
 def loop_while_exhausts() -> int {
@@ -110,7 +113,7 @@ def forever_in_for_else() -> str {
     return out;
 }
 
-def else_break_stays_inner() -> int {
+def else_break_leaves_outer() -> int {
     total = 0;
     for i in [1, 2] {
         for j in [1] {
@@ -123,6 +126,21 @@ def else_break_stays_inner() -> int {
         total += 1000;
     }
     return total;
+}
+
+def else_continue_continues_outer(rows: list[list[int]]) -> int {
+    kept = 0;
+    for row in rows {
+        for x in row {
+            if x % 2 == 0 {
+                break;
+            }
+        } else {
+            continue;
+        }
+        kept += 1;
+    }
+    return kept;
 }
 
 def switch_break_in_loop_else(items: list[int]) -> int {
@@ -290,23 +308,103 @@ test "nested function body does not capture the outer loop label" {
     }
 }
 
-test "break in a nested loop else exits only the inner construct" {
+test "break in a nested loop else breaks the enclosing loop" {
     js = compile_to_js();
-    region: str = js[js.find("function else_break_stays_inner"):];
+    region: str = js[js.find("function else_break_leaves_outer"):js.find(
+        "function else_continue_continues_outer"
+    )];
     breaks = re.findall("break (__jac_loop_[0-9]+)", region);
     labels = re.findall("(__jac_loop_[0-9]+):", region);
     assert len(breaks) == 1 and len(labels) == 1 and breaks[0] == labels[0] , (
-        "the inner else break must target the one emitted label: "
+        "the inner else break must target the outer loop's label: "
         f"{sorted(breaks)} vs {sorted(labels)}: {region[:600]}"
     );
     outer_for = region.find("for (const i of");
-    inner_for = region.find("for (const j of");
     label_idx = region.find(labels[0] + ":");
-    assert outer_for != -1 and inner_for != -1 , f"loops missing: {region[:600]}";
-    assert outer_for < label_idx and label_idx < inner_for , (
-        "the label must sit on the inner loop's own sequence, not the "
-        f"outer construct: {region[:600]}"
+    assert outer_for != -1 , f"outer loop missing: {region[:600]}";
+    assert label_idx < outer_for , (
+        "the label must sit on the outer loop's sequence, so the break skips "
+        f"the outer else: {region[:600]}"
     );
+}
+
+test "continue in a nested loop else continues the enclosing loop" {
+    js = compile_to_js();
+    region: str = js[js.find("function else_continue_continues_outer"):js.find(
+        "function switch_break_in_loop_else"
+    )];
+    assert "continue;" in region and "continue __jac" not in region , (
+        "a continue in a loop else is a plain continue: the else sits outside "
+        f"its own loop, inside the enclosing one: {region[:600]}"
+    );
+}
+
+test "break and continue in a loop else run like Python under node" {
+    prog = JacProgram();
+    module = prog.compile(
+        "loop_else_control.jac",
+        use_str="""
+def break_leaves_outer -> int {
+    total = 0;
+    for i in [1, 2] {
+        for j in [1] {
+            total += j;
+        } else {
+            break;
+        }
+        total += 10;
+    } else {
+        total += 1000;
+    }
+    return total;
+}
+
+def continue_continues_outer(rows: list[list[int]]) -> int {
+    kept = 0;
+    for row in rows {
+        for x in row {
+            if x % 2 == 0 {
+                break;
+            }
+        } else {
+            continue;
+        }
+        kept += 1;
+    }
+    return kept;
+}
+
+def continue_runs_the_step -> int {
+    count = 0;
+    for i = 0 while i < 3 with i += 1 {
+        for item in [0] {
+            count += item;
+        } else {
+            count += 1;
+            continue;
+        }
+        count += 100;
+    }
+    return count;
+}
+
+def probe -> list[int] {
+    return [
+        break_leaves_outer(),
+        continue_continues_outer([[1, 3], [2, 5], [7]]),
+        continue_runs_the_step()
+    ];
+}
+""",
+        options=CompileOptions(force_codespace="client", no_cgen=True)
+    );
+    run_pass(EsastGenPass, module, prog);
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
+    result = run_js_module(
+        module.gen.js + "\nconsole.log(JSON.stringify(probe()));", timeout=10.0
+    );
+    assert result.returncode == 0 , result.stderr;
+    assert json.loads(result.stdout.strip()) == [1, 1, 3] , result.stdout;
 }
 
 test "switch case break binds to the switch, not the loop" {

@@ -36,9 +36,9 @@ glob KIND_SPECS: dict[str, KindSpec] = {
                  name="native-binary",
                  description="Natively-compiled standalone binary (built into dist/)",
                  `entry="main",
-                 action="build",
+                 action="execute",
                  verb="native",
-                 summary="Build native binary -> {output}",
+                 summary="Execute {kind} entry-point {entry} natively (jac build --native writes {output})",
                  output_dir="dist"
              ),
              KindSpec(
@@ -124,9 +124,10 @@ glob KIND_SPECS: dict[str, KindSpec] = {
                  name="mobile",
                  description="Jac mobile app (mobUI over React Native)",
                  `entry="main",
-                 action="build",
-                 verb="build",
-                 summary="Build mobile app bundle",
+                 action="serve",
+                 verb="run",
+                 summary="Serve mobile app to Expo Go (scan the QR code; Metro Fast Refresh)",
+                 flags={"dev": True},
                  ui="mobui"
              )
          ]

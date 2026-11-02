@@ -9,6 +9,8 @@ enum CallKind {
     INTRINSIC = "intrinsic"
 }
 
+def import_binds_name(nd: UniNode, name: str) -> bool;
+
 def resolve_expr_symbol(expr: Expr, module: (Module | None) = None) -> (Symbol | None);
 
 def imported_module_name(expr: Expr) -> str | None;
@@ -65,7 +67,6 @@ def element_display_name(top: UniNode) -> str;
 
 def _client_emitted_top(stmt: UniNode, extra_bound: set[str]) -> bool;
 
-def _module_top_element(mod: Module, nd: UniNode) -> (UniNode | None);
 
 def client_bridged_endpoint(mod: Module, top: UniNode) -> bool;
 

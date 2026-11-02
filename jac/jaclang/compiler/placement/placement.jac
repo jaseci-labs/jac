@@ -1,9 +1,8 @@
 import os;
 
-glob PLACEMENT_SCHEMA: int = 3,
+glob PLACEMENT_SCHEMA: int = 6,
      PLACEMENT_SV_SIGNAL_NODES: list[tuple[str, type[uni.UniNode]]] = [
          ("TypedCtxBlock", uni.TypedCtxBlock),
-         ("PyInlineCode", uni.PyInlineCode),
          ("JsxElement", uni.JsxElement)
      ],
      PLACEMENT_NATIVE_REJECT_NODES: list[tuple[str, type[uni.UniNode]]] = [],
@@ -27,7 +26,11 @@ obj NativeBlockerScan {
     has module: str = '',
         sites: list[tuple[uni.UniNode, str]] = [],
         deps: list[str] = [],
-        dep_imports: list[tuple[uni.Import, str]] = [];
+        dep_imports: list[tuple[uni.Import, str]] = [],
+        tests: list[tuple[uni.Test, str]] = [],
+        test_dep_imports: list[tuple[uni.Test, uni.Import, str]] = [],
+        probes: list[str] = [],
+        unresolved: bool = False;
 
     def first -> str;
 }
@@ -57,7 +60,13 @@ obj PlacementSummary {
         native_blocker: str = '',
         jac_deps: list[str] = [],
         has_refs: bool = False,
+        client_declared: bool = False,
+        native_declared: bool = False,
+        native_anchor: bool = False,
+        spaces: list[str] = [],
         elements: list[ElementSummary] = [];
+
+    def element_at(index: int) -> (ElementSummary | None);
 }
 
 def element_display_name(stmt: uni.UniNode) -> str;
@@ -76,7 +85,6 @@ def module_has_root_access(stmt: uni.UniNode) -> bool;
 
 def _element_reqs(stmt: uni.UniNode) -> list[list[str]];
 
-def _summary_top_element(module: uni.Module, nd: uni.UniNode) -> (uni.UniNode | None);
 
 def _element_ref_ids(module: uni.Module, elem: uni.UniNode) -> set[int];
 
@@ -104,6 +112,14 @@ def native_blocker_scan(
     allow_pub: bool = False,
     hold_exempt: bool = False
 ) -> NativeBlockerScan;
+
+def _scan_blockers_under(
+    scan: NativeBlockerScan,
+    scope_node: uni.UniNode,
+    module: uni.Module,
+    base_dir: str,
+    allow_pub: bool
+);
 
 def scan_native_blockers(
     module: uni.Module,

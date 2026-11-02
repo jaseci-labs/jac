@@ -91,9 +91,13 @@ documented boot-time mirror.
   checkout (`seal-checkout`). A reroute lane keeps it and runs the checkout on
   the kit.
 - **Pull-request kits.** A pull request's kit leaves the kernel out unless the
-  pull request carries the `native:kernel` label. The seal reads that from the
-  GitHub event (`pr_kit_omits` in `artifacts/kit.jac`) and records it in
-  `omits`.
+  pull request carries the `native:kernel` label. The `setup-jac` action sets
+  `JAC_KIT_OMIT=kernel` for such a build; the seal reads it (`pr_kit_omits` in
+  `artifacts/kit.jac`) and records it in `omits`.
+- **Release kernels.** `build-binaries.yml`'s `kernel` job builds every leg's
+  `kernel@<osarch>` on x86 Linux, and each leg's seal adopts its own
+  (`zig build -Dkernel=DIR`); see "One builder, every target" in
+  native-units.
 - **The shim.** `zig build` reuses an in-tree shim whose record matches the
   current inputs and target. CI restores its cached shim there, and `zig build
   adopt-shim` records a content-addressed prebuilt one.

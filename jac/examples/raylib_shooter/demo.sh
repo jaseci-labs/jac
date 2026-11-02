@@ -2,11 +2,15 @@
 #
 # Build & run the raylib cube shooter.
 #
-#   default   benchmark ALL THREE builds (Jac, Zig, Rust): run each for a fixed
-#             number of seconds, then print the average and max FPS side by side
+#   default   benchmark ALL FOUR builds (Jac, Zig, Rust, Python) in both modes -
+#             the original shooter and the high-compute flock mode - running
+#             each for a fixed number of seconds, then print the average and
+#             max FPS side by side, one table per mode
 #   --jac     build & run only the Jac-native shooter (shooter.jac), interactive
 #   --zig     build & run only the Zig shooter (shooter.zig), interactive
 #   --rust    build & run only the Rust shooter (shooter.rs), interactive
+#   --python  run only the Python shooter (shooter.py), interactive
+#   --flock   with --jac / --zig / --rust / --python: play in flock mode
 #
 # Either way the script:
 #   1. detects the platform / architecture
@@ -27,7 +31,14 @@
 # block) and renders through the same scalar rlgl API, so the two builds can be
 # compared side by side. shooter.rs is the matching Rust twin: an
 # `unsafe extern "C"` block in place of the import block, built with plain
-# `rustc` (no cargo, no crates).
+# `rustc` (no cargo, no crates). shooter.py is the CPython twin, binding the
+# same entry points through the standard library's ctypes (no bindings package).
+#
+# Flock mode: a sibling `.flock` file turns on a 256-boid flock in every twin.
+# Each boid steers against every other boid each frame (separation, alignment,
+# cohesion), so the frame spends real time in each language's own arithmetic
+# instead of almost all of it inside raylib and the GPU driver. Without the
+# file none of the flock code runs and the shooters are the original ones.
 #
 # Benchmark switch: this script writes the requested duration into a sibling
 # `.bench_seconds` file before launching and deletes it afterwards. Each binary
@@ -38,20 +49,26 @@
 set -euo pipefail
 
 # ── 0. Parse args ───────────────────────────────────────────────────────────
-MODE="bench"   # bench | jac | zig | rust | headless
+MODE="bench"   # bench | jac | zig | rust | python | headless
+FLOCK=0        # 1 = interactive runs play in flock mode
 for arg in "$@"; do
   case "$arg" in
     --jac)        MODE="jac" ;;
     --zig)        MODE="zig" ;;
     --rust)       MODE="rust" ;;
+    --python)     MODE="python" ;;
+    --flock)      FLOCK=1 ;;
     --bench)      MODE="bench" ;;
     --headless)   MODE="headless" ;;
     -h|--help)
-      echo "Usage: ${0##*/} [--jac | --zig | --rust | --bench | --headless]"
-      echo "  (default)   benchmark all three builds for ${BENCH_SECONDS:-8}s each and print avg/max FPS"
+      echo "Usage: ${0##*/} [--jac | --zig | --rust | --python | --bench | --headless] [--flock]"
+      echo "  (default)   benchmark all four builds for ${BENCH_SECONDS:-8}s each, in the original"
+      echo "              mode and in flock mode, and print avg/max FPS per mode"
       echo "  --jac       build & run only the Jac-native shooter, interactively"
       echo "  --zig       build & run only the Zig shooter, interactively"
       echo "  --rust      build & run only the Rust shooter, interactively"
+      echo "  --python    run only the Python shooter, interactively (\$PYTHON, default python3)"
+      echo "  --flock     with an interactive mode: turn on the 256-boid flock"
       echo "  --bench     explicit form of the default benchmark mode"
       echo "  --headless  benchmark the borrow-checked headless sim under all three"
       echo "              gc modes (no window, no GPU, no raylib download needed);"
@@ -66,6 +83,7 @@ RAYLIB_VERSION="6.0"
 ZIG_VERSION="0.13.0"
 RUST_MIN_MINOR=85   # shooter.rs uses edition 2024 (rustc >= 1.85)
 BENCH_SECONDS=8
+PYTHON="${PYTHON:-python3}"
 BASE_URL="https://github.com/raysan5/raylib/releases/download/${RAYLIB_VERSION}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -340,29 +358,52 @@ build_rust() {
     shooter.rs -o shooter_rust
 }
 
+# Check the Python interpreter for shooter.py. It needs no build step: the twin
+# loads the staged raylib through ctypes from the standard library.
+check_python() {
+  if ! command -v "$PYTHON" >/dev/null 2>&1; then
+    echo "!! python : '$PYTHON' not found; set PYTHON=/path/to/python3 to include the Python twin" >&2
+    return 1
+  fi
+  echo ">> python   : $("$PYTHON" --version 2>&1) ($(command -v "$PYTHON"))"
+}
+
+# Create or remove the `.flock` switch. $1 = 1 for flock mode, 0 for original.
+set_flock() {
+  if [ "$1" = "1" ]; then
+    printf '1' > "$HERE/.flock"
+  else
+    rm -f "$HERE/.flock"
+  fi
+}
+
 # Run one binary in benchmark mode for $BENCH_SECONDS and echo its result line
 # ("BENCH_RESULT avg max frames seconds") to stdout, or nothing on failure.
-# $1 = binary (e.g. ./shooter), $2 = label (for diagnostics).
+# $1 = label (for diagnostics), $2 = 1 for flock mode / 0 for original,
+# remaining args = the command to run (e.g. ./shooter, or python3 shooter.py).
 #
 # The binary can't print FPS to the shell on its own (raylib paints the counter
 # onto the framebuffer, and the Jac lint rules disallow print()), so it writes
 # the result to a sibling `.bench_result` file via raylib's SaveFileText; we read
 # that back here. The duration is handed over the same way, via `.bench_seconds`.
 run_bench() {
-  local bin="$1" label="$2" rc line
+  local label="$1" flock="$2" rc line
+  shift 2
   rm -f "$HERE/.bench_result"
   printf '%s' "$BENCH_SECONDS" > "$HERE/.bench_seconds"
+  set_flock "$flock"
   set +e
   # Cap the run in case a binary hangs or has no display to draw to (the binary
   # normally self-exits after $BENCH_SECONDS via raylib's clock).
   if command -v timeout >/dev/null 2>&1; then
-    timeout "$((BENCH_SECONDS + 15))" "$bin" >/dev/null 2>&1
+    timeout "$((BENCH_SECONDS + 15))" "$@" >/dev/null 2>&1
   else
-    "$bin" >/dev/null 2>&1
+    "$@" >/dev/null 2>&1
   fi
   rc=$?
   set -e
   rm -f "$HERE/.bench_seconds"
+  set_flock 0
   if [ ! -f "$HERE/.bench_result" ]; then
     echo "!! $label: no FPS result (exit $rc) - is a display/GPU available?" >&2
     return 1
@@ -372,16 +413,63 @@ run_bench() {
   echo "$line"
 }
 
-# Print one row of the benchmark table. $1 = label, $2 = result line (may be empty).
+# Print one row of the benchmark table. $1 = label, $2 = result line (may be
+# empty), $3 = the Python row's result line, for the speedup column (may be empty).
 print_bench_row() {
-  local label="$1" line="$2" avg max frames
+  local label="$1" line="$2" base="${3:-}" avg max frames ratio="n/a" base_avg
   if [ -z "$line" ]; then
-    printf '  %-5s %14s %14s %12s\n' "$label" "n/a" "n/a" "n/a"
+    printf '  %-6s %12s %12s %10s %10s\n' "$label" "n/a" "n/a" "n/a" "n/a"
     return
   fi
   # shellcheck disable=SC2034
   read -r _tag avg max frames _secs <<<"$line"
-  printf '  %-5s %14.1f %14.1f %12s\n' "$label" "$avg" "$max" "$frames"
+  if [ -n "$base" ]; then
+    # shellcheck disable=SC2034
+    read -r _tag base_avg _rest <<<"$base"
+    ratio="$(awk -v a="$avg" -v b="$base_avg" 'BEGIN { if (b > 0) printf "%.1fx", a / b; else print "n/a" }')"
+  fi
+  printf '  %-6s %12.1f %12.1f %10s %10s\n' "$label" "$avg" "$max" "$frames" "$ratio"
+}
+
+# Benchmark every build in one mode and print its table. $1 = 1 for flock mode.
+bench_mode() {
+  local flock="$1" title jac_line zig_line rust_line py_line=""
+  if [ "$flock" = "1" ]; then
+    title="flock mode: 256 boids steering every frame"
+  else
+    title="original: rendering only"
+  fi
+  echo ">> benchmarking each build for ${BENCH_SECONDS}s - $title (a window opens for each) ..." >&2
+  jac_line="$(run_bench Jac "$flock" ./shooter || true)"
+  zig_line="$(run_bench Zig "$flock" ./shooter_zig || true)"
+  rust_line="$(run_bench Rust "$flock" ./shooter_rust || true)"
+  if [ "$HAVE_PYTHON" = "1" ]; then
+    py_line="$(run_bench Python "$flock" "$PYTHON" shooter.py || true)"
+  fi
+
+  printf '\n'
+  printf '====== raylib cube shooter benchmark (%ss each, uncapped) ======\n' "$BENCH_SECONDS"
+  printf '  %s\n' "$title"
+  printf '  %-6s %12s %12s %10s %10s\n' "build" "avg FPS" "max FPS" "frames" "vs Python"
+  print_bench_row "Jac" "$jac_line" "$py_line"
+  print_bench_row "Zig" "$zig_line" "$py_line"
+  print_bench_row "Rust" "$rust_line" "$py_line"
+  print_bench_row "Python" "$py_line" "$py_line"
+  printf '================================================================\n'
+}
+
+# Run one shooter interactively, in flock mode when $1 is 1, and remove the
+# `.flock` switch afterwards so the next run starts in the original mode.
+play() {
+  local flock="$1"
+  shift
+  set_flock "$flock"
+  set +e
+  "$@"
+  local rc=$?
+  set -e
+  set_flock 0
+  return "$rc"
 }
 
 # ── 5. Dispatch ─────────────────────────────────────────────────────────────
@@ -390,35 +478,35 @@ case "$MODE" in
     build_jac
     rm -f "$HERE/.bench_seconds"   # ensure interactive (no time limit)
     echo ">> launching ./shooter   -   arrows = aim, WASD = move, space = fire, Esc = quit"
-    exec ./shooter
+    play "$FLOCK" ./shooter
     ;;
   zig)
     build_zig
     rm -f "$HERE/.bench_seconds"
     echo ">> launching ./shooter_zig   -   arrows = aim, WASD = move, space = fire, Esc = quit"
-    exec ./shooter_zig
+    play "$FLOCK" ./shooter_zig
     ;;
   rust)
     build_rust
     rm -f "$HERE/.bench_seconds"
     echo ">> launching ./shooter_rust   -   arrows = aim, WASD = move, space = fire, Esc = quit"
-    exec ./shooter_rust
+    play "$FLOCK" ./shooter_rust
+    ;;
+  python)
+    check_python
+    rm -f "$HERE/.bench_seconds"
+    echo ">> launching $PYTHON shooter.py   -   arrows = aim, WASD = move, space = fire, Esc = quit"
+    play "$FLOCK" "$PYTHON" shooter.py
     ;;
   bench)
     build_jac
     build_zig
     build_rust
-    echo ">> benchmarking each build for ${BENCH_SECONDS}s (a window opens for each) ..."
-    jac_line="$(run_bench ./shooter Jac || true)"
-    zig_line="$(run_bench ./shooter_zig Zig || true)"
-    rust_line="$(run_bench ./shooter_rust Rust || true)"
-
-    printf '\n'
-    printf '====== raylib cube shooter benchmark (%ss each, uncapped) ======\n' "$BENCH_SECONDS"
-    printf '  %-5s %14s %14s %12s\n' "build" "avg FPS" "max FPS" "frames"
-    print_bench_row "Jac" "$jac_line"
-    print_bench_row "Zig" "$zig_line"
-    print_bench_row "Rust" "$rust_line"
-    printf '===============================================================\n'
+    HAVE_PYTHON=0
+    if check_python; then
+      HAVE_PYTHON=1
+    fi
+    bench_mode 0
+    bench_mode 1
     ;;
 esac

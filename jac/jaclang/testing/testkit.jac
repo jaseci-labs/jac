@@ -18,14 +18,6 @@ obj TestResponse {
     def json -> any;
 }
 
-impl TestResponse.text.getter -> str {
-    return self.content.decode('utf-8', errors='replace');
-}
-
-impl TestResponse.ok.getter -> bool {
-    return 200 <= self.status_code < 300;
-}
-
 obj SyncWebSocket {
     has url: str = '',
         extra_headers: dict[str, str] = {},

@@ -1,5 +1,5 @@
 obj Hash {
-    has _ctx: int,
+    has _core: DigestCore,
         digest_size: int,
         block_size: int,
         name: str;

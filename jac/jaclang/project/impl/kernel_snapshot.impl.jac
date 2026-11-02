@@ -817,11 +817,8 @@ impl host_only_miss(miss: str) -> bool {
 }
 
 impl host_deferred(outcome: AnalysisReport) -> bool {
-    if outcome.misses and all(host_only_miss(miss) for miss in outcome.misses) {
-        return True;
-    }
-    return outcome.status == ANALYSIS_CRASHED
-        and NATIVE_INT_OVERFLOW in outcome.message;
+    return bool(outcome.misses)
+        and all(host_only_miss(miss) for miss in outcome.misses);
 }
 
 impl loaded_kernel(kind: KernelEntry) -> NativeCompiler {

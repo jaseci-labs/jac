@@ -201,6 +201,10 @@ impl Memory.unit_depth -> int {
     return 0;
 }
 
+impl Memory.take_ro_retry -> str | None {
+    return None;
+}
+
 impl Memory.read_scope_enter {}
 
 impl Memory.read_scope_exit {}
@@ -216,4 +220,8 @@ impl Memory.close {
     self.__mem__.clear();
     self._dirty.clear();
     self._deleted.clear();
+}
+
+impl Memory.aclose {
+    self.close();
 }

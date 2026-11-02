@@ -2,6 +2,8 @@ import hashlib;
 import os;
 import sys;
 import from pathlib { Path }
+glob LINKED_SOURCE_FILE: str = "jac_linked_source";
+
 import from jaclang.dist.fused.trailer {
     MAGIC,
     OVERLAY_MAGIC,
@@ -53,3 +55,5 @@ def materialized_runtime_dir(path: str = "") -> (str | None);
 
 
 def running_runtime_entries -> set[str];
+
+def linked_source_dir(runtime_dir: str) -> str;

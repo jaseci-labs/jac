@@ -1,13 +1,3 @@
-import from ._time_native {
-    CLK_MONOTONIC,
-    CLK_MONOTONIC_RAW,
-    CLK_PROCESS_CPUTIME,
-    CLK_REALTIME,
-    CLK_PY_MONOTONIC,
-    CLK_THREAD_CPUTIME,
-    time_sleep_ns
-}
-
 glob CLOCK_REALTIME: int = CLK_REALTIME,
      CLOCK_MONOTONIC: int = CLK_MONOTONIC,
      CLOCK_MONOTONIC_RAW: int = CLK_MONOTONIC_RAW,

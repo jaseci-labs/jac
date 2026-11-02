@@ -1026,18 +1026,6 @@ impl NaIRGenPass._osp_connect_assign(
     built_with: (set[str] | None) = None,
     early: (dict[int, ir.Value] | None) = None
 ) -> bool {
-    """Apply a typed connect's attribute assignments to its new edge.
-
-    `a +>:E:f=v, g=w:+> b` builds `E` with no arguments and then sets each
-    named field, as the Python runtime does, so a field left out keeps its
-    default. The values are evaluated left to right after the edge exists and
-    before it joins the graph. When `E`'s constructor requires some of the
-    names, every value was evaluated left to right before the edge was built
-    (`early`), the edge was built with the required ones (`built_with`), and
-    only the others are set here. A connect that builds one edge per node of a
-    list evaluates them once, before the first edge (`held`), and each edge
-    takes its own reference.
-    """;
     assign = co.conn_assign;
     if assign is None {
         return True;
@@ -1160,12 +1148,6 @@ impl NaIRGenPass._osp_connect_assign_field(
 impl NaIRGenPass._osp_connect_assign_value(
     kw: uni.KWPair, keep: bool = False
 ) -> (ir.Value | None) {
-    """Lower one attribute value of a typed connect.
-
-    With `keep`, the value is held before a later value is evaluated, so a
-    borrowed one (`f=h.text`) takes its own reference: a later value such as
-    `g=reset(h)` could otherwise free it before it is stored.
-    """;
     _errs = len(self.ctx.errors_had);
     value = self._codegen_expr(kw.value);
     if value is None and len(self.ctx.errors_had) == _errs {
@@ -1652,11 +1634,6 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
 }
 
 impl NaIRGenPass._emit_jid(nd: uni.FuncCall) -> (ir.Value | None) {
-    """`jid(x)` of a node or edge: the graph runtime assigns a 32-hex id on
-    first request and never reuses it, matching the id shape of the other
-    backends. Like the client runtime, only nodes and edges have a jid; any
-    other argument is refused here rather than failing at run time.""";
-
     params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
     arg = params[0] if len(params) == 1 else None;
     arch = self._struct_name_of(arg) if isinstance(arg, uni.Expr) else None;
@@ -1720,7 +1697,6 @@ impl NaIRGenPass._emit_jid(nd: uni.FuncCall) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._osp_handle_list(value: ir.Value, nd: uni.Expr) -> (ir.Value | None) {
-    """A one-element handle list (owned) holding the graph object `value`.""";
     _wrap_fn = self.scope.function("osp_wrap1");
     if (_wrap_fn is None) or not isinstance(value.type, ir.PointerType) {
         self.emit(E5092, node_override=nd, kind="expression", name="EdgeRefTrailer");
@@ -1737,11 +1713,6 @@ impl NaIRGenPass._osp_handle_list(value: ir.Value, nd: uni.Expr) -> (ir.Value | 
 impl NaIRGenPass._osp_endpoint_handles(
     endpoint: uni.Expr, value: ir.Value, nd: uni.Expr
 ) -> (ir.Value | None) {
-    """The handles a bound endpoint (`[a -->:E:-> b]`) names, given its
-    evaluated `value`: a list of nodes is its own handle list, and one node
-    is wrapped in a one-element list the caller releases. Neither holds the
-    nodes; the caller releases `value` itself when it is a temporary. A
-    tuple or set is not laid out as a handle list, so it is refused.""";
     _many = self._osp_disc_list_operand(endpoint);
     if _many
         and (

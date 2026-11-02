@@ -88,21 +88,14 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
 
         _aug_base = AUG_TO_BINARY_MAP.get(aug_tok);
         if _aug_base is not None and _aug_base in FW_BINARY_OPS {
+            (_once, _binds) = self._aug_target_once(cast(es.Expression, left), here);
             _fw_aug = self._fw_binary(
-                here.target[0],
-                FW_BINARY_OPS[_aug_base],
-                cast(es.Expression, left),
-                right
+                here.target[0], FW_BINARY_OPS[_aug_base], _once, right
             );
             if _fw_aug is not None {
                 here.gen.es_ast = self.sync_loc(
                     es.ExpressionStatement(
-                        expression=self.sync_loc(
-                            es.AssignmentExpression(
-                                operator='=', left=left, right=_fw_aug
-                            ),
-                            jac_node=here
-                        )
+                        expression=self._assign_once(_once, _fw_aug, _binds, here)
                     ),
                     jac_node=here
                 );
@@ -123,6 +116,18 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
             }
         }
         operator = ES_AUG_ASSIGN_OPS.get(aug_tok);
+        if operator is None and _aug_base == Tok.FLOOR_DIV {
+            (_once, _binds) = self._aug_target_once(cast(es.Expression, left), here);
+            here.gen.es_ast = self.sync_loc(
+                es.ExpressionStatement(
+                    expression=self._assign_once(
+                        _once, self._floor_div(_once, right, here), _binds, here
+                    )
+                ),
+                jac_node=here
+            );
+            return;
+        }
         operator = operator or '=';
         assign_expr = self.sync_loc(
             es.AssignmentExpression(operator=operator, left=left, right=right),
@@ -288,6 +293,55 @@ impl EsastGenPass._collect_pattern_names(
     return names;
 }
 
+impl EsastGenPass._aug_target_once(
+    target: es.Expression, jac_node: uni.UniNode
+) -> tuple[es.Expression, list[tuple[es.Identifier, es.Expression]]] {
+    binds: list[tuple[es.Identifier, es.Expression]] = [];
+    if not isinstance(target, es.MemberExpression) or target.object is None {
+        return (target, binds);
+    }
+    `obj: es.Expression = target.object;
+    if not self._rereads_safely(`obj) {
+        obj_ref = self.sync_loc(es.Identifier(name='__jac_obj'), jac_node=jac_node);
+        binds.append((obj_ref, `obj));
+        `obj = obj_ref;
+    }
+    prop = target.property;
+    if target.computed and prop is not None and not self._rereads_safely(prop) {
+        key_ref = self.sync_loc(es.Identifier(name='__jac_key'), jac_node=jac_node);
+        binds.append((key_ref, prop));
+        prop = key_ref;
+    }
+    if not binds {
+        return (target, binds);
+    }
+    once = self.sync_loc(
+        es.MemberExpression(object=`obj, property=prop, computed=target.computed),
+        jac_node=jac_node
+    );
+    return (once, binds);
+}
+
+impl EsastGenPass._rereads_safely(expr: es.Expression) -> bool {
+    return isinstance(expr, (es.Identifier, es.ThisExpression, es.Literal));
+}
+
+impl EsastGenPass._assign_once(
+    target: es.Expression,
+    value: es.Expression,
+    binds: list[tuple[es.Identifier, es.Expression]],
+    jac_node: uni.UniNode
+) -> es.Expression {
+    assign: es.Expression = self.sync_loc(
+        es.AssignmentExpression(operator='=', left=target, right=value),
+        jac_node=jac_node
+    );
+    for (param, bound) in reversed(binds) {
+        assign = self._bind_once(param, assign, bound, jac_node);
+    }
+    return assign;
+}
+
 impl EsastGenPass._convert_assignment_target(
     target: uni.UniNode
 ) -> tuple[(es.Pattern | es.Expression), (es.Expression | None), (str | None)] {
@@ -375,13 +429,18 @@ impl EsastGenPass._convert_assignment_target(
                 es.MemberExpression(object=_obj, property=_idx, computed=True),
                 jac_node=target
             );
+            self._strip_optional_chain(_member);
             return (_member, _member, None);
         }
     }
+    target_es = target.gen.es_ast;
     left = cast(
         (es.Pattern | es.Expression),
-        target.gen.es_ast or self.sync_loc(es.Identifier(name='temp'), jac_node=target)
+        self._null_safe_unguarded(target_es, target)
+            if isinstance(target_es, es.Node)
+            else self.sync_loc(es.Identifier(name='temp'), jac_node=target)
     );
+    self._strip_optional_chain(left);
     return (left, cast(es.Expression, left), None);
 }
 

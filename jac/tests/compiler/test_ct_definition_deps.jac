@@ -12,7 +12,8 @@ import from jaclang.compiler.driver.jir {
     CT_DEF_FLAG,
     ct_dep_text_fresh,
     ct_deps_section,
-    definition_digest
+    definition_digest,
+    _definition_texts
 }
 
 glob DECL = '''obj Box {
@@ -177,5 +178,51 @@ test "a definition's digest is answered from disk without reparsing its files" {
         }
         annex.write_text(IMPL.replace("self.items[0]", "self.items[3]"));
         assert definition_digest(str(decl), "Box.first") != before;
+    }
+}
+
+glob WIDE = '''"""Boxes \u2014 a module whose text is not all ASCII."""
+obj Box {
+    has items: list[int] = [];
+}
+
+"""One more than \u00e9tant donn\u00e9 x."""
+def helper(x: int) -> int {
+    return x + 1;
+}
+''';
+
+test "a definition's text is its own source after characters wider than a byte" {
+    with TemporaryDirectory() as directory {
+        decl = Path(directory) / "wide.jac";
+        decl.write_text(WIDE, encoding="utf-8");
+        texts = _definition_texts(str(decl));
+        box_text = "obj Box {\n    has items: list[int] = [];\n}";
+        helper_text = '"""One more than \u00e9tant donn\u00e9 x."""\n'
+            + "def helper(x: int) -> int {\n    return x + 1;\n}";
+        assert texts.get("Box") == [box_text] , texts.get("Box");
+        assert texts.get("helper") == [helper_text] , texts.get("helper");
+    }
+}
+
+test "comments after and between definitions leave their digests alone" {
+    with TemporaryDirectory() as directory {
+        decl = Path(directory) / "wide.jac";
+        decl.write_text(WIDE, encoding="utf-8");
+        box = definition_digest(str(decl), "Box");
+        helper = definition_digest(str(decl), "helper");
+        assert box and helper;
+        decl.write_text(WIDE + "\n# A trailing \u2014 comment.\n", encoding="utf-8");
+        assert definition_digest(str(decl), "helper") == helper;
+        assert definition_digest(str(decl), "Box") == box;
+        decl.write_text(
+            WIDE.replace("[];\n}\n", "[];\n}\n# Between \u2014 the two.\n"),
+            encoding="utf-8"
+        );
+        assert definition_digest(str(decl), "Box") == box;
+        assert definition_digest(str(decl), "helper") == helper;
+        decl.write_text(WIDE.replace("x + 1", "x + 2"), encoding="utf-8");
+        assert definition_digest(str(decl), "helper") != helper;
+        assert definition_digest(str(decl), "Box") == box;
     }
 }

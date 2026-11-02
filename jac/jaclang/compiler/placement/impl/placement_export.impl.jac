@@ -112,6 +112,10 @@ impl summary_to_dict(ps: PlacementSummary) -> dict[str, any] {
         'native_blocker': ps.native_blocker,
         'jac_deps': list(ps.jac_deps),
         'has_refs': ps.has_refs,
+        'client_declared': ps.client_declared,
+        'native_declared': ps.native_declared,
+        'native_anchor': ps.native_anchor,
+        'spaces': list(ps.spaces),
         'elements': [element_to_dict(e) for e in ps.elements]
     };
 }
@@ -127,6 +131,10 @@ impl summary_from_dict(d: dict[str, any]) -> (PlacementSummary | None) {
     ps.native_blocker = str(d.get('native_blocker', ''));
     ps.jac_deps = _str_list(d.get('jac_deps'));
     ps.has_refs = bool(d.get('has_refs', False));
+    ps.client_declared = bool(d.get('client_declared', False));
+    ps.native_declared = bool(d.get('native_declared', False));
+    ps.native_anchor = bool(d.get('native_anchor', False));
+    ps.spaces = _str_list(d.get('spaces'));
     ps.elements = [element_from_dict(e) for e in _maps(d.get('elements'))];
     return ps;
 }
@@ -177,10 +185,11 @@ impl collect_placement_rows(prog: JacProgram) -> dict[str, dict[str, any]] {
         ps = get_module_summary(mod, prog);
         mod_rows: list[dict[str, any]] = [];
         for (idx, stmt) in enumerate(mod.body) {
-            if not isinstance(stmt, uni.ContextAwareNode) {
+            if not isinstance(stmt, uni.ContextAwareNode)
+                or stmt.top_element is not stmt {
                 continue;
             }
-            es = ps.elements[idx] if idx < len(ps.elements) else None;
+            es = ps.element_at(idx);
             notes: list[str] = [];
             if es is not None {
                 if es.pinned {
@@ -197,10 +206,7 @@ impl collect_placement_rows(prog: JacProgram) -> dict[str, dict[str, any]] {
                     notes.append(extra);
                 }
             }
-            rname = element_display_name(stmt);
-            if idx < len(ps.elements) {
-                rname = ps.elements[idx].name;
-            }
+            rname = es.name if es is not None else element_display_name(stmt);
             mod_rows.append(
                 {
                     'name': rname,
@@ -212,7 +218,7 @@ impl collect_placement_rows(prog: JacProgram) -> dict[str, dict[str, any]] {
             );
         }
         crossings = 0;
-        for stmt in mod.body {
+        for stmt in mod.elements {
             if not (
                 isinstance(stmt, uni.Import) and stmt.code_context == CodeContext.CLIENT
             ) {
@@ -231,7 +237,7 @@ impl collect_placement_rows(prog: JacProgram) -> dict[str, dict[str, any]] {
                     src = resolve_import_source_module(prog, stmt);
                     if src is not None {
                         for item in stmt.items {
-                            verdict = classify_client_import_item(src, item);
+                            verdict = classify_client_import_item(src, item, prog);
                             if verdict == ClientImportVerdict.BRIDGED {
                                 crossings += 1;
                             }

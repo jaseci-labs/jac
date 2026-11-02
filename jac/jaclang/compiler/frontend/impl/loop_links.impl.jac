@@ -36,7 +36,7 @@ impl LoopLinks.linked_within(scope: UniNode) -> set[Symbol] {
         for link in self.by_closure.get(cur, []) {
             linked.add(link.sym);
         }
-        cur = cur.parent;
+        cur = cur.decl_parent;
     }
     return linked;
 }
@@ -49,7 +49,7 @@ impl LoopLinks._link_closure(closure: UniNode) -> None {
     if not loops and not made_in_comprehension(closure) {
         return;
     }
-    for nm in closure.get_all_sub_nodes(Name) {
+    for nm in closure.element_sub_nodes(Name) {
         if is_identifier_slot(nm) or nm in self.by_name {
             continue;
         }
@@ -100,7 +100,7 @@ impl LoopLinks._is_local(sym: Symbol, loop: LoopStmt) -> bool {
     if sym not in known {
         local = True;
         for site in binding_sites(sym) {
-            if not is_within(site, loop) {
+            if not site.is_within(loop) {
                 local = False;
                 break;
             }
@@ -110,14 +110,10 @@ impl LoopLinks._is_local(sym: Symbol, loop: LoopStmt) -> bool {
     return known[sym];
 }
 
-impl is_frame(nd: UniNode) -> bool {
-    return isinstance(nd, (Ability, ImplDef, LambdaExpr, Test, Module, ModuleCode));
-}
-
 impl enclosing_pass_loops(closure: UniNode) -> list[LoopStmt] {
     loops: list[LoopStmt] = [];
     child = closure;
-    cur = closure.parent;
+    cur = closure.decl_parent;
     while cur is not None and not is_frame(cur) {
         if isinstance(cur, (Archetype, Enum)) {
             return [];
@@ -127,18 +123,18 @@ impl enclosing_pass_loops(closure: UniNode) -> list[LoopStmt] {
             loops.append(cur);
         }
         child = cur;
-        cur = cur.parent;
+        cur = cur.decl_parent;
     }
     return loops;
 }
 
 impl made_in_comprehension(closure: UniNode) -> bool {
-    cur = closure.parent;
+    cur = closure.decl_parent;
     while cur is not None and not is_frame(cur) {
         if isinstance(cur, (ListCompr, DictCompr, InnerCompr)) {
             return True;
         }
-        cur = cur.parent;
+        cur = cur.decl_parent;
     }
     return False;
 }
@@ -158,20 +154,27 @@ impl made_per_element(sym: Symbol, closure: UniNode) -> bool {
     return cur is owner;
 }
 
+impl in_loop_else(nd: UniNode, at: UniNode) -> bool {
+    return isinstance(at, (InForStmt, IterForStmt, WhileStmt))
+        and at.else_body is not None
+        and nd.is_within(at.else_body);
+}
+
 impl enclosing_loop(ctrl: CtrlStmt) -> (LoopStmt | None) {
-    cur = ctrl.parent;
+    cur = ctrl.decl_parent;
     while cur is not None and not is_frame(cur) {
-        if isinstance(cur, (InForStmt, IterForStmt, WhileStmt, ForeverStmt)) {
+        if isinstance(cur, (InForStmt, IterForStmt, WhileStmt, ForeverStmt))
+            and not in_loop_else(ctrl, cur) {
             return cur;
         }
-        cur = cur.parent;
+        cur = cur.decl_parent;
     }
     return None;
 }
 
 impl confined_to(sym: Symbol, loop: LoopStmt) -> bool {
     for site in list(sym.defn) + list(sym.uses) {
-        if not is_within(site, loop) {
+        if not site.is_within(loop) {
             return False;
         }
     }
@@ -183,7 +186,7 @@ impl binds_target(sym: Symbol, loop: LoopStmt) -> bool {
         return False;
     }
     for site in sym.defn {
-        if is_within(site, loop.target) {
+        if site.is_within(loop.target) {
             return True;
         }
     }
@@ -221,7 +224,7 @@ impl frame_owns(frame: UniNode, sym: Symbol) -> bool {
         }
         owner = owner.parent_scope;
     }
-    return same_lexical_scope(owner, frame);
+    return owner is not None and owner is frame;
 }
 
 impl is_plain_variable(sym: Symbol) -> bool {
@@ -230,7 +233,7 @@ impl is_plain_variable(sym: Symbol) -> bool {
 
 impl owned_within(sym: Symbol, scope: UniNode) -> bool {
     owner = sym.parent_tab;
-    return owner is not None and is_within(owner, scope);
+    return owner is not None and owner.is_within(scope);
 }
 
 impl binding_sites(sym: Symbol) -> list[UniNode] {
@@ -241,15 +244,4 @@ impl binding_sites(sym: Symbol) -> list[UniNode] {
         }
     }
     return sites;
-}
-
-impl is_within(nd: UniNode, outer: UniNode) -> bool {
-    cur: (UniNode | None) = nd;
-    while cur is not None {
-        if cur is outer {
-            return True;
-        }
-        cur = cur.parent;
-    }
-    return False;
 }

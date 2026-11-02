@@ -278,7 +278,7 @@ impl NaIRGenPass._c_interop_store(
             nd.value,
             target_type=target.type,
             unsigned=self._is_unsigned_node(target),
-            checked=self._is_sized_node(target) or self._is_sized_node(nd.value)
+            sized=self._is_sized_node(target)
         );
         if updated is None {
             self.ctx.emit(
@@ -368,6 +368,10 @@ impl NaIRGenPass._codegen_c_interop_call(
         if named {
             return (True, address);
         }
+        literal = self._c_literal_address(params[0]);
+        if literal is not None {
+            return (True, literal);
+        }
         return (True, self._c_address_of_value(self._codegen_expr(params[0])));
     }
     if isinstance(nd.target, uni.Name)
@@ -435,6 +439,11 @@ impl NaIRGenPass._codegen_c_interop_call(
         }
         count = self._coerce_type(count, i64);
         b = self.builder;
+        if self._unchecked_views_on() {
+            empty_view: ir.Value = ir.Constant(self._ptr_view_type(), None);
+            addr_view = b.insert_value(empty_view, addr, 0, name="c.view.addr");
+            return (True, b.insert_value(addr_view, count, 1, name="c.view.n"));
+        }
         negative = b.icmp_signed("<", count, ir.Constant(i64, 0), name="c.view.nneg");
         self._emit_runtime_raise(
             negative, "ValueError", "PtrView length must not be negative"
@@ -628,6 +637,18 @@ impl NaIRGenPass._codegen_clib_args(
             continue;
         }
         if info.get("borrow") != "scalar" {
+            if isinstance(arg, uni.UnaryExpr)
+                and is_borrow_kind(arg.ownership)
+                and (
+                    is_ptr_type(arg.operand.type)
+                    or self._c_scalar_llvm(arg.operand.type) is not None
+                ) {
+                lent = self._clib_place_ptr(arg);
+                if lent is not None and isinstance(lent.type, ir.PointerType) {
+                    out.append(self.builder.bitcast(lent, i8p, name=f"clib.lend.{i}"));
+                    continue;
+                }
+            }
             val = self._codegen_expr(arg);
             if val is None {
                 return out;
@@ -1071,19 +1092,27 @@ impl NaIRGenPass._c_const_struct(expr: uni.Expr, sname: str) -> (ir.Constant | N
         }
     }
     struct_type = self.struct_types[sname];
-    values: list[ir.Constant] = [];
+
+    indices = self.struct_field_indices.get(sname, {});
+    values: list[ir.Constant] = [
+        ir.Constant(elem, None) for elem in struct_type.elements
+    ];
     for (i, field) in enumerate(fields) {
-        elem = struct_type.elements[i];
         arg = given.get(field.name.sym_name);
         if arg is None {
-            values.append(ir.Constant(elem, None));
             continue;
         }
-        value = self._c_const_init(arg, self._c_decl_type_of(field), elem);
+        idx = indices.get(field.name.sym_name, i if not indices else -1);
+        if idx < 0 or idx >= len(values) {
+            return None;
+        }
+        value = self._c_const_init(
+            arg, self._c_decl_type_of(field), struct_type.elements[idx]
+        );
         if value is None {
             return None;
         }
-        values.append(value);
+        values[idx] = value;
     }
     return ir.Constant(struct_type, values);
 }
@@ -1119,12 +1148,52 @@ impl NaIRGenPass._c_const_address(expr: uni.Expr) -> (ir.Constant | None) {
             if named {
                 return address;
             }
-
+            literal = self._c_literal_address(arg);
+            if literal is not None {
+                return literal;
+            }
+            (base, count) = c_offset_address(arg);
+            if base is not None {
+                return self._c_const_offset_address(base, count);
+            }
             return self._c_const_address(arg);
         }
         return None;
     }
     return self._c_const_scalar(expr, i64);
+}
+
+impl NaIRGenPass._c_const_offset_address(
+    call: uni.UniNode, count: int
+) -> (ir.Constant | None) {
+    params = list(call.params or []) if isinstance(call, uni.FuncCall) else [];
+    symbol = params[0] if len(params) == 1 else None;
+    found = self.clib_globals.get(symbol.sym_name)
+        if isinstance(symbol, uni.Name) and clib_global_of_name(symbol) is not None
+        else None;
+    if found is None {
+        return None;
+    }
+    target = found[0];
+    ptype = target.type;
+    if not isinstance(ptype, ir.PointerType) {
+        return None;
+    }
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    pointee = ptype.pointee;
+    steps = [ir.Constant(i32, 0), ir.Constant(i64, count)]
+        if isinstance(pointee, ir.ArrayType)
+        else [ir.Constant(i64, count)];
+    return target.gep(steps).ptrtoint(i64) as ir.Constant;
+}
+
+impl NaIRGenPass._c_literal_address(arg: uni.UniNode) -> (ir.Constant | None) {
+    if not isinstance(arg, uni.Int) {
+        return None;
+    }
+    bits = uni.int_literal_u64_bits(arg.value);
+    return ir.Constant(ir.IntType(64), bits) if bits is not None else None;
 }
 
 impl NaIRGenPass._reads_c_callback(nd: uni.Expr) -> bool {
@@ -1236,8 +1305,8 @@ impl NaIRGenPass._c_global_store(
             nd.aug_op.value,
             nd.value,
             unsigned=self._is_unsigned_node(target),
-            checked=self._is_sized_node(target) or self._is_sized_node(nd.value),
-            target_type=ctype
+            target_type=ctype,
+            sized=self._is_sized_node(target)
         );
         if updated is None {
             self.ctx.emit(
@@ -1253,45 +1322,20 @@ impl NaIRGenPass._c_global_store(
     self._c_store_scalar(value, slot, ctype);
 }
 
-impl NaIRGenPass._va_abi -> str {
-    triple = str(self.llvm_module.triple or "");
-    if "x86_64" in triple {
-        return "slots" if "windows" in triple else "sysv64";
-    }
-    if "aarch64" in triple or "arm64" in triple {
-        return "slots"
-            if ("apple" in triple or "darwin" in triple or "windows" in triple)
-            else "aapcs64";
-    }
-    return "";
-}
-
-impl NaIRGenPass._va_storage_type(abi: str) -> ir.Type {
-    i8p = ir.IntType(8).as_pointer();
-    i32 = ir.IntType(32);
-    if abi == "sysv64" {
-        return ir.LiteralStructType([i32, i32, i8p, i8p]);
-    }
-    if abi == "aapcs64" {
-        return ir.LiteralStructType([i8p, i8p, i8p, i32, i32]);
-    }
-    return i8p;
-}
-
 impl NaIRGenPass._c_va_start(nd: uni.UniNode) -> (ir.Value | None) {
-    abi = self._va_abi();
-    if not abi {
+    if self._target_is_wasm() {
         self.ctx.emit(
             E5092,
             node_override=nd,
             kind="C variadic function",
             name=str(self.llvm_module.triple),
-            help_text="C variadic functions are defined for x86_64 and aarch64 targets."
+            help_text="C variadic functions are not available on wasm targets."
         );
         return None;
     }
     i8p = ir.IntType(8).as_pointer();
-    storage = self._entry_alloca(self._va_storage_type(abi), "c.va.storage");
+    storage = self._entry_alloca(ir.ArrayType(ir.IntType(64), 4), "c.va.storage");
+    raw = self.builder.bitcast(storage, i8p, name="c.va.raw");
     start = self.llvm_module.globals.get("llvm.va_start");
     if not isinstance(start, ir.Function) {
         start = ir.Function(
@@ -1300,24 +1344,18 @@ impl NaIRGenPass._c_va_start(nd: uni.UniNode) -> (ir.Value | None) {
             name="llvm.va_start"
         );
     }
-    self.builder.call(start, [self.builder.bitcast(storage, i8p, name="c.va.raw")]);
-    if abi == "slots" {
-        return self.builder.ptrtoint(
-            self.builder.load(storage, name="c.va.cursor"), ir.IntType(64), name="c.va"
-        );
-    }
-    return self.builder.ptrtoint(storage, ir.IntType(64), name="c.va");
+    self.builder.call(start, [raw]);
+    held = self._floor_call("__jac_va_list", i8p, [raw], "c.va.held");
+    return self.builder.ptrtoint(held, ir.IntType(64), name="c.va");
 }
 
 impl NaIRGenPass._c_va_arg(nd: uni.FuncCall, recv: uni.Expr) -> (ir.Value | None) {
     i8 = ir.IntType(8);
-    i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     b = self.builder;
     want = self._c_scalar_llvm(nd.type);
     slot = self._clib_place_ptr(recv);
-    abi = self._va_abi();
-    if want is None or slot is None or not abi {
+    if want is None or slot is None or self._target_is_wasm() {
         self.ctx.emit(
             E5092,
             node_override=nd,
@@ -1329,61 +1367,10 @@ impl NaIRGenPass._c_va_arg(nd: uni.FuncCall, recv: uni.Expr) -> (ir.Value | None
     }
     floating = isinstance(want, (ir.FloatType, ir.DoubleType));
     word: ir.Type = ir.DoubleType() if floating else i64;
-    value = b.load(slot, name="c.va.value");
-    addr: ir.Value;
-    if abi == "slots" {
-        cursor = b.inttoptr(value, i8.as_pointer(), name="c.va.cursor");
-        addr = cursor;
-        b.store(
-            b.ptrtoint(b.gep(cursor, [ir.Constant(i64, 8)]), i64, name="c.va.next"),
-            slot
-        );
-    } else {
-        state = b.inttoptr(
-            value, self._va_storage_type(abi).as_pointer(), name="c.va.state"
-        );
-        zero = ir.Constant(i32, 0);
-        if abi == "sysv64" {
-            limit = 160 if floating else 40;
-            step = 16 if floating else 8;
-            offset_slot = b.gep(state, [zero, ir.Constant(i32, 1 if floating else 0)]);
-            overflow_slot = b.gep(state, [zero, ir.Constant(i32, 2)]);
-            saved = b.load(b.gep(state, [zero, ir.Constant(i32, 3)]), name="c.va.save");
-            offset = b.load(offset_slot, name="c.va.offs");
-            in_reg = b.icmp_signed(
-                "<=", offset, ir.Constant(i32, limit), name="c.va.inreg"
-            );
-            reg_addr = b.gep(saved, [b.sext(offset, i64)]);
-            b.store(
-                b.select(in_reg, b.add(offset, ir.Constant(i32, step)), offset),
-                offset_slot
-            );
-        } else {
-            step = 16 if floating else 8;
-            offset_slot = b.gep(state, [zero, ir.Constant(i32, 4 if floating else 3)]);
-            overflow_slot = b.gep(state, [zero, ir.Constant(i32, 0)]);
-            top = b.load(
-                b.gep(state, [zero, ir.Constant(i32, 2 if floating else 1)]),
-                name="c.va.top"
-            );
-            offset = b.load(offset_slot, name="c.va.offs");
-            spilled = b.icmp_signed(
-                ">=", offset, ir.Constant(i32, 0), name="c.va.spilled"
-            );
-            advanced = b.add(offset, ir.Constant(i32, step), name="c.va.adv");
-            b.store(b.select(spilled, offset, advanced), offset_slot);
-            fits = b.icmp_signed("<=", advanced, ir.Constant(i32, 0), name="c.va.fits");
-            in_reg = b.and_(b.not_(spilled), fits, name="c.va.inreg");
-            reg_addr = b.gep(top, [b.sext(offset, i64)]);
-        }
-        overflow = b.load(overflow_slot, name="c.va.stack");
-        b.store(
-            b.select(in_reg, overflow, b.gep(overflow, [ir.Constant(i64, 8)])),
-            overflow_slot
-        );
-        addr = b.select(in_reg, reg_addr, overflow, name="c.va.addr");
-    }
-    raw = b.load(b.bitcast(addr, word.as_pointer()), name="c.va.raw");
+    held = b.bitcast(slot, i8.as_pointer(), name="c.va.slot");
+    raw = self._floor_call(
+        "__jac_va_f64" if floating else "__jac_va_i64", word, [held], "c.va.raw"
+    );
     if floating {
         return raw if want == word else b.fptrunc(raw, want, name="c.va.float");
     }

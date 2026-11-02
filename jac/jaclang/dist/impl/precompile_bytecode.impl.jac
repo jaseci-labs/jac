@@ -154,10 +154,8 @@ impl _application_sources(package_dir: str, app: str) -> list[str] | None {
     }
     program = JacProgram();
     entries: list[any] = [selected];
-    if selected.has_server {
-        import from jaclang.server.assembly { service_apps }
-        entries.extend(service_apps(workspace, selected));
-    }
+    import from jaclang.server.assembly { service_apps }
+    entries.extend(service_apps(workspace, selected));
     try {
         for application in entries {
             options = bind_options(
@@ -192,10 +190,12 @@ impl _application_sources(package_dir: str, app: str) -> list[str] | None {
         }
         _placement_cache[key] = facts;
         _source_apps[key] = source_apps;
+
+        entry_paths = {os.path.realpath(application.entry) for application in entries};
         return sorted(
             path
             for (path, spaces) in facts.items()
-            if not spaces_are_client_only(spaces)
+            if path in entry_paths or not spaces_are_client_only(spaces)
         );
     } finally {
         program.release_compile_closure();
@@ -243,10 +243,15 @@ impl sealable_sources(package_dir: str, app: str = "") -> list[str] {
             );
             result = candidates;
         } else {
+            workspace = workspace_for_path(os.path.join(package_dir, '__init__.jac'));
+            entry_paths = {a.real_entry for a in workspace.apps.values()}
+                if workspace
+                else set();
             skipped = [
                 p
                 for p in candidates
-                if spaces_are_client_only(facts[os.path.abspath(p)])
+                if os.path.realpath(p) not in entry_paths
+                    and spaces_are_client_only(facts[os.path.abspath(p)])
             ];
             result = [
                 p
@@ -817,8 +822,9 @@ impl app_metadata(pkg_path: Path, pkg_name: str, app: str = "") -> dict[str, any
         `entry = {"module": f"{pkg_name}.{stem}", "path": rel};
     }
 
+    serving = config.serving_apps();
     caps: list[str] = [];
-    if kind in ["service", "service-mesh", "web-app", "desktop", "mobile"] {
+    if chosen is not None and any(app.name == chosen.name for app in serving) {
         caps.append("has-server");
     }
     if `entry {
@@ -1193,6 +1199,10 @@ impl prebuild_native_units(roots: list[str]) {
 impl seal_native(
     pkg_path: Path, out_dir: Path, pkg_name: str, manifest_modules: dict[str, any]
 ) -> (dict[str, any] | None) {
+    kernel_dir = os.environ.get(SEAL_KERNEL_DIR_ENV, "");
+    if pkg_name == "jaclang" and kernel_dir {
+        return adopt_kernel(pkg_path, out_dir, manifest_modules, kernel_dir);
+    }
     if "kernel" in kit_omissions(pkg_name) {
         console.print(
             "  Native artifact: none (a pull request's kit leaves the kernel out)"
@@ -1215,11 +1225,13 @@ impl seal_native(
     }
 
     prog.native_units().progress = progress;
+    import from jaclang.compiler.target_spec { host_target_spec }
     options = CompileOptions(
         aot_mode=True,
         default_codespace="native",
         native_unit=True,
-        skip_native_engine=True
+        skip_native_engine=True,
+        native_target=host_target_spec().triple
     );
     roots = native_roots(pkg_name, units);
     artifact_rel = os.path.join("compiler", kernel_lib_name())
@@ -1237,9 +1249,7 @@ impl seal_native(
         }
         refuse_missing_entries(plan, str(pkg_path));
     }
-    """The plan holds every unit's interface and the link needs only their
-    products, which the module cache holds, so the analyzed trees go before
-    the link's code generation needs the memory.""";
+
     prog.release_compile_closure();
     result = link_artifact(
         plan, str(artifact_path), ArtifactKind.SHARED, log=console.print
@@ -1304,11 +1314,88 @@ impl seal_native(
     return {"units": unit_records, "artifact": artifact};
 }
 
+impl adopt_kernel(
+    pkg_path: Path, out_dir: Path, manifest_modules: dict[str, any], kernel_dir: str
+) -> dict[str, any] {
+    import shutil;
+
+    spec = host_target_spec();
+    name = kernel_lib_name();
+    src = os.path.join(kernel_dir, name);
+    sidecar = read_sidecar(src);
+    if not os.path.isfile(src) or sidecar is None {
+        raise RuntimeError(
+            f"{SEAL_KERNEL_DIR_ENV} names {kernel_dir}, which holds no {name} "
+            f"with its {LAYOUT_SIDECAR_SUFFIX} sidecar"
+        );
+    }
+    ids_raw = sidecar.get("unit_ids");
+    ids = [str(i) for i in ids_raw] if isinstance(ids_raw, list) else [];
+    recorded = sidecar.get("unit_sources");
+    if not ids or not isinstance(recorded, dict) or not recorded {
+        raise RuntimeError(f"prebuilt kernel {src} names no unit sources");
+    }
+    units = [str(pkg_path.parent / ident) for ident in ids];
+    missing = [
+        ident
+        for ident in ids
+        if not os.path.isfile(str(pkg_path.parent / ident))
+    ];
+    if missing {
+        raise RuntimeError(
+            f"prebuilt kernel {src} was built from units this tree lacks: "
+                + ", ".join(missing[:5])
+        );
+    }
+    drift = unit_drift(sidecar, recorded, units, spec);
+    if drift {
+        raise RuntimeError(
+            f"prebuilt kernel {src} was not built from this tree for {spec.osarch}: "
+                + "; ".join(drift[:5])
+                + (f" (and {len(drift) - 5} more)" if len(drift) > 5 else "")
+        );
+    }
+    dst = pkg_path / "compiler" / name;
+    dst.parent.mkdir(parents=True, exist_ok=True);
+    shutil.copyfile(src, str(dst));
+    os.chmod(str(dst), 0o755);
+    shutil.copyfile(src + LAYOUT_SIDECAR_SUFFIX, str(dst) + LAYOUT_SIDECAR_SUFFIX);
+    sha = hashlib.sha256(dst.read_bytes()).hexdigest();
+    if sha != str(sidecar.get("artifact_sha256", "")) {
+        raise RuntimeError(f"prebuilt kernel {src} does not match its sidecar sha256");
+    }
+    for ident in ids {
+        rel = ident[len("jaclang/"):] if ident.startswith("jaclang/") else ident;
+        mod_entry = manifest_modules.get(rel);
+        if mod_entry is None {
+            continue;
+        }
+        if in_native_scope_path(str(pkg_path / rel))
+            and _drop_native_twin(out_dir / mod_entry["jir"]) {
+            mod_entry["sha256"] = hashlib.sha256(
+                (out_dir / mod_entry["jir"]).read_bytes()
+            ).hexdigest();
+        }
+    }
+    artifact_rel = os.path.join("compiler", name);
+    console.print(
+        f"  Native artifact: {artifact_rel} adopted from {kernel_dir} "
+        f"({len(ids)} units, plan {str(sidecar.get('plan_digest', ''))[:12]})"
+    );
+    return {
+        "units": {},
+        "artifact": {
+            "path": Path(artifact_rel).as_posix(),
+            "sha256": sha,
+            "layout_digest": str(sidecar.get("layout_digest", "")),
+            "plan_digest": str(sidecar.get("plan_digest", "")),
+            "triple": str(sidecar.get("triple", "")),
+            "mode": str(sidecar.get("link_mode", ""))
+        }
+    };
+}
+
 impl _refresh_native_twin(twin: Path, jac_path: str, pkg_root: str) -> None {
-    """Carry a unit's native sections from the module cache into its sealed
-JIR twin. A dual module's twin was written by the compile pass, before the
-plan compiled the module as a native unit; the plan's products are what
-the artifact linked, so the twin takes them now.""";
     fresh = _native_extra(jac_path, pkg_root);
     if not fresh {
         return;
@@ -1368,13 +1455,7 @@ impl _drop_native_twin(twin: Path) -> bool {
 }
 
 impl _shared_suffix -> str {
-    if sys.platform == "darwin" {
-        return ".dylib";
-    }
-    if sys.platform.startswith("win") {
-        return ".dll";
-    }
-    return ".so";
+    return host_target_spec().shared_suffix;
 }
 
 impl write_manifest(
