@@ -1,7 +1,3 @@
-"""The pyexpat module: the xmlparser type, ExpatError, the errors and model
-submodules, and the expat_CAPI capsule."""
-
-# xmlparse_methods, in pyexpat.c's order.
 glob:priv METHOD_ORDER: list[str] = [
          "Parse",
          "ParseFile",
@@ -19,7 +15,39 @@ glob:priv METHOD_ORDER: list[str] = [
          "GetReparseDeferralEnabled"
      ];
 
-def:priv ordered_methods -> list[MethodDefinition] {
+def:priv ordered_methods -> list[MethodDefinition];
+
+def:priv xmlparser_properties -> list[PropertyDefinition];
+
+glob:priv xmlparser_type = TypeDefinition(
+         "pyexpat.xmlparser",
+         "XML parser",
+         ordered_methods(),
+         u64(
+             TypeFlags.GC.value
+                 | TypeFlags.DISALLOW_INSTANTIATION.value
+                 | TypeFlags.IMMUTABLE.value
+         ),
+         TypeHooks(
+             dealloc=xmlparse_dealloc, traverse=xmlparse_traverse, clear=xmlparse_clear
+         ),
+         xmlparser_properties(),
+         members=XMLPARSER_MEMBERS,
+         record_size=XMLPARSER_RECORD_SIZE
+     );
+
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+glob:priv definition = ModuleDefinition(
+         "pyexpat",
+         "Python wrapper for Expat parser.",
+         module_methods,
+         ModuleHooks(execute=execute)
+     );
+
+def:pub PyInit_pyexpat -> ptr[PyObject];
+
+impl ordered_methods -> list[MethodDefinition] {
     ordered: list[MethodDefinition] = [];
     for name in METHOD_ORDER {
         for method in xmlparser_methods {
@@ -31,9 +59,7 @@ def:priv ordered_methods -> list[MethodDefinition] {
     return ordered;
 }
 
-# xmlparse_getsetlist, then a descriptor per handler whose closure is its
-# index in the handler table.
-def:priv xmlparser_properties -> list[PropertyDefinition] {
+impl xmlparser_properties -> list[PropertyDefinition] {
     properties: list[PropertyDefinition] = [
         PropertyDefinition(
             "ErrorCode", PropertyCallbacks(read=xmlparse_ErrorCode_getter)
@@ -48,7 +74,6 @@ def:priv xmlparser_properties -> list[PropertyDefinition] {
         PropertyDefinition(
             "ErrorByteIndex", PropertyCallbacks(read=xmlparse_ErrorByteIndex_getter)
         ),
-        # XML_GetErrorLineNumber() and friends are the Current* functions.
         PropertyDefinition(
             "CurrentLineNumber", PropertyCallbacks(read=xmlparse_ErrorLineNumber_getter)
         ),
@@ -110,29 +135,12 @@ def:priv xmlparser_properties -> list[PropertyDefinition] {
     return properties;
 }
 
-glob:priv xmlparser_type = TypeDefinition(
-         "pyexpat.xmlparser",
-         "XML parser",
-         ordered_methods(),
-         u64(
-             TypeFlags.GC.value
-                 | TypeFlags.DISALLOW_INSTANTIATION.value
-                 | TypeFlags.IMMUTABLE.value
-         ),
-         TypeHooks(
-             dealloc=xmlparse_dealloc, traverse=xmlparse_traverse, clear=xmlparse_clear
-         ),
-         xmlparser_properties(),
-         members=XMLPARSER_MEMBERS,
-         record_size=XMLPARSER_RECORD_SIZE
-     );
-
-def:priv execute(module: ptr[PyObject]) -> i32 {
+impl execute(module: ptr[PyObject]) -> i32 {
     module_definition.handle = definition.handle;
     xmlparser_token.handle = xmlparser_type.handle;
     state = PyexpatState();
     jacpy_binding_module_native_set(module, state);
-    state.str_read = PyUnicode_InternFromString("read");
+    state.str_read = PyUnicode_InternFromString(ptr[u8]("read"));
     if not state.str_read {
         return i32(-1);
     }
@@ -144,16 +152,18 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     if not state.error {
         return i32(-1);
     }
-    if PyModule_AddObjectRef(module, "error", state.error) < 0
-        or PyModule_AddObjectRef(module, "ExpatError", state.error) < 0
-        or PyModule_AddObjectRef(module, "XMLParserType", state.xml_parse_type) < 0 {
+    if PyModule_AddObjectRef(module, ptr[u8]("error"), state.error) < 0
+        or PyModule_AddObjectRef(module, ptr[u8]("ExpatError"), state.error) < 0
+        or PyModule_AddObjectRef(module, ptr[u8]("XMLParserType"), state.xml_parse_type)
+            < 0 {
         return i32(-1);
     }
     if add_version(module) < 0 {
         return i32(-1);
     }
-    # Expat cannot report how it was compiled; its XML_Char is UTF-8 here.
-    if PyModule_AddStringConstant(module, "native_encoding", "UTF-8") < 0 {
+
+    if PyModule_AddStringConstant(module, ptr[u8]("native_encoding"), ptr[u8]("UTF-8"))
+        < 0 {
         return i32(-1);
     }
     if add_errors_module(module) < 0
@@ -169,7 +179,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         ),
         ("XML_PARAM_ENTITY_PARSING_ALWAYS", XML_PARAM_ENTITY_PARSING_ALWAYS)
     ] {
-        if PyModule_AddIntConstant(module, name, i64(value)) < 0 {
+        if jacpy_module_add_int_text(module, name, i64(value)) < 0 {
             return i32(-1);
         }
     }
@@ -177,19 +187,12 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     if not capsule {
         return i32(-1);
     }
-    if PyModule_Add(module, "expat_CAPI", capsule) < 0 {
+    if PyModule_Add(module, ptr[u8]("expat_CAPI"), capsule) < 0 {
         return i32(-1);
     }
     return i32(0);
 }
 
-glob:priv definition = ModuleDefinition(
-         "pyexpat",
-         "Python wrapper for Expat parser.",
-         module_methods,
-         ModuleHooks(execute=execute)
-     );
-
-def:pub PyInit_pyexpat -> ptr[PyObject] {
+impl PyInit_pyexpat -> ptr[PyObject] {
     return definition.initialize();
 }

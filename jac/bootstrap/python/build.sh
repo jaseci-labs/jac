@@ -1,17 +1,17 @@
 #!/bin/sh
-# Native release builds: every C translation and archive uses the pinned Zig.
+# The third-party libraries JacPython links (zlib, bzip2, zstd, sqlite, xz,
+# libffi, mpdecimal, expat and OpenSSL), with their headers, notices and the CA
+# bundle. Every C translation and archive uses the pinned Zig. The runtime
+# itself is built by build_jacpython.zig.
+#
+#   build.sh <platform> <work> <zig>
+#
+# Only on the platform itself: another platform's build lowers only its
+# native object, which needs none of these.
 set -eu
 platform=$1
 work=$2
 zig=$3
-recipe=$4
-host=${5:-}
-root=$6
-mode=$7
-case "$mode:$host" in
-    host:|jacpython:?*) ;;
-    *) echo "Invalid Python build mode/host: $mode" >&2; exit 1 ;;
-esac
 jobs=${JAC_PYTHON_JOBS:-4}
 case "$jobs" in ''|*[!0-9]*|0) echo 'JAC_PYTHON_JOBS must be a positive integer' >&2; exit 1;; esac
 case "$platform" in
@@ -21,13 +21,12 @@ case "$platform" in
     macos-aarch64) target=aarch64-macos.11.0; openssl_target=darwin64-arm64-cc ;;
     *) echo "Unsupported Python release platform: $platform" >&2; exit 1 ;;
 esac
-for tool in make perl patch; do
-    command -v "$tool" >/dev/null || { echo "Source Python builds require $tool" >&2; exit 1; }
+for tool in make perl; do
+    command -v "$tool" >/dev/null || { echo "The vendored libraries' build requires $tool" >&2; exit 1; }
 done
-prefix=$work/python/install
 deps=$work/deps
 src=$work/src
-mkdir -p "$prefix" "$deps/lib" "$deps/include" "$work/bin" "$work/logs"
+mkdir -p "$deps/lib" "$deps/include" "$work/bin" "$work/logs"
 export JAC_PYTHON_ZIG="$zig" JAC_PYTHON_TARGET="$target"
 case "$platform" in
     macos-*)
@@ -144,227 +143,27 @@ openssl() {
     make -j"$jobs" build_libs
     make install_dev
 }
-cpython() {
-    cd "$src/cpython"
-    if [ -n "$host" ]; then
-        patch -f -F0 -p1 -i "$recipe/compiler-bridge.patch"
-        cp "$recipe/compiler_bridge.c" Python/jac_compile.c
-        cp "$recipe/compiler_bridge.h" Python/jac_compile.h
-        cp "$recipe/compiler_runtime.c" Python/jac_runtime.c
-        cp "$recipe/object_api.c" Python/jac_objects.c
-        cp "$recipe/binding_api.c" Python/jac_bindings.c
-        cp "$work/native/jacpython.o" Python/jacpython.o
-    fi
-    # cpython-sources.txt decides what the extracted tree holds; detach the
-    # upstream rules that still name pruned paths. This runs second because
-    # compiler-bridge.patch carries zero-context hunks, which match on line
-    # number alone and so must see pristine ones.
-    patch -f -F0 -p1 -i "$recipe/build-graph.patch"
-    # The shared interpreter must survive relocation into the Jac payload.
-    case "$platform" in
-        linux-*)
-            sed 's/-Wl,-h\$(INSTSONAME)/-Wl,-soname,$(INSTSONAME)/g; s/-Wl,-h\$@/-Wl,-soname,$@/g; s/^INSTSONAME=.*/INSTSONAME= libpython$(LDVERSION).so/' \
-                Makefile.pre.in > Makefile.pre.in.new
-            mv Makefile.pre.in.new Makefile.pre.in
-            cat > "$work/bin/pycc" <<'SH'
-#!/bin/sh
-exec "$JAC_PYTHON_ZIG" cc -target "$JAC_PYTHON_TARGET" -Wno-unused-command-line-argument -Wno-error=date-time '-Wl,-rpath,$ORIGIN/../lib' "$@"
-SH
-            ;;
-        macos-*)
-            # Zig's driver ignores -bundle and crashes while linking an
-            # executable with unresolved Python symbols. dlopen accepts a
-            # shared Mach-O library with the same dynamic symbol lookup.
-            export LDSHARED='$(CC) -shared -undefined dynamic_lookup'
-            export BLDSHARED="$LDSHARED"
-            cat > "$work/bin/pycc" <<'SH'
-#!/bin/sh
-exec "$JAC_PYTHON_ZIG" cc -target "$JAC_PYTHON_TARGET" -isysroot "$JAC_PYTHON_SDK" -isystem "$JAC_PYTHON_SDK/usr/include" -L "$JAC_PYTHON_SDK/usr/lib" -F "$JAC_PYTHON_SDK/System/Library/Frameworks" -Wno-unused-command-line-argument -Wno-error=date-time '-Wl,-rpath,@loader_path/../lib' "$@"
-SH
-            # Keep the dylib relocatable and use the three-component versions
-            # required by Zig's Mach-O linker (CPython supplies major.minor).
-            # Link the static modules' libraries into the dylib, as the Linux
-            # .so rule does. Upstream leaves them to -undefined dynamic_lookup,
-            # which only resolves against whatever else the process loaded.
-            sed -e 's|-Wl,-install_name,$(prefix)/lib/|-Wl,-install_name,@rpath/|' \
-                -e 's/-compatibility_version,$(VERSION)/-compatibility_version,$(VERSION).0/g' \
-                -e 's/-current_version,$(VERSION)/-current_version,$(VERSION).0/g' \
-                -e 's/-o $@ $(LIBRARY_OBJS) $(DTRACE_OBJS) $(SHLIBS)/-o $@ $(LIBRARY_OBJS) $(DTRACE_OBJS) $(MODLIBS) $(SHLIBS)/' \
-                Makefile.pre.in > Makefile.pre.in.new
-            mv Makefile.pre.in.new Makefile.pre.in
-            # configure passes ld64's -stack_size as bare hex ("1000000" means
-            # the 16 MiB it also gives THREAD_STACK_SIZE). Zig's Mach-O linker
-            # reads it as decimal, which leaves the main thread under 1 MiB.
-            sed 's/-Wl,-stack_size,\$stack_size/-Wl,-stack_size,0x$stack_size/g' \
-                configure > configure.new
-            mv configure.new configure
-            chmod +x configure
-            ;;
-    esac
-    chmod +x "$work/bin/pycc"
-    export CC="$work/bin/pycc"
-    export LIBFFI_CFLAGS="-I$deps/include" LIBFFI_LIBS="$deps/lib/libffi.a"
-    export LIBMPDEC_CFLAGS="-I$deps/include" LIBMPDEC_LIBS="$deps/lib/libmpdec.a -lm"
-    export LIBSQLITE3_CFLAGS="-I$deps/include" LIBSQLITE3_LIBS="$deps/lib/libsqlite3.a -lm -lpthread"
-    export LIBZSTD_CFLAGS="-I$deps/include" LIBZSTD_LIBS="$deps/lib/libzstd.a"
-    export ZLIB_CFLAGS="-I$deps/include" ZLIB_LIBS="$deps/lib/libz.a"
-    export BZIP2_CFLAGS="-I$deps/include" BZIP2_LIBS="$deps/lib/libbz2.a"
-    export LIBLZMA_CFLAGS="-I$deps/include" LIBLZMA_LIBS="$deps/lib/liblzma.a"
-    export LIBEXPAT_CFLAGS="-I$deps/include" LIBEXPAT_LIBS="$deps/lib/libexpat.a"
-    cat > Modules/Setup.local <<'SETUP'
-*disabled*
-_tkinter
-_testcapi
-_testinternalcapi
-_testlimitedcapi
-_testclinic
-_ctypes_test
-_gdbm
-_dbm
-_curses
-_curses_panel
-readline
-SETUP
-    archives=
-    if [ -n "$host" ]; then
-        # Setup.local is read first and its first rule wins, so a registered
-        # module's PyInit resolves from jacpython.o even when Setup.bootstrap
-        # or Setup.stdlib still names the replaced C source.
-        registry=$recipe/jacpython-modules.txt
-        native_api=$root/jaclang/compiler/backends/py/jacpython/native_api.jac
-        echo '*static*' >> Modules/Setup.local
-        while read -r module tests flags; do
-            case "$module" in ''|'#'*) continue ;; esac
-            grep -qw "PyInit_$module" "$native_api" || {
-                echo "native_api.jac does not import PyInit_$module" >&2
-                exit 1
-            }
-            # A flag prefixed with an OS (linux:-lrt) applies only there.
-            selected=
-            for flag in $flags; do
-                case "$flag" in
-                    *:*)
-                        [ "${flag%%:*}" = "${platform%%-*}" ] || continue
-                        flag=${flag#*:}
-                        ;;
-                esac
-                # A library the build vendors (-lz, -lsqlite3) links its
-                # static archive, as the C modules' LIB*_LIBS do, never the
-                # system's copy.
-                case "$flag" in
-                    -l*) [ -f "$deps/lib/lib${flag#-l}.a" ] && flag="$deps/lib/lib${flag#-l}.a" ;;
-                esac
-                selected="$selected $flag"
-                # A flag naming an archive under Modules/ is one of CPython's
-                # own make targets (the vendored HACL* libraries). makesetup
-                # only puts it on the link line: a module without a C source
-                # has no rule that depends on it, so it is built before the
-                # interpreter.
-                case "$flag" in Modules/*.a) archives="$archives $flag" ;; esac
-            done
-            echo "$module$selected" >> Modules/Setup.local
-        done < "$registry"
-    fi
-    # CPython runs the compiler itself; dependency-oriented -O2 flags above
-    # must not override the release interpreter's optimization settings.
-    export CFLAGS='-O3 -fPIC -fno-semantic-interposition' LLVM_AR="$AR"
-    # Zig 0.16's Mach-O linker cannot consume LTO objects. Keep the supported
-    # interpreter optimizations there; Linux uses the bundled LLVM linker.
-    case "$platform" in
-        linux-*) python_lto=--with-lto=thin ;;
-        macos-*) python_lto=--without-lto ;;
-    esac
-    ./configure --prefix="$prefix" --enable-shared --without-static-libpython \
-        --with-tail-call-interp "$python_lto" \
-        --disable-test-modules --with-ensurepip=no --with-pkg-config=no \
-        --with-openssl="$deps" --with-openssl-rpath=no \
-        --with-system-expat --with-system-libmpdec --without-readline
-    if [ -n "$host" ]; then
-        # Native Jac defines and reads objects through layouts.jac; its
-        # generated asserts fail the build if this configuration disagrees.
-        "$CC" $CFLAGS -DPy_BUILD_CORE -I. -IInclude -c -o "$work/layouts_check.o" "$recipe/layouts_check.c"
-        rm -f "$work/layouts_check.o"
-        # The configure features the generated constant tables recorded
-        # must be this build's.
-        "$CC" $CFLAGS -I. -IInclude -c -o "$work/features_check.o" "$recipe/features_check.c"
-        rm -f "$work/features_check.o"
-    fi
-    if [ -n "$archives" ]; then
-        # shellcheck disable=SC2086 # one make target per archive
-        python_make -j"$jobs" $archives
-    fi
-    # Embed the same core objects in the executable: venv --copies must run
-    # without a libpython next to the copied executable. Jac's launcher still
-    # uses the separately built shared library. Neither needs libpython3.so.
-    python_make -j"$jobs" PY3LIBRARY= 'LINK_PYTHON_OBJS=$(LIBRARY_OBJS)'
-    # CPython's install targets create overlapping directories. BSD install
-    # fails if another target creates the same directory after its check.
-    python_make -j1 PY3LIBRARY= 'LINK_PYTHON_OBJS=$(LIBRARY_OBJS)' "COMPILEALL_OPTS=-j$jobs" install
-    # Check the completed build, including generated sources and objects,
-    # against the paths this mode must not contain. build_python.zig writes
-    # that list; it owns the only parser for cpython-sources.txt. Redirect
-    # rather than pipe: a pipeline hides both a missing list and the exit.
-    while IFS= read -r excluded; do
-        if [ -e "$excluded" ] || { [ "${excluded%.c}" != "$excluded" ] && [ -e "${excluded%.c}.o" ]; }; then
-            echo "Excluded build input reappeared: $excluded" >&2
-            exit 1
-        fi
-    done < "$work/absent-inputs"
-}
-python_make() {
-    if [ -n "$host" ]; then
-        # Freeze with the explicit build-time interpreter. Neither helper
-        # executable needs to run before the reduced runtime is linked.
-        freezer="$host/python/install/bin/python3.14 $src/cpython/Programs/_freeze_module.py"
-        make "$@" "FREEZE_MODULE_BOOTSTRAP=$freezer" FREEZE_MODULE_BOOTSTRAP_DEPS= \
-            "FREEZE_MODULE=$freezer" FREEZE_MODULE_DEPS=
-    else
-        make "$@"
-    fi
-}
-
-if [ -n "$host" ]; then
-    cp -R "$host/python/build/include/." "$deps/include/"
-    cp "$host/python/build/lib/"*.a "$deps/lib/"
-    cp -R "$host/python/licenses" "$work/python/licenses"
-    step native "$host/python/install/bin/python3.14" -I "$recipe/prepare_native.py" "$root" "$work/native" "$platform"
-else
-    # Preserve notices before discarding each dependency's installed build tree.
-    mkdir -p "$work/python/licenses"
-    find "$src" -type f \( -iname 'LICENSE*' -o -iname 'COPYING*' -o -iname 'Copyright*' \) |
-    while IFS= read -r notice; do
-        relative=${notice#"$src/"}
-        mkdir -p "$work/python/licenses/$(dirname "$relative")"
-        cp "$notice" "$work/python/licenses/$relative"
-    done
-    step zlib zlib
-    step bzip2 bzip2
-    step zstd zstd
-    step sqlite sqlite
-    step xz xz
-    step libffi libffi
-    step mpdecimal mpdecimal
-    step expat expat
-    step openssl openssl
-fi
-step cpython cpython
-step finalize "$prefix/bin/python3.14" -I "$recipe/finalize.py"
+# Preserve notices before discarding each dependency's installed build tree.
+mkdir -p "$work/python/licenses"
+find "$src" -type f \( -iname 'LICENSE*' -o -iname 'COPYING*' -o -iname 'Copyright*' \) |
+while IFS= read -r notice; do
+    relative=${notice#"$src/"}
+    mkdir -p "$work/python/licenses/$(dirname "$relative")"
+    cp "$notice" "$work/python/licenses/$relative"
+done
+step zlib zlib
+step bzip2 bzip2
+step zstd zstd
+step sqlite sqlite
+step xz xz
+step libffi libffi
+step mpdecimal mpdecimal
+step expat expat
+step openssl openssl
 mkdir -p "$work/python/build/lib" "$work/python/licenses"
 cp "$deps/lib/"*.a "$work/python/build/lib/"
-if [ -n "$host" ]; then
-    cp "$host/python/build/cacert.pem" "$work/python/build/cacert.pem"
-    cp "$work/native/sha256" "$work/python/build/jacpython-native-sha256"
-    cp "$work/native/sources" "$work/python/build/jacpython-native-sources"
-    rm -rf "$work/native"
-else
-    # Only dependency headers/archives are reused by the target build. Host
-    # CPython objects and libpython are never copied into the reduced runtime.
-    cp -R "$deps/include" "$work/python/build/include"
-    cp "$src/certifi/certifi/cacert.pem" "$work/python/build/cacert.pem"
-fi
-step smoke env PYTHONFAULTHANDLER=1 "$prefix/bin/python3.14" -X faulthandler -I "$recipe/smoke.py" "$mode"
-# No compiled test modules, docs, or configuration machinery in the runtime.
-rm -rf "$prefix/share" "$prefix/lib/python3.14/test" \
-    "$prefix/lib/python3.14/idlelib" "$prefix/lib/python3.14/tkinter" \
-    "$prefix/lib/python3.14/turtledemo"
-echo 'build-python: runtime and native archives ready'
+# The JacPython build links these archives and headers and ships them in
+# python/build, with the notices and the CA bundle.
+cp -R "$deps/include" "$work/python/build/include"
+cp "$src/certifi/certifi/cacert.pem" "$work/python/build/cacert.pem"
+echo "build-python: vendored libraries for $platform ready"

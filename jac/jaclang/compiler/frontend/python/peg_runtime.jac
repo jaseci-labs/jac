@@ -43,7 +43,7 @@ obj peg_parser {
         feature_version: int = 14,
         type_ignores: list[tuple[int, str]] = [],
         tokens: list[peg_token] = [],
-        source_lines: list[bytes] = [],
+        source_line_starts: list[int] = [],
         mark: int = 0,
         keywords: dict[str, int] = {},
         soft_keywords: list[str] = [],
@@ -55,25 +55,17 @@ obj peg_parser {
         filename: str = "<unknown>",
         parsing_started: bool = False,
         # Rule nesting depth (Parser.level).
-        level: int = 0;
+        level: int = 0,
+        memo_value: object | None = None;
 }
 
 # Parser/parser.c's MAXSTACK: deeper rule nesting is a MemoryError.
 glob MAXSTACK: int = 6000;
 
-# The prologue of every rule (Parser/parser.c): count the nesting level and
-# give up with _Pypegen_stack_overflow() past MAXSTACK; a parser that already
-# failed returns at once. True when the rule must return None; otherwise the
-# caller decrements `level` when the rule returns.
-def peg_enter_rule(p: peg_parser) -> bool {
+def peg_rule_abort(p: peg_parser) {
     if p.level >= MAXSTACK {
         peg_stack_overflow(p);
     }
-    if p.error_indicator {
-        return True;
-    }
-    p.level += 1;
-    return False;
 }
 
 def peg_stack_overflow(p: peg_parser) {
@@ -149,24 +141,29 @@ def peg_has_error(p: peg_parser) -> bool {
 }
 
 def peg_fill_token(p: peg_parser) -> bool {
-    if peg_has_error(p) {
+    if p.error_indicator {
         return False;
     }
     if p.mark < len(p.tokens) {
         return True;
     }
+    return peg_scan_token(p);
+}
+
+def peg_scan_token(p: peg_parser) -> bool {
+    raw = tokenizer_next(p.tok);
     import from jaclang.compiler.frontend.python.compiler_diagnostics {
         report_token_warnings
     }
-    raw = tokenizer_next(p.tok);
     report_token_warnings(p.tok);
-    while isinstance(raw, tok_token) and raw.tok_type == TYPE_IGNORE {
-        p.type_ignores.append((raw.lineno, raw.spelling));
+    while raw is not p.tok.error and (raw as tok_token).tok_type == TYPE_IGNORE {
+        ignored = raw as tok_token;
+        p.type_ignores.append((ignored.lineno, ignored.spelling));
         raw = tokenizer_next(p.tok);
         report_token_warnings(p.tok);
     }
-    if isinstance(raw, tok_diag) {
-        p.error = raw;
+    if raw is p.tok.error {
+        p.error = p.tok.error;
         p.error_indicator = True;
         return False;
     }
@@ -235,6 +232,23 @@ def peg_check_memo(p: peg_parser, rule_type: int) -> peg_memo | None {
         head = &head.next;
     }
     return None;
+}
+
+def peg_memo_hit(p: peg_parser, rule_type: int) -> bool {
+    if not peg_ensure_token(p) {
+        p.memo_value = None;
+        return True;
+    }
+    head: &peg_memo | None = &p.tokens[p.mark].memo_head;
+    while head is not None {
+        if head.rule_type == rule_type {
+            p.mark = head.end_mark;
+            p.memo_value = head.result;
+            return True;
+        }
+        head = &head.next;
+    }
+    return False;
 }
 
 def peg_insert_memo(

@@ -62,10 +62,6 @@ impl _sidecar_digest(url: str) -> (str | None) {
     return None;
 }
 
-impl _running_jacpython -> bool {
-    return hasattr(ctypes.pythonapi, "_PyJac_CompilerBridgeVersion");
-}
-
 impl update_self(release: str, current: str, verbose: bool) -> int {
     triple = platform_triple();
     if triple is None {
@@ -101,20 +97,6 @@ impl update_self(release: str, current: str, verbose: bool) -> int {
                 f"This launcher compiles the jaclang source at {linked}; "
                 "updating it would strand the dev loop. Pull and rebuild "
                 "instead: git pull && ./scripts/fresh_env.sh"
-            )
-        );
-        return 1;
-    }
-    if _running_jacpython() {
-        console.error(
-            "jac update --self refuses to downgrade a JacPython install.",
-            hint=(
-                "This session runs the experimental JacPython build, but the "
-                "release channel only ships the default CPython binary; "
-                "updating would silently lose the JacPython compiler. "
-                "Reinstall instead: curl -fsSL "
-                f"https://raw.githubusercontent.com/{SELF_UPDATE_REPO}/main/"
-                "scripts/install.sh | bash -s -- --jacpython"
             )
         );
         return 1;

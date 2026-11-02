@@ -839,15 +839,9 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
 
         just_compacted = self._maybe_compact(mt_run, usage, just_compacted, _cp);
         if resp.tool_calls {
-            non_finish_calls: list[ToolCall] = [];
-            finish_tc: (ToolCall | None) = None;
-            for tc in resp.tool_calls {
-                if tc.is_finish_call() {
-                    finish_tc = tc;
-                    break;
-                }
-                non_finish_calls.append(tc);
-            }
+            (non_finish_calls, finish_tc, skipped_calls) = _split_at_finish(
+                resp.tool_calls
+            );
 
             if non_finish_calls {
                 batches = (
@@ -872,6 +866,8 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
                     }
                 }
             }
+
+            _answer_skipped(mt_run, skipped_calls);
 
             if finish_tc {
                 try {
@@ -1089,6 +1085,11 @@ impl BaseLLM.format_prompt(params: dict[str, any]) -> str {
 
 def _error_tool_call(call_id: str, tool_name: str, reason: str) -> ToolCall;
 
+def _split_at_finish(
+    tool_calls: list[ToolCall]
+) -> tuple[list[ToolCall], ToolCall | None, list[ToolCall]];
+
+def _answer_skipped(mt_run: MTRuntime, skipped: list[ToolCall]) -> None;
 
 def _parse_tool_calls(
     mt_run: MTRuntime,
@@ -2048,15 +2049,9 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
             _usage_base = len(mt_run._usage_history);
 
             if resp.tool_calls {
-                non_finish_calls: list[ToolCall] = [];
-                finish_tc: (ToolCall | None) = None;
-                for tc in resp.tool_calls {
-                    if tc.is_finish_call() {
-                        finish_tc = tc;
-                        break;
-                    }
-                    non_finish_calls.append(tc);
-                }
+                (non_finish_calls, finish_tc, skipped_calls) = _split_at_finish(
+                    resp.tool_calls
+                );
 
                 if non_finish_calls {
                     max_result_len = int(
@@ -2126,6 +2121,8 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
                         }
                     }
                 }
+
+                _answer_skipped(mt_run, skipped_calls);
 
                 if finish_tc {
                     try {
@@ -2851,6 +2848,31 @@ impl _error_tool_call(call_id: str, tool_name: str, reason: str) -> ToolCall {
     return ToolCall(call_id=call_id, tool=Tool(func=_report_error), args={});
 }
 
+impl _split_at_finish(
+    tool_calls: list[ToolCall]
+) -> tuple[list[ToolCall], ToolCall | None, list[ToolCall]] {
+    before: list[ToolCall] = [];
+    for (i, tc) in enumerate(tool_calls) {
+        if tc.is_finish_call() {
+            return (before, tc, tool_calls[i + 1:]);
+        }
+        before.append(tc);
+    }
+    return (before, None, []);
+}
+
+impl _answer_skipped(mt_run: MTRuntime, skipped: list[ToolCall]) -> None {
+    for tc in skipped {
+        mt_run.add_message(
+            ToolCallResultMsg(
+                content="Not executed: it came after finish_tool in the same response. "
+                "Call it again in a later response if it is still needed.",
+                tool_call_id=tc.call_id,
+                name=tc.tool.get_name()
+            )
+        );
+    }
+}
 
 impl _parse_tool_calls(
     mt_run: MTRuntime,
