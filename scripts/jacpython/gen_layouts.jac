@@ -1,6 +1,6 @@
 """Check the C layouts of the Jac object records against the generated headers.
 
-A native Jac object-model port defines and reads CPython objects in place, so
+A native Jac object-model port defines and reads Python objects in place, so
 their layouts are ABI: `PyObject`, `PyVarObject`, `PyTypeObject`, the slot
 tables and the concrete object structs must match what C extensions compile
 against byte for byte. jaclang/runtime/python/layouts.jac declares them, and
@@ -8,13 +8,17 @@ gen_include.jac writes the headers' structs and constants from it. This
 script's only input is layouts.jac (and the C-layout records of
 cpython_api.jac it shares); it reads no header:
 
-    jac run scripts/jacpython/gen_layouts.jac --check
+    jac run scripts/jacpython/gen_layouts.jac            # rewrite the checks
+    jac run scripts/jacpython/gen_layouts.jac --check    # fail on drift
     jac run scripts/jacpython/gen_layouts.jac --platform darwin.aarch64 \\
         --config <macos-aarch64>/python/install/include/python3.14
 
-The platform constants need `zig` (or `--zig`) to cross-compile their probe.
-Run this on each target, or pass `--platform` and that target's `--config`,
-because feature macros can change structure layouts.
+The platform constants need `zig` (or `--zig`) to cross-compile their probe
+for each target, against that target's own pyconfig.h, which
+bootstrap/pyconfig_tool.zig writes from the build's probes. With --platform,
+only that target's table is regenerated: --config names an already-configured
+pyconfig.h for it (probed when omitted), --sysroot its SDK, and the other
+tables keep their generated values.
 
 - jaclang/runtime/python/layouts.jac: one foreign struct per layout in LAYOUTS
   (and the structs they embed by value), function-pointer slots as
@@ -25,8 +29,8 @@ because feature macros can change structure layouts.
 - jaclang/runtime/python/layouts_platform.<os>.<arch>.jac: the constants in
   PLATFORM_CONSTANTS, whose values differ between the supported platforms
   (where a field sits in the interpreter state, past records sized by the C
-  library), each folded by `zig cc -target` for that platform against the
-  generated headers. The plain layouts_platform.jac names no platform, and a
+  library or fields its configuration enables), each folded by `zig cc -target`
+  for that platform against the generated headers and its pyconfig.h. The plain layouts_platform.jac names no platform, and a
   port reading one of these constants refuses to start on a platform without
   a generated table.
 - bootstrap/python/layouts_check.c: `_Static_assert`s on the offset, size,
@@ -42,7 +46,7 @@ because feature macros can change structure layouts.
   PRIVATE_LAYOUTS) is declared in layouts_check.c from its Jac record.
 """
 import argparse;
-import platform;
+import os;
 import re;
 import shlex;
 import subprocess;
@@ -73,6 +77,12 @@ glob LAYOUTS_JAC: Path = RUNTIME / "layouts.jac",
          "#define JAC_FORCE_UTF8_FS_ENCODING 0",
          "#endif",
          # mimalloc chooses its OS calls at run time; a flag one OS lacks is 0.
+         # The monotonic condition attribute exists where pthread_condattr_setclock does.
+         "#ifdef CONDATTR_MONOTONIC",
+         "#define JAC_THREADS_CONDATTR_VAL offsetof(_PyRuntimeState, threads._condattr_monotonic.val)",
+         "#else",
+         "#define JAC_THREADS_CONDATTR_VAL 0",
+         "#endif",
          "#ifdef __APPLE__",
          "#define JAC_CONFIG_USE_SYSTEM_LOGGER offsetof(PyConfig, use_system_logger)",
          "#else",
@@ -5145,7 +5155,7 @@ glob LAYOUTS_JAC: Path = RUNTIME / "layouts.jac",
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
      PLATFORM_CONSTANTS: list[tuple[str, str, str]] = [
-         ("PYCONFIG_ALIGNOF_MAX_ALIGN_T", "ALIGNOF_MAX_ALIGN_T", "i64"),
+         ("ALIGNOF_MAX_ALIGN_T", "ALIGNOF_MAX_ALIGN_T", "i64"),
          ("PyConfig_VERBOSE", "offsetof(PyConfig, verbose)", "i64"),
          ("PyConfig_DEV_MODE", "offsetof(PyConfig, dev_mode)", "i64"),
          (
@@ -6097,11 +6107,7 @@ glob LAYOUTS_JAC: Path = RUNTIME / "layouts.jac",
              "offsetof(_PyRuntimeState, threads._condattr_monotonic.ptr)",
              "i64"
          ),
-         (
-             "_PyRuntimeState_THREADS_CONDATTR_VAL",
-             "offsetof(_PyRuntimeState, threads._condattr_monotonic.val)",
-             "i64"
-         ),
+         ("_PyRuntimeState_THREADS_CONDATTR_VAL", "JAC_THREADS_CONDATTR_VAL", "i64"),
          (
              "PyInterpreterState_THREADS_STACKSIZE",
              "offsetof(PyInterpreterState, threads.stacksize)",
@@ -6132,7 +6138,7 @@ glob LAYOUTS_JAC: Path = RUNTIME / "layouts.jac",
          ("_SC_THREAD_STACK_MIN", "_SC_THREAD_STACK_MIN", "i32"),
          ("_SC_CLK_TCK", "_SC_CLK_TCK", "i32"),
          ("PYTHREAD_CS_GNU_LIBPTHREAD_VERSION", "JAC_CS_GNU_LIBPTHREAD_VERSION", "i32"),
-         ("SYS_gettid", "SYS_gettid", "i64"),
+         ("SYS_gettid", "JAC_PLATFORM_LINUX ? SYS_gettid : 0", "i64"),
          ("CLOCK_REALTIME", "CLOCK_REALTIME", "i32"),
          ("EBADF", "EBADF", "i32"),
          ("ENOTTY", "ENOTTY", "i32"),
@@ -7404,7 +7410,7 @@ def render_check(
     lines = [
         "/* Generated by scripts/jacpython/gen_layouts.jac; do not edit.",
         " * Every layout and constant jaclang/runtime/python/layouts.jac declares,",
-        " * asserted against the generated CPython headers. build_jacpython.zig",
+        " * asserted against the generated C API headers. build_jacpython.zig",
         " * compiles this for every JacPython build, so a layout drift fails it. */",
         "#ifndef Py_BUILD_CORE",
         "#define Py_BUILD_CORE 1",
@@ -7489,12 +7495,7 @@ def render_check(
     for (suffix, _, condition) in PLATFORMS {
         lines.append(f"{keyword} {condition}");
         for (name, expression, _) in PLATFORM_CONSTANTS {
-            assertion = f"CONSTANT({expression}, {platform_values[suffix][name]}LL);";
-            if name == "_PyRuntimeState_THREADS_CONDATTR_VAL" {
-                lines += ["#ifdef CONDATTR_MONOTONIC", assertion, "#endif"];
-            } else {
-                lines.append(assertion);
-            }
+            lines.append(f"CONSTANT({expression}, {platform_values[suffix][name]}LL);");
         }
         keyword = "#elif";
     }
@@ -7518,36 +7519,45 @@ def render_platform(suffix: str, values: dict[str, int]) -> str {
 }
 
 # --------------------------------------------------------------- C toolchain
-# The configured pyconfig.h for the platform being generated. Layout-affecting
-# feature macros can differ by target, so never reuse another platform's file.
-def default_config(suffix: str) -> Path {
-    (os_name, arch) = suffix.split(".");
-    build_os = "macos" if os_name == "darwin" else os_name;
-    pattern = f"{build_os}-{arch}*/python/install/include/python3.14/pyconfig.h";
-    for config in sorted((JAC / ".python-build/jacpython").glob(pattern)) {
-        return config.parent;
-    }
-    sys.exit(
-        f"No configured pyconfig.h for {suffix} under jac/.python-build; "
-        "build that target or pass --config"
+# One platform's pyconfig.h, from the build's own probes run for that target
+# (bootstrap/pyconfig_tool.zig).
+def platform_config(zig: str, suffix: str, target: str, scratch: Path) -> Path {
+    (system, arch) = suffix.split(".");
+    out = scratch / f"config-{suffix}";
+    out.mkdir();
+    result = subprocess.run(
+        [
+            zig,
+            "run",
+            str(JAC / "bootstrap/pyconfig_tool.zig"),
+            "--",
+            zig,
+            str(out),
+            "macos" if system == "darwin" else system,
+            arch,
+            target,
+            ("macos" if system == "darwin" else system) + "-" + arch
+        ],
+        capture_output=True,
+        text=True
     );
-}
-
-def host_platform -> str {
-    os_name = "darwin"
-        if sys.platform == "darwin"
-        else ("linux" if sys.platform.startswith("linux") else "");
-    machine = platform.machine().lower();
-    arch = "aarch64"
-        if machine in ("arm64", "aarch64")
-        else ("x86_64" if machine in ("amd64", "x86_64") else "");
-    suffix = f"{os_name}.{arch}";
-    if not any(item[0] == suffix for item in PLATFORMS) {
-        sys.exit(f"gen_layouts: unsupported host platform {suffix}");
+    if result.returncode != 0 {
+        sys.exit(f"Probing {suffix}'s pyconfig.h failed:\n{result.stderr}");
     }
-    return suffix;
+    return out;
 }
 
+# Each platform's pyconfig.h: {platform suffix: directory holding it}.
+def platform_configs(zig: str, scratch: Path) -> dict[str, Path] {
+    configs: dict[str, Path] = {};
+    for (suffix, target, _) in PLATFORMS {
+        configs[suffix] = platform_config(zig, suffix, target, scratch);
+    }
+    return configs;
+}
+
+# A generated table's current PLATFORM_CONSTANTS, for the platforms a
+# --platform run does not probe.
 def existing_platform(suffix: str) -> dict[str, int] {
     table = RUNTIME / f"{PLATFORM_OUTPUT}.{suffix}.jac";
     declared = jac_constants(table);
@@ -7555,6 +7565,14 @@ def existing_platform(suffix: str) -> dict[str, int] {
         name: declared[name][1] if name in declared else 0
         for (name, _, _) in PLATFORM_CONSTANTS
     };
+}
+
+# The platform suffix of this machine, whose configuration the asserts are
+# compiled against.
+def host_suffix -> str {
+    machine = os.uname().machine.lower();
+    arch = "aarch64" if machine in ("arm64", "aarch64") else machine;
+    return ("darwin" if sys.platform == "darwin" else "linux") + "." + arch;
 }
 
 # The generated headers as a build stages them, under `scratch`/Include.
@@ -7586,20 +7604,9 @@ def extract(flags: list[str], compiler: list[str]) -> dict[str, int] {
         + PROBE_DEFINES
         + private_definitions();
     for (name, expression, _) in PLATFORM_CONSTANTS {
-        declaration = (
+        lines.append(
             f"const long long __jac_layout_{name} = (long long)({expression});"
         );
-        if name == "_PyRuntimeState_THREADS_CONDATTR_VAL" {
-            lines += [
-                "#ifdef CONDATTR_MONOTONIC",
-                declaration,
-                "#else",
-                f"const long long __jac_layout_{name} = 0;",
-                "#endif"
-            ];
-        } else {
-            lines.append(declaration);
-        }
     }
     # The assembly goes to a file: zig cc ignores `-o -`.
     with tempfile.TemporaryDirectory() as scratch {
@@ -7674,17 +7681,18 @@ with entry:__main__ {
         description="Check the Jac object layouts against the generated headers"
     );
     parser.add_argument(
-        "--cc", help="C compiler command for verification (defaults to target zig cc)"
+        "--cc",
+        help="C compiler command for verification (defaults to the target zig cc with --platform)"
     );
     parser.add_argument(
-        "--config", help="directory holding a configured CPython's pyconfig.h"
+        "--config", help="directory holding a configured pyconfig.h for --platform"
     );
     parser.add_argument("--zig", help="zig, for the platform constants");
-    parser.add_argument("--sysroot", help="target SDK/sysroot for platform probes");
+    parser.add_argument("--sysroot", help="target SDK/sysroot for a --platform probe");
     parser.add_argument(
         "--platform",
         choices=[suffix for (suffix, _, _) in PLATFORMS],
-        help="target table to regenerate (defaults to the host platform)"
+        help="regenerate only this target's table (defaults to all targets)"
     );
     parser.set_defaults(zig="zig");
     parser.add_argument("--check", action="store_true");
@@ -7700,58 +7708,86 @@ with entry:__main__ {
         sys.exit(f"gen_layouts: layouts.jac does not declare {', '.join(missing)}");
     }
     values = {name: declared[name][1] for (name, _, _) in CONSTANTS};
-    selected = args.platform or host_platform();
-    config = Path(args.config) if args.config else default_config(selected);
-    sysroot = args.sysroot or "";
-    if selected.startswith("darwin.") and not sysroot {
-        result = subprocess.run(
-            ["xcrun", "--sdk", "macosx", "--show-sdk-path"],
-            capture_output=True,
-            text=True
-        );
-        if result.returncode != 0 {
-            sys.exit("gen_layouts: pass --sysroot for macOS platform probes");
-        }
-        sysroot = result.stdout.strip();
-    }
     current = True;
     with tempfile.TemporaryDirectory() as scratch {
-        flags = probe_flags(stage_headers(Path(scratch)), config);
+        headers = stage_headers(Path(scratch));
         platform_values: dict[str, dict[str, int]] = {};
-        target_compiler: list[str] = [];
-        for (suffix, target, _) in PLATFORMS {
-            if suffix == selected {
-                target_compiler = [args.zig, "cc", "-target", target];
-                if sysroot {
-                    target_compiler += [
-                        "-isysroot",
-                        sysroot,
-                        "-isystem",
-                        f"{sysroot}/usr/include"
-                    ];
+        verify_flags: list[str] = [];
+        verify_compiler: list[str] = [];
+        if args.platform {
+            target = "";
+            for (suffix, zig_target, _) in PLATFORMS {
+                if suffix == args.platform {
+                    target = zig_target;
                 }
-                platform_values[suffix] = extract(flags, target_compiler);
-            } else {
-                platform_values[suffix] = existing_platform(suffix);
             }
+            config = Path(args.config)
+                if args.config
+                else platform_config(args.zig, args.platform, target, Path(scratch));
+            sysroot = args.sysroot or "";
+            if args.platform.startswith("darwin.") and not sysroot {
+                result = subprocess.run(
+                    ["xcrun", "--sdk", "macosx", "--show-sdk-path"],
+                    capture_output=True,
+                    text=True
+                );
+                if result.returncode == 0 {
+                    sysroot = result.stdout.strip();
+                }
+            }
+            target_compiler = [args.zig, "cc", "-target", target];
+            if sysroot {
+                target_compiler += [
+                    "-isysroot",
+                    sysroot,
+                    "-isystem",
+                    f"{sysroot}/usr/include"
+                ];
+            }
+            for (suffix, _, _) in PLATFORMS {
+                platform_values[suffix] = extract(
+                    probe_flags(headers, config), target_compiler
+                )
+                    if suffix == args.platform
+                    else existing_platform(suffix);
+            }
+            verify_flags = probe_flags(headers, config);
+            verify_compiler = shlex.split(args.cc) if args.cc else target_compiler;
+        } else {
+            configs = platform_configs(args.zig, Path(scratch));
+            for (suffix, target, _) in PLATFORMS {
+                platform_values[suffix] = extract(
+                    probe_flags(headers, configs[suffix]),
+                    [args.zig, "cc", "-target", target]
+                );
+            }
+            verify_flags = probe_flags(headers, configs[host_suffix()]);
+            verify_compiler = shlex.split(args.cc or "cc");
         }
         check = render_check(values, platform_values);
-        verify(check, flags, shlex.split(args.cc) if args.cc else target_compiler);
+        verify(check, verify_flags, verify_compiler);
     }
     current = write_or_check(CHECK, check, args.check, COMMAND) and current;
-    table = RUNTIME / f"{PLATFORM_OUTPUT}.{selected}.jac";
-    current = write_or_check(
-        table,
-        format_jac(render_platform(selected, platform_values[selected]), table),
-        args.check,
-        COMMAND
-    )
-        and current;
-    fallback = RUNTIME / f"{PLATFORM_OUTPUT}.jac";
-    current = write_or_check(
-        fallback, format_jac(render_platform("", {}), fallback), args.check, COMMAND
-    )
-        and current;
+    suffixes = (
+        [suffix for (suffix, _, _) in PLATFORMS]
+            if not args.platform
+            else [args.platform]
+    );
+    for suffix in suffixes + [""] {
+        table = RUNTIME
+            / (
+                f"{PLATFORM_OUTPUT}.{suffix}.jac"
+                    if suffix
+                    else f"{PLATFORM_OUTPUT}.jac"
+            );
+        current = write_or_check(
+            table,
+            format_jac(render_platform(suffix, platform_values.get(suffix, {})), table),
+            args.check,
+            COMMAND
+        )
+            and current;
+    }
     if not current {
         sys.exit(1);
     }

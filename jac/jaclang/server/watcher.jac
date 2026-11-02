@@ -48,6 +48,7 @@ obj JacFileWatcher {
     def _debounce_flush -> None;
     def _beside_watched_file(path: str) -> bool;
     def _foreign_shared_annex(path: str) -> bool;
+    def _inside_ignored_directory(path: str, is_directory: bool = False) -> bool;
     def _matches_pattern(path: str) -> bool;
     def _notify_callbacks(event: FileChangeEvent) -> None;
 }

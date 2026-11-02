@@ -13,6 +13,7 @@ def live_branches(guard: IfStmt) -> list[UniScopeNode];
 def live_kid_scopes(scope: UniScopeNode) -> list[UniScopeNode];
 
 def collect_scope_members(scope: UniScopeNode) -> ScopeMembers;
+def is_overload_sym(sym: Symbol) -> bool;
 
 def live_scopes(scope: UniScopeNode) -> set[int];
 
