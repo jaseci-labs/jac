@@ -218,5 +218,6 @@ impl register_py_callbacks(
             raise RuntimeError(f'Cannot allocate native callback {binding.name!r}');
         }
         register_symbol(binding.symbol, cb_addr);
+        BRIDGE_SYMBOLS.add(binding.symbol);
     }
 }

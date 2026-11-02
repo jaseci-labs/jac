@@ -220,6 +220,9 @@ impl MirEmitter.declare(fn: MirFunction) -> ir.Function {
     }
     made = ir.Function(self.module, shape, name=fn.symbol);
     made.linkage = fn.linkage;
+    if fn.ret.kind == MirKind.BOOL {
+        made.return_value.add_attribute("zeroext");
+    }
     self.functions[fn.symbol] = made;
     return made;
 }

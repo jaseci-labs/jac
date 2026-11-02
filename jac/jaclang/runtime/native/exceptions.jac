@@ -25,6 +25,8 @@ import from c {
 glob EXC_STATE_HEADER: int = 40,
      EXC_LINEAGE_SLOTS: int = 4096;
 
+def:pub __jac_rt_exit(code: int);
+
 def:pub __jac_rt_exc_context -> ptr[JacRtExcContext];
 
 def:pub __jac_rt_exc_jmp_buf(state: ptr[JacRtExcState]) -> ptr[u8];

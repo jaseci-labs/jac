@@ -275,6 +275,7 @@ graph import {
             | toolchains.manager
             | toolchains.store { console },
         client.cli.run_client_build
+            | client.targets.web_target._copy_public_dirs
             | compiler.driver.application.prepare_dynamic_module
             | project.config._apply_memory_native_placement
             | scale.deploy.target.kubernetes.manifest_builder.ManifestBuilder._install_app_deps
@@ -1993,6 +1994,7 @@ graph import {
             | server.server.JacAPIServer._ensure_client_bundle { client_app_dir_for },
         client.config_loader.JacClientConfig.get_assets_config { client_assets_config },
         client.config_loader.JacClientConfig.get_assets_dir { client_assets_dir },
+        client.config_loader.JacClientConfig.get_public_dirs { client_app_root },
         client.targets.react_native.scaffold._project_native_deps {
             client_workspace_app
         },
@@ -2658,10 +2660,16 @@ graph import {
         walk_edges,
         walk_nodes
     }
-    runtime.interop_bridge --> compiler.backends.native.na_compile_pass.NativeCompilePass._run_impl
-        | compiler.driver.compiler.JacCompiler._load_native_from_cache {
-        register_py_callbacks
-    }
+    runtime.interop_bridge --> [
+        compiler.backends.native.link_plan.bind_python_bridges {
+            BRIDGE_SYMBOLS,
+            register_py_callbacks
+        },
+        compiler.backends.native.na_compile_pass.NativeCompilePass._run_impl
+            | compiler.driver.compiler.JacCompiler._load_native_from_cache {
+            register_py_callbacks
+        },
+    ]
     runtime.memory ++> server.session { Memory }
     runtime.native_library --> [
         compiler.driver.compiler.JacCompiler._load_native_from_cache {
@@ -4289,6 +4297,9 @@ graph import {
     ]
     server.shared_store as pg_mod ++> scale.tests.misc.test_shared_store_failure;
     server.shared_store as store_mod ++> scale.tests.misc.test_state_backend_selection;
+    server.static_files ++> client.targets.web_target._copy_public_dirs {
+        ROOT_ASSET_EXTENSIONS
+    }
     server.sv_client ++> [
         client.targets.client_dev_common { headless_start_args },
         scale.runtime.orchestrator.process_manager.ServiceProcessManager.start_service {
@@ -5252,7 +5263,7 @@ graph import client.targets {
         run_manifest_install as _node_run_manifest_install
     }
     pwa_build --> [
-        web_target.WebTarget.build { apply_pwa },
+        web_target.WebTarget.build { apply_pwa, refresh_pwa_precache },
         web_target.WebTarget.setup { ensure_pwa_icons },
     ]
     react_native.build ++> mobile_target {
@@ -6033,6 +6044,8 @@ graph import compiler {
         },
     ]
     driver.pipeline --> [
+        backends.native.mir.lower.MirLowering.body_types { require },
+        backends.native.mir.lower.MirLowering.declaration_types { require },
         frontend.kernel_host.KernelHost.lower_dependency { product_ready, require },
         placement.placement_solver.invalidate_importers_es { invalidate },
         placement.placement_solver.solve_module_placement._invalidate_stale_codegen {
@@ -6096,6 +6109,14 @@ graph import compiler {
         },
     ]
     driver.pipeline_types --> [
+        backends.native.mir.lower.MirLowering.body_types {
+            AnalysisFact,
+            CompilationProduct
+        },
+        backends.native.mir.lower.MirLowering.declaration_types {
+            AnalysisFact,
+            CompilationProduct
+        },
         frontend.kernel_host.KernelHost.lower_dependency
             | placement.placement_solver.invalidate_importers_es
             | tools.jac_formatter_pass.unparse_module { CompilationProduct },
@@ -9459,6 +9480,9 @@ graph import compiler {
     passes.decl_impl_match_pass ++> driver.pipeline { DeclImplMatchPass }
     passes.declaration_type_pass ++> driver.pipeline.declaration_passes {
         DeclarationTypePass
+    }
+    passes.declaration_type_pass --> backends.native.mir.lower.MirLowering.declaration_types {
+        importer_lowers_bodies
     }
     passes.endpoint_effect_pass ++> driver.pipeline { EndpointEffectPass }
     passes.execution ++> driver.pass_driver | tests.xbackend_equiv { run_walker }
@@ -32015,6 +32039,9 @@ graph import runtime.python {
         interpreter.lock {
             EINTR,
             ETIMEDOUT,
+            PTHREAD_LOCK_COND,
+            PTHREAD_LOCK_MUTEX,
+            PTHREAD_LOCK_SIZE,
             PyInterpreterState_QSBR,
             PyThreadState_STATE,
             _PyThreadStateImpl_QSBR
@@ -33398,6 +33425,11 @@ graph import runtime.python {
     ]
     modules.contextvars ++> bindings.contextvars { _contextvars_copy_context_impl }
     modules.core_platform ++> [
+        interpreter.lock {
+            PYTHREAD_USE_SEMAPHORES,
+            cond_timedwait_relative,
+            semaphore_timedwait
+        },
         interpreter.thread {
             PYTHREAD_CONDATTR_MONOTONIC,
             PYTHREAD_USE_SEMAPHORES,
@@ -36192,7 +36224,7 @@ graph import runtime.python {
     modules.time_platform ++> bindings.time { HAS_PTHREAD_GETCPUCLOCKID }
     modules.time_records ++> [
         cpython_api | object_model.pytime { timespec, timeval, tm },
-        interpreter.thread { timespec },
+        interpreter.lock | interpreter.thread { timespec },
     ]
     modules.traceback_platform ++> object_model.traceback { symbol_info }
     modules.tracemalloc ++> bindings.clinic.tracemalloc {

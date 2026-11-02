@@ -166,3 +166,74 @@ impl MirLowering.identity_of(value: MirValue, site: uni.UniNode) -> MirValue {
     }
     raise MirRefused(mir_refusal("call", f"id of {t.render()}", site));
 }
+
+impl MirLowering.sys_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
+    if not nd.is_attr
+        or not isinstance(nd.target, uni.Name)
+        or not isinstance(nd.target.type, ModuleType)
+        or nd.target.type.mod_name != "sys"
+        or not isinstance(nd.right, uni.Name)
+        or nd.right.value != "argv" {
+        return None;
+    }
+    b = self.builder();
+    count_type = mir_int(32, True);
+    table_type = mir_c_ptr(mir_int(8, False));
+    count = b.load(self.extern_global("__jac_argc", count_type), count_type);
+    table = b.load(self.extern_global("__jac_argv", table_type), table_type);
+    handle = self.call_rt("__jac_rt_argv_list", [b.convert(count, mir_int()), table]);
+    return self.typed_handle(handle, nd);
+}
+
+impl MirLowering.extern_global(symbol: str, t: MirType) -> MirValue {
+    if symbol not in self.mir.globals {
+        self.mir.globals[symbol] = MirGlobal(
+            name=symbol, symbol=symbol, type=t, linkage="weak"
+        );
+    }
+    return self.emit_value(MirOp.GLOBAL_ADDR, mir_c_ptr(t), [], str_value=symbol);
+}
+
+impl MirLowering.input_call(nd: uni.FuncCall) -> MirValue {
+    args = self.call_args(nd);
+    if len(args) > 1 {
+        raise MirRefused(mir_refusal("call", f"input with {len(args)} arguments", nd));
+    }
+    b = self.builder();
+    if args {
+        self.write_value(self.lower_expr(args[0]), 1, nd);
+    }
+    self.runtime("__jac_rt_flush", [b.const_int(1, mir_int())]);
+    line = self.call_rt("__jac_rt_input_line", []);
+    self.raise_if(
+        b.compare("eq", self.address_of(line), b.const_int(0, mir_int())),
+        "EOFError",
+        "EOF when reading a line"
+    );
+    return b.str_make(line, line, self.runtime_value("__jac_rt_str_size", [line]));
+}
+
+impl MirLowering.sys_exit(nd: uni.FuncCall) -> MirValue {
+    args = self.call_args(nd);
+    b = self.builder();
+    code = b.const_int(0, mir_int());
+    if args {
+        given = self.lower_expr(args[0]);
+        if given.type.kind == MirKind.NONE {
+            code = b.const_int(0, mir_int());
+        } elif given.type.kind in (MirKind.INT, MirKind.BOOL) {
+            code = b.convert(given, mir_int());
+        } else {
+            raise MirRefused(
+                mir_refusal(
+                    "call",
+                    f"sys.exit with {given.type.render()}",
+                    nd,
+                    "Native sys.exit takes an int status (or none)."
+                )
+            );
+        }
+    }
+    self.runtime("__jac_rt_exit", [code]);
+    return self.none_value();
+}

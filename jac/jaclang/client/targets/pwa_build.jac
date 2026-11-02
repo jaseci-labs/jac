@@ -1,4 +1,5 @@
 import from pathlib { Path }
+import from urllib.parse { quote }
 
 import json;
 import shutil;
@@ -60,3 +61,5 @@ def ensure_pwa_icons(project_dir: Path) -> None;
 def _copy_pwa_icons_to_project(dest_dir: Path);
 
 def apply_pwa(dist_dir: Path, project_dir: Path);
+
+def refresh_pwa_precache(dist_dir: Path) -> None;

@@ -820,6 +820,43 @@ impl MirLowering.object_method(
     return self.invoke_method(decl, arch, name, values);
 }
 
+impl MirLowering.unbound_method(
+    nd: uni.FuncCall, arch: uni.Archetype, name: str
+) -> (MirValue | None) {
+    method = self.find_method(arch, name);
+    passed = list(nd.params or []);
+    if method is None
+        or method.is_static
+        or id(method) in self.templates
+        or self.has_spread(nd)
+        or not passed
+        or isinstance(passed[0], uni.KWPair)
+        or (
+            isinstance(passed[0], uni.UnaryExpr)
+            and passed[0].op.name in (Tok.STAR_MUL, Tok.STAR_POW)
+        ) {
+        return None;
+    }
+    decl = self.method_decl(arch, method, name, nd);
+    if decl.self_type is None {
+        return None;
+    }
+    first = passed[0];
+    receiver = self.lower_expr(first);
+    holder = self.arch_of_type(first.type) if isinstance(first, uni.Expr) else None;
+    receiver = self.method_receiver(decl, holder or arch, receiver, first);
+    args = self.bound_args(nd, method, True, 1);
+    if len(args) != len(decl.params) {
+        raise MirRefused(mir_refusal("call", f"{name} with {len(args)} arguments", nd));
+    }
+    values = [receiver] + self.bound_values(list(args), decl.params);
+    result = self.builder().call(decl.symbol, values, decl.ret);
+    if result is None {
+        return self.builder().const_bool(False);
+    }
+    return result;
+}
+
 impl MirLowering.method_decl(
     arch: uni.Archetype, method: uni.Ability, name: str, site: uni.UniNode
 ) -> MirDecl {

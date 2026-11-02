@@ -281,3 +281,5 @@ def osp_destroy(h: int) -> int;
 def osp_destroy_all(hs: list[int]) -> int;
 
 def osp_region_died(rgn: int) -> int;
+
+def:pub __jac_region_died_hook(rgn: int);

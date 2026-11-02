@@ -474,11 +474,26 @@ impl MirRcState.carry_crossing {
             }
         }
     }
+    taken: dict[int, int] = {};
+    for blk in self.fn.blocks {
+        for instr in blk.instrs {
+            if instr.op
+                in (MirOp.STR_MAKE, MirOp.REF_CAST, MirOp.OPT_MAKE, MirOp.ANY_BOX)
+                and instr.result is not None
+                and instr.operands
+                and instr.result.id in home {
+                taken[instr.operands[0].id] = instr.result.id;
+            }
+        }
+    }
     crossing: set[int] = set();
     for blk in self.fn.blocks {
         for instr in blk.instrs {
             for operand in instr.operands {
                 for origin in roots.get(operand.id, set()) {
+                    while origin in taken and home[origin] == home[taken[origin]] {
+                        origin = taken[origin];
+                    }
                     if home[origin] != blk.label {
                         crossing.add(origin);
                     }

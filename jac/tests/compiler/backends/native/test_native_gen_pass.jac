@@ -4513,10 +4513,10 @@ def _na_enum_import__enum_import_cross_module_function_call(eng: any, _ir: any) 
     entry_fn();
     f = get_func(eng, "check_if_keyword", ctypes.c_int64);
     r = f();
-    assert r == 3 , f"Expected 3 (KW_IF ordinal), got {r}";
+    assert r == -2 , f"int() of a str enum member raises TypeError, got {r}";
     f2 = get_func(eng, "check_else_keyword", ctypes.c_int64);
     r2 = f2();
-    assert r2 == 4 , f"Expected 4 (KW_ELSE ordinal), got {r2}";
+    assert r2 == -2 , f"int() of a str enum member raises TypeError, got {r2}";
     f3 = get_func(eng, "check_unknown_keyword", ctypes.c_int64);
     r3 = f3();
     assert r3 == -1 , f"Expected -1 (not found), got {r3}";

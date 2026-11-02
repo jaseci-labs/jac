@@ -222,6 +222,8 @@ obj MirModule {
         demoted: dict[str, str] = {},
         bridged: dict[str, str] = {},
         python_imports: list[str] = [],
+        public: list[str] = [],
+        defaults: dict[str, list[str]] = {},
         frames: dict[str, MirFrame] = {},
         deps: list[str] = [],
         clib_specs: list[tuple[str, list[str], int]] = [],

@@ -35,7 +35,8 @@ obj NativeLibrary {
 glob CALLBACK_VOID_RETURNS: tuple[str, ...] = ('None', 'void'),
      _pyb_shadows: dict[(int, object)] = {},
      _pyb_class_memo: dict[(tuple[any, ...], type)] = {},
-     _pyb_module_memo: dict[(str, object)] = {};
+     _pyb_module_memo: dict[(str, object)] = {},
+     BRIDGE_SYMBOLS: set[str] = set();
 
 def _pyb_import_module(mod_path: str) -> object;
 

@@ -1,5 +1,5 @@
 impl MirLowering.bound_args(
-    nd: uni.FuncCall, ab: uni.Ability, method: bool
+    nd: uni.FuncCall, ab: uni.Ability, method: bool, leading: int = 0
 ) -> list[(uni.Expr | MirPacked | MirBound)] {
     sig = ab.signature;
     if not isinstance(sig, uni.FuncSignature) {
@@ -37,6 +37,7 @@ impl MirLowering.bound_args(
             positional.append(arg);
         }
     }
+    positional = positional[leading:];
     if len(positional) > len(params) and sig.varargs is None {
         raise MirRefused(
             mir_refusal(

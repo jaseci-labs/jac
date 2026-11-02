@@ -1519,6 +1519,14 @@ impl MirLowering.builtin_fold(
     fn = self.st().fn;
     wanted = self.expr_type(nd);
     result_type = wanted if name == "sum" else mir_bool();
+    if name == "sum" and wanted.kind == MirKind.ANY {
+        source_type = self.expr_type(source);
+        if source_type.kind in (MirKind.LIST, MirKind.SET, MirKind.ITER)
+            and source_type.args
+            and source_type.payload().kind in (MirKind.INT, MirKind.FLOAT) {
+            result_type = source_type.payload();
+        }
+    }
     held = self.temp_slot(result_type);
     if name == "sum" {
         if not result_type.is_numeric() {
@@ -1605,6 +1613,9 @@ impl MirLowering.builtin_fold(
         b.store(held, b.binary("add", b.load(held, result_type), c));
         b.branch(done);
         b.position(done);
+    }
+    if result_type is not wanted and wanted.kind == MirKind.ANY {
+        return b.load(held, result_type);
     }
     return self.coerce(b.load(held, result_type), wanted, nd);
 }
