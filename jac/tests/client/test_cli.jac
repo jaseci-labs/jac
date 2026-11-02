@@ -1329,6 +1329,8 @@ test "vite build rollupOptions overrides are merged" {
 
             content = bundler.create_vite_config(entry_file).read_text();
             build = content[content.index("build: {"):content.index("publicDir:")];
+            # the runtime serves public/ from source, so the build never copies it
+            assert "publicDir: false" in content;
 
             # Each key appears once, so no later duplicate can discard the user's values
             for key in (

@@ -143,8 +143,11 @@ test "serve_background binds loopback on an ephemeral port and serves a client_d
 
         (code, body) = _get(f"{origin}/");
         assert code == 200 and "hosted" in body , (code, body);
-        (code, body) = _get(f"{origin}/assets/app.js");
-        assert code == 200 and "hosted" in body , (code, body);
+        with urllib.request.urlopen(f"{origin}/assets/app.js", timeout=10) as asset {
+            assert asset.status == 200 and "hosted" in asset.read().decode("utf-8");
+            # the shared asset_cache_policy, not file_response's bare default
+            assert "must-revalidate" in (asset.headers.get("Cache-Control") or "");
+        }
         (code, body) = _get(f"{origin}/some/client/route");
         assert code == 200 and "hosted" in body , (
             f"the SPA fallback must serve the client_dist index: {code} {body}"

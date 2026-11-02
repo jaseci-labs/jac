@@ -255,15 +255,43 @@ def _is_logged_in(page: any) -> bool {
 # ===========================================================================
 # Build / serve / HTTP (no browser)  -- maps to deleted test_it.jac
 # ===========================================================================
+# (status, body) without raising on an HTTP error, for asserting 404s.
+def _get_status(url: str) -> tuple[int, bytes] {
+    try {
+        with urlopen(url, timeout=30) as resp {
+            return (resp.status, bytes(resp.read()));
+        }
+    } except HTTPError as exc {
+        exc.close();
+        return (exc.code, b"");
+    }
+}
+
 """The site builds and serves / with its static JS bundle.
 
 Maps to test_it's "all in one app endpoints" / "default client app renders":
 the served page is HTML referencing /static/client.js, the JS bundle is real
 (not the "Static file not found" sentinel), and a bogus static path 404s.
+public/ files serve at the web root; project files, a project-root dist/ and a
+missing asset 404.
 """
 test "site builds and serves /" {
     with tempfile.TemporaryDirectory() as temp_dir {
         (project_dir, jac_cmd, env) = _setup_site_project(temp_dir);
+        # Static-asset fixtures in the temp copy. The served app's base_path is
+        # the workspace root (where jac.toml lives), so they anchor there.
+        for (rel, data) in [
+            ("public/brand/logo.png", b"BRAND-LOGO"),
+            ("public/site.webmanifest", b"{}"),
+            ("dist/legacy-only.png", b"LEGACY")
+        ] {
+            os.makedirs(os.path.dirname(os.path.join(project_dir, rel)), exist_ok=True);
+            with open(os.path.join(project_dir, rel), "wb") as f {
+                f.write(data);
+            }
+        }
+        # the 404 for /jac.toml below means something only if the file is there
+        assert os.path.isfile(os.path.join(project_dir, "jac.toml"));
         server: Popen | None = None;
         try {
             (server, port) = start_app_server(project_dir);
@@ -305,11 +333,24 @@ test "site builds and serves /" {
                 );
                 exc.close();
             }
+
+            # public/ at the web root with no extension allowlist; the real
+            # jac.toml, a project-root dist/ and a missing asset all 404
+            for (path, expected) in [
+                ("/brand/logo.png", (200, b"BRAND-LOGO")),
+                ("/site.webmanifest", (200, b"{}")),
+                ("/jac.toml", (404, b"")),
+                ("/legacy-only.png", (404, b"")),
+                ("/definitely-missing-asset.png", (404, b""))
+            ] {
+                assert _get_status(f"{base}{path}") == expected , path;
+            }
         } finally {
             stop_server(server);
         }
     }
 }
+
 
 """The site serves its compiled Tailwind CSS bundle.
 
