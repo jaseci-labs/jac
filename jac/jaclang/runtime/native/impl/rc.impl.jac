@@ -70,6 +70,31 @@ impl _g_treg_cap -> int {
     return __global_block("__rc_treg_cap", 8);
 }
 
+impl _g_class_ctors -> int {
+    return __global_block("__jac_rt_class_ctors", 8);
+}
+
+impl __jac_rt_class_ctor_register(cls: int, bound: int, adapter: int) {
+    cell = malloc(32);
+    head_at = _g_class_ctors();
+    __mem_store_i64(cell, __mem_load_i64(head_at));
+    __mem_store_i64(cell + 8, cls);
+    __mem_store_i64(cell + 16, bound);
+    __mem_store_i64(cell + 24, adapter);
+    __mem_store_i64(head_at, cell);
+}
+
+impl __jac_rt_class_ctor_find(cls: int, bound: int) -> int {
+    cell = __mem_load_i64(_g_class_ctors());
+    while cell != 0 {
+        if __mem_load_i64(cell + 8) == cls and __mem_load_i64(cell + 16) == bound {
+            return __mem_load_i64(cell + 24);
+        }
+        cell = __mem_load_i64(cell);
+    }
+    return 0;
+}
+
 impl _g_treg_count -> int {
     return __global_block("__rc_treg_count", 8);
 }

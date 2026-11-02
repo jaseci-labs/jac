@@ -240,6 +240,7 @@ obj MirLowering {
         archetypes: dict[str, uni.Archetype] = {},
         c_struct_sites: dict[str, str] = {},
         trace_pairs: list[tuple[str, str]] = [],
+        class_entries: list[tuple[str, str, str]] = [],
         deferred_globals: list[tuple[MirGlobal, uni.Expr]] = [],
         nested: list[MirFunction] = [],
         adapters: dict[str, str] = {},
@@ -410,6 +411,15 @@ obj MirLowering {
     def class_reference(nd: uni.Expr) -> (uni.Archetype | None);
     def class_value(arch: uni.Archetype) -> MirValue;
     def placeholder(t: MirType) -> MirValue;
+    def ctor_arguments(
+        nd: uni.FuncCall,
+        label: str,
+        params: list[tuple[str, MirType, (uni.Expr | None)]]
+    ) -> list[MirValue];
+    def class_value_call(nd: uni.FuncCall, bound: uni.Archetype) -> MirValue;
+    def class_bound(t: (TypeBase | None)) -> (uni.Archetype | None);
+    def nearest_has_var(arch: uni.Archetype, name: str) -> (uni.HasVar | None);
+    def class_entry(arch: uni.Archetype, bound: uni.Archetype) -> (MirFunction | None);
     def ctor_takes_mask(params: list[tuple[str, MirType, (uni.Expr | None)]]) -> bool;
     def ctor_default(
         value: MirValue, given: MirValue, index: int, fallback: uni.Expr

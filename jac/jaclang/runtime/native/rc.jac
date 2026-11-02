@@ -55,6 +55,12 @@ glob UTF8_CURSOR_MIN_BYTES: int = 64,
      UTF8_CURSOR_EPOCH: int = 3,
      UTF8_CURSOR_USED: int = 7;
 
+def:pub __jac_rt_class_ctor_register(cls: int, bound: int, adapter: int);
+
+def:pub __jac_rt_class_ctor_find(cls: int, bound: int) -> int;
+
+def _g_class_ctors -> int;
+
 def _g_gc_disabled -> int;
 
 def _g_threaded -> int;

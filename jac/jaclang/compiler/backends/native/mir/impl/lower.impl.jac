@@ -29,6 +29,12 @@ impl MirLowering.lower -> MirModule {
         made = self.lower_constructor(arch);
         if made is not None {
             self.mir.functions.append(made);
+            for bound in self.lineage(arch) {
+                adapter = self.class_entry(arch, bound);
+                if adapter is not None {
+                    self.mir.functions.append(adapter);
+                }
+            }
         }
         obj_def = self.object_def(arch);
         self.mir.functions.append(self.lower_drop(obj_def));
@@ -1117,6 +1123,23 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         if constructed is not None {
             return self.object_call(nd, constructed);
         }
+    }
+    if not isinstance(callee, (uni.Archetype, uni.Ability))
+        and isinstance(nd.target, uni.Expr)
+        and isinstance(nd.target.type, ClassType)
+        and nd.target.type.is_builtin("type") {
+        bound = self.class_bound(nd.target.type);
+        if bound is None {
+            raise MirRefused(
+                mir_refusal(
+                    "call",
+                    f"construction through {nd.target.type}",
+                    nd,
+                    "Construction through a class value binds its arguments against the class's bound; annotate it as type[A] for an archetype A."
+                )
+            );
+        }
+        return self.class_value_call(nd, bound);
     }
     if isinstance(callee, uni.Ability) and clib_import_of(callee) is not None {
         return self.c_call(nd, callee);
