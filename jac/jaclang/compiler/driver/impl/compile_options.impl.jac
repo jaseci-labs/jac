@@ -88,8 +88,7 @@ impl CompileOptions.effective_triple -> str {
 }
 
 impl CompileOptions.native_options_identity -> str {
-    import os;
-    return ("mir=1;" if os.environ.get("JAC_NATIVE_MIR", "") == "1" else "")
+    return ("mir=1;" if native_mir_selected() else "")
         + ("tls=1;" if self.native_tls else "")
         + ("sjlj=1;" if self.native_sjlj else "")
         + ("rawview=1;" if self.native_unchecked_views else "")
@@ -347,4 +346,9 @@ impl push_native_target(triple: str) -> (str | None) {
 
 impl pop_native_target(prev: (str | None)) {
     _native_target_ctx.set(prev);
+}
+
+impl native_mir_selected -> bool {
+    import os;
+    return os.environ.get("JAC_NATIVE_MIR", "") == "1";
 }

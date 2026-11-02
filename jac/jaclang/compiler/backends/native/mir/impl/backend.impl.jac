@@ -144,10 +144,6 @@ impl native_coverage(prog: JacProgram) -> dict[str, dict[str, any]] {
     return findings;
 }
 
-impl mir_backend_selected -> bool {
-    return os.environ.get("JAC_NATIVE_MIR", "") == "1";
-}
-
 impl MirNativePass.layout(lowering: MirLowering, mir: MirModule) -> NativeModuleLayout {
     made = NativeModuleLayout(str_headerless=False);
     for (name, obj_def) in mir.objects.items() {

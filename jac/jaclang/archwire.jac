@@ -5611,9 +5611,9 @@ graph import compiler {
     ]
     type backends.native.lowering ++> frontend.codeinfo { NativeFallbacks }
     backends.native.mir.backend --> [
-        driver.pipeline.codegen_passes { MirNativePass, mir_backend_selected },
-        driver.pipeline.native_ir_passes { MirNativePass, mir_backend_selected },
-        driver.pipeline.native_lower_passes { MirNativePass, mir_backend_selected },
+        driver.pipeline.codegen_passes { MirNativePass },
+        driver.pipeline.native_ir_passes { MirNativePass },
+        driver.pipeline.native_lower_passes { MirNativePass },
     ]
     backends.native.na_compile_pass ++> [
         driver.nativecache.NativeBuildSession._optimize_in_parallel {
@@ -12302,6 +12302,7 @@ graph import compiler.driver {
             push_native_target
         },
         pass_driver { CancelToken },
+        pipeline { native_mir_selected },
         pipeline_runner.native_application {
             CompileOptions,
             pop_native_target,
