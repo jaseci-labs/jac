@@ -1025,6 +1025,10 @@ impl MirLowering.lower_delete(nd: uni.DeleteStmt) {
     b = self.builder();
     for target in nd.targets {
         if self.osp_delete(target) {
+            self.unbind_local(target);
+            continue;
+        }
+        if self.unbind_local(target) {
             continue;
         }
         if not isinstance(target, uni.AtomTrailer)
@@ -1106,4 +1110,19 @@ impl MirLowering.container_rebuild(
     made = self.spill(self.new_dict(to.args[0], to.args[1], to));
     self.merge_dict(made, value, site, False);
     return made;
+}
+
+impl MirLowering.unbind_local(target: uni.Expr) -> bool {
+    if not isinstance(target, uni.Name) or target.sym is None {
+        return False;
+    }
+    slot = self.st().locals.get(id(target.sym));
+    if slot is None or self.cell_of(id(target.sym)) is not None {
+        return False;
+    }
+    if mir_holds_ref(slot.type) {
+        b = self.builder();
+        b.store(slot, b.const_null(slot.type));
+    }
+    return True;
 }

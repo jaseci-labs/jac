@@ -494,7 +494,10 @@ impl MirLowering.loop_scoped(sym: uni.Symbol) -> bool {
     while walk is not None
         and not isinstance(walk, (uni.Ability, uni.LambdaExpr, uni.Module)) {
         if isinstance(walk, (uni.WhileStmt, uni.InForStmt, uni.IterForStmt))
-            and any(child is stmt for stmt in walk.body)
+            and (
+                any(child is stmt for stmt in walk.body)
+                or (isinstance(walk, uni.InForStmt) and child is walk.target)
+            )
             and all(self.within_body(use, walk) for use in sym.uses) {
             return True;
         }

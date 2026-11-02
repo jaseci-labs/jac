@@ -430,6 +430,7 @@ obj MirLowering {
     def container_eq(left: MirValue, right: MirValue) -> MirValue;
     def lower_for_container(nd: uni.InForStmt, holder: MirValue);
     def lower_delete(nd: uni.DeleteStmt);
+    def unbind_local(target: uni.Expr) -> bool;
     def module_archetypes -> list[uni.Archetype];
     def arch_of_type(t: (TypeBase | None)) -> (uni.Archetype | None);
     def object_def(arch: uni.Archetype) -> MirObjectDef;
