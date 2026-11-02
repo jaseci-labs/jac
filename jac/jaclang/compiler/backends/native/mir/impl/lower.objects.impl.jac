@@ -259,6 +259,7 @@ impl MirLowering.foreign_method_decl(method: uni.Ability) -> (MirDecl | None) {
         ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, method);
     }
     symbol = self.method_symbol(owner, self.name_of(method));
+    self.require_dep_native(unit.loc.mod_path, symbol, method);
     self.mir.externs[symbol] = MirExtern(
         symbol=symbol, ret=ret, params=[self_type] + params
     );
@@ -884,7 +885,9 @@ impl MirLowering.invoke_method(
         result_type = mir_none()
             if decl.ret.kind in (MirKind.NONE, MirKind.VOID)
             else decl.ret;
-        result = self.emit_value(MirOp.CALL_FNPTR, result_type, [callee] + values);
+        result = self.emit_value(
+            MirOp.CALL_FNPTR, result_type, [callee] + values, str_value=decl.symbol
+        );
         result.owned = mir_holds_ref(result_type);
         return result;
     }
@@ -1601,12 +1604,7 @@ impl MirLowering.decl_label(decl: MirDecl) -> str {
 }
 
 impl MirLowering.refusal_key(decl: MirDecl) -> str {
-    label = self.decl_label(decl);
-    owner = decl.owner;
-    if owner is not None and owner.name is not None {
-        return f"{owner.name.value}.{label}";
-    }
-    return label;
+    return decl.symbol;
 }
 
 impl MirLowering.member_owner(member: uni.Name) -> (uni.Archetype | None) {

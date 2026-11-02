@@ -562,6 +562,9 @@ impl MirLowering.raise_object(
 }
 
 impl MirLowering.lower_assert(nd: uni.AssertStmt) {
+    if nd.is_comptime {
+        return;
+    }
     b = self.builder();
     fn = self.st().fn;
     failed = fn.new_block("assert.fail");

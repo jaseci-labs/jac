@@ -520,7 +520,9 @@ impl MirLowering.hook_call(
             mir_c_fn([receiver.type], decl.ret),
             [b.load(entry_place, i8p)]
         );
-        result = self.emit_value(MirOp.CALL_FNPTR, decl.ret, [callee, receiver]);
+        result = self.emit_value(
+            MirOp.CALL_FNPTR, decl.ret, [callee, receiver], str_value=decl.symbol
+        );
         result.owned = mir_holds_ref(decl.ret);
         return result;
     }

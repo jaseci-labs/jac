@@ -101,10 +101,17 @@ test "headerless mode keeps the class-name reads that need no header" {
 
 test "an open receiver is refused under headerless mode, not answered" {
     (prog, ir) = _compile(OPEN_FIXTURE, _headerless_opts());
-    assert _has_code(prog, "E5092") , (
+    assert not prog.errors_had , (
+        "the refused read is owned by erased_rank, which must demote to "
+        f"Python: got {[str(e) for e in prog.errors_had]}"
+    );
+    layout = ir.gen.native_layout;
+    assert layout is not None , "whole-module native compile aborted";
+    iface: any = ir.gen.native_iface;
+    assert "erased_rank" in iface.demoted and "erased_rank" not in layout.functions , (
         "a type-erased receiver's class name can only come from the header, "
-        "which headerless mode does not have, so the read must be refused "
-        f"(E5092), never answered: got {[str(e) for e in prog.errors_had]}"
+        "which headerless mode does not have, so the reading function must "
+        "be demoted out of the native layout, never answered"
     );
 }
 

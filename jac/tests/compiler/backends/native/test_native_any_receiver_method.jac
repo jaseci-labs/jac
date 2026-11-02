@@ -28,62 +28,52 @@ glob FIXTURES = os.path.join(
 
 glob _MEMO: list[any] = [];
 
-"""Compile the fixture once and return the source lines each E5092 refusal
-points at, and the line span of each top-level function."""
+"""Compile the fixture once under forced native and return the functions it
+demoted to Python and the demotion report it wrote to stderr."""
 def measured -> tuple[any, ...] {
+    import contextlib;
+    import io;
     if _MEMO {
         return _MEMO[0];
     }
     path = os.path.join(FIXTURES, FIXTURE);
     prog = JacProgram();
-    prog.compile(file_path=path, options=CompileOptions(force_codespace='native'));
-    refused = [
-        (e.loc.first_line, e.pretty_print())
-        for e in prog.errors_had
-        if e.code is not None and e.code.code == "E5092" and e.loc is not None
-    ];
-    spans: dict[str, tuple[int, int]] = {};
-    lines = open(path).read().splitlines();
-    for (i, line) in enumerate(lines, 1) {
-        if line.startswith("def ") {
-            name = line[4:].split("(")[0].split(" ")[0];
-            end = i;
-            while end < len(lines) and lines[end - 1] != "}" {
-                end += 1;
-            }
-            spans[name] = (i, end);
-        }
+    buf = io.StringIO();
+    with contextlib.redirect_stderr(buf) {
+        ir = prog.compile(
+            file_path=path, options=CompileOptions(force_codespace='native')
+        );
     }
-    out = (refused, spans, );
+    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+    iface: any = ir.gen.native_iface;
+    demoted = set(iface.demoted) if iface is not None else set();
+    out = (demoted, buf.getvalue(), );
     _MEMO.append(out);
     return out;
 }
 
-"""The refusals reported inside function `name`."""
-def refusals_in(name: str) -> list[str] {
-    (refused, spans) = measured();
-    (first, last) = spans[name];
-    return [
-        said
-        for (line, said) in refused
-        if first <= line <= last
-    ];
+"""Whether function `name` was demoted to Python."""
+def refused(name: str) -> bool {
+    return name in measured()[0];
 }
 
 
-test "mutating and reading methods on an any receiver refuse their callable" {
+test "mutating and reading methods on an any receiver demote their callable" {
     # These calls used to lower to nothing at all: the call was dropped from
     # the IR and the function returned as if it had run.
     for fn in ["any_field_append", "any_field_bytearray_append", "any_param_count"] {
-        assert refusals_in(fn) , (
-            f"{fn} must refuse its `any` receiver method call, got: {measured()[0]}"
+        assert refused(fn) , (
+            f"{fn} must refuse its `any` receiver method call and demote: {measured()}"
+        );
+        assert f"demoting {fn} " in measured()[1] , (
+            f"the demotion of {fn} must be reported: {measured()[1]}"
         );
     }
 }
 
 
 test "the concretely typed twins still lower and run" {
-    assert not refusals_in("typed_field_append") , str(measured()[0]);
+    assert not refused("typed_field_append") , str(measured()[0]);
     with tempfile.TemporaryDirectory() as tmp {
         with open(os.path.join(tmp, "typed_twin.jac"), "w") as f {
             f.write(TWIN_SRC);
@@ -99,5 +89,5 @@ test "a File parameter's methods lower without a preceding open" {
     # The File helpers used to be emitted only by `open()`, so `fp.read()` on
     # a parameter in a unit that never opens a file found no method and was
     # dropped the same silent way.
-    assert not refusals_in("file_param_read") , str(measured()[0]);
+    assert not refused("file_param_read") , str(measured()[0]);
 }
