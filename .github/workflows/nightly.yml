@@ -20,7 +20,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
     uses: ./.github/workflows/_jacpython.yml
     with:
-      runners: '["blacksmith-8vcpu-ubuntu-2404", "ubuntu-24.04-arm", "macos-14"]'
+      runners: '["ubuntu-24.04", "ubuntu-24.04-arm", "macos-14"]'
 
   # The js_engine accelerator: releases ship bun, so this is where the engine
   # is built and gated without a pull request asking.
@@ -30,7 +30,7 @@ jobs:
 
   notes-app-cef-smoke:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v5
       with:
@@ -130,7 +130,7 @@ jobs:
   k8s-real-e2e:
     name: microservice e2e (k8s, ${{ matrix.base }})
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
       fail-fast: false
