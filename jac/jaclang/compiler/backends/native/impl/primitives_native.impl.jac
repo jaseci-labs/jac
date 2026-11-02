@@ -2682,7 +2682,6 @@ impl NativeListEmitter.emit_extend(
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     src = args[0];
-    src_owned = p._is_owned(src);
     if p._opt_payload_of(src.type) is not None {
         src = p._coerce_type(src, target.type);
     }
@@ -2727,19 +2726,21 @@ impl NativeListEmitter.emit_extend(
     );
     p._emit_runtime_raise(add_overflow, "MemoryError", "list extension is too large");
     required_cap = b.add(target_len, src_len, name="ext.required.cap");
-    needs_reserve = b.icmp_unsigned(
-        ">", required_cap, target_cap, name="ext.needs.reserve"
-    );
-    allocate_bb = func.append_basic_block(name="ext.self.allocate");
-    after_reserve_bb = func.append_basic_block(name="ext.self.ready");
-    b.cbranch(needs_reserve, allocate_bb, after_reserve_bb);
-    b.position_at_start(allocate_bb);
     ext_aos_struct = p._aos_elem_struct(ctx.type_key);
     elem_size = (
         _aos_size_of(b, ext_aos_struct, "ext")
             if ext_aos_struct is not None
             else ir.Constant(i64, p._abi_sizeof(helpers["elem_type"]))
     );
+    needs_reserve = b.and_(
+        b.icmp_unsigned(">", required_cap, target_cap),
+        b.icmp_unsigned("!=", elem_size, ir.Constant(i64, 0)),
+        name="ext.needs.reserve"
+    );
+    allocate_bb = func.append_basic_block(name="ext.self.allocate");
+    after_reserve_bb = func.append_basic_block(name="ext.self.ready");
+    b.cbranch(needs_reserve, allocate_bb, after_reserve_bb);
+    b.position_at_start(allocate_bb);
     max_elems = b.udiv(ir.Constant(i64, max_i64), elem_size, name="ext.max.elems");
     size_overflow = b.icmp_unsigned(
         ">", required_cap, max_elems, name="ext.bytes.overflow"
@@ -2927,6 +2928,9 @@ impl NativeListEmitter.emit_repeat_inplace(
     if _aos_struct is not None {
         i8p = ir.IntType(8).as_pointer();
         _sz = _aos_size_of(b, _aos_struct, "rep");
+        _sz_nonzero = b.icmp_unsigned(
+            "!=", _sz, ir.Constant(i64, 0), name="rep.sz.nonzero"
+        );
         _max_i64 = 9223372036854775807;
         _count_overflow = b.icmp_unsigned(
             ">",
@@ -2938,7 +2942,8 @@ impl NativeListEmitter.emit_repeat_inplace(
             _count_overflow, "MemoryError", "list repeat is too large"
         );
         _total = b.mul(orig_len, cnt, name="rep.total");
-        _max_elems = b.udiv(ir.Constant(i64, _max_i64), _sz, name="rep.max.elems");
+        _sz_safe = b.select(_sz_nonzero, _sz, ir.Constant(i64, 1), name="rep.sz.safe");
+        _max_elems = b.udiv(ir.Constant(i64, _max_i64), _sz_safe, name="rep.max.elems");
         _bytes_overflow = b.icmp_unsigned(
             ">", _total, _max_elems, name="rep.bytes.overflow"
         );
@@ -2953,7 +2958,9 @@ impl NativeListEmitter.emit_repeat_inplace(
             target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="rep.data.pp"
         );
         _cur_cap = b.load(_cap_ptr, name="rep.cap");
-        _need = b.icmp_unsigned(">", _total, _cur_cap, name="rep.need");
+        _need = b.and_(
+            b.icmp_unsigned(">", _total, _cur_cap), _sz_nonzero, name="rep.need"
+        );
         _pre_pass_pred = b.basic_block;
         b.cbranch(_need, reserve_bb, pass_bb);
 

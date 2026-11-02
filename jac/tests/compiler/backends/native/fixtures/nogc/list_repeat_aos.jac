@@ -65,6 +65,46 @@ def overflow_repeat_raises -> bool {
     return False;
 }
 
+# list[own T] += moves the elements: the borrowed source drains to empty so
+# each own Cell still has exactly one owner.
+def extend_moves_source -> int {
+    xs: list[own Cell] = [Cell(a=1, b=1)];
+    ys: list[own Cell] = [Cell(a=2, b=2), Cell(a=3, b=3)];
+    xs += ys;
+    total: int = 0;
+    for c in xs {
+        total = total + c.a * 100 + c.b;
+    }
+    for c in ys {
+        total = total + c.a * 100 + c.b;
+    }
+    return total * 10 + len(ys);
+}
+
+obj Empty {}
+
+def repeat_zero_sized -> int {
+    es: list[own Empty] = [Empty(), Empty()];
+    es *= 2;
+    return len(es);
+}
+
+def self_extend_zero_sized -> int {
+    es: list[own Empty] = [
+        Empty(),
+        Empty(),
+        Empty(),
+        Empty(),
+        Empty(),
+        Empty(),
+        Empty(),
+        Empty(),
+        Empty()
+    ];
+    es += es;
+    return len(es);
+}
+
 def run {
     print(repeat_cells(9));
     print(clear_cells());
@@ -72,6 +112,9 @@ def run {
     print(repeat_empty());
     print(self_extend_cells());
     print(overflow_repeat_raises());
+    print(extend_moves_source());
+    print(repeat_zero_sized());
+    print(self_extend_zero_sized());
 }
 
 with entry {
