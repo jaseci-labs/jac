@@ -133,6 +133,9 @@ def _answer_events(
 ) -> Generator[StreamEvent, None, None];
 
 
+def _commit_answer(mt_run: MTRuntime, output: object) -> str;
+
+
 def _message_role(msg: dict[str, any]) -> str;
 
 
@@ -881,9 +884,7 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
                 }
                 mt_run.add_message(finish_msg);
                 if mt_run.stream {
-                    return self._stream_final_answer(
-                        mt_run, fallback=str(final_output or "")
-                    );
+                    return _commit_answer(mt_run, final_output);
                 }
                 return final_output;
             }
@@ -2135,24 +2136,12 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
                         continue;
                     }
                     mt_run.add_message(finish_msg);
-
-                    mt_run._final_output = final_output;
-                    mt_run._has_final_output = True;
+                    answer = _commit_answer(mt_run, final_output);
                     yield StreamEvent(
                         event_type="steps_done", data={"iterations": iter_count}
                     );
-
-                    if mt_run.resp_type is None or mt_run.resp_type is str {
-                        yield from _answer_events(
-                            mt_run,
-                            self._stream_final_answer(
-                                mt_run,
-                                fallback=str(final_output or ""),
-                                retractable=True
-                            ),
-                            iter_count
-                        );
-                        yield from _usage_step_events(mt_run, _usage_base);
+                    if answer {
+                        yield StreamEvent(event_type="chunk", data={"content": answer});
                     }
                     break;
                 }
@@ -2730,6 +2719,29 @@ impl _answer_events(
             }
         }
     }
+}
+
+
+impl _commit_answer(mt_run: MTRuntime, output: object) -> str {
+    mt_run._final_output = output;
+    mt_run._has_final_output = True;
+    if mt_run.resp_type is not None and mt_run.resp_type is not str {
+        return "";
+    }
+    answer = str(output or "");
+    if answer {
+        final: dict[str, any] = {"role": "assistant"};
+        for msg in reversed(mt_run.messages) {
+            if isinstance(msg, dict) and msg.get("role") == "assistant" {
+                final = dict(msg);
+                break;
+            }
+        }
+        final.pop("tool_calls", None);
+        final["content"] = answer;
+        mt_run.add_message(final);
+    }
+    return answer;
 }
 
 

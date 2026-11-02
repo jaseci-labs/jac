@@ -16,6 +16,7 @@ import from support {
     fail,
     finish,
     fixture_path,
+    mk_run,
     say
 }
 
@@ -55,11 +56,11 @@ glob THINK: str = "REASONING " + ("step by step " * 20),
          ),
          ("nothing", {}, True)
      ],
-     # (label, stream, logging, tools, restream after finish_tool)
+     # (label, stream, logging, tools, answer through finish_tool)
      PATHS: list[tuple[str, bool, bool, bool, bool]] = [
          ("whole replies", False, False, True, False),
          ("stream", True, False, True, False),
-         ("stream, finish_tool restream", True, False, True, True),
+         ("stream, finish_tool answer", True, False, True, True),
          ("stream with events", True, True, True, False),
          ("stream with events, no tools", True, True, False, False)
      ],
@@ -101,7 +102,7 @@ test "a reply's own fields are kept, sent back, streamed, counted and reported o
         raise RuntimeError("a hook that raises must not break the call");
     }
     for path in PATHS {
-        (path_name, stream, logging, tools, restream) = path;
+        (path_name, stream, logging, tools, finishes) = path;
         for (kind, fields, streams) in KINDS {
             if stream and not streams {
                 continue;
@@ -119,10 +120,11 @@ test "a reply's own fields are kept, sent back, streamed, counted and reported o
                         )
                     );
                 }
-                if restream {
+                if finishes {
                     replies.append(finish(answer, fields=fields, usage=USAGE));
+                } else {
+                    replies.append(say(answer, fields=fields, usage=USAGE));
                 }
-                replies.append(say(answer, fields=fields, usage=USAGE));
             }
             calls = len(replies);
             llm = MockLLM(outputs=replies, chunk_size=40);
@@ -273,25 +275,34 @@ test "compaction counts reasoning, and the hook then reports the rebuilt request
 test "a stream litellm cannot rebuild still keeps the reasoning it carried" {
     think = {"reasoning_content": THINK};
     no_builder = RuntimeError("no builder");
-    for (path, replies) in [
-        (PATHS[3], [say("Paris is sunny.", fields=think)]),
-        (
-            PATHS[2],
-            [
-                finish("Paris is sunny.", fields=think),
+    history: list[any] = [];
+    # A loop cut off by max_react_iterations streams a requested answer.
+    cut = mk_run(
+        stream=True, tools=[get_weather], call_params={"max_react_iterations": 1}
+    );
+    with mock.patch.object(
+        _byllm_llm_mod.litellm, "stream_chunk_builder", side_effect=no_builder
+    ) {
+        turn(
+            MockLLM(outputs=[say("Paris is sunny.", fields=think)]),
+            history,
+            PATHS[3],
+            "How is Paris?"
+        );
+        cut_llm = MockLLM(
+            outputs=[
+                call("get_weather", {"city": "Paris"}),
                 say("Paris is sunny.", fields=think)
             ]
-        )
+        );
+        list(cut_llm._invoke_react_loop_streaming(cut));
+    }
+    for (label, reply) in [
+        (PATHS[3][0], history[-1]),
+        ("cut-off restream", cut.messages[-1])
     ] {
-        history: list[any] = [];
-        with mock.patch.object(
-            _byllm_llm_mod.litellm, "stream_chunk_builder", side_effect=no_builder
-        ) {
-            turn(MockLLM(outputs=replies), history, path, "How is Paris?");
-        }
-        reply = history[-1];
         assert (reply.get("content"), reply.get("reasoning_content"))
-            == ("Paris is sunny.", THINK) , f"{path[0]}: {reply}";
+            == ("Paris is sunny.", THINK) , f"{label}: {reply}";
     }
 }
 

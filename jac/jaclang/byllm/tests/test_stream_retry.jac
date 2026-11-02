@@ -47,7 +47,6 @@ def _fold(events: list[StreamEvent]) -> tuple[str, str] {
 
 test "a retried answer replaces the attempt that failed" {
     setups = {
-        "finish": ([finish("COMMITTED")], {}),
         "cutoff": ([call("save_data", {"name": "x"})], {"max_react_iterations": 1}),
         "abort": (
             [call("save_data", {"name": "x"})],
@@ -56,11 +55,7 @@ test "a retried answer replaces the attempt that failed" {
         "recovery": ([say("seven"), finish(7)], {}),
         "none": ([], {})
     };
-    cut = say("", finish_reason="length");
     rows = [
-        ("after finish_tool", "finish", say("full answer"), "full answer"),
-        ("after finish_tool, empty retry", "finish", say(""), "COMMITTED"),
-        ("after finish_tool, cut-off retry", "finish", cut, "COMMITTED"),
         ("at max_react_iterations", "cutoff", say("full answer"), "full answer"),
         ("on ABORT_WITH_SUMMARY", "abort", say("full answer"), "full answer"),
         ("after recovery", "recovery", say("full answer"), "full answer"),
@@ -89,7 +84,7 @@ test "a retried answer replaces the attempt that failed" {
 
 """What a plain `stream=True` call delivered, the error that ended it, and its conversation."""
 def _plain_turn(ending: str, attempts: list[any]) -> tuple[str, any, list[any]] {
-    lead = [finish("COMMITTED")] if ending == "finish" else [];
+    lead = [call("save_data", {"name": "x"})] if ending == "cutoff" else [];
     llm = MockLLM(outputs=lead + attempts);
     parts: list[str] = [];
     history: list[any] = [];
@@ -112,8 +107,9 @@ def _plain_turn(ending: str, attempts: list[any]) -> tuple[str, any, list[any]] 
     }
 
     def ask(task: str) -> str by llm(
-        tools=[save_data] if ending == "finish" else [],
+        tools=[save_data] if ending == "cutoff" else [],
         stream=True,
+        max_react_iterations=1,
         conversation=history
     );
 
@@ -133,7 +129,7 @@ test "a plain stream never replays text it has already delivered" {
         ("dropped before any text", [_dropped(""), say("full answer")], "full answer"),
         ("dropped after text", [_dropped(), say("full answer")], "partial text")
     ];
-    for ending in ["none", "finish", "async"] {
+    for ending in ["none", "cutoff", "async"] {
         for (label, attempts, expected) in rows {
             (text, error, history) = _plain_turn(ending, attempts);
             where = f"{ending} / {label}";
@@ -156,12 +152,13 @@ test "a plain stream never replays text it has already delivered" {
 
 test "a logging stream that fails for good leaves no fragment in the conversation" {
     history: list[dict[str, any]] = [];
-    llm = MockLLM(outputs=[finish("COMMITTED"), _dropped()]);
+    llm = MockLLM(outputs=[call("save_data", {"name": "x"}), _dropped()]);
 
     def ask(task: str) -> str by llm(
         tools=[save_data],
         stream=True,
         logging=True,
+        max_react_iterations=1,
         stream_num_retries=0,
         conversation=history
     );

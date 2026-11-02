@@ -7,6 +7,7 @@ and the answer arrives on the `chunk` channel; tool activity arrives before it.
 import asyncio;
 import contextvars;
 import from jaclang.byllm.exceptions { ConfigurationError }
+import from jaclang.byllm.types { StreamEvent }
 import from jaclang.byllm.telemetry { _current_invocation_id }
 import from jaclang.byllm.lib { Model }
 import from jaclang.byllm.lib { MockLLM }
@@ -84,12 +85,10 @@ test "a logging stream with no tools yields chunks then one usage event" {
 
 
 test "a logging stream with tools reports the call, the result, then the answer" {
-    answer = "Based on the information gathered, London is sunny at 25 degrees.";
     llm = MockLLM(
         outputs=[
             call("get_weather", {"city": "London"}),
-            finish("The weather in London is sunny, 25 degrees."),
-            say(answer)
+            finish("The weather in London is sunny, 25 degrees.")
         ]
     );
 
@@ -131,20 +130,47 @@ test "a logging stream with tools reports the call, the result, then the answer"
 }
 
 
-test "an empty final-answer restream falls back to the committed answer" {
+test "a finish_tool answer reaches the caller as committed, with no second call" {
+    # The model's finish_tool argument is the answer. byLLM used to ask the model
+    # to restate it, and that second reply replaced the committed one.
     committed = "The weather in London is sunny, 25 degrees.";
-    llm = MockLLM(outputs=[finish(committed), call("get_weather", {"city": "London"})]);
+    for mode in ["plain", "logging", "handler"] {
+        history: list[dict[str, any]] = [];
+        seen: list[StreamEvent] = [];
+        llm = MockLLM(
+            outputs=[
+                call("get_weather", {"city": "London"}),
+                finish(committed),
+                say("A different restated answer.")
+            ]
+        );
 
-    def check_weather(question: str) -> str by llm(
-        tools=[get_weather], stream=True, logging=True
-    );
+        def check_weather(question: str) -> str by llm(
+            tools=[get_weather],
+            stream=True,
+            logging=mode == "logging",
+            stream_handler=seen.append if mode == "handler" else None,
+            conversation=history
+        );
 
-    events = stream_events(check_weather("What is the weather in London?"));
-    assert chunk_text(events) == committed , (
-        f"the committed answer must survive an empty final stream, got {chunk_text(
-            events
-        )!r}"
-    );
+        out: any = check_weather("What is the weather in London?");
+        if mode == "plain" {
+            got = "".join(list(out));
+        } elif mode == "logging" {
+            got = chunk_text(list(out));
+        } else {
+            got = out;
+            assert chunk_text(seen) == committed , f"handler saw {chunk_text(seen)!r}";
+        }
+        assert got == committed , f"{mode}: the caller received {got!r}";
+        assert len(llm.seen) == 2 , f"{mode}: expected 2 requests, got {len(llm.seen)}";
+        answers = [
+            m.get("content")
+            for m in history
+            if m.get("role") == "assistant" and m.get("content")
+        ];
+        assert answers == [committed] , f"{mode}: the conversation saved {answers}";
+    }
 }
 
 
@@ -348,7 +374,7 @@ test "the inter-chunk read timeout is set for streaming only" {
 }
 
 
-test "a streaming react call runs its tools, then streams the answer" {
+test "a streaming react call runs its tools, then yields the committed answer" {
     def get_current_date -> str {
         return "29-10-2025";
     }
@@ -360,8 +386,7 @@ test "a streaming react call runs its tools, then streams the answer" {
         outputs=[
             call("get_current_date", {}),
             call("calculate", {"expression": "25 * 4"}),
-            finish(answer),
-            say(answer)
+            finish(answer)
         ]
     );
 
@@ -374,8 +399,7 @@ test "a streaming react call runs its tools, then streams the answer" {
     assert not isinstance(stream, str) , "a streaming call must hand back an iterator";
 
     chunks = list(stream);
-    assert len(chunks) > 1 , f"the answer should arrive in pieces, got {len(chunks)}";
-    assert "".join(chunks) == answer , f"got {''.join(chunks)!r}";
+    assert chunks == [answer] , f"got {chunks!r}";
 
     # Both tools really ran: their results are in the conversation the final
     # turn was built from, which a stdout grep for "100" could not distinguish

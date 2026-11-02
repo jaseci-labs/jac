@@ -12,7 +12,7 @@ import from litellm.types.utils {
     Function,
     Message as LiteLLMMessage
 }
-import from support { call, calls, finish, mk_run, say, sent_messages }
+import from support { call, calls, finish, mk_run, sent_messages }
 
 
 def get_weather(city: str) -> str {
@@ -145,9 +145,9 @@ def assert_written_back(label: str, history: list[dict[str, any]], answer: str) 
 }
 
 
-"""One streamed turn: a tool call, the finish call, then the answer."""
+"""One streamed turn: a tool call, then the finish call that carries the answer."""
 def _stream_replies(answer: str = "Paris is sunny right now.") -> list[any] {
-    return [call("get_weather", {"city": "Paris"}), finish(answer), say(answer)];
+    return [call("get_weather", {"city": "Paris"}), finish(answer)];
 }
 
 
@@ -251,9 +251,7 @@ test "no tool call is left unanswered, wherever finish_tool sits in the batch" {
             where = f"{label}, events={events}";
             RAN.clear();
             history: list[dict[str, any]] = [];
-            llm = MockLLM(
-                outputs=[calls(entries)] + ([say("FINAL")] if events else [])
-            );
+            llm = MockLLM(outputs=[calls(entries)]);
 
             def ask(q: str) -> str by llm(
                 tools=[mul], conversation=history, stream=events, logging=events
@@ -389,10 +387,7 @@ def _flaky_finish -> any {
 test "a failed finish_tool retries with the call after it answered" {
     for events in [False, True] {
         RAN.clear();
-        llm = MockLLM(
-            outputs=[calls([_fin(), _mul("c2")]), finish("second try")]
-                + ([say("FINAL")] if events else [])
-        );
+        llm = MockLLM(outputs=[calls([_fin(), _mul("c2")]), finish("second try")]);
 
         def ask(q: str) -> str by llm(
             tools=[mul, _flaky_finish()], stream=events, logging=events
