@@ -42,17 +42,15 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     ).split(
         FACT_SEP
     );
+    triple = target[1]
+        if len(target) > 1 and target[1]
+        else self.prog.options.effective_triple();
     ir_in.gen.llvm_ir = emit_mir_module(
-        lowered,
-        target[1]
-            if len(target) > 1 and target[1]
-            else self.prog.options.effective_triple(),
-        bool(self.prog.options.native_tls),
-        target[0]
+        lowered, triple, bool(self.prog.options.native_tls), target[0]
     );
     ir_in.gen.native_deps = list(deps);
     ir_in.gen.native_layout = self.layout(lowering, lowered);
-    ir_in.gen.native_iface = self.interface(lowered, deps);
+    ir_in.gen.native_iface = self.interface(lowered, deps, triple);
     ir_in.gen.native_iface.layout = ir_in.gen.native_layout;
     return ir_in;
 }
@@ -78,7 +76,33 @@ impl MirNativePass.report_refusals(lowering: MirLowering) {
     }
 }
 
-impl MirNativePass.interface(mir: MirModule, deps: list[str]) -> NativeIface {
+impl mir_clib_path(spec: tuple[str, list[str], int], triple: str) -> str {
+    (kind, parts, level) = spec;
+    if kind == "raw" {
+        return parts[0];
+    }
+    lowered = triple.lower();
+    prefix = "lib";
+    ext = ".so";
+    origin = "$ORIGIN";
+    if any(word in lowered for word in ("darwin", "apple", "macos", "ios")) {
+        ext = ".dylib";
+        origin = "@loader_path";
+    } elif any(word in lowered for word in ("windows", "win32", "mingw", "msvc")) {
+        prefix = "";
+        ext = ".dll";
+        origin = ".";
+    }
+    filename = prefix + parts[-1] + ext;
+    if len(parts) > 1 or level > 0 {
+        return origin + "/" + "/".join(parts[:-1] + [filename]);
+    }
+    return filename;
+}
+
+impl MirNativePass.interface(
+    mir: MirModule, deps: list[str], triple: str = ""
+) -> NativeIface {
     exports: dict[str, NativeExport] = {};
     for fn in mir.functions {
         if fn.linkage == "internal" {
@@ -106,6 +130,11 @@ impl MirNativePass.interface(mir: MirModule, deps: list[str]) -> NativeIface {
         deps=list(deps),
         demoted=sorted(mir.demoted),
         python_imports=sorted(mir.python_imports),
+        clib_paths=[mir_clib_path(spec, triple) for spec in mir.clib_specs],
+        clib_symbol_lib={
+            symbol: mir_clib_path(mir.clib_specs[index], triple)
+            for (symbol, index) in mir.clib_symbols.items()
+        },
         init_symbol=native_glob_init_name(mir.path)
             if mir.function(native_glob_init_name(mir.path)) is not None
             else "",

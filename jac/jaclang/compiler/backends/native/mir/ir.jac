@@ -54,6 +54,7 @@ enum MirOp {
     GLOBAL_BLOCK = "global.block",
     SIZEOF = "sizeof",
     EXC_FRAME = "exc.frame",
+    ALLOCA = "alloca",
     SETJMP = "setjmp",
     VTABLE_ADDR = "vtable.addr",
     CLASS_ADDR = "class.addr",
@@ -135,13 +136,28 @@ obj MirExtern {
         params: list[MirType] = [];
 }
 
+obj MirConst {
+    has kind: str,
+        int_value: int = 0,
+        float_value: float = 0.0,
+        symbol: str = "",
+        data: bytes = b"",
+        items: list[MirConst] = [],
+        offset: int = 0;
+}
+
 obj MirGlobal {
     has name: str,
         symbol: str,
         type: MirType,
         int_value: int = 0,
         float_value: float = 0.0,
-        linkage: str = "";
+        linkage: str = "",
+        c_data: bool = False,
+        opaque: bool = False,
+        count: int = -1,
+        thread_local: bool = False,
+        c_init: (MirConst | None) = None;
 }
 
 obj MirStructField {
@@ -202,7 +218,9 @@ obj MirModule {
         bridged: dict[str, str] = {},
         python_imports: list[str] = [],
         frames: dict[str, MirFrame] = {},
-        deps: list[str] = [];
+        deps: list[str] = [],
+        clib_specs: list[tuple[str, list[str], int]] = [],
+        clib_symbols: dict[str, int] = {};
 
     def function(symbol: str) -> (MirFunction | None);
     def render -> str;

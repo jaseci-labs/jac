@@ -293,6 +293,7 @@ obj MirLowering {
         enum_types: dict[str, TypeBase] = {},
         enum_methods: dict[str, MirDecl] = {},
         bindings: list[InteropBinding] = [],
+        c_views: dict[int, MirGlobal] = {},
         state: (MirFnState | None) = None;
 
     def lower -> MirModule;
@@ -374,6 +375,29 @@ obj MirLowering {
     def call_args(nd: uni.FuncCall) -> list[uni.Expr];
     def coerce_place(place: MirValue) -> MirValue;
     def declare_global(nd: uni.Name) -> (MirGlobal | None);
+    def declare_c_data;
+    def note_clib(imp: (uni.Import | None)) -> int;
+    def declare_module_globals;
+    def c_struct_call(nd: uni.FuncCall, struct_type: MirType) -> MirValue;
+    def c_field_value(expr: uni.Expr, member: MirType) -> MirValue;
+    def c_pin(nd: uni.FuncCall) -> MirValue;
+    def c_alloca(size: uni.Expr) -> MirValue;
+    def c_thread_local(nd: uni.FuncCall, name: str, args: list[uni.Expr]) -> MirValue;
+    def c_function_value(expr: uni.Expr, member: MirType) -> MirValue;
+    def declare_c_global(assign: uni.Assignment) -> MirGlobal;
+    def c_array_count(value: uni.Expr, elem: TypeBase) -> int;
+    def c_const(
+        expr: uni.Expr, ctype: (TypeBase | None), target: MirType, count: int = -1
+    ) -> MirConst;
+
+    def c_const_refusal(expr: uni.UniNode) -> NativeRefusal;
+    def c_const_struct(expr: uni.Expr, arch: uni.Archetype) -> MirConst;
+    def c_const_address(expr: uni.Expr) -> MirConst;
+    def c_function_symbol(expr: uni.Expr) -> str;
+    def c_addressed(nd: uni.FuncCall) -> MirGlobal;
+    def c_addressof(nd: uni.FuncCall) -> MirValue;
+    def c_global_settle;
+    def c_const_lost(made: MirConst) -> str;
     def global_place(nd: uni.Name) -> (MirValue | None);
     def global_declaration(sym: uni.Symbol) -> (uni.Assignment | None);
     def runtime(name: str, args: list[MirValue]) -> (MirValue | None);
