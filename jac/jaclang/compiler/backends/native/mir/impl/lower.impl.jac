@@ -1732,6 +1732,9 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         if mir_is_container(value.type) {
             return self.container_len(value);
         }
+        if value.type.kind == MirKind.TUPLE {
+            return self.builder().const_int(len(value.type.args), mir_int());
+        }
         raise MirRefused(mir_refusal("call", f"len of {value.type.render()}", nd));
     }
     if name == "isinstance" and len(args) == 2 {
