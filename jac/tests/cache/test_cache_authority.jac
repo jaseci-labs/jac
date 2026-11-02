@@ -777,3 +777,71 @@ test "a symlinked cache root keeps the runtime's digests across a copy" {
         assert rehashed == 0 , f"{rehashed} runtime file(s) re-hashed after a copy under a symlinked cache root";
     }
 }
+
+test "file_identity derives the cache root once while its inputs stay the same" {
+    (base, env) = private_root();
+    home = Path(env["JAC_CACHE_HOME"]);
+    files = [];
+    for top in (home, base / "a" / "rel", base / "b" / "rel") {
+        site = top / "rt" / "0123456789abcdef" / "site" / "jaclang";
+        site.mkdir(parents=True);
+        for n in range(20) {
+            (site / f"m{n}.jac").write_text("glob x: int = 0;\n");
+        }
+        files.append(sorted(site.glob("*.jac")));
+    }
+    with patch.dict(os.environ, env), patch.object(
+        cache_paths, "get_cache_home", wraps=get_cache_home
+    ) as derive {
+        for f in files[0] {
+            assert cache_paths.file_identity(f)[0] == 0 , f;
+        }
+        total = len(files[0]);
+        assert derive.call_count <= 1 , f"the cache root was derived {derive.call_count} times for {total} files";
+        # A relative root follows the working directory, under one setting.
+        os.environ["JAC_CACHE_HOME"] = "rel";
+        cwd = os.getcwd();
+        try {
+            for (n, folder) in enumerate(("a", "b")) {
+                os.chdir(base / folder);
+                assert cache_paths.file_identity(files[n + 1][0])[0] == 0 , f"a runtime file under {folder}/rel";
+                assert cache_paths.file_identity(files[0][0])[0] != 0 , "a file under the old root";
+            }
+        } finally {
+            os.chdir(cwd);
+        }
+    }
+}
+
+test "a package installed into the runtime's python is read again when it is replaced" {
+    (base, env) = private_root();
+    home = Path(env["JAC_CACHE_HOME"]);
+    # `jac install --global` installs into the runtime's own site-packages.
+    package = home
+        / "rt"
+        / "0123456789abcdef"
+        / "python"
+        / "lib"
+        / "python3.14"
+        / "site-packages"
+        / "plugin";
+    package.mkdir(parents=True);
+    module = package / "mod.jac";
+    module.write_text("glob x: int = 1;\n");
+    os.utime(module, ns=(0, 0));
+    with patch.dict(os.environ, env), patch.multiple(
+        cache_paths,
+        _DIGEST_RACY_NS=-1,
+        _digest_memo={},
+        _digest_shards={},
+        _digest_dirty=set()
+    ) {
+        before = file_sha256(module);
+        # An upgrade that keeps the file's size and mtime.
+        upgrade = package / "mod.jac.new";
+        upgrade.write_text("glob x: int = 2;\n");
+        os.utime(upgrade, ns=(0, 0));
+        os.replace(upgrade, module);
+        assert file_sha256(module) != before , "a replaced package file kept its old digest";
+    }
+}
