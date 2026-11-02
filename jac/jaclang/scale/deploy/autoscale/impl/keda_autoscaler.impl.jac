@@ -1052,6 +1052,9 @@ impl KEDAAutoscaler._build_http_scaled_object {
         "cooldownPeriod": spec.cooldown_period,
         "triggers": [{"type": "external-push", "metadata": trigger_metadata}]
     };
+    if spec.initial_cooldown_period > 0 {
+        scaled_obj_spec["initialCooldownPeriod"] = spec.initial_cooldown_period;
+    }
 
     return {
         "name": scaled_obj_name,
