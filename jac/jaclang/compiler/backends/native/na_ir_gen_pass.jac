@@ -855,6 +855,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _native_module_call_target(nd: uni.FuncCall) -> tuple[str, str] | None;
+    def _builtin_getattr_call(nd: uni.FuncCall) -> bool;
     def _native_getattr_alias_for_symbol(sym: uni.Symbol) -> tuple[str, str] | None;
     def _native_getattr_alias_target(nd: uni.FuncCall) -> tuple[str, str] | None;
     def _native_module_member_ability(

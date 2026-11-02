@@ -383,6 +383,22 @@ test "native getattr alias read in call arguments stays outside native layout" {
     assert "compute" not in ir.gen.native_layout.functions;
 }
 
+test "native alias from an ordinary module call is not specialized" {
+    (prog, ir) = compile_na_inline_ir(
+        "getattr_alias_module_call",
+        "import na_alias_factory_lib;\n"
+        "def compute -> int {\n"
+        "    f = na_alias_factory_lib.make_doubler();\n"
+        "    return f(21);\n"
+        "}\n"
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    assert "compute" in ir.gen.native_layout.functions;
+    f = get_func(ir.gen.native_engine, "compute", ctypes.c_int64);
+    result = f();
+    assert result == 42 , f"factory-produced callable returned {result}";
+}
+
 test "native getattr alias used as a value stays outside native layout" {
     (prog, ir) = compile_na_inline_ir(
         "getattr_alias_escape",

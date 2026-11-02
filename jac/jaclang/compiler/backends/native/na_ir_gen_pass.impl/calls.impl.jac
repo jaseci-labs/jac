@@ -1257,7 +1257,8 @@ impl NaIRGenPass._native_getattr_alias_for_symbol(
         or len(assignment.target) != 1
         or not isinstance(assignment.target[0], uni.Name)
         or assignment.target[0].sym is not sym
-        or not isinstance(assignment.value, uni.FuncCall) {
+        or not isinstance(assignment.value, uni.FuncCall)
+        or not self._builtin_getattr_call(assignment.value) {
         return None;
     }
     _module_member = self._native_module_call_target(assignment.value);
@@ -1374,12 +1375,26 @@ impl NaIRGenPass._native_module_member_ability(
     return declaration;
 }
 
+impl NaIRGenPass._builtin_getattr_call(nd: uni.FuncCall) -> bool {
+    if self._get_name(nd.target) != "getattr" or nd.call_kind != "builtin" {
+        return False;
+    }
+    decl = self._callee_ability_of(nd);
+    if decl is None {
+        return True;
+    }
+    mod = decl.find_parent_of_type(uni.Module);
+    return mod is not None
+        and (
+            mod.stub_only
+            or (mod.source is not None and mod.source.file_path.endswith(".pyi"))
+        );
+}
+
 impl NaIRGenPass._native_module_call_target(
     nd: uni.FuncCall
 ) -> tuple[str, str] | None {
-    if self._get_name(nd.target) == "getattr"
-        and nd.call_kind == "builtin"
-        and self._callee_ability_of(nd) is None {
+    if self._builtin_getattr_call(nd) {
         args = nd.params or [];
         if len(args) != 2
             or isinstance(args[0], uni.KWPair)
