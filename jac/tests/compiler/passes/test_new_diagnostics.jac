@@ -321,6 +321,34 @@ test "E0055: yield outside function" {
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0055"));
 }
 
+test "E0057: return in a module entry block" {
+    (has_err, prog) = parse_and_validate(
+        'with entry { x = 1; if x { return; } for i in [1] { return i; } }'
+    );
+    assert has_err and prog is not None;
+    assert count_diagnostic_code(prog, "E0057") == 2;
+}
+
+test "E0057: return in an archetype's entry block" {
+    (has_err, prog) = parse_and_validate('obj Holder { with entry { return; } }');
+    assert has_err and prog is not None and has_diagnostic_code(prog, "E0057");
+}
+
+test "E0057: return inside any function body is valid" {
+    for src in [
+        'def f -> int { return 1; }',
+        'obj A { has n: int = 0; def get -> int { return self.n; } }',
+        'obj A { has n: int = 0; def get -> int; }\nimpl A.get -> int { return self.n; }',
+        'walker W { can go with Root entry { if True { return; } } }',
+        'test "early exit" { if True { return; } }',
+        'with entry { def g -> int { return 2; } f = lambda -> int { return 3; }; }'
+    ] {
+        (has_err, prog) = parse_and_validate(src);
+        errors = [str(e) for e in prog.errors_had] if prog else ["parse failed"];
+        assert not has_err , f"{src!r}: {errors}";
+    }
+}
+
 test "E0058: break outside loop" {
     (has_err, prog) = parse_and_validate('with entry { break; }');
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0058"));
@@ -811,6 +839,7 @@ glob MUST_REJECT_NEW: dict[str, str] = {
      },
      MUST_VALIDATE_NEW: dict[str, str] = {
          "E0055_yield_in_entry": "with entry { yield 5; }",
+         "E0057_return_in_entry": "with entry { return; }",
          "E0058_break_no_loop": "with entry { break; }",
          "E0058_continue_no_loop": "with entry { continue; }"
      };
@@ -822,6 +851,7 @@ glob IMPLEMENTED_REJECT: set[str] = {
      },
      IMPLEMENTED_VALIDATE: set[str] = {
          "E0055_yield_in_entry",
+         "E0057_return_in_entry",
          "E0058_break_no_loop",
          "E0058_continue_no_loop"
      };
