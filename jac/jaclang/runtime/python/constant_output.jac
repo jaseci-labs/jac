@@ -92,11 +92,11 @@ obj constant_writer {
     }
 
     def slice_of(value: PySlice) -> ptr[PyObject] {
-        start = self.write(value.start);
+        start = self.unshared(value.start);
         try {
-            stop = self.write(value.stop);
+            stop = self.unshared(value.stop);
             try {
-                step = self.write(value.step);
+                step = self.unshared(value.step);
                 try {
                     return required(PySlice_New(start, stop, step));
                 } finally {
@@ -108,6 +108,27 @@ obj constant_writer {
         } finally {
             jacpy_release(start);
         }
+    }
+
+    def unshared(constant: PyObj) -> ptr[PyObject] {
+        if isinstance(constant, (PyNoneType, PyEllipsis, PyBool)) {
+            return self.write(constant);
+        }
+        return self.create(constant);
+    }
+
+    def shared_names(values: list[str]) -> ptr[PyObject] {
+        key = constant_key(self.text_items(values));
+        existing = self.shared.get(key);
+        if existing is not None {
+            return Py_NewRef(existing);
+        }
+        created = required(PyTuple_New(i64(len(values))));
+        for (index, value) in enumerate(values) {
+            checked(jacpy_tuple_set_owned(created, i64(index), text_object(value)));
+        }
+        self.shared[key] = created;
+        return Py_NewRef(created);
     }
 
     def filename_of(filename: str) -> ptr[PyObject] {
@@ -146,12 +167,12 @@ obj constant_writer {
         try {
             bytecode = held(owned, self.shared_bytes(code.co_code));
             consts = held(owned, self.write(PyTuple(t="tuple", items=code.consts)));
-            code_names = held(owned, self.write(self.text_items(code.names)));
+            code_names = held(owned, self.shared_names(code.names));
             localsplusnames = held(
                 owned,
                 self.tuple_of(self.text_items(names).items)
                     if code.unshared_localsplus
-                    else self.write(self.text_items(names))
+                    else self.shared_names(names)
             );
             localspluskinds = held(owned, code_buffer(kinds));
             name = held(owned, text_object(code.name));
