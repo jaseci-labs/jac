@@ -39,8 +39,10 @@ inputs:
     description: >
       "true" takes the binary and its precompile bundle from this run's
       build-kit (ci.yml's `jac-kit` and `jac-precompiled` artifacts) instead of
-      the binary cache or a build, so a lane that needs the build inputs too
-      does not build the same binary a second time.
+      the binary cache or a build, and with need-build-inputs also the
+      JacPython runtime and LLVM shim that build used (`jac-build-inputs`), so
+      a lane with its own `zig build` neither builds the binary again nor
+      lowers the runtime again.
     required: false
     default: "false"
 runs:
@@ -112,6 +114,18 @@ runs:
         name: jac-precompiled
         path: jac/.precompiled-build/jacpython
 
+    - name: Fetch this run's build inputs
+      if: inputs.kit == 'true' && inputs.need-build-inputs == 'true'
+      uses: actions/download-artifact@v4
+      with:
+        name: jac-build-inputs
+        path: ${{ runner.temp }}
+
+    - name: Unpack this run's build inputs
+      if: inputs.kit == 'true' && inputs.need-build-inputs == 'true'
+      shell: bash
+      run: tar -C jac -xf "$RUNNER_TEMP/jac-build-inputs.tar"
+
     # Every step below reads this one hit: the binary is on disk, from the
     # cache or from the kit.
     - name: Binary on disk
@@ -145,7 +159,7 @@ runs:
     # it was lowered from are unchanged.
     - name: Restore cached JacPython runtime
       id: python-cache
-      if: steps.cache.outputs.cache-hit != 'true' || inputs.need-build-inputs == 'true'
+      if: inputs.kit != 'true' && (steps.cache.outputs.cache-hit != 'true' || inputs.need-build-inputs == 'true')
       uses: actions/cache/restore@v4
       with:
         path: jac/.python-build/jacpython
@@ -164,7 +178,7 @@ runs:
     # main-branch miss self-seeds when the job ends.
     - name: Restore cached LLVMPY shim
       id: shim-cache
-      if: steps.cache.outputs.cache-hit != 'true' || inputs.need-build-inputs == 'true'
+      if: inputs.kit != 'true' && (steps.cache.outputs.cache-hit != 'true' || inputs.need-build-inputs == 'true')
       uses: actions/cache/restore@v4
       with:
         path: jac/jaclang/compiler/backends/native/llvm/libjacllvm.*
@@ -178,7 +192,7 @@ runs:
     # shim miss (a cached shim needs no LLVM at all).
     - name: Restore cached LLVM (jacllvm shim deps)
       id: llvm-cache
-      if: (steps.cache.outputs.cache-hit != 'true' || inputs.need-build-inputs == 'true') && steps.shim-cache.outputs.cache-hit != 'true'
+      if: inputs.kit != 'true' && (steps.cache.outputs.cache-hit != 'true' || inputs.need-build-inputs == 'true') && steps.shim-cache.outputs.cache-hit != 'true'
       uses: actions/cache/restore@v4
       with:
         path: jac/.llvm-build

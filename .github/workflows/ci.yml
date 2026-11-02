@@ -67,7 +67,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       installer: ${{ steps.filter.outputs.installer }}
       native: ${{ steps.filter.outputs.native }}
-      js_engine: ${{ steps.filter.outputs.js_engine }}
+      js_engine: ${{ steps.lanes.outputs.js_engine }}
       pack_smoke: ${{ steps.filter.outputs.pack_smoke }}
       site_journey: ${{ steps.filter.outputs.site_journey }}
     steps:
@@ -142,6 +142,22 @@ jobs:
               - 'jac/jaclang/cli/commands/impl/precompile.impl.jac'
               - '.github/actions/**'
               - 'scripts/ci_cache_keys.sh'
+
+      # Whether the js-engine lane runs. The lane is gated on it, and build-kit
+      # reads it to hand that lane its build inputs.
+      - name: Decide the js-engine lane
+        id: lanes
+        env:
+          EVENT: ${{ github.event_name }}
+          ENGINE_PATHS: ${{ steps.filter.outputs.js_engine }}
+          LABELED: ${{ contains(github.event.pull_request.labels.*.name, 'native:js-engine') }}
+        run: |
+          run=false
+          case "$EVENT" in
+            workflow_dispatch|merge_group) run=true ;;
+            pull_request) if [ "$ENGINE_PATHS" = true ] || [ "$LABELED" = true ]; then run=true; fi ;;
+          esac
+          echo "js_engine=$run" >> "$GITHUB_OUTPUT"
 
   # The kit lane builds this checkout and publishes it for every test lane.
   build-kit:
@@ -323,6 +339,26 @@ jobs:
           name: jac-precompiled
           path: jac/.precompiled-build/jacpython
           include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+
+      # js-engine's own `zig build` runs on this kit's JacPython runtime and
+      # LLVM shim; without them it lowers both again. A tarball, because an
+      # artifact drops the runtime's executable bits.
+      - name: Pack the build inputs for js-engine
+        if: needs.changes.outputs.js_engine == 'true'
+        working-directory: jac
+        run: |
+          set -euo pipefail
+          tar -cf "$RUNNER_TEMP/jac-build-inputs.tar" .python-build/jacpython \
+            jaclang/compiler/backends/native/llvm/libjacllvm.*
+
+      - name: Upload the build inputs for js-engine
+        if: needs.changes.outputs.js_engine == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: jac-build-inputs
+          path: ${{ runner.temp }}/jac-build-inputs.tar
           retention-days: 1
           if-no-files-found: error
 
@@ -1753,7 +1789,7 @@ jobs:
   # with the engine broken. It builds on this run's kit instead of its own.
   js-engine:
     needs: [changes, build-kit]
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && (needs.changes.outputs.js_engine == 'true' || contains(github.event.pull_request.labels.*.name, 'native:js-engine'))) }}
+    if: ${{ needs.changes.outputs.js_engine == 'true' }}
     uses: ./.github/workflows/_js_engine.yml
     with:
       kit: true
