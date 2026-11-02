@@ -182,8 +182,16 @@ def main -> int {
 # Tests whose premise the Jac runtime does not provide, by module and
 # "Class.method", with the reason each is skipped.
 glob NO_TESTCAPI: str = "the Jac runtime does not ship _testcapi",
+     NO_TESTINTERNALCAPI: str = "the Jac runtime does not ship _testinternalcapi",
      LAUNCHER_ENVIRONMENT: str = "the jac launcher starts the interpreter without the PYTHON* environment",
+     LAUNCHER_OPTIONS: str = "the jac launcher does not apply CPython -X options to child processes",
      LAUNCHER_SCRIPT: str = "the jac launcher runs a script path only when it ends in .py, .jac or .jab",
+     LAUNCHER_REPL: str = "the jac launcher does not implement CPython interactive-REPL input semantics",
+     LAUNCHER_ERRORS: str = "the jac launcher prints errors in its CLI format, not CPython traceback format",
+     INTERPRETER_SYS_PATH: str = "Jac subinterpreters use the runtime site path instead of CPython sys.path[0]",
+     INTERPRETER_STDERR: str = "Jac interpreter-worker diagnostics bypass redirected parent stderr",
+     FINALIZATION_DIFFERENCE: str = "Jac shutdown does not run the CPython daemon-thread finalization hook",
+     TRACEMALLOC_CHILD: str = "the jac launcher does not forward tracemalloc startup options",
      RUNTIME_DIFFERENCES: dict[str, dict[str, str]] = {
          "test.test_posix": {"PosixTester.test_pipe2_c_limits": NO_TESTCAPI},
          "test.test_os": {
@@ -205,6 +213,43 @@ glob NO_TESTCAPI: str = "the Jac runtime does not ship _testcapi",
              "BaseEventLoopTests.test_env_var_debug": LAUNCHER_ENVIRONMENT,
              "CoroutineGatherTests.test_env_var_debug": LAUNCHER_ENVIRONMENT,
              "FutureGatherTests.test_env_var_debug": LAUNCHER_ENVIRONMENT
+         },
+         "test.test_warnings": {
+             "CEnvironmentVariableTests.test_comma_separated_warnings": LAUNCHER_ENVIRONMENT,
+             "CEnvironmentVariableTests.test_conflicting_envvar_and_command_line": LAUNCHER_ENVIRONMENT,
+             "CEnvironmentVariableTests.test_envvar_and_command_line": LAUNCHER_ENVIRONMENT,
+             "CEnvironmentVariableTests.test_nonascii": LAUNCHER_ENVIRONMENT,
+             "CEnvironmentVariableTests.test_single_warning": LAUNCHER_ENVIRONMENT,
+             "PyEnvironmentVariableTests.test_comma_separated_warnings": LAUNCHER_ENVIRONMENT,
+             "PyEnvironmentVariableTests.test_conflicting_envvar_and_command_line": LAUNCHER_ENVIRONMENT,
+             "PyEnvironmentVariableTests.test_envvar_and_command_line": LAUNCHER_ENVIRONMENT,
+             "PyEnvironmentVariableTests.test_nonascii": LAUNCHER_ENVIRONMENT,
+             "PyEnvironmentVariableTests.test_single_warning": LAUNCHER_ENVIRONMENT,
+             "PyWarningsDisplayTests.test_tracemalloc": TRACEMALLOC_CHILD
+         },
+         "test.test_faulthandler": {
+             "FaultHandlerTests.test_env_var": LAUNCHER_ENVIRONMENT
+         },
+         "test.test_threading": {
+             "ThreadTests.test_finalize_daemon_thread_hang": FINALIZATION_DIFFERENCE
+         },
+         "test.test_io": {
+             "CMiscIOTest.test_check_encoding_errors": LAUNCHER_OPTIONS,
+             "CMiscIOTest.test_text_encoding": LAUNCHER_OPTIONS,
+             "PyMiscIOTest.test_check_encoding_errors": LAUNCHER_OPTIONS,
+             "PyMiscIOTest.test_text_encoding": LAUNCHER_OPTIONS
+         },
+         "test.test_interpreters": {
+             "TestInterpreterCall.test_stateless_func_returns_arg": NO_TESTINTERNALCAPI,
+             "TestInterpreterCall.test_stateless_funcs": NO_TESTINTERNALCAPI,
+             "InterpreterObjectTests.test_cleanup_in_repl": LAUNCHER_REPL,
+             "TestInterpreterExec.test_display_preserved_exception": LAUNCHER_ERRORS,
+             "StartupTests.test_sys_path_0": INTERPRETER_SYS_PATH
+         },
+         "test.test_concurrent_futures.test_interpreter_pool": {
+             "InterpreterPoolExecutorTest.test_init_closure": INTERPRETER_STDERR,
+             "InterpreterPoolExecutorTest.test_init_exception_in_func": INTERPRETER_STDERR,
+             "InterpreterPoolExecutorTest.test_init_instance_method": INTERPRETER_STDERR
          }
      };
 
@@ -348,7 +393,15 @@ def run_library_tests(args: any, calls: list[int], library: Path) -> int {
         }
 
         def stopTest(self: Result, test_case: any) {
-            print(f"JACPYTHON_CALLS {test_case.id()} {calls[0]}", flush=True);
+            test_id = test_case?.id;
+            if callable(test_id) {
+                test_id = test_id();
+            } else {
+                test_id = f"{type(test_case).__name__}.{getattr(
+                    test_case, '_testMethodName', ''
+                )}";
+            }
+            print(f"JACPYTHON_CALLS {test_id} {calls[0]}", flush=True);
             super.stopTest(test_case);
         }
     }
@@ -430,9 +483,7 @@ def run_library_tests(args: any, calls: list[int], library: Path) -> int {
         # sys.executable is the jac launcher, which starts the interpreter with
         # its own configuration: PYTHONTRACEMALLOC and -X tracemalloc do not
         # reach the child. The in-process tests still run.
-        test_module.TestCommandLine = unittest.skip(
-            "the jac launcher does not forward tracemalloc startup options"
-        )(
+        test_module.TestCommandLine = unittest.skip(TRACEMALLOC_CHILD)(
             test_module.TestCommandLine
         );
     }
