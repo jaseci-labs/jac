@@ -29,13 +29,15 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     for binding in lowering.bindings {
         ir_in.gen.interop_manifest.bindings[binding.name] = binding;
     }
+    later: list[str] = [];
     if here in runtime {
+        later = runtime[runtime.index(here):];
         runtime = runtime[:runtime.index(here)];
     }
     deps = [
         unit
         for unit in runtime + lowered.deps
-        if unit != here
+        if unit != here and unit not in later
     ];
     target = active_host().native_fact(
         FACT_TARGET, self.prog.options.native_target or ""
