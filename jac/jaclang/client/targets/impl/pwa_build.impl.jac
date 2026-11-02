@@ -149,7 +149,7 @@ impl _get_precache_files(dist_dir: Path) -> list[str] {
         return precache_files;
     }
     for f in dist_dir.iterdir() {
-        if f.is_file() and f.suffix in PWA_CACHEABLE_EXTENSIONS {
+        if f.is_file() and f.suffix in PWA_CACHEABLE_EXTENSIONS and f.name != "sw.js" {
             precache_files.append(json.dumps("./" + quote(f.name)));
         }
     }

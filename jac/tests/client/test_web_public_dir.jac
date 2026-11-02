@@ -61,6 +61,16 @@ test "a web build copies public/ into dist, keeping subfolders" {
             assert copied.is_file() , f"public/{rel} is missing from {dist}";
             assert copied.read_text() == text , f"public/{rel} was not copied verbatim";
         }
+        (project_dir / "public" / "robots.txt").write_text("User-agent: bot\n");
+        (project_dir / "public" / "img" / "logo.svg").unlink();
+        dist = build_web(project_dir, entry_path);
+        assert (dist / "robots.txt").read_text() == "User-agent: bot\n" , (
+            "a rebuild over the last build's dist did not refresh public/robots.txt"
+        );
+        assert not (dist / "img").exists() , (
+            "a file deleted from public/ survived the rebuild in dist"
+        );
+        assert (dist / "sitemap.xml").is_file();
     }
 }
 

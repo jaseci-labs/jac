@@ -204,6 +204,26 @@ impl _public_files(public_dir: Path) -> list[tuple[str, Path]] {
 
 impl _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str] {
     import shutil;
+    ledger = dist_dir / ".jac-public-files";
+    try {
+        previous = ledger.read_text().splitlines();
+    } except OSError {
+        previous = [];
+    }
+    dist_root = dist_dir.resolve();
+    for rel in previous {
+        stale = dist_dir / rel;
+        if dist_root not in stale.resolve().parents or not stale.is_file() {
+            continue;
+        }
+        stale.unlink();
+        parent = stale.parent;
+        while parent.resolve() != dist_root and not any(parent.iterdir()) {
+            parent.rmdir();
+            parent = parent.parent;
+        }
+    }
+    ledger.unlink(missing_ok=True);
     planned: dict[str, Path] = {};
     for public_dir in public_dirs {
         for (rel, source) in _public_files(public_dir) {
@@ -242,6 +262,9 @@ impl _copy_public_dirs(public_dirs: list[Path], dist_dir: Path) -> list[str] {
         target = dist_dir / rel;
         target.parent.mkdir(parents=True, exist_ok=True);
         shutil.copy2(source, target);
+    }
+    if planned {
+        ledger.write_text('\n'.join(sorted(planned)));
     }
     return sorted(planned);
 }
