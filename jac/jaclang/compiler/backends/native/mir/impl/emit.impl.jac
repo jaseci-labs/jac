@@ -1056,6 +1056,11 @@ impl MirEmitter.extern_call(
 }
 
 impl MirEmitter.call_declared(b: ir.IRBuilder, callee: ir.Function, instr: MirInstr) -> ir.Value {
+    if len(instr.operands) != len(callee.args) {
+        raise MirEmitError(
+            f"MIR call to {callee.name} passes {len(instr.operands)} arguments; it takes {len(callee.args)}"
+        );
+    }
     passed = [
         self.adapt(b, self.value(v), arg.type)
         for (v, arg) in zip(instr.operands, callee.args)

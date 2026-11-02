@@ -1,4 +1,5 @@
 impl MirLowering.lower -> MirModule {
+    self.adopt_imported_layouts();
     for ab in self.module_abilities() {
         try {
             self.declare(ab);
@@ -188,6 +189,10 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
         if not isinstance(sig, uni.FuncSignature) {
             raise MirRefused(mir_refusal("function", "event ability", ab));
         }
+        abstract = ab.is_abstract and not isinstance(body, (list, tuple));
+        if abstract {
+            body = [];
+        }
         if not isinstance(body, (list, tuple)) {
             raise MirRefused(mir_refusal("function", "expression body", ab));
         }
@@ -215,6 +220,11 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
         }
         self.prepare_cells(ab, list(body));
         self.lower_body(body);
+        if abstract {
+            self.builder().raise_builtin(
+                "NotImplementedError", f"{self.name_of(ab)} is abstract"
+            );
+        }
         if not self.builder().block.terminated() {
             if decl.ret.kind == MirKind.NONE {
                 self.builder().ret(None);
@@ -253,12 +263,7 @@ impl MirLowering.symbol_type(sym: (uni.Symbol | None), site: uni.UniNode) -> Mir
         raise MirRefused(mir_refusal("name", "unresolved", site));
     }
     found = self.prog.get_type_evaluator().get_type_of_symbol(sym);
-    made = self.type_of(found, MirPosition.VALUE, site);
-    import os;
-    if os.environ.get("JAC_MIR_TRACE") and made.kind == MirKind.ANY {
-        print("MIR-ANYSYM", sym.sym_name, type(found).__name__, str(found), site.loc, [ (m.shared.class_name, m.shared.symbol_table.loc.mod_path if m.shared.symbol_table and m.shared.symbol_table.loc else None, mir_type_of(m, MirPosition.VALUE, site).render()) for m in found.types] if isinstance(found, UnionType) else "");
-    }
-    return made;
+    return self.type_of(found, MirPosition.VALUE, site);
 }
 
 impl MirLowering.expr_type(nd: uni.Expr) -> MirType {
@@ -297,6 +302,8 @@ impl MirLowering.lower_stmt(nd: uni.UniNode) {
         self.lower_ctrl(nd);
     } elif isinstance(nd, uni.InForStmt) {
         self.lower_for(nd);
+    } elif isinstance(nd, uni.IterForStmt) {
+        self.lower_iter_for(nd);
     } elif isinstance(nd, uni.DeleteStmt) {
         self.lower_delete(nd);
     } elif isinstance(nd, uni.TryStmt) {
@@ -503,6 +510,36 @@ impl MirLowering.lower_while(nd: uni.WhileStmt) {
     if not self.builder().block.terminated() {
         self.builder().branch(head);
     }
+    self.builder().position(otherwise);
+    self.lower_else(nd.else_body, after);
+    self.builder().position(after);
+}
+
+impl MirLowering.lower_iter_for(nd: uni.IterForStmt) {
+    if nd.is_async {
+        raise MirRefused(mir_refusal("statement", "async for", nd));
+    }
+    fn = self.st().fn;
+    self.lower_assignment(nd.iter);
+    head = fn.new_block("iterfor.head");
+    body = fn.new_block("iterfor.body");
+    step = fn.new_block("iterfor.step");
+    otherwise = fn.new_block("iterfor.else");
+    after = fn.new_block("iterfor.exit");
+    self.builder().branch(head);
+    self.builder().position(head);
+    cond = self.truthy(self.lower_expr(nd.condition), nd.condition);
+    self.builder().cond_branch(cond, body, otherwise);
+    self.builder().position(body);
+    self.st().loops.append(MirLoopTarget(head=step, after=after));
+    self.lower_body(nd.body);
+    self.st().loops.pop();
+    if not self.builder().block.terminated() {
+        self.builder().branch(step);
+    }
+    self.builder().position(step);
+    self.lower_assignment(nd.count_by);
+    self.builder().branch(head);
     self.builder().position(otherwise);
     self.lower_else(nd.else_body, after);
     self.builder().position(after);
@@ -917,6 +954,9 @@ impl MirLowering.lower_unary(nd: uni.UnaryExpr) -> MirValue {
         return b.logical_not(self.truthy(self.lower_expr(nd.operand), nd.operand));
     }
     value = self.lower_expr(nd.operand);
+    if op == Tok.BW_AND and mir_holds_ref(value.type) {
+        return value;
+    }
     if not value.type.is_numeric() {
         raise MirRefused(
             mir_refusal("unary operator", f"{op} on {value.type.render()}", nd)
@@ -984,6 +1024,15 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         return self.generic_call(nd, callee, None, None);
     }
     decl = self.decls.get(id(callee)) if callee is not None else None;
+    if decl is not None
+        and decl.self_type is not None
+        and isinstance(nd.target, uni.AtomTrailer)
+        and nd.target.is_attr {
+        via_method = self.method_call(nd, nd.target);
+        if via_method is not None {
+            return via_method;
+        }
+    }
     if decl is not None {
         args: list[MirValue] = [];
         params = self.bound_args(nd, decl.ability, decl.self_type is not None);
@@ -1011,6 +1060,15 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     }
     if isinstance(callee, uni.Archetype) {
         return self.object_call(nd, callee);
+    }
+    if callee is None
+        and isinstance(nd.target, uni.Expr)
+        and isinstance(nd.target.type, ClassType)
+        and not nd.target.type.is_instance() {
+        constructed = self.arch_of_type(nd.target.type);
+        if constructed is not None {
+            return self.object_call(nd, constructed);
+        }
     }
     if isinstance(callee, uni.Ability) and clib_import_of(callee) is not None {
         return self.c_call(nd, callee);
@@ -1138,9 +1196,59 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
     if value.type.is_numeric() and to.is_numeric() {
         return self.builder().convert(value, to);
     }
+    if value.type.kind == MirKind.OBJ
+        and to.kind == MirKind.OBJ
+        and self.obj_extends(value.type.name, to.name) {
+        return self.builder().ref_cast(value, to, False);
+    }
     raise MirRefused(
         mir_refusal("conversion", f"{value.type.render()} to {to.render()}", site)
     );
+}
+
+impl MirLowering.adopt_imported_layouts {
+    merged: set[int] = {id(self.module)};
+    evaluator = self.prog.get_type_evaluator();
+    for arch in self.module_archetypes() {
+        sym = arch.name.sym if arch.name is not None else None;
+        made = evaluator.get_type_of_symbol(sym) if sym is not None else None;
+        if not isinstance(made, ClassType) or made._shared is None {
+            continue;
+        }
+        for ancestor in made.shared.mro {
+            scope = ancestor.shared.symbol_table if ancestor._shared is not None else None;
+            if not isinstance(scope, uni.Archetype) {
+                continue;
+            }
+            owner = scope.find_parent_of_type(uni.Module);
+            if owner is None or id(owner) in merged or not owner.loc.mod_path.endswith(".jac") {
+                continue;
+            }
+            merged.add(id(owner));
+            merge_imported_layouts(self.module, owner, self.prog);
+        }
+    }
+    if len(merged) > 1 {
+        adopt_imported_bases(self.module);
+    }
+}
+
+impl MirLowering.obj_extends(child: str, base: str) -> bool {
+    arch = self.archetypes.get(child);
+    if arch is None {
+        return False;
+    }
+    owner = arch.find_parent_of_type(uni.Module) or self.module;
+    layout = get_layout_registry(owner, self.prog).get_layout(child);
+    if layout is not None and base in list(layout.mro) {
+        return True;
+    }
+    sym = arch.name.sym if arch.name is not None else None;
+    made = self.prog.get_type_evaluator().get_type_of_symbol(sym) if sym is not None else None;
+    if not isinstance(made, ClassType) or made._shared is None {
+        return False;
+    }
+    return any(class_type_native_name(ancestor) == base for ancestor in made.shared.mro);
 }
 
 impl MirLowering.unify_numeric(
@@ -1231,9 +1339,7 @@ impl MirLowering.ensure_objects(t: (TypeBase | None)) {
         return;
     }
     name = class_type_native_name(t);
-    if name and name not in self.mir.objects and not (
-        scope.loc is not None and scope.loc.mod_path.endswith(".pyi") and name == t.shared.class_name
-    ) {
+    if name and name not in self.mir.objects and not stub_archetype(scope) {
         self.object_def(scope);
     }
 }
@@ -1402,6 +1508,9 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
     textual = self.text_builtin(nd, name);
     if textual is not None {
         return textual;
+    }
+    if any(isinstance(arg, uni.KWPair) for arg in list(nd.params or [])) {
+        return None;
     }
     args = self.call_args(nd);
     if name == "len" and len(args) == 1 {

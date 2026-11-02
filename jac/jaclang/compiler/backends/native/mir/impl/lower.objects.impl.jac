@@ -14,16 +14,11 @@ impl MirLowering.arch_of_type(t: (TypeBase | None)) -> (uni.Archetype | None) {
     }
     scope = t.shared.symbol_table;
     if not isinstance(scope, uni.Archetype)
-        or c_builtin_kind(t) is not None
+        or c_builtin_kind(t)
         or foreign_struct_of_type(t) is not None {
         return None;
     }
-    if scope.loc is not None
-        and scope.loc.mod_path.endswith(".pyi")
-        and class_type_native_name(t) == t.shared.class_name {
-        return None;
-    }
-    return scope;
+    return None if stub_archetype(scope) else scope;
 }
 
 impl MirLowering.object_type(arch: uni.Archetype) -> MirType {
@@ -68,11 +63,12 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
     self.mir.objects[name] = made;
     self.archetypes[name] = arch;
     for member in layout.fields {
-        self.ensure_objects(member.semantic_type);
+        field_type = member.semantic_type or self.declared_field_type(member.decl_node);
+        self.ensure_objects(field_type);
         made.fields.append(
             MirObjectField(
                 name=member.name,
-                type=mir_type_of(member.semantic_type, MirPosition.FIELD, member.decl_node or arch),
+                type=mir_type_of(field_type, MirPosition.FIELD, member.decl_node or arch),
                 index=member.index
             )
         );
@@ -84,19 +80,29 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
         );
         for slot in layout.methods {
             owner_arch = self.archetypes.get(slot.owner);
+            if owner_arch is not None {
+                made.vtable_methods.append(self.method_symbol(owner_arch, slot.name));
+                continue;
+            }
+            owner_layout = get_layout_registry(owner, self.prog).get_layout(slot.owner);
+            owner_path = owner_layout.decl_mod
+                if owner_layout is not None and owner_layout.decl_mod
+                else owner.loc.mod_path;
             made.vtable_methods.append(
-                self.method_symbol(owner_arch, slot.name)
-                    if owner_arch is not None
-                    else native_symbol_name(prefix, f"{slot.owner}.{slot.name}")
+                native_symbol_name(
+                    native_unit_prefix(owner_path),
+                    native_unit_spelling(f"{slot.owner}.{slot.name}", owner_path)
+                )
             );
         }
         for ancestor in layout.mro {
             ancestor_layout = get_layout_registry(owner, self.prog).get_layout(ancestor);
             if ancestor_layout is not None and ancestor_layout.has_vtable {
+                ancestor_path = ancestor_layout.decl_mod or owner.loc.mod_path;
                 made.ancestry.append(
                     native_symbol_name(
-                        native_unit_prefix(ancestor_layout.decl_mod or owner.loc.mod_path),
-                        f"{ancestor}.__vtable"
+                        native_unit_prefix(ancestor_path),
+                        native_unit_spelling(f"{ancestor}.__vtable", ancestor_path)
                     )
                 );
             }
@@ -106,8 +112,19 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
         self.mir.externs[made.drop_symbol] = MirExtern(
             symbol=made.drop_symbol, ret=mir_none(), params=[mir_c_ptr(mir_int(8, False))]
         );
+        unit = os.path.realpath(owner.loc.mod_path);
+        if unit not in self.mir.deps {
+            self.mir.deps.append(unit);
+        }
     }
     return made;
+}
+
+impl MirLowering.declared_field_type(decl: (uni.UniNode | None)) -> (TypeBase | None) {
+    if not isinstance(decl, uni.HasVar) or decl.name.sym is None {
+        return None;
+    }
+    return self.prog.get_type_evaluator().get_type_of_symbol(decl.name.sym);
 }
 
 impl MirLowering.arch_methods(arch: uni.Archetype) -> list[uni.Ability] {
@@ -121,14 +138,7 @@ impl MirLowering.arch_methods(arch: uni.Archetype) -> list[uni.Ability] {
 }
 
 impl MirLowering.find_method(arch: uni.Archetype, name: str) -> (uni.Ability | None) {
-    owner = arch.find_parent_of_type(uni.Module) or self.module;
-    layout = get_layout_registry(owner, self.prog).get_layout(archetype_native_name(arch));
-    lineage = list(layout.mro) if layout is not None else [archetype_native_name(arch)];
-    for ancestor in lineage {
-        holder = self.archetypes.get(ancestor) if ancestor != archetype_native_name(arch) else arch;
-        if holder is None {
-            continue;
-        }
+    for holder in self.lineage(arch) {
         for method in self.arch_methods(holder) {
             if self.name_of(method) == name {
                 return method;
@@ -138,12 +148,72 @@ impl MirLowering.find_method(arch: uni.Archetype, name: str) -> (uni.Ability | N
     return None;
 }
 
+impl MirLowering.lineage(arch: uni.Archetype) -> list[uni.Archetype] {
+    sym = arch.name.sym if arch.name is not None else None;
+    made = self.prog.get_type_evaluator().get_type_of_symbol(sym) if sym is not None else None;
+    if isinstance(made, ClassType) and made._shared is not None {
+        found: list[uni.Archetype] = [];
+        for ancestor in made.shared.mro {
+            scope = ancestor.shared.symbol_table if ancestor._shared is not None else None;
+            if isinstance(scope, uni.Archetype) and not stub_archetype(scope) and scope not in found {
+                found.append(scope);
+            }
+        }
+        if found {
+            return found;
+        }
+    }
+    owner = arch.find_parent_of_type(uni.Module) or self.module;
+    layout = get_layout_registry(owner, self.prog).get_layout(archetype_native_name(arch));
+    found = [arch];
+    for ancestor in list(layout.mro)[1:] if layout is not None else [] {
+        holder = self.archetypes.get(ancestor);
+        if holder is not None {
+            found.append(holder);
+        }
+    }
+    return found;
+}
+
 impl MirLowering.method_symbol(arch: uni.Archetype, name: str) -> str {
     owner = arch.find_parent_of_type(uni.Module) or self.module;
     return native_symbol_name(
         native_unit_prefix(owner.loc.mod_path),
         native_unit_spelling(f"{archetype_native_name(arch)}.{name}", owner.loc.mod_path)
     );
+}
+
+impl MirLowering.foreign_method_decl(method: uni.Ability) -> (MirDecl | None) {
+    owner = method.parent if isinstance(method.parent, uni.Archetype) else method.find_parent_of_type(uni.Archetype);
+    unit = method.find_parent_of_type(uni.Module);
+    sig = method.signature;
+    if owner is None
+        or unit is None
+        or unit is self.module
+        or not unit.loc.mod_path.endswith(".jac")
+        or not isinstance(sig, uni.FuncSignature)
+        or method.is_static
+        or self.is_template(method) {
+        return None;
+    }
+    self_type = self.object_type(owner);
+    params = [self.symbol_type(pv.name.sym, pv) for pv in self.param_nodes(sig, True)];
+    fn_type = self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(method));
+    ret = mir_none();
+    if isinstance(fn_type, FunctionType) {
+        ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, method);
+    }
+    symbol = self.method_symbol(owner, self.name_of(method));
+    self.mir.externs[symbol] = MirExtern(symbol=symbol, ret=ret, params=[self_type] + params);
+    path = os.path.realpath(unit.loc.mod_path);
+    if path not in self.mir.deps {
+        self.mir.deps.append(path);
+    }
+    made = MirDecl(
+        ability=method, symbol=symbol, params=params, ret=ret, self_type=self_type, owner=owner
+    );
+    self.decls[id(method)] = made;
+    return made;
 }
 
 impl MirLowering.declare_archetype(arch: uni.Archetype) {
@@ -434,9 +504,15 @@ impl MirLowering.object_method(
     if id(method) in self.templates {
         return self.generic_call(nd, method, receiver, arch);
     }
-    decl = self.decls.get(id(method));
+    decl = self.decls.get(id(method)) or self.foreign_method_decl(method);
     if decl is None {
         raise MirRefused(mir_refusal("method", f"{archetype_native_name(arch)}.{name}", nd));
+    }
+    if decl.self_type is not None and receiver.type is not decl.self_type {
+        receiver = self.builder().ref_cast(receiver, decl.self_type, False)
+            if receiver.type.kind == MirKind.OBJ
+            and self.obj_extends(archetype_native_name(arch), decl.self_type.name)
+            else self.coerce(receiver, decl.self_type, nd);
     }
     args = self.bound_args(nd, method, True);
     if len(args) != len(decl.params) {

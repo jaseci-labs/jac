@@ -280,6 +280,7 @@ obj MirLowering {
     def lower_return(nd: uni.ReturnStmt);
     def lower_if(nd: (uni.IfStmt | uni.ElseIf));
     def lower_else(nd: (uni.ElseStmt | uni.ElseIf | None), done: MirBlock);
+    def lower_iter_for(nd: uni.IterForStmt);
     def lower_while(nd: uni.WhileStmt);
     def lower_ctrl(nd: uni.CtrlStmt);
     def lower_for(nd: uni.InForStmt);
@@ -301,6 +302,8 @@ obj MirLowering {
     def lower_bool(nd: uni.BoolExpr) -> MirValue;
     def lower_call(nd: uni.FuncCall) -> MirValue;
     def truthy(value: MirValue, site: uni.UniNode) -> MirValue;
+    def adopt_imported_layouts;
+    def obj_extends(child: str, base: str) -> bool;
     def coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
     def unify_numeric(
         left: MirValue, right: MirValue, site: uni.UniNode
@@ -370,9 +373,12 @@ obj MirLowering {
     def arch_of_type(t: (TypeBase | None)) -> (uni.Archetype | None);
     def object_def(arch: uni.Archetype) -> MirObjectDef;
     def object_type(arch: uni.Archetype) -> MirType;
+    def declared_field_type(decl: (uni.UniNode | None)) -> (TypeBase | None);
     def arch_methods(arch: uni.Archetype) -> list[uni.Ability];
+    def lineage(arch: uni.Archetype) -> list[uni.Archetype];
     def find_method(arch: uni.Archetype, name: str) -> (uni.Ability | None);
     def method_symbol(arch: uni.Archetype, name: str) -> str;
+    def foreign_method_decl(method: uni.Ability) -> (MirDecl | None);
     def declare_archetype(arch: uni.Archetype);
     def lower_constructor(arch: uni.Archetype) -> (MirFunction | None);
     def lower_drop(obj_def: MirObjectDef) -> MirFunction;

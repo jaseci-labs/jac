@@ -55,3 +55,7 @@ def mir_class_type(
 ) -> MirType;
 
 def mir_spec_type(spec: str) -> MirType;
+
+"""A class declared in a typeshed stub: it has no Jac layout, so it is never
+a native object."""
+def stub_archetype(scope: uni.Archetype) -> bool;

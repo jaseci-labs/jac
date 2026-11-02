@@ -2344,7 +2344,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E5092",
          Category.CODEGEN,
          "Native lowering failed for {kind} '{name}'",
-         help="The construct is within the native capability set, but this specific shape (its types, values, or runtime bindings) could not be lowered by NaIRGenPass. Adjust the shape, add type annotations, or move the code to a non-native context. Statically-known unsupported constructs are reported as E5090 by the capability check instead."
+         help="The construct is within the native capability set, but this specific shape (its types, values, or runtime bindings) could not be lowered to native code. Adjust the shape, add type annotations, or move the code to a non-native context. Statically-known unsupported constructs are reported as E5090 by the capability check instead."
      ),
      E5096 = _err(
          "E5096",

@@ -1731,3 +1731,35 @@ impl class_form_enum_member(
     }
     return None;
 }
+
+impl merge_imported_layouts(consumer: Module, imported: Module, prog: JacProgram) {
+    imp_reg = get_layout_registry(imported, prog);
+    cons_reg = get_layout_registry(consumer, prog);
+    owned = set(imp_reg.local_names) - set(cons_reg.local_names);
+    for (name, parents) in imp_reg.class_parents.items() {
+        if name in owned
+            or name not in cons_reg.class_parents
+            or (name in imp_reg.layouts and name not in cons_reg.layouts) {
+            cons_reg.class_parents[name] = parents;
+        }
+    }
+    for (name, pmods) in imp_reg.parent_mods.items() {
+        if name in owned or name not in cons_reg.parent_mods {
+            cons_reg.parent_mods[name] = pmods;
+        }
+    }
+    for (name, mro) in imp_reg.mro_order.items() {
+        have = cons_reg.mro_order.get(name);
+        if name in owned
+            or have is None
+            or (name in imp_reg.layouts and name not in cons_reg.layouts)
+            or len(mro) > len(have) {
+            cons_reg.set_mro(name, mro);
+        }
+    }
+    for (name, lay) in imp_reg.layouts.items() {
+        if name in owned or name not in cons_reg.layouts {
+            cons_reg.layouts[name] = lay;
+        }
+    }
+}

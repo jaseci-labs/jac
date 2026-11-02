@@ -1717,36 +1717,7 @@ impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None
 }
 
 impl NaIRGenPass._register_imported_hierarchy(imported_mod: uni.Module) -> None {
-    _imp_reg = get_layout_registry(imported_mod, self.prog);
-    _cons_reg = get_layout_registry(self.module, self.prog);
-    _owned = set(_imp_reg.local_names) - set(_cons_reg.local_names);
-    for (_name, _parents) in _imp_reg.class_parents.items() {
-        if _name in _owned
-            or _name not in _cons_reg.class_parents
-            or (_name in _imp_reg.layouts and _name not in _cons_reg.layouts) {
-            _cons_reg.class_parents[_name] = _parents;
-        }
-    }
-    for (_name, _pmods) in _imp_reg.parent_mods.items() {
-        if _name in _owned or _name not in _cons_reg.parent_mods {
-            _cons_reg.parent_mods[_name] = _pmods;
-        }
-    }
-    for (_name, _mro) in _imp_reg.mro_order.items() {
-        _have = _cons_reg.mro_order.get(_name);
-        if _name in _owned
-            or _have is None
-            or (_name in _imp_reg.layouts and _name not in _cons_reg.layouts)
-            or len(_mro) > len(_have) {
-            _cons_reg.set_mro(_name, _mro);
-        }
-    }
-    for (_name, _lay) in _imp_reg.layouts.items() {
-        if _name in _owned or _name not in _cons_reg.layouts {
-            _cons_reg.layouts[_name] = _lay;
-        }
-    }
-
+    merge_imported_layouts(self.module, imported_mod, self.prog);
     for stmt in ModuleFacts.iter_context_stmts(imported_mod) {
         if (
             isinstance(stmt, uni.ContextAwareNode)

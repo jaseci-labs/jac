@@ -44,13 +44,20 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
 }
 
 impl MirNativePass.report_refusals(lowering: MirLowering) {
+    here = os.path.realpath(lowering.module.loc.mod_path);
     for (name, refusals) in lowering.refusals.items() {
         for refusal in refusals {
+            site = refusal.site;
+            shown = refusal.name;
+            if site is not None and os.path.realpath(site.loc.mod_path) != here {
+                shown = f"{refusal.name} (at {site.loc.mod_path}:{site.loc.first_line}, reached from {name})";
+                site = None;
+            }
             self.ctx.emit(
                 E5092,
-                node_override=refusal.site or self.module,
+                node_override=site or lowering.module,
                 kind=refusal.kind,
-                name=refusal.name,
+                name=shown,
                 help_text=refusal.help
             );
         }

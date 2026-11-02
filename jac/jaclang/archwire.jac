@@ -85,12 +85,14 @@ graph import {
     compiler.passes.layout_pass ++> compiler.backends.native.mir.lower {
             NON_DISPATCHED_METHODS,
             VTABLE_HEADER_SLOTS,
+            adopt_imported_bases,
             archetype_native_name,
             class_type_native_name,
             enum_decl_of,
             get_layout_registry,
             is_enum_class_type,
             layout_slot_count,
+            merge_imported_layouts,
             native_type_key
         }
     compiler.passes.layout_pass ++> compiler.backends.native.mir.lower_types {
@@ -169,7 +171,8 @@ graph import {
         mir_refusal,
         mir_spec_type,
         mir_type_of,
-        refusal_of
+        refusal_of,
+        stub_archetype
     }
     compiler.backends.native.mir.types ++> compiler.backends.native.mir.emit { MirKind, MirType, mir_c_ptr, mir_holds_ref, mir_int, mir_is_container }
     compiler.backends.native.mir.types ++> compiler.backends.native.mir.generators {
@@ -10507,7 +10510,7 @@ graph import compiler {
             class_type_native_name
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._register_imported_hierarchy {
-            get_layout_registry
+            merge_imported_layouts
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._register_imported_struct_types {
             adopt_imported_bases

@@ -5,11 +5,6 @@ impl mir_refusal(
     help: (str | None) = None,
     code: str = "E5092"
 ) -> NativeRefusal {
-    import os;
-    if os.environ.get("JAC_MIR_TRACE") {
-        import traceback;
-        print("MIR-REFUSAL", kind, name, "".join(traceback.format_stack(limit=8)[:-1]));
-    }
     return NativeRefusal(kind=kind, name=name, site=site, help=help, code=code);
 }
 
@@ -170,10 +165,9 @@ impl mir_class_type(
     }
     name = t.shared.class_name;
     scope = t.shared.symbol_table;
-    if isinstance(scope, uni.Archetype) {
+    if isinstance(scope, uni.Archetype) and not stub_archetype(scope) {
         native = class_type_native_name(t);
-        stub = scope.loc is not None and scope.loc.mod_path.endswith(".pyi");
-        if native and not (stub and native == name) {
+        if native {
             return mir_obj(native);
         }
     }
@@ -250,7 +244,7 @@ impl mir_class_type(
         }
         return mir_dict(element_types[0], element_types[1]);
     }
-    if name == "str" {
+    if name in ("str", "LiteralString") {
         if position in (MirPosition.VALUE, MirPosition.SIGNATURE) {
             return mir_str();
         }
@@ -286,4 +280,8 @@ impl mir_spec_type(spec: str) -> MirType {
         return mir_int(int(spec[1:]), True, True);
     }
     raise MirRefused(mir_refusal("intrinsic operand", spec));
+}
+
+impl stub_archetype(scope: uni.Archetype) -> bool {
+    return scope.loc is not None and scope.loc.mod_path.endswith(".pyi");
 }
