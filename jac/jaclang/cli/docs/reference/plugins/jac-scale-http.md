@@ -1259,24 +1259,32 @@ A header value with a line break (the recipient, subject, `reply_to` or an attac
 `send_email` also takes `headers`, a dict of extra mail headers. Use it for headers such as `List-Unsubscribe`, which mail providers read to show their one-click unsubscribe button (RFC 8058):
 
 ```jac
-emailer.send_email(
-    to_addr="reader@example.com",
-    subject="Your weekly digest",
-    body_text=text,
-    body_html=html,
-    headers={
-        "List-Unsubscribe": f"<https://app.example/unsubscribe?t={token}>",
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
-    }
-);
+import from jaclang.scale.emailer.emailer { Emailer }
+
+def send_digest(emailer: Emailer, text: str, html: str, token: str) -> bool {
+    return emailer.send_email(
+        to_addr="reader@example.com",
+        subject="Your weekly digest",
+        body_text=text,
+        body_html=html,
+        headers={
+            "List-Unsubscribe": f"<https://app.example/unsubscribe?t={token}>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+        }
+    );
+}
 ```
 
-The SMTP emailer keeps a long URL intact on the wire: it folds a header at its spaces and never encodes an ASCII value to make it fit.
+The SMTP emailer keeps a long URL intact on the wire: it folds a header at its spaces, keeping them as given, and never encodes an ASCII value to make it fit.
 
 `send_email` returns `False`, as for any failed send, when a header:
 
 - sets something `send_email` owns: `From`, `To`, `Cc`, `Bcc`, `Subject`, `Reply-To`, `Sender`, `MIME-Version`, or any `Content-*` or `Resent-*` header
-- has an invalid name, or a line break in its value
+- sets something the mail system adds: `Return-Path`, `Received`, `DKIM-Signature`, `Authentication-Results`, or any `ARC-*` header
+- has an invalid name, or isn't text
+- repeats a name, ignoring case
+- has a line break or control character in its value
+- has a value invalid for that header, such as an unparseable `Date`
 - has a single word too long for one mail line (998 characters, counting the name)
 
 The button also needs two things outside `send_email`. Your mail relay must sign the message with DKIM and include both headers in the signature. Your app must answer the POST that the provider sends to the URL, with `List-Unsubscribe=One-Click` as the body and no login or cookies.
@@ -1376,7 +1384,7 @@ Use this when you want SendGrid's REST API instead of SMTP (better deliverabilit
 # myapp/email.py
 from jaclang.scale.emailer.emailer import Emailer
 from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
+from sendgrid.helpers.mail import Header, Mail
 import os, logging
 
 logger = logging.getLogger(__name__)
@@ -1391,6 +1399,11 @@ class SendGridEmailer(Emailer):
         if self._client is None:
             logger.warning("SendGrid client not configured; dropping email to %s", to_addr)
             return False
+        try:
+            extra_headers = self.checked_headers(headers)
+        except ValueError as e:
+            logger.error("SendGrid send refused: %s", e)
+            return False
         msg = Mail(
             from_email=from_addr or self.from_address,
             to_emails=to_addr,
@@ -1398,6 +1411,8 @@ class SendGridEmailer(Emailer):
             plain_text_content=body_text,
             html_content=body_html,
         )
+        for name, value in extra_headers.items():
+            msg.add_header(Header(name, value))
         try:
             resp = self._client.send(msg)
             return 200 <= resp.status_code < 300

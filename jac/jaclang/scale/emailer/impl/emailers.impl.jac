@@ -1,15 +1,29 @@
 impl AsciiFoldingPolicy.fold(self: AsciiFoldingPolicy, name: str, value: str) -> str {
-    folded = super.fold(name, value);
+    return self._refolded(name, value, super.fold(name, value));
+}
+
+impl AsciiFoldingPolicy.fold_binary(
+    self: AsciiFoldingPolicy, name: str, value: str
+) -> bytes {
+    folded = super.fold_binary(name, value).decode('ascii', 'surrogateescape');
+    return self._refolded(name, value, folded).encode('ascii', 'surrogateescape');
+}
+
+impl AsciiFoldingPolicy._refolded(
+    self: AsciiFoldingPolicy, name: str, value: str, folded: str
+) -> str {
     text = str(value);
-    if '=?' not in folded or '=?' in text or not text.isascii() {
+    if not ENCODED_WORD.search(folded)
+        or ENCODED_WORD.search(text)
+        or not text.isascii() {
         return folded;
     }
     lines = [f"{name}:"];
-    for word in text.split() {
-        if len(lines[-1]) + 1 + len(word) <= self.max_line_length {
-            lines[-1] += f" {word}";
+    for piece in FOLD_PIECE.findall(f" {text}") {
+        if len(lines[-1]) + len(piece) <= self.max_line_length {
+            lines[-1] += piece;
         } else {
-            lines.append(f" {word}");
+            lines.append(piece);
         }
     }
     if max([len(line) for line in lines]) > MAX_HEADER_LINE {

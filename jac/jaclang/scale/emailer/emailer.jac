@@ -1,3 +1,5 @@
+import from email { policy as email_policy }
+
 glob DEFAULT_MEDIA_TYPE: str = 'application/octet-stream',
      MEDIA_TYPE_CHARS: str = "!#$%&'*+-.^_`{|}~",
      RESERVED_HEADERS: tuple[str, ...] = (
@@ -8,9 +10,13 @@ glob DEFAULT_MEDIA_TYPE: str = 'application/octet-stream',
          'subject',
          'reply-to',
          'sender',
-         'mime-version'
+         'mime-version',
+         'return-path',
+         'received',
+         'dkim-signature',
+         'authentication-results'
      ),
-     RESERVED_HEADER_PREFIXES: tuple[str, ...] = ('content-', 'resent-'),
+     RESERVED_HEADER_PREFIXES: tuple[str, ...] = ('content-', 'resent-', 'arc-'),
      MAX_HEADER_LINE: int = 998;
 
 obj EmailAttachment {

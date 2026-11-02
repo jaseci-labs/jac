@@ -207,21 +207,31 @@ test "smtp_custom_header_reaches_the_wire_unencoded_at_any_length" {
         "X-Short": "<https://app.example/unsubscribe?t=abc>",
         "List-Unsubscribe": long_url,
         "X-Url-And-Mailto": f"<mailto:u@app.example?subject=unsub>, {long_url}",
-        "Message-ID": f"<{'m' * 120}@app.example>"
+        "Message-ID": f"<{'m' * 120}@app.example>",
+        "X-Padded-Token": f"<https://app.example/u/{'k' * 80}==?list=weekly>",
+        "X-Spaced": f"keep   these\truns {'x' * 90}"
     };
     subject = "Résumé " * 40;
-    raw = _unreachable_smtp()._build_message(
+    built = _unreachable_smtp()._build_message(
         "noreply@example.com", "user@x.y", subject, "body", None, None, [], cases
-    ).as_string();
+    );
+    raw = built.as_string();
     head = raw.split("\n\n")[0];
-    unfolded = head.replace("\n ", " ");
+    unfolded = head.replace("\n", "");
+    binary_unfolded = built.as_bytes().split(b"\n\n")[0].replace(b"\n", b"");
     for (name, value) in cases.items() {
         assert f"{name}: {value}" in unfolded , name;
+        assert f"{name}: {value}".encode() in binary_unfolded , name;
     }
+    long_subject = f"foo   bar\tbaz {'x' * 90}";
+    plain_raw = _unreachable_smtp()._build_message(
+        "noreply@example.com", "user@x.y", long_subject, "body", None, None, []
+    ).as_string();
+    assert f"Subject: {long_subject}" in plain_raw.split("\n\n")[0].replace("\n", "");
     encoded_lines = [
         line
         for line in head.splitlines()
-        if "=?" in line
+        if "=?utf-8?" in line
     ];
     assert encoded_lines and max([len(line) for line in encoded_lines]) <= 78;
     assert all([not any([name in line for name in cases]) for line in encoded_lines]);
@@ -253,41 +263,59 @@ test "smtp_custom_header_cannot_take_over_the_message_and_bad_ones_are_refused" 
         "Content-Transfer-Encoding": "base64",
         "content-disposition": "attachment",
         "Resent-From": "evil@x.y",
+        "Return-Path": "<evil@x.y>",
+        "Received": "from x",
+        "DKIM-Signature": "v=1",
+        "Authentication-Results": "x; dkim=pass",
+        "ARC-Seal": "i=1",
         "": "empty name",
         "From ": "stray space",
         "X-A: v": "colon in name",
         "X-Naïve": "not ascii",
         "X-A\r\nBcc": "evil@x.y",
         "X-Break": "v\r\nBcc: evil@x.y",
+        "X-Trailing-Break": "v\n",
+        "X-Nul": "a\x00b",
+        "X-Form-Feed": "a\x0cb",
+        "X-Del": "a\x7fb",
+        "X-Unicode-Break": "a b",
+        "Date": "not a date",
+        "Message-ID": "no brackets here",
         "X-Too-Long": "<" + "t" * 998 + ">"
     };
-    for (name, value) in refused.items() {
+    bad_sets: list[dict[str, any]] = [
+        {name: value} for (name, value) in refused.items()
+    ];
+    bad_sets += [
+        {"List-Unsubscribe": "<a>", "list-unsubscribe": "<b>"},
+        {"X-Count": 1},
+        {"X-None": None}
+    ];
+    for bad in bad_sets {
         emailer = _unreachable_smtp();
         raised = False;
         try {
-            emailer.checked_headers({name: value});
+            emailer.checked_headers(bad);
         } except ValueError {
             raised = True;
         }
-        assert raised , name;
+        assert raised , bad;
         raised = False;
         try {
             emailer._build_message(
-                "noreply@example.com",
-                "user@x.y",
-                "Hi",
-                "body",
-                None,
-                None,
-                [],
-                {name: value}
+                "noreply@example.com", "user@x.y", "Hi", "body", None, None, [], bad
             );
         } except ValueError {
             raised = True;
         }
-        assert raised , name;
+        assert raised , bad;
     }
-    fine = {"Date": "Thu, 01 Jan 2026 00:00:00 +0000", "X-Tag": "weekly"};
+    fine = {
+        "Date": "Thu, 01 Jan 2026 00:00:00 +0000",
+        "Message-ID": "<a@b.c>",
+        "X-Tag": "weekly\ttab",
+        "X-Empty": ""
+    };
     assert _RecordingEmailer().checked_headers(fine) == fine;
     assert _RecordingEmailer().checked_headers(None) == {};
 }
