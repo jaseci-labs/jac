@@ -1590,6 +1590,14 @@ impl MirLowering.refusal_key(decl: MirDecl) -> str {
     return label;
 }
 
+impl MirLowering.member_owner(member: uni.Name) -> (uni.Archetype | None) {
+    sym = member.sym;
+    if sym is None or sym.decl is None {
+        return None;
+    }
+    return sym.decl.find_parent_of_type(uni.Archetype);
+}
+
 impl MirLowering.accessor_of(
     nd: uni.AtomTrailer, kind: str
 ) -> (tuple[uni.Archetype, MirDecl] | None) {

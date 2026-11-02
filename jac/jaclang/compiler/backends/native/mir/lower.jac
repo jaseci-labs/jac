@@ -163,7 +163,12 @@ glob TEXT_CASES: dict[str, int] = {
          "iso8859-1": 2,
          "l1": 2
      },
-     TEXT_ERRORS: dict[str, int] = {"strict": 0, "replace": 1, "ignore": 2},
+     TEXT_ERRORS: dict[str, int] = {
+         "strict": 0,
+         "replace": 1,
+         "ignore": 2,
+         "surrogatepass": 3
+     },
      TEXT_BUILTINS: list[str] = [
          "str",
          "len",
@@ -486,6 +491,7 @@ obj MirLowering {
     def declare_accessors(arch: uni.Archetype, self_type: MirType);
     def decl_label(decl: MirDecl) -> str;
     def refusal_key(decl: MirDecl) -> str;
+    def member_owner(member: uni.Name) -> (uni.Archetype | None);
     def accessor_of(
         nd: uni.AtomTrailer, kind: str
     ) -> (tuple[uni.Archetype, MirDecl] | None);
