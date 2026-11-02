@@ -419,6 +419,9 @@ obj MirLowering {
     def class_value_call(nd: uni.FuncCall, bound: uni.Archetype) -> MirValue;
     def class_bound(t: (TypeBase | None)) -> (uni.Archetype | None);
     def nearest_has_var(arch: uni.Archetype, name: str) -> (uni.HasVar | None);
+    def default_thunk(expr: uni.Expr) -> (tuple[uni.Archetype, str, MirType] | None);
+    def default_value(expr: uni.Expr, to: MirType) -> MirValue;
+    def default_thunks(arch: uni.Archetype) -> list[MirFunction];
     def class_entry(arch: uni.Archetype, bound: uni.Archetype) -> (MirFunction | None);
     def ctor_takes_mask(params: list[tuple[str, MirType, (uni.Expr | None)]]) -> bool;
     def ctor_default(

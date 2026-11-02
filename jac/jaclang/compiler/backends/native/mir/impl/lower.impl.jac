@@ -26,6 +26,7 @@ impl MirLowering.lower -> MirModule {
         if archetype_native_name(arch) not in self.mir.objects {
             continue;
         }
+        self.mir.functions.extend(self.default_thunks(arch));
         made = self.lower_constructor(arch);
         if made is not None {
             self.mir.functions.append(made);

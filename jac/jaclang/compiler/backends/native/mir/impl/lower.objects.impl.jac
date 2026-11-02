@@ -443,26 +443,29 @@ impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) 
                 continue;
             }
             place = self.field_place(this, arch, member.name, arch);
-            b.store(
-                place,
-                self.coerce(self.lower_expr(initial), self.place_elem(place), initial)
-            );
+            b.store(place, self.default_value(initial, self.place_elem(place)));
         }
         if init is not None {
-            decl = self.decls.get(id(init));
+            decl = self.decls.get(id(init)) or self.foreign_method_decl(init);
             if decl is None {
                 raise MirRefused(
                     mir_refusal("constructor", f"{obj_def.name}.init", init)
                 );
             }
-            b.call(decl.symbol, [this] + values, decl.ret);
+            receiver = this
+                if decl.self_type is None or decl.self_type is this.type
+                else b.ref_cast(this, decl.self_type, False);
+            b.call(decl.symbol, [receiver] + values, decl.ret);
         }
         post = self.find_method(arch, "postinit")
             or self.find_method(arch, "__post_init__");
         if post is not None {
-            decl = self.decls.get(id(post));
+            decl = self.decls.get(id(post)) or self.foreign_method_decl(post);
             if decl is not None {
-                b.call(decl.symbol, [this], decl.ret);
+                receiver = this
+                    if decl.self_type is None or decl.self_type is this.type
+                    else b.ref_cast(this, decl.self_type, False);
+                b.call(decl.symbol, [receiver], decl.ret);
             }
         }
         b.ret(this);
@@ -999,7 +1002,7 @@ impl MirLowering.ctor_default(
     b.store(held, value);
     b.branch(done);
     b.position(missing);
-    b.store(held, self.coerce(self.lower_expr(fallback), value.type, fallback));
+    b.store(held, self.default_value(fallback, value.type));
     b.branch(done);
     b.position(done);
     return b.load(held, value.type);
@@ -1201,4 +1204,111 @@ impl MirLowering.nearest_has_var(arch: uni.Archetype, name: str) -> (uni.HasVar 
         }
     }
     return None;
+}
+
+impl MirLowering.default_thunk(
+    expr: uni.Expr
+) -> (tuple[uni.Archetype, str, MirType] | None) {
+    holder = expr.parent;
+    if isinstance(holder, uni.HasVar) and holder.name is not None {
+        arch = holder.find_parent_of_type(uni.Archetype);
+        if arch is None {
+            return None;
+        }
+        member = self.object_def(arch).field(holder.name.value);
+        if member is None {
+            return None;
+        }
+        return (arch, f"__default.{holder.name.value}", member.type);
+    }
+    if isinstance(holder, uni.ParamVar) {
+        ability = holder.find_parent_of_type(uni.Ability);
+        arch = holder.find_parent_of_type(uni.Archetype);
+        if ability is None or arch is None {
+            return None;
+        }
+        return (
+            arch,
+            f"__default.{self.name_of(ability)}.{holder.name.value}",
+            self.symbol_type(holder.name.sym, holder)
+        );
+    }
+    return None;
+}
+
+impl MirLowering.default_value(expr: uni.Expr, to: MirType) -> MirValue {
+    origin = expr.find_parent_of_type(uni.Module);
+    if origin is None or origin is self.module {
+        return self.coerce(self.lower_expr(expr), to, expr);
+    }
+    found = self.default_thunk(expr);
+    if found is None {
+        raise MirRefused(
+            mir_refusal(
+                "default",
+                "imported default",
+                expr,
+                "A default declared in another unit is evaluated by that unit's default function."
+            )
+        );
+    }
+    (arch, label, made_type) = found;
+    obj_def = self.object_def(arch);
+    symbol = native_symbol_name(
+        native_unit_prefix(origin.loc.mod_path), f"{obj_def.name}.{label}"
+    );
+    self.mir.externs[symbol] = MirExtern(symbol=symbol, ret=made_type, params=[]);
+    made = self.builder().call(symbol, [], made_type);
+    if made is None {
+        raise MirRefused(mir_refusal("default", label, expr));
+    }
+    return self.coerce(made, to, expr);
+}
+
+impl MirLowering.default_thunks(arch: uni.Archetype) -> list[MirFunction] {
+    made: list[MirFunction] = [];
+    defaults: list[uni.Expr] = [];
+    for var in arch.get_has_vars() {
+        if isinstance(var.value, uni.Expr) {
+            defaults.append(var.value);
+        }
+    }
+    for method in self.arch_methods(arch) {
+        if self.name_of(method) not in ("init", "__init__")
+            or not isinstance(method.signature, uni.FuncSignature) {
+            continue;
+        }
+        for pv in list(method.signature.posonly_params)
+            + list(method.signature.params or []) {
+            if isinstance(pv.value, uni.Expr) {
+                defaults.append(pv.value);
+            }
+        }
+    }
+    prefix = native_unit_prefix(self.module.loc.mod_path);
+    obj_def = self.object_def(arch);
+    for expr in defaults {
+        saved = self.state;
+        try {
+            found = self.default_thunk(expr);
+            if found is None {
+                continue;
+            }
+            (_, label, made_type) = found;
+            fn = MirFunction(
+                name=f"{obj_def.name}.{label}",
+                symbol=native_symbol_name(prefix, f"{obj_def.name}.{label}"),
+                ret=made_type
+            );
+            first = fn.new_block("entry");
+            self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
+            self.builder().ret(self.coerce(self.lower_expr(expr), made_type, expr));
+            made.append(fn);
+        } except MirRefused {
+            self.state = saved;
+            continue;
+        }
+        self.state = saved;
+    }
+    return made;
 }
