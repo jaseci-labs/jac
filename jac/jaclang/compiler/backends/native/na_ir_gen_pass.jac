@@ -3469,6 +3469,7 @@ walker NaIRGenPass(CompilerPass) {
         owner: ir.Value, value: (ir.Value | None)
     ) -> (ir.Value | None);
 
+    def _jacval_text_len(tag: ir.Value, payload: ir.Value, label: str) -> ir.Value;
     def _jacval_truthy(jv: ir.Value) -> ir.Value;
     def _jacval_is_none(jv: ir.Value, negate: bool) -> ir.Value;
     def _entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
