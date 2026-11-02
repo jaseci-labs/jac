@@ -11,6 +11,13 @@ def match_pin(
     source_path: str, root_dir: str, pins: dict[str, str], element_name: str = ''
 ) -> str;
 
+"""True when JAC_IGNORE_PLACEMENT_PINS mutes [placement.pins] for this run.
+
+Used by the dogfood/dev fast path: pins are what pull the native JIT into a
+dev `jac run`, which is expensive to restore on every launch.
+"""
+def placement_pins_muted -> bool;
+
 def config_pins_for(source_path: str) -> dict[str, str];
 
 
