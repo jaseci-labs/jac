@@ -220,7 +220,7 @@ impl _rstrip(s: str) -> str {
             break;
         }
     }
-    return s[0:e];
+    return _prefix_chars(s, e);
 }
 
 
