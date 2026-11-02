@@ -681,6 +681,11 @@ impl MirLowering.object_method(
 
 impl MirLowering.isinstance_check(value: MirValue, arch: uni.Archetype) -> MirValue {
     b = self.builder();
+    if value.type.kind == MirKind.OPT and value.type.payload().kind == MirKind.OBJ {
+        (held, payload, absent, done) = self.opt_begin(value, mir_bool());
+        self.opt_switch(held, self.isinstance_check(payload, arch), absent, done);
+        return self.opt_end(held, self.builder().const_bool(False), done);
+    }
     obj_def = self.object_def(arch);
     if not obj_def.vtable_symbol or value.type.kind != MirKind.OBJ {
         return b.const_bool(value.type is mir_obj(obj_def.name));

@@ -710,7 +710,10 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
     if loaded.type.kind == MirKind.OPT
         and nd.type is not None
         and not isinstance(nd.type, UnionType) {
-        return self.opt_get(loaded);
+        return self.narrow_down(self.opt_get(loaded), nd);
+    }
+    if loaded.type.kind == MirKind.OBJ {
+        return self.narrow_down(loaded, nd);
     }
     if loaded.type.kind == MirKind.ANY {
         return self.narrow(loaded, nd);

@@ -39,6 +39,21 @@ impl MirLowering.narrowed_load(value: MirValue, nd: uni.Expr) -> MirValue {
     return self.opt_unwrap_checked(value, "'NoneType' object found where a value was required");
 }
 
+impl MirLowering.narrow_down(value: MirValue, nd: uni.Expr) -> MirValue {
+    if value.type.kind != MirKind.OBJ
+        or nd.type is None
+        or isinstance(nd.type, (UnionType, AnyType)) {
+        return value;
+    }
+    narrowed = self.expr_type(nd);
+    if narrowed.kind == MirKind.OBJ
+        and narrowed is not value.type
+        and self.obj_extends(narrowed.name, value.type.name) {
+        return self.builder().ref_cast(value, narrowed, False);
+    }
+    return value;
+}
+
 impl MirLowering.opt_begin(
     value: MirValue, result: MirType
 ) -> tuple[MirValue, MirValue, MirBlock, MirBlock] {
