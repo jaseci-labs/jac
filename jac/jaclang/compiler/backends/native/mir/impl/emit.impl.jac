@@ -145,7 +145,7 @@ impl MirEmitter.emit_function(fn: MirFunction) {
         self.values[param.value.id] = arg;
     }
     b = ir.IRBuilder();
-    for blk in fn.blocks {
+    for blk in emission_order(fn) {
         b.position_at_end(self.blocks[blk.label]);
         for instr in blk.instrs {
             self.emit_instr(b, instr);
@@ -552,6 +552,39 @@ impl MirEmitter.emit_raise(b: ir.IRBuilder, instr: MirInstr) {
         raiser, [ir.Constant(ir.IntType(32), type_id), self.cstring(b, instr.str_value)]
     );
     b.unreachable();
+}
+
+impl emission_order(fn: MirFunction) -> list[MirBlock] {
+    if not fn.blocks {
+        return [];
+    }
+    by_label = {blk.label: blk for blk in fn.blocks};
+    seen: set[str] = set();
+    finished: list[MirBlock] = [];
+    pending: list[tuple[MirBlock, int]] = [(fn.blocks[0], 0)];
+    seen.add(fn.blocks[0].label);
+    while pending {
+        (blk, at) = pending[-1];
+        targets = list(blk.instrs[-1].targets) if blk.instrs else [];
+        if at < len(targets) {
+            pending[-1] = (blk, at + 1);
+            following = by_label.get(targets[at]);
+            if following is not None and following.label not in seen {
+                seen.add(following.label);
+                pending.append((following, 0));
+            }
+            continue;
+        }
+        pending.pop();
+        finished.append(blk);
+    }
+    ordered = list(reversed(finished));
+    return ordered
+        + [
+            blk
+            for blk in fn.blocks
+            if blk.label not in seen
+        ];
 }
 
 impl result_of(instr: MirInstr) -> MirValue {

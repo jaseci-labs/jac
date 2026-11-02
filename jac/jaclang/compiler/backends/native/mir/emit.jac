@@ -129,4 +129,6 @@ def emit_mir_module(
 
 def result_of(instr: MirInstr) -> MirValue;
 
+def emission_order(fn: MirFunction) -> list[MirBlock];
+
 def type_arg_of(instr: MirInstr) -> MirType;
