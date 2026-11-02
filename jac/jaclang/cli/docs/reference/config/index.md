@@ -318,6 +318,8 @@ The `[serve]` tables are checked when the configuration loads, in every layer
 `jac.local.toml`). An unknown key, or a value of the wrong type such as a quoted
 `"false"` or `true` for a number, stops the load with a message naming the key.
 A layer's sub-table merges into the one below it instead of replacing it.
+`[serve.auth]` is the exception: its layers are merged first and the result is
+checked when the server starts (or a deploy builds its manifests).
 `${VAR}` interpolation always gives text, so it can't set a `[serve]` number
 or switch; set those from the environment with their `JAC_SERVE_*` variable.
 `main`, `conflict_max_attempts` and `conflict_backoff_ms` have no such variable,
