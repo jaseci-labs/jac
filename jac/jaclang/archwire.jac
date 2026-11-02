@@ -5610,10 +5610,6 @@ graph import compiler {
     ]
     type backends.native.lowering ++> frontend.codeinfo { NativeFallbacks }
     backends.native.na_compile_pass ++> [
-        driver.native_snapshot_pipeline {
-            optimize_unit_bitcodes_with_config,
-            unit_snapshot_text_values
-        },
         driver.native_snapshot_pipeline.NativeSnapshotPipeline.take_snapshot {
             UnitIRSnapshot
         },
