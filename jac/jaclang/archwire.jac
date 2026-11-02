@@ -2658,14 +2658,16 @@ graph import {
         walk_edges,
         walk_nodes
     }
-    runtime.interop_bridge --> compiler.backends.native.link_plan.bind_python_bridges {
-        BRIDGE_SYMBOLS,
-        register_py_callbacks
-    }
-    runtime.interop_bridge --> compiler.backends.native.na_compile_pass.NativeCompilePass._run_impl
-        | compiler.driver.compiler.JacCompiler._load_native_from_cache {
-        register_py_callbacks
-    }
+    runtime.interop_bridge --> [
+        compiler.backends.native.link_plan.bind_python_bridges {
+            BRIDGE_SYMBOLS,
+            register_py_callbacks
+        },
+        compiler.backends.native.na_compile_pass.NativeCompilePass._run_impl
+            | compiler.driver.compiler.JacCompiler._load_native_from_cache {
+            register_py_callbacks
+        },
+    ]
     runtime.memory ++> server.session { Memory }
     runtime.native_library --> [
         compiler.driver.compiler.JacCompiler._load_native_from_cache {
