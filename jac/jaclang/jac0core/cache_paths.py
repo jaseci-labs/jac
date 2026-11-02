@@ -169,9 +169,11 @@ def atomic_write(path: str | Path, data: bytes, mode: int | None = None) -> None
 # directory's files by name), keyed by the
 # file's identity: inode, size, and nanosecond mtime and ctime. ctime moves on
 # every write and cannot be set back, so a same-size rewrite that restores its
-# mtime still misses. A digest is only reused when the file was already stable
-# when it was hashed (the racy-entry rule git uses), so a file edited within
-# one timestamp tick is always read again.
+# mtime still misses. The extracted runtime is never rewritten, so its files
+# are keyed on size and mtime alone (see file_identity) and a ledger copied
+# with the cache home stays valid. A digest is only reused when the file was
+# already stable when it was hashed (the racy-entry rule git uses), so a file
+# edited within one timestamp tick is always read again.
 
 _DIGEST_RACY_NS = 2_000_000_000
 _DIGEST_SHARD_CAP = 4096
@@ -187,11 +189,19 @@ def get_digest_ledger_dir() -> Path:
 
 
 def file_identity(path: str | Path) -> tuple[int, int, int, int] | None:
-    """The (inode, size, mtime_ns, ctime_ns) identity of a file, or None."""
+    """The (inode, size, mtime_ns, ctime_ns) identity of a file, or None.
+
+    A file of an extracted runtime (``rt/``) is (0, size, mtime_ns, 0): the
+    runtime is written once per payload and never in place, and copying the
+    cache home (an image layer unpacked on a node) moves only its inode and
+    ctime.
+    """
     try:
         st = os.stat(path)
     except OSError:
         return None
+    if os.path.abspath(path).startswith(os.path.join(os.path.abspath(get_cache_home()), "rt", "")):
+        return (0, st.st_size, st.st_mtime_ns, 0)
     return (st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
 
 
