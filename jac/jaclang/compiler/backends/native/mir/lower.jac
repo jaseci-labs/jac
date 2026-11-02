@@ -77,6 +77,8 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
          "GTE": "ge"
      };
 
+glob CTOR_MASK_BITS: int = 63;
+
 glob ANY_TYPE_TAGS: dict[str, list[int]] = {
          "int": [0, 7],
          "bool": [7],
@@ -407,6 +409,11 @@ obj MirLowering {
     def erased_slot(t: (TypeBase | None)) -> bool;
     def class_reference(nd: uni.Expr) -> (uni.Archetype | None);
     def class_value(arch: uni.Archetype) -> MirValue;
+    def placeholder(t: MirType) -> MirValue;
+    def ctor_takes_mask(params: list[tuple[str, MirType, (uni.Expr | None)]]) -> bool;
+    def ctor_default(
+        value: MirValue, given: MirValue, index: int, fallback: uni.Expr
+    ) -> MirValue;
     def class_of(value: MirValue, site: uni.UniNode) -> MirValue;
     def class_isinstance(value: MirValue, kind: MirValue) -> MirValue;
     def lower_module_init -> (MirFunction | None);

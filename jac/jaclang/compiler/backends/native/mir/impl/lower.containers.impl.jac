@@ -573,7 +573,7 @@ impl MirLowering.dict_method(
         if len(args) == 2 {
             b.store(held, self.coerce(self.lower_expr(args[1]), result_type, args[1]));
         } else {
-            b.store(held, self.coerce(b.const_null(mir_none()), result_type, nd));
+            b.store(held, self.coerce(self.none_value(), result_type, nd));
         }
         b.branch(done);
         b.position(done);

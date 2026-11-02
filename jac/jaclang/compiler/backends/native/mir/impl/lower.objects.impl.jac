@@ -356,6 +356,16 @@ impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) 
             fn.params.append(MirParam(name=pname, value=value));
             values.append(value);
         }
+        if self.ctor_takes_mask(params) {
+            given = fn.new_value(mir_int(), "__given");
+            fn.params.append(MirParam(name="__given", value=given));
+            for (index, (pname, ptype, fallback)) in enumerate(params) {
+                if fallback is None {
+                    continue;
+                }
+                values[index] = self.ctor_default(values[index], given, index, fallback);
+            }
+        }
         size = fn.new_value(mir_int());
         b.emit(MirInstr(op=MirOp.SIZEOF, result=size, type_arg=self_type));
         raw = self.runtime("__jac_rt_alloc_zeroed", [size]);
@@ -613,10 +623,18 @@ impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue 
         );
     }
     values: list[MirValue] = [];
+    mask = 0;
     for (index, (pname, ptype, fallback)) in enumerate(params) {
         source = positional[index]
             if index < len(positional)
-            else named.get(pname, fallback);
+            else named.get(pname);
+        if source is None and fallback is not None {
+            values.append(self.placeholder(ptype));
+            continue;
+        }
+        if fallback is not None {
+            mask = mask | (1 << index);
+        }
         if source is None {
             raise MirRefused(
                 mir_refusal("call", f"{obj_def.name} missing {pname}", nd)
@@ -624,9 +642,15 @@ impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue 
         }
         values.append(self.coerce(self.lower_expr(source), ptype, source));
     }
+    if self.ctor_takes_mask(params) {
+        values.append(self.builder().const_int(mask, mir_int()));
+    }
     if not obj_def.local {
         self.mir.externs[symbol] = MirExtern(
-            symbol=symbol, ret=mir_obj(obj_def.name), params=[p[1] for p in params]
+            symbol=symbol,
+            ret=mir_obj(obj_def.name),
+            params=[p[1] for p in params]
+                + ([mir_int()] if self.ctor_takes_mask(params) else [])
         );
         unit = os.path.realpath(owner.loc.mod_path);
         if unit not in self.mir.deps {
@@ -955,4 +979,53 @@ impl MirLowering.class_of(value: MirValue, site: uni.UniNode) -> MirValue {
     );
     table = b.load(slot_place, mir_c_ptr(i8p));
     return self.emit_value(MirOp.PTR_CAST, mir_class(obj_def.name), [b.load(table, i8p)]);
+}
+
+impl MirLowering.ctor_takes_mask(
+    params: list[tuple[str, MirType, (uni.Expr | None)]]
+) -> bool {
+    defaulted = [index for (index, param) in enumerate(params) if param[2] is not None];
+    if defaulted and max(defaulted) >= CTOR_MASK_BITS {
+        raise MirRefused(
+            mir_refusal(
+                "constructor",
+                f"{len(params)} parameters",
+                None,
+                "A native constructor marks which defaulted parameters were given in one 63-bit word."
+            )
+        );
+    }
+    return bool(defaulted);
+}
+
+impl MirLowering.ctor_default(
+    value: MirValue, given: MirValue, index: int, fallback: uni.Expr
+) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    held = self.temp_slot(value.type);
+    bit = b.binary(
+        "and",
+        b.binary("shr", given, b.const_int(index, mir_int())),
+        b.const_int(1, mir_int())
+    );
+    supplied = fn.new_block("ctor.given");
+    missing = fn.new_block("ctor.default");
+    done = fn.new_block("ctor.arg");
+    b.cond_branch(b.compare("ne", bit, b.const_int(0, mir_int())), supplied, missing);
+    b.position(supplied);
+    b.store(held, value);
+    b.branch(done);
+    b.position(missing);
+    b.store(held, self.coerce(self.lower_expr(fallback), value.type, fallback));
+    b.branch(done);
+    b.position(done);
+    return b.load(held, value.type);
+}
+
+impl MirLowering.placeholder(t: MirType) -> MirValue {
+    if t.kind == MirKind.NONE {
+        return self.none_value();
+    }
+    return self.builder().const_null(t);
 }
