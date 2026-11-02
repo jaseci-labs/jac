@@ -2,7 +2,9 @@ import from jaclang.runtime.python.modules.time_records { timespec, timeval }
 import from c {
     def mach_absolute_time -> u64;  def mach_timebase_info(
         info: &mut MachTimebase
-    ) -> i32;  def pthread_threadid_np(thread: ptr, thread_id: &mut u64) -> i32;  obj MachTimebase {
+    ) -> i32;  def pthread_threadid_np(thread: ptr, thread_id: &mut u64) -> i32;  def pthread_cond_timedwait_relative_np(
+        cond: ptr[u8], mutex: ptr[u8], reltime: ptr
+    ) -> i32;  obj MachTimebase {
         has numer: u32 = 0,
             denom: u32 = 0;
     }
@@ -22,6 +24,10 @@ def native_thread_id -> u64;
 def condattr_set_monotonic(attr: ptr[u8]) -> i32;
 
 def semaphore_timedwait(sema: ptr, abstime: ptr[timespec]) -> i32;
+
+def cond_timedwait_relative(
+    cond: ptr[u8], mutex: ptr[u8], reltime: ptr[timespec]
+) -> i32;
 
 def timeval_store(tv: ptr[timeval], seconds: i64, microseconds: i64);
 
@@ -47,6 +53,12 @@ impl condattr_set_monotonic(attr: ptr[u8]) -> i32 {
 
 impl semaphore_timedwait(sema: ptr, abstime: ptr[timespec]) -> i32 {
     return i32(-1);
+}
+
+impl cond_timedwait_relative(
+    cond: ptr[u8], mutex: ptr[u8], reltime: ptr[timespec]
+) -> i32 {
+    return pthread_cond_timedwait_relative_np(cond, mutex, ptr(reltime));
 }
 
 impl timeval_store(tv: ptr[timeval], seconds: i64, microseconds: i64) {
