@@ -9,8 +9,7 @@ glob logger: logging.Logger = logging.getLogger('jaclang.serve'),
          'user/',
          'static/',
          'healthz'
-     ),
-     ASSET_CACHE_CONTROL: str = 'public, max-age=31536000, immutable';
+     );
 
 
 def _dev_client_elsewhere -> JSONResponse;
