@@ -55,6 +55,7 @@ enum MirOp {
     SIZEOF = "sizeof",
     EXC_FRAME = "exc.frame",
     SETJMP = "setjmp",
+    VA_START = "va.start",
     VTABLE_ADDR = "vtable.addr",
     CLASS_ADDR = "class.addr",
     FN_ADDR = "fn.addr",
@@ -120,6 +121,7 @@ obj MirFunction {
         linkage: str = "external",
         manual_rc: bool = False,
         resumable: bool = False,
+        variadic: bool = False,
         next_id: int = 0,
         next_label: int = 0;
 
@@ -132,7 +134,8 @@ obj MirFunction {
 obj MirExtern {
     has symbol: str,
         ret: MirType,
-        params: list[MirType] = [];
+        params: list[MirType] = [],
+        variadic: bool = False;
 }
 
 obj MirGlobal {

@@ -167,6 +167,9 @@ impl mir_class_type(
     if kind == "PtrView" {
         return mir_c_view(mir_c_elem(c_type_arg(t), site));
     }
+    if kind == "VaList" {
+        return mir_c_ptr(mir_int(8, False));
+    }
     arch = foreign_struct_of_type(t);
     if arch is not None {
         return mir_c_struct(arch.name.value);

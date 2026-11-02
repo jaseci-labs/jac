@@ -447,6 +447,18 @@ impl TypeEvaluator.get_type_of_ability(node_: Ability) -> TypeBase {
                 );
             }
             ret_type = self._extern_scalar_type(node_.signature.return_type);
+            ret_expr = node_.signature.return_type;
+            if isinstance(ret_type, AnyType)
+                and ret_type.foreign_scalar is None
+                and isinstance(ret_expr, Expr) {
+                declared = self._convert_to_instance(
+                    self.get_type_of_expression(ret_expr)
+                );
+                if isinstance(declared, ClassType)
+                    and declared.shared.class_name == "str" {
+                    ret_type = declared;
+                }
+            }
         }
         extern_fn = FunctionType(
             func_name=node_.name_spec.sym_name,

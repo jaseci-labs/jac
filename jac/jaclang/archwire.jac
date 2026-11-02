@@ -5581,7 +5581,9 @@ graph import compiler {
             c_string_literal,
             c_type_arg,
             clib_import_of,
-            foreign_struct_of_type
+            foreign_struct_of_type,
+            is_builtin_addressof_call,
+            is_va_list_type
         },
         backends.native.mir.lower_types {
             c_builtin_kind,
@@ -5654,7 +5656,8 @@ graph import compiler {
         passes.type_checker_pass.TypeCheckPass._check_c_global_use {
             clib_global_of_name,
             foreign_struct_of_type,
-            is_builtin_addressof_call
+            is_builtin_addressof_call,
+            is_va_list_type
         },
         passes.type_checker_pass.TypeCheckPass._check_c_interop_call {
             c_string_literal,
@@ -6559,6 +6562,7 @@ graph import compiler {
         | types.enum_utils
         | types.operations.get_pow_result_type { fold_const }
     frontend.constant ++> [
+        backends.native.mir.lower { is_borrow_kind },
         backends.es.esast_gen_pass | symbol_utils {
             CodeContext,
             SymbolType,
@@ -10559,8 +10563,10 @@ graph import compiler.backends.native.mir {
     lower ++> backend { MirLowering }
     lower_types ++> lower {
         ANY_BOXABLE,
+        C_ABI_KINDS,
         MirPosition,
         MirRefused,
+        mir_c_elem,
         mir_class_type_named,
         mir_refusal,
         mir_spec_type,

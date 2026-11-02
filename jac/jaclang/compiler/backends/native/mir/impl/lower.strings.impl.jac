@@ -112,7 +112,7 @@ impl MirLowering.bool_arg(arg: (uni.Expr | None), fallback: bool) -> MirValue {
     if arg is None or not self.present(arg) {
         return self.builder().const_bool(fallback);
     }
-    return self.truthy(self.lower_expr(arg), arg);
+    return self.condition(arg);
 }
 
 impl MirLowering.codec_arg(

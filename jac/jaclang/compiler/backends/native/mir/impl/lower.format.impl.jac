@@ -599,7 +599,7 @@ impl MirLowering.text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         if self.expr_type(args[0]).is_numeric() {
             return None;
         }
-        return self.truthy(self.lower_expr(args[0]), args[0]);
+        return self.condition(args[0]);
     }
     if len(args) == 0 and name in ("bytes", "bytearray") {
         empty = b.ref_cast(
@@ -1274,7 +1274,7 @@ impl MirLowering.int_bytes_call(
     }
     signed = b.const_bool(False);
     if "signed" in named {
-        signed = self.truthy(self.lower_expr(named["signed"]), named["signed"]);
+        signed = self.condition(named["signed"]);
     }
     if name == "from_bytes" {
         source = self.spill(self.lower_expr(named["bytes"]));

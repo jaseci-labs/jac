@@ -19,7 +19,8 @@ impl MirEmitter.emit -> ir.Module {
         self.extern(
             ext.symbol,
             self.llvm_type(ext.ret),
-            [self.llvm_type(param) for param in ext.params]
+            [self.llvm_type(param) for param in ext.params],
+            ext.variadic
         );
     }
     if self.native_tls {
@@ -114,17 +115,19 @@ impl MirEmitter.fn_type(params: list[MirType], ret: MirType) -> ir.FunctionType 
 }
 
 impl MirEmitter.declare(fn: MirFunction) -> ir.Function {
-    made = ir.Function(
-        self.module,
-        self.fn_type([p.value.type for p in fn.params], fn.ret),
-        name=fn.symbol
-    );
+    shape = self.fn_type([p.value.type for p in fn.params], fn.ret);
+    if fn.variadic {
+        shape = ir.FunctionType(shape.return_type, shape.args, var_arg=True);
+    }
+    made = ir.Function(self.module, shape, name=fn.symbol);
     made.linkage = fn.linkage;
     self.functions[fn.symbol] = made;
     return made;
 }
 
-impl MirEmitter.extern(symbol: str, ret: ir.Type, args: list[ir.Type]) -> ir.Function {
+impl MirEmitter.extern(
+    symbol: str, ret: ir.Type, args: list[ir.Type], variadic: bool = False
+) -> ir.Function {
     found = self.functions.get(symbol);
     if found is not None {
         return found;
@@ -134,7 +137,9 @@ impl MirEmitter.extern(symbol: str, ret: ir.Type, args: list[ir.Type]) -> ir.Fun
         self.functions[symbol] = existing;
         return existing;
     }
-    made = ir.Function(self.module, ir.FunctionType(ret, args), name=symbol);
+    made = ir.Function(
+        self.module, ir.FunctionType(ret, args, var_arg=variadic), name=symbol
+    );
     self.functions[symbol] = made;
     return made;
 }
@@ -747,6 +752,14 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
         jump = self.extern(SETJMP_SYMBOL, ir.IntType(32), [i8p]);
         jump.attributes.add("returns_twice");
         self.bind(instr.result, b.call(jump, [self.value(instr.operands[0])]));
+    } elif op == MirOp.VA_START {
+        i8p = ir.IntType(8).as_pointer();
+        storage = b.alloca(ir.ArrayType(ir.IntType(64), 4));
+        raw = b.bitcast(storage, i8p);
+        b.call(self.extern("llvm.va_start", ir.VoidType(), [i8p]), [raw]);
+        self.bind(
+            instr.result, b.call(self.extern("__jac_va_list", i8p, [i8p]), [raw])
+        );
     } elif op == MirOp.SIZEOF {
         shape = self.llvm_type(type_arg_of(instr));
         pointee: ir.Type = shape;
@@ -1168,7 +1181,9 @@ impl MirEmitter.extern_call(
 impl MirEmitter.call_declared(
     b: ir.IRBuilder, callee: ir.Function, instr: MirInstr
 ) -> ir.Value {
-    if len(instr.operands) != len(callee.args) {
+    fixed = len(callee.args);
+    if len(instr.operands) != fixed
+        and not (callee.ftype.var_arg and len(instr.operands) > fixed) {
         raise MirEmitError(
             f"MIR call to {callee.name} passes {len(
                 instr.operands
@@ -1178,7 +1193,8 @@ impl MirEmitter.call_declared(
     passed = [
         self.adapt(b, self.value(v), arg.type)
         for (v, arg) in zip(instr.operands, callee.args)
-    ];
+    ]
+        + [self.value(v) for v in instr.operands[fixed:]];
     made = b.call(callee, passed);
     if instr.result is None or isinstance(callee.ftype.return_type, ir.VoidType) {
         return made;

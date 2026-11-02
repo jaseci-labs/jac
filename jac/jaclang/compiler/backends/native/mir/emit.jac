@@ -27,6 +27,7 @@ glob RAISE_BUILTIN_SYMBOL: str = "__jac_rt_raise_builtin",
          MirOp.SIZEOF,
          MirOp.EXC_FRAME,
          MirOp.SETJMP,
+         MirOp.VA_START,
          MirOp.VTABLE_ADDR,
          MirOp.CLASS_ADDR,
          MirOp.FN_ADDR,
@@ -73,7 +74,9 @@ obj MirEmitter {
     def llvm_type(t: MirType) -> ir.Type;
     def fn_type(params: list[MirType], ret: MirType) -> ir.FunctionType;
     def declare(fn: MirFunction) -> ir.Function;
-    def extern(symbol: str, ret: ir.Type, args: list[ir.Type]) -> ir.Function;
+    def extern(
+        symbol: str, ret: ir.Type, args: list[ir.Type], variadic: bool = False
+    ) -> ir.Function;
     def emit_function(fn: MirFunction);
     def emit_instr(b: ir.IRBuilder, instr: MirInstr);
     def value(v: MirValue) -> ir.Value;
