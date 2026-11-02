@@ -2087,7 +2087,7 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
         target_type = nd.target.type if isinstance(nd.target, uni.Expr) else None;
         arch = self.arch_of_type(target_type);
         if arch is not None {
-            holder = self.lower_expr(nd.target);
+            subject = self.lower_expr(nd.target);
             owner = self.member_owner(right);
             if owner is not None
                 and owner is not arch
@@ -2097,13 +2097,13 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
                 arch = owner;
             }
             wanted = self.object_type(arch);
-            if holder.type.kind == MirKind.OBJ
+            if subject.type.kind == MirKind.OBJ
                 and wanted.kind == MirKind.OBJ
-                and wanted is not holder.type
-                and self.obj_extends(wanted.name, holder.type.name) {
-                holder = self.builder().ref_cast(holder, wanted, False);
+                and wanted is not subject.type
+                and self.obj_extends(wanted.name, subject.type.name) {
+                subject = self.builder().ref_cast(subject, wanted, False);
             }
-            return self.field_place(holder, arch, right.value, nd);
+            return self.field_place(subject, arch, right.value, nd);
         }
         members = self.union_archetypes(target_type);
         if members {

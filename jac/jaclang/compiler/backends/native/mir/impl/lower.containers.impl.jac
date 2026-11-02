@@ -1257,14 +1257,14 @@ impl MirLowering.contains(
     if holder.type.kind == MirKind.TUPLE {
         held = self.spill(holder);
         probe = self.spill(item);
-        found = b.const_bool(False);
+        matched = b.const_bool(False);
         for index in range(len(holder.type.args)) {
             same = self.compare_values(
                 Tok.EE, probe, self.tuple_get(held, index), site
             );
-            found = b.binary("or", found, same);
+            matched = b.binary("or", matched, same);
         }
-        return found;
+        return matched;
     }
     raise MirRefused(mir_refusal("comparison", f"in {holder.type.render()}", site));
 }
