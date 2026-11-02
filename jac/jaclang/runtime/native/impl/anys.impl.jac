@@ -122,6 +122,18 @@ impl __jac_rt_cstr_eq(a: ptr[u8], b: ptr[u8]) -> bool {
     return strcmp(int(a), int(b)) == 0;
 }
 
+impl __jac_rt_class_name(text: ptr[u8]) -> ptr[u8] {
+    if int(text) == 0 {
+        return __jac_rt_str_new(text, 0);
+    }
+    size = strlen(int(text));
+    at = 0;
+    while at < size and (int(__mem_load_i8(int(text) + at)) & 255) != 36 {
+        at += 1;
+    }
+    return __jac_rt_str_new(text, at);
+}
+
 impl __jac_rt_str_from_cstr(text: ptr[u8]) -> ptr[u8] {
     if int(text) == 0 {
         return __jac_rt_str_new(text, 0);

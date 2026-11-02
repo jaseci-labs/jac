@@ -931,3 +931,28 @@ impl MirLowering.class_isinstance(value: MirValue, kind: MirValue) -> MirValue {
     b.position(done);
     return b.load(verdict, mir_bool());
 }
+
+impl MirLowering.class_of(value: MirValue, site: uni.UniNode) -> MirValue {
+    b = self.builder();
+    if value.type.kind != MirKind.OBJ {
+        return self.type_value(value, site);
+    }
+    obj_def = self.mir.objects.get(value.type.name);
+    if obj_def is None {
+        return self.type_value(value, site);
+    }
+    if obj_def.vtable_slot < 0 {
+        return self.emit_value(
+            MirOp.CLASS_ADDR, mir_class(obj_def.name), [], str_value=obj_def.name
+        );
+    }
+    i8p = mir_c_ptr(mir_int(8, False));
+    slot_place = self.emit_value(
+        MirOp.FIELD_ADDR,
+        mir_c_ptr(mir_c_ptr(i8p)),
+        [value],
+        int_value=obj_def.vtable_slot
+    );
+    table = b.load(slot_place, mir_c_ptr(i8p));
+    return self.emit_value(MirOp.PTR_CAST, mir_class(obj_def.name), [b.load(table, i8p)]);
+}

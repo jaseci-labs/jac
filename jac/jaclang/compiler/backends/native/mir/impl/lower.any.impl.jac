@@ -460,7 +460,7 @@ impl MirLowering.type_value(value: MirValue, site: uni.UniNode) -> MirValue {
 impl MirLowering.class_name_str(value: MirValue) -> MirValue {
     b = self.builder();
     text = self.runtime_value(
-        "__jac_rt_str_from_cstr",
+        "__jac_rt_class_name",
         [self.emit_value(MirOp.PTR_CAST, mir_c_ptr(mir_int(8, False)), [value])]
     );
     return b.str_make(text, text, self.runtime_value("__jac_rt_str_size", [text]));

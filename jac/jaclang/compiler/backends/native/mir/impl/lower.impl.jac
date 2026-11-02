@@ -1895,7 +1895,9 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
     }
     place = self.lower_place(nd);
     loaded = self.builder().load(place, self.place_elem(place));
-    if nd.is_attr and loaded.type.kind in (MirKind.ANY, MirKind.OPT) {
+    if nd.is_attr
+        and loaded.type.kind in (MirKind.ANY, MirKind.OPT)
+        and not (isinstance(nd.type, TypeVarType) and nd.type.name not in self.type_env) {
         wanted = self.expr_type(nd);
         if loaded.type.kind == MirKind.ANY and wanted.kind != MirKind.ANY {
             return self.any_unbox(loaded, wanted, nd);

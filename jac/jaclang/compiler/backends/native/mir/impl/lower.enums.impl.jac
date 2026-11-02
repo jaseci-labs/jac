@@ -68,6 +68,10 @@ impl MirLowering.attr_special(nd: uni.AtomTrailer) -> (MirValue | None) {
     if target_type.kind == MirKind.CLASS and nd.right.value == "__name__" {
         return self.class_name_str(self.lower_expr(nd.target));
     }
+    if nd.right.value == "__class__"
+        and target_type.kind in (MirKind.OBJ, MirKind.ANY) {
+        return self.class_of(self.lower_expr(nd.target), nd);
+    }
     return None;
 }
 
