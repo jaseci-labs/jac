@@ -247,6 +247,70 @@ test "a default run lowers a bundled native import the way the host does" {
     }
 }
 
+"""A dependency of a default run is placed the way the entry is: it is typed
+before it is placed, so a call only the native stubs reject moves its function
+to Python. A real type error stays one, and so does the stub rejection when
+native was asked for ahead of time (#10380)."""
+test "a dependency of a default run falls back the way the entry does" {
+    open_errors = (
+        'import os;\n\n'
+        'def lines(path: str) -> int {\n'
+        '    with open(path, "r", encoding="utf-8", errors="ignore") as f {\n'
+        '        return len(f.read().splitlines());\n    }\n}\n\n'
+    );
+    first_word = 'def first_word(text: str) -> str {\n    return text.split(" ")[0];\n}\n';
+    rows = [
+        ("native stubs reject open", open_errors + first_word, run_options(), [], True),
+        (
+            "native stubs reject Path.read_text",
+            'import from pathlib { Path }\n\n'
+            'def text(path: str) -> str {\n'
+            '    return Path(path).read_text(encoding="utf-8", errors="ignore");\n}\n\n'
+                + first_word,
+            run_options(),
+            [],
+            False
+        ),
+        (
+            "a real type error",
+            'def bad -> int {\n    return first_word(1, 2);\n}\n\n' + first_word,
+            run_options(),
+            ["E1051"],
+            False
+        ),
+        ("ahead of time", open_errors + first_word, native_options(), ["E1054"], False)
+    ];
+    for (label, dep_source, options, codes, stays_native) in rows {
+        with TemporaryDirectory() as td {
+            base = Path(os.path.realpath(td));
+            (base / 'jac.toml').write_text(CONFIG);
+            (base / 'dep.jac').write_text(dep_source);
+            (base / 'main.jac').write_text(
+                'import from dep { first_word }\n\n'
+                'with entry {\n    print(first_word("a b"));\n}\n'
+            );
+            entry_file = str(base / 'main.jac');
+            with in_process_kernel() {
+                session = kernel_snapshot(
+                    active_host(), JacProgram(), entry_file, options, emit_closure=True
+                );
+                outcome = run_kernel_compile(session.text(), entry_file, None, session);
+            }
+            assert outcome.analysis.status == ANALYSIS_OK , (
+                f"{label}: {outcome.analysis.message}"
+            );
+            found = {e.code for e in outcome.analysis.errors};
+            assert set(codes) <= found and (codes or not found) , f"{label}: {found}";
+            if stays_native {
+                dep_unit = outcome.unit(str(base / 'dep.jac'));
+                assert dep_unit is not None and "first_word" in dep_unit.native_ir , (
+                    f"{label}: the rest of the module left the native codespace"
+                );
+            }
+        }
+    }
+}
+
 """The host can still fail after the kernel has lowered a module: the IR may
 not link. Placement was settled before the module was lowered, and a
 dependency is placed before its importer is analyzed, so a link failure is a
