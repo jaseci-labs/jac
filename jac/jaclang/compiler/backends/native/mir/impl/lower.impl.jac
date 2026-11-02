@@ -1199,7 +1199,9 @@ impl MirLowering.condition_only(nd: uni.Expr) -> bool {
         current = parent;
         parent = parent.parent;
     }
-    if isinstance(parent, (uni.IfStmt, uni.WhileStmt, uni.IfElseExpr, uni.AssertStmt)) {
+    if isinstance(
+        parent, (uni.IfStmt, uni.WhileStmt, uni.IfElseExpr, uni.AssertStmt)
+    ) {
         return parent.condition is current;
     }
     if isinstance(parent, uni.UnaryExpr) {
@@ -2279,7 +2281,9 @@ impl MirLowering.c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue {
     params: list[MirType] = [];
     for (index, p) in enumerate(fn_type.parameters) {
         tag = nodes[index].type_tag if index < len(nodes) else None;
-        if tag is not None and isinstance(tag.tag, uni.Name) and tag.tag.value == "str" {
+        if tag is not None
+            and isinstance(tag.tag, uni.Name)
+            and tag.tag.value == "str" {
             texts.add(index);
             params.append(i8p);
         } else {
@@ -2304,10 +2308,16 @@ impl MirLowering.c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue {
             values.append(self.coerce(self.lower_expr(arg), ptype, arg));
             continue;
         }
-        text = self.spill(self.as_text(self.coerce(self.lower_expr(arg), mir_str(), arg)));
+        text = self.spill(
+            self.as_text(self.coerce(self.lower_expr(arg), mir_str(), arg))
+        );
         held = self.runtime_value(
             "__jac_rt_str_ref",
-            [b.str_part(text, "root"), b.str_part(text, "data"), b.str_part(text, "len")]
+            [
+                b.str_part(text, "root"),
+                b.str_part(text, "data"),
+                b.str_part(text, "len")
+            ]
         );
         values.append(self.emit_value(MirOp.PTR_CAST, i8p, [held]));
     }

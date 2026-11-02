@@ -647,7 +647,9 @@ impl IfaceRegistry._serve_in_context(
         return None;
     }
     if options.native_tree_demand
-        and (native_lowering_reads(resolved) or options.native_required_for(resolved)) {
+        and (
+            native_lowering_reads(resolved) or options.native_required_for(resolved)
+        ) {
         return None;
     }
     if resolved in self.building {

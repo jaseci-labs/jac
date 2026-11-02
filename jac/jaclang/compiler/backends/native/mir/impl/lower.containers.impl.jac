@@ -823,7 +823,8 @@ impl MirLowering.dict_method(
         at = self.runtime_value(
             "__jac_rt_dict_find", [held, self.to_bits(key, key_type, args[0]), key_kind]
         );
-        if self.elem_kind(value_type, nd) in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
+        if self.elem_kind(value_type, nd)
+            in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
             return self.owned_element(
                 self.runtime_value("__jac_rt_dict_val_ref", [held, at, value_kind]),
                 value_type
@@ -1258,7 +1259,9 @@ impl MirLowering.contains(
         probe = self.spill(item);
         found = b.const_bool(False);
         for index in range(len(holder.type.args)) {
-            same = self.compare_values(Tok.EE, probe, self.tuple_get(held, index), site);
+            same = self.compare_values(
+                Tok.EE, probe, self.tuple_get(held, index), site
+            );
             found = b.binary("or", found, same);
         }
         return found;
