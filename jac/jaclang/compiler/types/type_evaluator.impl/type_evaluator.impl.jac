@@ -2689,7 +2689,9 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                         return UnknownType();
                     }
                     param_type = self.prefetch.list_class.clone_as_instance();
-                    param_type.private.type_args = [annotation_type];
+                    param_type.private.type_args = [
+                        self._convert_to_instance(annotation_type)
+                    ];
                     return param_type;
                 } elif node_.is_kwargs {
                     if self.prefetch.dict_class is None
@@ -2698,8 +2700,8 @@ impl TypeEvaluator._get_type_of_symbol_decl(
                     }
                     param_type = self.prefetch.dict_class.clone_as_instance();
                     param_type.private.type_args = [
-                        self.prefetch.str_class,
-                        annotation_type
+                        self._convert_to_instance(self.prefetch.str_class),
+                        self._convert_to_instance(annotation_type)
                     ];
                     return param_type;
                 }

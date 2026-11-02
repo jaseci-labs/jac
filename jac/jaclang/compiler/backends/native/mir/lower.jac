@@ -278,6 +278,7 @@ obj MirLowering {
         decls: dict[int, MirDecl] = {},
         decl_syms: dict[int, int] = {},
         archetypes: dict[str, uni.Archetype] = {},
+        refused_objects: dict[str, MirRefused] = {},
         c_struct_sites: dict[str, str] = {},
         trace_pairs: list[tuple[str, str]] = [],
         class_entries: list[tuple[str, str, str]] = [],

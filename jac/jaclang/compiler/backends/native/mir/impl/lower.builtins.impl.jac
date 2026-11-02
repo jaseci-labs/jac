@@ -3,7 +3,7 @@ impl MirLowering.builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None)
         return self.lower_jid(nd);
     }
     args = self.call_args(nd);
-    if not args and name in ("list", "dict", "set") {
+    if not args and name in ("list", "dict", "set", "frozenset") {
         made = self.expr_type(nd);
         if made.kind == MirKind.LIST {
             return self.new_list(made.payload(), 0);
@@ -23,10 +23,12 @@ impl MirLowering.builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None)
     if name == "id" {
         return self.identity_of(self.lower_expr(args[0]), nd);
     }
-    if name == "set" {
+    if name in ("set", "frozenset") {
         made_type = self.expr_type(nd);
         if made_type.kind != MirKind.SET {
-            raise MirRefused(mir_refusal("call", f"set as {made_type.render()}", nd));
+            raise MirRefused(
+                mir_refusal("call", f"{name} as {made_type.render()}", nd)
+            );
         }
         source = self.lower_expr(args[0]);
         built = self.spill(self.new_dict(made_type.payload(), None, made_type));

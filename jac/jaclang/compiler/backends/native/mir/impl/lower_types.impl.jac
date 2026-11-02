@@ -191,16 +191,10 @@ impl mir_class_type(
     if name in ("NoneType", "None") {
         return mir_none();
     }
-    if name in ("Node", "Edge", "Walker")
-        and isinstance(scope, uni.Archetype)
-        and stub_archetype(scope)
-        and t.is_instance() {
+    if name in ("Node", "Edge", "Walker") and stub_scope(scope) and t.is_instance() {
         return mir_any();
     }
-    if name == "object"
-        or (
-            name == "Any" and isinstance(scope, uni.Archetype) and stub_archetype(scope)
-        ) {
+    if name == "object" or (name == "Any" and stub_scope(scope)) {
         return mir_any();
     }
     if name == "range" {
@@ -286,21 +280,21 @@ impl mir_class_type(
             )
         );
     }
-    if name in ("list", "dict", "set") {
+    if name in LIST_CLASSES or name in SET_CLASSES or name == "dict" {
         args = t.private.type_args if t.private else None;
         if not args {
             if name == "dict" {
                 return mir_dict(mir_any(), mir_any());
             }
-            return mir_list(mir_any()) if name == "list" else mir_set(mir_any());
+            return mir_list(mir_any()) if name in LIST_CLASSES else mir_set(mir_any());
         }
         element_types = [
             mir_type_of(arg, MirPosition.ELEMENT, site, env) for arg in args
         ];
-        if name == "list" {
+        if name in LIST_CLASSES {
             return mir_list(element_types[0]);
         }
-        if name == "set" {
+        if name in SET_CLASSES {
             return mir_set(element_types[0]);
         }
         return mir_dict(element_types[0], element_types[1]);
@@ -351,6 +345,12 @@ impl mir_spec_type(spec: str) -> MirType {
 
 impl stub_archetype(scope: uni.Archetype) -> bool {
     return scope.loc is not None and scope.loc.mod_path.endswith(".pyi");
+}
+
+impl stub_scope(scope: (uni.UniScopeNode | None)) -> bool {
+    return scope is not None
+        and scope.loc is not None
+        and scope.loc.mod_path.endswith(".pyi");
 }
 
 impl mir_class_value_type(

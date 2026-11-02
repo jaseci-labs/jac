@@ -31,6 +31,10 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
     if found is not None {
         return found;
     }
+    refused = self.refused_objects.get(name);
+    if refused is not None {
+        raise refused;
+    }
     owner = arch.find_parent_of_type(uni.Module) or self.module;
     layout = get_layout_registry(owner, self.prog).get_layout(name);
     if layout is None {
@@ -69,75 +73,89 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
     );
     self.mir.objects[name] = made;
     self.archetypes[name] = arch;
-    for member in layout.fields {
-        if member.name == EXC_MESSAGE_FIELD {
-            made.fields.append(
-                MirObjectField(name=member.name, type=mir_str_ref(), index=member.index)
-            );
-            continue;
-        }
-        field_type = member.semantic_type or self.declared_field_type(member.decl_node);
-        self.ensure_objects(field_type);
-        self.ensure_c_types(field_type);
-        made.fields.append(
-            MirObjectField(
-                name=member.name,
-                type=mir_any()
-                    if self.erased_slot(field_type)
-                    else mir_type_of(
-                        field_type, MirPosition.FIELD, member.decl_node or arch
-                    ),
-                index=member.index
-            )
-        );
-    }
-    self.osp_header_fields(made, layout);
-    if layout.has_vtable {
-        made.vtable_symbol = native_symbol_name(
-            prefix, native_unit_spelling(f"{name}.__vtable", owner.loc.mod_path)
-        );
-        for slot in layout.methods {
-            owner_arch = self.archetypes.get(slot.owner);
-            if owner_arch is not None {
-                made.vtable_methods.append(self.method_symbol(owner_arch, slot.name));
+    try {
+        for member in layout.fields {
+            if member.name == EXC_MESSAGE_FIELD {
+                made.fields.append(
+                    MirObjectField(
+                        name=member.name, type=mir_str_ref(), index=member.index
+                    )
+                );
                 continue;
             }
-            owner_layout = get_layout_registry(owner, self.prog).get_layout(slot.owner);
-            owner_path = owner_layout.decl_mod
-                if owner_layout is not None and owner_layout.decl_mod
-                else owner.loc.mod_path;
-            made.vtable_methods.append(
-                native_symbol_name(
-                    native_unit_prefix(owner_path),
-                    native_unit_spelling(f"{slot.owner}.{slot.name}", owner_path)
+            field_type = member.semantic_type
+                or self.declared_field_type(member.decl_node);
+            self.ensure_objects(field_type);
+            self.ensure_c_types(field_type);
+            made.fields.append(
+                MirObjectField(
+                    name=member.name,
+                    type=mir_any()
+                        if self.erased_slot(field_type)
+                        else mir_type_of(
+                            field_type, MirPosition.FIELD, member.decl_node or arch
+                        ),
+                    index=member.index
                 )
             );
         }
-        for ancestor in layout.mro {
-            ancestor_layout = get_layout_registry(owner, self.prog).get_layout(
-                ancestor
+        self.osp_header_fields(made, layout);
+        if layout.has_vtable {
+            made.vtable_symbol = native_symbol_name(
+                prefix, native_unit_spelling(f"{name}.__vtable", owner.loc.mod_path)
             );
-            if ancestor_layout is not None and ancestor_layout.has_vtable {
-                ancestor_path = ancestor_layout.decl_mod or owner.loc.mod_path;
-                made.ancestry.append(
+            for slot in layout.methods {
+                owner_arch = self.archetypes.get(slot.owner);
+                if owner_arch is not None {
+                    made.vtable_methods.append(
+                        self.method_symbol(owner_arch, slot.name)
+                    );
+                    continue;
+                }
+                owner_layout = get_layout_registry(owner, self.prog).get_layout(
+                    slot.owner
+                );
+                owner_path = owner_layout.decl_mod
+                    if owner_layout is not None and owner_layout.decl_mod
+                    else owner.loc.mod_path;
+                made.vtable_methods.append(
                     native_symbol_name(
-                        native_unit_prefix(ancestor_path),
-                        native_unit_spelling(f"{ancestor}.__vtable", ancestor_path)
+                        native_unit_prefix(owner_path),
+                        native_unit_spelling(f"{slot.owner}.{slot.name}", owner_path)
                     )
                 );
             }
+            for ancestor in layout.mro {
+                ancestor_layout = get_layout_registry(owner, self.prog).get_layout(
+                    ancestor
+                );
+                if ancestor_layout is not None and ancestor_layout.has_vtable {
+                    ancestor_path = ancestor_layout.decl_mod or owner.loc.mod_path;
+                    made.ancestry.append(
+                        native_symbol_name(
+                            native_unit_prefix(ancestor_path),
+                            native_unit_spelling(f"{ancestor}.__vtable", ancestor_path)
+                        )
+                    );
+                }
+            }
         }
-    }
-    if not local {
-        self.mir.externs[made.drop_symbol] = MirExtern(
-            symbol=made.drop_symbol,
-            ret=mir_none(),
-            params=[mir_c_ptr(mir_int(8, False))]
-        );
-        unit = os.path.realpath(owner.loc.mod_path);
-        if unit not in self.mir.deps {
-            self.mir.deps.append(unit);
+        if not local {
+            self.mir.externs[made.drop_symbol] = MirExtern(
+                symbol=made.drop_symbol,
+                ret=mir_none(),
+                params=[mir_c_ptr(mir_int(8, False))]
+            );
+            unit = os.path.realpath(owner.loc.mod_path);
+            if unit not in self.mir.deps {
+                self.mir.deps.append(unit);
+            }
         }
+    } except MirRefused as err {
+        self.mir.objects.pop(name, None);
+        self.archetypes.pop(name, None);
+        self.refused_objects[name] = err;
+        raise err;
     }
     return made;
 }

@@ -1,5 +1,8 @@
 enum MirPosition { VALUE, FIELD, SIGNATURE, ELEMENT, C_FIELD }
 
+glob LIST_CLASSES: list[str] = ["list", "Sequence", "MutableSequence"],
+     SET_CLASSES: list[str] = ["set", "frozenset", "AbstractSet", "MutableSet"];
+
 glob ITERATOR_CLASSES: list[str] = [
          "Iterator",
          "Generator",
@@ -78,3 +81,5 @@ def mir_class_value_type(
 def mir_spec_type(spec: str) -> MirType;
 
 def stub_archetype(scope: uni.Archetype) -> bool;
+
+def stub_scope(scope: (uni.UniScopeNode | None)) -> bool;
