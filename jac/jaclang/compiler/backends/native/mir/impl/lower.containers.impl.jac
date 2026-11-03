@@ -855,7 +855,7 @@ impl MirLowering.list_sort(lst: MirValue, nd: uni.FuncCall) -> (MirValue | None)
     key_fn: (MirValue | None) = None;
     if "key" in named {
         key_fn = self.key_function(named["key"]);
-    } elif self.elem_kind(elem, nd) == KIND_REF {
+    } elif self.sort_kind(elem, nd) == KIND_REF {
         return None;
     }
     flag = b.const_bool(False);
@@ -1761,6 +1761,11 @@ impl MirLowering.nullable_payload(t: MirType) -> bool {
 impl MirLowering.sort_kind(t: MirType, site: uni.UniNode) -> int {
     if t.kind == MirKind.INT and not t.signed and t.width == 64 {
         return KIND_UINT;
+    }
+    if t.kind == MirKind.LIST
+        and self.elem_kind(t.payload(), site) not in (KIND_REF, KIND_ANY)
+        and not (t.payload().kind == MirKind.INT and not t.payload().signed) {
+        return KIND_SEQ;
     }
     return self.elem_kind(t, site);
 }

@@ -1555,7 +1555,7 @@ impl MirLowering.builtin_sorted(
     }
     elem = result_type.payload();
     kind = self.elem_kind(elem, nd);
-    if kind == KIND_REF and "key" not in named {
+    if self.sort_kind(elem, nd) == KIND_REF and "key" not in named {
         raise MirRefused(
             mir_refusal(
                 "call",

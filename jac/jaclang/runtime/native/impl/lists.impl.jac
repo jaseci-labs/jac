@@ -134,6 +134,31 @@ impl _tuple_cmp(a: int, b: int) -> int {
     return 0;
 }
 
+impl _seq_cmp(a: int, b: int) -> int {
+    na = __mem_load_i64(a + LIST_LEN);
+    nb = __mem_load_i64(b + LIST_LEN);
+    kind = __mem_load_i64(a + LIST_KIND);
+    da = __mem_load_i64(a + LIST_DATA);
+    db = __mem_load_i64(b + LIST_DATA);
+    i = 0;
+    while i < na and i < nb {
+        order = _elem_cmp(
+            __mem_load_i64(da + i * SLOT), __mem_load_i64(db + i * SLOT), kind
+        );
+        if order != 0 {
+            return order;
+        }
+        i += 1;
+    }
+    if na < nb {
+        return -1;
+    }
+    if na > nb {
+        return 1;
+    }
+    return 0;
+}
+
 impl _tuple_drop(box: int) {
     collecting = _collecting();
     n = __mem_load_i64(box + TUPLE_LEN);
@@ -192,6 +217,9 @@ impl _elem_cmp(a: int, b: int, kind: int) -> int {
     }
     if kind == KIND_TUPLE {
         return _tuple_cmp(a, b);
+    }
+    if kind == KIND_SEQ {
+        return _seq_cmp(a, b);
     }
     if kind == KIND_ANY {
         return _any_cmp(a, b);

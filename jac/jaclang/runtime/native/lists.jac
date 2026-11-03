@@ -14,7 +14,8 @@ glob KIND_INT: int = 0,
      KIND_TUPLE: int = 5,
      KIND_ANY: int = 6,
      KIND_UINT: int = 7,
-     KIND_NULL: int = 8;
+     KIND_NULL: int = 8,
+     KIND_SEQ: int = 9;
 
 glob LIST_LEN: int = 0,
      LIST_CAP: int = 8,
@@ -47,6 +48,8 @@ def:pub __jac_rt_tuple_get_ref(box: int, i: int) -> int;
 def:pub __jac_rt_tuple_eq(a: int, b: int) -> bool;
 
 def _tuple_cmp(a: int, b: int) -> int;
+
+def _seq_cmp(a: int, b: int) -> int;
 
 def _tuple_drop(box: int);
 
