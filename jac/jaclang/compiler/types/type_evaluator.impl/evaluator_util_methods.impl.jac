@@ -894,6 +894,43 @@ impl TypeEvaluator._get_expected_container_type(
             found = candidate;
         }
     }
+    if found is not None {
+        return found;
+    }
+    for candidate in candidates {
+        if isinstance(candidate, ClassType)
+            and candidate.private
+            and candidate.private.type_args
+            and candidate.shared.class_name
+                in (
+                    "Sequence",
+                    "MutableSequence",
+                    "Collection",
+                    "Iterable",
+                    "Mapping",
+                    "MutableMapping",
+                    "AbstractSet",
+                    "MutableSet"
+                )
+            and not any(
+                isinstance(arg, TypeVarType)
+                    or (
+                        isinstance(arg, ClassType)
+                        and arg.shared.class_name.startswith("Supports")
+                    ) for arg in candidate.private.type_args
+            )
+            and any(
+                isinstance(base, ClassType)
+                    and base._shared is not None
+                    and base.shared.same_class(candidate.shared)
+                for base in container_class.shared.mro
+            ) {
+            if found is not None {
+                return None;
+            }
+            found = candidate;
+        }
+    }
     return found;
 }
 

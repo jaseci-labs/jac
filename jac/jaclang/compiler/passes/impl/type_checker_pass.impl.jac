@@ -2564,9 +2564,8 @@ impl TypeCheckPass._c_const_problem(
         fields = list(arch.get_has_vars());
         for (i, param) in enumerate(expr.params or []) {
             field: (HasVar | None) = None;
-            value: Expr = param;
+            value: Expr = param.value if isinstance(param, KWPair) else param;
             if isinstance(param, KWPair) {
-                value = param.value;
                 field = next(
                     (
                         f
@@ -2839,18 +2838,22 @@ impl TypeCheckPass._check_c_interop_call(nd: FuncCall) -> None {
         return;
     }
     if is_builtin_pin_call(nd) {
-        args = [
-            p
-            for p in (nd.params or [])
-            if not isinstance(p, KWPair)
-        ];
-        if args {
+        pinned: list[Expr] = [];
+        for p in (nd.params or []) {
+            if not isinstance(p, KWPair) {
+                pinned.append(p);
+            }
+        }
+        if pinned {
             arg_type = self.evaluator._convert_to_instance(
-                self.evaluator.get_type_of_expression(args[0])
+                self.evaluator.get_type_of_expression(pinned[0])
             );
             if not self._c_plain_data(arg_type) {
                 self.ctx.emit(
-                    E1152, node_override=args[0], what="pin(value)", type=str(arg_type)
+                    E1152,
+                    node_override=pinned[0],
+                    what="pin(value)",
+                    type=str(arg_type)
                 );
             }
         }
