@@ -1,8 +1,11 @@
 import os;
 import io;
+import shutil;
+import subprocess;
 import tarfile;
 import tempfile;
 import tomllib;
+import unittest.mock;
 import from pathlib { Path }
 
 
@@ -380,6 +383,87 @@ test "the bundle seed's kubectl reaches the cluster the client loaded" {
                 );
             }
             assert not cluster.pods , "the loader pod outlived the seed";
+        }
+    }
+}
+
+
+"""Stands in for the loader pod: kubectl runs against a local directory."""
+obj _LoaderVolume {
+    has volume_dir: str;
+
+    def CoreV1Api -> any {
+        return self;
+    }
+
+    def create_namespaced_pod(namespace: str, body: any) -> None {
+        return;
+    }
+
+    def delete_namespaced_pod(name: str, namespace: str) -> None {
+        return;
+    }
+
+    def kubectl(args: list[str], kubectl: any = None, cwd: any = None) -> None {
+        if args[0] == "cp" {
+            dest = args[-1].split(":", 1)[1].replace(
+                BUNDLE_MOUNT_PATH, self.volume_dir
+            );
+            shutil.copy(Path(cwd) / args[-2], dest);
+            return;
+        }
+        script = args[-1].replace(BUNDLE_MOUNT_PATH, self.volume_dir);
+        if subprocess.run(["sh", "-c", script]).returncode != 0 {
+            raise RuntimeError(f"kubectl command failed: {script}");
+        }
+    }
+}
+
+
+test "seeding prunes the bundles no retained revision references (#10095)" {
+    import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
+        KubectlCluster
+    }
+    live = ["bundles/orders/live.jab", "toolchain/orders/live.tar.gz"];
+    stale = [
+        "bundles/orders/old.jab",
+        "toolchain/orders/old.tar.gz",
+        "bundles/orders/new.jab.41.part"
+    ];
+    untouched = live + [".cache/pip/wheel", "bundles/billing/old.jab"];
+    utils = "jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils";
+    for (label, retained, survivors) in [
+        ("retained revisions", set(live), untouched),
+        ("no retained revisions", set(), untouched + stale)
+    ] {
+        with tempfile.TemporaryDirectory() as volume_dir {
+            for key in untouched + stale {
+                Path(volume_dir, key).parent.mkdir(parents=True, exist_ok=True);
+                Path(volume_dir, key).write_bytes(b"x");
+            }
+            volume = _LoaderVolume(volume_dir=volume_dir);
+            injector = PvcInjector();
+            injector._object_key = "bundles/orders/new.jab";
+            injector._bundle_bytes = b"jab";
+            with unittest.mock.patch(
+                "jaclang.scale._optdeps.kubernetes.client", volume
+            ), unittest.mock.patch(
+                f"{utils}.run_kubectl_command", volume.kubectl
+            ), unittest.mock.patch(
+                f"{utils}.wait_for_pod_phase"
+            ), unittest.mock.patch(
+                f"{utils}.wait_for_pod_deletion"
+            ) {
+                injector.seed("orders", "prod", KubectlCluster(), retained);
+            }
+            on_volume = sorted(
+                str(p.relative_to(volume_dir))
+                for p in Path(volume_dir).rglob("*")
+                if p.is_file()
+            );
+            assert on_volume == sorted(survivors + ["bundles/orders/new.jab"]) , (
+                f"{label}: {on_volume}"
+            );
         }
     }
 }
