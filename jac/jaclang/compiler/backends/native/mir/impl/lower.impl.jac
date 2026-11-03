@@ -5421,7 +5421,7 @@ impl MirLowering.later_local(nd: uni.Name) -> bool {
 
 impl MirLowering.guard_unbound(fn: MirFunction) {
     reads = self.st().user_loads;
-    if not reads or fn.resumable {
+    if not reads {
         return;
     }
     named: dict[int, str] = {};
@@ -5588,6 +5588,7 @@ impl MirLowering.guard_unbound(fn: MirFunction) {
 
 impl MirLowering.null_ok_trailer(nd: uni.AtomTrailer) -> (MirValue | None) {
     if not nd.is_null_ok
+        or not nd.is_attr
         or id(nd) in self.st().null_ok_open
         or not isinstance(nd.target, uni.Expr)
         or not isinstance(nd.target.type, (ClassType, UnionType)) {
@@ -5619,16 +5620,19 @@ impl MirLowering.null_ok_trailer(nd: uni.AtomTrailer) -> (MirValue | None) {
 
 impl MirLowering.write_only(target: uni.Name) -> bool {
     sym = target.sym;
-    owner = self.function_of(target);
-    if sym is None or owner is None {
+    if sym is None {
         return False;
     }
+    owner: uni.UniNode = self.function_of(target) or self.module;
     for name in owner.get_all_sub_nodes(uni.Name) {
         if name.sym is not sym {
             continue;
         }
         parent = name.parent;
         if isinstance(parent, uni.Assignment) and any(t is name for t in parent.target) {
+            continue;
+        }
+        if isinstance(parent, uni.InForStmt) and parent.target is name {
             continue;
         }
         return False;

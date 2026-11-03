@@ -1278,6 +1278,9 @@ impl MirLowering.refuse_abc_type(item: uni.Expr, site: uni.UniNode) {
 }
 
 impl MirLowering.partial_mro(arch: uni.Archetype) -> bool {
+    if not arch.loc.mod_path.endswith(".jac") {
+        return False;
+    }
     if self.python_base_of(arch) is not None {
         return True;
     }
@@ -1294,7 +1297,10 @@ impl MirLowering.partial_mro(arch: uni.Archetype) -> bool {
         if owner is None or owner is self.module or not owner.loc.mod_path.endswith(".jac") {
             continue;
         }
-        if not native_unit(os.path.realpath(owner.loc.mod_path), True, self.prog) {
+        unit = os.path.realpath(owner.loc.mod_path);
+        if unit not in self.prog.native_units().building
+            and active_host().native_dep_iface(self.prog, unit, self.prog.options)
+                is None {
             return True;
         }
         if self.partial_mro(scope) {

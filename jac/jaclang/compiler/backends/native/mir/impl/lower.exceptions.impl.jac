@@ -233,16 +233,7 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
                     mir_refusal("exception binding", clause.name.value, clause)
                 );
             }
-            text = self.runtime(
-                "__jac_rt_str_new",
-                [
-                    message,
-                    self.runtime(
-                        "__jac_rt_str_size", [b.ref_cast(message, mir_str_ref(), False)]
-                    )
-                        or b.const_int(0, mir_int())
-                ]
-            );
+            text = self.runtime("__jac_rt_str_from_cstr", [message]);
             if text is not None {
                 slot = self.local_slot(clause.name.sym, clause.name);
                 if slot.type.kind not in (MirKind.STR, MirKind.ANY) {
