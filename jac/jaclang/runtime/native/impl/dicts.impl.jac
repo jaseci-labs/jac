@@ -301,12 +301,24 @@ impl __jac_rt_dict_val_at(d: int, index: int) -> int {
 
 impl __jac_rt_dict_key_ref(d: int, index: int, key_kind: int) -> int {
     bits = __mem_load_i64(__mem_load_i64(d + DICT_KEYS) + index * SLOT);
+    if key_kind == KIND_ANY {
+        have = __mem_load_i64(d + DICT_KEY_KIND);
+        if have != KIND_ANY {
+            return __jac_rt_elem_box(bits, have);
+        }
+    }
     __jac_rt_elem_retain(bits, key_kind);
     return bits;
 }
 
 impl __jac_rt_dict_val_ref(d: int, index: int, val_kind: int) -> int {
     bits = __mem_load_i64(__mem_load_i64(d + DICT_VALS) + index * SLOT);
+    if val_kind == KIND_ANY {
+        have = __mem_load_i64(d + DICT_VAL_KIND);
+        if have != KIND_ANY {
+            return __jac_rt_elem_box(bits, have);
+        }
+    }
     __jac_rt_elem_retain(bits, val_kind);
     return bits;
 }

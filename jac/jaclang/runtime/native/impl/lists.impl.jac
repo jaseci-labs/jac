@@ -343,6 +343,12 @@ impl __jac_rt_list_set(lst: int, i: int, bits: int, kind: int) {
 
 impl __jac_rt_list_get_ref(lst: int, i: int, kind: int) -> int {
     bits = __mem_load_i64(__mem_load_i64(lst + LIST_DATA) + i * SLOT);
+    if kind == KIND_ANY {
+        have = __mem_load_i64(lst + LIST_KIND);
+        if have != KIND_ANY {
+            return __jac_rt_elem_box(bits, have);
+        }
+    }
     __jac_rt_elem_retain(bits, kind);
     return bits;
 }

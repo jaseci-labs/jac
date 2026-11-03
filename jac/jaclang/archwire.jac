@@ -15101,8 +15101,13 @@ graph import runtime.na_stdlib {
 
 graph import runtime.native {
     anys ++> [
-        dicts { __jac_rt_cstr_eq, __jac_rt_type_name },
-        lists { __jac_rt_any_box, __jac_rt_any_equal, __jac_rt_any_order },
+        dicts { __jac_rt_cstr_eq, __jac_rt_elem_box, __jac_rt_type_name },
+        lists {
+            __jac_rt_any_box,
+            __jac_rt_any_equal,
+            __jac_rt_any_order,
+            __jac_rt_elem_box
+        },
     ]
     bytes ++> anys { __jac_rt_bytes_has, __jac_rt_bytes_repr }
     dicts ++> [
