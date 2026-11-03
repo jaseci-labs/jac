@@ -3884,7 +3884,18 @@ impl MirLowering.import_call(
     if self.template_of(callee) {
         return self.generic_call(nd, callee, None, None);
     }
-    decl = self.foreign_function_decl(callee, nd);
+    decl: MirDecl;
+    try {
+        decl = self.foreign_function_decl(callee, nd);
+    } except MirRefused as err {
+        binding = self.module.gen.interop_manifest.bindings.get(nd.target.value)
+            if isinstance(nd.target, uni.Name)
+            else None;
+        if binding is not None and binding.native_callable {
+            return None;
+        }
+        raise err;
+    }
     (symbol, params, ret) = (decl.symbol, decl.params, decl.ret);
     args = self.bound_args(nd, callee, False);
     if len(args) != len(params) {
