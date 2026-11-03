@@ -287,6 +287,11 @@ impl __jac_rt_list_new(cap: int, kind: int) -> int {
     __mem_store_i64(lst + LIST_LEN, 0);
     __mem_store_i64(lst + LIST_CAP, size);
     __mem_store_i64(lst + LIST_DATA, data);
+    __jac_rt_list_rekind(lst, kind);
+    return lst;
+}
+
+impl __jac_rt_list_rekind(lst: int, kind: int) {
     __mem_store_i64(lst + LIST_KIND, kind);
     dtor = int(_list_drop_plain);
     if kind == KIND_STR {
@@ -300,7 +305,6 @@ impl __jac_rt_list_new(cap: int, kind: int) -> int {
         }
     }
     __mem_store_i64(lst - HDR_DTOR_BACK, dtor);
-    return lst;
 }
 
 impl __jac_rt_list_reserve(lst: int, n: int) {
@@ -343,6 +347,12 @@ impl __jac_rt_list_set(lst: int, i: int, bits: int, kind: int) {
 
 impl __jac_rt_list_get_ref(lst: int, i: int, kind: int) -> int {
     bits = __mem_load_i64(__mem_load_i64(lst + LIST_DATA) + i * SLOT);
+    if kind == KIND_ANY {
+        have = __mem_load_i64(lst + LIST_KIND);
+        if have != KIND_ANY {
+            return __jac_rt_elem_box(bits, have);
+        }
+    }
     __jac_rt_elem_retain(bits, kind);
     return bits;
 }

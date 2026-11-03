@@ -1138,6 +1138,16 @@ impl MirLowering.dict_method(
             b.compare("ge", following, b.const_int(0, mir_int())), body, done
         );
         b.position(body);
+        if self.elem_kind(part, nd) == KIND_ANY {
+            held = self.runtime_value(
+                "__jac_rt_dict_key_ref" if name == "keys" else "__jac_rt_dict_val_ref",
+                [d, b.load(cursor, mir_int()), part_kind]
+            );
+            self.container_add(made, self.owned_element(held, part), nd);
+            b.branch(head);
+            b.position(done);
+            return made;
+        }
         bits = self.runtime(
             "__jac_rt_dict_key_at" if name == "keys" else "__jac_rt_dict_val_at",
             [d, b.load(cursor, mir_int())]

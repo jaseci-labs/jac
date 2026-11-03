@@ -6,21 +6,6 @@ macOS's struct statvfs counts blocks in 32 bits, so os.statvfs reads
 statfs(2) instead (the $INODE64 statfs, through the jacpy_statfs helpers).
 """
 
-import from jaclang.runtime.python.cpython_api {
-    PyFloat_FromDouble,
-    PyLong_FromLong,
-    PyLong_FromLongLong,
-    PyLong_FromUnsignedLong,
-    PyObject,
-    jacpy_fstatfs,
-    jacpy_release,
-    jacpy_statfs
-}
-import from jaclang.runtime.python.object_model.structseq {
-    PyStructSequence_New,
-    PyStructSequence_SetItem
-}
-import from jaclang.runtime.python.modules.stat_records { _Py_stat_struct }
 import from c {
     # struct statfs with 64-bit inodes; the name strings follow f_fssubtype.
     obj statfs_record {

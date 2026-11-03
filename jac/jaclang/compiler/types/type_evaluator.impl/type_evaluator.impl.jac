@@ -195,7 +195,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                             );
                         }
                         if not isinstance(elem_type, UnknownType)
-                            and not self._type_in_list(elem_type, elem_types) {
+                            and not self._literal_member_known(elem_type, elem_types) {
                             elem_types.append(elem_type);
                         }
                     }
@@ -271,7 +271,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 widen=expected_kv is None
                             );
                             if not isinstance(vt, UnknownType)
-                                and not self._type_in_list(vt, val_types) {
+                                and not self._literal_member_known(vt, val_types) {
                                 val_types.append(vt);
                             }
                         } else {
@@ -289,7 +289,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 }
                                 svt = st.private.type_args[1];
                                 if not isinstance(svt, UnknownType)
-                                    and not self._type_in_list(svt, val_types) {
+                                    and not self._literal_member_known(
+                                        svt, val_types
+                                    ) {
                                     val_types.append(svt);
                                 }
                             }
@@ -418,7 +420,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                             widen=expected_elem_sv is None
                         );
                         if not isinstance(et, UnknownType)
-                            and not self._type_in_list(et, set_elem_types) {
+                            and not self._literal_member_known(et, set_elem_types) {
                             set_elem_types.append(et);
                         }
                     }

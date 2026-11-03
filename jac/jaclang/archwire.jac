@@ -6211,6 +6211,8 @@ graph import compiler {
             rule_text,
             scope_owners,
             scope_path_of,
+            unnamed_module_label,
+            variant_base_file,
             wiring_for_path
         },
         passes.package_boundary_pass { local_module_name },
@@ -6464,6 +6466,7 @@ graph import compiler {
             InteropManifest
         },
         driver.wiring.WiringSpec.import_provider { is_bundled_native_module },
+        driver.wiring.variant_base_file { native_variant_base },
         erased_imports.erased_identity_call_arg { NATIVE_ERASED_IDENTITY_CALLS },
         erased_imports.erased_import_binds { NATIVE_ERASED_IMPORTS },
         native_bindings.NativeBindings.surface {
@@ -6911,6 +6914,7 @@ graph import compiler {
             E1144,
             E1146,
             E1147,
+            E1148,
             E2088,
             E2089,
             E2090,
@@ -9588,9 +9592,11 @@ graph import compiler {
     passes.type_checker_pass ++> driver.pipeline.analysis_passes
         | tests.test_pipeline_products
         | tests.xbackend_equiv.compile_fixture_to_js { TypeCheckPass }
-    passes.variant_agreement_pass ++> driver.pipeline.analysis_passes {
-        VariantAgreementPass
-    }
+    passes.variant_agreement_pass ++> [
+        driver.pipeline.analysis_passes { VariantAgreementPass },
+        driver.wiring.unnamed_module_label { ANNEX_MARKERS },
+        driver.wiring.variant_base_file { VARIANT_SUFFIX },
+    ]
     placement.placement ++> [
         driver.compiler.JacCompiler.native_entry_engine { summary_store },
         driver.unit_products.placement_record | symbol_utils.report_placement_warnings {
@@ -15127,8 +15133,13 @@ graph import runtime.na_stdlib {
 
 graph import runtime.native {
     anys ++> [
-        dicts { __jac_rt_cstr_eq, __jac_rt_type_name },
-        lists { __jac_rt_any_box, __jac_rt_any_equal, __jac_rt_any_order },
+        dicts { __jac_rt_cstr_eq, __jac_rt_elem_box, __jac_rt_type_name },
+        lists {
+            __jac_rt_any_box,
+            __jac_rt_any_equal,
+            __jac_rt_any_order,
+            __jac_rt_elem_box
+        },
     ]
     bytes ++> anys { __jac_rt_bytes_has, __jac_rt_bytes_repr }
     dicts ++> [
@@ -15138,6 +15149,7 @@ graph import runtime.native {
             __jac_rt_dict_len,
             __jac_rt_dict_new,
             __jac_rt_dict_next,
+            __jac_rt_dict_rekind,
             __jac_rt_dict_set,
             __jac_rt_dict_val_at
         },
@@ -15156,6 +15168,7 @@ graph import runtime.native {
             __jac_rt_list_extend,
             __jac_rt_list_new,
             __jac_rt_list_push,
+            __jac_rt_list_rekind,
             __jac_rt_tuple_new,
             __jac_rt_tuple_set
         },
@@ -15530,6 +15543,8 @@ graph import runtime.python {
         modules.elementtree
             | modules.pyexpat
             | modules.select_platform
+            | modules.select_platform.darwin
+            | modules.select_platform.linux
             | modules.sqlite3 { MemberField },
         modules.multiprocessing | modules.posix_stat { MemberField, MemberType },
         modules.pickle { record_int, record_set_int },
@@ -17164,9 +17179,10 @@ graph import runtime.python {
             PyObject,
             PySlice_New,
             PyTuple_New,
-            Py_Ellipsis,
+            Py_CONSTANT_ELLIPSIS,
+            Py_CONSTANT_NONE,
+            Py_GetConstant,
             Py_NewRef,
-            Py_None,
             jacpy_code_new,
             jacpy_long_from_bytes,
             jacpy_release,
@@ -19640,6 +19656,7 @@ graph import runtime.python {
             jacpy_tuple_item,
             jacpy_tuple_set_owned
         },
+        modules.getpath_platform.darwin { PyMem_RawFree, PyMem_RawMalloc },
         modules.grp {
             NULL,
             PyBytes_AsString,
@@ -21319,7 +21336,10 @@ graph import runtime.python {
             jacpy_release,
             jacpy_set_errno
         },
-        modules.posix_fileio_platform | object_model.mystrtoul { jacpy_set_errno },
+        modules.posix_fileio_platform
+            | modules.posix_fileio_platform.darwin
+            | modules.posix_fileio_platform.linux
+            | object_model.mystrtoul { jacpy_set_errno },
         modules.posix_files {
             NULL,
             PyBytes_AsString,
@@ -21547,6 +21567,22 @@ graph import runtime.python {
             jacpy_set_errno,
             jacpy_stat
         },
+        modules.posix_stat_platform.darwin {
+            PyFloat_FromDouble,
+            PyLong_FromLong,
+            PyLong_FromLongLong,
+            PyLong_FromUnsignedLong,
+            PyObject,
+            jacpy_fstatfs,
+            jacpy_release,
+            jacpy_statfs
+        },
+        modules.posix_stat_platform.linux {
+            PyLong_FromLong,
+            PyLong_FromUnsignedLong,
+            PyObject,
+            jacpy_release
+        },
         modules.posixshmem {
             NULL,
             PyErr_CheckSignals,
@@ -21613,6 +21649,15 @@ graph import runtime.python {
             jacpy_tuple_set_owned
         },
         modules.posixsubprocess_fds { _Py_closerange },
+        modules.posixsubprocess_platform.darwin {
+            jacpy_closedir,
+            jacpy_dirfd,
+            jacpy_errno,
+            jacpy_opendir,
+            jacpy_readdir_name,
+            jacpy_set_errno
+        },
+        modules.posixsubprocess_platform.linux { _Py_open_noraise },
         modules.pwd {
             NULL,
             PyBytes_AsString,
@@ -32479,6 +32524,7 @@ graph import runtime.python {
             _PyRuntimeState_THREADS_INITIALIZED,
             _SC_THREAD_STACK_MIN
         },
+        modules.core_platform.linux { CLOCK_MONOTONIC, SYS_gettid },
         modules.ctypes_malloc_closure {
             MAP_ANONYMOUS,
             MAP_PRIVATE,
@@ -37476,6 +37522,8 @@ graph import runtime.python {
             | modules.lsprof
             | modules.posix_fileio
             | modules.posix_ids
+            | modules.posix_stat_platform.darwin
+            | modules.posix_stat_platform.linux
             | modules.pwd
             | modules.resource
             | modules.signal { PyStructSequence_New, PyStructSequence_SetItem },
@@ -40812,6 +40860,7 @@ graph import runtime.python.modules {
         },
     ]
     dynload_platform ++> imp { _PyImport_DynLoadFiletab }
+    epoll_layout ++> select_platform.linux { EPOLL_DATA_OFFSET, EPOLL_EVENT_SIZE }
     errno_constants ++> [
         locale { ERANGE },
         multiprocessing { EAGAIN, EINTR, ETIMEDOUT },
@@ -41974,7 +42023,9 @@ graph import runtime.python.modules {
             TIOCSCTTY,
             _SC_TTY_NAME_MAX
         },
-        posix_fileio_platform { ENOSYS },
+        posix_fileio_platform
+            | posix_fileio_platform.darwin
+            | posix_fileio_platform.linux { ENOSYS },
         posix_files {
             AT_EACCESS,
             AT_REMOVEDIR,
@@ -42022,6 +42073,7 @@ graph import runtime.python.modules {
             NGROUPS_MAX,
             _SC_NPROCESSORS_ONLN
         },
+        posix_ids_platform.linux { SYS_getrandom },
         posix_process {
             EINTR,
             EINVAL,
@@ -42046,6 +42098,7 @@ graph import runtime.python.modules {
             POSIX_SPAWN_SETSIGMASK,
             PRIO_PROCESS
         },
+        posix_process_platform.linux { SYS_pidfd_open },
         posix_stat {
             AT_SYMLINK_NOFOLLOW,
             DT_DIR,
@@ -42219,6 +42272,7 @@ graph import runtime.python.modules {
     posix_platform ++> [
         posix_core { DEV_T_SIGNED_32, environment_table },
         posix_files { DEV_T_SIGNED_32 },
+        posix_files_platform.darwin { runtime_function },
         posix_process { environment_table },
     ]
     posix_platform --> posix_core { fildes_call }
@@ -42279,6 +42333,29 @@ graph import runtime.python.modules {
     posixsubprocess_constants ++> [
         posixsubprocess { ENOENT, ENOTDIR, NGROUPS_MAX },
         posixsubprocess_fds { _SC_OPEN_MAX },
+        posixsubprocess_platform.linux {
+            NSIG,
+            O_RDONLY,
+            SIGKILL,
+            SIGSTOP,
+            SIG_BLOCK,
+            SIG_SETMASK,
+            SYS_getdents64
+        },
+    ]
+    posixsubprocess_fds ++> [
+        posixsubprocess_platform.darwin {
+            CLOSE_RANGE,
+            close_range_except,
+            fd_in_sorted_fd_sequence,
+            pos_int_from_ascii
+        },
+        posixsubprocess_platform.linux {
+            CLOSE_EACH,
+            close_range_except,
+            fd_in_sorted_fd_sequence,
+            pos_int_from_ascii
+        },
     ]
     posixsubprocess_platform ++> posixsubprocess {
         DIRENT_BUFFER_SIZE,
@@ -42858,6 +42935,8 @@ graph import runtime.python.modules {
         | mmap
         | posix_stat
         | posix_stat_platform
+        | posix_stat_platform.darwin
+        | posix_stat_platform.linux
         | signal { _Py_stat_struct }
     syslog_constants ++> syslog { LOG_INFO, LOG_USER }
     termios_constants ++> termios { ICANON, NCCS, TIOCGWINSZ, TIOCSWINSZ, VMIN, VTIME }
@@ -42890,9 +42969,21 @@ graph import runtime.python.modules {
         pthread_getcpuclockid
     }
     time_records ++> [
-        core_platform | select | signal { timespec, timeval },
+        core_platform | core_platform.darwin | core_platform.linux | select | signal {
+            timespec,
+            timeval
+        },
         datetime_date | datetime_datetime | datetime_format { tm },
-        posix_fileio | posix_fileio_platform | posix_files | time_platform { timespec },
+        posix_fileio
+            | posix_fileio_platform
+            | posix_fileio_platform.darwin
+            | posix_fileio_platform.linux
+            | posix_files
+            | time_platform
+            | time_platform.darwin
+            | time_platform.linux { timespec },
+        posix_process_platform.darwin { tms },
+        posix_process_platform.linux { timespec, tms },
         time { timespec, timeval, tm, tms },
     ]
     unicodedata_db ++> unicodedata {

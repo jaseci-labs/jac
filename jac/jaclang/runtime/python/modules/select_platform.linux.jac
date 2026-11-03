@@ -4,11 +4,6 @@ struct epoll_event is packed on x86_64 only, so its size and the offset of
 its data member come from epoll_layout.<arch>.jac and events are addressed
 as bytes.
 """
-import from jaclang.runtime.python.bindings.members { MemberField }
-import from jaclang.runtime.python.modules.epoll_layout {
-    EPOLL_EVENT_SIZE,
-    EPOLL_DATA_OFFSET
-}
 import from c {
     obj pollfd {
         has fd: i32 = 0,

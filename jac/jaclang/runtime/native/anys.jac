@@ -70,6 +70,7 @@ glob KIND_INT: int = 0,
      LIST_KIND: int = 24,
      DICT_KEY_KIND: int = 56,
      DICT_VAL_KIND: int = 64,
+     DICT_LEN_AT: int = 0,
      TUPLE_KINDS: int = 8,
      BYTES_DATA: int = 8,
      BYTEARRAY_DATA: int = 16,
@@ -151,6 +152,35 @@ def:pub __jac_rt_any_negate(tag: int, payload: int) -> int;
 
 def:pub __jac_rt_dict_convert(
     tag: int, payload: int, key_kind: int, val_kind: int
+) -> int;
+
+def:pub __jac_rt_any_bind(
+    tag: int,
+    payload: int,
+    want: int,
+    first: int,
+    first_family: int,
+    second: int,
+    second_family: int,
+    label: ptr[u8]
+) -> int;
+
+def _bind_kind(have: int, want: int) -> bool;
+
+def _bind_elem(bits: int, kind: int, family: int) -> bool;
+
+def _bind_refuse(label: ptr[u8]);
+
+def _bind_list(payload: int, kind: int, family: int, label: ptr[u8]) -> int;
+
+def _bind_dict(
+    payload: int,
+    want: int,
+    key_kind: int,
+    key_family: int,
+    val_kind: int,
+    val_family: int,
+    label: ptr[u8]
 ) -> int;
 
 def _kind_bits(bits: int, have: int, want: int) -> int;

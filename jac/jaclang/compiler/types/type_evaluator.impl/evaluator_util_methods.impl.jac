@@ -839,6 +839,27 @@ impl TypeEvaluator._type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> boo
     return False;
 }
 
+impl TypeEvaluator._literal_member_known(
+    ty: TypeBase, type_list: list[TypeBase]
+) -> bool {
+    for existing in type_list {
+        if isinstance(ty, ClassType)
+            and isinstance(existing, ClassType)
+            and ty.shared.same_class(existing.shared)
+            and ty.private.type_args
+            and existing.private.type_args
+            and not (
+                self.assign_type(ty, existing) and self.assign_type(existing, ty)
+            ) {
+            continue;
+        }
+        if self._type_in_list(ty, [existing]) {
+            return True;
+        }
+    }
+    return False;
+}
+
 impl TypeEvaluator._collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None {
     if isinstance(ty, UnionType) {
         for member in ty.types {
