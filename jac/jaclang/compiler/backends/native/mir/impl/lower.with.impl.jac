@@ -151,8 +151,12 @@ impl MirLowering.with_generator(
     b.position(dispatch);
     self.runtime("__jac_rt_exc_pop", [frame]);
     (origin, type_id, message) = self.guard_caught(frame);
-    self.runtime("__jac_rt_raise", [origin, type_id, message]);
-    b.unreachable();
+    self.raise_if(
+        self.iter_throw(it, out, origin, type_id, message),
+        "RuntimeError",
+        "generator didn't stop after throw()"
+    );
+    self.builder().branch(after);
     b.position(after);
 }
 

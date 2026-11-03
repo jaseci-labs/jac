@@ -81,6 +81,7 @@ impl MirLowering.lower_generator(decl: MirDecl) -> (MirFunction | None) {
         slots: list[MirValue] = [];
         if decl.self_type is not None {
             receiver = self.temp_slot(decl.self_type);
+            receiver.is_temp = False;
             slots.append(receiver);
             self.st().self_value = self.builder().load(receiver, decl.self_type);
         }
@@ -174,20 +175,6 @@ impl MirLowering.lower_yield(nd: uni.YieldExpr) {
             )
         );
     }
-    cursor = nd.parent;
-    while cursor is not None and not isinstance(cursor, (uni.Ability, uni.Module)) {
-        if isinstance(cursor, uni.WithStmt) {
-            raise MirRefused(
-                mir_refusal(
-                    "expression",
-                    "yield inside with",
-                    nd,
-                    "An exception raised into a suspended native generator is not thrown at its yield, so a with around the yield would not see it; move the yield out of the with."
-                )
-            );
-        }
-        cursor = cursor.parent;
-    }
     b = self.builder();
     if nd.with_from {
         if nd.expr is None {
@@ -250,6 +237,54 @@ impl MirLowering.yield_value(value: MirValue, site: uni.UniNode) {
     self.leave_tries(0, False);
     b.emit(MirInstr(op=MirOp.YIELD, operands=[shared]));
     self.rearm_tries();
+    self.raise_pending();
+}
+
+impl MirLowering.raise_pending {
+    info = self.st().generator;
+    if info is None {
+        return;
+    }
+    b = self.builder();
+    fn = self.st().fn;
+    i8p = mir_c_ptr(mir_int(8, False));
+    base = self.emit_value(MirOp.PTR_INT, mir_int(), [info.frame]);
+    type_place = b.binary("add", base, b.const_int(GEN_PENDING_TYPE, mir_int()));
+    pending = self.emit_value(MirOp.MEM_LOAD, mir_int(), [type_place]);
+    thrown = fn.new_block("gen.thrown");
+    resumed = fn.new_block("gen.resumed");
+    b.cond_branch(b.compare("ne", pending, b.const_int(0, mir_int())), thrown, resumed);
+    b.position(thrown);
+    self.emit_value(
+        MirOp.MEM_STORE, mir_none(), [type_place, b.const_int(0, mir_int())]
+    );
+    message = self.emit_value(
+        MirOp.PTR_CAST,
+        i8p,
+        [
+            self.emit_value(
+                MirOp.MEM_LOAD,
+                mir_int(),
+                [b.binary("add", base, b.const_int(GEN_PENDING_MESSAGE, mir_int()))]
+            )
+        ]
+    );
+    origin = self.emit_value(
+        MirOp.PTR_CAST,
+        i8p,
+        [
+            self.emit_value(
+                MirOp.MEM_LOAD,
+                mir_int(),
+                [b.binary("add", base, b.const_int(GEN_PENDING_ORIGIN, mir_int()))]
+            )
+        ]
+    );
+    self.runtime(
+        "__jac_rt_raise", [origin, b.convert(pending, mir_int(32, True, True)), message]
+    );
+    b.unreachable();
+    b.position(resumed);
 }
 
 impl MirLowering.yield_expression(nd: uni.YieldExpr) -> MirValue {
@@ -494,6 +529,99 @@ impl MirLowering.iter_advance(it: MirValue, out: MirValue) -> MirValue {
         mir_bool(),
         [target, state, self.emit_value(MirOp.PTR_CAST, i8p, [out])]
     );
+}
+
+impl MirLowering.iter_throw(
+    it: MirValue, out: MirValue, origin: MirValue, type_id: MirValue, message: MirValue
+) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    held = self.spill(it);
+    base = self.address_of(held);
+    frame = self.emit_value(
+        MirOp.MEM_LOAD, mir_int(), [b.binary("add", base, b.const_int(8, mir_int()))]
+    );
+    point = self.emit_value(MirOp.MEM_LOAD, mir_int(), [frame]);
+    suspended = fn.new_block("throw.into");
+    finished = fn.new_block("throw.done");
+    b.cond_branch(
+        b.compare("gt", point, b.const_int(0, mir_int())), suspended, finished
+    );
+    b.position(finished);
+    self.emit_value(MirOp.MEM_STORE, mir_none(), [frame, b.const_int(-1, mir_int())]);
+    self.runtime("__jac_rt_raise", [origin, type_id, message]);
+    b.unreachable();
+    b.position(suspended);
+    self.emit_value(
+        MirOp.MEM_STORE,
+        mir_none(),
+        [
+            b.binary("add", frame, b.const_int(GEN_PENDING_TYPE, mir_int())),
+            b.convert(type_id, mir_int())
+        ]
+    );
+    self.emit_value(
+        MirOp.MEM_STORE,
+        mir_none(),
+        [
+            b.binary("add", frame, b.const_int(GEN_PENDING_MESSAGE, mir_int())),
+            self.emit_value(MirOp.PTR_INT, mir_int(), [message])
+        ]
+    );
+    self.emit_value(
+        MirOp.MEM_STORE,
+        mir_none(),
+        [
+            b.binary("add", frame, b.const_int(GEN_PENDING_ORIGIN, mir_int())),
+            self.emit_value(MirOp.PTR_INT, mir_int(), [origin])
+        ]
+    );
+    return self.iter_advance(held, out);
+}
+
+impl MirLowering.gen_close(it: MirValue) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    i8p = mir_c_ptr(mir_int(8, False));
+    held = self.spill(it);
+    out = self.temp_slot(mir_int());
+    done = fn.new_block("close.done");
+    (frame, dispatch) = self.guard_open();
+    exit_id = b.const_int(
+        JAC_TYPE_REGISTRY.exception_type_id("GeneratorExit"), mir_int(32, True, True)
+    );
+    nothing = self.emit_value(MirOp.PTR_NULL, i8p, []);
+    yielded = self.iter_throw(held, out, nothing, exit_id, nothing);
+    self.runtime("__jac_rt_exc_pop", [frame]);
+    self.raise_if(yielded, "RuntimeError", "generator ignored GeneratorExit");
+    self.builder().branch(done);
+    b.position(dispatch);
+    self.runtime("__jac_rt_exc_pop", [frame]);
+    (origin, type_id, message) = self.guard_caught(frame);
+    ended = b.binary(
+        "or",
+        b.compare(
+            "eq",
+            type_id,
+            b.const_int(
+                JAC_TYPE_REGISTRY.exception_type_id("GeneratorExit"), type_id.type
+            )
+        ),
+        b.compare(
+            "eq",
+            type_id,
+            b.const_int(
+                JAC_TYPE_REGISTRY.exception_type_id("StopIteration"), type_id.type
+            )
+        )
+    );
+    other = fn.new_block("close.raise");
+    b.cond_branch(ended, done, other);
+    b.position(other);
+    self.runtime("__jac_rt_raise", [origin, type_id, message]);
+    b.unreachable();
+    b.position(done);
+    return self.none_value();
 }
 
 impl MirLowering.element_from_bits(bits: MirValue, elem: MirType) -> MirValue {

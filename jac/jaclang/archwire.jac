@@ -1363,6 +1363,11 @@ graph import {
     compiler.placement.placement ++> cli.commands.fix._verify_claims {
         element_display_name
     }
+    compiler.placement.placement_cache ++> dist.publish.runtime_vendor._compile_runtime_module
+        | testing.cl_test_runner.module_is_client { module_record }
+    compiler.placement.placement_cache --> dist.precompile_bytecode.sealable_sources {
+        discover_spaces
+    }
     compiler.placement.placement_export --> [
         cli.commands.analysis._check_file_job { collect_placement_rows },
         cli.commands.analysis.explain { collect_placement_rows },
@@ -1377,8 +1382,6 @@ graph import {
         dist.precompile_bytecode.package_native_units { native_units_of },
         dist.publish.runtime_vendor._runtime_module_options { SPACE_SERVER },
     ]
-    compiler.placement.placement_cache ++> dist.publish.runtime_vendor._compile_runtime_module
-        | testing.cl_test_runner.module_is_client { module_record }
     compiler.placement.placement_facts --> [
         dist.precompile_bytecode.run_precompile { native_only },
         dist.precompile_bytecode.sealable_sources { spaces_are_client_only },
@@ -1386,9 +1389,6 @@ graph import {
             session_declares_native
         },
     ]
-    compiler.placement.placement_cache --> dist.precompile_bytecode.sealable_sources {
-        discover_spaces
-    }
     compiler.placement.placement_pins ++> [
         lsp.server.engine.JacLangServer._module_spec_target { in_client_npm_world },
         lsp.server.engine.JacLangServer._npm_item_location { in_client_npm_world },
@@ -6639,7 +6639,7 @@ graph import compiler {
             | placement.placement_facts.settle_server
             | placement.placement_solver
             | symbol_utils.report_placement_warnings { CodeContext },
-        backends.native.mir.lower { Tokens as Tok, is_borrow_kind },
+        backends.native.mir.lower { CodeContext, Tokens as Tok, is_borrow_kind },
         backends.py.jcir_gen_pass {
             CodeContext,
             OwnershipKind,
@@ -9608,6 +9608,9 @@ graph import compiler {
         driver.module_analysis.run_analysis { record_decided },
     ]
     type placement.placement ++> driver.progstate { PlacementSummary }
+    placement.placement_cache ++> driver.compiler.JacCompiler.kernel_native_entry {
+        module_record
+    }
     placement.placement_export ++> driver.unit_products.placement_record {
         summary_to_dict
     }
@@ -9633,9 +9636,6 @@ graph import compiler {
         passes.placement_pass.PlacementPass._run_undecided { contexts_of },
         passes.placement_pass.settle_native_module { settle_server },
     ]
-    placement.placement_cache ++> driver.compiler.JacCompiler.kernel_native_entry {
-        module_record
-    }
     placement.placement_facts --> [
         driver.module_analysis.run_analysis { settle_server },
         driver.nativecache.NativeUnitRegistry.known_native_deps { native_unit },
@@ -13020,8 +13020,10 @@ graph import compiler.placement {
     ]
     type placement ++> placement_cache { PlacementSummary }
     placement_export ++> placement_cache._record_at { summary_from_bytes }
-    placement_facts ++> placement_cache.discover_spaces { SPACE_SERVER, module_spaces }
-    placement_facts ++> placement_solver.native_closure_blocker { pinned_module_space }
+    placement_facts ++> [
+        placement_cache.discover_spaces { SPACE_SERVER, module_spaces },
+        placement_solver.native_closure_blocker { pinned_module_space },
+    ]
     placement_pins ++> [
         placement.module_anchor_reasons
             | placement_facts.pinned_module_space
