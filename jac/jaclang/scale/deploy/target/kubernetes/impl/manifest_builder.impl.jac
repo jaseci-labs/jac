@@ -28,18 +28,25 @@ impl _run_until_quiet(
     for reader in readers {
         reader.start();
     }
-    while proc.poll() is None {
-        if time.monotonic() - heard[0] > quiet_s {
-            proc.kill();
-            proc.wait();
-            for reader in readers {
-                reader.join(timeout=5);
+    try {
+        while proc.poll() is None {
+            if time.monotonic() - heard[0] > quiet_s {
+                raise subprocess.TimeoutExpired(cmd, quiet_s);
             }
+            time.sleep(min(1.0, quiet_s / 4));
+        }
+    } except BaseException as e {
+        proc.kill();
+        proc.wait();
+        for reader in readers {
+            reader.join(timeout=5);
+        }
+        if isinstance(e, subprocess.TimeoutExpired) {
             raise subprocess.TimeoutExpired(
                 cmd, quiet_s, output="".join(out), stderr="".join(err)
-            );
+            ) from None;
         }
-        time.sleep(min(1.0, quiet_s / 4));
+        raise;
     }
     for reader in readers {
         reader.join();
