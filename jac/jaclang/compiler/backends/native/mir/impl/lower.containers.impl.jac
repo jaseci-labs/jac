@@ -855,7 +855,7 @@ impl MirLowering.list_sort(lst: MirValue, nd: uni.FuncCall) -> (MirValue | None)
     key_fn: (MirValue | None) = None;
     if "key" in named {
         key_fn = self.key_function(named["key"]);
-    } elif self.elem_kind(elem, nd) == KIND_REF {
+    } elif self.sort_kind(elem, nd) == KIND_REF {
         return None;
     }
     flag = b.const_bool(False);
@@ -886,9 +886,14 @@ impl MirLowering.dict_method(
     if name == "get" and len(args) in (1, 2) {
         result_type = self.expr_type(nd);
         held = self.temp_slot(result_type);
+        key = self.lower_expr(args[0]);
+        fallback = self.spill(
+            self.coerce(self.lower_expr(args[1]), result_type, args[1])
+        )
+            if len(args) == 2
+            else None;
         found = self.runtime(
-            "__jac_rt_dict_find",
-            [d, self.to_bits(self.lower_expr(args[0]), key_type, args[0]), key_kind]
+            "__jac_rt_dict_find", [d, self.to_bits(key, key_type, args[0]), key_kind]
         );
         if found is None {
             return None;
@@ -921,8 +926,8 @@ impl MirLowering.dict_method(
         }
         b.branch(done);
         b.position(miss);
-        if len(args) == 2 {
-            b.store(held, self.coerce(self.lower_expr(args[1]), result_type, args[1]));
+        if fallback is not None {
+            b.store(held, fallback);
         } else {
             b.store(held, self.coerce(self.none_value(), result_type, nd));
         }
@@ -1297,7 +1302,13 @@ impl MirLowering.set_method(
                 "difference_update",
                 "symmetric_difference_update"
             ) {
-        other = self.coerce(self.lower_expr(args[0]), s.type, args[0]);
+        other = self.lower_expr(args[0]);
+        if other.type is not s.type and other.type.kind != MirKind.SET {
+            gathered = self.spill(self.new_dict(elem, None, s.type));
+            self.extend_from(gathered, self.spill(other), args[0]);
+            other = gathered;
+        }
+        other = self.coerce(other, s.type, args[0]);
         return self.set_algebra(s, other, name, nd);
     }
     return None;
@@ -1763,7 +1774,12 @@ impl MirLowering.sort_kind(t: MirType, site: uni.UniNode) -> int {
     if t.kind == MirKind.INT and not t.signed and t.width == 64 {
         return KIND_UINT;
     }
-    return self.elem_kind(t, site);
+    kind = self.elem_kind(t, site);
+    if kind == KIND_REF
+        and t.kind in (MirKind.LIST, MirKind.BYTES, MirKind.BYTEARRAY, MirKind.SET) {
+        return SORT_TAGGED_KIND + self.any_tag(t, site);
+    }
+    return kind;
 }
 
 impl MirLowering.unbind_local(target: uni.Expr) -> bool {

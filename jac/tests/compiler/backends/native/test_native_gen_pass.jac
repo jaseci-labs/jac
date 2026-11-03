@@ -39,6 +39,7 @@ import tempfile;
 import from tests.support {
     JAC_ROOT,
     TESTS_DIR,
+    assert_native_identity,
     by_source_name,
     compile_native,
     compile_native_ir,
@@ -6262,53 +6263,23 @@ test "parameterless no-return function (def foo {}) is not dropped" {
 }
 
 # --- Union / tuple-trigger field access (issue #6470) ---
-"""field access on a `|` union parameter lowers the field load"""
-def _union_field_access__field_access_on_a_union_parameter_lowers_the_field_load(
-    eng: any, _ir: any
-) {
-    # `get_val(x: A | B) -> int { return x.val; }` -- both members carry `val`
-    # at the same offset, so the access resolves via either member's layout.
-    get_val = get_func(eng, "get_val", ctypes.c_int64, ctypes.c_void_p);
-    # A is `{ val: int }` -> a single-i64 struct at offset 0.
-    a = (ctypes.c_int64 * 1)(5);
-    assert get_val(ctypes.cast(a, ctypes.c_void_p)) == 5;
-    b = (ctypes.c_int64 * 1)(42);
-    assert get_val(ctypes.cast(b, ctypes.c_void_p)) == 42;
-}
-
-"""tuple-trigger union gives `here` a usable field layout (issue #6470)"""
-def _union_field_access__tuple_trigger_union_gives_here_a_usable_field_layout_issue_6470(
-    eng: any, _ir: any
-) {
-    # `can on_either with (Sub, Other) entry { self.either += here.val; }`.
-    # The tuple trigger types `here` as a union of node members; the body must
-    # not truncate at `here.val` (the original bug emitted an empty body and no
-    # `field.val` load, so `either` silently stayed 0).
-    addr = native_address(eng, unit_sym(_ir, "W.on_either"));
-    assert addr != 0 , "event ability 'W.on_either' was dropped from the module";
-    fn = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p)(addr);
-    # `self` is the walker W: { vtable@0, __type_tag@1, reports@2, either@3 } --
-    # walkers carry the built-in `reports` list at index 2, so the user field
-    # `either` sits at index 3. `here` is a node: { vtable@0, __type_tag@1,
-    # val@2 } (nodes have no reports field), so `val` sits at index 2.
-    self_buf = (ctypes.c_int64 * 4)(0, 0, 0, 0);
-    here_buf = (ctypes.c_int64 * 3)(0, 0, 5);
-    fn(ctypes.cast(self_buf, ctypes.c_void_p), ctypes.cast(here_buf, ctypes.c_void_p));
-    assert self_buf[3] == 5 , "here.val was not read through the union member layout";
-    # A second member instance must accumulate the same way.
-    here_buf2 = (ctypes.c_int64 * 3)(0, 0, 7);
-    fn(ctypes.cast(self_buf, ctypes.c_void_p), ctypes.cast(here_buf2, ctypes.c_void_p));
-    assert self_buf[3] == 12;
-}
-
+# Field access on a `|` union parameter and on a tuple trigger's `here` reads
+# the field the way the Python backend does: the body is not truncated at the
+# access, so `get_val` returns each member's `val` and the walker accumulates
+# `here.val` over both node types.
 test "union_field_access" {
-    (_eng, _ir) = compile_native("union_field_access.jac");
-    _union_field_access__field_access_on_a_union_parameter_lowers_the_field_load(
-        _eng, _ir
+    out = assert_native_identity(
+        os.path.join(
+            TESTS_DIR,
+            "compiler",
+            "backends",
+            "native",
+            "fixtures",
+            "union_field_access.jac"
+        ),
+        profiles=["rc", "managed"]
     );
-    _union_field_access__tuple_trigger_union_gives_here_a_usable_field_layout_issue_6470(
-        _eng, _ir
-    );
+    assert out == "5 42\n12\n" , out;
 }
 
 # --- TestNativeTestBlocks ---

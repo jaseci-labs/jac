@@ -37,6 +37,13 @@ impl MirLowering.module_member(unit: uni.Module, name: str) -> (uni.UniNode | No
         if isinstance(elem, uni.Ability) and self.name_of(elem) == name {
             return elem;
         }
+        if isinstance(elem, uni.Import) and elem.clib_decls {
+            for decl in elem.clib_decls {
+                if isinstance(decl, uni.Ability) and self.name_of(decl) == name {
+                    return decl;
+                }
+            }
+        }
         if isinstance(elem, uni.GlobalVars) {
             for assign in elem.assignments {
                 for target in assign.target {

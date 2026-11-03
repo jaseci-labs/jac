@@ -78,7 +78,11 @@ def fmt_errors(prog: JacProgram) -> str {
 test "na codegen errors withhold the native artifact" {
     src = write_module("gate_bad.jac", BAD_NA_SOURCE);
     prog = JacProgram();
-    mod = prog.compile(file_path=src, options=native_force_opts());
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    mod = prog.compile(
+        file_path=src,
+        options=CompileOptions(force_codespace="native", native_required=True)
+    );
     assert has_error_code(prog, "E5092") , (
         f"Expected E5092 from native codegen, got: {fmt_errors(prog)}"
     );
@@ -94,7 +98,7 @@ test "inferred module that cannot lower natively demotes to working bytecode" {
     # With the .na.jac marker retired, an importable module has no way to
     # *mandate* native: preference-driven inference demotes on lowering
     # failure and the server bytecode must be complete, never a poisoned
-    # half-native artifact. (The loud error gate lives on the forced path --
+    # half-native artifact. (The loud error gate lives on the required path --
     # see "na codegen errors withhold the native artifact".)
     src = write_module("gate_bad.jac", BAD_NA_SOURCE);
     bc = _bytecode(JacProgram(), src);
@@ -121,7 +125,10 @@ test "check-path compile surfaces native codegen errors (check/run parity)" {
     prog.compile(
         file_path=src,
         options=CompileOptions(
-            no_cgen=True, native_parity=True, force_codespace="native",
+            no_cgen=True,
+            native_parity=True,
+            force_codespace="native",
+            native_required=True
         )
     );
     assert has_error_code(prog, "E5092") , (

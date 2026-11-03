@@ -1,10 +1,22 @@
 glob RAISE_BUILTIN_SYMBOL: str = "__jac_rt_raise_builtin",
      RETAIN_SYMBOL: str = "__jac_rt_retain",
-     SETJMP_SYMBOL: str = "_setjmp",
-     LONGJMP_SYMBOL: str = "_longjmp",
-     EXC_FRAME_BYTES: int = 256,
+     BUILTIN_SETJMP_SYMBOL: str = "llvm.eh.sjlj.setjmp",
+     EXC_FRAME_BYTES: int = 296,
+     RETURNS_TWICE_SYMBOLS: list[str] = [
+         "vfork",
+         "setjmp",
+         "_setjmp",
+         "sigsetjmp",
+         "__sigsetjmp",
+         "savectx",
+         "getcontext"
+     ],
      RELEASE_SYMBOL: str = "__jac_rt_release",
      RELEASE_ACYCLIC_SYMBOL: str = "__jac_rt_release_acyclic",
+     DROP_SYMBOL: str = "__jac_rt_drop",
+     PIN_SHARE_SYMBOL: str = "__jac_rt_pin_share",
+     DROP_TEXT_SYMBOL: str = "__jac_rt_drop_text",
+     ANY_DROP_SYMBOL: str = "__jac_rt_any_drop",
      ANY_RETAIN_SYMBOL: str = "__jac_rt_any_retain",
      ANY_RELEASE_SYMBOL: str = "__jac_rt_any_release",
      ANY_OPS: list[MirOp] = [
@@ -143,6 +155,8 @@ obj MirEmitter {
     def global_variable(glob_def: MirGlobal) -> ir.GlobalVariable;
     def keyed_block_fn(label: str, size: int) -> ir.Function;
     def builtin_sjlj -> bool;
+    def jmp_symbols -> tuple[str, str];
+    def acyclic_type(held: MirType) -> bool;
 }
 
 def emit_mir_module(

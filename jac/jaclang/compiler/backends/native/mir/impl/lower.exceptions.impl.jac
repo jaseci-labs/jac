@@ -486,12 +486,18 @@ impl MirLowering.exception_text(value: MirValue, arch: uni.Archetype) -> MirValu
     b.cond_branch(b.compare("ne", stored, b.const_int(0, mir_int())), some, none);
     b.position(some);
     text = b.ref_cast(stored, mir_str_ref(), False);
-    self.runtime("__jac_rt_retain", [text]);
+    if not self.owned_world {
+        self.runtime("__jac_rt_retain", [text]);
+    }
     size = self.runtime("__jac_rt_str_size", [text]);
     if size is None {
         raise MirRefused(mir_refusal("conversion", "exception text", arch));
     }
-    made = b.str_make(b.ref_cast(stored, mir_str_ref(), True), text, size);
+    made = b.str_make(
+        text if self.owned_world else b.ref_cast(stored, mir_str_ref(), True),
+        text,
+        size
+    );
     b.store(held, made);
     b.branch(done);
     b.position(none);
@@ -622,7 +628,10 @@ impl MirLowering.raise_object(
     b = self.builder();
     i8p = mir_c_ptr(mir_int(8, False));
     held = value;
-    if not value.owned {
+    if not value.owned and self.owned_world {
+        held = b.ref_cast(value, value.type, False);
+        b.block.instrs[-1].sub = "escape";
+    } elif not value.owned {
         self.runtime("__jac_rt_retain", [held]);
     }
     tid = JAC_TYPE_REGISTRY.exception_type_id(archetype_native_name(arch));
@@ -706,15 +715,10 @@ impl MirLowering.raise_named(
         b.unreachable();
         return;
     }
-    text = self.to_str(message, message_nd);
-    held = self.runtime(
-        "__jac_rt_str_ref",
-        [b.str_part(text, "root"), b.str_part(text, "data"), b.str_part(text, "len")]
+    text = self.spill(self.to_str(message, message_nd));
+    data = self.call_rt(
+        "__jac_rt_exc_message", [b.str_part(text, "data"), b.str_part(text, "len")]
     );
-    if held is None {
-        raise MirRefused(mir_refusal("statement", "raise", nd));
-    }
-    data = self.emit_value(MirOp.PTR_CAST, mir_c_ptr(mir_int(8, False)), [held]);
     self.runtime(
         "__jac_rt_raise",
         [

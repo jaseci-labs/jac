@@ -1141,7 +1141,60 @@ impl MirLowering.bytes_method(
             if name == "startswith"
             else ("suffix" if name == "endswith" else "sub");
         (sub_nd, start_nd, end_nd) = self.bind_args(nd, [first, "start", "end"]);
-        (sub_data, sub_len) = self.bytes_arg(sub_nd, nd);
+        if sub_nd is None {
+            raise MirRefused(mir_refusal("call", "missing bytes argument", nd));
+        }
+        needle = self.spill(self.lower_expr(sub_nd));
+        if needle.type.kind == MirKind.TUPLE and name in ("startswith", "endswith") {
+            start = self.int_arg(start_nd, 0);
+            stop = self.int_arg(end_nd, TEXT_STOP);
+            (data, size) = self.byte_parts(held);
+            verdict = b.const_bool(False);
+            for index in range(len(needle.type.args)) {
+                member = self.spill(self.tuple_get(needle, index));
+                if not self.is_byte_seq(member) {
+                    raise MirRefused(
+                        mir_refusal("call argument", member.type.render(), sub_nd)
+                    );
+                }
+                (member_data, member_len) = self.byte_parts(member);
+                verdict = b.binary(
+                    "or",
+                    verdict,
+                    self.call_rt(
+                        "__jac_rt_bytes_affix",
+                        [
+                            data,
+                            size,
+                            member_data,
+                            member_len,
+                            start,
+                            stop,
+                            b.const_bool(name == "endswith")
+                        ]
+                    )
+                );
+            }
+            return verdict;
+        }
+        if needle.type.kind in (MirKind.INT, MirKind.BOOL)
+            and name not in ("startswith", "endswith") {
+            needle = self.spill(
+                b.ref_cast(
+                    self.call_rt(
+                        "__jac_rt_byte_single", [b.convert(needle, mir_int())]
+                    ),
+                    mir_bytes(),
+                    True
+                )
+            );
+        }
+        if not self.is_byte_seq(needle) {
+            raise MirRefused(
+                mir_refusal("call argument", needle.type.render(), sub_nd)
+            );
+        }
+        (sub_data, sub_len) = self.byte_parts(needle);
         start = self.int_arg(start_nd, 0);
         stop = self.int_arg(end_nd, TEXT_STOP);
         (data, size) = self.byte_parts(held);
@@ -1195,7 +1248,14 @@ impl MirLowering.bytes_method(
     }
     if name == "extend" {
         other_nd = self.bind_args(nd, ["iterable_of_ints"])[0];
-        (other_data, other_len) = self.bytes_arg(other_nd, nd);
+        if other_nd is None {
+            raise MirRefused(mir_refusal("call", "missing bytes argument", nd));
+        }
+        other = self.spill(self.lower_expr(other_nd));
+        if not self.is_byte_seq(other) {
+            other = self.spill(self.bytes_of_ints(other, other_nd));
+        }
+        (other_data, other_len) = self.byte_parts(other);
         self.runtime("__jac_rt_bytearray_extend", [held, other_data, other_len]);
         return b.const_bool(False);
     }

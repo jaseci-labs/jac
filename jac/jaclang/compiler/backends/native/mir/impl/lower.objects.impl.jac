@@ -41,6 +41,25 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
         self.adopt_imported_layouts(owner);
     }
     layout = get_layout_registry(owner, self.prog).get_layout(name);
+    home = arch.loc.mod_path if arch.loc is not None else "";
+    if layout is None
+        and home.endswith(".jac")
+        and os.path.realpath(home) != os.path.realpath(self.module.loc.mod_path) {
+        current = self.live_unit(home);
+        if current is not None and current is not owner {
+            for elem in current.body {
+                if isinstance(elem, uni.Archetype)
+                    and archetype_native_name(elem) == name {
+                    layout = get_layout_registry(current, self.prog).get_layout(name);
+                    if layout is not None {
+                        arch = elem;
+                        owner = current;
+                    }
+                    break;
+                }
+            }
+        }
+    }
     if layout is None {
         raise MirRefused(
             mir_refusal("archetype", name, arch, "The archetype has no native layout.")
@@ -70,6 +89,7 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
         is_acyclic=layout.is_acyclic,
         local=local,
         drop_symbol=native_symbol_name(prefix, f"{name}.__drop"),
+        glue_symbol=native_symbol_name(prefix, f"{name}.__drop_glue"),
         trace_symbol=native_symbol_name(prefix, f"{name}.__trace"),
         class_symbol=native_symbol_name(
             prefix, native_unit_spelling(f"{name}.__class", owner.loc.mod_path)
@@ -102,8 +122,16 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
             if slot_type.kind == MirKind.ENUM and isinstance(field_type, ClassType) {
                 self.enum_types.setdefault(slot_type.name, field_type);
             }
+            tag = member.decl_node.type_tag
+                if isinstance(member.decl_node, uni.HasVar)
+                else None;
             made.fields.append(
-                MirObjectField(name=member.name, type=slot_type, index=member.index)
+                MirObjectField(
+                    name=member.name,
+                    type=slot_type,
+                    index=member.index,
+                    borrowed=self.tag_borrows(tag)
+                )
             );
         }
         self.osp_header_fields(made, layout);
@@ -113,6 +141,7 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
             );
             specials = self.special_methods(arch);
             for slot in layout.methods {
+                made.vtable_names.append(slot.name);
                 if slot.owner != name and slot.name in specials {
                     made.vtable_methods.append(self.method_symbol(arch, slot.name));
                     continue;
@@ -167,6 +196,194 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
         raise err;
     }
     return made;
+}
+
+impl MirLowering.settle_slots {
+    for (name, made) in list(self.mir.objects.items()) {
+        arch = self.archetypes.get(name);
+        if not made.local or not made.vtable_symbol or arch is None {
+            continue;
+        }
+        wanted = set(made.vtable_methods);
+        for holder in self.lineage(arch) {
+            unit = holder.find_parent_of_type(uni.Module);
+            if unit is None or unit is self.module {
+                continue;
+            }
+            for method in self.arch_methods(holder) {
+                symbol = self.method_symbol(holder, self.name_of(method));
+                if symbol not in wanted or symbol in self.mir.externs {
+                    continue;
+                }
+                try {
+                    self.foreign_method_decl(method);
+                } except MirRefused {}
+            }
+        }
+        for (index, slot_name) in enumerate(made.vtable_names) {
+            if slot_name in NON_DISPATCHED_METHODS {
+                continue;
+            }
+            method = self.find_method(arch, slot_name);
+            if method is None {
+                continue;
+            }
+            try {
+                decl = self.method_decl_of(method);
+            } except MirRefused {
+                continue;
+            }
+            if decl is None or decl.symbol != made.vtable_methods[index] {
+                continue;
+            }
+            base = self.slot_root(arch, slot_name);
+            if base is None or mir_same_signature(base, decl) {
+                continue;
+            }
+            adapter = self.slot_adapter(decl, base);
+            if adapter is not None {
+                self.mir.functions.append(adapter);
+                made.vtable_entries[index] = adapter.symbol;
+            }
+        }
+    }
+}
+
+impl MirLowering.slot_root(arch: uni.Archetype, name: str) -> (MirDecl | None) {
+    for holder in reversed(self.lineage(arch)) {
+        for method in self.arch_methods(holder) {
+            if self.name_of(method) != name {
+                continue;
+            }
+            try {
+                return self.method_decl_of(method);
+            } except MirRefused {
+                return None;
+            }
+        }
+    }
+    return None;
+}
+
+impl mir_same_signature(left: MirDecl, right: MirDecl) -> bool {
+    return len(left.params) == len(right.params)
+        and left.ret.render() == right.ret.render()
+        and all(
+            mine.render() == theirs.render()
+            for (mine, theirs) in zip(left.params, right.params)
+        );
+}
+
+impl MirLowering.slot_adapter(decl: MirDecl, base: MirDecl) -> (MirFunction | None) {
+    if decl.self_type is None or len(decl.params) != len(base.params) {
+        return None;
+    }
+    site = decl.ability;
+    fn = MirFunction(
+        name=f"{self.name_of(decl.ability)}.__slot",
+        symbol=f"{decl.symbol}.__slot",
+        ret=base.ret,
+        linkage="internal"
+    );
+    first = fn.new_block("entry");
+    saved = self.state;
+    self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
+    try {
+        b = self.builder();
+        receiver = fn.new_value(base.self_type or decl.self_type, "self");
+        fn.params.append(MirParam(name="self", value=receiver));
+        args: list[MirValue] = [
+            receiver
+                if receiver.type is decl.self_type
+                else b.ref_cast(receiver, decl.self_type, False)
+        ];
+        for (index, (given, wanted)) in enumerate(zip(base.params, decl.params)) {
+            value = fn.new_value(given, f"a{index}");
+            fn.params.append(MirParam(name=f"a{index}", value=value));
+            args.append(self.coerce(value, wanted, site));
+        }
+        if decl.ret.kind in (MirKind.NONE, MirKind.VOID) {
+            b.call(decl.symbol, args, decl.ret);
+            if base.ret.kind in (MirKind.NONE, MirKind.VOID) {
+                b.ret(None);
+            } else {
+                b.ret(self.coerce(self.none_value(), base.ret, site));
+            }
+        } else {
+            made = b.call(decl.symbol, args, decl.ret);
+            if made is None {
+                raise MirRefused(mir_refusal("method", decl.symbol, site));
+            }
+            if base.ret.kind in (MirKind.NONE, MirKind.VOID) {
+                b.ret(None);
+            } else {
+                b.ret(self.coerce(made, base.ret, site));
+            }
+        }
+    } except MirRefused {
+        self.state = saved;
+        return None;
+    }
+    self.state = saved;
+    return fn;
+}
+
+impl MirLowering.note_lineage(arch: uni.Archetype, obj_def: MirObjectDef) {
+    for ancestor in self.lineage(arch)[1:] {
+        try {
+            held = self.object_def(ancestor);
+        } except MirRefused {
+            continue;
+        }
+        if held.name != obj_def.name {
+            self.class_lineages.append((obj_def.name, held.name));
+        }
+    }
+}
+
+impl MirLowering.live_unit(path: str) -> (uni.Module | None) {
+    return self.prog.mod.hub.get(path)
+        or self.prog.mod.hub.get(os.path.realpath(path))
+        or self.prog.load_dependency_module(
+            os.path.realpath(path),
+            importer_path=self.module.loc.mod_path,
+            need_tree=True
+        );
+}
+
+impl MirLowering.live_member(nd: uni.Ability) -> uni.Ability {
+    if nd.parent is not None
+        or nd.loc is None
+        or not nd.loc.mod_path.endswith(".jac") {
+        return nd;
+    }
+    unit = self.live_unit(nd.loc.mod_path);
+    found = self.module_member(unit, self.name_of(nd)) if unit is not None else None;
+    return found if isinstance(found, uni.Ability) else nd;
+}
+
+impl MirLowering.owner_archetype(nd: uni.UniNode) -> (uni.Archetype | None) {
+    cursor = nd.parent;
+    while cursor is not None {
+        if isinstance(cursor, uni.Archetype) {
+            return cursor;
+        }
+        if isinstance(cursor, uni.ImplDef) {
+            linked = cursor.decl_link;
+            if isinstance(linked, uni.Archetype) {
+                return linked;
+            }
+            if isinstance(linked, uni.Ability) {
+                return self.owner_archetype(linked);
+            }
+            return None;
+        }
+        if isinstance(cursor, uni.Module) {
+            return None;
+        }
+        cursor = cursor.parent;
+    }
+    return None;
 }
 
 impl MirLowering.declared_field_type(decl: (uni.UniNode | None)) -> (TypeBase | None) {
@@ -244,9 +461,7 @@ impl MirLowering.method_symbol(arch: uni.Archetype, name: str) -> str {
 }
 
 impl MirLowering.foreign_method_decl(method: uni.Ability) -> (MirDecl | None) {
-    owner = method.parent
-        if isinstance(method.parent, uni.Archetype)
-        else method.find_parent_of_type(uni.Archetype);
+    owner = self.owner_archetype(method);
     unit = method.find_parent_of_type(uni.Module);
     sig = method.signature;
     if owner is None
@@ -286,9 +501,7 @@ impl MirLowering.foreign_method_decl(method: uni.Ability) -> (MirDecl | None) {
 }
 
 impl MirLowering.foreign_static_decl(method: uni.Ability) -> (MirDecl | None) {
-    owner = method.parent
-        if isinstance(method.parent, uni.Archetype)
-        else method.find_parent_of_type(uni.Archetype);
+    owner = self.owner_archetype(method);
     unit = method.find_parent_of_type(uni.Module);
     sig = method.signature;
     if owner is None
@@ -320,7 +533,7 @@ impl MirLowering.foreign_static_decl(method: uni.Ability) -> (MirDecl | None) {
 impl MirLowering.foreign_accessor_decl(
     var: uni.HasVar, acc: uni.Ability
 ) -> (MirDecl | None) {
-    owner = var.find_parent_of_type(uni.Archetype);
+    owner = self.owner_archetype(var);
     unit = owner.find_parent_of_type(uni.Module) if owner is not None else None;
     if owner is None
         or unit is None
@@ -404,7 +617,9 @@ impl MirLowering.declare_archetype(arch: uni.Archetype) {
             symbol=self.method_symbol(arch, self.name_of(method)),
             params=params,
             ret=ret,
-            self_type=None if method.is_static else self_type,
+            self_type=None
+                if method.is_static
+                else (mir_class("*") if method.is_classmethod else self_type),
             owner=arch
         );
         self.order.append(key);
@@ -412,7 +627,7 @@ impl MirLowering.declare_archetype(arch: uni.Archetype) {
     self.declare_specials(arch, self_type);
     self.declare_accessors(arch, self_type);
     self.declare_osp_abilities(arch);
-    if obj_def.local {
+    if obj_def.local and not obj_def.is_acyclic {
         self.trace_pairs.append((obj_def.drop_symbol, obj_def.trace_symbol));
     }
 }
@@ -647,10 +862,20 @@ impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) 
         b = self.builder();
         params = self.constructor_params(arch);
         values: list[MirValue] = [];
-        for (pname, ptype, _) in params {
+        consumed: list[int] = [];
+        for (index, (pname, ptype, _)) in enumerate(params) {
             value = fn.new_value(ptype, pname);
             fn.params.append(MirParam(name=pname, value=value));
+            if self.owned_world
+                and mir_holds_ref(ptype)
+                and self.field_consumes(arch, pname) {
+                value.owned = True;
+                consumed.append(index);
+            }
             values.append(value);
+        }
+        if consumed {
+            self.ctor_consumes[symbol] = consumed;
         }
         if self.ctor_takes_mask(params) {
             given = fn.new_value(mir_int(), "__given");
@@ -681,7 +906,11 @@ impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) 
                 continue;
             }
             place = self.field_place(this, arch, member.name, arch);
-            b.store(place, self.default_value(initial, self.place_elem(place)));
+            made = self.default_value(initial, self.place_elem(place));
+            if isinstance(member.decl_node, uni.HasVar) {
+                self.lend_fresh(made, member.decl_node.type_tag, initial);
+            }
+            b.store(place, made);
         }
         if init is not None {
             decl = self.decls.get(id(init)) or self.foreign_method_decl(init);
@@ -765,13 +994,16 @@ impl MirLowering.lower_drop(obj_def: MirObjectDef, arch: uni.Archetype) -> MirFu
     }
     b.position(release_bb);
     for member in obj_def.fields {
-        if not mir_holds_ref(member.type) {
+        if not mir_holds_ref(member.type) or (self.owned_world and member.borrowed) {
             continue;
         }
         place = self.emit_value(
             MirOp.FIELD_ADDR, mir_c_ptr(member.type), [this], int_value=member.index
         );
-        b.emit(MirInstr(op=MirOp.RELEASE, operands=[b.load(place, member.type)]));
+        held = b.load(place, member.type);
+        if not self.owned_world or not self.drop_through_glue(held) {
+            b.emit(MirInstr(op=MirOp.RELEASE, operands=[held]));
+        }
     }
     b.branch(free_bb);
     b.position(free_bb);
@@ -780,6 +1012,93 @@ impl MirLowering.lower_drop(obj_def: MirObjectDef, arch: uni.Archetype) -> MirFu
     self.runtime(
         "__jac_rt_free_block", [b.binary("sub", address, b.const_int(32, mir_int()))]
     );
+    b.ret(None);
+    self.state = saved;
+    return fn;
+}
+
+impl MirLowering.drop_through_glue(held: MirValue) -> bool {
+    b = self.builder();
+    i8p = mir_c_ptr(mir_int(8, False));
+    target = held.type.payload() if held.type.kind == MirKind.OPT else held.type;
+    if target.kind != MirKind.OBJ {
+        return False;
+    }
+    obj_def = self.mir.objects.get(target.name);
+    if obj_def is None or not obj_def.local or not obj_def.glue_symbol {
+        return False;
+    }
+    subject = held;
+    if held.type.kind == MirKind.OPT {
+        subject = b.select(
+            self.opt_present(held), self.opt_get(held), b.const_null(target)
+        );
+    }
+    b.call(
+        obj_def.glue_symbol,
+        [self.emit_value(MirOp.PTR_CAST, i8p, [subject])],
+        mir_none()
+    );
+    return True;
+}
+
+impl MirLowering.lower_drop_glue(obj_def: MirObjectDef) -> MirFunction {
+    i8p = mir_c_ptr(mir_int(8, False));
+    fn = MirFunction(
+        name=f"{obj_def.name}.__drop_glue",
+        symbol=obj_def.glue_symbol,
+        ret=mir_none(),
+        manual_rc=True,
+        linkage="internal"
+    );
+    first = fn.new_block("entry");
+    saved = self.state;
+    self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
+    b = self.builder();
+    raw = fn.new_value(i8p, "o");
+    fn.params.append(MirParam(name="o", value=raw));
+    address = self.address_of(raw);
+    live = fn.new_block("glue.live");
+    owned = fn.new_block("glue.owned");
+    done = fn.new_block("glue.done");
+    b.cond_branch(b.compare("ne", address, b.const_int(0, mir_int())), live, done);
+    b.position(live);
+    arena = self.region_call("__jac_region_of", [address]);
+    b.cond_branch(b.compare("eq", arena, b.const_int(0, mir_int())), owned, done);
+    b.position(owned);
+    if obj_def.vtable_slot >= 0 {
+        this = b.ref_cast(raw, mir_obj(obj_def.name), False);
+        slot_place = self.emit_value(
+            MirOp.FIELD_ADDR,
+            mir_c_ptr(mir_c_ptr(i8p)),
+            [this],
+            int_value=obj_def.vtable_slot
+        );
+        table = b.load(slot_place, mir_c_ptr(i8p));
+        entry_place = self.emit_value(
+            MirOp.PTR_OFFSET,
+            mir_c_ptr(i8p),
+            [table, b.const_int(VTABLE_DROP_SLOT, mir_int())]
+        );
+        target = b.load(entry_place, i8p);
+        exact = fn.new_block("glue.exact");
+        shared = fn.new_block("glue.shared");
+        b.cond_branch(
+            b.compare("ne", self.address_of(target), b.const_int(0, mir_int())),
+            exact,
+            shared
+        );
+        b.position(exact);
+        body = self.emit_value(MirOp.PTR_CAST, mir_c_fn([i8p], mir_none()), [target]);
+        self.emit_value(MirOp.CALL_FNPTR, mir_none(), [body, raw]);
+        b.branch(done);
+        b.position(shared);
+        b.emit(MirInstr(op=MirOp.RELEASE, operands=[this]));
+    } else {
+        b.call(obj_def.drop_symbol, [raw], mir_none());
+    }
+    b.branch(done);
+    b.position(done);
     b.ret(None);
     self.state = saved;
     return fn;
@@ -1428,6 +1747,7 @@ impl MirLowering.unbound_method(
     passed = list(nd.params or []);
     if method is None
         or method.is_static
+        or method.is_classmethod
         or id(method) in self.templates
         or self.has_spread(nd)
         or not passed
@@ -1615,6 +1935,12 @@ impl MirLowering.method_receiver(
     if decl.self_type is None or receiver.type is decl.self_type {
         return receiver;
     }
+    if decl.self_type.kind == MirKind.CLASS {
+        if receiver.type.kind == MirKind.CLASS {
+            return receiver;
+        }
+        return self.class_of(receiver, site);
+    }
     if receiver.type.kind == MirKind.OBJ
         and self.obj_extends(archetype_native_name(arch), decl.self_type.name) {
         return self.builder().ref_cast(receiver, decl.self_type, False);
@@ -1628,6 +1954,7 @@ impl MirLowering.invoke_method(
     receiver = values[0];
     obj_def = self.object_def(arch);
     if obj_def.vtable_symbol
+        and receiver.type.kind != MirKind.CLASS
         and decl.symbol in obj_def.vtable_methods
         and name not in NON_DISPATCHED_METHODS {
         b = self.builder();
@@ -1658,16 +1985,31 @@ impl MirLowering.invoke_method(
         }
         entry_place = self.emit_value(MirOp.PTR_OFFSET, mir_c_ptr(i8p), [table, index]);
         target = b.load(entry_place, i8p);
-        signature = mir_c_fn([receiver.type] + decl.params, decl.ret);
+        base = self.slot_root(arch, name);
+        if base is None
+            or mir_same_signature(base, decl)
+            or len(base.params) != len(values) - 1 {
+            base = decl;
+        }
+        site = decl.ability;
+        passed = [receiver]
+            + [
+                self.coerce(value, wanted, site) if value.type is not wanted else value
+                for (value, wanted) in zip(values[1:], base.params)
+            ];
+        signature = mir_c_fn([receiver.type] + base.params, base.ret);
         callee = self.emit_value(MirOp.PTR_CAST, signature, [target]);
         result_type = mir_none()
-            if decl.ret.kind in (MirKind.NONE, MirKind.VOID)
-            else decl.ret;
+            if base.ret.kind in (MirKind.NONE, MirKind.VOID)
+            else base.ret;
         result = self.emit_value(
-            MirOp.CALL_FNPTR, result_type, [callee] + values, str_value=decl.symbol
+            MirOp.CALL_FNPTR, result_type, [callee] + passed, str_value=decl.symbol
         );
         result.owned = mir_holds_ref(result_type);
-        return result;
+        if base is decl or decl.ret.kind in (MirKind.NONE, MirKind.VOID) {
+            return result;
+        }
+        return self.coerce(result, decl.ret, site);
     }
     direct = self.builder().call(decl.symbol, values, decl.ret);
     return direct if direct is not None else self.builder().const_bool(False);
@@ -1681,8 +2023,29 @@ impl MirLowering.isinstance_check(value: MirValue, arch: uni.Archetype) -> MirVa
         return self.opt_end(held, self.builder().const_bool(False), done);
     }
     obj_def = self.object_def(arch);
+    if value.type.kind == MirKind.OBJ
+        and value.type.name != "*"
+        and self.obj_extends(value.type.name, obj_def.name) {
+        return b.const_bool(True);
+    }
     if not obj_def.vtable_symbol or value.type.kind != MirKind.OBJ {
-        return b.const_bool(value.type is mir_obj(obj_def.name));
+        if value.type.kind != MirKind.OBJ {
+            return b.const_bool(False);
+        }
+        return self.runtime_value(
+            "__jac_rt_class_isa",
+            [
+                self.address_of(self.runtime_value("__jac_rt_type_name", [value])),
+                self.address_of(
+                    self.emit_value(
+                        MirOp.CLASS_ADDR,
+                        mir_c_ptr(mir_int(8, False)),
+                        [],
+                        str_value=obj_def.name
+                    )
+                )
+            ]
+        );
     }
     i8p = mir_c_ptr(mir_int(8, False));
     source_name = value.type.name;
@@ -1735,6 +2098,7 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
         and not self.class_inits
         and not self.osp_setup
         and not self.class_entries
+        and not self.class_lineages
         and not self.default_entries
         and not self.text_pairs
         and not any(isinstance(nd, uni.GlobalVars) for nd in self.module.body) {
@@ -1808,6 +2172,20 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
                                 callee=adapter_symbol
                             )
                         ]
+                    )
+                ]
+            );
+        }
+        for (made_name, base_name) in self.class_lineages {
+            i8p = mir_c_ptr(mir_int(8, False));
+            self.runtime(
+                "__jac_rt_class_isa_add",
+                [
+                    self.address_of(
+                        self.emit_value(MirOp.CLASS_ADDR, i8p, [], str_value=made_name)
+                    ),
+                    self.address_of(
+                        self.emit_value(MirOp.CLASS_ADDR, i8p, [], str_value=base_name)
                     )
                 ]
             );
@@ -2275,6 +2653,13 @@ impl MirLowering.class_value_call(nd: uni.FuncCall, bound: uni.Archetype) -> Mir
     );
     result = self.emit_value(MirOp.CALL_FNPTR, made_type, [callee] + values);
     result.owned = True;
+    if self.owned_world {
+        b.block.instrs[-1].consumes = [
+            index + 1
+            for (index, (pname, ptype, _)) in enumerate(params)
+            if mir_holds_ref(ptype) and self.field_consumes(bound, pname)
+        ];
+    }
     return result;
 }
 
@@ -2313,6 +2698,11 @@ impl MirLowering.class_entry(
         for (pname, ptype, _) in taken {
             value = fn.new_value(ptype, pname);
             fn.params.append(MirParam(name=pname, value=value));
+            if self.owned_world
+                and mir_holds_ref(ptype)
+                and self.field_consumes(bound, pname) {
+                value.owned = True;
+            }
             given.append(value);
         }
         supplied = b.const_int(-1, mir_int());
@@ -2443,7 +2833,7 @@ impl MirLowering.nearest_has_var(
 impl MirLowering.default_thunk(expr: uni.Expr) -> (tuple[str, str, MirType] | None) {
     holder = expr.parent;
     if isinstance(holder, uni.HasVar) and holder.name is not None {
-        arch = holder.find_parent_of_type(uni.Archetype);
+        arch = self.owner_archetype(holder);
         if arch is None {
             return None;
         }
@@ -2459,7 +2849,7 @@ impl MirLowering.default_thunk(expr: uni.Expr) -> (tuple[str, str, MirType] | No
     }
     if isinstance(holder, uni.ParamVar) {
         ability = holder.find_parent_of_type(uni.Ability);
-        arch = holder.find_parent_of_type(uni.Archetype);
+        arch = self.owner_archetype(ability) if ability is not None else None;
         if ability is None {
             return None;
         }
@@ -2645,7 +3035,7 @@ impl MirLowering.member_owner(member: uni.Name) -> (uni.Archetype | None) {
     if sym is None or sym.decl is None {
         return None;
     }
-    return sym.decl.find_parent_of_type(uni.Archetype);
+    return self.owner_archetype(sym.decl);
 }
 
 impl MirLowering.union_method_owner(
@@ -2655,7 +3045,7 @@ impl MirLowering.union_method_owner(
     if not isinstance(callee, uni.Ability) or callee.is_static {
         return None;
     }
-    owner = callee.find_parent_of_type(uni.Archetype);
+    owner = self.owner_archetype(callee);
     seen = receiver.narrowed_type
         if receiver.narrowed_type is not None
         else receiver.type;

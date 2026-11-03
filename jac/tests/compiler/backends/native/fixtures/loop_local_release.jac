@@ -1,8 +1,8 @@
-"""Loop-body reference locals released at the end of every iteration.
+"""Loop-body reference locals, released as CPython releases them.
 
 Each branch of the loop peeks the next item through its own local, so an
-iteration assigns at most one of them. The latch releases the assigned one
-and should skip the rest cheaply.
+iteration assigns at most one of them; a reassignment releases the value the
+local held, and the function's return releases the rest.
 """
 
 obj Ins {
@@ -79,8 +79,8 @@ def churn_strings(n: int) -> int {
     return total;
 }
 
-"""A branch local is dropped at the end of the iteration that assigned it,
-not when a later iteration reassigns it or the loop exits."""
+"""A branch local is dropped when a later iteration reassigns it, and the
+last values when the function returns, in the order CPython drops them."""
 def drop_order {
     i: int = 0;
     while i < 4 {

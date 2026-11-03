@@ -156,6 +156,22 @@ impl __jac_rt_gen_frame(size: int, drop: int) -> int {
     return frame;
 }
 
+impl __jac_rt_range_len(made: int) -> int {
+    start = __mem_load_i64(made + RANGE_START);
+    stop = __mem_load_i64(made + RANGE_STOP);
+    step = __mem_load_i64(made + RANGE_STEP);
+    if step > 0 {
+        if stop <= start {
+            return 0;
+        }
+        return (stop - start - 1) // step + 1;
+    }
+    if start <= stop {
+        return 0;
+    }
+    return (start - stop - 1) // (0 - step) + 1;
+}
+
 impl __jac_rt_range_new(start: int, stop: int, step: int) -> int {
     made = __jac_rt_alloc(RANGE_SIZE);
     __jac_rt_set_type(made, int(ptr[u8]("range")));

@@ -95,10 +95,10 @@ def:pub field_scalar_ops -> int {
 }
 
 def:pub index_evaluated_once -> int {
-    _EVALS = 0;
+    before = _EVALS;
     m = [10, 20];
     m[bump_idx(1)] += 7;
-    return m[1] * 10 + _EVALS;
+    return m[1] * 10 + (_EVALS - before);
 }
 
 with entry {

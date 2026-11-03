@@ -49,3 +49,29 @@ impl makedirs(name: str, mode: int = 511, exist_ok: bool = False) -> None {
         raise OSError(f"cannot create directory '{name}'");
     }
 }
+
+impl mkdir(path: str, mode: int = 511) -> None {
+    if make_dir(path, mode) != 0 {
+        raise_path_error(path, last_errno());
+    }
+}
+
+impl remove(path: str) -> None {
+    if remove_file(path) != 0 {
+        raise_path_error(path, last_errno());
+    }
+}
+
+impl unlink(path: str) -> None {
+    remove(path);
+}
+
+impl rmdir(path: str) -> None {
+    if remove_dir(path) != 0 {
+        raise_path_error(path, last_errno());
+    }
+}
+
+impl system(command: str) -> int {
+    return run_shell(command);
+}
