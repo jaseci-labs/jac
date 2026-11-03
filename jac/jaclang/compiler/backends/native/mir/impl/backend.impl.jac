@@ -55,6 +55,7 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     try {
         if lowering.owned_world {
             lowering.stamp_ownership();
+            lowered.headerless = True;
         }
         for fn in lowered.functions {
             mir_insert_rc(fn, lowered);

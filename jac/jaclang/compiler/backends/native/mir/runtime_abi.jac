@@ -55,6 +55,7 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_set_type": ["none", "ref", "ptr"],
          "__jac_rt_free_block": ["none", "int"],
          "__jac_rt_release": ["none", "ref"],
+         "__jac_rt_drop": ["none", "ref"],
          "__jac_rt_gc_disable": ["none"],
          "__jac_rt_gc_enable": ["none"],
          "__jac_rt_collect_cycles": ["none"],

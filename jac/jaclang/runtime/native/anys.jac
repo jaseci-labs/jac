@@ -29,6 +29,8 @@ def:pub __jac_rt_any_retain(tag: int, payload: int);
 
 def:pub __jac_rt_any_release(tag: int, payload: int);
 
+def:pub __jac_rt_any_drop(tag: int, payload: int);
+
 def:pub __jac_rt_any_box(tag: int, payload: int) -> int;
 
 def:pub __jac_rt_any_box_hold(box: int);

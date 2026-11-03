@@ -93,3 +93,22 @@ test "a fresh list declared list[&T] is lent and drops no element" {
     text = _unit_ir("view_cursor.jac");
     assert "__jac_rt_list_lend" in text , "the list of borrows was not lent";
 }
+
+test "the nogc invariant rejects retain and release calls, not their declarations" {
+    import from jaclang.compiler.backends.native.entry_points { _scan_rc_machinery }
+    (found, _) = _scan_rc_machinery(
+        'declare void @"__jac_rt_release"(i8*)\n'
+            + '  call void @"__jac_rt_retain"(i8* %".3")\n'
+            + '  call void @"__jac_rt_any_release"(i64 %"t", i64 %"p")\n'
+            + '  call void @"__jac_rt_drop"(i8* %".4")\n'
+    );
+    assert found == ["__jac_rt_any_release", "__jac_rt_retain"] , found;
+}
+
+test "a nogc unit drops through the drop entry points, never the RC ones" {
+    text = _unit_ir("str_field_leaks.jac");
+    assert "__jac_rt_drop" in text , "no drop entry point was emitted";
+    for marker in ["__jac_rt_retain", "__jac_rt_release", "__jac_rt_any_release"] {
+        assert marker not in text , f"{marker} in a nogc unit";
+    }
+}

@@ -185,6 +185,12 @@ def:pub __jac_rt_release_acyclic(o: int);
 
 def:pub __jac_rt_release_impl(o: int, may_cycle: bool);
 
+def:pub __jac_rt_drop(o: int);
+
+def:pub __jac_rt_drop_text(o: int);
+
+def:pub __jac_rt_pin_share(o: int);
+
 def:pub __jac_rt_possible_root(o: int);
 
 def:pub __jac_rt_free_block(raw: int);
