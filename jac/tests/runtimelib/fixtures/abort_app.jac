@@ -1,5 +1,7 @@
 """Fixture for abort-on-error tests: walkers that mutate then fail."""
 
+import from jaclang.server.exchange { respond }
+
 node AbortItem {
     has name: str = "";
 }
@@ -46,9 +48,11 @@ def late_save(home: Root, name: str) {
 
 walker:protect LateWrite {
     has first: str = "first",
-        late: str = "late";
+        late: str = "late",
+        status: int = 200;
 
     can go with Root entry {
+        respond(status=self.status);
         runs.append(1);
         here ++> AbortItem(name=self.first);
         late_save(here, self.late);
@@ -56,7 +60,8 @@ walker:protect LateWrite {
     }
 }
 
-def:protect late_note(late: str = "late") -> str {
+def:protect late_note(late: str = "late", status: int = 200) -> str {
+    respond(status=status);
     runs.append(1);
     root ++> AbortItem(name="first");
     late_save(root, late);

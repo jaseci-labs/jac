@@ -162,16 +162,21 @@ test "a failed late write replays under its idempotency key; a failed first comm
                 ("colocated walker", by_callback(walker_cb)),
                 ("colocated function", by_callback(function_cb))
             ) {
-                mod.runs.clear();
-                answers = [send({"late": bad}, f"late-{label}") for _ in range(3)];
-                assert all(a == answers[0] for a in answers) , f"{label}: {answers}";
-                assert answers[0][0] == 500 , f"{label}: {answers[0]}";
-                assert "FAILED_AFTER_COMMIT" in answers[0][1] , f"{label}: {answers[
-                    0
-                ]}";
-                assert len(mod.runs) == 1 , (
-                    f"{label}: a retry re-ran the saved work, {len(mod.runs)} runs"
-                );
+                for status in (200, 429) {
+                    mod.runs.clear();
+                    answers = [
+                        send({"late": bad, "status": status}, f"late-{label}-{status}")
+                        for _ in range(3)
+                    ];
+                    assert all(a == answers[0] for a in answers) , f"{label}: {answers}";
+                    assert answers[0][0] == 500 , f"{label}, {status}: {answers[0]}";
+                    assert "FAILED_AFTER_COMMIT" in answers[0][1] , f"{label}: {answers[
+                        0
+                    ]}";
+                    assert len(mod.runs) == 1 , (
+                        f"{label}: a retry re-ran the saved work, {len(mod.runs)} runs"
+                    );
+                }
             }
             for (label, send) in (
                 ("walker", by_route("/walker/LateWrite")),

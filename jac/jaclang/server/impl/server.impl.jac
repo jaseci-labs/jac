@@ -1902,6 +1902,7 @@ impl _run_function_with_occ(
                             'may repeat the work it already saved.'
                         ),
                         'error_code': 'failed_after_commit',
+                        'http_status': 500,
                         'final': True
                     };
                 }
