@@ -1771,6 +1771,9 @@ impl MirLowering.drain(value: MirValue, elem: MirType, site: uni.UniNode) -> Mir
     b = self.builder();
     fn = self.st().fn;
     made = self.spill(self.new_list(elem, 8));
+    if value.type.kind == MirKind.TUPLE and not value.type.args {
+        return made;
+    }
     kind = b.const_int(self.elem_kind(elem, site), mir_int());
     walker_state = self.iter_open(value, site);
     head = fn.new_block("drain.head");
