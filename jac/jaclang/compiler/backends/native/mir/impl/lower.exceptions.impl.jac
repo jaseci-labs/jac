@@ -284,6 +284,19 @@ impl MirLowering.leave_tries(loop_depth: int, run_finals: bool = True) {
             (frame, _, depth) = tries[at_try];
             if depth >= loop_depth {
                 self.runtime("__jac_rt_exc_pop", [frame]);
+                exit_action = self.st().try_exits.get(id(frame));
+                if exit_action is not None {
+                    held_finals = list(self.st().finals);
+                    self.st().tries = tries[:at_try];
+                    self.st().finals = [
+                        pending
+                        for pending in held_finals
+                        if pending[2] <= at_try
+                    ];
+                    self.run_with_exit(exit_action);
+                    self.st().tries = tries;
+                    self.st().finals = held_finals;
+                }
             }
             at_try -= 1;
         }

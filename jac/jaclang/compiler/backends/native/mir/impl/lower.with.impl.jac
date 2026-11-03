@@ -2,16 +2,6 @@ impl MirLowering.lower_with(nd: uni.WithStmt) {
     if nd.is_async {
         raise MirRefused(mir_refusal("statement", "async with", nd));
     }
-    if self.jumps_out(nd.body) {
-        raise MirRefused(
-            mir_refusal(
-                "statement",
-                "jump out of with",
-                nd,
-                "A return, break or continue inside a native with block would leave without running __exit__; restructure the block to finish normally."
-            )
-        );
-    }
     self.with_items(list(nd.exprs), 0, nd.body);
 }
 
@@ -71,7 +61,10 @@ impl MirLowering.with_items(
         self.bind_target(item.alias, entered);
     }
     (frame, dispatch) = self.guard_open();
+    self.st().tries.append((frame, dispatch, len(self.st().loops)));
+    self.st().try_exits[id(frame)] = MirWithExit(site=item, decl=leave_decl, held=held);
     self.with_items(items, index + 1, body);
+    self.st().tries.pop();
     after = fn.new_block("with.done");
     if not self.builder().block.terminated() {
         self.runtime("__jac_rt_exc_pop", [frame]);
@@ -120,7 +113,10 @@ impl MirLowering.with_generator(
         );
     }
     (frame, dispatch) = self.guard_open();
+    self.st().tries.append((frame, dispatch, len(self.st().loops)));
+    self.st().try_exits[id(frame)] = MirWithExit(site=item, it=it, out=out);
     self.with_items(items, index + 1, body);
+    self.st().tries.pop();
     after = fn.new_block("with.gen.done");
     if not self.builder().block.terminated() {
         self.runtime("__jac_rt_exc_pop", [frame]);
@@ -211,6 +207,20 @@ impl MirLowering.guard_caught(frame: MirValue) -> tuple[MirValue, MirValue, MirV
         MirOp.PTR_CAST, i8p, [self.emit_value(MirOp.MEM_LOAD, mir_int(), [address])]
     );
     return (origin, type_id, message);
+}
+
+impl MirLowering.run_with_exit(exit_action: MirWithExit) {
+    if exit_action.decl is not None and exit_action.held is not None {
+        self.call_exit(exit_action.decl, exit_action.held, exit_action.site);
+        return;
+    }
+    if exit_action.it is not None and exit_action.out is not None {
+        self.raise_if(
+            self.iter_advance(exit_action.it, exit_action.out),
+            "RuntimeError",
+            "generator didn't stop"
+        );
+    }
 }
 
 impl MirLowering.jumps_out(body: Sequence[uni.UniNode]) -> bool {

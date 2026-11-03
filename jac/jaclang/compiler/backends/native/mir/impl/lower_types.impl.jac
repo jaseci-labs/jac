@@ -250,6 +250,9 @@ impl mir_class_type(
     }
     if name == "tuple" {
         members = t.private.type_args if t.private else None;
+        if members is not None and len(members) == 0 and t.is_instance() {
+            return mir_tuple([]);
+        }
         if not members {
             raise MirRefused(mir_refusal("type", "tuple without member types", site));
         }

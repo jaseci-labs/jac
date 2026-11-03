@@ -102,6 +102,13 @@ impl MirLowering.repr_of(value: MirValue, site: uni.UniNode) -> MirValue {
     if kind == MirKind.OBJ {
         return self.object_text(value, "__repr__", site);
     }
+    if kind == MirKind.CLASS {
+        named = self.class_name_str(value);
+        return self.str_concat(
+            self.str_concat(b.const_str("<class '", mir_str()), named),
+            b.const_str("'>", mir_str())
+        );
+    }
     if kind == MirKind.ENUM {
         layout = self.enum_layout_of(value.type, site);
         short = layout.name.split("$")[0];
