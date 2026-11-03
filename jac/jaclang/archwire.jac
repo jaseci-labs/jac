@@ -6455,6 +6455,9 @@ graph import compiler {
             is_bundled_native_module,
             resolve_native_module
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._native_module_member_ability {
+            resolve_native_module
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._native_variant_decl {
             native_variant_of
         },
@@ -17550,9 +17553,10 @@ graph import runtime.python {
             PyObject,
             PySlice_New,
             PyTuple_New,
-            Py_Ellipsis,
+            Py_CONSTANT_ELLIPSIS,
+            Py_CONSTANT_NONE,
+            Py_GetConstant,
             Py_NewRef,
-            Py_None,
             jacpy_code_new,
             jacpy_long_from_bytes,
             jacpy_release,
