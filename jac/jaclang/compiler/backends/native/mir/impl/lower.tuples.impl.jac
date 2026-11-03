@@ -29,6 +29,35 @@ impl MirLowering.tuple_get(value: MirValue, index: int) -> MirValue {
 impl MirLowering.unpack_into(
     targets: list[uni.Expr], value: MirValue, site: uni.UniNode
 ) {
+    b = self.builder();
+    if value.type.kind == MirKind.OPT and value.type.payload().kind == MirKind.LIST {
+        value = self.opt_unwrap_checked(
+            value, "cannot unpack non-iterable NoneType object", "TypeError"
+        );
+    }
+    if value.type.kind == MirKind.LIST {
+        held_list = self.spill(value);
+        size = self.container_len(held_list);
+        want = b.const_int(len(targets), mir_int());
+        self.raise_if(
+            b.compare("lt", size, want),
+            "ValueError",
+            f"not enough values to unpack (expected {len(targets)})"
+        );
+        self.raise_if(
+            b.compare("gt", size, want),
+            "ValueError",
+            f"too many values to unpack (expected {len(targets)})"
+        );
+        for (index, target) in enumerate(targets) {
+            self.store_unpacked(
+                target,
+                self.list_read(held_list, b.const_int(index, mir_int())),
+                site
+            );
+        }
+        return;
+    }
     if value.type.kind != MirKind.TUPLE or len(value.type.args) != len(targets) {
         raise MirRefused(
             mir_refusal(
@@ -47,23 +76,50 @@ impl MirLowering.unpack_into(
                 != value.type.args[index].render() {
             continue;
         }
-        part = self.tuple_get(held, index);
-        if isinstance(target, uni.Name) {
-            self.store_name(target, part);
-        } elif isinstance(target, uni.TupleVal) {
-            self.unpack_into(
-                [
-                    t
-                    for t in target.values
-                    if isinstance(t, uni.Expr)
-                ],
-                part,
-                target
-            );
-        } else {
-            raise MirRefused(mir_refusal("assignment", type(target).__name__, target));
-        }
+        self.store_unpacked(target, self.tuple_get(held, index), site);
     }
+}
+
+impl MirLowering.store_unpacked(target: uni.Expr, part: MirValue, site: uni.UniNode) {
+    if isinstance(target, uni.Name) {
+        self.store_name(target, part);
+        return;
+    }
+    if isinstance(target, uni.TupleVal) {
+        self.unpack_into(
+            [
+                t
+                for t in target.values
+                if isinstance(t, uni.Expr)
+            ],
+            part,
+            target
+        );
+        return;
+    }
+    if isinstance(target, uni.AtomTrailer) {
+        held = self.spill(part);
+        if not target.is_attr
+            and isinstance(target.right, uni.IndexSlice)
+            and isinstance(target.target, uni.Expr) {
+            holder = self.lower_expr(target.target);
+            if mir_is_container(holder.type)
+                or (
+                    holder.type.kind == MirKind.OPT
+                    and mir_is_container(holder.type.payload())
+                ) {
+                self.container_set(holder, target.right, held, target);
+                return;
+            }
+        }
+        if self.accessor_store(target, held) {
+            return;
+        }
+        place = self.lower_place(target);
+        self.builder().store(place, self.coerce(held, self.place_elem(place), target));
+        return;
+    }
+    raise MirRefused(mir_refusal("assignment", type(target).__name__, target));
 }
 
 impl MirLowering.tuple_compare(

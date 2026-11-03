@@ -637,6 +637,18 @@ impl MirLowering.container_set(
     base: MirValue, slice: uni.IndexSlice, value: MirValue, site: uni.UniNode
 ) {
     b = self.builder();
+    if len(slice.slices) == 1 and slice.is_range {
+        holder = base;
+        if holder.type.kind == MirKind.OPT and holder.type.payload().kind == MirKind.LIST {
+            holder = self.opt_unwrap_checked(
+                holder, "'NoneType' object does not support item assignment"
+            );
+        }
+        if holder.type.kind == MirKind.LIST {
+            self.list_replace_range(self.spill(holder), slice.slices[0], value, site);
+            return;
+        }
+    }
     if len(slice.slices) != 1 or slice.is_range or slice.slices[0].start is None {
         raise MirRefused(mir_refusal("subscript assignment", "slice", site));
     }
@@ -1659,7 +1671,21 @@ impl MirLowering.lower_delete(nd: uni.DeleteStmt) {
 }
 
 impl MirLowering.list_delete_range(lst: MirValue, part: uni.Slice, site: uni.UniNode) {
+    self.list_replace_range(lst, part, None, site);
+}
+
+impl MirLowering.list_replace_range(
+    lst: MirValue, part: uni.Slice, values: (MirValue | None), site: uni.UniNode
+) {
     b = self.builder();
+    if part.step is not None {
+        raise MirRefused(mir_refusal("subscript assignment", "extended slice", site));
+    }
+    fresh: (MirValue | None) = None;
+    if values is not None {
+        fresh = self.spill(self.new_list(lst.type.payload(), 0));
+        self.extend_from(fresh, self.spill(values), site);
+    }
     (start, stop, _) = self.list_bounds(lst, part, site);
     kind = b.const_int(self.elem_kind(lst.type.payload(), site), mir_int());
     one = b.const_int(1, mir_int());
@@ -1677,6 +1703,9 @@ impl MirLowering.list_delete_range(lst: MirValue, part: uni.Slice, site: uni.Uni
     kept_tail = self.spill(b.ref_cast(tail, lst.type, True));
     self.runtime("__jac_rt_list_clear", [lst, kind]);
     self.runtime("__jac_rt_list_extend", [lst, kept_head, kind]);
+    if fresh is not None {
+        self.runtime("__jac_rt_list_extend", [lst, fresh, kind]);
+    }
     self.runtime("__jac_rt_list_extend", [lst, kept_tail, kind]);
 }
 

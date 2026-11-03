@@ -2891,6 +2891,25 @@ impl MirLowering.union_accessor_set(
     return True;
 }
 
+impl MirLowering.accessor_store(target: uni.AtomTrailer, value: MirValue) -> bool {
+    found = self.accessor_of(target, "setter");
+    if found is None {
+        return False;
+    }
+    (arch, decl) = found;
+    holder = self.spill(self.lower_expr(target.target));
+    self.invoke_method(
+        decl,
+        arch,
+        self.decl_label(decl),
+        [
+            self.method_receiver(decl, arch, holder, target),
+            self.coerce(value, decl.params[0], target)
+        ]
+    );
+    return True;
+}
+
 impl MirLowering.accessor_set(target: uni.AtomTrailer, nd: uni.Assignment) -> bool {
     if nd.value is None {
         return False;

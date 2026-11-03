@@ -3471,7 +3471,13 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
     if not nd.is_attr
         and isinstance(nd.right, uni.IndexSlice)
         and isinstance(nd.target, uni.Expr)
-        and self.expr_type(nd.target).kind == MirKind.TUPLE {
+        and (
+            self.expr_type(nd.target).kind == MirKind.TUPLE
+            or (
+                self.expr_type(nd.target).kind == MirKind.OPT
+                and self.expr_type(nd.target).payload().kind == MirKind.TUPLE
+            )
+        ) {
         slices = nd.right.slices;
         start = slices[0].start if len(slices) == 1 and not nd.right.is_range else None;
         folded = start.ct_value if isinstance(start, uni.Expr) else None;
@@ -3481,7 +3487,13 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
                 mir_refusal("subscript", "tuple index that is not a constant", nd)
             );
         }
-        return self.tuple_get(self.lower_expr(nd.target), whole);
+        held_tuple = self.lower_expr(nd.target);
+        if held_tuple.type.kind == MirKind.OPT {
+            held_tuple = self.opt_unwrap_checked(
+                held_tuple, "'NoneType' object is not subscriptable", "TypeError"
+            );
+        }
+        return self.tuple_get(held_tuple, whole);
     }
     if not nd.is_attr and isinstance(nd.right, uni.IndexSlice) {
         target_type = self.expr_type(nd.target)

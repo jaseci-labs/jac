@@ -772,6 +772,7 @@ obj MirLowering {
     ) -> (tuple[uni.Archetype, MirDecl] | None);
 
     def accessor_get(nd: uni.AtomTrailer) -> (MirValue | None);
+    def accessor_store(target: uni.AtomTrailer, value: MirValue) -> bool;
     def accessor_set(target: uni.AtomTrailer, nd: uni.Assignment) -> bool;
     def lower_constructor(arch: uni.Archetype) -> (MirFunction | None);
     def lower_drop(obj_def: MirObjectDef, arch: uni.Archetype) -> MirFunction;
@@ -881,6 +882,7 @@ obj MirLowering {
         op: str, name: str, left: MirValue, right: MirValue, site: uni.UniNode
     ) -> MirValue;
 
+    def store_unpacked(target: uni.Expr, part: MirValue, site: uni.UniNode);
     def unpack_into(targets: list[uni.Expr], value: MirValue, site: uni.UniNode);
     def function_of(nd: uni.UniNode) -> (uni.UniNode | None);
     def names_within(nd: uni.UniNode) -> list[uni.Name];
@@ -961,6 +963,9 @@ obj MirLowering {
         lst: MirValue, part: uni.Slice, site: uni.UniNode
     ) -> tuple[MirValue, MirValue, MirValue];
 
+    def list_replace_range(
+        lst: MirValue, part: uni.Slice, values: (MirValue | None), site: uni.UniNode
+    );
     def list_delete_range(lst: MirValue, part: uni.Slice, site: uni.UniNode);
     def direct_method_call(
         nd: uni.FuncCall,
