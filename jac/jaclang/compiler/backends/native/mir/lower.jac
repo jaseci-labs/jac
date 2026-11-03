@@ -609,6 +609,7 @@ obj MirLowering {
     ) -> (tuple[uni.Archetype, MirDecl] | None);
 
     def union_accessor_get(nd: uni.AtomTrailer) -> (MirValue | None);
+    def union_accessor_set(target: uni.AtomTrailer, nd: uni.Assignment) -> bool;
     def ref_word_side(value: MirValue) -> bool;
     def ref_word(value: MirValue) -> MirValue;
     def any_number(value: MirValue, whole: bool, site: uni.UniNode) -> MirValue;
@@ -1187,7 +1188,28 @@ obj MirLowering {
     def module_member(unit: uni.Module, name: str) -> (uni.UniNode | None);
     def stdlib_call(nd: uni.FuncCall, target: uni.AtomTrailer) -> (MirValue | None);
     def stdlib_attr(nd: uni.AtomTrailer) -> (MirValue | None);
+    def class_attr_entry(
+        arch: uni.Archetype, name: str
+    ) -> (tuple[uni.Archetype, uni.Name, uni.Expr] | None);
+
     def class_constant(arch: uni.Archetype, name: str) -> (uni.Expr | None);
+    def class_global(
+        holder: uni.Archetype, target: uni.Name, value: uni.Expr
+    ) -> MirGlobal;
+
+    def declare_class_globals;
+    def class_value_of(
+        arch: uni.Archetype, name: str, wanted: MirType, site: uni.UniNode
+    ) -> (MirValue | None);
+
+    def class_dispatch(
+        arch: uni.Archetype,
+        name: str,
+        wanted: MirType,
+        site: uni.UniNode,
+        matches: Callable[[uni.Archetype], MirValue]
+    ) -> (MirValue | None);
+
     def class_attr(nd: uni.AtomTrailer) -> (MirValue | None);
     def constant_value(value: (uni.Expr | None)) -> bool;
     def subclass_archetypes(arch: uni.Archetype) -> list[uni.Archetype];

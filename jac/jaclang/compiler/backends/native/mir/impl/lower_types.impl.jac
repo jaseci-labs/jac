@@ -113,6 +113,13 @@ impl mir_union_type(
         )
     ];
     has_none = len(members) < len(t.types);
+    if any(
+        isinstance(member, AnyType)
+            or (isinstance(member, ClassType) and member.shared.class_name == "object")
+        for member in members
+    ) {
+        return mir_any();
+    }
     lowered = [mir_type_of(member, position, site, env) for member in members];
     if not lowered {
         return mir_none();

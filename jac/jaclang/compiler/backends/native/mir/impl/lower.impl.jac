@@ -31,6 +31,7 @@ impl MirLowering.lower -> MirModule {
     }
     self.declare_c_data();
     self.declare_module_globals();
+    self.declare_class_globals();
     for key in self.order {
         self.current = self.decl_label(self.decls[key]);
         made = self.lower_function(self.decls[key]);

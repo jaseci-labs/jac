@@ -734,6 +734,27 @@ impl MirLowering.list_method(
         self.runtime("__jac_rt_list_reverse", [lst]);
         return b.const_bool(False);
     }
+    if name == "remove" and len(args) == 1 {
+        found = self.runtime(
+            "__jac_rt_list_index",
+            [lst, self.to_bits(self.lower_expr(args[0]), elem, args[0]), kind]
+        );
+        if found is None {
+            return None;
+        }
+        self.raise_if(
+            b.compare("lt", found, b.const_int(0, mir_int())),
+            "ValueError",
+            "list.remove(x): x not in list"
+        );
+        bits = self.runtime("__jac_rt_list_pop", [lst, found]);
+        if bits is not None
+            and self.elem_kind(elem, nd)
+                in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
+            self.owned_element(b.ref_cast(bits, mir_ref(), True), elem);
+        }
+        return b.const_bool(False);
+    }
     if name == "index" and len(args) == 1 {
         position = self.runtime(
             "__jac_rt_list_index",

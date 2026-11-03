@@ -122,6 +122,28 @@ impl MirLowering.codec_arg(
         return self.builder().const_int(0, mir_int());
     }
     name = self.literal_text(arg);
+    if name is None and isinstance(arg, uni.Expr) {
+        b = self.builder();
+        text = self.spill(self.as_text(self.lower_expr(arg)));
+        chosen = b.const_int(-1, mir_int());
+        for (key, ident) in table.items() {
+            for spelled in {
+                key,
+                key.upper(),
+                key.replace("-", "_"),
+                key.replace("-", "_").upper()
+            } {
+                hit = self.str_compare("eq", text, b.const_str(spelled, mir_str()));
+                chosen = b.select(hit, b.const_int(ident, mir_int()), chosen);
+            }
+        }
+        self.raise_if(
+            b.compare("lt", chosen, b.const_int(0, mir_int())),
+            "LookupError",
+            "unknown encoding or error handler"
+        );
+        return chosen;
+    }
     if name is None {
         raise MirRefused(
             mir_refusal(
@@ -423,6 +445,16 @@ impl MirLowering.text_method(
                     b.str_part(affix, "len"),
                     b.const_bool(name == "removesuffix")
                 ]
+            )
+        );
+    }
+    if name == "expandtabs" {
+        tab_nd = self.bind_args(nd, ["tabsize"])[0];
+        tabsize = self.int_arg(tab_nd, 8);
+        return self.owned_text(
+            self.call_rt(
+                "__jac_rt_str_expandtabs",
+                [b.str_part(text, "data"), b.str_part(text, "len"), tabsize]
             )
         );
     }
@@ -1053,7 +1085,29 @@ impl MirLowering.bytes_method(
         chars_nd = self.bind_args(nd, ["chars"])[0];
         (chars_data, chars_len) = self.text_const("");
         supplied = self.present(chars_nd);
-        if supplied {
+        supplied_flag = b.const_bool(supplied);
+        if supplied
+            and isinstance(chars_nd, uni.Expr)
+            and self.expr_type(chars_nd).kind == MirKind.OPT {
+            given = self.spill(self.lower_expr(chars_nd));
+            fn = self.st().fn;
+            data_slot = self.temp_slot(chars_data.type);
+            len_slot = self.temp_slot(chars_len.type);
+            b.store(data_slot, chars_data);
+            b.store(len_slot, chars_len);
+            some = fn.new_block("strip.chars");
+            done = fn.new_block("strip.chars.done");
+            supplied_flag = self.opt_present(given);
+            b.cond_branch(supplied_flag, some, done);
+            b.position(some);
+            (got_data, got_len) = self.byte_parts(self.spill(self.opt_get(given)));
+            b.store(data_slot, self.coerce(got_data, chars_data.type, nd));
+            b.store(len_slot, got_len);
+            b.branch(done);
+            b.position(done);
+            chars_data = b.load(data_slot, chars_data.type);
+            chars_len = b.load(len_slot, chars_len.type);
+        } elif supplied {
             (chars_data, chars_len) = self.bytes_arg(chars_nd, nd);
         }
         (data, size) = self.byte_parts(held);
@@ -1064,7 +1118,7 @@ impl MirLowering.bytes_method(
                 size,
                 chars_data,
                 chars_len,
-                b.const_bool(supplied),
+                supplied_flag,
                 b.const_int(TEXT_STRIPS[name], mir_int())
             ]
         );
