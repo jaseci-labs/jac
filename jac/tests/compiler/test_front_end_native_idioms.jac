@@ -18,7 +18,7 @@ import from jaclang.compiler.passes.execution { run_walker }
 import os;
 import types;
 import jaclang.compiler.frontend.helpers as helpers_mod;
-import from tests.support { TESTS_DIR }
+import from tests.support { TESTS_DIR, python_tree }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.codeinfo { native_safe_sym }
@@ -330,7 +330,6 @@ test "a test block still binds the assert names to symbols" {
 # Both spellings are pinned against the same `(major, minor)` arithmetic.
 test "version-condition comparisons match the operator table they replaced" {
     import sys;
-    import ast as py_ast;
     import from jaclang.compiler.frontend.unitree { IfStmt, PythonModuleAst, Source }
     import from jaclang.compiler.driver.pipeline { run_utility }
     import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
@@ -348,7 +347,7 @@ test "version-condition comparisons match the operator table they replaced" {
     mod = run_utility(
         CompilationProduct.PYTHON_AST,
         PythonModuleAst(
-            py_ast.parse(code), orig_src=Source(code, "test_version_ops.py")
+            python_tree(code), orig_src=Source(code, "test_version_ops.py")
         ),
         prog
     ).module;

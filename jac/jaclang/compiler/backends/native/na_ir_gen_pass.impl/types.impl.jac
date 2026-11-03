@@ -4007,6 +4007,27 @@ impl NaIRGenPass._emit_arch_dunder_binop(
     return _try_dispatch(self, right, left, rmagic);
 }
 
+impl NaIRGenPass._emit_arch_dunder_unary(
+    op: str, operand: ir.Value
+) -> (ir.Value | None) {
+    magic = UNARY_OPERATOR_MAP.get(op);
+    if magic is None or not isinstance(operand.type, ir.PointerType) {
+        return None;
+    }
+    arch = self._infer_type_name(operand);
+    if arch is None {
+        return None;
+    }
+    mfn = self._resolve_method(arch, magic);
+    if mfn is None or len(mfn.args) != 1 {
+        return None;
+    }
+    _dargs = [self._coerce_type(operand, mfn.args[0].type)];
+    _dres = self.builder.call(mfn, _dargs, name=f"dunder.{magic}");
+    self._release_owned_args(_dargs, op="call_arg");
+    return _dres;
+}
+
 impl NaIRGenPass._opt_membership_operand(
     left: ir.Value, slot_type: ir.Type
 ) -> tuple[ir.Value, ir.Value | None] {

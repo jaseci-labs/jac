@@ -28,8 +28,7 @@ import jaclang.compiler.frontend.unitree as uni;
 import jaclang.compiler.driver.compiler as compiler_mod;
 import from jaclang.meta_importer { JacSourceCompileError }
 import from jaclang.compiler.driver.source_failures { CompilerSourceError }
-import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
-import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
+import from jaclang.compiler.backends.py.pyast_gen_pass { PyastGenPass }
 import from jaclang.compiler.driver.pipeline { schedule_for }
 import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
 
@@ -178,10 +177,10 @@ test "a broken compiler source fails loudly instead of dropping backends" {
 
 test "an absent backend still degrades to the bytecode-only fallback" {
     sched = _codegen_with(_absent_backend());
-    assert [p.__name__ for p in sched] == ["NativeImportFactsPass", "JcirGenPass"];
+    assert [p.__name__ for p in sched] == ["NativeImportFactsPass", "PyastGenPass"];
 }
 
 test "a broken module outside the compiler tree still degrades" {
     sched = _codegen_with(_broken_backend(USER_SRC));
-    assert [p.__name__ for p in sched] == ["NativeImportFactsPass", "JcirGenPass"];
+    assert [p.__name__ for p in sched] == ["NativeImportFactsPass", "PyastGenPass"];
 }

@@ -11,15 +11,13 @@ member resolved them fine; only the union broke, and the diagnostic named
 no missing type because there was none to name.
 """
 
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support { kernel_check_source }
 
 def check_src(src: str) -> list[str] {
-    prog = JacProgram();
-    prog.compile(
-        file_path="genenum.jac", use_str=src, options=CompileOptions(no_cgen=True)
-    );
-    return [str(e) for e in prog.errors_had];
+    return [
+        f"{diag.code}: {diag.message}"
+        for diag in kernel_check_source(src, "genenum.jac").errors
+    ];
 }
 
 test "a generator expression can be advanced with next" {

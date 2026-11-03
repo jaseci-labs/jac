@@ -7,7 +7,7 @@ default_codespace-driven whole-module native inference (native by default,
 server signals and closure poison opt modules back out).
 """
 
-import from jaclang.compiler.backends.py.codegen_shim { generated_python }
+import from jaclang.compiler.backends.py.python_text { generated_python }
 import os;
 import re;
 import from tests.support { JAC_ROOT }
@@ -635,9 +635,8 @@ test "client import pulls a pure markerless module cross-module" {
 }
 
 test "cross-module pulled elements dual-emit for the server side" {
-    import from jaclang.client.client_bundle { _ensure_js_generated }
-    import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
-    import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
+    import from tests.compiler.backends.es.codegen_helpers { lower_to_client }
+    import from jaclang.compiler.backends.py.pyast_gen_pass { PyastGenPass }
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURE_DIR, "infer_xmod_app.jac"), no_cgen=False);
     util = hub_module(prog, "infer_xmod_util.jac");
@@ -653,7 +652,8 @@ test "cross-module pulled elements dual-emit for the server side" {
             );
         }
     }
-    _ensure_js_generated(util, prog);
+    lowered = lower_to_client(util, prog);
+    assert not lowered , lowered;
     util_js = util.gen.js;
     assert 'register' in util.gen.client_manifest.linkable , (
         "pulled accessless def must be exportable to its client importers"
@@ -662,9 +662,8 @@ test "cross-module pulled elements dual-emit for the server side" {
         "pulled glob must be exportable to its client importers"
     );
     assert util_js.strip() , "pulled module must produce client JS";
-    run_pass(JcirGenPass, util, prog);
-    run_pass(JcirBytecodeGenPass, util, prog);
-    py_src = generated_python(util.gen);
+    run_pass(PyastGenPass, util, prog);
+    py_src = generated_python(util);
     assert 'def register' in py_src , (
         "pulled element must still exist in the python module (dual emit)"
     );
@@ -700,7 +699,7 @@ test "unpullable closure bridges as a wire type instead of pulling" {
 test "codespace stamps invalidate stale module codegen" {
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
-    import from jaclang.client.client_bundle { _ensure_js_generated }
+    import from tests.compiler.backends.es.codegen_helpers { lower_to_client }
     prog = JacProgram();
     prog.compile(
         os.path.join(FIXTURE_DIR, "infer_xmod_app.jac"),
@@ -712,7 +711,8 @@ test "codespace stamps invalidate stale module codegen" {
     app = hub_module(prog, "infer_xmod_app.jac");
     assert app is not None;
     run_pass(EsastGenPass, app, prog);
-    _ensure_js_generated(util, prog);
+    lowered = lower_to_client(util, prog);
+    assert not lowered , lowered;
     assert 'register' in util.gen.client_manifest.linkable , (
         "pull stamps must invalidate the pre-pull ES cache so the pulled def "
         "regenerates as client code its importers can link"
@@ -723,17 +723,12 @@ test "codespace stamps invalidate stale module codegen" {
 }
 
 test "a client-pulled module that will not lower fails loudly (#8375)" {
-    import from jaclang.client.client_bundle { ClientBundleError, _ensure_js_generated }
+    import from tests.compiler.backends.es.codegen_helpers { lower_to_client }
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURE_DIR, "infer_unlowerable_app.jac"), no_cgen=False);
     util = hub_module(prog, "infer_unlowerable_util.jac");
     assert util is not None , "imported module missing from hub";
-    raised = '';
-    try {
-        _ensure_js_generated(util, prog);
-    } except ClientBundleError as e {
-        raised = str(e);
-    }
+    raised = "\n\n".join(lower_to_client(util, prog));
     assert 'E5018' in raised , (
         "an ES lowering failure in a pulled module must fail the bundle rather "
         f"than demote it silently; got: {raised}"

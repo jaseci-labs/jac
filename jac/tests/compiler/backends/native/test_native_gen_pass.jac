@@ -22,7 +22,7 @@ reading, and merged they read a list three pushes deep.
 So: if a new fixture declares a glob anything writes, or imports one that
 does, give each of its cases its own test.
 """
-import from jaclang.compiler.backends.py.codegen_shim { generated_python }
+import from jaclang.compiler.backends.py.python_text { generated_python }
 import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
 
 import ctypes;
@@ -54,7 +54,7 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import from jaclang.compiler.backends.native.llvm.jit { ExecutionEngine }
 import from jaclang.compiler.frontend.codeinfo {
     native_glob_init_name,
     native_symbol_name,
@@ -665,7 +665,7 @@ test "context isolation native excluded from python" {
     prog = JacProgram();
     ir = prog.compile(str(os.path.join(FIXTURES, "mixed_contexts.jac")));
     # Python source should NOT contain native_add
-    py_src = generated_python(ir.gen);
+    py_src = generated_python(ir);
     assert "return a + b" not in py_src , "the native body must not be in the Python output";
     assert "get_function_address" in py_src , (
         "a Python importer reaches native_add through its native call stub"
@@ -2776,7 +2776,7 @@ test "py interop py functions in python codegen" {
         str(os.path.join(FIXTURES, "na_py_interop.jac")),
         options=CompileOptions(default_codespace='server')
     );
-    py_src = generated_python(ir.gen);
+    py_src = generated_python(ir);
     assert "py_double" in py_src;
     assert "call_native" in py_src;
 }
@@ -2788,7 +2788,7 @@ test "py interop native function has stub in python" {
         str(os.path.join(FIXTURES, "na_py_interop.jac")),
         options=CompileOptions(default_codespace='server')
     );
-    py_src = generated_python(ir.gen);
+    py_src = generated_python(ir);
     # Stub for the native function should exist
     assert "native_add_one_to_doubled" in py_src;
     # The native function body should NOT appear as executable code in Python
@@ -2851,9 +2851,7 @@ test "py interop full entry chain" {
     assert not prog.errors_had;
     # Execute the compiled module with interop context injected
     py_code = compile(
-        generated_python(ir.gen),
-        str(os.path.join(FIXTURES, "na_py_interop.jac")),
-        "exec"
+        generated_python(ir), str(os.path.join(FIXTURES, "na_py_interop.jac")), "exec"
     );
     namespace = {
         "__jac_native_engine__": ir.gen.native_engine,
@@ -2947,7 +2945,7 @@ test "multi module full multi module chain" {
     assert ir.gen.native_engine is not None , "No native engine created";
 
     py_code = compile(
-        generated_python(ir.gen),
+        generated_python(ir),
         str(os.path.join(FIXTURES, "na_py_interop_multi.jac")),
         "exec"
     );
@@ -6482,8 +6480,8 @@ test "restore-failure falls back to recompile for inferred modules (item #19)" {
         assert bc2 is not None;
         # Without a kernel the host recompiles and builds the engine in the
         # pass itself, so the loader sees only the failed restore.
-        import from jaclang.compiler.native_compiler { ensure_loaded }
-        rebuilds = 2 if ensure_loaded() is not None else 1;
+        import from jaclang.compiler.backends.native.kernel_resolve { load_kernel }
+        rebuilds = 2 if load_kernel() is not None else 1;
         assert len(loads) == rebuilds , (
             f"expected {rebuilds} loader call(s), saw {len(loads)}"
         );

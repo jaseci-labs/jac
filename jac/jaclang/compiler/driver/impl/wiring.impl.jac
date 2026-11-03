@@ -573,11 +573,7 @@ impl WiringSpec.import_provider(path_node: ModulePath) -> (str | None) {
         ) {
         return None;
     }
-    try {
-        resolved = path_node.resolve_relative_path();
-    } except Exception {
-        return None;
-    }
+    resolved = path_node.resolve_relative_path();
     if not resolved or not os.path.isfile(resolved) {
         return None;
     }
@@ -783,7 +779,7 @@ impl module_records(mod: Module, source: str) -> tuple[list[WireRec], list[RuleR
 impl parse_records(
     source: str, path: str
 ) -> tuple[bool, list[WireRec], list[RuleRec]] {
-    (mod, had_error) = parse_woven(source, path, None, [], load_kernel=False);
+    (mod, had_error) = parse_woven(source, path, None, []);
     (wires, rules) = module_records(mod, source);
     return (bool(had_error), wires, rules);
 }
@@ -970,16 +966,7 @@ impl arch_file_for(path: str) -> (str | None) {
 }
 
 impl is_stdlib_module(name: str) -> bool {
-    if not _STDLIB_NAMES {
-        _STDLIB_NAMES.append(
-            set(
-                active_host().native_fact(HOST_FACT_STDLIB_MODULES, "").split(
-                    HOST_FACT_SEP
-                )
-            )
-        );
-    }
-    return name in _STDLIB_NAMES[0];
+    return name in STDLIB_MODULES;
 }
 
 impl scope_path_of(nd: UniNode) -> (list[str] | None) {
@@ -1072,18 +1059,14 @@ impl inject_into_scope(owner: (Ability | ImplDef), stmt: UniNode) -> None {
 }
 
 impl _load_spec(root_dir: str, arch_path: str) -> WiringSpec {
-    stamp: tuple[float, int] = (-1.0, -1);
-    try {
-        stamp = (os.path.getmtime(arch_path), os.path.getsize(arch_path));
-    } except OSError {}
-    key = os.path.realpath(root_dir);
-    cached = _spec_cache.get(key);
-    if cached is not None and cached[0] == stamp {
-        return cached[1];
-    }
     host = active_host();
     source = host.read_source(arch_path);
     digest = hashlib.sha256(source.encode()).hexdigest();
+    key = os.path.realpath(root_dir);
+    cached = _spec_cache.get(key);
+    if cached is not None and cached[0] == digest {
+        return cached[1];
+    }
     records: (tuple[bool, list[WireRec], list[RuleRec]] | None) = None;
     held = host.wiring_records(digest);
     if held {
@@ -1102,7 +1085,7 @@ impl _load_spec(root_dir: str, arch_path: str) -> WiringSpec {
         wires=records[1],
         rules=records[2]
     );
-    _spec_cache[key] = (stamp, spec);
+    _spec_cache[key] = (digest, spec);
     return spec;
 }
 
@@ -1595,7 +1578,7 @@ impl render_wiring(
 }
 
 impl canonical_wiring_source(source: str, path: str) -> str {
-    (mod, had_error) = parse_woven(source, path, None, [], load_kernel=False);
+    (mod, had_error) = parse_woven(source, path, None, []);
     if had_error
         or mod.doc is not None
         or mod.source.comments
@@ -1617,7 +1600,7 @@ impl canonical_wiring_source(source: str, path: str) -> str {
 impl prune_wiring_source(
     source: str, path: str, dropped: Callable[[str], bool]
 ) -> str {
-    (mod, had_error) = parse_woven(source, path, None, [], load_kernel=False);
+    (mod, had_error) = parse_woven(source, path, None, []);
     if had_error {
         return source;
     }

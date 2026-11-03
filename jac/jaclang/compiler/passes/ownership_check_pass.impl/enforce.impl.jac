@@ -104,12 +104,7 @@ impl OwnershipCheckPass._nogc_local_shape(nm: Name) -> str {
     if _t is None {
         return "unknown";
     }
-    _mangled = "";
-    try {
-        _mangled = _t.mangle();
-    } except Exception {
-        return "unknown";
-    }
+    _mangled = _t.mangle();
     if _mangled in _NOGC_SCALARS or is_c_value_type(_t) or _is_class_object(_t) {
         return "scalar";
     }
@@ -196,11 +191,7 @@ impl OwnershipCheckPass._nogc_entry_confined_str(tgt: Name) -> bool {
     if _sym is None or tgt.type is None {
         return False;
     }
-    try {
-        if tgt.type.mangle() != "str" {
-            return False;
-        }
-    } except Exception {
+    if tgt.type.mangle() != "str" {
         return False;
     }
     _refs: list[UniNode] = list(_sym.defn or []) + list(_sym.uses or []);
@@ -379,11 +370,7 @@ impl OwnershipCheckPass._nogc_type_is_str(expr: Expr | None) -> bool {
     if not isinstance(expr, Expr) or expr.type is None {
         return False;
     }
-    try {
-        return expr.type.mangle() in _STR_MANGLES;
-    } except Exception {
-        return False;
-    }
+    return expr.type.mangle() in _STR_MANGLES;
 }
 
 impl OwnershipCheckPass._nogc_place_text(expr: Expr | None) -> str {
@@ -563,12 +550,7 @@ impl OwnershipCheckPass._nogc_expr_type_is_heap(expr: Expr | None) -> bool {
     if not isinstance(expr, Expr) or expr.type is None {
         return False;
     }
-    _m = "";
-    try {
-        _m = expr.type.mangle();
-    } except Exception {
-        return False;
-    }
+    _m = expr.type.mangle();
     if _m in _NOGC_SCALARS
         or _m in ("any", "Unknown", "")
         or is_c_value_type(expr.type)
@@ -588,12 +570,7 @@ impl OwnershipCheckPass._expr_scalar_typed(expr: Expr | None) -> bool {
     if not isinstance(expr, Expr) or expr.type is None {
         return False;
     }
-    _m = "";
-    try {
-        _m = expr.type.mangle();
-    } except Exception {
-        return False;
-    }
+    _m = expr.type.mangle();
     return _m in _NOGC_SCALARS or is_c_value_type(expr.type);
 }
 
@@ -601,12 +578,7 @@ impl OwnershipCheckPass._nogc_is_container_expr(expr: Expr | None) -> bool {
     if not isinstance(expr, Expr) or expr.type is None {
         return False;
     }
-    _tk = "";
-    try {
-        _tk = expr.type.mangle();
-    } except Exception {
-        return False;
-    }
+    _tk = expr.type.mangle();
     for _nm in ("list", "set", "dict") {
         if _tk == _nm or _tk.startswith(_nm + "[") {
             return True;
@@ -619,12 +591,7 @@ impl OwnershipCheckPass._nogc_is_list_expr(expr: Expr | None) -> bool {
     if not isinstance(expr, Expr) or expr.type is None {
         return False;
     }
-    _tk = "";
-    try {
-        _tk = expr.type.mangle();
-    } except Exception {
-        return False;
-    }
+    _tk = expr.type.mangle();
     return _tk == "list" or _tk.startswith("list[");
 }
 

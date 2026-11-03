@@ -3595,7 +3595,7 @@ impl Source.code.getter -> str {
     return self.value;
 }
 
-impl PythonModuleAst.init(ast: object, orig_src: Source) -> None {
+impl PythonModuleAst.init(ast: PyAstModule, orig_src: Source) -> None {
     super.init();
     self.ast = ast;
     self.orig_src = orig_src;

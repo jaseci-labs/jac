@@ -11,15 +11,13 @@ inherited member vanished. E1030 then asserted a definite negative --
 "has no attribute" -- for members that plainly exist.
 """
 
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support { kernel_check_source }
 
 def check_src(src: str) -> list[str] {
-    prog = JacProgram();
-    prog.compile(
-        file_path="dotted.jac", use_str=src, options=CompileOptions(no_cgen=True)
-    );
-    return [str(e) for e in prog.errors_had];
+    return [
+        f"{diag.code}: {diag.message}"
+        for diag in kernel_check_source(src, "dotted.jac").errors
+    ];
 }
 
 test "members inherited through a dotted base class stay visible" {

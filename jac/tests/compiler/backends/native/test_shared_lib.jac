@@ -50,6 +50,7 @@ import from jaclang.compiler.backends.native.link_plan {
 }
 import from jaclang.compiler.backends.native.link_glue { init_object_codegen }
 import jaclang.compiler.backends.native.llvm.binding as llvm;
+import jaclang.compiler.backends.native.llvm.jit as jit;
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -970,7 +971,7 @@ test "private native helpers cannot satisfy another library's C symbols" {
         for value in native.functions
     );
     target = llvm.Target.from_default_triple().create_target_machine();
-    engine = llvm.create_mcjit_compiler(native, target);
+    engine = jit.create_mcjit_compiler(native, target);
     engine.finalize_object();
     call = ctypes.CFUNCTYPE(ctypes.c_int64);
     assert call(engine.get_function_address("native_probe"))() == 42;
@@ -1020,7 +1021,7 @@ test "opaque native owners account for object and growing list allocations" {
     compiled = llvm.parse_assembly(source);
     compiled.verify();
     target = llvm.Target.from_default_triple().create_target_machine();
-    engine = llvm.create_mcjit_compiler(compiled, target);
+    engine = jit.create_mcjit_compiler(compiled, target);
     engine.finalize_object();
     ctypes.CFUNCTYPE(None)(engine.get_function_address("__jac_shared_init"))();
     make = ctypes.CFUNCTYPE(ctypes.c_void_p)(engine.get_function_address("make_owned"));

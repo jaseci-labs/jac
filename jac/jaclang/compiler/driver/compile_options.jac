@@ -62,6 +62,8 @@ obj CompileOptions {
         cancel_token: (CancelToken | None) = None;
 
     def postinit;
+    def to_dict -> dict[str, any];
+    static def from_dict(raw: dict[str, any]) -> CompileOptions;
     def effective_triple -> str;
     def native_options_identity -> str;
     def codegen_identity -> str;
@@ -105,3 +107,11 @@ def env_typed_pointers_enabled -> bool;
 def push_native_target(triple: str) -> (str | None);
 
 def pop_native_target(prev: (str | None));
+
+def optional_flag(value: any) -> (bool | None);
+
+def optional_number(value: any) -> (int | None);
+
+def optional_text(value: any) -> (str | None);
+
+def optional_texts(value: any) -> (list[str] | None);

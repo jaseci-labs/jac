@@ -1,6 +1,6 @@
 """Comptime values must not carry the compiler process's set iteration order.
 
-`JcirGenPass._materialize` lowers a comptime `set` to a `set([...])` literal by
+`PyastGenPass._materialize` lowers a comptime `set` to a `set([...])` literal by
 iterating it. Python randomizes string hashes per process, so iterating the set
 directly baked a per-process element order into the emitted constant: the same
 source compiled in two processes produced different bytecode, and therefore

@@ -1,5 +1,0 @@
-[project]
-name = "precompile-gate"
-
-[placement]
-default = "server"

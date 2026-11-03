@@ -74,12 +74,28 @@ NATIVE_LOWERED_PATHS: tuple[str, ...] = (
 # Written into a staged jaclang tree at pack time, from the COMPLETE source
 # tree, before any pruning. Its `inputs` map covers every declared input so a
 # consumer can resolve the ones this staging does not carry as source.
+# Natively lowered inputs the bytecode-hosted compiler also loads: the Python
+# frontend's node and constant types, which the Python AST pass consumes on
+# both sides of the kernel boundary. A kernel-less compiler lifts the host
+# interpreter's `ast.parse` result into them, so they ship as source and are
+# ordinary compiler inputs; the rest of each lowered tree stays native-only.
+BYTECODE_SHARED_REL: tuple[str, ...] = (
+    "compiler/frontend/python/ast_nodes.jac",
+    "compiler/frontend/python/syntax_error.jac",
+    "runtime/python/compiler_integer.jac",
+    "runtime/python/objects.jac",
+    "runtime/python/impl/objects.impl.jac",
+    "runtime/python/opcode_meta.jac",
+)
+
 COMPILER_IDENTITY_NAME: str = "compiler_identity.json"
 
 
 def is_native_lowered(rel: str) -> bool:
     """Is ``rel`` (POSIX-style, package-relative) a natively lowered input?"""
     rel = rel.replace(os.sep, "/")
+    if rel in BYTECODE_SHARED_REL:
+        return False
     return any(rel == p or rel.startswith(p + "/") for p in NATIVE_LOWERED_PATHS)
 
 
@@ -123,13 +139,11 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/frontend/unitree.jac",
     "compiler/driver/",
     "compiler/placement/",
-    "compiler/backends/py/codegen_ir.jac",
-    "compiler/backends/py/codegen_shim.jac",
     "compiler/backends/py/impl/",
-    "compiler/backends/py/jcir_bc_gen_pass.jac",
-    "compiler/backends/py/jcir_facts.jac",
-    "compiler/backends/py/jcir_gen_pass.impl/",
-    "compiler/backends/py/jcir_gen_pass.jac",
+    "compiler/backends/py/pyast_facts.jac",
+    "compiler/backends/py/pyast_gen_pass.impl/",
+    "compiler/backends/py/pyast_gen_pass.jac",
+    "compiler/backends/py/pyast_recipe.jac",
     "compiler/backends/common/fmt_kernel.jac",
     "compiler/passes/annex_weave.jac",
     "compiler/passes/ast_validation_pass.jac",
@@ -143,13 +157,14 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/passes/sym_tab_build_pass.jac",
     "compiler/passes/context.jac",
     "compiler/native_scope.jac",
+    "compiler/source_tiers.jac",
     "compiler/kernel_target.jac",
     "compiler/field_semantics.jac",
     "compiler/c_interop.jac",
-    "compiler/native_compiler.jac",
-    "compiler/jc_unit.jac",
-    "compiler/jc_materialize.jac",
     "compiler/passes/execution.jac",
+    "compiler/backends/py/python_engine.jac",
+    "compiler/backends/py/host_python.jac",
+    "compiler/backends/es/js_paths.jac",
     "compiler/tools/treeprinter.jac",
     "runtime/runtime.jac",
     "runtime/constants.jac",
@@ -184,8 +199,13 @@ SEED_PATHS: tuple[str, ...] = (
     "jac0core/cli_boot.jac",
     "jac0core/handoff.jac",
     "jac0core/artifact_registry.jac",
+    "cache/",
     "project/__init__.jac",
     "project/tomlio.jac",
+    "project/config.jac",
+    "project/package_scope.jac",
+    "project/dependencies.jac",
+    "project/persistence.jac",
     "project/source.jac",
     "project/textio.jac",
     "project/apps.jac",
@@ -193,6 +213,7 @@ SEED_PATHS: tuple[str, ...] = (
     "project/workspace.jac",
     "project/workspace_model.jac",
     "project/compiler_host.jac",
+    "project/host_bootstrap.jac",
     "project/placement.jac",
     "project/app_kinds.jac",
 )
@@ -205,9 +226,9 @@ SEED_PATHS: tuple[str, ...] = (
 # data and the only predicate the driver, the seal and the link plan
 # consult. Tier stamping (is_seed_source) is unaffected.
 NATIVE_ONLY_REL: tuple[str, ...] = (
-    "compiler/jc_unit.jac",
-    "compiler/jc_materialize.jac",
-    "compiler/jc_ask.jac",
+    "compiler/kernel_module.jac",
+    "compiler/backends/py/kernel_bytecode.jac",
+    "compiler/backends/py/pyast_build.jac",
     "dist/fused/embed.jac",
     "dist/fused/_libc.jac",
 )

@@ -6,16 +6,6 @@ def native_unit_ref(path: str) -> str;
 
 def resolve_native_unit_ref(ref: str, anchor: str = "") -> str;
 
-def _json_dict(raw: any) -> dict[str, any];
-
-def _json_list(raw: any) -> list[any];
-
-def _json_str_list(raw: any) -> list[str];
-
-def _json_opt_str(raw: any) -> (str | None);
-
-def _json_opt_str_list(raw: any) -> (list[str | None] | None);
-
 def _enum_members_json(members: list[tuple[str, any, int]]) -> list[any];
 
 def _tuple_layout_to_dict(t: (NativeTupleLayout | None)) -> (dict[str, any] | None);

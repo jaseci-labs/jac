@@ -13,9 +13,51 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.frontend.parser.tokens"),
          NativeScopeEntry(module="jaclang.compiler.frontend.parser.lexer"),
          NativeScopeEntry(module="jaclang.compiler.frontend.parser.parser"),
-         NativeScopeEntry(module="jaclang.compiler.jc_materialize"),
-         NativeScopeEntry(module="jaclang.compiler.jc_ask"),
-         NativeScopeEntry(module="jaclang.compiler.jc_unit"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.python.ast_nodes"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.python.ast_walk"),
+         NativeScopeEntry(
+             module="jaclang.compiler.frontend.python.compiler_diagnostics"
+         ),
+         NativeScopeEntry(module="jaclang.compiler.frontend.python.compiler_validate"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.python.parser"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.python.parser_actions"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.python.peg_runtime"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.python.syntax_error"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.python.token_model"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.python.tokenizer"),
+         NativeScopeEntry(module="jaclang.compiler.passes.pyast_load_pass"),
+         NativeScopeEntry(module="jaclang.runtime.python.capi"),
+         NativeScopeEntry(module="jaclang.runtime.python.characters"),
+         NativeScopeEntry(module="jaclang.runtime.python.compiler_integer"),
+         NativeScopeEntry(module="jaclang.runtime.python.cpython_api"),
+         NativeScopeEntry(module="jaclang.runtime.python.modules.stat_records"),
+         NativeScopeEntry(module="jaclang.runtime.python.modules.time_records"),
+         NativeScopeEntry(module="jaclang.runtime.python.native_services"),
+         NativeScopeEntry(module="jaclang.runtime.python.objects"),
+         NativeScopeEntry(module="jaclang.runtime.python.opcode_meta"),
+         NativeScopeEntry(module="jaclang.compiler.tools.ast_views"),
+         NativeScopeEntry(module="jaclang.compiler.tools.code_intel"),
+         NativeScopeEntry(module="jaclang.compiler.tools.studio_queries"),
+         NativeScopeEntry(module="jaclang.compiler.tools.fix_queries"),
+         NativeScopeEntry(module="jaclang.compiler.tools.arch_plan"),
+         NativeScopeEntry(module="jaclang.compiler.tools.jac_formatter_pass"),
+         NativeScopeEntry(module="jaclang.compiler.tools.comment_attach_pass"),
+         NativeScopeEntry(module="jaclang.compiler.tools.doc_ir_gen_pass"),
+         NativeScopeEntry(module="jaclang.compiler.tools.normalize_pass"),
+         NativeScopeEntry(module="jaclang.compiler.tools.unparse_pass"),
+         NativeScopeEntry(module="jaclang.compiler.tools.grammar_extract_pass"),
+         NativeScopeEntry(module="jaclang.compiler.tools.cfg_dot"),
+         NativeScopeEntry(module="jaclang.compiler.tools.treeprinter"),
+         NativeScopeEntry(module="jaclang.compiler.driver.nativecache"),
+         NativeScopeEntry(module="jaclang.compiler.driver.jir"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.link_plan"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.kernel_stage0"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.c_emit"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.wasm_build"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.na_compile_pass"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.native_link"),
+         NativeScopeEntry(module="jaclang.compiler.kernel_api"),
+         NativeScopeEntry(module="jaclang.compiler.kernel_module"),
          NativeScopeEntry(module="jaclang.compiler.frontend.diagnostics"),
          NativeScopeEntry(module="jaclang.compiler.passes.context"),
          NativeScopeEntry(module="jaclang.compiler.passes.ast_validation_pass"),
@@ -36,11 +78,11 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.driver.compilation_context"),
          NativeScopeEntry(module="jaclang.compiler.driver.compile_options"),
          NativeScopeEntry(module="jaclang.compiler.driver.context_passes"),
-         NativeScopeEntry(module="jaclang.compiler.frontend.kernel_analyze"),
          NativeScopeEntry(module="jaclang.compiler.driver.module_analysis"),
          NativeScopeEntry(module="jaclang.compiler.driver.pass_driver"),
          NativeScopeEntry(module="jaclang.compiler.driver.pipeline"),
          NativeScopeEntry(module="jaclang.compiler.driver.pipeline_types"),
+         NativeScopeEntry(module="jaclang.compiler.driver.compile_route"),
          NativeScopeEntry(module="jaclang.compiler.driver.program"),
          NativeScopeEntry(module="jaclang.compiler.driver.progstate"),
          NativeScopeEntry(module="jaclang.compiler.driver.session_compile"),
@@ -52,8 +94,6 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.frontend.diagnostic_utils"),
          NativeScopeEntry(module="jaclang.compiler.frontend.helpers"),
          NativeScopeEntry(module="jaclang.compiler.frontend.host"),
-         NativeScopeEntry(module="jaclang.compiler.frontend.kernel_host"),
-         NativeScopeEntry(module="jaclang.compiler.frontend.kernel_inputs"),
          NativeScopeEntry(module="jaclang.compiler.frontend.module_facts"),
          NativeScopeEntry(module="jaclang.compiler.frontend.loop_links"),
          NativeScopeEntry(module="jaclang.compiler.frontend.parser.frontend"),
@@ -119,16 +159,73 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.types.types"),
          NativeScopeEntry(module="jaclang.project.app_kinds"),
          NativeScopeEntry(module="jaclang.project.workspace_model"),
+         NativeScopeEntry(module="jaclang.project.tomlio"),
+         NativeScopeEntry(module="jaclang.project.textio"),
+         NativeScopeEntry(module="jaclang.project.dependencies"),
+         NativeScopeEntry(module="jaclang.project.persistence"),
+         NativeScopeEntry(module="jaclang.project.apps"),
+         NativeScopeEntry(module="jaclang.project.config"),
+         NativeScopeEntry(module="jaclang.project.placement"),
+         NativeScopeEntry(module="jaclang.project.kinds"),
+         NativeScopeEntry(module="jaclang.project.workspace"),
+         NativeScopeEntry(module="jaclang.project.package_scope"),
+         NativeScopeEntry(module="jaclang.project.client_paths"),
          NativeScopeEntry(module="jaclang.runtime.portability"),
          NativeScopeEntry(module="jaclang.compiler.driver.module_compile"),
+         NativeScopeEntry(module="jaclang.compiler.driver.json_read"),
          NativeScopeEntry(module="jaclang.compiler.driver.unit_products"),
          NativeScopeEntry(module="jaclang.compiler.passes.freeze_structure_pass"),
          NativeScopeEntry(module="jaclang.compiler.passes.osp_analysis"),
          NativeScopeEntry(module="jaclang.compiler.placement.placement_export"),
          NativeScopeEntry(module="jaclang.compiler.backends.common.primitives"),
-         NativeScopeEntry(module="jaclang.compiler.backends.py.codegen_ir"),
-         NativeScopeEntry(module="jaclang.compiler.backends.py.jcir_facts"),
-         NativeScopeEntry(module="jaclang.compiler.backends.py.jcir_gen_pass"),
+         NativeScopeEntry(module="jaclang.compiler.backends.py.pyast_facts"),
+         NativeScopeEntry(module="jaclang.compiler.backends.py.pyast_recipe"),
+         NativeScopeEntry(module="jaclang.compiler.backends.py.pyast_build"),
+         NativeScopeEntry(module="jaclang.compiler.backends.py.pyast_gen_pass"),
+         NativeScopeEntry(module="jaclang.compiler.backends.py.python_engine"),
+         NativeScopeEntry(module="jaclang.compiler.backends.py.kernel_bytecode"),
+         NativeScopeEntry(module="jaclang.compiler.backends.py.jacpython.assembler"),
+         NativeScopeEntry(module="jaclang.compiler.backends.py.jacpython.codegen_util"),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.py.jacpython.compiler_annotations"
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.py.jacpython.compiler_codegen"
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.py.jacpython.compiler_context"
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.py.jacpython.compiler_defs"
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.py.jacpython.compiler_emit"
+         ),
+         NativeScopeEntry(module="jaclang.compiler.backends.py.jacpython.compiler_exc"),
+         NativeScopeEntry(module="jaclang.compiler.backends.py.jacpython.compiler_ir"),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.py.jacpython.compiler_loops"
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.py.jacpython.compiler_match"
+         ),
+         NativeScopeEntry(module="jaclang.compiler.backends.py.jacpython.flowgraph"),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.py.jacpython.product_compile"
+         ),
+         NativeScopeEntry(module="jaclang.compiler.frontend.python.annotation_unparse"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.python.ast_output"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.python.ast_validation"),
+         NativeScopeEntry(
+             module="jaclang.compiler.frontend.python.compiler_preprocess"
+         ),
+         NativeScopeEntry(module="jaclang.compiler.frontend.python.compiler_symtable"),
+         NativeScopeEntry(module="jaclang.compiler.frontend.python.source_encoding"),
+         NativeScopeEntry(module="jaclang.runtime.python.constant_keys"),
+         NativeScopeEntry(module="jaclang.runtime.python.constant_output"),
+         NativeScopeEntry(module="jaclang.runtime.python.layouts"),
+         NativeScopeEntry(module="jaclang.runtime.python.layouts_platform"),
+         NativeScopeEntry(module="jaclang.runtime.python.object_model.header"),
          NativeScopeEntry(module="jaclang.compiler.backends.es.client_paths"),
          NativeScopeEntry(module="jaclang.compiler.backends.es.estree"),
          NativeScopeEntry(module="jaclang.compiler.backends.es.es_unparse"),
@@ -151,6 +248,17 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.runtime.osp_tag"),
          NativeScopeEntry(module="jaclang.compiler.driver.native_iface"),
          NativeScopeEntry(module="jaclang.compiler.driver.na_coverage"),
+         NativeScopeEntry(module="jaclang.compiler.driver.bccache"),
+         NativeScopeEntry(module="jaclang.compiler.driver.jir_reader"),
+         NativeScopeEntry(module="jaclang.project.resolution_records"),
+         NativeScopeEntry(module="jaclang.project.modresolver"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.codec_tables"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.kernel_facts"),
+         NativeScopeEntry(module="jaclang.compiler.source_tiers"),
+         NativeScopeEntry(module="jaclang.compiler.tools.session_queries"),
+         NativeScopeEntry(module="jaclang.compiler.backends.es.client_kernel_cache"),
+         NativeScopeEntry(module="jaclang.compiler.passes.ownership_hints"),
+         NativeScopeEntry(module="jaclang.project.compiler_host"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.__init__"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.ir.__init__"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.ir._utils"),
@@ -163,6 +271,35 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          ),
          NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.ir.builder"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.lowering"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.capi"),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.__init__"
+         ),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.binding.ffi"),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.context"
+         ),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.binding.value"),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.module"
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.linker"
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.targets"
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.newpassmanagers"
+         ),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.binding.lld"),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.initfini"
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.options"
+         ),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.target_facts"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.lexical_scope"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.na_constants"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.foreign"),
@@ -171,7 +308,7 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.backends.native.primitives_native"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.na_ir_gen_pass")
      ),
-     KERNEL_ROOT_MODULE: str = "jaclang.compiler.jc_unit",
+     KERNEL_ROOT_MODULE: str = "jaclang.compiler.kernel_module",
      KERNEL_ABI_CONTRACT_REL: tuple[str, ...] = (
          "runtime/osp_kernel.jac",
          "runtime/osp_graph.jac",
@@ -179,7 +316,7 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          "compiler/backends/common/fmt_kernel.jac",
          "runtime/osp_tag.jac",
          "compiler/backends/native/region_abi.jac",
-         "compiler/native_compiler.jac"
+         "compiler/kernel_api.jac"
      ),
      _SCOPE_SUFFIX_CACHE: list[str] = [],
      _SCOPE_SUFFIX_GEN: list[int] = [-1];

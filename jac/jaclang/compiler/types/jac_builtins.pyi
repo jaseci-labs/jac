@@ -10,7 +10,7 @@
 # should NOT be declared here — they would conflict with the type checker's
 # own handling of the syntax they desugar from (++>, -->, visit [], etc.).
 #
-# Codegen (JcirGenPass) independently controls which `import` lines
+# Codegen (PyastGenPass) independently controls which `import` lines
 # appear in the generated Python — it reads jaclib.__all__ and
 # builtin.__all__ for that purpose. This file is NOT used by codegen.
 

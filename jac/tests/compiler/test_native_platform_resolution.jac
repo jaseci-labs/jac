@@ -34,7 +34,7 @@ test "native package imports use the same provider as semantic imports" {
         compiler = os.path.join(directory, "jaclang", "compiler");
         os.makedirs(compiler);
         os.mkdir(os.path.join(directory, "jaclang", "jac0core"));
-        checkout = os.path.join(compiler, "jc_materialize.jac");
+        checkout = os.path.join(compiler, "native_scope.jac");
         with open(checkout, "w") as source {
             source.write("def:pub local_provider -> int { return 42; }\n");
         }
@@ -47,11 +47,11 @@ test "native package imports use the same provider as semantic imports" {
         try {
             for importer in [fixture, os.path.join(compiler, "entry.jac")] {
                 (expected, language) = resolve_module(
-                    "jaclang.compiler.jc_materialize", importer
+                    "jaclang.compiler.native_scope", importer
                 );
                 assert language == "jac";
                 (_, actual) = resolve_native_module(
-                    "jaclang.compiler.jc_materialize", os.path.dirname(importer)
+                    "jaclang.compiler.native_scope", os.path.dirname(importer)
                 );
                 assert actual is not None;
                 assert os.path.realpath(actual) == os.path.realpath(expected);

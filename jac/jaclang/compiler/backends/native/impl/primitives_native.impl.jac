@@ -3861,8 +3861,11 @@ impl NativeDictEmitter.emit_get(
 
     val_type = helpers["val_type"];
 
-    wrap_optional = (len(args) < 2 or p._is_null_ptr_const(args[1]))
-        and (not isinstance(val_type, ir.PointerType));
+    no_default = len(args) < 2 or p._is_null_ptr_const(args[1]);
+    boxed_value = p._is_jacval_ty(val_type);
+    wrap_optional = no_default
+        and not isinstance(val_type, ir.PointerType)
+        and not boxed_value;
     result_type = p._jac_optional_type(val_type) if wrap_optional else val_type;
 
     b.position_at_start(found_bb);
@@ -3881,6 +3884,8 @@ impl NativeDictEmitter.emit_get(
     b.position_at_start(notfound_bb);
     if wrap_optional {
         default_val: ir.Value = ir.Constant(result_type, None);
+    } elif boxed_value and no_default {
+        default_val = p._null_safe_none(val_type);
     } elif len(args) >= 2 {
         default_val = p._coerce_type(args[1], val_type);
     } else {

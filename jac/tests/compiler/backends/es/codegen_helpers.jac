@@ -57,6 +57,16 @@ def _fatal_compile_errors(prog: JacProgram) -> list[Alert] {
     ];
 }
 
+"""Lower `mod` to the client inside `prog`'s compile; return the rendered
+errors of a lowering that failed (empty when it lowered)."""
+def lower_to_client(mod: Module, prog: JacProgram) -> list[str] {
+    mark = len(prog.errors_had);
+    if prog._get_compiler().ensure_client_codegen(mod, prog) {
+        return [];
+    }
+    return [err.pretty_print() for err in prog.errors_had[mark:]];
+}
+
 """Compile a Jac fixture to JavaScript and return the emitted source."""
 def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
     fixture_path = _resolve_fixture_path(fixture_name, fixture_dir);

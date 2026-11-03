@@ -1971,9 +1971,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                 }
                 if expr.op.name in (Tok.MINUS, Tok.BW_NOT, Tok.PLUS) {
                     operand_type = self.get_type_of_expression(expr.operand);
-                    op_name = "__neg__"
-                        if expr.op.name == Tok.MINUS
-                        else ("__pos__" if expr.op.name == Tok.PLUS else "__invert__");
+                    op_name = UNARY_OPERATOR_MAP[expr.op.name];
 
                     if isinstance(operand_type, TypeVarType) {
                         if operand_type.constraints {

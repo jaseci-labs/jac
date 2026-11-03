@@ -9,6 +9,13 @@ C are listed below and move to the registry as they are ported.
 
     jac run scripts/jacpython/gen_inittab.jac            # rewrite the table
     jac run scripts/jacpython/gen_inittab.jac --check    # fail on drift
+    jac run scripts/jacpython/gen_inittab.jac --kernel   # a release's table
+
+A release links the compiler kernel into the interpreter, so its build
+rewrites the table in its staged tree with `--kernel`: the `jac_kernel` row
+names `PyInit_jac_kernel`, a C symbol the kernel's object
+(`link_kernel_object`) defines. The checked-in table has no kernel row, so a
+development interpreter imports the kernel `jac native build kernel` built.
 
 - jac/jaclang/runtime/python/inittab.jac
 - the `bindings.<file> ++> inittab { PyInit_<module> }` wires of
@@ -39,7 +46,8 @@ glob COMMAND: str = "scripts/jacpython/gen_inittab.jac",
          ("sys", ""),
          ("gc", "PyInit_gc"),
          ("_string", "PyInit__string")
-     ];
+     ],
+     KERNEL_MODULE: tuple[str, str] = ("jac_kernel", "PyInit_jac_kernel");
 
 def registry_modules -> list[str] {
     modules: list[str] = [];
@@ -74,14 +82,15 @@ def table_row(name: str, function: str) -> str {
     return f'_inittab(name=ptr[u8]("{name}"), initfunc={initfunc})';
 }
 
-def inittab_module(modules: list[str]) -> str {
+def inittab_module(modules: list[str], kernel: bool = False) -> str {
+    c_modules = C_MODULES + ([KERNEL_MODULE] if kernel else []);
     externs = [
         function
-        for (_, function) in C_MODULES
+        for (_, function) in c_modules
         if function
     ];
     rows = [table_row(module, f"PyInit_{module}") for module in modules];
-    rows += [table_row(name, function) for (name, function) in C_MODULES];
+    rows += [table_row(name, function) for (name, function) in c_modules];
     rows.append("_inittab(name=ptr[u8](), initfunc=ptr())");
     lines = [
         '"""CPython\'s table of built-in modules, `_PyImport_Inittab`, as C data.',
@@ -153,10 +162,17 @@ with entry {
         description="Generate the table of built-in modules as Jac C data."
     );
     parser.add_argument("--check", action="store_true");
+    parser.add_argument("--kernel", action="store_true");
     args = parser.parse_args();
+    if args.check and args.kernel {
+        sys.exit(f"{COMMAND}: --kernel writes a release's table; it is never checked in");
+    }
     modules = registry_modules();
     ok = write_or_check(
-        TARGET, format_jac(inittab_module(modules), TARGET), args.check, COMMAND
+        TARGET,
+        format_jac(inittab_module(modules, args.kernel), TARGET),
+        args.check,
+        COMMAND
     );
     missing = wires_missing(modules);
     if missing and args.check {

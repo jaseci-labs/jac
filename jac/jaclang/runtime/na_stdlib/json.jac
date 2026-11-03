@@ -8,7 +8,9 @@ def:pub dumps(
     `obj: any,
     sort_keys: bool = False,
     separators: (tuple[str, str] | None) = None,
-    ensure_ascii: bool = True
+    ensure_ascii: bool = True,
+    indent: (int | None) = None,
+    `default: (Callable[[any], any] | None) = None
 ) -> str;
 
 
@@ -16,7 +18,9 @@ obj _JsonStyle {
     has sort_keys: bool = False,
         ensure_ascii: bool = True,
         item_sep: str = ", ",
-        key_sep: str = ": ";
+        key_sep: str = ": ",
+        indent: int = -1,
+        fallback: (Callable[[any], any] | None) = None;
 }
 
 
@@ -55,7 +59,9 @@ def _dump_str(s: str, ensure_ascii: bool) -> str;
 def _dump_float(f_val: float) -> str;
 
 
-def _dump_items(items: list[any], style: _JsonStyle) -> str;
+def _dump_items(items: list[any], style: _JsonStyle, depth: int) -> str;
+
+def _dump_break(style: _JsonStyle, depth: int) -> str;
 
 
-def _dump_value(value: any, style: _JsonStyle) -> str;
+def _dump_value(value: any, style: _JsonStyle, depth: int = 0) -> str;

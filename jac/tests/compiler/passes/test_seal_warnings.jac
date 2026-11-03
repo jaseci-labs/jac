@@ -8,21 +8,18 @@ keeps it quiet.
 """
 
 import os;
-import from tests.support { JAC_ROOT }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { JAC_ROOT, error_codes, kernel_compile_file, warning_codes }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "fixtures", "ownership"
      );
 
 def _codes(name: str) -> list[str] {
-    prog = JacProgram();
-    prog.compile(os.path.join(FIXTURES, name));
+    result = kernel_compile_file(os.path.join(FIXTURES, name));
     out = [
-        a.code.code
-        for a in (list(prog.errors_had) + list(prog.warnings_had))
-        if a.code is not None
-            and (a.code.code.startswith("E13") or a.code.code == "W1312")
+        code
+        for code in error_codes(result) + warning_codes(result)
+        if code.startswith("E13") or code == "W1312"
     ];
     out.sort();
     return out;

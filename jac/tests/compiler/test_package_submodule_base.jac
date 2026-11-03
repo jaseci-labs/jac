@@ -13,15 +13,13 @@ Typeshed writes exactly this shape -- `class MIMEBase(email.message.Message)`
 and `class TextTestResult(unittest.result.TestResult, ...)`.
 """
 
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support { kernel_check_source }
 
 def check_src(src: str) -> list[str] {
-    prog = JacProgram();
-    prog.compile(
-        file_path="pkgbase.jac", use_str=src, options=CompileOptions(no_cgen=True)
-    );
-    return [str(e) for e in prog.errors_had];
+    return [
+        f"{diag.code}: {diag.message}"
+        for diag in kernel_check_source(src, "pkgbase.jac").errors
+    ];
 }
 
 test "members inherited through a package-qualified base stay visible" {

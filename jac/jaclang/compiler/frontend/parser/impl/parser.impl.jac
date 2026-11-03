@@ -7666,22 +7666,6 @@ impl _test_ident_from_desc(desc_text: str) -> str {
     return ident.lower();
 }
 
-impl parse_program(
-    source: str, file_path: str
-) -> tuple[(Module, int, list[SrcDiag], list[CommentData], list[SrcDiag], int)] {
-    (tokens, comments, lex_diags, lex_error_count) = tokenize_full(source, file_path);
-    parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
-    mod = parser.parse();
-    return (
-        mod,
-        parser.error_count,
-        parser.diags,
-        comments,
-        lex_diags,
-        lex_error_count
-    );
-}
-
 impl parse_expression(
     source: str, file_path: str = "<input>"
 ) -> tuple[Expr, bool, list[SrcDiag], list[SrcDiag]] {

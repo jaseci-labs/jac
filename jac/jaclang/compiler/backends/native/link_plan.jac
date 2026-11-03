@@ -54,9 +54,7 @@ def _file_digest(path: str) -> str;
 obj LinkResult {
     has output_path: str,
         plan_digest: str,
-        layout_digest: str,
         sha256: str,
-        classes: dict[str, any] = {},
         units: list[str] = [],
         reused: bool = False;
 }
@@ -77,8 +75,7 @@ obj LinkPlan {
     def init_units -> list[LinkUnit];
     def init_symbols -> list[str];
     def plan_digest -> str;
-    def merged_layout -> dict[str, any];
-    def layout_digest -> str;
+    def check_layouts;
     def demoted_symbols -> list[str];
     def clib_paths -> list[str];
     def clib_symbol_lib -> dict[str, str];
@@ -178,7 +175,7 @@ def _write_sidecar(
     plan_digest: str,
     action_digest: str = "",
     artifact_sha256: str = ""
-) -> tuple[dict[str, any], str];
+);
 
 def _sha256_of(path: str) -> str;
 
@@ -193,8 +190,13 @@ def link_artifact(
     output_path: str,
     kind: ArtifactKind,
     log: any = None,
-    app_imports: (set | None) = None
+    app_imports: (set | None) = None,
+    runpaths: list[str] = []
 ) -> LinkResult;
+
+def link_object(
+    plan: LinkPlan, exports: list[str], log: (Callable[[str], None] | None) = None
+) -> bytes;
 
 def _unmangled(symbol: str, mangled: bool) -> str;
 

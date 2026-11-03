@@ -8,7 +8,7 @@ are handled properly.
 import ast as py_ast;
 import inspect;
 import os;
-import from tests.support { JAC_ROOT }
+import from tests.support { JAC_ROOT, python_tree }
 import jaclang;
 import from jaclang.compiler.passes.pyast_load_pass {
     PyastBuildPass,
@@ -70,7 +70,7 @@ test "str2doc" {
     code = unparse_module(
         build_python_module(
             PythonModuleAst(
-                py_ast.parse(file_source), orig_src=Source(file_source, "str2doc.py")
+                python_tree(file_source), orig_src=Source(file_source, "str2doc.py")
             )
         )
     );
@@ -87,7 +87,7 @@ test "fstring triple quotes" {
     code = unparse_module(
         build_python_module(
             PythonModuleAst(
-                py_ast.parse(file_source),
+                python_tree(file_source),
                 orig_src=Source(file_source, "py2jac_fstrings.py")
             )
         )
@@ -105,7 +105,7 @@ test "py2jac escape sequences" {
     code = unparse_module(
         build_python_module(
             PythonModuleAst(
-                py_ast.parse(file_source),
+                python_tree(file_source),
                 orig_src=Source(file_source, "py2jac_escape_sequences.py")
             )
         )
@@ -138,7 +138,7 @@ test "py2jac named unicode escape stays loud" {
     code = unparse_module(
         build_python_module(
             PythonModuleAst(
-                py_ast.parse(file_source),
+                python_tree(file_source),
                 orig_src=Source(file_source, "py2jac_named_unicode.py")
             )
         ),
@@ -170,7 +170,7 @@ test "py2jac line continuation string concat" {
     code = unparse_module(
         build_python_module(
             PythonModuleAst(
-                py_ast.parse(file_source),
+                python_tree(file_source),
                 orig_src=Source(file_source, "py2jac_line_continuation.py")
             )
         ),
@@ -205,7 +205,7 @@ test "py2jac binop operator precedence" {
     code = unparse_module(
         build_python_module(
             PythonModuleAst(
-                py_ast.parse(file_source),
+                python_tree(file_source),
                 orig_src=Source(file_source, "py2jac_binop.py")
             )
         )

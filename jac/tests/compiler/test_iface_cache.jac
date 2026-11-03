@@ -640,15 +640,14 @@ test "an interface is identical however many twins of its module are reachable" 
 }
 
 test "an interface written from a hydrated module keeps its instance-method bits" {
-    # The native kernel reads interfaces the host writes from modules it has
-    # itself hydrated. The instance-method bit lives only on the catalog
+    # The kernel reads interfaces written from modules it has itself
+    # hydrated. The instance-method bit lives only on the catalog
     # provider of a hydrated symbol, so the second encoding dropped it and the
     # kernel bound `Cls.method(obj, ...)` as if `obj` were the first argument.
     import from jaclang.compiler.types.stubcat.format { SYMF_INSTANCE_METHOD }
     import from jaclang.compiler.types.stubcat.reader { CatProvider }
     import from jaclang.compiler.types.types { ClassType }
     import from jaclang.compiler.types.stubcat.writer { build_module_iface }
-    import from jaclang.compiler.frontend.kernel_host { ProgramResolver }
     import from jaclang.compiler.types.stubcat.modiface {
         open_module_iface,
         iface_module
@@ -665,7 +664,7 @@ test "an interface written from a hydrated module keeps its instance-method bits
     );
     payload = build_module_iface(mod, prog.get_type_evaluator(), tmp);
     for hop in range(2) {
-        cat = open_module_iface(payload, tmp, resolver=ProgramResolver(program=prog));
+        cat = open_module_iface(payload, tmp, resolver=prog.iface_registry());
         assert cat is not None;
         served = iface_module(cat);
         assert served is not None;

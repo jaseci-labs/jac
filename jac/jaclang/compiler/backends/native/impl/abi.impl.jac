@@ -26,8 +26,6 @@ impl layout_identity(llt: ir.Type, memo: dict[str, str]) -> str {
 }
 
 impl struct_layouts(module: ir.Module) -> dict[str, tuple[list[int], int]] {
-    import json;
-
     data_layout = str(module.data_layout);
     memo: dict[str, str] = {};
     layouts: dict[str, tuple[list[int], int]] = {};
@@ -55,28 +53,10 @@ impl struct_layouts(module: ir.Module) -> dict[str, tuple[list[int], int]] {
         ir.GlobalVariable(probe, struct, name=name);
         counts[name] = len(struct.members());
     }
-    answered = active_host().native_fact(
-        FACT_STRUCT_LAYOUTS,
-        data_layout
-            + FACT_SEP
-            + json.dumps(counts, sort_keys=True)
-            + FACT_SEP
-            + str(probe)
-    );
-    for line in answered.split("\n") {
-        fields = line.split("\t");
-        if len(fields) != 3 {
-            continue;
-        }
-        offsets: list[int] = [];
-        for offset in fields[2].split(",") {
-            if offset {
-                offsets.append(int(offset));
-            }
-        }
-        layout = (offsets, int(fields[1]));
-        layouts[fields[0]] = layout;
-        _STRUCT_LAYOUTS[pending[fields[0]]] = layout;
+    measured = measure_struct_layouts(data_layout, str(probe), counts);
+    for (name, layout) in measured.items() {
+        layouts[name] = layout;
+        _STRUCT_LAYOUTS[pending[name]] = layout;
     }
     return layouts;
 }

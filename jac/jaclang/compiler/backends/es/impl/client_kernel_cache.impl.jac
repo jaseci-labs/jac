@@ -11,11 +11,9 @@ impl _es_backend_fingerprint -> str {
     h = hashlib.sha256();
     for pat in ["*.jac", os.path.join("impl", "*.jac")] {
         for p in sorted(_g.`glob(os.path.join(es_dir, pat))) {
-            try {
-                with open(p, "rb") as f {
-                    h.update(f.read());
-                }
-            } except Exception {}
+            with open(p, "rb") as f {
+                h.update(f.read());
+            }
         }
     }
     return h.hexdigest()[:16];
@@ -102,13 +100,13 @@ impl osp_core_js -> str {
     }
     (cl_copy, source_digest) = _unit_source_path();
     artifact = _artifact_path(source_digest);
-    try {
+    if os.path.isfile(artifact) {
         with open(artifact, "r", encoding="utf-8") as f {
             js = f.read();
         }
         _OSP_CORE_JS_MEMO.append(js);
         return js;
-    } except Exception {}
+    }
     js = _lower(cl_copy);
     tmp = f"{artifact}.{os.getpid()}.tmp";
     with open(tmp, "w", encoding="utf-8") as f {

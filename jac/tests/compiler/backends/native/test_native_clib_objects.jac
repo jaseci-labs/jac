@@ -1,6 +1,6 @@
 """Foreign signatures resolve native Jac objects and consume owned returns."""
 import ctypes;
-import jaclang.compiler.backends.native.llvm.binding as llvm;
+import jaclang.compiler.backends.native.llvm.jit as jit;
 import from tests.support { compile_native, get_func }
 
 test "C callbacks preserve local and imported Jac object types and ownership" {
@@ -14,8 +14,8 @@ test "C callbacks preserve local and imported Jac object types and ownership" {
     callback_type = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p);
     local = callback_type(local_callback);
     imported = callback_type(imported_callback);
-    llvm.add_symbol("echo_local_packet", ctypes.cast(local, ctypes.c_void_p).value);
-    llvm.add_symbol(
+    jit.add_symbol("echo_local_packet", ctypes.cast(local, ctypes.c_void_p).value);
+    jit.add_symbol(
         "echo_imported_packet", ctypes.cast(imported, ctypes.c_void_p).value
     );
     (engine, _) = compile_native("clib_jac_object.jac");

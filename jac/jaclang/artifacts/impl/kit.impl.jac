@@ -25,12 +25,8 @@ impl _find_kit -> tuple[str, (SealedImage | None)] {
         == os.path.realpath(os.path.dirname(str(jaclang.__file__))) {
         return ("", None);
     }
-    try {
-        import from jaclang.jac0core.sealed { load_image }
-        return (site_pkg, load_image(os.path.join(site_pkg, "_precompiled")));
-    } except Exception {
-        return ("", None);
-    }
+    import from jaclang.jac0core.sealed { load_image }
+    return (site_pkg, load_image(os.path.join(site_pkg, "_precompiled")));
 }
 
 impl _unsealed_runtime_site -> str {

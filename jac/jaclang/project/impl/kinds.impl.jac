@@ -129,7 +129,7 @@ impl plan_app_run(
     flags = dict(spec.flags);
     output = "";
     if spec.output_dir {
-        stem = base_stem(entry_path) if entry_path else app.name;
+        stem = host_layout_tables().base_stem(entry_path) if entry_path else app.name;
         out_dir = (
             os.path.join(project_root, spec.output_dir)
                 if app.implicit
@@ -158,6 +158,9 @@ impl plan_app_run(
 }
 
 impl plan_workspace(config: JacConfig, project_root: str) -> list[RunPlan] {
-    apps = list(config.apps.values()) or [implicit_app(config)];
+    apps: list[AppConfig] = [config.apps[name] for name in config.apps];
+    if not apps {
+        apps = [implicit_app(config.project)];
+    }
     return [plan_app_run(config, project_root, app) for app in apps];
 }

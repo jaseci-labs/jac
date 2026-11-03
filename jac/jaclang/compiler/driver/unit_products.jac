@@ -7,7 +7,8 @@ glob CLIENT_RECORD_VERSION: int = 5,
 
 obj UnitProducts {
     has path: str,
-        jcir: bytes = b"",
+        code: any = None,
+        bytecode: bytes = b"",
         mtir: str = "",
         interop: str = "",
         client: str = "",
@@ -30,6 +31,14 @@ obj UnitProducts {
         effects: str = "",
         jac_deps: list[str] = [];
 }
+
+def record_interface(
+    program: JacProgram,
+    module: uni.Module,
+    products: UnitProducts,
+    catalog_dir: str = "",
+    sentinel: str = ""
+);
 
 def definition_span_rows(tree: uni.Module) -> list[str];
 

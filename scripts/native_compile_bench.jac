@@ -31,9 +31,9 @@ def main -> None {
 
     import from jaclang.cli.commands.native_build { native_build }
     import from jaclang.compiler.driver.jir { scrub_cache_dirs }
-    import from jaclang.compiler.native_compiler { ensure_loaded }
+    import from jaclang.project.kernel_call { loaded_kernel }
 
-    kernel = ensure_loaded();
+    kernel = loaded_kernel();
     if kernel is None {
         parser.error(
             "no compiler kernel is loaded; run `jac native build kernel` first"

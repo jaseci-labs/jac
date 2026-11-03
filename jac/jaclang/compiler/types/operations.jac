@@ -28,6 +28,11 @@ glob BINARY_OPERATOR_MAP: dict[str, tuple[str, str]] = {
          Tok.MOD,
          Tok.STAR_POW
      },
+     UNARY_OPERATOR_MAP: dict[str, str] = {
+         Tok.MINUS: '__neg__',
+         Tok.PLUS: '__pos__',
+         Tok.BW_NOT: '__invert__'
+     },
      AUG_OPERATOR_MAP: dict[str, str] = {
          Tok.ADD_EQ: '__iadd__',
          Tok.SUB_EQ: '__isub__',

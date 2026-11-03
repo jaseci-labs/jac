@@ -32,7 +32,7 @@ jac precommit
 - Grammar: `jac/jaclang/compiler/jac.lark`
 - IR: `unitree.py` (UniTree nodes)
 - Passes: `jac/jaclang/compiler/passes/`
-- Codegen: `jcir_gen_pass.jac`, `jcir_bc_gen_pass.jac`
+- Codegen: `pyast_gen_pass.jac`, `pyast_build.jac`, `kernel_bytecode.jac`
 - Compiler passes subclass `Transform`/`UniPass` with `enter_*`/`exit_*` hooks
 - Test fixtures: `jac/jaclang/compiler/**/tests/fixtures/`
 - For type system work, see `.github/agents/type-system-agent.md`

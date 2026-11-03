@@ -27,6 +27,8 @@ glob ENV_PREFIX: str = 'JAC_SERVE_',
      logger: logging.Logger = logging.getLogger(__name__);
 
 
+obj ServeConfigError(ValueError) {}
+
 obj WorkerSettings {
     has count: int = 1,
         threads: int = 8,
@@ -207,6 +209,12 @@ obj ServeSettings {
 
 
 def secret_home(base_path: str) -> str;
+def table_value(current: any, raw: any, label: str) -> any;
+
+def apply_table(
+    target: object, table: dict[str, any], section: str, moved: dict[str, str]
+) -> None;
+
 def overlay_table(
     target: object,
     table: dict[str, any],

@@ -469,7 +469,6 @@ test "two links from one cache are byte-identical" {
         rb = link_artifact(plan, out_b, ArtifactKind.EXECUTABLE);
         assert ra.plan_digest == rb.plan_digest;
         assert ra.sha256 == rb.sha256 , "the link must be deterministic";
-        assert ra.layout_digest == rb.layout_digest;
         sidecar = Path(out_a + ".layout.json").read_text();
         assert ra.plan_digest in sidecar;
         run = subprocess.run([out_a], capture_output=True, text=True);

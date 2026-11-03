@@ -17,20 +17,16 @@ impl TypeEvaluator._ts_decl_path(from_loc: ModulePath) -> (str | None) {
     }
 
     dts_path: (str | None) = None;
-    try {
-        if spec.startswith('.') {
-            js_path = from_loc.resolve_relative_path();
-            if js_path {
-                dts_path = active_host().sibling_declaration(js_path);
-            }
-        } else {
-            base = self._client_npm_base(spec, mod_path);
-            if base is not None {
-                dts_path = active_host().npm_declarations(spec, base);
-            }
+    if spec.startswith('.') {
+        js_path = from_loc.resolve_relative_path();
+        if js_path {
+            dts_path = active_host().sibling_declaration(js_path);
         }
-    } except Exception {
-        dts_path = None;
+    } else {
+        base = self._client_npm_base(spec, mod_path);
+        if base is not None {
+            dts_path = active_host().npm_declarations(spec, base);
+        }
     }
     self._ts_decl_path_cache[cache_key] = dts_path;
     return dts_path;
@@ -89,12 +85,7 @@ impl TypeEvaluator._load_ts_declarations(dts_path: str) -> (dict[str, TsDecl] | 
         return self._ts_decl_cache[dts_path];
     }
 
-    decls: (dict[str, TsDecl] | None) = None;
-    try {
-        decls = parse_dts(active_host().read_source(dts_path));
-    } except Exception {
-        decls = None;
-    }
+    decls: (dict[str, TsDecl] | None) = parse_dts(active_host().read_source(dts_path));
     self._ts_decl_cache[dts_path] = decls;
     return decls;
 }

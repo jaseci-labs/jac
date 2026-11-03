@@ -62,48 +62,6 @@ impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
     return os.path.join(os.path.abspath(os.sep), "<unresolved native unit>", ref);
 }
 
-impl _json_dict(raw: any) -> dict[str, any] {
-    if isinstance(raw, dict) {
-        table: dict[str, any] = raw;
-        return table;
-    }
-    return {};
-}
-
-impl _json_list(raw: any) -> list[any] {
-    if isinstance(raw, list) {
-        items: list[any] = raw;
-        return items;
-    }
-    return [];
-}
-
-impl _json_str_list(raw: any) -> list[str] {
-    out: list[str] = [];
-    for x in _json_list(raw) {
-        out.append(str(x));
-    }
-    return out;
-}
-
-impl _json_opt_str(raw: any) -> (str | None) {
-    if isinstance(raw, str) {
-        return raw;
-    }
-    return None;
-}
-
-impl _json_opt_str_list(raw: any) -> (list[str | None] | None) {
-    if raw is None {
-        return None;
-    }
-    out: list[str | None] = [];
-    for x in _json_list(raw) {
-        out.append(_json_opt_str(x));
-    }
-    return out;
-}
-
 impl _enum_members_json(members: list[tuple[str, any, int]]) -> list[any] {
     out: list[any] = [];
     for (name, value, ordinal) in members {
@@ -196,8 +154,8 @@ impl _tuple_layout_from_dict(raw: any) -> (NativeTupleLayout | None) {
     d: dict[str, any] = raw;
     return NativeTupleLayout(
         key=str(d.get("key", "")),
-        element_types=_json_str_list(d.get("element_types")),
-        element_struct_hints=_json_opt_str_list(d.get("element_struct_hints")) or []
+        element_types=json_str_list(d.get("element_types")),
+        element_struct_hints=json_opt_str_list(d.get("element_struct_hints")) or []
     );
 }
 
@@ -205,13 +163,13 @@ impl _func_layout_from_dict(raw: any) -> NativeFuncLayout {
     d: dict[str, any] = raw;
     return NativeFuncLayout(
         name=str(d.get("name", "")),
-        param_types=_json_str_list(d.get("param_types")),
-        param_names=_json_str_list(d.get("param_names")),
+        param_types=json_str_list(d.get("param_types")),
+        param_names=json_str_list(d.get("param_names")),
         ret_type=str(d.get("ret_type", "i64")),
-        ret_struct_name=_json_opt_str(d.get("ret_struct_name")),
+        ret_struct_name=json_opt_str(d.get("ret_struct_name")),
         ret_tuple_layout=_tuple_layout_from_dict(d.get("ret_tuple_layout")),
-        ret_enum_type=_json_opt_str(d.get("ret_enum_type")),
-        ret_elem_keys=_json_opt_str_list(d.get("ret_elem_keys"))
+        ret_enum_type=json_opt_str(d.get("ret_enum_type")),
+        ret_elem_keys=json_opt_str_list(d.get("ret_elem_keys"))
     );
 }
 
@@ -222,11 +180,11 @@ impl _field_info_from_dict(raw: any) -> NativeFieldInfo {
         name=str(fd.get("name", "")),
         llvm_type=str(fd.get("llvm_type", "i64")),
         index=int(fd.get("index", 0)),
-        enum_type=_json_opt_str(fd.get("enum_type")),
+        enum_type=json_opt_str(fd.get("enum_type")),
         is_func_ptr=bool(fd.get("is_func_ptr", False)),
-        func_param_types=_json_str_list(fpt) if fpt is not None else None,
-        func_ret_type=_json_opt_str(fd.get("func_ret_type")),
-        elem_keys=_json_opt_str_list(fd.get("elem_keys")),
+        func_param_types=json_str_list(fpt) if fpt is not None else None,
+        func_ret_type=json_opt_str(fd.get("func_ret_type")),
+        elem_keys=json_opt_str_list(fd.get("elem_keys")),
         foreign=bool(fd.get("foreign", False))
     );
 }
@@ -241,7 +199,7 @@ impl native_layout_from_dict(raw: any) -> NativeModuleLayout {
     for (name, sraw) in structs.items() {
         sd: dict[str, any] = sraw;
         fields: list[NativeFieldInfo] = [];
-        for fd in _json_list(sd.get("fields")) {
+        for fd in json_list(sd.get("fields")) {
             fields.append(_field_info_from_dict(fd));
         }
         accessors: dict[str, dict[str, str]] = {};
@@ -261,8 +219,8 @@ impl native_layout_from_dict(raw: any) -> NativeModuleLayout {
     for (name, eraw) in enums.items() {
         ed: dict[str, any] = eraw;
         members: list[tuple[str, any, int]] = [];
-        for mraw in _json_list(ed.get("members")) {
-            parts = _json_list(mraw);
+        for mraw in json_list(ed.get("members")) {
+            parts = json_list(mraw);
             if len(parts) == 3 {
                 members.append((str(parts[0]), parts[1], int(parts[2])));
             }
@@ -313,11 +271,11 @@ impl NativeExport.from_dict(d: dict[str, any]) -> NativeExport {
         symbol=str(d.get("symbol", "")),
         kind=str(d.get("kind", EXPORT_FUNCTION)),
         is_pub=bool(d.get("is_pub", False)),
-        param_types=_json_str_list(d.get("param_types")),
-        param_names=_json_str_list(d.get("param_names")),
-        param_defaults=_json_str_list(d.get("param_defaults")),
+        param_types=json_str_list(d.get("param_types")),
+        param_names=json_str_list(d.get("param_names")),
+        param_defaults=json_str_list(d.get("param_defaults")),
         ret_type=str(d.get("ret_type", "")),
-        ownership=_json_str_list(d.get("ownership"))
+        ownership=json_str_list(d.get("ownership"))
     );
 }
 
@@ -395,8 +353,8 @@ impl NativeClassLayout.to_dict -> dict[str, any] {
 
 impl NativeClassLayout.from_dict(d: dict[str, any]) -> NativeClassLayout {
     fields: dict[str, NativeFieldSlot] = {};
-    for (k, v) in _json_dict(d.get("fields")).items() {
-        fields[str(k)] = NativeFieldSlot.from_dict(_json_dict(v));
+    for (k, v) in json_map(d.get("fields")).items() {
+        fields[str(k)] = NativeFieldSlot.from_dict(json_map(v));
     }
     return NativeClassLayout(
         name=str(d.get("name", "")),
@@ -404,8 +362,8 @@ impl NativeClassLayout.from_dict(d: dict[str, any]) -> NativeClassLayout {
         tag=int(d.get("tag", 0)),
         tag_offset=int(d.get("tag_offset", -1)),
         fields=fields,
-        bases=_json_str_list(d.get("bases")),
-        vtable=_json_str_list(d.get("vtable")),
+        bases=json_str_list(d.get("bases")),
+        vtable=json_str_list(d.get("vtable")),
         is_node=bool(d.get("is_node", False))
     );
 }
@@ -473,23 +431,23 @@ impl NativeIface.from_dict(d: dict[str, any]) -> (NativeIface | None) {
     }
     layout_d = d.get("layout");
     exports: dict[str, NativeExport] = {};
-    for (k, v) in _json_dict(d.get("exports")).items() {
-        exports[str(k)] = NativeExport.from_dict(_json_dict(v));
+    for (k, v) in json_map(d.get("exports")).items() {
+        exports[str(k)] = NativeExport.from_dict(json_map(v));
     }
     classes: dict[str, NativeClassLayout] = {};
-    for (k, v) in _json_dict(d.get("classes")).items() {
-        classes[str(k)] = NativeClassLayout.from_dict(_json_dict(v));
+    for (k, v) in json_map(d.get("classes")).items() {
+        classes[str(k)] = NativeClassLayout.from_dict(json_map(v));
     }
     enums: dict[str, list[str]] = {};
-    for (k, v) in _json_dict(d.get("enums")).items() {
-        enums[str(k)] = _json_str_list(v);
+    for (k, v) in json_map(d.get("enums")).items() {
+        enums[str(k)] = json_str_list(v);
     }
     clib_symbol_lib: dict[str, str] = {};
-    for (k, v) in _json_dict(d.get("clib_symbol_lib")).items() {
+    for (k, v) in json_map(d.get("clib_symbol_lib")).items() {
         clib_symbol_lib[str(k)] = str(v);
     }
     coverage: dict[str, any] = {};
-    for (k, v) in _json_dict(d.get("coverage")).items() {
+    for (k, v) in json_map(d.get("coverage")).items() {
         coverage[k] = v;
     }
     return NativeIface(
@@ -500,18 +458,18 @@ impl NativeIface.from_dict(d: dict[str, any]) -> (NativeIface | None) {
         enums=enums,
         init_symbol=str(d.get("init", "")),
         entry_symbol=str(d.get("entry", "")),
-        demoted=_json_str_list(d.get("demoted")),
-        clib_paths=_json_str_list(d.get("clib_paths")),
-        python_imports=_json_str_list(d.get("python_imports")),
+        demoted=json_str_list(d.get("demoted")),
+        clib_paths=json_str_list(d.get("clib_paths")),
+        python_imports=json_str_list(d.get("python_imports")),
         clib_symbol_lib=clib_symbol_lib,
         layout=(
             native_layout_from_dict(layout_d) if isinstance(layout_d, dict) else None
         ),
-        deps=_json_str_list(d.get("deps")),
+        deps=json_str_list(d.get("deps")),
         coverage=coverage,
         headerless=bool(d.get("headerless", False)),
-        runtime_globals=_json_str_list(d.get("runtime_globals")),
-        init_reads=_json_str_list(d.get("init_reads"))
+        runtime_globals=json_str_list(d.get("runtime_globals")),
+        init_reads=json_str_list(d.get("init_reads"))
     );
 }
 

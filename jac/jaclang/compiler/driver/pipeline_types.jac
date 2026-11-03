@@ -29,8 +29,7 @@ enum AnalysisFact(StrEnum) {
 
 obj PassContract {
     has requires: tuple[AnalysisFact, ...] = (),
-        provides: tuple[AnalysisFact, ...] = (),
-        kernel_safe: bool = False;
+        provides: tuple[AnalysisFact, ...] = ();
 }
 
 enum CompilationProduct {
@@ -89,5 +88,6 @@ obj ProductTask {
     has product: CompilationProduct,
         state: TaskState = TaskState.PENDING,
         elapsed: float = 0.0,
-        import_fallback: bool = False;
+        import_fallback: bool = False,
+        degraded: bool = False;
 }

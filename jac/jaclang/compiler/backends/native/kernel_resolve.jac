@@ -5,11 +5,14 @@ import sys;
 
 glob NOT_BUILT: str = "not built",
      LAYOUT_SIDECAR_SUFFIX: str = ".layout.json",
-     KERNEL_LINK_MODE: str = NATIVE_LINK_MODE_OBJECTS;
+     KERNEL_LINK_MODE: str = NATIVE_LINK_MODE_OBJECTS,
+     KERNEL_MODULE_NAME: str = "jac_kernel",
+     KERNEL_DIR_NAME: str = "_kernel",
+     _LOADED: list[any] = [],
+     _BYTECODE_API: list[bool] = [];
 
 obj ResolvedKernel {
-    has lib_path: str,
-        layout: dict[str, any],
+    has path: str,
         source: str,
         plan_digest: str = "";
 }
@@ -22,6 +25,8 @@ class KernelLoadError(SystemExit) {
 
 def kernel_lib_name -> str;
 
+def kernel_dir -> str;
+
 def source_tree_kernel_path -> str;
 
 def kernel_path_for(spec: TargetSpec) -> str;
@@ -31,6 +36,8 @@ def read_sidecar(lib_path: str) -> (dict[str, any] | None);
 def sealed_link_refusal(record: dict[str, any], sidecar: dict[str, any]) -> str;
 
 def _from_sealed_image -> (ResolvedKernel | None);
+
+def kernel_llvm_runpath(lib_path: str) -> str;
 
 def kernel_options(spec: (TargetSpec | None) = None) -> CompileOptions;
 
@@ -94,9 +101,11 @@ obj KernelArtifact(Artifact) {
     override def build(log: Callable[[str], None], force: bool, exact: bool);
 }
 
-def refuse_unloadable;
+def resolved_kernel -> (ResolvedKernel | None);
 
-def resolve_kernel -> (ResolvedKernel | None);
+def load_kernel -> (any | None);
+
+def load_kernel_module(resolved: ResolvedKernel) -> any;
 
 def build_kernel(
     dst: str = "",

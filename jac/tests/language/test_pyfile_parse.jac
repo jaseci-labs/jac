@@ -4,10 +4,9 @@ Ensures all Jaclang Python source files can be parsed via PyastBuildPass
 and that the generated Jac code can be re-parsed by the Jac parser.
 """
 
-import ast as py_ast;
 import os;
 import from pathlib { Path }
-import from tests.support { JAC_ROOT }
+import from tests.support { JAC_ROOT, python_tree }
 import jaclang;
 import jaclang.compiler.frontend.unitree as ast;
 import from jaclang.compiler.passes.pyast_load_pass { build_python_module }
@@ -21,7 +20,7 @@ def pyfile_parse_test(rel_path: str) {
     filename = os.path.normpath(os.path.join(JAC_ROOT, rel_path));
     source = Path(filename).read_text();
     py_module = build_python_module(
-        ast.PythonModuleAst(py_ast.parse(source), orig_src=ast.Source(source, filename))
+        ast.PythonModuleAst(python_tree(source), orig_src=ast.Source(source, filename))
     );
 
     assert isinstance(py_module, ast.Module);

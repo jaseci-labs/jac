@@ -7,7 +7,7 @@ distinct form (E1106); a distinct alias over a non-primitive base is
 rejected (E1107).
 """
 
-import from jaclang.compiler.backends.py.codegen_shim { generated_python }
+import from jaclang.compiler.backends.py.python_text { generated_python }
 import os;
 import from tests.support { JAC_ROOT }
 import from jaclang { JacRuntime as Jac }
@@ -104,7 +104,7 @@ test "jac0 bootstrap erases distinct to a plain alias" {
 def compile_py(name: str) -> tuple[list[any], str] {
     prog = JacProgram();
     mod = prog.compile(os.path.join(FIXTURE_DIR, name));
-    return (prog.errors_had, generated_python(mod.gen), );
+    return (prog.errors_had, generated_python(mod), );
 }
 
 

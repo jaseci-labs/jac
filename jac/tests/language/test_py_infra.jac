@@ -5,7 +5,6 @@ sys.stderr redirect, os.chdir, xfail, etc.  All simple "run fixture
 and check stdout" tests live in test_language.jac.
 """
 
-import ast as py_ast;
 import io;
 import os;
 import subprocess;
@@ -14,7 +13,7 @@ import tempfile;
 import shutil;
 import importlib;
 import from pathlib { Path }
-import from tests.support { JAC_ROOT }
+import from tests.support { JAC_ROOT, python_tree }
 import from unittest.mock { patch }
 import jaclang;
 import jaclang.compiler.frontend.unitree as uni;
@@ -53,7 +52,7 @@ test "pyfunc 1" {
         output = unparse_module(
             build_python_module(
                 uni.PythonModuleAst(
-                    py_ast.parse(file_source),
+                    python_tree(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
             )
@@ -75,7 +74,7 @@ test "pyfunc 2" {
         output = unparse_module(
             build_python_module(
                 uni.PythonModuleAst(
-                    py_ast.parse(file_source),
+                    python_tree(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
             )
@@ -95,7 +94,7 @@ test "pyfunc 3" {
         output = unparse_module(
             build_python_module(
                 uni.PythonModuleAst(
-                    py_ast.parse(file_source),
+                    python_tree(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
             )
@@ -115,7 +114,7 @@ test "pyfunc binop" {
         output = unparse_module(
             build_python_module(
                 uni.PythonModuleAst(
-                    py_ast.parse(file_source),
+                    python_tree(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
             )
@@ -151,7 +150,7 @@ test "py2jac" {
         output = unparse_module(
             build_python_module(
                 uni.PythonModuleAst(
-                    py_ast.parse(file_source),
+                    python_tree(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
             )
@@ -171,7 +170,7 @@ test "py2jac metaclass" {
         output = unparse_module(
             build_python_module(
                 uni.PythonModuleAst(
-                    py_ast.parse(file_source),
+                    python_tree(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
             )
@@ -190,7 +189,7 @@ test "py2jac params" {
         output = unparse_module(
             build_python_module(
                 uni.PythonModuleAst(
-                    py_ast.parse(file_source),
+                    python_tree(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
             )
@@ -213,7 +212,7 @@ test "py2jac empty file" {
         file_source = f.read();
         converted_ast = build_python_module(
             uni.PythonModuleAst(
-                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
+                python_tree(file_source), orig_src=uni.Source(file_source, py_out_path)
             )
         );
     }
@@ -228,7 +227,7 @@ test "py2jac augassign and doc" {
         output = unparse_module(
             build_python_module(
                 uni.PythonModuleAst(
-                    py_ast.parse(file_source),
+                    python_tree(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
             )
@@ -246,7 +245,7 @@ test "py2jac reassign semantics" {
         jac_code = unparse_module(
             build_python_module(
                 uni.PythonModuleAst(
-                    py_ast.parse(file_source),
+                    python_tree(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
             )
@@ -288,7 +287,7 @@ test "py namedexpr" {
         output = unparse_module(
             build_python_module(
                 uni.PythonModuleAst(
-                    py_ast.parse(file_source),
+                    python_tree(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
             )
@@ -305,7 +304,7 @@ test "py bool parentheses" {
         output = unparse_module(
             build_python_module(
                 uni.PythonModuleAst(
-                    py_ast.parse(file_source),
+                    python_tree(file_source),
                     orig_src=uni.Source(file_source, py_out_path)
                 )
             )

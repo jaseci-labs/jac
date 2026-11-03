@@ -586,6 +586,7 @@ directory = ""          # Scopes no-argument `jac test` discovery (empty = walk 
 directories = []        # Several discovery roots; takes precedence over `directory`
 isolate = []            # Glob patterns of test files that each get a dedicated worker process
 serial = []             # Glob patterns of test files that run one at a time after the parallel phase
+bytecode_compiler = []  # Glob patterns of test files that run with the kernel left out
 filter = ""             # Filter pattern
 verbose = false         # Verbose output
 fail_fast = false       # Stop on first failure
@@ -599,8 +600,12 @@ import are not pulled into test collection. Every path in `directories` must
 exist. `isolate` names test files that must not share a worker process with
 any other file (servers, sockets, module-level config); `serial` names files
 that additionally run one after another once the parallel phase is done, for
-suites that share one on-disk resource. Both take glob patterns relative to the
-project root.
+suites that share one on-disk resource. `bytecode_compiler` names files whose
+tests inspect the compiler's own trees: when a native compiler kernel is
+loaded, `jac test` runs them in a child process that leaves the kernel out, on
+the bytecode-hosted compiler. All three take glob patterns relative to the
+project root; a pattern starting with `!` takes back what an earlier pattern
+matched, and the last matching pattern wins.
 
 ---
 

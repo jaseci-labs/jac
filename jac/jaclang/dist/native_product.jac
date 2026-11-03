@@ -2,7 +2,7 @@ import from pathlib { Path }
 
 
 def write_native_product(
-    module: Module,
+    source_path: str,
     directory: Path,
     relative: Path,
     shared: bool = True,

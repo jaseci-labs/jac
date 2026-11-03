@@ -83,14 +83,10 @@ impl project_has_server(module: (uni.Module | None)) -> bool {
 
 impl _resolve_import_path(nd: (uni.ModulePath | uni.ModuleItem)) -> (str | None) {
     path = '';
-    try {
-        if isinstance(nd, uni.ModulePath) {
-            path = nd.resolve_relative_path();
-        } else {
-            path = nd.resolve_relative_path();
-        }
-    } except Exception {
-        return None;
+    if isinstance(nd, uni.ModulePath) {
+        path = nd.resolve_relative_path();
+    } else {
+        path = nd.resolve_relative_path();
     }
     if path and os.path.exists(path) {
         return path;

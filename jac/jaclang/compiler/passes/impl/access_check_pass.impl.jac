@@ -33,14 +33,10 @@ impl AccessCheckPass._collect_bridged_imports(ir_in: Module) -> None {
         if nd.abs_path {
             return nd.abs_path;
         }
-        try {
-            if isinstance(nd, ModulePath) {
-                return nd.resolve_relative_path();
-            }
+        if isinstance(nd, ModulePath) {
             return nd.resolve_relative_path();
-        } except Exception {
-            return None;
         }
+        return nd.resolve_relative_path();
     }
 
     for imp in ir_in.get_all_sub_nodes(typ=Import) {

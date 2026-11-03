@@ -3,7 +3,9 @@
 Binary operators on archetype operands lower as static dunder calls:
 the left operand's magic method resolves through the MRO (the same walk
 class patterns use); when the left type has no matching dunder, the
-right operand's reflected form dispatches with swapped operands.
+right operand's reflected form dispatches with swapped operands. Unary
+`-`, `+` and `~` on an archetype operand call its `__neg__`, `__pos__`
+and `__invert__`.
 """
 
 import ctypes;
@@ -36,4 +38,16 @@ test "operator dunder: inherited __add__ resolves through the MRO" {
     (eng, _) = compile_native("operator_dunders.jac");
     f = get_func(eng, "inherited_add", ctypes.c_int64);
     assert f() == 809 , "Vec3(7,8) + Vec(1,1) == Vec(8,9)";
+}
+
+test "operator dunder: -a, +a and ~a dispatch __neg__, __pos__ and __invert__" {
+    (eng, _) = compile_native("operator_dunders.jac");
+    assert get_func(eng, "neg_vec", ctypes.c_int64)() == -304 , "-Vec(3,4) == Vec(-3,-4)";
+    assert get_func(eng, "pos_vec", ctypes.c_int64)() == 405 , "+Vec(3,4) == Vec(4,5)";
+    assert get_func(eng, "invert_vec", ctypes.c_int64)() == 403 , "~Vec(3,4) == Vec(4,3)";
+}
+
+test "operator dunder: an inherited __neg__ resolves through the MRO" {
+    (eng, _) = compile_native("operator_dunders.jac");
+    assert get_func(eng, "inherited_neg", ctypes.c_int64)() == -708 , "-Vec3(7,8) == Vec(-7,-8)";
 }

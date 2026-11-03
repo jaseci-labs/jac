@@ -132,7 +132,9 @@ impl RoutedStream.__getattr__(name: str) -> any {
     return getattr(self.orig, name);
 }
 
-impl lex_spans(text: str, path: str = "<input>") -> list[list[Span]] {
+impl lex_spans(
+    session: SessionClient, text: str, path: str = "<input>"
+) -> list[list[Span]] {
     lines = text.split("\n");
     out: list[list[Span]] = [[] for _ in lines];
     nlines = len(lines);
@@ -162,22 +164,17 @@ impl lex_spans(text: str, path: str = "<input>") -> list[list[Span]] {
             out[end_line - 1].append(Span(start=0, end=end_col, style=style));
         }
     }
-    try {
-        (tokens, comments, _diags, _errs) = tokenize_full(text, path);
-    } except Exception {
-        return out;
-    }
+    stream = session.tokens(path, text);
     prev_kind = "";
     prev_line = 0;
     prev_value = "";
     prev_end = (0, 0);
     in_decorator = False;
-    for tok in tokens {
-        kind = tok.kind.name;
+    for tok in stream.tokens {
+        kind = tok.kind;
         if kind in ["WS", "EOF", "COMMENT"] {
             continue;
         }
-        loc = tok.loc;
         style = "operator";
         if kind.startswith("KW_") {
             style = "builtin" if tok.value in SPECIAL_WORDS else "keyword";
@@ -188,7 +185,7 @@ impl lex_spans(text: str, path: str = "<input>") -> list[list[Span]] {
         } elif kind == "STRING" {
             v = tok.value.lstrip("rbuRBU");
             style = "docstring"
-                if (v.startswith('"""') or v.startswith("'''")) and loc.line > prev_line
+                if (v.startswith('"""') or v.startswith("'''")) and tok.line > prev_line
                 else "string";
         } elif kind.startswith("F_")
             or kind.startswith("RF_")
@@ -233,18 +230,18 @@ impl lex_spans(text: str, path: str = "<input>") -> list[list[Span]] {
         if style == "string"
             and prev_kind == "NAME"
             and prev_value.lower() in STRING_PREFIXES
-            and prev_end == (loc.line, loc.col_start)
-            and out[loc.line - 1] {
-            out[loc.line - 1][-1].style = "string";
+            and prev_end == (tok.line, tok.col)
+            and out[tok.line - 1] {
+            out[tok.line - 1][-1].style = "string";
         }
-        put(loc.line, loc.col_start - 1, loc.end_line, loc.col_end - 1, style);
+        put(tok.line, tok.col - 1, tok.end_line, tok.end_col - 1, style);
         prev_kind = kind;
         prev_value = tok.value;
-        prev_end = (loc.end_line, loc.col_end);
-        prev_line = loc.end_line;
+        prev_end = (tok.end_line, tok.end_col);
+        prev_line = tok.end_line;
     }
-    for c in comments {
-        put(c.line, c.col_start - 1, c.end_line, c.col_end - 1, "comment");
+    for c in stream.comments {
+        put(c.line, c.col - 1, c.end_line, c.end_col - 1, "comment");
     }
     for row in out {
         row.sort(key=lambda (s: Span) { s.start; });
@@ -391,7 +388,12 @@ impl CodeIntel._lexed(
     }
     src: str = text or "";
     lines = src.split("\n");
-    spans = lex_spans(src, rp) if rp.endswith(".jac") else [[] for _ in lines];
+    if self._lexer is None {
+        self._lexer = SessionClient(project_root=self.root_dir);
+    }
+    spans = lex_spans(self._lexer, src, rp)
+        if rp.endswith(".jac")
+        else [[] for _ in lines];
     lexed = (key, lines, spans);
     self._hl[rp] = lexed;
     return lexed;

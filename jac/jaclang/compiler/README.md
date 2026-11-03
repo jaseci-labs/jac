@@ -21,50 +21,55 @@ this file is the map of the tree and the rules that keep it organized.
 | `tools/` | Formatter, linter, unparser, normalizer, doc IR, grammar extraction, code intelligence | `frontend`, `passes` |
 | `tests/` | Cross-backend equivalence fixtures that ship with the package | |
 
-The loose modules at this level are the compiler kernel (`jc_unit`,
-`native_compiler`, `native_scope`: analysis and code generation compiled
-natively and loaded as a shared library) and registries shared by analysis and
-codegen (`symbol_utils`, `expr_keys`, `type_registry`, `intrinsic_registry`).
+The loose modules at this level are the compiler kernel's interface
+(`kernel_api`, `kernel_module`, `native_scope`: analysis and code generation
+compiled natively into the `jac_kernel` extension module) and registries shared
+by analysis and codegen (`symbol_utils`, `expr_keys`, `type_registry`,
+`intrinsic_registry`).
 
 ## The compiler kernel
 
 `native_scope.jac` lists the compiler modules the kernel links; each is an
-ordinary native unit, and `jc_unit.jac` is the root that exports the entry
-points. The kernel answers two requests, each a call and a take:
+ordinary native unit. `kernel_module.jac` is the root: it defines
+`PyInit_jac_kernel`, so the kernel is a JacPython extension module named
+`jac_kernel`. Its interface is `kernel_api.jac`:
 
-- `jc_analyze` / `jc_take_analysis` run the analysis pipeline over a module and
-  return its diagnostics and per-module facts (`frontend/kernel_analyze.jac`).
-- `jc_compile` / `jc_take_compile` run the same session through code
-  generation and return each unit's compile products
-  (`driver/unit_products.jac`): the JCIR bytes, the MTIR graph, the interop
-  manifest, the client artifact, the placement summary and the comptime
-  dependencies.
+- `compile(request)` reads the project, runs the pipeline through code
+  generation and returns a `CompileResult`: one `CompiledUnit` per module it
+  compiled (marshalled bytecode, interface, interop, client artifact,
+  placement, native IR and cache sections) and its diagnostics.
+- `check(request)` runs analysis and returns a `CheckResult`: diagnostics, and
+  on request coverage rows, placement rows and module facts.
+- `native_build(request)` plans and links native artifacts.
+- `open_session(...)` holds an analysed project across edits; every tool query
+  (hover, definitions, formatting, lint fixes, the language server's
+  requests) is a session method, reached through `session_query`.
 
-Nothing tree-shaped crosses. A session starts from a `KernelInputs` record
-holding the facts every compile needs (the request, project defaults, layout
-tables, the stub catalog's location) and the kernel's `KernelHost` answers
-`HostServices` from it. When the pipeline asks something the record does not
-hold yet (an import's resolution, a path's project, the interface of a Python
-or `jaclang` module), the kernel calls the host through the session's asker
-(`project/kernel_snapshot.jac`), merges the answer into its inputs and carries
-on. A compile is one kernel run: the host does not parse the program to guess
-at questions, and nothing is run again. A question the host cannot answer
-raises `HostOnlyError`, the request reports a miss, and the compile fails:
-with a kernel present the host never compiles a program module in its place.
-Results come back as JSON records; the host assembles JCIR into bytecode,
-restores the other products through the same path a JIR cache hit takes, and
-writes the module JIR. A session emits a unit for every module it analysed
-that has no cached products, so importing a program compiles its closure once
-(`kernel_compile_application` does the same for an application).
-`run_kernel_in_process()` (in `project/kernel_compile.jac`) runs the kernel's
-code under Python for tests.
+Requests and results cross as plain Python data: every record in
+`kernel_api.jac` has `to_dict` and `from_dict`, and
+`runtime/python/bindings/plain_data.jac` builds and reads the dicts. Nothing
+tree-shaped crosses, nothing calls back into the host, and the kernel shares
+no native runtime layout with the host. `KERNEL_API_VERSION` names the shape
+of the records, and the host refuses a kernel whose version is not its own.
+
+The kernel reads the world itself: `project/compiler_host.jac` is the one
+host-services implementation, answering the pipeline's questions from the
+project, the file system and the caches inside the kernel. Python is parsed by
+JacPython's frontend and assembled into bytecode natively
+(`backends/py/kernel_bytecode.jac`, behind the `PythonEngine` seam in
+`backends/py/python_engine.jac`).
+
+The host reaches the kernel in one place, `project/kernel_call.jac`:
+`call_compile`, `call_check`, `call_native_build` and `SessionClient`. With no
+kernel loaded (a kit that leaves it out, or `jac native build kernel` itself)
+the same calls run the `kernel_api` functions as bytecode in the host process.
+A kit that should carry a kernel but has a missing, stale or unloadable one is
+an error naming `jac native build kernel`.
 
 Keep pass and generator algorithms in `passes/` and `backends/`. To move a
 module into the kernel, add it to `native_scope.jac` and make it lower: a walker
 ability that fails to lower fails its unit and every importer, while a function
-that fails demotes to an abort stub the kernel must never reach. A new host
-question belongs on `HostServices`, with a `KernelInputs` field that holds
-its answer and a branch in the session's asker that produces it.
+that fails demotes to an abort stub the kernel must never reach.
 
 ## Native hash containers
 
@@ -269,7 +274,7 @@ A helper the passes and two backends all import belongs in `frontend/` or
 `backends/common/`, not in the backend that happened to write it first.
 
 **Every generator has the same shape.** One walker declaration
-(`jcir_gen_pass.jac`, `esast_gen_pass.jac`, `na_ir_gen_pass.jac`) holds the
+(`pyast_gen_pass.jac`, `esast_gen_pass.jac`, `na_ir_gen_pass.jac`) holds the
 state fields and every method signature; the bodies live in
 `<name>.impl/<concern>.impl.jac`, one file per concern (expressions,
 statements, calls, declarations, module, and so on). There are no mixins and

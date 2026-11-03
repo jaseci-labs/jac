@@ -181,19 +181,21 @@ impl strict_mode -> bool {
 
 impl _match_patterns(files: list[str], patterns: (list[str] | None)) -> set[str] {
     import fnmatch;
+    rules: list[tuple[bool, str]] = [
+        (raw.startswith("!"), os.path.abspath(raw.removeprefix("!")))
+        for raw in (patterns or [])
+        if raw.removeprefix("!")
+    ];
     matched: set[str] = set();
-    for raw in (patterns or []) {
-        if not raw {
-            continue;
-        }
-        pat = os.path.abspath(raw);
-        for path in files {
-            if path in matched {
-                continue;
-            }
+    for path in files {
+        inside = False;
+        for (excluded, pat) in rules {
             if fnmatch.fnmatch(path, pat) or path.startswith(pat + os.sep) {
-                matched.add(path);
+                inside = not excluded;
             }
+        }
+        if inside {
+            matched.add(path);
         }
     }
     return matched;
@@ -973,7 +975,8 @@ impl run_tests(
     ignore: (list[str] | None) = None,
     jobs: (str | int | None) = None,
     isolate: (list[str] | None) = None,
-    serial: (list[str] | None) = None
+    serial: (list[str] | None) = None,
+    bytecode_compiler: (list[str] | None) = None
 ) -> int {
     import sys;
     import time;
@@ -981,6 +984,25 @@ impl run_tests(
         raise ValueError("--range and --resume cannot be combined");
     }
     plan = discover(paths, directory, ignore);
+    without_kernel: list[str] = [];
+    bytecode_set = _match_patterns(plan.files, bytecode_compiler);
+    if bytecode_set and not collect_only and resolved_kernel() is not None {
+        without_kernel = [
+            f
+            for f in plan.files
+            if f in bytecode_set
+        ];
+        plan.files = [
+            f
+            for f in plan.files
+            if f not in bytecode_set
+        ];
+        if not plan.files {
+            return run_without_kernel(
+                without_kernel, test_name, filter, xit, maxfail, verbose, jobs
+            );
+        }
+    }
     iso_set = _match_patterns(plan.files, isolate);
     ser_set = _match_patterns(plan.files, serial);
     if iso_set or ser_set {
@@ -1095,13 +1117,66 @@ impl run_tests(
     }
     failures = reporter.summarize(time.perf_counter() - started);
     _store_run_state(plan, reporter);
-    if reporter.total_count() == 0 {
-        return EXIT_NO_TESTS;
+    deferred = EXIT_OK;
+    if without_kernel {
+        deferred = run_without_kernel(
+            without_kernel, test_name, filter, xit, maxfail, verbose, jobs
+        );
     }
-    if failures {
+    if reporter.total_count() == 0 {
+        return deferred if without_kernel else EXIT_NO_TESTS;
+    }
+    if failures or deferred not in (EXIT_OK, EXIT_NO_TESTS) {
         return EXIT_FAILED;
     }
     return EXIT_OK;
+}
+
+impl run_without_kernel(
+    files: list[str],
+    test_name: str,
+    filter: str,
+    xit: bool,
+    maxfail: (int | None),
+    verbose: bool,
+    jobs: (str | int | None)
+) -> int {
+    import subprocess;
+    import sys;
+    command = [sys.executable, "test", *files];
+    if test_name {
+        command.extend(["--test_name", test_name]);
+    }
+    if filter {
+        command.extend(["--filter", filter]);
+    }
+    if xit {
+        command.append("--xit");
+    }
+    if maxfail {
+        command.extend(["--maxfail", str(maxfail)]);
+    }
+    if verbose {
+        command.append("--verbose");
+    }
+    if jobs not in (None, "") {
+        command.extend(["--jobs", str(jobs)]);
+    }
+    omitted = [
+        name
+        for name in os.environ.get("JAC_KIT_OMIT", "").split(",")
+        if name
+    ];
+    env = dict(os.environ);
+    env["JAC_KIT_OMIT"] = ",".join(
+        [*omitted, "kernel"] if "kernel" not in omitted else omitted
+    );
+    sys.stdout.write(
+        f"\n{len(files)} test file(s) inspect compiler internals: running them on "
+        "the bytecode-hosted compiler, with the kernel left out\n"
+    );
+    sys.stdout.flush();
+    return subprocess.run(command, env=env).returncode;
 }
 
 impl resolve_jobs(requested: (str | int | None) = None) -> int {

@@ -21,9 +21,7 @@ def cached_client_artifact(full_target: str) -> (ClientArtifact | None);
 
 def cached_client_pulls(full_target: str) -> str;
 
-def native_first(units: list[UnitProducts]) -> list[UnitProducts];
-
-def assemble_jcir(jcir: bytes, path: str) -> tuple[(bytes | None), list[Alert]];
+def native_first(units: list[CompiledUnit]) -> list[CompiledUnit];
 
 def unit_sections(
     products: UnitProducts, bytecode: (bytes | None)
@@ -32,8 +30,7 @@ def unit_sections(
 obj HostCompileFrame(CompileFrame) {
     has depth_prev: int = 0,
         gc_prev: (tuple[int, int, int] | None) = None,
-        retain_selfhost: bool = False,
-        session_host: (HostServices | None) = None;
+        retain_selfhost: bool = False;
 }
 
 obj JacCompiler(SessionHooks) {
@@ -91,18 +88,22 @@ obj JacCompiler(SessionHooks) {
 
     static def _client_deps_fresh(artifact: ClientArtifact) -> bool;
     def _persist_client_artifact(full_target: str, artifact: ClientArtifact) -> None;
+    def _host_compile(
+        full_target: str, program: JacProgram, options: CompileOptions
+    ) -> (types.CodeType | None);
+
     def _adopt_kernel_compile(
         full_target: str, program: JacProgram, options: CompileOptions
-    ) -> tuple[bool, (bytes | None)];
+    ) -> (types.CodeType | None);
 
     def _wants_native_engine(full_target: str, program: JacProgram) -> bool;
     def kernel_native_entry(
         full_target: str, target_program: JacProgram, options: (CompileOptions | None)
-    ) -> tuple[bool, any];
+    ) -> any;
 
     def native_entry_engine(full_target: str, target_program: JacProgram) -> any;
     def _adopt_native_unit(
-        unit: UnitProducts,
+        unit: CompiledUnit,
         program: JacProgram,
         options: CompileOptions,
         compile_deps: bytes
@@ -146,12 +147,10 @@ obj JacCompiler(SessionHooks) {
         file_path: str,
         target_program: JacProgram,
         use_str: (str | None) = None,
-        options: CompileOptions = CompileOptions()
+        options: (CompileOptions | None) = None
     ) -> uni.Module;
 
     def enter_compile(ctx: SessionContext) -> CompileFrame;
-    def assemble_python(program: JacProgram, module: uni.Module);
-    def assemble_native(program: JacProgram, module: uni.Module, checking: bool);
     def leave_compile(ctx: SessionContext, frame: CompileFrame);
     def finish_compile(frame: CompileFrame);
     def check_crash(crash: Exception, file_path: str);
@@ -167,7 +166,7 @@ obj JacCompiler(SessionHooks) {
         file_path: str,
         actual_program: JacProgram,
         use_str: (str | None) = None,
-        options: CompileOptions = CompileOptions()
+        options: (CompileOptions | None) = None
     ) -> uni.Module;
 
     def build(
@@ -191,4 +190,5 @@ obj JacCompiler(SessionHooks) {
     ) -> JacProgram;
 
     static def jac_file_linter(file_path: str) -> JacProgram;
+    static def jac_str_linter(source_str: str, file_path: str) -> JacProgram;
 }

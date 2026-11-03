@@ -9,7 +9,7 @@ This replaces the previous client-only `Reflect.construct(...)` idiom and
 lets the same source compile cleanly in both backends.
 """
 
-import from jaclang.compiler.backends.py.codegen_shim { generated_python }
+import from jaclang.compiler.backends.py.python_text { generated_python }
 import os;
 import tempfile;
 import from pathlib { Path }
@@ -172,7 +172,7 @@ test "cl: new with multiple args produces a JS array of args" {
 test "server: new is auto-imported from runtime.builtin" {
     code = "with entry { x = new(list, [1, 2, 3]); print(x); }\n";
     mod = compile_inline(code);
-    py = generated_python(mod.gen);
+    py = generated_python(mod);
     assert "from jaclang.runtime.builtin import" in py , (
         "Expected builtin import preamble; got:\n" + py
     );

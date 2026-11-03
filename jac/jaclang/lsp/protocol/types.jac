@@ -278,7 +278,8 @@ obj CompletionItem {
     has label: str = "",
         kind: Optional[CompletionItemKind] = None,
         label_details: Optional[CompletionItemLabelDetails] = None,
-        documentation: Optional[MarkupContent] = None;
+        documentation: Optional[MarkupContent] = None,
+        insert_text: Optional[str] = None;
 }
 
 obj CompletionList {

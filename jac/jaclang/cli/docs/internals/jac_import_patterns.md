@@ -146,7 +146,7 @@ import_item: (KW_DEFAULT | STAR_MUL | named_ref) (KW_AS NAME)?
 
 ### Validation
 
-- `compiler/backends/py/jcir_gen_pass.jac`:
+- `compiler/backends/py/pyast_gen_pass.jac`:
   - Logs error if `default` or `*` used without `cl`
   - Logs error if string literal imports used without `cl` (Python doesn't support string literal module names)
 - `compiler/passes/sym_tab_build_pass.jac`: Only alias added to symbol table for default/namespace; skips symbol creation for String paths
@@ -166,7 +166,7 @@ The client lowerings are tested and verified in
 
 The server-lane refusals -- `E5001` for a string-literal path outside `cl`,
 `E5002` for a `default` or `*` item outside `cl` -- are raised by
-`JcirGenPass` and have no dedicated test today.
+`PyastGenPass` and have no dedicated test today.
 
 ## Examples
 

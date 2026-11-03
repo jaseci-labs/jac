@@ -130,7 +130,7 @@ runs:
         # request's kit omits the kernel and runs the bytecode compiler).
         jac native status
         jac native status --require kit
-        if compgen -G "$GITHUB_WORKSPACE/jac/jaclang/compiler/libjac_compiler.*" >/dev/null; then
+        if compgen -G "$GITHUB_WORKSPACE/jac/jaclang/compiler/_kernel/jac_kernel.*" >/dev/null; then
           echo "::error::resolving the kernel wrote one beside the loader"
           exit 1
         fi

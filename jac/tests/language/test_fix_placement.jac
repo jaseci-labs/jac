@@ -6,11 +6,11 @@ comments, and it must keep working after the sv/cl/na keywords are gone
 
 import os;
 import tempfile;
-import from jaclang.cli.commands.fix {
-    _append_app_table,
-    _append_toml_entries,
-    _strip_markers,
-    fix
+import from jaclang.cli.commands.fix { _append_app_table, _append_toml_entries, fix }
+import from jaclang.project.kernel_call { tool_session }
+
+def strip_markers(src: str) -> any {
+    return tool_session().strip_markers("mod.jac", src);
 }
 
 
@@ -19,7 +19,7 @@ test "prefix markers strip and record claims" {
         "sv def helper(x: int) -> int {\n    return x;\n}\n\n"
         "cl def widget -> str {\n    return \"w\";\n}\n"
     );
-    res = _strip_markers(src, "mod.jac");
+    res = strip_markers(src);
     assert res.changed;
     assert "sv def" not in res.text and "cl def" not in res.text;
     assert "def helper" in res.text and "def widget" in res.text;
@@ -30,7 +30,7 @@ test "prefix markers strip and record claims" {
 
 test "sv import strips and records the service target" {
     src = "sv import from analytics { track }\n";
-    res = _strip_markers(src, "mod.jac");
+    res = strip_markers(src);
     assert res.changed;
     assert res.text.startswith("import from analytics");
     assert [(i.target, i.line) for i in res.sv_imports] == [("analytics", 1)];
@@ -38,7 +38,7 @@ test "sv import strips and records the service target" {
         "sv\n{\nimport from .store { list_notes }\n}\n",
         "sv\nimport from .store { list_notes }\n"
     ] {
-        res = _strip_markers(header, "mod.jac");
+        res = strip_markers(header);
         assert [i.target for i in res.sv_imports] == [".store"] , header;
         line = res.text.splitlines()[res.sv_imports[0].line - 1];
         assert line.strip().startswith("import from .store") , f"{header!r}: {line!r}";
@@ -51,7 +51,7 @@ test "block markers unwrap and claim every element" {
         "sv {\ndef:pub track(x: int) -> None {\n    print(x);\n}\n\n"
         "def helper(y: int) -> int {\n    return y;\n}\n}\n"
     );
-    res = _strip_markers(src, "mod.jac");
+    res = strip_markers(src);
     assert res.changed;
     assert "sv {" not in res.text;
     claimed = {c.name: c.space for c in res.claims};
@@ -64,14 +64,14 @@ test "markers inside strings and JSX text are untouched" {
         "def note -> str {\n    return \"use sv { } blocks\";\n}\n\n"
         "glob msg: str = 'na import from x';\n"
     );
-    res = _strip_markers(src, "mod.jac");
+    res = strip_markers(src);
     assert not res.changed , "marker words inside strings must not rewrite";
 }
 
 
 test "sv as a plain name is not a marker" {
     src = "def f -> int {\n    sv = 1;\n    return sv;\n}\n";
-    res = _strip_markers(src, "mod.jac");
+    res = strip_markers(src);
     assert not res.changed , "identifier 'sv' in a body is not a marker";
 }
 

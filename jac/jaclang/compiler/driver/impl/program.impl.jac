@@ -188,17 +188,12 @@ impl JacProgram.load_dependency_module(
         and not (need_tree and isinstance(target_hub[resolved_path], CatModule)) {
         mod = target_hub[resolved_path];
     } else {
-        served: (uni.Module | None) = None;
-        if resolved_path.endswith('.pyi') and not need_tree {
-            served = active_host().stub_interface(self, resolved_path);
-        }
-        if served is not None {
-            mod = served;
-        } elif resolved_path.endswith('.pyi') {
+        if resolved_path.endswith('.pyi') {
             import from jaclang.compiler.driver.pass_driver { run_pass }
             import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
             src = use_str or active_host().read_source(source_path);
-            (mod, _stub_errors) = active_host().parse_python(src, source_path, self);
+            import from jaclang.compiler.passes.pyast_load_pass { parse_python_source }
+            (mod, _stub_errors) = parse_python_source(src, source_path, self);
             mod.stub_only = True;
             self.install_module(resolved_path, mod);
             self.note_stub_tree_served(resolved_path);
@@ -458,9 +453,7 @@ impl JacProgram.parse_str(
 ) -> uni.Module {
     mod = self.parse_source(source_str, file_path, cancel_token);
     if self.deps.tracking {
-        try {
-            self.deps.record_module(mod);
-        } except Exception {}
+        self.deps.record_module(mod);
     }
     return mod;
 }
@@ -483,12 +476,17 @@ impl JacProgram.compile(
             native_unit=native_unit_compile_active()
         );
     }
-    import from jaclang.compiler.frontend.host { active_host }
+    import from jaclang.compiler.frontend.host { active_host, kernel_resident }
+    route = installed_compile_route();
+    if route is not None and not kernel_resident() {
+        routed = route.compile(self, file_path, use_str, options);
+        if routed is not None {
+            return routed;
+        }
+    }
     mod = active_host().compile_module(self, file_path, use_str, options);
     if self.deps.tracking {
-        try {
-            self.deps.record_module(mod);
-        } except Exception {}
+        self.deps.record_module(mod);
     }
     return mod;
 }
@@ -583,7 +581,8 @@ impl JacProgram.parse_source(
 ) -> uni.Module {
     had_error = False;
     if (file_path.endswith('.py') or file_path.endswith('.pyi')) {
-        (parsed, had_error) = active_host().parse_python(source_str, file_path, self);
+        import from jaclang.compiler.passes.pyast_load_pass { parse_python_source }
+        (parsed, had_error) = parse_python_source(source_str, file_path, self);
     } else {
         retired = active_host().path_facts(file_path).retired_marker;
         if retired == "native" {
@@ -617,11 +616,7 @@ impl JacProgram.parse_source(
         }
         infer_native = not codespace and self.infers_native_codespace(file_path);
         (parsed, had_error) = parse_woven(
-            source_str,
-            file_path,
-            self,
-            annex_sources(file_path),
-            early_context=codespace or ('' if infer_native else 'server')
+            source_str, file_path, self, annex_sources(file_path)
         );
         active_host().place_wired_imports(parsed);
         if codespace == 'client' {
@@ -688,14 +683,9 @@ impl JacProgram.resolve_absorb_imports(self: JacProgram, mod: uni.Module) -> Non
             continue;
         }
         resolved = path_node.resolve_relative_path();
-        module: (uni.Module | None) = None;
-        try {
-            module = self.load_dependency_module(
-                resolved, importer_path=mod.loc.mod_path
-            );
-        } except Exception {
-            module = None;
-        }
+        module: (uni.Module | None) = self.load_dependency_module(
+            resolved, importer_path=mod.loc.mod_path
+        );
         imp.absorbed_mod = module;
     }
 }
@@ -707,8 +697,11 @@ impl JacProgram.stamp_access_check_facts(self: JacProgram, mod: uni.Module) -> N
 
 impl JacProgram.stamp_native_import_facts(self: JacProgram, mod: uni.Module) -> None {
     import os;
-    needs_native = mod.decided_codespace == 'native'
-        or ModuleFacts.has_native_context_stmts(mod);
+    needs_native = not self.internal
+        and (
+            mod.decided_codespace == 'native'
+            or ModuleFacts.has_native_context_stmts(mod)
+        );
     py_refs: (set[str] | None) = None;
     imports = list(mod.get_all_sub_nodes(uni.Import));
     for imp in imports {
@@ -893,12 +886,8 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
         }
         abilities: dict[(str, uni.Ability)] = {};
         walkers: dict[(str, uni.Archetype)] = {};
-        try {
-            collect_abilities(src, abilities);
-        } except Exception {}
-        try {
-            collect_walkers(src, walkers);
-        } except Exception {}
+        collect_abilities(src, abilities);
+        collect_walkers(src, walkers);
         for name in wanted {
             wk_decl = walkers.get(name);
             if wk_decl is not None {
@@ -964,11 +953,7 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
                     or cl_na_edge
                 );
                 facts.native_from_path = resolve_native(module_name, na_intent);
-                try {
-                    facts.from_loc_resolved = nd.from_loc.resolve_relative_path();
-                } except Exception {
-                    facts.from_loc_resolved = None;
-                }
+                facts.from_loc_resolved = nd.from_loc.resolve_relative_path();
                 facts.is_service = nd.is_service_import;
                 if (
                     nd.items
@@ -977,13 +962,7 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
                 ) {
                     resolved = facts.from_loc_resolved;
                     if (resolved is not None and resolved.endswith('.jac')) {
-                        try {
-                            facts.pinned_server = (
-                                config_module_pin(resolved) == 'server'
-                            );
-                        } except Exception {
-                            facts.pinned_server = False;
-                        }
+                        facts.pinned_server = config_module_pin(resolved) == 'server';
                     }
                 }
                 if (
@@ -1076,28 +1055,16 @@ impl JacProgram.ingest_comptime_producers(
             if not imp.is_comptime or imp.from_loc is None or imp.is_virtual_jac {
                 continue;
             }
-            try {
-                target = imp.from_loc.resolve_relative_path();
-            } except Exception {
-                continue;
-            }
+            target = imp.from_loc.resolve_relative_path();
             if not isinstance(target, str) or not target.endswith('.jac') {
                 continue;
             }
             if not os.path.isfile(target) or os.path.realpath(target) == here_real {
                 continue;
             }
-            try {
-                self.load_dependency_module(
-                    target, importer_path=file_path, need_tree=True
-                );
-            } except Exception as ct_ingest_err {
-                import logging as _ct_logging;
-                _ct_logging.getLogger(__name__).debug(
-                    f"comptime producer {target} of {file_path} "
-                    f"could not be ingested: {ct_ingest_err}"
-                );
-            }
+            self.load_dependency_module(
+                target, importer_path=file_path, need_tree=True
+            );
         }
     } finally {
         self.options = saved_opts;
@@ -1110,11 +1077,10 @@ impl JacProgram.count_module_blocking_errors(self: JacProgram, mod_path: str) ->
         if e.code is None or not e.code.blocks_codegen {
             continue;
         }
-        try {
-            e_path = os.path.normpath(e.loc.mod_path);
-        } except Exception {
+        if not e.loc.mod_path {
             continue;
         }
+        e_path = os.path.normpath(e.loc.mod_path);
         if e_path == mod_path {
             count += 1;
         }
@@ -1125,11 +1091,10 @@ impl JacProgram.count_module_blocking_errors(self: JacProgram, mod_path: str) ->
 impl JacProgram.count_module_errors(self: JacProgram, mod_path: str) -> int {
     count = 0;
     for e in self.errors_had {
-        try {
-            e_path = os.path.normpath(e.loc.mod_path);
-        } except Exception {
+        if not e.loc.mod_path {
             continue;
         }
+        e_path = os.path.normpath(e.loc.mod_path);
         if e_path == mod_path {
             count += 1;
         }
@@ -1145,11 +1110,10 @@ impl JacProgram.module_scoped_errors(self: JacProgram, mod_path: str) -> bool {
         if e.code is None or e.code.category not in (Category.CODEGEN, Category.ICE) {
             continue;
         }
-        try {
-            e_path = os.path.normpath(e.loc.mod_path);
-        } except Exception {
+        if not e.loc.mod_path {
             continue;
         }
+        e_path = os.path.normpath(e.loc.mod_path);
         if e_path == norm or e_path.startswith(prefix) {
             return True;
         }

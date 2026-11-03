@@ -16,7 +16,7 @@ step grows about 16x.
 """
 import ctypes;
 import time;
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import from jaclang.compiler.backends.native.llvm.jit { ExecutionEngine }
 import from tests.support { compile_native, native_str_func as get_sfunc }
 
 glob MOD: int = 1000000007,

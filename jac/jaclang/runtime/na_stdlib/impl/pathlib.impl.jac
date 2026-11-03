@@ -66,14 +66,96 @@ impl Path.__str__ -> str {
     return self._p;
 }
 
-impl Path.__truediv__(other: str) -> Path {
-    if other.startswith("/") {
-        return Path(other);
+impl Path.__truediv__(other: (str | Path)) -> Path {
+    tail: str = str(other);
+    if tail.startswith("/") {
+        return Path(tail);
     }
     if self._p.endswith("/") {
-        return Path(self._p + other);
+        return Path(self._p + tail);
     }
-    return Path(self._p + "/" + other);
+    return Path(self._p + "/" + tail);
+}
+
+impl Path.joinpath(other: (str | Path)) -> Path {
+    return self / other;
+}
+
+impl Path.__fspath__ -> str {
+    return self._p;
+}
+
+impl Path.__eq__(other: any) -> bool {
+    if isinstance(other, Path) {
+        return self._p == other._p;
+    }
+    return False;
+}
+
+impl Path.__hash__ -> int {
+    return hash(self._p);
+}
+
+impl Path.is_file -> bool {
+    return os.path.isfile(self._p);
+}
+
+impl Path.is_absolute -> bool {
+    return self._p.startswith("/");
+}
+
+impl Path.is_relative_to(other: (str | Path)) -> bool {
+    base: list[str] = _parts_of(Path(other)._p);
+    mine: list[str] = _parts_of(self._p);
+    if _root_of(Path(other)._p) != _root_of(self._p) or len(base) > len(mine) {
+        return False;
+    }
+    i: int = 0;
+    while i < len(base) {
+        if base[i] != mine[i] {
+            return False;
+        }
+        i += 1;
+    }
+    return True;
+}
+
+impl Path.relative_to(other: (str | Path)) -> Path {
+    if not self.is_relative_to(other) {
+        raise ValueError(f"'{self._p}' is not in the subpath of '{Path(other)._p}'");
+    }
+    base: list[str] = _parts_of(Path(other)._p);
+    mine: list[str] = _parts_of(self._p);
+    return Path(_assemble("", mine[len(base):]));
+}
+
+impl Path.read_text(encoding: (str | None) = None) -> str {
+    return read_file_bytes(self._p).decode(encoding or "utf-8");
+}
+
+impl Path.cwd -> Path {
+    return Path(os.getcwd());
+}
+
+impl Path.suffix.getter -> str {
+    nm: str = self.name;
+    cut: int = nm.rfind(".");
+    if cut <= 0 or cut == len(nm) - 1 {
+        return "";
+    }
+    return nm[cut:];
+}
+
+impl Path.parts.getter -> tuple[str, ...] {
+    anchor: str = _root_of(self._p);
+    out: list[str] = [];
+    if anchor != "" {
+        out.append(anchor);
+    }
+    for comp in _parts_of(self._p) {
+        out.append(comp);
+    }
+    return tuple(out);
 }
 
 impl Path.exists -> bool {
@@ -140,4 +222,56 @@ impl Path.parent.getter -> Path {
     }
     parts.pop();
     return Path(_assemble(_root_of(self._p), parts));
+}
+
+impl Path.with_name(name: str) -> Path {
+    return self.parent / name;
+}
+
+impl Path.mkdir(mode: int = 511, parents: bool = False, exist_ok: bool = False) {
+    if os.path.isdir(self._p) {
+        if exist_ok {
+            return;
+        }
+        raise FileExistsError(self._p);
+    }
+    if parents {
+        os.makedirs(self._p, mode);
+    } else {
+        os.mkdir(self._p, mode);
+    }
+}
+
+impl Path.write_text(data: str, encoding: (str | None) = None) -> int {
+    with open(self._p, "w") as handle {
+        return handle.write(data);
+    }
+}
+
+impl Path.write_bytes(data: bytes) -> int {
+    with open(self._p, "wb") as handle {
+        return handle.write(data);
+    }
+}
+
+impl Path.unlink(missing_ok: bool = False) {
+    if not os.path.exists(self._p) {
+        if missing_ok {
+            return;
+        }
+        raise FileNotFoundError(self._p);
+    }
+    os.remove(self._p);
+}
+
+impl Path.rglob(pattern: str) -> Iterator[Path] {
+    found: list[Path] = [];
+    for (top, dirs, files) in os.walk(self._p) {
+        for name in sorted(dirs + files) {
+            if fnmatch(name, pattern) {
+                found.append(Path(os.path.join(top, name)));
+            }
+        }
+    }
+    return iter(found);
 }

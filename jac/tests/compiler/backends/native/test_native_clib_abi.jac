@@ -38,7 +38,7 @@ test "clib sext: negative C int return stays negative through int and any" {
 }
 
 test "JIT C imports bind to their declared library despite a process symbol collision" {
-    import jaclang.compiler.backends.native.llvm.binding as llvm;
+    import jaclang.compiler.backends.native.llvm.jit as jit;
     cc = shutil.which("cc") or shutil.which("gcc");
     assert cc is not None , "a C compiler is required for the foreign library fixture";
     with tempfile.TemporaryDirectory() as tmpdir {
@@ -62,7 +62,7 @@ test "JIT C imports bind to their declared library despite a process symbol coll
         wrong = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(
             lambda (x: int) { -100; }
         );
-        llvm.add_symbol(symbol, ctypes.cast(wrong, ctypes.c_void_p).value);
+        jit.add_symbol(symbol, ctypes.cast(wrong, ctypes.c_void_p).value);
         try {
             code = f'import from "{libpath}" {{ def {symbol}(x: i64) -> i64; }}\n'
                 + f'def value(x: int) -> int {{ return {symbol}(x); }}';
@@ -77,7 +77,7 @@ test "JIT C imports bind to their declared library despite a process symbol coll
             assert eng is not None;
             assert get_func(eng, "value", ctypes.c_int64, ctypes.c_int64)(39) == 42;
         } finally {
-            llvm.add_symbol(symbol, 0);
+            jit.add_symbol(symbol, 0);
         }
     }
 }

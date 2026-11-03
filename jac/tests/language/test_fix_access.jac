@@ -8,7 +8,8 @@ idempotent."""
 
 import os;
 import tempfile;
-import from jaclang.cli.commands.fix { fix, _access_plan }
+import from jaclang.cli.commands.fix { fix }
+import from jaclang.project.kernel_call { tool_session }
 
 glob TOML: str = '[project]\nname = "fixture"\ndefault-app = "web"\n\n[apps.web]\nkind = "web-app"\nentry-point = "main"\n',
      MAIN: str = (
@@ -85,7 +86,8 @@ test "fix access marks entry defs, imported defs and reachable walkers :protect"
 test "fix access reports :priv declarations that used to be served" {
     with tempfile.TemporaryDirectory() as tmpdir {
         proj = _write_project(tmpdir);
-        (plan, notes) = _access_plan(proj);
+        access = tool_session().access_plan(proj);
+        (plan, notes) = (access.rewrites, access.notes);
         names = {rw.name for rw in plan};
         assert "LegacyPriv" not in names and "legacy_priv_fn" not in names , names;
         priv_notes = [
@@ -159,7 +161,8 @@ test "fix access follows recursive includes in the entry namespace" {
                 f.write(source);
             }
         }
-        (plan, notes) = _access_plan(tmp);
+        access = tool_session().access_plan(tmp);
+        (plan, notes) = (access.rewrites, access.notes);
         assert {rw.name for rw in plan}
             == {"included", "IncludedWalker", "nested", "used"} , plan;
         assert len(plan) == 4 , "cycles must not duplicate rewrites";
@@ -170,6 +173,6 @@ test "fix access follows recursive includes in the entry namespace" {
         assert "def:protect included" in _read(os.path.join(tmp, "utils.jac"));
         assert "def:protect nested" in _read(os.path.join(tmp, "nested.jac"));
         assert "def untouched" in _read(os.path.join(tmp, "helpers.jac"));
-        assert _access_plan(tmp)[0] == [];
+        assert tool_session().access_plan(tmp).rewrites == [];
     }
 }

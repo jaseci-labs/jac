@@ -2484,11 +2484,11 @@ node Source(EmptyToken) {
 }
 
 node PythonModuleAst(EmptyToken) {
-    has ast: object postinit,
+    has ast: PyAstModule postinit,
         orig_src: Source postinit,
         file_path: str postinit;
 
-    def init(ast: object, orig_src: Source) -> None;
+    def init(ast: PyAstModule, orig_src: Source) -> None;
     def __repr__ -> str;
 }
 

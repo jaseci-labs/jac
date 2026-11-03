@@ -141,7 +141,18 @@ def run_tests(
     ignore: (list[str] | None) = None,
     jobs: (str | int | None) = None,
     isolate: (list[str] | None) = None,
-    serial: (list[str] | None) = None
+    serial: (list[str] | None) = None,
+    bytecode_compiler: (list[str] | None) = None
+) -> int;
+
+def run_without_kernel(
+    files: list[str],
+    test_name: str,
+    filter: str,
+    xit: bool,
+    maxfail: (int | None),
+    verbose: bool,
+    jobs: (str | int | None)
 ) -> int;
 
 def _parse_pct_range(expr: str) -> tuple[(int, int)];

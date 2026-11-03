@@ -1,26 +1,22 @@
-"""A kernel session generates native code.
+"""The kernel generates native code.
 
 A module placed in the native codespace is lowered to LLVM IR inside the
-kernel session, which returns the IR text, the native interface and the
-layout in the module's unit record. The host turns that record into machine
-code, cache sections and an engine without analysing the module or holding
-its tree. These cases run the kernel's code under Python, so they need no
-kernel library; what they pin is the hand-off: the record must carry what
-the host's own generator produces, and the host must be able to run it."""
+kernel, which returns the IR text, the native interface and the layout in the
+module's unit record. The host turns that record into machine code, cache
+sections and an engine without analysing the module or holding its tree."""
+import ctypes;
 import os;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from unittest.mock { patch }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.unit_products { UnitProducts, unit_products }
-import from jaclang.compiler.frontend.host { active_host }
-import from jaclang.compiler.frontend.kernel_analyze {
-    ANALYSIS_OK,
-    CompileReport,
-    run_kernel_compile
+import from tests.support {
+    compile_native,
+    diagnostics_text,
+    get_func,
+    kernel_compile_file
 }
-import from jaclang.project.kernel_snapshot { kernel_snapshot }
 
 glob CONFIG: str = '[project]\nname="kernel-native"\n',
      FIB: str = (
@@ -48,17 +44,13 @@ glob CONFIG: str = '[project]\nname="kernel-native"\n',
      USES_FIRST_WORD: str = (
          'import from dep { first_word }\n\n'
          'with entry {\n    print(first_word("a b"));\n}\n'
-     ),
-     IN_PROCESS_JAC: str = (
-         "import jaclang.project.kernel_compile as kernel_compile\n"
-         "kernel_compile.run_kernel_in_process()\n"
-         "import runpy\n"
-         "runpy.run_module('jaclang', run_name='__main__', alter_sys=True)"
      );
 
-"""Serve kernel compiles from the kernel's code run under Python."""
-def in_process_kernel -> any {
-    return patch("jaclang.project.kernel_compile._IN_PROCESS", [True]);
+"""Options of a default run: native placement, but not ahead of time."""
+def run_options -> CompileOptions {
+    return CompileOptions(
+        default_codespace="native", skip_native_engine=True, no_ir_cache=True
+    );
 }
 
 def native_options -> CompileOptions {
@@ -70,56 +62,25 @@ def native_options -> CompileOptions {
     );
 }
 
-"""Options of a default run: native placement, but not ahead of time."""
-def run_options -> CompileOptions {
-    return CompileOptions(
-        default_codespace="native", skip_native_engine=True, no_ir_cache=True
-    );
-}
-
-"""What the host's own generator produces for `entry_file`, as a unit record."""
-def host_native(entry_file: str) -> UnitProducts {
-    program = JacProgram();
-    module = program.compile(entry_file, options=native_options());
-    assert not program.errors_had , [str(e) for e in program.errors_had];
-    return unit_products(module, program);
-}
-
-"""Compile `entry_file` in a kernel session run under Python, native generation on."""
-def kernel_native(entry_file: str) -> CompileReport {
-    with in_process_kernel() {
-        session = kernel_snapshot(
-            active_host(), JacProgram(), entry_file, native_options(), emit_closure=True
-        );
-        return run_kernel_compile(session.text(), entry_file, None, session);
-    }
-}
-
-test "a kernel session returns a native module's IR, interface and layout" {
+test "a kernel compile returns a native module's IR, interface and layout" {
     with TemporaryDirectory() as td {
         base = Path(os.path.realpath(td));
         (base / 'jac.toml').write_text(CONFIG);
         (base / 'fib.jac').write_text(FIB);
         entry_file = str(base / 'fib.jac');
-        expected = host_native(entry_file);
-        assert expected.native_ir , "the host generated no IR for the fixture";
-        outcome = kernel_native(entry_file);
-        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
-        assert not outcome.analysis.errors , [str(e) for e in outcome.analysis.errors];
-        emitted = outcome.unit(entry_file);
-        assert emitted is not None , [u.path for u in outcome.units];
-        assert emitted.native_ir == expected.native_ir , (
-            "the kernel session's IR differs from the host generator's"
-        );
-        assert emitted.native_iface == expected.native_iface;
-        assert emitted.native_layout == expected.native_layout;
-        assert emitted.native_deps == expected.native_deps;
-        assert emitted.jcir == expected.jcir;
-        assert emitted.interop == expected.interop;
+        result = kernel_compile_file(entry_file, native_options());
+        assert result.ok() , diagnostics_text(result);
+        emitted = result.unit(entry_file);
+        assert emitted is not None , [u.path for u in result.units];
+        assert emitted.native_ir , "the kernel generated no IR for the fixture";
+        assert emitted.native_iface , "the unit carries no native interface";
+        assert emitted.native_layout , "the unit carries no native layout";
+        (eng, _fx) = compile_native('fib.jac', str(base));
+        assert get_func(eng, "fib", ctypes.c_int64, ctypes.c_int64)(20) == 6765;
     }
 }
 
-test "a native dependency is lowered in the session and emitted as its own unit" {
+test "a native dependency is lowered in the same compile and emitted as its own unit" {
     with TemporaryDirectory() as td {
         base = Path(os.path.realpath(td));
         (base / 'jac.toml').write_text(CONFIG);
@@ -127,15 +88,13 @@ test "a native dependency is lowered in the session and emitted as its own unit"
         (base / 'main.jac').write_text(USES_SHAPES);
         entry_file = str(base / 'main.jac');
         dep_file = str(base / 'shapes.jac');
-        expected = host_native(entry_file);
-        outcome = kernel_native(entry_file);
-        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
-        assert not outcome.analysis.errors , [str(e) for e in outcome.analysis.errors];
-        emitted = outcome.unit(entry_file);
-        assert emitted is not None and emitted.native_ir == expected.native_ir;
+        result = kernel_compile_file(entry_file, native_options());
+        assert result.ok() , diagnostics_text(result);
+        emitted = result.unit(entry_file);
+        assert emitted is not None and emitted.native_ir;
         assert dep_file in [os.path.realpath(d) for d in emitted.native_deps];
-        lowered = outcome.unit(dep_file);
-        assert lowered is not None , [u.path for u in outcome.units];
+        lowered = result.unit(dep_file);
+        assert lowered is not None , [u.path for u in result.units];
         assert lowered.native_ir , "the dependency's unit carries no IR";
         assert lowered.native_iface , "the dependency's unit carries no interface";
     }
@@ -150,18 +109,12 @@ test "the host runs a native module from its kernel record without analysing it"
         entry_file = str(base / 'main.jac');
         program = JacProgram();
         builder = program._get_compiler();
-        with in_process_kernel() {
-            (in_kernel, engine) = builder.kernel_native_entry(
-                entry_file, program, CompileOptions(default_codespace="native")
-            );
-        }
-        assert in_kernel;
+        engine = builder.kernel_native_entry(
+            entry_file, program, CompileOptions(default_codespace="native")
+        );
         assert not program.errors_had , [str(e) for e in program.errors_had];
         assert engine is not None , "the adopted unit produced no engine";
         assert engine.get_function_address("jac_entry") != 0;
-        assert program.find_module(entry_file) is None , (
-            "the host holds a tree for a module the kernel compiled"
-        );
         registry = program.native_units();
         for unit_path in (entry_file, str(base / 'shapes.jac')) {
             held = registry.entries.get(os.path.realpath(unit_path));
@@ -170,89 +123,116 @@ test "the host runs a native module from its kernel record without analysing it"
     }
 }
 
-"""A module pinned or inferred native that the backend cannot lower is placed
-on the server in place: the Python backend emits the tree that was typed for
-no codespace. In a kernel session that happens inside the session, and the
-host learns of it from the unit's placement record and the session's notes,
-not by compiling the module."""
-test "a module that cannot be lowered is placed on the server inside the session" {
-    import json;
-    with TemporaryDirectory() as td {
-        base = Path(os.path.realpath(td));
-        (base / 'jac.toml').write_text(
-            CONFIG + '\n[placement.pins]\nmodels = "native"\n'
-        );
-        (base / 'models.jac').write_text(
-            'def double(x: int) -> int {\n    return x * 2;\n}\n\n'
-                + 'with entry {\n    s = {1, "a"};\n    print(double(2), len(s));\n}\n'
-        );
-        entry_file = str(base / 'models.jac');
-        with in_process_kernel() {
-            session = kernel_snapshot(
-                active_host(),
-                JacProgram(),
-                entry_file,
-                CompileOptions(skip_native_engine=True, no_ir_cache=True),
-                emit_closure=True
-            );
-            outcome = run_kernel_compile(session.text(), entry_file, None, session);
-        }
-        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
-        assert not outcome.analysis.errors , [str(e) for e in outcome.analysis.errors];
-        emitted = outcome.unit(entry_file);
-        assert emitted is not None , [u.path for u in outcome.units];
-        assert emitted.jcir , "the demoted module has no server code";
-        assert not emitted.native_ir , "a demoted module still carries native IR";
-        summary = json.loads(emitted.placement);
-        assert summary.get("decided") != "native" , summary;
-        notes = [
-            row[2]
-            for row in outcome.analysis.events
-            if row and row[0] == "note"
-        ];
-        assert any("did not lower" in note for note in notes) , outcome.analysis.events;
-    }
-}
-
-"""A bundled native module (`math`, `json`, `os`) belongs to the compiler
-package, and a session is handed package modules as interfaces. The generator
-needs the tree: a call is lowered from the callee's declaration. So a session
-compiles these modules from source, whatever the options, and a default run
-lowers the same IR the host does. Held as an interface, `floor` here bound to
-libm's `floor` and returned a float."""
-test "a default run lowers a bundled native import the way the host does" {
+"""A bundled native module (`math`) belongs to the compiler package. A call is
+lowered from the callee's declaration, so the kernel compiles these modules
+from source: held as an interface, `floor` bound to libm's `floor` and
+returned a float."""
+test "a bundled native import is lowered from its own definition" {
     with TemporaryDirectory() as td {
         base = Path(os.path.realpath(td));
         (base / 'jac.toml').write_text(CONFIG);
         (base / 'rounding.jac').write_text(
             'import math;\nimport from math { floor, sqrt }\n\n'
-                + 'with entry {\n    print(floor(2.5), sqrt(16.0), math.floor(7.5));\n}\n'
+                + 'def floored(x: float) -> int {\n    return floor(x);\n}\n\n'
+                + 'def rooted(x: float) -> float {\n    return sqrt(x);\n}\n\n'
+                + 'def floored_again(x: float) -> int {\n    return math.floor(x);\n}\n'
         );
-        entry_file = str(base / 'rounding.jac');
+        (eng, _fx) = compile_native('rounding.jac', str(base));
+        assert get_func(eng, "floored", ctypes.c_int64, ctypes.c_double)(2.5) == 2;
+        assert get_func(eng, "floored", ctypes.c_int64, ctypes.c_double)(-2.5) == -3;
+        assert get_func(eng, "floored_again", ctypes.c_int64, ctypes.c_double)(7.5)
+            == 7;
+        assert get_func(eng, "rooted", ctypes.c_double, ctypes.c_double)(16.0) == 4.0;
+    }
+}
+
+"""The host can still fail after the kernel has lowered a module: the IR may
+not link. Placement was settled before the module was lowered, so a link
+failure is a compiler defect. It surfaces as one; nothing compiles the module
+again for the server."""
+test "a module the host cannot link is an error, not a second compile" {
+    import from jaclang.compiler.backends.native.link_plan { LinkPlanError }
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'fib.jac').write_text(FIB);
+        entry_file = str(base / 'fib.jac');
         program = JacProgram();
-        module = program.compile(entry_file, options=run_options());
-        assert not program.errors_had , [str(e) for e in program.errors_had];
-        expected = unit_products(module, program);
-        assert expected.native_ir , "the host generated no IR for the fixture";
-        with in_process_kernel() {
-            session = kernel_snapshot(
-                active_host(),
-                JacProgram(),
-                entry_file,
-                run_options(),
-                emit_closure=True
-            );
-            outcome = run_kernel_compile(session.text(), entry_file, None, session);
+        builder = program._get_compiler();
+        refusal = LinkPlanError("helper.jac is not a native unit");
+        raised = False;
+        with patch.object(
+            JacCompiler, "_load_native_from_cache", side_effect=refusal
+        ) as link {
+            try {
+                builder.get_bytecode(full_target=entry_file, target_program=program);
+            } except LinkPlanError {
+                raised = True;
+            }
         }
-        assert outcome.analysis.status == ANALYSIS_OK , outcome.analysis.message;
-        assert not outcome.analysis.errors , [str(e) for e in outcome.analysis.errors];
-        emitted = outcome.unit(entry_file);
-        assert emitted is not None , [u.path for u in outcome.units];
-        assert emitted.native_ir == expected.native_ir , (
-            "the kernel session's IR differs from the host generator's"
+        assert raised , "a link failure was absorbed instead of surfacing";
+        assert link.call_count == 1 , "the module was compiled again after it failed to link";
+    }
+}
+
+test "a link failure stays an error when native was asked for outright" {
+    import from jaclang.compiler.backends.native.link_plan { LinkPlanError }
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'fib.jac').write_text(FIB);
+        entry_file = str(base / 'fib.jac');
+        program = JacProgram();
+        builder = program._get_compiler();
+        refusal = LinkPlanError("helper.jac is not a native unit");
+        raised = False;
+        with patch.object(
+            JacCompiler, "_load_native_from_cache", side_effect=refusal
+        ) {
+            try {
+                builder.kernel_native_entry(
+                    entry_file,
+                    program,
+                    CompileOptions(default_codespace="native", force_codespace="native")
+                );
+            } except LinkPlanError {
+                raised = True;
+            }
+        }
+        assert raised , "a forced native module was demoted instead of failing";
+    }
+}
+
+"""`jac run` of a native program compiles it through the kernel, adopts the
+unit and runs the entry natively; a second run starts from the cache and
+compiles nothing."""
+test "jac run executes a native program from a kernel compile, then from the cache" {
+    import subprocess;
+    import from tests.support { jac_command }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'fib.jac').write_text(FIB);
+        first = subprocess.run(
+            jac_command("run", "fib.jac"), cwd=str(base), capture_output=True, text=True
         );
-        assert "__jac_mono_floor" in emitted.native_ir , (
-            "floor was not lowered from the bundled module's own definition"
+        assert first.returncode == 0 , first.stderr[-2000:];
+        assert "fib 6765" in first.stdout , first.stdout + first.stderr[-1500:];
+        assert "Preparing application" not in first.stderr , (
+            "a native entry went through the Python lane:\n" + first.stderr[-1500:]
+        );
+        cached = sorted((base / '.jac' / 'cache').rglob('fib.*.jir'));
+        assert cached , "the first run cached no unit";
+        stamps = [p.stat().st_mtime_ns for p in cached];
+        again = subprocess.run(
+            jac_command("run", "fib.jac"), cwd=str(base), capture_output=True, text=True
+        );
+        assert again.returncode == 0 , again.stderr[-2000:];
+        assert "fib 6765" in again.stdout;
+        assert [p.stat().st_mtime_ns for p in cached] == stamps , (
+            "the second run compiled the program again"
         );
     }
 }
@@ -260,6 +240,7 @@ test "a default run lowers a bundled native import the way the host does" {
 """A dependency of a default run falls back function by function, as the entry
 does; asked for ahead of time, the same call is an error (#10380)."""
 test "a dependency of a default run falls back the way the entry does" {
+    import from tests.support { error_codes }
     rows = [
         ("native stubs reject open", OPENS_FILE + FIRST_WORD, run_options(), [], True),
         (
@@ -284,21 +265,12 @@ test "a dependency of a default run falls back the way the entry does" {
             (base / 'jac.toml').write_text(CONFIG);
             (base / 'dep.jac').write_text(dep_source);
             (base / 'main.jac').write_text(USES_FIRST_WORD);
-            entry_file = str(base / 'main.jac');
-            with in_process_kernel() {
-                session = kernel_snapshot(
-                    active_host(), JacProgram(), entry_file, options, emit_closure=True
-                );
-                outcome = run_kernel_compile(session.text(), entry_file, None, session);
-            }
-            assert outcome.analysis.status == ANALYSIS_OK , (
-                f"{label}: {outcome.analysis.message}"
-            );
-            found = {e.code for e in outcome.analysis.errors};
+            result = kernel_compile_file(str(base / 'main.jac'), options);
+            found = set(error_codes(result));
             assert set(codes) <= found and (codes or not found) , f"{label}: {found}";
             if stays_native {
-                dep_unit = outcome.unit(str(base / 'dep.jac'));
-                assert dep_unit is not None and "first_word" in dep_unit.native_ir , (
+                dep_unit = result.unit(str(base / 'dep.jac'));
+                assert "first_word" in dep_unit.native_ir , (
                     f"{label}: the rest of the module left the native codespace"
                 );
             }
@@ -317,123 +289,16 @@ test "a forced native run that fails keeps failing" {
         for attempt in range(2) {
             program = JacProgram();
             refusal = "";
-            with in_process_kernel() {
-                try {
-                    program._get_compiler().kernel_native_entry(
-                        str(base / 'main.jac'),
-                        program,
-                        CompileOptions(force_codespace="native")
-                    );
-                } except LinkPlanError as failure {
-                    refusal = str(failure);
-                }
+            try {
+                program._get_compiler().kernel_native_entry(
+                    str(base / 'main.jac'),
+                    program,
+                    CompileOptions(force_codespace="native")
+                );
+            } except LinkPlanError as failure {
+                refusal = str(failure);
             }
             assert "E1054" in refusal , f"attempt {attempt} passed: {refusal}";
         }
-    }
-}
-
-"""The host can still fail after the kernel has lowered a module: the IR may
-not link. Placement was settled before the module was lowered, and a
-dependency is placed before its importer is analyzed, so a link failure is a
-compiler defect. It surfaces as one; nothing compiles the module again for
-the server."""
-test "a module the host cannot link is an error, not a second compile" {
-    import from jaclang.compiler.backends.native.link_plan { LinkPlanError }
-    import from jaclang.compiler.driver.compiler { JacCompiler }
-    with TemporaryDirectory() as td {
-        base = Path(os.path.realpath(td));
-        (base / 'jac.toml').write_text(CONFIG);
-        (base / 'fib.jac').write_text(FIB);
-        entry_file = str(base / 'fib.jac');
-        program = JacProgram();
-        builder = program._get_compiler();
-        refusal = LinkPlanError("helper.jac is not a native unit");
-        raised = False;
-        with in_process_kernel() {
-            with patch.object(
-                JacCompiler, "_load_native_from_cache", side_effect=refusal
-            ) as link {
-                try {
-                    builder.get_bytecode(
-                        full_target=entry_file, target_program=program
-                    );
-                } except LinkPlanError {
-                    raised = True;
-                }
-            }
-        }
-        assert raised , "a link failure was absorbed instead of surfacing";
-        assert link.call_count == 1 , "the module was compiled again after it failed to link";
-    }
-}
-
-test "a link failure stays an error when native was asked for outright" {
-    import from jaclang.compiler.backends.native.link_plan { LinkPlanError }
-    import from jaclang.compiler.driver.compiler { JacCompiler }
-    with TemporaryDirectory() as td {
-        base = Path(os.path.realpath(td));
-        (base / 'jac.toml').write_text(CONFIG);
-        (base / 'fib.jac').write_text(FIB);
-        entry_file = str(base / 'fib.jac');
-        program = JacProgram();
-        builder = program._get_compiler();
-        refusal = LinkPlanError("helper.jac is not a native unit");
-        raised = False;
-        with in_process_kernel() {
-            with patch.object(
-                JacCompiler, "_load_native_from_cache", side_effect=refusal
-            ) {
-                try {
-                    builder.kernel_native_entry(
-                        entry_file,
-                        program,
-                        CompileOptions(
-                            default_codespace="native", force_codespace="native"
-                        )
-                    );
-                } except LinkPlanError {
-                    raised = True;
-                }
-            }
-        }
-        assert raised , "a forced native module was demoted instead of failing";
-    }
-}
-
-"""`jac run` of a native program asks the kernel first: the program is compiled
-by one kernel session, the host adopts the record and runs the entry natively,
-and a second run starts from the cache with no compile at all."""
-test "jac run executes a native program from a kernel session, then from the cache" {
-    import subprocess;
-    import from tests.support { compiler_python_command }
-    with TemporaryDirectory() as td {
-        base = Path(os.path.realpath(td));
-        (base / 'fib.jac').write_text(FIB);
-        env: dict[str, str] = dict(os.environ);
-        env["JAC_KERNEL_TIMING"] = "1";
-        first = subprocess.run(
-            compiler_python_command(IN_PROCESS_JAC, "run", "fib.jac"),
-            cwd=str(base),
-            capture_output=True,
-            text=True,
-            env=env
-        );
-        assert first.returncode == 0 , first.stderr[-2000:];
-        assert "fib 6765" in first.stdout , first.stdout + first.stderr[-1500:];
-        assert "kernel compile" in first.stderr , first.stderr[-1500:];
-        assert "Preparing application" not in first.stderr , (
-            "a native entry fell back to the Python lane:\n" + first.stderr[-1500:]
-        );
-        again = subprocess.run(
-            compiler_python_command(IN_PROCESS_JAC, "run", "fib.jac"),
-            cwd=str(base),
-            capture_output=True,
-            text=True,
-            env=env
-        );
-        assert again.returncode == 0 , again.stderr[-2000:];
-        assert "fib 6765" in again.stdout;
-        assert "kernel compile" not in again.stderr , again.stderr[-1500:];
     }
 }

@@ -62,8 +62,6 @@ def py_ir_passes(request: ProductRequest) -> PassSchedule;
 
 def frozen_passes(request: ProductRequest) -> PassSchedule;
 
-def bytecode_passes(request: ProductRequest) -> PassSchedule;
-
 def native_ir_passes(request: ProductRequest) -> PassSchedule;
 
 def native_lower_passes(request: ProductRequest) -> PassSchedule;
@@ -79,6 +77,10 @@ def format_lintfix_passes(request: ProductRequest) -> PassSchedule;
 def lint_passes(request: ProductRequest) -> PassSchedule;
 
 def python_ast_passes(request: ProductRequest) -> PassSchedule;
+
+def assemble_bytecode(program: JacProgram, module: Module) -> bool;
+
+def drop_bytecode(program: JacProgram, module: Module);
 
 def python_symbols_passes(request: ProductRequest) -> PassSchedule;
 
@@ -116,6 +118,12 @@ glob IR_LOADS: list[str] = [
          'jaclang.compiler.types.stubcat.modiface',
          'jaclang.compiler.types.stubcat.writer',
          'jaclang.compiler.passes.pyast_load_pass',
+         'jaclang.compiler.backends.py.host_parse',
+         'jaclang.compiler.frontend.python.ast_nodes',
+         'jaclang.compiler.frontend.python.syntax_error',
+         'jaclang.runtime.python.objects',
+         'jaclang.runtime.python.compiler_integer',
+         'jaclang.runtime.python.opcode_meta',
          'jaclang.compiler.passes.layout_pass',
          'jaclang.compiler.passes.cfg_build_pass',
          'jaclang.compiler.passes.sem_def_match_pass',
@@ -129,6 +137,12 @@ glob IR_LOADS: list[str] = [
          'jaclang.compiler.passes.type_checker_pass',
          'jaclang.compiler.types.type_evaluator',
          'jaclang.compiler.passes.pyast_load_pass',
+         'jaclang.compiler.backends.py.host_parse',
+         'jaclang.compiler.frontend.python.ast_nodes',
+         'jaclang.compiler.frontend.python.syntax_error',
+         'jaclang.runtime.python.objects',
+         'jaclang.runtime.python.compiler_integer',
+         'jaclang.runtime.python.opcode_meta',
          'jaclang.compiler.passes.rc_facts_pass',
          'jaclang.compiler.types.type_utils',
          'jaclang.compiler.types.ts_decl_parser',
@@ -223,7 +237,10 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
              on_import_error=ImportFallback.REPORT
          ),
          CompilationProduct.BYTECODE: ProductSpec(
-             needs=[CompilationProduct.PY_IR], passes=bytecode_passes
+             needs=[CompilationProduct.PY_IR],
+             action=assemble_bytecode,
+             drop=drop_bytecode,
+             acts=True
          ),
          CompilationProduct.NATIVE_IR: ProductSpec(
              needs=[CompilationProduct.FLOW, CompilationProduct.ANALYSIS],
@@ -300,8 +317,6 @@ def product_passes(
 ) -> PassSchedule;
 
 def product_facts(product: CompilationProduct) -> set[AnalysisFact];
-
-def early_passes -> PassSchedule;
 
 def dependents(product: CompilationProduct) -> list[CompilationProduct];
 

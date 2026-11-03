@@ -1,15 +1,14 @@
 """Bound methods preserve Self across union receivers."""
-import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support { kernel_check_source }
 
 def check_receiver(source: str) -> list[str] {
-    program = JacProgram();
-    program.compile(
-        file_path="self_union_receiver.jac",
-        use_str=source,
-        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
+    result = kernel_check_source(
+        source,
+        "self_union_receiver.jac",
+        CompileOptions(no_ir_cache=True, force_codespace="server")
     );
-    return [str(error) for error in program.errors_had];
+    return [f"{diag.code}: {diag.message}" for diag in result.errors];
 }
 
 test "paths retain their receiver type when iterating a tuple" {

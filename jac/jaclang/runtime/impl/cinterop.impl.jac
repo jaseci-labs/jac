@@ -728,12 +728,27 @@ impl CFunction._to_c(
         return value.encode("utf-8") if isinstance(value, str) else value;
     }
     if kind == "bytes" {
+        if isinstance(value, bytearray) {
+            view = (ctypes.c_char * len(value)).from_buffer(value);
+            keep.append(view);
+            return ctypes.addressof(view);
+        }
         buf = ctypes.create_string_buffer(bytes(value), len(value));
         keep.append(buf);
         return ctypes.addressof(buf);
     }
     if kind == "ptr" {
-        return value._addr if isinstance(value, JacPtr) else None;
+        if isinstance(value, JacPtr) {
+            return value._addr;
+        }
+        if value is None or isinstance(value, int) {
+            return value;
+        }
+        raise TypeError(
+            f"a C pointer argument takes a ptr or an address, not {type(
+                value
+            ).__name__}"
+        );
     }
     if kind == "pinned" {
         return None if value is None else ctypes.addressof(value._jac_obj);

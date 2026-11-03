@@ -639,7 +639,7 @@ test "parse full config" {
 # TestJacConfigProfiles
 # ===========================================================================
 test "apply profile" {
-    import from jaclang.project.config { ServeConfigError }
+    import from jaclang.project.tomlio { JacTomlError }
     config_mod._config = None;
     toml_str = "\n[project]\nname = \"profile-test\"\n\n[serve]\nport = 8000\n\n[serve.limits]\nbacklog = 512\n\n[environments.development]\n[environments.development.serve]\nport = 3000\n\n[environments.development.serve.limits]\nmax_connections = 10\n\n[environments.broken.serve]\ngraph_enabled = \"false\"\n";
     cfg = JacConfig.from_toml_str(toml_str);
@@ -652,7 +652,7 @@ test "apply profile" {
     try {
         cfg.apply_profile("broken");
         assert False , "a quoted boolean in a profile was accepted";
-    } except ServeConfigError as refused {
+    } except JacTomlError as refused {
         assert "[environments.broken.serve] graph_enabled must be true or false"
             in str(refused) , str(refused);
     }
@@ -984,7 +984,7 @@ test "active profile default empty" {
 # TestMergeFromTomlFile
 # ===========================================================================
 test "merge simple sections" {
-    import from jaclang.project.config { ServeConfigError }
+    import from jaclang.project.tomlio { JacTomlError }
     config_mod._config = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
@@ -1012,7 +1012,7 @@ test "merge simple sections" {
         try {
             cfg.merge_from_toml_file(local);
             assert False , "a quoted boolean in jac.local.toml was accepted";
-        } except ServeConfigError as refused {
+        } except JacTomlError as refused {
             assert "jac.local.toml: [serve] graph_enabled must be true or false"
                 in str(refused) , str(refused);
         }
@@ -1991,7 +1991,7 @@ test "interpolation applies to every parsed string" {
 }
 
 test "serve config carries no routing keys and refuses keys or values it does not know" {
-    import from jaclang.project.config { ServeConfigError }
+    import from jaclang.project.tomlio { JacTomlError }
     cfg = JacConfig.from_toml_str(
         "[serve]\nport = 8080\nworkers = 4\ncors_origins = \"https://app.example\"\n\n"
         "[serve.timeouts]\ndrain = 30\n"
@@ -2018,7 +2018,7 @@ test "serve config carries no routing keys and refuses keys or values it does no
         try {
             JacConfig.from_toml_str("[serve]\n" + body + "\n");
             assert False , f"{body!r} was accepted";
-        } except ServeConfigError as refused {
+        } except JacTomlError as refused {
             assert needle in str(refused) , str(refused);
         }
     }

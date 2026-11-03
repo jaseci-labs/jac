@@ -3055,13 +3055,14 @@ test "builtin functions lower to runtime helpers without type-check (#7480, #858
     # run the inference schedule before the backend so builtins lower to their
     # _jac.builtin.* helpers rather than bare, undefined identifiers.
     import re;
-    import from jaclang.client.client_bundle { _ensure_js_generated }
+    import from tests.compiler.backends.es.codegen_helpers { lower_to_client }
     fixture_path = _resolve_fixture_path("builtin_func_untyped.jac", FIXTURES);
     prog = JacProgram();
     ir = prog.compile(file_path=fixture_path, no_cgen=True);
     _fatal = _fatal_compile_errors(prog);
     assert not _fatal , (f"Compilation errors: {[str(e) for e in _fatal]}");
-    _ensure_js_generated(ir, prog);
+    lowered = lower_to_client(ir, prog);
+    assert not lowered , lowered;
     js_code = ir.gen.js;
 
     fn_starts = [

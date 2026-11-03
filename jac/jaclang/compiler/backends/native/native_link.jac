@@ -46,7 +46,8 @@ obj NativeLinkJob {
         symbol_lib_map: dict[str, str] = {},
         export_symbols: list[str] = [],
         archive_symbols: set[str] = set(),
-        static_musl: bool = False;
+        static_musl: bool = False,
+        runpaths: list[str] = [];
 }
 
 obj WasmLinkJob {

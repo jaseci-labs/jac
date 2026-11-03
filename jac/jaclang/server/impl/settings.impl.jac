@@ -57,6 +57,67 @@ impl AuthSettings.resolve_secret(base_path: str) -> str {
 def env_typed(current: any, name: str, environ: (dict[str, str] | None)) -> any;
 
 
+impl table_value(current: any, raw: any, label: str) -> any {
+    if isinstance(current, bool) {
+        if not isinstance(raw, bool) {
+            raise ServeConfigError(f"{label} must be true or false, got {raw!r}");
+        }
+        return raw;
+    }
+    if isinstance(current, int) {
+        if isinstance(raw, bool) or not isinstance(raw, int) {
+            raise ServeConfigError(f"{label} must be an integer, got {raw!r}");
+        }
+        return raw;
+    }
+    if isinstance(current, float) {
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)) {
+            raise ServeConfigError(f"{label} must be a number, got {raw!r}");
+        }
+        return float(raw);
+    }
+    if isinstance(current, list) {
+        if not isinstance(raw, list)
+            or not all(isinstance(item, str) for item in raw) {
+            raise ServeConfigError(f"{label} must be a list of strings, got {raw!r}");
+        }
+        return list(raw);
+    }
+    if not isinstance(raw, str) {
+        raise ServeConfigError(f"{label} must be a string, got {raw!r}");
+    }
+    return raw;
+}
+
+impl apply_table(
+    target: object, table: dict[str, any], section: str, moved: dict[str, str]
+) -> None {
+    names = [f.name for f in fields(target)];
+    for key in table {
+        if key in names {
+            continue;
+        }
+        if key in moved {
+            raise ServeConfigError(f"[{section}] {key} has moved to {moved[key]}");
+        }
+        raise ServeConfigError(
+            f"[{section}] has no key {key!r}; its keys are {', '.join(names)}"
+        );
+    }
+    for (name, raw) in table.items() {
+        current = getattr(target, name);
+        if not (is_record(current) or isinstance(current, dict)) {
+            setattr(target, name, table_value(current, raw, f"[{section}] {name}"));
+        } elif not isinstance(raw, dict) {
+            raise ServeConfigError(f"[{section}.{name}] must be a table");
+        } elif is_record(current) {
+            apply_table(current, raw, f"{section}.{name}", {});
+        } else {
+            setattr(target, name, _deep_merge(current, raw));
+        }
+    }
+}
+
 impl overlay_table(
     target: object,
     table: dict[str, any],
