@@ -2517,6 +2517,14 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
     if name == "open" {
         return self.open_call(nd);
     }
+    if name == "new" and nd.params {
+        made = list(nd.params);
+        kind = made[0];
+        arch = self.class_reference(kind) if isinstance(kind, uni.Expr) else None;
+        if arch is not None {
+            return self.object_call(nd, arch, 1);
+        }
+    }
     if name == "int" {
         refused = self.str_enum_int(nd);
         if refused is not None {
