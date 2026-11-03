@@ -803,7 +803,9 @@ impl TypeEvaluator.match_args_to_params(
         try {
             spread = _literal_kwargs_spread(arg) if isinstance(arg, KWPair) else None;
             if spread is not None {
-                self.get_type_of_expression(arg.value);
+                if isinstance(arg, KWPair) {
+                    self.get_type_of_expression(arg.value);
+                }
                 for (name, value_expr) in spread {
                     spread_param = param_tracker.lookup_named_parameter(name);
                     if spread_param is None {

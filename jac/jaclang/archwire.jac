@@ -10719,6 +10719,7 @@ graph import compiler.backends.native.mir {
             mir_list,
             mir_none,
             mir_obj,
+            mir_opt,
             mir_range,
             mir_ref,
             mir_region,
@@ -13589,6 +13590,7 @@ graph import compiler.types {
         type_evaluator.TypeEvaluator._heal_ancestry { ensure_mro_fresh },
         type_evaluator.TypeEvaluator._heal_class_bases { linearize_mro, mro_signature },
         type_evaluator.TypeEvaluator._lookup_class_member { ensure_mro_fresh },
+        type_evaluator.TypeEvaluator._same_type_args { types_equivalent },
         type_evaluator.TypeEvaluator._super_owner_for { collect_member_syms },
         type_evaluator.TypeEvaluator._type_in_list { types_equivalent },
         type_evaluator.TypeEvaluator.get_getter_type_from_property {

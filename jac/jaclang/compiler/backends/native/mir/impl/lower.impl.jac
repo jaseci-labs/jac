@@ -2334,9 +2334,11 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         and len(list(nd.params or [])) == 1
         and isinstance(list(nd.params or [])[0], uni.Expr) {
         subject = list(nd.params or [])[0];
-        caught = self.caught_type(subject);
-        if caught is not None {
-            return caught;
+        if isinstance(subject, uni.Expr) {
+            caught = self.caught_type(subject);
+            if caught is not None {
+                return caught;
+            }
         }
         return self.class_of(self.lower_expr(subject), nd);
     }

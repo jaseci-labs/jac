@@ -1063,11 +1063,14 @@ impl MirLowering.tuple_elem(value: MirValue, site: uni.UniNode) -> MirType {
     if all(member is elem for member in members) {
         return elem;
     }
-    held = [
-        member.payload() if member.kind == MirKind.OPT else member
-        for member in members
-        if member.kind != MirKind.NONE
-    ];
+    held: list[MirType] = [];
+    for member in members {
+        if member.kind == MirKind.OPT {
+            held.append(member.payload());
+        } elif member.kind != MirKind.NONE {
+            held.append(member);
+        }
+    }
     if held
         and all(part is held[0] for part in held)
         and any(member.kind in (MirKind.NONE, MirKind.OPT) for member in members) {
