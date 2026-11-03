@@ -591,6 +591,37 @@ impl MirLowering.target_archetype(target: uni.Expr) -> (uni.Archetype | None) {
 impl MirLowering.isinstance_value(
     subject: uni.Expr, target: uni.Expr, site: uni.UniNode
 ) -> MirValue {
+    declared = subject.type;
+    owner = declared.shared.symbol_table
+        if isinstance(declared, ClassType) and declared._shared is not None
+        else None;
+    if isinstance(owner, uni.Archetype) and self.python_base_of(owner) is not None {
+        for item in (
+            [
+                part
+                for part in target.values
+                if isinstance(part, uni.Expr)
+            ]
+                if isinstance(target, uni.TupleVal)
+                else [target]
+        ) {
+            if self.abstract_names(item) {
+                spelled = item.value if isinstance(item, uni.Name) else "";
+                if isinstance(item, uni.AtomTrailer)
+                    and isinstance(item.right, uni.Name) {
+                    spelled = item.right.value;
+                }
+                raise MirRefused(
+                    mir_refusal(
+                        "call",
+                        f"isinstance against `{spelled}`",
+                        site,
+                        "The operand's class inherits a Python-side base, so which abstract bases it inhabits is not known natively."
+                    )
+                );
+            }
+        }
+    }
     value = self.lower_expr(subject);
     if value.type.kind == MirKind.ANY {
         return self.any_isinstance(value, target, site);
