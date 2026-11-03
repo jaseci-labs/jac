@@ -60,6 +60,8 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_class_ctor_register": ["none", "int", "int", "int"],
          "__jac_rt_class_ctor_find": ["int", "int", "int"],
          "__jac_rt_exc_push": ["none", "ptr"],
+         "__jac_rt_gen_close_failed": ["none", "ptr", "int", "int"],
+         "__jac_rt_gen_ignored_exit": ["none"],
          "__jac_rt_exc_pop": ["none", "ptr"],
          "__jac_rt_exc_jmp_buf": ["ptr", "ptr"],
          "__jac_rt_raise": ["none", "ptr", "i32", "ptr"],

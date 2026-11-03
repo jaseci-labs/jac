@@ -144,3 +144,26 @@ impl __jac_rt_exc_class_of(held: int, fallback: int) -> int {
     }
     return fallback;
 }
+
+impl __jac_rt_gen_close_failed(state: ptr[JacRtExcState], exit_id: int, stop_id: int) {
+    cell = state.view(1);
+    kind = int(cell[0].type_id);
+    if kind == exit_id or kind == stop_id {
+        return;
+    }
+    _write_text(
+        ptr[u8]("Exception ignored while closing generator <generator object>:\n")
+    );
+    if int(cell[0].message) != 0 {
+        _write_text(cell[0].message);
+    }
+    _write_text(ptr[u8]("\n"));
+}
+
+impl __jac_rt_gen_ignored_exit {
+    _write_text(
+        ptr[u8](
+            "Exception ignored while closing generator <generator object>:\nRuntimeError: generator ignored GeneratorExit\n"
+        )
+    );
+}

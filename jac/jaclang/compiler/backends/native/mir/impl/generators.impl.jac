@@ -288,6 +288,13 @@ impl MirGenState.dispatch(prologue: list[MirInstr], frame: MirValue, first: MirB
             op=MirOp.MEM_LOAD, result=point, operands=[address], type_arg=mir_int()
         )
     );
+    running = fn.new_value(mir_int());
+    dispatch_block.instrs.append(
+        MirInstr(op=MirOp.CONST_INT, result=running, int_value=GEN_DONE)
+    );
+    dispatch_block.instrs.append(
+        MirInstr(op=MirOp.MEM_STORE, operands=[address, running])
+    );
     current = dispatch_block;
     for (index, target) in enumerate([first] + self.resumes) {
         following = fn.new_block("dispatch.next");
@@ -325,7 +332,8 @@ impl MirGenState.drop_function -> MirFunction {
     );
     frame = made.new_value(i8p, "frame");
     made.params.append(MirParam(name="frame", value=frame));
-    blk = made.new_block("entry");
+    opening = made.new_block("entry");
+    blk = self.close_on_drop(made, opening, frame);
     for slot in self.held {
         place = mir_frame_field(
             made, blk.instrs, frame, self.offsets[slot.id], slot.type
@@ -446,4 +454,110 @@ impl mir_lower_frames(mir: MirModule, fn: MirFunction) {
         }
         blk.instrs = rewritten;
     }
+}
+
+impl MirGenState.close_on_drop(
+    made: MirFunction, opening: MirBlock, frame: MirValue
+) -> MirBlock {
+    i8p = mir_c_ptr(mir_int(8, False));
+    for name in (
+        "__jac_rt_exc_push",
+        "__jac_rt_exc_pop",
+        "__jac_rt_exc_jmp_buf",
+        "__jac_rt_gen_close_failed",
+        "__jac_rt_gen_ignored_exit"
+    ) {
+        (params, ret) = mir_runtime_signature(name);
+        self.mir.externs[name] = MirExtern(symbol=name, ret=ret, params=params);
+    }
+    b = MirBuilder(fn=made, block=opening);
+    state = made.new_value(i8p, "exc.frame");
+    opening.instrs.append(MirInstr(op=MirOp.EXC_FRAME, result=state));
+    base = made.new_value(mir_int());
+    b.emit(
+        MirInstr(op=MirOp.PTR_INT, result=base, operands=[frame], type_arg=mir_int())
+    );
+    point = made.new_value(mir_int());
+    b.emit(
+        MirInstr(op=MirOp.MEM_LOAD, result=point, operands=[base], type_arg=mir_int())
+    );
+    closing = made.new_block("drop.close");
+    freeing = made.new_block("drop.free");
+    b.cond_branch(b.compare("gt", point, b.const_int(0, mir_int())), closing, freeing);
+    b.position(closing);
+    pending = b.binary("add", base, b.const_int(GEN_PENDING_TYPE, mir_int()));
+    b.emit(
+        MirInstr(
+            op=MirOp.MEM_STORE,
+            operands=[
+                pending,
+                b.const_int(
+                    JAC_TYPE_REGISTRY.exception_type_id("GeneratorExit"), mir_int()
+                )
+            ]
+        )
+    );
+    for offset in (GEN_PENDING_MESSAGE, GEN_PENDING_ORIGIN) {
+        b.emit(
+            MirInstr(
+                op=MirOp.MEM_STORE,
+                operands=[
+                    b.binary("add", base, b.const_int(offset, mir_int())),
+                    b.const_int(0, mir_int())
+                ]
+            )
+        );
+    }
+    b.call_runtime("__jac_rt_exc_push", [state], mir_none());
+    buffer = made.new_value(i8p);
+    b.emit(
+        MirInstr(
+            op=MirOp.CALL_RUNTIME,
+            result=buffer,
+            operands=[state],
+            callee="__jac_rt_exc_jmp_buf"
+        )
+    );
+    armed = made.new_value(mir_int(32, True, True));
+    b.emit(MirInstr(op=MirOp.SETJMP, result=armed, operands=[buffer]));
+    running = made.new_block("drop.resume");
+    caught = made.new_block("drop.caught");
+    b.cond_branch(b.compare("eq", armed, b.const_int(0, armed.type)), running, caught);
+    b.position(running);
+    out = made.new_value(i8p);
+    b.emit(
+        MirInstr(
+            op=MirOp.PTR_CAST,
+            result=out,
+            operands=[b.binary("add", base, b.const_int(GEN_OUT_CELL, mir_int()))],
+            type_arg=i8p
+        )
+    );
+    yielded = made.new_value(mir_bool());
+    b.emit(
+        MirInstr(
+            op=MirOp.CALL, result=yielded, operands=[frame, out], callee=self.fn.symbol
+        )
+    );
+    b.call_runtime("__jac_rt_exc_pop", [state], mir_none());
+    ignored = made.new_block("drop.ignored");
+    b.cond_branch(yielded, ignored, freeing);
+    b.position(ignored);
+    b.call_runtime("__jac_rt_gen_ignored_exit", [], mir_none());
+    b.branch(freeing);
+    b.position(caught);
+    b.call_runtime("__jac_rt_exc_pop", [state], mir_none());
+    b.call_runtime(
+        "__jac_rt_gen_close_failed",
+        [
+            state,
+            b.const_int(
+                JAC_TYPE_REGISTRY.exception_type_id("GeneratorExit"), mir_int()
+            ),
+            b.const_int(JAC_TYPE_REGISTRY.exception_type_id("StopIteration"), mir_int())
+        ],
+        mir_none()
+    );
+    b.branch(freeing);
+    return freeing;
 }

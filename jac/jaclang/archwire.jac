@@ -9815,6 +9815,7 @@ graph import compiler {
             | backends.es.jac_runtime_js._build_exc_runtime_js
             | backends.native.foreign
             | backends.native.mir.emit
+            | backends.native.mir.generators
             | backends.native.mir.lower
             | backends.native.mir.lower_types
             | c_interop._spec_for_name
@@ -10599,6 +10600,7 @@ graph import compiler.backends.native.mir {
         },
         generators {
             MirBlock,
+            MirBuilder,
             MirExtern,
             MirFrame,
             MirFunction,
