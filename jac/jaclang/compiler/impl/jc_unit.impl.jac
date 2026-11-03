@@ -2,16 +2,6 @@ impl jc_probe -> int {
     return 44061;
 }
 
-impl jc_set_asker(callback: int) -> int {
-    set_host_callback(callback);
-    return 0;
-}
-
-impl jc_answer(text: str) -> int {
-    take_host_answer(text);
-    return 0;
-}
-
 impl _drop_h(h: int) {
     if h != 0 {
         Py_DecRef(h);
@@ -247,60 +237,6 @@ impl _register_shape_keys {
     probe[SpecRole] = "one";
     probe[AccessorsRole] = "one";
     jc_mz_shape_keys(id(probe));
-}
-
-impl jc_analyze(inputs: str, path: str, source: str, has_source: int) -> int {
-    _drop_stale_regions();
-    _drop_h(_JC.analysis_h);
-    _JC.analysis_h = 0;
-    status = ANALYSIS_CRASHED;
-    try {
-        outcome = run_kernel_analysis(
-            inputs, path, source if has_source != 0 else None, None, True
-        );
-        status = outcome.status;
-        text = outcome.to_json();
-    } except Exception as err {
-        text = AnalysisReport(
-            status=ANALYSIS_CRASHED, message=f"kernel analysis raised: {err}"
-        ).to_json();
-    }
-    _JC.analysis_h = PyUnicode_FromString(id(text));
-    return status;
-}
-
-impl jc_compile(inputs: str, path: str, source: str, has_source: int) -> int {
-    _drop_stale_regions();
-    _drop_h(_JC.compile_h);
-    _JC.compile_h = 0;
-    status = ANALYSIS_CRASHED;
-    try {
-        outcome = run_kernel_compile(
-            inputs, path, source if has_source != 0 else None, None, True
-        );
-        status = outcome.analysis.status;
-        text = outcome.to_json();
-    } except Exception as err {
-        text = CompileReport(
-            analysis=AnalysisReport(
-                status=ANALYSIS_CRASHED, message=f"kernel compile raised: {err}"
-            )
-        ).to_json();
-    }
-    _JC.compile_h = PyUnicode_FromString(id(text));
-    return status;
-}
-
-impl jc_take_compile -> int {
-    h = _JC.compile_h;
-    _JC.compile_h = 0;
-    return h;
-}
-
-impl jc_take_analysis -> int {
-    h = _JC.analysis_h;
-    _JC.analysis_h = 0;
-    return h;
 }
 
 impl jc_rc_debug(v: int) -> int {

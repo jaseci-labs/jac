@@ -18,7 +18,6 @@ impl kernel_compile(
     options: CompileOptions,
     source: (str | None) = None,
     in_process: bool = False,
-    isolated: bool = True,
     emit_closure: bool = False,
     emit_cached: bool = True,
     seeds: (list[PythonInterface] | None) = None
@@ -39,12 +38,11 @@ impl kernel_compile(
         outcome = CompileReport(
             analysis=other_compiler_report(path, snapshot.other_compiler)
         );
-    } elif in_process {
-        outcome = run_kernel_compile(snapshot.text(), path, source, snapshot);
     } else {
-        kernel = loaded_kernel(COMPILE_ENTRY);
-        outcome = CompileReport.from_json(
-            call_with_asker(kernel, COMPILE_ENTRY, snapshot, path, source, isolated)
+        outcome = call_compile(
+            KernelRequest(path=path, source=source, inputs=snapshot.inputs()),
+            snapshot,
+            in_process=in_process
         );
     }
     analysis = outcome.analysis;
@@ -88,12 +86,7 @@ impl kernel_route(program: JacProgram, path: str) -> tuple[bool, bool] {
     if kernel_compile_in_process() {
         return (True, True);
     }
-
-    if ensure_loaded() is None {
-        import from jaclang.compiler.backends.native.kernel_resolve {
-            refuse_unloadable
-        }
-        refuse_unloadable();
+    if loaded_kernel() is None {
         return (False, False);
     }
     return (True, False);

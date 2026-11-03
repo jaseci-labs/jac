@@ -19,7 +19,6 @@ def kernel_compile(
     options: CompileOptions,
     source: (str | None) = None,
     in_process: bool = False,
-    isolated: bool = True,
     emit_closure: bool = False,
     emit_cached: bool = True,
     seeds: (list[PythonInterface] | None) = None

@@ -14,7 +14,7 @@ glob HOST_ONLY_ANSWER: str = "host_only",
 class HostOnlyError(RuntimeError) {}
 
 obj HostAsker {
-    def ask(method: str, key: str) -> str abst;
+    def ask(method: str, key: str) -> dict[str, any] abst;
     def record_interface(program: JacProgram, module: Module, products: UnitProducts);
 }
 
@@ -101,7 +101,6 @@ obj KernelHost(HostServices) {
         analyses: dict[str, ModuleAnalysis] = {},
         units: dict[str, UnitProducts] = {},
         asker: (HostAsker | None) = None,
-        kernel_asker: bool = False,
         _asked: set[str] = set(),
         grown: set[str] = set(),
         source_reads: dict[str, str] = {},

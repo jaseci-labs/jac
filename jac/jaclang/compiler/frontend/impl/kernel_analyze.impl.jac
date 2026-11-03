@@ -72,14 +72,6 @@ impl AnalysisReport.to_dict -> dict[str, any] {
     };
 }
 
-impl AnalysisReport.to_json -> str {
-    return json.dumps(self.to_dict(), sort_keys=True);
-}
-
-impl AnalysisReport.from_json(text: str) -> AnalysisReport {
-    return AnalysisReport.from_dict(json_map(json.loads(text)));
-}
-
 impl AnalysisReport.from_dict(raw: dict[str, any]) -> AnalysisReport {
     return AnalysisReport(
         status=json_int(raw.get("status"), ANALYSIS_CRASHED),
@@ -260,13 +252,12 @@ impl run_kernel_session(
     path: str,
     source: (str | None),
     with_codegen: bool,
-    asker: (HostAsker | None) = None,
-    kernel_asker: bool = False
+    asker: (HostAsker | None) = None
 ) -> KernelRun {
     if inputs.package_root {
         set_package_root(inputs.package_root);
     }
-    host = KernelHost(inputs=inputs, asker=asker, kernel_asker=kernel_asker);
+    host = KernelHost(inputs=inputs, asker=asker);
     host.census.trace = bool(os.environ.get("JAC_KERNEL_TRACE"));
     run = KernelRun(host=host, program=JacProgram());
     previous = active_host();
@@ -326,31 +317,6 @@ impl run_kernel_session(
     return run;
 }
 
-impl decode_inputs(inputs_json: str) -> (KernelInputs | str) {
-    kernel_trace("decode inputs");
-    try {
-        return KernelInputs.from_json(inputs_json);
-    } except Exception as err {
-        return f"undecodable kernel inputs: {err}";
-    }
-}
-
-impl run_kernel_analysis(
-    inputs_json: str,
-    path: str,
-    source: (str | None),
-    asker: (HostAsker | None) = None,
-    kernel_asker: bool = False
-) -> AnalysisReport {
-    inputs = decode_inputs(inputs_json);
-    if isinstance(inputs, str) {
-        return AnalysisReport(status=ANALYSIS_CRASHED, message=inputs, entry_path=path);
-    }
-    return run_kernel_session(inputs, path, source, False, asker, kernel_asker).outcome(
-        path
-    );
-}
-
 impl CompileReport.unit(path: str) -> (UnitProducts | None) {
     resolved = os.path.realpath(path);
     for candidate in self.units {
@@ -361,41 +327,16 @@ impl CompileReport.unit(path: str) -> (UnitProducts | None) {
     return None;
 }
 
-impl CompileReport.to_json -> str {
-    return json.dumps(
-        {
-            "analysis": self.analysis.to_dict(),
-            "units": [products_record(u) for u in self.units]
-        },
-        sort_keys=True
-    );
+impl CompileReport.to_dict -> dict[str, any] {
+    return {
+        "analysis": self.analysis.to_dict(),
+        "units": [products_record(u) for u in self.units]
+    };
 }
 
-impl CompileReport.from_json(text: str) -> CompileReport {
-    raw = json_map(json.loads(text));
+impl CompileReport.from_dict(raw: dict[str, any]) -> CompileReport {
     return CompileReport(
         analysis=AnalysisReport.from_dict(json_map(raw.get("analysis"))),
         units=[products_from_record(u) for u in json_maps(raw.get("units"))]
-    );
-}
-
-impl run_kernel_compile(
-    inputs_json: str,
-    path: str,
-    source: (str | None),
-    asker: (HostAsker | None) = None,
-    kernel_asker: bool = False
-) -> CompileReport {
-    inputs = decode_inputs(inputs_json);
-    if isinstance(inputs, str) {
-        return CompileReport(
-            analysis=AnalysisReport(
-                status=ANALYSIS_CRASHED, message=inputs, entry_path=path
-            )
-        );
-    }
-    run = run_kernel_session(inputs, path, source, True, asker, kernel_asker);
-    return CompileReport(
-        analysis=run.outcome(path), units=list(run.host.units.values())
     );
 }

@@ -9,7 +9,6 @@ glob NOT_BUILT: str = "not built",
 
 obj ResolvedKernel {
     has lib_path: str,
-        layout: dict[str, any],
         source: str,
         plan_digest: str = "";
 }
@@ -93,8 +92,6 @@ obj KernelArtifact(Artifact) {
     def for_host -> bool;
     override def build(log: Callable[[str], None], force: bool, exact: bool);
 }
-
-def refuse_unloadable;
 
 def resolve_kernel -> (ResolvedKernel | None);
 

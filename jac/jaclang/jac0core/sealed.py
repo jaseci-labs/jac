@@ -68,7 +68,7 @@ kind/capabilities/entry/payloads)::
         },
         "artifact": {                   # the one linked artifact
           "path": "compiler/libjac_compiler.so",  # pkg-relative
-          "sha256": "...", "layout_digest": "...", "plan_digest": "...",
+          "sha256": "...", "plan_digest": "...",
           "triple": "x86_64-unknown-linux-gnu", "mode": "objects"
         }
       }
@@ -309,11 +309,6 @@ class SealedImage:
         if str(sidecar.get("plan_digest", "")) != str(record.get("plan_digest", "")):
             raise RuntimeError(
                 f"sealed image: native artifact {path}: sidecar plan digest "
-                "disagrees with the manifest"
-            )
-        if str(sidecar.get("layout_digest", "")) != str(record.get("layout_digest", "")):
-            raise RuntimeError(
-                f"sealed image: native artifact {path}: sidecar layout digest "
                 "disagrees with the manifest"
             )
         for src_rel, unit in self.native_units().items():

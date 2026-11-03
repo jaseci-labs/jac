@@ -526,7 +526,7 @@ impl native_products(module: uni.Module, products: UnitProducts) {
 impl products_record(products: UnitProducts) -> dict[str, any] {
     return {
         "path": products.path,
-        "jcir": base64.b64encode(products.jcir).decode("ascii"),
+        "jcir": products.jcir,
         "mtir": products.mtir,
         "interop": products.interop,
         "client": products.client,
@@ -553,7 +553,7 @@ impl products_record(products: UnitProducts) -> dict[str, any] {
 impl products_from_record(raw: dict[str, any]) -> UnitProducts {
     return UnitProducts(
         path=str(raw.get("path", "")),
-        jcir=base64.b64decode(str(raw.get("jcir", "")).encode("ascii")),
+        jcir=bytes(raw.get("jcir", b"")),
         mtir=str(raw.get("mtir", "")),
         interop=str(raw.get("interop", "")),
         client=str(raw.get("client", "")),

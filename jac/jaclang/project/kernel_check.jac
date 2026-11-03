@@ -13,8 +13,6 @@ obj KernelCheck {
 
 class KernelCheckError(RuntimeError) {}
 
-def analysis_kernel -> any;
-
 def loaded_pass_type(name: str) -> (type | None);
 
 def pass_type_named(name: str) -> type;

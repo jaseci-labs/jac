@@ -1,5 +1,4 @@
 import base64;
-import json;
 
 glob KERNEL_INPUTS_VERSION: int = 2,
      KEY_SEP: str = "\x1f";
@@ -157,9 +156,6 @@ obj KernelInputs {
         npm: list[NpmAnswer] = [],
         declared: list[DeclaredDependencies] = [],
         python_ifaces: list[PythonInterface] = [];
-
-    def to_json -> str;
-    static def from_json(text: str) -> KernelInputs;
 }
 
 def resolution_key(target: str, base_path: str, string_spec: bool) -> str;

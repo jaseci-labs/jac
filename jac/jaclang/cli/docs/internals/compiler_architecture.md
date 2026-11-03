@@ -203,12 +203,12 @@ Every module parses through the staged front end: the lexer and parser in
 `compiler/frontend/parser/`, then the ir-gen schedule pass by pass. The
 native scope (`compiler/native_scope.jac`) names the compiler modules the
 kernel links; each is a native unit whose interface (`SEC_NIFACE`) and
-object (`SEC_NOBJ`, materialized on demand) live in its module JIR, and `libjac_compiler` is the
-link plan's artifact over them (`compiler/backends/native/link_plan.jac`),
-resolved by `kernel_resolve.jac`. The kernel analyzes (`jc_analyze`) and
-compiles (`jc_compile`) whole modules from a snapshot of the inputs the host
-sends, and returns diagnostics and compile products as records; see
-`compiler/README.md` for the boundary.
+object (`SEC_NOBJ`, materialized on demand) live in its module JIR, and the
+`jac_kernel` extension module is the link plan's artifact over them
+(`compiler/backends/native/link_plan.jac`), resolved by `kernel_resolve.jac`
+and loaded by `project/kernel_call.jac`. The kernel checks and compiles whole
+modules from the request the host sends, and returns diagnostics and compile
+products as plain Python data; see `compiler/README.md` for the boundary.
 
 ---
 

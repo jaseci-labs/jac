@@ -1,4 +1,3 @@
-import json;
 import os;
 import sys;
 
@@ -66,8 +65,6 @@ obj AnalysisReport {
     def module(path: str) -> (ModuleReport | None);
     def entry_module -> (ModuleReport | None);
     def to_dict -> dict[str, any];
-    def to_json -> str;
-    static def from_json(text: str) -> AnalysisReport;
     static def from_dict(raw: dict[str, any]) -> AnalysisReport;
 }
 
@@ -109,33 +106,14 @@ def run_kernel_session(
     path: str,
     source: (str | None),
     with_codegen: bool,
-    asker: (HostAsker | None) = None,
-    kernel_asker: bool = False
+    asker: (HostAsker | None) = None
 ) -> KernelRun;
-
-def decode_inputs(inputs_json: str) -> (KernelInputs | str);
-
-def run_kernel_analysis(
-    inputs_json: str,
-    path: str,
-    source: (str | None),
-    asker: (HostAsker | None) = None,
-    kernel_asker: bool = False
-) -> AnalysisReport;
 
 obj CompileReport {
     has analysis: AnalysisReport,
         units: list[UnitProducts] = [];
 
     def unit(path: str) -> (UnitProducts | None);
-    def to_json -> str;
-    static def from_json(text: str) -> CompileReport;
+    def to_dict -> dict[str, any];
+    static def from_dict(raw: dict[str, any]) -> CompileReport;
 }
-
-def run_kernel_compile(
-    inputs_json: str,
-    path: str,
-    source: (str | None),
-    asker: (HostAsker | None) = None,
-    kernel_asker: bool = False
-) -> CompileReport;

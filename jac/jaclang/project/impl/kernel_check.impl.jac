@@ -1,17 +1,3 @@
-impl analysis_kernel -> any {
-    kernel = ensure_loaded();
-    if kernel is not None and not hasattr(kernel.lib, "jc_analyze") {
-        import from jaclang.compiler.backends.native.kernel_resolve { KernelLoadError }
-        raise KernelLoadError(
-            "jac: the native compiler kernel cannot analyze\n"
-            f"  kernel: {kernel.lib_path}\n"
-            "  error:  the loaded kernel has no jc_analyze\n"
-            "  fix:    rebuild it with `jac native build kernel --force`"
-        );
-    }
-    return kernel;
-}
-
 impl loaded_pass_type(name: str) -> (type | None) {
     for (mod_name, mod) in list(sys.modules.items()) {
         if mod is None or not mod_name.startswith("jaclang.compiler.") {
@@ -89,12 +75,7 @@ impl kernel_check(
     if is_compiler_source_path(path) {
         return KernelCheck();
     }
-    kernel = analysis_kernel();
-    if kernel is None {
-        import from jaclang.compiler.backends.native.kernel_resolve {
-            refuse_unloadable
-        }
-        refuse_unloadable();
+    if loaded_kernel() is None {
         return KernelCheck();
     }
     record_path = None if parity else _check_record_path(program, path, options);
@@ -110,7 +91,7 @@ impl kernel_check(
     }
     try {
         outcome = kernel_analysis(
-            active_host(), program, os.path.realpath(path), options, isolated=True
+            active_host(), program, os.path.realpath(path), options
         );
     } except Exception as err {
         if not parity {

@@ -212,7 +212,7 @@ impl KernelHost.index_answers {
 
 impl KernelHost.ask(method: str, key: str) -> bool {
     asker = self.asker;
-    if self.fallback is not None or (asker is None and not self.kernel_asker) {
+    if self.fallback is not None or asker is None {
         return False;
     }
     tag = method + KEY_SEP + key;
@@ -221,17 +221,10 @@ impl KernelHost.ask(method: str, key: str) -> bool {
     }
     self._asked.add(tag);
     self.census.count("ask");
-    text = "";
-    if asker is not None {
-        text = asker.ask(method, key);
-    } else {
-        import from jaclang.compiler.jc_ask { ask_host }
-        text = ask_host(method, key);
-    }
-    if not text {
+    raw = asker.ask(method, key);
+    if not raw {
         return False;
     }
-    raw = json_map(json.loads(text));
     merge_answers(self.inputs, raw);
     self.index_answers();
     reason = str(raw.get(HOST_ONLY_ANSWER, ""));

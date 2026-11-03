@@ -27,7 +27,7 @@ impl read_sidecar(lib_path: str) -> (dict[str, any] | None) {
     } except Exception {
         return None;
     }
-    if not isinstance(data, dict) or not isinstance(data.get("classes"), dict) {
+    if not isinstance(data, dict) {
         return None;
     }
     return data;
@@ -97,7 +97,6 @@ impl _from_sealed_image -> (ResolvedKernel | None) {
     }
     return ResolvedKernel(
         lib_path=lib_path,
-        layout=sidecar["classes"],
         source="sealed",
         plan_digest=str(record.get("plan_digest", ""))
     );
@@ -377,29 +376,6 @@ impl KernelArtifact.build(log: Callable[[str], None], force: bool, exact: bool) 
     build_kernel(kernel_path_for(spec), log=log, spec=spec);
 }
 
-impl refuse_unloadable {
-    failed = load_failure();
-    if failed is None {
-        return;
-    }
-    (lib_path, source, err) = failed;
-    if source in ("sealed", "kit") {
-        remedy = "this jac installation is damaged; reinstall jac";
-    } else {
-        remedy = (
-            "rebuild it with `jac native build kernel --force`, or delete "
-            f"{lib_path} and {lib_path}{LAYOUT_SIDECAR_SUFFIX} to compile on the "
-            "bytecode compiler"
-        );
-    }
-    raise KernelLoadError(
-        "jac: the native compiler kernel cannot be loaded\n"
-        f"  kernel: {lib_path}\n"
-        f"  error:  {err}\n"
-        f"  fix:    {remedy}"
-    );
-}
-
 impl resolve_kernel -> (ResolvedKernel | None) {
     found = resolve("kernel").found;
     if found is None {
@@ -407,7 +383,6 @@ impl resolve_kernel -> (ResolvedKernel | None) {
     }
     return ResolvedKernel(
         lib_path=found.path,
-        layout=found.record["classes"],
         source=found.source.value,
         plan_digest=str(found.record.get("plan_digest", ""))
     );

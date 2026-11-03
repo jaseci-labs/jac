@@ -1300,13 +1300,11 @@ impl seal_native(
         unit_records[rel] = {"jir": mod_entry["jir"], "iface_digest": u.digest};
     }
     console.print(
-        f"  Native artifact: {artifact_rel} (plan {result.plan_digest[:12]}, "
-        f"layout {result.layout_digest[:12]})"
+        f"  Native artifact: {artifact_rel} (plan {result.plan_digest[:12]})"
     );
     artifact: dict[str, any] = {
         "path": Path(artifact_rel).as_posix(),
         "sha256": result.sha256,
-        "layout_digest": result.layout_digest,
         "plan_digest": result.plan_digest,
         "triple": plan.triple,
         "mode": plan.mode
@@ -1387,7 +1385,6 @@ impl adopt_kernel(
         "artifact": {
             "path": Path(artifact_rel).as_posix(),
             "sha256": sha,
-            "layout_digest": str(sidecar.get("layout_digest", "")),
             "plan_digest": str(sidecar.get("plan_digest", "")),
             "triple": str(sidecar.get("triple", "")),
             "mode": str(sidecar.get("link_mode", ""))

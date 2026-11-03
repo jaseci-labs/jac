@@ -567,12 +567,7 @@ graph import {
             unit_drift
         },
         dist.precompile_bytecode.seal_native { kernel_lib_name },
-    ]
-    compiler.backends.native.kernel_resolve --> [
-        project.kernel_check.analysis_kernel { KernelLoadError },
-        project.kernel_check.kernel_check | project.kernel_compile.kernel_route {
-            refuse_unloadable
-        },
+        project.kernel_call { KernelLoadError, resolve_kernel },
     ]
     compiler.backends.native.kernel_stage0 ++> cli.commands.native {
         plan_kernel_prefix
@@ -1167,24 +1162,24 @@ graph import {
         install_host
     }
     compiler.frontend.kernel_analyze ++> [
+        project.kernel_call { AnalysisReport, CompileReport },
         project.kernel_check { AnalysisDiag, AnalysisReport, DiagSpan },
         project.kernel_compile {
             ANALYSIS_CRASHED,
             AnalysisReport,
             CompileReport,
-            kernel_trace,
-            run_kernel_compile
+            kernel_trace
         },
         project.kernel_snapshot {
             ANALYSIS_CRASHED,
             ANALYSIS_OK,
             AnalysisReport,
-            analysis_report,
-            run_kernel_analysis
+            analysis_report
         },
     ]
     type compiler.frontend.kernel_analyze ++> project.compiler_host { CompileReport }
     compiler.frontend.kernel_host ++> [
+        project.kernel_call { HostAsker },
         project.kernel_compile.kernel_compile_reported { replay_event_rows },
         project.kernel_snapshot {
             EMIT_QUESTION,
@@ -1216,7 +1211,6 @@ graph import {
     ]
     compiler.frontend.parser.frontend ++> [
         cli.commands.architecture._parse_imports | studio.gate { parse_woven },
-        project.compiler_host.ProjectHost.native_parse { finish_parse },
         project.compiler_host.ProjectHost.woven_module { annex_sources, parse_woven },
         studio.model { annex_sources, parse },
     ]
@@ -1325,11 +1319,15 @@ graph import {
         | lsp.server.engine
         | studio.gate
         | studio.model { unparse_node }
-    compiler.native_compiler ++> project.kernel_check.analysis_kernel
-        | project.kernel_compile.kernel_route
-        | project.kernel_snapshot.loaded_kernel { ensure_loaded }
-    compiler.native_compiler as _jc ++> project.compiler_host.ProjectHost.native_parse;
-    type compiler.native_compiler ++> project.kernel_snapshot { NativeCompiler }
+    compiler.kernel_api ++> [
+        project.kernel_call {
+            KERNEL_API_VERSION,
+            KernelRequest,
+            check_request,
+            compile_request
+        },
+        project.kernel_compile | project.kernel_snapshot { KernelRequest },
+    ]
     compiler.native_scope ++> [
         dist.precompile_bytecode._compiler_kernel_units {
             kernel_root_path,
@@ -1343,7 +1341,6 @@ graph import {
         cli.commands.architecture { import_form },
         studio.model { merge_annex_into },
     ]
-    type compiler.passes.annex_weave ++> project.compiler_host { WovenAnnex }
     compiler.passes.context ++> [
         lsp.server.utils | project.kernel_check { Alert },
         project.kernel_check.loaded_pass_type { CompilerPass },
@@ -1737,7 +1734,7 @@ graph import {
         artifacts.router.resolve { resolution_in_flight },
     ]
     jac0core.artifact_registry --> compiler.driver.compiler.JacCompiler.ensure_stub_catalog
-        | compiler.native_compiler.ensure_loaded { resolution_in_flight }
+        | project.kernel_call.loaded_kernel { resolution_in_flight }
     jac0core.cache_paths ++> [
         artifacts.router.publish { FileLock, atomic_write },
         cache.home { get_cache_home },
@@ -2510,9 +2507,8 @@ graph import {
             NodeArchetype,
             WalkerAnchor
         },
-        compiler.native_compiler.NativeCompiler._register
-            | data.query_planner._acl_residual { NodeArchetype },
         data.query_planner { Anchor, anchor_key },
+        data.query_planner._acl_residual { NodeArchetype },
         data.query_planner._edge_residual { EdgeArchetype },
         data.query_planner._trusted_names { Archetype, Root },
         data.serializer {
@@ -2529,9 +2525,6 @@ graph import {
         lib.jaclib { GenericEdge, ObjectSpatialFunction as DSFunc, Root },
         server.session { Anchor, EdgeAnchor, NodeAnchor, Root },
     ]
-    runtime.archetype --> compiler.native_compiler.NativeCompiler._register {
-        NodeAnchor
-    }
     runtime.build_services ++> [
         client.runtime_source.client_runtime_cl_basename
             | scale.runtime.fleet._compiled_app_edges
@@ -2692,16 +2685,12 @@ graph import {
         },
         byllm.systemone._state_value { fields as record_fields, is_record },
         cli.NonGPT { fields as dc_fields, is_record },
-        compiler.native_compiler.NativeCompiler._field_annotations { fields },
-        compiler.native_compiler.NativeCompiler._register_defaults { fields },
         comptime { fields as _record_fields, is_record as _is_record },
     ]
     runtime.object_model ++> [
-        cli.NonGPT
-            | compiler.native_compiler.NativeCompiler._register_defaults
-            | data.contracts
-            | data.serializer
-            | scale.memory.context { MISSING },
+        cli.NonGPT | data.contracts | data.serializer | scale.memory.context {
+            MISSING
+        },
         comptime { MISSING as _MISSING, ObjectField as _field },
         scale.sdk.spec.DeploySpec.from_config { fields },
         scale.server.sso_ext | scale.sso.oauth_session { asdict },
@@ -2734,7 +2723,6 @@ graph import {
         | compiler.backends.native.na_ir_gen_pass
         | compiler.backends.py.jcir_gen_pass.JcirGenPass.exit_module
         | compiler.jc_unit._alert_tag
-        | compiler.native_compiler
         | compiler.passes.osp_analysis { stable_osp_tag }
     runtime.osp_tag --> [
         compiler.backends.es.esast_gen_pass.EsastGenPass._edge_tag_literal {
@@ -2801,6 +2789,16 @@ graph import {
         | compiler.driver.build_services
         | data.type_identity
         | server.assembly { PreparedApplication }
+    runtime.python.bindings.module ++> compiler.kernel_module {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks
+    }
+    runtime.python.bindings.plain_data ++> compiler.kernel_module {
+        native_value,
+        python_value
+    }
     runtime.python.capi ++> [
         compiler.backends.py.jacpython.native_api {
             boundary_failure,
@@ -2816,6 +2814,12 @@ graph import {
             boundary_failure
         },
         compiler.frontend.python.source_input { boundary_failure, read_buffer },
+        compiler.kernel_module {
+            boundary_failure,
+            object_error,
+            object_tuple,
+            text_object
+        },
     ]
     runtime.python.characters ++> [
         compiler.frontend.python.parser_actions.pa_decode_escape_body {
@@ -2959,6 +2963,15 @@ graph import {
             jacpy_source_kind,
             jacpy_utf8
         },
+        compiler.kernel_module {
+            NULL,
+            PyExc_TypeError,
+            PyObject,
+            PyObject_CallObject,
+            Py_None,
+            jacpy_module_add_int_text,
+            jacpy_release
+        },
     ]
     runtime.python.layouts ++> compiler.backends.py.jacpython.native_bridge {
         ModuleDef,
@@ -2993,7 +3006,9 @@ graph import {
             parse_float,
             parse_integer
         },
-        compiler.frontend.python.source_encoding { take_error_text },
+        compiler.frontend.python.source_encoding | compiler.kernel_module {
+            take_error_text
+        },
         compiler.frontend.python.source_input { take_buffer, take_error_text },
     ]
     runtime.python.native_services --> [
@@ -5480,7 +5495,6 @@ graph import compiler {
         tests.xbackend_equiv._prelude_cwd { stage_jac_prelude_package },
         tests.xbackend_equiv.run_js_module_fixture { stage_jac_prelude_package },
     ]
-    backends.native.kernel_resolve --> native_compiler.ensure_loaded { resolve_kernel }
     backends.native.link_plan --> [
         driver.compiler.JacCompiler._load_native_from_cache { jit_engine_for_cached },
         driver.nativecache.NativeUnitRegistry.compile_unit { build_link_plan },
@@ -6032,11 +6046,7 @@ graph import compiler {
         },
     ]
     driver.native_iface ++> [
-        backends.native.link_plan {
-            NativeIface,
-            layout_digest as layout_digest_of,
-            merge_class_layouts
-        },
+        backends.native.link_plan { NativeIface, merge_class_layouts },
         backends.native.na_ir_gen_pass { NativeExport, NativeIface },
         backends.native.na_ir_gen_pass.NaIRGenPass._export_native_iface {
             NativeClassLayout,
@@ -6415,8 +6425,9 @@ graph import compiler {
             OSP_KERNEL_REL,
             kernel_unit_path
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._emit_class_display_fn
-            | native_compiler.NativeCompiler._resolve_classes { NATIVE_ARCH_SCOPE_SEP },
+        backends.native.na_ir_gen_pass.NaIRGenPass._emit_class_display_fn {
+            NATIVE_ARCH_SCOPE_SEP
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._emit_glob_init_func {
             native_glob_init_name
         },
@@ -7035,8 +7046,7 @@ graph import compiler {
             E5102,
             W5096
         },
-        driver.ifacecache._alert_from_record
-            | native_compiler.NativeCompiler.take_pass_results { DIAGNOSTICS },
+        driver.ifacecache._alert_from_record { DIAGNOSTICS },
         driver.program.JacProgram.module_scoped_errors { Category },
         passes.access_check_pass {
             E2034,
@@ -7520,13 +7530,11 @@ graph import compiler {
         kernel_target.target_pkg_root { package_root },
     ]
     type frontend.host ++> driver.compiler { HostServices }
-    frontend.kernel_analyze ++> jc_unit {
-        ANALYSIS_CRASHED,
-        AnalysisReport,
-        CompileReport,
-        run_kernel_analysis,
-        run_kernel_compile
-    }
+    frontend.kernel_analyze ++> [
+        kernel_api { AnalysisReport, CompileReport, run_kernel_session },
+        kernel_module { ANALYSIS_CRASHED, AnalysisReport, CompileReport },
+    ]
+    frontend.kernel_host ++> kernel_api | kernel_module { HostAsker }
     frontend.kernel_inputs ++> [
         driver.application._reusable_interfaces { PythonInterface },
         driver.unit_products.client_artifact_from_json {
@@ -7544,6 +7552,7 @@ graph import compiler {
         },
         driver.unit_products.products_from_record { json_str_list },
         driver.unit_products.str_list_map { json_map, json_str_list },
+        kernel_api { KernelInputs, inputs_from_dict, inputs_to_dict, json_map },
     ]
     frontend.loop_links ++> [
         backends.es.esast_gen_pass {
@@ -7632,7 +7641,6 @@ graph import compiler {
         jc_unit { CommentData, SrcDiag },
         tools.grammar_extract_pass { BUILTIN_TYPE_KINDS, TokenKind },
     ]
-    type frontend.parser.tokens ++> native_compiler { CommentData, SrcDiag }
     frontend.python.annotation_unparse ++> backends.py.jacpython.cpy_codegen {
         render_annotation
     }
@@ -7959,11 +7967,7 @@ graph import compiler {
             | passes.ownership_check_pass
             | passes.region_infer_pass
             | tools.jac_formatter_pass { BodyRole, Kid },
-        jc_unit | native_compiler.NativeCompiler._register {
-            AccessorsRole,
-            BodyRole,
-            SpecRole
-        },
+        jc_unit { AccessorsRole, BodyRole, SpecRole },
         passes.annex_weave | passes.static_analysis_pass { BodyRole },
         passes.pyast_load_pass {
             Kid,
@@ -9570,14 +9574,18 @@ graph import compiler {
         },
     ]
     type intrinsic_registry ++> symbol_utils { IntrinsicRegistry }
-    jc_ask ++> jc_unit { set_host_callback, take_host_answer }
-    jc_ask --> frontend.kernel_host.KernelHost.ask { ask_host }
     jc_materialize ++> jc_unit {
         hint_commentdata,
         hint_srcdiag,
         jc_mz_obj,
         jc_mz_run,
         jc_mz_shape_keys
+    }
+    kernel_api ++> kernel_module {
+        KERNEL_API_VERSION,
+        KernelRequest,
+        check_request,
+        compile_request
     }
     kernel_target ++> [
         backends.native.kernel_stage0 {
@@ -9629,9 +9637,6 @@ graph import compiler {
         passes.placement_pass.build_native_legality { binding_gaps },
     ]
     native_bindings --> passes.placement_pass.build_native_legality { import_gaps }
-    native_compiler ++> backends.native.kernel_resolve.refuse_unloadable {
-        load_failure
-    }
     native_scope ++> [
         backends.native.kernel_resolve.kernel_plan { kernel_root_path },
         backends.native.kernel_stage0.running_kernel_target {
@@ -9662,9 +9667,7 @@ graph import compiler {
         frontend.parser.frontend { WovenAnnex, merge_annex_into },
         frontend.parser.frontend.parse_woven | jc_unit { merge_annex_into },
     ]
-    type passes.annex_weave ++> frontend.host | frontend.kernel_host | native_compiler {
-        WovenAnnex
-    }
+    type passes.annex_weave ++> frontend.host | frontend.kernel_host { WovenAnnex }
     passes.ast_validation_pass ++> driver.pipeline { ASTValidationPass }
     passes.boundary_analysis_pass ++> driver.pipeline { BoundaryAnalysisPass }
     passes.capability_check_pass ++> [
@@ -9708,14 +9711,10 @@ graph import compiler {
         driver.pipeline { CompilerPass, PassSchedule },
         driver.progstate { Alert, CompileContext, PassResult },
         jc_unit | types.type_evaluator { CompileContext },
-        native_compiler.NativeCompiler.take_pass_results {
-            PassResult as CompletedPassResult
-        },
     ]
     passes.context --> driver.compiler.assemble_jcir { Alert }
     type passes.context ++> [
         driver.compiler { Alert },
-        native_compiler { Alert, PassResult },
         symbol_utils { CompilerPass },
     ]
     passes.decl_impl_match_pass ++> driver.pipeline { DeclImplMatchPass }
@@ -12104,7 +12103,6 @@ graph import compiler.frontend {
             LocalResolution,
             NpmAnswer,
             PythonInterface,
-            json_map,
             local_key,
             merge_answers,
             pair_key,
@@ -14871,19 +14869,21 @@ graph import project {
         config { PackageDep },
         config.JacConfig.merge_dependency_tables { split_dependency_table },
     ]
+    kernel_call ++> [
+        kernel_check | kernel_compile.kernel_route { loaded_kernel },
+        kernel_compile.kernel_compile { call_compile },
+        kernel_snapshot.kernel_analysis { call_check },
+    ]
     kernel_check ++> kernel_compile.kernel_compile_reported { alert_of }
     kernel_compile ++> compiler_host.ProjectHost.kernel_compile { host_kernel_compile }
     kernel_snapshot ++> [
         compiler_host.ProjectHost.kernel_inputs { session_inputs },
         kernel_check { host_deferred, kernel_analysis },
         kernel_compile {
-            COMPILE_ENTRY,
             KernelAnalysisError,
             _IFACE_BUILT,
-            call_with_asker,
             host_deferred,
             kernel_snapshot,
-            loaded_kernel,
             other_compiler_report
         },
     ]
@@ -16376,6 +16376,19 @@ graph import runtime.python {
         bindings.json { boundary_failure, object_error, object_tuple, type_name },
         bindings.operator { boundary_failure, object_error, text_object },
         bindings.pickle { builtin_kind, builtin_type, object_error, text_value },
+        bindings.plain_data {
+            boundary_failure,
+            builtin_kind,
+            builtin_kind_of,
+            dict_set_text,
+            object_error,
+            read_buffer,
+            required,
+            text_object,
+            text_value,
+            type_name,
+            write_buffer
+        },
         bindings.posix | modules.locale { dict_set_text, object_error },
         bindings.stat | bindings.syslog | modules.lzma | modules.stat | modules.zstd {
             boundary_failure,
@@ -17197,6 +17210,27 @@ graph import runtime.python {
             Py_TYPE,
             jacpy_is_unicode,
             jacpy_release
+        },
+        bindings.plain_data {
+            PyBool_FromLong,
+            PyDict_New,
+            PyDict_Next,
+            PyErr_Occurred,
+            PyExc_OverflowError,
+            PyExc_TypeError,
+            PyFloat_AsDouble,
+            PyFloat_FromDouble,
+            PyList_Append,
+            PyList_New,
+            PyLong_AsLongLongAndOverflow,
+            PyLong_FromLongLong,
+            PyObject,
+            PyObject_IsTrue,
+            Py_NewRef,
+            Py_None,
+            jacpy_release,
+            jacpy_sequence_item,
+            jacpy_sequence_size
         },
         bindings.posix {
             PyDict_New,

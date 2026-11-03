@@ -90,14 +90,6 @@ impl ManifestSets.is_native_lowered(rel: str) -> bool {
     return False;
 }
 
-impl KernelInputs.to_json -> str {
-    return json.dumps(inputs_to_dict(self), sort_keys=True);
-}
-
-impl KernelInputs.from_json(text: str) -> KernelInputs {
-    return inputs_from_dict(json_map(json.loads(text)));
-}
-
 impl resolution_key(target: str, base_path: str, string_spec: bool) -> str {
     flag = "1" if string_spec else "0";
     return flag + KEY_SEP + target + KEY_SEP + base_path;

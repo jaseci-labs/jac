@@ -2,10 +2,7 @@ import os;
 import time;
 
 glob STAGE0_UNKNOWN_FORMAT: int = 3,
-     KERNEL_ENTRY_SOURCES: tuple[str, ...] = (
-         "compiler/jc_unit.jac",
-         "compiler/jc_materialize.jac"
-     );
+     KERNEL_ENTRY_SOURCES: tuple[str, ...] = ("compiler/kernel_module.jac", );
 
 class KernelEntryError(RuntimeError) {}
 

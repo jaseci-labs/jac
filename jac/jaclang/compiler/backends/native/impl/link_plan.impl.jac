@@ -118,12 +118,8 @@ impl LinkPlan.plan_digest -> str {
     return h.hexdigest();
 }
 
-impl LinkPlan.merged_layout -> dict[str, any] {
-    return merge_class_layouts([u.iface for u in self.units]);
-}
-
-impl LinkPlan.layout_digest -> str {
-    return layout_digest_of(self.merged_layout());
+impl LinkPlan.check_layouts {
+    merge_class_layouts([u.iface for u in self.units]);
 }
 
 impl LinkPlan.demoted_symbols -> list[str] {
@@ -1021,14 +1017,9 @@ impl _write_sidecar(
     action_digest: str = "",
     artifact_sha256: str = ""
 ) -> tuple[dict[str, any], str] {
-    classes = plan.merged_layout();
-    ldigest = layout_digest_of(classes);
-
     unit_paths = [u.path for u in plan.units];
     sidecar = {
-        "classes": classes,
         "plan_digest": plan_digest,
-        "layout_digest": ldigest,
         "units": unit_paths,
         "unit_ids": [native_unit_identity(p) for p in unit_paths],
         "compiler_digest": native_producer_digest(plan.options.kernel_build),
@@ -1050,7 +1041,6 @@ impl _write_sidecar(
         output_path + ".layout.json",
         json.dumps(sidecar, sort_keys=True).encode("utf-8")
     );
-    return (classes, ldigest);
 }
 
 impl _sha256_of(path: str) -> str {
@@ -1079,10 +1069,6 @@ impl _reuse_artifact(
             or sidecar.get("action_digest") != action_digest {
             return None;
         }
-        classes = plan.merged_layout();
-        if sidecar.get("classes") != classes {
-            return None;
-        }
         digest = _sha256_of(output_path);
         if sidecar.get("artifact_sha256") != digest {
             return None;
@@ -1090,9 +1076,7 @@ impl _reuse_artifact(
         return LinkResult(
             output_path=output_path,
             plan_digest=plan.plan_digest(),
-            layout_digest=layout_digest_of(classes),
             sha256=digest,
-            classes=classes,
             units=[u.path for u in plan.units],
             reused=True
         );
@@ -1308,15 +1292,12 @@ impl link_artifact(
     _log_phase(log, f"{platform} link", link_started);
     digest = plan.plan_digest();
     artifact_sha256 = _sha256_of(output_path);
-    (classes, ldigest) = _write_sidecar(
-        plan, output_path, digest, action_digest, artifact_sha256
-    );
+    plan.check_layouts();
+    _write_sidecar(plan, output_path, digest, action_digest, artifact_sha256);
     return LinkResult(
         output_path=output_path,
         plan_digest=digest,
-        layout_digest=ldigest,
         sha256=artifact_sha256,
-        classes=classes,
         units=[u.path for u in plan.units]
     );
 }
@@ -1426,13 +1407,12 @@ impl link_wasm(
     wasm_bytes = emit_wasm_from_ir(merged_ir, app_imports=imports);
     atomic_write(output_path, wasm_bytes, mode=0o644);
     digest = plan.plan_digest();
-    (classes, ldigest) = _write_sidecar(plan, output_path, digest);
+    plan.check_layouts();
+    _write_sidecar(plan, output_path, digest);
     return LinkResult(
         output_path=output_path,
         plan_digest=digest,
-        layout_digest=ldigest,
         sha256=_sha256_of(output_path),
-        classes=classes,
         units=[u.path for u in plan.units]
     );
 }
