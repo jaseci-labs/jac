@@ -319,6 +319,39 @@ test "a dependency of a default run falls back the way the entry does" {
     }
 }
 
+"""A forced native run keeps its options through the engine link, so the failed
+run leaves no soft dependency in the cache for the next run to pick up (#10380)."""
+test "a forced native run that fails keeps failing" {
+    import subprocess;
+    import from tests.support { jac_command }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'dep.jac').write_text(
+            'def lines(path: str) -> int {\n'
+            '    with open(path, "r", encoding="utf-8", errors="ignore") as f {\n'
+            '        return len(f.read().splitlines());\n    }\n}\n\n'
+            'def first_word(text: str) -> str {\n    return text.split(" ")[0];\n}\n'
+        );
+        (base / 'main.jac').write_text(
+            'import from dep { first_word }\n\n'
+            'with entry {\n    print(first_word("a b"));\n}\n'
+        );
+        for attempt in range(2) {
+            proc = subprocess.run(
+                jac_command("run", "-b", "native", str(base / 'main.jac')),
+                cwd=str(base),
+                capture_output=True,
+                text=True,
+                timeout=600
+            );
+            assert proc.returncode != 0 and "E1054" in proc.stderr + proc.stdout , (
+                f"attempt {attempt}: exit {proc.returncode}: {proc.stdout[-300:]}"
+            );
+        }
+    }
+}
+
 """The host can still fail after the kernel has lowered a module: the IR may
 not link. Placement was settled before the module was lowered, and a
 dependency is placed before its importer is analyzed, so a link failure is a
