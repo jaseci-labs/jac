@@ -60,3 +60,43 @@ impl _closure_drop(closure: ptr[u8]) {
     }
     __jac_rt_free_block(at - HDR_TOTAL);
 }
+
+impl __jac_rt_task_new(count: int) -> int {
+    task = __jac_rt_alloc(TASK_ARGS + count * SLOT);
+    __jac_rt_set_type(task, int(ptr[u8]("task")));
+    at = 0;
+    while at < TASK_ARGS + count * SLOT {
+        __mem_store_i64(task + at, 0);
+        at += SLOT;
+    }
+    __mem_store_i64(task + TASK_KIND, -1);
+    __mem_store_i64(task + TASK_COUNT, count);
+    __mem_store_i64(task - HDR_DTOR_BACK, int(_task_drop));
+    return task;
+}
+
+impl __jac_rt_task_result(task: int) -> int {
+    error = __mem_load_i64(task + TASK_ERROR);
+    if error != 0 {
+        __jac_rt_raise(
+            ptr[u8](__mem_load_i64(task + TASK_ORIGIN)),
+            i32(error),
+            ptr[u8](__mem_load_i64(task + TASK_MESSAGE))
+        );
+    }
+    bits = __mem_load_i64(task + TASK_BITS);
+    kind = __mem_load_i64(task + TASK_KIND);
+    if kind >= 0 {
+        __jac_rt_elem_retain(bits, kind);
+    }
+    return bits;
+}
+
+impl _task_drop(task: ptr[u8]) {
+    at = int(task);
+    kind = __mem_load_i64(at + TASK_KIND);
+    if kind >= 0 {
+        __jac_rt_elem_release(__mem_load_i64(at + TASK_BITS), kind);
+    }
+    __jac_rt_free_block(at - HDR_TOTAL);
+}

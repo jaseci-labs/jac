@@ -76,7 +76,11 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
             if len(target) > 1 and target[1]
             else self.prog.options.effective_triple();
         ir_in.gen.llvm_ir = emit_mir_module(
-            lowered, triple, bool(self.prog.options.native_tls), target[0]
+            lowered,
+            triple,
+            bool(self.prog.options.native_tls),
+            target[0],
+            bool(self.prog.options.native_sjlj)
         );
     } except Exception as exc {
         self.report_crash(lowering, exc);

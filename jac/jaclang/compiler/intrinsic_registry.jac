@@ -18,7 +18,8 @@ enum IntrinsicDispatch {
     LIST_DATA = "list_data",
     BUFFER_DATA = "buffer_data",
     REF_ADDR = "ref_addr",
-    STR_DATA = "str_data"
+    STR_DATA = "str_data",
+    EXC_LONGJMP = "exc_longjmp"
 }
 
 obj IntrinsicEntry {
@@ -390,6 +391,12 @@ glob INTRINSIC_REGISTRY = IntrinsicRegistry(
                  param_specs=["i32"],
                  result_spec="none",
                  dispatch=IntrinsicDispatch.ATOMIC_FENCE
+             ),
+             "__exc_longjmp": IntrinsicEntry(
+                 name="__exc_longjmp",
+                 param_specs=["i64"],
+                 result_spec="none",
+                 dispatch=IntrinsicDispatch.EXC_LONGJMP
              ),
              "__thread_local_block": IntrinsicEntry(
                  name="__thread_local_block",

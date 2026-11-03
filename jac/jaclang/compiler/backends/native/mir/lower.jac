@@ -55,6 +55,14 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      CLOSURE_CELLS_OFFSET: int = 16,
      RC_THREADED_FLAG: str = "__jac_rc_threaded",
      GEN_PENDING_TYPE: int = 8,
+     TASK_THREAD: int = 0,
+     TASK_STATE: int = 8,
+     TASK_BITS: int = 16,
+     TASK_KIND: int = 24,
+     TASK_ERROR: int = 32,
+     TASK_MESSAGE: int = 40,
+     TASK_ORIGIN: int = 48,
+     TASK_ARGS: int = 64,
      GEN_PENDING_MESSAGE: int = 16,
      GEN_PENDING_ORIGIN: int = 24,
      RC_DEBUG_OFF_NOTICE: str = "jac: RC debug tracing not compiled in (build with --debug or [native] debug = true)",
@@ -380,6 +388,7 @@ obj MirLowering {
         current: str = "",
         dep_verdicts: dict[str, (list[str] | None)] = {},
         imported_fns: dict[str, tuple[str, str]] = {},
+        flow_sites: int = 0,
         tests: list[tuple[str, str, str, int]] = [],
         c_views: dict[int, MirGlobal] = {},
         state: (MirFnState | None) = None;
@@ -976,6 +985,10 @@ obj MirLowering {
     def str_enum_int(nd: uni.FuncCall) -> (MirValue | None);
     def rc_intrinsic(name: str) -> (MirValue | None);
     def mark_threaded;
+    def flow_threaded -> bool;
+    def lower_concurrent(nd: uni.ConcurrentExpr) -> MirValue;
+    def flow_thunk(decl: MirDecl) -> str;
+    def task_store(base: MirValue, offset: int, value: MirValue);
     def pipe_call(nd: uni.BinaryExpr) -> MirValue;
     def cstr_of(value: MirValue) -> MirValue;
     def open_call(nd: uni.FuncCall) -> MirValue;

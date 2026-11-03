@@ -195,15 +195,7 @@ impl _mark_root(o: int) {
 
 impl _utf8_forget(o: int) {
     before = __atomic_add_i64(__global_block("__jac_utf8_epoch", 8), 1, 5);
-    held = 0;
-    if __atomic_load_i64(__global_block("__jac_utf8_tls_state", 8), 2) == 1 {
-        held = pthread_getspecific(
-            __mem_load_i64(__global_block("__jac_utf8_tls_key", 8))
-        );
-    }
-    if held == 0 {
-        return;
-    }
+    held = __thread_local_block("jac_rt_utf8_cursor", 264);
     after = before + 1;
     way = 0;
     while way < UTF8_CURSOR_WAYS {
