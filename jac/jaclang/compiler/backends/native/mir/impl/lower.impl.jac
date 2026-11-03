@@ -5165,7 +5165,13 @@ impl MirLowering.null_ok_subclass_attr(nd: uni.AtomTrailer) -> (MirValue | None)
     fn = self.st().fn;
     result_type = self.expr_type(nd);
     if result_type.kind == MirKind.NONE {
-        kinds = [self.object_def(sub).field(name).type for sub in carriers];
+        kinds: list[MirType] = [];
+        for sub in carriers {
+            carried = self.object_def(sub).field(name);
+            if carried is not None {
+                kinds.append(carried.type);
+            }
+        }
         result_type = mir_any();
         if all(kind is kinds[0] for kind in kinds) {
             result_type = kinds[0]
@@ -5364,6 +5370,7 @@ impl MirLowering.guard_unbound(fn: MirFunction) {
                     MirInstr(
                         op=MirOp.CSTR,
                         result=text,
+                        type_arg=i8p,
                         str_value=f"cannot access local variable '{named[
                             slot_id
                         ]}' where it is not associated with a value"

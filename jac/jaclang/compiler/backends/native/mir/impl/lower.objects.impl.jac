@@ -240,9 +240,15 @@ impl MirLowering.settle_slots {
             if base is None or mir_same_signature(base, decl) {
                 continue;
             }
-            adapter = self.slot_adapter(decl, base);
+            adapter = self.slot_adapters.get(f"{decl.symbol}.__slot");
+            if adapter is None {
+                adapter = self.slot_adapter(decl, base);
+                if adapter is not None {
+                    self.mir.functions.append(adapter);
+                    self.slot_adapters[adapter.symbol] = adapter;
+                }
+            }
             if adapter is not None {
-                self.mir.functions.append(adapter);
                 made.vtable_entries[index] = adapter.symbol;
             }
         }

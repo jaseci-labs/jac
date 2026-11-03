@@ -410,6 +410,7 @@ obj MirLowering {
         current: str = "",
         dep_verdicts: dict[str, (list[str] | None)] = {},
         erased_units: set[str] = set(),
+        slot_adapters: dict[str, MirFunction] = {},
         erased_archs: dict[int, bool] = {},
         imported_fns: dict[str, tuple[str, str]] = {},
         flow_sites: int = 0,
