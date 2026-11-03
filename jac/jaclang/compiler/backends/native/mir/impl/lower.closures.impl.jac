@@ -248,6 +248,25 @@ impl MirLowering.closure_call(nd: uni.FuncCall, callee: MirValue) -> MirValue {
     fn_type = callee.type.payload() if callee.type.kind == MirKind.OPT else callee.type;
     params = fn_type.args[1:];
     args = self.call_args(nd);
+    nested = nd.target.sym.decl.parent
+        if isinstance(nd.target, uni.Name)
+            and nd.target.sym is not None
+            and nd.target.sym.decl is not None
+        else None;
+    if len(args) != len(params)
+        and isinstance(nested, uni.Ability)
+        and isinstance(nested.signature, uni.FuncSignature) {
+        bound = self.bound_args(nd, nested, False);
+        if len(bound) == len(params) {
+            held = self.spill(callee);
+            if held.type.kind == MirKind.OPT {
+                held = self.opt_unwrap_checked(
+                    held, "'NoneType' object is not callable"
+                );
+            }
+            return self.call_closure(held, self.bound_values(list(bound), params), nd);
+        }
+    }
     if len(args) != len(params) {
         raise MirRefused(
             mir_refusal("call", f"function value with {len(args)} arguments", nd)

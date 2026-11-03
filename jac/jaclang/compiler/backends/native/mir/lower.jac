@@ -267,6 +267,7 @@ obj MirFnState {
         env_cells: dict[int, int] = {},
         env: (MirValue | None) = None,
         locals: dict[int, MirValue] = {},
+        local_names: dict[str, MirValue] = {},
         loops: list[MirLoopTarget] = [],
         caught: list[tuple[MirValue, MirValue, MirValue]] = [],
         bound_caught: dict[int, tuple[MirValue, MirValue, MirValue]] = {},
@@ -377,6 +378,7 @@ obj MirLowering {
     def store_name(target: uni.Name, value: MirValue);
     def local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirValue;
     def loop_scoped(sym: uni.Symbol) -> bool;
+    def comprehension_scoped(sym: uni.Symbol) -> bool;
     def within_body(
         nd: uni.UniNode, loop: (uni.WhileStmt | uni.InForStmt | uni.IterForStmt)
     ) -> bool;
@@ -388,6 +390,7 @@ obj MirLowering {
     def lower_while(nd: uni.WhileStmt);
     def lower_ctrl(nd: uni.CtrlStmt);
     def lower_for(nd: uni.InForStmt);
+    def lower_for_core(nd: uni.InForStmt);
     def lower_range_for(nd: uni.InForStmt, bounds: list[uni.Expr]);
     def lower_if_else_expr(nd: uni.IfElseExpr) -> MirValue;
     def to_str(value: MirValue, site: uni.UniNode) -> MirValue;
@@ -835,6 +838,11 @@ obj MirLowering {
 
     def super_call(nd: uni.FuncCall, name: str) -> MirValue;
     def object_eq(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
+    def aug_arith(
+        op: str, current: MirValue, value: MirValue, site: uni.UniNode
+    ) -> MirValue;
+
+    def foreign_function_decl(callee: uni.Ability, site: uni.UniNode) -> MirDecl;
     def list_repeat(items: MirValue, times: MirValue, site: uni.UniNode) -> MirValue;
     def object_alloc(
         arch: uni.Archetype, obj_def: MirObjectDef, self_type: MirType

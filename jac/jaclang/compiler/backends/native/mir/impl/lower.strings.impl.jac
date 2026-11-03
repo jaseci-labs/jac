@@ -259,6 +259,31 @@ impl MirLowering.text_method(
             }
         } else {
             given = self.lower_expr(affix_nd);
+            if given.type.kind == MirKind.LIST
+                and given.type.payload().kind in (MirKind.STR, MirKind.STR_REF) {
+                start = self.int_arg(start_nd, 0);
+                stop = self.int_arg(end_nd, TEXT_STOP);
+                found = self.temp_slot(mir_bool());
+                b.store(found, b.const_bool(False));
+                (affix_item, _, head, after) = self.each_begin(self.spill(given), nd);
+                affix = self.spill(self.as_text(affix_item));
+                hit = self.call_rt(
+                    "__jac_rt_str_affix",
+                    [
+                        b.str_part(text, "root"),
+                        b.str_part(text, "data"),
+                        b.str_part(text, "len"),
+                        b.str_part(affix, "data"),
+                        b.str_part(affix, "len"),
+                        start,
+                        stop,
+                        b.const_bool(name == "endswith")
+                    ]
+                );
+                b.store(found, b.binary("or", b.load(found, mir_bool()), hit));
+                self.each_end(head, after);
+                return b.load(found, mir_bool());
+            }
             if given.type.kind == MirKind.TUPLE {
                 held = self.spill(given);
                 for index in range(len(given.type.args)) {

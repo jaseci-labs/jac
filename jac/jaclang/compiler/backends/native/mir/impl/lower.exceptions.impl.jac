@@ -195,6 +195,24 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
                 bound_arch = self.archetypes.get(bound_type.name);
             }
         }
+        handler_arch = self.target_archetype(clause.ex_type)
+            if isinstance(clause.ex_type, uni.Expr)
+            else None;
+        rebound_key = 0;
+        rebound_prior: (MirValue | None) = None;
+        if binds
+            and bound_name is not None
+            and bound_name.sym is not None
+            and handler_arch is not None
+            and bound_arch is not None
+            and handler_arch is not bound_arch {
+            rebound_key = id(bound_name.sym);
+            rebound_prior = self.st().locals.get(rebound_key);
+            self.st().locals[rebound_key] = self.temp_slot(
+                self.object_type(handler_arch)
+            );
+            bound_arch = handler_arch;
+        }
         if bound_arch is not None and bound_name is not None {
             slot = self.local_slot(bound_name.sym, bound_name);
             b.store(slot, b.ref_cast(origin, slot.type, True));
@@ -246,6 +264,13 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
         if bound_key {
             self.st().bound_caught.pop(bound_key, None);
         }
+        if rebound_key {
+            if rebound_prior is None {
+                self.st().locals.pop(rebound_key, None);
+            } else {
+                self.st().locals[rebound_key] = rebound_prior;
+            }
+        }
         self.st().caught.pop();
         if not self.builder().block.terminated() {
             self.builder().branch(after);
@@ -285,7 +310,7 @@ impl MirLowering.leave_tries(loop_depth: int, run_finals: bool = True) {
             if depth >= loop_depth {
                 self.runtime("__jac_rt_exc_pop", [frame]);
                 exit_action = self.st().try_exits.get(id(frame));
-                if exit_action is not None {
+                if exit_action is not None and run_finals {
                     held_finals = list(self.st().finals);
                     self.st().tries = tries[:at_try];
                     self.st().finals = [
