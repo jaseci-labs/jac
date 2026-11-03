@@ -1,3 +1,15 @@
+impl KernelCompileRoute.compile(
+    program: JacProgram,
+    file_path: str,
+    use_str: (str | None),
+    options: CompileOptions
+) -> (uni.Module | None) {
+    if load_kernel() is None {
+        return None;
+    }
+    return compile_through_kernel(program, file_path, use_str, options);
+}
+
 impl compile_request_for(
     paths: list[str],
     options: CompileOptions,

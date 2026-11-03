@@ -61,6 +61,7 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.driver.pass_driver"),
          NativeScopeEntry(module="jaclang.compiler.driver.pipeline"),
          NativeScopeEntry(module="jaclang.compiler.driver.pipeline_types"),
+         NativeScopeEntry(module="jaclang.compiler.driver.compile_route"),
          NativeScopeEntry(module="jaclang.compiler.driver.program"),
          NativeScopeEntry(module="jaclang.compiler.driver.progstate"),
          NativeScopeEntry(module="jaclang.compiler.driver.session_compile"),

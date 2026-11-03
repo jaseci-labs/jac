@@ -5,6 +5,15 @@ glob _APPLICATION_UNITS: dict[str, CompiledUnit] = {};
 
 class KernelReported {}
 
+obj KernelCompileRoute(CompileRoute) {
+    override def compile(
+        program: JacProgram,
+        file_path: str,
+        use_str: (str | None),
+        options: CompileOptions
+    ) -> (uni.Module | None);
+}
+
 def compile_request_for(
     paths: list[str],
     options: CompileOptions,

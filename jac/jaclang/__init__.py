@@ -31,6 +31,9 @@ def _install_compiler_host(package_dir: Path) -> None:
     engine = import_module("jaclang.compiler.backends.py.python_engine")
     host_python = import_module("jaclang.compiler.backends.py.host_python")
     engine.install_engine(host_python.HostPython())
+    route = import_module("jaclang.compiler.driver.compile_route")
+    kernel_compile = import_module("jaclang.project.kernel_compile")
+    route.install_compile_route(kernel_compile.KernelCompileRoute())
 
 
 def _install_importer() -> None:

@@ -2040,9 +2040,6 @@ graph import {
         },
         studio.gate { check_request_for },
     ]
-    project.kernel_compile --> compiler.driver.program.JacProgram.compile {
-        compile_through_kernel
-    }
     project.kinds ++> [
         cli.commands.build._build_app | cli.commands.execution._resolve_plan {
             plan_app_run
@@ -4318,6 +4315,12 @@ graph import {
     compiler.types.stubcat.writer ++> compiler.driver.unit_products.record_interface { IncoherentInterface, PackagePathMapper, build_module_iface, module_iface_shape }
     compiler.driver.unit_products ++> project.compiler_host.ProjectHost.record_unit { native_products, record_interface, unit_products }
     compiler.driver.jir ++> project.compiler_host.ProjectHost.record_unit { PRECOMPILE_SENTINEL }
+    type compiler.driver.program ++> compiler.driver.compile_route { JacProgram }
+    type compiler.driver.compile_options ++> compiler.driver.compile_route { CompileOptions }
+    type compiler.frontend.unitree as uni ++> compiler.driver.compile_route;
+    compiler.driver.compile_route ++> compiler.driver.program.JacProgram.compile { installed_compile_route }
+    compiler.driver.compile_route ++> project.kernel_compile { CompileRoute }
+    compiler.backends.native.kernel_resolve ++> project.kernel_compile.KernelCompileRoute.compile { load_kernel }
 }
 
 graph import artifacts {
@@ -5360,7 +5363,6 @@ graph import compiler {
         tests.xbackend_equiv.run_js_module_fixture { stage_jac_prelude_package },
     ]
     backends.native.c_emit --> kernel_api.run_native_build { emit_c }
-    backends.native.kernel_resolve --> driver.program.JacProgram.compile { load_kernel }
     backends.native.kernel_stage0 --> kernel_api.run_native_build {
         refuse_missing_entries
     }

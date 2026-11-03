@@ -477,11 +477,11 @@ impl JacProgram.compile(
         );
     }
     import from jaclang.compiler.frontend.host { active_host, kernel_resident }
-    if not kernel_resident() {
-        import from jaclang.compiler.backends.native.kernel_resolve { load_kernel }
-        if load_kernel() is not None {
-            import from jaclang.project.kernel_compile { compile_through_kernel }
-            return compile_through_kernel(self, file_path, use_str, options);
+    route = installed_compile_route();
+    if route is not None and not kernel_resident() {
+        routed = route.compile(self, file_path, use_str, options);
+        if routed is not None {
+            return routed;
         }
     }
     mod = active_host().compile_module(self, file_path, use_str, options);
