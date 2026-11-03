@@ -1256,9 +1256,8 @@ Mechanism-A intercepts, not here.
 
 ## Unsafe raw-buffer intrinsics
 
-Mechanism-B modules with byte-oriented or typed-buffer loops (`string`,
-`binascii`, `array`, and `mmap`) can bypass per-element container calls
-through a small unsafe floor registered
+Mechanism-B modules whose inner loops are byte shuffles (`string`) can
+bypass per-element container calls through a small unsafe floor registered
 in `jac/jaclang/compiler/intrinsic_registry.jac` (same mechanism as
 `region_native.jac`'s `__mem_load_i64`/`__mem_store_i64`):
 
@@ -1285,8 +1284,8 @@ Layout and lifetime contract for callers:
 - Empty buffers may return a meaningless/null data pointer; guard `n == 0`
   before dereferencing.
 - Writing through `__bytes_data` mutates "immutable" bytes -- only safe
-  on a fresh, unshared buffer (e.g. `out = b"\\x00" * n` filled before it
-  escapes, the `hexlify`/`unhexlify` idiom).
+  on a fresh, unshared buffer (e.g. a `s.encode()` result overwritten in
+  place before it escapes, the `capwords` idiom).
 - On the sv (Python) backend these names are undefined; modules using
   them are native-only (which is fine -- `na_stdlib` only ships on na).
 

@@ -3,7 +3,6 @@
 struct kevent is laid out as <sys/event.h> declares it; KEVENT_MEMBERS gives
 the offsets and structmember types CPython publishes its fields with.
 """
-import from jaclang.runtime.python.bindings.members { MemberField }
 import from c {
     obj pollfd {
         has fd: i32 = 0,

@@ -31,8 +31,9 @@ graph import {
 }
 
 graph import core {
-    async_utils ++> site.docs.DocsShell { sleep }
+    async_utils ++> jacyac.github.login.native | site.docs.DocsShell { sleep }
     brand.font ++> jacyac.native.JacYacMobile { useBrandFont }
+    brand.logo ++> jacyac.native.components.BrandMark.native { logo_xml }
     brand.theme ++> jacyac.native.JacYacMobile
         | jacyac.native.components.Avatar
         | jacyac.native.components.BridgeBanner
@@ -356,7 +357,10 @@ graph import core.jacyac {
 }
 
 graph import core.jacyac.github {
-    auth ++> login { begin_github, finish_github }
+    auth ++> [
+        login { begin_github, finish_github },
+        login.native { begin_github, poll_github },
+    ]
 }
 
 graph import core.jacyac.native {

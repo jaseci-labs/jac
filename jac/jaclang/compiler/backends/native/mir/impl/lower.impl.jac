@@ -3909,22 +3909,11 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
     }
     if dispatch == IntrinsicDispatch.MEM_LOAD {
         address = self.intrinsic_operand(args[0], "i64");
-        if found.width is not None and found.width < 64 {
-            narrow = self.emit_value(
-                MirOp.MEM_LOAD, mir_int(found.width, False, True), [address]
-            );
-            return self.emit_value(MirOp.CONV, result_type, [narrow]);
-        }
         return self.emit_value(MirOp.MEM_LOAD, result_type, [address]);
     }
     if dispatch == IntrinsicDispatch.MEM_STORE {
         address = self.intrinsic_operand(args[0], "i64");
         value = self.intrinsic_operand(args[1], found.param_specs[1]);
-        if found.width is not None and found.width < 64 {
-            value = self.emit_value(
-                MirOp.CONV, mir_int(found.width, False, True), [value]
-            );
-        }
         return self.emit_value(MirOp.MEM_STORE, mir_none(), [address, value]);
     }
     if dispatch in (IntrinsicDispatch.FLOAT_BITS, IntrinsicDispatch.BITS_FLOAT) {
