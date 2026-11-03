@@ -544,7 +544,13 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
         and not target.is_attr
         and isinstance(target.right, uni.IndexSlice)
         and isinstance(target.target, uni.Expr)
-        and mir_is_container(self.expr_type(target.target))
+        and (
+            mir_is_container(self.expr_type(target.target))
+            or (
+                self.expr_type(target.target).kind == MirKind.OPT
+                and mir_is_container(self.expr_type(target.target).payload())
+            )
+        )
         and nd.value is not None {
         holder = self.lower_expr(target.target);
         if holder.type.kind == MirKind.OPT {
@@ -2170,6 +2176,31 @@ impl MirLowering.adopt_imported_layouts {
             }
             merged.add(id(owner));
             merge_imported_layouts(self.module, owner, self.prog);
+        }
+    }
+    registry = get_layout_registry(self.module, self.prog);
+    hub = self.prog.mod.hub;
+    grew = True;
+    while grew {
+        grew = False;
+        for (name, paths) in list(registry.parent_mods.items()) {
+            for path in paths {
+                dep = hub.get(path) or hub.get(os.path.realpath(path))
+                    if path
+                    else None;
+                if dep is None
+                    or id(dep) in merged
+                    or not dep.loc.mod_path.endswith(".jac") {
+                    continue;
+                }
+                merged.add(id(dep));
+                try {
+                    merge_imported_layouts(self.module, dep, self.prog);
+                    grew = True;
+                } except RuntimeError {
+                    continue;
+                }
+            }
         }
     }
     if len(merged) > 1 {
