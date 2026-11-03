@@ -111,7 +111,8 @@ obj JacCompiler(SessionHooks) {
     def _load_native_from_cache(
         full_target: str,
         target_program: JacProgram,
-        cached_interop: (dict[str, any] | None)
+        cached_interop: (dict[str, any] | None),
+        options: (CompileOptions | None) = None
     ) -> None;
 
     def _sealed_native_engine(full_target: str) -> (SharedNativeEngine | None);
