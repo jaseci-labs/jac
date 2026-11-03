@@ -876,6 +876,7 @@ obj MirLowering {
     def narrow_down(value: MirValue, nd: uni.Expr) -> MirValue;
     def optional_eq(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
     def lower_cast(nd: uni.CastExpr) -> MirValue;
+    def none_cast_error(nd: uni.CastExpr) -> tuple[str, str];
     def opt_begin(
         value: MirValue, result: MirType
     ) -> tuple[MirValue, MirValue, MirBlock, MirBlock];
