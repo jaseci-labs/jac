@@ -396,6 +396,8 @@ obj MirLowering {
         bindings: list[InteropBinding] = [],
         current: str = "",
         dep_verdicts: dict[str, (list[str] | None)] = {},
+        erased_units: set[str] = set(),
+        erased_archs: dict[int, bool] = {},
         imported_fns: dict[str, tuple[str, str]] = {},
         flow_sites: int = 0,
         tests: list[tuple[str, str, str, int]] = [],
@@ -403,6 +405,7 @@ obj MirLowering {
         state: (MirFnState | None) = None;
 
     def lower -> MirModule;
+    def lower_unit -> MirModule;
     def declaration_types;
     def record_defaults;
     def settle;
@@ -449,6 +452,7 @@ obj MirLowering {
     def lower_for(nd: uni.InForStmt);
     def lower_for_core(nd: uni.InForStmt);
     def lower_range_for(nd: uni.InForStmt, bounds: list[uni.Expr]);
+    def lower_if_else_effect(nd: uni.IfElseExpr);
     def lower_if_else_expr(nd: uni.IfElseExpr) -> MirValue;
     def to_str(value: MirValue, site: uni.UniNode) -> MirValue;
     def lower_fstring(nd: uni.FString) -> MirValue;
@@ -565,6 +569,8 @@ obj MirLowering {
 
     def import_call(nd: uni.FuncCall, callee: uni.Ability) -> (MirValue | None);
     def require_dep_native(path: str, symbol: str, site: uni.UniNode);
+    def dep_verdict(path: str) -> (bool | None);
+    def add_dep(path: str, name: str, site: (uni.UniNode | None));
     def intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue;
     def intrinsic_operand(arg: uni.Expr, spec: str) -> MirValue;
     def memory_order(nd: uni.FuncCall, arg: uni.Expr, kind: str) -> str;
@@ -693,6 +699,10 @@ obj MirLowering {
     def dict_method(d: MirValue, name: str, nd: uni.FuncCall) -> (MirValue | None);
     def set_method(s: MirValue, name: str, nd: uni.FuncCall) -> (MirValue | None);
     def contains(item: MirValue, holder: MirValue, site: uni.UniNode) -> MirValue;
+    def string_enum_ordinal(
+        item: MirValue, elem: MirType, site: uni.UniNode
+    ) -> MirValue;
+
     def container_eq(left: MirValue, right: MirValue) -> MirValue;
     def view_kind(nd: uni.Expr) -> str;
     def view_compare(
@@ -834,6 +844,8 @@ obj MirLowering {
 
     def isinstance_check(value: MirValue, arch: uni.Archetype) -> MirValue;
     def host_only_type(t: (TypeBase | None)) -> bool;
+    def erased_class(t: ClassType) -> bool;
+    def note_erasures(t: (TypeBase | None));
     def erased_slot(t: (TypeBase | None)) -> bool;
     def class_reference(nd: uni.Expr) -> (uni.Archetype | None);
     def class_value(arch: uni.Archetype) -> MirValue;
@@ -861,6 +873,7 @@ obj MirLowering {
 
     def class_of(value: MirValue, site: uni.UniNode) -> MirValue;
     def class_isinstance(value: MirValue, kind: MirValue) -> MirValue;
+    def class_list_isinstance(value: MirValue, kinds: MirValue) -> MirValue;
     def lower_module_init -> (MirFunction | None);
     def lower_module_entry -> (MirFunction | None);
     def none_value -> MirValue;

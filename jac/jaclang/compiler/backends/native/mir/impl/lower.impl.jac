@@ -1,4 +1,13 @@
 impl MirLowering.lower -> MirModule {
+    push_erased_units(self.erased_units);
+    try {
+        return self.lower_unit();
+    } finally {
+        pop_erased_units();
+    }
+}
+
+impl MirLowering.lower_unit -> MirModule {
     self.declaration_types();
     self.adopt_imported_layouts();
     for ab in self.module_abilities() {
@@ -397,7 +406,9 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
             value = fn.new_value(ptype, pv.name.value);
             fn.params.append(MirParam(name=pv.name.value, value=value));
             slot = self.local_slot(pv.name.sym, pv);
-            self.builder().store(slot, value);
+            self.builder().store(
+                slot, value if slot.type is ptype else self.coerce(value, slot.type, pv)
+            );
             if index < len(twins) and twins[index].name.sym is not None {
                 self.st().locals[id(twins[index].name.sym)] = slot;
             }
@@ -579,6 +590,8 @@ impl MirLowering.lower_stmt(nd: uni.UniNode) {
     }
     if isinstance(nd, uni.ExprStmt) and isinstance(nd.expr, uni.YieldExpr) {
         self.lower_yield(nd.expr);
+    } elif isinstance(nd, uni.ExprStmt) and isinstance(nd.expr, uni.IfElseExpr) {
+        self.lower_if_else_effect(nd.expr);
     } elif isinstance(nd, uni.ExprStmt) {
         self.lower_expr(nd.expr);
     } elif isinstance(nd, uni.MatchStmt) {
@@ -703,6 +716,10 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
                 );
             }
             current = self.container_get(holder, target.right, target);
+            if current.type.kind == MirKind.SET
+                and self.set_operator(op, current, value, True, nd) is not None {
+                return;
+            }
             value = self.str_concat(current, value)
                 if current.type.kind == MirKind.STR and op == Tok.PLUS
                 else self.aug_arith(op, current, value, nd);
@@ -726,6 +743,10 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
             current = self.builder().load(place, self.place_elem(place));
             extended = self.list_extend_in_place(op, current, value, nd);
             if extended is not None {
+                return;
+            }
+            if current.type.kind == MirKind.SET
+                and self.set_operator(op, current, value, True, nd) is not None {
                 return;
             }
             value = self.str_concat(current, self.coerce(value, mir_str(), nd))
@@ -2731,6 +2752,7 @@ impl MirLowering.type_of(
     t: (TypeBase | None), position: MirPosition, site: uni.UniNode
 ) -> MirType {
     self.ensure_c_types(t);
+    self.note_erasures(t);
     if self.host_only_type(t) {
         return mir_any();
     }
@@ -2772,7 +2794,7 @@ impl MirLowering.ensure_objects(t: (TypeBase | None)) {
     if not isinstance(scope, uni.Archetype) or is_enum_class_type(t) {
         return;
     }
-    if self.host_only_type(t) {
+    if self.erased_class(t) {
         return;
     }
     name = class_type_native_name(t);
@@ -3087,6 +3109,30 @@ impl MirLowering.lower_fstring(nd: uni.FString) -> MirValue {
     return self.fstring_value(nd);
 }
 
+impl MirLowering.lower_if_else_effect(nd: uni.IfElseExpr) {
+    b = self.builder();
+    fn = self.st().fn;
+    then = fn.new_block("sel.then");
+    otherwise = fn.new_block("sel.else");
+    done = fn.new_block("sel.done");
+    b.cond_branch(self.condition(nd.condition), then, otherwise);
+    b.position(then);
+    if isinstance(nd.value, uni.IfElseExpr) {
+        self.lower_if_else_effect(nd.value);
+    } else {
+        self.lower_expr(nd.value);
+    }
+    b.branch(done);
+    b.position(otherwise);
+    if isinstance(nd.else_value, uni.IfElseExpr) {
+        self.lower_if_else_effect(nd.else_value);
+    } else {
+        self.lower_expr(nd.else_value);
+    }
+    b.branch(done);
+    b.position(done);
+}
+
 impl MirLowering.lower_if_else_expr(nd: uni.IfElseExpr) -> MirValue {
     b = self.builder();
     fn = self.st().fn;
@@ -3343,7 +3389,11 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
             }
             return self.field_place(subject, arch, right.value, nd);
         }
-        members = self.union_archetypes(target_type);
+        members = self.union_archetypes(
+            nd.target.narrowed_type or target_type
+                if isinstance(nd.target, uni.Expr)
+                else target_type
+        );
         if members {
             return self.union_field_place(
                 self.lower_expr(nd.target), members, right.value, nd
@@ -3613,10 +3663,7 @@ impl MirLowering.c_extern(
         and owner.loc.mod_path.endswith(".jac")
         and isinstance(callee.body, list)
         and callee.body {
-        unit = os.path.realpath(owner.loc.mod_path);
-        if unit not in self.mir.deps {
-            self.mir.deps.append(unit);
-        }
+        self.add_dep(owner.loc.mod_path, symbol, site);
     }
     self.mir.externs[symbol] = MirExtern(
         symbol=symbol,
@@ -3778,30 +3825,59 @@ impl MirLowering.foreign_function_decl(
     symbol = self.unit_symbol(self.name_of(callee), callee.access, path);
     self.require_dep_native(path, symbol, site);
     self.mir.externs[symbol] = MirExtern(symbol=symbol, ret=ret, params=params);
+    self.add_dep(path, symbol, site);
     unit = os.path.realpath(path);
-    if unit not in self.mir.deps {
-        self.mir.deps.append(unit);
-    }
     self.imported_fns[self.name_of(callee)] = (unit, symbol);
     made = MirDecl(ability=callee, symbol=symbol, params=params, ret=ret);
     self.decls[id(callee)] = made;
     return made;
 }
 
-impl MirLowering.require_dep_native(path: str, symbol: str, site: uni.UniNode) {
+impl MirLowering.dep_verdict(path: str) -> (bool | None) {
     unit = os.path.realpath(path);
-    prefix = native_unit_prefix(path) + ".";
-    name = symbol[len(prefix):] if symbol.startswith(prefix) else symbol;
     if unit not in self.dep_verdicts {
         iface = active_host().native_dep_iface(self.prog, unit, self.prog.options);
         self.dep_verdicts[unit] = list(iface.demoted) if iface is not None else None;
     }
+    if self.dep_verdicts[unit] is not None {
+        return True;
+    }
+    if active_host().native_dep_pending(self.prog, unit) {
+        return None;
+    }
+    return False;
+}
+
+impl MirLowering.add_dep(path: str, name: str, site: (uni.UniNode | None)) {
+    unit = os.path.realpath(path);
+    if unit in self.mir.deps or unit == os.path.realpath(self.module.loc.mod_path) {
+        return;
+    }
+    if self.dep_verdict(unit) is False {
+        raise MirRefused(
+            mir_refusal(
+                "dependency",
+                name,
+                site,
+                f"{os.path.basename(
+                    path
+                )} did not lower to a native unit, so native code cannot use '{name}'; it runs in Python."
+            )
+        );
+    }
+    self.mir.deps.append(unit);
+}
+
+impl MirLowering.require_dep_native(path: str, symbol: str, site: uni.UniNode) {
+    unit = os.path.realpath(path);
+    prefix = native_unit_prefix(path) + ".";
+    name = symbol[len(prefix):] if symbol.startswith(prefix) else symbol;
+    verdict = self.dep_verdict(unit);
+    if verdict is None {
+        return;
+    }
     demoted = self.dep_verdicts[unit];
     if demoted is None {
-        if unit in self.prog.native_units().building
-            or active_host().native_dep_discovery_open(self.prog) {
-            return;
-        }
         raise MirRefused(
             mir_refusal(
                 "function",
@@ -4004,7 +4080,8 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
                 mir_refusal("intrinsic", f"{name} of {held.type.render()}", nd)
             );
         }
-        if self.elem_kind(held.type.payload(), nd) not in (KIND_INT, KIND_FLOAT) {
+        if self.elem_kind(held.type.payload(), nd)
+            not in (KIND_INT, KIND_UINT, KIND_FLOAT) {
             raise MirRefused(
                 mir_refusal(
                     "intrinsic",
@@ -4292,8 +4369,20 @@ impl MirLowering.method_call(
     receiver_type = self.expr_type(target.target)
         if isinstance(target.target, uni.Expr)
         else mir_void();
-    if mir_is_container(receiver_type) {
-        return self.container_method(self.lower_expr(target.target), right.value, nd);
+    if mir_is_container(receiver_type)
+        or (
+            receiver_type.kind == MirKind.OPT
+            and mir_is_container(receiver_type.payload())
+        ) {
+        held = self.lower_expr(target.target);
+        if held.type.kind == MirKind.OPT {
+            held = self.opt_unwrap_checked(
+                held,
+                f"'NoneType' object has no attribute '{right.value}'",
+                "AttributeError"
+            );
+        }
+        return self.container_method(held, right.value, nd);
     }
     if receiver_type.kind == MirKind.FILE {
         return self.file_method(
@@ -4510,10 +4599,7 @@ impl MirLowering.declare_global(nd: uni.Name) -> (MirGlobal | None) {
                 linkage="external"
             );
             self.mir.globals[symbol] = held;
-            unit = os.path.realpath(owner.loc.mod_path);
-            if unit not in self.mir.deps {
-                self.mir.deps.append(unit);
-            }
+            self.add_dep(owner.loc.mod_path, symbol, nd);
         }
         return held;
     }

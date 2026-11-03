@@ -1413,17 +1413,7 @@ impl MirLowering.contains(
         and self.is_text(item)
         and self.enum_layout_of(holder.type.payload(), site).is_string_enum {
         elem = holder.type.payload();
-        layout = self.enum_layout_of(elem, site);
-        probe = self.spill(item);
-        ordinal = b.const_int(-1, mir_int());
-        for member in reversed(layout.members) {
-            same = self.compare_values(
-                Tok.EE, probe, b.const_str(member.str_value or "", mir_str()), site
-            );
-            ordinal = b.select(
-                same, b.const_int(self.enum_payload(layout, member), mir_int()), ordinal
-            );
-        }
+        ordinal = self.string_enum_ordinal(item, elem, site);
         found = self.runtime(
             "__jac_rt_list_contains",
             [holder, ordinal, b.const_int(self.elem_kind(elem, site), mir_int())]
@@ -1444,6 +1434,23 @@ impl MirLowering.contains(
         );
         if found is not None {
             return found;
+        }
+    }
+    if holder.type.kind in (MirKind.DICT, MirKind.SET)
+        and holder.type.args[0].kind == MirKind.ENUM
+        and self.is_text(item)
+        and self.enum_layout_of(holder.type.args[0], site).is_string_enum {
+        key = holder.type.args[0];
+        at = self.runtime(
+            "__jac_rt_dict_find",
+            [
+                holder,
+                self.string_enum_ordinal(item, key, site),
+                b.const_int(self.elem_kind(key, site), mir_int())
+            ]
+        );
+        if at is not None {
+            return b.compare("ge", at, b.const_int(0, mir_int()));
         }
     }
     if holder.type.kind in (MirKind.DICT, MirKind.SET) {
@@ -1838,6 +1845,24 @@ impl MirLowering.structural_elem(t: MirType) -> bool {
         return any(self.structural_elem(member) for member in t.args);
     }
     return False;
+}
+
+impl MirLowering.string_enum_ordinal(
+    item: MirValue, elem: MirType, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    layout = self.enum_layout_of(elem, site);
+    probe = self.spill(item);
+    ordinal = b.const_int(-1, mir_int());
+    for member in reversed(layout.members) {
+        same = self.compare_values(
+            Tok.EE, probe, b.const_str(member.str_value or "", mir_str()), site
+        );
+        ordinal = b.select(
+            same, b.const_int(self.enum_payload(layout, member), mir_int()), ordinal
+        );
+    }
+    return ordinal;
 }
 
 impl MirLowering.list_scan(
