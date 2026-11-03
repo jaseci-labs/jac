@@ -3032,6 +3032,9 @@ impl MirLowering.c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue {
     }
     result_type = mir_none() if ret.kind in (MirKind.NONE, MirKind.VOID) else ret;
     result = self.emit_value(MirOp.CALL_C, result_type, values, callee=symbol);
+    if mir_holds_ref(result_type) {
+        result.owned = True;
+    }
     b = self.builder();
     for (tmp, place, held) in copybacks {
         b.store(place, self.coerce(b.load(tmp, tmp.type), held, nd));
