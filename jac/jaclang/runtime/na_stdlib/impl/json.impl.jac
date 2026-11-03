@@ -730,6 +730,88 @@ impl _key_text(k: any, style: _JsonStyle) -> (str | None) {
     raise TypeError("keys must be str, int, float, bool or None, not " + _type_name(k));
 }
 
+impl _num_key(v: any) -> (float | None) {
+    if isinstance(v, float) {
+        return v;
+    }
+    if isinstance(v, bool) {
+        vb: bool = v;
+        return float(vb);
+    }
+    if isinstance(v, int) {
+        vi: int = v;
+        return float(vi);
+    }
+    return None;
+}
+
+impl _key_cmp(a: any, b: any) -> int {
+    fa: (float | None) = _num_key(a);
+    fb: (float | None) = _num_key(b);
+    if fa is not None and fb is not None {
+        if fa < fb {
+            return -1;
+        }
+        if fa > fb {
+            return 1;
+        }
+        return 0;
+    }
+    if isinstance(a, str) and isinstance(b, str) {
+        sa: str = a;
+        sb: str = b;
+        if sa < sb {
+            return -1;
+        }
+        if sa > sb {
+            return 1;
+        }
+        return 0;
+    }
+    raise TypeError(
+        "'<' not supported between instances of '"
+            + _type_name(a)
+            + "' and '"
+            + _type_name(b)
+            + "'"
+    );
+}
+
+impl _sort_keys(keys: list[any]) {
+    n: int = len(keys);
+    if n < 2 {
+        return;
+    }
+    mid: int = n // 2;
+    left: list[any] = keys[0:mid];
+    right: list[any] = keys[mid:n];
+    _sort_keys(left);
+    _sort_keys(right);
+    i: int = 0;
+    j: int = 0;
+    t: int = 0;
+    while i < mid and j < n - mid {
+        if _key_cmp(left[i], right[j]) <= 0 {
+            keys[t] = left[i];
+            i += 1;
+        } else {
+            keys[t] = right[j];
+            j += 1;
+        }
+        t += 1;
+    }
+    while i < mid {
+        keys[t] = left[i];
+        i += 1;
+        t += 1;
+    }
+    while j < n - mid {
+        keys[t] = right[j];
+        j += 1;
+        t += 1;
+    }
+}
+
 impl _dump_items(items: any, style: _JsonStyle, depth: int, seen: list[any]) -> str {
     n: int = len(items);
     if n == 0 {
@@ -766,7 +848,7 @@ impl _dump_dict(
 ) -> str {
     keys: list[any] = list(d.keys());
     if style.sort_keys {
-        keys = sorted(keys);
+        _sort_keys(keys);
     }
     if len(keys) == 0 {
         return "{}";

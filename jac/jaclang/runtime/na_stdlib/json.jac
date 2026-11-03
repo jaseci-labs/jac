@@ -186,6 +186,15 @@ def _dump_float(f_val: float, allow_nan: bool) -> str;
 def _key_text(k: any, style: _JsonStyle) -> (str | None);
 
 
+def _num_key(v: any) -> (float | None);
+
+
+def _key_cmp(a: any, b: any) -> int;
+
+
+def _sort_keys(keys: list[any]);
+
+
 def _dump_items(items: any, style: _JsonStyle, depth: int, seen: list[any]) -> str;
 
 
