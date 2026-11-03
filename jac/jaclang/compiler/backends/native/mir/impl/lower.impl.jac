@@ -4947,6 +4947,15 @@ impl MirLowering.null_ok_subclass_attr(nd: uni.AtomTrailer) -> (MirValue | None)
     b = self.builder();
     fn = self.st().fn;
     result_type = self.expr_type(nd);
+    if result_type.kind == MirKind.NONE {
+        kinds = [self.object_def(sub).field(name).type for sub in carriers];
+        result_type = mir_any();
+        if all(kind is kinds[0] for kind in kinds) {
+            result_type = kinds[0]
+                if kinds[0].kind in (MirKind.OPT, MirKind.ANY)
+                else mir_opt(kinds[0]);
+        }
+    }
     result = self.temp_slot(result_type);
     b.store(result, self.coerce(self.none_value(), result_type, nd));
     done = fn.new_block("nullok.sub.done");
