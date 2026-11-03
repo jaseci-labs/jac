@@ -27,6 +27,8 @@ glob ALLOWED: dict[str, str] = {
          "signal.darwin.jac": "the SIG* numbers each libc has its own way",
          "signal.linux.jac": "the SIG* numbers each libc has its own way",
          "subprocess.linux.jac": "posix_spawn subprocesses exist only on Linux so far",
+         "_sys_platform.darwin.jac": "sys.platform names the target the binary was built for",
+         "_sys_platform.linux.jac": "sys.platform names the target the binary was built for",
          "_zlib_abi.windows.jac": "z_stream under Windows' 32-bit long, another layout class",
          "errno.darwin.jac": "errno's names and values as CPython exposes them per platform",
          "errno.linux.jac": "errno's names and values as CPython exposes them per platform"
