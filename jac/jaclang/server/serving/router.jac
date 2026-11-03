@@ -35,11 +35,10 @@ obj Router {
     def add_ws(endpoint: WSEndPoint);
     def clear;
     def resolve(
-        method: str, path: str
+        method: str, path: str, declared_only: bool = False
     ) -> tuple[(JEndPoint | None), dict[(str, str)], list[str]];
 
     def is_catchall(endpoint: JEndPoint) -> bool;
-    def resolve_declared(method: str, path: str) -> (JEndPoint | None);
     def resolve_ws(path: str) -> tuple[(WSEndPoint | None), dict[(str, str)]];
     def all_endpoints -> list[JEndPoint];
 }

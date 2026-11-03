@@ -118,31 +118,34 @@ async def _ws_handshake(port: int, path: str, origin: str = "") -> tuple[any, ..
 
 
 test "trailing-slash miss 307-redirects to the canonical path (#8000 f3)" {
-    # Each row: the request path, then the status and Location (or a body
-    # marker) it answers. A catch-all must not swallow the redirect to a
+    # Each row: the request method and path, then the status and Location (or
+    # a body marker) it answers. A catch-all must not swallow the redirect to a
     # declared route at the slash alternate (#9877).
     rows = [
-        ("/hello/?a=1", 307, "/hello?a=1", b""),
-        ("/hello", 200, None, b"true"),
-        ("/files/readme/", 307, "/files/readme", b""),
-        ("/files/readme", 200, None, b"readme"),
-        ("/files/other/", 200, None, b"other"),
+        ("GET", "/hello/?a=1", 307, "/hello?a=1", b""),
+        ("GET", "/hello", 200, None, b"true"),
+        ("POST", "/hello", 405, None, b"not allowed"),
+        ("GET", "/nope", 404, None, b"not found"),
+        ("GET", "/files/readme/", 307, "/files/readme", b""),
+        ("HEAD", "/files/readme/", 307, "/files/readme", b""),
+        ("GET", "/files/readme", 200, None, b"readme"),
+        ("GET", "/files/other/", 200, None, b"other"),
 
     ];
     (stop, server) = _spawn();
     try {
-        for (path, status, location, marker) in rows {
+        for (method, path, status, location, marker) in rows {
             conn = http.client.HTTPConnection(
                 "127.0.0.1", server.bound_port, timeout=10
             );
-            conn.request("GET", path);
+            conn.request(method, path);
             resp = conn.getresponse();
             got_location = resp.getheader("Location");
             body = resp.read();
             conn.close();
-            assert resp.status == status , f"{path}: expected {status}, got {resp.status}";
-            assert got_location == location , f"{path}: got Location={got_location!r}";
-            assert marker.lower() in body.lower() , f"{path}: body {body!r}";
+            assert resp.status == status , f"{method} {path}: expected {status}, got {resp.status}";
+            assert got_location == location , f"{method} {path}: got Location={got_location!r}";
+            assert marker.lower() in body.lower() , f"{method} {path}: body {body!r}";
         }
     } finally {
         stop();
