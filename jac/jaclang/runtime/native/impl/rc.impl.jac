@@ -655,7 +655,8 @@ impl __jac_rt_possible_root(o: int) {
 }
 
 impl __jac_rt_free_block(raw: int) {
-    if _flag_on(_g_gc_disabled()) {
+    if _flag_on(_g_gc_disabled())
+        or ((__mem_load_i64(raw) >> 32) & 65535) == HDR_MAGIC + 1 {
         return;
     }
     if _flag_on(_g_rc_debug()) {

@@ -105,6 +105,17 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
              "UnicodeError": "ValueError",
              "UnicodeDecodeError": "UnicodeError",
              "UnicodeEncodeError": "UnicodeError",
-             "UnicodeTranslateError": "UnicodeError"
+             "UnicodeTranslateError": "UnicodeError",
+             "SystemError": "Exception",
+             "BufferError": "Exception",
+             "SyntaxError": "Exception",
+             "IndentationError": "SyntaxError",
+             "TabError": "IndentationError",
+             "ConnectionError": "OSError",
+             "BrokenPipeError": "ConnectionError",
+             "InterruptedError": "OSError",
+             "BlockingIOError": "OSError",
+             "ChildProcessError": "OSError",
+             "ProcessLookupError": "OSError"
          }
      );

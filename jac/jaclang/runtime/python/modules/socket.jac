@@ -551,9 +551,9 @@ impl socket_socketpair(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
         error = jacpy_errno();
         if sock_cloexec_works == -1 {
             if ret >= 0 {
-                sock_cloexec_works = i32(1);
+                note_sock_cloexec(i32(1));
             } elif error == EINVAL {
-                sock_cloexec_works = i32(0);
+                note_sock_cloexec(i32(0));
                 ret = socketpair(family, type, proto, sv);
                 error = jacpy_errno();
             }
