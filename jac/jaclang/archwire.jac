@@ -9629,7 +9629,7 @@ graph import compiler {
     ]
     placement.placement_facts ++> [
         backends.native.mir.backend { native_placement_hard },
-        backends.native.mir.lower { pinned_module_space },
+        backends.native.mir.lower { native_unit, pinned_module_space },
         driver.module_compile.admits_native_checks { variant_selected },
         driver.program.JacProgram.declared_codespace {
             native_only,
