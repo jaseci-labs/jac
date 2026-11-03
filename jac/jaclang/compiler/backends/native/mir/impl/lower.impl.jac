@@ -384,6 +384,12 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
         fn.c_symbol = decl.c_symbol;
         fn.linkage = "internal";
     }
+    if decl.owner is None
+        and isinstance(ab.parent, uni.Module)
+        and ab.access is not None
+        and ab.access.tag.name == Tok.KW_PRIV {
+        fn.linkage = "internal";
+    }
     first = fn.new_block("entry");
     self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
     try {

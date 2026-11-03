@@ -6005,7 +6005,15 @@ graph import compiler {
             layout_digest as layout_digest_of,
             merge_class_layouts
         },
-        backends.native.mir.backend { NativeExport, NativeIface },
+        backends.native.mir.backend {
+            EXPORT_FUNCTION,
+            EXPORT_METHOD,
+            EXPORT_TEST,
+            NativeClassLayout,
+            NativeExport,
+            NativeFieldSlot,
+            NativeIface
+        },
         frontend.kernel_host | tests.test_native_kernel_cache { NativeIface },
     ]
     type driver.native_iface ++> frontend.codeinfo | frontend.host { NativeIface }
@@ -6349,7 +6357,8 @@ graph import compiler {
             native_entry_name,
             native_glob_init_name,
             native_module_key,
-            native_unit_prefix
+            native_unit_prefix,
+            native_unit_spelling
         },
         backends.native.mir.emit { RC_SENTINEL, str_len_tag },
         backends.native.mir.lower {
@@ -9517,6 +9526,7 @@ graph import compiler {
             archetype_native_name,
             get_layout_registry
         },
+        backends.native.mir.backend { archetype_native_name, get_layout_registry },
         backends.native.mir.emit { VTABLE_HEADER_SLOTS },
         backends.native.mir.lower {
             EXC_MESSAGE_FIELD,
@@ -10391,6 +10401,7 @@ graph import compiler.backends.es.backends {
 }
 
 graph import compiler.backends.native {
+    abi ++> mir.backend { struct_layouts }
     abi ++> mir.emit { classify_struct }
     foreign ++> abi.classify_foreign_fn { foreign_struct_layout }
     kernel_resolve ++> kernel_stage0 { KERNEL_LINK_MODE, kernel_plan }
@@ -10443,7 +10454,7 @@ graph import compiler.backends.native {
     ]
     llvm.binding.value ++> link_plan.internalize_native_implementation { Visibility }
     type llvm.binding.value ++> link_plan { ValueRef }
-    llvm.ir as ir ++> abi | lexical_scope | lowering | mir.emit;
+    llvm.ir as ir ++> abi | lexical_scope | lowering | mir.backend | mir.emit;
     llvm.ir.types ++> link_glue.bind_shared_callbacks { _wrapname }
     lowering ++> [
         entry_points.validate_native_application | na_compile_pass.unit_fallbacks {
