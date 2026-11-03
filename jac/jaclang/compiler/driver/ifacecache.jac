@@ -144,6 +144,7 @@ obj IfaceRegistry(CatalogResolver) {
         module_path: str, dotted: str, class_name: str
     ) -> (ClassDetailsShared | None);
 
+    def _iface_semantics(section: bytes, paths: (JirPaths | None)) -> list[str];
     def _fresh_verify_program -> JacProgram;
     def _verify_iface(resolved: str, ent: IfaceEntry) -> None;
     def _verify_analysis(resolved: str, options: any, prof: dict[str, any]);

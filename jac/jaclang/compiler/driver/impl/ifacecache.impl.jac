@@ -1070,12 +1070,24 @@ impl IfaceRegistry.resolve_shared(
     parts = dotted.split(".");
     scope: any = mod;
     for part in parts[:-1] {
-        scope = scope.find_scope(part);
-        if scope is None {
+        inner = scope.find_scope(part);
+        if inner is None {
+            held = collect_scope_members(scope).names.get(part);
+            try {
+                inner = held.symbol_table if held is not None else None;
+            } except Exception {
+                inner = None;
+            }
+        }
+        if inner is None {
             return None;
         }
+        scope = inner;
     }
     sym = scope.names_in_scope.get(parts[-1]);
+    if sym is None {
+        sym = collect_scope_members(scope).names.get(parts[-1]);
+    }
     if sym is None {
         return None;
     }
@@ -1095,6 +1107,58 @@ impl IfaceRegistry.resolve_shared(
         return shared;
     }
     return None;
+}
+
+impl IfaceRegistry._iface_semantics(
+    section: bytes, paths: (JirPaths | None)
+) -> list[str] {
+    codec = iface_codec();
+    if codec is None {
+        return [];
+    }
+    catalog: any = codec.open_module_iface(
+        section,
+        self._pkg_dir(),
+        resolver=self,
+        path_mapper=paths.resolve if paths is not None else None
+    );
+    if catalog is None {
+        return [];
+    }
+    def scope_path(sid: int) -> str {
+        names: list[str] = [];
+        cur = sid;
+        while cur >= 0 and len(names) < 64 {
+            rec = catalog._read_scope(cur);
+            names.append(rec.name);
+            cur = rec.parent;
+        }
+        return ".".join(reversed(names));
+    }
+    def describe(sym_id: int) -> str {
+        rec = catalog._read_symbol(sym_id);
+        origin = catalog._mod_recs[rec.alias_mod][1] if rec.alias_mod >= 0 else "";
+        shown = "";
+        try {
+            shown = str(catalog.type_of(rec.type_id));
+        } except Exception as err {
+            shown = f"<unreadable {type(err).__name__}>";
+        }
+        return f"{rec.symtype}|{rec.access}|{origin}:{rec.alias_name}|{shown}";
+    }
+    rows: list[str] = [];
+    for sid in range(catalog.hdr.n_scopes) {
+        rec = catalog._read_scope(sid);
+        where = scope_path(sid);
+        for (name, sym_id) in rec.members {
+            rows.append(f"{where}.{name}={describe(sym_id)}");
+        }
+        for (name, ids) in rec.overloads {
+            shapes = sorted(describe(i) for i in ids);
+            rows.append(f"{where}.{name}@overloads={shapes}");
+        }
+    }
+    return sorted(rows);
 }
 
 impl IfaceRegistry._fresh_verify_program -> JacProgram {
@@ -1144,11 +1208,21 @@ impl IfaceRegistry._verify_iface(resolved: str, ent: IfaceEntry) -> None {
             );
         }
         fresh_digest = codec.read_iface_hash(fresh_bytes) or "";
-        if fresh_digest != ent.digest {
+        if fresh_digest == ent.digest or ent.section is None {
+            return;
+        }
+        served_rows = self._iface_semantics(ent.section, ent.paths);
+        fresh_rows = self._iface_semantics(
+            fresh_bytes, JirPaths(base_dir=os.path.dirname(resolved))
+        );
+        if served_rows != fresh_rows {
+            only_served = sorted(set(served_rows) - set(fresh_rows))[:6];
+            only_fresh = sorted(set(fresh_rows) - set(served_rows))[:6];
             raise RuntimeError(
                 f"analysis-cache verify failed for {resolved}: the served "
-                f"interface digest {ent.digest[:12]} differs from a fresh "
-                f"source compile's {fresh_digest[:12]}"
+                f"interface {ent.digest[:12]} differs from a fresh source "
+                f"compile's {fresh_digest[:12]} (served only: {only_served}; "
+                f"fresh only: {only_fresh})"
             );
         }
     } finally {

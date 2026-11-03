@@ -9991,9 +9991,10 @@ graph import compiler {
     types.stubcat.resolver ++> driver.ifacecache | frontend.kernel_host {
         CatalogResolver
     }
-    types.stubcat.writer ++> driver.ifacecache.IfaceRegistry._encode_iface {
-        IncoherentInterface
-    }
+    types.stubcat.writer ++> [
+        driver.ifacecache.IfaceRegistry._encode_iface { IncoherentInterface },
+        driver.ifacecache.IfaceRegistry.resolve_shared { collect_scope_members },
+    ]
     types.ts_decl_parser --> tests.test_jac_mobui_typing { parse_dts }
     types.type_evaluator ++> [
         driver.program.JacProgram.get_type_evaluator { TypeEvaluator },
@@ -13783,7 +13784,10 @@ graph import compiler.types.stubcat {
     ]
     type reader ++> locate { StubCatalog }
     resolver ++> modiface | reader { CatalogResolver }
-    writer ++> build { CatalogWriter }
+    writer ++> [
+        build { CatalogWriter },
+        reader.StubCatalog.symbol_in_module { collect_scope_members },
+    ]
 }
 
 graph import data {
