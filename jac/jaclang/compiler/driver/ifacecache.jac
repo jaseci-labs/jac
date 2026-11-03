@@ -136,6 +136,7 @@ obj IfaceRegistry(CatalogResolver) {
         resolved: str, mod: any, options: any, err_start: int, warn_start: int
     ) -> None;
 
+    def _owned_alerts(resolved: str, alerts: list[any]) -> list[any];
     def _disk_iface_digest(resolved: str) -> str;
     def _existing_profiles(resolved: str) -> dict[str, any];
     def client_boundary_facts(dep_path: str) -> (list[str] | None);

@@ -70,10 +70,18 @@ impl collect_scope_members(scope: UniScopeNode) -> ScopeMembers {
             }
         }
         for (name, syms) in cur.names_in_scope_overload.items() {
+            callable_syms = [
+                sym
+                for sym in syms
+                if getattr(sym.sym_type, "value", "") in ("ability", "method")
+            ];
+            if not callable_syms {
+                continue;
+            }
             if name not in members.overloads {
                 members.overloads[name] = [];
             }
-            members.overloads[name].extend(syms);
+            members.overloads[name].extend(callable_syms);
         }
         stack.extend(live_kid_scopes(cur));
     }
@@ -1072,6 +1080,9 @@ impl CatalogWriter.encode_symbol(idx: int) -> bytes {
     }
     try {
         decl_node = sym.decl.name_of if sym.decl else None;
+        if isinstance(decl_node, ParamVar) and isinstance(sym.parent_tab, Archetype) {
+            symbits |= SYMF_INIT_PARAM;
+        }
         if isinstance(decl_node, HasVar) {
             if decl_node.value is not None {
                 symbits |= SYMF_HAS_DEFAULT;
@@ -1085,7 +1096,7 @@ impl CatalogWriter.encode_symbol(idx: int) -> bytes {
     catalog_origin = sym.provider;
     if isinstance(catalog_origin, CatProvider) {
         symbits |= catalog_origin.symbits
-            & (SYMF_HAS_DEFAULT | SYMF_DEFER | SYMF_INSTANCE_METHOD);
+            & (SYMF_HAS_DEFAULT | SYMF_DEFER | SYMF_INSTANCE_METHOD | SYMF_INIT_PARAM);
     }
     put_uvar(out, symbits);
     return bytes(out);

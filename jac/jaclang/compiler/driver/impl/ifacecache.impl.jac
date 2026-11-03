@@ -927,11 +927,13 @@ impl IfaceRegistry._persist_in_context(
     if options.no_cgen {
         profiles = self._existing_profiles(resolved);
         errors: list[dict[str, any]] = [];
-        for alert in self.prog.errors_had[err_start:] {
+        for alert in self._owned_alerts(resolved, self.prog.errors_had[err_start:]) {
             errors.append(_alert_record(alert));
         }
         warnings: list[dict[str, any]] = [];
-        for alert in self.prog.warnings_had[warn_start:] {
+        for alert in self._owned_alerts(
+            resolved, self.prog.warnings_had[warn_start:]
+        ) {
             warnings.append(_alert_record(alert));
         }
         _prof_key = self.analysis_profile(options);
@@ -967,6 +969,41 @@ impl IfaceRegistry._persist_in_context(
             }
         }
     }
+}
+
+impl IfaceRegistry._owned_alerts(resolved: str, alerts: list[any]) -> list[any] {
+    if not alerts {
+        return [];
+    }
+    owned: set[str] = {os.path.realpath(resolved)};
+    for annex in discover_annex_files(resolved) {
+        owned.add(os.path.realpath(str(annex)));
+    }
+    wire_file = "";
+    wire_lines: set[int] = set();
+    try {
+        spec = wiring_for_path(resolved);
+        consumer = spec.module_name(resolved) if spec is not None else None;
+        if spec is not None and consumer {
+            wire_file = os.path.realpath(spec.path);
+            for wire in spec.consumer_wires(consumer) {
+                for (line0, _col, _text) in spec._wire_pieces(wire) {
+                    wire_lines.add(line0 + 1);
+                }
+            }
+        }
+    } except Exception {
+        wire_file = "";
+    }
+    kept: list[any] = [];
+    for alert in alerts {
+        where = os.path.realpath(alert.loc.mod_path) if alert.loc.mod_path else "";
+        if where in owned
+            or (where == wire_file and alert.loc.first_line in wire_lines) {
+            kept.append(alert);
+        }
+    }
+    return kept;
 }
 
 impl IfaceRegistry._disk_iface_digest(resolved: str) -> str {
@@ -1211,6 +1248,16 @@ impl IfaceRegistry._verify_iface(resolved: str, ent: IfaceEntry) -> None {
         if fresh_digest == ent.digest or ent.section is None {
             return;
         }
+        import hashlib;
+        stamped = codec.read_iface_hash(ent.section) or "";
+        if ent.digest != stamped
+            or hashlib.sha256(ent.section[len(stamped):]).hexdigest() != stamped {
+            raise RuntimeError(
+                f"analysis-cache verify failed for {resolved}: the served "
+                f"interface digest {ent.digest[:12]} is not the hash of the "
+                "interface it was served with"
+            );
+        }
         served_rows = self._iface_semantics(ent.section, ent.paths);
         fresh_rows = self._iface_semantics(
             fresh_bytes, JirPaths(base_dir=os.path.dirname(resolved))
@@ -1257,8 +1304,12 @@ impl IfaceRegistry._verify_analysis(resolved: str, options: any, prof: dict[str,
             span = rec.get("span") or ["", 0, 0, 0];
             return (span[0], span[1], span[3], rec.get("code"), rec.get("msg", ""));
         }
-        fresh_errs = sorted(digestible(a) for a in prog2.errors_had);
-        fresh_warns = sorted(digestible(a) for a in prog2.warnings_had);
+        fresh_errs = sorted(
+            digestible(a) for a in self._owned_alerts(resolved, prog2.errors_had)
+        );
+        fresh_warns = sorted(
+            digestible(a) for a in self._owned_alerts(resolved, prog2.warnings_had)
+        );
         replay_errs = sorted(rec_digestible(r) for r in (prof.get("errors") or []));
         replay_warns = sorted(rec_digestible(r) for r in (prof.get("warnings") or []));
         if fresh_errs != replay_errs or fresh_warns != replay_warns {

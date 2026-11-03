@@ -116,23 +116,30 @@ impl SymTabBuildPass.exit_test with Test exit {
 }
 
 impl SymTabBuildPass._import_absorbed_symbol(
-    scope: UniScopeNode, symbol: Symbol
-) -> None {
+    scope: UniScopeNode, symbol: Symbol, replace: bool = False
+) -> bool {
     if symbol.access == SymbolAccess.PRIVATE or symbol.parent_tab is scope {
-        return;
+        return False;
     }
-
+    owner = scope.owning_scope or scope;
+    held = owner._names_index.get(symbol.sym_name);
+    if replace and held is not None {
+        owner._drop_primary(held);
+        del owner._names_index[symbol.sym_name];
+        owner._overload_index.pop(symbol.sym_name, None);
+        held = None;
+    }
     declaration = Name.gen_stub_from_node(
         symbol.decl, symbol.sym_name, set_name_of=symbol.decl.name_of
     );
     declaration.bind_sym(symbol.decl.name_of, symbol.sym_name, symbol.sym_type);
     declaration.set_parent(scope);
-    held = scope.names_in_scope.get(symbol.sym_name);
     binding = scope.def_insert(declaration, single_decl='import absorb', imported=True);
     if binding is not None and binding is not held {
         binding.provider = symbol.provider;
         binding.imported_from = symbol;
     }
+    return True;
 }
 
 impl SymTabBuildPass._exit_import_absorb(nd: Import) -> None {
@@ -150,15 +157,23 @@ impl SymTabBuildPass._exit_import_absorb(nd: Import) -> None {
         return;
     }
     self._bind_import_path_symbols(import_all_module_path_node);
-    bound_before = set(sym_table_to_update.names_in_scope.keys());
+    bound = sym_table_to_update.names_in_scope;
+    taken: set[str] = set();
     for symbol in module.names_in_scope.values() {
-        if symbol.sym_name not in bound_before {
-            self._import_absorbed_symbol(sym_table_to_update, symbol);
+        name = symbol.sym_name;
+        held = bound.get(name);
+        if held is not None and held.imported_from is None {
+            continue;
+        }
+        if self._import_absorbed_symbol(
+            sym_table_to_update, symbol, replace=held is not None
+        ) {
+            taken.add(name);
         }
     }
     for overloads in module.names_in_scope_overload.values() {
         for symbol in overloads {
-            if symbol.sym_name not in bound_before {
+            if symbol.sym_name in taken {
                 self._import_absorbed_symbol(sym_table_to_update, symbol);
             }
         }

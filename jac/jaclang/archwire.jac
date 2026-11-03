@@ -10940,6 +10940,7 @@ graph import compiler.driver {
         ifacecache.IfaceRegistry._entry_fresh | jir._related_files {
             discover_annex_files
         },
+        ifacecache.IfaceRegistry._owned_alerts { discover_annex_files },
     ]
     boundary_classify ++> [
         program.JacProgram.declared_codespace { _default_codespace_for },
@@ -11375,7 +11376,9 @@ graph import compiler.driver {
             canonical_wiring_source,
             is_arch_file
         },
+        ifacecache.IfaceRegistry._owned_alerts { wiring_for_path },
         jir.stored_wiring_digest {
+            UNSETTLED_WIRING,
             arch_file_for,
             import_prefix_for,
             is_arch_file,
@@ -13471,6 +13474,7 @@ graph import compiler.types {
             SYMF_DEFER,
             SYMF_HAS_DEFAULT
         },
+        types.ClassType.lookup_member_symbol { SYMF_INIT_PARAM },
     ]
     stubcat.reader ++> [
         ct_eval { CatModule },
@@ -13740,6 +13744,7 @@ graph import compiler.types.stubcat {
             SYMF_DEFER,
             SYMF_FINAL,
             SYMF_HAS_DEFAULT,
+            SYMF_INIT_PARAM,
             SYMF_INSTANCE_METHOD,
             SYMF_NA_ESCAPES,
             SYMF_NA_REGION_HANDLE,

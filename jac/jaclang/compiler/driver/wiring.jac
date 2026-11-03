@@ -5,6 +5,7 @@ import from contextlib { contextmanager }
 import from contextvars { ContextVar }
 
 glob ARCH_FILE_NAME: str = "archwire.jac",
+     UNSETTLED_WIRING: str = "unsettled:",
      SKIPPED_PROJECT_DIRS: tuple[str, ...] = ("node_modules", "__pycache__"),
      RECORDS_FORMAT: int = 4;
 

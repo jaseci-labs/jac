@@ -478,9 +478,12 @@ test "the interface-bytes memo outlives the compile closure" {
     events = prog.analysis.cache_events;
     assert events.get("iface_encode", 0) == 1 , f"the cold persist did not encode (events: {events})";
     prog.release_compile_closure();
+    before = read_section_bytes(_cache_path(dep).read_bytes(), SEC_IFACE);
     reg.persist_after_compile(dep, mod, _check_opts(), 0, 0);
     events = prog.analysis.cache_events;
-    assert events.get("iface_persist", 0) == 2 , f"expected a second persist of the unchanged module (events: {events})";
+    assert read_section_bytes(_cache_path(dep).read_bytes(), SEC_IFACE) == before , (
+        f"re-persisting the unchanged module changed its interface (events: {events})"
+    );
     assert events.get("iface_encode", 0) == 1 , f"the unchanged module was re-encoded after closure release (events: {events})";
 }
 
@@ -1230,4 +1233,228 @@ test "a fresh check process can serve its first unit from the cache" {
     assert "FIRST_UNIT_CODEC_READY [True]" in done.stdout , (
         f"the first unit ran before the interface codec was ready:\n{done.stdout}\n{done.stderr}"
     );
+}
+
+def _with_verify(body: any) -> any {
+    prior = os.environ.get("JAC_IFACE_VERIFY");
+    os.environ["JAC_IFACE_VERIFY"] = "1";
+    try {
+        return body();
+    } finally {
+        if prior is None {
+            del os.environ["JAC_IFACE_VERIFY"];
+        } else {
+            os.environ["JAC_IFACE_VERIFY"] = prior;
+        }
+    }
+}
+
+def _iface_rows(prog: JacProgram, path: str) -> list[str] {
+    import from jaclang.compiler.driver.jir { read_jir_paths }
+    data = _cache_path(path).read_bytes();
+    section = read_section_bytes(data, SEC_IFACE);
+    assert section is not None , f"{path} persisted no interface";
+    return prog.iface_registry()._iface_semantics(
+        section, read_jir_paths(data, os.path.dirname(path))
+    );
+}
+
+test "an include of a name two providers export types it however each provider was loaded" {
+    # `include first; include second;` where both re-export Shape. The
+    # facade's binding took its declaration from the first include and its
+    # type provider from the last; with `first` served as an interface and
+    # `second` compiled from source, Shape read back as Unknown.
+    import from jaclang.compiler.types.types { ClassType }
+    with tempfile.TemporaryDirectory() as tmpdir {
+        proj = Path(tmpdir).resolve();
+        (proj / "shape.jac").write_text("obj Shape { has side: int = 1; }\n");
+        (proj / "first.jac").write_text(
+            "import from shape { Shape }\n\ndef first_side -> int { return Shape().side; }\n"
+        );
+        (proj / "second.jac").write_text(
+            "import from shape { Shape }\n\ndef second_side -> int { return Shape().side; }\n"
+        );
+        facade = str(proj / "facade.jac");
+        Path(facade).write_text("include first;\ninclude second;\n");
+        user = str(proj / "user.jac");
+        Path(user).write_text(
+            "import from facade { Shape }\n\nwith entry { print(Shape().side); }\n"
+        );
+        (cold, _d) = _check(user);
+        assert not cold.errors_had , [a.pretty_print() for a in cold.errors_had];
+        cold_rows = _iface_rows(cold, facade);
+        for stale in (facade, str(proj / "second.jac")) {
+            _cache_path(stale, user).unlink();
+        }
+        (mixed, _d) = _check(user);
+        assert not mixed.errors_had , [a.pretty_print() for a in mixed.errors_had];
+        assert _iface_rows(mixed, facade) == cold_rows , (
+            "the facade's interface depends on which includes were served"
+        );
+        prog = _context(user);
+        held = prog.load_dependency_module(facade).names_in_scope.get("Shape");
+        assert held is not None;
+        found = prog.get_type_evaluator().get_type_of_symbol(held);
+        assert isinstance(found, ClassType) , f"the served facade types Shape as {found}";
+    }
+}
+
+test "a cross-reference into a source-parsed stub finds a version-guarded class" {
+    # A stub parsed from source keeps names declared under a sys.version_info
+    # guard in the branch scope, not the module scope. Catalog
+    # cross-references resolve through that tree and came back orphaned.
+    with tempfile.TemporaryDirectory() as tmpdir {
+        stub = str(Path(tmpdir).resolve() / "guarded.pyi");
+        Path(stub).write_text(
+            "import sys\n\nif sys.version_info >= (3, 8):\n    class Guarded:\n        value: int\nelse:\n    class Legacy:\n        value: int\n"
+        );
+        registry = JacProgram().iface_registry();
+        tree = registry.resolve_module(stub);
+        assert tree is not None , "the stub did not load";
+        assert tree.names_in_scope.get("Guarded") is None , (
+            "precondition: the guarded class should live in the branch scope"
+        );
+        assert registry.resolve_shared(stub, "Guarded", "Guarded") is not None , (
+            "a version-guarded class did not resolve"
+        );
+        assert registry.resolve_shared(stub, "Legacy", "Legacy") is None , (
+            "a class in a dead version branch resolved"
+        );
+    }
+}
+
+glob CYCLE_PKG: dict[str, str] = {
+         "pkg/__init__.jac": "include pkg.parts;\n",
+         "pkg/parts.jac": "obj Part {\n    has size: int = 1;\n}\n",
+         "pkg/holder.jac": "import from pkg { Part }\n\nobj Holder {\n    has part: Part | None = None;\n}\n"
+     };
+
+test "a name looked up in a package that is still loading is not memoized as missing" {
+    # A package that includes a submodule is still resolving that include
+    # when the submodule's own imports run, so a module compiled in that
+    # window that imports from the package gets an empty placeholder for it.
+    # The failed lookup was memoized as Unknown (with a W1101), so a module
+    # compiled inside an import cycle kept `part: Unknown | None` for good,
+    # and wrote that into its interface, while the same module compiled with
+    # the package already loaded said `part: Part | None`.
+    with tempfile.TemporaryDirectory() as tmpdir {
+        proj = Path(tmpdir).resolve();
+        for (rel, text) in CYCLE_PKG.items() {
+            (proj / rel).parent.mkdir(parents=True, exist_ok=True);
+            (proj / rel).write_text(text);
+        }
+        package = os.path.realpath(str(proj / "pkg" / "__init__.jac"));
+        holder = str(proj / "pkg" / "holder.jac");
+        prog = JacProgram();
+        evaluator = prog.get_type_evaluator();
+        evaluator._modules_in_compile.add(package);
+        try {
+            mod = prog.compile(holder, options=CompileOptions(no_cgen=True));
+        } finally {
+            evaluator._modules_in_compile.discard(package);
+        }
+        assert not any(
+            a.code is not None and a.code.code == "W1101" for a in prog.warnings_had
+        ) , "a package still loading was reported as missing the name";
+        owner = mod.find_scope("Holder");
+        assert owner is not None;
+        shown = str(evaluator.get_type_of_symbol(owner.names_in_scope["part"]));
+        assert "Part" in shown and "Unknown" not in shown , (
+            f"once the package loaded, the field still reads {shown}"
+        );
+    }
+}
+
+test "a persisted diagnostic profile holds only the module's own diagnostics" {
+    # A dependency compiled from source while its importer is checked emits
+    # its warnings into the same program; they belong to the dependency's
+    # profile, not the importer's.
+    with tempfile.TemporaryDirectory() as tmpdir {
+        proj = Path(tmpdir).resolve();
+        dep = str(proj / "noisy.jac");
+        Path(dep).write_text(
+            "def noisy -> int {\n    \"a stray note\";\n    return 1;\n}\n"
+        );
+        main = str(proj / "quiet.jac");
+        Path(main).write_text(
+            "import from noisy { noisy }\n\nwith entry { print(noisy()); }\n"
+        );
+        (cold, _d) = _check(main);
+        assert any(
+            os.path.realpath(a.loc.mod_path) == os.path.realpath(dep)
+            for a in cold.warnings_had
+        ) , "precondition: the dependency should warn while it compiles";
+        import from jaclang.compiler.driver.ifacecache { IfaceRegistry }
+        profiles = IfaceRegistry._profiles_of(
+            read_section_bytes(_cache_path(main).read_bytes(), SEC_DIAG)
+        );
+        assert profiles , "the importer persisted no diagnostic profile";
+        for prof in profiles.values() {
+            for rec in prof.get("warnings", []) + prof.get("errors", []) {
+                assert os.path.realpath(rec["span"][0]) == os.path.realpath(main) , (
+                    f"the importer's profile carries a diagnostic from {rec['span'][0]}"
+                );
+            }
+        }
+    }
+}
+
+test "an init parameter member lands on the same class however its base was loaded" {
+    # A class whose init takes `ptr` materializes `ptr` as a member when it
+    # is looked up. The lookup searched the MRO for an existing member
+    # first, so once the base's own interface had materialized its `ptr`,
+    # the subclass's interface silently lacked it: the written interface
+    # depended on whether the base had been encoded in the same process.
+    with tempfile.TemporaryDirectory() as tmpdir {
+        proj = Path(tmpdir).resolve();
+        (proj / "handle.jac").write_text(
+            "class Handle {\n    def init(self: Handle, ptr: int) {\n        self._ptr = ptr;\n    }\n}\n"
+        );
+        (proj / "walker_handle.jac").write_text(
+            "import from handle { Handle }\n\nclass Cursor(Handle) {\n    def init(self: Cursor, ptr: int, step: int) {\n        Handle.init(self, ptr);\n        self._step = step;\n    }\n}\n"
+        );
+        user = str(proj / "uses_cursor.jac");
+        Path(user).write_text(
+            "import from walker_handle { Cursor }\n\nwith entry { print(Cursor(1, 2)); }\n"
+        );
+        (cold, _d) = _check(user);
+        assert not cold.errors_had , [a.pretty_print() for a in cold.errors_had];
+        cursor = str(proj / "walker_handle.jac");
+        assert any(".Cursor.ptr=" in r for r in _iface_rows(cold, cursor)) , (
+            "the subclass's interface lacks its own init parameter member"
+        );
+        def served -> JacProgram {
+            (warm, _w) = _check(user);
+            return warm;
+        }
+        warm = _with_verify(served);
+        assert not warm.errors_had , [a.pretty_print() for a in warm.errors_had];
+    }
+}
+
+test "a field's write sites are not encoded as overloads of the field" {
+    # `self._held = Thing()` in a method records another definition of the
+    # field in the class scope. The writer encoded those as overloads of a
+    # variable, typed by whatever the evaluator had settled for the write
+    # site at encode time: the declared type in one process, the assigned
+    # value's type in another.
+    with tempfile.TemporaryDirectory() as tmpdir {
+        proj = Path(tmpdir).resolve();
+        holder = str(proj / "lazy_holder.jac");
+        Path(holder).write_text(
+            "obj Thing {\n    has size: int = 1;\n}\n\nobj Holder {\n    has _held: Thing | None = None;\n\n    def held -> Thing {\n        if self._held is None {\n            self._held = Thing();\n        }\n        return self._held;\n    }\n}\n"
+        );
+        user = str(proj / "uses_holder.jac");
+        Path(user).write_text(
+            "import from lazy_holder { Holder }\n\nwith entry { print(Holder().held().size); }\n"
+        );
+        (cold, _d) = _check(user);
+        assert not cold.errors_had , [a.pretty_print() for a in cold.errors_had];
+        served = _context(user).load_dependency_module(holder).find_scope("Holder");
+        assert served is not None;
+        assert "_held" in served.names_in_scope;
+        assert "_held" not in served.names_in_scope_overload , (
+            "the field's write site was encoded as an overload"
+        );
+    }
 }

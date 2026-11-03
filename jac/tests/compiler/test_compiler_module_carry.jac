@@ -12,11 +12,14 @@ they were. Anything that builds a distributable, and any checkout that asks,
 stays exact and never accepts carried bytecode.
 
 The compiler's native kernel follows the same rule one level down. A kernel
-unit built in a source checkout is stamped with the kernel's ABI, not with the
-compiler that happened to lower it, so an edit elsewhere in the compiler
-leaves its interface, bitcode and object valid; the unit's own source, its
-compile-time rows and its dependencies' interfaces still decide. A user
-program's native products keep the exact compiler stamp, in a checkout too.
+unit built in a source checkout is stamped with the kernel's ABI and the
+sources that lower it (the native backend, the frontend, the passes and type
+system that feed it, the native runtime), not with the whole compiler, so an
+edit elsewhere in the compiler leaves its interface, bitcode and object valid,
+while an edit to anything that produces native code lowers it again; the
+unit's own source, its compile-time rows and its dependencies' interfaces
+still decide. A user program's native products keep the exact compiler stamp,
+in a checkout too.
 """
 
 import marshal;
@@ -56,6 +59,7 @@ glob PKG: Path = Path(str(jir.__file__)).resolve().parent.parent.parent,
      MODULE: str = str(PKG / "cache" / "policy.jac"),
      EMITTER_ROW: str = "compiler/backends/py/jcir_gen_pass.jac",
      NATIVE_ROW: str = "compiler/backends/native/link_plan.jac",
+     OTHER_ROW: str = "cli/commands/analysis.jac",
      INTERPRETER_ROW: str = "compiler/backends/py/jacpython/runtime.jac";
 
 """A source checkout with its own cache, entered as one compiler build after
@@ -102,7 +106,11 @@ obj Checkout {
     }
 
     def build(
-        tag: str, emitter: str = "e0", native: str = "n0", interpreter: str = "i0"
+        tag: str,
+        emitter: str = "e0",
+        native: str = "n0",
+        interpreter: str = "i0",
+        other: str = "o0"
     ) {
         digest = "3:" + tag * 64;
         self.minted.append(digest);
@@ -113,7 +121,8 @@ obj Checkout {
         jir._COMPILER_INPUT_ROWS[digest] = [
             (EMITTER_ROW, emitter),
             (NATIVE_ROW, native),
-            (INTERPRETER_ROW, interpreter)
+            (INTERPRETER_ROW, interpreter),
+            (OTHER_ROW, other)
         ];
         jir._PY_EMITTER_DIGESTS.pop(digest, None);
     }
@@ -336,8 +345,12 @@ test "a kernel unit is stamped with the kernel's ABI in a source checkout" {
         tree.build("a");
         first = native_producer_digest(True);
         assert first.startswith(f"{DEV_NATIVE_PRODUCER}{NATIVE_ABI_VERSION}:");
-        tree.build("b", native="n1", emitter="e1");
+        tree.build("b", other="o1", emitter="e1");
         assert native_producer_digest(True) == first , "a compiler edit changed the kernel's stamp";
+        tree.build("c", native="n1");
+        assert native_producer_digest(True) != first , (
+            "an edit to the native backend kept the kernel's stamp"
+        );
         assert native_producer_digest(False) == running_compiler_digest() , (
             "a user program's products lost the compiler that built them"
         );
@@ -352,7 +365,7 @@ test "a kernel unit's native products are carried to the next compiler build" {
     with checkout() as tree {
         tree.build("a");
         stamp = write_native(True, b"lowered-by-a");
-        tree.build("b", native="n1");
+        tree.build("b", other="o1");
         carried = carried_native_sections(MODULE, native_producer_digest(True));
         assert sorted(carried) == [SEC_NIFACE, SEC_NOBJ];
         assert native_section_payload(carried[SEC_NIFACE], stamp) == b"lowered-by-a";
@@ -364,7 +377,7 @@ test "native products stamped with a compiler are never carried" {
     with checkout() as tree {
         tree.build("a");
         write_native(False, b"lowered-by-a");
-        tree.build("b", native="n1");
+        tree.build("b", other="o1");
         assert carried_native_sections(MODULE, native_producer_digest(True)) == {};
         assert carried_native_sections(MODULE, native_producer_digest(False)) == {} , (
             "a user program took an earlier compiler's native products"
@@ -377,7 +390,7 @@ test "an edited kernel unit's native products are not carried" {
         tree.build("a");
         write_native(True, b"lowered-by-a");
         rewrite_entry({SEC_MODKEY: b"the key of an earlier revision of this module"});
-        tree.build("b", native="n1");
+        tree.build("b", other="o1");
         assert carried_native_sections(MODULE, native_producer_digest(True)) == {};
     }
 }
@@ -386,7 +399,7 @@ test "an exact build carries no native products" {
     with checkout() as tree {
         tree.build("a");
         write_native(True, b"lowered-by-a");
-        tree.build("b", native="n1");
+        tree.build("b", other="o1");
         kernel = native_producer_digest(True);
         update_handoff(exact=True);
         assert carried_native_sections(MODULE, kernel) == {};
@@ -401,7 +414,7 @@ test "a unit's kernel products and a user build's products coexist" {
         written = entry_sections(get_module_cache_path(MODULE));
         assert {kernel.key(), user_a.key()}
             <= set(native_section_variants(written[SEC_NIFACE]));
-        tree.build("b", native="n1");
+        tree.build("b", other="o1");
         user_b = current_native_stamp(
             "gc=cycles", "host", native_producer_digest(False)
         );
@@ -420,7 +433,7 @@ test "an unrelated compiler edit lowers no kernel unit again" {
         cold = lowered_kernel_units();
         assert set(cold) >= {Path(rel).name for rel in KERNEL_LEAVES} , cold;
         assert lowered_kernel_units() == [];
-        tree.build("b", native="n1");
+        tree.build("b", other="o1");
         assert lowered_kernel_units() == [] , "a compiler edit lowered unchanged kernel units";
         update_handoff(exact=True);
         assert lowered_kernel_units() == cold , "an exact build reused a kernel unit";
@@ -449,7 +462,7 @@ test "a kernel linked before a compiler edit is still accepted after it" {
         };
         recorded = {ident: unit_source_digest(MODULE)};
         assert unit_drift(sidecar, recorded, [MODULE]) == [];
-        tree.build("b", native="n1");
+        tree.build("b", other="o1");
         assert unit_drift(sidecar, recorded, [MODULE]) == [] , (
             "a compiler edit outside the kernel's units retired the kernel"
         );
@@ -458,5 +471,27 @@ test "a kernel linked before a compiler edit is still accepted after it" {
         assert unit_drift(sidecar, recorded, [MODULE]) , (
             "an exact build accepted a kernel stamped by its ABI"
         );
+    }
+}
+
+test "an edit to the sources that lower a kernel unit carries none of its native products" {
+    # The dev stamp was the ABI alone, so a kernel built after a MIR edit
+    # reused every unit the earlier backend had lowered and reported none of
+    # the new backend's refusals.
+    with checkout() as tree {
+        tree.build("a");
+        stamp = write_native(True, b"lowered-by-a");
+        tree.build("b", native="n1");
+        assert carried_native_sections(MODULE, native_producer_digest(True)) == {} , (
+            "a kernel unit lowered by an earlier native backend was carried"
+        );
+        tree.build("c");
+        assert native_section_payload(
+            carried_native_sections(MODULE, native_producer_digest(True)).get(
+                SEC_NIFACE
+            ),
+            stamp
+        )
+            == b"lowered-by-a" , "reverting the native backend lost the original products";
     }
 }
