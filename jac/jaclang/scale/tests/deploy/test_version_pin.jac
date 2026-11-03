@@ -3,11 +3,13 @@ import json;
 import tempfile;
 import unittest.mock;
 import inspect;
+import hashlib;
 import io;
 import from contextlib { redirect_stderr }
 import from pathlib { Path }
 import from urllib.error { HTTPError, URLError }
 import from email.message { Message }
+import from http.client { RemoteDisconnected }
 
 glob REPO: str = "jaseci-labs/jac";
 
@@ -684,10 +686,8 @@ test "the preflight proves both pod and sealing assets exist without the API" {
 
 test "a pinned admin console is found by direct URL and stays checksum-gated" {
     dist = "jac-0.34.2-admin-dist.tar.gz";
-    base = f"https://github.com/{REPO}/releases/download/v0.34.2/{dist}";
     rows = [
-        ([], (base, base + ".sha256"), False),
-        ([dist], ("", ""), False),
+        ([dist], None, False),
         ([dist + ".sha256"], None, True),
         ([dist, "/releases/tag/v0.34.2"], None, True)
     ];
@@ -699,7 +699,7 @@ test "a pinned admin console is found by direct URL and stays checksum-gated" {
             binary_mod, "urlopen", _github(calls, [], missing)
         ) {
             try {
-                got = binary_mod._admin_dist_urls("stable", "0.34.2");
+                got = binary_mod.download_admin_dist("stable", "0.34.2");
             } except RuntimeError {
                 raised = True;
             }
@@ -708,6 +708,89 @@ test "a pinned admin console is found by direct URL and stays checksum-gated" {
         assert raised == refused , f"{missing!a}";
         if not refused {
             assert got == expected , f"{missing!a}: {got!a}";
+        }
+    }
+}
+
+
+test "a cached pinned admin console costs one request, its checksum" {
+    payload = b"admin console";
+    digest = hashlib.sha256(payload).hexdigest();
+    base = f"https://github.com/{REPO}/releases/download/v0.34.2/jac-0.34.2-admin-dist.tar.gz";
+    sent: list[str] = [];
+    def fake(req: any, timeout: any = None) -> any {
+        sent.append(f"{req.get_method()} {req.full_url}");
+        resp = unittest.mock.MagicMock();
+        resp.read.return_value = f"{digest}  jac\n".encode("utf-8");
+        return resp;
+    }
+    got = None;
+    with unittest.mock.patch.dict(
+        os.environ, {"JAC_SCALE_CACHE_DIR": tempfile.mkdtemp()}
+    ) {
+        cached = binary_mod._admin_dist_cache_path("stable", "0.34.2");
+        cached.parent.mkdir(parents=True, exist_ok=True);
+        cached.write_bytes(payload);
+        with unittest.mock.patch.object(binary_mod, "urlopen", fake) {
+            got = binary_mod.download_admin_dist("stable", "0.34.2");
+        }
+    }
+    assert got == payload , f"the cached console was not used: {got!a}";
+    assert sent == [f"GET {base}.sha256"] , (
+        f"a cached console needs only its checksum request: {sent!a}"
+    );
+}
+
+
+test "a pinned admin console that cannot be reached is skipped, not fatal" {
+    # A dropped connection says nothing about the release, so the deploy goes
+    # on without the optional console (the gateway builds one on its first
+    # admin request). What GitHub does answer still stops a pinned deploy: a
+    # pin that names no published release, or a console with no checksum.
+    dist = "jac-0.39.0-admin-dist.tar.gz";
+    dropped = {
+        dist: RemoteDisconnected("Remote end closed connection without response")
+    };
+    rows = [
+        ([], dropped, False),
+        ([dist, "/releases/tag/v0.39.0"], {}, True),
+        ([dist + ".sha256"], {}, True)
+    ];
+    for (missing, broken, refused) in rows {
+        d = _project('[project]\nname = "x"\nversion = "0.1.0"\n');
+        stale = Path(d) / ".jac" / "admin";
+        stale.mkdir(parents=True);
+        (stale / "index.html").write_text("stale", encoding="utf-8");
+        (stale / ".staged").touch();
+        calls: list[dict[str, any]] = [];
+        err = None;
+        staged = None;
+        with unittest.mock.patch.dict(
+            os.environ, {"JAC_SCALE_CACHE_DIR": tempfile.mkdtemp()}
+        ) {
+            with unittest.mock.patch.object(
+                binary_mod, "urlopen", _github(calls, [], missing, broken)
+            ) {
+                with unittest.mock.patch.object(
+                    binary_mod.logger, "warning"
+                ) as warned {
+                    try {
+                        staged = binary_mod.stage_admin_dist(d, "stable", "0.39.0");
+                    } except RuntimeError as e {
+                        err = e;
+                    }
+                }
+            }
+        }
+        label = f"missing={missing!a} broken={list(broken)!a}";
+        assert calls , f"{label}: the console was never requested";
+        if refused {
+            assert err is not None , f"{label}: a policy refusal must stop the deploy";
+        } else {
+            assert err is None , f"{label}: the deploy failed: {err!a}";
+            assert staged == False , f"{label}: staged={staged!a}";
+            assert not stale.exists() , f"{label}: a console from an earlier deploy shipped";
+            assert warned.called , f"{label}: skipping the console must be reported";
         }
     }
 }

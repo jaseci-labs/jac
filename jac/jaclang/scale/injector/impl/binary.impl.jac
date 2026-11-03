@@ -597,23 +597,7 @@ impl _admin_dist_urls(channel: str, version: str = "") -> tuple[str, str] {
     }
 
     if version {
-        (dist_url, checksum_url) = stable_asset_urls(version, suffix);
-        if not _url_exists(dist_url) {
-            if not _url_exists(f"https://github.com/{repo}/releases/tag/v{version}") {
-                raise RuntimeError(
-                    f"Pinned jac-version v{version} is not a published {repo} "
-                    "release; fix [project] jac-version or remove it for latest."
-                );
-            }
-            return ("", "");
-        }
-        if not _url_exists(checksum_url) {
-            raise RuntimeError(
-                f"Pinned jac {version} publishes an admin console without a "
-                f"checksum; refusing to stage it unverified."
-            );
-        }
-        return (dist_url, checksum_url);
+        return stable_asset_urls(version, suffix);
     }
 
     api = f"https://api.github.com/repos/{repo}/releases/latest";
@@ -639,12 +623,6 @@ impl download_admin_dist(channel: str, version: str = "") -> bytes | None {
     try {
         (dist_url, checksum_url) = _admin_dist_urls(channel, version);
         if not dist_url {
-            if version {
-                logger.warning(
-                    f"Pinned jac {version} publishes no admin console asset; "
-                    f"the gateway builds it on its first admin request."
-                );
-            }
             return None;
         }
 
@@ -655,17 +633,46 @@ impl download_admin_dist(channel: str, version: str = "") -> bytes | None {
             );
             return None;
         }
-        return _fetch_verified_asset(
-            dist_url,
-            checksum_url,
-            _admin_dist_cache_path(channel, version),
-            f"{channel} admin console"
+        try {
+            return _fetch_verified_asset(
+                dist_url,
+                checksum_url,
+                _admin_dist_cache_path(channel, version),
+                f"{channel} admin console"
+            );
+        } except HTTPError as e {
+            if not version or e.code != 404 {
+                raise;
+            }
+        }
+        if _url_exists(dist_url) {
+            raise RuntimeError(
+                f"Pinned jac {version} publishes an admin console without a "
+                "checksum; refusing to stage it unverified."
+            );
+        }
+        if not _url_exists(f"https://github.com/{GH_REPO}/releases/tag/v{version}") {
+            raise RuntimeError(
+                f"Pinned jac-version v{version} is not a published {GH_REPO} "
+                "release; fix [project] jac-version or remove it for latest."
+            );
+        }
+        logger.warning(
+            f"Pinned jac {version} publishes no admin console asset; "
+            "the gateway builds it on its first admin request."
         );
+        return None;
     } except Exception as e {
-        if version {
+        unanswered = (OSError, HTTPException);
+        if version
+            and not isinstance(e, unanswered)
+            and not isinstance(e.__cause__, unanswered) {
             raise;
         }
-        logger.warning(f"Could not download the admin console asset ({e}).");
+        logger.warning(
+            f"Could not download the admin console asset ({e}); the gateway "
+            "builds it on its first admin request."
+        );
         return None;
     }
 }
@@ -678,8 +685,8 @@ impl stage_admin_dist(project_dir: str, channel: str, version: str = "") -> bool
             if version and dest.exists() {
                 shutil.rmtree(str(dest));
                 logger.info(
-                    f"Removed the previously staged admin console; pinned jac "
-                    f"{version} publishes none."
+                    "Removed the previously staged admin console so it does "
+                    f"not ship with pinned jac {version}."
                 );
             }
             return False;
