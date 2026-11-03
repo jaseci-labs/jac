@@ -390,6 +390,63 @@ test "a client build that goes silent is stopped at the time limit" {
 }
 
 
+"""A deploy interrupted while it waits on the client build (Ctrl-C, or any
+exception in the waiting thread) stops the build too, as `subprocess.run`
+does, instead of leaving it running against a staging tree about to be
+removed."""
+test "an interrupted client build does not keep running" {
+    tmp = tempfile.mkdtemp(prefix="client-stage-interrupt-");
+    pid_file = os.path.join(tmp, "pid");
+    script = os.path.join(tmp, "busy-jac.sh");
+    with open(script, "w", encoding="utf-8") as f {
+        f.write(
+            "#!/bin/sh\n"
+                + f'echo $$ > "{pid_file}"\n'
+                + 'for i in $(seq 100); do echo "step $i"; sleep 0.2; done\n'
+        );
+    }
+    os.chmod(script, 0o755);
+    real_sleep = time.sleep;
+    def interrupt(seconds: float) {
+        real_sleep(1.0);
+        raise KeyboardInterrupt();
+    }
+    interrupted = False;
+    pid = 0;
+    try {
+        with patch("time.sleep", side_effect=interrupt) {
+            try {
+                _run_until_quiet([script], tmp, None, 30);
+            } except KeyboardInterrupt {
+                interrupted = True;
+            }
+        }
+        assert interrupted;
+        with open(pid_file, encoding="utf-8") as f {
+            pid = int(f.read().strip());
+        }
+        alive = True;
+        for _ in range(20) {
+            try {
+                os.kill(pid, 0);
+            } except ProcessLookupError {
+                alive = False;
+                break;
+            }
+            real_sleep(0.1);
+        }
+        assert not alive , f"the interrupted build {pid} is still running";
+    } finally {
+        if pid {
+            try {
+                os.kill(pid, 9);
+            } except ProcessLookupError {}
+        }
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
 test "a client entry parked by .jacignore fails the deploy, naming the pattern" {
     project_dir = _app(_PARKED + "main.jac\n");
     raised = None;
