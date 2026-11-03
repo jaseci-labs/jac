@@ -886,9 +886,14 @@ impl MirLowering.dict_method(
     if name == "get" and len(args) in (1, 2) {
         result_type = self.expr_type(nd);
         held = self.temp_slot(result_type);
+        key = self.lower_expr(args[0]);
+        fallback = self.spill(
+            self.coerce(self.lower_expr(args[1]), result_type, args[1])
+        )
+            if len(args) == 2
+            else None;
         found = self.runtime(
-            "__jac_rt_dict_find",
-            [d, self.to_bits(self.lower_expr(args[0]), key_type, args[0]), key_kind]
+            "__jac_rt_dict_find", [d, self.to_bits(key, key_type, args[0]), key_kind]
         );
         if found is None {
             return None;
@@ -921,8 +926,8 @@ impl MirLowering.dict_method(
         }
         b.branch(done);
         b.position(miss);
-        if len(args) == 2 {
-            b.store(held, self.coerce(self.lower_expr(args[1]), result_type, args[1]));
+        if fallback is not None {
+            b.store(held, fallback);
         } else {
             b.store(held, self.coerce(self.none_value(), result_type, nd));
         }
