@@ -67,6 +67,7 @@ impl MirLowering.lower -> MirModule {
             }
         }
         obj_def = self.object_def(arch);
+        self.note_lineage(arch, obj_def);
         self.mir.functions.append(self.lower_drop(obj_def, arch));
         self.mir.functions.append(self.lower_trace(obj_def));
         layout = self.osp_layout(arch);

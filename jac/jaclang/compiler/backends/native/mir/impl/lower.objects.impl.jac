@@ -320,6 +320,19 @@ impl MirLowering.slot_adapter(decl: MirDecl, base: MirDecl) -> (MirFunction | No
     return fn;
 }
 
+impl MirLowering.note_lineage(arch: uni.Archetype, obj_def: MirObjectDef) {
+    for ancestor in self.lineage(arch)[1:] {
+        try {
+            held = self.object_def(ancestor);
+        } except MirRefused {
+            continue;
+        }
+        if held.name != obj_def.name {
+            self.class_lineages.append((obj_def.name, held.name));
+        }
+    }
+}
+
 impl MirLowering.live_unit(path: str) -> (uni.Module | None) {
     return self.prog.mod.hub.get(path)
         or self.prog.mod.hub.get(os.path.realpath(path))
@@ -1900,8 +1913,29 @@ impl MirLowering.isinstance_check(value: MirValue, arch: uni.Archetype) -> MirVa
         return self.opt_end(held, self.builder().const_bool(False), done);
     }
     obj_def = self.object_def(arch);
+    if value.type.kind == MirKind.OBJ
+        and value.type.name != "*"
+        and self.obj_extends(value.type.name, obj_def.name) {
+        return b.const_bool(True);
+    }
     if not obj_def.vtable_symbol or value.type.kind != MirKind.OBJ {
-        return b.const_bool(value.type is mir_obj(obj_def.name));
+        if value.type.kind != MirKind.OBJ {
+            return b.const_bool(False);
+        }
+        return self.runtime_value(
+            "__jac_rt_class_isa",
+            [
+                self.address_of(self.runtime_value("__jac_rt_type_name", [value])),
+                self.address_of(
+                    self.emit_value(
+                        MirOp.CLASS_ADDR,
+                        mir_c_ptr(mir_int(8, False)),
+                        [],
+                        str_value=obj_def.name
+                    )
+                )
+            ]
+        );
     }
     i8p = mir_c_ptr(mir_int(8, False));
     source_name = value.type.name;
@@ -1954,6 +1988,7 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
         and not self.class_inits
         and not self.osp_setup
         and not self.class_entries
+        and not self.class_lineages
         and not self.default_entries
         and not self.text_pairs
         and not any(isinstance(nd, uni.GlobalVars) for nd in self.module.body) {
@@ -2027,6 +2062,20 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
                                 callee=adapter_symbol
                             )
                         ]
+                    )
+                ]
+            );
+        }
+        for (made_name, base_name) in self.class_lineages {
+            i8p = mir_c_ptr(mir_int(8, False));
+            self.runtime(
+                "__jac_rt_class_isa_add",
+                [
+                    self.address_of(
+                        self.emit_value(MirOp.CLASS_ADDR, i8p, [], str_value=made_name)
+                    ),
+                    self.address_of(
+                        self.emit_value(MirOp.CLASS_ADDR, i8p, [], str_value=base_name)
                     )
                 ]
             );

@@ -369,6 +369,7 @@ obj MirLowering {
         text_pairs: list[tuple[str, str]] = [],
         text_regs: dict[str, tuple[MirBlock, list[MirInstr]]] = {},
         class_entries: list[tuple[str, str, str]] = [],
+        class_lineages: list[tuple[str, str]] = [],
         deferred_globals: list[tuple[MirGlobal, uni.Expr]] = [],
         class_inits: list[tuple[int, str]] = [],
         class_global_refusals: dict[str, MirRefused] = {},
@@ -732,6 +733,7 @@ obj MirLowering {
     def owner_archetype(nd: uni.UniNode) -> (uni.Archetype | None);
     def live_unit(path: str) -> (uni.Module | None);
     def live_member(nd: uni.Ability) -> uni.Ability;
+    def note_lineage(arch: uni.Archetype, obj_def: MirObjectDef);
     def foreign_static_decl(method: uni.Ability) -> (MirDecl | None);
     def method_decl_of(method: uni.Ability) -> (MirDecl | None);
     def holder_arch(expr: uni.Expr) -> (uni.Archetype | None);
