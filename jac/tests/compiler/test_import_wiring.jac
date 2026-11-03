@@ -1861,3 +1861,58 @@ test "a module whose file name no wire can name keeps written imports under the 
         shutil.rmtree(base, ignore_errors=True);
     }
 }
+
+
+test "a module keyed while archwire.jac is still being read is keyed by the whole file" {
+    # Reading archwire.jac compiles the modules the reader needs, and their
+    # cache keys ask for their wiring digest while the spec is still being
+    # built. That re-entrant lookup answered "", the same as a module with no
+    # wires, and the "" was stored for this archwire.jac, so a wire edit left
+    # those modules' keys unchanged and dev carry served bytecode without the
+    # newly wired name.
+    import jaclang.compiler.driver.wiring as wiring_mod;
+    import from jaclang.compiler.driver.wiring { arch_file_for, wiring_digest_for }
+    import from jaclang.compiler.driver.jir { stored_wiring_digest }
+    import from tests.support { cache_env }
+    base = _standard();
+    svc = os.path.join(base, "core/svc.jac");
+    saved: dict[str, (str | None)] = {};
+    for (name, value) in cache_env(os.path.join(base, ".cache")).items() {
+        saved[name] = os.environ.get(name);
+        os.environ[name] = value;
+    }
+    try {
+        settled = wiring_digest_for(svc);
+        assert settled , "precondition: svc has wires";
+        arch = arch_file_for(svc);
+        assert arch is not None;
+        reading = os.path.dirname(arch);
+        _write(base, "archwire.jac", _ARCH + "\n");
+        wiring_mod._building.add(reading);
+        try {
+            unsettled = wiring_digest_for(svc);
+            assert unsettled and unsettled != settled , (
+                f"a module keyed mid-read took the digest {unsettled!r}"
+            );
+            assert stored_wiring_digest(svc) == unsettled;
+            _write(base, "archwire.jac", _ARCH + "\n\n");
+            assert wiring_digest_for(svc) != unsettled , (
+                "an archwire.jac edit left a mid-read key unchanged"
+            );
+        } finally {
+            wiring_mod._building.discard(reading);
+        }
+        assert stored_wiring_digest(svc) == wiring_digest_for(svc) , (
+            "a mid-read wiring digest was stored for later lookups"
+        );
+    } finally {
+        for (name, value) in saved.items() {
+            if value is None {
+                os.environ.pop(name, None);
+            } else {
+                os.environ[name] = value;
+            }
+        }
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}

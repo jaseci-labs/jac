@@ -576,10 +576,26 @@ impl native_producer_digest(kernel_build: bool = False) -> str {
     if known is None {
         import from jaclang.compiler.frontend.codeinfo { NATIVE_ABI_VERSION }
         import from jaclang.compiler.kernel_target { target_pkg_root }
+        rows = _COMPILER_INPUT_ROWS.get(current);
+        if rows is None {
+            _manifest_compiler_digest(_jaclang_pkg_dir);
+            rows = _COMPILER_INPUT_ROWS.get(current, []);
+        }
+        lowering = hashlib.sha256();
+        for (rel, sha) in rows {
+            if _rel_under(rel, NATIVE_PRODUCER_ROOTS) {
+                lowering.update(rel.encode());
+                lowering.update(b"\x00");
+                lowering.update(sha.encode());
+                lowering.update(b"\n");
+            }
+        }
         known = DEV_NATIVE_PRODUCER
             + str(NATIVE_ABI_VERSION)
             + ":"
-            + abi_contract_digest(target_pkg_root());
+            + abi_contract_digest(target_pkg_root())
+            + ":"
+            + lowering.hexdigest();
         _NATIVE_PRODUCER_DIGESTS[current] = known;
     }
     return known;
@@ -852,7 +868,7 @@ impl stored_wiring_digest(source_path: str) -> str {
     );
     table = _WIRING_DIGESTS.get(stamp);
     store = os.path.join(
-        str(get_jir_cache_dir()), "wiring-v3", stamp[:2], stamp + ".json"
+        str(get_jir_cache_dir()), "wiring-v4", stamp[:2], stamp + ".json"
     );
     if table is None {
         table = {};
@@ -871,6 +887,9 @@ impl stored_wiring_digest(source_path: str) -> str {
         return known;
     }
     digest = wiring_digest_for(source_path);
+    if digest.startswith(UNSETTLED_WIRING) {
+        return digest;
+    }
     table[relative] = digest;
     try {
         os.makedirs(os.path.dirname(store), exist_ok=True);

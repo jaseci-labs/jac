@@ -4673,6 +4673,7 @@ impl TypeEvaluator.postinit -> None {
     self._flow_pending_symbols = set();
     self._flow_pending_keys = set();
     self._modules_in_compile = set();
+    self._flight_placeholders = {};
 
     catalog = self.program.stub_catalog();
     prelude = (

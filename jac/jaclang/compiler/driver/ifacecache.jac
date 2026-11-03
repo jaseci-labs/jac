@@ -137,6 +137,7 @@ obj IfaceRegistry(CatalogResolver) {
         resolved: str, mod: any, options: any, err_start: int, warn_start: int
     ) -> None;
 
+    def _owned_alerts(resolved: str, alerts: list[any]) -> list[any];
     def _disk_iface_digest(resolved: str) -> str;
     def _existing_profiles(resolved: str) -> dict[str, any];
     def client_boundary_facts(dep_path: str) -> (list[str] | None);
@@ -145,6 +146,7 @@ obj IfaceRegistry(CatalogResolver) {
         module_path: str, dotted: str, class_name: str
     ) -> (ClassDetailsShared | None);
 
+    def _iface_semantics(section: bytes, paths: (JirPaths | None)) -> list[str];
     def _fresh_verify_program -> JacProgram;
     def _verify_iface(resolved: str, ent: IfaceEntry) -> None;
     def _verify_analysis(resolved: str, options: any, prof: dict[str, any]);
