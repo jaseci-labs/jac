@@ -321,7 +321,8 @@ obj MirFnState {
         finals: list[tuple[list[uni.UniNode], int, int]] = [],
         specials: dict[str, MirValue] = {},
         region_slots: list[MirValue] = [],
-        region_escape: (MirValue | None) = None;
+        region_escape: (MirValue | None) = None,
+        pinned: dict[int, MirValue] = {};
 }
 
 obj MirBound {

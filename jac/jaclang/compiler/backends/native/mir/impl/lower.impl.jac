@@ -694,6 +694,19 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
                 holder, "'NoneType' object does not support item assignment"
             );
         }
+        pinned: list[int] = [];
+        if nd.aug_op is not None
+            and isinstance(target.right, uni.IndexSlice)
+            and not target.right.is_range {
+            for part in target.right.slices {
+                if isinstance(part.start, uni.Expr) {
+                    self.st().pinned[id(part.start)] = self.spill(
+                        self.lower_expr(part.start)
+                    );
+                    pinned.append(id(part.start));
+                }
+            }
+        }
         value = self.lower_expr(nd.value);
         if nd.aug_op is not None {
             op = AUG_OPERATORS.get(nd.aug_op.name);
@@ -708,6 +721,9 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
                 else self.aug_arith(op, current, value, nd);
         }
         self.container_set(holder, target.right, value, nd);
+        for key in pinned {
+            self.st().pinned.pop(key, None);
+        }
         return;
     }
     if isinstance(target, uni.AtomTrailer) and self.accessor_set(target, nd) {
@@ -1165,6 +1181,9 @@ impl MirLowering.lower_ctrl(nd: uni.CtrlStmt) {
 }
 
 impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
+    if self.state is not None and id(nd) in self.st().pinned {
+        return self.st().pinned[id(nd)];
+    }
     value: (MirValue | None) = None;
     if isinstance(nd, uni.Int) {
         bits = uni.int_literal_i64(nd.value);
