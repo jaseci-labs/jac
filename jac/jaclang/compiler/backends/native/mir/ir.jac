@@ -56,6 +56,7 @@ enum MirOp {
     EXC_FRAME = "exc.frame",
     ALLOCA = "alloca",
     SETJMP = "setjmp",
+    LONGJMP = "longjmp",
     VA_START = "va.start",
     VTABLE_ADDR = "vtable.addr",
     CLASS_ADDR = "class.addr",

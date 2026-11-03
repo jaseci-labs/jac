@@ -88,13 +88,15 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
             }
             field_type = member.semantic_type
                 or self.declared_field_type(member.decl_node);
-            self.ensure_objects(field_type);
             self.ensure_c_types(field_type);
             slot_type = mir_any()
-                if self.erased_slot(field_type)
+                if self.erased_slot(field_type) or self.host_only_type(field_type)
                 else mir_type_of(
                     field_type, MirPosition.FIELD, member.decl_node or arch
                 );
+            if slot_type.kind != MirKind.ANY {
+                self.ensure_objects(field_type);
+            }
             if slot_type.kind == MirKind.ENUM and isinstance(field_type, ClassType) {
                 self.enum_types.setdefault(slot_type.name, field_type);
             }
@@ -1800,6 +1802,32 @@ impl MirLowering.lower_module_entry -> (MirFunction | None) {
     }
     self.state = None;
     return fn;
+}
+
+impl MirLowering.host_only_type(t: (TypeBase | None)) -> bool {
+    if not self.prog.options.native_unit {
+        return False;
+    }
+    members = t.types if isinstance(t, UnionType) else [t];
+    for member in members {
+        if not isinstance(member, ClassType) or member._shared is None {
+            continue;
+        }
+        scope = member.shared.symbol_table;
+        if not isinstance(scope, uni.Archetype) or stub_archetype(scope) {
+            continue;
+        }
+        owner = scope.find_parent_of_type(uni.Module);
+        if owner is None
+            or owner is self.module
+            or not owner.loc.mod_path.endswith(".jac") {
+            continue;
+        }
+        if not native_unit(os.path.realpath(owner.loc.mod_path), True, self.prog) {
+            return True;
+        }
+    }
+    return False;
 }
 
 impl MirLowering.erased_slot(t: (TypeBase | None)) -> bool {

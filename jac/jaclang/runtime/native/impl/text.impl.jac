@@ -85,40 +85,8 @@ impl _is_ascii(owner: int, data: int, n: int) -> bool {
     return (tag & 1) != 0 and tag < 0 and ((tag & STR_LEN_PAYLOAD_MASK) >> 1) == n;
 }
 
-impl _utf8_block_free(block: int) {
-    free(block);
-}
-
 impl _utf8_block -> int {
-    state_at = __global_block("__jac_utf8_tls_state", 8);
-    key_at = __global_block("__jac_utf8_tls_key", 8);
-    if __atomic_load_i64(state_at, 2) != 1 {
-        if __atomic_cas_i64(state_at, 0, 2, 4) == 0 {
-            if int(pthread_key_create(key_at, int(_utf8_block_free))) != 0 {
-                __atomic_store_i64(state_at, 0, 3);
-                return 0;
-            }
-            __atomic_store_i64(state_at, 1, 3);
-        } else {
-            spins = 0;
-            while __atomic_load_i64(state_at, 2) == 2 {
-                spins += 1;
-            }
-            if __atomic_load_i64(state_at, 2) != 1 {
-                return 0;
-            }
-        }
-    }
-    key = __mem_load_i64(key_at);
-    held = pthread_getspecific(key);
-    if held == 0 {
-        held = calloc(1, UTF8_BLOCK_BYTES);
-        if held == 0 {
-            return 0;
-        }
-        pthread_setspecific(key, held);
-    }
-    return held;
+    return __thread_local_block("jac_rt_utf8_cursor", 264);
 }
 
 impl _utf8_fill(at: int, base: int, data: int, n: int, epoch: int, tick: int) {

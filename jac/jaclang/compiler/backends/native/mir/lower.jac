@@ -785,6 +785,7 @@ obj MirLowering {
     ) -> MirValue;
 
     def isinstance_check(value: MirValue, arch: uni.Archetype) -> MirValue;
+    def host_only_type(t: (TypeBase | None)) -> bool;
     def erased_slot(t: (TypeBase | None)) -> bool;
     def class_reference(nd: uni.Expr) -> (uni.Archetype | None);
     def class_value(arch: uni.Archetype) -> MirValue;

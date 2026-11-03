@@ -9629,6 +9629,7 @@ graph import compiler {
     ]
     placement.placement_facts ++> [
         backends.native.mir.backend { native_placement_hard },
+        backends.native.mir.lower { native_unit, pinned_module_space },
         driver.module_compile.admits_native_checks { variant_selected },
         driver.program.JacProgram.declared_codespace {
             native_only,
@@ -9650,11 +9651,6 @@ graph import compiler {
         native_scope.package_host_edge { native_lowered, native_unit },
     ]
     placement.placement_pins ++> [
-        backends.native.mir.lower
-            | driver.program.JacProgram.stamp_boundary_facts
-            | passes.boundary_analysis_pass.BoundaryAnalysisPass._bind_server_callee {
-            config_module_pin
-        },
         driver.boundary_classify { BareImportVerdict, classify_bare_import },
         driver.boundary_classify.import_declares_native_target { effective_module_pin },
         driver.boundary_classify.native_only_import_target { effective_module_pin },
@@ -9666,6 +9662,10 @@ graph import compiler {
         driver.program.JacProgram.prefers_native_codespace {
             config_kind_space,
             effective_module_pin
+        },
+        driver.program.JacProgram.stamp_boundary_facts
+            | passes.boundary_analysis_pass.BoundaryAnalysisPass._bind_server_callee {
+            config_module_pin
         },
         passes.placement_pass.element_requirements {
             config_element_pin,
