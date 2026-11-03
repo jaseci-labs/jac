@@ -855,6 +855,14 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _native_module_call_target(nd: uni.FuncCall) -> tuple[str, str] | None;
+    def _builtin_getattr_call(nd: uni.FuncCall) -> bool;
+    def _native_getattr_alias_for_symbol(sym: uni.Symbol) -> tuple[str, str] | None;
+    def _native_getattr_alias_target(nd: uni.FuncCall) -> tuple[str, str] | None;
+    def _native_module_member_ability(
+        module_name: str, member_name: str, nd: uni.FuncCall
+    ) -> (uni.Ability | None);
+
+    def _native_getattr_alias_scope(nd: uni.UniNode) -> (uni.UniNode | None);
     def _stdlib_intercept_covers(module_name: str, func_name: str) -> bool;
     def _emit_stdlib_intercept(
         module_name: str, func_name: str, nd: uni.FuncCall
@@ -1530,13 +1538,14 @@ walker NaIRGenPass(CompilerPass) {
     def _jacval_pointer_tag(pointer_type: ir.Type) -> int;
     def _unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Value;
     def _any_view_target(target_type: ir.Type) -> (tuple[str, str] | None);
+    def _typed_container_target(target_type: ir.Type) -> (tuple[str, str, str] | None);
     def _unbox_any_container(jv: ir.Value, target_type: ir.Type) -> (ir.Value | None);
     def _retype_boxed_tuple_fields(
         targets: list[uni.Expr], packed: ir.Value
     ) -> ir.Value;
 
     def _adopt_any_view(
-        view: ir.Value, payload: ir.Value, target_type: ir.Type
+        view: ir.Value, payload: ir.Value, target_type: ir.Type, message: str
     ) -> ir.Value;
 
     def _binding_function_active -> bool;

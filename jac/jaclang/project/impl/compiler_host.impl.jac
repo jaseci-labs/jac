@@ -41,6 +41,16 @@ impl ProjectHost.record_unit(task: ModuleAnalysis) {
     if lowered is not None and lowered is not module and not products.native_ir {
         native_products(lowered, products);
     }
+    if real.endswith(".jac") {
+        catalog = self.stub_catalog_for(task.program);
+        record_interface(
+            task.program,
+            module,
+            products,
+            catalog.pkg_dir if catalog is not None else "",
+            PRECOMPILE_SENTINEL
+        );
+    }
     self.units[real] = products;
 }
 

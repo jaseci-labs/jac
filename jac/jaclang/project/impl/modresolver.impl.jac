@@ -586,6 +586,9 @@ impl _namespace_candidate(base: str, parts: list[str]) -> (tuple[(str, str)] | N
 impl _self_tree_candidate(
     base_dir: str, actual_parts: list[str]
 ) -> (tuple[(str, str)] | None) {
+    if not actual_parts {
+        return None;
+    }
     is_compiler_pkg = actual_parts[0] == COMPILER_PACKAGE;
     cur = os.path.abspath(base_dir);
     while True {
@@ -785,6 +788,9 @@ impl is_path_alias_import(target: str, base_path: str) -> bool {
 impl resolve_module(
     target: str, base_path: str, string_spec: bool = False
 ) -> tuple[(str, str)] {
+    if not target {
+        return ('', 'other');
+    }
     base_dir = os.path.dirname(base_path);
     jac_virtual = _resolve_jac_virtual_module(target);
     if jac_virtual {
@@ -896,7 +902,7 @@ impl resolve_module(
         }
     }
     jacpath = os.environ.get('JACPATH', '');
-    if jacpath {
+    if jacpath and actual_parts {
         res = resolve_local_module(jacpath, actual_parts);
         if res {
             return res;

@@ -34,7 +34,24 @@ glob CONFIG: str = '[project]\nname="kernel-native"\n',
          'import from shapes { square, Point }\n\n'
          'with entry {\n    p = Point(x=3, y=4);\n'
          '    print("sq", square(7), "norm2", p.norm2());\n}\n'
+     ),
+     OPENS_FILE: str = (
+         'def lines(path: str) -> int {\n'
+         '    with open(path, "r", encoding="utf-8", errors="ignore") as f {\n'
+         '        return len(f.read().splitlines());\n    }\n}\n\n'
+     ),
+     FIRST_WORD: str = 'def first_word(text: str) -> str {\n    return text.split(" ")[0];\n}\n',
+     USES_FIRST_WORD: str = (
+         'import from dep { first_word }\n\n'
+         'with entry {\n    print(first_word("a b"));\n}\n'
      );
+
+"""Options of a default run: native placement, but not ahead of time."""
+def run_options -> CompileOptions {
+    return CompileOptions(
+        default_codespace="native", skip_native_engine=True, no_ir_cache=True
+    );
+}
 
 def native_options -> CompileOptions {
     return CompileOptions(
@@ -217,5 +234,71 @@ test "jac run executes a native program from a kernel compile, then from the cac
         assert [p.stat().st_mtime_ns for p in cached] == stamps , (
             "the second run compiled the program again"
         );
+    }
+}
+
+"""A dependency of a default run falls back function by function, as the entry
+does; asked for ahead of time, the same call is an error (#10380)."""
+test "a dependency of a default run falls back the way the entry does" {
+    import from tests.support { error_codes }
+    rows = [
+        ("native stubs reject open", OPENS_FILE + FIRST_WORD, run_options(), [], True),
+        (
+            "a public function is still a library",
+            FIRST_WORD.replace("def ", "def:pub "),
+            run_options(),
+            [],
+            True
+        ),
+        (
+            "a real type error",
+            'def bad -> int {\n    return first_word(1, 2);\n}\n\n' + FIRST_WORD,
+            run_options(),
+            ["E1051"],
+            False
+        ),
+        ("ahead of time", OPENS_FILE + FIRST_WORD, native_options(), ["E1054"], False)
+    ];
+    for (label, dep_source, options, codes, stays_native) in rows {
+        with TemporaryDirectory() as td {
+            base = Path(os.path.realpath(td));
+            (base / 'jac.toml').write_text(CONFIG);
+            (base / 'dep.jac').write_text(dep_source);
+            (base / 'main.jac').write_text(USES_FIRST_WORD);
+            result = kernel_compile_file(str(base / 'main.jac'), options);
+            found = set(error_codes(result));
+            assert set(codes) <= found and (codes or not found) , f"{label}: {found}";
+            if stays_native {
+                dep_unit = result.unit(str(base / 'dep.jac'));
+                assert "first_word" in dep_unit.native_ir , (
+                    f"{label}: the rest of the module left the native codespace"
+                );
+            }
+        }
+    }
+}
+
+"""A failed forced run must not cache a soft dependency for the next run (#10380)."""
+test "a forced native run that fails keeps failing" {
+    import from jaclang.compiler.backends.native.link_plan { LinkPlanError }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'dep.jac').write_text(OPENS_FILE + FIRST_WORD);
+        (base / 'main.jac').write_text(USES_FIRST_WORD);
+        for attempt in range(2) {
+            program = JacProgram();
+            refusal = "";
+            try {
+                program._get_compiler().kernel_native_entry(
+                    str(base / 'main.jac'),
+                    program,
+                    CompileOptions(force_codespace="native")
+                );
+            } except LinkPlanError as failure {
+                refusal = str(failure);
+            }
+            assert "E1054" in refusal , f"attempt {attempt} passed: {refusal}";
+        }
     }
 }

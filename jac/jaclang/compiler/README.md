@@ -32,54 +32,44 @@ by analysis and codegen (`symbol_utils`, `expr_keys`, `type_registry`,
 `native_scope.jac` lists the compiler modules the kernel links; each is an
 ordinary native unit. `kernel_module.jac` is the root: it defines
 `PyInit_jac_kernel`, so the kernel is a JacPython extension module named
-`jac_kernel`. Its interface is `kernel_api.jac`, and it answers two requests:
+`jac_kernel`. Its interface is `kernel_api.jac`:
 
-- `check(request, asker)` runs the analysis pipeline over a module and returns
-  its `AnalysisReport`: diagnostics and per-module facts
-  (`frontend/kernel_analyze.jac`).
-- `compile(request, asker)` runs the same session through code generation and
-  returns a `CompileReport`, which adds each unit's compile products
-  (`driver/unit_products.jac`): the JCIR bytes, the MTIR graph, the interop
-  manifest, the client artifact, the placement summary and the comptime
-  dependencies.
+- `compile(request)` reads the project, runs the pipeline through code
+  generation and returns a `CompileResult`: one `CompiledUnit` per module it
+  compiled (marshalled bytecode, interface, interop, client artifact,
+  placement, native IR and cache sections) and its diagnostics.
+- `check(request)` runs analysis and returns a `CheckResult`: diagnostics, and
+  on request coverage rows, placement rows and module facts.
+- `native_build(request)` plans and links native artifacts.
+- `open_session(...)` holds an analysed project across edits; every tool query
+  (hover, definitions, formatting, lint fixes, the language server's
+  requests) is a session method, reached through `session_query`.
 
-Requests and reports cross as plain Python data (`KernelRequest.to_dict`,
-`CompileReport.to_dict`): dicts, lists, strings, numbers and bytes, read and
-built by `runtime/python/bindings/plain_data.jac`. Nothing tree-shaped crosses,
-and the kernel shares no native runtime layout with the host: it carries its
-own runtime and reaches JacPython only through its C API. `API_VERSION` names
-the shape of the requests and reports, and the host refuses a kernel whose
-version is not its own `KERNEL_API_VERSION`.
+Requests and results cross as plain Python data: every record in
+`kernel_api.jac` has `to_dict` and `from_dict`, and
+`runtime/python/bindings/plain_data.jac` builds and reads the dicts. Nothing
+tree-shaped crosses, nothing calls back into the host, and the kernel shares
+no native runtime layout with the host. `KERNEL_API_VERSION` names the shape
+of the records, and the host refuses a kernel whose version is not its own.
+
+The kernel reads the world itself: `project/compiler_host.jac` is the one
+host-services implementation, answering the pipeline's questions from the
+project, the file system and the caches inside the kernel. Python is parsed by
+JacPython's frontend and assembled into bytecode natively
+(`backends/py/kernel_bytecode.jac`, behind the `PythonEngine` seam in
+`backends/py/python_engine.jac`).
 
 The host reaches the kernel in one place, `project/kernel_call.jac`:
-`loaded_kernel` loads the extension module once, and `call_compile` and
-`call_check` send a request to it. With `in_process` they run the same
-`kernel_api` functions as bytecode instead, which is how tests exercise the
-kernel's code under Python.
-
-A session starts from a `KernelInputs` record holding the facts every compile
-needs (the request, project defaults, layout tables, the stub catalog's
-location) and the kernel's `KernelHost` answers `HostServices` from it. When
-the pipeline asks something the record does not hold yet (an import's
-resolution, a path's project, the interface of a Python or `jaclang` module),
-the kernel calls the request's asker (`KernelSnapshot.ask` in
-`project/kernel_snapshot.jac`) in the same process, merges the answer into its
-inputs and carries on. A compile is one kernel run: the host does not parse the
-program to guess at questions, and nothing is run again. A question the host
-cannot answer raises `HostOnlyError`, the request reports a miss, and the
-compile fails: with a kernel present the host never compiles a program module
-in its place. The host assembles JCIR into bytecode, restores the other
-products through the same path a JIR cache hit takes, and writes the module
-JIR. A session emits a unit for every module it analysed that has no cached
-products, so importing a program compiles its closure once
-(`kernel_compile_application` does the same for an application).
+`call_compile`, `call_check`, `call_native_build` and `SessionClient`. With no
+kernel loaded (a kit that leaves it out, or `jac native build kernel` itself)
+the same calls run the `kernel_api` functions as bytecode in the host process.
+A kit that should carry a kernel but has a missing, stale or unloadable one is
+an error naming `jac native build kernel`.
 
 Keep pass and generator algorithms in `passes/` and `backends/`. To move a
 module into the kernel, add it to `native_scope.jac` and make it lower: a walker
 ability that fails to lower fails its unit and every importer, while a function
-that fails demotes to an abort stub the kernel must never reach. A new host
-question belongs on `HostServices`, with a `KernelInputs` field that holds
-its answer and a branch in the session's asker that produces it.
+that fails demotes to an abort stub the kernel must never reach.
 
 ## Native hash containers
 

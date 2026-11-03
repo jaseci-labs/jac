@@ -1,3 +1,42 @@
+impl record_interface(
+    program: JacProgram,
+    module: uni.Module,
+    products: UnitProducts,
+    catalog_dir: str = "",
+    sentinel: str = ""
+) {
+    evaluator = program.get_type_evaluator();
+    pkg_dir = os.path.dirname(os.path.realpath(module.loc.mod_path));
+    try {
+        data = build_module_iface(module, evaluator, pkg_dir);
+        shape = module_iface_shape(module, evaluator, pkg_dir);
+    } except IncoherentInterface {
+        return;
+    }
+    products.iface = base64.b64encode(data).decode("ascii");
+    products.iface_shape = shape;
+    if not catalog_dir
+        or not sentinel
+        or module.parse_failed
+        or module.codespace_inferred {
+        return;
+    }
+    package_dir = os.path.realpath(program.options.project_root or pkg_dir);
+    try {
+        portable = build_module_iface(
+            module,
+            evaluator,
+            catalog_dir,
+            PackagePathMapper(
+                base_dir=pkg_dir, package_dir=package_dir, sentinel=sentinel
+            )
+        );
+    } except IncoherentInterface {
+        return;
+    }
+    products.iface_jir = base64.b64encode(portable).decode("ascii");
+}
+
 impl definition_span_rows(tree: uni.Module) -> list[str] {
     rows: list[str] = [];
     for ability in tree.get_all_sub_nodes(uni.Ability) {
@@ -529,6 +568,7 @@ impl products_record(products: UnitProducts) -> dict[str, any] {
         "native_deps": list(products.native_deps),
         "iface": products.iface,
         "iface_shape": products.iface_shape,
+        "iface_jir": products.iface_jir,
         "effects": products.effects,
         "jac_deps": list(products.jac_deps)
     };
@@ -556,6 +596,7 @@ impl products_from_record(raw: dict[str, any]) -> UnitProducts {
         native_deps=json_str_list(raw.get("native_deps")),
         iface=str(raw.get("iface", "")),
         iface_shape=str(raw.get("iface_shape", "")),
+        iface_jir=str(raw.get("iface_jir", "")),
         effects=str(raw.get("effects", "")),
         jac_deps=json_str_list(raw.get("jac_deps"))
     );

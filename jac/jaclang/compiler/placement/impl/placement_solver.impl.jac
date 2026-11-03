@@ -993,7 +993,9 @@ impl PlacementApplyPass._run_impl(ir_in: uni.Module) -> uni.Module {
     }
     if ir_in.gen.native_undecided and ir_in.loc is not None and ir_in.loc.mod_path {
         base_dir = os.path.dirname(os.path.abspath(ir_in.loc.mod_path)) or ".";
-        closed = native_blocker_scan(ir_in, base_dir).first();
+        closed = native_blocker_scan(
+            ir_in, base_dir, allow_pub=bool(self.prog.options?.native_import)
+        ).first();
         if closed {
             ir_in.gen.native_undecided = False;
             ir_in.gen.native_closed_why = closed;

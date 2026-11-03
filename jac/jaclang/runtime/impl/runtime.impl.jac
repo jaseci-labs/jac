@@ -783,7 +783,9 @@ impl JacModule.jac_import(
 
             if spec.origin and spec.origin.endswith('.py') {
                 with open(spec.origin, encoding='utf-8') as stream {
-                    codeobj = compile(stream.read(), spec.origin, 'exec');
+                    codeobj = compile(
+                        stream.read(), spec.origin, 'exec', dont_inherit=True
+                    );
                 }
                 exec(codeobj, module.__dict__);
             } elif spec.loader {

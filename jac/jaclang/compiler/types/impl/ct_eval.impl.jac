@@ -737,7 +737,13 @@ impl CtEvaluator._demand_tree(sym: Symbol) -> Symbol {
         chain.append(scope.scope_name);
         scope = scope.parent_scope;
     }
-    real = self.evaluator.program.load_dependency_module(path, need_tree=True);
+    try {
+        real = self.evaluator.program.load_dependency_module(
+            path, need_tree=True, need_bodies=True
+        );
+    } except Exception {
+        return sym;
+    }
     if real is None or isinstance(real, CatModule) {
         return sym;
     }

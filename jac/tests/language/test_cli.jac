@@ -235,6 +235,18 @@ test "jac cli run python file" {
     assert "10" in stdout_value;
 }
 
+test "jac run python entry does not inherit future flags" {
+    captured = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured;
+    try {
+        execution.run(fixture_path("py_entry_future_flags.py"));
+    } finally {
+        sys.stdout = old_stdout;
+    }
+    assert "py entry future flags clean" in captured.getvalue();
+}
+
 test "jac run with no filename and no resolvable entry errors cleanly" {
     # `jac run` with no file is now project-aware: it climbs to the nearest
     # jac.toml and dispatches on the project kind. JAC_ROOT's project declares

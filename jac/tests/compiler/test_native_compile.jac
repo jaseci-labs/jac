@@ -652,3 +652,121 @@ test "an integer literal wider than 64 bits compiles in the kernel" {
         );
     }
 }
+
+"""Every Jac unit a kernel compile returns carries its interface twice: the
+kernel's own (`interface`) and the one the host writes (`SEC_IFACE` in its
+sections), which reads back through the host's reader to the unit's own path
+and the names the host's own interface names (#10240)."""
+test "every module a kernel compile returns carries the interface the host writes" {
+    import from jaclang.compiler.driver.jir { JirPaths, SEC_IFACE }
+    import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
+    import from jaclang.compiler.types.stubcat.modiface {
+        iface_module,
+        open_module_iface
+    }
+    def read_back(section: bytes, path: str) -> tuple[str, list[str]] {
+        paths = JirPaths(base_dir=os.path.dirname(path));
+        catalog = open_module_iface(
+            section, jaclang_pkg_dir(), path_mapper=paths.resolve
+        );
+        module = iface_module(catalog) if catalog is not None else None;
+        if module is None {
+            return ("", []);
+        }
+        return (
+            os.path.realpath(module.loc.mod_path),
+            sorted(module.names_in_scope.keys())
+        );
+    }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        write_project(base);
+        entry_file = str(base / 'main.jac');
+        result = kernel_compile_file(entry_file, compile_options());
+        assert result.ok() , diagnostics_text(result);
+        host = JacProgram();
+        checked: list[str] = [];
+        for unit in result.units {
+            if not unit.path.endswith('.jac') {
+                continue;
+            }
+            assert unit.interface and unit.iface_shape , f'{unit.path} carries no interface';
+            portable = unit.sections.get(SEC_IFACE);
+            assert portable , f'{unit.path} carries no portable interface';
+            served = host.iface_registry().ensure(unit.path);
+            assert served is not None and served.section is not None , unit.path;
+            (kernel_path, kernel_names) = read_back(portable, unit.path);
+            (host_path, host_names) = read_back(served.section, unit.path);
+            assert host_names , f'{unit.path}: the host interface reads back empty';
+            assert kernel_path == os.path.realpath(unit.path) , (
+                f'{unit.path}: the kernel interface names {kernel_path}'
+            );
+            assert kernel_names == host_names , (
+                f'{unit.path}: kernel {kernel_names} host {host_names}'
+            );
+            checked.append(os.path.basename(unit.path));
+        }
+        assert 'main.jac' in checked , checked;
+    }
+}
+
+"""A module the first compile cached reaches the next compile as an interface,
+and brings the endpoint effects its interface carries: a public function that
+calls a cached writer is a writer that touches the node it writes (#10240)."""
+test "a module served from its cached interface brings its endpoint effects" {
+    import json;
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'notes.jac').write_text(
+            'node Note { has text: str = ""; }\n\n'
+                + 'def add_note(text: str) -> str {\n'
+                + '    root ++> Note(text=text);\n    return text;\n}\n'
+        );
+        (base / 'main.jac').write_text(
+            'import from notes { add_note }\n\nwith entry { add_note("a"); }\n'
+        );
+        (base / 'page.jac').write_text(
+            'import from notes { add_note }\n\n'
+                + 'def:pub post(text: str) -> str {\n    return add_note(text);\n}\n'
+        );
+        app = kernel_compile_file(str(base / 'main.jac'), compile_options());
+        assert app.ok() , diagnostics_text(app);
+        notes = app.unit(str(base / 'notes.jac'));
+        assert notes.interface and notes.effects , notes.path;
+        page_file = str(base / 'page.jac');
+        result = kernel_compile_file(page_file, compile_options());
+        assert result.ok() , diagnostics_text(result);
+        facts = json.loads(result.unit(page_file).effects).get("post", {});
+        assert facts.get("writer") and "Note" in facts.get("touches", []) , (
+            result.unit(page_file).effects
+        );
+    }
+}
+
+"""A module served from its interface has no function bodies, so a compile that
+needs one evaluated at compile time asks for the module's tree, and gets it
+from source (#10240)."""
+test "a comptime call into a module served from its interface evaluates its body" {
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        (base / 'jac.toml').write_text(CONFIG);
+        (base / 'helpers.jac').write_text(
+            'comptime def triple(n: int) -> int {\n    return n * 3;\n}\n'
+        );
+        (base / 'main.jac').write_text(
+            'import from helpers { triple }\n\nwith entry { print(triple(2)); }\n'
+        );
+        (base / 'page.jac').write_text(
+            'import from helpers { triple }\n\n'
+                + 'comptime NINE: int = triple(3);\n'
+                + 'comptime assert NINE == 9;\n\n'
+                + 'with entry { print(NINE); }\n'
+        );
+        app = kernel_compile_file(str(base / 'main.jac'), compile_options());
+        assert app.ok() , diagnostics_text(app);
+        assert app.unit(str(base / 'helpers.jac')).interface;
+        result = kernel_compile_file(str(base / 'page.jac'), compile_options());
+        assert result.ok() and not result.errors , diagnostics_text(result);
+    }
+}

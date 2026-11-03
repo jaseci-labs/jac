@@ -1064,6 +1064,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " public surface belongs in its `__all__`; names are not re-exported"
          " otherwise, so other modules import them from where they are defined."
      ),
+     E1148 = _err(
+         "E1148",
+         Category.IMPORT,
+         "'{module}' is a variant of '{base}', so it cannot be a wire's provider",
+         help="A platform or `.native.jac` variant is chosen for its target in place"
+         " of '{base}'; no import names it. Wire '{base}' as the provider. A variant"
+         " is a consumer in its own right: its imports are wired to '{module}'."
+     ),
      E1145 = _err(
          "E1145",
          Category.IMPORT,

@@ -27,9 +27,18 @@ obj UnitProducts {
         native_deps: list[str] = [],
         iface: str = "",
         iface_shape: str = "",
+        iface_jir: str = "",
         effects: str = "",
         jac_deps: list[str] = [];
 }
+
+def record_interface(
+    program: JacProgram,
+    module: uni.Module,
+    products: UnitProducts,
+    catalog_dir: str = "",
+    sentinel: str = ""
+);
 
 def definition_span_rows(tree: uni.Module) -> list[str];
 

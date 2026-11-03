@@ -888,7 +888,8 @@ impl NativeBuildSession.lower(
     path: str, use_str: (str | None) = None
 ) -> (NativeUnitEntry | None) {
     resolved = os.path.realpath(path);
-    if resolved in self.registry.building {
+    if resolved in self.registry.building
+        or (use_str is None and resolved in self.unlowerable) {
         return None;
     }
     self.heap.take();
@@ -1007,6 +1008,10 @@ impl NativeBuildSession.lower(
             self.registry.failures[resolved] = "\n".join(
                 alert.pretty_print() for alert in self.prog.errors_had[errors_before:]
             );
+        }
+
+        if use_str is None and resolved not in self.lowered {
+            self.unlowerable.add(resolved);
         }
         self.registry.building.discard(resolved);
         self.prog.options = prior_options;

@@ -48,6 +48,7 @@ obj IfaceEntry {
         replayed_token: int = -1;
 }
 
+
 obj EncodedInterface {
     has module_key: str,
         section: bytes,
