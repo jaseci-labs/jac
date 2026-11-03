@@ -307,26 +307,19 @@ impl MirLowering.open_call(nd: uni.FuncCall) -> MirValue {
     if len(positional) == 2 {
         mode_nd = positional[1];
     }
-    path = self.spill(self.cstr_of(self.lower_expr(positional[0])));
+    path = self.cstr_of(self.lower_expr(positional[0]));
     mode = self.cstr_of(self.lower_expr(mode_nd))
         if mode_nd is not None
         else self.cstr_of(b.const_str("r", mir_str()));
-    made = self.spill(
-        b.ref_cast(
-            self.runtime_value(
-                "__jac_rt_file_open",
-                [path, mode, b.const_bool(made_type.name == "BinaryFile")]
-            ),
-            made_type,
-            True
-        )
+    made = self.runtime_value(
+        "__jac_rt_file_open", [path, mode, b.const_bool(made_type.name == "BinaryFile")]
     );
     self.raise_if(
         b.compare("eq", self.address_of(made), b.const_int(0, mir_int())),
         "FileNotFoundError",
         "No such file or directory"
     );
-    return made;
+    return b.ref_cast(made, made_type, True);
 }
 
 impl MirLowering.file_method(

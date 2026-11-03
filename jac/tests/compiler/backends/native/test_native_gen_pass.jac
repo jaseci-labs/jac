@@ -47,6 +47,7 @@ import from tests.support {
     jac_command,
     native_address,
     native_force_opts,
+    native_str_func,
     remember_native_unit,
     source_spelled
 }
@@ -2509,12 +2510,9 @@ test "context managers preserve borrowed owners with slot exceptions" {
         assert get_func(eng, name, ctypes.c_int64)() == expected , name;
     }
     with tempfile.TemporaryDirectory() as directory {
-        # Headerless strings pass (data, length), without the managed root slot.
         path = os.path.join(directory, "context.bin").encode();
-        assert get_func(
-            eng, "file_context", ctypes.c_int64, ctypes.c_char_p, ctypes.c_int64
-        )(
-            path, len(path)
+        assert native_str_func(eng, "file_context", ctypes.c_int64, ctypes.c_char_p)(
+            path
         )
             == 6;
     }
