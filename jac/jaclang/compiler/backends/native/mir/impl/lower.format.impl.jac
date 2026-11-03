@@ -566,7 +566,7 @@ impl MirLowering.type_label(t: MirType) -> str {
         arch = self.archetypes.get(t.name);
         return arch.name.value if arch is not None else t.name;
     }
-    if t.kind == MirKind.OPT {
+    if t.kind in (MirKind.OPT, MirKind.NONE) {
         return "NoneType";
     }
     return t.kind.value.split(".")[0];
