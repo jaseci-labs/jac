@@ -336,7 +336,7 @@ impl MirLowering.c_const_address(expr: uni.Expr) -> MirConst {
     raise MirRefused(self.c_const_refusal(expr));
 }
 
-impl MirLowering.c_function_symbol(expr: uni.Expr, from_c: bool = True) -> str {
+impl MirLowering.c_function_symbol(expr: uni.Expr) -> str {
     while isinstance(expr, uni.AtomUnit) and isinstance(expr.value, uni.Expr) {
         expr = expr.value;
     }
@@ -347,9 +347,7 @@ impl MirLowering.c_function_symbol(expr: uni.Expr, from_c: bool = True) -> str {
     sym = target.name_ref.sym if target.name_ref is not None else None;
     decl = self.decls.get(self.decl_syms.get(id(sym), -1)) if sym is not None else None;
     if decl is not None {
-        return self.c_entry(decl.symbol, decl.params, decl.ret, decl.ability)
-            if from_c
-            else decl.symbol;
+        return self.c_entry(decl.symbol, decl.params, decl.ret, decl.ability);
     }
     fn_type = self.prog.get_type_evaluator().get_type_of_symbol(sym)
         if sym is not None
@@ -377,9 +375,7 @@ impl MirLowering.c_function_symbol(expr: uni.Expr, from_c: bool = True) -> str {
         if unit not in self.mir.deps {
             self.mir.deps.append(unit);
         }
-        return self.c_entry(symbol, made.params, made.ret, target)
-            if from_c
-            else symbol;
+        return self.c_entry(symbol, made.params, made.ret, target);
     }
     raise MirRefused(mir_refusal("function address", expr.sym_name, expr));
 }

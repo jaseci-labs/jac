@@ -1166,7 +1166,14 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
             else None;
         if decl is not None and not decl.c_symbol {
             address = self.emit_value(
-                MirOp.FN_ADDR, mir_c_fn(decl.params, decl.ret), [], callee=decl.symbol
+                MirOp.FN_ADDR,
+                mir_c_fn(decl.params, decl.ret),
+                [],
+                callee=self.c_entry(decl.symbol, decl.params, decl.ret, decl.ability)
+                    if decl.owner is None
+                        and decl.self_type is None
+                        and isinstance(decl.ability.parent, uni.Module)
+                    else decl.symbol
             );
             self.fn_values[address.id] = decl;
             return address;
@@ -1193,7 +1200,7 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
                 MirOp.FN_ADDR,
                 mir_c_fn(foreign.params, foreign.ret),
                 [],
-                callee=foreign.symbol
+                callee=self.c_entry(foreign.symbol, foreign.params, foreign.ret, target)
             );
             self.fn_values[address.id] = foreign;
             return address;
@@ -1203,11 +1210,20 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
             return c_function;
         }
         if named_function_of(nd) is not None {
-            symbol = self.c_function_symbol(nd, False);
+            symbol = self.c_function_symbol(nd);
             held = self.mir.externs.get(symbol);
             if held is not None {
                 return self.emit_value(
                     MirOp.FN_ADDR, mir_c_fn(held.params, held.ret), [], callee=symbol
+                );
+            }
+            shim = self.c_entries.get(symbol);
+            if shim is not None {
+                return self.emit_value(
+                    MirOp.FN_ADDR,
+                    mir_c_fn([param.value.type for param in shim.params], shim.ret),
+                    [],
+                    callee=symbol
                 );
             }
         }

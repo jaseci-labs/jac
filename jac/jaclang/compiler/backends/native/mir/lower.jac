@@ -569,7 +569,7 @@ obj MirLowering {
     def c_const_refusal(expr: uni.UniNode) -> NativeRefusal;
     def c_const_struct(expr: uni.Expr, arch: uni.Archetype) -> MirConst;
     def c_const_address(expr: uni.Expr) -> MirConst;
-    def c_function_symbol(expr: uni.Expr, from_c: bool = True) -> str;
+    def c_function_symbol(expr: uni.Expr) -> str;
     def c_addressed(nd: uni.FuncCall) -> MirGlobal;
     def c_addressof(nd: uni.FuncCall) -> MirValue;
     def c_global_settle;
