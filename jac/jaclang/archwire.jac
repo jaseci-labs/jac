@@ -853,6 +853,7 @@ graph import {
             drop_python_lane_products
         },
         project.compiler_host.ProjectHost.in_compiler_tree { is_compiler_tree_path },
+        project.compiler_host.ProjectHost.read_source { compiled_content_reads },
         project.compiler_host.ProjectHost.save_native_debug_ir { get_native_debug_dir },
         project.compiler_host._native_scan_path {
             get_jir_cache_dir,
@@ -11182,7 +11183,8 @@ graph import compiler.driver {
         compiler.JacCompiler._get_bytecode {
             PRECOMPILE_SENTINEL,
             SEC_CTDEPS as _CARRY_CTDEPS,
-            SEC_CTDEPS as _PC_CTDEPS
+            SEC_CTDEPS as _PC_CTDEPS,
+            compiled_content_scope
         },
         compiler.JacCompiler._precompiled_jir_data {
             bundle_dir_allowed,

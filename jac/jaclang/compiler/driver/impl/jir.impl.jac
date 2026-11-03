@@ -758,6 +758,24 @@ impl content_on_disk -> Iterator[None] {
     }
 }
 
+impl compiled_content_reads -> (dict[str, str] | None) {
+    return _COMPILED_CONTENT.get();
+}
+
+@contextmanager
+impl compiled_content_scope -> Iterator[None] {
+    if _COMPILED_CONTENT.get() is not None {
+        yield None;
+        return;
+    }
+    token = _COMPILED_CONTENT.set({});
+    try {
+        yield None;
+    } finally {
+        _COMPILED_CONTENT.reset(token);
+    }
+}
+
 impl _memoized(kind: str, source_path: str, compute: any) -> str {
     memo = _PREPARE_MEMO.get();
     if memo is None {
