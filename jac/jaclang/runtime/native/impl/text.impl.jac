@@ -90,6 +90,11 @@ impl _utf8_block_free(block: int) {
 }
 
 impl _utf8_block -> int {
+    cache_at = __thread_local_block("__jac_utf8_tls_cache", 8);
+    cached = __mem_load_i64(cache_at);
+    if cached != 0 {
+        return cached;
+    }
     state_at = __global_block("__jac_utf8_tls_state", 8);
     key_at = __global_block("__jac_utf8_tls_key", 8);
     if __atomic_load_i64(state_at, 2) != 1 {
@@ -109,15 +114,12 @@ impl _utf8_block -> int {
             }
         }
     }
-    key = __mem_load_i64(key_at);
-    held = pthread_getspecific(key);
+    held = calloc(1, UTF8_BLOCK_BYTES);
     if held == 0 {
-        held = calloc(1, UTF8_BLOCK_BYTES);
-        if held == 0 {
-            return 0;
-        }
-        pthread_setspecific(key, held);
+        return 0;
     }
+    pthread_setspecific(__mem_load_i64(key_at), held);
+    __mem_store_i64(cache_at, held);
     return held;
 }
 
