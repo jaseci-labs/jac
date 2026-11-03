@@ -790,7 +790,7 @@ impl OwnershipCheckPass._nogc_check_call(call: FuncCall, prov: str) -> None {
             and isinstance(_a.target, Name)
             and _a.target.sym_name == "managed" {
             if _hl_c {
-                _m_params: list[Expr] = list(_a.params or []);
+                _m_params: list[(Expr | KWPair)] = list(_a.params or []);
                 _m_arg = _m_params[0] if _m_params else None;
                 _m_value = _m_arg.value if isinstance(_m_arg, KWPair) else _m_arg;
                 _m_root = self._place_of(_m_value);

@@ -880,6 +880,24 @@ impl TypeEvaluator._get_expected_container_type(
         if isinstance(candidate, ClassType)
             and candidate.private
             and candidate.private.type_args
+            and candidate.shared.class_name
+                in (
+                    "Sequence",
+                    "MutableSequence",
+                    "Collection",
+                    "Iterable",
+                    "Mapping",
+                    "MutableMapping",
+                    "AbstractSet",
+                    "MutableSet"
+                )
+            and not any(
+                isinstance(arg, TypeVarType)
+                    or (
+                        isinstance(arg, ClassType)
+                        and arg.shared.class_name.startswith("Supports")
+                    ) for arg in candidate.private.type_args
+            )
             and any(
                 isinstance(base, ClassType)
                     and base._shared is not None

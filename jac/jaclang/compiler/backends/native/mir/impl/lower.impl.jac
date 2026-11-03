@@ -2739,6 +2739,9 @@ impl MirLowering.type_of(
     t: (TypeBase | None), position: MirPosition, site: uni.UniNode
 ) -> MirType {
     self.ensure_c_types(t);
+    if self.host_only_type(t) {
+        return mir_any();
+    }
     made = mir_type_of(t, position, site, self.type_env or None);
     self.ensure_objects(t);
     if made.kind == MirKind.ENUM and isinstance(t, ClassType) {
