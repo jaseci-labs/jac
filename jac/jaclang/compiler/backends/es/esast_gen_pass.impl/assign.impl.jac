@@ -73,11 +73,14 @@ impl EsastGenPass.exit_assignment with uni.Assignment exit {
     if (
         not here.aug_op
         and any(
-            name in self.reactive_vars for target in here.target
-            for (name, _) in self._collect_pattern_names(target)
+            self._has_mid_star(target)
+                or any(
+                    name in self.reactive_vars
+                    for (name, _) in self._collect_pattern_names(target)
+                ) for target in here.target
         )
     ) {
-        stmts = self._lower_state_assignment(here, value_expr);
+        stmts = self._lower_unpack_assignment(here, value_expr);
         here.gen.es_ast = stmts[0] if len(stmts) == 1 else stmts;
         return;
     }
@@ -488,7 +491,28 @@ impl EsastGenPass._target_to_pattern(target: es.Node, loc: uni.UniNode) -> es.Pa
     return self.sync_loc(es.Identifier(name='_item'), jac_node=loc);
 }
 
-impl EsastGenPass._lower_state_assignment(
+impl EsastGenPass._has_mid_star(target: uni.UniNode) -> bool {
+    if not isinstance(target, (uni.TupleVal, uni.ListVal)) {
+        return False;
+    }
+    values = [
+        v
+        for v in target.values
+        if isinstance(v, uni.Expr)
+    ];
+    for (i, v) in enumerate(values) {
+        if isinstance(v, uni.UnaryExpr) and v.op.name == Tok.STAR_MUL.value {
+            if i < len(values) - 1 or self._has_mid_star(v.operand) {
+                return True;
+            }
+        } elif self._has_mid_star(v) {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl EsastGenPass._lower_unpack_assignment(
     here: uni.Assignment, value_expr: (es.Expression | None)
 ) -> list[es.Statement] {
     self._unpack_seq += 1;

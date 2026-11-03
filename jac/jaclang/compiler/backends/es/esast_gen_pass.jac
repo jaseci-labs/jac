@@ -670,7 +670,8 @@ walker EsastGenPass(TreePass) {
         here: uni.Assignment
     ) -> list[es.Statement];
 
-    def _lower_state_assignment(
+    def _has_mid_star(target: uni.UniNode) -> bool;
+    def _lower_unpack_assignment(
         here: uni.Assignment, value_expr: (es.Expression | None)
     ) -> list[es.Statement];
 
