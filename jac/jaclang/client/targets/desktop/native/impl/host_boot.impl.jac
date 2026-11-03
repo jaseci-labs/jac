@@ -341,12 +341,6 @@ impl serve_program(
             runtime.close();
             continue;
         }
-        if not bound {
-            stop();
-            runtime.close();
-            last_error = RuntimeError("the server did not report a bound port");
-            continue;
-        }
         return (runtime, bound[0], stop);
     }
     raise RuntimeError(
