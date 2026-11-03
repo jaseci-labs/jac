@@ -192,6 +192,9 @@ impl mir_class_type(
         }
         return mir_enum(name, mir_int());
     }
+    if is_builtin_region_type(t) {
+        return mir_int();
+    }
     if t.is_builtin("type") {
         return mir_class_value_type(t, env);
     }

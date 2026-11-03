@@ -228,7 +228,9 @@ obj MirWithExit {
         held: (MirValue | None) = None,
         it: (MirValue | None) = None,
         out: (MirValue | None) = None,
-        file: (MirValue | None) = None;
+        file: (MirValue | None) = None,
+        region: bool = False,
+        region_drop: (MirValue | None) = None;
 }
 
 obj MirLoopTarget {
@@ -380,6 +382,7 @@ obj MirLowering {
     def store_name(target: uni.Name, value: MirValue);
     def local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirValue;
     def loop_scoped(sym: uni.Symbol) -> bool;
+    def encloses(scope: (uni.UniScopeNode | None), nd: uni.UniNode) -> bool;
     def comprehension_scoped(sym: uni.Symbol) -> bool;
     def within_body(
         nd: uni.UniNode, loop: (uni.WhileStmt | uni.InForStmt | uni.IterForStmt)
@@ -1024,6 +1027,10 @@ obj MirLowering {
         target: uni.AtomTrailer, value_nd: uni.Expr, site: uni.UniNode
     );
 
+    def optional_bytes_arg(
+        arg: (uni.Expr | None), site: uni.UniNode
+    ) -> tuple[MirValue, MirValue, MirValue];
+
     def bytes_arg(
         arg: (uni.Expr | None), site: uni.UniNode
     ) -> tuple[MirValue, MirValue];
@@ -1295,6 +1302,9 @@ obj MirLowering {
     def enum_call(nd: uni.FuncCall) -> (MirValue | None);
     def enum_cursor(collection: uni.Expr) -> MirIterCursor;
     def lower_with(nd: uni.WithStmt);
+    def lower_open(nd: uni.OpenStmt);
+    def region_extern(name: str, args: list[MirValue], ret: MirType) -> MirValue;
+    def region_slot(name: str, args: list[uni.Expr]) -> MirValue;
     def with_items(
         items: list[uni.ExprAsItem], index: int, body: Sequence[uni.CodeBlockStmt]
     );

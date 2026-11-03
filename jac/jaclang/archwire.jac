@@ -1374,20 +1374,20 @@ graph import {
         },
         dist.precompile_bytecode.find_jac_files { native_only },
         dist.precompile_bytecode.package_native_units { native_units_of },
-        dist.publish.runtime_vendor._compile_runtime_module
-            | testing.cl_test_runner.module_is_client { module_record },
         dist.publish.runtime_vendor._runtime_module_options { SPACE_SERVER },
     ]
+    compiler.placement.placement_cache ++> dist.publish.runtime_vendor._compile_runtime_module
+        | testing.cl_test_runner.module_is_client { module_record }
     compiler.placement.placement_facts --> [
         dist.precompile_bytecode.run_precompile { native_only },
-        dist.precompile_bytecode.sealable_sources {
-            discover_spaces,
-            spaces_are_client_only
-        },
+        dist.precompile_bytecode.sealable_sources { spaces_are_client_only },
         project.compiler_host.ProjectHost.native_session_declares {
             session_declares_native
         },
     ]
+    compiler.placement.placement_cache --> dist.precompile_bytecode.sealable_sources {
+        discover_spaces
+    }
     compiler.placement.placement_pins ++> [
         lsp.server.engine.JacLangServer._module_spec_target { in_client_npm_world },
         lsp.server.engine.JacLangServer._npm_item_location { in_client_npm_world },
@@ -5842,7 +5842,7 @@ graph import compiler {
         },
         passes.wasm_contract.host_contracts { symbol_linked_source_module },
         placement.placement.summarize_module { module_own_native_anchor },
-        placement.placement_facts.discover_spaces
+        placement.placement_cache.discover_spaces
             | placement.placement_solver._materialize_module { hub_module_for_path },
         placement.placement_solver._is_sv_import { import_crosses_apps },
         placement.placement_solver._pullable_by_client_reference {
@@ -5889,7 +5889,7 @@ graph import compiler {
         frontend.kernel_host { package_owned },
         passes.access_check_pass.AccessCheckPass._module_app_facts
             | placement.placement_pins { context_app },
-        placement.placement_facts.module_record { cache_scope, owner_scope_options },
+        placement.placement_cache.module_record { cache_scope, owner_scope_options },
         types.type_evaluator.TypeEvaluator._in_flight_module { program_for },
     ]
     driver.compile_options ++> [
@@ -5966,7 +5966,7 @@ graph import compiler {
         backends.native.na_compile_pass.NativeCompilePass._emit_debug_products {
             get_native_debug_dir
         },
-        placement.placement_facts._record_at {
+        placement.placement_cache._record_at {
             SEC_PLACEMENT,
             get_module_cache_path,
             is_module_cache_valid,
@@ -6131,7 +6131,7 @@ graph import compiler {
             | backends.native.wasm_build.compile_to_wasm
             | frontend.kernel_analyze
             | frontend.kernel_host
-            | placement.placement_facts.discover_spaces
+            | placement.placement_cache.discover_spaces
             | placement.placement_solver._native_dep_scan
             | tests.test_batch_decl_identity
             | tests.test_client_codegen_facts
@@ -6174,6 +6174,7 @@ graph import compiler {
         | passes.placement_pass
         | passes.wasm_contract
         | placement.placement
+        | placement.placement_cache
         | placement.placement_export
         | placement.placement_facts
         | placement.placement_pins
@@ -6353,6 +6354,7 @@ graph import compiler {
             OSP_GRAPH_REL,
             OSP_KERNEL_REL,
             OSP_NATIVE_REL,
+            REGION_KERNEL_REL,
             bundled_stdlib_module_of,
             interop_callback_symbol,
             kernel_unit_path,
@@ -9614,7 +9616,6 @@ graph import compiler {
     ]
     placement.placement_facts ++> [
         backends.native.mir.backend { native_placement_hard },
-        driver.compiler.JacCompiler.kernel_native_entry { module_record },
         driver.module_compile.admits_native_checks { variant_selected },
         driver.program.JacProgram.declared_codespace {
             native_only,
@@ -9630,6 +9631,9 @@ graph import compiler {
         passes.placement_pass.PlacementPass._run_undecided { contexts_of },
         passes.placement_pass.settle_native_module { settle_server },
     ]
+    placement.placement_cache ++> driver.compiler.JacCompiler.kernel_native_entry {
+        module_record
+    }
     placement.placement_facts --> [
         driver.module_analysis.run_analysis { settle_server },
         driver.nativecache.NativeUnitRegistry.known_native_deps { native_unit },
@@ -10004,8 +10008,10 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._try_primitive_op {
             expr_primitive_name
         },
+        backends.native.mir.lower
+            | backends.native.mir.lower_types
+            | passes.ownership_check_pass { is_builtin_region_type },
         native_bindings { collect_member_syms },
-        passes.ownership_check_pass { is_builtin_region_type },
         passes.rc_facts_pass.RcFactsPass._asn_makes_region_handle {
             expr_is_builtin_region
         },
@@ -13009,8 +13015,9 @@ graph import compiler.placement {
         placement_solver._closure_pullable { module_has_root_access },
         placement_solver._pullable_by_client_reference { module_has_root_access },
     ]
-    type placement ++> placement_facts { PlacementSummary }
-    placement_export ++> placement_facts._record_at { summary_from_bytes }
+    type placement ++> placement_cache { PlacementSummary }
+    placement_export ++> placement_cache._record_at { summary_from_bytes }
+    placement_facts ++> placement_cache.discover_spaces { SPACE_SERVER, module_spaces }
     placement_facts ++> placement_solver.native_closure_blocker { pinned_module_space }
     placement_pins ++> [
         placement.module_anchor_reasons

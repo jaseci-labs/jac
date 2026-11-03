@@ -210,7 +210,10 @@ impl MirLowering.class_global_init(
     held: MirGlobal, label: str, value: uni.Expr
 ) -> None {
     fn = MirFunction(
-        name="__cls_init", symbol=held.symbol + "_init", ret=mir_none(), linkage="internal"
+        name="__cls_init",
+        symbol=held.symbol + "_init",
+        ret=mir_none(),
+        linkage="internal"
     );
     first = fn.new_block("entry");
     (outer_state, outer_current) = (self.state, self.current);
