@@ -3487,6 +3487,17 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
         raise MirRefused(mir_refusal("subscript", type(right).__name__, nd));
     }
     view = self.lower_expr(nd.target);
+    if view.type.kind == MirKind.C_PTR and right.slices[0].start is not None {
+        offset = self.lower_expr(right.slices[0].start);
+        if offset.type.kind != MirKind.INT {
+            raise MirRefused(mir_refusal("subscript index", offset.type.render(), nd));
+        }
+        return self.emit_value(
+            MirOp.PTR_OFFSET,
+            view.type,
+            [view, self.builder().convert(offset, mir_int())]
+        );
+    }
     if view.type.kind != MirKind.C_VIEW {
         hint: (str | None) = None;
         if view.type.kind == MirKind.LIST and view.type.payload().kind == MirKind.ANY {
