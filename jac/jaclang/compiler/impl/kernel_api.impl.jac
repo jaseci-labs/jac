@@ -46,7 +46,7 @@ impl KernelDiagnostic.from_dict(raw: dict[str, any]) -> KernelDiagnostic {
         span=SourceSpan.from_dict(raw["span"]),
         help=str(raw["help"]),
         pass_name=str(raw["pass_name"]),
-        related=[RelatedNote.from_dict(item) for item in raw["related"]]
+        related=[RelatedNote.from_dict(item) for item in json_maps(raw["related"])]
     );
 }
 
@@ -80,25 +80,25 @@ impl CompiledUnit.from_dict(raw: dict[str, any]) -> CompiledUnit {
     return CompiledUnit(
         path=str(raw["path"]),
         module_name=str(raw["module_name"]),
-        bytecode=bytes(raw["bytecode"]),
+        bytecode=json_bytes(raw["bytecode"]),
         python_source=str(raw["python_source"]),
-        interface=bytes(raw["interface"]),
+        interface=json_bytes(raw["interface"]),
         placement=str(raw["placement"]),
         client_js=str(raw["client_js"]),
-        native_object=bytes(raw["native_object"]),
+        native_object=json_bytes(raw["native_object"]),
         native_iface=str(raw["native_iface"]),
-        native_deps=[str(item) for item in raw["native_deps"]],
+        native_deps=json_str_list(raw["native_deps"]),
         native_ir=str(raw["native_ir"]),
         native_layout=str(raw["native_layout"]),
-        jac_deps=[str(item) for item in raw["jac_deps"]],
+        jac_deps=json_str_list(raw["jac_deps"]),
         app=str(raw["app"]),
-        persistence=[str(item) for item in raw["persistence"]],
-        import_edges=[str(item) for item in raw["import_edges"]],
+        persistence=json_str_list(raw["persistence"]),
+        import_edges=json_str_list(raw["import_edges"]),
         interop=str(raw["interop"]),
         client_manifest=str(raw["client_manifest"]),
         iface_shape=str(raw["iface_shape"]),
         effects=str(raw["effects"]),
-        sections=dict(raw["sections"])
+        sections=json_int_bytes_map(raw["sections"])
     );
 }
 
@@ -116,13 +116,13 @@ impl CompileRequest.to_dict -> dict[str, any] {
 
 impl CompileRequest.from_dict(raw: dict[str, any]) -> CompileRequest {
     return CompileRequest(
-        paths=[str(item) for item in raw["paths"]],
+        paths=json_str_list(raw["paths"]),
         project_root=str(raw["project_root"]),
-        search_paths=[str(item) for item in raw["search_paths"]],
+        search_paths=json_str_list(raw["search_paths"]),
         package_root=str(raw["package_root"]),
         options=CompileOptions.from_dict(raw["options"]),
-        sources=dict(raw["sources"]),
-        products=[str(item) for item in raw["products"]]
+        sources=json_str_map(raw["sources"]),
+        products=json_str_list(raw["products"])
     );
 }
 
@@ -146,11 +146,11 @@ impl CompileResult.to_dict -> dict[str, any] {
 
 impl CompileResult.from_dict(raw: dict[str, any]) -> CompileResult {
     return CompileResult(
-        units=[CompiledUnit.from_dict(item) for item in raw["units"]],
-        errors=[KernelDiagnostic.from_dict(item) for item in raw["errors"]],
-        warnings=[KernelDiagnostic.from_dict(item) for item in raw["warnings"]],
-        reached=[str(item) for item in raw["reached"]],
-        reads=[SourceRead.from_dict(item) for item in raw["reads"]]
+        units=[CompiledUnit.from_dict(item) for item in json_maps(raw["units"])],
+        errors=[KernelDiagnostic.from_dict(item) for item in json_maps(raw["errors"])],
+        warnings=[KernelDiagnostic.from_dict(item) for item in json_maps(raw["warnings"])],
+        reached=json_str_list(raw["reached"]),
+        reads=[SourceRead.from_dict(item) for item in json_maps(raw["reads"])]
     );
 }
 
@@ -171,7 +171,7 @@ impl CoverageRow.from_dict(raw: dict[str, any]) -> CoverageRow {
         outcome=str(raw["outcome"]),
         code=str(raw["code"]),
         detail=str(raw["detail"]),
-        seams=[str(item) for item in raw["seams"]],
+        seams=json_str_list(raw["seams"]),
         late=int(raw["late"])
     );
 }
@@ -211,12 +211,12 @@ impl CheckRequest.to_dict -> dict[str, any] {
 
 impl CheckRequest.from_dict(raw: dict[str, any]) -> CheckRequest {
     return CheckRequest(
-        paths=[str(item) for item in raw["paths"]],
+        paths=json_str_list(raw["paths"]),
         project_root=str(raw["project_root"]),
-        search_paths=[str(item) for item in raw["search_paths"]],
+        search_paths=json_str_list(raw["search_paths"]),
         package_root=str(raw["package_root"]),
         options=CompileOptions.from_dict(raw["options"]),
-        sources=dict(raw["sources"]),
+        sources=json_str_map(raw["sources"]),
         native_coverage=bool(raw["native_coverage"]),
         placements=bool(raw["placements"]),
         closure=bool(raw["closure"]),
@@ -240,11 +240,11 @@ impl ModuleFact.from_dict(raw: dict[str, any]) -> ModuleFact {
     return ModuleFact(
         path=str(raw["path"]),
         app=str(raw["app"]),
-        spaces=[str(item) for item in raw["spaces"]],
+        spaces=json_str_list(raw["spaces"]),
         decided=str(raw["decided"]),
         client_declared=bool(raw["client_declared"]),
         errors=int(raw["errors"]),
-        imports=[str(item) for item in raw["imports"]]
+        imports=json_str_list(raw["imports"])
     );
 }
 
@@ -270,13 +270,13 @@ impl CheckResult.to_dict -> dict[str, any] {
 
 impl CheckResult.from_dict(raw: dict[str, any]) -> CheckResult {
     return CheckResult(
-        errors=[KernelDiagnostic.from_dict(item) for item in raw["errors"]],
-        warnings=[KernelDiagnostic.from_dict(item) for item in raw["warnings"]],
-        reached=[str(item) for item in raw["reached"]],
-        coverage=[CoverageRow.from_dict(item) for item in raw["coverage"]],
-        placements=[PlacementRow.from_dict(item) for item in raw["placements"]],
-        modules=[ModuleFact.from_dict(item) for item in raw["modules"]],
-        app_edges=[AppEdge.from_dict(item) for item in raw["app_edges"]]
+        errors=[KernelDiagnostic.from_dict(item) for item in json_maps(raw["errors"])],
+        warnings=[KernelDiagnostic.from_dict(item) for item in json_maps(raw["warnings"])],
+        reached=json_str_list(raw["reached"]),
+        coverage=[CoverageRow.from_dict(item) for item in json_maps(raw["coverage"])],
+        placements=[PlacementRow.from_dict(item) for item in json_maps(raw["placements"])],
+        modules=[ModuleFact.from_dict(item) for item in json_maps(raw["modules"])],
+        app_edges=[AppEdge.from_dict(item) for item in json_maps(raw["app_edges"])]
     );
 }
 
@@ -304,11 +304,11 @@ impl NativeBuildRequest.to_dict -> dict[str, any] {
 
 impl NativeBuildRequest.from_dict(raw: dict[str, any]) -> NativeBuildRequest {
     return NativeBuildRequest(
-        roots=[str(item) for item in raw["roots"]],
+        roots=json_str_list(raw["roots"]),
         kind=str(raw["kind"]),
         output=str(raw["output"]),
         project_root=str(raw["project_root"]),
-        search_paths=[str(item) for item in raw["search_paths"]],
+        search_paths=json_str_list(raw["search_paths"]),
         package_root=str(raw["package_root"]),
         options=CompileOptions.from_dict(raw["options"]),
         link_mode=str(raw["link_mode"]),
@@ -350,7 +350,7 @@ impl CallbackBinding.from_dict(raw: dict[str, any]) -> CallbackBinding {
         name=str(raw["name"]),
         symbol=str(raw["symbol"]),
         ret_type=str(raw["ret_type"]),
-        param_types=[str(item) for item in raw["param_types"]]
+        param_types=json_str_list(raw["param_types"])
     );
 }
 
@@ -384,14 +384,14 @@ impl NativeBuildResult.to_dict -> dict[str, any] {
 
 impl NativeBuildResult.from_dict(raw: dict[str, any]) -> NativeBuildResult {
     return NativeBuildResult(
-        errors=[KernelDiagnostic.from_dict(item) for item in raw["errors"]],
-        warnings=[KernelDiagnostic.from_dict(item) for item in raw["warnings"]],
+        errors=[KernelDiagnostic.from_dict(item) for item in json_maps(raw["errors"])],
+        warnings=[KernelDiagnostic.from_dict(item) for item in json_maps(raw["warnings"])],
         linked=bool(raw["linked"]),
         reused=bool(raw["reused"]),
         output=str(raw["output"]),
         mode=str(raw["mode"]),
         triple=str(raw["triple"]),
-        units=[LinkedUnit.from_dict(item) for item in raw["units"]],
+        units=[LinkedUnit.from_dict(item) for item in json_maps(raw["units"])],
         recompiled=int(raw["recompiled"]),
         analysed=int(raw["analysed"]),
         lowered=int(raw["lowered"]),
@@ -400,13 +400,13 @@ impl NativeBuildResult.from_dict(raw: dict[str, any]) -> NativeBuildResult {
         plan_digest=str(raw["plan_digest"]),
         root_native=bool(raw["root_native"]),
         has_entry=bool(raw["has_entry"]),
-        python_imports=[str(item) for item in raw["python_imports"]],
-        demoted=[str(item) for item in raw["demoted"]],
-        rc_symbols=[str(item) for item in raw["rc_symbols"]],
-        rc_probes=[str(item) for item in raw["rc_probes"]],
-        libraries=[str(item) for item in raw["libraries"]],
-        callbacks=[CallbackBinding.from_dict(item) for item in raw["callbacks"]],
-        log=[str(item) for item in raw["log"]]
+        python_imports=json_str_list(raw["python_imports"]),
+        demoted=json_str_list(raw["demoted"]),
+        rc_symbols=json_str_list(raw["rc_symbols"]),
+        rc_probes=json_str_list(raw["rc_probes"]),
+        libraries=json_str_list(raw["libraries"]),
+        callbacks=[CallbackBinding.from_dict(item) for item in json_maps(raw["callbacks"])],
+        log=json_str_list(raw["log"])
     );
 }
 
@@ -454,8 +454,8 @@ impl MarkerScan.from_dict(raw: dict[str, any]) -> MarkerScan {
     return MarkerScan(
         text=str(raw["text"]),
         changed=bool(raw["changed"]),
-        claims=[ElementSpace.from_dict(item) for item in raw["claims"]],
-        sv_imports=[ImportSpace.from_dict(item) for item in raw["sv_imports"]],
+        claims=[ElementSpace.from_dict(item) for item in json_maps(raw["claims"])],
+        sv_imports=[ImportSpace.from_dict(item) for item in json_maps(raw["sv_imports"])],
         note=str(raw["note"])
     );
 }
@@ -489,8 +489,8 @@ impl AccessPlan.to_dict -> dict[str, any] {
 
 impl AccessPlan.from_dict(raw: dict[str, any]) -> AccessPlan {
     return AccessPlan(
-        rewrites=[AccessRewrite.from_dict(item) for item in raw["rewrites"]],
-        notes=[str(item) for item in raw["notes"]]
+        rewrites=[AccessRewrite.from_dict(item) for item in json_maps(raw["rewrites"])],
+        notes=json_str_list(raw["notes"])
     );
 }
 
@@ -501,7 +501,7 @@ impl StubCatalogReport.to_dict -> dict[str, any] {
 impl StubCatalogReport.from_dict(raw: dict[str, any]) -> StubCatalogReport {
     return StubCatalogReport(
         summary=str(raw["summary"]),
-        load_failures=[str(item) for item in raw["load_failures"]]
+        load_failures=json_str_list(raw["load_failures"])
     );
 }
 
@@ -521,7 +521,7 @@ impl NpmSource.from_dict(raw: dict[str, any]) -> NpmSource {
         source_path=str(raw["source_path"]),
         js=str(raw["js"]),
         dts=str(raw["dts"]),
-        external_imports=[str(item) for item in raw["external_imports"]]
+        external_imports=json_str_list(raw["external_imports"])
     );
 }
 
@@ -578,7 +578,7 @@ impl DocumentSymbol.from_dict(raw: dict[str, any]) -> DocumentSymbol {
         name=str(raw["name"]),
         kind=str(raw["kind"]),
         span=SourceSpan.from_dict(raw["span"]),
-        children=[DocumentSymbol.from_dict(item) for item in raw["children"]]
+        children=[DocumentSymbol.from_dict(item) for item in json_maps(raw["children"])]
     );
 }
 
@@ -593,8 +593,8 @@ impl ToolOutput.to_dict -> dict[str, any] {
 impl ToolOutput.from_dict(raw: dict[str, any]) -> ToolOutput {
     return ToolOutput(
         text=str(raw["text"]),
-        errors=[KernelDiagnostic.from_dict(item) for item in raw["errors"]],
-        warnings=[KernelDiagnostic.from_dict(item) for item in raw["warnings"]]
+        errors=[KernelDiagnostic.from_dict(item) for item in json_maps(raw["errors"])],
+        warnings=[KernelDiagnostic.from_dict(item) for item in json_maps(raw["warnings"])]
     );
 }
 
@@ -612,7 +612,7 @@ impl GrammarReport.from_dict(raw: dict[str, any]) -> GrammarReport {
         ebnf=str(raw["ebnf"]),
         rules=int(raw["rules"]),
         diagnostics=str(raw["diagnostics"]),
-        errors=[KernelDiagnostic.from_dict(item) for item in raw["errors"]]
+        errors=[KernelDiagnostic.from_dict(item) for item in json_maps(raw["errors"])]
     );
 }
 
@@ -635,8 +635,8 @@ impl ArchPlan.from_dict(raw: dict[str, any]) -> ArchPlan {
     return ArchPlan(
         arch_path=str(raw["arch_path"]),
         text=str(raw["text"]),
-        modules=[str(item) for item in raw["modules"]],
-        fed=[str(item) for item in raw["fed"]],
+        modules=json_str_list(raw["modules"]),
+        fed=json_str_list(raw["fed"]),
         added=int(raw["added"]),
         dropped=int(raw["dropped"]),
         rules=int(raw["rules"]),
@@ -671,8 +671,8 @@ impl ContextSlice.from_dict(raw: dict[str, any]) -> ContextSlice {
         target=SymbolInfo.from_dict(raw["target"])
             if raw["target"] is not None
             else None,
-        related=[SymbolInfo.from_dict(item) for item in raw["related"]],
-        uses=[SourceRef.from_dict(item) for item in raw["uses"]]
+        related=[SymbolInfo.from_dict(item) for item in json_maps(raw["related"])],
+        uses=[SourceRef.from_dict(item) for item in json_maps(raw["uses"])]
     );
 }
 
@@ -704,7 +704,7 @@ impl OutlineSymbol.from_dict(raw: dict[str, any]) -> OutlineSymbol {
         end_line=int(raw["end_line"]),
         col=int(raw["col"]),
         doc=str(raw["doc"]),
-        bases=[str(item) for item in raw["bases"]],
+        bases=json_str_list(raw["bases"]),
         signature=str(raw["signature"]),
         event=str(raw["event"]),
         type_str=str(raw["type_str"]),
@@ -726,8 +726,8 @@ impl ModuleOutline.from_dict(raw: dict[str, any]) -> ModuleOutline {
     return ModuleOutline(
         path=str(raw["path"]),
         doc=str(raw["doc"]),
-        files=[str(item) for item in raw["files"]],
-        symbols=[OutlineSymbol.from_dict(item) for item in raw["symbols"]],
+        files=json_str_list(raw["files"]),
+        symbols=[OutlineSymbol.from_dict(item) for item in json_maps(raw["symbols"])],
         error=str(raw["error"])
     );
 }
@@ -770,7 +770,7 @@ impl WiredFiles.to_dict -> dict[str, any] {
 
 impl WiredFiles.from_dict(raw: dict[str, any]) -> WiredFiles {
     return WiredFiles(
-        owned=bool(raw["owned"]), files=[str(item) for item in raw["files"]]
+        owned=bool(raw["owned"]), files=json_str_list(raw["files"])
     );
 }
 
@@ -812,15 +812,15 @@ impl WiringEdge.from_dict(raw: dict[str, any]) -> WiringEdge {
     return WiringEdge(
         provider=str(raw["provider"]),
         consumer=str(raw["consumer"]),
-        scope=[str(item) for item in raw["scope"]],
-        names=[str(item) for item in raw["names"]],
+        scope=json_str_list(raw["scope"]),
+        names=json_str_list(raw["names"]),
         form=str(raw["form"]),
         injected=bool(raw["injected"]),
         line=int(raw["line"]),
         crosses=bool(raw["crosses"]),
-        rules=[str(item) for item in raw["rules"]],
+        rules=json_str_list(raw["rules"]),
         violation=str(raw["violation"]),
-        arms=[str(item) for item in raw["arms"]]
+        arms=json_str_list(raw["arms"])
     );
 }
 
@@ -837,10 +837,10 @@ impl WiringRule.to_dict -> dict[str, any] {
 impl WiringRule.from_dict(raw: dict[str, any]) -> WiringRule {
     return WiringRule(
         name=str(raw["name"]),
-        sources=[str(item) for item in raw["sources"]],
-        targets=[str(item) for item in raw["targets"]],
-        names=[str(item) for item in raw["names"]],
-        governs=[str(item) for item in raw["governs"]]
+        sources=json_str_list(raw["sources"]),
+        targets=json_str_list(raw["targets"]),
+        names=json_str_list(raw["names"]),
+        governs=json_str_list(raw["governs"])
     );
 }
 
@@ -858,9 +858,9 @@ impl WiringModel.from_dict(raw: dict[str, any]) -> WiringModel {
     return WiringModel(
         arch_path=str(raw["arch_path"]),
         parsed=bool(raw["parsed"]),
-        modules=[WiringModule.from_dict(item) for item in raw["modules"]],
-        edges=[WiringEdge.from_dict(item) for item in raw["edges"]],
-        rules=[WiringRule.from_dict(item) for item in raw["rules"]]
+        modules=[WiringModule.from_dict(item) for item in json_maps(raw["modules"])],
+        edges=[WiringEdge.from_dict(item) for item in json_maps(raw["edges"])],
+        rules=[WiringRule.from_dict(item) for item in json_maps(raw["rules"])]
     );
 }
 
@@ -923,8 +923,8 @@ impl TokenStream.to_dict -> dict[str, any] {
 
 impl TokenStream.from_dict(raw: dict[str, any]) -> TokenStream {
     return TokenStream(
-        tokens=[SourceToken.from_dict(item) for item in raw["tokens"]],
-        comments=[SourceSpan.from_dict(item) for item in raw["comments"]]
+        tokens=[SourceToken.from_dict(item) for item in json_maps(raw["tokens"])],
+        comments=[SourceSpan.from_dict(item) for item in json_maps(raw["comments"])]
     );
 }
 
@@ -2374,9 +2374,9 @@ impl SymbolInfo.from_dict(d: dict[str, any]) -> SymbolInfo {
         type_str=str(d.get("type_str", "")),
         doc=str(d.get("doc", "")),
         signature=str(d.get("signature", "")),
-        fields=list(d.get("fields", [])),
-        abilities=list(d.get("abilities", [])),
-        base_classes=list(d.get("base_classes", [])),
+        fields=json_str_list(d.get("fields", [])),
+        abilities=json_str_list(d.get("abilities", [])),
+        base_classes=json_str_list(d.get("base_classes", [])),
         is_genai=bool(d.get("is_genai", False))
     );
 }

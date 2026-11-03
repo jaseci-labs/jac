@@ -38,3 +38,21 @@ impl json_opt_str_list(value: any) -> (list[str | None] | None) {
     }
     return [json_opt_str(item) for item in json_list(value)];
 }
+
+impl json_bytes(value: any) -> bytes {
+    if isinstance(value, bytes) {
+        data: bytes = value;
+        return data;
+    }
+    return b"";
+}
+
+impl json_int_bytes_map(value: any) -> dict[int, bytes] {
+    out: dict[int, bytes] = {};
+    if isinstance(value, dict) {
+        for (key, item) in value.items() {
+            out[int(key)] = json_bytes(item);
+        }
+    }
+    return out;
+}

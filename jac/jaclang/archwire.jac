@@ -4321,6 +4321,7 @@ graph import {
     compiler.driver.compile_route ++> compiler.driver.program.JacProgram.compile { installed_compile_route }
     compiler.driver.compile_route ++> project.kernel_compile { CompileRoute }
     compiler.backends.native.kernel_resolve ++> project.kernel_compile.KernelCompileRoute.compile { load_kernel }
+    compiler.driver.json_read ++> compiler.kernel_api { json_bytes, json_int_bytes_map, json_maps, json_str_list, json_str_map }
 }
 
 graph import artifacts {
