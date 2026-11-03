@@ -39,6 +39,9 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      RANGE_STEP_MESSAGE: str = "range() arg 3 must not be zero",
      CLOSURE_CELLS_OFFSET: int = 16,
      RC_THREADED_FLAG: str = "__jac_rc_threaded",
+     GEN_PENDING_TYPE: int = 8,
+     GEN_PENDING_MESSAGE: int = 16,
+     GEN_PENDING_ORIGIN: int = 24,
      RC_DEBUG_OFF_NOTICE: str = "jac: RC debug tracing not compiled in (build with --debug or [native] debug = true)",
      KIND_INT: int = 0,
      KIND_FLOAT: int = 1,
@@ -1070,6 +1073,16 @@ obj MirLowering {
     def iter_open(value: MirValue, site: uni.UniNode) -> MirIterCursor;
     def iter_step(cursor: MirIterCursor, body: MirBlock, done: MirBlock) -> MirValue;
     def iter_advance(it: MirValue, out: MirValue) -> MirValue;
+    def iter_throw(
+        it: MirValue,
+        out: MirValue,
+        origin: MirValue,
+        type_id: MirValue,
+        message: MirValue
+    ) -> MirValue;
+
+    def raise_pending;
+    def gen_close(it: MirValue) -> MirValue;
     def element_from_bits(bits: MirValue, elem: MirType) -> MirValue;
     def iter_value(value: MirValue, site: uni.UniNode) -> MirValue;
     def iter_coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;

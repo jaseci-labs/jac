@@ -3678,6 +3678,14 @@ impl MirLowering.method_call(
         in (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY) {
         return self.text_method(self.lower_expr(target.target), right.value, nd);
     }
+    if receiver_type.kind == MirKind.ITER
+        and right.value == "close"
+        and not self.call_args(nd)
+        and isinstance(target.target, uni.Expr)
+        and isinstance(target.target.type, ClassType)
+        and target.target.type.shared.class_name == "Generator" {
+        return self.gen_close(self.lower_expr(target.target));
+    }
     if receiver_type.kind == MirKind.INT
         and right.value in ("bit_length", "bit_count")
         and not self.call_args(nd) {
