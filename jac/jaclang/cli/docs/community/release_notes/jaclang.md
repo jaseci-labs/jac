@@ -26,6 +26,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ### Bug Fixes
 
+- **Fix: archwire.jac governs platform and `.native.jac` variants and files no wire can name**: a variant is a consumer of its own whose imports are wires, and the rules check the written imports of a file such as `pages/[...slug].jac`.
 - **Fix: a frame's unwind record is allocated once**: a native frame that links an unwind record allocated it twice, leaving a dead pair of stack slots ahead of the live one.
 - **Fix: a `finish_tool` batched with other tools no longer leaves an unanswered call in `conversation=`**: calls after `finish_tool` are now answered as not executed, and `finish_tool` is dropped from a batched message, so providers that require a result for every tool call accept the next turn.
 - A native build reads each dependency's native-blocker scan from the JIR cache (the `jir-nativescan` bucket, swept and purged like the other cache buckets) instead of parsing every unchanged module in the import closure again to judge an importer; an edit to a module or its annexes still rescans it, and so does an import target that appears after a scan found it missing or disappears after a scan resolved it.
