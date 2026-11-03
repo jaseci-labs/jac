@@ -10054,7 +10054,8 @@ graph import compiler {
             FunctionType,
             ModuleType,
             TypeVarType,
-            UnionType
+            UnionType,
+            UnknownType
         },
         backends.native.mir.lower_types {
             AnyType,

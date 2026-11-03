@@ -1773,12 +1773,16 @@ impl MirLowering.erased_slot(t: (TypeBase | None)) -> bool {
     if isinstance(t, TypeVarType) {
         return not t.is_self;
     }
+    if isinstance(t, UnknownType) {
+        return True;
+    }
     if not isinstance(t, UnionType) {
         return False;
     }
     erased = False;
     for member in t.types {
-        if isinstance(member, TypeVarType) and not member.is_self {
+        if (isinstance(member, TypeVarType) and not member.is_self)
+            or isinstance(member, UnknownType) {
             erased = True;
         } elif not (
             isinstance(member, ClassType)
