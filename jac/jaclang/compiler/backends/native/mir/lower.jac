@@ -90,6 +90,14 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
          "seq_cst"
      ],
      ANY_ORDER_CODES: dict[str, int] = {"lt": 0, "le": 1, "gt": 2, "ge": 3},
+     ANY_ARITH_CODES: dict[str, int] = {
+         "PLUS": 0,
+         "MINUS": 1,
+         "STAR_MUL": 2,
+         "DIV": 3,
+         "FLOOR_DIV": 4,
+         "MOD": 5
+     },
      TEXT_THUNK_MODE: int = 8,
      TEXT_THUNK_RESULT: int = 16,
      COMPARE_OPERATORS: dict[str, str] = {
@@ -128,6 +136,15 @@ glob ANY_TYPE_TAGS: dict[str, list[int]] = {
          "range": "range",
          "fn": "function",
          "iter": "generator"
+     };
+
+glob ABSTRACT_TYPE_NAMES: dict[str, list[str]] = {
+         "Sequence": ["list", "tuple", "str", "bytes", "bytearray", "range"],
+         "MutableSequence": ["list", "bytearray"],
+         "Mapping": ["dict"],
+         "MutableMapping": ["dict"],
+         "AbstractSet": ["set"],
+         "MutableSet": ["set"]
      };
 
 glob TEXT_CASES: dict[str, int] = {
@@ -310,6 +327,7 @@ obj MirLowering {
         enum_thunks: dict[str, str] = {},
         slot_cache: dict[str, dict[int, list[str]]] = {},
         named_archs: dict[str, uni.Archetype] = {},
+        default_entries: list[tuple[str, str]] = [],
         indexed_units: set[int] = set(),
         order: list[int] = [],
         refusals: dict[str, list[NativeRefusal]] = {},
@@ -1129,6 +1147,11 @@ obj MirLowering {
 
     def any_contains(item: MirValue, holder: MirValue, site: uni.UniNode) -> MirValue;
     def any_iter(value: MirValue) -> MirValue;
+    def any_arith(
+        op: str, left: MirValue, right: MirValue, site: uni.UniNode
+    ) -> MirValue;
+
+    def abstract_names(item: uni.Expr) -> list[str];
     def narrow(value: MirValue, nd: uni.Name) -> MirValue;
     def target_archetype(target: uni.Expr) -> (uni.Archetype | None);
     def isinstance_value(
@@ -1141,6 +1164,9 @@ obj MirLowering {
 
     def enum_box(value: MirValue, site: uni.UniNode) -> MirValue;
     def osp_class_tag(nd: uni.Expr) -> (MirValue | None);
+    def osp_class_tag_ok(nd: uni.Expr) -> bool;
+    def lower_dynamic_connect(nd: uni.BinaryExpr, co: uni.ConnectOp) -> MirValue;
+    def default_entry(arch: uni.Archetype) -> (MirFunction | None);
     def is_walker_ref(nd: uni.Expr) -> bool;
     def lower_osp_walker_spawn(
         nd: uni.BinaryExpr, walker_nd: uni.Expr, place_nd: uni.Expr

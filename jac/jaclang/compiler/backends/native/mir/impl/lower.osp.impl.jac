@@ -805,6 +805,10 @@ impl MirLowering.lower_connect(nd: uni.BinaryExpr, co: uni.ConnectOp) -> MirValu
     if co.conn_type is not None {
         edge_arch = self.osp_arch_of(co.conn_type);
         layout = self.osp_layout(edge_arch);
+        if (layout is None or layout.arch_type != "edge")
+            and self.osp_class_tag_ok(co.conn_type) {
+            return self.lower_dynamic_connect(nd, co);
+        }
         if layout is None or layout.arch_type != "edge" {
             raise MirRefused(
                 mir_refusal(
@@ -1355,9 +1359,60 @@ impl MirLowering.is_walker_ref(nd: uni.Expr) -> bool {
         and self.expr_type(nd).kind in (MirKind.OSP, MirKind.OBJ, MirKind.ANY);
 }
 
+impl MirLowering.osp_class_tag_ok(nd: uni.Expr) -> bool {
+    return self.class_reference(nd) is None
+        and self.expr_type(nd).kind == MirKind.CLASS;
+}
+
+impl MirLowering.lower_dynamic_connect(
+    nd: uni.BinaryExpr, co: uni.ConnectOp
+) -> MirValue {
+    b = self.builder();
+    if co.capture_edges or co.conn_assign is not None {
+        raise MirRefused(
+            mir_refusal(
+                "edge type",
+                "an edge value",
+                co.conn_type,
+                "A connect through an edge type held in a variable builds the edge with its defaults; it cannot also assign fields or collect the edges."
+            )
+        );
+    }
+    left = self.osp_hold(self.lower_expr(nd.left));
+    right = self.osp_hold(self.lower_expr(nd.right));
+    if left.type.kind == MirKind.LIST or right.type.kind == MirKind.LIST {
+        raise MirRefused(mir_refusal("connect operand", "list", nd, OSP_FANOUT_HELP));
+    }
+    i8p = mir_c_ptr(mir_int(8, False));
+    kind = self.emit_value(MirOp.PTR_CAST, i8p, [self.lower_expr(co.conn_type)]);
+    found = self.runtime_value(
+        "__jac_rt_class_ctor_find", [self.address_of(kind), b.const_int(0, mir_int())]
+    );
+    self.raise_if(
+        b.compare("eq", found, b.const_int(0, mir_int())),
+        "TypeError",
+        "this edge type cannot be built from its defaults natively"
+    );
+    callee = self.emit_value(MirOp.PTR_CAST, mir_c_fn([], mir_ref()), [found]);
+    made = self.emit_value(MirOp.CALL_FNPTR, mir_ref(), [callee]);
+    made.owned = True;
+    direction = int(co.edge_dir.value);
+    (src, tgt) = (right, left) if direction == OSP_DIR_IN else (left, right);
+    self.osp_call(
+        "__jac_osp_connect",
+        [
+            self.osp_handle(src, nd),
+            self.osp_handle(tgt, nd),
+            self.address_of(made),
+            b.const_bool(direction == OSP_DIR_ANY),
+            self.runtime_value("__jac_rt_class_tag", [kind])
+        ]
+    );
+    return tgt;
+}
+
 impl MirLowering.osp_class_tag(nd: uni.Expr) -> (MirValue | None) {
-    if self.class_reference(nd) is not None
-        or self.expr_type(nd).kind != MirKind.CLASS {
+    if not self.osp_class_tag_ok(nd) {
         return None;
     }
     return self.runtime_value(

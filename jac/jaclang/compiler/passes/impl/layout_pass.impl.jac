@@ -16,6 +16,7 @@ impl LayoutPass._run_impl(ir_in: Module) -> Module {
     }
 
     self._build_hierarchy(arch_map);
+    self._import_parent_layouts(module, arch_map);
     self._collect_isinstance_targets(module);
 
     topo_order = self._topo_sort(arch_map);
@@ -155,6 +156,73 @@ impl LayoutPass._build_hierarchy(archetypes: dict[str, Archetype]) -> None {
     for aname in archetypes {
         if aname not in reg.mro_order {
             reg.set_mro(aname, self._compute_c3_mro(aname));
+        }
+    }
+}
+
+impl LayoutPass._import_parent_layouts(
+    module: Module, archetypes: dict[str, Archetype]
+) -> None {
+    import os as _imp_os;
+    reg = self.registry;
+    here = _imp_os.path.realpath(module.loc.mod_path) if module.loc.mod_path else "";
+    hub = self.prog.mod.hub;
+    seen: set[str] = set();
+    imported = False;
+    for aname in archetypes {
+        for path in reg.parent_mods.get(aname, []) {
+            real = _imp_os.path.realpath(path) if path else "";
+            if not real or real == here or real in seen {
+                continue;
+            }
+            seen.add(real);
+            dep = hub.get(real) or hub.get(path);
+            if dep is None or dep is module {
+                continue;
+            }
+            dep_reg = dep.gen.layout_registry;
+            if dep_reg is None {
+                try {
+                    dep_reg = get_layout_registry(dep, self.prog);
+                } except Exception {
+                    dep_reg = None;
+                }
+            }
+            if dep_reg is None {
+                continue;
+            }
+            for (name, lay) in dep_reg.layouts.items() {
+                if name not in archetypes and name not in reg.layouts {
+                    reg.layouts[name] = lay;
+                    imported = True;
+                }
+            }
+            for (name, parents) in dep_reg.class_parents.items() {
+                if name not in archetypes and name not in reg.class_parents {
+                    reg.class_parents[name] = parents;
+                }
+            }
+            for (name, pmods) in dep_reg.parent_mods.items() {
+                if name not in archetypes and name not in reg.parent_mods {
+                    reg.parent_mods[name] = pmods;
+                }
+            }
+            for (name, mro) in dep_reg.mro_order.items() {
+                if name not in archetypes
+                    and len(mro) > len(reg.mro_order.get(name, [])) {
+                    reg.set_mro(name, mro);
+                }
+            }
+        }
+    }
+    if imported {
+        for aname in archetypes {
+            reg.mro_order.pop(aname, None);
+        }
+        for aname in archetypes {
+            if aname not in reg.mro_order {
+                reg.set_mro(aname, self._compute_c3_mro(aname));
+            }
         }
     }
 }

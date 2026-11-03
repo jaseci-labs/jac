@@ -67,6 +67,13 @@ impl MirLowering.lower -> MirModule {
         obj_def = self.object_def(arch);
         self.mir.functions.append(self.lower_drop(obj_def, arch));
         self.mir.functions.append(self.lower_trace(obj_def));
+        layout = self.osp_layout(arch);
+        if layout is not None and layout.arch_type == "edge" {
+            fresh = self.default_entry(arch);
+            if fresh is not None {
+                self.mir.functions.append(fresh);
+            }
+        }
         thunk = self.lower_text_thunk(obj_def, arch);
         if thunk is not None {
             self.mir.functions.append(thunk);
@@ -1143,6 +1150,9 @@ impl MirLowering.arith(
     if stepped is not None {
         return stepped;
     }
+    if MirKind.ANY in (left.type.kind, right.type.kind) and op in ANY_ARITH_CODES {
+        return self.any_arith(op, left, right, site);
+    }
     left = self.enum_as_int(left, site);
     right = self.enum_as_int(right, site);
     if op == Tok.STAR_POW {
@@ -1440,6 +1450,11 @@ impl MirLowering.lower_unary(nd: uni.UnaryExpr) -> MirValue {
     value = self.enum_as_int(self.lower_expr(nd.operand), nd);
     if op == Tok.BW_AND and mir_holds_ref(value.type) {
         return value;
+    }
+    if value.type.kind == MirKind.ANY and op == Tok.MINUS {
+        return self.any_from_box(
+            self.runtime_value("__jac_rt_any_negate", self.any_parts(value))
+        );
     }
     if not value.type.is_numeric() {
         raise MirRefused(
@@ -1867,6 +1882,19 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
         }
         return self.opt_wrap(self.coerce(value, to.payload(), site), to);
     }
+    if value.type.kind == MirKind.TUPLE
+        and to.kind == MirKind.TUPLE
+        and len(value.type.args) == len(to.args) {
+        held = self.spill(value);
+        return self.emit_value(
+            MirOp.TUPLE_MAKE,
+            to,
+            [
+                self.coerce(self.tuple_get(held, index), member, site)
+                for (index, member) in enumerate(to.args)
+            ]
+        );
+    }
     if value.type.kind == MirKind.OPT and value.type.payload() is to {
         return self.opt_get(value);
     }
@@ -1920,6 +1948,14 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
     }
     if value.type.kind == MirKind.OBJ and to.kind == MirKind.OBJ {
         return self.checked_cross_cast(value, to, site);
+    }
+    if mir_is_container(value.type) and to.kind == MirKind.OBJ {
+        b = self.builder();
+        b.raise_builtin(
+            "TypeError", f"a {value.type.render()} is not a {to.render()} instance"
+        );
+        b.position(self.st().fn.new_block("cast.dead"));
+        return b.const_null(to);
     }
     if value.type.kind == MirKind.CLASS and to.kind == MirKind.CLASS {
         return self.emit_value(MirOp.PTR_CAST, to, [value]);

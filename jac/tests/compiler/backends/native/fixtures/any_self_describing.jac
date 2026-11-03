@@ -86,6 +86,22 @@ with entry {
     print(isinstance(as_any(1), Color), red is Color.RED, as_any(Color.RED) == red);
     print(str(red), repr(red), repr(as_any([Color.BLUE, 3, Tone.HIGH])));
     print(Color.BLUE in as_any([Color.RED, Color.BLUE]), 2 in as_any([Color.BLUE]));
+    print(
+        as_any(2) + 3, as_any(2.5) * 2, as_any(7) // 2, as_any(-7) % 3, as_any(1) / 4
+    );
+    print(
+        as_any("ab") + "c", as_any([1]) + as_any(["x"]), as_any((1, )) + as_any((2, ))
+    );
+    print(as_any("ab") * 2, as_any([0]) * 3, -as_any(5), -as_any(2.5));
+    try {
+        print(as_any("a") + 1);
+    } except TypeError as err {
+        print("TypeError", err);
+    }
+    print(isinstance(as_any([1]), Sequence), isinstance(as_any("s"), Sequence));
+    print(
+        isinstance(as_any({"a": 1}), Sequence), isinstance(as_any({"a": 1}), Mapping)
+    );
     total = 0;
     for _ in range(300) {
         for item in as_any([1, 2, 3]) {

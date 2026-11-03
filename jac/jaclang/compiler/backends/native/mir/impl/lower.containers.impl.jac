@@ -576,6 +576,14 @@ impl MirLowering.container_get(
         base = self.opt_unwrap_checked(base, "'NoneType' object is not subscriptable");
     }
     part = slice.slices[0];
+    if base.type.kind == MirKind.ANY and not slice.is_range and part.start is not None {
+        key = self.any_box(self.lower_expr(part.start), part.start);
+        return self.any_from_box(
+            self.runtime_value(
+                "__jac_rt_any_getitem", self.any_parts(base) + self.any_parts(key)
+            )
+        );
+    }
     if base.type.kind == MirKind.LIST {
         if slice.is_range {
             return self.list_slice(base, part, site);
@@ -602,6 +610,11 @@ impl MirLowering.container_set(
         raise MirRefused(mir_refusal("subscript assignment", "slice", site));
     }
     key_nd = slice.slices[0].start;
+    if base.type.kind == MirKind.OPT and mir_is_container(base.type.payload()) {
+        base = self.opt_unwrap_checked(
+            base, "'NoneType' object does not support item assignment"
+        );
+    }
     if base.type.kind == MirKind.LIST {
         elem = base.type.payload();
         index = self.list_index(
@@ -999,6 +1012,23 @@ impl MirLowering.dict_method(
     }
     if name == "update" and len(args) == 1 {
         other = self.lower_expr(args[0]);
+        if other.type.kind == MirKind.ANY {
+            other = b.ref_cast(
+                self.runtime_value(
+                    "__jac_rt_dict_convert",
+                    self.any_parts(other)
+                        + [
+                            self.creation_kind(d.type.args[0], nd),
+                            self.creation_kind(d.type.args[1], nd)
+                        ]
+                ),
+                d.type,
+                True
+            );
+        } elif other.type.kind == MirKind.DICT and other.type is not d.type {
+            self.merge_dict(d, other, nd, False);
+            return b.const_bool(False);
+        }
         if other.type is not d.type {
             raise MirRefused(
                 mir_refusal("call", f"update with {other.type.render()}", nd)
@@ -1274,6 +1304,15 @@ impl MirLowering.contains(
     b = self.builder();
     if holder.type.kind == MirKind.ANY {
         return self.any_contains(item, holder, site);
+    }
+    if holder.type.kind == MirKind.OPT {
+        return self.contains(
+            item,
+            self.opt_unwrap_checked(
+                holder, "argument of type 'NoneType' is not iterable", "TypeError"
+            ),
+            site
+        );
     }
     if holder.type.kind == MirKind.LIST {
         elem = holder.type.payload();
