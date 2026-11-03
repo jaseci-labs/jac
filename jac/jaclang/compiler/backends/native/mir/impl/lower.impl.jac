@@ -2192,6 +2192,10 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         }
         return self.generic_call(nd, callee, None, None);
     }
+    if isinstance(nd.target, uni.Name)
+        and INTRINSIC_REGISTRY.is_intrinsic(nd.target.value) {
+        return self.intrinsic_call(nd, nd.target.value);
+    }
     if isinstance(callee, uni.Ability) {
         callee = self.variant_ability(callee);
     }
@@ -2352,14 +2356,30 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
             return via_method;
         }
     }
-    if isinstance(target, uni.Expr)
-        and isinstance(target.type, FunctionType)
-        and self.expr_type(target).kind == MirKind.FN {
+    callee_kind: (MirKind | None) = None;
+    if isinstance(target, uni.Expr) and isinstance(target.type, FunctionType) {
+        try {
+            callee_kind = self.expr_type(target).kind;
+        } except MirRefused as err {
+            raise MirRefused(
+                mir_refusal(
+                    "call",
+                    name or type(target).__name__,
+                    nd,
+                    "Its signature has no native form"
+                        + (
+                            f": {err.refusal.headline()}."
+                                if err.refusal is not None
+                                else "."
+                        )
+                )
+            );
+        }
+    }
+    if callee_kind == MirKind.FN {
         return self.closure_call(nd, self.callee_value(target));
     }
-    if isinstance(target, uni.Expr)
-        and isinstance(target.type, FunctionType)
-        and self.expr_type(target).kind == MirKind.C_FN {
+    if callee_kind == MirKind.C_FN {
         fnptr = self.lower_expr(target);
         fp_params = fnptr.type.args[1:];
         fp_args = self.call_args(nd);

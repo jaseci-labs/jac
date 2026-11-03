@@ -52,7 +52,7 @@ def _native_opts(gc_mode: str | None = None) -> any {
 
 """Compile a probe source in an isolated tempdir; return (prog, module)."""
 def _compile_src(
-    source: str, gc_mode: str | None = None, engine: bool = True
+    source: str, gc_mode: str | None = None, engine: bool = True, tls: bool = False
 ) -> tuple[any, ...] {
     with tempfile.TemporaryDirectory() as tmp {
         src = os.path.join(tmp, "intrinsic_probe.jac");
@@ -62,6 +62,7 @@ def _compile_src(
         prog = JacProgram();
         options = _native_opts(gc_mode);
         options.skip_native_engine = not engine;
+        options.native_tls = tls;
         ir_mod = prog.compile(file_path=src, options=options);
         return (prog, ir_mod);
     }
@@ -101,6 +102,13 @@ glob RAW_MEM_IMPORTS = "import from c { def malloc(n: int) -> int; def free(p: i
          IntrinsicDispatch.ATOMIC_RMW: "atomicrmw",
          IntrinsicDispatch.ATOMIC_FENCE: "fence seq_cst"
      },
+     RC_RUNTIME_HOOKS = {
+         "__rc_debug_enable": "",
+         "__rc_debug_disable": "",
+         "__rc_gc_disable": "__jac_rt_gc_disable",
+         "__rc_gc_enable": "__jac_rt_gc_enable",
+         "__rc_collect_cycles": "__jac_rt_collect_cycles"
+     },
      VALUE_DISPATCH = [
          IntrinsicDispatch.MEM_LOAD,
          IntrinsicDispatch.MEM_STORE,
@@ -109,7 +117,8 @@ glob RAW_MEM_IMPORTS = "import from c { def malloc(n: int) -> int; def free(p: i
          IntrinsicDispatch.LIST_DATA,
          IntrinsicDispatch.BUFFER_DATA,
          IntrinsicDispatch.REF_ADDR,
-         IntrinsicDispatch.STR_DATA
+         IntrinsicDispatch.STR_DATA,
+         IntrinsicDispatch.GLOBAL_BLOCK
      ];
 
 """Probe source per dispatch kind; a new dispatch kind must add one here."""
@@ -205,6 +214,23 @@ def _probe_source(intr: any) -> str {
             + "return int(v) + int(old) - int(before) + 11; }\n"
         );
     }
+    if intr.dispatch == IntrinsicDispatch.EXC_LONGJMP {
+        # A longjmp never returns, so the probe keeps it on a branch the
+        # call does not take; the lowering is checked in the emitted IR.
+        return (
+            "def probe(x: int) -> int { if x < 0 { "
+            + intr.name
+            + "(x); } return x + 7; }\n"
+        );
+    }
+    if intr.dispatch == IntrinsicDispatch.GLOBAL_BLOCK {
+        return (
+            "def probe(x: int) -> int { p = "
+            + intr.name
+            + "(\"jac_probe_block\", 16); __mem_store_i64(p, x + 7); "
+            + "return int(__mem_load_i64(p)); }\n"
+        );
+    }
     if intr.dispatch == IntrinsicDispatch.ATOMIC_FENCE {
         return "def probe(x: int) -> int { __atomic_fence(5); return x + 7; }\n";
     }
@@ -236,8 +262,10 @@ test "every registry intrinsic lowers through its registered emitter" {
     for intr in entries {
         if intr.dispatch == IntrinsicDispatch.C_THREAD_LOCAL {
             # The JIT links no initial-exec TLS reference to a host symbol;
-            # the declaration and the address it yields are the lowering.
-            (prog, ir_mod) = _compile_src(_probe_source(intr), engine=False);
+            # the declaration and the address it yields are the lowering. A
+            # build without native TLS keeps a pthread-keyed slot instead, so
+            # the declaration is pinned under native TLS.
+            (prog, ir_mod) = _compile_src(_probe_source(intr), engine=False, tls=True);
             assert not prog.errors_had , [str(e) for e in prog.errors_had];
             ir_text = str(ir_mod.gen.llvm_ir);
             declared = "weak thread_local(initialexec) global i64 0"
@@ -264,6 +292,30 @@ test "every registry intrinsic lowers through its registered emitter" {
             fn = _get_func(eng, "probe", ctypes.c_double, ctypes.c_int64);
             assert fn(BITS_1_5) == 1.5 , f"{intr.name}(bits(1.5)) != 1.5";
         } elif intr.dispatch in VALUE_DISPATCH {
+            fn = _get_func(eng, "probe", ctypes.c_int64, ctypes.c_int64);
+            assert fn(35) == 42 , f"{intr.name}: probe did not execute cleanly";
+        } elif intr.dispatch
+            in (
+                IntrinsicDispatch.RC_RUNTIME,
+                IntrinsicDispatch.EXC_LONGJMP,
+                IntrinsicDispatch.REGION_TLS
+            ) {
+            # These lower inline or through a runtime hook rather than a call
+            # named after the intrinsic: a GC switch calls its runtime entry,
+            # the RC-debug toggles only reach the runtime in an RC-debug build
+            # (otherwise enabling writes the notice that RC debugging is
+            # compiled out), and the longjmp and region slots are emitted in
+            # place. None may be left as an external call.
+            ir_text = str(ir_mod.gen.llvm_ir);
+            hook = RC_RUNTIME_HOOKS.get(intr.name, "");
+            assert not hook or _call_lines(ir_text, hook) , (
+                f"{intr.name}: no call to its runtime hook {hook} - the "
+                "intrinsic was stranded"
+            );
+            assert not any(
+                line.strip().startswith("declare") and f"@\"{intr.name}\"" in line
+                for line in ir_text.splitlines()
+            ) , f"{intr.name} was left as an external call";
             fn = _get_func(eng, "probe", ctypes.c_int64, ctypes.c_int64);
             assert fn(35) == 42 , f"{intr.name}: probe did not execute cleanly";
         } elif intr.dispatch in LOWERING_MARKERS {

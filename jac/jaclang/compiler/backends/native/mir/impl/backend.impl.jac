@@ -145,6 +145,15 @@ impl MirNativePass.report_refusals(lowering: MirLowering) {
                 )})";
                 site = None;
             }
+            if refusal.code == "E5095" {
+                self.ctx.emit(
+                    E5095,
+                    node_override=site or lowering.module,
+                    name=refusal.name,
+                    reason=refusal.help or refusal.kind
+                );
+                continue;
+            }
             self.ctx.emit(
                 E5092,
                 node_override=site or lowering.module,
