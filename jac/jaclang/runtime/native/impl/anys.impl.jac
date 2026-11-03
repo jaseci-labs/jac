@@ -115,6 +115,14 @@ impl __jac_rt_any_box(tag: int, payload: int) -> int {
     return box;
 }
 
+impl __jac_rt_any_box_hold(box: int) {
+    if box != 0 {
+        __jac_rt_any_retain(
+            __mem_load_i64(box + BOX_TAG), __mem_load_i64(box + BOX_PAYLOAD)
+        );
+    }
+}
+
 impl _box_drop(box: ptr[u8]) {
     at = int(box);
     __jac_rt_any_release(
@@ -1020,4 +1028,309 @@ impl __jac_rt_ref_swap(slot: int, value: int) {
     if old != 0 {
         __jac_rt_release(old);
     }
+}
+
+impl _box_owned(tag: int, payload: int) -> int {
+    box = __jac_rt_any_box(tag, payload);
+    __jac_rt_release(payload);
+    return box;
+}
+
+impl _unsupported(op: int, ta: int, pa: int, tb: int, pb: int) {
+    sb = __jac_rt_sb_new(64);
+    _sb_cstr(sb, ptr[u8]("unsupported operand type(s) for "));
+    if op == ARITH_ADD {
+        _sb_cstr(sb, ptr[u8]("+"));
+    } elif op == ARITH_SUB {
+        _sb_cstr(sb, ptr[u8]("-"));
+    } elif op == ARITH_MUL {
+        _sb_cstr(sb, ptr[u8]("*"));
+    } elif op == ARITH_DIV {
+        _sb_cstr(sb, ptr[u8]("/"));
+    } elif op == ARITH_FLOOR {
+        _sb_cstr(sb, ptr[u8]("//"));
+    } else {
+        _sb_cstr(sb, ptr[u8]("%"));
+    }
+    _sb_cstr(sb, ptr[u8](": '"));
+    _sb_owned(sb, __jac_rt_class_name(__jac_rt_any_type_name(ta, pa)));
+    _sb_cstr(sb, ptr[u8]("' and '"));
+    _sb_owned(sb, __jac_rt_class_name(__jac_rt_any_type_name(tb, pb)));
+    _sb_cstr(sb, ptr[u8]("'"));
+    raise TypeError(__jac_rt_sb_finish(sb));
+}
+
+impl _seq_join(a: int, at: bool, b: int, bt: bool) -> int {
+    na = __mem_load_i64(a + LIST_LEN);
+    nb = __mem_load_i64(b + LIST_LEN);
+    if at {
+        made = __jac_rt_tuple_new(na + nb);
+        i = 0;
+        while i < na {
+            __jac_rt_tuple_set(made, i, _seq_bits(a, i, True), _seq_kind(a, i, True));
+            i += 1;
+        }
+        j = 0;
+        while j < nb {
+            __jac_rt_tuple_set(
+                made, na + j, _seq_bits(b, j, True), _seq_kind(b, j, True)
+            );
+            j += 1;
+        }
+        return made;
+    }
+    ka = __mem_load_i64(a + LIST_KIND);
+    kb = __mem_load_i64(b + LIST_KIND);
+    kind = ka if ka == kb else KIND_ANY;
+    made = __jac_rt_list_new(na + nb, kind);
+    _join_into(made, a, ka, kind);
+    _join_into(made, b, kb, kind);
+    return made;
+}
+
+impl _join_into(made: int, src: int, src_kind: int, kind: int) {
+    count = __mem_load_i64(src + LIST_LEN);
+    i = 0;
+    while i < count {
+        bits = _seq_bits(src, i, False);
+        if kind == KIND_ANY and src_kind != KIND_ANY {
+            boxed = __jac_rt_elem_box(bits, src_kind);
+            __jac_rt_list_push(made, boxed, KIND_ANY);
+            __jac_rt_release(boxed);
+        } else {
+            __jac_rt_list_push(made, bits, kind);
+        }
+        i += 1;
+    }
+}
+
+impl _seq_repeat(a: int, is_tup: bool, times: int) -> int {
+    n = __mem_load_i64(a + LIST_LEN);
+    count = times if times > 0 else 0;
+    if is_tup {
+        made = __jac_rt_tuple_new(n * count);
+        k = 0;
+        while k < count {
+            i = 0;
+            while i < n {
+                __jac_rt_tuple_set(
+                    made, k * n + i, _seq_bits(a, i, True), _seq_kind(a, i, True)
+                );
+                i += 1;
+            }
+            k += 1;
+        }
+        return made;
+    }
+    kind = __mem_load_i64(a + LIST_KIND);
+    made = __jac_rt_list_new(n * count, kind);
+    k = 0;
+    while k < count {
+        __jac_rt_list_extend(made, a, kind);
+        k += 1;
+    }
+    return made;
+}
+
+impl __jac_rt_any_binary(op: int, ta: int, pa: int, tb: int, pb: int) -> int {
+    if _is_number(ta) and _is_number(tb) {
+        if op == ARITH_DIV or ta == ANY_TAG_FLOAT or tb == ANY_TAG_FLOAT {
+            fa = _as_float(ta, pa);
+            fb = _as_float(tb, pb);
+            result = 0.0;
+            if op == ARITH_ADD {
+                result = fa + fb;
+            } elif op == ARITH_SUB {
+                result = fa - fb;
+            } elif op == ARITH_MUL {
+                result = fa * fb;
+            } elif op == ARITH_DIV {
+                result = fa / fb;
+            } elif op == ARITH_FLOOR {
+                result = fa // fb;
+            } else {
+                result = fa % fb;
+            }
+            return __jac_rt_any_box(ANY_TAG_FLOAT, __float_bits(result));
+        }
+        value = 0;
+        if op == ARITH_ADD {
+            value = pa + pb;
+        } elif op == ARITH_SUB {
+            value = pa - pb;
+        } elif op == ARITH_MUL {
+            value = pa * pb;
+        } elif op == ARITH_FLOOR {
+            value = pa // pb;
+        } else {
+            value = pa % pb;
+        }
+        return __jac_rt_any_box(ANY_TAG_INT, value);
+    }
+    if op == ARITH_ADD and ta == ANY_TAG_STR and tb == ANY_TAG_STR {
+        return _box_owned(
+            ANY_TAG_STR,
+            int(
+                __jac_rt_str_concat(
+                    ptr[u8](pa),
+                    __jac_rt_str_size(ptr[u8](pa)),
+                    ptr[u8](pb),
+                    __jac_rt_str_size(ptr[u8](pb))
+                )
+            )
+        );
+    }
+    if op == ARITH_ADD and ta == ANY_TAG_LIST and tb == ANY_TAG_LIST {
+        return _box_owned(ANY_TAG_LIST, _seq_join(pa, False, pb, False));
+    }
+    if op == ARITH_ADD and _is_tuple(ta, pa) and _is_tuple(tb, pb) {
+        return _box_owned(ANY_TAG_OBJ, _seq_join(pa, True, pb, True));
+    }
+    if op == ARITH_MUL and (ta == ANY_TAG_INT or tb == ANY_TAG_INT) {
+        seq_tag = ta;
+        seq = pa;
+        times = pb;
+        if ta == ANY_TAG_INT {
+            seq_tag = tb;
+            seq = pb;
+            times = pa;
+        }
+        if seq_tag == ANY_TAG_STR {
+            return _box_owned(
+                ANY_TAG_STR,
+                int(
+                    __jac_rt_str_repeat(
+                        ptr[u8](seq), __jac_rt_str_size(ptr[u8](seq)), times
+                    )
+                )
+            );
+        }
+        if seq_tag == ANY_TAG_LIST {
+            return _box_owned(ANY_TAG_LIST, _seq_repeat(seq, False, times));
+        }
+        if _is_tuple(seq_tag, seq) {
+            return _box_owned(ANY_TAG_OBJ, _seq_repeat(seq, True, times));
+        }
+    }
+    if op == ARITH_ADD and (ta == ANY_TAG_STR or ta == ANY_TAG_LIST) {
+        sb = __jac_rt_sb_new(64);
+        _sb_cstr(
+            sb,
+            ptr[u8]("can only concatenate str (not \"")
+                if ta == ANY_TAG_STR
+                else ptr[u8]("can only concatenate list (not \"")
+        );
+        _sb_owned(sb, __jac_rt_class_name(__jac_rt_any_type_name(tb, pb)));
+        _sb_cstr(
+            sb, ptr[u8]("\") to str") if ta == ANY_TAG_STR else ptr[u8]("\") to list")
+        );
+        raise TypeError(__jac_rt_sb_finish(sb));
+    }
+    _unsupported(op, ta, pa, tb, pb);
+    return 0;
+}
+
+impl __jac_rt_any_negate(tag: int, payload: int) -> int {
+    if tag == ANY_TAG_FLOAT {
+        return __jac_rt_any_box(ANY_TAG_FLOAT, __float_bits(-__bits_float(payload)));
+    }
+    if tag == ANY_TAG_INT or tag == ANY_TAG_BOOL {
+        return __jac_rt_any_box(ANY_TAG_INT, 0 - payload);
+    }
+    sb = __jac_rt_sb_new(48);
+    _sb_cstr(sb, ptr[u8]("bad operand type for unary -: '"));
+    _sb_owned(sb, __jac_rt_class_name(__jac_rt_any_type_name(tag, payload)));
+    _sb_cstr(sb, ptr[u8]("'"));
+    raise TypeError(__jac_rt_sb_finish(sb));
+}
+
+impl _kind_bits(bits: int, have: int, want: int) -> int {
+    if have == want {
+        __jac_rt_elem_retain(bits, want);
+        return bits;
+    }
+    if want == KIND_ANY {
+        return __jac_rt_elem_box(bits, have);
+    }
+    held = __jac_rt_elem_payload(bits, have);
+    __jac_rt_elem_retain(held, want);
+    return held;
+}
+
+impl __jac_rt_dict_convert(
+    tag: int, payload: int, key_kind: int, val_kind: int
+) -> int {
+    if tag != ANY_TAG_DICT and not (tag == ANY_TAG_SET and val_kind < 0) {
+        raise TypeError(_not_iterable(tag, payload));
+    }
+    made = __jac_rt_dict_new(key_kind, val_kind);
+    have_key = __mem_load_i64(payload + DICT_KEY_KIND);
+    have_val = __mem_load_i64(payload + DICT_VAL_KIND);
+    at = __jac_rt_dict_next(payload, -1);
+    while at >= 0 {
+        key = _kind_bits(__jac_rt_dict_key_at(payload, at), have_key, key_kind);
+        value = 0;
+        if val_kind >= 0 {
+            value = _kind_bits(__jac_rt_dict_val_at(payload, at), have_val, val_kind);
+        }
+        __jac_rt_dict_set(made, key, value, key_kind, val_kind);
+        __jac_rt_elem_release(key, key_kind);
+        if val_kind >= 0 {
+            __jac_rt_elem_release(value, val_kind);
+        }
+        at = __jac_rt_dict_next(payload, at);
+    }
+    return made;
+}
+
+impl __jac_rt_any_getitem(tag: int, payload: int, ktag: int, kpayload: int) -> int {
+    if tag == ANY_TAG_DICT {
+        kind = __mem_load_i64(payload + DICT_KEY_KIND);
+        at = -1;
+        if (kind == KIND_STR and ktag == ANY_TAG_STR)
+            or (kind == KIND_INT and (ktag == ANY_TAG_INT or ktag == ANY_TAG_BOOL)) {
+            at = __jac_rt_dict_find(payload, kpayload, kind);
+        } else {
+            at = _map_find(payload, ktag, kpayload);
+        }
+        if at < 0 {
+            sb = __jac_rt_sb_new(32);
+            _any_text(sb, ktag, kpayload, TEXT_REPR);
+            raise KeyError(__jac_rt_sb_finish(sb));
+        }
+        return __jac_rt_elem_box(
+            __jac_rt_dict_val_at(payload, at), __mem_load_i64(payload + DICT_VAL_KIND)
+        );
+    }
+    if ktag != ANY_TAG_INT and ktag != ANY_TAG_BOOL {
+        raise TypeError("indices must be integers");
+    }
+    if tag == ANY_TAG_STR {
+        size = __jac_rt_str_size(ptr[u8](payload));
+        total = __jac_rt_str_len(ptr[u8](payload), ptr[u8](payload), size);
+        index = kpayload + total if kpayload < 0 else kpayload;
+        if index < 0 or index >= total {
+            raise IndexError("string index out of range");
+        }
+        return _box_owned(
+            ANY_TAG_STR,
+            int(__jac_rt_str_index(ptr[u8](payload), ptr[u8](payload), size, index))
+        );
+    }
+    is_tup = _is_tuple(tag, payload);
+    if tag != ANY_TAG_LIST and not is_tup {
+        raise TypeError("object is not subscriptable");
+    }
+    n = __mem_load_i64(payload + LIST_LEN);
+    index = kpayload + n if kpayload < 0 else kpayload;
+    if index < 0 or index >= n {
+        raise IndexError(
+            ptr[u8]("tuple index out of range")
+                if is_tup
+                else ptr[u8]("list index out of range")
+        );
+    }
+    return __jac_rt_elem_box(
+        _seq_bits(payload, index, is_tup), _seq_kind(payload, index, is_tup)
+    );
 }

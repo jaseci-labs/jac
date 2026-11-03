@@ -15075,7 +15075,9 @@ graph import runtime.native {
             __jac_rt_dict_find,
             __jac_rt_dict_key_at,
             __jac_rt_dict_len,
+            __jac_rt_dict_new,
             __jac_rt_dict_next,
+            __jac_rt_dict_set,
             __jac_rt_dict_val_at
         },
         iterators { __jac_rt_dict_key_at, __jac_rt_dict_next },
@@ -15084,6 +15086,15 @@ graph import runtime.native {
     format ++> anys { __jac_rt_float_repr, __jac_rt_obj_text }
     iterators ++> anys { __jac_rt_iter_new }
     lists ++> [
+        anys {
+            __jac_rt_elem_release,
+            __jac_rt_elem_retain,
+            __jac_rt_list_extend,
+            __jac_rt_list_new,
+            __jac_rt_list_push,
+            __jac_rt_tuple_new,
+            __jac_rt_tuple_set
+        },
         bytes { __jac_rt_list_new, __jac_rt_list_push },
         closures { __jac_rt_elem_release, __jac_rt_elem_retain },
         dicts { __jac_rt_elem_eq, __jac_rt_elem_release, __jac_rt_elem_retain },
@@ -15130,6 +15141,7 @@ graph import runtime.native {
     strings ++> [
         anys {
             __jac_rt_str_cmp,
+            __jac_rt_str_concat,
             __jac_rt_str_len,
             __jac_rt_str_new,
             __jac_rt_str_size
@@ -15148,6 +15160,8 @@ graph import runtime.native {
             __jac_rt_sb_int,
             __jac_rt_sb_new,
             __jac_rt_str_contains,
+            __jac_rt_str_index,
+            __jac_rt_str_repeat,
             __jac_rt_str_repr,
             __jac_rt_utf8_width
         },

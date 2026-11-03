@@ -38,6 +38,17 @@ impl MirLowering.builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None)
     if name == "dict" {
         made_type = self.expr_type(nd);
         source = self.lower_expr(args[0]);
+        if made_type.kind == MirKind.DICT and source.type.kind == MirKind.ANY {
+            converted = self.runtime_value(
+                "__jac_rt_dict_convert",
+                self.any_parts(source)
+                    + [
+                        self.creation_kind(made_type.args[0], nd),
+                        self.creation_kind(made_type.args[1], nd)
+                    ]
+            );
+            return b.ref_cast(converted, made_type, True);
+        }
         if made_type.kind != MirKind.DICT or source.type.kind != MirKind.DICT {
             raise MirRefused(
                 mir_refusal("call", f"dict of {source.type.render()}", nd)

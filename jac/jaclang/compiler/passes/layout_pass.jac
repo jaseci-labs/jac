@@ -200,6 +200,10 @@ walker LayoutPass(CompilerPass) {
     def _collect_isinstance_targets(module: Module) -> None;
     def _build_hierarchy(archetypes: dict[str, Archetype]) -> None;
     def _compute_c3_mro(class_name: str) -> list[str];
+    def _import_parent_layouts(
+        module: Module, archetypes: dict[str, Archetype]
+    ) -> None;
+
     def _topo_sort(arch_map: dict[str, Archetype]) -> list[str];
     def _build_layout(arch: Archetype) -> ArchetypeLayout;
     def _build_enum_layouts(module: Module) -> None;

@@ -174,6 +174,24 @@ impl MirLowering.compare_special(
             same = self.identity(left, right, site);
             return same if op == Tok.KW_IS else b.logical_not(same);
         }
+        if MirKind.OPT in (left.type.kind, right.type.kind)
+            and op in (Tok.EE, Tok.NE) {
+            maybe = left if left.type.kind == MirKind.OPT else right;
+            member = right if maybe is left else left;
+            (held, payload, absent, done) = self.opt_begin(maybe, mir_bool());
+            self.opt_switch(
+                held,
+                self.compare_values(
+                    op,
+                    payload if maybe is left else member,
+                    member if maybe is left else payload,
+                    site
+                ),
+                absent,
+                done
+            );
+            return self.opt_end(held, b.const_bool(op == Tok.NE), done);
+        }
         if left.type is not right.type
             and (left.type.is_numeric() or right.type.is_numeric()) {
             as_left = self.enum_as_int(left, site);

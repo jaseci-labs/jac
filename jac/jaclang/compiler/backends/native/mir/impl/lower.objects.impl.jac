@@ -1000,18 +1000,6 @@ impl MirLowering.field_place(
         seen_from = holder.type.name;
         holder = self.builder().ref_cast(holder, mir_obj(obj_def.name), False);
     }
-    if holder.type.kind == MirKind.OBJ
-        and holder.type.name != obj_def.name
-        and not self.obj_extends(holder.type.name, obj_def.name) {
-        raise MirRefused(
-            mir_refusal(
-                "attribute access",
-                f"{obj_def.name}.{name} on {holder.type.render()}",
-                site,
-                "The holder's static archetype is not on this field's archetype lineage."
-            )
-        );
-    }
     if holder.type.kind not in (MirKind.OBJ, MirKind.OSP) {
         raise MirRefused(
             mir_refusal(
@@ -1623,6 +1611,7 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
         and not self.class_inits
         and not self.osp_setup
         and not self.class_entries
+        and not self.default_entries
         and not self.text_pairs {
         return None;
     }
@@ -1673,6 +1662,30 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
             ];
             self.runtime("__jac_rt_text_register", words);
             self.text_regs[thunk_symbol] = (block, list(block.instrs[start:]));
+        }
+        for (made_name, adapter_symbol) in self.default_entries {
+            i8p = mir_c_ptr(mir_int(8, False));
+            self.runtime(
+                "__jac_rt_class_ctor_register",
+                [
+                    self.address_of(
+                        self.emit_value(MirOp.CLASS_ADDR, i8p, [], str_value=made_name)
+                    ),
+                    b.const_int(0, mir_int()),
+                    self.emit_value(
+                        MirOp.PTR_INT,
+                        mir_int(),
+                        [
+                            self.emit_value(
+                                MirOp.FN_ADDR,
+                                mir_c_fn([], mir_none()),
+                                [],
+                                callee=adapter_symbol
+                            )
+                        ]
+                    )
+                ]
+            );
         }
         for (made_name, bound_name, adapter_symbol) in self.class_entries {
             i8p = mir_c_ptr(mir_int(8, False));
@@ -2118,6 +2131,48 @@ impl MirLowering.class_entry(
     }
     self.state = saved;
     self.class_entries.append((obj_def.name, bound_def.name, symbol));
+    return fn;
+}
+
+impl MirLowering.default_entry(arch: uni.Archetype) -> (MirFunction | None) {
+    obj_def = self.object_def(arch);
+    params = self.constructor_params(arch);
+    if any(fallback is None for (_, _, fallback) in params) {
+        return None;
+    }
+    owner = arch.find_parent_of_type(uni.Module) or self.module;
+    prefix = native_unit_prefix(owner.loc.mod_path);
+    symbol = native_symbol_name(prefix, f"{obj_def.name}.__new_default");
+    fn = MirFunction(
+        name=f"{obj_def.name}.__new_default",
+        symbol=symbol,
+        ret=mir_obj(obj_def.name),
+        linkage="internal"
+    );
+    first = fn.new_block("entry");
+    saved = self.state;
+    self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
+    try {
+        b = self.builder();
+        args = [self.placeholder(ptype) for (_, ptype, _) in params];
+        if self.ctor_takes_mask(params) {
+            args.append(b.const_int(0, mir_int()));
+        }
+        made = b.call(
+            native_symbol_name(prefix, f"{obj_def.name}.__ctor"),
+            args,
+            mir_obj(obj_def.name)
+        );
+        if made is None {
+            raise MirRefused(mir_refusal("constructor", obj_def.name, arch));
+        }
+        b.ret(made);
+    } except MirRefused as err {
+        self.state = saved;
+        return None;
+    }
+    self.state = saved;
+    self.default_entries.append((obj_def.name, symbol));
     return fn;
 }
 
