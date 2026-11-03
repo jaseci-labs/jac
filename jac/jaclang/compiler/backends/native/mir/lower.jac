@@ -1314,7 +1314,10 @@ obj MirLowering {
         nd: uni.FuncCall, args: list[uni.Expr], named: dict[str, uni.Expr]
     ) -> MirValue;
 
-    def builtin_fold(nd: uni.FuncCall, name: str, source: uni.Expr) -> MirValue;
+    def builtin_fold(
+        nd: uni.FuncCall, name: str, source: uni.Expr, start: (uni.Expr | None) = None
+    ) -> MirValue;
+
     def materialize_source(
         source: uni.Expr, elem: MirType, site: uni.UniNode
     ) -> MirValue;
