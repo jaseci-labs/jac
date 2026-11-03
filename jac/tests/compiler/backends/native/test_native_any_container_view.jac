@@ -35,8 +35,11 @@ container. A container whose header names the target's own layout passes
 through, and an empty one is rebuilt with the target's layout. Any other
 container, such as the `dict[str, any]` that `json.loads` returns, raises
 `TypeError` natively instead of being read with the target's slot layout,
-which gave `0` or `None` for keys that are present. Python binds without a
-check, so the two backends differ only on the refused lines."""
+which gave `0` or `None` for keys that are present. A container whose
+elements have another type, such as a `list[int]` bound to `list[float]`, is
+refused too, while the pointer list an edge walk returns binds to a typed node
+list. Python binds without a check, so the two backends differ only on the
+refused lines."""
 test "an any bound to a typed container passes a matching layout and refuses another" {
     source = str(
         Path(__file__).resolve().parent
@@ -44,14 +47,23 @@ test "an any bound to a typed container passes a matching layout and refuses ano
             / "any_bound_to_typed_container.jac"
     );
     outs = native_outputs(source, None, ["managed", "rc"]);
-    assert outs["python"].splitlines()[-4:]
-        == ["typed 7", "empty 4", "ints 3", "field 1"] , outs["python"];
+    assert outs["python"].splitlines()[-6:]
+        == ["typed 7", "empty 4", "ints 3", "field 1", "floats 3", "walked 6"] , outs[
+        "python"
+    ];
     for (memory, out) in outs.items() {
         if memory == "python" {
             continue;
         }
-        assert out.splitlines()[-4:]
-            == ["typed 7", "empty 4", "ints TypeError", "field TypeError"] , (
+        assert out.splitlines()[-6:]
+            == [
+                "typed 7",
+                "empty 4",
+                "ints TypeError",
+                "field TypeError",
+                "floats TypeError",
+                "walked 6"
+            ] , (
             memory,
             out
         );
