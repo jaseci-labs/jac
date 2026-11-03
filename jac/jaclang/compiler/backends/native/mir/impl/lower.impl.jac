@@ -98,8 +98,28 @@ impl MirLowering.lower -> MirModule {
     self.settle_slots();
     self.record_defaults();
     self.settle();
+    self.settle_tests();
     self.c_global_settle();
     return self.mir;
+}
+
+impl MirLowering.settle_tests {
+    lowered = {fn.symbol for fn in self.mir.functions};
+    self.tests = [
+        held
+        for held in self.tests
+        if held[1] in lowered
+    ];
+    kept = {held[1] for held in self.tests};
+    for nd in self.module.body {
+        if not isinstance(nd, uni.Test) or nd.code_context != CodeContext.NATIVE {
+            continue;
+        }
+        line = nd.loc.first_line if nd.loc else 0;
+        if native_test_symbol(nd.name.sym_name, line, self.mir.prefix) not in kept {
+            nd.code_context = CodeContext.SERVER;
+        }
+    }
 }
 
 impl MirLowering.declaration_types {

@@ -408,6 +408,7 @@ obj MirLowering {
     def declaration_types;
     def record_defaults;
     def settle;
+    def settle_tests;
     def callees_of(fn: MirFunction) -> list[str];
     def module_abilities -> list[uni.Ability];
     def declare(ab: uni.Ability);
