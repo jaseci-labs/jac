@@ -2111,6 +2111,10 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
             return regional;
         }
     }
+    if isinstance(nd.target, uni.Name)
+        and INTRINSIC_REGISTRY.is_intrinsic(nd.target.value) {
+        return self.intrinsic_call(nd, nd.target.value);
+    }
     if is_builtin_addressof_call(nd) {
         return self.c_addressof(nd);
     }
