@@ -121,6 +121,10 @@ impl __jac_rt_str_new(data: ptr[u8], n: int) -> ptr[u8] {
     return _str_finish(made, n);
 }
 
+impl __jac_str_new(data: ptr[u8], n: int) -> ptr[u8] {
+    return __jac_rt_str_new(data, n);
+}
+
 impl __jac_rt_str_concat(a: ptr[u8], an: int, b: ptr[u8], bn: int) -> ptr[u8] {
     made = _str_alloc(an + bn);
     if an > 0 {

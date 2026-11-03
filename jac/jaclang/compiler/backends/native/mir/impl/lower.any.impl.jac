@@ -23,7 +23,8 @@ impl MirLowering.any_tag(t: MirType, site: uni.UniNode) -> int {
     if t.kind == MirKind.SET {
         return ANY_SET_TAG;
     }
-    if t.kind in (MirKind.OBJ, MirKind.FN, MirKind.BYTES, MirKind.BYTEARRAY) {
+    if t.kind
+        in (MirKind.OBJ, MirKind.FN, MirKind.BYTES, MirKind.BYTEARRAY, MirKind.FILE) {
         return ANY_OBJ_TAG;
     }
     raise MirRefused(mir_refusal("conversion", f"{t.render()} to any", site));

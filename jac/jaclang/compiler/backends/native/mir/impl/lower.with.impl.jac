@@ -2,16 +2,6 @@ impl MirLowering.lower_with(nd: uni.WithStmt) {
     if nd.is_async {
         raise MirRefused(mir_refusal("statement", "async with", nd));
     }
-    if self.jumps_out(nd.body) {
-        raise MirRefused(
-            mir_refusal(
-                "statement",
-                "jump out of with",
-                nd,
-                "A return, break or continue inside a native with block would leave without running __exit__; restructure the block to finish normally."
-            )
-        );
-    }
     self.with_items(list(nd.exprs), 0, nd.body);
 }
 
@@ -32,6 +22,18 @@ impl MirLowering.with_items(
     b = self.builder();
     fn = self.st().fn;
     manager = self.lower_expr(source);
+    if manager.type.kind == MirKind.FILE {
+        held_file = self.spill(manager);
+        if item.alias is not None {
+            self.bind_target(item.alias, held_file);
+        }
+        def close_file -> MirValue {
+            self.runtime("__jac_rt_file_close", [held_file]);
+            return self.builder().const_bool(False);
+        }
+        self.with_guarded(items, index, body, close_file);
+        return;
+    }
     arch = self.arch_of_type(source.type);
     if arch is None or manager.type.kind != MirKind.OBJ {
         raise MirRefused(
@@ -66,18 +68,36 @@ impl MirLowering.with_items(
         }
         self.bind_target(item.alias, entered);
     }
+    def leave -> MirValue {
+        return self.call_exit(leave_decl, held, item);
+    }
+    self.with_guarded(items, index, body, leave);
+}
+
+impl MirLowering.with_guarded(
+    items: list[uni.ExprAsItem],
+    index: int,
+    body: Sequence[uni.CodeBlockStmt],
+    leave: any
+) {
+    b = self.builder();
+    fn = self.st().fn;
     (frame, dispatch) = self.guard_open();
+    self.st().finals.append((leave, len(self.st().loops), len(self.st().tries)));
+    self.st().tries.append((frame, dispatch, len(self.st().loops)));
     self.with_items(items, index + 1, body);
+    self.st().tries.pop();
+    self.st().finals.pop();
     after = fn.new_block("with.done");
     if not self.builder().block.terminated() {
         self.runtime("__jac_rt_exc_pop", [frame]);
-        self.call_exit(leave_decl, held, item);
+        leave();
         self.builder().branch(after);
     }
     b.position(dispatch);
     self.runtime("__jac_rt_exc_pop", [frame]);
     (origin, type_id, message) = self.guard_caught(frame);
-    swallowed = self.call_exit(leave_decl, held, item);
+    swallowed = leave();
     propagate = fn.new_block("with.propagate");
     b.cond_branch(swallowed, after, propagate);
     b.position(propagate);
@@ -116,7 +136,17 @@ impl MirLowering.with_generator(
         );
     }
     (frame, dispatch) = self.guard_open();
+    def finish -> MirValue {
+        self.raise_if(
+            self.iter_advance(it, out), "RuntimeError", "generator didn't stop"
+        );
+        return self.builder().const_bool(False);
+    }
+    self.st().finals.append((finish, len(self.st().loops), len(self.st().tries)));
+    self.st().tries.append((frame, dispatch, len(self.st().loops)));
     self.with_items(items, index + 1, body);
+    self.st().tries.pop();
+    self.st().finals.pop();
     after = fn.new_block("with.gen.done");
     if not self.builder().block.terminated() {
         self.runtime("__jac_rt_exc_pop", [frame]);

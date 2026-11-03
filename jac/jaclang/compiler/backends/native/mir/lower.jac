@@ -38,6 +38,8 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      NEGATIVE_SHIFT_MESSAGE: str = "negative shift count",
      RANGE_STEP_MESSAGE: str = "range() arg 3 must not be zero",
      CLOSURE_CELLS_OFFSET: int = 16,
+     RC_THREADED_FLAG: str = "__jac_rc_threaded",
+     RC_DEBUG_OFF_NOTICE: str = "jac: RC debug tracing not compiled in (build with --debug or [native] debug = true)",
      KIND_INT: int = 0,
      KIND_FLOAT: int = 1,
      KIND_BOOL: int = 2,
@@ -238,7 +240,7 @@ obj MirFnState {
         caught: list[tuple[MirValue, MirValue, MirValue]] = [],
         bound_caught: dict[int, tuple[MirValue, MirValue, MirValue]] = {},
         tries: list[tuple[MirValue, MirBlock, int]] = [],
-        finals: list[tuple[list[uni.UniNode], int, int]] = [],
+        finals: list[tuple[any, int, int]] = [],
         specials: dict[str, MirValue] = {};
 }
 
@@ -768,6 +770,15 @@ obj MirLowering {
     def input_call(nd: uni.FuncCall) -> MirValue;
     def sys_exit(nd: uni.FuncCall) -> MirValue;
     def str_enum_int(nd: uni.FuncCall) -> (MirValue | None);
+    def rc_intrinsic(name: str) -> (MirValue | None);
+    def mark_threaded;
+    def pipe_call(nd: uni.BinaryExpr) -> MirValue;
+    def cstr_of(value: MirValue) -> MirValue;
+    def open_call(nd: uni.FuncCall) -> MirValue;
+    def file_method(
+        handle: MirValue, name: str, nd: uni.FuncCall
+    ) -> (MirValue | None);
+
     def osp_call(name: str, args: list[MirValue]) -> MirValue;
     def osp_hold(value: MirValue) -> MirValue;
     def osp_layout(arch: (uni.Archetype | None)) -> (ArchetypeLayout | None);
@@ -1096,6 +1107,13 @@ obj MirLowering {
     def lower_with(nd: uni.WithStmt);
     def with_items(
         items: list[uni.ExprAsItem], index: int, body: Sequence[uni.CodeBlockStmt]
+    );
+
+    def with_guarded(
+        items: list[uni.ExprAsItem],
+        index: int,
+        body: Sequence[uni.CodeBlockStmt],
+        leave: any
     );
 
     def with_generator(

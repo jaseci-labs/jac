@@ -60,6 +60,104 @@ impl _find(hay: int, lo: int, hi: int, needle: int, nn: int, reverse: bool) -> i
     return -1;
 }
 
+impl __jac_rt_file_open(path: ptr[u8], mode: ptr[u8], binary: bool) -> int {
+    stream = fopen(path, mode);
+    if stream == 0 {
+        return 0;
+    }
+    made = __jac_rt_alloc(FILE_SIZE);
+    if binary {
+        __jac_rt_set_type(made, int(ptr[u8]("BinaryFile")));
+    } else {
+        __jac_rt_set_type(made, int(ptr[u8]("File")));
+    }
+    __mem_store_i64(made + FILE_HANDLE, stream);
+    __mem_store_i64(made + FILE_CLOSED, 0);
+    __jac_rt_retain(int(path));
+    __jac_rt_retain(int(mode));
+    __mem_store_i64(made + FILE_PATH, int(path));
+    __mem_store_i64(made + FILE_MODE, int(mode));
+    __mem_store_i64(made - HDR_DTOR_BACK, int(_file_drop));
+    return made;
+}
+
+impl _file_live(f: int) -> int {
+    if __mem_load_i64(f + FILE_CLOSED) != 0 {
+        raise ValueError("I/O operation on closed file.");
+    }
+    return __mem_load_i64(f + FILE_HANDLE);
+}
+
+impl __jac_rt_file_read(f: int, binary: bool, line: bool) -> int {
+    stream = _file_live(f);
+    cap = FILE_CHUNK;
+    buf = malloc(cap);
+    filled = 0;
+    if line {
+        while True {
+            ch = int(fgetc(stream));
+            if ch < 0 {
+                break;
+            }
+            if filled == cap {
+                cap = cap * 2;
+                buf = realloc(buf, cap);
+            }
+            __mem_store_i8(buf + filled, i8(ch));
+            filled += 1;
+            if ch == 10 {
+                break;
+            }
+        }
+    } else {
+        while True {
+            got = fread(buf + filled, 1, cap - filled, stream);
+            filled += got;
+            if filled < cap {
+                break;
+            }
+            cap = cap + FILE_CHUNK;
+            buf = realloc(buf, cap);
+        }
+    }
+    made = __jac_rt_bytes_new(ptr[u8](buf), filled)
+        if binary
+        else int(__jac_rt_str_new(ptr[u8](buf), filled));
+    free(buf);
+    return made;
+}
+
+impl __jac_rt_file_write(f: int, data: ptr[u8], n: int) -> int {
+    stream = _file_live(f);
+    if n <= 0 {
+        return 0;
+    }
+    return fwrite(int(data), 1, n, stream);
+}
+
+impl __jac_rt_file_close(f: int) {
+    if __mem_load_i64(f + FILE_CLOSED) == 0 {
+        fclose(__mem_load_i64(f + FILE_HANDLE));
+        __mem_store_i64(f + FILE_CLOSED, 1);
+    }
+}
+
+impl __jac_rt_file_flush(f: int) {
+    fflush(_file_live(f));
+}
+
+impl __jac_rt_file_closed(f: int) -> bool {
+    return __mem_load_i64(f + FILE_CLOSED) != 0;
+}
+
+impl _file_drop(f: ptr[u8]) {
+    at = int(f);
+    __jac_rt_file_close(at);
+    __jac_rt_release(__mem_load_i64(at + FILE_PATH));
+    __jac_rt_release(__mem_load_i64(at + FILE_MODE));
+    __jac_rt_free_block(at - HDR_TOTAL);
+}
+
 impl __jac_rt_bytes_new(data: ptr[u8], n: int) -> int {
     made = __jac_rt_alloc(n + BYTES_DATA);
     __jac_rt_set_type(made, int(ptr[u8]("bytes")));

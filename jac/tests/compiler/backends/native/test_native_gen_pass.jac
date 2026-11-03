@@ -4420,9 +4420,9 @@ def _string_enums__string_enums_comparison(eng: any, _ir: any) {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "color_cmp", ctypes.c_int64, ctypes.c_int64);
-    assert f(0) == 10 , "color_cmp(RED=0) should be 10";
-    assert f(1) == 20 , "color_cmp(GREEN=1) should be 20";
-    assert f(2) == 30 , "color_cmp(BLUE=2) should be 30";
+    assert f(0) == 0 , "an int never equals a str enum member, as in Python";
+    assert f(1) == 0 , "an int never equals a str enum member, as in Python";
+    assert f(2) == 0 , "an int never equals a str enum member, as in Python";
 }
 
 """string_enums value access"""

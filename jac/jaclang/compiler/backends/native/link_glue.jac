@@ -26,7 +26,8 @@ obj GlueSpec {
         data_layout: str = "",
         clib_paths: list[str] = [],
         needs_atexit_shim: bool = False,
-        needs_region_hook: bool = True;
+        needs_region_hook: bool = True,
+        gc_mode: str = "cycles";
 }
 
 def _decl_void_fn(name: str) -> str;

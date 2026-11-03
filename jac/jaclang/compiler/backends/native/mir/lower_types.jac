@@ -1,6 +1,16 @@
 enum MirPosition { VALUE, FIELD, SIGNATURE, ELEMENT, C_FIELD }
 
-glob ITERATOR_CLASSES: list[str] = [
+glob FILE_TYPE_NAMES: dict[str, bool] = {
+         "File": False,
+         "TextIO": False,
+         "TextIOWrapper": False,
+         "BinaryFile": True,
+         "BinaryIO": True,
+         "BufferedReader": True,
+         "BufferedWriter": True,
+         "BufferedRandom": True
+     },
+     ITERATOR_CLASSES: list[str] = [
          "Iterator",
          "Generator",
          "reversed",

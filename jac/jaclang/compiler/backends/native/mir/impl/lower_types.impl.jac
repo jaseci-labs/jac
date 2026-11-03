@@ -206,6 +206,9 @@ impl mir_class_type(
     if name == "range" {
         return mir_range();
     }
+    if name in FILE_TYPE_NAMES {
+        return mir_file(FILE_TYPE_NAMES[name]);
+    }
     if name == "enumerate" {
         args = t.private.type_args if t.private else None;
         if not args {

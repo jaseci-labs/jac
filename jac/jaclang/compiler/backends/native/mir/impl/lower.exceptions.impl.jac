@@ -275,7 +275,11 @@ impl MirLowering.leave_tries(loop_depth: int, run_finals: bool = True) {
             if depth >= loop_depth {
                 self.st().finals = finals[:at_final];
                 self.st().tries = tries[:at_try + 1];
-                self.lower_body(body);
+                if callable(body) {
+                    body();
+                } else {
+                    self.lower_body(body);
+                }
                 self.st().finals = finals;
                 self.st().tries = tries;
             }
