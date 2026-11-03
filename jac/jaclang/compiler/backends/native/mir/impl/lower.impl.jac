@@ -2524,6 +2524,9 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
     if to.kind == MirKind.ITER {
         return self.iter_coerce(value, to, site);
     }
+    if to.kind == MirKind.NONE and value.type.kind == MirKind.OPT {
+        return self.none_value();
+    }
     if to.kind == MirKind.OPT {
         if value.type.kind == MirKind.NONE {
             return self.builder().const_null(to);
