@@ -54,13 +54,14 @@ impl MirLowering.lend_fresh(
 
 impl MirLowering.returns_borrow(ab: uni.Ability) -> bool {
     sig = ab.signature;
-    if not isinstance(sig, uni.FuncSignature) {
+    reader = ab.accessor_kind == "property";
+    if not isinstance(sig, uni.FuncSignature) and not reader {
         return False;
     }
-    if self.tag_borrows(sig.return_type) {
+    if isinstance(sig, uni.FuncSignature) and self.tag_borrows(sig.return_type) {
         return True;
     }
-    if not ab.is_method or ab.is_static {
+    if not reader and (not ab.is_method or ab.is_static) {
         return False;
     }
     found = False;
@@ -68,12 +69,19 @@ impl MirLowering.returns_borrow(ab: uni.Ability) -> bool {
         if ret.enclosing_frame is not ab {
             continue;
         }
-        if not (isinstance(ret.expr, uni.Name) and ret.expr.value == "self") {
+        if not self.reads_self(ret.expr, reader) {
             return False;
         }
         found = True;
     }
     return found;
+}
+
+impl MirLowering.reads_self(expr: (uni.UniNode | None), fields: bool) -> bool {
+    while fields and isinstance(expr, uni.AtomTrailer) and expr.is_attr {
+        expr = expr.target;
+    }
+    return isinstance(expr, uni.Name) and expr.value == "self";
 }
 
 impl MirLowering.param_owns(pv: uni.ParamVar) -> bool {
@@ -110,11 +118,11 @@ impl MirLowering.stamp_ownership {
     borrowing: set[str] = set();
     for (symbol, decl) in known.items() {
         sig = decl.ability.signature;
+        if not decl.c_variadic and self.returns_borrow(decl.ability) {
+            borrowing.add(symbol);
+        }
         if decl.c_variadic or not isinstance(sig, uni.FuncSignature) {
             continue;
-        }
-        if self.returns_borrow(decl.ability) {
-            borrowing.add(symbol);
         }
         shift = 1 if decl.self_type is not None else 0;
         nodes = self.param_nodes(sig, decl.self_type is not None);

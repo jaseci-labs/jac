@@ -39,9 +39,18 @@ impl MirOwnState.run {
         self.rewrite(blk);
     }
     self.initialize_slots();
-    if self.fallbacks and os.environ.get("JAC_MIR_OWN_TRACE") {
-        for shared in self.fallbacks {
-            sys.stderr.write(f"mir-own: {self.fn.symbol}: retained {shared}\n");
+    trace = os.environ.get("JAC_MIR_OWN_TRACE", "");
+    if self.fallbacks and trace {
+        lines = "".join(
+            f"mir-own: {self.fn.symbol}: retained {shared}\n"
+            for shared in self.fallbacks
+        );
+        if trace == "1" {
+            sys.stderr.write(lines);
+        } else {
+            with open(trace, "a") as sink {
+                sink.write(lines);
+            }
         }
     }
 }
@@ -296,8 +305,19 @@ impl MirOwnState.rewrite(blk: MirBlock) {
             in (MirOp.STR_MAKE, MirOp.REF_CAST, MirOp.OPT_MAKE, MirOp.ANY_BOX) {
             owner = instr.operands[0];
             result = instr.result;
+            carry = self.carried.get(owner.id);
+            if result is not None and owner.id in self.immortal {
+                self.immortal.add(result.id);
+            }
             if result is not None and owner.id in self.pending {
                 self.pending.pop(owner.id);
+                result.owned = True;
+            } elif result is not None
+                and carry is not None
+                and owner.owned
+                and instr.sub == "owned"
+                and carry.id not in self.moved {
+                self.moved.add(carry.id);
                 result.owned = True;
             } elif result is not None
                 and (
@@ -484,6 +504,9 @@ impl MirOwnState.consume(value: MirValue) -> MirValue {
     if value.type.kind == MirKind.BYTES {
         return self.copy_bytes(value);
     }
+    if value.type.kind == MirKind.TUPLE {
+        return self.copy_tuple(value);
+    }
     return self.share(value);
 }
 
@@ -598,6 +621,31 @@ impl MirOwnState.copy_text(value: MirValue) -> MirValue {
     made.owned = True;
     self.out.append(
         MirInstr(op=MirOp.STR_MAKE, result=made, operands=[handle, handle, length])
+    );
+    return made;
+}
+
+impl MirOwnState.copy_tuple(value: MirValue) -> MirValue {
+    members: list[MirValue] = [];
+    for (index, member) in enumerate(value.type.args) {
+        part = self.fn.new_value(member);
+        self.out.append(
+            MirInstr(
+                op=MirOp.TUPLE_GET,
+                result=part,
+                operands=[value],
+                int_value=index,
+                type_arg=member
+            )
+        );
+        members.append(self.consume(part) if mir_holds_ref(member) else part);
+    }
+    made = self.fn.new_value(value.type);
+    made.owned = True;
+    self.out.append(
+        MirInstr(
+            op=MirOp.TUPLE_MAKE, result=made, operands=members, type_arg=value.type
+        )
     );
     return made;
 }

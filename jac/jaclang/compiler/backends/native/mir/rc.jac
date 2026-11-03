@@ -64,6 +64,7 @@ obj MirOwnState(MirRcState) {
     def place_borrowed(place: MirValue) -> bool;
     def copy_text(value: MirValue) -> MirValue;
     def copy_bytes(value: MirValue) -> MirValue;
+    def copy_tuple(value: MirValue) -> MirValue;
     def runtime_extern(name: str) -> tuple[list[MirType], MirType];
     def share(value: MirValue) -> MirValue;
     def settle_moved;
