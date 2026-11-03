@@ -6636,7 +6636,7 @@ graph import compiler {
             | placement.placement_facts.settle_server
             | placement.placement_solver
             | symbol_utils.report_placement_warnings { CodeContext },
-        backends.native.mir.lower { Tokens as Tok, is_borrow_kind },
+        backends.native.mir.lower { CodeContext, Tokens as Tok, is_borrow_kind },
         backends.py.jcir_gen_pass {
             CodeContext,
             OwnershipKind,

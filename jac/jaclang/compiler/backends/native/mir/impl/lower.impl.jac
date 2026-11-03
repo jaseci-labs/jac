@@ -184,6 +184,22 @@ impl MirLowering.callees_of(fn: MirFunction) -> list[str] {
 }
 
 impl MirLowering.settle {
+    split = self.module.decided_codespace != "native"
+        and not self.prog.options.native_required_for(self.module.loc.mod_path)
+        and any(
+            isinstance(elem, uni.ContextAwareNode)
+                and elem.code_context == CodeContext.NATIVE for elem in self.module.body
+        );
+    for decl in list(self.decls.values()) if split else [] {
+        if decl.owner is None
+            and decl.symbol not in self.mir.demoted
+            and decl.ability.find_parent_of_type(uni.Module) is self.module
+            and isinstance(decl.ability, uni.ContextAwareNode)
+            and decl.ability.code_context == CodeContext.SERVER {
+            self.mir.demoted[decl.symbol] = "placed on the server";
+            self.bridge_symbol(decl.symbol);
+        }
+    }
     symbols: dict[str, str] = {};
     for decl in self.decls.values() {
         symbols[self.refusal_key(decl)] = decl.symbol;
