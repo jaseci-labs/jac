@@ -246,6 +246,16 @@ globals).
 - **Containers** as generic Jac code (`list[T]`, `dict[K, V]`, `set[T]`), which
   the monomorphization pass instantiates per MIR type, in place of the
   per-element-type helpers.
+- **Self-describing containers.** A list header records its element kind
+  (`[len][cap][data][kind]`), a dict or set header its key and value kinds
+  (after the table words), and a tuple box its member kinds, all set when the
+  container is made. A value boxed into `any` therefore carries enough to be
+  iterated, printed (`str`/`repr`, recursively, with Python formatting),
+  compared (`==` and ordering, `TypeError` for an unordered pair), measured
+  and searched (`in`) by the runtime (`runtime/native/anys.jac`). An object
+  inside such a value prints through a text thunk that each archetype's unit
+  registers at startup, keyed by its drop function; a thunk that cannot be
+  lowered is left out and the object prints as `<Name object at 0x...>`.
 
 Runtime state that every unit shares (the collector, the trace registry, the
 exception context, the vtable and class-constructor registries) is defined

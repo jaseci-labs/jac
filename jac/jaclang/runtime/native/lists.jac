@@ -18,7 +18,8 @@ glob KIND_INT: int = 0,
 glob LIST_LEN: int = 0,
      LIST_CAP: int = 8,
      LIST_DATA: int = 16,
-     LIST_SIZE: int = 24,
+     LIST_KIND: int = 24,
+     LIST_SIZE: int = 32,
      LIST_MIN_CAP: int = 4,
      SLOT: int = 8,
      HDR_DTOR_BACK: int = 8,
@@ -27,11 +28,7 @@ glob LIST_LEN: int = 0,
      TUPLE_KINDS: int = 8,
      BOX_TAG: int = 0,
      BOX_PAYLOAD: int = 8,
-     TAG_INT: int = 0,
-     TAG_FLOAT: int = 1,
-     TAG_STR: int = 2,
-     TAG_BOOL: int = 7,
-     TAG_NONE: int = 8;
+     ORDER_LT: int = 0;
 
 def:pub __jac_rt_elem_retain(bits: int, kind: int);
 
@@ -58,10 +55,6 @@ def _is_ref_kind(kind: int) -> bool;
 def __jac_rt_any_eq(a: int, b: int) -> bool;
 
 def _any_cmp(a: int, b: int) -> int;
-
-def _any_numeric(tag: int) -> bool;
-
-def _any_float(tag: int, payload: int) -> float;
 
 def:pub __jac_rt_list_new(cap: int, kind: int) -> int;
 

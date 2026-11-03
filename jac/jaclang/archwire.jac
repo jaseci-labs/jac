@@ -15063,12 +15063,24 @@ graph import runtime.na_stdlib {
 }
 
 graph import runtime.native {
-    anys ++> lists { __jac_rt_any_box }
+    anys ++> [
+        dicts { __jac_rt_cstr_eq, __jac_rt_type_name },
+        lists { __jac_rt_any_box, __jac_rt_any_equal, __jac_rt_any_order },
+    ]
+    bytes ++> anys { __jac_rt_bytes_has, __jac_rt_bytes_repr }
     dicts ++> [
-        anys { __jac_rt_dict_len },
+        anys {
+            __jac_rt_dict_find,
+            __jac_rt_dict_key_at,
+            __jac_rt_dict_len,
+            __jac_rt_dict_next,
+            __jac_rt_dict_val_at
+        },
         iterators { __jac_rt_dict_key_at, __jac_rt_dict_next },
     ]
     exceptions ++> bytes { __jac_rt_raise_builtin }
+    format ++> anys { __jac_rt_float_repr, __jac_rt_obj_text }
+    iterators ++> anys { __jac_rt_iter_new }
     lists ++> [
         bytes { __jac_rt_list_new, __jac_rt_list_push },
         closures { __jac_rt_elem_release, __jac_rt_elem_retain },
@@ -15113,7 +15125,7 @@ graph import runtime.native {
     ]
     strings ++> [
         anys {
-            __jac_rt_str_from_int,
+            __jac_rt_str_cmp,
             __jac_rt_str_len,
             __jac_rt_str_new,
             __jac_rt_str_size
@@ -15123,6 +15135,17 @@ graph import runtime.native {
         lists { __jac_rt_str_cmp, __jac_rt_str_size },
     ]
     text ++> [
+        anys {
+            __jac_rt_repr_enter,
+            __jac_rt_repr_leave,
+            __jac_rt_sb_add,
+            __jac_rt_sb_finish,
+            __jac_rt_sb_int,
+            __jac_rt_sb_new,
+            __jac_rt_str_contains,
+            __jac_rt_str_repr,
+            __jac_rt_utf8_width
+        },
         bytes {
             __jac_rt_sb_add,
             __jac_rt_sb_byte,

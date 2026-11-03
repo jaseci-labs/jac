@@ -87,6 +87,9 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
          "acq_rel",
          "seq_cst"
      ],
+     ANY_ORDER_CODES: dict[str, int] = {"lt": 0, "le": 1, "gt": 2, "ge": 3},
+     TEXT_THUNK_MODE: int = 8,
+     TEXT_THUNK_RESULT: int = 16,
      COMPARE_OPERATORS: dict[str, str] = {
          "EE": "eq",
          "NE": "ne",
@@ -282,12 +285,15 @@ obj MirLowering {
         stdlib_units: dict[str, (uni.Module | None)] = {},
         c_struct_sites: dict[str, str] = {},
         trace_pairs: list[tuple[str, str]] = [],
+        text_pairs: list[tuple[str, str]] = [],
+        text_regs: dict[str, tuple[MirBlock, list[MirInstr]]] = {},
         class_entries: list[tuple[str, str, str]] = [],
         deferred_globals: list[tuple[MirGlobal, uni.Expr]] = [],
         nested: list[MirFunction] = [],
         adapters: dict[str, str] = {},
         fn_values: dict[int, MirDecl] = {},
         text_fns: dict[str, str] = {},
+        text_serial: int = 0,
         order: list[int] = [],
         refusals: dict[str, list[NativeRefusal]] = {},
         osp_model: (OspModel | None) = None,
@@ -598,6 +604,10 @@ obj MirLowering {
     def lower_drop(obj_def: MirObjectDef, arch: uni.Archetype) -> MirFunction;
     def drop_hook(arch: uni.Archetype, raw: MirValue);
     def lower_trace(obj_def: MirObjectDef) -> MirFunction;
+    def lower_text_thunk(
+        obj_def: MirObjectDef, arch: uni.Archetype
+    ) -> (MirFunction | None);
+
     def constructor_params(
         arch: uni.Archetype
     ) -> list[tuple[str, MirType, (uni.Expr | None)]];
@@ -1052,6 +1062,14 @@ obj MirLowering {
     def value_truthy(value: MirValue, site: uni.UniNode) -> (MirValue | None);
     def hook_call(value: MirValue, arch: uni.Archetype, decl: MirDecl) -> MirValue;
     def any_to_str(value: MirValue, site: uni.UniNode) -> MirValue;
+    def any_text(helper: str, value: MirValue) -> MirValue;
+    def any_parts(value: MirValue) -> list[MirValue];
+    def any_compare(
+        name: str, left: MirValue, right: MirValue, site: uni.UniNode
+    ) -> MirValue;
+
+    def any_contains(item: MirValue, holder: MirValue, site: uni.UniNode) -> MirValue;
+    def any_iter(value: MirValue) -> MirValue;
     def narrow(value: MirValue, nd: uni.Name) -> MirValue;
     def target_archetype(target: uni.Expr) -> (uni.Archetype | None);
     def isinstance_value(

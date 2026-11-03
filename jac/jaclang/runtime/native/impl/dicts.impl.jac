@@ -244,6 +244,8 @@ impl __jac_rt_dict_new(key_kind: int, val_kind: int) -> int {
     __mem_store_i64(d + DICT_CTRL, 0);
     __mem_store_i64(d + DICT_USED, 0);
     __mem_store_i64(d + DICT_ORDER, 0);
+    __mem_store_i64(d + DICT_KEY_KIND, key_kind);
+    __mem_store_i64(d + DICT_VAL_KIND, val_kind);
     __mem_store_i64(d - HDR_DTOR_BACK, _dtor_for(key_kind, val_kind));
     return d;
 }
@@ -665,6 +667,11 @@ impl _any_hash(box: int) -> int {
     }
     if tag == TAG_NONE {
         return _mix(TAG_NONE);
+    }
+    if tag == TAG_OBJ
+        and payload != 0
+        and __jac_rt_cstr_eq(__jac_rt_type_name(payload), ptr[u8]("tuple")) {
+        return _tuple_hash(payload);
     }
     if tag == TAG_FLOAT {
         value = __bits_float(payload);

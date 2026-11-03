@@ -9,35 +9,13 @@ impl _is_ref_kind(kind: int) -> bool {
         or kind == KIND_ANY;
 }
 
-impl _any_numeric(tag: int) -> bool {
-    return tag == TAG_INT or tag == TAG_BOOL or tag == TAG_FLOAT;
-}
-
-impl _any_float(tag: int, payload: int) -> float {
-    if tag == TAG_FLOAT {
-        return __bits_float(payload);
-    }
-    return float(payload);
-}
-
 impl __jac_rt_any_eq(a: int, b: int) -> bool {
-    ta = __mem_load_i64(a + BOX_TAG);
-    tb = __mem_load_i64(b + BOX_TAG);
-    pa = __mem_load_i64(a + BOX_PAYLOAD);
-    pb = __mem_load_i64(b + BOX_PAYLOAD);
-    if _any_numeric(ta) and _any_numeric(tb) {
-        if ta != TAG_FLOAT and tb != TAG_FLOAT {
-            return pa == pb;
-        }
-        return _any_float(ta, pa) == _any_float(tb, pb);
-    }
-    if ta != tb {
-        return False;
-    }
-    if ta == TAG_NONE {
-        return True;
-    }
-    return __jac_rt_elem_eq(pa, pb, KIND_STR if ta == TAG_STR else KIND_REF);
+    return __jac_rt_any_equal(
+        __mem_load_i64(a + BOX_TAG),
+        __mem_load_i64(a + BOX_PAYLOAD),
+        __mem_load_i64(b + BOX_TAG),
+        __mem_load_i64(b + BOX_PAYLOAD)
+    );
 }
 
 impl _any_cmp(a: int, b: int) -> int {
@@ -45,24 +23,13 @@ impl _any_cmp(a: int, b: int) -> int {
     tb = __mem_load_i64(b + BOX_TAG);
     pa = __mem_load_i64(a + BOX_PAYLOAD);
     pb = __mem_load_i64(b + BOX_PAYLOAD);
-    if _any_numeric(ta) and _any_numeric(tb) {
-        if ta != TAG_FLOAT and tb != TAG_FLOAT {
-            return _elem_cmp(pa, pb, KIND_INT);
-        }
-        fa = _any_float(ta, pa);
-        fb = _any_float(tb, pb);
-        if fa < fb {
-            return -1;
-        }
-        if fa > fb {
-            return 1;
-        }
-        return 0;
+    if __jac_rt_any_order(ta, pa, tb, pb, ORDER_LT) {
+        return -1;
     }
-    if ta == TAG_STR and tb == TAG_STR {
-        return _elem_cmp(pa, pb, KIND_STR);
+    if __jac_rt_any_order(tb, pb, ta, pa, ORDER_LT) {
+        return 1;
     }
-    return _elem_cmp(pa, pb, KIND_INT);
+    return 0;
 }
 
 impl __jac_rt_elem_retain(bits: int, kind: int) {
@@ -321,6 +288,7 @@ impl __jac_rt_list_new(cap: int, kind: int) -> int {
     __mem_store_i64(lst + LIST_LEN, 0);
     __mem_store_i64(lst + LIST_CAP, size);
     __mem_store_i64(lst + LIST_DATA, data);
+    __mem_store_i64(lst + LIST_KIND, kind);
     dtor = int(_list_drop_plain);
     if kind == KIND_STR {
         dtor = int(_list_drop_str);

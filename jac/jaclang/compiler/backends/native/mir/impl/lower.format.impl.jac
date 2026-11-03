@@ -46,6 +46,9 @@ impl MirLowering.str_value(value: MirValue, site: uni.UniNode) -> MirValue {
 impl MirLowering.repr_of(value: MirValue, site: uni.UniNode) -> MirValue {
     b = self.builder();
     kind = value.type.kind;
+    if kind == MirKind.ANY {
+        return self.any_text("__jac_rt_any_repr", value);
+    }
     if kind in (MirKind.STR, MirKind.STR_REF) {
         text = self.as_text(value);
         return self.owned_text(
@@ -265,7 +268,8 @@ impl MirLowering.text_fn(value_type: MirType, site: uni.UniNode) -> str {
     if found is not None {
         return found;
     }
-    symbol = f"{self.mir.prefix}.__repr.{len(self.text_fns)}";
+    symbol = f"{self.mir.prefix}.__repr.{self.text_serial}";
+    self.text_serial += 1;
     self.text_fns[value_type.key] = symbol;
     fn = MirFunction(
         name=f"__repr.{value_type.render()}",
