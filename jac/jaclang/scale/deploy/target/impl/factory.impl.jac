@@ -28,7 +28,7 @@ impl require_deploy_tooling(dry_run: bool = False) {
     if shim is not None and not shim.HAS_KUBERNETES {
         raise RuntimeError(
             "The Kubernetes client was installed after this process had already "
-            "loaded without it. Run the command again."
+            "loaded without it. Restart the process (for a CLI command, run it again)."
         );
     }
 }

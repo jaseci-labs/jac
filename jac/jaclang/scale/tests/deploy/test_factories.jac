@@ -50,22 +50,14 @@ test "kubernetes target creation auto-syncs missing deploy tooling globally" {
     }
 }
 
-class _NoKubernetes {
-    def find_spec(self: any, name: str, path: any = None, target: any = None) -> any {
-        if name.split(".")[0] == "kubernetes" {
-            raise ImportError(name);
-        }
-        return None;
-    }
-}
+class _Installed(Exception) {}
 
 
 @contextmanager
 def _machine_without_kubernetes -> any {
-    blocker = _NoKubernetes();
     def install(capability: str) -> bool {
-        sys.meta_path.remove(blocker);
-        return True;
+        del sys.modules["kubernetes"];
+        raise _Installed();
     }
     with unittest.mock.patch.dict(sys.modules) {
         for name in list(sys.modules) {
@@ -73,21 +65,15 @@ def _machine_without_kubernetes -> any {
                 del sys.modules[name];
             }
         }
-        sys.meta_path.insert(0, blocker);
-        try {
-            with unittest.mock.patch(
-                "jaclang.scale.deploy.target.factory.missing_capability_dists",
-                return_value=["kubernetes>=34.1.0,<35.0.0"]
-            ), unittest.mock.patch(
-                "jaclang.scale.deploy.target.factory.ensure_global_capability",
-                side_effect=install
-            ) {
-                yield None;
-            }
-        } finally {
-            if blocker in sys.meta_path {
-                sys.meta_path.remove(blocker);
-            }
+        sys.modules["kubernetes"] = None;
+        with unittest.mock.patch(
+            "jaclang.scale.deploy.target.factory.missing_capability_dists",
+            return_value=["kubernetes>=34.1.0,<35.0.0"]
+        ), unittest.mock.patch(
+            "jaclang.scale.deploy.target.factory.ensure_global_capability",
+            side_effect=install
+        ) {
+            yield None;
         }
     }
 }
@@ -96,21 +82,12 @@ def _machine_without_kubernetes -> any {
 def _scale_command(action: str, tmpdir: str) {
     app = os.path.join(tmpdir, "main.jac");
     with open(app, "w") as f {
-        f.write("with entry {\n    print(\"hello\");\n}\n");
+        f.write("with entry {}\n");
     }
     plugin = importlib.import_module("jaclang.scale.plugin");
     realizer_mod = importlib.import_module(
         "jaclang.scale.runtime.realizer.kubernetes_realizer"
     );
-    factory = importlib.import_module(
-        "jaclang.scale.deploy.target.factory"
-    ).DeploymentTargetFactory;
-    real_create = factory.create;
-    class Created(Exception) {}
-    def create(*args: any, **kwargs: any) -> any {
-        real_create(*args, **kwargs);
-        raise Created();
-    }
     scale_config = unittest.mock.MagicMock();
     scale_config.get_kubernetes_config.return_value = {
         "app_name": "a",
@@ -120,12 +97,8 @@ def _scale_command(action: str, tmpdir: str) {
         plugin, "get_scale_config", return_value=scale_config
     ), unittest.mock.patch.object(
         realizer_mod, "get_scale_config", return_value=scale_config
-    ), unittest.mock.patch.object(factory, "create", side_effect=create), unittest.mock.patch(
-        "builtins.input", return_value="y"
-    ) {
-        try {
-            plugin.scale_cmd(action, app);
-        } except Created {}
+    ), unittest.mock.patch("builtins.input", return_value="y") {
+        plugin.scale_cmd(action, app);
     }
 }
 
@@ -145,7 +118,9 @@ test "a command that installs the kubernetes client uses it in the same run" {
         ("sdk", _sdk_client)
     ] {
         with _machine_without_kubernetes(), tempfile.TemporaryDirectory() as tmpdir {
-            run(tmpdir);
+            try {
+                run(tmpdir);
+            } except _Installed {}
             target_mod = importlib.import_module(
                 "jaclang.scale.deploy.target.kubernetes.kubernetes_target"
             );
@@ -156,18 +131,18 @@ test "a command that installs the kubernetes client uses it in the same run" {
 }
 
 
-test "a process that loaded without the kubernetes client asks for another run" {
+test "a process that loaded without the kubernetes client asks for a restart" {
     with _machine_without_kubernetes() {
         importlib.import_module("jaclang.scale._optdeps.kubernetes");
         factory_mod = importlib.import_module("jaclang.scale.deploy.target.factory");
-        factory_mod.ensure_deploy_tooling();
+        del sys.modules["kubernetes"];
         raised = "";
         try {
             factory_mod.require_deploy_tooling();
         } except RuntimeError as e {
             raised = str(e);
         }
-        assert "Run the command again" in raised;
+        assert "Restart the process" in raised;
     }
 }
 

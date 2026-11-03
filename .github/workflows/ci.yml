@@ -1007,6 +1007,12 @@ jobs:
           helm install keda kedacore/keda --namespace keda --create-namespace --wait
           helm install http-add-on kedacore/keda-add-ons-http --namespace keda --wait
           kubectl get pods -n keda
+      # The install step above hides a first deploy on a machine without the
+      # client, so this one runs each command on a fresh HOME.
+      - name: Run first deploy e2e
+        env:
+          BUNDLE_STORAGE_CLASS: microk8s-hostpath
+        run: bash jac/jaclang/scale/tests/deploy/first_deploy_real_e2e.sh
       - name: Run K8 tests (deploy-core)
         env:
           JAC_TEST_JOBS: "0"
