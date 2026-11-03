@@ -16,6 +16,7 @@ obj RequestOptions {
         no_ir_cache: bool = False,
         resolve_annex_parent: bool = False,
         aot_mode: bool = False,
+        native_import: bool = False,
         native_unit: bool = False,
         kernel_build: bool = False,
         force_codespace: str = "",
