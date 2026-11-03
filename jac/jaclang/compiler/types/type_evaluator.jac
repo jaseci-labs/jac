@@ -539,6 +539,7 @@ walker TypeEvaluator {
         at: UniNode
     ) -> None;
 
+    def _same_type_args(ty: ClassType, existing: ClassType) -> bool;
     def _type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool;
     def _literal_member_known(ty: TypeBase, type_list: list[TypeBase]) -> bool;
     def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;
