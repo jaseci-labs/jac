@@ -14,6 +14,7 @@ is resolvable via either member's layout.
 obj A {
     has val: int;
 }
+
 obj B {
     has val: int;
 }
@@ -25,6 +26,7 @@ def get_val(x: A | B) -> int {
 node Sub {
     has val: int;
 }
+
 node Other {
     has val: int;
 }
@@ -34,5 +36,14 @@ walker W {
 
     can on_either with (Sub, Other) entry {
         self.either = self.either + here.val;
+        visit [-->];
     }
+}
+
+with entry {
+    print(get_val(A(val=5)), get_val(B(val=42)));
+    hub = Sub(val=5);
+    hub ++> Other(val=7);
+    w = hub spawn W();
+    print(w.either);
 }

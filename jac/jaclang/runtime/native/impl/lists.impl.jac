@@ -185,6 +185,16 @@ impl __jac_rt_elem_eq(a: int, b: int, kind: int) -> bool {
 }
 
 impl _elem_cmp(a: int, b: int, kind: int) -> int {
+    if kind >= SORT_TAGGED_KIND {
+        tag = kind - SORT_TAGGED_KIND;
+        if __jac_rt_any_order(tag, a, tag, b, ORDER_LT) {
+            return -1;
+        }
+        if __jac_rt_any_order(tag, b, tag, a, ORDER_LT) {
+            return 1;
+        }
+        return 0;
+    }
     if kind == KIND_UINT {
         return _elem_cmp(
             a ^ (-9223372036854775807 - 1), b ^ (-9223372036854775807 - 1), KIND_INT

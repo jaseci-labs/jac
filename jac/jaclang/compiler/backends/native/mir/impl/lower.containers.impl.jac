@@ -855,7 +855,7 @@ impl MirLowering.list_sort(lst: MirValue, nd: uni.FuncCall) -> (MirValue | None)
     key_fn: (MirValue | None) = None;
     if "key" in named {
         key_fn = self.key_function(named["key"]);
-    } elif self.elem_kind(elem, nd) == KIND_REF {
+    } elif self.sort_kind(elem, nd) == KIND_REF {
         return None;
     }
     flag = b.const_bool(False);
@@ -1761,7 +1761,12 @@ impl MirLowering.sort_kind(t: MirType, site: uni.UniNode) -> int {
     if t.kind == MirKind.INT and not t.signed and t.width == 64 {
         return KIND_UINT;
     }
-    return self.elem_kind(t, site);
+    kind = self.elem_kind(t, site);
+    if kind == KIND_REF
+        and t.kind in (MirKind.LIST, MirKind.BYTES, MirKind.BYTEARRAY, MirKind.SET) {
+        return SORT_TAGGED_KIND + self.any_tag(t, site);
+    }
+    return kind;
 }
 
 impl MirLowering.unbind_local(target: uni.Expr) -> bool {

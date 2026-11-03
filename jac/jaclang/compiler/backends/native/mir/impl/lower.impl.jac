@@ -4316,6 +4316,10 @@ impl MirLowering.method_call(
             self.spill(self.lower_expr(target.target)), right.value, nd
         );
     }
+    template = self.literal_text(target.target) if right.value == "format" else None;
+    if receiver_type.kind in (MirKind.STR, MirKind.STR_REF) and template is not None {
+        return self.str_format(template, nd);
+    }
     if receiver_type.kind
         in (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY) {
         return self.text_method(self.lower_expr(target.target), right.value, nd);
@@ -4380,6 +4384,32 @@ impl MirLowering.method_call(
             "__jac_region_partition", [self.lower_expr(target.target)]
         );
         return self.emit_value(MirOp.PTR_CAST, mir_region(), [child]);
+    }
+    if receiver_type.kind == MirKind.REGION
+        and right.value == "partition"
+        and len(self.call_args(nd)) == 1 {
+        (ok, count) = c_scalar_constant(self.call_args(nd)[0]);
+        if not ok or not isinstance(count, int) or count < 1 {
+            raise MirRefused(
+                mir_refusal(
+                    "call",
+                    "Region.partition(n)",
+                    nd,
+                    "Native partition(n) takes a positive constant count, so the children form a fixed tuple."
+                )
+            );
+        }
+        parent = self.spill(self.lower_expr(target.target));
+        children = [
+            self.emit_value(
+                MirOp.PTR_CAST,
+                mir_region(),
+                [self.region_call("__jac_region_partition", [parent])]
+            ) for _ in range(count)
+        ];
+        return self.emit_value(
+            MirOp.TUPLE_MAKE, mir_tuple([mir_region()] * count), children
+        );
     }
     if receiver_type.kind == MirKind.C_PTR {
         receiver = self.lower_expr(target.target);

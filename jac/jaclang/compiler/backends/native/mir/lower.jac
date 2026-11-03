@@ -76,6 +76,7 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      KIND_ANY: int = 6,
      KIND_UINT: int = 7,
      KIND_NULL: int = 8,
+     SORT_TAGGED_KIND: int = 16,
      TUPLE_BOX_MEMBERS: int = 8,
      NO_VALUE_KIND: int = -1,
      LIST_INDEX_MESSAGE: str = "list index out of range",
@@ -1193,6 +1194,7 @@ obj MirLowering {
     def container_repr_body(param: MirValue, site: uni.UniNode);
     def object_repr_body(param: MirValue, site: uni.UniNode);
     def fstring_value(nd: uni.FString) -> MirValue;
+    def str_format(template: str, nd: uni.FuncCall) -> MirValue;
     def format_value(
         value: MirValue, spec: (MirValue | None), site: uni.UniNode
     ) -> MirValue;
@@ -1315,7 +1317,10 @@ obj MirLowering {
         nd: uni.FuncCall, args: list[uni.Expr], named: dict[str, uni.Expr]
     ) -> MirValue;
 
-    def builtin_fold(nd: uni.FuncCall, name: str, source: uni.Expr) -> MirValue;
+    def builtin_fold(
+        nd: uni.FuncCall, name: str, source: uni.Expr, start: (uni.Expr | None) = None
+    ) -> MirValue;
+
     def materialize_source(
         source: uni.Expr, elem: MirType, site: uni.UniNode
     ) -> MirValue;
