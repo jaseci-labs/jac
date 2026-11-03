@@ -16,7 +16,8 @@ glob KIND_INT: int = 0,
      KIND_UINT: int = 7,
      KIND_NULL: int = 8,
      KIND_LENT: int = 256,
-     KIND_MASK: int = 255;
+     KIND_MASK: int = 255,
+     SORT_TAGGED_KIND: int = 16;
 
 glob LIST_LEN: int = 0,
      LIST_CAP: int = 8,
