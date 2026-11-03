@@ -260,7 +260,9 @@ impl MirLowering.closure_call(nd: uni.FuncCall, callee: MirValue) -> MirValue {
         if len(bound) == len(params) {
             held = self.spill(callee);
             if held.type.kind == MirKind.OPT {
-                held = self.opt_unwrap_checked(held, "'NoneType' object is not callable");
+                held = self.opt_unwrap_checked(
+                    held, "'NoneType' object is not callable"
+                );
             }
             return self.call_closure(held, self.bound_values(list(bound), params), nd);
         }

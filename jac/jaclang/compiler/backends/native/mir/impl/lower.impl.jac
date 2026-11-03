@@ -2413,6 +2413,36 @@ impl MirLowering.lower_if_else_expr(nd: uni.IfElseExpr) -> MirValue {
 }
 
 impl MirLowering.lower_for(nd: uni.InForStmt) {
+    target = nd.target;
+    if not isinstance(target, uni.Name) or target.sym is None or target.type is None {
+        self.lower_for_core(nd);
+        return;
+    }
+    element = self.expr_type(target);
+    declared = self.symbol_type(target.sym, target);
+    if element is declared
+        or element.kind != MirKind.OBJ
+        or declared.kind != MirKind.OBJ
+        or self.obj_extends(element.name, declared.name)
+        or self.obj_extends(declared.name, element.name) {
+        self.lower_for_core(nd);
+        return;
+    }
+    key = id(target.sym);
+    previous = self.st().locals.get(key);
+    self.st().locals[key] = self.temp_slot(element);
+    try {
+        self.lower_for_core(nd);
+    } finally {
+        if previous is None {
+            self.st().locals.pop(key, None);
+        } else {
+            self.st().locals[key] = previous;
+        }
+    }
+}
+
+impl MirLowering.lower_for_core(nd: uni.InForStmt) {
     source = nd.collection;
     if isinstance(source, uni.FuncCall)
         and isinstance(source.target, uni.Name)

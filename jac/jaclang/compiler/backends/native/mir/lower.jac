@@ -360,6 +360,7 @@ obj MirLowering {
     def lower_while(nd: uni.WhileStmt);
     def lower_ctrl(nd: uni.CtrlStmt);
     def lower_for(nd: uni.InForStmt);
+    def lower_for_core(nd: uni.InForStmt);
     def lower_range_for(nd: uni.InForStmt, bounds: list[uni.Expr]);
     def lower_if_else_expr(nd: uni.IfElseExpr) -> MirValue;
     def to_str(value: MirValue, site: uni.UniNode) -> MirValue;
