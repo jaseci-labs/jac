@@ -45,7 +45,7 @@ email = "jane@example.com"
     assert cfg.project.maintainers[0].name == "Jane Doe";
 }
 
-test "project include packages and data parsed" {
+test "project include packages parsed" {
     toml_str = """
 [project]
 name = "p"
@@ -53,14 +53,9 @@ version = "1.0.0"
 
 [project.include]
 packages = ["byllm*"]
-
-[project.include.data]
-byllm = ["*.jir"]
 """;
     cfg = JacConfig.from_toml_str(toml_str);
     assert cfg.project.`include.packages == ["byllm*"];
-    assert "byllm" in cfg.project.`include.data;
-    assert "*.jir" in cfg.project.`include.data["byllm"];
 }
 
 test "project without publishing fields still has empty defaults" {

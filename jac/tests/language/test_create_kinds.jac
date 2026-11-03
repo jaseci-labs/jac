@@ -134,11 +134,6 @@ test "create --kind service-mesh" {
     _cleanup();
 }
 
-test "create --kind py-package" {
-    _assert_kind("py-package", "lib.jac", "build");
-    _cleanup();
-}
-
 test "create --kind js-package" {
     _assert_kind("js-package", "lib.jac", "build");
     _cleanup();

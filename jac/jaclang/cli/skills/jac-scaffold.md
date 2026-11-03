@@ -32,7 +32,7 @@ Without a project name, `jac create` initializes the **current directory** and n
 
 ## Project kinds and what each scaffolds
 
-`--kind` accepts any of the 12 project kinds -- **all built into `jaclang` core**, so none require a separate plugin install. (The full-stack client/desktop kinds were folded in from the former `jac-client` / `jac-desktop` plugins.)
+`--kind` accepts any of the 11 project kinds -- **all built into `jaclang` core**, so none require a separate plugin install. (The full-stack client/desktop kinds were folded in from the former `jac-client` / `jac-desktop` plugins.)
 
 | `--kind` | Provider | `jac run` does | Entry-point |
 |---|---|---|---|
@@ -42,7 +42,6 @@ Without a project name, `jac create` initializes the **current directory** and n
 | `native-lib` | core | build a `.so`/`.dylib`/`.dll` | `main.jac` |
 | `service` | core | serve headless API (no client) | `main.jac` |
 | `service-mesh` | core | serve microservice | `main.jac` |
-| `py-package` | core | build a wheel into `dist/` | `lib.jac` |
 | `js-package` | core | build an npm tarball into `dist/` | `lib.jac` |
 | `web-app` | core | serve app (dev mode) | `main.jac` + `endpoints.jac` |
 | `web-static` | core | serve client-only page | `main.jac` |

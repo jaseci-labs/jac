@@ -19,7 +19,7 @@ A task-first index into the commands below. The full alphabetical list follows i
 | Create a new project | `jac create` |
 | Build a client (web, desktop, mobile) | `jac build [app]` (`--as client` builds only the client bundle; a mobile app's Expo scaffold is provisioned on first use) · `jac setup [app]` provisions ahead of time |
 | Compile a native binary or C-ABI shared library | `jac build <file> --native` (`--lib`, `--memory`, `--target-triple`, `--debug`) |
-| Build one distributable artifact (.jab, wheel, npm, source) | `jac build --as {jab,wheel,npm,source,…}` |
+| Build one distributable artifact (.jab, npm, source) | `jac build --as {jab,npm,source,…}` |
 | Add, remove, or update dependencies | `jac install <org/name>` · `jac install --pypi <pkg>` · `jac remove` · `jac update` |
 | Publish a Jac package or template | `jac publish` |
 | Install project dependencies (preview with `--plan`) | `jac install` · `jac install --plan` |
@@ -43,7 +43,7 @@ A task-first index into the commands below. The full alphabetical list follows i
 | Command | Description |
 |---------|-------------|
 | `jac run` | Execute *or* serve an app (by name), a Jac file, a `.jab`, or (no target) the default app, per its kind (`--entry <walker>`, `--debug`, `--serve`, `--port`, `--dev`, `--fleet`) |
-| `jac build` | Type-check gate, then emit one artifact per app (`--as jab\|sealed\|binary\|wheel\|npm\|source\|native`; default `.jab`; `--all` builds every app into `dist/<app>/`; `--as client` builds only an app's client bundle) |
+| `jac build` | Type-check gate, then emit one artifact per app (`--as jab\|sealed\|binary\|npm\|source\|native`; default `.jab`; `--all` builds every app into `dist/<app>/`; `--as client` builds only an app's client bundle) |
 | `jac create` | Create a new project, or (`--app <name> --kind <kind>`) add an app to this one; `--awesome` scaffolds the flagship workspace; `--pack` bundles a directory into a `.jacpack` template |
 | `jac check` | Type check code -- with no paths, the whole workspace, one program per app (`--app <name>` for one; `--lint` to lint, `--lint --fix` to auto-fix) |
 | `jac test` | Run tests (`jac test <app>` uses that app's `[test]` config) |
@@ -177,7 +177,7 @@ A named file otherwise runs under the project that owns it: the nearest `jac.tom
 
 Like Python, everything after the target is passed to the script. Jac flags must come **before** the target.
 
-**App-aware run.** `jac run` resolves the target app -- the named app, `[project] default-app`, or the sole app (a project with no `[apps]` table is one implicit app) -- reads its *kind* (`[apps.<name>] kind`, or `[project] kind`, or inferred from the entry-point's codespace) and does the natural action for that kind: **execute** runnable kinds (`cli`, `cli-native`, and `native-binary`, compiled in-process), or **serve** server and client kinds (`service`, `web-app`, `mobile`, ...). `jac run` never builds: a build-only kind with no program to run (`native-lib`, `py-package`, `js-package`) is refused with the `jac build` command that makes it. Flag defaults with a `config_key` (`--port`, `--cache`, ...) come from the app's *effective config* -- base `jac.toml` merged with its `[apps.<name>.*]` overlays and the active profile. Use `jac run --show` to preview the plan and the equivalent command without running it. A serve-only flag against a kind that executes (or the reverse) is a hard error, not a silent no-op -- pass `--serve` / `--no-serve` to override the kind deliberately. See [project kinds](../../quick-guide/project-kinds.md), [Workspaces & Apps](../apps.md) and [config `[apps]`](../config/index.md#apps).
+**App-aware run.** `jac run` resolves the target app -- the named app, `[project] default-app`, or the sole app (a project with no `[apps]` table is one implicit app) -- reads its *kind* (`[apps.<name>] kind`, or `[project] kind`, or inferred from the entry-point's codespace) and does the natural action for that kind: **execute** runnable kinds (`cli`, `cli-native`, and `native-binary`, compiled in-process), or **serve** server and client kinds (`service`, `web-app`, `mobile`, ...). `jac run` never builds: a build-only kind with no program to run (`native-lib`, `js-package`) is refused with the `jac build` command that makes it. Flag defaults with a `config_key` (`--port`, `--cache`, ...) come from the app's *effective config* -- base `jac.toml` merged with its `[apps.<name>.*]` overlays and the active profile. Use `jac run --show` to preview the plan and the equivalent command without running it. A serve-only flag against a kind that executes (or the reverse) is a hard error, not a silent no-op -- pass `--serve` / `--no-serve` to override the kind deliberately. See [project kinds](../../quick-guide/project-kinds.md), [Workspaces & Apps](../apps.md) and [config `[apps]`](../config/index.md#apps).
 
 **Diagnostics modes:**
 
@@ -354,7 +354,7 @@ jac create [-h] [-f] [-k KIND] [--app APP] [--path PATH] [-u USE] [--awesome] [-
 |--------|-------------|---------|
 | `name` | Project name (creates folder with this name) | Current directory name |
 | `-f, --force` | Overwrite existing project | `False` |
-| `-k, --kind` | Project or app kind: cli, cli-native, native-binary, native-lib, service, service-mesh, py-package, js-package, web-app, web-static, desktop, mobile | `cli` |
+| `-k, --kind` | Project or app kind: cli, cli-native, native-binary, native-lib, service, service-mesh, js-package, web-app, web-static, desktop, mobile | `cli` |
 | `--app` | Scaffold an app of `--kind` inside the current project and register `[apps.<app>]` in its `jac.toml` | None |
 | `--path` | With `--app`: directory for the app, relative to the project root | the app name |
 | `--awesome` | Scaffold the full jaclang.org workspace (landing, docs, leaderboard, socialize, wasm game, mobile, cli) as your project | `False` |
@@ -1738,10 +1738,10 @@ jac cache purge --bucket jir-modules
 
 ### jac build
 
-Emit **one** artifact. Type checking runs on the critical path of every compilation, so the artifact compile is itself the gate: a program that does not type-check produces no artifact. By default `jac build` produces a `.jab` -- a single self-describing sealed app bundle. Use `--as` to select a different projection. `jac build` is now the single front door that the former `jac bundle` (wheel/npm), `jac eject` (source), and project-level `jac build --native` (native/binary) folded into.
+Emit **one** artifact. Type checking runs on the critical path of every compilation, so the artifact compile is itself the gate: a program that does not type-check produces no artifact. By default `jac build` produces a `.jab` -- a single self-describing sealed app bundle. Use `--as` to select a different projection. `jac build` is now the single front door that the former `jac bundle` (npm), `jac eject` (source), and project-level `jac build --native` (native/binary) folded into.
 
 ```bash
-jac build [-h] [--all] [--as {jab,sealed,binary,wheel,npm,source,native,client}] [-o OUTPUT] [-n] [-c] [-f]
+jac build [-h] [--all] [--as {jab,sealed,binary,npm,source,native,client}] [-o OUTPUT] [-n] [-c] [-f]
           [-p {windows,macos,linux,all,android,ios,web}] [target]
 ```
 
@@ -1749,7 +1749,7 @@ jac build [-h] [--all] [--as {jab,sealed,binary,wheel,npm,source,native,client}]
 |--------|-------------|---------|
 | `target` | An app name from `[apps]`, or an entry `.jac` file (omit for `[project] default-app`, or the sole app) | (default app) |
 | `--all` | Build every app in the workspace into `<output>/<app>/` (each per its kind's output layout) | `False` |
-| `--as` | Artifact projection: `jab`, `sealed`, `binary`, `wheel`, `npm`, `source`, `native`, `client` | `jab` |
+| `--as` | Artifact projection: `jab`, `sealed`, `binary`, `npm`, `source`, `native`, `client` | `jab` |
 | `-o, --output` | Output directory | `dist` |
 | `-c, --check_only` | Run the gate only; emit nothing | `False` |
 | `-f, --fat` | Vendor the Python dependency closure into the bundle (`jab` / `binary` only) so it materializes offline | `False` |
@@ -1762,7 +1762,6 @@ jac build [-h] [--all] [--as {jab,sealed,binary,wheel,npm,source,native,client}]
 | `jab` (default) | A sealed `.jab` app bundle (deterministic `tar.gz` of the sealed image) | -- |
 | `sealed` | The sealed image as an unpacked directory (exactly what a `.jab` archives) | -- |
 | `binary` | A self-contained app executable: a copy of the `jac` launcher with your sealed `.jab` appended as an overlay | -- |
-| `wheel` | A `pip install`-ready Python wheel in `dist/` | `jac bundle` |
 | `npm` | An npm tarball | `jac bundle --target npm` |
 | `source` | Editable Python, JavaScript, and C with the required Jac runtime source | `jac eject` |
 | `client` | Only the app's client bundle (the browser bundle of a `web-app` / `web-static`, the desktop binary of a `desktop` app, the platform build of a `mobile` app) | -- |
@@ -1788,33 +1787,10 @@ jac build --as binary --fat     # fully offline-capable executable
 - **What is vendored.** The closure is exactly what [`jac install`](#jac-install) would install: your declared dependencies plus the capability dependencies derived from `jac.toml` intents. Wheels are resolved for the build host by default (like a `.jir`, the bundle is version-locked to the building runtime). Vendoring honors pip's environment (`PIP_INDEX_URL`, `PIP_FIND_LINKS`, `PIP_NO_INDEX`). Git dependencies are not vendored and still install normally. The build summary prints the vendored wheel count and total size.
 - **Source-only dependencies.** A dependency that publishes no wheel (an sdist-only package such as `http-ece`) is built on the build host with `pip wheel` and the closure is resolved again through the result. The build fails, naming the package, if no wheel can be produced, rather than shipping a bundle that cannot materialize. A Kubernetes deploy resolves the same closure for the pod platform instead of the build host; see [fat bundles](../plugins/jac-scale-kubernetes.md#app-artifact-jab).
 
-**Building a wheel (publish to PyPI):**
-
-```bash
-# Type-check, then build a wheel into dist/
-jac build --as wheel
-
-# Build to a custom directory
-jac build --as wheel -o /tmp/wheels
-```
-
-After a wheel build the tool prints `Upload with: twine upload dist/*`. There is no `--publish` flag; upload with twine:
-
-```bash
-jac build --as wheel && twine upload dist/*
-```
-
 **Building an npm tarball:**
 
 ```bash
 jac build --as npm      # prints "Publish with: npm publish"
-```
-
-To produce **both** a wheel and an npm tarball, run both commands (there is no single "all" projection):
-
-```bash
-jac build --as wheel
-jac build --as npm
 ```
 
 **Building a native binary or editable source tree:**
@@ -1875,7 +1851,7 @@ jac build mobile -p web
 jac build --as client web
 ```
 
-> **Note:** The `[project.include]` / `**/*.jir` collection settings in `jac.toml` govern what `jac build --as wheel` collects (this was formerly `jac bundle`). See the [Configuration Reference](../config/index.md#project) for the full set of publishing fields (`name`, `version`, `license`, `readme`, `authors`, `[project.include]`, and more). For the full end-to-end publishing workflow, see the [Publishing Packages](../publishing.md) guide.
+> **Note:** `[project.include]` `packages` in `jac.toml` selects the directories `jac build --as npm` compiles. See the [Configuration Reference](../config/index.md#project) for the full set of project fields (`name`, `version`, `license`, `readme`, `authors`, `[project.include]`, and more). For the npm workflow, see [Publishing to npm](../publishing.md); to share Jac code with other Jac projects, see [Packages](../packages.md).
 
 ---
 
@@ -2172,30 +2148,14 @@ jac check . --lint --fix
 
 ### Publishing a Package
 
-Expected project layout:
-
-```
-mylib/
-├── jac.toml          ← must contain [project] section
-├── README.md
-└── mylib/            ← source dir (matches [project] name)
-    ├── __init__.jac
-    └── utils.jac
-```
+A package is a project whose `[project]` has a scoped name, a semantic version and an `exports` list; see [Writing a package](../packages.md#writing-a-package).
 
 ```bash
-# Type-check gate, then build a wheel from jac.toml
-jac build --as wheel
+# Build, check and show the API diff; upload nothing
+jac publish --dry-run
 
-# Test locally in a clean environment before uploading
-python -m venv test_env && source test_env/bin/activate
-pip install dist/mylib-1.0.0-py3-none-any.whl
-
-# Upload to TestPyPI first to verify metadata
-twine upload --repository testpypi dist/*
-
-# Then publish to PyPI
-twine upload dist/*
+# Build and open the index pull request
+jac publish
 ```
 
 ### Production

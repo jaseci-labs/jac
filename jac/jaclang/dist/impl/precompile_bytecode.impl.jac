@@ -837,7 +837,7 @@ impl app_metadata(pkg_path: Path, pkg_name: str, app: str = "") -> dict[str, any
     if (pkg_path / NATIVE_DIR_REL).is_dir() {
         caps.append("has-native");
     }
-    if kind in ["py-package", "js-package"] or not `entry {
+    if kind == "js-package" or not `entry {
         caps.append("attachable");
     }
 

@@ -17,8 +17,7 @@ def _build_app(
     platform: str | None,
     fat: bool,
     entry_override: str,
-    place: bool,
-    allow_drop_client: bool = False
+    place: bool
 ) -> int;
 
 impl build(
@@ -34,8 +33,7 @@ impl build(
     memory: str = "",
     native_target: str = "",
     debug: bool = False,
-    native_link_mode: str = "",
-    allow_drop_client: bool = False
+    native_link_mode: str = ""
 ) -> int {
     if native or lib or memory or native_target or debug or native_link_mode {
         import from jaclang.cli.commands.native_build { native_build }
@@ -110,8 +108,7 @@ impl build(
                 platform,
                 fat,
                 "",
-                True,
-                allow_drop_client
+                True
             );
             if rc != 0 {
                 failed.append(app.name);
@@ -129,16 +126,7 @@ impl build(
         return rc;
     }
     return _build_app(
-        cfg,
-        project_root,
-        app,
-        projection,
-        output,
-        platform,
-        fat,
-        file,
-        False,
-        allow_drop_client
+        cfg, project_root, app, projection, output, platform, fat, file, False
     );
 }
 
@@ -193,15 +181,14 @@ impl _build_app(
     platform: str | None,
     fat: bool,
     entry_override: str,
-    place: bool,
-    allow_drop_client: bool = False
+    place: bool
 ) -> int {
     plan = None;
     if app is not None {
         try {
             plan = plan_app_run(cfg, project_root, app, entry_override=entry_override);
         } except ValueError as e {
-            if not entry_override and projection not in ("wheel", "sdist", "npm") {
+            if not entry_override and projection != "npm" {
                 console.error(str(e));
                 return 2;
             }
@@ -287,18 +274,17 @@ impl _build_app(
         );
         return 1;
     }
-    if projection == "jab" and plan_flags.get("as") in ("wheel", "npm") {
+    if projection == "jab" and plan_flags.get("as") == "npm" {
         projection = str(plan_flags["as"]);
     }
 
-    if projection in ["jab", "sealed", "binary", "wheel", "npm"] {
+    if projection in ["jab", "sealed", "binary", "npm"] {
         import from jaclang.cli.commands.project { bundle }
         return bundle(
             output=output,
             target=projection,
             fat=fat,
-            app=(app.name if app is not None else ""),
-            allow_drop_client=allow_drop_client
+            app=(app.name if app is not None else "")
         );
     }
     console.error(f"Unknown projection: '{projection}'");

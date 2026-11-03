@@ -107,4 +107,4 @@ To split apps across hosts, point each consumer at its providers with `JAC_APP_<
 
 - Add a frontend → [Full-stack web apps](fullstack-web.md)
 - Add AI endpoints → [AI agents & LLM apps](ai-agents.md)
-- Publish backend logic as a library → [Reusable libraries & packages](libraries.md#py-package)
+- Publish backend logic as a library → [Reusable libraries & packages](libraries.md#jac-package)

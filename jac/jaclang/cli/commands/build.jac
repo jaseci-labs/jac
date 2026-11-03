@@ -23,19 +23,11 @@ comptime SPEC_BUILD: CommandSpec = CommandSpec(
                  "as",
                  dest="projection",
                  `default="jab",
-                 choices=[
-                     "jab",
-                     "sealed",
-                     "binary",
-                     "wheel",
-                     "npm",
-                     "source",
-                     "client"
-                 ],
+                 choices=["jab", "sealed", "binary", "npm", "source", "client"],
                  help=(
                      "What to emit: 'jab' (single-file sealed app bundle, default), "
                      "'sealed' (unpacked image dir), 'binary' (self-contained "
-                     "executable), 'wheel' (PyPI), 'npm' (tarball), 'source' "
+                     "executable), 'npm' (tarball), 'source' "
                      "(editable Python, JavaScript and C project), 'client' (the app's client bundle only)"
                  )
              ),
@@ -105,13 +97,6 @@ comptime SPEC_BUILD: CommandSpec = CommandSpec(
                  )
              ),
              Arg.create(
-                 "allow-drop-client",
-                 typ=bool,
-                 `default=False,
-                 short="",
-                 help="With --as wheel: build even though client-codespace modules cannot ship in a Python wheel (they are left out)"
-             ),
-             Arg.create(
                  "check_only",
                  typ=bool,
                  `default=False,
@@ -146,7 +131,6 @@ comptime SPEC_BUILD: CommandSpec = CommandSpec(
                  "Compile to WebAssembly"
              ),
              ("jac build --fat", "Build a fat jab (Python deps vendored)"),
-             ("jac build --as wheel", "Build a PyPI wheel"),
              ("jac build --as client web", "Build only the web app's browser bundle"),
              (
                  "jac build --check_only",
@@ -179,6 +163,5 @@ def build(
     memory: str = "",
     native_target: str = "",
     debug: bool = False,
-    native_link_mode: str = "",
-    allow_drop_client: bool = False
+    native_link_mode: str = ""
 ) -> int;

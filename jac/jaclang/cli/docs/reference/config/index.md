@@ -58,7 +58,7 @@ A project can also hold several **apps** -- a web app, a mobile app, a CLI and a
 
 ### [project]
 
-Project metadata. `entry-point` and `kind` describe the project's single app (in a workspace they move onto the `[apps.<name>]` tables and `default-app` picks the app a bare `jac run` targets). `jac-version` pins the Jac toolchain the project targets: `jac create` stamps it automatically, and `jac scale deploy` uses it to select the pod runtime (see [jac-version](#jac-version) below). Publishing fields (`license`, `readme`, `keywords`, `requires-python`, `authors`, `maintainers`, and `[project.include]`) are used by `jac build --as wheel` when building a distributable wheel. All publishing fields are optional -- a project that is never published only needs `name`.
+Project metadata. `entry-point` and `kind` describe the project's single app (in a workspace they move onto the `[apps.<name>]` tables and `default-app` picks the app a bare `jac run` targets). `jac-version` pins the Jac toolchain the project targets: `jac create` stamps it automatically, and `jac scale deploy` uses it to select the pod runtime (see [jac-version](#jac-version) below). Metadata fields (`license`, `readme`, `keywords`, `requires-python`, `authors`, `maintainers`) feed the `package.json` of `jac build --as npm` and the `.dist-info` of `jac install -e`, each taking the fields its format has; `[project.include]` selects what `jac build --as npm` compiles. All metadata fields are optional -- a project that is never published only needs `name`.
 
 ```toml
 [project]
@@ -70,7 +70,7 @@ kind = "service"   # drives `jac run` (omit to infer from the entry-point); not 
 jac-version = "==0.34.3"   # stamped by `jac create`; widen to `>=`, `<=`, or a range
 # default-app = "web"      # workspaces only: the app a bare `jac run` / `jac build` / `jac test` targets
 
-# Publishing metadata -- only needed to run `jac build --as wheel`
+# Optional metadata -- see the field table below
 license = "MIT"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -85,22 +85,22 @@ repository = "https://github.com/user/repo"
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `name` | string | Project / PyPI package name (required) |
+| `name` | string | Project name (required). A scoped `org/name` makes the project a publishable [Jac package](../packages.md) |
 | `version` | string | Semantic version (default: `0.1.0`) |
-| `description` | string | One-line summary (also shown on PyPI) |
+| `description` | string | One-line summary |
 | `entry-point` | string | Dotted entry module for `jac run` (default: `main`). Single-app projects only -- in a workspace each app declares its own under `[apps.<name>]`, and setting it here is a hard error |
-| `kind` | string | Project kind that drives `jac run` dispatch (execute / serve / build). Empty = inferred from the entry-point codespace. One of: `cli`, `cli-native`, `native-binary`, `native-lib`, `service`, `service-mesh`, `py-package`, `js-package`, `web-app`, `web-static`, `desktop`, `mobile`. Single-app projects only; a workspace sets `kind` per app |
+| `kind` | string | Project kind that drives `jac run` dispatch (execute / serve / build). Empty = inferred from the entry-point codespace. One of: `cli`, `cli-native`, `native-binary`, `native-lib`, `service`, `service-mesh`, `js-package`, `web-app`, `web-static`, `desktop`, `mobile`. Single-app projects only; a workspace sets `kind` per app |
 | `default-app` | string | Workspaces only. The app that a bare `jac run`, `jac build`, `jac test` or `jac setup` targets. Must name a key of `[apps]`. With one app it is implied; with several and no default, the bare form errors and lists the apps |
 | `jac-version` | string | Jac toolchain version the project targets, as a PEP 440-style specifier. `jac create` stamps `==<current>`; at `jac scale deploy` the pod runtime binary, admin console, and base image are all taken from the release that satisfies it, and the deploy aborts if none does. See [jac-version](#jac-version). |
 | `license` | string | SPDX license identifier (e.g. `"MIT"`) |
 | `readme` | string | Path to README file (default: `README.md`) |
-| `requires-python` | string | Minimum Python version (e.g. `">=3.14"`) -- the wheel carries bytecode precompiled for the CPython the `jac` binary bundles, so a lower floor than that cannot load it |
-| `keywords` | list | Search keywords shown on PyPI |
+| `requires-python` | string | Minimum Python version (e.g. `">=3.14"`), recorded in the `.dist-info` that `jac install -e` writes |
+| `keywords` | list | Search keywords, written to `package.json` by `jac build --as npm` |
 | `authors` | list of `{name, email}` | Package authors |
 | `maintainers` | list of `{name, email}` | Package maintainers |
-| `urls` | table | Links shown on PyPI (declared under `[project.urls]`) |
+| `urls` | table | Project links (declared under `[project.urls]`). `jac publish` requires a public `repository` entry |
 
-> **Note:** `authors` and `maintainers` also accept a plain string form (`authors = ["Your Name"]`), but the `{ name, email }` table form is recommended -- it is what published packages' `jac.toml` files use and what PyPI renders. See [`[project.include]`](#projectinclude) for controlling which files land in the wheel.
+> **Note:** `authors` and `maintainers` also accept a plain string form (`authors = ["Your Name"]`), but the `{ name, email }` table form is recommended -- it is what published packages' `jac.toml` files use. See [`[project.include]`](#projectinclude) for controlling which directories `jac build --as npm` compiles.
 
 #### jac-version
 
@@ -1121,61 +1121,36 @@ base_url = "${BASE_URL:?Base URL is required}"      # Required with error
 
 ### [project.include]
 
-Controls which files and directories `jac build --as wheel` collects into the wheel.
+Selects the package directories `jac build --as npm` compiles into the tarball.
 
 ```toml
 [project.include]
 # Explicit list of package directories to include.
 # Defaults to a directory matching the package name (hyphens replaced with underscores).
 packages = ["mylib", "mylib_utils"]
-
-[project.include.data]
-# "*" sets global file patterns for all packages.
-"*" = ["**/*.jac", "**/*.py", "**/*.pyi", "py.typed"]
-
-# Per-package overrides add extra patterns on top of globals.
-mylib = ["**/*.lark", "data/*.json", "templates/**/*"]
 ```
 
 | Key | Description |
 |-----|-------------|
-| `packages` | Glob list of package directories to ship. Defaults to one directory named after the project (hyphens → underscores). |
-| `data` | Map of file-glob patterns. The `"*"` key sets global patterns for every package; a per-package key adds extra patterns on top. |
+| `packages` | Glob list of package directories to compile. Defaults to one directory named after the project (hyphens → underscores). |
 
-Simple patterns without a path separator (e.g. `"*.jac"`) are matched recursively, so sub-packages are covered automatically.
-
-**Default included patterns** (when `[project.include.data]` is absent):
-
-| Pattern | Description |
-|---------|-------------|
-| `**/*.jac` | Jac source files |
-| `**/*.py` | Python source files |
-| `**/*.pyi` | Type stub files |
-| `**/*.lark` | Lark grammar files |
-| `**/py.typed` | PEP 561 type marker |
-| `**/*.jir` | Pre-compiled JIR bytecode (collected if already present -- see [`jac build`](../cli/index.md#jac-build)) |
-| `_precompiled/manifest.json` | JIR precompile manifest |
-
-**Always excluded** (regardless of patterns):
-
-- Directories: `.jac/`, `__pycache__/`, `dist/`, `build/`, `venv/`, `.venv/`, `env/`, `.git/`, `.hg/`, `node_modules/`, `*.egg-info/`
-- File suffixes: `.pyc`
+**Always excluded:** the directories `.jac/`, `__pycache__/`, `dist/`, `build/`, `venv/`, `.venv/`, `env/`, `.git/`, `.hg/`, `node_modules/`, `tests/` and `*.egg-info/`.
 
 ---
 
 ### [entrypoints]
 
-Declare console scripts and other entry-point groups. Maps directly to `entry_points.txt` in the wheel's `.dist-info`.
+Declare console scripts and other entry-point groups. `jac install -e` writes them to `entry_points.txt` in the `.dist-info` it creates.
 
 ```toml
 [entrypoints.scripts]
-# Installs a "mylib" CLI command pointing to mylib.cli:main
+# A "mylib" CLI command pointing to mylib.cli:main
 mylib = "mylib.cli:main"
 ```
 
-The `[entrypoints.scripts]` group is written as `[console_scripts]` in `entry_points.txt`, which is the standard pip convention for installing CLI commands. After a user runs `pip install mylib`, the `mylib` command is available on their `PATH`.
+The `[entrypoints.scripts]` group is written as `[console_scripts]` in `entry_points.txt`. After `jac install -e`, run the command with [`jac x mylib`](../cli/index.md#jac-x).
 
-Any other `[entrypoints.<group>]` table is written through to the wheel metadata verbatim, for consumers that discover packages via `importlib.metadata.entry_points()`. (Jac itself no longer loads any entry-point group at startup -- the former `jac` plugin group is defunct.)
+Any other `[entrypoints.<group>]` table is written through verbatim, for consumers that discover packages via `importlib.metadata.entry_points()`. (Jac itself no longer loads any entry-point group at startup -- the former `jac` plugin group is defunct.)
 
 ---
 
@@ -1353,4 +1328,5 @@ Deployment settings (app name, namespace, node port, CPU/memory requests and lim
 ## See Also
 
 - [CLI Reference](../cli/index.md) - Command-line interface documentation
-- [Publishing Packages](../publishing.md) - Building and uploading wheels to PyPI
+- [Packages](../packages.md) - Sharing Jac code with other Jac projects through `jac publish`
+- [Publishing to npm](../publishing.md) - Building npm tarballs and editable installs

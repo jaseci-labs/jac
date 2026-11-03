@@ -64,3 +64,23 @@ test "source products of package-owned modules come from the compiler's own prog
         "the caller's program must not analyze the compiler's own module"
     );
 }
+
+test "the closure carries the runtime a program needs and not the compiler" {
+    closure = build_runtime_closure(
+        ["import jaclang.lib.jaclib\n"],
+        extra_seeds=["jaclang.lib.jaclib", "jaclang.runtime.surface"]
+    );
+    assert "__init__.py" in closure;
+    assert "lib/jaclib.py" in closure;
+    assert "runtime/surface.py" in closure;
+    assert "compiler/frontend/codeinfo.py" not in closure;
+    assert not any(name.startswith("compiler/driver/") for name in closure) , (
+        "serving metadata must not pull the compiler into a runtime"
+    );
+}
+
+test "the closure carries the fixed-width runtime a sized-typed program needs" {
+    closure = build_runtime_closure(["import jaclang.runtime.sized\n"]);
+    assert "runtime/sized.py" in closure;
+    assert "runtime/scalars.py" in closure;
+}

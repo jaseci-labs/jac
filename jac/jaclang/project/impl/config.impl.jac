@@ -822,9 +822,7 @@ impl _parse_persons(raw: list[object]) -> list[PersonConfig] {
 }
 
 impl _parse_include(raw: dict[str, any]) -> PackageIncludeConfig {
-    return PackageIncludeConfig(
-        packages=raw.get("packages", []), data=raw.get("data", {})
-    );
+    return PackageIncludeConfig(packages=raw.get("packages", []));
 }
 
 impl _parse_toml_data(

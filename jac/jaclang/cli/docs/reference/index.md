@@ -57,7 +57,7 @@ AI, deployment, and the full-stack frameworks. byLLM and Scale are **built into 
 - **[Agent Skills & MCP](agent-skills-and-mcp.md)** -- `jac guide`, exportable skills, and when to use each
 - **[Configuration](config/index.md)** -- `jac.toml`, profiles, environments
 - **[Workspaces & Apps](apps.md)** -- `[apps.<name>]` tables, shared code, ownership, the app boundary and its topology
-- **[Publishing Packages](publishing.md)** -- building wheels and npm tarballs
+- **[Publishing to npm](publishing.md)** -- building npm tarballs and editable installs
 - **[Persistence & Schema Migration](persistence.md)** -- the `root` graph, schema drift, migrations
 - **[Placement](placement.md)** -- how the solver assigns server / client / native, and when to still write `sv` / `na`
 - **[Errors & Warnings](diagnostics.md)** -- diagnostic codes

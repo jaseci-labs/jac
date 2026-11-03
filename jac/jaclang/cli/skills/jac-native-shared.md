@@ -75,4 +75,4 @@ Gotcha: linking an exported **global** directly as `extern long counter;` from g
 
 Cross-built `.dylib`/`.dll` artifacts are structurally valid Mach-O/PE files; build them anywhere, but you can only load-test them on the matching OS.
 
-Related: `jac-native` (subset + FFI in the other direction), `jac-packaging` (PyPI/npm artifacts), `jac-project-kinds`.
+Related: `jac-native` (subset + FFI in the other direction), `jac-packaging` (npm artifacts, `jac publish`), `jac-project-kinds`.

@@ -22,8 +22,7 @@ obj PersonConfig {
 }
 
 obj PackageIncludeConfig {
-    has packages: list[str] = [],
-        data: dict[str, list[str]] = {};
+    has packages: list[str] = [];
 }
 
 obj ProjectConfig {

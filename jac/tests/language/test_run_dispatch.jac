@@ -135,16 +135,6 @@ test "kind service-mesh -> serve consumer" {
     assert p.verb == "run";
 }
 
-test "kind py-package -> build wheel via build --as" {
-    p = _plan("kind = \"py-package\"\n", "main.jac");
-    assert p.action == "build";
-    assert p.verb == "build";
-    assert p.flags.get("as") == "wheel";
-    # bundle operates on the project, not a single entry file.
-    assert p.entry_path == "";
-    assert p.command_line() == "jac build" , p.command_line();
-}
-
 test "kind js-package -> build npm via build --as" {
     p = _plan("kind = \"js-package\"\n", "main.jac");
     assert p.action == "build";
@@ -320,7 +310,7 @@ test "is_valid_kind accepts known and rejects unknown kinds" {
     assert is_valid_kind("cli");
     assert is_valid_kind("service");
     assert not is_valid_kind("banana");
-    assert len(VALID_KINDS) == 12;
+    assert len(VALID_KINDS) == 11;
 }
 
 test "KIND_SPECS is the single source of truth for every kind" {
@@ -458,7 +448,7 @@ test "jac run executes a native-binary project and builds nothing" {
 }
 
 test "jac run refuses a build-only kind with the jac build line" {
-    for (kind, line) in [("py-package", "jac build"), ("native-lib", "jac build"), ] {
+    for (kind, line) in [("js-package", "jac build"), ("native-lib", "jac build"), ] {
         d = _mk_project(f"kind = \"{kind}\"\nentry-point = \"lib\"\n", "lib.jac");
         old = os.getcwd();
         os.chdir(d);
@@ -521,11 +511,11 @@ test "an explicitly named file resolves the project kind, not a bare execute" {
 }
 
 test "a named file executes in a build-only kind; only a bare run refuses" {
-    d = _mk_project("kind = \"py-package\"\n", "main.jac", entry_body="with entry { }");
+    d = _mk_project("kind = \"js-package\"\n", "main.jac", entry_body="with entry { }");
     saved = os.getcwd();
     try {
         os.chdir(d);
-        # A bare `jac run` refuses the wheel kind; naming the file runs it.
+        # A bare `jac run` refuses a build-only kind; naming the file runs it.
         rc = execution.run(target="main.jac", show=True);
     } finally {
         os.chdir(saved);
@@ -535,7 +525,7 @@ test "a named file executes in a build-only kind; only a bare run refuses" {
 }
 
 test "entry_override keeps a named file for kinds that plan without one" {
-    d = _mk_project("kind = \"py-package\"\n", "lib.jac");
+    d = _mk_project("kind = \"js-package\"\n", "lib.jac");
     cfg = JacConfig.discover(start_path=Path(d));
     assert cfg is not None;
     app = cfg.resolve_app("");
@@ -703,7 +693,7 @@ test "a mobile app accepts serve flags (its dev server)" {
 }
 
 test "a library build kind refuses serve flags" {
-    d = _mk_project("kind = \"py-package\"\n", "lib.jac");
+    d = _mk_project("kind = \"native-lib\"\n", "lib.jac");
     saved = os.getcwd();
     try {
         os.chdir(d);

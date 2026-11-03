@@ -737,9 +737,5 @@ def clean(
 
 
 def bundle(
-    output: str = "dist",
-    target: str = "wheel",
-    fat: bool = False,
-    app: str = "",
-    allow_drop_client: bool = False
+    output: str = "dist", target: str = "npm", fat: bool = False, app: str = ""
 ) -> int;

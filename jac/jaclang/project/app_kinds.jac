@@ -70,16 +70,6 @@ glob KIND_SPECS: dict[str, KindSpec] = {
                  has_server=True
              ),
              KindSpec(
-                 name="py-package",
-                 description="Distributable Python package (built into a wheel)",
-                 `entry="lib",
-                 action="build",
-                 verb="build",
-                 summary="Build PyPI wheel into dist/",
-                 flags={"as": "wheel"},
-                 needs_entry=False
-             ),
-             KindSpec(
                  name="js-package",
                  description="Distributable npm package (built into a tarball)",
                  `entry="lib",

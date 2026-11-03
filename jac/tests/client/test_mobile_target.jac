@@ -121,7 +121,7 @@ test "the mobile kind resolves to the mobile target" {
     );
     assert target.output_dir is None;
     # Kinds without a client are a hard error, not a fallback to web.
-    for kind in ["cli", "service", "py-package", "banana"] {
+    for kind in ["cli", "service", "banana"] {
         raised = False;
         try {
             target_for_kind(kind, Path.cwd());

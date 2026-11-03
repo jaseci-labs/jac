@@ -446,7 +446,7 @@ test "kind specs carry ui and has_server; the client axis is gone" {
     assert KIND_SPECS["desktop"].flags == {};
     assert KIND_SPECS["js-package"].ui == "dom";
     assert KIND_SPECS["js-package"].codespace == "client";
-    for kind in ["cli", "cli-native", "native-binary", "native-lib", "py-package"] {
+    for kind in ["cli", "cli-native", "native-binary", "native-lib"] {
         assert KIND_SPECS[kind].ui == "";
         assert not KIND_SPECS[kind].has_server;
     }

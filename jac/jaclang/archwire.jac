@@ -729,7 +729,6 @@ graph import {
         cli.commands.analysis._check_file_job
             | cli.mcp.compiler_bridge.CompilerBridge.typecheck_snippet._do_typecheck
             | dist.precompile_bytecode._application_sources
-            | dist.publish.builder._module_is_client_source
             | dist.publish.npm_sources._compile_module
             | dist.publish.runtime_vendor
             | dist.seal
@@ -984,22 +983,14 @@ graph import {
             JacProgram
         },
         cli.commands.analysis.lint { JacProgram },
-        dist.publish.builder._backend_source { JacProgram as JacProgramRt },
-        dist.publish.builder._module_is_client_source { JacProgram as JacProgramRt },
     ]
-    compiler.driver.program --> [
-        dist.precompile_bytecode.sealable_sources
-            | scale.tests.apps.test_fleet_from_apps { JacProgram },
-        dist.publish.builder.WheelBuilder._assemble_src_data {
-            JacProgram as JacProgramRt
-        },
-    ]
+    compiler.driver.program --> dist.precompile_bytecode.sealable_sources
+        | scale.tests.apps.test_fleet_from_apps { JacProgram }
     type compiler.driver.program ++> client.client_bundle
         | client.compiler
         | client.vite_client_bundle
         | dist.native_product
         | dist.precompile_bytecode
-        | dist.publish.builder
         | project.compiler_host
         | runtime.build_services
         | runtime.runtime { JacProgram }
@@ -1029,7 +1020,6 @@ graph import {
         },
     ]
     compiler.driver.source_products ++> [
-        dist.publish.builder { python_text },
         dist.publish.runtime_vendor._compile_runtime_module {
             python_source,
             python_text
@@ -1119,15 +1109,13 @@ graph import {
         | client.jac_to_js { ClientArtifact, ClientManifest }
     compiler.frontend.constant ++> [
         cli.commands.fix._priv_top_decls { SymbolAccess },
-        dist.publish.builder._module_is_client_source
-            | server.hmr
-            | testing.cl_test_runner.module_is_client { CodeContext },
         lsp.server.engine { TOKEN_MAP },
         lsp.server.server {
             JacSemTokenModifier as SemTokMod,
             JacSemTokenType as SemTokType
         },
         packages.api { SymbolAccess, SymbolType },
+        server.hmr | testing.cl_test_runner.module_is_client { CodeContext },
         studio.intel_server { JacSemTokenModifier, JacSemTokenType },
     ]
     compiler.frontend.diagnostic_utils ++> cli.commands.analysis.check {
@@ -1667,8 +1655,7 @@ graph import {
         sealable_sources
     }
     dist.precompile_bytecode as precompiler --> scale.tests.microservices.test_app_precompile;
-    dist.publish.builder ++> cli.commands.project._bundle_wheel { WheelBuilder }
-    dist.publish.builder --> cli.commands.project.install { WheelBuilder }
+    dist.publish.editable --> cli.commands.project.install { install_editable }
     dist.publish.npm_builder ++> cli.commands.project._bundle_npm { NpmBuilder }
     dist.publish.npm_sources ++> cli.commands.project._bundle_npm { NpmBoundaryError }
     dist.publish.runtime_npm ++> cli.commands.project._bundle_npm_runtime {
@@ -1784,7 +1771,6 @@ graph import {
     jac0core.ext_registry ++> [
         cli.commands.analysis._drop_covered_annexes
             | compiler.driver.pipeline_runner.compile_application
-            | dist.publish.builder
             | project.kernel_snapshot.KernelSnapshot.emits
             | testing.cl_test_runner.module_entry_for { is_annex },
         cli.commands.cli_helpers { base_stem, is_jac, is_python },
@@ -2075,11 +2061,10 @@ graph import {
             | client.client_diagnostics.is_debug_mode
             | client.npm_provider
             | client.targets.react_native.scaffold
-            | dist.publish.builder
+            | dist.publish.dist_info
+            | dist.publish.editable
             | dist.publish.npm_builder
             | dist.publish.npm_sources
-            | dist.publish.sources
-            | dist.publish.wheel_meta
             | dist.source.project
             | packages.commands
             | packages.install
@@ -2295,7 +2280,6 @@ graph import {
         },
         compiler.backends.py.artifact_imports.resolve_imports
             | dist.precompile_bytecode.image_mount_prefix { project_mounts },
-        dist.publish.py_imports { resolve_module },
         dist.publish.runtime_vendor._module_to_file { resolve_local_module },
         lsp.server.engine.JacLangServer._module_spec_target {
             resolve_client_npm_declarations,
@@ -14502,15 +14486,12 @@ graph import dist {
         precompiled.bundle_misses { sealable_sources },
         seal.resolve_entry_file { bundle_app },
     ]
-    publish ++> publish.builder._backend_source { wheel_archive }
-    publish.builder ++> publish { WheelBuilder }
     publish.metadata ++> publish { generate_metadata, normalize_package_name }
     publish.runtime_vendor ++> source.project.export_project { vendor_runtime }
     publish.sources ++> source.project._copy_resources {
         EXCLUDED_DIRS,
         EXCLUDED_SUFFIXES
     }
-    publish.wheel_meta ++> publish { wheel_filename }
     sanitize ++> seal.make_sealed_image { sanitize_shipped_tree }
 }
 
@@ -14602,14 +14583,19 @@ graph import dist.payload {
 }
 
 graph import dist.publish {
+    dist_info ++> editable {
+        dist_info_dirname,
+        generate_entry_points,
+        generate_wheel_file
+    }
     dts ++> npm_sources { dts_for_module }
     jsdoc ++> [
         dts { jac_type_to_ts },
         npm_sources { inject_jsdoc, jsdoc_for_module },
     ]
     metadata ++> [
-        builder { generate_metadata, generate_pyproject_toml },
-        package_json | wheel_meta { normalize_package_name },
+        dist_info | package_json { normalize_package_name },
+        editable { generate_metadata },
     ]
     npm_sources ++> npm_builder {
         collect_npm_sources,
@@ -14618,25 +14604,9 @@ graph import dist.publish {
     }
     npm_tarball ++> npm_builder | runtime_npm { pack_tarball }
     package_json ++> npm_builder { generate_package_json, npm_tarball_filename }
-    py_imports ++> builder { rewrite_imports, wheel_module_name }
-    record ++> builder { RecordEntry, generate_record, record_entry_from_bytes }
+    record ++> editable { RecordEntry, generate_record, record_entry_from_bytes }
     runtime_npm ++> npm_sources { runtime_api_names }
-    runtime_vendor ++> builder { build_runtime_closure, scan_jaclang_imports }
-    sources ++> [
-        builder { collect_source_files, read_source_file },
-        npm_sources { EXCLUDED_DIRS },
-    ]
-    wheel_archive ++> [
-        builder { BUILD_DATA_FILE, wheel_bytes },
-        record { record_hash, record_text },
-    ]
-    wheel_meta ++> builder {
-        dist_info_dirname,
-        generate_entry_points,
-        generate_wheel_file,
-        sdist_filename,
-        wheel_filename
-    }
+    sources ++> npm_sources { EXCLUDED_DIRS }
 }
 
 graph import dist.source {

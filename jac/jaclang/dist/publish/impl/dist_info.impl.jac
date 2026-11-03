@@ -45,20 +45,6 @@ impl generate_entry_points(config: JacConfig) -> str {
     return ("\n\n".join(sections) + "\n") if sections else "";
 }
 
-impl wheel_filename(
-    config: JacConfig,
-    python_tag: str = "py3",
-    abi_tag: str = "none",
-    platform_tag: str = "any",
-) -> str {
-    if not config.project.name {
-        raise ValueError(
-            "Cannot build wheel filename: [project] name is missing in jac.toml."
-        );
-    }
-    return f"{_pkg_norm_name(config)}-{config.project.version}-{python_tag}-{abi_tag}-{platform_tag}.whl";
-}
-
 impl dist_info_dirname(config: JacConfig) -> str {
     if not config.project.name {
         raise ValueError(
@@ -66,15 +52,6 @@ impl dist_info_dirname(config: JacConfig) -> str {
         );
     }
     return f"{_pkg_norm_name(config)}-{config.project.version}.dist-info";
-}
-
-impl sdist_filename(config: JacConfig) -> str {
-    if not config.project.name {
-        raise ValueError(
-            "Cannot build sdist filename: [project] name is missing in jac.toml."
-        );
-    }
-    return f"{_pkg_norm_name(config)}-{config.project.version}.tar.gz";
 }
 
 impl _pkg_norm_name(config: JacConfig) -> str {

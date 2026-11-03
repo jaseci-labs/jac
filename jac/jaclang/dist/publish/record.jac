@@ -1,5 +1,3 @@
-import from pathlib { Path }
-
 obj RecordEntry {
     has path: str = "",
         hash_value: str = "",

@@ -1,80 +1,60 @@
 ---
 name: jac-packaging
-description: Build Python wheels and npm packages from Jac projects for Python and JavaScript consumers. Use for wheel/npm layout, metadata, and upload.
+description: Distribute a Jac library - jac publish for Jac projects, npm tarballs for JavaScript, editable installs for local development. Use for library layout, metadata, and upload.
 ---
 
-This skill covers exporting a Jac library to **PyPI and npm** for consumers that do not use Jac. To share Jac code with other Jac projects, publish a Jac package instead (`jac publish`, see `jac-packages`).
+This skill covers getting a Jac library to its consumers. Pick the path by who consumes it:
 
-`jac build --as wheel` builds a standard PEP 427 wheel plus an sdist (`dist/<name>-<version>-py3-none-any.whl`, `dist/<name>-<version>.tar.gz`) straight from `jac.toml` - no `setup.py`, no `pyproject.toml`. Upload with `twine`. `jac build --as npm` builds an npm tarball from the same `jac.toml`. This covers three shapes: a **CLI tool** (installs a terminal command), an **importable library** (consumed under the `jac` binary, then `import`), and an **npm component library**.
+| Consumer | Path |
+|---|---|
+| Other Jac projects | `jac publish` to the Jac package index (see `jac-packages`) |
+| JavaScript / TypeScript projects | `jac build --as npm`, then `npm publish` |
+| Other languages (C, C++, Rust, Go, Python `ctypes`) | a `native-lib` project, a C-ABI shared library (see `jac-native-shared`) |
+| A Python project | `jac build --as source` exports editable Python with the required Jac runtime source, or call the `jac` binary |
+| Yourself, while developing | `jac install -e` |
 
-## The package directory - REQUIRED
-
-The wheel build packages a directory whose name matches `project.name` (hyphens become underscores: `my-tool` -> `my_tool/`). The `jac create` default template puts `main.jac` at the project ROOT with no such directory - that layout does NOT produce an importable package. Create the package dir yourself:
-
-```
-greet/                  <- project root (holds jac.toml)
-  jac.toml
-  README.md
-  greet/                <- package dir, name matches project.name
-    cli.jac             <- your code, normal Jac
-```
-
-**A single top-level `.jac`/`.py` file is never collected** - `packages` matches directories only. A directory containing just `__init__.jac` is enough.
-
-## jac.toml for distribution
-
-```toml
-[project]
-name = "greet"
-version = "0.1.0"
-description = "A tiny Jac CLI app"
-authors = [{name = "Jane Dev", email = "jane@example.com"}]
-readme = "README.md"
-requires-python = ">=3.11"
-license = "MIT"
-keywords = ["cli", "greeting"]
-classifiers = [
-  "Programming Language :: Python :: 3",
-  "License :: OSI Approved :: MIT License",
-]
-
-[project.urls]
-Homepage = "https://example.com/greet"
-
-[entrypoints.scripts]
-greet = "greet.cli:main"
-
-[dependencies.pypi]
-rich = ">=13.0.0"
-
-[optional-dependencies.data]
-pandas = ">=2.0,<3.0"
-```
-
-- **`[project]`** -> wheel `METADATA`. The TOML key is **`requires-python`** (hyphen), not `requires_python` - the underscore form is silently ignored and never reaches `METADATA`.
-- **`classifiers` must be a TOML array** (`[...]`). A plain string is a TOML type error and produces malformed wheel metadata.
-- **`[dependencies.pypi]`** -> `Requires-Dist` in the wheel (a wheel cannot carry Jac package dependencies; `jac build --as wheel` refuses a project that has them). **Do NOT list `jaclang` as a dependency** - it is not a PyPI package and cannot be installed that way. `jaclang` is provided by the host `jac` binary that runs your wheel; the `.jac` importer ships inside that binary. Consumers install your wheel into a project managed by the `jac` binary (`jac install --pypi <yourpkg>`), not a bare `pip install` in a plain Python env. `[dev-dependencies.pypi]` ship as a `dev` extra, not as runtime requirements.
-- **`[optional-dependencies.<group>]`** -> wheel extras: consumers `pip install greet[data]`; during development `jac install --extras data`.
-- **`[entrypoints.scripts]`** -> `console_scripts` in `entry_points.txt`. Format is `command = "package.module:function"`. The function is called with no arguments; read `sys.argv` for CLI args. Omit this whole section for a pure library. (Jac no longer loads any entry-point group at startup - there is no plugin system - but any other `[entrypoints.<group>]` table is written through to the wheel metadata for consumers that use `importlib.metadata`.)
-
-## Build and publish
-
-```
-jac build --as wheel             # -> dist/greet-0.1.0-py3-none-any.whl + .tar.gz sdist
-jac build --as wheel -o /tmp/wheels         # custom output dir
-twine upload --repository testpypi dist/*   # TestPyPI first - verify the listing renders
-twine upload dist/*              # then the real index
-```
-
-`jac publish` publishes Jac packages to the Jac index, not wheels - upload wheels with `twine` (separate pip install). In CI authenticate with a token: `twine upload dist/* -u __token__ -p "$PYPI_TOKEN"`. Consumers then install it into a project managed by the `jac` binary (`jac install --pypi greet`); the CLI command `greet` is on `PATH`, or `import greet` works for a library running under the `jac` binary.
-
-`jac build` runs the whole-program type-check gate first and refuses to emit an artifact on failure - the gate cannot be skipped; `--check_only` runs it and emits nothing. The wheel carries Python transpiled from your `.jac` modules. Client-codespace modules cannot run in a Python wheel: the build fails and lists them, and `--allow-drop-client` builds without them.
+`jac build` runs the whole-program type-check gate first and refuses to emit an artifact on failure - the gate cannot be skipped; `--check_only` runs it and emits nothing.
 
 ## Publishing to npm
 
-`jac build --as npm` compiles the package's modules (`.jac` files under the package dir) to ES-module JavaScript - a `kind = "js-package"` project has no server, so every module is placed client by construction, `pub` or not, on every compile path (`jac build`, `jac tool jac2js`, `jac check`) - then generates `package.json` + a `.d.ts` per module (TypeScript consumers get full type-checking), and packs `dist/<name>-<version>.tgz`. To produce both a wheel and an npm tarball, run both commands - there is no combined projection.
+`jac build --as npm` compiles the package's modules (`.jac` files under the package dir) to ES-module JavaScript - a `kind = "js-package"` project has no server, so every module is placed client by construction, `pub` or not, on every compile path (`jac build`, `jac tool jac2js`, `jac check`) - then generates `package.json` + a `.d.ts` per module (TypeScript consumers get full type-checking), and packs `dist/<name>-<version>.tgz`.
+
+### The package directory - REQUIRED
+
+The npm build packages a directory whose name matches `project.name` (hyphens become underscores: `my-ui` -> `my_ui/`). The `jac create` default template puts `main.jac` at the project ROOT with no such directory - that layout collects nothing. Create the package dir yourself:
+
+```
+greetui/                <- project root (holds jac.toml)
+  jac.toml
+  README.md
+  greetui/              <- package dir, name matches project.name
+    index.jac           <- your code, normal Jac
+```
+
+**A single top-level `.jac` file is never collected** - `packages` matches directories only. To package other directories, list them under `[project.include] packages`; it takes globs and is only read by the npm build.
+
+### jac.toml for npm
 
 ```toml
+[project]
+name = "greetui"
+version = "0.1.0"
+description = "A tiny Jac component library"
+kind = "js-package"
+authors = [{name = "Jane Dev", email = "jane@example.com"}]
+readme = "README.md"
+license = "MIT"
+keywords = ["ui", "greeting"]
+
+[project.urls]
+repository = "https://github.com/jane/greetui"
+
+[project.include]
+packages = ["greetui"]
+
+[dependencies.npm]
+lodash = "^4.17.21"
+
 [npm]
 name = "@yourscope/greetui"     # scoped npm name (defaults to normalized project name)
 entry = "greetui/index.jac"     # entry module (defaults to an index.* module)
@@ -82,11 +62,27 @@ entry = "greetui/index.jac"     # entry module (defaults to an index.* module)
 
 - Modules that use JSX or the reactive API automatically get `@jaseci/runtime` wired into `dependencies` (a normal, React-independent npm package). Modules that explicitly `import from "react"` get `react`/`react-dom` as `peerDependencies`.
 - **Server-boundary rejection**: a module that imports or calls server-placed code cannot run from a plain `npm install`, so the build fails with `'<file>' crosses a server boundary and cannot be published as a standalone npm package. npm packages must be pure client code`. Keep server-coupled code in your app, not the library.
-- `jac` builds the tarball only - upload with `npm publish dist/<name>-<version>.tgz --access public` (CI: `NODE_AUTH_TOKEN`).
 
-## What lands in the wheel
+### Build and upload
 
-The wheel build collects `*.jac`, `*.py`, `*.pyi`, `*.lark`, `py.typed`, and `*.jir` from the package directory. It excludes `.jac/`, `__pycache__/`, `dist/`, `build/`, `venv/.venv/env/`, `.git/`, and `node_modules/`. To package extra directories or override patterns, use `[project.include]` with `packages` and `data` keys.
+```
+jac build --as npm                                   # -> dist/greetui-0.1.0.tgz
+jac build --as npm -o /tmp/out                       # custom output dir
+npm publish dist/greetui-0.1.0.tgz --access public   # jac builds the tarball only; npm uploads it
+```
+
+In CI authenticate with `NODE_AUTH_TOKEN`.
+
+## Publishing to the Jac index
+
+A Jac package is a project with a scoped `name`, a semantic version and an `exports` list. It carries server, client and native code together, with its own `[dependencies.pypi]` and `[dependencies.npm]` requirements, and consumers install it with `jac install org/name`.
+
+```
+jac publish --dry-run        # build + gates + API diff, upload nothing
+jac publish                  # opens a PR on the index
+```
+
+`jac-packages` has the manifest, the gates and the semver rules.
 
 ## Editable installs (local development)
 
@@ -95,20 +91,30 @@ jac install -e .            # install the current project editable
 jac install -e /path/to/lib # install a cloned library editable
 ```
 
+An editable install writes a `.pth` and a `.dist-info` into the environment's `site-packages`, so the source tree is importable and edits are picked up without a rebuild. The target's own `jac.toml` supplies its Python dependencies.
+
+```toml
+[entrypoints.scripts]
+greet = "greet.cli:main"
+```
+
+- **`[entrypoints.scripts]`** -> `console_scripts` in the `.dist-info`'s `entry_points.txt`; run the command with `jac x greet`. Format is `command = "package.module:function"`. The function is called with no arguments; read `sys.argv` for CLI args. (Jac no longer loads any entry-point group at startup - there is no plugin system - but any other `[entrypoints.<group>]` table is written through to the same file for consumers that use `importlib.metadata`.)
+- **`[project]`** -> `.dist-info/METADATA`. The TOML key is **`requires-python`** (hyphen), not `requires_python` - the underscore form is silently ignored and never reaches `METADATA`.
+
 ## Pitfalls
 
-- **No package directory = empty/unimportable wheel.** The `default` scaffold's root-level `main.jac` is for `jac run`, not for distribution. Move code into a `<name>/` package dir (single top-level files are not collected).
-- **Do NOT add `jaclang` to `[dependencies.pypi]`.** `jaclang` is not a PyPI package - it is the host runtime supplied by the `jac` binary that runs your wheel, and the `.jac` importer ships in that binary. Wheels are consumed under the `jac` binary (`jac install --pypi <yourpkg>`), not a bare `pip install` in a plain Python env.
-- **`requires_python` (underscore) is dropped.** Use `requires-python`. Same hyphen-vs-underscore trap does NOT apply to `classifiers` - there the trap is string-vs-array.
-- **Entry-point path is the install-time module path**, e.g. `greet.cli:main` - it must match the package dir name, not the source folder you happened to develop in.
-- **First run of an installed Jac command prints `Jac setup complete! (N modules compiled and cached)`** while jaclang compiles its own cache. One-time and harmless (avoid by shipping `.jir` bytecode in the package).
-- **`jac build --as wheel` fails with `[project] name is missing`** if `jac.toml` has no `name` - it is required for the wheel filename and `.dist-info`.
+- **No package directory = nothing to pack.** The `default` scaffold's root-level `main.jac` is for `jac run`, not for an npm package. Move code into a `<name>/` package dir (single top-level files are not collected).
+- **Do NOT add `jaclang` to `[dependencies.pypi]`.** `jaclang` is not a PyPI package - it is the host runtime supplied by the `jac` binary, and the `.jac` importer ships in that binary.
+- **`requires_python` (underscore) is dropped.** Use `requires-python`.
+- **Entry-point path is the import-time module path**, e.g. `greet.cli:main` - it must match the package dir name, not the source folder you happened to develop in.
+- **`jac build --as npm` fails with `[project] name is missing`** if `jac.toml` has no `name` - it is required for the tarball filename and `package.json`. `jac install -e` needs it for the `.dist-info` name too.
 - **The type-check gate blocks the build** if the project fails `jac check` - fix the reported diagnostics; the gate has no bypass flag.
 
 ## See also
 
 - `jac-scaffold` - `jac create`, templates, the `default` template's layout
-- `jac-config` - the full `jac.toml` section map (`[dependencies.pypi]`, extras, `[npm]`)
+- `jac-config` - the full `jac.toml` section map (`[dependencies.pypi]`, `[npm]`)
 - `jac-packages` - Jac packages: `[dependencies]`, `jac.lock`, `jac publish`
 - `jac-npm-packages` - CONSUMING npm packages in client code (this skill covers publishing)
+- `jac-native-shared` - C-ABI shared libraries
 - `jac-impl-files` - splitting `.jac` / `.impl.jac` within the package

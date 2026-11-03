@@ -90,4 +90,4 @@ Library-mode basics: archetypes subclass `Node` / `Edge` / `Walker` / `Obj`, abi
 
 ## See also
 
-`jac-types` (any-boundary playbook, `.pyi` stubs) · `jac-core-cheatsheet` (import forms, dot semantics) · `jac-packaging` (shipping mixed Jac/Python packages to PyPI) · `jac-concurrency` (asyncio interop)
+`jac-types` (any-boundary playbook, `.pyi` stubs) · `jac-core-cheatsheet` (import forms, dot semantics) · `jac-packaging` (distributing Jac libraries) · `jac-concurrency` (asyncio interop)

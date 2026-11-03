@@ -318,7 +318,7 @@ One language, one skill your agent loads, every kind of software. Each row is on
 | Desktop app (native webview) | `jac build` in a `desktop` project | [Desktop & mobile](https://www.jaclang.org/docs/latest/build/desktop-mobile) |
 | Mobile app (Android / iOS) | `jac build` in a `mobile` project | [Desktop & mobile](https://www.jaclang.org/docs/latest/build/desktop-mobile) |
 | AI agents & LLM apps | `by llm()` | [AI agents](https://www.jaclang.org/docs/latest/build/ai-agents) |
-| Python package (PyPI wheel) | `jac build --as wheel` | [Libraries](https://www.jaclang.org/docs/latest/build/libraries) |
+| Jac package (for other Jac projects) | `jac publish` | [Libraries](https://www.jaclang.org/docs/latest/build/libraries) |
 | npm package | `jac build --as npm` | [Libraries](https://www.jaclang.org/docs/latest/build/libraries) |
 | C-ABI shared library (`.so`/`.dylib`/`.dll`) | `jac nacompile lib.na.jac --shared` | [Libraries](https://www.jaclang.org/docs/latest/build/libraries) |
 | WebAssembly in the browser | `jac build` in a `web-static` project | [Native pathway](https://www.jaclang.org/docs/latest/reference/language/native-pathway) |
@@ -338,7 +338,6 @@ Each of those deliverables is a **project kind**: `jac create myapp --kind <kind
 | `native-lib` | C-ABI shared library (`.so`/`.dylib`/`.dll`) | Expose Jac to **any language with a C FFI** (C, Rust, Go, Python `ctypes`) by marking functions `:pub`: refcounted handles included, and `--target` **cross-builds for Linux/macOS/Windows** with no extra toolchain |
 | `service` | Headless REST API | `walker:pub` **is** the endpoint: request bodies map to its fields, `report` is the JSON response, Swagger at `/docs`, and per-user isolated persistence: no FastAPI + SQLAlchemy + Pydantic + auth middleware to wire up |
 | `service-mesh` | Microservice cluster | A plain import **is** the architecture: the compiler classifies every import by the app that owns it and turns cross-app imports into typed-async HTTP stubs, `jac run` colocates every service app in one process, `--fleet` splits them, and env vars re-point services across hosts: no OpenAPI codegen, no client SDKs |
-| `py-package` | pip-installable wheel | `jac build --as wheel` with nothing beyond `jac.toml`; the wheel runs under the `jac` binary with **no `jaclang` runtime dependency** |
 | `js-package` | npm tarball | Compiles to ES modules with **auto-generated `package.json` and `.d.ts` declarations**, consumable from any JS/TS project, built with no Node.js installed |
 | `web-app` | Full-stack web app | Backend, frontend, and data model **in one file**: `cl` code compiles to React, and the compiler generates every RPC and shares types across the boundary, instead of two projects and five frameworks |
 | `web-static` | Client-only page | `na {}` blocks compile to **WebAssembly with Jac's own wasm linker** (no emscripten), and `jac build` emits a portable `index.html` that opens straight from disk |

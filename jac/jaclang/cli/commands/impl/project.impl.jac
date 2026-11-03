@@ -335,7 +335,7 @@ impl install(
 
     editable = [p for group in (editable or []) for p in group];
     if editable {
-        import from jaclang.dist.publish.builder { WheelBuilder }
+        import from jaclang.dist.publish.editable { install_editable }
 
         editable_targets: list[tuple[JacConfig, Path]] = [];
         all_dep_specs: list[str] = [];
@@ -429,7 +429,7 @@ impl install(
         }
 
         for (config, src_dir) in editable_targets {
-            WheelBuilder(config=config).install_editable(src_dir, site_pkgs);
+            install_editable(config, src_dir, site_pkgs);
             console.print(f"  ✔ Linked {src_dir}", style="success");
         }
         console.print("  ✔ Editable install complete.", style="success");
@@ -813,8 +813,6 @@ impl clean(
 }
 
 
-def _bundle_wheel(config: any, output: str, allow_drop_client: bool = False) -> int;
-
 def _bundle_sealed(config: any, output: str, app: str = "") -> int;
 
 def _bundle_jab(config: any, output: str, fat: bool = False, app: str = "") -> int;
@@ -826,11 +824,7 @@ def _bundle_npm(config: any, output: str) -> int;
 def _bundle_npm_runtime(output: str, framework: str = "") -> int;
 
 impl bundle(
-    output: str = "dist",
-    target: str = "wheel",
-    fat: bool = False,
-    app: str = "",
-    allow_drop_client: bool = False
+    output: str = "dist", target: str = "npm", fat: bool = False, app: str = ""
 ) -> int {
     if target == "npm-runtime" {
         return _bundle_npm_runtime(output);
@@ -859,10 +853,10 @@ impl bundle(
     if target == "binary" {
         return _bundle_binary(config, output, fat=fat, app=app);
     }
-    if target not in ("wheel", "npm", "all") {
+    if target != "npm" {
         console.error(
             f"Unknown bundle target: '{target}'",
-            hint="Use --target wheel, npm, sealed, binary, or all."
+            hint="Use --target npm, sealed, jab, or binary."
         );
         return 1;
     }
@@ -872,17 +866,7 @@ impl bundle(
         style="bold"
     );
 
-    if target in ("wheel", "all") {
-        if _bundle_wheel(config, output, allow_drop_client) != 0 {
-            return 1;
-        }
-    }
-    if target in ("npm", "all") {
-        if _bundle_npm(config, output) != 0 {
-            return 1;
-        }
-    }
-    return 0;
+    return _bundle_npm(config, output);
 }
 
 impl _create_body(
@@ -1173,7 +1157,6 @@ impl _run_blurb(kind: str) -> str {
         "native-lib": "Build a shared library",
         "service": "Serve the headless API",
         "service-mesh": "Serve the microservice",
-        "py-package": "Build a wheel into dist/",
         "js-package": "Build an npm package into dist/",
         "web-app": "Serve the app (dev mode)",
         "web-static": "Serve the client-only app (static)",
@@ -1660,59 +1643,6 @@ impl _rewrite_compatible_pins(
     return 0;
 }
 
-
-impl _bundle_wheel(config: any, output: str, allow_drop_client: bool = False) -> int {
-    out_dir = Path(output);
-    out_dir.mkdir(parents=True, exist_ok=True);
-    builder = WheelBuilder(
-        config=config,
-        project_root=config.project_root,
-        allow_drop_client=allow_drop_client
-    );
-
-    console.print("\n  Transpiling Jac → Python and building wheel", style="muted");
-    try {
-        whl_path = builder.build_to(out_dir);
-    } except Exception as e {
-        console.error(f"Wheel build failed: {e}");
-        return 1;
-    }
-    if builder.skipped_codespace {
-        console.print(
-            f"  ⚠ skipped {len(builder.skipped_codespace)} client "
-            "client codespace file(s) — not part of a Python wheel",
-            style="warning"
-        );
-    }
-    if builder.vendored_runtime_modules {
-        console.print(
-            f"  ✔ vendored jac runtime ({builder.vendored_runtime_modules} modules) "
-            "— wheel runs without jaclang installed",
-            style="success"
-        );
-    }
-    console.print(
-        f"  ✔ Built {whl_path.name} ({whl_path.stat().st_size:,} bytes)",
-        style="success"
-    );
-
-    console.print("  Building sdist", style="muted");
-    try {
-        sdist_path = builder.build_sdist_to(out_dir);
-    } except Exception as e {
-        console.error(f"Sdist build failed: {e}");
-        return 1;
-    }
-    console.print(
-        f"  ✔ {sdist_path.name} ({sdist_path.stat().st_size:,} bytes)", style="success"
-    );
-
-    console.print(
-        f"\n  Distributions written to: [cyan]{out_dir}[/cyan]", style="bold"
-    );
-    console.print("  Upload with: twine upload dist/*", style="muted");
-    return 0;
-}
 
 impl _bundle_sealed(config: any, output: str, app: str = "") -> int {
     name = config.project.name;

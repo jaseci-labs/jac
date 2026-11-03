@@ -1,6 +1,6 @@
 """Tests for the jaclang.dist.publish npm pipeline.
 
-Covers the js-package counterparts of the wheel pipeline:
+Covers the js-package pipeline:
   package_json - package.json string generation from jac.toml
   jsdoc        - JSDoc block generation from typed Jac signatures
   npm_sources  - client-module collector + JS compilation + sv-boundary guard

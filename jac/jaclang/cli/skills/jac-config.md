@@ -9,7 +9,7 @@ description: Edit jac.toml project, app, dependency, build, and runtime settings
 
 | Section | Purpose |
 |---|---|
-| `[project]` | name (required; scoped `org/name` makes the project a publishable package), version, description, `exports` (a package's importable modules), **`entry-point`** (default for `jac run`, defaults to `main.jac`), **`kind`** (project kind that makes a bare `jac run` execute / serve / build the project - empty = inferred from the entry-point codespace; see `jac-project-kinds`), **`default-app`** (workspaces: the app a bare `jac run`/`build`/`test`/`setup` targets), `jac-version` compiler pin; publishing fields (`license`, `readme`, `requires-python`, `classifiers`, `authors`) feed `jac build --as wheel` (see `jac-packaging`). `entry-point` and `kind` are single-app only - alongside `[apps]` they are a hard error |
+| `[project]` | name (required; scoped `org/name` makes the project a publishable package), version, description, `exports` (a package's importable modules), **`entry-point`** (default for `jac run`, defaults to `main.jac`), **`kind`** (project kind that makes a bare `jac run` execute / serve / build the project - empty = inferred from the entry-point codespace; see `jac-project-kinds`), **`default-app`** (workspaces: the app a bare `jac run`/`build`/`test`/`setup` targets), `jac-version` compiler pin; metadata fields (`license`, `readme`, `requires-python`, `classifiers`, `authors`) feed `package.json` in `jac build --as npm` and the `.dist-info` of `jac install -e` (see `jac-packaging`). `entry-point` and `kind` are single-app only - alongside `[apps]` they are a hard error |
 | `[apps.<name>]` | one table per app turns the project into a **workspace**: `kind` (required; decides the client too: `web-app`/`web-static`/`desktop` render React DOM, `mobile` is React Native through `@jac/mobui`), `entry-point` (required, relative to the project root), `platform`, `route` (default `/api/<name>`). Ordinary imports inherit the selected app context. No `[apps]` = one implicit app. See `jac-sv-microservices` for service apps |
 | `[apps.<name>.<section>]` | per-app **overlay** of any section (`[apps.web.serve]`, `[apps.mobile.dependencies.npm]`, `[apps.svc.scale]`, `[apps.web.placement.pins]`), deep-merged over the base for that app only. Effective config = base → app overlays → profile → `jac.local.toml` |
 | `[dependencies]` | **Jac packages**, scoped `org/name` with semver ranges (`"jaseci/vecdb" = "^2.1"`), or `{ path = "../x" }` / `{ git = "...", rev = "v1" }` / `{ version = "^1", registry = "internal" }` (see `jac-packages`) |
@@ -17,7 +17,7 @@ description: Edit jac.toml project, app, dependency, build, and runtime settings
 | `[dependencies.npm]` / `[dependencies.npm.dev]` | npm packages for client code (see `jac-npm-packages`); `[dependencies.npm.web]` / `.static` / `.desktop` / `.mobile` scope a table to one client kind, `[dependencies.npm.native]` feeds a mobile app's Expo project |
 | `[dev-dependencies]` / `[dev-dependencies.pypi]` | dev-only Jac packages / Python tools; installed with `jac install --dev` |
 | `[registries]` | extra package registries by name: `internal = "https://..."` |
-| `[optional-dependencies.<group>]` | extras: `jac install --extras <group>`, wheel extras on publish |
+| `[optional-dependencies.<group>]` | extras: `jac install --extras <group>` |
 | `[serve]` | `jac run` defaults: `port`, `session`, `on_conflict` (the served app's client is at `/`; sibling apps with a built bundle at `/cl/<app>/`) |
 | `[run]` | `jac run` defaults: `cache`, `session`, `diagnostics` (`"error"`/`"all"`/`"none"`) |
 | `[check]` | type-check behavior: `enforce_access` (promote `:pub`/`:protect`/`:priv` visibility violations from warnings to hard errors), `warn_native_seams` (warn when a native-eligible method falls back to Python) |
@@ -113,6 +113,6 @@ Two lists, two jobs. `[check] exclude` in `jac.toml` is the analysis gate: `jac 
 
 ## See also
 
-- `jac-packaging` - publishing fields, `[entrypoints]`, `[npm]`, extras on the wheel
+- `jac-packaging` - metadata fields, `[entrypoints]`, `[npm]`, `[project.include]`
 - `jac-scaffold` - generating jac.toml, `[jacpack]` templates
 - `jac-testing` / `jac-debugging` - `[test]`, `[check.lint]`, `[run] diagnostics` in action

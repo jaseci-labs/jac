@@ -62,4 +62,4 @@ A project with a `[jacpack]` table (`name = "acme/starter"`, `version = "1.0.0"`
 
 - `jac install numpy` (no slash, no `--pypi`) is an error - it would be ambiguous. Use `jac install --pypi numpy`.
 - An old manifest with PyPI names under `[dependencies]` fails to load: run `jac fix dependencies`.
-- `jac build --as wheel` / `--as npm` export a library to Python / JS consumers; they are not how Jac projects share Jac code.
+- `jac build --as npm` exports a library to JS consumers and `jac build --as source` exports editable Python; they are not how Jac projects share Jac code.

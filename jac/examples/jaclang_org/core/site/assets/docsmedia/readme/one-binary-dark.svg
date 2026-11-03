@@ -43,7 +43,7 @@
     <text class="acc" x="584" y="166">▸</text><text class="fg" x="602" y="166">REST APIs &amp; microservices</text>
     <text class="acc" x="584" y="195">▸</text><text class="fg" x="602" y="195">Full-stack web apps</text>
     <text class="acc" x="584" y="224">▸</text><text class="fg" x="602" y="224">Desktop &amp; mobile apps</text>
-    <text class="acc" x="584" y="253">▸</text><text class="fg" x="602" y="253">PyPI wheels · npm packages</text>
+    <text class="acc" x="584" y="253">▸</text><text class="fg" x="602" y="253">npm packages</text>
     <text class="acc" x="584" y="282">▸</text><text class="fg" x="602" y="282">C-ABI shared libraries</text>
     <text class="acc" x="584" y="311">▸</text><text class="fg" x="602" y="311">WebAssembly in the browser</text>
     <text class="acc" x="584" y="340">▸</text><text class="fg" x="602" y="340">Kubernetes deployments</text>

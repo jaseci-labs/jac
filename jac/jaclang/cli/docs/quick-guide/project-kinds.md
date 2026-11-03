@@ -13,7 +13,7 @@ curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/ins
 This installs the self-contained `jac` binary -- no Python, pip, or uv required.
 
 !!! tip "`jac run` is kind-aware"
-    Set `kind` under `[project]` in `jac.toml` (or let it be inferred from the entry-point's *inferred* codespace: a server entry implies `service`, a client entry implies `web-app`; `cli-native` is always set explicitly), and a bare `jac run` does the right thing for that kind: **execute** runnable kinds (`cli`, `cli-native`, `native-binary`) or **serve** server and client kinds (`service`, `web-app`, `mobile`, ...). `jac run` never builds: a kind with no program to run (`native-lib`, `py-package`, `js-package`) is refused with the `jac build` command that makes it. `jac run --show` prints the resolved plan and the equivalent primitive command without running it. A project can hold several apps of different kinds at once -- see [One project, several apps](#one-project-several-apps) below.
+    Set `kind` under `[project]` in `jac.toml` (or let it be inferred from the entry-point's *inferred* codespace: a server entry implies `service`, a client entry implies `web-app`; `cli-native` is always set explicitly), and a bare `jac run` does the right thing for that kind: **execute** runnable kinds (`cli`, `cli-native`, `native-binary`) or **serve** server and client kinds (`service`, `web-app`, `mobile`, ...). `jac run` never builds: a kind with no program to run (`native-lib`, `js-package`) is refused with the `jac build` command that makes it. `jac run --show` prints the resolved plan and the equivalent primitive command without running it. A project can hold several apps of different kinds at once -- see [One project, several apps](#one-project-several-apps) below.
 
 Every kind also fixes two facts the compiler and the CLI read: its **UI** (what its client renders, which decides the shell `jac run` / `jac build` produce: `dom` is React DOM, `mobui` is native views through React Native) and whether it **has a server** (which decides whether `def:pub` means an endpoint or an export, and whether the app joins a deployed fleet):
 
@@ -29,7 +29,6 @@ Every kind also fixes two facts the compiler and the CLI read: its **UI** (what 
 | `web-static` | serve as a static page | `dom` | no |
 | `desktop` | run the OS webview app | `dom` | no |
 | `mobile` | serve to Expo Go (QR code; `--tunnel` off-network) | `mobui` | no |
-| `py-package` | refused: prints `jac build` (wheel) | -- | no |
 | `js-package` | refused: prints `jac build` (npm tarball) | `dom` | no |
 
 ## The recipes at a glance
@@ -45,18 +44,18 @@ Jac is also batteries-included -- it bundles LLVM, ships its own native linker, 
 | [Native binary](../build/cli-and-native.md#native-binary) | ✅ | | | ● | | | | -- |
 | [API service](../build/backend-apis.md#service) | ✅ | ● | | | ● | | | -- |
 | [Service apps](../build/backend-apis.md#service-mesh) | ✅ | ● ×N | | | ● | | | -- |
-| [Python package (PyPI)](../build/libraries.md#py-package) | ✅ | ● | | | | wheel | | twine¹ |
-| [npm package (npmjs.com)](../build/libraries.md#js-package) | ✅ | | ● | | | npm | | npm³ |
+| [Jac package](../build/libraries.md#jac-package) | ✅ | ● | ● | ● | | .jab | | -- |
+| [npm package (npmjs.com)](../build/libraries.md#js-package) | ✅ | | ● | | | npm | | npm² |
 | [Shared library (C ABI)](../build/libraries.md#native-lib) | ✅ | | | ● | | .so/.dll | | -- |
 | [Full-stack app](../build/fullstack-web.md#web-app) | ✅ | ● | ● | | ● | | | -- |
 | [Static / in-browser app](../build/fullstack-web.md#web-static) | ✅ | | ● | ● | ● | | | -- |
-| [Desktop app](../build/desktop-mobile.md#desktop) | 🧪⁴ | ● | ● | | ● | | desktop | WebKit² |
-| [Mobile app](../build/desktop-mobile.md#mobile) | 🧪⁵ | ◐ | ● | | | | mobile | Android SDK / Xcode |
+| [Desktop app](../build/desktop-mobile.md#desktop) | 🧪³ | ● | ● | | ● | | desktop | WebKit¹ |
+| [Mobile app](../build/desktop-mobile.md#mobile) | 🧪⁴ | ◐ | ● | | | | mobile | Android SDK / Xcode |
 | [Full-stack package](#on-the-roadmap) | 🚧 | ● | ● | | | attach | | -- |
 
 **Legend** -- ● uses this block · ◐ talks to a *remote* server (doesn't bundle one) · ×N replicated per service. **status**: ✅ shipping · 🧪 beta (works, with caveats footnoted below) · 🚧 not yet wired end-to-end ([see roadmap](#on-the-roadmap)). Columns 2–7 are *composition* (what it's made of): **sv / cl / na** = which runtimes compile (`na` to a host binary, or to WebAssembly for [in-browser native](#in-browser-native-wasm)) · **served** = hosted by `jac run` (exposing any `sv` walkers/functions as a REST API) · **packaged** = produces a distributable artifact · **shell** = wrapped in a native desktop/mobile shell. The **requires** column is a different axis -- *setup cost*: toolchains you install yourself, excluding the built-in `scale` subsystem (which ships with `jaclang` core; its optional deploy deps are pulled per-project via `[scale.*]` config + `jac install`) and the full-stack client/desktop framework (which also ships with `jaclang` core).
 
-<small>¹ Only to *upload* to PyPI; `jac build --as wheel` itself needs nothing. &nbsp; ² The desktop target ships with `jaclang` core (no Rust); it embeds the OS webview. On Linux you need the WebKitGTK system libraries (Jac offers to install them); on macOS the Xcode Command Line Tools, and the build is a `.app` bundle. &nbsp; ³ Only to *publish* (`npm publish`); `jac build --as npm` builds the `.tgz` with no Node/npm. &nbsp; ⁴ The binary renders your `cl` UI and runs `sv` walkers in-process, with HMR dev mode; per-OS installers/code-signing remain open ([#6436](https://github.com/jaseci-labs/jaseci/issues/6436)). &nbsp; ⁵ Beta React Native (Expo/Metro) frontend built from a mobUI source tree (`@jac/mobui` primitives, no HTML) that also compiles for the web; it talks to a Jac server you deploy separately.</small>
+<small>¹ The desktop target ships with `jaclang` core (no Rust); it embeds the OS webview. On Linux you need the WebKitGTK system libraries (Jac offers to install them); on macOS the Xcode Command Line Tools, and the build is a `.app` bundle. &nbsp; ² Only to *publish* (`npm publish`); `jac build --as npm` builds the `.tgz` with no Node/npm. &nbsp; ³ The binary renders your `cl` UI and runs `sv` walkers in-process, with HMR dev mode; per-OS installers/code-signing remain open ([#6436](https://github.com/jaseci-labs/jaseci/issues/6436)). &nbsp; ⁴ Beta React Native (Expo/Metro) frontend built from a mobUI source tree (`@jac/mobui` primitives, no HTML) that also compiles for the web; it talks to a Jac server you deploy separately.</small>
 
 Read across a row and the composition is the point: a full-stack app is just a *service* plus a *client*; in-browser native swaps the server for an `na` module compiled to wasm; a desktop app is a full-stack app plus a *shell*; service apps are a *service* replicated. The 🚧 rows aren't missing "kinds" -- they're capability combinations that aren't wired yet.
 
@@ -84,7 +83,7 @@ jac run dist/<app>.jab     # servable kinds production-serve
 jac build --as binary      # -> one executable, full runtime included
 ```
 
-How is `--as binary` different from the [Native binary](#native-binary) recipe? `jac build <file> --native` compiles the restricted `na` subset through LLVM into a small, dependency-free binary. `--as binary` packages *any* app -- walkers, Python imports, a full web client -- with the runtime included; the trade is a larger file. Details and the other projections (wheel, npm, source): [`jac build`](../reference/cli/index.md#jac-build).
+How is `--as binary` different from the [Native binary](#native-binary) recipe? `jac build <file> --native` compiles the restricted `na` subset through LLVM into a small, dependency-free binary. `--as binary` packages *any* app -- walkers, Python imports, a full web client -- with the runtime included; the trade is a larger file. Details and the other projections (npm, source): [`jac build`](../reference/cli/index.md#jac-build).
 
 ---
 
@@ -114,21 +113,21 @@ The same code runs in one process *or* as several independently-deployed service
 
 :octicons-arrow-right-24: Recipe & guided path: [Backend APIs & services](../build/backend-apis.md#service-mesh) · Full tutorial: [Service Apps](../tutorials/production/microservices.md)
 
-### Python package (PyPI)
+### Jac package
 
-A reusable library -- no entry point -- packaged as a standard pip wheel with `jac build --as wheel`. Any `def:pub` is part of the public API, and the wheel runs under the `jac` binary with no `jaclang` runtime dependency.
+A reusable library for other Jac projects -- no entry point -- published under a scoped name with `jac publish` and consumed with `jac install`. One package can hold server, client, and native code together. A package is a project with a scoped `name` and an `exports` list rather than a `kind`. For a Python project, see [Using Jac from a Python project](../build/libraries.md#python-projects).
 
-:octicons-arrow-right-24: Recipe & guided path: [Reusable libraries & packages](../build/libraries.md#py-package) · Reference: [Publishing](../reference/publishing.md)
+:octicons-arrow-right-24: Recipe & guided path: [Reusable libraries & packages](../build/libraries.md#jac-package) · Reference: [Packages](../reference/packages.md)
 
 ### npm package
 
-The client-side counterpart to the Python package: a `cl` component (or function) library published to [npm](https://www.npmjs.com) so any JavaScript or TypeScript project can `npm install` it -- whether or not they use Jac. `jac build --as npm` compiles your client modules to ES-module JavaScript, generates `package.json`, and emits `.d.ts` TypeScript declarations.
+For JavaScript and TypeScript consumers: a `cl` component (or function) library published to [npm](https://www.npmjs.com) so any JavaScript or TypeScript project can `npm install` it -- whether or not they use Jac. `jac build --as npm` compiles your client modules to ES-module JavaScript, generates `package.json`, and emits `.d.ts` TypeScript declarations.
 
-:octicons-arrow-right-24: Recipe & guided path: [Reusable libraries & packages](../build/libraries.md#js-package) · Reference: [Publishing to npm](../reference/publishing.md#publishing-to-npm-npmjsorg)
+:octicons-arrow-right-24: Recipe & guided path: [Reusable libraries & packages](../build/libraries.md#js-package) · Reference: [Publishing to npm](../reference/publishing.md)
 
 ### Shared library (C ABI)
 
-The native counterpart to the [Python](#python-package-pypi) and [npm](#npm-package) packages: an `na` module compiled to a **C-ABI shared library** (`.so` / `.dylib` / `.dll`) that *any* language with a C FFI -- C, C++, Rust, Go (`cgo`), Python (`ctypes`) -- can link or `dlopen`. It's the mirror image of `import from "lib.so"` (calling C *from* Jac): here you expose Jac *to* C.
+The native counterpart to the [npm package](#npm-package): an `na` module compiled to a **C-ABI shared library** (`.so` / `.dylib` / `.dll`) that *any* language with a C FFI -- C, C++, Rust, Go (`cgo`), Python (`ctypes`) -- can link or `dlopen`. It's the mirror image of `import from "lib.so"` (calling C *from* Jac): here you expose Jac *to* C.
 
 :octicons-arrow-right-24: Recipe & guided path: [Reusable libraries & packages](../build/libraries.md#native-lib) · Reference: [Native pathway -- Shared libraries](../reference/language/native-pathway.md#shared-libraries-c-abi)
 

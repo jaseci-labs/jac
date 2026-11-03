@@ -97,12 +97,6 @@
           ]
         },
         {
-          "title": "Package & Extend",
-          "items": [
-            {"title": "Publish a Library", "page": "tutorials/extend/publish-a-library.md"}
-          ]
-        },
-        {
           "title": "Ship It — Deploy & Scale",
           "items": [
             {"title": "Local API Server", "page": "tutorials/production/local.md"},
@@ -173,7 +167,7 @@
             {"title": "Configuration", "page": "reference/config/index.md"},
             {"title": "Workspaces & Apps", "page": "reference/apps.md"},
             {"title": "Packages", "page": "reference/packages.md"},
-            {"title": "Publishing to PyPI and npm", "page": "reference/publishing.md"},
+            {"title": "Publishing to npm", "page": "reference/publishing.md"},
             {"title": "Persistence & Schema Migration", "page": "reference/persistence.md"},
             {"title": "Placement", "page": "reference/placement.md"},
             {"title": "Errors & Warnings", "page": "reference/diagnostics.md"},

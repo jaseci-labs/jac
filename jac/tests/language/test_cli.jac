@@ -1381,13 +1381,12 @@ test "install editable resolves config from cwd when given dot path" {
         os.chdir(_tmpdir);
 
         captured_src_dir = [];
-        def fake_install_editable(self: object, src_dir: object, site_pkgs: object) {
+        def fake_install_editable(config: object, src_dir: object, site_pkgs: object) {
             captured_src_dir.append(src_dir);
         }
 
         with patch(
-            "jaclang.dist.publish.builder.WheelBuilder.install_editable",
-            fake_install_editable
+            "jaclang.dist.publish.editable.install_editable", fake_install_editable
         ) {
             result = project.install(editable=[["."]]);
         }
@@ -1486,13 +1485,12 @@ test "jac install -e links all packages for space-separated and repeated flag fo
         os.chdir(_tmpdir);
 
         linked: list[any] = [];
-        def fake_install_editable(self: object, src_dir: object, site_pkgs: object) {
+        def fake_install_editable(config: object, src_dir: object, site_pkgs: object) {
             linked.append(src_dir);
         }
 
         with patch(
-            "jaclang.dist.publish.builder.WheelBuilder.install_editable",
-            fake_install_editable
+            "jaclang.dist.publish.editable.install_editable", fake_install_editable
         ) {
             # [[pkg_a, pkg_b], [pkg_c]] mirrors: -e pkg_a pkg_b -e pkg_c
             result = project.install(editable=[[str(pkg_a), str(pkg_b)], [str(pkg_c)]]);

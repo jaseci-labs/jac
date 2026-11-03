@@ -276,7 +276,6 @@ impl _register_core_templates(registry: TemplateRegistry) {
         _core_template("native-binary", _hello),
         _core_template("native-lib", _shared),
         _core_template("service-mesh", _service),
-        _core_template("py-package", _lib),
         _core_template("js-package", _lib)
     ] {
         registry.register(info);

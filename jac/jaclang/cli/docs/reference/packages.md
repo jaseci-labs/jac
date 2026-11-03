@@ -184,6 +184,8 @@ A project template (a jacpack) is a package too: a project with a `[jacpack]` ta
 
 `jac build` seals an app's dependency packages into the app image, so a deployed `.jab`, binary or jac-scale app never resolves or downloads anything at run time.
 
-## Exporting to Python and npm consumers
+## Reaching projects that do not use Jac
 
-`jac build --as wheel` and `jac build --as npm` stay the way a Jac library reaches Python and JavaScript projects that do not use Jac. See [Publishing to PyPI and npm](publishing.md).
+- **JavaScript and TypeScript:** `jac build --as npm` builds an npm tarball. See [Publishing to npm](publishing.md).
+- **Other languages:** a `native-lib` project builds a [C-ABI shared library](../build/libraries.md#native-lib).
+- **Python:** `jac build --as source` exports editable Python (see [`jac build`](cli/index.md#jac-build)), or the project can call the `jac` binary.

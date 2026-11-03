@@ -100,7 +100,7 @@ source for native code. `project.json` retains each application's module identit
 serving contracts, native bindings, and client output paths. The prepared cache
 also retains the client's native dependency inventory and page-routing state.
 `compiler/driver/source_products.jac` owns Python source extraction for application
-export, runtime vendoring, and wheel transpilation. Prepared origin mappings retain
+export and runtime vendoring. Prepared origin mappings retain
 the original app identity after `.jac` modules become `.py`.
 Client compilation receives the selected entry and compiler program explicitly; it does not infer
 another application's pages from mutable runtime target state.

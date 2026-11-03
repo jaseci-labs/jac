@@ -7,6 +7,23 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### Jac no longer builds Python wheels (unreleased)
+
+`jac build --as wheel`, the sdist, `--allow-drop-client`, `kind = "py-package"` and the `[project.include.data]` table are removed, along with the PEP 517 build backend, so there is nothing left to `twine upload`. Choose the replacement by who consumes the code:
+
+| Consumer | Now |
+|---|---|
+| Other Jac projects | `jac publish` a Jac package; see [Packages](../reference/packages.md) |
+| JavaScript and TypeScript projects | `jac build --as npm`; see [Publishing to npm](../reference/publishing.md) |
+| Other languages | a `native-lib` project, a C-ABI shared library; see [Shared library (C ABI)](../build/libraries.md#native-lib) |
+| A Python project | `jac build --as source` exports editable Python, or call the `jac` binary; see [`jac build`](../reference/cli/index.md#jac-build) |
+
+A project with `kind = "py-package"` now fails with an unknown-kind error: drop the `kind`, or move the project to a `jac publish` library (a scoped `name` plus an `exports` list). `[project.include.data]` is no longer read, so delete the table. `[project.include] packages` is now only used by the npm build, and `[entrypoints.*]` only by `jac install -e`.
+
+**Impact:** projects that build or upload wheels. Consuming Python packages is unaffected: `[dependencies.pypi]`, `jac install --pypi`, `jac x` and the wheels `jac build --fat` vendors into a `.jab` all work as before, and so does `jac install -e`.
+
+---
+
 ### Inline Python (`::py::`) is removed from the language (unreleased)
 
 `::py:: ... ::py::` blocks are gone. The lexer no longer recognizes the fence, the grammar has no inline-Python element, and the compiler has no node for it, so a file that still contains one fails to parse. There is no deprecation period and no dedicated diagnostic: the fence now reads as stray `:` tokens, and `E0103` (unterminated inline Python block) is retired.
