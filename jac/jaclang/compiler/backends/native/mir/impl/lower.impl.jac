@@ -962,7 +962,6 @@ impl MirLowering.local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirV
     first = fn.blocks[0];
     made = fn.new_value(slot_type, sym.sym_name);
     made.is_slot = True;
-    made.is_temp = self.loop_scoped(sym);
     made.hold = "own" if sym.ownership == OwnershipKind.OWN else "local";
     if slot_type.kind != MirKind.NONE {
         first.instrs.insert(
@@ -1008,49 +1007,6 @@ impl MirLowering.comprehension_scoped(sym: uni.Symbol) -> bool {
     return isinstance(
         scope, (uni.InnerCompr, uni.ListCompr, uni.DictCompr, uni.LambdaExpr)
     );
-}
-
-impl MirLowering.loop_scoped(sym: uni.Symbol) -> bool {
-    if not sym.defn {
-        return False;
-    }
-    child: uni.UniNode = sym.defn[0];
-    walk = child.parent;
-    while walk is not None
-        and not isinstance(walk, (uni.Ability, uni.LambdaExpr, uni.Module)) {
-        if isinstance(
-            walk, (uni.WhileStmt, uni.ForeverStmt, uni.InForStmt, uni.IterForStmt)
-        )
-            and (
-                any(child is stmt for stmt in walk.body)
-                or (isinstance(walk, uni.InForStmt) and child is walk.target)
-            )
-            and all(self.within_body(use, walk) for use in sym.uses) {
-            return True;
-        }
-        child = walk;
-        walk = walk.parent;
-    }
-    return False;
-}
-
-impl MirLowering.within_body(
-    nd: uni.UniNode,
-    loop: (uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt)
-) -> bool {
-    child = nd;
-    walk = nd.parent;
-    while walk is not None {
-        if walk is loop {
-            return any(child is stmt for stmt in loop.body);
-        }
-        if isinstance(walk, (uni.Ability, uni.LambdaExpr)) {
-            return False;
-        }
-        child = walk;
-        walk = walk.parent;
-    }
-    return False;
 }
 
 impl MirLowering.lower_return(nd: uni.ReturnStmt) {

@@ -15193,18 +15193,26 @@ graph import runtime.native {
         text { __jac_rt_list_new, __jac_rt_list_push, __jac_rt_list_reverse },
     ]
     rc ++> [
-        anys | closures | iterators {
+        anys {
             __jac_rt_alloc,
             __jac_rt_free_block,
             __jac_rt_release,
             __jac_rt_retain,
-            __jac_rt_set_type
+            __jac_rt_set_type,
+            __jac_rt_trace_register
         },
         bytes {
             __jac_rt_alloc,
             __jac_rt_free_block,
             __jac_rt_release,
             __jac_rt_release_acyclic,
+            __jac_rt_retain,
+            __jac_rt_set_type
+        },
+        closures | iterators {
+            __jac_rt_alloc,
+            __jac_rt_free_block,
+            __jac_rt_release,
             __jac_rt_retain,
             __jac_rt_set_type
         },

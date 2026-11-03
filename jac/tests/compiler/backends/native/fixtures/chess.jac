@@ -955,9 +955,14 @@ obj Game {
                 print(f"{color_name} is in CHECK!");
             }
 
-            move_str = input(
-                f"{color_name}'s turn (e.g. e2 e4, or press Enter for random): "
-            );
+            move_str = "";
+            try {
+                move_str = input(
+                    f"{color_name}'s turn (e.g. e2 e4, or press Enter for random): "
+                );
+            } except EOFError {
+                move_str = "";
+            }
 
             if move_str == "quit" {
                 print("Game ended.");
