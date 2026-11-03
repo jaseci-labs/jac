@@ -102,6 +102,9 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                                 node_, star_symbol
                             );
                         }
+                        if self._is_flight_placeholder(mod) {
+                            return UnknownType(is_incomplete=True);
+                        }
                         continue;
                     }
                     mod_type = ModuleType(
@@ -183,6 +186,9 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                     ) {
                     return self._set_module_item_symbol_and_type(node_, sym);
                 }
+            }
+            if self._is_flight_placeholder(from_mod_type.symbol_table) {
+                return UnknownType(is_incomplete=True);
             }
             binding.type = UnknownType(is_diagnosed=True);
             self.emit_diag(W1101, binding, name=item_name, module=from_mod_name);
@@ -297,8 +303,10 @@ impl TypeEvaluator.get_type_of_module(node_: ModulePath) -> TypeBase {
         last_type = path_parts[-1].type;
 
         if last_type
+            and not (isinstance(last_type, UnknownType) and not last_type.is_diagnosed)
             and not (
-                isinstance(last_type, UnknownType) and not last_type.is_diagnosed
+                isinstance(last_type, ModuleType)
+                and self._is_flight_placeholder(last_type.symbol_table)
             ) {
             return last_type;
         }
@@ -505,9 +513,11 @@ impl TypeEvaluator._import_module_from_path(
         if _pending is not None {
             mod = _pending;
         } else {
-            return Module.make_stub(
+            placeholder = Module.make_stub(
                 inject_name=os.path.splitext(os.path.basename(resolved_path))[0]
             );
+            self._flight_placeholders[id(placeholder)] = placeholder;
+            return placeholder;
         }
     } else {
         self._modules_in_compile.add(resolved_path);
@@ -536,6 +546,10 @@ impl TypeEvaluator._in_flight_module(resolved_path: str) -> (Module | None) {
 
 impl TypeEvaluator._module_in_flight(path: str) -> bool {
     return os.path.realpath(path) in self._modules_in_compile;
+}
+
+impl TypeEvaluator._is_flight_placeholder(mod: any) -> bool {
+    return mod is not None and self._flight_placeholders.get(id(mod)) is mod;
 }
 
 impl TypeEvaluator.forget_module(resolved_path: str) -> None {

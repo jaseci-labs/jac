@@ -179,6 +179,11 @@ impl get_type_of_binary_operation(
 ) -> TypeBase {
     left_type = evaluator.get_type_of_expression(expr.left);
     right_type = evaluator.get_type_of_expression(expr.right);
+    for operand_type in (left_type, right_type) {
+        if isinstance(operand_type, UnknownType) and operand_type.is_incomplete {
+            return operand_type;
+        }
+    }
 
     if isinstance(expr.op, Token)
         and expr.op.name in BINARY_OPERATOR_MAP

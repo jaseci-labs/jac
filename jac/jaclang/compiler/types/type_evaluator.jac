@@ -163,6 +163,7 @@ walker TypeEvaluator {
         _flow_pending_keys: set[tuple[str, int]] postinit,
         _module_type_cache: dict[str, ModuleType] = {},
         _modules_in_compile: set[str] postinit,
+        _flight_placeholders: dict[int, Module] postinit,
         _mobui_module_cache: dict[str, bool] = {},
         _strict_site_cache: dict[int, bool] = {},
         _sv_async_syms_cache: dict[int, set[int]] = {},
@@ -210,6 +211,7 @@ walker TypeEvaluator {
 
     def _in_flight_module(resolved_path: str) -> (Module | None);
     def _module_in_flight(path: str) -> bool;
+    def _is_flight_placeholder(mod: any) -> bool;
     def _resolve_importer_path(ast_node: UniNode) -> (str | None);
     def forget_module(resolved_path: str) -> None;
     def _resolve_from_path(from_mod: ModulePath) -> str;
