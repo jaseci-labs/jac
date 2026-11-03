@@ -46,15 +46,77 @@ impl __jac_rt_rc_debug_set(on: bool) {
     if on {
         banner = ptr[u8]("--- debug ON ---\n");
         write(i32(1), banner, strlen(banner));
+        armed = __global_block("__rc_live_armed", 1);
+        if int(__mem_load_i8(armed)) == 0 {
+            __mem_store_i8(armed, i8(1));
+            atexit(int(_live_dump));
+        }
     }
     __mem_store_i8(_g_rc_debug(), i8(1 if on else 0));
 }
 
+impl _live_track(o: int) {
+    table = __global_block("__rc_live_table", 24);
+    count = __mem_load_i64(table + 8);
+    cap = __mem_load_i64(table + 16);
+    if count == cap {
+        cap = 64 if cap == 0 else cap * 2;
+        __mem_store_i64(table, realloc(__mem_load_i64(table), cap * 8));
+        __mem_store_i64(table + 16, cap);
+    }
+    __mem_store_i64(__mem_load_i64(table) + count * 8, o);
+    __mem_store_i64(table + 8, count + 1);
+}
+
+impl _live_forget(o: int) {
+    table = __global_block("__rc_live_table", 24);
+    count = __mem_load_i64(table + 8);
+    cells = __mem_load_i64(table);
+    i = count;
+    while i > 0 {
+        i -= 1;
+        if __mem_load_i64(cells + i * 8) == o {
+            __mem_store_i64(cells + i * 8, __mem_load_i64(cells + (count - 1) * 8));
+            __mem_store_i64(table + 8, count - 1);
+            return;
+        }
+    }
+}
+
+impl _live_dump {
+    if not _flag_on(_g_rc_debug()) {
+        return;
+    }
+    header = ptr[u8]("--- RC LIVE OBJECTS at exit ---\n");
+    write(i32(1), header, strlen(header));
+    table = __global_block("__rc_live_table", 24);
+    count = __mem_load_i64(table + 8);
+    cells = __mem_load_i64(table);
+    i = 0;
+    while i < count {
+        o = __mem_load_i64(cells + i * 8);
+        write(i32(1), ptr[u8]("ptr=0x"), i64(6));
+        _rc_hex(o);
+        write(i32(1), ptr[u8]("  rc=0x"), i64(7));
+        _rc_hex(__mem_load_i64(o - HDR_RC_BACK));
+        write(i32(1), ptr[u8]("  type="), i64(7));
+        tag = ptr[u8](__mem_load_i64(o - HDR_TAG_BACK));
+        write(i32(1), tag, strlen(tag));
+        leak = ptr[u8]("  <- LEAK\n");
+        write(i32(1), leak, strlen(leak));
+        i += 1;
+    }
+}
+
 impl _rc_trace(label: ptr[u8], o: int) {
     write(i32(1), label, strlen(label));
+    _rc_hex(o);
+    write(i32(1), ptr[u8]("\n"), i64(1));
+}
+
+impl _rc_hex(o: int) {
     digits = __thread_local_block("jac_rt_rc_trace_digits", 24);
     at = 23;
-    __mem_store_i8(digits + at, i8(10));
     value = o;
     while True {
         at -= 1;
@@ -65,7 +127,7 @@ impl _rc_trace(label: ptr[u8], o: int) {
             break;
         }
     }
-    write(i32(1), ptr[u8](digits + at), i64(24 - at));
+    write(i32(1), ptr[u8](digits + at), i64(23 - at));
 }
 
 impl _g_collecting -> int {
@@ -591,6 +653,7 @@ impl __jac_rt_alloc(size: int) -> int {
     __mem_store_i64(raw + HDR_TOTAL - HDR_DTOR_BACK, 0);
     if _flag_on(_g_rc_debug()) {
         _rc_trace(ptr[u8]("RC MALLOC ptr=0x"), raw + HDR_TOTAL);
+        _live_track(raw + HDR_TOTAL);
     }
     return raw + HDR_TOTAL;
 }
@@ -653,6 +716,7 @@ impl __jac_rt_free_block(raw: int) {
     }
     if _flag_on(_g_rc_debug()) {
         _rc_trace(ptr[u8]("RC FREE   ptr=0x"), raw + HDR_TOTAL);
+        _live_forget(raw + HDR_TOTAL);
     }
     pool_class = (__mem_load_i64(raw) >> POOL_CLASS_SHIFT) & POOL_CLASS_MASK;
     if pool_class != 0 and pool_class <= POOL_CLASSES and not _threaded() {

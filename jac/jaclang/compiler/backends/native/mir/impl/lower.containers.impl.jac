@@ -1699,25 +1699,19 @@ impl MirLowering.list_replace_range(
     }
     (start, stop, _) = self.list_bounds(lst, part, site);
     kind = b.const_int(self.elem_kind(lst.type.payload(), site), mir_int());
-    one = b.const_int(1, mir_int());
-    head = self.runtime(
-        "__jac_rt_list_slice", [lst, b.const_int(0, mir_int()), start, one, kind]
-    );
-    resume = b.select(b.compare("lt", stop, start), start, stop);
-    tail = self.runtime(
-        "__jac_rt_list_slice", [lst, resume, self.container_len(lst), one, kind]
-    );
-    if head is None or tail is None {
-        raise MirRefused(mir_refusal("statement", "del of a slice", site));
-    }
-    kept_head = self.spill(b.ref_cast(head, lst.type, True));
-    kept_tail = self.spill(b.ref_cast(tail, lst.type, True));
-    self.runtime("__jac_rt_list_clear", [lst, kind]);
-    self.runtime("__jac_rt_list_extend", [lst, kept_head, kind]);
+    self.runtime("__jac_rt_list_delete_range", [lst, start, stop, kind]);
     if fresh is not None {
+        one = b.const_int(1, mir_int());
+        size = self.container_len(lst);
+        tail = self.runtime("__jac_rt_list_slice", [lst, start, size, one, kind]);
+        if tail is None {
+            raise MirRefused(mir_refusal("subscript assignment", "slice", site));
+        }
+        kept_tail = self.spill(b.ref_cast(tail, lst.type, True));
+        self.runtime("__jac_rt_list_delete_range", [lst, start, size, kind]);
         self.runtime("__jac_rt_list_extend", [lst, fresh, kind]);
+        self.runtime("__jac_rt_list_extend", [lst, kept_tail, kind]);
     }
-    self.runtime("__jac_rt_list_extend", [lst, kept_tail, kind]);
 }
 
 impl MirLowering.container_rebuild(
@@ -1783,6 +1777,14 @@ impl MirLowering.unbind_local(target: uni.Expr) -> bool {
 impl MirLowering.list_extend_in_place(
     op: str, current: MirValue, value: MirValue, site: uni.UniNode
 ) -> (MirValue | None) {
+    if op == Tok.PLUS
+        and current.type.kind == MirKind.BYTEARRAY
+        and value.type.kind in (MirKind.BYTES, MirKind.BYTEARRAY) {
+        source = self.spill(value);
+        (data, size) = self.byte_parts(source);
+        self.runtime("__jac_rt_bytearray_extend", [current, data, size]);
+        return current;
+    }
     if op != Tok.PLUS
         or current.type.kind != MirKind.LIST
         or value.type.kind != MirKind.LIST {

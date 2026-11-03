@@ -1238,7 +1238,17 @@ impl wiring_digest_for(file_path: str) -> str {
     }
     spec = wiring_for_path(file_path);
     if spec is None {
-        return "";
+        arch = arch_file_for(file_path);
+        if arch is None or os.path.dirname(arch) not in _building {
+            return "";
+        }
+        try {
+            with open(arch, "rb") as fh {
+                return UNSETTLED_WIRING + hashlib.sha256(fh.read()).hexdigest();
+            }
+        } except OSError {
+            return UNSETTLED_WIRING;
+        }
     }
     consumer = spec.module_name(file_path);
     if consumer is None {

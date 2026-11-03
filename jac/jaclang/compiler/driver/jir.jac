@@ -167,7 +167,18 @@ glob _COMPILER_DIGEST_CACHE: list[str] = [],
 
 glob PY_EMITTER_ROOTS: tuple[str, ...] = ("compiler/backends/py", ),
      PY_EMITTER_EXCLUDED: tuple[str, ...] = ("compiler/backends/py/jacpython", ),
-     DEV_NATIVE_PRODUCER: str = "abi:";
+     DEV_NATIVE_PRODUCER: str = "abi:",
+     NATIVE_PRODUCER_ROOTS: tuple[str, ...] = (
+         "compiler/backends/native",
+         "compiler/frontend",
+         "compiler/impl/intrinsic_registry.impl.jac",
+         "compiler/impl/native_scope.impl.jac",
+         "compiler/intrinsic_registry.jac",
+         "compiler/native_scope.jac",
+         "compiler/passes",
+         "compiler/types",
+         "runtime/native"
+     );
 
 def _manifest_compiler_digest(pkg_dir: str) -> str;
 

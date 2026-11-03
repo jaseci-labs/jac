@@ -5995,9 +5995,10 @@ graph import compiler {
     ]
     type driver.module_analysis ++> frontend.host { ModuleAnalysis }
     driver.module_compile ++> frontend.kernel_host { compile_task }
-    driver.na_coverage ++> backends.native.link_plan._build_link_plan {
-        na_coverage_replay
-    }
+    driver.na_coverage ++> [
+        backends.native.link_plan._build_link_plan { na_coverage_replay },
+        backends.native.mir.backend.MirNativePass.note_demotions { na_coverage_seam },
+    ]
     driver.native_iface ++> [
         backends.native.link_plan {
             NativeIface,
@@ -10012,6 +10013,7 @@ graph import compiler {
             IncoherentInterface,
             PackagePathMapper
         },
+        driver.ifacecache.IfaceRegistry.resolve_shared { collect_scope_members },
         driver.jir.JirPaths.encode { encode_package_path },
         frontend.kernel_host.record_interface {
             IncoherentInterface,
@@ -10084,6 +10086,7 @@ graph import compiler {
             EnumMemberType,
             FunctionType,
             ModuleType,
+            OverloadedType,
             TypeVarType,
             UnionType,
             UnknownType
@@ -10980,6 +10983,7 @@ graph import compiler.driver {
         ifacecache.IfaceRegistry._entry_fresh | jir._related_files {
             discover_annex_files
         },
+        ifacecache.IfaceRegistry._owned_alerts { discover_annex_files },
     ]
     boundary_classify ++> [
         program.JacProgram.declared_codespace { _default_codespace_for },
@@ -11424,7 +11428,9 @@ graph import compiler.driver {
             canonical_wiring_source,
             is_arch_file
         },
+        ifacecache.IfaceRegistry._owned_alerts { wiring_for_path },
         jir.stored_wiring_digest {
+            UNSETTLED_WIRING,
             arch_file_for,
             import_prefix_for,
             is_arch_file,
@@ -13520,6 +13526,7 @@ graph import compiler.types {
             SYMF_DEFER,
             SYMF_HAS_DEFAULT
         },
+        types.ClassType.lookup_member_symbol { SYMF_INIT_PARAM },
     ]
     stubcat.reader ++> [
         ct_eval { CatModule },
@@ -13791,6 +13798,7 @@ graph import compiler.types.stubcat {
             SYMF_DEFER,
             SYMF_FINAL,
             SYMF_HAS_DEFAULT,
+            SYMF_INIT_PARAM,
             SYMF_INSTANCE_METHOD,
             SYMF_NA_ESCAPES,
             SYMF_NA_REGION_HANDLE,
@@ -13840,7 +13848,10 @@ graph import compiler.types.stubcat {
     ]
     type reader ++> locate { StubCatalog }
     resolver ++> modiface | reader { CatalogResolver }
-    writer ++> build { CatalogWriter }
+    writer ++> [
+        build { CatalogWriter },
+        reader.StubCatalog.symbol_in_module { collect_scope_members },
+    ]
 }
 
 graph import data {
