@@ -470,9 +470,20 @@ impl NaIRGenPass._any_view_fn(target_type: ir.Type) -> (ir.Function | None) {
     if _tgt is None and _typed is None {
         return None;
     }
+    _same_width: list[tuple[str, bool]] = [];
     if _typed is not None {
         (kind, _helper_key, _tgt_tag) = _typed;
         key_spec = "";
+        (_key_part, _, _val_part) = _helper_key.partition(":");
+        _elem_spec = _helper_key if kind == "list" else _val_part;
+        _prefix = "list_" if kind == "list" else f"dict_{_key_part}_";
+        if _elem_spec.startswith("ptr") or _elem_spec in ("i64", "f64") {
+            _same_width = [
+                (f"{_prefix}ptr", False),
+                (f"{_prefix}i64", True),
+                (f"{_prefix}f64", True)
+            ];
+        }
     } else {
         (kind, key_spec) = _tgt;
         _tgt_tag = "list_jacval" if kind == "list" else f"dict_{key_spec}_jacval";
@@ -595,7 +606,11 @@ impl NaIRGenPass._any_view_fn(target_type: ir.Type) -> (ir.Function | None) {
         return bl.icmp_signed("==", _r, ir.Constant(i32, 0));
     }
     _next_bb = fn.append_basic_block("next");
-    bc.cbranch(_tag_is(bc, _tgt_tag, True), _as_is_bb, _next_bb);
+    _same = _tag_is(bc, _tgt_tag, True);
+    for (_text, _exact) in _same_width {
+        _same = bc.or_(_same, _tag_is(bc, _text, _exact), name="view.width");
+    }
+    bc.cbranch(_same, _as_is_bb, _next_bb);
     bc = ir.IRBuilder(_next_bb);
     _empty_bb = fn.append_basic_block("empty");
     _next_bb = fn.append_basic_block("next");
