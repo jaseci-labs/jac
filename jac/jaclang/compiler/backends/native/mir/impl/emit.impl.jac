@@ -1,5 +1,9 @@
 impl emit_mir_module(
-    mir: MirModule, triple: str = "", native_tls: bool = False, data_layout: str = ""
+    mir: MirModule,
+    triple: str = "",
+    native_tls: bool = False,
+    data_layout: str = "",
+    native_sjlj: bool = False
 ) -> ir.Module {
     module = ir.Module(name=mir.path, context=ir.Context());
     if triple {
@@ -8,7 +12,12 @@ impl emit_mir_module(
     if data_layout {
         module.data_layout = data_layout;
     }
-    return MirEmitter(mir=mir, module=module, native_tls=native_tls).emit();
+    return MirEmitter(
+        mir=mir,
+        module=module,
+        native_tls=native_tls,
+        builtin_sjlj=native_sjlj and triple.lower().startswith("x86_64")
+    ).emit();
 }
 
 impl MirEmitter.emit -> ir.Module {
@@ -872,9 +881,27 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
         self.bind(instr.result, b.bitcast(frame, ir.IntType(8).as_pointer()));
     } elif op == MirOp.SETJMP {
         i8p = ir.IntType(8).as_pointer();
-        jump = self.extern(SETJMP_SYMBOL, ir.IntType(32), [i8p]);
+        i32 = ir.IntType(32);
+        env = self.value(instr.operands[0]);
+        if self.builtin_sjlj {
+            b.function.attributes.add("noinline");
+            words = b.bitcast(env, i8p.as_pointer());
+            frame = b.call(
+                self.extern("llvm.frameaddress.p0", i8p, [i32]), [ir.Constant(i32, 0)]
+            );
+            b.store(frame, words);
+            stack = b.call(self.extern("llvm.stacksave.p0", i8p, []), []);
+            b.store(stack, b.gep(words, [ir.Constant(i32, 2)]));
+            jump = self.extern("llvm.eh.sjlj.setjmp", i32, [i8p]);
+        } else {
+            jump = self.extern(SETJMP_SYMBOL, i32, [i8p]);
+        }
         jump.attributes.add("returns_twice");
-        self.bind(instr.result, b.call(jump, [self.value(instr.operands[0])]));
+        armed = b.call(jump, [env]);
+        if self.builtin_sjlj {
+            armed.attributes.add("returns_twice");
+        }
+        self.bind(instr.result, armed);
     } elif op == MirOp.VA_START {
         i8p = ir.IntType(8).as_pointer();
         storage = b.alloca(ir.ArrayType(ir.IntType(64), 4));
@@ -925,6 +952,15 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
             b.inttoptr(self.value(instr.operands[0]), dtor_type),
             [b.inttoptr(self.value(instr.operands[1]), i8p)]
         );
+    } elif op == MirOp.CALL_C
+        and self.builtin_sjlj
+        and instr.callee == LONGJMP_SYMBOL {
+        i8p = ir.IntType(8).as_pointer();
+        b.function.attributes.add("noinline");
+        jump = self.extern("llvm.eh.sjlj.longjmp", ir.VoidType(), [i8p]);
+        jump.attributes.add("noreturn");
+        env = self.value(instr.operands[0]);
+        b.call(jump, [env if env.type == i8p else b.bitcast(env, i8p)]);
     } elif op == MirOp.CALL_C {
         callee = self.functions.get(instr.callee);
         if callee is None {
