@@ -934,28 +934,6 @@ impl MirLowering.object_method(
     return self.invoke_method(decl, arch, name, values);
 }
 
-impl MirLowering.class_method_call(
-    nd: uni.FuncCall, arch: uni.Archetype, name: str
-) -> (MirValue | None) {
-    method = self.find_method(arch, name);
-    positional = [
-        arg
-        for arg in list(nd.params or [])
-        if not isinstance(arg, uni.KWPair)
-    ];
-    if method is None
-        or method.is_static
-        or not positional
-        or not isinstance(positional[0], uni.Expr)
-        or self.template_of(method) {
-        return None;
-    }
-    holder = method.find_parent_of_type(uni.Archetype) or arch;
-    return self.direct_method_call(
-        nd, holder, method, self.lower_expr(positional[0]), 1
-    );
-}
-
 impl MirLowering.super_call(nd: uni.FuncCall, name: str) -> MirValue {
     receiver = self.st().self_value;
     arch = self.archetypes.get(receiver.type.name)
@@ -986,12 +964,49 @@ impl MirLowering.direct_method_call(
     holder: uni.Archetype,
     method: uni.Ability,
     receiver: MirValue,
-    drop: int
+    leading: int
 ) -> MirValue {
     name = self.name_of(method);
     decl = self.method_decl(holder, method, name, nd);
     receiver = self.method_receiver(decl, holder, receiver, nd);
-    args = self.bound_args(nd, method, True, drop);
+    args = self.bound_args(nd, method, True, leading);
+    if len(args) != len(decl.params) {
+        raise MirRefused(mir_refusal("call", f"{name} with {len(args)} arguments", nd));
+    }
+    values = [receiver] + self.bound_values(list(args), decl.params);
+    result = self.builder().call(decl.symbol, values, decl.ret);
+    if result is None {
+        return self.builder().const_bool(False);
+    }
+    return result;
+}
+
+impl MirLowering.unbound_method(
+    nd: uni.FuncCall, arch: uni.Archetype, name: str
+) -> (MirValue | None) {
+    method = self.find_method(arch, name);
+    passed = list(nd.params or []);
+    if method is None
+        or method.is_static
+        or id(method) in self.templates
+        or self.has_spread(nd)
+        or not passed
+        or isinstance(passed[0], uni.KWPair)
+        or (
+            isinstance(passed[0], uni.UnaryExpr)
+            and passed[0].op.name in (Tok.STAR_MUL, Tok.STAR_POW)
+        ) {
+        return None;
+    }
+    decl = self.method_decl(arch, method, name, nd);
+    if decl.self_type is None {
+        return None;
+    }
+    first = passed[0];
+    receiver = self.lower_expr(first);
+    holder = self.arch_of_type(first.type) if isinstance(first, uni.Expr) else None;
+    receiver = self.method_receiver(decl, holder or arch, receiver, first);
+    args = self.bound_args(nd, method, True, 1);
     if len(args) != len(decl.params) {
         raise MirRefused(mir_refusal("call", f"{name} with {len(args)} arguments", nd));
     }

@@ -58,3 +58,45 @@ impl MirLowering.unpack_into(
         }
     }
 }
+
+impl MirLowering.tuple_compare(
+    op: str, name: str, left: MirValue, right: MirValue, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    held_left = self.spill(left);
+    held_right = self.spill(right);
+    left_size = len(left.type.args);
+    right_size = len(right.type.args);
+    shared = min(left_size, right_size);
+    if name in ("eq", "ne") {
+        same = b.const_bool(left_size == right_size);
+        if left_size == right_size {
+            for index in range(shared) {
+                same = b.binary(
+                    "and",
+                    same,
+                    self.compare_values(
+                        Tok.EE,
+                        self.tuple_get(held_left, index),
+                        self.tuple_get(held_right, index),
+                        site
+                    )
+                );
+            }
+        }
+        return same if name == "eq" else b.logical_not(same);
+    }
+    verdict = b.compare(
+        name, b.const_int(left_size, mir_int()), b.const_int(right_size, mir_int())
+    );
+    for index in reversed(range(shared)) {
+        l = self.spill(self.tuple_get(held_left, index));
+        r = self.spill(self.tuple_get(held_right, index));
+        verdict = b.select(
+            self.compare_values(Tok.EE, l, r, site),
+            verdict,
+            self.compare_values(op, l, r, site)
+        );
+    }
+    return verdict;
+}

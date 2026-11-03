@@ -53,13 +53,15 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
         for binding in lowering.bindings {
             ir_in.gen.interop_manifest.bindings[binding.name] = binding;
         }
+        later: list[str] = [];
         if here in runtime {
+            later = runtime[runtime.index(here):];
             runtime = runtime[:runtime.index(here)];
         }
         deps = [
             unit
             for unit in runtime + lowered.deps
-            if unit != here
+            if unit != here and unit not in later
         ];
         target = active_host().native_fact(
             FACT_TARGET, self.prog.options.native_target or ""
@@ -340,6 +342,8 @@ impl MirNativePass.interface(
             name=fn.name,
             symbol=fn.symbol,
             kind="test" if fn.name.startswith("__jac_test_") else "function",
+            is_pub=fn.symbol in mir.public and fn.symbol not in mir.demoted,
+            param_defaults=list(mir.defaults.get(fn.symbol, [])),
             param_names=[p.name for p in fn.params],
             param_types=[p.value.type.render() for p in fn.params],
             ret_type=fn.ret.render()

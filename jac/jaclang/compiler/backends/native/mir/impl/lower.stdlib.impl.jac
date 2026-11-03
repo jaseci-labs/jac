@@ -70,14 +70,7 @@ impl MirLowering.stdlib_call(
     }
     member = self.module_member(unit, name);
     if not isinstance(member, uni.Ability) {
-        raise MirRefused(
-            mir_refusal(
-                "call",
-                f"{unit.name}.{name}",
-                nd,
-                f"The bundled native {os.path.basename(unit.loc.mod_path)} has no '{name}'."
-            )
-        );
+        return None;
     }
     return self.import_call(nd, member);
 }
@@ -91,10 +84,7 @@ impl MirLowering.stdlib_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
         and isinstance(nd.target.type.symbol_table, uni.Module)
         and nd.target.type.symbol_table.loc.mod_path.endswith(".jac") {
         named = self.class_reference(nd);
-        if named is not None {
-            return self.class_value(named);
-        }
-        return self.lower_name(nd.right);
+        return self.class_value(named) if named is not None else None;
     }
     unit = self.stdlib_module(nd.target);
     if unit is None {
@@ -117,14 +107,7 @@ impl MirLowering.stdlib_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
             );
         }
     }
-    raise MirRefused(
-        mir_refusal(
-            "attribute",
-            f"{unit.name}.{nd.right.value}",
-            nd,
-            "Only constant module attributes of a bundled native module are read natively."
-        )
-    );
+    return None;
 }
 
 impl MirLowering.class_constant(arch: uni.Archetype, name: str) -> (uni.Expr | None) {

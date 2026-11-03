@@ -1,11 +1,11 @@
 impl MirLowering.bound_args(
-    nd: uni.FuncCall, ab: uni.Ability, method: bool, drop: int = 0
+    nd: uni.FuncCall, ab: uni.Ability, method: bool, leading: int = 0
 ) -> list[(uni.Expr | MirPacked | MirBound)] {
     sig = ab.signature;
     if not isinstance(sig, uni.FuncSignature) {
-        return self.call_args(nd)[drop:];
+        return self.call_args(nd)[leading:];
     }
-    if drop and self.has_spread(nd) {
+    if leading and self.has_spread(nd) {
         raise MirRefused(
             mir_refusal("call argument", "unpacking after a receiver", nd)
         );
@@ -42,7 +42,7 @@ impl MirLowering.bound_args(
             positional.append(arg);
         }
     }
-    positional = positional[drop:];
+    positional = positional[leading:];
     if len(positional) > len(params) and sig.varargs is None {
         raise MirRefused(
             mir_refusal(

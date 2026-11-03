@@ -116,6 +116,8 @@ def _target_machine(plan: LinkPlan, kind: ArtifactKind) -> TargetMachine;
 def unique_callbacks(bindings: list[InteropBinding]) -> list[InteropBinding];
 def callback_bind_exports(plan: LinkPlan) -> list[str];
 
+def bind_python_bridges(plan: LinkPlan, undefined: list[str]) -> list[any];
+
 obj UnitGlueSymbols {
     has declared: dict[str, str] = {},
         defined: list[str] = [];
