@@ -299,7 +299,7 @@ impl MirLowering.declare(ab: uni.Ability) {
         if packed and pv is sig.varargs {
             continue;
         }
-        params.append(self.symbol_type(pv.name.sym, pv));
+        params.append(self.param_type(pv));
     }
     fn_type = self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(ab));
     ret = mir_none();
@@ -397,8 +397,26 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
         for (index, (pv, ptype)) in enumerate(zip(nodes, decl.params)) {
             value = fn.new_value(ptype, pv.name.value);
             fn.params.append(MirParam(name=pv.name.value, value=value));
-            slot = self.local_slot(pv.name.sym, pv);
-            self.builder().store(slot, value);
+            if ptype.kind == MirKind.C_PTR
+                and ptype.payload().kind == MirKind.C_STRUCT
+                and pv.name.sym is not None
+                and self.c_param_borrowed(pv) {
+                slot = fn.new_value(ptype.payload(), pv.name.value);
+                slot.is_slot = True;
+                first.instrs.insert(
+                    0,
+                    MirInstr(
+                        op=MirOp.SLOT,
+                        result=slot,
+                        type_arg=ptype.payload(),
+                        operands=[value]
+                    )
+                );
+                self.st().locals[id(pv.name.sym)] = slot;
+            } else {
+                slot = self.local_slot(pv.name.sym, pv);
+                self.builder().store(slot, value);
+            }
             if index < len(twins) and twins[index].name.sym is not None {
                 self.st().locals[id(twins[index].name.sym)] = slot;
             }
@@ -3831,7 +3849,7 @@ impl MirLowering.foreign_function_decl(
         raise MirRefused(mir_refusal("call", self.name_of(callee), site));
     }
     sig = self.ability_sig(callee);
-    params = [self.symbol_type(pv.name.sym, pv) for pv in self.param_nodes(sig, False)]
+    params = [self.param_type(pv) for pv in self.param_nodes(sig, False)]
         if sig is not None
         else [
             self.type_of(p.param_type, MirPosition.VALUE, site)

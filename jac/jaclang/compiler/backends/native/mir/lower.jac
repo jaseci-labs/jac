@@ -513,6 +513,8 @@ obj MirLowering {
     def c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue;
     def c_extern_address(nd: uni.Name) -> (MirValue | None);
     def c_param_borrowed(pv: uni.ParamVar) -> bool;
+    def param_type(pv: uni.ParamVar) -> MirType;
+    def lent_struct(arg: uni.Expr, to: MirType) -> (MirValue | None);
     def c_declared_type(
         declared: (TypeBase | None), fallback: (TypeBase | None)
     ) -> (TypeBase | None);

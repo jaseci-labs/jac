@@ -363,6 +363,14 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
         );
     } elif op == MirOp.CONST_BOOL {
         self.bind(instr.result, ir.Constant(ir.IntType(1), instr.int_value));
+    } elif op == MirOp.SLOT and instr.operands {
+        self.bind(
+            instr.result,
+            b.bitcast(
+                self.value(instr.operands[0]),
+                self.llvm_type(type_arg_of(instr)).as_pointer()
+            )
+        );
     } elif op == MirOp.SLOT {
         self.bind(
             instr.result,

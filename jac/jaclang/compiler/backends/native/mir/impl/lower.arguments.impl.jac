@@ -378,6 +378,10 @@ impl MirLowering.bound_value(
         return self.coerce(arg.value, ptype, arg.site);
     }
     if not isinstance(arg, MirPacked) {
+        lent = self.lent_struct(arg, ptype);
+        if lent is not None {
+            return lent;
+        }
         return self.coerce(self.lower_expr(arg), ptype, arg);
     }
     b = self.builder();
