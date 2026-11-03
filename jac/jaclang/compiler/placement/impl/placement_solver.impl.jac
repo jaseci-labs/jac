@@ -952,9 +952,7 @@ impl _pull_boundary_import(
         return 0;
     }
     targets: list[uni.Module] = [];
-    hub_target = _materialize_module(
-        os.path.abspath(resolved), prog, need_bodies=True
-    );
+    hub_target = _materialize_module(os.path.abspath(resolved), prog, need_bodies=True);
     if hub_target is not None and hub_target is not module {
         targets.append(hub_target);
     }
