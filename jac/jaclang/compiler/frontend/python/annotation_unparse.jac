@@ -455,39 +455,3 @@ def render_annotation(value: expr, outer: int = 4) -> str {
     }
     return "(" + text + ")" if precedence < outer else text;
 }
-
-def annotation_constant(value: expr) -> Constant {
-    return Constant(
-        value=PyStr(t="str", val=render_annotation(value)),
-        kind=None,
-        lineno=value.lineno,
-        col_offset=value.col_offset,
-        end_lineno=value.end_lineno,
-        end_col_offset=value.end_col_offset
-    );
-}
-
-def stringify_future_annotations(tree: ast_node, filename: str) {
-    pending: list[ast_node] = [tree];
-    walk = annotation_walk(pending=pending);
-    while pending {
-        item = pending.pop();
-        if isinstance(item, AnnAssign) {
-            item.annotation = annotation_constant(item.annotation);
-        } elif isinstance(item, arg) and item.annotation is not None {
-            item.annotation = annotation_constant(item.annotation);
-        } elif isinstance(item, (FunctionDef, AsyncFunctionDef))
-            and item.returns is not None {
-            item.returns = annotation_constant(item.returns);
-        }
-        visit_ast_children(item, walk);
-    }
-}
-
-obj annotation_walk(ast_child_visitor) {
-    has pending: list[ast_node];
-
-    def child(field: str, value: ast_node) {
-        self.pending.append(value);
-    }
-}

@@ -15,7 +15,6 @@ obj JacPythonArtifact(Artifact) {
         kind: ArtifactKind = ArtifactKind.ACCELERATOR,
         release: ReleasePolicy = ReleasePolicy.FLOOR,
         summary: str = "JacPython (the interpreter whose compiler is native Jac)",
-        floor: str = "CPython",
         hosts: list[str] = ["linux", "darwin"];
 
     override def probe_sealed -> (Probe | None);

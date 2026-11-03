@@ -70,7 +70,7 @@ def constant_key(value: PyObj) -> str {
         return "str:" + value.val;
     }
     if isinstance(value, PyBytes) {
-        return "bytes:" + str(value.val);
+        return "bytes:" + bytes(value.val).hex();
     }
     return value.t;
 }
