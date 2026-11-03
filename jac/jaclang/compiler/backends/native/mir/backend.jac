@@ -41,7 +41,6 @@ walker MirNativePass(CompilerPass) {
     def _run_impl(ir_in: uni.Module) -> uni.Module;
     def native_required(path: str) -> bool;
     def report_refusals(lowering: MirLowering);
-    def report_c_conflicts(lowering: MirLowering);
     def report_crash(lowering: MirLowering, exc: Exception);
     def settle_soft(lowering: MirLowering) -> bool;
     def refuse_events(lowering: MirLowering) -> bool;
