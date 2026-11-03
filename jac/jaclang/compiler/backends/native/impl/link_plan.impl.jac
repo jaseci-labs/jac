@@ -220,7 +220,8 @@ impl LinkPlan.glue_spec(
         triple=self.triple,
         clib_paths=self.clib_paths(),
         needs_atexit_shim=(is_elf and (kind == ArtifactKind.SHARED or not static_musl)),
-        needs_region_hook=not hook_supplied
+        needs_region_hook=not hook_supplied,
+        gc_mode=self.options.na_gc_mode or "cycles"
     );
 }
 

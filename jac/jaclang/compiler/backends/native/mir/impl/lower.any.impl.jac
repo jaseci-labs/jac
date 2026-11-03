@@ -1,6 +1,9 @@
 impl MirLowering.any_tag(t: MirType, site: uni.UniNode) -> int {
-    if t.kind in (MirKind.INT, MirKind.ENUM) {
+    if t.kind == MirKind.INT {
         return ANY_INT_TAG;
+    }
+    if t.kind == MirKind.ENUM {
+        return ANY_ENUM_TAG;
     }
     if t.kind == MirKind.FLOAT {
         return ANY_FLOAT_TAG;
@@ -24,7 +27,15 @@ impl MirLowering.any_tag(t: MirType, site: uni.UniNode) -> int {
         return ANY_SET_TAG;
     }
     if t.kind
-        in (MirKind.OBJ, MirKind.FN, MirKind.BYTES, MirKind.BYTEARRAY, MirKind.TUPLE) {
+        in (
+            MirKind.OBJ,
+            MirKind.OSP,
+            MirKind.FN,
+            MirKind.BYTES,
+            MirKind.BYTEARRAY,
+            MirKind.TUPLE,
+            MirKind.FILE
+        ) {
         return ANY_OBJ_TAG;
     }
     raise MirRefused(mir_refusal("conversion", f"{t.render()} to any", site));
@@ -57,6 +68,14 @@ impl MirLowering.any_box(value: MirValue, site: uni.UniNode) -> MirValue {
             raise MirRefused(mir_refusal("conversion", "str to any", site));
         }
         source = made;
+    }
+    if value.type.kind == MirKind.ENUM {
+        return self.emit_value(
+            MirOp.ANY_BOX,
+            mir_any(),
+            [self.enum_box(value, site)],
+            int_value=ANY_ENUM_TAG
+        );
     }
     if value.type.kind == MirKind.TUPLE {
         source = self.tuple_box(value, site);
@@ -92,13 +111,33 @@ impl MirLowering.any_unbox(
     if to.kind == MirKind.NONE {
         return self.none_value();
     }
-    if to.kind in (MirKind.INT, MirKind.BOOL, MirKind.FLOAT, MirKind.ENUM) {
+    if to.kind == MirKind.ENUM {
+        return b.convert(
+            self.runtime_value("__jac_rt_enum_value", self.any_parts(value)), to
+        );
+    }
+    if to.kind in (MirKind.INT, MirKind.BOOL, MirKind.FLOAT) {
         bits = self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [value]);
         if to.kind == MirKind.BOOL {
             return b.compare("ne", bits, b.const_int(0, mir_int()));
         }
         if to.kind == MirKind.FLOAT {
-            return b.convert(self.emit_value(MirOp.BITCAST, mir_float(), [bits]), to);
+            held_any = self.spill(value);
+            raw = self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [held_any]);
+            tag = self.emit_value(MirOp.ANY_TAG, mir_int(), [held_any]);
+            integral = b.binary(
+                "or",
+                b.compare("eq", tag, b.const_int(ANY_INT_TAG, mir_int())),
+                b.compare("eq", tag, b.const_int(ANY_BOOL_TAG, mir_int()))
+            );
+            return b.convert(
+                b.select(
+                    integral,
+                    b.convert(raw, mir_float()),
+                    self.emit_value(MirOp.BITCAST, mir_float(), [raw])
+                ),
+                to
+            );
         }
         return b.convert(bits, to);
     }
@@ -171,19 +210,11 @@ impl MirLowering.identity(
 ) -> MirValue {
     b = self.builder();
     if left.type.kind == MirKind.ANY or right.type.kind == MirKind.ANY {
-        l = self.any_box(left, site);
-        r = self.any_box(right, site);
-        same_tag = b.compare(
-            "eq",
-            self.emit_value(MirOp.ANY_TAG, mir_int(), [l]),
-            self.emit_value(MirOp.ANY_TAG, mir_int(), [r])
+        return self.runtime_value(
+            "__jac_rt_any_same",
+            self.any_parts(self.any_box(left, site))
+                + self.any_parts(self.any_box(right, site))
         );
-        same_payload = b.compare(
-            "eq",
-            self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [l]),
-            self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [r])
-        );
-        return b.binary("and", same_tag, same_payload);
     }
     if mir_holds_ref(left.type)
         and mir_holds_ref(right.type)
@@ -494,19 +525,20 @@ impl MirLowering.any_isinstance(
             );
             continue;
         }
-        if self.is_enum_class(item) {
-            if not self.enum_owns_int_tag(site, item) {
-                raise MirRefused(
-                    mir_refusal(
-                        "call",
-                        "isinstance of an enum sharing the int tag",
-                        site,
-                        "An enum member boxes with the int tag, so a value that may also be an int or another enum cannot be told apart from it."
-                    )
-                );
-            }
+        if self.is_enum_class(item) and isinstance(item.type, ClassType) {
+            enum_type = mir_type_of(
+                item.type.clone_as_instance(),
+                MirPosition.VALUE,
+                site,
+                self.type_env or None
+            );
+            label = self.emit_value(
+                MirOp.CSTR, mir_c_ptr(mir_int(8, False)), [], str_value=enum_type.name
+            );
             verdict = b.binary(
-                "or", verdict, b.compare("eq", tag, b.const_int(ANY_INT_TAG, mir_int()))
+                "or",
+                verdict,
+                self.runtime_value("__jac_rt_any_enum_is", [tag, payload, label])
             );
             continue;
         }
@@ -632,30 +664,114 @@ impl MirLowering.hook_call(
     return direct;
 }
 
-impl MirLowering.enum_owns_int_tag(site: uni.UniNode, item: uni.Expr) -> bool {
-    if not isinstance(site, uni.FuncCall)
-        or not site.params
-        or not isinstance(item.type, ClassType) {
-        return False;
-    }
-    source = list(site.params)[0];
-    if not isinstance(source, uni.Expr) or source.type is None {
-        return False;
-    }
-    wanted = mir_type_of(
-        item.type.clone_as_instance(), MirPosition.VALUE, site, self.type_env or None
+impl MirLowering.enum_box(value: MirValue, site: uni.UniNode) -> MirValue {
+    return self.runtime_value(
+        "__jac_rt_enum_box",
+        [self.enum_desc(value.type, site), self.builder().convert(value, mir_int())]
     );
-    members = source.type.types
-        if isinstance(source.type, UnionType)
-        else [source.type];
-    for member in members {
-        made = mir_type_of(member, MirPosition.VALUE, site, self.type_env or None);
-        if made.kind == MirKind.ENUM and made.name != wanted.name {
-            return False;
-        }
-        if made.kind in (MirKind.INT, MirKind.ANY) {
-            return False;
-        }
+}
+
+impl MirLowering.enum_desc(t: MirType, site: uni.UniNode) -> MirValue {
+    b = self.builder();
+    thunk = self.enum_text_thunk(t, site);
+    text = b.const_int(0, mir_int());
+    if thunk {
+        i8p = mir_c_ptr(mir_int(8, False));
+        text = self.emit_value(
+            MirOp.PTR_INT,
+            mir_int(),
+            [
+                self.emit_value(
+                    MirOp.FN_ADDR, mir_c_fn([i8p], mir_none()), [], callee=thunk
+                )
+            ]
+        );
     }
-    return wanted.kind == MirKind.ENUM;
+    return self.runtime_value(
+        "__jac_rt_enum_desc",
+        [
+            self.emit_value(
+                MirOp.CSTR, mir_c_ptr(mir_int(8, False)), [], str_value=t.name
+            ),
+            text
+        ]
+    );
+}
+
+impl MirLowering.creation_kind(elem: MirType, site: uni.UniNode) -> MirValue {
+    if elem.kind == MirKind.ENUM {
+        return self.enum_desc(elem, site);
+    }
+    return self.builder().const_int(self.elem_kind(elem, site), mir_int());
+}
+
+impl MirLowering.enum_text_thunk(t: MirType, site: uni.UniNode) -> str {
+    found = self.enum_thunks.get(t.key);
+    if found is not None {
+        return found;
+    }
+    i8p = mir_c_ptr(mir_int(8, False));
+    symbol = f"{self.mir.prefix}.__enum_text.{len(self.enum_thunks)}";
+    fn = MirFunction(
+        name=f"__enum_text.{t.render()}",
+        symbol=symbol,
+        ret=mir_none(),
+        linkage="internal"
+    );
+    first = fn.new_block("entry");
+    frame = fn.new_value(i8p, "frame");
+    fn.params.append(MirParam(name="frame", value=frame));
+    saved = self.state;
+    self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
+    try {
+        b = self.builder();
+        base = self.address_of(frame);
+        member = b.convert(self.emit_value(MirOp.MEM_LOAD, mir_int(), [base]), t);
+        mode = self.emit_value(
+            MirOp.MEM_LOAD,
+            mir_int(),
+            [b.binary("add", base, b.const_int(TEXT_THUNK_MODE, mir_int()))]
+        );
+        repr_bb = fn.new_block("text.repr");
+        str_bb = fn.new_block("text.str");
+        done = fn.new_block("text.done");
+        b.cond_branch(
+            b.compare("ne", mode, b.const_int(0, mir_int())), repr_bb, str_bb
+        );
+        for (block, as_repr) in ((repr_bb, True), (str_bb, False)) {
+            b.position(block);
+            text = self.repr_of(member, site)
+                if as_repr
+                else self.str_value(member, site);
+            self.store_text_result(base, text);
+            b.branch(done);
+        }
+        b.position(done);
+        b.ret(None);
+    } except MirRefused as err {
+        self.state = saved;
+        self.enum_thunks[t.key] = "";
+        return "";
+    }
+    self.state = saved;
+    self.enum_thunks[t.key] = symbol;
+    self.nested.append(fn);
+    return symbol;
+}
+
+impl MirLowering.store_text_result(base: MirValue, text: MirValue) {
+    b = self.builder();
+    held = self.runtime_value(
+        "__jac_rt_str_ref",
+        [b.str_part(text, "root"), b.str_part(text, "data"), b.str_part(text, "len")]
+    );
+    self.runtime("__jac_rt_retain", [held]);
+    self.emit_value(
+        MirOp.MEM_STORE,
+        mir_none(),
+        [
+            b.binary("add", base, b.const_int(TEXT_THUNK_RESULT, mir_int())),
+            self.address_of(held)
+        ]
+    );
 }

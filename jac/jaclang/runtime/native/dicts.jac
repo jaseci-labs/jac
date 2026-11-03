@@ -17,6 +17,7 @@ glob KIND_INT: int = 0,
      TAG_OBJ: int = 6,
      TAG_BOOL: int = 7,
      TAG_NONE: int = 8,
+     TAG_ENUM: int = 9,
      INT_FLOAT_LIMIT: float = 9.0e18,
      KIND_NONE: int = -1;
 

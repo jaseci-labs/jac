@@ -64,6 +64,19 @@ impl mir_type_of(
     if isinstance(t, AnyType) and not t.is_foreign {
         return mir_any();
     }
+    if isinstance(t, FunctionType)
+        and any(lenient_c_slot(p.param_type) for p in t.parameters) {
+        params = [
+            mir_c_ptr(mir_int(8, False))
+                if lenient_c_slot(p.param_type)
+                else mir_type_of(p.param_type, MirPosition.C_FIELD, site, env)
+            for p in t.parameters
+        ];
+        ret = mir_c_ptr(mir_int(8, False))
+            if lenient_c_slot(t.return_type)
+            else mir_type_of(t.return_type, MirPosition.C_FIELD, site, env);
+        return mir_c_fn(params, ret);
+    }
     if isinstance(t, FunctionType) and position == MirPosition.C_FIELD {
         params = [
             mir_type_of(p.param_type, MirPosition.C_FIELD, site, env)
@@ -117,6 +130,18 @@ impl mir_union_type(
     }
     if all(member is shared for member in lowered) {
         return mir_opt(shared) if has_none and shared.kind != MirKind.ANY else shared;
+    }
+    addresses = [
+        member
+        for member in lowered
+        if member.kind == MirKind.C_PTR
+    ];
+    if addresses
+        and all(member.kind in (MirKind.C_PTR, MirKind.BOOL) for member in lowered) {
+        word = addresses[0]
+            if all(member is addresses[0] for member in addresses)
+            else mir_c_ptr(mir_int(8, False));
+        return word;
     }
     for member in lowered {
         if member.kind not in ANY_BOXABLE {
@@ -202,6 +227,9 @@ impl mir_class_type(
     }
     if name == "range" {
         return mir_range();
+    }
+    if name in FILE_TYPE_NAMES {
+        return mir_file(FILE_TYPE_NAMES[name]);
     }
     if name == "enumerate" {
         args = t.private.type_args if t.private else None;
@@ -366,4 +394,8 @@ impl mir_class_value_type(
     t: ClassType, env: (dict[str, TypeBase] | None) = None
 ) -> MirType {
     return mir_class("*");
+}
+
+impl lenient_c_slot(t: (TypeBase | None)) -> bool {
+    return isinstance(t, AnyType) and t.is_foreign and not t.foreign_scalar;
 }

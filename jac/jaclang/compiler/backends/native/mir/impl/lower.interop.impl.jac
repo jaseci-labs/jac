@@ -589,7 +589,7 @@ impl MirLowering.declare_c_definition(ab: uni.Ability) {
             );
         }
         ptype = self.symbol_type(pv.name.sym, pv);
-        if ptype.kind not in C_ABI_KINDS {
+        if ptype.kind not in C_ABI_KINDS + [MirKind.C_STRUCT] {
             raise MirRefused(
                 mir_refusal(
                     "C function definition",
@@ -608,7 +608,8 @@ impl MirLowering.declare_c_definition(ab: uni.Ability) {
         if ret.kind == MirKind.VOID {
             ret = mir_none();
         }
-        if plan != "value" or ret.kind not in C_ABI_KINDS + [MirKind.NONE] {
+        if plan != "value"
+            or ret.kind not in C_ABI_KINDS + [MirKind.NONE, MirKind.C_STRUCT] {
             raise MirRefused(
                 mir_refusal(
                     "C function definition",
@@ -621,8 +622,24 @@ impl MirLowering.declare_c_definition(ab: uni.Ability) {
     }
     key = id(ab);
     self.decl_syms[id(self.ability_sym(ab))] = key;
+    by_value = ret.kind == MirKind.C_STRUCT
+        or any(ptype.kind == MirKind.C_STRUCT for ptype in params);
+    if by_value and packed {
+        raise MirRefused(
+            mir_refusal(
+                "C function definition",
+                f"{name} with variadic parameters and C structs by value",
+                ab
+            )
+        );
+    }
     self.decls[key] = MirDecl(
-        ability=ab, symbol=name, params=params, ret=ret, c_variadic=packed
+        ability=ab,
+        symbol=f"{name}.jac" if by_value else name,
+        params=params,
+        ret=ret,
+        c_variadic=packed,
+        c_symbol=name if by_value else ""
     );
     self.order.append(key);
 }

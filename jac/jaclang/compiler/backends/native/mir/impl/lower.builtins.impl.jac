@@ -266,3 +266,97 @@ impl MirLowering.sys_exit(nd: uni.FuncCall) -> MirValue {
     self.runtime("__jac_rt_exit", [code]);
     return self.none_value();
 }
+
+impl MirLowering.cstr_of(value: MirValue) -> MirValue {
+    b = self.builder();
+    text = self.as_text(value);
+    held = self.runtime_value(
+        "__jac_rt_str_ref",
+        [b.str_part(text, "root"), b.str_part(text, "data"), b.str_part(text, "len")]
+    );
+    return self.emit_value(MirOp.PTR_CAST, mir_c_ptr(mir_int(8, False)), [held]);
+}
+
+impl MirLowering.open_call(nd: uni.FuncCall) -> MirValue {
+    b = self.builder();
+    made_type = self.expr_type(nd);
+    if made_type.kind != MirKind.FILE {
+        raise MirRefused(mir_refusal("call", f"open as {made_type.render()}", nd));
+    }
+    positional: list[uni.Expr] = [];
+    mode_nd: (uni.Expr | None) = None;
+    for arg in list(nd.params or []) {
+        if isinstance(arg, uni.KWPair) {
+            key = arg.key.sym_name if arg.key is not None else "";
+            if key == "mode" {
+                mode_nd = arg.value;
+            } elif key == "encoding" {
+                self.lower_expr(arg.value);
+            } else {
+                raise MirRefused(mir_refusal("call argument", f"open {key}=", arg));
+            }
+        } else {
+            positional.append(arg);
+        }
+    }
+    if not positional or len(positional) > 2 {
+        raise MirRefused(
+            mir_refusal("call", f"open with {len(positional)} arguments", nd)
+        );
+    }
+    if len(positional) == 2 {
+        mode_nd = positional[1];
+    }
+    path = self.cstr_of(self.lower_expr(positional[0]));
+    mode = self.cstr_of(self.lower_expr(mode_nd))
+        if mode_nd is not None
+        else self.cstr_of(b.const_str("r", mir_str()));
+    made = self.runtime_value(
+        "__jac_rt_file_open", [path, mode, b.const_bool(made_type.name == "BinaryFile")]
+    );
+    self.raise_if(
+        b.compare("eq", self.address_of(made), b.const_int(0, mir_int())),
+        "FileNotFoundError",
+        "No such file or directory"
+    );
+    return b.ref_cast(made, made_type, True);
+}
+
+impl MirLowering.file_method(
+    handle: MirValue, name: str, nd: uni.FuncCall
+) -> (MirValue | None) {
+    b = self.builder();
+    binary = handle.type.name == "BinaryFile";
+    args = self.call_args(nd);
+    if name in ("read", "readline") and not args {
+        made = self.runtime_value(
+            "__jac_rt_file_read",
+            [handle, b.const_bool(binary), b.const_bool(name == "readline")]
+        );
+        if binary {
+            return b.ref_cast(made, mir_bytes(), True);
+        }
+        text = b.ref_cast(made, mir_str_ref(), True);
+        return self.owned_text(text);
+    }
+    if name == "write" and len(args) == 1 {
+        value = self.spill(self.lower_expr(args[0]));
+        (data, size) = self.text_bytes(value);
+        return self.runtime_value("__jac_rt_file_write", [handle, data, size]);
+    }
+    if name in ("close", "flush") and not args {
+        self.runtime(f"__jac_rt_file_{name}", [handle]);
+        return self.none_value();
+    }
+    if name == "__enter__" and not args {
+        return handle;
+    }
+    if name == "__exit__" {
+        for arg in args {
+            self.lower_expr(arg);
+        }
+        self.runtime("__jac_rt_file_close", [handle]);
+        return b.const_bool(False);
+    }
+    return None;
+}

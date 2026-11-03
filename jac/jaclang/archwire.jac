@@ -10693,6 +10693,7 @@ graph import compiler.backends.native.mir {
             mir_class,
             mir_dict,
             mir_enum,
+            mir_file,
             mir_float,
             mir_fn,
             mir_int,
@@ -15100,7 +15101,9 @@ graph import runtime.native {
         bytes {
             __jac_rt_alloc,
             __jac_rt_free_block,
+            __jac_rt_release,
             __jac_rt_release_acyclic,
+            __jac_rt_retain,
             __jac_rt_set_type
         },
         dicts {
@@ -15131,6 +15134,7 @@ graph import runtime.native {
             __jac_rt_str_new,
             __jac_rt_str_size
         },
+        bytes { __jac_rt_str_new },
         dicts { __jac_rt_str_size },
         format | iterators | text { __jac_rt_str_new, __jac_rt_str_size },
         lists { __jac_rt_str_cmp, __jac_rt_str_size },

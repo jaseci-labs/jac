@@ -5,7 +5,9 @@ import from c {
         p: int, n: int
     ) -> int;  def calloc(n: int, size: int) -> int;  def memset(
         p: int, value: i32, n: int
-    ) -> int;  def pthread_getspecific(key: int) -> int;
+    ) -> int;  def pthread_getspecific(key: int) -> int;  def write(
+        fd: i32, buf: ptr[u8], count: i64
+    ) -> i64;  def strlen(text: ptr[u8]) -> i64;
 }
 
 glob HDR_ALLOC_ID_BACK: int = 32,
@@ -198,6 +200,13 @@ def:pub __jac_rt_cycles_enable -> None;
 def:pub __jac_rt_mark_threaded -> None;
 
 def:pub __jac_rt_collect_cycles -> None;
+
+def:pub __jac_rt_rc_debug_set(on: bool);
+
+def _g_rc_debug -> int;
+def _g_gc_none -> int;
+
+def _rc_trace(label: ptr[u8], o: int);
 
 def:pub __jac_rt_trace_register(dtor: int, trace: int);
 

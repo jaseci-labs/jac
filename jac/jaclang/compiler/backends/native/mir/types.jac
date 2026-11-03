@@ -31,7 +31,8 @@ enum MirKind {
     C_STRUCT = "c.struct",
     C_VIEW = "c.view",
     C_FN = "c.fn",
-    C_PIN = "c.pin"
+    C_PIN = "c.pin",
+    FILE = "file"
 }
 
 obj MirType {
@@ -105,6 +106,8 @@ def mir_fn(params: list[MirType], ret: MirType) -> MirType;
 def mir_iter(elem: MirType) -> MirType;
 
 def mir_range -> MirType;
+
+def mir_file(binary: bool) -> MirType;
 
 def mir_complex -> MirType;
 

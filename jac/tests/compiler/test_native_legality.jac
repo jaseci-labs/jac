@@ -97,10 +97,14 @@ glob PIN_FIXTURE_DIR = os.path.join(
          "}\n"
      ),
      ERASED_SRC = (
-         "import json;\n\n"
+         "def pick(x: int | None) -> int {\n"
+         "    if x < 5 {\n"
+         "        return 1;\n"
+         "    }\n"
+         "    return 0;\n"
+         "}\n\n"
          "with entry {\n"
-         "    data = json.loads(\"[1, 2]\");\n"
-         "    print(1 in data);\n"
+         "    print(pick(3));\n"
          "}\n"
      ),
      STRICT_SRC = (
@@ -455,7 +459,7 @@ test "what only matters natively is a note on the typed module, never a type err
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert parses == 1 , f"the module is analyzed once, got {parses} analyses";
     assert mod.decided_codespace != 'native';
-    assert "E1124" in [note.code for note in capability_notes_of(prog, path, "native")];
+    assert "E1121" in [note.code for note in capability_notes_of(prog, path, "native")];
 }
 
 test "a finding that only matters natively keeps its own code where native is required" {
@@ -472,8 +476,9 @@ test "a finding that only matters natively keeps its own code where native is re
         for e in forced.errors_had
         if e.code is not None
     ];
-    assert "E1124" in codes and "E1121" in codes , (
-        f"forced native must report the recorded findings under their own "
+    assert "E1121" in codes and "E1124" not in codes , (
+        f"forced native must report the recorded finding under its own code, and "
+        f"membership over an `any` operand is answered natively, not a finding: "
         f"codes: {[str(e) for e in forced.errors_had]}"
     );
     (prog, mod, soft_path, parses) = compile_native_default(STRICT_SRC);

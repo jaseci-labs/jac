@@ -1,5 +1,16 @@
 enum MirPosition { VALUE, FIELD, SIGNATURE, ELEMENT, C_FIELD }
 
+glob FILE_TYPE_NAMES: dict[str, bool] = {
+         "File": False,
+         "TextIO": False,
+         "TextIOWrapper": False,
+         "BinaryFile": True,
+         "BinaryIO": True,
+         "BufferedReader": True,
+         "BufferedWriter": True,
+         "BufferedRandom": True
+     };
+
 glob LIST_CLASSES: list[str] = ["list", "Sequence", "MutableSequence"],
      SET_CLASSES: list[str] = ["set", "frozenset", "AbstractSet", "MutableSet"];
 
@@ -50,6 +61,8 @@ def mir_refusal(
 ) -> NativeRefusal;
 
 def refusal_of(err: MirRefused) -> NativeRefusal;
+
+def lenient_c_slot(t: (TypeBase | None)) -> bool;
 
 def mir_type_of(
     t: (TypeBase | None),
