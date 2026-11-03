@@ -13,6 +13,7 @@ glob ANY_TAG_INT: int = 0,
      ANY_TAG_OBJ: int = 6,
      ANY_TAG_BOOL: int = 7,
      ANY_TAG_NONE: int = 8,
+     ANY_TAG_ENUM: int = 9,
      LIST_LEN: int = 0,
      HDR_TAG_BACK: int = 24,
      ANY_TAG_FIRST_REF: int = 2,
@@ -89,7 +90,17 @@ glob KIND_INT: int = 0,
      THUNK_MODE: int = 8,
      THUNK_RESULT: int = 16,
      THUNK_FRAME: int = 24,
-     TEXT_REG_INITIAL: int = 64;
+     TEXT_REG_INITIAL: int = 64,
+     ENUM_DESC: int = 0,
+     ENUM_VALUE: int = 8,
+     ENUM_NEXT: int = 16,
+     ENUM_SIZE: int = 24,
+     DESC_NEXT: int = 0,
+     DESC_NAME: int = 8,
+     DESC_TEXT: int = 16,
+     DESC_BOXES: int = 24,
+     DESC_SIZE: int = 32,
+     KIND_DESC_MIN: int = 256;
 
 def:pub __jac_rt_elem_tag(bits: int, kind: int) -> int;
 
@@ -110,6 +121,26 @@ def:pub __jac_rt_any_contains(
 ) -> bool;
 
 def:pub __jac_rt_text_register(dtor: int, thunk: int);
+
+def:pub __jac_rt_enum_desc(name: ptr[u8], text: int) -> int;
+
+def:pub __jac_rt_enum_intern(desc: int, value: int) -> int;
+
+def:pub __jac_rt_enum_box(desc: int, value: int) -> int;
+
+def _enum_name(box: int) -> ptr[u8];
+
+def:pub __jac_rt_class_tag(name: ptr[u8]) -> int;
+
+def:pub __jac_rt_ref_swap(slot: int, value: int);
+
+def:pub __jac_rt_enum_value(tag: int, payload: int) -> int;
+
+def:pub __jac_rt_any_enum_is(tag: int, payload: int, name: ptr[u8]) -> bool;
+
+def:pub __jac_rt_any_same(ta: int, pa: int, tb: int, pb: int) -> bool;
+
+def _enum_text(sb: int, box: int, mode: int);
 
 def _ref_tag(o: int) -> int;
 

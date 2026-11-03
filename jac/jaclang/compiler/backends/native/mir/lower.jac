@@ -63,10 +63,12 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      ANY_OBJ_TAG: int = 6,
      ANY_BOOL_TAG: int = 7,
      ANY_NONE_TAG: int = 8,
+     ANY_ENUM_TAG: int = 9,
      OSP_DIR_IN: int = 1,
      OSP_DIR_OUT: int = 2,
      OSP_DIR_ANY: int = 3,
      OSP_TAG_OFFSET: int = 8,
+     OSP_REPORTS_OFFSET: int = 16,
      UNTYPED_OSP_TAG: int = -1,
      OSP_ROOT_HELP: str = "The native tier has no root node yet. Build the graph from a node of your own, or keep this module on the server codespace.",
      OSP_ROOT_CONNECT_HELP: str = "The native tier has no root node. A plain `root ++> node` is accepted as an anchor that nothing native can observe; one that names an edge, collects it, points at root, or sits in a module that follows edges backward would be missed.",
@@ -305,6 +307,10 @@ obj MirLowering {
         fn_values: dict[int, MirDecl] = {},
         text_fns: dict[str, str] = {},
         text_serial: int = 0,
+        enum_thunks: dict[str, str] = {},
+        slot_cache: dict[str, dict[int, list[str]]] = {},
+        named_archs: dict[str, uni.Archetype] = {},
+        indexed_units: set[int] = set(),
         order: list[int] = [],
         refusals: dict[str, list[NativeRefusal]] = {},
         osp_model: (OspModel | None) = None,
@@ -606,6 +612,30 @@ obj MirLowering {
     def refusal_key(decl: MirDecl) -> str;
     def member_owner(member: uni.Name) -> (uni.Archetype | None);
     def union_archetypes(t: (TypeBase | None)) -> list[uni.Archetype];
+    def union_method_owner(
+        nd: uni.FuncCall, receiver: uni.Expr
+    ) -> (uni.Archetype | None);
+
+    def is_class_operand(nd: (uni.UniNode | None)) -> bool;
+    def checked_cross_cast(
+        value: MirValue, to: MirType, site: uni.UniNode
+    ) -> MirValue;
+
+    def member_test(
+        held: MirValue, view: MirValue, arch: uni.Archetype, site: uni.UniNode
+    ) -> MirValue;
+
+    def exact_class_test(
+        named: MirValue, classes: list[str], site: uni.UniNode
+    ) -> MirValue;
+
+    def layout_registries(name: str) -> list[any];
+    def runtime_classes(target: str, seen_from: str) -> list[str];
+    def slot_groups(
+        target: str, seen_from: str, name: str, index: int, method: bool
+    ) -> dict[int, list[str]];
+
+    def arch_named(name: str, site: uni.UniNode) -> uni.Archetype;
     def union_field_place(
         holder: MirValue, members: list[uni.Archetype], name: str, site: uni.UniNode
     ) -> MirValue;
@@ -1109,7 +1139,17 @@ obj MirLowering {
         value: MirValue, items: list[uni.Expr], site: uni.UniNode
     ) -> MirValue;
 
-    def enum_owns_int_tag(site: uni.UniNode, item: uni.Expr) -> bool;
+    def enum_box(value: MirValue, site: uni.UniNode) -> MirValue;
+    def osp_class_tag(nd: uni.Expr) -> (MirValue | None);
+    def is_walker_ref(nd: uni.Expr) -> bool;
+    def lower_osp_walker_spawn(
+        nd: uni.BinaryExpr, walker_nd: uni.Expr, place_nd: uni.Expr
+    ) -> MirValue;
+
+    def enum_desc(t: MirType, site: uni.UniNode) -> MirValue;
+    def creation_kind(elem: MirType, site: uni.UniNode) -> MirValue;
+    def enum_text_thunk(t: MirType, site: uni.UniNode) -> str;
+    def store_text_result(base: MirValue, text: MirValue);
     def any_isinstance(
         value: MirValue, target: uni.Expr, site: uni.UniNode
     ) -> MirValue;

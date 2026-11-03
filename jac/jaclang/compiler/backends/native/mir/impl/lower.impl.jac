@@ -1608,6 +1608,18 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         if via_method is not None {
             return via_method;
         }
+        if not self.is_class_operand(nd.target.target) {
+            raise MirRefused(
+                mir_refusal(
+                    "call",
+                    f"method {self.name_of(decl.ability)} on {self.expr_type(
+                        nd.target.target
+                    ).render()}",
+                    nd,
+                    "The receiver's archetype is not statically known, so the method cannot be dispatched natively."
+                )
+            );
+        }
     }
     if decl is not None and decl.c_variadic and decl.self_type is None {
         given = self.call_args(nd);
@@ -1905,6 +1917,9 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
             or self.obj_extends(to.name, value.type.name)
         ) {
         return self.builder().ref_cast(value, to, False);
+    }
+    if value.type.kind == MirKind.OBJ and to.kind == MirKind.OBJ {
+        return self.checked_cross_cast(value, to, site);
     }
     if value.type.kind == MirKind.CLASS and to.kind == MirKind.CLASS {
         return self.emit_value(MirOp.PTR_CAST, to, [value]);
@@ -3344,6 +3359,9 @@ impl MirLowering.method_call(
     owner_arch = self.holder_arch(target.target)
         if isinstance(target.target, uni.Expr)
         else None;
+    if owner_arch is None and isinstance(target.target, uni.Expr) {
+        owner_arch = self.union_method_owner(nd, target.target);
+    }
     if owner_arch is not None {
         if isinstance(target.target.type, ClassType)
             and not target.target.type.is_instance() {

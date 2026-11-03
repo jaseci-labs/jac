@@ -161,6 +161,15 @@ impl MirLowering.compare_special(
     b = self.builder();
     if (left.type.kind == MirKind.ENUM or right.type.kind == MirKind.ENUM)
         and op not in (Tok.KW_IN, Tok.KW_NIN) {
+        if MirKind.ANY in (left.type.kind, right.type.kind)
+            and op in COMPARE_OPERATORS {
+            return self.any_compare(COMPARE_OPERATORS[op], left, right, site);
+        }
+        if MirKind.ANY in (left.type.kind, right.type.kind)
+            and op in (Tok.KW_IS, Tok.KW_ISN) {
+            same = self.identity(left, right, site);
+            return same if op == Tok.KW_IS else b.logical_not(same);
+        }
         if left.type is not right.type
             and (left.type.is_numeric() or right.type.is_numeric()) {
             as_left = self.enum_as_int(left, site);
