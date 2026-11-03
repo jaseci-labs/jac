@@ -174,20 +174,6 @@ impl MirLowering.lower_yield(nd: uni.YieldExpr) {
             )
         );
     }
-    cursor = nd.parent;
-    while cursor is not None and not isinstance(cursor, (uni.Ability, uni.Module)) {
-        if isinstance(cursor, uni.WithStmt) {
-            raise MirRefused(
-                mir_refusal(
-                    "expression",
-                    "yield inside with",
-                    nd,
-                    "A native generator resumes in a fresh activation, so a context around its yield would not be entered again; move the yield out of the with."
-                )
-            );
-        }
-        cursor = cursor.parent;
-    }
     b = self.builder();
     if nd.with_from {
         if nd.expr is None {

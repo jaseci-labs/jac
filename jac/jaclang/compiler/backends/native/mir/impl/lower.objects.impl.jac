@@ -952,6 +952,18 @@ impl MirLowering.field_place(
         and self.obj_extends(obj_def.name, holder.type.name) {
         holder = self.builder().ref_cast(holder, mir_obj(obj_def.name), False);
     }
+    if holder.type.kind == MirKind.OBJ
+        and holder.type.name != obj_def.name
+        and not self.obj_extends(holder.type.name, obj_def.name) {
+        raise MirRefused(
+            mir_refusal(
+                "attribute access",
+                f"{obj_def.name}.{name} on {holder.type.render()}",
+                site,
+                "The holder's static archetype is not on this field's archetype lineage."
+            )
+        );
+    }
     if holder.type.kind not in (MirKind.OBJ, MirKind.OSP) {
         raise MirRefused(
             mir_refusal(
@@ -2018,6 +2030,11 @@ impl MirLowering.union_field_place(
     holder: MirValue, members: list[uni.Archetype], name: str, site: uni.UniNode
 ) -> MirValue {
     b = self.builder();
+    if holder.type.kind == MirKind.OPT {
+        holder = self.opt_unwrap_checked(
+            holder, f"'NoneType' object has no attribute '{name}'", "AttributeError"
+        );
+    }
     held = self.spill(holder);
     places: list[tuple[MirValue, MirValue]] = [];
     for arch in members {
@@ -2204,7 +2221,7 @@ impl MirLowering.accessor_set(target: uni.AtomTrailer, nd: uni.Assignment) -> bo
         );
         value = self.str_concat(current, self.coerce(value, mir_str(), nd))
             if current.type.kind == MirKind.STR and op == Tok.PLUS
-            else self.arith(op, current, value, nd);
+            else self.aug_arith(op, current, value, nd);
     }
     self.invoke_method(
         decl,
