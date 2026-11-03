@@ -7,8 +7,7 @@ walker CFGBuildPass(TreePass) {
             AnalysisFact.CFG_TRUE,
             AnalysisFact.CFG_FALSE,
 
-        ),
-        kernel_safe=True
+        )
     );
 
     def link_bbs(source: UniCFGNode, target: UniCFGNode) -> None;

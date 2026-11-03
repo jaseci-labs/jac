@@ -63,7 +63,7 @@ kind/capabilities/entry/payloads)::
       },
       "native": {                       # optional (format 9): the package's
         "units": {                      # native units, by pkg-relative source
-          "compiler/jc_unit.jac": {"jir": "compiler/jc_unit.jir",
+          "compiler/kernel_module.jac": {"jir": "compiler/kernel_module.jir",
                                    "iface_digest": "..."}
         },
         "artifact": {                   # the one linked artifact

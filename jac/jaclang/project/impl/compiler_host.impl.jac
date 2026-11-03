@@ -494,9 +494,7 @@ impl ProjectHost.woven_module(
     } except Exception {
         return None;
     }
-    (module, had_error) = parse_woven(
-        source, path, program, annex_sources(path), load_kernel=False
-    );
+    (module, had_error) = parse_woven(source, path, program, annex_sources(path));
     if had_error {
         return None;
     }

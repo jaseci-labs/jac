@@ -29,8 +29,7 @@ enum AnalysisFact(StrEnum) {
 
 obj PassContract {
     has requires: tuple[AnalysisFact, ...] = (),
-        provides: tuple[AnalysisFact, ...] = (),
-        kernel_safe: bool = False;
+        provides: tuple[AnalysisFact, ...] = ();
 }
 
 enum CompilationProduct {

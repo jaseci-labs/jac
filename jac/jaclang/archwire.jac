@@ -2722,7 +2722,6 @@ graph import {
     runtime.osp_tag ++> compiler.backends.es.esast_gen_pass.EsastGenPass._build_osp_tags_js
         | compiler.backends.native.na_ir_gen_pass
         | compiler.backends.py.jcir_gen_pass.JcirGenPass.exit_module
-        | compiler.jc_unit._alert_tag
         | compiler.passes.osp_analysis { stable_osp_tag }
     runtime.osp_tag --> [
         compiler.backends.es.esast_gen_pass.EsastGenPass._edge_tag_literal {
@@ -6080,7 +6079,6 @@ graph import compiler {
             CompilationProduct,
             require
         },
-        jc_unit { early_passes },
         tests.test_module_exports
             | tools.cfg_dot.cfg_dot_from_file
             | tools.jac_formatter_pass.format_module
@@ -6880,7 +6878,6 @@ graph import compiler {
             | driver.module_compile
             | driver.program.JacProgram.stamp_boundary_facts
             | driver.unit_products
-            | jc_unit
             | passes.boundary_analysis_pass
             | passes.placement_pass
             | passes.static_analysis_pass.StaticAnalysisPass._check_client_imports
@@ -7629,7 +7626,6 @@ graph import compiler {
         tools.jac_auto_lint_pass.JacAutoLintPass._reparse_signature { tokenize_full },
     ]
     frontend.parser.parser ++> [
-        jc_unit { parse_program },
         tools.jac_auto_lint_pass.JacAutoLintPass._impl_header { Parser },
         tools.jac_auto_lint_pass.JacAutoLintPass._reparse_signature { Parser },
         types.type_evaluator.TypeEvaluator._resolve_string_type_expr {
@@ -7638,7 +7634,6 @@ graph import compiler {
     ]
     frontend.parser.tokens ++> [
         driver.wiring { is_name_usable_kind, lookup_keyword },
-        jc_unit { CommentData, SrcDiag },
         tools.grammar_extract_pass { BUILTIN_TYPE_KINDS, TokenKind },
     ]
     frontend.python.annotation_unparse ++> backends.py.jacpython.cpy_codegen {
@@ -7967,7 +7962,6 @@ graph import compiler {
             | passes.ownership_check_pass
             | passes.region_infer_pass
             | tools.jac_formatter_pass { BodyRole, Kid },
-        jc_unit { AccessorsRole, BodyRole, SpecRole },
         passes.annex_weave | passes.static_analysis_pass { BodyRole },
         passes.pyast_load_pass {
             Kid,
@@ -8018,6 +8012,7 @@ graph import compiler {
         backends.py.jcir_bc_gen_pass
             | driver.context_passes
             | driver.module_analysis
+            | driver.pass_driver
             | passes.annex_weave
             | tests.test_client_codegen_facts
             | tests.test_pipeline_products
@@ -8208,7 +8203,6 @@ graph import compiler {
         c_interop.final_glob_value { Name },
         c_interop.named_function_of { Ability, Name },
         capability_notes | passes.execution { Module, UniNode },
-        driver.pass_driver { Module, Source },
         driver.pipeline_runner.compile_application { Import, ModulePath },
         driver.program.JacProgram.resolve_absorb_imports { find_python_scope_node_of },
         driver.wiring {
@@ -8275,7 +8269,6 @@ graph import compiler {
             ModuleItem,
             Name
         },
-        jc_unit { Import, Module },
         native_bindings {
             Ability,
             Archetype,
@@ -9574,13 +9567,6 @@ graph import compiler {
         },
     ]
     type intrinsic_registry ++> symbol_utils { IntrinsicRegistry }
-    jc_materialize ++> jc_unit {
-        hint_commentdata,
-        hint_srcdiag,
-        jc_mz_obj,
-        jc_mz_run,
-        jc_mz_shape_keys
-    }
     kernel_api ++> kernel_module {
         KERNEL_API_VERSION,
         KernelRequest,
@@ -9665,9 +9651,8 @@ graph import compiler {
     passes.annex_weave ++> [
         driver.wiring { WovenAnnex, import_form },
         frontend.parser.frontend { WovenAnnex, merge_annex_into },
-        frontend.parser.frontend.parse_woven | jc_unit { merge_annex_into },
+        frontend.parser.frontend.parse_woven { merge_annex_into },
     ]
-    type passes.annex_weave ++> frontend.host | frontend.kernel_host { WovenAnnex }
     passes.ast_validation_pass ++> driver.pipeline { ASTValidationPass }
     passes.boundary_analysis_pass ++> driver.pipeline { BoundaryAnalysisPass }
     passes.capability_check_pass ++> [
@@ -9709,8 +9694,8 @@ graph import compiler {
             | placement.placement_solver._emit_solver_warning { Alert },
         driver.pass_driver { Alert, CompilerPass, DiagnosticPolicy },
         driver.pipeline { CompilerPass, PassSchedule },
-        driver.progstate { Alert, CompileContext, PassResult },
-        jc_unit | types.type_evaluator { CompileContext },
+        driver.progstate { Alert, CompileContext },
+        types.type_evaluator { CompileContext },
     ]
     passes.context --> driver.compiler.assemble_jcir { Alert }
     type passes.context ++> [
@@ -10029,7 +10014,7 @@ graph import compiler {
     passes.static_analysis_pass ++> driver.pipeline.analysis_passes {
         StaticAnalysisPass
     }
-    passes.sym_tab_build_pass ++> driver.pipeline | jc_unit { SymTabBuildPass }
+    passes.sym_tab_build_pass ++> driver.pipeline { SymTabBuildPass }
     passes.sym_tab_build_pass --> driver.program.JacProgram.load_dependency_module {
         SymTabBuildPass
     }
@@ -12071,10 +12056,8 @@ graph import compiler.frontend {
             ProjectDefaults,
             ProjectFacts
         },
-        parser.frontend.parse_woven | unitree.ModulePath.resolve_relative_path {
-            active_host
-        },
         source_layout { PathFacts },
+        unitree.ModulePath.resolve_relative_path { active_host },
     ]
     host --> [
         codeinfo.effective_default_codespace
@@ -12582,7 +12565,6 @@ graph import compiler.frontend.parser {
         frontend { CommentData, SrcDiag },
         lexer { CommentData, LexToken, SourceLoc, SrcDiag, TokenKind, lookup_keyword },
         parser {
-            CommentData,
             LexToken,
             SourceLoc,
             SrcDiag,
@@ -13550,7 +13532,7 @@ graph import compiler.passes {
             | jsx_intrinsic_guard_pass
             | semantic_analysis_pass
             | sym_tab_build_pass { TreePass },
-        execution { Alert, CompileContext, CompilerPass, DiagnosticPolicy, PassResult },
+        execution { Alert, CompileContext, CompilerPass, DiagnosticPolicy },
         placement_pass { Alert, CompilerPass },
         type_checker_pass { CompileContext, TreePass },
     ]

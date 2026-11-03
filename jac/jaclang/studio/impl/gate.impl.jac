@@ -885,7 +885,7 @@ impl symbol_table(text: str, path: str) -> dict[str, tuple[str, int, int, str, s
     if not text.strip() {
         return table;
     }
-    (module, had_error) = parse_woven(text, path, None, [], load_kernel=False);
+    (module, had_error) = parse_woven(text, path, None, []);
     if module is None {
         return table;
     }
@@ -1037,7 +1037,7 @@ impl import_lines(text: str, path: str) -> list[str] {
         return out;
     }
     try {
-        (module, had_error) = parse_woven(text, path, None, [], load_kernel=False);
+        (module, had_error) = parse_woven(text, path, None, []);
     } except Exception {
         return out;
     }

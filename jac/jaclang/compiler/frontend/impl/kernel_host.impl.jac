@@ -851,25 +851,6 @@ impl KernelHost.keep_native_scan_record(path: str, digest: str, text: str) {
     }
 }
 
-impl KernelHost.native_parse(
-    source_str: str,
-    file_path: str,
-    program: (JacProgram | None),
-    annexes: list[WovenAnnex],
-    early_context: str = "",
-    load_kernel: bool = True
-) -> (tuple[Module, bool] | None) {
-    if self.kernel_only("native_parse") {
-        return None;
-    }
-    with self.delegating("native_parse") as host {
-        answer = host.native_parse(
-            source_str, file_path, program, annexes, early_context, load_kernel
-        );
-    }
-    return answer;
-}
-
 impl KernelHost.woven_module(
     path: str, program: (JacProgram | None)
 ) -> (Module | None) {

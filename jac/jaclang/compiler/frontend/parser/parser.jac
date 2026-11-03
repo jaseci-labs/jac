@@ -424,11 +424,6 @@ obj Parser {
     def parse_type_params -> tuple[(list[TypeParam], list[Token])];
 }
 
-def parse_program(
-    source: str, file_path: str
-) -> tuple[(Module, int, list[SrcDiag], list[CommentData], list[SrcDiag], int)];
-
-
 def parse_expression(
     source: str, file_path: str = "<input>"
 ) -> tuple[Expr, bool, list[SrcDiag], list[SrcDiag]];
