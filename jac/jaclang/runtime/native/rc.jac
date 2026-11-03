@@ -7,7 +7,7 @@ import from c {
         p: int, value: i32, n: int
     ) -> int;  def write(fd: i32, buf: ptr[u8], count: i64) -> i64;  def strlen(
         text: ptr[u8]
-    ) -> i64;
+    ) -> i64;  def atexit(handler: int) -> i32;
 }
 
 glob HDR_ALLOC_ID_BACK: int = 32,
@@ -207,6 +207,14 @@ def _g_rc_debug -> int;
 def _g_gc_none -> int;
 
 def _rc_trace(label: ptr[u8], o: int);
+
+def _rc_hex(o: int);
+
+def _live_track(o: int);
+
+def _live_forget(o: int);
+
+def _live_dump;
 
 def:pub __jac_rt_trace_register(dtor: int, trace: int);
 

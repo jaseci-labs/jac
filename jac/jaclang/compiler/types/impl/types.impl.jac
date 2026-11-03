@@ -1044,8 +1044,23 @@ impl ClassType.lookup_member_symbol(
     member: str, r_overloaded: list[Symbol] | None = None
 ) -> (Symbol | None) {
     ensure_mro_fresh(self);
+    def init_param_member(sym: Symbol) -> bool {
+        decl = sym.decl;
+        if decl is not None
+            and isinstance(decl.name_of, ParamVar)
+            and isinstance(sym.parent_tab, Archetype) {
+            return True;
+        }
+        provider: any = sym.provider;
+        bits: any = getattr(provider, "symbits", 0) if provider is not None else 0;
+        return isinstance(bits, int) and (bits & SYMF_INIT_PARAM) != 0;
+    }
     for cls in self.shared.mro {
-        all_syms = collect_member_syms(cls.shared.symbol_table, member);
+        all_syms = [
+            s
+            for s in collect_member_syms(cls.shared.symbol_table, member)
+            if not init_param_member(s)
+        ];
         if all_syms {
             if r_overloaded is not None and len(all_syms) > 1 {
                 r_overloaded.extend(all_syms[1:]);
@@ -1057,6 +1072,11 @@ impl ClassType.lookup_member_symbol(
     for cls in self.shared.mro {
         arch = cls.shared.symbol_table;
         if not isinstance(arch, Archetype) {
+            for recorded in collect_member_syms(arch, member) {
+                if init_param_member(recorded) {
+                    return recorded;
+                }
+            }
             continue;
         }
         is_class = arch.arch_type.name == 'KW_CLASS';

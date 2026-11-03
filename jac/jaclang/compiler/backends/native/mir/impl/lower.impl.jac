@@ -2286,17 +2286,7 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         and os.path.basename(callee.loc.mod_path) == "jac_builtins.pyi" {
         return self.wrapping_call(nd, name, self.call_args(nd));
     }
-    if isinstance(nd.target, uni.Name)
-        and (
-            callee is None
-            or os.path.basename(callee.loc.mod_path)
-                in (
-                    "builtins.pyi",
-                    "builtins.jac",
-                    "na_builtins.pyi",
-                    "jac_builtins.pyi"
-                )
-        ) {
+    if isinstance(nd.target, uni.Name) and self.builtin_callee(callee) {
         builtin = self.builtin_call(nd, name);
         if builtin is not None {
             return builtin;
@@ -2348,7 +2338,9 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     if via_type is not None {
         return via_type;
     }
-    if isinstance(target, uni.Expr) and target.type is not None {
+    if isinstance(target, uni.Expr)
+        and target.type is not None
+        and not isinstance(target.type, OverloadedType) {
         target_type = self.expr_type(target);
         if target_type.kind == MirKind.FN {
             return self.closure_call(nd, self.callee_value(target));
@@ -3137,9 +3129,7 @@ impl MirLowering.lower_for_core(nd: uni.InForStmt) {
         and isinstance(source.target, uni.Name)
         and source.target.value == "range" {
         callee = source.callee_decl;
-        if callee is None
-            or os.path.basename(callee.loc.mod_path)
-                in ("builtins.pyi", "builtins.jac", "na_builtins.pyi") {
+        if self.builtin_callee(callee) {
             bounds = self.call_args(source);
             if 1 <= len(bounds) <= 3 {
                 self.lower_range_for(nd, bounds);
@@ -3315,6 +3305,7 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
             owner = self.member_owner(right);
             if owner is not None
                 and owner is not arch
+                and owner.loc.mod_path.endswith(".jac")
                 and self.obj_extends(
                     self.object_type(owner).name, self.object_type(arch).name
                 ) {
@@ -3962,22 +3953,11 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
     }
     if dispatch == IntrinsicDispatch.MEM_LOAD {
         address = self.intrinsic_operand(args[0], "i64");
-        if found.width is not None and found.width < 64 {
-            narrow = self.emit_value(
-                MirOp.MEM_LOAD, mir_int(found.width, False, True), [address]
-            );
-            return self.emit_value(MirOp.CONV, result_type, [narrow]);
-        }
         return self.emit_value(MirOp.MEM_LOAD, result_type, [address]);
     }
     if dispatch == IntrinsicDispatch.MEM_STORE {
         address = self.intrinsic_operand(args[0], "i64");
         value = self.intrinsic_operand(args[1], found.param_specs[1]);
-        if found.width is not None and found.width < 64 {
-            value = self.emit_value(
-                MirOp.CONV, mir_int(found.width, False, True), [value]
-            );
-        }
         return self.emit_value(MirOp.MEM_STORE, mir_none(), [address, value]);
     }
     if dispatch in (IntrinsicDispatch.FLOAT_BITS, IntrinsicDispatch.BITS_FLOAT) {
@@ -4008,10 +3988,37 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
         return self.emit_value(MirOp.PTR_INT, mir_int(), [data]);
     }
     if dispatch == IntrinsicDispatch.LIST_DATA {
+        operand: uni.UniNode = args[0];
+        while isinstance(operand, uni.AtomUnit) {
+            operand = operand.value;
+        }
+        if not isinstance(operand, (uni.Name, uni.AtomTrailer))
+            or (isinstance(operand, uni.AtomTrailer) and operand.is_null_ok) {
+            raise MirRefused(
+                mir_refusal(
+                    "intrinsic",
+                    f"{name} of a temporary list: a temporary list is freed with the statement",
+                    nd,
+                    "Bind the list to a variable, a field or an element first; a temporary list and its buffer are freed when the statement ends.",
+                    "E5095"
+                )
+            );
+        }
         held = self.spill(self.lower_expr(args[0]));
         if held.type.kind != MirKind.LIST {
             raise MirRefused(
                 mir_refusal("intrinsic", f"{name} of {held.type.render()}", nd)
+            );
+        }
+        if self.elem_kind(held.type.payload(), nd) not in (KIND_INT, KIND_FLOAT) {
+            raise MirRefused(
+                mir_refusal(
+                    "intrinsic",
+                    f"{name} of {held.type.render()}: the list holds managed elements",
+                    nd,
+                    "A raw store through the buffer would bypass the elements' reference counts, so only int and float lists qualify.",
+                    "E5095"
+                )
             );
         }
         return self.emit_value(
@@ -4624,4 +4631,8 @@ impl MirLowering.const_zero(value: MirValue) -> bool {
         }
     }
     return False;
+}
+
+impl MirLowering.builtin_callee(callee: (uni.UniNode | None)) -> bool {
+    return callee is None or os.path.basename(callee.loc.mod_path) in BUILTIN_STUBS;
 }

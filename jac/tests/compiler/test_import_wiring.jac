@@ -1753,3 +1753,166 @@ test "jac fmt --lintfix keeps an unwired import the unsaved text reads" {
         shutil.rmtree(base, ignore_errors=True);
     }
 }
+
+
+test "a platform variant is a consumer named after its base, ruled as its base" {
+    base = _standard();
+    try {
+        _write(base, "app/clock.jac", "glob TICK: str = \"\";\n");
+        _write(
+            base,
+            "app/clock.linux.jac",
+            "import from core.util { now }\nglob TICK: str = now();\n"
+        );
+        _write(
+            base,
+            "app/clock.native.jac",
+            "import from core.util { now }\nglob TICK: str = now();\n"
+        );
+        assert "E1144" in _errors(_compile(base, "app/clock.linux.jac"));
+        assert "E1144" in _errors(_compile(base, "app/clock.native.jac"));
+        _write(
+            base,
+            "archwire.jac",
+            _ARCH.replace(
+                "    core.util ++> app.main { now as when }\n",
+                "    core.util ++> app.clock.linux | app.clock.native { now }\n"
+                "    core.util ++> app.main { now as when }\n"
+            )
+        );
+        _write(base, "app/clock.linux.jac", "glob TICK: str = now();\n");
+        _write(base, "app/clock.native.jac", "glob TICK: str = now();\n");
+        for rel in ["archwire.jac", "app/clock.linux.jac", "app/clock.native.jac"] {
+            prog = _compile(base, rel);
+            assert _errors(prog) == [] , (rel, [str(e) for e in prog.errors_had]);
+        }
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "a variant cannot be a wire's provider" {
+    base = _standard();
+    try {
+        _write(base, "core/clock.jac", "glob TICK: str = \"\";\n");
+        _write(base, "core/clock.linux.jac", "glob TICK: str = \"l\";\n");
+        _write(
+            base,
+            "archwire.jac",
+            _ARCH.replace(
+                "    core.svc ++> app.main { serve }\n",
+                "    core.clock.linux ++> app.main { TICK }\n"
+                "    core.svc ++> app.main { serve }\n"
+            )
+        );
+        prog = _compile(base, "archwire.jac");
+        found = [
+            str(e)
+            for e in prog.errors_had
+            if e.code is not None and e.code.code == "E1148"
+        ];
+        assert len(found) == 1 , [str(e) for e in prog.errors_had];
+        assert "variant of 'core.clock'" in found[0] , found;
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "a module whose file name no wire can name keeps written imports under the rules" {
+    base = _standard();
+    try {
+        _write(
+            base,
+            "app/tech-demo.jac",
+            "import from core.util { now }\nglob T: str = now();\n"
+        );
+        prog = _compile(base, "app/tech-demo.jac");
+        assert _errors(prog) == [] , [str(e) for e in prog.errors_had];
+        _write(
+            base,
+            "web/[...slug].jac",
+            "import from core.util { now }\nglob T: str = now();\n"
+        );
+        prog = _compile(base, "web/[...slug].jac");
+        unruled = [
+            str(e)
+            for e in prog.errors_had
+            if e.code is not None and e.code.code == "E2099"
+        ];
+        assert len(unruled) == 1 , [str(e) for e in prog.errors_had];
+        assert "core.util --> web.[...slug]" in unruled[0] , unruled;
+        assert "E1144" not in _errors(prog);
+        _write(
+            base,
+            "archwire.jac",
+            _ARCH.replace(
+                "    edge CoreInternal: core.* --> core.*;\n",
+                "    edge CoreInternal: core.* --> core.*;\n"
+                "    edge CoreOverWeb: core.* --> web.*;\n"
+            )
+        );
+        for rel in ["archwire.jac", "web/[...slug].jac"] {
+            prog = _compile(base, rel);
+            assert _errors(prog) == [] , (rel, [str(e) for e in prog.errors_had]);
+        }
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "a module keyed while archwire.jac is still being read is keyed by the whole file" {
+    # Reading archwire.jac compiles the modules the reader needs, and their
+    # cache keys ask for their wiring digest while the spec is still being
+    # built. That re-entrant lookup answered "", the same as a module with no
+    # wires, and the "" was stored for this archwire.jac, so a wire edit left
+    # those modules' keys unchanged and dev carry served bytecode without the
+    # newly wired name.
+    import jaclang.compiler.driver.wiring as wiring_mod;
+    import from jaclang.compiler.driver.wiring { arch_file_for, wiring_digest_for }
+    import from jaclang.compiler.driver.jir { stored_wiring_digest }
+    import from tests.support { cache_env }
+    base = _standard();
+    svc = os.path.join(base, "core/svc.jac");
+    saved: dict[str, (str | None)] = {};
+    for (name, value) in cache_env(os.path.join(base, ".cache")).items() {
+        saved[name] = os.environ.get(name);
+        os.environ[name] = value;
+    }
+    try {
+        settled = wiring_digest_for(svc);
+        assert settled , "precondition: svc has wires";
+        arch = arch_file_for(svc);
+        assert arch is not None;
+        reading = os.path.dirname(arch);
+        _write(base, "archwire.jac", _ARCH + "\n");
+        wiring_mod._building.add(reading);
+        try {
+            unsettled = wiring_digest_for(svc);
+            assert unsettled and unsettled != settled , (
+                f"a module keyed mid-read took the digest {unsettled!r}"
+            );
+            assert stored_wiring_digest(svc) == unsettled;
+            _write(base, "archwire.jac", _ARCH + "\n\n");
+            assert wiring_digest_for(svc) != unsettled , (
+                "an archwire.jac edit left a mid-read key unchanged"
+            );
+        } finally {
+            wiring_mod._building.discard(reading);
+        }
+        assert stored_wiring_digest(svc) == wiring_digest_for(svc) , (
+            "a mid-read wiring digest was stored for later lookups"
+        );
+    } finally {
+        for (name, value) in saved.items() {
+            if value is None {
+                os.environ.pop(name, None);
+            } else {
+                os.environ[name] = value;
+            }
+        }
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}

@@ -230,6 +230,13 @@ glob TEXT_CASES: dict[str, int] = {
          "divmod",
          "pow"
      ],
+     BUILTIN_STUBS: list[str] = [
+         "builtins.pyi",
+         "builtins.jac",
+         "na_builtins.pyi",
+         "jac_builtins.pyi",
+         "builtin_overrides.pyi"
+     ],
      TEXT_STOP: int = 4611686018427387904,
      FSTRING_STR: int = 115,
      FSTRING_REPR: int = 114,
@@ -591,6 +598,7 @@ obj MirLowering {
     def str_concat(left: MirValue, right: MirValue) -> MirValue;
     def str_compare(op: str, left: MirValue, right: MirValue) -> MirValue;
     def builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None);
+    def builtin_callee(callee: (uni.UniNode | None)) -> bool;
     def lower_print(nd: uni.FuncCall) -> MirValue;
     def elem_kind(t: MirType, site: uni.UniNode) -> int;
     def to_bits(value: MirValue, elem: MirType, site: uni.UniNode) -> MirValue;

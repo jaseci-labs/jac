@@ -278,7 +278,11 @@ impl StubCatalog.symbol_in_module(mid: int, name: str) -> (Symbol | None) {
     if mod is None {
         return None;
     }
-    return mod.names_in_scope.get(name);
+    found = mod.names_in_scope.get(name);
+    if found is not None {
+        return found;
+    }
+    return collect_scope_members(mod).names.get(name);
 }
 
 impl StubCatalog._source(mid: int) -> Source {
