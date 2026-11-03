@@ -422,7 +422,7 @@ impl MirLowering.declare_archetype(arch: uni.Archetype) {
     self.declare_specials(arch, self_type);
     self.declare_accessors(arch, self_type);
     self.declare_osp_abilities(arch);
-    if obj_def.local {
+    if obj_def.local and not obj_def.is_acyclic {
         self.trace_pairs.append((obj_def.drop_symbol, obj_def.trace_symbol));
     }
 }
