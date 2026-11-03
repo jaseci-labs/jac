@@ -6,8 +6,6 @@ import from "expo-crypto" {
     CryptoDigestAlgorithm,
     CryptoEncoding
 }
-import from core.async_utils { sleep }
-import from .auth { begin_github, poll_github }
 
 async def:pub github_login -> bool;
 

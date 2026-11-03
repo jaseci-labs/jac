@@ -18,7 +18,6 @@ import from c {
         path: ptr[u8], mode: u32, device: i32
     ) -> i32;
 }
-import from jaclang.runtime.python.modules.posix_platform { runtime_function }
 
 glob PLATFORM: str = "darwin",
      MODE_T_MASK: u32 = u32(0xFFFF);

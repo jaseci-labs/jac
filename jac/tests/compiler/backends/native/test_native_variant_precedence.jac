@@ -112,3 +112,33 @@ test "a call through a platform variant reaches the variant's C declaration" {
     }
     assert out.splitlines() == ["frexp 0.5 4", "snprintf 5", "facts True 7 42"] , out;
 }
+
+test "a platform variant's wired import lowers into the variant" {
+    os_name = native_target_os();
+    with tempfile.TemporaryDirectory() as scratch {
+        files = {
+            "jac.toml": "[project]\nname = \"variantwire\"\n",
+            "archwire.jac": (
+                "graph import {\n"
+                f"    platform_answer ++> platform_facts.{os_name} {{ ANSWER }}\n"
+                "    platform_facts ++> platform_user { platform_answer }\n"
+                "}\n"
+            ),
+            "platform_answer.jac": "glob ANSWER: int = 42;\n",
+            "platform_facts.jac": "def platform_answer -> int {\n    return 0;\n}\n",
+            f"platform_facts.{os_name}.jac": (
+                "def platform_answer -> int {\n    return ANSWER;\n}\n"
+            ),
+            "platform_user.jac": "with entry {\n    print(\"answer\", platform_answer());\n}\n"
+        };
+        for (name, text) in files.items() {
+            with open(os.path.join(scratch, name), "w") as handle {
+                handle.write(text);
+            }
+        }
+        binary = os.path.join(scratch, "platform_user.nogc");
+        native_build(os.path.join(scratch, "platform_user.jac"), binary, memory="nogc");
+        out = native_run(binary);
+    }
+    assert out.splitlines() == ["answer 42"] , out;
+}
