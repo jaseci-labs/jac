@@ -11,7 +11,11 @@ impl MirLowering.region_extern(
             symbol=name, ret=ret, params=[arg.type for arg in args], c_abi=True
         );
     }
-    return self.emit_value(MirOp.CALL_C, ret, args, callee=name);
+    made = self.emit_value(MirOp.CALL_C, ret, args, callee=name);
+    if name == "__jac_region_new" and self.state is not None {
+        self.st().region_news.add(made.id);
+    }
+    return made;
 }
 
 impl MirLowering.lower_open(nd: uni.OpenStmt) {
@@ -59,4 +63,61 @@ impl MirLowering.region_slot(name: str, args: list[uni.Expr]) -> MirValue {
     }
     value = self.intrinsic_operand(args[0], "i64");
     return self.emit_value(MirOp.MEM_STORE, mir_none(), [slot, value]);
+}
+
+impl MirLowering.own_region_handle(slot: MirValue) {
+    if not any(held is slot for held in self.st().region_slots) {
+        self.st().region_slots.append(slot);
+    }
+    self.region_extern(
+        "__jac_region_drop", [self.builder().load(slot, mir_int())], mir_none()
+    );
+}
+
+impl MirLowering.drop_region_handles(fn: MirFunction) {
+    slots = list(self.st().region_slots);
+    if not slots {
+        return;
+    }
+    saved = self.st().b;
+    opening = MirBlock(label="region.init");
+    self.st().b = MirBuilder(fn=fn, block=opening);
+    for slot in slots {
+        self.builder().store(slot, self.builder().const_int(0, mir_int()));
+    }
+    opening_block = fn.blocks[0];
+    at = 0;
+    while at < len(opening_block.instrs)
+        and opening_block.instrs[at].op in (MirOp.SLOT, MirOp.EXC_FRAME) {
+        at += 1;
+    }
+    opening_block.instrs[at:at] = opening.instrs;
+    for blk in fn.blocks {
+        if not blk.instrs or blk.instrs[-1].op != MirOp.RET {
+            continue;
+        }
+        term = blk.instrs.pop();
+        returned = term.operands[0] if term.operands else None;
+        tail = MirBlock(label="region.drop");
+        self.st().b = MirBuilder(fn=fn, block=tail);
+        for slot in slots {
+            moved = returned is not None
+                and any(
+                    instr.op == MirOp.LOAD
+                        and instr.result is returned
+                        and instr.operands
+                        and instr.operands[0] is slot for instr in blk.instrs
+                );
+            if not moved {
+                self.region_extern(
+                    "__jac_region_drop",
+                    [self.builder().load(slot, mir_int())],
+                    mir_none()
+                );
+            }
+        }
+        blk.instrs.extend(tail.instrs);
+        blk.instrs.append(term);
+    }
+    self.st().b = saved;
 }

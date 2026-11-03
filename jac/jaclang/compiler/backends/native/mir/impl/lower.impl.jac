@@ -333,7 +333,9 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
         fn.linkage = "internal";
     }
     first = fn.new_block("entry");
-    self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
+    self.state = MirFnState(
+        fn=fn, b=MirBuilder(fn=fn, block=first), region_scoped=True
+    );
     try {
         sig = ab.signature;
         body = ab.body;
@@ -411,6 +413,7 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
                 self.builder().unreachable();
             }
         }
+        self.drop_region_handles(fn);
     } except MirRefused as err {
         self.refusals.setdefault(self.refusal_key(decl), []).append(refusal_of(err));
         self.state = None;
@@ -644,6 +647,12 @@ impl MirLowering.store_name(target: uni.Name, value: MirValue) {
         }
     }
     slot = self.name_slot(target);
+    if value.id in self.st().region_news
+        and self.st().region_scoped
+        and slot.is_slot
+        and target.sym is not None {
+        self.own_region_handle(slot);
+    }
     self.builder().store(slot, self.coerce(value, self.place_elem(slot), target));
 }
 

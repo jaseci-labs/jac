@@ -263,6 +263,9 @@ obj MirGenInfo {
 obj MirFnState {
     has fn: MirFunction,
         b: MirBuilder,
+        region_news: set[int] = set(),
+        region_slots: list[MirValue] = [],
+        region_scoped: bool = False,
         generator: (MirGenInfo | None) = None,
         self_value: (MirValue | None) = None,
         captured: dict[int, MirValue] = {},
@@ -1312,6 +1315,8 @@ obj MirLowering {
     def lower_open(nd: uni.OpenStmt);
     def region_extern(name: str, args: list[MirValue], ret: MirType) -> MirValue;
     def region_slot(name: str, args: list[uni.Expr]) -> MirValue;
+    def own_region_handle(slot: MirValue);
+    def drop_region_handles(fn: MirFunction);
     def with_items(
         items: list[uni.ExprAsItem], index: int, body: Sequence[uni.CodeBlockStmt]
     );
