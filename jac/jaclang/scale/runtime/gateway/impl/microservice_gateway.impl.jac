@@ -754,15 +754,9 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
     if not file_path {
         return None;
     }
-    if file_path == ROBOTS_PATH {
-        blocked = robots_override(
-            site_url_for(self.base_path),
-            str(request.headers.get("host") or ""),
-            str(request.headers.get("x-forwarded-host") or "")
-        );
-        if blocked is not None {
-            return Response(content=blocked, media_type="text/plain; charset=utf-8");
-        }
+    blocked = robots_response(request, self.base_path);
+    if blocked is not None {
+        return blocked;
     }
 
     mount_matched = False;
@@ -786,6 +780,9 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
     if not mount_matched {
         static_resp = self.serve_static(file_path);
         if static_resp {
+            if file_path in SEO_ROOT_FILES {
+                static_resp.headers.set("Cache-Control", "no-cache");
+            }
             return static_resp;
         }
     }

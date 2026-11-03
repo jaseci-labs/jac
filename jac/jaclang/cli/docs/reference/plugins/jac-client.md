@@ -92,10 +92,13 @@ disallow = ["/internal"]           # paths to block, on top of the (auth) routes
 - A file of the same name in `public/` wins: the build uses it instead and says so.
 
 `jac run --serve` and the jac-scale gateways compare the host of a `/robots.txt`
-request (`X-Forwarded-Host`, then `Host`) with `site_url`. On any other host, such
-as a preview or staging deployment, they answer `User-agent: *` / `Disallow: /`,
-whether the file was generated or hand-written, so previews are not indexed. Both
-files are served with `Cache-Control: no-cache`. In a workspace, `[client.seo]`
+request with `site_url`. The host is the `Host` header, or `X-Forwarded-Host` when
+the request comes from a proxy listed in `[serve.proxy] trusted`. Behind a proxy
+that rewrites `Host`, list the proxy there, or the production host is not
+recognized either. On any other host, such as a preview or staging deployment, they
+answer `User-agent: *` / `Disallow: /` ahead of any route the app declares, whether
+the file was generated or hand-written, so previews are not indexed. Both files are
+served with `Cache-Control: no-cache`. In a workspace, `[client.seo]`
 applies to every app; `[apps.<name>.client.seo]` overrides it for one app.
 
 ### Client Code Is Inferred

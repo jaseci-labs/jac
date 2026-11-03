@@ -230,23 +230,13 @@ impl register_page_endpoints(server: JacAPIServer) {
         if file_path.startswith(API_PREFIXES) or file_path.startswith(CL_PREFIX) {
             return JSONResponse(content={'error': 'Not found'}, status_code=404);
         }
-        if file_path == ROBOTS_PATH {
-            blocked = robots_override(
-                site_url_for(_static_base(server)),
-                str(request.headers.get('host') or ''),
-                str(request.headers.get('x-forwarded-host') or '')
-            );
-            if blocked is not None {
-                return Response(content=blocked);
-            }
-        }
         candidate = find_root_asset(_static_base(server), file_path, asset_dist);
         if candidate is not None {
             return file_response(
                 request,
                 str(candidate),
                 cache_control='no-cache'
-                    if file_path in (ROBOTS_PATH, SITEMAP_PATH)
+                    if file_path in SEO_ROOT_FILES
                     else ASSET_CACHE_CONTROL
             );
         }
@@ -284,6 +274,18 @@ impl register_page_endpoints(server: JacAPIServer) {
             forward_undeclared_query_params=False
         )
     );
+}
+
+impl robots_middleware(server: JacAPIServer) -> Callable[..., any] {
+    async def answer_robots(request: Request, call_next: any) -> Response {
+        blocked = robots_response(request, _static_base(server));
+        if blocked is not None {
+            return blocked;
+        }
+        next_fn: any = call_next;
+        return await next_fn(request);
+    }
+    return answer_robots;
 }
 
 impl register_graph_endpoints(server: JacAPIServer) {

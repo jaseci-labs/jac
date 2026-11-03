@@ -4294,12 +4294,19 @@ graph import {
     server.shared_store as pg_mod ++> scale.tests.misc.test_shared_store_failure;
     server.shared_store as store_mod ++> scale.tests.misc.test_state_backend_selection;
     server.static_files ++> [
+        client.targets.seo_build.apply_seo { ROBOTS_PATH, SITEMAP_PATH },
+        client.targets.seo_build.clear_seo_files { ROBOTS_PATH, SITEMAP_PATH },
+        client.targets.seo_build.render_robots { SITEMAP_PATH },
         client.targets.web_target._copy_public_dirs { ROOT_ASSET_EXTENSIONS },
-        scale.runtime.gateway.embedded_gateway.EmbeddedGateway.dispatch
-            | scale.runtime.gateway.microservice_gateway.MicroserviceGateway.handle_static {
-            ROBOTS_PATH,
-            robots_override,
-            site_url_for
+        scale.runtime.gateway.embedded_gateway.EmbeddedGateway._serve_static {
+            SEO_ROOT_FILES
+        },
+        scale.runtime.gateway.embedded_gateway.EmbeddedGateway.dispatch {
+            robots_response
+        },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.handle_static {
+            SEO_ROOT_FILES,
+            robots_response
         },
     ]
     server.sv_client ++> [
@@ -46829,11 +46836,14 @@ graph import server {
     endpoints.introspection ++> server.JacAPIServer.register_endpoints {
         register_introspection_endpoints
     }
-    endpoints.pages ++> server.JacAPIServer.register_endpoints {
-        register_diagnostics_endpoints,
-        register_graph_endpoints,
-        register_page_endpoints
-    }
+    endpoints.pages ++> [
+        server.JacAPIServer.build_app { robots_middleware },
+        server.JacAPIServer.register_endpoints {
+            register_diagnostics_endpoints,
+            register_graph_endpoints,
+            register_page_endpoints
+        },
+    ]
     endpoints.walkers ++> server.JacAPIServer.register_endpoints {
         register_function_endpoints,
         register_walker_endpoints
@@ -47007,7 +47017,10 @@ graph import server {
             | endpoints.introspection
             | endpoints.second_factor
             | identity.audit { Request },
-        endpoints.colocated | identity.session_cookie { Request, Response },
+        endpoints.colocated | identity.session_cookie | static_files {
+            Request,
+            Response
+        },
         endpoints.pages { HTMLResponse, JSONResponse, Request, Response },
         endpoints.walkers { FileResponse, Request, Response, StreamingResponse },
         exchange { JSONResponse, Request },
@@ -47079,15 +47092,13 @@ graph import server {
     shared_store --> identity.auth_tokens.AuthTokenStore.__post_init__ { shared_store }
     static_files ++> [
         endpoints.pages {
-            ROBOTS_PATH,
-            SITEMAP_PATH,
+            SEO_ROOT_FILES,
             client_dist_index,
             find_root_asset,
             find_static_candidate,
-            robots_override,
+            robots_response,
             sibling_app_dist,
-            sibling_app_file,
-            site_url_for
+            sibling_app_file
         },
         server.print_endpoint_docs { sibling_app_names },
     ]

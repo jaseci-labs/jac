@@ -1,8 +1,6 @@
 import from pathlib { Path }
 
-glob ROBOTS_FILE: str = "robots.txt",
-     SITEMAP_FILE: str = "sitemap.xml",
-     SITEMAP_NS: str = "http://www.sitemaps.org/schemas/sitemap/0.9";
+glob SITEMAP_NS: str = "http://www.sitemaps.org/schemas/sitemap/0.9";
 
 def normalized_site_url(site_url: str) -> str;
 

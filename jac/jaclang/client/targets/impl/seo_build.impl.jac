@@ -98,7 +98,7 @@ impl render_robots(site_url: str, disallows: list[str], asset_paths: list[str]) 
         lines.append("Allow: /");
     }
     lines.append("");
-    lines.append(f"Sitemap: {site_url}/{SITEMAP_FILE}");
+    lines.append(f"Sitemap: {site_url}/{SITEMAP_PATH}");
     return "\n".join(lines) + "\n";
 }
 
@@ -108,7 +108,7 @@ impl scan_routes(app_root: Path) -> list[RouteEntry] {
 }
 
 impl clear_seo_files(dist_dir: Path) -> None {
-    for name in (ROBOTS_FILE, SITEMAP_FILE) {
+    for name in (ROBOTS_PATH, SITEMAP_PATH) {
         (dist_dir / name).unlink(missing_ok=True);
     }
 }
@@ -124,7 +124,7 @@ impl apply_seo(
     sitemap_cfg = seo_config.get("sitemap", {}) or {};
     robots_cfg = seo_config.get("robots", {}) or {};
     rendered: dict[str, str] = {
-        SITEMAP_FILE: render_sitemap(
+        SITEMAP_PATH: render_sitemap(
             site_url,
             sitemap_paths(
                 routes,
@@ -132,7 +132,7 @@ impl apply_seo(
                 list(sitemap_cfg.get("extra", []))
             )
         ),
-        ROBOTS_FILE: render_robots(
+        ROBOTS_PATH: render_robots(
             site_url,
             robots_disallows(routes, list(robots_cfg.get("disallow", []))),
             asset_paths

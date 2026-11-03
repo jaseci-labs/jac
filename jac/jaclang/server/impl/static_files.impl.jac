@@ -202,18 +202,29 @@ impl site_url_for(base_path: str) -> str {
     return str(client_seo_config(config).get('site_url') or '').strip();
 }
 
-impl robots_override(
-    site_url: str, host: str, forwarded_host: str = ''
-) -> (str | None) {
+impl robots_override(site_url: str, host: str) -> (str | None) {
     import from urllib.parse { urlparse }
     canonical = (urlparse(site_url.strip()).hostname or '') if site_url else '';
     if not canonical {
         return None;
     }
-    served = forwarded_host.split(',')[0].strip() or host.strip();
-    served_host = urlparse(f'//{served}').hostname or '';
+    served_host = urlparse(f'//{host.strip()}').hostname or '';
     if served_host == canonical.lower() {
         return None;
     }
     return DISALLOW_ALL_ROBOTS;
+}
+
+impl robots_response(request: Request, base_path: str) -> (Response | None) {
+    if request.method != 'GET' or request.url.path.lstrip('/') != ROBOTS_PATH {
+        return None;
+    }
+    host = request.url.netloc or str(request.headers.get('host') or '');
+    blocked = robots_override(site_url_for(base_path), host);
+    if blocked is None {
+        return None;
+    }
+    resp = Response(content=blocked, media_type='text/plain; charset=utf-8');
+    resp.headers.set('Cache-Control', 'no-cache');
+    return resp;
 }

@@ -157,22 +157,14 @@ test "site_url must be an absolute http(s) URL" {
 
 test "robots.txt on a host other than site_url disallows everything" {
     rows = [
-        ("canonical host", SITE, "example.org", "", None),
-        ("canonical host with a port", SITE, "example.org:443", "", None),
-        ("host in another case", SITE, "Example.ORG", "", None),
-        ("preview host", SITE, PREVIEW_HOST, "", DISALLOW_ALL_ROBOTS),
-        ("proxy forwards the canonical host", SITE, "web:8000", "example.org", None),
-        (
-            "proxy forwards a preview host",
-            SITE,
-            "web:8000",
-            f"{PREVIEW_HOST}, example.org",
-            DISALLOW_ALL_ROBOTS
-        ),
-        ("no site_url", "", PREVIEW_HOST, "", None)
+        ("canonical host", SITE, "example.org", None),
+        ("canonical host with a port", SITE, "example.org:443", None),
+        ("host in another case", SITE, "Example.ORG", None),
+        ("preview host", SITE, PREVIEW_HOST, DISALLOW_ALL_ROBOTS),
+        ("no site_url", "", PREVIEW_HOST, None)
     ];
-    for (label, site_url, host, forwarded, want) in rows {
-        got = robots_override(site_url, host, forwarded);
+    for (label, site_url, host, want) in rows {
+        got = robots_override(site_url, host);
         assert got == want , f"{label}: {got!r}";
     }
 }
@@ -315,18 +307,150 @@ test "the gateways and jac run --serve answer robots.txt per host" {
                 assert canonical.status_code == 200 , f"{label}: {canonical.status_code}";
                 assert canonical.text == HAND_WRITTEN , f"{label}: {canonical.text!r}";
                 assert "text/plain" in header(canonical, "content-type") , label;
-                assert "immutable" not in header(canonical, "cache-control") , (
-                    f"{label} lets robots.txt be cached as immutable"
-                );
                 preview = client.get("/robots.txt", headers={"host": PREVIEW_HOST});
                 assert preview.status_code == 200 , f"{label}: {preview.status_code}";
                 assert preview.text == DISALLOW_ALL_ROBOTS , (
                     f"{label} served the production robots.txt to a preview host"
                 );
+                assert "text/plain" in header(preview, "content-type") , label;
                 sitemap = client.get("/sitemap.xml", headers={"host": "example.org"});
                 assert sitemap.status_code == 200 , f"{label}: {sitemap.status_code}";
                 assert "xml" in header(sitemap, "content-type") , label;
+                for (what, resp) in [
+                    ("robots.txt", canonical),
+                    ("the preview robots.txt", preview),
+                    ("sitemap.xml", sitemap)
+                ] {
+                    assert header(resp, "cache-control") == "no-cache" , (
+                        f"{label} sends {what} with Cache-Control "
+                        f"{header(resp, 'cache-control')!r}, not no-cache"
+                    );
+                }
             }
+        } finally {
+            server.close();
+        }
+    }
+}
+
+"""GET `target` over a raw socket with `headers`; returns (status, body)."""
+def raw_get(port: int, target: str, headers: dict[str, str]) -> tuple[int, bytes] {
+    import socket;
+    lines = [f"GET {target} HTTP/1.1"]
+        + [f"{name}: {value}" for (name, value) in headers.items()]
+        + ["Connection: close", "", ""];
+    sock = socket.create_connection(("127.0.0.1", port), timeout=5);
+    data = b"";
+    try {
+        sock.sendall("\r\n".join(lines).encode());
+        while True {
+            chunk = sock.recv(65536);
+            if not chunk {
+                break;
+            }
+            data += chunk;
+        }
+    } finally {
+        sock.close();
+    }
+    (head, _, body) = data.partition(b"\r\n\r\n");
+    return (int(head.split(b" ", 2)[1]), body);
+}
+
+test "robots.txt takes X-Forwarded-Host only from a proxy in [serve.proxy] trusted" {
+    import from jaclang.scale.runtime.gateway.microservice_gateway {
+        MicroserviceGateway
+    }
+    import from jaclang.scale.runtime.gateway.service_registry { ServiceRegistry }
+    import from jaclang.server.serving.server { ServingServer }
+    import from jaclang.server.settings { ProxySettings, ServeSettings }
+    with tempfile.TemporaryDirectory() as tmp {
+        project_dir = Path(tmp).resolve();
+        (project_dir / "jac.toml").write_text(
+            f'[project]\nname = "site"\n\n[client.seo]\nsite_url = "{SITE}"\n'
+        );
+        public = project_dir / "public";
+        public.mkdir();
+        (public / "robots.txt").write_text(HAND_WRITTEN);
+        gateway = MicroserviceGateway(
+            registry=ServiceRegistry(),
+            client_dist_dir=str(public),
+            base_path=str(project_dir)
+        );
+        gateway.setup();
+        trusted = ["127.0.0.1/32"];
+        rows = [
+            (
+                "a trusted proxy forwards the canonical host",
+                trusted,
+                {"Host": "web:8000", "X-Forwarded-Host": "example.org"},
+                HAND_WRITTEN
+            ),
+            (
+                "a trusted proxy forwards a preview host",
+                trusted,
+                {
+                    "Host": "web:8000",
+                    "X-Forwarded-Host": f"{PREVIEW_HOST}, example.org"
+                },
+                DISALLOW_ALL_ROBOTS
+            ),
+            (
+                "an untrusted client claims the canonical host",
+                [],
+                {"Host": PREVIEW_HOST, "X-Forwarded-Host": "example.org"},
+                DISALLOW_ALL_ROBOTS
+            ),
+            (
+                "an untrusted client claims a preview host",
+                [],
+                {"Host": "example.org", "X-Forwarded-Host": PREVIEW_HOST},
+                HAND_WRITTEN
+            )
+        ];
+        for (label, proxies, headers, want) in rows {
+            server = ServingServer(
+                app=gateway.app,
+                host="127.0.0.1",
+                port=0,
+                settings=ServeSettings(proxy=ProxySettings(trusted=proxies))
+            );
+            stop = server.serve_background();
+            try {
+                (status, body) = raw_get(server.bound_port, "/robots.txt", headers);
+            } finally {
+                stop();
+            }
+            assert status == 200 , f"{label}: {status}";
+            assert want.encode() in body , f"{label}: {body!r}";
+        }
+    }
+}
+
+test "a preview host gets Disallow even from an app that routes /robots.txt itself" {
+    import from jaclang.testing.testing { JacTestClient }
+    with tempfile.TemporaryDirectory() as tmp {
+        project_dir = Path(tmp).resolve();
+        (project_dir / "jac.toml").write_text(
+            f'[project]\nname = "site"\n\n[client.seo]\nsite_url = "{SITE}"\n'
+        );
+        (project_dir / "main.jac").write_text(
+            'import from jaclang.runtime.builtin { restspec }\n'
+                + 'import from http { HTTPMethod }\n\n'
+                + '@restspec(method=HTTPMethod.GET, path="/robots.txt")\n'
+                + 'def:pub robots_route -> str { return "from the app route"; }\n'
+        );
+        server = JacTestClient.from_file(
+            str(project_dir / "main.jac"), base_path=str(project_dir)
+        );
+        try {
+            canonical = server.get("/robots.txt", headers={"host": "example.org"});
+            assert canonical.status_code == 200 , canonical.status_code;
+            assert "from the app route" in canonical.text , canonical.text;
+            preview = server.get("/robots.txt", headers={"host": PREVIEW_HOST});
+            assert preview.text == DISALLOW_ALL_ROBOTS , (
+                f"the app's own route answered a preview host: {preview.text!r}"
+            );
         } finally {
             server.close();
         }

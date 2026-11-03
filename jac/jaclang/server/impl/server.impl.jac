@@ -1022,6 +1022,7 @@ impl JacAPIServer.build_app -> ServingApp {
     for ext in (self.extensions or []) {
         ext.register(self);
     }
+    self.add_middleware(robots_middleware(self));
     self.add_middleware(drain_middleware(self.drain, self.module_name));
     self.add_middleware(
         cors_middleware(

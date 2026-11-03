@@ -50,11 +50,13 @@ glob ROOT_ASSET_EXTENSIONS: set[str] = DEFAULT_ASSET_EXTENSIONS
      SITEMAP_PATH: str = 'sitemap.xml',
      DISALLOW_ALL_ROBOTS: str = 'User-agent: *\nDisallow: /\n';
 
+glob SEO_ROOT_FILES: set[str] = {ROBOTS_PATH, SITEMAP_PATH};
+
 def site_url_for(base_path: str) -> str;
 
-def robots_override(
-    site_url: str, host: str, forwarded_host: str = ''
-) -> (str | None);
+def robots_override(site_url: str, host: str) -> (str | None);
+
+def robots_response(request: Request, base_path: str) -> (Response | None);
 
 
 def find_root_asset(
