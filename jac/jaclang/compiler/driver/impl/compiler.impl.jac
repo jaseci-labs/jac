@@ -377,7 +377,8 @@ impl JacCompiler._adopt_kernel_compile(
                     self._load_native_from_cache(
                         full_target,
                         program,
-                        json.loads(unit.interop) if unit.interop else None
+                        json.loads(unit.interop) if unit.interop else None,
+                        options
                     );
                     sections = {
                         sec: raw
@@ -481,7 +482,8 @@ impl JacCompiler._wants_native_engine(full_target: str, program: JacProgram) -> 
 impl JacCompiler._load_native_from_cache(
     full_target: str,
     target_program: JacProgram,
-    cached_interop: (dict[str, any] | None)
+    cached_interop: (dict[str, any] | None),
+    options: (CompileOptions | None) = None
 ) -> None {
     engine: ExecutionEngine | SharedNativeEngine | None = self._sealed_native_engine(
         full_target
@@ -489,7 +491,9 @@ impl JacCompiler._load_native_from_cache(
     if engine is None {
         import from jaclang.compiler.backends.native.link_plan { jit_engine_for_cached }
         engine = jit_engine_for_cached(
-            target_program, full_target, target_program.options or CompileOptions()
+            target_program,
+            full_target,
+            options or target_program.options or CompileOptions()
         );
     }
     if engine is None {
@@ -1425,6 +1429,14 @@ impl unit_sections(
             products.ct_body_deps,
             definitions=definition_deps(products)
         );
+    }
+    if products.iface_jir {
+        import base64;
+        sections[SEC_IFACE] = base64.b64decode(products.iface_jir);
+        sections[SEC_PATH_ROOT] = JirPaths(
+            base_dir=os.path.dirname(os.path.realpath(products.path))
+        ).to_bytes();
+        sections[SEC_DEPS] = deps_section([DepRow(path=products.path, digest="")]);
     }
     return sections;
 }
