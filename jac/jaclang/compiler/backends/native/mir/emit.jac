@@ -1,7 +1,6 @@
 glob RAISE_BUILTIN_SYMBOL: str = "__jac_rt_raise_builtin",
      RETAIN_SYMBOL: str = "__jac_rt_retain",
      SETJMP_SYMBOL: str = "_setjmp",
-     LONGJMP_SYMBOL: str = "_longjmp",
      EXC_FRAME_BYTES: int = 256,
      RELEASE_SYMBOL: str = "__jac_rt_release",
      RELEASE_ACYCLIC_SYMBOL: str = "__jac_rt_release_acyclic",
@@ -70,7 +69,6 @@ obj MirEmitter {
         literals: dict[str, ir.GlobalVariable] = {},
         byte_literals: dict[str, ir.GlobalVariable] = {},
         native_tls: bool = False,
-        builtin_sjlj: bool = False,
         volatile_slots: bool = False,
         c_plans: dict[str, tuple[any, list[any]]] = {};
 
@@ -143,11 +141,7 @@ obj MirEmitter {
 }
 
 def emit_mir_module(
-    mir: MirModule,
-    triple: str = "",
-    native_tls: bool = False,
-    data_layout: str = "",
-    native_sjlj: bool = False
+    mir: MirModule, triple: str = "", native_tls: bool = False, data_layout: str = ""
 ) -> ir.Module;
 
 def result_of(instr: MirInstr) -> MirValue;
