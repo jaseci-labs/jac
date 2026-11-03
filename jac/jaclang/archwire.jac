@@ -10732,6 +10732,7 @@ graph import compiler.backends.native.mir {
             mir_obj,
             mir_opt,
             mir_range,
+            mir_ref,
             mir_region,
             mir_set,
             mir_str,
@@ -15116,7 +15117,10 @@ graph import runtime.native {
         },
         iterators { __jac_rt_dict_key_at, __jac_rt_dict_next },
     ]
-    exceptions ++> bytes { __jac_rt_raise_builtin }
+    exceptions ++> [
+        bytes { __jac_rt_raise_builtin },
+        closures { __jac_rt_raise },
+    ]
     format ++> anys { __jac_rt_float_repr, __jac_rt_obj_text }
     iterators ++> anys { __jac_rt_iter_new }
     lists ++> [
