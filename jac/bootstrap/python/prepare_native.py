@@ -9,6 +9,12 @@ import os
 import re
 from pathlib import Path
 import sys
+from enum import Enum
+
+
+class SymbolKind(Enum):
+    FUNCTION = "function"
+    GLOBAL = "global"
 
 
 STATIC_TYPE_EXPORTS = [
@@ -34,14 +40,14 @@ def missing_exports(expected, exported):
     return [name for name in expected if name not in present]
 
 
-def undefined_exports(module, expected, kind="function"):
+def undefined_exports(module, expected, kind=SymbolKind.FUNCTION):
     """Return expected symbols that are absent or only declared in a module."""
-    if kind == "function":
+    if kind is SymbolKind.FUNCTION:
         lookup = module.get_function
-    elif kind == "global":
+    elif kind is SymbolKind.GLOBAL:
         lookup = module.get_global_variable
     else:
-        raise ValueError("unknown symbol kind: " + kind)
+        raise ValueError("unknown symbol kind: " + repr(kind))
     missing = []
     for name in expected:
         try:
@@ -291,6 +297,34 @@ declare i64 @llvm.ctlz.i64(i64, i1 immarg)
 
 attributes #0 = { nounwind }
 """
+
+def native_plan(root, triple):
+    """Lower the native build roots used by the export contract test."""
+    from jaclang.compiler.driver.program import JacProgram
+    from jaclang.compiler.driver.compile_options import CompileOptions
+    from jaclang.compiler.backends.native.link_plan import build_link_plan
+
+    root = Path(root)
+    program = JacProgram()
+    entries = [
+        root / "jaclang/compiler/backends/py/jacpython/native_api.jac",
+        root / "jaclang/compiler/backends/py/jacpython/native_bridge.jac",
+        root / "jaclang/runtime/python/inittab.jac",
+        *sorted(
+            path
+            for package in ("object_model", "interpreter")
+            for path in (root / "jaclang/runtime/python" / package).glob("*.jac")
+            if path.name != "__init__.jac"
+        ),
+    ]
+    options = CompileOptions(
+        aot_mode=True, default_codespace="native", skip_native_engine=True,
+        native_required=True, memory_profile="rc", no_ir_cache=False,
+        opt_level=2, native_target=triple,
+    )
+    plan = build_link_plan(program, [str(entry) for entry in entries], options)
+    return program, plan
+
 
 if __name__ == "__main__":
     root = Path(sys.argv[1]).resolve()
