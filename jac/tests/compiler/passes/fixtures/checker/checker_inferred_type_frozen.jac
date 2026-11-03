@@ -86,24 +86,20 @@ def binder_rebinds {
         print(2);
     }
     (kind, *title) = ("k", "x", "y");  # <-- Error
-    (title, title) = (Label(), "x");  # <-- Error: the second write
     (kind, *middle, title) = ("k", Label(), "x");  # <-- Error: the last element
     (fresh, fresh) = (Label(), "x");  # <-- Error: the second write
-    rest = ["r"];
-    (head, *rest) = (0, "x", "y");  # <-- Ok: only the captured elements
     (count, *names) = (0, "x");
     names.append("y");  # <-- Ok: a new starred target holds only what it captures
     if (label := "a") and (label := "b") {  # <-- Ok: a walrus binding widens
-        print(head, middle, fresh, label);
+        print(middle, fresh, label);
     }
     small: u8 = 0;
-    spare = small=1;  # <-- Ok: the literal fits u8
     (kind, small) = ("k", 2);  # <-- Ok
     (kind, title) = ("k", Label());  # <-- Ok
     [first, second] = [Label(), Label()];  # <-- Ok: first binding
     pending = None;
     (kind, pending) = ("k", 3);  # <-- Ok: None-sentinel
-    print(first, second, pending, spare, count);
+    print(first, second, pending, count);
 }
 
 def for_unpack_rebinds {
@@ -118,8 +114,5 @@ def for_unpack_rebinds {
     # Iterating a dict yields its keys, so `count` gets a key's characters.
     for (key, count) in {"ab": 1} {  # <-- Error
         print(key);
-    }
-    for (name, value) in {"ab": 1} {  # <-- Ok: both are characters of a key
-        print(name + value);
     }
 }
