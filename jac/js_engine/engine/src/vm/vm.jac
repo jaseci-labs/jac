@@ -1803,6 +1803,8 @@ glob _HDI_ARR_SHAPE: int = -1,
      _HDI_AP_SLOT: int = 0,
      _HDI_AP_FN: JSValue = 0,
      _FRAME_POOL_MAX: int = 256,
+     _R1_PLAIN: int = 1,
+     _R1_CHECK: int = 0,
      _GETTER_IC_TAG: int = 1099511627776,
      _GETTER_IC_NONE: int = 7,
      _STR_IC_HOLDER: int = 8,
@@ -4121,7 +4123,11 @@ obj CallFrame {
         stack_base: int,
         locals: list[JSValue],
         catch_stack: list[int],
-        free_vals: list[JSValue],
+        # the function's free-variable cells: the closure's list as a raw data
+        # pointer and count (the closure outlives the frame through self_fn;
+        # the list is never appended to): no retain or release per call
+        fvp: int,
+        fvn: int,
         this_val: JSValue,
         self_fn: JSValue,
         ip: int = 0,
@@ -4466,7 +4472,8 @@ obj VM {
         pending_eval_this: JSValue = js_undefined(),
         import_attr_type: str = "",
         class_brand_seq: int = 1,
-        frame_pool: list[CallFrame] = [],
+        # the frame stack is frames[0:ftop]; frames[ftop:] are spares for reuse
+        ftop: int = 0,
         gen_frame_pool: list[CallFrame] = [],
         gen_raw: bool = False,
         gen_raw_hit: bool = False,
@@ -4961,14 +4968,15 @@ obj VM {
             stack_base=raf_new_base,
             locals=raf_state.locals,
             catch_stack=raf_state.catch_stack,
-            free_vals=raf_state.free_vals,
+            fvp=__list_data_ptr(raf_state.free_vals),
+            fvn=len(raf_state.free_vals),
             this_val=raf_state.this_val,
             self_fn=raf_state.delegate_gen,
             ip=raf_state.saved_ip,
             with_objs=[],
             native_roots=[]
         );
-        self.frames.append(raf_frame);
+        self._fpush_external(raf_frame);
         raf_frame.rpc = raf_state.saved_rpc;
         self.call_depth = self.call_depth + 1;
 
@@ -5034,8 +5042,7 @@ obj VM {
         while len(self.stack) > raf_new_base {
             del self.stack[len(self.stack) - 1];
         }
-        raf_nf: int = len(self.frames);
-        del self.frames[raf_nf - 1];
+        self._fpop_drop();
         self.call_depth = self.call_depth - 1;
 
         # Settle the outer async promise based on outcome
@@ -5165,14 +5172,15 @@ obj VM {
             stack_base=rait_new_base,
             locals=rait_state.locals,
             catch_stack=rait_state.catch_stack,
-            free_vals=rait_state.free_vals,
+            fvp=__list_data_ptr(rait_state.free_vals),
+            fvn=len(rait_state.free_vals),
             this_val=rait_state.this_val,
             self_fn=js_undefined(),
             ip=rait_state.saved_ip,
             with_objs=[],
             native_roots=[]
         );
-        self.frames.append(rait_frame);
+        self._fpush_external(rait_frame);
         self.call_depth = self.call_depth + 1;
 
         saved_mf_rait: list[CompiledFunction] = self.module_fns;
@@ -5208,8 +5216,7 @@ obj VM {
         while len(self.stack) > rait_new_base {
             del self.stack[len(self.stack) - 1];
         }
-        rait_nf: int = len(self.frames);
-        del self.frames[rait_nf - 1];
+        self._fpop_drop();
         self.call_depth = self.call_depth - 1;
 
         # Settle the outer async promise
@@ -5317,7 +5324,7 @@ obj VM {
             st = st + "\n    at " + cf_name;
         }
         # -- parent frames (second-to-last → first) --
-        n_frames: int = len(self.frames);
+        n_frames: int = self.ftop;
         fi: int = n_frames - 2;
         while fi >= 0 {
             pf: CallFrame = self.frames[fi];
@@ -5847,13 +5854,14 @@ obj VM {
             stack_base=gp_sbase,
             locals=locals,
             catch_stack=[],
-            free_vals=free_vals,
+            fvp=__list_data_ptr(free_vals),
+            fvn=len(free_vals),
             this_val=this_val,
             self_fn=callee,
             with_objs=[],
             native_roots=[]
         );
-        self.frames.append(gp_frame);
+        self._fpush_external(gp_frame);
         # Stack execution of a (possibly register-ISA) function: its catch
         # stack, not the handler table, serves any throw in here.
         gp_frame.rpc = -1;
@@ -5892,8 +5900,7 @@ obj VM {
         while len(self.stack) > gp_sbase {
             del self.stack[len(self.stack) - 1];
         }
-        gp_nf: int = len(self.frames);
-        del self.frames[gp_nf - 1];
+        self._fpop_drop();
         if self.had_exception {
             return False;
         }
@@ -5910,8 +5917,10 @@ obj VM {
         free_vals: list[JSValue],
         closure_val: JSValue
     ) -> CallFrame {
-        if len(self.frame_pool) == 0 {
-            return self._build_plain_frame(fn, this_val, args, free_vals, closure_val);
+        if self.ftop >= len(self.frames) {
+            btf_plain: CallFrame = self._build_plain_frame(fn, this_val, args, free_vals, closure_val);
+            self._frame_materialize(btf_plain);
+            return btf_plain;
         }
         btf_locals: list[JSValue] = self._inline_locals(fn);
         btf_a: int = 0;
@@ -6007,7 +6016,8 @@ obj VM {
             stack_base=bpf_sbase,
             locals=bpf_locals,
             catch_stack=[],
-            free_vals=free_vals,
+            fvp=__list_data_ptr(free_vals),
+            fvn=len(free_vals),
             this_val=this_val,
             self_fn=closure_val,
             with_objs=[],
@@ -6156,14 +6166,14 @@ obj VM {
     def _inline_locals(fn: CompiledFunction) -> list[JSValue] {
         # No `= []` up front: that allocated a list on every call only to drop
         # it again when the pooled frame's list was taken.
-        if len(self.frame_pool) > 0 {
-            if self.frame_pool[len(self.frame_pool) - 1].win {
+        if self.ftop < len(self.frames) {
+            if self.frames[self.ftop].win {
                 # A pooled window frame: its "list" is the register file.
-                self.frame_pool[len(self.frame_pool) - 1].locals = [];
-                self.frame_pool[len(self.frame_pool) - 1].win = False;
-                self.frame_pool[len(self.frame_pool) - 1].lb = 0;
+                self.frames[self.ftop].locals = [];
+                self.frames[self.ftop].win = False;
+                self.frames[self.ftop].lb = 0;
             }
-            ic_locals: list[JSValue] = self.frame_pool[len(self.frame_pool) - 1].locals;
+            ic_locals: list[JSValue] = self.frames[self.ftop].locals;
             while len(ic_locals) > fn.num_locals {
                 del ic_locals[len(ic_locals) - 1];
             }
@@ -6222,7 +6232,7 @@ obj VM {
         self._pending_this_uninit = False;
         ic_ctc: JSValue = self._pending_ctor_class;
         self._pending_ctor_class = 0;
-        ic_reuse: bool = len(self.frame_pool) > 0;
+        ic_reuse: bool = self.ftop < len(self.frames);
         ic_sbase: int = len(self.stack);
         ic_frame: CallFrame = self._frame_acquire(
             cl.func,
@@ -6240,7 +6250,7 @@ obj VM {
         if len(cl.module_fns) > 0 {
             self.module_fns = cl.module_fns;
         }
-        self.frames.append(ic_frame);
+        self.ftop = self.ftop + 1;
         self.call_depth = self.call_depth + 1;
         st.inline_depth = st.inline_depth + 1;
         st.frame_switched = True;
@@ -6377,7 +6387,7 @@ obj VM {
         ab: int = len(self.stack) - nargs;
         np: int = len(cl.func.params);
         pb: int = cl.func.param_base;
-        if len(self.frame_pool) == 0 {
+        if self.ftop >= len(self.frames) {
             # Cold: no pooled frame — the general helpers allocate one.
             ic_locals: list[JSValue] = self._fresh_locals(cl.func);
             ic_a: int = 0;
@@ -6401,9 +6411,8 @@ obj VM {
             return True;
         }
         # Move the top pooled frame onto the frame stack.
-        fr: CallFrame = self.frame_pool[len(self.frame_pool) - 1];
-        del self.frame_pool[len(self.frame_pool) - 1];
-        self.frames.append(fr);
+        fr: CallFrame = self.frames[self.ftop];
+        self.ftop = self.ftop + 1;
         if fr.win {
             fr.locals = [];
             fr.win = False;
@@ -6448,9 +6457,8 @@ obj VM {
         if fr.func is not cl.func {
             fr.func = cl.func;
         }
-        if fr.free_vals is not cl.free_vals {
-            fr.free_vals = cl.free_vals;
-        }
+        fr.fvp = __list_data_ptr(cl.free_vals);
+        fr.fvn = len(cl.free_vals);
         fr.ip = 0;
         fr.stack_base = len(self.stack);
         fr.this_val = ic_this;
@@ -6523,6 +6531,56 @@ obj VM {
         return True;
     }
 
+    """The frame stack is self.frames[0:ftop]; the frames past ftop are spares
+    kept for reuse (what was the frame pool). A pushed frame reuses the spare
+    at ftop, filled in place, or is a fresh one placed there (_frame_acquire
+    leaves its frame at ftop; the push is ftop + 1); a popped frame stays in
+    place as a spare (ftop - 1) unless it must survive elsewhere (a suspended
+    generator's) or must not be reused (an abrupt exit, where unwind state may
+    still refer to it): _fpop_drop takes it out of the list."""
+    def _frame_materialize(fr: CallFrame) {
+        if self.ftop < len(self.frames) {
+            self.frames.append(self.frames[self.ftop]);
+            self.frames[self.ftop] = fr;
+        } else {
+            self.frames.append(fr);
+        }
+    }
+
+    def _fpush_external(fr: CallFrame) {
+        self._frame_materialize(fr);
+        self.ftop = self.ftop + 1;
+    }
+
+    def _fpop_drop {
+        self.ftop = self.ftop - 1;
+        fd_last: int = len(self.frames) - 1;
+        if self.ftop < fd_last {
+            self.frames[self.ftop] = self.frames[fd_last];
+        }
+        del self.frames[fd_last];
+    }
+
+    """The list of free-variable cells a frame runs with (for a generator or
+    async state made from it): its closure's list when self_fn is that
+    closure, else a fresh list of the cells."""
+    def _frame_free_vals_list(frame: CallFrame) -> list[JSValue] {
+        if is_fn_val(frame.self_fn) {
+            ffl_idx: int = get_fn_idx(frame.self_fn);
+            if ffl_idx < len(self.realm.closures)
+                and __list_data_ptr(self.realm.closures[ffl_idx].free_vals) == frame.fvp {
+                return self.realm.closures[ffl_idx].free_vals;
+            }
+        }
+        ffl_out: list[JSValue] = [];
+        ffl_i: int = 0;
+        while ffl_i < frame.fvn {
+            ffl_out.append(__mem_load_i64(wrapping_add(frame.fvp, wrapping_mul(ffl_i, 8))));
+            ffl_i = ffl_i + 1;
+        }
+        return ffl_out;
+    }
+
     def _frame_acquire(
         fn: CompiledFunction,
         sbase: int,
@@ -6535,9 +6593,8 @@ obj VM {
         ctc: JSValue,
         reuse: bool
     ) -> CallFrame {
-        if reuse and len(self.frame_pool) > 0 {
-            fa_fr: CallFrame = self.frame_pool[len(self.frame_pool) - 1];
-            del self.frame_pool[len(self.frame_pool) - 1];
+        if reuse and self.ftop < len(self.frames) {
+            fa_fr: CallFrame = self.frames[self.ftop];
             fa_fr.func = fn;
             fa_fr.ip = 0;
             fa_fr.rpc = 0;
@@ -6545,7 +6602,8 @@ obj VM {
             fa_fr.locals = locals;
             fa_fr.win = False;
             fa_fr.lb = 0;
-            fa_fr.free_vals = free_vals;
+            fa_fr.fvp = __list_data_ptr(free_vals);
+            fa_fr.fvn = len(free_vals);
             fa_fr.this_val = this_val;
             fa_fr.self_fn = closure_val;
             fa_fr.new_target = ntv;
@@ -6603,7 +6661,8 @@ obj VM {
             stack_base=sbase,
             locals=locals,
             catch_stack=[],
-            free_vals=free_vals,
+            fvp=__list_data_ptr(free_vals),
+            fvn=len(free_vals),
             this_val=this_val,
             self_fn=closure_val,
             with_objs=[],
@@ -6612,6 +6671,7 @@ obj VM {
         );
         fa_new.this_uninitialized = tui;
         fa_new.ctor_class = ctc;
+        self._frame_materialize(fa_new);
         return fa_new;
     }
 
@@ -6651,7 +6711,7 @@ obj VM {
         # list only when no arguments object can alias the locals.
         rp_reuse: bool = (not fn.is_generator)
             and (not fn.is_async)
-            and len(self.frame_pool) > 0;
+            and self.ftop < len(self.frames);
         # (_inline_locals takes the pooled list; no throwaway `[]` first.)
         locals: list[JSValue] = self._inline_locals(fn)
             if rp_reuse and fn.arguments_slot < 0
@@ -6787,7 +6847,7 @@ obj VM {
             }
             frame.this_binding_cell = make_cell(_TDZ_SENTINEL);
         }
-        self.frames.append(frame);
+        self.ftop = self.ftop + 1;
 
         # ── Proper-tail-call trampoline (ES §15.10.3) ────────────────────────────────
         # _exec may stop with a plain-JS-function tail call staged in the VM _tail_* channel
@@ -6809,7 +6869,7 @@ obj VM {
             while len(self.stack) > sbase {
                 self.stack.pop();
             }
-            tr_of: int = len(self.frames);
+            tr_of: int = self.ftop;
             if tr_of > 0 {
                 # Recycle the outgoing frame through the frame pool — it
                 # completed normally (a tail call is staged, no exception) —
@@ -6818,17 +6878,17 @@ obj VM {
                 # A fresh frame per tail call allocated the frame, its locals
                 # and a dozen bookkeeping lists every time (jac_client: 6.6M
                 # tail calls, ~89M mallocs and as many frees).
-                if len(self.frame_pool) < _FRAME_POOL_MAX
-                    and not self.frames[tr_of - 1].func.is_generator
+                if not self.frames[tr_of - 1].func.is_generator
                     and not self.frames[tr_of - 1].func.is_async {
-                    # (Pooled with a fresh locals list when an arguments
-                    # object may alias the current one, as at run() exit.)
+                    # (Kept as a spare with a fresh locals list when an
+                    # arguments object may alias the current one, as at run() exit.)
                     if self.frames[tr_of - 1].func.arguments_slot >= 0 {
                         self.frames[tr_of - 1].locals = [];
                     }
-                    self.frame_pool.append(self.frames[tr_of - 1]);
+                    self.ftop = self.ftop - 1;
+                } else {
+                    self._fpop_drop();
                 }
-                del self.frames[tr_of - 1];
             }
             # Build the tail callee's frame (mirrors run_cl's effective-this + run's setup).
             tr_cl: JSClosure = self.realm.closures[get_fn_idx(tr_closure)];
@@ -6850,7 +6910,7 @@ obj VM {
             frame = self._build_tail_frame(
                 tr_fn, tr_eff_this, tr_args, tr_cl.free_vals, tr_closure
             );
-            self.frames.append(frame);
+            self.ftop = self.ftop + 1;
             fn = tr_fn;
             sbase = frame.stack_base;
             frame.rpc = 0;
@@ -6927,8 +6987,7 @@ obj VM {
             del self.stack[len(self.stack) - 1];
         }
 
-        nf: int = len(self.frames);
-        del self.frames[nf - 1];
+        # (the frame is popped below, once its eligibility for reuse is known)
         # Module/script top-level environment retention. A `<main>` frame is the
         # top-level body of a module or script; its locals ARE the module-level
         # bindings (`const`/`let`/`var`/hoisted `function`). Node keeps a loaded
@@ -6960,16 +7019,15 @@ obj VM {
         # abrupt frame may still be referenced by in-flight unwind state.
         # `fn`/`frame` are the FINAL callee here (the tail trampoline
         # reassigns both), so eligibility is rechecked against them.
-        if (not self.had_exception)
-            and (not fn.is_generator)
-            and (not fn.is_async)
-            and len(self.frame_pool) < _FRAME_POOL_MAX {
-            # An arguments object may alias the locals: the frame is pooled
-            # with a fresh list instead (the next user resizes it).
+        if (not self.had_exception) and (not fn.is_generator) and (not fn.is_async) {
+            # An arguments object may alias the locals: the frame stays a
+            # spare with a fresh list instead (the next user resizes it).
             if fn.arguments_slot >= 0 {
                 frame.locals = [];
             }
-            self.frame_pool.append(frame);
+            self.ftop = self.ftop - 1;
+        } else {
+            self._fpop_drop();
         }
         self.call_depth = self.call_depth - 1;
         if VM_DEBUG_MODE {
@@ -7254,8 +7312,8 @@ obj VM {
         # early SyntaxErrors. Detect via the caller frame's field-init function
         # (also set on arrows nested in a field initializer).
         caller_is_field_init: bool = False;
-        if inherit_caller_scope and len(self.frames) > 0 {
-            if self.frames[len(self.frames) - 1].func.is_field_init {
+        if inherit_caller_scope and self.ftop > 0 {
+            if self.frames[self.ftop - 1].func.is_field_init {
                 c.eval_field_forbid = True;
                 caller_is_field_init = True;
             }
@@ -7270,8 +7328,8 @@ obj VM {
         # / duplicate params in a strict caller are early errors even when the eval
         # source itself has no "use strict" directive).
         caller_strict: bool = False;
-        if inherit_caller_scope and len(self.frames) > 0 {
-            caller_strict = self.frames[len(self.frames) - 1].func.is_strict;
+        if inherit_caller_scope and self.ftop > 0 {
+            caller_strict = self.frames[self.ftop - 1].func.is_strict;
         }
         if caller_strict {
             c.eval_force_strict = True;
@@ -7283,8 +7341,8 @@ obj VM {
         # object-method home). Field initializers always allow SuperProperty and
         # never SuperCall (ES §15.7.1).
         eval_super_fn: JSValue = js_undefined();
-        if inherit_caller_scope and len(self.frames) > 0 {
-            es_caller_self: JSValue = self.frames[len(self.frames) - 1].self_fn;
+        if inherit_caller_scope and self.ftop > 0 {
+            es_caller_self: JSValue = self.frames[self.ftop - 1].self_fn;
             if is_fn_val(es_caller_self) {
                 es_cl: JSClosure = self.realm.closures[get_fn_idx(es_caller_self)];
                 es_has_home: bool = jsv_is_object_cell(es_cl.home_object)
@@ -7319,7 +7377,7 @@ obj VM {
             # Fallback: caller CompiledFunction may carry priv_env even when self_fn
             # is missing (e.g. odd frame shapes); prefer the live frame's func.
             if len(c.eval_priv_keys) == 0 {
-                es_cf2: CompiledFunction = self.frames[len(self.frames) - 1].func;
+                es_cf2: CompiledFunction = self.frames[self.ftop - 1].func;
                 if len(es_cf2.priv_env_keys) > 0 {
                     ep_j: int = 0;
                     while ep_j < len(es_cf2.priv_env_keys) {
@@ -7362,10 +7420,10 @@ obj VM {
         #     environment, not the body's, so it collides with parameters only,
         #     never with a body `let`/`const` (arrow-fn-body-*-arguments cases).
         eval_is_strict: bool = caller_strict or top_fn.is_strict;
-        if inherit_caller_scope and len(self.frames) > 0 and not eval_is_strict {
+        if inherit_caller_scope and self.ftop > 0 and not eval_is_strict {
             eval_vars: list[str] = c.collect_toplevel_var_names(ast.children);
             if len(eval_vars) > 0 {
-                caller_fn: CompiledFunction = self.frames[len(self.frames) - 1].func;
+                caller_fn: CompiledFunction = self.frames[self.ftop - 1].func;
                 clash: str = "";
                 for ev_name in eval_vars {
                     for pm_name in caller_fn.params {
@@ -7409,8 +7467,8 @@ obj VM {
         # Use program_annexb_fn_names — annexb_block_fn_names is cleared by _pop_fn.
         if not eval_is_strict {
             for ab_edi_name in c.program_annexb_fn_names {
-                if inherit_caller_scope and len(self.frames) > 0 {
-                    ab_edi_cf: CallFrame = self.frames[len(self.frames) - 1];
+                if inherit_caller_scope and self.ftop > 0 {
+                    ab_edi_cf: CallFrame = self.frames[self.ftop - 1];
                     # Function varEnv (not script <main>): CreateMutableBinding on caller.
                     if ab_edi_cf.func.name != "<main>" {
                         self._edi_ensure_var_binding(ab_edi_cf, ab_edi_name);
@@ -7444,10 +7502,10 @@ obj VM {
         # write path — installing a frame dyn_var here would hide the eval-assigned value
         # from those closures (test262 */scope-param-*elem-var-*).
         if inherit_caller_scope
-            and len(self.frames) > 0
+            and self.ftop > 0
             and not eval_is_strict
             and param_eval_mode == 0 {
-            edi_var_cf: CallFrame = self.frames[len(self.frames) - 1];
+            edi_var_cf: CallFrame = self.frames[self.ftop - 1];
             if edi_var_cf.func.name != "<main>" {
                 edi_vars: list[str] = c.collect_toplevel_var_names(ast.children);
                 for edi_vn in edi_vars {
@@ -7464,12 +7522,12 @@ obj VM {
         #   - vm.runInContext: nothing — the sandbox is the whole scope, so not even
         #     the host's <main> bindings may leak in (boundary = 0).
         pushed_eval_scope: bool = False;
-        if len(self.frames) > 0 {
+        if self.ftop > 0 {
             if ctx_global_rc != 0 and not ctx_realm_only_rc {
                 self.eval_scope_frames.append(0);
                 pushed_eval_scope = True;
             } elif inherit_caller_scope {
-                self.eval_scope_frames.append(len(self.frames));
+                self.eval_scope_frames.append(self.ftop);
                 pushed_eval_scope = True;
             } else {
                 # Indirect (incl. a foreign-realm eval): global frame only (boundary = 1).
@@ -7494,8 +7552,8 @@ obj VM {
         # B13: make the inherited super-fn available to LOAD_SUPER_PROTO in the eval frame.
         self.eval_super_fns.append(eval_super_fn);
         # Direct eval inherits the caller's `this` (methods / field inits / arrows).
-        if inherit_caller_scope and len(self.frames) > 0 {
-            self.pending_eval_this = self.frames[len(self.frames) - 1].this_val;
+        if inherit_caller_scope and self.ftop > 0 {
+            self.pending_eval_this = self.frames[self.ftop - 1].this_val;
             self.pending_eval_this_set = True;
         }
         saved_exc: bool = self.had_exception;
@@ -8811,9 +8869,9 @@ obj VM {
             pset_ok: bool = self._proxy_trap_set(js_obj, key, val, receiver);
             if vm_has_native_exc() {
                 exc_pn: JSValue = vm_take_native_exc();
-                if len(self.frames) > 0 {
+                if self.ftop > 0 {
                     if not self._unwind_in_frame(
-                        self.frames[len(self.frames) - 1], exc_pn
+                        self.frames[self.ftop - 1], exc_pn
                     ) {
                         self.had_exception = True;
                         self.pending_exc = exc_pn;
@@ -8828,13 +8886,13 @@ obj VM {
             }
             if not pset_ok {
                 set_strict: bool = False;
-                if len(self.frames) > 0 {
-                    set_strict = self.frames[len(self.frames) - 1].func.is_strict;
+                if self.ftop > 0 {
+                    set_strict = self.frames[self.ftop - 1].func.is_strict;
                 }
                 if set_strict {
                     exc_ps: JSValue = make_type_error("Proxy set trap returned false");
                     if not self._unwind_in_frame(
-                        self.frames[len(self.frames) - 1], exc_ps
+                        self.frames[self.ftop - 1], exc_ps
                     ) {
                         self.had_exception = True;
                         self.pending_exc = exc_ps;
@@ -8848,16 +8906,16 @@ obj VM {
         # Returns false; strict-mode assignment then throws a TypeError.
         if js_is_module_namespace(js_obj) {
             set_strict_mns: bool = False;
-            if len(self.frames) > 0 {
-                set_strict_mns = self.frames[len(self.frames) - 1].func.is_strict;
+            if self.ftop > 0 {
+                set_strict_mns = self.frames[self.ftop - 1].func.is_strict;
             }
             if set_strict_mns {
                 exc_mns: JSValue = make_type_error(
                     "Cannot assign to read only property of module namespace object"
                 );
-                if len(self.frames) > 0 {
+                if self.ftop > 0 {
                     if not self._unwind_in_frame(
-                        self.frames[len(self.frames) - 1], exc_mns
+                        self.frames[self.ftop - 1], exc_mns
                     ) {
                         self.had_exception = True;
                         self.pending_exc = exc_mns;
@@ -8881,18 +8939,18 @@ obj VM {
                 }
                 if not ok_ta_sr {
                     set_strict_ta: bool = False;
-                    if len(self.frames) > 0 {
+                    if self.ftop > 0 {
                         set_strict_ta = self.frames[
-                            len(self.frames) - 1
+                            self.ftop - 1
                         ].func.is_strict;
                     }
                     if set_strict_ta and not self.had_exception {
                         exc_ta: JSValue = make_type_error(
                             "Cannot assign to read only property"
                         );
-                        if len(self.frames) > 0 {
+                        if self.ftop > 0 {
                             if not self._unwind_in_frame(
-                                self.frames[len(self.frames) - 1], exc_ta
+                                self.frames[self.ftop - 1], exc_ta
                             ) {
                                 self.had_exception = True;
                                 self.pending_exc = exc_ta;
@@ -8938,16 +8996,16 @@ obj VM {
         # data property; writing there used to add a stray data entry).
         if js_object_has_own_accessor(js_obj, key) {
             set_ns_strict: bool = False;
-            if len(self.frames) > 0 {
-                set_ns_strict = self.frames[len(self.frames) - 1].func.is_strict;
+            if self.ftop > 0 {
+                set_ns_strict = self.frames[self.ftop - 1].func.is_strict;
             }
             if set_ns_strict {
                 exc_ns: JSValue = make_type_error(
                     "Cannot assign to read only property (no setter)"
                 );
-                if len(self.frames) > 0 {
+                if self.ftop > 0 {
                     if not self._unwind_in_frame(
-                        self.frames[len(self.frames) - 1], exc_ns
+                        self.frames[self.ftop - 1], exc_ns
                     ) {
                         self.had_exception = True;
                         self.pending_exc = exc_ns;
@@ -8975,18 +9033,18 @@ obj VM {
                 }
                 if not ok_dr {
                     set_strict_dr: bool = False;
-                    if len(self.frames) > 0 {
+                    if self.ftop > 0 {
                         set_strict_dr = self.frames[
-                            len(self.frames) - 1
+                            self.ftop - 1
                         ].func.is_strict;
                     }
                     if set_strict_dr and not self.had_exception {
                         exc_dr: JSValue = make_type_error(
                             "Cannot assign to read only property"
                         );
-                        if len(self.frames) > 0 {
+                        if self.ftop > 0 {
                             if not self._unwind_in_frame(
-                                self.frames[len(self.frames) - 1], exc_dr
+                                self.frames[self.ftop - 1], exc_dr
                             ) {
                                 self.had_exception = True;
                                 self.pending_exc = exc_dr;
@@ -9002,16 +9060,16 @@ obj VM {
             set_rc: int = js_object_set(js_obj, key, val);
             if set_rc != 0 {
                 set_strict: bool = False;
-                if len(self.frames) > 0 {
-                    set_strict = self.frames[len(self.frames) - 1].func.is_strict;
+                if self.ftop > 0 {
+                    set_strict = self.frames[self.ftop - 1].func.is_strict;
                 }
                 if set_strict {
                     exc_set: JSValue = make_type_error(
                         "Cannot assign to read only property"
                     );
-                    if len(self.frames) > 0 {
+                    if self.ftop > 0 {
                         if not self._unwind_in_frame(
-                            self.frames[len(self.frames) - 1], exc_set
+                            self.frames[self.ftop - 1], exc_set
                         ) {
                             self.had_exception = True;
                             self.pending_exc = exc_set;
@@ -9060,16 +9118,16 @@ obj VM {
             set_rc2: int = js_object_set(receiver, key, val);
             if set_rc2 != 0 {
                 set_strict2: bool = False;
-                if len(self.frames) > 0 {
-                    set_strict2 = self.frames[len(self.frames) - 1].func.is_strict;
+                if self.ftop > 0 {
+                    set_strict2 = self.frames[self.ftop - 1].func.is_strict;
                 }
                 if set_strict2 {
                     exc_set2: JSValue = make_type_error(
                         "Cannot assign to read only property"
                     );
-                    if len(self.frames) > 0 {
+                    if self.ftop > 0 {
                         if not self._unwind_in_frame(
-                            self.frames[len(self.frames) - 1], exc_set2
+                            self.frames[self.ftop - 1], exc_set2
                         ) {
                             self.had_exception = True;
                             self.pending_exc = exc_set2;
@@ -12832,7 +12890,7 @@ obj VM {
         }
 
         frame: CallFrame = self._gen_frame_acquire(state, sbase, gen_obj);
-        self.frames.append(frame);
+        self._fpush_external(frame);
         frame.rpc = state.saved_rpc;
         if frame.rpc == 0
             and state.saved_ip > 0
@@ -12857,14 +12915,14 @@ obj VM {
         if state.ret_mode and not rg_abrupt_ret {
             # resumed after yielding from a finally block while .return() completes
             self._gen_ret_pending = True;
-            self._gen_ret_depth = len(self.frames);
+            self._gen_ret_depth = self.ftop;
         }
         if rg_abrupt_ret {
             nc_ab: int = len(frame.catch_stack);
             if nc_ab == 0 and _reg_handler_at(frame.func, frame.ip - 1) >= 0 {
                 frame.rpc = _reg_handler_at(frame.func, frame.ip - 1);
                 self._gen_ret_pending = True;
-                self._gen_ret_depth = len(self.frames);
+                self._gen_ret_depth = self.ftop;
             } elif nc_ab > 0 {
                 # (a register frame's catch stack holds register pcs)
                 if frame.func.risa == 1 {
@@ -12879,7 +12937,7 @@ obj VM {
                 # for ordinary try/finally handlers: they complete via RETURN without
                 # touching ITER_CLOSE_THRW, and the flag is cleared on completion.
                 self._gen_ret_pending = True;
-                self._gen_ret_depth = len(self.frames);
+                self._gen_ret_depth = self.ftop;
             }
         }
 
@@ -12947,8 +13005,7 @@ obj VM {
         while len(self.stack) > sbase {
             del self.stack[len(self.stack) - 1];
         }
-        nfg: int = len(self.frames);
-        del self.frames[nfg - 1];
+        self._fpop_drop();
         self.call_depth = self.call_depth - 1;
         # the frame is reused by the next step unless an AWAIT keeps it
         if not self.vm_awaiting and len(self.gen_frame_pool) < 16 {
@@ -13085,7 +13142,8 @@ obj VM {
             gf.stack_base = sbase;
             gf.locals = state.locals;
             gf.catch_stack = state.catch_stack;
-            gf.free_vals = state.free_vals;
+            gf.fvp = __list_data_ptr(state.free_vals);
+            gf.fvn = len(state.free_vals);
             gf.this_val = state.this_val;
             gf.self_fn = gen_obj;
             gf.win = False;
@@ -13144,7 +13202,8 @@ obj VM {
             stack_base=sbase,
             locals=state.locals,
             catch_stack=state.catch_stack,
-            free_vals=state.free_vals,
+            fvp=__list_data_ptr(state.free_vals),
+            fvn=len(state.free_vals),
             this_val=state.this_val,
             self_fn=gen_obj,
             with_objs=[],
@@ -13706,7 +13765,7 @@ obj VM {
     # Array-destructuring IteratorClose on ABRUPT completion.  Stack: [exc, iter].
     # Close swallowing any error from return(); then re-throw the original exc.
     def _op_iter_close_thrw(frame: CallFrame, ins: Instruction, st: ExecState) -> None {
-        if self._gen_ret_pending and len(self.frames) == self._gen_ret_depth {
+        if self._gen_ret_pending and self.ftop == self._gen_ret_depth {
             # Forced generator return unwinding through this destructuring handler:
             # the abrupt-ret jump did not push an exception value onto the stack (it
             # is not a throw), so only the iterator record (from LOAD_LOCAL) is here.
@@ -13747,7 +13806,7 @@ obj VM {
     return NO value was pushed (`_gen_ret_pending`), so leave the stack untouched;
     the matching FINALLY_RETHROW will hand control back for the return completion."""
     def _op_finally_enter(frame: CallFrame, ins: Instruction, st: ExecState) -> None {
-        if self._gen_ret_pending and len(self.frames) == self._gen_ret_depth {
+        if self._gen_ret_pending and self.ftop == self._gen_ret_depth {
             # Forced-return: no exception on the stack. Record undefined so a spurious
             # value is not thrown at FINALLY_RETHROW if _gen_ret_pending were cleared.
             frame.locals[frame.lb + (ins.arg)] = js_undefined();
@@ -13762,7 +13821,7 @@ obj VM {
     reload the stashed exception and re-raise it (unwinding to an enclosing handler),
     completing the abrupt try completion the finalizer did not itself replace."""
     def _op_finally_rethrow(frame: CallFrame, ins: Instruction, st: ExecState) -> None {
-        if self._gen_ret_pending and len(self.frames) == self._gen_ret_depth {
+        if self._gen_ret_pending and self.ftop == self._gen_ret_depth {
             # Return completion: the generator resume driver reads state.ret_mode.
             st.running = False;
             return;
@@ -13915,8 +13974,8 @@ obj VM {
             return jsv_hole();
         }
         esl_boundary: int = self.eval_scope_frames[esl_n - 1];
-        if esl_boundary > len(self.frames) {
-            esl_boundary = len(self.frames);
+        if esl_boundary > self.ftop {
+            esl_boundary = self.ftop;
         }
         esl_i: int = esl_boundary - 1;
         while esl_i >= 0 {
@@ -13946,8 +14005,8 @@ obj VM {
             esl_fvi: int = 0;
             while esl_fvi < len(esl_cf.func.free_vars) {
                 if esl_cf.func.free_vars[esl_fvi] == gn
-                    and esl_fvi < len(esl_cf.free_vals) {
-                    return cell_get(esl_cf.free_vals[esl_fvi]);
+                    and esl_fvi < esl_cf.fvn {
+                    return cell_get(__mem_load_i64(wrapping_add(esl_cf.fvp, wrapping_mul(esl_fvi, 8))));
                 }
                 esl_fvi = esl_fvi + 1;
             }
@@ -13967,8 +14026,8 @@ obj VM {
             return False;
         }
         eds_boundary: int = self.eval_scope_frames[eds_n - 1];
-        if eds_boundary > len(self.frames) {
-            eds_boundary = len(self.frames);
+        if eds_boundary > self.ftop {
+            eds_boundary = self.ftop;
         }
         eds_i: int = eds_boundary - 1;
         while eds_i >= 0 {
@@ -13997,8 +14056,8 @@ obj VM {
             return jsv_hole();
         }
         edl_boundary: int = self.eval_scope_frames[edl_n - 1];
-        if edl_boundary > len(self.frames) {
-            edl_boundary = len(self.frames);
+        if edl_boundary > self.ftop {
+            edl_boundary = self.ftop;
         }
         edl_i: int = edl_boundary - 1;
         while edl_i >= 0 {
@@ -14029,8 +14088,8 @@ obj VM {
             return False;
         }
         ess_boundary: int = self.eval_scope_frames[ess_n - 1];
-        if ess_boundary > len(self.frames) {
-            ess_boundary = len(self.frames);
+        if ess_boundary > self.ftop {
+            ess_boundary = self.ftop;
         }
         ess_i: int = ess_boundary - 1;
         while ess_i >= 0 {
@@ -14081,7 +14140,7 @@ obj VM {
             ess_fvi: int = 0;
             while ess_fvi < len(ess_cf.func.free_vars) {
                 if ess_cf.func.free_vars[ess_fvi] == gn
-                    and ess_fvi < len(ess_cf.free_vals) {
+                    and ess_fvi < ess_cf.fvn {
                     # ES §15.2.5: a named-function-expression self-name is an IMMUTABLE
                     # binding.  The captured self-cell lives in the named-fn frame; a
                     # direct eval reassigning it (`eval("f = 1")`) must be a silent
@@ -14095,7 +14154,7 @@ obj VM {
                         }
                         return True;
                     }
-                    cell_set(ess_cf.free_vals[ess_fvi], val);
+                    cell_set(__mem_load_i64(wrapping_add(ess_cf.fvp, wrapping_mul(ess_fvi, 8))), val);
                     return True;
                 }
                 ess_fvi = ess_fvi + 1;
@@ -14531,8 +14590,8 @@ obj VM {
                 lg_esf: int = len(self.eval_scope_frames);
                 if lg_esf > 0 {
                     lg_boundary: int = self.eval_scope_frames[lg_esf - 1];
-                    if lg_boundary > len(self.frames) {
-                        lg_boundary = len(self.frames);
+                    if lg_boundary > self.ftop {
+                        lg_boundary = self.ftop;
                     }
                     lg_fr_i: int = lg_boundary - 1;
                     while lg_fr_i >= 0 and not lg_eval_ok {
@@ -14556,8 +14615,8 @@ obj VM {
                             lg_fvi: int = 0;
                             while lg_fvi < len(lg_cf.func.free_vars) {
                                 if lg_cf.func.free_vars[lg_fvi] == gn
-                                    and lg_fvi < len(lg_cf.free_vals) {
-                                    lg_eval_val = cell_get(lg_cf.free_vals[lg_fvi]);
+                                    and lg_fvi < lg_cf.fvn {
+                                    lg_eval_val = cell_get(__mem_load_i64(wrapping_add(lg_cf.fvp, wrapping_mul(lg_fvi, 8))));
                                     lg_eval_ok = True;
                                     lg_fvi = len(lg_cf.func.free_vars);
                                 }
@@ -15179,8 +15238,8 @@ obj VM {
         ln_nfree: int = len(frame.func.free_vars);
         while ln_fi < ln_nfree {
             if frame.func.free_vars[ln_fi] == ln_name
-                and ln_fi < len(frame.free_vals) {
-                self._push(cell_get(frame.free_vals[ln_fi]));
+                and ln_fi < frame.fvn {
+                self._push(cell_get(__mem_load_i64(wrapping_add(frame.fvp, wrapping_mul(ln_fi, 8)))));
                 return;
             }
             ln_fi = ln_fi + 1;
@@ -15227,7 +15286,7 @@ obj VM {
         if len(self.eval_scope_frames) > 0 {
             nif_boundary = self.eval_scope_frames[len(self.eval_scope_frames) - 1];
         }
-        nif_i: int = len(self.frames) - 1;
+        nif_i: int = self.ftop - 1;
         while nif_i >= 0 and nif_i >= nif_boundary - 1 {
             if self.frames[nif_i].func.self_name == name {
                 return True;
@@ -15364,7 +15423,7 @@ obj VM {
         sn_nfree: int = len(frame.func.free_vars);
         while sn_fi < sn_nfree {
             if frame.func.free_vars[sn_fi] == sn_name
-                and sn_fi < len(frame.free_vals) {
+                and sn_fi < frame.fvn {
                 # ES §15.2.5: the named-function-expression self-name is an IMMUTABLE
                 # binding.  Direct code enforces this at compile time (fnself kind), but
                 # a *direct eval* inside the body compiles a separate program that can
@@ -15387,7 +15446,7 @@ obj VM {
                     }
                     return;
                 }
-                cell_set(frame.free_vals[sn_fi], sn_val);
+                cell_set(__mem_load_i64(wrapping_add(frame.fvp, wrapping_mul(sn_fi, 8))), sn_val);
                 return;
             }
             sn_fi = sn_fi + 1;
@@ -15662,8 +15721,8 @@ obj VM {
     }
 
     def _op_load_free(frame: CallFrame, ins: Instruction, st: ExecState) -> None {
-        if ins.arg < len(frame.free_vals) {
-            lf_v: JSValue = cell_get(frame.free_vals[ins.arg]);
+        if ins.arg < frame.fvn {
+            lf_v: JSValue = cell_get(__mem_load_i64(wrapping_add(frame.fvp, wrapping_mul(ins.arg, 8))));
             # TDZ: a captured `let`/`const` still holding the sentinel was read through a
             # closure before its declaration ran — ReferenceError (ES §9.1.1.1.6 / §14.3.1).
             if js_is_tdz(lf_v) {
@@ -15688,11 +15747,11 @@ obj VM {
     }
 
     def _op_store_free(frame: CallFrame, ins: Instruction, st: ExecState) -> None {
-        if ins.arg < len(frame.free_vals) {
+        if ins.arg < frame.fvn {
             sf_val: JSValue = self._pop();
             # TDZ: assigning to a captured `let`/`const` still uninitialized (sentinel) is a
             # ReferenceError — the binding exists but has no value yet (ES §9.1.1.1.5).
-            if js_is_tdz(cell_get(frame.free_vals[ins.arg])) {
+            if js_is_tdz(cell_get(__mem_load_i64(wrapping_add(frame.fvp, wrapping_mul(ins.arg, 8))))) {
                 sf_name: str = "";
                 if ins.arg < len(frame.func.free_vars) {
                     sf_name = frame.func.free_vars[ins.arg];
@@ -15707,7 +15766,7 @@ obj VM {
                 }
                 return;
             }
-            cell_set(frame.free_vals[ins.arg], sf_val);
+            cell_set(__mem_load_i64(wrapping_add(frame.fvp, wrapping_mul(ins.arg, 8))), sf_val);
         } else {
             self._pop();
         }
@@ -16817,7 +16876,7 @@ obj VM {
         ) {
             return False;
         }
-        self.frames[len(self.frames) - 1].discard_ret = True;
+        self.frames[self.ftop - 1].discard_ret = True;
         return True;
     }
 
@@ -17375,8 +17434,8 @@ obj VM {
                 sp_obj, WK_LENGTH
             );
             sp_len_strict: bool = False;
-            if len(self.frames) > 0 {
-                sp_len_strict = self.frames[len(self.frames) - 1].func.is_strict;
+            if self.ftop > 0 {
+                sp_len_strict = self.frames[self.ftop - 1].func.is_strict;
             }
             if sp_len_desc.key != 0 and not sp_len_desc.writable {
                 if sp_len_strict {
@@ -18548,8 +18607,8 @@ obj VM {
                 if si_num_idx >= 0
                     and not _array_index_write_allowed(si_obj, si_num_idx) {
                     si_strict: bool = False;
-                    if len(self.frames) > 0 {
-                        si_strict = self.frames[len(self.frames) - 1].func.is_strict;
+                    if self.ftop > 0 {
+                        si_strict = self.frames[self.ftop - 1].func.is_strict;
                     }
                     if si_strict {
                         exc_si_ro: JSValue = make_type_error(
@@ -18600,8 +18659,8 @@ obj VM {
                 return;
             }
             si_strict_set: bool = False;
-            if len(self.frames) > 0 {
-                si_strict_set = self.frames[len(self.frames) - 1].func.is_strict;
+            if self.ftop > 0 {
+                si_strict_set = self.frames[self.ftop - 1].func.is_strict;
             }
             if not si_set_ok and si_strict_set {
                 return;
@@ -21582,7 +21641,7 @@ obj VM {
                     st
                 ) {
                     # (Eligibility was checked above; kept as a plain call.)
-                    self._op_call(self.frames[len(self.frames) - 1], ins, st);
+                    self._op_call(self.frames[self.ftop - 1], ins, st);
                     st.frame_switched = True;
                 }
                 return;
@@ -28912,7 +28971,7 @@ obj VM {
     call operands instead of a result on top. The tail callee is then entered
     from the stack in the frame's place."""
     def _inline_tail_pop(callee_idx: int, n: int, st: ExecState) {
-        tp_top: int = len(self.frames) - 1;
+        tp_top: int = self.ftop - 1;
         tp_sb: int = self.frames[tp_top].stack_base;
         if callee_idx > tp_sb {
             tp_k: int = 0;
@@ -28928,10 +28987,7 @@ obj VM {
             self.module_fns = self.frames[tp_top].caller_module_fns;
         }
         self.frames[tp_top].ip = 0;
-        if len(self.frame_pool) < _FRAME_POOL_MAX {
-            self.frame_pool.append(self.frames[tp_top]);
-        }
-        del self.frames[tp_top];
+        self.ftop = self.ftop - 1;
         st.inline_depth = st.inline_depth - 1;
         self.call_depth = self.call_depth - 1;
     }
@@ -28943,7 +28999,7 @@ obj VM {
         # The frame is reached through self.frames[top] rather than a local
         # (one retain/release pair fewer per call), and module_fns is only
         # rewritten when the callee actually switched it.
-        ir_top: int = len(self.frames) - 1;
+        ir_top: int = self.ftop - 1;
         if self.module_fns is not self.frames[ir_top].caller_module_fns {
             self.module_fns = self.frames[ir_top].caller_module_fns;
         }
@@ -28959,10 +29015,7 @@ obj VM {
         # it anyway.
         self.frames[ir_top].ip = 0;
         ir_keep: bool = not self.frames[ir_top].discard_ret;
-        if len(self.frame_pool) < _FRAME_POOL_MAX {
-            self.frame_pool.append(self.frames[ir_top]);
-        }
-        del self.frames[ir_top];
+        self.ftop = self.ftop - 1;
         st.inline_depth = st.inline_depth - 1;
         self.call_depth = self.call_depth - 1;
         if ir_keep {
@@ -29029,8 +29082,8 @@ obj VM {
                     found2_mf: bool = False;
                     while fi2_mf < len(frame.func.free_vars) {
                         if frame.func.free_vars[fi2_mf] == fv_nm {
-                            if fi2_mf < len(frame.free_vals) {
-                                capt_mf.append(frame.free_vals[fi2_mf]);
+                            if fi2_mf < frame.fvn {
+                                capt_mf.append(__mem_load_i64(wrapping_add(frame.fvp, wrapping_mul(fi2_mf, 8))));
                             } else {
                                 capt_mf.append(js_undefined());
                             }
@@ -29172,8 +29225,8 @@ obj VM {
                     found2_ma: bool = False;
                     while fi2_ma < len(frame.func.free_vars) {
                         if frame.func.free_vars[fi2_ma] == fva_nm {
-                            if fi2_ma < len(frame.free_vals) {
-                                capt_ma.append(frame.free_vals[fi2_ma]);
+                            if fi2_ma < frame.fvn {
+                                capt_ma.append(__mem_load_i64(wrapping_add(frame.fvp, wrapping_mul(fi2_ma, 8))));
                             } else {
                                 capt_ma.append(js_undefined());
                             }
@@ -30590,7 +30643,7 @@ obj VM {
         asd_state: JSGeneratorState = JSGeneratorState(
             func=frame.func,
             locals=asd_locals,
-            free_vals=frame.free_vals,
+            free_vals=self._frame_free_vals_list(frame),
             this_val=frame.this_val,
             catch_stack=asd_cs,
             send_val=js_undefined(),
@@ -30734,7 +30787,7 @@ obj VM {
             aw_state: JSGeneratorState = JSGeneratorState(
                 func=frame.func,
                 locals=aw_locals,
-                free_vals=frame.free_vals,
+                free_vals=self._frame_free_vals_list(frame),
                 this_val=frame.this_val,
                 catch_stack=aw_cs,
                 send_val=js_undefined(),
@@ -31128,7 +31181,7 @@ obj VM {
                         ain_ag_state: JSGeneratorState = JSGeneratorState(
                             func=frame.func,
                             locals=ain_ag_locals,
-                            free_vals=frame.free_vals,
+                            free_vals=self._frame_free_vals_list(frame),
                             this_val=frame.this_val,
                             catch_stack=ain_ag_cs,
                             send_val=js_undefined(),
@@ -31926,7 +31979,7 @@ obj VM {
                         if vm_has_native_exc() {
                             os_fx: JSValue = vm_take_native_exc();
                             if not self._unwind_in_frame(
-                                self.frames[len(self.frames) - 1], os_fx
+                                self.frames[self.ftop - 1], os_fx
                             ) {
                                 self.had_exception = True;
                                 self.pending_exc = os_fx;
@@ -31957,7 +32010,7 @@ obj VM {
             if vm_has_native_exc() {
                 os_okx: JSValue = vm_take_native_exc();
                 if not self._unwind_in_frame(
-                    self.frames[len(self.frames) - 1], os_okx
+                    self.frames[self.ftop - 1], os_okx
                 ) {
                     self.had_exception = True;
                     self.pending_exc = os_okx;
@@ -31997,7 +32050,7 @@ obj VM {
                         if vm_has_native_exc() {
                             os_enx: JSValue = vm_take_native_exc();
                             if not self._unwind_in_frame(
-                                self.frames[len(self.frames) - 1], os_enx
+                                self.frames[self.ftop - 1], os_enx
                             ) {
                                 self.had_exception = True;
                                 self.pending_exc = os_enx;
@@ -32020,7 +32073,7 @@ obj VM {
                             self.had_exception = False;
                             self.pending_exc = js_undefined();
                             if not self._unwind_in_frame(
-                                self.frames[len(self.frames) - 1], os_exc
+                                self.frames[self.ftop - 1], os_exc
                             ) {
                                 # No handler in this frame — the exception must propagate
                                 # out of _exec so it unwinds across frames (ES §14.3.3.1:
@@ -32036,7 +32089,7 @@ obj VM {
                             # stop the frame so it propagates across frames.
                             os_nexc: JSValue = vm_take_native_exc();
                             if not self._unwind_in_frame(
-                                self.frames[len(self.frames) - 1], os_nexc
+                                self.frames[self.ftop - 1], os_nexc
                             ) {
                                 self.had_exception = True;
                                 self.pending_exc = os_nexc;
@@ -32050,7 +32103,7 @@ obj VM {
                             "Cannot assign to read only property"
                         );
                         if not self._unwind_in_frame(
-                            self.frames[len(self.frames) - 1], exc_os
+                            self.frames[self.ftop - 1], exc_os
                         ) {
                             self.had_exception = True;
                             self.pending_exc = exc_os;
@@ -32339,7 +32392,7 @@ obj VM {
                         and self._setter_ic_call(stp_fn, frame.this_val, st) {
                         frame.ip = ci + 4;
                         st.frame_switched = False;
-                        frame = self.frames[len(self.frames) - 1];
+                        frame = self.frames[self.ftop - 1];
                         code = frame.func.code;
                         n_code = len(code);
                     } else {
@@ -32388,7 +32441,7 @@ obj VM {
                     }
                     if sll_in {
                         st.frame_switched = False;
-                        frame = self.frames[len(self.frames) - 1];
+                        frame = self.frames[self.ftop - 1];
                         code = frame.func.code;
                         n_code = len(code);
                     } else {
@@ -32850,7 +32903,7 @@ obj VM {
                 }
                 if spi_in {
                     st.frame_switched = False;
-                    frame = self.frames[len(self.frames) - 1];
+                    frame = self.frames[self.ftop - 1];
                     code = frame.func.code;
                     n_code = len(code);
                 } else {
@@ -32885,7 +32938,7 @@ obj VM {
                 } elif self._getter_ic_call(code[ci], st) {
                     # Getter entered as an inline frame: switch to it.
                     st.frame_switched = False;
-                    frame = self.frames[len(self.frames) - 1];
+                    frame = self.frames[self.ftop - 1];
                     code = frame.func.code;
                     n_code = len(code);
                 } else {
@@ -32933,7 +32986,7 @@ obj VM {
                 }
                 if st.frame_switched {
                     st.frame_switched = False;
-                    frame = self.frames[len(self.frames) - 1];
+                    frame = self.frames[self.ftop - 1];
                     code = frame.func.code;
                     n_code = len(code);
                 }
@@ -32941,7 +32994,7 @@ obj VM {
                 _vm_op_call(self, frame, code[ci], st);
                 if st.frame_switched {
                     st.frame_switched = False;
-                    frame = self.frames[len(self.frames) - 1];
+                    frame = self.frames[self.ftop - 1];
                     code = frame.func.code;
                     n_code = len(code);
                 }
@@ -32958,7 +33011,7 @@ obj VM {
                 # dispatch. The while-condition then already sees the new frame.
                 elif st.frame_switched {
                     st.frame_switched = False;
-                    frame = self.frames[len(self.frames) - 1];
+                    frame = self.frames[self.ftop - 1];
                     code = frame.func.code;
                     n_code = len(code);
                 }
@@ -32996,8 +33049,47 @@ obj VM {
     """Run a collection at a dispatch-loop safepoint (the loop saw
     `realm.gc_pending`). Kept out of `_exec` so the root-gathering locals
     are not released on every dispatch."""
+    def _r1_check_frames {
+        ck_i: int = 0;
+        ck_prev_lb: int = -1;
+        while ck_i < self.ftop {
+            ck_fr: CallFrame = self.frames[ck_i];
+            if ck_fr.win {
+                if ck_fr.lb + ck_fr.func.num_locals > self.rtop {
+                    print("[R1CHECK] window above rtop: frame " + str(ck_i) + "/" + str(self.ftop) + " " + ck_fr.func.name + " lb=" + str(ck_fr.lb) + " n=" + str(ck_fr.func.num_locals) + " rtop=" + str(self.rtop));
+                }
+                if ck_fr.lb < ck_prev_lb {
+                    print("[R1CHECK] window below the previous one: frame " + str(ck_i) + " " + ck_fr.func.name + " lb=" + str(ck_fr.lb) + " prev=" + str(ck_prev_lb));
+                }
+                ck_prev_lb = ck_fr.lb;
+            }
+            ck_j: int = ck_i + 1;
+            while ck_j < len(self.frames) {
+                if __ref_addr(self.frames[ck_j]) == __ref_addr(ck_fr) {
+                    print("[R1CHECK] frame object twice in the list: " + str(ck_i) + " and " + str(ck_j) + " (ftop " + str(self.ftop) + ", len " + str(len(self.frames)) + ") " + ck_fr.func.name);
+                }
+                ck_j = ck_j + 1;
+            }
+            ck_i = ck_i + 1;
+        }
+        if self.ftop > len(self.frames) {
+            print("[R1CHECK] ftop " + str(self.ftop) + " > len " + str(len(self.frames)));
+        }
+        ck_msg: str = "[R1GC] ftop=" + str(self.ftop) + " len=" + str(len(self.frames)) + " rtop=" + str(self.rtop) + " stack=" + str(len(self.stack)) + " frames:";
+        ck_i = 0;
+        while ck_i < self.ftop {
+            ck_f: CallFrame = self.frames[ck_i];
+            ck_msg = ck_msg + " [" + str(ck_i) + " " + ck_f.func.name + (" w" if ck_f.win else " L") + " lb=" + str(ck_f.lb) + "+" + str(ck_f.func.num_locals) + " nr=" + str(len(ck_f.native_roots)) + " rpc=" + str(ck_f.rpc) + "]";
+            ck_i = ck_i + 1;
+        }
+        print(ck_msg);
+    }
+
     def _gc_safepoint {
         self.realm.gc_pending = False;
+        if _R1_CHECK == 1 {
+            self._r1_check_frames();
+        }
         if self.realm.gc_enabled {
             gc_sp_t0: int = uv_hrtime();
             gc_sp_allocs: int = self.realm.gc_alloc_count;
@@ -33011,7 +33103,10 @@ obj VM {
                 gc_roots_all.append(self.regs[gc_ri]);
                 gc_ri = gc_ri + 1;
             }
-            for gc_fr in self.frames {
+            gc_fi: int = 0;
+            while gc_fi < self.ftop {
+                gc_fr: CallFrame = self.frames[gc_fi];
+                gc_fi = gc_fi + 1;
                 if not gc_fr.win {
                     for gc_lv in gc_fr.locals {
                         gc_roots_all.append(gc_lv);
@@ -33021,7 +33116,10 @@ obj VM {
                 # CallFrame fields previously missed — objects reachable
                 # only via a closure free var / with-object / using-dispose
                 # / new.target were incorrectly swept when --gc was on.
-                for gc_fv in gc_fr.free_vals {
+                gc_fvi: int = 0;
+                while gc_fvi < gc_fr.fvn {
+                    gc_fv: JSValue = __mem_load_i64(wrapping_add(gc_fr.fvp, wrapping_mul(gc_fvi, 8)));
+                    gc_fvi = gc_fvi + 1;
                     gc_roots_all.append(gc_fv);
                 }
                 gc_roots_all.append(gc_fr.self_fn);
@@ -33136,14 +33234,17 @@ obj VM {
             if getenv("JAC_GC_VERIFY") == "2" {
                 # root layout for the verification report's extras indices
                 gr_nf: int = 0;
-                for gr_f in self.frames {
+                gr_fi: int = 0;
+                while gr_fi < self.ftop {
+                    gr_f: CallFrame = self.frames[gr_fi];
+                    gr_fi = gr_fi + 1;
                     if not gr_f.win {
                         gr_nf = gr_nf + len(gr_f.locals);
                     }
                 }
                 gr_msg: str = "[GCROOTS] stack=0.." + str(len(self.stack)) + " regs="
                     + str(len(self.stack)) + ".." + str(len(self.stack) + self.rtop)
-                    + " then frames (" + str(len(self.frames)) + " frames, "
+                    + " then frames (" + str(self.ftop) + " frames, "
                     + str(gr_nf) + " non-window locals), globals, …\n";
                 write(2, gr_msg, str_nbytes(gr_msg));
             }
@@ -33229,7 +33330,7 @@ obj VM {
     or no inline frame is left. Returns the frame `_exec` continues in."""
     def _exec_unwind_inline(st: ExecState) -> CallFrame {
         while st.inline_depth > 0 and self.had_exception {
-            uw_fr: CallFrame = self.frames[len(self.frames) - 1];
+            uw_fr: CallFrame = self.frames[self.ftop - 1];
             if uw_fr.win {
                 self.rtop = uw_fr.lb;
             }
@@ -33252,20 +33353,20 @@ obj VM {
             while len(self.stack) > uw_fr.stack_base {
                 del self.stack[len(self.stack) - 1];
             }
-            del self.frames[len(self.frames) - 1];
+            self._fpop_drop();
             st.inline_depth = st.inline_depth - 1;
             self.call_depth = self.call_depth - 1;
             uw_exc: JSValue = self.pending_exc;
             self.had_exception = False;
             self.pending_exc = js_undefined();
-            if self._unwind_in_frame(self.frames[len(self.frames) - 1], uw_exc) {
+            if self._unwind_in_frame(self.frames[self.ftop - 1], uw_exc) {
                 st.running = True;
             } else {
                 self.had_exception = True;
                 self.pending_exc = uw_exc;
             }
         }
-        return self.frames[len(self.frames) - 1];
+        return self.frames[self.ftop - 1];
     }
 
     # ── Register ISA interpreter (docs/VM_REARCH_PLAN.md V2) ───────────────
@@ -33721,6 +33822,29 @@ obj VM {
         }
         # The closure goes in as a borrowed list element (no local, so no
         # retain/release per call — the same reason _op_call passes it so).
+        # The plain entry first; the general one handles what it declines.
+        if _R1_PLAIN == 1
+            and argpc >= 0
+            and self.realm.closures[rc_idx].call_plain >= 0
+            and self.realm.closures[rc_idx].func.risa == 1
+            and self.ftop < len(self.frames) {
+            rc_plain: int = self._reg_enter_plain(
+                self.frames[self.ftop],
+                self.realm.closures[rc_idx],
+                frame,
+                st,
+                cv,
+                this_val,
+                dst,
+                argpc,
+                argc,
+                orig,
+                resume_pc
+            );
+            if rc_plain != 0 {
+                return rc_plain;
+            }
+        }
         return self._reg_call_enter_cl(
             self.realm.closures[rc_idx],
             frame,
@@ -33733,6 +33857,231 @@ obj VM {
             orig,
             resume_pc
         );
+    }
+
+    """A plain call's entry: _reg_call_enter_cl's common case as straight-line
+    code. The closure's permanent properties allow it (decided once, kept in
+    cl.call_plain: no N-API callback, reg_simple, no rest parameter or
+    `arguments` object, no captured `with` objects, no `this` cell), the
+    arguments are in registers, nothing is pending on the VM (no new.target
+    or constructor state), the callee needs no module swap (its own module,
+    or code that never reads the module globals), a pooled frame exists and
+    the register file needs no growth. 1 = entered, 2 = a TDZ check threw,
+    0 = not this call: the general code continues (and handles the rest)."""
+    def _reg_enter_plain(
+        fr: CallFrame,
+        cl: JSClosure,
+        frame: CallFrame,
+        st: ExecState,
+        cv: JSValue,
+        this_val: JSValue,
+        dst: int,
+        argpc: int,
+        argc: int,
+        orig: int,
+        resume_pc: int
+    ) -> int {
+        if cl.call_plain != 1 {
+            if cl.napi_cb_ptr != 0
+                or not cl.func.reg_simple
+                or cl.func.has_rest
+                or cl.func.arguments_slot >= 0
+                or len(cl.captured_with_objs) > 0
+                or cl.this_binding_cell != 0 {
+                cl.call_plain = -1;
+                return 0;
+            }
+            cl.call_plain = 1;
+        }
+        if self.call_depth + 1 > VM_MAX_CALL_DEPTH {
+            return 0;
+        }
+        # bit 23 of argc: the translator saw no TDZ-flagged argument register
+        ep_scan: bool = argc < 8388608;
+        if not ep_scan {
+            argc = argc & 8388607;
+        }
+        if jsv_is_object_cell(cl.jac_module) and cl.func.mod_free != 1 {
+            if self.cur_mod_epoch != self.gw_epoch {
+                self._reg_cur_module();
+            }
+            if not (cl.jac_module == self.cur_mod_val) {
+                return 0;
+            }
+        }
+        # new.target and the constructor state a NEW leaves for its callee:
+        # none may be pending here (the general code consumes them)
+        ep_nt: JSValue = self._pending_new_target;
+        if jsv_is_undefined(ep_nt) {
+            ep_nt = self.pending_new_target;
+        }
+        if (ep_nt != 0 and not jsv_is_undefined(ep_nt))
+            or self._pending_this_uninit
+            or self._pending_ctor_class != 0 {
+            return 0;
+        }
+        if cl.is_arrow {
+            ep_nt = cl.lexical_new_target;
+        }
+        ep_this: JSValue = this_val;
+        if not jsv_is_undefined(cl.lexical_this) {
+            ep_this = cl.lexical_this;
+        } elif not cl.func.is_strict {
+            if jsv_is_null(ep_this) or jsv_is_undefined(ep_this) {
+                if cl.func.ctx_global != 0 {
+                    return 0;
+                }
+                ep_this = self.realm.global_this;
+            } elif not jsv_is_any_object(ep_this) {
+                return 0;
+            }
+        }
+        ep_base: int = self.rtop;
+        ep_end: int = wrapping_add(ep_base, cl.func.num_locals);
+        if len(self.regs) < ep_end {
+            return 0;
+        }
+        # TDZ checks of flagged argument registers, left to right
+        ep_rp: int = wrapping_add(frame.func.rcode_ptr, wrapping_mul(argpc, 8));
+        ep_src: int = wrapping_add(__list_data_ptr(frame.locals), wrapping_mul(frame.lb, 8));
+        ep_k: int = 0;
+        while ep_scan and ep_k < argc {
+            ep_w: int = __mem_load_i64(wrapping_add(ep_rp, wrapping_mul(ep_k, 8)));
+            if (ep_w & 32768) != 0
+                and js_is_tdz(__mem_load_i64(wrapping_add(ep_src, wrapping_mul(ep_w & 32767, 8)))) {
+                self._reg_tdz_throw(frame, st, ep_w & 32767, orig);
+                return 2;
+            }
+            ep_k = wrapping_add(ep_k, 1);
+        }
+        # the callee's register window: the arguments into the parameter
+        # slots, every other own local undefined
+        self.rtop = ep_end;
+        ep_wp: int = wrapping_add(__list_data_ptr(self.regs), wrapping_mul(ep_base, 8));
+        ep_n: int = len(cl.func.params);
+        ep_pb: int = cl.func.param_base;
+        # parameter slots the arguments fill: `ep_copy` from the argument
+        # registers, plus reg_arg1 when argc is -1 (a setter's value)
+        ep_copy: int = argc;
+        if argc > ep_n {
+            ep_copy = ep_n;
+        }
+        ep_got: int = ep_copy;
+        if argc == -1 {
+            ep_copy = 0;
+            ep_got = 1 if ep_n > 0 else 0;
+        }
+        ep_k = 0;
+        while ep_k < ep_pb {
+            __mem_store_i64(wrapping_add(ep_wp, wrapping_mul(ep_k, 8)), js_undefined());
+            ep_k = wrapping_add(ep_k, 1);
+        }
+        ep_k = wrapping_add(ep_pb, ep_got);
+        ep_tb: int = cl.func.reg_tmp_base;
+        while ep_k < ep_tb {
+            __mem_store_i64(wrapping_add(ep_wp, wrapping_mul(ep_k, 8)), js_undefined());
+            ep_k = wrapping_add(ep_k, 1);
+        }
+        ep_dst: int = wrapping_add(ep_wp, wrapping_mul(ep_pb, 8));
+        if argc == -1 and ep_n > 0 {
+            # one argument, in reg_arg1 (a setter's value)
+            __mem_store_i64(ep_dst, self.reg_arg1);
+        }
+        ep_k = 0;
+        while ep_k < ep_copy {
+            __mem_store_i64(
+                wrapping_add(ep_dst, wrapping_mul(ep_k, 8)),
+                __mem_load_i64(
+                    wrapping_add(
+                        ep_src,
+                        wrapping_mul(
+                            __mem_load_i64(wrapping_add(ep_rp, wrapping_mul(ep_k, 8))) & 32767, 8
+                        )
+                    )
+                )
+            );
+            ep_k = wrapping_add(ep_k, 1);
+        }
+        # the frame: the spare at ftop (`fr`, borrowed: no retain, no release,
+        # no cleanup registration), filled in place; a pointer field is written
+        # only when it changes (the same function called again: no RC at all)
+        if fr.rare {
+            self._frame_clear_rare(fr);
+        }
+        if fr.locals is not self.regs {
+            fr.locals = self.regs;
+        }
+        fr.win = True;
+        fr.lb = ep_base;
+        if fr.func is not cl.func {
+            fr.func = cl.func;
+        }
+        fr.fvp = __list_data_ptr(cl.free_vals);
+        fr.fvn = len(cl.free_vals);
+        fr.ip = 0;
+        fr.rpc = 0;
+        fr.ret_reg = dst;
+        fr.stack_base = len(self.stack);
+        fr.this_val = ep_this;
+        fr.self_fn = cv;
+        fr.new_target = ep_nt;
+        fr.this_uninitialized = False;
+        fr.ctor_class = 0;
+        fr.with_inherited = 0;
+        fr.this_binding_cell = 0;
+        fr.discard_ret = False;
+        fr.ctor_this = 0;
+        if fr.caller_module_fns is not self.module_fns {
+            fr.caller_module_fns = self.module_fns;
+        }
+        if len(cl.module_fns) > 0 and self.module_fns is not cl.module_fns {
+            self.module_fns = cl.module_fns;
+        }
+        frame.rpc = resume_pc;
+        frame.ip = wrapping_add(orig, 1);
+        self.call_depth = wrapping_add(self.call_depth, 1);
+        st.inline_depth = wrapping_add(st.inline_depth, 1);
+        self.ftop = wrapping_add(self.ftop, 1);
+        return 1;
+    }
+
+    """A pooled frame that had handlers, `with` objects, `using` resources or
+    dynamic variables: empty those lists before its reuse."""
+    def _frame_clear_rare(fr: CallFrame) {
+        while len(fr.catch_stack) > 0 {
+            fr.catch_stack.pop();
+        }
+        while len(fr.with_objs) > 0 {
+            fr.with_objs.pop();
+        }
+        while len(fr.catch_with_depths) > 0 {
+            fr.catch_with_depths.pop();
+        }
+        while len(fr.dispose_stack) > 0 {
+            fr.dispose_stack.pop();
+        }
+        while len(fr.dispose_async) > 0 {
+            fr.dispose_async.pop();
+        }
+        while len(fr.dispose_methods) > 0 {
+            fr.dispose_methods.pop();
+        }
+        while len(fr.dispose_marks) > 0 {
+            fr.dispose_marks.pop();
+        }
+        while len(fr.catch_dispose_depths) > 0 {
+            fr.catch_dispose_depths.pop();
+        }
+        while len(fr.dyn_var_names) > 0 {
+            del fr.dyn_var_names[len(fr.dyn_var_names) - 1];
+        }
+        while len(fr.dyn_var_vals) > 0 {
+            fr.dyn_var_vals.pop();
+        }
+        while len(fr.native_roots) > 0 {
+            fr.native_roots.pop();
+        }
+        fr.rare = False;
     }
 
     def _reg_call_enter_cl(
@@ -33785,7 +34134,7 @@ obj VM {
             if self.cur_mod_epoch != self.gw_epoch {
                 self._reg_cur_module();
             }
-            rc_swap = not (cl.jac_module == self.cur_mod_val);
+            rc_swap = not (cl.jac_module == self.cur_mod_val) and cl.func.mod_free != 1;
         }
         # TDZ checks of flagged argument registers, left to right (the stack
         # code checked each where it loaded it; nothing observable runs in
@@ -33873,13 +34222,13 @@ obj VM {
         if (cl.func.has_rest and np > 0 and argc >= 0) or cl.func.arguments_slot >= 0 {
             self._reg_enter_rest_args(cl, frame, rc_base, argpc, argc, cv);
         }
-        if len(self.frame_pool) == 0 {
+        if self.ftop >= len(self.frames) {
             # Cold: no pooled frame — the general helpers allocate one.
             frame.rpc = resume_pc;
             frame.ip = orig + 1;
             self._inline_enter(cl, cv, rc_this, self.regs, st);
             st.frame_switched = False;
-            rc_top: int = len(self.frames) - 1;
+            rc_top: int = self.ftop - 1;
             self.frames[rc_top].ret_reg = dst;
             self.frames[rc_top].rpc = 0;
             self.frames[rc_top].discard_ret = False;
@@ -33895,7 +34244,7 @@ obj VM {
         # frame back.
         # (popped into the local and appended below as its last use: a move
         # each way, no retain or release for the frame)
-        fr: CallFrame = self.frame_pool.pop();
+        fr: CallFrame = self.frames[self.ftop];
         if fr.locals is not self.regs {
             fr.locals = self.regs;
         }
@@ -33904,9 +34253,8 @@ obj VM {
         if fr.func is not cl.func {
             fr.func = cl.func;
         }
-        if fr.free_vals is not cl.free_vals {
-            fr.free_vals = cl.free_vals;
-        }
+        fr.fvp = __list_data_ptr(cl.free_vals);
+        fr.fvn = len(cl.free_vals);
         fr.ip = 0;
         fr.rpc = 0;
         fr.ret_reg = dst;
@@ -33980,9 +34328,9 @@ obj VM {
         if _PAIR_STATS_ON {
             _inline_count_bump();
         }
-        self.frames.append(fr);
+        self.ftop = self.ftop + 1;
         if rc_swap {
-            self._reg_mod_swap_enter(self.frames[len(self.frames) - 1], cl.jac_module);
+            self._reg_mod_swap_enter(self.frames[self.ftop - 1], cl.jac_module);
         }
         return 1;
     }
@@ -34342,7 +34690,7 @@ obj VM {
         rt_ctor: JSValue = frame.ctor_this;
         frame.ctor_this = 0;
         # Pop the current inline frame (as _inline_tail_pop does).
-        rt_top: int = len(self.frames) - 1;
+        rt_top: int = self.ftop - 1;
         if self.module_fns is not frame.caller_module_fns {
             self.module_fns = frame.caller_module_fns;
         }
@@ -34356,10 +34704,7 @@ obj VM {
         if frame.mod_swapped {
             self._reg_mod_restore(frame);
         }
-        if len(self.frame_pool) < _FRAME_POOL_MAX {
-            self.frame_pool.append(frame);
-        }
-        del self.frames[rt_top];
+        self.ftop = self.ftop - 1;
         st.inline_depth = st.inline_depth - 1;
         self.call_depth = self.call_depth - 1;
         # Enter the callee in its place (its window where the popped one was).
@@ -34382,7 +34727,7 @@ obj VM {
         }
         self._inline_enter(cl, cv, rt_this, self.regs, st);
         st.frame_switched = False;
-        rt_nt: int = len(self.frames) - 1;
+        rt_nt: int = self.ftop - 1;
         self.frames[rt_nt].ret_reg = rt_dst;
         self.frames[rt_nt].rpc = 0;
         self.frames[rt_nt].discard_ret = False;
@@ -34540,7 +34885,7 @@ obj VM {
             self._pending_ctor_class = 0;
             return 2;
         }
-        nc_top: int = len(self.frames) - 1;
+        nc_top: int = self.ftop - 1;
         self.frames[nc_top].ctor_this = nc_obj;
         if nc_derived and is_fn_val(nc_fn) {
             if jsv_is_undefined(_TDZ_SENTINEL) {
@@ -34696,7 +35041,7 @@ obj VM {
             self.pending_new_target = js_undefined();
             return rn_r;
         }
-        self.frames[len(self.frames) - 1].ctor_this = rn_obj;
+        self.frames[self.ftop - 1].ctor_this = rn_obj;
         return 1;
     }
 
@@ -34751,7 +35096,7 @@ obj VM {
         self._pending_this_uninit = False;
         rv_ctc: JSValue = self._pending_ctor_class;
         self._pending_ctor_class = 0;
-        rv_reuse: bool = len(self.frame_pool) > 0;
+        rv_reuse: bool = self.ftop < len(self.frames);
         rv_fr: CallFrame = self._frame_acquire(
             cl.func,
             len(self.stack),
@@ -34779,7 +35124,7 @@ obj VM {
         if len(cl.module_fns) > 0 {
             self.module_fns = cl.module_fns;
         }
-        self.frames.append(rv_fr);
+        self.ftop = self.ftop + 1;
         self.call_depth = self.call_depth + 1;
         rv_res: JSValue = self._exec_reg(rv_fr);
         # run()'s derived-constructor return rules (this still uninitialized).
@@ -34823,11 +35168,13 @@ obj VM {
         while len(self.stack) > rv_fr.stack_base {
             self.stack.pop();
         }
-        del self.frames[len(self.frames) - 1];
-        self.rtop = rv_base;
-        if (not self.had_exception) and len(self.frame_pool) < _FRAME_POOL_MAX {
-            self.frame_pool.append(rv_fr);
+        if self.had_exception {
+            self._fpop_drop();
+        } else {
+            self.ftop = self.ftop - 1;
         }
+        self.rtop = rv_base;
+
         self.call_depth = self.call_depth - 1;
         self.module_fns = rv_saved_mf;
         if self.had_exception {
@@ -34952,7 +35299,7 @@ obj VM {
             rn_nt,
             rn_tui,
             rn_ctc,
-            len(self.frame_pool) > 0
+            self.ftop < len(self.frames)
         );
         rn_fr.rpc = 0;
         rn_fr.win = True;
@@ -34961,7 +35308,7 @@ obj VM {
         if len(cl.module_fns) > 0 {
             self.module_fns = cl.module_fns;
         }
-        self.frames.append(rn_fr);
+        self.ftop = self.ftop + 1;
         self.call_depth = self.call_depth + 1;
         rn_res: JSValue = self._exec_reg(rn_fr);
         if len(rn_fr.dispose_stack) > 0 {
@@ -34979,11 +35326,13 @@ obj VM {
         while len(self.stack) > rn_fr.stack_base {
             self.stack.pop();
         }
-        del self.frames[len(self.frames) - 1];
-        self.rtop = rn_base;
-        if (not self.had_exception) and len(self.frame_pool) < _FRAME_POOL_MAX {
-            self.frame_pool.append(rn_fr);
+        if self.had_exception {
+            self._fpop_drop();
+        } else {
+            self.ftop = self.ftop - 1;
         }
+        self.rtop = rn_base;
+
         self.call_depth = self.call_depth - 1;
         self.module_fns = rn_saved_mf;
         if self.had_exception {
@@ -35075,7 +35424,7 @@ obj VM {
             return 2;
         }
         # ctor_this = undefined marks an in-loop super() frame (V4.10)
-        self.frames[len(self.frames) - 1].ctor_this = js_undefined();
+        self.frames[self.ftop - 1].ctor_this = js_undefined();
         return 1;
     }
 
@@ -35417,7 +35766,7 @@ obj VM {
     deliver st.ret to the caller's ret_reg (unless discard_ret) —
     _inline_return's register form."""
     def _reg_inline_return(fr: CallFrame, st: ExecState) -> None {
-        ir_top: int = len(self.frames) - 1;
+        ir_top: int = self.ftop - 1;
         if self.module_fns is not fr.caller_module_fns {
             self.module_fns = fr.caller_module_fns;
         }
@@ -35450,12 +35799,7 @@ obj VM {
         if fr.mod_swapped {
             self._reg_mod_restore(fr);
         }
-        if len(self.frame_pool) < _FRAME_POOL_MAX {
-            # (moved from the frame stack into the pool: no retain, no release)
-            self.frame_pool.append(self.frames.pop());
-        } else {
-            del self.frames[ir_top];
-        }
+        self.ftop = self.ftop - 1;
         st.inline_depth = st.inline_depth - 1;
         self.call_depth = self.call_depth - 1;
         if ir_super != 0 {
@@ -35480,6 +35824,53 @@ obj VM {
             self._run_class_own_fields(ir_post, st.ret, self.frames[ir_top - 1], st);
         }
         st.ret = js_undefined();
+    }
+
+    """A plain return: _reg_return's common case as straight-line code. A frame
+    with nothing pending — no derived-constructor cell, no `using` resources,
+    no discarded result, no module swap, no field initializers, a register
+    window, the operand stack at its base, no exception in flight — returning
+    in-loop into its caller is popped here: pool, rtop, the depths, the result
+    into the caller's register (a plain constructor's non-object result is the
+    new object). True = done (the frame stack changed), False = not this one."""
+    def _reg_return_plain(frame: CallFrame, st: ExecState, rv: JSValue) -> bool {
+        if st.inline_depth <= 0
+            or self.had_exception
+            or frame.this_binding_cell != 0
+            or (frame.ctor_this != 0 and jsv_is_undefined(frame.ctor_this))
+            or frame.discard_ret
+            or frame.mod_swapped
+            or not frame.win
+            or frame.post_fields != 0
+            or len(frame.dispose_stack) > 0
+            or len(self.stack) != frame.stack_base {
+            return False;
+        }
+        rp_v: JSValue = rv;
+        if frame.ctor_this != 0 {
+            if not jsv_is_any_object(rp_v) {
+                rp_v = frame.ctor_this;
+            }
+            frame.ctor_this = 0;
+        }
+        if self.module_fns is not frame.caller_module_fns {
+            self.module_fns = frame.caller_module_fns;
+        }
+        rp_dst: int = frame.ret_reg;
+        self.rtop = frame.lb;
+        self.ftop = wrapping_add(self.ftop, -1);
+        st.inline_depth = wrapping_add(st.inline_depth, -1);
+        self.call_depth = wrapping_add(self.call_depth, -1);
+        rp_top: int = wrapping_add(self.ftop, -1);
+        __mem_store_i64(
+            wrapping_add(
+                __list_data_ptr(self.frames[rp_top].locals),
+                wrapping_mul(wrapping_add(self.frames[rp_top].lb, rp_dst), 8)
+            ),
+            rp_v
+        );
+        st.ret = js_undefined();
+        return True;
     }
 
     """R_RETURN / R_RETUNDEF tail (_op_return's): dispose open `using`
@@ -35801,7 +36192,7 @@ obj VM {
                 frame, st, ss_s0, va, frame.func.num_locals - 1, pc, -1, c, pc
             );
             if ss_r0 == 1 {
-                self.frames[len(self.frames) - 1].discard_ret = True;
+                self.frames[self.ftop - 1].discard_ret = True;
                 return 1;
             }
             if ss_r0 != 0 {
@@ -35837,7 +36228,7 @@ obj VM {
                     frame, st, ss_s, va, frame.func.num_locals - 1, pc, -1, c, pc
                 );
                 if ss_r == 1 {
-                    self.frames[len(self.frames) - 1].discard_ret = True;
+                    self.frames[self.ftop - 1].discard_ret = True;
                     return 1;
                 }
                 if ss_r != 0 {
@@ -36384,6 +36775,7 @@ obj VM {
         br: int = 0;
         cr: int = 0;
         xo: int = 0;
+        zi: int = 0;
         va: JSValue = 0;
         vb: JSValue = 0;
         vr: JSValue = 0;
@@ -36479,7 +36871,7 @@ obj VM {
                         _rset(rb, lb, ((w >> 8) & 65535), vr);
                     } elif self._reg_getfield_slow(frame, st, w, c, va, pc) == 1 {
                         # a plain-JS getter entered in-loop
-                        frame = self.frames[len(self.frames) - 1];
+                        frame = self.frames[self.ftop - 1];
                         rcp = frame.func.rcode_ptr;
                         ricp = frame.func.ric_ptr;
                         lb = frame.lb;
@@ -36542,8 +36934,8 @@ obj VM {
             } elif op == 9 {
                 # LOADFREE dst, idx, orig
                 b = (w >> 24) & 65535;
-                if b < len(frame.free_vals) {
-                    vr = cell_get(frame.free_vals[b]);
+                if b < frame.fvn {
+                    vr = cell_get(__mem_load_i64(wrapping_add(frame.fvp, wrapping_mul(b, 8))));
                     if js_is_tdz(vr) {
                         self._reg_bridge(
                             frame,
@@ -36661,17 +37053,41 @@ obj VM {
                     # (a closure value is never a native, a proxy or
                     # [[IsHTMLDDA]]: is_fn_val excludes them)
                     if ok and len(frame.with_objs) == 0 and is_fn_val(va) {
-                        cr = self._reg_call_enter(
-                            frame,
-                            st,
-                            va,
-                            vb,
-                            a,
-                            xi,
-                            c,
-                            xo,
-                            yi
-                        );
+                        # the plain entry straight from here (the closure a
+                        # borrowed list element), the general entry otherwise
+                        zi = get_fn_idx(va);
+                        if _R1_PLAIN == 1
+                            and zi < len(self.realm.closures)
+                            and self.realm.closures[zi].call_plain >= 0
+                            and self.realm.closures[zi].func.risa == 1
+                            and self.ftop < len(self.frames) {
+                            cr = self._reg_enter_plain(
+                                self.frames[self.ftop],
+                                self.realm.closures[zi],
+                                frame,
+                                st,
+                                va,
+                                vb,
+                                a,
+                                xi,
+                                c | ((w >> 40) & 8388608),
+                                xo,
+                                yi
+                            );
+                        }
+                        if cr == 0 {
+                            cr = self._reg_call_enter(
+                                frame,
+                                st,
+                                va,
+                                vb,
+                                a,
+                                xi,
+                                c,
+                                xo,
+                                yi
+                            );
+                        }
                     } elif ok
                         and br >= 0
                         and is_native_val(va)
@@ -36683,7 +37099,7 @@ obj VM {
                         cr = self._reg_fn_call_enter(frame, st, vb, a, xi, c, xo, yi);
                     }
                     if cr == 1 {
-                        frame = self.frames[len(self.frames) - 1];
+                        frame = self.frames[self.ftop - 1];
                         rcp = frame.func.rcode_ptr;
                         ricp = frame.func.ric_ptr;
                         lb = frame.lb;
@@ -36772,7 +37188,7 @@ obj VM {
                 )
                     == 1 {
                     # a plain-JS setter entered in-loop (result dropped)
-                    frame = self.frames[len(self.frames) - 1];
+                    frame = self.frames[self.ftop - 1];
                     rcp = frame.func.rcode_ptr;
                     ricp = frame.func.ric_ptr;
                     lb = frame.lb;
@@ -36793,8 +37209,8 @@ obj VM {
                         vr = _rget(rb, lb, (a & 32767));
                     }
                 }
-                if ok and self._reg_return(frame, st, vr, pc) {
-                    frame = self.frames[len(self.frames) - 1];
+                if ok and ((_R1_PLAIN == 1 and self._reg_return_plain(frame, st, vr)) or self._reg_return(frame, st, vr, pc)) {
+                    frame = self.frames[self.ftop - 1];
                     rcp = frame.func.rcode_ptr;
                     ricp = frame.func.ric_ptr;
                     lb = frame.lb;
@@ -36882,8 +37298,8 @@ obj VM {
                         vr = _rget(rb, lb, (a & 32767));
                     }
                 }
-                if ok and self._reg_return(frame, st, vr, pc) {
-                    frame = self.frames[len(self.frames) - 1];
+                if ok and ((_R1_PLAIN == 1 and self._reg_return_plain(frame, st, vr)) or self._reg_return(frame, st, vr, pc)) {
+                    frame = self.frames[self.ftop - 1];
                     rcp = frame.func.rcode_ptr;
                     ricp = frame.func.ric_ptr;
                     lb = frame.lb;
@@ -36930,17 +37346,41 @@ obj VM {
                     # (a closure value is never a native, a proxy or
                     # [[IsHTMLDDA]]: is_fn_val excludes them)
                     if ok and len(frame.with_objs) == 0 and is_fn_val(va) {
-                        cr = self._reg_call_enter(
-                            frame,
-                            st,
-                            va,
-                            vb,
-                            a,
-                            xi,
-                            c,
-                            xo,
-                            yi
-                        );
+                        # the plain entry straight from here (the closure a
+                        # borrowed list element), the general entry otherwise
+                        zi = get_fn_idx(va);
+                        if _R1_PLAIN == 1
+                            and zi < len(self.realm.closures)
+                            and self.realm.closures[zi].call_plain >= 0
+                            and self.realm.closures[zi].func.risa == 1
+                            and self.ftop < len(self.frames) {
+                            cr = self._reg_enter_plain(
+                                self.frames[self.ftop],
+                                self.realm.closures[zi],
+                                frame,
+                                st,
+                                va,
+                                vb,
+                                a,
+                                xi,
+                                c | ((w >> 40) & 8388608),
+                                xo,
+                                yi
+                            );
+                        }
+                        if cr == 0 {
+                            cr = self._reg_call_enter(
+                                frame,
+                                st,
+                                va,
+                                vb,
+                                a,
+                                xi,
+                                c,
+                                xo,
+                                yi
+                            );
+                        }
                     } elif ok
                         and br >= 0
                         and is_native_val(va)
@@ -36952,7 +37392,7 @@ obj VM {
                         cr = self._reg_fn_call_enter(frame, st, vb, a, xi, c, xo, yi);
                     }
                     if cr == 1 {
-                        frame = self.frames[len(self.frames) - 1];
+                        frame = self.frames[self.ftop - 1];
                         rcp = frame.func.rcode_ptr;
                         ricp = frame.func.ric_ptr;
                         lb = frame.lb;
@@ -37280,7 +37720,7 @@ obj VM {
                 b = (w >> 24) & 65535;
                 if frame.func.code[(w >> 40) & 8388607].opcode == Opcode.SUPER_CALL
                     and self._reg_super_enter(frame, st, w, pc) == 1 {
-                    frame = self.frames[len(self.frames) - 1];
+                    frame = self.frames[self.ftop - 1];
                     rcp = frame.func.rcode_ptr;
                     ricp = frame.func.ric_ptr;
                     lb = frame.lb;
@@ -37298,7 +37738,7 @@ obj VM {
             } elif op == 94 {
                 # TAILCALL dst, callee, argc [args] (see _reg_op_tailcall)
                 if self._reg_op_tailcall(frame, st, w, pc) == 1 {
-                    frame = self.frames[len(self.frames) - 1];
+                    frame = self.frames[self.ftop - 1];
                     rcp = frame.func.rcode_ptr;
                     ricp = frame.func.ric_ptr;
                     lb = frame.lb;
@@ -37328,7 +37768,7 @@ obj VM {
             } elif op == 87 {
                 # NEW dst, ctor, argc [args...] (see _reg_op_new)
                 if self._reg_op_new(frame, st, w, pc) == 1 {
-                    frame = self.frames[len(self.frames) - 1];
+                    frame = self.frames[self.ftop - 1];
                     rcp = frame.func.rcode_ptr;
                     ricp = frame.func.ric_ptr;
                     lb = frame.lb;
@@ -37747,7 +38187,7 @@ obj VM {
             } else {
                 pc = self._reg_cold_op(frame, st, w, op, pc);
                 if pc < 0 {
-                    frame = self.frames[len(self.frames) - 1];
+                    frame = self.frames[self.ftop - 1];
                     rcp = frame.func.rcode_ptr;
                     ricp = frame.func.ric_ptr;
                     lb = frame.lb;
@@ -37959,8 +38399,8 @@ obj VM {
                 self._reg_tdz_throw(
                     frame, st, a & 32767, frame.func.rorig[wrapping_add(pc, -1)]
                 );
-            } elif b < len(frame.free_vals) {
-                if js_is_tdz(cell_get(frame.free_vals[b])) {
+            } elif b < frame.fvn {
+                if js_is_tdz(cell_get(__mem_load_i64(wrapping_add(frame.fvp, wrapping_mul(b, 8))))) {
                     self._reg_bridge(
                         frame,
                         st,
@@ -37973,7 +38413,7 @@ obj VM {
                         0
                     );
                 } else {
-                    cell_set(frame.free_vals[b], frame.locals[wrapping_add(lb, (a & 32767))]);
+                    cell_set(__mem_load_i64(wrapping_add(frame.fvp, wrapping_mul(b, 8))), frame.locals[wrapping_add(lb, (a & 32767))]);
                 }
             }
         } elif op == 12 {
@@ -38062,14 +38502,14 @@ obj VM {
             }
         } elif op == 106 {
             # FINENTER slot, src
-            if self._gen_ret_pending and len(self.frames) == self._gen_ret_depth {
+            if self._gen_ret_pending and self.ftop == self._gen_ret_depth {
                 frame.locals[wrapping_add(lb, ((w >> 8) & 65535))] = js_undefined();
             } else {
                 frame.locals[wrapping_add(lb, ((w >> 8) & 65535))] = frame.locals[wrapping_add(lb, ((w >> 24) & 65535))];
             }
         } elif op == 107 {
             # FINRETHROW slot
-            if self._gen_ret_pending and len(self.frames) == self._gen_ret_depth {
+            if self._gen_ret_pending and self.ftop == self._gen_ret_depth {
                 st.running = False;
             } else {
                 self._reg_throw(
@@ -42328,11 +42768,11 @@ def _vm_json_apply_reviver(vm: VM, root_val: JSValue, reviver_fn: JSValue) -> JS
     js_object_set(src_holder, root_key, _JSON_LAST_SOURCE_ROOT);
     # Both holders (and through them the whole parsed tree) live only in jac
     # locals while the reviver re-enters the VM — root them for the walk.
-    if len(vm.frames) > 0 {
-        vm.frames[len(vm.frames) - 1].native_roots.append(holder);
-        vm.frames[len(vm.frames) - 1].rare = True;
-        vm.frames[len(vm.frames) - 1].native_roots.append(src_holder);
-        vm.frames[len(vm.frames) - 1].rare = True;
+    if vm.ftop > 0 {
+        vm.frames[vm.ftop - 1].native_roots.append(holder);
+        vm.frames[vm.ftop - 1].rare = True;
+        vm.frames[vm.ftop - 1].native_roots.append(src_holder);
+        vm.frames[vm.ftop - 1].rare = True;
     }
     _vm_json_reviver_internalize(vm, holder, "", reviver_fn, src_holder);
     if vm.had_exception {
@@ -42840,11 +43280,11 @@ def _vm_json_stringify_with_hooks(vm: VM, args: list[JSValue]) -> JSValue {
     # locals while toJSON / the replacer / getters re-enter the VM: they are
     # rooted in the calling frame's native_roots for the call (trimmed back
     # at the end).
-    if len(vm.frames) == 0 {
+    if vm.ftop == 0 {
         return json_stringify_core(args);
     }
-    js_roots: list[JSValue] = vm.frames[len(vm.frames) - 1].native_roots;
-    vm.frames[len(vm.frames) - 1].rare = True;
+    js_roots: list[JSValue] = vm.frames[vm.ftop - 1].native_roots;
+    vm.frames[vm.ftop - 1].rare = True;
     js_roots_n: int = len(js_roots);
     js_roots.append(root_holder);
     root_key: int = str_intern("");
@@ -43692,11 +44132,11 @@ def _vm_array_from(vm: VM, this_val: JSValue, args: list[JSValue]) -> JSValue {
     # Root this call's arguments across the per-element VM re-entries — this
     # native is dispatched outside _arr_dispatch_callback_method, so nothing
     # else roots them (same in-flight-value class as map's result array).
-    if len(vm.frames) > 0 {
+    if vm.ftop > 0 {
         for afr_a in args {
-            vm.frames[len(vm.frames) - 1].native_roots.append(afr_a);
+            vm.frames[vm.ftop - 1].native_roots.append(afr_a);
         }
-        vm.frames[len(vm.frames) - 1].rare = True;
+        vm.frames[vm.ftop - 1].rare = True;
     }
     # 1. Resolve mapfn / thisArg (spec steps 2–3, before touching items).
     mapping: bool = False;
@@ -43777,9 +44217,9 @@ def _vm_array_from(vm: VM, this_val: JSValue, args: list[JSValue]) -> JSValue {
         }
         # Root the result across per-element iterator/.next()/mapFn VM re-entries
         # (same native-in-flight-value class as map's result array).
-        if len(vm.frames) > 0 {
-            vm.frames[len(vm.frames) - 1].native_roots.append(a_it);
-            vm.frames[len(vm.frames) - 1].rare = True;
+        if vm.ftop > 0 {
+            vm.frames[vm.ftop - 1].native_roots.append(a_it);
+            vm.frames[vm.ftop - 1].rare = True;
         }
 
         # Obtain iterator and normalize to a form _vm_iter_next_delegate understands.
@@ -43818,9 +44258,9 @@ def _vm_array_from(vm: VM, this_val: JSValue, args: list[JSValue]) -> JSValue {
         # The iterator wrapper (gen_wrap state object / normalized iterator) is
         # ALSO an in-flight jac local across the per-element re-entries — a GC
         # during mapFn swept it and killed the iteration state mid-loop.
-        if len(vm.frames) > 0 {
-            vm.frames[len(vm.frames) - 1].native_roots.append(iterator);
-            vm.frames[len(vm.frames) - 1].rare = True;
+        if vm.ftop > 0 {
+            vm.frames[vm.ftop - 1].native_roots.append(iterator);
+            vm.frames[vm.ftop - 1].rare = True;
         }
 
         k_it: int = 0;
@@ -43914,11 +44354,11 @@ def _vm_array_from(vm: VM, this_val: JSValue, args: list[JSValue]) -> JSValue {
     # swept the half-built array and the promises already stored in it, so
     # Promise.all over it never settled (vite:esbuild-transpile renderChunk
     # "never settled" under --gc; deterministic repro: fromgc.mjs `from`).
-    if len(vm.frames) > 0 {
-        vm.frames[len(vm.frames) - 1].native_roots.append(a_al);
-        vm.frames[len(vm.frames) - 1].rare = True;
-        vm.frames[len(vm.frames) - 1].native_roots.append(array_like);
-        vm.frames[len(vm.frames) - 1].rare = True;
+    if vm.ftop > 0 {
+        vm.frames[vm.ftop - 1].native_roots.append(a_al);
+        vm.frames[vm.ftop - 1].rare = True;
+        vm.frames[vm.ftop - 1].native_roots.append(array_like);
+        vm.frames[vm.ftop - 1].rare = True;
     }
 
     k_al: int = 0;
@@ -44960,10 +45400,10 @@ def _vm_array_concat(vm: VM, this_val: JSValue, items: list[JSValue]) -> JSValue
     }
     a: JSValue = _vm_array_species_create(vm, o, 0);
     # Result lives only here while @@isConcatSpreadable / element getters re-enter.
-    if len(vm.frames) > 0 {
-        vm.frames[len(vm.frames) - 1].native_roots.append(a);
+    if vm.ftop > 0 {
+        vm.frames[vm.ftop - 1].native_roots.append(a);
     }
-    vm.frames[len(vm.frames) - 1].rare = True;
+    vm.frames[vm.ftop - 1].rare = True;
     if vm_has_native_exc() {
         return js_undefined();
     }
@@ -51027,6 +51467,17 @@ glob _INLINE_CALLS_ON: int = 1,
 
 # JS_REG_STATS=1: histogram of the stack opcodes the register loop bridged
 # (which ops to give native register cases next), printed at exit.
+"""JS_R1_CHECK=1: the frame stack's invariants checked at every collection
+safepoint (a debugging aid for the one-list frame stack)."""
+def:pub vm_r1_check_set(on: bool) {
+    _R1_CHECK = 1 if on else 0;
+}
+
+"""JS_R1_PLAIN=0: the plain call entry and return off (the general paths only)."""
+def:pub vm_r1_plain_set(on: bool) {
+    _R1_PLAIN = 1 if on else 0;
+}
+
 def:pub vm_reg_stats_set(on: bool) {
     _REG_STATS_ON = 1 if on else 0;
 }
