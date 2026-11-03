@@ -1258,7 +1258,11 @@ test "the retention keep-set covers every template and refuses an unreadable clu
         assert deploy_keys == (expected or set()) , (
             f"unlisted {broken or 'nothing'}: the deploy pruned against {deploy_keys}"
         );
-        warnings = [e.message for e in events if e.status == "warn"];
+        warnings = [
+            e.message
+            for e in events
+            if e.status == "warn"
+        ];
         assert bool(warnings) == bool(broken) , (
             f"unlisted {broken or 'nothing'}: warnings {warnings}"
         );

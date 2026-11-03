@@ -45240,9 +45240,8 @@ graph import scale {
             privileged_pss_labels
         },
     ]
-    deploy.target.kubernetes.utils.kubernetes_utils --> tests.deploy.test_dry_run_purity {
-        KubectlCluster
-    }
+    deploy.target.kubernetes.utils.kubernetes_utils --> tests.deploy.test_dry_run_purity
+        | tests.microservices.test_pvc_injector { KubectlCluster }
     deploy.target.registry ++> config.validation { DeploymentTargetRegistry }
     deploy.target.registry --> tests.misc.test_config_validation {
         BUILTIN_TARGET_TYPES
@@ -45487,6 +45486,10 @@ graph import scale {
         sdk.client { CallbackSink, EventSink, NoopSink, ProgressEvent },
         sdk.events { EventSink, ProgressEvent },
     ]
+    models.progress --> tests.deploy.test_superseded_deployment_reap {
+        CallbackSink,
+        ProgressEvent
+    }
     models.resource_status ++> [
         admin.deploy_health { assess_workload },
         deploy.autoscale.autoscaler {

@@ -35,7 +35,8 @@ glob SOURCE: str = os.environ.get("SDK_DEPLOY_SOURCE", ""),
 
 def build_config -> dict[str, any] {
     extra: dict[str, any] = {
-        "bundle_storage_class": STORAGE_CLASS, "python_image": POD_BASE_IMAGE
+        "bundle_storage_class": STORAGE_CLASS,
+        "python_image": POD_BASE_IMAGE
     };
     if HISTORY_LIMIT {
         extra["revision_history_limit"] = int(HISTORY_LIMIT);
@@ -58,9 +59,11 @@ def print_event(event: ProgressEvent) {
 
 with entry {
     action = sys.argv[1] if len(sys.argv) > 1 else "";
-    actions = ("deploy", "status", "url", "revisions", "rollback", "destroy");
-    if action not in actions {
-        print(f"usage: jac run sdk_deploy_driver.jac [{'|'.join(actions)}]");
+    if action not in ("deploy", "status", "url", "revisions", "rollback", "destroy") {
+        print(
+            "usage: jac run sdk_deploy_driver.jac "
+            "[deploy|status|url|revisions|rollback|destroy]"
+        );
         sys.`exit(2);
     }
     if action == "deploy" {
