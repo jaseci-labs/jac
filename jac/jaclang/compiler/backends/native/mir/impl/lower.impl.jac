@@ -2473,6 +2473,10 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         if imported is not None {
             return imported;
         }
+        bridged = self.python_call(nd);
+        if bridged is not None {
+            return bridged;
+        }
     }
     name = self.call_name(nd);
     if isinstance(nd.target, uni.Name)
