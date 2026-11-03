@@ -30,6 +30,7 @@ impl MirLowering.lower -> MirModule {
         }
     }
     self.declare_c_data();
+    self.declare_clib_externs();
     self.declare_module_globals();
     for key in self.order {
         self.current = self.decl_label(self.decls[key]);
@@ -472,6 +473,8 @@ impl MirLowering.lower_stmt(nd: uni.UniNode) {
         self.lower_if(nd);
     } elif isinstance(nd, uni.WhileStmt) {
         self.lower_while(nd);
+    } elif isinstance(nd, uni.ForeverStmt) {
+        self.lower_forever(nd);
     } elif isinstance(nd, uni.CtrlStmt) {
         self.lower_ctrl(nd);
     } elif isinstance(nd, uni.InForStmt) {
@@ -700,7 +703,9 @@ impl MirLowering.loop_scoped(sym: uni.Symbol) -> bool {
     walk = child.parent;
     while walk is not None
         and not isinstance(walk, (uni.Ability, uni.LambdaExpr, uni.Module)) {
-        if isinstance(walk, (uni.WhileStmt, uni.InForStmt, uni.IterForStmt))
+        if isinstance(
+            walk, (uni.WhileStmt, uni.ForeverStmt, uni.InForStmt, uni.IterForStmt)
+        )
             and (
                 any(child is stmt for stmt in walk.body)
                 or (isinstance(walk, uni.InForStmt) and child is walk.target)
@@ -715,7 +720,8 @@ impl MirLowering.loop_scoped(sym: uni.Symbol) -> bool {
 }
 
 impl MirLowering.within_body(
-    nd: uni.UniNode, loop: (uni.WhileStmt | uni.InForStmt | uni.IterForStmt)
+    nd: uni.UniNode,
+    loop: (uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt)
 ) -> bool {
     child = nd;
     walk = nd.parent;
@@ -801,6 +807,21 @@ impl MirLowering.lower_while(nd: uni.WhileStmt) {
     }
     self.builder().position(otherwise);
     self.lower_else(nd.else_body, after);
+    self.builder().position(after);
+}
+
+impl MirLowering.lower_forever(nd: uni.ForeverStmt) {
+    fn = self.st().fn;
+    head = fn.new_block("forever.body");
+    after = fn.new_block("forever.exit");
+    self.builder().branch(head);
+    self.builder().position(head);
+    self.st().loops.append(MirLoopTarget(head=head, after=after));
+    self.lower_body(nd.body);
+    self.st().loops.pop();
+    if not self.builder().block.terminated() {
+        self.builder().branch(head);
+    }
     self.builder().position(after);
 }
 
@@ -2102,6 +2123,14 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
         return self.emit_value(MirOp.PTR_CAST, to, [value]);
     }
     if to.kind == MirKind.INT and value.type.kind in (MirKind.C_PTR, MirKind.C_FN) {
+        return self.emit_value(MirOp.PTR_INT, to, [value]);
+    }
+    if to.kind == MirKind.FN
+        and value.type.kind == MirKind.INT
+        and self.const_zero(value) {
+        return self.builder().const_null(to);
+    }
+    if to.kind == MirKind.INT and value.type.kind == MirKind.FN {
         return self.emit_value(MirOp.PTR_INT, to, [value]);
     }
     if value.type.kind == MirKind.OBJ
@@ -3721,6 +3750,20 @@ impl MirLowering.method_call(
         in (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY) {
         return self.text_method(self.lower_expr(target.target), right.value, nd);
     }
+    if receiver_type.kind == MirKind.INT
+        and right.value in ("bit_length", "bit_count")
+        and not self.call_args(nd) {
+        return self.runtime_value(
+            f"__jac_rt_int_{right.value}", [self.lower_expr(target.target)]
+        );
+    }
+    if receiver_type.kind == MirKind.FLOAT
+        and right.value == "is_integer"
+        and not self.call_args(nd) {
+        return self.runtime_value(
+            "__jac_rt_float_is_integer", [self.lower_expr(target.target)]
+        );
+    }
     if receiver_type.kind == MirKind.ENUM {
         via_enum = self.enum_method_call(
             nd, self.lower_expr(target.target), right.value
@@ -3963,4 +4006,35 @@ impl MirLowering.flush_stdio {
     for fd in (1, 2) {
         self.runtime("__jac_rt_flush", [b.const_int(fd, mir_int())]);
     }
+}
+
+impl MirLowering.declare_clib_externs {
+    for imp in self.module.get_all_sub_nodes(uni.Import) {
+        for decl in list(imp.clib_decls or []) {
+            if not isinstance(decl, uni.Ability)
+                or not isinstance(decl.signature, uni.FuncSignature)
+                or (
+                    decl.body is not None
+                    and not (isinstance(decl.body, list) and not decl.body)
+                ) {
+                continue;
+            }
+            try {
+                self.c_extern(decl, decl);
+            } except MirRefused {
+                continue;
+            }
+        }
+    }
+}
+
+impl MirLowering.const_zero(value: MirValue) -> bool {
+    for blk in self.st().fn.blocks {
+        for instr in blk.instrs {
+            if instr.result is value {
+                return instr.op == MirOp.CONST_INT and instr.int_value == 0;
+            }
+        }
+    }
+    return False;
 }
