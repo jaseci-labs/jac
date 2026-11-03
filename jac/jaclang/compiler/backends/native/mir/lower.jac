@@ -349,6 +349,8 @@ obj MirDecl {
 
 def mono_symbol_text(text: str) -> str;
 
+def mir_same_signature(left: MirDecl, right: MirDecl) -> bool;
+
 obj MirLowering {
     has prog: JacProgram,
         module: uni.Module,
@@ -368,6 +370,7 @@ obj MirLowering {
         text_pairs: list[tuple[str, str]] = [],
         text_regs: dict[str, tuple[MirBlock, list[MirInstr]]] = {},
         class_entries: list[tuple[str, str, str]] = [],
+        class_lineages: list[tuple[str, str]] = [],
         deferred_globals: list[tuple[MirGlobal, uni.Expr]] = [],
         class_inits: list[tuple[int, str]] = [],
         class_global_refusals: dict[str, MirRefused] = {},
@@ -424,10 +427,12 @@ obj MirLowering {
     def declaration_types;
     def record_defaults;
     def settle;
+    def settle_tests;
     def callees_of(fn: MirFunction) -> list[str];
     def module_abilities -> list[uni.Ability];
     def declare(ab: uni.Ability);
     def symbol_of(ab: uni.Ability) -> str;
+    def c_exported(access: (uni.SubTag[uni.Token] | None), path: str) -> bool;
     def unit_symbol(
         name: str, access: (uni.SubTag[uni.Token] | None), path: str = ""
     ) -> str;
@@ -511,6 +516,7 @@ obj MirLowering {
     def variant_ability(callee: uni.Ability) -> uni.Ability;
     def variant_glob(nd: uni.Name) -> (uni.Name | None);
     def variant_value(nd: uni.Name, twin: uni.Name) -> (MirValue | None);
+    def variant_declaration(declaration: uni.Assignment) -> (uni.Assignment | None);
     def foreign_c_declaration(name: str) -> (uni.Ability | None);
     def c_signature_text(params: list[MirType], ret: MirType) -> str;
     def c_declared_signature(decl: uni.Ability, site: uni.UniNode) -> (str | None);
@@ -753,9 +759,16 @@ obj MirLowering {
     def find_method(arch: uni.Archetype, name: str) -> (uni.Ability | None);
     def method_symbol(arch: uni.Archetype, name: str) -> str;
     def foreign_method_decl(method: uni.Ability) -> (MirDecl | None);
+    def owner_archetype(nd: uni.UniNode) -> (uni.Archetype | None);
+    def live_unit(path: str) -> (uni.Module | None);
+    def live_member(nd: uni.Ability) -> uni.Ability;
+    def note_lineage(arch: uni.Archetype, obj_def: MirObjectDef);
     def foreign_static_decl(method: uni.Ability) -> (MirDecl | None);
     def method_decl_of(method: uni.Ability) -> (MirDecl | None);
     def holder_arch(expr: uni.Expr) -> (uni.Archetype | None);
+    def settle_slots;
+    def slot_root(arch: uni.Archetype, name: str) -> (MirDecl | None);
+    def slot_adapter(decl: MirDecl, base: MirDecl) -> (MirFunction | None);
     def accessor_on(
         arch: uni.Archetype, name: str, kind: str, nd: uni.UniNode
     ) -> (tuple[uni.Archetype, MirDecl] | None);

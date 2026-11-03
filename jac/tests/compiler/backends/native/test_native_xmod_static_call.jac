@@ -1,20 +1,16 @@
 """A cross-module static call into a Python-side class refuses out loud.
 
-A module whose class inherits a Python-side base is classified Python-side by
-the native import walk for every importing unit, so the walk registers no
-struct type for that class. The cross-module *free-function* crossing has
-always ended at a terminal diagnostic when nothing native answers the name,
-but the class-qualified form had no such arm: `Merger.merge(...)` found no
-`Merger` in `struct_types`, skipped the static arm entirely, and fell through
-`_codegen_method_call` to a bare `return None`. Codegen dropped the call and
-said nothing -- the silent-wrong-answer class (#7685 family, found by wave 1's
-parity canary weaving two statements where bytecode wove four).
+The old backend's import walk registered no struct type for a class over a
+Python-side base, and the class-qualified form `Merger.merge(...)` fell
+through to a bare `return None`: codegen dropped the call and said nothing --
+the silent-wrong-answer class (#7685 family).
 
-The two forms now land the same way, and where they land is #8206's
-partition: the code that makes the call is refused, naming the callee, and
-under forced (not required) native placement it demotes to Python -- the entry
+Under MIR a module whose only Python-side trait is an `async` method lowers
+natively, so the merge module here is made genuinely Python-side by pinning
+it to the server. The call into it is refused, naming the callee, and under
+forced (not required) native placement it demotes to Python -- the entry
 block for a module-scope call, the owning function for a body-scoped one --
-while its siblings stay native.
+while its siblings stay native (#8206's partition).
 
 The control is the same three files with the Python base removed. It must
 still lower and still agree with the Python lane, so the refusal reads as a
@@ -55,13 +51,35 @@ def _compile_native(fixture: str) -> tuple[any, ...] {
 }
 
 
-"""Compile a fixture on the native pathway; return (program, module, stderr)."""
+"""Copy `fixture` and the modules it imports into a project that pins the
+merge module to the server, so `Merger` is Python-side for every importer."""
+def _pinned_copy(fixture: str, scratch: str) -> str {
+    import shutil;
+    with open(os.path.join(scratch, "jac.toml"), "w") as f {
+        f.write(
+            '[project]\nname = "xmod_static"\n\n[placement.pins]\n'
+                + '"xmod_static_pybase_merge" = "server"\n'
+        );
+    }
+    for name in [fixture, "xmod_static_pybase_merge.jac", "xmod_static_types.jac"] {
+        shutil.copyfile(os.path.join(FIXTURES, name), os.path.join(scratch, name));
+    }
+    return os.path.join(scratch, fixture);
+}
+
+"""Compile a pinned copy of a fixture on the native pathway; return
+(program, module, stderr)."""
 def _compile_logged(fixture: str) -> tuple[any, ...] {
     import contextlib;
     import io;
+    import tempfile;
     buf = io.StringIO();
-    with contextlib.redirect_stderr(buf) {
-        (prog, ir) = _compile_native(fixture);
+    with tempfile.TemporaryDirectory() as scratch {
+        path = _pinned_copy(fixture, scratch);
+        with contextlib.redirect_stderr(buf) {
+            prog = JacProgram();
+            ir = prog.compile(file_path=path, options=_opts());
+        }
     }
     return (prog, ir, source_spelled(buf.getvalue()));
 }
@@ -144,8 +162,11 @@ test "the same call with no Python base still lowers" {
     assert "run_merge" in layout.functions , (
         f"the caller was demoted: {sorted(layout.functions)}"
     );
-    assert "Merger.merge" in by_source_name(layout.methods) , (
-        f"the imported static method lost its native lowering: {sorted(layout.methods)}"
+    (merge_prog, merge_ir) = _compile_native("xmod_static_native_merge.jac");
+    assert not merge_prog.errors_had , [str(e) for e in merge_prog.errors_had];
+    merge_layout: any = merge_ir.gen.native_layout;
+    assert "Merger.merge" in by_source_name(merge_layout.methods) , (
+        f"the static method lost its native lowering: {sorted(merge_layout.methods)}"
     );
 }
 

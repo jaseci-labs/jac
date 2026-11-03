@@ -248,6 +248,43 @@ impl __jac_rt_any_isa(tag: int, payload: int, name: ptr[u8]) -> bool {
         and __jac_rt_cstr_eq(__jac_rt_type_name(payload), name);
 }
 
+impl _class_isa_bucket(cls: int, base: int) -> int {
+    table = __global_block("__jac_rt_class_lineage", 4096);
+    return table + (((cls >> 4) ^ (base >> 4) ^ (cls >> 13)) & 511) * 8;
+}
+
+impl __jac_rt_class_isa_add(cls: int, base: int) {
+    if __jac_rt_class_isa(cls, base) {
+        return;
+    }
+    head = _class_isa_bucket(cls, base);
+    cell = int(malloc(24));
+    __mem_store_i64(cell, __mem_load_i64(head));
+    __mem_store_i64(cell + 8, cls);
+    __mem_store_i64(cell + 16, base);
+    __mem_store_i64(head, cell);
+}
+
+impl __jac_rt_class_isa(cls: int, base: int) -> bool {
+    if cls == base {
+        return True;
+    }
+    cell = __mem_load_i64(_class_isa_bucket(cls, base));
+    while cell != 0 {
+        if __mem_load_i64(cell + 8) == cls and __mem_load_i64(cell + 16) == base {
+            return True;
+        }
+        cell = __mem_load_i64(cell);
+    }
+    return False;
+}
+
+impl __jac_rt_any_isa_class(tag: int, payload: int, cls: int) -> bool {
+    return tag == ANY_TAG_OBJ
+        and payload != 0
+        and __jac_rt_class_isa(int(__jac_rt_type_name(payload)), cls);
+}
+
 impl __jac_rt_cstr_eq(a: ptr[u8], b: ptr[u8]) -> bool {
     if int(a) == int(b) {
         return True;

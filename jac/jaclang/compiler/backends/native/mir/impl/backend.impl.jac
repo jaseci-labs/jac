@@ -98,7 +98,12 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     }
     ir_in.gen.native_deps = list(deps);
     ir_in.gen.native_layout = self.layout(lowering, lowered);
-    ir_in.gen.native_iface = self.interface(lowered, deps, triple);
+    ir_in.gen.native_iface = self.interface(lowering, deps, triple);
+    if isinstance(ir_in.gen.llvm_ir, ir.Module) {
+        ir_in.gen.native_iface.classes = self.class_layouts(
+            lowering, ir_in.gen.llvm_ir
+        );
+    }
     ir_in.gen.native_iface.layout = ir_in.gen.native_layout;
     ir_in.gen._clib_paths = list(ir_in.gen.native_iface.clib_paths);
     ir_in.gen._clib_symbol_lib = dict(ir_in.gen.native_iface.clib_symbol_lib);
@@ -154,6 +159,15 @@ impl MirNativePass.report_refusals(lowering: MirLowering) {
                     lowering.mir, name
                 )})";
                 site = None;
+            }
+            if refusal.code == "E5095" {
+                self.ctx.emit(
+                    E5095,
+                    node_override=site or lowering.module,
+                    name=refusal.name,
+                    reason=refusal.help or refusal.kind
+                );
+                continue;
             }
             self.ctx.emit(
                 E5092,
@@ -364,23 +378,44 @@ impl mir_clib_path(spec: tuple[str, list[str], int], triple: str) -> str {
 }
 
 impl MirNativePass.interface(
-    mir: MirModule, deps: list[str], triple: str = ""
+    lowering: MirLowering, deps: list[str], triple: str = ""
 ) -> NativeIface {
+    mir = lowering.mir;
+    owners: dict[str, str] = {};
+    for decl in lowering.decls.values() {
+        if decl.event or decl.owner is None {
+            continue;
+        }
+        owners.setdefault(
+            decl.symbol,
+            decl.self_type.name
+                if decl.self_type is not None
+                else archetype_native_name(decl.owner)
+        );
+    }
     exports: dict[str, NativeExport] = {};
     for fn in mir.functions {
         if fn.linkage == "internal" {
             continue;
         }
-        held = exports.get(fn.name);
+        owner = owners.get(fn.symbol, "");
+        name = native_unit_spelling(f"{owner}.{fn.name}", mir.path)
+            if owner
+            else fn.name;
+        held = exports.get(name);
         if held is not None
-            and held.symbol in (f"{mir.prefix}.{fn.name}", fn.name)
+            and held.symbol in (f"{mir.prefix}.{name}", name)
             and fn.symbol != held.symbol {
             continue;
         }
-        exports[fn.name] = NativeExport(
-            name=fn.name,
+        kind = EXPORT_METHOD if owner else EXPORT_FUNCTION;
+        if fn.name.startswith("__jac_test_") {
+            kind = EXPORT_TEST;
+        }
+        exports[name] = NativeExport(
+            name=name,
             symbol=fn.symbol,
-            kind="test" if fn.name.startswith("__jac_test_") else "function",
+            kind=kind,
             is_pub=fn.symbol in mir.public and fn.symbol not in mir.demoted,
             param_defaults=list(mir.defaults.get(fn.symbol, [])),
             param_names=[p.name for p in fn.params],
@@ -482,6 +517,8 @@ impl MirNativePass.layout(lowering: MirLowering, mir: MirModule) -> NativeModule
             owners.setdefault(decl.symbol, "");
         } elif decl.self_type is not None {
             owners.setdefault(decl.symbol, decl.self_type.name);
+        } else {
+            owners.setdefault(decl.symbol, archetype_native_name(decl.owner));
         }
     }
     for fn in mir.functions {
@@ -614,6 +651,156 @@ impl mir_layout_enum(t: MirType) -> (str | None) {
     }
     if t.kind == MirKind.OPT and t.payload().kind == MirKind.ENUM {
         return t.payload().name;
+    }
+    return None;
+}
+
+impl MirNativePass.class_layouts(
+    lowering: MirLowering, module: ir.Module
+) -> dict[str, NativeClassLayout] {
+    mir = lowering.mir;
+    laid = struct_layouts(module);
+    found: dict[str, NativeClassLayout] = {};
+    for (name, obj_def) in mir.objects.items() {
+        arch = lowering.archetypes.get(name);
+        shape = laid.get(name);
+        if not obj_def.local or arch is None or shape is None {
+            continue;
+        }
+        (offsets, size) = shape;
+        owner = arch.find_parent_of_type(uni.Module) or lowering.module;
+        registered = get_layout_registry(owner, self.prog).get_layout(name);
+        declared = {
+            held.name: held.semantic_type
+            for held in (registered.fields if registered is not None else [])
+        };
+        fields: dict[str, any] = {};
+        for member in obj_def.fields {
+            if member.index >= len(offsets) {
+                continue;
+            }
+            (code, aux, schema) = mir_field_slot(member.type);
+            if member.type.kind == MirKind.ANY
+                and lowering.host_only_type(declared.get(member.name)) {
+                (code, aux, schema) = ("opaque", "", None);
+            }
+            slot: dict[str, any] = {
+                "index": member.index,
+                "offset": offsets[member.index],
+                "code": code,
+                "aux": aux
+            };
+            if schema is not None {
+                slot["schema"] = schema;
+            }
+            fields[member.name] = slot;
+        }
+        body: dict[str, any] = json.loads(
+            native_unit_spelling(
+                json.dumps(
+                    {
+                        "fields": fields,
+                        "bases": [
+                            archetype_native_name(holder)
+                            for holder in lowering.lineage(arch)
+                        ],
+                        "vtable": list(obj_def.vtable_methods)
+                    }
+                ),
+                mir.path
+            )
+        );
+        found[native_unit_spelling(name, mir.path)] = NativeClassLayout(
+            name=name,
+            size=size,
+            tag=0,
+            tag_offset=offsets[obj_def.tag_slot]
+                if 0 <= obj_def.tag_slot < len(offsets)
+                else -1,
+            fields={
+                fname: NativeFieldSlot.from_dict(slot)
+                for (fname, slot) in body["fields"].items()
+            },
+            bases=[str(held) for held in body["bases"]],
+            vtable=[str(held) for held in body["vtable"]],
+            is_node=bool(obj_def.osp_kind == "node")
+        );
+    }
+    return found;
+}
+
+impl mir_field_slot(t: MirType) -> tuple[str, str, (dict[str, any] | None)] {
+    if t.kind == MirKind.BOOL {
+        return ("bool", "", None);
+    }
+    if t.kind == MirKind.INT {
+        return ("int", "", None) if t.width == 64 else ("opaque", "", None);
+    }
+    if t.kind == MirKind.FLOAT {
+        return ("float", "", None);
+    }
+    if t.kind in (MirKind.STR, MirKind.STR_REF) {
+        return ("str", "", None);
+    }
+    if t.kind == MirKind.ENUM {
+        return ("enum", t.name, None);
+    }
+    if t.kind == MirKind.ANY {
+        return ("union", "", None);
+    }
+    if t.kind == MirKind.OBJ {
+        return ("obj", "" if t.name == "*" else t.name, None);
+    }
+    if t.kind in (MirKind.OPT, MirKind.OPT_REF) {
+        held = t.payload();
+        if held.kind == MirKind.OBJ {
+            return ("optref", "" if held.name == "*" else held.name, None);
+        }
+        schema = mir_value_schema(held);
+        return ("optref", "", schema) if schema is not None else ("opaque", "", None);
+    }
+    codes = {MirKind.LIST: "natlist", MirKind.DICT: "natdict", MirKind.SET: "natset"};
+    if t.kind in codes {
+        schema = mir_value_schema(t);
+        if schema is None and t.kind != MirKind.LIST {
+            return ("opaque", "", None);
+        }
+        return (codes[t.kind], "", schema);
+    }
+    return ("opaque", "", None);
+}
+
+impl mir_value_schema(t: MirType) -> (dict[str, any] | None) {
+    if t.kind in (MirKind.STR, MirKind.STR_REF) {
+        return {"code": "str"};
+    }
+    if t.kind == MirKind.OBJ and t.name != "*" {
+        return {"code": "obj", "class": t.name};
+    }
+    if t.kind == MirKind.LIST {
+        made: dict[str, any] = {"code": "list", "data_offset": MIR_LIST_DATA};
+        inner = mir_value_schema(t.payload()) if t.args else None;
+        if inner is not None {
+            made["element"] = inner;
+        }
+        return made;
+    }
+    if t.kind in (MirKind.DICT, MirKind.SET) and t.args {
+        held = t.args[1] if t.kind == MirKind.DICT and len(t.args) > 1 else t.args[0];
+        inner = mir_value_schema(held);
+        if inner is None {
+            return None;
+        }
+        made = {
+            "code": "dict" if t.kind == MirKind.DICT else "set",
+            "key_offset": MIR_DICT_KEYS,
+            "order_offset": MIR_DICT_ORDER,
+            "element": inner
+        };
+        if t.kind == MirKind.DICT {
+            made["data_offset"] = MIR_DICT_VALS;
+        }
+        return made;
     }
     return None;
 }

@@ -1,27 +1,17 @@
-"""A base method that self-dispatches past a native override refuses.
+"""A base method that self-dispatches past a native override (#8310).
 
-The pyb shadow is built as `type(name, (base,), {})`: it carries the
-Python-side base chain and none of the native subclass's bodies. E5088
-(#8301) closed the entry into that hollow class through `postinit`, at the
-construction site. This is the same hole one call deeper (#8310): any base
-method invoked through the shadow resolves its own `self.X()` against the
-same hollow class, so a name the native subclass overrides is dispatched to
-the BASE's body. No diagnostic, no seam -- the wrong body simply runs.
+The old backend kept a Python-side base on a pyb shadow built as
+`type(name, (base,), {})`, which carried none of the native subclass's
+bodies, so a base method invoked through it resolved `self.hook()` to the
+BASE's body and answered 30 where Python answers 1020. It refused that call
+with E5089.
 
-Per the class-tier doctrine (#7685) the answer is the refusal arm, not
-override marshalling: the shadow is not taught to delegate back across the
-boundary, the call that would diverge is refused with E5089 and its owning
-callable demotes to the Python lane, where the whole chain agrees again.
-
-The detection is deliberately narrow, and the controls here are the point of
-the test. A subclass that overrides nothing the base dispatches to, and a
-base method that reaches nothing on `self`, both keep lowering. Refusing on
-"has a Python-side base" would be trivially safe and would cost every
-interop call in the tree.
-
-What is NOT detected is stated in `_pyb_shadowed_dispatch`: reflective
-dispatch cannot be read statically, so that shape stays unreported; this
-closes the divergence the tree can prove.
+MIR has no shadow. A base it can lower lowers natively, and the subclass's
+vtable holds the base's slots and its own overrides, so the override runs and
+the controls keep lowering. A base that stays Python-side keeps its instance
+state in Python, which native code does not hold: the subclass refuses, and
+every callable constructing it demotes to the Python lane, where the whole
+chain agrees again.
 """
 
 import os;
@@ -102,31 +92,68 @@ test "the sv lane runs the override, which is the answer native must not miss" {
 }
 
 
-test "a base method self-dispatching past an override refuses" {
-    hits = _seams_for(MAIN, "overridden_dispatch");
-    assert len(hits) == 1 , (
-        f"`Overrider.hook` overrides what `DispatchBase.dispatches` "
-        f"dispatches to, so the shadow call must refuse rather than run the "
-        f"base's hook and answer 30. Got: {_seams(MAIN)}"
+test "a base method self-dispatching past an override runs the override" {
+    # The base lowers natively, so the subclass carries the base's slots and
+    # its own overrides in one vtable: `dispatches` reaches `Overrider.hook`
+    # and answers what sv answers, never the base's 30.
+    import ctypes;
+    import from tests.support { compile_native, get_func }
+    (eng, _ir) = compile_native(MAIN);
+    assert get_func(eng, "overridden_dispatch", ctypes.c_int64)() == 1020 , (
+        "`dispatches(2)` must run Overrider's hook, not the base's"
     );
-    assert "E5089" in hits[0] , f"the refusal must be E5089, got: {hits[0]}";
-    assert "Overrider" in hits[0] and "hook" in hits[0] , (
-        f"the refusal must name the class and the overridden method it would "
-        f"have skipped, got: {hits[0]}"
+    assert get_func(eng, "overridden_dispatch_twice", ctypes.c_int64)() == 108 , (
+        "`dispatches_twice` reaches the override after an unrelated `self.plain`"
     );
-    assert "DispatchBase" in hits[0] , (
-        f"the refusal must name the Python-side base whose body would have "
-        f"run, got: {hits[0]}"
+    assert get_func(eng, "bystander_dispatch", ctypes.c_int64)() == 30 , (
+        "Bystander inherits the base's hook through its own vtable"
     );
+    assert not _seams_for(MAIN, "overridden_dispatch") , _seams(MAIN);
+    assert not _seams_for(MAIN, "overridden_dispatch_twice") , _seams(MAIN);
 }
 
 
-test "the hazard is found through a longer base body, not just a one-liner" {
-    hits = _seams_for(MAIN, "overridden_dispatch_twice");
-    assert len(hits) == 1 and "E5089" in hits[0] , (
-        f"`dispatches_twice` reaches `self.hook` after an unrelated "
-        f"`self.plain` call; the walk must not stop at the first "
-        f"self-dispatch it sees. Got: {_seams(MAIN)}"
+test "a native class over a base that stays Python-side refuses" {
+    # A base the project pins to the server keeps its instance state in
+    # Python, which native code does not hold, so the subclass refuses and
+    # every callable constructing it demotes to the Python lane, where the
+    # whole chain agrees again. The refusal names the class and the base.
+    import shutil;
+    import tempfile;
+    with tempfile.TemporaryDirectory() as tmp {
+        with open(os.path.join(tmp, "jac.toml"), "w") as f {
+            f.write(
+                '[project]\nname = "pyb_pinned"\n\n[placement.pins]\n"lib" = "server"\n'
+            );
+        }
+        shutil.copyfile(
+            os.path.join(FIXTURES, "pyb_shadow_dispatch_lib.jac"),
+            os.path.join(tmp, "lib.jac")
+        );
+        with open(os.path.join(FIXTURES, MAIN)) as f {
+            text = f.read().replace("pyb_shadow_dispatch_lib", "lib");
+        }
+        main = os.path.join(tmp, "main.jac");
+        with open(main, "w") as f {
+            f.write(text);
+        }
+        prog = JacProgram();
+        na_coverage_begin();
+        try {
+            prog.compile(
+                file_path=main, options=CompileOptions(force_codespace='native')
+            );
+        } finally {
+            coverage = na_coverage_end();
+        }
+        assert not prog.errors_had , [str(e) for e in prog.errors_had];
+        rec = coverage.get(os.path.realpath(main));
+        seams = [str(s) for s in ((rec.get("seams") or []) if rec is not None else [])];
+    }
+    hits = [s for s in seams if s.startswith("overridden_dispatch: ")];
+    assert len(hits) == 1 , f"the constructing callable must demote: {seams}";
+    assert "Overrider" in hits[0] and "DispatchBase" in hits[0] , (
+        f"the refusal must name the class and its Python-side base: {hits[0]}"
     );
 }
 

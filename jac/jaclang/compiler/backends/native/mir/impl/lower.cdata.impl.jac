@@ -340,6 +340,9 @@ impl MirLowering.c_function_symbol(expr: uni.Expr, from_c: bool = True) -> str {
         expr = expr.value;
     }
     target = named_function_of(expr);
+    if isinstance(target, uni.Ability) {
+        target = self.live_member(target);
+    }
     if not isinstance(target, uni.Ability) or not isinstance(expr, uni.Name) {
         raise MirRefused(self.c_const_refusal(expr));
     }
@@ -737,11 +740,37 @@ impl MirLowering.variant_ability(callee: uni.Ability) -> uni.Ability {
 }
 
 impl MirLowering.variant_glob(nd: uni.Name) -> (uni.Name | None) {
-    value = final_glob_value(nd);
-    if value is None or not isinstance(value.parent, uni.Assignment) {
+    if nd.sym is None {
         return None;
     }
-    owner = value.find_parent_of_type(uni.Module);
+    value = final_glob_value(nd);
+    declaration = value.parent
+        if value is not None and isinstance(value.parent, uni.Assignment)
+        else self.global_declaration(nd.sym);
+    if declaration is None {
+        return None;
+    }
+    twin = self.variant_declaration(declaration);
+    if twin is None {
+        return None;
+    }
+    wanted = {
+        target.value
+        for target in declaration.target
+        if isinstance(target, uni.Name)
+    };
+    for held in twin.target {
+        if isinstance(held, uni.Name) and held.value in wanted {
+            return held;
+        }
+    }
+    return None;
+}
+
+impl MirLowering.variant_declaration(
+    declaration: uni.Assignment
+) -> (uni.Assignment | None) {
+    owner = declaration.find_parent_of_type(uni.Module);
     if owner is None or owner is self.module {
         return None;
     }
@@ -749,15 +778,11 @@ impl MirLowering.variant_glob(nd: uni.Name) -> (uni.Name | None) {
     if twin is None {
         return None;
     }
-    for target in value.parent.target {
+    for target in declaration.target {
         if isinstance(target, uni.Name) {
             found = self.module_member(twin, target.value);
             if isinstance(found, uni.Assignment) {
-                for held in found.target {
-                    if isinstance(held, uni.Name) and held.value == target.value {
-                        return held;
-                    }
-                }
+                return found;
             }
         }
     }

@@ -278,8 +278,9 @@ test "a unit's layout keeps a function named like a dependency's foreign symbol"
             + "def sqrt(x: float) -> float {\n    return m_sqrt(x);\n}\n",
         scratch
     );
+    helper = _iface_of(os.path.join(scratch, "helper.jac"));
+    assert "sqrt" in helper.clib_symbol_lib , sorted(helper.clib_symbol_lib.keys());
     iface = _iface_of(lib_path);
-    assert "sqrt" in iface.clib_symbol_lib , sorted(iface.clib_symbol_lib.keys());
     assert "sqrt" in iface.exports , sorted(iface.exports.keys());
     assert iface.layout is not None;
     assert "sqrt" in iface.layout.functions , sorted(iface.layout.functions.keys());

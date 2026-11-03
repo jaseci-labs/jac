@@ -200,6 +200,8 @@ obj MirObjectDef {
         vtable_symbol: str = "",
         class_symbol: str = "",
         vtable_methods: list[str] = [],
+        vtable_names: list[str] = [],
+        vtable_entries: dict[int, str] = {},
         ancestry: list[str] = [],
         drop_symbol: str = "",
         glue_symbol: str = "",

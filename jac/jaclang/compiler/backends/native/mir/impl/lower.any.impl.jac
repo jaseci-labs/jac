@@ -752,6 +752,17 @@ impl MirLowering.any_isinstance(
                 self.runtime_value("__jac_rt_any_isa", [tag, payload, label])
             );
         }
+        self.object_def(arch);
+        wanted = self.address_of(
+            self.emit_value(
+                MirOp.CLASS_ADDR, mir_c_ptr(mir_int(8, False)), [], str_value=name
+            )
+        );
+        verdict = b.binary(
+            "or",
+            verdict,
+            self.runtime_value("__jac_rt_any_isa_class", [tag, payload, wanted])
+        );
     }
     return verdict;
 }

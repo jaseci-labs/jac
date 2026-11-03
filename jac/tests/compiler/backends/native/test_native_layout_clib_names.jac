@@ -88,12 +88,13 @@ def run_in_fresh_dir(runs: int) -> list[subprocess.CompletedProcess] {
 }
 
 test "a unit's own sqrt stays in its layout beside an imported C sqrt" {
+    ffi = compile_native_ir("layout_clib_name_ffi.jac");
+    assert re.search(r'declare [^\n]*@"?sqrt"?\(double', str(ffi.gen.llvm_ir)) , (
+        "the fixture no longer links C's sqrt beside the library's own"
+    );
     module = compile_native_ir("layout_clib_name_lib.jac");
     layout = module.gen.native_layout;
     assert layout is not None , "no native layout for the library";
-    assert re.search(r'declare [^\n]*@"?sqrt"?\(double', str(module.gen.llvm_ir)) , (
-        "the fixture no longer links C's sqrt beside its own"
-    );
     assert "sqrt" in layout.functions , (
         f"the library's own sqrt is missing from its layout: {sorted(layout.functions)}"
     );

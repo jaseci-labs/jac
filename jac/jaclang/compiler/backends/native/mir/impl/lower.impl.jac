@@ -76,6 +76,7 @@ impl MirLowering.lower_unit -> MirModule {
             }
         }
         obj_def = self.object_def(arch);
+        self.note_lineage(arch, obj_def);
         self.mir.functions.append(self.lower_drop(obj_def, arch));
         if self.owned_world and obj_def.local {
             self.mir.functions.append(self.lower_drop_glue(obj_def));
@@ -108,10 +109,31 @@ impl MirLowering.lower_unit -> MirModule {
     self.mir.functions.extend(self.nested);
     self.nested = [];
     self.lower_instances();
+    self.settle_slots();
     self.record_defaults();
     self.settle();
+    self.settle_tests();
     self.c_global_settle();
     return self.mir;
+}
+
+impl MirLowering.settle_tests {
+    lowered = {fn.symbol for fn in self.mir.functions};
+    self.tests = [
+        held
+        for held in self.tests
+        if held[1] in lowered
+    ];
+    kept = {held[1] for held in self.tests};
+    for nd in self.module.body {
+        if not isinstance(nd, uni.Test) or nd.code_context != CodeContext.NATIVE {
+            continue;
+        }
+        line = nd.loc.first_line if nd.loc else 0;
+        if native_test_symbol(nd.name.sym_name, line, self.mir.prefix) not in kept {
+            nd.code_context = CodeContext.SERVER;
+        }
+    }
 }
 
 impl MirLowering.declaration_types {
@@ -308,6 +330,17 @@ impl MirLowering.declare(ab: uni.Ability) {
         and is_va_list_type(sig.varargs.type)
         and sig.kwargs is None
         and not sig.kwonlyargs;
+    if ((sig.varargs is not None and not packed) or sig.kwargs is not None)
+        and self.c_exported(ab.access, self.module.loc.mod_path) {
+        raise MirRefused(
+            mir_refusal(
+                "function",
+                f"{self.name_of(ab)} with a parameter pack",
+                ab,
+                "A `def:pub` function is exported as a C symbol, and a C caller cannot build a Jac parameter pack. Take a list instead, or drop `:pub`."
+            )
+        );
+    }
     for pv in self.param_nodes(sig, False) {
         if packed and pv is sig.varargs {
             continue;
@@ -331,14 +364,17 @@ impl MirLowering.symbol_of(ab: uni.Ability) -> str {
     return self.unit_symbol(self.name_of(ab), ab.access);
 }
 
+impl MirLowering.c_exported(access: (uni.SubTag[uni.Token] | None), path: str) -> bool {
+    return bool(access and access.tag.name == Tok.KW_PUB)
+        and not native_unit_identity(path).startswith("jaclang/runtime/na_stdlib/");
+}
+
 impl MirLowering.unit_symbol(
     name: str, access: (uni.SubTag[uni.Token] | None), path: str = ""
 ) -> str {
     path = path or self.module.loc.mod_path;
     spelled = native_unit_spelling(name, path);
-    is_pub = bool(access and access.tag.name == Tok.KW_PUB);
-    bundled = native_unit_identity(path).startswith("jaclang/runtime/na_stdlib/");
-    if is_pub and not bundled {
+    if self.c_exported(access, path) {
         symbol = native_def_symbol(spelled);
         if path == self.module.loc.mod_path and symbol not in self.mir.public {
             self.mir.public.append(symbol);
@@ -359,6 +395,12 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
     fn = MirFunction(name=self.decl_label(decl), symbol=decl.symbol, ret=decl.ret);
     if decl.c_symbol {
         fn.c_symbol = decl.c_symbol;
+        fn.linkage = "internal";
+    }
+    if decl.owner is None
+        and isinstance(ab.parent, uni.Module)
+        and ab.access is not None
+        and ab.access.tag.name == Tok.KW_PRIV {
         fn.linkage = "internal";
     }
     fn.borrow_return = self.owned_world and self.returns_borrow(ab);
@@ -1325,6 +1367,10 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
             if made is not None {
                 return made;
             }
+            place = self.global_place(nd);
+            if place is not None {
+                return self.builder().load(place, self.place_elem(place));
+            }
         }
         folded = nd.ct_value;
         whole = int_host(folded) if isinstance(folded, CtInt) else None;
@@ -2178,7 +2224,7 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         return value if value.type is wanted else self.coerce(value, wanted, nd);
     }
     if isinstance(callee, uni.Ability) and self.template_of(callee) {
-        owner = callee.find_parent_of_type(uni.Archetype);
+        owner = self.owner_archetype(callee);
         if owner is not None
             and not callee.is_static
             and isinstance(nd.target, uni.AtomTrailer)
@@ -2189,6 +2235,13 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
             }
         }
         return self.generic_call(nd, callee, None, None);
+    }
+    if isinstance(nd.target, uni.Name)
+        and INTRINSIC_REGISTRY.is_intrinsic(nd.target.value) {
+        return self.intrinsic_call(nd, nd.target.value);
+    }
+    if isinstance(callee, uni.Ability) {
+        callee = self.variant_ability(self.live_member(callee));
     }
     if isinstance(callee, uni.Ability) and clib_import_of(callee) is not None {
         return self.c_call(nd, callee);
@@ -2347,14 +2400,30 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
             return via_method;
         }
     }
-    if isinstance(target, uni.Expr)
-        and isinstance(target.type, FunctionType)
-        and self.expr_type(target).kind == MirKind.FN {
+    callee_kind: (MirKind | None) = None;
+    if isinstance(target, uni.Expr) and isinstance(target.type, FunctionType) {
+        try {
+            callee_kind = self.expr_type(target).kind;
+        } except MirRefused as err {
+            raise MirRefused(
+                mir_refusal(
+                    "call",
+                    name or type(target).__name__,
+                    nd,
+                    "Its signature has no native form"
+                        + (
+                            f": {err.refusal.headline()}."
+                                if err.refusal is not None
+                                else "."
+                        )
+                )
+            );
+        }
+    }
+    if callee_kind == MirKind.FN {
         return self.closure_call(nd, self.callee_value(target));
     }
-    if isinstance(target, uni.Expr)
-        and isinstance(target.type, FunctionType)
-        and self.expr_type(target).kind == MirKind.C_FN {
+    if callee_kind == MirKind.C_FN {
         fnptr = self.lower_expr(target);
         fp_params = fnptr.type.args[1:];
         fp_args = self.call_args(nd);
@@ -3490,6 +3559,17 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
         raise MirRefused(mir_refusal("subscript", type(right).__name__, nd));
     }
     view = self.lower_expr(nd.target);
+    if view.type.kind == MirKind.C_PTR and right.slices[0].start is not None {
+        offset = self.lower_expr(right.slices[0].start);
+        if offset.type.kind != MirKind.INT {
+            raise MirRefused(mir_refusal("subscript index", offset.type.render(), nd));
+        }
+        return self.emit_value(
+            MirOp.PTR_OFFSET,
+            view.type,
+            [view, self.builder().convert(offset, mir_int())]
+        );
+    }
     if view.type.kind != MirKind.C_VIEW {
         hint: (str | None) = None;
         if view.type.kind == MirKind.LIST and view.type.payload().kind == MirKind.ANY {
@@ -4628,6 +4708,11 @@ impl MirLowering.declare_global(nd: uni.Name) -> (MirGlobal | None) {
         and owner.loc.mod_path.endswith(".jac")
         and os.path.realpath(owner.loc.mod_path)
             != os.path.realpath(self.module.loc.mod_path) {
+        twin = self.variant_declaration(declaration);
+        if twin is not None {
+            declaration = twin;
+            owner = twin.find_parent_of_type(uni.Module) or owner;
+        }
         group = declaration.parent;
         access = group.access if isinstance(group, uni.GlobalVars) else None;
         defined = declaration.target[0] if declaration.target else None;
