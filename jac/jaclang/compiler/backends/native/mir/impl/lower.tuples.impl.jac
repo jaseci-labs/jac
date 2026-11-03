@@ -51,9 +51,7 @@ impl MirLowering.unpack_into(
         );
         for (index, target) in enumerate(targets) {
             self.store_unpacked(
-                target,
-                self.list_read(held_list, b.const_int(index, mir_int())),
-                site
+                target, self.list_read(held_list, b.const_int(index, mir_int())), site
             );
         }
         return;

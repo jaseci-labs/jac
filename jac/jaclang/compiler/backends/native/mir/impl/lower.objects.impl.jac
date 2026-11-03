@@ -1438,16 +1438,18 @@ impl MirLowering.unbound_method(
 }
 
 impl MirLowering.object_operator(
-    op: str, left: MirValue, right: MirValue, site: uni.UniNode
+    op: str, left: MirValue, right: MirValue, site: uni.UniNode, inplace: bool = False
 ) -> (MirValue | None) {
     stem = OPERATOR_DUNDERS.get(op);
     if stem is None {
         return None;
     }
-    for (receiver, other, name) in (
-        (left, right, f"__{stem}__"),
-        (right, left, f"__r{stem}__")
-    ) {
+    tries: list[tuple[MirValue, MirValue, str]] = [];
+    if inplace {
+        tries.append((left, right, f"__i{stem}__"));
+    }
+    tries.extend([(left, right, f"__{stem}__"), (right, left, f"__r{stem}__")]);
+    for (receiver, other, name) in tries {
         if receiver.type.kind != MirKind.OBJ {
             continue;
         }

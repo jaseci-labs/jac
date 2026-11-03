@@ -639,7 +639,8 @@ impl MirLowering.container_set(
     b = self.builder();
     if len(slice.slices) == 1 and slice.is_range {
         holder = base;
-        if holder.type.kind == MirKind.OPT and holder.type.payload().kind == MirKind.LIST {
+        if holder.type.kind == MirKind.OPT
+            and holder.type.payload().kind == MirKind.LIST {
             holder = self.opt_unwrap_checked(
                 holder, "'NoneType' object does not support item assignment"
             );

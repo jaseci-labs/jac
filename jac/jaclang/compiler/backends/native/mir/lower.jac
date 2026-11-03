@@ -18,7 +18,8 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
          "BW_XOR_EQ": "BW_XOR",
          "LSHIFT_EQ": "LSHIFT",
          "RSHIFT_EQ": "RSHIFT",
-         "STAR_POW_EQ": "STAR_POW"
+         "STAR_POW_EQ": "STAR_POW",
+         "MATMUL_EQ": "DECOR_OP"
      },
      OPERATOR_SYMBOLS: dict[str, str] = {
          "PLUS": "+",
@@ -944,7 +945,11 @@ obj MirLowering {
 
     def super_call(nd: uni.FuncCall, name: str) -> MirValue;
     def object_operator(
-        op: str, left: MirValue, right: MirValue, site: uni.UniNode
+        op: str,
+        left: MirValue,
+        right: MirValue,
+        site: uni.UniNode,
+        inplace: bool = False
     ) -> (MirValue | None);
 
     def object_eq(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
@@ -966,6 +971,7 @@ obj MirLowering {
     def list_replace_range(
         lst: MirValue, part: uni.Slice, values: (MirValue | None), site: uni.UniNode
     );
+
     def list_delete_range(lst: MirValue, part: uni.Slice, site: uni.UniNode);
     def direct_method_call(
         nd: uni.FuncCall,
@@ -1281,6 +1287,10 @@ obj MirLowering {
     ) -> MirValue;
 
     def builtin_fold(nd: uni.FuncCall, name: str, source: uni.Expr) -> MirValue;
+    def materialize_source(
+        source: uni.Expr, elem: MirType, site: uni.UniNode
+    ) -> MirValue;
+
     def drain(value: MirValue, elem: MirType, site: uni.UniNode) -> MirValue;
     def lower_comprehension(nd: (uni.ListCompr | uni.DictCompr)) -> MirValue;
     def compr_level(

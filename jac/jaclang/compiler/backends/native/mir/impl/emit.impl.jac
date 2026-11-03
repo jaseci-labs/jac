@@ -357,14 +357,18 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
         );
     } elif op == MirOp.LOAD {
         loaded = b.load(self.value(instr.operands[0]));
-        if self.volatile_slots and instr.operands[0].is_slot {
-            setattr(loaded, "volatile", True);
+        if self.volatile_slots
+            and instr.operands[0].is_slot
+            and isinstance(loaded, ir.LoadInstr) {
+            loaded.volatile = True;
         }
         self.bind(instr.result, loaded);
     } elif op == MirOp.STORE {
         stored = b.store(self.value(instr.operands[1]), self.value(instr.operands[0]));
-        if self.volatile_slots and instr.operands[0].is_slot {
-            setattr(stored, "volatile", True);
+        if self.volatile_slots
+            and instr.operands[0].is_slot
+            and isinstance(stored, ir.StoreInstr) {
+            stored.volatile = True;
         }
     } elif op == MirOp.BIN {
         self.bind(instr.result, self.emit_bin(b, instr));

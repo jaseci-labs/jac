@@ -60,8 +60,34 @@ impl MirLowering.builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None)
         self.merge_dict(built, source, args[0], False);
         return built;
     }
+    if name in ("list", "reversed")
+        and isinstance(args[0], uni.Expr)
+        and self.is_special_source(args[0]) {
+        made_type = self.expr_type(nd);
+        if made_type.kind not in (MirKind.LIST, MirKind.ITER) {
+            raise MirRefused(
+                mir_refusal("call", f"{name} as {made_type.render()}", nd)
+            );
+        }
+        gathered = self.materialize_source(args[0], made_type.payload(), nd);
+        if name == "reversed" {
+            self.runtime("__jac_rt_list_reverse", [gathered]);
+        }
+        return gathered;
+    }
     if name in ("list", "reversed") {
         value = self.lower_expr(args[0]);
+        if name == "reversed" and value.type.kind != MirKind.LIST {
+            made_type = self.expr_type(nd);
+            if made_type.kind not in (MirKind.LIST, MirKind.ITER) {
+                raise MirRefused(
+                    mir_refusal("call", f"reversed of {value.type.render()}", nd)
+                );
+            }
+            drained = self.drain(value, made_type.payload(), nd);
+            self.runtime("__jac_rt_list_reverse", [drained]);
+            return drained;
+        }
         if name == "list" and value.type.kind != MirKind.LIST {
             made_type = self.expr_type(nd);
             if made_type.kind != MirKind.LIST {
@@ -370,4 +396,44 @@ impl MirLowering.file_method(
         return b.const_bool(False);
     }
     return None;
+}
+
+impl MirLowering.materialize_source(
+    source: uni.Expr, elem: MirType, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    made = self.spill(self.new_list(elem, 8));
+    kind = b.const_int(self.elem_kind(elem, site), mir_int());
+    (cursors, counter) = self.open_sources(source);
+    head = fn.new_block("gather.head");
+    after = fn.new_block("gather.exit");
+    b.branch(head);
+    b.position(head);
+    values = self.step_sources(cursors, counter, after);
+    item: MirValue = values[0];
+    if len(values) != 1 {
+        if elem.kind != MirKind.TUPLE or len(elem.args) != len(values) {
+            raise MirRefused(
+                mir_refusal(
+                    "call", f"gathering {len(values)} values as {elem.render()}", site
+                )
+            );
+        }
+        item = self.emit_value(
+            MirOp.TUPLE_MAKE,
+            elem,
+            [
+                self.coerce(value, member, site)
+                for (value, member) in zip(values, elem.args)
+            ]
+        );
+    }
+    self.runtime(
+        "__jac_rt_list_push",
+        [made, self.to_bits(self.coerce(item, elem, site), elem, site), kind]
+    );
+    b.branch(head);
+    b.position(after);
+    return made;
 }

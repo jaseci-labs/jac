@@ -1542,6 +1542,12 @@ impl MirLowering.aug_arith(
     if extended is not None {
         return extended;
     }
+    if current.type.kind == MirKind.OBJ {
+        via_dunder = self.object_operator(op, current, value, site, True);
+        if via_dunder is not None {
+            return via_dunder;
+        }
+    }
     if op == Tok.PLUS
         and current.type.kind == MirKind.LIST
         and (
