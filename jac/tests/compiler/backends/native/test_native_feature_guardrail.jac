@@ -18,7 +18,7 @@ test that fails: "expected E5090, got no errors" — which is exactly the
 class of bug this guardrail exists to prevent.
 """
 
-import from jaclang.compiler.backends.py.codegen_shim { generated_python }
+import from jaclang.compiler.backends.py.python_text { generated_python }
 import ctypes;
 import os;
 import from tests.support {
@@ -115,7 +115,7 @@ def server_answer(label: str, code: str, name: str) -> int {
     );
     assert not prog.errors_had , f"server-lane compilation errors: {fmt_errors(prog)}";
     ns: dict[str, any] = {};
-    exec(compile(generated_python(ir.gen), path, "exec"), ns);
+    exec(compile(generated_python(ir), path, "exec"), ns);
     return ns[name]();
 }
 
@@ -1018,8 +1018,8 @@ test "guardrail: a dict comprehension with untyped keys or always-None values is
 
 # A backend exception is a compiler defect: it is reported as E9003, it is never
 # absorbed as an E5092 refusal, and the module keeps nothing it could run in
-# place of the native code -- not the bytecode the host assembles and not the
-# JCIR the kernel hands the host. Before E9003 the kernel's JCIR survived the
+# place of the native code -- neither its Python codegen recipe nor the code
+# object the kernel makes from it. Before E9003 the module's Python survived the
 # crash, so the module silently ran as Python.
 test "a backend crash is E9003, never a refusal, and leaves the module nothing to run" {
     import from unittest.mock { patch }
@@ -1041,7 +1041,7 @@ test "a backend crash is E9003, never a refusal, and leaves the module nothing t
         prog
     )}";
     assert "lowering exploded" in fmt_errors(prog);
-    assert ir.gen.jcir is None , "the crashed module kept JCIR the kernel would run";
+    assert ir.gen.py_recipe is None , "the crashed module kept Python code the kernel would run";
     assert ir.gen.py_bytecode is None , "the crashed module kept bytecode";
 }
 

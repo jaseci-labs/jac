@@ -4,6 +4,7 @@ Tests that the Jac formatter produces correct output: fixture comparisons,
 AST preservation, micro suite round-trip, and regression tests.
 """
 
+import from jaclang.compiler.backends.py.kernel_bytecode { kernel_python_ast }
 import ast as ast3;
 import os;
 import from difflib { unified_diff }
@@ -70,8 +71,8 @@ def micro_suite_test(filename: str, auto_lint: bool = False) {
     before = "";
     after = "";
     try {
-        before = ast3.dump(code_gen_pure.gen.py_ast[0], indent=2);
-        after = ast3.dump(code_gen_jac.gen.py_ast[0], indent=2);
+        before = ast3.dump(kernel_python_ast(code_gen_pure), indent=2);
+        after = ast3.dump(kernel_python_ast(code_gen_jac), indent=2);
         assert isinstance(code_gen_pure, uni.Module)
             and isinstance(code_gen_jac, uni.Module) , "Parsed objects are not modules.";
         diff = "\n".join(unified_diff(before.splitlines(), after.splitlines()));

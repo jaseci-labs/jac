@@ -121,9 +121,9 @@ The `PRODUCTS` table in `compiler/driver/pipeline.jac` defines every pass schedu
 
 1. `RcFactsPass`, `EsastGenPass` -- Reference-count facts and the JavaScript AST
 2. `NaIRGenPass` -- LLVM IR, only for a module that needs native code (then the session assembles `NATIVE_OBJECT`)
-3. `NativeImportFactsPass`, `JcirGenPass` -- Lower the unitree into the compact codegen IR container
+3. `NativeImportFactsPass`, `PyastGenPass` -- Lower the unitree into the Python codegen recipe
 4. `FreezeStructurePass` -- Freeze the module's structure
-5. `JcirBytecodeGenPass` -- The `BYTECODE` product the session assembles last
+5. `assemble_bytecode` -- The `BYTECODE` product the session assembles last: the kernel builds the recipe into JacPython's AST and compiles it with JacPython's compiler
 
 Each product has a bootstrap variant that the compiler falls back to when it is compiling its own pass modules; see the `PRODUCTS` table for the authoritative ordering.
 

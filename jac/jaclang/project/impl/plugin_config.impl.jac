@@ -17,7 +17,8 @@ impl deep_merge(base: dict[str, any], override_dict: dict[str, any]) -> dict[str
 }
 
 impl PluginConfigBase.postinit {
-    full_target = self.entry_path or JacRuntime.get_full_target_path();
+    full_target = self.entry_path or JacRuntime.get_full_target_path() or "";
+    self.entry_path = full_target;
     project_root_result = find_project_root(Path(full_target)) if full_target else None;
     self.project_dir = (
         self.project_dir

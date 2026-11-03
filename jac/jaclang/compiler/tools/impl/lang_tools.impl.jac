@@ -54,19 +54,11 @@ impl AstTool.ir(args: list[str]) -> str {
         base = base or './';
         if file_name.endswith('.py') {
             file_source = read_file_with_encoding(file_name);
-            parsed_ast = py_ast.parse(file_source);
             if (output == 'pyast') {
-                return f"{py_ast.dump(parsed_ast, indent=2)}";
+                return f"{py_ast.dump(py_ast.parse(file_source), indent=2)}";
             }
             try {
-                rep = run_utility(
-                    CompilationProduct.PYTHON_AST,
-                    uni.PythonModuleAst(
-                        parsed_ast, orig_src=uni.Source(file_source, file_name)
-                    ),
-                    prog
-                ).module;
-                assert isinstance(rep, uni.Module);
+                (rep, _had_error) = parse_python_source(file_source, file_name, prog);
                 rep_src = unparse_module(rep);
                 console.print(rep_src);
                 ir_mod = prog.compile(
@@ -131,9 +123,13 @@ impl AstTool.ir(args: list[str]) -> str {
 
             case 'pyast':
                 ir_mod = prog.compile(file_name, options=CompileOptions());
-                return f"{py_ast.dump(ir_mod.gen.py_ast[0], indent=2)}"
-                    if isinstance(ir_mod.gen.py_ast[0], py_ast.AST)
-                    else 'Compile failed.';
+                if ir_mod.gen.py_recipe is None {
+                    return 'Compile failed.';
+                }
+                import from jaclang.compiler.backends.py.kernel_bytecode {
+                    kernel_python_ast
+                }
+                return py_ast.dump(kernel_python_ast(ir_mod), indent=2);
 
             case 'docir':
                 return str(
@@ -141,11 +137,9 @@ impl AstTool.ir(args: list[str]) -> str {
                 );
 
             case 'py':
-                import from jaclang.compiler.backends.py.codegen_shim {
-                    generated_python
-                }
+                import from jaclang.compiler.backends.py.python_text { generated_python }
                 ir_mod = prog.compile(file_name, options=CompileOptions());
-                return generated_python(ir_mod.gen) or 'Compile failed.';
+                return generated_python(ir_mod) or 'Compile failed.';
 
             case 'esast':
                 require(prog, ir_mod, CompilationProduct.CLIENT);

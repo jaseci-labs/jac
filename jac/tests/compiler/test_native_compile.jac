@@ -4,7 +4,7 @@
 whole pipeline (analysis and the code generators) behind a kernel-side
 `KernelHost`, returning one `UnitProducts` record per compiled module. The
 record must equal what the host's own compile of the same module produces:
-the same JCIR, interop, client artifact, placement summary and MTIR graph.
+the same code, interop, client artifact, placement summary and MTIR graph.
 The in-process cases run the kernel's code under Python and need no kernel
 lib; the native cases skip where no kernel with `jc_compile` is loaded."""
 import os;
@@ -88,7 +88,7 @@ def compile_natively(kernel: any, entry_file: str) -> CompileReport {
 }
 
 def assert_same_products(kernel: UnitProducts, host: UnitProducts) {
-    assert kernel.jcir == host.jcir , "the kernel's JCIR differs from the host's";
+    assert kernel.bytecode == host.bytecode , "the kernel's code differs from the host's";
     assert kernel.interop == host.interop;
     assert kernel.client == host.client;
     assert kernel.placement == host.placement;
@@ -107,7 +107,7 @@ test "the kernel's compile code run in process emits the host's products" {
         assert not outcome.analysis.misses , outcome.analysis.misses;
         emitted = outcome.unit(entry_file);
         assert emitted is not None , [u.path for u in outcome.units];
-        assert emitted.jcir , "the kernel compiled the entry but emitted no JCIR";
+        assert emitted.bytecode , "the kernel compiled the entry but emitted no code";
         assert_same_products(emitted, expected);
     }
 }
@@ -575,9 +575,10 @@ test "a kernel compile with no unit is final, and an error when it reported none
     }
 }
 
-"""JCIR the bytecode assembler rejects is a compile error in the module, the
-E5043 the host's own compile reports, not an internal failure of the run."""
-test "a kernel unit the assembler rejects reports the host's E5043" {
+"""Generated Python that JacPython's compiler rejects in the kernel is a compile
+error in the module, the E5043 the host's own compile reports, not an internal
+failure of the run."""
+test "a kernel unit whose Python the compiler rejects reports the host's E5043" {
     import from unittest.mock { patch }
     with TemporaryDirectory() as td {
         base = Path(os.path.realpath(td));
@@ -1074,7 +1075,7 @@ test "an empty package init compiles in the session that reaches it" {
         named = sorted(os.path.relpath(u.path, str(base)) for u in outcome.units);
         assert named == ["main.jac", "pkg/__init__.jac", "pkg/util.jac"] , named;
         init_unit = outcome.unit(str(pkg / '__init__.jac'));
-        assert init_unit is not None and init_unit.jcir;
+        assert init_unit is not None and init_unit.bytecode;
     }
 }
 
@@ -1131,7 +1132,7 @@ bounded. A literal past that width is carried from its text to the compiled
 constant as sign and magnitude bytes, never as a value, so the kernel
 compiles such a module itself and emits the constant the host emits."""
 test "an integer literal wider than 64 bits compiles in the kernel" {
-    import from jaclang.compiler.backends.py.codegen_ir { int_literal_magnitude }
+    import from jaclang.compiler.backends.py.pyast_recipe { int_literal_magnitude }
     assert int_literal_magnitude("0") == b"";
     assert int_literal_magnitude("255") == b"\xff";
     assert int_literal_magnitude("0x1_00") == b"\x00\x01";

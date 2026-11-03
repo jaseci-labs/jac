@@ -1,24 +1,19 @@
 import os;
+import sys;
 
-glob KERNEL_MODULE_NAME: str = "jac_kernel",
-     _KERNEL: list[any] = [],
-     _RESOLVED: list[bool] = [],
-     _RESOLVING: list[bool] = [];
+obj SessionClient {
+    has project_root: str,
+        handle: int = 0,
+        local: (KernelSession | None) = None;
 
-def runtime_builtin_initializing -> bool;
+    def query(method: str, args: list[any]) -> any;
+    def close;
+}
 
-def loaded_kernel -> (any | None);
+def world_paths -> tuple[list[str], str];
 
-def load_kernel_module(lib_path: str, source: str) -> any;
+def call_compile(request: CompileRequest) -> CompileResult;
 
-def reset_loaded_kernel;
+def call_check(request: CheckRequest) -> CheckResult;
 
-def call_compile(
-    request: KernelRequest, asker: (HostAsker | None) = None, in_process: bool = False
-) -> CompileReport;
-
-def call_check(
-    request: KernelRequest, asker: (HostAsker | None) = None, in_process: bool = False
-) -> AnalysisReport;
-
-def required_kernel -> any;
+def open_kernel_session(project_root: str) -> SessionClient;

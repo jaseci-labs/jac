@@ -38,7 +38,9 @@ impl SessionHooks.compile_attempt(
     return compile_once(self, file_path, target_program, use_str, options);
 }
 
-impl SessionHooks.assemble_python(program: JacProgram, module: uni.Module) {}
+impl SessionHooks.assemble_python(program: JacProgram, module: uni.Module) {
+    require(program, module, CompilationProduct.BYTECODE);
+}
 
 impl SessionHooks.assemble_native(
     program: JacProgram, module: uni.Module, checking: bool

@@ -7,8 +7,7 @@ impl AppConfig.entry_path(project_root: str) -> str {
 }
 
 impl validate_entry_point(module: str) -> str {
-    if not isinstance(module, str)
-        or not module
+    if not module
         or module.endswith(('.jac', '.py'))
         or not all(part.isidentifier() for part in module.split('.')) {
         raise ValueError(
@@ -77,7 +76,7 @@ impl parse_apps(
         if not isinstance(table, dict) {
             raise ValueError(f"[apps.{name}] must be a table");
         }
-        fields: dict[str, any] = {};
+        fields: dict[str, str] = {};
         overlays: dict[str, any] = {};
         for (key, value) in table.items() {
             if isinstance(value, dict) {
@@ -96,9 +95,12 @@ impl parse_apps(
                     f"[apps.{name}] has unknown key '{key}'; expected one of {allowed}"
                 );
             }
+            if not isinstance(value, str) {
+                raise ValueError(f"[apps.{name}] '{key}' must be a string");
+            }
             fields[attr] = value;
         }
-        kind = str(fields.get("kind", "")).strip();
+        kind = fields.get("kind", "").strip();
         if not kind {
             raise ValueError(f"[apps.{name}] is missing the required key 'kind'");
         }
@@ -108,13 +110,13 @@ impl parse_apps(
                 f"{', '.join(KIND_SPECS.keys())}"
             );
         }
-        entry_point = str(fields.get("entry_point", "")).strip();
+        entry_point = fields.get("entry_point", "").strip();
         if not entry_point {
             raise ValueError(f"[apps.{name}] requires an explicit entry-point module");
         }
         validate_entry_point(entry_point);
-        platform = str(fields.get("platform", "")).strip();
-        route = str(fields.get("route", "")).strip();
+        platform = fields.get("platform", "").strip();
+        route = fields.get("route", "").strip();
         if route and not route.startswith("/") {
             raise ValueError(f"[apps.{name}] route='{route}' must start with '/'");
         }
@@ -165,12 +167,11 @@ impl parse_apps(
     return apps;
 }
 
-impl implicit_app(config: any) -> AppConfig {
-    project = config.project;
+impl implicit_app(project: ProjectConfig) -> AppConfig {
     return AppConfig(
-        name=str(project.name or "").strip() or "main",
-        kind=str(project.kind or "").strip(),
-        entry_point=str(project.entry_point or "").strip(),
+        name=project.name.strip() or "main",
+        kind=project.kind.strip(),
+        entry_point=project.entry_point.strip(),
         implicit=True
     );
 }

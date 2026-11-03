@@ -248,6 +248,7 @@ impl _publish(cat: StubCatalog | None) -> StubCatalog | None {
     if cat is not None and not _CATALOG_CACHE {
         _CATALOG_CACHE.append(cat);
         set_active(cat);
+        use_stub_catalog(cat);
         _ORIGIN.clear();
         _ORIGIN.extend(_OPENED_FROM);
     }
@@ -280,4 +281,5 @@ impl reset_catalog_cache {
     _DIGEST_CACHE.clear();
     _ORIGIN.clear();
     set_active(None);
+    use_stub_catalog(None);
 }

@@ -1,11 +1,3 @@
-impl jac_virtual_module_basenames(module_name: str) -> list[str] {
-    source = JAC_VIRTUAL_MODULE_SOURCES.get(module_name);
-    if source is None or source == module_name {
-        return [module_name];
-    }
-    return [source, module_name];
-}
-
 impl client_runtime_cl_basename(framework: str = "") -> str {
     return build_services().client_runtime_basename(framework);
 }

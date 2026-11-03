@@ -346,3 +346,141 @@ impl push_native_target(triple: str) -> (str | None) {
 impl pop_native_target(prev: (str | None)) {
     _native_target_ctx.set(prev);
 }
+
+impl CompileOptions.to_dict -> dict[str, any] {
+    return {
+        "symtab_ir_only": self.symtab_ir_only,
+        "no_cgen": self.no_cgen,
+        "native_parity": self.native_parity,
+        "native_required": self.native_required,
+        "native_require": (list(self.native_require) if self.native_require is not None else None),
+        "iface_ok": self.iface_ok,
+        "need_full_ast": self.need_full_ast,
+        "native_tree_demand": self.native_tree_demand,
+        "skip_analysis": self.skip_analysis,
+        "skip_native_engine": self.skip_native_engine,
+        "no_ir_cache": self.no_ir_cache,
+        "resolve_annex_parent": self.resolve_annex_parent,
+        "aot_mode": self.aot_mode,
+        "native_unit": self.native_unit,
+        "kernel_build": self.kernel_build,
+        "native_link_mode": self.native_link_mode,
+        "force_codespace": self.force_codespace,
+        "memory_profile": self.memory_profile,
+        "na_gc_mode": self.na_gc_mode,
+        "nogc_enforce_all": self.nogc_enforce_all,
+        "na_borrow_infer": self.na_borrow_infer,
+        "memory_enforce": (list(self.memory_enforce) if self.memory_enforce is not None else None),
+        "memory_exempt": (list(self.memory_exempt) if self.memory_exempt is not None else None),
+        "native_threads": self.native_threads,
+        "rc_debug_codegen": self.rc_debug_codegen,
+        "native_target": self.native_target,
+        "native_tls": self.native_tls,
+        "native_sjlj": self.native_sjlj,
+        "native_unchecked_views": self.native_unchecked_views,
+        "native_direct_c_entries": self.native_direct_c_entries,
+        "native_heap": self.native_heap,
+        "native_debug": self.native_debug,
+        "opt_level": self.opt_level,
+        "dump_ir_path": self.dump_ir_path,
+        "debug_ir": self.debug_ir,
+        "rc_stats": self.rc_stats,
+        "nogc_debug": self.nogc_debug,
+        "na_debug": self.na_debug,
+        "suppress_codes": list(self.suppress_codes),
+        "default_codespace": self.default_codespace,
+        "app_kind": self.app_kind,
+        "target_app": self.target_app,
+        "entry_point": self.entry_point,
+        "ui": self.ui,
+        "project_root": self.project_root,
+        "client_source_root": self.client_source_root,
+        "native_module_walk_order": self.native_module_walk_order,
+        "strict_dependencies": self.strict_dependencies,
+        "package_canonical": self.package_canonical,
+        "na_move_flow": self.na_move_flow
+    };
+}
+
+impl CompileOptions.from_dict(raw: dict[str, any]) -> CompileOptions {
+    return CompileOptions(
+        symtab_ir_only=bool(raw["symtab_ir_only"]),
+        no_cgen=bool(raw["no_cgen"]),
+        native_parity=bool(raw["native_parity"]),
+        native_required=bool(raw["native_required"]),
+        native_require=optional_texts(raw["native_require"]),
+        iface_ok=bool(raw["iface_ok"]),
+        need_full_ast=bool(raw["need_full_ast"]),
+        native_tree_demand=bool(raw["native_tree_demand"]),
+        skip_analysis=bool(raw["skip_analysis"]),
+        skip_native_engine=bool(raw["skip_native_engine"]),
+        no_ir_cache=bool(raw["no_ir_cache"]),
+        resolve_annex_parent=bool(raw["resolve_annex_parent"]),
+        aot_mode=bool(raw["aot_mode"]),
+        native_unit=bool(raw["native_unit"]),
+        kernel_build=bool(raw["kernel_build"]),
+        native_link_mode=optional_text(raw["native_link_mode"]),
+        force_codespace=str(raw["force_codespace"]),
+        memory_profile=optional_text(raw["memory_profile"]),
+        na_gc_mode=optional_text(raw["na_gc_mode"]),
+        nogc_enforce_all=optional_flag(raw["nogc_enforce_all"]),
+        na_borrow_infer=bool(raw["na_borrow_infer"]),
+        memory_enforce=optional_texts(raw["memory_enforce"]),
+        memory_exempt=optional_texts(raw["memory_exempt"]),
+        native_threads=optional_number(raw["native_threads"]),
+        rc_debug_codegen=optional_flag(raw["rc_debug_codegen"]),
+        native_target=optional_text(raw["native_target"]),
+        native_tls=bool(raw["native_tls"]),
+        native_sjlj=bool(raw["native_sjlj"]),
+        native_unchecked_views=bool(raw["native_unchecked_views"]),
+        native_direct_c_entries=bool(raw["native_direct_c_entries"]),
+        native_heap=str(raw["native_heap"]),
+        native_debug=optional_flag(raw["native_debug"]),
+        opt_level=optional_number(raw["opt_level"]),
+        dump_ir_path=optional_text(raw["dump_ir_path"]),
+        debug_ir=optional_flag(raw["debug_ir"]),
+        rc_stats=optional_flag(raw["rc_stats"]),
+        nogc_debug=optional_flag(raw["nogc_debug"]),
+        na_debug=optional_flag(raw["na_debug"]),
+        suppress_codes=[str(item) for item in raw["suppress_codes"]],
+        default_codespace=str(raw["default_codespace"]),
+        app_kind=str(raw["app_kind"]),
+        target_app=str(raw["target_app"]),
+        entry_point=str(raw["entry_point"]),
+        ui=str(raw["ui"]),
+        project_root=optional_text(raw["project_root"]),
+        client_source_root=str(raw["client_source_root"]),
+        native_module_walk_order=optional_text(raw["native_module_walk_order"]),
+        strict_dependencies=bool(raw["strict_dependencies"]),
+        package_canonical=bool(raw["package_canonical"]),
+        na_move_flow=bool(raw["na_move_flow"])
+    );
+}
+
+impl optional_flag(value: any) -> (bool | None) {
+    if value is None {
+        return None;
+    }
+    return bool(value);
+}
+
+impl optional_number(value: any) -> (int | None) {
+    if value is None {
+        return None;
+    }
+    return int(value);
+}
+
+impl optional_text(value: any) -> (str | None) {
+    if value is None {
+        return None;
+    }
+    return str(value);
+}
+
+impl optional_texts(value: any) -> (list[str] | None) {
+    if value is None {
+        return None;
+    }
+    return [str(item) for item in value];
+}

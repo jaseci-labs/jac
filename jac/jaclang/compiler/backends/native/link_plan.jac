@@ -190,8 +190,13 @@ def link_artifact(
     output_path: str,
     kind: ArtifactKind,
     log: any = None,
-    app_imports: (set | None) = None
+    app_imports: (set | None) = None,
+    runpaths: list[str] = []
 ) -> LinkResult;
+
+def link_object(
+    plan: LinkPlan, exports: list[str], log: (Callable[[str], None] | None) = None
+) -> bytes;
 
 def _unmangled(symbol: str, mangled: bool) -> str;
 

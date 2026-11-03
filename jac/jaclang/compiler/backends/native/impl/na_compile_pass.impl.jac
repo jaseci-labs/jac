@@ -248,7 +248,7 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
                 manifest.callable_native_imports,
                 py_func_table,
                 callbacks_list,
-                llvm.add_symbol
+                add_symbol
             );
             module.gen.interop_py_funcs = py_func_table;
             module.gen._interop_callbacks = callbacks_list;

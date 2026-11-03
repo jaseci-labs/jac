@@ -1,0 +1,696 @@
+impl PyastGenPass._get_builtin_names -> set[str] {
+    return self._builtin_names;
+}
+
+impl PyastGenPass._get_ambient_typing_names -> set[str] {
+    return self._ambient_typing_names;
+}
+
+impl PyastGenPass.postinit -> None {
+    _jaclib: set[str] = set();
+    _builtins: set[str] = set();
+    _sized: set[str] = set();
+    _typing: set[str] = set();
+    self.jaclib_imports = _jaclib;
+    self._runtime_aliases = {};
+    _builtin_names: set[str] = set(PYAST_BUILTIN_NAMES);
+    _ambient_names: set[str] = set(PYAST_AMBIENT_TYPING_NAMES);
+    self._builtin_names = _builtin_names;
+    self._ambient_typing_names = _ambient_names;
+    self._reserved_names = {nd.sym_name for nd in self.module.get_all_sub_nodes(Name)};
+    self.builtin_imports = _builtins;
+    self.sized_imports = _sized;
+    self.typing_imports = _typing;
+    self._hoist_frames = [[]];
+    self._sink = {};
+    self.loop_links = LoopLinks.of(self.module);
+    self._pass_link_names = {};
+    self.preamble = [
+        self.nod(
+            'ImportFrom',
+            ['module', 'names', 'level'],
+            [
+                '__future__',
+                [
+                    self.nod(
+                        'alias',
+                        ['name', 'asname'],
+                        ['annotations', None],
+                        jac_node=self.module
+                    )
+                ],
+                0
+            ],
+            jac_node=self.module
+        )
+    ];
+}
+
+impl PyastGenPass._is_native_ext_module -> bool {
+    return self.module is not None and self.module.decided_codespace == 'native';
+}
+
+impl PyastGenPass._refuse(nd: (UniNode | None), construct: str) -> None {
+    target = nd if nd is not None else self.ctx.current_node;
+    where = '';
+    if (target is not None and target.loc is not None) {
+        where = (
+            f" at {target.loc.mod_path}:"
+            f"{target.loc.first_line}:{target.loc.col_start}"
+        );
+    }
+    raise NotImplementedError(
+        f"the Python code generator does not lower {construct}{where}"
+    );
+}
+
+impl PyastGenPass.enter_walk with UniNode entry {
+    if self.ctx.is_canceled() or here.ct_pruned {
+        osp_skip_rest();
+        return;
+    }
+    self.ctx.current_node = here;
+    if (isinstance(here, Module) and (here is not self.module))
+        or self.reached_by_syntax(here) {
+        osp_skip_rest();
+        return;
+    }
+    if isinstance(here, (Ability, Import)) and here.is_comptime {
+        osp_skip_rest();
+        return;
+    }
+    if (
+        isinstance(here, ContextAwareNode)
+        and (here.code_context == CodeContext.NATIVE)
+        and ((here.decl_parent is None) or isinstance(here.decl_parent, Module))
+        and not isinstance(here, (Import, Test))
+        and not self._is_native_ext_module()
+    ) {
+        first_native = True;
+        for sib in self.module.body {
+            if sib is here {
+                break;
+            }
+            if (
+                isinstance(sib, ContextAwareNode)
+                and sib.code_context == CodeContext.NATIVE
+                and not isinstance(sib, Import)
+            ) {
+                first_native = False;
+                break;
+            }
+        }
+        if first_native {
+            self._interop_stub_node = here;
+        }
+        osp_skip_rest();
+        return;
+    }
+    if (
+        isinstance(here, ContextAwareNode)
+        and (here.code_context == CodeContext.CLIENT)
+        and not here.codespace_dual
+        and ((here.decl_parent is None) or isinstance(here.decl_parent, Module))
+    ) {
+        osp_skip_rest();
+        return;
+    }
+    if (
+        isinstance(here, Import)
+        and here.code_context == CodeContext.NATIVE
+        and (not here.items)
+        and (not here.clib_decls)
+    ) {
+        osp_skip_rest();
+        return;
+    }
+}
+
+impl PyastGenPass.exit_walk with UniNode exit {
+    if here.ct_pruned {
+        osp_skip_rest();
+        return;
+    }
+    self.ctx.current_node = here;
+    if self.ctx.is_canceled() {
+        osp_skip_rest();
+        return;
+    }
+    if (isinstance(here, Module) and (here is not self.module))
+        or self.reached_by_syntax(here) {
+        osp_skip_rest();
+        return;
+    }
+    if isinstance(here, (Ability, Import)) and here.is_comptime {
+        self.set_out(here, []);
+        osp_skip_rest();
+        return;
+    }
+    if (
+        isinstance(here, ContextAwareNode)
+        and (here.code_context == CodeContext.CLIENT)
+        and not here.codespace_dual
+        and ((here.decl_parent is None) or isinstance(here.decl_parent, Module))
+    ) {
+        osp_skip_rest();
+        return;
+    }
+    if (
+        isinstance(here, ContextAwareNode)
+        and (here.code_context == CodeContext.NATIVE)
+        and ((here.decl_parent is None) or isinstance(here.decl_parent, Module))
+        and not isinstance(here, (Import, Test))
+        and not self._is_native_ext_module()
+    ) {
+        osp_skip_rest();
+        return;
+    }
+    if (
+        isinstance(here, Import)
+        and here.code_context == CodeContext.NATIVE
+        and (not here.items)
+        and (not here.clib_decls)
+    ) {
+        osp_skip_rest();
+        return;
+    }
+}
+
+impl PyastGenPass.finish_expr with Expr exit {
+    if here.fw is not None or isinstance(here, FuncCall) {
+        self._apply_fw(here);
+    }
+    if here.coerce_to is not None {
+        self._apply_coercion(here);
+    }
+}
+
+impl PyastGenPass.nod(
+    cls_name: str, keys: list[str], vals: list[any], jac_node: (UniNode | None) = None
+) -> CgNode {
+    src = jac_node if jac_node is not None else self.ctx.current_node;
+    loc = src.loc;
+    l1 = loc.first_line;
+    c1 = loc.col_start;
+    last_line = loc.last_line;
+    col_end = loc.col_end;
+    l2 = last_line if (last_line and last_line > l1) else l1;
+    c2 = col_end if (col_end and col_end > c1) else c1;
+    return CgNode(
+        cls=cls_name, keys=keys, vals=vals, l1=l1, c1=c1, l2=l2, c2=c2, jac_src=src
+    );
+}
+
+impl PyastGenPass.nod_loc(
+    cls_name: str, keys: list[str], vals: list[any], l1: int, c1: int, l2: int, c2: int
+) -> CgNode {
+    return CgNode(cls=cls_name, keys=keys, vals=vals, l1=l1, c1=c1, l2=l2, c2=c2);
+}
+
+impl PyastGenPass.call_node(
+    func: CgNode,
+    args: Sequence[CgItem],
+    keywords: Sequence[CgItem],
+    jac_node: (UniNode | None) = None
+) -> CgNode {
+    return self.nod(
+        'Call', ['func', 'args', 'keywords'], [func, args, keywords], jac_node=jac_node
+    );
+}
+
+impl PyastGenPass.outs(nd: UniNode) -> list[CgItem] {
+    got = self._sink.get(nd);
+    return got if got is not None else [];
+}
+
+impl PyastGenPass.set_out(nd: UniNode, items: list[CgItem]) -> None {
+    self._sink[nd] = items;
+}
+
+impl PyastGenPass.val(nd: UniNode) -> CgNode {
+    got: (list[CgItem] | None) = self._sink.get(nd);
+    if not got {
+        loc = nd.loc;
+        raise RuntimeError(
+            self.ctx.ice(
+                f"Empty codegen recipe on {type(nd).__name__} "
+                f"at {loc.mod_path}:{loc.first_line}:{loc.col_start}"
+            )
+        );
+    }
+    first = got[0];
+    if not isinstance(first, CgNode) {
+        loc = nd.loc;
+        raise RuntimeError(
+            self.ctx.ice(
+                f"Codegen recipe on {type(nd).__name__} is a splice, not a value "
+                f"at {loc.mod_path}:{loc.first_line}:{loc.col_start}"
+            )
+        );
+    }
+    return first;
+}
+
+impl PyastGenPass.const_of(value: any, jac_node: (UniNode | None) = None) -> CgNode {
+    return self.nod('Constant', ['value'], [value], jac_node=jac_node);
+}
+
+impl PyastGenPass.int_const_of(
+    value: CtInt, jac_node: (UniNode | None) = None
+) -> CgNode {
+    wide = int_wide_bytes(value);
+    if wide is None {
+        return self.const_of(int_host(value), jac_node);
+    }
+    return self.nod(
+        'Constant',
+        ['value'],
+        [CgWideInt(negative=value.neg, magnitude=wide)],
+        jac_node=jac_node
+    );
+}
+
+impl PyastGenPass.name_load(name_id: str, jac_node: (UniNode | None) = None) -> CgNode {
+    return self.nod(
+        'Name',
+        ['id', 'ctx'],
+        [name_id, self.nod('Load', [], [], jac_node=jac_node)],
+        jac_node=jac_node
+    );
+}
+
+impl PyastGenPass._with_ctx(cgn: CgNode, ctx_cls: str) -> CgNode {
+    twin = CgNode(
+        cls=cgn.cls,
+        keys=list(cgn.keys),
+        vals=list(cgn.vals),
+        l1=cgn.l1,
+        c1=cgn.c1,
+        l2=cgn.l2,
+        c2=cgn.c2,
+        jac_src=cgn.jac_src
+    );
+    twin.setf('ctx', self.nod_loc(ctx_cls, [], [], cgn.l1, cgn.c1, cgn.l2, cgn.c2));
+    return twin;
+}
+
+impl PyastGenPass.jaclib_obj(obj_name: str) -> CgNode {
+    cached = self._runtime_aliases.get(obj_name);
+    if cached is not None {
+        return self.name_load(cached);
+    }
+    alias = self._reserve_name("_jac_runtime_" + obj_name);
+    self._runtime_aliases[obj_name] = alias;
+    return self.name_load(alias);
+}
+
+impl PyastGenPass._reserve_name(preferred: str) -> str {
+    alias = preferred;
+    while alias in self._reserved_names {
+        alias += "_";
+    }
+    self._reserved_names.add(alias);
+    return alias;
+}
+
+impl PyastGenPass.builtin_name(name: str) -> CgNode {
+    if (name not in ['Enum', 'IntEnum', 'StrEnum']) {
+        self.builtin_imports.add(name);
+    }
+    return self.name_load(name);
+}
+
+impl PyastGenPass._add_preamble_once(key: str, cgn: CgNode) -> None {
+    if (key in self.already_added) {
+        return;
+    }
+    self.preamble.append(cgn);
+    self.already_added.append(key);
+}
+
+impl PyastGenPass.needs_enum_kind(kind: str) -> None {
+    self._add_preamble_once(
+        f"needs_enum_kind:{kind}",
+        self.nod(
+            'ImportFrom',
+            ['module', 'names', 'level'],
+            [
+                'enum',
+                [
+                    self.nod('alias', ['name', 'asname'], [kind, None]),
+                    self.nod('alias', ['name', 'asname'], ['auto', None])
+                ],
+                0
+            ],
+            jac_node=self.module
+        )
+    );
+}
+
+impl PyastGenPass._py_name(nd: AstSymbolNode) -> str {
+    if (isinstance(nd, SpecialVarRef) and (nd.name == Tok.KW_INIT)) {
+        return '__init__';
+    }
+    if (isinstance(nd, Name) and (nd.name == Tok.KW_INIT)) {
+        return '__init__';
+    }
+    return nd.sym_name;
+}
+
+impl PyastGenPass.py_ctx(nd: AstSymbolNode) -> CgNode {
+    if (nd.expr_ctx == ExprCtx.STORE) {
+        return self.nod('Store', [], []);
+    }
+    if (nd.expr_ctx == ExprCtx.DEL) {
+        return self.nod('Del', [], []);
+    }
+    return self.nod('Load', [], []);
+}
+
+impl PyastGenPass._next_lambda_name -> str {
+    self._lambda_counter += 1;
+    return self._reserve_name(f"_jac_lambda_{self._lambda_counter}");
+}
+
+impl PyastGenPass._push_hoist_frame -> None {
+    self._hoist_frames.append([]);
+}
+
+impl PyastGenPass._hoist_lambda(func_def: CgNode) -> None {
+    if not self._hoist_frames {
+        self._hoist_frames = [[]];
+    }
+    self._hoist_frames[-1].append(func_def);
+}
+
+impl PyastGenPass._ancestor_is_one_of(
+    nd: (UniNode | None), roots: list[UniNode]
+) -> bool {
+    cur: (UniNode | None) = nd;
+    seen: set[UniNode] = set();
+    while cur {
+        if cur in seen {
+            return False;
+        }
+        seen.add(cur);
+        for cand_root in roots {
+            if cur is cand_root {
+                return True;
+            }
+        }
+        cur = cur.parent;
+    }
+    return False;
+}
+
+impl PyastGenPass._split_scope_hoists(
+    hoists: list[CgNode], sig_roots: list[UniNode]
+) -> tuple[(list[CgNode], list[CgNode])] {
+    body_hoists: list[CgNode] = [];
+    enclosing_hoists: list[CgNode] = [];
+    for func_def in hoists {
+        lam = func_def.jac_src;
+        if (lam is not None and self._ancestor_is_one_of(lam, sig_roots)) {
+            enclosing_hoists.append(func_def);
+        } else {
+            body_hoists.append(func_def);
+        }
+    }
+    return (body_hoists, enclosing_hoists);
+}
+
+impl PyastGenPass._docstring_offset(body: list[CgItem]) -> int {
+    if not body {
+        return 0;
+    }
+    head = body[0];
+    if (not isinstance(head, CgNode)) or (head.cls != 'Expr') {
+        return 0;
+    }
+    inner = head.get('value');
+    if (not isinstance(inner, CgNode)) or (inner.cls != 'Constant') {
+        return 0;
+    }
+    return 1 if isinstance(inner.get('value'), str) else 0;
+}
+
+impl PyastGenPass._drain_module_hoists -> list[CgNode] {
+    if not self._hoist_frames {
+        self._hoist_frames = [[]];
+    }
+    if len(self._hoist_frames) > 1 {
+        self._report_leaked_hoisted_lambdas();
+    }
+    hoists = self._hoist_frames[0][:];
+    self._hoist_frames = [[]];
+    return hoists;
+}
+
+impl PyastGenPass._report_leaked_hoisted_lambdas -> None {
+    leftover: list[CgNode] = [];
+    for frame in self._hoist_frames[1:] {
+        leftover.extend(frame);
+    }
+    for func_def in leftover {
+        jac_node: UniNode = self.module;
+        if func_def.jac_src is not None {
+            jac_node = func_def.jac_src;
+        }
+        leaked_name = func_def.get('name');
+        self.ctx.emit(
+            E5098,
+            node_override=jac_node,
+            name=leaked_name if isinstance(leaked_name, str) else ''
+        );
+    }
+}
+
+impl PyastGenPass._function_expr_from_def(
+    func_def: CgNode, jac_node: UniNode
+) -> CgNode {
+    if self._closure_bindings(jac_node) {
+        return self._linked_closure_factory(func_def, jac_node);
+    }
+    if isinstance(jac_node, LambdaExpr) {
+        parent = jac_node.parent;
+        immediate = isinstance(parent, FuncCall) and parent.target is jac_node;
+        has_defaults = jac_node.signature is not None
+            and any(param.value is not None for param in jac_node.signature.params);
+        if not immediate or has_defaults {
+            factory_name = self._next_lambda_name();
+            args = self.nod(
+                'arguments',
+                ['posonlyargs', 'args', 'kwonlyargs', 'kw_defaults', 'defaults'],
+                [[], [], [], [], []],
+                jac_node=jac_node
+            );
+            returned = self.nod(
+                'Return',
+                ['value'],
+                [self.name_load(str(func_def.get('name')), jac_node=jac_node)],
+                jac_node=jac_node
+            );
+            factory = self.nod(
+                'FunctionDef',
+                ['name', 'args', 'body', 'decorator_list', 'returns', 'type_params'],
+                [factory_name, args, [func_def, returned], [], None, []],
+                jac_node=jac_node
+            );
+            self._hoist_lambda(factory);
+            return self.call_node(
+                self.name_load(factory_name, jac_node=jac_node),
+                [],
+                [],
+                jac_node=jac_node
+            );
+        }
+    }
+    self._hoist_lambda(func_def);
+    return self.nod(
+        'Name',
+        ['id', 'ctx'],
+        [func_def.get('name'), self.nod('Load', [], [], jac_node=jac_node)],
+        jac_node=jac_node
+    );
+}
+
+impl PyastGenPass._pass_link_name(link: PassLink) -> str {
+    known = self._pass_link_names.get(link.index);
+    if known is None {
+        known = self._reserve_name(f"_jac_pass_{link.sym.sym_name}");
+        self._pass_link_names[link.index] = known;
+    }
+    return known;
+}
+
+impl PyastGenPass._closure_bindings(closure: UniNode) -> list[str] {
+    names: list[str] = [];
+    for link in self.loop_links.of_closure(closure) {
+        names.append(self._pass_link_name(link));
+    }
+    for sym in self.loop_links.rebinds_of(closure) {
+        names.append(sym.sym_name);
+    }
+    return names;
+}
+
+impl PyastGenPass._pass_link_args(names: list[str]) -> CgNode {
+    params: list[CgNode] = [];
+    for name in names {
+        params.append(self.nod('arg', ['arg', 'annotation'], [name, None]));
+    }
+    return self.nod(
+        'arguments',
+        ['posonlyargs', 'args', 'kwonlyargs', 'kw_defaults', 'defaults'],
+        [[], params, [], [], []]
+    );
+}
+
+impl PyastGenPass._pass_link_ref(link: PassLink, nd: Name) -> CgNode {
+    cell = self.nod(
+        'Attribute',
+        ['value', 'attr', 'ctx'],
+        [
+            self.name_load(self._pass_link_name(link), nd),
+            'cell',
+            self.nod('Load', [], [], jac_node=nd)
+        ],
+        jac_node=nd
+    );
+    return self.nod(
+        'Attribute',
+        ['value', 'attr', 'ctx'],
+        [cell, 'cell_contents', self.py_ctx(nd)],
+        jac_node=nd
+    );
+}
+
+impl PyastGenPass._pass_link_opens(loop: UniNode) -> list[CgNode] {
+    opens: list[CgNode] = [];
+    for link in self.loop_links.of_loop(loop) {
+        made: CgNode;
+        if link.sym.storage == SymbolStorage.MODULE_GLOBAL {
+            made = self.call_node(
+                self._pass_link_ctor('of_global', loop),
+                [
+                    self.call_node(
+                        self.name_load('globals', loop), [], [], jac_node=loop
+                    ),
+                    self.const_of(link.sym.sym_name)
+                ],
+                [],
+                jac_node=loop
+            );
+        } else {
+            probe = self.nod(
+                'Lambda',
+                ['args', 'body'],
+                [self._pass_link_args([]), self.name_load(link.sym.sym_name, loop)],
+                jac_node=loop
+            );
+            made = self.call_node(
+                self._pass_link_ctor('of_local', loop), [probe], [], jac_node=loop
+            );
+        }
+        target = self.nod(
+            'Name',
+            ['id', 'ctx'],
+            [self._pass_link_name(link), self.nod('Store', [], [], jac_node=loop)],
+            jac_node=loop
+        );
+        opens.append(
+            self.nod('Assign', ['targets', 'value'], [[target], made], jac_node=loop)
+        );
+    }
+    return opens;
+}
+
+impl PyastGenPass._pass_link_ctor(kind: str, loop: UniNode) -> CgNode {
+    return self.nod(
+        'Attribute',
+        ['value', 'attr', 'ctx'],
+        [self.jaclib_obj('PassLink'), kind, self.nod('Load', [], [], jac_node=loop)],
+        jac_node=loop
+    );
+}
+
+impl PyastGenPass._pass_link_detaches(loop: (UniNode | None)) -> list[CgNode] {
+    detaches: list[CgNode] = [];
+    if loop is None {
+        return detaches;
+    }
+    for link in self.loop_links.of_loop(loop) {
+        detach = self.nod(
+            'Attribute',
+            ['value', 'attr', 'ctx'],
+            [
+                self.name_load(self._pass_link_name(link), loop),
+                'detach',
+                self.nod('Load', [], [], jac_node=loop)
+            ],
+            jac_node=loop
+        );
+        detaches.append(
+            self.nod(
+                'Expr',
+                ['value'],
+                [self.call_node(detach, [], [], jac_node=loop)],
+                jac_node=loop
+            )
+        );
+    }
+    return detaches;
+}
+
+impl PyastGenPass._linked_closure_value(closure: UniNode, value: CgNode) -> CgNode {
+    names = self._closure_bindings(closure);
+    if not names {
+        return value;
+    }
+    factory = self.nod(
+        'Lambda',
+        ['args', 'body'],
+        [self._pass_link_args(names), value],
+        jac_node=closure
+    );
+    return self.call_node(
+        factory, [self.name_load(name, closure) for name in names], [], jac_node=closure
+    );
+}
+
+impl PyastGenPass._linked_closure_factory(func_def: CgNode, closure: UniNode) -> CgNode {
+    names = self._closure_bindings(closure);
+    factory_name = self._next_lambda_name();
+    returned = self.nod(
+        'Return',
+        ['value'],
+        [self.name_load(str(func_def.get('name')), jac_node=closure)],
+        jac_node=closure
+    );
+    factory = self.nod(
+        'FunctionDef',
+        ['name', 'args', 'body', 'decorator_list', 'returns', 'type_params'],
+        [factory_name, self._pass_link_args(names), [func_def, returned], [], None, []],
+        jac_node=closure
+    );
+    self._hoist_lambda(factory);
+    return self.call_node(
+        self.name_load(factory_name, jac_node=closure),
+        [self.name_load(name, closure) for name in names],
+        [],
+        jac_node=closure
+    );
+}
+
+impl PyastGenPass.exit_token with Token exit {
+    if here.__class__ is not Token {
+        return;
+    }
+    if here.name in TOKEN_CLS_BY_NAME {
+        self.set_out(here, [self.nod(TOKEN_CLS_BY_NAME[here.name], [], [])]);
+    }
+}
+
+impl PyastGenPass.exit_semi with Semi exit {}
+
+impl PyastGenPass.exit_comment_token with CommentToken exit {}

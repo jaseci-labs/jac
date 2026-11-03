@@ -10,6 +10,7 @@ This reduces ~640 parametrized tests to ~160 and eliminates redundant
 compilations (was 6-7 compiles per file, now 4).
 """
 
+import from jaclang.compiler.backends.py.kernel_bytecode { kernel_python_ast }
 import from jaclang.compiler.frontend.roles { Kid }
 import ast as ast3;
 import os;
@@ -44,14 +45,14 @@ def micro_suite_combined_test(rel_path: str) -> None {
 
     # --- Phase 1: Compile + codegen checks ---
     code_gen = JacProgram().compile(filename);
-    assert code_gen is not None and code_gen.gen.py_ast is not None , (
+    assert code_gen is not None and code_gen.gen.py_recipe is not None , (
         f"Compilation failed for {filename}"
     );
-    from_jac = code_gen.gen.py_ast[0];
+    from_jac = kernel_python_ast(code_gen);
     from_jac_str = ast3.dump(from_jac, indent=2);
     assert isinstance(from_jac, ast3.Module) , f"Not a module for {filename}";
     compile(from_jac, filename="<ast>", mode="exec");
-    # The loc-fill invariant (codegen-ir.md 5.1): the emitter stamps all
+    # The loc-fill invariant: the code generator stamps all
     # four normalized position values at construction time and there is no
     # fill pass behind it. A location-bearing node arriving here with a
     # field missing means a recipe was built off something other than the
@@ -95,13 +96,13 @@ def micro_suite_combined_test(rel_path: str) -> None {
     assert parent_scrub(code_gen2) , f"Parent scrub failed (pass 2) for {filename}";
 
     # --- Phase 3: Unparse roundtrip ---
-    before = ast3.dump(code_gen.gen.py_ast[0], indent=2);
+    before = ast3.dump(kernel_python_ast(code_gen), indent=2);
     unparsed = unparse_module(code_gen);
     code_gen_unparsed = JacProgram().compile(use_str=unparsed, file_path=filename);
-    assert code_gen_unparsed is not None and code_gen_unparsed.gen.py_ast is not None , (
+    assert code_gen_unparsed is not None and code_gen_unparsed.gen.py_recipe is not None , (
         f"Re-compilation from unparse failed for {filename}"
     );
-    after_unparse = ast3.dump(code_gen_unparsed.gen.py_ast[0], indent=2);
+    after_unparse = ast3.dump(kernel_python_ast(code_gen_unparsed), indent=2);
     if "circle_clean_tests.jac" in filename {
         diff_lines = [
             i
@@ -134,8 +135,8 @@ def micro_suite_combined_test(rel_path: str) -> None {
         before_fmt = "";
         after_fmt = "";
         try {
-            before_fmt = ast3.dump(code_gen.gen.py_ast[0], indent=2);
-            after_fmt = ast3.dump(code_gen_fmt.gen.py_ast[0], indent=2);
+            before_fmt = ast3.dump(kernel_python_ast(code_gen), indent=2);
+            after_fmt = ast3.dump(kernel_python_ast(code_gen_fmt), indent=2);
             assert isinstance(code_gen, uni.Module)
                 and isinstance(code_gen_fmt, uni.Module) , "Parsed objects are not modules.";
             diff = "\n".join(

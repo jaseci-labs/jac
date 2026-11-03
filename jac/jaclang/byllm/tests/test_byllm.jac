@@ -1122,7 +1122,7 @@ test "async streaming stays lazy: the producer waits for the consumer" {
 test "async def by llm(stream=True) streams end to end" {
     code_gen = (prog := JacProgram()).compile(fixture_path("async_stream_by_llm.jac"));
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
-    compiled = compile(code_gen.gen.py_ast[0], filename="<ast>", mode="exec");
+    compiled = compile(kernel_python_ast(code_gen), filename="<ast>", mode="exec");
     module = types.ModuleType("async_stream_by_llm_fixture");
     module.__dict__["__file__"] = code_gen.loc.mod_path;
     exec(compiled, module.__dict__);
@@ -1229,14 +1229,15 @@ test "model_call_http_async returns json response" {
 
 import ast as ast3;
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.backends.py.kernel_bytecode { kernel_python_ast }
 
 test "async by llm() codegen emits await Jac.acall_llm not call_llm" {
     code_gen = (prog := JacProgram()).compile(fixture_path("async_by_llm.jac"));
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
-    assert code_gen.gen.py_ast and isinstance(code_gen.gen.py_ast[0], ast3.Module) , (
+    assert isinstance(kernel_python_ast(code_gen), ast3.Module) , (
         "Expected a compiled Python AST module"
     );
-    py_source = ast3.unparse(code_gen.gen.py_ast[0]);
+    py_source = ast3.unparse(kernel_python_ast(code_gen));
 
     assert "acall_llm" in py_source , (
         f"Expected 'acall_llm' in generated source for async by llm(). Got:\n{py_source}"
@@ -1258,7 +1259,7 @@ test "async by llm() codegen emits await Jac.acall_llm not call_llm" {
     }
     await_nodes = [
         n
-        for n in ast3.walk(code_gen.gen.py_ast[0])
+        for n in ast3.walk(kernel_python_ast(code_gen))
         if isinstance(n, ast3.Await) and _is_acall_llm_call(n.value)
     ];
     assert len(await_nodes) >= 1 , (
@@ -1267,12 +1268,12 @@ test "async by llm() codegen emits await Jac.acall_llm not call_llm" {
 
     all_acall_nodes = [
         n
-        for n in ast3.walk(code_gen.gen.py_ast[0])
+        for n in ast3.walk(kernel_python_ast(code_gen))
         if _is_acall_llm_call(n)
     ];
     awaited_values = {
         id(n.value)
-        for n in ast3.walk(code_gen.gen.py_ast[0])
+        for n in ast3.walk(kernel_python_ast(code_gen))
         if isinstance(n, ast3.Await)
     };
     bare_acall_nodes = [
@@ -1289,9 +1290,9 @@ test "async by llm() codegen emits await Jac.acall_llm not call_llm" {
 test "an async by llm() call runs end to end through its model" {
     code_gen = (prog := JacProgram()).compile(fixture_path("async_by_llm.jac"));
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
-    assert code_gen.gen.py_ast and isinstance(code_gen.gen.py_ast[0], ast3.Module);
+    assert isinstance(kernel_python_ast(code_gen), ast3.Module);
 
-    compiled = compile(code_gen.gen.py_ast[0], filename="<ast>", mode="exec");
+    compiled = compile(kernel_python_ast(code_gen), filename="<ast>", mode="exec");
     module = types.ModuleType("async_by_llm_fixture");
     module.__dict__["__file__"] = code_gen.loc.mod_path;
     exec(compiled, module.__dict__);

@@ -1,19 +1,17 @@
 impl read_file_with_encoding(file_path: str) -> str {
+    with open(file_path, "rb") as f {
+        data: bytes = f.read();
+    }
     for encoding in _JAC_TEXT_ENCODINGS {
         try {
-            with open(file_path, encoding=encoding) as f {
-                return f.read();
-            }
+            text = data.decode(encoding);
         } except UnicodeError {
             continue;
-        } except Exception as e {
-            raise OSError(
-                f"Could not read file {file_path}: {e}. Report this issue: https://github.com/jaseci-labs/jaseci/issues"
-            );
         }
+        return text.replace("\r\n", "\n").replace("\r", "\n");
     }
-    raise OSError(
-        f"Could not read file {file_path} with any encoding. Report this issue:https://github.com/jaseci-labs/jaseci/issues"
+    raise UnicodeError(
+        f"Could not decode {file_path} as any of {', '.join(_JAC_TEXT_ENCODINGS)}"
     );
 }
 
@@ -42,11 +40,10 @@ impl span_for_file(
     }
     code = source;
     if (code == '') {
-        try {
-            code = read_file_with_encoding(mod_path);
-        } except Exception {
+        if not os.path.isfile(mod_path) {
             return bare;
         }
+        code = read_file_with_encoding(mod_path);
     }
     fb = code.encode("utf-8");
     flen = len(fb);
@@ -78,32 +75,33 @@ impl span_for_file(
 }
 
 impl drop_git_ignored(paths: list[str], cwd: str = "") -> list[str] {
+    import shutil;
     import subprocess;
-    if not paths {
+    if not paths or shutil.which("git") is None {
         return paths;
     }
-    try {
-        proc = subprocess.run(
-            ['git', 'check-ignore', '--stdin'],
-            input="\n".join(paths),
-            capture_output=True,
-            text=True,
-            check=False,
-            cwd=cwd or None
+    proc = subprocess.run(
+        ['git', 'check-ignore', '--stdin'],
+        input="\n".join(paths),
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=cwd or None
+    );
+    if proc.returncode == 128 {
+        return paths;
+    }
+    if proc.returncode != 0 and proc.returncode != 1 {
+        raise RuntimeError(
+            f"git check-ignore failed ({proc.returncode}) in {cwd or os.getcwd()}: "
+                + str(proc.stderr).strip()
         );
-    } except (OSError, ValueError) {
-        return paths;
     }
-    if proc.returncode not in (0, 1) {
-        return paths;
-    }
-    ignored = {
-        line
-        for line in proc.stdout.splitlines()
-        if line
-    };
-    if not ignored {
-        return paths;
+    ignored: set[str] = set();
+    for line in str(proc.stdout).splitlines() {
+        if line {
+            ignored.add(line);
+        }
     }
     return [
         p

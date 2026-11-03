@@ -2,10 +2,6 @@ impl HostServices.session -> Iterator[None] {
     yield ;
 }
 
-impl HostServices.in_kernel -> bool {
-    return False;
-}
-
 impl HostServices.project_defaults -> (ProjectDefaults | None) {
     return None;
 }
@@ -96,12 +92,6 @@ impl HostServices.stub_catalog_for(program: JacProgram) -> (StubCatalog | None) 
     return None;
 }
 
-impl HostServices.parse_python(
-    source_str: str, file_path: str, program: JacProgram
-) -> tuple[Module, bool] {
-    raise RuntimeError("no compiler host is installed");
-}
-
 impl HostServices.stub_interface(
     program: JacProgram, file_path: str
 ) -> (Module | None) {
@@ -162,6 +152,17 @@ impl HostServices.native_scan_record(path: str, digest: str) -> str {
 
 impl HostServices.keep_native_scan_record(path: str, digest: str, text: str) {}
 
+impl HostServices.native_parse(
+    source_str: str,
+    file_path: str,
+    program: (JacProgram | None),
+    annexes: list[WovenAnnex],
+    early_context: str = "",
+    load_kernel: bool = True
+) -> (tuple[Module, bool] | None) {
+    return None;
+}
+
 impl HostServices.woven_module(
     path: str, program: (JacProgram | None)
 ) -> (Module | None) {
@@ -220,12 +221,6 @@ impl HostServices.client_boundary_facts(
     return None;
 }
 
-impl HostServices.kernel_compile(
-    program: JacProgram, path: str, options: CompileOptions
-) -> (CompileReport | None) {
-    return None;
-}
-
 impl HostServices.in_compiler_tree(path: str) -> bool {
     return False;
 }
@@ -248,16 +243,6 @@ impl HostServices.native_session_declares(
 
 impl HostServices.native_session_active(program: JacProgram) -> bool {
     return False;
-}
-
-impl HostServices.record_native_coverage(
-    path: str, outcome: str, code: str = "", detail: str = ""
-) {}
-
-impl HostServices.native_analyze(
-    program: JacProgram, path: str, options: CompileOptions, source: (str | None)
-) -> (ModuleAnalysis | None) {
-    return None;
 }
 
 impl HostServices.format_file(file_path: str, auto_lint: bool = False) -> JacProgram {
@@ -373,6 +358,38 @@ impl set_package_root(path: str) {
 impl install_host(host: HostServices) {
     _HOSTS.clear();
     _HOSTS.append(host);
+}
+
+impl install_toolchain_host(host: HostServices) {
+    _TOOLCHAIN_HOSTS.clear();
+    _TOOLCHAIN_HOSTS.append(host);
+    install_host(host);
+}
+
+impl toolchain_host -> HostServices {
+    if not _TOOLCHAIN_HOSTS {
+        raise RuntimeError(
+            "no toolchain host is installed: the package boot installs it before "
+            "the compiler compiles its own modules"
+        );
+    }
+    return _TOOLCHAIN_HOSTS[0];
+}
+
+impl enter_compiler(host: HostServices) -> HostServices {
+    previous = active_host();
+    install_host(host);
+    _RESIDENCY[0] += 1;
+    return previous;
+}
+
+impl leave_compiler(previous: HostServices) {
+    _RESIDENCY[0] -= 1;
+    install_host(previous);
+}
+
+impl kernel_resident -> bool {
+    return _RESIDENCY[0] > 0;
 }
 
 impl set_kernel_host_mode(mode: str) -> str {

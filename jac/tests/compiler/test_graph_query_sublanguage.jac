@@ -50,7 +50,7 @@ def _shown(body: str) -> str {
 }
 
 
-"""Codegen diagnostics need the JCIR pass, which `no_cgen` skips."""
+"""Codegen diagnostics need the Python code generator, which `no_cgen` skips."""
 def _cgen_codes(body: str) -> list[str] {
     prog = JacProgram();
     prog.compile(file_path="gq_cgen.jac", use_str=PRELUDE + body);

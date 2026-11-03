@@ -295,7 +295,7 @@ test "a schedule dependency mid-import puts the compile on the bootstrap tier" {
                 CompilationProduct.FROZEN
             ) for p in (schedule_for(product, ProductRequest(native=True)) or [])
         ];
-        assert tail == ["NativeImportFactsPass", "JcirGenPass"] , tail;
+        assert tail == ["NativeImportFactsPass", "PyastGenPass"] , tail;
     } finally {
         sys.modules[name] = saved;
     }

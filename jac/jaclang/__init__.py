@@ -8,7 +8,9 @@ from typing import TYPE_CHECKING
 
 def _install_compiler_host(package_dir: Path) -> None:
     # The compiler reaches the toolchain package and the project (jac.toml,
-    # workspaces, module resolution) only through what is registered here. A
+    # workspaces, module resolution) only through what is registered here: the
+    # package root, the module search path and the one host-services
+    # implementation, which the kernel installs for itself as well. A
     # runtime-only export ships neither the compiler nor the project layer.
     try:
         host = import_module("jaclang.compiler.frontend.host")
@@ -18,12 +20,17 @@ def _install_compiler_host(package_dir: Path) -> None:
         return
     host.set_package_root(str(package_dir.absolute()))
     try:
-        project_host = import_module("jaclang.project.compiler_host")
+        modresolver = import_module("jaclang.project.modresolver")
     except ModuleNotFoundError as exc:
-        if exc.name != "jaclang.project.compiler_host":
+        if exc.name != "jaclang.project.modresolver":
             raise
         return
-    host.install_host(project_host.ProjectHost())
+    modresolver.install_search_roots(list(sys.path))
+    host_bootstrap = import_module("jaclang.project.host_bootstrap")
+    host.install_toolchain_host(host_bootstrap.BootstrapProjectHost())
+    engine = import_module("jaclang.compiler.backends.py.python_engine")
+    host_python = import_module("jaclang.compiler.backends.py.host_python")
+    engine.install_engine(host_python.HostPython())
 
 
 def _install_importer() -> None:

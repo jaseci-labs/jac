@@ -1,36 +1,18 @@
-import from ctypes {
-    c_char_p,
-    byref,
-    POINTER,
-    c_bool,
-    create_string_buffer,
-    c_size_t,
-    c_uint,
-    c_void_p,
-    string_at
-}
-
-"""
-    Create Module from a LLVM IR string
-    """
-def parse_assembly(llvmir: any, context: any = None) -> ModuleRef {
-    if (context is None) {
-        context = get_global_context();
-    }
-    llvmir = _encode_string(llvmir);
-    strbuf = c_char_p(llvmir);
-    with ffi.OutputString() as errmsg {
-        mod = ModuleRef(ffi.lib.LLVMPY_ParseAssembly(context, strbuf, errmsg), context);
-        if errmsg {
-            mod.close();
-            raise RuntimeError(
-                "LLVM IR parsing error\n{0}{1}".format(
-                    errmsg, _parse_error_context(llvmir, str(errmsg))
-                )
-            );
+"""Create a module from LLVM IR text."""
+def parse_assembly(llvmir: str, context: (ContextRef | None) = None) -> ModuleRef {
+    owner = context if context is not None else get_global_context();
+    err: ptr[u8] = ptr[u8]();
+    handle = LLVMPY_ParseAssembly(owner.live(), llvmir, &mut err);
+    if err {
+        message = take_text(err);
+        if handle {
+            LLVMPY_DisposeModule(handle);
         }
+        raise RuntimeError(
+            "LLVM IR parsing error\n" + message + _parse_error_context(llvmir, message)
+        );
     }
-    return mod;
+    return ModuleRef(handle, owner);
 }
 
 """The IR lines a parse error points at.
@@ -38,353 +20,195 @@ def parse_assembly(llvmir: any, context: any = None) -> ModuleRef {
 LLVM reports `<string>:LINE:COL`. A unit's IR runs to millions of lines and is
 not kept once the parse fails, so the message quotes the line and its two
 neighbours: that is what names the function or global at fault."""
-def _parse_error_context(llvmir: bytes, message: str) -> str {
-    import re;
-    found = re.search(r"<string>:(\d+):(\d+)", message);
-    if found is None {
+def _parse_error_context(llvmir: str, message: str) -> str {
+    marker = message.find("<string>:");
+    if marker < 0 {
         return "";
     }
-    wanted = int(found.group(1));
-    start = 0;
-    for _ in range(max(wanted - 2, 0)) {
-        nxt = llvmir.find(b"\n", start);
-        if nxt < 0 {
-            return "";
+    digits = "";
+    for character in message[marker + 9:] {
+        if not character.isdigit() {
+            break;
         }
-        start = nxt + 1;
+        digits += character;
     }
-    picked = llvmir[start:start + 4000].split(b"\n")[:3];
+    if not digits {
+        return "";
+    }
+    wanted = int(digits);
+    lines = llvmir.split("\n");
     first = max(wanted - 1, 1);
-    rows = [
-        f"  {first + i}: {row[:400].decode('utf-8', 'replace')}"
-        for (i, row) in enumerate(picked)
-    ];
+    rows: list[str] = [];
+    for number in range(first, min(first + 3, len(lines) + 1)) {
+        rows.append(f"  {number}: {lines[number - 1][:400]}");
+    }
     return "\nIR at that position:\n" + "\n".join(rows);
 }
 
-"""
-    Create Module from a LLVM *bitcode* (a bytes object).
-    """
-def parse_bitcode(bitcode: bytes, context: any = None) -> ModuleRef {
-    if (context is None) {
-        context = get_global_context();
-    }
-    buf = c_char_p(bitcode);
-    bufsize = len(bitcode);
-    with ffi.OutputString() as errmsg {
-        mod = ModuleRef(
-            ffi.lib.LLVMPY_ParseBitcode(context, buf, bufsize, errmsg), context
-        );
-        if errmsg {
-            mod.close();
-            raise RuntimeError("LLVM bitcode parsing error\n{0}".format(errmsg));
+"""Create a module from LLVM bitcode."""
+def parse_bitcode(bitcode: bytes, context: (ContextRef | None) = None) -> ModuleRef {
+    owner = context if context is not None else get_global_context();
+    err: ptr[u8] = ptr[u8]();
+    handle = LLVMPY_ParseBitcode(owner.live(), bitcode, u64(len(bitcode)), &mut err);
+    if err {
+        message = take_text(err);
+        if handle {
+            LLVMPY_DisposeModule(handle);
         }
+        raise RuntimeError("LLVM bitcode parsing error\n" + message);
     }
-    return mod;
+    return ModuleRef(handle, owner);
 }
 
-"""
-    A reference to a LLVM module.
-    """
-class ModuleRef(ffi.ObjectRef) {
-    def init(self: ModuleRef, module_ptr: any, context: any) -> object {
-        super.init(module_ptr);
-        self._context = context;
+"""An owned LLVM module."""
+class ModuleRef(ObjectRef) {
+    has context: (ContextRef | None) = None;
+
+    def init(self: ModuleRef, handle: ptr, context: (ContextRef | None) = None) {
+        super.init(handle);
+        self.context = context;
     }
 
-    def __str__(self: ModuleRef) -> object {
-        with ffi.OutputString() as outstr {
-            ffi.lib.LLVMPY_PrintModuleToString(self, outstr);
-            return str(outstr);
-        }
+    def _dispose(self: ModuleRef) {
+        LLVMPY_DisposeModule(self.handle);
     }
 
-    """
-        Return the module's LLVM bitcode, as a bytes object.
-        """
+    def __str__(self: ModuleRef) -> str {
+        out: ptr[u8] = ptr[u8]();
+        LLVMPY_PrintModuleToString(self.live(), &mut out);
+        return take_text(out);
+    }
+
     def as_bitcode(self: ModuleRef) -> bytes {
-        ptr = c_char_p(None);
-        size = c_size_t(-1);
-        ffi.lib.LLVMPY_WriteBitcodeToString(self, byref(ptr), byref(size));
-        if not ptr {
-            raise MemoryError;
+        out: ptr[u8] = ptr[u8]();
+        size: u64 = u64(0);
+        LLVMPY_WriteBitcodeToString(self.live(), &mut out, &mut size);
+        if not out {
+            raise MemoryError("LLVM wrote no bitcode");
         }
-        try {
-            assert (size.value >= 0);
-            return string_at(ptr, size.value);
-        } finally {
-            ffi.lib.LLVMPY_DisposeString(ptr);
-        }
+        return take_bytes(out, int(size));
     }
 
-    """
-        Split the module into `parts` linkable partitions and return each as
-        bitcode, for code generation on separate threads. The module is
-        consumed: its local symbols are renamed and made hidden globals.
-        """
+    """Split the module into `parts` linkable partitions and return each as
+    bitcode, for code generation on separate threads. The module is consumed:
+    its local symbols are renamed and made hidden globals."""
     def split_bitcode(self: ModuleRef, parts: int) -> list[bytes] {
-        buffers = (c_void_p * parts)();
-        sizes = (c_size_t * parts)();
-        ffi.lib.LLVMPY_SplitModuleBitcode(self, parts, buffers, sizes);
+        buffers = ptr[ptr[u8]](malloc(u64(8 * parts)));
+        sizes = ptr[u64](malloc(u64(8 * parts)));
+        if not buffers or not sizes {
+            raise MemoryError("cannot allocate the bitcode partitions");
+        }
+        LLVMPY_SplitModuleBitcode(self.live(), u32(parts), buffers, sizes);
         out: list[bytes] = [];
+        buffer_cells = buffers.view(parts);
+        size_cells = sizes.view(parts);
+        failed = False;
         for index in range(parts) {
-            address = buffers[index];
+            address = buffer_cells[index];
             if not address {
-                raise MemoryError;
+                failed = True;
+                continue;
             }
-            try {
-                out.append(string_at(address, sizes[index]));
-            } finally {
-                ffi.lib.LLVMPY_DisposeString(c_void_p(address));
-            }
+            out.append(take_bytes(address, int(size_cells[index])));
+        }
+        free(ptr(buffers));
+        free(ptr(sizes));
+        if failed {
+            raise MemoryError("LLVM wrote no bitcode for a partition");
         }
         return out;
     }
 
-    def _dispose(self: ModuleRef) -> object {
-        self._capi.LLVMPY_DisposeModule(self);
-    }
-
-    """
-        Get a ValueRef pointing to the function named *name*.
-        NameError is raised if the symbol isn't found.
-        """
-    def get_function(self: ModuleRef, name: any) -> object {
-        p = ffi.lib.LLVMPY_GetNamedFunction(self, _encode_string(name));
-        if not p {
+    def get_function(self: ModuleRef, name: str) -> ValueRef {
+        handle = LLVMPY_GetNamedFunction(self.live(), name);
+        if not handle {
             raise NameError(name);
         }
-        return ValueRef(p, 'function', `dict(module=self));
+        return ValueRef(handle, "function", self);
     }
 
-    """
-        Get a ValueRef pointing to the global variable named *name*.
-        NameError is raised if the symbol isn't found.
-        """
-    def get_global_variable(self: ModuleRef, name: any) -> object {
-        p = ffi.lib.LLVMPY_GetNamedGlobalVariable(self, _encode_string(name));
-        if not p {
+    def get_global_variable(self: ModuleRef, name: str) -> ValueRef {
+        handle = LLVMPY_GetNamedGlobalVariable(self.live(), name);
+        if not handle {
             raise NameError(name);
         }
-        return ValueRef(p, 'global', `dict(module=self));
+        return ValueRef(handle, "global", self);
     }
 
-    """
-        Verify the module IR's correctness.  RuntimeError is raised on error.
-        """
     def verify(self: ModuleRef) {
-        with ffi.OutputString() as outmsg {
-            if ffi.lib.LLVMPY_VerifyModule(self, outmsg) {
-                raise RuntimeError(str(outmsg));
+        out: ptr[u8] = ptr[u8]();
+        failed = LLVMPY_VerifyModule(self.live(), &mut out);
+        message = take_text(out);
+        if failed {
+            raise RuntimeError(message);
+        }
+    }
+
+    has name: str {
+        getter {
+            return c_text(LLVMPY_GetModuleName(self.live()));
+        }
+        setter(self: ModuleRef, value: str) {
+            LLVMPY_SetModuleName(self.live(), value);
+        }
+    }
+
+    has data_layout: str {
+        getter {
+            out: ptr[u8] = ptr[u8]();
+            LLVMPY_GetDataLayout(self.live(), &mut out);
+            return c_text(out);
+        }
+        setter(self: ModuleRef, value: str) {
+            LLVMPY_SetDataLayout(self.live(), value);
+        }
+    }
+
+    has triple: str {
+        getter {
+            out: ptr[u8] = ptr[u8]();
+            LLVMPY_GetTarget(self.live(), &mut out);
+            return c_text(out);
+        }
+        setter(self: ModuleRef, value: str) {
+            LLVMPY_SetTarget(self.live(), value);
+        }
+    }
+
+    """Link `other` into this module; `other` is consumed unless `preserve`."""
+    def link_in(self: ModuleRef, other: ModuleRef, preserve: bool = False) {
+        link_modules(self, other.clone() if preserve else other);
+    }
+
+    has global_variables: list[ValueRef] {
+        getter {
+            iterator = LLVMPY_ModuleGlobalsIter(self.live());
+            found: list[ValueRef] = [];
+            handle = LLVMPY_GlobalsIterNext(iterator);
+            while handle {
+                found.append(ValueRef(handle, "global", self));
+                handle = LLVMPY_GlobalsIterNext(iterator);
             }
+            LLVMPY_DisposeGlobalsIter(iterator);
+            return found;
         }
     }
 
-    """
-        The module's identifier.
-        """
-    @property
-    def name(self: ModuleRef) -> object {
-        return _decode_string(ffi.lib.LLVMPY_GetModuleName(self));
-    }
-
-    @name.setter
-    def name(self: ModuleRef, value: any) -> object {
-        ffi.lib.LLVMPY_SetModuleName(self, _encode_string(value));
-    }
-
-    """
-        The module's original source file name
-        """
-    @property
-    def source_file(self: ModuleRef) -> object {
-        return _decode_string(ffi.lib.LLVMPY_GetModuleSourceFileName(self));
-    }
-
-    """
-        This module's data layout specification, as a string.
-        """
-    @property
-    def data_layout(self: ModuleRef) -> object {
-        with ffi.OutputString(owned=False) as outmsg {
-            ffi.lib.LLVMPY_GetDataLayout(self, outmsg);
-            return str(outmsg);
+    has functions: list[ValueRef] {
+        getter {
+            iterator = LLVMPY_ModuleFunctionsIter(self.live());
+            found: list[ValueRef] = [];
+            handle = LLVMPY_FunctionsIterNext(iterator);
+            while handle {
+                found.append(ValueRef(handle, "function", self));
+                handle = LLVMPY_FunctionsIterNext(iterator);
+            }
+            LLVMPY_DisposeFunctionsIter(iterator);
+            return found;
         }
-    }
-
-    @data_layout.setter
-    def data_layout(self: ModuleRef, strrep: any) -> object {
-        ffi.lib.LLVMPY_SetDataLayout(self, create_string_buffer(strrep.encode('utf8')));
-    }
-
-    """
-        This module's target "triple" specification, as a string.
-        """
-    @property
-    def triple(self: ModuleRef) -> object {
-        with ffi.OutputString(owned=False) as outmsg {
-            ffi.lib.LLVMPY_GetTarget(self, outmsg);
-            return str(outmsg);
-        }
-    }
-
-    @triple.setter
-    def triple(self: ModuleRef, strrep: any) -> object {
-        ffi.lib.LLVMPY_SetTarget(self, create_string_buffer(strrep.encode('utf8')));
-    }
-
-    """
-        Link the *other* module into this one.  The *other* module will
-        be destroyed unless *preserve* is true.
-        """
-    def link_in(self: ModuleRef, other: any, preserve: any = False) -> object {
-        if preserve {
-            other = other.clone();
-        }
-        link_modules(self, other);
-    }
-
-    """
-        Return an iterator over this module's global variables.
-        The iterator will yield a ValueRef for each global variable.
-
-        Note that global variables don't include functions
-        (a function is a "global value" but not a "global variable" in
-         LLVM parlance)
-        """
-    @property
-    def global_variables(self: ModuleRef) -> _GlobalsIterator {
-        it = ffi.lib.LLVMPY_ModuleGlobalsIter(self);
-        return _GlobalsIterator(it, `dict(module=self));
-    }
-
-    """
-        Return an iterator over this module's functions.
-        The iterator will yield a ValueRef for each function.
-        """
-    @property
-    def functions(self: ModuleRef) -> _FunctionsIterator {
-        it = ffi.lib.LLVMPY_ModuleFunctionsIter(self);
-        return _FunctionsIterator(it, `dict(module=self));
     }
 
     def clone(self: ModuleRef) -> ModuleRef {
-        return ModuleRef(ffi.lib.LLVMPY_CloneModule(self), self._context);
+        return ModuleRef(LLVMPY_CloneModule(self.live()), self.context);
     }
-}
-
-class _Iterator(ffi.ObjectRef) {
-    with entry {
-        kind = None;
-    }
-
-    def init(self: _Iterator, ptr: any, parents: any) -> object {
-        ffi.ObjectRef.init(self, ptr);
-        self._parents = parents;
-        assert (self.kind is not None);
-    }
-
-    def _next(self: _Iterator) -> object abst;
-    def __next__(self: _Iterator) -> ValueRef {
-        vp = self._next();
-        if vp {
-            return ValueRef(vp, self.kind, self._parents);
-        }
-        raise StopIteration;
-    }
-
-    with entry {
-        next = __next__;
-    }
-
-    def __iter__(self: _Iterator) -> _Iterator {
-        return self;
-    }
-}
-
-class _GlobalsIterator(_Iterator) {
-    with entry {
-        kind = 'global';
-    }
-
-    def _dispose(self: _GlobalsIterator) -> object {
-        self._capi.LLVMPY_DisposeGlobalsIter(self);
-    }
-
-    def _next(self: _GlobalsIterator) -> object {
-        return ffi.lib.LLVMPY_GlobalsIterNext(self);
-    }
-}
-
-class _FunctionsIterator(_Iterator) {
-    with entry {
-        kind = 'function';
-    }
-
-    def _dispose(self: _FunctionsIterator) -> object {
-        self._capi.LLVMPY_DisposeFunctionsIter(self);
-    }
-
-    def _next(self: _FunctionsIterator) -> object {
-        return ffi.lib.LLVMPY_FunctionsIterNext(self);
-    }
-}
-
-with entry {
-    ffi.lib.LLVMPY_ParseAssembly.argtypes = [
-        ffi.LLVMContextRef,
-        c_char_p,
-        POINTER(c_char_p)
-    ];
-    ffi.lib.LLVMPY_ParseAssembly.restype = ffi.LLVMModuleRef;
-    ffi.lib.LLVMPY_ParseBitcode.argtypes = [
-        ffi.LLVMContextRef,
-        c_char_p,
-        c_size_t,
-        POINTER(c_char_p)
-    ];
-    ffi.lib.LLVMPY_ParseBitcode.restype = ffi.LLVMModuleRef;
-    ffi.lib.LLVMPY_DisposeModule.argtypes = [ffi.LLVMModuleRef];
-    ffi.lib.LLVMPY_PrintModuleToString.argtypes = [
-        ffi.LLVMModuleRef,
-        POINTER(c_char_p)
-    ];
-    ffi.lib.LLVMPY_WriteBitcodeToString.argtypes = [
-        ffi.LLVMModuleRef,
-        POINTER(c_char_p),
-        POINTER(c_size_t)
-    ];
-    ffi.lib.LLVMPY_SplitModuleBitcode.argtypes = [
-        ffi.LLVMModuleRef,
-        c_uint,
-        POINTER(c_void_p),
-        POINTER(c_size_t)
-    ];
-    ffi.lib.LLVMPY_GetNamedFunction.argtypes = [ffi.LLVMModuleRef, c_char_p];
-    ffi.lib.LLVMPY_GetNamedFunction.restype = ffi.LLVMValueRef;
-    ffi.lib.LLVMPY_VerifyModule.argtypes = [ffi.LLVMModuleRef, POINTER(c_char_p)];
-    ffi.lib.LLVMPY_VerifyModule.restype = c_bool;
-    ffi.lib.LLVMPY_GetDataLayout.argtypes = [ffi.LLVMModuleRef, POINTER(c_char_p)];
-    ffi.lib.LLVMPY_SetDataLayout.argtypes = [ffi.LLVMModuleRef, c_char_p];
-    ffi.lib.LLVMPY_GetTarget.argtypes = [ffi.LLVMModuleRef, POINTER(c_char_p)];
-    ffi.lib.LLVMPY_SetTarget.argtypes = [ffi.LLVMModuleRef, c_char_p];
-    ffi.lib.LLVMPY_GetNamedGlobalVariable.argtypes = [ffi.LLVMModuleRef, c_char_p];
-    ffi.lib.LLVMPY_GetNamedGlobalVariable.restype = ffi.LLVMValueRef;
-    ffi.lib.LLVMPY_ModuleGlobalsIter.argtypes = [ffi.LLVMModuleRef];
-    ffi.lib.LLVMPY_ModuleGlobalsIter.restype = ffi.LLVMGlobalsIterator;
-    ffi.lib.LLVMPY_DisposeGlobalsIter.argtypes = [ffi.LLVMGlobalsIterator];
-    ffi.lib.LLVMPY_GlobalsIterNext.argtypes = [ffi.LLVMGlobalsIterator];
-    ffi.lib.LLVMPY_GlobalsIterNext.restype = ffi.LLVMValueRef;
-    ffi.lib.LLVMPY_ModuleFunctionsIter.argtypes = [ffi.LLVMModuleRef];
-    ffi.lib.LLVMPY_ModuleFunctionsIter.restype = ffi.LLVMFunctionsIterator;
-    ffi.lib.LLVMPY_DisposeFunctionsIter.argtypes = [ffi.LLVMFunctionsIterator];
-    ffi.lib.LLVMPY_FunctionsIterNext.argtypes = [ffi.LLVMFunctionsIterator];
-    ffi.lib.LLVMPY_FunctionsIterNext.restype = ffi.LLVMValueRef;
-    ffi.lib.LLVMPY_CloneModule.argtypes = [ffi.LLVMModuleRef];
-    ffi.lib.LLVMPY_CloneModule.restype = ffi.LLVMModuleRef;
-    ffi.lib.LLVMPY_GetModuleName.argtypes = [ffi.LLVMModuleRef];
-    ffi.lib.LLVMPY_GetModuleName.restype = c_char_p;
-    ffi.lib.LLVMPY_SetModuleName.argtypes = [ffi.LLVMModuleRef, c_char_p];
-    ffi.lib.LLVMPY_GetModuleSourceFileName.argtypes = [ffi.LLVMModuleRef];
-    ffi.lib.LLVMPY_GetModuleSourceFileName.restype = c_char_p;
 }

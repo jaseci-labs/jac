@@ -893,16 +893,7 @@ impl arch_file_for(path: str) -> (str | None) {
 }
 
 impl is_stdlib_module(name: str) -> bool {
-    if not _STDLIB_NAMES {
-        _STDLIB_NAMES.append(
-            set(
-                active_host().native_fact(HOST_FACT_STDLIB_MODULES, "").split(
-                    HOST_FACT_SEP
-                )
-            )
-        );
-    }
-    return name in _STDLIB_NAMES[0];
+    return name in STDLIB_MODULES;
 }
 
 impl scope_path_of(nd: UniNode) -> (list[str] | None) {

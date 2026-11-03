@@ -260,15 +260,20 @@ impl _decide(artifact: Artifact) -> Resolution {
             quiet=sealed.omitted
         );
     }
+    omitted = artifact.name in _omitted(sealed_image=False);
     why = artifact.unavailable_reason();
     if why {
-        return Resolution(name=artifact.name, reason=why);
+        return Resolution(
+            name=artifact.name,
+            reason="the kit leaves it out" if omitted else why,
+            quiet=omitted
+        );
     }
     tree = artifact.probe_checkout();
     if tree.found is not None {
         return Resolution(name=artifact.name, found=tree.found);
     }
-    if artifact.name in _omitted(sealed_image=False) {
+    if omitted {
         return Resolution(
             name=artifact.name, reason="the kit leaves it out", quiet=True
         );
@@ -296,8 +301,9 @@ impl _omitted(sealed_image: bool) -> frozenset[str] {
         return image.omits if image is not None else frozenset();
     }
 
+    requested = frozenset(name for name in ARTIFACTS if pr_kit_omits(name));
     found = kit_image();
-    return found[1].omits if found is not None else frozenset();
+    return found[1].omits | requested if found is not None else requested;
 }
 
 impl _provision(artifact: Artifact, resolution: Resolution) -> Resolution {

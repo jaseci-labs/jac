@@ -5,11 +5,9 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from jaclang.compiler.backends.native.na_compile_pass import NativeCompilePass
-    from jaclang.compiler.backends.native.na_ir_gen_pass import NaIRGenPass
 
 _LAZY_EXPORTS = {
     "NativeCompilePass": "jaclang.compiler.backends.native.na_compile_pass",
-    "NaIRGenPass": "jaclang.compiler.backends.native.na_ir_gen_pass",
 }
 
 

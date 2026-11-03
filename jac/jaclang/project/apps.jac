@@ -41,6 +41,6 @@ def parse_apps(
     project_data: dict[str, any], apps_data: dict[str, any]
 ) -> dict[str, AppConfig];
 
-def implicit_app(config: any) -> AppConfig;
+def implicit_app(project: ProjectConfig) -> AppConfig;
 
 def _norm_path(path: str) -> str;

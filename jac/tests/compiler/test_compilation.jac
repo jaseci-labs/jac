@@ -4,7 +4,8 @@ These tests verify that the Jac compiler can successfully compile various
 fixture files without errors, and test compilation-level behaviour.
 """
 
-import from jaclang.compiler.backends.py.codegen_shim { generated_python }
+import from jaclang.compiler.backends.py.kernel_bytecode { kernel_python_ast }
+import from jaclang.compiler.backends.py.python_text { generated_python }
 import os;
 import from jaclang.compiler.tools.treeprinter { print_ast_tree }
 import from tests.support { JAC_ROOT }
@@ -66,7 +67,7 @@ test "arith precedence" {
         buf = io.StringIO();
         sys.stdout = buf;
         try {
-            pyexec(pycompile(prog.gen.py_ast[0], "test.jac", "exec"));
+            pyexec(pycompile(kernel_python_ast(prog), "test.jac", "exec"));
         } finally {
             sys.stdout = old;
         }
@@ -93,9 +94,9 @@ test "multiline single tok" {
 
 test "annotation tuple issue" {
     mypass = JacProgram().compile(os.path.join(LANG_FIXTURES, "slice_vals.jac"));
-    assert "Annotated[Str, INT, BLAH]" in generated_python(mypass.gen);
+    assert "Annotated[Str, INT, BLAH]" in generated_python(mypass);
     assert "tuple[int, Optional[type], Optional[tuple]]"
-        in generated_python(mypass.gen);
+        in generated_python(mypass);
 }
 
 test "obj hasvar initialization" {

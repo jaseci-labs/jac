@@ -18,6 +18,7 @@ glob ARTIFACTS: dict[str, str] = {
          "jdk": "jaclang.toolchains.tools:JdkArtifact",
          "patchelf": "jaclang.toolchains.tools:PatchelfArtifact"
      },
+     _IN_PROCESS: set[str] = set(),
      ROUTER_MODULES: tuple[str, ...] = (
          "jaclang.artifacts.model",
          "jaclang.artifacts.router",
@@ -35,3 +36,7 @@ def begin(names: list[str]) -> list[str];
 def end(names: list[str]);
 
 def resolution_in_flight -> bool;
+
+def mark_in_process(name: str);
+
+def in_process(name: str) -> bool;

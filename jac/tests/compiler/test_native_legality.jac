@@ -330,7 +330,7 @@ test "a refusal only the backend can see places the module on the server in plac
     assert mod.decided_codespace != 'native';
     assert set(placed_by_name(mod).values()) == {'server'} , placed_by_name(mod);
     assert mod.gen.llvm_ir is None;
-    assert mod.gen.py_ast , "the Python backend emits the module it was handed";
+    assert mod.gen.py_recipe is not None , "the Python backend emits the module it was handed";
 }
 
 test "a native library gap refuses the function that uses it, not the module" {
@@ -530,7 +530,7 @@ test "a backend crash is a compiler error, never a placement decision" {
         if e.code is not None and e.code.code == "E5092"
     ] , "a crash must not read as a refusal";
     assert mod.decided_codespace == 'native' , "a crash must not move the module";
-    assert mod.gen.jcir is None , "a crashed module must keep nothing to run";
+    assert mod.gen.py_recipe is None , "a crashed module must keep nothing to run";
 }
 
 test "a native type alias is something the native library provides" {
@@ -553,7 +553,7 @@ test "a late refusal in a mixed module settles the module on the server" {
         f"on, so the module moves as a whole: {placed}"
     );
     assert mod.gen.llvm_ir is None;
-    assert mod.gen.py_ast , "the Python backend emits the module it was handed";
+    assert mod.gen.py_recipe is not None , "the Python backend emits the module it was handed";
 }
 
 """Compile `text` as m.jac in a project that pins `m.Foo` native."""

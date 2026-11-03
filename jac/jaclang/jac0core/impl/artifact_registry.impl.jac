@@ -43,3 +43,11 @@ impl resolution_in_flight -> bool {
     }
     return False;
 }
+
+impl mark_in_process(name: str) {
+    _IN_PROCESS.add(name);
+}
+
+impl in_process(name: str) -> bool {
+    return name in _IN_PROCESS;
+}

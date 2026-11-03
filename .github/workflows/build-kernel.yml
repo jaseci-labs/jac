@@ -103,10 +103,10 @@ jobs:
             # payload tree reproduces; the seal refuses a dev build's.
             zig-out/bin/jac native build "kernel@$PLATFORM" --exact
             zig-out/bin/jac native status "kernel@$PLATFORM"
-            SRC=jaclang/compiler
-            [ "$PLATFORM" = linux-x86_64 ] || SRC="jaclang/compiler/kernels/$PLATFORM"
+            SRC=jaclang/compiler/_kernel
+            [ "$PLATFORM" = linux-x86_64 ] || SRC="jaclang/compiler/_kernel/$PLATFORM"
             mkdir -p "$OUT"
-            cp "$SRC"/*jac_compiler.* "$OUT/"
+            cp "$SRC"/jac_kernel.* "$OUT/"
             rm -f "$OUT"/*.lock
           fi
           ls -la "$OUT"

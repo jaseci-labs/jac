@@ -1,79 +1,47 @@
-impl CallbackAsker.ask(method: str, key: str) -> dict[str, any] {
-    method_text = text_object(method);
-    key_text = text_object(key);
-    arguments = object_tuple([method_text, key_text]);
-    jacpy_release(method_text);
-    jacpy_release(key_text);
-    answer = PyObject_CallObject(self.callback, arguments);
-    jacpy_release(arguments);
-    if not answer {
-        raise RuntimeError(
-            f"the host failed to answer {method} {key!r}: {take_error_text()}"
-        );
-    }
-    try {
-        record = native_value(answer);
-    } except boundary_failure {
-        raise RuntimeError(
-            f"the host's answer to {method} {key!r} is not plain data: "
-            f"{take_error_text()}"
-        );
-    } finally {
-        jacpy_release(answer);
-    }
-    if not isinstance(record, dict) {
-        raise RuntimeError(f"the host answered {method} {key!r} with a non-dict");
-    }
-    entries: dict[str, any] = record;
-    return entries;
-}
-
-impl request_of(args: ptr[ptr[PyObject]], count: i64, function: str) -> KernelRequest {
-    if count < 1 or count > 2 {
+impl arguments(
+    args: ptr[ptr[PyObject]], count: i64, function: str, wanted: int
+) -> list[any] {
+    if int(count) != wanted {
         object_error(
-            PyExc_TypeError, f"{function}() takes a request and an optional asker"
+            PyExc_TypeError, f"{function}() takes {wanted} arguments, got {count}"
         );
         raise boundary_failure();
     }
-    raw = native_value(args.view(1)[0]);
-    if not isinstance(raw, dict) {
+    items = args.view(wanted);
+    values: list[any] = [];
+    for index in range(wanted) {
+        values.append(native_value(items[index]));
+    }
+    return values;
+}
+
+impl record_of(value: any, function: str) -> dict[str, any] {
+    if not isinstance(value, dict) {
         object_error(PyExc_TypeError, f"{function}() request must be a dict");
         raise boundary_failure();
     }
-    fields: dict[str, any] = raw;
-    try {
-        return KernelRequest.from_dict(fields);
-    } except Exception as err {
-        object_error(PyExc_TypeError, f"{function}() request is malformed: {err}");
-        raise boundary_failure();
-    }
+    record: dict[str, any] = value;
+    return record;
 }
 
-impl asker_of(args: ptr[ptr[PyObject]], count: i64) -> (HostAsker | None) {
-    if count < 2 {
-        return None;
+impl answer(value: any) -> ptr[PyObject] {
+    try {
+        return python_value(value);
+    } except boundary_failure {
+        return NULL;
     }
-    callback = args.view(2)[1];
-    if callback == Py_None {
-        return None;
-    }
-    return CallbackAsker(callback=callback);
 }
 
 impl compile_call(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
     try {
-        request = request_of(args, count, "compile");
-        outcome = CompileReport(analysis=AnalysisReport(entry_path=request.path));
-        try {
-            outcome = compile_request(request, asker_of(args, count));
-        } except Exception as err {
-            outcome.analysis.status = ANALYSIS_CRASHED;
-            outcome.analysis.message = f"kernel compile raised: {err}";
-        }
-        return python_value(outcome.to_dict());
+        raw = record_of(arguments(args, count, "compile", 1)[0], "compile");
+        return answer(compile_request(CompileRequest.from_dict(raw)).to_dict());
     } except boundary_failure {
+        return NULL;
+    } except KernelError as refused {
+        object_error(PyExc_RuntimeError, str(refused));
         return NULL;
     }
 }
@@ -82,21 +50,80 @@ impl check_call(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
     try {
-        request = request_of(args, count, "check");
-        outcome = AnalysisReport(entry_path=request.path);
-        try {
-            outcome = check_request(request, asker_of(args, count));
-        } except Exception as err {
-            outcome.status = ANALYSIS_CRASHED;
-            outcome.message = f"kernel analysis raised: {err}";
+        raw = record_of(arguments(args, count, "check", 1)[0], "check");
+        return answer(check_request(CheckRequest.from_dict(raw)).to_dict());
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as refused {
+        object_error(PyExc_RuntimeError, str(refused));
+        return NULL;
+    }
+}
+
+impl open_session_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        values = arguments(args, count, "open_session", 3);
+        session = open_session(
+            str(values[0]), [str(path) for path in values[1]], str(values[2])
+        );
+        handle = _NEXT_SESSION[0];
+        _NEXT_SESSION[0] = handle + 1;
+        _SESSIONS[handle] = session;
+        return answer(handle);
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as refused {
+        object_error(PyExc_RuntimeError, str(refused));
+        return NULL;
+    }
+}
+
+impl session_of(handle: any) -> KernelSession {
+    if not isinstance(handle, int) or handle not in _SESSIONS {
+        object_error(PyExc_ValueError, f"no open kernel session {handle!r}");
+        raise boundary_failure();
+    }
+    return _SESSIONS[handle];
+}
+
+impl session_query_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        values = arguments(args, count, "session_query", 3);
+        session = session_of(values[0]);
+        if not isinstance(values[2], list) {
+            object_error(PyExc_TypeError, "session_query() args must be a list");
+            raise boundary_failure();
         }
-        return python_value(outcome.to_dict());
+        query_args: list[any] = values[2];
+        return answer(session_query(session, str(values[1]), query_args));
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as refused {
+        object_error(PyExc_RuntimeError, str(refused));
+        return NULL;
+    }
+}
+
+impl close_session_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        values = arguments(args, count, "close_session", 1);
+        session_of(values[0]);
+        handle: int = values[0];
+        del _SESSIONS[handle];
+        return answer(None);
     } except boundary_failure {
         return NULL;
     }
 }
 
 impl execute(module: ptr[PyObject]) -> i32 {
+    install_engine(KernelPython());
     return jacpy_module_add_int_text(module, "API_VERSION", i64(KERNEL_API_VERSION));
 }
 

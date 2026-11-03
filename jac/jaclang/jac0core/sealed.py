@@ -67,7 +67,7 @@ kind/capabilities/entry/payloads)::
                                    "iface_digest": "..."}
         },
         "artifact": {                   # the one linked artifact
-          "path": "compiler/libjac_compiler.so",  # pkg-relative
+          "path": "compiler/_kernel/jac_kernel.so",  # pkg-relative
           "sha256": "...", "plan_digest": "...",
           "triple": "x86_64-unknown-linux-gnu", "mode": "objects"
         }

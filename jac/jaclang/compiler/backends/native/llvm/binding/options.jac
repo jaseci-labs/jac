@@ -1,14 +1,4 @@
-import from ctypes { c_char_p }
-"""
-    Set the given LLVM "command-line" option.
-
-    For example set_option("test", "-debug-pass=Structure") would display
-    all optimization passes when generating code.
-    """
-def set_option(name: any, option: any) -> object {
-    ffi.lib.LLVMPY_SetCommandLine(_encode_string(name), _encode_string(option));
-}
-
-with entry {
-    ffi.lib.LLVMPY_SetCommandLine.argtypes = [c_char_p, c_char_p];
+"""Set an LLVM command-line option, as `set_option("jac", "-debug-pass=Structure")`."""
+def set_option(name: str, option: str) {
+    LLVMPY_SetCommandLine(name, option);
 }

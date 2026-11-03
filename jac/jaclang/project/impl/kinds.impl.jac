@@ -158,6 +158,6 @@ impl plan_app_run(
 }
 
 impl plan_workspace(config: JacConfig, project_root: str) -> list[RunPlan] {
-    apps = list(config.apps.values()) or [implicit_app(config)];
+    apps = list(config.apps.values()) or [implicit_app(config.project)];
     return [plan_app_run(config, project_root, app) for app in apps];
 }

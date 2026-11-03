@@ -110,13 +110,6 @@ def _row_unit(path: str, row: dict[str, any]) -> any;
 
 def _file_digest(path: str) -> str;
 
-def _reusable_interfaces(
-    previous: dict[str, dict[str, any]],
-    entries: list[str],
-    specs: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]],
-    `root: str
-) -> dict[str, any];
-
 def _importers_of(
     changed: set[str], rows: dict[str, dict[str, any]], among: set[str]
 ) -> set[str];
@@ -124,8 +117,7 @@ def _importers_of(
 def _unreached_changes(
     units: dict[str, ManifestSource],
     rows: dict[str, dict[str, any]],
-    previous: dict[str, dict[str, any]],
-    seeds: dict[str, any]
+    previous: dict[str, dict[str, any]]
 ) -> list[str];
 
 def _kernel_units(
@@ -138,7 +130,7 @@ def _kernel_units(
     rows: dict[str, dict[str, any]],
     specs: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]],
     recorded: dict[str, str]
-) -> (dict[str, ManifestSource] | None);
+) -> dict[str, ManifestSource];
 
 def _prepare_revision(
     `entry: any,

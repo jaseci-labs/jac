@@ -272,53 +272,54 @@ impl JacCompiler._get_bytecode(
         return marshal.loads(carried_bc);
     }
 
-    is_internal = actual_program.internal;
-    if is_internal {
-        setup_progress.on_internal_compile(full_target);
-        self.selfhost.enter_bytecode();
-    }
     options = CompileOptions(
         skip_native_engine=not self._wants_native_engine(full_target, actual_program),
         skip_analysis=skip_analysis
     );
-    if not is_internal {
-        (handled, adopted) = self._adopt_kernel_compile(
-            full_target, actual_program, options
-        );
-        if handled {
-            return marshal.loads(adopted) if adopted is not None else None;
-        }
+    if self.selfhost.owns(full_target) and not in_process("kernel") {
+        return self._host_compile(full_target, actual_program, options);
+    }
+    return self._adopt_kernel_compile(full_target, actual_program, options);
+}
+
+impl JacCompiler._host_compile(
+    full_target: str, program: JacProgram, options: CompileOptions
+) -> (types.CodeType | None) {
+    internal = program.internal;
+    if internal {
+        setup_progress.on_internal_compile(full_target);
+        self.selfhost.enter_bytecode();
     }
     result: (uni.Module | None) = None;
     enclosing_closure = self._closure_opts;
     self._closure_opts = options;
+    previous_host = enter_compiler(toolchain_host() if internal else active_host());
     try {
         result = self.compile(
-            file_path=full_target, target_program=actual_program, options=options
+            file_path=full_target, target_program=program, options=options
         );
         if result.gen.py_bytecode {
-            actual_program.hub_cache_stamp(full_target);
-            self._persist_module_cache(full_target, result, actual_program);
-            if is_internal {
+            program.hub_cache_stamp(full_target);
+            self._persist_module_cache(full_target, result, program);
+            if internal {
                 note_compiler_source_failure(full_target, '');
             }
             return marshal.loads(result.gen.py_bytecode);
         }
-        if is_internal {
+        if internal {
             note_compiler_source_failure(
                 full_target,
-                module_scoped_failure_details(full_target, actual_program)
+                module_scoped_failure_details(full_target, program)
                     or bootstrap_tier_failure_details(full_target)
             );
         }
         return None;
     } finally {
+        leave_compiler(previous_host);
         self._closure_opts = enclosing_closure;
-        if is_internal {
+        if internal {
             if self.selfhost.at_outermost_bytecode() {
-                self.selfhost.evict_unit(
-                    full_target, result, collect=self.unit_collect
-                );
+                self.selfhost.evict_unit(full_target, result, collect=self.unit_collect);
             }
             self.selfhost.exit_bytecode();
         }
@@ -327,40 +328,25 @@ impl JacCompiler._get_bytecode(
 
 impl JacCompiler._adopt_kernel_compile(
     full_target: str, program: JacProgram, options: CompileOptions
-) -> tuple[bool, (bytes | None)] {
-    compiled = active_host().kernel_compile(program, full_target, options);
-    if compiled is None {
-        return (False, None);
-    }
-    target = compiled.unit(full_target);
-    if target is None {
-        if compiled.analysis.errors {
-            return (True, None);
+) -> (types.CodeType | None) {
+    held = take_application_unit(full_target);
+    units: list[CompiledUnit] = [];
+    if held is not None {
+        units.append(held);
+        target = held;
+    } else {
+        compiled = kernel_compile(program, [full_target], options);
+        if not compiled.ok() {
+            return None;
         }
-        raise RuntimeError(
-            f"the native compiler kernel compiled {full_target} but returned no "
-            "unit for it and reported no error"
-        );
+        units = compiled.units;
+        target = compiled.unit(full_target);
     }
     import from jaclang.compiler.driver.pass_driver { compile_progress }
-    adopted: (bytes | None) = None;
-    for unit in native_first(compiled.units) {
+    for unit in native_first(units) {
         with compile_progress.track(unit.path) {
-            (bytecode, rejected) = assemble_jcir(unit.jcir, unit.path);
-            if bytecode is None {
-                if not unit.jcir and unit is not target {
-                    continue;
-                }
-                if rejected {
-                    program.errors_had.extend(rejected);
-                    return (True, None);
-                }
-                raise RuntimeError(
-                    "the native compiler kernel emitted no assemblable JCIR for "
-                    f"{unit.path}"
-                );
-            }
-            sections = unit_sections(unit, bytecode);
+            bytecode = unit.bytecode;
+            sections = dict(unit.sections);
             if unit.native_ir {
                 sections.update(
                     self._adopt_native_unit(
@@ -368,9 +354,7 @@ impl JacCompiler._adopt_kernel_compile(
                     )
                 );
             }
-            try {
-                write_module_cache(unit.path, bytecode, extra_sections=sections);
-            } except OSError {}
+            write_module_cache(unit.path, bytecode, extra_sections=sections);
             if unit is target {
                 if unit.native_ir and self._wants_native_engine(full_target, program) {
                     import json;
@@ -386,13 +370,12 @@ impl JacCompiler._adopt_kernel_compile(
                     };
                 }
                 self._restore_sections(full_target, program, sections);
-                adopted = bytecode;
             } else {
                 program.hub.client_artifacts.pop(JacProgram.hub_key(unit.path), None);
             }
         }
     }
-    return (True, adopted);
+    return marshal.loads(target.bytecode);
 }
 
 impl JacCompiler.native_entry_engine(
@@ -419,10 +402,6 @@ impl JacCompiler.kernel_native_entry(
         return (False, None);
     }
     actual = self.selfhost.resolve(path, target_program, execution=True);
-    import from jaclang.project.kernel_compile { kernel_generates_native }
-    if actual.internal or not kernel_generates_native(actual, path) {
-        return (False, None);
-    }
     compiled = actual;
     if options is None {
         self.get_bytecode(full_target=path, target_program=target_program);
@@ -440,7 +419,7 @@ impl JacCompiler.kernel_native_entry(
 }
 
 impl JacCompiler._adopt_native_unit(
-    unit: UnitProducts,
+    unit: CompiledUnit,
     program: JacProgram,
     options: CompileOptions,
     compile_deps: bytes
@@ -509,12 +488,12 @@ impl JacCompiler._load_native_from_cache(
         if manifest.callable_native_imports
             and not isinstance(engine, SharedNativeEngine) {
             import from jaclang.runtime.interop_bridge { register_py_callbacks }
-            import jaclang.compiler.backends.native.llvm.binding as llvm;
+            import from jaclang.compiler.backends.native.llvm.jit { add_symbol }
             register_py_callbacks(
                 manifest.callable_native_imports,
                 py_func_table,
                 callbacks_list,
-                llvm.add_symbol
+                add_symbol
             );
         }
     }
@@ -767,9 +746,15 @@ impl JacCompiler.compile(
     file_path: str,
     target_program: JacProgram,
     use_str: (str | None) = None,
-    options: CompileOptions = CompileOptions()
+    options: (CompileOptions | None) = None
 ) -> uni.Module {
-    return compile_in_session(self, file_path, target_program, use_str, options);
+    return compile_in_session(
+        self,
+        file_path,
+        target_program,
+        use_str,
+        options if options is not None else CompileOptions()
+    );
 }
 
 impl JacCompiler.enter_compile(ctx: SessionContext) -> CompileFrame {
@@ -809,10 +794,6 @@ impl JacCompiler.enter_compile(ctx: SessionContext) -> CompileFrame {
         }
     }
     return frame;
-}
-
-impl JacCompiler.assemble_python(program: JacProgram, module: uni.Module) {
-    require(program, module, CompilationProduct.BYTECODE);
 }
 
 impl JacCompiler.assemble_native(
@@ -1001,9 +982,15 @@ impl JacCompiler._compile_pipeline(
     file_path: str,
     actual_program: JacProgram,
     use_str: (str | None) = None,
-    options: CompileOptions = CompileOptions()
+    options: (CompileOptions | None) = None
 ) -> uni.Module {
-    return compile_module(self, actual_program, file_path, options, use_str);
+    return compile_module(
+        self,
+        actual_program,
+        file_path,
+        options if options is not None else CompileOptions(),
+        use_str
+    );
 }
 
 impl JacCompiler.build(
@@ -1208,40 +1195,18 @@ impl JacCompiler._get_client_artifact(
         actual_program.hub.client_artifacts.pop(full_target, None);
     }
     mark = len(actual_program.errors_had);
-    if not has_live_tree and not actual_program.internal {
-        (handled, _) = self._adopt_kernel_compile(
-            full_target,
-            actual_program,
-            CompileOptions(
-                skip_native_engine=True,
-                client_source_root=actual_program.options.client_source_root
-            )
-        );
-        if len(actual_program.errors_had) > mark {
-            return None;
-        }
-        if handled {
-            return actual_program.hub.client_artifacts.get(full_target);
-        }
-    }
-    compiled = self.compile(
-        file_path=full_target,
-        target_program=actual_program,
-        options=CompileOptions(no_cgen=True)
+    self._adopt_kernel_compile(
+        full_target,
+        actual_program,
+        CompileOptions(
+            skip_native_engine=True,
+            client_source_root=actual_program.options.client_source_root
+        )
     );
     if len(actual_program.errors_had) > mark {
         return None;
     }
-    if not self.ensure_client_codegen(compiled, actual_program) {
-        return None;
-    }
-    built = built_client_artifact(compiled);
-    if built is not None {
-        actual_program.hub.client_artifacts[full_target] = built;
-        self._persist_module_cache(full_target, compiled, actual_program);
-        self._persist_client_artifact(full_target, built);
-    }
-    return built;
+    return actual_program.hub.client_artifacts.get(full_target);
 }
 
 impl JacCompiler.release_compile_state(target_program: JacProgram) -> None {
@@ -1338,11 +1303,11 @@ impl cached_client_pulls(full_target: str) -> str {
     return ",".join([str(index) for index in held.pulled]);
 }
 
-impl native_first(units: list[UnitProducts]) -> list[UnitProducts] {
-    by_path: dict[str, UnitProducts] = {os.path.realpath(u.path): u for u in units};
-    ordered: list[UnitProducts] = [];
+impl native_first(units: list[CompiledUnit]) -> list[CompiledUnit] {
+    by_path: dict[str, CompiledUnit] = {os.path.realpath(u.path): u for u in units};
+    ordered: list[CompiledUnit] = [];
     placed: set[str] = set();
-    def place(unit: UnitProducts) {
+    def place(unit: CompiledUnit) {
         real = os.path.realpath(unit.path);
         if real in placed {
             return;
@@ -1360,38 +1325,6 @@ impl native_first(units: list[UnitProducts]) -> list[UnitProducts] {
         place(unit);
     }
     return ordered;
-}
-
-impl assemble_jcir(jcir: bytes, path: str) -> tuple[(bytes | None), list[Alert]] {
-    if not jcir {
-        return (None, []);
-    }
-    import from jaclang.compiler.backends.py.codegen_shim { compile_ir }
-    result = compile_ir(jcir);
-    if result.modules and not result.diags {
-        return (result.modules[0].bytecode, []);
-    }
-    import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
-    import from jaclang.compiler.frontend.diagnostics { E5043 }
-    import from jaclang.compiler.frontend.srcloc { Span }
-    import from jaclang.compiler.passes.context { Alert }
-    return (
-        None,
-        [
-            Alert(
-                msg=E5043.format_message(error=d.message),
-                loc=Span(
-                    mod_path=d.mod_path or path,
-                    first_line=d.first_line,
-                    last_line=d.last_line,
-                    col_start=d.col_start,
-                    col_end=d.col_end
-                ),
-                from_pass=JcirBytecodeGenPass,
-                code=E5043
-            ) for d in result.diags
-        ]
-    );
 }
 
 impl unit_sections(

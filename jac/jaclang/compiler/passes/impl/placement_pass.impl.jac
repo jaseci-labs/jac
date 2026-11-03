@@ -810,7 +810,7 @@ impl settle_native_module(
         drop_native_bindings(stale, resolved);
     }
     host = active_host();
-    host.record_native_coverage(resolved, 'demoted', refusal.code, refusal.headline());
+    na_coverage_record(resolved, 'demoted', refusal.code, refusal.headline());
     host.note(
         f"note: {mod_path} preferred native but did not lower; "
         f"compiled in the server codespace ({refusal.headline()})",
@@ -912,7 +912,7 @@ impl PlacementPass._run_decided(ir_in: Module) -> Module {
                 self._emit_refusal(refusal, "");
             }
         }
-        active_host().record_native_coverage(mod_path, 'native');
+        na_coverage_record(mod_path, 'native');
     }
     refresh_placement_module(ir_in, self.prog);
     if solve_module_placement(ir_in, self.prog) {
@@ -1095,7 +1095,7 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
         elem.code_context == CodeContext.NATIVE for elem in tentative
     );
     if CodeContext.NATIVE in placed {
-        active_host().record_native_coverage(mod_path, 'native');
+        na_coverage_record(mod_path, 'native');
     } else {
         first = legality.module[0]
             if legality.module
@@ -1112,7 +1112,7 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
                             )
                     )
             );
-        active_host().record_native_coverage(
+        na_coverage_record(
             mod_path,
             'server',
             first.code if first is not None else '',

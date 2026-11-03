@@ -104,7 +104,7 @@ test "a kernel session returns a native module's IR, interface and layout" {
         assert emitted.native_iface == expected.native_iface;
         assert emitted.native_layout == expected.native_layout;
         assert emitted.native_deps == expected.native_deps;
-        assert emitted.jcir == expected.jcir;
+        assert emitted.bytecode == expected.bytecode;
         assert emitted.interop == expected.interop;
     }
 }
@@ -191,7 +191,7 @@ test "a module that cannot be lowered is placed on the server inside the session
         assert not outcome.analysis.errors , [str(e) for e in outcome.analysis.errors];
         emitted = outcome.unit(entry_file);
         assert emitted is not None , [u.path for u in outcome.units];
-        assert emitted.jcir , "the demoted module has no server code";
+        assert emitted.bytecode , "the demoted module has no server code";
         assert not emitted.native_ir , "a demoted module still carries native IR";
         summary = json.loads(emitted.placement);
         assert summary.get("decided") != "native" , summary;
