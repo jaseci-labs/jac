@@ -232,6 +232,15 @@ impl mir_class_type(
     if name in ("NoneType", "None") {
         return mir_none();
     }
+    if name in ("SupportsIndex", "SupportsInt") and stub_scope(scope) {
+        return mir_int();
+    }
+    if name == "SupportsFloat" and stub_scope(scope) {
+        return mir_float();
+    }
+    if name == "Buffer" and stub_scope(scope) {
+        return mir_bytes();
+    }
     if name == "Region"
         and not (isinstance(scope, uni.Archetype) and not stub_archetype(scope)) {
         return mir_region();
