@@ -69,6 +69,7 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
         is_acyclic=layout.is_acyclic,
         local=local,
         drop_symbol=native_symbol_name(prefix, f"{name}.__drop"),
+        glue_symbol=native_symbol_name(prefix, f"{name}.__drop_glue"),
         trace_symbol=native_symbol_name(prefix, f"{name}.__trace"),
         class_symbol=native_symbol_name(
             prefix, native_unit_spelling(f"{name}.__class", owner.loc.mod_path)
@@ -709,7 +710,11 @@ impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) 
                 continue;
             }
             place = self.field_place(this, arch, member.name, arch);
-            b.store(place, self.default_value(initial, self.place_elem(place)));
+            made = self.default_value(initial, self.place_elem(place));
+            if isinstance(member.decl_node, uni.HasVar) {
+                self.lend_fresh(made, member.decl_node.type_tag, initial);
+            }
+            b.store(place, made);
         }
         if init is not None {
             decl = self.decls.get(id(init)) or self.foreign_method_decl(init);
@@ -799,7 +804,10 @@ impl MirLowering.lower_drop(obj_def: MirObjectDef, arch: uni.Archetype) -> MirFu
         place = self.emit_value(
             MirOp.FIELD_ADDR, mir_c_ptr(member.type), [this], int_value=member.index
         );
-        b.emit(MirInstr(op=MirOp.RELEASE, operands=[b.load(place, member.type)]));
+        held = b.load(place, member.type);
+        if not self.owned_world or not self.drop_through_glue(held) {
+            b.emit(MirInstr(op=MirOp.RELEASE, operands=[held]));
+        }
     }
     b.branch(free_bb);
     b.position(free_bb);
@@ -808,6 +816,93 @@ impl MirLowering.lower_drop(obj_def: MirObjectDef, arch: uni.Archetype) -> MirFu
     self.runtime(
         "__jac_rt_free_block", [b.binary("sub", address, b.const_int(32, mir_int()))]
     );
+    b.ret(None);
+    self.state = saved;
+    return fn;
+}
+
+impl MirLowering.drop_through_glue(held: MirValue) -> bool {
+    b = self.builder();
+    i8p = mir_c_ptr(mir_int(8, False));
+    target = held.type.payload() if held.type.kind == MirKind.OPT else held.type;
+    if target.kind != MirKind.OBJ {
+        return False;
+    }
+    obj_def = self.mir.objects.get(target.name);
+    if obj_def is None or not obj_def.local or not obj_def.glue_symbol {
+        return False;
+    }
+    subject = held;
+    if held.type.kind == MirKind.OPT {
+        subject = b.select(
+            self.opt_present(held), self.opt_get(held), b.const_null(target)
+        );
+    }
+    b.call(
+        obj_def.glue_symbol,
+        [self.emit_value(MirOp.PTR_CAST, i8p, [subject])],
+        mir_none()
+    );
+    return True;
+}
+
+impl MirLowering.lower_drop_glue(obj_def: MirObjectDef) -> MirFunction {
+    i8p = mir_c_ptr(mir_int(8, False));
+    fn = MirFunction(
+        name=f"{obj_def.name}.__drop_glue",
+        symbol=obj_def.glue_symbol,
+        ret=mir_none(),
+        manual_rc=True,
+        linkage="internal"
+    );
+    first = fn.new_block("entry");
+    saved = self.state;
+    self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
+    b = self.builder();
+    raw = fn.new_value(i8p, "o");
+    fn.params.append(MirParam(name="o", value=raw));
+    address = self.address_of(raw);
+    live = fn.new_block("glue.live");
+    owned = fn.new_block("glue.owned");
+    done = fn.new_block("glue.done");
+    b.cond_branch(b.compare("ne", address, b.const_int(0, mir_int())), live, done);
+    b.position(live);
+    arena = self.region_call("__jac_region_of", [address]);
+    b.cond_branch(b.compare("eq", arena, b.const_int(0, mir_int())), owned, done);
+    b.position(owned);
+    if obj_def.vtable_slot >= 0 {
+        this = b.ref_cast(raw, mir_obj(obj_def.name), False);
+        slot_place = self.emit_value(
+            MirOp.FIELD_ADDR,
+            mir_c_ptr(mir_c_ptr(i8p)),
+            [this],
+            int_value=obj_def.vtable_slot
+        );
+        table = b.load(slot_place, mir_c_ptr(i8p));
+        entry_place = self.emit_value(
+            MirOp.PTR_OFFSET,
+            mir_c_ptr(i8p),
+            [table, b.const_int(VTABLE_DROP_SLOT, mir_int())]
+        );
+        target = b.load(entry_place, i8p);
+        exact = fn.new_block("glue.exact");
+        shared = fn.new_block("glue.shared");
+        b.cond_branch(
+            b.compare("ne", self.address_of(target), b.const_int(0, mir_int())),
+            exact,
+            shared
+        );
+        b.position(exact);
+        body = self.emit_value(MirOp.PTR_CAST, mir_c_fn([i8p], mir_none()), [target]);
+        self.emit_value(MirOp.CALL_FNPTR, mir_none(), [body, raw]);
+        b.branch(done);
+        b.position(shared);
+        b.emit(MirInstr(op=MirOp.RELEASE, operands=[this]));
+    } else {
+        b.call(obj_def.drop_symbol, [raw], mir_none());
+    }
+    b.branch(done);
+    b.position(done);
     b.ret(None);
     self.state = saved;
     return fn;

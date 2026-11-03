@@ -71,3 +71,25 @@ test "class objects, take, swap, copied text and lent lists move ownership once"
             "done"
         ] , out;
 }
+
+test "a nogc class carries its drop glue and its exact drop body in vtable slot 2" {
+    text = _unit_ir("dyn_drop_base.jac");
+    assert "__drop_glue" in text , "no per-type drop glue was generated";
+    tables = [
+        line
+        for line in text.splitlines()
+        if re.match(r'@"[^"]*__vtable" = ', line)
+    ];
+    assert tables , "no vtable was emitted";
+    for line in tables {
+        entries = line.split("[", 2)[-1].split(", ");
+        assert len(entries) >= 3 and ".__drop" in entries[2] , (
+            f"vtable drop slot is empty: {line[:400]}"
+        );
+    }
+}
+
+test "a fresh list declared list[&T] is lent and drops no element" {
+    text = _unit_ir("view_cursor.jac");
+    assert "__jac_rt_list_lend" in text , "the list of borrows was not lent";
+}

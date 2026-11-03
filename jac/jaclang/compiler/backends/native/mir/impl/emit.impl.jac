@@ -1529,10 +1529,11 @@ impl MirEmitter.vtable_global(obj_def: MirObjectDef) -> ir.GlobalVariable {
     }
     members.append(ir.Constant(i8p, None));
     lineage_global.initializer = ir.Constant(lineage_shape, members);
+    dropper = self.functions.get(obj_def.drop_slot) if obj_def.drop_slot else None;
     entries: list[ir.Value] = [
         self.class_global(obj_def).bitcast(i8p),
         lineage_global.bitcast(i8p),
-        ir.Constant(i8p, None)
+        dropper.bitcast(i8p) if dropper is not None else ir.Constant(i8p, None)
     ];
     for symbol in obj_def.vtable_methods {
         target = self.functions.get(symbol);

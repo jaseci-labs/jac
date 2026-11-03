@@ -68,6 +68,10 @@ impl MirLowering.lower -> MirModule {
         }
         obj_def = self.object_def(arch);
         self.mir.functions.append(self.lower_drop(obj_def, arch));
+        if self.owned_world and obj_def.local {
+            self.mir.functions.append(self.lower_drop_glue(obj_def));
+            obj_def.drop_slot = obj_def.drop_symbol;
+        }
         self.mir.functions.append(self.lower_trace(obj_def));
         layout = self.osp_layout(arch);
         if layout is not None and layout.arch_type == "edge" {
@@ -787,6 +791,8 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
         } else {
             value = self.aug_arith(op, current, value, nd);
         }
+    } elif nd.type_tag is not None {
+        self.lend_fresh(value, nd.type_tag, nd.value);
     }
     self.store_name(target, value);
 }

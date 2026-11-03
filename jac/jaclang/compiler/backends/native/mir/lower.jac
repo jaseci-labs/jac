@@ -409,6 +409,11 @@ obj MirLowering {
     def tag_ownership(tag: (uni.UniNode | None)) -> (OwnershipKind | None);
     def tag_borrows(tag: (uni.UniNode | None)) -> bool;
     def returns_borrow(ab: uni.Ability) -> bool;
+    def elements_borrowed(tag: (uni.UniNode | None)) -> bool;
+    def lend_fresh(
+        value: MirValue, tag: (uni.UniNode | None), source: (uni.UniNode | None)
+    );
+
     def param_owns(pv: uni.ParamVar) -> bool;
     def field_consumes(arch: uni.Archetype, name: str) -> bool;
     def declaration_types;
@@ -803,6 +808,8 @@ obj MirLowering {
     def accessor_set(target: uni.AtomTrailer, nd: uni.Assignment) -> bool;
     def lower_constructor(arch: uni.Archetype) -> (MirFunction | None);
     def lower_drop(obj_def: MirObjectDef, arch: uni.Archetype) -> MirFunction;
+    def lower_drop_glue(obj_def: MirObjectDef) -> MirFunction;
+    def drop_through_glue(held: MirValue) -> bool;
     def drop_hook(arch: uni.Archetype, raw: MirValue);
     def lower_trace(obj_def: MirObjectDef) -> MirFunction;
     def lower_text_thunk(
@@ -1370,6 +1377,7 @@ obj MirLowering {
     def enum_desc(t: MirType, site: uni.UniNode) -> MirValue;
     def creation_kind(elem: MirType, site: uni.UniNode) -> MirValue;
     def enum_text_thunk(t: MirType, site: uni.UniNode) -> str;
+    def headerless_type_value(value: MirValue, site: uni.UniNode) -> MirValue;
     def store_text_result(base: MirValue, text: MirValue);
     def any_isinstance(
         value: MirValue, target: uni.Expr, site: uni.UniNode

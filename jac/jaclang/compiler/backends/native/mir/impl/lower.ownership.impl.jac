@@ -21,6 +21,37 @@ impl MirLowering.tag_borrows(tag: (uni.UniNode | None)) -> bool {
     return found is not None and is_borrow_kind(found);
 }
 
+impl MirLowering.elements_borrowed(tag: (uni.UniNode | None)) -> bool {
+    expr = tag.tag if isinstance(tag, uni.SubTag) else tag;
+    while isinstance(expr, uni.AtomUnit) {
+        expr = expr.value;
+    }
+    if not isinstance(expr, uni.AtomTrailer)
+        or not isinstance(expr.right, uni.IndexSlice) {
+        return False;
+    }
+    slices = list(expr.right.slices);
+    if not slices {
+        return False;
+    }
+    return self.tag_borrows(slices[-1].start);
+}
+
+impl MirLowering.lend_fresh(
+    value: MirValue, tag: (uni.UniNode | None), source: (uni.UniNode | None)
+) {
+    while isinstance(source, uni.AtomUnit) {
+        source = source.value;
+    }
+    if not self.owned_world
+        or value.type.kind != MirKind.LIST
+        or not isinstance(source, (uni.ListVal, uni.ListCompr))
+        or not self.elements_borrowed(tag) {
+        return;
+    }
+    self.runtime("__jac_rt_list_lend", [value]);
+}
+
 impl MirLowering.returns_borrow(ab: uni.Ability) -> bool {
     sig = ab.signature;
     if not isinstance(sig, uni.FuncSignature) {

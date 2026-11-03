@@ -202,6 +202,8 @@ obj MirObjectDef {
         vtable_methods: list[str] = [],
         ancestry: list[str] = [],
         drop_symbol: str = "",
+        glue_symbol: str = "",
+        drop_slot: str = "",
         trace_symbol: str = "",
         is_acyclic: bool = False,
         local: bool = False,
