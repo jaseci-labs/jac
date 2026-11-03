@@ -369,6 +369,7 @@ obj MirLowering {
         text_regs: dict[str, tuple[MirBlock, list[MirInstr]]] = {},
         class_entries: list[tuple[str, str, str]] = [],
         deferred_globals: list[tuple[MirGlobal, uni.Expr]] = [],
+        entry_globals: dict[int, set[int]] = {},
         class_inits: list[tuple[int, str]] = [],
         class_global_refusals: dict[str, MirRefused] = {},
         nested: list[MirFunction] = [],
@@ -605,6 +606,7 @@ obj MirLowering {
     def c_const_lost(made: MirConst) -> str;
     def global_place(nd: uni.Name) -> (MirValue | None);
     def global_declaration(sym: uni.Symbol) -> (uni.Assignment | None);
+    def entry_global(assign: uni.Assignment, sym: uni.Symbol) -> bool;
     def runtime(name: str, args: list[MirValue]) -> (MirValue | None);
     def temp_slot(type: MirType) -> MirValue;
     def spill(value: MirValue) -> MirValue;

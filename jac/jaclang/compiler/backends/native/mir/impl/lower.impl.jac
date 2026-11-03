@@ -4468,7 +4468,56 @@ impl MirLowering.global_declaration(sym: uni.Symbol) -> (uni.Assignment | None) 
         and child is not cursor.value {
         return cursor;
     }
+    if isinstance(cursor, uni.Assignment)
+        and child is not cursor.value
+        and self.entry_global(cursor, sym) {
+        return cursor;
+    }
     return None;
+}
+
+"""Is `sym`, bound by `assign`, a module global set by an entry block?
+
+Python treats a top-level `with entry` assignment as module state, so a
+function or lambda that reads the name reads it late-bound from the module.
+A name only the entry block itself uses stays a local of the entry function.
+"""
+impl MirLowering.entry_global(assign: uni.Assignment, sym: uni.Symbol) -> bool {
+    block = assign.parent;
+    if not isinstance(block, uni.ModuleCode)
+        or block.name is not None
+        or not isinstance(block.parent, uni.Module) {
+        return False;
+    }
+    owner = block.parent;
+    key = id(owner);
+    used = self.entry_globals.get(key);
+    if used is None {
+        used = set();
+        for name in owner.get_all_sub_nodes(uni.Name) {
+            held = name.sym;
+            if held is None or id(held) in used {
+                continue;
+            }
+            decl = held.decl;
+            cursor: (uni.UniNode | None) = decl.parent if decl is not None else None;
+            while cursor is not None and not isinstance(cursor, uni.Assignment) {
+                cursor = cursor.parent;
+            }
+            if not isinstance(cursor, uni.Assignment)
+                or not isinstance(cursor.parent, uni.ModuleCode)
+                or cursor.parent.name is not None
+                or cursor.parent.parent is not owner {
+                continue;
+            }
+            if name.find_parent_of_type(uni.Ability) is not None
+                or name.find_parent_of_type(uni.LambdaExpr) is not None {
+                used.add(id(held));
+            }
+        }
+        self.entry_globals[key] = used;
+    }
+    return id(sym) in used;
 }
 
 impl MirLowering.global_place(nd: uni.Name) -> (MirValue | None) {
@@ -4546,6 +4595,10 @@ impl MirLowering.declare_global(nd: uni.Name) -> (MirGlobal | None) {
             linkage="internal" if is_priv else ""
         );
         initial = declaration.value;
+        if isinstance(declaration.parent, uni.ModuleCode) {
+            self.mir.globals[sym.sym_name] = made;
+            return made;
+        }
         folded = initial.ct_value if isinstance(initial, uni.Expr) else None;
         whole = int_host(folded) if isinstance(folded, CtInt) else None;
         if whole is not None
