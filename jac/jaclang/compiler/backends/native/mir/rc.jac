@@ -8,6 +8,7 @@ obj MirRcState {
         ref_slots: list[MirValue] = [],
         immortal: set[int] = set(),
         parents: dict[int, int] = {},
+        joins: dict[int, list[int]] = {},
         pending: dict[int, MirValue] = {},
         out: list[MirInstr] = [];
 
@@ -18,6 +19,7 @@ obj MirRcState {
     def release_slots;
     def last_uses(blk: MirBlock) -> dict[int, int];
     def base_of(value_id: int) -> int;
+    def bases_of(value_id: int) -> list[int];
     def initialize_slots;
     def carry_crossing;
     def owned_here(instr: MirInstr) -> bool;

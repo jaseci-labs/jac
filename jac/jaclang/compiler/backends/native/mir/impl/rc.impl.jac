@@ -32,6 +32,11 @@ impl MirRcState.run {
                 and instr.result is not None {
                 self.parents[instr.result.id] = instr.operands[0].id;
             }
+            if instr.op == MirOp.SELECT and instr.result is not None {
+                self.joins[instr.result.id] = [
+                    operand.id for operand in instr.operands[1:]
+                ];
+            }
             if instr.op in (MirOp.CONST_STR, MirOp.CONST_BYTES, MirOp.CONST_NULL)
                 and instr.result is not None {
                 self.immortal.add(instr.result.id);
@@ -49,8 +54,24 @@ impl MirRcState.last_uses(blk: MirBlock) -> dict[int, int] {
     for (index, instr) in enumerate(blk.instrs) {
         for operand in instr.operands {
             found[operand.id] = index;
-            found[self.base_of(operand.id)] = index;
+            for base in self.bases_of(operand.id) {
+                found[base] = index;
+            }
         }
+    }
+    return found;
+}
+
+impl MirRcState.bases_of(value_id: int) -> list[int] {
+    found: list[int] = [];
+    pending = [value_id];
+    while pending {
+        current = self.base_of(pending.pop());
+        if current in found {
+            continue;
+        }
+        found.append(current);
+        pending.extend(self.joins.get(current, []));
     }
     return found;
 }
@@ -138,7 +159,7 @@ impl MirRcState.rewrite(blk: MirBlock) {
         seen: set[int] = set();
         mark = len(self.out);
         for operand in instr.operands {
-            for used in (operand.id, self.base_of(operand.id)) {
+            for used in [operand.id] + self.bases_of(operand.id) {
                 if used in seen {
                     continue;
                 }
