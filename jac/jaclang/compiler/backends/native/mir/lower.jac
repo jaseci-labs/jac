@@ -348,6 +348,8 @@ obj MirDecl {
 
 def mono_symbol_text(text: str) -> str;
 
+def mir_same_signature(left: MirDecl, right: MirDecl) -> bool;
+
 obj MirLowering {
     has prog: JacProgram,
         module: uni.Module,
@@ -727,6 +729,9 @@ obj MirLowering {
     def foreign_static_decl(method: uni.Ability) -> (MirDecl | None);
     def method_decl_of(method: uni.Ability) -> (MirDecl | None);
     def holder_arch(expr: uni.Expr) -> (uni.Archetype | None);
+    def settle_slots;
+    def slot_root(arch: uni.Archetype, name: str) -> (MirDecl | None);
+    def slot_adapter(decl: MirDecl, base: MirDecl) -> (MirFunction | None);
     def accessor_on(
         arch: uni.Archetype, name: str, kind: str, nd: uni.UniNode
     ) -> (tuple[uni.Archetype, MirDecl] | None);

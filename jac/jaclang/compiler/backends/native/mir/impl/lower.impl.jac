@@ -95,6 +95,7 @@ impl MirLowering.lower -> MirModule {
     self.mir.functions.extend(self.nested);
     self.nested = [];
     self.lower_instances();
+    self.settle_slots();
     self.record_defaults();
     self.settle();
     self.c_global_settle();

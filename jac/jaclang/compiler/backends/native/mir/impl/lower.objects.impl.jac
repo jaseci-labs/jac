@@ -111,6 +111,7 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
             );
             specials = self.special_methods(arch);
             for slot in layout.methods {
+                made.vtable_names.append(slot.name);
                 if slot.owner != name and slot.name in specials {
                     made.vtable_methods.append(self.method_symbol(arch, slot.name));
                     continue;
@@ -168,6 +169,136 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
         raise err;
     }
     return made;
+}
+
+impl MirLowering.settle_slots {
+    for (name, made) in list(self.mir.objects.items()) {
+        arch = self.archetypes.get(name);
+        if not made.local or not made.vtable_symbol or arch is None {
+            continue;
+        }
+        wanted = set(made.vtable_methods);
+        for holder in self.lineage(arch) {
+            unit = holder.find_parent_of_type(uni.Module);
+            if unit is None or unit is self.module {
+                continue;
+            }
+            for method in self.arch_methods(holder) {
+                symbol = self.method_symbol(holder, self.name_of(method));
+                if symbol not in wanted or symbol in self.mir.externs {
+                    continue;
+                }
+                try {
+                    self.foreign_method_decl(method);
+                } except MirRefused {}
+            }
+        }
+        for (index, slot_name) in enumerate(made.vtable_names) {
+            if slot_name in NON_DISPATCHED_METHODS {
+                continue;
+            }
+            method = self.find_method(arch, slot_name);
+            if method is None {
+                continue;
+            }
+            try {
+                decl = self.method_decl_of(method);
+            } except MirRefused {
+                continue;
+            }
+            if decl is None or decl.symbol != made.vtable_methods[index] {
+                continue;
+            }
+            base = self.slot_root(arch, slot_name);
+            if base is None or mir_same_signature(base, decl) {
+                continue;
+            }
+            adapter = self.slot_adapter(decl, base);
+            if adapter is not None {
+                self.mir.functions.append(adapter);
+                made.vtable_entries[index] = adapter.symbol;
+            }
+        }
+    }
+}
+
+impl MirLowering.slot_root(arch: uni.Archetype, name: str) -> (MirDecl | None) {
+    for holder in reversed(self.lineage(arch)) {
+        for method in self.arch_methods(holder) {
+            if self.name_of(method) != name {
+                continue;
+            }
+            try {
+                return self.method_decl_of(method);
+            } except MirRefused {
+                return None;
+            }
+        }
+    }
+    return None;
+}
+
+impl mir_same_signature(left: MirDecl, right: MirDecl) -> bool {
+    return len(left.params) == len(right.params)
+        and left.ret.render() == right.ret.render()
+        and all(
+            mine.render() == theirs.render()
+            for (mine, theirs) in zip(left.params, right.params)
+        );
+}
+
+impl MirLowering.slot_adapter(decl: MirDecl, base: MirDecl) -> (MirFunction | None) {
+    if decl.self_type is None or len(decl.params) != len(base.params) {
+        return None;
+    }
+    site = decl.ability;
+    fn = MirFunction(
+        name=f"{self.name_of(decl.ability)}.__slot",
+        symbol=f"{decl.symbol}.__slot",
+        ret=base.ret,
+        linkage="internal"
+    );
+    first = fn.new_block("entry");
+    saved = self.state;
+    self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
+    try {
+        b = self.builder();
+        receiver = fn.new_value(base.self_type or decl.self_type, "self");
+        fn.params.append(MirParam(name="self", value=receiver));
+        args: list[MirValue] = [
+            receiver
+                if receiver.type is decl.self_type
+                else b.ref_cast(receiver, decl.self_type, False)
+        ];
+        for (index, (given, wanted)) in enumerate(zip(base.params, decl.params)) {
+            value = fn.new_value(given, f"a{index}");
+            fn.params.append(MirParam(name=f"a{index}", value=value));
+            args.append(self.coerce(value, wanted, site));
+        }
+        if decl.ret.kind in (MirKind.NONE, MirKind.VOID) {
+            b.call(decl.symbol, args, decl.ret);
+            if base.ret.kind in (MirKind.NONE, MirKind.VOID) {
+                b.ret(None);
+            } else {
+                b.ret(self.coerce(self.none_value(), base.ret, site));
+            }
+        } else {
+            made = b.call(decl.symbol, args, decl.ret);
+            if made is None {
+                raise MirRefused(mir_refusal("method", decl.symbol, site));
+            }
+            if base.ret.kind in (MirKind.NONE, MirKind.VOID) {
+                b.ret(None);
+            } else {
+                b.ret(self.coerce(made, base.ret, site));
+            }
+        }
+    } except MirRefused {
+        self.state = saved;
+        return None;
+    }
+    self.state = saved;
+    return fn;
 }
 
 impl MirLowering.declared_field_type(decl: (uni.UniNode | None)) -> (TypeBase | None) {
@@ -1671,16 +1802,31 @@ impl MirLowering.invoke_method(
         }
         entry_place = self.emit_value(MirOp.PTR_OFFSET, mir_c_ptr(i8p), [table, index]);
         target = b.load(entry_place, i8p);
-        signature = mir_c_fn([receiver.type] + decl.params, decl.ret);
+        base = self.slot_root(arch, name);
+        if base is None
+            or mir_same_signature(base, decl)
+            or len(base.params) != len(values) - 1 {
+            base = decl;
+        }
+        site = decl.ability;
+        passed = [receiver]
+            + [
+                self.coerce(value, wanted, site) if value.type is not wanted else value
+                for (value, wanted) in zip(values[1:], base.params)
+            ];
+        signature = mir_c_fn([receiver.type] + base.params, base.ret);
         callee = self.emit_value(MirOp.PTR_CAST, signature, [target]);
         result_type = mir_none()
-            if decl.ret.kind in (MirKind.NONE, MirKind.VOID)
-            else decl.ret;
+            if base.ret.kind in (MirKind.NONE, MirKind.VOID)
+            else base.ret;
         result = self.emit_value(
-            MirOp.CALL_FNPTR, result_type, [callee] + values, str_value=decl.symbol
+            MirOp.CALL_FNPTR, result_type, [callee] + passed, str_value=decl.symbol
         );
         result.owned = mir_holds_ref(result_type);
-        return result;
+        if base is decl or decl.ret.kind in (MirKind.NONE, MirKind.VOID) {
+            return result;
+        }
+        return self.coerce(result, decl.ret, site);
     }
     direct = self.builder().call(decl.symbol, values, decl.ret);
     return direct if direct is not None else self.builder().const_bool(False);

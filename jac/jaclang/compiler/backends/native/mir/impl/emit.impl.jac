@@ -1534,8 +1534,8 @@ impl MirEmitter.vtable_global(obj_def: MirObjectDef) -> ir.GlobalVariable {
         lineage_global.bitcast(i8p),
         ir.Constant(i8p, None)
     ];
-    for symbol in obj_def.vtable_methods {
-        target = self.functions.get(symbol);
+    for (index, symbol) in enumerate(obj_def.vtable_methods) {
+        target = self.functions.get(obj_def.vtable_entries.get(index, symbol));
         entries.append(
             target.bitcast(i8p) if target is not None else ir.Constant(i8p, None)
         );
