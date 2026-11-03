@@ -121,7 +121,7 @@ impl Router.is_catchall(endpoint: JEndPoint) -> bool {
 }
 
 impl Router.resolve(
-    method: str, path: str
+    method: str, path: str, declared_only: bool = False
 ) -> tuple[(JEndPoint | None), dict[(str, str)], list[str]] {
     segments = [
         p
@@ -131,10 +131,16 @@ impl Router.resolve(
     trailing = len(path) > 1 and path.endswith('/');
     lookup = 'GET' if method.upper() == 'HEAD' else method.upper();
     for route in self.routes.get(lookup, []) {
+        if declared_only and route.catchall is not None {
+            continue;
+        }
         params = route.`match(segments, trailing);
         if params is not None and route.endpoint is not None {
             return (route.endpoint, params, []);
         }
+    }
+    if declared_only {
+        return (None, {}, []);
     }
     allowed: list[str] = [];
     for (other_method, bucket) in self.routes.items() {
@@ -149,24 +155,6 @@ impl Router.resolve(
         }
     }
     return (None, {}, allowed);
-}
-
-impl Router.resolve_declared(method: str, path: str) -> (JEndPoint | None) {
-    segments = [
-        p
-        for p in path.strip('/').split('/')
-        if p != ''
-    ];
-    trailing = len(path) > 1 and path.endswith('/');
-    lookup = 'GET' if method.upper() == 'HEAD' else method.upper();
-    for route in self.routes.get(lookup, []) {
-        if route.catchall is None
-            and route.endpoint is not None
-            and route.`match(segments, trailing) is not None {
-            return route.endpoint;
-        }
-    }
-    return None;
 }
 
 impl Router.resolve_ws(path: str) -> tuple[(WSEndPoint | None), dict[(str, str)]] {
