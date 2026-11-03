@@ -294,12 +294,6 @@ def native_target_arch -> str;
 
 def _native_variant_path(base_no_ext: str) -> (str | None);
 
-def _native_variant_path_uncached(base_no_ext: str) -> str;
-
-def _build_memo_get(key: str) -> (str | None);
-
-def _build_memo_put(key: str, value: str);
-
 glob NATIVE_VARIANT_OSES: frozenset[str] = frozenset(
          {"darwin", "linux", "windows"}
      ),
@@ -314,7 +308,6 @@ def is_native_variant_path(path: str) -> bool;
 def native_variant_of(module_path: str) -> str;
 
 def _inferred_native_path(candidate: (str | None)) -> (str | None);
-
 
 def resolve_native_module(
     module_name: str, base_dir: str, allow_inferred: bool = True
