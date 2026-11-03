@@ -2683,6 +2683,7 @@ graph import {
             | data.schema_rules
             | data.serializer
             | project.config.apply_table
+            | project.config_schema
             | server.serving.model
             | server.settings { fields, is_record },
         byllm.schema | server.serving.coerce { is_record },

@@ -2024,6 +2024,24 @@ test "serve config carries no routing keys and refuses keys or values it does no
     }
 }
 
+test "every jac.toml section field has a type the table checker can read" {
+    import from jaclang.runtime.object_interop { fields, is_record }
+    import from jaclang.project.config_schema { rules_from_record }
+    cfg = JacConfig();
+    sections = {
+        f.name: rules_from_record(getattr(cfg, f.name))
+        for f in fields(cfg)
+        if is_record(getattr(cfg, f.name))
+    };
+    assert {"serve", "run", "test", "check", "project"} <= set(sections);
+    limits = sections["serve"]["limits"].keys;
+    assert limits is not None and limits["max_connections"].kind == "int";
+    assert sections["serve"]["auth"].kind == "dict";
+    assert sections["storage"]["endpoint_url"].optional;
+    author = sections["project"]["authors"].item;
+    assert author is not None and author.keys is not None and "email" in author.keys;
+}
+
 test "plugins table is not special-cased" {
     cfg = JacConfig.from_toml_str(
         "[project]\nname = \"demo\"\n\n[plugins.scale.websocket]\nmax_message_bytes = 1\n"
