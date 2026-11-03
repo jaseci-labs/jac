@@ -249,8 +249,9 @@ test "a default run lowers a bundled native import the way the host does" {
 
 """A dependency of a default run is placed the way the entry is: it is typed
 before it is placed, so a call only the native stubs reject moves its function
-to Python. A real type error stays one, and so does the stub rejection when
-native was asked for ahead of time (#10380)."""
+to Python. Its `:pub` is not server evidence, since native code imports it. A
+real type error stays one, and so does the stub rejection when native was
+asked for ahead of time (#10380)."""
 test "a dependency of a default run falls back the way the entry does" {
     open_errors = (
         'import os;\n\n'
@@ -261,6 +262,13 @@ test "a dependency of a default run falls back the way the entry does" {
     first_word = 'def first_word(text: str) -> str {\n    return text.split(" ")[0];\n}\n';
     rows = [
         ("native stubs reject open", open_errors + first_word, run_options(), [], True),
+        (
+            "a public function is still a library",
+            first_word.replace("def ", "def:pub "),
+            run_options(),
+            [],
+            True
+        ),
         (
             "native stubs reject Path.read_text",
             'import from pathlib { Path }\n\n'
