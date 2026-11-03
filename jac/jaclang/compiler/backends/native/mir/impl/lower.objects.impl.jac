@@ -323,7 +323,8 @@ impl MirLowering.special_methods(arch: uni.Archetype) -> dict[str, uni.Ability] 
     owner = arch.find_parent_of_type(uni.Module) or self.module;
     registry = get_layout_registry(owner, self.prog);
     for holder in self.lineage(arch)[1:] {
-        if registry.is_primary_ancestor(name, archetype_native_name(holder)) {
+        if registry.is_primary_ancestor(name, archetype_native_name(holder))
+            or (holder.find_parent_of_type(uni.Module) or self.module) is not owner {
             continue;
         }
         for method in self.arch_methods(holder) {
@@ -802,6 +803,20 @@ impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue 
     );
     params = self.constructor_params(arch);
     init = self.find_method(arch, "init") or self.find_method(arch, "__init__");
+    if init is None
+        and nd.params
+        and all(
+            holder.arch_type.name == Tok.KW_CLASS for holder in self.lineage(arch)
+        ) {
+        raise MirRefused(
+            mir_refusal(
+                "constructor call",
+                arch.name.value,
+                nd,
+                f"'{arch.name.value}' is a `class` archetype with no initializer, so like a Python class it takes no constructor arguments; its `has` fields do not become constructor parameters. Declare `def init(...)` or make it an `obj`."
+            )
+        );
+    }
     if init is not None
         and isinstance(init.signature, uni.FuncSignature)
         and (
@@ -1855,4 +1870,75 @@ impl MirLowering.accessor_set(target: uni.AtomTrailer, nd: uni.Assignment) -> bo
         ]
     );
     return True;
+}
+
+impl MirLowering.super_call(nd: uni.FuncCall, name: str) -> MirValue {
+    b = self.builder();
+    receiver = self.st().self_value;
+    arch = self.archetypes.get(receiver.type.name)
+        if receiver is not None and receiver.type.kind == MirKind.OBJ
+        else None;
+    if receiver is None or arch is None {
+        raise MirRefused(mir_refusal("call", f"super.{name}", nd));
+    }
+    lineage = self.lineage(arch);
+    names = ("init", "__init__") if name in ("init", "__init__") else (name, );
+    for holder in lineage[1:] {
+        for method in self.arch_methods(holder) {
+            if self.name_of(method) not in names or method.is_static {
+                continue;
+            }
+            decl = self.method_decl(holder, method, name, nd);
+            this = self.method_receiver(decl, holder, receiver, nd);
+            args = self.bound_args(nd, method, True);
+            if len(args) != len(decl.params) {
+                raise MirRefused(
+                    mir_refusal("call", f"super.{name} with {len(args)} arguments", nd)
+                );
+            }
+            values = [this] + self.bound_values(list(args), decl.params);
+            result = b.call(decl.symbol, values, decl.ret);
+            return result if result is not None else b.const_bool(False);
+        }
+    }
+    if len(lineage) < 2 or name not in ("init", "__init__") {
+        raise MirRefused(mir_refusal("call", f"super.{name}", nd));
+    }
+    params = self.constructor_params(lineage[1]);
+    positional: list[uni.Expr] = [];
+    named: dict[str, uni.Expr] = {};
+    for arg in list(nd.params or []) {
+        if isinstance(arg, uni.KWPair) {
+            if arg.key is None {
+                raise MirRefused(
+                    mir_refusal("call argument", "keyword unpacking", arg)
+                );
+            }
+            named[arg.key.sym_name] = arg.value;
+        } elif isinstance(arg, uni.Expr) {
+            positional.append(arg);
+        }
+    }
+    if len(positional) > len(params) {
+        raise MirRefused(
+            mir_refusal("call", f"super.{name} with {len(positional)} arguments", nd)
+        );
+    }
+    assigned: list[tuple[str, MirValue]] = [];
+    for (index, (pname, ptype, fallback)) in enumerate(params) {
+        source = positional[index] if index < len(positional) else named.get(pname);
+        if source is not None {
+            assigned.append(
+                (pname, self.spill(self.coerce(self.lower_expr(source), ptype, source)))
+            );
+        } elif fallback is not None {
+            assigned.append((pname, self.spill(self.default_value(fallback, ptype))));
+        } else {
+            raise MirRefused(mir_refusal("call", f"super.{name} missing {pname}", nd));
+        }
+    }
+    for (pname, value) in assigned {
+        b.store(self.field_place(receiver, arch, pname, nd), value);
+    }
+    return b.const_bool(False);
 }

@@ -1520,6 +1520,13 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     if is_builtin_pin_call(nd) {
         return self.c_pin(nd);
     }
+    if isinstance(nd.target, uni.AtomTrailer)
+        and nd.target.is_attr
+        and isinstance(nd.target.target, uni.SpecialVarRef)
+        and nd.target.target.value == "super"
+        and isinstance(nd.target.right, uni.Name) {
+        return self.super_call(nd, nd.target.right.value);
+    }
     callee = nd.callee_decl;
     if callee is not None and id(callee) in self.templates {
         return self.generic_call(nd, callee, None, None);
@@ -1581,6 +1588,17 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         if constructed is not None {
             return self.object_call(nd, constructed);
         }
+    }
+    passed = list(nd.params or []);
+    if isinstance(nd.target, uni.Name)
+        and nd.target.value == "type"
+        and isinstance(nd.target.type, ClassType)
+        and not nd.target.type.is_instance()
+        and len(passed) == 1
+        and isinstance(passed[0], uni.Expr)
+        and not isinstance(passed[0], uni.KWPair)
+        and self.expr_type(passed[0]).kind in (MirKind.OBJ, MirKind.ANY) {
+        return self.class_of(self.lower_expr(passed[0]), nd);
     }
     if not isinstance(callee, (uni.Archetype, uni.Ability))
         and isinstance(nd.target, uni.Expr)

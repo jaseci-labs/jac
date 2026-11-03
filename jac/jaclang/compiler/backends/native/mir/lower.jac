@@ -361,6 +361,7 @@ obj MirLowering {
     def lower_unary(nd: uni.UnaryExpr) -> MirValue;
     def lower_bool(nd: uni.BoolExpr) -> MirValue;
     def lower_call(nd: uni.FuncCall) -> MirValue;
+    def super_call(nd: uni.FuncCall, name: str) -> MirValue;
     def truthy(value: MirValue, site: uni.UniNode) -> MirValue;
     def adopt_imported_layouts;
     def obj_extends(child: str, base: str) -> bool;

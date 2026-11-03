@@ -30,6 +30,10 @@ impl entry_preamble_ir(spec: GlueSpec) -> str {
             0, f"  store atomic i8 1, ptr @{RC_THREADED_SYMBOL} monotonic, align 1"
         );
     }
+    if spec.shared and spec.gc_mode == "none" {
+        decls.append(f"@{GC_NONE_SYMBOL} = weak global i8 0\n");
+        calls.insert(0, f"  store i8 1, ptr @{GC_NONE_SYMBOL}, align 1");
+    }
     if spec.shared and spec.platform == "pe" {
         calls.insert(0, "  call void @__jac_win_floor_init()");
     }

@@ -4,7 +4,8 @@ glob SHARED_INIT_SYMBOL: str = "__jac_shared_init",
      WASM_INIT_SYMBOL: str = "__jac_glob_init",
      REGION_DIED_HOOK: str = "__jac_region_died_hook",
      STR_NEW_SYMBOL: str = "__jac_str_new",
-     RC_THREADED_SYMBOL: str = "__jac_rc_threaded";
+     RC_THREADED_SYMBOL: str = "__jac_rc_threaded",
+     GC_NONE_SYMBOL: str = "__jac_gc_none";
 
 obj GlueUnit {
     has prefix: str,

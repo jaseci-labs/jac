@@ -204,6 +204,7 @@ def:pub __jac_rt_collect_cycles -> None;
 def:pub __jac_rt_rc_debug_set(on: bool);
 
 def _g_rc_debug -> int;
+def _g_gc_none -> int;
 
 def _rc_trace(label: ptr[u8], o: int);
 

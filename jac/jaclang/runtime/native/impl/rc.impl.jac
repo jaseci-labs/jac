@@ -34,6 +34,10 @@ impl _g_traced -> int {
     return __global_block("__rc_traced", 8);
 }
 
+impl _g_gc_none -> int {
+    return __global_block("__jac_gc_none", 1);
+}
+
 impl _g_rc_debug -> int {
     return __global_block("__rc_debug", 1);
 }
@@ -781,11 +785,15 @@ impl __jac_rt_trace_lookup(dtor: int) -> int {
 }
 
 impl jac_retain(o: ptr[u8]) {
-    __jac_rt_retain(int(o));
+    if not _flag_on(_g_gc_none()) {
+        __jac_rt_retain(int(o));
+    }
 }
 
 impl jac_release(o: ptr[u8]) {
-    __jac_rt_release(int(o));
+    if not _flag_on(_g_gc_none()) {
+        __jac_rt_release(int(o));
+    }
 }
 
 impl __jac_rt_alloc_zeroed(size: int) -> int {
