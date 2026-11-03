@@ -68,7 +68,7 @@ def _inuse_probe -> (any | None) {
 }
 
 
-"""JIT-compile `fixture` and drive its `make_cycle`/`__rc_collect_cycles` hooks,
+"""JIT-compile `fixture` and drive its `make_cycle`/`collect` hooks,
 returning in-use-heap growth (bytes) across a build/drop loop with cycle
 collection `enable`d or not."""
 def _cycle_growth(fixture: str, enable: bool, inuse: any) -> int {
@@ -88,7 +88,7 @@ def _cycle_growth(fixture: str, enable: bool, inuse: any) -> int {
         return ctypes.CFUNCTYPE(None)(addr);
     }
     make_cycle = _fn("make_cycle");
-    collect = _fn("__rc_collect_cycles");
+    collect = _fn("collect");
 
     if enable {
         gaddr: any = eng.get_global_value_address("__rc_cycles_enabled");
