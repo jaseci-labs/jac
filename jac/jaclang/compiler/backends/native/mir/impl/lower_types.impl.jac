@@ -437,13 +437,7 @@ impl host_only_archetype(arch: uni.Archetype) -> bool {
     if owner is None or not owner.loc.mod_path.endswith(".jac") {
         return False;
     }
-    return host_only_path(owner.loc.mod_path);
-}
-
-impl host_only_path(path: str) -> bool {
-    if not native_unit_compile_active() or not path.endswith(".jac") {
-        return False;
-    }
+    path = owner.loc.mod_path;
     known = _HOST_ONLY_UNITS.get(path);
     if known is None {
         known = not native_unit(path, True);

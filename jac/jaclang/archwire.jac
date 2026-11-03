@@ -10669,7 +10669,6 @@ graph import compiler.backends.native.mir {
         C_ABI_KINDS,
         MirPosition,
         MirRefused,
-        host_only_path,
         mir_c_elem,
         mir_class_type_named,
         mir_refusal,

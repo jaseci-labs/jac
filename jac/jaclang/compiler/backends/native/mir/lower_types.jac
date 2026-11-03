@@ -103,6 +103,4 @@ glob _HOST_ONLY_UNITS: dict[str, bool] = {};
 
 def host_only_archetype(arch: uni.Archetype) -> bool;
 
-def host_only_path(path: str) -> bool;
-
 def stub_scope(scope: (uni.UniScopeNode | None)) -> bool;
