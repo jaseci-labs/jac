@@ -144,6 +144,13 @@ impl MirLowering.lower_cast(nd: uni.CastExpr) -> MirValue {
     }
     narrowed = self.narrow_down(value, nd);
     have = narrowed.type;
+    if have.kind == MirKind.OBJ
+        and wanted.kind == MirKind.OBJ
+        and have is not wanted
+        and not self.obj_extends(have.name, wanted.name)
+        and not self.obj_extends(wanted.name, have.name) {
+        return self.checked_cross_cast(narrowed, wanted, nd);
+    }
     if have is not wanted
         and have.kind == wanted.kind
         and wanted.kind in (MirKind.OBJ, MirKind.LIST, MirKind.SET, MirKind.DICT)

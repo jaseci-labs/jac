@@ -147,6 +147,8 @@ def:pub __jac_rt_str_pad(
 
 def:pub __jac_rt_str_zfill(data: ptr[u8], n: int, width: int) -> ptr[u8];
 
+def:pub __jac_rt_str_expandtabs(data: ptr[u8], n: int, tabsize: int) -> ptr[u8];
+
 def:pub __jac_rt_str_split(
     data: ptr[u8],
     n: int,

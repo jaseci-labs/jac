@@ -385,6 +385,8 @@ impl __jac_rt_dict_clear(d: int, key_kind: int, val_kind: int) {
 
 impl __jac_rt_dict_copy(d: int, key_kind: int, val_kind: int) -> int {
     made = __jac_rt_dict_new(key_kind, val_kind);
+    __mem_store_i64(made + DICT_KEY_KIND, __mem_load_i64(d + DICT_KEY_KIND));
+    __mem_store_i64(made + DICT_VAL_KIND, __mem_load_i64(d + DICT_VAL_KIND));
     n = __mem_load_i64(d + DICT_LEN);
     if n == 0 {
         return made;
@@ -668,6 +670,9 @@ impl _any_hash(box: int) -> int {
     if tag == TAG_NONE {
         return _mix(TAG_NONE);
     }
+    if tag == TAG_ENUM and payload != 0 {
+        return _mix(__mem_load_i64(payload + SLOT) ^ TAG_ENUM);
+    }
     if tag == TAG_OBJ
         and payload != 0
         and __jac_rt_cstr_eq(__jac_rt_type_name(payload), ptr[u8]("tuple")) {
@@ -716,6 +721,7 @@ impl _set_has(s: int, h: int, key: int, kind: int) -> bool {
 
 impl __jac_rt_set_filter(a: int, b: int, kind: int, keep_shared: bool) -> int {
     made = __jac_rt_dict_new(kind, KIND_NONE);
+    __mem_store_i64(made + DICT_KEY_KIND, __mem_load_i64(a + DICT_KEY_KIND));
     e = 0;
     while e < __mem_load_i64(a + DICT_USED) {
         h = __mem_load_i64(__mem_load_i64(a + DICT_ORDER) + e * SLOT);

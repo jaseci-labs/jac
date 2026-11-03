@@ -1,5 +1,96 @@
 impl _holds_ref(tag: int) -> bool {
-    return tag >= ANY_TAG_FIRST_REF and tag <= ANY_TAG_LAST_REF;
+    return (tag >= ANY_TAG_FIRST_REF and tag <= ANY_TAG_LAST_REF)
+        or tag == ANY_TAG_ENUM;
+}
+
+impl __jac_rt_enum_desc(name: ptr[u8], text: int) -> int {
+    head_at = __global_block("__jac_rt_enum_descs", 8);
+    entry_at = __mem_load_i64(head_at);
+    while entry_at != 0 {
+        if __jac_rt_cstr_eq(ptr[u8](__mem_load_i64(entry_at + DESC_NAME)), name) {
+            if __mem_load_i64(entry_at + DESC_TEXT) == 0 {
+                __mem_store_i64(entry_at + DESC_TEXT, text);
+            }
+            return entry_at;
+        }
+        entry_at = __mem_load_i64(entry_at + DESC_NEXT);
+    }
+    entry_at = calloc(1, DESC_SIZE);
+    __mem_store_i64(entry_at + DESC_NEXT, __mem_load_i64(head_at));
+    __mem_store_i64(entry_at + DESC_NAME, int(name));
+    __mem_store_i64(entry_at + DESC_TEXT, text);
+    __mem_store_i64(head_at, entry_at);
+    return entry_at;
+}
+
+impl __jac_rt_enum_intern(desc: int, value: int) -> int {
+    box = __mem_load_i64(desc + DESC_BOXES);
+    while box != 0 {
+        if __mem_load_i64(box + ENUM_VALUE) == value {
+            return box;
+        }
+        box = __mem_load_i64(box + ENUM_NEXT);
+    }
+    box = __jac_rt_alloc(ENUM_SIZE);
+    __jac_rt_set_type(box, int(ptr[u8]("enum")));
+    __mem_store_i64(box + ENUM_DESC, desc);
+    __mem_store_i64(box + ENUM_VALUE, value);
+    __mem_store_i64(box + ENUM_NEXT, __mem_load_i64(desc + DESC_BOXES));
+    __mem_store_i64(desc + DESC_BOXES, box);
+    return box;
+}
+
+impl __jac_rt_enum_box(desc: int, value: int) -> int {
+    box = __jac_rt_enum_intern(desc, value);
+    __jac_rt_retain(box);
+    return box;
+}
+
+impl _enum_name(box: int) -> ptr[u8] {
+    return ptr[u8](__mem_load_i64(__mem_load_i64(box + ENUM_DESC) + DESC_NAME));
+}
+
+impl __jac_rt_enum_value(tag: int, payload: int) -> int {
+    if tag == ANY_TAG_ENUM and payload != 0 {
+        return __mem_load_i64(payload + ENUM_VALUE);
+    }
+    return payload;
+}
+
+impl __jac_rt_any_enum_is(tag: int, payload: int, name: ptr[u8]) -> bool {
+    return tag == ANY_TAG_ENUM
+        and payload != 0
+        and __jac_rt_cstr_eq(_enum_name(payload), name);
+}
+
+impl __jac_rt_any_same(ta: int, pa: int, tb: int, pb: int) -> bool {
+    if ta != tb {
+        return False;
+    }
+    if ta == ANY_TAG_ENUM {
+        return __jac_rt_any_equal(ta, pa, tb, pb);
+    }
+    return pa == pb;
+}
+
+impl _enum_text(sb: int, box: int, mode: int) {
+    thunk = __mem_load_i64(__mem_load_i64(box + ENUM_DESC) + DESC_TEXT);
+    if thunk != 0 {
+        frame = malloc(THUNK_FRAME);
+        __mem_store_i64(frame + THUNK_OBJECT, __mem_load_i64(box + ENUM_VALUE));
+        __mem_store_i64(frame + THUNK_MODE, mode);
+        __mem_store_i64(frame + THUNK_RESULT, 0);
+        __mem_call_dtor(thunk, frame);
+        text = __mem_load_i64(frame + THUNK_RESULT);
+        free(frame);
+        if text != 0 {
+            _sb_owned(sb, ptr[u8](text));
+            return;
+        }
+    }
+    _sb_owned(sb, __jac_rt_class_name(_enum_name(box)));
+    _sb_cstr(sb, ptr[u8]("."));
+    __jac_rt_sb_int(sb, __mem_load_i64(box + ENUM_VALUE));
 }
 
 impl __jac_rt_any_retain(tag: int, payload: int) {
@@ -24,6 +115,14 @@ impl __jac_rt_any_box(tag: int, payload: int) -> int {
     return box;
 }
 
+impl __jac_rt_any_box_hold(box: int) {
+    if box != 0 {
+        __jac_rt_any_retain(
+            __mem_load_i64(box + BOX_TAG), __mem_load_i64(box + BOX_PAYLOAD)
+        );
+    }
+}
+
 impl _box_drop(box: ptr[u8]) {
     at = int(box);
     __jac_rt_any_release(
@@ -35,6 +134,9 @@ impl _box_drop(box: ptr[u8]) {
 impl __jac_rt_any_truthy(tag: int, payload: int) -> bool {
     if tag == ANY_TAG_NONE {
         return False;
+    }
+    if tag == ANY_TAG_ELLIPSIS {
+        return True;
     }
     if tag == ANY_TAG_INT or tag == ANY_TAG_BOOL {
         return payload != 0;
@@ -109,6 +211,12 @@ impl __jac_rt_any_type_name(tag: int, payload: int) -> ptr[u8] {
     if tag == ANY_TAG_BOOL {
         return ptr[u8]("bool");
     }
+    if tag == ANY_TAG_ENUM and payload != 0 {
+        return _enum_name(payload);
+    }
+    if tag == ANY_TAG_ELLIPSIS {
+        return ptr[u8]("ellipsis");
+    }
     return ptr[u8]("NoneType");
 }
 
@@ -164,6 +272,9 @@ impl _ref_tag(o: int) -> int {
     if _type_is(o, ptr[u8]("set")) {
         return ANY_TAG_SET;
     }
+    if _type_is(o, ptr[u8]("enum")) {
+        return ANY_TAG_ENUM;
+    }
     return ANY_TAG_OBJ;
 }
 
@@ -183,6 +294,9 @@ impl _as_float(tag: int, payload: int) -> float {
 }
 
 impl __jac_rt_elem_tag(bits: int, kind: int) -> int {
+    if kind >= KIND_DESC_MIN {
+        return ANY_TAG_ENUM;
+    }
     if kind == KIND_FLOAT {
         return ANY_TAG_FLOAT;
     }
@@ -208,6 +322,9 @@ impl __jac_rt_elem_tag(bits: int, kind: int) -> int {
 }
 
 impl __jac_rt_elem_payload(bits: int, kind: int) -> int {
+    if kind >= KIND_DESC_MIN {
+        return __jac_rt_enum_intern(kind, bits);
+    }
     if kind == KIND_ANY and bits != 0 {
         return __mem_load_i64(bits + BOX_PAYLOAD);
     }
@@ -219,7 +336,9 @@ impl __jac_rt_elem_box(bits: int, kind: int) -> int {
         __jac_rt_retain(bits);
         return bits;
     }
-    return __jac_rt_any_box(__jac_rt_elem_tag(bits, kind), bits);
+    return __jac_rt_any_box(
+        __jac_rt_elem_tag(bits, kind), __jac_rt_elem_payload(bits, kind)
+    );
 }
 
 impl _seq_bits(p: int, i: int, is_tup: bool) -> int {
@@ -381,6 +500,10 @@ impl _any_text(sb: int, tag: int, payload: int, mode: int) {
         _sb_owned(sb, __jac_rt_float_repr(__bits_float(payload)));
         return;
     }
+    if tag == ANY_TAG_ELLIPSIS {
+        _sb_cstr(sb, ptr[u8]("Ellipsis"));
+        return;
+    }
     if tag == ANY_TAG_NONE or payload == 0 {
         _sb_cstr(sb, ptr[u8]("None"));
         return;
@@ -400,6 +523,10 @@ impl _any_text(sb: int, tag: int, payload: int, mode: int) {
     }
     if tag == ANY_TAG_DICT or tag == ANY_TAG_SET {
         _map_text(sb, payload, tag == ANY_TAG_DICT);
+        return;
+    }
+    if tag == ANY_TAG_ENUM {
+        _enum_text(sb, payload, mode);
         return;
     }
     _obj_text(sb, payload, mode);
@@ -617,6 +744,10 @@ impl __jac_rt_any_equal(ta: int, pa: int, tb: int, pb: int) -> bool {
     }
     if ta == ANY_TAG_DICT or ta == ANY_TAG_SET {
         return _map_equal(pa, pb, ta == ANY_TAG_DICT);
+    }
+    if ta == ANY_TAG_ENUM {
+        return __mem_load_i64(pa + ENUM_VALUE) == __mem_load_i64(pb + ENUM_VALUE)
+            and __jac_rt_cstr_eq(_enum_name(pa), _enum_name(pb));
     }
     if ta != ANY_TAG_OBJ {
         return False;
@@ -881,4 +1012,335 @@ impl _seq_less(a: int, at: bool, b: int, bt: bool, or_equal: bool, op: int) -> b
         i += 1;
     }
     return na < nb or (or_equal and na == nb);
+}
+
+impl __jac_rt_class_tag(name: ptr[u8]) -> int {
+    h = 5239054864098085;
+    at = int(name);
+    size = int(strlen(name));
+    i = 0;
+    while i < size {
+        h = h ^ (int(__mem_load_i8(at + i)) & 255);
+        low = (h & 67108863) * 435;
+        high = ((h >> 26) * 435 + (h & 67108863) * 16384 + (low >> 26)) & 134217727;
+        h = (high << 26) | (low & 67108863);
+        i += 1;
+    }
+    return h & 9007199254740991;
+}
+
+impl __jac_rt_ref_swap(slot: int, value: int) {
+    if value != 0 {
+        __jac_rt_retain(value);
+    }
+    old = __mem_load_i64(slot);
+    __mem_store_i64(slot, value);
+    if old != 0 {
+        __jac_rt_release(old);
+    }
+}
+
+impl _box_owned(tag: int, payload: int) -> int {
+    box = __jac_rt_any_box(tag, payload);
+    __jac_rt_release(payload);
+    return box;
+}
+
+impl _unsupported(op: int, ta: int, pa: int, tb: int, pb: int) {
+    sb = __jac_rt_sb_new(64);
+    _sb_cstr(sb, ptr[u8]("unsupported operand type(s) for "));
+    if op == ARITH_ADD {
+        _sb_cstr(sb, ptr[u8]("+"));
+    } elif op == ARITH_SUB {
+        _sb_cstr(sb, ptr[u8]("-"));
+    } elif op == ARITH_MUL {
+        _sb_cstr(sb, ptr[u8]("*"));
+    } elif op == ARITH_DIV {
+        _sb_cstr(sb, ptr[u8]("/"));
+    } elif op == ARITH_FLOOR {
+        _sb_cstr(sb, ptr[u8]("//"));
+    } else {
+        _sb_cstr(sb, ptr[u8]("%"));
+    }
+    _sb_cstr(sb, ptr[u8](": '"));
+    _sb_owned(sb, __jac_rt_class_name(__jac_rt_any_type_name(ta, pa)));
+    _sb_cstr(sb, ptr[u8]("' and '"));
+    _sb_owned(sb, __jac_rt_class_name(__jac_rt_any_type_name(tb, pb)));
+    _sb_cstr(sb, ptr[u8]("'"));
+    raise TypeError(__jac_rt_sb_finish(sb));
+}
+
+impl _seq_join(a: int, at: bool, b: int, bt: bool) -> int {
+    na = __mem_load_i64(a + LIST_LEN);
+    nb = __mem_load_i64(b + LIST_LEN);
+    if at {
+        made = __jac_rt_tuple_new(na + nb);
+        i = 0;
+        while i < na {
+            __jac_rt_tuple_set(made, i, _seq_bits(a, i, True), _seq_kind(a, i, True));
+            i += 1;
+        }
+        j = 0;
+        while j < nb {
+            __jac_rt_tuple_set(
+                made, na + j, _seq_bits(b, j, True), _seq_kind(b, j, True)
+            );
+            j += 1;
+        }
+        return made;
+    }
+    ka = __mem_load_i64(a + LIST_KIND);
+    kb = __mem_load_i64(b + LIST_KIND);
+    kind = ka if ka == kb else KIND_ANY;
+    made = __jac_rt_list_new(na + nb, kind);
+    _join_into(made, a, ka, kind);
+    _join_into(made, b, kb, kind);
+    return made;
+}
+
+impl _join_into(made: int, src: int, src_kind: int, kind: int) {
+    count = __mem_load_i64(src + LIST_LEN);
+    i = 0;
+    while i < count {
+        bits = _seq_bits(src, i, False);
+        if kind == KIND_ANY and src_kind != KIND_ANY {
+            boxed = __jac_rt_elem_box(bits, src_kind);
+            __jac_rt_list_push(made, boxed, KIND_ANY);
+            __jac_rt_release(boxed);
+        } else {
+            __jac_rt_list_push(made, bits, kind);
+        }
+        i += 1;
+    }
+}
+
+impl _seq_repeat(a: int, is_tup: bool, times: int) -> int {
+    n = __mem_load_i64(a + LIST_LEN);
+    count = times if times > 0 else 0;
+    if is_tup {
+        made = __jac_rt_tuple_new(n * count);
+        k = 0;
+        while k < count {
+            i = 0;
+            while i < n {
+                __jac_rt_tuple_set(
+                    made, k * n + i, _seq_bits(a, i, True), _seq_kind(a, i, True)
+                );
+                i += 1;
+            }
+            k += 1;
+        }
+        return made;
+    }
+    kind = __mem_load_i64(a + LIST_KIND);
+    made = __jac_rt_list_new(n * count, kind);
+    k = 0;
+    while k < count {
+        __jac_rt_list_extend(made, a, kind);
+        k += 1;
+    }
+    return made;
+}
+
+impl __jac_rt_any_binary(op: int, ta: int, pa: int, tb: int, pb: int) -> int {
+    if _is_number(ta) and _is_number(tb) {
+        if op == ARITH_DIV or ta == ANY_TAG_FLOAT or tb == ANY_TAG_FLOAT {
+            fa = _as_float(ta, pa);
+            fb = _as_float(tb, pb);
+            result = 0.0;
+            if op == ARITH_ADD {
+                result = fa + fb;
+            } elif op == ARITH_SUB {
+                result = fa - fb;
+            } elif op == ARITH_MUL {
+                result = fa * fb;
+            } elif op == ARITH_DIV {
+                result = fa / fb;
+            } elif op == ARITH_FLOOR {
+                result = fa // fb;
+            } else {
+                result = fa % fb;
+            }
+            return __jac_rt_any_box(ANY_TAG_FLOAT, __float_bits(result));
+        }
+        value = 0;
+        if op == ARITH_ADD {
+            value = pa + pb;
+        } elif op == ARITH_SUB {
+            value = pa - pb;
+        } elif op == ARITH_MUL {
+            value = pa * pb;
+        } elif op == ARITH_FLOOR {
+            value = pa // pb;
+        } else {
+            value = pa % pb;
+        }
+        return __jac_rt_any_box(ANY_TAG_INT, value);
+    }
+    if op == ARITH_ADD and ta == ANY_TAG_STR and tb == ANY_TAG_STR {
+        return _box_owned(
+            ANY_TAG_STR,
+            int(
+                __jac_rt_str_concat(
+                    ptr[u8](pa),
+                    __jac_rt_str_size(ptr[u8](pa)),
+                    ptr[u8](pb),
+                    __jac_rt_str_size(ptr[u8](pb))
+                )
+            )
+        );
+    }
+    if op == ARITH_ADD and ta == ANY_TAG_LIST and tb == ANY_TAG_LIST {
+        return _box_owned(ANY_TAG_LIST, _seq_join(pa, False, pb, False));
+    }
+    if op == ARITH_ADD and _is_tuple(ta, pa) and _is_tuple(tb, pb) {
+        return _box_owned(ANY_TAG_OBJ, _seq_join(pa, True, pb, True));
+    }
+    if op == ARITH_MUL and (ta == ANY_TAG_INT or tb == ANY_TAG_INT) {
+        seq_tag = ta;
+        seq = pa;
+        times = pb;
+        if ta == ANY_TAG_INT {
+            seq_tag = tb;
+            seq = pb;
+            times = pa;
+        }
+        if seq_tag == ANY_TAG_STR {
+            return _box_owned(
+                ANY_TAG_STR,
+                int(
+                    __jac_rt_str_repeat(
+                        ptr[u8](seq), __jac_rt_str_size(ptr[u8](seq)), times
+                    )
+                )
+            );
+        }
+        if seq_tag == ANY_TAG_LIST {
+            return _box_owned(ANY_TAG_LIST, _seq_repeat(seq, False, times));
+        }
+        if _is_tuple(seq_tag, seq) {
+            return _box_owned(ANY_TAG_OBJ, _seq_repeat(seq, True, times));
+        }
+    }
+    if op == ARITH_ADD and (ta == ANY_TAG_STR or ta == ANY_TAG_LIST) {
+        sb = __jac_rt_sb_new(64);
+        _sb_cstr(
+            sb,
+            ptr[u8]("can only concatenate str (not \"")
+                if ta == ANY_TAG_STR
+                else ptr[u8]("can only concatenate list (not \"")
+        );
+        _sb_owned(sb, __jac_rt_class_name(__jac_rt_any_type_name(tb, pb)));
+        _sb_cstr(
+            sb, ptr[u8]("\") to str") if ta == ANY_TAG_STR else ptr[u8]("\") to list")
+        );
+        raise TypeError(__jac_rt_sb_finish(sb));
+    }
+    _unsupported(op, ta, pa, tb, pb);
+    return 0;
+}
+
+impl __jac_rt_any_negate(tag: int, payload: int) -> int {
+    if tag == ANY_TAG_FLOAT {
+        return __jac_rt_any_box(ANY_TAG_FLOAT, __float_bits(-__bits_float(payload)));
+    }
+    if tag == ANY_TAG_INT or tag == ANY_TAG_BOOL {
+        return __jac_rt_any_box(ANY_TAG_INT, 0 - payload);
+    }
+    sb = __jac_rt_sb_new(48);
+    _sb_cstr(sb, ptr[u8]("bad operand type for unary -: '"));
+    _sb_owned(sb, __jac_rt_class_name(__jac_rt_any_type_name(tag, payload)));
+    _sb_cstr(sb, ptr[u8]("'"));
+    raise TypeError(__jac_rt_sb_finish(sb));
+}
+
+impl _kind_bits(bits: int, have: int, want: int) -> int {
+    if have == want {
+        __jac_rt_elem_retain(bits, want);
+        return bits;
+    }
+    if want == KIND_ANY {
+        return __jac_rt_elem_box(bits, have);
+    }
+    held = __jac_rt_elem_payload(bits, have);
+    __jac_rt_elem_retain(held, want);
+    return held;
+}
+
+impl __jac_rt_dict_convert(
+    tag: int, payload: int, key_kind: int, val_kind: int
+) -> int {
+    if tag != ANY_TAG_DICT and not (tag == ANY_TAG_SET and val_kind < 0) {
+        raise TypeError(_not_iterable(tag, payload));
+    }
+    made = __jac_rt_dict_new(key_kind, val_kind);
+    have_key = __mem_load_i64(payload + DICT_KEY_KIND);
+    have_val = __mem_load_i64(payload + DICT_VAL_KIND);
+    at = __jac_rt_dict_next(payload, -1);
+    while at >= 0 {
+        key = _kind_bits(__jac_rt_dict_key_at(payload, at), have_key, key_kind);
+        value = 0;
+        if val_kind >= 0 {
+            value = _kind_bits(__jac_rt_dict_val_at(payload, at), have_val, val_kind);
+        }
+        __jac_rt_dict_set(made, key, value, key_kind, val_kind);
+        __jac_rt_elem_release(key, key_kind);
+        if val_kind >= 0 {
+            __jac_rt_elem_release(value, val_kind);
+        }
+        at = __jac_rt_dict_next(payload, at);
+    }
+    return made;
+}
+
+impl __jac_rt_any_getitem(tag: int, payload: int, ktag: int, kpayload: int) -> int {
+    if tag == ANY_TAG_DICT {
+        kind = __mem_load_i64(payload + DICT_KEY_KIND);
+        at = -1;
+        if (kind == KIND_STR and ktag == ANY_TAG_STR)
+            or (kind == KIND_INT and (ktag == ANY_TAG_INT or ktag == ANY_TAG_BOOL)) {
+            at = __jac_rt_dict_find(payload, kpayload, kind);
+        } else {
+            at = _map_find(payload, ktag, kpayload);
+        }
+        if at < 0 {
+            sb = __jac_rt_sb_new(32);
+            _any_text(sb, ktag, kpayload, TEXT_REPR);
+            raise KeyError(__jac_rt_sb_finish(sb));
+        }
+        return __jac_rt_elem_box(
+            __jac_rt_dict_val_at(payload, at), __mem_load_i64(payload + DICT_VAL_KIND)
+        );
+    }
+    if ktag != ANY_TAG_INT and ktag != ANY_TAG_BOOL {
+        raise TypeError("indices must be integers");
+    }
+    if tag == ANY_TAG_STR {
+        size = __jac_rt_str_size(ptr[u8](payload));
+        total = __jac_rt_str_len(ptr[u8](payload), ptr[u8](payload), size);
+        index = kpayload + total if kpayload < 0 else kpayload;
+        if index < 0 or index >= total {
+            raise IndexError("string index out of range");
+        }
+        return _box_owned(
+            ANY_TAG_STR,
+            int(__jac_rt_str_index(ptr[u8](payload), ptr[u8](payload), size, index))
+        );
+    }
+    is_tup = _is_tuple(tag, payload);
+    if tag != ANY_TAG_LIST and not is_tup {
+        raise TypeError("object is not subscriptable");
+    }
+    n = __mem_load_i64(payload + LIST_LEN);
+    index = kpayload + n if kpayload < 0 else kpayload;
+    if index < 0 or index >= n {
+        raise IndexError(
+            ptr[u8]("tuple index out of range")
+                if is_tup
+                else ptr[u8]("list index out of range")
+        );
+    }
+    return __jac_rt_elem_box(
+        _seq_bits(payload, index, is_tup), _seq_kind(payload, index, is_tup)
+    );
 }

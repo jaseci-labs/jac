@@ -288,6 +288,7 @@ class ExecutionEngine(ffi.ObjectRef) {
     }
 
     def _dispose(self: ExecutionEngine) -> object {
+        self._capi.LLVMPY_DisposeExecutionEngine(self);
         for mod in self._modules {
             mod.detach();
         }
@@ -296,7 +297,6 @@ class ExecutionEngine(ffi.ObjectRef) {
         }
         self._modules.clear();
         self._object_cache = None;
-        self._capi.LLVMPY_DisposeExecutionEngine(self);
     }
 }
 

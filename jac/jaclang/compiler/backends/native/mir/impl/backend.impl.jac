@@ -83,6 +83,8 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     ir_in.gen.native_layout = self.layout(lowering, lowered);
     ir_in.gen.native_iface = self.interface(lowered, deps, triple);
     ir_in.gen.native_iface.layout = ir_in.gen.native_layout;
+    ir_in.gen._clib_paths = list(ir_in.gen.native_iface.clib_paths);
+    ir_in.gen._clib_symbol_lib = dict(ir_in.gen.native_iface.clib_symbol_lib);
     return ir_in;
 }
 
@@ -477,6 +479,41 @@ impl MirNativePass.layout(lowering: MirLowering, mir: MirModule) -> NativeModule
             made.methods[f"{owner}.{fn.name}"] = record;
         } else {
             made.functions[fn.name] = record;
+        }
+    }
+    for (name, symbol, description, line) in lowering.tests {
+        made.tests.append(
+            NativeTestLayout(
+                name=name, symbol=symbol, description=description, line=line
+            )
+        );
+    }
+    for (name, (unit, symbol)) in sorted(lowering.imported_fns.items()) {
+        if name in made.functions {
+            continue;
+        }
+        iface = active_host().native_dep_iface(self.prog, unit, self.prog.options);
+        found = iface.layout.functions.get(name)
+            if iface is not None and iface.layout is not None
+            else None;
+        ext = mir.externs.get(symbol);
+        if found is None and ext is not None {
+            found = NativeFuncLayout(
+                name=symbol,
+                param_types=[mir_layout_type(param) for param in ext.params],
+                param_names=[],
+                ret_type=mir_layout_type(ext.ret),
+                ret_struct_name=ext.ret.name
+                    if ext.ret.kind == MirKind.OBJ and ext.ret.name != "*"
+                    else None,
+                ret_enum_type=mir_layout_enum(ext.ret),
+                ret_elem_keys=[mir_layout_key(arg) for arg in ext.ret.args]
+                    if ext.ret.kind in (MirKind.LIST, MirKind.DICT, MirKind.SET)
+                    else None
+            );
+        }
+        if found is not None {
+            made.functions[name] = found;
         }
     }
     return made;

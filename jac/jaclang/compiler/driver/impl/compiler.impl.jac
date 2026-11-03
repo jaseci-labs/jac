@@ -293,16 +293,22 @@ impl JacCompiler._get_bytecode(
     enclosing_closure = self._closure_opts;
     self._closure_opts = options;
     try {
-        result = self.compile(
-            file_path=full_target, target_program=actual_program, options=options
-        );
-        if result.gen.py_bytecode {
-            actual_program.hub_cache_stamp(full_target);
-            self._persist_module_cache(full_target, result, actual_program);
+        import from jaclang.compiler.driver.jir { compiled_content_scope }
+        with compiled_content_scope() {
+            compiled = self.compile(
+                file_path=full_target, target_program=actual_program, options=options
+            );
+            result = compiled;
+            if compiled.gen.py_bytecode {
+                actual_program.hub_cache_stamp(full_target);
+                self._persist_module_cache(full_target, compiled, actual_program);
+            }
+        }
+        if compiled.gen.py_bytecode {
             if is_internal {
                 note_compiler_source_failure(full_target, '');
             }
-            return marshal.loads(result.gen.py_bytecode);
+            return marshal.loads(compiled.gen.py_bytecode);
         }
         if is_internal {
             note_compiler_source_failure(

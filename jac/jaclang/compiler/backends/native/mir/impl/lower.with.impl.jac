@@ -8,7 +8,7 @@ impl MirLowering.lower_with(nd: uni.WithStmt) {
 impl MirLowering.with_items(
     items: list[uni.ExprAsItem], index: int, body: Sequence[uni.CodeBlockStmt]
 ) {
-    if index == len(items) {
+    if index >= len(items) {
         self.lower_body(body);
         return;
     }
@@ -22,6 +22,14 @@ impl MirLowering.with_items(
     b = self.builder();
     fn = self.st().fn;
     manager = self.lower_expr(source);
+    if manager.type.kind == MirKind.FILE {
+        held_file = self.spill(manager);
+        if item.alias is not None {
+            self.bind_target(item.alias, held_file);
+        }
+        self.with_guarded(items, index, body, MirWithExit(site=item, file=held_file));
+        return;
+    }
     arch = self.arch_of_type(source.type);
     if arch is None or manager.type.kind != MirKind.OBJ {
         raise MirRefused(
@@ -60,21 +68,34 @@ impl MirLowering.with_items(
         }
         self.bind_target(item.alias, entered);
     }
+    self.with_guarded(
+        items, index, body, MirWithExit(site=item, decl=leave_decl, held=held)
+    );
+}
+
+impl MirLowering.with_guarded(
+    items: list[uni.ExprAsItem],
+    index: int,
+    body: Sequence[uni.CodeBlockStmt],
+    exit_action: MirWithExit
+) {
+    b = self.builder();
+    fn = self.st().fn;
     (frame, dispatch) = self.guard_open();
     self.st().tries.append((frame, dispatch, len(self.st().loops)));
-    self.st().try_exits[id(frame)] = MirWithExit(site=item, decl=leave_decl, held=held);
+    self.st().try_exits[id(frame)] = exit_action;
     self.with_items(items, index + 1, body);
     self.st().tries.pop();
     after = fn.new_block("with.done");
     if not self.builder().block.terminated() {
         self.runtime("__jac_rt_exc_pop", [frame]);
-        self.call_exit(leave_decl, held, item);
+        self.run_with_exit(exit_action);
         self.builder().branch(after);
     }
     b.position(dispatch);
     self.runtime("__jac_rt_exc_pop", [frame]);
     (origin, type_id, message) = self.guard_caught(frame);
-    swallowed = self.call_exit(leave_decl, held, item);
+    swallowed = self.run_with_exit(exit_action);
     propagate = fn.new_block("with.propagate");
     b.cond_branch(swallowed, after, propagate);
     b.position(propagate);
@@ -130,8 +151,12 @@ impl MirLowering.with_generator(
     b.position(dispatch);
     self.runtime("__jac_rt_exc_pop", [frame]);
     (origin, type_id, message) = self.guard_caught(frame);
-    self.runtime("__jac_rt_raise", [origin, type_id, message]);
-    b.unreachable();
+    self.raise_if(
+        self.iter_throw(it, out, origin, type_id, message),
+        "RuntimeError",
+        "generator didn't stop after throw()"
+    );
+    self.builder().branch(after);
     b.position(after);
 }
 
@@ -211,7 +236,7 @@ impl MirLowering.guard_caught(frame: MirValue) -> tuple[MirValue, MirValue, MirV
     return (origin, type_id, message);
 }
 
-impl MirLowering.run_with_exit(exit_action: MirWithExit) {
+impl MirLowering.run_with_exit(exit_action: MirWithExit) -> MirValue {
     if exit_action.region_depth is not None {
         self.region_call(
             "__jac_region_unwind",
@@ -223,11 +248,13 @@ impl MirLowering.run_with_exit(exit_action: MirWithExit) {
                 [self.builder().load(exit_action.region_owned, mir_region())]
             );
         }
-        return;
+        return self.builder().const_bool(False);
     }
     if exit_action.decl is not None and exit_action.held is not None {
-        self.call_exit(exit_action.decl, exit_action.held, exit_action.site);
-        return;
+        return self.call_exit(exit_action.decl, exit_action.held, exit_action.site);
+    }
+    if exit_action.file is not None {
+        self.runtime("__jac_rt_file_close", [exit_action.file]);
     }
     if exit_action.it is not None and exit_action.out is not None {
         self.raise_if(
@@ -236,6 +263,7 @@ impl MirLowering.run_with_exit(exit_action: MirWithExit) {
             "generator didn't stop"
         );
     }
+    return self.builder().const_bool(False);
 }
 
 impl MirLowering.jumps_out(body: Sequence[uni.UniNode]) -> bool {
@@ -252,7 +280,10 @@ impl MirLowering.jumps_out(body: Sequence[uni.UniNode]) -> bool {
             return True;
         }
         inner = in_loop
-            or isinstance(current, (uni.WhileStmt, uni.InForStmt, uni.IterForStmt));
+            or isinstance(
+                current,
+                (uni.WhileStmt, uni.ForeverStmt, uni.InForStmt, uni.IterForStmt)
+            );
         for kid in current._children() {
             pending.append((kid, inner));
         }

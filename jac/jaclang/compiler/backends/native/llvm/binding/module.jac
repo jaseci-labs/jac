@@ -90,6 +90,19 @@ class ModuleRef(ffi.ObjectRef) {
     def init(self: ModuleRef, module_ptr: any, context: any) -> object {
         super.init(module_ptr);
         self._context = context;
+        if context is not None {
+            context._adopt_module();
+        }
+    }
+
+    """Detaching ends the module's hold on its context: it was disposed, linked
+    into another module, or its owning engine was disposed."""
+    def detach(self: ModuleRef) {
+        was_open = not self._closed;
+        super.detach();
+        if was_open and self._context is not None {
+            self._context._release_module();
+        }
     }
 
     def __str__(self: ModuleRef) -> object {

@@ -38,6 +38,11 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      NEGATIVE_SHIFT_MESSAGE: str = "negative shift count",
      RANGE_STEP_MESSAGE: str = "range() arg 3 must not be zero",
      CLOSURE_CELLS_OFFSET: int = 16,
+     RC_THREADED_FLAG: str = "__jac_rc_threaded",
+     GEN_PENDING_TYPE: int = 8,
+     GEN_PENDING_MESSAGE: int = 16,
+     GEN_PENDING_ORIGIN: int = 24,
+     RC_DEBUG_OFF_NOTICE: str = "jac: RC debug tracing not compiled in (build with --debug or [native] debug = true)",
      KIND_INT: int = 0,
      KIND_FLOAT: int = 1,
      KIND_BOOL: int = 2,
@@ -63,10 +68,13 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      ANY_OBJ_TAG: int = 6,
      ANY_BOOL_TAG: int = 7,
      ANY_NONE_TAG: int = 8,
+     ANY_ENUM_TAG: int = 9,
+     ANY_ELLIPSIS_TAG: int = 10,
      OSP_DIR_IN: int = 1,
      OSP_DIR_OUT: int = 2,
      OSP_DIR_ANY: int = 3,
      OSP_TAG_OFFSET: int = 8,
+     OSP_REPORTS_OFFSET: int = 16,
      UNTYPED_OSP_TAG: int = -1,
      OSP_ROOT_HELP: str = "The native tier has no root node yet. Build the graph from a node of your own, or keep this module on the server codespace.",
      OSP_ROOT_CONNECT_HELP: str = "The native tier has no root node. A plain `root ++> node` is accepted as an anchor that nothing native can observe; one that names an edge, collects it, points at root, or sits in a module that follows edges backward would be missed.",
@@ -88,6 +96,14 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
          "seq_cst"
      ],
      ANY_ORDER_CODES: dict[str, int] = {"lt": 0, "le": 1, "gt": 2, "ge": 3},
+     ANY_ARITH_CODES: dict[str, int] = {
+         "PLUS": 0,
+         "MINUS": 1,
+         "STAR_MUL": 2,
+         "DIV": 3,
+         "FLOOR_DIV": 4,
+         "MOD": 5
+     },
      TEXT_THUNK_MODE: int = 8,
      TEXT_THUNK_RESULT: int = 16,
      COMPARE_OPERATORS: dict[str, str] = {
@@ -126,6 +142,15 @@ glob ANY_TYPE_TAGS: dict[str, list[int]] = {
          "range": "range",
          "fn": "function",
          "iter": "generator"
+     };
+
+glob ABSTRACT_TYPE_NAMES: dict[str, list[str]] = {
+         "Sequence": ["list", "tuple", "str", "bytes", "bytearray", "range"],
+         "MutableSequence": ["list", "bytearray"],
+         "Mapping": ["dict"],
+         "MutableMapping": ["dict"],
+         "AbstractSet": ["set"],
+         "MutableSet": ["set"]
      };
 
 glob TEXT_CASES: dict[str, int] = {
@@ -208,7 +233,8 @@ obj MirWithExit {
         decl: (MirDecl | None) = None,
         held: (MirValue | None) = None,
         it: (MirValue | None) = None,
-        out: (MirValue | None) = None;
+        out: (MirValue | None) = None,
+        file: (MirValue | None) = None;
 }
 
 obj MirLoopTarget {
@@ -247,10 +273,12 @@ obj MirFnState {
         env_cells: dict[int, int] = {},
         env: (MirValue | None) = None,
         locals: dict[int, MirValue] = {},
+        local_names: dict[str, MirValue] = {},
         loops: list[MirLoopTarget] = [],
         caught: list[tuple[MirValue, MirValue, MirValue]] = [],
         bound_caught: dict[int, tuple[MirValue, MirValue, MirValue]] = {},
         tries: list[tuple[MirValue, MirBlock, int]] = [],
+        in_test: bool = False,
         try_exits: dict[int, MirWithExit] = {},
         finals: list[tuple[list[uni.UniNode], int, int]] = [],
         specials: dict[str, MirValue] = {},
@@ -308,11 +336,18 @@ obj MirLowering {
         text_regs: dict[str, tuple[MirBlock, list[MirInstr]]] = {},
         class_entries: list[tuple[str, str, str]] = [],
         deferred_globals: list[tuple[MirGlobal, uni.Expr]] = [],
+        class_inits: list[tuple[int, str]] = [],
+        class_global_refusals: dict[str, MirRefused] = {},
         nested: list[MirFunction] = [],
         adapters: dict[str, str] = {},
         fn_values: dict[int, MirDecl] = {},
         text_fns: dict[str, str] = {},
         text_serial: int = 0,
+        enum_thunks: dict[str, str] = {},
+        slot_cache: dict[str, dict[int, list[str]]] = {},
+        named_archs: dict[str, uni.Archetype] = {},
+        default_entries: list[tuple[str, str]] = [],
+        indexed_units: set[int] = set(),
         order: list[int] = [],
         refusals: dict[str, list[NativeRefusal]] = {},
         osp_model: (OspModel | None) = None,
@@ -322,12 +357,15 @@ obj MirLowering {
         type_env: dict[str, TypeBase] = {},
         templates: dict[int, uni.Ability] = {},
         instances: dict[str, MirDecl] = {},
+        specials: dict[str, int] = {},
         pending: list[MirDecl] = [],
         enum_types: dict[str, TypeBase] = {},
         enum_methods: dict[str, MirDecl] = {},
         bindings: list[InteropBinding] = [],
         current: str = "",
         dep_verdicts: dict[str, (list[str] | None)] = {},
+        imported_fns: dict[str, tuple[str, str]] = {},
+        tests: list[tuple[str, str, str, int]] = [],
         c_views: dict[int, MirGlobal] = {},
         state: (MirFnState | None) = None;
 
@@ -357,8 +395,11 @@ obj MirLowering {
     def store_name(target: uni.Name, value: MirValue);
     def local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirValue;
     def loop_scoped(sym: uni.Symbol) -> bool;
+    def encloses(scope: (uni.UniScopeNode | None), nd: uni.UniNode) -> bool;
+    def comprehension_scoped(sym: uni.Symbol) -> bool;
     def within_body(
-        nd: uni.UniNode, loop: (uni.WhileStmt | uni.InForStmt | uni.IterForStmt)
+        nd: uni.UniNode,
+        loop: (uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt)
     ) -> bool;
 
     def lower_return(nd: uni.ReturnStmt);
@@ -366,8 +407,10 @@ obj MirLowering {
     def lower_else(nd: (uni.ElseStmt | uni.ElseIf | None), done: MirBlock);
     def lower_iter_for(nd: uni.IterForStmt);
     def lower_while(nd: uni.WhileStmt);
+    def lower_forever(nd: uni.ForeverStmt);
     def lower_ctrl(nd: uni.CtrlStmt);
     def lower_for(nd: uni.InForStmt);
+    def lower_for_core(nd: uni.InForStmt);
     def lower_range_for(nd: uni.InForStmt, bounds: list[uni.Expr]);
     def lower_if_else_expr(nd: uni.IfElseExpr) -> MirValue;
     def to_str(value: MirValue, site: uni.UniNode) -> MirValue;
@@ -390,6 +433,7 @@ obj MirLowering {
     def adopt_imported_layouts(target: (uni.Module | None) = None);
     def obj_extends(child: str, base: str) -> bool;
     def coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
+    def const_zero(value: MirValue) -> bool;
     def unify_numeric(
         left: MirValue, right: MirValue, site: uni.UniNode
     ) -> tuple[MirValue, MirValue];
@@ -498,6 +542,7 @@ obj MirLowering {
     def struct_temp_place(nd: uni.Expr) -> MirValue;
     def declare_global(nd: uni.Name) -> (MirGlobal | None);
     def declare_c_data;
+    def declare_clib_externs;
     def note_clib(imp: (uni.Import | None)) -> int;
     def declare_module_globals;
     def c_struct_call(nd: uni.FuncCall, struct_type: MirType) -> MirValue;
@@ -632,17 +677,44 @@ obj MirLowering {
     ) -> (tuple[uni.Archetype, MirDecl] | None);
 
     def union_accessor_get(nd: uni.AtomTrailer) -> (MirValue | None);
+    def union_accessor_set(target: uni.AtomTrailer, nd: uni.Assignment) -> bool;
     def ref_word_side(value: MirValue) -> bool;
     def ref_word(value: MirValue) -> MirValue;
     def any_number(value: MirValue, whole: bool, site: uni.UniNode) -> MirValue;
     def foreign_accessor_decl(var: uni.HasVar, acc: uni.Ability) -> (MirDecl | None);
     def declare_archetype(arch: uni.Archetype);
+    def special_methods(arch: uni.Archetype) -> dict[str, uni.Ability];
+    def declare_specials(arch: uni.Archetype, self_type: MirType);
     def accessor_sig(acc: uni.Ability) -> (uni.FuncSignature | None);
     def declare_accessors(arch: uni.Archetype, self_type: MirType);
     def decl_label(decl: MirDecl) -> str;
     def refusal_key(decl: MirDecl) -> str;
     def member_owner(member: uni.Name) -> (uni.Archetype | None);
     def union_archetypes(t: (TypeBase | None)) -> list[uni.Archetype];
+    def union_method_owner(
+        nd: uni.FuncCall, receiver: uni.Expr
+    ) -> (uni.Archetype | None);
+
+    def is_class_operand(nd: (uni.UniNode | None)) -> bool;
+    def checked_cross_cast(
+        value: MirValue, to: MirType, site: uni.UniNode
+    ) -> MirValue;
+
+    def member_test(
+        held: MirValue, view: MirValue, arch: uni.Archetype, site: uni.UniNode
+    ) -> MirValue;
+
+    def exact_class_test(
+        named: MirValue, classes: list[str], site: uni.UniNode
+    ) -> MirValue;
+
+    def layout_registries(name: str) -> list[any];
+    def runtime_classes(target: str, seen_from: str) -> list[str];
+    def slot_groups(
+        target: str, seen_from: str, name: str, index: int, method: bool
+    ) -> dict[int, list[str]];
+
+    def arch_named(name: str, site: uni.UniNode) -> uni.Archetype;
     def union_field_place(
         holder: MirValue, members: list[uni.Archetype], name: str, site: uni.UniNode
     ) -> MirValue;
@@ -817,6 +889,11 @@ obj MirLowering {
 
     def super_call(nd: uni.FuncCall, name: str) -> MirValue;
     def object_eq(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
+    def aug_arith(
+        op: str, current: MirValue, value: MirValue, site: uni.UniNode
+    ) -> MirValue;
+
+    def foreign_function_decl(callee: uni.Ability, site: uni.UniNode) -> MirDecl;
     def list_repeat(items: MirValue, times: MirValue, site: uni.UniNode) -> MirValue;
     def object_alloc(
         arch: uni.Archetype, obj_def: MirObjectDef, self_type: MirType
@@ -872,6 +949,15 @@ obj MirLowering {
     def input_call(nd: uni.FuncCall) -> MirValue;
     def sys_exit(nd: uni.FuncCall) -> MirValue;
     def str_enum_int(nd: uni.FuncCall) -> (MirValue | None);
+    def rc_intrinsic(name: str) -> (MirValue | None);
+    def mark_threaded;
+    def pipe_call(nd: uni.BinaryExpr) -> MirValue;
+    def cstr_of(value: MirValue) -> MirValue;
+    def open_call(nd: uni.FuncCall) -> MirValue;
+    def file_method(
+        handle: MirValue, name: str, nd: uni.FuncCall
+    ) -> (MirValue | None);
+
     def osp_call(name: str, args: list[MirValue]) -> MirValue;
     def osp_hold(value: MirValue) -> MirValue;
     def osp_layout(arch: (uni.Archetype | None)) -> (ArchetypeLayout | None);
@@ -986,6 +1072,10 @@ obj MirLowering {
         target: uni.AtomTrailer, value_nd: uni.Expr, site: uni.UniNode
     );
 
+    def optional_bytes_arg(
+        arg: (uni.Expr | None), site: uni.UniNode
+    ) -> tuple[MirValue, MirValue, MirValue];
+
     def bytes_arg(
         arg: (uni.Expr | None), site: uni.UniNode
     ) -> tuple[MirValue, MirValue];
@@ -1047,6 +1137,16 @@ obj MirLowering {
     def iter_open(value: MirValue, site: uni.UniNode) -> MirIterCursor;
     def iter_step(cursor: MirIterCursor, body: MirBlock, done: MirBlock) -> MirValue;
     def iter_advance(it: MirValue, out: MirValue) -> MirValue;
+    def iter_throw(
+        it: MirValue,
+        out: MirValue,
+        origin: MirValue,
+        type_id: MirValue,
+        message: MirValue
+    ) -> MirValue;
+
+    def raise_pending;
+    def gen_close(it: MirValue) -> MirValue;
     def element_from_bits(bits: MirValue, elem: MirType) -> MirValue;
     def iter_value(value: MirValue, site: uni.UniNode) -> MirValue;
     def iter_coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
@@ -1136,6 +1236,11 @@ obj MirLowering {
 
     def any_contains(item: MirValue, holder: MirValue, site: uni.UniNode) -> MirValue;
     def any_iter(value: MirValue) -> MirValue;
+    def any_arith(
+        op: str, left: MirValue, right: MirValue, site: uni.UniNode
+    ) -> MirValue;
+
+    def abstract_names(item: uni.Expr) -> list[str];
     def narrow(value: MirValue, nd: uni.Name) -> MirValue;
     def target_archetype(target: uni.Expr) -> (uni.Archetype | None);
     def isinstance_value(
@@ -1146,7 +1251,20 @@ obj MirLowering {
         value: MirValue, items: list[uni.Expr], site: uni.UniNode
     ) -> MirValue;
 
-    def enum_owns_int_tag(site: uni.UniNode, item: uni.Expr) -> bool;
+    def enum_box(value: MirValue, site: uni.UniNode) -> MirValue;
+    def osp_class_tag(nd: uni.Expr) -> (MirValue | None);
+    def osp_class_tag_ok(nd: uni.Expr) -> bool;
+    def lower_dynamic_connect(nd: uni.BinaryExpr, co: uni.ConnectOp) -> MirValue;
+    def default_entry(arch: uni.Archetype) -> (MirFunction | None);
+    def is_walker_ref(nd: uni.Expr) -> bool;
+    def lower_osp_walker_spawn(
+        nd: uni.BinaryExpr, walker_nd: uni.Expr, place_nd: uni.Expr
+    ) -> MirValue;
+
+    def enum_desc(t: MirType, site: uni.UniNode) -> MirValue;
+    def creation_kind(elem: MirType, site: uni.UniNode) -> MirValue;
+    def enum_text_thunk(t: MirType, site: uni.UniNode) -> str;
+    def store_text_result(base: MirValue, text: MirValue);
     def any_isinstance(
         value: MirValue, target: uni.Expr, site: uni.UniNode
     ) -> MirValue;
@@ -1160,7 +1278,30 @@ obj MirLowering {
     def module_member(unit: uni.Module, name: str) -> (uni.UniNode | None);
     def stdlib_call(nd: uni.FuncCall, target: uni.AtomTrailer) -> (MirValue | None);
     def stdlib_attr(nd: uni.AtomTrailer) -> (MirValue | None);
+    def class_attr_entry(
+        arch: uni.Archetype, name: str
+    ) -> (tuple[uni.Archetype, uni.Name, uni.Expr] | None);
+
+    def arch_is_enum(arch: uni.Archetype) -> bool;
     def class_constant(arch: uni.Archetype, name: str) -> (uni.Expr | None);
+    def class_global(
+        holder: uni.Archetype, target: uni.Name, value: uni.Expr
+    ) -> MirGlobal;
+
+    def declare_class_globals;
+    def class_global_init(held: MirGlobal, label: str, value: uni.Expr) -> None;
+    def class_value_of(
+        arch: uni.Archetype, name: str, wanted: MirType, site: uni.UniNode
+    ) -> (MirValue | None);
+
+    def class_dispatch(
+        arch: uni.Archetype,
+        name: str,
+        wanted: MirType,
+        site: uni.UniNode,
+        matches: Callable[[uni.Archetype], MirValue]
+    ) -> (MirValue | None);
+
     def class_attr(nd: uni.AtomTrailer) -> (MirValue | None);
     def constant_value(value: (uni.Expr | None)) -> bool;
     def subclass_archetypes(arch: uni.Archetype) -> list[uni.Archetype];
@@ -1220,6 +1361,13 @@ obj MirLowering {
         items: list[uni.ExprAsItem], index: int, body: Sequence[uni.CodeBlockStmt]
     );
 
+    def with_guarded(
+        items: list[uni.ExprAsItem],
+        index: int,
+        body: Sequence[uni.CodeBlockStmt],
+        exit_action: MirWithExit
+    );
+
     def with_generator(
         items: list[uni.ExprAsItem], index: int, body: Sequence[uni.CodeBlockStmt]
     );
@@ -1228,7 +1376,7 @@ obj MirLowering {
     def none_arg(ptype: MirType, site: uni.UniNode) -> MirValue;
     def guard_open -> tuple[MirValue, MirBlock];
     def guard_caught(frame: MirValue) -> tuple[MirValue, MirValue, MirValue];
-    def run_with_exit(exit_action: MirWithExit);
+    def run_with_exit(exit_action: MirWithExit) -> MirValue;
     def jumps_out(body: Sequence[uni.UniNode]) -> bool;
     def lower_match(nd: uni.MatchStmt);
     def lower_switch(nd: uni.SwitchStmt);

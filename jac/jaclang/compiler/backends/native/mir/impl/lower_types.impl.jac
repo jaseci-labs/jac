@@ -116,6 +116,13 @@ impl mir_union_type(
         )
     ];
     has_none = len(members) < len(t.types);
+    if any(
+        isinstance(member, AnyType)
+            or (isinstance(member, ClassType) and member.shared.class_name == "object")
+        for member in members
+    ) {
+        return mir_any();
+    }
     lowered = [mir_type_of(member, position, site, env) for member in members];
     if not lowered {
         return mir_none();
@@ -234,6 +241,9 @@ impl mir_class_type(
     }
     if name == "range" {
         return mir_range();
+    }
+    if name in FILE_TYPE_NAMES {
+        return mir_file(FILE_TYPE_NAMES[name]);
     }
     if name == "enumerate" {
         args = t.private.type_args if t.private else None;

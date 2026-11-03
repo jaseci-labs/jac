@@ -1400,8 +1400,8 @@ impl render_wiring(
 ) -> str {
     heads: dict[str, str] = {};
     payloads: dict[tuple[str, str, str, str, str], list[tuple[str, str]]] = {};
-    groups:
-        dict[tuple[str, str, str, str, str, tuple[tuple[str, str], ...]], list[str]] = {};
+    groups: dict[tuple[str, str, str, str, str, str], list[str]] = {};
+    group_lists: dict[str, list[tuple[str, str]]] = {"": []};
     for (consumer, binding) in facts {
         if consumer not in heads {
             split = spec.split_consumer(consumer);
@@ -1411,7 +1411,7 @@ impl render_wiring(
         arrow = "++>" if binding.injected else "-->";
         if binding.is_module_form() {
             held = groups.setdefault(
-                (block, binding.provider, binding.form, binding.alias, arrow, ()), []
+                (block, binding.provider, binding.form, binding.alias, arrow, ""), []
             );
             if consumer not in held {
                 held.append(consumer);
@@ -1427,11 +1427,10 @@ impl render_wiring(
         }
     }
     for ((block, provider, form, arrow, consumer), items) in payloads.items() {
-        groups.setdefault(
-            (block, provider, form, "", arrow, tuple(sorted(items))), []
-        ).append(
-            consumer
-        );
+        ordered = sorted(items);
+        key = "\x1f".join([f"{name}\x1e{alias}" for (name, alias) in ordered]);
+        group_lists.setdefault(key, ordered);
+        groups.setdefault((block, provider, form, "", arrow, key), []).append(consumer);
     }
     statements:
         dict[
@@ -1463,7 +1462,7 @@ impl render_wiring(
             statements.setdefault((block, provider, prefix, alias, arrow), []).append(
                 (
                     [block_relative(block, c) for c in taken],
-                    None if module_form else list(group_items)
+                    None if module_form else list(group_lists[group_items])
                 )
             );
             pending = rest;
@@ -1508,7 +1507,7 @@ impl render_wiring(
             for b in wires.keys()
             if b
         ],
-        key=lambda (b: str) { b.split("."); }
+        key=lambda (b: str) -> str { b.replace(".", "\x00"); }
     ) {
         blocks.append(
             _block_text(block, [text for (_key, text) in sorted(wires[block])])

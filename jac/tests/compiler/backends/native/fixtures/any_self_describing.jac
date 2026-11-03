@@ -1,9 +1,13 @@
 """Containers boxed into `any` describe themselves.
 
-Iteration, `str`/`repr`, `==` and ordering on an `any` read the element
+Iteration, `str`/`repr`, `==`, ordering and `in` on an `any` read the element
 kinds the containers record when they are made, so a list, dict, set, tuple,
 str or bytes behind an `any` behaves as it does in Python.
 """
+enum Color { RED = 1, BLUE = 2 }
+
+enum Tone { LOW = 1, HIGH = 2 }
+
 obj Point {
     has x: int = 0,
         y: int = 0;
@@ -74,6 +78,44 @@ with entry {
     } except TypeError as err {
         print("TypeError", err);
     }
+    print(2 in as_any([1, 2]), "k" in as_any({"k": 1}), "z" in as_any({"k": 1}));
+    print("ell" in as_any("hello"), 9 in as_any((1, 9)), 3 in as_any({1, 2}));
+    red = as_any(Color.RED);
+    print(red == Color.RED, red != Color.BLUE, red == 1, red == Tone.LOW);
+    print(isinstance(red, Color), isinstance(red, Tone), isinstance(red, int));
+    print(isinstance(as_any(1), Color), red is Color.RED, as_any(Color.RED) == red);
+    print(str(red), repr(red), repr(as_any([Color.BLUE, 3, Tone.HIGH])));
+    print(Color.BLUE in as_any([Color.RED, Color.BLUE]), 2 in as_any([Color.BLUE]));
+    print(
+        as_any(2) + 3, as_any(2.5) * 2, as_any(7) // 2, as_any(-7) % 3, as_any(1) / 4
+    );
+    print(
+        as_any("ab") + "c", as_any([1]) + as_any(["x"]), as_any((1, )) + as_any((2, ))
+    );
+    print(as_any("ab") * 2, as_any([0]) * 3, -as_any(5), -as_any(2.5));
+    try {
+        print(as_any("a") + 1);
+    } except TypeError as err {
+        print("TypeError", err);
+    }
+    print(isinstance(as_any([1]), Sequence), isinstance(as_any("s"), Sequence));
+    print(
+        isinstance(as_any({"a": 1}), Sequence), isinstance(as_any({"a": 1}), Mapping)
+    );
+    print(
+        as_any([4, 5])[-1],
+        as_any({"k": "v"})["k"],
+        as_any("héllo")[1],
+        as_any((7, 8))[0]
+    );
+    try {
+        print(as_any({"k": 1})["z"]);
+    } except KeyError as err {
+        print("KeyError", err);
+    }
+    copied: dict[str, any] = dict(as_any({"a": 1, "b": "x"}));
+    copied.update(as_any({"c": [2]}));
+    print(copied);
     total = 0;
     for _ in range(300) {
         for item in as_any([1, 2, 3]) {

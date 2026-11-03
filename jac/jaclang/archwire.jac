@@ -853,6 +853,7 @@ graph import {
             drop_python_lane_products
         },
         project.compiler_host.ProjectHost.in_compiler_tree { is_compiler_tree_path },
+        project.compiler_host.ProjectHost.read_source { compiled_content_reads },
         project.compiler_host.ProjectHost.save_native_debug_ir { get_native_debug_dir },
         project.compiler_host._native_scan_path {
             get_jir_cache_dir,
@@ -1362,6 +1363,11 @@ graph import {
     compiler.placement.placement ++> cli.commands.fix._verify_claims {
         element_display_name
     }
+    compiler.placement.placement_cache ++> dist.publish.runtime_vendor._compile_runtime_module
+        | testing.cl_test_runner.module_is_client { module_record }
+    compiler.placement.placement_cache --> dist.precompile_bytecode.sealable_sources {
+        discover_spaces
+    }
     compiler.placement.placement_export --> [
         cli.commands.analysis._check_file_job { collect_placement_rows },
         cli.commands.analysis.explain { collect_placement_rows },
@@ -1374,16 +1380,11 @@ graph import {
         },
         dist.precompile_bytecode.find_jac_files { native_only },
         dist.precompile_bytecode.package_native_units { native_units_of },
-        dist.publish.runtime_vendor._compile_runtime_module
-            | testing.cl_test_runner.module_is_client { module_record },
         dist.publish.runtime_vendor._runtime_module_options { SPACE_SERVER },
     ]
     compiler.placement.placement_facts --> [
         dist.precompile_bytecode.run_precompile { native_only },
-        dist.precompile_bytecode.sealable_sources {
-            discover_spaces,
-            spaces_are_client_only
-        },
+        dist.precompile_bytecode.sealable_sources { spaces_are_client_only },
         project.compiler_host.ProjectHost.native_session_declares {
             session_declares_native
         },
@@ -5843,7 +5844,7 @@ graph import compiler {
         },
         passes.wasm_contract.host_contracts { symbol_linked_source_module },
         placement.placement.summarize_module { module_own_native_anchor },
-        placement.placement_facts.discover_spaces
+        placement.placement_cache.discover_spaces
             | placement.placement_solver._materialize_module { hub_module_for_path },
         placement.placement_solver._is_sv_import { import_crosses_apps },
         placement.placement_solver._pullable_by_client_reference {
@@ -5890,7 +5891,7 @@ graph import compiler {
         frontend.kernel_host { package_owned },
         passes.access_check_pass.AccessCheckPass._module_app_facts
             | placement.placement_pins { context_app },
-        placement.placement_facts.module_record { cache_scope, owner_scope_options },
+        placement.placement_cache.module_record { cache_scope, owner_scope_options },
         types.type_evaluator.TypeEvaluator._in_flight_module { program_for },
     ]
     driver.compile_options ++> [
@@ -5967,7 +5968,7 @@ graph import compiler {
         backends.native.na_compile_pass.NativeCompilePass._emit_debug_products {
             get_native_debug_dir
         },
-        placement.placement_facts._record_at {
+        placement.placement_cache._record_at {
             SEC_PLACEMENT,
             get_module_cache_path,
             is_module_cache_valid,
@@ -6137,7 +6138,7 @@ graph import compiler {
             | backends.native.wasm_build.compile_to_wasm
             | frontend.kernel_analyze
             | frontend.kernel_host
-            | placement.placement_facts.discover_spaces
+            | placement.placement_cache.discover_spaces
             | placement.placement_solver._native_dep_scan
             | tests.test_batch_decl_identity
             | tests.test_client_codegen_facts
@@ -6180,6 +6181,7 @@ graph import compiler {
         | passes.placement_pass
         | passes.wasm_contract
         | placement.placement
+        | placement.placement_cache
         | placement.placement_export
         | placement.placement_facts
         | placement.placement_pins
@@ -6344,6 +6346,7 @@ graph import compiler {
             NativeFuncLayout,
             NativeModuleLayout,
             NativeStructLayout,
+            NativeTestLayout,
             is_kernel_unit_path,
             jaclang_pkg_root,
             native_entry_name,
@@ -6364,6 +6367,7 @@ graph import compiler {
             interop_callback_symbol,
             is_kernel_unit_path,
             kernel_unit_path,
+            module_dotted_name,
             native_def_symbol,
             native_entry_name,
             native_glob_init_name,
@@ -6643,7 +6647,7 @@ graph import compiler {
             | placement.placement_facts.settle_server
             | placement.placement_solver
             | symbol_utils.report_placement_warnings { CodeContext },
-        backends.native.mir.lower { Tokens as Tok, is_borrow_kind },
+        backends.native.mir.lower { CodeContext, Tokens as Tok, is_borrow_kind },
         backends.py.jcir_gen_pass {
             CodeContext,
             OwnershipKind,
@@ -9612,6 +9616,9 @@ graph import compiler {
         driver.module_analysis.run_analysis { record_decided },
     ]
     type placement.placement ++> driver.progstate { PlacementSummary }
+    placement.placement_cache ++> driver.compiler.JacCompiler.kernel_native_entry {
+        module_record
+    }
     placement.placement_export ++> driver.unit_products.placement_record {
         summary_to_dict
     }
@@ -9622,7 +9629,6 @@ graph import compiler {
     ]
     placement.placement_facts ++> [
         backends.native.mir.backend { native_placement_hard },
-        driver.compiler.JacCompiler.kernel_native_entry { module_record },
         driver.module_compile.admits_native_checks { variant_selected },
         driver.program.JacProgram.declared_codespace {
             native_only,
@@ -10704,6 +10710,7 @@ graph import compiler.backends.native.mir {
             mir_class,
             mir_dict,
             mir_enum,
+            mir_file,
             mir_float,
             mir_fn,
             mir_int,
@@ -11186,7 +11193,8 @@ graph import compiler.driver {
         compiler.JacCompiler._get_bytecode {
             PRECOMPILE_SENTINEL,
             SEC_CTDEPS as _CARRY_CTDEPS,
-            SEC_CTDEPS as _PC_CTDEPS
+            SEC_CTDEPS as _PC_CTDEPS,
+            compiled_content_scope
         },
         compiler.JacCompiler._precompiled_jir_data {
             bundle_dir_allowed,
@@ -13020,9 +13028,12 @@ graph import compiler.placement {
         placement_solver._closure_pullable { module_has_root_access },
         placement_solver._pullable_by_client_reference { module_has_root_access },
     ]
-    type placement ++> placement_facts { PlacementSummary }
-    placement_export ++> placement_facts._record_at { summary_from_bytes }
-    placement_facts ++> placement_solver.native_closure_blocker { pinned_module_space }
+    type placement ++> placement_cache { PlacementSummary }
+    placement_export ++> placement_cache._record_at { summary_from_bytes }
+    placement_facts ++> [
+        placement_cache.discover_spaces { SPACE_SERVER, module_spaces },
+        placement_solver.native_closure_blocker { pinned_module_space },
+    ]
     placement_pins ++> [
         placement.module_anchor_reasons
             | placement_facts.pinned_module_space
@@ -13220,8 +13231,7 @@ graph import compiler.types {
             ct_setitem,
             ct_symbol,
             ct_unary,
-            int_add,
-            int_cmp
+            int_add
         },
         ct_format {
             ct_binop,
@@ -13330,6 +13340,7 @@ graph import compiler.types {
             ct_truthy,
             ct_type_name,
             dict_set,
+            int_cmp,
             mk_bool,
             mk_bytes,
             mk_dict,
@@ -15086,7 +15097,9 @@ graph import runtime.native {
             __jac_rt_dict_find,
             __jac_rt_dict_key_at,
             __jac_rt_dict_len,
+            __jac_rt_dict_new,
             __jac_rt_dict_next,
+            __jac_rt_dict_set,
             __jac_rt_dict_val_at
         },
         iterators { __jac_rt_dict_key_at, __jac_rt_dict_next },
@@ -15095,6 +15108,15 @@ graph import runtime.native {
     format ++> anys { __jac_rt_float_repr, __jac_rt_obj_text }
     iterators ++> anys { __jac_rt_iter_new }
     lists ++> [
+        anys {
+            __jac_rt_elem_release,
+            __jac_rt_elem_retain,
+            __jac_rt_list_extend,
+            __jac_rt_list_new,
+            __jac_rt_list_push,
+            __jac_rt_tuple_new,
+            __jac_rt_tuple_set
+        },
         bytes { __jac_rt_list_new, __jac_rt_list_push },
         closures { __jac_rt_elem_release, __jac_rt_elem_retain },
         dicts { __jac_rt_elem_eq, __jac_rt_elem_release, __jac_rt_elem_retain },
@@ -15112,7 +15134,9 @@ graph import runtime.native {
         bytes {
             __jac_rt_alloc,
             __jac_rt_free_block,
+            __jac_rt_release,
             __jac_rt_release_acyclic,
+            __jac_rt_retain,
             __jac_rt_set_type
         },
         dicts {
@@ -15139,10 +15163,12 @@ graph import runtime.native {
     strings ++> [
         anys {
             __jac_rt_str_cmp,
+            __jac_rt_str_concat,
             __jac_rt_str_len,
             __jac_rt_str_new,
             __jac_rt_str_size
         },
+        bytes { __jac_rt_str_new },
         dicts { __jac_rt_str_size },
         format | iterators | text { __jac_rt_str_new, __jac_rt_str_size },
         lists { __jac_rt_str_cmp, __jac_rt_str_size },
@@ -15156,6 +15182,8 @@ graph import runtime.native {
             __jac_rt_sb_int,
             __jac_rt_sb_new,
             __jac_rt_str_contains,
+            __jac_rt_str_index,
+            __jac_rt_str_repeat,
             __jac_rt_str_repr,
             __jac_rt_utf8_width
         },

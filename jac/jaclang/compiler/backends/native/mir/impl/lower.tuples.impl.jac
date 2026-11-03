@@ -40,6 +40,13 @@ impl MirLowering.unpack_into(
     }
     held = self.spill(value);
     for (index, target) in enumerate(targets) {
+        if isinstance(target, uni.Name)
+            and target.value == "_"
+            and target.sym is not None
+            and self.symbol_type(target.sym, target).render()
+                != value.type.args[index].render() {
+            continue;
+        }
         part = self.tuple_get(held, index);
         if isinstance(target, uni.Name) {
             self.store_name(target, part);

@@ -5,8 +5,8 @@ import sys;
 import tempfile;
 import from tests.support { JAC_ROOT }
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.placement.placement_cache { discover_spaces }
 import from jaclang.compiler.placement.placement_facts {
-    discover_spaces,
     emits_server_code,
     is_client_only,
     module_spaces,

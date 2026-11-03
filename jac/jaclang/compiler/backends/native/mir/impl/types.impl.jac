@@ -23,7 +23,8 @@ impl MirType.is_ref -> bool {
             MirKind.ITER,
             MirKind.RANGE,
             MirKind.COMPLEX,
-            MirKind.C_PIN
+            MirKind.C_PIN,
+            MirKind.FILE
         );
 }
 
@@ -166,6 +167,10 @@ impl mir_fn(params: list[MirType], ret: MirType) -> MirType {
 
 impl mir_iter(elem: MirType) -> MirType {
     return mir_type(MirKind.ITER, args=[elem]);
+}
+
+impl mir_file(binary: bool) -> MirType {
+    return mir_type(MirKind.FILE, name="BinaryFile" if binary else "File");
 }
 
 impl mir_range -> MirType {
