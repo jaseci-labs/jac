@@ -133,7 +133,7 @@ impl RedisBackend.delete(id: UUID) -> None {
         key = storage_key(to_uuid(id));
         self.redis_client.delete(key, _lease_key(key));
     } except Exception as e {
-        logger.debug(f"Redis delete failed: {e}");
+        logger.warning(f"Redis delete failed for {id}: {e}");
     }
 }
 
