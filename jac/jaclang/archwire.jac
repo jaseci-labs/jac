@@ -6376,7 +6376,9 @@ graph import compiler {
             native_variant_of,
             resolve_native_module
         },
-        backends.native.mir.lower_types { native_unit_compile_active },
+        backends.native.mir.lower_types
+            | native_scope.scope_allows_inferred_path
+            | placement.placement_solver._native_deps_ok { native_unit_compile_active },
         backends.native.region_abi._region_layout_facts {
             HDR_ALLOC_ID_OFF,
             HDR_DTOR_OFF,
@@ -6480,8 +6482,6 @@ graph import compiler {
         native_bindings.import_gaps { resolve_native_module },
         native_compiler.NativeCompiler._resolve_classes { NATIVE_ARCH_SCOPE_SEP },
         native_scope.binds_bare_arch_names { kernel_unit_rels },
-        native_scope.scope_allows_inferred_path
-            | placement.placement_solver._native_deps_ok { native_unit_compile_active },
         passes.boundary_analysis_pass {
             BoundaryTypeInfo,
             InteropBinding,
