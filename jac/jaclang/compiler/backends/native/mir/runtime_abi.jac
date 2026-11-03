@@ -9,6 +9,7 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_str_ref": ["str.ref", "ptr", "ptr", "int"],
          "__jac_rt_exc_message": ["ptr", "ptr", "int"],
          "__jac_rt_byte_single": ["ref", "int"],
+         "__jac_rt_unbound_check": ["none", "bool", "i32", "ptr"],
          "__jac_rt_str_char_at": ["str.ref", "ptr", "int", "int"],
          "__jac_rt_list_new": ["ref", "int", "int"],
          "__jac_rt_tuple_new": ["ref", "int"],

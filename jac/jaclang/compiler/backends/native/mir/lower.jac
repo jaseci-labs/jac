@@ -322,7 +322,8 @@ obj MirFnState {
         specials: dict[str, MirValue] = {},
         region_slots: list[MirValue] = [],
         region_escape: (MirValue | None) = None,
-        pinned: dict[int, MirValue] = {};
+        pinned: dict[int, MirValue] = {},
+        user_loads: dict[int, str] = {};
 }
 
 obj MirBound {
@@ -567,6 +568,8 @@ obj MirLowering {
         op: str, left: MirValue, right: MirValue, site: uni.UniNode
     ) -> (MirValue | None);
 
+    def later_local(nd: uni.Name) -> bool;
+    def guard_unbound(fn: MirFunction);
     def lower_discarded(nd: uni.Expr);
     def condition(nd: uni.Expr) -> MirValue;
     def c_return_plan(

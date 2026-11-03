@@ -66,6 +66,12 @@ impl __jac_rt_raise_builtin(type_id: i32, message: ptr[u8]) {
     __jac_rt_raise(message, type_id, message);
 }
 
+impl __jac_rt_unbound_check(bound: bool, type_id: i32, message: ptr[u8]) {
+    if not bound {
+        __jac_rt_raise(message, type_id, message);
+    }
+}
+
 impl _write_text(text: ptr[u8]) {
     write(i32(2), text, strlen(text));
 }

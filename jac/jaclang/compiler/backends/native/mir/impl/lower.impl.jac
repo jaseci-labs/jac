@@ -432,6 +432,7 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
                 self.builder().unreachable();
             }
         }
+        self.guard_unbound(fn);
     } except MirRefused as err {
         self.refusals.setdefault(self.refusal_key(decl), []).append(refusal_of(err));
         self.state = None;
@@ -1322,6 +1323,11 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
         }
         return self.coerce(loaded, self.expr_type(nd), nd);
     }
+    if nd.sym is not None
+        and id(nd.sym) not in self.st().locals
+        and self.later_local(nd) {
+        self.local_slot(nd.sym, nd);
+    }
     if nd.sym is None or id(nd.sym) not in self.st().locals {
         twin = self.variant_glob(nd) if nd.sym is not None else None;
         if twin is not None {
@@ -1435,6 +1441,7 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
     }
     slot = self.st().locals[id(nd.sym)];
     loaded = self.builder().load(slot, slot.type);
+    self.st().user_loads[loaded.id] = nd.sym.sym_name;
     if loaded.type.kind == MirKind.OPT
         and nd.type is not None
         and not (
@@ -4929,4 +4936,196 @@ impl MirLowering.null_ok_subclass_attr(nd: uni.AtomTrailer) -> (MirValue | None)
     self.builder().branch(done);
     self.builder().position(done);
     return self.builder().load(result, result_type);
+}
+
+impl MirLowering.later_local(nd: uni.Name) -> bool {
+    sym = nd.sym;
+    if sym is None
+        or sym.decl is None
+        or id(sym) in self.st().captured
+        or id(sym) in self.st().env_cells
+        or id(sym) in self.decl_syms
+        or self.global_declaration(sym) is not None {
+        return False;
+    }
+    owner = self.function_of(sym.decl);
+    if owner is None or owner is not self.function_of(nd) {
+        return False;
+    }
+    cursor: (uni.UniNode | None) = sym.decl.parent;
+    while cursor is not None and not isinstance(cursor, uni.Assignment) {
+        if isinstance(
+            cursor, (uni.Ability, uni.LambdaExpr, uni.Archetype, uni.Import)
+        ) {
+            return False;
+        }
+        cursor = cursor.parent;
+    }
+    return isinstance(cursor, uni.Assignment);
+}
+
+impl MirLowering.guard_unbound(fn: MirFunction) {
+    reads = self.st().user_loads;
+    if not reads or fn.resumable {
+        return;
+    }
+    named: dict[int, str] = {};
+    for blk in fn.blocks {
+        for instr in blk.instrs {
+            if instr.op == MirOp.LOAD
+                and instr.result is not None
+                and instr.result.id in reads
+                and instr.operands
+                and instr.operands[0].is_slot {
+                named[instr.operands[0].id] = reads[instr.result.id];
+            }
+        }
+    }
+    if not named {
+        return;
+    }
+    labels = [blk.label for blk in fn.blocks];
+    preds: dict[str, list[str]] = {label: [] for label in labels};
+    for blk in fn.blocks {
+        if blk.instrs and blk.instrs[-1].is_terminator() {
+            for target in blk.instrs[-1].targets {
+                if target in preds {
+                    preds[target].append(blk.label);
+                }
+            }
+        }
+    }
+    full = set(named);
+    entry_label = fn.blocks[0].label;
+    stored: dict[str, set[int]] = {};
+    for blk in fn.blocks {
+        stored[blk.label] = {
+            instr.operands[0].id
+            for instr in blk.instrs
+            if instr.op == MirOp.STORE and instr.operands[0].id in full
+        };
+    }
+    outs: dict[str, set[int]] = {label: set(full) for label in labels};
+    ins: dict[str, set[int]] = {label: set(full) for label in labels};
+    changed = True;
+    while changed {
+        changed = False;
+        for blk in fn.blocks {
+            if blk.label == entry_label {
+                now: set[int] = set();
+            } elif preds[blk.label] {
+                now = set(full);
+                for pred in preds[blk.label] {
+                    now = now & outs[pred];
+                }
+            } else {
+                now = set(full);
+            }
+            ins[blk.label] = now;
+            after = now | stored[blk.label];
+            if after != outs[blk.label] {
+                outs[blk.label] = after;
+                changed = True;
+            }
+        }
+    }
+    risky: set[int] = set();
+    for blk in fn.blocks {
+        held = set(ins[blk.label]);
+        for instr in blk.instrs {
+            if instr.op == MirOp.STORE and instr.operands[0].id in full {
+                held.add(instr.operands[0].id);
+            } elif instr.op == MirOp.LOAD
+                and instr.result is not None
+                and instr.result.id in reads
+                and instr.operands
+                and instr.operands[0].id in full
+                and instr.operands[0].id not in held {
+                risky.add(instr.operands[0].id);
+            }
+        }
+    }
+    if not risky {
+        return;
+    }
+    flags: dict[int, MirValue] = {};
+    first = fn.blocks[0];
+    at = 0;
+    while at < len(first.instrs)
+        and first.instrs[at].op in (MirOp.SLOT, MirOp.EXC_FRAME, MirOp.ALLOCA) {
+        at += 1;
+    }
+    for slot_id in sorted(risky) {
+        flag = fn.new_value(mir_bool(), f"{named[slot_id]}.bound");
+        flag.is_slot = True;
+        flag.is_temp = True;
+        unset = fn.new_value(mir_bool());
+        first.instrs.insert(at, MirInstr(op=MirOp.STORE, operands=[flag, unset]));
+        first.instrs.insert(
+            at, MirInstr(op=MirOp.CONST_BOOL, result=unset, int_value=0)
+        );
+        first.instrs.insert(
+            0, MirInstr(op=MirOp.SLOT, result=flag, type_arg=mir_bool())
+        );
+        at += 1;
+        flags[slot_id] = flag;
+    }
+    i8p = mir_c_ptr(mir_int(8, False));
+    type_id = JAC_TYPE_REGISTRY.exception_type_id("UnboundLocalError");
+    (params, ret) = mir_runtime_signature("__jac_rt_unbound_check");
+    self.mir.externs["__jac_rt_unbound_check"] = MirExtern(
+        symbol="__jac_rt_unbound_check", ret=ret, params=params
+    );
+    for blk in fn.blocks {
+        rebuilt: list[MirInstr] = [];
+        for instr in blk.instrs {
+            if instr.op == MirOp.LOAD
+                and instr.result is not None
+                and instr.result.id in reads
+                and instr.operands
+                and instr.operands[0].id in flags {
+                slot_id = instr.operands[0].id;
+                state = fn.new_value(mir_bool());
+                code = fn.new_value(mir_int(32, True, True));
+                text = fn.new_value(i8p);
+                rebuilt.append(
+                    MirInstr(op=MirOp.LOAD, result=state, operands=[flags[slot_id]])
+                );
+                rebuilt.append(
+                    MirInstr(op=MirOp.CONST_INT, result=code, int_value=type_id)
+                );
+                rebuilt.append(
+                    MirInstr(
+                        op=MirOp.CSTR,
+                        result=text,
+                        str_value=f"cannot access local variable '{named[
+                            slot_id
+                        ]}' where it is not associated with a value"
+                    )
+                );
+                rebuilt.append(
+                    MirInstr(
+                        op=MirOp.CALL_RUNTIME,
+                        operands=[state, code, text],
+                        callee="__jac_rt_unbound_check"
+                    )
+                );
+                rebuilt.append(instr);
+                continue;
+            }
+            rebuilt.append(instr);
+            if instr.op == MirOp.STORE and instr.operands[0].id in flags {
+                bound = fn.new_value(mir_bool());
+                rebuilt.append(
+                    MirInstr(op=MirOp.CONST_BOOL, result=bound, int_value=1)
+                );
+                rebuilt.append(
+                    MirInstr(
+                        op=MirOp.STORE, operands=[flags[instr.operands[0].id], bound]
+                    )
+                );
+            }
+        }
+        blk.instrs = rebuilt;
+    }
 }
