@@ -52,7 +52,8 @@ obj ArchetypeLayout {
         vtable_ptr_slot: (int | None) = None,
         type_tag_slot: (int | None) = None,
         reports_slot: (int | None) = None,
-        pending_bases: list[str] = [];
+        pending_bases: list[str] = [],
+        pending_scan: int = -1;
 }
 
 obj EnumMemberLayout {
@@ -71,7 +72,7 @@ obj EnumLayout {
         members: list[EnumMemberLayout] = [];
 }
 
-glob LAYOUT_PROGRAM: list[any] = [],
+glob LAYOUT_HUBS: list[dict[str, Module]] = [],
      ACCESSOR_SLOT_SUFFIX: dict[str, str] = {
          "property": "__get__",
          "setter": "__set__",
@@ -204,10 +205,6 @@ walker LayoutPass(CompilerPass) {
     def _collect_isinstance_targets(module: Module) -> None;
     def _build_hierarchy(archetypes: dict[str, Archetype]) -> None;
     def _compute_c3_mro(class_name: str) -> list[str];
-    def _import_parent_layouts(
-        module: Module, archetypes: dict[str, Archetype]
-    ) -> None;
-
     def _topo_sort(arch_map: dict[str, Archetype]) -> list[str];
     def _build_layout(arch: Archetype) -> ArchetypeLayout;
     def _build_enum_layouts(module: Module) -> None;

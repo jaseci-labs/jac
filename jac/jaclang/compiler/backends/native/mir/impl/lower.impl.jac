@@ -2232,6 +2232,9 @@ impl MirLowering.adopt_imported_layouts {
             }
         }
     }
+    for name in list(registry.layouts) {
+        registry.get_layout(name);
+    }
     if len(merged) > 1 {
         adopt_imported_bases(self.module);
     }
