@@ -3204,6 +3204,7 @@ impl MirLowering.foreign_function_decl(
     if unit not in self.mir.deps {
         self.mir.deps.append(unit);
     }
+    self.imported_fns[self.name_of(callee)] = (unit, symbol);
     made = MirDecl(ability=callee, symbol=symbol, params=params, ret=ret);
     self.decls[id(callee)] = made;
     return made;

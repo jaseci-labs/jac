@@ -384,7 +384,7 @@ impl settle_unit_ir(module: uni.Module) -> None {
         return;
     }
     try {
-        module.gen.llvm_ir = llvm.parse_assembly(str(unit_ir));
+        module.gen.llvm_ir = llvm.parse_assembly(str(unit_ir), llvm.create_context());
     } except RuntimeError {
         return;
     }
