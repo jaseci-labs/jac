@@ -993,15 +993,18 @@ impl MirLowering.c_declared_signature(
         or not isinstance(fn_type, FunctionType) {
         return None;
     }
+    declared = sig.get_parameters();
+    fallbacks = [p.param_type for p in fn_type.parameters];
     params: list[MirType] = [];
-    for pv in self.param_nodes(sig, False) {
+    for pv in declared {
         if pv.is_vararg or pv.is_kwargs {
             continue;
         }
+        index = declared.index(pv);
         params.append(
-            mir_int()
-                if self.c_param_borrowed(pv)
-                else self.symbol_type(pv.name.sym, pv)
+            self.c_param_plan(
+                pv, fallbacks[index] if index < len(fallbacks) else None, site
+            )[0]
         );
     }
     ret = mir_none();
