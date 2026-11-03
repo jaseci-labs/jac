@@ -249,15 +249,14 @@ impl _list_drop_str(o: int) {
 
 impl _list_drop_ref(o: int) {
     if not _collecting() {
-        n = __mem_load_i64(o + LIST_LEN);
+        i = __mem_load_i64(o + LIST_LEN);
         data = __mem_load_i64(o + LIST_DATA);
-        i = 0;
-        while i < n {
+        while i > 0 {
+            i -= 1;
             bits = __mem_load_i64(data + i * SLOT);
             if bits != 0 {
                 __jac_rt_release(bits);
             }
-            i += 1;
         }
     }
     _list_free(o);
@@ -476,6 +475,9 @@ impl __jac_rt_list_contains(lst: int, bits: int, kind: int) -> bool {
 impl __jac_rt_list_eq(a: int, b: int, kind: int) -> bool {
     if a == b {
         return True;
+    }
+    if __mem_load_i64(a + LIST_KIND) != __mem_load_i64(b + LIST_KIND) {
+        return __jac_rt_any_equal(TAG_LIST, a, TAG_LIST, b);
     }
     n = __mem_load_i64(a + LIST_LEN);
     if n != __mem_load_i64(b + LIST_LEN) {

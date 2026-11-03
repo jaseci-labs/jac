@@ -152,28 +152,39 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
     }
     b.position(dispatch);
     self.runtime("__jac_rt_exc_pop", [frame]);
-    address = self.address_of(frame);
-    type_id = self.emit_value(
-        MirOp.MEM_LOAD,
-        mir_int(32, True, True),
-        [b.binary("add", address, b.const_int(EXC_TYPE_OFFSET, mir_int()))]
-    );
-    message = self.emit_value(
-        MirOp.PTR_CAST,
-        mir_c_ptr(mir_int(8, False)),
-        [
-            self.emit_value(
-                MirOp.MEM_LOAD,
-                mir_int(),
-                [b.binary("add", address, b.const_int(EXC_MESSAGE_OFFSET, mir_int()))]
-            )
-        ]
-    );
-    origin = self.emit_value(
-        MirOp.PTR_CAST,
-        mir_c_ptr(mir_int(8, False)),
-        [self.emit_value(MirOp.MEM_LOAD, mir_int(), [address])]
-    );
+    (origin, type_id, message) = self.caught_state(frame);
+    guard: (MirValue | None) = None;
+    if nd.finally_body is not None and nd.excepts {
+        guard = fn.new_value(mir_c_ptr(mir_int(8, False)), "exc.guard");
+        fn.blocks[0].instrs.insert(0, MirInstr(op=MirOp.EXC_FRAME, result=guard));
+        self.runtime("__jac_rt_exc_push", [guard]);
+        guard_armed = self.emit_value(
+            MirOp.SETJMP,
+            mir_int(32, True, True),
+            [self.runtime_value("__jac_rt_exc_jmp_buf", [guard])]
+        );
+        handlers = fn.new_block("except.guarded");
+        escaped = fn.new_block("except.escaped");
+        b.cond_branch(
+            b.compare("eq", guard_armed, b.const_int(0, guard_armed.type)),
+            handlers,
+            escaped
+        );
+        b.position(escaped);
+        self.runtime("__jac_rt_exc_pop", [guard]);
+        (g_origin, g_type, g_message) = self.caught_state(guard);
+        self.st().finals.pop();
+        self.lower_body(nd.finally_body.body);
+        self.st().finals.append(
+            (list(nd.finally_body.body), len(self.st().loops), len(self.st().tries))
+        );
+        if not self.builder().block.terminated() {
+            self.runtime("__jac_rt_raise", [g_origin, g_type, g_message]);
+            self.builder().unreachable();
+        }
+        b.position(handlers);
+        self.st().tries.append((guard, escaped, len(self.st().loops)));
+    }
     for clause in nd.excepts {
         handler = fn.new_block("except.body");
         following = fn.new_block("except.next");
@@ -273,9 +284,16 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
         }
         self.st().caught.pop();
         if not self.builder().block.terminated() {
+            if guard is not None {
+                self.runtime("__jac_rt_exc_pop", [guard]);
+            }
             self.builder().branch(after);
         }
         b.position(following);
+    }
+    if guard is not None {
+        self.st().tries.pop();
+        self.runtime("__jac_rt_exc_pop", [guard]);
     }
     if nd.finally_body is not None {
         self.st().finals.pop();
@@ -287,6 +305,33 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
     if nd.finally_body is not None {
         self.lower_body(nd.finally_body.body);
     }
+}
+
+impl MirLowering.caught_state(frame: MirValue) -> tuple[MirValue, MirValue, MirValue] {
+    b = self.builder();
+    address = self.address_of(frame);
+    type_id = self.emit_value(
+        MirOp.MEM_LOAD,
+        mir_int(32, True, True),
+        [b.binary("add", address, b.const_int(EXC_TYPE_OFFSET, mir_int()))]
+    );
+    message = self.emit_value(
+        MirOp.PTR_CAST,
+        mir_c_ptr(mir_int(8, False)),
+        [
+            self.emit_value(
+                MirOp.MEM_LOAD,
+                mir_int(),
+                [b.binary("add", address, b.const_int(EXC_MESSAGE_OFFSET, mir_int()))]
+            )
+        ]
+    );
+    origin = self.emit_value(
+        MirOp.PTR_CAST,
+        mir_c_ptr(mir_int(8, False)),
+        [self.emit_value(MirOp.MEM_LOAD, mir_int(), [address])]
+    );
+    return (origin, type_id, message);
 }
 
 impl MirLowering.leave_tries(loop_depth: int, run_finals: bool = True) {

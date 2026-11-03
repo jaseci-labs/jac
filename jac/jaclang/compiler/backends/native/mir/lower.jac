@@ -51,6 +51,7 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      KIND_TUPLE: int = 5,
      KIND_ANY: int = 6,
      KIND_UINT: int = 7,
+     KIND_NULL: int = 8,
      TUPLE_BOX_MEMBERS: int = 8,
      NO_VALUE_KIND: int = -1,
      LIST_INDEX_MESSAGE: str = "list index out of range",
@@ -383,9 +384,12 @@ obj MirLowering {
     def symbol_type(sym: (uni.Symbol | None), site: uni.UniNode) -> MirType;
     def expr_type(nd: uni.Expr) -> MirType;
     def lower_body(stmts: Sequence[uni.UniNode]);
+    def drop_last_uses(stmt: uni.UniNode);
     def lower_stmt(nd: uni.UniNode);
     def lower_assignment(nd: uni.Assignment);
     def store_name(target: uni.Name, value: MirValue);
+    def exchange_place(arg: uni.Expr) -> MirValue;
+    def place_exchange(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirValue;
     def loop_scoped(sym: uni.Symbol) -> bool;
     def encloses(scope: (uni.UniScopeNode | None), nd: uni.UniNode) -> bool;
@@ -621,6 +625,23 @@ obj MirLowering {
     def set_method(s: MirValue, name: str, nd: uni.FuncCall) -> (MirValue | None);
     def contains(item: MirValue, holder: MirValue, site: uni.UniNode) -> MirValue;
     def container_eq(left: MirValue, right: MirValue) -> MirValue;
+    def view_kind(nd: uni.Expr) -> str;
+    def view_compare(
+        op: str, left_nd: uni.Expr, left: MirValue, right_nd: uni.Expr, right: MirValue
+    ) -> (MirValue | None);
+
+    def object_compare(
+        name: str, left: MirValue, right: MirValue, site: uni.UniNode
+    ) -> MirValue;
+
+    def dict_pairwise_eq(left: MirValue, right: MirValue) -> MirValue;
+    def user_eq_elem(t: MirType) -> bool;
+    def structural_elem(t: MirType) -> bool;
+    def list_scan(
+        lst: MirValue, item: MirValue, mode: str, site: uni.UniNode
+    ) -> MirValue;
+
+    def list_pairwise_eq(left: MirValue, right: MirValue) -> MirValue;
     def lower_for_container(nd: uni.InForStmt, holder: MirValue);
     def lower_delete(nd: uni.DeleteStmt);
     def unbind_local(target: uni.Expr) -> bool;
@@ -820,6 +841,7 @@ obj MirLowering {
     def callee_value(target: uni.Expr) -> MirValue;
     def function_value(decl: MirDecl, to: MirType) -> MirValue;
     def lower_try(nd: uni.TryStmt);
+    def caught_state(frame: MirValue) -> tuple[MirValue, MirValue, MirValue];
     def flush_stdio;
     def lower_test(nd: uni.Test) -> (MirFunction | None);
     def lower_assert(nd: uni.AssertStmt);
@@ -1205,6 +1227,7 @@ obj MirLowering {
         op: str, left: MirValue, right: MirValue, site: uni.UniNode
     ) -> MirValue;
 
+    def value_comparable(left: MirValue, right: MirValue, name: str) -> bool;
     def abstract_names(item: uni.Expr) -> list[str];
     def narrow(value: MirValue, nd: uni.Name) -> MirValue;
     def target_archetype(target: uni.Expr) -> (uni.Archetype | None);

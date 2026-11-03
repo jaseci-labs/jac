@@ -378,6 +378,31 @@ impl MirLowering.any_compare(
     );
 }
 
+impl MirLowering.value_comparable(left: MirValue, right: MirValue, name: str) -> bool {
+    shaped = (
+        MirKind.LIST,
+        MirKind.DICT,
+        MirKind.SET,
+        MirKind.TUPLE,
+        MirKind.BYTES,
+        MirKind.BYTEARRAY,
+        MirKind.STR,
+        MirKind.STR_REF,
+        MirKind.INT,
+        MirKind.FLOAT,
+        MirKind.BOOL
+    );
+    if left.type.kind not in shaped
+        or right.type.kind not in shaped
+        or (left.type.is_numeric() and right.type.is_numeric()) {
+        return False;
+    }
+    return name in ("eq", "ne")
+        or mir_is_container(left.type)
+        or mir_is_container(right.type)
+        or left.type.kind != right.type.kind;
+}
+
 impl MirLowering.any_arith(
     op: str, left: MirValue, right: MirValue, site: uni.UniNode
 ) -> MirValue {

@@ -161,10 +161,10 @@ impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
         return self.str_type();
     }
     if t.kind == MirKind.OPT {
-        return ir.LiteralStructType([ir.IntType(1), self.llvm_type(t.payload())]);
+        return ir.LiteralStructType([ir.IntType(1), self.slot_type(t.payload())]);
     }
     if t.kind == MirKind.TUPLE {
-        return ir.LiteralStructType([self.llvm_type(member) for member in t.args]);
+        return ir.LiteralStructType([self.slot_type(member) for member in t.args]);
     }
     if t.kind == MirKind.OBJ and t.name != "*" {
         return self.object_struct(t.name).as_pointer();
@@ -197,7 +197,7 @@ impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
     }
     if t.kind == MirKind.C_FN {
         return ir.FunctionType(
-            self.llvm_type(t.args[0]), [self.llvm_type(arg) for arg in t.args[1:]]
+            self.llvm_type(t.args[0]), [self.slot_type(arg) for arg in t.args[1:]]
         ).as_pointer();
     }
     if t.kind == MirKind.ENUM {
@@ -210,7 +210,7 @@ impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
 }
 
 impl MirEmitter.fn_type(params: list[MirType], ret: MirType) -> ir.FunctionType {
-    return ir.FunctionType(self.llvm_type(ret), [self.llvm_type(p) for p in params]);
+    return ir.FunctionType(self.llvm_type(ret), [self.slot_type(p) for p in params]);
 }
 
 impl MirEmitter.declare(fn: MirFunction) -> ir.Function {
@@ -288,8 +288,18 @@ impl MirEmitter.emit_function(fn: MirFunction) {
     }
 }
 
+impl MirEmitter.slot_type(t: MirType) -> ir.Type {
+    if t.kind in (MirKind.NONE, MirKind.VOID) {
+        return ir.IntType(64);
+    }
+    return self.llvm_type(t);
+}
+
 impl MirEmitter.value(v: MirValue) -> ir.Value {
     found = self.values.get(v.id);
+    if found is None and v.type.kind == MirKind.NONE {
+        return ir.Constant(ir.IntType(64), 0);
+    }
     if found is None {
         raise MirEmitError(f"MIR value {v.render()} is used before it is defined");
     }
@@ -495,8 +505,12 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
             self.blocks[instr.targets[1]]
         );
     } elif op == MirOp.RET {
-        if instr.operands {
+        if instr.operands
+            and instr.operands[0].type.kind not in (MirKind.NONE, MirKind.VOID) {
             b.ret(self.value(instr.operands[0]));
+        } elif instr.operands
+            and isinstance(b.function.ftype.return_type, ir.IntType) {
+            b.ret(ir.Constant(b.function.ftype.return_type, 0));
         } else {
             b.ret_void();
         }
@@ -1424,7 +1438,7 @@ impl MirEmitter.object_struct(name: str) -> ir.Type {
         slots[obj_def.reports_slot] = i8p;
     }
     for member in obj_def.fields {
-        slots[member.index] = self.llvm_type(member.type);
+        slots[member.index] = self.slot_type(member.type);
     }
     shape.set_body(*slots);
     self.building.discard(name);

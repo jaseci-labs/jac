@@ -1446,6 +1446,55 @@ impl MirLowering.object_eq(
     return self.truthy(verdict, site);
 }
 
+impl MirLowering.object_compare(
+    name: str, left: MirValue, right: MirValue, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    dunder = "__eq__" if name == "eq" else "__ne__";
+    first = left;
+    second = right;
+    left_arch = self.archetypes.get(left.type.name)
+        if left.type.kind == MirKind.OBJ
+        else None;
+    right_arch = self.archetypes.get(right.type.name)
+        if right.type.kind == MirKind.OBJ
+        else None;
+    if left_arch is not None
+        and right_arch is not None
+        and right_arch is not left_arch
+        and self.obj_extends(right.type.name, left.type.name)
+        and any(
+            self.name_of(method) in ("__eq__", dunder)
+            for method in self.arch_methods(right_arch)
+        ) {
+        first = right;
+        second = left;
+    }
+    holder = self.archetypes.get(first.type.name)
+        if first.type.kind == MirKind.OBJ
+        else None;
+    if name == "ne" and holder is not None {
+        method = self.find_method(holder, "__ne__");
+        if method is not None and not method.is_static {
+            decl = self.method_decl(holder, method, "__ne__", site);
+            if len(decl.params) == 1 {
+                verdict = self.invoke_method(
+                    decl,
+                    holder,
+                    "__ne__",
+                    [
+                        self.method_receiver(decl, holder, first, site),
+                        self.coerce(second, decl.params[0], site)
+                    ]
+                );
+                return self.truthy(verdict, site);
+            }
+        }
+    }
+    same = self.object_eq(first, second, site);
+    return same if name == "eq" else b.logical_not(same);
+}
+
 impl MirLowering.holder_arch(expr: uni.Expr) -> (uni.Archetype | None) {
     seen = expr.narrowed_type if expr.narrowed_type is not None else expr.type;
     found = self.arch_of_type(seen);
