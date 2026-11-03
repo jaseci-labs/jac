@@ -1880,6 +1880,30 @@ impl _run_function_with_occ(
                     await ctx.aset_user_root(root_id);
                 }
                 outcome = await run_attempt(call_state, ctx);
+                try {
+                    await ctx.mem.acommit();
+                } except ReadOnlyRetry {
+                    raise;
+                } except Exception as e {
+                    ctx.mem.abort();
+                    ctx.pending_effects.clear();
+                    logger.exception(
+                        f"{unit_key or 'request'} lost a late write: "
+                        f"{type(e).__name__}: {e}"
+                    );
+                    return {
+                        'error': (
+                            'The request committed, but a write made after that '
+                            'commit failed and was lost. Repeating the request '
+                            'may repeat the work it already saved.'
+                        ),
+                        'error_code': 'late_write_failed',
+                        'final': True
+                    };
+                }
+                if _plain_value(outcome) {
+                    ctx.mem.seal_scan();
+                }
                 ctx.mem.unit_exit();
                 settled = True;
                 streaming = isgenerator(outcome) or isinstance(outcome, AsyncGenerator);
@@ -1966,6 +1990,7 @@ impl _run_function_with_occ(
                     continue;
                 }
                 ctx.mem.abort();
+                ctx.pending_effects.clear();
                 import logging;
                 logging.getLogger('jaclang.serve').exception(
                     f"{unit_key or 'request'} raised {type(e).__name__}: {e}"

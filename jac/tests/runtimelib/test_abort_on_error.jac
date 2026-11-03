@@ -6,6 +6,9 @@ observe in-process and from what survives a restart. A successful
 walker's work still persists (positive control).
 """
 
+import asyncio;
+import json;
+import sys;
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from jaclang.testing.testing { JacTestClient }
@@ -97,5 +100,90 @@ test "successful walker still persists (positive control)" {
         assert reopened.login("abort_d", "pw12345_Secure1").ok;
         assert count_items(reopened) == 1 , "committed work must survive restart";
         reopened.close();
+    }
+}
+
+
+"""An answer to a failed late write is final on every endpoint, so a retry with
+the same key replays it. A failed first commit saved nothing, so a retry runs."""
+test "a failed late write replays under its idempotency key; a failed first commit re-runs" {
+    import from jaclang.server.endpoints.colocated {
+        _function_callback,
+        _walker_callback
+    }
+    import from jaclang.server.serving.app { transport_to_response }
+    import from jaclang.server.serving.datatypes { Headers, JSONResponse, Request }
+    import from jaclang.server.transport { TransportResponse }
+    bad = f"a{chr(0)}b";
+    with TemporaryDirectory() as tmpdir {
+        client = make_client(tmpdir);
+        try {
+            assert client.register_user("abort_e", "pw12345_Secure1").ok;
+            server = client.server;
+            intro = server.introspector;
+            mod = sys.modules[intro.target("LateWrite").__module__];
+            def by_route(path: str) -> Callable {
+                def send(body: dict[str, any], key: str) -> tuple[int, str] {
+                    got = client.post(
+                        path, json=body, headers={"X-Jac-Idempotency-Key": key}
+                    );
+                    return (got.status_code, json.dumps(got.json()));
+                }
+                return send;
+            }
+            def by_callback(callback: any) -> Callable {
+                def send(body: dict[str, any], key: str) -> tuple[int, str] {
+                    request = Request(
+                        method="POST",
+                        headers=Headers([("X-Jac-Idempotency-Key", key)]),
+                        body=json.dumps(body).encode()
+                    );
+                    async def scoped -> any {
+                        with server.request_scope() {
+                            return await callback(request);
+                        }
+                    }
+                    got = _as_any(asyncio.run(scoped()));
+                    if isinstance(got, TransportResponse) {
+                        got = transport_to_response(got);
+                    }
+                    assert isinstance(got, JSONResponse) , f"{got}";
+                    return (got.status_code, json.dumps(got.content));
+                }
+                return send;
+            }
+            walker_cb = _walker_callback(server, "abort", "LateWrite", intro, False);
+            function_cb = _function_callback(
+                server, "abort", "late_note", intro, False
+            );
+            for (label, send) in (
+                ("walker", by_route("/walker/LateWrite")),
+                ("function", by_route("/function/late_note")),
+                ("colocated walker", by_callback(walker_cb)),
+                ("colocated function", by_callback(function_cb))
+            ) {
+                mod.runs.clear();
+                answers = [send({"late": bad}, f"late-{label}") for _ in range(3)];
+                assert all(a == answers[0] for a in answers) , f"{label}: {answers}";
+                assert answers[0][0] == 500 , f"{label}: {answers[0]}";
+                assert "LATE_WRITE_FAILED" in answers[0][1] , f"{label}: {answers[0]}";
+                assert len(mod.runs) == 1 , (
+                    f"{label}: a retry re-ran the saved work, {len(mod.runs)} runs"
+                );
+            }
+            for (label, send) in (
+                ("walker", by_route("/walker/LateWrite")),
+                ("colocated walker", by_callback(walker_cb))
+            ) {
+                mod.runs.clear();
+                answers = [send({"first": bad}, f"first-{label}") for _ in range(2)];
+                assert answers[0][0] == 500 , f"{label}: {answers[0]}";
+                assert len(mod.runs) == 2 , (
+                    f"{label}: nothing was saved, so a retry must run: {len(mod.runs)}"
+                );
+            }
+        } finally {
+            client.close();
+        }
     }
 }

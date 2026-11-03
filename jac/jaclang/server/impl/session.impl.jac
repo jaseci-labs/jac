@@ -840,6 +840,14 @@ impl Session.unit_exit -> None {
 }
 
 
+impl Session.note_effect_failure(e: Exception) -> None {
+    if (self._store is not None and e is self._store.last_error)
+        or (isinstance(e, WriteConflict) and not isinstance(e, ReadOnlyRetry)) {
+        self._lost = True;
+    }
+}
+
+
 impl Session.unit_depth -> int {
     return self._active_units;
 }

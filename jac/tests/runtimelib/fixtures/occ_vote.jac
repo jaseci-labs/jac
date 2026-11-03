@@ -30,10 +30,21 @@ well as for the row, the way a saturated server does.
 
 `Deliver` reports a status dict that its own `on_commit` callback marks as
 sent, the shape of a send-then-confirm handler.
+
+`LateWrite` saves a `Memo`, then writes another from an
+`on_commit` callback. `late_runs` counts the callback's runs and `fault` makes
+it fail: `raises` (the callback's own error), `own_db` (an error on the request's
+connection), `other_db` (an error from another connection), `flush` (it reads after writing,
+so its own read flushes the write), `conflict` and `read_tier` (those exceptions inside the callback), `chain` (it registers another
+callback), `rival` (another writer moves the row it writes), `busy` (its COMMIT
+keeps failing). `LatePeek` writes from a getter while its response serializes.
+`LateFromReadTier` writes nothing itself, so it runs on the read tier.
 """
 
 import from jaclang.data.pgwire { PgWireError }
 import from time { sleep, time }
+import from uuid { UUID }
+import from jaclang.runtime.exceptions { ReadOnlyRetry, WriteConflict }
 import from jaclang.runtime.runtime { JacRuntimeInterface as Jac }
 
 glob runs: list[int] = [],
@@ -41,7 +52,9 @@ glob runs: list[int] = [],
      commit_faults: list[int] = [],
      failed_commits: list[int] = [],
      lock_exhaustions: list[int] = [],
-     exhausted_queries: list[int] = [];
+     exhausted_queries: list[int] = [],
+     late_runs: list[int] = [],
+     peek_homes: list[Root] = [];
 
 node Poll {
     has total: int = 0;
@@ -218,5 +231,106 @@ walker:pub Deliver {
         }
         Jac.on_commit(mark_sent);
         report status;
+    }
+}
+
+node Memo {
+    has text: str = "";
+}
+
+
+def write_late(home: Root, text: str, read_first: bool, fault: str) {
+    def late {
+        late_runs.append(1);
+        if read_first {
+            seen = [home-->[?:Memo]];
+        }
+        if fault == "raises" {
+            raise ValueError("the callback's own failure");
+        }
+        if fault == "own_db" {
+            request_store().rows("SELECT 1/0", {});
+        }
+        if fault == "other_db" {
+            raise PgWireError({"C": "XX000", "M": "from another connection"});
+        }
+        if fault == "conflict" {
+            raise WriteConflict(anchor_id=UUID(int=0));
+        }
+        if fault == "read_tier" {
+            raise ReadOnlyRetry(anchor_id=UUID(int=0));
+        }
+        if fault == "chain" {
+            Jac.on_commit(lambda { late_runs.append(1); });
+        }
+        if fault == "rival" {
+            poll = [home-->[?:Poll]][0];
+            rival_bump(jid(poll));
+            poll.total += 1;
+        }
+        if fault == "busy" {
+            fail_commits(commit_faults.pop());
+        }
+        home ++> Memo(text=text);
+        if fault == "flush" {
+            seen = [home-->[?:Memo]];
+        }
+    }
+    Jac.on_commit(late);
+}
+
+
+walker:pub LateWrite {
+    has main_text: str = "main",
+        text: str = "late",
+        read_first: bool = False,
+        fault: str = "";
+
+    can go with Root entry {
+        runs.append(1);
+        here ++> Memo(text=self.main_text);
+        write_late(here, self.text, self.read_first, self.fault);
+        report "noted";
+    }
+}
+
+
+node Peeky {
+    has peek: int {
+        getter {
+            if peek_homes {
+                peek_homes.pop() ++> Memo(text=f"getter{chr(0)}");
+            }
+            return 1;
+        }
+    }
+}
+
+
+walker:pub LatePeek {
+    can go with Root entry {
+        runs.append(1);
+        here ++> Memo(text="main");
+        home = here;
+        def arm {
+            peek_homes.append(home);
+        }
+        Jac.on_commit(arm);
+        report Peeky();
+    }
+}
+
+
+walker:pub LateFromReadTier {
+    can go with Root entry {
+        runs.append(1);
+        write_late(here, "late", True, "");
+    }
+}
+
+
+walker:pub Memos {
+    can read with Root entry {
+        report [m.text for m in [here-->[?:Memo]]];
     }
 }

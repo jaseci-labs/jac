@@ -1170,17 +1170,20 @@ def _vote_app(td: str) -> tuple[any, dict[str, any], any] {
     mod.failed_commits.clear();
     mod.lock_exhaustions.clear();
     mod.exhausted_queries.clear();
+    mod.late_runs.clear();
     return (exec_mgr, walkers, mod);
 }
 
 
 """Run one walker the way a transport does: inside a request scope of its
 own, on the database the process context uses."""
-def _spawn(exec_mgr: any, walker_cls: any) -> dict[str, any] {
+def _spawn(
+    exec_mgr: any, walker_cls: any, fields: (dict[str, any] | None) = None
+) -> dict[str, any] {
     ambient = JacRuntime.get_context();
     async def scoped -> any {
         with RequestScope.open(ambient.base_path_dir, ambient.full_target_path) {
-            return await exec_mgr.spawn_walker(walker_cls, {}, "voter");
+            return await exec_mgr.spawn_walker(walker_cls, fields or {}, "voter");
         }
     }
     return _as_any(asyncio.run(scoped()));
@@ -1411,6 +1414,181 @@ test "request loop: a COMMIT that never succeeds is re-run up to conflict_max_at
         }
     } finally {
         _restore_read_tier(prior);
+    }
+}
+
+
+obj LateCase {
+    has label: str,
+        target: str = "LateWrite",
+        fields: dict[str, any] = {},
+        own_session: bool = False,
+        faults: list[int] = [],
+        code: (str | None) = "late_write_failed",
+        memos: list[str] = ["main"],
+        callbacks: int = 1;
+}
+
+
+def _memos(exec_mgr: any, walkers: dict[str, any]) -> list[str] {
+    return list(_spawn(exec_mgr, walkers["Memos"])["reports"][0]);
+}
+
+
+"""What must hold when something fails after a request's first commit: the
+walker never re-runs (its work is already saved), the callback fires once, and
+a failure of the request's own database work is the answer, while a callback's
+own error, even from another database connection, stays logged."""
+test "request loop: a failure after the first commit is answered, never re-run" {
+    bad = f"a{chr(0)}b";
+    cases = [
+        LateCase("clean, write only", code=None, memos=["main", "late"]),
+        LateCase(
+            "clean, read first",
+            fields={"read_first": True},
+            code=None,
+            memos=["main", "late"]
+        ),
+        LateCase("the callback's own error", fields={"fault": "raises"}, code=None),
+        LateCase("bad late write", fields={"text": bad}),
+        LateCase(
+            "bad late write after a read", fields={"text": bad, "read_first": True}
+        ),
+        LateCase("bad late write, own session", fields={"text": bad}, own_session=True),
+        LateCase(
+            "late write loses to a rival", fields={"fault": "rival", "read_first": True}
+        ),
+        LateCase(
+            "late COMMIT keeps failing",
+            fields={"fault": "busy", "read_first": True},
+            faults=[MAX_RETRIES + 1]
+        ),
+        LateCase(
+            "database error on the request's connection", fields={"fault": "own_db"}
+        ),
+        LateCase(
+            "the callback's read flushes its bad write",
+            fields={"fault": "flush", "text": bad}
+        ),
+        LateCase(
+            "database error on another connection",
+            fields={"fault": "other_db"},
+            code=None
+        ),
+        LateCase("conflict inside the callback", fields={"fault": "conflict"}),
+        LateCase(
+            "read tier retry inside the callback",
+            fields={"fault": "read_tier"},
+            code=None
+        ),
+        LateCase(
+            "a callback's callback is dropped with the failed write",
+            fields={"fault": "chain", "text": bad},
+            own_session=True
+        ),
+        LateCase("getter writes while serializing", target="LatePeek", callbacks=0),
+        LateCase(
+            "first commit fails, shared session",
+            fields={"main_text": bad},
+            code="execution_error",
+            memos=[],
+            callbacks=0
+        ),
+        LateCase(
+            "first commit fails, own session",
+            fields={"main_text": bad},
+            own_session=True,
+            code="execution_error",
+            memos=[],
+            callbacks=0
+        )
+    ];
+    prior = _without_read_tier();
+    real_for_target = ExecutionContext.for_target;
+    async def own_session_for(target: object, parent: any, user_root_id: str) -> any {
+        context = ExecutionContext(
+            _parent=parent, _own_session=True, full_target_path=parent.full_target_path
+        );
+        await context.aset_user_root(user_root_id);
+        return context;
+    }
+    try {
+        with TemporaryDirectory() as td {
+            (exec_mgr, walkers, mod) = _vote_app(td);
+            assert "error" not in _spawn(exec_mgr, walkers["Seed"]);
+            for row in cases {
+                before = _memos(exec_mgr, walkers);
+                mod.runs.clear();
+                mod.late_runs.clear();
+                mod.commit_faults.extend(row.faults);
+                _as_any(ExecutionContext).for_target = own_session_for
+                    if row.own_session
+                    else real_for_target;
+                try {
+                    answer = _spawn(exec_mgr, walkers[row.target], row.fields);
+                } finally {
+                    _as_any(ExecutionContext).for_target = real_for_target;
+                }
+                assert answer.get("error_code") == row.code , f"{row.label}: {answer}";
+                assert len(mod.runs) == 1 , f"{row.label}: ran {len(mod.runs)} times";
+                assert len(mod.late_runs) == row.callbacks , (
+                    f"{row.label}: the callback ran {len(mod.late_runs)} times"
+                );
+                saved = _memos(exec_mgr, walkers)[len(before):];
+                assert saved == row.memos , f"{row.label}: saved {saved}";
+            }
+        }
+    } finally {
+        _restore_read_tier(prior);
+    }
+}
+
+
+test "request loop: a late write on the read tier re-runs the unit as a writer" {
+    with TemporaryDirectory() as td {
+        (exec_mgr, walkers, mod) = _vote_app(td);
+        assert _memos(exec_mgr, walkers) == [];
+        answer = _spawn(exec_mgr, walkers["LateFromReadTier"]);
+        assert "error" not in answer , f"{answer}";
+        assert len(mod.runs) == 2 , (
+            f"the first run saved nothing, so the tier re-runs it once: {len(mod.runs)}"
+        );
+        assert _memos(exec_mgr, walkers) == ["late"];
+    }
+}
+
+
+test "request loop: closing the session rescans nothing the last commit scanned" {
+    with TemporaryDirectory() as td {
+        (exec_mgr, walkers, _) = _vote_app(td);
+        ambient = JacRuntime.get_context();
+        real_unflushed = Session._unflushed;
+        scans: list[int] = [];
+        def counting(self: Session, full: bool) -> list[any] {
+            if full {
+                scans.append(1);
+            }
+            return real_unflushed(self, full);
+        }
+        at_answer: list[int] = [];
+        async def scoped {
+            with RequestScope.open(ambient.base_path_dir, ambient.full_target_path) {
+                await exec_mgr.spawn_walker(walkers["Memos"], {}, "voter");
+                at_answer.append(len(scans));
+            }
+        }
+        _as_any(Session)._unflushed = counting;
+        try {
+            asyncio.run(scoped());
+        } finally {
+            _as_any(Session)._unflushed = real_unflushed;
+        }
+        assert at_answer[0] > 0 , "the request never scanned";
+        assert len(scans) == at_answer[0] , (
+            f"close scanned again: {at_answer[0]} scans at the answer, {len(
+                scans
+            )} after"
+        );
     }
 }
 

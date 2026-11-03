@@ -34,3 +34,31 @@ walker:protect CountItems {
         report {"count": len([-->])};
     }
 }
+
+glob runs: list[int] = [];
+
+def late_save(home: Root, name: str) {
+    def late {
+        home ++> AbortItem(name=name);
+    }
+    on_commit(late);
+}
+
+walker:protect LateWrite {
+    has first: str = "first",
+        late: str = "late";
+
+    can go with Root entry {
+        runs.append(1);
+        here ++> AbortItem(name=self.first);
+        late_save(here, self.late);
+        report {"ok": True};
+    }
+}
+
+def:protect late_note(late: str = "late") -> str {
+    runs.append(1);
+    root ++> AbortItem(name="first");
+    late_save(root, late);
+    return "noted";
+}
