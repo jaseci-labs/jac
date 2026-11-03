@@ -387,7 +387,7 @@ test "the inter-chunk read timeout is set for streaming only" {
 }
 
 
-test "a streaming react call runs its tools, then yields the committed answer" {
+test "a streaming react call runs its tools, then streams the answer" {
     def get_current_date -> str {
         return "29-10-2025";
     }
@@ -399,7 +399,8 @@ test "a streaming react call runs its tools, then yields the committed answer" {
         outputs=[
             call("get_current_date", {}),
             call("calculate", {"expression": "25 * 4"}),
-            finish(answer)
+            finish(answer),
+            say(answer)
         ]
     );
 
