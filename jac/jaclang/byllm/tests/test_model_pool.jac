@@ -4,6 +4,7 @@ A pool dispatches through a litellm Router, never through its members. Fake
 `router.completion` and leave the pool itself real.
 """
 
+import asyncio;
 import unittest.mock;
 import jaclang.byllm.llm as _byllm_llm_mod;
 import from jaclang.byllm.lib { MockLLM, Model, ModelPool }
@@ -295,6 +296,7 @@ test "a sticky pool stays on the member that answered for the rest of its by cal
         ("sticky", True, "turn", [{P}], turn, [P, F, F]),
         ("sticky, streamed", True, "stream", [{P}], turn, [P, F, F]),
         ("each call starts at P", True, "twice", [{P}], ["a", "b"], [P, F, P, F]),
+        ("each async call starts at P", True, "async", [{P}], ["a", "b"], [P, F, P, F]),
         ("wraps round", True, "turn", [{P}, {F}, {P}], wraps, [P, F, F, P, P, F]),
         ("compaction", True, "turn", [{P}, {P}, {F}], summary, [P, F, F, F, P, P])
     ] {
@@ -303,6 +305,9 @@ test "a sticky pool stays on the member that answered for the rest of its by cal
         if how == "twice" {
             pool.invoke(mk_run());
             pool.invoke(mk_run());
+        } elif how == "async" {
+            asyncio.run(pool.ainvoke(mk_run()));
+            asyncio.run(pool.ainvoke(mk_run()));
         } else {
             out: any = pool.invoke(
                 mk_run(tools=[lookup], stream=how == "stream", call_params=RUN)
