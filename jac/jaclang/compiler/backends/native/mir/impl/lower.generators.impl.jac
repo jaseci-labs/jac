@@ -182,7 +182,7 @@ impl MirLowering.lower_yield(nd: uni.YieldExpr) {
                     "expression",
                     "yield inside with",
                     nd,
-                    "A native generator resumes in a fresh activation, so a context around its yield would not be entered again; move the yield out of the with."
+                    "An exception raised into a suspended native generator is not thrown at its yield, so a with around the yield would not see it; move the yield out of the with."
                 )
             );
         }

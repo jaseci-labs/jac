@@ -6357,6 +6357,7 @@ graph import compiler {
             bundled_stdlib_module_of,
             interop_callback_symbol,
             kernel_unit_path,
+            module_dotted_name,
             native_def_symbol,
             native_entry_name,
             native_glob_init_name,
@@ -13209,8 +13210,7 @@ graph import compiler.types {
             ct_setitem,
             ct_symbol,
             ct_unary,
-            int_add,
-            int_cmp
+            int_add
         },
         ct_format {
             ct_binop,
@@ -13319,6 +13319,7 @@ graph import compiler.types {
             ct_truthy,
             ct_type_name,
             dict_set,
+            int_cmp,
             mk_bool,
             mk_bytes,
             mk_dict,
