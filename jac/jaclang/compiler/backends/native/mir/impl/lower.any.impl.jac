@@ -644,6 +644,7 @@ impl MirLowering.isinstance_test(
     hit = False;
     for item in items {
         if self.abstract_names(item) {
+            self.refuse_partial_mro(value, item, site);
             hit = hit
                 or static_name in self.abstract_names(item)
                 or (
@@ -663,6 +664,7 @@ impl MirLowering.isinstance_test(
         }
         arch = self.target_archetype(item);
         if arch is not None {
+            self.refuse_opaque_abc(item, arch, site);
             found = self.isinstance_check(value, arch);
             verdict = found if verdict is None else b.binary("or", verdict, found);
             continue;
@@ -670,6 +672,11 @@ impl MirLowering.isinstance_test(
         item_type = self.expr_type(item);
         if item_type.kind == MirKind.CLASS {
             found = self.class_isinstance(value, self.lower_expr(item));
+            verdict = found if verdict is None else b.binary("or", verdict, found);
+            continue;
+        }
+        if item_type.kind == MirKind.LIST and item_type.payload().kind == MirKind.CLASS {
+            found = self.class_list_isinstance(value, self.lower_expr(item));
             verdict = found if verdict is None else b.binary("or", verdict, found);
             continue;
         }
@@ -809,6 +816,9 @@ impl MirLowering.any_isinstance(
             continue;
         }
         arch = self.target_archetype(item);
+        if arch is not None {
+            self.refuse_opaque_abc(item, arch, site);
+        }
         if arch is None {
             raise MirRefused(
                 mir_refusal(
@@ -1098,4 +1108,79 @@ impl MirLowering.store_text_result(base: MirValue, text: MirValue) {
             self.address_of(held)
         ]
     );
+}
+
+"""An ABC with no exact reduction to builtin tags is refused, not guessed.
+
+`Iterable` and its kin are inhabited by any class with the right methods, so
+answering from the builtin containers alone would be wrong for an archetype.
+"""
+impl MirLowering.refuse_opaque_abc(
+    item: uni.Expr, arch: uni.Archetype, site: uni.UniNode
+) {
+    path = arch.loc.mod_path.replace(os.sep, "/");
+    if not (
+        path.endswith("/typing.pyi")
+        or path.endswith("/collections/abc.pyi")
+        or path.endswith("/_collections_abc.pyi")
+        or path.endswith("/typing_extensions.pyi")
+    ) {
+        return;
+    }
+    raise MirRefused(
+        mir_refusal(
+            "call",
+            f"isinstance against `{arch.name.value}`",
+            site,
+            "This abstract base class has no exact native reduction; test for the concrete types instead."
+        )
+    );
+}
+
+"""A reducible ABC is exact only while the operand's whole MRO is native."""
+impl MirLowering.refuse_partial_mro(value: MirValue, item: uni.Expr, site: uni.UniNode) {
+    held = value.type.payload() if value.type.kind == MirKind.OPT else value.type;
+    if held.kind != MirKind.OBJ {
+        return;
+    }
+    arch = self.archetypes.get(held.name);
+    if arch is None or self.python_base_of(arch) is None {
+        return;
+    }
+    name = item.value
+        if isinstance(item, uni.Name)
+        else (item.right.value if isinstance(item, uni.AtomTrailer) and isinstance(item.right, uni.Name) else "");
+    raise MirRefused(
+        mir_refusal(
+            "call",
+            f"isinstance against `{name}`",
+            site,
+            "The operand's class inherits a Python-side base, so which abstract bases it inhabits is not known natively."
+        )
+    );
+}
+
+"""isinstance against a runtime-length tuple of classes: any one matching."""
+impl MirLowering.class_list_isinstance(value: MirValue, classes: MirValue) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    held = self.spill(classes);
+    verdict = self.temp_slot(mir_bool());
+    cursor = self.temp_slot(mir_int());
+    b.store(verdict, b.const_bool(False));
+    b.store(cursor, b.const_int(0, mir_int()));
+    head = fn.new_block("isa.head");
+    body = fn.new_block("isa.body");
+    done = fn.new_block("isa.done");
+    b.branch(head);
+    b.position(head);
+    at = b.load(cursor, mir_int());
+    b.cond_branch(b.compare("lt", at, self.container_len(held)), body, done);
+    b.position(body);
+    found = self.class_isinstance(value, self.list_read(held, at));
+    b.store(verdict, found);
+    b.store(cursor, b.binary("add", at, b.const_int(1, mir_int())));
+    b.cond_branch(found, done, head);
+    b.position(done);
+    return b.load(verdict, mir_bool());
 }
