@@ -99,11 +99,41 @@ impl MirLowering.unify(
         }
         return;
     }
+    if isinstance(declared, FunctionType) and isinstance(actual, FunctionType) {
+        for (want, got) in zip(declared.parameters, actual.parameters) {
+            self.unify(want.param_type, got.param_type, solution);
+        }
+        self.unify(declared.return_type, actual.return_type, solution);
+        return;
+    }
     if isinstance(declared, UnionType) {
+        if isinstance(actual, UnionType) {
+            fixed = [
+                member
+                for member in declared.types
+                if not isinstance(member, TypeVarType)
+            ];
+            rest = [
+                member
+                for member in actual.types
+                if not any(str(member) == str(known) for known in fixed)
+            ];
+            for member in declared.types {
+                if isinstance(member, TypeVarType) and len(rest) == 1 {
+                    self.unify(member, rest[0], solution);
+                    return;
+                }
+            }
+        }
         for member in declared.types {
             if isinstance(member, TypeVarType) {
                 self.unify(member, actual, solution);
                 return;
+            }
+        }
+        for member in declared.types {
+            if self.mentions_typevar(member) {
+                self.unify(member, actual, solution);
             }
         }
     }
@@ -188,10 +218,20 @@ impl MirLowering.generic_call(
     evaluator = self.prog.get_type_evaluator();
     solution: dict[str, TypeBase] = {};
     for (pv, chosen) in zip(nodes, self.bound_args(nd, ab, receiver is not None)) {
-        if pv.name.sym is not None and isinstance(chosen, uni.Expr) {
-            self.unify(
-                evaluator.get_type_of_symbol(pv.name.sym), chosen.type, solution
-            );
+        if pv.name.sym is None {
+            continue;
+        }
+        given = chosen
+            if isinstance(chosen, uni.Expr)
+            else (pv.value if isinstance(pv.value, uni.Expr) else None);
+        if given is not None {
+            self.unify(evaluator.get_type_of_symbol(pv.name.sym), given.type, solution);
+        }
+    }
+    if nd.type is not None {
+        fn_type = evaluator.get_type_of_symbol(self.ability_sym(ab));
+        if isinstance(fn_type, FunctionType) {
+            self.unify(fn_type.return_type, nd.type, solution);
         }
     }
     for wanted in self.type_param_names(ab) {

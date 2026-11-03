@@ -18,7 +18,8 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
          "BW_XOR_EQ": "BW_XOR",
          "LSHIFT_EQ": "LSHIFT",
          "RSHIFT_EQ": "RSHIFT",
-         "STAR_POW_EQ": "STAR_POW"
+         "STAR_POW_EQ": "STAR_POW",
+         "MATMUL_EQ": "DECOR_OP"
      },
      OPERATOR_SYMBOLS: dict[str, str] = {
          "PLUS": "+",
@@ -33,6 +34,21 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
          "BW_XOR": "^",
          "LSHIFT": "<<",
          "RSHIFT": ">>"
+     },
+     OPERATOR_DUNDERS: dict[str, str] = {
+         "PLUS": "add",
+         "MINUS": "sub",
+         "STAR_MUL": "mul",
+         "DIV": "truediv",
+         "FLOOR_DIV": "floordiv",
+         "MOD": "mod",
+         "STAR_POW": "pow",
+         "BW_AND": "and",
+         "BW_OR": "or",
+         "BW_XOR": "xor",
+         "LSHIFT": "lshift",
+         "RSHIFT": "rshift",
+         "DECOR_OP": "matmul"
      },
      SHIFT_MESSAGE: str = "shift count out of range",
      NEGATIVE_SHIFT_MESSAGE: str = "negative shift count",
@@ -765,7 +781,7 @@ obj MirLowering {
         named: MirValue, classes: list[str], site: uni.UniNode
     ) -> MirValue;
 
-    def layout_registries(name: str) -> list[any];
+    def layout_registries(name: str) -> list[LayoutRegistry];
     def runtime_classes(target: str, seen_from: str) -> list[str];
     def slot_groups(
         target: str, seen_from: str, name: str, index: int, method: bool
@@ -777,11 +793,13 @@ obj MirLowering {
     ) -> MirValue;
 
     def condition_only(nd: uni.Expr) -> bool;
+    def union_field_read(nd: uni.AtomTrailer) -> (MirValue | None);
     def accessor_of(
         nd: uni.AtomTrailer, kind: str
     ) -> (tuple[uni.Archetype, MirDecl] | None);
 
     def accessor_get(nd: uni.AtomTrailer) -> (MirValue | None);
+    def accessor_store(target: uni.AtomTrailer, value: MirValue) -> bool;
     def accessor_set(target: uni.AtomTrailer, nd: uni.Assignment) -> bool;
     def lower_constructor(arch: uni.Archetype) -> (MirFunction | None);
     def lower_drop(obj_def: MirObjectDef, arch: uni.Archetype) -> MirFunction;
@@ -891,6 +909,7 @@ obj MirLowering {
         op: str, name: str, left: MirValue, right: MirValue, site: uni.UniNode
     ) -> MirValue;
 
+    def store_unpacked(target: uni.Expr, part: MirValue, site: uni.UniNode);
     def unpack_into(targets: list[uni.Expr], value: MirValue, site: uni.UniNode);
     def function_of(nd: uni.UniNode) -> (uni.UniNode | None);
     def names_within(nd: uni.UniNode) -> list[uni.Name];
@@ -951,6 +970,14 @@ obj MirLowering {
     ) -> list[(uni.Expr | MirPacked | MirBound)];
 
     def super_call(nd: uni.FuncCall, name: str) -> MirValue;
+    def object_operator(
+        op: str,
+        left: MirValue,
+        right: MirValue,
+        site: uni.UniNode,
+        inplace: bool = False
+    ) -> (MirValue | None);
+
     def object_eq(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
     def aug_arith(
         op: str, current: MirValue, value: MirValue, site: uni.UniNode
@@ -966,6 +993,10 @@ obj MirLowering {
     def list_bounds(
         lst: MirValue, part: uni.Slice, site: uni.UniNode
     ) -> tuple[MirValue, MirValue, MirValue];
+
+    def list_replace_range(
+        lst: MirValue, part: uni.Slice, values: (MirValue | None), site: uni.UniNode
+    );
 
     def list_delete_range(lst: MirValue, part: uni.Slice, site: uni.UniNode);
     def direct_method_call(
@@ -1241,6 +1272,7 @@ obj MirLowering {
     def step_group(cursor: MirIterCursor, body: MirBlock, done: MirBlock) -> MirValue;
     def step_filter(cursor: MirIterCursor, body: MirBlock, done: MirBlock) -> MirValue;
     def step_user(cursor: MirIterCursor, body: MirBlock, done: MirBlock) -> MirValue;
+    def closure_adapter(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
     def call_closure(
         callee: MirValue, values: list[MirValue], site: uni.UniNode
     ) -> MirValue;
@@ -1281,6 +1313,10 @@ obj MirLowering {
     ) -> MirValue;
 
     def builtin_fold(nd: uni.FuncCall, name: str, source: uni.Expr) -> MirValue;
+    def materialize_source(
+        source: uni.Expr, elem: MirType, site: uni.UniNode
+    ) -> MirValue;
+
     def drain(value: MirValue, elem: MirType, site: uni.UniNode) -> MirValue;
     def lower_comprehension(nd: (uni.ListCompr | uni.DictCompr)) -> MirValue;
     def compr_level(
@@ -1346,6 +1382,10 @@ obj MirLowering {
     def template_of(ab: uni.Ability) -> bool;
     def stdlib_module(expr: uni.UniNode) -> (uni.Module | None);
     def module_member(unit: uni.Module, name: str) -> (uni.UniNode | None);
+    def getattr_member(call: uni.FuncCall) -> (tuple[uni.Module, str] | None);
+    def alias_scope(nd: uni.UniNode) -> (uni.UniNode | None);
+    def getattr_alias(sym: (uni.Symbol | None)) -> (tuple[uni.Module, str] | None);
+    def alias_call(nd: uni.FuncCall) -> (MirValue | None);
     def stdlib_call(nd: uni.FuncCall, target: uni.AtomTrailer) -> (MirValue | None);
     def stdlib_attr(nd: uni.AtomTrailer) -> (MirValue | None);
     def class_attr_entry(

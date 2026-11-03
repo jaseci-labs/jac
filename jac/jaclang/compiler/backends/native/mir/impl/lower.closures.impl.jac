@@ -382,6 +382,75 @@ impl MirLowering.function_value(decl: MirDecl, to: MirType) -> MirValue {
     return b.ref_cast(made, to, True);
 }
 
+impl MirLowering.closure_adapter(
+    value: MirValue, to: MirType, site: uni.UniNode
+) -> MirValue {
+    i8p = mir_c_ptr(mir_int(8, False));
+    inner_type = value.type;
+    key = f"adapt|{inner_type.render()}|{to.render()}";
+    symbol = self.adapters.get(key);
+    if symbol is None {
+        symbol = f"{self.mir.prefix}.__fn_adapt_{len(self.adapters)}";
+        fn = MirFunction(name="__fn_adapt", symbol=symbol, ret=to.args[0]);
+        first = fn.new_block("entry");
+        env = fn.new_value(i8p, "env");
+        fn.params.append(MirParam(name="env", value=env));
+        given: list[MirValue] = [];
+        for (index, ptype) in enumerate(to.args[1:]) {
+            arg = fn.new_value(ptype, f"a{index}");
+            fn.params.append(MirParam(name=f"a{index}", value=arg));
+            given.append(arg);
+        }
+        outer = self.state;
+        self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
+        try {
+            b = self.builder();
+            slot = b.binary(
+                "add",
+                self.address_of(env),
+                b.const_int(CLOSURE_CELLS_OFFSET, mir_int())
+            );
+            inner = b.ref_cast(
+                self.emit_value(MirOp.MEM_LOAD, mir_int(), [slot]), inner_type, False
+            );
+            converted = [
+                self.coerce(arg, ptype, site)
+                for (arg, ptype) in zip(given, inner_type.args[1:])
+            ];
+            result = self.call_closure(inner, converted, site);
+            if to.args[0].kind in (MirKind.NONE, MirKind.VOID) {
+                b.ret(None);
+            } else {
+                b.ret(self.coerce(result, to.args[0], site));
+            }
+        } finally {
+            self.state = outer;
+        }
+        self.nested.append(fn);
+        self.adapters[key] = symbol;
+    }
+    b = self.builder();
+    held = self.spill(value);
+    code = self.emit_value(
+        MirOp.PTR_INT,
+        mir_int(),
+        [
+            self.emit_value(
+                MirOp.FN_ADDR,
+                mir_c_fn([i8p] + to.args[1:], to.args[0]),
+                [],
+                callee=symbol
+            )
+        ]
+    );
+    made = self.runtime("__jac_rt_closure_new", [code, b.const_int(1, mir_int())]);
+    if made is None {
+        raise MirRefused(mir_refusal("function value", "adapter", site));
+    }
+    self.runtime("__jac_rt_closure_set", [made, b.const_int(0, mir_int()), held]);
+    return b.ref_cast(made, to, True);
+}
+
 impl MirLowering.flow_threaded -> bool {
     return (self.prog.options.na_gc_mode or "cycles") == "rc";
 }

@@ -79,7 +79,10 @@ impl MirEmitter.emit -> ir.Module {
     }
     for glob_def in self.mir.globals.values() {
         if glob_def.c_init is not None {
-            held: any = self.module.globals[glob_def.symbol];
+            held = self.module.globals[glob_def.symbol];
+            if not isinstance(held, ir.GlobalVariable) {
+                raise MirEmitError(f"{glob_def.symbol} is not a global variable");
+            }
             held.initializer = self.c_constant(glob_def.c_init, held.value_type);
         }
     }
@@ -113,8 +116,10 @@ impl MirEmitter.c_constant(made: MirConst, shape: ir.Type) -> ir.Constant {
                 shape, [self.c_constant(item, shape.element) for item in made.items]
             );
         }
-        laid: any = shape;
-        members = list(laid.elements);
+        if not isinstance(shape, ir.BaseStructType) {
+            raise MirEmitError(f"an aggregate C constant for {shape}");
+        }
+        members = list(shape._element_types() or []);
         return ir.Constant(
             shape,
             [
@@ -133,8 +138,10 @@ impl MirEmitter.c_constant(made: MirConst, shape: ir.Type) -> ir.Constant {
     } else {
         target = self.module.globals[made.symbol];
         if made.offset {
-            addressed: any = target.type;
-            pointee = addressed.pointee;
+            addressed = target.type;
+            pointee = addressed.pointee
+                if isinstance(addressed, ir.PointerType)
+                else None;
             steps = [
                 ir.Constant(ir.IntType(32), 0),
                 ir.Constant(ir.IntType(64), made.offset)
@@ -357,14 +364,18 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
         );
     } elif op == MirOp.LOAD {
         loaded = b.load(self.value(instr.operands[0]));
-        if self.volatile_slots and instr.operands[0].is_slot {
-            setattr(loaded, "volatile", True);
+        if self.volatile_slots
+            and instr.operands[0].is_slot
+            and isinstance(loaded, ir.LoadInstr) {
+            loaded.volatile = True;
         }
         self.bind(instr.result, loaded);
     } elif op == MirOp.STORE {
         stored = b.store(self.value(instr.operands[1]), self.value(instr.operands[0]));
-        if self.volatile_slots and instr.operands[0].is_slot {
-            setattr(stored, "volatile", True);
+        if self.volatile_slots
+            and instr.operands[0].is_slot
+            and isinstance(stored, ir.StoreInstr) {
+            stored.volatile = True;
         }
     } elif op == MirOp.BIN {
         self.bind(instr.result, self.emit_bin(b, instr));
