@@ -487,4 +487,3 @@ Rule: the draft (#10489) already wrote these as kernel cases; they land with the
 | `jac/tests/compiler/test_scope_walk.jac` | 2 | reads the tree / pass outputs | suite `scopes` |
 | `jac/tests/compiler/passes/test_sub_node_pass.jac` | 1 | reads the tree / pass outputs | suite `scopes` |
 | `jac/tests/compiler/test_context_bindings.jac` | 2 | reads the tree / pass outputs | suite `context_bindings` |
-
