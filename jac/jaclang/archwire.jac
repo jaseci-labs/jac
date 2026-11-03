@@ -6353,8 +6353,10 @@ graph import compiler {
             OSP_GRAPH_REL,
             OSP_KERNEL_REL,
             OSP_NATIVE_REL,
+            REGION_KERNEL_REL,
             bundled_stdlib_module_of,
             interop_callback_symbol,
+            is_kernel_unit_path,
             kernel_unit_path,
             native_def_symbol,
             native_entry_name,
@@ -10059,6 +10061,7 @@ graph import compiler {
             ClassType,
             EnumMemberType,
             FunctionType,
+            NeverType,
             TypeVarType,
             UnionType,
             UnknownType
@@ -10462,6 +10465,7 @@ graph import compiler.backends.native {
         POSIX_FLOOR_IR_MACOS_AARCH64,
         POSIX_FLOOR_IR_MACOS_X86_64
     }
+    region_abi ++> mir.lower { REGION_KERNEL_ABI }
     wasm_artifact ++> [
         native_link { wasm_ld_args, write_allowed_imports },
         wasm_build { rename_wasm_imports },
@@ -10672,6 +10676,7 @@ graph import compiler.backends.native.mir {
             mir_obj,
             mir_range,
             mir_ref,
+            mir_region,
             mir_str,
             mir_str_ref,
             mir_tuple,
@@ -10701,6 +10706,7 @@ graph import compiler.backends.native.mir {
             mir_obj,
             mir_opt,
             mir_range,
+            mir_region,
             mir_set,
             mir_str,
             mir_str_ref,
@@ -16140,6 +16146,7 @@ graph import runtime.python {
             PyLong_AsSsize_t,
             PyLong_AsUnsignedLongLongMask,
             PyLong_AsUnsignedLongMask,
+            PyMem_Calloc,
             PyMem_Free,
             PyMem_Malloc,
             PyNumber_Index,
@@ -22470,6 +22477,7 @@ graph import runtime.python {
             jacpy_float_unpack,
             jacpy_is_bytearray,
             jacpy_is_bytes,
+            jacpy_is_exact_long,
             jacpy_is_long,
             jacpy_is_unicode,
             jacpy_long_address,
@@ -38264,7 +38272,13 @@ graph import runtime.python.bindings {
         clinic.lsprof { convert_bool, convert_double, defining_class, return_int },
         clinic.lzma { borrowed_none, convert_buffer, convert_int, convert_ssize },
         clinic.marshal { convert_bool, convert_buffer, convert_int },
-        clinic.math { borrowed_none, convert_double, return_bool, return_double },
+        clinic.math {
+            borrowed_none,
+            convert_double,
+            failed,
+            return_bool,
+            return_double
+        },
         clinic.md5 | clinic.sha1 | clinic.sha2 { convert_bool, defining_class },
         clinic.mmap {
             borrowed_none,

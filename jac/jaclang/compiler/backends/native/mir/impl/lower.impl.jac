@@ -383,6 +383,9 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
             self.builder().store(slot, self.coerce(started, slot.type, packed));
         }
         self.prepare_cells(ab, list(body));
+        if clib_import_of(ab) is not None {
+            self.region_escape_entry();
+        }
         self.lower_body(body);
         if abstract {
             self.builder().raise_builtin(
@@ -391,6 +394,7 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
         }
         if not self.builder().block.terminated() {
             if decl.ret.kind == MirKind.NONE {
+                self.drop_regions();
                 self.builder().ret(None);
             } else {
                 self.builder().unreachable();
@@ -457,6 +461,8 @@ impl MirLowering.lower_stmt(nd: uni.UniNode) {
         self.lower_switch(nd);
     } elif isinstance(nd, uni.WithStmt) {
         self.lower_with(nd);
+    } elif isinstance(nd, uni.OpenStmt) {
+        self.lower_open(nd);
     } elif isinstance(nd, uni.Assignment) {
         self.lower_assignment(nd);
     } elif isinstance(nd, uni.ReturnStmt) {
@@ -620,7 +626,11 @@ impl MirLowering.store_name(target: uni.Name, value: MirValue) {
         }
     }
     slot = self.name_slot(target);
-    self.builder().store(slot, self.coerce(value, self.place_elem(slot), target));
+    stored = self.coerce(value, self.place_elem(slot), target);
+    if any(slot is held for held in self.st().region_slots) {
+        self.region_call("__jac_region_drop", [self.builder().load(slot, slot.type)]);
+    }
+    self.builder().store(slot, stored);
 }
 
 impl MirLowering.name_slot(target: uni.Name) -> MirValue {
@@ -652,6 +662,19 @@ impl MirLowering.local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirV
         first.instrs.insert(
             0, MirInstr(op=MirOp.SLOT, result=made, type_arg=slot_type)
         );
+    }
+    if slot_type.kind == MirKind.REGION and sym.na_region_handle {
+        empty = fn.new_value(slot_type);
+        at = 0;
+        while at < len(first.instrs)
+            and first.instrs[at].op in (MirOp.SLOT, MirOp.EXC_FRAME, MirOp.ALLOCA) {
+            at += 1;
+        }
+        first.instrs.insert(at, MirInstr(op=MirOp.STORE, operands=[made, empty]));
+        first.instrs.insert(
+            at, MirInstr(op=MirOp.CONST_NULL, result=empty, type_arg=slot_type)
+        );
+        self.st().region_slots.append(made);
     }
     self.st().locals[key] = made;
     return made;
@@ -704,11 +727,20 @@ impl MirLowering.lower_return(nd: uni.ReturnStmt) {
             raise MirRefused(mir_refusal("return", "missing value", nd));
         }
         self.leave_tries(0);
+        self.drop_regions();
         self.builder().ret(None);
         return;
     }
     value = self.lower_expr(nd.expr);
+    moved = self.c_bare(nd.expr);
+    if isinstance(moved, uni.Name) and moved.sym is not None {
+        held = self.st().locals.get(id(moved.sym));
+        if held is not None and any(held is slot for slot in self.st().region_slots) {
+            self.builder().store(held, self.builder().const_null(held.type));
+        }
+    }
     self.leave_tries(0);
+    self.drop_regions();
     if ret.kind == MirKind.NONE {
         self.builder().ret(None);
         return;
@@ -1419,6 +1451,19 @@ impl MirLowering.lower_unary(nd: uni.UnaryExpr) -> MirValue {
     if is_borrow_kind(nd.ownership) {
         return self.lower_expr(nd.operand);
     }
+    if nd.ownership is not None and int(nd.ownership.value) in (1, 4) {
+        held = self.lower_expr(nd.operand);
+        if int(nd.ownership.value) == 1 and self.is_text(held) {
+            text = self.spill(self.as_text(held));
+            return self.owned_text(
+                self.call_rt(
+                    "__jac_rt_str_new",
+                    [b.str_part(text, "data"), b.str_part(text, "len")]
+                )
+            );
+        }
+        return held;
+    }
     if op == Tok.MINUS {
         inner: uni.UniNode = nd.operand;
         while isinstance(inner, uni.AtomUnit) {
@@ -1551,6 +1596,21 @@ impl MirLowering.lower_bool(nd: uni.BoolExpr) -> MirValue {
 }
 
 impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
+    if isinstance(nd.target, uni.Name)
+        and nd.target.value in ("Region", "region_of")
+        and (
+            nd.target.sym is None
+            or nd.target.sym.decl is None
+            or nd.target.sym.decl.loc.mod_path.endswith(".pyi")
+        )
+        and (
+            nd.target.value == "region_of" or self.expr_type(nd).kind == MirKind.REGION
+        ) {
+        regional = self.region_builtin(nd, nd.target.value);
+        if regional is not None {
+            return regional;
+        }
+    }
     if is_builtin_addressof_call(nd) {
         return self.c_addressof(nd);
     }
@@ -1791,7 +1851,7 @@ impl MirLowering.truthy(value: MirValue, site: uni.UniNode) -> MirValue {
     if value.type.kind == MirKind.FLOAT {
         return b.compare("ne", value, b.const_float(0.0, value.type));
     }
-    if value.type.kind in (MirKind.C_PTR, MirKind.C_FN) {
+    if value.type.kind in (MirKind.C_PTR, MirKind.C_FN, MirKind.REGION) {
         address = self.emit_value(MirOp.PTR_INT, mir_int(64, False), [value]);
         return b.compare("ne", address, b.const_int(0, address.type));
     }
@@ -1988,6 +2048,14 @@ impl MirLowering.unify_numeric(
         wide = mir_float(64);
         return (b.convert(l, wide), b.convert(r, wide));
     }
+    if l.type is not r.type
+        and l.type.kind == MirKind.INT
+        and r.type.kind == MirKind.INT {
+        common = self.common_int(l.type, r.type, site);
+        if common is not None {
+            return (b.convert(l, common), b.convert(r, common));
+        }
+    }
     if l.type is not r.type {
         raise MirRefused(
             mir_refusal(
@@ -1998,6 +2066,26 @@ impl MirLowering.unify_numeric(
         );
     }
     return (l, r);
+}
+
+impl MirLowering.common_int(
+    left: MirType, right: MirType, site: uni.UniNode
+) -> (MirType | None) {
+    if isinstance(site, uni.Expr) and isinstance(site.type, ClassType) {
+        wanted = self.expr_type(site);
+        if wanted.kind == MirKind.INT {
+            return wanted;
+        }
+    }
+    if left.signed == right.signed {
+        return left if left.width >= right.width else right;
+    }
+    unsigned = right if left.signed else left;
+    signed = left if left.signed else right;
+    if unsigned.width < 64 {
+        return mir_int(64, True, signed.is_sized() or unsigned.is_sized());
+    }
+    return None;
 }
 
 impl MirLowering.raise_if(cond: MirValue, exception: str, message: str) {
@@ -3040,6 +3128,31 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
     }
     dispatch = found.dispatch;
     result_type = mir_spec_type(found.result_spec);
+    if dispatch == IntrinsicDispatch.REGION_TLS {
+        if name == "__jac_region_gbl_get" {
+            self.mir.global_blocks["__jac_region_gbl"] = max(
+                self.mir.global_blocks.get("__jac_region_gbl", 0), 64
+            );
+            return self.emit_value(
+                MirOp.GLOBAL_BLOCK,
+                mir_int(64),
+                [],
+                str_value="__jac_region_gbl",
+                int_value=64
+            );
+        }
+        self.mir.tls_blocks["__jac_region_tls"] = max(
+            self.mir.tls_blocks.get("__jac_region_tls", 0), 8
+        );
+        cell = self.emit_value(
+            MirOp.TLS_BLOCK, mir_int(64), [], str_value="__jac_region_tls", int_value=8
+        );
+        if name == "__jac_region_tls_get" {
+            return self.emit_value(MirOp.MEM_LOAD, mir_int(64, True, True), [cell]);
+        }
+        stored = self.intrinsic_operand(args[0], "i64");
+        return self.emit_value(MirOp.MEM_STORE, mir_none(), [cell, stored]);
+    }
     if dispatch == IntrinsicDispatch.MEM_LOAD {
         address = self.intrinsic_operand(args[0], "i64");
         return self.emit_value(MirOp.MEM_LOAD, result_type, [address]);
@@ -3304,6 +3417,27 @@ impl MirLowering.method_call(
         and right.value == "exit" {
         return self.sys_exit(nd);
     }
+    if right.value == "bit_length"
+        and not list(nd.params or [])
+        and isinstance(target.target, uni.Expr)
+        and self.expr_type(target.target).kind == MirKind.INT {
+        b = self.builder();
+        number = b.convert(self.lower_expr(target.target), mir_int());
+        negative = b.compare("lt", number, b.const_int(0, mir_int()));
+        magnitude = b.select(
+            negative, b.binary("sub", b.const_int(0, mir_int()), number), number
+        );
+        self.mir.externs["llvm.ctlz.i64"] = MirExtern(
+            symbol="llvm.ctlz.i64", ret=mir_int(), params=[mir_int(), mir_bool()]
+        );
+        zeros = self.emit_value(
+            MirOp.CALL_C,
+            mir_int(),
+            [magnitude, b.const_bool(False)],
+            callee="llvm.ctlz.i64"
+        );
+        return b.binary("sub", b.const_int(64, mir_int()), zeros);
+    }
     if right.value in ("from_bytes", "to_bytes") {
         via_bytes = self.int_bytes_call(nd, target, right.value);
         if via_bytes is not None {
@@ -3360,6 +3494,14 @@ impl MirLowering.method_call(
         and isinstance(target.target, uni.Expr)
         and is_va_list_type(target.target.type) {
         return self.va_arg(nd, target.target);
+    }
+    if receiver_type.kind == MirKind.REGION
+        and right.value == "partition"
+        and not self.call_args(nd) {
+        child = self.region_call(
+            "__jac_region_partition", [self.lower_expr(target.target)]
+        );
+        return self.emit_value(MirOp.PTR_CAST, mir_region(), [child]);
     }
     if receiver_type.kind == MirKind.C_PTR {
         receiver = self.lower_expr(target.target);

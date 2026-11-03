@@ -203,7 +203,7 @@ impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
     if t.kind == MirKind.ENUM {
         return ir.IntType(64);
     }
-    if t.is_ref() or t.kind == MirKind.CLASS {
+    if t.is_ref() or t.kind in (MirKind.CLASS, MirKind.REGION) {
         return ir.IntType(8).as_pointer();
     }
     raise MirEmitError(f"no LLVM form for MIR type {t.render()}");

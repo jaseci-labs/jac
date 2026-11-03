@@ -212,6 +212,19 @@ impl MirLowering.guard_caught(frame: MirValue) -> tuple[MirValue, MirValue, MirV
 }
 
 impl MirLowering.run_with_exit(exit_action: MirWithExit) {
+    if exit_action.region_depth is not None {
+        self.region_call(
+            "__jac_region_unwind",
+            [self.builder().load(exit_action.region_depth, mir_int())]
+        );
+        if exit_action.region_owned is not None {
+            self.region_call(
+                "__jac_region_drop",
+                [self.builder().load(exit_action.region_owned, mir_region())]
+            );
+        }
+        return;
+    }
     if exit_action.decl is not None and exit_action.held is not None {
         self.call_exit(exit_action.decl, exit_action.held, exit_action.site);
         return;

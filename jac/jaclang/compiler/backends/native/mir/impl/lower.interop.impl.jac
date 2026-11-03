@@ -673,3 +673,237 @@ impl MirLowering.va_arg(nd: uni.FuncCall, receiver: uni.Expr) -> MirValue {
     }
     return b.convert(raw, want);
 }
+
+impl MirLowering.region_call(name: str, args: list[MirValue]) -> MirValue {
+    (returns, arity) = REGION_KERNEL_ABI[name];
+    ret = mir_int() if returns else mir_none();
+    self.mir.externs[name] = MirExtern(
+        symbol=name, ret=ret, params=[mir_int() for _ in range(arity)]
+    );
+    here = os.path.realpath(self.module.loc.mod_path);
+    unit = os.path.realpath(kernel_unit_path(REGION_KERNEL_REL));
+    if unit != here and unit not in self.mir.deps {
+        self.mir.deps.append(unit);
+    }
+    words = [
+        arg
+            if arg.type.kind == MirKind.INT
+            else self.emit_value(MirOp.PTR_INT, mir_int(), [arg]) for arg in args
+    ];
+    made = self.builder().call_runtime(name, words, ret);
+    return made if made is not None else self.builder().const_bool(False);
+}
+
+impl MirLowering.region_value(value: MirValue) -> MirValue {
+    if value.type.kind == MirKind.REGION {
+        return value;
+    }
+    if value.type.kind == MirKind.OPT and value.type.payload().kind == MirKind.REGION {
+        return self.opt_get(value);
+    }
+    return self.coerce(value, mir_region(), self.module);
+}
+
+impl MirLowering.lower_open(nd: uni.OpenStmt) {
+    b = self.builder();
+    fn = self.st().fn;
+    target = self.lower_expr(nd.target);
+    if target.type.kind not in (MirKind.REGION, MirKind.OPT) {
+        raise MirRefused(
+            mir_refusal(
+                "statement",
+                f"in {target.type.render()}",
+                nd,
+                "`in r { ... }` opens a Region."
+            )
+        );
+    }
+    handle = self.region_value(target);
+    owned: (MirValue | None) = None;
+    if isinstance(self.c_bare(nd.target), uni.FuncCall) {
+        owned = self.temp_slot(mir_region());
+        b.store(owned, handle);
+    }
+    held = self.temp_slot(mir_int());
+    b.store(held, self.region_call("__jac_region_depth", []));
+    self.region_call("__jac_region_enter", [handle]);
+    (frame, dispatch) = self.guard_open();
+    self.st().tries.append((frame, dispatch, len(self.st().loops)));
+    self.st().try_exits[id(frame)] = MirWithExit(
+        site=nd, region_depth=held, region_owned=owned
+    );
+    self.lower_body(list(nd.body));
+    self.st().tries.pop();
+    after = fn.new_block("open.done");
+    if not self.builder().block.terminated() {
+        self.runtime("__jac_rt_exc_pop", [frame]);
+        self.region_call("__jac_region_unwind", [b.load(held, mir_int())]);
+        if owned is not None {
+            self.region_call("__jac_region_drop", [b.load(owned, mir_region())]);
+        }
+        self.builder().branch(after);
+    }
+    b.position(dispatch);
+    self.runtime("__jac_rt_exc_pop", [frame]);
+    (origin, type_id, message) = self.guard_caught(frame);
+    self.region_call("__jac_region_unwind", [b.load(held, mir_int())]);
+    if owned is not None {
+        self.region_call("__jac_region_drop", [b.load(owned, mir_region())]);
+    }
+    self.runtime("__jac_rt_raise", [origin, type_id, message]);
+    b.unreachable();
+    b.position(after);
+}
+
+impl MirLowering.drop_regions {
+    b = self.builder();
+    escaped = self.st().region_escape;
+    if escaped is not None {
+        fn = self.st().fn;
+        saved = b.load(escaped, mir_int());
+        restore = fn.new_block("region.restore");
+        resumed = fn.new_block("region.restored");
+        b.cond_branch(
+            b.compare("ge", saved, b.const_int(0, mir_int())), restore, resumed
+        );
+        b.position(restore);
+        self.region_call("__jac_region_restore", [saved]);
+        b.branch(resumed);
+        b.position(resumed);
+    }
+    for slot in self.st().region_slots {
+        self.region_call("__jac_region_drop", [b.load(slot, slot.type)]);
+        b.store(slot, b.const_null(slot.type));
+    }
+}
+
+impl MirLowering.region_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) {
+    args = self.call_args(nd);
+    b = self.builder();
+    if name == "Region" and not args {
+        made = self.region_call("__jac_region_new", []);
+        return self.emit_value(MirOp.PTR_CAST, mir_region(), [made]);
+    }
+    if name == "region_of" and len(args) == 1 {
+        subject = self.lower_expr(args[0]);
+        if subject.type.kind == MirKind.OPT {
+            subject = self.opt_get(subject);
+        }
+        if not mir_holds_ref(subject.type) {
+            return self.builder().const_null(self.expr_type(nd));
+        }
+        found = self.region_call("__jac_region_of", [self.address_of(subject)]);
+        wanted = self.expr_type(nd);
+        handle = self.emit_value(MirOp.PTR_CAST, mir_region(), [found]);
+        if wanted.kind != MirKind.OPT {
+            return handle;
+        }
+        present = b.compare("ne", found, b.const_int(0, mir_int()));
+        return self.emit_value(MirOp.OPT_MAKE, wanted, [handle, present]);
+    }
+    return None;
+}
+
+impl MirLowering.region_alloc(
+    size: MirValue, drop_symbol: str, local: bool, eligible: bool = True
+) -> tuple[MirValue, MirValue] {
+    b = self.builder();
+    if not eligible {
+        return (self.fresh_block(size), b.const_int(0, mir_int()));
+    }
+    fn = self.st().fn;
+    i8p = mir_c_ptr(mir_int(8, False));
+    live_at = self.emit_value(
+        MirOp.GLOBAL_BLOCK, mir_int(), [], str_value="__jac_region_gbl", int_value=64
+    );
+    self.mir.global_blocks["__jac_region_gbl"] = max(
+        self.mir.global_blocks.get("__jac_region_gbl", 0), 64
+    );
+    live = self.emit_value(
+        MirOp.MEM_LOAD,
+        mir_int(),
+        [b.binary("add", live_at, b.const_int(16, mir_int()))]
+    );
+    made = self.temp_slot(mir_int());
+    current = self.temp_slot(mir_int());
+    b.store(current, b.const_int(0, mir_int()));
+    probe = fn.new_block("alloc.region.probe");
+    decide = fn.new_block("alloc.region.decide");
+    b.cond_branch(b.compare("ne", live, b.const_int(0, mir_int())), probe, decide);
+    b.position(probe);
+    b.store(current, self.region_call("__jac_region_current", []));
+    b.branch(decide);
+    b.position(decide);
+    hdl = b.load(current, mir_int());
+    arena = fn.new_block("alloc.region");
+    heap = fn.new_block("alloc.heap");
+    done = fn.new_block("alloc.done");
+    b.cond_branch(b.compare("ne", hdl, b.const_int(0, mir_int())), arena, heap);
+    b.position(arena);
+    words = self.region_call("__jac_region_alloc", [hdl, size]);
+    self.mir.externs["memset"] = MirExtern(
+        symbol="memset", ret=i8p, params=[i8p, mir_int(32, True, True), mir_int()]
+    );
+    self.emit_value(
+        MirOp.CALL_C,
+        i8p,
+        [
+            self.emit_value(MirOp.PTR_CAST, i8p, [words]),
+            b.const_int(0, mir_int(32, True, True)),
+            size
+        ],
+        callee="memset"
+    );
+    if not local {
+        self.mir.externs[drop_symbol] = MirExtern(
+            symbol=drop_symbol, ret=mir_none(), params=[i8p]
+        );
+    }
+    dtor = self.emit_value(
+        MirOp.FN_ADDR, mir_c_fn([i8p], mir_none()), [], callee=drop_symbol
+    );
+    self.region_call("__jac_region_log_dtor", [hdl, words, dtor]);
+    b.store(made, words);
+    b.branch(done);
+    b.position(heap);
+    b.store(made, self.fresh_block(size));
+    b.branch(done);
+    b.position(done);
+    return (b.load(made, mir_int()), b.load(current, mir_int()));
+}
+
+impl MirLowering.fresh_block(size: MirValue) -> MirValue {
+    raw = self.call_rt("__jac_rt_alloc_zeroed", [size]);
+    raw.owned = False;
+    return self.address_of(raw);
+}
+
+impl MirLowering.region_escape_entry {
+    b = self.builder();
+    fn = self.st().fn;
+    saved = self.temp_slot(mir_int());
+    b.store(saved, b.const_int(-1, mir_int()));
+    live_at = self.emit_value(
+        MirOp.GLOBAL_BLOCK, mir_int(), [], str_value="__jac_region_gbl", int_value=64
+    );
+    self.mir.global_blocks["__jac_region_gbl"] = max(
+        self.mir.global_blocks.get("__jac_region_gbl", 0), 64
+    );
+    live = self.emit_value(
+        MirOp.MEM_LOAD,
+        mir_int(),
+        [b.binary("add", live_at, b.const_int(16, mir_int()))]
+    );
+    probe = fn.new_block("region.escape.probe");
+    leave = fn.new_block("region.escape");
+    body = fn.new_block("region.escape.done");
+    b.cond_branch(b.compare("ne", live, b.const_int(0, mir_int())), probe, body);
+    b.position(probe);
+    current = self.region_call("__jac_region_current", []);
+    b.cond_branch(b.compare("ne", current, b.const_int(0, mir_int())), leave, body);
+    b.position(leave);
+    b.store(saved, self.region_call("__jac_region_escape", []));
+    b.branch(body);
+    b.position(body);
+    self.st().region_escape = saved;
+}

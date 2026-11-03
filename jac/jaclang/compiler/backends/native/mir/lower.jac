@@ -203,6 +203,8 @@ glob TEXT_CASES: dict[str, int] = {
 
 obj MirWithExit {
     has site: uni.UniNode,
+        region_depth: (MirValue | None) = None,
+        region_owned: (MirValue | None) = None,
         decl: (MirDecl | None) = None,
         held: (MirValue | None) = None,
         it: (MirValue | None) = None,
@@ -251,7 +253,9 @@ obj MirFnState {
         tries: list[tuple[MirValue, MirBlock, int]] = [],
         try_exits: dict[int, MirWithExit] = {},
         finals: list[tuple[list[uni.UniNode], int, int]] = [],
-        specials: dict[str, MirValue] = {};
+        specials: dict[str, MirValue] = {},
+        region_slots: list[MirValue] = [],
+        region_escape: (MirValue | None) = None;
 }
 
 obj MirBound {
@@ -436,6 +440,17 @@ obj MirLowering {
     def c_defines(decl: uni.UniNode) -> bool;
     def declare_c_definition(ab: uni.Ability);
     def va_arg(nd: uni.FuncCall, receiver: uni.Expr) -> MirValue;
+    def region_call(name: str, args: list[MirValue]) -> MirValue;
+    def lower_open(nd: uni.OpenStmt);
+    def drop_regions;
+    def fresh_block(size: MirValue) -> MirValue;
+    def region_escape_entry;
+    def region_value(value: MirValue) -> MirValue;
+    def region_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None);
+    def region_alloc(
+        size: MirValue, drop_symbol: str, local: bool, eligible: bool = True
+    ) -> tuple[MirValue, MirValue];
+
     def list_extend_in_place(
         op: str, current: MirValue, value: MirValue, site: uni.UniNode
     ) -> (MirValue | None);
@@ -458,6 +473,10 @@ obj MirLowering {
     def method_call(nd: uni.FuncCall, target: uni.AtomTrailer) -> (MirValue | None);
     def call_args(nd: uni.FuncCall) -> list[uni.Expr];
     def coerce_place(place: MirValue) -> MirValue;
+    def common_int(
+        left: MirType, right: MirType, site: uni.UniNode
+    ) -> (MirType | None);
+
     def struct_temp_place(nd: uni.Expr) -> MirValue;
     def declare_global(nd: uni.Name) -> (MirGlobal | None);
     def declare_c_data;

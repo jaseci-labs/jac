@@ -99,6 +99,23 @@ impl MirLowering.lower_cast(nd: uni.CastExpr) -> MirValue {
     if value.type.kind == MirKind.ANY {
         return self.any_unbox(value, wanted, nd);
     }
+    if wanted.kind == MirKind.OBJ
+        and value.type.kind
+            in (
+                MirKind.STR,
+                MirKind.STR_REF,
+                MirKind.INT,
+                MirKind.FLOAT,
+                MirKind.BOOL,
+                MirKind.BYTES
+            ) {
+        b = self.builder();
+        b.raise_builtin(
+            "TypeError", f"a {value.type.render()} value is never a {wanted.name}"
+        );
+        b.position(self.st().fn.new_block("cast.dead"));
+        return b.const_null(wanted);
+    }
     if value.type.kind in (MirKind.OPT, MirKind.NONE)
         and wanted.kind not in (MirKind.OPT, MirKind.NONE) {
         exception = "TypeError";
