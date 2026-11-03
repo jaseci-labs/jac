@@ -61,6 +61,10 @@ impl MirLowering.attr_special(nd: uni.AtomTrailer) -> (MirValue | None) {
     if via_stdlib is not None {
         return via_stdlib;
     }
+    via_class = self.class_attr(nd);
+    if via_class is not None {
+        return via_class;
+    }
     member = self.enum_member(nd);
     if member is not None {
         return member;

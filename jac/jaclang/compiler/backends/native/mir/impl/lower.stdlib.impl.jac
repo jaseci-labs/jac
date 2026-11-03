@@ -126,3 +126,56 @@ impl MirLowering.stdlib_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
         )
     );
 }
+
+impl MirLowering.class_constant(arch: uni.Archetype, name: str) -> (uni.Expr | None) {
+    for holder in self.lineage(arch) {
+        for member in list(ModuleFacts.unwrap_body(holder) or []) {
+            if isinstance(member, uni.ArchHas) and member.is_static {
+                for var in member.vars {
+                    if var.name is not None
+                        and var.name.value == name
+                        and isinstance(var.value, uni.Expr) {
+                        return var.value;
+                    }
+                }
+            }
+            if isinstance(member, uni.ModuleCode) {
+                for stmt in member.body {
+                    if isinstance(stmt, uni.Assignment)
+                        and len(stmt.target) == 1
+                        and isinstance(stmt.target[0], uni.Name)
+                        and stmt.target[0].value == name
+                        and isinstance(stmt.value, uni.Expr) {
+                        return stmt.value;
+                    }
+                }
+            }
+        }
+    }
+    return None;
+}
+
+impl MirLowering.class_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
+    if not nd.is_attr
+        or not isinstance(nd.right, uni.Name)
+        or not isinstance(nd.target, uni.Expr) {
+        return None;
+    }
+    arch = self.class_reference(nd.target);
+    if arch is None {
+        return None;
+    }
+    value = self.class_constant(arch, nd.right.value);
+    if value is None
+        or not (
+            isinstance(value, (uni.Literal, uni.MultiString))
+            or (
+                isinstance(value, uni.AtomTrailer)
+                and value.is_attr
+                and self.is_enum_class(value.target)
+            )
+        ) {
+        return None;
+    }
+    return self.coerce(self.lower_expr(value), self.expr_type(nd), nd);
+}

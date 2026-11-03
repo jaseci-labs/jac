@@ -904,6 +904,10 @@ impl MirLowering.lower_binary(nd: uni.BinaryExpr) -> MirValue {
     if not isinstance(nd.op, uni.Token) {
         raise MirRefused(mir_refusal("binary operator", type(nd.op).__name__, nd));
     }
+    if nd.op.name == Tok.WALRUS_EQ and isinstance(nd.left, uni.Name) {
+        self.store_name(nd.left, self.lower_expr(nd.right));
+        return self.lower_name(nd.left);
+    }
     left = self.lower_expr(nd.left);
     right = self.lower_expr(nd.right);
     if left.type.kind == MirKind.STR
@@ -2068,6 +2072,11 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
                 return counted;
             }
         }
+        if value.type.kind == MirKind.OPT and mir_is_container(value.type.payload()) {
+            value = self.opt_unwrap_checked(
+                value, "object of type 'NoneType' has no len()"
+            );
+        }
         if mir_is_container(value.type) {
             return self.container_len(value);
         }
@@ -2300,7 +2309,7 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
                 MirOp.PTR_CAST, mir_c_ptr(box.type.payload()), [box]
             );
         }
-        arch = self.arch_of_type(target_type);
+        arch = self.holder_arch(nd.target) if isinstance(nd.target, uni.Expr) else None;
         if arch is not None {
             subject = self.lower_expr(nd.target);
             owner = self.member_owner(right);
@@ -2436,6 +2445,16 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
             else mir_void();
         if mir_is_container(target_type) {
             return self.container_get(self.lower_expr(nd.target), nd.right, nd);
+        }
+        if target_type.kind == MirKind.OPT
+            and mir_is_container(target_type.payload()) {
+            return self.container_get(
+                self.opt_unwrap_checked(
+                    self.lower_expr(nd.target), "'NoneType' object is not subscriptable"
+                ),
+                nd.right,
+                nd
+            );
         }
         if target_type.kind
             in (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY) {
@@ -2935,7 +2954,7 @@ impl MirLowering.method_call(
             return via_enum;
         }
     }
-    owner_arch = self.arch_of_type(target.target.type)
+    owner_arch = self.holder_arch(target.target)
         if isinstance(target.target, uni.Expr)
         else None;
     if owner_arch is not None

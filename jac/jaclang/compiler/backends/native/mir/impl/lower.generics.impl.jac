@@ -41,7 +41,7 @@ impl MirLowering.mentions_typevar(t: (TypeBase | None)) -> bool {
         return False;
     }
     if isinstance(t, TypeVarType) {
-        return not t.is_self;
+        return not t.is_self and not t.is_class_type_param;
     }
     if isinstance(t, FunctionType) {
         return any(self.mentions_typevar(p.param_type) for p in t.parameters)

@@ -564,8 +564,16 @@ obj MirLowering {
     def foreign_method_decl(method: uni.Ability) -> (MirDecl | None);
     def foreign_static_decl(method: uni.Ability) -> (MirDecl | None);
     def method_decl_of(method: uni.Ability) -> (MirDecl | None);
-    def foreign_accessor_decl(var: uni.HasVar, acc: uni.Ability) -> (MirDecl | None);
+    def holder_arch(expr: uni.Expr) -> (uni.Archetype | None);
+    def accessor_on(
+        arch: uni.Archetype, name: str, kind: str, nd: uni.UniNode
+    ) -> (tuple[uni.Archetype, MirDecl] | None);
 
+    def union_accessor_get(nd: uni.AtomTrailer) -> (MirValue | None);
+    def ref_word_side(value: MirValue) -> bool;
+    def ref_word(value: MirValue) -> MirValue;
+    def any_number(value: MirValue, whole: bool, site: uni.UniNode) -> MirValue;
+    def foreign_accessor_decl(var: uni.HasVar, acc: uni.Ability) -> (MirDecl | None);
     def declare_archetype(arch: uni.Archetype);
     def accessor_sig(acc: uni.Ability) -> (uni.FuncSignature | None);
     def declare_accessors(arch: uni.Archetype, self_type: MirType);
@@ -1057,6 +1065,8 @@ obj MirLowering {
     def module_member(unit: uni.Module, name: str) -> (uni.UniNode | None);
     def stdlib_call(nd: uni.FuncCall, target: uni.AtomTrailer) -> (MirValue | None);
     def stdlib_attr(nd: uni.AtomTrailer) -> (MirValue | None);
+    def class_constant(arch: uni.Archetype, name: str) -> (uni.Expr | None);
+    def class_attr(nd: uni.AtomTrailer) -> (MirValue | None);
     def mentions_typevar(t: (TypeBase | None)) -> bool;
     def resolved(t: (TypeBase | None)) -> (TypeBase | None);
     def unify(

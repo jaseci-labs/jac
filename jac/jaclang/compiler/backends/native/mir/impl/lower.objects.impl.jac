@@ -1026,6 +1026,23 @@ impl MirLowering.object_eq(
     return self.truthy(verdict, site);
 }
 
+impl MirLowering.holder_arch(expr: uni.Expr) -> (uni.Archetype | None) {
+    seen = expr.narrowed_type if expr.narrowed_type is not None else expr.type;
+    found = self.arch_of_type(seen);
+    if found is not None or not isinstance(seen, UnionType) {
+        return found;
+    }
+    members = [
+        member
+        for member in seen.types
+        if not (
+            isinstance(member, ClassType)
+            and member.shared.class_name in ("NoneType", "None")
+        )
+    ];
+    return self.arch_of_type(members[0]) if len(members) == 1 else None;
+}
+
 impl MirLowering.method_decl_of(method: uni.Ability) -> (MirDecl | None) {
     return self.decls.get(id(method))
         or self.foreign_method_decl(method)
@@ -1877,15 +1894,21 @@ impl MirLowering.accessor_of(
         or not isinstance(nd.target, uni.Expr) {
         return None;
     }
-    arch = self.arch_of_type(nd.target.type);
+    arch = self.holder_arch(nd.target);
     if arch is None {
         return None;
     }
-    var = self.nearest_has_var(arch, nd.right.value);
+    return self.accessor_on(arch, nd.right.value, kind, nd);
+}
+
+impl MirLowering.accessor_on(
+    arch: uni.Archetype, name: str, kind: str, nd: uni.UniNode
+) -> (tuple[uni.Archetype, MirDecl] | None) {
+    var = self.nearest_has_var(arch, name);
     if var is None or not var.accessors {
         return None;
     }
-    label = f"{archetype_native_name(arch)}.{nd.right.value}";
+    label = f"{archetype_native_name(arch)}.{name}";
     for acc in var.accessors {
         if acc.accessor_kind == kind {
             decl = self.decls.get(id(acc)) or self.foreign_accessor_decl(var, acc);
@@ -1911,10 +1934,77 @@ impl MirLowering.accessor_of(
     );
 }
 
+impl MirLowering.union_accessor_get(nd: uni.AtomTrailer) -> (MirValue | None) {
+    if not nd.is_attr
+        or not isinstance(nd.right, uni.Name)
+        or not isinstance(nd.target, uni.Expr) {
+        return None;
+    }
+    seen = nd.target.narrowed_type
+        if nd.target.narrowed_type is not None
+        else nd.target.type;
+    members = self.union_archetypes(seen);
+    if not members {
+        return None;
+    }
+    found = [
+        self.accessor_on(arch, nd.right.value, "property", nd) for arch in members
+    ];
+    if all(one is None for one in found) {
+        return None;
+    }
+    b = self.builder();
+    fn = self.st().fn;
+    held = self.spill(self.lower_expr(nd.target));
+    wanted = self.expr_type(nd);
+    result = self.temp_slot(wanted);
+    done = fn.new_block("uacc.done");
+    for (index, arch) in enumerate(members) {
+        bound = found[index];
+        if bound is None {
+            raise MirRefused(
+                mir_refusal(
+                    "accessor", f"{archetype_native_name(arch)}.{nd.right.value}", nd
+                )
+            );
+        }
+        (owner, decl) = bound;
+        view = held
+            if held.type is self.object_type(arch)
+            else b.ref_cast(held, self.object_type(arch), False);
+        miss: (MirBlock | None) = None;
+        if index < len(members) - 1 {
+            hit = fn.new_block("uacc.hit");
+            miss = fn.new_block("uacc.miss");
+            b.cond_branch(
+                self.isinstance_check(
+                    held if held.type.kind == MirKind.ANY else view, arch
+                ),
+                hit,
+                miss
+            );
+            b.position(hit);
+        }
+        made = self.invoke_method(
+            decl,
+            owner,
+            self.decl_label(decl),
+            [self.method_receiver(decl, owner, view, nd)]
+        );
+        b.store(result, self.coerce(made, wanted, nd));
+        b.branch(done);
+        if miss is not None {
+            b.position(miss);
+        }
+    }
+    b.position(done);
+    return b.load(result, wanted);
+}
+
 impl MirLowering.accessor_get(nd: uni.AtomTrailer) -> (MirValue | None) {
     found = self.accessor_of(nd, "property");
     if found is None {
-        return None;
+        return self.union_accessor_get(nd);
     }
     (arch, decl) = found;
     receiver = self.method_receiver(decl, arch, self.lower_expr(nd.target), nd);

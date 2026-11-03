@@ -465,6 +465,21 @@ impl MirLowering.constant_default(value: (uni.Expr | None)) -> bool {
         and self.is_enum_class(value.target) {
         return True;
     }
+    if isinstance(value, uni.Name)
+        and value.sym is not None
+        and self.global_declaration(value.sym) is not None {
+        return True;
+    }
+    if isinstance(value, (uni.ListVal, uni.SetVal))
+        and not list(value.values or [])
+        and isinstance(value.type, ClassType) {
+        return True;
+    }
+    if isinstance(value, uni.DictVal)
+        and not list(value.kv_pairs)
+        and isinstance(value.type, ClassType) {
+        return True;
+    }
     return isinstance(value.ct_value, (CtInt, CtBool, CtFloat));
 }
 

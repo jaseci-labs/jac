@@ -38,6 +38,15 @@ impl MirLowering.captured_symbols(
     for stmt in body {
         for name in self.names_within(stmt) {
             sym = name.sym;
+            if sym is not None
+                and name.value == "self"
+                and id(sym) not in seen
+                and self.st().self_value is not None
+                and self.function_of(name) is not owner {
+                seen.add(id(sym));
+                found.append(sym);
+                continue;
+            }
             if sym is None or id(sym) in seen or sym.decl is None {
                 continue;
             }
@@ -59,7 +68,10 @@ impl MirLowering.captured_symbols(
 impl MirLowering.prepare_cells(owner: uni.UniNode, body: Sequence[uni.UniNode]) {
     b = self.builder();
     for sym in self.captured_symbols(owner, body) {
-        value_type = self.symbol_type(sym, owner);
+        receiver = self.st().self_value if sym.sym_name == "self" else None;
+        value_type = receiver.type
+            if receiver is not None
+            else self.symbol_type(sym, owner);
         cell = self.runtime(
             "__jac_rt_cell_new",
             [b.const_int(self.elem_kind(value_type, owner), mir_int())]
@@ -76,6 +88,8 @@ impl MirLowering.prepare_cells(owner: uni.UniNode, body: Sequence[uni.UniNode]) 
             self.cell_write(
                 b.load(slot, mir_ref()), b.load(bound, bound.type), value_type, owner
             );
+        } elif receiver is not None {
+            self.cell_write(b.load(slot, mir_ref()), receiver, value_type, owner);
         }
     }
 }

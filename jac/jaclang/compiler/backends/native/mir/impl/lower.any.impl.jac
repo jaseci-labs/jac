@@ -185,10 +185,34 @@ impl MirLowering.identity(
         (l, r) = self.unify_numeric(left, right, site);
         return b.compare("eq", l, r);
     }
+    if MirKind.OPT in (left.type.kind, right.type.kind)
+        and self.ref_word_side(left)
+        and self.ref_word_side(right) {
+        return b.compare("eq", self.ref_word(left), self.ref_word(right));
+    }
     raise MirRefused(
         mir_refusal(
             "comparison", f"{left.type.render()} is {right.type.render()}", site
         )
+    );
+}
+
+impl MirLowering.ref_word_side(value: MirValue) -> bool {
+    t = value.type.payload() if value.type.kind == MirKind.OPT else value.type;
+    return t.kind
+        in (MirKind.OBJ, MirKind.OSP, MirKind.LIST, MirKind.DICT, MirKind.SET);
+}
+
+impl MirLowering.ref_word(value: MirValue) -> MirValue {
+    b = self.builder();
+    if value.type.kind != MirKind.OPT {
+        return self.address_of(value);
+    }
+    held = self.spill(value);
+    return b.select(
+        self.opt_present(held),
+        self.address_of(self.opt_get(held)),
+        b.const_int(0, mir_int())
     );
 }
 
