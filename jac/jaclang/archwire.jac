@@ -5600,7 +5600,9 @@ graph import compiler {
             is_ptr_type,
             is_va_list_type,
             named_function_of,
-            opaque_c_of_type
+            opaque_c_of_type,
+            variant_assignment,
+            variant_module
         },
         backends.native.mir.lower_types {
             c_builtin_kind,
@@ -5697,6 +5699,7 @@ graph import compiler {
             foreign_struct_of_type
         },
         passes.type_checker_pass.TypeCheckPass._opaque_member { opaque_c_of_type },
+        types.ct_eval.CtEvaluator._eval_symbol { variant_assignment },
         types.type_evaluator { is_va_list_type },
         types.type_evaluator.TypeEvaluator._c_lent_args { c_abi_callee, c_lent_elem },
         types.type_evaluator.TypeEvaluator._is_typed_c_declaration { c_builtin_kind },
@@ -6382,7 +6385,6 @@ graph import compiler {
             native_unit_identity,
             native_unit_prefix,
             native_unit_spelling,
-            native_variant_of,
             resolve_native_module
         },
         backends.native.region_abi._region_layout_facts {
@@ -6404,6 +6406,7 @@ graph import compiler {
             native_test_symbol,
             native_unit_prefix
         },
+        c_interop.variant_module { native_variant_of },
         driver.boundary_classify._default_codespace_for { effective_default_codespace },
         driver.boundary_classify.import_binds_client_native
             | driver.session_compile.drop_native_bindings {
@@ -7964,6 +7967,7 @@ graph import compiler {
             Expr,
             GlobalVars,
             Import,
+            Module,
             Name,
             ParamVar,
             Symbol,

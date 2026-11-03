@@ -382,6 +382,21 @@ impl __jac_rt_list_push(lst: int, bits: int, kind: int) {
     __jac_rt_elem_retain(bits, _held(lst, kind));
 }
 
+impl __jac_rt_list_push_words(lst: int, n: int) -> int {
+    have = __mem_load_i64(lst + LIST_LEN);
+    if have + n > __mem_load_i64(lst + LIST_CAP) {
+        __jac_rt_list_reserve(lst, have + n);
+    }
+    at = __mem_load_i64(lst + LIST_DATA) + have * SLOT;
+    i = 0;
+    while i < n {
+        __mem_store_i64(at + i * SLOT, 0);
+        i += 1;
+    }
+    __mem_store_i64(lst + LIST_LEN, have + n);
+    return at;
+}
+
 impl __jac_rt_list_set(lst: int, i: int, bits: int, kind: int) {
     at = __mem_load_i64(lst + LIST_DATA) + i * SLOT;
     old = __mem_load_i64(at);
