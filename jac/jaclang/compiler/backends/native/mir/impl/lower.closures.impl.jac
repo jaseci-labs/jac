@@ -658,3 +658,90 @@ impl MirLowering.flow_thunk(decl: MirDecl) -> str {
     self.nested.append(fn);
     return symbol;
 }
+
+"""`obj.method` read as a value: a closure that holds the receiver.
+
+Calling it later dispatches through the receiver's class, so an override is
+the method that runs and a field the receiver changed since is the one read.
+"""
+impl MirLowering.bound_method_value(nd: uni.AtomTrailer) -> (MirValue | None) {
+    if not nd.is_attr
+        or not isinstance(nd.right, uni.Name)
+        or not isinstance(nd.target, uni.Expr) {
+        return None;
+    }
+    owner_type = self.expr_type(nd.target);
+    if owner_type.kind != MirKind.OBJ {
+        return None;
+    }
+    arch = self.archetypes.get(owner_type.name);
+    if arch is None {
+        return None;
+    }
+    name = nd.right.value;
+    method = self.find_method(arch, name);
+    if method is None or method.is_static {
+        return None;
+    }
+    wanted = self.expr_type(nd);
+    if wanted.kind != MirKind.FN {
+        return None;
+    }
+    decl = self.method_decl(arch, method, name, nd);
+    i8p = mir_c_ptr(mir_int(8, False));
+    key = f"bound|{decl.symbol}|{owner_type.name}";
+    symbol = self.adapters.get(key);
+    if symbol is None {
+        symbol = f"{self.mir.prefix}.__bound_{len(self.adapters)}";
+        fn = MirFunction(name="__bound", symbol=symbol, ret=decl.ret);
+        first = fn.new_block("entry");
+        env = fn.new_value(i8p, "env");
+        fn.params.append(MirParam(name="env", value=env));
+        given: list[MirValue] = [];
+        for (index, ptype) in enumerate(decl.params) {
+            arg = fn.new_value(ptype, f"a{index}");
+            fn.params.append(MirParam(name=f"a{index}", value=arg));
+            given.append(arg);
+        }
+        outer = self.state;
+        self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
+        try {
+            b = self.builder();
+            slot = b.binary(
+                "add", self.address_of(env), b.const_int(CLOSURE_CELLS_OFFSET, mir_int())
+            );
+            receiver = b.ref_cast(
+                self.emit_value(MirOp.MEM_LOAD, mir_int(), [slot]), owner_type, False
+            );
+            held = self.method_receiver(decl, arch, receiver, nd);
+            result = self.invoke_method(decl, arch, name, [held] + given);
+            if decl.ret.kind in (MirKind.NONE, MirKind.VOID) {
+                b.ret(None);
+            } else {
+                b.ret(result);
+            }
+        } finally {
+            self.state = outer;
+        }
+        self.nested.append(fn);
+        self.adapters[key] = symbol;
+    }
+    b = self.builder();
+    receiver = self.spill(self.lower_expr(nd.target));
+    code = self.emit_value(
+        MirOp.PTR_INT,
+        mir_int(),
+        [
+            self.emit_value(
+                MirOp.FN_ADDR, mir_c_fn([i8p] + decl.params, decl.ret), [], callee=symbol
+            )
+        ]
+    );
+    made = self.runtime("__jac_rt_closure_new", [code, b.const_int(1, mir_int())]);
+    if made is None {
+        raise MirRefused(mir_refusal("function value", f"{name} bound", nd));
+    }
+    self.runtime("__jac_rt_closure_set", [made, b.const_int(0, mir_int()), receiver]);
+    value = b.ref_cast(made, mir_fn(decl.params, decl.ret), True);
+    return value if value.type is wanted else self.coerce(value, wanted, nd);
+}

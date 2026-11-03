@@ -3551,6 +3551,10 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
     if via_class_attr is not None {
         return via_class_attr;
     }
+    bound_method = self.bound_method_value(nd);
+    if bound_method is not None {
+        return bound_method;
+    }
     if not nd.is_attr
         and isinstance(nd.right, uni.IndexSlice)
         and isinstance(nd.target, uni.Expr)
