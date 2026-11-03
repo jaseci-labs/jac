@@ -3574,6 +3574,10 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
     if bound_method is not None {
         return bound_method;
     }
+    subclass_read = self.null_ok_subclass_attr(nd);
+    if subclass_read is not None {
+        return subclass_read;
+    }
     if not nd.is_attr
         and isinstance(nd.right, uni.IndexSlice)
         and isinstance(nd.target, uni.Expr)
@@ -4869,4 +4873,68 @@ impl MirLowering.lower_discarded(nd: uni.Expr) {
         self.builder().branch(done);
     }
     self.builder().position(done);
+}
+
+"""`a?.f` where only subclasses of `a`'s class declare `f`.
+
+The read answers the subclass field for an instance of one, and None for an
+instance that has no such field, as the Python tier's null-safe read does.
+"""
+impl MirLowering.null_ok_subclass_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
+    if not nd.is_null_ok
+        or not nd.is_attr
+        or not isinstance(nd.right, uni.Name)
+        or not isinstance(nd.target, uni.Expr) {
+        return None;
+    }
+    owner_type = self.expr_type(nd.target);
+    held_type = owner_type.payload() if owner_type.kind == MirKind.OPT else owner_type;
+    if held_type.kind != MirKind.OBJ {
+        return None;
+    }
+    arch = self.archetypes.get(held_type.name);
+    name = nd.right.value;
+    if arch is None or self.object_def(arch).field(name) is not None {
+        return None;
+    }
+    carriers = [
+        sub
+        for (sub_name, sub) in self.archetypes.items()
+        if sub_name != held_type.name
+            and self.obj_extends(sub_name, held_type.name)
+            and self.object_def(sub).field(name) is not None
+    ];
+    if not carriers {
+        return None;
+    }
+    b = self.builder();
+    fn = self.st().fn;
+    result_type = self.expr_type(nd);
+    result = self.temp_slot(result_type);
+    b.store(result, self.coerce(self.none_value(), result_type, nd));
+    done = fn.new_block("nullok.sub.done");
+    receiver = self.spill(self.lower_expr(nd.target));
+    if receiver.type.kind == MirKind.OPT {
+        present = fn.new_block("nullok.sub.some");
+        b.cond_branch(self.opt_present(receiver), present, done);
+        b.position(present);
+        receiver = self.spill(self.opt_get(receiver));
+    }
+    for sub in carriers {
+        hit = fn.new_block("nullok.sub.hit");
+        miss = fn.new_block("nullok.sub.miss");
+        self.builder().cond_branch(self.isinstance_check(receiver, sub), hit, miss);
+        self.builder().position(hit);
+        narrowed = self.builder().ref_cast(receiver, self.object_type(sub), False);
+        place = self.field_place(narrowed, sub, name, nd);
+        self.builder().store(
+            result,
+            self.coerce(self.builder().load(place, self.place_elem(place)), result_type, nd)
+        );
+        self.builder().branch(done);
+        self.builder().position(miss);
+    }
+    self.builder().branch(done);
+    self.builder().position(done);
+    return self.builder().load(result, result_type);
 }
