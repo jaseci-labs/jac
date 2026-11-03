@@ -659,15 +659,11 @@ impl MirLowering.flow_thunk(decl: MirDecl) -> str {
     return symbol;
 }
 
-"""`obj.method` read as a value: a closure that holds the receiver.
-
-Calling it later dispatches through the receiver's class, so an override is
-the method that runs and a field the receiver changed since is the one read.
-"""
 impl MirLowering.bound_method_value(nd: uni.AtomTrailer) -> (MirValue | None) {
     if not nd.is_attr
         or not isinstance(nd.right, uni.Name)
-        or not isinstance(nd.target, uni.Expr) {
+        or not isinstance(nd.target, uni.Expr)
+        or not isinstance(nd.target.type, ClassType) {
         return None;
     }
     owner_type = self.expr_type(nd.target);

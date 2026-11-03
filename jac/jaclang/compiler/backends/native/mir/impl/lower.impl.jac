@@ -4869,16 +4869,12 @@ impl MirLowering.lower_discarded(nd: uni.Expr) {
     self.builder().position(done);
 }
 
-"""`a?.f` where only subclasses of `a`'s class declare `f`.
-
-The read answers the subclass field for an instance of one, and None for an
-instance that has no such field, as the Python tier's null-safe read does.
-"""
 impl MirLowering.null_ok_subclass_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
     if not nd.is_null_ok
         or not nd.is_attr
         or not isinstance(nd.right, uni.Name)
-        or not isinstance(nd.target, uni.Expr) {
+        or not isinstance(nd.target, uni.Expr)
+        or not isinstance(nd.target.type, (ClassType, UnionType)) {
         return None;
     }
     owner_type = self.expr_type(nd.target);
