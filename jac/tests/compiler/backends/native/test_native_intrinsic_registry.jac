@@ -124,9 +124,7 @@ def _probe_source(intr: any) -> str {
         return "def probe(x: int) -> int { " + intr.name + "(); return x + 7; }\n";
     }
     if intr.dispatch in (IntrinsicDispatch.MEM_LOAD, IntrinsicDispatch.MEM_STORE) {
-        spec = intr.result_spec
-            if intr.dispatch == IntrinsicDispatch.MEM_LOAD
-            else intr.param_specs[1];
+        spec = "i" + intr.name.rsplit("_i", 1)[1];
         return (
             RAW_MEM_IMPORTS
             + "def probe(x: int) -> int { p = malloc(8); __mem_store_"
@@ -287,7 +285,7 @@ test "every registry intrinsic lowers through its registered emitter" {
     }
 }
 
-test "32 bit memory operations preserve adjacent storage and signed values" {
+test "32 bit memory operations preserve adjacent storage and zero extend" {
     (prog, ir_mod) = _compile_src(
         RAW_MEM_IMPORTS
             + "def probe(x: int) -> int { p = malloc(8); "
@@ -299,9 +297,9 @@ test "32 bit memory operations preserve adjacent storage and signed values" {
     eng = ir_mod.gen.native_engine;
     assert eng is not None;
     fn = _get_func(eng, "probe", ctypes.c_int64, ctypes.c_int64);
-    assert fn(-123) == 0;
+    assert fn(-123) == 4294967296;
     assert fn(2147483647) == 2147483770;
-    assert fn(-2147483648) == -2147483525;
+    assert fn(-2147483648) == 2147483771;
 }
 
 test "gc-gated intrinsic is a declared no-op outside its gc mode" {

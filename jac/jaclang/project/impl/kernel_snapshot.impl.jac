@@ -287,6 +287,7 @@ impl session_inputs(
         ct_environment=host.ct_environment(),
         stub_catalog_active=catalog_active,
         stub_catalog_dir=catalog_dir,
+        path_sentinel=PRECOMPILE_SENTINEL,
         stub_catalog_file=origin.path if origin is not None else "",
         stub_catalog_offset=origin.offset if origin is not None else 0,
         stub_catalog_length=origin.length if origin is not None else 0,
@@ -309,23 +310,6 @@ impl session_inputs(
 
 impl KernelSnapshot.inputs -> KernelInputs {
     return self.seed;
-}
-
-impl KernelSnapshot.record_interface(
-    program: JacProgram, module: uni.Module, products: UnitProducts
-) {
-    import base64;
-
-    evaluator = program.get_type_evaluator();
-    pkg_dir = os.path.dirname(os.path.realpath(module.loc.mod_path));
-    try {
-        data = build_module_iface(module, evaluator, pkg_dir);
-        shape = module_iface_shape(module, evaluator, pkg_dir);
-    } except IncoherentInterface {
-        return;
-    }
-    products.iface = base64.b64encode(data).decode("ascii");
-    products.iface_shape = shape;
 }
 
 impl KernelSnapshot.text -> str {
