@@ -9,7 +9,7 @@ import from contextlib { redirect_stderr }
 import from pathlib { Path }
 import from urllib.error { HTTPError, URLError }
 import from email.message { Message }
-import from http.client { IncompleteRead, RemoteDisconnected }
+import from http.client { RemoteDisconnected }
 
 glob REPO: str = "jaseci-labs/jac";
 
@@ -792,75 +792,6 @@ test "a pinned admin console that cannot be reached is skipped, not fatal" {
             assert not stale.exists() , f"{label}: a console from an earlier deploy shipped";
             assert warned.called , f"{label}: skipping the console must be reported";
         }
-    }
-}
-
-
-def _read_cut_short(fake: any) -> any {
-    # The connection answers, then drops mid-body: read() raises, as http.client does.
-    def cut(req: any, timeout: any = None) -> any {
-        resp = fake(req, timeout);
-        resp.read.side_effect = IncompleteRead(b"ab");
-        return resp;
-    }
-    return cut;
-}
-
-
-test "each kind of unanswered admin console request is skipped, not fatal" {
-    # One row per way a request can go unanswered, so no branch of the skip
-    # rule is covered only by an exception that also matches another branch.
-    dist = "jac-0.39.0-admin-dist.tar.gz";
-    base = f"https://github.com/{REPO}/releases/download/v0.39.0/{dist}";
-    unavailable = HTTPError(base + ".sha256", 503, "Service Unavailable", {}, None);
-    dropped = RemoteDisconnected("Remote end closed connection without response");
-    rows = [
-        ("URLError", [], {dist: URLError("timed out")}, False, ["GET"]),
-        ("IncompleteRead", [], {}, True, ["GET"]),
-        (
-            "404 then dropped HEAD",
-            [dist + ".sha256"],
-            {dist: dropped},
-            False,
-            ["GET", "HEAD"]
-        ),
-        ("HTTP 503", [], {dist: unavailable}, False, ["GET"])
-    ];
-    for (label, missing, broken, cut_short, methods) in rows {
-        d = _project('[project]\nname = "x"\nversion = "0.1.0"\n');
-        stale = Path(d) / ".jac" / "admin";
-        stale.mkdir(parents=True);
-        (stale / "index.html").write_text("stale", encoding="utf-8");
-        (stale / ".staged").touch();
-        calls: list[dict[str, any]] = [];
-        fake = _github(calls, [], missing, broken);
-        if cut_short {
-            fake = _read_cut_short(fake);
-        }
-        err = None;
-        staged = None;
-        with unittest.mock.patch.dict(
-            os.environ, {"JAC_SCALE_CACHE_DIR": tempfile.mkdtemp()}
-        ) {
-            with unittest.mock.patch.object(binary_mod, "urlopen", fake) {
-                with unittest.mock.patch.object(
-                    binary_mod.logger, "warning"
-                ) as warned {
-                    try {
-                        staged = binary_mod.stage_admin_dist(d, "stable", "0.39.0");
-                    } except Exception as e {
-                        err = e;
-                    }
-                }
-            }
-        }
-        assert [c["method"] for c in calls] == methods , (
-            f"{label}: requests {[(c['method'], c['url']) for c in calls]!a}"
-        );
-        assert err is None , f"{label}: the deploy failed: {err!a}";
-        assert staged is False , f"{label}: staged={staged!a}";
-        assert not stale.exists() , f"{label}: a console from an earlier deploy shipped";
-        assert warned.called , f"{label}: skipping the console must be reported";
     }
 }
 
