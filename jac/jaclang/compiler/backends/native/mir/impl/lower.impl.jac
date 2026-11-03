@@ -528,6 +528,11 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
         and mir_is_container(self.expr_type(target.target))
         and nd.value is not None {
         holder = self.lower_expr(target.target);
+        if holder.type.kind == MirKind.OPT {
+            holder = self.opt_unwrap_checked(
+                holder, "'NoneType' object does not support item assignment"
+            );
+        }
         value = self.lower_expr(nd.value);
         if nd.aug_op is not None {
             op = AUG_OPERATORS.get(nd.aug_op.name);
@@ -623,14 +628,14 @@ impl MirLowering.local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirV
     if found is not None {
         return found;
     }
-    slot_type = self.symbol_type(sym, site);
     namesake = self.st().local_names.get(sym.sym_name)
         if not self.comprehension_scoped(sym)
         else None;
-    if namesake is not None and namesake.type is slot_type {
+    if namesake is not None {
         self.st().locals[key] = namesake;
         return namesake;
     }
+    slot_type = self.symbol_type(sym, site);
     fn = self.st().fn;
     first = fn.blocks[0];
     made = fn.new_value(slot_type, sym.sym_name);
@@ -936,9 +941,7 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
     if nd.sym is not None
         and id(nd.sym) not in self.st().locals
         and nd.sym.sym_name in self.st().local_names
-        and not self.comprehension_scoped(nd.sym)
-        and self.st().local_names[nd.sym.sym_name].type
-            is self.symbol_type(nd.sym, nd) {
+        and not self.comprehension_scoped(nd.sym) {
         self.st().locals[id(nd.sym)] = self.st().local_names[nd.sym.sym_name];
     }
     if nd.sym is None or id(nd.sym) not in self.st().locals {
@@ -1168,10 +1171,10 @@ impl MirLowering.arith(
         message = f"unsupported operand type(s) for {symbol}: '{names[0]}' and '{names[
             1
         ]}'";
-        if left.type.kind == MirKind.OPT and left.type.payload().is_numeric() {
+        if left.type.kind == MirKind.OPT {
             left = self.opt_unwrap_checked(left, message);
         }
-        if right.type.kind == MirKind.OPT and right.type.payload().is_numeric() {
+        if right.type.kind == MirKind.OPT {
             right = self.opt_unwrap_checked(right, message);
         }
     }
@@ -1942,6 +1945,16 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
     }
     if mir_is_container(to) and value.type.kind == to.kind {
         return self.container_rebuild(value, to, site);
+    }
+    if to.kind == MirKind.TUPLE
+        and value.type.kind == MirKind.TUPLE
+        and len(to.args) == len(value.type.args) {
+        held = self.spill(value);
+        members = [
+            self.coerce(self.tuple_get(held, index), member, site)
+            for (index, member) in enumerate(to.args)
+        ];
+        return self.emit_value(MirOp.TUPLE_MAKE, to, members);
     }
     if to.kind == MirKind.LIST and value.type.kind == MirKind.TUPLE {
         held = self.spill(value);

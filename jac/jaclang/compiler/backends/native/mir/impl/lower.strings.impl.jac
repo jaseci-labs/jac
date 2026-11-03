@@ -265,8 +265,8 @@ impl MirLowering.text_method(
                 stop = self.int_arg(end_nd, TEXT_STOP);
                 found = self.temp_slot(mir_bool());
                 b.store(found, b.const_bool(False));
-                (item, _, head, after) = self.each_begin(self.spill(given), nd);
-                affix = self.spill(self.as_text(item));
+                (affix_item, _, head, after) = self.each_begin(self.spill(given), nd);
+                affix = self.spill(self.as_text(affix_item));
                 hit = self.call_rt(
                     "__jac_rt_str_affix",
                     [
