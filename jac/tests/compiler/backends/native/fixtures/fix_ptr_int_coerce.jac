@@ -1,37 +1,29 @@
-"""Fixture for pointer-to-integer coercion fix test.
+"""Fixture for pointer and integer coercion at the C boundary.
 
-Declares 'strlen' with an 'int' parameter instead of 'str'.  In LLVM IR
-the Jac 'str' type is i8*, while 'int' is i64.  When calling strlen("hello"),
-the compiler must emit a ptrtoint instruction to convert the i8* string
-pointer to i64.  Before the fix _coerce_type had no generic PointerType→IntType
-path and the call crashed with an IR type mismatch.
-
-Also declares 'calloc' with return type 'int' and assigns the result to a
-'str' local to test the IntType→PointerType (inttoptr) coercion direction.
+C memory stays on the explicit C surface: `ptr[u8]` for C strings and
+buffers. `strlen` here takes the address as an `int`, so a `ptr[u8]`
+argument converts to its integer address (ptrtoint); `calloc` returns its
+buffer as an `int`, and `ptr[u8](...)` turns the address back into a
+pointer (inttoptr) before it is measured and freed.
 """
 
 import from "/usr/lib/x86_64-linux-gnu/libc.so.6" {
-    def strlen(s: int) -> int;      # int param forces ptrtoint(str → i64)
-    def calloc(n: int, sz: int) -> int;  # int return forces inttoptr when stored as str
-    def free(p: str);
+    def strlen(s: int) -> int;  def calloc(n: int, sz: int) -> int;  def free(
+        p: ptr[u8]
+    );
 }
 
-def:pub test_ptrtoint_strlen() -> int {
-    # "hello" is i8* but strlen param is i64 — compiler emits ptrtoint
-    return strlen("hello");
+def:pub test_ptrtoint_strlen -> int {
+    return strlen(int(ptr[u8]("hello")));
 }
 
-def:pub test_ptrtoint_strlen_empty() -> int {
-    return strlen("");
+def:pub test_ptrtoint_strlen_empty -> int {
+    return strlen(int(ptr[u8]("")));
 }
 
-def:pub test_inttoptr_calloc() -> int {
-    # calloc returns i64 (declared as int); we assign to str (i8*) — inttoptr
-    buf: str = calloc(16, 1);
-    # A non-null buffer can be used as a string (starts as all-zeros → empty)
-    result: int = strlen(buf);
+def:pub test_inttoptr_calloc -> int {
+    buf = ptr[u8](calloc(16, 1));
+    result = strlen(int(buf));
     free(buf);
-    return result;  # calloc zeroes memory, so strlen == 0
+    return result;
 }
-
-with entry {}

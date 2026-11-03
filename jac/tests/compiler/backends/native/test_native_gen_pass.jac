@@ -4907,7 +4907,7 @@ test "clib vtable: C invokes Jac callback through trampoline (issue #6570)" {
         "            on_event: Callable[[i32, i32], i32] = 0,",
         "            on_close: Callable[[int], None] = 0;",
         "    }",
-        "    def invoke_event(h: int, a: i32, b: i32) -> int;",
+        "    def invoke_event(h: &event_handler_vt, a: i32, b: i32) -> int;",
         "}",
         "",
         "def _on_event(a: i32, b: i32) -> i32 {",
@@ -4916,22 +4916,21 @@ test "clib vtable: C invokes Jac callback through trampoline (issue #6570)" {
         "",
         "def run_with_cb(a: int, b: int) -> int {",
         "    h = event_handler_vt(size=24, on_event=_on_event);",
-        "    return invoke_event(h, i32(a), i32(b));",
+        "    return invoke_event(&h, i32(a), i32(b));",
         "}",
         "",
         "def run_null(a: int, b: int) -> int {",
         "    h = event_handler_vt(size=24);",
-        "    return invoke_event(h, i32(a), i32(b));",
+        "    return invoke_event(&h, i32(a), i32(b));",
         "}",
         "",
-        "def make_handler_ptr() -> int {",
-        "    h = event_handler_vt(size=24, on_event=_on_event);",
-        "    return h;",
+        "def make_handler() -> event_handler_vt {",
+        "    return event_handler_vt(size=24, on_event=_on_event);",
         "}",
         "",
         "def invoke_after_maker_returns(a: int, b: int) -> int {",
-        "    p = make_handler_ptr();",
-        "    return invoke_event(p, i32(a), i32(b));",
+        "    h = make_handler();",
+        "    return invoke_event(&h, i32(a), i32(b));",
         "}",
 
     ];
@@ -4962,9 +4961,9 @@ test "clib vtable: C invokes Jac callback through trampoline (issue #6570)" {
         eng, "run_null", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
     );
     assert run_null(3, 4) == -1;
-    # CEF pattern: the vtable is registered by one function and invoked by
-    # the C runtime after that function has returned — the C-owned flat
-    # allocation must outlive the creating scope (issue #6571).
+    # CEF pattern: one function builds the vtable and returns it by value;
+    # the caller keeps it and C invokes the callback through a pointer to it
+    # after the maker has returned (issue #6571).
     invoke_later = get_func(
         eng,
         "invoke_after_maker_returns",
@@ -5514,11 +5513,11 @@ test "ptr-to-int coerce: compiles without IR type mismatch" {
     assert ir.gen.native_engine is not None , "No native engine created";
 }
 
-"""ptr-to-int coerce: strlen(int-param) called with str returns correct length"""
+"""ptr-to-int coerce: strlen(int-param) called with a C string pointer returns correct length"""
 def _fix_ptr_int_coerce__ptr_to_int_coerce_strlen_int_param_called_with_str_returns_correct_len(
     eng: any, _ir: any
 ) {
-    # ptrtoint converts i8* → i64; strlen interprets it as char* and counts bytes.
+    # A ptr[u8] passed where C takes an int converts to its address (ptrtoint).
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "test_ptrtoint_strlen", ctypes.c_int64);
@@ -5537,11 +5536,11 @@ def _fix_ptr_int_coerce__ptr_to_int_coerce_strlen_int_param_returns_0_for_empty_
     assert result == 0 , f"Expected ptrtoint strlen('')=0, got {result}";
 }
 
-"""int-to-ptr coerce: calloc result (int) assigned to str and measured by strlen"""
+"""int-to-ptr coerce: calloc result (int) converted to ptr[u8] and measured by strlen"""
 def _fix_ptr_int_coerce__int_to_ptr_coerce_calloc_result_int_assigned_to_str_and_measured_by_st(
     eng: any, _ir: any
 ) {
-    # calloc declared as returning int; result stored in str local — inttoptr.
+    # calloc returns its buffer as an int; ptr[u8](...) turns it back into a pointer (inttoptr).
     # calloc zeroes memory so strlen of the buffer must be 0.
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
