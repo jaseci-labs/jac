@@ -141,7 +141,9 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
                     unit = inherited.find_parent_of_type(uni.Module)
                         if inherited is not None
                         else None;
-                    if unit is not None and unit is not self.module {
+                    if inherited is not None
+                        and unit is not None
+                        and unit is not self.module {
                         try {
                             self.foreign_method_decl(inherited);
                         } except MirRefused {
