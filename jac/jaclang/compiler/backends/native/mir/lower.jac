@@ -439,6 +439,7 @@ obj MirLowering {
     def local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirValue;
     def loop_scoped(sym: uni.Symbol) -> bool;
     def encloses(scope: (uni.UniScopeNode | None), nd: uni.UniNode) -> bool;
+    def first_iterable(nd: uni.UniNode) -> bool;
     def comprehension_scoped(sym: uni.Symbol) -> bool;
     def within_body(
         nd: uni.UniNode,

@@ -943,6 +943,30 @@ impl MirLowering.encloses(scope: (uni.UniScopeNode | None), nd: uni.UniNode) -> 
     return False;
 }
 
+"""Is `nd` inside a comprehension's first iterable?
+
+Python evaluates the leftmost `for` iterable in the enclosing scope, so a name
+there reads the enclosing binding even when a comprehension variable shares
+its name (`[x for x in x]`).
+"""
+impl MirLowering.first_iterable(nd: uni.UniNode) -> bool {
+    child: uni.UniNode = nd;
+    walk = nd.parent;
+    while walk is not None
+        and not isinstance(walk, (uni.Ability, uni.LambdaExpr, uni.Module)) {
+        if isinstance(walk, uni.InnerCompr) {
+            owner = walk.parent;
+            return child is walk.collection
+                and isinstance(owner, (uni.ListCompr, uni.DictCompr))
+                and bool(owner.compr)
+                and owner.compr[0] is walk;
+        }
+        child = walk;
+        walk = walk.parent;
+    }
+    return False;
+}
+
 impl MirLowering.comprehension_scoped(sym: uni.Symbol) -> bool {
     scope = sym.parent_tab;
     return isinstance(
@@ -1274,12 +1298,16 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
         and self.global_declaration(nd.sym) is None
         and nd.sym.sym_name in self.st().local_names
         and not (
-            self.comprehension_scoped(nd.sym) and self.encloses(nd.sym.parent_tab, nd)
+            self.comprehension_scoped(nd.sym)
+            and self.encloses(nd.sym.parent_tab, nd)
+            and not self.first_iterable(nd)
         ) {
         namesake = self.st().local_names[nd.sym.sym_name];
-        return self.coerce(
-            self.builder().load(namesake, namesake.type), self.expr_type(nd), nd
-        );
+        loaded = self.builder().load(namesake, namesake.type);
+        if nd.type is None {
+            return loaded;
+        }
+        return self.coerce(loaded, self.expr_type(nd), nd);
     }
     if nd.sym is None or id(nd.sym) not in self.st().locals {
         twin = self.variant_glob(nd) if nd.sym is not None else None;
