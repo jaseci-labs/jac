@@ -255,6 +255,9 @@ impl MirEmitter.extern(
     made = ir.Function(
         self.module, ir.FunctionType(ret, args, var_arg=variadic), name=symbol
     );
+    if symbol in RETURNS_TWICE_SYMBOLS {
+        made.attributes.add("returns_twice");
+    }
     self.functions[symbol] = made;
     return made;
 }
@@ -1635,6 +1638,9 @@ impl MirEmitter.c_abi_extern(ext: MirExtern) -> ir.Function {
         ir.FunctionType(ret_type, args, var_arg=ext.variadic),
         name=ext.symbol
     );
+    if ext.symbol in RETURNS_TWICE_SYMBOLS {
+        made.attributes.add("returns_twice");
+    }
     if ret_plan is not None and ret_plan[0] == "sret" {
         made.args[0].add_attribute("sret");
     }
