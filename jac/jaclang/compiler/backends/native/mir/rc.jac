@@ -21,6 +21,10 @@ obj MirRcState {
     def carry_crossing;
     def owned_here(instr: MirInstr) -> bool;
     def end_temporaries;
+    def protected_regions(
+        labels: dict[str, MirBlock], succs: dict[str, list[str]]
+    ) -> list[tuple[str, str, MirValue]];
+
     def temp_keeps(bits: dict[int, int]) -> dict[int, int];
     def temp_uses(instr: MirInstr, keeps: dict[int, int]) -> int;
     def temp_defs(instr: MirInstr, bits: dict[int, int]) -> int;

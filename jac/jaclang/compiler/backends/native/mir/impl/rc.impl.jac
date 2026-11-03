@@ -265,6 +265,30 @@ impl MirRcState.end_temporaries {
         uses[blk.label] = [self.temp_uses(instr, keeps) for instr in blk.instrs];
         defs[blk.label] = [self.temp_defs(instr, bits) for instr in blk.instrs];
     }
+    for (body, handler, guard) in self.protected_regions(labels, succs) {
+        pending = [body];
+        seen: set[str] = set();
+        while pending {
+            label = pending.pop();
+            if label in seen or label == handler {
+                continue;
+            }
+            seen.add(label);
+            if handler not in succs[label] {
+                succs[label].append(handler);
+                preds[handler].append(label);
+            }
+            if any(
+                instr.op == MirOp.CALL_RUNTIME
+                    and instr.callee == "__jac_rt_exc_pop"
+                    and instr.operands
+                    and instr.operands[0] is guard for instr in labels[label].instrs
+            ) {
+                continue;
+            }
+            pending.extend(succs[label]);
+        }
+    }
     live_in: dict[str, int] = {blk.label: 0 for blk in self.fn.blocks};
     live_out: dict[str, int] = {blk.label: 0 for blk in self.fn.blocks};
     changed = True;
@@ -541,4 +565,35 @@ impl MirRcState.carry_crossing {
         }
     }
     self.fn.blocks[0].instrs[0:0] = made;
+}
+
+impl MirRcState.protected_regions(
+    labels: dict[str, MirBlock], succs: dict[str, list[str]]
+) -> list[tuple[str, str, MirValue]] {
+    found: list[tuple[str, str, MirValue]] = [];
+    for blk in self.fn.blocks {
+        tail = blk.instrs[-1] if blk.instrs else None;
+        if tail is None or tail.op != MirOp.COND_BR or len(tail.targets) != 2 {
+            continue;
+        }
+        buffers: dict[int, MirValue] = {};
+        guard: (MirValue | None) = None;
+        for instr in blk.instrs {
+            if instr.op == MirOp.CALL_RUNTIME
+                and instr.callee == "__jac_rt_exc_jmp_buf"
+                and instr.result is not None
+                and instr.operands {
+                buffers[instr.result.id] = instr.operands[0];
+            } elif instr.op == MirOp.SETJMP and instr.operands {
+                guard = buffers.get(instr.operands[0].id);
+            }
+        }
+        if guard is None
+            or tail.targets[0] not in labels
+            or tail.targets[1] not in labels {
+            continue;
+        }
+        found.append((tail.targets[0], tail.targets[1], guard));
+    }
+    return found;
 }
