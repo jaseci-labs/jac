@@ -1289,6 +1289,10 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
             if made is not None {
                 return made;
             }
+            place = self.global_place(nd);
+            if place is not None {
+                return self.builder().load(place, self.place_elem(place));
+            }
         }
         folded = nd.ct_value;
         whole = int_host(folded) if isinstance(folded, CtInt) else None;
@@ -2153,6 +2157,9 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
             }
         }
         return self.generic_call(nd, callee, None, None);
+    }
+    if isinstance(callee, uni.Ability) {
+        callee = self.variant_ability(callee);
     }
     if isinstance(callee, uni.Ability) and clib_import_of(callee) is not None {
         return self.c_call(nd, callee);
@@ -4494,6 +4501,11 @@ impl MirLowering.declare_global(nd: uni.Name) -> (MirGlobal | None) {
         and owner.loc.mod_path.endswith(".jac")
         and os.path.realpath(owner.loc.mod_path)
             != os.path.realpath(self.module.loc.mod_path) {
+        twin = self.variant_declaration(declaration);
+        if twin is not None {
+            declaration = twin;
+            owner = twin.find_parent_of_type(uni.Module) or owner;
+        }
         group = declaration.parent;
         access = group.access if isinstance(group, uni.GlobalVars) else None;
         defined = declaration.target[0] if declaration.target else None;

@@ -490,6 +490,7 @@ obj MirLowering {
     def variant_ability(callee: uni.Ability) -> uni.Ability;
     def variant_glob(nd: uni.Name) -> (uni.Name | None);
     def variant_value(nd: uni.Name, twin: uni.Name) -> (MirValue | None);
+    def variant_declaration(declaration: uni.Assignment) -> (uni.Assignment | None);
     def foreign_c_declaration(name: str) -> (uni.Ability | None);
     def c_signature_text(params: list[MirType], ret: MirType) -> str;
     def c_declared_signature(decl: uni.Ability, site: uni.UniNode) -> (str | None);
