@@ -3298,6 +3298,7 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
             owner = self.member_owner(right);
             if owner is not None
                 and owner is not arch
+                and owner.loc.mod_path.endswith(".jac")
                 and self.obj_extends(
                     self.object_type(owner).name, self.object_type(arch).name
                 ) {
@@ -3954,10 +3955,37 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
         return self.emit_value(MirOp.PTR_INT, mir_int(), [data]);
     }
     if dispatch == IntrinsicDispatch.LIST_DATA {
+        operand: uni.UniNode = args[0];
+        while isinstance(operand, uni.AtomUnit) {
+            operand = operand.value;
+        }
+        if not isinstance(operand, (uni.Name, uni.AtomTrailer))
+            or (isinstance(operand, uni.AtomTrailer) and operand.is_null_ok) {
+            raise MirRefused(
+                mir_refusal(
+                    "intrinsic",
+                    f"{name} of a temporary list: a temporary list is freed with the statement",
+                    nd,
+                    "Bind the list to a variable, a field or an element first; a temporary list and its buffer are freed when the statement ends.",
+                    "E5095"
+                )
+            );
+        }
         held = self.spill(self.lower_expr(args[0]));
         if held.type.kind != MirKind.LIST {
             raise MirRefused(
                 mir_refusal("intrinsic", f"{name} of {held.type.render()}", nd)
+            );
+        }
+        if self.elem_kind(held.type.payload(), nd) not in (KIND_INT, KIND_FLOAT) {
+            raise MirRefused(
+                mir_refusal(
+                    "intrinsic",
+                    f"{name} of {held.type.render()}: the list holds managed elements",
+                    nd,
+                    "A raw store through the buffer would bypass the elements' reference counts, so only int and float lists qualify.",
+                    "E5095"
+                )
             );
         }
         return self.emit_value(

@@ -1753,6 +1753,14 @@ impl MirLowering.unbind_local(target: uni.Expr) -> bool {
 impl MirLowering.list_extend_in_place(
     op: str, current: MirValue, value: MirValue, site: uni.UniNode
 ) -> (MirValue | None) {
+    if op == Tok.PLUS
+        and current.type.kind == MirKind.BYTEARRAY
+        and value.type.kind in (MirKind.BYTES, MirKind.BYTEARRAY) {
+        source = self.spill(value);
+        (data, size) = self.byte_parts(source);
+        self.runtime("__jac_rt_bytearray_extend", [current, data, size]);
+        return current;
+    }
     if op != Tok.PLUS
         or current.type.kind != MirKind.LIST
         or value.type.kind != MirKind.LIST {

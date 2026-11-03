@@ -171,7 +171,10 @@ def fmt_errors(prog: JacProgram) -> str {
 # layout (issue #6470). When the members place a common field at *different*
 # offsets, that single-layout lowering would misread it, so the native pass
 # must surface E5091 rather than silently emit a wrong body.
-test "guardrail: union trigger with mismatched field layout is rejected" {
+"""A union trigger whose members keep the field at different slots lowers:
+`here.val` dispatches on the concrete node's own layout, so it is no longer a
+divergent-layout refusal (E5091)."""
+test "guardrail: union trigger with mismatched field layout reads each member's own slot" {
     prog = compile_na_inline(
         "union_layout_conflict",
         "node Sub { has pad: int; has val: int; }\n"  # val at index 3
@@ -183,9 +186,10 @@ test "guardrail: union trigger with mismatched field layout is rejected" {
         "    }\n"
         "}\n"
     );
-    assert has_error_code(prog, "E5091") , f"Expected E5091 for divergent union member layout, got: {fmt_errors(
+    assert not has_error_code(prog, "E5091") , f"a union member's own layout is read, got: {fmt_errors(
         prog
     )}";
+    assert not prog.errors_had , fmt_errors(prog);
 }
 
 # ─────────────────────────────────────────────────────────────────────

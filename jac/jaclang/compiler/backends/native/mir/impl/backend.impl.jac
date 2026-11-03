@@ -255,6 +255,18 @@ impl MirNativePass.note_demotions(lowering: MirLowering, prior: (NativeIface | N
         return;
     }
     here = os.path.realpath(mir.path);
+    for (symbol, reason) in sorted(mir.demoted.items()) {
+        found = lowering.refusals.get(symbol, []);
+        first = found[0] if found else None;
+        na_coverage_seam(
+            here,
+            f"{mir_demoted_name(mir, symbol)}: "
+                + (
+                    f"[{first.code}] {first.located()}" if first is not None else reason
+                ),
+            late=first.late if first is not None else False
+        );
+    }
     shown = self.prog.native_units().noted_demotions;
     options = self.prog.options;
     debug = bool(options.na_debug);

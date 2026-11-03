@@ -5995,9 +5995,10 @@ graph import compiler {
     ]
     type driver.module_analysis ++> frontend.host { ModuleAnalysis }
     driver.module_compile ++> frontend.kernel_host { compile_task }
-    driver.na_coverage ++> backends.native.link_plan._build_link_plan {
-        na_coverage_replay
-    }
+    driver.na_coverage ++> [
+        backends.native.link_plan._build_link_plan { na_coverage_replay },
+        backends.native.mir.backend.MirNativePass.note_demotions { na_coverage_seam },
+    ]
     driver.native_iface ++> [
         backends.native.link_plan {
             NativeIface,
