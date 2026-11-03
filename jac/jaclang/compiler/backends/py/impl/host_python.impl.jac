@@ -15,10 +15,11 @@ impl host_python_ast(module: uni.Module) -> ast.Module {
 }
 
 impl host_node(cg: CgNode) -> ast.AST {
-    built = getattr(ast, cg.cls)();
+    fields: dict[str, any] = {};
     for (key, value) in zip(cg.keys, cg.vals) {
-        setattr(built, key, host_value(value));
+        fields[key] = host_value(value);
     }
+    built = getattr(ast, cg.cls)(**fields);
     if cg.l1 {
         built.lineno = cg.l1;
         built.col_offset = cg.c1;

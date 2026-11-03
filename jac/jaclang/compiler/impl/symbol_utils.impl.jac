@@ -117,6 +117,14 @@ impl classify_call(nd: FuncCall) -> CallKind {
         return CallKind.INTRINSIC;
     }
 
+    callee = resolved_callee(nd);
+    if callee is not None {
+        callee_import = callee.find_parent_of_type(Import);
+        if callee_import is not None and callee_import.clib_decls {
+            return CallKind.CLIB;
+        }
+    }
+
     sym = resolve_expr_symbol(nd.target);
 
     if sym is not None

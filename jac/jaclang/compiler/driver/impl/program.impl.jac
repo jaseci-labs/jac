@@ -477,8 +477,11 @@ impl JacProgram.compile(
     }
     import from jaclang.compiler.frontend.host { active_host, kernel_resident }
     if not kernel_resident() {
-        import from jaclang.project.kernel_compile { compile_through_kernel }
-        return compile_through_kernel(self, file_path, use_str, options);
+        import from jaclang.compiler.backends.native.kernel_resolve { load_kernel }
+        if load_kernel() is not None {
+            import from jaclang.project.kernel_compile { compile_through_kernel }
+            return compile_through_kernel(self, file_path, use_str, options);
+        }
     }
     mod = active_host().compile_module(self, file_path, use_str, options);
     if self.deps.tracking {
@@ -693,8 +696,11 @@ impl JacProgram.stamp_access_check_facts(self: JacProgram, mod: uni.Module) -> N
 
 impl JacProgram.stamp_native_import_facts(self: JacProgram, mod: uni.Module) -> None {
     import os;
-    needs_native = mod.decided_codespace == 'native'
-        or ModuleFacts.has_native_context_stmts(mod);
+    needs_native = not self.internal
+        and (
+            mod.decided_codespace == 'native'
+            or ModuleFacts.has_native_context_stmts(mod)
+        );
     py_refs: (set[str] | None) = None;
     imports = list(mod.get_all_sub_nodes(uni.Import));
     for imp in imports {

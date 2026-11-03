@@ -1,7 +1,5 @@
 impl module_functions(mod: ModuleRef) -> list[any] {
-    fns = mod.functions;
-    assert isinstance(fns, Iterator);
-    return list(fns);
+    return list(mod.functions);
 }
 
 impl unit_function_counts(unit_ir: any) -> tuple[int, int] {

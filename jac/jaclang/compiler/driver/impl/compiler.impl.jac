@@ -300,7 +300,9 @@ impl JacCompiler._host_compile(
         );
         if result.gen.py_bytecode {
             program.hub_cache_stamp(full_target);
-            self._persist_module_cache(full_target, result, program);
+            if analysed_for_codegen(program, result) {
+                self._persist_module_cache(full_target, result, program);
+            }
             if internal {
                 note_compiler_source_failure(full_target, '');
             }
@@ -336,16 +338,22 @@ impl JacCompiler._adopt_kernel_compile(
         target = held;
     } else {
         compiled = kernel_compile(program, [full_target], options);
-        if not compiled.ok() {
+        units = compiled.units;
+        real = os.path.realpath(full_target);
+        found = [
+            unit
+            for unit in units
+            if os.path.realpath(unit.path) == real and unit.bytecode
+        ];
+        if not found {
             return None;
         }
-        units = compiled.units;
-        target = compiled.unit(full_target);
+        target = found[0];
     }
     import from jaclang.compiler.driver.pass_driver { compile_progress }
     for unit in native_first(units) {
         with compile_progress.track(unit.path) {
-            bytecode = unit.bytecode;
+            bytecode = unit.bytecode or None;
             sections = dict(unit.sections);
             if unit.native_ir {
                 sections.update(
@@ -375,7 +383,7 @@ impl JacCompiler._adopt_kernel_compile(
             }
         }
     }
-    return marshal.loads(target.bytecode);
+    return marshal.loads(target.bytecode) if target.bytecode else None;
 }
 
 impl JacCompiler.native_entry_engine(

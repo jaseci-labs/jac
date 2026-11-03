@@ -112,7 +112,8 @@ impl run_codegen(task: ModuleAnalysis) {
         session_of(task).assemble_python(program, module);
         return;
     }
-    needs_native = task.native or ModuleFacts.has_native_context_stmts(module);
+    needs_native = not program.internal
+        and (task.native or ModuleFacts.has_native_context_stmts(module));
     if needs_native
         and not task.ready(CompilationProduct.ANALYSIS)
         and not task.require(CompilationProduct.ANALYSIS) {

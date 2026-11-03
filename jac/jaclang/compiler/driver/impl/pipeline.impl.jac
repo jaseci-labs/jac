@@ -495,6 +495,7 @@ impl produce(
     );
     if task is not None {
         task.import_fallback = fell_back;
+        task.degraded = not full;
     }
     if schedule is None {
         return None;

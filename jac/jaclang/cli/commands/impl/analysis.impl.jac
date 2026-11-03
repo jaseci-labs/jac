@@ -1457,6 +1457,9 @@ impl `test(
     }
     iso_pats = [_rooted(p) for p in (cfg.`test.isolate if cfg else [])];
     ser_pats = [_rooted(p) for p in (cfg.`test.serial if cfg else [])];
+    bytecode_pats = [
+        _rooted(p) for p in (cfg.`test.bytecode_compiler if cfg else [])
+    ];
     for fp in paths {
         if not Path(fp).exists() {
             console.error(
@@ -1488,7 +1491,8 @@ impl `test(
             ],
             jobs=jobs,
             isolate=iso_pats,
-            serial=ser_pats
+            serial=ser_pats,
+            bytecode_compiler=bytecode_pats
         );
     } except (ValueError, FileNotFoundError) as exc {
         console.error(f"Error: {exc}");

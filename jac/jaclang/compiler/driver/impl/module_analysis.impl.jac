@@ -105,7 +105,11 @@ impl run_analysis(task: ModuleAnalysis) {
     _annex_of_base = host.path_facts(task.path).is_annex
         and host.base_file(str(task.path)) is not None;
     _unasked = task.options.skip_analysis
-        or (program.internal and host.import_in_flight(task.path));
+        or (
+            program.internal
+            and host.import_in_flight(task.path)
+            and not (module is not None and binds_c(module))
+        );
     _client = module is not None
         and not task.parse_failed
         and module.declares_codespace(_CodeCtx.CLIENT, path_hint=task.path);
@@ -182,4 +186,31 @@ impl analyze_module(
     task = ModuleAnalysis(program, path, options, source);
     run_plan(task, ANALYSIS_PLAN);
     return task;
+}
+
+impl binds_c(module: Module) -> bool {
+    for imp in module.get_all_sub_nodes(Import) {
+        if imp.clib_decls {
+            return True;
+        }
+    }
+    for call in module.get_all_sub_nodes(FuncCall) {
+        for arg in (call.params or []) {
+            if isinstance(arg, UnaryExpr) and is_borrow_kind(arg.ownership) {
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
+impl analysed_for_codegen(program: JacProgram, module: Module) -> bool {
+    if not binds_c(module) {
+        return True;
+    }
+    built = program.analysis.peek(module);
+    analysis = built.tasks.get(CompilationProduct.ANALYSIS) if built is not None else None;
+    return analysis is not None
+        and analysis.state == TaskState.SUCCEEDED
+        and not analysis.degraded;
 }

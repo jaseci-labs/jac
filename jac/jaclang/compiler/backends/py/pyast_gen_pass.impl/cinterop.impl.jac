@@ -74,7 +74,7 @@ impl PyastGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
                 fn_type = decl.name_spec.type;
                 ret_type = fn_type.return_type
                     if isinstance(fn_type, FunctionType)
-                    else None;
+                    else ret_expr.type;
                 ret_spec = c_type_spec(ret_type, ret_expr);
             }
             functions.append(
@@ -237,6 +237,24 @@ impl PyastGenPass._c_named(name: str, value: CgNode) -> CgNode {
     );
 }
 
+impl PyastGenPass._c_param_type(
+    callee: Ability, param: ParamVar, index: int
+) -> (TypeBase | None) {
+    if param.type is not None {
+        return param.type;
+    }
+    signature = self.prog.get_type_evaluator().get_type_of_ability(callee);
+    if not isinstance(signature, FunctionType) {
+        return None;
+    }
+    fixed = [
+        p
+        for p in (signature.parameters or [])
+        if p.category in (None, ParameterCategory.Positional)
+    ];
+    return fixed[index].param_type if index < len(fixed) else None;
+}
+
 impl PyastGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
     outs = self.outs(nd);
     call = outs[0] if outs else None;
@@ -316,7 +334,7 @@ impl PyastGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
             if type_tag is None or not is_borrow_kind(type_tag.ownership) {
                 continue;
             }
-            spec = c_type_spec(p.type, type_tag.tag);
+            spec = c_type_spec(self._c_param_type(callee, p, index), type_tag.tag);
             inner: list[any] = spec;
             if spec[0] == "opt" {
                 inner = spec[1];

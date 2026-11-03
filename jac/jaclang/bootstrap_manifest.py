@@ -164,6 +164,7 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/passes/execution.jac",
     "compiler/backends/py/python_engine.jac",
     "compiler/backends/py/host_python.jac",
+    "compiler/backends/es/js_paths.jac",
     "compiler/tools/treeprinter.jac",
     "runtime/runtime.jac",
     "runtime/constants.jac",

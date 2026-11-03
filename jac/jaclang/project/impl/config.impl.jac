@@ -367,6 +367,8 @@ impl TestConfig.apply(t: TomlTable) {
             self.isolate = t.texts(key);
         } elif key == "serial" {
             self.serial = t.texts(key);
+        } elif key == "bytecode_compiler" {
+            self.bytecode_compiler = t.texts(key);
         } elif key == "filter" {
             self.filter = t.text(key);
         } elif key == "verbose" {

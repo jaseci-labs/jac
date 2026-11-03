@@ -44,6 +44,10 @@ def run_placement(task: ModuleAnalysis);
 
 def run_analysis(task: ModuleAnalysis);
 
+def binds_c(module: Module) -> bool;
+
+def analysed_for_codegen(program: JacProgram, module: Module) -> bool;
+
 def admits_boundaries(task: ModuleAnalysis) -> bool;
 
 def run_boundaries(task: ModuleAnalysis);

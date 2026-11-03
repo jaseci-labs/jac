@@ -131,5 +131,5 @@ import from c {
     def malloc(size: u64) -> ptr;
     def free(memory: ptr);
     def strlen(text: ptr[u8]) -> u64;
-    def memcpy(target: bytes, source: ptr, size: u64) -> ptr;
+    def memcpy(target: bytearray, source: ptr, size: u64) -> ptr;
 }

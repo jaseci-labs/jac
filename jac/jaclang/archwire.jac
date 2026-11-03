@@ -3872,6 +3872,14 @@ graph import {
     compiler.driver.compile_options --> compiler.driver.nativecache.NativeBuildSession.lower { pop_native_target, push_native_target }
     compiler.frontend.codeinfo ++> compiler.types.stubcat.build._cached_catalog { jaclang_pkg_root }
     compiler.types.stubcat.locate ++> compiler.types.stubcat.build._cached_catalog { dev_catalog_path }
+    compiler.backends.native.kernel_resolve ++> testing.test_runner.run_tests { resolved_kernel }
+    compiler.backends.native.kernel_resolve --> compiler.driver.program.JacProgram.compile { load_kernel }
+    compiler.frontend.constant ++> compiler.driver.module_analysis { is_borrow_kind }
+    compiler.frontend.unitree ++> compiler.driver.module_analysis { FuncCall, Import, Module, UnaryExpr }
+    compiler.driver.pipeline_types ++> compiler.driver.module_analysis { AnalysisFact, CompilationProduct, ProductRequest, TaskState }
+    compiler.driver.module_analysis ++> compiler.driver.compiler.JacCompiler._host_compile { analysed_for_codegen }
+    type compiler.types.types ++> compiler.backends.py.pyast_gen_pass { TypeBase }
+    compiler.types.types ++> compiler.backends.py.pyast_gen_pass.PyastGenPass._c_param_type { FunctionType, ParameterCategory }
 }
 
 graph import artifacts {
@@ -6596,7 +6604,7 @@ graph import compiler {
     ]
     frontend.srcloc ++> driver.pipeline.assemble_bytecode { Span }
     frontend.unitree ++> [
-        driver.context_passes | driver.module_analysis | driver.pass_driver | passes.annex_weave | tests.test_client_codegen_facts | tests.test_pipeline_products | types.stubcat.modiface { Module },
+        driver.context_passes | driver.pass_driver | passes.annex_weave | tests.test_client_codegen_facts | tests.test_pipeline_products | types.stubcat.modiface { Module },
         backends.py.pyast_gen_pass { Ability, ArchHas, ArchSpec, Archetype, AssertStmt, AssignCompr, Assignment, AstAccessNode, AstSymbolNode, AtomTrailer, AtomUnit, AwaitExpr, BinaryExpr, Bool, BoolExpr, BuiltinType, CastExpr, CfgExpr, CodeBlockStmt, CommentToken, CompareExpr, ConcurrentExpr, ConnectOp, ContextAwareNode, CtrlStmt, DeleteStmt, DictCompr, DictVal, DisconnectOp, DisengageStmt, EdgeOpRef, EdgeRefTrailer, Ellipsis, ElseIf, ElseStmt, Enum, EnumBlockStmt, EventSignature, Except, Expr, ExprAsItem, ExprCtx, ExprStmt, FString, FilterCompr, FinallyStmt, Float, ForeverStmt, FormattedValue, FuncCall, FuncSignature, GenCompr, GlobalVars, HasVar, IfElseExpr, IfStmt, ImplDef, Import, InForStmt, IndexSlice, InnerCompr, Int, IterForStmt, JsxComment, JsxElement, JsxElementName, JsxExpression, JsxNormalAttribute, JsxSlot, JsxSpreadAttribute, JsxText, KVPair, KWPair, LambdaExpr, ListCompr, ListVal, MatchArch, MatchAs, MatchCase, MatchKVPair, MatchMapping, MatchOr, MatchPattern, MatchSequence, MatchSingleton, MatchStar, MatchStmt, MatchValue, MatchWild, Module, ModuleCode, ModuleItem, ModulePath, MultiString, Name, NameAtom, Null, OpenStmt, ParamVar, RaiseStmt, ReportStmt, ReturnStmt, SemDef, Semi, SetCompr, SetVal, SpecialVarRef, String, SubTag, SwitchStmt, Test, Token, TryStmt, TupleVal, TypeAlias, TypeParam, TypedCtxBlock, UnaryExpr, UniNode, UniScopeNode, VisitStmt, WhileStmt, WithStmt, YieldExpr, is_identifier_slot, literal_string_value },
         boundary_rules { Ability, Archetype, Assignment, AtomTrailer, AtomUnit, BinaryExpr, Ellipsis, Enum, FuncSignature, HasVar, IndexSlice, Module, MultiString, NameAtom, Null, String, Token, TupleVal, TypeAlias, UniNode, resolved_decl_of },
         c_interop { Ability, Archetype, Assignment, AtomTrailer, AtomUnit, Expr, GlobalVars, Import, Name, ParamVar, Symbol, UnaryExpr, UniNode, resolved_decl_of },
@@ -8904,19 +8912,9 @@ graph import compiler.driver {
         compiler { AnalysisFact, CompilationProduct },
         context_passes { PassContract },
         ifacecache { AnalysisFact },
-        module_analysis { AnalysisFact, CompilationProduct, ProductRequest },
         module_compile { CompilationProduct, ProductRequest },
-        nativecache.NativeBuildSession._finish
-            | source_failures.bootstrap_tier_failure_details { CompilationProduct },
-        pipeline {
-            AnalysisFact,
-            CompilationProduct,
-            ImportFallback,
-            PassContract,
-            ProductRequest,
-            ProductTask,
-            TaskState
-        },
+        nativecache.NativeBuildSession._finish | source_failures.bootstrap_tier_failure_details { CompilationProduct },
+        pipeline { AnalysisFact, CompilationProduct, ImportFallback, PassContract, ProductRequest, ProductTask, TaskState },
         progstate { AnalysisFact, CompilationProduct, ProductTask },
     ]
     pipeline_types --> [

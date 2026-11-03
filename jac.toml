@@ -54,13 +54,61 @@ serial = [
     "jac/jaclang/scale/tests/data/test_identity_password.jac",
     "jac/jaclang/scale/tests/data/test_firebase_env.jac",
 ]
+# These tests read the compiler's own trees, symbol tables and pass outputs, or
+# build a host JacProgram. With a native kernel loaded the kernel is the only
+# compiler and those trees live inside it, so `jac test` runs these files on the
+# bytecode-hosted compiler (the same Jac sources the kernel is built from) in a
+# child process that leaves the kernel out. jac/tests/KERNEL_TESTS.md sorts
+# what remains here by the kernel suite or compile entry each test moves to.
+bytecode_compiler = [
+    "jac/tests/compiler",
+    "jac/jaclang/compiler/tests",
+    "jac/jaclang/byllm/tests/test_byllm.jac",
+    "jac/jaclang/byllm/tests/test_mtir_integration.jac",
+    "jac/tests/cli/test_shadcn_registry.jac",
+    "jac/tests/client/test_client_build_lifetime.jac",
+    "jac/tests/client/test_external_module_paths.jac",
+    "jac/tests/client/test_source_map_generation.jac",
+    "jac/tests/dist/test_build_jab.jac",
+    "jac/tests/dist/test_native_product_export.jac",
+    "jac/tests/langserve/server_test/test_cache_invalidation.jac",
+    "jac/tests/langserve/test_server.jac",
+    "jac/tests/language/test_bugs.jac",
+    "jac/tests/language/test_cli.jac",
+    "jac/tests/language/test_del_semantics.jac",
+    "jac/tests/language/test_py_infra.jac",
+    "jac/tests/packages/test_boundary.jac",
+    "jac/tests/publish/test_npm_publish.jac",
+    "jac/tests/publish/test_runtime_vendor.jac",
+    "jac/tests/runtimelib/test_client_bundle.jac",
+    "jac/tests/runtimelib/test_client_bundle_preparation.jac",
+    "jac/tests/runtimelib/test_client_runtime_parity.jac",
+    "jac/tests/runtimelib/test_closures.jac",
+    "jac/tests/runtimelib/test_destroy_bootstrap.jac",
+    "jac/tests/runtimelib/test_find_module.jac",
+    "jac/tests/runtimelib/test_runtime_reset.jac",
+    "jac/tests/runtimelib/test_serve_client.jac",
+    "jac/tests/runtimelib/test_solid_effect_cleanup.jac",
+    "jac/tests/runtimelib/test_solid_jsdom.jac",
+    "jac/tests/runtimelib/test_source_mapping.jac",
+    "jac/tests/runtimelib/test_sv_walker_hydration.jac",
+    "jac/tests/toolchains/test_c_backend.jac",
+]
 
-# JacPython is a native-only library in checks, builds and cached imports.
+# JacPython is a native-only library in checks, builds and cached imports,
+# except the Python frontend's node and constant types: the bytecode-hosted
+# compiler loads those too (bootstrap_manifest.BYTECODE_SHARED_REL). A "!"
+# pattern excludes what an earlier pattern matched; the last match wins.
 [native]
 require = [
     "jaclang.compiler.frontend.python.*",
     "jaclang.compiler.backends.py.jacpython.*",
     "jaclang.runtime.python.*",
+    "!jaclang.compiler.frontend.python.ast_nodes",
+    "!jaclang.compiler.frontend.python.syntax_error",
+    "!jaclang.runtime.python.compiler_integer",
+    "!jaclang.runtime.python.objects",
+    "!jaclang.runtime.python.opcode_meta",
 ]
 
 [check]

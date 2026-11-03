@@ -1,11 +1,11 @@
 """Native helpers the binding shares: C text and buffers copied into Jac
 values, C string arrays, and the owned-handle base class."""
 def c_bytes(address: ptr[u8], size: int) -> bytes {
-    data = b"\x00" * size;
+    data = bytearray(size);
     if size > 0 {
         memcpy(data, ptr(address), u64(size));
     }
-    return data;
+    return bytes(data);
 }
 
 def c_text(address: ptr[u8]) -> str {

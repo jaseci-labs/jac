@@ -4,15 +4,11 @@ impl _wasm_libc_dir -> (str | None) {
 }
 
 impl _mod_functions(mod: ModuleRef) -> list[ValueRef] {
-    fns = mod.functions;
-    assert isinstance(fns, Iterator);
-    return list(fns);
+    return list(mod.functions);
 }
 
 impl _mod_globals(mod: ModuleRef) -> list[ValueRef] {
-    gvs = mod.global_variables;
-    assert isinstance(gvs, Iterator);
-    return list(gvs);
+    return list(mod.global_variables);
 }
 
 impl _load_libc_module(libc_dir: str, triple: str) -> (ModuleRef | None) {

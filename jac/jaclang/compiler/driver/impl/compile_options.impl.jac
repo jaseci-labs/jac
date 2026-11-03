@@ -275,7 +275,14 @@ impl CompileOptions.native_required_for(mod_path: str) -> bool {
     import fnmatch;
     import from jaclang.compiler.frontend.codeinfo { module_dotted_name }
     name = module_dotted_name(mod_path);
-    return any(fnmatch.fnmatchcase(name, pattern) for pattern in self.native_require);
+    required = False;
+    for pattern in self.native_require {
+        excluded = pattern.startswith("!");
+        if fnmatch.fnmatchcase(name, pattern[1:] if excluded else pattern) {
+            required = not excluded;
+        }
+    }
+    return required;
 }
 
 impl CompileOptions.nogc_enforced_for(mod_name: str) -> bool {

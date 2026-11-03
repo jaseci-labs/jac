@@ -1862,7 +1862,7 @@ impl carried_module_bytecode(source_path: str) -> (tuple[bytes, bytes] | None) {
                 continue;
             }
             bytecode = read_bytecode_only(data);
-            if bytecode is not None {
+            if bytecode {
                 return (bytecode, read_section_bytes(data, SEC_CTDEPS) or b"");
             }
         }
