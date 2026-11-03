@@ -2159,7 +2159,10 @@ graph import {
             | server.endpoints.colocated.served_app_route
             | studio.app { get_config_for_dir },
         dist.publish.metadata | dist.publish.package_json { JacConfig, PersonConfig },
-        packages.migrate { serialize_toml, toml_minimal_update },
+        packages.migrate | scale.injector.bundle.staged_jac_toml {
+            serialize_toml,
+            toml_minimal_update
+        },
         scale.config.dev_config.resolve_dev_channel
             | scale.injector.bundle.fat_bundle_setting { get_config_for_path },
         scale.config.dev_config.resolve_experimental_pr

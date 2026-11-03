@@ -584,8 +584,14 @@ test "a real pod binary seals the app each pod serves and boots it from the seal
             }
             manifest = archive.extractfile("_precompiled/MANIFEST.json");
             assert manifest is not None;
-            assert ".jac/serve_manifest.json"
-                in json.loads(manifest.read())["payloads"];
+            sealed = json.loads(manifest.read());
+            assert ".jac/serve_manifest.json" in sealed["payloads"];
+            served_file = list(boots)[0];
+            assert (sealed.get("entry") or {}).get("path") == served_file , (
+                label,
+                sealed.get("entry")
+            );
+            assert "attachable" not in sealed.get("capabilities", []) , label;
         }
         # The sealed manifest sits at the tar root, which is what makes this a .jab.
         assert "_precompiled/MANIFEST.json" in names , label;

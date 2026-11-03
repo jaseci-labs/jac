@@ -576,6 +576,18 @@ impl sealed_entry_module(project_dir: str, fleet: (FleetSpec | None)) -> str {
     return module;
 }
 
+impl staged_jac_toml(sanitized: (str | None), entry_module: str) -> (str | None) {
+    if not entry_module {
+        return sanitized;
+    }
+    text = sanitized if sanitized is not None else PLACEHOLDER_JAC_TOML;
+    old_doc = tomllib.loads(text);
+    project = {**old_doc.get("project", {}), "entry-point": entry_module};
+    new_doc = {**old_doc, "project": project};
+    return toml_minimal_update(text, old_doc, new_doc, ["project"])
+        or serialize_toml(new_doc);
+}
+
 impl require_serve_manifest(stage: Path, detail: str = "") -> Path {
     serve_manifest = stage / SERVE_MANIFEST_REL;
     if not serve_manifest.is_file() {
@@ -596,8 +608,7 @@ impl _precompile_app(
     app: str = "",
     sources: (list[Path] | None) = None,
     tomls: (dict[str, str] | None) = None,
-    seed: (Path | None) = None,
-    entry_module: str = ""
+    seed: (Path | None) = None
 ) -> Path {
     stage_root = _stage_app(base, sanitized_toml, sources, tomls);
     stage = stage_root / "app";
@@ -619,13 +630,6 @@ impl _precompile_app(
             + "from jaclang.dist.seal import bake_serve_payloads\n"
             + "project = Path('app').resolve()\n"
             + "config = get_config_for_path(project)\n"
-            + (
-                f"config.project.entry_point = {repr(entry_module)}\n"
-                    + "for served in getattr(config, 'apps', {}).values():\n"
-                    + f"    served.entry_point = {repr(entry_module)}\n"
-                    if entry_module
-                    else ""
-            )
             + "if not bake_serve_payloads(\n"
             + f"    config, project, app={repr(app)}, bake_client=False\n"
             + "):\n"
@@ -900,7 +904,6 @@ impl seal_input_digest(
     seal_binary: bytes,
     pod_arch: str,
     app_name: str,
-    entry_module: str,
     sanitized: (str | None),
     fat: bool,
     tomls: dict[str, str]
@@ -910,7 +913,6 @@ impl seal_input_digest(
     for part in (
         pod_arch,
         app_name,
-        entry_module,
         "fat" if fat else "thin",
         os.environ.get("JAC_SEAL_SKIP_VENV", ""),
         sanitized or ""
@@ -1074,7 +1076,7 @@ impl pack_jab(
             f"while staging the app bundle."
         );
     }
-    sanitized = sanitized_jac_toml(base);
+    sanitized = staged_jac_toml(sanitized_jac_toml(base), entry_module);
     app_name = sealed_app_name(project_dir, fleet);
     tomls = nested_sanitized_tomls(base);
     def input_key(tree: Path, files: list[Path]) -> str {
@@ -1084,7 +1086,6 @@ impl pack_jab(
             seal_binary,
             pod_arch,
             app_name,
-            entry_module,
             sanitized,
             fat_bundle_setting(project_dir)[0],
             tomls
@@ -1115,8 +1116,7 @@ impl pack_jab(
         app_name,
         seal_sources,
         tomls,
-        _latest_seal(base),
-        entry_module
+        _latest_seal(base)
     );
 
     try {
