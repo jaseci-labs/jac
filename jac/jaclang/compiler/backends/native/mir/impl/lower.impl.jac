@@ -2399,6 +2399,14 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
                 ) {
                 arch = owner;
             }
+            derived = self.archetypes.get(subject.type.name)
+                if subject.type.kind == MirKind.OBJ
+                else None;
+            if derived is not None
+                and derived is not arch
+                and self.obj_extends(subject.type.name, self.object_type(arch).name) {
+                arch = derived;
+            }
             wanted = self.object_type(arch);
             if subject.type.kind == MirKind.OBJ
                 and wanted.kind == MirKind.OBJ

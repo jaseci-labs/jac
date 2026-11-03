@@ -297,6 +297,7 @@ obj MirLowering {
         type_env: dict[str, TypeBase] = {},
         templates: dict[int, uni.Ability] = {},
         instances: dict[str, MirDecl] = {},
+        specials: dict[str, int] = {},
         pending: list[MirDecl] = [],
         enum_types: dict[str, TypeBase] = {},
         enum_methods: dict[str, MirDecl] = {},
@@ -565,6 +566,8 @@ obj MirLowering {
     def method_symbol(arch: uni.Archetype, name: str) -> str;
     def foreign_method_decl(method: uni.Ability) -> (MirDecl | None);
     def declare_archetype(arch: uni.Archetype);
+    def special_methods(arch: uni.Archetype) -> dict[str, uni.Ability];
+    def declare_specials(arch: uni.Archetype, self_type: MirType);
     def accessor_sig(acc: uni.Ability) -> (uni.FuncSignature | None);
     def declare_accessors(arch: uni.Archetype, self_type: MirType);
     def decl_label(decl: MirDecl) -> str;
