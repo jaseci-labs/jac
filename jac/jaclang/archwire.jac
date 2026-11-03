@@ -6647,8 +6647,7 @@ graph import compiler {
             | placement.placement_facts.settle_server
             | placement.placement_solver
             | symbol_utils.report_placement_warnings { CodeContext },
-        backends.native.mir.lower { CodeContext, Tokens as Tok, is_borrow_kind },
-        backends.py.jcir_gen_pass {
+        backends.native.mir.lower | backends.py.jcir_gen_pass {
             CodeContext,
             OwnershipKind,
             SymbolStorage,
@@ -10702,6 +10701,7 @@ graph import compiler.backends.native.mir {
             mir_range,
             mir_ref,
             mir_region,
+            mir_set,
             mir_str,
             mir_str_ref,
             mir_tuple,

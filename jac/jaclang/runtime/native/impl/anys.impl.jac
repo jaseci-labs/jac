@@ -294,6 +294,9 @@ impl _as_float(tag: int, payload: int) -> float {
 }
 
 impl __jac_rt_elem_tag(bits: int, kind: int) -> int {
+    if kind == KIND_NULL {
+        return ANY_TAG_NONE;
+    }
     if kind >= KIND_DESC_MIN {
         return ANY_TAG_ENUM;
     }
@@ -710,6 +713,9 @@ impl _buffer_len(o: int) -> int {
 }
 
 impl _elem_equal(x: int, kx: int, y: int, ky: int) -> bool {
+    if (kx == KIND_UINT and x < 0) or (ky == KIND_UINT and y < 0) {
+        return _uint_equal(x, kx, y, ky);
+    }
     return __jac_rt_any_equal(
         __jac_rt_elem_tag(x, kx),
         __jac_rt_elem_payload(x, kx),
@@ -723,7 +729,18 @@ impl __jac_rt_any_equal(ta: int, pa: int, tb: int, pb: int) -> bool {
         if ta != ANY_TAG_FLOAT and tb != ANY_TAG_FLOAT {
             return pa == pb;
         }
-        return _as_float(ta, pa) == _as_float(tb, pb);
+        if ta == ANY_TAG_FLOAT and tb == ANY_TAG_FLOAT {
+            return __bits_float(pa) == __bits_float(pb);
+        }
+        whole = pb if ta == ANY_TAG_FLOAT else pa;
+        part = __bits_float(pa) if ta == ANY_TAG_FLOAT else __bits_float(pb);
+        if part != part or part >= INT_FLOAT_EDGE or part < 0.0 - INT_FLOAT_EDGE {
+            return False;
+        }
+        if part != float(int(part)) {
+            return False;
+        }
+        return int(part) == whole;
     }
     if ta != tb {
         return False;
@@ -1343,4 +1360,19 @@ impl __jac_rt_any_getitem(tag: int, payload: int, ktag: int, kpayload: int) -> i
     return __jac_rt_elem_box(
         _seq_bits(payload, index, is_tup), _seq_kind(payload, index, is_tup)
     );
+}
+
+impl _uint_equal(x: int, kx: int, y: int, ky: int) -> bool {
+    if kx == KIND_UINT and ky == KIND_UINT {
+        return x == y;
+    }
+    big = x if kx == KIND_UINT else y;
+    other = y if kx == KIND_UINT else x;
+    other_kind = ky if kx == KIND_UINT else kx;
+    tag = __jac_rt_elem_tag(other, other_kind);
+    if tag != ANY_TAG_FLOAT {
+        return False;
+    }
+    wide = float(big & 9223372036854775807) + 9223372036854775808.0;
+    return __bits_float(__jac_rt_elem_payload(other, other_kind)) == wide;
 }

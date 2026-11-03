@@ -65,6 +65,7 @@ glob KIND_INT: int = 0,
      KIND_TUPLE: int = 5,
      KIND_ANY: int = 6,
      KIND_UINT: int = 7,
+     KIND_NULL: int = 8,
      LIST_DATA: int = 16,
      LIST_KIND: int = 24,
      DICT_KEY_KIND: int = 56,
@@ -104,6 +105,7 @@ glob KIND_INT: int = 0,
      DESC_BOXES: int = 24,
      DESC_SIZE: int = 32,
      KIND_DESC_MIN: int = 256,
+     INT_FLOAT_EDGE: float = 9.223372036854775808e18,
      ARITH_ADD: int = 0,
      ARITH_SUB: int = 1,
      ARITH_MUL: int = 2,
@@ -214,6 +216,8 @@ def _text_find(dtor: int) -> int;
 def _text_put(keys: int, vals: int, mask: int, dtor: int, thunk: int);
 
 def _elem_equal(x: int, kx: int, y: int, ky: int) -> bool;
+
+def _uint_equal(x: int, kx: int, y: int, ky: int) -> bool;
 
 def _seq_equal(a: int, at: bool, b: int, bt: bool) -> bool;
 

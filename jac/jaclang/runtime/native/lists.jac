@@ -13,7 +13,8 @@ glob KIND_INT: int = 0,
      KIND_REF: int = 4,
      KIND_TUPLE: int = 5,
      KIND_ANY: int = 6,
-     KIND_UINT: int = 7;
+     KIND_UINT: int = 7,
+     KIND_NULL: int = 8;
 
 glob LIST_LEN: int = 0,
      LIST_CAP: int = 8,
@@ -28,7 +29,8 @@ glob LIST_LEN: int = 0,
      TUPLE_KINDS: int = 8,
      BOX_TAG: int = 0,
      BOX_PAYLOAD: int = 8,
-     ORDER_LT: int = 0;
+     ORDER_LT: int = 0,
+     TAG_LIST: int = 3;
 
 def:pub __jac_rt_elem_retain(bits: int, kind: int);
 
