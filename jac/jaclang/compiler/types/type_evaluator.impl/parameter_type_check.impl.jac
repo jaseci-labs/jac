@@ -421,6 +421,11 @@ impl TypeEvaluator._validate_call_type(
                 if isinstance(first_arg, KWPair)
                 else first_arg;
             cast_target_type = self.get_type_of_expression(first_arg_expr);
+            for rest in expr.params[1:] {
+                self.get_type_of_expression(
+                    rest.value if isinstance(rest, KWPair) else rest
+                );
+            }
             if not isinstance(cast_target_type, UnknownType) {
                 return self._convert_to_instance(cast_target_type);
             }

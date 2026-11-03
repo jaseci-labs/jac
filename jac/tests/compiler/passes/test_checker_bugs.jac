@@ -873,6 +873,30 @@ test "bug_cast_union_instance" {
     );
 }
 
+test "cast_records_the_value_arguments_type" {
+    import jaclang.compiler.frontend.unitree as uni;
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_cast_value_typed.jac"),
+        options=CompileOptions(default_codespace='server')
+    );
+    assert len(program.errors_had) == 0 , f"{[str(e) for e in program.errors_had]}";
+    calls = [
+        call
+        for call in mod.get_all_sub_nodes(uni.FuncCall)
+        if isinstance(call.target, uni.Name) and call.target.value == "cast"
+    ];
+    assert len(calls) == 2;
+    for call in calls {
+        for arg in list(call.params)[1:] {
+            value = arg.value if isinstance(arg, uni.KWPair) else arg;
+            assert isinstance(value, uni.Expr);
+            assert value.type is not None , f"cast's value argument at line {value.loc.first_line} has no recorded type";
+        }
+    }
+}
+
 # =========================================================================
 # Bug #NONE-EQ: `x == None` / `x != None` did not narrow `T | None`.
 #

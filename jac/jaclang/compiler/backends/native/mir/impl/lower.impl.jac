@@ -1396,6 +1396,12 @@ impl MirLowering.arith(
     op: str, left: MirValue, right: MirValue, site: uni.UniNode
 ) -> MirValue {
     b = self.builder();
+    if MirKind.OBJ in (left.type.kind, right.type.kind) {
+        via_dunder = self.object_operator(op, left, right, site);
+        if via_dunder is not None {
+            return via_dunder;
+        }
+    }
     if left.type.kind == MirKind.OPT or right.type.kind == MirKind.OPT {
         symbol = OPERATOR_SYMBOLS.get(op, op);
         names = [
@@ -3279,6 +3285,10 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
             in (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY) {
             return self.text_subscript(self.lower_expr(nd.target), nd.right, nd);
         }
+    }
+    via_union = self.union_field_read(nd);
+    if via_union is not None {
+        return via_union;
     }
     place = self.lower_place(nd);
     loaded = self.builder().load(place, self.place_elem(place));

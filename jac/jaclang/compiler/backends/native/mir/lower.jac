@@ -34,6 +34,21 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
          "LSHIFT": "<<",
          "RSHIFT": ">>"
      },
+     OPERATOR_DUNDERS: dict[str, str] = {
+         "PLUS": "add",
+         "MINUS": "sub",
+         "STAR_MUL": "mul",
+         "DIV": "truediv",
+         "FLOOR_DIV": "floordiv",
+         "MOD": "mod",
+         "STAR_POW": "pow",
+         "BW_AND": "and",
+         "BW_OR": "or",
+         "BW_XOR": "xor",
+         "LSHIFT": "lshift",
+         "RSHIFT": "rshift",
+         "DECOR_OP": "matmul"
+     },
      SHIFT_MESSAGE: str = "shift count out of range",
      NEGATIVE_SHIFT_MESSAGE: str = "negative shift count",
      RANGE_STEP_MESSAGE: str = "range() arg 3 must not be zero",
@@ -720,6 +735,7 @@ obj MirLowering {
     ) -> MirValue;
 
     def condition_only(nd: uni.Expr) -> bool;
+    def union_field_read(nd: uni.AtomTrailer) -> (MirValue | None);
     def accessor_of(
         nd: uni.AtomTrailer, kind: str
     ) -> (tuple[uni.Archetype, MirDecl] | None);
@@ -893,6 +909,10 @@ obj MirLowering {
     ) -> list[(uni.Expr | MirPacked | MirBound)];
 
     def super_call(nd: uni.FuncCall, name: str) -> MirValue;
+    def object_operator(
+        op: str, left: MirValue, right: MirValue, site: uni.UniNode
+    ) -> (MirValue | None);
+
     def object_eq(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
     def aug_arith(
         op: str, current: MirValue, value: MirValue, site: uni.UniNode
