@@ -423,7 +423,27 @@ impl register_diagnostics_endpoints(server: JacAPIServer) {
         )
     );
 
+    limiter = ClientErrorLimiter();
+
     async def client_error(request: Request) -> JSONResponse {
+        import math;
+        client = request.client_host or 'unknown';
+        retry_in = limiter.admit(client);
+        if retry_in > 0 {
+            refused = JSONResponse(
+                status_code=429, content={'error': 'Too many error reports'}
+            );
+            refused.headers.set('Retry-After', str(max(1, math.ceil(retry_in))));
+            return refused;
+        }
+        if len(request.body) > CLIENT_ERROR_MAX_BYTES {
+            return JSONResponse(
+                status_code=413,
+                content={
+                    'error': f'Error report is larger than {CLIENT_ERROR_MAX_BYTES} bytes'
+                }
+            );
+        }
         try {
             data = await request.json();
         } except Exception {
@@ -435,8 +455,17 @@ impl register_diagnostics_endpoints(server: JacAPIServer) {
             );
         }
 
-        if not _error_rate_limiter.should_log(str(data.get('message'))) {
+        message = str(data.get('message'));
+        if limiter.is_repeat(client, message) {
             return JSONResponse(content={'ok': True, 'throttled': True});
+        }
+        if is_extension_report(
+            str(data.get('stack') or ''), str(data.get('url') or '')
+        ) {
+            logging.getLogger('jaclang.client_errors').info(
+                f"Ignored a browser extension's error, not this app's: {message}"
+            );
+            return JSONResponse(content={'ok': True, 'extension': True});
         }
         cfg = get_config();
         verbose = cfg.client_errors.verbose if cfg else False;
@@ -447,7 +476,7 @@ impl register_diagnostics_endpoints(server: JacAPIServer) {
     server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.POST,
-            path='/cl/__error__',
+            path=CLIENT_ERROR_PATH,
             callback=client_error,
             parameters=[],
             tags=['Client'],

@@ -1031,6 +1031,12 @@ impl MicroserviceGateway.setup -> ServingApp {
     if rl_mw is not None {
         registry.register(Middleware(name="rate_limit", priority=10, fn=rl_mw));
     }
+    error_mw = build_client_error_limit_middleware(gw_cfg.get("rate_limit", {}));
+    if error_mw is not None {
+        registry.register(
+            Middleware(name="client_error_limit", priority=10, fn=error_mw)
+        );
+    }
 
     registry.install(self.app);
 

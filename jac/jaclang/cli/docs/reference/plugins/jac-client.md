@@ -2341,6 +2341,23 @@ value, and the `/cl/__error__` endpoint logs it through the same renderer in
 production. See [Errors and Warnings](../diagnostics.md#dev-loop-and-client-runtime-errors-e7xxx)
 for the code catalog.
 
+The endpoint limits each client on its own, so one page reporting in a loop
+cannot hide other users' errors:
+
+- **Rate:** a client gets 20 reports a minute. Past that, every request is
+  answered `429` with `Retry-After` until its minute is up. The same message from the same
+  client within 10 seconds is accepted (`{"ok": true, "throttled": true}`) but not logged again.
+- **Size:** a report over 64 KiB is refused with `413` before it is parsed.
+- **Browser extensions:** a report whose stack frames all point into a browser
+  extension (`chrome-extension://`, `moz-extension://`, `safari-web-extension://`,
+  `safari-extension://`) is logged at INFO as a browser extension's error,
+  not at ERROR. The client runtime drops these itself; this covers pages still
+  running an older runtime.
+
+Behind a fleet gateway, `[scale.gateway.rate_limit] client_error_rpm` (default
+20) applies the same per-client limit before a report reaches any service, even
+when the gateway's general rate limit is off. Set it to `0` to turn it off.
+
 Locations come from the per-file source maps the client compiler writes beside
 each `compiled/*.js`. They are segment-level -- generated line *and* column,
 with a `names` array -- so a stack frame or an import specifier resolves to an

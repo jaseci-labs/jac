@@ -75,6 +75,43 @@ impl build_rate_limit_middleware(cfg: dict[str, any]) -> any {
     return rate_limit_middleware;
 }
 
+impl build_client_error_limit_middleware(cfg: dict[str, any]) -> any {
+    rpm: int = int(cfg.get("client_error_rpm", 20));
+    if rpm <= 0 {
+        return None;
+    }
+    try {
+        backend: StateBackend = get_state_backend(
+            shared=bool(cfg.get("shared", False))
+        );
+    } except RuntimeError as e {
+        logger.warning(f"Error-report limit counts per gateway process: {e}");
+        backend = InProcessStateBackend();
+    }
+    limiter = StateBackendRateLimiter(
+        backend=backend, rate_per_sec=rpm / 60.0, capacity=float(rpm)
+    );
+
+    async def client_error_limit(request: any, call_next: any) -> any {
+        if request.method != "POST" or request.url.path != CLIENT_ERROR_PATH {
+            return await call_next(request);
+        }
+        key = f"{NAMESPACE}:client_error:{request.client_host or 'unknown'}";
+        (ok, retry_in) = limiter.consume(key);
+        if ok {
+            return await call_next(request);
+        }
+        return error_response(
+            code="RATE_LIMITED",
+            message="Too many error reports; slow down.",
+            status=429,
+            retry_after_seconds=int(retry_in) + 1
+        );
+    }
+
+    return client_error_limit;
+}
+
 impl InProcessRateLimiter.consume(key: str) -> tuple[bool, float] {
     now: float = time.time();
     with _rl_lock {

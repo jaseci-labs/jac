@@ -479,8 +479,11 @@ graph import {
             _locator_cache,
             _mapper_cache
         },
-        server.endpoints.pages.register_diagnostics_endpoints.client_error
-            | server.hmr.HotReloader.record_client_event { _error_rate_limiter },
+        server.endpoints.pages.register_diagnostics_endpoints {
+            ClientErrorLimiter,
+            is_extension_report
+        },
+        server.hmr.HotReloader.record_client_event { _error_rate_limiter },
     ]
     client.targets.desktop.desktop_build --> toolchains.manager.setup_toolchain {
         _find_cef_dir,
@@ -3632,6 +3635,9 @@ graph import {
     ]
     server.endpoints.colocated ++> scale.tests.server.test_sv_outbox_endpoints {
         register_colocated_endpoints
+    }
+    server.endpoints.pages ++> scale.runtime.middleware.rate_limit.build_client_error_limit_middleware {
+        CLIENT_ERROR_PATH
     }
     server.endpoints.pages --> scale.tests.server.test_build_status_endpoint {
         register_diagnostics_endpoints
@@ -46133,7 +46139,7 @@ graph import scale {
     ]
     state.factory as factory_mod ++> tests.misc.test_state_backend_selection;
     state.state_backend ++> [
-        runtime.middleware.rate_limit { StateBackend },
+        runtime.middleware.rate_limit { InProcessStateBackend, StateBackend },
         tests.misc.test_state_backend_selection { InProcessStateBackend },
     ]
     storage.factory ++> runtime.provider.JacScaleRuntime.store
@@ -46495,11 +46501,14 @@ graph import scale.runtime {
             service_unavailable
         },
         gateway.microservice_gateway.MicroserviceGateway.handle_metrics
-            | middleware.rate_limit.build_rate_limit_middleware { error_response },
+            | middleware.rate_limit.build_client_error_limit_middleware {
+            error_response
+        },
         gateway.microservice_gateway.MicroserviceGateway.merge_graph_pages {
             not_found
         },
         gateway.microservice_gateway.MicroserviceGateway.probe_services { not_found },
+        middleware.rate_limit.build_rate_limit_middleware { error_response },
     ]
     context.errors --> [
         gateway.microservice_gateway.MicroserviceGateway.deliver_once { not_found },
@@ -46614,6 +46623,7 @@ graph import scale.runtime {
         },
     ]
     middleware.rate_limit ++> gateway.microservice_gateway.MicroserviceGateway.setup {
+        build_client_error_limit_middleware,
         build_rate_limit_middleware
     }
     middleware.ws_forward ++> gateway.microservice_gateway._install_ws_catchall {

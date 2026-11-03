@@ -300,6 +300,66 @@ impl _get_map_signature(base_path: str) -> str {
     return "|".join(parts);
 }
 
+impl ClientErrorLimiter.admit(client: str) -> float {
+    with self._lock {
+        return self._admit_locked(client, time.time());
+    }
+}
+
+impl ClientErrorLimiter._admit_locked(client: str, now: float) -> float {
+    window = self._clients.get(client);
+    if window is None or now - window.started >= self.window_seconds {
+        self._clients.pop(client, None);
+        while self._clients {
+            oldest = next(iter(self._clients));
+            if len(self._clients) < self.max_clients
+                and now - self._clients[oldest].started < self.window_seconds {
+                break;
+            }
+            del self._clients[oldest];
+        }
+        window = ClientErrorWindow(started=now);
+        self._clients[client] = window;
+    }
+    if window.count >= self.max_per_window {
+        return window.started + self.window_seconds - now;
+    }
+    window.count += 1;
+    return 0.0;
+}
+
+impl ClientErrorLimiter.is_repeat(client: str, message: str) -> bool {
+    with self._lock {
+        window = self._clients.get(client);
+        if window is None {
+            return False;
+        }
+        now = time.time();
+        last_seen = window.seen.get(message);
+        window.seen[message] = now;
+        return last_seen is not None and now - last_seen < self.dedup_seconds;
+    }
+}
+
+impl is_extension_report(stack: str, url: str = "") -> bool {
+    frame_urls: list[str] = [];
+    for line in stack.split("\n") {
+        frame = STACK_FRAME_RE.match(line);
+        if frame {
+            location = frame.group(1) or frame.group(2) or "";
+            if not ENGINE_FRAME_RE.match(location) {
+                frame_urls.append(location);
+            }
+        }
+    }
+    if not frame_urls {
+        return url.startswith(EXTENSION_URL_PREFIXES);
+    }
+    return all(
+        frame_url.startswith(EXTENSION_URL_PREFIXES) for frame_url in frame_urls
+    );
+}
+
 impl ErrorRateLimiter.should_log(message: str) -> bool {
     now: float = time.time();
 

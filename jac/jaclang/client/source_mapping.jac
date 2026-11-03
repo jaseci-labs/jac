@@ -2,6 +2,7 @@ import json;
 import os;
 import re;
 import time;
+import from threading { Lock }
 import from pathlib { Path }
 import from typing { NamedTuple }
 
@@ -64,6 +65,40 @@ obj ErrorRateLimiter {
 }
 
 glob _error_rate_limiter = ErrorRateLimiter();
+
+obj ClientErrorLimiter {
+    has max_per_window: int = 20,
+        window_seconds: float = 60.0,
+        dedup_seconds: float = 10.0,
+        max_clients: int = 4096,
+        _clients: dict[str, ClientErrorWindow] = {},
+        _lock: Lock = Lock();
+
+    def admit(client: str) -> float;
+    def _admit_locked(client: str, now: float) -> float;
+    def is_repeat(client: str, message: str) -> bool;
+}
+
+obj ClientErrorWindow {
+    has started: float,
+        count: int = 0,
+        seen: dict[str, float] = {};
+}
+
+glob EXTENSION_URL_PREFIXES: tuple[str, ...] = (
+         "chrome-extension://",
+         "moz-extension://",
+         "safari-web-extension://",
+         "safari-extension://"
+     ),
+     STACK_FRAME_RE: re.Pattern = re.compile(
+         r"^\s*at\s+(?:.*?\()?(.*?)\)?\s*$|^[^@]*@(.*:\d+:\d+)\s*$"
+     ),
+     ENGINE_FRAME_RE: re.Pattern = re.compile(
+         r"^(?:<anonymous>|native|\[native code\]|index \d+|unknown location)?$"
+     );
+
+def is_extension_report(stack: str, url: str = "") -> bool;
 
 obj SourceMapper {
     has _source_map: SourceMap | None = None,
