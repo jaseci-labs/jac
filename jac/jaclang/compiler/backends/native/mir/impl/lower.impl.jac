@@ -711,7 +711,8 @@ impl MirLowering.store_name(target: uni.Name, value: MirValue) {
 
 impl MirLowering.name_slot(target: uni.Name) -> MirValue {
     if target.sym is not None and id(target.sym) not in self.st().locals {
-        place = self.global_place(target);
+        twin = self.variant_glob(target);
+        place = self.global_place(twin if twin is not None else target);
         if place is not None {
             return place;
         }

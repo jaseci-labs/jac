@@ -737,11 +737,11 @@ impl MirLowering.variant_ability(callee: uni.Ability) -> uni.Ability {
 }
 
 impl MirLowering.variant_glob(nd: uni.Name) -> (uni.Name | None) {
-    value = final_glob_value(nd);
-    if value is None or not isinstance(value.parent, uni.Assignment) {
+    assign = self.glob_assignment_of(nd);
+    if assign is None {
         return None;
     }
-    owner = value.find_parent_of_type(uni.Module);
+    owner = assign.find_parent_of_type(uni.Module);
     if owner is None or owner is self.module {
         return None;
     }
@@ -749,7 +749,7 @@ impl MirLowering.variant_glob(nd: uni.Name) -> (uni.Name | None) {
     if twin is None {
         return None;
     }
-    for target in value.parent.target {
+    for target in assign.target {
         if isinstance(target, uni.Name) {
             found = self.module_member(twin, target.value);
             if isinstance(found, uni.Assignment) {
@@ -767,6 +767,10 @@ impl MirLowering.variant_glob(nd: uni.Name) -> (uni.Name | None) {
 impl MirLowering.variant_value(nd: uni.Name, twin: uni.Name) -> (MirValue | None) {
     b = self.builder();
     wanted = self.expr_type(nd);
+    if final_glob_value(twin) is None {
+        held = self.global_place(twin);
+        return b.load(held, self.place_elem(held)) if held is not None else None;
+    }
     folded = twin.ct_value;
     whole = int_host(folded) if isinstance(folded, CtInt) else None;
     if whole is not None and -(1 << 63) <= whole < (1 << 63) {
@@ -843,4 +847,12 @@ impl MirLowering.c_entry(
     }
     self.mir.functions.append(fn);
     return shim;
+}
+
+impl MirLowering.glob_assignment_of(nd: uni.Name) -> (uni.Assignment | None) {
+    value = final_glob_value(nd);
+    if value is not None and isinstance(value.parent, uni.Assignment) {
+        return value.parent;
+    }
+    return self.global_declaration(nd.sym) if nd.sym is not None else None;
 }
