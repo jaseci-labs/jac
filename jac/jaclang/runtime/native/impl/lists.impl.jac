@@ -402,13 +402,36 @@ impl __jac_rt_list_clear(lst: int, kind: int) {
     __mem_store_i64(lst + LIST_CAP, 0);
     __mem_store_i64(lst + LIST_DATA, 0);
     if _is_ref_kind(kind) {
-        i = 0;
-        while i < n {
+        i = n;
+        while i > 0 {
+            i -= 1;
             __jac_rt_elem_release(__mem_load_i64(data + i * SLOT), kind);
-            i += 1;
         }
     }
     free(data);
+}
+
+impl __jac_rt_list_delete_range(lst: int, start: int, stop: int, kind: int) {
+    n = __mem_load_i64(lst + LIST_LEN);
+    if stop <= start {
+        return;
+    }
+    data = __mem_load_i64(lst + LIST_DATA);
+    gone = stop - start;
+    held = malloc(gone * SLOT);
+    memmove(held, data + start * SLOT, gone * SLOT);
+    if stop < n {
+        memmove(data + start * SLOT, data + stop * SLOT, (n - stop) * SLOT);
+    }
+    __mem_store_i64(lst + LIST_LEN, n - gone);
+    if _is_ref_kind(kind) {
+        i = 0;
+        while i < gone {
+            __jac_rt_elem_release(__mem_load_i64(held + i * SLOT), kind);
+            i += 1;
+        }
+    }
+    free(held);
 }
 
 impl __jac_rt_list_copy(lst: int, kind: int) -> int {

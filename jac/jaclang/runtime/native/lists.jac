@@ -78,6 +78,8 @@ def:pub __jac_rt_list_insert(lst: int, i: int, bits: int, kind: int);
 
 def:pub __jac_rt_list_clear(lst: int, kind: int);
 
+def:pub __jac_rt_list_delete_range(lst: int, start: int, stop: int, kind: int);
+
 def:pub __jac_rt_list_copy(lst: int, kind: int) -> int;
 
 def:pub __jac_rt_list_box(lst: int, tag: int) -> int;

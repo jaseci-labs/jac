@@ -6376,6 +6376,7 @@ graph import compiler {
             native_variant_of,
             resolve_native_module
         },
+        backends.native.mir.lower_types { native_unit_compile_active },
         backends.native.region_abi._region_layout_facts {
             HDR_ALLOC_ID_OFF,
             HDR_DTOR_OFF,
@@ -9539,7 +9540,12 @@ graph import compiler {
         symbol_utils.collect_method_names { archetype_accessors },
     ]
     type passes.layout_pass ++> [
-        backends.native.mir.lower { ArchetypeLayout, EnumLayout, EnumMemberLayout },
+        backends.native.mir.lower {
+            ArchetypeLayout,
+            EnumLayout,
+            EnumMemberLayout,
+            LayoutRegistry
+        },
         frontend.codeinfo { LayoutRegistry },
     ]
     passes.mtir_gen_pass --> driver.pipeline.ir_passes { MTIRGenPass }
@@ -9631,6 +9637,7 @@ graph import compiler {
     placement.placement_facts ++> [
         backends.native.mir.backend { native_placement_hard },
         backends.native.mir.lower { native_unit, pinned_module_space },
+        backends.native.mir.lower_types { native_unit },
         driver.module_compile.admits_native_checks { variant_selected },
         driver.program.JacProgram.declared_codespace {
             native_only,

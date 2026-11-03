@@ -14,6 +14,7 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_tuple_get_ref": ["ref", "ref", "int"],
          "__jac_rt_list_push": ["none", "ref", "int", "int"],
          "__jac_rt_list_push_words": ["int", "ref", "int"],
+         "__jac_rt_list_delete_range": ["none", "ref", "int", "int", "int"],
          "__jac_rt_list_set": ["none", "ref", "int", "int", "int"],
          "__jac_rt_list_get_ref": ["ref", "ref", "int", "int"],
          "__jac_rt_list_pop": ["int", "ref", "int"],

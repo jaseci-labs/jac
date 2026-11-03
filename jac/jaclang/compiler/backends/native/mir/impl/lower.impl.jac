@@ -740,6 +740,11 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
     if not isinstance(target, uni.Name) {
         raise MirRefused(mir_refusal("assignment", type(target).__name__, nd));
     }
+    if nd.aug_op is None
+        and isinstance(nd.value, uni.FuncCall)
+        and self.getattr_alias(target.sym) is not None {
+        return;
+    }
     if nd.value is None {
         self.local_slot(target.sym, target);
         return;
@@ -1565,6 +1570,12 @@ impl MirLowering.aug_arith(
     if extended is not None {
         return extended;
     }
+    if current.type.kind == MirKind.OBJ {
+        via_dunder = self.object_operator(op, current, value, site, True);
+        if via_dunder is not None {
+            return via_dunder;
+        }
+    }
     if op == Tok.PLUS
         and current.type.kind == MirKind.LIST
         and (
@@ -1582,6 +1593,12 @@ impl MirLowering.arith(
     op: str, left: MirValue, right: MirValue, site: uni.UniNode
 ) -> MirValue {
     b = self.builder();
+    if MirKind.OBJ in (left.type.kind, right.type.kind) {
+        via_dunder = self.object_operator(op, left, right, site);
+        if via_dunder is not None {
+            return via_dunder;
+        }
+    }
     if left.type.kind == MirKind.OPT or right.type.kind == MirKind.OPT {
         symbol = OPERATOR_SYMBOLS.get(op, op);
         names = [
@@ -2091,6 +2108,10 @@ impl MirLowering.lower_bool(nd: uni.BoolExpr) -> MirValue {
 }
 
 impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
+    via_alias = self.alias_call(nd);
+    if via_alias is not None {
+        return via_alias;
+    }
     if isinstance(nd.target, uni.Name)
         and nd.target.value in ("Region", "region_of")
         and (
@@ -2509,6 +2530,11 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
     if to.kind == MirKind.INT and value.type.kind == MirKind.FN {
         return self.emit_value(MirOp.PTR_INT, to, [value]);
     }
+    if to.kind == MirKind.FN
+        and value.type.kind == MirKind.FN
+        and len(to.args) == len(value.type.args) {
+        return self.closure_adapter(value, to, site);
+    }
     if value.type.kind == MirKind.OBJ
         and to.kind == MirKind.OBJ
         and (
@@ -2728,6 +2754,9 @@ impl MirLowering.type_of(
     t: (TypeBase | None), position: MirPosition, site: uni.UniNode
 ) -> MirType {
     self.ensure_c_types(t);
+    if self.host_only_type(t) {
+        return mir_any();
+    }
     made = mir_type_of(t, position, site, self.type_env or None);
     self.ensure_objects(t);
     if made.kind == MirKind.ENUM and isinstance(t, ClassType) {
@@ -2764,6 +2793,9 @@ impl MirLowering.ensure_objects(t: (TypeBase | None)) {
     }
     scope = t.shared.symbol_table;
     if not isinstance(scope, uni.Archetype) or is_enum_class_type(t) {
+        return;
+    }
+    if self.host_only_type(t) {
         return;
     }
     name = class_type_native_name(t);
@@ -3513,7 +3545,13 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
     if not nd.is_attr
         and isinstance(nd.right, uni.IndexSlice)
         and isinstance(nd.target, uni.Expr)
-        and self.expr_type(nd.target).kind == MirKind.TUPLE {
+        and (
+            self.expr_type(nd.target).kind == MirKind.TUPLE
+            or (
+                self.expr_type(nd.target).kind == MirKind.OPT
+                and self.expr_type(nd.target).payload().kind == MirKind.TUPLE
+            )
+        ) {
         slices = nd.right.slices;
         start = slices[0].start if len(slices) == 1 and not nd.right.is_range else None;
         folded = start.ct_value if isinstance(start, uni.Expr) else None;
@@ -3523,7 +3561,13 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
                 mir_refusal("subscript", "tuple index that is not a constant", nd)
             );
         }
-        return self.tuple_get(self.lower_expr(nd.target), whole);
+        held_tuple = self.lower_expr(nd.target);
+        if held_tuple.type.kind == MirKind.OPT {
+            held_tuple = self.opt_unwrap_checked(
+                held_tuple, "'NoneType' object is not subscriptable", "TypeError"
+            );
+        }
+        return self.tuple_get(held_tuple, whole);
     }
     if not nd.is_attr and isinstance(nd.right, uni.IndexSlice) {
         target_type = self.expr_type(nd.target)
@@ -3551,6 +3595,10 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
             in (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY) {
             return self.text_subscript(self.lower_expr(nd.target), nd.right, nd);
         }
+    }
+    via_union = self.union_field_read(nd);
+    if via_union is not None {
+        return via_union;
     }
     place = self.lower_place(nd);
     loaded = self.builder().load(place, self.place_elem(place));

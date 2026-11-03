@@ -1156,7 +1156,7 @@ impl MirLowering.exact_class_test(
     return verdict;
 }
 
-impl MirLowering.layout_registries(name: str) -> list[any] {
+impl MirLowering.layout_registries(name: str) -> list[LayoutRegistry] {
     found = [get_layout_registry(self.module, self.prog)];
     arch = self.archetypes.get(name);
     owner = arch.find_parent_of_type(uni.Module) if arch is not None else None;
@@ -1188,7 +1188,7 @@ impl MirLowering.slot_groups(
     }
     groups: dict[int, list[str]] = {};
     for cls in self.runtime_classes(target, seen_from) {
-        layout: any = None;
+        layout: (ArchetypeLayout | None) = None;
         for registry in self.layout_registries(target) {
             layout = layout or registry.get_layout(cls);
         }
@@ -1371,7 +1371,7 @@ impl MirLowering.super_call(nd: uni.FuncCall, name: str) -> MirValue {
         raise MirRefused(mir_refusal("name", "super", nd));
     }
     lineage = self.lineage(arch);
-    names = ("init", "__init__") if name in ("init", "__init__") else (name, );
+    names = ["init", "__init__"] if name in ("init", "__init__") else [name];
     for holder in lineage[1:] {
         for method in self.arch_methods(holder) {
             if self.name_of(method) in names and not method.is_static {
@@ -1486,6 +1486,46 @@ impl MirLowering.unbound_method(
         return self.builder().const_bool(False);
     }
     return result;
+}
+
+impl MirLowering.object_operator(
+    op: str, left: MirValue, right: MirValue, site: uni.UniNode, inplace: bool = False
+) -> (MirValue | None) {
+    stem = OPERATOR_DUNDERS.get(op);
+    if stem is None {
+        return None;
+    }
+    tries: list[tuple[MirValue, MirValue, str]] = [];
+    if inplace {
+        tries.append((left, right, f"__i{stem}__"));
+    }
+    tries.extend([(left, right, f"__{stem}__"), (right, left, f"__r{stem}__")]);
+    for (receiver, other, name) in tries {
+        if receiver.type.kind != MirKind.OBJ {
+            continue;
+        }
+        arch = self.archetypes.get(receiver.type.name);
+        if arch is None {
+            continue;
+        }
+        method = self.find_method(arch, name);
+        if method is None or method.is_static {
+            continue;
+        }
+        decl = self.method_decl(arch, method, name, site);
+        if len(decl.params) != 1 {
+            raise MirRefused(
+                mir_refusal(
+                    "binary operator", f"{name} with a signature of its own", site
+                )
+            );
+        }
+        held = self.method_receiver(decl, arch, receiver, site);
+        return self.invoke_method(
+            decl, arch, name, [held, self.coerce(other, decl.params[0], site)]
+        );
+    }
+    return None;
 }
 
 impl MirLowering.object_eq(
@@ -2590,6 +2630,7 @@ impl MirLowering.is_class_operand(nd: (uni.UniNode | None)) -> bool {
 }
 
 impl MirLowering.union_archetypes(t: (TypeBase | None)) -> list[uni.Archetype] {
+    t = self.resolved(t);
     if not isinstance(t, UnionType) {
         return [];
     }
@@ -2645,6 +2686,57 @@ impl MirLowering.union_field_place(
         chosen = b.select(verdict, place, chosen);
     }
     return chosen;
+}
+
+impl MirLowering.union_field_read(nd: uni.AtomTrailer) -> (MirValue | None) {
+    if not nd.is_attr
+        or not isinstance(nd.right, uni.Name)
+        or not isinstance(nd.target, uni.Expr) {
+        return None;
+    }
+    members = self.union_archetypes(nd.target.type);
+    if not members {
+        return None;
+    }
+    name = nd.right.value;
+    kinds: list[MirType] = [];
+    for arch in members {
+        member = self.object_def(arch).field(name);
+        if member is None {
+            return None;
+        }
+        kinds.append(member.type);
+    }
+    if all(kind is kinds[0] for kind in kinds) {
+        return None;
+    }
+    wanted = self.expr_type(nd);
+    b = self.builder();
+    fn = self.st().fn;
+    holder = self.lower_expr(nd.target);
+    if holder.type.kind == MirKind.OPT {
+        holder = self.opt_unwrap_checked(
+            holder, f"'NoneType' object has no attribute '{name}'", "AttributeError"
+        );
+    }
+    held = self.spill(holder);
+    result = self.temp_slot(wanted);
+    done = fn.new_block("ufield.done");
+    for arch in members {
+        target = self.object_type(arch);
+        view = held if held.type is target else b.ref_cast(held, target, False);
+        here = fn.new_block("ufield.here");
+        next_bb = fn.new_block("ufield.next");
+        b.cond_branch(self.member_test(held, view, arch, nd), here, next_bb);
+        b.position(here);
+        place = self.field_place(view, arch, name, nd);
+        b.store(result, self.coerce(b.load(place, self.place_elem(place)), wanted, nd));
+        b.branch(done);
+        b.position(next_bb);
+    }
+    b.raise_builtin("AttributeError", f"object has no attribute '{name}'");
+    b.position(done);
+    return b.load(result, wanted);
 }
 
 impl MirLowering.accessor_of(
@@ -2849,6 +2941,25 @@ impl MirLowering.union_accessor_set(
         }
     }
     b.position(done);
+    return True;
+}
+
+impl MirLowering.accessor_store(target: uni.AtomTrailer, value: MirValue) -> bool {
+    found = self.accessor_of(target, "setter");
+    if found is None {
+        return False;
+    }
+    (arch, decl) = found;
+    holder = self.spill(self.lower_expr(target.target));
+    self.invoke_method(
+        decl,
+        arch,
+        self.decl_label(decl),
+        [
+            self.method_receiver(decl, arch, holder, target),
+            self.coerce(value, decl.params[0], target)
+        ]
+    );
     return True;
 }
 

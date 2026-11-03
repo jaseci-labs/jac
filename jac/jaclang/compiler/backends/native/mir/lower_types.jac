@@ -50,7 +50,9 @@ glob C_ABI_KINDS: list[MirKind] = [
          MirKind.C_FN
      ];
 
-class MirRefused(Exception) {}
+obj MirRefused(Exception) {
+    has refusal: (NativeRefusal | None) = None;
+}
 
 def mir_refusal(
     kind: str,
@@ -96,5 +98,9 @@ def mir_class_value_type(
 def mir_spec_type(spec: str) -> MirType;
 
 def stub_archetype(scope: uni.Archetype) -> bool;
+
+glob _HOST_ONLY_UNITS: dict[str, bool] = {};
+
+def host_only_archetype(arch: uni.Archetype) -> bool;
 
 def stub_scope(scope: (uni.UniScopeNode | None)) -> bool;
