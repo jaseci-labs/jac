@@ -182,6 +182,7 @@ impl CompileOptions.dependency_projection(path: str) -> str {
             self.unit_codegen_identity(path),
             f"app_kind={self.app_kind}",
             f"aot={int(bool(self.aot_mode))}",
+            f"native_import={int(self.native_import)}",
             f"force_cs={self.force_codespace}",
             f"default_cs={self.default_codespace}",
             f"ui={self.ui}"
@@ -198,6 +199,7 @@ impl CompileOptions.module_projection -> str {
             self.artifact_identity(),
             self.codegen_identity(),
             f"aot={int(bool(self.aot_mode))}",
+            f"native_import={int(self.native_import)}",
             f"force_cs={self.force_codespace}",
             f"default_cs={self.default_codespace}",
             f"ui={self.ui}",
@@ -212,13 +214,16 @@ impl CompileOptions.keeps_interfaces -> bool {
     );
 }
 
-impl CompileOptions.for_symbols(need_tree: bool = False) -> CompileOptions {
+impl CompileOptions.for_symbols(
+    need_tree: bool = False, need_bodies: bool = False
+) -> CompileOptions {
     import copy;
     result = copy.copy(self);
     result.no_cgen = True;
     result.symtab_ir_only = True;
     result.iface_ok = not need_tree;
     result.need_full_ast = need_tree;
+    result.body_demand = need_bodies;
     result.native_parity = False;
 
     return result;
@@ -231,7 +236,8 @@ impl CompileOptions.clone_for_native_import -> CompileOptions {
         no_ir_cache=self.no_ir_cache,
         native_required=self.native_required,
         native_require=list(self.native_require or []),
-        aot_mode=True,
+        aot_mode=self.aot_mode or bool(self.force_codespace),
+        native_import=True,
         default_codespace='native',
         native_unit=self.native_unit,
         kernel_build=self.kernel_build,

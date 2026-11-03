@@ -288,7 +288,9 @@ impl build_native_legality(
     refused_names: dict[str, NativeRefusal] = {};
     bridged_names: set[str] = set();
     if judging is not None {
-        scan = native_blocker_scan(mod, base_dir);
+        scan = native_blocker_scan(
+            mod, base_dir, allow_pub=bool(judging.options?.native_import)
+        );
         if scan.module {
             legality.blockers.append(
                 NativeRefusal(kind="module", name=scan.module, site=mod)
