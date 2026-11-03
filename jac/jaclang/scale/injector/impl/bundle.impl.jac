@@ -1,18 +1,16 @@
 impl _is_client_dist(rel: Path) -> bool {
-    parts = rel.parts;
-    return len(parts) >= 3
-        and parts[0] == ".jac"
-        and parts[1] == "client"
-        and parts[2] == "dist";
+    return rel.parts[:len(_CLIENT_DIST)] == _CLIENT_DIST;
 }
 
 impl _is_bundle_required(rel: Path) -> bool {
-    if _is_client_dist(rel) {
-        return True;
-    }
-    parts = rel.parts;
+    return any([rel.parts[:len(prefix)] == prefix for prefix in _BUNDLE_REQUIRED]);
+}
 
-    return len(parts) >= 2 and parts[0] == ".jac" and parts[1] == "admin";
+impl _may_hold_bundle_required(rel: Path) -> bool {
+    parts = rel.parts;
+    return any(
+        [prefix[:len(parts)] == parts[:len(prefix)] for prefix in _BUNDLE_REQUIRED]
+    );
 }
 
 impl BundleSourceFilter.parks(rel: Path) -> bool {
@@ -165,19 +163,30 @@ impl partition_bundle_sources(base: Path) -> tuple[list[Path], list[str]] {
     excluded = source_filter_for(base);
     kept: list[Path] = [];
     pruned: set[str] = set();
-    for path in sorted(base.rglob("*")) {
-        rel = path.relative_to(base);
-        if not excluded.excludes(rel) {
-            if path.is_file() {
-                kept.append(path);
+    for (dirpath, dirnames, filenames) in os.walk(str(base)) {
+        here = Path(str(dirpath));
+        for name in dirnames + filenames {
+            path = here / str(name);
+            rel = path.relative_to(base);
+            if not excluded.excludes(rel) {
+                if path.is_file() {
+                    kept.append(path);
+                }
+                continue;
             }
-            continue;
+            pruned_tree = _exclude_dir_root(rel);
+            if pruned_tree is not None {
+                pruned.add(pruned_tree);
+            }
         }
-        pruned_tree = _exclude_dir_root(rel);
-        if pruned_tree is not None {
-            pruned.add(pruned_tree);
-        }
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if _exclude_dir_root((here / str(name)).relative_to(base)) is None
+                or _may_hold_bundle_required((here / str(name)).relative_to(base))
+        ];
     }
+    kept.sort();
     shipped: set[str] = set();
     for path in kept {
         parent = path.relative_to(base).parent;
