@@ -945,7 +945,7 @@ impl optimize_merged_program(plan: LinkPlan, merged: ModuleRef, kind: ArtifactKi
         main_fn: any = None;
         try {
             main_fn = mod_any.get_function("main");
-        } except Exception {
+        } except NameError {
             main_fn = None;
         }
         if main_fn is not None and not main_fn.is_declaration {
@@ -1400,7 +1400,7 @@ impl expose_root_exports(plan: LinkPlan, merged: ModuleRef) -> list[str] {
                     if ex.kind == "function"
                     else mod_any.get_global_variable(name)
             );
-        } except Exception {
+        } except NameError {
             taken = None;
         }
         if taken is not None {
@@ -1412,7 +1412,7 @@ impl expose_root_exports(plan: LinkPlan, merged: ModuleRef) -> list[str] {
                     if ex.kind == "function"
                     else mod_any.get_global_variable(ex.symbol)
             );
-        } except Exception {
+        } except NameError {
             continue;
         }
         value.name = name;
@@ -1618,10 +1618,8 @@ impl jit_engine(plan: LinkPlan) -> ExecutionEngine {
     engine_any._jac_libraries = libraries;
     engine_any._jac_unit_ifaces = [u.iface for u in plan.units];
     root_u = plan.root_unit();
-    try {
-        setattr(engine, "_jac_unit_path", root_u.path);
-        setattr(engine, "_jac_native_iface", root_u.iface);
-    } except Exception {}
+    setattr(engine, "_jac_unit_path", root_u.path);
+    setattr(engine, "_jac_native_iface", root_u.iface);
     return engine;
 }
 

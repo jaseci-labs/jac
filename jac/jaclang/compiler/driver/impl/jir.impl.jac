@@ -287,12 +287,8 @@ impl _module_codespace_mode(source_path: str) -> str {
     if is_package_keyed_path(source_path) {
         return "internal";
     }
-    try {
-        import from jaclang.compiler.frontend.codeinfo { effective_default_codespace }
-        return effective_default_codespace();
-    } except Exception {
-        return "server";
-    }
+    import from jaclang.compiler.frontend.codeinfo { effective_default_codespace }
+    return effective_default_codespace();
 }
 
 impl compiler_input_rules(pkg_dir: str) -> tuple[tuple[str, ...], tuple[str, ...]] {
@@ -606,12 +602,7 @@ impl _config_for_module(resolved: Path) -> any {
 }
 
 impl _analysis_fingerprint_for(source_path: str) -> str {
-    cfg: any = None;
-    try {
-        cfg = _config_for_module(Path(source_path).resolve());
-    } except Exception {
-        cfg = None;
-    }
+    cfg: any = _config_for_module(Path(source_path).resolve());
     import from jaclang.compiler.frontend.codeinfo { effective_native_target }
     mem_cfg = cfg.memory if cfg is not None else None;
     native_cfg = cfg.native if cfg is not None else None;
@@ -628,12 +619,7 @@ impl _analysis_fingerprint_for(source_path: str) -> str {
 
 impl _check_policy_digest(source_path: str) -> str {
     import json;
-    cfg: any = None;
-    try {
-        cfg = _config_for_module(Path(source_path).resolve());
-    } except Exception {
-        cfg = None;
-    }
+    cfg: any = _config_for_module(Path(source_path).resolve());
     check = cfg.check if cfg is not None else None;
     if check is None {
         return "";

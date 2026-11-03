@@ -484,12 +484,7 @@ impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
             and nd.from_loc.string_path_value is None
             and not nd.is_virtual_jac
         ) {
-            resolved = None;
-            try {
-                resolved = nd.from_loc.resolve_relative_path();
-            } except Exception {
-                resolved = None;
-            }
+            resolved = nd.from_loc.resolve_relative_path();
             if isinstance(resolved, str) and resolved.endswith('.jac') {
                 import from jaclang.compiler.frontend.diagnostics { W1105 }
                 import from jaclang.compiler.placement.placement_pins {

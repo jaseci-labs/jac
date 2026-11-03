@@ -618,7 +618,7 @@ obj KernelSession {
         _open: set[str] = set(),
         _edges_seeded: bool = False,
         _intel: (CodeIntelligence | None) = None,
-        _entered: list[HostServices] = [];
+        _entered: list[HostServices | None] = [];
 
     def postinit;
     def live_program -> JacProgram;

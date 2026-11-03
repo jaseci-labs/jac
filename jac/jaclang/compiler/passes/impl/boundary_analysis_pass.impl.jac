@@ -800,11 +800,7 @@ impl BoundaryAnalysisPass._parse_imported_archetype(
                 if local != type_name {
                     continue;
                 }
-                try {
-                    target = item.from_mod_path.resolve_relative_path();
-                } except Exception {
-                    continue;
-                }
+                target = item.from_mod_path.resolve_relative_path();
                 if not target or not os.path.isfile(str(target)) {
                     continue;
                 }
@@ -1178,11 +1174,7 @@ impl BoundaryAnalysisPass._collect_boundary_type(
 
     if arch_node is None {
         for mod in search_mods {
-            try {
-                arch_node = self._find_archetype(mod, type_name);
-            } except Exception {
-                arch_node = None;
-            }
+            arch_node = self._find_archetype(mod, type_name);
             if arch_node is not None {
                 break;
             }

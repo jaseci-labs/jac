@@ -139,6 +139,7 @@ impl close_session_call(
 }
 
 impl execute(module: ptr[PyObject]) -> i32 {
+    mark_kernel_image();
     install_engine(KernelPython());
     return jacpy_module_add_int_text(module, "API_VERSION", i64(KERNEL_API_VERSION));
 }

@@ -3868,6 +3868,10 @@ graph import {
     compiler.driver.jir ++> compiler.kernel_api { NativeStamp }
     compiler.frontend.unitree as uni ++> compiler.tools.lang_tools;
     compiler.backends.py.python_engine ++> compiler.kernel_api.compiled_unit { active_engine }
+    compiler.frontend.host ++> compiler.kernel_module.execute { mark_kernel_image }
+    compiler.driver.compile_options --> compiler.driver.nativecache.NativeBuildSession.lower { pop_native_target, push_native_target }
+    compiler.frontend.codeinfo ++> compiler.types.stubcat.build._cached_catalog { jaclang_pkg_root }
+    compiler.types.stubcat.locate ++> compiler.types.stubcat.build._cached_catalog { dev_catalog_path }
 }
 
 graph import artifacts {
@@ -5787,82 +5791,31 @@ graph import compiler {
         tools.comment_attach_pass { NodeComments },
     ]
     frontend.codeinfo --> [
-        backends.es.esast_gen_pass.EsastGenPass._generate_sv_import_stubs
-            | backends.py.pyast_gen_pass.PyastGenPass._sv_endpoint_effects
-            | passes.boundary_analysis_pass.BoundaryAnalysisPass._collect_boundary_type {
-            endpoint_key
-        },
-        backends.py.pyast_gen_pass.PyastGenPass._gen_native_interop_stubs {
-            native_def_symbol,
-            native_symbol_name,
-            native_unit_prefix
-        },
-        backends.py.pyast_gen_pass.PyastGenPass.exit_archetype
-            | passes.boundary_analysis_pass.BoundaryAnalysisPass.finish {
-            endpoint_key
-        },
-        driver.application.prepare_application {
-            get_effective_default_codespace_override,
-            set_effective_default_codespace
-        },
+        backends.es.esast_gen_pass.EsastGenPass._generate_sv_import_stubs | backends.py.pyast_gen_pass.PyastGenPass._sv_endpoint_effects | passes.boundary_analysis_pass.BoundaryAnalysisPass._collect_boundary_type { endpoint_key },
+        backends.py.pyast_gen_pass.PyastGenPass._gen_native_interop_stubs { native_def_symbol, native_symbol_name, native_unit_prefix },
+        backends.py.pyast_gen_pass.PyastGenPass.exit_archetype | passes.boundary_analysis_pass.BoundaryAnalysisPass.finish { endpoint_key },
+        driver.application.prepare_application { get_effective_default_codespace_override, set_effective_default_codespace },
         driver.boundary_classify.bridgeable_import_target { is_shared_runtime_module },
-        driver.boundary_classify.plain_native_import_target
-            | types.stubcat.build._cached_catalog { jaclang_pkg_root },
-        driver.compile_options.CompileOptions.__post_init__
-            | driver.jir._analysis_fingerprint_for { effective_native_target },
-        driver.compile_options.CompileOptions.native_required_for {
-            module_dotted_name
-        },
-        driver.ifacecache.IfaceRegistry.client_boundary_facts
-            | driver.nativecache.NativeUnitRegistry._stash_products
-            | driver.selfhost.SelfHostCache.evict_unit { CodeGenTarget },
-        driver.jir._memoized {
-            _native_target_ctx,
-            get_effective_default_codespace_override
-        },
+        driver.boundary_classify.plain_native_import_target { jaclang_pkg_root },
+        driver.compile_options.CompileOptions.__post_init__ | driver.jir._analysis_fingerprint_for { effective_native_target },
+        driver.compile_options.CompileOptions.native_required_for { module_dotted_name },
+        driver.ifacecache.IfaceRegistry.client_boundary_facts | driver.nativecache.NativeUnitRegistry._stash_products | driver.selfhost.SelfHostCache.evict_unit { CodeGenTarget },
+        driver.jir._memoized { _native_target_ctx, get_effective_default_codespace_override },
         driver.jir._module_codespace_mode { effective_default_codespace },
         driver.jir.native_producer_digest { NATIVE_ABI_VERSION },
-        driver.nativecache.NativeBuildSession.lower {
-            get_effective_default_codespace_override,
-            reset_native_unit_compile,
-            set_effective_default_codespace,
-            set_native_unit_compile
-        },
+        driver.nativecache.NativeBuildSession.lower { get_effective_default_codespace_override, reset_native_unit_compile, set_effective_default_codespace, set_native_unit_compile },
         driver.nativecache.NativeUnitRegistry.note_step { native_unit_identity },
         driver.program.JacProgram.compile { native_unit_compile_active },
-        driver.selfhost.SelfHostCache.resolve {
-            is_native_by_location,
-            is_shared_runtime_module,
-            native_unit_compile_active
-        },
-        driver.session_compile.inherit_session_options {
-            set_effective_default_codespace
-        },
-        passes.boundary_analysis_pass.BoundaryAnalysisPass._register_na_client_import {
-            native_wasm_stem
-        },
-        passes.capability_check_pass.native_capability_violations {
-            bundled_native_module_names,
-            is_bundled_native_module,
-            resolve_native_module
-        },
+        driver.selfhost.SelfHostCache.resolve { is_native_by_location, is_shared_runtime_module, native_unit_compile_active },
+        driver.session_compile.inherit_session_options { set_effective_default_codespace },
+        passes.boundary_analysis_pass.BoundaryAnalysisPass._register_na_client_import { native_wasm_stem },
+        passes.capability_check_pass.native_capability_violations { bundled_native_module_names, is_bundled_native_module, resolve_native_module },
         passes.layout_pass._recorded_native_name { bundled_stdlib_module_of },
         passes.layout_pass.archetype_native_name { bundled_stdlib_module_of },
-        passes.ownership_check_pass.OwnershipCheckPass._nogc_resolve_provenance {
-            NOGC_NATIVE_STDLIB,
-            bundled_stdlib_module_of,
-            is_toolchain_unit
-        },
-        placement.placement_facts.native_unit {
-            is_kernel_unit_path,
-            native_unit_compile_active
-        },
+        passes.ownership_check_pass.OwnershipCheckPass._nogc_resolve_provenance { NOGC_NATIVE_STDLIB, bundled_stdlib_module_of, is_toolchain_unit },
+        placement.placement_facts.native_unit { is_kernel_unit_path, native_unit_compile_active },
         placement.placement_solver._import_source_module { is_compiler_source_path },
-        tests.xbackend_equiv {
-            JAC_ENTRY_SYMBOL,
-            native_symbol_name,
-            native_unit_prefix
-        },
+        tests.xbackend_equiv { JAC_ENTRY_SYMBOL, native_symbol_name, native_unit_prefix },
     ]
     type frontend.codeinfo ++> [
         backends.native.link_glue | backends.native.link_plan { InteropBinding },
@@ -6182,33 +6135,9 @@ graph import compiler {
         types.type_evaluator.TypeEvaluator.get_type_of_module { active_host },
     ]
     frontend.host --> [
-        backends.es.client_paths.client_output_path
-            | backends.native.na_ir_gen_pass.NaIRGenPass._opaque_field_if_unlowerable
-            | driver.compilation_context.context_program
-            | driver.compile_options.CompileOptions.effective_triple
-            | driver.jir._memoized
-            | driver.native_iface.resolve_native_unit_ref
-            | driver.nativecache.NativeUnitRegistry.adopt_lowered
-            | driver.program.JacProgram._get_compiler
-            | native_scope.binds_bare_arch_names
-            | passes.boundary_analysis_pass.BoundaryAnalysisPass.enter_atom_trailer
-            | passes.mtir_gen_pass.MTIRGenPass._get_scope_str
-            | passes.ownership_check_pass.OwnershipCheckPass._nogc_module_enforced
-            | passes.static_analysis_pass.StaticAnalysisPass._check_client_imports
-            | placement.placement_solver._pull_into_target
-            | types.type_evaluator.TypeEvaluator.get_type_of_module_item {
-            active_host
-        },
-        backends.es.client_paths.jac_js_path
-            | backends.native.na_ir_gen_pass.NaIRGenPass._place_unit_python
-            | driver.jir._project_env_fingerprint_uncached
-            | passes.ownership_check_pass.OwnershipCheckPass._nogc_resolve_provenance {
-            active_host
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._register_imported_archetype
-            | driver.program.JacProgram.iface_registry { active_host },
-        driver.compiler.JacCompiler.enter_compile { active_host, install_host },
-        driver.compiler.JacCompiler.finish_compile { install_host },
+        backends.es.client_paths.client_output_path | backends.native.na_ir_gen_pass.NaIRGenPass._opaque_field_if_unlowerable | driver.compilation_context.context_program | driver.compile_options.CompileOptions.effective_triple | driver.jir._memoized | driver.native_iface.resolve_native_unit_ref | driver.nativecache.NativeUnitRegistry.adopt_lowered | driver.program.JacProgram._get_compiler | native_scope.binds_bare_arch_names | passes.boundary_analysis_pass.BoundaryAnalysisPass.enter_atom_trailer | passes.mtir_gen_pass.MTIRGenPass._get_scope_str | passes.ownership_check_pass.OwnershipCheckPass._nogc_module_enforced | passes.static_analysis_pass.StaticAnalysisPass._check_client_imports | types.type_evaluator.TypeEvaluator.get_type_of_module_item { active_host },
+        backends.es.client_paths.jac_js_path | backends.native.na_ir_gen_pass.NaIRGenPass._place_unit_python | driver.jir._project_env_fingerprint_uncached | passes.ownership_check_pass.OwnershipCheckPass._nogc_resolve_provenance { active_host },
+        backends.native.na_ir_gen_pass.NaIRGenPass._register_imported_archetype | driver.program.JacProgram.iface_registry { active_host },
         driver.program.JacProgram.invalidate_module { active_host },
         driver.program.JacProgram.load_dependency_module { active_host },
         driver.program.JacProgram.native_units { active_host },
@@ -6216,7 +6145,6 @@ graph import compiler {
         driver.program.JacProgram.stub_catalog { active_host },
         kernel_target.target_pkg_root { package_root },
     ]
-    type frontend.host ++> driver.compiler { HostServices }
     frontend.loop_links ++> [
         backends.es.esast_gen_pass {
             LoopLinks,
@@ -8747,14 +8675,7 @@ graph import compiler.driver {
         pipeline_runner.wasm_ir_units { CompileOptions, pop_native_target, push_native_target },
     ]
     compile_options --> [
-        application.prepare_application | ifacecache.IfaceRegistry._verify_iface {
-            CompileOptions
-        },
-        nativecache.NativeBuildSession.lower {
-            env_na_debug,
-            pop_native_target,
-            push_native_target
-        },
+        application.prepare_application | ifacecache.IfaceRegistry._verify_iface { CompileOptions },
         nativecache.NativeUnitRegistry.known_digest { env_na_debug },
         nativecache.NativeUnitRegistry.record_module { env_na_debug },
     ]
@@ -11409,7 +11330,6 @@ graph import compiler.types.stubcat {
         jaclang_pkg_dir,
         typeshed_stdlib_dir
     }
-    locate --> build._cached_catalog { dev_catalog_path }
     reader ++> [
         build,
         locate._open_file { open_catalog_file },

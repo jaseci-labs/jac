@@ -1629,7 +1629,7 @@ impl _exec_file(
                         if _kind_forced or backend == "native"
                         else None
                 );
-                (_in_kernel, engine) = program._get_compiler().kernel_native_entry(
+                engine = program._get_compiler().kernel_native_entry(
                     full_path, program, _run_options or _RunOpts()
                 );
                 if program.errors_had {

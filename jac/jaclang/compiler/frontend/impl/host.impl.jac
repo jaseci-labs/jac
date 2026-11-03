@@ -66,8 +66,6 @@ impl HostServices.client_pulls(path: str) -> str {
     return "";
 }
 
-impl HostServices.client_pull_grew(path: str) {}
-
 impl HostServices.has_npm_package(spec: str, base_path: str) -> bool {
     return False;
 }
@@ -89,12 +87,6 @@ impl HostServices.declared_dependencies(
 impl HostServices.note(message: str, style: str = "dim") {}
 
 impl HostServices.stub_catalog_for(program: JacProgram) -> (StubCatalog | None) {
-    return None;
-}
-
-impl HostServices.stub_interface(
-    program: JacProgram, file_path: str
-) -> (Module | None) {
     return None;
 }
 
@@ -338,12 +330,21 @@ impl HostServices.default_target_triple -> str {
     return "";
 }
 
-impl HostServices.host_side -> HostServices {
-    return self;
+impl active_host -> HostServices {
+    if _HOSTS {
+        return _HOSTS[-1];
+    }
+    if _KERNEL_IMAGE {
+        raise RuntimeError(
+            "no host services are installed in the compiler kernel: a compiler "
+            "lookup ran outside a compile, check or session request"
+        );
+    }
+    return _NEUTRAL_HOST;
 }
 
-impl active_host -> HostServices {
-    return _HOSTS[-1] if _HOSTS else _NEUTRAL_HOST;
+impl installed_host -> (HostServices | None) {
+    return _HOSTS[-1] if _HOSTS else None;
 }
 
 impl package_root -> str {
@@ -355,9 +356,11 @@ impl set_package_root(path: str) {
     _PACKAGE_ROOT.append(path);
 }
 
-impl install_host(host: HostServices) {
+impl install_host(host: (HostServices | None)) {
     _HOSTS.clear();
-    _HOSTS.append(host);
+    if host is not None {
+        _HOSTS.append(host);
+    }
 }
 
 impl install_toolchain_host(host: HostServices) {
@@ -376,35 +379,24 @@ impl toolchain_host -> HostServices {
     return _TOOLCHAIN_HOSTS[0];
 }
 
-impl enter_compiler(host: HostServices) -> HostServices {
-    previous = active_host();
+impl enter_compiler(host: HostServices) -> (HostServices | None) {
+    previous = installed_host();
     install_host(host);
     _RESIDENCY[0] += 1;
     return previous;
 }
 
-impl leave_compiler(previous: HostServices) {
+impl mark_kernel_image {
+    if not _KERNEL_IMAGE {
+        _KERNEL_IMAGE.append(True);
+    }
+}
+
+impl leave_compiler(previous: (HostServices | None)) {
     _RESIDENCY[0] -= 1;
     install_host(previous);
 }
 
 impl kernel_resident -> bool {
     return _RESIDENCY[0] > 0;
-}
-
-impl set_kernel_host_mode(mode: str) -> str {
-    previous = kernel_host_mode();
-    _KERNEL_HOST_MODE.clear();
-    if mode {
-        _KERNEL_HOST_MODE.append(mode);
-    }
-    return previous;
-}
-
-impl kernel_host_mode -> str {
-    return _KERNEL_HOST_MODE[0] if _KERNEL_HOST_MODE else "";
-}
-
-impl kernel_host_enabled -> bool {
-    return kernel_host_mode() != "";
 }

@@ -737,11 +737,7 @@ impl CtEvaluator._demand_tree(sym: Symbol) -> Symbol {
         chain.append(scope.scope_name);
         scope = scope.parent_scope;
     }
-    try {
-        real = self.evaluator.program.load_dependency_module(path, need_tree=True);
-    } except Exception {
-        return sym;
-    }
+    real = self.evaluator.program.load_dependency_module(path, need_tree=True);
     if real is None or isinstance(real, CatModule) {
         return sym;
     }
@@ -1255,15 +1251,11 @@ impl CtEvaluator._field_type_of(hv: HasVar) -> (CtType | None) {
     if hv.type_tag is None or hv.type_tag.tag is None {
         return None;
     }
-    try {
-        return self.ct_type_of_class(
-            self.evaluator._convert_to_instance(
-                self.evaluator.get_type_of_expression(hv.type_tag.tag)
-            )
-        );
-    } except Exception {
-        return None;
-    }
+    return self.ct_type_of_class(
+        self.evaluator._convert_to_instance(
+            self.evaluator.get_type_of_expression(hv.type_tag.tag)
+        )
+    );
 }
 
 impl CtEvaluator._field_info(hv: HasVar, sym: (Symbol | None)) -> CtRecord {
@@ -1272,11 +1264,7 @@ impl CtEvaluator._field_info(hv: HasVar, sym: (Symbol | None)) -> CtRecord {
     hval = hv.value;
     has_dflt = hval is not None;
     if hval is not None {
-        try {
-            dflt = self.eval(hval);
-        } except Exception {
-            dflt = CT_NONE;
-        }
+        dflt = self.eval(hval);
     }
     sem_text = hv.semstr or (sym.semstr if sym is not None else "");
     return CtRecord(

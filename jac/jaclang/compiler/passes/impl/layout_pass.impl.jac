@@ -71,9 +71,7 @@ impl LayoutPass._type_declaration_surface(module: Module) -> None {
     for annotation in annotations {
         for nd in reversed(annotation.flatten()) {
             if isinstance(nd, Expr) and nd.type is None {
-                try {
-                    evaluator.get_type_of_expression(nd);
-                } except Exception {}
+                evaluator.get_type_of_expression(nd);
             }
         }
     }
@@ -651,16 +649,7 @@ impl LayoutPass._acyclic_walk(name: str, state: dict[str, int]) -> int {
             result = 2;
             break;
         }
-        key: (str | None) = None;
-        try {
-            key = native_type_key(tb);
-        } except Exception {
-            key = None;
-        }
-        if key is None {
-            result = 2;
-            break;
-        }
+        key = native_type_key(tb);
         parts = self._expand_type_keys(key);
         if parts is None {
             result = 2;
@@ -1129,11 +1118,7 @@ impl record_interface_twins(native_mod: Module, prog: JacProgram) {
             continue;
         }
         if stub_mod is None {
-            try {
-                stub_mod = prog.load_dependency_module(stub_path);
-            } except Exception {
-                return;
-            }
+            stub_mod = prog.load_dependency_module(stub_path);
         }
         typ = interface_type(stub_mod, stmt.name.value, prog);
         if not isinstance(typ, ClassType) or typ._shared is None or typ.is_instance() {

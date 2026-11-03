@@ -72,19 +72,11 @@ impl jac_dependencies(module: uni.Module) -> list[str] {
         }
         sources: list[str] = [];
         for path in paths {
-            try {
-                sources.append(path.resolve_relative_path());
-            } except Exception {
-                continue;
-            }
+            sources.append(path.resolve_relative_path());
         }
         for target in item.items {
             if isinstance(target, uni.ModuleItem) {
-                try {
-                    sources.append(target.resolve_relative_path());
-                } except Exception {
-                    continue;
-                }
+                sources.append(target.resolve_relative_path());
             }
         }
         for source in sources {
@@ -426,12 +418,8 @@ impl client_artifact_of(module: uni.Module) -> (ClientArtifact | None) {
     import from jaclang.compiler.backends.es.estree { Node as EsNode }
     es_ast = module.gen.es_ast;
     if isinstance(es_ast, EsNode) {
-        try {
-            import from jaclang.compiler.backends.es.es_unparse { es_to_js_with_map }
-            (_, segments) = es_to_js_with_map(es_ast);
-        } except Exception {
-            segments = [];
-        }
+        import from jaclang.compiler.backends.es.es_unparse { es_to_js_with_map }
+        (_, segments) = es_to_js_with_map(es_ast);
     }
     import from jaclang.compiler.backends.es.backends.registry {
         resolve_active_backend
@@ -450,13 +438,9 @@ impl client_artifact_of(module: uni.Module) -> (ClientArtifact | None) {
 impl placement_record(
     module: uni.Module, program: JacProgram, solved: bool = True
 ) -> str {
-    try {
-        record = summary_to_dict(get_module_summary(module, program));
-        record["spaces"] = sorted(module_spaces(module)) if solved else [];
-        return json.dumps(record);
-    } except Exception {
-        return "";
-    }
+    record = summary_to_dict(get_module_summary(module, program));
+    record["spaces"] = sorted(module_spaces(module)) if solved else [];
+    return json.dumps(record);
 }
 
 impl unit_products(module: uni.Module, program: JacProgram) -> UnitProducts {

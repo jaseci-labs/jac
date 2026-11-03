@@ -146,12 +146,8 @@ impl from_import_jac_source(imp: Import) -> (str | None) {
         return None;
     }
     _path: (str | None) = None;
-    try {
-        _resolved = imp.from_loc.resolve_relative_path();
-        _path = _resolved if isinstance(_resolved, str) else None;
-    } except Exception {
-        _path = None;
-    }
+    _resolved = imp.from_loc.resolve_relative_path();
+    _path = _resolved if isinstance(_resolved, str) else None;
     if _path is not None and _path.endswith('.jac') and os.path.exists(_path) {
         return _path;
     }
