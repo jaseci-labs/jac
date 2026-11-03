@@ -1673,6 +1673,15 @@ impl MirLowering.arith(
             else right;
         return self.shift(op, shifted, count);
     }
+    if left.type.kind == MirKind.BOOL
+        and right.type.kind == MirKind.BOOL
+        and op in (Tok.BW_AND, Tok.BW_OR, Tok.BW_XOR) {
+        return b.binary(
+            "and" if op == Tok.BW_AND else ("or" if op == Tok.BW_OR else "xor"),
+            left,
+            right
+        );
+    }
     (li, ri) = self.unify_numeric(left, right, site);
     if op in (Tok.PLUS, Tok.MINUS, Tok.STAR_MUL) {
         name = "add" if op == Tok.PLUS else ("sub" if op == Tok.MINUS else "mul");
