@@ -472,6 +472,7 @@ def _compile_native_fixture(
 
 """Get a ctypes-callable function from a JIT engine."""
 def get_func(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
+    assert ctypes.c_char_p not in argtypes , f"'{name}' takes a Jac str; call it through native_str_func, which passes MIR's string ABI";
     addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     functype = ctypes.CFUNCTYPE(restype, *argtypes);

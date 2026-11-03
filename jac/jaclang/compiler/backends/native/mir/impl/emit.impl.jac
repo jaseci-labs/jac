@@ -1067,7 +1067,15 @@ impl MirEmitter.emit_memory(b: ir.IRBuilder, instr: MirInstr) {
             if op in (MirOp.MEM_STORE, MirOp.ATOMIC_STORE)
             else type_arg_of(instr)
     );
-    address = b.inttoptr(self.value(instr.operands[0]), cell.as_pointer());
+    held = self.value(instr.operands[0]);
+    address: ir.Value;
+    if isinstance(held.type, ir.PointerType) {
+        address = held
+            if held.type == cell.as_pointer()
+            else b.bitcast(held, cell.as_pointer());
+    } else {
+        address = b.inttoptr(held, cell.as_pointer());
+    }
     width = cell.width if isinstance(cell, ir.IntType) else 64;
     align = max(width // 8, 1);
     if op == MirOp.MEM_LOAD {

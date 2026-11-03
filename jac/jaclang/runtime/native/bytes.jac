@@ -5,7 +5,13 @@ import from c {
         a: int, b: int, n: int
     ) -> i32;  def memset(p: int, c: i32, n: int) -> int;  def strlen(
         text: int
-    ) -> int;
+    ) -> int;  def malloc(n: int) -> int;  def fopen(
+        path: ptr[u8], mode: ptr[u8]
+    ) -> int;  def fclose(stream: int) -> i32;  def fread(
+        buf: int, size: int, count: int, stream: int
+    ) -> int;  def fwrite(buf: int, size: int, count: int, stream: int) -> int;  def fflush(
+        stream: int
+    ) -> i32;  def fgetc(stream: int) -> i32;
 }
 
 glob BYTES_LEN: int = 0,
@@ -31,6 +37,29 @@ glob CODEC_UTF8: int = 0,
      STRIP_BOTH: int = 0,
      STRIP_LEFT: int = 1,
      STRIP_RIGHT: int = 2;
+
+glob FILE_HANDLE: int = 0,
+     FILE_CLOSED: int = 8,
+     FILE_PATH: int = 16,
+     FILE_MODE: int = 24,
+     FILE_SIZE: int = 32,
+     FILE_CHUNK: int = 65536;
+
+def:pub __jac_rt_file_open(path: ptr[u8], mode: ptr[u8], binary: bool) -> int;
+
+def:pub __jac_rt_file_read(f: int, binary: bool, line: bool) -> int;
+
+def:pub __jac_rt_file_write(f: int, data: ptr[u8], n: int) -> int;
+
+def:pub __jac_rt_file_close(f: int);
+
+def:pub __jac_rt_file_flush(f: int);
+
+def:pub __jac_rt_file_closed(f: int) -> bool;
+
+def _file_drop(f: ptr[u8]);
+
+def _file_live(f: int) -> int;
 
 def:pub __jac_rt_bytes_new(data: ptr[u8], n: int) -> int;
 

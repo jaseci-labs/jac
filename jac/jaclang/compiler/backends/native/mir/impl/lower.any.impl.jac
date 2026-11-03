@@ -33,7 +33,8 @@ impl MirLowering.any_tag(t: MirType, site: uni.UniNode) -> int {
             MirKind.FN,
             MirKind.BYTES,
             MirKind.BYTEARRAY,
-            MirKind.TUPLE
+            MirKind.TUPLE,
+            MirKind.FILE
         ) {
         return ANY_OBJ_TAG;
     }
@@ -121,7 +122,22 @@ impl MirLowering.any_unbox(
             return b.compare("ne", bits, b.const_int(0, mir_int()));
         }
         if to.kind == MirKind.FLOAT {
-            return b.convert(self.emit_value(MirOp.BITCAST, mir_float(), [bits]), to);
+            held_any = self.spill(value);
+            raw = self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [held_any]);
+            tag = self.emit_value(MirOp.ANY_TAG, mir_int(), [held_any]);
+            integral = b.binary(
+                "or",
+                b.compare("eq", tag, b.const_int(ANY_INT_TAG, mir_int())),
+                b.compare("eq", tag, b.const_int(ANY_BOOL_TAG, mir_int()))
+            );
+            return b.convert(
+                b.select(
+                    integral,
+                    b.convert(raw, mir_float()),
+                    self.emit_value(MirOp.BITCAST, mir_float(), [raw])
+                ),
+                to
+            );
         }
         return b.convert(bits, to);
     }

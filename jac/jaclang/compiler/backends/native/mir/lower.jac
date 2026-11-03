@@ -38,6 +38,8 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      NEGATIVE_SHIFT_MESSAGE: str = "negative shift count",
      RANGE_STEP_MESSAGE: str = "range() arg 3 must not be zero",
      CLOSURE_CELLS_OFFSET: int = 16,
+     RC_THREADED_FLAG: str = "__jac_rc_threaded",
+     RC_DEBUG_OFF_NOTICE: str = "jac: RC debug tracing not compiled in (build with --debug or [native] debug = true)",
      KIND_INT: int = 0,
      KIND_FLOAT: int = 1,
      KIND_BOOL: int = 2,
@@ -208,7 +210,8 @@ obj MirWithExit {
         decl: (MirDecl | None) = None,
         held: (MirValue | None) = None,
         it: (MirValue | None) = None,
-        out: (MirValue | None) = None;
+        out: (MirValue | None) = None,
+        file: (MirValue | None) = None;
 }
 
 obj MirLoopTarget {
@@ -320,6 +323,7 @@ obj MirLowering {
         type_env: dict[str, TypeBase] = {},
         templates: dict[int, uni.Ability] = {},
         instances: dict[str, MirDecl] = {},
+        specials: dict[str, int] = {},
         pending: list[MirDecl] = [],
         enum_types: dict[str, TypeBase] = {},
         enum_methods: dict[str, MirDecl] = {},
@@ -606,6 +610,8 @@ obj MirLowering {
     def any_number(value: MirValue, whole: bool, site: uni.UniNode) -> MirValue;
     def foreign_accessor_decl(var: uni.HasVar, acc: uni.Ability) -> (MirDecl | None);
     def declare_archetype(arch: uni.Archetype);
+    def special_methods(arch: uni.Archetype) -> dict[str, uni.Ability];
+    def declare_specials(arch: uni.Archetype, self_type: MirType);
     def accessor_sig(acc: uni.Ability) -> (uni.FuncSignature | None);
     def declare_accessors(arch: uni.Archetype, self_type: MirType);
     def decl_label(decl: MirDecl) -> str;
@@ -865,6 +871,15 @@ obj MirLowering {
     def input_call(nd: uni.FuncCall) -> MirValue;
     def sys_exit(nd: uni.FuncCall) -> MirValue;
     def str_enum_int(nd: uni.FuncCall) -> (MirValue | None);
+    def rc_intrinsic(name: str) -> (MirValue | None);
+    def mark_threaded;
+    def pipe_call(nd: uni.BinaryExpr) -> MirValue;
+    def cstr_of(value: MirValue) -> MirValue;
+    def open_call(nd: uni.FuncCall) -> MirValue;
+    def file_method(
+        handle: MirValue, name: str, nd: uni.FuncCall
+    ) -> (MirValue | None);
+
     def osp_call(name: str, args: list[MirValue]) -> MirValue;
     def osp_hold(value: MirValue) -> MirValue;
     def osp_layout(arch: (uni.Archetype | None)) -> (ArchetypeLayout | None);
@@ -1223,6 +1238,13 @@ obj MirLowering {
         items: list[uni.ExprAsItem], index: int, body: Sequence[uni.CodeBlockStmt]
     );
 
+    def with_guarded(
+        items: list[uni.ExprAsItem],
+        index: int,
+        body: Sequence[uni.CodeBlockStmt],
+        exit_action: MirWithExit
+    );
+
     def with_generator(
         items: list[uni.ExprAsItem], index: int, body: Sequence[uni.CodeBlockStmt]
     );
@@ -1231,7 +1253,7 @@ obj MirLowering {
     def none_arg(ptype: MirType, site: uni.UniNode) -> MirValue;
     def guard_open -> tuple[MirValue, MirBlock];
     def guard_caught(frame: MirValue) -> tuple[MirValue, MirValue, MirValue];
-    def run_with_exit(exit_action: MirWithExit);
+    def run_with_exit(exit_action: MirWithExit) -> MirValue;
     def jumps_out(body: Sequence[uni.UniNode]) -> bool;
     def lower_match(nd: uni.MatchStmt);
     def lower_switch(nd: uni.SwitchStmt);

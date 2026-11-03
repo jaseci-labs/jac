@@ -1,5 +1,16 @@
 enum MirPosition { VALUE, FIELD, SIGNATURE, ELEMENT, C_FIELD }
 
+glob FILE_TYPE_NAMES: dict[str, bool] = {
+         "File": False,
+         "TextIO": False,
+         "TextIOWrapper": False,
+         "BinaryFile": True,
+         "BinaryIO": True,
+         "BufferedReader": True,
+         "BufferedWriter": True,
+         "BufferedRandom": True
+     };
+
 glob LIST_CLASSES: list[str] = ["list", "Sequence", "MutableSequence"],
      SET_CLASSES: list[str] = ["set", "frozenset", "AbstractSet", "MutableSet"];
 
