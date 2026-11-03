@@ -447,14 +447,18 @@ test "seeding prunes the bundles no retained revision references (#10095)" {
             injector._bundle_bytes = b"jab";
             with unittest.mock.patch(
                 "jaclang.scale._optdeps.kubernetes.client", volume
-            ), unittest.mock.patch(
-                f"{utils}.run_kubectl_command", volume.kubectl
-            ), unittest.mock.patch(
-                f"{utils}.wait_for_pod_phase"
-            ), unittest.mock.patch(
-                f"{utils}.wait_for_pod_deletion"
+            ), unittest.mock.patch.multiple(
+                utils,
+                run_kubectl_command=volume.kubectl,
+                wait_for_pod_phase=unittest.mock.DEFAULT,
+                wait_for_pod_deletion=unittest.mock.DEFAULT
             ) {
-                injector.seed("orders", "prod", KubectlCluster(), retained);
+                injector.seed(
+                    "orders",
+                    "prod",
+                    KubectlCluster(),
+                    lambda -> set[str] { return retained; }
+                );
             }
             on_volume = sorted(
                 str(p.relative_to(volume_dir))

@@ -110,6 +110,7 @@ obj KubernetesTarget(KubernetesTargetBase) {
     def _assert_own_app(app_name: str);
     def list_revisions(app_name: str) -> list[dict[str, any]];
     def referenced_bundle_keys(app_name: str) -> set[str];
+    def _bundle_keep_set -> set[str];
     def _restore_templates(
         apps_v1: any, namespace: str, names: list[str], undo: dict[str, any]
     ) -> list[str];

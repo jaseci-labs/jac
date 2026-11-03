@@ -1051,16 +1051,11 @@ impl KubernetesTarget.apply_manifests(bundle: dict[str, any]) {
 
     injector = bundle.get("injector");
     if injector is not None {
-        retained: set[str] = set();
-        try {
-            retained = self.referenced_bundle_keys(self.k8s_config.app_name);
-        } except Exception as e {
-            self._emit(
-                "apply", "warn", f"skipping bundle prune, revisions unreadable: {e}"
-            );
-        }
         injector.seed(
-            k8s_safe_name(self.k8s_config.app_name), namespace, self._kubectl, retained
+            k8s_safe_name(self.k8s_config.app_name),
+            namespace,
+            self._kubectl,
+            self._bundle_keep_set
         );
         if self.logger {
             self.logger.info(
@@ -1517,6 +1512,17 @@ impl KubernetesTarget.referenced_bundle_keys(app_name: str) -> set[str] {
         keys.update(bundle_keys_from_pod_spec(dict(pod_spec)));
     }
     return keys;
+}
+
+impl KubernetesTarget._bundle_keep_set -> set[str] {
+    try {
+        return self.referenced_bundle_keys(self.k8s_config.app_name);
+    } except Exception as e {
+        self._emit(
+            "apply", "warn", f"skipping bundle prune, revisions unreadable: {e}"
+        );
+        return set();
+    }
 }
 
 impl KubernetesTarget._restore_templates(

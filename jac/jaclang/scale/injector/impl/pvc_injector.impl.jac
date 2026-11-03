@@ -192,7 +192,8 @@ impl prune_unreferenced_script(app_name: str, keep: set[str]) -> str {
     return (
         f"cd {BUNDLE_MOUNT_PATH} && keep={kept} && "
         f"for f in bundles/{app_name}/* toolchain/{app_name}/*; do "
-        'case "$keep" in *" $f "*) ;; *) [ ! -f "$f" ] || rm -f "$f";; esac; done'
+        'case "$keep" in *" $f "*) ;; '
+        '*) [ ! -f "$f" ] || { rm -f "$f" && echo "pruned $f"; };; esac; done'
     );
 }
 
@@ -258,7 +259,7 @@ impl PvcInjector.seed(
     app_name: str,
     namespace: str,
     kubectl: KubectlCluster,
-    retained: (set[str] | None) = None
+    keep_set: (Callable[[], set[str]] | None) = None
 ) {
     if not self._bundle_bytes {
         raise ValueError(
@@ -290,7 +291,10 @@ impl PvcInjector.seed(
     wait_for_pod_phase(core_v1, namespace, loader_pod, {"Running"});
 
     try {
-        if retained {
+        retained = keep_set() if keep_set else set();
+        if not retained {
+            logger.info("pvc-injector: no retained bundle keys; skipping the prune.");
+        } else {
             keep = retained | {key for (key, _) in self._seed_artifacts()};
             try {
                 run_kubectl_command(

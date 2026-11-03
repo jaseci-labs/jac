@@ -6,7 +6,7 @@ impl Injector.seed(
     app_name: str,
     namespace: str,
     kubectl: KubectlCluster,
-    retained: (set[str] | None) = None
+    keep_set: (Callable[[], set[str]] | None) = None
 ) {
     return;
 }

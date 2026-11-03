@@ -88,8 +88,9 @@ obj PvcInjector(Injector) {
         app_name: str,
         namespace: str,
         kubectl: KubectlCluster,
-        retained: (set[str] | None) = None
+        keep_set: (Callable[[], set[str]] | None) = None
     );
+
     def unpack_script -> str;
     def mutate_pod_spec(
         pod_spec: dict[str, any], base_image: str, unpack_container: bool = True
