@@ -1237,7 +1237,8 @@ impl KernelHost.compile_module(
     if tree_wanted {
         owned = False;
     }
-    body_wanted = options.body_demand and file_path.endswith(".jac");
+    body_wanted = file_path.endswith(".jac")
+        and (options.body_demand or os.path.realpath(file_path) in self.grown);
     if self.in_kernel() and not tree_wanted and not body_wanted {
         served = self.python_module(program, file_path);
         if served is None and (owned or not file_path.endswith(".jac")) {
