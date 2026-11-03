@@ -2269,17 +2269,7 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         and os.path.basename(callee.loc.mod_path) == "jac_builtins.pyi" {
         return self.wrapping_call(nd, name, self.call_args(nd));
     }
-    if isinstance(nd.target, uni.Name)
-        and (
-            callee is None
-            or os.path.basename(callee.loc.mod_path)
-                in (
-                    "builtins.pyi",
-                    "builtins.jac",
-                    "na_builtins.pyi",
-                    "jac_builtins.pyi"
-                )
-        ) {
+    if isinstance(nd.target, uni.Name) and self.builtin_callee(callee) {
         builtin = self.builtin_call(nd, name);
         if builtin is not None {
             return builtin;
@@ -2331,7 +2321,9 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     if via_type is not None {
         return via_type;
     }
-    if isinstance(target, uni.Expr) and target.type is not None {
+    if isinstance(target, uni.Expr)
+        and target.type is not None
+        and not isinstance(target.type, OverloadedType) {
         target_type = self.expr_type(target);
         if target_type.kind == MirKind.FN {
             return self.closure_call(nd, self.callee_value(target));
@@ -3120,9 +3112,7 @@ impl MirLowering.lower_for_core(nd: uni.InForStmt) {
         and isinstance(source.target, uni.Name)
         and source.target.value == "range" {
         callee = source.callee_decl;
-        if callee is None
-            or os.path.basename(callee.loc.mod_path)
-                in ("builtins.pyi", "builtins.jac", "na_builtins.pyi") {
+        if self.builtin_callee(callee) {
             bounds = self.call_args(source);
             if 1 <= len(bounds) <= 3 {
                 self.lower_range_for(nd, bounds);
@@ -4565,4 +4555,8 @@ impl MirLowering.const_zero(value: MirValue) -> bool {
         }
     }
     return False;
+}
+
+impl MirLowering.builtin_callee(callee: (uni.UniNode | None)) -> bool {
+    return callee is None or os.path.basename(callee.loc.mod_path) in BUILTIN_STUBS;
 }

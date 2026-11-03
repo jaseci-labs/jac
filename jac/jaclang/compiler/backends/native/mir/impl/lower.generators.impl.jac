@@ -736,10 +736,7 @@ impl MirLowering.builtin_source(nd: uni.UniNode, names: list[str]) -> str {
     if nd.target.value not in names {
         return "";
     }
-    callee = nd.callee_decl;
-    if callee is not None
-        and os.path.basename(callee.loc.mod_path)
-            not in ("builtins.pyi", "builtins.jac", "na_builtins.pyi") {
+    if not self.builtin_callee(nd.callee_decl) {
         return "";
     }
     return nd.target.value;
