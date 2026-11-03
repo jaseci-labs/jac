@@ -1,4 +1,10 @@
-impl record_interface(program: JacProgram, module: Module, products: UnitProducts) {
+impl record_interface(
+    program: JacProgram,
+    module: Module,
+    products: UnitProducts,
+    catalog_dir: str = "",
+    sentinel: str = ""
+) {
     import base64;
 
     evaluator = program.get_type_evaluator();
@@ -11,6 +17,26 @@ impl record_interface(program: JacProgram, module: Module, products: UnitProduct
     }
     products.iface = base64.b64encode(data).decode("ascii");
     products.iface_shape = shape;
+    if not catalog_dir
+        or not sentinel
+        or module.parse_failed
+        or module.codespace_inferred {
+        return;
+    }
+    package_dir = os.path.realpath(program.options.project_root or pkg_dir);
+    try {
+        portable = build_module_iface(
+            module,
+            evaluator,
+            catalog_dir,
+            PackagePathMapper(
+                base_dir=pkg_dir, package_dir=package_dir, sentinel=sentinel
+            )
+        );
+    } except IncoherentInterface {
+        return;
+    }
+    products.iface_jir = base64.b64encode(portable).decode("ascii");
 }
 
 impl HostCensus.count(method: str) {
@@ -380,7 +406,13 @@ impl KernelHost.record_unit(task: ModuleAnalysis) {
         native_products(lowered, products);
     }
     if real.endswith(".jac") {
-        record_interface(task.program, module, products);
+        record_interface(
+            task.program,
+            module,
+            products,
+            self.inputs.stub_catalog_dir,
+            self.inputs.path_sentinel
+        );
     }
     self.units[real] = products;
 }
