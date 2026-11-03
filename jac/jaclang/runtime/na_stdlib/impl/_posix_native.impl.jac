@@ -40,3 +40,15 @@ impl resolved_path(path: str) -> (str | None) {
 impl make_dir(path: str, mode: int) -> int {
     return int(mkdir(path, i32(mode)));
 }
+
+impl remove_file(path: str) -> int {
+    return int(unlink(path));
+}
+
+impl remove_dir(path: str) -> int {
+    return int(rmdir(path));
+}
+
+impl run_shell(command: str) -> int {
+    return int(system(command));
+}

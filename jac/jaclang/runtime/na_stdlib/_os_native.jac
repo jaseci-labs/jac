@@ -20,4 +20,14 @@ def:pub listdir(path: str = ".") -> list[str];
 
 def:pub makedirs(name: str, mode: int = 511, exist_ok: bool = False) -> None;
 
+def:pub mkdir(path: str, mode: int = 511) -> None;
+
+def:pub remove(path: str) -> None;
+
+def:pub unlink(path: str) -> None;
+
+def:pub rmdir(path: str) -> None;
+
+def:pub system(command: str) -> int;
+
 import os.path;

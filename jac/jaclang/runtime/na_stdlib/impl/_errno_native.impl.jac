@@ -37,3 +37,9 @@ impl raise_errno(code: int, operation: imm str = "") {
 impl raise_os_error(operation: imm str, path: imm str, code: int) {
     _raise_for_errno(code, operation + ": " + strerror(i32(code)) + ": " + path);
 }
+
+impl raise_path_error(path: imm str, code: int) {
+    _raise_for_errno(
+        code, "[Errno " + str(code) + "] " + strerror(i32(code)) + ": '" + path + "'"
+    );
+}

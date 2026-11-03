@@ -14762,6 +14762,7 @@ graph import runtime.na_stdlib {
             last_errno,
             raise_os_error
         },
+        _os_native { last_errno, raise_path_error },
         _directory_native { clear_errno, last_errno, raise_os_error },
         _socket_native | shutil | socket { errno_message },
         _time_common { last_errno, raise_errno },
@@ -14862,7 +14863,17 @@ graph import runtime.na_stdlib {
         _default_types_val
     }
     _posix_native ++> [
-        _os_native { S_IFDIR, S_IFMT, cwd_path, env_value, make_dir, stat_fields },
+        _os_native {
+            S_IFDIR,
+            S_IFMT,
+            cwd_path,
+            env_value,
+            make_dir,
+            remove_dir,
+            remove_file,
+            run_shell,
+            stat_fields
+        },
         os.path {
             S_IFDIR,
             S_IFMT,
