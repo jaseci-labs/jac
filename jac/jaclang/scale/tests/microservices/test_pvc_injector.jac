@@ -390,7 +390,8 @@ test "the bundle seed's kubectl reaches the cluster the client loaded" {
 
 """Stands in for the loader pod: kubectl runs against a local directory."""
 obj _LoaderVolume {
-    has volume_dir: str;
+    has volume_dir: str,
+        fail_prune: bool = False;
 
     def CoreV1Api -> any {
         return self;
@@ -413,6 +414,9 @@ obj _LoaderVolume {
             return;
         }
         script = args[-1].replace(BUNDLE_MOUNT_PATH, self.volume_dir);
+        if self.fail_prune and "keep=" in script {
+            raise RuntimeError("kubectl command failed: exec prune");
+        }
         if subprocess.run(["sh", "-c", script]).returncode != 0 {
             raise RuntimeError(f"kubectl command failed: {script}");
         }
@@ -432,16 +436,17 @@ test "seeding prunes the bundles no retained revision references (#10095)" {
     ];
     untouched = live + [".cache/pip/wheel", "bundles/billing/old.jab"];
     utils = "jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils";
-    for (label, retained, survivors) in [
-        ("retained revisions", set(live), untouched),
-        ("no retained revisions", set(), untouched + stale)
+    for (label, retained, fail_prune, survivors) in [
+        ("retained revisions", set(live), False, untouched),
+        ("no retained revisions", set(), False, untouched + stale),
+        ("failed prune", set(live), True, untouched + stale)
     ] {
         with tempfile.TemporaryDirectory() as volume_dir {
             for key in untouched + stale {
                 Path(volume_dir, key).parent.mkdir(parents=True, exist_ok=True);
                 Path(volume_dir, key).write_bytes(b"x");
             }
-            volume = _LoaderVolume(volume_dir=volume_dir);
+            volume = _LoaderVolume(volume_dir=volume_dir, fail_prune=fail_prune);
             injector = PvcInjector();
             injector._object_key = "bundles/orders/new.jab";
             injector._bundle_bytes = b"jab";
