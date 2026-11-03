@@ -5,11 +5,11 @@ import from c {
         dst: int, src: int, n: int
     ) -> int;  def memcmp(a: int, b: int, n: int) -> i32;  def pthread_key_create(
         key: int, dtor: int
-    ) -> i32;  def pthread_setspecific(key: int, value: int) -> i32;  def strlen(
-        text: int
-    ) -> int;  def fflush(stream: ptr[u8]) -> i32;  def fgetc(stream: ptr[u8]) -> i32;  def __jac_stdio(
-        fd: i32
-    ) -> ptr[u8];
+    ) -> i32;  def pthread_getspecific(key: int) -> int;  def pthread_setspecific(
+        key: int, value: int
+    ) -> i32;  def strlen(text: int) -> int;  def fflush(stream: ptr[u8]) -> i32;  def fgetc(
+        stream: ptr[u8]
+    ) -> i32;  def __jac_stdio(fd: i32) -> ptr[u8];
 }
 
 glob KIND_STR: int = 3,

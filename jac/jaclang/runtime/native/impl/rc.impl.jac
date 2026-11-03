@@ -197,7 +197,9 @@ impl _utf8_forget(o: int) {
     before = __atomic_add_i64(__global_block("__jac_utf8_epoch", 8), 1, 5);
     held = 0;
     if __atomic_load_i64(__global_block("__jac_utf8_tls_state", 8), 2) == 1 {
-        held = __mem_load_i64(__thread_local_block("__jac_utf8_tls_cache", 8));
+        held = pthread_getspecific(
+            __mem_load_i64(__global_block("__jac_utf8_tls_key", 8))
+        );
     }
     if held == 0 {
         return;
