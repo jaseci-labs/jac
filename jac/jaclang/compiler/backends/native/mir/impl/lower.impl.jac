@@ -1508,9 +1508,9 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         raise MirRefused(
             mir_refusal(
                 "call",
-                f"{self.name_of(callee)} outside a with item"
+                f"@contextmanager {self.name_of(callee)} outside a with item"
                     if isinstance(callee, uni.Ability)
-                    else "context manager outside a with item",
+                    else "@contextmanager call outside a with item",
                 nd,
                 "A native @contextmanager generator is entered only as a with item."
             )

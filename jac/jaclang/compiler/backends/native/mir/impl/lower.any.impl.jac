@@ -185,6 +185,15 @@ impl MirLowering.identity(
         (l, r) = self.unify_numeric(left, right, site);
         return b.compare("eq", l, r);
     }
+    if (left.type.kind == MirKind.OPT) != (right.type.kind == MirKind.OPT) {
+        boxed = left if left.type.kind == MirKind.OPT else right;
+        plain = right if left.type.kind == MirKind.OPT else left;
+        if boxed.type.payload().is_numeric() and plain.type.is_numeric() {
+            (held, payload, absent, done) = self.opt_begin(boxed, mir_bool());
+            self.opt_switch(held, self.identity(payload, plain, site), absent, done);
+            return self.opt_end(held, b.const_bool(False), done);
+        }
+    }
     if MirKind.OPT in (left.type.kind, right.type.kind)
         and self.ref_word_side(left)
         and self.ref_word_side(right) {
