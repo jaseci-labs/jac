@@ -327,3 +327,295 @@ test "early handler and runtime share one budget across the handoff" {
     assert results["sameMinute"] == 0 , results;
     assert results["nextMinute"] == 10 , results;
 }
+
+# =============================================================================
+# Server-side limits on /cl/__error__ (#10411)
+# =============================================================================
+# The stack the jachammer flood carried (jacBuilder#2354), as in the harness.
+glob EXTENSION_STACK: str = "TypeError: Cannot read properties of undefined (reading 'M_ID')\n    at Y (chrome-extension://eppiocemhmnlbhjplcgkofciiegomcon/executors/200.js:1:761)\n    at E (chrome-extension://eppiocemhmnlbhjplcgkofciiegomcon/executors/200.js:1:1442)",
+     FIREFOX_EXTENSION_STACK: str = "Y@moz-extension://0a1b2c3d/content.js:1:761\nE@moz-extension://0a1b2c3d/content.js:1:1442",
+     MIXED_STACK: str = "TypeError: boom\n    at hook (chrome-extension://abc/inject.js:1:5)\n    at render (https://app.test/static/client.js:1:200)",
+     APP_STACK: str = "TypeError: boom\n    at render (https://app.test/static/client.js:1:200)";
+
+def error_report(message: str, stack: str = APP_STACK) -> dict[str, any] {
+    return {"message": message, "stack": stack, "source": "window.onerror"};
+}
+
+"""Statuses, and Retry-After values on the 429s, for `count` reports from one client."""
+def post_reports(
+    client: JacTestClient, messages: list[str]
+) -> tuple[list[int], list[any]] {
+    statuses: list[int] = [];
+    retry_after: list[any] = [];
+    for message in messages {
+        resp = client.post("/cl/__error__", json=error_report(message));
+        statuses.append(resp.status_code);
+        if resp.status_code == 429 {
+            retry_after.append(resp.headers.get("Retry-After"));
+        }
+    }
+    return (statuses, retry_after);
+}
+
+def assert_backs_off(statuses: list[int], retry_after: list[any]) {
+    assert 429 in statuses , f"a flood of error reports never got a 429: {statuses}";
+    assert statuses.count(200) <= 20 , f"more than one budget was accepted: {statuses}";
+    first_refusal = statuses.index(429);
+    assert set(statuses[first_refusal:]) == {429} , (
+        f"a report got through after the client was refused: {statuses}"
+    );
+    for value in retry_after {
+        assert value is not None and 1 <= int(value) <= 60 , (
+            f"a 429 without a usable Retry-After: {retry_after}"
+        );
+    }
+}
+
+test "a client past its error-report budget gets 429 with Retry-After" {
+    tag = uuid.uuid4().hex;
+    with TemporaryDirectory() as tmpdir {
+        client = make_client(tmpdir);
+        try {
+            (statuses, retry_after) = post_reports(
+                client, [f"distinct {tag} {i}" for i in range(40)]
+            );
+        } finally {
+            client.close();
+        }
+    }
+    assert_backs_off(statuses, retry_after);
+}
+
+test "the same report in a loop spends the client's budget too" {
+    # The jachammer incident: one message, hundreds of times a second.
+    with TemporaryDirectory() as tmpdir {
+        client = make_client(tmpdir);
+        try {
+            (statuses, retry_after) = post_reports(
+                client, [f"looping {uuid.uuid4().hex}"] * 40
+            );
+        } finally {
+            client.close();
+        }
+    }
+    assert_backs_off(statuses, retry_after);
+}
+
+"""POST `payload` to 127.0.0.1:`port` as if forwarded for `client_ip`."""
+def post_as(port: int, client_ip: str, payload: dict[str, any]) -> int {
+    import http.client;
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10);
+    try {
+        conn.request(
+            "POST",
+            "/cl/__error__",
+            body=json.dumps(payload),
+            headers={"Content-Type": "application/json", "X-Forwarded-For": client_ip}
+        );
+        resp = conn.getresponse();
+        resp.read();
+        return resp.status;
+    } finally {
+        conn.close();
+    }
+}
+
+test "one client's flood does not mute another client's report" {
+    import logging.handlers;
+    import from jaclang.server.serving.server { ServingServer }
+    import from jaclang.server.settings { ProxySettings, ServeSettings }
+    tag = uuid.uuid4().hex;
+    logger = logging.getLogger("jaclang.client_errors");
+    records = logging.handlers.BufferingHandler(100000);
+    logger.addHandler(records);
+    with TemporaryDirectory() as tmpdir {
+        client = make_client(tmpdir);
+        settings = ServeSettings(proxy=ProxySettings(trusted=["127.0.0.1/32"]));
+        app = client.server.app;
+        assert app is not None , "the test client built no app";
+        server = ServingServer(app=app, settings=settings, host="127.0.0.1", port=0);
+        stop = server.serve_background();
+        try {
+            noisy = [
+                post_as(
+                    server.bound_port, "203.0.113.10", error_report(f"noisy {tag} {i}")
+                ) for i in range(40)
+            ];
+            quiet = post_as(
+                server.bound_port, "203.0.113.20", error_report(f"quiet {tag}")
+            );
+        } finally {
+            stop();
+            client.close();
+            logger.removeHandler(records);
+        }
+    }
+    assert 429 in noisy , f"the noisy client was never refused: {noisy}";
+    assert quiet == 200 , f"the quiet client's report was refused: {quiet}";
+    logged = [r.getMessage() for r in records.buffer];
+    assert any(f"quiet {tag}" in m for m in logged) , (
+        "the quiet client's real error was not logged after another client's flood"
+    );
+}
+
+test "an oversized error report is refused with 413" {
+    with TemporaryDirectory() as tmpdir {
+        client = make_client(tmpdir);
+        try {
+            normal = client.post(
+                "/cl/__error__", json=error_report("normal " + "x" * 8000)
+            );
+            oversized = client.post(
+                "/cl/__error__", json=error_report("oversized " + "x" * 200000)
+            );
+        } finally {
+            client.close();
+        }
+    }
+    assert normal.status_code == 200 , normal.status_code;
+    assert oversized.status_code == 413 , (
+        f"a 200 KB report was accepted: {oversized.status_code} {oversized.text[:80]}"
+    );
+}
+
+test "a browser extension's error is tagged and logged below ERROR" {
+    import logging.handlers;
+    tag = uuid.uuid4().hex;
+    logger = logging.getLogger("jaclang");
+    records = logging.handlers.BufferingHandler(100000);
+    old_level = logger.level;
+    logger.setLevel(logging.DEBUG);
+    logger.addHandler(records);
+    reports = {
+        "chrome": EXTENSION_STACK,
+        "firefox": FIREFOX_EXTENSION_STACK,
+        "mixed": MIXED_STACK
+    };
+    statuses: dict[str, int] = {};
+    with TemporaryDirectory() as tmpdir {
+        client = make_client(tmpdir);
+        try {
+            for (name, stack) in reports.items() {
+                statuses[name] = client.post(
+                    "/cl/__error__", json=error_report(f"{name} {tag}", stack)
+                ).status_code;
+            }
+        } finally {
+            client.close();
+            logger.removeHandler(records);
+            logger.setLevel(old_level);
+        }
+    }
+    assert statuses == {"chrome": 200, "firefox": 200, "mixed": 200} , statuses;
+
+    def levels_for(name: str) -> list[int] {
+        return [
+            r.levelno
+            for r in records.buffer
+            if f"{name} {tag}" in r.getMessage()
+        ];
+    }
+    for name in ["chrome", "firefox"] {
+        levels = levels_for(name);
+        assert levels , f"the {name} extension error was not logged at all";
+        assert max(levels) < logging.ERROR , (
+            f"the {name} extension error was logged at {levels}"
+        );
+        tagged = [
+            r.getMessage()
+            for r in records.buffer
+            if f"{name} {tag}" in r.getMessage()
+        ];
+        assert any("browser extension" in m for m in tagged) , tagged;
+    }
+    assert max(levels_for("mixed")) >= logging.ERROR , (
+        "an error whose stack passes through the app was not logged at ERROR"
+    );
+}
+
+"""A service that answers every POST with 200 and counts what reached it."""
+def serve_counting_upstream -> tuple[any, ...] {
+    import http.server;
+    import threading;
+    hits: list[str] = [];
+    body = b'{"ok": true}';
+    def _do_post(handler: any) {
+        handler.rfile.read(int(handler.headers.get("Content-Length") or 0));
+        hits.append(handler.path);
+        handler.send_response(200);
+        handler.send_header("Content-Type", "application/json");
+        handler.send_header("Content-Length", str(len(body)));
+        handler.end_headers();
+        handler.wfile.write(body);
+    }
+    def _quiet(handler: any, fmt: str, *args: any) {}
+    handler_cls = type(
+        "_CountingHandler",
+        (http.server.BaseHTTPRequestHandler, ),
+        {"do_POST": _do_post, "log_message": _quiet}
+    );
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler_cls);
+    threading.Thread(target=srv.serve_forever, daemon=True).start();
+    return (srv, srv.server_address[1], hits);
+}
+
+test "the gateway refuses an error-report flood before forwarding it, with the rate limit off" {
+    import from jaclang.scale.runtime.gateway.microservice_gateway {
+        MicroserviceGateway
+    }
+    import from jaclang.scale.runtime.gateway.service_registry {
+        ServiceEntry,
+        ServiceRegistry,
+        ServiceStatus
+    }
+    import from jaclang.scale.state.factory { _backend_holder }
+    import from jaclang.testing.testkit { ServingTestClient }
+    _backend_holder.clear();
+    (srv, port, hits) = serve_counting_upstream();
+    registry = ServiceRegistry();
+    registry.register(
+        ServiceEntry(
+            name="web",
+            file="web.jac",
+            prefix="/web",
+            port=port,
+            url=f"http://127.0.0.1:{port}",
+            status=ServiceStatus.HEALTHY
+        )
+    );
+    gateway = MicroserviceGateway(registry=registry);
+    gateway.setup();
+    client = ServingTestClient(gateway.app);
+    statuses: list[int] = [];
+    retry_after: list[any] = [];
+    try {
+        for i in range(60) {
+            resp = client.post("/cl/__error__", json=error_report(f"flood {i}"));
+            statuses.append(resp.status_code);
+            if resp.status_code == 429 {
+                retry_after.append(resp.headers.get("Retry-After"));
+            }
+        }
+    } finally {
+        srv.shutdown();
+        _backend_holder.clear();
+    }
+    assert 429 in statuses , f"the gateway forwarded every report: {statuses}";
+    assert len(hits) < 30 , f"{len(hits)} of 60 reports reached the service";
+    assert all(v is not None and int(v) >= 1 for v in retry_after) , retry_after;
+}
+
+test "[scale.gateway.rate_limit] client_error_rpm sets or turns off the gateway's report limit" {
+    import from jaclang.scale.config.config_loader { normalize_gateway_config }
+    import from jaclang.scale.config.validation { validate_scale_config }
+    import from jaclang.scale.runtime.middleware.rate_limit {
+        build_client_error_limit_middleware
+    }
+    assert normalize_gateway_config({})["rate_limit"]["client_error_rpm"] == 20;
+    tuned = normalize_gateway_config({"rate_limit": {"client_error_rpm": 5}});
+    assert tuned["rate_limit"]["client_error_rpm"] == 5 , tuned["rate_limit"];
+    assert validate_scale_config({"gateway": {"rate_limit": {"client_error_rpm": 5}}})
+        == [];
+    assert build_client_error_limit_middleware({"client_error_rpm": 0}) is None;
+    assert build_client_error_limit_middleware({"client_error_rpm": 5}) is not None;
+}
