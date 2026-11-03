@@ -412,6 +412,34 @@ impl native_unit_root(directory: str) -> (str | None) {
     }
 }
 
+impl _native_unit_root_name(unit_root: str) -> str {
+    memo = _native_unit_root_name_memo.get(unit_root);
+    if memo is not None {
+        return memo;
+    }
+    import os;
+    name = os.path.basename(unit_root);
+    toml_path = os.path.join(unit_root, "jac.toml");
+    if os.path.isfile(toml_path) {
+        try {
+            import tomllib;
+            fh = open(toml_path, "rb");
+            try {
+                data = tomllib.load(fh);
+            } finally {
+                fh.close();
+            }
+            proj = data.get("project") if isinstance(data, dict) else None;
+            pname = proj.get("name") if isinstance(proj, dict) else None;
+            if isinstance(pname, str) and pname.strip() {
+                name = pname.strip();
+            }
+        } except Exception {}
+    }
+    _native_unit_root_name_memo[unit_root] = name;
+    return name;
+}
+
 impl native_unit_identity(path: str) -> str {
     memo = _native_unit_identity_memo.get(path);
     if memo is not None {
@@ -423,7 +451,7 @@ impl native_unit_identity(path: str) -> str {
     identity = rp;
     if unit_root is not None {
         rel = os.path.relpath(rp, unit_root).replace("\\", "/");
-        identity = f"{os.path.basename(unit_root)}/{rel}";
+        identity = f"{_native_unit_root_name(unit_root)}/{rel}";
     }
     _native_unit_identity_memo[path] = identity;
     return identity;

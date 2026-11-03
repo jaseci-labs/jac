@@ -114,7 +114,8 @@ glob NATIVE_RESERVED_C_SYMBOLS: frozenset[str] = _reserved_c_symbols();
 glob NATIVE_ARCH_SCOPE_SEP: str = "$",
      _native_arch_scope_memo: dict[str, str] = {},
      _native_arch_scope_gen: list[int] = [-1],
-     _native_unit_identity_memo: dict[str, str] = {};
+     _native_unit_identity_memo: dict[str, str] = {},
+     _native_unit_root_name_memo: dict[str, str] = {};
 
 def native_arch_scope(mod_path: str) -> str;
 
@@ -136,6 +137,8 @@ def native_def_symbol(name: str) -> str;
 def module_dotted_name(mod_path: str, mod_name: str = "") -> str;
 
 def native_unit_root(directory: str) -> (str | None);
+
+def _native_unit_root_name(unit_root: str) -> str;
 
 def native_unit_identity(path: str) -> str;
 
