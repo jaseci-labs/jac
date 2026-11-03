@@ -1364,6 +1364,8 @@ obj MirLowering {
     def creation_kind(elem: MirType, site: uni.UniNode) -> MirValue;
     def enum_text_thunk(t: MirType, site: uni.UniNode) -> str;
     def store_text_result(base: MirValue, text: MirValue);
+    def caught_type(subject: uni.Expr) -> (MirValue | None);
+    def caught_class(caught: tuple[MirValue, MirValue, MirValue]) -> MirValue;
     def type_call_name(item: uni.Expr) -> (str | None);
     def any_isinstance(
         value: MirValue, target: uni.Expr, site: uni.UniNode

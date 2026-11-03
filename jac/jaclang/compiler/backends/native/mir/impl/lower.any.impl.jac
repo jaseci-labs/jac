@@ -803,7 +803,65 @@ impl MirLowering.value_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None)
             )
         );
     }
+    caught = self.caught_type(args[0]);
+    if caught is not None {
+        return caught;
+    }
     return self.type_value(self.lower_expr(args[0]), nd);
+}
+
+"""`type(e)` for a name bound by an except clause that binds as its message."""
+impl MirLowering.caught_type(subject: uni.Expr) -> (MirValue | None) {
+    if not isinstance(subject, uni.Name)
+        or subject.sym is None
+        or id(subject.sym) not in self.st().bound_caught {
+        return None;
+    }
+    held = self.st().locals.get(id(subject.sym));
+    if held is not None and held.type.kind == MirKind.OBJ {
+        return None;
+    }
+    return self.caught_class(self.st().bound_caught[id(subject.sym)]);
+}
+
+"""The class of a caught exception that binds as its message.
+
+A builtin exception carries only its type id; an archetype one is the object
+the handler caught, which names its own class.
+"""
+impl MirLowering.caught_class(caught: tuple[MirValue, MirValue, MirValue]) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    (origin, type_id, message) = caught;
+    i8p = mir_c_ptr(mir_int(8, False));
+    chosen = self.temp_slot(i8p);
+    named = self.emit_value(MirOp.CSTR, i8p, [], str_value="Exception");
+    wanted = b.convert(type_id, mir_int());
+    for name in ["BaseException"] + JAC_TYPE_REGISTRY.exception_descendants("BaseException") {
+        named = b.select(
+            b.compare(
+                "eq",
+                wanted,
+                b.const_int(JAC_TYPE_REGISTRY.exception_type_id(name), mir_int())
+            ),
+            self.emit_value(MirOp.CSTR, i8p, [], str_value=name),
+            named
+        );
+    }
+    b.store(chosen, named);
+    builtin = b.compare(
+        "eq",
+        self.emit_value(MirOp.PTR_INT, mir_int(), [origin]),
+        self.emit_value(MirOp.PTR_INT, mir_int(), [message])
+    );
+    archetyped = fn.new_block("caught.class");
+    done = fn.new_block("caught.class.done");
+    b.cond_branch(builtin, done, archetyped);
+    b.position(archetyped);
+    b.store(chosen, self.runtime_value("__jac_rt_type_name", [origin]));
+    b.branch(done);
+    b.position(done);
+    return self.emit_value(MirOp.PTR_CAST, mir_class("*"), [b.load(chosen, i8p)]);
 }
 
 impl MirLowering.type_value(value: MirValue, site: uni.UniNode) -> MirValue {
