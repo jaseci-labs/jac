@@ -3778,9 +3778,9 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
                         "TypeError"
                     );
                 }
-                picked = list(range(len(whole_tuple.type.args)))[
-                    slice(bounds[0], bounds[1], bounds[2])
-                ];
+                picked = mir_slice_picks(
+                    len(whole_tuple.type.args), bounds[0], bounds[1], bounds[2]
+                );
                 members = [self.tuple_get(whole_tuple, at) for at in picked];
                 return self.emit_value(
                     MirOp.TUPLE_MAKE,
@@ -5411,4 +5411,29 @@ impl MirLowering.guard_unbound(fn: MirFunction) {
         }
         blk.instrs = rebuilt;
     }
+}
+
+impl mir_slice_picks(
+    count: int, start: (int | None), stop: (int | None), step: (int | None)
+) -> list[int] {
+    stride = step if step is not None else 1;
+    lower = -1 if stride < 0 else 0;
+    upper = count - 1 if stride < 0 else count;
+    first = upper if stride < 0 else lower;
+    if start is not None {
+        first = start + count if start < 0 else start;
+        first = max(lower, min(first, upper));
+    }
+    last = lower if stride < 0 else upper;
+    if stop is not None {
+        last = stop + count if stop < 0 else stop;
+        last = max(lower, min(last, upper));
+    }
+    picks: list[int] = [];
+    at = first;
+    while (stride > 0 and at < last) or (stride < 0 and at > last) {
+        picks.append(at);
+        at += stride;
+    }
+    return picks;
 }
