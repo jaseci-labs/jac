@@ -1063,6 +1063,16 @@ impl MirLowering.tuple_elem(value: MirValue, site: uni.UniNode) -> MirType {
     if all(member is elem for member in members) {
         return elem;
     }
+    held = [
+        member.payload() if member.kind == MirKind.OPT else member
+        for member in members
+        if member.kind != MirKind.NONE
+    ];
+    if held
+        and all(part is held[0] for part in held)
+        and any(member.kind in (MirKind.NONE, MirKind.OPT) for member in members) {
+        return mir_opt(held[0]);
+    }
     for member in members {
         if member.kind not in ANY_BOXABLE {
             raise MirRefused(
