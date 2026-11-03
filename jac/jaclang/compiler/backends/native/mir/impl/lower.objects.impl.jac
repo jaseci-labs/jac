@@ -961,6 +961,11 @@ impl MirLowering.field_place(
             )
         );
     }
+    if holder.type.kind == MirKind.OBJ
+        and holder.type.name != obj_def.name
+        and self.obj_extends(obj_def.name, holder.type.name) {
+        holder = self.builder().ref_cast(holder, mir_obj(obj_def.name), False);
+    }
     return self.emit_value(
         MirOp.FIELD_ADDR, mir_c_ptr(member.type), [holder], int_value=member.index
     );
@@ -1826,9 +1831,7 @@ impl MirLowering.nearest_has_var(
     return None;
 }
 
-impl MirLowering.default_thunk(
-    expr: uni.Expr
-) -> (tuple[uni.Archetype, str, MirType] | None) {
+impl MirLowering.default_thunk(expr: uni.Expr) -> (tuple[str, str, MirType] | None) {
     holder = expr.parent;
     if isinstance(holder, uni.HasVar) and holder.name is not None {
         arch = holder.find_parent_of_type(uni.Archetype);
@@ -1839,16 +1842,21 @@ impl MirLowering.default_thunk(
         if member is None {
             return None;
         }
-        return (arch, f"__default.{holder.name.value}", member.type);
+        return (
+            f"{self.object_def(arch).name}.",
+            f"__default.{holder.name.value}",
+            member.type
+        );
     }
     if isinstance(holder, uni.ParamVar) {
         ability = holder.find_parent_of_type(uni.Ability);
         arch = holder.find_parent_of_type(uni.Archetype);
-        if ability is None or arch is None {
+        if ability is None {
             return None;
         }
+        owner = f"{self.object_def(arch).name}." if arch is not None else "";
         return (
-            arch,
+            owner,
             f"__default.{self.name_of(ability)}.{holder.name.value}",
             self.symbol_type(holder.name.sym, holder)
         );
@@ -1872,10 +1880,9 @@ impl MirLowering.default_value(expr: uni.Expr, to: MirType) -> MirValue {
             )
         );
     }
-    (arch, label, made_type) = found;
-    obj_def = self.object_def(arch);
+    (owner, label, made_type) = found;
     symbol = native_symbol_name(
-        native_unit_prefix(origin.loc.mod_path), f"{obj_def.name}.{label}"
+        native_unit_prefix(origin.loc.mod_path), f"{owner}{label}"
     );
     self.mir.externs[symbol] = MirExtern(symbol=symbol, ret=made_type, params=[]);
     made = self.builder().call(symbol, [], made_type);
@@ -1886,7 +1893,6 @@ impl MirLowering.default_value(expr: uni.Expr, to: MirType) -> MirValue {
 }
 
 impl MirLowering.default_thunks(arch: uni.Archetype) -> list[MirFunction] {
-    made: list[MirFunction] = [];
     defaults: list[uni.Expr] = [];
     for var in arch.get_has_vars() {
         if isinstance(var.value, uni.Expr) {
@@ -1894,19 +1900,53 @@ impl MirLowering.default_thunks(arch: uni.Archetype) -> list[MirFunction] {
         }
     }
     for method in self.arch_methods(arch) {
-        if self.name_of(method) not in ("init", "__init__")
-            or not isinstance(method.signature, uni.FuncSignature) {
+        if not isinstance(method.signature, uni.FuncSignature) {
             continue;
         }
+        is_init = self.name_of(method) in ("init", "__init__");
         for pv in list(method.signature.posonly_params)
-            + list(method.signature.params or []) {
-            if isinstance(pv.value, uni.Expr) {
+            + list(method.signature.params or [])
+            + list(method.signature.kwonlyargs or []) {
+            if isinstance(pv.value, uni.Expr)
+                and (is_init or not self.constant_default(pv.value)) {
                 defaults.append(pv.value);
             }
         }
     }
+    return self.make_default_thunks(defaults);
+}
+
+impl MirLowering.function_default_thunks -> list[MirFunction] {
+    defaults: list[uni.Expr] = [];
+    owners: list[uni.Ability] = list(self.module_abilities());
+    for elem in self.module.body {
+        if isinstance(elem, uni.Import) and elem.clib_decls {
+            for decl in elem.clib_decls {
+                if isinstance(decl, uni.Ability) and decl not in owners {
+                    owners.append(decl);
+                }
+            }
+        }
+    }
+    for ab in owners {
+        sig = ab.signature;
+        if not isinstance(sig, uni.FuncSignature) or id(ab) in self.templates {
+            continue;
+        }
+        for pv in list(sig.posonly_params)
+            + list(sig.params or [])
+            + list(sig.kwonlyargs or []) {
+            if isinstance(pv.value, uni.Expr) and not self.constant_default(pv.value) {
+                defaults.append(pv.value);
+            }
+        }
+    }
+    return self.make_default_thunks(defaults);
+}
+
+impl MirLowering.make_default_thunks(defaults: list[uni.Expr]) -> list[MirFunction] {
+    made: list[MirFunction] = [];
     prefix = native_unit_prefix(self.module.loc.mod_path);
-    obj_def = self.object_def(arch);
     for expr in defaults {
         saved = self.state;
         try {
@@ -1914,10 +1954,10 @@ impl MirLowering.default_thunks(arch: uni.Archetype) -> list[MirFunction] {
             if found is None {
                 continue;
             }
-            (_, label, made_type) = found;
+            (owner, label, made_type) = found;
             fn = MirFunction(
-                name=f"{obj_def.name}.{label}",
-                symbol=native_symbol_name(prefix, f"{obj_def.name}.{label}"),
+                name=f"{owner}{label}",
+                symbol=native_symbol_name(prefix, f"{owner}{label}"),
                 ret=made_type
             );
             first = fn.new_block("entry");

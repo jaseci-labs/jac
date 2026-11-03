@@ -51,6 +51,8 @@ def mir_refusal(
 
 def refusal_of(err: MirRefused) -> NativeRefusal;
 
+def lenient_c_slot(t: (TypeBase | None)) -> bool;
+
 def mir_type_of(
     t: (TypeBase | None),
     position: MirPosition,

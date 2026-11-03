@@ -15,8 +15,21 @@ impl MirEmitter.emit -> ir.Module {
     for fn in self.mir.functions {
         self.declare(fn);
     }
+    for fn in self.mir.functions {
+        if fn.c_symbol {
+            self.c_abi_extern(
+                MirExtern(
+                    symbol=fn.c_symbol,
+                    ret=fn.ret,
+                    params=[param.value.type for param in fn.params],
+                    c_abi=True
+                )
+            );
+        }
+    }
     for ext in self.mir.externs.values() {
-        if ext.symbol not in self.functions
+        if ext.c_abi
+            and ext.symbol not in self.functions
             and (
                 ext.ret.kind == MirKind.C_STRUCT
                 or any(param.kind == MirKind.C_STRUCT for param in ext.params)
@@ -44,6 +57,11 @@ impl MirEmitter.emit -> ir.Module {
     }
     for fn in self.mir.functions {
         self.emit_function(fn);
+    }
+    for fn in self.mir.functions {
+        if fn.c_symbol {
+            self.c_thunk(fn);
+        }
     }
     for obj_def in self.mir.objects.values() {
         if obj_def.local and obj_def.vtable_symbol {
@@ -1649,4 +1667,51 @@ impl MirEmitter.call_c_abi(
         return b.load(b.bitcast(buf, result_shape.as_pointer()));
     }
     return made;
+}
+
+impl MirEmitter.c_thunk(fn: MirFunction) {
+    outer = self.functions[fn.c_symbol];
+    inner = self.functions[fn.symbol];
+    (ret_plan, plans) = self.c_plans[fn.c_symbol];
+    b = ir.IRBuilder(outer.append_basic_block("entry"));
+    args: list[ir.Value] = [];
+    for (param, plan) in zip(fn.params, plans) {
+        want = self.llvm_type(param.value.type);
+        if plan[0] == "plain" {
+            args.append(self.adapt(b, outer.args[plan[2]], want));
+        } elif plan[0] == "memory" {
+            args.append(b.load(outer.args[plan[2]]));
+        } else {
+            pieces: list[ir.Type] = plan[1]["coerce"];
+            buf = b.alloca(ir.LiteralStructType(pieces));
+            for index in range(len(pieces)) {
+                b.store(
+                    outer.args[plan[2] + index],
+                    b.gep(
+                        buf,
+                        [
+                            ir.Constant(ir.IntType(32), 0),
+                            ir.Constant(ir.IntType(32), index)
+                        ]
+                    )
+                );
+            }
+            args.append(b.load(b.bitcast(buf, want.as_pointer())));
+        }
+    }
+    made = b.call(inner, args);
+    returned = outer.ftype.return_type;
+    if ret_plan is not None and ret_plan[0] == "sret" {
+        b.store(made, outer.args[0]);
+        b.ret_void();
+    } elif ret_plan is not None {
+        shape = made.type;
+        buf = b.alloca(ir.LiteralStructType([returned, shape]));
+        b.store(made, b.bitcast(buf, shape.as_pointer()));
+        b.ret(b.load(b.bitcast(buf, returned.as_pointer())));
+    } elif isinstance(returned, ir.VoidType) {
+        b.ret_void();
+    } else {
+        b.ret(self.adapt(b, made, returned));
+    }
 }
