@@ -2519,6 +2519,75 @@ def neg_index() -> dict[any, any] {
 }
 
 
+test "comprehension guards use collection truthiness and preserve short circuit" {
+    jac_code = """
+def dynamic_guard(value: any) -> list[int] {
+    return [x for x in [1, 2, 3] if value];
+}
+def comprehension_probe() -> dict[str, any] {
+    empty: list[int] = [];
+    full: list[int] = [1];
+    ed: dict[str, int] = {};
+    fd: dict[str, int] = {"a": 1};
+    es_: set[int] = set();
+    fs_: set[int] = {1};
+    xs: list[int] = [1, 2, 3];
+    # A false collection operand must stay false at the .filter boundary.
+    before = [x for x in xs if empty and x < min(empty)];
+    if before { return {"unexpected_min": min(empty)}; }
+    return {
+        "empty_list": [x for x in xs if empty],
+        "full_list": [x for x in xs if full],
+        "empty_dict": [x for x in xs if ed],
+        "full_dict": [x for x in xs if fd],
+        "empty_set": [x for x in xs if es_],
+        "full_set": [x for x in xs if fs_],
+        "and_empty": before,
+        "or_empty": [x for x in xs if empty or ed],
+        "or_full": [x for x in xs if empty or full],
+        "dict_compr": {str(x): x for x in xs if empty},
+        "set_compr": sorted({x for x in xs if empty}),
+        "gen_compr": list(x for x in xs if empty),
+        "nested": [x + y for x in xs if empty for y in xs],
+        "multiple_guards": [x for x in xs if full if empty],
+        "dynamic_empty": dynamic_guard(empty),
+        "dynamic_full": dynamic_guard(full),
+        "scalar_guard": [x for x in xs if x > 1]
+    };
+}
+""";
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        result = run_js_module(
+            js_code + "\nconsole.log(JSON.stringify(comprehension_probe()));\n"
+        );
+        assert result.returncode == 0 , result.stderr + "\n" + js_code;
+        assert json.loads(result.stdout.strip())
+            == {
+                "empty_list": [],
+                "full_list": [1, 2, 3],
+                "empty_dict": [],
+                "full_dict": [1, 2, 3],
+                "empty_set": [],
+                "full_set": [1, 2, 3],
+                "and_empty": [],
+                "or_empty": [],
+                "or_full": [1, 2, 3],
+                "dict_compr": {},
+                "set_compr": [],
+                "gen_compr": [],
+                "nested": [],
+                "multiple_guards": [],
+                "dynamic_empty": [],
+                "dynamic_full": [1, 2, 3],
+                "scalar_guard": [2, 3]
+            } , js_code;
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
 test "cl collection truthiness matches Python emptiness (#6320)" {
     # JS arrays/objects/Sets are always truthy, so empty-collection guards
     # never short-circuit. Boolean contexts on a collection must test
