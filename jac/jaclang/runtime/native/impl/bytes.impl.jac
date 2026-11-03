@@ -947,8 +947,17 @@ impl __jac_rt_bytearray_extend(ba: int, data: ptr[u8], n: int) {
         return;
     }
     size = __mem_load_i64(ba + LIST_LEN);
+    before = __mem_load_i64(ba + LIST_DATA);
+    source = int(data);
+    inside = before != 0
+        and source >= before
+        and source < before + __mem_load_i64(ba + LIST_CAP);
     _bytearray_reserve(ba, size + n);
-    memmove(__mem_load_i64(ba + LIST_DATA) + size, int(data), n);
+    after = __mem_load_i64(ba + LIST_DATA);
+    if inside {
+        source = after + (source - before);
+    }
+    memmove(after + size, source, n);
     __mem_store_i64(ba + LIST_LEN, size + n);
 }
 
@@ -1033,4 +1042,33 @@ impl __jac_rt_struct_put(at: ptr[u8], bits: int, size: int, big: bool) {
         __mem_store_i8(d + (size - 1 - i if big else i), i8.wrap(byte));
         i += 1;
     }
+}
+
+impl __jac_rt_exc_message(data: ptr[u8], n: int) -> ptr[u8] {
+    ring = __thread_local_block("jac_rt_exc_message_ring", 136);
+    at = __mem_load_i64(ring + 128);
+    slot = ring + (at % 16) * 8;
+    held = __mem_load_i64(slot);
+    if held != 0 {
+        free(held);
+    }
+    made = malloc(n + 1);
+    if n > 0 {
+        memcpy(made, int(data), n);
+    }
+    __mem_store_i8(made + n, i8(0));
+    __mem_store_i64(slot, made);
+    __mem_store_i64(ring + 128, at + 1);
+    return ptr[u8](made);
+}
+
+impl __jac_rt_byte_single(value: int) -> int {
+    if value < 0 or value > 255 {
+        raise ValueError("byte must be in range(0, 256)");
+    }
+    made = __jac_rt_alloc(1 + BYTES_DATA);
+    __jac_rt_set_type(made, int(ptr[u8]("bytes")));
+    __mem_store_i64(made + BYTES_LEN, 1);
+    __mem_store_i8(made + BYTES_DATA, i8.wrap(value));
+    return made;
 }

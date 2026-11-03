@@ -1,3 +1,4 @@
+import json;
 import os;
 import sys;
 
@@ -33,6 +34,15 @@ def mir_top_element(
 
 def mir_clib_path(spec: tuple[str, list[str], int], triple: str) -> str;
 
+glob MIR_LIST_DATA: int = 16,
+     MIR_DICT_KEYS: int = 16,
+     MIR_DICT_VALS: int = 24,
+     MIR_DICT_ORDER: int = 48;
+
+def mir_field_slot(t: MirType) -> tuple[str, str, (dict[str, any] | None)];
+
+def mir_value_schema(t: MirType) -> (dict[str, any] | None);
+
 walker MirNativePass(CompilerPass) {
     static has contract: PassContract = PassContract(
         requires=(AnalysisFact.TYPE_OF, AnalysisFact.CFG_SUCC)
@@ -45,7 +55,14 @@ walker MirNativePass(CompilerPass) {
     def settle_soft(lowering: MirLowering) -> bool;
     def refuse_events(lowering: MirLowering) -> bool;
     def note_demotions(lowering: MirLowering, prior: (NativeIface | None));
-    def interface(mir: MirModule, deps: list[str], triple: str = "") -> NativeIface;
+    def interface(
+        lowering: MirLowering, deps: list[str], triple: str = ""
+    ) -> NativeIface;
+
+    def class_layouts(
+        lowering: MirLowering, module: ir.Module
+    ) -> dict[str, NativeClassLayout];
+
     def layout(lowering: MirLowering, mir: MirModule) -> NativeModuleLayout;
     can run_walk with uni.Module entry;
 }

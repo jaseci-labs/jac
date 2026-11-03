@@ -91,23 +91,19 @@ test "the Python lane and the native lane agree on the fixture" {
     );
 }
 
-test "an inherited field store is visible on the Python shadow" {
+test "an inherited field store lands on the native object, with no Python shadow" {
+    # The base lowers natively, so the subclass holds the base's slots itself:
+    # the store and the inherited call read back through the same object, and
+    # no Python shadow is ever made for it.
     (eng, _) = compile_native("pyb_native_main.jac");
     get_func(eng, "jac_entry", None)();
     _pyb_shadows.clear();
     kept = get_func(eng, "keep_and_poke", ctypes.c_int64)();
     assert kept == 100 , f"keep_and_poke returned {kept}";
-    assert len(_pyb_shadows) == 1 , (
-        f"expected one live shadow, found {len(_pyb_shadows)}"
+    assert len(_pyb_shadows) == 0 , (
+        f"a natively lowered base made {len(_pyb_shadows)} Python shadow(s)"
     );
-    shadow: any = list(_pyb_shadows.values())[0];
-    assert type(shadow).__name__ == "Kid" , type(shadow).__name__;
-    assert any(c.__name__ == "PyBase" for c in type(shadow).__mro__) , (
-        "shadow is not an instance of the Python base"
-    );
-    assert shadow.count == 100 , f"shadow.count is {shadow.count}";
-    assert shadow.trace == "|base" , f"shadow.trace is {shadow.trace!r}";
-    assert shadow.label == "kid" , f"shadow.label is {shadow.label!r}";
+    assert get_func(eng, "run_all", ctypes.c_int64)() == EXPECTED;
 }
 
 test "releasing the native owner drops its Python shadow" {

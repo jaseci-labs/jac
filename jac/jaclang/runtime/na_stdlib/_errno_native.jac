@@ -18,3 +18,5 @@ def _raise_for_errno(code: int, message: imm str);
 def:pub raise_errno(code: int, operation: imm str = "");
 
 def:pub raise_os_error(operation: imm str, path: imm str, code: int);
+
+def:pub raise_path_error(path: imm str, code: int);

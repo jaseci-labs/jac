@@ -268,40 +268,63 @@ test "hetero nogc fixture passes under headerless --memory nogc (AOT)" {
     assert out == ["600", "400", "done"] , f"hetero nogc output mismatch: {out}";
 }
 
-test "mixed dict keys and mixed set elements are stable diagnostics" {
-    import tempfile as _tf;
+"""Compile `src_text` as its own forced-native module and hand back the
+program and module; the source file is removed again before returning."""
+def compile_snippet(src_text: str) -> tuple[JacProgram, any] {
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tf {
+        tf.write(src_text);
+        path = tf.name;
+    }
+    try {
+        prog = JacProgram();
+        ir = prog.compile(file_path=path, options=native_force_opts());
+        return (prog, ir);
+    } finally {
+        os.unlink(path);
+    }
+}
+
+test "mixed dict keys and mixed set elements lower and answer like CPython" {
+    # The old backend had no element representation for keys or elements of
+    # more than one type and refused these; MIR keys and holds them as
+    # `any`, so they lower and must count what CPython counts.
     for (src_text, fn_name, label) in [
         (
-            "def bad_keys -> int { d: dict[any, any] = {1: \"a\", \"b\": 2}; return len(d); }",
-            "bad_keys",
+            "def mixed_keys -> int { d: dict[any, any] = {1: \"a\", \"b\": 2}; return len(d); }",
+            "mixed_keys",
             "dict-mixed-keys"
         ),
         (
-            "def bad_set -> int { s: set = {1, \"a\"}; return len(s); }",
-            "bad_set",
+            "def mixed_set -> int { s: set = {1, \"a\"}; return len(s); }",
+            "mixed_set",
             "set-mixed-elems"
         )
     ] {
-        with _tf.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tf {
-            tf.write(src_text);
-            path = tf.name;
-        }
-        try {
-            prog = JacProgram();
-            ir = prog.compile(file_path=path, options=native_force_opts());
-            assert not prog.errors_had , (
-                f"{label}: the refusal is owned by {fn_name}(), which must "
-                f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
-            );
-            assert ir.gen.native_layout is not None , (
-                f"{label}: whole-module native compile aborted"
-            );
-            assert fn_name not in ir.gen.native_layout.functions , (
-                f"{label}: the refused container must demote its function "
-                f"out of the native layout, never lower silently"
-            );
-        } finally {
-            os.unlink(path);
-        }
+        (prog, ir) = compile_snippet(src_text);
+        assert not prog.errors_had , f"{label}: {[str(e) for e in prog.errors_had]}";
+        assert fn_name in ir.gen.native_layout.functions , (
+            f"{label}: the mixed container stopped lowering"
+        );
+        addr = native_address(ir.gen.native_engine, fn_name);
+        assert ctypes.CFUNCTYPE(ctypes.c_int64)(addr)() == 2 , (
+            f"{label}: two distinct members, two entries"
+        );
     }
+}
+
+test "a container whose elements have no native form is a stable demotion" {
+    (prog, ir) = compile_snippet(
+        "def bad_views -> int { xs = [memoryview(b\"ab\")]; return len(xs); }\n"
+            + "def pure(n: int) -> int { return n + 1; }\n"
+    );
+    assert not prog.errors_had , (
+        f"the refusal is owned by bad_views(), which must demote to a seam, "
+        f"got: {[str(e) for e in prog.errors_had]}"
+    );
+    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
+    assert "bad_views" not in ir.gen.native_layout.functions , (
+        "the refused container must demote its function out of the native "
+        "layout, never lower silently"
+    );
+    assert "pure" in ir.gen.native_layout.functions , "the clean sibling was lost";
 }

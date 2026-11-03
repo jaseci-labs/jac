@@ -12,7 +12,11 @@ import from pathlib { Path }
 """Where the MIR backend may read its target, and why."""
 glob ALLOWED: dict[str, str] = {
          "MirNativePass._run_impl": "hands the target triple and data layout to emission",
-         "emit_mir_module": "stamps the module's triple and data layout"
+         "emit_mir_module": "stamps the module's triple and data layout",
+         "MirEmitter.c_classify": "a by-value C struct is split into registers by the target's C calling convention, which no floor can hide",
+         "MirEmitter.builtin_sjlj": "LLVM's builtin setjmp/longjmp pair is only selected on x86_64",
+         "mir_clib_path": "spells a `import from clib` library's file name (lib*.so, *.dylib, *.dll) for the unit's interface, which the linker reads",
+         "MirNativePass.interface": "records the unit's C libraries under their target file names for the link plan"
      };
 
 glob TARGET_READS = re.compile(

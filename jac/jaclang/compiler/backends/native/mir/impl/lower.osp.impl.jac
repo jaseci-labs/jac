@@ -377,10 +377,7 @@ impl MirLowering.osp_thunk(owner: uni.Archetype, ability: str) -> str {
         self.mir.externs[target] = MirExtern(
             symbol=target, ret=mir_none(), params=[self_type, mir_any()]
         );
-        unit = os.path.realpath(home.loc.mod_path);
-        if unit not in self.mir.deps {
-            self.mir.deps.append(unit);
-        }
+        self.add_dep(home.loc.mod_path, target, owner);
     }
     i8p = mir_c_ptr(mir_int(8, False));
     symbol = f"{target}.__ospthunk";
@@ -777,10 +774,7 @@ impl MirLowering.osp_edge_object(
             params=[param[1] for param in params]
                 + ([mir_int()] if self.ctor_takes_mask(params) else [])
         );
-        unit = os.path.realpath(owner.loc.mod_path);
-        if unit not in self.mir.deps {
-            self.mir.deps.append(unit);
-        }
+        self.add_dep(owner.loc.mod_path, obj_def.name, owner);
     }
     made = b.call(symbol, args, mir_obj(obj_def.name));
     if made is None {

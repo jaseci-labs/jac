@@ -429,19 +429,18 @@ impl lenient_c_slot(t: (TypeBase | None)) -> bool {
     return isinstance(t, AnyType) and t.is_foreign and not t.foreign_scalar;
 }
 
+impl push_erased_units(units: set[str]) {
+    _ERASED_UNITS.append(units);
+}
+
+impl pop_erased_units {
+    _ERASED_UNITS.pop();
+}
+
 impl host_only_archetype(arch: uni.Archetype) -> bool {
-    if not native_unit_compile_active() {
+    if not _ERASED_UNITS or not _ERASED_UNITS[-1] {
         return False;
     }
     owner = arch.find_parent_of_type(uni.Module);
-    if owner is None or not owner.loc.mod_path.endswith(".jac") {
-        return False;
-    }
-    path = owner.loc.mod_path;
-    known = _HOST_ONLY_UNITS.get(path);
-    if known is None {
-        known = not native_unit(path, True);
-        _HOST_ONLY_UNITS[path] = known;
-    }
-    return known;
+    return owner is not None and owner.loc.mod_path in _ERASED_UNITS[-1];
 }

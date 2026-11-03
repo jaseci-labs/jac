@@ -823,7 +823,8 @@ impl TypeEvaluator._report_rejected_method_call(
 impl TypeEvaluator._type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool {
     for existing in type_list {
         if isinstance(ty, ClassType) and isinstance(existing, ClassType) {
-            if ty.shared.same_class(existing.shared) {
+            if ty.shared.same_class(existing.shared)
+                and self._same_type_args(ty, existing) {
                 return True;
             }
         } elif ty is existing {
@@ -837,6 +838,35 @@ impl TypeEvaluator._type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> boo
         }
     }
     return False;
+}
+
+impl TypeEvaluator._same_type_args(ty: ClassType, existing: ClassType) -> bool {
+    mine = ty.private.type_args;
+    theirs = existing.private.type_args;
+    if not mine or not theirs {
+        return True;
+    }
+    if len(mine) != len(theirs) {
+        return False;
+    }
+    for (left, right) in zip(mine, theirs) {
+        if left is right
+            or isinstance(left, (UnknownType, AnyType))
+            or isinstance(right, (UnknownType, AnyType)) {
+            continue;
+        }
+        if isinstance(left, ClassType) and isinstance(right, ClassType) {
+            if not left.shared.same_class(right.shared)
+                or not self._same_type_args(left, right) {
+                return False;
+            }
+            continue;
+        }
+        if not types_equivalent(left, right) {
+            return False;
+        }
+    }
+    return True;
 }
 
 impl TypeEvaluator._literal_member_known(

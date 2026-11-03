@@ -191,7 +191,7 @@ impl MirLowering.ascii_of(value: MirValue, site: uni.UniNode) -> MirValue {
 }
 
 impl MirLowering.object_text(
-    value: MirValue, method: str, site: uni.UniNode
+    value: MirValue, method: str, site: uni.UniNode, dispatch: bool = True
 ) -> MirValue {
     b = self.builder();
     arch = self.archetypes.get(value.type.name);
@@ -201,6 +201,18 @@ impl MirLowering.object_text(
         );
     }
     found = self.find_method(arch, method);
+    if found is None and dispatch {
+        carriers = [
+            sub
+            for (sub_name, sub) in self.archetypes.items()
+            if sub_name != value.type.name
+                and self.obj_extends(sub_name, value.type.name)
+                and self.find_method(sub, method) is not None
+        ];
+        if carriers {
+            return self.subclass_text(value, method, carriers, site);
+        }
+    }
     if found is not None {
         decl = self.method_decl_of(found);
         if decl is None
@@ -268,6 +280,39 @@ impl MirLowering.object_text(
         raise RuntimeError("a generated repr function returns no value");
     }
     return rendered;
+}
+
+impl MirLowering.subclass_text(
+    value: MirValue, method: str, carriers: list[uni.Archetype], site: uni.UniNode
+) -> MirValue {
+    fn = self.st().fn;
+    held = self.spill(value);
+    result = self.temp_slot(mir_str());
+    done = fn.new_block("text.sub.done");
+    ranked = sorted(
+        [(0 - len(self.lineage(sub)), index) for (index, sub) in enumerate(carriers)]
+    );
+    ordered = [carriers[index] for (_, index) in ranked];
+    for sub in ordered {
+        hit = fn.new_block("text.sub.hit");
+        miss = fn.new_block("text.sub.miss");
+        self.builder().cond_branch(self.isinstance_check(held, sub), hit, miss);
+        self.builder().position(hit);
+        narrowed = self.builder().ref_cast(held, self.object_type(sub), False);
+        self.builder().store(
+            result,
+            self.coerce(self.object_text(narrowed, method, site), mir_str(), site)
+        );
+        self.builder().branch(done);
+        self.builder().position(miss);
+    }
+    self.builder().store(
+        result,
+        self.coerce(self.object_text(held, method, site, False), mir_str(), site)
+    );
+    self.builder().branch(done);
+    self.builder().position(done);
+    return self.builder().load(result, mir_str());
 }
 
 impl MirLowering.text_fn(value_type: MirType, site: uni.UniNode) -> str {
@@ -464,6 +509,73 @@ impl MirLowering.fstring_value(nd: uni.FString) -> MirValue {
     return result if result is not None else b.const_str("", mir_str());
 }
 
+impl MirLowering.str_format(template: str, nd: uni.FuncCall) -> MirValue {
+    import string;
+    b = self.builder();
+    (args, named) = self.split_args(nd);
+    positional = [self.spill(self.lower_expr(arg)) for arg in args];
+    keyed: dict[str, MirValue] = {};
+    for (key, arg) in named.items() {
+        keyed[key] = self.spill(self.lower_expr(arg));
+    }
+    try {
+        fields = list(string.Formatter().parse(template));
+    } except ValueError as e {
+        raise MirRefused(
+            mir_refusal("call", f"str.format of {template!r}", nd, str(e))
+        );
+    }
+    pieces: list[MirValue] = [];
+    automatic = 0;
+    numbering = "";
+    for (literal, field, spec, conversion) in fields {
+        if literal {
+            pieces.append(b.const_str(literal, mir_str()));
+        }
+        if field is None {
+            continue;
+        }
+        value: (MirValue | None) = None;
+        if field == "" and numbering != "manual" {
+            numbering = "automatic";
+            value = positional[automatic] if automatic < len(positional) else None;
+            automatic += 1;
+        } elif field.isdigit() and numbering != "automatic" {
+            numbering = "manual";
+            index = int(field);
+            value = positional[index] if index < len(positional) else None;
+        } elif field.isidentifier() {
+            value = keyed.get(field);
+        }
+        if value is None or (spec and "{" in spec) {
+            raise MirRefused(
+                mir_refusal(
+                    "call",
+                    f"str.format field {{{field}}}",
+                    nd,
+                    "Native str.format fills plain positional, numbered and keyword fields from its arguments, with constant format specs."
+                )
+            );
+        }
+        if conversion == "r" {
+            value = self.repr_of(value, nd);
+        } elif conversion == "a" {
+            value = self.ascii_of(value, nd);
+        } elif conversion == "s" {
+            value = self.str_value(value, nd);
+        }
+        format_spec = self.spill(b.const_str(spec, mir_str())) if spec else None;
+        pieces.append(
+            self.spill(self.format_value(self.spill(value), format_spec, nd))
+        );
+    }
+    result: (MirValue | None) = None;
+    for piece in pieces {
+        result = piece if result is None else self.str_concat(result, piece);
+    }
+    return result if result is not None else b.const_str("", mir_str());
+}
+
 impl MirLowering.format_value(
     value: MirValue, spec: (MirValue | None), site: uni.UniNode
 ) -> MirValue {
@@ -518,7 +630,7 @@ impl MirLowering.type_label(t: MirType) -> str {
         arch = self.archetypes.get(t.name);
         return arch.name.value if arch is not None else t.name;
     }
-    if t.kind == MirKind.OPT {
+    if t.kind in (MirKind.OPT, MirKind.NONE) {
         return "NoneType";
     }
     return t.kind.value.split(".")[0];
@@ -763,6 +875,25 @@ impl MirLowering.text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) 
     if name == "pow" and len(args) == 2 {
         return self.power(first, self.lower_expr(args[1]), nd);
     }
+    if name == "pow" and len(args) == 3 {
+        operands = [first, self.lower_expr(args[1]), self.lower_expr(args[2])];
+        if any(
+            value.type.kind not in (MirKind.INT, MirKind.BOOL) or value.type.is_sized()
+            for value in operands
+        ) {
+            raise MirRefused(
+                mir_refusal(
+                    "call",
+                    "pow with a modulus over non-int operands",
+                    nd,
+                    "Three-argument pow takes int operands."
+                )
+            );
+        }
+        return self.call_rt(
+            "__jac_rt_int_powmod", [b.convert(value, mir_int()) for value in operands]
+        );
+    }
     raise MirRefused(mir_refusal("call", f"{name} with {len(args)} arguments", nd));
 }
 
@@ -801,13 +932,24 @@ impl MirLowering.bytes_from(args: list[uni.Expr], nd: uni.FuncCall) -> MirValue 
         );
     } elif kind in (MirKind.INT, MirKind.BOOL) {
         handle = self.call_rt("__jac_rt_bytes_zero", [b.convert(source, mir_int())]);
-    } elif self.is_byte_seq(source) {
+    } else {
+        return self.bytes_of_ints(source, nd);
+    }
+    return b.ref_cast(handle, mir_bytes(), True);
+}
+
+impl MirLowering.bytes_of_ints(source: MirValue, nd: uni.UniNode) -> MirValue {
+    b = self.builder();
+    kind = source.type.kind;
+    handle: MirValue;
+    if self.is_byte_seq(source) {
         (data, size) = self.byte_parts(source);
         handle = self.call_rt("__jac_rt_bytes_new", [data, size]);
     } elif kind == MirKind.LIST
         and source.type.payload().kind in (MirKind.INT, MirKind.BOOL) {
         handle = self.call_rt("__jac_rt_bytes_from_list", [source]);
-    } elif kind in (MirKind.RANGE, MirKind.ITER, MirKind.TUPLE, MirKind.SET) {
+    } elif kind
+        in (MirKind.RANGE, MirKind.ITER, MirKind.TUPLE, MirKind.SET, MirKind.LIST) {
         handle = self.call_rt(
             "__jac_rt_bytes_from_list", [self.spill(self.drain(source, mir_int(), nd))]
         );

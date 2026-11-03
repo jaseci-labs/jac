@@ -135,11 +135,10 @@ impl MirLowering.declare_c_global(assign: uni.Assignment) -> MirGlobal {
     if defines and isinstance(initial, uni.Expr) {
         made.linkage = "internal" if is_priv else "";
         made.c_init = self.c_const(initial, ctype, made.type, made.count);
-    } elif assign.value is not None and owner is not None {
-        unit = os.path.realpath(owner.loc.mod_path);
-        if unit.endswith(".jac") and unit not in self.mir.deps {
-            self.mir.deps.append(unit);
-        }
+    } elif assign.value is not None
+        and owner is not None
+        and owner.loc.mod_path.endswith(".jac") {
+        self.add_dep(owner.loc.mod_path, name, assign);
     }
     self.c_views[id(assign)] = made;
     held = self.mir.globals.get(name);
@@ -341,6 +340,9 @@ impl MirLowering.c_function_symbol(expr: uni.Expr) -> str {
         expr = expr.value;
     }
     target = named_function_of(expr);
+    if isinstance(target, uni.Ability) {
+        target = self.live_member(target);
+    }
     if not isinstance(target, uni.Ability) or not isinstance(expr, uni.Name) {
         raise MirRefused(self.c_const_refusal(expr));
     }
@@ -371,10 +373,7 @@ impl MirLowering.c_function_symbol(expr: uni.Expr) -> str {
             ]
         );
         self.mir.externs[symbol] = made;
-        unit = os.path.realpath(path);
-        if unit not in self.mir.deps {
-            self.mir.deps.append(unit);
-        }
+        self.add_dep(path, symbol, expr);
         return self.c_entry(symbol, made.params, made.ret, target);
     }
     raise MirRefused(mir_refusal("function address", expr.sym_name, expr));
@@ -730,27 +729,42 @@ impl MirLowering.variant_ability(callee: uni.Ability) -> uni.Ability {
 }
 
 impl MirLowering.variant_glob(nd: uni.Name) -> (uni.Name | None) {
-    assign = self.glob_assignment_of(nd);
-    if assign is None {
+    if nd.sym is None {
         return None;
     }
-    owner = assign.find_parent_of_type(uni.Module);
-    if owner is None or owner is self.module {
+    declaration = self.glob_assignment_of(nd);
+    if declaration is None {
         return None;
     }
-    twin = self.variant_unit(owner);
+    twin = self.variant_declaration(declaration);
     if twin is None {
         return None;
     }
-    for target in assign.target {
+    wanted = {
+        target.value
+        for target in declaration.target
+        if isinstance(target, uni.Name)
+    };
+    for held in twin.target {
+        if isinstance(held, uni.Name) and held.value in wanted {
+            return held;
+        }
+    }
+    return None;
+}
+
+impl MirLowering.variant_declaration(
+    declaration: uni.Assignment
+) -> (uni.Assignment | None) {
+    owner = declaration.find_parent_of_type(uni.Module);
+    if owner is None or owner is self.module or self.variant_unit(owner) is None {
+        return None;
+    }
+    for target in declaration.target {
         if isinstance(target, uni.Name) {
-            found = variant_assignment(self.prog, assign, target.value);
+            found = variant_assignment(self.prog, declaration, target.value);
             if found is not None {
-                for held in found.target {
-                    if isinstance(held, uni.Name) and held.value == target.value {
-                        return held;
-                    }
-                }
+                return found;
             }
         }
     }

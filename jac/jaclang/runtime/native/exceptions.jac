@@ -43,6 +43,8 @@ def:pub __jac_rt_raise(target: ptr[u8], type_id: i32, message: ptr[u8]);
 
 def:pub __jac_rt_raise_builtin(type_id: i32, message: ptr[u8]);
 
+def:pub __jac_rt_unbound_check(bound: bool, type_id: i32, message: ptr[u8]);
+
 def:pub __jac_rt_exc_lineage_add(type_id: int, base_id: int);
 
 def:pub __jac_rt_exc_isa(type_id: int, base_id: int) -> bool;

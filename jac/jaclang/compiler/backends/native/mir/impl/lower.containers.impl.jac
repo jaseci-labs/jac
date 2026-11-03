@@ -891,7 +891,7 @@ impl MirLowering.list_sort(lst: MirValue, nd: uni.FuncCall) -> (MirValue | None)
     key_fn: (MirValue | None) = None;
     if "key" in named {
         key_fn = self.key_function(named["key"]);
-    } elif self.elem_kind(elem, nd) == KIND_REF {
+    } elif self.sort_kind(elem, nd) == KIND_REF {
         return None;
     }
     flag = b.const_bool(False);
@@ -922,9 +922,14 @@ impl MirLowering.dict_method(
     if name == "get" and len(args) in (1, 2) {
         result_type = self.expr_type(nd);
         held = self.temp_slot(result_type);
+        key = self.lower_expr(args[0]);
+        fallback = self.spill(
+            self.coerce(self.lower_expr(args[1]), result_type, args[1])
+        )
+            if len(args) == 2
+            else None;
         found = self.runtime(
-            "__jac_rt_dict_find",
-            [d, self.to_bits(self.lower_expr(args[0]), key_type, args[0]), key_kind]
+            "__jac_rt_dict_find", [d, self.to_bits(key, key_type, args[0]), key_kind]
         );
         if found is None {
             return None;
@@ -957,8 +962,8 @@ impl MirLowering.dict_method(
         }
         b.branch(done);
         b.position(miss);
-        if len(args) == 2 {
-            b.store(held, self.coerce(self.lower_expr(args[1]), result_type, args[1]));
+        if fallback is not None {
+            b.store(held, fallback);
         } else {
             b.store(held, self.coerce(self.none_value(), result_type, nd));
         }
@@ -1333,7 +1338,13 @@ impl MirLowering.set_method(
                 "difference_update",
                 "symmetric_difference_update"
             ) {
-        other = self.coerce(self.lower_expr(args[0]), s.type, args[0]);
+        other = self.lower_expr(args[0]);
+        if other.type is not s.type and other.type.kind != MirKind.SET {
+            gathered = self.spill(self.new_dict(elem, None, s.type));
+            self.extend_from(gathered, self.spill(other), args[0]);
+            other = gathered;
+        }
+        other = self.coerce(other, s.type, args[0]);
         return self.set_algebra(s, other, name, nd);
     }
     return None;
@@ -1449,17 +1460,7 @@ impl MirLowering.contains(
         and self.is_text(item)
         and self.enum_layout_of(holder.type.payload(), site).is_string_enum {
         elem = holder.type.payload();
-        layout = self.enum_layout_of(elem, site);
-        probe = self.spill(item);
-        ordinal = b.const_int(-1, mir_int());
-        for member in reversed(layout.members) {
-            same = self.compare_values(
-                Tok.EE, probe, b.const_str(member.str_value or "", mir_str()), site
-            );
-            ordinal = b.select(
-                same, b.const_int(self.enum_payload(layout, member), mir_int()), ordinal
-            );
-        }
+        ordinal = self.string_enum_ordinal(item, elem, site);
         found = self.runtime(
             "__jac_rt_list_contains",
             [holder, ordinal, b.const_int(self.elem_kind(elem, site), mir_int())]
@@ -1480,6 +1481,23 @@ impl MirLowering.contains(
         );
         if found is not None {
             return found;
+        }
+    }
+    if holder.type.kind in (MirKind.DICT, MirKind.SET)
+        and holder.type.args[0].kind == MirKind.ENUM
+        and self.is_text(item)
+        and self.enum_layout_of(holder.type.args[0], site).is_string_enum {
+        key = holder.type.args[0];
+        at = self.runtime(
+            "__jac_rt_dict_find",
+            [
+                holder,
+                self.string_enum_ordinal(item, key, site),
+                b.const_int(self.elem_kind(key, site), mir_int())
+            ]
+        );
+        if at is not None {
+            return b.compare("ge", at, b.const_int(0, mir_int()));
         }
     }
     if holder.type.kind in (MirKind.DICT, MirKind.SET) {
@@ -1792,7 +1810,12 @@ impl MirLowering.sort_kind(t: MirType, site: uni.UniNode) -> int {
     if t.kind == MirKind.INT and not t.signed and t.width == 64 {
         return KIND_UINT;
     }
-    return self.elem_kind(t, site);
+    kind = self.elem_kind(t, site);
+    if kind == KIND_REF
+        and t.kind in (MirKind.LIST, MirKind.BYTES, MirKind.BYTEARRAY, MirKind.SET) {
+        return SORT_TAGGED_KIND + self.any_tag(t, site);
+    }
+    return kind;
 }
 
 impl MirLowering.unbind_local(target: uni.Expr) -> bool {
@@ -1910,6 +1933,24 @@ impl MirLowering.structural_elem(t: MirType) -> bool {
         return any(self.structural_elem(member) for member in t.args);
     }
     return False;
+}
+
+impl MirLowering.string_enum_ordinal(
+    item: MirValue, elem: MirType, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    layout = self.enum_layout_of(elem, site);
+    probe = self.spill(item);
+    ordinal = b.const_int(-1, mir_int());
+    for member in reversed(layout.members) {
+        same = self.compare_values(
+            Tok.EE, probe, b.const_str(member.str_value or "", mir_str()), site
+        );
+        ordinal = b.select(
+            same, b.const_int(self.enum_payload(layout, member), mir_int()), ordinal
+        );
+    }
+    return ordinal;
 }
 
 impl MirLowering.list_scan(

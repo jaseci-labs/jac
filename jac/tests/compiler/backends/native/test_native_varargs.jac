@@ -5,10 +5,10 @@ test_native_crash_guards.jac, #7320). The call site materializes the pack:
 `*args: T` is a native List of T (List.jacval for `*args: any`) and
 `**kwargs: T` a native str-keyed Dict, each passed as one pointer and
 released after the call. Shapes the lowering does not cover demote their
-owning callable to a Python-only seam (call-site argument unpacking
-`f(*xs)` / `f(**d)`, def:pub variadics, and since #8234 a variadic `init`,
-whose construction sites then refuse), while shapes with no demotable
-owner at all stay structured errors (unannotated variadics).
+owning callable to a Python-only seam (def:pub variadics, which a C caller
+cannot hand a pack, and since #8234 an `init` that cannot lower, whose
+construction sites then refuse), while shapes with no demotable owner at
+all stay structured errors (unannotated variadics).
 
 Expected values are pinned against CPython (see each fixture wrapper).
 
@@ -27,7 +27,6 @@ import from tests.support {
     compile_native,
     get_func,
     has_error_code,
-    native_build_fails,
     native_force_opts,
     sv_run,
     na_run,
@@ -59,6 +58,16 @@ def compile_na_inline_ir(label: str, code: str) -> tuple[any, ...] {
     options.skip_native_engine = True;
     ir = prog.compile(file_path=path, use_str=code, options=options);
     return (prog, ir, );
+}
+
+"""Compile a snippet that must lower cleanly and hand back its JIT engine."""
+def compile_native_inline(label: str, code: str) -> tuple[any, ...] {
+    path = os.path.join(FIXTURES, f"_varargs_{label}.jac");
+    prog = JacProgram();
+    ir = prog.compile(file_path=path, use_str=code, options=native_force_opts());
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
+    assert ir.gen.native_engine is not None , f"no JIT engine for {label}";
+    return (ir.gen.native_engine, ir, );
 }
 
 test "varargs: *args sums positional extras" {
@@ -222,16 +231,25 @@ test "def:pub variadic demotes off the native interop surface" {
     );
 }
 
-test "variadic init demotes the constructor and refuses its callers" {
+test "a variadic init binds its pack" {
+    (eng, _) = compile_native_inline(
+        "initvar_lowers",
+        "obj P { has n: int = 0; def init(*vals: int) { self.n = len(vals) * 10 + vals[0]; } }\n"
+        "def mk() -> int { p = P(4, 5, 6); return p.n; }\n"
+    );
+    assert get_func(eng, "mk", ctypes.c_int64)() == 34 , "three extras, the first is 4";
+}
+
+test "an init that cannot lower demotes the constructor and refuses its callers" {
     (prog, ir) = compile_na_inline_ir(
         "initvar",
-        "obj P { has n: int = 0; def init(*vals: int) { self.n = 0; } }\n"
+        "obj P { has n: int = 0; def init(*vals: int) { self.n = len(memoryview(b'ab')) + len(vals); } }\n"
         "def mk() -> int { p = P(); return p.n; }\n"
         "def pure(x: int) -> int { return x + 1; }\n"
     );
     assert not prog.errors_had , (
-        f"a constructor owns its own capability violation since #8234, so a "
-        f"variadic init demotes instead of refusing the module, got: "
+        f"a constructor owns its own refusal since #8234, so an init that "
+        f"cannot lower demotes instead of refusing the module, got: "
         f"{[str(e) for e in prog.errors_had]}"
     );
     layout = ir.gen.native_layout;
@@ -240,7 +258,7 @@ test "variadic init demotes the constructor and refuses its callers" {
         f"clean sibling function was lost: {list(layout.functions)}"
     );
     assert "P.init" not in by_source_name(layout.methods) , (
-        "the variadic init must be demoted out of the native layout"
+        "the refused init must be demoted out of the native layout"
     );
     assert "mk" not in layout.functions , (
         "constructing through a demoted initializer must refuse, not build a "
@@ -274,17 +292,23 @@ test "a generic archetype's variadic methods reach the native image" {
     );
 }
 
-test "a generic pack at a by-value type argument is refused, not lowered" {
-    combined = native_build_fails(os.path.join(FIXTURES, "varargs_generic_scalar.jac"));
-    assert "Cell[int]" in combined , (
-        f"diagnostic does not name the instantiation: {combined[-600:]}"
-    );
+test "a generic pack at a by-value type argument answers what CPython answers" {
+    # The old backend erased `T` to a pointer list, so `Cell[int]` had no sound
+    # element slot and was refused. MIR specializes the pack per
+    # instantiation, so the by-value pack lowers and must answer as CPython.
+    (sv_out, _sv_err) = sv_run(os.path.join(FIXTURES, "varargs_generic_scalar.jac"));
+    (na_out, _na_err) = na_run(os.path.join(FIXTURES, "varargs_generic_scalar.jac"));
+    same_lines(sv_out, na_out, "by-value pack");
+    assert sv_out.strip() == "7" , f"the fixture's answer moved: {sv_out!r}";
 }
 
-test "a callee whose pack slot did not lay out refuses its caller" {
+test "a callee whose pack cannot lay out refuses its caller" {
+    # A pack whose element type has no native form refuses its callee, and a
+    # call into that callee demotes the caller rather than binding the extras
+    # into a slot that is not a pack.
     (prog, ir) = compile_na_inline_ir(
         "packslot",
-        "obj Cell[T] { has n: int = 0; def take(*xs: dict[T, T]) -> int { return 0; } }\n"
+        "obj Cell[T] { has n: int = 0; def take(*xs: memoryview) -> int { return len(xs); } }\n"
         "def use() -> int { c = Cell[Cell[int]](); return c.take(); }\n"
         "def pure(x: int) -> int { return x + 1; }\n"
     );
@@ -301,4 +325,15 @@ test "a callee whose pack slot did not lay out refuses its caller" {
         "binding the extras into a slot that is not a pack is a silent misread; "
         "the caller must demote instead"
     );
+}
+
+test "a generic pack of a nested instantiation binds no extras" {
+    (eng, _) = compile_native_inline(
+        "packslot_lowers",
+        "obj Cell[T] { has n: int = 0; def take(*xs: dict[T, T]) -> int { return len(xs); } }\n"
+        "def use() -> int { c = Cell[Cell[int]](); return c.take(); }\n"
+        "def two() -> int { c = Cell[int](); return c.take({1: 2}, {3: 4}); }\n"
+    );
+    assert get_func(eng, "use", ctypes.c_int64)() == 0 , "no extras were passed";
+    assert get_func(eng, "two", ctypes.c_int64)() == 2 , "two extras were passed";
 }

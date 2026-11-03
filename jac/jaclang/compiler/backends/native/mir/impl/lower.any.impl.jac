@@ -288,6 +288,45 @@ impl MirLowering.identity(
         (l, r) = self.unify_numeric(left, right, site);
         return b.compare("eq", l, r);
     }
+    if left.type.kind == MirKind.TUPLE and right.type.kind == MirKind.TUPLE {
+        if len(left.type.args) != len(right.type.args) {
+            return b.const_bool(False);
+        }
+        l_held = self.spill(left);
+        r_held = self.spill(right);
+        verdict = b.const_bool(True);
+        for index in range(len(left.type.args)) {
+            verdict = b.binary(
+                "and",
+                verdict,
+                self.identity(
+                    self.tuple_get(l_held, index), self.tuple_get(r_held, index), site
+                )
+            );
+        }
+        return verdict;
+    }
+    if left.type.kind in (MirKind.STR, MirKind.STR_REF)
+        and right.type.kind in (MirKind.STR, MirKind.STR_REF) {
+        return b.compare(
+            "eq",
+            self.emit_value(
+                MirOp.PTR_INT, mir_int(), [b.str_part(self.as_text(left), "data")]
+            ),
+            self.emit_value(
+                MirOp.PTR_INT, mir_int(), [b.str_part(self.as_text(right), "data")]
+            )
+        );
+    }
+    if MirKind.NONE in (left.type.kind, right.type.kind) {
+        other = right if left.type.kind == MirKind.NONE else left;
+        if other.type.kind == MirKind.NONE {
+            return b.const_bool(True);
+        }
+        if other.type.kind == MirKind.TUPLE or other.type.is_numeric() {
+            return b.const_bool(False);
+        }
+    }
     if MirKind.OPT in (left.type.kind, right.type.kind)
         and all(
             side.type.kind == MirKind.OBJ
@@ -321,6 +360,15 @@ impl MirLowering.identity(
             self.opt_switch(held, self.identity(payload, plain, site), absent, done);
             return self.opt_end(held, b.const_bool(False), done);
         }
+    }
+    if left.type.kind == MirKind.OPT
+        and right.type.kind == MirKind.OPT
+        and left.type.payload().is_numeric()
+        and right.type.payload().is_numeric() {
+        other = self.spill(right);
+        (held, payload, absent, done) = self.opt_begin(left, mir_bool());
+        self.opt_switch(held, self.identity(payload, other, site), absent, done);
+        return self.opt_end(held, b.logical_not(self.opt_present(other)), done);
     }
     if MirKind.OPT in (left.type.kind, right.type.kind)
         and self.ref_word_side(left)
@@ -543,6 +591,37 @@ impl MirLowering.target_archetype(target: uni.Expr) -> (uni.Archetype | None) {
 impl MirLowering.isinstance_value(
     subject: uni.Expr, target: uni.Expr, site: uni.UniNode
 ) -> MirValue {
+    declared = subject.type;
+    owner = declared.shared.symbol_table
+        if isinstance(declared, ClassType) and declared._shared is not None
+        else None;
+    if isinstance(owner, uni.Archetype) and self.python_base_of(owner) is not None {
+        for item in (
+            [
+                part
+                for part in target.values
+                if isinstance(part, uni.Expr)
+            ]
+                if isinstance(target, uni.TupleVal)
+                else [target]
+        ) {
+            if self.abstract_names(item) {
+                spelled = item.value if isinstance(item, uni.Name) else "";
+                if isinstance(item, uni.AtomTrailer)
+                    and isinstance(item.right, uni.Name) {
+                    spelled = item.right.value;
+                }
+                raise MirRefused(
+                    mir_refusal(
+                        "call",
+                        f"isinstance against `{spelled}`",
+                        site,
+                        "The operand's class inherits a Python-side base, so which abstract bases it inhabits is not known natively."
+                    )
+                );
+            }
+        }
+    }
     value = self.lower_expr(subject);
     if value.type.kind == MirKind.ANY {
         return self.any_isinstance(value, target, site);
@@ -596,6 +675,7 @@ impl MirLowering.isinstance_test(
     hit = False;
     for item in items {
         if self.abstract_names(item) {
+            self.refuse_partial_mro(value, item, site);
             hit = hit
                 or static_name in self.abstract_names(item)
                 or (
@@ -615,6 +695,7 @@ impl MirLowering.isinstance_test(
         }
         arch = self.target_archetype(item);
         if arch is not None {
+            self.refuse_opaque_abc(item, arch, site);
             found = self.isinstance_check(value, arch);
             verdict = found if verdict is None else b.binary("or", verdict, found);
             continue;
@@ -622,6 +703,12 @@ impl MirLowering.isinstance_test(
         item_type = self.expr_type(item);
         if item_type.kind == MirKind.CLASS {
             found = self.class_isinstance(value, self.lower_expr(item));
+            verdict = found if verdict is None else b.binary("or", verdict, found);
+            continue;
+        }
+        if item_type.kind == MirKind.LIST
+            and item_type.payload().kind == MirKind.CLASS {
+            found = self.class_list_isinstance(value, self.lower_expr(item));
             verdict = found if verdict is None else b.binary("or", verdict, found);
             continue;
         }
@@ -641,6 +728,38 @@ impl MirLowering.isinstance_test(
         return b.const_bool(hit);
     }
     return verdict;
+}
+
+impl MirLowering.type_call_name(item: uni.Expr) -> (str | None) {
+    if not isinstance(item, uni.FuncCall)
+        or not isinstance(item.target, uni.Name)
+        or item.target.value != "type"
+        or len(list(item.params or [])) != 1 {
+        return None;
+    }
+    arg = list(item.params)[0];
+    while isinstance(arg, uni.AtomUnit) {
+        arg = arg.value;
+    }
+    if isinstance(arg, uni.Ellipsis) {
+        return "EllipsisType";
+    }
+    if isinstance(arg, uni.Null) {
+        return "NoneType";
+    }
+    if isinstance(arg, uni.Bool) {
+        return "bool";
+    }
+    if isinstance(arg, uni.Int) {
+        return "int";
+    }
+    if isinstance(arg, uni.Float) {
+        return "float";
+    }
+    if isinstance(arg, (uni.String, uni.MultiString)) {
+        return "str";
+    }
+    return None;
 }
 
 impl MirLowering.any_isinstance(
@@ -685,8 +804,9 @@ impl MirLowering.any_isinstance(
             }
             continue;
         }
-        if isinstance(item, uni.Name) and item.value in ANY_TYPE_TAGS {
-            for wanted in ANY_TYPE_TAGS[item.value] {
+        named = item.value if isinstance(item, uni.Name) else self.type_call_name(item);
+        if named is not None and named in ANY_TYPE_TAGS {
+            for wanted in ANY_TYPE_TAGS[named] {
                 verdict = b.binary(
                     "or", verdict, b.compare("eq", tag, b.const_int(wanted, mir_int()))
                 );
@@ -723,6 +843,9 @@ impl MirLowering.any_isinstance(
             continue;
         }
         arch = self.target_archetype(item);
+        if arch is not None {
+            self.refuse_opaque_abc(item, arch, site);
+        }
         if arch is None {
             raise MirRefused(
                 mir_refusal(
@@ -746,6 +869,17 @@ impl MirLowering.any_isinstance(
                 self.runtime_value("__jac_rt_any_isa", [tag, payload, label])
             );
         }
+        self.object_def(arch);
+        wanted = self.address_of(
+            self.emit_value(
+                MirOp.CLASS_ADDR, mir_c_ptr(mir_int(8, False)), [], str_value=name
+            )
+        );
+        verdict = b.binary(
+            "or",
+            verdict,
+            self.runtime_value("__jac_rt_any_isa_class", [tag, payload, wanted])
+        );
     }
     return verdict;
 }
@@ -765,12 +899,68 @@ impl MirLowering.value_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None)
             )
         );
     }
+    caught = self.caught_type(args[0]);
+    if caught is not None {
+        return caught;
+    }
     return self.type_value(self.lower_expr(args[0]), nd);
+}
+
+impl MirLowering.caught_type(subject: uni.Expr) -> (MirValue | None) {
+    if not isinstance(subject, uni.Name)
+        or subject.sym is None
+        or id(subject.sym) not in self.st().bound_caught {
+        return None;
+    }
+    held = self.st().locals.get(id(subject.sym));
+    if held is not None and held.type.kind == MirKind.OBJ {
+        return None;
+    }
+    return self.caught_class(self.st().bound_caught[id(subject.sym)]);
+}
+
+impl MirLowering.caught_class(caught: tuple[MirValue, MirValue, MirValue]) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    (origin, type_id, message) = caught;
+    i8p = mir_c_ptr(mir_int(8, False));
+    chosen = self.temp_slot(i8p);
+    named = self.emit_value(MirOp.CSTR, i8p, [], str_value="Exception");
+    wanted = b.convert(type_id, mir_int());
+    for name in ["BaseException"]
+        + JAC_TYPE_REGISTRY.exception_descendants("BaseException") {
+        named = b.select(
+            b.compare(
+                "eq",
+                wanted,
+                b.const_int(JAC_TYPE_REGISTRY.exception_type_id(name), mir_int())
+            ),
+            self.emit_value(MirOp.CSTR, i8p, [], str_value=name),
+            named
+        );
+    }
+    b.store(chosen, named);
+    builtin = b.compare(
+        "eq",
+        self.emit_value(MirOp.PTR_INT, mir_int(), [origin]),
+        self.emit_value(MirOp.PTR_INT, mir_int(), [message])
+    );
+    archetyped = fn.new_block("caught.class");
+    done = fn.new_block("caught.class.done");
+    b.cond_branch(builtin, done, archetyped);
+    b.position(archetyped);
+    b.store(chosen, self.runtime_value("__jac_rt_type_name", [origin]));
+    b.branch(done);
+    b.position(done);
+    return self.emit_value(MirOp.PTR_CAST, mir_class("*"), [b.load(chosen, i8p)]);
 }
 
 impl MirLowering.type_value(value: MirValue, site: uni.UniNode) -> MirValue {
     t = value.type;
     class_type = mir_class("*");
+    if self.owned_world and t.kind in (MirKind.ANY, MirKind.OBJ) {
+        return self.headerless_type_value(value, site);
+    }
     if t.kind == MirKind.ANY {
         name = self.runtime_value(
             "__jac_rt_any_type_name",
@@ -939,13 +1129,60 @@ impl MirLowering.enum_text_thunk(t: MirType, site: uni.UniNode) -> str {
     return symbol;
 }
 
+impl MirLowering.headerless_type_value(value: MirValue, site: uni.UniNode) -> MirValue {
+    b = self.builder();
+    class_type = mir_class("*");
+    obj_def = self.mir.objects.get(value.type.name)
+        if value.type.kind == MirKind.OBJ
+        else None;
+    if obj_def is None {
+        raise MirRefused(
+            mir_refusal(
+                "call",
+                f"type of {value.type.render()}",
+                site,
+                "Under nogc an allocation has no header, so the class of a type-erased value cannot be read natively."
+            )
+        );
+    }
+    if obj_def.vtable_slot >= 0 {
+        i8p = mir_c_ptr(mir_int(8, False));
+        slot_place = self.emit_value(
+            MirOp.FIELD_ADDR,
+            mir_c_ptr(mir_c_ptr(i8p)),
+            [value],
+            int_value=obj_def.vtable_slot
+        );
+        table = b.load(slot_place, mir_c_ptr(i8p));
+        named = b.load(
+            self.emit_value(
+                MirOp.PTR_OFFSET, mir_c_ptr(i8p), [table, b.const_int(0, mir_int())]
+            ),
+            i8p
+        );
+        return self.emit_value(MirOp.PTR_CAST, class_type, [named]);
+    }
+    return self.emit_value(MirOp.CLASS_ADDR, class_type, [], str_value=obj_def.name);
+}
+
 impl MirLowering.store_text_result(base: MirValue, text: MirValue) {
     b = self.builder();
-    held = self.runtime_value(
-        "__jac_rt_str_ref",
-        [b.str_part(text, "root"), b.str_part(text, "data"), b.str_part(text, "len")]
-    );
-    self.runtime("__jac_rt_retain", [held]);
+    if self.owned_world {
+        held = self.call_rt(
+            "__jac_rt_str_new", [b.str_part(text, "data"), b.str_part(text, "len")]
+        );
+        held.owned = False;
+    } else {
+        held = self.runtime_value(
+            "__jac_rt_str_ref",
+            [
+                b.str_part(text, "root"),
+                b.str_part(text, "data"),
+                b.str_part(text, "len")
+            ]
+        );
+        self.runtime("__jac_rt_retain", [held]);
+    }
     self.emit_value(
         MirOp.MEM_STORE,
         mir_none(),
@@ -953,5 +1190,56 @@ impl MirLowering.store_text_result(base: MirValue, text: MirValue) {
             b.binary("add", base, b.const_int(TEXT_THUNK_RESULT, mir_int())),
             self.address_of(held)
         ]
+    );
+}
+
+impl MirLowering.refuse_opaque_abc(
+    item: uni.Expr, arch: uni.Archetype, site: uni.UniNode
+) {
+    path = arch.loc.mod_path.replace(os.sep, "/");
+    if not (
+        path.endswith("/typing.pyi")
+        or path.endswith("/collections/abc.pyi")
+        or path.endswith("/_collections_abc.pyi")
+        or path.endswith("/typing_extensions.pyi")
+    ) {
+        return;
+    }
+    raise MirRefused(
+        mir_refusal(
+            "call",
+            f"isinstance against `{arch.name.value}`",
+            site,
+            "This abstract base class has no exact native reduction; test for the concrete types instead."
+        )
+    );
+}
+
+impl MirLowering.refuse_partial_mro(
+    value: MirValue, item: uni.Expr, site: uni.UniNode
+) {
+    held = value.type.payload() if value.type.kind == MirKind.OPT else value.type;
+    if held.kind != MirKind.OBJ {
+        return;
+    }
+    arch = self.archetypes.get(held.name);
+    if arch is None or self.python_base_of(arch) is None {
+        return;
+    }
+    name = item.value
+        if isinstance(item, uni.Name)
+        else (
+            item.right.value
+                if isinstance(item, uni.AtomTrailer)
+                    and isinstance(item.right, uni.Name)
+                else ""
+        );
+    raise MirRefused(
+        mir_refusal(
+            "call",
+            f"isinstance against `{name}`",
+            site,
+            "The operand's class inherits a Python-side base, so which abstract bases it inhabits is not known natively."
+        )
     );
 }

@@ -307,12 +307,24 @@ impl MirLowering.bind_from_spreads(
             "TypeError",
             f"{self.name_of(ab)}() got multiple values for argument '{name}'"
         );
-        b.store(
-            held,
-            self.coerce(
-                self.dict_entry_value(source, found, spread.site), ptype, spread.site
-            )
-        );
+        try {
+            b.store(
+                held,
+                self.coerce(
+                    self.dict_entry_value(source, found, spread.site),
+                    ptype,
+                    spread.site
+                )
+            );
+        } except MirRefused {
+            b.raise_builtin(
+                "TypeError",
+                f"{self.name_of(ab)}() argument '{name}' cannot take a {source.type.args[
+                    1
+                ].render()} value natively"
+            );
+            b.position(fn.new_block("kwsp.typed"));
+        }
         b.store(bound_flag, b.const_bool(True));
         b.store(
             matched,

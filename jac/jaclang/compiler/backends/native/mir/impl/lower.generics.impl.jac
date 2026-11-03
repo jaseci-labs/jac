@@ -181,7 +181,7 @@ impl MirLowering.generic_call(
     receiver: (MirValue | None),
     owner: (uni.Archetype | None)
 ) -> MirValue {
-    method_owner = ab.find_parent_of_type(uni.Archetype);
+    method_owner = self.owner_archetype(ab);
     if receiver is None
         and method_owner is not None
         and not ab.is_static

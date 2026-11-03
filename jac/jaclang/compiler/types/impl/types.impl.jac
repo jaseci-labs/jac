@@ -1051,9 +1051,9 @@ impl ClassType.lookup_member_symbol(
             and isinstance(sym.parent_tab, Archetype) {
             return True;
         }
-        provider: any = sym.provider;
-        bits: any = getattr(provider, "symbits", 0) if provider is not None else 0;
-        return isinstance(bits, int) and (bits & SYMF_INIT_PARAM) != 0;
+        provider = sym.provider;
+        return isinstance(provider, CatProvider)
+            and (provider.symbits & SYMF_INIT_PARAM) != 0;
     }
     for cls in self.shared.mro {
         all_syms = [

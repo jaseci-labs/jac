@@ -1,5 +1,10 @@
-impl mir_insert_rc(fn: MirFunction) {
-    if not fn.manual_rc {
+impl mir_insert_rc(fn: MirFunction, mir: (MirModule | None) = None) {
+    if fn.manual_rc {
+        return;
+    }
+    if fn.ownership {
+        MirOwnState(fn=fn, mir=mir).run();
+    } else {
         MirRcState(fn=fn).run();
     }
 }
@@ -14,6 +19,9 @@ impl MirRcState.run {
         }
     }
     self.end_temporaries();
+    for blk in self.fn.blocks {
+        self.move_temps(blk);
+    }
     for blk in self.fn.blocks {
         for instr in blk.instrs {
             if instr.op
@@ -32,6 +40,11 @@ impl MirRcState.run {
                 and instr.result is not None {
                 self.parents[instr.result.id] = instr.operands[0].id;
             }
+            if instr.op == MirOp.SELECT and instr.result is not None {
+                self.joins[instr.result.id] = [
+                    operand.id for operand in instr.operands[1:]
+                ];
+            }
             if instr.op in (MirOp.CONST_STR, MirOp.CONST_BYTES, MirOp.CONST_NULL)
                 and instr.result is not None {
                 self.immortal.add(instr.result.id);
@@ -49,8 +62,24 @@ impl MirRcState.last_uses(blk: MirBlock) -> dict[int, int] {
     for (index, instr) in enumerate(blk.instrs) {
         for operand in instr.operands {
             found[operand.id] = index;
-            found[self.base_of(operand.id)] = index;
+            for base in self.bases_of(operand.id) {
+                found[base] = index;
+            }
         }
+    }
+    return found;
+}
+
+impl MirRcState.bases_of(value_id: int) -> list[int] {
+    found: list[int] = [];
+    pending = [value_id];
+    while pending {
+        current = self.base_of(pending.pop());
+        if current in found {
+            continue;
+        }
+        found.append(current);
+        pending.extend(self.joins.get(current, []));
     }
     return found;
 }
@@ -67,8 +96,23 @@ impl MirRcState.rewrite(blk: MirBlock) {
     last = self.last_uses(blk);
     self.pending = {};
     self.out = [];
+    self.released_early = False;
+    tail = blk.instrs[-1] if blk.instrs else None;
+    exits = tail is not None
+        and tail.op == MirOp.RET
+        and not (tail.operands and mir_holds_ref(tail.operands[0].type))
+        and not self.fn.resumable;
     for (index, instr) in enumerate(blk.instrs) {
-        if instr.op == MirOp.STORE
+        if exits
+            and not self.released_early
+            and instr.op == MirOp.CALL_RUNTIME
+            and instr.callee == "__jac_region_drop" {
+            self.release_slots();
+            self.released_early = True;
+        }
+        if instr.op == MirOp.STORE and instr.sub == "vacated" {
+            self.out.append(instr);
+        } elif instr.op == MirOp.STORE
             and instr.operands[0].is_slot
             and mir_holds_ref(instr.operands[1].type) {
             slot = instr.operands[0];
@@ -97,7 +141,7 @@ impl MirRcState.rewrite(blk: MirBlock) {
                 self.release_slots();
                 self.out.append(MirInstr(op=MirOp.RET, operands=[returned]));
             } else {
-                if not self.fn.resumable {
+                if not self.fn.resumable and not self.released_early {
                     self.release_slots();
                 }
                 self.out.append(instr);
@@ -138,7 +182,7 @@ impl MirRcState.rewrite(blk: MirBlock) {
         seen: set[int] = set();
         mark = len(self.out);
         for operand in instr.operands {
-            for used in (operand.id, self.base_of(operand.id)) {
+            for used in [operand.id] + self.bases_of(operand.id) {
                 if used in seen {
                     continue;
                 }
@@ -381,6 +425,70 @@ impl MirRcState.end_temporaries {
     }
 }
 
+impl MirRcState.move_temps(blk: MirBlock) {
+    loaded: dict[int, MirValue] = {};
+    instrs = blk.instrs;
+    index = 0;
+    while index < len(instrs) {
+        instr = instrs[index];
+        if instr.op == MirOp.LOAD
+            and instr.result is not None
+            and instr.operands[0].is_slot
+            and instr.operands[0].is_temp
+            and mir_holds_ref(instr.result.type) {
+            loaded[instr.result.id] = instr.operands[0];
+        } elif instr.op == MirOp.STORE and instr.operands[0].is_temp {
+            target = instr.operands[0];
+            for stale in [
+                key
+                for (key, slot) in loaded.items()
+                if slot is target
+            ] {
+                loaded.pop(stale);
+            }
+        } elif instr.op == MirOp.STORE
+            and instr.operands[0].is_slot
+            and not instr.operands[0].is_temp
+            and instr.operands[1].id in loaded
+            and not instr.operands[1].owned {
+            temp = loaded[instr.operands[1].id];
+            ending = self.temp_ending(instrs, index + 1, temp);
+            if ending > index + 1 {
+                cleared = instrs.pop(ending);
+                empty = instrs.pop(ending - 1);
+                cleared.sub = "vacated";
+                instrs.insert(index + 1, cleared);
+                instrs.insert(index + 1, empty);
+                instr.operands[1].owned = True;
+                loaded.pop(instr.operands[1].id);
+            }
+        }
+        index += 1;
+    }
+}
+
+impl MirRcState.temp_ending(instrs: list[MirInstr], start: int, temp: MirValue) -> int {
+    at = start;
+    while at < len(instrs) {
+        instr = instrs[at];
+        if instr.is_terminator() {
+            return -1;
+        }
+        if instr.op == MirOp.STORE and instr.operands[0] is temp {
+            empty = instrs[at - 1];
+            if empty.op == MirOp.CONST_NULL and empty.result is instr.operands[1] {
+                return at;
+            }
+            return -1;
+        }
+        if any(operand is temp for operand in instr.operands) {
+            return -1;
+        }
+        at += 1;
+    }
+    return -1;
+}
+
 impl MirRcState.temp_keeps(bits: dict[int, int]) -> dict[int, int] {
     keeps: dict[int, int] = dict(bits);
     changed = True;
@@ -610,6 +718,7 @@ impl mir_insert_unwind(mir: MirModule) {
             if instr.op == MirOp.SLOT
                 and instr.result is not None
                 and mir_holds_ref(instr.result.type)
+                and not instr.result.borrows
         ];
         if not slots {
             continue;

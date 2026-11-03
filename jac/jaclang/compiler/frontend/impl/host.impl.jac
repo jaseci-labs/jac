@@ -197,7 +197,7 @@ impl HostServices.native_dep_iface(
     return None;
 }
 
-impl HostServices.native_dep_discovery_open(program: JacProgram) -> bool {
+impl HostServices.native_dep_pending(program: JacProgram, path: str) -> bool {
     return False;
 }
 
@@ -214,6 +214,12 @@ impl HostServices.held_native_iface(
 impl HostServices.native_lowering_failed(
     program: JacProgram, path: str, detail: str
 ) {}
+
+impl HostServices.note_native_demotion(
+    program: JacProgram, key: str, reason: str
+) -> bool {
+    return True;
+}
 
 impl HostServices.native_fact(kind: str, key: str) -> str {
     return "";

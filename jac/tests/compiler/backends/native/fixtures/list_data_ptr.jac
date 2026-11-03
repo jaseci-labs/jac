@@ -1,5 +1,5 @@
 """`__list_data_ptr` on each operand it accepts: a variable, a field and an
-element, of an `int` and a `float` list. Each function writes through the
+element, of an `int`, a `u64` and a `float` list. Each function writes through the
 buffer and reads the element back through the list, and the other way."""
 
 obj Regs {
@@ -14,10 +14,10 @@ def int_roundtrip(x: int) -> int {
 }
 
 def u64_roundtrip(x: int) -> int {
-    l: list[u64] = [u64(1), u64(2), u64(3)];
+    l: list[u64] = [u64(7), u64(0xFFFFFFFFFFFFFFFF)];
     p: int = __list_data_ptr(l);
-    __mem_store_i64(p + 16, x);
-    return int(l[2]) * 10 + __mem_load_i64(p);
+    __mem_store_i64(p, x);
+    return int(l[0]) * 10 + int(l[1] >> u64(60));
 }
 
 def float_roundtrip(x: int) -> int {
@@ -53,6 +53,7 @@ def after_growth(n: int) -> int {
 with entry {
     print(
         int_roundtrip(4),
+        u64_roundtrip(4),
         float_roundtrip(4),
         field_operand(4),
         element_operand(4),

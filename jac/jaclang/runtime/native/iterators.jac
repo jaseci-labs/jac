@@ -32,6 +32,8 @@ def:pub __jac_rt_gen_frame(size: int, drop: int) -> int;
 
 def:pub __jac_rt_range_new(start: int, stop: int, step: int) -> int;
 
+def:pub __jac_rt_range_len(made: int) -> int;
+
 def _seq_state(coll: int, index: int, kind: int) -> int;
 
 def _seq_drop(state: ptr[u8]);

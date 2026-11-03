@@ -66,6 +66,12 @@ impl __jac_rt_raise_builtin(type_id: i32, message: ptr[u8]) {
     __jac_rt_raise(message, type_id, message);
 }
 
+impl __jac_rt_unbound_check(bound: bool, type_id: i32, message: ptr[u8]) {
+    if not bound {
+        __jac_rt_raise(message, type_id, message);
+    }
+}
+
 impl _write_text(text: ptr[u8]) {
     write(i32(2), text, strlen(text));
 }
@@ -79,7 +85,7 @@ impl _report_uncaught(message: ptr[u8]) {
 }
 
 impl _lineage_slot(key: int) -> int {
-    table = __global_block("__jac_rt_exc_lineage", 4096);
+    table = __global_block("__jac_rt_exc_lineage", 32768);
     at = (key ^ (key >> 17) ^ (key >> 31)) & (EXC_LINEAGE_SLOTS - 1);
     probes = 0;
     while probes < EXC_LINEAGE_SLOTS {
@@ -111,7 +117,7 @@ impl __jac_rt_exc_isa(type_id: int, base_id: int) -> bool {
 }
 
 impl __jac_rt_exc_class_add(name: ptr[u8], type_id: int) {
-    table = __global_block("__jac_rt_exc_classes", 1025);
+    table = __global_block("__jac_rt_exc_classes", 8200);
     count = __mem_load_i64(table);
     i = 0;
     while i < count {
@@ -133,7 +139,7 @@ impl __jac_rt_exc_class_of(held: int, fallback: int) -> int {
         return fallback;
     }
     name = ptr[u8](__mem_load_i64(held - 24));
-    table = __global_block("__jac_rt_exc_classes", 1025);
+    table = __global_block("__jac_rt_exc_classes", 8200);
     count = __mem_load_i64(table);
     i = 0;
     while i < count {

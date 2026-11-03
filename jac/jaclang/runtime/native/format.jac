@@ -74,6 +74,10 @@ def:pub __jac_rt_int_round(v: int, ndigits: int) -> int;
 
 def:pub __jac_rt_int_pow(base: int, exp: int) -> int;
 
+def:pub __jac_rt_int_powmod(base: int, exp: int, mod: int) -> int;
+
+def _mulmod(a: int, b: int, m: int) -> int;
+
 def:pub __jac_rt_int_bit_length(v: int) -> int;
 
 def:pub __jac_rt_int_bit_count(v: int) -> int;

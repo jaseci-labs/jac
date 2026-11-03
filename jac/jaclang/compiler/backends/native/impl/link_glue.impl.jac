@@ -24,6 +24,10 @@ impl entry_preamble_ir(spec: GlueSpec) -> str {
         decls.append(_decl_void_fn("__jac_rt_cycles_enable"));
         calls.insert(0, '  call void @"__jac_rt_cycles_enable"()');
     }
+    if not spec.shared and spec.gc_mode != "none" and spec.platform != "wasm" {
+        decls.append(_decl_void_fn("__jac_rt_gc_env"));
+        calls.insert(0, '  call void @"__jac_rt_gc_env"()');
+    }
     if spec.shared {
         decls.append(f"@{RC_THREADED_SYMBOL} = weak global i8 0\n");
         calls.insert(
