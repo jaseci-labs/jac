@@ -3080,6 +3080,9 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         if value.type.kind == MirKind.C_VIEW {
             return self.emit_value(MirOp.VIEW_LEN, mir_int(), [value]);
         }
+        if value.type.kind == MirKind.RANGE {
+            return self.runtime_value("__jac_rt_range_len", [self.spill(value)]);
+        }
         if value.type.kind == MirKind.ANY {
             held = self.spill(value);
             return self.runtime_value(

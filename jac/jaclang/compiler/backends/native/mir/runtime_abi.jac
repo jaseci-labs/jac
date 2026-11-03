@@ -131,6 +131,7 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_iter_str": ["ref", "str.ref"],
          "__jac_rt_gen_frame": ["ref", "int", "int"],
          "__jac_rt_range_new": ["ref", "int", "int", "int"],
+         "__jac_rt_range_len": ["int", "ref"],
          "__jac_rt_raise_builtin": ["none", "i32", "ptr"],
          "__jac_rt_utf8_width": ["int", "ptr", "int", "int"],
          "__jac_rt_sb_new": ["int", "int"],
