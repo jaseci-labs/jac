@@ -191,7 +191,7 @@ impl MirLowering.ascii_of(value: MirValue, site: uni.UniNode) -> MirValue {
 }
 
 impl MirLowering.object_text(
-    value: MirValue, method: str, site: uni.UniNode
+    value: MirValue, method: str, site: uni.UniNode, dispatch: bool = True
 ) -> MirValue {
     b = self.builder();
     arch = self.archetypes.get(value.type.name);
@@ -201,6 +201,18 @@ impl MirLowering.object_text(
         );
     }
     found = self.find_method(arch, method);
+    if found is None and dispatch {
+        carriers = [
+            sub
+            for (sub_name, sub) in self.archetypes.items()
+            if sub_name != value.type.name
+                and self.obj_extends(sub_name, value.type.name)
+                and self.find_method(sub, method) is not None
+        ];
+        if carriers {
+            return self.subclass_text(value, method, carriers, site);
+        }
+    }
     if found is not None {
         decl = self.method_decl_of(found);
         if decl is None
@@ -268,6 +280,42 @@ impl MirLowering.object_text(
         raise RuntimeError("a generated repr function returns no value");
     }
     return rendered;
+}
+
+"""Text of a value whose class has no `method` but some subclasses do.
+
+The most derived match runs its own method; an instance of a class that
+defines none keeps the base's default text.
+"""
+impl MirLowering.subclass_text(
+    value: MirValue, method: str, carriers: list[uni.Archetype], site: uni.UniNode
+) -> MirValue {
+    fn = self.st().fn;
+    held = self.spill(value);
+    result = self.temp_slot(mir_str());
+    done = fn.new_block("text.sub.done");
+    ranked = sorted(
+        [(0 - len(self.lineage(sub)), index) for (index, sub) in enumerate(carriers)]
+    );
+    ordered = [carriers[index] for (_, index) in ranked];
+    for sub in ordered {
+        hit = fn.new_block("text.sub.hit");
+        miss = fn.new_block("text.sub.miss");
+        self.builder().cond_branch(self.isinstance_check(held, sub), hit, miss);
+        self.builder().position(hit);
+        narrowed = self.builder().ref_cast(held, self.object_type(sub), False);
+        self.builder().store(
+            result, self.coerce(self.object_text(narrowed, method, site), mir_str(), site)
+        );
+        self.builder().branch(done);
+        self.builder().position(miss);
+    }
+    self.builder().store(
+        result, self.coerce(self.object_text(held, method, site, False), mir_str(), site)
+    );
+    self.builder().branch(done);
+    self.builder().position(done);
+    return self.builder().load(result, mir_str());
 }
 
 impl MirLowering.text_fn(value_type: MirType, site: uni.UniNode) -> str {

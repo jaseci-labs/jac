@@ -1174,7 +1174,15 @@ obj MirLowering {
     def str_value(value: MirValue, site: uni.UniNode) -> MirValue;
     def repr_of(value: MirValue, site: uni.UniNode) -> MirValue;
     def ascii_of(value: MirValue, site: uni.UniNode) -> MirValue;
-    def object_text(value: MirValue, method: str, site: uni.UniNode) -> MirValue;
+    def object_text(
+        value: MirValue, method: str, site: uni.UniNode, dispatch: bool = True
+    ) -> MirValue;
+    def subclass_text(
+        value: MirValue,
+        method: str,
+        carriers: list[uni.Archetype],
+        site: uni.UniNode
+    ) -> MirValue;
     def text_fn(value_type: MirType, site: uni.UniNode) -> str;
     def sb_text(sb: MirValue, text: str);
     def sb_value(sb: MirValue, text: MirValue);
