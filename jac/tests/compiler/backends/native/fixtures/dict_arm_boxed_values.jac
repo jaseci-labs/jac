@@ -14,4 +14,8 @@ with entry {
     print(len(found) if found is not None else 0, direct("int") is None);
     other = arm("str");
     print(len(other) if other is not None else 0);
+    if other is not None {
+        code = other["code"];
+        print(code, isinstance(code, str), other);
+    }
 }
