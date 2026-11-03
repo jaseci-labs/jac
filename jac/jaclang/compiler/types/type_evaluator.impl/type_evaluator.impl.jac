@@ -27,6 +27,48 @@ impl TypeEvaluator._null_ok_attr_type(
     return UnknownType();
 }
 
+"""The type of `base?[index]`: the item type, or None where the base may be None."""
+impl TypeEvaluator._null_ok_index_type(
+    expr: AtomTrailer, base_type: TypeBase
+) -> TypeBase {
+    if self.is_any_type(base_type) {
+        return AnyType();
+    }
+    none_type = self._convert_to_instance(self.prefetch.none_type_class)
+        if self.prefetch and self.prefetch.none_type_class is not None
+        else None;
+    members = list(base_type.types)
+        if isinstance(base_type, UnionType)
+        else [base_type];
+    held = [member for member in members if not self.is_none_type(member)];
+    if not held {
+        return none_type if none_type is not None else UnknownType();
+    }
+    subject = held[0] if len(held) == 1 else UnionType(types=held);
+    item: (TypeBase | None) = None;
+    if isinstance(expr.right, IndexSlice) and expr.right.is_range {
+        item = subject;
+    } else {
+        index = self._subscript_index_expr(expr.right);
+        item = self._tuple_literal_index_type(subject, index);
+        if item is None {
+            item = self.get_type_of_magic_method_call(
+                subject, "__getitem__", [index], expr
+            );
+        }
+    }
+    if item is None {
+        return UnknownType();
+    }
+    if len(held) == len(members) or none_type is None or isinstance(item, UnknownType) {
+        return item;
+    }
+    parts = list(item.types) if isinstance(item, UnionType) else [item];
+    parts.append(none_type);
+    unique = list({str(part): part for part in parts}.values());
+    return unique[0] if len(unique) == 1 else UnionType(types=unique);
+}
+
 impl TypeEvaluator._get_type_of_expression_core(
     expr: Expr, expected_type: TypeBase | None = None
 ) -> TypeBase {
@@ -1371,6 +1413,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                     );
                     return UnknownType();
                 }
+            } elif expr.is_null_ok and isinstance(expr.right, IndexSlice) {
+                return self._null_ok_index_type(expr, base_type);
             } elif expr.is_null_ok {
                 return self._null_ok_attr_type(expr, base_type);
             } elif isinstance(expr.right, AssignCompr) {
