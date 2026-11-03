@@ -50,7 +50,7 @@ glob C_ABI_KINDS: list[MirKind] = [
          MirKind.C_FN
      ];
 
-class MirRefused(Exception) {
+obj MirRefused(Exception) {
     has refusal: (NativeRefusal | None) = None;
 }
 
