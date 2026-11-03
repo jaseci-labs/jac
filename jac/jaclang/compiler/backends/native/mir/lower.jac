@@ -229,13 +229,13 @@ glob TEXT_CASES: dict[str, int] = {
 
 obj MirWithExit {
     has site: uni.UniNode,
+        region_depth: (MirValue | None) = None,
+        region_owned: (MirValue | None) = None,
         decl: (MirDecl | None) = None,
         held: (MirValue | None) = None,
         it: (MirValue | None) = None,
         out: (MirValue | None) = None,
-        file: (MirValue | None) = None,
-        region: bool = False,
-        region_drop: (MirValue | None) = None;
+        file: (MirValue | None) = None;
 }
 
 obj MirLoopTarget {
@@ -282,7 +282,9 @@ obj MirFnState {
         in_test: bool = False,
         try_exits: dict[int, MirWithExit] = {},
         finals: list[tuple[list[uni.UniNode], int, int]] = [],
-        specials: dict[str, MirValue] = {};
+        specials: dict[str, MirValue] = {},
+        region_slots: list[MirValue] = [],
+        region_escape: (MirValue | None) = None;
 }
 
 obj MirBound {
@@ -326,6 +328,10 @@ obj MirLowering {
         stdlib_units: dict[str, (uni.Module | None)] = {},
         manager_item: (uni.Expr | None) = None,
         c_struct_sites: dict[str, str] = {},
+        layout_owners: set[int] = set(),
+        variant_units: dict[str, (uni.Module | None)] = {},
+        c_entries: dict[str, MirFunction] = {},
+        c_conflicts: list[tuple[uni.Ability, str, str]] = [],
         trace_pairs: list[tuple[str, str]] = [],
         text_pairs: list[tuple[str, str]] = [],
         text_regs: dict[str, tuple[MirBlock, list[MirInstr]]] = {},
@@ -387,6 +393,7 @@ obj MirLowering {
     def drop_last_uses(stmt: uni.UniNode);
     def lower_stmt(nd: uni.UniNode);
     def lower_assignment(nd: uni.Assignment);
+    def assign_to(target: uni.UniNode, value: MirValue, nd: uni.Assignment);
     def store_name(target: uni.Name, value: MirValue);
     def exchange_place(arg: uni.Expr) -> MirValue;
     def place_exchange(nd: uni.FuncCall, name: str) -> (MirValue | None);
@@ -427,7 +434,7 @@ obj MirLowering {
     def lower_bool(nd: uni.BoolExpr) -> MirValue;
     def lower_call(nd: uni.FuncCall) -> MirValue;
     def truthy(value: MirValue, site: uni.UniNode) -> MirValue;
-    def adopt_imported_layouts;
+    def adopt_imported_layouts(target: (uni.Module | None) = None);
     def obj_extends(child: str, base: str) -> bool;
     def coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
     def const_zero(value: MirValue) -> bool;
@@ -442,6 +449,19 @@ obj MirLowering {
 
     def ensure_objects(t: (TypeBase | None));
     def ensure_c_types(t: (TypeBase | None));
+    def c_struct_of(t: (TypeBase | None)) -> (uni.Archetype | None);
+    def variant_struct(arch: uni.Archetype) -> uni.Archetype;
+    def variant_unit(mod: uni.Module) -> (uni.Module | None);
+    def variant_ability(callee: uni.Ability) -> uni.Ability;
+    def variant_glob(nd: uni.Name) -> (uni.Name | None);
+    def variant_value(nd: uni.Name, twin: uni.Name) -> (MirValue | None);
+    def foreign_c_declaration(name: str) -> (uni.Ability | None);
+    def c_signature_text(params: list[MirType], ret: MirType) -> str;
+    def c_declared_signature(decl: uni.Ability, site: uni.UniNode) -> (str | None);
+    def c_entry(
+        symbol: str, params: list[MirType], ret: MirType, target: uni.Ability
+    ) -> str;
+
     def c_struct_same(arch: uni.Archetype, name: str) -> bool;
     def arch_fields(arch: uni.Archetype) -> list[uni.HasVar];
     def lower_place(nd: uni.UniNode) -> MirValue;
@@ -486,6 +506,17 @@ obj MirLowering {
     def c_defines(decl: uni.UniNode) -> bool;
     def declare_c_definition(ab: uni.Ability);
     def va_arg(nd: uni.FuncCall, receiver: uni.Expr) -> MirValue;
+    def region_call(name: str, args: list[MirValue]) -> MirValue;
+    def lower_open(nd: uni.OpenStmt);
+    def drop_regions;
+    def fresh_block(size: MirValue) -> MirValue;
+    def region_escape_entry;
+    def region_value(value: MirValue) -> MirValue;
+    def region_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None);
+    def region_alloc(
+        size: MirValue, drop_symbol: str, local: bool, eligible: bool = True
+    ) -> tuple[MirValue, MirValue];
+
     def list_extend_in_place(
         op: str, current: MirValue, value: MirValue, site: uni.UniNode
     ) -> (MirValue | None);
@@ -508,6 +539,10 @@ obj MirLowering {
     def method_call(nd: uni.FuncCall, target: uni.AtomTrailer) -> (MirValue | None);
     def call_args(nd: uni.FuncCall) -> list[uni.Expr];
     def coerce_place(place: MirValue) -> MirValue;
+    def common_int(
+        left: MirType, right: MirType, site: uni.UniNode
+    ) -> (MirType | None);
+
     def struct_temp_place(nd: uni.Expr) -> MirValue;
     def declare_global(nd: uni.Name) -> (MirGlobal | None);
     def declare_c_data;
@@ -529,7 +564,7 @@ obj MirLowering {
     def c_const_refusal(expr: uni.UniNode) -> NativeRefusal;
     def c_const_struct(expr: uni.Expr, arch: uni.Archetype) -> MirConst;
     def c_const_address(expr: uni.Expr) -> MirConst;
-    def c_function_symbol(expr: uni.Expr) -> str;
+    def c_function_symbol(expr: uni.Expr, from_c: bool = True) -> str;
     def c_addressed(nd: uni.FuncCall) -> MirGlobal;
     def c_addressof(nd: uni.FuncCall) -> MirValue;
     def c_global_settle;
@@ -1345,9 +1380,6 @@ obj MirLowering {
     def enum_call(nd: uni.FuncCall) -> (MirValue | None);
     def enum_cursor(collection: uni.Expr) -> MirIterCursor;
     def lower_with(nd: uni.WithStmt);
-    def lower_open(nd: uni.OpenStmt);
-    def region_extern(name: str, args: list[MirValue], ret: MirType) -> MirValue;
-    def region_slot(name: str, args: list[uni.Expr]) -> MirValue;
     def with_items(
         items: list[uni.ExprAsItem], index: int, body: Sequence[uni.CodeBlockStmt]
     );

@@ -6,7 +6,14 @@ impl MirLowering.elem_kind(t: MirType, site: uni.UniNode) -> int {
         return KIND_UINT;
     }
     if t.kind
-        in (MirKind.INT, MirKind.ENUM, MirKind.CLASS, MirKind.C_PTR, MirKind.C_FN) {
+        in (
+            MirKind.INT,
+            MirKind.ENUM,
+            MirKind.CLASS,
+            MirKind.C_PTR,
+            MirKind.C_FN,
+            MirKind.REGION
+        ) {
         return KIND_INT;
     }
     if t.kind == MirKind.OPT {
@@ -133,7 +140,7 @@ impl MirLowering.to_bits(
             b.const_int(0, mir_int())
         );
     }
-    if elem.kind in (MirKind.CLASS, MirKind.C_PTR, MirKind.C_FN) {
+    if elem.kind in (MirKind.CLASS, MirKind.C_PTR, MirKind.C_FN, MirKind.REGION) {
         return self.address_of(self.coerce(value, elem, site));
     }
     if kind == KIND_TUPLE {
@@ -170,7 +177,7 @@ impl MirLowering.scalar_from_bits(bits: MirValue, elem: MirType) -> MirValue {
     if elem.kind == MirKind.NONE {
         return self.none_value();
     }
-    if elem.kind in (MirKind.CLASS, MirKind.C_PTR, MirKind.C_FN) {
+    if elem.kind in (MirKind.CLASS, MirKind.C_PTR, MirKind.C_FN, MirKind.REGION) {
         return self.emit_value(MirOp.PTR_CAST, elem, [bits]);
     }
     if elem.kind == MirKind.FLOAT {
@@ -708,6 +715,16 @@ impl MirLowering.list_method(
     }
     if name == "extend" and len(args) == 1 {
         other = self.lower_expr(args[0]);
+        if other.type.kind in (MirKind.ITER, MirKind.SET, MirKind.DICT)
+            and other.type.args {
+            other = self.coerce(
+                self.drain(self.spill(other), other.type.args[0], args[0]),
+                lst.type,
+                args[0]
+            );
+        } elif other.type.kind == MirKind.LIST and other.type is not lst.type {
+            other = self.coerce(other, lst.type, args[0]);
+        }
         if other.type is not lst.type {
             self.extend_from(lst, self.spill(other), args[0]);
             return b.const_bool(False);

@@ -36,6 +36,9 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
         raise refused;
     }
     owner = arch.find_parent_of_type(uni.Module) or self.module;
+    if owner is not self.module and owner.loc.mod_path.endswith(".jac") {
+        self.adopt_imported_layouts(owner);
+    }
     layout = get_layout_registry(owner, self.prog).get_layout(name);
     if layout is None {
         raise MirRefused(
@@ -526,10 +529,12 @@ impl MirLowering.object_alloc(
     fn = self.st().fn;
     size = fn.new_value(mir_int());
     b.emit(MirInstr(op=MirOp.SIZEOF, result=size, type_arg=self_type));
-    raw = self.runtime("__jac_rt_alloc_zeroed", [size]);
-    if raw is None {
-        raise MirRefused(mir_refusal("constructor", obj_def.name, arch));
-    }
+    eligible = arch.arch_type.name != Tok.KW_WALKER
+        and not is_kernel_unit_path(self.module.loc.mod_path);
+    (word, arena) = self.region_alloc(
+        size, obj_def.drop_symbol, obj_def.local, eligible
+    );
+    raw = self.emit_value(MirOp.PTR_CAST, mir_ref(), [word]);
     made = b.ref_cast(raw, self_type, True);
     held = self.temp_slot(self_type);
     b.store(held, made);
@@ -562,7 +567,12 @@ impl MirLowering.object_alloc(
     self.emit_value(
         MirOp.MEM_STORE,
         mir_none(),
-        [b.binary("sub", address, b.const_int(8, mir_int())), drop_address]
+        [
+            b.binary("sub", address, b.const_int(8, mir_int())),
+            b.select(
+                b.compare("ne", arena, b.const_int(0, mir_int())), arena, drop_address
+            )
+        ]
     );
     if obj_def.vtable_slot >= 0 {
         slot = self.emit_value(
@@ -1820,6 +1830,7 @@ impl MirLowering.lower_module_entry -> (MirFunction | None) {
             self.lower_body(list(block.body or []));
         }
         if not self.builder().block.terminated() {
+            self.drop_regions();
             self.flush_stdio();
             self.builder().ret(None);
         }
