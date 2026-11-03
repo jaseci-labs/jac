@@ -1,6 +1,19 @@
 impl MirLowering.elem_kind(t: MirType, site: uni.UniNode) -> int {
+    if t.kind == MirKind.NONE {
+        return KIND_NULL;
+    }
+    if t.kind == MirKind.INT and not t.signed and t.width == 64 {
+        return KIND_UINT;
+    }
     if t.kind
-        in (MirKind.INT, MirKind.ENUM, MirKind.CLASS, MirKind.C_PTR, MirKind.C_FN) {
+        in (
+            MirKind.INT,
+            MirKind.ENUM,
+            MirKind.CLASS,
+            MirKind.C_PTR,
+            MirKind.C_FN,
+            MirKind.REGION
+        ) {
         return KIND_INT;
     }
     if t.kind == MirKind.OPT {
@@ -10,6 +23,10 @@ impl MirLowering.elem_kind(t: MirType, site: uni.UniNode) -> int {
         if t.payload().kind == MirKind.TUPLE {
             self.elem_kind(t.payload(), site);
             return KIND_TUPLE;
+        }
+        if t.payload().kind
+            in (MirKind.INT, MirKind.FLOAT, MirKind.BOOL, MirKind.ENUM) {
+            return KIND_ANY;
         }
         if not self.nullable_payload(t.payload()) {
             raise MirRefused(mir_refusal("container element", t.render(), site));
@@ -96,6 +113,9 @@ impl MirLowering.to_bits(
 ) -> MirValue {
     b = self.builder();
     kind = self.elem_kind(elem, site);
+    if kind == KIND_NULL {
+        return b.const_int(0, mir_int());
+    }
     if elem.kind == MirKind.ANY {
         return self.address_of(self.any_to_box(value, site));
     }
@@ -109,6 +129,9 @@ impl MirLowering.to_bits(
         );
         return self.opt_end(bits_slot, b.const_int(0, mir_int()), done);
     }
+    if elem.kind == MirKind.OPT and kind == KIND_ANY {
+        return self.address_of(self.any_to_box(self.coerce(value, elem, site), site));
+    }
     if elem.kind == MirKind.OPT {
         boxed_opt = self.spill(self.coerce(value, elem, site));
         return b.select(
@@ -117,7 +140,7 @@ impl MirLowering.to_bits(
             b.const_int(0, mir_int())
         );
     }
-    if elem.kind in (MirKind.CLASS, MirKind.C_PTR, MirKind.C_FN) {
+    if elem.kind in (MirKind.CLASS, MirKind.C_PTR, MirKind.C_FN, MirKind.REGION) {
         return self.address_of(self.coerce(value, elem, site));
     }
     if kind == KIND_TUPLE {
@@ -128,7 +151,7 @@ impl MirLowering.to_bits(
             MirOp.BITCAST, mir_int(), [b.convert(value, mir_float())]
         );
     }
-    if kind in (KIND_INT, KIND_BOOL) {
+    if kind in (KIND_INT, KIND_BOOL, KIND_UINT) {
         return b.convert(self.coerce(value, elem, site), mir_int());
     }
     if kind == KIND_STR {
@@ -151,7 +174,10 @@ impl MirLowering.to_bits(
 
 impl MirLowering.scalar_from_bits(bits: MirValue, elem: MirType) -> MirValue {
     b = self.builder();
-    if elem.kind in (MirKind.CLASS, MirKind.C_PTR, MirKind.C_FN) {
+    if elem.kind == MirKind.NONE {
+        return self.none_value();
+    }
+    if elem.kind in (MirKind.CLASS, MirKind.C_PTR, MirKind.C_FN, MirKind.REGION) {
         return self.emit_value(MirOp.PTR_CAST, elem, [bits]);
     }
     if elem.kind == MirKind.FLOAT {
@@ -199,6 +225,9 @@ impl MirLowering.owned_element(handle: MirValue, elem: MirType) -> MirValue {
         b.branch(done);
         b.position(done);
         return b.load(result, elem);
+    }
+    if elem.kind == MirKind.OPT and self.elem_kind(elem, self.module) == KIND_ANY {
+        return self.any_unbox(self.any_from_box(handle), elem, self.module);
     }
     if elem.kind == MirKind.OPT {
         present = b.compare("ne", self.address_of(handle), b.const_int(0, mir_int()));
@@ -686,6 +715,16 @@ impl MirLowering.list_method(
     }
     if name == "extend" and len(args) == 1 {
         other = self.lower_expr(args[0]);
+        if other.type.kind in (MirKind.ITER, MirKind.SET, MirKind.DICT)
+            and other.type.args {
+            other = self.coerce(
+                self.drain(self.spill(other), other.type.args[0], args[0]),
+                lst.type,
+                args[0]
+            );
+        } elif other.type.kind == MirKind.LIST and other.type is not lst.type {
+            other = self.coerce(other, lst.type, args[0]);
+        }
         if other.type is not lst.type {
             self.extend_from(lst, self.spill(other), args[0]);
             return b.const_bool(False);
@@ -769,6 +808,11 @@ impl MirLowering.list_method(
             self.owned_element(b.ref_cast(bits, mir_ref(), True), elem);
         }
         return b.const_bool(False);
+    }
+    if name in ("index", "count")
+        and len(args) == 1
+        and (name == "count" or self.structural_elem(elem)) {
+        return self.list_scan(lst, self.lower_expr(args[0]), name, args[0]);
     }
     if name == "index" and len(args) == 1 {
         position = self.runtime(
@@ -1328,6 +1372,10 @@ impl MirLowering.contains(
     if holder.type.kind == MirKind.ANY {
         return self.any_contains(item, holder, site);
     }
+    if holder.type.kind == MirKind.LIST
+        and self.structural_elem(holder.type.payload()) {
+        return self.list_scan(holder, item, "in", site);
+    }
     if holder.type.kind == MirKind.OPT {
         return self.contains(
             item,
@@ -1406,8 +1454,31 @@ impl MirLowering.contains(
 
 impl MirLowering.container_eq(left: MirValue, right: MirValue) -> MirValue {
     b = self.builder();
+    if left.type.kind == MirKind.LIST
+        and right.type.kind == MirKind.LIST
+        and (
+            self.user_eq_elem(left.type.payload())
+            or self.user_eq_elem(right.type.payload())
+        ) {
+        return self.list_pairwise_eq(left, right);
+    }
+    if left.type.kind == MirKind.DICT
+        and left.type is right.type
+        and self.user_eq_elem(left.type.args[1]) {
+        return self.dict_pairwise_eq(left, right);
+    }
+    if any(
+        mir_is_container(member)
+            or member.kind in (MirKind.BYTES, MirKind.BYTEARRAY, MirKind.TUPLE)
+            or (member.kind == MirKind.OPT and mir_is_container(member.payload()))
+        for member in list(left.type.args) + list(right.type.args)
+    ) {
+        return self.any_compare("eq", left, right, self.module);
+    }
     if left.type is not right.type {
-        if not mir_is_container(right.type) {
+        if not mir_is_container(right.type)
+            and right.type.kind
+                not in (MirKind.BYTES, MirKind.BYTEARRAY, MirKind.TUPLE, MirKind.ANY) {
             raise MirRefused(
                 mir_refusal(
                     "comparison", f"{left.type.render()} == {right.type.render()}"
@@ -1690,4 +1761,191 @@ impl MirLowering.list_extend_in_place(
         ]
     );
     return current;
+}
+
+impl MirLowering.user_eq_elem(t: MirType) -> bool {
+    if t.kind == MirKind.OPT {
+        return self.user_eq_elem(t.payload());
+    }
+    if t.kind == MirKind.OBJ and t.name in self.archetypes {
+        return self.find_method(self.archetypes[t.name], "__eq__") is not None;
+    }
+    if t.kind in (MirKind.LIST, MirKind.SET) {
+        return self.user_eq_elem(t.payload());
+    }
+    if t.kind == MirKind.DICT {
+        return self.user_eq_elem(t.args[1]);
+    }
+    if t.kind == MirKind.TUPLE {
+        return any(self.user_eq_elem(member) for member in t.args);
+    }
+    return False;
+}
+
+impl MirLowering.structural_elem(t: MirType) -> bool {
+    if self.user_eq_elem(t) {
+        return True;
+    }
+    if t.kind == MirKind.OPT {
+        return self.structural_elem(t.payload());
+    }
+    if mir_is_container(t) or t.kind in (MirKind.BYTES, MirKind.BYTEARRAY) {
+        return True;
+    }
+    if t.kind == MirKind.TUPLE {
+        return any(self.structural_elem(member) for member in t.args);
+    }
+    return False;
+}
+
+impl MirLowering.list_scan(
+    lst: MirValue, item: MirValue, mode: str, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    held = self.spill(lst);
+    probe = self.spill(item);
+    cursor = self.temp_slot(mir_int());
+    found = self.temp_slot(mir_int());
+    b.store(cursor, b.const_int(0, mir_int()));
+    b.store(found, b.const_int(-1 if mode != "count" else 0, mir_int()));
+    head = fn.new_block("scan.head");
+    body = fn.new_block("scan.body");
+    hit = fn.new_block("scan.hit");
+    step = fn.new_block("scan.step");
+    done = fn.new_block("scan.done");
+    b.branch(head);
+    b.position(head);
+    at = b.load(cursor, mir_int());
+    b.cond_branch(b.compare("lt", at, self.container_len(held)), body, done);
+    b.position(body);
+    elem = self.spill(self.list_read(held, b.load(cursor, mir_int())));
+    same = self.truthy(self.compare_values(Tok.EE, elem, probe, site), site);
+    b.cond_branch(same, hit, step);
+    b.position(hit);
+    if mode == "count" {
+        b.store(
+            found, b.binary("add", b.load(found, mir_int()), b.const_int(1, mir_int()))
+        );
+        b.branch(step);
+    } else {
+        b.store(found, b.load(cursor, mir_int()));
+        b.branch(done);
+    }
+    b.position(step);
+    b.store(
+        cursor, b.binary("add", b.load(cursor, mir_int()), b.const_int(1, mir_int()))
+    );
+    b.branch(head);
+    b.position(done);
+    result = b.load(found, mir_int());
+    if mode == "in" {
+        return b.compare("ge", result, b.const_int(0, mir_int()));
+    }
+    if mode == "index" {
+        self.raise_if(
+            b.compare("lt", result, b.const_int(0, mir_int())),
+            "ValueError",
+            LIST_VALUE_MESSAGE
+        );
+    }
+    return result;
+}
+
+impl MirLowering.list_pairwise_eq(left: MirValue, right: MirValue) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    a = self.spill(left);
+    c = self.spill(right);
+    verdict = self.temp_slot(mir_bool());
+    cursor = self.temp_slot(mir_int());
+    b.store(verdict, b.compare("eq", self.container_len(a), self.container_len(c)));
+    b.store(cursor, b.const_int(0, mir_int()));
+    head = fn.new_block("peq.head");
+    body = fn.new_block("peq.body");
+    differ = fn.new_block("peq.differ");
+    step = fn.new_block("peq.step");
+    done = fn.new_block("peq.done");
+    b.branch(head);
+    b.position(head);
+    more = b.binary(
+        "and",
+        b.load(verdict, mir_bool()),
+        b.compare("lt", b.load(cursor, mir_int()), self.container_len(a))
+    );
+    b.cond_branch(more, body, done);
+    b.position(body);
+    at = b.load(cursor, mir_int());
+    x = self.spill(self.list_read(a, at));
+    y = self.spill(self.list_read(c, b.load(cursor, mir_int())));
+    same = self.truthy(self.compare_values(Tok.EE, x, y, self.module), self.module);
+    b.cond_branch(same, step, differ);
+    b.position(differ);
+    b.store(verdict, b.const_bool(False));
+    b.branch(done);
+    b.position(step);
+    b.store(
+        cursor, b.binary("add", b.load(cursor, mir_int()), b.const_int(1, mir_int()))
+    );
+    b.branch(head);
+    b.position(done);
+    return b.load(verdict, mir_bool());
+}
+
+impl MirLowering.dict_pairwise_eq(left: MirValue, right: MirValue) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    a = self.spill(left);
+    c = self.spill(right);
+    key_type = a.type.args[0];
+    verdict = self.temp_slot(mir_bool());
+    cursor = self.temp_slot(mir_int());
+    b.store(verdict, b.compare("eq", self.container_len(a), self.container_len(c)));
+    b.store(cursor, b.const_int(-1, mir_int()));
+    head = fn.new_block("deq.head");
+    body = fn.new_block("deq.body");
+    present = fn.new_block("deq.present");
+    differ = fn.new_block("deq.differ");
+    done = fn.new_block("deq.done");
+    b.branch(head);
+    b.position(head);
+    following = self.runtime_value(
+        "__jac_rt_dict_next", [a, b.load(cursor, mir_int())]
+    );
+    b.store(cursor, following);
+    b.cond_branch(
+        b.binary(
+            "and",
+            b.load(verdict, mir_bool()),
+            b.compare("ge", following, b.const_int(0, mir_int()))
+        ),
+        body,
+        done
+    );
+    b.position(body);
+    at = b.load(cursor, mir_int());
+    key = self.spill(self.dict_part(a, at, key_type, True));
+    other_at = self.runtime_value(
+        "__jac_rt_dict_find",
+        [
+            c,
+            self.to_bits(key, key_type, self.module),
+            b.const_int(self.elem_kind(key_type, self.module), mir_int())
+        ]
+    );
+    b.cond_branch(
+        b.compare("ge", other_at, b.const_int(0, mir_int())), present, differ
+    );
+    b.position(present);
+    mine = self.spill(self.dict_entry_value(a, b.load(cursor, mir_int()), self.module));
+    theirs = self.spill(self.dict_entry_value(c, other_at, self.module));
+    same = self.truthy(
+        self.compare_values(Tok.EE, mine, theirs, self.module), self.module
+    );
+    b.cond_branch(same, head, differ);
+    b.position(differ);
+    b.store(verdict, b.const_bool(False));
+    b.branch(done);
+    b.position(done);
+    return b.load(verdict, mir_bool());
 }

@@ -1,4 +1,5 @@
-glob RC_CONSUMING_OPS: list[MirOp] = [MirOp.STORE, MirOp.RET];
+glob RC_CONSUMING_OPS: list[MirOp] = [MirOp.STORE, MirOp.RET],
+     UNWIND_RECORD_WORDS: int = 3;
 
 class MirRcError(Exception) {}
 
@@ -21,6 +22,10 @@ obj MirRcState {
     def carry_crossing;
     def owned_here(instr: MirInstr) -> bool;
     def end_temporaries;
+    def protected_regions(
+        labels: dict[str, MirBlock], succs: dict[str, list[str]]
+    ) -> list[tuple[str, str, MirValue]];
+
     def temp_keeps(bits: dict[int, int]) -> dict[int, int];
     def temp_uses(instr: MirInstr, keeps: dict[int, int]) -> int;
     def temp_defs(instr: MirInstr, bits: dict[int, int]) -> int;
@@ -28,3 +33,9 @@ obj MirRcState {
 }
 
 def mir_insert_rc(fn: MirFunction);
+
+def mir_insert_unwind(mir: MirModule);
+
+def mir_unwind_cleanup(fn: MirFunction, slots: list[MirValue]) -> MirFunction;
+
+def mir_register_unwind(fn: MirFunction, slots: list[MirValue], cleanup: str);

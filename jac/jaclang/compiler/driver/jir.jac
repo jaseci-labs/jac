@@ -171,6 +171,10 @@ glob PY_EMITTER_ROOTS: tuple[str, ...] = ("compiler/backends/py", ),
      NATIVE_PRODUCER_ROOTS: tuple[str, ...] = (
          "compiler/backends/native",
          "compiler/frontend",
+         "compiler/impl/intrinsic_registry.impl.jac",
+         "compiler/impl/native_scope.impl.jac",
+         "compiler/intrinsic_registry.jac",
+         "compiler/native_scope.jac",
          "compiler/passes",
          "compiler/types",
          "runtime/native"

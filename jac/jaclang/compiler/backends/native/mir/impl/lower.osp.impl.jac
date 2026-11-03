@@ -1368,26 +1368,24 @@ impl MirLowering.lower_dynamic_connect(
     nd: uni.BinaryExpr, co: uni.ConnectOp
 ) -> MirValue {
     b = self.builder();
-    if co.capture_edges or co.conn_assign is not None {
-        raise MirRefused(
-            mir_refusal(
-                "edge type",
-                "an edge value",
-                co.conn_type,
-                "A connect through an edge type held in a variable builds the edge with its defaults; it cannot also assign fields or collect the edges."
-            )
-        );
+    edge_class = co.conn_type;
+    if edge_class is None {
+        raise MirRefused(mir_refusal("edge type", "an edge value", nd));
     }
+    bound = self.class_bound(edge_class.type);
+    bound_layout = self.osp_layout(bound);
+    if bound_layout is None or bound_layout.arch_type != "edge" {
+        bound = None;
+    }
+    values = self.osp_assign_values(co, bound, nd)
+        if co.conn_assign is not None
+        else {};
     left = self.osp_hold(self.lower_expr(nd.left));
     right = self.osp_hold(self.lower_expr(nd.right));
     if left.type.kind == MirKind.LIST or right.type.kind == MirKind.LIST {
         raise MirRefused(mir_refusal("connect operand", "list", nd, OSP_FANOUT_HELP));
     }
     i8p = mir_c_ptr(mir_int(8, False));
-    edge_class = co.conn_type;
-    if edge_class is None {
-        raise MirRefused(mir_refusal("edge type", "an edge value", nd));
-    }
     kind = self.emit_value(MirOp.PTR_CAST, i8p, [self.lower_expr(edge_class)]);
     found = self.runtime_value(
         "__jac_rt_class_ctor_find", [self.address_of(kind), b.const_int(0, mir_int())]
@@ -1400,6 +1398,14 @@ impl MirLowering.lower_dynamic_connect(
     callee = self.emit_value(MirOp.PTR_CAST, mir_c_fn([], mir_ref()), [found]);
     made = self.emit_value(MirOp.CALL_FNPTR, mir_ref(), [callee]);
     made.owned = True;
+    made = self.spill(made);
+    if bound is not None and values {
+        built = b.ref_cast(made, self.object_type(bound), False);
+        for (field, value) in values.items() {
+            place = self.field_place(built, bound, field, nd);
+            b.store(place, self.coerce(value, self.place_elem(place), nd));
+        }
+    }
     direction = int(co.edge_dir.value);
     (src, tgt) = (right, left) if direction == OSP_DIR_IN else (left, right);
     self.osp_call(
@@ -1412,7 +1418,33 @@ impl MirLowering.lower_dynamic_connect(
             self.runtime_value("__jac_rt_class_tag", [kind])
         ]
     );
-    return tgt;
+    if not co.capture_edges {
+        return tgt;
+    }
+    result_type = self.expr_type(nd);
+    if result_type.kind != MirKind.LIST {
+        raise MirRefused(
+            mir_refusal("connect", f"edges as {result_type.render()}", nd)
+        );
+    }
+    elem = result_type.payload();
+    collected = self.new_list(elem, 1);
+    as_elem = self.coerce(
+        b.ref_cast(made, self.object_type(bound) if bound is not None else elem, False),
+        elem,
+        nd
+    )
+        if elem.kind != MirKind.ANY
+        else self.any_make(b.const_int(ANY_OBJ_TAG, mir_int()), self.address_of(made));
+    self.runtime(
+        "__jac_rt_list_push",
+        [
+            collected,
+            self.to_bits(as_elem, elem, nd),
+            b.const_int(self.elem_kind(elem, nd), mir_int())
+        ]
+    );
+    return collected;
 }
 
 impl MirLowering.osp_class_tag(nd: uni.Expr) -> (MirValue | None) {

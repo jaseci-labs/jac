@@ -1,5 +1,9 @@
 impl emit_mir_module(
-    mir: MirModule, triple: str = "", native_tls: bool = False, data_layout: str = ""
+    mir: MirModule,
+    triple: str = "",
+    native_tls: bool = False,
+    data_layout: str = "",
+    native_sjlj: bool = False
 ) -> ir.Module {
     module = ir.Module(name=mir.path, context=ir.Context());
     if triple {
@@ -8,7 +12,9 @@ impl emit_mir_module(
     if data_layout {
         module.data_layout = data_layout;
     }
-    return MirEmitter(mir=mir, module=module, native_tls=native_tls).emit();
+    return MirEmitter(
+        mir=mir, module=module, native_tls=native_tls, native_sjlj=native_sjlj
+    ).emit();
 }
 
 impl MirEmitter.emit -> ir.Module {
@@ -161,10 +167,10 @@ impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
         return self.str_type();
     }
     if t.kind == MirKind.OPT {
-        return ir.LiteralStructType([ir.IntType(1), self.llvm_type(t.payload())]);
+        return ir.LiteralStructType([ir.IntType(1), self.slot_type(t.payload())]);
     }
     if t.kind == MirKind.TUPLE {
-        return ir.LiteralStructType([self.llvm_type(member) for member in t.args]);
+        return ir.LiteralStructType([self.slot_type(member) for member in t.args]);
     }
     if t.kind == MirKind.OBJ and t.name != "*" {
         return self.object_struct(t.name).as_pointer();
@@ -197,20 +203,20 @@ impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
     }
     if t.kind == MirKind.C_FN {
         return ir.FunctionType(
-            self.llvm_type(t.args[0]), [self.llvm_type(arg) for arg in t.args[1:]]
+            self.llvm_type(t.args[0]), [self.slot_type(arg) for arg in t.args[1:]]
         ).as_pointer();
     }
     if t.kind == MirKind.ENUM {
         return ir.IntType(64);
     }
-    if t.is_ref() or t.kind == MirKind.CLASS {
+    if t.is_ref() or t.kind in (MirKind.CLASS, MirKind.REGION) {
         return ir.IntType(8).as_pointer();
     }
     raise MirEmitError(f"no LLVM form for MIR type {t.render()}");
 }
 
 impl MirEmitter.fn_type(params: list[MirType], ret: MirType) -> ir.FunctionType {
-    return ir.FunctionType(self.llvm_type(ret), [self.llvm_type(p) for p in params]);
+    return ir.FunctionType(self.llvm_type(ret), [self.slot_type(p) for p in params]);
 }
 
 impl MirEmitter.declare(fn: MirFunction) -> ir.Function {
@@ -288,8 +294,18 @@ impl MirEmitter.emit_function(fn: MirFunction) {
     }
 }
 
+impl MirEmitter.slot_type(t: MirType) -> ir.Type {
+    if t.kind in (MirKind.NONE, MirKind.VOID) {
+        return ir.IntType(64);
+    }
+    return self.llvm_type(t);
+}
+
 impl MirEmitter.value(v: MirValue) -> ir.Value {
     found = self.values.get(v.id);
+    if found is None and v.type.kind == MirKind.NONE {
+        return ir.Constant(ir.IntType(64), 0);
+    }
     if found is None {
         raise MirEmitError(f"MIR value {v.render()} is used before it is defined");
     }
@@ -495,8 +511,12 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
             self.blocks[instr.targets[1]]
         );
     } elif op == MirOp.RET {
-        if instr.operands {
+        if instr.operands
+            and instr.operands[0].type.kind not in (MirKind.NONE, MirKind.VOID) {
             b.ret(self.value(instr.operands[0]));
+        } elif instr.operands
+            and isinstance(b.function.ftype.return_type, ir.IntType) {
+            b.ret(ir.Constant(b.function.ftype.return_type, 0));
         } else {
             b.ret_void();
         }
@@ -872,9 +892,35 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
         self.bind(instr.result, b.bitcast(frame, ir.IntType(8).as_pointer()));
     } elif op == MirOp.SETJMP {
         i8p = ir.IntType(8).as_pointer();
-        jump = self.extern(SETJMP_SYMBOL, ir.IntType(32), [i8p]);
-        jump.attributes.add("returns_twice");
-        self.bind(instr.result, b.call(jump, [self.value(instr.operands[0])]));
+        i32 = ir.IntType(32);
+        env = self.value(instr.operands[0]);
+        if self.builtin_sjlj() {
+            b.function.attributes.add("noinline");
+            words = b.bitcast(env, i8p.as_pointer());
+            frame = b.call(
+                self.extern("llvm.frameaddress.p0", i8p, [i32]), [ir.Constant(i32, 0)]
+            );
+            b.store(frame, words);
+            stack = b.call(self.extern("llvm.stacksave.p0", i8p, []), []);
+            b.store(stack, b.gep(words, [ir.Constant(i32, 2)]));
+            jump = self.extern("llvm.eh.sjlj.setjmp", i32, [i8p]);
+        } else {
+            jump = self.extern(SETJMP_SYMBOL, i32, [i8p]);
+        }
+        armed = b.call(jump, [env]);
+        armed.attributes.add("returns_twice");
+        self.bind(instr.result, armed);
+    } elif op == MirOp.LONGJMP {
+        i8p = ir.IntType(8).as_pointer();
+        env = b.inttoptr(self.value(instr.operands[0]), i8p);
+        if self.builtin_sjlj() {
+            b.call(self.extern("llvm.eh.sjlj.longjmp", ir.VoidType(), [i8p]), [env]);
+        } else {
+            b.call(
+                self.extern(LONGJMP_SYMBOL, ir.VoidType(), [i8p, ir.IntType(32)]),
+                [env, ir.Constant(ir.IntType(32), 1)]
+            );
+        }
     } elif op == MirOp.VA_START {
         i8p = ir.IntType(8).as_pointer();
         storage = b.alloca(ir.ArrayType(ir.IntType(64), 4));
@@ -1424,7 +1470,7 @@ impl MirEmitter.object_struct(name: str) -> ir.Type {
         slots[obj_def.reports_slot] = i8p;
     }
     for member in obj_def.fields {
-        slots[member.index] = self.llvm_type(member.type);
+        slots[member.index] = self.slot_type(member.type);
     }
     shape.set_body(*slots);
     self.building.discard(name);
@@ -1722,4 +1768,9 @@ impl MirEmitter.c_thunk(fn: MirFunction) {
     } else {
         b.ret(self.adapt(b, made, returned));
     }
+}
+
+impl MirEmitter.builtin_sjlj -> bool {
+    return self.native_sjlj
+        and str(self.module.triple or "").lower().startswith("x86_64");
 }

@@ -51,6 +51,8 @@ __all__ = [
     "pin",
     "addressof",
     "VaList",
+    # Concurrency
+    "Task",
     # Fixed-width numeric types
     "i8",
     "u8",
@@ -236,6 +238,14 @@ class Pinned(Generic[_PinT]):
     value: _PinT
 
 def pin(value: _PinT) -> Pinned[_PinT]: ...
+
+# The handle `flow` returns. `wait` on it yields the flowed expression's value,
+# or raises what that expression raised.
+_TaskT = TypeVar("_TaskT", covariant=True)
+
+class Task(Generic[_TaskT]):
+    def result(self, timeout: float | None = None) -> _TaskT: ...
+    def done(self) -> bool: ...
 
 # A C `va_list`. `def f(fmt: ptr[u8], *args: VaList)` is a C variadic
 # function, and a `VaList` parameter receives a C `va_list`; `args.arg(T)`

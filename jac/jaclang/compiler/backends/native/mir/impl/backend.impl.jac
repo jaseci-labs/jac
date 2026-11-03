@@ -20,6 +20,7 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
         self.report_crash(lowering, exc);
         return ir_in;
     }
+    self.report_c_conflicts(lowering);
     runtime = mir_runtime_unit_paths();
     here = os.path.realpath(path);
     if self.native_required(path) {
@@ -49,6 +50,9 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
         for fn in lowered.functions {
             mir_insert_rc(fn);
         }
+        if here not in mir_runtime_unit_paths() {
+            mir_insert_unwind(lowered);
+        }
         mir_lower_generators(lowered);
         for binding in lowering.bindings {
             ir_in.gen.interop_manifest.bindings[binding.name] = binding;
@@ -72,7 +76,11 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
             if len(target) > 1 and target[1]
             else self.prog.options.effective_triple();
         ir_in.gen.llvm_ir = emit_mir_module(
-            lowered, triple, bool(self.prog.options.native_tls), target[0]
+            lowered,
+            triple,
+            bool(self.prog.options.native_tls),
+            target[0],
+            bool(self.prog.options.native_sjlj)
         );
     } except Exception as exc {
         self.report_crash(lowering, exc);
@@ -117,6 +125,12 @@ impl MirNativePass.report_crash(lowering: MirLowering, exc: Exception) {
         name=name,
         details=f"{type(exc).__name__}: {exc}"
     );
+}
+
+impl MirNativePass.report_c_conflicts(lowering: MirLowering) {
+    for (site, name, reason) in lowering.c_conflicts {
+        self.ctx.emit(E1158, node_override=site, name=name, reason=reason);
+    }
 }
 
 impl MirNativePass.report_refusals(lowering: MirLowering) {

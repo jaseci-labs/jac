@@ -872,6 +872,7 @@ graph import {
             get_module_cache_path,
             is_module_cache_valid
         },
+        project.kernel_snapshot.session_inputs { PRECOMPILE_SENTINEL },
         scale.tests.microservices.test_seed_determinism {
             FLAG_PRECOMPILED,
             compiler_source_digest,
@@ -1041,9 +1042,7 @@ graph import {
         | project.compiler_host.ProjectHost.native_pipeline_available {
         native_pipeline_available
     }
-    compiler.driver.unit_products ++> project.kernel_compile | project.kernel_snapshot {
-        UnitProducts
-    }
+    compiler.driver.unit_products ++> project.kernel_compile { UnitProducts }
     compiler.driver.wiring ++> [
         cli.commands.architecture {
             ARCH_FILE_NAME,
@@ -1436,11 +1435,6 @@ graph import {
     type compiler.types.stubcat.reader ++> project.compiler_host { StubCatalog }
     compiler.types.stubcat.writer ++> [
         dist.precompile_bytecode.precompile_unit_context,
-        project.kernel_snapshot.KernelSnapshot.record_interface {
-            IncoherentInterface,
-            build_module_iface,
-            module_iface_shape
-        },
         project.kernel_snapshot.python_interface {
             IncoherentInterface,
             build_module_iface
@@ -5643,6 +5637,7 @@ graph import compiler {
         passes.ownership_check_pass {
             c_call_borrows_args,
             clib_import_of,
+            foreign_field_of,
             is_c_value_type,
             is_ptr_type,
             is_ptr_view_type,
@@ -6047,6 +6042,7 @@ graph import compiler {
     driver.pipeline --> [
         backends.native.mir.lower.MirLowering.body_types { require },
         backends.native.mir.lower.MirLowering.declaration_types { require },
+        backends.native.mir.lower.MirLowering.variant_unit { require },
         frontend.kernel_host.KernelHost.lower_dependency { product_ready, require },
         placement.placement_solver.invalidate_importers_es { invalidate },
         placement.placement_solver.solve_module_placement._invalidate_stale_codegen {
@@ -6115,6 +6111,10 @@ graph import compiler {
             CompilationProduct
         },
         backends.native.mir.lower.MirLowering.declaration_types {
+            AnalysisFact,
+            CompilationProduct
+        },
+        backends.native.mir.lower.MirLowering.variant_unit {
             AnalysisFact,
             CompilationProduct
         },
@@ -6359,6 +6359,7 @@ graph import compiler {
             REGION_KERNEL_REL,
             bundled_stdlib_module_of,
             interop_callback_symbol,
+            is_kernel_unit_path,
             kernel_unit_path,
             module_dotted_name,
             native_def_symbol,
@@ -6369,6 +6370,7 @@ graph import compiler {
             native_unit_identity,
             native_unit_prefix,
             native_unit_spelling,
+            native_variant_of,
             resolve_native_module
         },
         backends.native.region_abi._region_layout_facts {
@@ -6639,8 +6641,7 @@ graph import compiler {
             | placement.placement_facts.settle_server
             | placement.placement_solver
             | symbol_utils.report_placement_warnings { CodeContext },
-        backends.native.mir.lower { CodeContext, Tokens as Tok, is_borrow_kind },
-        backends.py.jcir_gen_pass {
+        backends.native.mir.lower | backends.py.jcir_gen_pass {
             CodeContext,
             OwnershipKind,
             SymbolStorage,
@@ -6805,7 +6806,7 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._warn_rpc_callable_params { W6005 },
         backends.es.esast_gen_pass.EsastGenPass.prepare
             | passes.placement_pass.PlacementPass._run_decided { E5096 },
-        backends.native.mir.backend { E5092, E9003 },
+        backends.native.mir.backend { E1158, E5092, E9003 },
         backends.native.na_compile_pass { E5020, E5026 },
         backends.py.jcir_bc_gen_pass { E5040, E5043 },
         backends.py.jcir_gen_pass {
@@ -9111,6 +9112,7 @@ graph import compiler {
             Name,
             ParamVar,
             Symbol,
+            UniNode,
             UniScopeNode
         },
         types.type_evaluator {
@@ -9621,6 +9623,7 @@ graph import compiler {
     ]
     placement.placement_facts ++> [
         backends.native.mir.backend { native_placement_hard },
+        backends.native.mir.lower { native_unit, pinned_module_space },
         driver.module_compile.admits_native_checks { variant_selected },
         driver.program.JacProgram.declared_codespace {
             native_only,
@@ -9642,11 +9645,6 @@ graph import compiler {
         native_scope.package_host_edge { native_lowered, native_unit },
     ]
     placement.placement_pins ++> [
-        backends.native.mir.lower
-            | driver.program.JacProgram.stamp_boundary_facts
-            | passes.boundary_analysis_pass.BoundaryAnalysisPass._bind_server_callee {
-            config_module_pin
-        },
         driver.boundary_classify { BareImportVerdict, classify_bare_import },
         driver.boundary_classify.import_declares_native_target { effective_module_pin },
         driver.boundary_classify.native_only_import_target { effective_module_pin },
@@ -9658,6 +9656,10 @@ graph import compiler {
         driver.program.JacProgram.prefers_native_codespace {
             config_kind_space,
             effective_module_pin
+        },
+        driver.program.JacProgram.stamp_boundary_facts
+            | passes.boundary_analysis_pass.BoundaryAnalysisPass._bind_server_callee {
+            config_module_pin
         },
         passes.placement_pass.element_requirements {
             config_element_pin,
@@ -9815,6 +9817,7 @@ graph import compiler {
             | backends.es.jac_runtime_js._build_exc_runtime_js
             | backends.native.foreign
             | backends.native.mir.emit
+            | backends.native.mir.generators
             | backends.native.mir.lower
             | backends.native.mir.lower_types
             | c_interop._spec_for_name
@@ -9992,8 +9995,18 @@ graph import compiler {
         CatalogResolver
     }
     types.stubcat.writer ++> [
-        driver.ifacecache.IfaceRegistry._encode_iface { IncoherentInterface },
+        driver.ifacecache.IfaceRegistry._encode_iface {
+            IncoherentInterface,
+            PackagePathMapper
+        },
         driver.ifacecache.IfaceRegistry.resolve_shared { collect_scope_members },
+        driver.jir.JirPaths.encode { encode_package_path },
+        frontend.kernel_host.record_interface {
+            IncoherentInterface,
+            PackagePathMapper,
+            build_module_iface,
+            module_iface_shape
+        },
     ]
     types.ts_decl_parser --> tests.test_jac_mobui_typing { parse_dts }
     types.type_evaluator ++> [
@@ -10011,10 +10024,8 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._try_primitive_op {
             expr_primitive_name
         },
-        backends.native.mir.lower
-            | backends.native.mir.lower_types
-            | passes.ownership_check_pass { is_builtin_region_type },
         native_bindings { collect_member_syms },
+        passes.ownership_check_pass { is_builtin_region_type },
         passes.rc_facts_pass.RcFactsPass._asn_makes_region_handle {
             expr_is_builtin_region
         },
@@ -10062,13 +10073,15 @@ graph import compiler {
             FunctionType,
             ModuleType,
             TypeVarType,
-            UnionType
+            UnionType,
+            UnknownType
         },
         backends.native.mir.lower_types {
             AnyType,
             ClassType,
             EnumMemberType,
             FunctionType,
+            NeverType,
             TypeVarType,
             UnionType,
             UnknownType
@@ -10472,6 +10485,7 @@ graph import compiler.backends.native {
         POSIX_FLOOR_IR_MACOS_AARCH64,
         POSIX_FLOOR_IR_MACOS_X86_64
     }
+    region_abi ++> mir.lower { REGION_KERNEL_ABI }
     wasm_artifact ++> [
         native_link { wasm_ld_args, write_allowed_imports },
         wasm_build { rename_wasm_imports },
@@ -10599,6 +10613,7 @@ graph import compiler.backends.native.mir {
         },
         generators {
             MirBlock,
+            MirBuilder,
             MirExtern,
             MirFrame,
             MirFunction,
@@ -10625,7 +10640,16 @@ graph import compiler.backends.native.mir {
             MirStructField,
             MirValue
         },
-        rc { MirBlock, MirFunction, MirInstr, MirOp, MirValue },
+        rc {
+            MirBlock,
+            MirExtern,
+            MirFunction,
+            MirInstr,
+            MirModule,
+            MirOp,
+            MirParam,
+            MirValue
+        },
     ]
     lower ++> backend { MirLowering }
     lower_types ++> lower {
@@ -10641,9 +10665,9 @@ graph import compiler.backends.native.mir {
         refusal_of,
         stub_archetype
     }
-    rc ++> backend { mir_insert_rc }
+    rc ++> backend { mir_insert_rc, mir_insert_unwind }
     runtime_abi ++> [
-        generators { mir_runtime_signature },
+        generators | rc { mir_runtime_signature },
         lower { mir_osp_signature, mir_runtime_signature },
     ]
     types ++> [
@@ -10682,6 +10706,8 @@ graph import compiler.backends.native.mir {
             mir_obj,
             mir_range,
             mir_ref,
+            mir_region,
+            mir_set,
             mir_str,
             mir_str_ref,
             mir_tuple,
@@ -10712,12 +10738,14 @@ graph import compiler.backends.native.mir {
             mir_obj,
             mir_opt,
             mir_range,
+            mir_ref,
+            mir_region,
             mir_set,
             mir_str,
             mir_str_ref,
             mir_tuple
         },
-        rc { mir_holds_ref },
+        rc { mir_c_fn, mir_c_ptr, mir_holds_ref, mir_int, mir_none },
         runtime_abi {
             MirType,
             mir_any,
@@ -11120,6 +11148,14 @@ graph import compiler.driver {
             get_module_cache_path,
             is_module_cache_valid
         },
+        compiler.unit_sections {
+            DepRow,
+            JirPaths,
+            SEC_DEPS,
+            SEC_IFACE,
+            SEC_PATH_ROOT,
+            deps_section
+        },
         ifacecache {
             DepRow,
             JirPaths,
@@ -11145,6 +11181,7 @@ graph import compiler.driver {
             write_module_cache
         },
         ifacecache.IfaceRegistry._deps_match { read_dep_rows },
+        ifacecache.IfaceRegistry._encode_iface { PRECOMPILE_SENTINEL },
         ifacecache.artifact_cache_path { get_module_cache_path },
         nativecache {
             NativeStamp,
@@ -13501,7 +13538,9 @@ graph import compiler.types {
         type_evaluator.TypeEvaluator._load_ts_declarations { parse_dts },
     ]
     type type_evaluator ++> [
-        ct_eval | fixed_width | operations | type_utils { TypeEvaluator },
+        ct_eval | fixed_width | operations | stubcat.writer | type_utils {
+            TypeEvaluator
+        },
         enum_utils { PrefetchedTypes, TypeEvaluator },
     ]
     type_utils ++> [
@@ -13770,6 +13809,7 @@ graph import compiler.types.stubcat {
             put_ref,
             put_refs,
             put_svar,
+            put_u32,
             put_uvar
         },
     ]
@@ -13785,7 +13825,11 @@ graph import compiler.types.stubcat {
         locate._open_file { open_catalog_file },
         locate._open_region { open_catalog_region },
         modiface { StubCatalog },
+        writer.CatalogWriter.encode_scope { CatScope },
         writer.CatalogWriter.encode_symbol { CatProvider },
+        writer.CatalogWriter.force_symbol { CatScope },
+        writer.CatalogWriter.scope_dotted_path { CatScope },
+        writer.metaclass_of_scope { CatScope },
     ]
     type reader ++> locate { StubCatalog }
     resolver ++> modiface | reader { CatalogResolver }
@@ -15103,7 +15147,10 @@ graph import runtime.native {
         },
         iterators { __jac_rt_dict_key_at, __jac_rt_dict_next },
     ]
-    exceptions ++> bytes { __jac_rt_raise_builtin }
+    exceptions ++> [
+        bytes { __jac_rt_raise_builtin },
+        closures { __jac_rt_raise },
+    ]
     format ++> anys { __jac_rt_float_repr, __jac_rt_obj_text }
     iterators ++> anys { __jac_rt_iter_new }
     lists ++> [
@@ -16180,6 +16227,7 @@ graph import runtime.python {
             PyLong_AsSsize_t,
             PyLong_AsUnsignedLongLongMask,
             PyLong_AsUnsignedLongMask,
+            PyMem_Calloc,
             PyMem_Free,
             PyMem_Malloc,
             PyNumber_Index,
@@ -22510,6 +22558,7 @@ graph import runtime.python {
             jacpy_float_unpack,
             jacpy_is_bytearray,
             jacpy_is_bytes,
+            jacpy_is_exact_long,
             jacpy_is_long,
             jacpy_is_unicode,
             jacpy_long_address,
@@ -38304,7 +38353,13 @@ graph import runtime.python.bindings {
         clinic.lsprof { convert_bool, convert_double, defining_class, return_int },
         clinic.lzma { borrowed_none, convert_buffer, convert_int, convert_ssize },
         clinic.marshal { convert_bool, convert_buffer, convert_int },
-        clinic.math { borrowed_none, convert_double, return_bool, return_double },
+        clinic.math {
+            borrowed_none,
+            convert_double,
+            failed,
+            return_bool,
+            return_double
+        },
         clinic.md5 | clinic.sha1 | clinic.sha2 { convert_bool, defining_class },
         clinic.mmap {
             borrowed_none,
@@ -42437,6 +42492,7 @@ graph import runtime.python.modules {
             htons,
             if_nameindex_record,
             new_sockobject,
+            note_sock_cloexec,
             ntohl,
             ntohs,
             set_gaierror,
@@ -42478,6 +42534,8 @@ graph import runtime.python.modules {
             init_sockobject,
             internal_setblocking,
             module_of_type,
+            note_accept4,
+            note_sock_cloexec,
             set_error,
             set_sock_fd,
             set_sock_timeout,

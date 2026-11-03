@@ -36,6 +36,9 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
         raise refused;
     }
     owner = arch.find_parent_of_type(uni.Module) or self.module;
+    if owner is not self.module and owner.loc.mod_path.endswith(".jac") {
+        self.adopt_imported_layouts(owner);
+    }
     layout = get_layout_registry(owner, self.prog).get_layout(name);
     if layout is None {
         raise MirRefused(
@@ -85,13 +88,15 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
             }
             field_type = member.semantic_type
                 or self.declared_field_type(member.decl_node);
-            self.ensure_objects(field_type);
             self.ensure_c_types(field_type);
             slot_type = mir_any()
-                if self.erased_slot(field_type)
+                if self.erased_slot(field_type) or self.host_only_type(field_type)
                 else mir_type_of(
                     field_type, MirPosition.FIELD, member.decl_node or arch
                 );
+            if slot_type.kind != MirKind.ANY {
+                self.ensure_objects(field_type);
+            }
             if slot_type.kind == MirKind.ENUM and isinstance(field_type, ClassType) {
                 self.enum_types.setdefault(slot_type.name, field_type);
             }
@@ -526,10 +531,12 @@ impl MirLowering.object_alloc(
     fn = self.st().fn;
     size = fn.new_value(mir_int());
     b.emit(MirInstr(op=MirOp.SIZEOF, result=size, type_arg=self_type));
-    raw = self.runtime("__jac_rt_alloc_zeroed", [size]);
-    if raw is None {
-        raise MirRefused(mir_refusal("constructor", obj_def.name, arch));
-    }
+    eligible = arch.arch_type.name != Tok.KW_WALKER
+        and not is_kernel_unit_path(self.module.loc.mod_path);
+    (word, arena) = self.region_alloc(
+        size, obj_def.drop_symbol, obj_def.local, eligible
+    );
+    raw = self.emit_value(MirOp.PTR_CAST, mir_ref(), [word]);
     made = b.ref_cast(raw, self_type, True);
     held = self.temp_slot(self_type);
     b.store(held, made);
@@ -562,7 +569,12 @@ impl MirLowering.object_alloc(
     self.emit_value(
         MirOp.MEM_STORE,
         mir_none(),
-        [b.binary("sub", address, b.const_int(8, mir_int())), drop_address]
+        [
+            b.binary("sub", address, b.const_int(8, mir_int())),
+            b.select(
+                b.compare("ne", arena, b.const_int(0, mir_int())), arena, drop_address
+            )
+        ]
     );
     if obj_def.vtable_slot >= 0 {
         slot = self.emit_value(
@@ -1185,7 +1197,9 @@ impl MirLowering.arch_named(name: str, site: uni.UniNode) -> uni.Archetype {
     );
 }
 
-impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue {
+impl MirLowering.object_call(
+    nd: uni.FuncCall, arch: uni.Archetype, leading: int = 0
+) -> MirValue {
     obj_def = self.object_def(arch);
     if obj_def.field(EXC_MESSAGE_FIELD) is not None
         and (self.find_method(arch, "init") or self.find_method(arch, "__init__"))
@@ -1199,7 +1213,7 @@ impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue 
     params = self.constructor_params(arch);
     init = self.find_method(arch, "init") or self.find_method(arch, "__init__");
     if init is None
-        and nd.params
+        and list(nd.params or [])[leading:]
         and all(
             holder.arch_type.name == Tok.KW_CLASS for holder in self.lineage(arch)
         ) {
@@ -1220,7 +1234,7 @@ impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue 
             or init.signature.kwonlyargs
             or self.has_spread(nd)
         ) {
-        bound = self.bound_args(nd, init, True);
+        bound = self.bound_args(nd, init, True, leading);
         if len(bound) != len(params) {
             raise MirRefused(
                 mir_refusal("call", f"{obj_def.name} with {len(bound)} arguments", nd)
@@ -1238,7 +1252,7 @@ impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue 
         }
         return self.construct(symbol, obj_def, owner, params, values, nd);
     }
-    values = self.ctor_arguments(nd, obj_def.name, params);
+    values = self.ctor_arguments(nd, obj_def.name, params, leading);
     return self.construct(symbol, obj_def, owner, params, values, nd);
 }
 
@@ -1444,6 +1458,55 @@ impl MirLowering.object_eq(
         decl, arch, "__eq__", [receiver, self.coerce(right, decl.params[0], site)]
     );
     return self.truthy(verdict, site);
+}
+
+impl MirLowering.object_compare(
+    name: str, left: MirValue, right: MirValue, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    dunder = "__eq__" if name == "eq" else "__ne__";
+    first = left;
+    second = right;
+    left_arch = self.archetypes.get(left.type.name)
+        if left.type.kind == MirKind.OBJ
+        else None;
+    right_arch = self.archetypes.get(right.type.name)
+        if right.type.kind == MirKind.OBJ
+        else None;
+    if left_arch is not None
+        and right_arch is not None
+        and right_arch is not left_arch
+        and self.obj_extends(right.type.name, left.type.name)
+        and any(
+            self.name_of(method) in ("__eq__", dunder)
+            for method in self.arch_methods(right_arch)
+        ) {
+        first = right;
+        second = left;
+    }
+    holder = self.archetypes.get(first.type.name)
+        if first.type.kind == MirKind.OBJ
+        else None;
+    if name == "ne" and holder is not None {
+        method = self.find_method(holder, "__ne__");
+        if method is not None and not method.is_static {
+            decl = self.method_decl(holder, method, "__ne__", site);
+            if len(decl.params) == 1 {
+                verdict = self.invoke_method(
+                    decl,
+                    holder,
+                    "__ne__",
+                    [
+                        self.method_receiver(decl, holder, first, site),
+                        self.coerce(second, decl.params[0], site)
+                    ]
+                );
+                return self.truthy(verdict, site);
+            }
+        }
+    }
+    same = self.object_eq(first, second, site);
+    return same if name == "eq" else b.logical_not(same);
 }
 
 impl MirLowering.holder_arch(expr: uni.Expr) -> (uni.Archetype | None) {
@@ -1771,6 +1834,7 @@ impl MirLowering.lower_module_entry -> (MirFunction | None) {
             self.lower_body(list(block.body or []));
         }
         if not self.builder().block.terminated() {
+            self.drop_regions();
             self.flush_stdio();
             self.builder().ret(None);
         }
@@ -1789,16 +1853,46 @@ impl MirLowering.lower_module_entry -> (MirFunction | None) {
     return fn;
 }
 
+impl MirLowering.host_only_type(t: (TypeBase | None)) -> bool {
+    if not self.prog.options.native_unit {
+        return False;
+    }
+    members = t.types if isinstance(t, UnionType) else [t];
+    for member in members {
+        if not isinstance(member, ClassType) or member._shared is None {
+            continue;
+        }
+        scope = member.shared.symbol_table;
+        if not isinstance(scope, uni.Archetype) or stub_archetype(scope) {
+            continue;
+        }
+        owner = scope.find_parent_of_type(uni.Module);
+        if owner is None
+            or owner is self.module
+            or not owner.loc.mod_path.endswith(".jac") {
+            continue;
+        }
+        if not native_unit(os.path.realpath(owner.loc.mod_path), True, self.prog) {
+            return True;
+        }
+    }
+    return False;
+}
+
 impl MirLowering.erased_slot(t: (TypeBase | None)) -> bool {
     if isinstance(t, TypeVarType) {
         return not t.is_self;
+    }
+    if isinstance(t, UnknownType) {
+        return True;
     }
     if not isinstance(t, UnionType) {
         return False;
     }
     erased = False;
     for member in t.types {
-        if isinstance(member, TypeVarType) and not member.is_self {
+        if (isinstance(member, TypeVarType) and not member.is_self)
+            or isinstance(member, UnknownType) {
             erased = True;
         } elif not (
             isinstance(member, ClassType)
@@ -1965,11 +2059,14 @@ impl MirLowering.placeholder(t: MirType) -> MirValue {
 }
 
 impl MirLowering.ctor_arguments(
-    nd: uni.FuncCall, label: str, params: list[tuple[str, MirType, (uni.Expr | None)]]
+    nd: uni.FuncCall,
+    label: str,
+    params: list[tuple[str, MirType, (uni.Expr | None)]],
+    leading: int = 0
 ) -> list[MirValue] {
     positional: list[uni.Expr] = [];
     named: dict[str, uni.Expr] = {};
-    for arg in list(nd.params or []) {
+    for arg in list(nd.params or [])[leading:] {
         if isinstance(arg, uni.KWPair) {
             if arg.key is None {
                 raise MirRefused(

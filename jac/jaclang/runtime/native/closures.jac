@@ -6,7 +6,15 @@ glob CELL_BITS: int = 0,
      CLOSURE_CELLS: int = 16,
      SLOT: int = 8,
      HDR_DTOR_BACK: int = 8,
-     HDR_TOTAL: int = 32;
+     HDR_TOTAL: int = 32,
+     TASK_STATE: int = 8,
+     TASK_BITS: int = 16,
+     TASK_KIND: int = 24,
+     TASK_ERROR: int = 32,
+     TASK_MESSAGE: int = 40,
+     TASK_ORIGIN: int = 48,
+     TASK_COUNT: int = 56,
+     TASK_ARGS: int = 64;
 
 def:pub __jac_rt_cell_new(kind: int) -> int;
 
@@ -21,3 +29,9 @@ def:pub __jac_rt_closure_set(closure: int, index: int, cell: int);
 def _cell_drop(cell: ptr[u8]);
 
 def _closure_drop(closure: ptr[u8]);
+
+def:pub __jac_rt_task_new(count: int) -> int;
+
+def:pub __jac_rt_task_result(task: int) -> int;
+
+def _task_drop(task: ptr[u8]);

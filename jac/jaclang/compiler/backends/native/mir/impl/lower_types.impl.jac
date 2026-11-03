@@ -32,6 +32,9 @@ impl mir_type_of(
             )
         );
     }
+    if isinstance(t, NeverType) {
+        return mir_none();
+    }
     if isinstance(t, TypeVarType) {
         bound = env.get(t.name) if env is not None else None;
         if bound is None and t.is_class_type_param and not t.is_self {
@@ -192,9 +195,6 @@ impl mir_class_type(
         }
         return mir_enum(name, mir_int());
     }
-    if is_builtin_region_type(t) {
-        return mir_int();
-    }
     if t.is_builtin("type") {
         return mir_class_value_type(t, env);
     }
@@ -210,6 +210,9 @@ impl mir_class_type(
     }
     if kind == "Pinned" {
         return mir_c_pin(mir_c_elem(c_type_arg(t), site));
+    }
+    if t.is_builtin("Task") {
+        return mir_ref();
     }
     arch = foreign_struct_of_type(t);
     if arch is not None {
@@ -228,6 +231,10 @@ impl mir_class_type(
     }
     if name in ("NoneType", "None") {
         return mir_none();
+    }
+    if name == "Region"
+        and not (isinstance(scope, uni.Archetype) and not stub_archetype(scope)) {
+        return mir_region();
     }
     if name in ("Node", "Edge", "Walker") and stub_scope(scope) and t.is_instance() {
         return mir_any();

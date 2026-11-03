@@ -15,11 +15,11 @@ import from c {
             error_type: i32,
             error_target: ptr[u8],
             error_message: ptr[u8];
-    }  def _longjmp(env: ptr[u8], value: i32) -> None;  def write(
-        fd: i32, buf: ptr[u8], count: i64
-    ) -> i64;  def strlen(text: ptr[u8]) -> i64;  def strcmp(
-        a: ptr[u8], b: ptr[u8]
-    ) -> i32;  def _exit(code: i32) -> None;  def fflush(stream: ptr[u8]) -> i32;
+    }  def write(fd: i32, buf: ptr[u8], count: i64) -> i64;  def strlen(
+        text: ptr[u8]
+    ) -> i64;  def strcmp(a: ptr[u8], b: ptr[u8]) -> i32;  def _exit(
+        code: i32
+    ) -> None;  def fflush(stream: ptr[u8]) -> i32;
 }
 
 glob EXC_STATE_HEADER: int = 40,
@@ -56,3 +56,9 @@ def:pub __jac_rt_exc_class_of(held: int, fallback: int) -> int;
 def _write_text(text: ptr[u8]);
 
 def _report_uncaught(message: ptr[u8]);
+
+def:pub __jac_rt_gen_close_failed(
+    state: ptr[JacRtExcState], exit_id: int, stop_id: int
+);
+
+def:pub __jac_rt_gen_ignored_exit;

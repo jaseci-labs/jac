@@ -35,6 +35,7 @@ obj PrefetchedTypes {
         edge_class: ClassType | None = None,
         walker_class: ClassType | None = None,
         path_class: ClassType | None = None,
+        task_class: ClassType | None = None,
         jsx_element_class: ClassType | None = None,
         html_common_props_class: ClassType | None = None,
         jsx_intrinsic_elements_class: ClassType | None = None,

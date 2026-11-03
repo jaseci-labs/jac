@@ -18,7 +18,8 @@ enum IntrinsicDispatch {
     LIST_DATA = "list_data",
     BUFFER_DATA = "buffer_data",
     REF_ADDR = "ref_addr",
-    STR_DATA = "str_data"
+    STR_DATA = "str_data",
+    EXC_LONGJMP = "exc_longjmp"
 }
 
 obj IntrinsicEntry {
@@ -26,7 +27,8 @@ obj IntrinsicEntry {
         param_specs: list[str],
         result_spec: str,
         dispatch: IntrinsicDispatch,
-        gc_mode_gate: str | None = None;
+        gc_mode_gate: str | None = None,
+        width: (int | None) = None;
 
     def arity -> int;
 }
@@ -88,50 +90,58 @@ glob INTRINSIC_REGISTRY = IntrinsicRegistry(
              "__mem_load_i8": IntrinsicEntry(
                  name="__mem_load_i8",
                  param_specs=["i64"],
-                 result_spec="i8",
-                 dispatch=IntrinsicDispatch.MEM_LOAD
+                 result_spec="i64",
+                 dispatch=IntrinsicDispatch.MEM_LOAD,
+                 width=8
              ),
              "__mem_store_i8": IntrinsicEntry(
                  name="__mem_store_i8",
-                 param_specs=["i64", "i8"],
+                 param_specs=["i64", "i64"],
                  result_spec="none",
-                 dispatch=IntrinsicDispatch.MEM_STORE
+                 dispatch=IntrinsicDispatch.MEM_STORE,
+                 width=8
              ),
              "__mem_load_i16": IntrinsicEntry(
                  name="__mem_load_i16",
                  param_specs=["i64"],
-                 result_spec="i16",
-                 dispatch=IntrinsicDispatch.MEM_LOAD
+                 result_spec="i64",
+                 dispatch=IntrinsicDispatch.MEM_LOAD,
+                 width=16
              ),
              "__mem_store_i16": IntrinsicEntry(
                  name="__mem_store_i16",
-                 param_specs=["i64", "i16"],
+                 param_specs=["i64", "i64"],
                  result_spec="none",
-                 dispatch=IntrinsicDispatch.MEM_STORE
+                 dispatch=IntrinsicDispatch.MEM_STORE,
+                 width=16
              ),
              "__mem_load_i32": IntrinsicEntry(
                  name="__mem_load_i32",
                  param_specs=["i64"],
-                 result_spec="i32",
-                 dispatch=IntrinsicDispatch.MEM_LOAD
+                 result_spec="i64",
+                 dispatch=IntrinsicDispatch.MEM_LOAD,
+                 width=32
              ),
              "__mem_store_i32": IntrinsicEntry(
                  name="__mem_store_i32",
-                 param_specs=["i64", "i32"],
+                 param_specs=["i64", "i64"],
                  result_spec="none",
-                 dispatch=IntrinsicDispatch.MEM_STORE
+                 dispatch=IntrinsicDispatch.MEM_STORE,
+                 width=32
              ),
              "__mem_load_i64": IntrinsicEntry(
                  name="__mem_load_i64",
                  param_specs=["i64"],
                  result_spec="i64",
-                 dispatch=IntrinsicDispatch.MEM_LOAD
+                 dispatch=IntrinsicDispatch.MEM_LOAD,
+                 width=64
              ),
              "__mem_store_i64": IntrinsicEntry(
                  name="__mem_store_i64",
                  param_specs=["i64", "i64"],
                  result_spec="none",
-                 dispatch=IntrinsicDispatch.MEM_STORE
+                 dispatch=IntrinsicDispatch.MEM_STORE,
+                 width=64
              ),
              "__bytes_data": IntrinsicEntry(
                  name="__bytes_data",
@@ -390,6 +400,12 @@ glob INTRINSIC_REGISTRY = IntrinsicRegistry(
                  param_specs=["i32"],
                  result_spec="none",
                  dispatch=IntrinsicDispatch.ATOMIC_FENCE
+             ),
+             "__exc_longjmp": IntrinsicEntry(
+                 name="__exc_longjmp",
+                 param_specs=["i64"],
+                 result_spec="none",
+                 dispatch=IntrinsicDispatch.EXC_LONGJMP
              ),
              "__thread_local_block": IntrinsicEntry(
                  name="__thread_local_block",

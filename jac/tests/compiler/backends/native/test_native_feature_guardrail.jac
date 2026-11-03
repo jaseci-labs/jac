@@ -987,7 +987,7 @@ test "guardrail: open() with a non-string (POSIX flags) mode is a clean diagnost
     }
 }
 
-test "a dict comprehension with any keys lowers, and always-None values demote" {
+test "a dict comprehension with any keys or always-None values lowers" {
     code = "def build -> int {\n"
     "    xs: list[any] = [1, 1.0, True, \"a\", \"a\", 2];\n"
     "    d = {x: 1 for x in xs};\n"
@@ -1013,11 +1013,11 @@ test "a dict comprehension with any keys lowers, and always-None values demote" 
         assert no_ice(none_prog) , f"{label}: emitter crash leaked: {fmt_errors(
             none_prog
         )}";
-        assert not none_prog.errors_had , f"{label}: must demote, got: {fmt_errors(
+        assert not none_prog.errors_had , f"{label}: must lower, got: {fmt_errors(
             none_prog
         )}";
-        assert "build" in demoted(none_ir) , (
-            f"{label}: a dict whose values are always None must demote:\n{none_log}"
+        assert "build" not in demoted(none_ir) , (
+            f"{label}: a None value is a one-word slot, so the dict lowers:\n{none_log}"
         );
     }
 }

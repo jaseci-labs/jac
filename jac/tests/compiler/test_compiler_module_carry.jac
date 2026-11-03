@@ -60,6 +60,7 @@ glob PKG: Path = Path(str(jir.__file__)).resolve().parent.parent.parent,
      EMITTER_ROW: str = "compiler/backends/py/jcir_gen_pass.jac",
      NATIVE_ROW: str = "compiler/backends/native/link_plan.jac",
      OTHER_ROW: str = "cli/commands/analysis.jac",
+     INTRINSIC_ROW: str = "compiler/impl/intrinsic_registry.impl.jac",
      INTERPRETER_ROW: str = "compiler/backends/py/jacpython/runtime.jac";
 
 """A source checkout with its own cache, entered as one compiler build after
@@ -110,7 +111,8 @@ obj Checkout {
         emitter: str = "e0",
         native: str = "n0",
         interpreter: str = "i0",
-        other: str = "o0"
+        other: str = "o0",
+        intrinsic: str = "r0"
     ) {
         digest = "3:" + tag * 64;
         self.minted.append(digest);
@@ -122,7 +124,8 @@ obj Checkout {
             (EMITTER_ROW, emitter),
             (NATIVE_ROW, native),
             (INTERPRETER_ROW, interpreter),
-            (OTHER_ROW, other)
+            (OTHER_ROW, other),
+            (INTRINSIC_ROW, intrinsic)
         ];
         jir._PY_EMITTER_DIGESTS.pop(digest, None);
     }
@@ -350,6 +353,10 @@ test "a kernel unit is stamped with the kernel's ABI in a source checkout" {
         tree.build("c", native="n1");
         assert native_producer_digest(True) != first , (
             "an edit to the native backend kept the kernel's stamp"
+        );
+        tree.build("d", intrinsic="r1");
+        assert native_producer_digest(True) != first , (
+            "an edit to the intrinsic registry kept the kernel's stamp"
         );
         assert native_producer_digest(False) == running_compiler_digest() , (
             "a user program's products lost the compiler that built them"
