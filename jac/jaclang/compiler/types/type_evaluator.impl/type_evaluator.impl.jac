@@ -2337,7 +2337,22 @@ impl TypeEvaluator._get_type_of_expression_core(
             return self.get_type_of_expression(expr.target);
 
         case ConcurrentExpr():
-            return self.get_type_of_expression(expr.target);
+            inner = self.get_type_of_expression(expr.target);
+            task = self.prefetch.task_class;
+            keyword = expr.tok.value if expr.tok else "";
+            if task is None {
+                return inner;
+            }
+            if keyword == "flow" {
+                return self._convert_to_instance(task.specialize_generics([inner]));
+            }
+            if keyword == "wait"
+                and isinstance(inner, ClassType)
+                and inner.shared is task.shared {
+                args = inner.private.type_args;
+                return args[0] if args else UnknownType();
+            }
+            return inner;
 
         case YieldExpr():
             if expr.expr is not None {
@@ -4594,6 +4609,7 @@ impl TypeEvaluator._prefetch_types {
     self.prefetch.edge_class = get_jac_builtin_class("Edge");
     self.prefetch.walker_class = get_jac_builtin_class("Walker");
     self.prefetch.path_class = get_jac_builtin_class("GraphQuery");
+    self.prefetch.task_class = get_jac_builtin_class("Task");
     self.prefetch.jsx_element_class = get_jac_builtin_class("JsxElement");
     self.prefetch.html_common_props_class = get_jac_builtin_class("_HtmlCommonProps");
     self.prefetch.jsx_intrinsic_elements_class = get_jac_builtin_class(

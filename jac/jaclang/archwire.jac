@@ -9629,6 +9629,7 @@ graph import compiler {
     ]
     placement.placement_facts ++> [
         backends.native.mir.backend { native_placement_hard },
+        backends.native.mir.lower { native_unit, pinned_module_space },
         driver.module_compile.admits_native_checks { variant_selected },
         driver.program.JacProgram.declared_codespace {
             native_only,
@@ -9650,11 +9651,6 @@ graph import compiler {
         native_scope.package_host_edge { native_lowered, native_unit },
     ]
     placement.placement_pins ++> [
-        backends.native.mir.lower
-            | driver.program.JacProgram.stamp_boundary_facts
-            | passes.boundary_analysis_pass.BoundaryAnalysisPass._bind_server_callee {
-            config_module_pin
-        },
         driver.boundary_classify { BareImportVerdict, classify_bare_import },
         driver.boundary_classify.import_declares_native_target { effective_module_pin },
         driver.boundary_classify.native_only_import_target { effective_module_pin },
@@ -9666,6 +9662,10 @@ graph import compiler {
         driver.program.JacProgram.prefers_native_codespace {
             config_kind_space,
             effective_module_pin
+        },
+        driver.program.JacProgram.stamp_boundary_facts
+            | passes.boundary_analysis_pass.BoundaryAnalysisPass._bind_server_callee {
+            config_module_pin
         },
         passes.placement_pass.element_requirements {
             config_element_pin,
@@ -9823,6 +9823,7 @@ graph import compiler {
             | backends.es.jac_runtime_js._build_exc_runtime_js
             | backends.native.foreign
             | backends.native.mir.emit
+            | backends.native.mir.generators
             | backends.native.mir.lower
             | backends.native.mir.lower_types
             | c_interop._spec_for_name
@@ -10067,7 +10068,8 @@ graph import compiler {
             FunctionType,
             ModuleType,
             TypeVarType,
-            UnionType
+            UnionType,
+            UnknownType
         },
         backends.native.mir.lower_types {
             AnyType,
@@ -10606,6 +10608,7 @@ graph import compiler.backends.native.mir {
         },
         generators {
             MirBlock,
+            MirBuilder,
             MirExtern,
             MirFrame,
             MirFunction,
@@ -10632,7 +10635,16 @@ graph import compiler.backends.native.mir {
             MirStructField,
             MirValue
         },
-        rc { MirBlock, MirFunction, MirInstr, MirOp, MirValue },
+        rc {
+            MirBlock,
+            MirExtern,
+            MirFunction,
+            MirInstr,
+            MirModule,
+            MirOp,
+            MirParam,
+            MirValue
+        },
     ]
     lower ++> backend { MirLowering }
     lower_types ++> lower {
@@ -10648,9 +10660,9 @@ graph import compiler.backends.native.mir {
         refusal_of,
         stub_archetype
     }
-    rc ++> backend { mir_insert_rc }
+    rc ++> backend { mir_insert_rc, mir_insert_unwind }
     runtime_abi ++> [
-        generators { mir_runtime_signature },
+        generators | rc { mir_runtime_signature },
         lower { mir_osp_signature, mir_runtime_signature },
     ]
     types ++> [
@@ -10720,13 +10732,14 @@ graph import compiler.backends.native.mir {
             mir_obj,
             mir_opt,
             mir_range,
+            mir_ref,
             mir_region,
             mir_set,
             mir_str,
             mir_str_ref,
             mir_tuple
         },
-        rc { mir_holds_ref },
+        rc { mir_c_fn, mir_c_ptr, mir_holds_ref, mir_int, mir_none },
         runtime_abi {
             MirType,
             mir_any,
@@ -15104,7 +15117,10 @@ graph import runtime.native {
         },
         iterators { __jac_rt_dict_key_at, __jac_rt_dict_next },
     ]
-    exceptions ++> bytes { __jac_rt_raise_builtin }
+    exceptions ++> [
+        bytes { __jac_rt_raise_builtin },
+        closures { __jac_rt_raise },
+    ]
     format ++> anys { __jac_rt_float_repr, __jac_rt_obj_text }
     iterators ++> anys { __jac_rt_iter_new }
     lists ++> [

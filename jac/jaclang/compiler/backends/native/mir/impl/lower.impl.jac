@@ -1067,6 +1067,10 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
         value = self.lower_fstring(nd);
     } elif isinstance(nd, uni.FuncCall) {
         value = self.lower_call(nd);
+    } elif isinstance(nd, uni.ConcurrentExpr) {
+        value = self.lower_concurrent(nd);
+    } elif isinstance(nd, uni.AwaitExpr) {
+        value = self.coerce(self.lower_expr(nd.target), self.expr_type(nd), nd);
     } elif isinstance(nd, uni.AtomTrailer) {
         value = self.lower_trailer(nd);
     } elif isinstance(nd, uni.EdgeRefTrailer) {
@@ -2753,6 +2757,14 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
     if name == "open" {
         return self.open_call(nd);
     }
+    if name == "new" and nd.params {
+        made = list(nd.params);
+        kind = made[0];
+        arch = self.class_reference(kind) if isinstance(kind, uni.Expr) else None;
+        if arch is not None {
+            return self.object_call(nd, arch, 1);
+        }
+    }
     if name == "int" {
         refused = self.str_enum_int(nd);
         if refused is not None {
@@ -3711,6 +3723,10 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
         }
         stored = self.intrinsic_operand(args[0], "i64");
         return self.emit_value(MirOp.MEM_STORE, mir_none(), [cell, stored]);
+    }
+    if dispatch == IntrinsicDispatch.EXC_LONGJMP {
+        buffer = self.intrinsic_operand(args[0], "i64");
+        return self.emit_value(MirOp.LONGJMP, mir_none(), [buffer]);
     }
     if dispatch == IntrinsicDispatch.MEM_LOAD {
         address = self.intrinsic_operand(args[0], "i64");

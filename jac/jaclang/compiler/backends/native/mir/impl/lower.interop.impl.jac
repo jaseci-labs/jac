@@ -220,7 +220,7 @@ impl MirLowering.python_base_of(arch: uni.Archetype) -> (str | None) {
         if isinstance(scope, uni.Archetype) {
             decl_mod = scope.find_parent_of_type(uni.Module);
             path = decl_mod.loc.mod_path if decl_mod is not None else "";
-            if path.endswith(".jac") and config_module_pin(path) != "server" {
+            if path.endswith(".jac") and pinned_module_space(path) != "server" {
                 continue;
             }
         }

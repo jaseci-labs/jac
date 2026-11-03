@@ -59,7 +59,7 @@ impl __jac_rt_raise(target: ptr[u8], type_id: i32, message: ptr[u8]) {
         record = ctx.view(1)[0].unwind_top;
     }
     ctx.view(1)[0].unwind_top = stop;
-    _longjmp(__jac_rt_exc_jmp_buf(handler), i32(1));
+    __exc_longjmp(int(__jac_rt_exc_jmp_buf(handler)));
 }
 
 impl __jac_rt_raise_builtin(type_id: i32, message: ptr[u8]) {
@@ -143,4 +143,27 @@ impl __jac_rt_exc_class_of(held: int, fallback: int) -> int {
         i += 1;
     }
     return fallback;
+}
+
+impl __jac_rt_gen_close_failed(state: ptr[JacRtExcState], exit_id: int, stop_id: int) {
+    cell = state.view(1);
+    kind = int(cell[0].type_id);
+    if kind == exit_id or kind == stop_id {
+        return;
+    }
+    _write_text(
+        ptr[u8]("Exception ignored while closing generator <generator object>:\n")
+    );
+    if int(cell[0].message) != 0 {
+        _write_text(cell[0].message);
+    }
+    _write_text(ptr[u8]("\n"));
+}
+
+impl __jac_rt_gen_ignored_exit {
+    _write_text(
+        ptr[u8](
+            "Exception ignored while closing generator <generator object>:\nRuntimeError: generator ignored GeneratorExit\n"
+        )
+    );
 }
