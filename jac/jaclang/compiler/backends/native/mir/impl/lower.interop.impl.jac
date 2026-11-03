@@ -659,6 +659,9 @@ impl MirLowering.declare_c_definition(ab: uni.Ability) {
             )
         );
     }
+    if name not in self.mir.public {
+        self.mir.public.append(name);
+    }
     self.decls[key] = MirDecl(
         ability=ab,
         symbol=f"{name}.jac" if by_value else name,
