@@ -2284,6 +2284,11 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
     if to.kind == MirKind.INT and value.type.kind == MirKind.FN {
         return self.emit_value(MirOp.PTR_INT, to, [value]);
     }
+    if to.kind == MirKind.FN
+        and value.type.kind == MirKind.FN
+        and len(to.args) == len(value.type.args) {
+        return self.closure_adapter(value, to, site);
+    }
     if value.type.kind == MirKind.OBJ
         and to.kind == MirKind.OBJ
         and (

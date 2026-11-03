@@ -2528,6 +2528,7 @@ impl MirLowering.is_class_operand(nd: (uni.UniNode | None)) -> bool {
 }
 
 impl MirLowering.union_archetypes(t: (TypeBase | None)) -> list[uni.Archetype] {
+    t = self.resolved(t);
     if not isinstance(t, UnionType) {
         return [];
     }

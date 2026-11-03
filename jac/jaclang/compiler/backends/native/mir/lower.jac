@@ -1199,6 +1199,7 @@ obj MirLowering {
     def step_group(cursor: MirIterCursor, body: MirBlock, done: MirBlock) -> MirValue;
     def step_filter(cursor: MirIterCursor, body: MirBlock, done: MirBlock) -> MirValue;
     def step_user(cursor: MirIterCursor, body: MirBlock, done: MirBlock) -> MirValue;
+    def closure_adapter(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
     def call_closure(
         callee: MirValue, values: list[MirValue], site: uni.UniNode
     ) -> MirValue;
