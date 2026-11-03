@@ -816,6 +816,38 @@ impl settle_pending_bases(reg: LayoutRegistry, lay: ArchetypeLayout) -> None {
             }
         }
     }
+    for name in list(pending) {
+        if name in reg.layouts or "$" in name {
+            continue;
+        }
+        native: dict[str, ArchetypeLayout] = {};
+        for source in [reg] + registries {
+            for (key, cand) in source.layouts.items() {
+                if key.split("$")[0] == name {
+                    native[key] = cand;
+                }
+            }
+        }
+        if len(native) != 1 {
+            continue;
+        }
+        (resolved, found) = list(native.items())[0];
+        reg.layouts.setdefault(resolved, found);
+        lay.mro = [resolved if anc == name else anc for anc in (lay.mro or [])];
+        lay.parents = [resolved if anc == name else anc for anc in (lay.parents or [])];
+        if lay.name in reg.class_parents {
+            reg.class_parents[lay.name] = [
+                resolved if anc == name else anc for anc in reg.class_parents[lay.name]
+            ];
+        }
+        reg.set_mro(lay.name, list(lay.mro));
+        pending = [resolved if anc == name else anc for anc in pending];
+        for anc in (found.mro or [])[1:] {
+            if anc not in reg.layouts and anc not in pending {
+                pending.append(anc);
+            }
+        }
+    }
     still = [
         name
         for name in pending
