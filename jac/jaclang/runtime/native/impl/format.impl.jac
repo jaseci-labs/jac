@@ -1368,3 +1368,39 @@ impl __jac_rt_hash_tuple_end(acc: int, count: int) -> int {
     h = _wadd(acc, count ^ XXPRIME_5_LEN);
     return 1546275796 if h == -1 else h;
 }
+
+impl __jac_rt_int_bit_length(v: int) -> int {
+    if v == -9223372036854775807 - 1 {
+        return 64;
+    }
+    rest = -v if v < 0 else v;
+    count = 0;
+    while rest > 0 {
+        rest = rest >> 1;
+        count += 1;
+    }
+    return count;
+}
+
+impl __jac_rt_int_bit_count(v: int) -> int {
+    if v == -9223372036854775807 - 1 {
+        return 1;
+    }
+    rest = -v if v < 0 else v;
+    count = 0;
+    while rest > 0 {
+        count += rest & 1;
+        rest = rest >> 1;
+    }
+    return count;
+}
+
+impl __jac_rt_float_is_integer(v: float) -> bool {
+    if v != v or v - v != 0.0 {
+        return False;
+    }
+    if v >= 9007199254740992.0 or v <= -9007199254740992.0 {
+        return True;
+    }
+    return float(int(v)) == v;
+}

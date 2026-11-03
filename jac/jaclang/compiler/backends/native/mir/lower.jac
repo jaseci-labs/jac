@@ -275,6 +275,7 @@ obj MirFnState {
         caught: list[tuple[MirValue, MirValue, MirValue]] = [],
         bound_caught: dict[int, tuple[MirValue, MirValue, MirValue]] = {},
         tries: list[tuple[MirValue, MirBlock, int]] = [],
+        in_test: bool = False,
         try_exits: dict[int, MirWithExit] = {},
         finals: list[tuple[list[uni.UniNode], int, int]] = [],
         specials: dict[str, MirValue] = {};
@@ -355,6 +356,7 @@ obj MirLowering {
         current: str = "",
         dep_verdicts: dict[str, (list[str] | None)] = {},
         imported_fns: dict[str, tuple[str, str]] = {},
+        tests: list[tuple[str, str, str, int]] = [],
         c_views: dict[int, MirGlobal] = {},
         state: (MirFnState | None) = None;
 
@@ -386,7 +388,8 @@ obj MirLowering {
     def encloses(scope: (uni.UniScopeNode | None), nd: uni.UniNode) -> bool;
     def comprehension_scoped(sym: uni.Symbol) -> bool;
     def within_body(
-        nd: uni.UniNode, loop: (uni.WhileStmt | uni.InForStmt | uni.IterForStmt)
+        nd: uni.UniNode,
+        loop: (uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt)
     ) -> bool;
 
     def lower_return(nd: uni.ReturnStmt);
@@ -394,6 +397,7 @@ obj MirLowering {
     def lower_else(nd: (uni.ElseStmt | uni.ElseIf | None), done: MirBlock);
     def lower_iter_for(nd: uni.IterForStmt);
     def lower_while(nd: uni.WhileStmt);
+    def lower_forever(nd: uni.ForeverStmt);
     def lower_ctrl(nd: uni.CtrlStmt);
     def lower_for(nd: uni.InForStmt);
     def lower_for_core(nd: uni.InForStmt);
@@ -419,6 +423,7 @@ obj MirLowering {
     def adopt_imported_layouts;
     def obj_extends(child: str, base: str) -> bool;
     def coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
+    def const_zero(value: MirValue) -> bool;
     def unify_numeric(
         left: MirValue, right: MirValue, site: uni.UniNode
     ) -> tuple[MirValue, MirValue];
@@ -499,6 +504,7 @@ obj MirLowering {
     def struct_temp_place(nd: uni.Expr) -> MirValue;
     def declare_global(nd: uni.Name) -> (MirGlobal | None);
     def declare_c_data;
+    def declare_clib_externs;
     def note_clib(imp: (uni.Import | None)) -> int;
     def declare_module_globals;
     def c_struct_call(nd: uni.FuncCall, struct_type: MirType) -> MirValue;

@@ -6339,6 +6339,7 @@ graph import compiler {
             NativeFuncLayout,
             NativeModuleLayout,
             NativeStructLayout,
+            NativeTestLayout,
             is_kernel_unit_path,
             jaclang_pkg_root,
             native_entry_name,
