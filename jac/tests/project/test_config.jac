@@ -2013,6 +2013,10 @@ test "serve config carries no routing keys and refuses keys or values it does no
         (
             "[serve.proxy]\ntrusted = \"10.0.0.1\"",
             "[serve.proxy] trusted must be a list of strings"
+        ),
+        (
+            "grpah_enabled = false\n[serve.limits]\nmax_connections = true",
+            "did you mean 'graph_enabled'?\n[serve.limits] max_connections must be an integer"
         )
     ] {
         try {

@@ -409,10 +409,12 @@ obj JacConfig {
 
 def _parse_toml_data(data: dict[str, any], toml_path: Path | None = None) -> JacConfig;
 
-def table_value(current: any, raw: any, label: str) -> any;
-
 def apply_table(
     target: object, table: dict[str, any], section: str, moved: dict[str, str]
+) -> None;
+
+def _fill_table(
+    target: object, table: dict[str, any], rules: dict[str, TableRule]
 ) -> None;
 
 def _apply_serve_table(serve: ServeConfig, raw: any, section: str) -> None;

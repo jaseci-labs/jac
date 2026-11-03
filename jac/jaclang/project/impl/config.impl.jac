@@ -302,7 +302,11 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
             try {
                 _apply_serve_table(self.serve, data[section], "serve");
             } except ServeConfigError as e {
-                raise ServeConfigError(f"{toml_path.name}: {e}") from e;
+                raise ServeConfigError(
+                    "\n".join(
+                        f"{toml_path.name}: {line}" for line in str(e).splitlines()
+                    )
+                ) from e;
             }
         } elif section in data {
             data_section: dict[str, any] = data[section];
@@ -1324,63 +1328,36 @@ impl _deep_merge(base: dict[str, any], `override: dict[str, any]) -> dict[str, a
     return result;
 }
 
-impl table_value(current: any, raw: any, label: str) -> any {
-    if isinstance(current, bool) {
-        if not isinstance(raw, bool) {
-            raise ServeConfigError(f"{label} must be true or false, got {raw!r}");
-        }
-        return raw;
-    }
-    if isinstance(current, int) {
-        if isinstance(raw, bool) or not isinstance(raw, int) {
-            raise ServeConfigError(f"{label} must be an integer, got {raw!r}");
-        }
-        return raw;
-    }
-    if isinstance(current, float) {
-        if isinstance(raw, bool) or not isinstance(raw, (int, float)) {
-            raise ServeConfigError(f"{label} must be a number, got {raw!r}");
-        }
-        return float(raw);
-    }
-    if isinstance(current, list) {
-        if not isinstance(raw, list)
-            or not all(isinstance(item, str) for item in raw) {
-            raise ServeConfigError(f"{label} must be a list of strings, got {raw!r}");
-        }
-        return list(raw);
-    }
-    if not isinstance(raw, str) {
-        raise ServeConfigError(f"{label} must be a string, got {raw!r}");
-    }
-    return raw;
-}
-
 impl apply_table(
     target: object, table: dict[str, any], section: str, moved: dict[str, str]
 ) -> None {
-    names = [f.name for f in fields(target)];
-    for key in table {
-        if key in names {
-            continue;
-        }
-        if key in moved {
-            raise ServeConfigError(f"[{section}] {key} has moved to {moved[key]}");
-        }
-        raise ServeConfigError(
-            f"[{section}] has no key {key!r}; its keys are {', '.join(names)}"
-        );
+    if not table {
+        return;
     }
+    rules = rules_from_record(target);
+    problems = check_table(table, rules, section, moved);
+    if problems {
+        raise ServeConfigError("\n".join(problem.describe() for problem in problems));
+    }
+    _fill_table(target, table, rules);
+}
+
+impl _fill_table(
+    target: object, table: dict[str, any], rules: dict[str, TableRule]
+) -> None {
     for (name, raw) in table.items() {
+        rule = rules[name];
         current = getattr(target, name);
-        if not (is_record(current) or isinstance(current, dict)) {
-            setattr(target, name, table_value(current, raw, f"[{section}] {name}"));
-        } elif not isinstance(raw, dict) {
-            raise ServeConfigError(f"[{section}.{name}] must be a table");
-        } elif is_record(current) {
-            apply_table(current, raw, f"{section}.{name}", {});
-        } else {
+        if rule.kind == "table" and is_record(current) {
+            _fill_table(current, raw, rule.keys or {});
+        } elif rule.kind == "dict" and isinstance(current, dict) {
             setattr(target, name, _deep_merge(current, raw));
+        } elif rule.kind == "float" and raw is not None {
+            setattr(target, name, float(raw));
+        } elif rule.kind == "list" and raw is not None {
+            setattr(target, name, list(raw));
+        } else {
+            setattr(target, name, raw);
         }
     }
 }
