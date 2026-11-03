@@ -1069,6 +1069,8 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
         value = self.lower_call(nd);
     } elif isinstance(nd, uni.ConcurrentExpr) {
         value = self.lower_concurrent(nd);
+    } elif isinstance(nd, uni.AwaitExpr) {
+        value = self.coerce(self.lower_expr(nd.target), self.expr_type(nd), nd);
     } elif isinstance(nd, uni.AtomTrailer) {
         value = self.lower_trailer(nd);
     } elif isinstance(nd, uni.EdgeRefTrailer) {
