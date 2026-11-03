@@ -738,7 +738,10 @@ obj MirLowering {
         arch: uni.Archetype
     ) -> list[tuple[str, MirType, (uni.Expr | None)]];
 
-    def object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue;
+    def object_call(
+        nd: uni.FuncCall, arch: uni.Archetype, leading: int = 0
+    ) -> MirValue;
+
     def construct(
         symbol: str,
         obj_def: MirObjectDef,
@@ -781,7 +784,8 @@ obj MirLowering {
     def ctor_arguments(
         nd: uni.FuncCall,
         label: str,
-        params: list[tuple[str, MirType, (uni.Expr | None)]]
+        params: list[tuple[str, MirType, (uni.Expr | None)]],
+        leading: int = 0
     ) -> list[MirValue];
 
     def class_value_call(nd: uni.FuncCall, bound: uni.Archetype) -> MirValue;

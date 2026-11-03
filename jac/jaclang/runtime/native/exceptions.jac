@@ -56,3 +56,9 @@ def:pub __jac_rt_exc_class_of(held: int, fallback: int) -> int;
 def _write_text(text: ptr[u8]);
 
 def _report_uncaught(message: ptr[u8]);
+
+def:pub __jac_rt_gen_close_failed(
+    state: ptr[JacRtExcState], exit_id: int, stop_id: int
+);
+
+def:pub __jac_rt_gen_ignored_exit;

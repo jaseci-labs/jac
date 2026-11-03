@@ -1,5 +1,9 @@
 glob GEN_FRAME_HEADER: int = 40,
-     GEN_DONE: int = -1;
+     GEN_DONE: int = -1,
+     GEN_PENDING_TYPE: int = 8,
+     GEN_PENDING_MESSAGE: int = 16,
+     GEN_PENDING_ORIGIN: int = 24,
+     GEN_OUT_CELL: int = 32;
 
 class MirGenError(Exception) {}
 
@@ -21,6 +25,9 @@ obj MirGenState {
     def spill_live_values(frame: MirValue);
     def dispatch(prologue: list[MirInstr], frame: MirValue, first: MirBlock);
     def drop_function -> MirFunction;
+    def close_on_drop(
+        made: MirFunction, opening: MirBlock, frame: MirValue
+    ) -> MirBlock;
 }
 
 def mir_lower_generators(mir: MirModule);
