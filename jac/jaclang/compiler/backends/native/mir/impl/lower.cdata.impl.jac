@@ -341,6 +341,9 @@ impl MirLowering.c_function_symbol(expr: uni.Expr, from_c: bool = True) -> str {
         expr = expr.value;
     }
     target = named_function_of(expr);
+    if isinstance(target, uni.Ability) {
+        target = self.live_member(target);
+    }
     if not isinstance(target, uni.Ability) or not isinstance(expr, uni.Name) {
         raise MirRefused(self.c_const_refusal(expr));
     }

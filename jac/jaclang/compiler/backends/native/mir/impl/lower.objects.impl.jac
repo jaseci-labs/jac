@@ -40,6 +40,25 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
         self.adopt_imported_layouts(owner);
     }
     layout = get_layout_registry(owner, self.prog).get_layout(name);
+    home = arch.loc.mod_path if arch.loc is not None else "";
+    if layout is None
+        and home.endswith(".jac")
+        and os.path.realpath(home) != os.path.realpath(self.module.loc.mod_path) {
+        current = self.live_unit(home);
+        if current is not None and current is not owner {
+            for elem in current.body {
+                if isinstance(elem, uni.Archetype)
+                    and archetype_native_name(elem) == name {
+                    layout = get_layout_registry(current, self.prog).get_layout(name);
+                    if layout is not None {
+                        arch = elem;
+                        owner = current;
+                    }
+                    break;
+                }
+            }
+        }
+    }
     if layout is None {
         raise MirRefused(
             mir_refusal("archetype", name, arch, "The archetype has no native layout.")
@@ -301,6 +320,51 @@ impl MirLowering.slot_adapter(decl: MirDecl, base: MirDecl) -> (MirFunction | No
     return fn;
 }
 
+impl MirLowering.live_unit(path: str) -> (uni.Module | None) {
+    return self.prog.mod.hub.get(path)
+        or self.prog.mod.hub.get(os.path.realpath(path))
+        or self.prog.load_dependency_module(
+            os.path.realpath(path),
+            importer_path=self.module.loc.mod_path,
+            need_tree=True
+        );
+}
+
+impl MirLowering.live_member(nd: uni.Ability) -> uni.Ability {
+    if nd.parent is not None
+        or nd.loc is None
+        or not nd.loc.mod_path.endswith(".jac") {
+        return nd;
+    }
+    unit = self.live_unit(nd.loc.mod_path);
+    found = self.module_member(unit, self.name_of(nd)) if unit is not None else None;
+    return found if isinstance(found, uni.Ability) else nd;
+}
+
+impl MirLowering.owner_archetype(nd: uni.UniNode) -> (uni.Archetype | None) {
+    cursor = nd.parent;
+    while cursor is not None {
+        if isinstance(cursor, uni.Archetype) {
+            return cursor;
+        }
+        if isinstance(cursor, uni.ImplDef) {
+            linked = cursor.decl_link;
+            if isinstance(linked, uni.Archetype) {
+                return linked;
+            }
+            if isinstance(linked, uni.Ability) {
+                return self.owner_archetype(linked);
+            }
+            return None;
+        }
+        if isinstance(cursor, uni.Module) {
+            return None;
+        }
+        cursor = cursor.parent;
+    }
+    return None;
+}
+
 impl MirLowering.declared_field_type(decl: (uni.UniNode | None)) -> (TypeBase | None) {
     if not isinstance(decl, uni.HasVar) or decl.name.sym is None {
         return None;
@@ -376,9 +440,7 @@ impl MirLowering.method_symbol(arch: uni.Archetype, name: str) -> str {
 }
 
 impl MirLowering.foreign_method_decl(method: uni.Ability) -> (MirDecl | None) {
-    owner = method.parent
-        if isinstance(method.parent, uni.Archetype)
-        else method.find_parent_of_type(uni.Archetype);
+    owner = self.owner_archetype(method);
     unit = method.find_parent_of_type(uni.Module);
     sig = method.signature;
     if owner is None
@@ -421,9 +483,7 @@ impl MirLowering.foreign_method_decl(method: uni.Ability) -> (MirDecl | None) {
 }
 
 impl MirLowering.foreign_static_decl(method: uni.Ability) -> (MirDecl | None) {
-    owner = method.parent
-        if isinstance(method.parent, uni.Archetype)
-        else method.find_parent_of_type(uni.Archetype);
+    owner = self.owner_archetype(method);
     unit = method.find_parent_of_type(uni.Module);
     sig = method.signature;
     if owner is None
@@ -458,7 +518,7 @@ impl MirLowering.foreign_static_decl(method: uni.Ability) -> (MirDecl | None) {
 impl MirLowering.foreign_accessor_decl(
     var: uni.HasVar, acc: uni.Ability
 ) -> (MirDecl | None) {
-    owner = var.find_parent_of_type(uni.Archetype);
+    owner = self.owner_archetype(var);
     unit = owner.find_parent_of_type(uni.Module) if owner is not None else None;
     if owner is None
         or unit is None
@@ -2522,7 +2582,7 @@ impl MirLowering.nearest_has_var(
 impl MirLowering.default_thunk(expr: uni.Expr) -> (tuple[str, str, MirType] | None) {
     holder = expr.parent;
     if isinstance(holder, uni.HasVar) and holder.name is not None {
-        arch = holder.find_parent_of_type(uni.Archetype);
+        arch = self.owner_archetype(holder);
         if arch is None {
             return None;
         }
@@ -2538,7 +2598,7 @@ impl MirLowering.default_thunk(expr: uni.Expr) -> (tuple[str, str, MirType] | No
     }
     if isinstance(holder, uni.ParamVar) {
         ability = holder.find_parent_of_type(uni.Ability);
-        arch = holder.find_parent_of_type(uni.Archetype);
+        arch = self.owner_archetype(ability) if ability is not None else None;
         if ability is None {
             return None;
         }
@@ -2724,7 +2784,7 @@ impl MirLowering.member_owner(member: uni.Name) -> (uni.Archetype | None) {
     if sym is None or sym.decl is None {
         return None;
     }
-    return sym.decl.find_parent_of_type(uni.Archetype);
+    return self.owner_archetype(sym.decl);
 }
 
 impl MirLowering.union_method_owner(
@@ -2734,7 +2794,7 @@ impl MirLowering.union_method_owner(
     if not isinstance(callee, uni.Ability) or callee.is_static {
         return None;
     }
-    owner = callee.find_parent_of_type(uni.Archetype);
+    owner = self.owner_archetype(callee);
     seen = receiver.narrowed_type
         if receiver.narrowed_type is not None
         else receiver.type;

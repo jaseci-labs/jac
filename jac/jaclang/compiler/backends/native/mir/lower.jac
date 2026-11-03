@@ -729,6 +729,9 @@ obj MirLowering {
     def find_method(arch: uni.Archetype, name: str) -> (uni.Ability | None);
     def method_symbol(arch: uni.Archetype, name: str) -> str;
     def foreign_method_decl(method: uni.Ability) -> (MirDecl | None);
+    def owner_archetype(nd: uni.UniNode) -> (uni.Archetype | None);
+    def live_unit(path: str) -> (uni.Module | None);
+    def live_member(nd: uni.Ability) -> uni.Ability;
     def foreign_static_decl(method: uni.Ability) -> (MirDecl | None);
     def method_decl_of(method: uni.Ability) -> (MirDecl | None);
     def holder_arch(expr: uni.Expr) -> (uni.Archetype | None);

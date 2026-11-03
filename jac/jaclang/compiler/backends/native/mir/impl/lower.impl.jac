@@ -2180,7 +2180,7 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         return value if value.type is wanted else self.coerce(value, wanted, nd);
     }
     if isinstance(callee, uni.Ability) and self.template_of(callee) {
-        owner = callee.find_parent_of_type(uni.Archetype);
+        owner = self.owner_archetype(callee);
         if owner is not None
             and not callee.is_static
             and isinstance(nd.target, uni.AtomTrailer)
@@ -2197,7 +2197,7 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         return self.intrinsic_call(nd, nd.target.value);
     }
     if isinstance(callee, uni.Ability) {
-        callee = self.variant_ability(callee);
+        callee = self.variant_ability(self.live_member(callee));
     }
     if isinstance(callee, uni.Ability) and clib_import_of(callee) is not None {
         return self.c_call(nd, callee);
