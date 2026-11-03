@@ -1604,6 +1604,25 @@ test "imported_overloaded_function_call_resolves" {
     );
 }
 
+"""A star import binds a name to the last overload while its type comes from the
+first, so every overload must still be offered, in the order it was declared."""
+test "overloads_survive_a_star_import" {
+    for name in [
+        "through_stub",
+        "through_guarded_stub",
+        "through_include",
+        "direct_include"
+    ] {
+        path = os.path.join(CHECKER_FIXTURES, "overload_star_import", f"{name}.jac");
+        program = JacProgram();
+        program.compile(path);
+        assert program.errors_had == [] , (
+            f"{name}: expected no errors, got: "
+            + str([e.pretty_print() for e in program.errors_had])
+        );
+    }
+}
+
 test "dunder_new_direct_call" {
     path = os.path.join(CHECKER_FIXTURES, "checker_dunder_new_direct.jac");
     program = JacProgram();

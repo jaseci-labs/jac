@@ -223,6 +223,7 @@ impl RcFactsPass._stamp_region_handles(ir_in: Module) -> None {
 
 impl RcFactsPass._stamp_last_use(ir_in: Module) -> None {
     out: dict[int, list[str]] = {};
+    self._last_use_pinned = self._borrow_roots(ir_in);
     for ab in ir_in.get_all_sub_nodes(Ability) {
         stmts = ModuleFacts.unwrap_body(ab);
         if isinstance(ab.signature, FuncSignature) and stmts is not None {
@@ -241,13 +242,21 @@ impl RcFactsPass._collect_last_use(
     owner: UniNode, body: Sequence[UniNode], out: dict[int, list[str]]
 ) -> None {
     sym_last: dict[int, tuple[int, str]] = {};
+    lent: dict[int, bool] = {};
     for (idx, stmt) in enumerate(body) {
         for nm in stmt.get_all_sub_nodes(Name) {
             sym = nm.sym;
             if sym is None
                 or sym.na_escapes
                 or (nm.sym_name == "self" and sym.ownership != OwnershipKind.OWN)
-                or not self._last_use_tracked(sym) {
+                or not self._last_use_tracked(sym)
+                or id(sym) in self._last_use_pinned {
+                continue;
+            }
+            if id(sym) not in lent {
+                lent[id(sym)] = self._lent_to_c(sym);
+            }
+            if lent[id(sym)] {
                 continue;
             }
             if self._enclosing_fn_scope(nm) is not owner {
@@ -273,6 +282,61 @@ impl RcFactsPass._collect_last_use(
             out[key].append(_name);
         }
     }
+}
+
+impl RcFactsPass._borrow_roots(ir_in: Module) -> set[int] {
+    roots: set[int] = set();
+    binds = ir_in.managed_borrow_binds;
+    if not binds {
+        return roots;
+    }
+    for nd in ir_in.get_all_sub_nodes(Assignment) {
+        if id(nd) in binds and nd.value is not None {
+            self._add_borrow_root(nd.value, roots);
+        }
+    }
+    for st in ir_in.get_all_sub_nodes(InForStmt) {
+        if id(st) in binds {
+            self._add_borrow_root(st.collection, roots);
+        }
+    }
+    return roots;
+}
+
+impl RcFactsPass._add_borrow_root(e: Expr, roots: set[int]) -> None {
+    cur: Expr = e;
+    while isinstance(cur, AtomTrailer) {
+        cur = cur.target;
+    }
+    if isinstance(cur, Name) and cur.sym is not None {
+        roots.add(id(cur.sym));
+    }
+}
+
+impl RcFactsPass._lent_to_c(sym: Symbol) -> bool {
+    for u in sym.uses {
+        p = u.parent;
+        if not isinstance(p, UnaryExpr) or not is_borrow_kind(p.ownership) {
+            continue;
+        }
+        call = p.find_parent_of_type(FuncCall);
+        if call is None {
+            continue;
+        }
+        callee = call.callee_decl;
+        if callee is None {
+            return True;
+        }
+        owner = self._c_import_of(callee);
+        if owner is not None and owner.has_clib_decls {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl RcFactsPass._c_import_of(decl: UniNode) -> (Import | None) {
+    return decl.find_parent_of_type(Import);
 }
 
 impl RcFactsPass._last_use_tracked(sym: Symbol) -> bool {

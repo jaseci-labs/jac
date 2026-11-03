@@ -781,7 +781,7 @@ impl KernelHost.host_platform -> HostPlatform {
 
 impl KernelHost.read_source(path: str) -> str {
     self.census.count("read_source");
-    text = read_utf8_source(path);
+    text = read_utf8_source(path, self.source_reads);
     if text is not None {
         return text;
     }
@@ -838,6 +838,23 @@ impl KernelHost.keep_wiring_records(digest: str, text: str) {
     self.census.count("keep_wiring_records");
     if self.fallback is not None {
         self.fallback.keep_wiring_records(digest, text);
+    }
+}
+
+impl KernelHost.native_scan_record(path: str, digest: str) -> str {
+    if self.kernel_only("native_scan_record") {
+        return "";
+    }
+    with self.delegating("native_scan_record") as host {
+        answer = host.native_scan_record(path, digest);
+    }
+    return answer;
+}
+
+impl KernelHost.keep_native_scan_record(path: str, digest: str, text: str) {
+    self.census.count("keep_native_scan_record");
+    if self.fallback is not None {
+        self.fallback.keep_native_scan_record(path, digest, text);
     }
 }
 
@@ -1350,9 +1367,16 @@ impl KernelHost.default_target_triple -> str {
     return answer;
 }
 
-impl read_utf8_source(path: str) -> (str | None) {
+impl read_utf8_source(
+    path: str, reads: (dict[str, str] | None) = None
+) -> (str | None) {
     with open(path, "rb") as f {
         data = f.read();
+    }
+    if reads is not None {
+        real = os.path.realpath(path);
+        digest = hashlib.sha256(data).hexdigest();
+        reads[real] = digest if reads.get(real, digest) == digest else "";
     }
     if data.startswith(b"\xef\xbb\xbf") {
         data = data[3:];

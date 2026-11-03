@@ -527,6 +527,7 @@ The KEDA engine above scales on CPU, memory, or any KEDA trigger, but none of th
 | `max_replicas` | `1` | Replica ceiling once activated. |
 | `polling_interval` | `30` | Seconds between HTTP metric evaluations. |
 | `cooldown_period` | `300` | Seconds of inactivity before scaling back to `min_replicas`. |
+| `initial_cooldown_period` | `0` | Seconds after the ScaledObject is created before the target may scale to `min_replicas`. A new target has served no request yet, so with `0` KEDA scales it down at once. |
 | `target_port` / `target_port_name` | `null` | Container port on the app's Service. Set exactly one. |
 | `concurrency_target` | `null` | In-flight-request concurrency target. Set this or `request_rate_target`. |
 | `request_rate_target` | `null` | Requests-per-window target, as an alternative to `concurrency_target`. |

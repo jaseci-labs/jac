@@ -16,7 +16,7 @@ class ViteCompiler {
         vite_output_dir: (Path | None) = None,
         vite_minify: bool = False,
         runtime_path: (Path | None) = None,
-        compile_to_js_func: Callable[[Path], ClientArtifact],
+        compile_to_js_func: Callable[[Path, Path | None], ClientArtifact],
         extract_exports_func: Callable[[ClientManifest | None], list[str]],
         extract_globals_func:
             Callable[[ClientManifest | None, ModuleType | None], dict[str, any]],
