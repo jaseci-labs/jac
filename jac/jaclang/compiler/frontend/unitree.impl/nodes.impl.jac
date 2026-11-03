@@ -3775,6 +3775,9 @@ impl _ability_of_defn(defn_node: UniNode) -> (Ability | None) {
     if isinstance(defn_node.parent, Ability) {
         return defn_node.parent;
     }
+    if isinstance(defn_node, NameAtom) and isinstance(defn_node.name_of, Ability) {
+        return defn_node.name_of;
+    }
     return None;
 }
 
