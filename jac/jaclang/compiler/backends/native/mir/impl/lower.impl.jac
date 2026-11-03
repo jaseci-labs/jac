@@ -580,7 +580,7 @@ impl MirLowering.lower_stmt(nd: uni.UniNode) {
     if isinstance(nd, uni.ExprStmt) and isinstance(nd.expr, uni.YieldExpr) {
         self.lower_yield(nd.expr);
     } elif isinstance(nd, uni.ExprStmt) {
-        self.lower_expr(nd.expr);
+        self.lower_discarded(nd.expr);
     } elif isinstance(nd, uni.MatchStmt) {
         self.lower_match(nd);
     } elif isinstance(nd, uni.SwitchStmt) {
@@ -4803,4 +4803,37 @@ impl MirLowering.missing_import(nd: uni.Name) -> (str | None) {
         return None;
     }
     return source.dot_path_str;
+}
+
+"""Lower an expression whose value is dropped, for its effects only.
+
+A discarded conditional runs one branch; its value is never formed, so the
+branches need not share a representation.
+"""
+impl MirLowering.lower_discarded(nd: uni.Expr) {
+    inner: uni.UniNode = nd;
+    while isinstance(inner, uni.AtomUnit) and isinstance(inner.value, uni.Expr) {
+        inner = inner.value;
+    }
+    if not isinstance(inner, uni.IfElseExpr) {
+        self.lower_expr(nd);
+        return;
+    }
+    b = self.builder();
+    fn = self.st().fn;
+    then = fn.new_block("discard.then");
+    otherwise = fn.new_block("discard.else");
+    done = fn.new_block("discard.done");
+    b.cond_branch(self.condition(inner.condition), then, otherwise);
+    b.position(then);
+    self.lower_discarded(inner.value);
+    if not self.builder().block.terminated() {
+        self.builder().branch(done);
+    }
+    self.builder().position(otherwise);
+    self.lower_discarded(inner.else_value);
+    if not self.builder().block.terminated() {
+        self.builder().branch(done);
+    }
+    self.builder().position(done);
 }

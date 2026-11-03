@@ -567,6 +567,7 @@ obj MirLowering {
         op: str, left: MirValue, right: MirValue, site: uni.UniNode
     ) -> (MirValue | None);
 
+    def lower_discarded(nd: uni.Expr);
     def condition(nd: uni.Expr) -> MirValue;
     def c_return_plan(
         sig: uni.FuncSignature, fallback: (TypeBase | None), site: uni.UniNode
