@@ -11,7 +11,8 @@ catchable error, as CPython does.
 """
 
 import from pathlib { Path }
-import from tests.support { assert_native_identity }
+import ctypes;
+import from tests.support { assert_native_identity, compile_native, get_func }
 
 glob FIXTURES: Path = Path(__file__).resolve().parent / "fixtures",
      FIXTURE: str = "unbound_locals.jac",
@@ -50,4 +51,13 @@ glob FIXTURES: Path = Path(__file__).resolve().parent / "fixtures",
 test "a local read before its assignment raises UnboundLocalError natively" {
     out = assert_native_identity(str(FIXTURES / FIXTURE), profiles=["rc", "managed"]);
     assert out.splitlines() == EXPECTED , out;
+}
+
+test "the UnboundLocalError check lowers inside a try body" {
+    # The check names the local in a C string; its instruction carries the
+    # string's type, or the emitter refuses the module (JacPython's parser).
+    (engine, _) = compile_native("unbound_local_read.jac");
+    maybe = get_func(engine, "maybe", ctypes.c_int64, ctypes.c_bool);
+    assert maybe(True) == 5;
+    assert maybe(False) == -1;
 }

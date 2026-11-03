@@ -5534,6 +5534,7 @@ impl MirLowering.guard_unbound(fn: MirFunction) {
                     MirInstr(
                         op=MirOp.CSTR,
                         result=text,
+                        type_arg=i8p,
                         str_value=f"cannot access local variable '{named[
                             slot_id
                         ]}' where it is not associated with a value"
