@@ -923,7 +923,6 @@ obj MirLowering {
 
     def class_of(value: MirValue, site: uni.UniNode) -> MirValue;
     def class_isinstance(value: MirValue, kind: MirValue) -> MirValue;
-    def class_list_isinstance(value: MirValue, kinds: MirValue) -> MirValue;
     def lower_module_init -> (MirFunction | None);
     def lower_module_entry -> (MirFunction | None);
     def none_value -> MirValue;

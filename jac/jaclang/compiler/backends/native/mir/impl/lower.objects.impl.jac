@@ -2409,39 +2409,6 @@ impl MirLowering.class_value(arch: uni.Archetype) -> MirValue {
     );
 }
 
-impl MirLowering.class_list_isinstance(value: MirValue, kinds: MirValue) -> MirValue {
-    b = self.builder();
-    fn = self.st().fn;
-    held = self.spill(kinds);
-    probe = self.spill(value);
-    cursor = self.temp_slot(mir_int());
-    found = self.temp_slot(mir_bool());
-    b.store(cursor, b.const_int(0, mir_int()));
-    b.store(found, b.const_bool(False));
-    head = fn.new_block("isa.head");
-    body = fn.new_block("isa.body");
-    hit = fn.new_block("isa.hit");
-    step = fn.new_block("isa.step");
-    done = fn.new_block("isa.done");
-    b.branch(head);
-    b.position(head);
-    at = b.load(cursor, mir_int());
-    b.cond_branch(b.compare("lt", at, self.container_len(held)), body, done);
-    b.position(body);
-    kind = self.spill(self.list_read(held, b.load(cursor, mir_int())));
-    b.cond_branch(self.class_isinstance(probe, kind), hit, step);
-    b.position(hit);
-    b.store(found, b.const_bool(True));
-    b.branch(done);
-    b.position(step);
-    b.store(
-        cursor, b.binary("add", b.load(cursor, mir_int()), b.const_int(1, mir_int()))
-    );
-    b.branch(head);
-    b.position(done);
-    return b.load(found, mir_bool());
-}
-
 impl MirLowering.class_isinstance(value: MirValue, kind: MirValue) -> MirValue {
     b = self.builder();
     i8p = mir_c_ptr(mir_int(8, False));
