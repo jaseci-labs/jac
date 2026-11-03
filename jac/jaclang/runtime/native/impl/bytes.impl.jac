@@ -1061,3 +1061,14 @@ impl __jac_rt_exc_message(data: ptr[u8], n: int) -> ptr[u8] {
     __mem_store_i64(ring + 128, at + 1);
     return ptr[u8](made);
 }
+
+impl __jac_rt_byte_single(value: int) -> int {
+    if value < 0 or value > 255 {
+        raise ValueError("byte must be in range(0, 256)");
+    }
+    made = __jac_rt_alloc(1 + BYTES_DATA);
+    __jac_rt_set_type(made, int(ptr[u8]("bytes")));
+    __mem_store_i64(made + BYTES_LEN, 1);
+    __mem_store_i8(made + BYTES_DATA, i8.wrap(value));
+    return made;
+}
