@@ -4316,6 +4316,10 @@ impl MirLowering.method_call(
             self.spill(self.lower_expr(target.target)), right.value, nd
         );
     }
+    template = self.literal_text(target.target) if right.value == "format" else None;
+    if receiver_type.kind in (MirKind.STR, MirKind.STR_REF) and template is not None {
+        return self.str_format(template, nd);
+    }
     if receiver_type.kind
         in (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY) {
         return self.text_method(self.lower_expr(target.target), right.value, nd);

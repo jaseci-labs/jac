@@ -1193,6 +1193,7 @@ obj MirLowering {
     def container_repr_body(param: MirValue, site: uni.UniNode);
     def object_repr_body(param: MirValue, site: uni.UniNode);
     def fstring_value(nd: uni.FString) -> MirValue;
+    def str_format(template: str, nd: uni.FuncCall) -> MirValue;
     def format_value(
         value: MirValue, spec: (MirValue | None), site: uni.UniNode
     ) -> MirValue;
