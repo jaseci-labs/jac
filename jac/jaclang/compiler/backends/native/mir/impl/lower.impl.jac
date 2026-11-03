@@ -5165,7 +5165,13 @@ impl MirLowering.null_ok_subclass_attr(nd: uni.AtomTrailer) -> (MirValue | None)
     fn = self.st().fn;
     result_type = self.expr_type(nd);
     if result_type.kind == MirKind.NONE {
-        kinds = [self.object_def(sub).field(name).type for sub in carriers];
+        kinds: list[MirType] = [];
+        for sub in carriers {
+            member = self.object_def(sub).field(name);
+            if member is not None {
+                kinds.append(member.type);
+            }
+        }
         result_type = mir_any();
         if all(kind is kinds[0] for kind in kinds) {
             result_type = kinds[0]
