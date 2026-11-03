@@ -66,6 +66,11 @@ impl MirLowering.lower -> MirModule {
         obj_def = self.object_def(arch);
         self.mir.functions.append(self.lower_drop(obj_def, arch));
         self.mir.functions.append(self.lower_trace(obj_def));
+        thunk = self.lower_text_thunk(obj_def, arch);
+        if thunk is not None {
+            self.mir.functions.append(thunk);
+            self.text_pairs.append((obj_def.drop_symbol, thunk.symbol));
+        }
     }
     self.current = "with entry";
     self.lower_osp_module();
@@ -195,6 +200,9 @@ impl MirLowering.settle {
                 continue;
             }
             for callee in self.callees_of(fn) {
+                if callee in self.text_regs {
+                    continue;
+                }
                 if callee in self.mir.demoted and callee not in self.mir.bridged {
                     self.mir.demoted[fn.symbol] = f"calls {callee}, which is not native";
                     self.bridge_symbol(fn.symbol);
@@ -204,10 +212,24 @@ impl MirLowering.settle {
             }
         }
     }
+    dropped: set[str] = set();
+    for (thunk, (block, instrs)) in self.text_regs.items() {
+        if thunk in self.mir.demoted {
+            self.mir.demoted.pop(thunk);
+            dropped.add(thunk);
+            gone = {id(instr) for instr in instrs};
+            block.instrs = [
+                instr
+                for instr in block.instrs
+                if id(instr) not in gone
+            ];
+        }
+    }
     self.mir.functions = [
         fn
         for fn in self.mir.functions
-        if fn.symbol not in self.mir.demoted or fn.symbol in self.mir.bridged
+        if (fn.symbol not in self.mir.demoted or fn.symbol in self.mir.bridged)
+            and fn.symbol not in dropped
     ];
 }
 
@@ -1292,6 +1314,9 @@ impl MirLowering.compare_values(
     name = COMPARE_OPERATORS.get(op);
     if name is None {
         raise MirRefused(mir_refusal("comparison", op, site));
+    }
+    if MirKind.ANY in (left.type.kind, right.type.kind) {
+        return self.any_compare(name, left, right, site);
     }
     if name in ("eq", "ne") and MirKind.OPT in (left.type.kind, right.type.kind) {
         same = self.optional_eq(left, right, site);

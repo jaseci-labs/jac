@@ -1,5 +1,7 @@
 import from c {
-    def strlen(p: ptr[u8]) -> i64;  def strcmp(a: ptr[u8], b: ptr[u8]) -> i32;
+    def strlen(p: ptr[u8]) -> i64;  def strcmp(a: ptr[u8], b: ptr[u8]) -> i32;  def malloc(
+        n: int
+    ) -> int;  def calloc(n: int, size: int) -> int;  def free(p: int) -> None;
 }
 
 glob ANY_TAG_INT: int = 0,
@@ -50,3 +52,119 @@ def:pub __jac_rt_class_name(text: ptr[u8]) -> ptr[u8];
 def _holds_ref(tag: int) -> bool;
 
 def _box_drop(box: ptr[u8]);
+
+glob KIND_INT: int = 0,
+     KIND_FLOAT: int = 1,
+     KIND_BOOL: int = 2,
+     KIND_STR: int = 3,
+     KIND_REF: int = 4,
+     KIND_TUPLE: int = 5,
+     KIND_ANY: int = 6,
+     KIND_UINT: int = 7,
+     LIST_DATA: int = 16,
+     LIST_KIND: int = 24,
+     DICT_KEY_KIND: int = 56,
+     DICT_VAL_KIND: int = 64,
+     TUPLE_KINDS: int = 8,
+     BYTES_DATA: int = 8,
+     BYTEARRAY_DATA: int = 16,
+     SLOT: int = 8,
+     WALK_COLL: int = 0,
+     WALK_INDEX: int = 8,
+     WALK_MODE: int = 16,
+     WALK_SIZE: int = 24,
+     WALK_LIST: int = 0,
+     WALK_KEYS: int = 1,
+     WALK_TUPLE: int = 2,
+     WALK_STR: int = 3,
+     WALK_BYTES: int = 4,
+     WALK_BYTEARRAY: int = 5,
+     ORDER_LT: int = 0,
+     ORDER_LE: int = 1,
+     ORDER_GT: int = 2,
+     ORDER_GE: int = 3,
+     TEXT_STR: int = 0,
+     TEXT_REPR: int = 1,
+     THUNK_OBJECT: int = 0,
+     THUNK_MODE: int = 8,
+     THUNK_RESULT: int = 16,
+     THUNK_FRAME: int = 24,
+     TEXT_REG_INITIAL: int = 64;
+
+def:pub __jac_rt_elem_tag(bits: int, kind: int) -> int;
+
+def:pub __jac_rt_elem_payload(bits: int, kind: int) -> int;
+
+def:pub __jac_rt_elem_box(bits: int, kind: int) -> int;
+
+def:pub __jac_rt_any_iter(tag: int, payload: int) -> int;
+
+def:pub __jac_rt_any_repr(tag: int, payload: int) -> ptr[u8];
+
+def:pub __jac_rt_any_equal(ta: int, pa: int, tb: int, pb: int) -> bool;
+
+def:pub __jac_rt_any_order(ta: int, pa: int, tb: int, pb: int, op: int) -> bool;
+
+def:pub __jac_rt_any_contains(
+    tag: int, payload: int, itag: int, ipayload: int
+) -> bool;
+
+def:pub __jac_rt_text_register(dtor: int, thunk: int);
+
+def _ref_tag(o: int) -> int;
+
+def _type_is(o: int, name: ptr[u8]) -> bool;
+
+def _is_tuple(tag: int, payload: int) -> bool;
+
+def _is_number(tag: int) -> bool;
+
+def _as_float(tag: int, payload: int) -> float;
+
+def _seq_bits(p: int, i: int, is_tup: bool) -> int;
+
+def _seq_kind(p: int, i: int, is_tup: bool) -> int;
+
+def _walk_mode(tag: int, payload: int) -> int;
+
+def _not_iterable(tag: int, payload: int) -> ptr[u8];
+
+def _walk_next(state: ptr[u8], out: ptr[u8]) -> bool;
+
+def _walk_drop(state: ptr[u8]);
+
+def _sb_cstr(sb: int, text: ptr[u8]);
+
+def _sb_owned(sb: int, text: ptr[u8]);
+
+def _any_text(sb: int, tag: int, payload: int, mode: int);
+
+def _elem_text(sb: int, bits: int, kind: int);
+
+def _seq_text(sb: int, p: int, is_tup: bool);
+
+def _map_text(sb: int, d: int, with_values: bool);
+
+def _obj_text(sb: int, o: int, mode: int);
+
+def _text_find(dtor: int) -> int;
+
+def _text_put(keys: int, vals: int, mask: int, dtor: int, thunk: int);
+
+def _elem_equal(x: int, kx: int, y: int, ky: int) -> bool;
+
+def _seq_equal(a: int, at: bool, b: int, bt: bool) -> bool;
+
+def _map_find(d: int, tag: int, payload: int) -> int;
+
+def _map_equal(a: int, b: int, with_values: bool) -> bool;
+
+def _buffer_data(o: int) -> int;
+
+def _buffer_len(o: int) -> int;
+
+def _unordered(ta: int, pa: int, tb: int, pb: int, op: int);
+
+def _any_less(ta: int, pa: int, tb: int, pb: int, or_equal: bool, op: int) -> bool;
+
+def _seq_less(a: int, at: bool, b: int, bt: bool, or_equal: bool, op: int) -> bool;

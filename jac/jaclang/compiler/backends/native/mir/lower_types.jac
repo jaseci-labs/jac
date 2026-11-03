@@ -27,7 +27,8 @@ glob ITERATOR_CLASSES: list[str] = [
          MirKind.DICT,
          MirKind.SET,
          MirKind.OBJ,
-         MirKind.FN
+         MirKind.FN,
+         MirKind.TUPLE
      ];
 
 glob C_ABI_KINDS: list[MirKind] = [

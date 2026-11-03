@@ -89,7 +89,9 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
             self.ensure_c_types(field_type);
             slot_type = mir_any()
                 if self.erased_slot(field_type)
-                else mir_type_of(field_type, MirPosition.FIELD, member.decl_node or arch);
+                else mir_type_of(
+                    field_type, MirPosition.FIELD, member.decl_node or arch
+                );
             if slot_type.kind == MirKind.ENUM and isinstance(field_type, ClassType) {
                 self.enum_types.setdefault(slot_type.name, field_type);
             }
@@ -731,6 +733,73 @@ impl MirLowering.drop_hook(arch: uni.Archetype, raw: MirValue) {
     b.position(done_bb);
 }
 
+impl MirLowering.lower_text_thunk(
+    obj_def: MirObjectDef, arch: uni.Archetype
+) -> (MirFunction | None) {
+    i8p = mir_c_ptr(mir_int(8, False));
+    fn = MirFunction(
+        name=f"{obj_def.name}.__text",
+        symbol=native_symbol_name(
+            native_unit_prefix(self.module.loc.mod_path), f"{obj_def.name}.__text"
+        ),
+        ret=mir_none(),
+        linkage="internal"
+    );
+    first = fn.new_block("entry");
+    frame = fn.new_value(i8p, "frame");
+    fn.params.append(MirParam(name="frame", value=frame));
+    saved = self.state;
+    self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
+    try {
+        b = self.builder();
+        base = self.address_of(frame);
+        word = self.emit_value(MirOp.MEM_LOAD, mir_int(), [base]);
+        mode = self.emit_value(
+            MirOp.MEM_LOAD,
+            mir_int(),
+            [b.binary("add", base, b.const_int(TEXT_THUNK_MODE, mir_int()))]
+        );
+        this = b.ref_cast(
+            self.emit_value(MirOp.PTR_CAST, i8p, [word]), mir_obj(obj_def.name), False
+        );
+        repr_bb = fn.new_block("text.repr");
+        str_bb = fn.new_block("text.str");
+        done = fn.new_block("text.done");
+        b.cond_branch(
+            b.compare("ne", mode, b.const_int(0, mir_int())), repr_bb, str_bb
+        );
+        for (block, method) in ((repr_bb, "__repr__"), (str_bb, "__str__")) {
+            b.position(block);
+            text = self.object_text(this, method, arch);
+            held = self.runtime_value(
+                "__jac_rt_str_ref",
+                [
+                    b.str_part(text, "root"),
+                    b.str_part(text, "data"),
+                    b.str_part(text, "len")
+                ]
+            );
+            self.runtime("__jac_rt_retain", [held]);
+            self.emit_value(
+                MirOp.MEM_STORE,
+                mir_none(),
+                [
+                    b.binary("add", base, b.const_int(TEXT_THUNK_RESULT, mir_int())),
+                    self.address_of(held)
+                ]
+            );
+            b.branch(done);
+        }
+        b.position(done);
+        b.ret(None);
+    } except MirRefused as err {
+        self.state = saved;
+        return None;
+    }
+    self.state = saved;
+    return fn;
+}
+
 impl MirLowering.lower_trace(obj_def: MirObjectDef) -> MirFunction {
     i8p = mir_c_ptr(mir_int(8, False));
     visitor_type = mir_c_fn([i8p], mir_none());
@@ -1184,7 +1253,8 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
     if not self.trace_pairs
         and not self.deferred_globals
         and not self.osp_setup
-        and not self.class_entries {
+        and not self.class_entries
+        and not self.text_pairs {
         return None;
     }
     path = self.module.loc.mod_path;
@@ -1213,6 +1283,27 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
                     self.emit_value(MirOp.PTR_INT, mir_int(), [trace_fn])
                 ]
             );
+        }
+        for (drop_symbol, thunk_symbol) in self.text_pairs {
+            i8p = mir_c_ptr(mir_int(8, False));
+            block = b.block;
+            start = len(block.instrs);
+            words = [
+                self.emit_value(
+                    MirOp.PTR_INT,
+                    mir_int(),
+                    [
+                        self.emit_value(
+                            MirOp.FN_ADDR,
+                            mir_c_fn([i8p], mir_none()),
+                            [],
+                            callee=symbol
+                        )
+                    ]
+                ) for symbol in (drop_symbol, thunk_symbol)
+            ];
+            self.runtime("__jac_rt_text_register", words);
+            self.text_regs[thunk_symbol] = (block, list(block.instrs[start:]));
         }
         for (made_name, bound_name, adapter_symbol) in self.class_entries {
             i8p = mir_c_ptr(mir_int(8, False));

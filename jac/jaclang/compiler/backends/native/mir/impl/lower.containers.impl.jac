@@ -1228,6 +1228,9 @@ impl MirLowering.contains(
     item: MirValue, holder: MirValue, site: uni.UniNode
 ) -> MirValue {
     b = self.builder();
+    if holder.type.kind == MirKind.ANY {
+        return self.any_contains(item, holder, site);
+    }
     if holder.type.kind == MirKind.LIST {
         elem = holder.type.payload();
         found = self.runtime(
@@ -1274,9 +1277,14 @@ impl MirLowering.contains(
 impl MirLowering.container_eq(left: MirValue, right: MirValue) -> MirValue {
     b = self.builder();
     if left.type is not right.type {
-        raise MirRefused(
-            mir_refusal("comparison", f"{left.type.render()} == {right.type.render()}")
-        );
+        if not mir_is_container(right.type) {
+            raise MirRefused(
+                mir_refusal(
+                    "comparison", f"{left.type.render()} == {right.type.render()}"
+                )
+            );
+        }
+        return self.any_compare("eq", left, right, self.module);
     }
     if left.type.kind == MirKind.LIST {
         same = self.runtime(
