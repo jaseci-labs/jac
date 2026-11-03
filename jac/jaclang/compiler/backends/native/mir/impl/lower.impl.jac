@@ -1344,6 +1344,11 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
                 module_dotted_name(self.module.loc.mod_path), mir_str()
             );
         }
+        if nd.value == "__file__" {
+            return self.builder().const_str(
+                os.path.realpath(self.module.loc.mod_path), mir_str()
+            );
+        }
         target = nd.sym.decl.parent
             if nd.sym is not None and nd.sym.decl is not None
             else None;
