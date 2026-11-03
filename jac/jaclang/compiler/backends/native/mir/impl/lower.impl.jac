@@ -3585,6 +3585,39 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
             )
         ) {
         slices = nd.right.slices;
+        if nd.right.is_range and len(slices) == 1 {
+            bounds: list[(int | None)] = [];
+            settled = True;
+            for bound in (slices[0].start, slices[0].stop, slices[0].step) {
+                if bound is None or isinstance(bound, uni.Null) {
+                    bounds.append(None);
+                    continue;
+                }
+                known = bound.ct_value if isinstance(bound, uni.Expr) else None;
+                if not isinstance(known, CtInt) {
+                    settled = False;
+                    break;
+                }
+                bounds.append(int_host(known));
+            }
+            if settled and bounds[2] != 0 {
+                whole_tuple = self.spill(self.lower_expr(nd.target));
+                if whole_tuple.type.kind == MirKind.OPT {
+                    whole_tuple = self.opt_unwrap_checked(
+                        whole_tuple, "'NoneType' object is not subscriptable", "TypeError"
+                    );
+                }
+                picked = list(range(len(whole_tuple.type.args)))[
+                    slice(bounds[0], bounds[1], bounds[2])
+                ];
+                members = [self.tuple_get(whole_tuple, at) for at in picked];
+                return self.emit_value(
+                    MirOp.TUPLE_MAKE,
+                    mir_tuple([member.type for member in members]),
+                    members
+                );
+            }
+        }
         start = slices[0].start if len(slices) == 1 and not nd.right.is_range else None;
         folded = start.ct_value if isinstance(start, uni.Expr) else None;
         whole = int_host(folded) if isinstance(folded, CtInt) else None;
