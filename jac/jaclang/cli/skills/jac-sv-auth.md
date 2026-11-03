@@ -164,7 +164,7 @@ secret = "long-random-string"     # or env JAC_SERVE_AUTH_SECRET; algorithm HS25
 session_cookie = false            # true: also set the media cookie above; env JAC_SERVE_AUTH_SESSION_COOKIE
 ```
 
-No token revocation exists - tokens stay valid until expiry. SSO (Google/Apple/GitHub): configure `[scale.sso.<platform>]` and send users to `/sso/<platform>/login`.
+No token revocation exists - tokens stay valid until expiry. SSO (Google/Apple/GitHub): configure `[scale.sso.<platform>]` and send users to `/sso/<platform>/login`. To call a provider's APIs for a user, list `scopes = [...]` there, let the signed-in user connect with `jacSsoConnect` (see `jac-cl-auth`), and read a fresh access token in an `async def:protect` endpoint with `await sso_access_token("<platform>")` from `jaclang.scale.sso.grants` (`""` when not connected; refreshing is handled).
 
 ## Sharing data with specific users
 

@@ -206,7 +206,7 @@ test "a staging that ships the wiring rewritten keeps the checkout's identity" {
         for rel in (
             "compiler/pass.jac",
             "compiler/frontend/python/ast_input.jac",
-            "compiler/backends/py/jacpython/assembler.jac",
+            "compiler/backends/py/jacpython/cpy_assemble.jac",
             "runtime/python/bindings/heapq.jac"
         ) {
             f = full / rel;
@@ -252,7 +252,7 @@ test "a pruned staging resolves compiler identity from its recorded hashes" {
         for rel in (
             "compiler/pass.jac",
             "compiler/frontend/python/ast_input.jac",
-            "compiler/backends/py/jacpython/assembler.jac",
+            "compiler/backends/py/jacpython/cpy_assemble.jac",
             "runtime/python/bindings/heapq.jac"
         ) {
             f = full / rel;

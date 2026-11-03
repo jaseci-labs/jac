@@ -8,8 +8,24 @@ impl ASTValidationPass.enter_module with Module entry {
     if here.is_raised_from_py or here.stub_only {
         return;
     }
+    imported = self._import_bindings(here);
     first_line: dict[str, int] = {};
     for item in here.body {
+        if isinstance(item, ContextAwareNode) {
+            for declared in self._declared_names(item) {
+                binding = imported.get(declared.value);
+                if binding is not None
+                    and binding[0].code_context == item.code_context
+                    and not self._imports_itself(here, binding[0]) {
+                    self.ctx.emit(
+                        E2036,
+                        node_override=declared,
+                        name=declared.value,
+                        prior=self._binding_origin(here, binding[1])
+                    );
+                }
+            }
+        }
         name_node: (UniNode | None) = None;
         if isinstance(item, Ability) {
             name_node = item.name_ref;
@@ -27,12 +43,80 @@ impl ASTValidationPass.enter_module with Module entry {
                 E2036,
                 node_override=name_node,
                 name=name_node.value,
-                line=first_line[name_node.value]
+                prior=f"definition on line {first_line[name_node.value]}"
             );
         } else {
             first_line[name_node.value] = name_node.loc.first_line;
         }
     }
+}
+
+impl ASTValidationPass._import_bindings(mod: Module) -> dict[str, tuple[Import, Name]] {
+    bound: dict[str, tuple[Import, Name]] = {};
+    for stmt in mod.body {
+        if not isinstance(stmt, Import) or stmt.is_absorb {
+            continue;
+        }
+        for item in stmt.items {
+            name: (UniNode | None) = item.alias;
+            if name is None and isinstance(item, ModuleItem) {
+                name = item.name;
+            } elif name is None and isinstance(item, ModulePath) and item.path {
+                name = item.path[0];
+            }
+            if isinstance(name, Name) and name.value not in bound {
+                bound[name.value] = (stmt, name);
+            }
+        }
+    }
+    return bound;
+}
+
+impl ASTValidationPass._declared_names(item: ContextAwareNode) -> list[Name] {
+    name: (UniNode | None) = None;
+    if isinstance(item, Ability) {
+        name = item.name_ref;
+    } elif isinstance(item, (Archetype, Enum, TypeAlias)) {
+        name = item.name;
+    } elif isinstance(item, GlobalVars) {
+        typed: list[Name] = [];
+        for assign in item.assignments {
+            if assign.type_tag is None {
+                continue;
+            }
+            for target in assign.target {
+                if isinstance(target, Name) {
+                    typed.append(target);
+                }
+            }
+        }
+        return typed;
+    }
+    return [name] if isinstance(name, Name) else [];
+}
+
+impl ASTValidationPass._imports_itself(mod: Module, stmt: Import) -> bool {
+    source = stmt.from_loc;
+    if source is None {
+        return False;
+    }
+    stem = os.path.basename(mod.loc.mod_path).split(".")[0];
+    if source.level == 1 and source.dot_path_str == f".{stem}" {
+        return True;
+    }
+    resolved = source.resolve_relative_path();
+    return bool(resolved)
+        and os.path.realpath(resolved) == os.path.realpath(mod.loc.mod_path);
+}
+
+impl ASTValidationPass._binding_origin(mod: Module, name: Name) -> str {
+    line = name.loc.first_line;
+    if name.loc.mod_path == mod.loc.mod_path {
+        return f"import on line {line}";
+    }
+    source = os.path.basename(name.loc.mod_path);
+    kind = "wire" if source == "archwire.jac" else "import";
+    return f"{kind} on line {line} of {source}";
 }
 
 impl ASTValidationPass.enter_module_code with ModuleCode entry {

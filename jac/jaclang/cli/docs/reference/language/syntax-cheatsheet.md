@@ -772,31 +772,6 @@ with entry {
 
 
 # ============================================================
-# Inline Python (::py::)
-# ============================================================
-
-with entry {
-    result: int = 0;
-    ::py::
-import sys
-result = sys.maxsize
-    ::py::
-    print(f"Max int: {result}");
-}
-
-# Also works inside objects/enums for Python-specific methods
-enum Priority {
-    LOW = 1,
-    HIGH = 2
-
-    ::py::
-    def is_urgent(self):
-        return self.value >= 2
-    ::py::
-}
-
-
-# ============================================================
 # OBJECT SPATIAL PROGRAMMING (OSP)
 # ============================================================
 # Jac extends the type system with graph-native constructs:
@@ -1368,7 +1343,7 @@ obj Res {
 #                                propagates (scope-aware, across
 #                                modules) to helpers, globs, and
 #                                imports the client code uses
-#   python imports, node/edge/walker archetypes, ::py:: blocks,
+#   python imports, node/edge/walker archetypes,
 #   typed context blocks      => server anchors (server is also the
 #                                default for unreferenced pure code)
 #   def:pub / walkers         => stay server endpoints (client calls

@@ -160,6 +160,13 @@ obj NativeUnitRegistry {
     def _live_gen(resolved: str) -> (CodeGenTarget | None);
 }
 
+obj NativeIRSnapshot {
+    has bitcode: bytes,
+        defined: set[str],
+        declared: set[str],
+        referenced: (set[str] | None) = None;
+}
+
 obj SessionHeap {
     has held: bool = False,
         declined: bool = False,
@@ -175,6 +182,8 @@ obj NativeBuildSession {
         options: CompileOptions,
         prog: JacProgram postinit,
         lowered: dict[str, Module] = {},
+        ir_snapshots: dict[str, NativeIRSnapshot] = {},
+        compact_on_lower: bool = False,
         source_keys: dict[str, str | None] = {},
         deferred: list[set[str]] = [],
         discovery_open: list[bool] = [],
@@ -187,6 +196,7 @@ obj NativeBuildSession {
     def postinit;
     def settle_heap;
     def lower(path: str, use_str: (str | None) = None) -> (NativeUnitEntry | None);
+    def compact_ir(paths: list[str]);
     def unbound_symbols(path: str, deps: list[str]) -> (list[str] | None);
     def finish(paths: list[str]);
     def _optimize_in_parallel(paths: list[str]) -> set[str];

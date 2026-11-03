@@ -105,6 +105,13 @@ impl OwnershipCheckPass._run_impl(ir_in: Module) -> Module {
     self._stamp_write_effects();
     self._stamp_ownership();
     self._stamp_managed_borrows();
+
+    _inferred_before = set(ir_in.managed_borrow_binds);
+    try {
+        self._stamp_inferred_borrows();
+    } except Exception {
+        ir_in.managed_borrow_binds = _inferred_before;
+    }
     self._stamp_loop_borrows();
     self._stamp_region_borrows();
     self._stamp_arch_view_bindings();
