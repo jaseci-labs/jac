@@ -2432,3 +2432,9 @@ test "bug_ctor_init_args_dict_call_misuse_is_reported" {
         f"Line 24 reported: {by_line.get(24)}"
     );
 }
+
+test "iterating a union of lists yields the union of their element types" {
+    program = compile_and_check("checker_iter_union_of_lists.jac");
+    assert len(program.errors_had) == 1 , [str(e) for e in program.errors_had];
+    assert "A | B" in str(program.errors_had[0]) , str(program.errors_had[0]);
+}
