@@ -32,6 +32,7 @@ impl MirLowering.lower -> MirModule {
     self.declare_c_data();
     self.declare_clib_externs();
     self.declare_module_globals();
+    self.declare_class_globals();
     for key in self.order {
         self.current = self.decl_label(self.decls[key]);
         made = self.lower_function(self.decls[key]);
@@ -465,6 +466,8 @@ impl MirLowering.lower_stmt(nd: uni.UniNode) {
         self.lower_switch(nd);
     } elif isinstance(nd, uni.WithStmt) {
         self.lower_with(nd);
+    } elif isinstance(nd, uni.OpenStmt) {
+        self.lower_open(nd);
     } elif isinstance(nd, uni.Assignment) {
         self.lower_assignment(nd);
     } elif isinstance(nd, uni.ReturnStmt) {
@@ -686,6 +689,20 @@ impl MirLowering.local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirV
         self.st().local_names.setdefault(sym.sym_name, made);
     }
     return made;
+}
+
+impl MirLowering.encloses(scope: (uni.UniScopeNode | None), nd: uni.UniNode) -> bool {
+    if scope is None {
+        return False;
+    }
+    walk: (uni.UniNode | None) = nd.parent;
+    while walk is not None {
+        if walk is scope {
+            return True;
+        }
+        walk = walk.parent;
+    }
+    return False;
 }
 
 impl MirLowering.comprehension_scoped(sym: uni.Symbol) -> bool {
@@ -912,6 +929,13 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
         );
     } elif isinstance(nd, uni.Bool) {
         value = self.builder().const_bool(nd.value.lower() in ("true", "1"));
+    } elif isinstance(nd, uni.Ellipsis) {
+        b = self.builder();
+        made = self.any_make(
+            b.const_int(ANY_ELLIPSIS_TAG, mir_int()), b.const_int(0, mir_int())
+        );
+        made.owned = True;
+        value = made;
     } elif isinstance(nd, uni.Null) {
         value = self.none_value();
     } elif isinstance(nd, uni.TupleVal) {
@@ -997,7 +1021,9 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
         and id(nd.sym) not in self.decl_syms
         and self.global_declaration(nd.sym) is None
         and nd.sym.sym_name in self.st().local_names
-        and not self.comprehension_scoped(nd.sym) {
+        and not (
+            self.comprehension_scoped(nd.sym) and self.encloses(nd.sym.parent_tab, nd)
+        ) {
         namesake = self.st().local_names[nd.sym.sym_name];
         return self.coerce(
             self.builder().load(namesake, namesake.type), self.expr_type(nd), nd
@@ -1724,6 +1750,11 @@ impl MirLowering.lower_bool(nd: uni.BoolExpr) -> MirValue {
 impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     if is_builtin_addressof_call(nd) {
         return self.c_addressof(nd);
+    }
+    if isinstance(nd.target, uni.Name)
+        and is_builtin_region_type(nd.target.type, allow_class=True)
+        and not list(nd.params or []) {
+        return self.region_extern("__jac_region_new", [], mir_int());
     }
     if is_builtin_pin_call(nd) {
         return self.c_pin(nd);
@@ -3442,6 +3473,9 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
     }
     dispatch = found.dispatch;
     result_type = mir_spec_type(found.result_spec);
+    if dispatch == IntrinsicDispatch.REGION_TLS {
+        return self.region_slot(name, args);
+    }
     if dispatch == IntrinsicDispatch.MEM_LOAD {
         address = self.intrinsic_operand(args[0], "i64");
         return self.emit_value(MirOp.MEM_LOAD, result_type, [address]);

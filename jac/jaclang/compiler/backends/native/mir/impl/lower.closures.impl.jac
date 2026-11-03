@@ -247,13 +247,14 @@ impl MirLowering.lower_closure(
 impl MirLowering.closure_call(nd: uni.FuncCall, callee: MirValue) -> MirValue {
     fn_type = callee.type.payload() if callee.type.kind == MirKind.OPT else callee.type;
     params = fn_type.args[1:];
-    args = self.call_args(nd);
     nested = nd.target.sym.decl.parent
         if isinstance(nd.target, uni.Name)
             and nd.target.sym is not None
             and nd.target.sym.decl is not None
         else None;
-    if len(args) != len(params)
+    keyed = any(isinstance(arg, uni.KWPair) for arg in list(nd.params or []));
+    args = [] if keyed else self.call_args(nd);
+    if (keyed or len(args) != len(params))
         and isinstance(nested, uni.Ability)
         and isinstance(nested.signature, uni.FuncSignature) {
         bound = self.bound_args(nd, nested, False);
@@ -266,6 +267,9 @@ impl MirLowering.closure_call(nd: uni.FuncCall, callee: MirValue) -> MirValue {
             }
             return self.call_closure(held, self.bound_values(list(bound), params), nd);
         }
+    }
+    if keyed {
+        args = self.call_args(nd);
     }
     if len(args) != len(params) {
         raise MirRefused(

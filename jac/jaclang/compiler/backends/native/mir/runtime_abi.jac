@@ -178,6 +178,7 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
              "int"
          ],
          "__jac_rt_str_zfill": ["str.ref", "ptr", "int", "int"],
+         "__jac_rt_str_expandtabs": ["str.ref", "ptr", "int", "int"],
          "__jac_rt_str_split": [
              "ref",
              "ptr",

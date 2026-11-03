@@ -975,6 +975,37 @@ impl __jac_rt_str_zfill(data: ptr[u8], n: int, width: int) -> ptr[u8] {
     return __jac_rt_sb_finish(sb);
 }
 
+impl __jac_rt_str_expandtabs(data: ptr[u8], n: int, tabsize: int) -> ptr[u8] {
+    d = int(data);
+    sb = __jac_rt_sb_new(n);
+    column = 0;
+    i = 0;
+    while i < n {
+        byte = _byte(d + i);
+        if byte == 9 {
+            if tabsize > 0 {
+                pad = tabsize - column % tabsize;
+                k = 0;
+                while k < pad {
+                    __jac_rt_sb_byte(sb, 32);
+                    k += 1;
+                }
+                column += pad;
+            }
+        } elif byte == 10 or byte == 13 {
+            __jac_rt_sb_byte(sb, byte);
+            column = 0;
+        } else {
+            __jac_rt_sb_byte(sb, byte);
+            if (byte & 192) != 128 {
+                column += 1;
+            }
+        }
+        i += 1;
+    }
+    return __jac_rt_sb_finish(sb);
+}
+
 impl _push_text(lst: int, data: int, n: int) {
     made = __jac_rt_str_new(ptr[u8](data), n);
     __jac_rt_list_push(lst, int(made), KIND_STR);

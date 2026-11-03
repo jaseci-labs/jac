@@ -120,7 +120,12 @@ impl MirLowering.stdlib_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
     return None;
 }
 
-impl MirLowering.class_constant(arch: uni.Archetype, name: str) -> (uni.Expr | None) {
+impl MirLowering.class_attr_entry(
+    arch: uni.Archetype, name: str
+) -> (tuple[uni.Archetype, uni.Name, uni.Expr] | None) {
+    if self.arch_is_enum(arch) {
+        return None;
+    }
     for holder in self.lineage(arch) {
         for member in list(ModuleFacts.unwrap_body(holder) or []) {
             if isinstance(member, uni.ArchHas) and member.is_static {
@@ -128,7 +133,7 @@ impl MirLowering.class_constant(arch: uni.Archetype, name: str) -> (uni.Expr | N
                     if var.name is not None
                         and var.name.value == name
                         and isinstance(var.value, uni.Expr) {
-                        return var.value;
+                        return (holder, var.name, var.value);
                     }
                 }
             }
@@ -139,13 +144,156 @@ impl MirLowering.class_constant(arch: uni.Archetype, name: str) -> (uni.Expr | N
                         and isinstance(stmt.target[0], uni.Name)
                         and stmt.target[0].value == name
                         and isinstance(stmt.value, uni.Expr) {
-                        return stmt.value;
+                        return (holder, stmt.target[0], stmt.value);
                     }
                 }
             }
         }
     }
     return None;
+}
+
+impl MirLowering.arch_is_enum(arch: uni.Archetype) -> bool {
+    sym = arch.name.sym if arch.name is not None else None;
+    made = self.prog.get_type_evaluator().get_type_of_symbol(sym)
+        if sym is not None
+        else None;
+    return is_enum_class_type(made);
+}
+
+impl MirLowering.class_constant(arch: uni.Archetype, name: str) -> (uni.Expr | None) {
+    found = self.class_attr_entry(arch, name);
+    return found[2] if found is not None else None;
+}
+
+impl MirLowering.class_global(
+    holder: uni.Archetype, target: uni.Name, value: uni.Expr
+) -> MirGlobal {
+    owner = holder.find_parent_of_type(uni.Module) or self.module;
+    path = owner.loc.mod_path;
+    symbol = native_symbol_name(
+        native_unit_prefix(path),
+        native_unit_spelling(
+            f"{archetype_native_name(holder)}.{target.value}.__cls", path
+        )
+    );
+    refused = self.class_global_refusals.get(symbol);
+    if refused is not None {
+        raise refused;
+    }
+    held = self.mir.globals.get(symbol);
+    if held is not None {
+        return held;
+    }
+    held_type = self.symbol_type(target.sym, target)
+        if target.sym is not None
+        else self.expr_type(value);
+    local = owner is self.module;
+    held = MirGlobal(
+        name=symbol, symbol=symbol, type=held_type, linkage="" if local else "external"
+    );
+    self.mir.globals[symbol] = held;
+    if local {
+        self.class_global_init(
+            held, f"{archetype_native_name(holder)}.{target.value}", value
+        );
+    } else {
+        unit = os.path.realpath(path);
+        if unit not in self.mir.deps {
+            self.mir.deps.append(unit);
+        }
+    }
+    return held;
+}
+
+impl MirLowering.class_global_init(
+    held: MirGlobal, label: str, value: uni.Expr
+) -> None {
+    fn = MirFunction(
+        name="__cls_init",
+        symbol=held.symbol + "_init",
+        ret=mir_none(),
+        linkage="internal"
+    );
+    first = fn.new_block("entry");
+    (outer_state, outer_current) = (self.state, self.current);
+    self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
+    self.current = label;
+    try {
+        for used in value.get_all_sub_nodes(uni.Name) {
+            self.declare_global(used);
+        }
+        b = self.builder();
+        place = self.emit_value(
+            MirOp.GLOBAL_ADDR, mir_c_ptr(held.type), [], str_value=held.symbol
+        );
+        b.store(place, self.coerce(self.lower_expr(value), held.type, value));
+        b.ret(None);
+        self.mir.functions.append(fn);
+        self.class_inits.append((value.loc.pos_start, fn.symbol));
+    } except MirRefused as err {
+        del self.mir.globals[held.symbol];
+        self.class_global_refusals[held.symbol] = err;
+        raise err;
+    } finally {
+        (self.state, self.current) = (outer_state, outer_current);
+    }
+}
+
+impl MirLowering.declare_class_globals {
+    for arch in self.module_archetypes() {
+        if self.arch_is_enum(arch) {
+            continue;
+        }
+        for member in list(ModuleFacts.unwrap_body(arch) or []) {
+            entries: list[tuple[uni.Name, uni.Expr]] = [];
+            if isinstance(member, uni.ArchHas) and member.is_static {
+                for var in member.vars {
+                    if var.name is not None and isinstance(var.value, uni.Expr) {
+                        entries.append((var.name, var.value));
+                    }
+                }
+            }
+            if isinstance(member, uni.ModuleCode) {
+                for stmt in member.body {
+                    if isinstance(stmt, uni.Assignment)
+                        and len(stmt.target) == 1
+                        and isinstance(stmt.target[0], uni.Name)
+                        and isinstance(stmt.value, uni.Expr) {
+                        entries.append((stmt.target[0], stmt.value));
+                    }
+                }
+            }
+            for (target, value) in entries {
+                if self.constant_value(value) {
+                    continue;
+                }
+                try {
+                    self.class_global(arch, target, value);
+                } except MirRefused {
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+impl MirLowering.class_value_of(
+    arch: uni.Archetype, name: str, wanted: MirType, site: uni.UniNode
+) -> (MirValue | None) {
+    found = self.class_attr_entry(arch, name);
+    if found is None {
+        return None;
+    }
+    (holder, target, value) = found;
+    if self.constant_value(value) {
+        return self.coerce(self.lower_expr(value), wanted, site);
+    }
+    held = self.class_global(holder, target, value);
+    place = self.emit_value(
+        MirOp.GLOBAL_ADDR, mir_c_ptr(held.type), [], str_value=held.symbol
+    );
+    return self.coerce(self.builder().load(place, held.type), wanted, site);
 }
 
 impl MirLowering.class_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
@@ -158,19 +306,7 @@ impl MirLowering.class_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
     if arch is None {
         return None;
     }
-    value = self.class_constant(arch, nd.right.value);
-    if value is None
-        or not (
-            isinstance(value, (uni.Literal, uni.MultiString))
-            or (
-                isinstance(value, uni.AtomTrailer)
-                and value.is_attr
-                and self.is_enum_class(value.target)
-            )
-        ) {
-        return None;
-    }
-    return self.coerce(self.lower_expr(value), self.expr_type(nd), nd);
+    return self.class_value_of(arch, nd.right.value, self.expr_type(nd), nd);
 }
 
 impl MirLowering.constant_value(value: (uni.Expr | None)) -> bool {
@@ -217,64 +353,102 @@ impl MirLowering.subclass_archetypes(arch: uni.Archetype) -> list[uni.Archetype]
     return ordered;
 }
 
-impl MirLowering.instance_class_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
-    if not nd.is_attr
-        or not isinstance(nd.right, uni.Name)
-        or not isinstance(nd.target, uni.Expr) {
-        return None;
-    }
-    arch = self.holder_arch(nd.target);
-    name = nd.right.value;
-    if arch is None or self.nearest_has_var(arch, name) is not None {
-        return None;
-    }
-    if self.object_def(arch).field(name) is not None {
-        return None;
-    }
-    base_value = self.class_constant(arch, name);
-    subclasses = self.subclass_archetypes(arch);
+impl MirLowering.class_dispatch(
+    arch: uni.Archetype,
+    name: str,
+    wanted: MirType,
+    site: uni.UniNode,
+    matches: Callable[[uni.Archetype], MirValue]
+) -> (MirValue | None) {
+    base = self.class_attr_entry(arch, name);
     overrides = [
-        (sub, self.class_constant(sub, name))
-        for sub in subclasses
-        if self.class_constant(sub, name) is not base_value
+        sub
+        for sub in self.subclass_archetypes(arch)
+        if self.class_attr_entry(sub, name) is not None
+            and (base is None or self.class_attr_entry(sub, name)[2] is not base[2])
     ];
-    if base_value is None and not overrides {
-        return None;
-    }
-    for (_, value) in overrides {
-        if not self.constant_value(value) {
-            return None;
-        }
-    }
-    if base_value is not None and not self.constant_value(base_value) {
+    if base is None and not overrides {
         return None;
     }
     b = self.builder();
     fn = self.st().fn;
-    wanted = self.expr_type(nd);
-    held = self.spill(self.lower_expr(nd.target));
     result = self.temp_slot(wanted);
     done = fn.new_block("clsattr.done");
-    for (sub, value) in overrides {
+    for sub in overrides {
         hit = fn.new_block("clsattr.hit");
         miss = fn.new_block("clsattr.miss");
-        b.cond_branch(self.isinstance_check(held, sub), hit, miss);
+        b.cond_branch(matches(sub), hit, miss);
         b.position(hit);
-        if isinstance(value, uni.Expr) {
-            b.store(result, self.coerce(self.lower_expr(value), wanted, nd));
+        made = self.class_value_of(sub, name, wanted, site);
+        if made is not None {
+            b.store(result, made);
         }
         b.branch(done);
         b.position(miss);
     }
-    if base_value is None {
+    if base is None {
         b.raise_builtin(
             "AttributeError",
             f"'{archetype_native_name(arch).split('$')[0]}' object has no attribute '{name}'"
         );
     } else {
-        b.store(result, self.coerce(self.lower_expr(base_value), wanted, nd));
+        made = self.class_value_of(arch, name, wanted, site);
+        if made is not None {
+            b.store(result, made);
+        }
         b.branch(done);
     }
     b.position(done);
     return b.load(result, wanted);
+}
+
+impl MirLowering.instance_class_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
+    if not nd.is_attr
+        or not isinstance(nd.right, uni.Name)
+        or not isinstance(nd.target, uni.Expr)
+        or not isinstance(nd.target.type, (ClassType, UnionType)) {
+        return None;
+    }
+    target_type = self.expr_type(nd.target);
+    if target_type.kind == MirKind.CLASS {
+        bound = self.class_bound(nd.target.type)
+            if isinstance(nd.target.type, ClassType)
+            else None;
+        if bound is None {
+            return None;
+        }
+        word = self.spill(self.lower_expr(nd.target));
+        return self.class_dispatch(
+            bound,
+            nd.right.value,
+            self.expr_type(nd),
+            nd,
+            lambda (sub: uni.Archetype) -> MirValue { self.builder().compare(
+                "eq", self.address_of(word), self.address_of(self.class_value(sub))
+            ); }
+        );
+    }
+    arch = self.holder_arch(nd.target);
+    name = nd.right.value;
+    if arch is None {
+        return None;
+    }
+    var = self.nearest_has_var(arch, name);
+    group = var.find_parent_of_type(uni.ArchHas) if var is not None else None;
+    if var is not None and not (group is not None and group.is_static) {
+        return None;
+    }
+    if self.object_def(arch).field(name) is not None {
+        return None;
+    }
+    held = self.spill(self.lower_expr(nd.target));
+    return self.class_dispatch(
+        arch,
+        name,
+        self.expr_type(nd),
+        nd,
+        lambda (sub: uni.Archetype) -> MirValue { self.member_test(
+            held, held, sub, nd
+        ); }
+    );
 }

@@ -135,6 +135,9 @@ impl __jac_rt_any_truthy(tag: int, payload: int) -> bool {
     if tag == ANY_TAG_NONE {
         return False;
     }
+    if tag == ANY_TAG_ELLIPSIS {
+        return True;
+    }
     if tag == ANY_TAG_INT or tag == ANY_TAG_BOOL {
         return payload != 0;
     }
@@ -210,6 +213,9 @@ impl __jac_rt_any_type_name(tag: int, payload: int) -> ptr[u8] {
     }
     if tag == ANY_TAG_ENUM and payload != 0 {
         return _enum_name(payload);
+    }
+    if tag == ANY_TAG_ELLIPSIS {
+        return ptr[u8]("ellipsis");
     }
     return ptr[u8]("NoneType");
 }
@@ -492,6 +498,10 @@ impl _any_text(sb: int, tag: int, payload: int, mode: int) {
     }
     if tag == ANY_TAG_FLOAT {
         _sb_owned(sb, __jac_rt_float_repr(__bits_float(payload)));
+        return;
+    }
+    if tag == ANY_TAG_ELLIPSIS {
+        _sb_cstr(sb, ptr[u8]("Ellipsis"));
         return;
     }
     if tag == ANY_TAG_NONE or payload == 0 {
