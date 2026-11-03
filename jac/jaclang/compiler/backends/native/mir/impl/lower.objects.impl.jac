@@ -531,13 +531,12 @@ impl MirLowering.object_copy(value: MirValue, site: uni.UniNode) -> MirValue {
         if value.type.kind == MirKind.OBJ
         else None;
     owner = arch.find_parent_of_type(uni.Module) if arch is not None else None;
-    layout = get_layout_registry(owner or self.module, self.prog).get_layout(
-        obj_def.name
-    )
-        if obj_def is not None
-        else None;
-    sealed = layout is not None
-        and (not layout.has_vtable or layout.vtable_by_isinstance_only);
+    registry = get_layout_registry(owner or self.module, self.prog);
+    sealed = obj_def is not None
+        and not any(
+            obj_def.name in list(other.parents or [])
+            for other in registry.layouts.values()
+        );
     if arch is None or obj_def is None or not sealed or obj_def.tag_slot >= 0 {
         raise MirRefused(
             mir_refusal(
@@ -1457,6 +1456,15 @@ impl MirLowering.class_isinstance(value: MirValue, kind: MirValue) -> MirValue {
 
 impl MirLowering.class_of(value: MirValue, site: uni.UniNode) -> MirValue {
     b = self.builder();
+    if value.type.kind == MirKind.OPT {
+        (held, payload, absent, done) = self.opt_begin(value, mir_class("*"));
+        self.opt_switch(held, self.class_of(payload, site), absent, done);
+        return self.opt_end(
+            held,
+            self.emit_value(MirOp.CSTR, mir_class("*"), [], str_value="NoneType"),
+            done
+        );
+    }
     if value.type.kind != MirKind.OBJ {
         return self.type_value(value, site);
     }
@@ -2032,14 +2040,6 @@ impl MirLowering.union_accessor_get(nd: uni.AtomTrailer) -> (MirValue | None) {
     done = fn.new_block("uacc.done");
     for (index, arch) in enumerate(members) {
         bound = found[index];
-        if bound is None {
-            raise MirRefused(
-                mir_refusal(
-                    "accessor", f"{archetype_native_name(arch)}.{nd.right.value}", nd
-                )
-            );
-        }
-        (owner, decl) = bound;
         view = held
             if held.type is self.object_type(arch)
             else b.ref_cast(held, self.object_type(arch), False);
@@ -2056,12 +2056,19 @@ impl MirLowering.union_accessor_get(nd: uni.AtomTrailer) -> (MirValue | None) {
             );
             b.position(hit);
         }
-        made = self.invoke_method(
-            decl,
-            owner,
-            self.decl_label(decl),
-            [self.method_receiver(decl, owner, view, nd)]
-        );
+        made: MirValue = view;
+        if bound is None {
+            place = self.field_place(view, arch, nd.right.value, nd);
+            made = b.load(place, self.place_elem(place));
+        } else {
+            (owner, decl) = bound;
+            made = self.invoke_method(
+                decl,
+                owner,
+                self.decl_label(decl),
+                [self.method_receiver(decl, owner, view, nd)]
+            );
+        }
         b.store(result, self.coerce(made, wanted, nd));
         b.branch(done);
         if miss is not None {

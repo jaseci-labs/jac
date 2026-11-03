@@ -1502,6 +1502,20 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         return self.c_pin(nd);
     }
     callee = nd.callee_decl;
+    if callee is not None
+        and contextmanager_ability(callee)
+        and self.manager_item is not nd {
+        raise MirRefused(
+            mir_refusal(
+                "call",
+                f"{self.name_of(callee)} outside a with item"
+                    if isinstance(callee, uni.Ability)
+                    else "context manager outside a with item",
+                nd,
+                "A native @contextmanager generator is entered only as a with item."
+            )
+        );
+    }
     if isinstance(nd.target, uni.Name)
         and nd.target.value == "cast"
         and (callee is None or callee.loc.mod_path.endswith(".pyi"))
@@ -2563,6 +2577,10 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
     if via_accessor is not None {
         return via_accessor;
     }
+    via_class_attr = self.instance_class_attr(nd);
+    if via_class_attr is not None {
+        return via_class_attr;
+    }
     if not nd.is_attr
         and isinstance(nd.right, uni.IndexSlice)
         and isinstance(nd.target, uni.Expr)
@@ -3094,6 +3112,12 @@ impl MirLowering.method_call(
     }
     if isinstance(target.target, uni.SpecialVarRef)
         and target.target.value == "super" {
+        return self.super_call(nd, right.value);
+    }
+    if isinstance(target.target, uni.FuncCall)
+        and isinstance(target.target.target, uni.Name)
+        and target.target.target.value == "super"
+        and not list(target.target.params or []) {
         return self.super_call(nd, right.value);
     }
     if right.value == "wrap" and self.sized_type_name(target.target) is not None {

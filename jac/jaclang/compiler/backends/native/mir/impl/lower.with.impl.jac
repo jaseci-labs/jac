@@ -89,7 +89,9 @@ impl MirLowering.with_generator(
     item = items[index];
     b = self.builder();
     fn = self.st().fn;
+    self.manager_item = item.expr;
     it = self.spill(self.lower_expr(item.expr));
+    self.manager_item = None;
     if it.type.kind != MirKind.ITER {
         raise MirRefused(
             mir_refusal(

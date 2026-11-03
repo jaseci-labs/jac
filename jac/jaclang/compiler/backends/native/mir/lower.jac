@@ -289,6 +289,7 @@ obj MirLowering {
         archetypes: dict[str, uni.Archetype] = {},
         refused_objects: dict[str, MirRefused] = {},
         stdlib_units: dict[str, (uni.Module | None)] = {},
+        manager_item: (uni.Expr | None) = None,
         c_struct_sites: dict[str, str] = {},
         trace_pairs: list[tuple[str, str]] = [],
         class_entries: list[tuple[str, str, str]] = [],
@@ -1097,6 +1098,9 @@ obj MirLowering {
     def stdlib_attr(nd: uni.AtomTrailer) -> (MirValue | None);
     def class_constant(arch: uni.Archetype, name: str) -> (uni.Expr | None);
     def class_attr(nd: uni.AtomTrailer) -> (MirValue | None);
+    def constant_value(value: (uni.Expr | None)) -> bool;
+    def subclass_archetypes(arch: uni.Archetype) -> list[uni.Archetype];
+    def instance_class_attr(nd: uni.AtomTrailer) -> (MirValue | None);
     def mentions_typevar(t: (TypeBase | None)) -> bool;
     def resolved(t: (TypeBase | None)) -> (TypeBase | None);
     def unify(
