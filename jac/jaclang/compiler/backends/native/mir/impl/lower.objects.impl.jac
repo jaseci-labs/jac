@@ -1195,7 +1195,9 @@ impl MirLowering.arch_named(name: str, site: uni.UniNode) -> uni.Archetype {
     );
 }
 
-impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue {
+impl MirLowering.object_call(
+    nd: uni.FuncCall, arch: uni.Archetype, leading: int = 0
+) -> MirValue {
     obj_def = self.object_def(arch);
     if obj_def.field(EXC_MESSAGE_FIELD) is not None
         and (self.find_method(arch, "init") or self.find_method(arch, "__init__"))
@@ -1209,7 +1211,7 @@ impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue 
     params = self.constructor_params(arch);
     init = self.find_method(arch, "init") or self.find_method(arch, "__init__");
     if init is None
-        and nd.params
+        and list(nd.params or [])[leading:]
         and all(
             holder.arch_type.name == Tok.KW_CLASS for holder in self.lineage(arch)
         ) {
@@ -1230,7 +1232,7 @@ impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue 
             or init.signature.kwonlyargs
             or self.has_spread(nd)
         ) {
-        bound = self.bound_args(nd, init, True);
+        bound = self.bound_args(nd, init, True, leading);
         if len(bound) != len(params) {
             raise MirRefused(
                 mir_refusal("call", f"{obj_def.name} with {len(bound)} arguments", nd)
@@ -1248,7 +1250,7 @@ impl MirLowering.object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue 
         }
         return self.construct(symbol, obj_def, owner, params, values, nd);
     }
-    values = self.ctor_arguments(nd, obj_def.name, params);
+    values = self.ctor_arguments(nd, obj_def.name, params, leading);
     return self.construct(symbol, obj_def, owner, params, values, nd);
 }
 
@@ -1853,12 +1855,16 @@ impl MirLowering.erased_slot(t: (TypeBase | None)) -> bool {
     if isinstance(t, TypeVarType) {
         return not t.is_self;
     }
+    if isinstance(t, UnknownType) {
+        return True;
+    }
     if not isinstance(t, UnionType) {
         return False;
     }
     erased = False;
     for member in t.types {
-        if isinstance(member, TypeVarType) and not member.is_self {
+        if (isinstance(member, TypeVarType) and not member.is_self)
+            or isinstance(member, UnknownType) {
             erased = True;
         } elif not (
             isinstance(member, ClassType)
@@ -2025,11 +2031,14 @@ impl MirLowering.placeholder(t: MirType) -> MirValue {
 }
 
 impl MirLowering.ctor_arguments(
-    nd: uni.FuncCall, label: str, params: list[tuple[str, MirType, (uni.Expr | None)]]
+    nd: uni.FuncCall,
+    label: str,
+    params: list[tuple[str, MirType, (uni.Expr | None)]],
+    leading: int = 0
 ) -> list[MirValue] {
     positional: list[uni.Expr] = [];
     named: dict[str, uni.Expr] = {};
-    for arg in list(nd.params or []) {
+    for arg in list(nd.params or [])[leading:] {
         if isinstance(arg, uni.KWPair) {
             if arg.key is None {
                 raise MirRefused(

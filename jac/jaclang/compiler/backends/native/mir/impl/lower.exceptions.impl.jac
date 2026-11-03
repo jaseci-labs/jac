@@ -299,8 +299,10 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
         self.st().finals.pop();
         self.lower_body(nd.finally_body.body);
     }
-    self.runtime("__jac_rt_raise", [origin, type_id, message]);
-    b.unreachable();
+    if not self.builder().block.terminated() {
+        self.runtime("__jac_rt_raise", [origin, type_id, message]);
+        self.builder().unreachable();
+    }
     b.position(after);
     if nd.finally_body is not None {
         self.lower_body(nd.finally_body.body);
