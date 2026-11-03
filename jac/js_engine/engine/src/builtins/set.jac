@@ -42,7 +42,14 @@ import from engine.src.runtime.jsobject {
     js_object_get_ordinary_proto,
     js_object_brand
 }
-import from engine.src.runtime.jsobj_type { JSProperty, BRAND_SET, BRAND_WEAKSET }
+import from engine.src.runtime.jsobj_type {
+    JSProperty,
+    BRAND_SET,
+    BRAND_WEAKSET,
+    jo_bkind,
+    jo_bslot,
+    jo_set_bslot
+}
 import from engine.src.runtime.jsstring { str_intern }
 import from engine.src.runtime.encoding { SYMBOL_KEY_BASE }
 import from engine.src.runtime.jssymbol { SYMBOL_ITERATOR, SYMBOL_TO_STRING_TAG }
@@ -110,6 +117,11 @@ def:pub set_set_realm(r: Realm) {
 }
 
 def _set_idx(s: JSValue) -> int {
+    # (the index kept in the record's binary slot, js_set_create)
+    si_id: int = jsv_to_table_id(s);
+    if si_id > 0 and jo_bkind(si_id) == 0 and jo_bslot(si_id) >= 0 {
+        return jo_bslot(si_id);
+    }
     idx_v: JSValue = js_object_get(s, _KEY_IS_SET);
     return jsv_to_int32(idx_v);
 }
@@ -216,6 +228,9 @@ def:pub js_set_create_with_proto(proto: JSValue) -> JSValue {
         s = js_object_create_null();
     }
     js_object_set(s, _KEY_IS_SET, js_int(set_idx));
+    if jsv_to_table_id(s) > 0 and jo_bkind(jsv_to_table_id(s)) == 0 {
+        jo_set_bslot(jsv_to_table_id(s), set_idx);
+    }
     return s;
 }
 
@@ -261,11 +276,18 @@ def:pub js_weakset_create_with_proto(proto: JSValue) -> JSValue {
 }
 
 def:pub js_set_add(s: JSValue, val: JSValue) -> JSValue {
-    ss: JSSetStorage = _SET_REALM.sets[_set_idx(s)];
-    fi: int = _set_find(ss, val);
-    if fi >= 0 {
+    # (a member already there: the storage read in place; a new one:
+    # _set_add_new)
+    sa_i: int = _set_idx(s);
+    if _set_find(_SET_REALM.sets[sa_i], val) >= 0 {
         return s;
     }
+    return _set_add_new(s, sa_i, val);
+}
+
+"""js_set_add of a value the Set does not hold (storage `sa_i`)."""
+def _set_add_new(s: JSValue, sa_i: int, val: JSValue) -> JSValue {
+    ss: JSSetStorage = _SET_REALM.sets[sa_i];
     _set_own(ss);
     ni: int = len(ss.ekeys);
     ss.ekeys.append(val);
@@ -281,8 +303,7 @@ def:pub js_set_add(s: JSValue, val: JSValue) -> JSValue {
 }
 
 def:pub js_set_has(s: JSValue, val: JSValue) -> JSValue {
-    ss: JSSetStorage = _SET_REALM.sets[_set_idx(s)];
-    if _set_find(ss, val) >= 0 {
+    if _set_find(_SET_REALM.sets[_set_idx(s)], val) >= 0 {
         return js_true();
     }
     return js_false();

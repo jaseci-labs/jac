@@ -58,7 +58,25 @@ import from engine.src.runtime.jsvalue {
     jsv_from_string_id,
     jsv_coerce_to_bool
 }
+import from engine.src.runtime.jsobj_type {
+    jo_all_keys,
+    jo_eget,
+    jo_elems_kind,
+    jo_elen,
+    jo_epush,
+    jo_eset,
+    jo_is_ext,
+    jo_mode,
+    jo_set_elems_kind,
+    jo_sget,
+    jo_shape_id,
+    jo_sset
+}
 import from engine.src.runtime.jsobject {
+    js_object_array_dense_full,
+    js_object_array_push1,
+    js_object_dense_index_of,
+    js_object_new_array_empty,
     js_object_create_null,
     js_object_create,
     js_object_get,
@@ -83,7 +101,6 @@ import from engine.src.runtime.jsobject {
     js_object_slot_at_id
 }
 import from engine.src.runtime.jsobj_type {
-    JSObject,
     ELEMS_NONE,
     ELEMS_DENSE,
     ELEMS_HOLEY,
@@ -151,11 +168,13 @@ import from engine.src.runtime.mem {
 
 """Internal: object-table index of Array.prototype, wired by init_global."""
 glob _ARRAY_PROTO: JSValue = jsv_undefined(),
-     _ARRAY_SHAPE: int = -1;  # js_array_create's result shape, learned
+     _ARRAY_SHAPE: int = -1,  # js_array_create's result shape, learned
+     _ARRAY_PID: int = 0;  # Array.prototype's table id once that shape is learned
 
 """Called once by init_global to wire Array.prototype onto all future arrays."""
 def:pub js_array_set_proto(proto: JSValue) {
     _ARRAY_PROTO = proto;
+    _ARRAY_PID = 0;
     gc_pin_value(proto);  # glob-held singleton — invisible to the GC root walk
 }
 
@@ -174,11 +193,47 @@ def:pub js_array_get_proto -> JSValue {
 """js_array_create of vals[off .. off+n) (NEWARRAY's registers): no list of
 the elements is built on the fast path."""
 def:pub js_array_create_range(vals: list[JSValue], off: int, n: int) -> JSValue {
-    if _ARRAY_SHAPE > 0 and jsv_is_object_cell(_ARRAY_PROTO) and dense_gate_enabled() {
+    if _ARRAY_PID > 0 and dense_gate_enabled() {
         return js_object_new_array_range(
-            jsv_to_table_id(_ARRAY_PROTO), _ARRAY_SHAPE, vals, off, n, js_array_len_value(n)
+            _ARRAY_PID, _ARRAY_SHAPE, vals, off, n, js_array_len_value(n)
         );
     }
+    return _array_create_range_list(vals, off, n);
+}
+
+glob _NO_VALS: list[JSValue] = [];
+
+"""Whether `arr` is an Array at the canonical array shape with all its
+elements in its dense buffer (js_object_array_dense_full)."""
+def:pub js_array_dense_full(arr: JSValue) -> bool {
+    return _ARRAY_SHAPE > 0
+        and jsv_is_object_cell(arr)
+        and jsv_to_table_id(arr) > 0
+        and js_object_array_dense_full(arr, _ARRAY_SHAPE);
+}
+
+"""push(v) of one value onto an Array at the canonical array shape (the
+VM's lean push; js_object_array_push1): its new length, else the hole."""
+def:pub js_array_push1_fast(arr: JSValue, v: JSValue) -> JSValue {
+    if _ARRAY_SHAPE <= 0 or not jsv_is_object_cell(arr) {
+        return jsv_hole();
+    }
+    return js_object_array_push1(arr, _ARRAY_SHAPE, v);
+}
+
+"""`[]`: js_array_create_range of no values (the register loop's empty
+NEWARRAY, without the op's general path)."""
+def:pub js_array_new_empty -> JSValue {
+    if _ARRAY_PID > 0 and dense_gate_enabled() {
+        return js_object_new_array_empty(_ARRAY_PID, _ARRAY_SHAPE);
+    }
+    return _array_create_range_list(_NO_VALS, 0, 0);
+}
+
+"""js_array_create_range before the array shape is known: through a list of
+the elements (out of line: the list would register the fast path's caller
+for unwind)."""
+def _array_create_range_list(vals: list[JSValue], off: int, n: int) -> JSValue {
     cr_items: list[JSValue] = [];
     cr_k: int = 0;
     while cr_k < n {
@@ -209,14 +264,14 @@ def:pub js_array_create(elements: list[JSValue]) -> JSValue {
         else js_object_create_null();
     js_object_set(arr, _KEY_IS_ARRAY, js_true());
     if dense_gate_enabled() {
-        arr_raw: JSObject = js_object_table_get(jsv_to_table_id(arr));
-        arr_raw.elems_kind = ELEMS_DENSE;
+        arr_raw: int = jsv_to_table_id(arr);
+        jo_set_elems_kind(arr_raw, ELEMS_DENSE);
         di: int = 0;
         while di < n {
             if jsv_is_hole(elements[di]) {
-                arr_raw.elems_kind = ELEMS_HOLEY;
+                jo_set_elems_kind(arr_raw, ELEMS_HOLEY);
             }
-            arr_raw.epush(elements[di]);
+            jo_epush(arr_raw, elements[di]);
             di = di + 1;
         }
     } else {
@@ -232,6 +287,9 @@ def:pub js_array_create(elements: list[JSValue]) -> JSValue {
     js_object_set_flags(arr, WK_LENGTH, js_array_len_value(n), PROP_WRITABLE);
     if _ARRAY_SHAPE < 0 and jsv_is_object_cell(_ARRAY_PROTO) and dense_gate_enabled() {
         _ARRAY_SHAPE = js_object_array_shape(arr, _KEY_IS_ARRAY);
+        if _ARRAY_SHAPE > 0 {
+            _ARRAY_PID = jsv_to_table_id(_ARRAY_PROTO);
+        }
     }
     return arr;
 }
@@ -243,8 +301,8 @@ def:pub js_array_create_with_length(length: int) -> JSValue {
         else js_object_create_null();
     js_object_set(arr, _KEY_IS_ARRAY, js_true());
     if dense_gate_enabled() {
-        arr_raw2: JSObject = js_object_table_get(jsv_to_table_id(arr));
-        arr_raw2.elems_kind = ELEMS_DENSE;  # empty dense range; length prop carries the holes
+        arr_raw2: int = jsv_to_table_id(arr);
+        jo_set_elems_kind(arr_raw2, ELEMS_DENSE);  # empty dense range; length prop carries the holes
     }
     js_object_set_flags(arr, KEY_LENGTH, js_array_len_value(length), PROP_WRITABLE);
     return arr;
@@ -285,15 +343,15 @@ def:pub js_array_init_exotic_from_args(o: JSValue, args: list[JSValue]) {
     }
     n: int = len(args);
     if dense_gate_enabled() {
-        o_raw: JSObject = js_object_table_get(jsv_to_table_id(o));
-        if o_raw.elems_kind == ELEMS_NONE and o_raw.elen() == 0 {
-            o_raw.elems_kind = ELEMS_DENSE;
+        o_raw: int = jsv_to_table_id(o);
+        if jo_elems_kind(o_raw) == ELEMS_NONE and jo_elen(o_raw) == 0 {
+            jo_set_elems_kind(o_raw, ELEMS_DENSE);
             xi: int = 0;
             while xi < n {
                 if jsv_is_hole(args[xi]) {
-                    o_raw.elems_kind = ELEMS_HOLEY;
+                    jo_set_elems_kind(o_raw, ELEMS_HOLEY);
                 }
-                o_raw.epush(args[xi]);
+                jo_epush(o_raw, args[xi]);
                 xi = xi + 1;
             }
             js_object_set_flags(o, KEY_LENGTH, js_array_len_value(n), PROP_WRITABLE);
@@ -320,10 +378,10 @@ def:pub js_array_get(arr: JSValue, idx: int) -> JSValue {
     if idx >= 0 and jsv_is_object_cell(arr) {
         ag_id: int = jsv_to_table_id(arr);
         if ag_id > 0 {
-            ag_raw: JSObject = js_object_table_get(ag_id);
-            if ag_raw.elems_kind != ELEMS_NONE {
-                if idx < ag_raw.elen() {
-                    ag_v: JSValue = ag_raw.eget(idx);
+            ag_raw: int = ag_id;
+            if jo_elems_kind(ag_raw) != ELEMS_NONE {
+                if idx < jo_elen(ag_raw) {
+                    ag_v: JSValue = jo_eget(ag_raw, idx);
                     if not jsv_is_hole(ag_v) {
                         return ag_v;
                     }
@@ -347,10 +405,10 @@ def:pub js_array_get_quiet(arr: JSValue, idx: int) -> JSValue {
     if idx >= 0 and jsv_is_object_cell(arr) {
         gq_id: int = jsv_to_table_id(arr);
         if gq_id > 0 {
-            gq_raw: JSObject = js_object_table_get(gq_id);
-            if gq_raw.elems_kind != ELEMS_NONE {
-                if idx < gq_raw.elen() {
-                    gq_v: JSValue = gq_raw.eget(idx);
+            gq_raw: int = gq_id;
+            if jo_elems_kind(gq_raw) != ELEMS_NONE {
+                if idx < jo_elen(gq_raw) {
+                    gq_v: JSValue = jo_eget(gq_raw, idx);
                     if not jsv_is_hole(gq_v) {
                         return gq_v;
                     }
@@ -369,13 +427,13 @@ def:pub js_array_set(arr: JSValue, idx: int, val: JSValue) {
     if idx >= 0 and jsv_is_object_cell(arr) {
         as_id: int = jsv_to_table_id(arr);
         if as_id > 0 {
-            as_raw: JSObject = js_object_table_get(as_id);
-            if as_raw.elems_kind != ELEMS_NONE
-                and idx < as_raw.elen()
-                and not jsv_is_hole(as_raw.eget(idx)) {
+            as_raw: int = as_id;
+            if jo_elems_kind(as_raw) != ELEMS_NONE
+                and idx < jo_elen(as_raw)
+                and not jsv_is_hole(jo_eget(as_raw, idx)) {
                 # Own writable data element: no length change, no prototype
                 # consultation possible.
-                as_raw.eset(idx, val);
+                jo_eset(as_raw, idx, val);
                 return;
             }
         }
@@ -406,22 +464,22 @@ def:pub js_array_push(arr: JSValue, item: JSValue) -> None {
     if jsv_is_object_cell(arr) and idx_protector_ok() {
         ap_id: int = jsv_to_table_id(arr);
         if ap_id > 0 {
-            ap_raw: JSObject = js_object_table_get(ap_id);
-            if ap_raw.elems_kind != ELEMS_NONE
-                and ap_raw.is_ext()
-                and ap_raw.mode == MAP_MODE_SHAPE {
-                ap_pk: int = shape_lookup(ap_raw.shape_id, WK_LENGTH);
+            ap_raw: int = ap_id;
+            if jo_elems_kind(ap_raw) != ELEMS_NONE
+                and jo_is_ext(ap_raw)
+                and jo_mode(ap_raw) == MAP_MODE_SHAPE {
+                ap_pk: int = shape_lookup(jo_shape_id(ap_raw), WK_LENGTH);
                 if ap_pk >= 0
                     and (ap_pk & SHAPE_ATTR_ACCESSOR) == 0
                     and (ap_pk & 1) != 0 {
-                    ap_len_v: JSValue = ap_raw.sget(ap_pk // 16);
+                    ap_len_v: JSValue = jo_sget(ap_raw, ap_pk // 16);
                     # Push appends at `length` — only a pure append when the
                     # dense range reaches exactly that far (no trailing holes).
                     if jsv_is_int32(ap_len_v)
-                        and jsv_to_int32(ap_len_v) == ap_raw.elen() {
-                        ap_raw.epush(item);
-                        ap_raw.sset(ap_pk // 16, js_array_len_value(
-                            ap_raw.elen()
+                        and jsv_to_int32(ap_len_v) == jo_elen(ap_raw) {
+                        jo_epush(ap_raw, item);
+                        jo_sset(ap_raw, ap_pk // 16, js_array_len_value(
+                            jo_elen(ap_raw)
                         ));
                         return;
                     }
@@ -722,19 +780,19 @@ def:pub _array_collect_index_keys_desc(arr: JSValue, threshold: int) -> list[int
     # parsed back -- made `arr.length = n` cost O(length) even when it drops
     # one element, i.e. quadratic for stack-style truncation.
     if jsv_is_object_cell(arr) and jsv_to_table_id(arr) > 0 {
-        ck_raw: JSObject = js_object_table_get(jsv_to_table_id(arr));
-        if ck_raw.elems_kind != ELEMS_NONE {
+        ck_raw: int = jsv_to_table_id(arr);
+        if jo_elems_kind(ck_raw) != ELEMS_NONE {
             ck_out: list[int] = [];
-            ck_i: int = ck_raw.elen() - 1;
+            ck_i: int = jo_elen(ck_raw) - 1;
             while ck_i >= threshold {
-                if not jsv_is_hole(ck_raw.eget(ck_i)) {
+                if not jsv_is_hole(jo_eget(ck_raw, ck_i)) {
                     ck_out.append(str_intern_index(ck_i));
                 }
                 ck_i = ck_i - 1;
             }
             ck_ex_idx: list[int] = [];
             ck_ex_kid: list[int] = [];
-            for ck_k in ck_raw.all_keys() {
+            for ck_k in jo_all_keys(ck_raw) {
                 ck_n: int = _array_index_key_numeric(ck_k);
                 if ck_n >= threshold {
                     ck_ex_idx.append(ck_n);
@@ -1845,24 +1903,24 @@ def:pub js_Array_push(arr: JSValue, items: list[JSValue]) -> JSValue {
     if jsv_is_object_cell(arr) and idx_protector_ok() {
         jp_id: int = jsv_to_table_id(arr);
         if jp_id > 0 {
-            jp_raw: JSObject = js_object_table_get(jp_id);
-            if jp_raw.elems_kind != ELEMS_NONE
-                and jp_raw.is_ext()
-                and jp_raw.mode == MAP_MODE_SHAPE {
-                jp_pk: int = shape_lookup(jp_raw.shape_id, WK_LENGTH);
+            jp_raw: int = jp_id;
+            if jo_elems_kind(jp_raw) != ELEMS_NONE
+                and jo_is_ext(jp_raw)
+                and jo_mode(jp_raw) == MAP_MODE_SHAPE {
+                jp_pk: int = shape_lookup(jo_shape_id(jp_raw), WK_LENGTH);
                 if jp_pk >= 0
                     and (jp_pk & SHAPE_ATTR_ACCESSOR) == 0
                     and (jp_pk & 1) != 0 {
-                    jp_lv: JSValue = jp_raw.sget(jp_pk // 16);
+                    jp_lv: JSValue = jo_sget(jp_raw, jp_pk // 16);
                     if jsv_is_int32(jp_lv)
-                        and jsv_to_int32(jp_lv) == jp_raw.elen() {
+                        and jsv_to_int32(jp_lv) == jo_elen(jp_raw) {
                         for jp_itm in items {
-                            jp_raw.epush(jp_itm);
+                            jo_epush(jp_raw, jp_itm);
                         }
-                        jp_raw.sset(jp_pk // 16, js_array_len_value(
-                            jp_raw.elen()
+                        jo_sset(jp_raw, jp_pk // 16, js_array_len_value(
+                            jo_elen(jp_raw)
                         ));
-                        return js_array_len_value(jp_raw.elen());
+                        return js_array_len_value(jo_elen(jp_raw));
                     }
                 }
             }
@@ -2337,6 +2395,21 @@ def:pub js_Array_indexOf(arr: JSValue, search: JSValue, from_v: JSValue) -> JSVa
     start: int = _clamp_float_from(from_f, n);
     if start >= n {
         return js_int(-1);
+    }
+    if jsv_is_int32(search)
+        or jsv_is_object_cell(search)
+        or jsv_is_bool(search)
+        or jsv_is_null(search)
+        or jsv_is_undefined(search) {
+        # (strict equality is identity for these: the dense buffer scanned
+        # in place unless a hole or a double needs the loop below)
+        io_f: int = js_object_dense_index_of(arr, search, start, n);
+        if io_f >= 0 {
+            return js_array_len_value(io_f);
+        }
+        if io_f == -1 {
+            return js_int(-1);
+        }
     }
     i: int = start;
     while i < n {

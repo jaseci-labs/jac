@@ -11,6 +11,35 @@ ECMAScript spec : §9 — Executable Code and Execution Contexts
 """
 
 import from engine.src.runtime.gc_barrier { gc_gen_on, gc_young_adapt }
+import from engine.src.runtime.jsobj_type {
+    jo_p,
+    jo_bkind,
+    jo_brand,
+    jo_cell_flags,
+    jo_class_id,
+    jo_count,
+    jo_eget,
+    jo_einit_range,
+    jo_elems_kind,
+    jo_elen,
+    jo_epush,
+    jo_eset,
+    jo_get_own_data_or_hole,
+    jo_has_acc,
+    jo_is_ext,
+    jo_mode,
+    jo_prototype_idx,
+    jo_set_cell_flags,
+    jo_set_elems_kind,
+    jo_set_shape_id,
+    jo_set_version,
+    jo_sget,
+    jo_shape_id,
+    jo_slen,
+    jo_spush,
+    jo_sset,
+    jo_version
+}
 import from engine.src.runtime.realm { gc_nursery }
 import from engine.src.runtime.fn_meta { cl_props_get, cl_props_has_own, cl_props }
 import from engine.src.bytecode.op {
@@ -71,7 +100,14 @@ import from engine.src.runtime.jsvalue {
     jsv_coerce_to_str
 }
 import from engine.src.runtime.jsstring {
+    str_ascii_starts_with,
+    str_ascii_index_of,
+    str_char_id,
     str_intern_index,
+    _IDXK_IDS,
+    str_slice_short,
+    str_cell_len_q,
+    str_heap_ascii,
     str_id_is_empty_or_dunder,
     str_intern,
     str_from_id,
@@ -351,6 +387,7 @@ import from engine.src.runtime.realm {
     realm_lookup,
     realm_is_registered,
     gc_note_alloc,
+    gc_note_alloc_n,
     gc_note_gen_young,
     _GC_MIN_THRESHOLD,
     _GC_GROWTH_PCT,
@@ -367,6 +404,8 @@ import from engine.src.runtime.gc_pin {
     gc_await_root_del
 }
 import from engine.src.runtime.jscell {
+    FLAG_NON_EXTENSIBLE,
+    FLAG_OLD,
     FLAG_IS_CLASS,
     FLAG_IS_GLOBAL,
     FLAG_MODULE_NS,
@@ -379,7 +418,6 @@ import from engine.src.runtime.jsobj_type {
     PROP_WRITABLE,
     PROP_ENUMERABLE,
     PROP_CONFIGURABLE,
-    JSObject,
     PropertyDescriptorRecord,
     MAP_MODE_SHAPE,
     ELEMS_NONE,
@@ -400,9 +438,64 @@ import from engine.src.runtime.jsobj_type {
 }
 import from engine.src.runtime.shape { shape_lookup, shape_parent, SHAPE_ATTR_ACCESSOR }
 import from engine.src.runtime.obs_context { obs_is_active }
-import from engine.src.vm.closure_type { JSClosure }
+import from engine.src.vm.closure_type {
+    jc_pop,
+    jc_ctor_ok,
+    jc_set_ctor_ok,
+    jc_init_arrow,
+    _JC_CW,
+    _JC_FUNC,
+    _JC_FV,
+    _JC_MF,
+    jc_alloc,
+    jc_call_plain,
+    jc_class_brand,
+    jc_class_brand_sid,
+    jc_count,
+    jc_fn_props,
+    jc_free_vals_ptr,
+    jc_home_object,
+    jc_home_realm_id,
+    jc_init,
+    jc_is_arrow,
+    jc_is_non_constructor,
+    jc_jac_module,
+    jc_length_removed,
+    jc_lexical_new_target,
+    jc_lexical_this,
+    jc_name_removed,
+    jc_napi_cb_data,
+    jc_napi_cb_ptr,
+    jc_object_proto,
+    jc_prototype_obj,
+    jc_prototype_writable,
+    jc_set_call_plain,
+    jc_set_captured_with_objs,
+    jc_set_class_brand,
+    jc_set_class_brand_sid,
+    jc_set_home_object,
+    jc_set_home_realm_id,
+    jc_set_is_arrow,
+    jc_set_jac_module,
+    jc_set_length_removed,
+    jc_set_lexical_new_target,
+    jc_set_module_fns,
+    jc_set_name_removed,
+    jc_set_prototype_obj,
+    jc_set_prototype_writable,
+    jc_set_super_class,
+    jc_set_this_binding_cell,
+    jc_super_class,
+    jc_this_binding_cell,
+    jc_wb
+}
 import from engine.src.builtins.function_type { JSFunctionMeta }  # G0.5: closure-slot reuse metadata reset
 import from engine.src.runtime.jsobject {
+    js_object_poly_entry,
+    js_object_poly_get,
+    js_object_ric_getter,
+    js_object_is_plain,
+    js_object_ric_get_inh,
     js_object_dense_set_present,
     js_object_create_null,
     js_object_create,
@@ -427,6 +520,9 @@ import from engine.src.runtime.jsobject {
     js_object_elems_kind_id,
     js_object_ic_hit,
     js_object_ic_set_hit,
+    js_object_new_literal_t,
+    js_object_class_meta,
+    js_object_ric_set,
     js_object_slot_set_at_id,
     js_object_dense_elem,
     js_object_own_data_slot,
@@ -575,7 +671,7 @@ import from engine.src.builtins.native_registry {
     native_clear_key_removed,
     native_delete_own
 }
-import from engine.src.builtins.dispatch { call_native }
+import from engine.src.builtins.dispatch { call_native, call_native_k }
 import from engine.src.builtins.object {
     js_Object_getOwnPropertyDescriptor,
     js_Object_defineProperty,
@@ -849,6 +945,11 @@ import from engine.src.builtins.markers {
     _KEY_PRESOLVED
 }
 import from engine.src.builtins.array {
+    js_array_dense_full,
+    js_Array_isArray,
+    js_Array_indexOf,
+    js_array_push1_fast,
+    js_array_new_empty,
     _KEY_IS_ARRAY,
     js_array_create,
     js_array_create_range,
@@ -885,6 +986,8 @@ import from engine.src.builtins.array {
     js_array_own_key_ids
 }
 import from engine.src.builtins.map {
+    js_map_has,
+    js_map_get,
     js_is_map,
     js_is_weakmap,
     js_map_size,
@@ -909,6 +1012,7 @@ import from engine.src.builtins.map {
     _can_be_held_weakly
 }
 import from engine.src.builtins.set {
+    js_set_has,
     js_is_set,
     js_is_weakset,
     js_set_size,
@@ -944,7 +1048,7 @@ import from engine.src.builtins.number {
     KEY_IS_BOOLEAN_OBJ
 }
 import from engine.src.builtins.string { KEY_IS_STRING_OBJ }
-import from engine.src.builtins.math { _number_exponentiate }
+import from engine.src.builtins.math { _number_exponentiate, js_math_floor_num }
 import from engine.src.builtins.string {
     js_String_new,
     js_to_string_prim,
@@ -1223,7 +1327,7 @@ import from napi.src.napi_env {
     _napi_consume_exception
 }
 import from napi.src.napi_func { _napi_invoke_callback_from_vm }
-import from engine.src.ffi.libc { fflush, abort, getenv, write }
+import from engine.src.ffi.libc { fflush, abort, getenv, write, calloc, free }
 import from engine.src.ffi.wasmtime {
     wasm_register_host_call,
     wasm_host_arg_count,
@@ -1245,6 +1349,7 @@ import from engine.src.ffi.wasmtime {
 
 import from engine.src.runtime.mem {
     byte_chr,
+    mem_calloc,
     str_bfind,
     str_bslice,
     str_bslice_from,
@@ -1349,7 +1454,8 @@ glob _MSC_MASK: int = 16383,
      _MAC_SID: list[int] = [],
      _MAC_KEY: list[int] = [],
      _MAC_AFTER: list[int] = [],
-     _MAC_EPOCH: list[int] = [];
+     _MAC_EPOCH: list[int] = [],
+     _MAC_PROTO: list[int] = [];
 
 def _msc_init {
     msi: int = 0;
@@ -1361,6 +1467,7 @@ def _msc_init {
         _MAC_KEY.append(0);
         _MAC_AFTER.append(0);
         _MAC_EPOCH.append(-1);
+        _MAC_PROTO.append(0);
         msi = msi + 1;
     }
 }
@@ -1379,7 +1486,7 @@ def _msc_put(sid: int, key: int, packed: int) {
     _MSC_LOC[mp_h] = packed;
 }
 
-def _mac_put(sid_before: int, key: int, sid_after: int, epoch: int) {
+def _mac_put(sid_before: int, key: int, sid_after: int, epoch: int, proto: int) {
     if len(_MSC_SID) == 0 {
         _msc_init();
     }
@@ -1388,16 +1495,21 @@ def _mac_put(sid_before: int, key: int, sid_after: int, epoch: int) {
     _MAC_KEY[ma_h] = key;
     _MAC_AFTER[ma_h] = sid_after;
     _MAC_EPOCH[ma_h] = epoch;
+    _MAC_PROTO[ma_h] = proto;
 }
 
 """SETFIELD after the own-slot IC miss: the add-transition IC, then the
 megamorphic caches, on one shape read of the receiver."""
-def _vm_set_probe(ins: Instruction, rv: JSValue, val: JSValue) -> bool {
+def _vm_set_probe(
+    ins: Instruction, rv: JSValue, val: JSValue, ricp: int, c: int
+) -> bool {
     sp_sid: int = js_object_ic_shape(rv);
     if sp_sid < 0 {
         return False;
     }
     if _vm_set_ic_add(ins, rv, val, sp_sid) {
+        # the site's flat IC takes the add for the next hit
+        _ric_fill_add(ricp, c, ins);
         return True;
     }
     return _vm_set_mega(ins, rv, val, sp_sid);
@@ -1444,14 +1556,16 @@ def _vm_set_mega(ins: Instruction, rv: JSValue, val: JSValue, sm_sid: int) -> bo
     if _MAC_SID[sm_h] == sm_sid
         and _MAC_KEY[sm_h] == sm_key
         and _MAC_EPOCH[sm_h] == proto_epoch() {
-        sm_raw: JSObject = js_object_table_get(jsv_to_table_id(rv));
-        if not sm_raw.is_ext() {
+        sm_raw: int = jsv_to_table_id(rv);
+        # (the chain the fill proved free of setters / read-only keys is the
+        # one from this [[Prototype]])
+        if not jo_is_ext(sm_raw) or jo_prototype_idx(sm_raw) != _MAC_PROTO[sm_h] {
             return False;
         }
-        sm_raw.shape_id = _MAC_AFTER[sm_h];
-        sm_raw.spush(val);
-        sm_raw.version = sm_raw.version + 1;
-        if (sm_raw.cell_flags & FLAG_IS_PROTO) != 0 {
+        jo_set_shape_id(sm_raw, _MAC_AFTER[sm_h]);
+        jo_spush(sm_raw, val);
+        jo_set_version(sm_raw, jo_version(sm_raw) + 1);
+        if (jo_cell_flags(sm_raw) & FLAG_IS_PROTO) != 0 {
             proto_epoch_bump();
         }
         return True;
@@ -1519,24 +1633,24 @@ def _vm_mgc_fill(va: JSValue, key: int) {
         if fa_depth >= 64 {
             return;
         }
-        fa_raw: JSObject = js_object_table_get(fa_idx);
-        if fa_raw.class_id != 0
-            or fa_raw.mode != MAP_MODE_SHAPE
-            or fa_raw.bkind() != 0
+        fa_raw: int = fa_idx;
+        if jo_class_id(fa_raw) != 0
+            or jo_mode(fa_raw) != MAP_MODE_SHAPE
+            or jo_bkind(fa_raw) != 0
             or (
-                fa_raw.cell_flags
+                jo_cell_flags(fa_raw)
                 & (FLAG_MODULE_NS | FLAG_IS_GLOBAL | FLAG_IS_CLASS | FLAG_IS_ARGUMENTS)
             )
                 != 0 {
             return;
         }
-        if fa_idx != fa_id and fa_raw.brand != 0 {
+        if fa_idx != fa_id and jo_brand(fa_raw) != 0 {
             return;
         }
-        if fa_raw.has_acc() and js_object_has_own_accessor(jsv_from_object_id(fa_idx), key) {
+        if jo_has_acc(fa_raw) and js_object_has_own_accessor(jsv_from_object_id(fa_idx), key) {
             return;
         }
-        fa_pk: int = shape_lookup(fa_raw.shape_id, key);
+        fa_pk: int = shape_lookup(jo_shape_id(fa_raw), key);
         if fa_pk >= 0 {
             if (fa_pk & SHAPE_ATTR_ACCESSOR) != 0 {
                 return;
@@ -1548,7 +1662,7 @@ def _vm_mgc_fill(va: JSValue, key: int) {
             }
             return;
         }
-        fa_idx = fa_raw.prototype_idx;
+        fa_idx = jo_prototype_idx(fa_raw);
         fa_depth = fa_depth + 1;
     }
     _mgc_put_absent(fa_sid, fa_proto, key, proto_epoch());
@@ -1605,7 +1719,13 @@ is a shape-mode one the ICs read and the key is a data property there. Holder
 id, shape and slot go in ic_obj, ic_obj2 and ic_ver (ic_ver2 too, so the pair
 stays a valid own-slot entry for this key if an object fill takes the site)."""
 def _vm_str_method_ic_fill(ins: Instruction, key: int) -> None {
-    sm_h: JSValue = js_string_get_proto();
+    _vm_prim_method_ic_fill(ins, key, js_string_get_proto(), _STR_IC_HOLDER);
+}
+
+"""_vm_str_method_ic_fill from prototype `start` (%String.prototype% or
+%Number.prototype%), tagging the site with `holder_tag`."""
+def _vm_prim_method_ic_fill(ins: Instruction, key: int, start: JSValue, holder_tag: int) -> None {
+    sm_h: JSValue = start;
     sm_n: int = 0;
     while jsv_is_object_cell(sm_h) and sm_n < 8 {
         sm_sid: int = js_object_ic_shape(sm_h);
@@ -1617,7 +1737,7 @@ def _vm_str_method_ic_fill(ins: Instruction, key: int) -> None {
             if (sm_pk & SHAPE_ATTR_ACCESSOR) != 0 {
                 return;
             }
-            ins.ic_holder = _STR_IC_HOLDER;
+            ins.ic_holder = holder_tag;
             ins.ic_obj = jsv_to_table_id(sm_h);
             ins.ic_obj2 = sm_sid;
             ins.ic_ver = sm_pk;
@@ -1651,6 +1771,16 @@ def _vm_get_cached(ins: Instruction, rv: JSValue) -> JSValue {
             return js_int(js_string_utf16_len_cell(jsv_to_table_id(rv)));
         }
         if ins.ic_holder == _STR_IC_HOLDER and ins.ic_epoch == proto_epoch() {
+            return js_object_ic_hit(
+                jsv_from_object_id(ins.ic_obj), ins.ic_obj2, ins.ic_ver // 16
+            );
+        }
+        return jsv_hole();
+    }
+    if jsv_is_int32(rv) or jsv_is_double(rv) {
+        # a number receiver: the method cached where it lives on the
+        # %Number.prototype% chain, as for strings
+        if ins.ic_holder == _NUM_IC_HOLDER and ins.ic_epoch == proto_epoch() {
             return js_object_ic_hit(
                 jsv_from_object_id(ins.ic_obj), ins.ic_obj2, ins.ic_ver // 16
             );
@@ -1693,24 +1823,134 @@ receiver `rv` matched (shape id, slot) into the site's flat IC at `ricp`.
 Shapes are immutable and carry the attributes, so a pair stays valid for as
 long as the shape does; the loop's hit re-tests the receiver every time."""
 def _ric_fill_get(ricp: int, c: int, ins: Instruction, rv: JSValue) -> None {
-    if ins.ic_holder != 1 or ins.ic_obj <= 0 {
-        return;
-    }
     rf_sid: int = js_object_ic_shape(rv);
-    if rf_sid <= 0 {
+    if rf_sid <= 0 or ricp == 0 {
         return;
     }
-    if rf_sid == ins.ic_obj {
-        __mem_store_i64(wrapping_add(ricp, wrapping_mul(c, 16)), rf_sid);
-        __mem_store_i64(
-            wrapping_add(ricp, wrapping_add(wrapping_mul(c, 16), 8)), ins.ic_ver // 16
-        );
-    } elif ins.ic_obj2 > 0 and rf_sid == ins.ic_obj2 {
-        __mem_store_i64(wrapping_add(ricp, wrapping_mul(c, 16)), rf_sid);
-        __mem_store_i64(
-            wrapping_add(ricp, wrapping_add(wrapping_mul(c, 16), 8)), ins.ic_ver2 // 16
-        );
+    # The receiver's own data slot of the key: from the Instruction's own-slot
+    # IC when it names this shape, else from the shape (the hit may have come
+    # from the megamorphic cache; an inherited value has no own slot).
+    rf_si: int = -1;
+    if ins.ic_holder == 1 and ins.ic_obj > 0 and rf_sid == ins.ic_obj {
+        rf_si = ins.ic_ver // 16;
+    } elif ins.ic_holder == 1 and ins.ic_obj2 > 0 and rf_sid == ins.ic_obj2 {
+        rf_si = ins.ic_ver2 // 16;
+    } elif ins.arg2 != 0 {
+        rf_si = js_object_own_data_slot(rv, ins.arg2);
     }
+    if rf_si < 0 {
+        return;
+    }
+    rf_e: int = wrapping_add(ricp, wrapping_mul(c, 16));
+    rf_w0: int = __mem_load_i64(rf_e);
+    if rf_w0 == -1 {
+        # a polymorphic site: this shape's entry in its table
+        _ric_poly_put(__mem_load_i64(wrapping_add(rf_e, 8)), rf_sid, rf_si);
+        return;
+    }
+    if rf_w0 > 0 and rf_w0 != rf_sid {
+        # a second shape at a monomorphic site: the site becomes polymorphic
+        rf_t: int = mem_calloc(16, 16);
+        if rf_t != 0 {
+            _ric_poly_put(rf_t, rf_w0, __mem_load_i64(wrapping_add(rf_e, 8)));
+            _ric_poly_put(rf_t, rf_sid, rf_si);
+            __mem_store_i64(wrapping_add(rf_e, 8), rf_t);
+            __mem_store_i64(rf_e, -1);
+            return;
+        }
+    }
+    __mem_store_i64(rf_e, rf_sid);
+    __mem_store_i64(wrapping_add(rf_e, 8), rf_si);
+}
+
+"""Put shape `sid`'s own slot `si` in a polymorphic GETFIELD site's table
+`tbl` (jsobject js_object_poly_entry; a colliding shape is replaced)."""
+def _ric_poly_put(tbl: int, sid: int, si: int) -> None {
+    pp_e: int = js_object_poly_entry(tbl, sid);
+    __mem_store_i64(pp_e, sid);
+    __mem_store_i64(wrapping_add(pp_e, 8), si);
+}
+
+"""After a GETFIELD hit through the Instruction's inherited-slot IC (holder
+< 0): when the slot's holder is the receiver's own [[Prototype]], put the
+entry in the site's flat IC as w0 = -2 - (receiver shape << 1 | proto epoch
+<< 26), w1 = holder id << 32 | slot (jsobject js_object_ric_get_inh)."""
+def _ric_fill_inh(ricp: int, c: int, ins: Instruction, rv: JSValue) -> None {
+    fi_h: int = ins.ic_ver >> 32;
+    fi_ep: int = ins.ic_epoch;
+    if ricp == 0
+        or fi_h <= 0
+        or fi_h >= 2147483648
+        or 0 - ins.ic_holder != fi_h
+        or ins.ic_obj < 0
+        or ins.ic_obj >= 33554432
+        or fi_ep < 0
+        or fi_ep >= 137438953472
+        or js_object_ic_shape(rv) != ins.ic_obj {
+        return;
+    }
+    __mem_store_i64(wrapping_add(ricp, wrapping_mul(c, 16)), -2 - ((ins.ic_obj << 1) | (fi_ep << 26)));
+    __mem_store_i64(
+        wrapping_add(ricp, wrapping_add(wrapping_mul(c, 16), 8)),
+        (fi_h << 32) | ((ins.ic_ver & 4294967295) // 16)
+    );
+}
+
+"""After a GETFIELD hit through the Instruction's getter IC (receiver shape
+ins.ic_obj, its [[Prototype]] in ic_holder, the proto epoch; getter `gfn`):
+the site's flat IC as w0 = -2 - (shape << 1 | 1 | epoch << 26), w1 = getter
+closure id << 32 | [[Prototype]] + 1 (jsobject js_object_ric_getter)."""
+def _ric_fill_getter(ricp: int, c: int, ins: Instruction, gfn: JSValue) -> None {
+    fg_id: int = get_fn_idx(gfn);
+    fg_pr: int = 0 - ins.ic_holder - _GETTER_IC_TAG;
+    if ricp == 0
+        or fg_id < 0
+        or fg_id >= 2147483648
+        or fg_pr < -1
+        or fg_pr >= 2147483647
+        or ins.ic_obj < 0
+        or ins.ic_obj >= 33554432
+        or ins.ic_epoch < 0
+        or ins.ic_epoch >= 137438953472 {
+        return;
+    }
+    __mem_store_i64(
+        wrapping_add(ricp, wrapping_mul(c, 16)), -2 - ((ins.ic_obj << 1) | 1 | (ins.ic_epoch << 26))
+    );
+    __mem_store_i64(
+        wrapping_add(ricp, wrapping_add(wrapping_mul(c, 16), 8)), (fg_id << 32) | (fg_pr + 1)
+    );
+}
+
+"""Point SETFIELD site `c`'s flat IC (at `ricp`) at the add transition `ins`
+holds (holder 3: an object-literal define; 4: a [[Set]] add, with its proto
+epoch and receiver [[Prototype]]) in js_object_ric_set's encoding; nothing
+when a value does not fit it."""
+def _ric_fill_add(ricp: int, c: int, ins: Instruction) -> None {
+    fa_from: int = ins.ic_obj;
+    fa_to: int = ins.ic_ver;
+    if ricp == 0
+        or fa_from < 0
+        or fa_from >= 33554432
+        or fa_to <= 0
+        or fa_to >= 4294967296 {
+        return;
+    }
+    fa_enc: int = fa_from << 1;
+    fa_w1: int = fa_to;
+    if ins.ic_holder == 4 {
+        fa_ep: int = ins.ic_epoch;
+        fa_pr: int = ins.ic_obj2 + 1;
+        if fa_ep < 0 or fa_ep >= 137438953472 or fa_pr < 0 or fa_pr >= 2147483648 {
+            return;
+        }
+        fa_enc = fa_enc | 1 | (fa_ep << 26);
+        fa_w1 = fa_w1 | (fa_pr << 32);
+    } elif ins.ic_holder != 3 {
+        return;
+    }
+    __mem_store_i64(wrapping_add(ricp, wrapping_mul(c, 16)), -2 - fa_enc);
+    __mem_store_i64(wrapping_add(ricp, wrapping_add(wrapping_mul(c, 16), 8)), fa_w1);
 }
 
 """After a SETFIELD hit through the Instruction's own-slot IC (_vm_set_ic_ok:
@@ -1808,6 +2048,7 @@ glob _HDI_ARR_SHAPE: int = -1,
      _GETTER_IC_TAG: int = 1099511627776,
      _GETTER_IC_NONE: int = 7,
      _STR_IC_HOLDER: int = 8,
+     _NUM_IC_HOLDER: int = 9,
      _ITER_STD_SHAPE: int = -1,
      _ITER_STD_I: int = -1,
      _ITER_STD_J: int = -1;
@@ -1853,7 +2094,7 @@ def _vm_ic_key_ok_obj(k: int, v: JSValue) -> bool {
         return False;
     }
     return (
-        js_object_table_get(jsv_to_table_id(v)).cell_flags
+        jo_cell_flags(jsv_to_table_id(v))
         & (FLAG_IS_ARGUMENTS | FLAG_IS_CLASS)
     )
         == 0;
@@ -1908,14 +2149,17 @@ def _vm_set_ic_add(ins: Instruction, rv: JSValue, val: JSValue, sa_sid: int) -> 
     if sa_sid < 0 or sa_sid != ins.ic_obj {
         return False;
     }
-    sa_raw: JSObject = js_object_table_get(jsv_to_table_id(rv));
-    if not sa_raw.is_ext() {
+    sa_raw: int = jsv_to_table_id(rv);
+    if not jo_is_ext(sa_raw) {
         return False;
     }
-    sa_raw.shape_id = ins.ic_ver;
-    sa_raw.spush(val);
-    sa_raw.version = sa_raw.version + 1;
-    if (sa_raw.cell_flags & FLAG_IS_PROTO) != 0 {
+    if ins.ic_holder == 4 and jo_prototype_idx(sa_raw) != ins.ic_obj2 {
+        return False;
+    }
+    jo_set_shape_id(sa_raw, ins.ic_ver);
+    jo_spush(sa_raw, val);
+    jo_set_version(sa_raw, jo_version(sa_raw) + 1);
+    if (jo_cell_flags(sa_raw) & FLAG_IS_PROTO) != 0 {
         proto_epoch_bump();
     }
     return True;
@@ -2135,7 +2379,7 @@ def _vm_obj_get_plain(rv: JSValue, key: int) -> JSValue {
     if og_id <= 0 or key == KEY_PROTO or js_object_brand(rv) != 0 {
         return jsv_hole();
     }
-    if (js_object_table_get(og_id).cell_flags & FLAG_IS_CLASS) != 0 {
+    if (jo_cell_flags(og_id) & FLAG_IS_CLASS) != 0 {
         return jsv_hole();
     }
     og_v: JSValue = js_object_get_ordinary(rv, key);
@@ -2160,7 +2404,7 @@ def _vm_fn_get_plain(fv: JSValue, key: int) -> JSValue {
 %Function.prototype%'s default."""
 def _vm_instanceof_class(cls: JSValue) -> bool {
     ic_id: int = jsv_to_table_id(cls);
-    if ic_id <= 0 or (js_object_table_get(ic_id).cell_flags & FLAG_IS_CLASS) == 0 {
+    if ic_id <= 0 or (jo_cell_flags(ic_id) & FLAG_IS_CLASS) == 0 {
         return False;
     }
     ic_h: JSValue = js_object_get_ordinary(cls, SYMBOL_KEY_BASE + SYMBOL_HAS_INSTANCE);
@@ -2183,7 +2427,7 @@ def _vm_get_index_key(o: JSValue, key: int) -> JSValue {
     gs_v: JSValue = js_object_get_ordinary(o, key);
     if jsv_is_undefined(gs_v)
         and jsv_to_table_id(o) > 0
-        and (js_object_table_get(jsv_to_table_id(o)).cell_flags & FLAG_IS_CLASS) != 0 {
+        and (jo_cell_flags(jsv_to_table_id(o)) & FLAG_IS_CLASS) != 0 {
         return jsv_hole();
     }
     return gs_v;
@@ -2311,9 +2555,9 @@ def _bind_jac_module_on_exports(exports: JSValue, mod: JSValue, realm: Realm) ->
         fv: JSValue = js_object_get(exports, keys[ki]);
         if is_fn_val(fv) {
             cl_idx: int = get_fn_idx(fv);
-            if cl_idx >= 0 and cl_idx < len(realm.closures) {
-                realm.closures[cl_idx].jac_module = mod;
-                realm.closures[cl_idx].wb(realm.closures[cl_idx].jac_module);
+            if cl_idx >= 0 and cl_idx < jc_count() {
+                jc_set_jac_module(cl_idx, mod);
+                jc_wb(cl_idx, jc_jac_module(cl_idx));
             }
         }
         ki = ki + 1;
@@ -2325,10 +2569,10 @@ def _fn_jac_module(fn_val: JSValue, realm: Realm) -> JSValue {
         return js_undefined();
     }
     cl_idx_m: int = get_fn_idx(fn_val);
-    if cl_idx_m < 0 or cl_idx_m >= len(realm.closures) {
+    if cl_idx_m < 0 or cl_idx_m >= jc_count() {
         return js_undefined();
     }
-    return realm.closures[cl_idx_m].jac_module;
+    return jc_jac_module(cl_idx_m);
 }
 
 # module.exports's (shape, slot) on CommonJS module objects (V4.22). Globs
@@ -2865,25 +3109,30 @@ def _handle_require_resolve_paths(vm: VM, args: list[JSValue]) {
 # mutated in place: callers replace the field (module_fns, captured_with_objs)
 # or copy before seeding a frame.
 glob _EMPTY_MODULE_FNS: list[CompiledFunction] = [],
-     _EMPTY_WITH_OBJS: list[JSValue] = [];
+     _EMPTY_WITH_OBJS: list[JSValue] = [],
+     # the capture list of every closure without free variables (read only)
+     _EMPTY_FREE_VALS: list[JSValue] = [];
 
 def make_closure(
     fn: CompiledFunction,
     free_vals: list[JSValue],
     lexical_this: JSValue,
     prototype_obj: JSValue
-) -> JSClosure {
-    return JSClosure(
-        func=fn,
-        free_vals=free_vals,
-        lexical_this=lexical_this,
-        prototype_obj=prototype_obj,
-        super_class=js_undefined(),
-        fn_props=js_undefined(),
-        module_fns=_EMPTY_MODULE_FNS,
-        is_arrow=False,
-        captured_with_objs=_EMPTY_WITH_OBJS
+) -> int {
+    mc_id: int = jc_alloc(fn);
+    jc_init(
+        mc_id,
+        fn,
+        free_vals,
+        lexical_this,
+        prototype_obj,
+        js_undefined(),
+        js_undefined(),
+        _EMPTY_MODULE_FNS,
+        False,
+        _EMPTY_WITH_OBJS
     );
+    return mc_id;
 }
 
 """
@@ -3873,6 +4122,20 @@ def const_to_jsval(s: str) -> JSValue {
     return js_str(s);
 }
 
+"""A `+` operand's string cell id when the other operand is a string: a
+string is its own cell, a small non-negative int32 its cached index string
+(the text is the same; strings compare by value), anything else its
+ToString (jsval_to_str: ToPrimitive first) as a new heap string."""
+def _add_str_operand(v: JSValue) -> int {
+    if jsv_is_string_cell(v) {
+        return jsv_to_table_id(v);
+    }
+    if jsv_is_int32(v) and jsv_to_int32(v) >= 0 and jsv_to_int32(v) < 1024 {
+        return str_intern_index(jsv_to_int32(v));
+    }
+    return str_heap(jsval_to_str(v));
+}
+
 """
 JS Addition — ECMAScript §13.15.3 ApplyStringOrNumericBinaryOperator.
 String + anything → string concatenation; otherwise numeric addition.
@@ -3886,10 +4149,9 @@ def js_add(a: JSValue, b: JSValue) -> JSValue {
         return jsv_from_string_id(str_rope(jsv_to_table_id(a), jsv_to_table_id(b)));
     }
     if jsv_is_string_cell(a) or jsv_is_string_cell(b) {
-        # One operand needs ToString/ToPrimitive first; do that, then rope.
-        return jsv_from_string_id(
-            str_rope(str_heap(jsval_to_str(a)), str_heap(jsval_to_str(b)))
-        );
+        # One operand needs ToString/ToPrimitive first; do that (left first),
+        # then rope.
+        return jsv_from_string_id(str_rope(_add_str_operand(a), _add_str_operand(b)));
     }
     # Int32+int32 fast path: stay in int32 when the mathematical sum fits.
     # Overflow falls through to float64 so IEEE-754 / Number semantics hold
@@ -4290,6 +4552,27 @@ def _ins_cached_set_prop_key(frame: CallFrame, ins: Instruction) -> int {
     return encoded;
 }
 
+# Closure allocations not yet accounted (vm_register_closure batches them).
+glob _VM_CL_NOTE: int = 0;
+
+"""Reset a freed closure slot's function record in place (V4.24): the
+fields a fresh JSFunctionMeta(name="", arg_count=0, prototype_obj=
+undefined, source="") has. (Its own function: the record local would make
+every registration set up an unwind record.)"""
+def _vm_reset_fn_meta(realm: Realm, cl: int) -> None {
+    rc_fm: JSFunctionMeta = realm.functions[cl];
+    rc_fm.name = "";
+    rc_fm.arg_count = 0;
+    rc_fm.prototype_obj = js_undefined();
+    rc_fm.source = "";
+    rc_fm.cell_kind = 3;
+    rc_fm.cell_flags = 0;
+    rc_fm.structure_id = 0;
+    if cl < len(realm.functions_mark_epoch) {
+        realm.functions_mark_epoch[cl] = 0;
+    }
+}
+
 """G0.5 — register a VM-created closure (arrow / concise-method / bound), reusing
 a GC-freed slot from `free_closure_slots` when one is available instead of always
 growing `realm.closures` (previously arrow/method/bound churn grew the closures
@@ -4298,44 +4581,25 @@ discipline; the parallel `functions[idx]` metadata slot is cleared to a dummy on
 reuse (VM closures carry their real name/length in `fn_props` and have no
 [[prototype]] of their own, so `undefined` is the correct, consistent state —
 gc_sweep_closures does NOT clear functions on free). Returns the 0-based idx."""
-def:pub vm_register_closure(realm: Realm, cl: JSClosure) -> int {
-    if len(realm.free_closure_slots) > 0 {
-        _rc_last: int = len(realm.free_closure_slots) - 1;
-        idx: int = realm.free_closure_slots[_rc_last];
-        del realm.free_closure_slots[_rc_last];
-        realm.closures[idx] = cl;  # fresh cl (cell_flags=0) clears the DEAD tombstone
-        realm.closures_mark_epoch[idx] = 0;
-        if gc_gen_on() {
-            realm.gc_young_closures.append(idx);
-        }
-        if idx < len(realm.functions) {
-            # reset the freed slot's record in place (V4.24): the fields a
-            # fresh JSFunctionMeta(name="", arg_count=0, prototype_obj=
-            # undefined, source="") has
-            rc_fm: JSFunctionMeta = realm.functions[idx];
-            rc_fm.name = "";
-            rc_fm.arg_count = 0;
-            rc_fm.prototype_obj = js_undefined();
-            rc_fm.source = "";
-            rc_fm.cell_kind = 3;
-            rc_fm.cell_flags = 0;
-            rc_fm.structure_id = 0;
-            if idx < len(realm.functions_mark_epoch) {
-                realm.functions_mark_epoch[idx] = 0;
-            }
-        }
-        gc_note_alloc(realm, 256);
-        return idx;
+def:pub vm_register_closure(realm: Realm, cl: int) -> int {
+    # (make_closure handed out the id: a slot the GC freed, or a new one)
+    rc_new: bool = cl >= len(realm.closures_mark_epoch);
+    while len(realm.closures_mark_epoch) <= cl {
+        realm.closures_mark_epoch.append(0);
     }
-    _rc_idx: int = len(realm.closures);
-    realm.closures.append(cl);
-    realm.closures_mark_epoch.append(0);
-    if gc_gen_on() {
-        realm.gc_young_closures.append(len(realm.closures) - 1);
+    realm.closures_mark_epoch[cl] = 0;
+    # (young closures are found from the free stack: closure_type.jac)
+    if not rc_new and cl < len(realm.functions) {
+        _vm_reset_fn_meta(realm, cl);
     }
-    gc_note_alloc(realm, 256);
-    return _rc_idx;
+    _VM_CL_NOTE = _VM_CL_NOTE + 1;
+    if _VM_CL_NOTE >= 32 {
+        gc_note_alloc_n(realm, _VM_CL_NOTE, _VM_CL_NOTE * 256);
+        _VM_CL_NOTE = 0;
+    }
+    return cl;
 }
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 4.  VM
@@ -5416,12 +5680,12 @@ obj VM {
         }
         if key == WK_NAME or key == WK_LENGTH {
             fhk_idx2: int = get_fn_idx(fn_v);
-            if fhk_idx2 >= 0 and fhk_idx2 < len(self.realm.closures) {
-                fhk_cl: JSClosure = self.realm.closures[fhk_idx2];
-                if key == WK_NAME and fhk_cl.name_removed {
+            if fhk_idx2 >= 0 and fhk_idx2 < jc_count() {
+                fhk_cl: int = fhk_idx2;
+                if key == WK_NAME and jc_name_removed(fhk_cl) {
                     return False;
                 }
-                if key == WK_LENGTH and fhk_cl.length_removed {
+                if key == WK_LENGTH and jc_length_removed(fhk_cl) {
                     return False;
                 }
             }
@@ -5440,8 +5704,8 @@ obj VM {
             return False;
         }  # internal sentinel, not user-visible
         fhk_idx: int = get_fn_idx(fn_v);
-        if fhk_idx >= 0 and fhk_idx < len(self.realm.closures) {
-            fhk_fp: JSValue = self.realm.closures[fhk_idx].fn_props;
+        if fhk_idx >= 0 and fhk_idx < jc_count() {
+            fhk_fp: JSValue = jc_fn_props(fhk_idx);
             if jsv_is_object_cell(fhk_fp) {
                 return js_object_has_own(fhk_fp, key);
             }
@@ -5492,8 +5756,8 @@ obj VM {
         # Definitions made while sealing/freezing an intrinsic are materialized in
         # fn_props; once present they override the synthesized descriptor.
         fod_idx0: int = get_fn_idx(fn_v);
-        if fod_idx0 >= 0 and fod_idx0 < len(self.realm.closures) {
-            fod_fp0: JSValue = cl_props(self.realm.closures[fod_idx0]);
+        if fod_idx0 >= 0 and fod_idx0 < jc_count() {
+            fod_fp0: JSValue = cl_props(fod_idx0);
             if jsv_is_object_cell(fod_fp0) and js_object_has_own(fod_fp0, fod_key) {
                 return _vm_call_native_proxy_aware(
                     self,
@@ -5506,12 +5770,12 @@ obj VM {
         }
         if fod_key == WK_NAME or fod_key == WK_LENGTH {
             fod_idx2: int = get_fn_idx(fn_v);
-            if fod_idx2 >= 0 and fod_idx2 < len(self.realm.closures) {
-                fod_cl: JSClosure = self.realm.closures[fod_idx2];
-                if fod_key == WK_NAME and fod_cl.name_removed {
+            if fod_idx2 >= 0 and fod_idx2 < jc_count() {
+                fod_cl: int = fod_idx2;
+                if fod_key == WK_NAME and jc_name_removed(fod_cl) {
                     return js_undefined();
                 }
-                if fod_key == WK_LENGTH and fod_cl.length_removed {
+                if fod_key == WK_LENGTH and jc_length_removed(fod_cl) {
                     return js_undefined();
                 }
                 fod_fp_od: JSValue = cl_props(fod_cl);
@@ -5548,8 +5812,8 @@ obj VM {
             # handled elsewhere.
             fod_pw: bool = True;
             fod_pw_idx: int = get_fn_idx(fn_v);
-            if fod_pw_idx >= 0 and fod_pw_idx < len(self.realm.closures) {
-                fod_pw = self.realm.closures[fod_pw_idx].prototype_writable;
+            if fod_pw_idx >= 0 and fod_pw_idx < jc_count() {
+                fod_pw = jc_prototype_writable(fod_pw_idx);
             }
             js_object_set(fod_d2, str_intern("writable"), js_boolean(fod_pw));
             js_object_set(fod_d2, str_intern("enumerable"), js_boolean(False));
@@ -5561,8 +5825,8 @@ obj VM {
             return js_undefined();
         }  # internal sentinel
         fod_idx: int = get_fn_idx(fn_v);
-        if fod_idx >= 0 and fod_idx < len(self.realm.closures) {
-            fod_fp: JSValue = cl_props(self.realm.closures[fod_idx]);
+        if fod_idx >= 0 and fod_idx < jc_count() {
+            fod_fp: JSValue = cl_props(fod_idx);
             if jsv_is_object_cell(fod_fp) and js_object_has_own(fod_fp, fod_key) {
                 return _vm_call_native_proxy_aware(
                     self,
@@ -5600,8 +5864,8 @@ obj VM {
             return js_array_create(ekeys);
         }
         fek_idx: int = get_fn_idx(fn_v);
-        if fek_idx >= 0 and fek_idx < len(self.realm.closures) {
-            fek_fp: JSValue = cl_props(self.realm.closures[fek_idx]);
+        if fek_idx >= 0 and fek_idx < jc_count() {
+            fek_fp: JSValue = cl_props(fek_idx);
             if jsv_is_object_cell(fek_fp) and jsv_to_table_id(fek_fp) > 0 {
                 for fek_k in js_object_all_keys(fek_fp) {
                     if fek_k != WK_NAME
@@ -5649,10 +5913,10 @@ obj VM {
         fop_idx: int = get_fn_idx(fn_v);
         fop_len_removed: bool = False;
         fop_name_removed: bool = False;
-        if fop_idx >= 0 and fop_idx < len(self.realm.closures) {
-            fop_cl: JSClosure = self.realm.closures[fop_idx];
-            fop_len_removed = fop_cl.length_removed;
-            fop_name_removed = fop_cl.name_removed;
+        if fop_idx >= 0 and fop_idx < jc_count() {
+            fop_cl: int = fop_idx;
+            fop_len_removed = jc_length_removed(fop_cl);
+            fop_name_removed = jc_name_removed(fop_cl);
         }
         if not fop_len_removed {
             fnames.append(jsv_from_string_id(WK_LENGTH));
@@ -5664,8 +5928,8 @@ obj VM {
         if not jsv_is_undefined(_fn_prop(fn_v, WK_PROTOTYPE)) {
             fnames.append(jsv_from_string_id(WK_PROTOTYPE));
         }
-        if fop_idx >= 0 and fop_idx < len(self.realm.closures) {
-            fop_fp: JSValue = cl_props(self.realm.closures[fop_idx]);
+        if fop_idx >= 0 and fop_idx < jc_count() {
+            fop_fp: JSValue = cl_props(fop_idx);
             if jsv_is_object_cell(fop_fp) {
                 for fk in js_object_all_keys(fop_fp) {
                     if fk != WK_NAME
@@ -5810,9 +6074,7 @@ obj VM {
         bs_n: int = len(args);
         if bs_n > 0 {
             bs_id: int = jsv_to_table_id(bs_obj);
-            js_object_table_get(bs_id).elems_kind = js_object_table_get(bs_id).einit_range(
-                args, 0, bs_n
-            );
+            jo_set_elems_kind(bs_id, jo_einit_range(bs_id, args, 0, bs_n));
         }
         js_object_set_flags(
             bs_obj, WK_LENGTH, js_int(bs_n), PROP_WRITABLE | PROP_CONFIGURABLE
@@ -5869,9 +6131,9 @@ obj VM {
         # compilation unit (see run_generator), not the caller's.
         gp_saved_mf: list[CompiledFunction] = self.module_fns;
         if is_fn_val(callee) {
-            gp_cl: JSClosure = self.realm.closures[get_fn_idx(callee)];
-            if len(gp_cl.module_fns) > 0 {
-                self.module_fns = gp_cl.module_fns;
+            gp_cl: int = get_fn_idx(callee);
+            if len(_JC_MF[gp_cl]) > 0 {
+                self.module_fns = _JC_MF[gp_cl];
             }
         }
         gp_st: ExecState = ExecState();
@@ -5957,10 +6219,10 @@ obj VM {
         if is_fn_val(closure_val) {
             btf_idx: int = get_fn_idx(closure_val);
             if btf_idx >= 0
-                and btf_idx < len(self.realm.closures)
-                and len(self.realm.closures[btf_idx].captured_with_objs) > 0 {
+                and btf_idx < jc_count()
+                and len(_JC_CW[btf_idx]) > 0 {
                 btf_wseed: list[JSValue] = [];
-                for btf_wo in self.realm.closures[btf_idx].captured_with_objs {
+                for btf_wo in _JC_CW[btf_idx] {
                     btf_wseed.append(btf_wo);
                 }
                 btf_frame.with_objs = btf_wseed;
@@ -6026,8 +6288,8 @@ obj VM {
         );
         if is_fn_val(closure_val) {
             bpf_idx: int = get_fn_idx(closure_val);
-            if bpf_idx >= 0 and bpf_idx < len(self.realm.closures) {
-                bpf_cw: list[JSValue] = self.realm.closures[bpf_idx].captured_with_objs;
+            if bpf_idx >= 0 and bpf_idx < jc_count() {
+                bpf_cw: list[JSValue] = _JC_CW[bpf_idx];
                 if len(bpf_cw) > 0 {
                     bpf_wseed: list[JSValue] = [];
                     for bpf_wo in bpf_cw {
@@ -6059,7 +6321,7 @@ obj VM {
     # it must take run_cl; _inline_call (arguments in a list) and
     # _inline_call_from_stack (arguments on the operand stack) share it.
     def _inline_this(
-        cl: JSClosure, cl_val: JSValue, this_val: JSValue, st: ExecState
+        cl: int, cl_val: JSValue, this_val: JSValue, st: ExecState
     ) -> JSValue {
         if _INLINE_CALLS_ON == 0 {
             return jsv_hole();
@@ -6070,20 +6332,20 @@ obj VM {
         # cl.func is read through the closure each time rather than bound to
         # a local: a CompiledFunction local costs a retain/release pair per
         # call (this runs once per JS call).
-        if cl.func.is_generator or cl.func.is_async or cl.func.is_bound {
+        if _JC_FUNC[cl].is_generator or _JC_FUNC[cl].is_async or _JC_FUNC[cl].is_bound {
             _inline_rej(1);
             return jsv_hole();
         }
         # A register-ISA callee runs in VM._exec_reg (_reg_call_from_stack or
         # run_cl), never inside the stack loop.
-        if self._reg_ready(cl.func) {
+        if self._reg_ready(_JC_FUNC[cl]) {
             _inline_rej(11);
             return jsv_hole();
         }
         # A fn containing TAIL_CALL inlines too: its tail calls replace its
         # inline frame (_op_tail_call), so proper-tail-call depth stays O(1)
         # as run()'s trampoline keeps it for a base frame.
-        if cl.func.arguments_slot >= 0 {
+        if _JC_FUNC[cl].arguments_slot >= 0 {
             _inline_rej(2);
             return jsv_hole();
         }
@@ -6091,11 +6353,11 @@ obj VM {
         # calls): `this` comes from lexical_this below and new.target from
         # lexical_new_target in _inline_enter, as run_cl / run() do.
         # module_fns handled by per-frame save/restore (no rejection).
-        if len(cl.captured_with_objs) > 0 {
+        if len(_JC_CW[cl]) > 0 {
             _inline_rej(6);
             return jsv_hole();
         }
-        if cl.this_binding_cell != 0 {
+        if jc_this_binding_cell(cl) != 0 {
             _inline_rej(7);
             return jsv_hole();
         }
@@ -6104,12 +6366,12 @@ obj VM {
             return jsv_hole();
         }
         ic_this: JSValue = this_val;
-        if not jsv_is_undefined(cl.lexical_this) {
+        if not jsv_is_undefined(jc_lexical_this(cl)) {
             # Captured at MAKE_ARROW; takes precedence over the caller's this (run_cl).
-            ic_this = cl.lexical_this;
-        } elif not cl.func.is_strict {
+            ic_this = jc_lexical_this(cl);
+        } elif not _JC_FUNC[cl].is_strict {
             if jsv_is_null(ic_this) or jsv_is_undefined(ic_this) {
-                ic_this = self._sloppy_this_for(cl.func);
+                ic_this = self._sloppy_this_for(_JC_FUNC[cl]);
             } elif not jsv_is_any_object(ic_this) {
                 _inline_rej(9);
                 return jsv_hole();
@@ -6117,14 +6379,14 @@ obj VM {
         }
         # cl IS realm.closures[get_fn_idx(cl_val)], so its jac_module field is
         # what _fn_jac_module(cl_val, realm) would look up.
-        if jsv_is_object_cell(cl.jac_module) {
+        if jsv_is_object_cell(jc_jac_module(cl)) {
             # Same-module fast path: when the callee's CJS module context is
             # already the active one, run_cl's module/exports globals swap
             # would be a no-op — inline without it. Cross-module calls fall
             # back to run_cl (which swaps and restores). JSValue == is an
             # int64 bit compare = object identity.
             icm_cur: JSValue = self.globals.get("module", js_undefined());
-            if not (cl.jac_module == icm_cur) {
+            if not (jc_jac_module(cl) == icm_cur) {
                 _inline_rej(10);
                 return jsv_hole();
             }
@@ -6211,7 +6473,7 @@ obj VM {
     """Push the inline frame for `cl` (arguments already in `ic_locals`), consuming
     the construct channels exactly as run() would."""
     def _inline_enter(
-        cl: JSClosure,
+        cl: int,
         cl_val: JSValue,
         ic_this: JSValue,
         ic_locals: list[JSValue],
@@ -6223,8 +6485,8 @@ obj VM {
         }
         # new.target is lexical for an arrow: the value captured at its
         # definition, not the caller's (same rule as run()).
-        if cl.is_arrow {
-            ic_nt = cl.lexical_new_target;
+        if jc_is_arrow(cl) {
+            ic_nt = jc_lexical_new_target(cl);
         }
         self._pending_new_target = js_undefined();
         self.pending_new_target = js_undefined();
@@ -6235,10 +6497,10 @@ obj VM {
         ic_reuse: bool = self.ftop < len(self.frames);
         ic_sbase: int = len(self.stack);
         ic_frame: CallFrame = self._frame_acquire(
-            cl.func,
+            _JC_FUNC[cl],
             ic_sbase,
             ic_locals,
-            cl.free_vals,
+            _JC_FV[cl],
             ic_this,
             cl_val,
             ic_nt,
@@ -6247,8 +6509,8 @@ obj VM {
             ic_reuse
         );
         ic_frame.caller_module_fns = self.module_fns;
-        if len(cl.module_fns) > 0 {
-            self.module_fns = cl.module_fns;
+        if len(_JC_MF[cl]) > 0 {
+            self.module_fns = _JC_MF[cl];
         }
         self.ftop = self.ftop + 1;
         self.call_depth = self.call_depth + 1;
@@ -6260,7 +6522,7 @@ obj VM {
     }
 
     def _inline_call(
-        cl: JSClosure,
+        cl: int,
         cl_val: JSValue,
         this_val: JSValue,
         args: list[JSValue],
@@ -6270,7 +6532,7 @@ obj VM {
         if jsv_is_hole(ic_this) {
             return False;
         }
-        fn: CompiledFunction = cl.func;
+        fn: CompiledFunction = _JC_FUNC[cl];
         ic_locals: list[JSValue] = self._inline_locals(fn);
         ic_a: int = 0;
         while ic_a < len(fn.params) and ic_a < len(args) {
@@ -6370,14 +6632,14 @@ obj VM {
     pair costs ~30 instructions, and the split path paid ~20 of them per call.
     The frame ends up exactly as _inline_enter + _frame_acquire leave it."""
     def _inline_call_from_stack(
-        cl: JSClosure,
+        cl: int,
         cl_val: JSValue,
         this_val: JSValue,
         nargs: int,
         below: int,
         st: ExecState
     ) -> bool {
-        if cl.napi_cb_ptr != 0 {
+        if jc_napi_cb_ptr(cl) != 0 {
             return False;
         }
         ic_this: JSValue = self._inline_this(cl, cl_val, this_val, st);
@@ -6385,17 +6647,17 @@ obj VM {
             return False;
         }
         ab: int = len(self.stack) - nargs;
-        np: int = len(cl.func.params);
-        pb: int = cl.func.param_base;
+        np: int = len(_JC_FUNC[cl].params);
+        pb: int = _JC_FUNC[cl].param_base;
         if self.ftop >= len(self.frames) {
             # Cold: no pooled frame — the general helpers allocate one.
-            ic_locals: list[JSValue] = self._fresh_locals(cl.func);
+            ic_locals: list[JSValue] = self._fresh_locals(_JC_FUNC[cl]);
             ic_a: int = 0;
             while ic_a < np and ic_a < nargs {
                 ic_locals[pb + ic_a] = self.stack[ab + ic_a];
                 ic_a = ic_a + 1;
             }
-            if cl.func.has_rest and np > 0 {
+            if _JC_FUNC[cl].has_rest and np > 0 {
                 ic_items: list[JSValue] = [];
                 ic_ri: int = np - 1;
                 while ic_ri < nargs {
@@ -6420,7 +6682,7 @@ obj VM {
         }
         # Its locals list is reused, resized in place, all undefined
         # (as _inline_locals does).
-        nl: int = cl.func.num_locals;
+        nl: int = _JC_FUNC[cl].num_locals;
         while len(fr.locals) > nl {
             fr.locals.pop();
         }
@@ -6439,7 +6701,7 @@ obj VM {
             fr.locals[fr.lb + (pb + ia)] = self.stack[ab + ia];
             ia = ia + 1;
         }
-        if cl.func.has_rest and np > 0 {
+        if _JC_FUNC[cl].has_rest and np > 0 {
             rs_items: list[JSValue] = [];
             rs_i: int = np - 1;
             while rs_i < nargs {
@@ -6454,11 +6716,11 @@ obj VM {
         }
         # Pointer fields are written only when they change: a loop calling
         # the same function gets the same pooled frame back every time.
-        if fr.func is not cl.func {
-            fr.func = cl.func;
+        if fr.func is not _JC_FUNC[cl] {
+            fr.func = _JC_FUNC[cl];
         }
-        fr.fvp = __list_data_ptr(cl.free_vals);
-        fr.fvn = len(cl.free_vals);
+        fr.fvp = jc_free_vals_ptr(cl);
+        fr.fvn = len(_JC_FV[cl]);
         fr.ip = 0;
         fr.stack_base = len(self.stack);
         fr.this_val = ic_this;
@@ -6469,8 +6731,8 @@ obj VM {
         if jsv_is_undefined(ic_nt) {
             ic_nt = self.pending_new_target;
         }
-        if cl.is_arrow {
-            ic_nt = cl.lexical_new_target;
+        if jc_is_arrow(cl) {
+            ic_nt = jc_lexical_new_target(cl);
         }
         self._pending_new_target = js_undefined();
         self.pending_new_target = js_undefined();
@@ -6519,8 +6781,8 @@ obj VM {
         if fr.caller_module_fns is not self.module_fns {
             fr.caller_module_fns = self.module_fns;
         }
-        if len(cl.module_fns) > 0 and self.module_fns is not cl.module_fns {
-            self.module_fns = cl.module_fns;
+        if len(_JC_MF[cl]) > 0 and self.module_fns is not _JC_MF[cl] {
+            self.module_fns = _JC_MF[cl];
         }
         self.call_depth = self.call_depth + 1;
         st.inline_depth = st.inline_depth + 1;
@@ -6567,9 +6829,9 @@ obj VM {
     def _frame_free_vals_list(frame: CallFrame) -> list[JSValue] {
         if is_fn_val(frame.self_fn) {
             ffl_idx: int = get_fn_idx(frame.self_fn);
-            if ffl_idx < len(self.realm.closures)
-                and __list_data_ptr(self.realm.closures[ffl_idx].free_vals) == frame.fvp {
-                return self.realm.closures[ffl_idx].free_vals;
+            if ffl_idx < jc_count()
+                and jc_free_vals_ptr(ffl_idx) == frame.fvp {
+                return _JC_FV[ffl_idx];
             }
         }
         ffl_out: list[JSValue] = [];
@@ -6767,8 +7029,8 @@ obj VM {
         rn_is_arrow: bool = False;
         if is_fn_val(closure_val) {
             rn_cl_idx: int = get_fn_idx(closure_val);
-            if rn_cl_idx >= 0 and rn_cl_idx < len(self.realm.closures) {
-                rn_is_arrow = self.realm.closures[rn_cl_idx].is_arrow;
+            if rn_cl_idx >= 0 and rn_cl_idx < jc_count() {
+                rn_is_arrow = jc_is_arrow(rn_cl_idx);
             }
         }
         rn_new_target: JSValue = js_undefined();
@@ -6779,8 +7041,8 @@ obj VM {
             # (self.frames[-1]) is wrong once the defining ctor has returned — e.g. an arrow
             # created in `new F()` and stored on the instance still sees new.target === F when
             # invoked plainly (test262 arrow-function/lexical-new.target-closure-returned).
-            if rn_cl_idx >= 0 and rn_cl_idx < len(self.realm.closures) {
-                rn_new_target = self.realm.closures[rn_cl_idx].lexical_new_target;
+            if rn_cl_idx >= 0 and rn_cl_idx < jc_count() {
+                rn_new_target = jc_lexical_new_target(rn_cl_idx);
             }
         } else {
             # Two one-shot construct channels feed NewTarget: `_pending_new_target`
@@ -6814,10 +7076,8 @@ obj VM {
         # WITH_PUSH/WITH_POP don't mutate the closure's captured list.
         if is_fn_val(closure_val) {
             rn_cl_idx: int = get_fn_idx(closure_val);
-            if rn_cl_idx >= 0 and rn_cl_idx < len(self.realm.closures) {
-                rn_cw: list[JSValue] = self.realm.closures[
-                    rn_cl_idx
-                ].captured_with_objs;
+            if rn_cl_idx >= 0 and rn_cl_idx < jc_count() {
+                rn_cw: list[JSValue] = _JC_CW[rn_cl_idx];
                 if len(rn_cw) > 0 {
                     rn_wseed: list[JSValue] = [];
                     for rn_wo in rn_cw {
@@ -6830,9 +7090,7 @@ obj VM {
                 # An arrow lexically inside a derived constructor shares that ctor's
                 # this-binding cell (captured at MAKE_ARROW), so `super()` in the arrow
                 # initializes the enclosing ctor's `this` (ES §9.1.1.3 / §13.3.7.1).
-                rn_encl_cell: JSValue = self.realm.closures[
-                    rn_cl_idx
-                ].this_binding_cell;
+                rn_encl_cell: JSValue = jc_this_binding_cell(rn_cl_idx);
                 if rn_is_arrow and rn_encl_cell != 0 {
                     frame.this_binding_cell = rn_encl_cell;
                 }
@@ -6891,11 +7149,11 @@ obj VM {
                 }
             }
             # Build the tail callee's frame (mirrors run_cl's effective-this + run's setup).
-            tr_cl: JSClosure = self.realm.closures[get_fn_idx(tr_closure)];
-            tr_fn: CompiledFunction = tr_cl.func;
+            tr_cl: int = get_fn_idx(tr_closure);
+            tr_fn: CompiledFunction = _JC_FUNC[tr_cl];
             tr_eff_this: JSValue = tr_this;
-            if not jsv_is_undefined(tr_cl.lexical_this) {
-                tr_eff_this = tr_cl.lexical_this;
+            if not jsv_is_undefined(jc_lexical_this(tr_cl)) {
+                tr_eff_this = jc_lexical_this(tr_cl);
             } elif not tr_fn.is_strict {
                 if jsv_is_null(tr_eff_this) or jsv_is_undefined(tr_eff_this) {
                     tr_eff_this = self._sloppy_this_for(tr_fn);
@@ -6904,11 +7162,11 @@ obj VM {
                 }
             }
             tr_mf_saved: list[CompiledFunction] = self.module_fns;
-            if len(tr_cl.module_fns) > 0 {
-                self.module_fns = tr_cl.module_fns;
+            if len(_JC_MF[tr_cl]) > 0 {
+                self.module_fns = _JC_MF[tr_cl];
             }
             frame = self._build_tail_frame(
-                tr_fn, tr_eff_this, tr_args, tr_cl.free_vals, tr_closure
+                tr_fn, tr_eff_this, tr_args, _JC_FV[tr_cl], tr_closure
             );
             self.ftop = self.ftop + 1;
             fn = tr_fn;
@@ -7344,10 +7602,10 @@ obj VM {
         if inherit_caller_scope and self.ftop > 0 {
             es_caller_self: JSValue = self.frames[self.ftop - 1].self_fn;
             if is_fn_val(es_caller_self) {
-                es_cl: JSClosure = self.realm.closures[get_fn_idx(es_caller_self)];
-                es_has_home: bool = jsv_is_object_cell(es_cl.home_object)
-                    and jsv_to_table_id(es_cl.home_object) > 0;
-                es_has_super: bool = not jsv_is_undefined(es_cl.super_class);
+                es_cl: int = get_fn_idx(es_caller_self);
+                es_has_home: bool = jsv_is_object_cell(jc_home_object(es_cl))
+                    and jsv_to_table_id(jc_home_object(es_cl)) > 0;
+                es_has_super: bool = not jsv_is_undefined(jc_super_class(es_cl));
                 if es_has_home or es_has_super or caller_is_field_init {
                     c.super_prop_allowed = True;
                     eval_super_fn = es_caller_self;
@@ -7357,7 +7615,7 @@ obj VM {
                 }
                 # W7: thread the caller's PrivateEnvironment into eval compilation
                 # so `#name` in the eval'd source resolves to the same brands.
-                es_cf: CompiledFunction = es_cl.func;
+                es_cf: CompiledFunction = _JC_FUNC[es_cl];
                 if len(es_cf.priv_env_keys) > 0 {
                     ep_i: int = 0;
                     while ep_i < len(es_cf.priv_env_keys) {
@@ -8121,11 +8379,11 @@ obj VM {
         fts_bound: bool = False;
         if is_fn_val(v) {
             fts_i: int = get_fn_idx(v);
-            if fts_i < len(self.realm.closures) {
-                fts_name = self.realm.closures[fts_i].func.name;
-                fts_bound = self.realm.closures[fts_i].func.is_bound;
+            if fts_i < jc_count() {
+                fts_name = _JC_FUNC[fts_i].name;
+                fts_bound = _JC_FUNC[fts_i].is_bound;
                 # Prefer preserved source text when available.
-                fts_src: str = self.realm.closures[fts_i].func.source;
+                fts_src: str = _JC_FUNC[fts_i].source;
                 if len(fts_src) > 0 {
                     return js_str(fts_src);
                 }
@@ -8182,9 +8440,9 @@ obj VM {
         # from the right base, `fn instanceof Function` was always false.
         io_cur: JSValue = js_undefined();
         if is_fn_val(inst_val) {
-            pci_cl: JSClosure = self.realm.closures[get_fn_idx(inst_val)];
-            if pci_cl.func.is_generator {
-                if pci_cl.func.is_async {
+            pci_cl: int = get_fn_idx(inst_val);
+            if _JC_FUNC[pci_cl].is_generator {
+                if _JC_FUNC[pci_cl].is_async {
                     io_cur = js_async_generator_get_intrinsic();
                 } else {
                     io_cur = js_generator_get_intrinsic();
@@ -8328,14 +8586,14 @@ obj VM {
     def _get_constructor_prototype(ctor: JSValue) -> JSValue {
         resolved: JSValue = ctor;
         if is_fn_val(resolved) {
-            io_cl: JSClosure = self.realm.closures[get_fn_idx(resolved)];
-            if io_cl.func.is_bound {
-                while io_cl.func.is_bound and len(io_cl.free_vals) > 0 {
-                    resolved = io_cl.free_vals[0];
+            io_cl: int = get_fn_idx(resolved);
+            if _JC_FUNC[io_cl].is_bound {
+                while _JC_FUNC[io_cl].is_bound and len(_JC_FV[io_cl]) > 0 {
+                    resolved = _JC_FV[io_cl][0];
                     if not is_fn_val(resolved) {
                         break;
                     }
-                    io_cl = self.realm.closures[get_fn_idx(resolved)];
+                    io_cl = get_fn_idx(resolved);
                 }
             }
         }
@@ -8346,7 +8604,7 @@ obj VM {
             # or `Function.prototype.prototype = ""`) must be honored. Consult the function
             # object's own props first (accessor-aware so a getter runs / throws); fall back
             # to the synthesized default only when no own `prototype` is defined.
-            io_props: JSValue = self.realm.closures[get_fn_idx(resolved)].fn_props;
+            io_props: JSValue = jc_fn_props(get_fn_idx(resolved));
             if jsv_is_object_cell(io_props) and jsv_to_table_id(io_props) > 0 {
                 # Own overridden `prototype` (data or accessor), or an INHERITED accessor
                 # (defined on %Function.prototype%) — either is observable and must win over
@@ -8517,14 +8775,14 @@ obj VM {
     data only, so an inherited getter otherwise reads as undefined."""
     def _fn_inherited_get(fn_v: JSValue, key: int, receiver: JSValue) -> JSValue {
         fi_idx: int = get_fn_idx(fn_v);
-        if fi_idx < 0 or fi_idx >= len(self.realm.closures) {
+        if fi_idx < 0 or fi_idx >= jc_count() {
             return js_undefined();
         }
-        fi_cl: JSClosure = self.realm.closures[fi_idx];
+        fi_cl: int = fi_idx;
         if cl_props_has_own(fi_cl, key) {
             return js_undefined();
         }
-        fi_proto: JSValue = fi_cl.object_proto;
+        fi_proto: JSValue = jc_object_proto(fi_cl);
         if is_fn_val(fi_proto)
             or (jsv_is_object_cell(fi_proto) and jsv_to_table_id(fi_proto) > 0) {
             return self._get_prop_accessor_recv(fi_proto, key, receiver);
@@ -8637,17 +8895,15 @@ obj VM {
         if is_fn_val(js_obj) or is_native_val(js_obj) {
             if is_fn_val(js_obj) {
                 fga_idx: int = get_fn_idx(js_obj);
-                if fga_idx < len(self.realm.closures) {
-                    fga_fp: JSValue = self.realm.closures[fga_idx].fn_props;
+                if fga_idx < jc_count() {
+                    fga_fp: JSValue = jc_fn_props(fga_idx);
                     fga_getter: JSValue = js_undefined();
                     if jsv_is_object_cell(fga_fp) {
                         fga_getter = js_object_get_own_accessor_getter(fga_fp, key);
                     }
                     if not jsv_is_undefined(fga_getter) {
                         if is_fn_val(fga_getter) {
-                            fga_cl: JSClosure = self.realm.closures[
-                                get_fn_idx(fga_getter)
-                            ];
+                            fga_cl: int = get_fn_idx(fga_getter);
                             fga_res: JSValue = self.run_cl(
                                 fga_cl, fga_getter, receiver, []
                             );
@@ -8699,14 +8955,14 @@ obj VM {
         getter_fn: JSValue = js_object_get_own_accessor_getter(js_obj, key);
         if not jsv_is_undefined(getter_fn) {
             if is_fn_val(getter_fn) {
-                g_cl: JSClosure = self.realm.closures[get_fn_idx(getter_fn)];
+                g_cl: int = get_fn_idx(getter_fn);
                 # NAPI accessor getter: the closure has no bytecode (code=[]),
                 # its behavior lives in a C callback. run_cl() would execute the
                 # empty body and return undefined (F5), so dispatch the callback
                 # here just like the CALL/method paths do.
-                if g_cl.napi_cb_ptr != 0 {
+                if jc_napi_cb_ptr(g_cl) != 0 {
                     g_napi_ret: int = _vm_invoke_napi_cb(
-                        self, g_cl.napi_cb_ptr, g_cl.napi_cb_data, receiver, [], 0
+                        self, jc_napi_cb_ptr(g_cl), jc_napi_cb_data(g_cl), receiver, [], 0
                     );
                     if _napi_get_had_exception() {
                         vm_throw_native(_napi_consume_exception());
@@ -8718,29 +8974,29 @@ obj VM {
                 # The CALL opcode handler does this for regular calls; we must
                 # mirror it here for getters, otherwise run_cl() would try to
                 # execute the empty "<bound>" stub and return undefined.
-                if g_cl.func.is_bound {
+                if _JC_FUNC[g_cl].is_bound {
                     gf_orig: JSValue = js_undefined();
-                    if len(g_cl.free_vals) > 0 {
-                        gf_orig = g_cl.free_vals[0];
+                    if len(_JC_FV[g_cl]) > 0 {
+                        gf_orig = _JC_FV[g_cl][0];
                     }
-                    gf_this: JSValue = g_cl.lexical_this;
+                    gf_this: JSValue = jc_lexical_this(g_cl);
                     gf_args: list[JSValue] = [];
                     gf_bi: int = 1;
-                    while gf_bi < len(g_cl.free_vals) {
-                        gf_args.append(g_cl.free_vals[gf_bi]);
+                    while gf_bi < len(_JC_FV[g_cl]) {
+                        gf_args.append(_JC_FV[g_cl][gf_bi]);
                         gf_bi = gf_bi + 1;
                     }
                     # Unwrap nested bound layers
                     while is_fn_val(gf_orig) {
-                        gf_inner: JSClosure = self.realm.closures[get_fn_idx(gf_orig)];
-                        if not gf_inner.func.is_bound {
+                        gf_inner: int = get_fn_idx(gf_orig);
+                        if not _JC_FUNC[gf_inner].is_bound {
                             break;
                         }
-                        gf_this = gf_inner.lexical_this;
+                        gf_this = jc_lexical_this(gf_inner);
                         gf_prepend: list[JSValue] = [];
                         gf_ii: int = 1;
-                        while gf_ii < len(gf_inner.free_vals) {
-                            gf_prepend.append(gf_inner.free_vals[gf_ii]);
+                        while gf_ii < len(_JC_FV[gf_inner]) {
+                            gf_prepend.append(_JC_FV[gf_inner][gf_ii]);
                             gf_ii = gf_ii + 1;
                         }
                         gf_new: list[JSValue] = [];
@@ -8752,12 +9008,12 @@ obj VM {
                         }
                         gf_args = gf_new;
                         gf_orig = js_undefined();
-                        if len(gf_inner.free_vals) > 0 {
-                            gf_orig = gf_inner.free_vals[0];
+                        if len(_JC_FV[gf_inner]) > 0 {
+                            gf_orig = _JC_FV[gf_inner][0];
                         }
                     }
                     if is_fn_val(gf_orig) {
-                        gf_cl2: JSClosure = self.realm.closures[get_fn_idx(gf_orig)];
+                        gf_cl2: int = get_fn_idx(gf_orig);
                         return self.run_cl(gf_cl2, gf_orig, gf_this, gf_args);
                     }
                     if is_native_val(gf_orig) {
@@ -8968,12 +9224,12 @@ obj VM {
         setter_fn: JSValue = js_object_get_own_accessor_setter(js_obj, key);
         if not jsv_is_undefined(setter_fn) {
             if is_fn_val(setter_fn) {
-                s_cl: JSClosure = self.realm.closures[get_fn_idx(setter_fn)];
+                s_cl: int = get_fn_idx(setter_fn);
                 # NAPI accessor setter: no bytecode; dispatch the C callback
                 # (mirror of the getter path — run_cl would drop the write, F5).
-                if s_cl.napi_cb_ptr != 0 {
+                if jc_napi_cb_ptr(s_cl) != 0 {
                     _ = _vm_invoke_napi_cb(
-                        self, s_cl.napi_cb_ptr, s_cl.napi_cb_data, receiver, [val], 0
+                        self, jc_napi_cb_ptr(s_cl), jc_napi_cb_data(s_cl), receiver, [val], 0
                     );
                     if _napi_get_had_exception() {
                         vm_throw_native(_napi_consume_exception());
@@ -9155,10 +9411,10 @@ obj VM {
             return js_undefined();
         }
         fn_idx: int = get_fn_idx(fn_val);
-        if fn_idx >= len(self.realm.closures) {
+        if fn_idx >= jc_count() {
             return js_undefined();
         }
-        cl: JSClosure = self.realm.closures[fn_idx];
+        cl: int = fn_idx;
         result: JSValue = self.run_cl(cl, fn_val, this_val, args);
         if self.had_exception {
             exc_obs: JSValue = self.pending_exc;
@@ -9624,16 +9880,16 @@ obj VM {
         }
         if is_fn_val(jsobj) {
             fn_idx_sv: int = get_fn_idx(jsobj);
-            if fn_idx_sv < len(self.realm.closures) {
-                cl_sv: JSClosure = self.realm.closures[fn_idx_sv];
+            if fn_idx_sv < jc_count() {
+                cl_sv: int = fn_idx_sv;
                 if key == WK_PROTOTYPE {
                     # OrdinarySet on a non-writable `prototype` fails (ES §10.2.4) —
                     # return False so the caller throws in strict mode.
-                    if not cl_sv.prototype_writable {
+                    if not jc_prototype_writable(cl_sv) {
                         return False;
                     }
-                    cl_sv.prototype_obj = val;
-                    cl_sv.wb(cl_sv.prototype_obj);
+                    jc_set_prototype_obj(cl_sv, val);
+                    jc_wb(cl_sv, jc_prototype_obj(cl_sv));
                 } else {
                     js_object_set(cl_props(cl_sv), key, val);
                 }
@@ -9720,13 +9976,13 @@ obj VM {
                 return not jsv_is_undefined(_fn_prop(jsobj, WK_PROTOTYPE));
             }
             fn_idx_h: int = get_fn_idx(jsobj);
-            if fn_idx_h >= 0 and fn_idx_h < len(self.realm.closures) {
-                if cl_props_has_own(self.realm.closures[fn_idx_h], key) {
+            if fn_idx_h >= 0 and fn_idx_h < jc_count() {
+                if cl_props_has_own(fn_idx_h, key) {
                     return True;
                 }
                 # A custom [[Prototype]] (Object.setPrototypeOf) replaces
                 # Function.prototype in the chain.
-                fn_cproto_h: JSValue = self.realm.closures[fn_idx_h].object_proto;
+                fn_cproto_h: JSValue = jc_object_proto(fn_idx_h);
                 if is_fn_val(fn_cproto_h)
                     or (jsv_is_object_cell(fn_cproto_h) and jsv_to_table_id(fn_cproto_h) > 0) {
                     return self.obs_has(fn_cproto_h, key);
@@ -9815,12 +10071,12 @@ obj VM {
             # Function exotic: name/length are configurable; prototype is not.
             fn_idx_d: int = get_fn_idx(jsobj);
             if key == WK_NAME or key == WK_LENGTH {
-                if fn_idx_d >= 0 and fn_idx_d < len(self.realm.closures) {
-                    fn_cl_d: JSClosure = self.realm.closures[fn_idx_d];
+                if fn_idx_d >= 0 and fn_idx_d < jc_count() {
+                    fn_cl_d: int = fn_idx_d;
                     if key == WK_NAME {
-                        fn_cl_d.name_removed = True;
+                        jc_set_name_removed(fn_cl_d, True);
                     } else {
-                        fn_cl_d.length_removed = True;
+                        jc_set_length_removed(fn_cl_d, True);
                     }
                     return True;
                 }
@@ -9829,8 +10085,8 @@ obj VM {
             if key == WK_PROTOTYPE {
                 return False;
             }
-            if fn_idx_d >= 0 and fn_idx_d < len(self.realm.closures) {
-                fn_fp_d: JSValue = cl_props(self.realm.closures[fn_idx_d]);
+            if fn_idx_d >= 0 and fn_idx_d < jc_count() {
+                fn_fp_d: JSValue = cl_props(fn_idx_d);
                 if jsv_is_object_cell(fn_fp_d) and jsv_to_table_id(fn_fp_d) > 0 {
                     return js_object_delete(fn_fp_d, key);
                 }
@@ -10247,8 +10503,8 @@ obj VM {
     def _call_closure_async_aware(
         fn_val: JSValue, this_v: JSValue, args: list[JSValue]
     ) -> JSValue {
-        caa_cl: JSClosure = self.realm.closures[get_fn_idx(fn_val)];
-        if not caa_cl.func.is_async or caa_cl.func.is_generator {
+        caa_cl: int = get_fn_idx(fn_val);
+        if not _JC_FUNC[caa_cl].is_async or _JC_FUNC[caa_cl].is_generator {
             return self.run_cl(caa_cl, fn_val, this_v, args);
         }
         caa_old_cap: JSValue = self._cur_async_promise;
@@ -10292,18 +10548,18 @@ obj VM {
     }
 
     def run_cl(
-        closure: JSClosure, cl_val: JSValue, this_val: JSValue, args: list[JSValue]
+        closure: int, cl_val: JSValue, this_val: JSValue, args: list[JSValue]
     ) -> JSValue {
         saved_mf: list[CompiledFunction] = self.module_fns;
-        if len(closure.module_fns) > 0 {
-            self.module_fns = closure.module_fns;
+        if len(_JC_MF[closure]) > 0 {
+            self.module_fns = _JC_MF[closure];
         }
         # Arrow functions capture `this` lexically at definition time (MAKE_ARROW).
         # When lexical_this is set, it takes precedence over the caller-provided this_val.
         effective_this: JSValue = this_val;
-        if not jsv_is_undefined(closure.lexical_this) {
-            effective_this = closure.lexical_this;
-        } elif not closure.func.is_strict {
+        if not jsv_is_undefined(jc_lexical_this(closure)) {
+            effective_this = jc_lexical_this(closure);
+        } elif not _JC_FUNC[closure].is_strict {
             # §10.2.1.2 OrdinaryCallBindThis (non-strict): null/undefined → globalThis,
             # otherwise ToObject(thisArg) — a primitive `this` is boxed to its wrapper
             # (so `f.call(1)` / `f.call("x")` gives the function an object receiver).
@@ -10311,7 +10567,7 @@ obj VM {
                 # §10.2.1.2: undefined/null → the callee realm's globalThis.
                 # _sloppy_this_for honours a module/sandbox function's own ctx_global
                 # (falling back to realm.global_this).
-                effective_this = self._sloppy_this_for(closure.func);
+                effective_this = self._sloppy_this_for(_JC_FUNC[closure]);
             } elif not jsv_is_any_object(effective_this) {
                 # §10.2.1.2: a primitive thisArg is boxed via ToObject so
                 # f.call(1) / f.call("x") give the callee an object receiver.
@@ -10319,8 +10575,8 @@ obj VM {
             }
         }
         # Arrows also inherit `new.target` lexically (override any caller-set channel).
-        if closure.is_arrow {
-            self.pending_new_target = closure.lexical_new_target;
+        if jc_is_arrow(closure) {
+            self.pending_new_target = jc_lexical_new_target(closure);
         }
         saved_mod_g: JSValue = js_undefined();
         saved_exp_g: JSValue = js_undefined();
@@ -10345,7 +10601,7 @@ obj VM {
         result: JSValue = self._reg_run_value(closure, cl_val, effective_this, args);
         if jsv_is_hole(result) {
             result = self.run(
-                closure.func, effective_this, args, closure.free_vals, cl_val
+                _JC_FUNC[closure], effective_this, args, _JC_FV[closure], cl_val
             );
         }
         if use_mod_ctx {
@@ -14347,7 +14603,7 @@ obj VM {
             if not jsv_is_undefined(sgx_setter) {
                 if is_fn_val(sgx_setter) {
                     self.run_cl(
-                        self.realm.closures[get_fn_idx(sgx_setter)],
+                        get_fn_idx(sgx_setter),
                         sgx_setter,
                         gobj,
                         [val]
@@ -14740,7 +14996,7 @@ obj VM {
             if not jsv_is_undefined(sg_setter) {
                 if is_fn_val(sg_setter) {
                     self.run_cl(
-                        self.realm.closures[get_fn_idx(sg_setter)],
+                        get_fn_idx(sg_setter),
                         sg_setter,
                         self.global_this,
                         [sg_val]
@@ -15687,8 +15943,8 @@ obj VM {
         lcb_brand: JSValue = js_int(0);
         # Workaround: read through a local ref (direct glob_list[i].field read is dropped).
         if is_fn_val(frame.self_fn) {
-            lcb_cl: JSClosure = self.realm.closures[get_fn_idx(frame.self_fn)];
-            lcb_brand = lcb_cl.class_brand;
+            lcb_cl: int = get_fn_idx(frame.self_fn);
+            lcb_brand = jc_class_brand(lcb_cl);
         }
         self._push(lcb_brand);
     }
@@ -16080,19 +16336,19 @@ obj VM {
             gp_pp_idx: int = get_fn_idx(gp_obj);
             if (gp_key == WK_CALLER or gp_key == WK_ARGUMENTS)
                 and gp_pp_idx >= 0
-                and gp_pp_idx < len(self.realm.closures) {
-                gp_pp_cl: JSClosure = self.realm.closures[gp_pp_idx];
+                and gp_pp_idx < jc_count() {
+                gp_pp_cl: int = gp_pp_idx;
                 # Bound functions are exotic (§10.4.1) and also carry the %ThrowTypeError%
                 # poison-pill on `caller`/`arguments` (BoundFunctionCreate — no own such
                 # props, so Get throws).
-                gp_pp_poison: bool = gp_pp_cl.func.is_strict
-                    or gp_pp_cl.is_arrow
-                    or gp_pp_cl.func.is_generator
-                    or gp_pp_cl.func.is_async
-                    or gp_pp_cl.func.is_bound;
+                gp_pp_poison: bool = _JC_FUNC[gp_pp_cl].is_strict
+                    or jc_is_arrow(gp_pp_cl)
+                    or _JC_FUNC[gp_pp_cl].is_generator
+                    or _JC_FUNC[gp_pp_cl].is_async
+                    or _JC_FUNC[gp_pp_cl].is_bound;
                 # A user-defined own accessor/data property via defineProperty overrides.
                 gp_pp_has_own: bool = False;
-                gp_pp_props0: JSValue = gp_pp_cl.fn_props;
+                gp_pp_props0: JSValue = jc_fn_props(gp_pp_cl);
                 if jsv_is_object_cell(gp_pp_props0)
                     and js_object_has_own(gp_pp_props0, gp_key) {
                     gp_pp_has_own = True;
@@ -16115,8 +16371,8 @@ obj VM {
             # accessor getters when no data property was found.
             if jsv_is_undefined(gp_fn_res) {
                 gp_fn_idx: int = get_fn_idx(gp_obj);
-                if gp_fn_idx < len(self.realm.closures) {
-                    gp_fn_props: JSValue = self.realm.closures[gp_fn_idx].fn_props;
+                if gp_fn_idx < jc_count() {
+                    gp_fn_props: JSValue = jc_fn_props(gp_fn_idx);
                     if jsv_is_object_cell(gp_fn_props) {
                         gp_fn_res = self._get_prop_accessor(gp_fn_props, gp_key);
                     }
@@ -16211,7 +16467,7 @@ obj VM {
             )
                 and jsv_is_object_cell(gp_obj)
                 and jsv_to_table_id(gp_obj) > 0
-                and js_object_table_get(jsv_to_table_id(gp_obj)).bkind()
+                and jo_bkind(jsv_to_table_id(gp_obj))
                     == BINARY_KIND_TYPED_ARRAY {
                 gp_ta_g: JSValue = js_object_lookup_getter(gp_obj, gp_key);
                 if is_native_val(gp_ta_g) {
@@ -16328,7 +16584,7 @@ obj VM {
                 }
             } elif jsv_to_table_id(gp_obj) >= 0
                 and (
-                    js_object_table_get(jsv_to_table_id(gp_obj)).cell_flags
+                    jo_cell_flags(jsv_to_table_id(gp_obj))
                     & FLAG_IS_CLASS
                 )
                     != 0 {
@@ -16377,7 +16633,7 @@ obj VM {
                         cls_arity: int = 0;
                         if is_fn_val(cls_ctor_v) {
                             cls_arity = len(
-                                self.realm.closures[get_fn_idx(cls_ctor_v)].func.params
+                                _JC_FUNC[get_fn_idx(cls_ctor_v)].params
                             );
                         }
                         self._push(js_int(cls_arity));
@@ -16430,10 +16686,8 @@ obj VM {
                     if VM_IC_ENABLED and ins.ic_holder == 1 {
                         gp_sid: int = _vm_shape_of(gp_obj);
                         if gp_sid > 0 and gp_sid == ins.ic_obj {
-                            gp_raw_ic: JSObject = js_object_table_get(
-                                jsv_to_table_id(gp_obj)
-                            );
-                            self._push(gp_raw_ic.sget(ins.ic_ver // 16));
+                            gp_raw_ic: int = jsv_to_table_id(gp_obj);
+                            self._push(jo_sget(gp_raw_ic, ins.ic_ver // 16));
                             gp_ic_hit = True;
                         }
                     }
@@ -16546,12 +16800,12 @@ obj VM {
         if pf_rsid < 0 {
             return;
         }
-        pf_rraw: JSObject = js_object_table_get(jsv_to_table_id(gp_obj));
-        if pf_rraw.bkind() != 0
-            or (pf_rraw.cell_flags & (FLAG_IS_ARGUMENTS | FLAG_IS_CLASS)) != 0 {
+        pf_rraw: int = jsv_to_table_id(gp_obj);
+        if jo_bkind(pf_rraw) != 0
+            or (jo_cell_flags(pf_rraw) & (FLAG_IS_ARGUMENTS | FLAG_IS_CLASS)) != 0 {
             return;
         }
-        if pf_rraw.has_acc() {
+        if jo_has_acc(pf_rraw) {
             return;
         }
         if shape_lookup(pf_rsid, gp_key) >= 0 {
@@ -16560,28 +16814,28 @@ obj VM {
         if _vm_is_array_index_key_id(gp_key) {
             return;
         }
-        pf_p1: int = pf_rraw.prototype_idx;
+        pf_p1: int = jo_prototype_idx(pf_rraw);
         pf_lvl: int = pf_p1;
         pf_depth: int = 0;
         while pf_lvl > 0 and pf_depth < 16 {
-            pf_lraw: JSObject = js_object_table_get(pf_lvl);
-            if pf_lraw.class_id != 0 or pf_lraw.bkind() != 0 {
+            pf_lraw: int = pf_lvl;
+            if jo_class_id(pf_lraw) != 0 or jo_bkind(pf_lraw) != 0 {
                 return;
             }
-            if (pf_lraw.cell_flags & (FLAG_MODULE_NS | FLAG_IS_ARGUMENTS)) != 0 {
+            if (jo_cell_flags(pf_lraw) & (FLAG_MODULE_NS | FLAG_IS_ARGUMENTS)) != 0 {
                 return;
             }
-            if pf_lraw.mode == MAP_MODE_SHAPE {
-                if pf_lraw.has_acc() {
+            if jo_mode(pf_lraw) == MAP_MODE_SHAPE {
+                if jo_has_acc(pf_lraw) {
                     return;
                 }
-                pf_lpk: int = shape_lookup(pf_lraw.shape_id, gp_key);
+                pf_lpk: int = shape_lookup(jo_shape_id(pf_lraw), gp_key);
                 if pf_lpk >= 0 {
                     if (pf_lpk & SHAPE_ATTR_ACCESSOR) != 0 {
                         return;
                     }
                     # The slow path must have read exactly this slot.
-                    if pf_lraw.sget(pf_lpk // 16) != gp_val {
+                    if jo_sget(pf_lraw, pf_lpk // 16) != gp_val {
                         return;
                     }
                     pf_pip: int = frame.ip - 1;
@@ -16598,7 +16852,7 @@ obj VM {
             } elif js_object_has_own(jsv_from_object_id(pf_lvl), gp_key) {
                 return;  # found on a dict-mode level: no slot to cache
             }
-            pf_lvl = pf_lraw.prototype_idx;
+            pf_lvl = jo_prototype_idx(pf_lraw);
             pf_depth = pf_depth + 1;
         }
     }
@@ -16627,7 +16881,7 @@ obj VM {
             return False;
         }
         return self._inline_call_from_stack(
-            self.realm.closures[get_fn_idx(gic_fn0)],
+            get_fn_idx(gic_fn0),
             gic_fn0,
             self.stack[len(self.stack) - 1],
             0,
@@ -16707,26 +16961,26 @@ obj VM {
         if _vm_is_array_index_key_id(gf_key) {
             return jsv_hole();
         }
-        gf_raw: JSObject = js_object_table_get(jsv_to_table_id(rv));
-        if gf_raw.bkind() != 0
-            or (gf_raw.cell_flags & (FLAG_IS_ARGUMENTS | FLAG_IS_CLASS)) != 0 {
+        gf_raw: int = jsv_to_table_id(rv);
+        if jo_bkind(gf_raw) != 0
+            or (jo_cell_flags(gf_raw) & (FLAG_IS_ARGUMENTS | FLAG_IS_CLASS)) != 0 {
             return jsv_hole();
         }
-        if gf_raw.has_acc() {
+        if jo_has_acc(gf_raw) {
             return jsv_hole();
         }
         if shape_lookup(sid, gf_key) >= 0 {
             return jsv_hole();
         }
-        gf_p1: int = gf_raw.prototype_idx;
+        gf_p1: int = jo_prototype_idx(gf_raw);
         gf_lvl: int = gf_p1;
         gf_depth: int = 0;
         while gf_lvl > 0 and gf_depth < 16 {
-            gf_lraw: JSObject = js_object_table_get(gf_lvl);
-            if gf_lraw.class_id != 0 or gf_lraw.bkind() != 0 {
+            gf_lraw: int = gf_lvl;
+            if jo_class_id(gf_lraw) != 0 or jo_bkind(gf_lraw) != 0 {
                 return jsv_hole();
             }
-            if (gf_lraw.cell_flags & (FLAG_MODULE_NS | FLAG_IS_ARGUMENTS)) != 0 {
+            if (jo_cell_flags(gf_lraw) & (FLAG_MODULE_NS | FLAG_IS_ARGUMENTS)) != 0 {
                 return jsv_hole();
             }
             gf_lv: JSValue = jsv_from_object_id(gf_lvl);
@@ -16736,14 +16990,14 @@ obj VM {
                     return jsv_hole();
                 }
                 gf_ci: int = get_fn_idx(gf_fn);
-                if gf_ci < 0 or gf_ci >= len(self.realm.closures) {
+                if gf_ci < 0 or gf_ci >= jc_count() {
                     return jsv_hole();
                 }
-                if self.realm.closures[gf_ci].napi_cb_ptr != 0
-                    or self.realm.closures[gf_ci].func.is_generator
-                    or self.realm.closures[gf_ci].func.is_async
-                    or self.realm.closures[gf_ci].func.is_bound
-                    or self.realm.closures[gf_ci].func.arguments_slot >= 0 {
+                if jc_napi_cb_ptr(gf_ci) != 0
+                    or _JC_FUNC[gf_ci].is_generator
+                    or _JC_FUNC[gf_ci].is_async
+                    or _JC_FUNC[gf_ci].is_bound
+                    or _JC_FUNC[gf_ci].arguments_slot >= 0 {
                     return jsv_hole();
                 }
                 _mgc_put_getter(sid, gf_p1, gf_key, gf_fn, proto_epoch());
@@ -16752,7 +17006,7 @@ obj VM {
             if js_object_has_own(gf_lv, gf_key) {
                 return jsv_hole();
             }
-            gf_lvl = gf_lraw.prototype_idx;
+            gf_lvl = jo_prototype_idx(gf_lraw);
             gf_depth = gf_depth + 1;
         }
         return jsv_hole();
@@ -16812,26 +17066,26 @@ obj VM {
         if _vm_is_array_index_key_id(sf_key) {
             return jsv_hole();
         }
-        sf_raw: JSObject = js_object_table_get(jsv_to_table_id(rv));
-        if sf_raw.bkind() != 0
-            or (sf_raw.cell_flags & (FLAG_IS_ARGUMENTS | FLAG_IS_CLASS)) != 0 {
+        sf_raw: int = jsv_to_table_id(rv);
+        if jo_bkind(sf_raw) != 0
+            or (jo_cell_flags(sf_raw) & (FLAG_IS_ARGUMENTS | FLAG_IS_CLASS)) != 0 {
             return jsv_hole();
         }
-        if sf_raw.has_acc() {
+        if jo_has_acc(sf_raw) {
             return jsv_hole();
         }
         if shape_lookup(sid, sf_key) >= 0 {
             return jsv_hole();
         }
-        sf_p1: int = sf_raw.prototype_idx;
+        sf_p1: int = jo_prototype_idx(sf_raw);
         sf_lvl: int = sf_p1;
         sf_depth: int = 0;
         while sf_lvl > 0 and sf_depth < 16 {
-            sf_lraw: JSObject = js_object_table_get(sf_lvl);
-            if sf_lraw.class_id != 0 or sf_lraw.bkind() != 0 {
+            sf_lraw: int = sf_lvl;
+            if jo_class_id(sf_lraw) != 0 or jo_bkind(sf_lraw) != 0 {
                 return jsv_hole();
             }
-            if (sf_lraw.cell_flags & (FLAG_MODULE_NS | FLAG_IS_ARGUMENTS)) != 0 {
+            if (jo_cell_flags(sf_lraw) & (FLAG_MODULE_NS | FLAG_IS_ARGUMENTS)) != 0 {
                 return jsv_hole();
             }
             sf_lv: JSValue = jsv_from_object_id(sf_lvl);
@@ -16841,14 +17095,14 @@ obj VM {
                     return jsv_hole();
                 }
                 sf_ci: int = get_fn_idx(sf_fn);
-                if sf_ci < 0 or sf_ci >= len(self.realm.closures) {
+                if sf_ci < 0 or sf_ci >= jc_count() {
                     return jsv_hole();
                 }
-                if self.realm.closures[sf_ci].napi_cb_ptr != 0
-                    or self.realm.closures[sf_ci].func.is_generator
-                    or self.realm.closures[sf_ci].func.is_async
-                    or self.realm.closures[sf_ci].func.is_bound
-                    or self.realm.closures[sf_ci].func.arguments_slot >= 0 {
+                if jc_napi_cb_ptr(sf_ci) != 0
+                    or _JC_FUNC[sf_ci].is_generator
+                    or _JC_FUNC[sf_ci].is_async
+                    or _JC_FUNC[sf_ci].is_bound
+                    or _JC_FUNC[sf_ci].arguments_slot >= 0 {
                     return jsv_hole();
                 }
                 ins.ic_obj = sid;
@@ -16860,7 +17114,7 @@ obj VM {
             if js_object_has_own(sf_lv, sf_key) {
                 return jsv_hole();
             }
-            sf_lvl = sf_lraw.prototype_idx;
+            sf_lvl = jo_prototype_idx(sf_lraw);
             sf_depth = sf_depth + 1;
         }
         return jsv_hole();
@@ -16872,7 +17126,7 @@ obj VM {
     afterwards. Returns True when the frame was entered."""
     def _setter_ic_call(fn: JSValue, rv: JSValue, st: ExecState) -> bool {
         if not self._inline_call_from_stack(
-            self.realm.closures[get_fn_idx(fn)], fn, rv, 1, 0, st
+            get_fn_idx(fn), fn, rv, 1, 0, st
         ) {
             return False;
         }
@@ -16942,9 +17196,9 @@ obj VM {
                 if sp4_fpk >= 0
                     and (sp4_fpk & SHAPE_ATTR_ACCESSOR) == 0
                     and sp4_fparent >= 0 {
-                    sp4_fraw: JSObject = js_object_table_get(jsv_to_table_id(sp_obj));
-                    if sp4_fraw.is_ext()
-                        and (sp4_fpk // 16) == sp4_fraw.slen() - 1
+                    sp4_fraw: int = jsv_to_table_id(sp_obj);
+                    if jo_is_ext(sp4_fraw)
+                        and (sp4_fpk // 16) == jo_slen(sp4_fraw) - 1
                         and not self._chain_has_accessor(sp_obj, sp_key) {
                         sp4_fpip: int = frame.ip - 1;
                         if sp4_fpip >= 0 and sp4_fpip < len(frame.func.code) {
@@ -16953,8 +17207,17 @@ obj VM {
                             sp4_fold.ic_ver = sp4_fsid;
                             sp4_fold.ic_holder = 4;
                             sp4_fold.ic_epoch = proto_epoch();
+                            # the receiver's [[Prototype]]: the chain checked
+                            # here starts there (a hit must have the same one)
+                            sp4_fold.ic_obj2 = jo_prototype_idx(sp4_fraw);
                             if _vm_ic_key_ok(sp_key) {
-                                _mac_put(sp4_fparent, sp_key, sp4_fsid, proto_epoch());
+                                _mac_put(
+                                    sp4_fparent,
+                                    sp_key,
+                                    sp4_fsid,
+                                    proto_epoch(),
+                                    jo_prototype_idx(sp4_fraw)
+                                );
                             }
                         }
                     }
@@ -16982,8 +17245,8 @@ obj VM {
         if sp_fpk < 0 or (sp_fpk & SHAPE_ATTR_ACCESSOR) != 0 or sp_fparent < 0 {
             return;
         }
-        sp_fraw: JSObject = js_object_table_get(jsv_to_table_id(sp_obj));
-        if (sp_fpk // 16) != sp_fraw.slen() - 1 {
+        sp_fraw: int = jsv_to_table_id(sp_obj);
+        if (sp_fpk // 16) != jo_slen(sp_fraw) - 1 {
             return;
         }
         sp_fpip: int = frame.ip - 1;
@@ -17074,13 +17337,13 @@ obj VM {
             if sp4_sid >= 0
                 and sp4_sid == ins.ic_obj
                 and ins.ic_epoch == proto_epoch() {
-                sp4_raw: JSObject = js_object_table_get(jsv_to_table_id(sp_obj));
-                if sp4_raw.is_ext() {
-                    sp4_raw.shape_id = ins.ic_ver;
-                    sp4_raw.spush(sp_val);
-                    sp4_raw.version = sp4_raw.version + 1;
+                sp4_raw: int = jsv_to_table_id(sp_obj);
+                if jo_is_ext(sp4_raw) and jo_prototype_idx(sp4_raw) == ins.ic_obj2 {
+                    jo_set_shape_id(sp4_raw, ins.ic_ver);
+                    jo_spush(sp4_raw, sp_val);
+                    jo_set_version(sp4_raw, jo_version(sp4_raw) + 1);
                     # A new key on a prototype can shadow an inherited-read IC's holder.
-                    if (sp4_raw.cell_flags & FLAG_IS_PROTO) != 0 {
+                    if (jo_cell_flags(sp4_raw) & FLAG_IS_PROTO) != 0 {
                         proto_epoch_bump();
                     }
                     self._push(sp_val);
@@ -17131,12 +17394,12 @@ obj VM {
             # resolves `super.x` against this object's prototype.
             if is_fn_val(sp_val) {
                 sp_dm_idx: int = get_fn_idx(sp_val);
-                if sp_dm_idx >= 0 and sp_dm_idx < len(self.realm.closures) {
-                    sp_dm_cl: JSClosure = self.realm.closures[sp_dm_idx];
-                    if sp_dm_cl.func.is_method
-                        and jsv_is_undefined(sp_dm_cl.home_object) {
-                        sp_dm_cl.home_object = sp_obj;
-                        sp_dm_cl.wb(sp_dm_cl.home_object);
+                if sp_dm_idx >= 0 and sp_dm_idx < jc_count() {
+                    sp_dm_cl: int = sp_dm_idx;
+                    if _JC_FUNC[sp_dm_cl].is_method
+                        and jsv_is_undefined(jc_home_object(sp_dm_cl)) {
+                        jc_set_home_object(sp_dm_cl, sp_obj);
+                        jc_wb(sp_dm_cl, jc_home_object(sp_dm_cl));
                     }
                 }
             }
@@ -17148,12 +17411,12 @@ obj VM {
             if VM_IC_ENABLED and ins.ic_holder == 3 {
                 sp_tsid: int = _vm_shape_of(sp_obj);
                 if sp_tsid >= 0 and sp_tsid == ins.ic_obj {
-                    sp_traw: JSObject = js_object_table_get(jsv_to_table_id(sp_obj));
-                    if sp_traw.is_ext() {
-                        sp_traw.shape_id = ins.ic_ver;
-                        sp_traw.spush(sp_val);
-                        sp_traw.version = sp_traw.version + 1;
-                        if (sp_traw.cell_flags & FLAG_IS_PROTO) != 0 {
+                    sp_traw: int = jsv_to_table_id(sp_obj);
+                    if jo_is_ext(sp_traw) {
+                        jo_set_shape_id(sp_traw, ins.ic_ver);
+                        jo_spush(sp_traw, sp_val);
+                        jo_set_version(sp_traw, jo_version(sp_traw) + 1);
+                        if (jo_cell_flags(sp_traw) & FLAG_IS_PROTO) != 0 {
                             proto_epoch_bump();
                         }
                         self._push(sp_val);
@@ -17248,11 +17511,11 @@ obj VM {
             and jsv_is_object_cell(sp_obj)
             and jsv_to_table_id(sp_obj) > 0 {
             sp_mcl_idx: int = get_fn_idx(sp_val);
-            if sp_mcl_idx >= 0 and sp_mcl_idx < len(self.realm.closures) {
-                sp_mcl: JSClosure = self.realm.closures[sp_mcl_idx];
-                if sp_mcl.func.is_method and jsv_is_undefined(sp_mcl.home_object) {
-                    sp_mcl.home_object = sp_obj;
-                    sp_mcl.wb(sp_mcl.home_object);
+            if sp_mcl_idx >= 0 and sp_mcl_idx < jc_count() {
+                sp_mcl: int = sp_mcl_idx;
+                if _JC_FUNC[sp_mcl].is_method and jsv_is_undefined(jc_home_object(sp_mcl)) {
+                    jc_set_home_object(sp_mcl, sp_obj);
+                    jc_wb(sp_mcl, jc_home_object(sp_mcl));
                 }
             }
         }
@@ -17275,17 +17538,17 @@ obj VM {
         } elif is_fn_val(sp_obj) {
             # Function values use negative as_ptr — store in the closure's backing object.
             sp_fn_idx: int = get_fn_idx(sp_obj);
-            if sp_fn_idx < len(self.realm.closures) {
-                sp_cl: JSClosure = self.realm.closures[sp_fn_idx];
+            if sp_fn_idx < jc_count() {
+                sp_cl: int = sp_fn_idx;
                 # Poison-pill `caller`/`arguments` (%ThrowTypeError%): writing either on a
                 # strict/arrow/generator/async/bound function throws TypeError (ES §10.2.4).
                 if (sp_key == WK_CALLER or sp_key == WK_ARGUMENTS)
                     and not cl_props_has_own(sp_cl, sp_key) {
-                    if sp_cl.func.is_strict
-                        or sp_cl.is_arrow
-                        or sp_cl.func.is_generator
-                        or sp_cl.func.is_async
-                        or sp_cl.func.is_bound {
+                    if _JC_FUNC[sp_cl].is_strict
+                        or jc_is_arrow(sp_cl)
+                        or _JC_FUNC[sp_cl].is_generator
+                        or _JC_FUNC[sp_cl].is_async
+                        or _JC_FUNC[sp_cl].is_bound {
                         exc_pps: JSValue = make_type_error(
                             "'caller', 'callee', and 'arguments' properties may not be accessed on strict mode functions"
                         );
@@ -17307,9 +17570,9 @@ obj VM {
                 if sp_key == WK_PROTOTYPE {
                     # A non-writable `prototype` (downgraded via defineProperty) rejects a
                     # plain assignment: no-op in sloppy, TypeError in strict (ES §10.2.4).
-                    if sp_cl.prototype_writable {
-                        sp_cl.prototype_obj = sp_val;
-                        sp_cl.wb(sp_cl.prototype_obj);
+                    if jc_prototype_writable(sp_cl) {
+                        jc_set_prototype_obj(sp_cl, sp_val);
+                        jc_wb(sp_cl, jc_prototype_obj(sp_cl));
                     } elif ins.arg2 == 1 {
                         sp_proto_ro_exc: JSValue = make_type_error(
                             "Cannot assign to read only property 'prototype' of function"
@@ -17351,7 +17614,7 @@ obj VM {
         } elif jsv_is_object_cell(sp_obj)
             and jsv_to_table_id(sp_obj) >= 0
             and (
-                js_object_table_get(jsv_to_table_id(sp_obj)).cell_flags & FLAG_IS_CLASS
+                jo_cell_flags(jsv_to_table_id(sp_obj)) & FLAG_IS_CLASS
             )
                 != 0 {
             # Class objects: avoid walking the static prototype chain
@@ -17360,7 +17623,7 @@ obj VM {
             # must still fire. Check own setter first; otherwise set directly.
             sp_own_setter: JSValue = js_object_get_own_accessor_setter(sp_obj, sp_key);
             if is_fn_val(sp_own_setter) {
-                sp_ss_cl: JSClosure = self.realm.closures[get_fn_idx(sp_own_setter)];
+                sp_ss_cl: int = get_fn_idx(sp_own_setter);
                 self.run_cl(sp_ss_cl, sp_own_setter, sp_obj, [sp_val]);
                 if self.had_exception {
                     # The setter threw — unwind into the current frame so an enclosing
@@ -17660,7 +17923,12 @@ obj VM {
     def _chain_has_accessor(sp_obj: JSValue, key: int) -> bool {
         ch_p: JSValue = js_object_get_prototype(sp_obj);
         ch_n: int = 0;
-        while jsv_is_object_cell(ch_p) and jsv_to_table_id(ch_p) > 0 and ch_n < 16 {
+        while jsv_is_object_cell(ch_p) and jsv_to_table_id(ch_p) > 0 {
+            # A Proxy (or other exotic) member traps the [[Set]] itself, and a
+            # chain past the walk is unproven: either one keeps the add uncached.
+            if ch_n >= 16 or jo_class_id(jsv_to_table_id(ch_p)) != 0 {
+                return True;
+            }
             if is_fn_val(js_object_get_own_accessor_getter(ch_p, key)) {
                 return True;
             }
@@ -17725,21 +17993,21 @@ obj VM {
         # are configurable → deletable; prototype of a non-arrow is non-configurable).
         if is_fn_val(dp_obj) {
             dp_fidx: int = get_fn_idx(dp_obj);
-            if dp_fidx >= 0 and dp_fidx < len(self.realm.closures) {
-                dp_cl: JSClosure = self.realm.closures[dp_fidx];
+            if dp_fidx >= 0 and dp_fidx < jc_count() {
+                dp_cl: int = dp_fidx;
                 if dp_key == WK_NAME {
-                    dp_cl.name_removed = True;
+                    jc_set_name_removed(dp_cl, True);
                     self._push(js_true());
                     return;
                 }
                 if dp_key == WK_LENGTH {
-                    dp_cl.length_removed = True;
+                    jc_set_length_removed(dp_cl, True);
                     self._push(js_true());
                     return;
                 }
                 if dp_key == WK_PROTOTYPE {
                     # Ordinary function prototype is non-configurable; arrows have none.
-                    self._push(js_boolean(jsv_is_undefined(dp_cl.prototype_obj)));
+                    self._push(js_boolean(jsv_is_undefined(jc_prototype_obj(dp_cl))));
                     return;
                 }
                 if cl_props_has_own(dp_cl, dp_key) {
@@ -17852,10 +18120,10 @@ obj VM {
                     return;
                 }
             } elif gi_di >= 0 and gi_dtid > 0 {
-                gi_draw: JSObject = js_object_table_get(gi_dtid);
-                if gi_draw.elems_kind != ELEMS_NONE {
-                    if gi_di < gi_draw.elen() {
-                        gi_dv: JSValue = gi_draw.eget(gi_di);
+                gi_draw: int = gi_dtid;
+                if jo_elems_kind(gi_draw) != ELEMS_NONE {
+                    if gi_di < jo_elen(gi_draw) {
+                        gi_dv: JSValue = jo_eget(gi_draw, gi_di);
                         if not jsv_is_hole(gi_dv) {
                             self._push(gi_dv);
                             return;
@@ -18064,7 +18332,7 @@ obj VM {
                 and jsv_is_object_cell(gi_obj)
                 and jsv_to_table_id(gi_obj) > 0
                 and (
-                    js_object_table_get(jsv_to_table_id(gi_obj)).cell_flags
+                    jo_cell_flags(jsv_to_table_id(gi_obj))
                     & FLAG_IS_CLASS
                 )
                     != 0 {
@@ -18241,7 +18509,7 @@ obj VM {
         }
         if not jsv_is_undefined(ss_setter) {
             if is_fn_val(ss_setter) {
-                ss_cl: JSClosure = self.realm.closures[get_fn_idx(ss_setter)];
+                ss_cl: int = get_fn_idx(ss_setter);
                 self.run_cl(ss_cl, ss_setter, receiver, [val]);
             } elif is_native_val(ss_setter) {
                 _vm_call_native_proxy_aware(
@@ -18403,12 +18671,12 @@ obj VM {
             # computed data property `{[k]: fn}` or a class computed field is unaffected.
             if is_fn_val(si_val) {
                 si_hm_idx: int = get_fn_idx(si_val);
-                if si_hm_idx >= 0 and si_hm_idx < len(self.realm.closures) {
-                    si_hm_cl: JSClosure = self.realm.closures[si_hm_idx];
-                    if si_hm_cl.func.is_method
-                        and jsv_is_undefined(si_hm_cl.home_object) {
-                        si_hm_cl.home_object = si_obj;
-                        si_hm_cl.wb(si_hm_cl.home_object);
+                if si_hm_idx >= 0 and si_hm_idx < jc_count() {
+                    si_hm_cl: int = si_hm_idx;
+                    if _JC_FUNC[si_hm_cl].is_method
+                        and jsv_is_undefined(jc_home_object(si_hm_cl)) {
+                        jc_set_home_object(si_hm_cl, si_obj);
+                        jc_wb(si_hm_cl, jc_home_object(si_hm_cl));
                     }
                 }
             }
@@ -18464,37 +18732,37 @@ obj VM {
                     }
                 }
             } elif si_di >= 0 and si_dtid > 0 {
-                si_draw: JSObject = js_object_table_get(si_dtid);
-                if si_draw.elems_kind != ELEMS_NONE {
-                    if si_di < si_draw.elen()
-                        and not jsv_is_hole(si_draw.eget(si_di)) {
-                        si_draw.eset(si_di, si_val);
+                si_draw: int = si_dtid;
+                if jo_elems_kind(si_draw) != ELEMS_NONE {
+                    if si_di < jo_elen(si_draw)
+                        and not jsv_is_hole(jo_eget(si_draw, si_di)) {
+                        jo_eset(si_draw, si_di, si_val);
                         self._push(si_val);
                         return;
                     }
-                    if si_di == si_draw.elen()
+                    if si_di == jo_elen(si_draw)
                         and idx_protector_ok()
-                        and si_draw.is_ext()
-                        and si_draw.mode == MAP_MODE_SHAPE
-                        and (si_draw.cell_flags & FLAG_IS_ARGUMENTS) == 0 {
+                        and jo_is_ext(si_draw)
+                        and jo_mode(si_draw) == MAP_MODE_SHAPE
+                        and (jo_cell_flags(si_draw) & FLAG_IS_ARGUMENTS) == 0 {
                         # Length bookkeeping without descriptor materialization:
                         # dense arrays keep `length` as a shape-slot data prop, so
                         # reads/writes are packed-attr checks + slot ops. Below the
                         # stored length (trailing-holes region) no length write is
                         # needed; at/above it the length must be writable to grow.
-                        si_dpk: int = shape_lookup(si_draw.shape_id, WK_LENGTH);
+                        si_dpk: int = shape_lookup(jo_shape_id(si_draw), WK_LENGTH);
                         if si_dpk >= 0 and (si_dpk & SHAPE_ATTR_ACCESSOR) == 0 {
-                            si_dlen_v: JSValue = si_draw.sget(si_dpk // 16);
+                            si_dlen_v: JSValue = jo_sget(si_draw, si_dpk // 16);
                             if jsv_is_int32(si_dlen_v) {
                                 si_dcur: int = jsv_to_int32(si_dlen_v);
                                 if si_di < si_dcur {
-                                    si_draw.epush(si_val);
+                                    jo_epush(si_draw, si_val);
                                     self._push(si_val);
                                     return;
                                 }
                                 if (si_dpk & PROP_WRITABLE) != 0 {
-                                    si_draw.epush(si_val);
-                                    si_draw.sset(si_dpk // 16, js_int(si_di + 1));
+                                    jo_epush(si_draw, si_val);
+                                    jo_sset(si_draw, si_dpk // 16, js_int(si_di + 1));
                                     self._push(si_val);
                                     return;
                                 }
@@ -18527,17 +18795,17 @@ obj VM {
             # prototype_obj.  Without this, a computed write `fn["name"] = x` bypassed
             # the read-only guard and shadowed the intrinsic (broke verifyProperty).
             si_fn_idx: int = get_fn_idx(si_obj);
-            if si_fn_idx < len(self.realm.closures) {
-                si_cl: JSClosure = self.realm.closures[si_fn_idx];
+            if si_fn_idx < jc_count() {
+                si_cl: int = si_fn_idx;
                 si_fn_key: int = jsval_to_prop_key(si_idx);
                 si_fn_readonly: bool = (si_fn_key == WK_NAME or si_fn_key == WK_LENGTH)
                     and not cl_props_has_own(si_cl, si_fn_key);
                 if si_fn_key == WK_PROTOTYPE {
                     # Non-writable `prototype` (downgraded via defineProperty) rejects a
                     # computed assignment too: no-op sloppy, TypeError strict (ES §10.2.4).
-                    if si_cl.prototype_writable {
-                        si_cl.prototype_obj = si_val;
-                        si_cl.wb(si_cl.prototype_obj);
+                    if jc_prototype_writable(si_cl) {
+                        jc_set_prototype_obj(si_cl, si_val);
+                        jc_wb(si_cl, jc_prototype_obj(si_cl));
                     } elif frame.func.is_strict or ins.arg2 == 1 {
                         si_proto_ro_exc: JSValue = make_type_error(
                             "Cannot assign to read only property 'prototype' of function"
@@ -19382,10 +19650,10 @@ obj VM {
         # constructed from THIS realm's %TypeError% (cross-realm test262 brand-check tests).
         cp_home_realm: int = 0;
         if is_fn_val(frame.self_fn) {
-            cp_acc_cl: JSClosure = self.realm.closures[get_fn_idx(frame.self_fn)];
-            cp_acc_brand = cp_acc_cl.class_brand;
-            cp_acc_sid = cp_acc_cl.class_brand_sid;
-            cp_home_realm = cp_acc_cl.home_realm_id;
+            cp_acc_cl: int = get_fn_idx(frame.self_fn);
+            cp_acc_brand = jc_class_brand(cp_acc_cl);
+            cp_acc_sid = jc_class_brand_sid(cp_acc_cl);
+            cp_home_realm = jc_home_realm_id(cp_acc_cl);
         }
         if cp_mode == 1 {
             cp_obj_in: JSValue = self._pop();
@@ -19636,9 +19904,9 @@ obj VM {
                 }
                 in_result: JSValue = js_undefined();
                 if is_fn_val(in_next_fn) {
-                    in_next_cl: JSClosure = self.realm.closures[get_fn_idx(in_next_fn)];
+                    in_next_cl: int = get_fn_idx(in_next_fn);
                     in_result = self.run(
-                        in_next_cl.func, in_custom, [], in_next_cl.free_vals, in_next_fn
+                        _JC_FUNC[in_next_cl], in_custom, [], _JC_FV[in_next_cl], in_next_fn
                     );
                 } elif is_native_val(in_next_fn) {
                     in_result = _vm_call_native_proxy_aware(
@@ -19909,7 +20177,7 @@ obj VM {
         }
         tp_fn: JSValue = js_object_get(v, SYMBOL_KEY_BASE + SYMBOL_TO_PRIMITIVE);
         if not jsv_is_undefined(tp_fn) and is_fn_val(tp_fn) {
-            tp_cl: JSClosure = self.realm.closures[get_fn_idx(tp_fn)];
+            tp_cl: int = get_fn_idx(tp_fn);
             tp_res: JSValue = self.run_cl(tp_cl, tp_fn, v, [js_str("number")]);
             if self._propagate_coerce_exc(frame, st) {
                 return v;
@@ -19923,7 +20191,7 @@ obj VM {
         vo_fn: JSValue = self._get_prop_accessor(v, WK_VALUEOF);
         if not jsv_is_undefined(vo_fn) and is_fn_val(vo_fn) {
             vo_res: JSValue = self.run_cl(
-                self.realm.closures[get_fn_idx(vo_fn)], vo_fn, v, []
+                get_fn_idx(vo_fn), vo_fn, v, []
             );
             if self._propagate_coerce_exc(frame, st) {
                 return v;
@@ -19945,7 +20213,7 @@ obj VM {
         ts_fn: JSValue = self._get_prop_accessor(v, WK_TOSTRING);
         if not jsv_is_undefined(ts_fn) and is_fn_val(ts_fn) {
             ts_res: JSValue = self.run_cl(
-                self.realm.closures[get_fn_idx(ts_fn)], ts_fn, v, []
+                get_fn_idx(ts_fn), ts_fn, v, []
             );
             if self._propagate_coerce_exc(frame, st) {
                 return v;
@@ -20086,7 +20354,7 @@ obj VM {
             if not jsv_is_undefined(ts_fn) and is_fn_val(ts_fn) {
                 called_ord = True;
                 ts_res: JSValue = self.run_cl(
-                    self.realm.closures[get_fn_idx(ts_fn)], ts_fn, v, []
+                    get_fn_idx(ts_fn), ts_fn, v, []
                 );
                 if self._propagate_coerce_exc(frame, st) {
                     return 0;
@@ -20114,7 +20382,7 @@ obj VM {
             if not jsv_is_undefined(vo_fn) and is_fn_val(vo_fn) {
                 called_ord = True;
                 vo_res: JSValue = self.run_cl(
-                    self.realm.closures[get_fn_idx(vo_fn)], vo_fn, v, []
+                    get_fn_idx(vo_fn), vo_fn, v, []
                 );
                 if self._propagate_coerce_exc(frame, st) {
                     return 0;
@@ -21399,19 +21667,19 @@ obj VM {
             di_pk_fn: int = jsval_to_prop_key(di_key);
             di_fn_idx: int = get_fn_idx(di_obj);
             if di_pk_fn == WK_NAME or di_pk_fn == WK_LENGTH {
-                if di_fn_idx >= 0 and di_fn_idx < len(self.realm.closures) {
-                    di_fn_cl: JSClosure = self.realm.closures[di_fn_idx];
+                if di_fn_idx >= 0 and di_fn_idx < jc_count() {
+                    di_fn_cl: int = di_fn_idx;
                     if di_pk_fn == WK_NAME {
-                        di_fn_cl.name_removed = True;
+                        jc_set_name_removed(di_fn_cl, True);
                     } else {
-                        di_fn_cl.length_removed = True;
+                        jc_set_length_removed(di_fn_cl, True);
                     }
                     di_result = True;
                 } else {
                     di_result = False;
                 }
-            } elif di_fn_idx >= 0 and di_fn_idx < len(self.realm.closures) {
-                di_fn_fp: JSValue = cl_props(self.realm.closures[di_fn_idx]);
+            } elif di_fn_idx >= 0 and di_fn_idx < jc_count() {
+                di_fn_fp: JSValue = cl_props(di_fn_idx);
                 if jsv_is_object_cell(di_fn_fp) and jsv_to_table_id(di_fn_fp) > 0 {
                     di_result = js_object_delete(di_fn_fp, di_pk_fn);
                 } else {
@@ -21594,14 +21862,14 @@ obj VM {
         if tc_callee_idx >= 0 {
             tc_callee_peek: JSValue = self.stack[tc_callee_idx];
             if is_fn_val(tc_callee_peek) {
-                tc_cl: JSClosure = self.realm.closures[get_fn_idx(tc_callee_peek)];
+                tc_cl: int = get_fn_idx(tc_callee_peek);
                 # Only an ORDINARY JS function is a trampoline-eligible tail callee: napi,
                 # bound, generator, and async functions have bespoke call setup handled by
                 # _op_call and are left to it.
-                if tc_cl.napi_cb_ptr == 0
-                    and not tc_cl.func.is_bound
-                    and not tc_cl.func.is_generator
-                    and not tc_cl.func.is_async {
+                if jc_napi_cb_ptr(tc_cl) == 0
+                    and not _JC_FUNC[tc_cl].is_bound
+                    and not _JC_FUNC[tc_cl].is_generator
+                    and not _JC_FUNC[tc_cl].is_async {
                     tc_eligible = True;
                 }
             }
@@ -21624,7 +21892,7 @@ obj VM {
                 and not frame.discard_ret
                 and not jsv_is_hole(
                     self._inline_this(
-                        self.realm.closures[get_fn_idx(self.stack[tc_callee_idx])],
+                        get_fn_idx(self.stack[tc_callee_idx]),
                         self.stack[tc_callee_idx],
                         js_undefined(),
                         st
@@ -21633,7 +21901,7 @@ obj VM {
                 self._inline_tail_pop(tc_callee_idx, tc_n, st);
                 tc_ci: int = len(self.stack) - 1 - tc_n;
                 if not self._inline_call_from_stack(
-                    self.realm.closures[get_fn_idx(self.stack[tc_ci])],
+                    get_fn_idx(self.stack[tc_ci]),
                     self.stack[tc_ci],
                     js_undefined(),
                     tc_n,
@@ -21720,10 +21988,10 @@ obj VM {
                     # no retain/release); NAPI / bound / generator / async callees
                     # are rejected inside.
                     if self._reg_ready(
-                        self.realm.closures[get_fn_idx(fc_callee)].func
+                        _JC_FUNC[get_fn_idx(fc_callee)]
                     ) {
                         if self._reg_call_from_stack(
-                            self.realm.closures[get_fn_idx(fc_callee)],
+                            get_fn_idx(fc_callee),
                             fc_callee,
                             js_undefined(),
                             nc_call,
@@ -21735,7 +22003,7 @@ obj VM {
                         }
                     }
                     if self._inline_call_from_stack(
-                        self.realm.closures[get_fn_idx(fc_callee)],
+                        get_fn_idx(fc_callee),
                         fc_callee,
                         js_undefined(),
                         nc_call,
@@ -22172,7 +22440,7 @@ obj VM {
             _vm_promise_combinator_elem_call(self, callee, val_as);
             self._push(js_undefined());
         } elif is_fn_val(callee) {
-            cl_c: JSClosure = self.realm.closures[get_fn_idx(callee)];
+            cl_c: int = get_fn_idx(callee);
             # ES §13.3.6.1 / §9.1: an unqualified call `f()` whose callee name resolves through
             # a `with` object passes that object as the `this` value (its WithBaseObject), not
             # undefined (with-base-obj). Compute it from the callee name (arg2 = name idx + 1)
@@ -22197,15 +22465,15 @@ obj VM {
                 }
             }
             # N4: NAPI native callback — dispatch to C without running the Jac interpreter
-            if cl_c.napi_cb_ptr != 0 {
+            if jc_napi_cb_ptr(cl_c) != 0 {
                 args_int_c: list[int] = [];
                 for a_nc in args_c {
                     args_int_c.append(a_nc);
                 }
                 napi_ret_c: int = _vm_invoke_napi_cb(
                     self,
-                    cl_c.napi_cb_ptr,
-                    cl_c.napi_cb_data,
+                    jc_napi_cb_ptr(cl_c),
+                    jc_napi_cb_data(cl_c),
                     self.global_this,
                     args_int_c,
                     0
@@ -22221,19 +22489,19 @@ obj VM {
                 } else {
                     self._push(napi_ret_c);
                 }
-            } elif cl_c.func.is_bound {
+            } elif _JC_FUNC[cl_c].is_bound {
                 # Bound function: free_vals[0]=original fn, lexical_this=bound_this
                 # Unwrap the entire binding chain (bound-of-bound):
                 # inner-most bind determines the final this (first bind wins per spec).
                 orig_fn_c: JSValue = js_undefined();
-                if len(cl_c.free_vals) > 0 {
-                    orig_fn_c = cl_c.free_vals[0];
+                if len(_JC_FV[cl_c]) > 0 {
+                    orig_fn_c = _JC_FV[cl_c][0];
                 }
-                bind_this_c: JSValue = cl_c.lexical_this;
+                bind_this_c: JSValue = jc_lexical_this(cl_c);
                 full_args_c: list[JSValue] = [];
                 bfi_c: int = 1;
-                while bfi_c < len(cl_c.free_vals) {
-                    full_args_c.append(cl_c.free_vals[bfi_c]);
+                while bfi_c < len(_JC_FV[cl_c]) {
+                    full_args_c.append(_JC_FV[cl_c][bfi_c]);
                     bfi_c = bfi_c + 1;
                 }
                 for ba_c in args_c {
@@ -22241,16 +22509,16 @@ obj VM {
                 }
                 # Recursively unwrap any further bound layers
                 while is_fn_val(orig_fn_c) {
-                    cl_inner_c: JSClosure = self.realm.closures[get_fn_idx(orig_fn_c)];
-                    if not cl_inner_c.func.is_bound {
+                    cl_inner_c: int = get_fn_idx(orig_fn_c);
+                    if not _JC_FUNC[cl_inner_c].is_bound {
                         break;
                     }
                     # Inner bind: its lexical_this overrides (inner == "first" bind)
-                    bind_this_c = cl_inner_c.lexical_this;
+                    bind_this_c = jc_lexical_this(cl_inner_c);
                     inner_partial_c: list[JSValue] = [];
                     ipi_c: int = 1;
-                    while ipi_c < len(cl_inner_c.free_vals) {
-                        inner_partial_c.append(cl_inner_c.free_vals[ipi_c]);
+                    while ipi_c < len(_JC_FV[cl_inner_c]) {
+                        inner_partial_c.append(_JC_FV[cl_inner_c][ipi_c]);
                         ipi_c = ipi_c + 1;
                     }
                     new_full_c: list[JSValue] = [];
@@ -22262,8 +22530,8 @@ obj VM {
                     }
                     full_args_c = new_full_c;
                     orig_fn_c = js_undefined();
-                    if len(cl_inner_c.free_vals) > 0 {
-                        orig_fn_c = cl_inner_c.free_vals[0];
+                    if len(_JC_FV[cl_inner_c]) > 0 {
+                        orig_fn_c = _JC_FV[cl_inner_c][0];
                     }
                 }
                 if is_fn_val(orig_fn_c) {
@@ -22344,28 +22612,28 @@ obj VM {
                 }
             } else {
                 # Generator function: create a generator object, don't run body
-                if cl_c.func.is_generator {
+                if _JC_FUNC[cl_c].is_generator {
                     # Build initial locals (all undefined)
                     gen_locals: list[JSValue] = [];
                     gli: int = 0;
-                    while gli < cl_c.func.num_locals {
+                    while gli < _JC_FUNC[cl_c].num_locals {
                         gen_locals.append(js_undefined());
                         gli = gli + 1;
                     }
                     # Bind arguments to parameter slots
                     ga: int = 0;
-                    while ga < len(cl_c.func.params) and ga < len(args_c) {
-                        gen_locals[cl_c.func.param_base + ga] = args_c[ga];
+                    while ga < len(_JC_FUNC[cl_c].params) and ga < len(args_c) {
+                        gen_locals[_JC_FUNC[cl_c].param_base + ga] = args_c[ga];
                         ga = ga + 1;
                     }
                     # Collect the rest parameter into its (last) param slot — the
                     # ordinary run() path does this too; without it a destructured
                     # rest (`function* f(...[a]) {}`) sees `undefined` and the eager
                     # prologue's destructuring throws "undefined is not iterable".
-                    if cl_c.func.has_rest and len(cl_c.func.params) > 0 {
-                        grest_slot: int = cl_c.func.param_base + len(cl_c.func.params)
+                    if _JC_FUNC[cl_c].has_rest and len(_JC_FUNC[cl_c].params) > 0 {
+                        grest_slot: int = _JC_FUNC[cl_c].param_base + len(_JC_FUNC[cl_c].params)
                             - 1;
-                        grest_start: int = len(cl_c.func.params) - 1;
+                        grest_start: int = len(_JC_FUNC[cl_c].params) - 1;
                         grest_items: list[JSValue] = [];
                         gri: int = grest_start;
                         while gri < len(args_c) {
@@ -22375,28 +22643,28 @@ obj VM {
                         gen_locals[grest_slot] = js_array_create(grest_items);
                     }
                     # Self-ref slot (slot 0 for named generators)
-                    if cl_c.func.param_base > 0 {
+                    if _JC_FUNC[cl_c].param_base > 0 {
                         gen_locals[0] = callee;
                     }
                     # Populate the implicit `arguments` object (generators bypass run()).
-                    if cl_c.func.arguments_slot >= 0 {
-                        gen_locals[cl_c.func.arguments_slot] = self._build_arguments(
-                            args_c, callee, cl_c.func, gen_locals
+                    if _JC_FUNC[cl_c].arguments_slot >= 0 {
+                        gen_locals[_JC_FUNC[cl_c].arguments_slot] = self._build_arguments(
+                            args_c, callee, _JC_FUNC[cl_c], gen_locals
                         );
                     }
                     # B5: eagerly run the parameter-binding prologue so a throwing
                     # default value / destructured parameter surfaces at call time.
                     gen_start_ip_c: int = 0;
                     gen_prologue_ok_c: bool = True;
-                    if cl_c.func.gen_prologue_end_ip >= 0 {
-                        gen_start_ip_c = cl_c.func.gen_prologue_end_ip;
+                    if _JC_FUNC[cl_c].gen_prologue_end_ip >= 0 {
+                        gen_start_ip_c = _JC_FUNC[cl_c].gen_prologue_end_ip;
                         gen_prologue_ok_c = self._run_gen_prologue(
-                            cl_c.func,
+                            _JC_FUNC[cl_c],
                             gen_locals,
-                            cl_c.free_vals,
+                            _JC_FV[cl_c],
                             js_undefined(),
                             callee,
-                            cl_c.func.gen_prologue_end_ip
+                            _JC_FUNC[cl_c].gen_prologue_end_ip
                         );
                     }
                     if not gen_prologue_ok_c {
@@ -22414,14 +22682,14 @@ obj VM {
                         }
                     } else {
                         gen_obj_c: JSValue = js_generator_create(
-                            cl_c.func,
+                            _JC_FUNC[cl_c],
                             gen_locals,
-                            cl_c.free_vals,
+                            _JC_FV[cl_c],
                             js_undefined(),
-                            cl_c.func.is_async,
+                            _JC_FUNC[cl_c].is_async,
                             gen_start_ip_c,
                             callee,
-                            cl_c.module_fns
+                            _JC_MF[cl_c]
                         );
                         # ES §27.5 / §27.3: the returned generator's [[Prototype]] is the
                         # generator function's `.prototype` object (which chains to
@@ -22430,13 +22698,13 @@ obj VM {
                         # if `.prototype` is not an object (e.g. `g.prototype = null`),
                         # fall back to the intrinsic %GeneratorPrototype%.  next/throw/return
                         # are still resolved by the js_is_generator special-case in GET_PROP.
-                        gc_proto: JSValue = cl_c.prototype_obj;
+                        gc_proto: JSValue = jc_prototype_obj(cl_c);
                         if not (
                             jsv_is_object_cell(gc_proto)
                             and jsv_to_table_id(gc_proto) > 0
                         ) {
                             gc_proto = js_generator_get_proto();
-                            if cl_c.func.is_async {
+                            if _JC_FUNC[cl_c].is_async {
                                 gc_proto = js_async_generator_get_proto();
                             }
                         }
@@ -22447,7 +22715,7 @@ obj VM {
                         self._push(gen_obj_c);
                     }
                 } else {
-                    if cl_c.func.is_async {
+                    if _JC_FUNC[cl_c].is_async {
                         # Pre-create the outer async promise and save/restore
                         # _cur_async_promise so nested AWAIT saves the right one.
                         old_cap_c: JSValue = self._cur_async_promise;
@@ -22494,7 +22762,7 @@ obj VM {
                             self._push(new_cap_c);
                         }
                     } else {
-                        if self._reg_ready(cl_c.func)
+                        if self._reg_ready(_JC_FUNC[cl_c])
                             and self._reg_call_from_list(
                                 cl_c, callee, call_this_c, args_c, frame, st
                             ) {
@@ -22547,7 +22815,7 @@ obj VM {
     async wrapping so these paths don't leak the raw body value instead of a Promise.
     """
     def _invoke_async_via_reflect(
-        cl_arg: JSClosure, fn: JSValue, this_val: JSValue, args: list[JSValue]
+        cl_arg: int, fn: JSValue, this_val: JSValue, args: list[JSValue]
     ) -> JSValue {
         iar_old_cap: JSValue = self._cur_async_promise;
         iar_new_p: JSValue = js_promise_create();
@@ -22606,18 +22874,18 @@ obj VM {
             return js_null();
         }
         if is_fn_val(fn) {
-            icv_cl: JSClosure = self.realm.closures[get_fn_idx(fn)];
-            if icv_cl.func.is_bound {
+            icv_cl: int = get_fn_idx(fn);
+            if _JC_FUNC[icv_cl].is_bound {
                 # Unwrap one bind layer here; recurse for nested binds.
                 icv_real_fn: JSValue = js_undefined();
-                if len(icv_cl.free_vals) > 0 {
-                    icv_real_fn = icv_cl.free_vals[0];
+                if len(_JC_FV[icv_cl]) > 0 {
+                    icv_real_fn = _JC_FV[icv_cl][0];
                 }
-                icv_real_this: JSValue = icv_cl.lexical_this;
+                icv_real_this: JSValue = jc_lexical_this(icv_cl);
                 icv_full: list[JSValue] = [];
                 icv_pi: int = 1;
-                while icv_pi < len(icv_cl.free_vals) {
-                    icv_full.append(icv_cl.free_vals[icv_pi]);
+                while icv_pi < len(_JC_FV[icv_cl]) {
+                    icv_full.append(_JC_FV[icv_cl][icv_pi]);
                     icv_pi = icv_pi + 1;
                 }
                 for ar_v in args {
@@ -22629,36 +22897,36 @@ obj VM {
             }
             # Plain closure: sloppy-mode null/undefined this → globalThis.
             icv_eff_this: JSValue = this_val;
-            if not icv_cl.is_arrow and not icv_cl.func.is_strict {
+            if not jc_is_arrow(icv_cl) and not _JC_FUNC[icv_cl].is_strict {
                 if jsv_is_null(icv_eff_this) or jsv_is_undefined(icv_eff_this) {
-                    icv_eff_this = self._sloppy_this_for(icv_cl.func);
+                    icv_eff_this = self._sloppy_this_for(_JC_FUNC[icv_cl]);
                 }
             }
             # An ASYNC function invoked via .call/.apply/Reflect must still return its
             # Promise (ES §27.7): wrap the body run like the CALL opcode does, not
             # return the raw body value.
-            if icv_cl.func.is_async and not icv_cl.func.is_generator {
+            if _JC_FUNC[icv_cl].is_async and not _JC_FUNC[icv_cl].is_generator {
                 return self._invoke_async_via_reflect(icv_cl, fn, icv_eff_this, args);
             }
             # Generator functions: create a generator object (do not run the body).
             # Required for Reflect.apply / Proxy [[Call]] forwarding (trap-is-undefined).
-            if icv_cl.func.is_generator {
+            if _JC_FUNC[icv_cl].is_generator {
                 gen_locals_icv: list[JSValue] = [];
                 gli_icv: int = 0;
-                while gli_icv < icv_cl.func.num_locals {
+                while gli_icv < _JC_FUNC[icv_cl].num_locals {
                     gen_locals_icv.append(js_undefined());
                     gli_icv = gli_icv + 1;
                 }
                 ga_icv: int = 0;
-                while ga_icv < len(icv_cl.func.params) and ga_icv < len(args) {
-                    gen_locals_icv[icv_cl.func.param_base + ga_icv] = args[ga_icv];
+                while ga_icv < len(_JC_FUNC[icv_cl].params) and ga_icv < len(args) {
+                    gen_locals_icv[_JC_FUNC[icv_cl].param_base + ga_icv] = args[ga_icv];
                     ga_icv = ga_icv + 1;
                 }
-                if icv_cl.func.has_rest and len(icv_cl.func.params) > 0 {
-                    grest_slot_icv: int = icv_cl.func.param_base
-                        + len(icv_cl.func.params)
+                if _JC_FUNC[icv_cl].has_rest and len(_JC_FUNC[icv_cl].params) > 0 {
+                    grest_slot_icv: int = _JC_FUNC[icv_cl].param_base
+                        + len(_JC_FUNC[icv_cl].params)
                         - 1;
-                    grest_start_icv: int = len(icv_cl.func.params) - 1;
+                    grest_start_icv: int = len(_JC_FUNC[icv_cl].params) - 1;
                     grest_items_icv: list[JSValue] = [];
                     gri_icv: int = grest_start_icv;
                     while gri_icv < len(args) {
@@ -22667,46 +22935,46 @@ obj VM {
                     }
                     gen_locals_icv[grest_slot_icv] = js_array_create(grest_items_icv);
                 }
-                if icv_cl.func.param_base > 0 {
+                if _JC_FUNC[icv_cl].param_base > 0 {
                     gen_locals_icv[0] = fn;
                 }
-                if icv_cl.func.arguments_slot >= 0 {
-                    gen_locals_icv[icv_cl.func.arguments_slot] = self._build_arguments(
-                        args, fn, icv_cl.func, gen_locals_icv
+                if _JC_FUNC[icv_cl].arguments_slot >= 0 {
+                    gen_locals_icv[_JC_FUNC[icv_cl].arguments_slot] = self._build_arguments(
+                        args, fn, _JC_FUNC[icv_cl], gen_locals_icv
                     );
                 }
                 gen_start_ip_icv: int = 0;
-                if icv_cl.func.gen_prologue_end_ip >= 0 {
-                    gen_start_ip_icv = icv_cl.func.gen_prologue_end_ip;
+                if _JC_FUNC[icv_cl].gen_prologue_end_ip >= 0 {
+                    gen_start_ip_icv = _JC_FUNC[icv_cl].gen_prologue_end_ip;
                     gen_prologue_ok_icv: bool = self._run_gen_prologue(
-                        icv_cl.func,
+                        _JC_FUNC[icv_cl],
                         gen_locals_icv,
-                        icv_cl.free_vals,
+                        _JC_FV[icv_cl],
                         icv_eff_this,
                         fn,
-                        icv_cl.func.gen_prologue_end_ip
+                        _JC_FUNC[icv_cl].gen_prologue_end_ip
                     );
                     if not gen_prologue_ok_icv {
                         return js_undefined();
                     }
                 }
                 gen_obj_icv: JSValue = js_generator_create(
-                    icv_cl.func,
+                    _JC_FUNC[icv_cl],
                     gen_locals_icv,
-                    icv_cl.free_vals,
+                    _JC_FV[icv_cl],
                     icv_eff_this,
-                    icv_cl.func.is_async,
+                    _JC_FUNC[icv_cl].is_async,
                     gen_start_ip_icv,
                     fn,
-                    icv_cl.module_fns
+                    _JC_MF[icv_cl]
                 );
-                gc_proto_icv: JSValue = icv_cl.prototype_obj;
+                gc_proto_icv: JSValue = jc_prototype_obj(icv_cl);
                 if not (
                     jsv_is_object_cell(gc_proto_icv)
                     and jsv_to_table_id(gc_proto_icv) > 0
                 ) {
                     gc_proto_icv = js_generator_get_proto();
-                    if icv_cl.func.is_async {
+                    if _JC_FUNC[icv_cl].is_async {
                         gc_proto_icv = js_async_generator_get_proto();
                     }
                 }
@@ -22794,7 +23062,7 @@ obj VM {
             and js_object_has_own(fn, WK_IS_CLASS) {
             icv_ctor: JSValue = js_object_get(fn, WK_CTOR);
             if is_fn_val(icv_ctor) {
-                icv_cctor: JSClosure = self.realm.closures[get_fn_idx(icv_ctor)];
+                icv_cctor: int = get_fn_idx(icv_ctor);
                 return self.run_cl(icv_cctor, icv_ctor, this_val, args);
             }
         }
@@ -22931,14 +23199,14 @@ obj VM {
             mbf_merged.append(p_mbf);
         }
         while is_fn_val(mbf_target) {
-            mbf_cl: JSClosure = self.realm.closures[get_fn_idx(mbf_target)];
-            if not mbf_cl.func.is_bound {
+            mbf_cl: int = get_fn_idx(mbf_target);
+            if not _JC_FUNC[mbf_cl].is_bound {
                 break;
             }
             mbf_inner: list[JSValue] = [];
             mbf_ii: int = 1;
-            while mbf_ii < len(mbf_cl.free_vals) {
-                mbf_inner.append(mbf_cl.free_vals[mbf_ii]);
+            while mbf_ii < len(_JC_FV[mbf_cl]) {
+                mbf_inner.append(_JC_FV[mbf_cl][mbf_ii]);
                 mbf_ii = mbf_ii + 1;
             }
             mbf_new: list[JSValue] = [];
@@ -22949,10 +23217,10 @@ obj VM {
                 mbf_new.append(mv_mbf);
             }
             mbf_merged = mbf_new;
-            mbf_this = mbf_cl.lexical_this;
+            mbf_this = jc_lexical_this(mbf_cl);
             mbf_target = js_undefined();
-            if len(mbf_cl.free_vals) > 0 {
-                mbf_target = mbf_cl.free_vals[0];
+            if len(_JC_FV[mbf_cl]) > 0 {
+                mbf_target = _JC_FV[mbf_cl][0];
             }
         }
         mbf_fv: list[JSValue] = [mbf_target];
@@ -22970,7 +23238,7 @@ obj VM {
         mbf_stub.expected_arg_count = mbf_rlen;
         mbf_stub.is_bound = True;
         # ES §20.2.3.2: bound functions do not have a `prototype` property.
-        mbf_bound: JSClosure = make_closure(mbf_stub, mbf_fv, mbf_this, js_undefined());
+        mbf_bound: int = make_closure(mbf_stub, mbf_fv, mbf_this, js_undefined());
         # Own name/length: {writable:false, enumerable:false, configurable:true}.
         mbf_len_js: JSValue = js_number(mbf_L);
         if mbf_L == MATH_INF {
@@ -23021,10 +23289,10 @@ obj VM {
         bound_val: JSValue, target: JSValue, arg_count: int
     ) -> None {
         b_idx: int = get_fn_idx(bound_val);
-        if b_idx < 0 or b_idx >= len(self.realm.closures) {
+        if b_idx < 0 or b_idx >= jc_count() {
             return;
         }
-        b_fp: JSValue = cl_props(self.realm.closures[b_idx]);
+        b_fp: JSValue = cl_props(b_idx);
 
         # ── length (§20.2.3.2 steps 5–7) ──────────────────────────────────
         len_num: float = 0.0;
@@ -23113,8 +23381,8 @@ obj VM {
     def _bound_get_target_prop(target: JSValue, key: int) -> JSValue {
         if is_fn_val(target) {
             bgp_idx: int = get_fn_idx(target);
-            if bgp_idx >= 0 and bgp_idx < len(self.realm.closures) {
-                bgp_fp: JSValue = cl_props(self.realm.closures[bgp_idx]);
+            if bgp_idx >= 0 and bgp_idx < jc_count() {
+                bgp_fp: JSValue = cl_props(bgp_idx);
                 if jsv_is_object_cell(bgp_fp) {
                     bgp_get: JSValue = js_object_get_own_accessor_getter(bgp_fp, key);
                     if not jsv_is_undefined(bgp_get) {
@@ -24063,9 +24331,9 @@ obj VM {
                     )
                     and is_fn_val(fm_meth) {
                     # Borrowed closure, as in _op_call's fast path.
-                    if self._reg_ready(self.realm.closures[get_fn_idx(fm_meth)].func) {
+                    if self._reg_ready(_JC_FUNC[get_fn_idx(fm_meth)]) {
                         if self._reg_call_from_stack(
-                            self.realm.closures[get_fn_idx(fm_meth)],
+                            get_fn_idx(fm_meth),
                             fm_meth,
                             self.stack[fm_sl + 1],
                             nc_m,
@@ -24077,7 +24345,7 @@ obj VM {
                         }
                     }
                     if self._inline_call_from_stack(
-                        self.realm.closures[get_fn_idx(fm_meth)],
+                        get_fn_idx(fm_meth),
                         fm_meth,
                         self.stack[fm_sl + 1],
                         nc_m,
@@ -24281,20 +24549,20 @@ obj VM {
                     fca = fca + 1;
                 }
                 if is_fn_val(this_m) {
-                    cl_fc: JSClosure = self.realm.closures[get_fn_idx(this_m)];
+                    cl_fc: int = get_fn_idx(this_m);
                     # Bound function: ignore caller's this, use bound this + prepend partial args
                     fc_real_fn: JSValue = this_m;
                     fc_real_this: JSValue = fncall_this;
                     fc_real_args: list[JSValue] = fncall_args;
-                    if cl_fc.func.is_bound {
-                        if len(cl_fc.free_vals) > 0 {
-                            fc_real_fn = cl_fc.free_vals[0];
+                    if _JC_FUNC[cl_fc].is_bound {
+                        if len(_JC_FV[cl_fc]) > 0 {
+                            fc_real_fn = _JC_FV[cl_fc][0];
                         }
-                        fc_real_this = cl_fc.lexical_this;
+                        fc_real_this = jc_lexical_this(cl_fc);
                         fc_real_args = [];
                         bfi_fc: int = 1;
-                        while bfi_fc < len(cl_fc.free_vals) {
-                            fc_real_args.append(cl_fc.free_vals[bfi_fc]);
+                        while bfi_fc < len(_JC_FV[cl_fc]) {
+                            fc_real_args.append(_JC_FV[cl_fc][bfi_fc]);
                             bfi_fc = bfi_fc + 1;
                         }
                         for bfa_fc in fncall_args {
@@ -24302,17 +24570,15 @@ obj VM {
                         }
                         # Unwrap further bound layers
                         while is_fn_val(fc_real_fn) {
-                            cl_in_fc: JSClosure = self.realm.closures[
-                                get_fn_idx(fc_real_fn)
-                            ];
-                            if not cl_in_fc.func.is_bound {
+                            cl_in_fc: int = get_fn_idx(fc_real_fn);
+                            if not _JC_FUNC[cl_in_fc].is_bound {
                                 break;
                             }
-                            fc_real_this = cl_in_fc.lexical_this;
+                            fc_real_this = jc_lexical_this(cl_in_fc);
                             in_p_fc: list[JSValue] = [];
                             ip_i_fc: int = 1;
-                            while ip_i_fc < len(cl_in_fc.free_vals) {
-                                in_p_fc.append(cl_in_fc.free_vals[ip_i_fc]);
+                            while ip_i_fc < len(_JC_FV[cl_in_fc]) {
+                                in_p_fc.append(_JC_FV[cl_in_fc][ip_i_fc]);
                                 ip_i_fc = ip_i_fc + 1;
                             }
                             nf_fc: list[JSValue] = [];
@@ -24324,27 +24590,25 @@ obj VM {
                             }
                             fc_real_args = nf_fc;
                             fc_real_fn = js_undefined();
-                            if len(cl_in_fc.free_vals) > 0 {
-                                fc_real_fn = cl_in_fc.free_vals[0];
+                            if len(_JC_FV[cl_in_fc]) > 0 {
+                                fc_real_fn = _JC_FV[cl_in_fc][0];
                             }
                         }
                     }
                     if is_fn_val(fc_real_fn) {
-                        cl_real_fc: JSClosure = self.realm.closures[
-                            get_fn_idx(fc_real_fn)
-                        ];
+                        cl_real_fc: int = get_fn_idx(fc_real_fn);
                         # ECMAScript §19.2.3.3: in sloppy mode, null/undefined this → globalThis
-                        if not cl_real_fc.is_arrow and not cl_real_fc.func.is_strict {
+                        if not jc_is_arrow(cl_real_fc) and not _JC_FUNC[cl_real_fc].is_strict {
                             if jsv_is_null(fc_real_this)
                                 or jsv_is_undefined(fc_real_this) {
-                                fc_real_this = self._sloppy_this_for(cl_real_fc.func);
+                                fc_real_this = self._sloppy_this_for(_JC_FUNC[cl_real_fc]);
                             }
                         }
                         # An async function invoked via .call must still return its Promise
                         # (ES §27.7). _invoke_async_via_reflect wraps the body run like the
                         # CALL opcode; a non-async fn takes the plain run_cl path below.
-                        if cl_real_fc.func.is_async
-                            and not cl_real_fc.func.is_generator {
+                        if _JC_FUNC[cl_real_fc].is_async
+                            and not _JC_FUNC[cl_real_fc].is_generator {
                             fc_p: JSValue = self._invoke_async_via_reflect(
                                 cl_real_fc, fc_real_fn, fc_real_this, fc_real_args
                             );
@@ -24411,9 +24675,7 @@ obj VM {
                                     while True {
                                         step_fc: JSValue = js_undefined();
                                         if is_fn_val(exec_fn_fc) {
-                                            cl_exec_fc: JSClosure = self.realm.closures[
-                                                get_fn_idx(exec_fn_fc)
-                                            ];
+                                            cl_exec_fc: int = get_fn_idx(exec_fn_fc);
                                             step_fc = self.run_cl(
                                                 cl_exec_fc,
                                                 exec_fn_fc,
@@ -24547,9 +24809,7 @@ obj VM {
                                     while True {
                                         step_fnm: JSValue = js_undefined();
                                         if is_fn_val(exec_fn_fnm) {
-                                            cl_exec_fnm: JSClosure = self.realm.closures[
-                                                get_fn_idx(exec_fn_fnm)
-                                            ];
+                                            cl_exec_fnm: int = get_fn_idx(exec_fn_fnm);
                                             step_fnm = self.run_cl(
                                                 cl_exec_fnm,
                                                 exec_fn_fnm,
@@ -24640,9 +24900,7 @@ obj VM {
                                     ei_fnm: int = 0;
                                     while ei_fnm < max_exec_fnm {
                                         if is_fn_val(exec_fn_fnm) {
-                                            cl_exec_miss: JSClosure = self.realm.closures[
-                                                get_fn_idx(exec_fn_fnm)
-                                            ];
+                                            cl_exec_miss: int = get_fn_idx(exec_fn_fnm);
                                             drop_exec_miss: JSValue = self.run_cl(
                                                 cl_exec_miss,
                                                 exec_fn_fnm,
@@ -24782,9 +25040,7 @@ obj VM {
 
                                     rep_rpf_v: JSValue = js_undefined();
                                     if is_fn_val(repl_fnm) {
-                                        cl_rpf: JSClosure = self.realm.closures[
-                                            get_fn_idx(repl_fnm)
-                                        ];
+                                        cl_rpf: int = get_fn_idx(repl_fnm);
                                         rep_rpf_v = self.run_cl(
                                             cl_rpf, repl_fnm, js_undefined(), cb_rpf
                                         );
@@ -25132,20 +25388,20 @@ obj VM {
                     }
                 }
                 if ap_args_ok and is_fn_val(this_m) {
-                    cl_ap: JSClosure = self.realm.closures[get_fn_idx(this_m)];
+                    cl_ap: int = get_fn_idx(this_m);
                     # Bound function: ignore caller's this, use bound this + prepend partial args
                     ap_real_fn: JSValue = this_m;
                     ap_real_this: JSValue = fnapply_this;
                     ap_real_args: list[JSValue] = fnapply_args;
-                    if cl_ap.func.is_bound {
-                        if len(cl_ap.free_vals) > 0 {
-                            ap_real_fn = cl_ap.free_vals[0];
+                    if _JC_FUNC[cl_ap].is_bound {
+                        if len(_JC_FV[cl_ap]) > 0 {
+                            ap_real_fn = _JC_FV[cl_ap][0];
                         }
-                        ap_real_this = cl_ap.lexical_this;
+                        ap_real_this = jc_lexical_this(cl_ap);
                         ap_real_args = [];
                         bfi_ap: int = 1;
-                        while bfi_ap < len(cl_ap.free_vals) {
-                            ap_real_args.append(cl_ap.free_vals[bfi_ap]);
+                        while bfi_ap < len(_JC_FV[cl_ap]) {
+                            ap_real_args.append(_JC_FV[cl_ap][bfi_ap]);
                             bfi_ap = bfi_ap + 1;
                         }
                         for bfa_ap in fnapply_args {
@@ -25153,17 +25409,15 @@ obj VM {
                         }
                         # Unwrap further bound layers
                         while is_fn_val(ap_real_fn) {
-                            cl_in_ap: JSClosure = self.realm.closures[
-                                get_fn_idx(ap_real_fn)
-                            ];
-                            if not cl_in_ap.func.is_bound {
+                            cl_in_ap: int = get_fn_idx(ap_real_fn);
+                            if not _JC_FUNC[cl_in_ap].is_bound {
                                 break;
                             }
-                            ap_real_this = cl_in_ap.lexical_this;
+                            ap_real_this = jc_lexical_this(cl_in_ap);
                             in_p_ap: list[JSValue] = [];
                             ip_i_ap: int = 1;
-                            while ip_i_ap < len(cl_in_ap.free_vals) {
-                                in_p_ap.append(cl_in_ap.free_vals[ip_i_ap]);
+                            while ip_i_ap < len(_JC_FV[cl_in_ap]) {
+                                in_p_ap.append(_JC_FV[cl_in_ap][ip_i_ap]);
                                 ip_i_ap = ip_i_ap + 1;
                             }
                             nf_ap: list[JSValue] = [];
@@ -25175,25 +25429,23 @@ obj VM {
                             }
                             ap_real_args = nf_ap;
                             ap_real_fn = js_undefined();
-                            if len(cl_in_ap.free_vals) > 0 {
-                                ap_real_fn = cl_in_ap.free_vals[0];
+                            if len(_JC_FV[cl_in_ap]) > 0 {
+                                ap_real_fn = _JC_FV[cl_in_ap][0];
                             }
                         }
                     }
                     if is_fn_val(ap_real_fn) {
-                        cl_real_ap: JSClosure = self.realm.closures[
-                            get_fn_idx(ap_real_fn)
-                        ];
+                        cl_real_ap: int = get_fn_idx(ap_real_fn);
                         # ECMAScript §19.2.3.2: sloppy mode null/undefined this → globalThis
-                        if not cl_real_ap.is_arrow and not cl_real_ap.func.is_strict {
+                        if not jc_is_arrow(cl_real_ap) and not _JC_FUNC[cl_real_ap].is_strict {
                             if jsv_is_null(ap_real_this)
                                 or jsv_is_undefined(ap_real_this) {
-                                ap_real_this = self._sloppy_this_for(cl_real_ap.func);
+                                ap_real_this = self._sloppy_this_for(_JC_FUNC[cl_real_ap]);
                             }
                         }
                         # Async fn via .apply must return its Promise (see .call above).
-                        if cl_real_ap.func.is_async
-                            and not cl_real_ap.func.is_generator {
+                        if _JC_FUNC[cl_real_ap].is_async
+                            and not _JC_FUNC[cl_real_ap].is_generator {
                             self._push(
                                 self._invoke_async_via_reflect(
                                     cl_real_ap, ap_real_fn, ap_real_this, ap_real_args
@@ -25208,7 +25460,7 @@ obj VM {
                             # generator, and Babel's config loading failed ("makeError is not
                             # a function" / "(unknown).next is not a function").
                             res_ap: JSValue = js_undefined();
-                            if cl_real_ap.func.is_generator {
+                            if _JC_FUNC[cl_real_ap].is_generator {
                                 res_ap = self._invoke_callable_value(
                                     ap_real_fn, ap_real_this, ap_real_args
                                 );
@@ -25398,15 +25650,13 @@ obj VM {
                     ts_s: str = "function () { [native code] }";
                     if is_fn_val(this_m) {
                         fi_ts: int = get_fn_idx(this_m);
-                        if fi_ts < len(self.realm.closures) {
-                            src_ts: str = self.realm.closures[fi_ts].func.source;
+                        if fi_ts < jc_count() {
+                            src_ts: str = _JC_FUNC[fi_ts].source;
                             if len(src_ts) > 0 {
                                 ts_s = src_ts;
                             } else {
-                                nm_ts: str = self.realm.closures[fi_ts].func.name;
-                                is_bd_ts: bool = self.realm.closures[
-                                    fi_ts
-                                ].func.is_bound;
+                                nm_ts: str = _JC_FUNC[fi_ts].name;
+                                is_bd_ts: bool = _JC_FUNC[fi_ts].is_bound;
                                 if is_bd_ts or nm_ts == "" or str_bfind(nm_ts, " ") >= 0 {
                                     ts_s = "function () { [native code] }";
                                 } else {
@@ -25539,9 +25789,7 @@ obj VM {
                             }
                             rep_rp_v: JSValue = js_undefined();
                             if is_fn_val(repl_rp_fn) {
-                                rp_cl: JSClosure = self.realm.closures[
-                                    get_fn_idx(repl_rp_fn)
-                                ];
+                                rp_cl: int = get_fn_idx(repl_rp_fn);
                                 rep_rp_v = self.run_cl(
                                     rp_cl, repl_rp_fn, js_undefined(), cb_args_rp
                                 );
@@ -25686,9 +25934,7 @@ obj VM {
                         rep_sr_v: JSValue = js_undefined();
                         sr_ok: bool = True;
                         if is_fn_val(repl_rp_fn) {
-                            sr_cl: JSClosure = self.realm.closures[
-                                get_fn_idx(repl_rp_fn)
-                            ];
+                            sr_cl: int = get_fn_idx(repl_rp_fn);
                             rep_sr_v = self.run_cl(
                                 sr_cl, repl_rp_fn, js_undefined(), cb_args_sr
                             );
@@ -26036,7 +26282,7 @@ obj VM {
                 fi_val: JSValue = js_promise_get_value(this_m);
                 if st_fi != PROMISE_PENDING {
                     if is_fn_val(on_fn_fi) {
-                        cl_fi: JSClosure = self.realm.closures[get_fn_idx(on_fn_fi)];
+                        cl_fi: int = get_fn_idx(on_fn_fi);
                         _gtr_fi: int = len(self.realm.gc_temp_roots);
                         self.realm.gc_temp_roots.append(next_p_fi);
                         self.run_cl(cl_fi, on_fn_fi, js_undefined(), []);
@@ -26119,15 +26365,15 @@ obj VM {
                 }
             }
         } elif is_fn_val(meth) {
-            cl_m: JSClosure = self.realm.closures[get_fn_idx(meth)];
-            if cl_m.napi_cb_ptr != 0 {
+            cl_m: int = get_fn_idx(meth);
+            if jc_napi_cb_ptr(cl_m) != 0 {
                 # N7: NAPI native callback called as a method (m.fn())
                 args_int_m: list[int] = [];
                 for a_nm in args_m {
                     args_int_m.append(a_nm);
                 }
                 napi_ret_m: int = _vm_invoke_napi_cb(
-                    self, cl_m.napi_cb_ptr, cl_m.napi_cb_data, this_m, args_int_m, 0
+                    self, jc_napi_cb_ptr(cl_m), jc_napi_cb_data(cl_m), this_m, args_int_m, 0
                 );
                 if _napi_get_had_exception() {
                     exc_napi_m: JSValue = _napi_consume_exception();
@@ -26139,38 +26385,36 @@ obj VM {
                 } else {
                     self._push(napi_ret_m);
                 }
-            } elif cl_m.func.is_bound {
+            } elif _JC_FUNC[cl_m].is_bound {
                 # Bound function invoked as a METHOD (obj.boundFn(...)): unwrap the
                 # binding chain exactly like the CALL opcode path — running the
                 # empty "<bound>" stub via run_cl silently returned undefined
                 # (rollup: astContext methods are bound Module methods, so every
                 # import/export registration was dropped).
                 orig_fn_mb: JSValue = js_undefined();
-                if len(cl_m.free_vals) > 0 {
-                    orig_fn_mb = cl_m.free_vals[0];
+                if len(_JC_FV[cl_m]) > 0 {
+                    orig_fn_mb = _JC_FV[cl_m][0];
                 }
-                bind_this_mb: JSValue = cl_m.lexical_this;
+                bind_this_mb: JSValue = jc_lexical_this(cl_m);
                 full_args_mb: list[JSValue] = [];
                 bfi_mb: int = 1;
-                while bfi_mb < len(cl_m.free_vals) {
-                    full_args_mb.append(cl_m.free_vals[bfi_mb]);
+                while bfi_mb < len(_JC_FV[cl_m]) {
+                    full_args_mb.append(_JC_FV[cl_m][bfi_mb]);
                     bfi_mb = bfi_mb + 1;
                 }
                 for ba_mb in args_m {
                     full_args_mb.append(ba_mb);
                 }
                 while is_fn_val(orig_fn_mb) {
-                    cl_inner_mb: JSClosure = self.realm.closures[
-                        get_fn_idx(orig_fn_mb)
-                    ];
-                    if not cl_inner_mb.func.is_bound {
+                    cl_inner_mb: int = get_fn_idx(orig_fn_mb);
+                    if not _JC_FUNC[cl_inner_mb].is_bound {
                         break;
                     }
-                    bind_this_mb = cl_inner_mb.lexical_this;
+                    bind_this_mb = jc_lexical_this(cl_inner_mb);
                     inner_partial_mb: list[JSValue] = [];
                     ipi_mb: int = 1;
-                    while ipi_mb < len(cl_inner_mb.free_vals) {
-                        inner_partial_mb.append(cl_inner_mb.free_vals[ipi_mb]);
+                    while ipi_mb < len(_JC_FV[cl_inner_mb]) {
+                        inner_partial_mb.append(_JC_FV[cl_inner_mb][ipi_mb]);
                         ipi_mb = ipi_mb + 1;
                     }
                     new_full_mb: list[JSValue] = [];
@@ -26182,8 +26426,8 @@ obj VM {
                     }
                     full_args_mb = new_full_mb;
                     orig_fn_mb = js_undefined();
-                    if len(cl_inner_mb.free_vals) > 0 {
-                        orig_fn_mb = cl_inner_mb.free_vals[0];
+                    if len(_JC_FV[cl_inner_mb]) > 0 {
+                        orig_fn_mb = _JC_FV[cl_inner_mb][0];
                     }
                 }
                 if is_fn_val(orig_fn_mb) {
@@ -26254,16 +26498,16 @@ obj VM {
                         self._push(res_mb_o);
                     }
                 }
-            } elif cl_m.func.is_generator {
+            } elif _JC_FUNC[cl_m].is_generator {
                 gen_locals_m: list[JSValue] = [];
                 gli_m: int = 0;
-                while gli_m < cl_m.func.num_locals {
+                while gli_m < _JC_FUNC[cl_m].num_locals {
                     gen_locals_m.append(js_undefined());
                     gli_m = gli_m + 1;
                 }
                 ga_m: int = 0;
-                while ga_m < len(cl_m.func.params) and ga_m < len(args_m) {
-                    gen_locals_m[cl_m.func.param_base + ga_m] = args_m[ga_m];
+                while ga_m < len(_JC_FUNC[cl_m].params) and ga_m < len(args_m) {
+                    gen_locals_m[_JC_FUNC[cl_m].param_base + ga_m] = args_m[ga_m];
                     ga_m = ga_m + 1;
                 }
                 # Collect the rest parameter into its (last) param slot, as the plain-call
@@ -26271,38 +26515,38 @@ obj VM {
                 # METHOD `o.m(...args)` bound args to the first argument itself: gensync's
                 # `gensync.all([g1, g2])` saw args = [g1, g2] instead of [[g1, g2]], and
                 # Babel's plugin descriptors came out empty (plugin-react did nothing).
-                if cl_m.func.has_rest and len(cl_m.func.params) > 0 {
-                    grest_slot_m: int = cl_m.func.param_base + len(cl_m.func.params)
+                if _JC_FUNC[cl_m].has_rest and len(_JC_FUNC[cl_m].params) > 0 {
+                    grest_slot_m: int = _JC_FUNC[cl_m].param_base + len(_JC_FUNC[cl_m].params)
                         - 1;
                     grest_items_m: list[JSValue] = [];
-                    gri_m: int = len(cl_m.func.params) - 1;
+                    gri_m: int = len(_JC_FUNC[cl_m].params) - 1;
                     while gri_m < len(args_m) {
                         grest_items_m.append(args_m[gri_m]);
                         gri_m = gri_m + 1;
                     }
                     gen_locals_m[grest_slot_m] = js_array_create(grest_items_m);
                 }
-                if cl_m.func.param_base > 0 {
+                if _JC_FUNC[cl_m].param_base > 0 {
                     gen_locals_m[0] = meth;
                 }
                 # Populate the implicit `arguments` object (generators bypass run()).
-                if cl_m.func.arguments_slot >= 0 {
-                    gen_locals_m[cl_m.func.arguments_slot] = self._build_arguments(
-                        args_m, meth, cl_m.func, gen_locals_m
+                if _JC_FUNC[cl_m].arguments_slot >= 0 {
+                    gen_locals_m[_JC_FUNC[cl_m].arguments_slot] = self._build_arguments(
+                        args_m, meth, _JC_FUNC[cl_m], gen_locals_m
                     );
                 }
                 # B5: eagerly run the parameter-binding prologue (see _op_call site).
                 gen_start_ip_m: int = 0;
                 gen_prologue_ok_m: bool = True;
-                if cl_m.func.gen_prologue_end_ip >= 0 {
-                    gen_start_ip_m = cl_m.func.gen_prologue_end_ip;
+                if _JC_FUNC[cl_m].gen_prologue_end_ip >= 0 {
+                    gen_start_ip_m = _JC_FUNC[cl_m].gen_prologue_end_ip;
                     gen_prologue_ok_m = self._run_gen_prologue(
-                        cl_m.func,
+                        _JC_FUNC[cl_m],
                         gen_locals_m,
-                        cl_m.free_vals,
+                        _JC_FV[cl_m],
                         this_m,
                         meth,
-                        cl_m.func.gen_prologue_end_ip
+                        _JC_FUNC[cl_m].gen_prologue_end_ip
                     );
                 }
                 if not gen_prologue_ok_m {
@@ -26316,24 +26560,24 @@ obj VM {
                     }
                 } else {
                     gen_obj_m: JSValue = js_generator_create(
-                        cl_m.func,
+                        _JC_FUNC[cl_m],
                         gen_locals_m,
-                        cl_m.free_vals,
+                        _JC_FV[cl_m],
                         this_m,
-                        cl_m.func.is_async,
+                        _JC_FUNC[cl_m].is_async,
                         gen_start_ip_m,
                         meth,
-                        cl_m.module_fns
+                        _JC_MF[cl_m]
                     );
                     # Instance [[Prototype]] = the generator method's `.prototype`,
                     # falling back to %GeneratorPrototype% when it is not an object
                     # (mirrors the plain-call path above; ES §27.x).
-                    gm_proto: JSValue = cl_m.prototype_obj;
+                    gm_proto: JSValue = jc_prototype_obj(cl_m);
                     if not (
                         jsv_is_object_cell(gm_proto) and jsv_to_table_id(gm_proto) > 0
                     ) {
                         gm_proto = js_generator_get_proto();
-                        if cl_m.func.is_async {
+                        if _JC_FUNC[cl_m].is_async {
                             gm_proto = js_async_generator_get_proto();
                         }
                     }
@@ -26342,7 +26586,7 @@ obj VM {
                     }
                     self._push(gen_obj_m);
                 }
-            } elif cl_m.func.is_async {
+            } elif _JC_FUNC[cl_m].is_async {
                 old_cap_m: JSValue = self._cur_async_promise;
                 new_cap_m: JSValue = js_promise_create();
                 _gtr_m: int = len(self.realm.gc_temp_roots);
@@ -26384,7 +26628,7 @@ obj VM {
                     self._push(new_cap_m);
                 }
             } else {
-                if self._reg_ready(cl_m.func)
+                if self._reg_ready(_JC_FUNC[cl_m])
                     and self._reg_call_from_list(
                         cl_m, meth, this_m, args_m, frame, st
                     ) {
@@ -26504,7 +26748,7 @@ obj VM {
         if _DBG_NEW_ON {
             _dbg_ne_nm: str = "?";
             if is_fn_val(ctor) {
-                _dbg_ne_nm = self.realm.closures[get_fn_idx(ctor)].func.name;
+                _dbg_ne_nm = _JC_FUNC[get_fn_idx(ctor)].name;
             }
             _dbg_ne: str = "[DBG_NEW_ENTRY] is_fn="
                 + str(is_fn_val(ctor))
@@ -26585,9 +26829,7 @@ obj VM {
                         reject_fn: JSValue = js_make_reject_fn(new_p);
                         exec_nw_fn: JSValue = args_nw[0];
                         if is_fn_val(exec_nw_fn) {
-                            exec_cl: JSClosure = self.realm.closures[
-                                get_fn_idx(exec_nw_fn)
-                            ];
+                            exec_cl: int = get_fn_idx(exec_nw_fn);
                             _gtr_nw: int = len(self.realm.gc_temp_roots);
                             self.realm.gc_temp_roots.append(new_p);
                             self.run_cl(
@@ -26748,15 +26990,15 @@ obj VM {
             # Scope has none. Log every candidate; gate DBG_SCOPE detail on it.
             _dbg_is_scope: bool = False;
             if _DBG_NEW_ON and is_fn_val(ctor_fn_nw) {
-                _dbg_isc_cl: JSClosure = self.realm.closures[get_fn_idx(ctor_fn_nw)];
+                _dbg_isc_cl: int = get_fn_idx(ctor_fn_nw);
                 _dbg_cnm3: str = "?";
                 if jsv_is_string_cell(_dbg_cn2) {
                     _dbg_cnm3 = str_from_id(jsv_to_table_id(_dbg_cn2));
                 }
                 _dbg_has_objcreate: bool = False;
                 _dbg_scan: int = 0;
-                while _dbg_scan < len(_dbg_isc_cl.func.code) {
-                    if opcode_to_int(_dbg_isc_cl.func.code[_dbg_scan].opcode) == 10 {
+                while _dbg_scan < len(_JC_FUNC[_dbg_isc_cl].code) {
+                    if opcode_to_int(_JC_FUNC[_dbg_isc_cl].code[_dbg_scan].opcode) == 10 {
                         _dbg_has_objcreate = True;
                     }
                     _dbg_scan = _dbg_scan + 1;
@@ -26766,9 +27008,9 @@ obj VM {
                     _dbg_cand: str = "[DBG_CAND] WK_IS_CLASS name='"
                         + _dbg_cnm3
                         + "' bclen="
-                        + str(len(_dbg_isc_cl.func.code))
+                        + str(len(_JC_FUNC[_dbg_isc_cl].code))
                         + " nparams="
-                        + str(len(_dbg_isc_cl.func.params))
+                        + str(len(_JC_FUNC[_dbg_isc_cl].params))
                         + " has_LOAD_GLOBAL=True\n";
                     write(2, _dbg_cand, str_nbytes(_dbg_cand));
                 }
@@ -26785,22 +27027,22 @@ obj VM {
                     + "\n";
                 write(2, _dbg_s1, str_nbytes(_dbg_s1));
                 if is_fn_val(ctor_fn_nw) {
-                    _dbg_sc_cl: JSClosure = self.realm.closures[get_fn_idx(ctor_fn_nw)];
+                    _dbg_sc_cl: int = get_fn_idx(ctor_fn_nw);
                     _dbg_s2: str = "[DBG_SCOPE] ctor bytecode_len="
-                        + str(len(_dbg_sc_cl.func.code))
+                        + str(len(_JC_FUNC[_dbg_sc_cl].code))
                         + " nparams="
-                        + str(len(_dbg_sc_cl.func.params))
+                        + str(len(_JC_FUNC[_dbg_sc_cl].params))
                         + " param_base="
-                        + str(_dbg_sc_cl.func.param_base)
+                        + str(_JC_FUNC[_dbg_sc_cl].param_base)
                         + " num_locals="
-                        + str(_dbg_sc_cl.func.num_locals)
+                        + str(_JC_FUNC[_dbg_sc_cl].num_locals)
                         + " is_gen="
-                        + str(_dbg_sc_cl.func.is_generator)
+                        + str(_JC_FUNC[_dbg_sc_cl].is_generator)
                         + "\n";
                     write(2, _dbg_s2, str_nbytes(_dbg_s2));
                     _dbg_di: int = 0;
-                    while _dbg_di < len(_dbg_sc_cl.func.code) and _dbg_di < 14 {
-                        _dbg_op: Instruction = _dbg_sc_cl.func.code[_dbg_di];
+                    while _dbg_di < len(_JC_FUNC[_dbg_sc_cl].code) and _dbg_di < 14 {
+                        _dbg_op: Instruction = _JC_FUNC[_dbg_sc_cl].code[_dbg_di];
                         _dbg_s3: str = "[DBG_SCOPE]   ["
                             + str(_dbg_di)
                             + "] op="
@@ -26815,7 +27057,7 @@ obj VM {
             }
             if nw_fields_ok and is_fn_val(ctor_fn_nw) {
                 nw_had_explicit_ctor = True;
-                cl_cls: JSClosure = self.realm.closures[get_fn_idx(ctor_fn_nw)];
+                cl_cls: int = get_fn_idx(ctor_fn_nw);
                 # new.target = the class being constructed (ES §13.3.5.1); consumed by run.
                 self._pending_new_target = ctor;
                 self.pending_new_target = ctor;
@@ -26831,9 +27073,7 @@ obj VM {
                     if jsv_is_object_cell(new_obj_cls) {
                         _dbg_ntid = jsv_to_table_id(new_obj_cls);
                     }
-                    _dbg_raw: JSObject = self.realm.objects[
-                        jsv_to_table_id(new_obj_cls)
-                    ];
+                    _dbg_raw: int = (jsv_to_table_id(new_obj_cls)) + 1;
                     _dbg_children: JSValue = js_object_get(
                         new_obj_cls, str_intern("children")
                     );
@@ -26846,11 +27086,11 @@ obj VM {
                     _dbg_nt: str = "[DBG_SCOPE] after run_cl tid="
                         + str(_dbg_ntid)
                         + " mode="
-                        + str(_dbg_raw.mode)
+                        + str(jo_mode(_dbg_raw))
                         + " shape_id="
-                        + str(_dbg_raw.shape_id)
+                        + str(jo_shape_id(_dbg_raw))
                         + " nslots="
-                        + str(_dbg_raw.slen())
+                        + str(jo_slen(_dbg_raw))
                         + " children_undef="
                         + str(jsv_is_undefined(_dbg_children))
                         + " variables_undef="
@@ -26997,9 +27237,7 @@ obj VM {
                     # functions from binary_types.js, not KEY_CTOR_KIND natives).
                     # Invoke the function as a constructor with the derived `this`
                     # and new.target = the leaf class (ES §13.3.5.1 / §15.7.14).
-                    cl_fn_sup_nw: JSClosure = self.realm.closures[
-                        get_fn_idx(cls_super_nw)
-                    ];
+                    cl_fn_sup_nw: int = get_fn_idx(cls_super_nw);
                     self._pending_new_target = ctor;
                     self.pending_new_target = ctor;
                     cr_fn_sup_nw: JSValue = self.run_cl(
@@ -27125,9 +27363,7 @@ obj VM {
                             cls_super_nw, new_obj_cls, frame, st
                         );
                         if nw_sf_ok and st.running and not self.had_exception {
-                            cl_inh: JSClosure = self.realm.closures[
-                                get_fn_idx(inh_ctor)
-                            ];
+                            cl_inh: int = get_fn_idx(inh_ctor);
                             # new.target remains the derived class being constructed.
                             self.pending_new_target = ctor;
                             cr_inh: JSValue = self.run_cl(
@@ -27280,9 +27516,7 @@ obj VM {
                         reject_fn_ck: JSValue = js_make_reject_fn(new_p_ck);
                         exec_ck_fn: JSValue = args_nw[0];
                         if is_fn_val(exec_ck_fn) {
-                            exec_cl_ck: JSClosure = self.realm.closures[
-                                get_fn_idx(exec_ck_fn)
-                            ];
+                            exec_cl_ck: int = get_fn_idx(exec_ck_fn);
                             _gtr_ck: int = len(self.realm.gc_temp_roots);
                             self.realm.gc_temp_roots.append(new_p_ck);
                             self.run_cl(
@@ -27436,9 +27670,7 @@ obj VM {
                                 # Call [Symbol.iterator]() to get the iterator; cache [[NextMethod]].
                                 nm_iter: JSValue = js_undefined();
                                 if is_fn_val(nm_sym_iter) {
-                                    nm_iter_cl: JSClosure = self.realm.closures[
-                                        get_fn_idx(nm_sym_iter)
-                                    ];
+                                    nm_iter_cl: int = get_fn_idx(nm_sym_iter);
                                     nm_iter = self.run_cl(
                                         nm_iter_cl, nm_sym_iter, nm_init, []
                                     );
@@ -27652,11 +27884,9 @@ obj VM {
                                                                     nm_adder
                                                                 ) {
                                                                     _ = self.run_cl(
-                                                                        self.realm.closures[
-                                                                            get_fn_idx(
+                                                                        get_fn_idx(
                                                                                 nm_adder
-                                                                            )
-                                                                        ],
+                                                                            ),
                                                                         nm_adder,
                                                                         nm_map,
                                                                         [nm_ek, nm_ev]
@@ -27928,9 +28158,7 @@ obj VM {
                                                     } else {
                                                         if is_fn_val(ns_adder) {
                                                             _ = self.run_cl(
-                                                                self.realm.closures[
-                                                                    get_fn_idx(ns_adder)
-                                                                ],
+                                                                get_fn_idx(ns_adder),
                                                                 ns_adder,
                                                                 ns_set,
                                                                 [ns_elem]
@@ -28243,11 +28471,9 @@ obj VM {
                                                                     nwm_adder
                                                                 ) {
                                                                     _ = self.run_cl(
-                                                                        self.realm.closures[
-                                                                            get_fn_idx(
+                                                                        get_fn_idx(
                                                                                 nwm_adder
-                                                                            )
-                                                                        ],
+                                                                            ),
                                                                         nwm_adder,
                                                                         nwm_map,
                                                                         [nwm_ek, nwm_ev]
@@ -28481,11 +28707,9 @@ obj VM {
                                                     } else {
                                                         if is_fn_val(nws_adder) {
                                                             _ = self.run_cl(
-                                                                self.realm.closures[
-                                                                    get_fn_idx(
+                                                                get_fn_idx(
                                                                         nws_adder
-                                                                    )
-                                                                ],
+                                                                    ),
                                                                 nws_adder,
                                                                 nws_set,
                                                                 [nws_el]
@@ -28611,13 +28835,13 @@ obj VM {
                 }
             }  # end IsConstructor-true branch for KEY_CTOR_KIND
         } elif is_fn_val(ctor) {
-            cl_nw: JSClosure = self.realm.closures[get_fn_idx(ctor)];
+            cl_nw: int = get_fn_idx(ctor);
             # N4: NAPI native constructor
-            if cl_nw.napi_cb_ptr != 0 {
+            if jc_napi_cb_ptr(cl_nw) != 0 {
                 new_this_napi: JSValue = js_object_create_null();
-                if not jsv_is_undefined(cl_nw.prototype_obj)
-                    and not jsv_is_null(cl_nw.prototype_obj) {
-                    new_this_napi = js_object_create(cl_nw.prototype_obj);
+                if not jsv_is_undefined(jc_prototype_obj(cl_nw))
+                    and not jsv_is_null(jc_prototype_obj(cl_nw)) {
+                    new_this_napi = js_object_create(jc_prototype_obj(cl_nw));
                 }
                 args_napi_nw: list[int] = [];
                 for a_napi_nw in args_nw {
@@ -28626,8 +28850,8 @@ obj VM {
                 # new.target = ctor (the constructor JSValue) per ECMAScript §10.2.5
                 napi_ctor_ret: int = _vm_invoke_napi_cb(
                     self,
-                    cl_nw.napi_cb_ptr,
-                    cl_nw.napi_cb_data,
+                    jc_napi_cb_ptr(cl_nw),
+                    jc_napi_cb_data(cl_nw),
                     new_this_napi,
                     args_napi_nw,
                     ctor
@@ -28657,14 +28881,14 @@ obj VM {
                 # former from the Promise combinators, the latter set via
                 # NATIVE_KIND_MARK_NON_CONSTRUCTOR; both are honoured. The WK_NOT_CTOR check
                 # is required, else Reflect.construct(Promise.all) would slip through.
-            } elif cl_nw.is_arrow
-                or cl_nw.func.is_generator
-                or cl_nw.func.is_async
-                or cl_nw.func.is_method
-                or cl_nw.is_non_constructor
+            } elif jc_is_arrow(cl_nw)
+                or _JC_FUNC[cl_nw].is_generator
+                or _JC_FUNC[cl_nw].is_async
+                or _JC_FUNC[cl_nw].is_method
+                or jc_is_non_constructor(cl_nw)
                 or cl_props_has_own(cl_nw, WK_NOT_CTOR) {
-                nw_arrow_msg: str = cl_nw.func.name + " is not a constructor";
-                if cl_nw.func.name == "" {
+                nw_arrow_msg: str = _JC_FUNC[cl_nw].name + " is not a constructor";
+                if _JC_FUNC[cl_nw].name == "" {
                     nw_arrow_msg = "(intermediate value) is not a constructor";
                 }
                 exc_arrow: JSValue = make_type_error(nw_arrow_msg);
@@ -28676,15 +28900,15 @@ obj VM {
                 # Bound function [[Construct]] (§10.4.1.2): unwrap to targetFunction,
                 # prepend partial args. Direct `new boundFn()` has newTarget === boundFn,
                 # so newTarget becomes targetFunction.
-            } elif cl_nw.func.is_bound {
+            } elif _JC_FUNC[cl_nw].is_bound {
                 target_bd: JSValue = ctor;
-                if len(cl_nw.free_vals) > 0 {
-                    target_bd = cl_nw.free_vals[0];
+                if len(_JC_FV[cl_nw]) > 0 {
+                    target_bd = _JC_FV[cl_nw][0];
                 }
                 full_args_bd: list[JSValue] = [];
                 bfi_nw: int = 1;
-                while bfi_nw < len(cl_nw.free_vals) {
-                    full_args_bd.append(cl_nw.free_vals[bfi_nw]);
+                while bfi_nw < len(_JC_FV[cl_nw]) {
+                    full_args_bd.append(_JC_FV[cl_nw][bfi_nw]);
                     bfi_nw = bfi_nw + 1;
                 }
                 for a_bd in args_nw {
@@ -28693,24 +28917,24 @@ obj VM {
                 # Unwrap further bound layers (SameValue(newTarget, F) each time).
                 nt_bd: JSValue = target_bd;
                 while is_fn_val(target_bd) {
-                    cl_in_bd: JSClosure = self.realm.closures[get_fn_idx(target_bd)];
-                    if not cl_in_bd.func.is_bound {
+                    cl_in_bd: int = get_fn_idx(target_bd);
+                    if not _JC_FUNC[cl_in_bd].is_bound {
                         break;
                     }
-                    if len(cl_in_bd.free_vals) == 0 {
+                    if len(_JC_FV[cl_in_bd]) == 0 {
                         break;
                     }
                     in_p_bd: list[JSValue] = [];
                     ip_i_bd: int = 1;
-                    while ip_i_bd < len(cl_in_bd.free_vals) {
-                        in_p_bd.append(cl_in_bd.free_vals[ip_i_bd]);
+                    while ip_i_bd < len(_JC_FV[cl_in_bd]) {
+                        in_p_bd.append(_JC_FV[cl_in_bd][ip_i_bd]);
                         ip_i_bd = ip_i_bd + 1;
                     }
                     for a_in_bd in full_args_bd {
                         in_p_bd.append(a_in_bd);
                     }
                     full_args_bd = in_p_bd;
-                    target_bd = cl_in_bd.free_vals[0];
+                    target_bd = _JC_FV[cl_in_bd][0];
                     nt_bd = target_bd;
                 }
                 res_bd: JSValue = _vm_construct(self, target_bd, full_args_bd, nt_bd);
@@ -28738,7 +28962,7 @@ obj VM {
                 # back to %Object.prototype% when ctor.prototype is not an Object (ES §10.2.2
                 # OrdinaryCreateFromConstructor → GetPrototypeFromConstructor: e.g.
                 # `F.prototype = 1; new F()` → instance inherits Object.prototype).
-                nw_proto_obj: JSValue = cl_nw.prototype_obj;
+                nw_proto_obj: JSValue = jc_prototype_obj(cl_nw);
                 if not (
                     jsv_is_object_cell(nw_proto_obj)
                     and jsv_to_table_id(nw_proto_obj) > 0
@@ -28751,15 +28975,15 @@ obj VM {
                 self.pending_new_target = ctor;
                 if _DBG_NEW_ON {
                     _dbg_fop: int = -1;
-                    if len(cl_nw.func.code) > 0 {
-                        _dbg_fop = opcode_to_int(cl_nw.func.code[0].opcode);
+                    if len(_JC_FUNC[cl_nw].code) > 0 {
+                        _dbg_fop = opcode_to_int(_JC_FUNC[cl_nw].code[0].opcode);
                     }
                     _dbg_new_msg: str = "[DBG_NEW] fn-val ctor name='"
-                        + cl_nw.func.name
+                        + _JC_FUNC[cl_nw].name
                         + "' bytecode_len="
-                        + str(len(cl_nw.func.code))
+                        + str(len(_JC_FUNC[cl_nw].code))
                         + " nparams="
-                        + str(len(cl_nw.func.params))
+                        + str(len(_JC_FUNC[cl_nw].params))
                         + " first_op="
                         + str(_dbg_fop)
                         + " nargs="
@@ -28924,19 +29148,19 @@ obj VM {
             return;
         }
         inf_idx: int = get_fn_idx(inf_fn);
-        if inf_idx < 0 or inf_idx >= len(self.realm.closures) {
+        if inf_idx < 0 or inf_idx >= jc_count() {
             return;
         }
-        inf_cl: JSClosure = self.realm.closures[inf_idx];
+        inf_cl: int = inf_idx;
         # Only anonymous functions get an inferred name, and only if a name was not
         # already assigned (compile-time inference / an explicit binding).
-        if inf_cl.func.name != "" {
+        if _JC_FUNC[inf_cl].name != "" {
             return;
         }
         if cl_props_has_own(inf_cl, WK_NAME) {
             return;
         }
-        inf_cl.func.name = inf_name0;
+        _JC_FUNC[inf_cl].name = inf_name0;
     }
 
     def _op_return(frame: CallFrame, ins: Instruction, st: ExecState) -> None {
@@ -29050,7 +29274,9 @@ obj VM {
     def _make_function_value(frame: CallFrame, ins: Instruction) -> JSValue {
         mf_idx: int = ins.arg;
         inner_mf: CompiledFunction = self.module_fns[mf_idx];
-        capt_mf: list[JSValue] = [];
+        capt_mf: list[JSValue] = _EMPTY_FREE_VALS
+            if len(inner_mf.free_vars) == 0
+            else [];
         fv_i_mf: int = 0;
         while fv_i_mf < len(inner_mf.free_vars) {
             fv_nm: str = inner_mf.free_vars[fv_i_mf];
@@ -29120,34 +29346,33 @@ obj VM {
                 js_object_set_prototype(fn_proto_mf, gp_intrinsic);
             }
         }
-        new_cl_mf: JSClosure = make_closure(
+        new_cl_mf: int = make_closure(
             inner_mf, capt_mf, js_undefined(), fn_proto_mf
         );
-        new_cl_mf.module_fns = self.module_fns;  # capture the current module's fn list
+        jc_set_module_fns(new_cl_mf, self.module_fns);  # capture the current module's fn list
         # Private names are LEXICALLY scoped (ES §6.2.12 / §15.7): a function declared inside a
         # class member sees that class's private names, so it inherits the enclosing closure's
         # per-evaluation brand. Without this, `method(){ function inner(){ self.#m() } }` sees a
         # 0 brand and the private access is (wrongly) treated as a non-class caller.
         if is_fn_val(frame.self_fn) {
-            mf_encl_cl: JSClosure = self.realm.closures[get_fn_idx(frame.self_fn)];
-            new_cl_mf.class_brand = mf_encl_cl.class_brand;
-            new_cl_mf.wb(new_cl_mf.class_brand);
-            new_cl_mf.class_brand_sid = mf_encl_cl.class_brand_sid;
+            mf_encl_cl: int = get_fn_idx(frame.self_fn);
+            jc_set_class_brand(new_cl_mf, jc_class_brand(mf_encl_cl));
+            jc_set_class_brand_sid(new_cl_mf, jc_class_brand_sid(mf_encl_cl));
             # Home realm is lexical: a nested function belongs to the same realm as its encloser.
-            new_cl_mf.home_realm_id = mf_encl_cl.home_realm_id;
+            jc_set_home_realm_id(new_cl_mf, jc_home_realm_id(mf_encl_cl));
             # A closure produced by `new realm.Function(...)` carries its realm via a
             # KEY_HOME_REALM_ID fn_props tag (from _vm_copy_home_realm), not the field — pick
             # it up so functions IT creates are stamped too.
-            if new_cl_mf.home_realm_id == 0 {
+            if jc_home_realm_id(new_cl_mf) == 0 {
                 mf_encl_tag: JSValue = cl_props_get(mf_encl_cl, KEY_HOME_REALM_ID);
                 if jsv_is_int32(mf_encl_tag) {
-                    new_cl_mf.home_realm_id = jsv_to_int32(mf_encl_tag);
+                    jc_set_home_realm_id(new_cl_mf, jsv_to_int32(mf_encl_tag));
                 }
             }
         }
         # Top-level code compiled from a foreign realm's eval/Function: stamp the source realm.
-        if new_cl_mf.home_realm_id == 0 and self._pending_source_realm_id != 0 {
-            new_cl_mf.home_realm_id = self._pending_source_realm_id;
+        if jc_home_realm_id(new_cl_mf) == 0 and self._pending_source_realm_id != 0 {
+            jc_set_home_realm_id(new_cl_mf, self._pending_source_realm_id);
         }
         # A function defined inside a `with` body inherits that object env record on its
         # scope chain (ES §9.1): capture the active with-objects so name resolution in the
@@ -29157,8 +29382,7 @@ obj VM {
             for cw_o_mf in frame.with_objs {
                 cw_mf.append(cw_o_mf);
             }
-            new_cl_mf.captured_with_objs = cw_mf;
-            new_cl_mf.wb_lists();
+            jc_set_captured_with_objs(new_cl_mf, cw_mf);
         }
         # Tag CJS-created closures with their defining module so LOAD_GLOBAL
         # for `module`/`exports` resolves the right module in async callbacks.
@@ -29166,8 +29390,7 @@ obj VM {
         if self.esm_entry == 0 {
             cur_mod_mf: JSValue = self._reg_cur_module();
             if jsv_is_object_cell(cur_mod_mf) {
-                new_cl_mf.jac_module = cur_mod_mf;
-                new_cl_mf.wb(new_cl_mf.jac_module);
+                jc_set_jac_module(new_cl_mf, cur_mod_mf);
             }
         }
         mf_fn_idx: int = vm_register_closure(self.realm, new_cl_mf);  # G0.5: reuse freed slot
@@ -29186,12 +29409,96 @@ obj VM {
         self._push(self._make_arrow_value(frame, ins));
     }
 
+    """MAKE_ARROW of module function `ma_idx` (the register word carries it).
+    The common case here: no captured variables, no `with` scopes, no eval
+    super context and no source-realm stamp, an enclosing self that is a
+    closure or none (a generator's object self takes the general path); the
+    closure's fields are what _make_arrow_general sets, written once."""
+    def _make_arrow_idx(frame: CallFrame, ma_idx: int) -> JSValue {
+        if len(self.module_fns[ma_idx].free_vars) != 0
+            or len(frame.with_objs) != 0
+            or len(self.eval_super_fns) != 0
+            or self._pending_source_realm_id != 0
+            or jsv_is_object_cell(frame.self_fn) {
+            return self._make_arrow_general(frame, ma_idx);
+        }
+        return self._make_arrow_plain(frame, ma_idx);
+    }
+
+    """_make_arrow_idx's common case (its own method: jc_init_arrow inlines
+    here)."""
+    def _make_arrow_plain(frame: CallFrame, ma_idx: int) -> JSValue {
+        ap_sup: JSValue = js_undefined();
+        ap_home: JSValue = js_undefined();
+        ap_brand: JSValue = 0;
+        ap_bsid: int = 0;
+        ap_realm: int = 0;
+        if is_fn_val(frame.self_fn) {
+            ap_e: int = get_fn_idx(frame.self_fn);
+            ap_sup = jc_super_class(ap_e);
+            ap_home = jc_home_object(ap_e);
+            ap_brand = jc_class_brand(ap_e);
+            ap_bsid = jc_class_brand_sid(ap_e);
+            ap_realm = jc_home_realm_id(ap_e);
+        }
+        ap_mod: JSValue = js_undefined();
+        if self.esm_entry == 0 {
+            # (_reg_cur_module's cache read in place)
+            ap_cm: JSValue = self.cur_mod_val;
+            if self.cur_mod_epoch != self.gw_epoch {
+                ap_cm = self._reg_cur_module();
+            }
+            if jsv_is_object_cell(ap_cm) {
+                ap_mod = ap_cm;
+            }
+        }
+        ap_id: int = jc_pop();
+        if ap_id < 0 {
+            ap_id = jc_alloc(self.module_fns[ma_idx]);
+        }
+        jc_init_arrow(
+            ap_id,
+            self.module_fns[ma_idx],
+            _EMPTY_FREE_VALS,
+            self.module_fns,
+            _EMPTY_WITH_OBJS,
+            frame.this_val,
+            frame.new_target,
+            frame.this_binding_cell,
+            ap_sup,
+            ap_home,
+            ap_brand,
+            ap_bsid,
+            ap_realm,
+            ap_mod
+        );
+        # (vm_register_closure's case for a parked id without a function
+        # record in place)
+        if ap_id < len(self.realm.closures_mark_epoch) and ap_id >= len(self.realm.functions) {
+            self.realm.closures_mark_epoch[ap_id] = 0;
+            _VM_CL_NOTE = _VM_CL_NOTE + 1;
+            if _VM_CL_NOTE >= 32 {
+                gc_note_alloc_n(self.realm, _VM_CL_NOTE, _VM_CL_NOTE * 256);
+                _VM_CL_NOTE = 0;
+            }
+            return js_fn_val(ap_id);
+        }
+        return js_fn_val(vm_register_closure(self.realm, ap_id));
+    }
+
     """MAKE_ARROW's closure value (the handler body; also the register
     loop's STK fast case)."""
     def _make_arrow_value(frame: CallFrame, ins: Instruction) -> JSValue {
-        ma_idx: int = ins.arg;
+        return self._make_arrow_idx(frame, ins.arg);
+    }
+
+    """_make_arrow_value's general case (captures, `with` scopes, an eval or
+    generator super context, a source-realm stamp)."""
+    def _make_arrow_general(frame: CallFrame, ma_idx: int) -> JSValue {
         inner_ma: CompiledFunction = self.module_fns[ma_idx];
-        capt_ma: list[JSValue] = [];
+        capt_ma: list[JSValue] = _EMPTY_FREE_VALS
+            if len(inner_ma.free_vars) == 0
+            else [];
         fv_i_ma: int = 0;
         while fv_i_ma < len(inner_ma.free_vars) {
             fva_nm: str = inner_ma.free_vars[fv_i_ma];
@@ -29242,17 +29549,16 @@ obj VM {
             }
             fv_i_ma = fv_i_ma + 1;
         }
-        arrow_cl: JSClosure = make_closure(
+        arrow_cl: int = make_closure(
             inner_ma, capt_ma, frame.this_val, js_undefined()
         );
-        arrow_cl.is_arrow = True;
-        arrow_cl.lexical_new_target = frame.new_target;
-        arrow_cl.wb(arrow_cl.lexical_new_target);
+        jc_set_is_arrow(arrow_cl, True);
+        jc_set_lexical_new_target(arrow_cl, frame.new_target);
         # Inherit the enclosing frame's shared this-binding cell (if any): an arrow inside a
         # derived constructor shares its this-binding, so `super()` in the arrow initializes
         # the enclosing ctor's `this` (ES §9.1.1.3). Propagates through nested arrows too.
-        arrow_cl.this_binding_cell = frame.this_binding_cell;
-        arrow_cl.module_fns = self.module_fns;  # capture the current module's fn list
+        jc_set_this_binding_cell(arrow_cl, frame.this_binding_cell);
+        jc_set_module_fns(arrow_cl, self.module_fns);  # capture the current module's fn list
         # B13/§13.3.5: an arrow inherits its [[HomeObject]] and super class lexically
         # from the enclosing method/field/ctor, so `super.x` inside the arrow resolves
         # against the same super context.  Read them off the enclosing frame's own
@@ -29271,21 +29577,18 @@ obj VM {
             ma_encl_self = self.eval_super_fns[len(self.eval_super_fns) - 1];
         }
         if is_fn_val(ma_encl_self) {
-            ma_encl_cl: JSClosure = self.realm.closures[get_fn_idx(ma_encl_self)];
-            arrow_cl.super_class = ma_encl_cl.super_class;
-            arrow_cl.wb(arrow_cl.super_class);
-            arrow_cl.home_object = ma_encl_cl.home_object;
-            arrow_cl.wb(arrow_cl.home_object);
+            ma_encl_cl: int = get_fn_idx(ma_encl_self);
+            jc_set_super_class(arrow_cl, jc_super_class(ma_encl_cl));
+            jc_set_home_object(arrow_cl, jc_home_object(ma_encl_cl));
             # Private names are lexically scoped — an arrow inside a class member inherits that
             # class's per-evaluation brand (ES §6.2.12 / §15.7), like super/home above.
-            arrow_cl.class_brand = ma_encl_cl.class_brand;
-            arrow_cl.wb(arrow_cl.class_brand);
-            arrow_cl.class_brand_sid = ma_encl_cl.class_brand_sid;
-            arrow_cl.home_realm_id = ma_encl_cl.home_realm_id;
+            jc_set_class_brand(arrow_cl, jc_class_brand(ma_encl_cl));
+            jc_set_class_brand_sid(arrow_cl, jc_class_brand_sid(ma_encl_cl));
+            jc_set_home_realm_id(arrow_cl, jc_home_realm_id(ma_encl_cl));
         }
         # Top-level arrow of foreign-realm eval source (no fn-val encloser): stamp source realm.
-        if arrow_cl.home_realm_id == 0 and self._pending_source_realm_id != 0 {
-            arrow_cl.home_realm_id = self._pending_source_realm_id;
+        if jc_home_realm_id(arrow_cl) == 0 and self._pending_source_realm_id != 0 {
+            jc_set_home_realm_id(arrow_cl, self._pending_source_realm_id);
         }
         # Arrows also inherit the enclosing `with` object env records (ES §9.1).
         if len(frame.with_objs) > 0 {
@@ -29293,16 +29596,14 @@ obj VM {
             for cw_o_ma in frame.with_objs {
                 cw_ma.append(cw_o_ma);
             }
-            arrow_cl.captured_with_objs = cw_ma;
-            arrow_cl.wb_lists();
+            jc_set_captured_with_objs(arrow_cl, cw_ma);
         }
         # Tag CJS-created arrow functions with their defining module (same as MAKE_FUNCTION).
         # Guard: skip in ESM scope to prevent stale CJS module from leaking.
         if self.esm_entry == 0 {
             cur_mod_ma: JSValue = self._reg_cur_module();
             if jsv_is_object_cell(cur_mod_ma) {
-                arrow_cl.jac_module = cur_mod_ma;
-                arrow_cl.wb(arrow_cl.jac_module);
+                jc_set_jac_module(arrow_cl, cur_mod_ma);
             }
         }
         return js_fn_val(vm_register_closure(self.realm, arrow_cl));  # G0.5: reuse freed slot
@@ -29380,8 +29681,8 @@ obj VM {
         # Create the class object
         mc_cls: JSValue = js_object_create_null();
         js_object_define_nonenum(mc_cls, WK_IS_CLASS, js_int(1));
-        mc_clsraw: JSObject = js_object_table_get(jsv_to_table_id(mc_cls));
-        mc_clsraw.cell_flags = mc_clsraw.cell_flags | FLAG_IS_CLASS;
+        mc_clsraw: int = jsv_to_table_id(mc_cls);
+        jo_set_cell_flags(mc_clsraw, jo_cell_flags(mc_clsraw) | FLAG_IS_CLASS);
         # Per-EVALUATION private brand (ES §15.7). Stashed under `__brand@cur` (the `__brand@`
         # prefix is already filtered from every user-visible own-key surface and it is non-enum,
         # so it never leaks). DEFINE_METHOD/FIELD/GETTER/SETTER copy it onto each element closure
@@ -29480,9 +29781,9 @@ obj VM {
         # GEP+store on the heap object.
         if is_fn_val(dm_fn) {
             dm_super_cv: JSValue = js_object_get(dm_cls, WK_SUPER);
-            dm_cl_ref: JSClosure = self.realm.closures[get_fn_idx(dm_fn)];
-            dm_cl_ref.super_class = dm_super_cv;
-            dm_cl_ref.wb(dm_cl_ref.super_class);
+            dm_cl_ref: int = get_fn_idx(dm_fn);
+            jc_set_super_class(dm_cl_ref, dm_super_cv);
+            jc_wb(dm_cl_ref, jc_super_class(dm_cl_ref));
             # ES §13.3.7 SuperProperty uses the method's [[HomeObject]]: `super.x` resolves to
             # GetPrototypeOf([[HomeObject]])[x]. For a genuine BASE class (no ClassHeritage at
             # all — not even `extends null`) there is no super_class, so set HomeObject so super.x
@@ -29492,20 +29793,20 @@ obj VM {
             # (super/prop-*-cls-null-proto: super.x on `extends null` throws TypeError).
             if not js_object_has_own(dm_cls, WK_SUPER) {
                 if dm_is_static == 1 {
-                    dm_cl_ref.home_object = dm_cls;
-                    dm_cl_ref.wb(dm_cl_ref.home_object);
+                    jc_set_home_object(dm_cl_ref, dm_cls);
+                    jc_wb(dm_cl_ref, jc_home_object(dm_cl_ref));
                 } else {
-                    dm_cl_ref.home_object = js_object_get(dm_cls, WK_PROTOTYPE);
-                    dm_cl_ref.wb(dm_cl_ref.home_object);
+                    jc_set_home_object(dm_cl_ref, js_object_get(dm_cls, WK_PROTOTYPE));
+                    jc_wb(dm_cl_ref, jc_home_object(dm_cl_ref));
                 }
             }
             # Capture this class's per-evaluation private brand so the method's private
             # accesses match only objects branded by THIS evaluation (ES §15.7).
-            dm_cl_ref.class_brand = js_object_get(dm_cls, str_intern("__brand@cur"));
-            dm_cl_ref.wb(dm_cl_ref.class_brand);
-            dm_cl_ref.class_brand_sid = jsv_to_int32(
+            jc_set_class_brand(dm_cl_ref, js_object_get(dm_cls, str_intern("__brand@cur")));
+            jc_wb(dm_cl_ref, jc_class_brand(dm_cl_ref));
+            jc_set_class_brand_sid(dm_cl_ref, jsv_to_int32(
                 js_object_get(dm_cls, str_intern("__brandsid@cur"))
-            );
+            ));
         }
         dm_key_name: str = str_from_id(dm_key);
         # A static method named "prototype" (only reachable via a computed key —
@@ -29530,10 +29831,10 @@ obj VM {
         if dm_key_name == "constructor" and ins.arg != -1 and dm_is_static != 1 {
             # Set as the callable constructor
             if _DBG_DM_ON and is_fn_val(dm_fn) {
-                _dm_dbg_cl: JSClosure = self.realm.closures[get_fn_idx(dm_fn)];
+                _dm_dbg_cl: int = get_fn_idx(dm_fn);
                 _dm_dbg_fop: int = -1;
-                if len(_dm_dbg_cl.func.code) > 0 {
-                    _dm_dbg_fop = opcode_to_int(_dm_dbg_cl.func.code[0].opcode);
+                if len(_JC_FUNC[_dm_dbg_cl].code) > 0 {
+                    _dm_dbg_fop = opcode_to_int(_JC_FUNC[_dm_dbg_cl].code[0].opcode);
                 }
                 _dm_dbg_cnm: JSValue = js_object_get(dm_cls, WK_NAME);
                 _dm_dbg_cns: str = "?";
@@ -29541,8 +29842,8 @@ obj VM {
                     _dm_dbg_cns = str_from_id(jsv_to_table_id(_dm_dbg_cnm));
                 }
                 _dm_dbg_ln: int = -1;
-                if len(_dm_dbg_cl.func.code) > 0 {
-                    _dm_dbg_ln = _dm_dbg_cl.func.code[0].line;
+                if len(_JC_FUNC[_dm_dbg_cl].code) > 0 {
+                    _dm_dbg_ln = _JC_FUNC[_dm_dbg_cl].code[0].line;
                 }
                 _dm_dbg: str = "[DBG_DM] attach ctor to class='"
                     + _dm_dbg_cns
@@ -29551,7 +29852,7 @@ obj VM {
                     + " ctor_first_op="
                     + str(_dm_dbg_fop)
                     + " ctor_bclen="
-                    + str(len(_dm_dbg_cl.func.code))
+                    + str(len(_JC_FUNC[_dm_dbg_cl].code))
                     + " ctor_line="
                     + str(_dm_dbg_ln)
                     + "\n";
@@ -29561,8 +29862,8 @@ obj VM {
             dm_arity: int = 0;
             if is_fn_val(dm_fn) {
                 dm_fn_idx: int = get_fn_idx(dm_fn);
-                if dm_fn_idx >= 0 and dm_fn_idx < len(self.realm.closures) {
-                    dm_arity = self.realm.closures[dm_fn_idx].func.expected_arg_count;
+                if dm_fn_idx >= 0 and dm_fn_idx < jc_count() {
+                    dm_arity = _JC_FUNC[dm_fn_idx].expected_arg_count;
                 }
             }
             dm_len_desc: JSProperty = JSProperty(
@@ -29617,16 +29918,16 @@ obj VM {
         # object-literal accessors (mode 2) use [[HomeObject]], not a class super.
         if dg_mode != 2 and is_fn_val(dg_fn) {
             dg_super_cv: JSValue = js_object_get(dg_obj, WK_SUPER);
-            dg_cl_ref: JSClosure = self.realm.closures[get_fn_idx(dg_fn)];
-            dg_cl_ref.super_class = dg_super_cv;
-            dg_cl_ref.wb(dg_cl_ref.super_class);
+            dg_cl_ref: int = get_fn_idx(dg_fn);
+            jc_set_super_class(dg_cl_ref, dg_super_cv);
+            jc_wb(dg_cl_ref, jc_super_class(dg_cl_ref));
             # Per-evaluation brand: a getter accessing `this.#x` must match only objects branded
             # by THIS evaluation (ES §15.7). Class accessors only (modes 0/1).
-            dg_cl_ref.class_brand = js_object_get(dg_obj, str_intern("__brand@cur"));
-            dg_cl_ref.wb(dg_cl_ref.class_brand);
-            dg_cl_ref.class_brand_sid = jsv_to_int32(
+            jc_set_class_brand(dg_cl_ref, js_object_get(dg_obj, str_intern("__brand@cur")));
+            jc_wb(dg_cl_ref, jc_class_brand(dg_cl_ref));
+            jc_set_class_brand_sid(dg_cl_ref, jsv_to_int32(
                 js_object_get(dg_obj, str_intern("__brandsid@cur"))
-            );
+            ));
         }
         if dg_mode == 2 {
             # Object literal: install directly on the object (enumerable by default).
@@ -29634,10 +29935,10 @@ obj VM {
             # GetPrototypeOf(home) (test262 computed-property-names/object/accessor/
             # getter-super). Class accessors (modes 0/1) use super_class above instead.
             if is_fn_val(dg_fn) {
-                dg_hm_cl: JSClosure = self.realm.closures[get_fn_idx(dg_fn)];
-                if dg_hm_cl.func.is_method and jsv_is_undefined(dg_hm_cl.home_object) {
-                    dg_hm_cl.home_object = dg_obj;
-                    dg_hm_cl.wb(dg_hm_cl.home_object);
+                dg_hm_cl: int = get_fn_idx(dg_fn);
+                if _JC_FUNC[dg_hm_cl].is_method and jsv_is_undefined(jc_home_object(dg_hm_cl)) {
+                    jc_set_home_object(dg_hm_cl, dg_obj);
+                    jc_wb(dg_hm_cl, jc_home_object(dg_hm_cl));
                 }
             }
             js_object_set_accessor_getter(dg_obj, dg_key, dg_fn);
@@ -29682,24 +29983,24 @@ obj VM {
         # Attach super_class to the accessor closure (see _op_define_getter).
         if ds_mode != 2 and is_fn_val(ds_fn) {
             ds_super_cv: JSValue = js_object_get(ds_obj, WK_SUPER);
-            ds_cl_ref: JSClosure = self.realm.closures[get_fn_idx(ds_fn)];
-            ds_cl_ref.super_class = ds_super_cv;
-            ds_cl_ref.wb(ds_cl_ref.super_class);
+            ds_cl_ref: int = get_fn_idx(ds_fn);
+            jc_set_super_class(ds_cl_ref, ds_super_cv);
+            jc_wb(ds_cl_ref, jc_super_class(ds_cl_ref));
             # Per-evaluation brand (ES §15.7) — see _op_define_getter. Class accessors only.
-            ds_cl_ref.class_brand = js_object_get(ds_obj, str_intern("__brand@cur"));
-            ds_cl_ref.wb(ds_cl_ref.class_brand);
-            ds_cl_ref.class_brand_sid = jsv_to_int32(
+            jc_set_class_brand(ds_cl_ref, js_object_get(ds_obj, str_intern("__brand@cur")));
+            jc_wb(ds_cl_ref, jc_class_brand(ds_cl_ref));
+            jc_set_class_brand_sid(ds_cl_ref, jsv_to_int32(
                 js_object_get(ds_obj, str_intern("__brandsid@cur"))
-            );
+            ));
         }
         if ds_mode == 2 {
             # Object literal: install directly on the object (enumerable by default).
             # B13 [[HomeObject]] for `super` in the setter (see _op_define_getter).
             if is_fn_val(ds_fn) {
-                ds_hm_cl: JSClosure = self.realm.closures[get_fn_idx(ds_fn)];
-                if ds_hm_cl.func.is_method and jsv_is_undefined(ds_hm_cl.home_object) {
-                    ds_hm_cl.home_object = ds_obj;
-                    ds_hm_cl.wb(ds_hm_cl.home_object);
+                ds_hm_cl: int = get_fn_idx(ds_fn);
+                if _JC_FUNC[ds_hm_cl].is_method and jsv_is_undefined(jc_home_object(ds_hm_cl)) {
+                    jc_set_home_object(ds_hm_cl, ds_obj);
+                    jc_wb(ds_hm_cl, jc_home_object(ds_hm_cl));
                 }
             }
             js_object_set_accessor_setter(ds_obj, ds_key, ds_fn);
@@ -29724,7 +30025,7 @@ obj VM {
     # must abort (the caller loop clears its ok-flag and propagates the exception).
     def _run_one_field_init(entry_obj: JSValue, this_obj: JSValue) -> bool {
         if is_fn_val(entry_obj) {
-            rfi_cl: JSClosure = self.realm.closures[get_fn_idx(entry_obj)];
+            rfi_cl: int = get_fn_idx(entry_obj);
             self.run_cl(rfi_cl, entry_obj, this_obj, []);
             if self.had_exception {
                 return False;
@@ -29743,7 +30044,7 @@ obj VM {
             rfi_fn: JSValue = js_object_get(entry_obj, WK_CF_FN);
             if is_fn_val(rfi_fn) {
                 rfi_key: JSValue = js_object_get(entry_obj, WK_CF_KEY);
-                rfi_cl2: JSClosure = self.realm.closures[get_fn_idx(rfi_fn)];
+                rfi_cl2: int = get_fn_idx(rfi_fn);
                 self.run_cl(rfi_cl2, rfi_fn, this_obj, [rfi_key]);
                 if self.had_exception {
                     return False;
@@ -29781,17 +30082,17 @@ obj VM {
         # class's super so `super.x` (and direct eval of it) resolves at runtime.
         if is_fn_val(df_init_fn) {
             df_super_cv: JSValue = js_object_get(df_cls, WK_SUPER);
-            df_cl_attach: JSClosure = self.realm.closures[get_fn_idx(df_init_fn)];
-            df_cl_attach.super_class = df_super_cv;
-            df_cl_attach.wb(df_cl_attach.super_class);
+            df_cl_attach: int = get_fn_idx(df_init_fn);
+            jc_set_super_class(df_cl_attach, df_super_cv);
+            jc_wb(df_cl_attach, jc_super_class(df_cl_attach));
             # Capture the class's per-evaluation brand so a field initializer (incl. the
             # synthetic private-brand-install field, which LOAD_CLASS_BRANDs it) can stamp
             # `this` with THIS brand.
-            df_cl_attach.class_brand = js_object_get(df_cls, str_intern("__brand@cur"));
-            df_cl_attach.wb(df_cl_attach.class_brand);
-            df_cl_attach.class_brand_sid = jsv_to_int32(
+            jc_set_class_brand(df_cl_attach, js_object_get(df_cls, str_intern("__brand@cur")));
+            jc_wb(df_cl_attach, jc_class_brand(df_cl_attach));
+            jc_set_class_brand_sid(df_cl_attach, jsv_to_int32(
                 js_object_get(df_cls, str_intern("__brandsid@cur"))
-            );
+            ));
         }
         if df_bare {
             # ins.arg is a CONSTANT-POOL index (the mangled key string), not a
@@ -29850,15 +30151,15 @@ obj VM {
         # field (directly or in a direct eval) resolves against a null super.
         if is_fn_val(df_init_fn) {
             df_super_cv: JSValue = js_object_get(df_cls, WK_SUPER);
-            df_fi_cl: JSClosure = self.realm.closures[get_fn_idx(df_init_fn)];
-            df_fi_cl.super_class = df_super_cv;
-            df_fi_cl.wb(df_fi_cl.super_class);
+            df_fi_cl: int = get_fn_idx(df_init_fn);
+            jc_set_super_class(df_fi_cl, df_super_cv);
+            jc_wb(df_fi_cl, jc_super_class(df_fi_cl));
             if df_is_static == 1 {
-                df_fi_cl.home_object = df_cls;
-                df_fi_cl.wb(df_fi_cl.home_object);
+                jc_set_home_object(df_fi_cl, df_cls);
+                jc_wb(df_fi_cl, jc_home_object(df_fi_cl));
             } else {
-                df_fi_cl.home_object = js_object_get(df_cls, WK_PROTOTYPE);
-                df_fi_cl.wb(df_fi_cl.home_object);
+                jc_set_home_object(df_fi_cl, js_object_get(df_cls, WK_PROTOTYPE));
+                jc_wb(df_fi_cl, jc_home_object(df_fi_cl));
             }
         }
         if df_is_static == 1 {
@@ -30019,8 +30320,8 @@ obj VM {
         # Workaround: load into local ref first; direct global_list[i].field read is dropped.
         sc_super: JSValue = js_undefined();
         if is_fn_val(frame.self_fn) {
-            sc_cl_ref: JSClosure = self.realm.closures[get_fn_idx(frame.self_fn)];
-            sc_super = sc_cl_ref.super_class;
+            sc_cl_ref: int = get_fn_idx(frame.self_fn);
+            sc_super = jc_super_class(sc_cl_ref);
         }
         # The super class's native-constructor marker, read once (the branches
         # below each looked it up again: six misses for a JS class).
@@ -30234,7 +30535,7 @@ obj VM {
         } elif jsv_is_object_cell(sc_super) and jsv_to_table_id(sc_super) >= 0 {
             sc_ctor_fn: JSValue = js_object_get(sc_super, WK_CTOR);
             if is_fn_val(sc_ctor_fn) {
-                sc_cl2: JSClosure = self.realm.closures[get_fn_idx(sc_ctor_fn)];
+                sc_cl2: int = get_fn_idx(sc_ctor_fn);
                 # If the super class is a BASE class, InitializeInstanceElements runs
                 # its own instance fields BEFORE its constructor body (§10.2.2 /
                 # §9.2.1.3) — a bare field decl (`options;`) defines `this.options =
@@ -30295,7 +30596,7 @@ obj VM {
             # via `new Function` in binary_types.js). Invoke the function as a
             # constructor with the derived `this`, so its body's `this.x = …` mutations
             # (e.g. TypedArray's `_length`/`_isTypedArrayInstance`) land on the instance.
-            sc_fn_cl: JSClosure = self.realm.closures[get_fn_idx(sc_super)];
+            sc_fn_cl: int = get_fn_idx(sc_super);
             self._pending_new_target = frame.new_target;
             self.pending_new_target = frame.new_target;
             sc_fn_res: JSValue = self.run_cl(
@@ -30451,7 +30752,7 @@ obj VM {
                     return False;
                 }
             }
-            icc_cl: JSClosure = self.realm.closures[get_fn_idx(icc_deep_ctor)];
+            icc_cl: int = get_fn_idx(icc_deep_ctor);
             self.pending_new_target = nt;
             self._pending_new_target = nt;
             _ = self.run_cl(icc_cl, icc_deep_ctor, this_obj, args);
@@ -30497,9 +30798,9 @@ obj VM {
             lsp_self = self.eval_super_fns[len(self.eval_super_fns) - 1];
         }
         if is_fn_val(lsp_self) {
-            lsp_cl_ref: JSClosure = self.realm.closures[get_fn_idx(lsp_self)];
-            lsp_super = lsp_cl_ref.super_class;
-            lsp_home = lsp_cl_ref.home_object;
+            lsp_cl_ref: int = get_fn_idx(lsp_self);
+            lsp_super = jc_super_class(lsp_cl_ref);
+            lsp_home = jc_home_object(lsp_cl_ref);
         }
         # Static method/accessor (arg2 == 1): `super.x` resolves against the super
         # *class object itself* (B.x), not B.prototype.x. Push the super class directly.
@@ -30928,7 +31229,7 @@ obj VM {
             }
         }
         if is_fn_val(gai_async_fn) {
-            gai_cl: JSClosure = self.realm.closures[get_fn_idx(gai_async_fn)];
+            gai_cl: int = get_fn_idx(gai_async_fn);
             gai_iter = self.run_cl(gai_cl, gai_async_fn, gai_src, []);
         } elif jsv_is_object_cell(gai_src) and js_is_async_generator(gai_src) {
             # Async generators are their own async iterators
@@ -30979,7 +31280,7 @@ obj VM {
                 }
             }
             if is_fn_val(gai_sync_fn) {
-                gai_cl2: JSClosure = self.realm.closures[get_fn_idx(gai_sync_fn)];
+                gai_cl2: int = get_fn_idx(gai_sync_fn);
                 gai_iter = self.run_cl(gai_cl2, gai_sync_fn, gai_src, []);
                 gai_from_sync = True;
             } elif is_native_val(gai_sync_fn) {
@@ -31107,7 +31408,7 @@ obj VM {
                     ain_next_fn = js_object_get(ain_iter, WK_NEXT);
                 }
                 if is_fn_val(ain_next_fn) {
-                    ain_cl: JSClosure = self.realm.closures[get_fn_idx(ain_next_fn)];
+                    ain_cl: int = get_fn_idx(ain_next_fn);
                     ain_result = self.run_cl(ain_cl, ain_next_fn, ain_iter, []);
                     if self.had_exception {
                         exc_ain2: JSValue = self.pending_exc;
@@ -31432,9 +31733,7 @@ obj VM {
                 while not sp_done {
                     sp_next_fn: JSValue = js_object_get(sp_user_iter, WK_NEXT);
                     if is_fn_val(sp_next_fn) {
-                        sp_next_cl: JSClosure = self.realm.closures[
-                            get_fn_idx(sp_next_fn)
-                        ];
+                        sp_next_cl: int = get_fn_idx(sp_next_fn);
                         sp_next_res: JSValue = self.run_cl(
                             sp_next_cl, sp_next_fn, sp_user_iter, []
                         );
@@ -31531,9 +31830,7 @@ obj VM {
                                     self.pending_exc = vm_take_native_exc();
                                 }
                             } elif is_fn_val(sp_nn) {
-                                sp_ncl: JSClosure = self.realm.closures[
-                                    get_fn_idx(sp_nn)
-                                ];
+                                sp_ncl: int = get_fn_idx(sp_nn);
                                 sp_nres = self.run_cl(sp_ncl, sp_nn, sp_nat_iter, []);
                             } else {
                                 sp_ndone = True;
@@ -31685,14 +31982,12 @@ obj VM {
                 inv_cust_res: JSValue = js_undefined();
                 inv_got_next: bool = False;
                 if is_fn_val(inv_next_fn) {
-                    inv_next_cl: JSClosure = self.realm.closures[
-                        get_fn_idx(inv_next_fn)
-                    ];
+                    inv_next_cl: int = get_fn_idx(inv_next_fn);
                     inv_cust_res = self.run(
-                        inv_next_cl.func,
+                        _JC_FUNC[inv_next_cl],
                         inv_custom,
                         [],
-                        inv_next_cl.free_vals,
+                        _JC_FV[inv_next_cl],
                         inv_next_fn
                     );
                     inv_got_next = True;
@@ -31843,14 +32138,12 @@ obj VM {
                 ra_cust_exc: JSValue = js_undefined();
                 if is_fn_val(ra_next_fn) {
                     for _rci in range(100000) {
-                        ra_next_cl: JSClosure = self.realm.closures[
-                            get_fn_idx(ra_next_fn)
-                        ];
+                        ra_next_cl: int = get_fn_idx(ra_next_fn);
                         ra_cust_res: JSValue = self.run(
-                            ra_next_cl.func,
+                            _JC_FUNC[ra_next_cl],
                             ra_custom,
                             [],
-                            ra_next_cl.free_vals,
+                            _JC_FV[ra_next_cl],
                             ra_next_fn
                         );
                         # B11: ReturnIfAbrupt after next() / .done / .value (getter-aware).
@@ -33260,7 +33553,7 @@ obj VM {
             # "collect when the heap has grown by ~itself" policy), scaled by
             # _GC_GROWTH_PCT (JAC_GC_GROWTH).
             # The growth tapers for very large heaps (gc_growth_pct_for).
-            _gc_nlive: int = len(self.realm.objects) - len(self.realm.free_object_slots);
+            _gc_nlive: int = jo_count() - len(self.realm.free_object_slots);
             _gc_live: int = (_gc_nlive * gc_growth_pct_for(_gc_nlive)) // 100;
             if _gc_live > _GC_MIN_THRESHOLD {
                 self.realm.gc_threshold = _gc_live;
@@ -33274,7 +33567,7 @@ obj VM {
             # counts the closure / Map / Set rows too: a minor frees none that
             # are old, so old dead closures alone must still bring a major.
             if gc_gen_on() {
-                _gc_ncells: int = _gc_nlive + len(self.realm.closures)
+                _gc_ncells: int = _gc_nlive + jc_count()
                     - len(self.realm.free_closure_slots)
                     + len(self.realm.maps)
                     - len(self.realm.free_map_slots)
@@ -33588,10 +33881,20 @@ obj VM {
             and len(self.eval_scope_frames) == 0
             and len(self.global_lexical) == 0
             and self._frame_ctx_global(frame) == 0 {
-            # Per-site cache: the value read while no global was written since.
+            # Per-site cache: the value read while no global was written since
+            # (copied into the flat cache the loop reads).
             if frame.func.code[orig].ic_holder == 1
                 and frame.func.code[orig].ic_ver == self.gw_epoch {
                 frame.locals[frame.lb + (dst)] = frame.func.code[orig].ic_obj;
+                if frame.func.ric_ptr != 0 {
+                    __mem_store_i64(
+                        wrapping_add(frame.func.ric_ptr, wrapping_mul(orig, 16)), frame.func.code[orig].ic_obj
+                    );
+                    __mem_store_i64(
+                        wrapping_add(frame.func.ric_ptr, wrapping_add(wrapping_mul(orig, 16), 8)),
+                        wrapping_add(self.gw_epoch, 1)
+                    );
+                }
                 return 0;
             }
             lg_v: JSValue = self.globals.get(
@@ -33754,7 +34057,7 @@ obj VM {
     a strict function's (unmapped) arguments object, from the arguments in
     whichever form argpc names (argument words / -1 list / contiguous)."""
     def _reg_enter_rest_args(
-        cl: JSClosure,
+        cl: int,
         frame: CallFrame,
         rc_base: int,
         argpc: int,
@@ -33778,21 +34081,21 @@ obj VM {
             }
             ra_k = ra_k + 1;
         }
-        ra_np: int = len(cl.func.params);
-        if cl.func.has_rest and ra_np > 0 and argc >= 0 {
+        ra_np: int = len(_JC_FUNC[cl].params);
+        if _JC_FUNC[cl].has_rest and ra_np > 0 and argc >= 0 {
             ra_items: list[JSValue] = [];
             ra_k = ra_np - 1;
             while ra_k < len(ra_all) {
                 ra_items.append(ra_all[ra_k]);
                 ra_k = ra_k + 1;
             }
-            self.regs[rc_base + cl.func.param_base + ra_np - 1] = js_array_create(
+            self.regs[rc_base + _JC_FUNC[cl].param_base + ra_np - 1] = js_array_create(
                 ra_items
             );
         }
-        if cl.func.arguments_slot >= 0 {
-            self.regs[rc_base + cl.func.arguments_slot] = self._build_arguments(
-                ra_all, cv, cl.func, self.regs
+        if _JC_FUNC[cl].arguments_slot >= 0 {
+            self.regs[rc_base + _JC_FUNC[cl].arguments_slot] = self._build_arguments(
+                ra_all, cv, _JC_FUNC[cl], self.regs
             );
         }
     }
@@ -33817,7 +34120,7 @@ obj VM {
             return 0;
         }
         rc_idx: int = get_fn_idx(cv);
-        if rc_idx < 0 or rc_idx >= len(self.realm.closures) {
+        if rc_idx < 0 or rc_idx >= jc_count() {
             return 0;
         }
         # The closure goes in as a borrowed list element (no local, so no
@@ -33825,12 +34128,13 @@ obj VM {
         # The plain entry first; the general one handles what it declines.
         if _R1_PLAIN == 1
             and argpc >= 0
-            and self.realm.closures[rc_idx].call_plain >= 0
-            and self.realm.closures[rc_idx].func.risa == 1
+            and jc_call_plain(rc_idx) >= 0
+            and _JC_FUNC[rc_idx].risa == 1
             and self.ftop < len(self.frames) {
             rc_plain: int = self._reg_enter_plain(
                 self.frames[self.ftop],
-                self.realm.closures[rc_idx],
+                rc_idx,
+                _JC_FUNC[rc_idx],
                 frame,
                 st,
                 cv,
@@ -33839,14 +34143,15 @@ obj VM {
                 argpc,
                 argc,
                 orig,
-                resume_pc
+                resume_pc,
+                0
             );
             if rc_plain != 0 {
                 return rc_plain;
             }
         }
         return self._reg_call_enter_cl(
-            self.realm.closures[rc_idx],
+            rc_idx,
             frame,
             st,
             cv,
@@ -33867,10 +34172,14 @@ obj VM {
     or constructor state), the callee needs no module swap (its own module,
     or code that never reads the module globals), a pooled frame exists and
     the register file needs no growth. 1 = entered, 2 = a TDZ check threw,
-    0 = not this call: the general code continues (and handles the rest)."""
+    0 = not this call: the general code continues (and handles the rest).
+    `ctor_cls` non-zero: a base class's constructor (_reg_new_class_enter),
+    with that class as new.target and constructor class and `this_val` the
+    new object, as the general entry takes them from the pending state."""
     def _reg_enter_plain(
         fr: CallFrame,
-        cl: JSClosure,
+        cl: int,
+        cl_cf: CompiledFunction,
         frame: CallFrame,
         st: ExecState,
         cv: JSValue,
@@ -33879,19 +34188,20 @@ obj VM {
         argpc: int,
         argc: int,
         orig: int,
-        resume_pc: int
+        resume_pc: int,
+        ctor_cls: JSValue
     ) -> int {
-        if cl.call_plain != 1 {
-            if cl.napi_cb_ptr != 0
-                or not cl.func.reg_simple
-                or cl.func.has_rest
-                or cl.func.arguments_slot >= 0
-                or len(cl.captured_with_objs) > 0
-                or cl.this_binding_cell != 0 {
-                cl.call_plain = -1;
+        if jc_call_plain(cl) != 1 {
+            if jc_napi_cb_ptr(cl) != 0
+                or not cl_cf.reg_simple
+                or cl_cf.has_rest
+                or cl_cf.arguments_slot >= 0
+                or len(_JC_CW[cl]) > 0
+                or jc_this_binding_cell(cl) != 0 {
+                jc_set_call_plain(cl, -1);
                 return 0;
             }
-            cl.call_plain = 1;
+            jc_set_call_plain(cl, 1);
         }
         if self.call_depth + 1 > VM_MAX_CALL_DEPTH {
             return 0;
@@ -33901,11 +34211,11 @@ obj VM {
         if not ep_scan {
             argc = argc & 8388607;
         }
-        if jsv_is_object_cell(cl.jac_module) and cl.func.mod_free != 1 {
+        if jsv_is_object_cell(jc_jac_module(cl)) and cl_cf.mod_free != 1 {
             if self.cur_mod_epoch != self.gw_epoch {
                 self._reg_cur_module();
             }
-            if not (cl.jac_module == self.cur_mod_val) {
+            if not (jc_jac_module(cl) == self.cur_mod_val) {
                 return 0;
             }
         }
@@ -33920,15 +34230,17 @@ obj VM {
             or self._pending_ctor_class != 0 {
             return 0;
         }
-        if cl.is_arrow {
-            ep_nt = cl.lexical_new_target;
+        if jc_is_arrow(cl) {
+            ep_nt = jc_lexical_new_target(cl);
         }
         ep_this: JSValue = this_val;
-        if not jsv_is_undefined(cl.lexical_this) {
-            ep_this = cl.lexical_this;
-        } elif not cl.func.is_strict {
+        if ctor_cls != 0 {
+            ep_nt = ctor_cls;
+        } elif not jsv_is_undefined(jc_lexical_this(cl)) {
+            ep_this = jc_lexical_this(cl);
+        } elif not cl_cf.is_strict {
             if jsv_is_null(ep_this) or jsv_is_undefined(ep_this) {
-                if cl.func.ctx_global != 0 {
+                if cl_cf.ctx_global != 0 {
                     return 0;
                 }
                 ep_this = self.realm.global_this;
@@ -33937,7 +34249,7 @@ obj VM {
             }
         }
         ep_base: int = self.rtop;
-        ep_end: int = wrapping_add(ep_base, cl.func.num_locals);
+        ep_end: int = wrapping_add(ep_base, cl_cf.num_locals);
         if len(self.regs) < ep_end {
             return 0;
         }
@@ -33958,8 +34270,8 @@ obj VM {
         # slots, every other own local undefined
         self.rtop = ep_end;
         ep_wp: int = wrapping_add(__list_data_ptr(self.regs), wrapping_mul(ep_base, 8));
-        ep_n: int = len(cl.func.params);
-        ep_pb: int = cl.func.param_base;
+        ep_n: int = len(cl_cf.params);
+        ep_pb: int = cl_cf.param_base;
         # parameter slots the arguments fill: `ep_copy` from the argument
         # registers, plus reg_arg1 when argc is -1 (a setter's value)
         ep_copy: int = argc;
@@ -33977,7 +34289,7 @@ obj VM {
             ep_k = wrapping_add(ep_k, 1);
         }
         ep_k = wrapping_add(ep_pb, ep_got);
-        ep_tb: int = cl.func.reg_tmp_base;
+        ep_tb: int = cl_cf.reg_tmp_base;
         while ep_k < ep_tb {
             __mem_store_i64(wrapping_add(ep_wp, wrapping_mul(ep_k, 8)), js_undefined());
             ep_k = wrapping_add(ep_k, 1);
@@ -34013,11 +34325,11 @@ obj VM {
         }
         fr.win = True;
         fr.lb = ep_base;
-        if fr.func is not cl.func {
-            fr.func = cl.func;
+        if fr.func is not cl_cf {
+            fr.func = cl_cf;
         }
-        fr.fvp = __list_data_ptr(cl.free_vals);
-        fr.fvn = len(cl.free_vals);
+        fr.fvp = jc_free_vals_ptr(cl);
+        fr.fvn = len(_JC_FV[cl]);
         fr.ip = 0;
         fr.rpc = 0;
         fr.ret_reg = dst;
@@ -34026,16 +34338,19 @@ obj VM {
         fr.self_fn = cv;
         fr.new_target = ep_nt;
         fr.this_uninitialized = False;
-        fr.ctor_class = 0;
+        fr.ctor_class = ctor_cls;
         fr.with_inherited = 0;
         fr.this_binding_cell = 0;
         fr.discard_ret = False;
         fr.ctor_this = 0;
+        if ctor_cls != 0 {
+            fr.ctor_this = ep_this;
+        }
         if fr.caller_module_fns is not self.module_fns {
             fr.caller_module_fns = self.module_fns;
         }
-        if len(cl.module_fns) > 0 and self.module_fns is not cl.module_fns {
-            self.module_fns = cl.module_fns;
+        if len(_JC_MF[cl]) > 0 and self.module_fns is not _JC_MF[cl] {
+            self.module_fns = _JC_MF[cl];
         }
         frame.rpc = resume_pc;
         frame.ip = wrapping_add(orig, 1);
@@ -34043,6 +34358,49 @@ obj VM {
         st.inline_depth = wrapping_add(st.inline_depth, 1);
         self.ftop = wrapping_add(self.ftop, 1);
         return 1;
+    }
+
+    """GETFIELD's flat getter entry (`w0`, `w1`; _ric_fill_getter) on receiver
+    `recv`: the getter entered in-loop through the plain entry with this =
+    `recv` and no arguments, its value going to register `dst`. 1 = entered,
+    0 = not this one (the general read follows)."""
+    def _reg_getter_flat(
+        frame: CallFrame,
+        st: ExecState,
+        recv: JSValue,
+        w0: int,
+        w1: int,
+        dst: int,
+        c: int,
+        pc: int
+    ) -> int {
+        gf_id: int = js_object_ric_getter(recv, w0, w1);
+        # (a closure id from the fill names a live closure; call_plain 1
+        # implies a translated function)
+        if gf_id < 0
+            or self.ftop >= len(self.frames)
+            or not (
+                jc_call_plain(gf_id) == 1
+                or (jc_call_plain(gf_id) == 0 and _R1_PLAIN == 1 and _JC_FUNC[gf_id].risa == 1)
+            ) {
+            return 0;
+        }
+        # (argc 8388608: no arguments, no TDZ scan)
+        return self._reg_enter_plain(
+            self.frames[self.ftop],
+            gf_id,
+            _JC_FUNC[gf_id],
+            frame,
+            st,
+            js_fn_val(gf_id),
+            recv,
+            dst,
+            pc,
+            8388608,
+            c,
+            pc,
+            0
+        );
     }
 
     """A pooled frame that had handlers, `with` objects, `using` resources or
@@ -34085,7 +34443,7 @@ obj VM {
     }
 
     def _reg_call_enter_cl(
-        cl: JSClosure,
+        cl: int,
         frame: CallFrame,
         st: ExecState,
         cv: JSValue,
@@ -34096,33 +34454,34 @@ obj VM {
         orig: int,
         resume_pc: int
     ) -> int {
-        if cl.napi_cb_ptr != 0 or (cl.func.risa != 1 and not self._reg_ready(cl.func)) {
+        cl_cf: CompiledFunction = _JC_FUNC[cl];
+        if jc_napi_cb_ptr(cl) != 0 or (cl_cf.risa != 1 and not self._reg_ready(cl_cf)) {
             return 0;
         }
         # (reg_simple, set with the translation: not a generator, async or
         # bound function, and any arguments object is unmapped -- built below)
-        if not cl.func.reg_simple {
+        if not cl_cf.reg_simple {
             return 0;
         }
-        if len(cl.captured_with_objs) > 0 {
+        if len(_JC_CW[cl]) > 0 {
             return 0;
         }
-        if cl.this_binding_cell != 0 {
+        if jc_this_binding_cell(cl) != 0 {
             return 0;
         }
         if self.call_depth + 1 > VM_MAX_CALL_DEPTH {
             return 0;
         }
         rc_this: JSValue = this_val;
-        if not jsv_is_undefined(cl.lexical_this) {
-            rc_this = cl.lexical_this;
-        } elif not cl.func.is_strict {
+        if not jsv_is_undefined(jc_lexical_this(cl)) {
+            rc_this = jc_lexical_this(cl);
+        } elif not cl_cf.is_strict {
             if jsv_is_null(rc_this) or jsv_is_undefined(rc_this) {
                 # (_sloppy_this_for's common case inline: no sandbox global)
-                if cl.func.ctx_global == 0 {
+                if cl_cf.ctx_global == 0 {
                     rc_this = self.realm.global_this;
                 } else {
-                    rc_this = self._sloppy_this_for(cl.func);
+                    rc_this = self._sloppy_this_for(cl_cf);
                 }
             } elif not jsv_is_any_object(rc_this) {
                 return 0;
@@ -34130,11 +34489,11 @@ obj VM {
         }
         # (_reg_cur_module's cached value read inline while it is current)
         rc_swap: bool = False;
-        if jsv_is_object_cell(cl.jac_module) {
+        if jsv_is_object_cell(jc_jac_module(cl)) {
             if self.cur_mod_epoch != self.gw_epoch {
                 self._reg_cur_module();
             }
-            rc_swap = not (cl.jac_module == self.cur_mod_val) and cl.func.mod_free != 1;
+            rc_swap = not (jc_jac_module(cl) == self.cur_mod_val) and cl_cf.mod_free != 1;
         }
         # TDZ checks of flagged argument registers, left to right (the stack
         # code checked each where it loaded it; nothing observable runs in
@@ -34159,13 +34518,13 @@ obj VM {
                 rc_k = rc_k + 1;
             }
         }
-        np: int = len(cl.func.params);
-        pb: int = cl.func.param_base;
+        np: int = len(cl_cf.params);
+        pb: int = cl_cf.param_base;
         # The callee's registers: a window pushed on the register file
         # (_win_alloc inline; the fill and the argument copy go through the
         # file's buffer, taken after any growth).
         rc_base: int = self.rtop;
-        rc_end: int = rc_base + cl.func.num_locals;
+        rc_end: int = rc_base + cl_cf.num_locals;
         while len(self.regs) < rc_end {
             self.regs.append(js_undefined());
         }
@@ -34175,7 +34534,7 @@ obj VM {
         # Only the function's own locals start as undefined; the translator's
         # temporaries are written before they are read.
         rc_k = 0;
-        rc_fe: int = cl.func.reg_tmp_base;
+        rc_fe: int = cl_cf.reg_tmp_base;
         rc_wp: int = wrapping_add(rc_rb, wrapping_mul(rc_base, 8));
         while rc_k < rc_fe {
             __mem_store_i64(wrapping_add(rc_wp, wrapping_mul(rc_k, 8)), js_undefined());
@@ -34219,7 +34578,7 @@ obj VM {
                 rc_k = rc_k + 1;
             }
         }
-        if (cl.func.has_rest and np > 0 and argc >= 0) or cl.func.arguments_slot >= 0 {
+        if (cl_cf.has_rest and np > 0 and argc >= 0) or cl_cf.arguments_slot >= 0 {
             self._reg_enter_rest_args(cl, frame, rc_base, argpc, argc, cv);
         }
         if self.ftop >= len(self.frames) {
@@ -34235,7 +34594,7 @@ obj VM {
             self.frames[rc_top].win = True;
             self.frames[rc_top].lb = rc_base;
             if rc_swap {
-                self._reg_mod_swap_enter(self.frames[rc_top], cl.jac_module);
+                self._reg_mod_swap_enter(self.frames[rc_top], jc_jac_module(cl));
             }
             return 1;
         }
@@ -34250,11 +34609,11 @@ obj VM {
         }
         fr.win = True;
         fr.lb = rc_base;
-        if fr.func is not cl.func {
-            fr.func = cl.func;
+        if fr.func is not cl_cf {
+            fr.func = cl_cf;
         }
-        fr.fvp = __list_data_ptr(cl.free_vals);
-        fr.fvn = len(cl.free_vals);
+        fr.fvp = jc_free_vals_ptr(cl);
+        fr.fvn = len(_JC_FV[cl]);
         fr.ip = 0;
         fr.rpc = 0;
         fr.ret_reg = dst;
@@ -34265,8 +34624,8 @@ obj VM {
         if jsv_is_undefined(ic_nt) {
             ic_nt = self.pending_new_target;
         }
-        if cl.is_arrow {
-            ic_nt = cl.lexical_new_target;
+        if jc_is_arrow(cl) {
+            ic_nt = jc_lexical_new_target(cl);
         }
         self._pending_new_target = js_undefined();
         self.pending_new_target = js_undefined();
@@ -34318,8 +34677,8 @@ obj VM {
         if fr.caller_module_fns is not self.module_fns {
             fr.caller_module_fns = self.module_fns;
         }
-        if len(cl.module_fns) > 0 and self.module_fns is not cl.module_fns {
-            self.module_fns = cl.module_fns;
+        if len(_JC_MF[cl]) > 0 and self.module_fns is not _JC_MF[cl] {
+            self.module_fns = _JC_MF[cl];
         }
         frame.rpc = resume_pc;
         frame.ip = orig + 1;
@@ -34330,7 +34689,7 @@ obj VM {
         }
         self.ftop = self.ftop + 1;
         if rc_swap {
-            self._reg_mod_swap_enter(self.frames[self.ftop - 1], cl.jac_module);
+            self._reg_mod_swap_enter(self.frames[self.ftop - 1], jc_jac_module(cl));
         }
         return 1;
     }
@@ -34403,12 +34762,10 @@ obj VM {
             _reg_stat_kind(dop, frame.locals[frame.lb + (callee_reg)]);
             if is_fn_val(frame.locals[frame.lb + (callee_reg)])
                 and get_fn_idx(frame.locals[frame.lb + (callee_reg)])
-                    < len(self.realm.closures) {
+                    < jc_count() {
                 _reg_stat_name(
                     _REG_BRIDGE_FNS,
-                    self.realm.closures[
-                        get_fn_idx(frame.locals[frame.lb + (callee_reg)])
-                    ].func.name
+                    _JC_FUNC[get_fn_idx(frame.locals[frame.lb + (callee_reg)])].name
                 );
             }
             if dop == opcode_to_int(Opcode.NEW) {
@@ -34467,15 +34824,193 @@ obj VM {
         this_val: JSValue,
         argpc: int,
         argc: int,
-        orig: int
+        orig: int,
+        rn_kind: int
     ) -> bool {
-        rn_kind: int = get_native_kind(meth);
+        if rn_kind == NATIVE_KIND_STR_SLICE
+            and argc >= 1
+            and argc <= 2
+            and jsv_is_string_cell(this_val) {
+            rn_sl: JSValue = _reg_str_slice_fast(frame, this_val, argpc, argc);
+            if not jsv_is_hole(rn_sl) {
+                frame.locals[frame.lb + (dst)] = rn_sl;
+                return True;
+            }
+        }
         if rn_kind < 0 or rn_kind >= len(_NATIVE_FAST_KIND) {
             return False;
         }
         rn_mode: int = _NATIVE_FAST_KIND[rn_kind];
+        if rn_mode >= 1
+            and rn_mode != 6
+            and rn_mode != 7
+            and argc >= 0
+            and argc <= 3
+            and argpc >= 0
+            and _NSK_READY {
+            # What each lean mode needs of the receiver (the arguments: simple
+            # primitives for modes 1, 2, 9 and 10, past the first for 8):
+            # 1 a string, 4 / 8 an ordinary array while no prototype has index
+            # accessors, 5 at most one argument, 9 a plain object (no class,
+            # binary kind or brand: arrays, String objects, typed arrays and
+            # proxies take the special handling), 10 a number.
+            ln_ok: bool = True;
+            if rn_mode == 1 {
+                ln_ok = jsv_is_string_cell(this_val);
+            } elif rn_mode == 4 {
+                ln_ok = js_is_array(this_val)
+                    and js_object_class_id_id(jsv_to_table_id(this_val)) == 0
+                    and idx_protector_ok();
+            } elif rn_mode == 8 {
+                # (every element in the dense buffer: no own accessor element)
+                ln_ok = js_array_dense_full(this_val) and idx_protector_ok();
+            } elif rn_mode == 5 {
+                ln_ok = argc <= 1;
+            } elif rn_mode == 9 {
+                ln_ok = js_object_is_plain(this_val);
+            } elif rn_mode == 10 {
+                ln_ok = jsv_is_int32(this_val) or jsv_is_double(this_val);
+            }
+            # (a special kind's VM handling stays general, except push and
+            # hasOwnProperty: their special cases are receivers excluded above)
+            if ln_ok
+                and rn_mode != 4
+                and rn_mode != 9
+                and rn_kind < len(_NSK_LIST)
+                and _NSK_LIST[rn_kind] {
+                ln_ok = False;
+            }
+            # The common case without the general path's lists: the argument
+            # registers read in place into the scratch list of their count,
+            # the handler called from the dispatch list, its value stored
+            # into dst. These natives cannot re-enter JS: no collection runs
+            # during the call and the arguments need no rooting.
+            ln_rp: int = wrapping_add(frame.func.rcode_ptr, wrapping_mul(argpc, 8));
+            ln_lp: int = wrapping_add(__list_data_ptr(frame.locals), wrapping_mul(frame.lb, 8));
+            ln_k: int = 0;
+            ln_num: bool = True;
+            while ln_ok and ln_k < argc {
+                ln_w: int = __mem_load_i64(wrapping_add(ln_rp, wrapping_mul(ln_k, 8)));
+                ln_v: JSValue = __mem_load_i64(wrapping_add(ln_lp, wrapping_mul(ln_w & 32767, 8)));
+                if not jsv_is_int32(ln_v) and not jsv_is_double(ln_v) {
+                    ln_num = False;
+                }
+                if (ln_w & 32768) != 0 and js_is_tdz(ln_v) {
+                    ln_ok = False;
+                } elif (
+                    rn_mode <= 2
+                    or rn_mode == 9
+                    or rn_mode == 10
+                    or (rn_mode == 8 and ln_k > 0)
+                )
+                    and not _vm_simple_prim(ln_v) {
+                    ln_ok = False;
+                }
+                ln_k = ln_k + 1;
+            }
+            if ln_ok {
+                frame.ip = orig + 1;
+                self.reg_unwound = False;
+                ln_res: JSValue = jsv_hole();
+                if rn_mode == 4 and argc == 1 {
+                    # push(v): the one-value append on the canonical array shape
+                    ln_res = js_array_push1_fast(
+                        this_val,
+                        __mem_load_i64(wrapping_add(ln_lp, wrapping_mul(__mem_load_i64(ln_rp) & 32767, 8)))
+                    );
+                }
+                # The observer: needed by every coercion of a non-number (the
+                # non-observable ToNumber does not parse a string), so modes 1,
+                # 2 and 10 go without it only for number arguments; of mode 3,
+                # the Map / Set methods, isArray and Date.now coerce nothing.
+                ln_obs: bool = rn_mode == 4
+                    or rn_mode == 5
+                    or rn_mode == 8
+                    or rn_mode == 9
+                    or (
+                        rn_mode == 3
+                        and (rn_kind == NATIVE_KIND_BUF_GET_BYTE or rn_kind == NATIVE_KIND_BUF_SET_BYTE)
+                    )
+                    or (rn_mode != 3 and not ln_num);
+                if not jsv_is_hole(ln_res) {} elif rn_mode == 4 {
+                    _push_native_obs_vm(self);
+                    if argc == 0 {
+                        ln_res = _vm_array_push(self, this_val, _NF_A0);
+                    } elif argc == 1 {
+                        _nf_fill(_NF_A1, 1, ln_rp, ln_lp);
+                        ln_res = _vm_array_push(self, this_val, _NF_A1);
+                    } elif argc == 2 {
+                        _nf_fill(_NF_A2, 2, ln_rp, ln_lp);
+                        ln_res = _vm_array_push(self, this_val, _NF_A2);
+                    } else {
+                        _nf_fill(_NF_A3, 3, ln_rp, ln_lp);
+                        ln_res = _vm_array_push(self, this_val, _NF_A3);
+                    }
+                    _pop_native_obs_vm();
+                } else {
+                    if ln_obs {
+                        _push_native_obs_vm(self);
+                    }
+                    if argc == 0 {
+                        ln_res = call_native_k(self.realm, rn_kind, this_val, _NF_A0);
+                    } elif argc == 1 {
+                        _nf_fill(_NF_A1, 1, ln_rp, ln_lp);
+                        ln_res = call_native_k(self.realm, rn_kind, this_val, _NF_A1);
+                    } elif argc == 2 {
+                        _nf_fill(_NF_A2, 2, ln_rp, ln_lp);
+                        ln_res = call_native_k(self.realm, rn_kind, this_val, _NF_A2);
+                    } else {
+                        _nf_fill(_NF_A3, 3, ln_rp, ln_lp);
+                        ln_res = call_native_k(self.realm, rn_kind, this_val, _NF_A3);
+                    }
+                    if ln_obs {
+                        _pop_native_obs_vm();
+                    }
+                }
+                if not vm_has_native_exc() and not self.had_exception {
+                    frame.locals[frame.lb + (dst)] = ln_res;
+                    return True;
+                }
+                if not self._check_native_exc(frame, ln_res) {
+                    st.running = False;
+                    return True;
+                }
+                if self.reg_unwound {
+                    return True;
+                }
+                if len(self.stack) > frame.stack_base {
+                    frame.locals[frame.lb + (dst)] = self.stack.pop();
+                } else {
+                    frame.locals[frame.lb + (dst)] = js_undefined();
+                }
+                return True;
+            }
+        }
+        return self._reg_native_fast_gen(
+            frame, st, dst, this_val, argpc, argc, orig, rn_kind, rn_mode
+        );
+    }
+
+    """_reg_native_fast_call's general path: the shared or a fresh argument
+    list, call_native through the special-kind check, the value through the
+    stack (the handlers' protocol)."""
+    def _reg_native_fast_gen(
+        frame: CallFrame,
+        st: ExecState,
+        dst: int,
+        this_val: JSValue,
+        argpc: int,
+        argc: int,
+        orig: int,
+        rn_kind: int,
+        rn_mode: int
+    ) -> bool {
         if rn_mode == 0 {
             return False;
+        }
+        if rn_mode >= 8 {
+            # (lean-only modes: otherwise a generic native)
+            rn_mode = 7;
         }
         # A whitelisted native whose shared-list fast precondition fails is
         # still none of the handlers' special kinds: the generic call (7).
@@ -34593,37 +35128,37 @@ obj VM {
     loop's gates (the callee runs in a register loop, in-loop or nested):
     the effective `this`, or the hole when the general call path must take
     it."""
-    def _reg_eff_this(cl: JSClosure, cl_val: JSValue, this_val: JSValue) -> JSValue {
-        if not self._reg_ready(cl.func) {
+    def _reg_eff_this(cl: int, cl_val: JSValue, this_val: JSValue) -> JSValue {
+        if not self._reg_ready(_JC_FUNC[cl]) {
             return jsv_hole();
         }
-        if cl.func.is_generator or cl.func.is_async or cl.func.is_bound {
+        if _JC_FUNC[cl].is_generator or _JC_FUNC[cl].is_async or _JC_FUNC[cl].is_bound {
             return jsv_hole();
         }
-        if cl.func.arguments_slot >= 0 {
+        if _JC_FUNC[cl].arguments_slot >= 0 {
             return jsv_hole();
         }
-        if len(cl.captured_with_objs) > 0 {
+        if len(_JC_CW[cl]) > 0 {
             return jsv_hole();
         }
-        if cl.this_binding_cell != 0 {
+        if jc_this_binding_cell(cl) != 0 {
             return jsv_hole();
         }
         if self.call_depth + 1 > VM_MAX_CALL_DEPTH {
             return jsv_hole();
         }
         re_this: JSValue = this_val;
-        if not jsv_is_undefined(cl.lexical_this) {
-            re_this = cl.lexical_this;
-        } elif not cl.func.is_strict {
+        if not jsv_is_undefined(jc_lexical_this(cl)) {
+            re_this = jc_lexical_this(cl);
+        } elif not _JC_FUNC[cl].is_strict {
             if jsv_is_null(re_this) or jsv_is_undefined(re_this) {
-                re_this = self._sloppy_this_for(cl.func);
+                re_this = self._sloppy_this_for(_JC_FUNC[cl]);
             } elif not jsv_is_any_object(re_this) {
                 return jsv_hole();
             }
         }
-        if jsv_is_object_cell(cl.jac_module)
-            and not (cl.jac_module == self._reg_cur_module()) {
+        if jsv_is_object_cell(jc_jac_module(cl))
+            and not (jc_jac_module(cl) == self._reg_cur_module()) {
             return jsv_hole();
         }
         return re_this;
@@ -34641,16 +35176,16 @@ obj VM {
             return 0;
         }
         rt_idx: int = get_fn_idx(cv);
-        if rt_idx < 0 or rt_idx >= len(self.realm.closures) {
+        if rt_idx < 0 or rt_idx >= jc_count() {
             return 0;
         }
         return self._reg_tail_enter_cl(
-            self.realm.closures[rt_idx], frame, st, cv, argpc, argc, orig
+            rt_idx, frame, st, cv, argpc, argc, orig
         );
     }
 
     def _reg_tail_enter_cl(
-        cl: JSClosure,
+        cl: int,
         frame: CallFrame,
         st: ExecState,
         cv: JSValue,
@@ -34658,7 +35193,7 @@ obj VM {
         argc: int,
         orig: int
     ) -> int {
-        if cl.napi_cb_ptr != 0 {
+        if jc_napi_cb_ptr(cl) != 0 {
             return 0;
         }
         rt_this: JSValue = self._reg_eff_this(cl, cv, js_undefined());
@@ -34708,15 +35243,15 @@ obj VM {
         st.inline_depth = st.inline_depth - 1;
         self.call_depth = self.call_depth - 1;
         # Enter the callee in its place (its window where the popped one was).
-        rt_base: int = self._win_alloc(cl.func.num_locals, cl.func.reg_tmp_base);
-        rt_np: int = len(cl.func.params);
-        rt_pb: int = cl.func.param_base;
+        rt_base: int = self._win_alloc(_JC_FUNC[cl].num_locals, _JC_FUNC[cl].reg_tmp_base);
+        rt_np: int = len(_JC_FUNC[cl].params);
+        rt_pb: int = _JC_FUNC[cl].param_base;
         rt_k = 0;
         while rt_k < rt_np and rt_k < argc {
             self.regs[rt_base + rt_pb + rt_k] = _REG_TAIL_ARGS[rt_k];
             rt_k = rt_k + 1;
         }
-        if cl.func.has_rest and rt_np > 0 {
+        if _JC_FUNC[cl].has_rest and rt_np > 0 {
             rt_items: list[JSValue] = [];
             rt_k = rt_np - 1;
             while rt_k < argc {
@@ -34759,11 +35294,11 @@ obj VM {
             return 0;
         }
         rn_idx: int = get_fn_idx(cv);
-        if rn_idx < 0 or rn_idx >= len(self.realm.closures) {
+        if rn_idx < 0 or rn_idx >= jc_count() {
             return 0;
         }
         return self._reg_new_enter_cl(
-            self.realm.closures[rn_idx],
+            rn_idx,
             frame,
             st,
             cv,
@@ -34793,13 +35328,24 @@ obj VM {
         if _INLINE_CALLS_ON == 0 {
             return 0;
         }
-        nc_derived: bool = js_object_has_own(cls, WK_SUPER);
-        nc_fn: JSValue = js_object_get(cls, WK_CTOR);
+        # The class's own WK_* slots through the shape-keyed cache (-1: the
+        # [[Get]] / HasOwn reads below).
+        nc_cid: int = jsv_to_table_id(cls);
+        nc_meta: int = js_object_class_meta(nc_cid, WK_CTOR, WK_PROTOTYPE, WK_FIELDS, WK_SUPER);
+        nc_derived: bool = False;
+        nc_fn: JSValue = 0;
+        if nc_meta >= 0 {
+            nc_derived = (nc_meta >> 48) != 0;
+            nc_fn = js_object_slot_at_id(nc_cid, nc_meta & 65535);
+        } else {
+            nc_derived = js_object_has_own(cls, WK_SUPER);
+            nc_fn = js_object_get(cls, WK_CTOR);
+        }
         nc_target: JSValue = nc_fn;
         nc_sup: JSValue = 0;
         if nc_derived {
             if is_fn_val(nc_fn) {
-                if _fn_may_defer_super(self.realm.closures[get_fn_idx(nc_fn)].func) {
+                if _fn_may_defer_super(_JC_FUNC[get_fn_idx(nc_fn)]) {
                     return 0;
                 }
             } else {
@@ -34819,7 +35365,11 @@ obj VM {
             }
         }
         if is_fn_val(nc_target) {
-            if not self._reg_can_enter_cl(self.realm.closures[get_fn_idx(nc_target)]) {
+            if not (
+                jc_ctor_ok(get_fn_idx(nc_target)) == 1
+                and self.call_depth + 1 <= VM_MAX_CALL_DEPTH
+            )
+                and not self._reg_can_enter_cl(get_fn_idx(nc_target)) {
                 return 0;
             }
         }
@@ -34835,17 +35385,61 @@ obj VM {
             }
             nc_k = nc_k + 1;
         }
-        nc_obj: JSValue = js_object_create(js_object_get(cls, WK_PROTOTYPE));
+        nc_proto: JSValue = 0;
+        nc_fields: JSValue = js_undefined();
+        if nc_meta >= 0 {
+            nc_proto = js_object_slot_at_id(nc_cid, (nc_meta >> 16) & 65535);
+            if ((nc_meta >> 32) & 65535) != 0 {
+                nc_fields = js_object_slot_at_id(nc_cid, ((nc_meta >> 32) & 65535) - 1);
+            }
+        } else {
+            nc_proto = js_object_get(cls, WK_PROTOTYPE);
+            if not nc_derived {
+                nc_fields = js_object_get(cls, WK_FIELDS);
+            }
+        }
+        nc_obj: JSValue = js_object_create(nc_proto);
         frame.ip = orig + 1;
         if not nc_derived {
-            if not self._reg_run_field_list(
-                js_object_get(cls, WK_FIELDS), nc_obj, frame, st, orig
-            ) {
+            if not jsv_is_undefined(nc_fields)
+                and not self._reg_run_field_list(nc_fields, nc_obj, frame, st, orig) {
                 return 2;
             }
             if not is_fn_val(nc_fn) {
                 frame.locals[frame.lb + (dst)] = nc_obj;
                 return 3;
+            }
+            # (the arguments' TDZ checks ran above: bit 23 of argc skips them)
+            nc_pi: int = get_fn_idx(nc_fn);
+            if nc_pi < jc_count()
+                and _JC_FUNC[nc_pi].ipc >= 0
+                and _reg_ctor_inplace(frame, nc_pi, nc_obj, argpc, argc) {
+                frame.locals[frame.lb + (dst)] = nc_obj;
+                return 3;
+            }
+            if _R1_PLAIN == 1
+                and nc_pi < jc_count()
+                and jc_call_plain(nc_pi) >= 0
+                and _JC_FUNC[nc_pi].risa == 1
+                and self.ftop < len(self.frames) {
+                nc_pr: int = self._reg_enter_plain(
+                    self.frames[self.ftop],
+                    nc_pi,
+                    _JC_FUNC[nc_pi],
+                    frame,
+                    st,
+                    nc_fn,
+                    nc_obj,
+                    dst,
+                    argpc,
+                    argc | 8388608,
+                    orig,
+                    resume_pc,
+                    cls
+                );
+                if nc_pr != 0 {
+                    return nc_pr;
+                }
             }
             self._pending_new_target = cls;
             self.pending_new_target = cls;
@@ -34867,7 +35461,7 @@ obj VM {
             self.pending_new_target = cls;
         }
         nc_r: int = self._reg_call_enter_cl(
-            self.realm.closures[get_fn_idx(nc_target)],
+            get_fn_idx(nc_target),
             frame,
             st,
             nc_target,
@@ -34893,7 +35487,12 @@ obj VM {
                 gc_pin_value(_TDZ_SENTINEL);
             }
             self.frames[nc_top].this_binding_cell = make_cell(_TDZ_SENTINEL);
-        } elif nc_derived and js_object_has_own(cls, WK_FIELDS) {
+        } elif nc_derived
+            and (
+                ((nc_meta >> 32) & 65535) != 0
+                if nc_meta >= 0
+                else js_object_has_own(cls, WK_FIELDS)
+            ) {
             self.frames[nc_top].post_fields = cls;
         }
         return 1;
@@ -34901,25 +35500,30 @@ obj VM {
 
     """_reg_call_enter_cl's eligibility checks alone (no side effects), plus a
     lexical-this closure (an arrow is never a constructor)."""
-    def _reg_can_enter_cl(cl: JSClosure) -> bool {
-        if cl.napi_cb_ptr != 0 or not self._reg_ready(cl.func) {
+    def _reg_can_enter_cl(cl: int) -> bool {
+        # (the permanent properties below were found to allow it before)
+        if jc_ctor_ok(cl) == 1 {
+            return self.call_depth + 1 <= VM_MAX_CALL_DEPTH;
+        }
+        if jc_napi_cb_ptr(cl) != 0 or not self._reg_ready(_JC_FUNC[cl]) {
             return False;
         }
-        if cl.func.is_generator or cl.func.is_async or cl.func.is_bound {
+        if _JC_FUNC[cl].is_generator or _JC_FUNC[cl].is_async or _JC_FUNC[cl].is_bound {
             return False;
         }
-        if cl.func.arguments_slot >= 0 and not cl.func.is_strict {
+        if _JC_FUNC[cl].arguments_slot >= 0 and not _JC_FUNC[cl].is_strict {
             return False;
         }
-        if len(cl.captured_with_objs) > 0 {
+        if len(_JC_CW[cl]) > 0 {
             return False;
         }
-        if cl.this_binding_cell != 0 {
+        if jc_this_binding_cell(cl) != 0 {
             return False;
         }
-        if not jsv_is_undefined(cl.lexical_this) {
+        if not jsv_is_undefined(jc_lexical_this(cl)) {
             return False;
         }
+        jc_set_ctor_ok(cl, 1);
         if self.call_depth + 1 > VM_MAX_CALL_DEPTH {
             return False;
         }
@@ -35000,7 +35604,7 @@ obj VM {
     }
 
     def _reg_new_enter_cl(
-        cl: JSClosure,
+        cl: int,
         frame: CallFrame,
         st: ExecState,
         cv: JSValue,
@@ -35010,23 +35614,24 @@ obj VM {
         orig: int,
         resume_pc: int
     ) -> int {
-        if cl.napi_cb_ptr != 0
-            or cl.is_arrow
-            or cl.func.is_generator
-            or cl.func.is_async
-            or cl.func.is_method
-            or cl.is_non_constructor
-            or cl.func.is_bound
-            or not self._reg_ready(cl.func) {
+        cl_cf: CompiledFunction = _JC_FUNC[cl];
+        if jc_napi_cb_ptr(cl) != 0
+            or jc_is_arrow(cl)
+            or cl_cf.is_generator
+            or cl_cf.is_async
+            or cl_cf.is_method
+            or jc_is_non_constructor(cl)
+            or cl_cf.is_bound
+            or not self._reg_ready(cl_cf) {
             return 0;
         }
-        if not jsv_is_undefined(cl.lexical_this) {
+        if not jsv_is_undefined(jc_lexical_this(cl)) {
             return 0;
         }
         if cl_props_has_own(cl, WK_NOT_CTOR) {
             return 0;
         }
-        rn_proto: JSValue = cl.prototype_obj;
+        rn_proto: JSValue = jc_prototype_obj(cl);
         if not (jsv_is_object_cell(rn_proto) and jsv_to_table_id(rn_proto) > 0) {
             rn_proto = js_object_get_ordinary_proto();
         }
@@ -35053,27 +35658,27 @@ obj VM {
     undefined with had_exception / pending_exc set; the hole when run() must
     take the call (nothing done)."""
     def _reg_run_value(
-        cl: JSClosure, cl_val: JSValue, this_val: JSValue, args: list[JSValue]
+        cl: int, cl_val: JSValue, this_val: JSValue, args: list[JSValue]
     ) -> JSValue {
-        if cl.napi_cb_ptr != 0 or cl.func.has_tail_call {
+        if jc_napi_cb_ptr(cl) != 0 or _JC_FUNC[cl].has_tail_call {
             return jsv_hole();
         }
-        if cl.func.name == "<main>" {
+        if _JC_FUNC[cl].name == "<main>" {
             return jsv_hole();
         }
         rv_this: JSValue = self._reg_eff_this(cl, cl_val, this_val);
         if jsv_is_hole(rv_this) {
             return jsv_hole();
         }
-        rv_np: int = len(cl.func.params);
-        rv_pb: int = cl.func.param_base;
-        rv_base: int = self._win_alloc(cl.func.num_locals, cl.func.reg_tmp_base);
+        rv_np: int = len(_JC_FUNC[cl].params);
+        rv_pb: int = _JC_FUNC[cl].param_base;
+        rv_base: int = self._win_alloc(_JC_FUNC[cl].num_locals, _JC_FUNC[cl].reg_tmp_base);
         rv_k: int = 0;
         while rv_k < rv_np and rv_k < len(args) {
             self.regs[rv_base + rv_pb + rv_k] = args[rv_k];
             rv_k = rv_k + 1;
         }
-        if cl.func.has_rest and rv_np > 0 {
+        if _JC_FUNC[cl].has_rest and rv_np > 0 {
             rv_items: list[JSValue] = [];
             rv_k = rv_np - 1;
             while rv_k < len(args) {
@@ -35087,8 +35692,8 @@ obj VM {
         if jsv_is_undefined(rv_nt) {
             rv_nt = self.pending_new_target;
         }
-        if cl.is_arrow {
-            rv_nt = cl.lexical_new_target;
+        if jc_is_arrow(cl) {
+            rv_nt = jc_lexical_new_target(cl);
         }
         self._pending_new_target = js_undefined();
         self.pending_new_target = js_undefined();
@@ -35098,10 +35703,10 @@ obj VM {
         self._pending_ctor_class = 0;
         rv_reuse: bool = self.ftop < len(self.frames);
         rv_fr: CallFrame = self._frame_acquire(
-            cl.func,
+            _JC_FUNC[cl],
             len(self.stack),
             self.regs,
-            cl.free_vals,
+            _JC_FV[cl],
             rv_this,
             cl_val,
             rv_nt,
@@ -35121,8 +35726,8 @@ obj VM {
             rv_fr.this_binding_cell = make_cell(_TDZ_SENTINEL);
         }
         rv_saved_mf: list[CompiledFunction] = self.module_fns;
-        if len(cl.module_fns) > 0 {
-            self.module_fns = cl.module_fns;
+        if len(_JC_MF[cl]) > 0 {
+            self.module_fns = _JC_MF[cl];
         }
         self.ftop = self.ftop + 1;
         self.call_depth = self.call_depth + 1;
@@ -35137,7 +35742,7 @@ obj VM {
                 and not self.had_exception
                 and not jsv_is_undefined(rv_res)
                 and not jsv_is_any_object(rv_res)
-                and not _fn_may_defer_super(cl.func) {
+                and not _fn_may_defer_super(_JC_FUNC[cl]) {
                 self.had_exception = True;
                 self.pending_exc = make_type_error(
                     "Derived constructors may only return object or undefined"
@@ -35145,7 +35750,7 @@ obj VM {
             } elif rv_tu_now
                 and not self.had_exception
                 and not jsv_is_any_object(rv_res) {
-                if not _fn_may_defer_super(cl.func) {
+                if not _fn_may_defer_super(_JC_FUNC[cl]) {
                     self.had_exception = True;
                     self.pending_exc = make_reference_error(
                         "Must call super constructor in derived class before accessing 'this' or returning from derived constructor"
@@ -35189,7 +35794,7 @@ obj VM {
     stack, no run_cl/run — and its result (or exception) is delivered as an
     inline return would. False when the general call path must take it."""
     def _reg_call_from_stack(
-        cl: JSClosure,
+        cl: int,
         cl_val: JSValue,
         this_val: JSValue,
         nargs: int,
@@ -35197,7 +35802,7 @@ obj VM {
         frame: CallFrame,
         st: ExecState
     ) -> bool {
-        if cl.napi_cb_ptr != 0 or cl.func.has_tail_call {
+        if jc_napi_cb_ptr(cl) != 0 or _JC_FUNC[cl].has_tail_call {
             return False;
         }
         rs_this: JSValue = self._reg_eff_this(cl, cl_val, this_val);
@@ -35205,15 +35810,15 @@ obj VM {
             return False;
         }
         rs_ab: int = len(self.stack) - nargs;
-        rs_np: int = len(cl.func.params);
-        rs_pb: int = cl.func.param_base;
-        rs_base: int = self._win_alloc(cl.func.num_locals, cl.func.reg_tmp_base);
+        rs_np: int = len(_JC_FUNC[cl].params);
+        rs_pb: int = _JC_FUNC[cl].param_base;
+        rs_base: int = self._win_alloc(_JC_FUNC[cl].num_locals, _JC_FUNC[cl].reg_tmp_base);
         rs_k: int = 0;
         while rs_k < rs_np and rs_k < nargs {
             self.regs[rs_base + rs_pb + rs_k] = self.stack[rs_ab + rs_k];
             rs_k = rs_k + 1;
         }
-        if cl.func.has_rest and rs_np > 0 {
+        if _JC_FUNC[cl].has_rest and rs_np > 0 {
             rs_items: list[JSValue] = [];
             rs_k = rs_np - 1;
             while rs_k < nargs {
@@ -35230,29 +35835,29 @@ obj VM {
 
     """_reg_call_from_stack for the general path's argument list."""
     def _reg_call_from_list(
-        cl: JSClosure,
+        cl: int,
         cl_val: JSValue,
         this_val: JSValue,
         args: list[JSValue],
         frame: CallFrame,
         st: ExecState
     ) -> bool {
-        if cl.napi_cb_ptr != 0 or cl.func.has_tail_call {
+        if jc_napi_cb_ptr(cl) != 0 or _JC_FUNC[cl].has_tail_call {
             return False;
         }
         rl_this: JSValue = self._reg_eff_this(cl, cl_val, this_val);
         if jsv_is_hole(rl_this) {
             return False;
         }
-        rl_np: int = len(cl.func.params);
-        rl_pb: int = cl.func.param_base;
-        rl_base: int = self._win_alloc(cl.func.num_locals, cl.func.reg_tmp_base);
+        rl_np: int = len(_JC_FUNC[cl].params);
+        rl_pb: int = _JC_FUNC[cl].param_base;
+        rl_base: int = self._win_alloc(_JC_FUNC[cl].num_locals, _JC_FUNC[cl].reg_tmp_base);
         rl_k: int = 0;
         while rl_k < rl_np and rl_k < len(args) {
             self.regs[rl_base + rl_pb + rl_k] = args[rl_k];
             rl_k = rl_k + 1;
         }
-        if cl.func.has_rest and rl_np > 0 {
+        if _JC_FUNC[cl].has_rest and rl_np > 0 {
             rl_items: list[JSValue] = [];
             rl_k = rl_np - 1;
             while rl_k < len(args) {
@@ -35269,7 +35874,7 @@ obj VM {
     as run() does, then push the result for the caller or route the
     exception to the caller frame's handlers."""
     def _reg_run_nested(
-        cl: JSClosure,
+        cl: int,
         cl_val: JSValue,
         rn_this: JSValue,
         rn_base: int,
@@ -35280,8 +35885,8 @@ obj VM {
         if jsv_is_undefined(rn_nt) {
             rn_nt = self.pending_new_target;
         }
-        if cl.is_arrow {
-            rn_nt = cl.lexical_new_target;
+        if jc_is_arrow(cl) {
+            rn_nt = jc_lexical_new_target(cl);
         }
         self._pending_new_target = js_undefined();
         self.pending_new_target = js_undefined();
@@ -35290,10 +35895,10 @@ obj VM {
         rn_ctc: JSValue = self._pending_ctor_class;
         self._pending_ctor_class = 0;
         rn_fr: CallFrame = self._frame_acquire(
-            cl.func,
+            _JC_FUNC[cl],
             len(self.stack),
             self.regs,
-            cl.free_vals,
+            _JC_FV[cl],
             rn_this,
             cl_val,
             rn_nt,
@@ -35305,8 +35910,8 @@ obj VM {
         rn_fr.win = True;
         rn_fr.lb = rn_base;
         rn_saved_mf: list[CompiledFunction] = self.module_fns;
-        if len(cl.module_fns) > 0 {
-            self.module_fns = cl.module_fns;
+        if len(_JC_MF[cl]) > 0 {
+            self.module_fns = _JC_MF[cl];
         }
         self.ftop = self.ftop + 1;
         self.call_depth = self.call_depth + 1;
@@ -35367,7 +35972,7 @@ obj VM {
         if not is_fn_val(frame.self_fn) {
             return 0;
         }
-        se_sup: JSValue = self.realm.closures[get_fn_idx(frame.self_fn)].super_class;
+        se_sup: JSValue = jc_super_class(get_fn_idx(frame.self_fn));
         if not (
             jsv_is_object_cell(se_sup)
             and jsv_to_table_id(se_sup) > 0
@@ -35380,7 +35985,7 @@ obj VM {
         if not is_fn_val(se_fn) {
             return 0;
         }
-        if not self._reg_can_enter_cl(self.realm.closures[get_fn_idx(se_fn)]) {
+        if not self._reg_can_enter_cl(get_fn_idx(se_fn)) {
             return 0;
         }
         se_base: int = (w >> 8) & 65535;
@@ -35408,7 +36013,7 @@ obj VM {
         }
         self._pending_new_target = frame.new_target;
         se_r: int = self._reg_call_enter_cl(
-            self.realm.closures[get_fn_idx(se_fn)],
+            get_fn_idx(se_fn),
             frame,
             st,
             se_fn,
@@ -35539,9 +36144,7 @@ obj VM {
             if frame.func.code[sk_orig].arg2 == 1 or not is_fn_val(frame.self_fn) {
                 return False;
             }
-            sp_home: JSValue = self.realm.closures[
-                get_fn_idx(frame.self_fn)
-            ].home_object;
+            sp_home: JSValue = jc_home_object(get_fn_idx(frame.self_fn));
             if jsv_is_object_cell(sp_home) and jsv_to_table_id(sp_home) > 0 {
                 frame.locals[frame.lb + ((w >> 8) & 65535)] = js_object_get_prototype(
                     sp_home
@@ -35549,9 +36152,7 @@ obj VM {
                 return True;
             }
             # no [[HomeObject]]: the super class's prototype (the handler's fallback)
-            sp_sup: JSValue = self.realm.closures[
-                get_fn_idx(frame.self_fn)
-            ].super_class;
+            sp_sup: JSValue = jc_super_class(get_fn_idx(frame.self_fn));
             if is_native_val(sp_sup) {
                 frame.locals[frame.lb + ((w >> 8) & 65535)] = _native_prop(
                     sp_sup, WK_PROTOTYPE
@@ -35658,11 +36259,11 @@ obj VM {
         if is_fn_val(sv) {
             sd_idx: int = get_fn_idx(sv);
             if sd_idx >= 0
-                and sd_idx < len(self.realm.closures)
-                and self.realm.closures[sd_idx].func.is_method
-                and jsv_is_undefined(self.realm.closures[sd_idx].home_object) {
-                self.realm.closures[sd_idx].home_object = so;
-                self.realm.closures[sd_idx].wb(self.realm.closures[sd_idx].home_object);
+                and sd_idx < jc_count()
+                and _JC_FUNC[sd_idx].is_method
+                and jsv_is_undefined(jc_home_object(sd_idx)) {
+                jc_set_home_object(sd_idx, so);
+                jc_wb(sd_idx, jc_home_object(sd_idx));
             }
         }
         _ = js_object_create_data_property_or_throw(so, sd_key, sv);
@@ -35686,7 +36287,7 @@ obj VM {
             return False;
         }
         if (
-            js_object_table_get(sk_id).cell_flags
+            jo_cell_flags(sk_id)
             & (FLAG_IS_CLASS | FLAG_IS_ARGUMENTS | FLAG_MODULE_NS)
         )
             != 0 {
@@ -35733,27 +36334,27 @@ obj VM {
     """_reg_set_index_fast's append (the element at `length`), with the
     owned row handle the present-element write does without."""
     def _reg_set_index_grow(so: JSValue, sf_tid: int, sf_di: int, sv: JSValue) -> bool {
-        sf_o: JSObject = js_object_table_get(sf_tid);
-        if sf_o.elems_kind == ELEMS_NONE {
+        sf_o: int = sf_tid;
+        if jo_elems_kind(sf_o) == ELEMS_NONE {
             return False;
         }
-        if sf_di == sf_o.elen()
+        if sf_di == jo_elen(sf_o)
             and idx_protector_ok()
-            and sf_o.is_ext()
-            and sf_o.mode == MAP_MODE_SHAPE
-            and (sf_o.cell_flags & FLAG_IS_ARGUMENTS) == 0 {
-            sf_pk: int = shape_lookup(sf_o.shape_id, WK_LENGTH);
+            and jo_is_ext(sf_o)
+            and jo_mode(sf_o) == MAP_MODE_SHAPE
+            and (jo_cell_flags(sf_o) & FLAG_IS_ARGUMENTS) == 0 {
+            sf_pk: int = shape_lookup(jo_shape_id(sf_o), WK_LENGTH);
             if sf_pk >= 0 and (sf_pk & SHAPE_ATTR_ACCESSOR) == 0 {
-                sf_len: JSValue = sf_o.sget(sf_pk // 16);
+                sf_len: JSValue = jo_sget(sf_o, sf_pk // 16);
                 if jsv_is_int32(sf_len) {
                     sf_cur: int = jsv_to_int32(sf_len);
                     if sf_di < sf_cur {
-                        sf_o.epush(sv);
+                        jo_epush(sf_o, sv);
                         return True;
                     }
                     if (sf_pk & PROP_WRITABLE) != 0 {
-                        sf_o.epush(sv);
-                        sf_o.sset(sf_pk // 16, js_int(sf_di + 1));
+                        jo_epush(sf_o, sv);
+                        jo_sset(sf_o, sf_pk // 16, js_int(sf_di + 1));
                         return True;
                     }
                 }
@@ -35944,6 +36545,9 @@ obj VM {
         # after walking the prototype chain to the accessor.
         gs_g0: JSValue = _vm_accessor_ic_hit(frame.func.code[c], va);
         if not jsv_is_hole(gs_g0) {
+            if is_fn_val(gs_g0) {
+                _ric_fill_getter(frame.func.ric_ptr, c, frame.func.code[c], gs_g0);
+            }
             gs_r0: int = self._reg_call_enter(
                 frame, st, gs_g0, va, (w >> 8) & 65535, pc, 0, c, pc
             );
@@ -35987,6 +36591,20 @@ obj VM {
                 gs_v = _vm_fn_get_plain(va, gs_key);
             } elif is_native_val(va) {
                 gs_v = _native_prop(va, gs_key);
+            }
+        }
+        if jsv_is_hole(gs_v) and gs_key != 0 and (jsv_is_int32(va) or jsv_is_double(va)) {
+            # A %Number.prototype% data property (a method): where it lives,
+            # for _vm_get_cached, and its value now
+            _vm_prim_method_ic_fill(
+                frame.func.code[c], gs_key, js_number_get_proto(), _NUM_IC_HOLDER
+            );
+            if frame.func.code[c].ic_holder == _NUM_IC_HOLDER {
+                gs_v = js_object_ic_hit(
+                    jsv_from_object_id(frame.func.code[c].ic_obj),
+                    frame.func.code[c].ic_obj2,
+                    frame.func.code[c].ic_ver // 16
+                );
             }
         }
         if not jsv_is_hole(gs_v) {
@@ -36043,14 +36661,14 @@ obj VM {
             return jsv_hole();
         }
         og_ci: int = get_fn_idx(og_fn);
-        if og_ci < 0 or og_ci >= len(self.realm.closures) {
+        if og_ci < 0 or og_ci >= jc_count() {
             return jsv_hole();
         }
-        if self.realm.closures[og_ci].napi_cb_ptr != 0
-            or self.realm.closures[og_ci].func.is_generator
-            or self.realm.closures[og_ci].func.is_async
-            or self.realm.closures[og_ci].func.is_bound
-            or self.realm.closures[og_ci].func.arguments_slot >= 0 {
+        if jc_napi_cb_ptr(og_ci) != 0
+            or _JC_FUNC[og_ci].is_generator
+            or _JC_FUNC[og_ci].is_async
+            or _JC_FUNC[og_ci].is_bound
+            or _JC_FUNC[og_ci].arguments_slot >= 0 {
             return jsv_hole();
         }
         return og_fn;
@@ -36079,7 +36697,7 @@ obj VM {
             != 0 {
             return False;
         }
-        if (js_object_table_get(gg_id).cell_flags & FLAG_IS_CLASS) != 0 {
+        if (jo_cell_flags(gg_id) & FLAG_IS_CLASS) != 0 {
             return False;
         }
         if js_object_binary_kind_id(gg_id) == BINARY_KIND_TYPED_ARRAY
@@ -36291,7 +36909,7 @@ obj VM {
             and js_object_elems_kind_id(jsv_to_table_id(va)) == ELEMS_NONE
             and js_object_brand(va) == 0
             and js_object_binary_kind_id(jsv_to_table_id(va)) == 0
-            and (js_object_table_get(jsv_to_table_id(va)).cell_flags & FLAG_IS_CLASS)
+            and (jo_cell_flags(jsv_to_table_id(va)) & FLAG_IS_CLASS)
                 == 0 {
             # An index key on a plain object without elements (`counts[c]`):
             # the ordinary walk (hole for exotic levels / accessors).
@@ -36409,6 +37027,26 @@ obj VM {
             frame.locals[frame.lb + ((w >> 8) & 65535)] = js_int(~jsv_to_int32(va));
             return;
         }
+        if op == 46 {
+            # TOSTR (a template literal's `${v}`): a string is its own value;
+            # an int32 its decimal text (ToString needs no ToPrimitive).
+            if jsv_is_string_cell(va) {
+                frame.locals[frame.lb + ((w >> 8) & 65535)] = va;
+                return;
+            }
+            if jsv_is_int32(va) {
+                if jsv_to_int32(va) >= 0 and jsv_to_int32(va) < 1024 {
+                    frame.locals[frame.lb + ((w >> 8) & 65535)] = jsv_from_string_id(
+                        str_intern_index(jsv_to_int32(va))
+                    );
+                } else {
+                    frame.locals[frame.lb + ((w >> 8) & 65535)] = jsv_from_string_id(
+                        str_heap_ascii(str(jsv_to_int32(va)))
+                    );
+                }
+                return;
+            }
+        }
         if op == 43 {
             if is_fn_val(va) or is_native_val(va) {
                 frame.locals[frame.lb + ((w >> 8) & 65535)] = _vm_typeof_val(5);
@@ -36434,9 +37072,33 @@ obj VM {
     def _reg_op_newarray(frame: CallFrame, w: int) {
         na_base: int = (w >> 8) & 65535;
         na_n: int = (w >> 24) & 65535;
+        if na_n >= 32768 {
+            self._reg_op_newobjlit(frame, w);
+            return;
+        }
         # (the elements are copied from the registers: no temporary list)
         frame.locals[frame.lb + (na_base)] = js_array_create_range(
             frame.locals, frame.lb + na_base, na_n
+        );
+    }
+
+    """NEW_OBJECT_LIT base, n (NEWARRAY's word with count bit 15; orig in c):
+    the object of regs[base .. base+n), born at the site's learned shape
+    (ric word 0)."""
+    def _reg_op_newobjlit(frame: CallFrame, w: int) {
+        nl_base: int = (w >> 8) & 65535;
+        nl_orig: int = (w >> 40) & 8388607;
+        nl_e: int = 0;
+        if frame.func.ric_ptr != 0 {
+            nl_e = wrapping_add(frame.func.ric_ptr, wrapping_mul(nl_orig, 16));
+        }
+        frame.locals[frame.lb + (nl_base)] = _obj_lit_make(
+            self,
+            frame.func,
+            nl_orig,
+            nl_e,
+            wrapping_add(__list_data_ptr(frame.locals), wrapping_mul(frame.lb + nl_base, 8)),
+            ((w >> 24) & 65535) - 32768
         );
     }
 
@@ -36520,7 +37182,7 @@ obj VM {
             } elif jsv_is_object_cell(va)
                 and jsv_to_table_id(va) > 0
                 and (
-                    js_object_table_get(jsv_to_table_id(va)).cell_flags & FLAG_IS_CLASS
+                    jo_cell_flags(jsv_to_table_id(va)) & FLAG_IS_CLASS
                 )
                     != 0 {
                 nw_r = self._reg_new_class_enter(
@@ -36852,6 +37514,7 @@ obj VM {
                     # reads no Instruction field and runs no IC-kind test.
                     xi = __mem_load_i64(wrapping_add(ricp, wrapping_mul(c, 16)));
                     vr = jsv_hole();
+                    cr = 0;
                     if xi > 0 {
                         vr = js_object_ic_hit(
                             va,
@@ -36860,22 +37523,69 @@ obj VM {
                                 wrapping_add(ricp, wrapping_add(wrapping_mul(c, 16), 8))
                             )
                         );
-                    }
-                    if jsv_is_hole(vr) {
-                        vr = _vm_get_cached(frame.func.code[c], va);
-                        if not jsv_is_hole(vr) and jsv_is_object_cell(va) {
-                            _ric_fill_get(ricp, c, frame.func.code[c], va);
+                    } elif xi == -1 {
+                        # a polymorphic site's table (_ric_fill_get)
+                        vr = js_object_poly_get(
+                            va,
+                            __mem_load_i64(
+                                wrapping_add(ricp, wrapping_add(wrapping_mul(c, 16), 8))
+                            )
+                        );
+                    } elif xi < -1 {
+                        if ((-2 - xi) & 1) == 0 {
+                            # a data slot of the receiver's [[Prototype]] (_ric_fill_inh)
+                            vr = js_object_ric_get_inh(
+                                va,
+                                xi,
+                                __mem_load_i64(
+                                    wrapping_add(ricp, wrapping_add(wrapping_mul(c, 16), 8))
+                                )
+                            );
+                        } else {
+                            # an inherited getter (_ric_fill_getter), entered in-loop
+                            cr = self._reg_getter_flat(
+                                frame,
+                                st,
+                                va,
+                                xi,
+                                __mem_load_i64(
+                                    wrapping_add(ricp, wrapping_add(wrapping_mul(c, 16), 8))
+                                ),
+                                (w >> 8) & 65535,
+                                c,
+                                pc
+                            );
+                            if cr == 1 {
+                                vr = 0;
+                            }
                         }
                     }
-                    if not jsv_is_hole(vr) {
-                        _rset(rb, lb, ((w >> 8) & 65535), vr);
-                    } elif self._reg_getfield_slow(frame, st, w, c, va, pc) == 1 {
-                        # a plain-JS getter entered in-loop
+                    if cr == 1 {
                         frame = self.frames[self.ftop - 1];
                         rcp = frame.func.rcode_ptr;
                         ricp = frame.func.ric_ptr;
                         lb = frame.lb;
                         pc = 0;
+                    } else {
+                        if jsv_is_hole(vr) {
+                            vr = _vm_get_cached(frame.func.code[c], va);
+                            if not jsv_is_hole(vr) and jsv_is_object_cell(va) {
+                                _ric_fill_get(ricp, c, frame.func.code[c], va);
+                                if frame.func.code[c].ic_holder < 0 {
+                                    _ric_fill_inh(ricp, c, frame.func.code[c], va);
+                                }
+                            }
+                        }
+                        if not jsv_is_hole(vr) {
+                            _rset(rb, lb, ((w >> 8) & 65535), vr);
+                        } elif self._reg_getfield_slow(frame, st, w, c, va, pc) == 1 {
+                            # a plain-JS getter entered in-loop
+                            frame = self.frames[self.ftop - 1];
+                            rcp = frame.func.rcode_ptr;
+                            ricp = frame.func.ric_ptr;
+                            lb = frame.lb;
+                            pc = 0;
+                        }
                     }
                 }
             } elif op == 4 {
@@ -37048,7 +37758,9 @@ obj VM {
                     # The site's stack instruction, read once: every path below
                     # takes it, and its arg3 bit 8 keeps a call off the
                     # in-loop entries (ok: the bit is clear).
-                    xo = frame.func.rorig[wrapping_add(pc, -1)];
+                    xo = __mem_load_i64(
+                        wrapping_add(__list_data_ptr(frame.func.rorig), wrapping_mul(wrapping_add(pc, -1), 8))
+                    );
                     ok = (frame.func.code[xo].arg3 & 8) == 0;
                     # (a closure value is never a native, a proxy or
                     # [[IsHTMLDDA]]: is_fn_val excludes them)
@@ -37057,13 +37769,16 @@ obj VM {
                         # borrowed list element), the general entry otherwise
                         zi = get_fn_idx(va);
                         if _R1_PLAIN == 1
-                            and zi < len(self.realm.closures)
-                            and self.realm.closures[zi].call_plain >= 0
-                            and self.realm.closures[zi].func.risa == 1
+                            and zi < jc_count()
+                            and (
+                                jc_call_plain(zi) == 1
+                                or (jc_call_plain(zi) == 0 and _JC_FUNC[zi].risa == 1)
+                            )
                             and self.ftop < len(self.frames) {
                             cr = self._reg_enter_plain(
                                 self.frames[self.ftop],
-                                self.realm.closures[zi],
+                                zi,
+                                _JC_FUNC[zi],
                                 frame,
                                 st,
                                 va,
@@ -37072,7 +37787,8 @@ obj VM {
                                 xi,
                                 c | ((w >> 40) & 8388608),
                                 xo,
-                                yi
+                                yi,
+                                0
                             );
                         }
                         if cr == 0 {
@@ -37088,15 +37804,31 @@ obj VM {
                                 yi
                             );
                         }
-                    } elif ok
-                        and br >= 0
-                        and is_native_val(va)
-                        and get_native_kind(va) == NATIVE_KIND_FN_CALL
-                        and len(frame.with_objs) == 0
-                        and is_fn_val(vb)
-                        and not is_native_val(vb) {
-                        # fn.call(t, args...) on a closure: enter fn with this = t
-                        cr = self._reg_fn_call_enter(frame, st, vb, a, xi, c, xo, yi);
+                    } elif ok and is_native_val(va) {
+                        # (the native's kind, read once for both checks)
+                        zi = get_native_kind(va);
+                        if zi == NATIVE_KIND_FN_CALL
+                            and br >= 0
+                            and len(frame.with_objs) == 0
+                            and is_fn_val(vb)
+                            and not is_native_val(vb) {
+                            # fn.call(t, args...) on a closure: enter fn with this = t
+                            cr = self._reg_fn_call_enter(frame, st, vb, a, xi, c, xo, yi);
+                        }
+                        if cr == 0 and zi >= 0 and zi < len(_ND_SLOT) and _ND_SLOT[zi] != 0 {
+                            # a hot built-in on plain operands, done in place
+                            vr = _reg_native_direct(_ND_SLOT[zi], vb, frame, xi, c);
+                            if not jsv_is_hole(vr) {
+                                _rset(rb, lb, a, vr);
+                                cr = 3;
+                            }
+                        }
+                        # (a plain CALL of a native passes this = undefined:
+                        # the receiver-free modes 2 / 3 / 5 accept it)
+                        if cr == 0
+                            and self._reg_native_fast_call(frame, st, a, va, vb, xi, c, xo, zi) {
+                            cr = 3;
+                        }
                     }
                     if cr == 1 {
                         frame = self.frames[self.ftop - 1];
@@ -37105,31 +37837,7 @@ obj VM {
                         lb = frame.lb;
                         pc = 0;
                     } elif cr == 0 {
-                        # (a plain CALL of a native passes this = undefined:
-                        # the receiver-free modes 2 / 3 / 5 accept it)
-                        if ok
-                            and is_native_val(va)
-                            and self._reg_native_fast_call(
-                                frame,
-                                st,
-                                a,
-                                va,
-                                vb,
-                                xi,
-                                c,
-                                xo
-                            ) {} else {
-                            self._reg_bridge_call(
-                                frame,
-                                st,
-                                xo,
-                                a,
-                                b & 32767,
-                                br,
-                                xi,
-                                c
-                            );
-                        }
+                        self._reg_bridge_call(frame, st, xo, a, b & 32767, br, xi, c);
                         pc = yi;
                     } else {
                         pc = yi;
@@ -37169,21 +37877,16 @@ obj VM {
                     self._reg_tdz_throw(frame, st, a & 32767, c);
                 } elif (b & 32768) != 0 and js_is_tdz(vb) {
                     self._reg_tdz_throw(frame, st, b & 32767, c);
-                } elif __mem_load_i64(wrapping_add(ricp, wrapping_mul(c, 16))) > 0
-                    and js_object_ic_set_hit(
-                        va,
-                        __mem_load_i64(wrapping_add(ricp, wrapping_mul(c, 16))),
-                        __mem_load_i64(
-                            wrapping_add(ricp, wrapping_add(wrapping_mul(c, 16), 8))
-                        ),
-                        vb
+                } elif __mem_load_i64(wrapping_add(ricp, wrapping_mul(c, 16))) != 0
+                    and js_object_ric_set(
+                        va, wrapping_add(ricp, wrapping_mul(c, 16)), vb
                     ) {} elif _vm_set_ic_ok(frame.func.code[c])
                     and js_object_ic_set_hit(
                         va, frame.func.code[c].ic_obj, frame.func.code[c].ic_ver // 16, vb
                     ) {
                     # (the site's flat IC takes this entry for the next hit)
                     _ric_fill_set(ricp, c, frame.func.code[c]);
-                } elif _vm_set_probe(frame.func.code[c], va, vb) {} elif self._reg_setfield_slow(
+                } elif _vm_set_probe(frame.func.code[c], va, vb, ricp, c) {} elif self._reg_setfield_slow(
                     frame, st, w, c, va, vb, pc
                 )
                     == 1 {
@@ -37341,7 +38044,9 @@ obj VM {
                     # The site's stack instruction, read once: every path below
                     # takes it, and its arg3 bit 8 keeps a call off the
                     # in-loop entries (ok: the bit is clear).
-                    xo = frame.func.rorig[wrapping_add(pc, -1)];
+                    xo = __mem_load_i64(
+                        wrapping_add(__list_data_ptr(frame.func.rorig), wrapping_mul(wrapping_add(pc, -1), 8))
+                    );
                     ok = (frame.func.code[xo].arg3 & 8) == 0;
                     # (a closure value is never a native, a proxy or
                     # [[IsHTMLDDA]]: is_fn_val excludes them)
@@ -37350,13 +38055,16 @@ obj VM {
                         # borrowed list element), the general entry otherwise
                         zi = get_fn_idx(va);
                         if _R1_PLAIN == 1
-                            and zi < len(self.realm.closures)
-                            and self.realm.closures[zi].call_plain >= 0
-                            and self.realm.closures[zi].func.risa == 1
+                            and zi < jc_count()
+                            and (
+                                jc_call_plain(zi) == 1
+                                or (jc_call_plain(zi) == 0 and _JC_FUNC[zi].risa == 1)
+                            )
                             and self.ftop < len(self.frames) {
                             cr = self._reg_enter_plain(
                                 self.frames[self.ftop],
-                                self.realm.closures[zi],
+                                zi,
+                                _JC_FUNC[zi],
                                 frame,
                                 st,
                                 va,
@@ -37365,7 +38073,8 @@ obj VM {
                                 xi,
                                 c | ((w >> 40) & 8388608),
                                 xo,
-                                yi
+                                yi,
+                                0
                             );
                         }
                         if cr == 0 {
@@ -37381,15 +38090,31 @@ obj VM {
                                 yi
                             );
                         }
-                    } elif ok
-                        and br >= 0
-                        and is_native_val(va)
-                        and get_native_kind(va) == NATIVE_KIND_FN_CALL
-                        and len(frame.with_objs) == 0
-                        and is_fn_val(vb)
-                        and not is_native_val(vb) {
-                        # fn.call(t, args...) on a closure: enter fn with this = t
-                        cr = self._reg_fn_call_enter(frame, st, vb, a, xi, c, xo, yi);
+                    } elif ok and is_native_val(va) {
+                        # (the native's kind, read once for both checks)
+                        zi = get_native_kind(va);
+                        if zi == NATIVE_KIND_FN_CALL
+                            and br >= 0
+                            and len(frame.with_objs) == 0
+                            and is_fn_val(vb)
+                            and not is_native_val(vb) {
+                            # fn.call(t, args...) on a closure: enter fn with this = t
+                            cr = self._reg_fn_call_enter(frame, st, vb, a, xi, c, xo, yi);
+                        }
+                        if cr == 0 and zi >= 0 and zi < len(_ND_SLOT) and _ND_SLOT[zi] != 0 {
+                            # a hot built-in on plain operands, done in place
+                            vr = _reg_native_direct(_ND_SLOT[zi], vb, frame, xi, c);
+                            if not jsv_is_hole(vr) {
+                                _rset(rb, lb, a, vr);
+                                cr = 3;
+                            }
+                        }
+                        # (a plain CALL of a native passes this = undefined:
+                        # the receiver-free modes 2 / 3 / 5 accept it)
+                        if cr == 0
+                            and self._reg_native_fast_call(frame, st, a, va, vb, xi, c, xo, zi) {
+                            cr = 3;
+                        }
                     }
                     if cr == 1 {
                         frame = self.frames[self.ftop - 1];
@@ -37398,31 +38123,7 @@ obj VM {
                         lb = frame.lb;
                         pc = 0;
                     } elif cr == 0 {
-                        # (a plain CALL of a native passes this = undefined:
-                        # the receiver-free modes 2 / 3 / 5 accept it)
-                        if ok
-                            and is_native_val(va)
-                            and self._reg_native_fast_call(
-                                frame,
-                                st,
-                                a,
-                                va,
-                                vb,
-                                xi,
-                                c,
-                                xo
-                            ) {} else {
-                            self._reg_bridge_call(
-                                frame,
-                                st,
-                                xo,
-                                a,
-                                b & 32767,
-                                br,
-                                xi,
-                                c
-                            );
-                        }
+                        self._reg_bridge_call(frame, st, xo, a, b & 32767, br, xi, c);
                         pc = yi;
                     } else {
                         pc = yi;
@@ -37624,6 +38325,14 @@ obj VM {
                     } else {
                         _rset(rb, lb, ((w >> 8) & 65535), float_to_jsval(fa - fb));
                     }
+                } elif jsv_is_string_cell(va) and jsv_is_string_cell(vb) {
+                    # string + string: the rope (js_add's first case)
+                    _rset(
+                        rb,
+                        lb,
+                        ((w >> 8) & 65535),
+                        jsv_from_string_id(str_rope(jsv_to_table_id(va), jsv_to_table_id(vb)))
+                    );
                 } elif (b & 32768) != 0 and js_is_tdz(va) {
                     self._reg_tdz_throw(
                         frame, st, b & 32767, frame.func.rorig[wrapping_add(pc, -1)]
@@ -37708,10 +38417,20 @@ obj VM {
                     _rset(rb, lb, ((w >> 8) & 65535), cell_get(vr));
                 }
             } elif op == 8 {
-                # LOADGLOBAL dst, orig
-                self._reg_load_global(
-                    frame, st, (w >> 8) & 65535, (w >> 40) & 8388607
-                );
+                # LOADGLOBAL dst, orig: the site's flat cache (_reg_load_global
+                # fills it: the value, the globals epoch + 1) while no global
+                # was written and the lookup has no other scope to consult
+                c = (w >> 40) & 8388607;
+                if ricp != 0
+                    and __mem_load_i64(wrapping_add(ricp, wrapping_add(wrapping_mul(c, 16), 8)))
+                    == wrapping_add(self.gw_epoch, 1)
+                    and global_obj_epoch() == self.global_obj_seen_epoch
+                    and len(self.eval_scope_frames) == 0
+                    and len(self.global_lexical) == 0 {
+                    _rset(rb, lb, ((w >> 8) & 65535), __mem_load_i64(wrapping_add(ricp, wrapping_mul(c, 16))));
+                } else {
+                    self._reg_load_global(frame, st, (w >> 8) & 65535, c);
+                }
             } elif op == 43 {
                 # NEG (other operands) BNOT TYPEOF TONUM TOSTR dst, src
                 self._reg_op_unary(frame, st, w, op, pc);
@@ -37747,8 +38466,15 @@ obj VM {
                     pc = wrapping_add(pc, ((w >> 40) & 8388607));
                 }
             } elif op == 85 {
-                # NEWARRAY base, n
-                self._reg_op_newarray(frame, w);
+                # NEWARRAY base, n (an empty literal straight from here; count
+                # bit 15: NEW_OBJECT_LIT)
+                if ((w >> 24) & 65535) == 0 {
+                    _rset(rb, lb, ((w >> 8) & 65535), js_array_new_empty());
+                } elif ((w >> 24) & 65535) >= 32768 {
+                    self._reg_op_newobjlit(frame, w);
+                } else {
+                    self._reg_op_newarray(frame, w);
+                }
             } elif op == 18 {
                 # INC slot, delta+1 -> skip (slow path falls into the window)
                 a = (w >> 8) & 65535;
@@ -37763,8 +38489,33 @@ obj VM {
                     pc = (w >> 40) & 8388607;
                 }
             } elif op == 15 {
-                # NEWOBJECT dst
-                _rset(rb, lb, ((w >> 8) & 65535), js_object_new_ordinary());
+                # NEWOBJECT dst (c = function index + 1: MAKE_ARROW, regisa)
+                if (w >> 40) == 0 {
+                    _rset(rb, lb, ((w >> 8) & 65535), js_object_new_ordinary());
+                } else {
+                    _rset(
+                        rb, lb, ((w >> 8) & 65535), self._make_arrow_idx(frame, ((w >> 40) & 8388607) - 1)
+                    );
+                }
+            } elif op == 46 {
+                # TOSTR dst, src (a template's `${v}`): a string as it is, a
+                # small int32 its cached index string; the rest: the helper
+                va = _rget(rb, lb, ((w >> 24) & 32767));
+                if jsv_is_string_cell(va) {
+                    _rset(rb, lb, ((w >> 8) & 65535), va);
+                } elif jsv_is_int32(va)
+                    and jsv_to_int32(va) >= 0
+                    and jsv_to_int32(va) < len(_IDXK_IDS)
+                    and _IDXK_IDS[jsv_to_int32(va)] != 0 {
+                    # (str_intern_index's cache read in place)
+                    _rset(rb, lb, ((w >> 8) & 65535), jsv_from_string_id(_IDXK_IDS[jsv_to_int32(va)]));
+                } elif jsv_is_int32(va) and jsv_to_int32(va) >= 0 and jsv_to_int32(va) < 1024 {
+                    _rset(
+                        rb, lb, ((w >> 8) & 65535), jsv_from_string_id(str_intern_index(jsv_to_int32(va)))
+                    );
+                } else {
+                    self._reg_op_unary(frame, st, w, op, pc);
+                }
             } elif op == 87 {
                 # NEW dst, ctor, argc [args...] (see _reg_op_new)
                 if self._reg_op_new(frame, st, w, pc) == 1 {
@@ -39285,8 +40036,8 @@ def _vm_proxy_target_own_key_ids(vm: VM, target: JSValue) -> list[int] {
             out_fk.append(WK_PROTOTYPE);
         }
         fi_fk: int = get_fn_idx(target);
-        if fi_fk >= 0 and fi_fk < len(vm.realm.closures) {
-            for fk_f in js_object_all_keys(cl_props(vm.realm.closures[fi_fk])) {
+        if fi_fk >= 0 and fi_fk < jc_count() {
+            for fk_f in js_object_all_keys(cl_props(fi_fk)) {
                 if fk_f != WK_LENGTH
                     and fk_f != WK_NAME
                     and fk_f != WK_PROTOTYPE
@@ -39908,7 +40659,7 @@ def _vm_ordinary_set_differing_receiver(
             return False;
         }
         if is_fn_val(own_setter) {
-            set_cl: JSClosure = vm.realm.closures[get_fn_idx(own_setter)];
+            set_cl: int = get_fn_idx(own_setter);
             _ = vm.run_cl(set_cl, own_setter, receiver, [val]);
             if vm.had_exception or vm_has_native_exc() {
                 return False;
@@ -40410,10 +41161,10 @@ def _vm_all_own_key_ids_ordered(vm: VM, jsobj: JSValue) -> list[int] {
     }
     if is_fn_val(jsobj) {
         fidx_e: int = get_fn_idx(jsobj);
-        if fidx_e >= 0 and fidx_e < len(vm.realm.closures) {
+        if fidx_e >= 0 and fidx_e < jc_count() {
             return _vm_sort_own_key_ids(
                 _vm_filter_fn_prop_keys(
-                    js_object_all_keys(cl_props(vm.realm.closures[fidx_e]))
+                    js_object_all_keys(cl_props(fidx_e))
                 )
             );
         }
@@ -40688,8 +41439,8 @@ def _vm_object_get_vop_prop(
         getter_p: JSValue = js_object_lookup_getter(target_obj, key);
         if not jsv_is_undefined(getter_p) and is_fn_val(getter_p) {
             gp_idx: int = get_fn_idx(getter_p);
-            if gp_idx < len(vm.realm.closures) {
-                return vm.run_cl(vm.realm.closures[gp_idx], getter_p, receiver, []);
+            if gp_idx < jc_count() {
+                return vm.run_cl(gp_idx, getter_p, receiver, []);
             }
         }
     }
@@ -40736,10 +41487,10 @@ def _vm_enumerable_own_key_ids_ordered(vm: VM, jsobj: JSValue) -> list[int] {
     }
     if is_fn_val(jsobj) {
         fidx_e: int = get_fn_idx(jsobj);
-        if fidx_e >= 0 and fidx_e < len(vm.realm.closures) {
+        if fidx_e >= 0 and fidx_e < jc_count() {
             return _vm_filter_fn_prop_keys(
                 object_enumerable_own_key_ids_ordered(
-                    cl_props(vm.realm.closures[fidx_e])
+                    cl_props(fidx_e)
                 )
             );
         }
@@ -40831,8 +41582,8 @@ def _vm_integrity_own_keys(vm: VM, target_i: JSValue) -> list[int] {
             out_f.append(WK_PROTOTYPE);
         }
         fi_f: int = get_fn_idx(target_i);
-        if fi_f >= 0 and fi_f < len(vm.realm.closures) {
-            for fk_f in js_object_all_keys(cl_props(vm.realm.closures[fi_f])) {
+        if fi_f >= 0 and fi_f < jc_count() {
+            for fk_f in js_object_all_keys(cl_props(fi_f)) {
                 if fk_f != WK_LENGTH
                     and fk_f != WK_NAME
                     and fk_f != WK_PROTOTYPE
@@ -40900,8 +41651,8 @@ def _vm_object_integrity(
         } elif is_fn_val(target_i) {
             fi_p: int = get_fn_idx(target_i);
             prevented = fi_p >= 0
-                and fi_p < len(vm.realm.closures)
-                and js_object_prevent_extensions(cl_props(vm.realm.closures[fi_p])) == 0;
+                and fi_p < jc_count()
+                and js_object_prevent_extensions(cl_props(fi_p)) == 0;
         } elif is_native_val(target_i) {
             prevented = js_object_prevent_extensions(native_props_ensure(target_i))
                 == 0;
@@ -40919,9 +41670,9 @@ def _vm_object_integrity(
             extensible_i = proxy_trap_is_extensible(vm, target_i);
         } elif is_fn_val(target_i) {
             fi_i: int = get_fn_idx(target_i);
-            if fi_i >= 0 and fi_i < len(vm.realm.closures) {
+            if fi_i >= 0 and fi_i < jc_count() {
                 extensible_i = js_object_is_extensible(
-                    cl_props(vm.realm.closures[fi_i])
+                    cl_props(fi_i)
                 );
             }
         } elif is_native_val(target_i) {
@@ -41017,8 +41768,8 @@ def _vm_object_integrity(
     return True;
 }
 
-def _vm_is_bound_fn(bound_cl: JSClosure) -> bool {
-    return bound_cl.func.is_bound;
+def _vm_is_bound_fn(bound_cl: int) -> bool {
+    return _JC_FUNC[bound_cl].is_bound;
 }
 
 """Perform ONE step of ES §14.4.14 `yield *` delegation for a non-generator
@@ -41067,7 +41818,7 @@ def _vm_iter_next_delegate_mode(
             in_tr: JSValue = js_undefined();
             if is_fn_val(in_throw_fn) {
                 in_tr = vm.run_cl(
-                    vm.realm.closures[get_fn_idx(in_throw_fn)],
+                    get_fn_idx(in_throw_fn),
                     in_throw_fn,
                     in_target,
                     [send_val]
@@ -41125,7 +41876,7 @@ def _vm_iter_next_delegate_mode(
             in_rr: JSValue = js_undefined();
             if is_fn_val(in_ret_fn) {
                 in_rr = vm.run_cl(
-                    vm.realm.closures[get_fn_idx(in_ret_fn)],
+                    get_fn_idx(in_ret_fn),
                     in_ret_fn,
                     in_target,
                     [send_val]
@@ -41196,7 +41947,7 @@ def _vm_iter_next_delegate_mode(
             in_result: JSValue = js_undefined();
             if is_fn_val(in_next_fn) {
                 in_result = vm.run_cl(
-                    vm.realm.closures[get_fn_idx(in_next_fn)],
+                    get_fn_idx(in_next_fn),
                     in_next_fn,
                     in_custom,
                     [send_val]
@@ -41353,9 +42104,9 @@ def _vm_iter_next_delegate(vm: VM, in_iter: JSValue) -> JSValue {
         }
         in_result: JSValue = js_undefined();
         if is_fn_val(in_next_fn) {
-            in_next_cl: JSClosure = vm.realm.closures[get_fn_idx(in_next_fn)];
+            in_next_cl: int = get_fn_idx(in_next_fn);
             in_result = vm.run(
-                in_next_cl.func, in_custom, [], in_next_cl.free_vals, in_next_fn
+                _JC_FUNC[in_next_cl], in_custom, [], _JC_FV[in_next_cl], in_next_fn
             );
         } elif is_native_val(in_next_fn) {
             in_result = _vm_call_native_proxy_aware(
@@ -41440,7 +42191,7 @@ def _vm_materialize_delegate_iter(vm: VM, src: JSValue, is_async: bool) -> JSVal
             return js_undefined();
         }
         if is_fn_val(da_async_fn) {
-            da_cl: JSClosure = vm.realm.closures[get_fn_idx(da_async_fn)];
+            da_cl: int = get_fn_idx(da_async_fn);
             da_iter: JSValue = vm.run_cl(da_cl, da_async_fn, src, []);
             if vm.had_exception {
                 return js_undefined();
@@ -41546,7 +42297,7 @@ def _vm_materialize_delegate_iter(vm: VM, src: JSValue, is_async: bool) -> JSVal
             return js_undefined();
         }
         if is_fn_val(gi_sym_fn) {
-            gi_sym_cl: JSClosure = vm.realm.closures[get_fn_idx(gi_sym_fn)];
+            gi_sym_cl: int = get_fn_idx(gi_sym_fn);
             gi_user_iter: JSValue = vm.run_cl(gi_sym_cl, gi_sym_fn, src, []);
             if vm.had_exception {
                 return js_undefined();
@@ -41826,7 +42577,7 @@ def _vm_iterator_close_dstr(vm: VM, iter_rec: JSValue, abrupt: bool) -> JSValue 
     }
 
     ic_result: JSValue = vm.run_cl(
-        vm.realm.closures[get_fn_idx(ic_ret)], ic_ret, ic_target, []
+        get_fn_idx(ic_ret), ic_ret, ic_target, []
     );
     if vm.had_exception {
         ic_thrown: JSValue = vm.pending_exc;
@@ -41922,8 +42673,8 @@ def _vm_object_fromEntries(vm: VM, iterable: JSValue) -> JSValue {
     iterator: JSValue = js_undefined();
     if is_fn_val(iter_factory) {
         fe_ifn: int = get_fn_idx(iter_factory);
-        if fe_ifn < len(vm.realm.closures) {
-            iterator = vm.run_cl(vm.realm.closures[fe_ifn], iter_factory, iterable, []);
+        if fe_ifn < jc_count() {
+            iterator = vm.run_cl(fe_ifn, iter_factory, iterable, []);
         }
     } else {
         iterator = _vm_call_native_proxy_aware(
@@ -41945,8 +42696,8 @@ def _vm_object_fromEntries(vm: VM, iterable: JSValue) -> JSValue {
         step: JSValue = js_undefined();
         if is_fn_val(next_fn) {
             fe_nfn: int = get_fn_idx(next_fn);
-            if fe_nfn < len(vm.realm.closures) {
-                step = vm.run_cl(vm.realm.closures[fe_nfn], next_fn, iterator, []);
+            if fe_nfn < jc_count() {
+                step = vm.run_cl(fe_nfn, next_fn, iterator, []);
             }
         } elif is_native_val(next_fn) {
             step = _vm_call_native_proxy_aware(
@@ -42306,8 +43057,8 @@ def _vm_get_for_list(vm: VM, o: JSValue, kid: int) -> JSValue {
     # Function values: user-defined accessors live on fn_props (Object.defineProperty).
     if is_fn_val(o) {
         fn_idx_gl: int = get_fn_idx(o);
-        if fn_idx_gl >= 0 and fn_idx_gl < len(vm.realm.closures) {
-            fp_gl: JSValue = vm.realm.closures[fn_idx_gl].fn_props;
+        if fn_idx_gl >= 0 and fn_idx_gl < jc_count() {
+            fp_gl: JSValue = jc_fn_props(fn_idx_gl);
             if jsv_is_object_cell(fp_gl) {
                 getter_fp: JSValue = js_object_lookup_getter(fp_gl, kid);
                 if not jsv_is_undefined(getter_fp) {
@@ -42664,10 +43415,10 @@ def _vm_json_hook_call(
     }
     if is_fn_val(fn) {
         fn_idx: int = get_fn_idx(fn);
-        if fn_idx >= len(vm.realm.closures) {
+        if fn_idx >= jc_count() {
             return js_undefined();
         }
-        cl: JSClosure = vm.realm.closures[fn_idx];
+        cl: int = fn_idx;
         res_f: JSValue = vm.run_cl(cl, fn, this_val, args);
         return res_f;
     }
@@ -43468,13 +44219,13 @@ def _vm_function_define_property(
     vm: VM, fn_v: JSValue, key_v: JSValue, desc: JSValue, as_object: bool
 ) -> JSValue {
     fn_idx: int = get_fn_idx(fn_v);
-    if fn_idx < 0 or fn_idx >= len(vm.realm.closures) {
+    if fn_idx < 0 or fn_idx >= jc_count() {
         if as_object {
             return fn_v;
         }
         return js_boolean(False);
     }
-    fn_cl: JSClosure = vm.realm.closures[fn_idx];
+    fn_cl: int = fn_idx;
     kid: int = jsval_to_prop_key(key_v);
     if kid == WK_PROTOTYPE {
         if not jsv_is_object_cell(desc) {
@@ -43501,7 +44252,7 @@ def _vm_function_define_property(
             has_enumerable=True,
             has_configurable=True,
             value=cur_proto,
-            writable=fn_cl.prototype_writable,
+            writable=jc_prototype_writable(fn_cl),
             enumerable=False,
             configurable=False,
             is_accessor=False
@@ -43523,11 +44274,11 @@ def _vm_function_define_property(
             return js_boolean(False);
         }
         if applied.has_value {
-            fn_cl.prototype_obj = applied.value;
-            fn_cl.wb(fn_cl.prototype_obj);
+            jc_set_prototype_obj(fn_cl, applied.value);
+            jc_wb(fn_cl, jc_prototype_obj(fn_cl));
         }
         if applied.has_writable {
-            fn_cl.prototype_writable = applied.writable;
+            jc_set_prototype_writable(fn_cl, applied.writable);
         }
         if as_object {
             return fn_v;
@@ -43539,10 +44290,10 @@ def _vm_function_define_property(
     # configurable:true and omitted descriptor fields preserve it (ES §10.1.6.3).
     if (kid == WK_NAME or kid == WK_LENGTH) and jsv_is_object_cell(cl_props(fn_cl)) {
         fn_removed: bool = False;
-        if kid == WK_NAME and fn_cl.name_removed {
+        if kid == WK_NAME and jc_name_removed(fn_cl) {
             fn_removed = True;
         }
-        if kid == WK_LENGTH and fn_cl.length_removed {
+        if kid == WK_LENGTH and jc_length_removed(fn_cl) {
             fn_removed = True;
         }
         if not fn_removed
@@ -43562,10 +44313,10 @@ def _vm_function_define_property(
             );
         }
         if kid == WK_NAME {
-            fn_cl.name_removed = False;
+            jc_set_name_removed(fn_cl, False);
         }
         if kid == WK_LENGTH {
-            fn_cl.length_removed = False;
+            jc_set_length_removed(fn_cl, False);
         }
     }
     if as_object {
@@ -43582,11 +44333,11 @@ True for non-arrow JS functions, classes, and constructable natives (Array, etc.
 def _vm_is_constructor(vm: VM, v: JSValue) -> bool {
     if is_fn_val(v) {
         fn_idx: int = get_fn_idx(v);
-        if fn_idx < 0 or fn_idx >= len(vm.realm.closures) {
+        if fn_idx < 0 or fn_idx >= jc_count() {
             return False;
         }
-        cl: JSClosure = vm.realm.closures[fn_idx];
-        if cl.is_arrow {
+        cl: int = fn_idx;
+        if jc_is_arrow(cl) {
             return False;
         }
         # A JS-implemented builtin that must not be constructable (§20.1.3:
@@ -43599,22 +44350,22 @@ def _vm_is_constructor(vm: VM, v: JSValue) -> bool {
         }
         # Class / object methods and accessors are not constructors (§7.2.4 /
         # §10.2.2 — concise methods have no [[Construct]]).
-        if cl.func.is_method {
+        if _JC_FUNC[cl].is_method {
             return False;
         }
         # Builtin / JS-layer methods marked via __jacMarkNonConstructor.
-        if cl.is_non_constructor {
+        if jc_is_non_constructor(cl) {
             return False;
         }
-        if cl.func.is_generator or cl.func.is_async {
+        if _JC_FUNC[cl].is_generator or _JC_FUNC[cl].is_async {
             return False;
         }
         # Bound functions: IsConstructor(F) iff IsConstructor(targetFunction).
-        if cl.func.is_bound {
-            if len(cl.free_vals) == 0 {
+        if _JC_FUNC[cl].is_bound {
+            if len(_JC_FV[cl]) == 0 {
                 return False;
             }
-            return _vm_is_constructor(vm, cl.free_vals[0]);
+            return _vm_is_constructor(vm, _JC_FV[cl][0]);
         }
         return True;
     }
@@ -43653,25 +44404,25 @@ def _vm_construct(
         return vm._proxy_trap_construct(ctor, args, new_target);
     }
     if is_fn_val(ctor) {
-        cl: JSClosure = vm.realm.closures[get_fn_idx(ctor)];
-        if cl.is_arrow {
+        cl: int = get_fn_idx(ctor);
+        if jc_is_arrow(cl) {
             vm_throw_native(make_type_error("Arrow function is not a constructor"));
             return js_undefined();
         }
         if cl_props_has_own(cl, WK_NOT_CTOR) {
-            vm_throw_native(make_type_error(cl.func.name + " is not a constructor"));
+            vm_throw_native(make_type_error(_JC_FUNC[cl].name + " is not a constructor"));
             return js_undefined();
         }
         # Bound function [[Construct]] (§10.4.1.2)
-        if cl.func.is_bound {
+        if _JC_FUNC[cl].is_bound {
             target_bd: JSValue = ctor;
-            if len(cl.free_vals) > 0 {
-                target_bd = cl.free_vals[0];
+            if len(_JC_FV[cl]) > 0 {
+                target_bd = _JC_FV[cl][0];
             }
             full_args_bd: list[JSValue] = [];
             bfi: int = 1;
-            while bfi < len(cl.free_vals) {
-                full_args_bd.append(cl.free_vals[bfi]);
+            while bfi < len(_JC_FV[cl]) {
+                full_args_bd.append(_JC_FV[cl][bfi]);
                 bfi = bfi + 1;
             }
             for a_bd in args {
@@ -43697,9 +44448,9 @@ def _vm_construct(
         vm.pending_new_target = new_target;
         if _DBG_NEW_ON {
             _dbg_vc1: str = "[DBG_NEW] _vm_construct fn-val name='"
-                + cl.func.name
+                + _JC_FUNC[cl].name
                 + "' bytecode_len="
-                + str(len(cl.func.code))
+                + str(len(_JC_FUNC[cl].code))
                 + " nargs="
                 + str(len(args))
                 + "\n";
@@ -43729,10 +44480,10 @@ def _vm_construct(
                 and js_object_has_own(new_target, WK_IS_CLASS) {
                 cls_proto = js_object_get(new_target, WK_PROTOTYPE);
             } elif is_fn_val(new_target) {
-                nt_cl2: JSClosure = vm.realm.closures[get_fn_idx(new_target)];
-                if not jsv_is_undefined(nt_cl2.prototype_obj)
-                    and not jsv_is_null(nt_cl2.prototype_obj) {
-                    cls_proto = nt_cl2.prototype_obj;
+                nt_cl2: int = get_fn_idx(new_target);
+                if not jsv_is_undefined(jc_prototype_obj(nt_cl2))
+                    and not jsv_is_null(jc_prototype_obj(nt_cl2)) {
+                    cls_proto = jc_prototype_obj(nt_cl2);
                 }
             }
         }
@@ -43747,7 +44498,7 @@ def _vm_construct(
             write(2, _dbg_vc2, str_nbytes(_dbg_vc2));
         }
         if is_fn_val(ctor_fn) {
-            cl_cls: JSClosure = vm.realm.closures[get_fn_idx(ctor_fn)];
+            cl_cls: int = get_fn_idx(ctor_fn);
             vm.pending_new_target = new_target;
             cr_cls: JSValue = vm.run_cl(cl_cls, ctor_fn, new_obj_cls, args);
             if vm.had_exception {
@@ -43765,7 +44516,7 @@ def _vm_construct(
             # constructor with new.target = the leaf class (same as `_op_new`).
             cls_super_vc: JSValue = js_object_get(ctor, WK_SUPER);
             if is_fn_val(cls_super_vc) {
-                cl_sup_vc: JSClosure = vm.realm.closures[get_fn_idx(cls_super_vc)];
+                cl_sup_vc: int = get_fn_idx(cls_super_vc);
                 vm.pending_new_target = new_target;
                 cr_sup_vc: JSValue = vm.run_cl(
                     cl_sup_vc, cls_super_vc, new_obj_cls, args
@@ -43824,7 +44575,7 @@ def _vm_construct(
                 and jsv_to_table_id(cls_super_vc) >= 0 {
                 inh_ctor_vc: JSValue = js_object_get(cls_super_vc, WK_CTOR);
                 if is_fn_val(inh_ctor_vc) {
-                    cl_inh_vc: JSClosure = vm.realm.closures[get_fn_idx(inh_ctor_vc)];
+                    cl_inh_vc: int = get_fn_idx(inh_ctor_vc);
                     vm.pending_new_target = new_target;
                     cr_inh_vc: JSValue = vm.run_cl(
                         cl_inh_vc, inh_ctor_vc, new_obj_cls, args
@@ -45228,40 +45979,40 @@ def _vm_cdp_dense(o: JSValue, idx: int, val: JSValue) -> bool {
     if cd_id <= 0 or js_object_elems_kind_id(cd_id) == ELEMS_NONE {
         return False;
     }
-    cd_o: JSObject = js_object_table_get(cd_id);
+    cd_o: int = cd_id;
     # a prototype array keeps the full path (proto epoch, index protector);
     # an arguments object's `length` does not follow its elements
-    if (cd_o.cell_flags & (FLAG_IS_PROTO | FLAG_IS_ARGUMENTS)) != 0 {
+    if (jo_cell_flags(cd_o) & (FLAG_IS_PROTO | FLAG_IS_ARGUMENTS)) != 0 {
         return False;
     }
-    cd_n: int = cd_o.elen();
+    cd_n: int = jo_elen(cd_o);
     if idx < cd_n {
-        if jsv_is_hole(cd_o.eget(idx)) {
+        if jsv_is_hole(jo_eget(cd_o, idx)) {
             return False;
         }
-        cd_o.eset(idx, val);
+        jo_eset(cd_o, idx, val);
         return True;
     }
-    if idx != cd_n or not cd_o.is_ext() or cd_o.mode != MAP_MODE_SHAPE {
+    if idx != cd_n or not jo_is_ext(cd_o) or jo_mode(cd_o) != MAP_MODE_SHAPE {
         return False;
     }
-    cd_pk: int = shape_lookup(cd_o.shape_id, KEY_LENGTH);
+    cd_pk: int = shape_lookup(jo_shape_id(cd_o), KEY_LENGTH);
     if cd_pk < 0 or (cd_pk & SHAPE_ATTR_ACCESSOR) != 0 {
         return False;
     }
-    cd_lv: JSValue = cd_o.sget(cd_pk // 16);
+    cd_lv: JSValue = jo_sget(cd_o, cd_pk // 16);
     if not jsv_is_int32(cd_lv) {
         return False;
     }
     if idx < jsv_to_int32(cd_lv) {
-        cd_o.epush(val);
+        jo_epush(cd_o, val);
         return True;
     }
     if (cd_pk & PROP_WRITABLE) == 0 or idx >= 2147483647 {
         return False;
     }
-    cd_o.epush(val);
-    cd_o.sset(cd_pk // 16, js_int(idx + 1));
+    jo_epush(cd_o, val);
+    jo_sset(cd_o, cd_pk // 16, js_int(idx + 1));
     return True;
 }
 
@@ -45287,9 +46038,7 @@ def _vm_array_species_is_default(vm: VM, original: JSValue) -> bool {
     if js_object_has_own(original, WK_CONSTRUCTOR) {
         return False;
     }
-    sd_ctor: JSValue = js_object_table_get(jsv_to_table_id(sd_ap)).get_own_data_or_hole(
-        WK_CONSTRUCTOR
-    );
+    sd_ctor: JSValue = jo_get_own_data_or_hole(jsv_to_table_id(sd_ap), WK_CONSTRUCTOR);
     if jsv_is_hole(sd_ctor) or not (sd_ctor == vm.realm.intrinsics.array_ctor) {
         return False;
     }
@@ -45888,24 +46637,24 @@ def _vm_array_push(vm: VM, this_val: JSValue, items: list[JSValue]) -> JSValue {
     if jsv_is_object_cell(o) and idx_protector_ok() {
         vp_id: int = jsv_to_table_id(o);
         if vp_id > 0 {
-            vp_raw: JSObject = js_object_table_get(vp_id);
-            if vp_raw.elems_kind != ELEMS_NONE
-                and vp_raw.is_ext()
-                and vp_raw.mode == MAP_MODE_SHAPE {
-                vp_pk: int = shape_lookup(vp_raw.shape_id, WK_LENGTH);
+            vp_raw: int = vp_id;
+            if jo_elems_kind(vp_raw) != ELEMS_NONE
+                and jo_is_ext(vp_raw)
+                and jo_mode(vp_raw) == MAP_MODE_SHAPE {
+                vp_pk: int = shape_lookup(jo_shape_id(vp_raw), WK_LENGTH);
                 if vp_pk >= 0
                     and (vp_pk & SHAPE_ATTR_ACCESSOR) == 0
                     and (vp_pk & 1) != 0 {
-                    vp_lv: JSValue = vp_raw.sget(vp_pk // 16);
+                    vp_lv: JSValue = jo_sget(vp_raw, vp_pk // 16);
                     if jsv_is_int32(vp_lv)
-                        and jsv_to_int32(vp_lv) == vp_raw.elen() {
+                        and jsv_to_int32(vp_lv) == jo_elen(vp_raw) {
                         for vp_itm in items {
-                            vp_raw.epush(vp_itm);
+                            jo_epush(vp_raw, vp_itm);
                         }
-                        vp_raw.sset(vp_pk // 16, js_array_len_value(
-                            vp_raw.elen()
+                        jo_sset(vp_raw, vp_pk // 16, js_array_len_value(
+                            jo_elen(vp_raw)
                         ));
-                        return js_array_len_value(vp_raw.elen());
+                        return js_array_len_value(jo_elen(vp_raw));
                     }
                 }
             }
@@ -46244,16 +46993,16 @@ def _vm_array_join(vm: VM, this_val: JSValue, sep_v: JSValue) -> JSValue {
     # Dense fast path: read the element store directly instead of minting an
     # index key string per element (str(i) + intern + parse); a hole or any
     # non-dense receiver falls back to the observable [[Get]] below.
-    raw_j: JSObject = js_object_table_get(jsv_to_table_id(o));  # o is ToObject(this)
-    dense_j: bool = raw_j.elems_kind != ELEMS_NONE;
+    raw_j: int = jsv_to_table_id(o);  # o is ToObject(this)
+    dense_j: bool = jo_elems_kind(raw_j) != ELEMS_NONE;
     i: int = 0;
     while i < n {
         if i > 0 {
             parts_j.append(sep);
         }
         elem: JSValue = jsv_hole();
-        if dense_j and i < raw_j.elen() {
-            elem = raw_j.eget(i);
+        if dense_j and i < jo_elen(raw_j) {
+            elem = jo_eget(raw_j, i);
         }
         if jsv_is_hole(elem) {
             elem = js_object_get_observable(o, str_intern_index(i), o);
@@ -46499,7 +47248,7 @@ def _vm_sort_by_keys(keys: list[str], vals: list[JSValue]) -> None {
 comparefn(right, left) < 0 (NaN counts as 0). False when the comparator
 threw (vm.had_exception set, `vals` partially merged)."""
 def _vm_sort_with_cmp(
-    vm: VM, cl: JSClosure, cmp_fn: JSValue, vals: list[JSValue]
+    vm: VM, cl: int, cmp_fn: JSValue, vals: list[JSValue]
 ) -> bool {
     sc_n: int = len(vals);
     if sc_n < 2 {
@@ -46697,7 +47446,7 @@ def _vm_array_sort_with_comparefn(
             defined.append(v);
         }
     }
-    cl: JSClosure = vm.realm.closures[get_fn_idx(cmp_fn)];
+    cl: int = get_fn_idx(cmp_fn);
     if not _vm_sort_with_cmp(vm, cl, cmp_fn, defined) {
         exc_s: JSValue = vm.pending_exc;
         vm.had_exception = False;
@@ -46741,7 +47490,7 @@ def _vm_array_tosorted_with_comparefn(
             ats_this = js_String_new([ats_this]);
         }
     }
-    ats_cl: JSClosure = vm.realm.closures[get_fn_idx(cmp_fn)];
+    ats_cl: int = get_fn_idx(cmp_fn);
     ats_n: int = js_array_len(ats_this);
     if vm_has_native_exc() {
         return js_undefined();
@@ -47031,6 +47780,14 @@ glob _NSK_READY: bool = False,
      _NATIVE_FAST_KIND: list[int] = [],
      _REG_COLL_CTORS: list[JSValue] = [0, 0, 0],
      _NF_ARGS: list[JSValue] = [],
+     # native kind -> _reg_native_direct's arm (0: none), _nf_init
+     _ND_SLOT: list[int] = [],
+     # the lean fast call's argument lists, one per count (a handler never
+     # keeps them; _nf_fill rebuilds one whose length a handler changed)
+     _NF_A0: list[JSValue] = [],
+     _NF_A1: list[JSValue] = [0],
+     _NF_A2: list[JSValue] = [0, 0],
+     _NF_A3: list[JSValue] = [0, 0, 0],
      _REG_TAIL_ARGS: list[JSValue] = [];
 
 # CALL_METHOD fast path for builtins that cannot run JS when every argument is a
@@ -47246,6 +48003,44 @@ def _nf_init {
         _NATIVE_FAST_KIND[nk10] = 6;
     }
     _NATIVE_FAST_KIND[NATIVE_KIND_ARRAY_PUSH] = 4;
+    # lean-only modes (the general path takes them as 7)
+    _NATIVE_FAST_KIND[NATIVE_KIND_ARRAY_INDEXOF] = 8;
+    _NATIVE_FAST_KIND[NATIVE_KIND_OBJ_PROTO_HAS_OWN] = 9;
+    _NATIVE_FAST_KIND[NATIVE_KIND_NUM_TOSTRING] = 10;
+    nd_kinds: list[int] = [
+        NATIVE_KIND_STR_CHARCODEAT,
+        NATIVE_KIND_MAP_GET,
+        NATIVE_KIND_MAP_SET_METHOD,
+        NATIVE_KIND_MAP_HAS,
+        NATIVE_KIND_SET_ADD,
+        NATIVE_KIND_SET_HAS,
+        NATIVE_KIND_ARRAY_ISARRAY,
+        NATIVE_KIND_OBJ_PROTO_HAS_OWN,
+        NATIVE_KIND_ARRAY_PUSH,
+        NATIVE_KIND_MATH_MAX,
+        NATIVE_KIND_MATH_MIN,
+        NATIVE_KIND_STR_FROMCHARCODE,
+        NATIVE_KIND_ARRAY_INDEXOF,
+        NATIVE_KIND_STR_INDEXOF,
+        NATIVE_KIND_STR_STARTSWITH,
+        NATIVE_KIND_MATH_FLOOR,
+        NATIVE_KIND_NUM_TOSTRING
+    ];
+    nd_max: int = 0;
+    for nd_k in nd_kinds {
+        if nd_k > nd_max {
+            nd_max = nd_k;
+        }
+    }
+    _ND_SLOT = [];
+    while len(_ND_SLOT) <= nd_max {
+        _ND_SLOT.append(0);
+    }
+    nd_i: int = 0;
+    while nd_i < len(nd_kinds) {
+        _ND_SLOT[nd_kinds[nd_i]] = nd_i + 1;
+        nd_i = nd_i + 1;
+    }
 }
 
 """A primitive whose ToNumber / ToString runs no JS: number, string, boolean,
@@ -48396,11 +49191,11 @@ def:pub vm_call_js_fn(
         return js_undefined();
     }
     fn_idx: int = get_fn_idx(fn_val);
-    if fn_idx >= len(vm.realm.closures) {
+    if fn_idx >= jc_count() {
         return js_undefined();
     }
-    cl: JSClosure = vm.realm.closures[fn_idx];
-    if cl.func.is_async {
+    cl: int = fn_idx;
+    if _JC_FUNC[cl].is_async {
         old_cap: JSValue = vm._cur_async_promise;
         new_p: JSValue = js_promise_create();
         vm._cur_async_promise = new_p;
@@ -48529,8 +49324,8 @@ def:priv _vm_dispatch_fatal(
         lfn: JSValue = snap_fns[li];
         if is_fn_val(lfn) {
             lfn_idx: int = get_fn_idx(lfn);
-            if lfn_idx < len(vm.realm.closures) {
-                lcl: JSClosure = vm.realm.closures[lfn_idx];
+            if lfn_idx < jc_count() {
+                lcl: int = lfn_idx;
                 vm.run_cl(lcl, lfn, js_undefined(), [exc, origin]);
                 if vm.had_exception {
                     # Listener itself threw — print and force-exit (Node).
@@ -48575,10 +49370,10 @@ def:pub vm_call_js_fn_threw(
         return 0;
     }
     fn_idx: int = get_fn_idx(fn_val);
-    if fn_idx >= len(vm.realm.closures) {
+    if fn_idx >= jc_count() {
         return 0;
     }
-    cl: JSClosure = vm.realm.closures[fn_idx];
+    cl: int = fn_idx;
     vm.run_cl(cl, fn_val, this_val, args);
     threw: int = 0;
     if vm.had_exception {
@@ -48599,10 +49394,10 @@ def:pub vm_call_js_fn_observable(
         return js_undefined();
     }
     fn_idx: int = get_fn_idx(fn_val);
-    if fn_idx >= len(vm.realm.closures) {
+    if fn_idx >= jc_count() {
         return js_undefined();
     }
-    cl: JSClosure = vm.realm.closures[fn_idx];
+    cl: int = fn_idx;
     result: JSValue = vm.run_cl(cl, fn_val, this_val, args);
     if vm.had_exception {
         exc_obs: JSValue = vm.pending_exc;
@@ -48640,9 +49435,9 @@ def:pub vm_fire_register_hooks(vm: VM, specifier: str) -> int {
             hk_res: JSValue = js_undefined();
             if is_fn_val(hk_fn) {
                 hk_fi: int = get_fn_idx(hk_fn);
-                if hk_fi < len(vm.realm.closures) {
+                if hk_fi < jc_count() {
                     hk_res = vm.run_cl(
-                        vm.realm.closures[hk_fi], hk_fn, js_undefined(), hk_args
+                        hk_fi, hk_fn, js_undefined(), hk_args
                     );
                 }
             } else {
@@ -48697,6 +49492,9 @@ def:pub vm_bridge_pending_exception(vm: VM) -> bool {
 # common case): the stack holds one entry per distinct run of VMs, and a push
 # of the current top only counts.
 glob _NATIVE_OBS_REP: list[int] = [];
+# The logical top: entries at and above _NOBS_N are kept after their pop (the
+# VM of the last call), so the next call from it pushes without a list change.
+glob _NOBS_N: int = 0;
 glob _NATIVE_OBS_VM_STACK: list[VM] = [],
      _OBS_VM_BY_HANDLE: dict[int, VM] = {},
      _OBS_NEXT_HANDLE: int = 1,
@@ -48715,18 +49513,29 @@ def _vm_ensure_obs_handle(vm: VM) -> int {
 }
 
 def _push_native_obs_vm(vm: VM) {
-    po_n: int = len(_NATIVE_OBS_VM_STACK);
+    po_n: int = _NOBS_N;
     if po_n > 0 and _NATIVE_OBS_VM_STACK[po_n - 1] is vm {
         _NATIVE_OBS_REP[po_n - 1] = _NATIVE_OBS_REP[po_n - 1] + 1;
         return;
     }
+    if po_n < len(_NATIVE_OBS_VM_STACK) and _NATIVE_OBS_VM_STACK[po_n] is vm {
+        _NATIVE_OBS_REP[po_n] = 0;
+        _NOBS_N = po_n + 1;
+        vm_obs_set_active_handle(vm.obs_handle);
+        return;
+    }
+    while len(_NATIVE_OBS_VM_STACK) > po_n {
+        _NATIVE_OBS_VM_STACK.pop();
+        _NATIVE_OBS_REP.pop();
+    }
     _NATIVE_OBS_VM_STACK.append(vm);
     _NATIVE_OBS_REP.append(0);
+    _NOBS_N = po_n + 1;
     vm_obs_set_active_handle(_vm_ensure_obs_handle(vm));
 }
 
 def _pop_native_obs_vm {
-    pp_n: int = len(_NATIVE_OBS_VM_STACK);
+    pp_n: int = _NOBS_N;
     if pp_n == 0 {
         return;
     }
@@ -48734,8 +49543,7 @@ def _pop_native_obs_vm {
         _NATIVE_OBS_REP[pp_n - 1] = _NATIVE_OBS_REP[pp_n - 1] - 1;
         return;
     }
-    del _NATIVE_OBS_VM_STACK[pp_n - 1];
-    del _NATIVE_OBS_REP[pp_n - 1];
+    _NOBS_N = pp_n - 1;
     if pp_n > 1 {
         _NATIVE_OBS_REACTIVATE();
     } else {
@@ -48744,7 +49552,7 @@ def _pop_native_obs_vm {
 }
 
 def _native_obs_reactivate_top {
-    prev: VM = _NATIVE_OBS_VM_STACK[len(_NATIVE_OBS_VM_STACK) - 1];
+    prev: VM = _NATIVE_OBS_VM_STACK[_NOBS_N - 1];
     vm_obs_set_active_handle(_vm_ensure_obs_handle(prev));
 }
 
@@ -48755,10 +49563,10 @@ glob _NATIVE_OBS_REACTIVATE: Callable[[], None] = _native_obs_reactivate_top;
 
 """Typed observable [[Get]] registered into vm_obs dispatch table."""
 def _vm_obs_get_impl(jsobj: JSValue, key: int, receiver: JSValue) -> JSValue {
-    if len(_NATIVE_OBS_VM_STACK) == 0 {
+    if _NOBS_N == 0 {
         return js_object_get(jsobj, key);
     }
-    vm: VM = _NATIVE_OBS_VM_STACK[len(_NATIVE_OBS_VM_STACK) - 1];
+    vm: VM = _NATIVE_OBS_VM_STACK[_NOBS_N - 1];
     return vm.obs_get(jsobj, key, receiver);
 }
 
@@ -48770,19 +49578,19 @@ def _vm_obs_set_impl(
     if js_is_module_namespace(jsobj) {
         return False;
     }
-    if len(_NATIVE_OBS_VM_STACK) == 0 {
+    if _NOBS_N == 0 {
         return js_object_set(jsobj, key, val) == 0;
     }
-    vm: VM = _NATIVE_OBS_VM_STACK[len(_NATIVE_OBS_VM_STACK) - 1];
+    vm: VM = _NATIVE_OBS_VM_STACK[_NOBS_N - 1];
     return vm.obs_set(jsobj, key, val, receiver);
 }
 
 """Typed observable [[HasProperty]] registered into vm_obs dispatch table."""
 def _vm_obs_has_impl(jsobj: JSValue, key: int) -> bool {
-    if len(_NATIVE_OBS_VM_STACK) == 0 {
+    if _NOBS_N == 0 {
         return js_object_has(jsobj, key);
     }
-    vm: VM = _NATIVE_OBS_VM_STACK[len(_NATIVE_OBS_VM_STACK) - 1];
+    vm: VM = _NATIVE_OBS_VM_STACK[_NOBS_N - 1];
     return vm.obs_has(jsobj, key);
 }
 
@@ -48799,59 +49607,59 @@ def _vm_obs_delete_impl(jsobj: JSValue, key: int) -> bool {
         }
         return True;
     }
-    if len(_NATIVE_OBS_VM_STACK) == 0 {
+    if _NOBS_N == 0 {
         return js_object_delete(jsobj, key);
     }
-    vm: VM = _NATIVE_OBS_VM_STACK[len(_NATIVE_OBS_VM_STACK) - 1];
+    vm: VM = _NATIVE_OBS_VM_STACK[_NOBS_N - 1];
     return vm.obs_delete(jsobj, key);
 }
 
 """Typed observable ToNumber registered into vm_obs dispatch table."""
 def _vm_obs_tonum_impl(v: JSValue) -> float {
-    if len(_NATIVE_OBS_VM_STACK) == 0 {
+    if _NOBS_N == 0 {
         if jsv_is_object_cell(v) {
             return 0.0;
         }
         return js_to_num(v);
     }
-    vm: VM = _NATIVE_OBS_VM_STACK[len(_NATIVE_OBS_VM_STACK) - 1];
+    vm: VM = _NATIVE_OBS_VM_STACK[_NOBS_N - 1];
     return vm.obs_to_number(v);
 }
 
 """Typed observable ToString registered into vm_obs dispatch table."""
 def _vm_obs_tostr_impl(v: JSValue) -> str {
-    if len(_NATIVE_OBS_VM_STACK) == 0 {
+    if _NOBS_N == 0 {
         return jsval_to_str(v);
     }
-    vm: VM = _NATIVE_OBS_VM_STACK[len(_NATIVE_OBS_VM_STACK) - 1];
+    vm: VM = _NATIVE_OBS_VM_STACK[_NOBS_N - 1];
     return _vm_to_string_observable(vm, v);
 }
 
 """Typed observable ToPropertyKey registered into vm_obs dispatch table."""
 def _vm_obs_tpk_impl(v: JSValue) -> int {
-    if len(_NATIVE_OBS_VM_STACK) == 0 {
+    if _NOBS_N == 0 {
         return jsval_to_prop_key(v);
     }
-    vm: VM = _NATIVE_OBS_VM_STACK[len(_NATIVE_OBS_VM_STACK) - 1];
+    vm: VM = _NATIVE_OBS_VM_STACK[_NOBS_N - 1];
     return vm.obs_to_property_key(v);
 }
 
 """Typed observable ToPrimitive(value, hint) registered into vm_obs dispatch."""
 def _vm_obs_toprim_impl(v: JSValue, hint: int) -> JSValue {
-    if len(_NATIVE_OBS_VM_STACK) == 0 {
+    if _NOBS_N == 0 {
         return v;
     }
-    vm: VM = _NATIVE_OBS_VM_STACK[len(_NATIVE_OBS_VM_STACK) - 1];
+    vm: VM = _NATIVE_OBS_VM_STACK[_NOBS_N - 1];
     return vm.obs_to_primitive(v, hint);
 }
 
 """Typed Call(fn, this, args) registered into vm_obs dispatch — lets native
 builtins re-enter JS (custom @@match/@@replace, function replaceValue)."""
 def _vm_obs_call_impl(fn: JSValue, this_val: JSValue, args: list[JSValue]) -> JSValue {
-    if len(_NATIVE_OBS_VM_STACK) == 0 {
+    if _NOBS_N == 0 {
         return js_undefined();
     }
-    vm: VM = _NATIVE_OBS_VM_STACK[len(_NATIVE_OBS_VM_STACK) - 1];
+    vm: VM = _NATIVE_OBS_VM_STACK[_NOBS_N - 1];
     return vm.obs_call_any(fn, this_val, args);
 }
 
@@ -48948,10 +49756,10 @@ def _wasm_push_jsval_result(want_kind: int, v: JSValue) -> None {
 WASM args, then push its return into the host result globals. Returns 0 on
 success, 1 if the JS fn threw (→ WASM trap), 2 if no VM is active."""
 def _wasm_host_call(import_index: int, nargs: int) -> int {
-    if len(_NATIVE_OBS_VM_STACK) == 0 {
+    if _NOBS_N == 0 {
         return 2;
     }
-    vm: VM = _NATIVE_OBS_VM_STACK[len(_NATIVE_OBS_VM_STACK) - 1];
+    vm: VM = _NATIVE_OBS_VM_STACK[_NOBS_N - 1];
     if not vm_wasm_has_import_cb(import_index) {
         return 2;
     }
@@ -49439,31 +50247,31 @@ def _fn_prop(fn_v: JSValue, key: int) -> JSValue {
     idx: int = get_fn_idx(fn_v);
     if key == k_name {
         # `delete fn.name` removes the (configurable) name property entirely.
-        if idx < len(_VM_REALM.closures) and _VM_REALM.closures[idx].name_removed {
+        if idx < jc_count() and jc_name_removed(idx) {
             return js_undefined();
         }
         # An explicitly-assigned `name` own property (e.g. an anonymous function
         # exported as `export default function(){}`, whose name is "default" per
         # ES §16.2.3.7, or a SetFunctionName) overrides the inferred compiled name.
-        if idx < len(_VM_REALM.closures) {
-            nm_ov: JSValue = cl_props_get(_VM_REALM.closures[idx], k_name);
+        if idx < jc_count() {
+            nm_ov: JSValue = cl_props_get(idx, k_name);
             if not jsv_is_undefined(nm_ov) {
                 return nm_ov;
             }
-            nm: str = _VM_REALM.closures[idx].func.name;
+            nm: str = _JC_FUNC[idx].name;
             return jsv_from_string_id(str_intern(nm));
         }
         return jsv_from_string_id(str_intern(""));
     } elif key == k_len {
-        if idx < len(_VM_REALM.closures) and _VM_REALM.closures[idx].length_removed {
+        if idx < jc_count() and jc_length_removed(idx) {
             return js_undefined();
         }
-        if idx < len(_VM_REALM.closures) {
-            user_len: JSValue = cl_props_get(_VM_REALM.closures[idx], k_len);
+        if idx < jc_count() {
+            user_len: JSValue = cl_props_get(idx, k_len);
             if not jsv_is_undefined(user_len) {
                 return user_len;
             }
-            ar: int = _VM_REALM.closures[idx].func.expected_arg_count;
+            ar: int = _JC_FUNC[idx].expected_arg_count;
             return js_int(ar);
         }
         return js_int(0);
@@ -49471,17 +50279,17 @@ def _fn_prop(fn_v: JSValue, key: int) -> JSValue {
         # A function marked non-constructable has no `prototype` property at
         # all (§20.1.3) — the Promise combinators and the resolve/reject
         # element functions are checked for exactly this by test262 .
-        if idx < len(_VM_REALM.closures)
-            and cl_props_has_own(_VM_REALM.closures[idx], WK_NOT_CTOR) {
+        if idx < jc_count()
+            and cl_props_has_own(idx, WK_NOT_CTOR) {
             return js_undefined();
         }
-        if idx < len(_VM_REALM.closures) {
+        if idx < jc_count() {
             # An explicitly-set own `prototype` on fn_props wins over the default
             # prototype_obj (honours `fn.prototype = x`).
-            if cl_props_has_own(_VM_REALM.closures[idx], k_proto) {
-                return cl_props_get(_VM_REALM.closures[idx], k_proto);
+            if cl_props_has_own(idx, k_proto) {
+                return cl_props_get(idx, k_proto);
             }
-            return _VM_REALM.closures[idx].prototype_obj;
+            return jc_prototype_obj(idx);
         }
         return js_object_create_null();
     } elif key == k_call or key == k_apply or key == k_bind {
@@ -49489,9 +50297,9 @@ def _fn_prop(fn_v: JSValue, key: int) -> JSValue {
         # properties. A user-assigned own property (`fn.call = x`, test262
         # S11.6.1_A2.2_T3 CHECK#3) shadows the intrinsic, so consult fn_props
         # first and only synthesize when no own value exists.
-        if idx < len(_VM_REALM.closures)
-            and cl_props_has_own(_VM_REALM.closures[idx], key) {
-            return cl_props_get(_VM_REALM.closures[idx], key);
+        if idx < jc_count()
+            and cl_props_has_own(idx, key) {
+            return cl_props_get(idx, key);
         }
         if key == k_call {
             return js_native_singleton("call", 1, NATIVE_KIND_FN_CALL);
@@ -49506,20 +50314,20 @@ def _fn_prop(fn_v: JSValue, key: int) -> JSValue {
     # → %Function.prototype%. Fall through to fn_props / the proto chain below so both
     # an own `fn.toString = …` and a %Function.prototype%.toString override resolve.
     # Fall through to user-defined properties on the closure's backing object
-    if idx < len(_VM_REALM.closures) {
-        user_prop: JSValue = cl_props_get(_VM_REALM.closures[idx], key);
+    if idx < jc_count() {
+        user_prop: JSValue = cl_props_get(idx, key);
         if not jsv_is_undefined(user_prop) {
             return user_prop;
         }
         # Accessor on fn_props (rare) — prefer get for getters.
-        if cl_props_has_own(_VM_REALM.closures[idx], key) {
-            return cl_props_get(_VM_REALM.closures[idx], key);
+        if cl_props_has_own(idx, key) {
+            return cl_props_get(idx, key);
         }
     }
     # Custom [[Prototype]] (e.g. Object.setPrototypeOf(Uint8Array, TypedArray))
     # before falling through to %Function.prototype%.
-    if idx < len(_VM_REALM.closures) {
-        custom_proto: JSValue = _VM_REALM.closures[idx].object_proto;
+    if idx < jc_count() {
+        custom_proto: JSValue = jc_object_proto(idx);
         if is_fn_val(custom_proto) {
             return _fn_prop(custom_proto, key);
         }
@@ -49592,8 +50400,8 @@ def _vm_get_function_realm(vm: VM, v: JSValue) -> Realm {
         rid_v = js_object_get(v, KEY_HOME_REALM_ID);
     } elif is_fn_val(v) {
         fn_idx_hr: int = get_fn_idx(v);
-        if fn_idx_hr < len(vm.realm.closures) {
-            rid_v = cl_props_get(vm.realm.closures[fn_idx_hr], KEY_HOME_REALM_ID);
+        if fn_idx_hr < jc_count() {
+            rid_v = cl_props_get(fn_idx_hr, KEY_HOME_REALM_ID);
         }
     }
     if jsv_is_int32(rid_v) {
@@ -49613,8 +50421,8 @@ def _home_realm_id_of_val(v: JSValue) -> int {
         rid_v = js_object_get(v, KEY_HOME_REALM_ID);
     } elif is_fn_val(v) {
         fn_idx: int = get_fn_idx(v);
-        if fn_idx < len(_VM_REALM.closures) {
-            rid_v = cl_props_get(_VM_REALM.closures[fn_idx], KEY_HOME_REALM_ID);
+        if fn_idx < jc_count() {
+            rid_v = cl_props_get(fn_idx, KEY_HOME_REALM_ID);
         }
     }
     if jsv_is_int32(rid_v) {
@@ -49651,8 +50459,8 @@ def _vm_copy_home_realm(from_obj: JSValue, to_obj: JSValue) -> None {
         rid = js_object_get(from_obj, KEY_HOME_REALM_ID);
     } elif is_fn_val(from_obj) {
         fn_idx_fr: int = get_fn_idx(from_obj);
-        if fn_idx_fr < len(_VM_REALM.closures) {
-            rid = cl_props_get(_VM_REALM.closures[fn_idx_fr], KEY_HOME_REALM_ID);
+        if fn_idx_fr < jc_count() {
+            rid = cl_props_get(fn_idx_fr, KEY_HOME_REALM_ID);
         }
     }
     if not jsv_is_int32(rid) {
@@ -49662,9 +50470,9 @@ def _vm_copy_home_realm(from_obj: JSValue, to_obj: JSValue) -> None {
         js_object_set(to_obj, KEY_HOME_REALM_ID, rid);
     } elif is_fn_val(to_obj) {
         fn_idx_to: int = get_fn_idx(to_obj);
-        if fn_idx_to < len(_VM_REALM.closures) {
+        if fn_idx_to < jc_count() {
             js_object_set(
-                cl_props(_VM_REALM.closures[fn_idx_to]), KEY_HOME_REALM_ID, rid
+                cl_props(fn_idx_to), KEY_HOME_REALM_ID, rid
             );
         }
     }
@@ -50207,8 +51015,8 @@ def _impl_js_Function(args: list[JSValue]) -> JSValue {
         ai_if = ai_if - 1;
     }
     proto_if: JSValue = js_object_create_null();
-    cl_if: JSClosure = make_closure(inner, [], js_undefined(), proto_if);
-    cl_if.module_fns = c.all_fns;  # so MAKE_FUNCTION inside anonymous finds inner functions
+    cl_if: int = make_closure(inner, [], js_undefined(), proto_if);
+    jc_set_module_fns(cl_if, c.all_fns);  # so MAKE_FUNCTION inside anonymous finds inner functions
     return js_fn_val(vm_register_closure(_VM_REALM, cl_if));  # G0.5: reuse freed slot
 }
 
@@ -50674,6 +51482,184 @@ def _vm_op_new_object(vm: VM, frame: CallFrame, ins: Instruction, st: ExecState)
 
 def _vm_op_new_array(vm: VM, frame: CallFrame, ins: Instruction, st: ExecState) {
     vm._op_new_array(frame, ins, st);
+}
+
+"""NEW_OBJECT_LIT on the stack: the arg values popped, the object pushed."""
+def _vm_op_new_object_lit(vm: VM, frame: CallFrame, ins: Instruction, st: ExecState) {
+    nl_n: int = ins.arg;
+    nl_vals: list[JSValue] = [];
+    nl_k: int = 0;
+    while nl_k < nl_n {
+        nl_vals.append(js_undefined());
+        nl_k = nl_k + 1;
+    }
+    nl_k = nl_n - 1;
+    while nl_k >= 0 {
+        nl_vals[nl_k] = vm._pop();
+        nl_k = nl_k - 1;
+    }
+    vm._push(
+        _obj_lit_make(vm, frame.func, frame.ip - 1, 0, __list_data_ptr(nl_vals), nl_n)
+    );
+}
+
+"""The object NEW_OBJECT_LIT `func.code[orig]` builds from the `nd` pushed
+values at raw address `src` (keys and constant values: constants[arg2],
+compiler.jac _compile_object_lit). Born at the shape the site learned from
+its template (`e`, its flat IC entry when nonzero: word 0 the shape, word 1
+the template; else the instruction's ic_obj / ic_ver) when it has them; else
+built the ordinary way — a define-own add per key on a fresh `{}`, as
+NEW_OBJECT + SET_PROP do — and the shape learned when it is a shape-mode
+object with exactly these slots. A concise method without a [[HomeObject]]
+among the pushed values gets the object, as the define-own SET_PROP gives it
+(a template constant is never a function)."""
+def _obj_lit_make(vm: VM, func: CompiledFunction, orig: int, e: int, src: int, nd: int) -> JSValue {
+    lm_sid: int = 0;
+    lm_t: int = 0;
+    if e != 0 {
+        lm_sid = __mem_load_i64(e);
+        lm_t = __mem_load_i64(wrapping_add(e, 8));
+    } else {
+        lm_sid = func.code[orig].ic_obj;
+        lm_t = func.code[orig].ic_ver;
+    }
+    lm_obj: JSValue = jsv_hole();
+    if lm_sid > 0 and lm_t != 0 {
+        lm_obj = js_object_new_literal_t(lm_sid, lm_t, src);
+    }
+    if jsv_is_hole(lm_obj) {
+        return _obj_lit_build(vm, func, orig, e, src, nd);
+    }
+    lm_k: int = 0;
+    while lm_k < nd {
+        lm_v: JSValue = __mem_load_i64(wrapping_add(src, wrapping_mul(lm_k, 8)));
+        if is_fn_val(lm_v) {
+            _obj_lit_home(vm, lm_v, lm_obj);
+        }
+        lm_k = lm_k + 1;
+    }
+    return lm_obj;
+}
+
+"""_obj_lit_make's ordinary path (a site's first object, or one whose shape
+it could not learn). The site's template ([n][v0 .. v(n-1)], the hole for a
+pushed value) is made once and kept with the shape."""
+def _obj_lit_build(vm: VM, func: CompiledFunction, orig: int, e: int, src: int, nd: int) -> JSValue {
+    lb_ins: Instruction = func.code[orig];
+    lb_keys: list[int] = [];
+    lb_specs: list[int] = [];
+    _obj_lit_parse(func.constants.get(lb_ins.arg2), lb_keys, lb_specs);
+    lb_n: int = len(lb_keys);
+    lb_t: int = lb_ins.ic_ver;
+    lb_new_t: bool = lb_t == 0;
+    if lb_new_t {
+        lb_t = calloc(lb_n + 1, 8);
+        if lb_t == 0 {
+            abort();
+        }
+        __mem_store_i64(lb_t, lb_n);
+        lb_s: int = 0;
+        while lb_s < lb_n {
+            lb_sp: int = lb_specs[lb_s];
+            lb_cv: JSValue = jsv_hole();
+            if lb_sp >= 0 {
+                lb_cv = const_to_jsval(func.constants.get(lb_sp));
+            } elif lb_sp == -2 {
+                lb_cv = js_true();
+            } elif lb_sp == -3 {
+                lb_cv = js_false();
+            } elif lb_sp == -4 {
+                lb_cv = js_null();
+            }
+            __mem_store_i64(wrapping_add(lb_t, wrapping_mul(lb_s + 1, 8)), lb_cv);
+            lb_s = lb_s + 1;
+        }
+    }
+    lb_obj: JSValue = js_object_new_ordinary();
+    lb_k: int = 0;
+    lb_d: int = 0;
+    while lb_k < lb_n {
+        lb_v: JSValue = __mem_load_i64(wrapping_add(lb_t, wrapping_mul(lb_k + 1, 8)));
+        if jsv_is_hole(lb_v) {
+            if lb_d < nd {
+                lb_v = __mem_load_i64(wrapping_add(src, wrapping_mul(lb_d, 8)));
+            } else {
+                lb_v = js_undefined();
+            }
+            lb_d = lb_d + 1;
+            if is_fn_val(lb_v) {
+                _obj_lit_home(vm, lb_v, lb_obj);
+            }
+        }
+        if not js_object_add_data_ordinary(lb_obj, lb_keys[lb_k], lb_v) {
+            _ = js_object_create_data_property_or_throw(lb_obj, lb_keys[lb_k], lb_v);
+        }
+        lb_k = lb_k + 1;
+    }
+    lb_sid: int = js_object_ic_shape(lb_obj);
+    if lb_sid > 0 and lb_d == nd and jo_slen(jsv_to_table_id(lb_obj)) == lb_n {
+        lb_ins.ic_obj = lb_sid;
+        lb_ins.ic_ver = lb_t;
+        if e != 0 {
+            __mem_store_i64(e, lb_sid);
+            __mem_store_i64(wrapping_add(e, 8), lb_t);
+        }
+    } elif lb_new_t {
+        free(lb_t);
+    }
+    return lb_obj;
+}
+
+"""NEW_OBJECT_LIT's constants text `enc` ("len:key" then the value per
+property: `$` pushed, `#<constant index>;`, `T`, `F`, `N`; ASCII keys:
+compiler.jac _compile_object_lit) into the key ids `keys` and the value
+specs `specs` (-1 pushed, the constant index, -2 true, -3 false, -4 null)."""
+def _obj_lit_parse(enc: str, keys: list[int], specs: list[int]) -> None {
+    ok_i: int = 0;
+    ok_n: int = len(enc);
+    while ok_i < ok_n {
+        ok_j: int = ok_i;
+        while ok_j < ok_n and enc[ok_j] != ":" {
+            ok_j = ok_j + 1;
+        }
+        if ok_j >= ok_n {
+            return;
+        }
+        ok_len: int = int(enc[ok_i:ok_j]);
+        keys.append(str_intern(enc[ok_j + 1:ok_j + 1 + ok_len]));
+        ok_i = ok_j + 1 + ok_len;
+        ok_c: str = enc[ok_i:ok_i + 1];
+        ok_i = ok_i + 1;
+        if ok_c == "#" {
+            ok_e: int = ok_i;
+            while ok_e < ok_n and enc[ok_e] != ";" {
+                ok_e = ok_e + 1;
+            }
+            specs.append(int(enc[ok_i:ok_e]));
+            ok_i = ok_e + 1;
+        } elif ok_c == "T" {
+            specs.append(-2);
+        } elif ok_c == "F" {
+            specs.append(-3);
+        } elif ok_c == "N" {
+            specs.append(-4);
+        } else {
+            specs.append(-1);
+        }
+    }
+}
+
+"""A define-own of function value `fv` onto object `oh_obj`: a concise method
+without a [[HomeObject]] takes it (_op_set_prop's define-own wiring)."""
+def _obj_lit_home(vm: VM, fv: JSValue, oh_obj: JSValue) -> None {
+    oh_idx: int = get_fn_idx(fv);
+    if oh_idx >= 0 and oh_idx < jc_count() {
+        oh_cl: int = oh_idx;
+        if _JC_FUNC[oh_cl].is_method and jsv_is_undefined(jc_home_object(oh_cl)) {
+            jc_set_home_object(oh_cl, oh_obj);
+            jc_wb(oh_cl, jc_home_object(oh_cl));
+        }
+    }
 }
 
 def _vm_op_template_object(vm: VM, frame: CallFrame, ins: Instruction, st: ExecState) {
@@ -51522,6 +52508,444 @@ def _rget(rb: int, lb: int, i: int) -> JSValue {
     return __mem_load_i64(wrapping_add(rb, wrapping_mul(wrapping_add(lb, i), 8)));
 }
 
+"""String.prototype.slice(a[, b]) on ASCII string cell `this_val` with int32
+(or undefined second) bounds, from the registers at rcode[argpc ..]: the
+result without the native call, or the hole for the general path (other
+arguments, which ToNumber may observe; a non-ASCII string; a result that
+str_slice_short would have to copy). An ASCII string's UTF-16 indices are
+its byte offsets."""
+def _reg_str_slice_fast(frame: CallFrame, this_val: JSValue, argpc: int, argc: int) -> JSValue {
+    sf_id: int = jsv_to_table_id(this_val);
+    if str_cell_ascii(sf_id) != 1 {
+        return jsv_hole();
+    }
+    sf_a: JSValue = frame.locals[frame.lb + (frame.func.rcode[argpc] & 32767)];
+    if not jsv_is_int32(sf_a) {
+        return jsv_hole();
+    }
+    sf_n: int = str_cell_len_q(sf_id);
+    sf_st: int = jsv_to_int32(sf_a);
+    if sf_st < 0 {
+        sf_st = sf_n + sf_st;
+        if sf_st < 0 {
+            sf_st = 0;
+        }
+    } elif sf_st > sf_n {
+        sf_st = sf_n;
+    }
+    sf_en: int = sf_n;
+    if argc == 2 {
+        sf_b: JSValue = frame.locals[frame.lb + (frame.func.rcode[argpc + 1] & 32767)];
+        if jsv_is_int32(sf_b) {
+            sf_en = jsv_to_int32(sf_b);
+            if sf_en < 0 {
+                sf_en = sf_n + sf_en;
+                if sf_en < 0 {
+                    sf_en = 0;
+                }
+            } elif sf_en > sf_n {
+                sf_en = sf_n;
+            }
+        } elif not jsv_is_undefined(sf_b) {
+            return jsv_hole();
+        }
+    }
+    if sf_st >= sf_en {
+        return jsv_from_string_id(6);
+    }
+    if sf_st == 0 and sf_en == sf_n {
+        return this_val;
+    }
+    sf_c: int = str_slice_short(sf_id, sf_st, sf_en - sf_st);
+    if sf_c < 0 {
+        return jsv_hole();
+    }
+    return jsv_from_string_id(sf_c);
+}
+
+"""The in-place construction steps of constructor body `cf` (cached in
+cf.ipc): raw words [n, then per step: SETFIELD site, kind, value], kind 0 =
+parameter `value`, 1 = the constant `value`. The body must be exactly
+`this.k = <parameter or literal>;` statements (the value, LOAD_THIS or its
+SET_THIS_PROP superinstruction, SWAP, SET_PROP, POP) and the closing
+RETURN_UNDEFINED, with plain parameters (no rest, no `arguments`). -1
+otherwise."""
+def _ipc_analyze(cf: CompiledFunction) -> int {
+    ia_n: int = -1;
+    if not (cf.has_rest or cf.arguments_slot >= 0 or cf.is_async or cf.is_generator) {
+        ia_n = _ipc_scan(cf, 0);
+    }
+    if ia_n < 0 {
+        cf.ipc = -1;
+        return -1;
+    }
+    ia_buf: int = mem_calloc(1, 8 + 24 * ia_n);
+    _ipc_scan(cf, ia_buf);
+    __mem_store_i64(ia_buf, ia_n);
+    cf.ipc = ia_buf;
+    return ia_buf;
+}
+
+"""_ipc_analyze's pass over `cf`'s code: the number of stores, or -1 when the
+body is not a store list; with `buf` non-zero the steps are written there."""
+def _ipc_scan(cf: CompiledFunction, buf: int) -> int {
+    ia_n: int = len(cf.code);
+    ia_np: int = len(cf.params);
+    ia_k: int = 0;
+    ia_i: int = 0;
+    while ia_i + 4 < ia_n
+        and (
+            cf.code[ia_i + 1].opcode == Opcode.SET_THIS_PROP
+            or cf.code[ia_i + 1].opcode == Opcode.LOAD_THIS
+        ) {
+        ia_op: Opcode = cf.code[ia_i].opcode;
+        ia_a: int = cf.code[ia_i].arg;
+        ia_kind: int = 1;
+        ia_val: JSValue = 0;
+        if ia_op == Opcode.LOAD_LOCAL
+            and ia_a >= 0
+            and ia_a < ia_np
+            and ia_a < len(cf.locals)
+            and cf.locals[ia_a] == cf.params[ia_a] {
+            ia_kind = 0;
+            ia_val = ia_a;
+        } elif ia_op == Opcode.LOAD_CONST {
+            ia_val = const_to_jsval(cf.constants.get(ia_a));
+            if not (
+                jsv_is_int32(ia_val)
+                or jsv_is_double(ia_val)
+                or (jsv_is_string_cell(ia_val) and jsv_to_table_id(ia_val) < HEAP_STRING_BASE)
+            ) {
+                return -1;
+            }
+        } elif ia_op == Opcode.LOAD_TRUE {
+            ia_val = js_true();
+        } elif ia_op == Opcode.LOAD_FALSE {
+            ia_val = js_false();
+        } elif ia_op == Opcode.LOAD_NULL {
+            ia_val = js_null();
+        } elif ia_op == Opcode.LOAD_UNDEFINED {
+            ia_val = js_undefined();
+        } else {
+            return -1;
+        }
+        if cf.code[ia_i + 2].opcode != Opcode.SWAP
+            or cf.code[ia_i + 3].opcode != Opcode.SET_PROP
+            or cf.code[ia_i + 4].opcode != Opcode.POP {
+            return -1;
+        }
+        if buf != 0 {
+            ia_s: int = wrapping_add(buf, wrapping_add(8, wrapping_mul(ia_k, 24)));
+            __mem_store_i64(ia_s, ia_i + 3);
+            __mem_store_i64(wrapping_add(ia_s, 8), ia_kind);
+            __mem_store_i64(wrapping_add(ia_s, 16), ia_val);
+        }
+        ia_k = ia_k + 1;
+        ia_i = ia_i + 5;
+    }
+    if ia_i != ia_n - 1 or cf.code[ia_i].opcode != Opcode.RETURN_UNDEFINED {
+        return -1;
+    }
+    return ia_k;
+}
+
+"""Construct `ip_o` (fresh, from _reg_new_class_enter) in place for closure
+`cl`'s constructor when its body is _ipc_analyze's store list: every store
+must hit its site's flat add cache from the object's current shape on (a
+[[Set]] add filled for this [[Prototype]] while the proto epoch stands, so no
+setter or read-only key can intervene) before any is applied. The values
+are the NEW's argument registers (rcode words from `argpc`, `argc` of them:
+missing ones undefined) and the constants. False: nothing done, the
+ordinary call constructs."""
+def _reg_ctor_inplace(frame: CallFrame, cl: int, ip_o: JSValue, argpc: int, argc: int) -> bool {
+    ip_t: int = _JC_FUNC[cl].ipc;
+    if ip_t == 0 {
+        ip_t = _ipc_analyze(_JC_FUNC[cl]);
+    }
+    ip_r: int = _JC_FUNC[cl].ric_ptr;
+    if ip_t <= 0 or ip_r == 0 {
+        return False;
+    }
+    ip_id: int = jsv_to_table_id(ip_o);
+    ip_p: int = jo_p(ip_id);
+    # (js_object_ric_set's object conditions: ordinary, shape mode,
+    # extensible, not a prototype; and young, so no barrier below)
+    if __mem_load_i64(wrapping_add(ip_p, 80)) != 0
+        or __mem_load_i64(wrapping_add(ip_p, 72)) != MAP_MODE_SHAPE
+        or (
+            __mem_load_i64(wrapping_add(ip_p, 104))
+            & (FLAG_MODULE_NS | FLAG_IS_GLOBAL | FLAG_NON_EXTENSIBLE | FLAG_IS_PROTO | FLAG_OLD)
+        )
+            != 0 {
+        return False;
+    }
+    ip_sid: int = __mem_load_i64(wrapping_add(ip_p, 16));
+    ip_pr: int = wrapping_add(__mem_load_i64(ip_p), 1);
+    ip_ep: int = proto_epoch();
+    ip_n: int = __mem_load_i64(ip_t);
+    ip_k: int = 0;
+    while ip_k < ip_n {
+        ip_e: int = wrapping_add(
+            ip_r,
+            wrapping_mul(__mem_load_i64(wrapping_add(ip_t, wrapping_add(8, wrapping_mul(ip_k, 24)))), 16)
+        );
+        ip_w0: int = __mem_load_i64(ip_e);
+        if ip_w0 > -2 {
+            return False;
+        }
+        ip_enc: int = -2 - ip_w0;
+        ip_w1: int = __mem_load_i64(wrapping_add(ip_e, 8));
+        if (ip_enc & 1) == 0
+            or ((ip_enc >> 1) & 33554431) != ip_sid
+            or (ip_enc >> 26) != ip_ep
+            or (ip_w1 >> 32) != ip_pr {
+            return False;
+        }
+        ip_sid = ip_w1 & 4294967295;
+        ip_k = ip_k + 1;
+    }
+    ip_k = 0;
+    while ip_k < ip_n {
+        ip_s: int = wrapping_add(ip_t, wrapping_add(8, wrapping_mul(ip_k, 24)));
+        ip_v: JSValue = __mem_load_i64(wrapping_add(ip_s, 16));
+        if __mem_load_i64(wrapping_add(ip_s, 8)) == 0 {
+            ip_pi: int = __mem_load_i64(wrapping_add(ip_s, 16));
+            if ip_pi < argc {
+                ip_v = frame.locals[frame.lb + (frame.func.rcode[argpc + ip_pi] & 32767)];
+            } else {
+                ip_v = js_undefined();
+            }
+        }
+        ip_sn: int = __mem_load_i64(wrapping_add(ip_p, 24));
+        if ip_sn < 4 {
+            __mem_store_i64(wrapping_add(ip_p, wrapping_add(32, wrapping_mul(ip_sn, 8))), ip_v);
+            __mem_store_i64(wrapping_add(ip_p, 24), ip_sn + 1);
+        } else {
+            jo_spush(ip_id, ip_v);
+        }
+        ip_k = ip_k + 1;
+    }
+    # the shape after the last add; one version step per add, as each add
+    # through the cache counts
+    __mem_store_i64(wrapping_add(ip_p, 16), ip_sid);
+    __mem_store_i64(wrapping_add(ip_p, 8), wrapping_add(__mem_load_i64(wrapping_add(ip_p, 8)), ip_n));
+    return True;
+}
+
+"""The register call's direct natives: a hot built-in whose receiver and
+arguments here make it a plain operation (no coercion, no JS can run, no
+throw) is the helper its handler calls, on the raw registers (the rcode
+words at `argpc` name them, `argc` of them, at most two read). `slot` is
+the native's _ND_SLOT entry. Its value, else the hole (the lean or general
+path then calls it)."""
+def _reg_native_direct(slot: int, this_val: JSValue, frame: CallFrame, argpc: int, argc: int) -> JSValue {
+    if argc > 2 or argpc < 0 {
+        return jsv_hole();
+    }
+    nd_a0: JSValue = js_undefined();
+    nd_a1: JSValue = js_undefined();
+    if argc > 0 {
+        nd_rp: int = wrapping_add(frame.func.rcode_ptr, wrapping_mul(argpc, 8));
+        nd_lp: int = wrapping_add(__list_data_ptr(frame.locals), wrapping_mul(frame.lb, 8));
+        nd_w: int = __mem_load_i64(nd_rp);
+        nd_a0 = __mem_load_i64(wrapping_add(nd_lp, wrapping_mul(nd_w & 32767, 8)));
+        if (nd_w & 32768) != 0 and js_is_tdz(nd_a0) {
+            return jsv_hole();
+        }
+        if argc > 1 {
+            nd_w = __mem_load_i64(wrapping_add(nd_rp, 8));
+            nd_a1 = __mem_load_i64(wrapping_add(nd_lp, wrapping_mul(nd_w & 32767, 8)));
+            if (nd_w & 32768) != 0 and js_is_tdz(nd_a1) {
+                return jsv_hole();
+            }
+        }
+    }
+    if slot == 1 {
+        # String.prototype.charCodeAt(int32)
+        if jsv_is_string_cell(this_val) and jsv_is_int32(nd_a0) {
+            nd_u: int = js_string_unit_at_cell(jsv_to_table_id(this_val), jsv_to_int32(nd_a0));
+            if nd_u < 0 {
+                return js_nan();
+            }
+            return js_int(nd_u);
+        }
+    } elif slot == 2 {
+        # Map.prototype.get
+        if js_is_map(this_val) {
+            return js_map_get(this_val, nd_a0);
+        }
+    } elif slot == 3 {
+        # Map.prototype.set
+        if js_is_map(this_val) {
+            return js_map_set(this_val, nd_a0, nd_a1);
+        }
+    } elif slot == 4 {
+        # Map.prototype.has
+        if js_is_map(this_val) {
+            return js_map_has(this_val, nd_a0);
+        }
+    } elif slot == 5 {
+        # Set.prototype.add
+        if js_is_set(this_val) {
+            return js_set_add(this_val, nd_a0);
+        }
+    } elif slot == 6 {
+        # Set.prototype.has
+        if js_is_set(this_val) {
+            return js_set_has(this_val, nd_a0);
+        }
+    } elif slot == 7 {
+        # Array.isArray: an array is true, anything but a proxy false (a
+        # proxy, whose revocation throws, takes the handler)
+        if argc > 0 {
+            if js_is_array(nd_a0) {
+                return js_true();
+            }
+            if not js_is_proxy(nd_a0) {
+                return js_false();
+            }
+        }
+    } elif slot == 8 {
+        # Object.prototype.hasOwnProperty(interned string) on a plain object:
+        # _key_to_id is the id itself
+        if argc > 0
+            and jsv_is_string_cell(nd_a0)
+            and jsv_to_table_id(nd_a0) < HEAP_STRING_BASE
+            and js_object_is_plain(this_val) {
+            return js_boolean(js_object_has_own(this_val, jsv_to_table_id(nd_a0)));
+        }
+    } elif slot == 9 {
+        # Array.prototype.push(v) (no prototype index accessor or setter can
+        # see the append)
+        if argc == 1 and idx_protector_ok() {
+            return js_array_push1_fast(this_val, nd_a0);
+        }
+    } elif slot == 10 {
+        # Math.max of two int32
+        if argc == 2 and jsv_is_int32(nd_a0) and jsv_is_int32(nd_a1) {
+            if jsv_to_int32(nd_a0) >= jsv_to_int32(nd_a1) {
+                return nd_a0;
+            }
+            return nd_a1;
+        }
+    } elif slot == 11 {
+        # Math.min of two int32
+        if argc == 2 and jsv_is_int32(nd_a0) and jsv_is_int32(nd_a1) {
+            if jsv_to_int32(nd_a0) <= jsv_to_int32(nd_a1) {
+                return nd_a0;
+            }
+            return nd_a1;
+        }
+    } elif slot == 12 {
+        # String.fromCharCode of one ASCII code
+        if argc == 1
+            and jsv_is_int32(nd_a0)
+            and jsv_to_int32(nd_a0) > 0
+            and jsv_to_int32(nd_a0) < 128 {
+            return jsv_from_string_id(str_char_id(jsv_to_int32(nd_a0)));
+        }
+    } elif slot == 13 {
+        # Array.prototype.indexOf(v) on an array whose elements are all in its
+        # dense buffer (no own or prototype index accessor) for a value whose
+        # strict equality is identity
+        if argc == 1
+            and (
+                jsv_is_int32(nd_a0)
+                or jsv_is_object_cell(nd_a0)
+                or jsv_is_bool(nd_a0)
+                or jsv_is_null(nd_a0)
+                or jsv_is_undefined(nd_a0)
+            )
+            and js_array_dense_full(this_val)
+            and idx_protector_ok() {
+            return js_Array_indexOf(this_val, nd_a0, js_undefined());
+        }
+    } elif slot == 14 {
+        # String.prototype.indexOf(string[, int32]) on byte-clean strings
+        if argc > 0
+            and jsv_is_string_cell(this_val)
+            and jsv_is_string_cell(nd_a0)
+            and (argc == 1 or jsv_is_int32(nd_a1))
+            and str_cell_ascii(jsv_to_table_id(this_val)) == 1
+            and str_cell_ascii(jsv_to_table_id(nd_a0)) == 1 {
+            nd_at: int = 0;
+            if argc > 1 and jsv_to_int32(nd_a1) > 0 {
+                nd_at = jsv_to_int32(nd_a1);
+            }
+            return js_int(str_ascii_index_of(jsv_to_table_id(this_val), jsv_to_table_id(nd_a0), nd_at));
+        }
+    } elif slot == 15 {
+        # String.prototype.startsWith(string[, int32]) on byte-clean strings
+        if argc > 0
+            and jsv_is_string_cell(this_val)
+            and jsv_is_string_cell(nd_a0)
+            and (argc == 1 or jsv_is_int32(nd_a1))
+            and str_cell_ascii(jsv_to_table_id(this_val)) == 1
+            and str_cell_ascii(jsv_to_table_id(nd_a0)) == 1 {
+            nd_pos: int = 0;
+            if argc > 1 and jsv_to_int32(nd_a1) > 0 {
+                nd_pos = jsv_to_int32(nd_a1);
+                if nd_pos > str_cell_len_q(jsv_to_table_id(this_val)) {
+                    nd_pos = str_cell_len_q(jsv_to_table_id(this_val));
+                }
+            }
+            return js_boolean(
+                str_ascii_starts_with(jsv_to_table_id(this_val), jsv_to_table_id(nd_a0), nd_pos)
+            );
+        }
+    } elif slot == 16 {
+        # Math.floor of a number
+        if argc == 1 {
+            if jsv_is_int32(nd_a0) {
+                return nd_a0;
+            }
+            if jsv_is_double(nd_a0) {
+                return js_math_floor_num(nd_a0);
+            }
+        }
+    } elif slot == 17 {
+        # Number.prototype.toString() of a small non-negative int, decimal
+        if jsv_is_int32(this_val)
+            and jsv_to_int32(this_val) >= 0
+            and jsv_to_int32(this_val) < 1024
+            and (
+                argc == 0
+                or jsv_is_undefined(nd_a0)
+                or (jsv_is_int32(nd_a0) and jsv_to_int32(nd_a0) == 10)
+            ) {
+            return jsv_from_string_id(str_intern_index(jsv_to_int32(this_val)));
+        }
+    }
+    return jsv_hole();
+}
+
+"""Fill scratch argument list `lst` with the `n` registers the rcode words at
+`rp` name (register base `lp`): in place while it has `n` elements."""
+def _nf_fill(lst: list[JSValue], n: int, rp: int, lp: int) -> None {
+    if len(lst) != n {
+        while len(lst) > 0 {
+            lst.pop();
+        }
+        while len(lst) < n {
+            lst.append(0);
+        }
+    }
+    nf_d: int = __list_data_ptr(lst);
+    nf_k: int = 0;
+    while nf_k < n {
+        __mem_store_i64(
+            wrapping_add(nf_d, wrapping_mul(nf_k, 8)),
+            __mem_load_i64(
+                wrapping_add(
+                    lp,
+                    wrapping_mul(__mem_load_i64(wrapping_add(rp, wrapping_mul(nf_k, 8))) & 32767, 8)
+                )
+            )
+        );
+        nf_k = nf_k + 1;
+    }
+}
+
 """Write one register word (see _rget); the elements are unboxed JSValues,
 so the store needs no barrier."""
 def _rset(rb: int, lb: int, i: int, v: JSValue) {
@@ -51596,7 +53020,7 @@ def _reg_stat_recv_kind(v: JSValue) -> str {
     if js_is_array(v) {
         return "array";
     }
-    rk_cf: int = js_object_table_get(rk_id).cell_flags;
+    rk_cf: int = jo_cell_flags(rk_id);
     if (rk_cf & FLAG_IS_CLASS) != 0 {
         return "class";
     }
@@ -51647,7 +53071,7 @@ def _reg_stat_new_reason(v: JSValue) -> str {
     }
     if jsv_is_object_cell(v)
         and jsv_to_table_id(v) > 0
-        and (js_object_table_get(jsv_to_table_id(v)).cell_flags & FLAG_IS_CLASS) != 0 {
+        and (jo_cell_flags(jsv_to_table_id(v)) & FLAG_IS_CLASS) != 0 {
         nr_s: str = "class";
         if js_object_has_own(v, WK_SUPER) {
             nr_s = nr_s + " derived";
@@ -52226,6 +53650,7 @@ def:pub init_opcode_table {
     _OPCODE_TABLE[Opcode.STORE_DEREF] = _vm_op_store_deref;
     _OPCODE_TABLE[Opcode.NEW_OBJECT] = _vm_op_new_object;
     _OPCODE_TABLE[Opcode.NEW_ARRAY] = _vm_op_new_array;
+    _OPCODE_TABLE[Opcode.NEW_OBJECT_LIT] = _vm_op_new_object_lit;
     _OPCODE_TABLE[Opcode.GET_PROP] = _vm_op_get_prop;
     _OPCODE_TABLE[Opcode.SET_PROP] = _vm_op_set_prop;
     _OPCODE_TABLE[Opcode.DEL_PROP] = _vm_op_del_prop;

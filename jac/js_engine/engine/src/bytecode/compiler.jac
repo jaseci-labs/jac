@@ -8541,7 +8541,112 @@ obj Compiler {
 
     # ── object ─────────────────────────────────────────────────────────────
 
+    """An object literal whose properties are all plain `key: value` or shorthand
+    ones (identifier or string keys, printable ASCII, distinct, none an array
+    index or starting with "__"; no spread, computed key, accessor or method),
+    at most 32: its values in order (each compiled as compile_object would),
+    then NEW_OBJECT_LIT n, keys. No user code can observe the object before it
+    is complete, so building it after the values is the same. False (nothing
+    emitted) for any other literal."""
+    def _compile_object_lit(nd: ASTNode) -> bool {
+        ol_n: int = len(nd.properties);
+        if ol_n == 0 or ol_n > 32 {
+            return False;
+        }
+        ol_keys: list[str] = [];
+        for ol_p in nd.properties {
+            if ol_p.ntype == ASTNodeType.SpreadElement
+                or ol_p.computed
+                or ol_p.kind != "init"
+                or ol_p.key is None {
+                return False;
+            }
+            if ol_p.expression is not None
+                and ol_p.expression.ntype == ASTNodeType.FunctionExpression
+                and ol_p.expression.is_method {
+                return False;
+            }
+            ol_k: str = "";
+            if ol_p.key.ntype == ASTNodeType.Literal {
+                if ol_p.key.kind != "string" {
+                    return False;
+                }
+                ol_k = _unescape_string(ol_p.key.value);
+            } elif ol_p.key.ntype == ASTNodeType.Identifier {
+                ol_k = ol_p.key.name;
+            } else {
+                return False;
+            }
+            if not _obj_lit_key_ok(ol_k) or ol_k in ol_keys {
+                return False;
+            }
+            ol_keys.append(ol_k);
+        }
+        ol_i: int = 0;
+        ol_dyn: int = 0;
+        ol_enc: str = "";
+        for ol_q in nd.properties {
+            ol_spec: str = "$";
+            if ol_q.expression is not None and not ol_q.shorthand {
+                ol_spec = self._obj_lit_const_spec(ol_q.expression);
+            }
+            if ol_spec != "$" {
+                # a constant: in the template, not pushed
+            } elif ol_q.expression is not None {
+                self.pending_super_prop = True;
+                self.pending_super_call = False;
+                self.compile_expr(ol_q.expression);
+                if not ol_q.shorthand and ol_keys[ol_i] != "" {
+                    self._maybe_infer_fn_name(ol_q.expression, ol_keys[ol_i]);
+                }
+                ol_dyn = ol_dyn + 1;
+            } elif ol_q.shorthand and ol_q.key is not None {
+                self.compile_identifier(ol_q.key);
+                ol_dyn = ol_dyn + 1;
+            } else {
+                self._op(Opcode.LOAD_UNDEFINED);
+                ol_dyn = ol_dyn + 1;
+            }
+            ol_enc = ol_enc + str(len(ol_keys[ol_i])) + ":" + ol_keys[ol_i] + ol_spec;
+            ol_i = ol_i + 1;
+        }
+        self._emit(make_instruction(Opcode.NEW_OBJECT_LIT, ol_dyn, self._intern(ol_enc), 0));
+        return True;
+    }
+
+    """An object-literal value the template can hold (_compile_object_lit): a
+    string or number literal (`#<constant index>;`, the constant
+    compile_literal would load), `T` / `F` / `N` for true / false / null;
+    `$` (pushed) for anything else."""
+    def _obj_lit_const_spec(ex: ASTNode) -> str {
+        if ex.ntype != ASTNodeType.Literal {
+            return "$";
+        }
+        if ex.kind == "string" {
+            return "#" + str(self._fn().constants.add("s:" + _unescape_string(ex.value))) + ";";
+        }
+        if ex.kind == "number" {
+            return "#" + str(self._fn().constants.add("n:" + _strip_numeric_separators(ex.value))) + ";";
+        }
+        if ex.kind == "bigint" or ex.kind == "regexp" {
+            return "$";
+        }
+        if ex.value == "true" {
+            return "T";
+        }
+        if ex.value == "false" {
+            return "F";
+        }
+        if ex.value == "null" {
+            return "N";
+        }
+        return "$";
+    }
+
     def compile_object(nd: ASTNode) {
+        if self._compile_object_lit(nd) {
+            return;
+        }
         self._op(Opcode.NEW_OBJECT);
         for prop in nd.properties {
             if prop.ntype == ASTNodeType.SpreadElement {
@@ -11372,4 +11477,26 @@ def _src_word_at(src: str, pos: int, wl: int, word: str) -> bool {
         j = j + 1;
     }
     return True;
+}
+
+"""A key NEW_OBJECT_LIT may carry (compiler _compile_object_lit): printable
+ASCII, not starting with "__" (`__proto__` and the engine's internal key
+prefixes), not all digits (an array index goes to the elements)."""
+def _obj_lit_key_ok(k: str) -> bool {
+    if not k.isascii() {
+        return False;
+    }
+    if len(k) >= 2 and k[0:2] == "__" {
+        return False;
+    }
+    ok_digits: bool = len(k) > 0;
+    for ok_c in k {
+        if ok_c < " " or ok_c > "~" {
+            return False;
+        }
+        if ok_c < "0" or ok_c > "9" {
+            ok_digits = False;
+        }
+    }
+    return not ok_digits;
 }

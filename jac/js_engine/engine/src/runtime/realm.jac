@@ -111,8 +111,7 @@ def:pub gc_default_set(v: bool) {
 }
 
 # Typed cell table types (each in a *_type.na.jac that does NOT import realm)
-import from engine.src.runtime.jsobj_type { JSObject, ProxyState, ArgsState }
-import from engine.src.vm.closure_type { JSClosure }
+import from engine.src.runtime.jsobj_type { ProxyState, ArgsState }
 import from engine.src.builtins.function_type { JSFunctionMeta, BuiltinFn }
 import from engine.src.builtins.native_type { NativeFn }
 import from engine.src.builtins.map_type { JSMapStorage }
@@ -156,8 +155,6 @@ obj:pub Realm {
         weak_refs: dict[int, list[int]] = {},
         finalization_queue: list[JSValue] = [],
         gc_temp_roots: list[JSValue] = [],
-        objects: list[JSObject] = [],
-        closures: list[JSClosure] = [],
         functions: list[JSFunctionMeta] = [],
         builtins: list[BuiltinFn] = [],
         natives: list[NativeFn] = [],
@@ -208,11 +205,7 @@ obj:pub Realm {
         realm_id: int = 0,
         intrinsics: RealmIntrinsics = RealmIntrinsics(),
         heap_strings: list[str] = [],
-        rope_left: list[int] = [],
-        rope_right: list[int] = [],
-        rope_len: list[int] = [],
         intern_ascii: list[int] = [],
-        heap_ascii: list[int] = [],
         free_generator_slots: list[int] = [],
         import_meta_cache: dict[str, JSValue] = {},
         gc_pending: bool = False,
@@ -224,7 +217,6 @@ obj:pub Realm {
         gc_scan_weaksets: list[int] = [],
         gc_young_objs: list[int] = [],
         gc_ab_rows: dict[int, bool] = {},
-        heap_strings_mark_epoch: list[int] = [],
         free_heap_string_slots: list[int] = [],
         proxy_slots: dict[int, ProxyState] = {},
         args_slots: dict[int, ArgsState] = {},
@@ -420,6 +412,19 @@ def:pub realm_request_exit(realm: Realm) {
     realm.safepoint_req = True;
 }
 
+"""gc_note_alloc for `count` allocations of `nbytes` in all, at once (the
+allocators batch their accounting)."""
+def:pub gc_note_alloc_n(realm: Realm, count: int, nbytes: int) -> None {
+    if not realm.gc_enabled {
+        return;
+    }
+    realm.gc_alloc_count = realm.gc_alloc_count + count;
+    na_full: bool = gc_young_add(nbytes);
+    if na_full or realm.gc_alloc_count >= realm.gc_threshold {
+        realm_request_gc(realm);
+    }
+}
+
 """G0.4 — real allocation accounting. Call at each genuine cell-allocation site
 (objects, closures, generators, maps, sets, heap-strings) — NOT once per opcode.
 Bumps the allocation counter and, once it reaches the adaptive threshold,
@@ -484,11 +489,7 @@ def:pub realm_new -> Realm {
     r.intern_next_id = 0;
     r.intern_seeded = False;
     r.heap_strings = [];
-    r.rope_left = [];
-    r.rope_right = [];
-    r.rope_len = [];
     r.intern_ascii = [];
-    r.heap_ascii = [];
 
     # Symbol table
     r.symbols = [];
@@ -516,10 +517,8 @@ def:pub realm_new -> Realm {
     r.import_meta_cache = {};
 
     # Typed cell tables
-    r.objects = [];
     r.proxy_slots = {};  # object side-tables (Phase 1)
     r.args_slots = {};
-    r.closures = [];
     r.functions = [];
     r.builtins = [];
     r.natives = [];
@@ -552,7 +551,6 @@ def:pub realm_new -> Realm {
     r.gc_young_gens = [];
     r.gc_young_sets = [];  # objects marked for the first time (per cycle)
     r.gc_ab_rows = {};  # object rows holding an ArrayBuffer (lazy sweep)
-    r.heap_strings_mark_epoch = [];  # G1.4: heap-string mark epochs (0=unmarked,-1=dead)
     r.free_heap_string_slots = [];  # G1.4: recycled heap-string slots
 
     # VM execution state

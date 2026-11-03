@@ -291,7 +291,13 @@ enum Opcode {
     #   receiver is a plain object with an own writable int32 data property k
     #   (no getter/setter/proxy can run) — bump it in place and skip the window.
     #   Slow path: replicate the head load and fall through to the originals.
-    PROP_INC = 146
+    PROP_INC = 146,
+    # NEW_OBJECT_LIT: an object literal of plain `key: value` / shorthand
+    #   properties (compiler.jac _compile_object_lit): pop arg values, push the
+    #   object with its properties in the order of constants[arg2] ("len:key"
+    #   then the value: `$` the next popped value, `#<constant index>;`, `T`,
+    #   `F`, `N`), as NEW_OBJECT + per-key define-own SET_PROP would build it.
+    NEW_OBJECT_LIT = 147
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -480,7 +486,14 @@ obj CompiledFunction {
         # instruction (shape id, slot index; 0: empty), raw like rcode_ptr: a
         # GETFIELD / SETFIELD hit reads it without the Instruction's IC fields.
         ric_ptr: int = 0,
-        mod_free: int = 0;
+        # 1 when the code never touches the CommonJS `module` / `exports`
+        # globals and has no direct eval (regisa sets it): a call into it
+        # from another module skips the globals swap; -1 otherwise, 0 unknown
+        mod_free: int = 0,
+        # A constructor body that only stores parameters and constants into
+        # `this`: its steps for in-place construction (vm.jac
+        # _ipc_analyze; raw memory), -1 for any other body, 0 unknown
+        ipc: int = 0;
 }
 
 # parent-local slot index per free_var; -1 = transitive capture
@@ -876,6 +889,8 @@ def _opname(op: Opcode) -> str {
         return "SET_LL_PROP";
     } elif op == Opcode.PROP_INC {
         return "PROP_INC";
+    } elif op == Opcode.NEW_OBJECT_LIT {
+        return "NEW_OBJECT_LIT";
     } elif op == Opcode.WITH_PUSH {
         return "WITH_PUSH";
     } elif op == Opcode.WITH_POP {
@@ -940,6 +955,8 @@ def _has_arg(op: Opcode) -> bool {
     } elif op == Opcode.STORE_FREE {
         return True;
     } elif op == Opcode.NEW_ARRAY {
+        return True;
+    } elif op == Opcode.NEW_OBJECT_LIT {
         return True;
     } elif op == Opcode.GET_PROP {
         return True;
@@ -1314,6 +1331,8 @@ def:pub opcode_to_int(op: Opcode) -> int {
         return 145;
     } elif op == Opcode.PROP_INC {
         return 146;
+    } elif op == Opcode.NEW_OBJECT_LIT {
+        return 147;
     }
     return -1;
 }
@@ -1615,6 +1634,8 @@ def:pub opcode_from_int(n: int) -> Opcode {
         return Opcode.SET_LL_PROP;
     } elif n == 146 {
         return Opcode.PROP_INC;
+    } elif n == 147 {
+        return Opcode.NEW_OBJECT_LIT;
     }
     return Opcode.NOP;
 }

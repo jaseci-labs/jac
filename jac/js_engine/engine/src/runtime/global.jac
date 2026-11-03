@@ -33,7 +33,6 @@ import from engine.src.runtime.jsvalue {
     jsv_to_table_id,
     jsv_set_bigint_zero_id
 }
-import from engine.src.runtime.fn_meta { fn_meta_bind_closures }
 import from engine.src.runtime.encoding { SYMBOL_KEY_BASE }
 import from engine.src.runtime.jsobject {
     js_object_mark_global,
@@ -6126,7 +6125,6 @@ Bun Zig: VirtualMachine.create()
 def:pub create_vm(ctx: GlobalContext) -> VM {
     vm: VM = make_vm();
     vm.realm = ctx.realm;
-    fn_meta_bind_closures(vm.realm.closures);
     vm.global_this = ctx.global_obj.object;
     _populate_vm_globals(vm, ctx);
     # From here on, writes through globalThis are recorded so the VM's bare-name

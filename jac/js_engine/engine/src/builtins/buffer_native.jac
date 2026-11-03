@@ -24,6 +24,11 @@ and astral characters are two 3-byte surrogate encodings (CESU-8), exactly
 what the JS loop's `String.fromCharCode(hi) + String.fromCharCode(lo)` built.
 """
 
+import from engine.src.vm.closure_type {
+    jc_count,
+    jc_object_proto,
+    jc_prototype_obj
+}
 import from engine.src.runtime.fn_meta { cl_props }
 import from engine.src.runtime.jsvalue {
     JSValue,
@@ -769,10 +774,10 @@ def _bn_default_species_proto(realm: Realm, view: JSValue) -> JSValue {
         return js_undefined();
     }
     ci: int = jsv_to_table_id(c);
-    if ci < 0 or ci >= len(realm.closures) {
+    if ci < 0 or ci >= jc_count() {
         return js_undefined();
     }
-    fp: JSValue = cl_props(realm.closures[ci]);
+    fp: JSValue = cl_props(ci);
     sk: int = SYMBOL_KEY_BASE + SYMBOL_SPECIES;
     g: JSValue = js_object_get_own_accessor_getter(fp, sk);
     if jsv_is_undefined(g) {
@@ -781,15 +786,15 @@ def _bn_default_species_proto(realm: Realm, view: JSValue) -> JSValue {
         if js_object_has_own(fp, sk) or js_object_has_own_accessor(fp, sk) {
             return js_undefined();
         }
-        op: JSValue = realm.closures[ci].object_proto;
+        op: JSValue = jc_object_proto(ci);
         if not _bn_is_closure(op) {
             return js_undefined();
         }
         oi: int = jsv_to_table_id(op);
-        if oi < 0 or oi >= len(realm.closures) {
+        if oi < 0 or oi >= jc_count() {
             return js_undefined();
         }
-        g = js_object_get_own_accessor_getter(cl_props(realm.closures[oi]), sk);
+        g = js_object_get_own_accessor_getter(cl_props(oi), sk);
     }
     if not is_native_val(g) or get_native_kind(g) != NATIVE_KIND_TA_SPECIES_GET {
         return js_undefined();
@@ -797,7 +802,7 @@ def _bn_default_species_proto(realm: Realm, view: JSValue) -> JSValue {
     if js_object_has_own(fp, WK_NOT_CTOR) {
         return js_undefined();
     }
-    proto: JSValue = realm.closures[ci].prototype_obj;
+    proto: JSValue = jc_prototype_obj(ci);
     if js_object_has_own(fp, WK_PROTOTYPE) {
         proto = js_object_get(fp, WK_PROTOTYPE);
     }

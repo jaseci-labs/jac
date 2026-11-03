@@ -416,6 +416,7 @@ def _eff_table_init {
 """Opcodes whose stack effect depends on the instruction's operands."""
 def _effect_is_dynamic(op: Opcode) -> bool {
     return op == Opcode.NEW_ARRAY
+        or op == Opcode.NEW_OBJECT_LIT
         or op == Opcode.CALL
         or op == Opcode.CALL_METHOD
         or op == Opcode.NEW
@@ -509,7 +510,7 @@ def _reg_effect_slow(ins: Instruction) -> int {
     if op == Opcode.NEW_OBJECT {
         return _pk(0, 1, K_NORMAL);
     }
-    if op == Opcode.NEW_ARRAY {
+    if op == Opcode.NEW_ARRAY or op == Opcode.NEW_OBJECT_LIT {
         return _pk(ins.arg, 1, K_NORMAL);
     }
     if op == Opcode.GET_PROP {
@@ -1868,6 +1869,13 @@ obj RegTranslator {
             self.push_result(len(self.rcode) - 1);
             return True;
         }
+        if op == Opcode.MAKE_ARROW and ins.arg >= 0 and ins.arg < 8388606 {
+            # (NEWOBJECT flagged by c = function index + 1: MAKE_ARROW's arg)
+            self.flush_checks(0);
+            self.e(R_NEWOBJECT, self.dest(d, -1), 0, ins.arg + 1);
+            self.push_result(len(self.rcode) - 1);
+            return True;
+        }
         if op == Opcode.ADD
             or op == Opcode.SUB
             or op == Opcode.MUL
@@ -2294,6 +2302,30 @@ obj RegTranslator {
                 na_k = na_k + 1;
             }
             self.vpush(VS_REG, na_base);
+            self.last_pos = -1;
+            return True;
+        }
+        if op == Opcode.NEW_OBJECT_LIT and ins.arg >= 0 and ins.arg < 32768 {
+            # An object-literal template: the values materialized into
+            # consecutive temporaries as for `[a, b, c]`, then a NEWARRAY word
+            # flagged by count bit 15 (orig in c: the keys and the site's
+            # learned shape) that leaves the object in the first of them.
+            ol_n: int = ins.arg;
+            self.flush_checks(ol_n);
+            self.mat_top(ol_n);
+            ol_base: int = self.temp(d - ol_n);
+            if ol_n > 0 {
+                self.claim(ol_base, d - ol_n);
+            } else {
+                self.claim(ol_base, -1);
+            }
+            self.e(R_NEWARRAY, ol_base, ol_n | 32768, i);
+            ol_k: int = 0;
+            while ol_k < ol_n {
+                self.vpop();
+                ol_k = ol_k + 1;
+            }
+            self.vpush(VS_REG, ol_base);
             self.last_pos = -1;
             return True;
         }

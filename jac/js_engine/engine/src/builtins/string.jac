@@ -46,6 +46,7 @@ import from engine.src.runtime.jsstring {
     js_string_unit_str,
     str_cell_ascii,
     str_heap_ascii,
+    str_heap_ascii_n,
     str_cell_len,
     str_slice_cell,
     str_substr_cell,
@@ -267,6 +268,10 @@ reused as keys — route them to the collectible heap (str_heap) instead of the
 immortal intern table. `str_heap("")` returns the canonical empty id 6, so the
 many `_mk_str("")` early-returns are unaffected. Single-char results
 (charAt/at/fromCharCode) use `_mk_char` (interned) — a bounded, deduped set."""
+# A runtime 1: `view * _ONE` is an owned copy of a borrowed slice view
+# (jsstring.jac str_substr).
+glob _ONE: int = 1;
+
 def _mk_str(s: str) -> JSValue {
     return jsv_from_string_id(str_heap(s));
 }
@@ -1141,6 +1146,30 @@ def:pub js_str_slice(v: JSValue, start: JSValue, end_v: JSValue) -> JSValue {
             return _mk_str("");
         }
         return _lazy_slice(v, lz_id, lz_st, lz_en);
+    }
+    # A string cell known to be ASCII: its length is the cell's, the cut is
+    # one byte copy and the result's length is known.
+    if jsv_is_string_cell(v) and str_cell_ascii(jsv_to_table_id(v)) == 1 {
+        fa_id: int = jsv_to_table_id(v);
+        fa_n: int = str_cell_len(fa_id);
+        fa_st: int = _rel_index(_to_int_or_inf(start), fa_n);
+        if vm_has_native_exc() {
+            return js_undefined();
+        }
+        fa_en: int = fa_n;
+        if not jsv_is_undefined(end_v) {
+            fa_en = _rel_index(_to_int_or_inf(end_v), fa_n);
+            if vm_has_native_exc() {
+                return js_undefined();
+            }
+        }
+        if fa_st >= fa_en {
+            return _mk_str("");
+        }
+        # (an inline call-result temp, released: see below)
+        return jsv_from_string_id(
+            str_heap_ascii_n(str_bslice_in(str_from_id(fa_id), fa_st, fa_en) * _ONE, fa_en - fa_st)
+        );
     }
     s: str = _raw(string_value_of(v));
     if vm_has_native_exc() {
