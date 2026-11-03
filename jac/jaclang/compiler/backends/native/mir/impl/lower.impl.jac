@@ -4198,7 +4198,11 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
     }
     if name == "__global_block" {
         label = c_string_literal(args[0]) if args else None;
-        (ok, size) = c_scalar_constant(args[1]) if len(args) == 2 else (False, None);
+        ok = False;
+        size: any = None;
+        if len(args) == 2 {
+            (ok, size) = c_scalar_constant(args[1]);
+        }
         if not label or not ok or not isinstance(size, int) or size <= 0 {
             raise MirRefused(
                 mir_refusal(
@@ -4228,7 +4232,11 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
     }
     if name == "__thread_local_block" {
         label = c_string_literal(args[0]) if args else None;
-        (ok, size) = c_scalar_constant(args[1]) if len(args) == 2 else (False, None);
+        ok = False;
+        size: any = None;
+        if len(args) == 2 {
+            (ok, size) = c_scalar_constant(args[1]);
+        }
         if not label or not ok or not isinstance(size, int) or size <= 0 {
             raise MirRefused(
                 mir_refusal(
