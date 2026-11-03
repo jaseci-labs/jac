@@ -4,7 +4,7 @@ import asyncio;
 import from litellm.exceptions { InternalServerError }
 import from jaclang.byllm.types { IterationAction, IterationContext, StreamEvent }
 import from jaclang.byllm.lib { MockLLM }
-import from support { call, event_types, fail, mk_run, say }
+import from support { call, event_types, fail, finish, mk_run, say }
 
 
 def save_data(name: str) -> str {
@@ -12,12 +12,13 @@ def save_data(name: str) -> str {
 }
 
 
-def _dropped(content: str = "partial text here") -> any {
-    return fail(
-        InternalServerError(message="boom", llm_provider="openai", model="gpt-4o"),
-        content=content,
-        after=1 if content else 0
-    );
+"""A stream that drops after its first 12 characters, as text or as a finish_tool answer."""
+def _dropped(content: str = "partial text here", answer: bool = False) -> any {
+    error = InternalServerError(message="boom", llm_provider="openai", model="gpt-4o");
+    if answer {
+        return fail(error, reply=finish(content[:12]) if content else None);
+    }
+    return fail(error, content=content, after=1 if content else 0);
 }
 
 
@@ -47,6 +48,7 @@ def _fold(events: list[StreamEvent]) -> tuple[str, str] {
 
 test "a retried answer replaces the attempt that failed" {
     setups = {
+        "finish": ([], {}),
         "cutoff": ([call("save_data", {"name": "x"})], {"max_react_iterations": 1}),
         "abort": (
             [call("save_data", {"name": "x"})],
@@ -55,6 +57,7 @@ test "a retried answer replaces the attempt that failed" {
         "none": ([], {})
     };
     rows = [
+        ("as a finish_tool answer", "finish", finish("full answer"), "full answer"),
         ("at max_react_iterations", "cutoff", say("full answer"), "full answer"),
         ("on ABORT_WITH_SUMMARY", "abort", say("full answer"), "full answer"),
         ("with no tools", "none", say("full answer"), "full answer"),
@@ -68,7 +71,7 @@ test "a retried answer replaces the attempt that failed" {
             stream=True,
             call_params=params
         );
-        llm = MockLLM(outputs=lead + [_dropped(), retry]);
+        llm = MockLLM(outputs=lead + [_dropped(answer=ending == "finish"), retry]);
         (shown, discarded) = _fold(list(llm._invoke_streaming(mt)));
         assert discarded == "partial text" , f"{label}: reset discarded {discarded!r}";
         assert shown == expected , f"{label}: the caller ends with {shown!r}";
@@ -105,7 +108,7 @@ def _plain_turn(ending: str, attempts: list[any]) -> tuple[str, any, list[any]] 
     }
 
     def ask(task: str) -> str by llm(
-        tools=[save_data] if ending == "cutoff" else [],
+        tools=[save_data] if ending in ["cutoff", "finish"] else [],
         stream=True,
         max_react_iterations=1,
         conversation=history
@@ -124,12 +127,16 @@ def _plain_turn(ending: str, attempts: list[any]) -> tuple[str, any, list[any]] 
 
 test "a plain stream never replays text it has already delivered" {
     rows = [
-        ("dropped before any text", [_dropped(""), say("full answer")], "full answer"),
-        ("dropped after text", [_dropped(), say("full answer")], "partial text")
+        ("dropped before any text", "", "full answer"),
+        ("dropped after text", "partial text here", "partial text")
     ];
-    for ending in ["none", "cutoff", "async"] {
-        for (label, attempts, expected) in rows {
-            (text, error, history) = _plain_turn(ending, attempts);
+    for ending in ["none", "cutoff", "finish", "async"] {
+        for (label, sent, expected) in rows {
+            answers = ending == "finish";
+            retry = finish("full answer") if answers else say("full answer");
+            (text, error, history) = _plain_turn(
+                ending, [_dropped(sent, answer=answers), retry]
+            );
             where = f"{ending} / {label}";
             assert text == expected , f"{where}: the caller received {text!r}";
             if expected == "partial text" {

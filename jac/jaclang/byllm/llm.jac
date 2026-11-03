@@ -97,10 +97,7 @@ obj BaseLLM {
     ) -> Message;
 
     def _invoke_react_loop(mt_run: MTRuntime) -> object;
-    def _invoke_react_loop_streaming(
-        mt_run: MTRuntime
-    ) -> Generator[object, None, None];
-
+    def _invoke_react_loop_streaming(mt_run: MTRuntime) -> Generator[str, None, None];
     def make_model_params(mt_run: MTRuntime) -> dict[str, any];
     def log_info(message: str) -> None;
     def format_prompt(params: dict[str, any]) -> str;
@@ -111,7 +108,7 @@ obj BaseLLM {
     ) -> Generator[str, None, None];
 
     def dispatch_streaming_with_tools(
-        mt_run: MTRuntime, out: list[CompletionResult]
+        mt_run: MTRuntime, out: list[CompletionResult], retractable: bool = True
     ) -> Generator[str, None, None];
 
     async def adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
@@ -138,7 +135,10 @@ obj BaseLLM {
     ) -> Generator[StreamEvent, None, None];
 
     def _invoke_streaming(mt_run: MTRuntime) -> Generator[StreamEvent, None, None];
-    def _stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, None];
+    def _stream_steps(
+        mt_run: MTRuntime, retractable: bool = True
+    ) -> Generator[StreamEvent, None, None];
+
     def _invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> object;
     def _resolve_api_base -> str;
     def _get_ctx_window(call_params: dict[str, any]) -> int;

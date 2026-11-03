@@ -132,48 +132,57 @@ test "a logging stream with tools reports the call, the result, then the answer"
 }
 
 
-test "a finish_tool answer reaches the caller as committed, with no second call" {
-    # The model's finish_tool argument is the answer. byLLM used to ask the model
-    # to restate it, and that second reply replaced the committed one.
-    committed = "The weather in London is sunny, 25 degrees.";
-    for mode in ["plain", "logging", "handler"] {
-        history: list[dict[str, any]] = [];
-        seen: list[StreamEvent] = [];
-        llm = MockLLM(
-            outputs=[
-                call("get_weather", {"city": "London"}),
-                finish(committed),
-                say("A different restated answer.")
-            ]
-        );
+test "a finish_tool answer streams to the caller as committed, with no second call" {
+    # The model's finish_tool argument is the answer, streamed as the model writes
+    # it. byLLM used to ask the model to restate it, and that reply replaced it.
+    # The second answer's escapes (quote, newline, an emoji's surrogate pair) split
+    # across the 12-character fragments.
+    for committed in [
+        "The weather in London is sunny, 25 degrees.",
+        'London: "sunny"\n25°C bright 😀 all day'
+    ] {
+        for mode in ["plain", "logging", "handler"] {
+            history: list[dict[str, any]] = [];
+            seen: list[StreamEvent] = [];
+            llm = MockLLM(
+                outputs=[
+                    call("get_weather", {"city": "London"}),
+                    finish(committed),
+                    say("A different restated answer.")
+                ]
+            );
 
-        def check_weather(question: str) -> str by llm(
-            tools=[get_weather],
-            stream=True,
-            logging=mode == "logging",
-            stream_handler=seen.append if mode == "handler" else None,
-            conversation=history
-        );
+            def check_weather(question: str) -> str by llm(
+                tools=[get_weather],
+                stream=True,
+                logging=mode == "logging",
+                stream_handler=seen.append if mode == "handler" else None,
+                conversation=history
+            );
 
-        out: any = check_weather("What is the weather in London?");
-        if mode == "plain" {
-            got = "".join(list(out));
-        } elif mode == "logging" {
-            got = chunk_text(list(out));
-        } else {
-            got = out;
-            assert chunk_text(seen) == committed , f"{mode}: the handler saw {chunk_text(
-                seen
-            )!r}";
+            out: any = check_weather("What is the weather in London?");
+            if mode == "plain" {
+                pieces = list(out);
+                got = "".join(pieces);
+            } else {
+                events = list(out) if mode == "logging" else seen;
+                pieces = [e.data["content"] for e in events_of(events, "chunk")];
+                got = out if mode == "handler" else "".join(pieces);
+            }
+            assert "".join(pieces) == committed and len(pieces) > 1 , (
+                f"{mode}: the answer must stream in pieces, got {pieces}"
+            );
+            assert got == committed , f"{mode}: the caller received {got!r}";
+            assert len(llm.seen) == 2 , f"{mode}: expected 2 requests, got {len(
+                llm.seen
+            )}";
+            answers = [
+                m.get("content")
+                for m in history
+                if m.get("role") == "assistant" and m.get("content")
+            ];
+            assert answers == [committed] , f"{mode}: the conversation saved {answers}";
         }
-        assert got == committed , f"{mode}: the caller received {got!r}";
-        assert len(llm.seen) == 2 , f"{mode}: expected 2 requests, got {len(llm.seen)}";
-        answers = [
-            m.get("content")
-            for m in history
-            if m.get("role") == "assistant" and m.get("content")
-        ];
-        assert answers == [committed] , f"{mode}: the conversation saved {answers}";
     }
 }
 
@@ -403,7 +412,8 @@ test "a streaming react call runs its tools, then yields the committed answer" {
     assert not isinstance(stream, str) , "a streaming call must hand back an iterator";
 
     chunks = list(stream);
-    assert chunks == [answer] , f"got {chunks!r}";
+    assert len(chunks) > 1 , f"the answer should arrive in pieces, got {len(chunks)}";
+    assert "".join(chunks) == answer , f"got {''.join(chunks)!r}";
 
     # Both tools really ran: their results are in the conversation the final
     # turn was built from, which a stdout grep for "100" could not distinguish
