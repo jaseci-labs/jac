@@ -18,8 +18,8 @@ name: CI
 # a compile -- but adding one that needs a DIFFERENT compiler generation than
 # build-kit's will go red, which is the point.
 #
-# The whole darwin native lane lives in nightly.yml; `macos-native` below reruns
-# it on a `macos` label. Its lanes are all sealed, so it publishes no bundle.
+# The whole darwin native lane lives in _macos-native.yml; `macos-native` below
+# runs it on a `macos` label. Its lanes are all sealed, so it publishes no bundle.
 
 on:
   workflow_dispatch:
@@ -118,7 +118,7 @@ jobs:
               - '.github/workflows/_js_engine.yml'
             # Narrowing filter: the aarch64 and launcher lanes only run when a
             # path that can move them changes (or on push/dispatch). The darwin
-            # lane no longer reads this filter -- it is nightly + `macos`-label
+            # lane no longer reads this filter -- it is `macos`-label and manual
             # only.
             native:
               - 'jac/jaclang/compiler/backends/native/**'
@@ -195,8 +195,8 @@ jobs:
     # A pull request's kit carries no native compiler kernel: the compiler
     # runs from the bytecode the same build precompiles, which is the path a
     # kernel build itself compiles through. The kernel is most of a kit's build
-    # time and a pull request rarely changes what it does. Main, nightly and
-    # release kits build it, and so does a pull request carrying the
+    # time and a pull request rarely changes what it does. Main and release
+    # kits build it, and so does a pull request carrying the
     # `native:kernel` label (adding the label starts a new run) or touching a
     # path in the `kernel` filter. setup-jac turns that into JAC_KIT_OMIT, the
     # only thing the seal reads (artifacts/kit.jac pr_kit_omits), and the kit's
@@ -1768,9 +1768,7 @@ jobs:
             /tmp/site-journey-failure.png
           retention-days: 7
 
-  # Body lives in _installer.yml so the nightly lane runs the same test
-  # instead of a second copy of it. The PR lane lints install.sh; the nightly
-  # one does not (it exercises the published installer, not this checkout).
+  # Body lives in _installer.yml. This lane also lints install.sh.
   installer-test:
     needs: changes
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.changes.outputs.installer == 'true') }}
@@ -1779,9 +1777,10 @@ jobs:
       shellcheck: true
 
   # The darwin native lane (sealed macOS kit + Mach-O / wasm-floor /
-  # libSystem-equivalence tests) lives in nightly.yml; see _macos-native.yml
-  # for why. It stays one label away here: add `macos` to a PR that touches
-  # Mach-O linking or the musl-vs-libSystem binding and it gates that PR like
+  # libSystem-equivalence tests) lives in _macos-native.yml; see there for why
+  # it is off the default path. It stays one label away: add `macos` to a PR
+  # that touches Mach-O linking or the musl-vs-libSystem binding and it gates
+  # that PR like
   # any other job. Not gated on the `native` path filter -- that filter fires
   # on ordinary compiler churn, which is what put a 44-68 min leg on the
   # critical path of every native PR to begin with.
@@ -1794,7 +1793,7 @@ jobs:
   # official binary to using it (node suite, a client build, test262). On a
   # pull request that changes the engine or anything that compiles it (the
   # `js_engine` filter), one carrying the `native:js-engine` label, or a
-  # manual run; nightly.yml runs it too. Everything Passed needs it, so a
+  # manual run. Everything Passed needs it, so a
   # pull request it runs on cannot merge with the engine broken.
   js-engine:
     needs: changes
@@ -1803,8 +1802,7 @@ jobs:
   # JacPython's conformance gates on this run's kit: the native compiler is
   # the interpreter's `compile`, the code-object boundary holds, and every
   # ported module and frontend suite passes its pinned upstream tests. The
-  # macOS kit runs the same gates (_macos-native.yml) and nightly.yml runs
-  # them on linux-aarch64.
+  # macOS kit runs the same gates (_macos-native.yml).
   test-jacpython:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}

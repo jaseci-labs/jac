@@ -121,11 +121,10 @@ jobs:
   # `optional` (its abort() on `jac --version`, #8805, could not veto
   # publish), but `publish` still waits for the whole matrix, and the Intel
   # runners finished ~25 min after the arm64 leg while shipping a binary
-  # nobody could run; 0.37.2 already went out without it. Two lanes replace
-  # the matrix slot: nightly.yml's weekly `intel-mac-probe` (artifact only,
-  # the leg's signal) and the manual release lane (dispatch this workflow
-  # with only=macos-x86_64 and tag=v<version> to attach its asset to
-  # an already-published release).
+  # nobody could run; 0.37.2 already went out without it. The manual release
+  # lane replaces the matrix slot: dispatch this workflow with
+  # only=macos-x86_64 and tag=v<version> to attach its asset to an
+  # already-published release, or with no tag for an artifact-only build.
   #
   # `optional` marks a leg that still builds but no longer gates: the matrix
   # runs it under continue-on-error and it is left out of `required`, the list
@@ -776,8 +775,8 @@ jobs:
             --clobber
 
       # install.sh's real `curl ... | bash` path is verified against the
-      # published release out-of-band: nightly.yml `installer-live` (daily, both
-      # platforms) and ci.yml `installer-test` (PRs touching scripts/install.sh).
+      # published release out-of-band by ci.yml `installer-test` (PRs touching
+      # scripts/install.sh, and manual runs).
       # It is deliberately NOT re-run here as a blocking release gate: install.sh
       # queries the GitHub API unauthenticated, and on shared macOS runners the
       # 60/hr anon rate limit routinely trips -- failing a release whose assets
