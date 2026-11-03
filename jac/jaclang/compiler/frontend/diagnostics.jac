@@ -384,7 +384,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0100 = _err("E0100", Category.SYNTAX, "Unterminated string literal"),
      E0101 = _err("E0101", Category.SYNTAX, "Unterminated block comment"),
      E0102 = _err("E0102", Category.SYNTAX, "Unterminated f-string"),
-     E0103 = _err("E0103", Category.SYNTAX, "Unterminated inline Python block"),
      E0104 = _err("E0104", Category.SYNTAX, "Unexpected end of JSX content"),
      E0105 = _err("E0105", Category.SYNTAX, "Unexpected character: '{ch}'"),
      E0106 = _err("E0106", Category.SYNTAX, "Unexpected character in JSX tag: '{ch}'"),
@@ -1777,8 +1776,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E2036 = _err(
          "E2036",
          Category.SEMANTIC,
-         "Duplicate definition of '{name}': it replaces the definition on line {line}.",
-         help="A module-level name can be defined once. The later definition is the one that runs, while calls are checked against the earlier one, so rename or remove one of them. Use `impl {name}` to give a declaration its body, or `@overload` for alternative signatures."
+         "Duplicate definition of '{name}': the {prior} binds it too.",
+         help="A module-level name is bound once, by one definition or by one import or wire. Uses are checked against one binding while another can be the one that runs, so rename or remove one of them, or bind the import under another name with `as`. Use `impl {name}` to give a declaration its body, or `@overload` for alternative signatures."
      ),
      E2037 = _err(
          "E2037",

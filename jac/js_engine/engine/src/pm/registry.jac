@@ -44,7 +44,13 @@ import from engine.src.pm.fsx {
 import from engine.src.pm.gunzip { gunzip_bytes, gunzip_is_gzip }
 import from engine.src.pm.tar { tar_extract_npm, TarResult }
 import from engine.src.pm.paths { pm_path_dirname }
-import from engine.src.runtime.mem { io_free }
+import from engine.src.runtime.mem {
+    io_free,
+    str_bfind,
+    str_bslice,
+    str_bslice_from,
+    str_nbytes
+}
 
 obj:pub FetchResult {
     has ok: bool = False,
@@ -56,7 +62,7 @@ obj:pub FetchResult {
 
 def _strip_slash(u: str) -> str {
     if u.endswith("/") {
-        return u[0:len(u) - 1];
+        return str_bslice(u, 0, str_nbytes(u) - 1);
     }
     return u;
 }
@@ -137,7 +143,7 @@ def:pub pm_auth_headers(cfg: PmConfig, url: str) -> list[str] {
         bytebuf_free(dec);
         cred: str = creds[2] + ":" + pw;
         cp: int = str_to_cbuf(cred);
-        out.append("Authorization: Basic " + b64_encode(cp, len(cred)));
+        out.append("Authorization: Basic " + b64_encode(cp, str_nbytes(cred)));
         io_free(cp);
     }
     return out;
@@ -175,9 +181,9 @@ def:pub pm_cache_pkg_dir(
 <registry>/<name>/-/<unscoped>-<version>.tgz"""
 def:pub pm_default_tarball_url(registry_url: str, name: str, version: str) -> str {
     unscoped: str = name;
-    slash: int = name.find("/");
+    slash: int = str_bfind(name, "/");
     if name.startswith("@") and slash >= 0 {
-        unscoped = name[slash + 1:];
+        unscoped = str_bslice_from(name, slash + 1);
     }
     return _strip_slash(registry_url)
         + "/"

@@ -1,55 +1,16 @@
-"""Exit callbacks; derived from CPython 3.14.6 Modules/atexitmodule.c.
-
-The interpreter keeps both callback lists in PyInterpreterState: the Python
-callbacks as a list of (func, args, kwargs) tuples, newest first, and the C
-callbacks of PyUnstable_AtExit as a linked list of atexit_callback records.
-The two list heads are interpreter-state fields (the C one guarded by a lock
-macro), so the jacpy_atexit_* helpers of compiler_runtime.c reach them. The
-records themselves are C-layout structs walked and called here. The
-interpreter hooks are C functions defined under their C names.
-"""
-
 glob:priv PY_EQ: i32 = 2;
 
-"""The current interpreter's list of Python callbacks (borrowed)."""
-def:priv current_callbacks -> ptr[PyObject] {
-    return jacpy_atexit_callbacks(PyInterpreterState_Get()).view(1)[0];
-}
+def:priv current_callbacks -> ptr[PyObject];
 
-"""atexit_cleanup(): drop every Python callback without calling it."""
-def:priv atexit_cleanup(callbacks: ptr[PyObject]) {
-    PyList_Clear(callbacks);
-}
+def:priv atexit_cleanup(callbacks: ptr[PyObject]);
 
-"""atexit_callfuncs(): call the Python callbacks, newest first, then drop them."""
-def:priv atexit_callfuncs(callbacks: ptr[PyObject]) {
-    copy = PyList_GetSlice(callbacks, 0, PyList_Size(callbacks));
-    if not copy {
-        PyErr_FormatUnraisable("Exception ignored while copying atexit callbacks");
-        return;
-    }
-    for index in range(int(PyList_Size(copy))) {
-        item = PyList_GetItem(copy, i64(index));
-        func = PyTuple_GetItem(item, 0);
-        args = PyTuple_GetItem(item, 1);
-        kwargs = PyTuple_GetItem(item, 2);
-        result = PyObject_Call(func, args, NULL if kwargs == Py_None else kwargs);
-        if not result {
-            PyErr_FormatUnraisable("Exception ignored in atexit callback %R", func);
-        } else {
-            jacpy_release(result);
-        }
-    }
-    jacpy_release(copy);
-    atexit_cleanup(callbacks);
-}
+def:priv atexit_callfuncs(callbacks: ptr[PyObject]);
 
 import from c {
     def _PyAtExit_Init(interp: ptr[PyInterpreterState]) -> PyStatus {
         callbacks = PyList_New(0);
         jacpy_atexit_callbacks(interp).view(1)[0] = callbacks;
         if not callbacks {
-            # _PyStatus_NO_MEMORY()
             return PyStatus(
                 _type=_PyStatus_TYPE_ERROR,
                 func=ptr[u8]("_PyAtExit_Init"),
@@ -64,22 +25,19 @@ import from c {
         interp: ptr[PyInterpreterState], func: ptr, data: ptr
     ) -> i32 {
         return jacpy_atexit_push(interp, func, data);
-    }
-    # Called once the interpreter no longer runs Python code: drop the Python
-    # callbacks, then run the C ones newest first.
-    def _PyAtExit_Fini(interp: ptr[PyInterpreterState]) {
+    }  def _PyAtExit_Fini(interp: ptr[PyInterpreterState]) {
         slot = jacpy_atexit_callbacks(interp);
         callbacks = slot.view(1)[0];
         if callbacks {
             atexit_cleanup(callbacks);
         }
-        # Py_CLEAR
+
         slot.view(1)[0] = NULL;
         jacpy_release(callbacks);
         callback = jacpy_atexit_detach(interp);
         while callback {
             record = callback.view(1)[0];
-            # Freed before the call, as CPython does: the record is not needed after.
+
             PyMem_Free(callback);
             record.func(record.data);
             callback = record.next;
@@ -89,8 +47,59 @@ import from c {
     }
 }
 
-"""register(func, /, *args, **kwargs): func is returned, so it decorates."""
 def atexit_register(
+    module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
+
+def atexit_run_exitfuncs(
+    module: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject];
+
+def atexit_clear(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
+
+def atexit_ncallbacks(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv atexit_unregister_locked(
+    callbacks: ptr[PyObject], func: ptr[PyObject]
+) -> i32;
+
+def atexit_unregister(module: ptr[PyObject], func: ptr[PyObject]) -> ptr[PyObject];
+
+impl current_callbacks -> ptr[PyObject] {
+    return jacpy_atexit_callbacks(PyInterpreterState_Get()).view(1)[0];
+}
+
+impl atexit_cleanup(callbacks: ptr[PyObject]) {
+    PyList_Clear(callbacks);
+}
+
+impl atexit_callfuncs(callbacks: ptr[PyObject]) {
+    copy = PyList_GetSlice(callbacks, 0, PyList_Size(callbacks));
+    if not copy {
+        PyErr_FormatUnraisable(
+            ptr[u8]("Exception ignored while copying atexit callbacks")
+        );
+        return;
+    }
+    for index in range(int(PyList_Size(copy))) {
+        item = PyList_GetItem(copy, i64(index));
+        func = PyTuple_GetItem(item, 0);
+        args = PyTuple_GetItem(item, 1);
+        kwargs = PyTuple_GetItem(item, 2);
+        result = PyObject_Call(func, args, NULL if kwargs == Py_None else kwargs);
+        if not result {
+            PyErr_FormatUnraisable(
+                ptr[u8]("Exception ignored in atexit callback %R"), func
+            );
+        } else {
+            jacpy_release(result);
+        }
+    }
+    jacpy_release(copy);
+    atexit_cleanup(callbacks);
+}
+
+impl atexit_register(
     module: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     count = PyTuple_Size(args);
@@ -124,27 +133,23 @@ def atexit_register(
     return Py_NewRef(func);
 }
 
-def atexit_run_exitfuncs(
+impl atexit_run_exitfuncs(
     module: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
     atexit_callfuncs(current_callbacks());
     return Py_NewRef(borrowed_none());
 }
 
-def atexit_clear(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+impl atexit_clear(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     atexit_cleanup(current_callbacks());
     return Py_NewRef(borrowed_none());
 }
 
-def atexit_ncallbacks(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+impl atexit_ncallbacks(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromSsize_t(PyList_Size(current_callbacks()));
 }
 
-"""Remove every registration of func, newest first. A comparison can run code
-that unregisters callbacks, so a match is found again by identity."""
-def:priv atexit_unregister_locked(
-    callbacks: ptr[PyObject], func: ptr[PyObject]
-) -> i32 {
+impl atexit_unregister_locked(callbacks: ptr[PyObject], func: ptr[PyObject]) -> i32 {
     index = PyList_Size(callbacks) - 1;
     while index >= 0 {
         item = Py_NewRef(PyList_GetItem(callbacks, index));
@@ -179,7 +184,7 @@ def:priv atexit_unregister_locked(
     return i32(0);
 }
 
-def atexit_unregister(module: ptr[PyObject], func: ptr[PyObject]) -> ptr[PyObject] {
+impl atexit_unregister(module: ptr[PyObject], func: ptr[PyObject]) -> ptr[PyObject] {
     if atexit_unregister_locked(current_callbacks(), func) < 0 {
         return NULL;
     }

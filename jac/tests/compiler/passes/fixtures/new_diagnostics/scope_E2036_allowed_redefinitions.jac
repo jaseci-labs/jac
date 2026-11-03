@@ -18,3 +18,11 @@ def render(value: int) -> str {
 def render(value: str) -> str {
     return value;
 }
+
+# Importing the module's own name binds the same definition.
+import from .scope_E2036_allowed_redefinitions { area }
+
+# An untyped glob assigns the imported name rather than declaring a new one.
+import from scope_E2036_import_provider { Setting }
+
+glob Setting = 4;

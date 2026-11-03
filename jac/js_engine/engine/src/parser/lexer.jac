@@ -14,7 +14,12 @@ the parser calls after each token to signal when the next `/` begins a regexp.
 Bun reference: bun/src/js_lexer.zig (~3 000 lines)
 ECMAScript spec: §12 — Lexical Grammar  https://tc39.es/ecma262/#sec-lexical-grammar
 """
-import from engine.src.runtime.mem { byte_chr }
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bslice,
+    str_byte,
+    str_nbytes
+}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -190,11 +195,11 @@ Return the character of `s` at index `i`, or "" if out of bounds.
 Works around the Jac native slice bug (s[a:b] → only first char).
 """
 def _ch(s: str, i: int) -> str {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if i < 0 or i >= n {
         return "";
     }
-    return s[i];
+    return byte_chr(str_byte(s, i));
 }
 
 """
@@ -202,7 +207,7 @@ Build the substring s[start:end] character by character.
 No bounds checks required on the caller — clamped internally.
 """
 def _substr(s: str, start: int, end: int) -> str {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     st: int = start;
     en: int = end;
     if st < 0 {
@@ -214,7 +219,7 @@ def _substr(s: str, start: int, end: int) -> str {
     result: str = "";
     i: int = st;
     while i < en {
-        result = result + s[i];
+        result = result + byte_chr(str_byte(s, i));
         i = i + 1;
     }
     return result;
@@ -235,12 +240,12 @@ def _is_hex_digit(c: str) -> bool {
 """Return the numeric value (0–15) of a single hex digit. Assumes `_is_hex_digit(c)`."""
 def _lex_hex_val(c: str) -> int {
     if c >= "0" and c <= "9" {
-        return ord(c) - 48;
+        return str_byte(c, 0) - 48;
     }
     if c >= "a" and c <= "f" {
-        return ord(c) - 97 + 10;
+        return str_byte(c, 0) - 97 + 10;
     }
-    return ord(c) - 65 + 10;
+    return str_byte(c, 0) - 65 + 10;
 }
 
 """Encode a Unicode code point as a UTF-8 byte string (mirrors
@@ -263,34 +268,34 @@ the raw lead byte as the code point with length 1 (lenient — the lexer then
 treats it as a non-identifier byte).  Pure-ASCII bytes return [byte, 1].
 """
 def _lex_utf8_decode_at(s: str, pos: int) -> list[int] {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if pos >= n {
         return [0, 0];
     }
-    b0: int = ord(s[pos]);
+    b0: int = str_byte(s, pos);
     if b0 < 128 {
         return [b0, 1];
     }
     # 2-byte: 110xxxxx 10xxxxxx
     if b0 >= 192 and b0 < 224 and pos + 1 < n {
-        b1: int = ord(s[pos + 1]);
+        b1: int = str_byte(s, pos + 1);
         if b1 >= 128 and b1 < 192 {
             return [((b0 & 31) << 6) | (b1 & 63), 2];
         }
     }
     # 3-byte: 1110xxxx 10xxxxxx 10xxxxxx
     if b0 >= 224 and b0 < 240 and pos + 2 < n {
-        c1: int = ord(s[pos + 1]);
-        c2: int = ord(s[pos + 2]);
+        c1: int = str_byte(s, pos + 1);
+        c2: int = str_byte(s, pos + 2);
         if c1 >= 128 and c1 < 192 and c2 >= 128 and c2 < 192 {
             return [((b0 & 15) << 12) | ((c1 & 63) << 6) | (c2 & 63), 3];
         }
     }
     # 4-byte: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
     if b0 >= 240 and b0 < 248 and pos + 3 < n {
-        d1: int = ord(s[pos + 1]);
-        d2: int = ord(s[pos + 2]);
-        d3: int = ord(s[pos + 3]);
+        d1: int = str_byte(s, pos + 1);
+        d2: int = str_byte(s, pos + 2);
+        d3: int = str_byte(s, pos + 3);
         if d1 >= 128
             and d1 < 192
             and d2 >= 128
@@ -407,10 +412,10 @@ glob _CH_VT: str = chr(11),
 """Single bytes of U+2028 LINE SEPARATOR (E2 80 A8) and U+2029 PARAGRAPH
 SEPARATOR (E2 80 A9), sliced out of their UTF-8 encodings. `chr(226)` is not
 the byte 0xE2: chr UTF-8-encodes code points >= 128 (C3 A2)."""
-glob _B_E2: str = chr(8232)[0:1];
-glob _B_80: str = chr(8232)[1:2],
-     _B_A8: str = chr(8232)[2:3],
-     _B_A9: str = chr(8233)[2:3];
+glob _B_E2: str = str_bslice(chr(8232), 0, 1);
+glob _B_80: str = str_bslice(chr(8232), 1, 2),
+     _B_A8: str = str_bslice(chr(8232), 2, 3),
+     _B_A9: str = str_bslice(chr(8233), 2, 3);
 
 """Return true if `c` is ASCII whitespace (excluding newlines)."""
 def _is_space(c: str) -> bool {
@@ -623,7 +628,7 @@ obj:pub Lexer {
         if self.pos >= self.source_len {
             return "";
         }
-        return self.source[self.pos];
+        return byte_chr(str_byte(self.source, self.pos));
     }
 
     """Look ahead by `offset` characters without consuming."""
@@ -632,7 +637,7 @@ obj:pub Lexer {
         if p < 0 or p >= self.source_len {
             return "";
         }
-        return self.source[p];
+        return byte_chr(str_byte(self.source, p));
     }
 
     """Consume and return the current character, advancing pos and col."""
@@ -640,14 +645,14 @@ obj:pub Lexer {
         if self.pos >= self.source_len {
             return "";
         }
-        c: str = self.source[self.pos];
+        c: str = byte_chr(str_byte(self.source, self.pos));
         self.pos = self.pos + 1;
         if c == "\n" {
             self.line = self.line + 1;
             self.col = 1;
         } elif c < " " and c == _CH_CR {
             # \r\n counts as one line break
-            if self.pos < self.source_len and self.source[self.pos] == "\n" {
+            if self.pos < self.source_len and byte_chr(str_byte(self.source, self.pos)) == "\n" {
                 self.pos = self.pos + 1;
             }
             self.line = self.line + 1;
@@ -704,7 +709,7 @@ obj:pub Lexer {
                 } else {
                     cont = False;
                 }
-            } elif ord(c) >= 128 {
+            } elif str_byte(c, 0) >= 128 {
                 # Non-ASCII: may be Unicode whitespace (NBSP, Zs, BOM) or a Unicode
                 # line terminator (U+2028 / U+2029).  Decode and skip if so.
                 ws_arr: list[int] = _lex_utf8_decode_at(self.source, self.pos);
@@ -735,7 +740,7 @@ obj:pub Lexer {
     """Build a Token from its parts."""
     def _tok(tt: TokenType, value: str, start_line: int, start_col: int) -> Token {
         end_off: int = self.pos;
-        start_off: int = end_off - len(value);
+        start_off: int = end_off - str_nbytes(value);
         if start_off < 0 {
             start_off = 0;
         }
@@ -816,7 +821,7 @@ obj:pub Lexer {
                     vparts.append(dec);
                     had_escape = True;
                 }
-            } elif ord(c) < 128 {
+            } elif str_byte(c, 0) < 128 {
                 if _is_id_cont(c) {
                     vparts.append(self._advance());
                 } else {
@@ -1535,7 +1540,7 @@ obj:pub Lexer {
         pn_start_nonascii: bool = False;
         if c == "#" {
             pn_n1: str = self._peek(1);
-            if ord(pn_n1) >= 128 {
+            if str_byte(pn_n1, 0) >= 128 {
                 # Decode the code point at pos+1 (the byte right after `#`).
                 pn_s_arr: list[int] = _lex_utf8_decode_at(self.source, self.pos + 1);
                 if pn_s_arr[1] > 0 and _is_unicode_id_cp(pn_s_arr[0]) {
@@ -1563,7 +1568,7 @@ obj:pub Lexer {
                     } else {
                         pn_body = pn_body + pn_dec;
                     }
-                } elif ord(pc) < 128 {
+                } elif str_byte(pc, 0) < 128 {
                     if _is_id_cont(pc) {
                         pn_body = pn_body + self._advance();
                     } else {
@@ -1601,7 +1606,7 @@ obj:pub Lexer {
         # An identifier may begin with a Unicode escape (`\u{6F}bc` ≡ `obc`) or a
         # non-ASCII identifier code point (`café`, `ω`, CJK, Cyrillic, …).
         id_start_nonascii: bool = False;
-        if ord(c) >= 128 {
+        if str_byte(c, 0) >= 128 {
             ids_arr: list[int] = _lex_utf8_decode_at(self.source, self.pos);
             if ids_arr[1] > 0 and _is_unicode_id_cp(ids_arr[0]) {
                 id_start_nonascii = True;
@@ -1727,6 +1732,6 @@ obj:pub Lexer {
 """Create a new Lexer for the given source string."""
 def:pub make_lexer(source: str) -> Lexer {
     lx: Lexer = Lexer(source=source);
-    lx.source_len = len(source);
+    lx.source_len = str_nbytes(source);
     return lx;
 }

@@ -20,9 +20,9 @@ open, and any later communicate() blocks on an EOF that never comes. The
 server is launched in its own session, so the group kill reaches every
 worker. Falls back to the single-process kill when the group is gone.
 """
-def _kill_process_group(server: subprocess.Popen) -> None {
+def _kill_process_group(server: subprocess.Popen) {
     try {
-        os.killpg(server.pid, signal.SIGKILL);
+        os.killpg(server.pid, int(signal.SIGKILL));
     } except OSError {
         server.kill();
     }

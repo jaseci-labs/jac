@@ -106,9 +106,6 @@ import type from .models { Task }
 include math_helpers;
 ```
 
-!!! note "Inline Python escape hatch"
-    For Python-only APIs or legacy code, you can embed raw Python in a `::py:: ... ::py::` block instead of importing. Prefer a normal `import` for anything new.
-
 ---
 
 ## Client imports -- full npm compatibility

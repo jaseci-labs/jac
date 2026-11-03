@@ -229,7 +229,8 @@ impl GraphQuery.init(
     order: (list[QOrder] | None) = None,
     limit: (int | None) = None,
     offset: int = 0,
-    level: str = 'default'
+    level: str = 'default',
+    after: (tuple[int, (UUID | None)] | None) = None
 ) -> None {
     self.origin = origin if isinstance(origin, list) else [origin];
     self.hops = hops if hops is not None else [];
@@ -239,6 +240,7 @@ impl GraphQuery.init(
     self.order = order if order is not None else [];
     self.limit = limit;
     self.offset = offset;
+    self.after = after;
     self.level = level;
 }
 

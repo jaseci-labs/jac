@@ -182,20 +182,25 @@ import from engine.src.builtins.temporal {
 }
 import from engine.src.vm.vm_obs { js_object_get_observable, js_to_string_observable }
 
+import from engine.src.runtime.mem {
+    str_bslice,
+    str_nbytes
+}
+
 glob _ZDT_STR_DIVMOD_REM: int = 0;
 
 def:priv _zdt_trim_zeros(s: str) -> str {
     i: int = 0;
-    n: int = len(s);
+    n: int = str_nbytes(s);
     while i < n - 1 {
-        if s[i:i + 1] != "0" {
+        if str_bslice(s, i, i + 1) != "0" {
             break;
         }
         i = i + 1;
     }
     out: str = "";
     while i < n {
-        out = out + s[i:i + 1];
+        out = out + str_bslice(s, i, i + 1);
         i = i + 1;
     }
     return out;
@@ -209,9 +214,9 @@ def:priv _zdt_str_divmod_int(s: str, div: int) -> str {
     rem: int = 0;
     q: str = "";
     i: int = 0;
-    n: int = len(s);
+    n: int = str_nbytes(s);
     while i < n {
-        rem = rem * 10 + int(s[i:i + 1]);
+        rem = rem * 10 + int(str_bslice(s, i, i + 1));
         q = q + str(rem // div);
         rem = rem % div;
         i = i + 1;
@@ -226,9 +231,9 @@ def:priv _zdt_str_mul_int(s: str, n: int) -> str {
     }
     carry: int = 0;
     out: str = "";
-    i: int = len(s) - 1;
+    i: int = str_nbytes(s) - 1;
     while i >= 0 {
-        d: int = int(s[i:i + 1]);
+        d: int = int(str_bslice(s, i, i + 1));
         prod: int = d * n + carry;
         carry = prod // 10;
         out = str(prod % 10) + out;
@@ -297,8 +302,9 @@ def _ns_parts_from_epoch(total_ns: int) -> list[int] {
 def:priv _zdt_normalize_ns_string(s: str) -> str {
     epos: int = -1;
     scan: int = 0;
-    while scan < len(s) {
-        c: str = s[scan:scan + 1];
+    _nb305_s: int = str_nbytes(s);
+    while scan < _nb305_s {
+        c: str = str_bslice(s, scan, scan + 1);
         if c == "e" or c == "E" {
             epos = scan;
             break;
@@ -308,13 +314,14 @@ def:priv _zdt_normalize_ns_string(s: str) -> str {
     if epos < 0 {
         return s;
     }
-    mant: str = s[0:epos];
-    exp_part: str = s[epos + 1:len(s)];
+    mant: str = str_bslice(s, 0, epos);
+    exp_part: str = str_bslice(s, epos + 1, str_nbytes(s));
     exp: int = int(exp_part);
     dot: int = -1;
     scan2: int = 0;
-    while scan2 < len(mant) {
-        if mant[scan2:scan2 + 1] == "." {
+    _nb321_mant: int = str_nbytes(mant);
+    while scan2 < _nb321_mant {
+        if str_bslice(mant, scan2, scan2 + 1) == "." {
             dot = scan2;
             break;
         }
@@ -323,8 +330,8 @@ def:priv _zdt_normalize_ns_string(s: str) -> str {
     digits: str = mant;
     dec_places: int = 0;
     if dot >= 0 {
-        digits = mant[0:dot] + mant[dot + 1:len(mant)];
-        dec_places = len(mant) - dot - 1;
+        digits = str_bslice(mant, 0, dot) + str_bslice(mant, dot + 1, str_nbytes(mant));
+        dec_places = str_nbytes(mant) - dot - 1;
     }
     zeros: int = exp - dec_places;
     if zeros < 0 {
@@ -342,9 +349,9 @@ def:priv _zdt_normalize_ns_string(s: str) -> str {
 def _ns_parts_from_ns_string(ns_s: str) -> list[int] {
     ns_s = _zdt_normalize_ns_string(ns_s);
     neg: bool = False;
-    if len(ns_s) > 0 and ns_s[0:1] == "-" {
+    if len(ns_s) > 0 and str_bslice(ns_s, 0, 1) == "-" {
         neg = True;
-        ns_s = ns_s[1:len(ns_s)];
+        ns_s = str_bslice(ns_s, 1, str_nbytes(ns_s));
     }
     epoch_s_str: str = _zdt_str_divmod_int(ns_s, 1000000000);
     rem_ns: int = _ZDT_STR_DIVMOD_REM;
@@ -378,7 +385,7 @@ def _zdt_instant_to_local_parts(ns_s: str, zone_id: str) -> list[int] {
     if zone_id == "UTC" or zone_id == "" {
         return utc;
     }
-    if len(zone_id) > 0 and (zone_id[0:1] == "+" or zone_id[0:1] == "-") {
+    if len(zone_id) > 0 and (str_bslice(zone_id, 0, 1) == "+" or str_bslice(zone_id, 0, 1) == "-") {
         off_parse: list[any] = parse_utc_offset_string(zone_id);
         if off_parse[0] != 0 {
             off_s: int = off_parse[1];
@@ -477,7 +484,7 @@ def:priv _zdt_tz_has_transitions(tz: str) -> bool {
     if tz == "UTC" or tz == "" {
         return False;
     }
-    if len(tz) > 0 and (tz[0:1] == "+" or tz[0:1] == "-") {
+    if len(tz) > 0 and (str_bslice(tz, 0, 1) == "+" or str_bslice(tz, 0, 1) == "-") {
         return False;
     }
     return True;

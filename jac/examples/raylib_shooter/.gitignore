@@ -21,6 +21,7 @@ libraylib*.dylib
 # Benchmark scratch files (switch written by demo.sh, result by the binaries)
 .bench_seconds
 .bench_result
+.flock
 
 # Jac build & cache artifacts
 .jac/
