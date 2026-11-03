@@ -10,7 +10,6 @@ import from pathlib { Path }
 import from urllib.request { urlopen, Request }
 import from urllib.error { HTTPError }
 import from urllib.parse { urlsplit }
-import from http.client { HTTPException }
 
 glob logger = logging.getLogger(__name__);
 
