@@ -1,4 +1,5 @@
 import os;
+import from fnmatch { fnmatch }
 
 def _root_of(p: str) -> str;
 
@@ -36,4 +37,10 @@ obj:pub Path {
     def read_bytes -> bytes;
     def iterdir -> Iterator[Path];
     def resolve -> Path;
+    def with_name(name: str) -> Path;
+    def mkdir(mode: int = 511, parents: bool = False, exist_ok: bool = False);
+    def write_text(data: str, encoding: (str | None) = None) -> int;
+    def write_bytes(data: bytes) -> int;
+    def unlink(missing_ok: bool = False);
+    def rglob(pattern: str) -> Iterator[Path];
 }

@@ -4272,6 +4272,8 @@ graph import {
     toolchains.system ++> client.targets.desktop.desktop_build._patchelf_rpath {
         ensure_patchelf
     }
+    project.modresolver ++> project.apps.resolve_entry_path { join_parts, resolve_local_module }
+    compiler.driver.wiring ++> compiler.passes.variant_agreement_pass { ANNEX_MARKERS, VARIANT_SUFFIX }
 }
 
 graph import artifacts {
@@ -10110,11 +10112,7 @@ graph import compiler {
     passes.type_checker_pass ++> driver.pipeline.analysis_passes
         | tests.test_pipeline_products
         | tests.xbackend_equiv.compile_fixture_to_js { TypeCheckPass }
-    passes.variant_agreement_pass ++> [
-        driver.pipeline.analysis_passes { VariantAgreementPass },
-        driver.wiring.unnamed_module_label { ANNEX_MARKERS },
-        driver.wiring.variant_base_file { VARIANT_SUFFIX },
-    ]
+    passes.variant_agreement_pass ++> driver.pipeline.analysis_passes { VariantAgreementPass }
     placement.placement ++> [
         backends.native.na_ir_gen_pass.NaIRGenPass._owner_element
             | passes.placement_pass.element_requirements
@@ -15092,25 +15090,16 @@ graph import project {
         },
     ]
     modresolver ++> [
-        apps.resolve_entry_path | compiler_host.ProjectHost.resolve_local_module {
-            resolve_local_module
-        },
+        compiler_host.ProjectHost.resolve_local_module { resolve_local_module },
         compiler_host.ProjectHost.has_active_stub_catalog { active_stub_catalog },
         compiler_host.ProjectHost.has_npm_package { has_client_npm_package },
         compiler_host.ProjectHost.in_typeshed_tree { in_typeshed_tree },
         compiler_host.ProjectHost.is_path_alias { is_path_alias_import },
-        compiler_host.ProjectHost.is_untyped_third_party {
-            is_untyped_third_party_module
-        },
-        compiler_host.ProjectHost.jac_virtual_module_path {
-            resolve_jac_virtual_module_path
-        },
+        compiler_host.ProjectHost.is_untyped_third_party { is_untyped_third_party_module },
+        compiler_host.ProjectHost.jac_virtual_module_path { resolve_jac_virtual_module_path },
         compiler_host.ProjectHost.npm_declarations { resolve_client_npm_declarations },
         compiler_host.ProjectHost.project_facts { project_mounts_dir },
-        compiler_host.ProjectHost.project_root
-            | config.get_config_for_path
-            | package_scope.package_root_of
-            | workspace { find_jac_project_root },
+        compiler_host.ProjectHost.project_root | config.get_config_for_path | package_scope.package_root_of | workspace { find_jac_project_root },
         compiler_host.ProjectHost.resolve_module { resolve_module },
         compiler_host.ProjectHost.resolve_npm_package { resolve_client_npm_package },
         compiler_host.ProjectHost.sibling_declaration { sibling_declaration_file },

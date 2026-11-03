@@ -27,7 +27,7 @@ impl resolve_entry_path(module: str, project_root: str) -> str {
         return os.path.abspath(candidate[0]);
     }
 
-    return os.path.join(base, *parts) + '.jac';
+    return join_parts(base, parts) + '.jac';
 }
 
 impl AppConfig.effective_route -> str {

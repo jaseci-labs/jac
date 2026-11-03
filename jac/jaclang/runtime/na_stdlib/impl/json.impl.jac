@@ -12,15 +12,23 @@ impl dumps(
     `obj: any,
     sort_keys: bool = False,
     separators: (tuple[str, str] | None) = None,
-    ensure_ascii: bool = True
+    ensure_ascii: bool = True,
+    indent: (int | None) = None,
+    `default: (Callable[[any], any] | None) = None
 ) -> str {
-    style: _JsonStyle = _JsonStyle(sort_keys=sort_keys, ensure_ascii=ensure_ascii);
+    style: _JsonStyle = _JsonStyle(
+        sort_keys=sort_keys, ensure_ascii=ensure_ascii, fallback=`default
+    );
+    if indent is not None {
+        style.indent = indent;
+        style.item_sep = ",";
+    }
     if separators is not None {
         (item_sep, key_sep) = separators;
         style.item_sep = item_sep;
         style.key_sep = key_sep;
     }
-    return _dump_value(`obj, style);
+    return _dump_value(`obj, style, 0);
 }
 
 impl _JsonParser._cc -> int {
@@ -344,7 +352,17 @@ impl _dump_float(f_val: float) -> str {
     return str(f_val);
 }
 
-impl _dump_items(items: list[any], style: _JsonStyle) -> str {
+impl _dump_break(style: _JsonStyle, depth: int) -> str {
+    if style.indent < 0 {
+        return "";
+    }
+    return "\n" + " " * (style.indent * depth);
+}
+
+impl _dump_items(items: list[any], style: _JsonStyle, depth: int) -> str {
+    if not items {
+        return "[]";
+    }
     parts: list[str] = ["["];
     n: int = len(items);
     i: int = 0;
@@ -352,14 +370,16 @@ impl _dump_items(items: list[any], style: _JsonStyle) -> str {
         if i > 0 {
             parts.append(style.item_sep);
         }
-        parts.append(_dump_value(items[i], style));
+        parts.append(_dump_break(style, depth + 1));
+        parts.append(_dump_value(items[i], style, depth + 1));
         i += 1;
     }
+    parts.append(_dump_break(style, depth));
     parts.append("]");
     return "".join(parts);
 }
 
-impl _dump_value(value: any, style: _JsonStyle) -> str {
+impl _dump_value(value: any, style: _JsonStyle, depth: int = 0) -> str {
     if value is None {
         return "null";
     }
@@ -384,10 +404,13 @@ impl _dump_value(value: any, style: _JsonStyle) -> str {
     }
     if isinstance(value, list) {
         arr: list[any] = value;
-        return _dump_items(arr, style);
+        return _dump_items(arr, style, depth);
     }
     if isinstance(value, dict) {
         d: dict[str, any] = value;
+        if not d {
+            return "{}";
+        }
         parts: list[str] = ["{"];
         first: int = 1;
         keys: list[str] = sorted(d.keys()) if style.sort_keys else list(d.keys());
@@ -396,12 +419,18 @@ impl _dump_value(value: any, style: _JsonStyle) -> str {
                 parts.append(style.item_sep);
             }
             first = 0;
+            parts.append(_dump_break(style, depth + 1));
             parts.append(_dump_str(k, style.ensure_ascii));
             parts.append(style.key_sep);
-            parts.append(_dump_value(d[k], style));
+            parts.append(_dump_value(d[k], style, depth + 1));
         }
+        parts.append(_dump_break(style, depth));
         parts.append("}");
         return "".join(parts);
+    }
+    fallback = style.fallback;
+    if fallback is not None {
+        return _dump_value(fallback(value), style, depth);
     }
     raise TypeError("Object is not JSON serializable");
 }

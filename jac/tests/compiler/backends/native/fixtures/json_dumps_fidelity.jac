@@ -20,4 +20,7 @@ with entry {
     print(json.dumps(data, sort_keys=True, ensure_ascii=False));
     print(json.dumps([float("nan"), float("inf"), float("-inf"), 1.0, -0.5]));
     print(json.dumps(json.loads(json.dumps(data, separators=(",", ":")))));
+    print(json.dumps(data, indent=2, sort_keys=True));
+    print(json.dumps({"rows": [[1, 2], []], "none": {}}, indent=0));
+    print(json.dumps({"when": b"raw"}, `default=str));
 }

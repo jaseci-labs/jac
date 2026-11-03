@@ -1,8 +1,5 @@
 import os;
 
-glob VARIANT_SUFFIX: str = ".native.jac",
-     ANNEX_MARKERS: tuple[str, ...] = (".impl.jac", ".test.jac");
-
 def variant_sibling(mod_path: str) -> (str | None);
 def annotation_text(nd: (UniNode | None)) -> str;
 def public_surface(mod: Module) -> dict[str, tuple[str, str, UniNode]];

@@ -223,3 +223,55 @@ impl Path.parent.getter -> Path {
     parts.pop();
     return Path(_assemble(_root_of(self._p), parts));
 }
+
+impl Path.with_name(name: str) -> Path {
+    return self.parent / name;
+}
+
+impl Path.mkdir(mode: int = 511, parents: bool = False, exist_ok: bool = False) {
+    if os.path.isdir(self._p) {
+        if exist_ok {
+            return;
+        }
+        raise FileExistsError(self._p);
+    }
+    if parents {
+        os.makedirs(self._p, mode);
+    } else {
+        os.mkdir(self._p, mode);
+    }
+}
+
+impl Path.write_text(data: str, encoding: (str | None) = None) -> int {
+    with open(self._p, "w") as handle {
+        return handle.write(data);
+    }
+}
+
+impl Path.write_bytes(data: bytes) -> int {
+    with open(self._p, "wb") as handle {
+        return handle.write(data);
+    }
+}
+
+impl Path.unlink(missing_ok: bool = False) {
+    if not os.path.exists(self._p) {
+        if missing_ok {
+            return;
+        }
+        raise FileNotFoundError(self._p);
+    }
+    os.remove(self._p);
+}
+
+impl Path.rglob(pattern: str) -> Iterator[Path] {
+    found: list[Path] = [];
+    for (top, dirs, files) in os.walk(self._p) {
+        for name in sorted(dirs + files) {
+            if fnmatch(name, pattern) {
+                found.append(Path(os.path.join(top, name)));
+            }
+        }
+    }
+    return iter(found);
+}

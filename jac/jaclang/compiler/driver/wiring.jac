@@ -5,6 +5,8 @@ import from contextlib { contextmanager }
 import from contextvars { ContextVar }
 
 glob ARCH_FILE_NAME: str = "archwire.jac",
+     VARIANT_SUFFIX: str = ".native.jac",
+     ANNEX_MARKERS: tuple[str, ...] = (".impl.jac", ".test.jac"),
      SKIPPED_PROJECT_DIRS: tuple[str, ...] = ("node_modules", "__pycache__"),
      RECORDS_FORMAT: int = 4,
      STDLIB_MODULES: frozenset[str] = frozenset(

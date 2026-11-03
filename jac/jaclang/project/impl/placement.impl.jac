@@ -16,11 +16,8 @@ impl module_dot_path(source_path: str, root_dir: str) -> str {
     parent = relative.replace(os.sep, '.')
         if relative != '.' and not relative.startswith('..')
         else '';
-    return '.'.join(
-        part
-        for part in (parent, host_layout_tables().base_stem(path))
-        if part
-    );
+    parts: list[str] = [parent, host_layout_tables().base_stem(path)];
+    return '.'.join([part for part in parts if part]);
 }
 
 impl match_pin(
