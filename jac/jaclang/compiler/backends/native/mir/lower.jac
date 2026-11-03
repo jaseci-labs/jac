@@ -1288,6 +1288,8 @@ obj MirLowering {
 
     def value_comparable(left: MirValue, right: MirValue, name: str) -> bool;
     def abstract_names(item: uni.Expr) -> list[str];
+    def any_bind(held: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
+    def bind_family(t: MirType, site: uni.UniNode) -> int;
     def narrow(value: MirValue, nd: uni.Name) -> MirValue;
     def target_archetype(target: uni.Expr) -> (uni.Archetype | None);
     def isinstance_value(

@@ -1310,6 +1310,163 @@ impl __jac_rt_dict_convert(
     return made;
 }
 
+impl _bind_kind(have: int, want: int) -> bool {
+    return have == want or want == KIND_ANY;
+}
+
+impl _bind_elem(bits: int, kind: int, family: int) -> bool {
+    if kind == KIND_ANY {
+        return True;
+    }
+    tag = __jac_rt_elem_tag(bits, KIND_ANY);
+    if kind == KIND_INT or kind == KIND_UINT {
+        return tag == ANY_TAG_INT or tag == ANY_TAG_BOOL;
+    }
+    if kind == KIND_FLOAT {
+        return tag == ANY_TAG_FLOAT;
+    }
+    if kind == KIND_BOOL {
+        return tag == ANY_TAG_BOOL;
+    }
+    if kind == KIND_STR {
+        return tag == ANY_TAG_STR;
+    }
+    if kind != KIND_REF or family < 0 or tag != (family & 255) {
+        return False;
+    }
+    if tag == ANY_TAG_OBJ {
+        return True;
+    }
+    payload = __jac_rt_elem_payload(bits, KIND_ANY);
+    inner_first = ((family >> 8) & 255) - 1;
+    inner_second = ((family >> 16) & 255) - 1;
+    if tag == ANY_TAG_LIST {
+        return _bind_kind(__mem_load_i64(payload + LIST_KIND), inner_first);
+    }
+    return _bind_kind(__mem_load_i64(payload + DICT_KEY_KIND), inner_first)
+        and (
+            tag == ANY_TAG_SET
+            or _bind_kind(__mem_load_i64(payload + DICT_VAL_KIND), inner_second)
+        );
+}
+
+impl _bind_refuse(label: ptr[u8]) {
+    sb = __jac_rt_sb_new(48);
+    _sb_cstr(sb, ptr[u8]("a container held as `any` is not a "));
+    _sb_cstr(sb, label);
+    raise TypeError(__jac_rt_sb_finish(sb));
+}
+
+impl _bind_list(payload: int, kind: int, family: int, label: ptr[u8]) -> int {
+    n = __mem_load_i64(payload + LIST_LEN);
+    data = __mem_load_i64(payload + LIST_DATA);
+    i = 0;
+    while i < n {
+        if not _bind_elem(__mem_load_i64(data + i * SLOT), kind, family) {
+            _bind_refuse(label);
+        }
+        i += 1;
+    }
+    made = __jac_rt_list_new(n, kind);
+    i = 0;
+    while i < n {
+        held = _kind_bits(__mem_load_i64(data + i * SLOT), KIND_ANY, kind);
+        __jac_rt_list_push(made, held, kind);
+        __jac_rt_elem_release(held, kind);
+        i += 1;
+    }
+    return made;
+}
+
+impl _bind_dict(
+    payload: int,
+    want: int,
+    key_kind: int,
+    key_family: int,
+    val_kind: int,
+    val_family: int,
+    label: ptr[u8]
+) -> int {
+    have_key = __mem_load_i64(payload + DICT_KEY_KIND);
+    have_val = __mem_load_i64(payload + DICT_VAL_KIND);
+    keys_ok = _bind_kind(have_key, key_kind) or have_key == KIND_ANY;
+    vals_ok = want == ANY_TAG_SET
+        or _bind_kind(have_val, val_kind)
+        or have_val == KIND_ANY;
+    if not keys_ok or not vals_ok {
+        _bind_refuse(label);
+    }
+    at = __jac_rt_dict_next(payload, -1);
+    while at >= 0 {
+        if (
+            have_key == KIND_ANY
+            and not _bind_elem(__jac_rt_dict_key_at(payload, at), key_kind, key_family)
+        )
+            or (
+                want != ANY_TAG_SET
+                and have_val == KIND_ANY
+                and not _bind_elem(
+                    __jac_rt_dict_val_at(payload, at), val_kind, val_family
+                )
+            ) {
+            _bind_refuse(label);
+        }
+        at = __jac_rt_dict_next(payload, at);
+    }
+    return __jac_rt_dict_convert(
+        want, payload, key_kind, have_val if want == ANY_TAG_SET else val_kind
+    );
+}
+
+impl __jac_rt_any_bind(
+    tag: int,
+    payload: int,
+    want: int,
+    first: int,
+    first_family: int,
+    second: int,
+    second_family: int,
+    label: ptr[u8]
+) -> int {
+    if tag == ANY_TAG_NONE or payload == 0 {
+        return 0;
+    }
+    if tag != want {
+        _bind_refuse(label);
+    }
+    if want == ANY_TAG_LIST {
+        have = __mem_load_i64(payload + LIST_KIND);
+        if _bind_kind(have, first) {
+            __jac_rt_retain(payload);
+            return payload;
+        }
+        if __mem_load_i64(payload + LIST_LEN) == 0 {
+            __jac_rt_list_rekind(payload, first);
+            __jac_rt_retain(payload);
+            return payload;
+        }
+        if have != KIND_ANY {
+            _bind_refuse(label);
+        }
+        return _bind_list(payload, first, first_family, label);
+    }
+    have_key = __mem_load_i64(payload + DICT_KEY_KIND);
+    have_val = __mem_load_i64(payload + DICT_VAL_KIND);
+    if _bind_kind(have_key, first)
+        and (want == ANY_TAG_SET or _bind_kind(have_val, second)) {
+        __jac_rt_retain(payload);
+        return payload;
+    }
+    if __mem_load_i64(payload + DICT_LEN_AT) == 0 {
+        __jac_rt_dict_rekind(
+            payload, first, have_val if want == ANY_TAG_SET else second
+        );
+        __jac_rt_retain(payload);
+        return payload;
+    }
+    return _bind_dict(payload, want, first, first_family, second, second_family, label);
+}
+
 impl __jac_rt_any_getitem(tag: int, payload: int, ktag: int, kpayload: int) -> int {
     if tag == ANY_TAG_DICT {
         kind = __mem_load_i64(payload + DICT_KEY_KIND);

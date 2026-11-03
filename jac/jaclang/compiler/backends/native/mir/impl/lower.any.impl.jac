@@ -171,10 +171,72 @@ impl MirLowering.any_unbox(
     if to.kind == MirKind.TUPLE {
         return self.tuple_unbox(b.ref_cast(held, mir_ref(), False), to);
     }
+    if to.kind in (MirKind.LIST, MirKind.DICT, MirKind.SET) {
+        return self.any_bind(held, to, site);
+    }
     if mir_holds_ref(to) {
         return b.ref_cast(held, to, False);
     }
     raise MirRefused(mir_refusal("conversion", f"any to {to.render()}", site));
+}
+
+impl MirLowering.bind_family(t: MirType, site: uni.UniNode) -> int {
+    if t.kind in (MirKind.OBJ, MirKind.OSP) {
+        return ANY_OBJ_TAG;
+    }
+    if t.kind not in (MirKind.LIST, MirKind.DICT, MirKind.SET) {
+        return -1;
+    }
+    kinds = [self.elem_kind(arg, site) for arg in t.args];
+    if any(
+        kind not in (KIND_ANY, KIND_INT, KIND_FLOAT, KIND_BOOL, KIND_STR)
+        for kind in kinds
+    ) {
+        return -1;
+    }
+    family = {
+        MirKind.LIST: ANY_LIST_TAG,
+        MirKind.DICT: ANY_DICT_TAG,
+        MirKind.SET: ANY_SET_TAG
+    }[t.kind];
+    for (index, kind) in enumerate(kinds) {
+        family = family | ((kind + 1) << (8 * (index + 1)));
+    }
+    return family;
+}
+
+impl MirLowering.any_bind(held: MirValue, to: MirType, site: uni.UniNode) -> MirValue {
+    b = self.builder();
+    first = self.elem_kind(to.args[0], site);
+    second = self.elem_kind(to.args[1], site) if to.kind == MirKind.DICT else KIND_ANY;
+    if first == KIND_ANY and second == KIND_ANY {
+        return b.ref_cast(held, to, False);
+    }
+    want = {
+        MirKind.LIST: ANY_LIST_TAG,
+        MirKind.DICT: ANY_DICT_TAG,
+        MirKind.SET: ANY_SET_TAG
+    }[to.kind];
+    parts = [to.kind.value] + [arg.render() for arg in to.args];
+    label = self.emit_value(
+        MirOp.CSTR, mir_c_ptr(mir_int(8, False)), [], str_value="_".join(parts)
+    );
+    second_family = self.bind_family(to.args[1], site)
+        if to.kind == MirKind.DICT
+        else -1;
+    made = self.runtime_value(
+        "__jac_rt_any_bind",
+        self.any_parts(held)
+            + [
+                b.const_int(want, mir_int()),
+                b.const_int(first, mir_int()),
+                b.const_int(self.bind_family(to.args[0], site), mir_int()),
+                b.const_int(second, mir_int()),
+                b.const_int(second_family, mir_int()),
+                label
+            ]
+    );
+    return b.ref_cast(made, to, True);
 }
 
 impl MirLowering.any_to_box(value: MirValue, site: uni.UniNode) -> MirValue {

@@ -937,6 +937,40 @@ impl MirLowering.lower_trace(obj_def: MirObjectDef) -> MirFunction {
         held = member.type.payload()
             if member.type.kind == MirKind.OPT
             else member.type;
+        if member.type.kind == MirKind.ANY {
+            place = self.emit_value(
+                MirOp.FIELD_ADDR, mir_c_ptr(member.type), [this], int_value=member.index
+            );
+            tagged = b.load(place, member.type);
+            tag = self.emit_value(MirOp.ANY_TAG, mir_int(), [tagged]);
+            word = self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [tagged]);
+            traced = b.binary(
+                "and",
+                b.binary(
+                    "and",
+                    b.compare("ge", tag, b.const_int(ANY_LIST_TAG, mir_int())),
+                    b.compare("le", tag, b.const_int(ANY_OBJ_TAG, mir_int()))
+                ),
+                b.compare("ne", word, b.const_int(0, mir_int()))
+            );
+            present = fn.new_block("trace.tagged");
+            after = fn.new_block("trace.next");
+            b.cond_branch(traced, present, after);
+            b.position(present);
+            self.emit_value(
+                MirOp.CALL_FNPTR,
+                mir_none(),
+                [
+                    visit_fn,
+                    self.emit_value(
+                        MirOp.PTR_CAST, i8p, [b.ref_cast(tagged, mir_ref(), False)]
+                    )
+                ]
+            );
+            b.branch(after);
+            b.position(after);
+            continue;
+        }
         if not mir_holds_ref(held)
             or held.kind in (MirKind.STR, MirKind.STR_REF, MirKind.ANY) {
             continue;

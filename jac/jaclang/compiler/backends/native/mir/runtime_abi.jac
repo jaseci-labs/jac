@@ -104,6 +104,17 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_any_binary": ["ref", "int", "int", "int", "int", "int"],
          "__jac_rt_any_negate": ["ref", "int", "int"],
          "__jac_rt_dict_convert": ["ref", "int", "int", "int", "int"],
+         "__jac_rt_any_bind": [
+             "ref",
+             "int",
+             "int",
+             "int",
+             "int",
+             "int",
+             "int",
+             "int",
+             "ptr"
+         ],
          "__jac_rt_any_getitem": ["ref", "int", "int", "int", "int"],
          "__jac_rt_ref_swap": ["none", "int", "int"],
          "__jac_rt_any_type_name": ["ptr", "int", "int"],

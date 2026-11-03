@@ -12,7 +12,7 @@ def refused(text: str) -> int {
 def run_all -> int {
     total = 0;
     for i in range(10) {
-        total = total + refused("{\"x\": " + str(i) + "}");
+        total = total + refused("{\"x\": \"v" + str(i) + "\"}");
     }
     return total;
 }

@@ -60,6 +60,8 @@ def _any_cmp(a: int, b: int) -> int;
 
 def:pub __jac_rt_list_new(cap: int, kind: int) -> int;
 
+def:pub __jac_rt_list_rekind(lst: int, kind: int);
+
 def:pub __jac_rt_list_reserve(lst: int, n: int);
 
 def:pub __jac_rt_list_push(lst: int, bits: int, kind: int);
