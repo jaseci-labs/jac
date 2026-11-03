@@ -1507,7 +1507,7 @@ impl render_wiring(
             for b in wires.keys()
             if b
         ],
-        key=lambda (b: str) { b.split("."); }
+        key=lambda (b: str) -> str { b.replace(".", "\x00"); }
     ) {
         blocks.append(
             _block_text(block, [text for (_key, text) in sorted(wires[block])])
