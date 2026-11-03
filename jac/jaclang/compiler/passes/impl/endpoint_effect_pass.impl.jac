@@ -378,7 +378,7 @@ impl EndpointEffectPass._declaration_effects(
         }
         target = ability_of_symbol(self._call_target_symbol(decorator));
         if target is None
-            or not target.loc.mod_path.replace("\\", "/").endswith(
+            or not ("/" + target.loc.mod_path.replace("\\", "/")).endswith(
                 "/jaclang/lib/effects.jac"
             ) {
             continue;
