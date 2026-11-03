@@ -6,7 +6,6 @@ import tempfile;
 import from tests.support { JAC_ROOT }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.placement.placement_facts {
-    discover_spaces,
     emits_server_code,
     is_client_only,
     module_spaces,
@@ -16,11 +15,17 @@ import from jaclang.compiler.placement.placement_facts {
     require_project_root,
     spaces_are_client_only
 }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.project.kernel_compile { kernel_module_spaces }
 
 glob FIXTURE_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "fixtures", "codespace"
      );
 
+"""The code spaces of each module, from the kernel check's module facts."""
+def module_spaces_of(paths: list[str]) -> dict[str, set[str]] {
+    return kernel_module_spaces(JacProgram(), paths, CompileOptions());
+}
 
 def _fixture(name: str) -> str {
     return os.path.join(FIXTURE_DIR, name);
@@ -49,14 +54,14 @@ test "a mixed module emits server code and is never client-only" {
 
 test "an empty or unreadable module defaults to server" {
     assert module_spaces(None) == {"server"};
-    facts = discover_spaces([_fixture("does_not_exist.jac")]);
+    facts = module_spaces_of([_fixture("does_not_exist.jac")]);
     assert facts[os.path.abspath(_fixture("does_not_exist.jac"))] == {"server"};
 }
 
 
-test "discover_spaces batches paths and classifies the client-only ones" {
+test "module facts batch paths and classify the client-only ones" {
     paths = [_fixture("infer_client_app.jac"), _fixture("infer_three_spaces.jac")];
-    facts = discover_spaces(paths);
+    facts = module_spaces_of(paths);
     assert facts[os.path.abspath(paths[0])] == {"client"};
     assert "server" in facts[os.path.abspath(paths[1])];
     assert [
@@ -91,7 +96,7 @@ test "a module with compile errors is never classified client-only" {
                 + "def:pub app -> JsxElement {\n    return <div>x</div>;\n}\n"
         );
     }
-    facts = discover_spaces([broken]);
+    facts = module_spaces_of([broken]);
     spaces = facts[os.path.abspath(broken)];
     assert "server" in spaces , spaces;
     assert not spaces_are_client_only(spaces);

@@ -562,18 +562,9 @@ impl module_is_client(filepath: str) -> bool {
         return _COLOR_CACHE[path];
     }
 
-    checked = kernel_module_facts(
+    result = kernel_module_facts(
         JacProgram(), [path], CompileOptions(symtab_ir_only=True)
-    );
-    result: (bool | None) = None;
-    for fact in checked.modules {
-        if os.path.realpath(fact.path) == os.path.realpath(path) {
-            result = fact.client_declared;
-        }
-    }
-    if result is None {
-        raise RuntimeError(f"the kernel reported no module facts for {path}");
-    }
+    ).module_fact(path).client_declared;
     _COLOR_CACHE[path] = result;
     return result;
 }

@@ -2,17 +2,12 @@
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, get_func }
+import from tests.support { TESTS_DIR, get_func, runtime_address }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.codeinfo { HDR_RC_OFF }
-import from jaclang.compiler.native_compiler { ensure_loaded }
 
 test "native string and temporary roots balance across storage and calls" {
-    kernel = ensure_loaded();
-    if kernel is None {
-        return;
-    }
     program = JacProgram();
     options = CompileOptions(
         force_codespace="native", memory_profile="managed", no_ir_cache=True
@@ -31,10 +26,11 @@ test "native string and temporary roots balance across storage and calls" {
     assert not program.errors_had , [str(e) for e in program.errors_had];
     engine = mod.gen.native_engine;
     assert engine is not None;
-    make = kernel.lib.jac_str_new;
-    release = kernel.lib.jac_release;
-    release.argtypes = [ctypes.c_void_p];
-    release.restype = None;
+    make_at = runtime_address(engine, "jac_str_new");
+    release_at = runtime_address(engine, "jac_release");
+    assert make_at and release_at , "the engine linked no string runtime";
+    make = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int64)(make_at);
+    release = ctypes.CFUNCTYPE(None, ctypes.c_void_p)(release_at);
     value = b"borrowed";
     references: dict[str, int] = {};
     for (name, copies) in [

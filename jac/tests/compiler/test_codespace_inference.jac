@@ -635,7 +635,7 @@ test "client import pulls a pure markerless module cross-module" {
 }
 
 test "cross-module pulled elements dual-emit for the server side" {
-    import from jaclang.client.client_bundle { _ensure_js_generated }
+    import from tests.compiler.backends.es.codegen_helpers { lower_to_client }
     import from jaclang.compiler.backends.py.pyast_gen_pass { PyastGenPass }
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURE_DIR, "infer_xmod_app.jac"), no_cgen=False);
@@ -652,7 +652,8 @@ test "cross-module pulled elements dual-emit for the server side" {
             );
         }
     }
-    _ensure_js_generated(util, prog);
+    lowered = lower_to_client(util, prog);
+    assert not lowered , lowered;
     util_js = util.gen.js;
     assert 'register' in util.gen.client_manifest.linkable , (
         "pulled accessless def must be exportable to its client importers"
@@ -698,7 +699,7 @@ test "unpullable closure bridges as a wire type instead of pulling" {
 test "codespace stamps invalidate stale module codegen" {
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     import from jaclang.compiler.backends.es.esast_gen_pass { EsastGenPass }
-    import from jaclang.client.client_bundle { _ensure_js_generated }
+    import from tests.compiler.backends.es.codegen_helpers { lower_to_client }
     prog = JacProgram();
     prog.compile(
         os.path.join(FIXTURE_DIR, "infer_xmod_app.jac"),
@@ -710,7 +711,8 @@ test "codespace stamps invalidate stale module codegen" {
     app = hub_module(prog, "infer_xmod_app.jac");
     assert app is not None;
     run_pass(EsastGenPass, app, prog);
-    _ensure_js_generated(util, prog);
+    lowered = lower_to_client(util, prog);
+    assert not lowered , lowered;
     assert 'register' in util.gen.client_manifest.linkable , (
         "pull stamps must invalidate the pre-pull ES cache so the pulled def "
         "regenerates as client code its importers can link"
@@ -721,17 +723,12 @@ test "codespace stamps invalidate stale module codegen" {
 }
 
 test "a client-pulled module that will not lower fails loudly (#8375)" {
-    import from jaclang.client.client_bundle { ClientBundleError, _ensure_js_generated }
+    import from tests.compiler.backends.es.codegen_helpers { lower_to_client }
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURE_DIR, "infer_unlowerable_app.jac"), no_cgen=False);
     util = hub_module(prog, "infer_unlowerable_util.jac");
     assert util is not None , "imported module missing from hub";
-    raised = '';
-    try {
-        _ensure_js_generated(util, prog);
-    } except ClientBundleError as e {
-        raised = str(e);
-    }
+    raised = "\n\n".join(lower_to_client(util, prog));
     assert 'E5018' in raised , (
         "an ES lowering failure in a pulled module must fail the bundle rather "
         f"than demote it silently; got: {raised}"

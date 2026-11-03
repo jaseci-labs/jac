@@ -19,7 +19,7 @@ those slots, the capture walk skips them, and the Python lane builds a keyword
 key from its spelling rather than from a lowered reference.
 """
 
-import from jaclang.compiler.backends.py.kernel_bytecode { kernel_python_ast }
+import from jaclang.compiler.backends.py.host_python { host_python_ast }
 import ast as ast3;
 import os;
 import subprocess;
@@ -43,7 +43,7 @@ def compile_server(fixture: str) -> uni.Module {
 
 
 def generated_python(fixture: str) -> str {
-    return ast3.unparse(kernel_python_ast(compile_server(fixture)));
+    return ast3.unparse(host_python_ast(compile_server(fixture)));
 }
 
 

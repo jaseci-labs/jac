@@ -11,7 +11,8 @@ import from tests.support {
     compile_native,
     get_func,
     native_address,
-    native_force_opts
+    native_force_opts,
+    runtime_address
 }
 import ctypes;
 import os;
@@ -59,17 +60,7 @@ def get_sfunc(eng: any, name: str, restype: type | None, *argtypes: type) -> any
         }
     }
     raw = ctypes.CFUNCTYPE(real_res, *real_args)(addr);
-    sn_addr = 0;
-    for sn in ("jac_str_new", "__jac_str_new") {
-        try {
-            sn_addr = native_address(eng, sn);
-        } except Exception {
-            sn_addr = 0;
-        }
-        if sn_addr {
-            break;
-        }
-    }
+    sn_addr = runtime_address(eng, "jac_str_new");
     mkstr = (
         ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int64)(sn_addr)
             if sn_addr

@@ -52,7 +52,7 @@ def fmt_errors(prog: JacProgram) -> str {
 does in production), and return the JIT engine."""
 def compile_fixture(fixture: str) -> any {
     import ctypes;
-    import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+    import from jaclang.compiler.backends.native.llvm.jit { ExecutionEngine }
     prog = JacProgram();
     ir = prog.compile(
         file_path=str(os.path.join(FIXTURES_DIR, fixture)), options=native_force_opts()

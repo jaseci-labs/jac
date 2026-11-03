@@ -40,7 +40,7 @@ def _native_extra(jac_path: str, pkg_root: str) -> dict[int, bytes];
 
 def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, bytes];
 
-def precompile_native_unit(jac_path: str, collect: bool = True) -> str;
+def precompile_native_unit(jac_path: str) -> str;
 
 def precompile_context(
     jac_path: str, pkg_root: str, app: str = ""
@@ -52,7 +52,6 @@ def precompile_unit(
     jac_path: str,
     pkg_root: str,
     embed_src: bool = False,
-    collect: bool = True,
     app: str = ""
 ) -> bytes | None;
 

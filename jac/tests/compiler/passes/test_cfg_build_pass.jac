@@ -3,9 +3,15 @@
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
-import from jaclang.compiler.tools.cfg_dot { cfg_dot_from_file }
+import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.tools.cfg_dot { cfg_dot_text }
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "fixtures");
+
+def cfg_dot_from_file(file_name: str) -> str {
+    program = JacProgram();
+    return cfg_dot_text(program, program.compile(file_name));
+}
 
 test "cfg branches and loops" {
     dot = cfg_dot_from_file(file_name=os.path.join(FIXTURES, "cfg_gen.jac"));

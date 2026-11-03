@@ -56,26 +56,6 @@ impl KernelDiagnostic.from_dict(raw: dict[str, any]) -> KernelDiagnostic {
     );
 }
 
-impl NativeDemotion.to_dict -> dict[str, any] {
-    return {
-        "symbol": self.symbol,
-        "kind": self.kind,
-        "reason": self.reason,
-        "code": self.code,
-        "span": self.span.to_dict()
-    };
-}
-
-impl NativeDemotion.from_dict(raw: dict[str, any]) -> NativeDemotion {
-    return NativeDemotion(
-        symbol=str(raw["symbol"]),
-        kind=str(raw["kind"]),
-        reason=str(raw["reason"]),
-        code=str(raw["code"]),
-        span=SourceSpan.from_dict(raw["span"])
-    );
-}
-
 impl CompiledUnit.to_dict -> dict[str, any] {
     return {
         "path": self.path,
@@ -90,7 +70,6 @@ impl CompiledUnit.to_dict -> dict[str, any] {
         "native_deps": list(self.native_deps),
         "native_ir": self.native_ir,
         "native_layout": self.native_layout,
-        "demoted": [item.to_dict() for item in self.demoted],
         "jac_deps": list(self.jac_deps),
         "app": self.app,
         "persistence": list(self.persistence),
@@ -117,7 +96,6 @@ impl CompiledUnit.from_dict(raw: dict[str, any]) -> CompiledUnit {
         native_deps=[str(item) for item in raw["native_deps"]],
         native_ir=str(raw["native_ir"]),
         native_layout=str(raw["native_layout"]),
-        demoted=[NativeDemotion.from_dict(item) for item in raw["demoted"]],
         jac_deps=[str(item) for item in raw["jac_deps"]],
         app=str(raw["app"]),
         persistence=[str(item) for item in raw["persistence"]],
@@ -1010,6 +988,16 @@ impl CompileResult.unit(path: str) -> CompiledUnit {
         }
     }
     raise KernelError(f"the kernel compiled no unit for {path}");
+}
+
+impl CheckResult.module_fact(path: str) -> ModuleFact {
+    real = os.path.realpath(path);
+    for candidate in self.modules {
+        if os.path.realpath(candidate.path) == real {
+            return candidate;
+        }
+    }
+    raise KernelError(f"the kernel reported no module facts for {path}");
 }
 
 impl CheckResult.ok -> bool {

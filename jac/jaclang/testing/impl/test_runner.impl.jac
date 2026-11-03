@@ -181,19 +181,21 @@ impl strict_mode -> bool {
 
 impl _match_patterns(files: list[str], patterns: (list[str] | None)) -> set[str] {
     import fnmatch;
+    rules: list[tuple[bool, str]] = [
+        (raw.startswith("!"), os.path.abspath(raw.removeprefix("!")))
+        for raw in (patterns or [])
+        if raw.removeprefix("!")
+    ];
     matched: set[str] = set();
-    for raw in (patterns or []) {
-        if not raw {
-            continue;
-        }
-        pat = os.path.abspath(raw);
-        for path in files {
-            if path in matched {
-                continue;
-            }
+    for path in files {
+        inside = False;
+        for (excluded, pat) in rules {
             if fnmatch.fnmatch(path, pat) or path.startswith(pat + os.sep) {
-                matched.add(path);
+                inside = not excluded;
             }
+        }
+        if inside {
+            matched.add(path);
         }
     }
     return matched;

@@ -3769,7 +3769,6 @@ graph import {
     project.kernel_compile ++> client.targets.web_target.WebTarget.build { kernel_client_artifact }
     project.kernel_compile ++> compiler.tools.lang_tools.AstTool.ir { compile_request_for }
     project.kernel_compile ++> dist.native_product.write_native_product { kernel_native_build, native_build_request_for }
-    project.kernel_compile ++> dist.precompile_bytecode { kernel_compile, kernel_module_facts, kernel_native_build, native_build_request_for, persist_units }
     project.kernel_compile ++> dist.publish.builder._module_is_client_source { kernel_module_facts }
     project.kernel_compile ++> dist.publish.runtime_npm._compile_cl_to_js { kernel_compile }
     project.kernel_compile ++> server.hmr.HotReloader._classify_declarations { kernel_module_facts }
@@ -3880,6 +3879,8 @@ graph import {
     compiler.driver.module_analysis ++> compiler.driver.compiler.JacCompiler._host_compile { analysed_for_codegen }
     type compiler.types.types ++> compiler.backends.py.pyast_gen_pass { TypeBase }
     compiler.types.types ++> compiler.backends.py.pyast_gen_pass.PyastGenPass._c_param_type { FunctionType, ParameterCategory }
+    project.kernel_compile ++> dist.precompile_bytecode { kernel_compile, kernel_module_facts, kernel_module_spaces, kernel_native_build, native_build_request_for, persist_units }
+    compiler.placement.placement_facts ++> dist.precompile_bytecode { spaces_are_client_only }
 }
 
 graph import artifacts {

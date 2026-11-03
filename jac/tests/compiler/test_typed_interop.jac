@@ -11,7 +11,7 @@ Tests with SkipTest document DESIRED behavior that will pass once
 the boundary type manifest and hydration codegen are implemented.
 """
 
-import from jaclang.compiler.backends.py.kernel_bytecode { kernel_python_ast }
+import from jaclang.compiler.backends.py.host_python { host_python_ast }
 import from jaclang.compiler.backends.py.python_text { generated_python }
 import os;
 import unittest;
@@ -128,7 +128,7 @@ test "sv-to-sv: relative sv import generates HTTP stubs (#6507)" {
     assert "spawn_walker('sv_relative_provider', 'Analyze'" in py;
     # The module's own endpoints survive: the consumer compiles to importable
     # Python (the plain-import crash is gone).
-    py_mod = kernel_python_ast(compile_fixture("sv_relative_consumer.jac"));
+    py_mod = host_python_ast(compile_fixture("sv_relative_consumer.jac"));
     compiled = compile(py_mod, filename="<sv_relative_consumer>", mode="exec");
     assert compiled is not None;
 }

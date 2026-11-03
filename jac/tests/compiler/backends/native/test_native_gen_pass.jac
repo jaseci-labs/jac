@@ -54,7 +54,7 @@ import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import from jaclang.compiler.backends.native.llvm.jit { ExecutionEngine }
 import from jaclang.compiler.frontend.codeinfo {
     native_glob_init_name,
     native_symbol_name,
@@ -6482,8 +6482,8 @@ test "restore-failure falls back to recompile for inferred modules (item #19)" {
         assert bc2 is not None;
         # Without a kernel the host recompiles and builds the engine in the
         # pass itself, so the loader sees only the failed restore.
-        import from jaclang.compiler.native_compiler { ensure_loaded }
-        rebuilds = 2 if ensure_loaded() is not None else 1;
+        import from jaclang.compiler.backends.native.kernel_resolve { load_kernel }
+        rebuilds = 2 if load_kernel() is not None else 1;
         assert len(loads) == rebuilds , (
             f"expected {rebuilds} loader call(s), saw {len(loads)}"
         );

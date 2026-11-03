@@ -62,6 +62,10 @@ def kernel_module_facts(
     program: JacProgram, paths: list[str], options: CompileOptions, closure: bool = False
 ) -> CheckResult;
 
+def kernel_module_spaces(
+    program: JacProgram, paths: list[str], options: CompileOptions
+) -> dict[str, set[str]];
+
 def persist_units(units: list[CompiledUnit]);
 
 def unit_client_artifact(unit: CompiledUnit) -> (ClientArtifact | None);

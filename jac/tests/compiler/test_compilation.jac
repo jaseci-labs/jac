@@ -4,7 +4,7 @@ These tests verify that the Jac compiler can successfully compile various
 fixture files without errors, and test compilation-level behaviour.
 """
 
-import from jaclang.compiler.backends.py.kernel_bytecode { kernel_python_ast }
+import from jaclang.compiler.backends.py.host_python { host_python_ast }
 import from jaclang.compiler.backends.py.python_text { generated_python }
 import os;
 import from jaclang.compiler.tools.treeprinter { print_ast_tree }
@@ -67,7 +67,7 @@ test "arith precedence" {
         buf = io.StringIO();
         sys.stdout = buf;
         try {
-            pyexec(pycompile(kernel_python_ast(prog), "test.jac", "exec"));
+            pyexec(pycompile(host_python_ast(prog), "test.jac", "exec"));
         } finally {
             sys.stdout = old;
         }

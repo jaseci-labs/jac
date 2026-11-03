@@ -46,10 +46,8 @@ def codegen_lane(native: bool) -> list[type] {
 }
 
 import from jaclang.compiler.backends.py.pyast_gen_pass { PyastGenPass }
-import from jaclang.compiler.backends.py.kernel_bytecode {
-    kernel_code_object,
-    kernel_python_ast
-}
+import from jaclang.compiler.backends.py.host_python { host_python_ast }
+import from jaclang.compiler.backends.py.python_engine { active_engine }
 
 """Compile a source string, then re-emit it: (pipeline tree, fresh tree, fresh code bytes)."""
 def dual_compile(src: str, path: str, *, codespace: str = "server") -> tuple[any, ...] {
@@ -65,11 +63,10 @@ def dual_compile(src: str, path: str, *, codespace: str = "server") -> tuple[any
         )
     );
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
-    ref_tree = kernel_python_ast(mod);
+    ref_tree = host_python_ast(mod);
     run_walker(PyastGenPass, module=mod);
-    got_tree = kernel_python_ast(mod);
-    kernel_code_object(mod);
-    return (ref_tree, got_tree, mod.gen.py_bytecode);
+    got_tree = host_python_ast(mod);
+    return (ref_tree, got_tree, active_engine().code_bytes(mod));
 }
 
 """The same double emission, for a fixture that must be compiled from disk."""
@@ -77,11 +74,10 @@ def dual_compile_file(path: str) -> tuple[any, ...] {
     prog = JacProgram();
     mod = prog.compile(path, options=CompileOptions());
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
-    ref_tree = kernel_python_ast(mod);
+    ref_tree = host_python_ast(mod);
     run_walker(PyastGenPass, module=mod);
-    got_tree = kernel_python_ast(mod);
-    kernel_code_object(mod);
-    return (ref_tree, got_tree, mod.gen.py_bytecode);
+    got_tree = host_python_ast(mod);
+    return (ref_tree, got_tree, active_engine().code_bytes(mod));
 }
 
 def assert_dump_equal(ref_tree: any, got_tree: any) {
@@ -908,7 +904,7 @@ with entry {
     sched = codegen_lane(False);
     assert PyastGenPass in sched , f"the Python code generator is not in the codegen schedule: {sched}";
     piped_code = marshal.loads(mod.gen.py_bytecode);
-    round_tripped = pycompile(kernel_python_ast(mod), "tail_fixture.jac", "exec");
+    round_tripped = pycompile(host_python_ast(mod), "tail_fixture.jac", "exec");
     diffs = code_diffs(round_tripped, piped_code, "module", []);
     assert diffs == [] , "\n".join(diffs);
 }

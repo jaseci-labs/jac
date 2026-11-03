@@ -3,7 +3,7 @@ provider's `result` (the executed walker, its fields as the walk left them)
 with the provider's `reports` attached, through the stub class the compiler
 generates for a real `sv import`, so boundary-typed values inside both come
 back as their stub types."""
-import from jaclang.compiler.backends.py.kernel_bytecode { kernel_python_ast }
+import from jaclang.compiler.backends.py.host_python { host_python_ast }
 import os;
 import sys;
 import types;
@@ -23,7 +23,7 @@ glob CONSUMER = os.path.join(
      );
 
 def generated_stubs -> dict[str, any] {
-    py_mod = JacProgram().kernel_python_ast(compile(CONSUMER));
+    py_mod = host_python_ast(JacProgram().compile(CONSUMER));
     mod = types.ModuleType("sv_relative_consumer_stubs");
     sys.modules[mod.__name__] = mod;
     exec(compile(py_mod, "<sv_relative_consumer>", "exec"), mod.__dict__);

@@ -14,7 +14,7 @@ import from tests.support { JAC_ROOT, TESTS_DIR, native_address, native_force_op
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import from jaclang.compiler.backends.native.llvm.jit { ExecutionEngine }
 import from jaclang.compiler.passes.type_checker_pass { TypeCheckPass }
 import from jaclang.compiler.driver.pass_driver { run_pass }
 

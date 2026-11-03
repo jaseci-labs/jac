@@ -1,15 +1,15 @@
 """Field declarations validate values and synthesized constructor contracts."""
+import from tests.support { kernel_check_source }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 def check_fields(source: str) -> list[str] {
-    program = JacProgram();
-    program.compile(
-        file_path="object_field_contract.jac",
-        use_str=source,
-        options=CompileOptions(no_cgen=True, no_ir_cache=True, force_codespace="server")
-    );
-    return [str(alert) for alert in program.errors_had];
+    return [
+        f"{diag.code}: {diag.message}"
+        for diag in kernel_check_source(
+            source, "object_field_contract.jac", CompileOptions(no_ir_cache=True, force_codespace="server")
+        ).errors
+    ];
 }
 
 test "an aliased ObjectField marker preserves the declared value type" {

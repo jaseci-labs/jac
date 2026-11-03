@@ -6,7 +6,7 @@ import ctypes;
 import os;
 import from tests.support { TESTS_DIR, native_address, native_force_opts }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import from jaclang.compiler.backends.native.llvm.jit { ExecutionEngine }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR,

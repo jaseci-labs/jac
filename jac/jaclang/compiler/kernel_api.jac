@@ -37,17 +37,6 @@ obj KernelDiagnostic {
     static def from_dict(raw: dict[str, any]) -> KernelDiagnostic;
 }
 
-obj NativeDemotion {
-    has symbol: str,
-        kind: str,
-        reason: str,
-        code: str,
-        span: SourceSpan;
-
-    def to_dict -> dict[str, any];
-    static def from_dict(raw: dict[str, any]) -> NativeDemotion;
-}
-
 obj CompiledUnit {
     has path: str,
         module_name: str,
@@ -61,7 +50,6 @@ obj CompiledUnit {
         native_deps: list[str] = [],
         native_ir: str = "",
         native_layout: str = "",
-        demoted: list[NativeDemotion] = [],
         jac_deps: list[str] = [],
         app: str = "",
         persistence: list[str] = [],
@@ -179,6 +167,7 @@ obj CheckResult {
         app_edges: list[AppEdge] = [];
 
     def ok -> bool;
+    def module_fact(path: str) -> ModuleFact;
     def to_dict -> dict[str, any];
     static def from_dict(raw: dict[str, any]) -> CheckResult;
 }

@@ -222,20 +222,9 @@ impl sealable_sources(package_dir: str, app: str = "") -> list[str] {
         result = list(candidates);
     } else {
         discovery = JacProgram();
-        checked = kernel_module_facts(
+        facts = kernel_module_spaces(
             discovery, candidates, CompileOptions(project_root=base)
         );
-        facts: dict[str, set[str]] = {};
-        for fact in checked.modules {
-            spaces = set(fact.spaces);
-            if fact.errors {
-                spaces.add("server");
-            }
-            facts[os.path.abspath(fact.path)] = spaces;
-        }
-        for candidate in candidates {
-            facts.setdefault(os.path.abspath(candidate), {"server"});
-        }
         _placement_cache[key] = facts;
         if discovery.errors_had {
             console.print(
@@ -253,7 +242,7 @@ impl sealable_sources(package_dir: str, app: str = "") -> list[str] {
                 p
                 for p in candidates
                 if os.path.realpath(p) not in entry_paths
-                    and facts[os.path.abspath(p)] == {"client"}
+                    and spaces_are_client_only(facts[os.path.abspath(p)])
             ];
             result = [
                 p
@@ -446,7 +435,7 @@ impl _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byt
     return extra;
 }
 
-impl precompile_native_unit(jac_path: str, collect: bool = True) -> str {
+impl precompile_native_unit(jac_path: str) -> str {
     request = native_build_request_for(
         [jac_path],
         "plan",
@@ -505,7 +494,6 @@ impl precompile_unit(
     jac_path: str,
     pkg_root: str,
     embed_src: bool = False,
-    collect: bool = True,
     app: str = ""
 ) -> bytes | None {
     source_app = _source_apps.get((os.path.abspath(pkg_root), app), {}).get(
@@ -1721,7 +1709,7 @@ impl run_precompile(
                 native_units_set and os.path.realpath(jac_path) in native_units_set
             );
             if is_native
-                and not precompile_native_unit(jac_path, collect=not use_pool) {
+                and not precompile_native_unit(jac_path) {
                 jir_path.unlink(missing_ok=True);
                 return {
                     "status": "failed",
@@ -1737,13 +1725,7 @@ impl run_precompile(
                     _unit_extra(jac_path, package_dir, embed_src)
                 );
             } else {
-                jir_bytes = precompile_unit(
-                    jac_path,
-                    package_dir,
-                    embed_src,
-                    collect=not use_pool,
-                    app=app
-                );
+                jir_bytes = precompile_unit(jac_path, package_dir, embed_src, app=app);
             }
             if jir_bytes is None {
                 jir_path.unlink(missing_ok=True);

@@ -62,6 +62,9 @@ serial = [
 # what remains here by the kernel suite or compile entry each test moves to.
 bytecode_compiler = [
     "jac/tests/compiler",
+    "!jac/tests/compiler/test_application_preparation.jac",
+    "!jac/tests/compiler/test_native_compile.jac",
+    "!jac/tests/compiler/test_native_in_kernel.jac",
     "jac/jaclang/compiler/tests",
     "jac/jaclang/byllm/tests/test_byllm.jac",
     "jac/jaclang/byllm/tests/test_mtir_integration.jac",

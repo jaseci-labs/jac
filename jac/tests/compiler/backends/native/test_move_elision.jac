@@ -26,7 +26,7 @@ import from tests.support {
 import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
 import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import from jaclang.compiler.backends.native.llvm.jit { ExecutionEngine }
 import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
 
 glob FIXTURES = os.path.join(

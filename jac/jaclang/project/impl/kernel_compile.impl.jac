@@ -148,6 +148,24 @@ impl kernel_module_facts(
     return result;
 }
 
+impl kernel_module_spaces(
+    program: JacProgram, paths: list[str], options: CompileOptions
+) -> dict[str, set[str]] {
+    checked = kernel_module_facts(program, paths, options);
+    spaces: dict[str, set[str]] = {};
+    for fact in checked.modules {
+        held = set(fact.spaces);
+        if fact.errors {
+            held.add("server");
+        }
+        spaces[os.path.abspath(fact.path)] = held;
+    }
+    for path in paths {
+        spaces.setdefault(os.path.abspath(path), {"server"});
+    }
+    return spaces;
+}
+
 impl persist_units(units: list[CompiledUnit]) {
     for unit in units {
         write_module_cache(

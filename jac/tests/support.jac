@@ -15,7 +15,8 @@ import ctypes;
 import from pathlib { Path }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.frontend.unitree { Module }
-import type from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import type from jaclang.compiler.backends.native.llvm.jit { ExecutionEngine }
+import type from jaclang.compiler.kernel_api { CheckResult, CompileResult, CompiledUnit }
 
 # `tests/`: the directory holding this file.
 glob TESTS_DIR: str = str(Path(__file__).resolve().parent),
@@ -123,6 +124,22 @@ class JacStrABI(ctypes.Structure) {
     ];
 }
 
+"""The address of a runtime function the JIT engine linked, under its
+exported or its internal (`__`-prefixed) name; 0 when the engine has neither."""
+def runtime_address(eng: any, name: str) -> int {
+    for symbol in (name, "__" + name) {
+        try {
+            address = native_address(eng, symbol);
+        } except Exception {
+            address = 0;
+        }
+        if address {
+            return address;
+        }
+    }
+    return 0;
+}
+
 def native_str_func(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
     # descriptor-ABI JIT getter shared by native tests: a c_char_p
     # spelling means a Jac str (the by-value {root, data, len}
@@ -147,17 +164,7 @@ def native_str_func(eng: any, name: str, restype: type | None, *argtypes: type) 
         }
     }
     raw = ctypes.CFUNCTYPE(real_res, *real_args)(addr);
-    sn_addr = 0;
-    for sn in ("jac_str_new", "__jac_str_new") {
-        try {
-            sn_addr = native_address(eng, sn);
-        } except Exception {
-            sn_addr = 0;
-        }
-        if sn_addr {
-            break;
-        }
-    }
+    sn_addr = runtime_address(eng, "jac_str_new");
     mkstr = (
         ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int64)(sn_addr)
             if sn_addr
@@ -289,7 +296,7 @@ def compile_native(
     fixture: str, fixture_dir: str = ""
 ) -> tuple[ExecutionEngine, Module] {
     ir = _compile_native_fixture(fixture, fixture_dir, native_force_opts());
-    import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+    import from jaclang.compiler.backends.native.llvm.jit { ExecutionEngine }
     eng = ir.gen.native_engine;
     assert isinstance(eng, ExecutionEngine) , f"No JIT engine produced for {fixture}";
     remember_native_unit(eng, ir);
@@ -453,9 +460,8 @@ def _compile_native_fixture(
     fixture: str, fixture_dir: str, options: CompileOptions
 ) -> Module {
     import from jaclang.compiler.driver.program { JacProgram }
-    base = fixture_dir or NATIVE_FIXTURES;
     prog = JacProgram();
-    ir = prog.compile(file_path=str(Path(base) / fixture), options=options);
+    ir = prog.compile(file_path=fixture_path(fixture, fixture_dir), options=options);
     errors = [e.pretty_print() for e in prog.errors_had] if prog.errors_had else [];
     if errors and ir is not None and ir.gen.llvm_ir is not None {
         import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
@@ -468,6 +474,130 @@ def _compile_native_fixture(
     return ir;
 }
 
+"""The fixture `fixture` under `fixture_dir` (the native fixtures by default)."""
+def fixture_path(fixture: str, fixture_dir: str = "") -> str {
+    return str(Path(fixture_dir or NATIVE_FIXTURES) / fixture);
+}
+
+"""Compile `path` through the kernel's compile entry, as `jac run` and the
+import hook do, and return the kernel's result untouched: units, errors and
+warnings as `KernelDiagnostic` records. `products` defaults to bytecode."""
+def kernel_compile_file(
+    path: str,
+    options: (CompileOptions | None) = None,
+    products: (list[str] | None) = None,
+    sources: (dict[str, str] | None) = None
+) -> CompileResult {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.project.kernel_call { call_compile }
+    import from jaclang.project.kernel_compile { compile_request_for }
+    return call_compile(
+        compile_request_for(
+            [path],
+            options if options is not None else CompileOptions(),
+            sources or {},
+            products if products is not None else ["bytecode"]
+        )
+    );
+}
+
+"""Write `source` to a fresh directory as `name` and compile it through the
+kernel. The directory outlives the call, so diagnostics keep a real path."""
+def kernel_compile_source(
+    source: str,
+    name: str = "main.jac",
+    options: (CompileOptions | None) = None,
+    products: (list[str] | None) = None
+) -> CompileResult {
+    return kernel_compile_file(write_case(source, name), options, products);
+}
+
+"""Check `path` through the kernel's check entry (`jac check`)."""
+def kernel_check_file(
+    path: str,
+    options: (CompileOptions | None) = None,
+    native_coverage: bool = False,
+    placements: bool = False,
+    closure: bool = False,
+    sources: (dict[str, str] | None) = None
+) -> CheckResult {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.project.kernel_call { call_check }
+    import from jaclang.project.kernel_compile { check_request_for }
+    request = check_request_for(
+        [path],
+        options if options is not None else CompileOptions(),
+        native_coverage,
+        placements,
+        closure
+    );
+    request.sources = {
+        str(Path(key).resolve()): text
+        for (key, text) in (sources or {}).items()
+    };
+    return call_check(request);
+}
+
+"""Write `source` to a fresh directory as `name` and check it through the
+kernel."""
+def kernel_check_source(
+    source: str, name: str = "main.jac", options: (CompileOptions | None) = None
+) -> CheckResult {
+    return kernel_check_file(write_case(source, name), options);
+}
+
+"""The loaded native compiler kernel. A test that watches the kernel's own
+entry points steps aside on a kit that leaves the kernel out."""
+def loaded_kernel -> any {
+    import from jaclang.compiler.backends.native.kernel_resolve { load_kernel }
+    kernel = load_kernel();
+    if kernel is None {
+        testskip("the kit carries no native compiler kernel");
+    }
+    return kernel;
+}
+
+"""Write `source` as `name` in a fresh directory; return its path."""
+def write_case(source: str, name: str = "main.jac") -> str {
+    import tempfile;
+    path = Path(tempfile.mkdtemp(prefix="jac-case-")) / name;
+    path.parent.mkdir(parents=True, exist_ok=True);
+    path.write_text(source, encoding="utf-8");
+    return str(path);
+}
+
+"""Parse Python `source` into the frontend's Python tree, through the Python
+engine the compiler parses with."""
+def python_tree(source: str, path: str = "<python>") -> any {
+    import from jaclang.compiler.backends.py.python_engine { active_engine }
+    return active_engine().parse_module(source, path);
+}
+
+"""The code object a kernel unit's marshalled bytecode holds."""
+def unit_code(unit: CompiledUnit) -> any {
+    import marshal;
+    assert unit.bytecode , f"the kernel returned no bytecode for {unit.path}";
+    return marshal.loads(unit.bytecode);
+}
+
+"""The codes of a kernel result's errors, in order."""
+def error_codes(result: (CompileResult | CheckResult)) -> list[str] {
+    return [diag.code for diag in result.errors];
+}
+
+"""The codes of a kernel result's warnings, in order."""
+def warning_codes(result: (CompileResult | CheckResult)) -> list[str] {
+    return [diag.code for diag in result.warnings];
+}
+
+"""A kernel result's diagnostics, one per line, for assertion messages."""
+def diagnostics_text(result: (CompileResult | CheckResult)) -> str {
+    return "\n".join(
+        f"{diag.severity} {diag.code} {Path(diag.span.path).name}:{diag.span.line}:{diag.span.col}: {diag.message}"
+        for diag in list(result.errors) + list(result.warnings)
+    );
+}
+
 """Get a ctypes-callable function from a JIT engine."""
 def get_func(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
     addr = native_address(eng, name);
@@ -476,14 +606,23 @@ def get_func(eng: any, name: str, restype: type | None, *argtypes: type) -> any 
     return functype(addr);
 }
 
-"""Return True if the program emitted at least one alert with the given code."""
-def has_error_code(prog: any, code: str) -> bool {
-    for alrt in prog.errors_had {
+"""Return True if a kernel result, or a program that adopted one, carries at
+least one error with the given code."""
+def has_error_code(target: any, code: str) -> bool {
+    if hasattr(target, "errors") {
+        return code in error_codes(target);
+    }
+    for alrt in target.errors_had {
         if alrt.code is not None and alrt.code.code == code {
             return True;
         }
     }
     return False;
+}
+
+"""Return True if a kernel result carries at least one warning with the code."""
+def has_warning_code(result: (CompileResult | CheckResult), code: str) -> bool {
+    return code in warning_codes(result);
 }
 
 """Memory profiles a native test can build under.

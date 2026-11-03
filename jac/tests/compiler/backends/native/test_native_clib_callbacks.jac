@@ -1,6 +1,6 @@
 """C callback arguments adapt scalar widths and reject boxed Jac callables."""
 import ctypes;
-import jaclang.compiler.backends.native.llvm.binding as llvm;
+import jaclang.compiler.backends.native.llvm.jit as jit;
 import from tests.support { compile_native, get_func }
 
 test "C callback arguments sign-extend the C integer before calling Jac" {
@@ -10,7 +10,7 @@ test "C callback arguments sign-extend the C integer before calling Jac" {
         return callback_type(address)(value);
     }
     foreign = invoke_type(invoke);
-    llvm.add_symbol("clib_invoke_i32", ctypes.cast(foreign, ctypes.c_void_p).value);
+    jit.add_symbol("clib_invoke_i32", ctypes.cast(foreign, ctypes.c_void_p).value);
     (engine, _) = compile_native("clib_callback_argument.jac");
     function = get_func(engine, "call_signed", ctypes.c_int32);
     assert function() == 123;
@@ -119,7 +119,7 @@ test "Callback records survive managed field and container cleanup" {
     }
     allocator = allocator_type(allocate);
     try {
-        llvm.add_symbol("calloc", ctypes.cast(allocator, ctypes.c_void_p).value);
+        jit.add_symbol("calloc", ctypes.cast(allocator, ctypes.c_void_p).value);
         program = JacProgram();
         module = program.compile(
             file_path="callback_record_lifetime.jac",
@@ -144,7 +144,7 @@ test "Callback records survive managed field and container cleanup" {
             "Managed callback cleanup read outside the record allocation"
         );
     } finally {
-        llvm.add_symbol("calloc", original);
+        jit.add_symbol("calloc", original);
         library.mprotect(address, mmap.PAGESIZE, mmap.PROT_READ | mmap.PROT_WRITE);
         storage.close();
     }
