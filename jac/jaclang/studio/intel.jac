@@ -89,7 +89,9 @@ obj RoutedStream {
 
 glob ROUTER: StdioRouter = StdioRouter();
 
-def lex_spans(text: str, path: str = "<input>") -> list[list[Span]];
+def lex_spans(
+    session: SessionClient, text: str, path: str = "<input>"
+) -> list[list[Span]];
 
 def overlay_spans(base: list[Span], top: list[Span]) -> list[Span];
 
@@ -105,6 +107,7 @@ obj CodeIntel {
         _started: bool = False,
         _sink: any = None,
         _ls: any = None,
+        _lexer: (SessionClient | None) = None,
         _engine_error: str = "",
         _checks: list[str] = [],
         _queries: any postinit,

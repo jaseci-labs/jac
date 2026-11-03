@@ -332,7 +332,7 @@ impl NativeAgentSession.model -> any {
     return self.project_model;
 }
 
-impl NativeAgentSession.intel -> any {
+impl NativeAgentSession.intel -> SessionClient {
     if self.code_intel is None {
         self.emit(
             "log",
@@ -340,9 +340,7 @@ impl NativeAgentSession.intel -> any {
                 "text": "loading the compiler's symbol tables (the first use takes a while)"
             }
         );
-        ci = CodeIntelligence(proj_dir=self.root_dir);
-        ci.load();
-        self.code_intel = ci;
+        self.code_intel = tool_session(self.root_dir);
     }
     return self.code_intel;
 }
@@ -647,7 +645,7 @@ impl NativeAgentSession.t_symbol_context(key: str) -> str {
 impl NativeAgentSession.t_symbol_uses(name: str) -> str {
     short = name.split(".")[-1] if "." in name else name;
     try {
-        refs = self.intel().references(short);
+        refs = self.intel().code_references(short);
     } except Exception as e {
         return f"error: the compiler could not answer: {e}";
     }

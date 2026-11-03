@@ -420,15 +420,16 @@ impl WheelBuilder.install_editable(src_dir: Path, site_pkgs: Path) -> Path {
 }
 
 impl _module_is_client_source(source_path: Path) -> bool {
-    try {
-        mod = JacProgramRt().compile(
-            str(source_path), options=CompileOptions(symtab_ir_only=True)
-        );
-        return mod is not None
-            and mod.declares_codespace(CodeContext.CLIENT, path_hint=str(source_path));
-    } except Exception {
-        return False;
+    checked = kernel_module_facts(
+        JacProgramRt(), [str(source_path)], CompileOptions(symtab_ir_only=True)
+    );
+    real = os.path.realpath(str(source_path));
+    for fact in checked.modules {
+        if os.path.realpath(fact.path) == real {
+            return fact.client_declared;
+        }
     }
+    raise ValueError(f"the kernel reported no module facts for {source_path}");
 }
 
 

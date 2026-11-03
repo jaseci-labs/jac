@@ -60,6 +60,22 @@ impl check_call(
     }
 }
 
+impl native_build_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        raw = record_of(arguments(args, count, "native_build", 1)[0], "native_build");
+        return answer(
+            native_build_request(NativeBuildRequest.from_dict(raw)).to_dict()
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as refused {
+        object_error(PyExc_RuntimeError, str(refused));
+        return NULL;
+    }
+}
+
 impl open_session_call(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {

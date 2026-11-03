@@ -14,8 +14,8 @@ impl compile_cl_module(
     filepath: str
 ) -> tuple[str, list[any], dict[str, any], list[any]] {
     prog = JacProgram();
-    artifact = prog._get_compiler().get_client_artifact(
-        os.path.abspath(str(filepath)), prog
+    artifact = kernel_client_artifact(
+        prog, os.path.abspath(str(filepath)), CompileOptions()
     );
     if prog.errors_had or artifact is None {
         errs = "\n".join([str(e) for e in prog.errors_had]) or "no client artifact";
@@ -562,43 +562,17 @@ impl module_is_client(filepath: str) -> bool {
         return _COLOR_CACHE[path];
     }
 
-    recorded = module_record(path, JacRuntime.get_program());
-    if recorded is not None {
-        _COLOR_CACHE[path] = recorded.client_declared;
-        return recorded.client_declared;
+    checked = kernel_module_facts(
+        JacProgram(), [path], CompileOptions(symtab_ir_only=True)
+    );
+    result: (bool | None) = None;
+    for fact in checked.modules {
+        if os.path.realpath(fact.path) == os.path.realpath(path) {
+            result = fact.client_declared;
+        }
     }
-    result = False;
-    try {
-        mod = JacProgram().compile(path, options=CompileOptions(symtab_ir_only=True));
-        result = mod is not None
-            and mod.declares_codespace(CodeContext.CLIENT, path_hint=path);
-    } except Exception as probe_exc {
-        import from jaclang.compiler.driver.source_failures {
-            CompilerSourceError,
-            compiler_source_failure_origin
-        }
-        origin = compiler_source_failure_origin(probe_exc);
-        if origin is not None {
-            raise CompilerSourceError(
-                f"the client-codespace probe for {path} failed inside the "
-                f"compiler's own source ({origin}), so the module's codespace "
-                f"is unknown; refusing to degrade it to the server codespace: "
-                f"{type(probe_exc).__name__}: {probe_exc}"
-            ) from probe_exc;
-        }
-        try {
-            os.write(
-                2,
-                (
-                    f"jac: client-codespace probe failed for {path}; "
-                    f"treating as server: {type(probe_exc).__name__}: "
-                    f"{probe_exc}\n"
-                ).encode(
-                    "utf-8", "replace"
-                )
-            );
-        } except OSError {}
-        result = False;
+    if result is None {
+        raise RuntimeError(f"the kernel reported no module facts for {path}");
     }
     _COLOR_CACHE[path] = result;
     return result;

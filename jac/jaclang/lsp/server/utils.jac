@@ -1,34 +1,19 @@
-import builtins;
-
-import from typing { Optional }
-
 import from jaclang.lsp.protocol { uris }
 
-glob _BUILTIN_NAMES = frozenset(dir(builtins));
+def span_range(span: SourceSpan) -> lspt.Range;
 
-def gen_diagnostics(
-    from_path: str, errors: list[Alert], warnings: list[Alert]
-) -> list[lspt.Diagnostic];
+def span_location(span: SourceSpan) -> lspt.Location;
 
-def position_within_node(n: uni.UniNode, line: int, character: int) -> bool;
+def lsp_diagnostic(diag: KernelDiagnostic) -> lspt.Diagnostic;
 
-def find_index(sem_tokens: list[int], line: int, char: int) -> Optional[int];
+def symbol_kind(kind: str) -> lspt.SymbolKind;
 
-def get_symbols_for_outline(nd: UniScopeNode) -> list[lspt.DocumentSymbol];
+def document_symbol(symbol: DocumentSymbol) -> lspt.DocumentSymbol;
 
-def owner_sym(table: UniScopeNode) -> Optional[Symbol];
+def completion_kind(kind: str) -> lspt.CompletionItemKind;
 
-def create_range(loc: (CodeLocInfo | Span)) -> lspt.Range;
-
-def find_dts_decl_range(dts_path: str, name: str) -> Optional[lspt.Range];
-
-def kind_map(sub_tab: uni.UniNode) -> lspt.SymbolKind;
+def completion_item(item: CompletionItem) -> lspt.CompletionItem;
 
 def add_unique_text_edit(
     changes: dict[(str, list[lspt.TextEdit])], key: str, new_edit: lspt.TextEdit
 ) -> None;
-
-def doc_of_sym(sym: Symbol) -> str | None;
-def completion_item_from_sym(name: str, sym: Symbol) -> lspt.CompletionItem;
-def completion_kind_from_sym(sym: Symbol) -> lspt.CompletionItemKind;
-def get_completion_items(ty: TypeBase | UniScopeNode) -> list[lspt.CompletionItem];

@@ -1,5 +1,4 @@
 import os;
-import sys;
 
 import from jaclang.lsp.protocol { uris }
 
@@ -28,13 +27,9 @@ def sem_style(types: list[str], mods: list[str], tok_type: int, tok_mods: int) -
 
 def decode_tokens(data: list[int]) -> list[tuple[int, int, int, str]];
 
-def defining_symbol(sym: any) -> any;
+def symbol_info(row: TokenSymbol) -> dict[str, any];
 
-def symbol_info(nd: any) -> dict[str, any];
-
-def alert_tuple(
-    alert: any, severity: str
-) -> tuple[str, str, str, str, int, int, int, int];
+def diag_tuple(diag: KernelDiagnostic) -> tuple[str, str, str, str, int, int, int, int];
 
 def new_cancel_token -> CancelToken;
 

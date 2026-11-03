@@ -77,6 +77,8 @@ obj NativeStamp {
     ) -> (tuple[NativeStamp, bytes] | None);
 
     def matches(other: NativeStamp) -> bool;
+    def to_dict -> dict[str, any];
+    static def from_dict(raw: dict[str, any]) -> NativeStamp;
 }
 
 def current_native_stamp(

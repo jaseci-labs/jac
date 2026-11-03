@@ -56,10 +56,22 @@ impl KernelPython.code_bytes(module: uni.Module) -> bytes {
 }
 
 impl KernelPython.python_source(module: uni.Module) -> str {
-    raise RuntimeError(
-        f"{module.loc.mod_path}: the kernel keeps generated Python as JacPython's AST "
-        "and prints no source text"
-    );
+    gen = module.gen;
+    if gen.py_text is None {
+        tree = ast_write_node(python_tree(module));
+        ast_module: ptr[PyObject] = NULL;
+        text: ptr[PyObject] = NULL;
+        try {
+            ast_module = required(PyImport_ImportModule(ptr[u8]("ast")));
+            text = required(PyObject_CallMethod(ast_module, "unparse", "O", tree));
+            gen.py_text = text_value(text);
+        } finally {
+            jacpy_release(text);
+            jacpy_release(ast_module);
+            jacpy_release(tree);
+        }
+    }
+    return gen.py_text;
 }
 
 impl KernelPython.parse_module(source: str, path: str) -> Module {

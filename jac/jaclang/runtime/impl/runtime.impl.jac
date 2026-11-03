@@ -1685,12 +1685,7 @@ impl JacLLM.get_mtir_from_map(scope: str) -> (Info | None) {
         raise AttributeError('JacRuntime.program is not initialized');
     }
     owner = JacRuntime.program.context_root or JacRuntime.program;
-    programs = [owner, *owner.contexts.values()];
-    internal = JacRuntime.get_compiler().selfhost.peek_program();
-    if internal is not None {
-        programs.append(internal);
-    }
-    for program in programs {
+    for program in [owner, *owner.contexts.values()] {
         found = program.mtir_map.get(scope);
         if found is not None {
             return found;

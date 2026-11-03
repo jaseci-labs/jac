@@ -1,12 +1,7 @@
-impl cfg_dot_from_file(file_name: str) -> str {
-    with open(file_name, encoding="utf-8") as f {
-        file_source = f.read();
-    }
-    ir = (prog := JacProgram()).compile(use_str=file_source, file_path=file_name);
-    import from typing { cast }
-    cfg_pass = cast(CoalesceBBPass, run_utility(CompilationProduct.CFG_DOT, ir, prog));
-    dot = cfg_pass.printgraph_cfg();
-    return dot;
+impl cfg_dot_text(program: JacProgram, module: Module) -> str {
+    return cast(
+        CoalesceBBPass, run_utility(CompilationProduct.CFG_DOT, module, program)
+    ).printgraph_cfg();
 }
 
 impl CoalesceBBPass.printgraph_cfg -> str {

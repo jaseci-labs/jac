@@ -44,7 +44,7 @@ obj NativeAgentSession(AgentSession) {
         max_iterations: int = 30,
         command_timeout: float = 120.0,
         auto_approve_commands: bool = False,
-        code_intel: any = None,
+        code_intel: (SessionClient | None) = None,
         _thought: str = "",
         _cancel: bool = False,
         _gen: int = 0,
@@ -65,7 +65,7 @@ obj NativeAgentSession(AgentSession) {
     def make_tools(gen: int = -1) -> list[any];
     def _live(gen: int) -> bool;
     def model -> any;
-    def intel -> any;
+    def intel -> SessionClient;
     def rel(path: str) -> str;
     def inside(path: str) -> bool;
     def t_read_file(path: str, start_line: int, max_lines: int) -> str;

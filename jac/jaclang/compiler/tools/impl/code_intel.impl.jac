@@ -16,148 +16,8 @@ impl _real(path: str) -> str {
     }
 }
 
-impl SourceRef.render -> str {
-    loc = f"{self.file}:{self.line}";
-    return f"{loc}  {self.snippet}" if self.snippet else loc;
-}
-
-impl SourceRef.to_dict -> dict[str, any] {
-    return {
-        "file": self.file,
-        "line": self.line,
-        "col": self.col,
-        "role": self.role,
-        "snippet": self.snippet
-    };
-}
-
-impl SymbolInfo.render -> str {
-    head = f"{self.kind} {self.name}";
-    if self.signature {
-        head += self.signature;
-    } elif self.type_str {
-        head += f": {self.type_str}";
-    }
-    lines = [f"{head}    [{self.file}:{self.line}]"];
-    if self.base_classes {
-        lines.append("  extends: " + ", ".join(self.base_classes));
-    }
-    for f in self.fields {
-        lines.append(f"  has {f}");
-    }
-    for a in self.abilities {
-        lines.append(f"  def {a}");
-    }
-    if self.doc {
-        lines.append("  " + self.doc.strip().splitlines()[0]);
-    }
-    return "\n".join(lines);
-}
-
-impl SymbolInfo.to_dict -> dict[str, any] {
-    return {
-        "name": self.name,
-        "kind": self.kind,
-        "file": self.file,
-        "line": self.line,
-        "col": self.col,
-        "type_str": self.type_str,
-        "doc": self.doc,
-        "signature": self.signature,
-        "fields": self.fields,
-        "abilities": self.abilities,
-        "base_classes": self.base_classes,
-        "is_genai": self.is_genai
-    };
-}
-
-impl SymbolInfo.from_dict(d: dict[str, any]) -> SymbolInfo {
-    return SymbolInfo(
-        name=str(d.get("name", "")),
-        kind=str(d.get("kind", "symbol")),
-        file=str(d.get("file", "")),
-        line=int(d.get("line", 0)),
-        col=int(d.get("col", 0)),
-        type_str=str(d.get("type_str", "")),
-        doc=str(d.get("doc", "")),
-        signature=str(d.get("signature", "")),
-        fields=list(d.get("fields", [])),
-        abilities=list(d.get("abilities", [])),
-        base_classes=list(d.get("base_classes", [])),
-        is_genai=bool(d.get("is_genai", False))
-    );
-}
-
-impl Diagnostic.render -> str {
-    return f"{self.severity}: {self.file}:{self.line}: {self.message}";
-}
-
-impl Diagnostic.to_dict -> dict[str, any] {
-    return {
-        "file": self.file,
-        "line": self.line,
-        "severity": self.severity,
-        "message": self.message
-    };
-}
-
-impl _diag_key(d: Diagnostic) -> str {
+impl _diag_key(d: CodeDiagnostic) -> str {
     return f"{_real(d.file)}:{d.line}:{d.severity}:{d.message}";
-}
-
-impl EntryPoint.render -> str {
-    return f"{self.walker_name}.{self.ability}  ({self.event} {self.node_type})  [{self.file}:{self.line}]";
-}
-
-impl EntryPoint.to_dict -> dict[str, any] {
-    return {
-        "walker_name": self.walker_name,
-        "ability": self.ability,
-        "node_type": self.node_type,
-        "event": self.event,
-        "file": self.file,
-        "line": self.line
-    };
-}
-
-impl EntryPoint.from_dict(d: dict[str, any]) -> EntryPoint {
-    return EntryPoint(
-        walker_name=str(d.get("walker_name", "")),
-        ability=str(d.get("ability", "")),
-        node_type=str(d.get("node_type", "")),
-        event=str(d.get("event", "")),
-        file=str(d.get("file", "")),
-        line=int(d.get("line", 0))
-    );
-}
-
-impl ContextSlice.render -> str {
-    if self.target is None {
-        return f"(no symbol named {self.query} was found)";
-    }
-    parts = ["# Definition", self.target.render()];
-    if self.related {
-        parts.append("\n# Referenced types");
-        for s in self.related {
-            parts.append(s.render());
-        }
-    }
-    if self.uses {
-        parts.append(f"\n# Used in {len(self.uses)} place(s)");
-        for u in self.uses {
-            parts.append("  " + u.render());
-        }
-    }
-    return "\n".join(parts);
-}
-
-impl ContextSlice.to_dict -> dict[str, any] {
-    return {
-        "query": self.query,
-        "target": self.target.to_dict() if self.target is not None else None,
-        "related": [s.to_dict() for s in self.related],
-        "uses": [u.to_dict() for u in self.uses]
-    };
 }
 
 impl CodeIntelligence.postinit {
@@ -174,7 +34,6 @@ impl CodeIntelligence.postinit {
 }
 
 impl CodeIntelligence.load {
-    t0 = time.time();
     self._files = self._discover();
     self._file_set = {_real(f) for f in self._files};
     records: dict[str, dict[str, any]] = {};
@@ -204,30 +63,6 @@ impl CodeIntelligence.load {
     self._compile_and_index(stale);
     self._dir_sig = self._dir_signature();
     self._loaded = True;
-    self._emit("load", "", len(stale), t0, cached=len(records));
-}
-
-impl CodeIntelligence._emit(
-    op: str, file: str, recompiled: int, t0: float, cached: int = 0
-) {
-    cb = self.on_event;
-    if cb is None {
-        return;
-    }
-    try {
-        cb(
-            {
-                "op": op,
-                "file": file,
-                "recompiled": recompiled,
-                "cached": cached,
-                "total": len(self._file_set),
-                "ms": (time.time() - t0) * 1000.0
-            }
-        );
-    } except Exception as e {
-        _ = e;
-    }
 }
 
 impl CodeIntelligence.refresh(file: str = "") -> None {
@@ -235,7 +70,6 @@ impl CodeIntelligence.refresh(file: str = "") -> None {
         self.load();
         return;
     }
-    t0 = time.time();
     target = self._head_for(_real(file));
     mode = "edit";
     stale: set[str] = set();
@@ -267,7 +101,6 @@ impl CodeIntelligence.refresh(file: str = "") -> None {
         }
     }
     self._compile_and_index(stale);
-    self._emit(mode, target, len(stale), t0);
 }
 
 impl CodeIntelligence._head_for(real: str) -> str {
@@ -922,10 +755,10 @@ impl CodeIntelligence.nodes_visited_by(walker_name: str) -> list[EntryPoint] {
     ];
 }
 
-impl CodeIntelligence.diagnostics(file: str = "") -> list[Diagnostic] {
+impl CodeIntelligence.diagnostics(file: str = "") -> list[CodeDiagnostic] {
     self._ensure();
     target = _real(file) if file else "";
-    out: list[Diagnostic] = [];
+    out: list[CodeDiagnostic] = [];
     for sev in ("error", "warning") {
         for real in sorted(self._records) {
             for row in self._records[real].get("diags", []) {
@@ -937,7 +770,7 @@ impl CodeIntelligence.diagnostics(file: str = "") -> list[Diagnostic] {
                     continue;
                 }
                 out.append(
-                    Diagnostic(
+                    CodeDiagnostic(
                         file=path, line=int(row[2]), severity=sev, message=str(row[3])
                     )
                 );
@@ -947,7 +780,7 @@ impl CodeIntelligence.diagnostics(file: str = "") -> list[Diagnostic] {
     return out;
 }
 
-impl CodeIntelligence.refresh_and_diff(file: str = "") -> list[Diagnostic] {
+impl CodeIntelligence.refresh_and_diff(file: str = "") -> list[CodeDiagnostic] {
     if not file or not self._loaded {
         self.refresh(file);
         return self.diagnostics();
@@ -956,7 +789,7 @@ impl CodeIntelligence.refresh_and_diff(file: str = "") -> list[Diagnostic] {
     before: set[str] = {_diag_key(d) for d in self.diagnostics()};
     self.refresh(file);
     real = _real(file);
-    out: list[Diagnostic] = [];
+    out: list[CodeDiagnostic] = [];
     for d in self.diagnostics() {
         if _real(d.file) == real or _diag_key(d) not in before {
             out.append(d);

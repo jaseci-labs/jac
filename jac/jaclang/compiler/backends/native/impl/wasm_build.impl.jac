@@ -344,7 +344,3 @@ impl _assert_ir_rc_free(llvm_ir_str: str, file_path: str) {
         );
     }
 }
-
-impl compile_to_wasm(file_path: str, export_funcs: list[str] = []) -> bytes {
-    return build_wasm(JacProgram(), file_path, export_funcs);
-}

@@ -29,6 +29,26 @@ impl JirHeader.is_compatible -> bool {
     return True;
 }
 
+impl NativeStamp.to_dict -> dict[str, any] {
+    return {
+        "compiler_digest": self.compiler_digest,
+        "codegen_identity": self.codegen_identity,
+        "triple": self.triple,
+        "reloc": self.reloc,
+        "code_model": self.code_model
+    };
+}
+
+impl NativeStamp.from_dict(raw: dict[str, any]) -> NativeStamp {
+    return NativeStamp(
+        compiler_digest=str(raw["compiler_digest"]),
+        codegen_identity=str(raw["codegen_identity"]),
+        triple=str(raw["triple"]),
+        reloc=str(raw["reloc"]),
+        code_model=str(raw["code_model"])
+    );
+}
+
 impl NativeStamp.key -> str {
     return "\x1f".join(
         [
@@ -1056,12 +1076,10 @@ impl _definition_texts(path: str) -> dict[str, list[str]] {
     if cached is not None and cached[0] == content_digest {
         return cached[1];
     }
-    texts: dict[str, list[str]] = {};
-    try {
-        texts = _texts_of_spans(
-            real, text, definition_span_rows(JacProgram().parse_source(text, real))
-        );
-    } except Exception {}
+    rows = definition_span_rows(JacProgram().parse_source(text, real))
+        if kernel_resident()
+        else tool_session().definition_rows(real);
+    texts = _texts_of_spans(real, text, rows);
     _DEFINITION_TEXTS[real] = (content_digest, texts);
     return texts;
 }

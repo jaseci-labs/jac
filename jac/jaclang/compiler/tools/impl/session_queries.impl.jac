@@ -1,13 +1,3 @@
-impl span_at(loc: Span) -> SourceSpan {
-    return SourceSpan(
-        path=loc.mod_path,
-        line=loc.first_line,
-        col=loc.col_start,
-        end_line=loc.last_line,
-        end_col=loc.col_end
-    );
-}
-
 impl file_start(path: str) -> SourceSpan {
     return SourceSpan(path=path, line=1, col=1, end_line=1, end_col=1);
 }
@@ -66,11 +56,17 @@ impl token_at(
     return None;
 }
 
-impl node_at(module: uni.Module, line: int, col: int) -> (uni.Token | None) {
+impl node_at(
+    module: uni.Module, line: int, col: int, path: str = ""
+) -> (uni.Token | None) {
     for nd in module._in_mod_nodes or [] {
-        if isinstance(nd, uni.Token) and position_within(nd, line, col) {
-            return nd;
+        if not isinstance(nd, uni.Token) or not position_within(nd, line, col) {
+            continue;
         }
+        if path and not belongs_to(nd, path) {
+            continue;
+        }
+        return nd;
     }
     return None;
 }
@@ -123,25 +119,25 @@ impl doc_of_symbol(sym: uni.Symbol) -> str {
 
 impl hover_text(nd: uni.NameAtom) -> str {
     if nd.is_getattr_resolved {
-        return f"(dynamic attribute) {nd.value}: {nd.type}";
+        return f"(dynamic attribute) {nd.sym_name}: {nd.type}";
     }
-    owner = nd.name_of;
-    if not isinstance(owner, uni.AstSymbolNode) {
-        return "";
-    }
-    access = (owner.sym.access.value + " ") if owner.sym else "";
+    owner: uni.AstSymbolNode = nd.name_of;
+    sym = owner.sym;
+    access = (sym.access.value + " ") if sym else "";
     info = f"({access}{owner.sym_category.value}) {owner.sym_name}";
     if not isinstance(owner, uni.Ability) {
-        if isinstance(owner, uni.Expr) and owner.type is not None {
-            info += f": {owner.type}";
-        } elif owner.name_spec.clean_type {
-            info += f": {owner.name_spec.clean_type}";
-        } elif isinstance(owner.name_spec.type, ClassType) {
-            info += f": {owner.name_spec.type.shared.class_name}";
+        typed = owner.type if isinstance(owner, uni.Expr) else None;
+        spec = owner.name_spec;
+        if typed is not None {
+            info += f": {typed}";
+        } elif spec.clean_type {
+            info += f": {spec.clean_type}";
+        } elif isinstance(spec.type, ClassType) {
+            info += f": {spec.type.shared.class_name}";
         }
     }
-    if owner.sym {
-        doc = doc_of_symbol(owner.sym);
+    if sym {
+        doc = doc_of_symbol(sym);
         if doc {
             info += f"\n{doc}";
         }
@@ -207,7 +203,7 @@ impl definition_spans(program: JacProgram, nd: uni.NameAtom) -> list[SourceSpan]
     if isinstance(parent, uni.AstImplNeedingNode) and parent.body {
         body_nd = parent.body;
         if isinstance(body_nd, uni.ImplDef) and body_nd.sym {
-            return [span_at(body_nd.sym.decl.loc)];
+            return [node_span(body_nd.sym.decl.loc)];
         }
     }
     if isinstance(ty, ModuleType) {
@@ -227,7 +223,7 @@ impl definition_spans(program: JacProgram, nd: uni.NameAtom) -> list[SourceSpan]
     }
     if isinstance(parent, uni.ModuleItem) and isinstance(nd, uni.Name) {
         if nd.sym and nd.sym.defn and nd.sym.defn[0].loc.mod_path != nd.loc.mod_path {
-            return [span_at(nd.sym.defn[0].loc)];
+            return [node_span(nd.sym.defn[0].loc)];
         }
         import_node = parent.parent_of_type(uni.Import);
         if import_node is not None and import_node.from_loc {
@@ -237,24 +233,27 @@ impl definition_spans(program: JacProgram, nd: uni.NameAtom) -> list[SourceSpan]
                 if target_mod is not None {
                     sym = target_mod.lookup(nd.value, deep=True, incl_inner_scope=True);
                     if sym is not None and sym.defn {
-                        return [span_at(sym.defn[0].loc)];
+                        return [node_span(sym.defn[0].loc)];
                     }
                 }
                 return [file_start(mod_path)];
             }
             target = module_spec_target(import_node.from_loc);
             if target {
-                return [file_start(target)];
+                declared = dts_declaration(target, parent.name.value)
+                    if target.endswith(".d.ts")
+                    else None;
+                return [declared or file_start(target)];
             }
         }
     }
     if isinstance(ty, (ClassType, FunctionType, OverloadedType)) and nd.sym {
-        return [span_at(definition_symbol(nd.sym).decl.loc)];
+        return [node_span(definition_symbol(nd.sym).decl.loc)];
     }
     if isinstance(parent, uni.ImplDef) and parent.decl_link {
         decl_link = parent.decl_link;
         if isinstance(decl_link, uni.AstSymbolNode) and decl_link.sym {
-            return [span_at(decl_link.sym.decl.loc)];
+            return [node_span(decl_link.sym.decl.loc)];
         }
     }
     if nd.sym and nd.sym.defn {
@@ -267,16 +266,49 @@ impl definition_spans(program: JacProgram, nd: uni.NameAtom) -> list[SourceSpan]
             ) {
             return [];
         }
-        return [span_at(first.loc)];
+        return [node_span(first.loc)];
     }
     return [];
+}
+
+impl dts_declaration(dts_path: str, name: str) -> (SourceSpan | None) {
+    with open(dts_path, "r", encoding="utf-8", errors="replace") as handle {
+        src = handle.read();
+    }
+    escaped = re.escape(name);
+    if name == "default" {
+        patterns = [r"(?m)^[ \t]*export[ \t]+(default)\b"];
+    } else {
+        patterns = [
+            r"(?m)^[ \t]*(?:export[ \t]+)?(?:declare[ \t]+)?(?:abstract[ \t]+)?"
+            r"(?:const|let|var|function|class|interface|enum|namespace|type)"
+            r"[ \t]+(" + escaped + r")\b",
+            r"export[ \t]+(?:type[ \t]+)?\{[^{}]*?\b(" + escaped + r")\b"
+        ];
+    }
+    for pattern in patterns {
+        found = re.search(pattern, src);
+        if found {
+            start = found.start(1);
+            line = src.count("\n", 0, start) + 1;
+            col = start - (src.rfind("\n", 0, start) + 1) + 1;
+            return SourceSpan(
+                path=dts_path,
+                line=line,
+                col=col,
+                end_line=line,
+                end_col=col + len(found.group(1))
+            );
+        }
+    }
+    return None;
 }
 
 impl reference_spans(nd: uni.NameAtom) -> list[SourceSpan] {
     if not nd.sym {
         return [];
     }
-    return [span_at(occ.loc) for occ in [*nd.sym.defn, *nd.sym.uses]];
+    return [node_span(occ.loc) for occ in [*nd.sym.defn, *nd.sym.uses]];
 }
 
 impl rename_edits(nd: uni.NameAtom, new_name: str) -> list[TextEdit] {
@@ -286,7 +318,7 @@ impl rename_edits(nd: uni.NameAtom, new_name: str) -> list[TextEdit] {
     edits: list[TextEdit] = [];
     seen: set[tuple[str, int, int, int, int]] = set();
     for occ in [*nd.sym.uses, nd.sym.defn[0]] {
-        span = span_at(occ.loc);
+        span = node_span(occ.loc);
         key = (span.path, span.line, span.col, span.end_line, span.end_col);
         if key in seen {
             continue;
@@ -350,17 +382,73 @@ impl members_of(ty: (TypeBase | uni.UniScopeNode)) -> list[CompletionItem] {
     return items;
 }
 
-impl scope_at(module: uni.Module, line: int, col: int) -> uni.UniScopeNode {
+impl scope_at(
+    module: uni.Module, line: int, col: int, path: str = ""
+) -> uni.UniScopeNode {
     best: uni.UniScopeNode = module;
     stack = list(module.kid_scope);
     while stack {
         scope = stack.pop();
+        if path and not belongs_to(scope, path) {
+            continue;
+        }
         if position_within(scope, line, col) {
             best = scope;
             stack.extend(scope.kid_scope);
         }
     }
     return best;
+}
+
+impl scope_items(scope: uni.UniScopeNode) -> list[CompletionItem] {
+    items = members_of(scope);
+    items.extend(keyword_items({item.label for item in items}));
+    return items;
+}
+
+impl node_items(program: JacProgram, nd: uni.UniNode) -> list[CompletionItem] {
+    ty = node_type(program, nd);
+    if ty is not None {
+        return members_of(ty);
+    }
+    if isinstance(nd, uni.UniScopeNode) {
+        return scope_items(nd);
+    }
+    return [];
+}
+
+impl inside_literal_or_comment(source: str, path: str, line: int, col: int) -> bool {
+    def covers(first: int, first_col: int, last: int, last_col: int) -> bool {
+        if first < line < last {
+            return True;
+        }
+        if line < first or line > last {
+            return False;
+        }
+        if line == first and col < first_col {
+            return False;
+        }
+        if line == last and col >= last_col {
+            return False;
+        }
+        return True;
+    }
+    (tokens, comments, _diags, _count) = tokenize_full(source, path);
+    for tok in tokens {
+        if tok.kind not in STRING_TOKEN_KINDS {
+            continue;
+        }
+        loc = tok.loc;
+        if covers(loc.line, loc.col_start, loc.end_line, loc.col_end) {
+            return True;
+        }
+    }
+    for note in comments {
+        if covers(note.line, note.col_start, note.end_line, note.col_end) {
+            return True;
+        }
+    }
+    return False;
 }
 
 impl keyword_items(seen: set[str]) -> list[CompletionItem] {
@@ -395,22 +483,28 @@ impl node_type(program: JacProgram, nd: uni.UniNode) -> (TypeBase | None) {
 }
 
 impl completion_items(
-    program: JacProgram, module: uni.Module, line: int, col: int, trigger: str
+    program: JacProgram, module: uni.Module, path: str, line: int, col: int
 ) -> list[CompletionItem] {
-    if trigger == "." {
-        target = node_at(module, line, col - 1);
-        if target is not None and isinstance(target.parent, uni.Expr) {
-            ty = node_type(program, target.parent);
-            if ty is not None {
-                return members_of(ty);
+    selected = node_at(module, line, max(col - 1, 1), path)
+        or node_at(module, line, col, path);
+    if isinstance(selected, uni.Token) {
+        parent = selected.parent;
+        if selected.name == "DOT" and isinstance(parent, uni.AtomTrailer) {
+            return node_items(program, parent.target);
+        }
+        if isinstance(selected, uni.Name) {
+            if isinstance(parent, uni.AtomTrailer)
+                and parent.is_attr
+                and selected is parent.right {
+                return node_items(program, parent.target);
+            }
+            enclosing = selected.find_parent_of_type(uni.UniScopeNode);
+            if enclosing is not None {
+                return scope_items(enclosing);
             }
         }
-        return [];
     }
-    items = members_of(scope_at(module, line, col));
-    seen = {item.label for item in items};
-    items.extend(keyword_items(seen));
-    return items;
+    return scope_items(scope_at(module, line, col, path));
 }
 
 impl inlay_hint_rows(
@@ -469,7 +563,7 @@ impl outline(nd: uni.UniScopeNode) -> list[DocumentSymbol] {
             continue;
         }
         out.append(
-            DocumentSymbol(name=key, kind=symbol_kind(item.decl), span=span_at(item.decl.loc))
+            DocumentSymbol(name=key, kind=symbol_kind(item.decl), span=node_span(item.decl.loc))
         );
     }
     for sub in nd.kid_scope {
@@ -485,7 +579,7 @@ impl outline(nd: uni.UniScopeNode) -> list[DocumentSymbol] {
             DocumentSymbol(
                 name=sub.scope_name,
                 kind=symbol_kind(sub),
-                span=span_at(sub.loc),
+                span=node_span(sub.loc),
                 children=children
             )
         );

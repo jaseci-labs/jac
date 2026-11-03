@@ -1,8 +1,19 @@
 import ast as py_ast;
 import inspect;
-import json;
 import os;
 import sys;
+
+glob IR_VIEWS: tuple[str, ...] = (
+         "sym",
+         "sym.",
+         "ast",
+         "ast.",
+         "cfg.",
+         "unparse",
+         "docir",
+         "esast",
+         "es"
+     );
 
 obj AstKidInfo {
     has name: str,

@@ -46,7 +46,7 @@ impl _write_application(
     for path in sorted(application.code) {
         relative = Path(path).relative_to(project_root);
         python_path = relative.with_suffix('.py');
-        (source, module) = python_source(path, program);
+        (source, is_native) = python_source(path, program);
         target = directory / python_path;
         target.parent.mkdir(parents=True, exist_ok=True);
         target.write_text(source, encoding='utf-8');
@@ -56,10 +56,10 @@ impl _write_application(
             'origin': relative.as_posix(),
             'manifest': application.manifests.get(path, {})
         };
-        if module is not None and module.gen.native_engine is not None {
+        if is_native {
             import from jaclang.dist.native_product { write_native_product }
             item['native'] = write_native_product(
-                module, directory, Path("native") / python_path, program=program
+                path, directory, Path("native") / python_path, program=program
             );
         }
         modules.append(item);
@@ -121,20 +121,9 @@ impl export_project(
         else [];
     program = JacProgram();
     application: PreparedApplication | None = None;
-    native_module = None;
+    native_entry = '';
     if kind in ('native-binary', 'native-lib', 'cli-native') {
-        import from jaclang.compiler.driver.pipeline_runner { native_application }
-        (native_module, native_options) = native_application(program, entry_path);
-        if program.errors_had {
-            raise RuntimeError(
-                '\n'.join(error.pretty_print() for error in program.errors_had)
-            );
-        }
-        if native_module is None or native_module.gen.llvm_ir is None {
-            raise RuntimeError(
-                f'Native lowering produced no artifact for {entry_path}'
-            );
-        }
+        native_entry = entry_path;
     } else {
         application = prepare_application(
             entry_path,
@@ -162,16 +151,15 @@ impl export_project(
                 _write_application(item, program, base, project_root, output, sources)
                 for item in [application, *application.applications]
             ];
-        } elif native_module is not None {
+        } elif native_entry {
             import from jaclang.dist.native_product { write_native_product }
             directory = base / 'applications' / app.name;
             directory.mkdir(parents=True);
             native = write_native_product(
-                native_module,
+                native_entry,
                 directory,
                 Path('main'),
                 shared=kind == 'native-lib',
-                memory=native_options.memory_profile or "",
                 program=program
             );
             records.append(
@@ -188,7 +176,6 @@ impl export_project(
         (base / 'project.json').write_text(
             json.dumps(data, indent=2) + '\n', encoding='utf-8'
         );
-        program._get_compiler().release_compile_state(program);
         vendor_runtime(
             base,
             sources,

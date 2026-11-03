@@ -94,8 +94,7 @@ impl ViteCompiler._compile_wasm_module(
     try {
         recorded = json.loads(inputs_file.read_text());
         units = recorded.get("units", []);
-        if recorded.get("key") == self._wasm_input_key(units)
-            and all(ct_dep_text_fresh(unit[1]) for unit in units) {
+        if recorded.get("key") == self._wasm_input_key(units) {
             held = {
                 p.name: p.read_bytes()
                 for p in cache.iterdir()
@@ -109,7 +108,7 @@ impl ViteCompiler._compile_wasm_module(
     stat_note("wasm_emit");
     try {
         (wasm, units) = wasm_artifact_inputs(
-            client_program(self.program), str(module_path), []
+            client_program(self.program), str(module_path)
         );
     } except Exception as e {
         console.error(f"na->wasm failed for '{module_path.name}': {e}");

@@ -18,6 +18,10 @@ def:priv check_call(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject];
 
+def:priv native_build_call(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
 def:priv open_session_call(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject];
@@ -48,6 +52,12 @@ glob:priv definition = ModuleDefinition(
                  "check",
                  MethodCallbacks(fast=check_call),
                  "check(request) -> dict\n\nCheck a CheckRequest given as plain data.",
+                 flags=METH_FASTCALL
+             ),
+             MethodDefinition(
+                 "native_build",
+                 MethodCallbacks(fast=native_build_call),
+                 "native_build(request) -> dict\n\nBuild a NativeBuildRequest given as plain data.",
                  flags=METH_FASTCALL
              ),
              MethodDefinition(
