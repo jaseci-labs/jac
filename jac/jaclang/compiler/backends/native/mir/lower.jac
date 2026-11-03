@@ -152,7 +152,9 @@ glob ANY_TYPE_TAGS: dict[str, list[int]] = {
          "dict": [4],
          "set": [5],
          "frozenset": [5],
-         "NoneType": [8]
+         "NoneType": [8],
+         "EllipsisType": [10],
+         "ellipsis": [10]
      },
      STATIC_TYPE_NAMES: dict[str, str] = {
          "int": "int",
@@ -166,6 +168,8 @@ glob ANY_TYPE_TAGS: dict[str, list[int]] = {
          "set": "set",
          "tuple": "tuple",
          "range": "range",
+         "bytes": "bytes",
+         "bytearray": "bytearray",
          "fn": "function",
          "iter": "generator"
      };
@@ -1357,6 +1361,7 @@ obj MirLowering {
     def creation_kind(elem: MirType, site: uni.UniNode) -> MirValue;
     def enum_text_thunk(t: MirType, site: uni.UniNode) -> str;
     def store_text_result(base: MirValue, text: MirValue);
+    def type_call_name(item: uni.Expr) -> (str | None);
     def any_isinstance(
         value: MirValue, target: uni.Expr, site: uni.UniNode
     ) -> MirValue;

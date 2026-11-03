@@ -643,6 +643,43 @@ impl MirLowering.isinstance_test(
     return verdict;
 }
 
+"""The builtin class `type(arg)` names, when the argument's type settles it.
+
+`type(...)` is the ellipsis class and `type(None)` is `NoneType`, so an
+`isinstance` against either tests the same tag a named class would.
+"""
+impl MirLowering.type_call_name(item: uni.Expr) -> (str | None) {
+    if not isinstance(item, uni.FuncCall)
+        or not isinstance(item.target, uni.Name)
+        or item.target.value != "type"
+        or len(list(item.params or [])) != 1 {
+        return None;
+    }
+    arg = list(item.params)[0];
+    while isinstance(arg, uni.AtomUnit) {
+        arg = arg.value;
+    }
+    if isinstance(arg, uni.Ellipsis) {
+        return "EllipsisType";
+    }
+    if isinstance(arg, uni.Null) {
+        return "NoneType";
+    }
+    if isinstance(arg, uni.Bool) {
+        return "bool";
+    }
+    if isinstance(arg, uni.Int) {
+        return "int";
+    }
+    if isinstance(arg, uni.Float) {
+        return "float";
+    }
+    if isinstance(arg, (uni.String, uni.MultiString)) {
+        return "str";
+    }
+    return None;
+}
+
 impl MirLowering.any_isinstance(
     value: MirValue, target: uni.Expr, site: uni.UniNode
 ) -> MirValue {
@@ -685,8 +722,9 @@ impl MirLowering.any_isinstance(
             }
             continue;
         }
-        if isinstance(item, uni.Name) and item.value in ANY_TYPE_TAGS {
-            for wanted in ANY_TYPE_TAGS[item.value] {
+        named = item.value if isinstance(item, uni.Name) else self.type_call_name(item);
+        if named is not None and named in ANY_TYPE_TAGS {
+            for wanted in ANY_TYPE_TAGS[named] {
                 verdict = b.binary(
                     "or", verdict, b.compare("eq", tag, b.const_int(wanted, mir_int()))
                 );
