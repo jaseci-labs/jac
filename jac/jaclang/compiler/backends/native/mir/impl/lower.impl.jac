@@ -68,6 +68,10 @@ impl MirLowering.lower -> MirModule {
         }
         obj_def = self.object_def(arch);
         self.mir.functions.append(self.lower_drop(obj_def, arch));
+        if self.owned_world and obj_def.local {
+            self.mir.functions.append(self.lower_drop_glue(obj_def));
+            obj_def.drop_slot = obj_def.drop_symbol;
+        }
         self.mir.functions.append(self.lower_trace(obj_def));
         layout = self.osp_layout(arch);
         if layout is not None and layout.arch_type == "edge" {
@@ -348,6 +352,7 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
         fn.c_symbol = decl.c_symbol;
         fn.linkage = "internal";
     }
+    fn.borrow_return = self.owned_world and self.returns_borrow(ab);
     first = fn.new_block("entry");
     self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
     try {
@@ -396,6 +401,14 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
         for (index, (pv, ptype)) in enumerate(zip(nodes, decl.params)) {
             value = fn.new_value(ptype, pv.name.value);
             fn.params.append(MirParam(name=pv.name.value, value=value));
+            if self.owned_world
+                and mir_holds_ref(ptype)
+                and (
+                    self.param_owns(pv)
+                    or (index < len(twins) and self.param_owns(twins[index]))
+                ) {
+                value.owned = True;
+            }
             slot = self.local_slot(pv.name.sym, pv);
             self.builder().store(slot, value);
             if index < len(twins) and twins[index].name.sym is not None {
@@ -502,8 +515,15 @@ impl MirLowering.drop_consumed_args(nd: uni.FuncCall) {
         if slot is None or not slot.is_slot or not mir_holds_ref(slot.type) {
             continue;
         }
-        b.store(slot, b.const_null(slot.type));
+        self.forget_slot(slot);
     }
+}
+
+impl MirLowering.forget_slot(slot: MirValue) {
+    b = self.builder();
+    b.emit(
+        MirInstr(op=MirOp.STORE, operands=[slot, b.const_null(slot.type)], sub="forget")
+    );
 }
 
 impl MirLowering.drop_last_uses(stmt: uni.UniNode) {
@@ -540,6 +560,7 @@ impl MirLowering.drop_last_uses(stmt: uni.UniNode) {
             names.append(nm.sym_name);
         }
     }
+    moved = list(names);
     for ln in last_uses {
         if ln in names {
             continue;
@@ -569,7 +590,11 @@ impl MirLowering.drop_last_uses(stmt: uni.UniNode) {
             ) {
             continue;
         }
-        b.store(slot, b.const_null(slot.type));
+        if name in moved {
+            self.forget_slot(slot);
+        } else {
+            b.store(slot, b.const_null(slot.type));
+        }
     }
 }
 
@@ -766,6 +791,8 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
         } else {
             value = self.aug_arith(op, current, value, nd);
         }
+    } elif nd.type_tag is not None {
+        self.lend_fresh(value, nd.type_tag, nd.value);
     }
     self.store_name(target, value);
 }
@@ -806,6 +833,9 @@ impl MirLowering.place_exchange(nd: uni.FuncCall, name: str) -> (MirValue | None
     first = self.exchange_place(args[0]);
     elem = self.place_elem(first);
     held = self.temp_slot(elem);
+    if self.owned_world and mir_holds_ref(elem) {
+        return self.owned_exchange(nd, name, args, first, elem, held);
+    }
     b.store(held, b.load(first, elem));
     if name == "take" {
         if elem.kind in (MirKind.OPT, MirKind.ANY, MirKind.NONE) {
@@ -825,6 +855,35 @@ impl MirLowering.place_exchange(nd: uni.FuncCall, name: str) -> (MirValue | None
     second = self.exchange_place(args[1]);
     b.store(first, self.coerce(b.load(second, self.place_elem(second)), elem, nd));
     b.store(second, self.coerce(b.load(held, elem), self.place_elem(second), nd));
+    return self.none_value();
+}
+
+impl MirLowering.owned_exchange(
+    nd: uni.FuncCall,
+    name: str,
+    args: list[uni.Expr],
+    first: MirValue,
+    elem: MirType,
+    held: MirValue
+) -> MirValue {
+    b = self.builder();
+    def move(place: MirValue, value: MirValue) {
+        b.emit(MirInstr(op=MirOp.STORE, operands=[place, value], sub="move"));
+    }
+    move(held, b.load(first, elem));
+    if name == "take" {
+        if elem.kind in (MirKind.OPT, MirKind.ANY) {
+            emptied = self.coerce(self.none_value(), elem, nd);
+        } else {
+            emptied = b.const_null(elem);
+        }
+        move(first, emptied);
+        return b.load(held, elem);
+    }
+    second = self.exchange_place(args[1]);
+    move(first, self.coerce(b.load(second, self.place_elem(second)), elem, nd));
+    move(second, self.coerce(b.load(held, elem), self.place_elem(second), nd));
+    move(held, b.const_null(elem));
     return self.none_value();
 }
 
@@ -904,6 +963,7 @@ impl MirLowering.local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirV
     made = fn.new_value(slot_type, sym.sym_name);
     made.is_slot = True;
     made.is_temp = self.loop_scoped(sym);
+    made.hold = "own" if sym.ownership == OwnershipKind.OWN else "local";
     if slot_type.kind != MirKind.NONE {
         first.instrs.insert(
             0, MirInstr(op=MirOp.SLOT, result=made, type_arg=slot_type)

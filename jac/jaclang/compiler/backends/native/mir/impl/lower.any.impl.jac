@@ -771,6 +771,9 @@ impl MirLowering.value_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None)
 impl MirLowering.type_value(value: MirValue, site: uni.UniNode) -> MirValue {
     t = value.type;
     class_type = mir_class("*");
+    if self.owned_world and t.kind in (MirKind.ANY, MirKind.OBJ) {
+        return self.headerless_type_value(value, site);
+    }
     if t.kind == MirKind.ANY {
         name = self.runtime_value(
             "__jac_rt_any_type_name",
@@ -939,13 +942,60 @@ impl MirLowering.enum_text_thunk(t: MirType, site: uni.UniNode) -> str {
     return symbol;
 }
 
+impl MirLowering.headerless_type_value(value: MirValue, site: uni.UniNode) -> MirValue {
+    b = self.builder();
+    class_type = mir_class("*");
+    obj_def = self.mir.objects.get(value.type.name)
+        if value.type.kind == MirKind.OBJ
+        else None;
+    if obj_def is None {
+        raise MirRefused(
+            mir_refusal(
+                "call",
+                f"type of {value.type.render()}",
+                site,
+                "Under nogc an allocation has no header, so the class of a type-erased value cannot be read natively."
+            )
+        );
+    }
+    if obj_def.vtable_slot >= 0 {
+        i8p = mir_c_ptr(mir_int(8, False));
+        slot_place = self.emit_value(
+            MirOp.FIELD_ADDR,
+            mir_c_ptr(mir_c_ptr(i8p)),
+            [value],
+            int_value=obj_def.vtable_slot
+        );
+        table = b.load(slot_place, mir_c_ptr(i8p));
+        named = b.load(
+            self.emit_value(
+                MirOp.PTR_OFFSET, mir_c_ptr(i8p), [table, b.const_int(0, mir_int())]
+            ),
+            i8p
+        );
+        return self.emit_value(MirOp.PTR_CAST, class_type, [named]);
+    }
+    return self.emit_value(MirOp.CLASS_ADDR, class_type, [], str_value=obj_def.name);
+}
+
 impl MirLowering.store_text_result(base: MirValue, text: MirValue) {
     b = self.builder();
-    held = self.runtime_value(
-        "__jac_rt_str_ref",
-        [b.str_part(text, "root"), b.str_part(text, "data"), b.str_part(text, "len")]
-    );
-    self.runtime("__jac_rt_retain", [held]);
+    if self.owned_world {
+        held = self.call_rt(
+            "__jac_rt_str_new", [b.str_part(text, "data"), b.str_part(text, "len")]
+        );
+        held.owned = False;
+    } else {
+        held = self.runtime_value(
+            "__jac_rt_str_ref",
+            [
+                b.str_part(text, "root"),
+                b.str_part(text, "data"),
+                b.str_part(text, "len")
+            ]
+        );
+        self.runtime("__jac_rt_retain", [held]);
+    }
     self.emit_value(
         MirOp.MEM_STORE,
         mir_none(),

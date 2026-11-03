@@ -1,5 +1,10 @@
-impl mir_insert_rc(fn: MirFunction) {
-    if not fn.manual_rc {
+impl mir_insert_rc(fn: MirFunction, mir: (MirModule | None) = None) {
+    if fn.manual_rc {
+        return;
+    }
+    if fn.ownership {
+        MirOwnState(fn=fn, mir=mir).run();
+    } else {
         MirRcState(fn=fn).run();
     }
 }
@@ -631,6 +636,7 @@ impl mir_insert_unwind(mir: MirModule) {
             if instr.op == MirOp.SLOT
                 and instr.result is not None
                 and mir_holds_ref(instr.result.type)
+                and not instr.result.borrows
         ];
         if not slots {
             continue;

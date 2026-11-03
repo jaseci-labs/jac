@@ -13,7 +13,13 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
         return ir_in;
     }
     mir = MirModule(path=path, prefix=native_unit_prefix(path));
-    lowering = MirLowering(prog=self.prog, module=ir_in, mir=mir);
+    lowering = MirLowering(
+        prog=self.prog,
+        module=ir_in,
+        mir=mir,
+        owned_world=bool(ir_in.gen.nogc_enforced)
+            and (self.prog.options.na_gc_mode or "cycles") == "none"
+    );
     try {
         lowered = lowering.lower();
     } except Exception as exc {
@@ -47,8 +53,11 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     deps: list[str] = [];
     triple = "";
     try {
+        if lowering.owned_world {
+            lowering.stamp_ownership();
+        }
         for fn in lowered.functions {
-            mir_insert_rc(fn);
+            mir_insert_rc(fn, lowered);
         }
         if here not in mir_runtime_unit_paths() {
             mir_insert_unwind(lowered);

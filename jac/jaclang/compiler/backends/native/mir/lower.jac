@@ -400,9 +400,22 @@ obj MirLowering {
         flow_sites: int = 0,
         tests: list[tuple[str, str, str, int]] = [],
         c_views: dict[int, MirGlobal] = {},
+        owned_world: bool = False,
+        ctor_consumes: dict[str, list[int]] = {},
         state: (MirFnState | None) = None;
 
     def lower -> MirModule;
+    def stamp_ownership;
+    def tag_ownership(tag: (uni.UniNode | None)) -> (OwnershipKind | None);
+    def tag_borrows(tag: (uni.UniNode | None)) -> bool;
+    def returns_borrow(ab: uni.Ability) -> bool;
+    def elements_borrowed(tag: (uni.UniNode | None)) -> bool;
+    def lend_fresh(
+        value: MirValue, tag: (uni.UniNode | None), source: (uni.UniNode | None)
+    );
+
+    def param_owns(pv: uni.ParamVar) -> bool;
+    def field_consumes(arch: uni.Archetype, name: str) -> bool;
     def declaration_types;
     def record_defaults;
     def settle;
@@ -424,12 +437,22 @@ obj MirLowering {
     def lower_body(stmts: Sequence[uni.UniNode]);
     def drop_last_uses(stmt: uni.UniNode);
     def drop_consumed_args(nd: uni.FuncCall);
+    def forget_slot(slot: MirValue);
     def lower_stmt(nd: uni.UniNode);
     def lower_assignment(nd: uni.Assignment);
     def assign_to(target: uni.UniNode, value: MirValue, nd: uni.Assignment);
     def store_name(target: uni.Name, value: MirValue);
     def exchange_place(arg: uni.Expr) -> MirValue;
     def place_exchange(nd: uni.FuncCall, name: str) -> (MirValue | None);
+    def owned_exchange(
+        nd: uni.FuncCall,
+        name: str,
+        args: list[uni.Expr],
+        first: MirValue,
+        elem: MirType,
+        held: MirValue
+    ) -> MirValue;
+
     def local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirValue;
     def loop_scoped(sym: uni.Symbol) -> bool;
     def encloses(scope: (uni.UniScopeNode | None), nd: uni.UniNode) -> bool;
@@ -785,6 +808,8 @@ obj MirLowering {
     def accessor_set(target: uni.AtomTrailer, nd: uni.Assignment) -> bool;
     def lower_constructor(arch: uni.Archetype) -> (MirFunction | None);
     def lower_drop(obj_def: MirObjectDef, arch: uni.Archetype) -> MirFunction;
+    def lower_drop_glue(obj_def: MirObjectDef) -> MirFunction;
+    def drop_through_glue(held: MirValue) -> bool;
     def drop_hook(arch: uni.Archetype, raw: MirValue);
     def lower_trace(obj_def: MirObjectDef) -> MirFunction;
     def lower_text_thunk(
@@ -1353,6 +1378,7 @@ obj MirLowering {
     def enum_desc(t: MirType, site: uni.UniNode) -> MirValue;
     def creation_kind(elem: MirType, site: uni.UniNode) -> MirValue;
     def enum_text_thunk(t: MirType, site: uni.UniNode) -> str;
+    def headerless_type_value(value: MirValue, site: uni.UniNode) -> MirValue;
     def store_text_result(base: MirValue, text: MirValue);
     def any_isinstance(
         value: MirValue, target: uni.Expr, site: uni.UniNode
