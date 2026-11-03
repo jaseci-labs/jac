@@ -8,7 +8,11 @@ impl _range_value(index: int) -> int {
 
 impl category(chr: str) -> str {
     if len(chr) != 1 {
-        raise TypeError("category() argument must be a unicode character, not str");
+        raise TypeError(
+            f"category(): argument must be a unicode character, not a string of length {len(
+                chr
+            )}"
+        );
     }
     code = ord(chr);
     low = 0;
@@ -31,7 +35,9 @@ impl category(chr: str) -> str {
 impl east_asian_width(chr: str) -> str {
     if len(chr) != 1 {
         raise TypeError(
-            "east_asian_width() argument must be a unicode character, not str"
+            f"east_asian_width(): argument must be a unicode character, not a string of length {len(
+                chr
+            )}"
         );
     }
     code = ord(chr);
