@@ -412,6 +412,46 @@ impl native_unit_root(directory: str) -> (str | None) {
     }
 }
 
+"""Read [project].name from a jac.toml without tomllib (which can't lower
+natively — the kernel compiles this file). A line scan is enough: track the
+current TOML section and take the first `name = "..."` inside [project].
+"""
+impl _jac_toml_project_name(toml_path: str) -> (str | None) {
+    fh = open(toml_path, "r");
+    try {
+        text = fh.read();
+    } finally {
+        fh.close();
+    }
+    in_project = False;
+    for raw_line in text.split("\n") {
+        line = raw_line.strip();
+        if not line or line.startswith("#") {
+            continue;
+        }
+        if line.startswith("[") {
+            in_project = (line == "[project]");
+            continue;
+        }
+        if in_project and line.startswith("name") and line[4:5] in (" ", "=", "\t") {
+            eq = line.find("=");
+            if eq < 0 {
+                continue;
+            }
+            value = line[eq + 1:].strip();
+            if len(value) >= 2
+                and (value.startswith('"') or value.startswith("'"))
+                and value.endswith(value[0]) {
+                inner = value[1:-1].strip();
+                if inner {
+                    return inner;
+                }
+            }
+        }
+    }
+    return None;
+}
+
 impl _native_unit_root_name(unit_root: str) -> str {
     memo = _native_unit_root_name_memo.get(unit_root);
     if memo is not None {
@@ -422,17 +462,9 @@ impl _native_unit_root_name(unit_root: str) -> str {
     toml_path = os.path.join(unit_root, "jac.toml");
     if os.path.isfile(toml_path) {
         try {
-            import tomllib;
-            fh = open(toml_path, "rb");
-            try {
-                data = tomllib.load(fh);
-            } finally {
-                fh.close();
-            }
-            proj = data.get("project") if isinstance(data, dict) else None;
-            pname = proj.get("name") if isinstance(proj, dict) else None;
-            if isinstance(pname, str) and pname.strip() {
-                name = pname.strip();
+            pname = _jac_toml_project_name(toml_path);
+            if pname is not None {
+                name = pname;
             }
         } except Exception {}
     }

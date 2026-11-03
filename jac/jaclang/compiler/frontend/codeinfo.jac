@@ -138,6 +138,8 @@ def module_dotted_name(mod_path: str, mod_name: str = "") -> str;
 
 def native_unit_root(directory: str) -> (str | None);
 
+def _jac_toml_project_name(toml_path: str) -> (str | None);
+
 def _native_unit_root_name(unit_root: str) -> str;
 
 def native_unit_identity(path: str) -> str;
