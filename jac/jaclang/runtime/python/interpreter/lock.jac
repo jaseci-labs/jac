@@ -3,19 +3,27 @@ import from c {
         target: ptr, source: ptr, size: u64
     ) -> ptr;  def sched_yield -> i32;  def sem_init(
         sema: ptr, pshared: i32, value: u32
-    ) -> i32;  def sem_destroy(sema: ptr) -> i32;  def sem_wait(sema: ptr) -> i32;  def sem_timedwait(
-        sema: ptr, abstime: ptr
-    ) -> i32;  def sem_post(sema: ptr) -> i32;  def PyTime_MonotonicRaw(
+    ) -> i32;  def sem_destroy(sema: ptr) -> i32;  def sem_wait(sema: ptr) -> i32;  def sem_post(
+        sema: ptr
+    ) -> i32;  def pthread_mutex_init(mutex: ptr[u8], attr: ptr[u8]) -> i32;  def pthread_mutex_destroy(
+        mutex: ptr[u8]
+    ) -> i32;  def pthread_mutex_lock(mutex: ptr[u8]) -> i32;  def pthread_mutex_unlock(
+        mutex: ptr[u8]
+    ) -> i32;  def pthread_cond_init(cond: ptr[u8], attr: ptr[u8]) -> i32;  def pthread_cond_destroy(
+        cond: ptr[u8]
+    ) -> i32;  def pthread_cond_signal(cond: ptr[u8]) -> i32;  def pthread_cond_wait(
+        cond: ptr[u8], mutex: ptr[u8]
+    ) -> i32;  def PyTime_MonotonicRaw(result: &mut i64) -> i32;  def PyTime_TimeRaw(
         result: &mut i64
-    ) -> i32;  def PyTime_TimeRaw(result: &mut i64) -> i32;  def _PyTime_AsTimespec_clamp(
-        t: i64, ts: ptr
-    );  def PyEval_ReleaseThread(tstate: ptr[PyThreadState]);  def PyEval_AcquireThread(
+    ) -> i32;  def _PyTime_AsTimespec_clamp(t: i64, ts: ptr);  def PyEval_ReleaseThread(
         tstate: ptr[PyThreadState]
-    );  def PyThread_get_thread_ident_ex -> u64;  def _PyEval_StopTheWorld(
+    );  def PyEval_AcquireThread(tstate: ptr[PyThreadState]);  def PyThread_get_thread_ident_ex -> u64;  def _PyEval_StopTheWorld(
         interp: ptr[u8]
     );  def _PyEval_StartTheWorld(interp: ptr[u8]);  def _Py_FatalErrorFunc(
         func: ptr[u8], message: ptr[u8]
     );  def _Py_FatalErrorFormat(func: ptr[u8], format: ptr[u8], *args: any);  obj LockStack {
+        # Holds a wait entry and its _PySemaphore: WAIT_ENTRY_SEMA plus the 120
+        # bytes of the mutex and condition variable form on macOS.
         has w0: u64 = u64(0),
             w1: u64 = u64(0),
             w2: u64 = u64(0),
@@ -31,7 +39,11 @@ import from c {
             w12: u64 = u64(0),
             w13: u64 = u64(0),
             w14: u64 = u64(0),
-            w15: u64 = u64(0);
+            w15: u64 = u64(0),
+            w16: u64 = u64(0),
+            w17: u64 = u64(0),
+            w18: u64 = u64(0),
+            w19: u64 = u64(0);
     }  def jacpy_stack_address(slots: &mut LockStack) -> int;  obj MutexEntry {
         has time_to_be_fair: i64,
             handed_off: i32;
@@ -146,6 +158,14 @@ def rwmutex_reader_count(bits: u64) -> u64;
 def thread_state_is_attached(tstate: ptr[PyThreadState]) -> bool;
 
 def _PySemaphore_PlatformWait(sema: ptr, timeout: i64) -> i32;
+
+def sema_cond_wait(sema: ptr, timeout: i64) -> i32;
+
+def sema_mutex(sema: ptr) -> ptr[u8];
+
+def sema_cond(sema: ptr) -> ptr[u8];
+
+def sema_counter(sema: ptr) -> ptr[i32];
 
 def lot_llist_init(head: ptr[llist_node]);
 
@@ -576,13 +596,35 @@ import from c {
 
 import from c {
     def _PySemaphore_Init(sema: ptr) {
-        if sem_init(sema, i32(0), u32(0)) < 0 {
+        if PYTHREAD_USE_SEMAPHORES != 0 {
+            if sem_init(sema, i32(0), u32(0)) < 0 {
+                _Py_FatalErrorFunc(
+                    ptr[u8]("_PySemaphore_Init"),
+                    ptr[u8]("parking_lot: sem_init failed")
+                );
+            }
+            return;
+        }
+        if pthread_mutex_init(sema_mutex(sema), ptr[u8]()) != 0 {
             _Py_FatalErrorFunc(
-                ptr[u8]("_PySemaphore_Init"), ptr[u8]("parking_lot: sem_init failed")
+                ptr[u8]("_PySemaphore_Init"),
+                ptr[u8]("parking_lot: pthread_mutex_init failed")
             );
         }
+        if pthread_cond_init(sema_cond(sema), ptr[u8]()) != 0 {
+            _Py_FatalErrorFunc(
+                ptr[u8]("_PySemaphore_Init"),
+                ptr[u8]("parking_lot: pthread_cond_init failed")
+            );
+        }
+        sema_counter(sema).view(1)[0] = i32(0);
     }  def _PySemaphore_Destroy(sema: ptr) {
-        sem_destroy(sema);
+        if PYTHREAD_USE_SEMAPHORES != 0 {
+            sem_destroy(sema);
+            return;
+        }
+        pthread_mutex_destroy(sema_mutex(sema));
+        pthread_cond_destroy(sema_cond(sema));
     }  def _PySemaphore_Wait(sema: ptr, timeout_ns: i64, detach: i32) -> i32 {
         tstate = ptr[PyThreadState]();
         if detach != 0 {
@@ -603,12 +645,21 @@ import from c {
         }
         return res;
     }  def _PySemaphore_Wakeup(sema: ptr) {
-        err = sem_post(sema);
-        if err != 0 {
-            _Py_FatalErrorFunc(
-                ptr[u8]("_PySemaphore_Wakeup"), ptr[u8]("parking_lot: sem_post failed")
-            );
+        if PYTHREAD_USE_SEMAPHORES != 0 {
+            err = sem_post(sema);
+            if err != 0 {
+                _Py_FatalErrorFunc(
+                    ptr[u8]("_PySemaphore_Wakeup"),
+                    ptr[u8]("parking_lot: sem_post failed")
+                );
+            }
+            return;
         }
+        pthread_mutex_lock(sema_mutex(sema));
+        counter = sema_counter(sema);
+        counter.view(1)[0] = counter.view(1)[0] + i32(1);
+        pthread_cond_signal(sema_cond(sema));
+        pthread_mutex_unlock(sema_mutex(sema));
     }  def _PyParkingLot_Park(
         addr: ptr, expected: ptr, size: u64, timeout_ns: i64, park_arg: ptr, detach: i32
     ) -> i32 {
@@ -987,6 +1038,9 @@ impl thread_state_is_attached(tstate: ptr[PyThreadState]) -> bool {
 }
 
 impl _PySemaphore_PlatformWait(sema: ptr, timeout: i64) -> i32 {
+    if PYTHREAD_USE_SEMAPHORES == 0 {
+        return sema_cond_wait(sema, timeout);
+    }
     slots: own LockStack = LockStack();
     ts = ptr[u8](jacpy_stack_address(&mut slots));
     res = Py_PARK_OK;
@@ -996,7 +1050,7 @@ impl _PySemaphore_PlatformWait(sema: ptr, timeout: i64) -> i32 {
         PyTime_TimeRaw(&mut now);
         deadline = _PyTime_Add(now, timeout);
         _PyTime_AsTimespec_clamp(deadline, ptr(ts));
-        err = sem_timedwait(sema, ptr(ts));
+        err = semaphore_timedwait(sema, ptr[timespec](ts));
     } else {
         err = sem_wait(sema);
     }
@@ -1015,6 +1069,48 @@ impl _PySemaphore_PlatformWait(sema: ptr, timeout: i64) -> i32 {
         }
     }
     return res;
+}
+
+# The _PySemaphore of a platform without usable POSIX semaphores (macOS has no
+# sem_timedwait, and its sem_init always fails), as parking_lot.c waits on it.
+impl sema_cond_wait(sema: ptr, timeout: i64) -> i32 {
+    slots: own LockStack = LockStack();
+    ts = ptr[u8](jacpy_stack_address(&mut slots));
+    mutex = sema_mutex(sema);
+    counter = sema_counter(sema);
+    res = Py_PARK_INTR;
+    err: i32 = 0;
+    pthread_mutex_lock(mutex);
+    if counter.view(1)[0] == i32(0) {
+        if timeout >= 0 {
+            _PyTime_AsTimespec_clamp(timeout, ptr(ts));
+            err = cond_timedwait_relative(sema_cond(sema), mutex, ptr[timespec](ts));
+        } else {
+            err = pthread_cond_wait(sema_cond(sema), mutex);
+        }
+    }
+    if counter.view(1)[0] > i32(0) {
+        counter.view(1)[0] = counter.view(1)[0] - i32(1);
+        res = Py_PARK_OK;
+    } elif err != 0 {
+        res = Py_PARK_TIMEOUT;
+    }
+    pthread_mutex_unlock(mutex);
+    return res;
+}
+
+# { pthread_mutex_t mutex; pthread_cond_t cond; int counter; }, measured off the
+# generated layout of { char; pthread_cond_t; pthread_mutex_t; }.
+impl sema_mutex(sema: ptr) -> ptr[u8] {
+    return ptr[u8](sema);
+}
+
+impl sema_cond(sema: ptr) -> ptr[u8] {
+    return ptr[u8](sema) + (PTHREAD_LOCK_SIZE - PTHREAD_LOCK_MUTEX);
+}
+
+impl sema_counter(sema: ptr) -> ptr[i32] {
+    return ptr[i32](sema_cond(sema) + (PTHREAD_LOCK_MUTEX - PTHREAD_LOCK_COND));
 }
 
 impl lot_llist_init(head: ptr[llist_node]) {
