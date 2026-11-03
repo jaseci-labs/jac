@@ -92,6 +92,7 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
             target[0],
             bool(self.prog.options.native_sjlj)
         );
+        ir_in.gen.ir_module = ir_in.gen.llvm_ir;
     } except Exception as exc {
         self.report_crash(lowering, exc);
         return ir_in;
