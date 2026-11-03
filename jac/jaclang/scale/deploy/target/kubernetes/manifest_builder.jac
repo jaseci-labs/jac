@@ -36,10 +36,6 @@ glob CONFIG_REVISION_ANNOTATION: str = "jac-scale.config-revision",
 def _output_tail(result: any, lines: int = 15) -> str;
 
 
-"""Run `cmd` to completion like `subprocess.run(capture_output=True,
-text=True)`, but raise `subprocess.TimeoutExpired` only once it has printed
-nothing for `quiet_s` seconds, so a slow build that keeps working is not cut
-off."""
 def _run_until_quiet(
     cmd: list[str], cwd: str, env: (dict[str, str] | None), quiet_s: float
 ) -> any;

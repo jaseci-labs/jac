@@ -313,9 +313,7 @@ fabricates a dist, printing a line per step when `chatty`, and nothing at all
 otherwise. Every other subcommand exits clean."""
 def _paced_jac(tmp: str, ticks: int, pause: float, chatty: bool) -> str {
     script = os.path.join(tmp, "paced-jac.sh");
-    step = f'echo "compiling step $i"; sleep {pause}'
-        if chatty
-        else f"sleep {pause}";
+    step = f'echo "compiling step $i"; sleep {pause}' if chatty else f"sleep {pause}";
     with open(script, "w", encoding="utf-8") as f {
         f.write(
             "#!/bin/sh\n"

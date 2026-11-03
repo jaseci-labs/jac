@@ -10,12 +10,7 @@ impl _run_until_quiet(
     import threading;
     import time;
     proc = subprocess.Popen(
-        cmd,
-        cwd=cwd,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True
+        cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
     );
     out: list[str] = [];
     err: list[str] = [];
@@ -49,7 +44,9 @@ impl _run_until_quiet(
     for reader in readers {
         reader.join();
     }
-    return subprocess.CompletedProcess(cmd, proc.returncode, "".join(out), "".join(err));
+    return subprocess.CompletedProcess(
+        cmd, proc.returncode, "".join(out), "".join(err)
+    );
 }
 
 impl _is_transient_client_build_failure(output: str) -> bool {
