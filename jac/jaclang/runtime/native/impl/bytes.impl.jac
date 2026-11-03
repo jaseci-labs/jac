@@ -1043,3 +1043,21 @@ impl __jac_rt_struct_put(at: ptr[u8], bits: int, size: int, big: bool) {
         i += 1;
     }
 }
+
+impl __jac_rt_exc_message(data: ptr[u8], n: int) -> ptr[u8] {
+    ring = __thread_local_block("jac_rt_exc_message_ring", 136);
+    at = __mem_load_i64(ring + 128);
+    slot = ring + (at % 16) * 8;
+    held = __mem_load_i64(slot);
+    if held != 0 {
+        free(held);
+    }
+    made = malloc(n + 1);
+    if n > 0 {
+        memcpy(made, int(data), n);
+    }
+    __mem_store_i8(made + n, i8(0));
+    __mem_store_i64(slot, made);
+    __mem_store_i64(ring + 128, at + 1);
+    return ptr[u8](made);
+}

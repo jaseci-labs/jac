@@ -45,6 +45,8 @@ glob FILE_HANDLE: int = 0,
      FILE_SIZE: int = 32,
      FILE_CHUNK: int = 65536;
 
+def:pub __jac_rt_exc_message(data: ptr[u8], n: int) -> ptr[u8];
+
 def:pub __jac_rt_file_open(path: ptr[u8], mode: ptr[u8], binary: bool) -> int;
 
 def:pub __jac_rt_file_read(f: int, binary: bool, line: bool) -> int;

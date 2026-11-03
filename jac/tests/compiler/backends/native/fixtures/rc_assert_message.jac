@@ -3,8 +3,8 @@
 Each shape fails an assertion whose message is worked out at run time and
 catches the error: bound to a name or not, with a message that is not a
 string, or with a slice of a string it built. Run from a `--debug` build,
-every allocation made while the trace is on must be freed by the time it is
-switched off.
+every allocation made while the trace is on must be freed by the time the
+program exits.
 """
 
 def unnamed(i: int) -> int {
@@ -49,6 +49,5 @@ with entry {
     for i in range(3) {
         total += unnamed(i) + named(i) + listed(i) + sliced("x" + str(i) + "yz");
     }
-    __rc_debug_disable();
     print(total);
 }

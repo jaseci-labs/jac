@@ -706,15 +706,10 @@ impl MirLowering.raise_named(
         b.unreachable();
         return;
     }
-    text = self.to_str(message, message_nd);
-    held = self.runtime(
-        "__jac_rt_str_ref",
-        [b.str_part(text, "root"), b.str_part(text, "data"), b.str_part(text, "len")]
+    text = self.spill(self.to_str(message, message_nd));
+    data = self.call_rt(
+        "__jac_rt_exc_message", [b.str_part(text, "data"), b.str_part(text, "len")]
     );
-    if held is None {
-        raise MirRefused(mir_refusal("statement", "raise", nd));
-    }
-    data = self.emit_value(MirOp.PTR_CAST, mir_c_ptr(mir_int(8, False)), [held]);
     self.runtime(
         "__jac_rt_raise",
         [
