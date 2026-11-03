@@ -1,5 +1,3 @@
-import from jaclang.runtime.python.modules.time_records { timespec, timeval }
-import from jaclang.runtime.python.layouts_platform { CLOCK_MONOTONIC, SYS_gettid }
 import from c {
     def syscall(number: i64, *args: any) -> i64;  def pthread_condattr_setclock(
         attr: ptr[u8], clock_id: i32
@@ -20,6 +18,10 @@ def native_thread_id -> u64;
 def condattr_set_monotonic(attr: ptr[u8]) -> i32;
 
 def semaphore_timedwait(sema: ptr, abstime: ptr[timespec]) -> i32;
+
+def cond_timedwait_relative(
+    cond: ptr[u8], mutex: ptr[u8], reltime: ptr[timespec]
+) -> i32;
 
 def timeval_store(tv: ptr[timeval], seconds: i64, microseconds: i64);
 
@@ -42,6 +44,12 @@ impl condattr_set_monotonic(attr: ptr[u8]) -> i32 {
 
 impl semaphore_timedwait(sema: ptr, abstime: ptr[timespec]) -> i32 {
     return sem_timedwait(sema, ptr(abstime));
+}
+
+impl cond_timedwait_relative(
+    cond: ptr[u8], mutex: ptr[u8], reltime: ptr[timespec]
+) -> i32 {
+    return i32(-1);
 }
 
 impl timeval_store(tv: ptr[timeval], seconds: i64, microseconds: i64) {

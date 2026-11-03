@@ -1,11 +1,9 @@
 impl HMAC.update(data: bytes) {
-    self._inner.update(data);
+    self._core.update(data);
 }
 
 impl HMAC.digest -> bytes {
-    outer = self._outer.clone();
-    outer.update(self._inner.finish());
-    return outer.finish();
+    return self._core.finish();
 }
 
 impl HMAC.hexdigest -> str {
@@ -14,8 +12,7 @@ impl HMAC.hexdigest -> str {
 
 impl HMAC.copy -> HMAC {
     return HMAC(
-        _inner=self._inner.clone(),
-        _outer=self._outer.clone(),
+        _core=self._core.clone(),
         digest_size=self.digest_size,
         block_size=self.block_size,
         name=self.name
@@ -38,30 +35,10 @@ impl new(key: any, msg: any = None, digestmod: str = "") -> HMAC {
     if digestmod == "" {
         raise TypeError("Missing required argument 'digestmod'.");
     }
-    inner = new_core(digestmod);
-    outer = new_core(digestmod);
-    if inner is None or outer is None {
+    core = new_hmac(digestmod, __bytes_data(k), len(k));
+    if core is None {
         raise ValueError("unsupported hash type " + digestmod);
     }
-    bs: int = inner.block_size;
-    if len(k) > bs {
-        shrink = new_core(digestmod);
-        if shrink is not None {
-            shrink.update(k);
-            k = shrink.finish();
-        }
-    }
-    ipad: list[int] = [];
-    opad: list[int] = [];
-    i: int = 0;
-    while i < bs {
-        kb: int = k[i] if i < len(k) else 0;
-        ipad.append(kb ^ 0x36);
-        opad.append(kb ^ 0x5c);
-        i += 1;
-    }
-    inner.update(bytes(ipad));
-    outer.update(bytes(opad));
     data: bytes = b"";
     if isinstance(msg, bytearray) {
         data = bytes(msg);
@@ -73,10 +50,9 @@ impl new(key: any, msg: any = None, digestmod: str = "") -> HMAC {
         raise TypeError("object supporting the buffer API required");
     }
     hm = HMAC(
-        _inner=inner,
-        _outer=outer,
-        digest_size=inner.digest_size,
-        block_size=bs,
+        _core=core,
+        digest_size=core.digest_size,
+        block_size=core.block_size,
         name="hmac-" + digestmod
     );
     hm.update(data);

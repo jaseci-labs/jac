@@ -25,6 +25,11 @@ impl _http_activation_nested_schema(cluster_scoped: bool = False) -> dict[str, a
             "default": 300,
             "description": "Seconds of inactivity before scaling back to min_replicas."
         },
+        "initial_cooldown_period": {
+            "type": "int",
+            "default": 0,
+            "description": "Seconds after the ScaledObject is created before the target may scale to min_replicas. A new target has served no request yet, so with 0 KEDA scales it down at once."
+        },
         "target_port": {
             "type": "int",
             "default": None,

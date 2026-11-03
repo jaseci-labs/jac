@@ -27,6 +27,7 @@ import from jaclang.compiler.driver.compile_options {
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.backends.native.link_plan {
     ArtifactKind,
+    LinkPlanError,
     build_link_plan,
     link_artifact
 }
@@ -1541,4 +1542,78 @@ test "the formatting kernel lowers before a unit that parses an int or calls a b
     assert max(live_at_lower) == 0 , (
         f"a kernel lowered inside a consumer's pass: {live_at_lower}"
     );
+}
+
+"""A unit that fails to lower fails once for its build session: every importer
+that reaches it shares that failure instead of analyzing it again, which would
+grow with the importers above it. `bad` refuses in lowering, past analysis."""
+def _shared_failure(root_dir: str) -> tuple[JacProgram, str] {
+    Path(root_dir, "bad.jac").write_text(
+        "obj Holder { has view: memoryview; }\n"
+            + "def broken(h: Holder) -> int { v = h.view; return 1; }\n"
+    );
+    for name in ["left", "right", "extra"] {
+        Path(root_dir, f"{name}.jac").write_text(
+            "import from bad { Holder, broken }\n"
+                + f"def {name}_value(h: Holder) -> int {{ return broken(h); }}\n"
+        );
+    }
+    Path(root_dir, "top.jac").write_text(
+        "import from left { left_value }\n"
+            + "import from right { right_value }\n"
+            + "import from extra { extra_value }\n"
+            + "with entry { print(left_value, right_value, extra_value); }\n"
+    );
+    prog = JacProgram();
+    opts = CompileOptions(
+        aot_mode=True,
+        default_codespace='native',
+        skip_native_engine=True,
+        native_required=True
+    );
+    try {
+        build_link_plan(prog, [os.path.join(root_dir, "top.jac")], opts);
+    } except LinkPlanError {}
+    return (prog, os.path.realpath(os.path.join(root_dir, "bad.jac")));
+}
+
+test "a unit that fails to lower is analyzed once across its importers" {
+    with tempfile.TemporaryDirectory(prefix="jac-native-failure-") as root_dir {
+        (prog, bad) = _shared_failure(root_dir);
+        registry = prog.native_units();
+        assert bad in registry.failures , registry.failures;
+        assert bad not in registry.entries;
+        events = prog.analysis.cache_events;
+        assert events.get("native_unit_analysis", 0) == 5 , dict(events);
+    }
+}
+
+test "a unit in an import cycle can lower again" {
+    import from jaclang.compiler.driver.nativecache { NativeBuildSession }
+    with tempfile.TemporaryDirectory(prefix="jac-native-cycle-") as root_dir {
+        even = Path(root_dir) / "even.jac";
+        odd = Path(root_dir) / "odd.jac";
+        even.write_text(
+            "import from odd { odd }\n"
+                + "def even(n: int) -> bool { if n == 0 { return True; } return odd(n - 1); }\n"
+        );
+        odd.write_text(
+            "import from even { even }\n"
+                + "def odd(n: int) -> bool { if n == 0 { return False; } return even(n - 1); }\n"
+        );
+        prog = JacProgram();
+        opts = _opts();
+        prog.options = opts;
+        registry = prog.native_units();
+        session = NativeBuildSession(registry=registry, options=opts);
+        registry.session = session;
+        try {
+            first = os.path.realpath(str(even));
+            assert session.lower(first) is not None;
+            assert first not in session.unlowerable , session.unlowerable;
+            assert session.lower(first) is not None;
+        } finally {
+            registry.session = None;
+        }
+    }
 }

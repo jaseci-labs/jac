@@ -14,3 +14,10 @@ test "native int() over strings matches CPython for every base form" {
     out = assert_native_identity(source, profiles=["managed"]);
     assert out.splitlines()[-1] == "114 1295 511 511" , out;
 }
+
+test "native int() of an optional value reads the value it holds" {
+    source = str(Path(__file__).resolve().parent / "fixtures" / "int_of_optional.jac");
+    out = assert_native_identity(source, profiles=["managed"]);
+    assert out.splitlines()[-4:]
+        == ["local 2", "field 7", "enum 2 0", "none E 5"] , out;
+}
