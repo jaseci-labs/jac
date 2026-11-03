@@ -5,7 +5,6 @@ import os;
 import sys;
 import json;
 import random;
-import re;
 import time;
 
 import from typing { AsyncGenerator, Generator, cast }
@@ -32,9 +31,6 @@ with entry {
 glob _TOOL_DELTA_MIN_CHARS = 48,
      _TOOL_DELTA_MIN_INTERVAL_S = 0.15,
      _TOOL_DELTA_MAX_PER_CALL = 200;
-
-glob _ANSWER_OPEN: re.Pattern = re.compile(r'\s*\{\s*"final_output"\s*:\s*"'),
-     _ANSWER_SAFE: re.Pattern = re.compile(r'(?:[^"\\]|\\u[0-9a-fA-F]{4}|\\[^u])*');
 
 glob DEFAULT_BASE_URL = "http://localhost:4000",
      MODEL_MOCK = "mockllm";

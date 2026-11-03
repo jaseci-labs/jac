@@ -17,16 +17,10 @@ obj _ToolDeltaCoalescer {
 obj _AnswerStream {
     has index: int = -1,
         args: str = "",
-        pos: int = -1,
         text: str = "";
 
     def observe(frag: dict[str, any]) -> str;
 }
-
-
-def _answer_rest(
-    answer: str, shown: str, retractable: bool
-) -> Generator[StreamEvent, None, None];
 
 
 def _drop_answer(retractable: bool) -> Generator[StreamEvent, None, None];
@@ -2192,7 +2186,11 @@ impl BaseLLM._stream_steps(
                             event_type="steps_done", data={"iterations": iter_count}
                         );
                     }
-                    yield from _answer_rest(answer, shown, retractable);
+                    if answer[len(shown):] {
+                        yield StreamEvent(
+                            event_type="chunk", data={"content": answer[len(shown):]}
+                        );
+                    }
                     break;
                 }
             } else {
@@ -2363,40 +2361,18 @@ impl _AnswerStream.observe(frag: dict[str, any]) -> str {
         return "";
     }
     self.args += str(frag.get("fragment") or "");
-    if self.pos < 0 {
-        opened = _ANSWER_OPEN.match(self.args);
-        if opened is None {
-            return "";
-        }
-        self.pos = opened.end();
-    }
-    safe = _ANSWER_SAFE.match(self.args, self.pos);
-    end = safe.end() if safe else self.pos;
     try {
-        piece = json.loads('"' + self.args[self.pos:end] + '"', strict=False);
+        parsed = from_json(self.args, allow_partial="trailing-strings");
     } except ValueError {
         return "";
     }
-    if piece and 0xD800 <= ord(piece[-1]) <= 0xDBFF {
-        piece = piece[:-1];
-        end -= 6;
+    text = parsed.get("final_output") if isinstance(parsed, dict) else None;
+    if not isinstance(text, str) or not text.startswith(self.text) {
+        return "";
     }
-    self.pos = end;
-    self.text += piece;
+    piece = text[len(self.text):];
+    self.text = text;
     return piece;
-}
-
-
-impl _answer_rest(
-    answer: str, shown: str, retractable: bool
-) -> Generator[StreamEvent, None, None] {
-    if not answer.startswith(shown) {
-        yield from _drop_answer(retractable);
-        shown = "";
-    }
-    if answer[len(shown):] {
-        yield StreamEvent(event_type="chunk", data={"content": answer[len(shown):]});
-    }
 }
 
 
