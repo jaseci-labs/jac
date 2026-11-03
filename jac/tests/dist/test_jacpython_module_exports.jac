@@ -88,18 +88,35 @@ test "the static type exports are validated as globals, not functions" {
         globals={"PyRange_Type": False, "PyCell_Type": True}
     );
     assert prepare.undefined_exports(
-        merged, ["PyRange_Type", "PyCell_Type", "_PyTemplate_Type"], "global"
+        merged,
+        ["PyRange_Type", "PyCell_Type", "_PyTemplate_Type"],
+        prepare.SymbolKind.GLOBAL
     )
         == ["PyCell_Type", "_PyTemplate_Type"];
     # A function of the same name does not satisfy the global contract.
-    assert prepare.undefined_exports(merged, ["PyInit__bisect"], "global")
+    assert prepare.undefined_exports(
+        merged, ["PyInit__bisect"], prepare.SymbolKind.GLOBAL
+    )
         == ["PyInit__bisect"];
 }
 
+test "registered exports are reachable from the lowered native API plan" {
+    prepare = _load_prepare();
+    built = prepare.native_plan(JAC_ROOT, "x86_64-unknown-linux-gnu");
+    program = built[0];
+    plan = built[1];
+    assert not program.errors_had , [e.pretty_print() for e in program.errors_had];
+    assert plan.units , "native_api.jac lowered to an empty plan";
+    missing = prepare.missing_exports(
+        prepare.registered_exports(Path(JAC_ROOT)), plan.pub_exports()
+    );
+    assert not missing , (
+        "native_api.jac does not export registered PyInit_* symbols: "
+        + ", ".join(missing)
+    );
+}
+
 test "the export contract checks registered modules and static type globals" {
-    # The JacPython build compiles the inittab and runtime roots together, then
-    # checks the merged module before and after optimization. Keep the reusable
-    # contract helpers importable so this test can check both symbol classes.
     prepare = _load_prepare();
     expected = prepare.registered_exports(Path(JAC_ROOT));
     assert expected;
@@ -112,6 +129,8 @@ test "the export contract checks registered modules and static type globals" {
         globals={name: False for name in prepare.STATIC_TYPE_EXPORTS}
     );
     assert prepare.undefined_exports(merged, expected) == [];
-    assert prepare.undefined_exports(merged, prepare.STATIC_TYPE_EXPORTS, "global")
+    assert prepare.undefined_exports(
+        merged, prepare.STATIC_TYPE_EXPORTS, prepare.SymbolKind.GLOBAL
+    )
         == [];
 }
