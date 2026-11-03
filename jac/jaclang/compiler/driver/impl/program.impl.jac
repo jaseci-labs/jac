@@ -156,7 +156,8 @@ impl JacProgram.load_dependency_module(
     source_path: str,
     importer_path: (str | None) = None,
     use_str: (str | None) = None,
-    need_tree: bool = False
+    need_tree: bool = False,
+    need_bodies: bool = False
 ) -> uni.Module {
     resolved_path = os.path.realpath(source_path);
     import from jaclang.compiler.frontend.host { active_host }
@@ -212,7 +213,7 @@ impl JacProgram.load_dependency_module(
                 mod = self.compile(
                     source_path,
                     use_str=use_str,
-                    options=self.options.for_symbols(need_tree)
+                    options=self.options.for_symbols(need_tree, need_bodies)
                 );
             } finally {
                 self.options = saved_options;
