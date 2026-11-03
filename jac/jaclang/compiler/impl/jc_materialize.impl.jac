@@ -58,7 +58,7 @@ impl jc_mz_shape_keys(probe: int) {
     found: list[int] = [];
     i = 0;
     while i < extent {
-        slot = _ld64(order + i * 8);
+        slot = _order_slot(order, i);
         i += 1;
         if slot >= 0 {
             found.append(_ld64(keys + slot * 8));
@@ -235,7 +235,11 @@ impl _hash_order_extent(h: int, order: int) -> int {
     if order == 0 {
         return 0;
     }
-    return _ld64(order + _ld64(h + 8) * 16);
+    return _ld64(h + HASH_USED_OFF);
+}
+
+impl _order_slot(order: int, i: int) -> int {
+    return i if _ld64(order + i * 8) >= 0 else -1;
 }
 
 impl _hashed(code: int) -> bool {
@@ -251,7 +255,7 @@ impl _container_extent(h: int, row: ValueRow, order: int) -> int {
 }
 
 impl _container_slot(row: ValueRow, order: int, i: int) -> int {
-    return _ld64(order + i * 8) if _hashed(row.code) else i;
+    return _order_slot(order, i) if _hashed(row.code) else i;
 }
 
 impl _container_items(h: int, row: ValueRow) -> int {
@@ -495,7 +499,7 @@ impl _copy_shapes(o: int, k: int, layout_id: int, slot_default: int, a: int) {
     acc = 0;
     i = 0;
     while i < extent {
-        slot = _ld64(order + i * 8);
+        slot = _order_slot(order, i);
         i += 1;
         if slot < 0 {
             continue;
