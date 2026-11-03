@@ -2780,6 +2780,9 @@ impl MirLowering.ensure_objects(t: (TypeBase | None)) {
     if not isinstance(scope, uni.Archetype) or is_enum_class_type(t) {
         return;
     }
+    if self.host_only_type(t) {
+        return;
+    }
     name = class_type_native_name(t);
     if name and name not in self.mir.objects and not stub_archetype(scope) {
         self.object_def(scope);
