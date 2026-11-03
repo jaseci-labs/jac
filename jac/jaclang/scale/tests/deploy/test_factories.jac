@@ -1,7 +1,5 @@
 import importlib;
-import os;
 import sys;
-import tempfile;
 import unittest.mock;
 import from contextlib { contextmanager }
 import from kubernetes.client.exceptions { ApiException }
@@ -79,15 +77,8 @@ def _machine_without_kubernetes -> any {
 }
 
 
-def _scale_command(action: str, tmpdir: str) {
-    app = os.path.join(tmpdir, "main.jac");
-    with open(app, "w") as f {
-        f.write("with entry {}\n");
-    }
+def _scale_command(action: str) {
     plugin = importlib.import_module("jaclang.scale.plugin");
-    realizer_mod = importlib.import_module(
-        "jaclang.scale.runtime.realizer.kubernetes_realizer"
-    );
     scale_config = unittest.mock.MagicMock();
     scale_config.get_kubernetes_config.return_value = {
         "app_name": "a",
@@ -95,15 +86,13 @@ def _scale_command(action: str, tmpdir: str) {
     };
     with unittest.mock.patch.object(
         plugin, "get_scale_config", return_value=scale_config
-    ), unittest.mock.patch.object(
-        realizer_mod, "get_scale_config", return_value=scale_config
     ), unittest.mock.patch("builtins.input", return_value="y") {
-        plugin.scale_cmd(action, app);
+        plugin.scale_cmd(action, __file__);
     }
 }
 
 
-def _sdk_client(tmpdir: str) {
+def _sdk_client {
     sdk = importlib.import_module("jaclang.scale.sdk.client");
     spec = importlib.import_module("jaclang.scale.sdk.spec");
     sdk.ScaleClient()._make_target(spec.DeploySpec(app_name="a", namespace="n"));
@@ -112,14 +101,14 @@ def _sdk_client(tmpdir: str) {
 
 test "a command that installs the kubernetes client uses it in the same run" {
     for (label, run) in [
-        ("deploy", lambda (d: str) { _scale_command("deploy", d); }),
-        ("status", lambda (d: str) { _scale_command("status", d); }),
-        ("destroy", lambda (d: str) { _scale_command("destroy", d); }),
+        ("deploy", lambda { _scale_command("deploy"); }),
+        ("status", lambda { _scale_command("status"); }),
+        ("destroy", lambda { _scale_command("destroy"); }),
         ("sdk", _sdk_client)
     ] {
-        with _machine_without_kubernetes(), tempfile.TemporaryDirectory() as tmpdir {
+        with _machine_without_kubernetes() {
             try {
-                run(tmpdir);
+                run();
             } except _Installed {}
             target_mod = importlib.import_module(
                 "jaclang.scale.deploy.target.kubernetes.kubernetes_target"

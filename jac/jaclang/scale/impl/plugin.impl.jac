@@ -71,6 +71,9 @@ impl scale_deploy(
 ) -> int {
     mark_scale_runtime();
     try {
+        if target in ('kubernetes', 'kubernetes-microservice') {
+            ensure_deploy_tooling(dry_run);
+        }
         import from jaclang.scale.runtime.realizer.kubernetes_realizer {
             KubernetesRealizer
         }

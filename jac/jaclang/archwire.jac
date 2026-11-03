@@ -45056,12 +45056,9 @@ graph import scale {
         | tests.deploy.test_postgres_predicate_lock_headroom {
         KubernetesPostgresProvider
     }
-    type deploy.target.deployment_target ++> runtime.realizer.kubernetes_realizer {
-        DeploymentTarget
-    }
     deploy.target.factory ++> [
-        plugin
-            | runtime.realizer.kubernetes_realizer
+        plugin { DeploymentTargetFactory, ensure_deploy_tooling },
+        runtime.realizer.kubernetes_realizer
             | tests.deploy.test_deploy_banner
             | tests.deploy.test_deploy_k8s
             | tests.deploy.test_dry_run_purity
@@ -45125,7 +45122,7 @@ graph import scale {
         },
         tests.microservices.test_pvc_injector { KubernetesConfig },
     ]
-    deploy.target.kubernetes.kubernetes_target ++> runtime.realizer.kubernetes_realizer.KubernetesRealizer._deploy_on_target
+    deploy.target.kubernetes.kubernetes_target ++> runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize
         | tests.deploy.test_database_intent { KubernetesTargetBase }
     deploy.target.kubernetes.kubernetes_target --> tests.microservices.test_pvc_injector {
         KubernetesTargetBase
@@ -45198,7 +45195,7 @@ graph import scale {
     }
     deploy.target.kubernetes.runtime_resolver as resolver_mod --> tests.deploy.test_pod_env;
     deploy.target.kubernetes.target ++> [
-        runtime.realizer.kubernetes_realizer.KubernetesRealizer._deploy_on_target
+        runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize
             | sdk.client.ScaleClient._build_target
             | tests.deploy.test_access_hint
             | tests.deploy.test_alb_zero_downtime
@@ -46378,12 +46375,10 @@ graph import scale.observability {
 }
 
 graph import scale.runtime {
-    cli.diagnostics --> realizer.kubernetes_realizer.KubernetesRealizer._deploy_on_target {
+    cli.diagnostics --> realizer.kubernetes_realizer.KubernetesRealizer.realize {
         has_errors
     }
-    cli.plan --> realizer.kubernetes_realizer.KubernetesRealizer._deploy_on_target {
-        print_plan
-    }
+    cli.plan --> realizer.kubernetes_realizer.KubernetesRealizer.realize { print_plan }
     context.auth_ctx ++> rpc.rpc._rpc_headers { get_current_auth }
     context.errors ++> [
         gateway.microservice_gateway.MicroserviceGateway.forward_to {

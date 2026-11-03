@@ -998,11 +998,23 @@ jobs:
           helm install http-add-on kedacore/keda-add-ons-http --namespace keda --wait
           kubectl get pods -n keda
       # The install step above hides a first deploy on a machine without the
-      # client, so this one runs each command on a fresh HOME.
-      - name: Run first deploy e2e
-        env:
-          BUNDLE_STORAGE_CLASS: microk8s-hostpath
-        run: bash jac/jaclang/scale/tests/deploy/first_deploy_real_e2e.sh
+      # client, so this runs each command on a fresh HOME.
+      - name: Run first deploy without the client
+        run: |
+          set -euo pipefail
+          export KUBECONFIG="$HOME/.kube/config"
+          first_run() {
+            HOME="$(mktemp -d)" bash -c "jac install --global 'python-dotenv>=1.2.1,<2.0.0' && $1" 2>&1 | tee run.log
+            grep -q "Deploy tooling missing" run.log
+          }
+          cd "$(mktemp -d)"
+          printf '[project]\nname = "first"\nversion = "0.1.0"\nentry-point = "main"\n\n[scale.kubernetes]\napp_name = "first"\nnamespace = "first-deploy"\nbundle_storage_class = "microk8s-hostpath"\n' > jac.toml
+          echo 'walker:pub hello { can go with Root entry { report "hi"; } }' > main.jac
+          source "$GITHUB_WORKSPACE/jac/jaclang/scale/scripts/e2e_lib.sh"
+          ship_checkout_binary "$PWD"
+          first_run "jac scale deploy main.jac"
+          first_run "echo y | jac scale destroy main.jac"
+          test -z "$(kubectl get deploy -n first-deploy --no-headers 2>/dev/null)"
       - name: Run K8 tests (deploy-core)
         env:
           JAC_TEST_JOBS: "0"
