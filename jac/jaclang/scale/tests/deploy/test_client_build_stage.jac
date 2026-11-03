@@ -308,6 +308,90 @@ test "the build runs in an ephemeral stage and the dist is copied back" {
 }
 
 
+"""A jac stand-in whose build takes `ticks` steps of `pause` seconds before it
+fabricates a dist, printing a line per step when `chatty`, and nothing at all
+otherwise. Every other subcommand exits clean."""
+def _paced_jac(tmp: str, ticks: int, pause: float, chatty: bool) -> str {
+    script = os.path.join(tmp, "paced-jac.sh");
+    step = f'echo "compiling step $i"; sleep {pause}'
+        if chatty
+        else f"sleep {pause}";
+    with open(script, "w", encoding="utf-8") as f {
+        f.write(
+            "#!/bin/sh\n"
+                + 'if [ "$1" != "build" ]; then exit 0; fi\n'
+                + f"for i in $(seq {ticks}); do {step}; done\n"
+                + "mkdir -p .jac/client/dist\n"
+                + 'echo "<html></html>" > .jac/client/dist/index.html\n'
+                + "exit 0\n"
+        );
+    }
+    os.chmod(script, 0o755);
+    return script;
+}
+
+
+def _with_paced_build(
+    project_dir: str, ticks: int, pause: float, chatty: bool
+) -> tuple[(Exception | None), str] {
+    tmp = tempfile.mkdtemp(prefix="client-stage-paced-");
+    script = _paced_jac(tmp, ticks, pause, chatty);
+    module = "jaclang.scale.deploy.target.kubernetes.manifest_builder";
+    seams = [
+        patch("jaclang.scale.runtime.context.util.jac_executable", return_value=script),
+        patch(f"{module}._CLIENT_BUILD_QUIET_S", 1),
+        patch(f"{module}._CLIENT_BUILD_RETRY_PAUSE_S", 0)
+    ];
+    for seam in seams {
+        seam.start();
+    }
+    try {
+        raised = _run_build(_builder(project_dir), project_dir, tmp);
+    } finally {
+        for seam in seams {
+            seam.stop();
+        }
+    }
+    return (raised, tmp);
+}
+
+
+"""A cold build of a large app can run longer than the limit while it keeps
+working. The limit is on silence, so a build that keeps printing is never cut
+off and restarted from scratch."""
+test "a client build that keeps printing outlives the time limit" {
+    project_dir = _app(_PARKED);
+    (raised, rec) = _with_paced_build(project_dir, 8, 0.4, True);
+    try {
+        assert raised is None , f"a working build was cut off: {raised}";
+        assert os.path.isfile(
+            os.path.join(project_dir, ".jac", "client", "dist", "index.html")
+        );
+    } finally {
+        shutil.rmtree(project_dir, ignore_errors=True);
+        shutil.rmtree(rec, ignore_errors=True);
+    }
+}
+
+
+"""A build that stops printing is still stopped at the limit, retried, and
+reported, so a hung build cannot hang the deploy."""
+test "a client build that goes silent is stopped at the time limit" {
+    project_dir = _app(_PARKED);
+    (raised, rec) = _with_paced_build(project_dir, 1, 3, False);
+    try {
+        assert isinstance(raised, RuntimeError) , raised;
+        assert "timed out" in str(raised) , str(raised);
+        assert not os.path.isfile(
+            os.path.join(project_dir, ".jac", "client", "dist", "index.html")
+        );
+    } finally {
+        shutil.rmtree(project_dir, ignore_errors=True);
+        shutil.rmtree(rec, ignore_errors=True);
+    }
+}
+
+
 test "a client entry parked by .jacignore fails the deploy, naming the pattern" {
     project_dir = _app(_PARKED + "main.jac\n");
     raised = None;

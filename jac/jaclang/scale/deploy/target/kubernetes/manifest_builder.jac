@@ -7,6 +7,7 @@ glob CONFIG_REVISION_ANNOTATION: str = "jac-scale.config-revision",
      _EXIT_CUSHION_S: int = 5,
      _CLIENT_BUILD_ATTEMPTS: int = 3,
      _CLIENT_BUILD_RETRY_PAUSE_S: int = 3,
+     _CLIENT_BUILD_QUIET_S: int = 900,
      _CLIENT_BUILD_ALONGSIDE_SEAL_GIB: int = 24,
      _DEP_INSTALL_TIMEOUT_S: int = 900,
      _TRANSIENT_CLIENT_BUILD_MARKERS: tuple[str, ...] = (

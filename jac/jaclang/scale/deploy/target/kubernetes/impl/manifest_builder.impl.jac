@@ -464,7 +464,7 @@ impl ManifestBuilder._build_client_bundle(project_dir: str) {
                     cwd=stage,
                     capture_output=True,
                     text=True,
-                    timeout=900,
+                    timeout=_CLIENT_BUILD_QUIET_S,
                     env=jac_env
                 );
             } except subprocess.TimeoutExpired {
