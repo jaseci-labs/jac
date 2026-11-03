@@ -2163,6 +2163,18 @@ impl MirLowering.lower_bool(nd: uni.BoolExpr) -> MirValue {
 }
 
 impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
+    if isinstance(nd.target, uni.Name) and nd.target.sym is not None {
+        missing_from = self.missing_import(nd.target);
+        if missing_from is not None {
+            refusal = mir_refusal("import", nd.target.value, nd.target, code="E1145");
+            refusal.detail = missing_from;
+            refusal.text = (
+                f"error[E1145]: Cannot import name '{nd.target.value}' from Jac module"
+                f" '{missing_from}': it defines no such name"
+            );
+            raise MirRefused(refusal);
+        }
+    }
     via_alias = self.alias_call(nd);
     if via_alias is not None {
         return via_alias;
@@ -4833,11 +4845,25 @@ impl MirLowering.missing_import_of(item: uni.ModuleItem) -> (str | None) {
         return None;
     }
     path = source.resolve_relative_path();
+    if path and not path.endswith(".jac") {
+        (_, native_path) = resolve_native_module(
+            source.dot_path_str,
+            os.path.dirname(self.module.loc.mod_path),
+            allow_inferred=False
+        );
+        path = native_path or "";
+    }
     if not path or not path.endswith(".jac") or not os.path.isfile(path) {
         return None;
     }
     hub = self.prog.mod.hub;
     bound = hub.get(os.path.realpath(path)) or hub.get(path);
+    if bound is None
+        and os.path.realpath(path) != os.path.realpath(self.module.loc.mod_path) {
+        bound = self.prog.load_dependency_module(
+            path, importer_path=self.module.loc.mod_path, need_tree=True
+        );
+    }
     if not isinstance(bound, uni.Module) {
         return None;
     }

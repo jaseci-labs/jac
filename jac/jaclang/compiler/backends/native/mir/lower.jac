@@ -377,6 +377,7 @@ obj MirLowering {
         class_entries: list[tuple[str, str, str]] = [],
         deferred_globals: list[tuple[MirGlobal, uni.Expr]] = [],
         entry_globals: dict[int, set[int]] = {},
+        missing_imports: dict[int, (str | None)] = {},
         class_inits: list[tuple[int, str]] = [],
         class_global_refusals: dict[str, MirRefused] = {},
         nested: list[MirFunction] = [],
@@ -619,6 +620,7 @@ obj MirLowering {
     def global_declaration(sym: uni.Symbol) -> (uni.Assignment | None);
     def entry_global(assign: uni.Assignment, sym: uni.Symbol) -> bool;
     def missing_import(nd: uni.Name) -> (str | None);
+    def missing_import_of(item: uni.ModuleItem) -> (str | None);
     def runtime(name: str, args: list[MirValue]) -> (MirValue | None);
     def temp_slot(type: MirType) -> MirValue;
     def spill(value: MirValue) -> MirValue;
