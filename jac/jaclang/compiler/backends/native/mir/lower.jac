@@ -79,6 +79,7 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      TUPLE_BOX_MEMBERS: int = 8,
      NO_VALUE_KIND: int = -1,
      C_CALLING_CONVENTIONS: dict[str, str] = {"__preserve_none": "preserve_nonecc"},
+     HEAP_ROUTINES: tuple[str, ...] = ("malloc", "calloc", "realloc", "free"),
      LIST_INDEX_MESSAGE: str = "list index out of range",
      LIST_ASSIGN_MESSAGE: str = "list assignment index out of range",
      POP_EMPTY_MESSAGE: str = "pop from empty list",
@@ -510,6 +511,7 @@ obj MirLowering {
     def place_elem(place: MirValue) -> MirType;
     def lower_trailer(nd: uni.AtomTrailer) -> MirValue;
     def call_name(nd: uni.FuncCall) -> str;
+    def heap_routine(symbol: str, callee: uni.Ability) -> str;
     def c_extern(
         callee: uni.Ability, site: uni.UniNode
     ) -> tuple[str, list[tuple[MirType, str]], MirType, str, bool];

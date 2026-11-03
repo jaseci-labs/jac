@@ -3667,6 +3667,7 @@ impl MirLowering.c_extern(
         or not isinstance(sig, uni.FuncSignature) {
         raise MirRefused(mir_refusal("C call", symbol, site));
     }
+    symbol = self.heap_routine(symbol, callee);
     declared = sig.get_parameters();
     fixed = [
         pv
@@ -3707,6 +3708,20 @@ impl MirLowering.c_extern(
         cc=self.c_convention(callee)
     );
     return (symbol, plans, ret, ret_plan, variadic);
+}
+
+impl MirLowering.heap_routine(symbol: str, callee: uni.Ability) -> str {
+    heap = self.prog.options.native_heap;
+    if not heap
+        or symbol not in HEAP_ROUTINES
+        or (self.prog.options.na_gc_mode or "cycles") == "none" {
+        return symbol;
+    }
+    home = callee.find_parent_of_type(uni.Module);
+    if home is None or home.loc is None or not is_kernel_unit_path(home.loc.mod_path) {
+        return symbol;
+    }
+    return f"{heap}_{symbol}";
 }
 
 impl MirLowering.mark_threaded {
