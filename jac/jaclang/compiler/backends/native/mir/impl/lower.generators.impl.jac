@@ -1469,6 +1469,9 @@ impl MirLowering.iter_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) 
     if name in ("sum", "any", "all") and len(args) == 1 {
         return self.builtin_fold(nd, name, args[0]);
     }
+    if name == "sum" and len(args) == 2 {
+        return self.builtin_fold(nd, name, args[0], args[1]);
+    }
     return None;
 }
 
@@ -1654,13 +1657,13 @@ impl MirLowering.keyed_sort(
 }
 
 impl MirLowering.builtin_fold(
-    nd: uni.FuncCall, name: str, source: uni.Expr
+    nd: uni.FuncCall, name: str, source: uni.Expr, start: (uni.Expr | None) = None
 ) -> MirValue {
     b = self.builder();
     fn = self.st().fn;
     wanted = self.expr_type(nd);
     result_type = wanted if name == "sum" else mir_bool();
-    if name == "sum" and wanted.kind == MirKind.ANY {
+    if name == "sum" and wanted.kind == MirKind.ANY and start is None {
         source_type = self.expr_type(source);
         if source_type.kind in (MirKind.LIST, MirKind.SET, MirKind.ITER)
             and source_type.args
@@ -1673,7 +1676,10 @@ impl MirLowering.builtin_fold(
         if not result_type.is_numeric() {
             raise MirRefused(mir_refusal("call", f"sum to {result_type.render()}", nd));
         }
-        b.store(held, self.coerce(b.const_int(0, mir_int()), result_type, nd));
+        initial = self.lower_expr(start)
+            if start is not None
+            else b.const_int(0, mir_int());
+        b.store(held, self.coerce(initial, result_type, start or nd));
     } else {
         b.store(held, b.const_bool(name == "all"));
     }
