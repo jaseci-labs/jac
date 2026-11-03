@@ -7,7 +7,7 @@ targets, called **codespaces**:
 
 | Codespace | Selector | Backend output | Runs on |
 |-----------|----------|----------------|---------|
-| **Server** | Inferred; the default, anchored by python imports, graph archetypes, and typed context blocks; `[placement.pins]` override | Python AST → CPython bytecode | CPython |
+| **Server** | Inferred; the default, anchored by python imports, `root` access, and typed context blocks; `[placement.pins]` override | Python AST → CPython bytecode | CPython |
 | **Client** | **Inferred** from client-only syntax (JSX, browser globals, string-path npm imports) and symbol references; `[placement.pins]` override or a `.jac` implementation-variant file | ESTree → JavaScript | Browsers / Node |
 | **Native** | **Inferred** -- whole modules by the placement solver's verdict under the native default codespace, elements from extern-decl (C-ABI FFI) imports and their users; `[placement.pins]` override, or forced module-wide by `jac build <file> --native` / `CompileOptions(force_codespace='native')` | LLVM IR → object code → executable | Bare machine (Linux / macOS, x86_64 / arm64) |
 
