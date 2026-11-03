@@ -123,6 +123,9 @@ impl MirLowering.stdlib_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
 impl MirLowering.class_attr_entry(
     arch: uni.Archetype, name: str
 ) -> (tuple[uni.Archetype, uni.Name, uni.Expr] | None) {
+    if self.arch_is_enum(arch) {
+        return None;
+    }
     for holder in self.lineage(arch) {
         for member in list(ModuleFacts.unwrap_body(holder) or []) {
             if isinstance(member, uni.ArchHas) and member.is_static {
@@ -150,6 +153,14 @@ impl MirLowering.class_attr_entry(
     return None;
 }
 
+impl MirLowering.arch_is_enum(arch: uni.Archetype) -> bool {
+    sym = arch.name.sym if arch.name is not None else None;
+    made = self.prog.get_type_evaluator().get_type_of_symbol(sym)
+        if sym is not None
+        else None;
+    return is_enum_class_type(made);
+}
+
 impl MirLowering.class_constant(arch: uni.Archetype, name: str) -> (uni.Expr | None) {
     found = self.class_attr_entry(arch, name);
     return found[2] if found is not None else None;
@@ -166,6 +177,10 @@ impl MirLowering.class_global(
             f"{archetype_native_name(holder)}.{target.value}.__cls", path
         )
     );
+    refused = self.class_global_refusals.get(symbol);
+    if refused is not None {
+        raise refused;
+    }
     held = self.mir.globals.get(symbol);
     if held is not None {
         return held;
@@ -179,7 +194,9 @@ impl MirLowering.class_global(
     );
     self.mir.globals[symbol] = held;
     if local {
-        self.deferred_globals.append((held, value));
+        self.class_global_init(
+            held, f"{archetype_native_name(holder)}.{target.value}", value
+        );
     } else {
         unit = os.path.realpath(path);
         if unit not in self.mir.deps {
@@ -189,8 +206,42 @@ impl MirLowering.class_global(
     return held;
 }
 
+impl MirLowering.class_global_init(
+    held: MirGlobal, label: str, value: uni.Expr
+) -> None {
+    fn = MirFunction(
+        name="__cls_init", symbol=held.symbol + "_init", ret=mir_none(), linkage="internal"
+    );
+    first = fn.new_block("entry");
+    (outer_state, outer_current) = (self.state, self.current);
+    self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
+    self.current = label;
+    try {
+        for used in value.get_all_sub_nodes(uni.Name) {
+            self.declare_global(used);
+        }
+        b = self.builder();
+        place = self.emit_value(
+            MirOp.GLOBAL_ADDR, mir_c_ptr(held.type), [], str_value=held.symbol
+        );
+        b.store(place, self.coerce(self.lower_expr(value), held.type, value));
+        b.ret(None);
+        self.mir.functions.append(fn);
+        self.class_inits.append((value.loc.pos_start, fn.symbol));
+    } except MirRefused as err {
+        del self.mir.globals[held.symbol];
+        self.class_global_refusals[held.symbol] = err;
+        raise err;
+    } finally {
+        (self.state, self.current) = (outer_state, outer_current);
+    }
+}
+
 impl MirLowering.declare_class_globals {
     for arch in self.module_archetypes() {
+        if self.arch_is_enum(arch) {
+            continue;
+        }
         for member in list(ModuleFacts.unwrap_body(arch) or []) {
             entries: list[tuple[uni.Name, uni.Expr]] = [];
             if isinstance(member, uni.ArchHas) and member.is_static {
@@ -351,7 +402,8 @@ impl MirLowering.class_dispatch(
 impl MirLowering.instance_class_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
     if not nd.is_attr
         or not isinstance(nd.right, uni.Name)
-        or not isinstance(nd.target, uni.Expr) {
+        or not isinstance(nd.target, uni.Expr)
+        or not isinstance(nd.target.type, (ClassType, UnionType)) {
         return None;
     }
     target_type = self.expr_type(nd.target);

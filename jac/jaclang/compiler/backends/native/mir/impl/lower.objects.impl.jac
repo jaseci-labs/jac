@@ -1620,6 +1620,7 @@ impl MirLowering.isinstance_check(value: MirValue, arch: uni.Archetype) -> MirVa
 impl MirLowering.lower_module_init -> (MirFunction | None) {
     if not self.trace_pairs
         and not self.deferred_globals
+        and not self.class_inits
         and not self.osp_setup
         and not self.class_entries
         and not self.text_pairs {
@@ -1701,13 +1702,19 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
             }
             index += 1;
         }
-        ordered = sorted(
-            self.deferred_globals,
-            key=lambda (pair: tuple[MirGlobal, uni.Expr]) -> int { pair[
-                1
-            ].loc.pos_start; }
+        steps: list[tuple[int, int]] = [
+            (initial.loc.pos_start, at)
+            for (at, (_, initial)) in enumerate(self.deferred_globals)
+        ];
+        steps.extend(
+            [(start, -1 - at) for (at, (start, _)) in enumerate(self.class_inits)]
         );
-        for (glob_def, initial) in ordered {
+        for (_, at) in sorted(steps) {
+            if at < 0 {
+                b.call(self.class_inits[-1 - at][1], [], mir_none());
+                continue;
+            }
+            (glob_def, initial) = self.deferred_globals[at];
             place = self.emit_value(
                 MirOp.GLOBAL_ADDR,
                 mir_c_ptr(glob_def.type),

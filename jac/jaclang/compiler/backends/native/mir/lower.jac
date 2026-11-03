@@ -306,6 +306,8 @@ obj MirLowering {
         text_regs: dict[str, tuple[MirBlock, list[MirInstr]]] = {},
         class_entries: list[tuple[str, str, str]] = [],
         deferred_globals: list[tuple[MirGlobal, uni.Expr]] = [],
+        class_inits: list[tuple[int, str]] = [],
+        class_global_refusals: dict[str, MirRefused] = {},
         nested: list[MirFunction] = [],
         adapters: dict[str, str] = {},
         fn_values: dict[int, MirDecl] = {},
@@ -1192,12 +1194,14 @@ obj MirLowering {
         arch: uni.Archetype, name: str
     ) -> (tuple[uni.Archetype, uni.Name, uni.Expr] | None);
 
+    def arch_is_enum(arch: uni.Archetype) -> bool;
     def class_constant(arch: uni.Archetype, name: str) -> (uni.Expr | None);
     def class_global(
         holder: uni.Archetype, target: uni.Name, value: uni.Expr
     ) -> MirGlobal;
 
     def declare_class_globals;
+    def class_global_init(held: MirGlobal, label: str, value: uni.Expr) -> None;
     def class_value_of(
         arch: uni.Archetype, name: str, wanted: MirType, site: uni.UniNode
     ) -> (MirValue | None);
