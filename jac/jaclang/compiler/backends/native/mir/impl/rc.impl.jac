@@ -110,7 +110,7 @@ impl MirRcState.rewrite(blk: MirBlock) {
             self.release_slots();
             self.released_early = True;
         }
-        if instr.op == MirOp.STORE and instr.sub == "forget" {
+        if instr.op == MirOp.STORE and instr.sub == "vacated" {
             self.out.append(instr);
         } elif instr.op == MirOp.STORE
             and instr.operands[0].is_slot
@@ -456,7 +456,7 @@ impl MirRcState.move_temps(blk: MirBlock) {
             if ending > index + 1 {
                 cleared = instrs.pop(ending);
                 empty = instrs.pop(ending - 1);
-                cleared.sub = "forget";
+                cleared.sub = "vacated";
                 instrs.insert(index + 1, cleared);
                 instrs.insert(index + 1, empty);
                 instr.operands[1].owned = True;
