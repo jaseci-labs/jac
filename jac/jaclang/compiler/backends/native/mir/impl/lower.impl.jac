@@ -1527,6 +1527,28 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         return self.c_pin(nd);
     }
     callee = nd.callee_decl;
+    if callee is not None
+        and contextmanager_ability(callee)
+        and self.manager_item is not nd {
+        raise MirRefused(
+            mir_refusal(
+                "call",
+                f"@contextmanager {self.name_of(callee)} outside a with item"
+                    if isinstance(callee, uni.Ability)
+                    else "@contextmanager call outside a with item",
+                nd,
+                "A native @contextmanager generator is entered only as a with item."
+            )
+        );
+    }
+    if isinstance(nd.target, uni.Name)
+        and nd.target.value == "cast"
+        and (callee is None or callee.loc.mod_path.endswith(".pyi"))
+        and len(self.call_args(nd)) == 2 {
+        value = self.lower_expr(self.call_args(nd)[1]);
+        wanted = self.expr_type(nd);
+        return value if value.type is wanted else self.coerce(value, wanted, nd);
+    }
     if isinstance(callee, uni.Ability) and self.template_of(callee) {
         owner = callee.find_parent_of_type(uni.Archetype);
         if owner is not None
@@ -1723,6 +1745,9 @@ impl MirLowering.truthy(value: MirValue, site: uni.UniNode) -> MirValue {
     }
     if value.type.kind == MirKind.NONE {
         return b.const_bool(False);
+    }
+    if value.type.kind == MirKind.TUPLE {
+        return b.const_bool(len(value.type.args) > 0);
     }
     if value.type.kind == MirKind.OPT {
         (held, payload, absent, done) = self.opt_begin(value, mir_bool());
@@ -2589,6 +2614,10 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
     if via_accessor is not None {
         return via_accessor;
     }
+    via_class_attr = self.instance_class_attr(nd);
+    if via_class_attr is not None {
+        return via_class_attr;
+    }
     if not nd.is_attr
         and isinstance(nd.right, uni.IndexSlice)
         and isinstance(nd.target, uni.Expr)
@@ -2921,6 +2950,50 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
         value = self.intrinsic_operand(args[0], found.param_specs[0]);
         return self.emit_value(MirOp.BITCAST, result_type, [value]);
     }
+    if dispatch == IntrinsicDispatch.BUFFER_DATA {
+        held = self.spill(self.lower_expr(args[0]));
+        if held.type.kind not in (MirKind.BYTES, MirKind.BYTEARRAY) {
+            raise MirRefused(
+                mir_refusal("intrinsic", f"{name} of {held.type.render()}", nd)
+            );
+        }
+        (data, _) = self.byte_parts(held);
+        return self.emit_value(MirOp.PTR_INT, mir_int(), [data]);
+    }
+    if dispatch == IntrinsicDispatch.LIST_DATA {
+        held = self.spill(self.lower_expr(args[0]));
+        if held.type.kind != MirKind.LIST {
+            raise MirRefused(
+                mir_refusal("intrinsic", f"{name} of {held.type.render()}", nd)
+            );
+        }
+        return self.emit_value(
+            MirOp.MEM_LOAD,
+            mir_int(),
+            [
+                self.builder().binary(
+                    "add",
+                    self.address_of(held),
+                    self.builder().const_int(16, mir_int())
+                )
+            ]
+        );
+    }
+    if dispatch == IntrinsicDispatch.STR_DATA {
+        text = self.spill(self.as_text(self.lower_expr(args[0])));
+        return self.emit_value(
+            MirOp.PTR_INT, mir_int(), [self.builder().str_part(text, "data")]
+        );
+    }
+    if dispatch == IntrinsicDispatch.REF_ADDR {
+        held = self.lower_expr(args[0]);
+        if not mir_holds_ref(held.type) {
+            raise MirRefused(
+                mir_refusal("intrinsic", f"{name} of {held.type.render()}", nd)
+            );
+        }
+        return self.address_of(self.spill(held));
+    }
     if dispatch == IntrinsicDispatch.ATOMIC_FENCE {
         order = self.memory_order(nd, args[0], "fence");
         return self.emit_value(MirOp.FENCE, mir_none(), [], str_value=order);
@@ -3078,6 +3151,12 @@ impl MirLowering.method_call(
         and target.target.value == "super" {
         return self.super_call(nd, right.value);
     }
+    if isinstance(target.target, uni.FuncCall)
+        and isinstance(target.target.target, uni.Name)
+        and target.target.target.value == "super"
+        and not list(target.target.params or []) {
+        return self.super_call(nd, right.value);
+    }
     if right.value == "wrap" and self.sized_type_name(target.target) is not None {
         return self.sized_wrap(nd, self.sized_type_name(target.target) or "");
     }
@@ -3085,6 +3164,32 @@ impl MirLowering.method_call(
         and isinstance(target.target.type, ModuleType)
         and target.target.type.mod_name == "struct" {
         return self.struct_call(nd, right.value);
+    }
+    if isinstance(target.target, uni.Name)
+        and isinstance(target.target.type, ModuleType)
+        and target.target.type.mod_name == "copy"
+        and right.value == "copy"
+        and len(self.call_args(nd)) == 1 {
+        value = self.lower_expr(self.call_args(nd)[0]);
+        if value.type.kind == MirKind.OBJ {
+            return self.object_copy(value, nd);
+        }
+        if value.type.kind in (MirKind.LIST, MirKind.SET) {
+            made = self.spill(
+                self.new_list(value.type.payload(), 4)
+                    if value.type.kind == MirKind.LIST
+                    else self.new_dict(value.type.payload(), None, value.type)
+            );
+            self.extend_from(made, self.spill(value), nd);
+            return made;
+        }
+        if value.type.kind == MirKind.DICT {
+            made = self.spill(
+                self.new_dict(value.type.args[0], value.type.args[1], value.type)
+            );
+            self.merge_dict(made, self.spill(value), nd, False);
+            return made;
+        }
     }
     if isinstance(target.target, uni.Name)
         and isinstance(target.target.type, ModuleType)

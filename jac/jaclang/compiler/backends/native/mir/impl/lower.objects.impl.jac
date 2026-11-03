@@ -458,6 +458,117 @@ impl MirLowering.constructor_params(
     return found;
 }
 
+impl MirLowering.object_alloc(
+    arch: uni.Archetype, obj_def: MirObjectDef, self_type: MirType
+) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    size = fn.new_value(mir_int());
+    b.emit(MirInstr(op=MirOp.SIZEOF, result=size, type_arg=self_type));
+    raw = self.runtime("__jac_rt_alloc_zeroed", [size]);
+    if raw is None {
+        raise MirRefused(mir_refusal("constructor", obj_def.name, arch));
+    }
+    made = b.ref_cast(raw, self_type, True);
+    held = self.temp_slot(self_type);
+    b.store(held, made);
+    this = b.load(held, self_type);
+    self.runtime(
+        "__jac_rt_set_type",
+        [
+            this,
+            self.emit_value(
+                MirOp.CLASS_ADDR,
+                mir_c_ptr(mir_int(8, False)),
+                [],
+                str_value=obj_def.name
+            )
+        ]
+    );
+    address = self.address_of(this);
+    drop_address = self.emit_value(
+        MirOp.PTR_INT,
+        mir_int(),
+        [
+            self.emit_value(
+                MirOp.FN_ADDR,
+                mir_c_fn([mir_c_ptr(mir_int(8, False))], mir_none()),
+                [],
+                callee=obj_def.drop_symbol
+            )
+        ]
+    );
+    self.emit_value(
+        MirOp.MEM_STORE,
+        mir_none(),
+        [b.binary("sub", address, b.const_int(8, mir_int())), drop_address]
+    );
+    if obj_def.vtable_slot >= 0 {
+        slot = self.emit_value(
+            MirOp.FIELD_ADDR,
+            mir_c_ptr(mir_c_ptr(mir_c_ptr(mir_int(8, False)))),
+            [this],
+            int_value=obj_def.vtable_slot
+        );
+        b.store(
+            slot,
+            self.emit_value(
+                MirOp.VTABLE_ADDR,
+                mir_c_ptr(mir_c_ptr(mir_int(8, False))),
+                [],
+                str_value=obj_def.name
+            )
+        );
+    }
+    return this;
+}
+
+impl MirLowering.object_copy(value: MirValue, site: uni.UniNode) -> MirValue {
+    arch = self.archetypes.get(value.type.name)
+        if value.type.kind == MirKind.OBJ
+        else None;
+    obj_def = self.mir.objects.get(value.type.name)
+        if value.type.kind == MirKind.OBJ
+        else None;
+    owner = arch.find_parent_of_type(uni.Module) if arch is not None else None;
+    registry = get_layout_registry(owner or self.module, self.prog);
+    sealed = obj_def is not None
+        and not any(
+            obj_def.name in list(other.parents or [])
+            for other in registry.layouts.values()
+        );
+    if arch is None or obj_def is None or not sealed or obj_def.tag_slot >= 0 {
+        raise MirRefused(
+            mir_refusal(
+                "call",
+                f"copy of {value.type.render()}",
+                site,
+                "A native shallow copy is of an archetype that has no subclasses."
+            )
+        );
+    }
+    b = self.builder();
+    source = self.spill(value);
+    made = self.object_alloc(arch, obj_def, value.type);
+    for member in obj_def.fields {
+        b.store(
+            self.emit_value(
+                MirOp.FIELD_ADDR, mir_c_ptr(member.type), [made], int_value=member.index
+            ),
+            b.load(
+                self.emit_value(
+                    MirOp.FIELD_ADDR,
+                    mir_c_ptr(member.type),
+                    [source],
+                    int_value=member.index
+                ),
+                member.type
+            )
+        );
+    }
+    return made;
+}
+
 impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) {
     obj_def = self.object_def(arch);
     self_type = mir_obj(obj_def.name);
@@ -490,63 +601,7 @@ impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) 
                 );
             }
         }
-        size = fn.new_value(mir_int());
-        b.emit(MirInstr(op=MirOp.SIZEOF, result=size, type_arg=self_type));
-        raw = self.runtime("__jac_rt_alloc_zeroed", [size]);
-        if raw is None {
-            raise MirRefused(mir_refusal("constructor", obj_def.name, arch));
-        }
-        made = b.ref_cast(raw, self_type, True);
-        held = self.temp_slot(self_type);
-        b.store(held, made);
-        this = b.load(held, self_type);
-        self.runtime(
-            "__jac_rt_set_type",
-            [
-                this,
-                self.emit_value(
-                    MirOp.CLASS_ADDR,
-                    mir_c_ptr(mir_int(8, False)),
-                    [],
-                    str_value=obj_def.name
-                )
-            ]
-        );
-        address = self.address_of(this);
-        drop_address = self.emit_value(
-            MirOp.PTR_INT,
-            mir_int(),
-            [
-                self.emit_value(
-                    MirOp.FN_ADDR,
-                    mir_c_fn([mir_c_ptr(mir_int(8, False))], mir_none()),
-                    [],
-                    callee=obj_def.drop_symbol
-                )
-            ]
-        );
-        self.emit_value(
-            MirOp.MEM_STORE,
-            mir_none(),
-            [b.binary("sub", address, b.const_int(8, mir_int())), drop_address]
-        );
-        if obj_def.vtable_slot >= 0 {
-            slot = self.emit_value(
-                MirOp.FIELD_ADDR,
-                mir_c_ptr(mir_c_ptr(mir_c_ptr(mir_int(8, False)))),
-                [this],
-                int_value=obj_def.vtable_slot
-            );
-            b.store(
-                slot,
-                self.emit_value(
-                    MirOp.VTABLE_ADDR,
-                    mir_c_ptr(mir_c_ptr(mir_int(8, False))),
-                    [],
-                    str_value=obj_def.name
-                )
-            );
-        }
+        this = self.object_alloc(arch, obj_def, self_type);
         self.osp_header(this, obj_def);
         init = self.find_method(arch, "init") or self.find_method(arch, "__init__");
         if init is None {
@@ -1493,6 +1548,15 @@ impl MirLowering.class_isinstance(value: MirValue, kind: MirValue) -> MirValue {
 
 impl MirLowering.class_of(value: MirValue, site: uni.UniNode) -> MirValue {
     b = self.builder();
+    if value.type.kind == MirKind.OPT {
+        (held, payload, absent, done) = self.opt_begin(value, mir_class("*"));
+        self.opt_switch(held, self.class_of(payload, site), absent, done);
+        return self.opt_end(
+            held,
+            self.emit_value(MirOp.CSTR, mir_class("*"), [], str_value="NoneType"),
+            done
+        );
+    }
     if value.type.kind != MirKind.OBJ {
         return self.type_value(value, site);
     }
@@ -2118,14 +2182,6 @@ impl MirLowering.union_accessor_get(nd: uni.AtomTrailer) -> (MirValue | None) {
     done = fn.new_block("uacc.done");
     for (index, arch) in enumerate(members) {
         bound = found[index];
-        if bound is None {
-            raise MirRefused(
-                mir_refusal(
-                    "accessor", f"{archetype_native_name(arch)}.{nd.right.value}", nd
-                )
-            );
-        }
-        (owner, decl) = bound;
         view = held
             if held.type is self.object_type(arch)
             else b.ref_cast(held, self.object_type(arch), False);
@@ -2142,12 +2198,19 @@ impl MirLowering.union_accessor_get(nd: uni.AtomTrailer) -> (MirValue | None) {
             );
             b.position(hit);
         }
-        made = self.invoke_method(
-            decl,
-            owner,
-            self.decl_label(decl),
-            [self.method_receiver(decl, owner, view, nd)]
-        );
+        made: MirValue = view;
+        if bound is None {
+            place = self.field_place(view, arch, nd.right.value, nd);
+            made = b.load(place, self.place_elem(place));
+        } else {
+            (owner, decl) = bound;
+            made = self.invoke_method(
+                decl,
+                owner,
+                self.decl_label(decl),
+                [self.method_receiver(decl, owner, view, nd)]
+            );
+        }
         b.store(result, self.coerce(made, wanted, nd));
         b.branch(done);
         if miss is not None {

@@ -4,10 +4,17 @@ impl MirLowering.elem_kind(t: MirType, site: uni.UniNode) -> int {
         return KIND_INT;
     }
     if t.kind == MirKind.OPT {
+        if t.payload().kind in (MirKind.STR, MirKind.STR_REF) {
+            return KIND_STR;
+        }
+        if t.payload().kind == MirKind.TUPLE {
+            self.elem_kind(t.payload(), site);
+            return KIND_TUPLE;
+        }
         if not self.nullable_payload(t.payload()) {
             raise MirRefused(mir_refusal("container element", t.render(), site));
         }
-        return KIND_STR if t.payload().kind == MirKind.STR_REF else KIND_REF;
+        return KIND_REF;
     }
     if t.kind == MirKind.TUPLE {
         for member in t.args {
@@ -92,6 +99,16 @@ impl MirLowering.to_bits(
     if elem.kind == MirKind.ANY {
         return self.address_of(self.any_to_box(value, site));
     }
+    if elem.kind == MirKind.OPT
+        and elem.payload().kind in (MirKind.STR, MirKind.TUPLE) {
+        (bits_slot, payload, absent, done) = self.opt_begin(
+            self.coerce(value, elem, site), mir_int()
+        );
+        self.opt_switch(
+            bits_slot, self.to_bits(payload, elem.payload(), site), absent, done
+        );
+        return self.opt_end(bits_slot, b.const_int(0, mir_int()), done);
+    }
     if elem.kind == MirKind.OPT {
         boxed_opt = self.spill(self.coerce(value, elem, site));
         return b.select(
@@ -151,6 +168,37 @@ impl MirLowering.owned_element(handle: MirValue, elem: MirType) -> MirValue {
     b = self.builder();
     if elem.kind == MirKind.ANY {
         return self.any_from_box(handle);
+    }
+    if elem.kind == MirKind.OPT
+        and elem.payload().kind in (MirKind.STR, MirKind.STR_REF, MirKind.TUPLE) {
+        fn = self.st().fn;
+        result = self.temp_slot(elem);
+        some = fn.new_block("optel.some");
+        none_bb = fn.new_block("optel.none");
+        done = fn.new_block("optel.done");
+        b.cond_branch(
+            b.compare("ne", self.address_of(handle), b.const_int(0, mir_int())),
+            some,
+            none_bb
+        );
+        b.position(some);
+        b.store(
+            result,
+            self.opt_wrap(
+                self.coerce(
+                    self.owned_element(handle, elem.payload()),
+                    elem.payload(),
+                    self.module
+                ),
+                elem
+            )
+        );
+        b.branch(done);
+        b.position(none_bb);
+        b.store(result, b.const_null(elem));
+        b.branch(done);
+        b.position(done);
+        return b.load(result, elem);
     }
     if elem.kind == MirKind.OPT {
         present = b.compare("ne", self.address_of(handle), b.const_int(0, mir_int()));
@@ -464,9 +512,9 @@ impl MirLowering.merge_dict(
     self.each_end(head, after);
 }
 
-impl MirLowering.list_slice(
+impl MirLowering.list_bounds(
     lst: MirValue, part: uni.Slice, site: uni.UniNode
-) -> MirValue {
+) -> tuple[MirValue, MirValue, MirValue] {
     b = self.builder();
     size = self.container_len(lst);
     step = b.const_int(1, mir_int());
@@ -499,16 +547,18 @@ impl MirLowering.list_slice(
         clamped_low = b.select(b.compare("lt", shifted, low), low, shifted);
         bounds.append(b.select(b.compare("gt", clamped_low, high), high, clamped_low));
     }
+    return (bounds[0], bounds[1], step);
+}
+
+impl MirLowering.list_slice(
+    lst: MirValue, part: uni.Slice, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    (start, stop, step) = self.list_bounds(lst, part, site);
     elem = lst.type.payload();
     handle = self.runtime(
         "__jac_rt_list_slice",
-        [
-            lst,
-            bounds[0],
-            bounds[1],
-            step,
-            b.const_int(self.elem_kind(elem, site), mir_int())
-        ]
+        [lst, start, stop, step, b.const_int(self.elem_kind(elem, site), mir_int())]
     );
     if handle is None {
         raise MirRefused(mir_refusal("slice", lst.type.render(), site));
@@ -1402,6 +1452,13 @@ impl MirLowering.lower_delete(nd: uni.DeleteStmt) {
         }
         holder = self.lower_expr(target.target);
         slice = target.right;
+        if holder.type.kind == MirKind.LIST
+            and slice.is_range
+            and len(slice.slices) == 1
+            and slice.slices[0].step is None {
+            self.list_delete_range(self.spill(holder), slice.slices[0], target);
+            continue;
+        }
         if len(slice.slices) != 1 or slice.is_range or slice.slices[0].start is None {
             raise MirRefused(mir_refusal("statement", "del of a slice", target));
         }
@@ -1442,6 +1499,28 @@ impl MirLowering.lower_delete(nd: uni.DeleteStmt) {
             mir_refusal("statement", "del on " + holder.type.render(), target)
         );
     }
+}
+
+impl MirLowering.list_delete_range(lst: MirValue, part: uni.Slice, site: uni.UniNode) {
+    b = self.builder();
+    (start, stop, _) = self.list_bounds(lst, part, site);
+    kind = b.const_int(self.elem_kind(lst.type.payload(), site), mir_int());
+    one = b.const_int(1, mir_int());
+    head = self.runtime(
+        "__jac_rt_list_slice", [lst, b.const_int(0, mir_int()), start, one, kind]
+    );
+    resume = b.select(b.compare("lt", stop, start), start, stop);
+    tail = self.runtime(
+        "__jac_rt_list_slice", [lst, resume, self.container_len(lst), one, kind]
+    );
+    if head is None or tail is None {
+        raise MirRefused(mir_refusal("statement", "del of a slice", site));
+    }
+    kept_head = self.spill(b.ref_cast(head, lst.type, True));
+    kept_tail = self.spill(b.ref_cast(tail, lst.type, True));
+    self.runtime("__jac_rt_list_clear", [lst, kind]);
+    self.runtime("__jac_rt_list_extend", [lst, kept_head, kind]);
+    self.runtime("__jac_rt_list_extend", [lst, kept_tail, kind]);
 }
 
 impl MirLowering.container_rebuild(

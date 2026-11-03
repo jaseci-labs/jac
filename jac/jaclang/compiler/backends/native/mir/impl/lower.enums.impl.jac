@@ -319,6 +319,19 @@ impl MirLowering.enum_call(nd: uni.FuncCall) -> (MirValue | None) {
     if value.type is result_type {
         return value;
     }
+    if value.type.kind == MirKind.ANY {
+        value = self.any_unbox(
+            value, mir_str() if layout.is_string_enum else mir_int(), nd
+        );
+    }
+    if value.type.kind == MirKind.STR_REF {
+        value = self.as_text(value);
+    }
+    if value.type.kind == MirKind.ENUM {
+        value = self.coerce(value, mir_str(), nd)
+            if layout.is_string_enum
+            else self.enum_as_int(value, nd);
+    }
     if layout.is_string_enum {
         if value.type.kind != MirKind.STR {
             raise MirRefused(

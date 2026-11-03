@@ -151,6 +151,30 @@ impl MirLowering.generic_call(
     receiver: (MirValue | None),
     owner: (uni.Archetype | None)
 ) -> MirValue {
+    method_owner = ab.find_parent_of_type(uni.Archetype);
+    if receiver is None
+        and method_owner is not None
+        and not ab.is_static
+        and isinstance(nd.target, uni.AtomTrailer)
+        and nd.target.is_attr
+        and isinstance(nd.target.target, uni.Expr) {
+        held_type = nd.target.target.type;
+        if not (isinstance(held_type, ClassType) and not held_type.is_instance()) {
+            owner = self.holder_arch(nd.target.target) or method_owner;
+            receiver = self.lower_expr(nd.target.target);
+        }
+    }
+    if receiver is None and method_owner is not None and not ab.is_static {
+        raise MirRefused(
+            mir_refusal(
+                "method",
+                f"{archetype_native_name(method_owner)}.{self.name_of(
+                    ab
+                )} without a receiver",
+                nd
+            )
+        );
+    }
     name = self.name_of(ab);
     sig = self.ability_sig(ab);
     if sig is None {
@@ -212,7 +236,12 @@ impl MirLowering.generic_call(
     }
     values = self.bound_values(list(bound), decl.params);
     if receiver is not None {
-        values.insert(0, receiver);
+        values.insert(
+            0,
+            self.coerce(receiver, decl.self_type, nd)
+                if decl.self_type is not None
+                else receiver
+        );
     }
     result = self.builder().call(decl.symbol, values, decl.ret);
     if result is None {
