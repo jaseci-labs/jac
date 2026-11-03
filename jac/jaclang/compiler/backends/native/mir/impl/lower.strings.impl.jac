@@ -122,6 +122,28 @@ impl MirLowering.codec_arg(
         return self.builder().const_int(0, mir_int());
     }
     name = self.literal_text(arg);
+    if name is None and isinstance(arg, uni.Expr) {
+        b = self.builder();
+        text = self.spill(self.as_text(self.lower_expr(arg)));
+        chosen = b.const_int(-1, mir_int());
+        for (key, ident) in table.items() {
+            for spelled in {
+                key,
+                key.upper(),
+                key.replace("-", "_"),
+                key.replace("-", "_").upper()
+            } {
+                hit = self.str_compare("eq", text, b.const_str(spelled, mir_str()));
+                chosen = b.select(hit, b.const_int(ident, mir_int()), chosen);
+            }
+        }
+        self.raise_if(
+            b.compare("lt", chosen, b.const_int(0, mir_int())),
+            "LookupError",
+            "unknown encoding or error handler"
+        );
+        return chosen;
+    }
     if name is None {
         raise MirRefused(
             mir_refusal(
@@ -423,6 +445,16 @@ impl MirLowering.text_method(
                     b.str_part(affix, "len"),
                     b.const_bool(name == "removesuffix")
                 ]
+            )
+        );
+    }
+    if name == "expandtabs" {
+        tab_nd = self.bind_args(nd, ["tabsize"])[0];
+        tabsize = self.int_arg(tab_nd, 8);
+        return self.owned_text(
+            self.call_rt(
+                "__jac_rt_str_expandtabs",
+                [b.str_part(text, "data"), b.str_part(text, "len"), tabsize]
             )
         );
     }
@@ -1051,11 +1083,7 @@ impl MirLowering.bytes_method(
         );
     } elif name in TEXT_STRIPS {
         chars_nd = self.bind_args(nd, ["chars"])[0];
-        (chars_data, chars_len) = self.text_const("");
-        supplied = self.present(chars_nd);
-        if supplied {
-            (chars_data, chars_len) = self.bytes_arg(chars_nd, nd);
-        }
+        (chars_data, chars_len, supplied_flag) = self.optional_bytes_arg(chars_nd, nd);
         (data, size) = self.byte_parts(held);
         made = self.call_rt(
             "__jac_rt_bytes_strip",
@@ -1064,7 +1092,7 @@ impl MirLowering.bytes_method(
                 size,
                 chars_data,
                 chars_len,
-                b.const_bool(supplied),
+                supplied_flag,
                 b.const_int(TEXT_STRIPS[name], mir_int())
             ]
         );
@@ -1092,17 +1120,13 @@ impl MirLowering.bytes_method(
         made = self.call_rt("__jac_rt_bytes_join", [data, size, items]);
     } elif name == "split" {
         (sep_nd, max_nd) = self.bind_args(nd, ["sep", "maxsplit"]);
-        (sep_data, sep_len) = self.text_const("");
-        supplied = self.present(sep_nd);
-        if supplied {
-            (sep_data, sep_len) = self.bytes_arg(sep_nd, nd);
-        }
+        (sep_data, sep_len, supplied_flag) = self.optional_bytes_arg(sep_nd, nd);
         limit = self.int_arg(max_nd, -1);
         (data, size) = self.byte_parts(held);
         return self.typed_handle(
             self.call_rt(
                 "__jac_rt_bytes_split",
-                [data, size, sep_data, sep_len, b.const_bool(supplied), limit]
+                [data, size, sep_data, sep_len, supplied_flag, limit]
             ),
             nd
         );
@@ -1195,4 +1219,36 @@ impl MirLowering.bytes_method(
         return self.call_rt("__jac_rt_bytearray_pop", [held, at]);
     }
     return None;
+}
+
+impl MirLowering.optional_bytes_arg(
+    arg: (uni.Expr | None), site: uni.UniNode
+) -> tuple[MirValue, MirValue, MirValue] {
+    b = self.builder();
+    (data, size) = self.text_const("");
+    supplied = self.present(arg);
+    if not supplied {
+        return (data, size, b.const_bool(False));
+    }
+    if not isinstance(arg, uni.Expr) or self.expr_type(arg).kind != MirKind.OPT {
+        (data, size) = self.bytes_arg(arg, site);
+        return (data, size, b.const_bool(True));
+    }
+    given = self.spill(self.lower_expr(arg));
+    fn = self.st().fn;
+    data_slot = self.temp_slot(data.type);
+    len_slot = self.temp_slot(size.type);
+    b.store(data_slot, data);
+    b.store(len_slot, size);
+    some = fn.new_block("bytes.arg");
+    done = fn.new_block("bytes.arg.done");
+    flag = self.opt_present(given);
+    b.cond_branch(flag, some, done);
+    b.position(some);
+    (got_data, got_len) = self.byte_parts(self.spill(self.opt_get(given)));
+    b.store(data_slot, self.coerce(got_data, data.type, site));
+    b.store(len_slot, got_len);
+    b.branch(done);
+    b.position(done);
+    return (b.load(data_slot, data.type), b.load(len_slot, size.type), flag);
 }

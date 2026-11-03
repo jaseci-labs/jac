@@ -576,6 +576,16 @@ impl MirLowering.container_get(
         base = self.opt_unwrap_checked(base, "'NoneType' object is not subscriptable");
     }
     part = slice.slices[0];
+    if base.type.kind == MirKind.ANY
+        and not slice.is_range
+        and part.start is not None {
+        key = self.any_box(self.lower_expr(part.start), part.start);
+        return self.any_from_box(
+            self.runtime_value(
+                "__jac_rt_any_getitem", self.any_parts(base) + self.any_parts(key)
+            )
+        );
+    }
     if base.type.kind == MirKind.LIST {
         if slice.is_range {
             return self.list_slice(base, part, site);
@@ -602,6 +612,11 @@ impl MirLowering.container_set(
         raise MirRefused(mir_refusal("subscript assignment", "slice", site));
     }
     key_nd = slice.slices[0].start;
+    if base.type.kind == MirKind.OPT and mir_is_container(base.type.payload()) {
+        base = self.opt_unwrap_checked(
+            base, "'NoneType' object does not support item assignment"
+        );
+    }
     if base.type.kind == MirKind.LIST {
         elem = base.type.payload();
         index = self.list_index(
@@ -732,6 +747,27 @@ impl MirLowering.list_method(
     }
     if name == "reverse" and not args {
         self.runtime("__jac_rt_list_reverse", [lst]);
+        return b.const_bool(False);
+    }
+    if name == "remove" and len(args) == 1 {
+        found = self.runtime(
+            "__jac_rt_list_index",
+            [lst, self.to_bits(self.lower_expr(args[0]), elem, args[0]), kind]
+        );
+        if found is None {
+            return None;
+        }
+        self.raise_if(
+            b.compare("lt", found, b.const_int(0, mir_int())),
+            "ValueError",
+            "list.remove(x): x not in list"
+        );
+        bits = self.runtime("__jac_rt_list_pop", [lst, found]);
+        if bits is not None
+            and self.elem_kind(elem, nd)
+                in (KIND_STR, KIND_REF, KIND_TUPLE, KIND_ANY) {
+            self.owned_element(b.ref_cast(bits, mir_ref(), True), elem);
+        }
         return b.const_bool(False);
     }
     if name == "index" and len(args) == 1 {
@@ -999,6 +1035,23 @@ impl MirLowering.dict_method(
     }
     if name == "update" and len(args) == 1 {
         other = self.lower_expr(args[0]);
+        if other.type.kind == MirKind.ANY {
+            other = b.ref_cast(
+                self.runtime_value(
+                    "__jac_rt_dict_convert",
+                    self.any_parts(other)
+                        + [
+                            self.creation_kind(d.type.args[0], nd),
+                            self.creation_kind(d.type.args[1], nd)
+                        ]
+                ),
+                d.type,
+                True
+            );
+        } elif other.type.kind == MirKind.DICT and other.type is not d.type {
+            self.merge_dict(d, other, nd, False);
+            return b.const_bool(False);
+        }
         if other.type is not d.type {
             raise MirRefused(
                 mir_refusal("call", f"update with {other.type.render()}", nd)
@@ -1274,6 +1327,39 @@ impl MirLowering.contains(
     b = self.builder();
     if holder.type.kind == MirKind.ANY {
         return self.any_contains(item, holder, site);
+    }
+    if holder.type.kind == MirKind.OPT {
+        return self.contains(
+            item,
+            self.opt_unwrap_checked(
+                holder, "argument of type 'NoneType' is not iterable", "TypeError"
+            ),
+            site
+        );
+    }
+    if holder.type.kind == MirKind.LIST
+        and holder.type.payload().kind == MirKind.ENUM
+        and self.is_text(item)
+        and self.enum_layout_of(holder.type.payload(), site).is_string_enum {
+        elem = holder.type.payload();
+        layout = self.enum_layout_of(elem, site);
+        probe = self.spill(item);
+        ordinal = b.const_int(-1, mir_int());
+        for member in reversed(layout.members) {
+            same = self.compare_values(
+                Tok.EE, probe, b.const_str(member.str_value or "", mir_str()), site
+            );
+            ordinal = b.select(
+                same, b.const_int(self.enum_payload(layout, member), mir_int()), ordinal
+            );
+        }
+        found = self.runtime(
+            "__jac_rt_list_contains",
+            [holder, ordinal, b.const_int(self.elem_kind(elem, site), mir_int())]
+        );
+        if found is not None {
+            return found;
+        }
     }
     if holder.type.kind == MirKind.LIST {
         elem = holder.type.payload();

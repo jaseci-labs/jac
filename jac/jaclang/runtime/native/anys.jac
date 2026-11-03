@@ -14,6 +14,7 @@ glob ANY_TAG_INT: int = 0,
      ANY_TAG_BOOL: int = 7,
      ANY_TAG_NONE: int = 8,
      ANY_TAG_ENUM: int = 9,
+     ANY_TAG_ELLIPSIS: int = 10,
      LIST_LEN: int = 0,
      HDR_TAG_BACK: int = 24,
      ANY_TAG_FIRST_REF: int = 2,
@@ -29,6 +30,8 @@ def:pub __jac_rt_any_retain(tag: int, payload: int);
 def:pub __jac_rt_any_release(tag: int, payload: int);
 
 def:pub __jac_rt_any_box(tag: int, payload: int) -> int;
+
+def:pub __jac_rt_any_box_hold(box: int);
 
 def:pub __jac_rt_any_truthy(tag: int, payload: int) -> bool;
 
@@ -100,7 +103,13 @@ glob KIND_INT: int = 0,
      DESC_TEXT: int = 16,
      DESC_BOXES: int = 24,
      DESC_SIZE: int = 32,
-     KIND_DESC_MIN: int = 256;
+     KIND_DESC_MIN: int = 256,
+     ARITH_ADD: int = 0,
+     ARITH_SUB: int = 1,
+     ARITH_MUL: int = 2,
+     ARITH_DIV: int = 3,
+     ARITH_FLOOR: int = 4,
+     ARITH_MOD: int = 5;
 
 def:pub __jac_rt_elem_tag(bits: int, kind: int) -> int;
 
@@ -133,6 +142,28 @@ def _enum_name(box: int) -> ptr[u8];
 def:pub __jac_rt_class_tag(name: ptr[u8]) -> int;
 
 def:pub __jac_rt_ref_swap(slot: int, value: int);
+
+def:pub __jac_rt_any_binary(op: int, ta: int, pa: int, tb: int, pb: int) -> int;
+
+def:pub __jac_rt_any_negate(tag: int, payload: int) -> int;
+
+def:pub __jac_rt_dict_convert(
+    tag: int, payload: int, key_kind: int, val_kind: int
+) -> int;
+
+def _kind_bits(bits: int, have: int, want: int) -> int;
+
+def:pub __jac_rt_any_getitem(tag: int, payload: int, ktag: int, kpayload: int) -> int;
+
+def _box_owned(tag: int, payload: int) -> int;
+
+def _seq_join(a: int, at: bool, b: int, bt: bool) -> int;
+
+def _seq_repeat(a: int, is_tup: bool, times: int) -> int;
+
+def _join_into(made: int, src: int, src_kind: int, kind: int);
+
+def _unsupported(op: int, ta: int, pa: int, tb: int, pb: int);
 
 def:pub __jac_rt_enum_value(tag: int, payload: int) -> int;
 

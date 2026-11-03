@@ -113,6 +113,13 @@ impl mir_union_type(
         )
     ];
     has_none = len(members) < len(t.types);
+    if any(
+        isinstance(member, AnyType)
+            or (isinstance(member, ClassType) and member.shared.class_name == "object")
+        for member in members
+    ) {
+        return mir_any();
+    }
     lowered = [mir_type_of(member, position, site, env) for member in members];
     if not lowered {
         return mir_none();
@@ -184,6 +191,9 @@ impl mir_class_type(
             return mir_class(name);
         }
         return mir_enum(name, mir_int());
+    }
+    if is_builtin_region_type(t) {
+        return mir_int();
     }
     if t.is_builtin("type") {
         return mir_class_value_type(t, env);

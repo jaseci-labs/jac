@@ -1,6 +1,6 @@
 """Graph code that names its edge type or walker only at run time.
 
-An edge filter or a delete through a `type[Edge]` value, and a spawn of a
+A connect, an edge filter or a delete through a `type[Edge]` value, and a spawn of a
 walker typed `Walker`, lower natively: the edge type tag comes from the class
 value, and the walker's own type tag and reports slot from its header.
 """
@@ -25,6 +25,10 @@ def attach(a: Item, b: Item, role: type[Edge]) -> int {
     return len([edge a->:role:->]);
 }
 
+def link(a: Item, b: Item, role: type[Edge]) {
+    a +>:(role):+> b;
+}
+
 def run(start: Item, w: Walker) -> Walker {
     start spawn w;
     return w;
@@ -44,6 +48,8 @@ with entry {
     w = Counter();
     run(a, w);
     print(w.seen);
+    link(b, c, Kid);
+    print(len([edge b->:Kid:->]), len([edge b->:Link:->]), len([b-->]));
     clear(a, Kid);
     print(len([edge a-->]), len([a-->]));
 }

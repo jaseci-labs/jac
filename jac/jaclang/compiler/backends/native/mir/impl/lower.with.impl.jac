@@ -8,7 +8,7 @@ impl MirLowering.lower_with(nd: uni.WithStmt) {
 impl MirLowering.with_items(
     items: list[uni.ExprAsItem], index: int, body: Sequence[uni.CodeBlockStmt]
 ) {
-    if index == len(items) {
+    if index >= len(items) {
         self.lower_body(body);
         return;
     }
@@ -242,6 +242,12 @@ impl MirLowering.run_with_exit(exit_action: MirWithExit) -> MirValue {
     }
     if exit_action.file is not None {
         self.runtime("__jac_rt_file_close", [exit_action.file]);
+    }
+    if exit_action.region {
+        self.region_extern("__jac_region_leave", [], mir_none());
+    }
+    if exit_action.region_drop is not None {
+        self.region_extern("__jac_region_drop", [exit_action.region_drop], mir_none());
     }
     if exit_action.it is not None and exit_action.out is not None {
         self.raise_if(

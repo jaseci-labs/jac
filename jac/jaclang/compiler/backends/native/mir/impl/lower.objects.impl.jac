@@ -1000,18 +1000,6 @@ impl MirLowering.field_place(
         seen_from = holder.type.name;
         holder = self.builder().ref_cast(holder, mir_obj(obj_def.name), False);
     }
-    if holder.type.kind == MirKind.OBJ
-        and holder.type.name != obj_def.name
-        and not self.obj_extends(holder.type.name, obj_def.name) {
-        raise MirRefused(
-            mir_refusal(
-                "attribute access",
-                f"{obj_def.name}.{name} on {holder.type.render()}",
-                site,
-                "The holder's static archetype is not on this field's archetype lineage."
-            )
-        );
-    }
     if holder.type.kind not in (MirKind.OBJ, MirKind.OSP) {
         raise MirRefused(
             mir_refusal(
@@ -1622,8 +1610,10 @@ impl MirLowering.isinstance_check(value: MirValue, arch: uni.Archetype) -> MirVa
 impl MirLowering.lower_module_init -> (MirFunction | None) {
     if not self.trace_pairs
         and not self.deferred_globals
+        and not self.class_inits
         and not self.osp_setup
         and not self.class_entries
+        and not self.default_entries
         and not self.text_pairs
         and not any(isinstance(nd, uni.GlobalVars) for nd in self.module.body) {
         return None;
@@ -1676,6 +1666,30 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
             self.runtime("__jac_rt_text_register", words);
             self.text_regs[thunk_symbol] = (block, list(block.instrs[start:]));
         }
+        for (made_name, adapter_symbol) in self.default_entries {
+            i8p = mir_c_ptr(mir_int(8, False));
+            self.runtime(
+                "__jac_rt_class_ctor_register",
+                [
+                    self.address_of(
+                        self.emit_value(MirOp.CLASS_ADDR, i8p, [], str_value=made_name)
+                    ),
+                    b.const_int(0, mir_int()),
+                    self.emit_value(
+                        MirOp.PTR_INT,
+                        mir_int(),
+                        [
+                            self.emit_value(
+                                MirOp.FN_ADDR,
+                                mir_c_fn([], mir_none()),
+                                [],
+                                callee=adapter_symbol
+                            )
+                        ]
+                    )
+                ]
+            );
+        }
         for (made_name, bound_name, adapter_symbol) in self.class_entries {
             i8p = mir_c_ptr(mir_int(8, False));
             adapter_fn = self.emit_value(
@@ -1704,13 +1718,19 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
             }
             index += 1;
         }
-        ordered = sorted(
-            self.deferred_globals,
-            key=lambda (pair: tuple[MirGlobal, uni.Expr]) -> int { pair[
-                1
-            ].loc.pos_start; }
+        steps: list[tuple[int, int]] = [
+            (initial.loc.pos_start, at)
+            for (at, (_, initial)) in enumerate(self.deferred_globals)
+        ];
+        steps.extend(
+            [(start, -1 - at) for (at, (start, _)) in enumerate(self.class_inits)]
         );
-        for (glob_def, initial) in ordered {
+        for (_, at) in sorted(steps) {
+            if at < 0 {
+                b.call(self.class_inits[-1 - at][1], [], mir_none());
+                continue;
+            }
+            (glob_def, initial) = self.deferred_globals[at];
             place = self.emit_value(
                 MirOp.GLOBAL_ADDR,
                 mir_c_ptr(glob_def.type),
@@ -2124,6 +2144,48 @@ impl MirLowering.class_entry(
     return fn;
 }
 
+impl MirLowering.default_entry(arch: uni.Archetype) -> (MirFunction | None) {
+    obj_def = self.object_def(arch);
+    params = self.constructor_params(arch);
+    if any(fallback is None for (_, _, fallback) in params) {
+        return None;
+    }
+    owner = arch.find_parent_of_type(uni.Module) or self.module;
+    prefix = native_unit_prefix(owner.loc.mod_path);
+    symbol = native_symbol_name(prefix, f"{obj_def.name}.__new_default");
+    fn = MirFunction(
+        name=f"{obj_def.name}.__new_default",
+        symbol=symbol,
+        ret=mir_obj(obj_def.name),
+        linkage="internal"
+    );
+    first = fn.new_block("entry");
+    saved = self.state;
+    self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
+    try {
+        b = self.builder();
+        args = [self.placeholder(ptype) for (_, ptype, _) in params];
+        if self.ctor_takes_mask(params) {
+            args.append(b.const_int(0, mir_int()));
+        }
+        made = b.call(
+            native_symbol_name(prefix, f"{obj_def.name}.__ctor"),
+            args,
+            mir_obj(obj_def.name)
+        );
+        if made is None {
+            raise MirRefused(mir_refusal("constructor", obj_def.name, arch));
+        }
+        b.ret(made);
+    } except MirRefused as err {
+        self.state = saved;
+        return None;
+    }
+    self.state = saved;
+    self.default_entries.append((obj_def.name, symbol));
+    return fn;
+}
+
 impl MirLowering.class_bound(t: (TypeBase | None)) -> (uni.Archetype | None) {
     if not isinstance(t, ClassType) or t._shared is None {
         return None;
@@ -2510,7 +2572,10 @@ impl MirLowering.union_accessor_get(nd: uni.AtomTrailer) -> (MirValue | None) {
     found = [
         self.accessor_on(arch, nd.right.value, "property", nd) for arch in members
     ];
-    if all(one is None for one in found) {
+    fielded = [
+        self.object_def(arch).field(nd.right.value) is not None for arch in members
+    ];
+    if all(one is None for one in found) and all(fielded) {
         return None;
     }
     b = self.builder();
@@ -2532,6 +2597,18 @@ impl MirLowering.union_accessor_get(nd: uni.AtomTrailer) -> (MirValue | None) {
             b.position(hit);
         }
         made: MirValue = view;
+        if bound is None and not fielded[index] {
+            b.raise_builtin(
+                "AttributeError",
+                f"'{archetype_native_name(arch).split('$')[
+                    0
+                ]}' object has no attribute '{nd.right.value}'"
+            );
+            if miss is not None {
+                b.position(miss);
+            }
+            continue;
+        }
         if bound is None {
             place = self.field_place(view, arch, nd.right.value, nd);
             made = b.load(place, self.place_elem(place));
@@ -2564,13 +2641,85 @@ impl MirLowering.accessor_get(nd: uni.AtomTrailer) -> (MirValue | None) {
     return self.invoke_method(decl, arch, self.decl_label(decl), [receiver]);
 }
 
+impl MirLowering.union_accessor_set(
+    target: uni.AtomTrailer, nd: uni.Assignment
+) -> bool {
+    if not target.is_attr
+        or nd.aug_op is not None
+        or nd.value is None
+        or not isinstance(target.right, uni.Name)
+        or not isinstance(target.target, uni.Expr) {
+        return False;
+    }
+    name = target.right.value;
+    seen = target.target.narrowed_type
+        if target.target.narrowed_type is not None
+        else target.target.type;
+    members = self.union_archetypes(seen);
+    if not members {
+        return False;
+    }
+    found = [self.accessor_on(arch, name, "setter", target) for arch in members];
+    fielded = [self.object_def(arch).field(name) is not None for arch in members];
+    if all(one is None for one in found) and all(fielded) {
+        return False;
+    }
+    b = self.builder();
+    fn = self.st().fn;
+    held = self.spill(self.lower_expr(target.target));
+    value = self.spill(self.lower_expr(nd.value));
+    done = fn.new_block("uset.done");
+    for (index, arch) in enumerate(members) {
+        bound = found[index];
+        view = held
+            if held.type is self.object_type(arch)
+            else b.ref_cast(held, self.object_type(arch), False);
+        miss: (MirBlock | None) = None;
+        if index < len(members) - 1 {
+            hit = fn.new_block("uset.hit");
+            miss = fn.new_block("uset.miss");
+            b.cond_branch(self.member_test(held, view, arch, target), hit, miss);
+            b.position(hit);
+        }
+        if bound is not None {
+            (owner, decl) = bound;
+            self.invoke_method(
+                decl,
+                owner,
+                self.decl_label(decl),
+                [
+                    self.method_receiver(decl, owner, view, target),
+                    self.coerce(value, decl.params[0], nd)
+                ]
+            );
+            b.branch(done);
+        } elif fielded[index] {
+            place = self.field_place(view, arch, name, target);
+            b.store(place, self.coerce(value, self.place_elem(place), nd));
+            b.branch(done);
+        } else {
+            b.raise_builtin(
+                "AttributeError",
+                f"'{archetype_native_name(arch).split('$')[
+                    0
+                ]}' object has no attribute '{name}'"
+            );
+        }
+        if miss is not None {
+            b.position(miss);
+        }
+    }
+    b.position(done);
+    return True;
+}
+
 impl MirLowering.accessor_set(target: uni.AtomTrailer, nd: uni.Assignment) -> bool {
     if nd.value is None {
         return False;
     }
     found = self.accessor_of(target, "setter");
     if found is None {
-        return False;
+        return self.union_accessor_set(target, nd);
     }
     (arch, decl) = found;
     holder = self.spill(self.lower_expr(target.target));

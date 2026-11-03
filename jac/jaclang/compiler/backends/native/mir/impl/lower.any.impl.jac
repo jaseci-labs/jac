@@ -194,12 +194,12 @@ impl MirLowering.any_to_box(value: MirValue, site: uni.UniNode) -> MirValue {
 
 impl MirLowering.any_from_box(handle: MirValue) -> MirValue {
     b = self.builder();
+    self.runtime("__jac_rt_any_box_hold", [handle]);
     address = self.address_of(handle);
     tag = self.emit_value(MirOp.MEM_LOAD, mir_int(), [address]);
     payload = self.emit_value(
         MirOp.MEM_LOAD, mir_int(), [b.binary("add", address, b.const_int(8, mir_int()))]
     );
-    self.runtime("__jac_rt_any_retain", [tag, payload]);
     made = self.any_make(tag, payload);
     made.owned = True;
     return made;
@@ -292,7 +292,7 @@ impl MirLowering.value_truthy(value: MirValue, site: uni.UniNode) -> (MirValue |
             ]
         );
     }
-    if value.type.kind == MirKind.ENUM {
+    if value.type.kind in (MirKind.ENUM, MirKind.CLASS) {
         return b.const_bool(True);
     }
     if value.type.kind == MirKind.OBJ and value.type.name in self.archetypes {
@@ -378,6 +378,19 @@ impl MirLowering.any_compare(
     );
 }
 
+impl MirLowering.any_arith(
+    op: str, left: MirValue, right: MirValue, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    parts = self.any_parts(self.any_box(left, site))
+        + self.any_parts(self.any_box(right, site));
+    return self.any_from_box(
+        self.runtime_value(
+            "__jac_rt_any_binary", [b.const_int(ANY_ARITH_CODES[op], mir_int())] + parts
+        )
+    );
+}
+
 impl MirLowering.any_contains(
     item: MirValue, holder: MirValue, site: uni.UniNode
 ) -> MirValue {
@@ -432,6 +445,21 @@ impl MirLowering.isinstance_value(
     return self.isinstance_test(value, items, site);
 }
 
+impl MirLowering.abstract_names(item: uni.Expr) -> list[str] {
+    name = item.value
+        if isinstance(item, uni.Name)
+        else (
+            item.right.value
+                if isinstance(item, uni.AtomTrailer)
+                    and isinstance(item.right, uni.Name)
+                else ""
+        );
+    if name not in ABSTRACT_TYPE_NAMES or self.target_archetype(item) is not None {
+        return [];
+    }
+    return ABSTRACT_TYPE_NAMES[name];
+}
+
 impl MirLowering.isinstance_test(
     value: MirValue, items: list[uni.Expr], site: uni.UniNode
 ) -> MirValue {
@@ -451,6 +479,15 @@ impl MirLowering.isinstance_test(
     verdict: (MirValue | None) = None;
     hit = False;
     for item in items {
+        if self.abstract_names(item) {
+            hit = hit
+                or static_name in self.abstract_names(item)
+                or (
+                    value.type.kind in (MirKind.BYTES, MirKind.BYTEARRAY)
+                    and value.type.kind.value in self.abstract_names(item)
+                );
+            continue;
+        }
         if isinstance(item, uni.Name)
             and (
                 item.value in ANY_TYPE_TAGS or item.value in STATIC_TYPE_NAMES.values()
@@ -505,6 +542,33 @@ impl MirLowering.any_isinstance(
         else [target];
     verdict = b.const_bool(False);
     for item in items {
+        concrete = self.abstract_names(item);
+        if concrete {
+            for wanted_name in concrete {
+                if wanted_name in ANY_TYPE_TAGS {
+                    for wanted in ANY_TYPE_TAGS[wanted_name] {
+                        verdict = b.binary(
+                            "or",
+                            verdict,
+                            b.compare("eq", tag, b.const_int(wanted, mir_int()))
+                        );
+                    }
+                } elif wanted_name in ("tuple", "bytes", "bytearray") {
+                    label = self.emit_value(
+                        MirOp.CSTR,
+                        mir_c_ptr(mir_int(8, False)),
+                        [],
+                        str_value=wanted_name
+                    );
+                    verdict = b.binary(
+                        "or",
+                        verdict,
+                        self.runtime_value("__jac_rt_any_isa", [tag, payload, label])
+                    );
+                }
+            }
+            continue;
+        }
         if isinstance(item, uni.Name) and item.value in ANY_TYPE_TAGS {
             for wanted in ANY_TYPE_TAGS[item.value] {
                 verdict = b.binary(

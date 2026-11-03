@@ -77,6 +77,7 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_write_int": ["none", "int", "int"],
          "__jac_rt_any_box": ["ref", "int", "int"],
          "__jac_rt_any_retain": ["none", "int", "int"],
+         "__jac_rt_any_box_hold": ["none", "ref"],
          "__jac_rt_any_release": ["none", "int", "int"],
          "__jac_rt_any_truthy": ["bool", "int", "int"],
          "__jac_rt_any_len": ["int", "int", "int"],
@@ -93,6 +94,10 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_any_enum_is": ["bool", "int", "int", "ptr"],
          "__jac_rt_any_same": ["bool", "int", "int", "int", "int"],
          "__jac_rt_class_tag": ["int", "ptr"],
+         "__jac_rt_any_binary": ["ref", "int", "int", "int", "int", "int"],
+         "__jac_rt_any_negate": ["ref", "int", "int"],
+         "__jac_rt_dict_convert": ["ref", "int", "int", "int", "int"],
+         "__jac_rt_any_getitem": ["ref", "int", "int", "int", "int"],
          "__jac_rt_ref_swap": ["none", "int", "int"],
          "__jac_rt_any_type_name": ["ptr", "int", "int"],
          "__jac_rt_any_isa": ["bool", "int", "int", "ptr"],
@@ -173,6 +178,7 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
              "int"
          ],
          "__jac_rt_str_zfill": ["str.ref", "ptr", "int", "int"],
+         "__jac_rt_str_expandtabs": ["str.ref", "ptr", "int", "int"],
          "__jac_rt_str_split": [
              "ref",
              "ptr",
