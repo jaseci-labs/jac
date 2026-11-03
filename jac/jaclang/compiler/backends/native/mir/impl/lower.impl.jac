@@ -30,6 +30,7 @@ impl MirLowering.lower -> MirModule {
         }
     }
     self.declare_c_data();
+    self.declare_clib_externs();
     self.declare_module_globals();
     for key in self.order {
         self.current = self.decl_label(self.decls[key]);
@@ -3727,5 +3728,25 @@ impl MirLowering.flush_stdio {
     b = self.builder();
     for fd in (1, 2) {
         self.runtime("__jac_rt_flush", [b.const_int(fd, mir_int())]);
+    }
+}
+
+impl MirLowering.declare_clib_externs {
+    for imp in self.module.get_all_sub_nodes(uni.Import) {
+        for decl in list(imp.clib_decls or []) {
+            if not isinstance(decl, uni.Ability)
+                or not isinstance(decl.signature, uni.FuncSignature)
+                or (
+                    decl.body is not None
+                    and not (isinstance(decl.body, list) and not decl.body)
+                ) {
+                continue;
+            }
+            try {
+                self.c_extern(decl, decl);
+            } except MirRefused {
+                continue;
+            }
+        }
     }
 }

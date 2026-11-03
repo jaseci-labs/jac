@@ -472,6 +472,7 @@ obj MirLowering {
     def struct_temp_place(nd: uni.Expr) -> MirValue;
     def declare_global(nd: uni.Name) -> (MirGlobal | None);
     def declare_c_data;
+    def declare_clib_externs;
     def note_clib(imp: (uni.Import | None)) -> int;
     def declare_module_globals;
     def c_struct_call(nd: uni.FuncCall, struct_type: MirType) -> MirValue;

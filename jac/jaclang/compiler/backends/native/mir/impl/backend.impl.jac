@@ -82,6 +82,8 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     ir_in.gen.native_layout = self.layout(lowering, lowered);
     ir_in.gen.native_iface = self.interface(lowered, deps, triple);
     ir_in.gen.native_iface.layout = ir_in.gen.native_layout;
+    ir_in.gen._clib_paths = list(ir_in.gen.native_iface.clib_paths);
+    ir_in.gen._clib_symbol_lib = dict(ir_in.gen.native_iface.clib_symbol_lib);
     return ir_in;
 }
 
