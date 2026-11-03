@@ -738,7 +738,9 @@ impl CtEvaluator._demand_tree(sym: Symbol) -> Symbol {
         scope = scope.parent_scope;
     }
     try {
-        real = self.evaluator.program.load_dependency_module(path, need_tree=True);
+        real = self.evaluator.program.load_dependency_module(
+            path, need_tree=True, need_bodies=True
+        );
     } except Exception {
         return sym;
     }
@@ -2381,9 +2383,9 @@ impl CtEvaluator._attr_get(base: CtValue, name: str) -> CtValue {
     if isinstance(base, CtType) {
         node_ = self._arch_node_of(self._class_type_of(base));
         if isinstance(node_, Enum) {
-            for m in self._enum_members(node_) {
-                if m.member == name {
-                    return m;
+            for member in self._enum_members(node_) {
+                if member.member == name {
+                    return member;
                 }
             }
             raise CtError(f"{base.name} has no member '{name}'");

@@ -278,29 +278,15 @@ impl PostgresArtifact.build(log: Callable[[str], None], force: bool, exact: bool
 }
 
 impl _env_dist -> str {
-    """An explicit distribution pointed at by `JAC_PG_DIST`, or ''.
-
-    A sealed desktop app sets this to the distribution vendored into its bundle,
-    which is the only way it resolves when no jac.toml ships alongside it.
-    """;
     raw = os.environ.get('JAC_PG_DIST', '').strip();
     return os.path.expanduser(raw) if raw else '';
 }
 
 impl postgres_exe -> str {
-    """The name of the server executable on this platform.""";
     return 'postgres.exe' if platform.system() == 'Windows' else 'postgres';
 }
 
 impl _dist_root(bin_dir: (str | None)) -> (str | None) {
-    """The distribution root for a bin directory, or None when it is not
-    self-contained. A vendorable distribution carries its shared libraries and
-    its share tree beside the executables (sibling `lib/` and `share/`) -- the
-    layout of every platform archive a fetch unpacks. A system install keeps
-    one of them outside the binary directory (Debian's
-    `/usr/lib/postgresql/<version>` has `lib/` but keeps `share/` under
-    `/usr/share`), so bundling it would ship a tree that cannot run on a
-    clean machine.""";
     if not bin_dir {
         return None;
     }
@@ -315,14 +301,6 @@ impl _dist_root(bin_dir: (str | None)) -> (str | None) {
 }
 
 impl bundled_dist_dir -> str {
-    """The self-contained distribution root to vendor into a desktop bundle.
-
-    Prefers an explicit `JAC_PG_DIST` or `[database] postgres_dist`, else the
-    cached zonky build, else a fresh download. Only a relocatable distribution
-    can be vendored, so a bare system bin directory is refused rather than
-    copied without the libraries its executables need. A fetch is the last
-    resort and is refused when the project is offline.
-    """;
     env = _env_dist();
     if env {
         vendored = _dist_root(_bin_of(env));
@@ -368,18 +346,6 @@ impl bundled_dist_dir -> str {
 }
 
 impl cached_dist_dir -> str {
-    """The cached, self-contained distribution root, or '' when none is cached.
-
-    A dev desktop session passes this path to the host without copying the
-    tree, so the host finds the distribution the compiler already fetched in
-    the shared machine cache instead of re-fetching it into a per-app cache.
-    An explicit `JAC_PG_DIST` or `[database] postgres_dist` is honored first,
-    with `probe_checkout`'s precedence: the dev host must run the
-    distribution the developer selected, not whichever version the shared
-    cache holds, and the returned path would otherwise overwrite that
-    selection in the host's environment. A selection that is unusable for a
-    dev host returns '' rather than a cache substitute; the host's own probe
-    then reports the named distribution as missing.""";
     for chosen in [_env_dist(), _configured_dist()] {
         if chosen {
             bin_dir = _bin_of(chosen);
@@ -392,13 +358,6 @@ impl cached_dist_dir -> str {
 }
 
 impl PostgresArtifact.build_blocker -> str {
-    """The reason a set distribution override blocks a fetch.
-
-    An override that is set but invalid cannot be fixed by fetching: the
-    provisioner would download a distribution the later check then ignores.
-    Refuse before any network work, with `probe_checkout`'s precedence (a
-    set `JAC_PG_DIST` hides a configured path).
-    """;
     env = _env_dist();
     if env {
         if _bin_of(env) is None {

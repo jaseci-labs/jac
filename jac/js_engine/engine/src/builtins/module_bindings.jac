@@ -27,6 +27,10 @@ import from engine.src.runtime.gc_pin { gc_pin_value }
 import from engine.src.runtime.jsstring { str_from_id }
 import from engine.src.ffi.libc { getenv, write }
 
+import from engine.src.runtime.mem {
+    str_nbytes
+}
+
 """
 Map from native-function index (get_native_idx) → parent file path.
 Keyed by native idx directly, matching the ESM live-getter pattern, because
@@ -88,7 +92,7 @@ def:pub esm_create_live_getter(src_ns: JSValue, src_key: int) -> JSValue {
             + "' ns_tid="
             + str(jsv_to_table_id(src_ns))
             + "\n";
-        write(2, _clg_dbg, len(_clg_dbg));
+        write(2, _clg_dbg, str_nbytes(_clg_dbg));
     }
     _NEXT_ESM_LIVE_GET_ID = _NEXT_ESM_LIVE_GET_ID + 1;
     _ESM_LIVE_GET_KEY[gid] = src_key;

@@ -501,6 +501,28 @@ test "a validated disk interface seeds the encoding memo for tree consumers" {
     assert reg.entries[dep].digest == cached.digest;
 }
 
+"""A native build compiles every module it imports with options under which
+no interface is persisted (`aot_mode`, a default codespace), so encoding one
+for each of them is work nothing reads: forcing every symbol's type cost a
+large one-file rebuild about as much as type checking its imports."""
+test "a compile that keeps no interface encodes none" {
+    (main, dep) = _project();
+    prog = JacProgram();
+    options = CompileOptions(no_cgen=True, aot_mode=True, default_codespace="native");
+    assert not options.keeps_interfaces();
+    prog.compile(main, options=options);
+    assert prog.analysis.pass_runs , "the native-style compile ran no passes";
+    events = prog.analysis.cache_events;
+    assert events.get("iface_encode", 0) == 0 , (
+        f"an interface no one persists was encoded (events: {events})"
+    );
+    (checked, _diags) = _check(main);
+    assert _check_opts().keeps_interfaces();
+    assert checked.analysis.cache_events.get("iface_encode", 0) >= 1 , (
+        f"a check stopped encoding interfaces (events: {checked.analysis.cache_events})"
+    );
+}
+
 glob NARROW_DEP: str = """
 obj Info {
     has help_text: str = "";
@@ -814,7 +836,7 @@ test "an interface that cannot place a class is not persisted" {
         build_module_iface(provider, prog.get_type_evaluator(), jaclang_pkg_dir());
     } except IncoherentInterface as exc {
         refused = True;
-        assert any("Cfg" in o for o in exc.orphans) , f"the refusal does not name the unplaceable class: {exc.orphans}";
+        assert "Cfg" in str(exc) , f"the refusal does not name the unplaceable class: {exc}";
     }
     assert refused , "an interface with an unplaceable class was built";
     cache_path = _cache_path(paths["provider"]);
@@ -1035,7 +1057,7 @@ test "failed type evaluation cannot publish an interface" {
         try {
             build_module_iface(mod, evaluator, jaclang_pkg_dir());
         } except IncoherentInterface as exc {
-            assert any("incomplete dependency" in failure for failure in exc.failures);
+            assert "incomplete dependency" in str(exc);
             refused = True;
         }
     }

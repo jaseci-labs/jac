@@ -70,14 +70,6 @@ glob WRITE_STEPS: int = 8,
 
 def respect_deadline(ctx: IterationContext) -> IterationAction;
 
-impl respect_deadline(ctx: IterationContext) -> IterationAction {
-    at = DEADLINE.get("at", 0.0);
-    if at and at - time.monotonic() < 2 * CALL_MAX_S {
-        return IterationAction.ABORT_WITH_SUMMARY;
-    }
-    return IterationAction.CONTINUE;
-}
-
 def write_tutorial(question: str, jac_version: str) -> TutorialOut by llm(
     tools=[search_jac, read_jac_file, read_jac_guide, list_jac_guides],
     max_react_iterations=WRITE_STEPS,

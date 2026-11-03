@@ -154,7 +154,8 @@ impl interop_record(module: uni.Module) -> dict[str, any] {
             'kind': binding.kind,
             'provider_app': binding.provider_app,
             'native_contract': binding.native_contract,
-            'endpoint_id': binding.endpoint_id
+            'endpoint_id': binding.endpoint_id,
+            'symbol': binding.symbol
         };
     }
     return {
@@ -194,7 +195,8 @@ impl interop_manifest_of(record: dict[str, any]) -> InteropManifest {
             kind=data.get('kind', 'function'),
             provider_app=data['provider_app'],
             native_contract=data['native_contract'],
-            endpoint_id=data['endpoint_id']
+            endpoint_id=data['endpoint_id'],
+            symbol=data.get('symbol', '')
         );
     }
     surface: dict[str, dict[str, any]] = record.get('surface', {}) or {};
@@ -445,9 +447,13 @@ impl client_artifact_of(module: uni.Module) -> (ClientArtifact | None) {
     );
 }
 
-impl placement_record(module: uni.Module, program: JacProgram) -> str {
+impl placement_record(
+    module: uni.Module, program: JacProgram, solved: bool = True
+) -> str {
     try {
-        return json.dumps(summary_to_dict(get_module_summary(module, program)));
+        record = summary_to_dict(get_module_summary(module, program));
+        record["spaces"] = sorted(module_spaces(module)) if solved else [];
+        return json.dumps(record);
     } except Exception {
         return "";
     }
@@ -539,6 +545,7 @@ impl products_record(products: UnitProducts) -> dict[str, any] {
         "native_deps": list(products.native_deps),
         "iface": products.iface,
         "iface_shape": products.iface_shape,
+        "iface_jir": products.iface_jir,
         "effects": products.effects,
         "jac_deps": list(products.jac_deps)
     };
@@ -566,6 +573,7 @@ impl products_from_record(raw: dict[str, any]) -> UnitProducts {
         native_deps=json_str_list(raw.get("native_deps")),
         iface=str(raw.get("iface", "")),
         iface_shape=str(raw.get("iface_shape", "")),
+        iface_jir=str(raw.get("iface_jir", "")),
         effects=str(raw.get("effects", "")),
         jac_deps=json_str_list(raw.get("jac_deps"))
     );

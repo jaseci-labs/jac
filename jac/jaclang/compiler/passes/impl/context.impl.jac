@@ -72,7 +72,7 @@ impl DiagnosticPolicy.is_suppressed(
             or (kebab_name is not None and kebab_name in self.lint_ignore)
         );
 
-        non_default_codes: set[str] = {"E3012", "W3050", "W3051", "W3055"};
+        non_default_codes: set[str] = {"E3012", "W3050", "W3051", "W3055", "W3056"};
         enabled = False;
         if "all" in self.lint_select {
             enabled = True;

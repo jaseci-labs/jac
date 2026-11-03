@@ -46,10 +46,6 @@ glob _FPS_MAX: int = 3500,
 
 def fps_pct(v: float) -> str;
 
-impl fps_pct(v: float) -> str {
-    return str(v * 100 / _FPS_MAX) + "%";
-}
-
 def:pub FpsBars -> JsxElement;
 
 def:pub NativeBench -> JsxElement;

@@ -13,6 +13,12 @@ import from engine.src.runtime.jsstring {
 import from engine.src.builtins.calendars.calendar_dispatch { calendar_is_known }
 import from engine.src.runtime.bignat { bn_from_int, bn_mul_small, bn_to_string }
 
+import from engine.src.runtime.mem {
+    str_bslice,
+    str_byte,
+    str_nbytes
+}
+
 # ── Parse result field indices ───────────────────────────────────────────────
 glob PR_OK: int = 0,
      PR_ERROR: int = 1,
@@ -106,10 +112,10 @@ def _tp_is_digit(ch: str) -> bool {
 }
 
 def _char_at(s: str, i: int) -> str {
-    if i < 0 or i >= len(s) {
+    if i < 0 or i >= str_nbytes(s) {
         return "";
     }
-    return s[i:i + 1];
+    return str_bslice(s, i, i + 1);
 }
 
 # A bracket time-zone annotation that is a numeric OFFSET must be a valid
@@ -118,11 +124,11 @@ def _char_at(s: str, i: int) -> str {
 # (fractional) and "-07:00:01.0" (trailing-zero decimal) are NOT (those forms are only
 # legal in the datetime's own offset, not in the [bracket] identifier).
 def _is_valid_tz_offset_name(s: str) -> bool {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if n < 3 {
         return False;
     }
-    c0: str = s[0:1];
+    c0: str = str_bslice(s, 0, 1);
     if c0 != "+" and c0 != "-" {
         return False;
     }
@@ -133,7 +139,7 @@ def _is_valid_tz_offset_name(s: str) -> bool {
         or not _tp_is_digit(_char_at(s, i + 1)) {
         return False;
     }
-    hh: int = (ord(_char_at(s, i)) - 48) * 10 + (ord(_char_at(s, i + 1)) - 48);
+    hh: int = (str_byte(_char_at(s, i), 0) - 48) * 10 + (str_byte(_char_at(s, i + 1), 0) - 48);
     if hh > 23 {
         return False;
     }
@@ -167,8 +173,9 @@ def _is_valid_tz_offset_name(s: str) -> bool {
 def _tp_normalize_decimal(num_s: str) -> str {
     out: str = "";
     i: int = 0;
-    while i < len(num_s) {
-        c: str = num_s[i:i + 1];
+    _nb176_num_s: int = str_nbytes(num_s);
+    while i < _nb176_num_s {
+        c: str = str_bslice(num_s, i, i + 1);
         if c == "," {
             out = out + ".";
         } else {
@@ -184,8 +191,9 @@ def _tp_decimal_to_num(num_s: str) -> float {
         return 0.0;
     }
     di: int = 0;
-    while di < len(num_s) {
-        c0: str = num_s[di:di + 1];
+    _nb193_num_s: int = str_nbytes(num_s);
+    while di < _nb193_num_s {
+        c0: str = str_bslice(num_s, di, di + 1);
         if c0 == "." or c0 == "," {
             return str_to_float(_tp_normalize_decimal(num_s));
         }
@@ -193,8 +201,9 @@ def _tp_decimal_to_num(num_s: str) -> float {
     }
     val: float = 0.0;
     di2: int = 0;
-    while di2 < len(num_s) {
-        c1: str = num_s[di2:di2 + 1];
+    _nb202_num_s: int = str_nbytes(num_s);
+    while di2 < _nb202_num_s {
+        c1: str = str_bslice(num_s, di2, di2 + 1);
         if c1 >= "0" and c1 <= "9" {
             val = val * 10.0 + float(int(c1));
         }
@@ -207,7 +216,8 @@ def _tp_parse_digits(s: str, pos: int, min_d: int, max_d: int) -> list[any] {
     start: int = pos;
     n: int = 0;
     limit: int = pos + max_d;
-    while pos < len(s) and pos < limit and _tp_is_digit(_char_at(s, pos)) {
+    _nb216_s: int = str_nbytes(s);
+    while pos < _nb216_s and pos < limit and _tp_is_digit(_char_at(s, pos)) {
         n = n * 10 + int(_char_at(s, pos));
         pos = pos + 1;
     }
@@ -228,7 +238,8 @@ def _parse_extended_year(s: str, pos: int) -> list[any] {
     }
     start: int = pos;
     digit_count: int = 0;
-    while pos < len(s) and _tp_is_digit(_char_at(s, pos)) and digit_count < 6 {
+    _nb237_s: int = str_nbytes(s);
+    while pos < _nb237_s and _tp_is_digit(_char_at(s, pos)) and digit_count < 6 {
         pos = pos + 1;
         digit_count = digit_count + 1;
     }
@@ -255,7 +266,8 @@ def _parse_fraction(s: str, pos: int) -> list[any] {
     start: int = pos;
     frac: int = 0;
     ndigits: int = 0;
-    while pos < len(s) and _tp_is_digit(_char_at(s, pos)) {
+    _nb264_s: int = str_nbytes(s);
+    while pos < _nb264_s and _tp_is_digit(_char_at(s, pos)) {
         frac = frac * 10 + int(_char_at(s, pos));
         ndigits = ndigits + 1;
         pos = pos + 1;
@@ -274,7 +286,7 @@ def _parse_fraction(s: str, pos: int) -> list[any] {
 }
 
 def _parse_time(s: str, pos: int) -> list[any] {
-    if pos + 6 <= len(s)
+    if pos + 6 <= str_nbytes(s)
         and _tp_is_digit(_char_at(s, pos))
         and _tp_is_digit(_char_at(s, pos + 1))
         and _tp_is_digit(_char_at(s, pos + 2))
@@ -300,7 +312,7 @@ def _parse_time(s: str, pos: int) -> list[any] {
             return [npos, h6[1], m6[1], s6[1], ns6];
         }
     }
-    if pos + 4 <= len(s)
+    if pos + 4 <= str_nbytes(s)
         and _tp_is_digit(_char_at(s, pos))
         and _tp_is_digit(_char_at(s, pos + 1))
         and _tp_is_digit(_char_at(s, pos + 2))
@@ -330,7 +342,7 @@ def _parse_time(s: str, pos: int) -> list[any] {
         mn: int = d2c[1];
         sc: int = 0;
         ns: int = 0;
-        if pos < len(s) and _tp_is_digit(_char_at(s, pos)) {
+        if pos < str_nbytes(s) and _tp_is_digit(_char_at(s, pos)) {
             d3c: list[any] = _tp_parse_digits(s, pos, 2, 2);
             if d3c[0] >= 0 {
                 pos = d3c[0];
@@ -398,7 +410,7 @@ def _parse_offset(s: str, pos: int) -> list[any] {
         }
         pos = d2[0];
         mn = d2[1];
-    } elif pos + 2 <= len(s) and _tp_is_digit(_char_at(s, pos)) {
+    } elif pos + 2 <= str_nbytes(s) and _tp_is_digit(_char_at(s, pos)) {
         d2b: list[any] = _tp_parse_digits(s, pos, 2, 2);
         if d2b[0] >= 0 {
             pos = d2b[0];
@@ -411,8 +423,9 @@ def _parse_offset(s: str, pos: int) -> list[any] {
 
 def _annotation_key_is_lower(key: str) -> bool {
     i: int = 0;
-    while i < len(key) {
-        c: str = key[i:i + 1];
+    _nb420_key: int = str_nbytes(key);
+    while i < _nb420_key {
+        c: str = str_bslice(key, i, i + 1);
         if c >= "A" and c <= "Z" {
             return False;
         }
@@ -427,28 +440,31 @@ def _parse_annotations(s: str, pos: int) -> list[any] {
     cal_count: int = 0;
     tz_count: int = 0;
     saw_critical: bool = False;
-    while pos < len(s) and _char_at(s, pos) == "[" {
+    _nb436_s: int = str_nbytes(s);
+    while pos < _nb436_s and _char_at(s, pos) == "[" {
         end: int = pos + 1;
-        while end < len(s) and _char_at(s, end) != "]" {
+        _nb438_s: int = str_nbytes(s);
+        while end < _nb438_s and _char_at(s, end) != "]" {
             end = end + 1;
         }
-        if end >= len(s) {
+        if end >= str_nbytes(s) {
             return [-1, tz, cal];
         }
-        inner: str = s[pos + 1:end];
+        inner: str = str_bslice(s, pos + 1, end);
         pos = end + 1;
         critical: bool = False;
-        if len(inner) > 0 and inner[0:1] == "!" {
+        if len(inner) > 0 and str_bslice(inner, 0, 1) == "!" {
             critical = True;
             saw_critical = True;
-            inner = inner[1:len(inner)];
+            inner = str_bslice(inner, 1, str_nbytes(inner));
         }
         if len(inner) == 0 {
             return [-1, tz, cal];
         }
         eq: int = -1;
         ei: int = 0;
-        while ei < len(inner) {
+        _nb457_inner: int = str_nbytes(inner);
+        while ei < _nb457_inner {
             if _char_at(inner, ei) == "=" {
                 eq = ei;
                 break;
@@ -462,7 +478,7 @@ def _parse_annotations(s: str, pos: int) -> list[any] {
                     return [-1, tz, cal];
                 }
                 tz = "UTC";
-            } elif len(inner) > 0 and (inner[0:1] == "+" or inner[0:1] == "-") {
+            } elif len(inner) > 0 and (str_bslice(inner, 0, 1) == "+" or str_bslice(inner, 0, 1) == "-") {
                 # A numeric-offset bracket annotation must be a valid TimeZoneUTCOffsetName
                 # (no fractional seconds / trailing-zero sub-minute decimals).
                 if not _is_valid_tz_offset_name(inner) {
@@ -484,8 +500,8 @@ def _parse_annotations(s: str, pos: int) -> list[any] {
             }
             continue;
         }
-        key: str = inner[0:eq];
-        val: str = inner[eq + 1:len(inner)];
+        key: str = str_bslice(inner, 0, eq);
+        val: str = str_bslice(inner, eq + 1, str_nbytes(inner));
         if not _annotation_key_is_lower(key) {
             return [-1, tz, cal];
         }
@@ -512,7 +528,7 @@ def _parse_annotations(s: str, pos: int) -> list[any] {
 }
 
 def _parse_date(s: str, pos: int) -> list[any] {
-    if pos + 8 <= len(s) {
+    if pos + 8 <= str_nbytes(s) {
         ok8: bool = True;
         i8: int = pos;
         while i8 < pos + 8 {
@@ -524,7 +540,7 @@ def _parse_date(s: str, pos: int) -> list[any] {
         }
         if ok8
             and (
-                pos + 8 == len(s)
+                pos + 8 == str_nbytes(s)
                 or _char_at(s, pos + 8) == "T"
                 or _char_at(s, pos + 8) == "t"
             ) {
@@ -543,7 +559,7 @@ def _parse_date(s: str, pos: int) -> list[any] {
         or _char_at(s, pos) == "-"
         or (
             _tp_is_digit(_char_at(s, pos))
-            and pos + 4 <= len(s)
+            and pos + 4 <= str_nbytes(s)
             and _char_at(s, pos + 4) == "-"
         ) {
         ey: list[any] = _parse_extended_year(s, pos);
@@ -572,7 +588,7 @@ def _parse_date(s: str, pos: int) -> list[any] {
             dy = dd[1];
             return [pos, yr, mo, dy];
         }
-        if pos + 8 <= len(s)
+        if pos + 8 <= str_nbytes(s)
             and (_char_at(s, pos + 8) == "T" or _char_at(s, pos + 8) == "t") {
             ok8e: bool = True;
             i8e: int = pos;
@@ -592,7 +608,7 @@ def _parse_date(s: str, pos: int) -> list[any] {
                 }
             }
         }
-        if pos + 4 <= len(s) {
+        if pos + 4 <= str_nbytes(s) {
             dm4e: list[any] = _tp_parse_digits(s, pos, 4, 4);
             if dm4e[0] >= 0 {
                 pos = dm4e[0];
@@ -647,7 +663,7 @@ def _parse_date(s: str, pos: int) -> list[any] {
             pos = dd3[0];
             dy = dd3[1];
         }
-    } elif pos + 4 <= len(s) and _tp_is_digit(_char_at(s, pos)) {
+    } elif pos + 4 <= str_nbytes(s) and _tp_is_digit(_char_at(s, pos)) {
         dm4: list[any] = _tp_parse_digits(s, pos, 4, 4);
         if dm4[0] >= 0 {
             pos = dm4[0];
@@ -660,7 +676,7 @@ def _parse_date(s: str, pos: int) -> list[any] {
 }
 
 def _parse_basic_date(s: str, pos: int) -> list[any] {
-    if pos + 8 > len(s) {
+    if pos + 8 > str_nbytes(s) {
         return [-1, 0, 0, 0];
     }
     i: int = pos;
@@ -670,7 +686,7 @@ def _parse_basic_date(s: str, pos: int) -> list[any] {
         }
         i = i + 1;
     }
-    if pos + 8 < len(s) {
+    if pos + 8 < str_nbytes(s) {
         nx: str = _char_at(s, pos + 8);
         if _tp_is_digit(nx) {
             return [-1, 0, 0, 0];
@@ -696,11 +712,11 @@ def:pub parse_iso_date_time(s: str, validate_calendar: bool = True) -> list[any]
     }
     pos: int = 0;
     neg: bool = False;
-    if len(s) > 1 and s[0:1] == "-" and (s[1:2] == "P" or s[1:2] == "p") {
+    if str_nbytes(s) > 1 and str_bslice(s, 0, 1) == "-" and (str_bslice(s, 1, 2) == "P" or str_bslice(s, 1, 2) == "p") {
         neg = True;
         pos = 1;
     }
-    if s[pos:pos + 1] == "P" or s[pos:pos + 1] == "p" {
+    if str_bslice(s, pos, pos + 1) == "P" or str_bslice(s, pos, pos + 1) == "p" {
         return parse_duration(s);
     }
     has_date: bool = False;
@@ -715,7 +731,8 @@ def:pub parse_iso_date_time(s: str, validate_calendar: bool = True) -> list[any]
     fi_colon: int = -1;
     fi_dash: int = -1;
     fi: int = pos;
-    while fi < len(s) {
+    _nb724_s: int = str_nbytes(s);
+    while fi < _nb724_s {
         fc: str = _char_at(s, fi);
         if fc == ":" and fi_colon < 0 {
             fi_colon = fi;
@@ -730,7 +747,7 @@ def:pub parse_iso_date_time(s: str, validate_calendar: bool = True) -> list[any]
     }
     if fi_colon >= 0 and (fi_dash < 0 or fi_colon < fi_dash) {
         colon_time_only: bool = True;
-        if pos + 8 <= len(s) {
+        if pos + 8 <= str_nbytes(s) {
             ok8c: bool = True;
             i8c: int = pos;
             while i8c < pos + 8 {
@@ -742,14 +759,14 @@ def:pub parse_iso_date_time(s: str, validate_calendar: bool = True) -> list[any]
             }
             if ok8c
                 and (
-                    pos + 8 == len(s)
+                    pos + 8 == str_nbytes(s)
                     or _char_at(s, pos + 8) == "T"
                     or _char_at(s, pos + 8) == "t"
                 ) {
                 colon_time_only = False;
             }
         }
-        if pos + 4 <= len(s) and _char_at(s, pos + 4) == "-" {
+        if pos + 4 <= str_nbytes(s) and _char_at(s, pos + 4) == "-" {
             colon_time_only = False;
         }
         if colon_time_only {
@@ -778,10 +795,10 @@ def:pub parse_iso_date_time(s: str, validate_calendar: bool = True) -> list[any]
     }
     if not has_time and not has_date and _tp_is_digit(_char_at(s, pos)) {
         looks_like_date: bool = False;
-        if pos + 4 <= len(s) and _char_at(s, pos + 4) == "-" {
+        if pos + 4 <= str_nbytes(s) and _char_at(s, pos + 4) == "-" {
             looks_like_date = True;
         }
-        if pos + 8 <= len(s) {
+        if pos + 8 <= str_nbytes(s) {
             ok8t: bool = True;
             i8t: int = pos;
             while i8t < pos + 8 {
@@ -793,7 +810,7 @@ def:pub parse_iso_date_time(s: str, validate_calendar: bool = True) -> list[any]
             }
             if ok8t
                 and (
-                    pos + 8 == len(s)
+                    pos + 8 == str_nbytes(s)
                     or _char_at(s, pos + 8) == "T"
                     or _char_at(s, pos + 8) == "t"
                 ) {
@@ -843,9 +860,9 @@ def:pub parse_iso_date_time(s: str, validate_calendar: bool = True) -> list[any]
         sc = tr[3];
         ns = tr[4];
         has_time = True;
-    } elif has_date and mo > 0 and pos < len(s) and _char_at(s, pos) == " " {
+    } elif has_date and mo > 0 and pos < str_nbytes(s) and _char_at(s, pos) == " " {
         pos = pos + 1;
-        if pos < len(s) and _tp_is_digit(_char_at(s, pos)) {
+        if pos < str_nbytes(s) and _tp_is_digit(_char_at(s, pos)) {
             trs: list[any] = _parse_time(s, pos);
             if trs[0] >= 0 {
                 pos = trs[0];
@@ -856,7 +873,7 @@ def:pub parse_iso_date_time(s: str, validate_calendar: bool = True) -> list[any]
                 has_time = True;
             }
         }
-    } elif has_date and mo > 0 and pos < len(s) and _tp_is_digit(_char_at(s, pos)) {
+    } elif has_date and mo > 0 and pos < str_nbytes(s) and _tp_is_digit(_char_at(s, pos)) {
         tr2: list[any] = _parse_time(s, pos);
         if tr2[0] >= 0 and tr2[1] < 24 {
             pos = tr2[0];
@@ -871,7 +888,7 @@ def:pub parse_iso_date_time(s: str, validate_calendar: bool = True) -> list[any]
     off_ns: int = 0;
     has_off: bool = False;
     is_z: bool = False;
-    if pos < len(s) {
+    if pos < str_nbytes(s) {
         orr: list[any] = _parse_offset_extended(s, pos);
         if orr[0] >= 0 and orr[2] != 0 {
             pos = orr[0];
@@ -887,7 +904,7 @@ def:pub parse_iso_date_time(s: str, validate_calendar: bool = True) -> list[any]
     }
     tz: str = "";
     cal: str = "iso8601";
-    if pos < len(s) {
+    if pos < str_nbytes(s) {
         ar: list[any] = _parse_annotations(s, pos);
         if ar[0] < 0 {
             return _parse_fail("invalid annotation");
@@ -896,7 +913,7 @@ def:pub parse_iso_date_time(s: str, validate_calendar: bool = True) -> list[any]
         tz = ar[1];
         cal = ar[2];
     }
-    if pos < len(s) {
+    if pos < str_nbytes(s) {
         return _parse_fail("trailing junk");
     }
     cal_out: str = cal;
@@ -1026,8 +1043,9 @@ def:priv _tp_expand_fractional_duration_time(
 def _tp_parse_fractional_seconds(num_s: str) -> list[float] {
     dot: int = -1;
     i: int = 0;
-    while i < len(num_s) {
-        c: str = num_s[i:i + 1];
+    _nb1035_num_s: int = str_nbytes(num_s);
+    while i < _nb1035_num_s {
+        c: str = str_bslice(num_s, i, i + 1);
         if c == "." or c == "," {
             dot = i;
             break;
@@ -1037,15 +1055,16 @@ def _tp_parse_fractional_seconds(num_s: str) -> list[float] {
     if dot < 0 {
         return [_tp_decimal_to_num(num_s), 0.0];
     }
-    whole_s: str = num_s[0:dot];
-    frac_s: str = num_s[dot + 1:len(num_s)];
+    whole_s: str = str_bslice(num_s, 0, dot);
+    frac_s: str = str_bslice(num_s, dot + 1, str_nbytes(num_s));
     se: float = _tp_decimal_to_num(whole_s);
     ns: float = 0.0;
     if len(frac_s) > 0 {
         frac_ns: int = 0;
         fi: int = 0;
-        while fi < len(frac_s) and fi < 9 {
-            fc: str = frac_s[fi:fi + 1];
+        _nb1053_frac_s: int = str_nbytes(frac_s);
+        while fi < _nb1053_frac_s and fi < 9 {
+            fc: str = str_bslice(frac_s, fi, fi + 1);
             if fc >= "0" and fc <= "9" {
                 frac_ns = frac_ns * 10 + int(fc);
             }
@@ -1074,10 +1093,10 @@ def:pub parse_duration(s: str) -> list[any] {
     }
     pos: int = 0;
     neg: bool = False;
-    if s[0:1] == "-" {
+    if str_bslice(s, 0, 1) == "-" {
         neg = True;
         pos = 1;
-    } elif s[0:1] == "+" {
+    } elif str_bslice(s, 0, 1) == "+" {
         pos = 1;
     }
     if _char_at(s, pos) != "P" and _char_at(s, pos) != "p" {
@@ -1107,7 +1126,8 @@ def:pub parse_duration(s: str) -> list[any] {
     last_date_ord: int = 0;
     last_time_ord: int = 0;
     has_unit: bool = False;
-    while pos < len(s) {
+    _nb1116_s: int = str_nbytes(s);
+    while pos < _nb1116_s {
         ch: str = _char_at(s, pos);
         if ch == "T" or ch == "t" {
             in_time = True;
@@ -1124,7 +1144,8 @@ def:pub parse_duration(s: str) -> list[any] {
             return _parse_fail("component after fractional part");
         }
         start: int = pos;
-        while pos < len(s)
+        _nb1133_s: int = str_nbytes(s);
+        while pos < _nb1133_s
             and (
                 _tp_is_digit(_char_at(s, pos))
                 or _char_at(s, pos) == "."
@@ -1132,7 +1153,7 @@ def:pub parse_duration(s: str) -> list[any] {
             ) {
             pos = pos + 1;
         }
-        num_s: str = s[start:pos];
+        num_s: str = str_bslice(s, start, pos);
         if len(num_s) == 0 {
             return _parse_fail("missing duration component value");
         }
@@ -1145,7 +1166,8 @@ def:pub parse_duration(s: str) -> list[any] {
         has_frac: bool = False;
         frac_digits: int = 0;
         fi: int = 0;
-        while fi < len(num_s) {
+        _nb1154_num_s: int = str_nbytes(num_s);
+        while fi < _nb1154_num_s {
             fc: str = _char_at(num_s, fi);
             if fc == "." or fc == "," {
                 has_frac = True;
@@ -1168,7 +1190,7 @@ def:pub parse_duration(s: str) -> list[any] {
         if has_frac {
             frac_terminal_seen = True;
         }
-        if pos >= len(s) {
+        if pos >= str_nbytes(s) {
             break;
         }
         u: str = _char_at(s, pos);
@@ -1267,7 +1289,7 @@ def:pub parse_duration(s: str) -> list[any] {
             last_date_ord = u_ord;
         }
     }
-    if pos < len(s) {
+    if pos < str_nbytes(s) {
         return _parse_fail("trailing junk");
     }
     if not has_unit {
@@ -1356,21 +1378,21 @@ def:pub iso_string_is_calendar_identifier(s: str) -> bool {
     if pr[PR_OK] and pr[PR_HAS_DATE] {
         return True;
     }
-    if len(s) == 7 and _char_at(s, 4) == "-" {
+    if str_nbytes(s) == 7 and _char_at(s, 4) == "-" {
         yp: list[any] = _tp_parse_digits(s, 0, 4, 4);
         mp: list[any] = _tp_parse_digits(s, 5, 2, 2);
         if yp[0] >= 0 and mp[0] >= 0 {
             return True;
         }
     }
-    if len(s) == 5 and _char_at(s, 2) == "-" {
+    if str_nbytes(s) == 5 and _char_at(s, 2) == "-" {
         mp2: list[any] = _tp_parse_digits(s, 0, 2, 2);
         dp2: list[any] = _tp_parse_digits(s, 3, 2, 2);
         if mp2[0] >= 0 and dp2[0] >= 0 {
             return True;
         }
     }
-    if len(s) >= 7 and s[0:2] == "--" and _char_at(s, 4) == "-" {
+    if str_nbytes(s) >= 7 and str_bslice(s, 0, 2) == "--" and _char_at(s, 4) == "-" {
         mp3: list[any] = _tp_parse_digits(s, 2, 2, 2);
         dp3: list[any] = _tp_parse_digits(s, 5, 2, 2);
         if mp3[0] >= 0 and dp3[0] >= 0 {
@@ -1383,10 +1405,10 @@ def:pub iso_string_is_calendar_identifier(s: str) -> bool {
 def:pub calendar_id_from_string(s: str) -> str {
     out: str = s;
     i: int = 0;
-    while i < len(out) {
-        c: str = out[i:i + 1];
+    while i < str_nbytes(out) {
+        c: str = str_bslice(out, i, i + 1);
         if c >= "A" and c <= "Z" {
-            out = out[0:i] + chr(ord(c) + 32) + out[i + 1:len(out)];
+            out = str_bslice(out, 0, i) + chr(str_byte(c, 0) + 32) + str_bslice(out, i + 1, str_nbytes(out));
         }
         i = i + 1;
     }
@@ -1396,20 +1418,23 @@ def:pub calendar_id_from_string(s: str) -> str {
 def:pub extract_calendar_annotation(s: str) -> str {
     cal: str = "";
     i: int = 0;
-    while i < len(s) {
+    _nb1405_s: int = str_nbytes(s);
+    while i < _nb1405_s {
         if _char_at(s, i) == "[" {
             j: int = i + 1;
-            while j < len(s) and _char_at(s, j) != "]" {
+            _nb1408_s: int = str_nbytes(s);
+            while j < _nb1408_s and _char_at(s, j) != "]" {
                 j = j + 1;
             }
-            if j < len(s) {
-                inner: str = s[i + 1:j];
-                if len(inner) > 0 and inner[0:1] == "!" {
-                    inner = inner[1:len(inner)];
+            if j < str_nbytes(s) {
+                inner: str = str_bslice(s, i + 1, j);
+                if len(inner) > 0 and str_bslice(inner, 0, 1) == "!" {
+                    inner = str_bslice(inner, 1, str_nbytes(inner));
                 }
                 eq: int = -1;
                 ei: int = 0;
-                while ei < len(inner) {
+                _nb1418_inner: int = str_nbytes(inner);
+                while ei < _nb1418_inner {
                     if _char_at(inner, ei) == "=" {
                         eq = ei;
                         break;
@@ -1417,8 +1442,8 @@ def:pub extract_calendar_annotation(s: str) -> str {
                     ei = ei + 1;
                 }
                 if eq >= 0 {
-                    key: str = inner[0:eq];
-                    val: str = inner[eq + 1:len(inner)];
+                    key: str = str_bslice(inner, 0, eq);
+                    val: str = str_bslice(inner, eq + 1, str_nbytes(inner));
                     if _annotation_key_is_lower(key) and key == "u-ca" {
                         cal = calendar_id_from_string(val);
                     }
@@ -1537,12 +1562,12 @@ def _parse_offset_extended(s: str, pos: int) -> list[any] {
                 ns = fr[1];
             }
         }
-    } elif pos + 2 <= len(s) and _tp_is_digit(_char_at(s, pos)) {
+    } elif pos + 2 <= str_nbytes(s) and _tp_is_digit(_char_at(s, pos)) {
         d2b: list[any] = _tp_parse_digits(s, pos, 2, 2);
         if d2b[0] >= 0 {
             pos = d2b[0];
             mn = d2b[1];
-            if pos + 2 <= len(s) and _tp_is_digit(_char_at(s, pos)) {
+            if pos + 2 <= str_nbytes(s) and _tp_is_digit(_char_at(s, pos)) {
                 d3b: list[any] = _tp_parse_digits(s, pos, 2, 2);
                 if d3b[0] >= 0 {
                     pos = d3b[0];
@@ -1586,7 +1611,7 @@ def:pub offset_string_has_seconds_field(s: str) -> bool {
 
 def:pub offset_string_to_seconds(s: str) -> list[any] {
     orr: list[any] = _parse_offset_extended(s, 0);
-    if orr[2] == 0 or orr[0] != len(s) {
+    if orr[2] == 0 or orr[0] != str_nbytes(s) {
         return [0, 0];
     }
     return [1, orr[1]];
@@ -1600,7 +1625,7 @@ def:pub parse_utc_offset_string(s: str) -> list[any] {
     if orr[0] < 0 or orr[2] == 0 {
         return [0, 0];
     }
-    if orr[0] != len(s) {
+    if orr[0] != str_nbytes(s) {
         return [0, 0];
     }
     return [1, orr[1]];
@@ -1610,7 +1635,7 @@ def:pub parse_month_code(mc: str) -> int {
     # A well-formed monthCode is EXACTLY uppercase "M" + two digits + optional uppercase
     # "L" (e.g. "M01", "M12", "M05L"). Lowercase "m"/"l", one digit ("M1"), or extra chars
     # are RangeErrors, so the format is validated strictly (not lenient).
-    if len(mc) != 3 and len(mc) != 4 {
+    if str_nbytes(mc) != 3 and str_nbytes(mc) != 4 {
         return -1;
     }
     if _char_at(mc, 0) != "M" {
@@ -1620,7 +1645,7 @@ def:pub parse_month_code(mc: str) -> int {
         return -1;
     }
     num: int = int(_char_at(mc, 1)) * 10 + int(_char_at(mc, 2));
-    if len(mc) == 4 {
+    if str_nbytes(mc) == 4 {
         if _char_at(mc, 3) != "L" {
             return -1;
         }
@@ -1671,7 +1696,7 @@ def:pub _is_offset_only_tz_string(s: str) -> bool {
     if orr[2] == 0 {
         return False;
     }
-    if orr[0] != len(s) {
+    if orr[0] != str_nbytes(s) {
         return False;
     }
     return True;
@@ -1703,9 +1728,10 @@ def:pub parse_temporal_time_zone_id(s: str) -> str {
         }
         if pr[PR_HAS_OFFSET] != 0 {
             offpos: int = -1;
-            bracket: int = len(s);
+            bracket: int = str_nbytes(s);
             scan: int = 0;
-            while scan < len(s) {
+            _nb1714_s: int = str_nbytes(s);
+            while scan < _nb1714_s {
                 if _char_at(s, scan) == "[" {
                     bracket = scan;
                     break;
@@ -1760,8 +1786,9 @@ def:pub parse_temporal_time_zone_string(s: str) -> list[any] {
         if pr[PR_HAS_OFFSET] != 0 {
             offpos: int = -1;
             scan: int = 0;
-            bracket: int = len(s);
-            while scan < len(s) {
+            bracket: int = str_nbytes(s);
+            _nb1770_s: int = str_nbytes(s);
+            while scan < _nb1770_s {
                 if _char_at(s, scan) == "[" {
                     bracket = scan;
                     break;

@@ -1,19 +1,10 @@
 impl native_unit_ref(path: str) -> str {
-    """How one unit names another in what it writes to disk: by package
-    identity when the other lives under a root, so the reference survives
-    the package moving, and by real path otherwise.""";
     rp = os.path.realpath(path);
     ident = native_unit_identity(rp);
     return ident if ident != rp else rp;
 }
 
 impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
-    """The path a unit reference names here: an absolute path is itself;
-    `jaclang/...` is under this process's jaclang; another root's identity
-    is looked for as the anchor unit's own root, beside it, then under each
-    import path. A reference found nowhere names a path that cannot exist,
-    never one relative to the working directory, so its unit reads as
-    missing and is rebuilt.""";
     if not ref or os.path.isabs(ref) {
         return ref;
     }
@@ -52,9 +43,7 @@ impl resolve_native_unit_ref(ref: str, anchor: str = "") -> str {
             }
         }
     }
-    """A package from the store is rooted at its `<version>-<sha>` directory
-    under `<store>/<org>/<name>/`, a place no consumer's root or import path
-    leads to.""";
+
     store = active_host().native_fact(FACT_PACKAGE_STORE, "");
     if store and os.path.isdir(store) {
         for org in sorted(os.listdir(store)) {
@@ -466,8 +455,6 @@ impl NativeIface._with_references(fields: dict[str, any]) -> dict[str, any] {
 }
 
 impl NativeIface.resolve_deps(anchor: str) {
-    """Dependencies read from disk are references; the unit's own path
-        tells where a same-package reference lives.""";
     self.deps = [resolve_native_unit_ref(x, anchor) for x in self.deps];
 }
 
@@ -529,10 +516,6 @@ impl NativeIface.from_dict(d: dict[str, any]) -> (NativeIface | None) {
 }
 
 impl NativeIface.from_bytes(raw: (bytes | None)) -> (NativeIface | None) {
-    """A stored interface is trusted only when its body hashes to the digest
-        it is prefixed with: a truncated or corrupted entry decodes to nothing and
-        its unit is recompiled, instead of one reader taking the prefix and
-        another the body.""";
     if raw is None or len(raw) <= NIFACE_HASH_LEN {
         return None;
     }
@@ -556,7 +539,6 @@ impl NativeIface.from_bytes(raw: (bytes | None)) -> (NativeIface | None) {
 }
 
 impl NativeIface.verified_digest(raw: (bytes | None)) -> (str | None) {
-    """The recorded digest of a stored interface whose body agrees with it.""";
     if NativeIface.from_bytes(raw) is None {
         return None;
     }

@@ -8,166 +8,151 @@ jaclang.runtime.python.modules.cmath.
 def:priv cmath_acos_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex_protected(value, "acos", "argument");
-        return return_Py_complex_protected(cmath_acos_impl(receiver, z));
-    } except boundary_failure {
+    z = convert_Py_complex_protected(value, "acos", "argument");
+    if failed() {
         return NULL;
     }
+    return return_Py_complex_protected(cmath_acos_impl(receiver, z));
 }
 
 def:priv cmath_acosh_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex_protected(value, "acosh", "argument");
-        return return_Py_complex_protected(cmath_acosh_impl(receiver, z));
-    } except boundary_failure {
+    z = convert_Py_complex_protected(value, "acosh", "argument");
+    if failed() {
         return NULL;
     }
+    return return_Py_complex_protected(cmath_acosh_impl(receiver, z));
 }
 
 def:priv cmath_asin_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex_protected(value, "asin", "argument");
-        return return_Py_complex_protected(cmath_asin_impl(receiver, z));
-    } except boundary_failure {
+    z = convert_Py_complex_protected(value, "asin", "argument");
+    if failed() {
         return NULL;
     }
+    return return_Py_complex_protected(cmath_asin_impl(receiver, z));
 }
 
 def:priv cmath_asinh_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex_protected(value, "asinh", "argument");
-        return return_Py_complex_protected(cmath_asinh_impl(receiver, z));
-    } except boundary_failure {
+    z = convert_Py_complex_protected(value, "asinh", "argument");
+    if failed() {
         return NULL;
     }
+    return return_Py_complex_protected(cmath_asinh_impl(receiver, z));
 }
 
 def:priv cmath_atan_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex_protected(value, "atan", "argument");
-        return return_Py_complex_protected(cmath_atan_impl(receiver, z));
-    } except boundary_failure {
+    z = convert_Py_complex_protected(value, "atan", "argument");
+    if failed() {
         return NULL;
     }
+    return return_Py_complex_protected(cmath_atan_impl(receiver, z));
 }
 
 def:priv cmath_atanh_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex_protected(value, "atanh", "argument");
-        return return_Py_complex_protected(cmath_atanh_impl(receiver, z));
-    } except boundary_failure {
+    z = convert_Py_complex_protected(value, "atanh", "argument");
+    if failed() {
         return NULL;
     }
+    return return_Py_complex_protected(cmath_atanh_impl(receiver, z));
 }
 
 def:priv cmath_cos_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex_protected(value, "cos", "argument");
-        return return_Py_complex_protected(cmath_cos_impl(receiver, z));
-    } except boundary_failure {
+    z = convert_Py_complex_protected(value, "cos", "argument");
+    if failed() {
         return NULL;
     }
+    return return_Py_complex_protected(cmath_cos_impl(receiver, z));
 }
 
 def:priv cmath_cosh_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex_protected(value, "cosh", "argument");
-        return return_Py_complex_protected(cmath_cosh_impl(receiver, z));
-    } except boundary_failure {
+    z = convert_Py_complex_protected(value, "cosh", "argument");
+    if failed() {
         return NULL;
     }
+    return return_Py_complex_protected(cmath_cosh_impl(receiver, z));
 }
 
 def:priv cmath_exp_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex_protected(value, "exp", "argument");
-        return return_Py_complex_protected(cmath_exp_impl(receiver, z));
-    } except boundary_failure {
+    z = convert_Py_complex_protected(value, "exp", "argument");
+    if failed() {
         return NULL;
     }
+    return return_Py_complex_protected(cmath_exp_impl(receiver, z));
 }
 
 def:priv cmath_log10_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex_protected(value, "log10", "argument");
-        return return_Py_complex_protected(cmath_log10_impl(receiver, z));
-    } except boundary_failure {
+    z = convert_Py_complex_protected(value, "log10", "argument");
+    if failed() {
         return NULL;
     }
+    return return_Py_complex_protected(cmath_log10_impl(receiver, z));
 }
 
 def:priv cmath_sin_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex_protected(value, "sin", "argument");
-        return return_Py_complex_protected(cmath_sin_impl(receiver, z));
-    } except boundary_failure {
+    z = convert_Py_complex_protected(value, "sin", "argument");
+    if failed() {
         return NULL;
     }
+    return return_Py_complex_protected(cmath_sin_impl(receiver, z));
 }
 
 def:priv cmath_sinh_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex_protected(value, "sinh", "argument");
-        return return_Py_complex_protected(cmath_sinh_impl(receiver, z));
-    } except boundary_failure {
+    z = convert_Py_complex_protected(value, "sinh", "argument");
+    if failed() {
         return NULL;
     }
+    return return_Py_complex_protected(cmath_sinh_impl(receiver, z));
 }
 
 def:priv cmath_sqrt_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex_protected(value, "sqrt", "argument");
-        return return_Py_complex_protected(cmath_sqrt_impl(receiver, z));
-    } except boundary_failure {
+    z = convert_Py_complex_protected(value, "sqrt", "argument");
+    if failed() {
         return NULL;
     }
+    return return_Py_complex_protected(cmath_sqrt_impl(receiver, z));
 }
 
 def:priv cmath_tan_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex_protected(value, "tan", "argument");
-        return return_Py_complex_protected(cmath_tan_impl(receiver, z));
-    } except boundary_failure {
+    z = convert_Py_complex_protected(value, "tan", "argument");
+    if failed() {
         return NULL;
     }
+    return return_Py_complex_protected(cmath_tan_impl(receiver, z));
 }
 
 def:priv cmath_tanh_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex_protected(value, "tanh", "argument");
-        return return_Py_complex_protected(cmath_tanh_impl(receiver, z));
-    } except boundary_failure {
+    z = convert_Py_complex_protected(value, "tanh", "argument");
+    if failed() {
         return NULL;
     }
+    return return_Py_complex_protected(cmath_tanh_impl(receiver, z));
 }
 
 def:priv cmath_log_bound(
@@ -176,7 +161,7 @@ def:priv cmath_log_bound(
     clinic_args = stack.view(count);
     try {
         value = clinic_args[0];
-        z = convert_Py_complex(value, "log", argument_label("", 1));
+        z = convert_Py_complex(value, "log", "argument 1");
         base: ptr[PyObject] = NULL;
         if count > 1 and clinic_args[1] != NULL {
             value = clinic_args[1];
@@ -188,35 +173,49 @@ def:priv cmath_log_bound(
     }
 }
 
+def:priv cmath_log_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    value = clinic_args[0];
+    z = convert_Py_complex(value, "log", "argument 1");
+    if failed() {
+        return NULL;
+    }
+    base: ptr[PyObject] = NULL;
+    if count > 1 {
+        base = clinic_args[1];
+    }
+    return cmath_log_impl(receiver, z, base);
+}
+
 def:priv cmath_log_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 2) and not check_positional("log", int(nargs), 1, 2) {
         return NULL;
     }
-    return cmath_log_bound(receiver, args, nargs);
+    return cmath_log_direct(receiver, args, nargs);
 }
 
 def:priv cmath_phase_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex(value, "phase", "argument");
-        return cmath_phase_impl(receiver, z);
-    } except boundary_failure {
+    z = convert_Py_complex(value, "phase", "argument");
+    if failed() {
         return NULL;
     }
+    return cmath_phase_impl(receiver, z);
 }
 
 def:priv cmath_polar_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex(value, "polar", "argument");
-        return cmath_polar_impl(receiver, z);
-    } except boundary_failure {
+    z = convert_Py_complex(value, "polar", "argument");
+    if failed() {
         return NULL;
     }
+    return cmath_polar_impl(receiver, z);
 }
 
 def:priv cmath_rect_bound(
@@ -234,46 +233,58 @@ def:priv cmath_rect_bound(
     }
 }
 
+def:priv cmath_rect_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    r: f64 = PyFloat_AsDouble(clinic_args[0]);
+    if r == -1.0 and failed() {
+        return NULL;
+    }
+    phi: f64 = PyFloat_AsDouble(clinic_args[1]);
+    if phi == -1.0 and failed() {
+        return NULL;
+    }
+    return cmath_rect_impl(receiver, r, phi);
+}
+
 def:priv cmath_rect_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 2 or nargs > 2) and not check_positional("rect", int(nargs), 2, 2) {
         return NULL;
     }
-    return cmath_rect_bound(receiver, args, nargs);
+    return cmath_rect_direct(receiver, args, nargs);
 }
 
 def:priv cmath_isfinite_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex(value, "isfinite", "argument");
-        return cmath_isfinite_impl(receiver, z);
-    } except boundary_failure {
+    z = convert_Py_complex(value, "isfinite", "argument");
+    if failed() {
         return NULL;
     }
+    return cmath_isfinite_impl(receiver, z);
 }
 
 def:priv cmath_isnan_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex(value, "isnan", "argument");
-        return cmath_isnan_impl(receiver, z);
-    } except boundary_failure {
+    z = convert_Py_complex(value, "isnan", "argument");
+    if failed() {
         return NULL;
     }
+    return cmath_isnan_impl(receiver, z);
 }
 
 def:priv cmath_isinf_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        z = convert_Py_complex(value, "isinf", "argument");
-        return cmath_isinf_impl(receiver, z);
-    } except boundary_failure {
+    z = convert_Py_complex(value, "isinf", "argument");
+    if failed() {
         return NULL;
     }
+    return cmath_isinf_impl(receiver, z);
 }
 
 glob:priv cmath_isclose_signature = CallSignature(
@@ -286,9 +297,9 @@ def:priv cmath_isclose_bound(
     clinic_args = stack.view(count);
     try {
         value = clinic_args[0];
-        a = convert_Py_complex(value, "isclose", argument_label("a", 1));
+        a = convert_Py_complex(value, "isclose", "argument 'a'");
         value = clinic_args[1];
-        b = convert_Py_complex(value, "isclose", argument_label("b", 2));
+        b = convert_Py_complex(value, "isclose", "argument 'b'");
         rel_tol: f64 = 1e-09;
         if count > 2 and clinic_args[2] != NULL {
             value = clinic_args[2];
@@ -314,13 +325,7 @@ def:priv cmath_isclose_call(
     if kwnames == NULL and nargs >= 2 and nargs <= 2 {
         return cmath_isclose_bound(receiver, args, nargs);
     }
-    values = unpack_stack(cmath_isclose_signature, args, nargs, kwnames);
-    if values {
-        unpacked = cmath_isclose_bound(receiver, values, 4);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         cmath_isclose_signature, args, nargs, kwnames, cmath_isclose_bound, receiver
     );
 }

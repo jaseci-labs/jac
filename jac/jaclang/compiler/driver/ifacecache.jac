@@ -5,6 +5,7 @@ import os;
 import time;
 
 glob DIAG_SCHEMA: int = 1,
+     SOURCE_DEP_PREFIX: str = "src:",
      IFACE_RETAIN_CAP: int = 1024,
      _CODEC_MODULES: tuple[str, ...] = (
          "jaclang.compiler.types.type_evaluator",
@@ -52,6 +53,7 @@ obj IfaceEntry {
         stamp: float = 0.0,
         replayed_token: int = -1;
 }
+
 
 obj EncodedInterface {
     has module_key: str,

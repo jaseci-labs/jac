@@ -23,7 +23,7 @@ def kernel_compile(
     emit_closure: bool = False,
     emit_cached: bool = True,
     seeds: (list[PythonInterface] | None) = None
-) -> CompileReport;
+) -> (CompileReport | None);
 
 def kernel_route(program: JacProgram, path: str) -> tuple[bool, bool];
 
@@ -36,7 +36,7 @@ def kernel_compile_reported(
     emit_closure: bool,
     emit_cached: bool = True,
     seeds: (list[PythonInterface] | None) = None
-) -> CompileReport;
+) -> (CompileReport | None);
 
 def kernel_generates_native(program: JacProgram, path: str) -> bool;
 

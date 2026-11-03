@@ -162,3 +162,7 @@ impl NativeBench -> JsxElement {
             </Reveal>
         </HomeSection>;
 }
+
+impl fps_pct(v: float) -> str {
+    return str(v * 100 / _FPS_MAX) + "%";
+}

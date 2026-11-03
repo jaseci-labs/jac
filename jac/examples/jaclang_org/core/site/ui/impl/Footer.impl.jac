@@ -21,7 +21,7 @@ impl Footer -> JsxElement {
                         <p
                             className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground"
                         >
-                            One language, one compiler, the whole stack. No glue.
+                            The ultimate language for agents to build everything.
                         </p>
                         <p className="mt-4 text-xs text-muted-foreground">
                             This site is a Jac program — built end to end in Jac.

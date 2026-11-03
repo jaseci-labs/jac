@@ -143,6 +143,7 @@ def native_module_key(path: str) -> str;
 
 def native_unit_prefix(path: str) -> str;
 
+def interop_callback_symbol(provider_path: str, name: str) -> str;
 def native_symbol_name(prefix: str, name: str) -> str;
 
 def native_glob_init_name(path: str) -> str;
@@ -304,6 +305,8 @@ def is_selected_native_variant(path: str) -> bool;
 
 def is_native_variant_path(path: str) -> bool;
 
+def native_variant_base(path: str) -> (str | None);
+
 def native_variant_of(module_path: str) -> str;
 
 def _inferred_native_path(candidate: (str | None)) -> (str | None);
@@ -353,9 +356,11 @@ obj InteropBinding {
         kind: str = 'function',
         provider_app: str = '',
         native_contract: dict[str, any] = {},
-        endpoint_id: str = '';
+        endpoint_id: str = '',
+        symbol: str = '';
 
     has is_cross_module: bool { getter; }
+    has native_callable: bool { getter; }
 }
 
 obj InteropManifest {

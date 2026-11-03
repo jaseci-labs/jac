@@ -112,6 +112,13 @@ impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None 
 }
 
 impl JacProgram.release_module(self: JacProgram, resolved_path: str) -> None {
+    if self.context_root is None {
+        for context in list(self.contexts.values()) {
+            if context is not self {
+                context.release_module(resolved_path);
+            }
+        }
+    }
     released = self.hub.mod.hub.get(resolved_path) or self.find_module(resolved_path);
     self.invalidate_module(resolved_path);
     self.drop_module_alerts(resolved_path);
@@ -149,7 +156,8 @@ impl JacProgram.load_dependency_module(
     source_path: str,
     importer_path: (str | None) = None,
     use_str: (str | None) = None,
-    need_tree: bool = False
+    need_tree: bool = False,
+    need_bodies: bool = False
 ) -> uni.Module {
     resolved_path = os.path.realpath(source_path);
     import from jaclang.compiler.frontend.host { active_host }
@@ -205,7 +213,7 @@ impl JacProgram.load_dependency_module(
                 mod = self.compile(
                     source_path,
                     use_str=use_str,
-                    options=self.options.for_symbols(need_tree)
+                    options=self.options.for_symbols(need_tree, need_bodies)
                 );
             } finally {
                 self.options = saved_options;
@@ -434,8 +442,6 @@ impl JacProgram.find_module(self: JacProgram, path: str) -> (uni.Module | None) 
 }
 
 impl JacProgram.execution_hubs(self: JacProgram) -> list[dict[str, uni.Module]] {
-    """Enumerate loaded runtime metadata; source analysis uses only its own hub.""";
-    import from jaclang.compiler.frontend.host { active_host }
     hubs: list[dict[str, uni.Module]] = [self.mod.hub];
     internal = active_host().internal_program(self);
     if internal is not None and internal is not self {
@@ -469,8 +475,6 @@ impl JacProgram.compile(
     options: (CompileOptions | None) = None
 ) -> uni.Module {
     if (options is None) {
-        """A compile inside a native unit build parses for that build: whether
-        a native-scope module is a native unit is fixed when it is parsed.""";
         import from jaclang.compiler.frontend.codeinfo { native_unit_compile_active }
         options = CompileOptions(
             symtab_ir_only=symtab_ir_only,
@@ -553,7 +557,7 @@ impl JacProgram.infers_native_codespace(self: JacProgram, file_path: str) -> boo
         return True;
     }
     opts = self.options;
-    if opts is not None and opts.no_cgen {
+    if opts is not None and opts.no_cgen and not opts.native_import {
         return False;
     }
     if opts is not None and opts.native_unit {
@@ -1004,14 +1008,15 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
                             if not isinstance(item, uni.ModuleItem) {
                                 continue;
                             }
-                            verdict = classify_client_import_item(linked_mod, item);
+                            verdict = classify_client_import_item(
+                                linked_mod, item, self
+                            );
                             if verdict != ClientImportVerdict.BRIDGED {
                                 continue;
                             }
-                            sym_name = item.name.value;
-                            decl = ability_of_symbol(linked_mod.lookup(sym_name));
-                            if decl is not None {
-                                facts.bridged_decls[sym_name] = decl;
+                            decl = import_item_declaration(linked_mod, item, self);
+                            if isinstance(decl, uni.Ability) {
+                                facts.bridged_decls[item.name.value] = decl;
                             }
                         }
                     }

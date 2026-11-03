@@ -19,8 +19,12 @@ glob GATEWAY_API_SEGMENTS: tuple[str, ...] = (
          "docs"
      ),
      GATEWAY_PAGE_SEGMENTS: tuple[str, ...] = ("docs", ),
-     GATEWAY_DISCOVERY_SEGMENTS: tuple[str, ...] = ("jobs", GATEWAY_CLIENT_SEGMENT),
-     GATEWAY_REPLICATED_SEGMENTS: tuple[str, ...] = ("user", "sso", "api-key", "graph"),
+     GATEWAY_DISCOVERY_SEGMENTS: tuple[str, ...] = (
+         "jobs",
+         "graph",
+         GATEWAY_CLIENT_SEGMENT
+     ),
+     GATEWAY_REPLICATED_SEGMENTS: tuple[str, ...] = ("user", "sso", "api-key"),
      GATEWAY_LISTING_SEGMENTS: tuple[str, ...] = ("walkers", "functions"),
      _GATEWAY_OWNED_PREFIX_SEGMENTS: set[str] = (
          set(GATEWAY_API_SEGMENTS)

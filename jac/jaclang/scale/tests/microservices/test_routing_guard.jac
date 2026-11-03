@@ -73,7 +73,7 @@ test "only concrete members of service-owned families are learnable" {
         "/sso/firebase/token",
         "/api-key/create",
         "/jobs",
-        "/graph/data",
+        "/graph/neighbors",
         "/healthz/live",
         "/admin/users"
     ] {

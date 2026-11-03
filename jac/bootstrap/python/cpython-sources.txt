@@ -1,30 +1,35 @@
 # CPython source allowlist for Jac's Linux/macOS x86_64 and aarch64 builds.
 # Paths are relative to the checksum-pinned CPython archive in sources.json.
 # One exact file per line; a trailing / includes a directory recursively.
-# Blank lines and full-line # comments are ignored, except marked removals
-# restored by the build-only host (see below). No globs.
-# Unlisted archive contents are discarded before configure/make. Missing,
-# overlapping, or incorrectly typed entries fail the build.
+# Blank lines and full-line # comments are ignored. No globs.
+# Unlisted archive contents are discarded before the build: the C that the
+# native Jac implementation, the Jac generators (scripts/jacpython/) and the
+# JacPython build (bootstrap/pyconfig.zig's probes in place of configure,
+# build_jacpython.zig in place of Makefile.pre.in, makesetup and Setup*)
+# replace is simply not listed. Missing, overlapping, or incorrectly typed
+# entries fail the build.
 #
-# A commented path carries a marker saying which builds must lack it. Counts
+# A commented path carries a marker saying why the build lacks it. Counts
 # use pinned CPython 3.14.6 source lines, including comments and blanks.
 #
-#   "# path  # removed: N source lines"
-#   Replaced by the native Jac implementation. A separate build-only CPython
-#   host restores these to produce the native object; no shipped runtime has
-#   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 130 C files / 229,391 lines; 119 headers / 115,516 lines.
-#   Total: 249 files / 344,907 source lines.
-#
 #   "# path  # pruned: N source lines"
-#   Not needed by any build. Neither the host nor a shipped runtime has them,
-#   so build-graph.patch detaches upstream rules that name them.
+#   Needed by neither the build nor the runtime.
 #   A path is pruned only when no supported platform's configure selects it
 #   and its outer #if has no #else that the retained build still links.
-#   Total: 29 files / 59,417 source lines.
+#   Total: 31 files / 61,064 source lines.
 #
-# After each build, build.sh checks that no commented path came back, reading
-# the marker to decide which builds must lack it.
+#   "# path  # generated: N source lines"
+#   Written by a Jac generator and checked in as
+#   bootstrap/python/generated/<path>.in: the opcode tables from the Jac
+#   instruction table (scripts/jacpython/gen_opcode_meta.jac), every C API
+#   header (Include/*.h, Include/cpython/*.h, Include/internal/) from the Jac
+#   layouts, constants, C API declarations and global strings
+#   (scripts/jacpython/gen_include.jac). The archive's copy is discarded and
+#   the checked-in one staged in its place; a header under Include/ that is
+#   not marked here fails the build.
+#   Total: 283 files / 53,699 source lines.
+#
+# After each build, build_jacpython.zig checks that no pruned path came back.
 # Keep build dependencies and ABI adapters aligned with these exclusions.
 # Split a directory entry before removing only part of its contents.
 # CI hashes this manifest and rebuilds/verifies Python when it changes.
@@ -35,580 +40,327 @@
 # use it.
 
 # Build, install and license inputs
-Grammar/
+# Grammar/  # pruned: 1,647 source lines
 LICENSE
-Makefile.pre.in
-Misc/platform_triplet.c
 Misc/python-config.in
 Misc/python-config.sh.in
 Misc/python-embed.pc.in
 # Misc/python.man  # pruned: 768 source lines
 Misc/python.pc.in
-Programs/_bootstrap_python.c
-Programs/_freeze_module.c
-Programs/_freeze_module.py
 # Programs/_testembed.c  # pruned: 2,641 source lines
 Programs/python.c
 # Programs/test_frozenmain.h  # pruned: 39 source lines
 # README.rst  # pruned: 235 source lines
-Tools/build/
 Tools/freeze/flag.py
 # Tools/gdb/libpython.py  # pruned: 2,190 source lines
 Tools/scripts/idle3
 Tools/scripts/pydoc3
-aclocal.m4
-config.guess
-config.sub
-configure
-configure.ac
-install-sh
-pyconfig.h.in
 
 # Public and internal headers
-Include/
-
-# Parser and tokenizer
-# Parser/action_helpers.c  # removed: 1,953 source lines
-# Parser/lexer/buffer.c  # removed: 76 source lines
-# Parser/lexer/buffer.h  # removed: 10 source lines
-# Parser/lexer/lexer.c  # removed: 1,635 source lines
-# Parser/lexer/lexer.h  # removed: 10 source lines
-# Parser/lexer/state.c  # removed: 154 source lines
-# Parser/lexer/state.h  # removed: 151 source lines
-Parser/myreadline.c
-# Parser/parser.c  # removed: 38,073 source lines
-# Parser/peg_api.c  # removed: 40 source lines
-# Parser/pegen.c  # removed: 1,083 source lines
-# Parser/pegen.h  # removed: 388 source lines
-# Parser/pegen_errors.c  # removed: 462 source lines
-# Parser/string_parser.c  # removed: 339 source lines
-# Parser/string_parser.h  # removed: 11 source lines
-# Parser/token.c  # removed: 250 source lines
-# Parser/tokenizer/file_tokenizer.c  # removed: 494 source lines
-# Parser/tokenizer/helpers.c  # removed: 583 source lines
-# Parser/tokenizer/helpers.h  # removed: 37 source lines
-# Parser/tokenizer/readline_tokenizer.c  # removed: 135 source lines
-# Parser/tokenizer/string_tokenizer.c  # removed: 148 source lines
-# Parser/tokenizer/tokenizer.h  # removed: 14 source lines
-# Parser/tokenizer/utf8_tokenizer.c  # removed: 55 source lines
+# Include/Python.h  # generated: 155 source lines
+Include/README.rst
+# Include/abstract.h  # generated: 915 source lines
+# Include/audit.h  # generated: 30 source lines
+# Include/bltinmodule.h  # generated: 14 source lines
+# Include/boolobject.h  # generated: 54 source lines
+# Include/bytearrayobject.h  # generated: 44 source lines
+# Include/bytesobject.h  # generated: 66 source lines
+# Include/ceval.h  # generated: 145 source lines
+# Include/codecs.h  # generated: 176 source lines
+# Include/compile.h  # generated: 22 source lines
+# Include/complexobject.h  # generated: 30 source lines
+# Include/cpython/abstract.h  # generated: 104 source lines
+# Include/cpython/audit.h  # generated: 8 source lines
+# Include/cpython/bytearrayobject.h  # generated: 38 source lines
+# Include/cpython/bytesobject.h  # generated: 42 source lines
+# Include/cpython/cellobject.h  # generated: 50 source lines
+# Include/cpython/ceval.h  # generated: 43 source lines
+# Include/cpython/classobject.h  # generated: 71 source lines
+# Include/cpython/code.h  # generated: 340 source lines
+# Include/cpython/compile.h  # generated: 50 source lines
+# Include/cpython/complexobject.h  # generated: 33 source lines
+# Include/cpython/context.h  # generated: 107 source lines
+# Include/cpython/critical_section.h  # generated: 154 source lines
+# Include/cpython/descrobject.h  # generated: 62 source lines
+# Include/cpython/dictobject.h  # generated: 105 source lines
+# Include/cpython/fileobject.h  # generated: 16 source lines
+# Include/cpython/fileutils.h  # generated: 16 source lines
+# Include/cpython/floatobject.h  # generated: 27 source lines
+# Include/cpython/frameobject.h  # generated: 35 source lines
+# Include/cpython/funcobject.h  # generated: 185 source lines
+# Include/cpython/genobject.h  # generated: 56 source lines
+# Include/cpython/import.h  # generated: 30 source lines
+# Include/cpython/initconfig.h  # generated: 334 source lines
+# Include/cpython/listobject.h  # generated: 53 source lines
+# Include/cpython/lock.h  # generated: 74 source lines
+# Include/cpython/longintrepr.h  # generated: 184 source lines
+# Include/cpython/longobject.h  # generated: 89 source lines
+# Include/cpython/memoryobject.h  # generated: 50 source lines
+# Include/cpython/methodobject.h  # generated: 66 source lines
+# Include/cpython/modsupport.h  # generated: 26 source lines
+# Include/cpython/monitoring.h  # generated: 269 source lines
+# Include/cpython/object.h  # generated: 493 source lines
+# Include/cpython/objimpl.h  # generated: 104 source lines
+# Include/cpython/odictobject.h  # generated: 43 source lines
+# Include/cpython/picklebufobject.h  # generated: 31 source lines
+# Include/cpython/pthread_stubs.h  # generated: 105 source lines
+# Include/cpython/pyatomic.h  # generated: 628 source lines
+# Include/cpython/pyatomic_gcc.h  # generated: 619 source lines
+# Include/cpython/pyatomic_msc.h  # generated: 1,204 source lines
+# Include/cpython/pyatomic_std.h  # generated: 1,112 source lines
+# Include/cpython/pyctype.h  # generated: 39 source lines
+# Include/cpython/pydebug.h  # generated: 38 source lines
+# Include/cpython/pyerrors.h  # generated: 133 source lines
+# Include/cpython/pyfpe.h  # generated: 15 source lines
+# Include/cpython/pyframe.h  # generated: 45 source lines
+# Include/cpython/pyhash.h  # generated: 54 source lines
+# Include/cpython/pylifecycle.h  # generated: 89 source lines
+# Include/cpython/pymem.h  # generated: 84 source lines
+# Include/cpython/pystate.h  # generated: 277 source lines
+# Include/cpython/pystats.h  # generated: 194 source lines
+# Include/cpython/pythonrun.h  # generated: 96 source lines
+# Include/cpython/pythread.h  # generated: 43 source lines
+# Include/cpython/pytime.h  # generated: 27 source lines
+# Include/cpython/setobject.h  # generated: 71 source lines
+# Include/cpython/traceback.h  # generated: 13 source lines
+# Include/cpython/tracemalloc.h  # generated: 32 source lines
+# Include/cpython/tupleobject.h  # generated: 40 source lines
+# Include/cpython/unicodeobject.h  # generated: 773 source lines
+# Include/cpython/warnings.h  # generated: 20 source lines
+# Include/cpython/weakrefobject.h  # generated: 66 source lines
+# Include/critical_section.h  # generated: 16 source lines
+# Include/datetime.h  # generated: 267 source lines
+# Include/descrobject.h  # generated: 100 source lines
+# Include/dictobject.h  # generated: 108 source lines
+# Include/dynamic_annotations.h  # generated: 502 source lines
+# Include/enumobject.h  # generated: 17 source lines
+# Include/errcode.h  # generated: 45 source lines
+# Include/exports.h  # generated: 105 source lines
+# Include/fileobject.h  # generated: 41 source lines
+# Include/fileutils.h  # generated: 62 source lines
+# Include/floatobject.h  # generated: 54 source lines
+# Include/frameobject.h  # generated: 20 source lines
+# Include/genericaliasobject.h  # generated: 14 source lines
+# Include/import.h  # generated: 103 source lines
+# Include/internal/mimalloc/mimalloc.h  # generated: 565 source lines
+# Include/internal/mimalloc/mimalloc/atomic.h  # generated: 392 source lines
+# Include/internal/mimalloc/mimalloc/internal.h  # generated: 969 source lines
+# Include/internal/mimalloc/mimalloc/prim.h  # generated: 329 source lines
+# Include/internal/mimalloc/mimalloc/track.h  # generated: 147 source lines
+# Include/internal/mimalloc/mimalloc/types.h  # generated: 721 source lines
+# Include/internal/pycore_abstract.h  # generated: 61 source lines
+# Include/internal/pycore_asdl.h  # generated: 112 source lines
+# Include/internal/pycore_ast.h  # generated: 945 source lines
+# Include/internal/pycore_ast_state.h  # generated: 271 source lines
+# Include/internal/pycore_atexit.h  # generated: 31 source lines
+# Include/internal/pycore_audit.h  # generated: 35 source lines
+# Include/internal/pycore_backoff.h  # generated: 133 source lines
+# Include/internal/pycore_bitutils.h  # generated: 186 source lines
+# Include/internal/pycore_blocks_output_buffer.h  # generated: 321 source lines
+# Include/internal/pycore_brc.h  # generated: 73 source lines
+# Include/internal/pycore_bytes_methods.h  # generated: 82 source lines
+# Include/internal/pycore_bytesobject.h  # generated: 149 source lines
+# Include/internal/pycore_c_array.h  # generated: 39 source lines
+# Include/internal/pycore_call.h  # generated: 214 source lines
+# Include/internal/pycore_capsule.h  # generated: 17 source lines
+# Include/internal/pycore_cell.h  # generated: 75 source lines
+# Include/internal/pycore_ceval.h  # generated: 394 source lines
+# Include/internal/pycore_ceval_state.h  # generated: 48 source lines
+# Include/internal/pycore_code.h  # generated: 671 source lines
+# Include/internal/pycore_codecs.h  # generated: 76 source lines
+# Include/internal/pycore_compile.h  # generated: 230 source lines
+# Include/internal/pycore_complexobject.h  # generated: 34 source lines
+# Include/internal/pycore_condvar.h  # generated: 93 source lines
+# Include/internal/pycore_context.h  # generated: 59 source lines
+# Include/internal/pycore_critical_section.h  # generated: 237 source lines
+# Include/internal/pycore_crossinterp.h  # generated: 406 source lines
+# Include/internal/pycore_crossinterp_data_registry.h  # generated: 41 source lines
+# Include/internal/pycore_debug_offsets.h  # generated: 379 source lines
+# Include/internal/pycore_descrobject.h  # generated: 28 source lines
+# Include/internal/pycore_dict.h  # generated: 412 source lines
+# Include/internal/pycore_dict_state.h  # generated: 30 source lines
+# Include/internal/pycore_dtoa.h  # generated: 40 source lines
+# Include/internal/pycore_emscripten_signal.h  # generated: 30 source lines
+# Include/internal/pycore_emscripten_trampoline.h  # generated: 67 source lines
+# Include/internal/pycore_exceptions.h  # generated: 40 source lines
+# Include/internal/pycore_faulthandler.h  # generated: 100 source lines
+# Include/internal/pycore_fileutils.h  # generated: 320 source lines
+# Include/internal/pycore_fileutils_windows.h  # generated: 98 source lines
+# Include/internal/pycore_floatobject.h  # generated: 49 source lines
+# Include/internal/pycore_flowgraph.h  # generated: 47 source lines
+# Include/internal/pycore_format.h  # generated: 27 source lines
+# Include/internal/pycore_frame.h  # generated: 61 source lines
+# Include/internal/pycore_freelist.h  # generated: 111 source lines
+# Include/internal/pycore_freelist_state.h  # generated: 70 source lines
+# Include/internal/pycore_function.h  # generated: 64 source lines
+# Include/internal/pycore_gc.h  # generated: 349 source lines
+# Include/internal/pycore_genobject.h  # generated: 43 source lines
+# Include/internal/pycore_getopt.h  # generated: 22 source lines
+# Include/internal/pycore_gil.h  # generated: 66 source lines
+# Include/internal/pycore_global_objects.h  # generated: 34 source lines
+# Include/internal/pycore_global_objects_fini_generated.h  # generated: 1,592 source lines
+# Include/internal/pycore_global_strings.h  # generated: 854 source lines
+# Include/internal/pycore_hamt.h  # generated: 113 source lines
+# Include/internal/pycore_hashtable.h  # generated: 150 source lines
+# Include/internal/pycore_import.h  # generated: 141 source lines
+# Include/internal/pycore_importdl.h  # generated: 139 source lines
+# Include/internal/pycore_index_pool.h  # generated: 36 source lines
+# Include/internal/pycore_initconfig.h  # generated: 197 source lines
+# Include/internal/pycore_instruction_sequence.h  # generated: 83 source lines
+# Include/internal/pycore_instruments.h  # generated: 126 source lines
+# Include/internal/pycore_interp.h  # generated: 109 source lines
+# Include/internal/pycore_interp_structs.h  # generated: 1,001 source lines
+# Include/internal/pycore_interpframe.h  # generated: 406 source lines
+# Include/internal/pycore_interpframe_structs.h  # generated: 95 source lines
+# Include/internal/pycore_interpolation.h  # generated: 26 source lines
+# Include/internal/pycore_intrinsics.h  # generated: 51 source lines
+# Include/internal/pycore_jit.h  # generated: 29 source lines
+# Include/internal/pycore_list.h  # generated: 81 source lines
+# Include/internal/pycore_llist.h  # generated: 106 source lines
+# Include/internal/pycore_lock.h  # generated: 236 source lines
+# Include/internal/pycore_long.h  # generated: 336 source lines
+# Include/internal/pycore_magic_number.h  # generated: 305 source lines
+# Include/internal/pycore_memoryobject.h  # generated: 20 source lines
+# Include/internal/pycore_mimalloc.h  # generated: 69 source lines
+# Include/internal/pycore_modsupport.h  # generated: 99 source lines
+# Include/internal/pycore_moduleobject.h  # generated: 62 source lines
+# Include/internal/pycore_namespace.h  # generated: 21 source lines
+# Include/internal/pycore_object.h  # generated: 1,032 source lines
+# Include/internal/pycore_object_alloc.h  # generated: 71 source lines
+# Include/internal/pycore_object_deferred.h  # generated: 32 source lines
+# Include/internal/pycore_object_stack.h  # generated: 95 source lines
+# Include/internal/pycore_object_state.h  # generated: 49 source lines
+# Include/internal/pycore_obmalloc.h  # generated: 702 source lines
+# Include/internal/pycore_obmalloc_init.h  # generated: 66 source lines
+# Include/internal/pycore_opcode_metadata.h  # generated: 2,117 source lines
+# Include/internal/pycore_opcode_utils.h  # generated: 90 source lines
+# Include/internal/pycore_optimizer.h  # generated: 318 source lines
+# Include/internal/pycore_parking_lot.h  # generated: 97 source lines
+# Include/internal/pycore_parser.h  # generated: 78 source lines
+# Include/internal/pycore_pathconfig.h  # generated: 26 source lines
+# Include/internal/pycore_pyarena.h  # generated: 68 source lines
+# Include/internal/pycore_pyatomic_ft_wrappers.h  # generated: 204 source lines
+# Include/internal/pycore_pybuffer.h  # generated: 21 source lines
+# Include/internal/pycore_pyerrors.h  # generated: 213 source lines
+# Include/internal/pycore_pyhash.h  # generated: 93 source lines
+# Include/internal/pycore_pylifecycle.h  # generated: 136 source lines
+# Include/internal/pycore_pymath.h  # generated: 205 source lines
+# Include/internal/pycore_pymem.h  # generated: 145 source lines
+# Include/internal/pycore_pymem_init.h  # generated: 103 source lines
+# Include/internal/pycore_pystate.h  # generated: 339 source lines
+# Include/internal/pycore_pystats.h  # generated: 21 source lines
+# Include/internal/pycore_pythonrun.h  # generated: 68 source lines
+# Include/internal/pycore_pythread.h  # generated: 172 source lines
+# Include/internal/pycore_qsbr.h  # generated: 173 source lines
+# Include/internal/pycore_range.h  # generated: 21 source lines
+# Include/internal/pycore_runtime.h  # generated: 63 source lines
+# Include/internal/pycore_runtime_init.h  # generated: 233 source lines
+# Include/internal/pycore_runtime_init_generated.h  # generated: 1,589 source lines
+# Include/internal/pycore_runtime_structs.h  # generated: 320 source lines
+# Include/internal/pycore_semaphore.h  # generated: 67 source lines
+# Include/internal/pycore_setobject.h  # generated: 41 source lines
+# Include/internal/pycore_signal.h  # generated: 108 source lines
+# Include/internal/pycore_sliceobject.h  # generated: 20 source lines
+# Include/internal/pycore_stackref.h  # generated: 838 source lines
+# Include/internal/pycore_stats.h  # generated: 97 source lines
+# Include/internal/pycore_strhex.h  # generated: 39 source lines
+# Include/internal/pycore_structs.h  # generated: 88 source lines
+# Include/internal/pycore_structseq.h  # generated: 40 source lines
+# Include/internal/pycore_symtable.h  # generated: 201 source lines
+# Include/internal/pycore_sysmodule.h  # generated: 32 source lines
+# Include/internal/pycore_template.h  # generated: 26 source lines
+# Include/internal/pycore_time.h  # generated: 334 source lines
+# Include/internal/pycore_token.h  # generated: 110 source lines
+# Include/internal/pycore_traceback.h  # generated: 111 source lines
+# Include/internal/pycore_tracemalloc.h  # generated: 167 source lines
+# Include/internal/pycore_tstate.h  # generated: 93 source lines
+# Include/internal/pycore_tuple.h  # generated: 75 source lines
+# Include/internal/pycore_typedefs.h  # generated: 18 source lines
+# Include/internal/pycore_typeobject.h  # generated: 160 source lines
+# Include/internal/pycore_typevarobject.h  # generated: 28 source lines
+# Include/internal/pycore_ucnhash.h  # generated: 36 source lines
+# Include/internal/pycore_unicodeobject.h  # generated: 308 source lines
+# Include/internal/pycore_unicodeobject_generated.h  # generated: 3,132 source lines
+# Include/internal/pycore_unionobject.h  # generated: 26 source lines
+# Include/internal/pycore_uniqueid.h  # generated: 57 source lines
+# Include/internal/pycore_uop_ids.h  # generated: 335 source lines
+# Include/internal/pycore_uop_metadata.h  # generated: 1,204 source lines
+# Include/internal/pycore_warnings.h  # generated: 21 source lines
+# Include/internal/pycore_weakref.h  # generated: 133 source lines
+# Include/intrcheck.h  # generated: 23 source lines
+# Include/iterobject.h  # generated: 24 source lines
+# Include/listobject.h  # generated: 55 source lines
+# Include/lock.h  # generated: 16 source lines
+# Include/longobject.h  # generated: 178 source lines
+# Include/marshal.h  # generated: 31 source lines
+# Include/memoryobject.h  # generated: 34 source lines
+# Include/methodobject.h  # generated: 146 source lines
+# Include/modsupport.h  # generated: 146 source lines
+# Include/moduleobject.h  # generated: 122 source lines
+# Include/monitoring.h  # generated: 18 source lines
+# Include/object.h  # generated: 828 source lines
+# Include/objimpl.h  # generated: 211 source lines
+# Include/opcode.h  # generated: 43 source lines
+# Include/opcode_ids.h  # generated: 259 source lines
+# Include/osdefs.h  # generated: 57 source lines
+# Include/osmodule.h  # generated: 17 source lines
+# Include/patchlevel.h  # generated: 49 source lines
+# Include/py_curses.h  # generated: 117 source lines
+# Include/pyatomic.h  # generated: 16 source lines
+# Include/pybuffer.h  # generated: 145 source lines
+# Include/pycapsule.h  # generated: 58 source lines
+Include/pydtrace.d
+# Include/pydtrace.h  # generated: 59 source lines
+# Include/pyerrors.h  # generated: 335 source lines
+# Include/pyexpat.h  # generated: 70 source lines
+# Include/pyframe.h  # generated: 26 source lines
+# Include/pyhash.h  # generated: 59 source lines
+# Include/pylifecycle.h  # generated: 80 source lines
+# Include/pymacconfig.h  # generated: 91 source lines
+# Include/pymacro.h  # generated: 249 source lines
+# Include/pymath.h  # generated: 65 source lines
+# Include/pymem.h  # generated: 110 source lines
+# Include/pyport.h  # generated: 710 source lines
+# Include/pystate.h  # generated: 132 source lines
+# Include/pystats.h  # generated: 28 source lines
+# Include/pystrcmp.h  # generated: 23 source lines
+# Include/pystrtod.h  # generated: 37 source lines
+# Include/pythonrun.h  # generated: 42 source lines
+# Include/pythread.h  # generated: 131 source lines
+# Include/pytypedefs.h  # generated: 30 source lines
+# Include/rangeobject.h  # generated: 27 source lines
+# Include/refcount.h  # generated: 555 source lines
+# Include/setobject.h  # generated: 49 source lines
+# Include/sliceobject.h  # generated: 69 source lines
+# Include/structmember.h  # generated: 56 source lines
+# Include/structseq.h  # generated: 46 source lines
+# Include/sysmodule.h  # generated: 27 source lines
+# Include/traceback.h  # generated: 26 source lines
+# Include/tupleobject.h  # generated: 46 source lines
+# Include/typeslots.h  # generated: 96 source lines
+# Include/unicodeobject.h  # generated: 1,029 source lines
+# Include/warnings.h  # generated: 45 source lines
+# Include/weakrefobject.h  # generated: 46 source lines
 
 # Interpreter and compiler
-Python/Python-ast.c
-# Python/Python-tokenize.c  # removed: 445 source lines
-Python/_contextvars.c
-Python/_warnings.c
-Python/asdl.c
-Python/asm_trampoline.S
-Python/asm_trampoline_aarch64.h
-# Python/assemble.c  # removed: 802 source lines
-# Python/ast.c  # removed: 1,091 source lines
-# Python/ast_preprocess.c  # removed: 990 source lines
-Python/ast_unparse.c
-Python/bltinmodule.c
-Python/bootstrap_hash.c
-Python/brc.c
 # Python/bytecodes.c  # pruned: 5,549 source lines
-Python/ceval.c
-Python/ceval_gil.c
-Python/ceval_macros.h
-# Python/clinic/Python-tokenize.c.h  # removed: 86 source lines
-Python/clinic/_contextvars.c.h
-Python/clinic/_warnings.c.h
-Python/clinic/bltinmodule.c.h
-Python/clinic/context.c.h
-Python/clinic/import.c.h
-# Python/clinic/instruction_sequence.c.h  # removed: 313 source lines
-Python/clinic/instrumentation.c.h
-Python/clinic/marshal.c.h
-Python/clinic/sysmodule.c.h
-Python/clinic/traceback.c.h
-Python/codecs.c
-# Python/codegen.c  # removed: 6,485 source lines
-# Python/compile.c  # removed: 1,753 source lines
-Python/condvar.h
-Python/config_common.h
-Python/context.c
-Python/critical_section.c
-Python/crossinterp.c
-Python/crossinterp_data_lookup.h
-Python/crossinterp_exceptions.h
-Python/dtoa.c
-Python/dynamic_annotations.c
-Python/dynload_shlib.c
-Python/errors.c
 # Python/executor_cases.c.h  # pruned: 7,163 source lines
-Python/fileutils.c
-# Python/flowgraph.c  # removed: 4,167 source lines
-Python/formatter_unicode.c
-Python/frame.c
-Python/frozen.c
-Python/frozen_modules/
-Python/frozenmain.c
-# Python/future.c  # removed: 119 source lines
-Python/gc.c
-Python/gc_free_threading.c
-Python/gc_gil.c
-Python/generated_cases.c.h
-Python/getargs.c
-Python/getcompiler.c
-Python/getcopyright.c
-Python/getopt.c
-Python/getplatform.c
-Python/getversion.c
-Python/hamt.c
-Python/hashtable.c
-Python/import.c
-Python/importdl.c
-Python/index_pool.c
-Python/initconfig.c
-# Python/instruction_sequence.c  # removed: 483 source lines
-Python/instrumentation.c
-Python/interpconfig.c
-Python/intrinsics.c
 # Python/jit.c  # pruned: 523 source lines
-Python/legacy_tracing.c
-Python/lock.c
-Python/marshal.c
-Python/modsupport.c
-Python/mysnprintf.c
-Python/mystrtoul.c
-Python/object_stack.c
-Python/opcode_targets.h
-Python/optimizer.c
 # Python/optimizer_analysis.c  # pruned: 664 source lines
 # Python/optimizer_cases.c.h  # pruned: 2,520 source lines
 # Python/optimizer_symbols.c  # pruned: 880 source lines
-Python/parking_lot.c
-Python/pathconfig.c
-Python/perf_jit_trampoline.c
-Python/perf_trampoline.c
-Python/preconfig.c
-Python/pyarena.c
-Python/pyctype.c
-Python/pyfpe.c
-Python/pyhash.c
-Python/pylifecycle.c
-Python/pymath.c
-Python/pystate.c
-Python/pystrcmp.c
-Python/pystrhex.c
-Python/pystrtod.c
-Python/pythonrun.c
-Python/pytime.c
-Python/qsbr.c
-Python/remote_debug.h
-Python/remote_debugging.c
-Python/specialize.c
-Python/stackrefs.c
-Python/stdlib_module_names.h
-Python/structmember.c
-Python/suggestions.c
-# Python/symtable.c  # removed: 3,272 source lines
-Python/sysmodule.c
-Python/thread.c
 # Python/thread_nt.h  # pruned: 532 source lines
-Python/thread_pthread.h
 # Python/thread_pthread_stubs.h  # pruned: 191 source lines
-Python/traceback.c
-Python/tracemalloc.c
-Python/uniqueid.c
 
 # Builtin objects
-Objects/abstract.c
-# Objects/boolobject.c  # removed: 227 source lines
-Objects/bytearrayobject.c
-Objects/bytes_methods.c
-Objects/bytesobject.c
-Objects/call.c
-# Objects/capsule.c  # removed: 366 source lines
-# Objects/cellobject.c  # removed: 212 source lines
-# Objects/classobject.c  # removed: 518 source lines
-Objects/clinic/bytearrayobject.c.h
-Objects/clinic/bytesobject.c.h
-# Objects/clinic/classobject.c.h  # removed: 85 source lines
-Objects/clinic/codeobject.c.h
-# Objects/clinic/complexobject.c.h  # removed: 188 source lines
-Objects/clinic/descrobject.c.h
-Objects/clinic/dictobject.c.h
-# Objects/clinic/enumobject.c.h  # removed: 113 source lines
-Objects/clinic/exceptions.c.h
-Objects/clinic/floatobject.c.h
-Objects/clinic/frameobject.c.h
-Objects/clinic/funcobject.c.h
-# Objects/clinic/interpolationobject.c.h  # removed: 94 source lines
-Objects/clinic/listobject.c.h
-Objects/clinic/longobject.c.h
-Objects/clinic/memoryobject.c.h
-Objects/clinic/moduleobject.c.h
-Objects/clinic/odictobject.c.h
-Objects/clinic/setobject.c.h
-# Objects/clinic/structseq.c.h  # removed: 68 source lines
-Objects/clinic/tupleobject.c.h
-Objects/clinic/typeobject.c.h
-Objects/clinic/typevarobject.c.h
-Objects/clinic/unicodeobject.c.h
-Objects/codeobject.c
-# Objects/complexobject.c  # removed: 1,422 source lines
-Objects/descrobject.c
-Objects/dictobject.c
-# Objects/enumobject.c  # removed: 585 source lines
-Objects/exceptions.c
-# Objects/fileobject.c  # removed: 548 source lines
-Objects/floatobject.c
-Objects/frameobject.c
-Objects/funcobject.c
-# Objects/genericaliasobject.c  # removed: 1,056 source lines
-Objects/genobject.c
-# Objects/interpolationobject.c  # removed: 231 source lines
-# Objects/iterobject.c  # removed: 541 source lines
-Objects/listobject.c
-Objects/longobject.c
-Objects/memoryobject.c
-Objects/methodobject.c
-Objects/mimalloc/alloc-aligned.c
-Objects/mimalloc/alloc-override.c
-Objects/mimalloc/alloc-posix.c
-Objects/mimalloc/alloc.c
-Objects/mimalloc/arena.c
-Objects/mimalloc/bitmap.c
-Objects/mimalloc/bitmap.h
-Objects/mimalloc/heap.c
-Objects/mimalloc/init.c
-Objects/mimalloc/options.c
-Objects/mimalloc/os.c
-Objects/mimalloc/page-queue.c
-Objects/mimalloc/page.c
-Objects/mimalloc/prim/osx/alloc-override-zone.c
-Objects/mimalloc/prim/osx/prim.c
-Objects/mimalloc/prim/prim.c
-Objects/mimalloc/prim/unix/prim.c
-Objects/mimalloc/prim/wasi/prim.c
-Objects/mimalloc/random.c
-Objects/mimalloc/segment-map.c
-Objects/mimalloc/segment.c
-Objects/mimalloc/static.c
-Objects/mimalloc/stats.c
-Objects/moduleobject.c
-# Objects/namespaceobject.c  # removed: 332 source lines
-Objects/object.c
-Objects/obmalloc.c
-Objects/odictobject.c
-# Objects/picklebufobject.c  # removed: 224 source lines
-# Objects/rangeobject.c  # removed: 1,317 source lines
-Objects/setobject.c
-# Objects/sliceobject.c  # removed: 710 source lines
 Objects/stringlib/
-# Objects/structseq.c  # removed: 795 source lines
-# Objects/templateobject.c  # removed: 416 source lines
-Objects/tupleobject.c
-Objects/typeobject.c
-Objects/typeslots.inc
-Objects/typevarobject.c
-Objects/unicodectype.c
-Objects/unicodeobject.c
-Objects/unicodetype_db.h
-# Objects/unionobject.c  # removed: 600 source lines
-Objects/weakrefobject.c
 
 # Builtin and extension modules
-Modules/Setup
-Modules/Setup.bootstrap.in
-Modules/Setup.stdlib.in
-# Modules/_abc.c  # removed: 997 source lines
-# Modules/_asynciomodule.c  # removed: 4,432 source lines
-# Modules/_bisectmodule.c  # removed: 484 source lines
-# Modules/_bz2module.c  # removed: 843 source lines
-# Modules/_codecsmodule.c  # removed: 1,101 source lines
-# Modules/_collectionsmodule.c  # removed: 2,902 source lines
-# Modules/_csv.c  # removed: 1,864 source lines
-Modules/_ctypes/_ctypes.c
-Modules/_ctypes/callbacks.c
-Modules/_ctypes/callproc.c
-Modules/_ctypes/cfield.c
-Modules/_ctypes/clinic/_ctypes.c.h
-Modules/_ctypes/clinic/callproc.c.h
-Modules/_ctypes/clinic/cfield.c.h
-Modules/_ctypes/ctypes.h
-Modules/_ctypes/malloc_closure.c
-Modules/_ctypes/stgdict.c
-# Modules/_datetimemodule.c  # removed: 7,787 source lines
-# Modules/_decimal/_decimal.c  # removed: 6,341 source lines
-# Modules/_decimal/docstrings.h  # removed: 966 source lines
-# Modules/_elementtree.c  # removed: 4,560 source lines
-# Modules/_functoolsmodule.c  # removed: 1,953 source lines
-Modules/_hacl/Hacl_HMAC.c
-Modules/_hacl/Hacl_HMAC.h
-Modules/_hacl/Hacl_Hash_Blake2b.c
-Modules/_hacl/Hacl_Hash_Blake2b.h
-Modules/_hacl/Hacl_Hash_Blake2b_Simd256.c
-Modules/_hacl/Hacl_Hash_Blake2b_Simd256.h
-Modules/_hacl/Hacl_Hash_Blake2b_Simd256_universal2.c
-Modules/_hacl/Hacl_Hash_Blake2s.c
-Modules/_hacl/Hacl_Hash_Blake2s.h
-Modules/_hacl/Hacl_Hash_Blake2s_Simd128.c
-Modules/_hacl/Hacl_Hash_Blake2s_Simd128.h
-Modules/_hacl/Hacl_Hash_Blake2s_Simd128_universal2.c
-Modules/_hacl/Hacl_Hash_MD5.c
-Modules/_hacl/Hacl_Hash_MD5.h
-Modules/_hacl/Hacl_Hash_SHA1.c
-Modules/_hacl/Hacl_Hash_SHA1.h
-Modules/_hacl/Hacl_Hash_SHA2.c
-Modules/_hacl/Hacl_Hash_SHA2.h
-Modules/_hacl/Hacl_Hash_SHA3.c
-Modules/_hacl/Hacl_Hash_SHA3.h
-Modules/_hacl/Hacl_Streaming_HMAC.c
-Modules/_hacl/Hacl_Streaming_HMAC.h
-Modules/_hacl/Hacl_Streaming_Types.h
-Modules/_hacl/Lib_Memzero0.c
-Modules/_hacl/include/
-Modules/_hacl/internal/Hacl_HMAC.h
-Modules/_hacl/internal/Hacl_Hash_Blake2b.h
-Modules/_hacl/internal/Hacl_Hash_Blake2b_Simd256.h
-Modules/_hacl/internal/Hacl_Hash_Blake2s.h
-Modules/_hacl/internal/Hacl_Hash_Blake2s_Simd128.h
-Modules/_hacl/internal/Hacl_Hash_MD5.h
-Modules/_hacl/internal/Hacl_Hash_SHA1.h
-Modules/_hacl/internal/Hacl_Hash_SHA2.h
-Modules/_hacl/internal/Hacl_Hash_SHA3.h
-Modules/_hacl/internal/Hacl_Impl_Blake2_Constants.h
-Modules/_hacl/internal/Hacl_Streaming_HMAC.h
-Modules/_hacl/internal/Hacl_Streaming_Types.h
-Modules/_hacl/lib_memzero0.h
-Modules/_hacl/libintvector-shim.h
-Modules/_hacl/libintvector.h
-Modules/_hacl/python_hacl_namespaces.h
-# Modules/_hashopenssl.c  # removed: 2,390 source lines
-# Modules/_heapqmodule.c  # removed: 811 source lines
-Modules/_interpchannelsmodule.c
-Modules/_interpqueuesmodule.c
-Modules/_interpreters_common.h
-Modules/_interpretersmodule.c
-Modules/_io/_iomodule.c
-Modules/_io/_iomodule.h
-Modules/_io/bufferedio.c
-Modules/_io/bytesio.c
-Modules/_io/clinic/_iomodule.c.h
-Modules/_io/clinic/bufferedio.c.h
-Modules/_io/clinic/bytesio.c.h
-Modules/_io/clinic/fileio.c.h
-Modules/_io/clinic/iobase.c.h
-Modules/_io/clinic/stringio.c.h
-Modules/_io/clinic/textio.c.h
-Modules/_io/fileio.c
-Modules/_io/iobase.c
-Modules/_io/stringio.c
-Modules/_io/textio.c
-# Modules/_json.c  # removed: 1,974 source lines
-Modules/_localemodule.c
-# Modules/_lsprof.c  # removed: 1,146 source lines
-# Modules/_lzmamodule.c  # removed: 1,664 source lines
-Modules/_math.h
-# Modules/_multiprocessing/clinic/multiprocessing.c.h  # removed: 167 source lines
-# Modules/_multiprocessing/clinic/posixshmem.c.h  # removed: 89 source lines
-# Modules/_multiprocessing/clinic/semaphore.c.h  # removed: 585 source lines
-# Modules/_multiprocessing/multiprocessing.c  # removed: 296 source lines
-# Modules/_multiprocessing/multiprocessing.h  # removed: 104 source lines
-# Modules/_multiprocessing/posixshmem.c  # removed: 151 source lines
-# Modules/_multiprocessing/semaphore.c  # removed: 805 source lines
-# Modules/_opcode.c  # removed: 451 source lines
-# Modules/_operator.c  # removed: 2,032 source lines
-# Modules/_pickle.c  # removed: 8,179 source lines
-# Modules/_posixsubprocess.c  # removed: 1,357 source lines
-# Modules/_queuemodule.c  # removed: 628 source lines
-# Modules/_randommodule.c  # removed: 679 source lines
-Modules/_remote_debugging_module.c
-Modules/_scproxy.c
-# Modules/_sqlite/blob.c  # removed: 631 source lines
-# Modules/_sqlite/blob.h  # removed: 24 source lines
-# Modules/_sqlite/clinic/_sqlite3.connect.c.h  # removed: 31 source lines
-# Modules/_sqlite/clinic/blob.c.h  # removed: 215 source lines
-# Modules/_sqlite/clinic/connection.c.h  # removed: 1,927 source lines
-# Modules/_sqlite/clinic/cursor.c.h  # removed: 374 source lines
-# Modules/_sqlite/clinic/module.c.h  # removed: 214 source lines
-# Modules/_sqlite/clinic/row.c.h  # removed: 59 source lines
-# Modules/_sqlite/connection.c  # removed: 2,802 source lines
-# Modules/_sqlite/connection.h  # removed: 114 source lines
-# Modules/_sqlite/cursor.c  # removed: 1,391 source lines
-# Modules/_sqlite/cursor.h  # removed: 52 source lines
-# Modules/_sqlite/microprotocols.c  # removed: 143 source lines
-# Modules/_sqlite/microprotocols.h  # removed: 42 source lines
-# Modules/_sqlite/module.c  # removed: 773 source lines
-# Modules/_sqlite/module.h  # removed: 98 source lines
-# Modules/_sqlite/prepare_protocol.c  # removed: 76 source lines
-# Modules/_sqlite/prepare_protocol.h  # removed: 35 source lines
-# Modules/_sqlite/row.c  # removed: 299 source lines
-# Modules/_sqlite/row.h  # removed: 37 source lines
-# Modules/_sqlite/statement.c  # removed: 208 source lines
-# Modules/_sqlite/statement.h  # removed: 42 source lines
-# Modules/_sqlite/util.c  # removed: 185 source lines
-# Modules/_sqlite/util.h  # removed: 39 source lines
-# Modules/_sre/clinic/sre.c.h  # removed: 1,571 source lines
-# Modules/_sre/sre.c  # removed: 3,456 source lines
-# Modules/_sre/sre.h  # removed: 123 source lines
-# Modules/_sre/sre_constants.h  # removed: 98 source lines
-# Modules/_sre/sre_lib.h  # removed: 1,874 source lines
-# Modules/_sre/sre_targets.h  # removed: 58 source lines
-# Modules/_ssl.c  # removed: 6,943 source lines
-# Modules/_ssl.h  # removed: 80 source lines
 # Modules/_ssl_data_111.h  # pruned: 6,543 source lines
 # Modules/_ssl_data_300.h  # pruned: 8,588 source lines
-# Modules/_ssl/cert.c  # removed: 251 source lines
-# Modules/_ssl/clinic/cert.c.h  # removed: 92 source lines
-# Modules/_ssl/debughelpers.c  # removed: 225 source lines
-# Modules/_ssl/misc.c  # removed: 34 source lines
-# Modules/_ssl_data_35.h  # removed: 9,437 source lines
-# Modules/_stat.c  # removed: 713 source lines
-# Modules/_statisticsmodule.c  # removed: 159 source lines
-# Modules/_struct.c  # removed: 2,825 source lines
-# Modules/_suggestions.c  # removed: 69 source lines
-# Modules/_sysconfig.c  # removed: 109 source lines
-Modules/_threadmodule.c
-# Modules/_tracemalloc.c  # removed: 228 source lines
-# Modules/_typesmodule.c  # removed: 72 source lines
-# Modules/_typingmodule.c  # removed: 99 source lines
-# Modules/_uuidmodule.c  # removed: 154 source lines
-# Modules/_weakref.c  # removed: 187 source lines
-# Modules/_zoneinfo.c  # removed: 2,817 source lines
-# Modules/_zstd/_zstdmodule.c  # removed: 767 source lines
-# Modules/_zstd/_zstdmodule.h  # removed: 61 source lines
-# Modules/_zstd/buffer.h  # removed: 108 source lines
-# Modules/_zstd/clinic/_zstdmodule.c.h  # removed: 429 source lines
-# Modules/_zstd/clinic/compressor.c.h  # removed: 295 source lines
-# Modules/_zstd/clinic/decompressor.c.h  # removed: 225 source lines
-# Modules/_zstd/clinic/zstddict.c.h  # removed: 227 source lines
-# Modules/_zstd/compressor.c  # removed: 798 source lines
-# Modules/_zstd/decompressor.c  # removed: 717 source lines
-# Modules/_zstd/zstddict.c  # removed: 275 source lines
-# Modules/_zstd/zstddict.h  # removed: 29 source lines
-Modules/addrinfo.h
-# Modules/arraymodule.c  # removed: 3,359 source lines
-# Modules/atexitmodule.c  # removed: 361 source lines
-# Modules/binascii.c  # removed: 1,337 source lines
-# Modules/blake2module.c  # removed: 1,074 source lines
-# Modules/cjkcodecs/_codecs_cn.c  # removed: 470 source lines
-# Modules/cjkcodecs/_codecs_hk.c  # removed: 190 source lines
-# Modules/cjkcodecs/_codecs_iso2022.c  # removed: 1,153 source lines
-# Modules/cjkcodecs/_codecs_jp.c  # removed: 770 source lines
-# Modules/cjkcodecs/_codecs_kr.c  # removed: 468 source lines
-# Modules/cjkcodecs/_codecs_tw.c  # removed: 143 source lines
-# Modules/cjkcodecs/alg_jisx0201.h  # removed: 65 source lines
-# Modules/cjkcodecs/cjkcodecs.h  # removed: 525 source lines
-# Modules/cjkcodecs/clinic/multibytecodec.c.h  # removed: 701 source lines
-# Modules/cjkcodecs/emu_jisx0213_2000.h  # removed: 54 source lines
-# Modules/cjkcodecs/mappings_cn.h  # removed: 4,104 source lines
-# Modules/cjkcodecs/mappings_hk.h  # removed: 2,379 source lines
-# Modules/cjkcodecs/mappings_jisx0213_pair.h  # removed: 60 source lines
-# Modules/cjkcodecs/mappings_jp.h  # removed: 4,766 source lines
-# Modules/cjkcodecs/mappings_kr.h  # removed: 3,253 source lines
-# Modules/cjkcodecs/mappings_tw.h  # removed: 2,635 source lines
-# Modules/cjkcodecs/multibytecodec.c  # removed: 2,145 source lines
-# Modules/cjkcodecs/multibytecodec.h  # removed: 152 source lines
-# Modules/clinic/_abc.c.h  # removed: 164 source lines
-# Modules/clinic/_asynciomodule.c.h  # removed: 2,236 source lines
-# Modules/clinic/_bisectmodule.c.h  # removed: 449 source lines
-# Modules/clinic/_bz2module.c.h  # removed: 241 source lines
-# Modules/clinic/_codecsmodule.c.h  # removed: 2,807 source lines
-# Modules/clinic/_collectionsmodule.c.h  # removed: 635 source lines
-# Modules/clinic/_csv.c.h  # removed: 210 source lines
-# Modules/clinic/_datetimemodule.c.h  # removed: 527 source lines
-# Modules/clinic/_elementtree.c.h  # removed: 1,334 source lines
-# Modules/clinic/_functoolsmodule.c.h  # removed: 195 source lines
-# Modules/clinic/_hashopenssl.c.h  # removed: 1,987 source lines
-# Modules/clinic/_heapqmodule.c.h  # removed: 361 source lines
-Modules/clinic/_localemodule.c.h
-# Modules/clinic/_lsprof.c.h  # removed: 479 source lines
-# Modules/clinic/_lzmamodule.c.h  # removed: 337 source lines
-# Modules/clinic/_opcode.c.h  # removed: 779 source lines
-# Modules/clinic/_operator.c.h  # removed: 1,510 source lines
-# Modules/clinic/_pickle.c.h  # removed: 1,101 source lines
-# Modules/clinic/_posixsubprocess.c.h  # removed: 153 source lines
-# Modules/clinic/_queuemodule.c.h  # removed: 363 source lines
-# Modules/clinic/_randommodule.c.h  # removed: 177 source lines
-Modules/clinic/_remote_debugging_module.c.h
-# Modules/clinic/_ssl.c.h  # removed: 2,909 source lines
-# Modules/clinic/_statisticsmodule.c.h  # removed: 51 source lines
-# Modules/clinic/_struct.c.h  # removed: 461 source lines
-# Modules/clinic/_suggestions.c.h  # removed: 41 source lines
-# Modules/clinic/_sysconfig.c.h  # removed: 22 source lines
-Modules/clinic/_threadmodule.c.h
-# Modules/clinic/_tracemalloc.c.h  # removed: 217 source lines
-# Modules/clinic/_typingmodule.c.h  # removed: 12 source lines
-# Modules/clinic/_weakref.c.h  # removed: 115 source lines
-# Modules/clinic/_zoneinfo.c.h  # removed: 450 source lines
-# Modules/clinic/arraymodule.c.h  # removed: 777 source lines
-# Modules/clinic/binascii.c.h  # removed: 791 source lines
-# Modules/clinic/blake2module.c.h  # removed: 505 source lines
-# Modules/clinic/cmathmodule.c.h  # removed: 990 source lines
-# Modules/clinic/fcntlmodule.c.h  # removed: 273 source lines
-Modules/clinic/gcmodule.c.h
-# Modules/clinic/grpmodule.c.h  # removed: 155 source lines
-# Modules/clinic/hmacmodule.c.h  # removed: 673 source lines
-# Modules/clinic/itertoolsmodule.c.h  # removed: 968 source lines
-# Modules/clinic/mathmodule.c.h  # removed: 1,114 source lines
-# Modules/clinic/md5module.c.h  # removed: 175 source lines
-# Modules/clinic/mmapmodule.c.h  # removed: 769 source lines
-# Modules/clinic/posixmodule.c.h  # removed: 13,510 source lines
-# Modules/clinic/pwdmodule.c.h  # removed: 74 source lines
-# Modules/clinic/pyexpat.c.h  # removed: 836 source lines
-# Modules/clinic/resource.c.h  # removed: 177 source lines
-# Modules/clinic/selectmodule.c.h  # removed: 1,379 source lines
-# Modules/clinic/sha1module.c.h  # removed: 175 source lines
-# Modules/clinic/sha2module.c.h  # removed: 510 source lines
-# Modules/clinic/sha3module.c.h  # removed: 291 source lines
-Modules/clinic/signalmodule.c.h
-# Modules/clinic/socketmodule.c.h  # removed: 376 source lines
-# Modules/clinic/symtablemodule.c.h  # removed: 56 source lines
-# Modules/clinic/syslogmodule.c.h  # removed: 268 source lines
-Modules/clinic/termios.c.h
-# Modules/clinic/timemodule.c.h  # removed: 74 source lines
-# Modules/clinic/unicodedata.c.h  # removed: 552 source lines
-# Modules/clinic/zlibmodule.c.h  # removed: 1,125 source lines
-# Modules/cmathmodule.c  # removed: 1,315 source lines
-Modules/config.c.in
-# Modules/errnomodule.c  # removed: 988 source lines
-Modules/faulthandler.c
-# Modules/fcntlmodule.c  # removed: 789 source lines
-Modules/gcmodule.c
-Modules/getaddrinfo.c
-Modules/getbuildinfo.c
-Modules/getnameinfo.c
-Modules/getpath.c
 Modules/getpath.py
-Modules/getpath_noop.c
-# Modules/grpmodule.c  # removed: 409 source lines
-# Modules/hashlib.h  # removed: 107 source lines
-# Modules/hmacmodule.c  # removed: 1,865 source lines
-# Modules/itertoolsmodule.c  # removed: 4,103 source lines
-Modules/ld_so_aix.in
-Modules/main.c
-Modules/makesetup
-# Modules/mathmodule.c  # removed: 4,202 source lines
-# Modules/md5module.c  # removed: 413 source lines
-# Modules/mmapmodule.c  # removed: 2,379 source lines
-# Modules/posixmodule.c  # removed: 18,308 source lines
-# Modules/posixmodule.h  # removed: 36 source lines
-# Modules/pwdmodule.c  # removed: 380 source lines
-# Modules/pyexpat.c  # removed: 2,537 source lines
-# Modules/resource.c  # removed: 568 source lines
-Modules/rotatingtree.c
-Modules/rotatingtree.h
-# Modules/selectmodule.c  # removed: 2,896 source lines
-# Modules/sha1module.c  # removed: 411 source lines
-# Modules/sha2module.c  # removed: 954 source lines
-# Modules/sha3module.c  # removed: 680 source lines
-Modules/signalmodule.c
-# Modules/socketmodule.c  # removed: 9,305 source lines
-# Modules/socketmodule.h  # removed: 414 source lines
-# Modules/symtablemodule.c  # removed: 130 source lines
-# Modules/syslogmodule.c  # removed: 469 source lines
-Modules/termios.c
-# Modules/timemodule.c  # removed: 2,398 source lines
-# Modules/unicodedata.c  # removed: 1,821 source lines
-# Modules/unicodedata_db.h  # removed: 8,358 source lines
-# Modules/unicodename_db.h  # removed: 19,502 source lines
 # Modules/winreparse.h  # pruned: 59 source lines
 # Modules/xxmodule.c  # pruned: 413 source lines
-# Modules/zlibmodule.c  # removed: 2,181 source lines
 
 # Python standard library (no test or GUI packages)
 Lib/__future__.py
@@ -623,7 +375,7 @@ Lib/_colorize.py
 Lib/_compat_pickle.py
 Lib/_ios_support.py
 Lib/_markupbase.py
-Lib/_opcode_metadata.py
+# Lib/_opcode_metadata.py  # generated: 371 source lines
 Lib/_osx_support.py
 Lib/_py_abc.py
 Lib/_py_warnings.py

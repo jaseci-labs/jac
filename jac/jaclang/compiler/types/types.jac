@@ -59,6 +59,7 @@ node UnknownType(TypeBase) {
 
 node NeverType(TypeBase) {
     static has CATEGORY: TypeCategory = TypeCategory.Never;
+    has residual: (TypeBase | None) = None;
 
     def __str__ -> str;
 }
@@ -293,6 +294,7 @@ node Parameter {
 
     has default_value: (Expr | None) { getter; setter(default_value: (Expr | None)); }
 
+    def category_code -> int;
     def init(
         *,
         name: str,

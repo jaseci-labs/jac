@@ -406,6 +406,27 @@ test "E0076: Python __init__ and init are distinct methods" {
     assert not has_diagnostic_code(prog, "E0076");
 }
 
+test "E0078: a method or ability with a field's name is rejected" {
+    # The later class attribute replaced the field, so `self.rise` read the
+    # ability's function and `jac check` passed it silently.
+    (prog, _) = compile_and_check("parser_E0078_field_method_clash.jac");
+    assert count_diagnostic_code(prog, "E0078") == 3 , "the method 'grow', the ability 'rise' and the impl-block 'grow'";
+}
+
+test "E0078: distinct names, property accessors and init/postinit beside same-named fields are not clashes" {
+    (prog, _) = compile_and_check("parser_E0078_distinct_members.jac");
+    assert not has_diagnostic_code(prog, "E0078");
+}
+
+test "E0078: a Python class is not checked" {
+    prog = JacProgram();
+    prog.compile(
+        use_str="class Box:\n    grow: int = 3\n\n    def grow(self) -> int:\n        return 7\n",
+        file_path="clash.py"
+    );
+    assert not has_diagnostic_code(prog, "E0078");
+}
+
 test "E2036: a second module-level definition of a name is rejected" {
     (prog, _) = compile_and_check("scope_E2036_duplicate_def.jac");
     assert count_diagnostic_code(prog, "E2036") == 2 , "the second 'foo' and the second 'Bar'";
@@ -424,7 +445,7 @@ test "E2036: the call the checker passed against the first def is now an error" 
     assert count_diagnostic_code(prog, "E2036") == 1;
 }
 
-test "E2036: a stub with its impl and overloads are not duplicates" {
+test "E2036: an impl, overloads, a self-import and a glob assignment are not duplicates" {
     (prog, _) = compile_only("scope_E2036_allowed_redefinitions.jac");
     assert not has_diagnostic_code(prog, "E2036");
 }
@@ -434,6 +455,48 @@ test "E2036: a Python module may redefine a name" {
     prog.compile(
         use_str="def pick() -> int:\n    return 1\n\n\ndef pick() -> int:\n    return 2\n",
         file_path="redefine.py"
+    );
+    assert not has_diagnostic_code(prog, "E2036");
+}
+
+test "E2036: a local def, obj or glob that reuses an imported name is rejected" {
+    # `def Thing -> int;` used to lose to the imported record: the checker typed
+    # `Thing()` as the record and the program constructed it instead of
+    # calling the def.
+    (prog, _) = compile_and_check("scope_E2036_import_shadow.jac");
+    messages = [
+        e.msg
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == "E2036"
+    ];
+    assert len(messages) == 3 , messages;
+    assert "Duplicate definition of 'Thing': the import on line 2 binds it too."
+        in messages , messages;
+    assert any("'Other'" in m for m in messages) , messages;
+    assert any("'Knob'" in m for m in messages) , messages;
+}
+
+test "E2036: an import after the local definition still collides" {
+    (_, prog) = parse_and_validate(
+        "def Thing -> int {\n    return 7;\n}\n\nimport from rec { Thing }\n"
+    );
+    assert count_diagnostic_code(prog, "E2036") == 1;
+}
+
+test "E2036: a module import and an enum or type alias collide too" {
+    (_, prog) = parse_and_validate(
+        "import os;\nimport from rec { Kind, Alias }\n\n"
+            + "enum Kind { A, B }\n\ntype Alias = int;\n\n"
+            + "def os -> int {\n    return 0;\n}\n"
+    );
+    assert count_diagnostic_code(prog, "E2036") == 3;
+}
+
+test "E2036: an include does not collide with a local definition" {
+    # A module's own definition shadows a name an `include` brings in.
+    (_, prog) = parse_and_validate(
+        "include rec;\nimport from rec { Thing as Widget }\n\n"
+            + "obj Thing {}\n\ndef Widget2 -> int {\n    return 1;\n}\n"
     );
     assert not has_diagnostic_code(prog, "E2036");
 }

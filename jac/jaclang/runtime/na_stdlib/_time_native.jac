@@ -9,10 +9,3 @@ glob CLK_REALTIME: int = __jac_clock_id(i32(0)),
      CLK_PY_MONOTONIC: int = __jac_clock_id(i32(5));
 
 def:pub time_sleep_ns(ns: int);
-
-impl time_sleep_ns(ns: int) {
-    code: int = int(__jac_sleep_ns(ns));
-    if code != 0 {
-        raise_errno(code);
-    }
-}

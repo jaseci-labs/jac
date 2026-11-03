@@ -129,7 +129,17 @@ import from engine.src.ffi.libc {
     fcntl,
     getenv
 }
-import from engine.src.runtime.mem { read_i32, read_u16, write_i32, io_alloc, io_free }
+import from engine.src.runtime.mem {
+    read_i32,
+    read_u16,
+    write_i32,
+    io_alloc,
+    io_free,
+    byte_chr,
+    str_bslice,
+    str_byte,
+    str_nbytes
+}
 import from engine.src.runtime.gc_pin { gc_pin_live_list }
 import from engine.src.net.constants {
     SOL_SOCKET,
@@ -556,7 +566,7 @@ def _nb_handle_read_ready(
     nr: int = recv(fd, buf_ptr, max_n, 0);
     if nr > 0 {
         raw: str = buf_ptr;  # jac:ignore[E1001] pointer reinterpreted as str
-        chunk: str = raw[0:nr];
+        chunk: str = str_bslice(raw, 0, nr);
         chunk_val: JSValue = jsv_from_string_id(str_intern(chunk));
         _NB_FIRED_FNS.append(cb);
         _NB_FIRED_ARGS.append([chunk_val, js_false()]);
@@ -1172,7 +1182,7 @@ def:pub net_tcp_read_nb(args: list[JSValue]) -> JSValue {
     if nr > 0 {
         # Data available — fire callback immediately (on next el_tick)
         raw: str = buf_ptr;  # jac:ignore[E1001] pointer reinterpreted as str
-        chunk: str = raw[0:nr];
+        chunk: str = str_bslice(raw, 0, nr);
         chunk_val: JSValue = jsv_from_string_id(str_intern(chunk));
         _NB_FIRED_FNS.append(cb);
         _NB_FIRED_ARGS.append([chunk_val, js_false()]);
@@ -2107,8 +2117,9 @@ def:pub net_tls_create_server_ctx(args: list[JSValue]) -> JSValue {
                 alpn_list: list[str] = [];
                 cur: str = "";
                 ci: int = 0;
-                while ci < len(alpn_str) {
-                    ch: str = alpn_str[ci];
+                _nb2120_alpn_str: int = str_nbytes(alpn_str);
+                while ci < _nb2120_alpn_str {
+                    ch: str = byte_chr(str_byte(alpn_str, ci));
                     if ch == "," {
                         if len(cur) > 0 {
                             alpn_list.append(cur);
@@ -2398,7 +2409,7 @@ def _nb_try_udp_recv(cb: JSValue, hid: int, fd: int, max_n: int) -> bool {
     data: str = "";
     if nread > 0 {
         raw: str = buf_ptr;  # jac:ignore[E1001] pointer reinterpreted as str
-        data = raw[0:nread];
+        data = str_bslice(raw, 0, nread);
     }
     _nb_fire_udp_msg(cb, 0, data, sender.host, sender.port);
     return True;

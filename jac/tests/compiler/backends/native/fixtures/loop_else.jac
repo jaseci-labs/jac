@@ -51,7 +51,7 @@ def iter_for_else_break_skips(n: int) -> bool {
     return ran;
 }
 
-def range_for_else_ran() -> bool {
+def range_for_else_ran -> bool {
     ran: bool = False;
     for i in range(3) {} else {
         ran = True;
@@ -59,7 +59,7 @@ def range_for_else_ran() -> bool {
     return ran;
 }
 
-def range_for_else_break_skips() -> bool {
+def range_for_else_break_skips -> bool {
     ran: bool = False;
     total: int = 0;
     for i in range(5) {
@@ -73,7 +73,7 @@ def range_for_else_break_skips() -> bool {
     return ran and total == 3;
 }
 
-def range_for_else_contributes() -> int {
+def range_for_else_contributes -> int {
     total: int = 0;
     for i in range(4) {
         total = total + i;
@@ -83,7 +83,7 @@ def range_for_else_contributes() -> int {
     return total;
 }
 
-def list_for_else_ran() -> bool {
+def list_for_else_ran -> bool {
     ran: bool = False;
     items = [10, 20, 30];
     for v in items {} else {
@@ -92,7 +92,7 @@ def list_for_else_ran() -> bool {
     return ran;
 }
 
-def list_for_else_break_skips() -> bool {
+def list_for_else_break_skips -> bool {
     ran: bool = False;
     items = [10, 20, 30];
     for v in items {
@@ -105,7 +105,7 @@ def list_for_else_break_skips() -> bool {
     return not ran;
 }
 
-def str_for_else_ran() -> bool {
+def str_for_else_ran -> bool {
     count: int = 0;
     for c in "abc" {
         count = count + 1;
@@ -117,7 +117,7 @@ def str_for_else_ran() -> bool {
 
 glob flow_probe_items: own list[int] = [1, 2, 3];
 
-def flow_for_else_ran() -> bool {
+def flow_for_else_ran -> bool {
     ran: bool = False;
     flow for v in &flow_probe_items {} else {
         ran = True;
@@ -125,7 +125,7 @@ def flow_for_else_ran() -> bool {
     return ran;
 }
 
-def inner_else_break_leaves_outer() -> bool {
+def inner_else_break_leaves_outer -> bool {
     inner_done: bool = False;
     outer_else_ran: bool = False;
     for a in [1, 2] {
@@ -139,7 +139,7 @@ def inner_else_break_leaves_outer() -> bool {
     return not inner_done and not outer_else_ran;
 }
 
-def inner_else_continue_skips_rest() -> int {
+def inner_else_continue_skips_rest -> int {
     kept: int = 0;
     for a in [1, 2, 3] {
         for b in [1] {} else {
@@ -152,7 +152,7 @@ def inner_else_continue_skips_rest() -> int {
     return kept;
 }
 
-def iter_for_else_continue_steps() -> int {
+def iter_for_else_continue_steps -> int {
     count: int = 0;
     for i = 0 while i < 3 with i += 1 {
         for b in [1] {} else {

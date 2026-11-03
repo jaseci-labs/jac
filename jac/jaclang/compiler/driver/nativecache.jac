@@ -69,7 +69,11 @@ obj NativeUnitRegistry {
 
     def _entry_fresh(ent: NativeUnitEntry) -> bool;
     def _register(
-        resolved: str, iface: NativeIface, stamp: NativeStamp, source: str
+        resolved: str,
+        iface: NativeIface,
+        stamp: NativeStamp,
+        source: str,
+        digest: str = ""
     ) -> NativeUnitEntry;
 
     def record(
@@ -156,6 +160,13 @@ obj NativeUnitRegistry {
     def _live_gen(resolved: str) -> (CodeGenTarget | None);
 }
 
+obj NativeIRSnapshot {
+    has bitcode: bytes,
+        defined: set[str],
+        declared: set[str],
+        referenced: (set[str] | None) = None;
+}
+
 obj SessionHeap {
     has held: bool = False,
         declined: bool = False,
@@ -171,6 +182,8 @@ obj NativeBuildSession {
         options: CompileOptions,
         prog: JacProgram postinit,
         lowered: dict[str, Module] = {},
+        ir_snapshots: dict[str, NativeIRSnapshot] = {},
+        compact_on_lower: bool = False,
         source_keys: dict[str, str | None] = {},
         deferred: list[set[str]] = [],
         discovery_open: list[bool] = [],
@@ -183,6 +196,7 @@ obj NativeBuildSession {
     def postinit;
     def settle_heap;
     def lower(path: str, use_str: (str | None) = None) -> (NativeUnitEntry | None);
+    def compact_ir(paths: list[str]);
     def unbound_symbols(path: str, deps: list[str]) -> (list[str] | None);
     def finish(paths: list[str]);
     def _optimize_in_parallel(paths: list[str]) -> set[str];
@@ -190,19 +204,10 @@ obj NativeBuildSession {
     def close;
 }
 
-glob _closure_memo:
-         dict[str, tuple[tuple[(tuple[int, int] | None), ...], list[str], list[str]]] = {},
-     _dep_digest_memo: dict[str, tuple[tuple[int, int], str]] = {},
-     VERDICT_CLOSURE_LIMIT: int = 4096;
+glob VERDICT_CLOSURE_LIMIT: int = 4096;
 
 def _ir_symbols(unit_ir: any) -> (tuple[set[str], set[str]] | None);
 
 def _ir_referenced_symbols(unit_ir: any) -> set[str];
-
-def _stat_key(path: str) -> (tuple[int, int] | None);
-
-def _module_files_and_imports(path: str) -> tuple[list[str], list[str]];
-
-def _file_digest(path: str) -> str;
 
 def _interface_changes(before: any, after: any, path: str, out: list[str]);

@@ -145,6 +145,8 @@ def _locate(
 
 def _real_click(cdp: CDP, x: float, y: float);
 
+def _type_steps(text: str) -> list[dict[str, any]];
+
 def _type_text(cdp: CDP, text: str);
 
 def _insert_text(cdp: CDP, text: str);

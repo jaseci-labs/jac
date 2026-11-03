@@ -1,0 +1,129 @@
+name: Build the JacPython seed
+
+# Builds the linux-x86_64 JacPython seed and, on a manual run on main,
+# attaches it to the rolling `deps` prerelease. The seed is the interpreter a
+# JacPython build starts from when it has no earlier output of its own:
+# `-Djacpython-host=auto` fetches it by the URL and sha256 pinned under
+# `jacpython-seed` in jac/bootstrap/python/sources.json. One linux-x86_64 seed
+# serves every platform, because only x86 Linux lowers jacpython.o
+# (build-kernel.yml) and every other build adopts it.
+#
+# Publishing changes no build: a maintainer moves the pin in a pull request,
+# with the URL and sha256 the publish job prints. A published asset is never
+# replaced. Any other run, such as a pull request editing this file, builds
+# and verifies a seed and publishes nothing.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/build-seeds.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-seeds-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 180
+    outputs:
+      asset: ${{ steps.seed.outputs.asset }}
+    steps:
+      # SHA-pinned: a seed is the interpreter later JacPython builds run on.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Fingerprint immutable build inputs
+        id: inputs
+        run: bash scripts/ci_cache_keys.sh >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/lowering-host
+        with:
+          python-key: ${{ steps.inputs.outputs.python }}
+
+      # jacpython-seed-pack builds JacPython first, then writes the tarball,
+      # named by its content, and its .sha256.
+      - name: Build and pack the seed
+        id: seed
+        working-directory: jac
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euo pipefail
+          MARK="$(mktemp)"
+          zig build jacpython-seed-pack --summary all
+          mapfile -t found < <(find .python-build/jacpython -maxdepth 1 -name 'jacpython-seed-*.tar.gz' -newer "$MARK")
+          [ "${#found[@]}" -eq 1 ] || { echo "::error::expected one new seed, found ${#found[@]}"; exit 1; }
+          mkdir -p "$GITHUB_WORKSPACE/dist-seed"
+          cp "${found[0]}" "${found[0]}.sha256" "$GITHUB_WORKSPACE/dist-seed/"
+          ( cd "$GITHUB_WORKSPACE/dist-seed" && sha256sum -c ./*.sha256 )
+          echo "asset=$(basename "${found[0]}")" >> "$GITHUB_OUTPUT"
+
+      # A runnable JacPython of the pinned release, unpacked anywhere, with
+      # nothing from this checkout or the runner's Python on its path.
+      - name: Verify the seed
+        working-directory: dist-seed
+        env:
+          ASSET: ${{ steps.seed.outputs.asset }}
+        run: |
+          set -euo pipefail
+          SOURCES="$GITHUB_WORKSPACE/jac/bootstrap/python/sources.json"
+          UNPACK="$(mktemp -d)"
+          tar -xzf "$ASSET" -C "$UNPACK"
+          (cd "$UNPACK" && env -i HOME="$UNPACK" PATH=/usr/bin:/bin "$UNPACK"/python/install/bin/python3 -I -c '
+          import ast, ctypes, platform, sys
+          assert platform.python_version() == sys.argv[1], (platform.python_version(), sys.argv[1])
+          assert sys.implementation.name == "cpython"
+          assert ctypes.pythonapi._PyJac_CompilerRequired() == 1
+          assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
+          assert eval(compile(ast.parse("6 * 7", mode="eval"), "<seed>", "eval")) == 42
+          import hashlib, json, sqlite3, ssl, zlib
+          print("seed:", sys.version.split()[0], sys.platform, platform.machine())
+          ' "$(jq -r .cpython.version "$SOURCES")")
+          echo "sources.json pins $(jq -r '."jacpython-seed".sha256' "$SOURCES"); this seed is $(cut -d' ' -f1 "$ASSET.sha256")."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jacpython-seed
+          path: dist-seed/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: jacpython-seed
+          path: dist-seed
+
+      - name: Publish to the deps prerelease
+        working-directory: dist-seed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ASSET: ${{ needs.build.outputs.asset }}
+        run: |
+          set -euo pipefail
+          sha256sum -c "$ASSET.sha256"
+          gh release create deps --repo "$GITHUB_REPOSITORY" --prerelease \
+            --title "Prebuilt build dependencies (rolling)" \
+            --notes "Content-addressed prebuilt build artifacts (LLVMPY shims, JacPython seeds). Consumed by the build; not for direct download." \
+            2>/dev/null || true
+          if gh release view deps --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -qx "$ASSET"; then
+            echo "::error::the deps release already carries $ASSET; a published seed is never replaced"
+            exit 1
+          fi
+          gh release upload deps --repo "$GITHUB_REPOSITORY" "$ASSET" "$ASSET.sha256"
+          {
+            echo "Pin the seed in \`jac/bootstrap/python/sources.json\`:"
+            echo '```json'
+            echo "\"jacpython-seed\": { \"url\": \"https://github.com/$GITHUB_REPOSITORY/releases/download/deps/$ASSET\", \"sha256\": \"$(cut -d' ' -f1 "$ASSET.sha256")\" }"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

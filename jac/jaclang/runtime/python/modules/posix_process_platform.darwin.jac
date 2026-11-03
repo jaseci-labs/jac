@@ -10,7 +10,6 @@ unshare() or pidfd_open(); the binding installs none of the functions that
 need them, so their calls here are unreachable.
 """
 
-import from jaclang.runtime.python.modules.time_records { tms }
 import from c {
     obj siginfo_t {
         has si_signo: i32 = 0,

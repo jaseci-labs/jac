@@ -37,6 +37,7 @@ name = "my-app"                  # binary name
 identifier = "com.example.myapp"
 version = "1.0.0"
 engine = "native"                # "native" (OS webview, default) or "cef" (bundled Chromium)
+backend = "embedded"             # the server runs in-process (default), or a URL the app talks to
 
 [desktop.window]
 title = "My App"
@@ -45,6 +46,46 @@ height = 700
 min_width = 800
 min_height = 600
 resizable = true
+```
+
+## Letting the user pick the backend - `[desktop] backends`
+
+One binary can run locally or against a server, chosen by the user at run time. List the choices instead of setting `backend` (set one or the other):
+
+```toml
+[desktop]
+backends = { local = "embedded", web = "https://my-app.example" }   # >= 2 entries, "embedded" at most once
+default_backend = "ask"     # or a name; "ask" leaves the first choice to the UI
+```
+
+The build ships every listed backend (sealed image + Postgres if one is embedded; no API base baked in). At launch the host boots only the saved choice (`<data dir>/.jac/desktop/backend.json`, else `default_backend`); with `"ask"` and nothing saved it serves just the bundle, so the UI must show a picker. The bundle learns the choice from `/__jac/backend.js`, which the build puts first in `<head>`. Tokens and broker sessions are kept per backend (`localStorage["jac_token"]` always holds the active backend's). Read and change it with `backend` from `@jac/desktop`:
+
+```jac
+import from "@jac/desktop" { backend }
+
+async def go_online {
+    backend.choices();          # [{"name", "kind": "embedded"|"remote", "url"}], [] in a single-backend app
+    backend.current();          # the running entry, or None before a choice
+    await backend.use("web");   # save + relaunch into it; False if it is already running
+}
+```
+
+A remote backend must accept the app's loopback origin (CORS), as with a single remote `backend`.
+
+## Local profiles instead of sign-in - `[desktop] profiles = true`
+
+For an embedded backend: the user creates and picks named profiles (save slots) instead of signing in. Each profile is its own passwordless user and root; `/__jac/backend.js` signs the page in as the active one before the bundle runs, so protected endpoints and `jacIsLoggedIn()` just work. With `backends`, it applies only while an embedded backend runs.
+
+```jac
+import from "@jac/desktop" { profiles }
+
+async def manage(pid: str) {
+    profiles.choices();              # [{"id", "name", "created"}]
+    profiles.current();              # the active profile, or None -> show a picker
+    await profiles.create("Work");   # create + pick + reload signed in
+    await profiles.use(pid);         # switch to another (reloads)
+    await profiles.leave();          # back to no profile (reloads)
+}
 ```
 
 ## OS capabilities - the `@jac/desktop` plugins (IPC)

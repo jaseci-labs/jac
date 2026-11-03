@@ -42,11 +42,6 @@ impl forget_capability_notes(prog: JacProgram, mod_path: str) {
 }
 
 impl placement_neutral(nd: UniNode) -> bool {
-    """Whether `nd` sits in code whose native placement is still open: the
-    first analysis of a module that has no declared codespace and may take
-    the project's native preference. What only native code can do is then a
-    fact to record for placement. Anywhere else it is what the checker says
-    it is.""";
     if nd.in_native_context() or nd.in_client_context() {
         return False;
     }

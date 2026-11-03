@@ -64,11 +64,13 @@ obj WiringSpec {
         wires: list[WireRec] = [],
         rules: list[RuleRec] = [],
         _raw: dict[str, list[WireRec]] = {},
+        _raw_by_prefix: dict[str, list[str]] = {},
         _by_consumer: dict[str, list[WireRec]] = {},
         _splits: dict[str, (tuple[str, list[str]] | None)] = {},
         _annex_cache: dict[str, str] = {},
         _policy_digest: str = "",
         _project_modules: (list[str] | None) = None,
+        _unnamed_modules: (list[str] | None) = None,
         _prefix: (str | None) = None,
         _owned_dirs: dict[str, bool] = {},
         _scopes: dict[tuple[str, int], list[list[str]]] = {},
@@ -81,6 +83,7 @@ obj WiringSpec {
     def import_prefix -> str;
     def import_name(name: str) -> str;
     def module_file(name: str) -> (str | None);
+    def _variant_file(local: str, parts: list[str]) -> (str | None);
     def owns(path: str) -> bool;
     def split_consumer(path: str) -> (tuple[str, list[str]] | None);
     def consumer_scope(consumer: str, wire: WireRec) -> list[str];
@@ -92,6 +95,8 @@ obj WiringSpec {
     def wire_import(wire: WireRec) -> (Import | None);
     def is_package_dir(name: str) -> bool;
     def project_modules -> list[str];
+    def ruled_modules -> list[str];
+    def ruled_as(consumer: str) -> list[str];
     def _scan_modules(directory: str, found: list[str], seen: set[str]) -> None;
     def consumer_wires(consumer: str) -> list[WireRec];
     def is_covered(consumer: str) -> bool;
@@ -182,3 +187,5 @@ def is_positional_import(imp: Import) -> bool;
 def scope_owners(mod: Module) -> dict[str, list[(Ability | ImplDef)]];
 def inject_into_scope(owner: (Ability | ImplDef), stmt: UniNode) -> None;
 def local_module_name(root_dir: str, path: str) -> (str | None);
+def variant_base_file(path: str) -> (str | None);
+def unnamed_module_label(root_dir: str, path: str) -> (str | None);

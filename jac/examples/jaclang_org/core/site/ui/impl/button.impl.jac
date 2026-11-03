@@ -40,3 +40,7 @@ impl Button(props: any) -> JsxElement {
             {props["children"]}
         </button>;
 }
+
+impl buttonVariants -> any {
+    return _buttonVariants;
+}

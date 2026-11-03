@@ -26,6 +26,7 @@ obj UnitProducts {
         native_deps: list[str] = [],
         iface: str = "",
         iface_shape: str = "",
+        iface_jir: str = "",
         effects: str = "",
         jac_deps: list[str] = [];
 }
@@ -68,7 +69,9 @@ def client_pulled_indexes(module: uni.Module) -> list[int];
 
 def client_artifact_of(module: uni.Module) -> (ClientArtifact | None);
 
-def placement_record(module: uni.Module, program: JacProgram) -> str;
+def placement_record(
+    module: uni.Module, program: JacProgram, solved: bool = True
+) -> str;
 
 def unit_products(module: uni.Module, program: JacProgram) -> UnitProducts;
 

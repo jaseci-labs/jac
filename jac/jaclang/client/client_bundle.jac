@@ -34,7 +34,10 @@ obj ClientBundleBuilder {
     ) -> dict[str, any];
 
     def _compile_bundle(module: ModuleType, module_path: Path) -> ClientBundle;
-    def _compile_to_js(source_path: Path) -> ClientArtifact;
+    def _compile_to_js(
+        source_path: Path, source_root: Path | None = None
+    ) -> ClientArtifact;
+
     def _emitted_digest -> str;
     static def _signature(paths: Iterable[Path]) -> str;
 }
@@ -43,15 +46,3 @@ def emitted_tree_digest(tree_root: Path) -> str;
 
 
 def client_program(program: JacProgram | None) -> JacProgram;
-
-impl client_program(program: JacProgram | None) -> JacProgram {
-    if program is not None {
-        return program;
-    }
-
-    current = JacRuntime.program;
-    if current is None {
-        raise ClientBundleError('No active compilation program for client products');
-    }
-    return current;
-}

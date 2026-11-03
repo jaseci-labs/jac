@@ -6,7 +6,6 @@ glob _IFACE_MEMO: dict[str, tuple[list[str], list[str], PythonInterface]] = {},
      _IFACE_REFUSED: dict[str, str] = {},
      _IFACE_BUILT: list[float] = [0.0, 0.0],
      _OTHER_COMPILER_DIRS: dict[str, bool] = {},
-     NATIVE_INT_OVERFLOW: str = "integer overflow",
      OTHER_COMPILER_MISS: str = "other_compiler",
      INTERFACE_QUESTIONS: tuple[str, ...] = ("compile_module", "parse_python"),
      NPM_QUESTIONS: tuple[str, ...] = (
@@ -87,10 +86,6 @@ obj KernelSnapshot(HostAsker) {
         other_compiler: str = "";
 
     def inputs -> KernelInputs;
-    override def record_interface(
-        program: JacProgram, module: uni.Module, products: UnitProducts
-    );
-
     def text -> str;
     def ask(method: str, key: str) -> str;
     def answer(learner: KernelHost, method: str, fields: list[str]) -> str;

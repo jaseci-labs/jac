@@ -7,8 +7,6 @@ getlogin_r() fills a UT_NAMESIZE + 1 buffer, and os.getrandom() calls
 syscall(SYS_getrandom) (HAVE_GETRANDOM_SYSCALL).
 """
 
-import from jaclang.runtime.python.modules.posix_constants { SYS_getrandom }
-
 import from c {
     def getgrouplist(
         user: str, basegid: u32, groups: ptr[u32], ngroups: &mut i32

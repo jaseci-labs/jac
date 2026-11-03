@@ -170,9 +170,7 @@ impl link_kernel(
             );
         }
         os.makedirs(os.path.dirname(os.path.abspath(dst)) or ".", exist_ok=True);
-        """The plan holds every unit's interface and the link needs only their
-        products, which the module cache holds, so the analyzed trees go
-        before the link's code generation needs the memory.""";
+
         program.release_compile_closure();
         result = link_artifact(plan, dst, ArtifactKind.SHARED, log=log);
         if log is not None {

@@ -684,14 +684,6 @@ impl NaIRGenPass._make_iter_from_value(
 }
 
 impl NaIRGenPass._iter_yield_llvm(storage: ir.Type, expr: uni.UniNode) -> ir.Type {
-    """The type a collection iterator yields, as the loop body reads it.
-
-    A `ptr`-spec list or set stores every boxed element (a tuple, an object)
-    as an erased `i8*`; the iterator's next function writes that word into
-    the out slot unchanged. The consumer must read it back as the element's
-    static layout, the same refinement the indexed for-loop applies through
-    `elem_cast`, or a tuple element reaches the body typed as a string.
-    """;
     if storage != ir.IntType(8).as_pointer() {
         return storage;
     }
@@ -1182,7 +1174,7 @@ impl NaIRGenPass._user_iter_next_fn(
         exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="usr.env.ptr"
     );
     env_i8p = b.bitcast(env_ptr, i8p, name="usr.env.i8p");
-    sj = b.call(self._exc_setjmp_fn(), [env_i8p], name="usr.sj");
+    sj = self._emit_exc_arm(b, env_i8p, "usr.sj");
     is_exc = b.icmp_signed("!=", sj, ir.Constant(i32, 0), name="usr.is.exc");
     b.cbranch(is_exc, caught_bb, call_bb);
 
@@ -1278,9 +1270,6 @@ impl NaIRGenPass._make_user_iter_from_obj(
 }
 
 impl NaIRGenPass._codegen_next(nd: uni.FuncCall) -> (ir.Value | None) {
-    """`next(it)` / `next(it, default)`. An argument that is not already an
-    iterator (a list, a generator expression, a user iterable) gets a
-    temporary iterator, released once the element is taken.""";
     params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
     if not params
         or len(params) > 2

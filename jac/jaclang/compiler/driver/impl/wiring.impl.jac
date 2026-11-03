@@ -10,6 +10,12 @@ impl WiringSpec.postinit -> None {
             }
         }
     }
+    for path in self._raw {
+        parts = path.split(".");
+        for k in range(1, len(parts) + 1) {
+            self._raw_by_prefix.setdefault(".".join(parts[:k]), []).append(path);
+        }
+    }
     rows: list[str] = [];
     for rule in self.rules {
         srcs = "|".join([p.text for p in rule.sources]);
@@ -87,10 +93,42 @@ impl local_module_name(root_dir: str, path: str) -> (str | None) {
     if not parts {
         return None;
     }
+    if "." in parts[-1] {
+        if variant_base_file(path) is None {
+            return None;
+        }
+        parts = [*parts[:-1], *parts[-1].split(".")];
+    }
     for part in parts {
         if not part.isidentifier() {
             return None;
         }
+    }
+    return ".".join(parts);
+}
+
+impl variant_base_file(path: str) -> (str | None) {
+    if path.endswith(VARIANT_SUFFIX) {
+        base = path[:-len(VARIANT_SUFFIX)] + ".jac";
+        return base if os.path.isfile(base) else None;
+    }
+    return native_variant_base(path);
+}
+
+impl unnamed_module_label(root_dir: str, path: str) -> (str | None) {
+    name = os.path.basename(path);
+    if not name.endswith(".jac") or any([name.endswith(m) for m in ANNEX_MARKERS]) {
+        return None;
+    }
+    try {
+        rel = os.path.relpath(os.path.realpath(path), os.path.realpath(root_dir));
+    } except ValueError {
+        return None;
+    }
+    parts = rel[:-len(".jac")].split(os.sep);
+    if rel.startswith("..")
+        or any([p == "impl" or p.endswith(".impl") for p in parts[:-1]]) {
+        return None;
     }
     return ".".join(parts);
 }
@@ -117,10 +155,32 @@ impl WiringSpec.module_file(name: str) -> (str | None) {
         return None;
     }
     found = active_host().resolve_local_module(self.root_dir, parts);
-    if found is None or found[1] not in ("jac", "py") or not self.owns(found[0]) {
+    if found is None {
+        return self._variant_file(local, parts);
+    }
+    if found[1] not in ("jac", "py") or not self.owns(found[0]) {
         return None;
     }
     return found[0];
+}
+
+impl WiringSpec._variant_file(local: str, parts: list[str]) -> (str | None) {
+    for cut in (3, 2) {
+        if len(parts) < cut {
+            continue;
+        }
+        path = os.path.join(
+            self.root_dir,
+            os.sep.join(parts[:len(parts) - cut]),
+            ".".join(parts[-cut:]) + ".jac"
+        );
+        if os.path.isfile(path)
+            and self.owns(path)
+            and local_module_name(self.root_dir, path) == local {
+            return path;
+        }
+    }
+    return None;
 }
 
 impl WiringSpec.owns(path: str) -> bool {
@@ -206,9 +266,6 @@ impl WiringSpec.wire_for_import(
 }
 
 impl WiringSpec.wire_import(wire: WireRec) -> (Import | None) {
-    """The import one wire generates, parsed on its own at the place the annex
-    puts it. A scope with several owners needs one import each, and a node
-    cannot be copied in native code, so the copies come from the wire.""";
     lines: list[str] = [];
     for (line0, col, text) in self._wire_pieces(wire) {
         while len(lines) <= line0 {
@@ -253,6 +310,7 @@ impl WiringSpec.project_modules -> list[str] {
         )
     );
     found: list[str] = [];
+    unnamed: list[str] = [];
     for path in paths {
         if os.path.realpath(path) in ignored {
             continue;
@@ -260,10 +318,30 @@ impl WiringSpec.project_modules -> list[str] {
         name = self.module_name(path);
         if name is not None {
             found.append(name);
+        } else {
+            label = unnamed_module_label(self.root_dir, path);
+            if label is not None {
+                unnamed.append(self.package_prefix + label);
+            }
         }
     }
     self._project_modules = found;
+    self._unnamed_modules = unnamed;
     return found;
+}
+
+impl WiringSpec.ruled_modules -> list[str] {
+    return [*self.project_modules(), *(self._unnamed_modules or [])];
+}
+
+impl WiringSpec.ruled_as(consumer: str) -> list[str] {
+    if "." not in consumer {
+        return [consumer];
+    }
+    path = self.module_file(consumer);
+    base = variant_base_file(path) if path is not None else None;
+    name = self.module_name(base) if base is not None else None;
+    return [consumer, name] if name is not None else [consumer];
 }
 
 impl WiringSpec._scan_modules(
@@ -305,11 +383,9 @@ impl WiringSpec.consumer_wires(consumer: str) -> list[WireRec] {
     }
     dotted = consumer + ".";
     candidates: dict[int, WireRec] = {};
-    for (path, wires) in self._raw.items() {
-        if path == consumer or path.startswith(dotted) {
-            for wire in wires {
-                candidates[wire.index] = wire;
-            }
+    for path in self._raw_by_prefix.get(consumer, []) {
+        for wire in self._raw[path] {
+            candidates[wire.index] = wire;
         }
     }
     found: list[WireRec] = [];
@@ -505,6 +581,7 @@ impl WiringSpec.import_provider(path_node: ModulePath) -> (str | None) {
     if not resolved or not os.path.isfile(resolved) {
         return None;
     }
+    resolved = variant_base_file(resolved) or resolved;
     module = self.module_name(resolved) if self.owns(resolved) else None;
     if module is None
         or path_node.level != 0
@@ -546,10 +623,11 @@ impl WiringSpec.rules_governing(
 impl WiringSpec.rules_admitting(
     provider: str, consumer: str, local: bool
 ) -> list[RuleRec] {
+    subjects = self.ruled_as(consumer);
     return [
         rule
         for rule in self.rules_governing(provider, consumer, local)
-        if any([t.matches(consumer) for t in rule.targets])
+        if any([t.matches(subject) for t in rule.targets for subject in subjects])
     ];
 }
 
@@ -1437,7 +1515,7 @@ impl render_wiring(
             tuple[str, str, str, str, str],
             list[tuple[list[str], (list[tuple[str, str]] | None)]]
         ] = {};
-    for ((block, provider, form, alias, arrow, items), consumers) in groups.items() {
+    for ((block, provider, form, alias, arrow, group_items), consumers) in groups.items() {
         module_form = "from" not in form.split(" ");
         prefix = " ".join(
             [
@@ -1462,7 +1540,7 @@ impl render_wiring(
             statements.setdefault((block, provider, prefix, alias, arrow), []).append(
                 (
                     [block_relative(block, c) for c in taken],
-                    None if module_form else list(items)
+                    None if module_form else list(group_items)
                 )
             );
             pending = rest;

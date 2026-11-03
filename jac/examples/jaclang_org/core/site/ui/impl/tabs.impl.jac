@@ -47,3 +47,7 @@ impl TabsContent(props: any) -> JsxElement {
             className={cn("text-sm flex-1 outline-none", props["className"])}
         />;
 }
+
+impl tabsListVariants -> any {
+    return _tabsListVariants;
+}
