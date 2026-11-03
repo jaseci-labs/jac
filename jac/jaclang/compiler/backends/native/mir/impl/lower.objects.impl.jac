@@ -100,8 +100,16 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
             if slot_type.kind == MirKind.ENUM and isinstance(field_type, ClassType) {
                 self.enum_types.setdefault(slot_type.name, field_type);
             }
+            tag = member.decl_node.type_tag
+                if isinstance(member.decl_node, uni.HasVar)
+                else None;
             made.fields.append(
-                MirObjectField(name=member.name, type=slot_type, index=member.index)
+                MirObjectField(
+                    name=member.name,
+                    type=slot_type,
+                    index=member.index,
+                    borrowed=self.tag_borrows(tag)
+                )
             );
         }
         self.osp_header_fields(made, layout);
@@ -657,10 +665,20 @@ impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) 
         b = self.builder();
         params = self.constructor_params(arch);
         values: list[MirValue] = [];
-        for (pname, ptype, _) in params {
+        consumed: list[int] = [];
+        for (index, (pname, ptype, _)) in enumerate(params) {
             value = fn.new_value(ptype, pname);
             fn.params.append(MirParam(name=pname, value=value));
+            if self.owned_world
+                and mir_holds_ref(ptype)
+                and self.field_consumes(arch, pname) {
+                value.owned = True;
+                consumed.append(index);
+            }
             values.append(value);
+        }
+        if consumed {
+            self.ctor_consumes[symbol] = consumed;
         }
         if self.ctor_takes_mask(params) {
             given = fn.new_value(mir_int(), "__given");
@@ -775,7 +793,7 @@ impl MirLowering.lower_drop(obj_def: MirObjectDef, arch: uni.Archetype) -> MirFu
     }
     b.position(release_bb);
     for member in obj_def.fields {
-        if not mir_holds_ref(member.type) {
+        if not mir_holds_ref(member.type) or (self.owned_world and member.borrowed) {
             continue;
         }
         place = self.emit_value(
@@ -2168,6 +2186,13 @@ impl MirLowering.class_value_call(nd: uni.FuncCall, bound: uni.Archetype) -> Mir
     );
     result = self.emit_value(MirOp.CALL_FNPTR, made_type, [callee] + values);
     result.owned = True;
+    if self.owned_world {
+        b.block.instrs[-1].consumes = [
+            index + 1
+            for (index, (pname, ptype, _)) in enumerate(params)
+            if mir_holds_ref(ptype) and self.field_consumes(bound, pname)
+        ];
+    }
     return result;
 }
 
@@ -2206,6 +2231,11 @@ impl MirLowering.class_entry(
         for (pname, ptype, _) in taken {
             value = fn.new_value(ptype, pname);
             fn.params.append(MirParam(name=pname, value=value));
+            if self.owned_world
+                and mir_holds_ref(ptype)
+                and self.field_consumes(bound, pname) {
+                value.owned = True;
+            }
             given.append(value);
         }
         supplied = b.const_int(-1, mir_int());

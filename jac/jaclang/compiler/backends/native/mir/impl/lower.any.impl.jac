@@ -941,11 +941,22 @@ impl MirLowering.enum_text_thunk(t: MirType, site: uni.UniNode) -> str {
 
 impl MirLowering.store_text_result(base: MirValue, text: MirValue) {
     b = self.builder();
-    held = self.runtime_value(
-        "__jac_rt_str_ref",
-        [b.str_part(text, "root"), b.str_part(text, "data"), b.str_part(text, "len")]
-    );
-    self.runtime("__jac_rt_retain", [held]);
+    if self.owned_world {
+        held = self.call_rt(
+            "__jac_rt_str_new", [b.str_part(text, "data"), b.str_part(text, "len")]
+        );
+        held.owned = False;
+    } else {
+        held = self.runtime_value(
+            "__jac_rt_str_ref",
+            [
+                b.str_part(text, "root"),
+                b.str_part(text, "data"),
+                b.str_part(text, "len")
+            ]
+        );
+        self.runtime("__jac_rt_retain", [held]);
+    }
     self.emit_value(
         MirOp.MEM_STORE,
         mir_none(),

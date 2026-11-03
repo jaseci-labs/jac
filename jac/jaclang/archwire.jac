@@ -10753,7 +10753,7 @@ graph import compiler.backends.native.mir {
             mir_str_ref,
             mir_tuple
         },
-        rc { mir_c_fn, mir_c_ptr, mir_holds_ref, mir_int, mir_none },
+        rc { MirKind, MirType, mir_c_fn, mir_c_ptr, mir_holds_ref, mir_int, mir_none },
         runtime_abi {
             MirType,
             mir_any,

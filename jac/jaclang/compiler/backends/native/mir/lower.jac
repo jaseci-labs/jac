@@ -384,9 +384,17 @@ obj MirLowering {
         flow_sites: int = 0,
         tests: list[tuple[str, str, str, int]] = [],
         c_views: dict[int, MirGlobal] = {},
+        owned_world: bool = False,
+        ctor_consumes: dict[str, list[int]] = {},
         state: (MirFnState | None) = None;
 
     def lower -> MirModule;
+    def stamp_ownership;
+    def tag_ownership(tag: (uni.UniNode | None)) -> (OwnershipKind | None);
+    def tag_borrows(tag: (uni.UniNode | None)) -> bool;
+    def returns_borrow(ab: uni.Ability) -> bool;
+    def param_owns(pv: uni.ParamVar) -> bool;
+    def field_consumes(arch: uni.Archetype, name: str) -> bool;
     def declaration_types;
     def record_defaults;
     def settle;
@@ -408,12 +416,22 @@ obj MirLowering {
     def lower_body(stmts: Sequence[uni.UniNode]);
     def drop_last_uses(stmt: uni.UniNode);
     def drop_consumed_args(nd: uni.FuncCall);
+    def forget_slot(slot: MirValue);
     def lower_stmt(nd: uni.UniNode);
     def lower_assignment(nd: uni.Assignment);
     def assign_to(target: uni.UniNode, value: MirValue, nd: uni.Assignment);
     def store_name(target: uni.Name, value: MirValue);
     def exchange_place(arg: uni.Expr) -> MirValue;
     def place_exchange(nd: uni.FuncCall, name: str) -> (MirValue | None);
+    def owned_exchange(
+        nd: uni.FuncCall,
+        name: str,
+        args: list[uni.Expr],
+        first: MirValue,
+        elem: MirType,
+        held: MirValue
+    ) -> MirValue;
+
     def local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirValue;
     def loop_scoped(sym: uni.Symbol) -> bool;
     def encloses(scope: (uni.UniScopeNode | None), nd: uni.UniNode) -> bool;
