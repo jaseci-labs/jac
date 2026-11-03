@@ -1459,7 +1459,11 @@ fn sysconfig(c: *Ctx) !void {
     const json_name = try std.fmt.allocPrint(c.a, "_sysconfig_vars__{s}_{s}.json", .{ if (c.p.os == .linux) "linux" else "darwin", c.p.triplet });
     const details = c.path(&.{ gen, builddir, "build-details.json" });
     // build-details.json (PEP 739); JacPython keeps no Tools/build: the
-    // generator reads this build's sysconfig data.
+    // generator reads this build's sysconfig data. So does its
+    // sysconfig.get_platform() on macOS, from the build directory as make's
+    // PYTHON_FOR_BUILD finds it: the data is not installed yet.
+    try c.env.put("_PYTHON_SYSCONFIGDATA_PATH", c.path(&.{ gen, builddir }));
+    defer _ = c.env.swapRemove("_PYTHON_SYSCONFIGDATA_PATH");
     try generate(c, l.exename, &.{ "gen_build_details", "--sysconfig", data, "--output", details });
     try installFile(c, data, c.path(&.{ l.libdest, try std.fmt.allocPrint(c.a, "{s}.py", .{name}) }), mode_data);
     try installFile(c, c.path(&.{ gen, builddir, json_name }), c.path(&.{ l.libdest, json_name }), mode_data);
