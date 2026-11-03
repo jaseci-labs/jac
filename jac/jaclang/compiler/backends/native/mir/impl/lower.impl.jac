@@ -1431,9 +1431,11 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
             return self.builder().const_float(folded.value, self.expr_type(nd));
         }
         final_value = final_glob_value(nd);
-        (settled, scalar) = c_scalar_constant(final_value)
-            if final_value is not None
-            else (False, None);
+        settled = False;
+        scalar: any = None;
+        if final_value is not None {
+            (settled, scalar) = c_scalar_constant(final_value);
+        }
         if settled and isinstance(scalar, bool) {
             return self.builder().const_bool(scalar);
         }

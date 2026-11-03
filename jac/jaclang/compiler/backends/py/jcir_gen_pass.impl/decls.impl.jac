@@ -226,7 +226,7 @@ impl JcirGenPass.exit_ability with Ability exit {
         if isinstance(here.body, UniNode)
         else None;
     stmt_body = ModuleFacts.unwrap_body(here);
-    body = self.gen_llm_body(here)
+    body: list[CgItem] = self.gen_llm_body(here)
         if (
             isinstance(here.body, Expr)
             or (isinstance(here.body, ImplDef) and isinstance(here.body.body, Expr))
