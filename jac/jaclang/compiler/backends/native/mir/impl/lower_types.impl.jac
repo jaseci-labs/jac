@@ -221,6 +221,9 @@ impl mir_class_type(
     name = t.shared.class_name;
     scope = t.shared.symbol_table;
     if isinstance(scope, uni.Archetype) and not stub_archetype(scope) {
+        if host_only_archetype(scope) {
+            return mir_any();
+        }
         native = class_type_native_name(t);
         if native and t.is_instantiable() and not t.is_instance() {
             return mir_class("*");
@@ -424,4 +427,21 @@ impl mir_class_value_type(
 
 impl lenient_c_slot(t: (TypeBase | None)) -> bool {
     return isinstance(t, AnyType) and t.is_foreign and not t.foreign_scalar;
+}
+
+impl host_only_archetype(arch: uni.Archetype) -> bool {
+    if not native_unit_compile_active() {
+        return False;
+    }
+    owner = arch.find_parent_of_type(uni.Module);
+    if owner is None or not owner.loc.mod_path.endswith(".jac") {
+        return False;
+    }
+    path = owner.loc.mod_path;
+    known = _HOST_ONLY_UNITS.get(path);
+    if known is None {
+        known = not native_unit(path, True);
+        _HOST_ONLY_UNITS[path] = known;
+    }
+    return known;
 }
