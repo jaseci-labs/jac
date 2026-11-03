@@ -59,7 +59,7 @@ impl __jac_rt_raise(target: ptr[u8], type_id: i32, message: ptr[u8]) {
         record = ctx.view(1)[0].unwind_top;
     }
     ctx.view(1)[0].unwind_top = stop;
-    _longjmp(__jac_rt_exc_jmp_buf(handler), i32(1));
+    __exc_longjmp(int(__jac_rt_exc_jmp_buf(handler)));
 }
 
 impl __jac_rt_raise_builtin(type_id: i32, message: ptr[u8]) {

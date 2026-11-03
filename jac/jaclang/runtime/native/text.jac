@@ -3,13 +3,11 @@ import from c {
         p: int
     ) -> None;  def calloc(n: int, size: int) -> int;  def memcpy(
         dst: int, src: int, n: int
-    ) -> int;  def memcmp(a: int, b: int, n: int) -> i32;  def pthread_key_create(
-        key: int, dtor: int
-    ) -> i32;  def pthread_getspecific(key: int) -> int;  def pthread_setspecific(
-        key: int, value: int
-    ) -> i32;  def strlen(text: int) -> int;  def fflush(stream: ptr[u8]) -> i32;  def fgetc(
-        stream: ptr[u8]
-    ) -> i32;  def __jac_stdio(fd: i32) -> ptr[u8];
+    ) -> int;  def memcmp(a: int, b: int, n: int) -> i32;  def strlen(
+        text: int
+    ) -> int;  def fflush(stream: ptr[u8]) -> i32;  def fgetc(stream: ptr[u8]) -> i32;  def __jac_stdio(
+        fd: i32
+    ) -> ptr[u8];
 }
 
 glob KIND_STR: int = 3,
@@ -209,7 +207,6 @@ def _seek_back(data: int, k0: int, off0: int, k: int) -> int;
 
 def _is_ascii(owner: int, data: int, n: int) -> bool;
 
-def _utf8_block_free(block: int);
 
 def _utf8_block -> int;
 

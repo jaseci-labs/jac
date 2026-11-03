@@ -211,6 +211,9 @@ impl mir_class_type(
     if kind == "Pinned" {
         return mir_c_pin(mir_c_elem(c_type_arg(t), site));
     }
+    if t.is_builtin("Task") {
+        return mir_ref();
+    }
     arch = foreign_struct_of_type(t);
     if arch is not None {
         return mir_c_struct(arch.name.value);

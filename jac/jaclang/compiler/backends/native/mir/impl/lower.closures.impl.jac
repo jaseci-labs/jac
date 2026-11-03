@@ -381,3 +381,211 @@ impl MirLowering.function_value(decl: MirDecl, to: MirType) -> MirValue {
     }
     return b.ref_cast(made, to, True);
 }
+
+impl MirLowering.flow_threaded -> bool {
+    return (self.prog.options.na_gc_mode or "cycles") == "rc";
+}
+
+impl MirLowering.task_store(base: MirValue, offset: int, value: MirValue) {
+    b = self.builder();
+    self.emit_value(
+        MirOp.MEM_STORE,
+        mir_none(),
+        [b.binary("add", base, b.const_int(offset, mir_int())), value]
+    );
+}
+
+impl MirLowering.lower_concurrent(nd: uni.ConcurrentExpr) -> MirValue {
+    b = self.builder();
+    i8p = mir_c_ptr(mir_int(8, False));
+    keyword = nd.tok.value if nd.tok else "";
+    if keyword == "wait" {
+        handle_type = self.expr_type(nd.target);
+        if handle_type.kind != MirKind.OBJ or handle_type.name != "*" {
+            return self.lower_expr(nd.target);
+        }
+        handle = self.spill(self.lower_expr(nd.target));
+        if self.flow_threaded() {
+            fn = self.st().fn;
+            base = self.address_of(handle);
+            state_place = b.binary("add", base, b.const_int(TASK_STATE, mir_int()));
+            state = self.emit_value(MirOp.MEM_LOAD, mir_int(), [state_place]);
+            joining = fn.new_block("wait.join");
+            joined = fn.new_block("wait.ready");
+            b.cond_branch(
+                b.compare("eq", state, b.const_int(1, mir_int())), joining, joined
+            );
+            b.position(joining);
+            if "pthread_join" not in self.mir.externs {
+                self.mir.externs["pthread_join"] = MirExtern(
+                    symbol="pthread_join",
+                    ret=mir_int(32, True, True),
+                    params=[mir_int(), i8p]
+                );
+            }
+            thread = self.emit_value(
+                MirOp.MEM_LOAD,
+                mir_int(),
+                [b.binary("add", base, b.const_int(TASK_THREAD, mir_int()))]
+            );
+            b.call(
+                "pthread_join",
+                [thread, self.emit_value(MirOp.PTR_NULL, i8p, [])],
+                mir_int(32, True, True)
+            );
+            self.emit_value(
+                MirOp.MEM_STORE, mir_none(), [state_place, b.const_int(2, mir_int())]
+            );
+            b.branch(joined);
+            b.position(joined);
+        }
+        bits = self.runtime_value("__jac_rt_task_result", [handle]);
+        return self.element_from_bits(bits, self.expr_type(nd));
+    }
+    if keyword != "flow" {
+        raise MirRefused(mir_refusal("expression", f"{keyword} expression", nd));
+    }
+    target = nd.target;
+    callee = target.callee_decl if isinstance(target, uni.FuncCall) else None;
+    decl = self.decls.get(id(callee)) if callee is not None else None;
+    runs = isinstance(target, uni.FuncCall)
+        and decl is not None
+        and decl.self_type is None
+        and not decl.event
+        and not decl.c_variadic;
+    count = len(decl.params) if runs and decl is not None else 0;
+    task = self.spill(
+        b.ref_cast(
+            self.runtime_value("__jac_rt_task_new", [b.const_int(count, mir_int())]),
+            mir_ref(),
+            True
+        )
+    );
+    base = self.address_of(task);
+    if not runs or decl is None or not isinstance(target, uni.FuncCall) {
+        value = self.lower_expr(target);
+        elem = self.expr_type(target);
+        if elem.kind not in (MirKind.NONE, MirKind.VOID) {
+            kind = self.elem_kind(elem, nd);
+            shared = self.runtime_value(
+                "__jac_rt_elem_share",
+                [
+                    self.to_bits(self.coerce(value, elem, nd), elem, nd),
+                    b.const_int(kind, mir_int())
+                ]
+            );
+            self.task_store(base, TASK_BITS, shared);
+            self.task_store(base, TASK_KIND, b.const_int(kind, mir_int()));
+        } else {
+            self.task_store(base, TASK_KIND, b.const_int(KIND_INT, mir_int()));
+        }
+        return task;
+    }
+    args = self.bound_args(target, decl.ability, False);
+    if len(args) != len(decl.params) {
+        raise MirRefused(mir_refusal("call", f"flow with {len(args)} arguments", nd));
+    }
+    values = self.bound_values(list(args), decl.params);
+    for (index, (value, ptype)) in enumerate(zip(values, decl.params)) {
+        kind = self.elem_kind(ptype, nd);
+        shared = self.runtime_value(
+            "__jac_rt_elem_share",
+            [self.to_bits(value, ptype, nd), b.const_int(kind, mir_int())]
+        );
+        self.task_store(base, TASK_ARGS + index * 8, shared);
+    }
+    thunk = self.flow_thunk(decl);
+    self.runtime("__jac_rt_retain", [task]);
+    launcher = self.emit_value(MirOp.FN_ADDR, mir_c_fn([i8p], i8p), [], callee=thunk);
+    handle = self.emit_value(MirOp.PTR_CAST, i8p, [task]);
+    if self.flow_threaded() {
+        if "pthread_create" not in self.mir.externs {
+            self.mir.externs["pthread_create"] = MirExtern(
+                symbol="pthread_create",
+                ret=mir_int(32, True, True),
+                params=[i8p, i8p, i8p, i8p]
+            );
+        }
+        self.task_store(base, TASK_STATE, b.const_int(1, mir_int()));
+        self.mark_threaded();
+        place = self.emit_value(
+            MirOp.PTR_CAST,
+            i8p,
+            [b.binary("add", base, b.const_int(TASK_THREAD, mir_int()))]
+        );
+        b.call(
+            "pthread_create",
+            [
+                place,
+                self.emit_value(MirOp.PTR_NULL, i8p, []),
+                self.emit_value(MirOp.PTR_CAST, i8p, [launcher]),
+                handle
+            ],
+            mir_int(32, True, True)
+        );
+    } else {
+        b.call(thunk, [handle], i8p);
+    }
+    return task;
+}
+
+impl MirLowering.flow_thunk(decl: MirDecl) -> str {
+    i8p = mir_c_ptr(mir_int(8, False));
+    self.flow_sites += 1;
+    symbol = f"{self.mir.prefix}.__flow{self.flow_sites}";
+    fn = MirFunction(
+        name=f"__flow{self.flow_sites}", symbol=symbol, ret=i8p, linkage="internal"
+    );
+    param = fn.new_value(i8p, "task");
+    fn.params.append(MirParam(name="task", value=param));
+    saved = self.state;
+    self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=fn.new_block("entry")));
+    try {
+        b = self.builder();
+        base = self.emit_value(MirOp.PTR_INT, mir_int(), [param]);
+        values: list[MirValue] = [];
+        for (index, ptype) in enumerate(decl.params) {
+            bits = self.emit_value(
+                MirOp.MEM_LOAD,
+                mir_int(),
+                [b.binary("add", base, b.const_int(TASK_ARGS + index * 8, mir_int()))]
+            );
+            values.append(self.spill(self.element_from_bits(bits, ptype)));
+        }
+        (frame, dispatch) = self.guard_open();
+        result = b.call(decl.symbol, values, decl.ret);
+        if result is not None and decl.ret.kind not in (MirKind.NONE, MirKind.VOID) {
+            kind = self.elem_kind(decl.ret, decl.ability);
+            shared = self.runtime_value(
+                "__jac_rt_elem_share",
+                [
+                    self.to_bits(result, decl.ret, decl.ability),
+                    b.const_int(kind, mir_int())
+                ]
+            );
+            self.task_store(base, TASK_BITS, shared);
+            self.task_store(base, TASK_KIND, b.const_int(kind, mir_int()));
+        } else {
+            self.task_store(base, TASK_KIND, b.const_int(KIND_INT, mir_int()));
+        }
+        self.runtime("__jac_rt_exc_pop", [frame]);
+        self.runtime("__jac_rt_release", [b.ref_cast(param, mir_ref(), False)]);
+        b.ret(self.emit_value(MirOp.PTR_NULL, i8p, []));
+        b.position(dispatch);
+        self.runtime("__jac_rt_exc_pop", [frame]);
+        (origin, type_id, message) = self.guard_caught(frame);
+        self.task_store(base, TASK_ERROR, b.convert(type_id, mir_int()));
+        self.task_store(
+            base, TASK_MESSAGE, self.emit_value(MirOp.PTR_INT, mir_int(), [message])
+        );
+        self.task_store(
+            base, TASK_ORIGIN, self.emit_value(MirOp.PTR_INT, mir_int(), [origin])
+        );
+        self.runtime("__jac_rt_release", [b.ref_cast(param, mir_ref(), False)]);
+        b.ret(self.emit_value(MirOp.PTR_NULL, i8p, []));
+    } finally {
+        self.state = saved;
+    }
+    self.nested.append(fn);
+    return symbol;
+}
