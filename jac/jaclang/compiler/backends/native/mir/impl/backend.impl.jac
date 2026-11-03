@@ -145,6 +145,15 @@ impl MirNativePass.report_refusals(lowering: MirLowering) {
                 )})";
                 site = None;
             }
+            if refusal.code == "E1145" {
+                self.ctx.emit(
+                    E1145,
+                    node_override=site or lowering.module,
+                    name=refusal.name,
+                    module=refusal.detail
+                );
+                continue;
+            }
             self.ctx.emit(
                 E5092,
                 node_override=site or lowering.module,
@@ -188,6 +197,16 @@ impl MirNativePass.settle_soft(lowering: MirLowering) -> bool {
             if not mir_soft_blocks(
                 mir_top_element(module, anchor), whole, key in events
             ) {
+                continue;
+            }
+            if refusal.code == "E1145" {
+                self.ctx.emit(
+                    E1145,
+                    node_override=anchor or module,
+                    name=refusal.name,
+                    module=refusal.detail
+                );
+                reported = True;
                 continue;
             }
             self.ctx.emit(

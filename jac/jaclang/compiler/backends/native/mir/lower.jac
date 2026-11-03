@@ -607,6 +607,7 @@ obj MirLowering {
     def global_place(nd: uni.Name) -> (MirValue | None);
     def global_declaration(sym: uni.Symbol) -> (uni.Assignment | None);
     def entry_global(assign: uni.Assignment, sym: uni.Symbol) -> bool;
+    def missing_import(nd: uni.Name) -> (str | None);
     def runtime(name: str, args: list[MirValue]) -> (MirValue | None);
     def temp_slot(type: MirType) -> MirValue;
     def spill(value: MirValue) -> MirValue;

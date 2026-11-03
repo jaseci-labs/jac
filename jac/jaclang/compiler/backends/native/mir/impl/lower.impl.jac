@@ -1380,6 +1380,16 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
                 );
             }
         }
+        missing_from = self.missing_import(nd);
+        if missing_from is not None {
+            refusal = mir_refusal("import", nd.value, nd, code="E1145");
+            refusal.detail = missing_from;
+            refusal.text = (
+                f"error[E1145]: Cannot import name '{nd.value}' from Jac module"
+                f" '{missing_from}': it defines no such name"
+            );
+            raise MirRefused(refusal);
+        }
         raise MirRefused(mir_refusal("name", nd.value, nd));
     }
     slot = self.st().locals[id(nd.sym)];
@@ -4693,4 +4703,36 @@ impl MirLowering.const_zero(value: MirValue) -> bool {
 
 impl MirLowering.builtin_callee(callee: (uni.UniNode | None)) -> bool {
     return callee is None or os.path.basename(callee.loc.mod_path) in BUILTIN_STUBS;
+}
+
+"""The Jac module an imported name is bound from, when it defines no such name.
+
+A name the bound module's own symbol table does not hold has nothing to link
+to; lowering it to a null would hand every use a value that is not there.
+"""
+impl MirLowering.missing_import(nd: uni.Name) -> (str | None) {
+    sym = nd.sym;
+    decl = sym.decl if sym is not None else None;
+    item = decl.parent if decl is not None else None;
+    if not isinstance(item, uni.ModuleItem) or not isinstance(item.parent, uni.Import) {
+        return None;
+    }
+    source = item.parent.from_loc;
+    if not isinstance(source, uni.ModulePath) {
+        return None;
+    }
+    path = source.resolve_relative_path();
+    if not path or not path.endswith(".jac") or not os.path.isfile(path) {
+        return None;
+    }
+    hub = self.prog.mod.hub;
+    bound = hub.get(os.path.realpath(path)) or hub.get(path);
+    if not isinstance(bound, uni.Module) {
+        return None;
+    }
+    wanted = item.name.value;
+    if wanted in bound.names_in_scope or wanted in bound.names_in_scope_overload {
+        return None;
+    }
+    return source.dot_path_str;
 }
