@@ -14671,8 +14671,8 @@ graph import runtime.na_stdlib {
     ]
     type _digest ++> hashlib | hmac { DigestCore }
     _directory_native ++> [
-        glob | shutil | uuid | zoneinfo { try_directory_names },
         _os_native | pathlib { directory_names },
+        glob | shutil | uuid | zoneinfo { try_directory_names },
     ]
     _dirent_native ++> _directory_native { dirent_name }
     _errno_native ++> [
@@ -14780,14 +14780,7 @@ graph import runtime.na_stdlib {
         _default_types_val
     }
     _posix_native ++> [
-        _os_native {
-            S_IFDIR,
-            S_IFMT,
-            cwd_path,
-            env_value,
-            make_dir,
-            stat_fields
-        },
+        _os_native { S_IFDIR, S_IFMT, cwd_path, env_value, make_dir, stat_fields },
         os.path {
             S_IFDIR,
             S_IFMT,

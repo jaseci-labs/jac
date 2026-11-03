@@ -89,7 +89,9 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
             self.ensure_c_types(field_type);
             slot_type = mir_any()
                 if self.erased_slot(field_type)
-                else mir_type_of(field_type, MirPosition.FIELD, member.decl_node or arch);
+                else mir_type_of(
+                    field_type, MirPosition.FIELD, member.decl_node or arch
+                );
             if slot_type.kind == MirKind.ENUM and isinstance(field_type, ClassType) {
                 self.enum_types.setdefault(slot_type.name, field_type);
             }
