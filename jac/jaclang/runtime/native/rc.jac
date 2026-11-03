@@ -7,7 +7,7 @@ import from c {
         p: int, value: i32, n: int
     ) -> int;  def write(fd: i32, buf: ptr[u8], count: i64) -> i64;  def strlen(
         text: ptr[u8]
-    ) -> i64;  def atexit(handler: int) -> i32;
+    ) -> i64;  def atexit(handler: int) -> i32;  def fflush(stream: ptr[u8]) -> i32;
 }
 
 glob HDR_ALLOC_ID_BACK: int = 32,
