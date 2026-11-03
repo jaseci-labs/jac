@@ -226,6 +226,31 @@ impl MirLowering.identity(
         (l, r) = self.unify_numeric(left, right, site);
         return b.compare("eq", l, r);
     }
+    if MirKind.OPT in (left.type.kind, right.type.kind)
+        and all(
+            side.type.kind == MirKind.OBJ
+                or (
+                    side.type.kind == MirKind.OPT
+                    and side.type.payload().kind == MirKind.OBJ
+                ) for side in (left, right)
+        ) {
+        words: list[MirValue] = [];
+        for side in (left, right) {
+            if side.type.kind == MirKind.OPT {
+                held = self.spill(side);
+                words.append(
+                    b.select(
+                        self.opt_present(held),
+                        self.address_of(self.opt_get(held)),
+                        b.const_int(0, mir_int())
+                    )
+                );
+            } else {
+                words.append(self.address_of(side));
+            }
+        }
+        return b.compare("eq", words[0], words[1]);
+    }
     if (left.type.kind == MirKind.OPT) != (right.type.kind == MirKind.OPT) {
         boxed = left if left.type.kind == MirKind.OPT else right;
         plain = right if left.type.kind == MirKind.OPT else left;

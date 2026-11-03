@@ -51,7 +51,9 @@ obj ArchetypeLayout {
         is_acyclic: bool = False,
         vtable_ptr_slot: (int | None) = None,
         type_tag_slot: (int | None) = None,
-        reports_slot: (int | None) = None;
+        reports_slot: (int | None) = None,
+        pending_bases: list[str] = [],
+        pending_scan: int = -1;
 }
 
 obj EnumMemberLayout {
@@ -70,7 +72,8 @@ obj EnumLayout {
         members: list[EnumMemberLayout] = [];
 }
 
-glob ACCESSOR_SLOT_SUFFIX: dict[str, str] = {
+glob LAYOUT_HUBS: list[dict[str, Module]] = [],
+     ACCESSOR_SLOT_SUFFIX: dict[str, str] = {
          "property": "__get__",
          "setter": "__set__",
          "deleter": "__del__"
@@ -129,6 +132,8 @@ def adopt_imported_bases(module: Module, header_identity: bool = True) -> list[s
 def merge_imported_layouts(consumer: Module, imported: Module, prog: JacProgram);
 
 def adopt_ancestor_slots(lay: ArchetypeLayout, ancestors: list[ArchetypeLayout]);
+
+def settle_pending_bases(reg: LayoutRegistry, lay: ArchetypeLayout) -> None;
 
 def clone_field(finfo: FieldLayout, index: int) -> FieldLayout;
 
@@ -200,10 +205,6 @@ walker LayoutPass(CompilerPass) {
     def _collect_isinstance_targets(module: Module) -> None;
     def _build_hierarchy(archetypes: dict[str, Archetype]) -> None;
     def _compute_c3_mro(class_name: str) -> list[str];
-    def _import_parent_layouts(
-        module: Module, archetypes: dict[str, Archetype]
-    ) -> None;
-
     def _topo_sort(arch_map: dict[str, Archetype]) -> list[str];
     def _build_layout(arch: Archetype) -> ArchetypeLayout;
     def _build_enum_layouts(module: Module) -> None;

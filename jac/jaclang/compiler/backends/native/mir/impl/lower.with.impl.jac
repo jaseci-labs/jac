@@ -151,8 +151,12 @@ impl MirLowering.with_generator(
     b.position(dispatch);
     self.runtime("__jac_rt_exc_pop", [frame]);
     (origin, type_id, message) = self.guard_caught(frame);
-    self.runtime("__jac_rt_raise", [origin, type_id, message]);
-    b.unreachable();
+    self.raise_if(
+        self.iter_throw(it, out, origin, type_id, message),
+        "RuntimeError",
+        "generator didn't stop after throw()"
+    );
+    self.builder().branch(after);
     b.position(after);
 }
 
@@ -233,17 +237,24 @@ impl MirLowering.guard_caught(frame: MirValue) -> tuple[MirValue, MirValue, MirV
 }
 
 impl MirLowering.run_with_exit(exit_action: MirWithExit) -> MirValue {
+    if exit_action.region_depth is not None {
+        self.region_call(
+            "__jac_region_unwind",
+            [self.builder().load(exit_action.region_depth, mir_int())]
+        );
+        if exit_action.region_owned is not None {
+            self.region_call(
+                "__jac_region_drop",
+                [self.builder().load(exit_action.region_owned, mir_region())]
+            );
+        }
+        return self.builder().const_bool(False);
+    }
     if exit_action.decl is not None and exit_action.held is not None {
         return self.call_exit(exit_action.decl, exit_action.held, exit_action.site);
     }
     if exit_action.file is not None {
         self.runtime("__jac_rt_file_close", [exit_action.file]);
-    }
-    if exit_action.region {
-        self.region_extern("__jac_region_leave", [], mir_none());
-    }
-    if exit_action.region_drop is not None {
-        self.region_extern("__jac_region_drop", [exit_action.region_drop], mir_none());
     }
     if exit_action.it is not None and exit_action.out is not None {
         self.raise_if(

@@ -1363,6 +1363,11 @@ graph import {
     compiler.placement.placement ++> cli.commands.fix._verify_claims {
         element_display_name
     }
+    compiler.placement.placement_cache ++> dist.publish.runtime_vendor._compile_runtime_module
+        | testing.cl_test_runner.module_is_client { module_record }
+    compiler.placement.placement_cache --> dist.precompile_bytecode.sealable_sources {
+        discover_spaces
+    }
     compiler.placement.placement_export --> [
         cli.commands.analysis._check_file_job { collect_placement_rows },
         cli.commands.analysis.explain { collect_placement_rows },
@@ -1377,8 +1382,6 @@ graph import {
         dist.precompile_bytecode.package_native_units { native_units_of },
         dist.publish.runtime_vendor._runtime_module_options { SPACE_SERVER },
     ]
-    compiler.placement.placement_cache ++> dist.publish.runtime_vendor._compile_runtime_module
-        | testing.cl_test_runner.module_is_client { module_record }
     compiler.placement.placement_facts --> [
         dist.precompile_bytecode.run_precompile { native_only },
         dist.precompile_bytecode.sealable_sources { spaces_are_client_only },
@@ -1386,9 +1389,6 @@ graph import {
             session_declares_native
         },
     ]
-    compiler.placement.placement_cache --> dist.precompile_bytecode.sealable_sources {
-        discover_spaces
-    }
     compiler.placement.placement_pins ++> [
         lsp.server.engine.JacLangServer._module_spec_target { in_client_npm_world },
         lsp.server.engine.JacLangServer._npm_item_location { in_client_npm_world },
@@ -5643,6 +5643,7 @@ graph import compiler {
         passes.ownership_check_pass {
             c_call_borrows_args,
             clib_import_of,
+            foreign_field_of,
             is_c_value_type,
             is_ptr_type,
             is_ptr_view_type,
@@ -6047,6 +6048,7 @@ graph import compiler {
     driver.pipeline --> [
         backends.native.mir.lower.MirLowering.body_types { require },
         backends.native.mir.lower.MirLowering.declaration_types { require },
+        backends.native.mir.lower.MirLowering.variant_unit { require },
         frontend.kernel_host.KernelHost.lower_dependency { product_ready, require },
         placement.placement_solver.invalidate_importers_es { invalidate },
         placement.placement_solver.solve_module_placement._invalidate_stale_codegen {
@@ -6115,6 +6117,10 @@ graph import compiler {
             CompilationProduct
         },
         backends.native.mir.lower.MirLowering.declaration_types {
+            AnalysisFact,
+            CompilationProduct
+        },
+        backends.native.mir.lower.MirLowering.variant_unit {
             AnalysisFact,
             CompilationProduct
         },
@@ -6359,6 +6365,7 @@ graph import compiler {
             REGION_KERNEL_REL,
             bundled_stdlib_module_of,
             interop_callback_symbol,
+            is_kernel_unit_path,
             kernel_unit_path,
             module_dotted_name,
             native_def_symbol,
@@ -6369,6 +6376,7 @@ graph import compiler {
             native_unit_identity,
             native_unit_prefix,
             native_unit_spelling,
+            native_variant_of,
             resolve_native_module
         },
         backends.native.region_abi._region_layout_facts {
@@ -6639,7 +6647,7 @@ graph import compiler {
             | placement.placement_facts.settle_server
             | placement.placement_solver
             | symbol_utils.report_placement_warnings { CodeContext },
-        backends.native.mir.lower { Tokens as Tok, is_borrow_kind },
+        backends.native.mir.lower { CodeContext, Tokens as Tok, is_borrow_kind },
         backends.py.jcir_gen_pass {
             CodeContext,
             OwnershipKind,
@@ -6805,7 +6813,7 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._warn_rpc_callable_params { W6005 },
         backends.es.esast_gen_pass.EsastGenPass.prepare
             | passes.placement_pass.PlacementPass._run_decided { E5096 },
-        backends.native.mir.backend { E5092, E9003 },
+        backends.native.mir.backend { E1158, E5092, E9003 },
         backends.native.na_compile_pass { E5020, E5026 },
         backends.py.jcir_bc_gen_pass { E5040, E5043 },
         backends.py.jcir_gen_pass {
@@ -9608,6 +9616,9 @@ graph import compiler {
         driver.module_analysis.run_analysis { record_decided },
     ]
     type placement.placement ++> driver.progstate { PlacementSummary }
+    placement.placement_cache ++> driver.compiler.JacCompiler.kernel_native_entry {
+        module_record
+    }
     placement.placement_export ++> driver.unit_products.placement_record {
         summary_to_dict
     }
@@ -9634,9 +9645,6 @@ graph import compiler {
         passes.placement_pass.PlacementPass._run_undecided { contexts_of },
         passes.placement_pass.settle_native_module { settle_server },
     ]
-    placement.placement_cache ++> driver.compiler.JacCompiler.kernel_native_entry {
-        module_record
-    }
     placement.placement_facts --> [
         driver.module_analysis.run_analysis { settle_server },
         driver.nativecache.NativeUnitRegistry.known_native_deps { native_unit },
@@ -10010,10 +10018,8 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._try_primitive_op {
             expr_primitive_name
         },
-        backends.native.mir.lower
-            | backends.native.mir.lower_types
-            | passes.ownership_check_pass { is_builtin_region_type },
         native_bindings { collect_member_syms },
+        passes.ownership_check_pass { is_builtin_region_type },
         passes.rc_facts_pass.RcFactsPass._asn_makes_region_handle {
             expr_is_builtin_region
         },
@@ -10068,6 +10074,7 @@ graph import compiler {
             ClassType,
             EnumMemberType,
             FunctionType,
+            NeverType,
             TypeVarType,
             UnionType,
             UnknownType
@@ -10471,6 +10478,7 @@ graph import compiler.backends.native {
         POSIX_FLOOR_IR_MACOS_AARCH64,
         POSIX_FLOOR_IR_MACOS_X86_64
     }
+    region_abi ++> mir.lower { REGION_KERNEL_ABI }
     wasm_artifact ++> [
         native_link { wasm_ld_args, write_allowed_imports },
         wasm_build { rename_wasm_imports },
@@ -10681,6 +10689,7 @@ graph import compiler.backends.native.mir {
             mir_obj,
             mir_range,
             mir_ref,
+            mir_region,
             mir_str,
             mir_str_ref,
             mir_tuple,
@@ -10711,6 +10720,7 @@ graph import compiler.backends.native.mir {
             mir_obj,
             mir_opt,
             mir_range,
+            mir_region,
             mir_set,
             mir_str,
             mir_str_ref,
@@ -13020,8 +13030,10 @@ graph import compiler.placement {
     ]
     type placement ++> placement_cache { PlacementSummary }
     placement_export ++> placement_cache._record_at { summary_from_bytes }
-    placement_facts ++> placement_cache.discover_spaces { SPACE_SERVER, module_spaces }
-    placement_facts ++> placement_solver.native_closure_blocker { pinned_module_space }
+    placement_facts ++> [
+        placement_cache.discover_spaces { SPACE_SERVER, module_spaces },
+        placement_solver.native_closure_blocker { pinned_module_space },
+    ]
     placement_pins ++> [
         placement.module_anchor_reasons
             | placement_facts.pinned_module_space
@@ -16169,6 +16181,7 @@ graph import runtime.python {
             PyLong_AsSsize_t,
             PyLong_AsUnsignedLongLongMask,
             PyLong_AsUnsignedLongMask,
+            PyMem_Calloc,
             PyMem_Free,
             PyMem_Malloc,
             PyNumber_Index,
@@ -22499,6 +22512,7 @@ graph import runtime.python {
             jacpy_float_unpack,
             jacpy_is_bytearray,
             jacpy_is_bytes,
+            jacpy_is_exact_long,
             jacpy_is_long,
             jacpy_is_unicode,
             jacpy_long_address,
@@ -38293,7 +38307,13 @@ graph import runtime.python.bindings {
         clinic.lsprof { convert_bool, convert_double, defining_class, return_int },
         clinic.lzma { borrowed_none, convert_buffer, convert_int, convert_ssize },
         clinic.marshal { convert_bool, convert_buffer, convert_int },
-        clinic.math { borrowed_none, convert_double, return_bool, return_double },
+        clinic.math {
+            borrowed_none,
+            convert_double,
+            failed,
+            return_bool,
+            return_double
+        },
         clinic.md5 | clinic.sha1 | clinic.sha2 { convert_bool, defining_class },
         clinic.mmap {
             borrowed_none,
@@ -42426,6 +42446,7 @@ graph import runtime.python.modules {
             htons,
             if_nameindex_record,
             new_sockobject,
+            note_sock_cloexec,
             ntohl,
             ntohs,
             set_gaierror,
@@ -42467,6 +42488,8 @@ graph import runtime.python.modules {
             init_sockobject,
             internal_setblocking,
             module_of_type,
+            note_accept4,
+            note_sock_cloexec,
             set_error,
             set_sock_fd,
             set_sock_timeout,
