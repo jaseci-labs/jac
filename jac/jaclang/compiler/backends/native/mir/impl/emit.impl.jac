@@ -916,7 +916,7 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
             b.store(stack, b.gep(words, [ir.Constant(i32, 2)]));
             jump = self.extern("llvm.eh.sjlj.setjmp", i32, [i8p]);
         } else {
-            jump = self.extern(SETJMP_SYMBOL, i32, [i8p]);
+            jump = self.extern(self.jmp_symbols()[0], i32, [i8p]);
         }
         armed = b.call(jump, [env]);
         armed.attributes.add("returns_twice");
@@ -928,7 +928,9 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
             b.call(self.extern("llvm.eh.sjlj.longjmp", ir.VoidType(), [i8p]), [env]);
         } else {
             b.call(
-                self.extern(LONGJMP_SYMBOL, ir.VoidType(), [i8p, ir.IntType(32)]),
+                self.extern(
+                    self.jmp_symbols()[1], ir.VoidType(), [i8p, ir.IntType(32)]
+                ),
                 [env, ir.Constant(ir.IntType(32), 1)]
             );
         }
@@ -1374,15 +1376,41 @@ impl MirEmitter.emit_rc(b: ir.IRBuilder, instr: MirInstr) {
         self.bind(instr.result, self.value(subject));
         return;
     }
-    acyclic = (
-        MirKind.STR,
-        MirKind.STR_REF,
-        MirKind.BYTES,
-        MirKind.BYTEARRAY,
-        MirKind.C_PIN
-    );
-    symbol = RELEASE_ACYCLIC_SYMBOL if held_type.kind in acyclic else RELEASE_SYMBOL;
+    symbol = RELEASE_ACYCLIC_SYMBOL
+        if held_type.kind == MirKind.C_PIN or self.acyclic_type(held_type)
+        else RELEASE_SYMBOL;
     self.rc_call(b, symbol, target);
+}
+
+impl MirEmitter.acyclic_type(held: MirType) -> bool {
+    if held.kind
+        in (
+            MirKind.NONE,
+            MirKind.BOOL,
+            MirKind.INT,
+            MirKind.FLOAT,
+            MirKind.STR,
+            MirKind.STR_REF,
+            MirKind.BYTES,
+            MirKind.BYTEARRAY,
+            MirKind.ENUM,
+            MirKind.COMPLEX,
+            MirKind.RANGE
+        ) {
+        return True;
+    }
+    if held.kind == MirKind.OPT {
+        return self.acyclic_type(held.payload());
+    }
+    if held.kind == MirKind.OBJ {
+        obj_def = self.mir.objects.get(held.name);
+        return obj_def is not None and obj_def.is_acyclic;
+    }
+    if held.kind
+        in (MirKind.LIST, MirKind.LIST_AOS, MirKind.SET, MirKind.DICT, MirKind.TUPLE) {
+        return bool(held.args) and all(self.acyclic_type(arg) for arg in held.args);
+    }
+    return False;
 }
 
 impl MirEmitter.rc_call(b: ir.IRBuilder, symbol: str, target: ir.Value) {
@@ -1529,10 +1557,11 @@ impl MirEmitter.vtable_global(obj_def: MirObjectDef) -> ir.GlobalVariable {
     }
     members.append(ir.Constant(i8p, None));
     lineage_global.initializer = ir.Constant(lineage_shape, members);
+    dropper = self.functions.get(obj_def.drop_slot) if obj_def.drop_slot else None;
     entries: list[ir.Value] = [
         self.class_global(obj_def).bitcast(i8p),
         lineage_global.bitcast(i8p),
-        ir.Constant(i8p, None)
+        dropper.bitcast(i8p) if dropper is not None else ir.Constant(i8p, None)
     ];
     for (index, symbol) in enumerate(obj_def.vtable_methods) {
         target = self.functions.get(obj_def.vtable_entries.get(index, symbol));
@@ -1782,6 +1811,19 @@ impl MirEmitter.c_thunk(fn: MirFunction) {
 }
 
 impl MirEmitter.builtin_sjlj -> bool {
-    return self.native_sjlj
-        and str(self.module.triple or "").lower().startswith("x86_64");
+    return self.jmp_symbols()[0] == BUILTIN_SETJMP_SYMBOL;
+}
+
+impl MirEmitter.jmp_symbols -> tuple[str, str] {
+    triple = str(self.module.triple or "").lower();
+    if "wasm" in triple {
+        return ("setjmp", "longjmp");
+    }
+    if any(name in triple for name in ("windows", "win32", "mingw", "msvc")) {
+        return ("__jac_setjmp", "__jac_longjmp");
+    }
+    if self.native_sjlj and triple.startswith("x86_64") {
+        return (BUILTIN_SETJMP_SYMBOL, "llvm.eh.sjlj.longjmp");
+    }
+    return ("_setjmp", "_longjmp");
 }
