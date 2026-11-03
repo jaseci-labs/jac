@@ -414,7 +414,9 @@ impl MirLowering.declare_archetype(arch: uni.Archetype) {
             symbol=self.method_symbol(arch, self.name_of(method)),
             params=params,
             ret=ret,
-            self_type=None if method.is_static else self_type,
+            self_type=None
+                if method.is_static
+                else (mir_class("*") if method.is_classmethod else self_type),
             owner=arch
         );
         self.order.append(key);
@@ -1628,6 +1630,12 @@ impl MirLowering.method_receiver(
     if decl.self_type is None or receiver.type is decl.self_type {
         return receiver;
     }
+    if decl.self_type.kind == MirKind.CLASS {
+        if receiver.type.kind == MirKind.CLASS {
+            return receiver;
+        }
+        return self.class_of(receiver, site);
+    }
     if receiver.type.kind == MirKind.OBJ
         and self.obj_extends(archetype_native_name(arch), decl.self_type.name) {
         return self.builder().ref_cast(receiver, decl.self_type, False);
@@ -1641,6 +1649,7 @@ impl MirLowering.invoke_method(
     receiver = values[0];
     obj_def = self.object_def(arch);
     if obj_def.vtable_symbol
+        and receiver.type.kind != MirKind.CLASS
         and decl.symbol in obj_def.vtable_methods
         and name not in NON_DISPATCHED_METHODS {
         b = self.builder();
