@@ -50,7 +50,7 @@ impl MirEmitter.emit -> ir.Module {
             ext.variadic
         );
     }
-    if self.native_tls {
+    if self.native_tls and not self.single_threaded() {
         for (label, size) in self.mir.tls_blocks.items() {
             self.tls_block(label, size);
         }
@@ -882,7 +882,10 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
         wanted = self.llvm_type(result_of(instr).type);
         self.bind(instr.result, held if held.type == wanted else held.bitcast(wanted));
     } elif op == MirOp.TLS_BLOCK {
-        if self.native_tls {
+        if self.single_threaded() {
+            block = self.global_block(instr.str_value, instr.int_value);
+            self.bind(instr.result, b.ptrtoint(block, ir.IntType(64)));
+        } elif self.native_tls {
             block = self.tls_block(instr.str_value, instr.int_value);
             self.bind(instr.result, b.ptrtoint(block, ir.IntType(64)));
         } else {
@@ -1824,6 +1827,10 @@ impl MirEmitter.c_thunk(fn: MirFunction) {
     } else {
         b.ret(self.adapt(b, made, returned));
     }
+}
+
+impl MirEmitter.single_threaded -> bool {
+    return "wasm" in str(self.module.triple or "").lower();
 }
 
 impl MirEmitter.builtin_sjlj -> bool {
