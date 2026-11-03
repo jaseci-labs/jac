@@ -1443,6 +1443,7 @@ impl MirLowering.unbound_method(
     passed = list(nd.params or []);
     if method is None
         or method.is_static
+        or method.is_classmethod
         or id(method) in self.templates
         or self.has_spread(nd)
         or not passed
