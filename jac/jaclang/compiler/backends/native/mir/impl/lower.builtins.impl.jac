@@ -3,7 +3,7 @@ impl MirLowering.builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None)
         return self.lower_jid(nd);
     }
     args = self.call_args(nd);
-    if not args and name in ("list", "dict", "set") {
+    if not args and name in ("list", "dict", "set", "frozenset") {
         made = self.expr_type(nd);
         if made.kind == MirKind.LIST {
             return self.new_list(made.payload(), 0);
@@ -23,10 +23,12 @@ impl MirLowering.builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None)
     if name == "id" {
         return self.identity_of(self.lower_expr(args[0]), nd);
     }
-    if name == "set" {
+    if name in ("set", "frozenset") {
         made_type = self.expr_type(nd);
         if made_type.kind != MirKind.SET {
-            raise MirRefused(mir_refusal("call", f"set as {made_type.render()}", nd));
+            raise MirRefused(
+                mir_refusal("call", f"{name} as {made_type.render()}", nd)
+            );
         }
         source = self.lower_expr(args[0]);
         built = self.spill(self.new_dict(made_type.payload(), None, made_type));
@@ -89,6 +91,33 @@ impl MirLowering.list_concat(left: MirValue, right: MirValue) -> MirValue {
     joined = b.ref_cast(made, left.type, True);
     self.runtime("__jac_rt_list_extend", [joined, right, kind]);
     return joined;
+}
+
+impl MirLowering.list_repeat(
+    items: MirValue, times: MirValue, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    held = self.spill(items);
+    kind = b.const_int(self.elem_kind(held.type.payload(), site), mir_int());
+    made = self.spill(self.new_list(held.type.payload(), 0));
+    count = self.temp_slot(mir_int());
+    limit = self.spill(b.convert(times, mir_int()));
+    b.store(count, b.const_int(0, mir_int()));
+    head = fn.new_block("lrep.head");
+    body = fn.new_block("lrep.body");
+    done = fn.new_block("lrep.done");
+    b.branch(head);
+    b.position(head);
+    b.cond_branch(b.compare("lt", b.load(count, mir_int()), limit), body, done);
+    b.position(body);
+    self.runtime("__jac_rt_list_extend", [made, held, kind]);
+    b.store(
+        count, b.binary("add", b.load(count, mir_int()), b.const_int(1, mir_int()))
+    );
+    b.branch(head);
+    b.position(done);
+    return made;
 }
 
 impl MirLowering.str_subscript(nd: uni.AtomTrailer) -> (MirValue | None) {

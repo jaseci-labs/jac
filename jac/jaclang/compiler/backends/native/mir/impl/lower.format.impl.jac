@@ -46,6 +46,9 @@ impl MirLowering.str_value(value: MirValue, site: uni.UniNode) -> MirValue {
 impl MirLowering.repr_of(value: MirValue, site: uni.UniNode) -> MirValue {
     b = self.builder();
     kind = value.type.kind;
+    if kind == MirKind.ANY {
+        return self.any_text("__jac_rt_any_repr", value);
+    }
     if kind in (MirKind.STR, MirKind.STR_REF) {
         text = self.as_text(value);
         return self.owned_text(
@@ -102,7 +105,79 @@ impl MirLowering.repr_of(value: MirValue, site: uni.UniNode) -> MirValue {
     if kind == MirKind.OBJ {
         return self.object_text(value, "__repr__", site);
     }
+    if kind == MirKind.CLASS {
+        named = self.class_name_str(value);
+        return self.str_concat(
+            self.str_concat(b.const_str("<class '", mir_str()), named),
+            b.const_str("'>", mir_str())
+        );
+    }
+    if kind == MirKind.ENUM {
+        layout = self.enum_layout_of(value.type, site);
+        short = layout.name.split("$")[0];
+        return self.enum_select(
+            value,
+            layout,
+            [
+                f"<{short}.{member.name}: {repr(member.str_value)
+                    if layout.is_string_enum
+                    else member.int_value}>" for member in layout.members
+            ]
+        );
+    }
     raise MirRefused(mir_refusal("conversion", f"repr of {value.type.render()}", site));
+}
+
+impl MirLowering.any_number(
+    value: MirValue, whole: bool, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    held = self.spill(value);
+    tag = self.emit_value(MirOp.ANY_TAG, mir_int(), [held]);
+    payload = self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [held]);
+    wanted = mir_int() if whole else mir_float();
+    result = self.temp_slot(wanted);
+    text_bb = fn.new_block("anynum.str");
+    other_bb = fn.new_block("anynum.other");
+    float_bb = fn.new_block("anynum.float");
+    int_bb = fn.new_block("anynum.int");
+    done = fn.new_block("anynum.done");
+    b.cond_branch(
+        b.compare("eq", tag, b.const_int(ANY_STR_TAG, mir_int())), text_bb, other_bb
+    );
+    b.position(text_bb);
+    text = self.spill(self.any_unbox(held, mir_str(), site));
+    (data, size) = self.text_bytes(text);
+    parsed = self.call_rt(
+        "__jac_rt_int_parse", [data, size, b.const_int(10, mir_int())]
+    )
+        if whole
+        else self.call_rt("__jac_rt_float_parse", [data, size]);
+    b.store(result, parsed);
+    b.branch(done);
+    b.position(other_bb);
+    b.cond_branch(
+        b.compare("eq", tag, b.const_int(ANY_FLOAT_TAG, mir_int())), float_bb, int_bb
+    );
+    b.position(float_bb);
+    b.store(
+        result,
+        b.convert(self.emit_value(MirOp.BITCAST, mir_float(), [payload]), wanted)
+    );
+    b.branch(done);
+    b.position(int_bb);
+    is_int = b.compare("eq", tag, b.const_int(ANY_INT_TAG, mir_int()));
+    is_bool = b.compare("eq", tag, b.const_int(ANY_BOOL_TAG, mir_int()));
+    self.raise_if(
+        b.logical_not(b.binary("or", is_int, is_bool)),
+        "TypeError",
+        f"{'int' if whole else 'float'}() argument must be a string or a real number"
+    );
+    b.store(result, b.convert(payload, wanted));
+    b.branch(done);
+    b.position(done);
+    return b.load(result, wanted);
 }
 
 impl MirLowering.ascii_of(value: MirValue, site: uni.UniNode) -> MirValue {
@@ -127,7 +202,7 @@ impl MirLowering.object_text(
     }
     found = self.find_method(arch, method);
     if found is not None {
-        decl = self.decls.get(id(found));
+        decl = self.method_decl_of(found);
         if decl is None
             or decl.params
             or decl.ret.kind not in (MirKind.STR, MirKind.STR_REF) {
@@ -200,7 +275,8 @@ impl MirLowering.text_fn(value_type: MirType, site: uni.UniNode) -> str {
     if found is not None {
         return found;
     }
-    symbol = f"{self.mir.prefix}.__repr.{len(self.text_fns)}";
+    symbol = f"{self.mir.prefix}.__repr.{self.text_serial}";
+    self.text_serial += 1;
     self.text_fns[value_type.key] = symbol;
     fn = MirFunction(
         name=f"__repr.{value_type.render()}",
@@ -586,6 +662,9 @@ impl MirLowering.text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) 
             return None;
         }
         source_kind = self.expr_type(args[0]).kind;
+        if source_kind == MirKind.ANY and len(args) == 1 {
+            return self.any_number(self.lower_expr(args[0]), name == "int", nd);
+        }
         if source_kind
             not in (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY) {
             return None;
@@ -963,7 +1042,7 @@ impl MirLowering.hash_value(value: MirValue, site: uni.UniNode) -> MirValue {
         arch = self.archetypes.get(value.type.name);
         method = self.find_method(arch, "__hash__") if arch is not None else None;
         if method is not None {
-            decl = self.decls.get(id(method));
+            decl = self.method_decl_of(method);
             if decl is None or decl.params {
                 raise MirRefused(
                     mir_refusal("method", f"{value.type.name}.__hash__", site)

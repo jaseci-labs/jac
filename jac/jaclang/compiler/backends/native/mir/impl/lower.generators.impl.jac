@@ -322,7 +322,10 @@ impl MirLowering.iter_open(value: MirValue, site: uni.UniNode) -> MirIterCursor 
             out=self.temp_slot(mir_int())
         );
     }
-    if t.kind == MirKind.STR {
+    if t.kind in (MirKind.STR, MirKind.STR_REF) {
+        return self.iter_open(self.iter_value(self.as_text(value), site), site);
+    }
+    if t.kind == MirKind.ANY {
         return self.iter_open(self.iter_value(value, site), site);
     }
     if t.kind in (MirKind.BYTES, MirKind.BYTEARRAY) {
@@ -334,6 +337,11 @@ impl MirLowering.iter_open(value: MirValue, site: uni.UniNode) -> MirIterCursor 
     }
     if t.kind == MirKind.TUPLE {
         return self.tuple_cursor(value, self.tuple_elem(value, site));
+    }
+    if t.kind == MirKind.OPT {
+        return self.iter_open(
+            self.opt_unwrap_checked(value, "'NoneType' object is not iterable"), site
+        );
     }
     found = self.user_cursor(value, site);
     if found is not None {
@@ -504,6 +512,14 @@ impl MirLowering.iter_value(value: MirValue, site: uni.UniNode) -> MirValue {
     t = value.type;
     if t.kind == MirKind.ITER {
         return value;
+    }
+    if t.kind == MirKind.ANY {
+        return self.any_iter(value);
+    }
+    if t.kind == MirKind.OPT {
+        return self.iter_value(
+            self.opt_unwrap_checked(value, "'NoneType' object is not iterable"), site
+        );
     }
     if t.kind == MirKind.LIST {
         made = self.runtime_value(

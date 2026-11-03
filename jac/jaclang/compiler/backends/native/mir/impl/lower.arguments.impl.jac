@@ -3,7 +3,12 @@ impl MirLowering.bound_args(
 ) -> list[(uni.Expr | MirPacked | MirBound)] {
     sig = ab.signature;
     if not isinstance(sig, uni.FuncSignature) {
-        return self.call_args(nd);
+        return self.call_args(nd)[leading:];
+    }
+    if leading and self.has_spread(nd) {
+        raise MirRefused(
+            mir_refusal("call argument", "unpacking after a receiver", nd)
+        );
     }
     if self.has_spread(nd) {
         return self.spread_args(nd, ab, sig, method);
@@ -342,13 +347,19 @@ impl MirLowering.bind_by_name(
     named: dict[str, uni.Expr],
     keyword_ok: bool,
     nd: uni.FuncCall
-) -> uni.Expr {
+) -> (uni.Expr | MirBound) {
     name = pv.name.value;
     if name in named and keyword_ok {
         return named.pop(name);
     }
     if pv.value is not None and self.constant_default(pv.value) {
         return pv.value;
+    }
+    if isinstance(pv.value, uni.Expr) {
+        return MirBound(
+            value=self.default_value(pv.value, self.symbol_type(pv.name.sym, pv)),
+            site=pv
+        );
     }
     raise MirRefused(
         mir_refusal(
@@ -443,17 +454,37 @@ impl MirLowering.constant_default(value: (uni.Expr | None)) -> bool {
     if isinstance(value, (uni.Int, uni.Float, uni.Bool, uni.Null)) {
         return True;
     }
-    if isinstance(value, uni.String) and isinstance(value.lit_value, str) {
+    if isinstance(value, uni.String) and isinstance(value.lit_value, (str, bytes)) {
         return True;
     }
     if isinstance(value, uni.MultiString) {
         return all(
-            isinstance(part, uni.String) and isinstance(part.lit_value, str)
+            isinstance(part, uni.String) and isinstance(part.lit_value, (str, bytes))
             for part in value.strings
         );
     }
     if isinstance(value, uni.UnaryExpr) and value.op.name == Tok.MINUS {
         return isinstance(value.operand, (uni.Int, uni.Float));
+    }
+    if isinstance(value, uni.AtomTrailer)
+        and value.is_attr
+        and self.is_enum_class(value.target) {
+        return True;
+    }
+    if isinstance(value, uni.Name)
+        and value.sym is not None
+        and self.global_declaration(value.sym) is not None {
+        return True;
+    }
+    if isinstance(value, (uni.ListVal, uni.SetVal))
+        and not list(value.values or [])
+        and isinstance(value.type, ClassType) {
+        return True;
+    }
+    if isinstance(value, uni.DictVal)
+        and not list(value.kv_pairs)
+        and isinstance(value.type, ClassType) {
+        return True;
     }
     return isinstance(value.ct_value, (CtInt, CtBool, CtFloat));
 }

@@ -275,11 +275,7 @@ impl MirLowering.leave_tries(loop_depth: int, run_finals: bool = True) {
             if depth >= loop_depth {
                 self.st().finals = finals[:at_final];
                 self.st().tries = tries[:at_try + 1];
-                if callable(body) {
-                    body();
-                } else {
-                    self.lower_body(body);
-                }
+                self.lower_body(body);
                 self.st().finals = finals;
                 self.st().tries = tries;
             }
@@ -288,6 +284,19 @@ impl MirLowering.leave_tries(loop_depth: int, run_finals: bool = True) {
             (frame, _, depth) = tries[at_try];
             if depth >= loop_depth {
                 self.runtime("__jac_rt_exc_pop", [frame]);
+                exit_action = self.st().try_exits.get(id(frame));
+                if exit_action is not None {
+                    held_finals = list(self.st().finals);
+                    self.st().tries = tries[:at_try];
+                    self.st().finals = [
+                        pending
+                        for pending in held_finals
+                        if pending[2] <= at_try
+                    ];
+                    self.run_with_exit(exit_action);
+                    self.st().tries = tries;
+                    self.st().finals = held_finals;
+                }
             }
             at_try -= 1;
         }
@@ -345,6 +354,13 @@ impl MirLowering.lower_raise(nd: uni.RaiseStmt) {
                 and not cause.target.type.is_instance()
             )
         );
+    if isinstance(cause, uni.Name)
+        and JAC_TYPE_REGISTRY.is_exception(cause.value)
+        and isinstance(cause.type, ClassType)
+        and not cause.type.is_instance() {
+        self.raise_named(cause.value, None, nd);
+        return;
+    }
     if isinstance(cause, uni.FuncCall) and callee_class {
         (name, arch) = self.exception_target(cause);
         if arch is not None {

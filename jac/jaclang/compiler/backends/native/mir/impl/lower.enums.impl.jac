@@ -54,9 +54,15 @@ impl MirLowering.is_enum_class(nd: uni.UniNode) -> bool {
 impl MirLowering.attr_special(nd: uni.AtomTrailer) -> (MirValue | None) {
     if not nd.is_attr
         or not isinstance(nd.right, uni.Name)
-        or not isinstance(nd.target, uni.Expr)
-        or isinstance(nd.target.type, ModuleType) {
+        or not isinstance(nd.target, uni.Expr) {
         return None;
+    }
+    if isinstance(nd.target.type, ModuleType) {
+        return self.stdlib_attr(nd);
+    }
+    via_class = self.class_attr(nd);
+    if via_class is not None {
+        return via_class;
     }
     member = self.enum_member(nd);
     if member is not None {
@@ -271,6 +277,15 @@ impl MirLowering.enum_coerce(
         and not self.enum_layout_of(to, site).is_string_enum {
         return self.builder().convert(self.coerce(value, mir_int(), site), to);
     }
+    if value.type.kind == MirKind.ENUM and to.kind in (MirKind.STR, MirKind.STR_REF) {
+        layout = self.enum_layout_of(value.type, site);
+        if layout.is_string_enum {
+            text = self.enum_select(
+                value, layout, [member.str_value or "" for member in layout.members]
+            );
+            return self.coerce(text, to, site);
+        }
+    }
     raise MirRefused(
         mir_refusal(
             "conversion",
@@ -302,6 +317,19 @@ impl MirLowering.enum_call(nd: uni.FuncCall) -> (MirValue | None) {
     value = self.lower_expr(params[0]);
     if value.type is result_type {
         return value;
+    }
+    if value.type.kind == MirKind.ANY {
+        value = self.any_unbox(
+            value, mir_str() if layout.is_string_enum else mir_int(), nd
+        );
+    }
+    if value.type.kind == MirKind.STR_REF {
+        value = self.as_text(value);
+    }
+    if value.type.kind == MirKind.ENUM {
+        value = self.coerce(value, mir_str(), nd)
+            if layout.is_string_enum
+            else self.enum_as_int(value, nd);
     }
     if layout.is_string_enum {
         if value.type.kind != MirKind.STR {
@@ -514,7 +542,9 @@ impl MirLowering.foreign_enum_method(
 
 impl MirLowering.str_enum_int(nd: uni.FuncCall) -> (MirValue | None) {
     args = list(nd.params or []);
-    if len(args) != 1 or not isinstance(args[0], uni.Expr) {
+    if len(args) != 1
+        or not isinstance(args[0], uni.Expr)
+        or isinstance(args[0].type, (AnyType, FunctionType)) {
         return None;
     }
     subject = self.expr_type(args[0]);

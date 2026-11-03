@@ -9,9 +9,14 @@ glob FILE_TYPE_NAMES: dict[str, bool] = {
          "BufferedReader": True,
          "BufferedWriter": True,
          "BufferedRandom": True
-     },
-     ITERATOR_CLASSES: list[str] = [
+     };
+
+glob LIST_CLASSES: list[str] = ["list", "Sequence", "MutableSequence"],
+     SET_CLASSES: list[str] = ["set", "frozenset", "AbstractSet", "MutableSet"];
+
+glob ITERATOR_CLASSES: list[str] = [
          "Iterator",
+         "_GeneratorContextManager",
          "Generator",
          "reversed",
          "map",
@@ -33,7 +38,8 @@ glob FILE_TYPE_NAMES: dict[str, bool] = {
          MirKind.DICT,
          MirKind.SET,
          MirKind.OBJ,
-         MirKind.FN
+         MirKind.FN,
+         MirKind.TUPLE
      ];
 
 glob C_ABI_KINDS: list[MirKind] = [
@@ -55,6 +61,8 @@ def mir_refusal(
 ) -> NativeRefusal;
 
 def refusal_of(err: MirRefused) -> NativeRefusal;
+
+def lenient_c_slot(t: (TypeBase | None)) -> bool;
 
 def mir_type_of(
     t: (TypeBase | None),
@@ -88,3 +96,5 @@ def mir_class_value_type(
 def mir_spec_type(spec: str) -> MirType;
 
 def stub_archetype(scope: uni.Archetype) -> bool;
+
+def stub_scope(scope: (uni.UniScopeNode | None)) -> bool;

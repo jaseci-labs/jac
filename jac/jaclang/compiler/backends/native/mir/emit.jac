@@ -86,6 +86,7 @@ obj MirEmitter {
     def c_abi_extern(ext: MirExtern) -> ir.Function;
     def entry_alloca(b: ir.IRBuilder, shape: ir.Type) -> ir.Value;
     def call_c_abi(b: ir.IRBuilder, callee: ir.Function, instr: MirInstr) -> ir.Value;
+    def c_thunk(fn: MirFunction);
     def emit_instr(b: ir.IRBuilder, instr: MirInstr);
     def value(v: MirValue) -> ir.Value;
     def bind(v: (MirValue | None), made: ir.Value);

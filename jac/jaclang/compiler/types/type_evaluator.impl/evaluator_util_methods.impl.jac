@@ -2028,16 +2028,16 @@ impl TypeEvaluator._get_special_form_type(
     return None;
 }
 
-impl TypeEvaluator._resolve_from_path(from_mod: ModulePath) -> Path {
+impl TypeEvaluator._resolve_from_path(from_mod: ModulePath) -> str {
     if from_mod.level > 0 and not from_mod.path {
-        base = Path(from_mod.loc.mod_path).parent;
+        base = os.path.dirname(from_mod.loc.mod_path);
         for _ in range(max(from_mod.level - 1, 0)) {
-            base = base.parent;
+            base = os.path.dirname(base);
         }
         return base;
     }
 
-    return Path(from_mod.resolve_relative_path());
+    return from_mod.resolve_relative_path();
 }
 
 impl TypeEvaluator._resolve_client_npm_module(node_: ModulePath) -> (str | None) {

@@ -6353,6 +6353,7 @@ graph import compiler {
             OSP_GRAPH_REL,
             OSP_KERNEL_REL,
             OSP_NATIVE_REL,
+            bundled_stdlib_module_of,
             interop_callback_symbol,
             kernel_unit_path,
             native_def_symbol,
@@ -6362,7 +6363,8 @@ graph import compiler {
             native_test_symbol,
             native_unit_identity,
             native_unit_prefix,
-            native_unit_spelling
+            native_unit_spelling,
+            resolve_native_module
         },
         backends.native.region_abi._region_layout_facts {
             HDR_ALLOC_ID_OFF,
@@ -10058,7 +10060,8 @@ graph import compiler {
             EnumMemberType,
             FunctionType,
             TypeVarType,
-            UnionType
+            UnionType,
+            UnknownType
         },
         c_interop.c_param_type { FunctionType },
         c_interop.c_type_spec
@@ -14669,8 +14672,8 @@ graph import runtime.na_stdlib {
     ]
     type _digest ++> hashlib | hmac { DigestCore }
     _directory_native ++> [
+        _os_native | pathlib { directory_names },
         glob | shutil | uuid | zoneinfo { try_directory_names },
-        pathlib { directory_names },
     ]
     _dirent_native ++> _directory_native { dirent_name }
     _errno_native ++> [
@@ -14777,6 +14780,18 @@ graph import runtime.na_stdlib {
         _default_types_ext,
         _default_types_val
     }
+    _posix_native ++> [
+        _os_native { S_IFDIR, S_IFMT, cwd_path, env_value, make_dir, stat_fields },
+        os.path {
+            S_IFDIR,
+            S_IFMT,
+            S_IFREG,
+            cwd_path,
+            env_value,
+            resolved_path,
+            stat_fields
+        },
+    ]
     _replace_native ++> _os_native { replace_file }
     _repr ++> [
         difflib { str_gt },
@@ -15049,12 +15064,24 @@ graph import runtime.na_stdlib {
 }
 
 graph import runtime.native {
-    anys ++> lists { __jac_rt_any_box }
+    anys ++> [
+        dicts { __jac_rt_cstr_eq, __jac_rt_type_name },
+        lists { __jac_rt_any_box, __jac_rt_any_equal, __jac_rt_any_order },
+    ]
+    bytes ++> anys { __jac_rt_bytes_has, __jac_rt_bytes_repr }
     dicts ++> [
-        anys { __jac_rt_dict_len },
+        anys {
+            __jac_rt_dict_find,
+            __jac_rt_dict_key_at,
+            __jac_rt_dict_len,
+            __jac_rt_dict_next,
+            __jac_rt_dict_val_at
+        },
         iterators { __jac_rt_dict_key_at, __jac_rt_dict_next },
     ]
     exceptions ++> bytes { __jac_rt_raise_builtin }
+    format ++> anys { __jac_rt_float_repr, __jac_rt_obj_text }
+    iterators ++> anys { __jac_rt_iter_new }
     lists ++> [
         bytes { __jac_rt_list_new, __jac_rt_list_push },
         closures { __jac_rt_elem_release, __jac_rt_elem_retain },
@@ -15101,7 +15128,7 @@ graph import runtime.native {
     ]
     strings ++> [
         anys {
-            __jac_rt_str_from_int,
+            __jac_rt_str_cmp,
             __jac_rt_str_len,
             __jac_rt_str_new,
             __jac_rt_str_size
@@ -15112,6 +15139,17 @@ graph import runtime.native {
         lists { __jac_rt_str_cmp, __jac_rt_str_size },
     ]
     text ++> [
+        anys {
+            __jac_rt_repr_enter,
+            __jac_rt_repr_leave,
+            __jac_rt_sb_add,
+            __jac_rt_sb_finish,
+            __jac_rt_sb_int,
+            __jac_rt_sb_new,
+            __jac_rt_str_contains,
+            __jac_rt_str_repr,
+            __jac_rt_utf8_width
+        },
         bytes {
             __jac_rt_sb_add,
             __jac_rt_sb_byte,

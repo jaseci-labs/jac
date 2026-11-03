@@ -123,6 +123,7 @@ obj MirFunction {
         manual_rc: bool = False,
         resumable: bool = False,
         variadic: bool = False,
+        c_symbol: str = "",
         next_id: int = 0,
         next_label: int = 0;
 
@@ -136,7 +137,8 @@ obj MirExtern {
     has symbol: str,
         ret: MirType,
         params: list[MirType] = [],
-        variadic: bool = False;
+        variadic: bool = False,
+        c_abi: bool = False;
 }
 
 obj MirConst {

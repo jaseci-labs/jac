@@ -354,6 +354,11 @@ impl MirLowering.text_method(
             raise MirRefused(mir_refusal("call", "join without an argument", nd));
         }
         items = self.spill(self.lower_expr(items_nd));
+        if items.type.kind in (MirKind.ITER, MirKind.SET, MirKind.DICT)
+            and items.type.args
+            and items.type.args[0].kind in (MirKind.STR, MirKind.STR_REF) {
+            items = self.spill(self.drain(items, items.type.args[0], items_nd));
+        }
         if items.type.kind != MirKind.LIST
             or items.type.payload().kind not in (MirKind.STR, MirKind.STR_REF) {
             raise MirRefused(

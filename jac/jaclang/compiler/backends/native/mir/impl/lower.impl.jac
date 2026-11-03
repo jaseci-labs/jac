@@ -38,6 +38,7 @@ impl MirLowering.lower -> MirModule {
             self.mir.functions.append(made);
         }
     }
+    self.mir.functions.extend(self.function_default_thunks());
     for nd in self.module.body {
         if isinstance(nd, uni.Test) {
             self.current = nd.name.sym_name;
@@ -66,6 +67,11 @@ impl MirLowering.lower -> MirModule {
         obj_def = self.object_def(arch);
         self.mir.functions.append(self.lower_drop(obj_def, arch));
         self.mir.functions.append(self.lower_trace(obj_def));
+        thunk = self.lower_text_thunk(obj_def, arch);
+        if thunk is not None {
+            self.mir.functions.append(thunk);
+            self.text_pairs.append((obj_def.drop_symbol, thunk.symbol));
+        }
     }
     self.current = "with entry";
     self.lower_osp_module();
@@ -195,6 +201,9 @@ impl MirLowering.settle {
                 continue;
             }
             for callee in self.callees_of(fn) {
+                if callee in self.text_regs {
+                    continue;
+                }
                 if callee in self.mir.demoted and callee not in self.mir.bridged {
                     self.mir.demoted[fn.symbol] = f"calls {callee}, which is not native";
                     self.bridge_symbol(fn.symbol);
@@ -204,10 +213,24 @@ impl MirLowering.settle {
             }
         }
     }
+    dropped: set[str] = set();
+    for (thunk, (block, instrs)) in self.text_regs.items() {
+        if thunk in self.mir.demoted {
+            self.mir.demoted.pop(thunk);
+            dropped.add(thunk);
+            gone = {id(instr) for instr in instrs};
+            block.instrs = [
+                instr
+                for instr in block.instrs
+                if id(instr) not in gone
+            ];
+        }
+    }
     self.mir.functions = [
         fn
         for fn in self.mir.functions
-        if fn.symbol not in self.mir.demoted or fn.symbol in self.mir.bridged
+        if (fn.symbol not in self.mir.demoted or fn.symbol in self.mir.bridged)
+            and fn.symbol not in dropped
     ];
 }
 
@@ -243,7 +266,14 @@ impl MirLowering.declare(ab: uni.Ability) {
         return;
     }
     params: list[MirType] = [];
+    packed = sig.varargs is not None
+        and is_va_list_type(sig.varargs.type)
+        and sig.kwargs is None
+        and not sig.kwonlyargs;
     for pv in self.param_nodes(sig, False) {
+        if packed and pv is sig.varargs {
+            continue;
+        }
         params.append(self.symbol_type(pv.name.sym, pv));
     }
     fn_type = self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(ab));
@@ -254,7 +284,7 @@ impl MirLowering.declare(ab: uni.Ability) {
     key = id(ab);
     self.decl_syms[id(self.ability_sym(ab))] = key;
     self.decls[key] = MirDecl(
-        ability=ab, symbol=self.symbol_of(ab), params=params, ret=ret
+        ability=ab, symbol=self.symbol_of(ab), params=params, ret=ret, c_variadic=packed
     );
     self.order.append(key);
 }
@@ -289,6 +319,10 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
         return self.lower_generator(decl);
     }
     fn = MirFunction(name=self.decl_label(decl), symbol=decl.symbol, ret=decl.ret);
+    if decl.c_symbol {
+        fn.c_symbol = decl.c_symbol;
+        fn.linkage = "internal";
+    }
     first = fn.new_block("entry");
     self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
     try {
@@ -536,6 +570,10 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
                 );
             }
             current = self.builder().load(place, self.place_elem(place));
+            extended = self.list_extend_in_place(op, current, value, nd);
+            if extended is not None {
+                return;
+            }
             value = self.str_concat(current, self.coerce(value, mir_str(), nd))
                 if current.type.kind == MirKind.STR and op == Tok.PLUS
                 else self.arith(op, current, value, nd);
@@ -557,6 +595,9 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
             raise MirRefused(mir_refusal("augmented assignment", nd.aug_op.value, nd));
         }
         current = self.lower_name(target);
+        if self.list_extend_in_place(op, current, value, nd) is not None {
+            return;
+        }
         if current.type.kind == MirKind.SET
             and self.set_operator(op, current, value, True, nd) is not None {
             return;
@@ -934,7 +975,7 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
         decl = self.decls.get(self.decl_syms.get(id(nd.sym), -1))
             if nd.sym is not None
             else None;
-        if decl is not None {
+        if decl is not None and not decl.c_symbol {
             address = self.emit_value(
                 MirOp.FN_ADDR, mir_c_fn(decl.params, decl.ret), [], callee=decl.symbol
             );
@@ -948,6 +989,15 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
         c_function = self.c_extern_address(nd);
         if c_function is not None {
             return c_function;
+        }
+        if named_function_of(nd) is not None {
+            symbol = self.c_function_symbol(nd);
+            held = self.mir.externs.get(symbol);
+            if held is not None {
+                return self.emit_value(
+                    MirOp.FN_ADDR, mir_c_fn(held.params, held.ret), [], callee=symbol
+                );
+            }
         }
         raise MirRefused(mir_refusal("name", nd.value, nd));
     }
@@ -1046,6 +1096,26 @@ impl MirLowering.lower_binary(nd: uni.BinaryExpr) -> MirValue {
         and left.type is right.type
         and nd.op.name == Tok.PLUS {
         return self.list_concat(left, right);
+    }
+    if left.type.kind == MirKind.LIST
+        and right.type.kind == MirKind.LIST
+        and nd.op.name == Tok.PLUS {
+        joined_type = self.expr_type(nd);
+        if joined_type.kind == MirKind.LIST {
+            made = self.spill(self.new_list(joined_type.payload(), 0));
+            self.extend_from(made, self.spill(left), nd.left);
+            self.extend_from(made, self.spill(right), nd.right);
+            return made;
+        }
+    }
+    if nd.op.name == Tok.STAR_MUL
+        and MirKind.LIST in (left.type.kind, right.type.kind)
+        and MirKind.INT in (left.type.kind, right.type.kind) {
+        return self.list_repeat(
+            left if left.type.kind == MirKind.LIST else right,
+            right if left.type.kind == MirKind.LIST else left,
+            nd
+        );
     }
     via_set = self.set_operator(nd.op.name, left, right, False, nd);
     if via_set is not None {
@@ -1318,6 +1388,9 @@ impl MirLowering.compare_values(
     if name is None {
         raise MirRefused(mir_refusal("comparison", op, site));
     }
+    if MirKind.ANY in (left.type.kind, right.type.kind) {
+        return self.any_compare(name, left, right, site);
+    }
     if name in ("eq", "ne") and MirKind.OPT in (left.type.kind, right.type.kind) {
         same = self.optional_eq(left, right, site);
         return same if name == "eq" else self.builder().logical_not(same);
@@ -1365,6 +1438,12 @@ impl MirLowering.compare_values(
         }
         return self.builder().compare(name, words[0], words[1]);
     }
+    if name in ("eq", "ne")
+        and left.type.kind in (MirKind.OBJ, MirKind.OSP)
+        and right.type.kind in (MirKind.OBJ, MirKind.OSP) {
+        same = self.object_eq(left, right, site);
+        return same if name == "eq" else self.builder().logical_not(same);
+    }
     if not left.type.is_numeric() or not right.type.is_numeric() {
         raise MirRefused(
             mir_refusal(
@@ -1381,6 +1460,9 @@ impl MirLowering.lower_unary(nd: uni.UnaryExpr) -> MirValue {
     op = nd.op.name;
     if op == Tok.NOT {
         return b.logical_not(self.condition(nd.operand));
+    }
+    if is_borrow_kind(nd.ownership) {
+        return self.lower_expr(nd.operand);
     }
     if op == Tok.MINUS {
         inner: uni.UniNode = nd.operand;
@@ -1528,13 +1610,48 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         return self.super_call(nd, nd.target.right.value);
     }
     callee = nd.callee_decl;
-    if callee is not None and id(callee) in self.templates {
+    if callee is not None
+        and contextmanager_ability(callee)
+        and self.manager_item is not nd {
+        raise MirRefused(
+            mir_refusal(
+                "call",
+                f"@contextmanager {self.name_of(callee)} outside a with item"
+                    if isinstance(callee, uni.Ability)
+                    else "@contextmanager call outside a with item",
+                nd,
+                "A native @contextmanager generator is entered only as a with item."
+            )
+        );
+    }
+    if isinstance(nd.target, uni.Name)
+        and nd.target.value == "cast"
+        and (callee is None or callee.loc.mod_path.endswith(".pyi"))
+        and len(self.call_args(nd)) == 2 {
+        value = self.lower_expr(self.call_args(nd)[1]);
+        wanted = self.expr_type(nd);
+        return value if value.type is wanted else self.coerce(value, wanted, nd);
+    }
+    if isinstance(callee, uni.Ability) and self.template_of(callee) {
+        owner = callee.find_parent_of_type(uni.Archetype);
+        if owner is not None
+            and not callee.is_static
+            and isinstance(nd.target, uni.AtomTrailer)
+            and nd.target.is_attr {
+            via_method = self.method_call(nd, nd.target);
+            if via_method is not None {
+                return via_method;
+            }
+        }
         return self.generic_call(nd, callee, None, None);
     }
     if isinstance(callee, uni.Ability) and clib_import_of(callee) is not None {
         return self.c_call(nd, callee);
     }
     decl = self.decls.get(id(callee)) if callee is not None else None;
+    if decl is None and isinstance(callee, uni.Ability) and callee.is_static {
+        decl = self.foreign_static_decl(callee);
+    }
     if decl is not None
         and decl.self_type is not None
         and isinstance(nd.target, uni.AtomTrailer)
@@ -1553,6 +1670,28 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
                 return via_owner;
             }
         }
+    }
+    if decl is not None and decl.c_variadic and decl.self_type is None {
+        given = self.call_args(nd);
+        if len(given) < len(decl.params) {
+            raise MirRefused(
+                mir_refusal(
+                    "call",
+                    f"{self.name_of(decl.ability)} with {len(given)} arguments",
+                    nd
+                )
+            );
+        }
+        va_values = [
+            self.coerce(self.lower_expr(va_arg), va_type, va_arg)
+            for (va_arg, va_type) in zip(given, decl.params)
+        ]
+            + [self.c_vararg(va_arg) for va_arg in given[len(decl.params):]];
+        va_result = self.builder().call(decl.symbol, va_values, decl.ret);
+        if va_result is None {
+            return self.builder().const_bool(False);
+        }
+        return va_result;
     }
     if decl is not None {
         args: list[MirValue] = [];
@@ -1589,16 +1728,14 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
             return self.object_call(nd, constructed);
         }
     }
-    passed = list(nd.params or []);
-    if isinstance(nd.target, uni.Name)
+    if not isinstance(callee, (uni.Archetype, uni.Ability))
+        and isinstance(nd.target, uni.Name)
         and nd.target.value == "type"
         and isinstance(nd.target.type, ClassType)
-        and not nd.target.type.is_instance()
-        and len(passed) == 1
-        and isinstance(passed[0], uni.Expr)
-        and not isinstance(passed[0], uni.KWPair)
-        and self.expr_type(passed[0]).kind in (MirKind.OBJ, MirKind.ANY) {
-        return self.class_of(self.lower_expr(passed[0]), nd);
+        and nd.target.type.is_builtin("type")
+        and len(list(nd.params or [])) == 1
+        and isinstance(list(nd.params or [])[0], uni.Expr) {
+        return self.class_of(self.lower_expr(list(nd.params or [])[0]), nd);
     }
     if not isinstance(callee, (uni.Archetype, uni.Ability))
         and isinstance(nd.target, uni.Expr)
@@ -1651,6 +1788,10 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     }
     target = nd.target;
     if isinstance(target, uni.AtomTrailer) and target.is_attr {
+        via_stdlib = self.stdlib_call(nd, target);
+        if via_stdlib is not None {
+            return via_stdlib;
+        }
         via_method = self.method_call(nd, target);
         if via_method is not None {
             return via_method;
@@ -1660,6 +1801,29 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         and isinstance(target.type, FunctionType)
         and self.expr_type(target).kind == MirKind.FN {
         return self.closure_call(nd, self.callee_value(target));
+    }
+    if isinstance(target, uni.Expr)
+        and isinstance(target.type, FunctionType)
+        and self.expr_type(target).kind == MirKind.C_FN {
+        fnptr = self.lower_expr(target);
+        fp_params = fnptr.type.args[1:];
+        fp_args = self.call_args(nd);
+        if len(fp_args) != len(fp_params) {
+            raise MirRefused(
+                mir_refusal(
+                    "call", f"C function pointer with {len(fp_args)} arguments", nd
+                )
+            );
+        }
+        fp_values = [
+            self.coerce(self.lower_expr(fp_arg), fp_type, fp_arg)
+            for (fp_arg, fp_type) in zip(fp_args, fp_params)
+        ];
+        fp_ret = fnptr.type.args[0];
+        fp_result = mir_none()
+            if fp_ret.kind in (MirKind.NONE, MirKind.VOID)
+            else fp_ret;
+        return self.emit_value(MirOp.CALL_FNPTR, fp_result, [fnptr] + fp_values);
     }
     via_type = self.type_call(nd);
     if via_type is not None {
@@ -1689,7 +1853,7 @@ impl MirLowering.truthy(value: MirValue, site: uni.UniNode) -> MirValue {
     if value.type.kind == MirKind.FLOAT {
         return b.compare("ne", value, b.const_float(0.0, value.type));
     }
-    if value.type.kind == MirKind.C_PTR {
+    if value.type.kind in (MirKind.C_PTR, MirKind.C_FN) {
         address = self.emit_value(MirOp.PTR_INT, mir_int(64, False), [value]);
         return b.compare("ne", address, b.const_int(0, address.type));
     }
@@ -1707,6 +1871,9 @@ impl MirLowering.truthy(value: MirValue, site: uni.UniNode) -> MirValue {
     }
     if value.type.kind == MirKind.NONE {
         return b.const_bool(False);
+    }
+    if value.type.kind == MirKind.TUPLE {
+        return b.const_bool(len(value.type.args) > 0);
     }
     if value.type.kind == MirKind.OPT {
         (held, payload, absent, done) = self.opt_begin(value, mir_bool());
@@ -1753,6 +1920,17 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
     if value.type.kind == MirKind.OPT and value.type.payload() is to {
         return self.opt_get(value);
     }
+    if value.type.kind == MirKind.OPT
+        and value.type.payload().kind == MirKind.OBJ
+        and to.kind == MirKind.OBJ {
+        return self.coerce(
+            self.opt_unwrap_checked(
+                value, f"expected {to.render()}, got None", "TypeError"
+            ),
+            to,
+            site
+        );
+    }
     positioned = self.text_position(value, to);
     if positioned is not None {
         return positioned;
@@ -1770,6 +1948,11 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
             )
         );
     }
+    if to.kind == MirKind.C_PTR and value.type.kind == MirKind.BOOL {
+        return self.emit_value(
+            MirOp.PTR_CAST, to, [self.builder().convert(value, mir_int())]
+        );
+    }
     if to.kind in (MirKind.C_PTR, MirKind.C_FN)
         and value.type.kind in (MirKind.C_PTR, MirKind.C_FN, MirKind.INT) {
         return self.emit_value(MirOp.PTR_CAST, to, [value]);
@@ -1779,7 +1962,10 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
     }
     if value.type.kind == MirKind.OBJ
         and to.kind == MirKind.OBJ
-        and self.obj_extends(value.type.name, to.name) {
+        and (
+            self.obj_extends(value.type.name, to.name)
+            or self.obj_extends(to.name, value.type.name)
+        ) {
         return self.builder().ref_cast(value, to, False);
     }
     if value.type.kind == MirKind.CLASS and to.kind == MirKind.CLASS {
@@ -1787,6 +1973,14 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
     }
     if mir_is_container(to) and value.type.kind == to.kind {
         return self.container_rebuild(value, to, site);
+    }
+    if to.kind == MirKind.LIST and value.type.kind == MirKind.TUPLE {
+        held = self.spill(value);
+        made = self.spill(self.new_list(to.payload(), len(value.type.args)));
+        for index in range(len(value.type.args)) {
+            self.container_add(made, self.tuple_get(held, index), site);
+        }
+        return made;
     }
     raise MirRefused(
         mir_refusal("conversion", f"{value.type.render()} to {to.render()}", site)
@@ -1978,7 +2172,7 @@ impl MirLowering.ensure_c_types(t: (TypeBase | None)) {
     site = f"{arch.loc.mod_path}:{arch.loc.first_line}:{arch.loc.col_start}";
     held = self.c_struct_sites.get(name);
     if held is not None {
-        if held != site {
+        if held != site and not self.c_struct_same(arch, name) {
             raise MirRefused(
                 mir_refusal(
                     "C struct",
@@ -2010,6 +2204,29 @@ impl MirLowering.ensure_c_types(t: (TypeBase | None)) {
             )
         );
     }
+}
+
+impl MirLowering.c_struct_same(arch: uni.Archetype, name: str) -> bool {
+    known = self.mir.structs.get(name);
+    if known is None {
+        return False;
+    }
+    fields = self.arch_fields(arch);
+    if len(fields) != len(known.fields) {
+        return False;
+    }
+    evaluator = self.prog.get_type_evaluator();
+    for (hv, member) in zip(fields, known.fields) {
+        sym = hv.name.sym;
+        if sym is None or hv.name.value != member.name {
+            return False;
+        }
+        if mir_type_of(evaluator.get_type_of_symbol(sym), MirPosition.C_FIELD, hv)
+            is not member.type {
+            return False;
+        }
+    }
+    return True;
 }
 
 impl MirLowering.arch_fields(arch: uni.Archetype) -> list[uni.HasVar] {
@@ -2167,6 +2384,11 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
             if counted is not None {
                 return counted;
             }
+        }
+        if value.type.kind == MirKind.OPT and mir_is_container(value.type.payload()) {
+            value = self.opt_unwrap_checked(
+                value, "object of type 'NoneType' has no len()"
+            );
         }
         if mir_is_container(value.type) {
             return self.container_len(value);
@@ -2406,7 +2628,7 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
                 MirOp.PTR_CAST, mir_c_ptr(box.type.payload()), [box]
             );
         }
-        arch = self.arch_of_type(target_type);
+        arch = self.holder_arch(nd.target) if isinstance(nd.target, uni.Expr) else None;
         if arch is not None {
             subject = self.lower_expr(nd.target);
             owner = self.member_owner(right);
@@ -2480,7 +2702,9 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
             }
             raise MirRefused(mir_refusal("attribute access", held.type.render(), nd));
         }
-        base = self.lower_place(nd.target);
+        base = self.struct_temp_place(nd.target)
+            if isinstance(nd.target, uni.FuncCall)
+            else self.lower_place(nd.target);
         holder = self.place_elem(base);
         if holder.kind != MirKind.C_STRUCT {
             raise MirRefused(mir_refusal("attribute access", holder.render(), nd));
@@ -2557,6 +2781,10 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
     if via_accessor is not None {
         return via_accessor;
     }
+    via_class_attr = self.instance_class_attr(nd);
+    if via_class_attr is not None {
+        return via_class_attr;
+    }
     if not nd.is_attr
         and isinstance(nd.right, uni.IndexSlice)
         and isinstance(nd.target, uni.Expr)
@@ -2578,6 +2806,16 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
             else mir_void();
         if mir_is_container(target_type) {
             return self.container_get(self.lower_expr(nd.target), nd.right, nd);
+        }
+        if target_type.kind == MirKind.OPT
+            and mir_is_container(target_type.payload()) {
+            return self.container_get(
+                self.opt_unwrap_checked(
+                    self.lower_expr(nd.target), "'NoneType' object is not subscriptable"
+                ),
+                nd.right,
+                nd
+            );
         }
         if target_type.kind
             in (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY) {
@@ -2654,7 +2892,11 @@ impl MirLowering.c_extern(
     self.ensure_objects(fn_type);
     self.note_clib(clib_import_of(callee));
     self.mir.externs[symbol] = MirExtern(
-        symbol=symbol, ret=ret, params=[plan[0] for plan in plans], variadic=variadic
+        symbol=symbol,
+        ret=ret,
+        params=[plan[0] for plan in plans],
+        variadic=variadic,
+        c_abi=True
     );
     return (symbol, plans, ret, ret_plan, variadic);
 }
@@ -2684,13 +2926,16 @@ impl MirLowering.c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue {
     (symbol, plans, ret, ret_plan, variadic) = self.c_extern(callee, nd);
     sig = callee.signature;
     args: list[any] = [];
+    given = list(nd.params or []);
     if isinstance(sig, uni.FuncSignature)
         and sig.varargs is None
         and sig.kwargs is None
-        and any(isinstance(arg, uni.KWPair) for arg in list(nd.params or [])) {
+        and (
+            any(isinstance(arg, uni.KWPair) for arg in given) or len(given) < len(plans)
+        ) {
         args = list(self.bound_args(nd, callee, False));
         for arg in args {
-            if not isinstance(arg, uni.Expr) {
+            if not isinstance(arg, (uni.Expr, MirBound)) {
                 raise MirRefused(
                     mir_refusal("C call", f"{symbol} argument binding", nd)
                 );
@@ -2707,7 +2952,9 @@ impl MirLowering.c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue {
     copybacks: list[tuple[MirValue, MirValue, MirType]] = [];
     values: list[MirValue] = [];
     for (index, arg) in enumerate(args) {
-        if index < len(plans) {
+        if isinstance(arg, MirBound) {
+            values.append(self.coerce(arg.value, plans[index][0], arg.site));
+        } elif index < len(plans) {
             values.append(self.c_arg(arg, plans[index][0], plans[index][1], copybacks));
         } else {
             values.append(self.c_vararg(arg));
@@ -2756,7 +3003,7 @@ impl MirLowering.import_call(
         or os.path.realpath(path) == os.path.realpath(self.module.loc.mod_path) {
         return None;
     }
-    if self.is_template(callee) {
+    if self.template_of(callee) {
         return self.generic_call(nd, callee, None, None);
     }
     fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
@@ -2935,6 +3182,50 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
         value = self.intrinsic_operand(args[0], found.param_specs[0]);
         return self.emit_value(MirOp.BITCAST, result_type, [value]);
     }
+    if dispatch == IntrinsicDispatch.BUFFER_DATA {
+        held = self.spill(self.lower_expr(args[0]));
+        if held.type.kind not in (MirKind.BYTES, MirKind.BYTEARRAY) {
+            raise MirRefused(
+                mir_refusal("intrinsic", f"{name} of {held.type.render()}", nd)
+            );
+        }
+        (data, _) = self.byte_parts(held);
+        return self.emit_value(MirOp.PTR_INT, mir_int(), [data]);
+    }
+    if dispatch == IntrinsicDispatch.LIST_DATA {
+        held = self.spill(self.lower_expr(args[0]));
+        if held.type.kind != MirKind.LIST {
+            raise MirRefused(
+                mir_refusal("intrinsic", f"{name} of {held.type.render()}", nd)
+            );
+        }
+        return self.emit_value(
+            MirOp.MEM_LOAD,
+            mir_int(),
+            [
+                self.builder().binary(
+                    "add",
+                    self.address_of(held),
+                    self.builder().const_int(16, mir_int())
+                )
+            ]
+        );
+    }
+    if dispatch == IntrinsicDispatch.STR_DATA {
+        text = self.spill(self.as_text(self.lower_expr(args[0])));
+        return self.emit_value(
+            MirOp.PTR_INT, mir_int(), [self.builder().str_part(text, "data")]
+        );
+    }
+    if dispatch == IntrinsicDispatch.REF_ADDR {
+        held = self.lower_expr(args[0]);
+        if not mir_holds_ref(held.type) {
+            raise MirRefused(
+                mir_refusal("intrinsic", f"{name} of {held.type.render()}", nd)
+            );
+        }
+        return self.address_of(self.spill(held));
+    }
     if dispatch == IntrinsicDispatch.ATOMIC_FENCE {
         order = self.memory_order(nd, args[0], "fence");
         return self.emit_value(MirOp.FENCE, mir_none(), [], str_value=order);
@@ -3051,6 +3342,10 @@ impl MirLowering.type_call(nd: uni.FuncCall) -> (MirValue | None) {
             }
             return self.emit_value(MirOp.CSTR, result_type, [], str_value=text);
         }
+        lent = self.c_borrow_operand(source);
+        if lent is not None {
+            return self.c_address(self.lower_place(lent), result_type);
+        }
         value = self.lower_expr(source);
         if value.type.kind in (MirKind.INT, MirKind.C_PTR, MirKind.C_FN) {
             return self.emit_value(MirOp.PTR_CAST, result_type, [value]);
@@ -3088,6 +3383,16 @@ impl MirLowering.method_call(
     if not isinstance(right, uni.Name) {
         return None;
     }
+    if isinstance(target.target, uni.SpecialVarRef)
+        and target.target.value == "super" {
+        return self.super_call(nd, right.value);
+    }
+    if isinstance(target.target, uni.FuncCall)
+        and isinstance(target.target.target, uni.Name)
+        and target.target.target.value == "super"
+        and not list(target.target.params or []) {
+        return self.super_call(nd, right.value);
+    }
     if right.value == "wrap" and self.sized_type_name(target.target) is not None {
         return self.sized_wrap(nd, self.sized_type_name(target.target) or "");
     }
@@ -3095,6 +3400,32 @@ impl MirLowering.method_call(
         and isinstance(target.target.type, ModuleType)
         and target.target.type.mod_name == "struct" {
         return self.struct_call(nd, right.value);
+    }
+    if isinstance(target.target, uni.Name)
+        and isinstance(target.target.type, ModuleType)
+        and target.target.type.mod_name == "copy"
+        and right.value == "copy"
+        and len(self.call_args(nd)) == 1 {
+        value = self.lower_expr(self.call_args(nd)[0]);
+        if value.type.kind == MirKind.OBJ {
+            return self.object_copy(value, nd);
+        }
+        if value.type.kind in (MirKind.LIST, MirKind.SET) {
+            made = self.spill(
+                self.new_list(value.type.payload(), 4)
+                    if value.type.kind == MirKind.LIST
+                    else self.new_dict(value.type.payload(), None, value.type)
+            );
+            self.extend_from(made, self.spill(value), nd);
+            return made;
+        }
+        if value.type.kind == MirKind.DICT {
+            made = self.spill(
+                self.new_dict(value.type.args[0], value.type.args[1], value.type)
+            );
+            self.merge_dict(made, self.spill(value), nd, False);
+            return made;
+        }
     }
     if isinstance(target.target, uni.Name)
         and isinstance(target.target.type, ModuleType)
@@ -3144,7 +3475,7 @@ impl MirLowering.method_call(
             return via_enum;
         }
     }
-    owner_arch = self.arch_of_type(target.target.type)
+    owner_arch = self.holder_arch(target.target)
         if isinstance(target.target, uni.Expr)
         else None;
     if owner_arch is not None {
@@ -3204,6 +3535,16 @@ impl MirLowering.method_call(
         return self.emit_value(MirOp.CALL_FNPTR, result_type, [fnptr] + values);
     }
     return None;
+}
+
+impl MirLowering.struct_temp_place(nd: uni.Expr) -> MirValue {
+    value = self.lower_expr(nd);
+    if value.type.kind != MirKind.C_STRUCT {
+        raise MirRefused(mir_refusal("place", type(nd).__name__, nd));
+    }
+    held = self.temp_slot(value.type);
+    self.builder().store(held, value);
+    return held;
 }
 
 impl MirLowering.coerce_place(place: MirValue) -> MirValue {
@@ -3350,6 +3691,12 @@ impl MirLowering.literal_destination(nd: uni.Int) -> (str | None) {
         and isinstance(up.target, uni.Name)
         and shape_of(up.target.value) is not None {
         dest = up.target.value;
+    }
+    if dest is None
+        and isinstance(up, uni.FuncCall)
+        and isinstance(up.target, uni.Expr)
+        and c_builtin_kind(up.target.type) == "ptr" {
+        dest = "u64";
     }
     return dest;
 }

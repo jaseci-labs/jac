@@ -131,6 +131,7 @@ impl MirLowering.declare_c_global(assign: uni.Assignment) -> MirGlobal {
         made.type = self.type_of(ctype, MirPosition.C_FIELD, assign);
     }
     initial = assign.value;
+    self.c_views[id(assign)] = made;
     if defines and isinstance(initial, uni.Expr) {
         made.linkage = "internal" if is_priv else "";
         made.c_init = self.c_const(initial, ctype, made.type, made.count);
@@ -445,6 +446,15 @@ impl MirLowering.c_const_lost(made: MirConst) -> str {
 
 impl MirLowering.c_struct_call(nd: uni.FuncCall, struct_type: MirType) -> MirValue {
     arch = foreign_struct_of_type(nd.type);
+    if arch is None and isinstance(nd.target, uni.Name) and nd.target.sym is not None {
+        held: (uni.UniNode | None) = nd.target.sym.decl;
+        while held is not None and not isinstance(held, uni.Archetype) {
+            held = held.parent;
+        }
+        if isinstance(held, uni.Archetype) and held.name.value == struct_type.name {
+            arch = held;
+        }
+    }
     if arch is None {
         raise MirRefused(mir_refusal("call", struct_type.render(), nd));
     }
@@ -506,9 +516,25 @@ impl MirLowering.c_field_value(expr: uni.Expr, member: MirType) -> MirValue {
     while isinstance(expr, uni.AtomUnit) and isinstance(expr.value, uni.Expr) {
         expr = expr.value;
     }
+    if member.kind == MirKind.C_STRUCT
+        and isinstance(expr, uni.FuncCall)
+        and expr.type is None {
+        return self.c_struct_call(expr, member);
+    }
     if member.kind in (MirKind.C_PTR, MirKind.C_FN) {
         if isinstance(expr, uni.Null) {
             return self.builder().const_null(member);
+        }
+        if isinstance(expr, uni.FuncCall) and not list(expr.params or []) {
+            maker = expr.target;
+            if isinstance(maker, uni.AtomTrailer)
+                and not maker.is_attr
+                and isinstance(maker.right, uni.IndexSlice) {
+                maker = maker.target;
+            }
+            if isinstance(maker, uni.Name) and maker.value == "ptr" {
+                return self.builder().const_null(member);
+            }
         }
         (ok, folded) = c_scalar_constant(expr);
         if ok

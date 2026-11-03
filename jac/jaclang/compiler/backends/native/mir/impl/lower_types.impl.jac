@@ -34,6 +34,9 @@ impl mir_type_of(
     }
     if isinstance(t, TypeVarType) {
         bound = env.get(t.name) if env is not None else None;
+        if bound is None and t.is_class_type_param and not t.is_self {
+            return mir_any();
+        }
         if bound is None {
             raise MirRefused(
                 mir_refusal(
@@ -60,6 +63,19 @@ impl mir_type_of(
     }
     if isinstance(t, AnyType) and not t.is_foreign {
         return mir_any();
+    }
+    if isinstance(t, FunctionType)
+        and any(lenient_c_slot(p.param_type) for p in t.parameters) {
+        params = [
+            mir_c_ptr(mir_int(8, False))
+                if lenient_c_slot(p.param_type)
+                else mir_type_of(p.param_type, MirPosition.C_FIELD, site, env)
+            for p in t.parameters
+        ];
+        ret = mir_c_ptr(mir_int(8, False))
+            if lenient_c_slot(t.return_type)
+            else mir_type_of(t.return_type, MirPosition.C_FIELD, site, env);
+        return mir_c_fn(params, ret);
     }
     if isinstance(t, FunctionType) and position == MirPosition.C_FIELD {
         params = [
@@ -114,6 +130,18 @@ impl mir_union_type(
     }
     if all(member is shared for member in lowered) {
         return mir_opt(shared) if has_none and shared.kind != MirKind.ANY else shared;
+    }
+    addresses = [
+        member
+        for member in lowered
+        if member.kind == MirKind.C_PTR
+    ];
+    if addresses
+        and all(member.kind in (MirKind.C_PTR, MirKind.BOOL) for member in lowered) {
+        word = addresses[0]
+            if all(member is addresses[0] for member in addresses)
+            else mir_c_ptr(mir_int(8, False));
+        return word;
     }
     for member in lowered {
         if member.kind not in ANY_BOXABLE {
@@ -191,16 +219,10 @@ impl mir_class_type(
     if name in ("NoneType", "None") {
         return mir_none();
     }
-    if name in ("Node", "Edge", "Walker")
-        and isinstance(scope, uni.Archetype)
-        and stub_archetype(scope)
-        and t.is_instance() {
+    if name in ("Node", "Edge", "Walker") and stub_scope(scope) and t.is_instance() {
         return mir_any();
     }
-    if name == "object"
-        or (
-            name == "Any" and isinstance(scope, uni.Archetype) and stub_archetype(scope)
-        ) {
+    if name == "object" or (name == "Any" and stub_scope(scope)) {
         return mir_any();
     }
     if name == "range" {
@@ -256,8 +278,14 @@ impl mir_class_type(
     }
     if name == "tuple" {
         members = t.private.type_args if t.private else None;
+        if members is not None and len(members) == 0 and t.is_instance() {
+            return mir_tuple([]);
+        }
         if not members {
             raise MirRefused(mir_refusal("type", "tuple without member types", site));
+        }
+        if len(members) == 2 and isinstance(members[1], UnknownType) {
+            return mir_list(mir_type_of(members[0], MirPosition.ELEMENT, site, env));
         }
         return mir_tuple(
             [mir_type_of(member, MirPosition.VALUE, site, env) for member in members]
@@ -289,21 +317,21 @@ impl mir_class_type(
             )
         );
     }
-    if name in ("list", "dict", "set") {
+    if name in LIST_CLASSES or name in SET_CLASSES or name == "dict" {
         args = t.private.type_args if t.private else None;
         if not args {
             if name == "dict" {
                 return mir_dict(mir_any(), mir_any());
             }
-            return mir_list(mir_any()) if name == "list" else mir_set(mir_any());
+            return mir_list(mir_any()) if name in LIST_CLASSES else mir_set(mir_any());
         }
         element_types = [
             mir_type_of(arg, MirPosition.ELEMENT, site, env) for arg in args
         ];
-        if name == "list" {
+        if name in LIST_CLASSES {
             return mir_list(element_types[0]);
         }
-        if name == "set" {
+        if name in SET_CLASSES {
             return mir_set(element_types[0]);
         }
         return mir_dict(element_types[0], element_types[1]);
@@ -356,8 +384,18 @@ impl stub_archetype(scope: uni.Archetype) -> bool {
     return scope.loc is not None and scope.loc.mod_path.endswith(".pyi");
 }
 
+impl stub_scope(scope: (uni.UniScopeNode | None)) -> bool {
+    return scope is not None
+        and scope.loc is not None
+        and scope.loc.mod_path.endswith(".pyi");
+}
+
 impl mir_class_value_type(
     t: ClassType, env: (dict[str, TypeBase] | None) = None
 ) -> MirType {
     return mir_class("*");
+}
+
+impl lenient_c_slot(t: (TypeBase | None)) -> bool {
+    return isinstance(t, AnyType) and t.is_foreign and not t.foreign_scalar;
 }

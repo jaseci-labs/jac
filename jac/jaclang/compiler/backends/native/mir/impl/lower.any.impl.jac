@@ -24,7 +24,14 @@ impl MirLowering.any_tag(t: MirType, site: uni.UniNode) -> int {
         return ANY_SET_TAG;
     }
     if t.kind
-        in (MirKind.OBJ, MirKind.FN, MirKind.BYTES, MirKind.BYTEARRAY, MirKind.FILE) {
+        in (
+            MirKind.OBJ,
+            MirKind.FN,
+            MirKind.BYTES,
+            MirKind.BYTEARRAY,
+            MirKind.TUPLE,
+            MirKind.FILE
+        ) {
         return ANY_OBJ_TAG;
     }
     raise MirRefused(mir_refusal("conversion", f"{t.render()} to any", site));
@@ -57,6 +64,12 @@ impl MirLowering.any_box(value: MirValue, site: uni.UniNode) -> MirValue {
             raise MirRefused(mir_refusal("conversion", "str to any", site));
         }
         source = made;
+    }
+    if value.type.kind == MirKind.TUPLE {
+        source = self.tuple_box(value, site);
+        return self.emit_value(
+            MirOp.ANY_BOX, mir_any(), [source], int_value=ANY_OBJ_TAG
+        );
     }
     return self.emit_value(
         MirOp.ANY_BOX, mir_any(), [source], int_value=self.any_tag(source.type, site)
@@ -138,7 +151,10 @@ impl MirLowering.any_unbox(
         b.position(done);
         return b.load(result, to);
     }
-    if mir_holds_ref(to) and to.kind != MirKind.TUPLE {
+    if to.kind == MirKind.TUPLE {
+        return self.tuple_unbox(b.ref_cast(held, mir_ref(), False), to);
+    }
+    if mir_holds_ref(to) {
         return b.ref_cast(held, to, False);
     }
     raise MirRefused(mir_refusal("conversion", f"any to {to.render()}", site));
@@ -201,10 +217,43 @@ impl MirLowering.identity(
         (l, r) = self.unify_numeric(left, right, site);
         return b.compare("eq", l, r);
     }
+    if (left.type.kind == MirKind.OPT) != (right.type.kind == MirKind.OPT) {
+        boxed = left if left.type.kind == MirKind.OPT else right;
+        plain = right if left.type.kind == MirKind.OPT else left;
+        if boxed.type.payload().is_numeric() and plain.type.is_numeric() {
+            (held, payload, absent, done) = self.opt_begin(boxed, mir_bool());
+            self.opt_switch(held, self.identity(payload, plain, site), absent, done);
+            return self.opt_end(held, b.const_bool(False), done);
+        }
+    }
+    if MirKind.OPT in (left.type.kind, right.type.kind)
+        and self.ref_word_side(left)
+        and self.ref_word_side(right) {
+        return b.compare("eq", self.ref_word(left), self.ref_word(right));
+    }
     raise MirRefused(
         mir_refusal(
             "comparison", f"{left.type.render()} is {right.type.render()}", site
         )
+    );
+}
+
+impl MirLowering.ref_word_side(value: MirValue) -> bool {
+    t = value.type.payload() if value.type.kind == MirKind.OPT else value.type;
+    return t.kind
+        in (MirKind.OBJ, MirKind.OSP, MirKind.LIST, MirKind.DICT, MirKind.SET);
+}
+
+impl MirLowering.ref_word(value: MirValue) -> MirValue {
+    b = self.builder();
+    if value.type.kind != MirKind.OPT {
+        return self.address_of(value);
+    }
+    held = self.spill(value);
+    return b.select(
+        self.opt_present(held),
+        self.address_of(self.opt_get(held)),
+        b.const_int(0, mir_int())
     );
 }
 
@@ -244,7 +293,7 @@ impl MirLowering.value_truthy(value: MirValue, site: uni.UniNode) -> (MirValue |
             if found is None {
                 continue;
             }
-            decl = self.decls.get(id(found));
+            decl = self.method_decl_of(found);
             if decl is None or decl.params {
                 return None;
             }
@@ -272,22 +321,66 @@ impl MirLowering.value_truthy(value: MirValue, site: uni.UniNode) -> (MirValue |
 }
 
 impl MirLowering.any_to_str(value: MirValue, site: uni.UniNode) -> MirValue {
-    b = self.builder();
-    made = self.spill(
-        self.runtime_value(
-            "__jac_rt_any_str",
+    return self.any_text("__jac_rt_any_str", value);
+}
+
+impl MirLowering.any_text(helper: str, value: MirValue) -> MirValue {
+    return self.owned_text(
+        self.call_rt(
+            helper,
             [
                 self.emit_value(MirOp.ANY_TAG, mir_int(), [value]),
                 self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [value])
             ]
         )
     );
-    self.raise_if(
-        b.compare("eq", self.address_of(made), b.const_int(0, mir_int())),
-        "TypeError",
-        "str() of this boxed value is not lowered natively"
+}
+
+impl MirLowering.any_parts(value: MirValue) -> list[MirValue] {
+    return [
+        self.emit_value(MirOp.ANY_TAG, mir_int(), [value]),
+        self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [value])
+    ];
+}
+
+impl MirLowering.any_compare(
+    name: str, left: MirValue, right: MirValue, site: uni.UniNode
+) -> MirValue {
+    b = self.builder();
+    if name in ("eq", "ne") {
+        for (mine, other) in ((left, right), (right, left)) {
+            arch = self.archetypes.get(mine.type.name)
+                if mine.type.kind == MirKind.OBJ
+                else None;
+            if arch is not None and self.find_method(arch, "__eq__") is not None {
+                same = self.object_eq(mine, other, site);
+                return same if name == "eq" else b.logical_not(same);
+            }
+        }
+    }
+    parts = self.any_parts(self.any_box(left, site))
+        + self.any_parts(self.any_box(right, site));
+    if name in ("eq", "ne") {
+        same = self.runtime_value("__jac_rt_any_equal", parts);
+        return same if name == "eq" else b.logical_not(same);
+    }
+    return self.runtime_value(
+        "__jac_rt_any_order", parts + [b.const_int(ANY_ORDER_CODES[name], mir_int())]
     );
-    return b.str_make(made, made, self.runtime_value("__jac_rt_str_size", [made]));
+}
+
+impl MirLowering.any_contains(
+    item: MirValue, holder: MirValue, site: uni.UniNode
+) -> MirValue {
+    return self.runtime_value(
+        "__jac_rt_any_contains",
+        self.any_parts(holder) + self.any_parts(self.any_box(item, site))
+    );
+}
+
+impl MirLowering.any_iter(value: MirValue) -> MirValue {
+    made = self.runtime_value("__jac_rt_any_iter", self.any_parts(value));
+    return self.builder().ref_cast(made, mir_iter(mir_any()), True);
 }
 
 impl MirLowering.narrow(value: MirValue, nd: uni.Name) -> MirValue {
@@ -364,9 +457,20 @@ impl MirLowering.isinstance_test(
             verdict = found if verdict is None else b.binary("or", verdict, found);
             continue;
         }
-        if self.expr_type(item).kind == MirKind.CLASS {
+        item_type = self.expr_type(item);
+        if item_type.kind == MirKind.CLASS {
             found = self.class_isinstance(value, self.lower_expr(item));
             verdict = found if verdict is None else b.binary("or", verdict, found);
+            continue;
+        }
+        if item_type.kind == MirKind.TUPLE
+            and item_type.args
+            and all(member.kind == MirKind.CLASS for member in item_type.args) {
+            classes = self.spill(self.lower_expr(item));
+            for index in range(len(item_type.args)) {
+                found = self.class_isinstance(value, self.tuple_get(classes, index));
+                verdict = found if verdict is None else b.binary("or", verdict, found);
+            }
             continue;
         }
         raise MirRefused(mir_refusal("call", "isinstance of a non-archetype", site));
@@ -400,7 +504,8 @@ impl MirLowering.any_isinstance(
             }
             continue;
         }
-        if isinstance(item, uni.Name) and item.value in ("bytes", "bytearray") {
+        if isinstance(item, uni.Name)
+            and item.value in ("bytes", "bytearray", "tuple") {
             label = self.emit_value(
                 MirOp.CSTR, mir_c_ptr(mir_int(8, False)), [], str_value=item.value
             );

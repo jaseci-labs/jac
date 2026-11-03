@@ -1,5 +1,4 @@
 import os;
-import from pathlib { Path }
 
 import from typing { cast }
 
@@ -212,7 +211,7 @@ walker TypeEvaluator {
     def _module_in_flight(path: str) -> bool;
     def _resolve_importer_path(ast_node: UniNode) -> (str | None);
     def forget_module(resolved_path: str) -> None;
-    def _resolve_from_path(from_mod: ModulePath) -> Path;
+    def _resolve_from_path(from_mod: ModulePath) -> str;
     def _resolve_client_npm_module(node_: ModulePath) -> (str | None);
     def _relative_import_must_resolve(node_: ModulePath) -> bool;
     def _declared_missing_dependency(node_: ModulePath) -> (str | None);

@@ -736,7 +736,7 @@ impl CatalogWriter._type_ident_uncached(t: TypeBase) -> any {
                 "module",
                 flags,
                 t.mod_name or "",
-                str(t.file_uri) if t.file_uri else "",
+                t.file_uri or ".",
                 bool(t.is_external),
                 self._mod_ident(tab) if isinstance(tab, Module) else -1,
 
@@ -1196,7 +1196,7 @@ impl CatalogWriter.encode_type(idx: int) -> bytes {
         put_uvar(out, TY_MODULE);
         put_uvar(out, flags);
         put_uvar(out, self.sid(t.mod_name or ""));
-        put_uvar(out, self.sid(self.rel_of(str(t.file_uri)) if t.file_uri else ""));
+        put_uvar(out, self.sid(self.rel_of(t.file_uri or ".")));
         put_uvar(out, 1 if t.is_external else 0);
         tab = t.symbol_table;
         put_ref(out, self.ref_module(tab if isinstance(tab, Module) else None));

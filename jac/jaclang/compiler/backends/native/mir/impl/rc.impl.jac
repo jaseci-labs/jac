@@ -205,7 +205,10 @@ impl MirRcState.initialize_slots {
     first = self.fn.blocks[0];
     at = 0;
     while at < len(first.instrs)
-        and first.instrs[at].op in (MirOp.SLOT, MirOp.EXC_FRAME) {
+        and (
+            first.instrs[at].op in (MirOp.SLOT, MirOp.EXC_FRAME)
+            or (first.instrs[at].op == MirOp.ALLOCA and not first.instrs[at].operands)
+        ) {
         at += 1;
     }
     made: list[MirInstr] = [];
@@ -334,7 +337,10 @@ impl MirRcState.end_temporaries {
         }
         at = 0;
         while at < len(blk.instrs)
-            and blk.instrs[at].op in (MirOp.SLOT, MirOp.EXC_FRAME) {
+            and (
+                blk.instrs[at].op in (MirOp.SLOT, MirOp.EXC_FRAME)
+                or (blk.instrs[at].op == MirOp.ALLOCA and not blk.instrs[at].operands)
+            ) {
             at += 1;
         }
         made: list[MirInstr] = [];

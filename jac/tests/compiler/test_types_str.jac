@@ -3,7 +3,6 @@
 Tests that all type classes produce correct string representations.
 """
 
-import from pathlib { Path }
 import from unittest.mock { MagicMock }
 import from jaclang.compiler.types { types }
 import from jaclang.compiler.frontend.unitree { Module }
@@ -30,7 +29,7 @@ test "all type str methods" {
     assert str(module1) == "<module test_module>";
 
     # ModuleType - with file_uri
-    module2 = types.ModuleType(file_uri=Path("/path/to/module.jac"));
+    module2 = types.ModuleType(file_uri="/path/to/module.jac");
     assert str(module2) == "<module /path/to/module.jac>";
 
     # ModuleType - with empty/default values
