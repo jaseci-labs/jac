@@ -77,6 +77,7 @@ obj MirEmitter {
 
     def emit -> ir.Module;
     def llvm_type(t: MirType) -> ir.Type;
+    def slot_type(t: MirType) -> ir.Type;
     def fn_type(params: list[MirType], ret: MirType) -> ir.FunctionType;
     def declare(fn: MirFunction) -> ir.Function;
     def extern(

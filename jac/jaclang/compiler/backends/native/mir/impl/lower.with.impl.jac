@@ -182,6 +182,15 @@ impl MirLowering.none_arg(ptype: MirType, site: uni.UniNode) -> MirValue {
     if mir_holds_ref(ptype) or ptype.kind in (MirKind.CLASS, MirKind.C_PTR) {
         return self.builder().const_null(ptype);
     }
+    if ptype.kind == MirKind.BOOL {
+        return self.builder().const_bool(False);
+    }
+    if ptype.kind == MirKind.INT {
+        return self.builder().const_int(0, ptype);
+    }
+    if ptype.kind == MirKind.FLOAT {
+        return self.builder().const_float(0.0, ptype);
+    }
     raise MirRefused(
         mir_refusal(
             "with",

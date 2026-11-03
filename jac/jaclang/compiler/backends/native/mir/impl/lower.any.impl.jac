@@ -403,6 +403,31 @@ impl MirLowering.any_compare(
     );
 }
 
+impl MirLowering.value_comparable(left: MirValue, right: MirValue, name: str) -> bool {
+    shaped = (
+        MirKind.LIST,
+        MirKind.DICT,
+        MirKind.SET,
+        MirKind.TUPLE,
+        MirKind.BYTES,
+        MirKind.BYTEARRAY,
+        MirKind.STR,
+        MirKind.STR_REF,
+        MirKind.INT,
+        MirKind.FLOAT,
+        MirKind.BOOL
+    );
+    if left.type.kind not in shaped
+        or right.type.kind not in shaped
+        or (left.type.is_numeric() and right.type.is_numeric()) {
+        return False;
+    }
+    return name in ("eq", "ne")
+        or mir_is_container(left.type)
+        or mir_is_container(right.type)
+        or left.type.kind != right.type.kind;
+}
+
 impl MirLowering.any_arith(
     op: str, left: MirValue, right: MirValue, site: uni.UniNode
 ) -> MirValue {
@@ -479,7 +504,11 @@ impl MirLowering.abstract_names(item: uni.Expr) -> list[str] {
                     and isinstance(item.right, uni.Name)
                 else ""
         );
-    if name not in ABSTRACT_TYPE_NAMES or self.target_archetype(item) is not None {
+    if name not in ABSTRACT_TYPE_NAMES {
+        return [];
+    }
+    arch = self.target_archetype(item);
+    if arch is not None and not arch.loc.mod_path.endswith(".pyi") {
         return [];
     }
     return ABSTRACT_TYPE_NAMES[name];

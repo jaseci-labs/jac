@@ -470,6 +470,106 @@ impl MirLowering.lower_body(stmts: Sequence[uni.UniNode]) {
             self.builder().position(self.st().fn.new_block("dead"));
         }
         self.lower_stmt(stmt);
+        self.drop_last_uses(stmt);
+    }
+}
+
+impl MirLowering.drop_consumed_args(nd: uni.FuncCall) {
+    sites = self.module.own_move_sites;
+    callee = nd.callee_decl;
+    if not sites
+        or not isinstance(callee, uni.Ability)
+        or not isinstance(callee.signature, uni.FuncSignature)
+        or self.builder().block.terminated()
+        or self.st().generator is not None {
+        return;
+    }
+    params = callee.signature.get_parameters();
+    b = self.builder();
+    for (index, arg) in enumerate(list(nd.params or [])) {
+        if not isinstance(arg, uni.Name)
+            or id(arg) not in sites
+            or arg.sym is None
+            or arg.sym.storage != SymbolStorage.LOCAL
+            or index >= len(params) {
+            continue;
+        }
+        param = params[index];
+        if param.name.sym is None or param.name.sym.ownership != OwnershipKind.OWN {
+            continue;
+        }
+        slot = self.st().local_names.get(arg.sym_name);
+        if slot is None or not slot.is_slot or not mir_holds_ref(slot.type) {
+            continue;
+        }
+        b.store(slot, b.const_null(slot.type));
+    }
+}
+
+impl MirLowering.drop_last_uses(stmt: uni.UniNode) {
+    if isinstance(stmt, (uni.ReturnStmt, uni.RaiseStmt))
+        or self.builder().block.terminated()
+        or self.st().generator is not None {
+        return;
+    }
+    sites = self.module.own_move_sites;
+    last_uses = self.module.rc_last_use.get(id(stmt)) or [];
+    if not sites and not last_uses {
+        return;
+    }
+    targets: list[str] = [];
+    if isinstance(stmt, uni.Assignment) {
+        targets = [
+            t.sym_name
+            for t in stmt.target
+            if isinstance(t, uni.Name)
+        ];
+    }
+    names: list[str] = [];
+    if sites {
+        for nm in stmt.get_all_sub_nodes(uni.Name) {
+            if id(nm) not in sites
+                or nm.sym is None
+                or nm.find_parent_of_type(uni.CodeBlockStmt) is not stmt
+                or nm.find_parent_of_type(uni.LambdaExpr) is not None
+                or nm.sym.storage not in (SymbolStorage.LOCAL, SymbolStorage.PARAM)
+                or nm.sym_name in targets
+                or nm.sym_name in names {
+                continue;
+            }
+            names.append(nm.sym_name);
+        }
+    }
+    for ln in last_uses {
+        if ln in names {
+            continue;
+        }
+        sym = stmt.sym_tab.lookup(ln) if stmt.sym_tab is not None else None;
+        if sym is None
+            or sym.ownership != OwnershipKind.OWN
+            or sym.storage != SymbolStorage.LOCAL {
+            continue;
+        }
+        names.append(ln);
+    }
+    b = self.builder();
+    for name in names {
+        slot = self.st().local_names.get(name);
+        if slot is None or not slot.is_slot {
+            continue;
+        }
+        t = slot.type.payload() if slot.type.kind == MirKind.OPT else slot.type;
+        if t.kind
+            not in (
+                MirKind.OBJ,
+                MirKind.LIST,
+                MirKind.DICT,
+                MirKind.SET,
+                MirKind.ANY
+            ) {
+            continue;
+        }
+        b.store(slot, b.const_null(slot.type));
     }
 }
 
@@ -663,6 +763,64 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
         }
     }
     self.store_name(target, value);
+}
+
+impl MirLowering.exchange_place(arg: uni.Expr) -> MirValue {
+    inner: uni.UniNode = arg;
+    while True {
+        if isinstance(inner, uni.AtomUnit) {
+            inner = inner.value;
+        } elif isinstance(inner, uni.UnaryExpr) and is_borrow_kind(inner.ownership) {
+            inner = inner.operand;
+        } else {
+            break;
+        }
+    }
+    if isinstance(inner, uni.Name) {
+        return self.name_slot(inner);
+    }
+    if isinstance(inner, uni.AtomTrailer) {
+        return self.lower_place(inner);
+    }
+    raise MirRefused(
+        mir_refusal(
+            "place",
+            type(inner).__name__,
+            arg,
+            "take() and swap() act on a local or an attribute."
+        )
+    );
+}
+
+impl MirLowering.place_exchange(nd: uni.FuncCall, name: str) -> (MirValue | None) {
+    args = self.call_args(nd);
+    if len(args) != (1 if name == "take" else 2) {
+        return None;
+    }
+    b = self.builder();
+    first = self.exchange_place(args[0]);
+    elem = self.place_elem(first);
+    held = self.temp_slot(elem);
+    b.store(held, b.load(first, elem));
+    if name == "take" {
+        if elem.kind in (MirKind.OPT, MirKind.ANY, MirKind.NONE) {
+            emptied = self.coerce(self.none_value(), elem, nd);
+        } elif mir_holds_ref(elem) {
+            emptied = b.const_null(elem);
+        } else {
+            raise MirRefused(
+                mir_refusal(
+                    "take", elem.render(), nd, "take() empties an optional place."
+                )
+            );
+        }
+        b.store(first, emptied);
+        return b.load(held, elem);
+    }
+    second = self.exchange_place(args[1]);
+    b.store(first, self.coerce(b.load(second, self.place_elem(second)), elem, nd));
+    b.store(second, self.coerce(b.load(held, elem), self.place_elem(second), nd));
+    return self.none_value();
 }
 
 impl MirLowering.assign_to(target: uni.UniNode, value: MirValue, nd: uni.Assignment) {
@@ -1068,6 +1226,7 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
         value = self.lower_fstring(nd);
     } elif isinstance(nd, uni.FuncCall) {
         value = self.lower_call(nd);
+        self.drop_consumed_args(nd);
     } elif isinstance(nd, uni.ConcurrentExpr) {
         value = self.lower_concurrent(nd);
     } elif isinstance(nd, uni.AwaitExpr) {
@@ -1592,10 +1751,13 @@ impl MirLowering.lower_compare(nd: uni.CompareExpr) -> MirValue {
     );
     done = fn.new_block("cmp.done");
     left = self.lower_expr(nd.left);
+    left_nd: uni.Expr = nd.left;
     count = len(nd.ops);
     for (index, (op, right_nd)) in enumerate(zip(nd.ops, nd.rights)) {
         right = self.lower_expr(right_nd);
-        verdict = self.compare_values(op.name, left, right, nd);
+        verdict = self.view_compare(op.name, left_nd, left, right_nd, right)
+            or self.compare_values(op.name, left, right, nd);
+        left_nd = right_nd;
         b.store(result, verdict);
         if index + 1 < count {
             right = self.spill(right);
@@ -1609,6 +1771,54 @@ impl MirLowering.lower_compare(nd: uni.CompareExpr) -> MirValue {
     }
     b.position(done);
     return b.load(result, mir_bool());
+}
+
+impl MirLowering.view_kind(nd: uni.Expr) -> str {
+    t = nd.type;
+    if isinstance(t, ClassType)
+        and t._shared is not None
+        and t.shared.class_name in ("dict_keys", "dict_items", "dict_values") {
+        return t.shared.class_name;
+    }
+    return "";
+}
+
+impl MirLowering.view_compare(
+    op: str, left_nd: uni.Expr, left: MirValue, right_nd: uni.Expr, right: MirValue
+) -> (MirValue | None) {
+    if op not in (Tok.EE, Tok.NE) {
+        return None;
+    }
+    lv = self.view_kind(left_nd);
+    rv = self.view_kind(right_nd);
+    if not lv and not rv {
+        return None;
+    }
+    b = self.builder();
+    if "dict_values" in (lv, rv) {
+        same = isinstance(left_nd, uni.Name)
+            and isinstance(right_nd, uni.Name)
+            and left_nd.sym is not None
+            and left_nd.sym is right_nd.sym;
+        return b.const_bool(same == (op == Tok.EE));
+    }
+    sides: list[MirValue] = [];
+    for (kind, value) in ((lv, left), (rv, right)) {
+        if kind {
+            if value.type.kind != MirKind.LIST {
+                return None;
+            }
+            elem = value.type.payload();
+            made = self.spill(self.new_dict(elem, None, mir_set(elem)));
+            self.extend_from(made, self.spill(value), left_nd);
+            sides.append(made);
+        } elif value.type.kind == MirKind.SET {
+            sides.append(value);
+        } else {
+            return b.const_bool(op == Tok.NE);
+        }
+    }
+    return self.compare_values(op, sides[0], sides[1], left_nd);
 }
 
 impl MirLowering.compare_values(
@@ -1700,8 +1910,10 @@ impl MirLowering.compare_values(
     if name in ("eq", "ne")
         and left.type.kind in (MirKind.OBJ, MirKind.OSP)
         and right.type.kind in (MirKind.OBJ, MirKind.OSP) {
-        same = self.object_eq(left, right, site);
-        return same if name == "eq" else self.builder().logical_not(same);
+        return self.object_compare(name, left, right, site);
+    }
+    if self.value_comparable(left, right, name) {
+        return self.any_compare(name, left, right, site);
     }
     if not left.type.is_numeric() or not right.type.is_numeric() {
         raise MirRefused(
@@ -1720,7 +1932,7 @@ impl MirLowering.lower_unary(nd: uni.UnaryExpr) -> MirValue {
     if op == Tok.NOT {
         return b.logical_not(self.condition(nd.operand));
     }
-    if is_borrow_kind(nd.ownership) {
+    if is_borrow_kind(nd.ownership) or nd.ownership == OwnershipKind.OWN {
         return self.lower_expr(nd.operand);
     }
     if nd.ownership is not None and int(nd.ownership.value) in (1, 4) {
@@ -2765,6 +2977,9 @@ impl MirLowering.str_compare(op: str, left: MirValue, right: MirValue) -> MirVal
 }
 
 impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) {
+    if name in ("take", "swap") {
+        return self.place_exchange(nd, name);
+    }
     if name == "print" {
         return self.lower_print(nd);
     }
@@ -3747,11 +3962,22 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
     }
     if dispatch == IntrinsicDispatch.MEM_LOAD {
         address = self.intrinsic_operand(args[0], "i64");
+        if found.width is not None and found.width < 64 {
+            narrow = self.emit_value(
+                MirOp.MEM_LOAD, mir_int(found.width, False, True), [address]
+            );
+            return self.emit_value(MirOp.CONV, result_type, [narrow]);
+        }
         return self.emit_value(MirOp.MEM_LOAD, result_type, [address]);
     }
     if dispatch == IntrinsicDispatch.MEM_STORE {
         address = self.intrinsic_operand(args[0], "i64");
         value = self.intrinsic_operand(args[1], found.param_specs[1]);
+        if found.width is not None and found.width < 64 {
+            value = self.emit_value(
+                MirOp.CONV, mir_int(found.width, False, True), [value]
+            );
+        }
         return self.emit_value(MirOp.MEM_STORE, mir_none(), [address, value]);
     }
     if dispatch in (IntrinsicDispatch.FLOAT_BITS, IntrinsicDispatch.BITS_FLOAT) {
