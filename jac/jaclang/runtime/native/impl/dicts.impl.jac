@@ -94,8 +94,13 @@ impl _tables(d: int, cap: int, is_set: bool) {
     __mem_store_i64(d + DICT_ORDER, malloc(cap * SLOT));
 }
 
+impl _ctrl_index(ctrl: int, i: int) -> int {
+    word = __mem_load_i32(ctrl + i * CELL) & CELL_MASK;
+    return word - CELL_SPAN if word >= CELL_SIGN else word;
+}
+
 impl _cell(d: int, i: int) -> int {
-    return int(__mem_load_i32(__mem_load_i64(d + DICT_CTRL) + i * CELL));
+    return _ctrl_index(__mem_load_i64(d + DICT_CTRL), i);
 }
 
 impl _probe(d: int, h: int, key: int, key_kind: int) -> int {
@@ -106,7 +111,7 @@ impl _probe(d: int, h: int, key: int, key_kind: int) -> int {
     i = h & mask;
     perturb = h;
     free_cell = -1;
-    index = int(__mem_load_i32(ctrl + i * CELL));
+    index = _ctrl_index(ctrl, i);
     while index != CELL_EMPTY {
         if index == CELL_DELETED {
             if free_cell < 0 {
@@ -118,7 +123,7 @@ impl _probe(d: int, h: int, key: int, key_kind: int) -> int {
         }
         perturb = perturb >> PERTURB_SHIFT;
         i = (i * 5 + 1 + (perturb & mask)) & mask;
-        index = int(__mem_load_i32(ctrl + i * CELL));
+        index = _ctrl_index(ctrl, i);
     }
     if free_cell < 0 {
         free_cell = i;
@@ -131,7 +136,7 @@ impl _empty_cell(d: int, h: int) -> int {
     ctrl = __mem_load_i64(d + DICT_CTRL);
     i = h & mask;
     perturb = h;
-    while int(__mem_load_i32(ctrl + i * CELL)) != CELL_EMPTY {
+    while _ctrl_index(ctrl, i) != CELL_EMPTY {
         perturb = perturb >> PERTURB_SHIFT;
         i = (i * 5 + 1 + (perturb & mask)) & mask;
     }
@@ -244,10 +249,14 @@ impl __jac_rt_dict_new(key_kind: int, val_kind: int) -> int {
     __mem_store_i64(d + DICT_CTRL, 0);
     __mem_store_i64(d + DICT_USED, 0);
     __mem_store_i64(d + DICT_ORDER, 0);
+    __jac_rt_dict_rekind(d, key_kind, val_kind);
+    return d;
+}
+
+impl __jac_rt_dict_rekind(d: int, key_kind: int, val_kind: int) {
     __mem_store_i64(d + DICT_KEY_KIND, key_kind);
     __mem_store_i64(d + DICT_VAL_KIND, val_kind);
     __mem_store_i64(d - HDR_DTOR_BACK, _dtor_for(key_kind, val_kind));
-    return d;
 }
 
 impl __jac_rt_dict_len(d: int) -> int {

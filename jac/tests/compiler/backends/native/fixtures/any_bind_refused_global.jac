@@ -1,6 +1,6 @@
 import json;
 
-glob raw: any = json.loads("{\"x\": 3}"),
+glob raw: any = json.loads("{\"x\": \"three\"}"),
      counts: dict[str, int] = raw;
 
 with entry {

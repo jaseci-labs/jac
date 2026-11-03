@@ -15138,6 +15138,7 @@ graph import runtime.native {
             __jac_rt_dict_len,
             __jac_rt_dict_new,
             __jac_rt_dict_next,
+            __jac_rt_dict_rekind,
             __jac_rt_dict_set,
             __jac_rt_dict_val_at
         },
@@ -15156,6 +15157,7 @@ graph import runtime.native {
             __jac_rt_list_extend,
             __jac_rt_list_new,
             __jac_rt_list_push,
+            __jac_rt_list_rekind,
             __jac_rt_tuple_new,
             __jac_rt_tuple_set
         },

@@ -36,6 +36,9 @@ glob DICT_LEN: int = 0,
      CELL: int = 4,
      CELL_EMPTY: int = -1,
      CELL_DELETED: int = -2,
+     CELL_MASK: int = 4294967295,
+     CELL_SIGN: int = 2147483648,
+     CELL_SPAN: int = 4294967296,
      PERTURB_SHIFT: int = 5,
      HDR_DTOR_BACK: int = 8,
      HDR_TOTAL: int = 32;
@@ -52,6 +55,8 @@ glob HASH_MASK: int = 9223372036854775807,
      MIX_B: int = -7723592293110705685;
 
 def:pub __jac_rt_dict_new(key_kind: int, val_kind: int) -> int;
+
+def:pub __jac_rt_dict_rekind(d: int, key_kind: int, val_kind: int);
 
 def:pub __jac_rt_dict_len(d: int) -> int;
 
@@ -117,6 +122,7 @@ def _grow_cap(n: int) -> int;
 
 def _tables(d: int, cap: int, is_set: bool);
 
+def _ctrl_index(ctrl: int, i: int) -> int;
 def _cell(d: int, i: int) -> int;
 
 def _probe(d: int, h: int, key: int, key_kind: int) -> int;
