@@ -277,7 +277,6 @@ impl MirNativePass.note_demotions(lowering: MirLowering, prior: (NativeIface | N
             late=first.late if first is not None else False
         );
     }
-    shown = self.prog.native_units().noted_demotions;
     options = self.prog.options;
     debug = bool(options.na_debug);
     warn = debug or bool(options.native_debug);
@@ -290,10 +289,12 @@ impl MirNativePass.note_demotions(lowering: MirLowering, prior: (NativeIface | N
     }
     for (symbol, reason) in sorted(mir.demoted.items()) {
         name = mir_demoted_name(mir, symbol);
-        if name in noted or shown.get(f"{here}:{name}") == reason {
+        if name in noted
+            or not active_host().note_native_demotion(
+                self.prog, f"{here}:{name}", reason
+            ) {
             continue;
         }
-        shown[f"{here}:{name}"] = reason;
         found = lowering.refusals.get(symbol, []);
         why = "; ".join(refusal.located() for refusal in found) if found else reason;
         if debug {

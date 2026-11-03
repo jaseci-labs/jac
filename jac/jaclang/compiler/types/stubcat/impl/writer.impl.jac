@@ -73,7 +73,7 @@ impl collect_scope_members(scope: UniScopeNode) -> ScopeMembers {
             callable_syms = [
                 sym
                 for sym in syms
-                if getattr(sym.sym_type, "value", "") in ("ability", "method")
+                if sym.sym_type.value in ("ability", "method")
             ];
             if not callable_syms {
                 continue;

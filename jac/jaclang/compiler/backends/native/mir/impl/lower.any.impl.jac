@@ -625,6 +625,12 @@ impl MirLowering.isinstance_test(
             verdict = found if verdict is None else b.binary("or", verdict, found);
             continue;
         }
+        if item_type.kind == MirKind.LIST
+            and item_type.payload().kind == MirKind.CLASS {
+            found = self.class_list_isinstance(value, self.lower_expr(item));
+            verdict = found if verdict is None else b.binary("or", verdict, found);
+            continue;
+        }
         if item_type.kind == MirKind.TUPLE
             and item_type.args
             and all(member.kind == MirKind.CLASS for member in item_type.args) {

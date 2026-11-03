@@ -287,8 +287,8 @@ impl ProjectHost.native_dep_iface(
     );
 }
 
-impl ProjectHost.native_dep_discovery_open(program: JacProgram) -> bool {
-    return program.native_units().dep_discovery_open();
+impl ProjectHost.native_dep_pending(program: JacProgram, path: str) -> bool {
+    return program.native_units().dep_pending(path);
 }
 
 impl ProjectHost.native_deps_deferred(program: JacProgram) -> bool {
@@ -311,6 +311,17 @@ impl ProjectHost.held_native_iface(
 impl ProjectHost.native_lowering_failed(program: JacProgram, path: str, detail: str) {
     import os;
     program.native_units().failures[os.path.realpath(path)] = detail;
+}
+
+impl ProjectHost.note_native_demotion(
+    program: JacProgram, key: str, reason: str
+) -> bool {
+    shown = program.native_units().noted_demotions;
+    if shown.get(key) == reason {
+        return False;
+    }
+    shown[key] = reason;
+    return True;
 }
 
 impl ProjectHost.save_native_debug_ir(path: str, text: str) {

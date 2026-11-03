@@ -135,11 +135,10 @@ impl MirLowering.declare_c_global(assign: uni.Assignment) -> MirGlobal {
     if defines and isinstance(initial, uni.Expr) {
         made.linkage = "internal" if is_priv else "";
         made.c_init = self.c_const(initial, ctype, made.type, made.count);
-    } elif assign.value is not None and owner is not None {
-        unit = os.path.realpath(owner.loc.mod_path);
-        if unit.endswith(".jac") and unit not in self.mir.deps {
-            self.mir.deps.append(unit);
-        }
+    } elif assign.value is not None
+        and owner is not None
+        and owner.loc.mod_path.endswith(".jac") {
+        self.add_dep(owner.loc.mod_path, name, assign);
     }
     self.c_views[id(assign)] = made;
     held = self.mir.globals.get(name);
@@ -373,10 +372,7 @@ impl MirLowering.c_function_symbol(expr: uni.Expr, from_c: bool = True) -> str {
             ]
         );
         self.mir.externs[symbol] = made;
-        unit = os.path.realpath(path);
-        if unit not in self.mir.deps {
-            self.mir.deps.append(unit);
-        }
+        self.add_dep(path, symbol, expr);
         return self.c_entry(symbol, made.params, made.ret, target)
             if from_c
             else symbol;

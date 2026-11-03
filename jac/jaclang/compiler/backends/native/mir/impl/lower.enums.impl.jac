@@ -555,10 +555,7 @@ impl MirLowering.foreign_enum_method(
         self.mir.externs[symbol] = MirExtern(
             symbol=symbol, ret=ret, params=[enum_type] + params
         );
-        real = os.path.realpath(path);
-        if real not in self.mir.deps {
-            self.mir.deps.append(real);
-        }
+        self.add_dep(path, symbol, method);
         made = MirDecl(
             ability=method, symbol=symbol, params=params, ret=ret, self_type=enum_type
         );

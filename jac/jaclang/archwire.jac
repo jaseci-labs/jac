@@ -6376,9 +6376,6 @@ graph import compiler {
             native_variant_of,
             resolve_native_module
         },
-        backends.native.mir.lower_types
-            | native_scope.scope_allows_inferred_path
-            | placement.placement_solver._native_deps_ok { native_unit_compile_active },
         backends.native.region_abi._region_layout_facts {
             HDR_ALLOC_ID_OFF,
             HDR_DTOR_OFF,
@@ -6482,6 +6479,8 @@ graph import compiler {
         native_bindings.import_gaps { resolve_native_module },
         native_compiler.NativeCompiler._resolve_classes { NATIVE_ARCH_SCOPE_SEP },
         native_scope.binds_bare_arch_names { kernel_unit_rels },
+        native_scope.scope_allows_inferred_path
+            | placement.placement_solver._native_deps_ok { native_unit_compile_active },
         passes.boundary_analysis_pass {
             BoundaryTypeInfo,
             InteropBinding,
@@ -7200,7 +7199,7 @@ graph import compiler {
             | backends.es.jac_runtime_js.build_osp_core_js
             | backends.native.abi.struct_layouts
             | backends.native.mir.backend
-            | backends.native.mir.lower.MirLowering.require_dep_native
+            | backends.native.mir.lower.MirLowering.dep_verdict
             | backends.py.artifact_imports
             | driver.application._kernel_units
             | driver.boundary_classify
@@ -9488,7 +9487,7 @@ graph import compiler {
     ]
     passes.context --> driver.compiler.assemble_jcir { Alert }
     type passes.context ++> [
-        driver.compiler { Alert },
+        driver.compiler | driver.nativecache { Alert },
         native_compiler { Alert, PassResult },
         symbol_utils { CompilerPass },
     ]
@@ -9637,8 +9636,7 @@ graph import compiler {
     ]
     placement.placement_facts ++> [
         backends.native.mir.backend { native_placement_hard },
-        backends.native.mir.lower { native_unit, pinned_module_space },
-        backends.native.mir.lower_types { native_unit },
+        backends.native.mir.lower { pinned_module_space },
         driver.module_compile.admits_native_checks { variant_selected },
         driver.program.JacProgram.declared_codespace {
             native_only,
@@ -10678,6 +10676,8 @@ graph import compiler.backends.native.mir {
         mir_refusal,
         mir_spec_type,
         mir_type_of,
+        pop_erased_units,
+        push_erased_units,
         refusal_of,
         stub_archetype
     }
@@ -13533,7 +13533,8 @@ graph import compiler.types {
         ct_eval { CatModule },
         type_evaluator.TypeEvaluator._build_field_params
             | types.ClassType.get_class_symbol { CatScope },
-        type_evaluator.TypeEvaluator._is_instance_method_member { CatProvider },
+        type_evaluator.TypeEvaluator._is_instance_method_member
+            | types.ClassType.lookup_member_symbol { CatProvider },
         type_evaluator.TypeEvaluator._merge_catalog_field_params { CatProvider },
         type_evaluator.TypeEvaluator._metaclass_of | types._class_scope_category {
             CatScope

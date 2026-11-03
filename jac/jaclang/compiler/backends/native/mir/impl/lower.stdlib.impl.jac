@@ -198,10 +198,7 @@ impl MirLowering.class_global(
             held, f"{archetype_native_name(holder)}.{target.value}", value
         );
     } else {
-        unit = os.path.realpath(path);
-        if unit not in self.mir.deps {
-            self.mir.deps.append(unit);
-        }
+        self.add_dep(path, symbol, target);
     }
     return held;
 }

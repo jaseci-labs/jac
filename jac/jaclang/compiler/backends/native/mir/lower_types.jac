@@ -99,7 +99,11 @@ def mir_spec_type(spec: str) -> MirType;
 
 def stub_archetype(scope: uni.Archetype) -> bool;
 
-glob _HOST_ONLY_UNITS: dict[str, bool] = {};
+glob _ERASED_UNITS: list[set[str]] = [];
+
+def push_erased_units(units: set[str]);
+
+def pop_erased_units;
 
 def host_only_archetype(arch: uni.Archetype) -> bool;
 

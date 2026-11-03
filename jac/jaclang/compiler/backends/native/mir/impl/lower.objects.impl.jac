@@ -15,7 +15,8 @@ impl MirLowering.arch_of_type(t: (TypeBase | None)) -> (uni.Archetype | None) {
     scope = t.shared.symbol_table;
     if not isinstance(scope, uni.Archetype)
         or c_builtin_kind(t)
-        or foreign_struct_of_type(t) is not None {
+        or foreign_struct_of_type(t) is not None
+        or self.erased_class(t) {
         return None;
     }
     return None if stub_archetype(scope) else scope;
@@ -90,6 +91,7 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
             field_type = member.semantic_type
                 or self.declared_field_type(member.decl_node);
             self.ensure_c_types(field_type);
+            self.note_erasures(field_type);
             slot_type = mir_any()
                 if self.erased_slot(field_type) or self.host_only_type(field_type)
                 else mir_type_of(
@@ -165,10 +167,7 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
                 ret=mir_none(),
                 params=[mir_c_ptr(mir_int(8, False))]
             );
-            unit = os.path.realpath(owner.loc.mod_path);
-            if unit not in self.mir.deps {
-                self.mir.deps.append(unit);
-            }
+            self.add_dep(owner.loc.mod_path, name, arch);
         }
     } except MirRefused as err {
         self.mir.objects.pop(name, None);
@@ -282,10 +281,7 @@ impl MirLowering.foreign_method_decl(method: uni.Ability) -> (MirDecl | None) {
     self.mir.externs[symbol] = MirExtern(
         symbol=symbol, ret=ret, params=[self_type] + params
     );
-    path = os.path.realpath(unit.loc.mod_path);
-    if path not in self.mir.deps {
-        self.mir.deps.append(path);
-    }
+    self.add_dep(unit.loc.mod_path, symbol, method);
     made = MirDecl(
         ability=method,
         symbol=symbol,
@@ -324,10 +320,7 @@ impl MirLowering.foreign_static_decl(method: uni.Ability) -> (MirDecl | None) {
     symbol = self.method_symbol(owner, self.name_of(method));
     self.require_dep_native(unit.loc.mod_path, symbol, method);
     self.mir.externs[symbol] = MirExtern(symbol=symbol, ret=ret, params=params);
-    path = os.path.realpath(unit.loc.mod_path);
-    if path not in self.mir.deps {
-        self.mir.deps.append(path);
-    }
+    self.add_dep(unit.loc.mod_path, symbol, method);
     made = MirDecl(ability=method, symbol=symbol, params=params, ret=ret, owner=owner);
     self.decls[id(method)] = made;
     return made;
@@ -372,10 +365,7 @@ impl MirLowering.foreign_accessor_decl(
     self.mir.externs[symbol] = MirExtern(
         symbol=symbol, ret=ret, params=[self_type] + params
     );
-    path = os.path.realpath(unit.loc.mod_path);
-    if path not in self.mir.deps {
-        self.mir.deps.append(path);
-    }
+    self.add_dep(unit.loc.mod_path, symbol, acc);
     made = MirDecl(
         ability=acc,
         symbol=symbol,
@@ -1418,10 +1408,7 @@ impl MirLowering.construct(
             params=[p[1] for p in params]
                 + ([mir_int()] if self.ctor_takes_mask(params) else [])
         );
-        unit = os.path.realpath(owner.loc.mod_path);
-        if unit not in self.mir.deps {
-            self.mir.deps.append(unit);
-        }
+        self.add_dep(owner.loc.mod_path, obj_def.name, nd);
     }
     result = self.builder().call(symbol, values, mir_obj(obj_def.name));
     if result is None {
@@ -2046,24 +2033,71 @@ impl MirLowering.host_only_type(t: (TypeBase | None)) -> bool {
     }
     members = t.types if isinstance(t, UnionType) else [t];
     for member in members {
-        if not isinstance(member, ClassType) or member._shared is None {
-            continue;
-        }
-        scope = member.shared.symbol_table;
-        if not isinstance(scope, uni.Archetype) or stub_archetype(scope) {
-            continue;
-        }
-        owner = scope.find_parent_of_type(uni.Module);
-        if owner is None
-            or owner is self.module
-            or not owner.loc.mod_path.endswith(".jac") {
-            continue;
-        }
-        if not native_unit(os.path.realpath(owner.loc.mod_path), True, self.prog) {
+        if isinstance(member, ClassType) and self.erased_class(member) {
             return True;
         }
     }
     return False;
+}
+
+impl MirLowering.erased_class(t: ClassType) -> bool {
+    if not self.prog.options.native_unit or t._shared is None {
+        return False;
+    }
+    scope = t.shared.symbol_table;
+    if not isinstance(scope, uni.Archetype) or stub_archetype(scope) {
+        return False;
+    }
+    known = self.erased_archs.get(id(scope));
+    if known is not None {
+        return known;
+    }
+    owner = scope.find_parent_of_type(uni.Module);
+    erased = False;
+    if owner is not None
+        and owner is not self.module
+        and owner.loc.mod_path.endswith(".jac")
+        and self.dep_verdict(owner.loc.mod_path) is False {
+        self.erased_units.add(owner.loc.mod_path);
+        erased = True;
+    }
+    self.erased_archs[id(scope)] = erased;
+    return erased;
+}
+
+impl MirLowering.note_erasures(t: (TypeBase | None)) {
+    if not self.prog.options.native_unit {
+        return;
+    }
+    if isinstance(t, TypeVarType) {
+        bound = self.type_env.get(t.name);
+        if bound is not None and bound is not t {
+            self.note_erasures(bound);
+        }
+        return;
+    }
+    if isinstance(t, UnionType) {
+        for member in t.types {
+            self.note_erasures(member);
+        }
+        return;
+    }
+    if isinstance(t, FunctionType) {
+        for param in t.parameters {
+            self.note_erasures(param.param_type);
+        }
+        self.note_erasures(t.return_type);
+        return;
+    }
+    if not isinstance(t, ClassType) or t._shared is None {
+        return;
+    }
+    self.erased_class(t);
+    if t.private and t.private.type_args {
+        for arg in t.private.type_args {
+            self.note_erasures(arg);
+        }
+    }
 }
 
 impl MirLowering.erased_slot(t: (TypeBase | None)) -> bool {
@@ -2108,6 +2142,39 @@ impl MirLowering.class_value(arch: uni.Archetype) -> MirValue {
     return self.emit_value(
         MirOp.CLASS_ADDR, mir_class("*"), [], str_value=obj_def.name
     );
+}
+
+impl MirLowering.class_list_isinstance(value: MirValue, kinds: MirValue) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    held = self.spill(kinds);
+    probe = self.spill(value);
+    cursor = self.temp_slot(mir_int());
+    found = self.temp_slot(mir_bool());
+    b.store(cursor, b.const_int(0, mir_int()));
+    b.store(found, b.const_bool(False));
+    head = fn.new_block("isa.head");
+    body = fn.new_block("isa.body");
+    hit = fn.new_block("isa.hit");
+    step = fn.new_block("isa.step");
+    done = fn.new_block("isa.done");
+    b.branch(head);
+    b.position(head);
+    at = b.load(cursor, mir_int());
+    b.cond_branch(b.compare("lt", at, self.container_len(held)), body, done);
+    b.position(body);
+    kind = self.spill(self.list_read(held, b.load(cursor, mir_int())));
+    b.cond_branch(self.class_isinstance(probe, kind), hit, step);
+    b.position(hit);
+    b.store(found, b.const_bool(True));
+    b.branch(done);
+    b.position(step);
+    b.store(
+        cursor, b.binary("add", b.load(cursor, mir_int()), b.const_int(1, mir_int()))
+    );
+    b.branch(head);
+    b.position(done);
+    return b.load(found, mir_bool());
 }
 
 impl MirLowering.class_isinstance(value: MirValue, kind: MirValue) -> MirValue {
@@ -2802,7 +2869,7 @@ impl MirLowering.union_field_read(nd: uni.AtomTrailer) -> (MirValue | None) {
         or not isinstance(nd.target, uni.Expr) {
         return None;
     }
-    members = self.union_archetypes(nd.target.type);
+    members = self.union_archetypes(nd.target.narrowed_type or nd.target.type);
     if not members {
         return None;
     }

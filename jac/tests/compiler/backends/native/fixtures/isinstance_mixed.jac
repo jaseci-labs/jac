@@ -123,3 +123,22 @@ def chk_typed_operand -> int {
     }
     return 0;
 }
+
+"""A tuple of classes passed as a value: `isinstance` scans it at run time."""
+def first_of(items: list[Foo], kinds: tuple[type[Foo], ...]) -> int {
+    i = 0;
+    for it in items {
+        if isinstance(it, kinds) {
+            return i;
+        }
+        i += 1;
+    }
+    return -1;
+}
+
+def chk_variadic_kinds -> int {
+    items: list[Foo] = [Foo(), Sub()];
+    return first_of(items, (Sub, )) * 10
+        + first_of(items, (Foo, Sub))
+        + 100 * int(first_of([Foo()], (Sub, )) == -1);
+}
