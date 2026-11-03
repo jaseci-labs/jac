@@ -27,7 +27,6 @@ impl TypeEvaluator._null_ok_attr_type(
     return UnknownType();
 }
 
-"""The type of `base?[index]`: the item type, or None where the base may be None."""
 impl TypeEvaluator._null_ok_index_type(
     expr: AtomTrailer, base_type: TypeBase
 ) -> TypeBase {
@@ -40,7 +39,11 @@ impl TypeEvaluator._null_ok_index_type(
     members = list(base_type.types)
         if isinstance(base_type, UnionType)
         else [base_type];
-    held = [member for member in members if not self.is_none_type(member)];
+    held = [
+        member
+        for member in members
+        if not self.is_none_type(member)
+    ];
     if not held {
         return none_type if none_type is not None else UnknownType();
     }
@@ -60,7 +63,9 @@ impl TypeEvaluator._null_ok_index_type(
     if item is None {
         return UnknownType();
     }
-    if len(held) == len(members) or none_type is None or isinstance(item, UnknownType) {
+    if len(held) == len(members)
+        or none_type is None
+        or isinstance(item, UnknownType) {
         return item;
     }
     parts = list(item.types) if isinstance(item, UnionType) else [item];

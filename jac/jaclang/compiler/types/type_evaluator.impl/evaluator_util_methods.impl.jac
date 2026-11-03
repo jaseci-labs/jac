@@ -840,11 +840,6 @@ impl TypeEvaluator._type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> boo
     return False;
 }
 
-"""Do two classes of the same family carry the same type arguments?
-
-`list[int]` and `list[str]` are distinct members of a union; a class with no
-arguments on either side matches any specialization, as before.
-"""
 impl TypeEvaluator._same_type_args(ty: ClassType, existing: ClassType) -> bool {
     mine = ty.private.type_args;
     theirs = existing.private.type_args;

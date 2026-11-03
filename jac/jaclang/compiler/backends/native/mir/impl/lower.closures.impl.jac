@@ -708,7 +708,9 @@ impl MirLowering.bound_method_value(nd: uni.AtomTrailer) -> (MirValue | None) {
         try {
             b = self.builder();
             slot = b.binary(
-                "add", self.address_of(env), b.const_int(CLOSURE_CELLS_OFFSET, mir_int())
+                "add",
+                self.address_of(env),
+                b.const_int(CLOSURE_CELLS_OFFSET, mir_int())
             );
             receiver = b.ref_cast(
                 self.emit_value(MirOp.MEM_LOAD, mir_int(), [slot]), owner_type, False
@@ -733,7 +735,10 @@ impl MirLowering.bound_method_value(nd: uni.AtomTrailer) -> (MirValue | None) {
         mir_int(),
         [
             self.emit_value(
-                MirOp.FN_ADDR, mir_c_fn([i8p] + decl.params, decl.ret), [], callee=symbol
+                MirOp.FN_ADDR,
+                mir_c_fn([i8p] + decl.params, decl.ret),
+                [],
+                callee=symbol
             )
         ]
     );

@@ -65,7 +65,11 @@ def check_message_freed(memory: str) {
     lines = traced.splitlines();
     assert lines[-1] == "12" , lines[-1];
     assert "RC MALLOC" in traced , out[-2000:];
-    leaked = [line for line in dump.splitlines() if "<- LEAK" in line];
+    leaked = [
+        line
+        for line in dump.splitlines()
+        if "<- LEAK" in line
+    ];
     assert not leaked , leaked;
 }
 

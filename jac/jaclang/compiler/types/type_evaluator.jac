@@ -446,8 +446,8 @@ walker TypeEvaluator {
     def _null_ok_attr_type(
         expr: AtomTrailer, base_type: (TypeBase | None) = None
     ) -> TypeBase;
-    def _null_ok_index_type(expr: AtomTrailer, base_type: TypeBase) -> TypeBase;
 
+    def _null_ok_index_type(expr: AtomTrailer, base_type: TypeBase) -> TypeBase;
     def _set_module_item_symbol_and_type(node_: ModuleItem, sym: Symbol) -> TypeBase;
     def _provided_import_item_symbol(node_: ModuleItem) -> Symbol | None;
     def resolve_imported_symbols(sym: Symbol) -> Symbol;

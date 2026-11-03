@@ -675,7 +675,8 @@ impl MirLowering.isinstance_test(
             verdict = found if verdict is None else b.binary("or", verdict, found);
             continue;
         }
-        if item_type.kind == MirKind.LIST and item_type.payload().kind == MirKind.CLASS {
+        if item_type.kind == MirKind.LIST
+            and item_type.payload().kind == MirKind.CLASS {
             found = self.class_list_isinstance(value, self.lower_expr(item));
             verdict = found if verdict is None else b.binary("or", verdict, found);
             continue;
@@ -698,11 +699,6 @@ impl MirLowering.isinstance_test(
     return verdict;
 }
 
-"""The builtin class `type(arg)` names, when the argument's type settles it.
-
-`type(...)` is the ellipsis class and `type(None)` is `NoneType`, so an
-`isinstance` against either tests the same tag a named class would.
-"""
 impl MirLowering.type_call_name(item: uni.Expr) -> (str | None) {
     if not isinstance(item, uni.FuncCall)
         or not isinstance(item.target, uni.Name)
@@ -868,7 +864,6 @@ impl MirLowering.value_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None)
     return self.type_value(self.lower_expr(args[0]), nd);
 }
 
-"""`type(e)` for a name bound by an except clause that binds as its message."""
 impl MirLowering.caught_type(subject: uni.Expr) -> (MirValue | None) {
     if not isinstance(subject, uni.Name)
         or subject.sym is None
@@ -882,11 +877,6 @@ impl MirLowering.caught_type(subject: uni.Expr) -> (MirValue | None) {
     return self.caught_class(self.st().bound_caught[id(subject.sym)]);
 }
 
-"""The class of a caught exception that binds as its message.
-
-A builtin exception carries only its type id; an archetype one is the object
-the handler caught, which names its own class.
-"""
 impl MirLowering.caught_class(caught: tuple[MirValue, MirValue, MirValue]) -> MirValue {
     b = self.builder();
     fn = self.st().fn;
@@ -895,7 +885,8 @@ impl MirLowering.caught_class(caught: tuple[MirValue, MirValue, MirValue]) -> Mi
     chosen = self.temp_slot(i8p);
     named = self.emit_value(MirOp.CSTR, i8p, [], str_value="Exception");
     wanted = b.convert(type_id, mir_int());
-    for name in ["BaseException"] + JAC_TYPE_REGISTRY.exception_descendants("BaseException") {
+    for name in ["BaseException"]
+        + JAC_TYPE_REGISTRY.exception_descendants("BaseException") {
         named = b.select(
             b.compare(
                 "eq",
@@ -1110,11 +1101,6 @@ impl MirLowering.store_text_result(base: MirValue, text: MirValue) {
     );
 }
 
-"""An ABC with no exact reduction to builtin tags is refused, not guessed.
-
-`Iterable` and its kin are inhabited by any class with the right methods, so
-answering from the builtin containers alone would be wrong for an archetype.
-"""
 impl MirLowering.refuse_opaque_abc(
     item: uni.Expr, arch: uni.Archetype, site: uni.UniNode
 ) {
@@ -1137,8 +1123,9 @@ impl MirLowering.refuse_opaque_abc(
     );
 }
 
-"""A reducible ABC is exact only while the operand's whole MRO is native."""
-impl MirLowering.refuse_partial_mro(value: MirValue, item: uni.Expr, site: uni.UniNode) {
+impl MirLowering.refuse_partial_mro(
+    value: MirValue, item: uni.Expr, site: uni.UniNode
+) {
     held = value.type.payload() if value.type.kind == MirKind.OPT else value.type;
     if held.kind != MirKind.OBJ {
         return;
@@ -1149,7 +1136,12 @@ impl MirLowering.refuse_partial_mro(value: MirValue, item: uni.Expr, site: uni.U
     }
     name = item.value
         if isinstance(item, uni.Name)
-        else (item.right.value if isinstance(item, uni.AtomTrailer) and isinstance(item.right, uni.Name) else "");
+        else (
+            item.right.value
+                if isinstance(item, uni.AtomTrailer)
+                    and isinstance(item.right, uni.Name)
+                else ""
+        );
     raise MirRefused(
         mir_refusal(
             "call",
@@ -1160,7 +1152,6 @@ impl MirLowering.refuse_partial_mro(value: MirValue, item: uni.Expr, site: uni.U
     );
 }
 
-"""isinstance against a runtime-length tuple of classes: any one matching."""
 impl MirLowering.class_list_isinstance(value: MirValue, classes: MirValue) -> MirValue {
     b = self.builder();
     fn = self.st().fn;

@@ -1179,12 +1179,11 @@ obj MirLowering {
     def object_text(
         value: MirValue, method: str, site: uni.UniNode, dispatch: bool = True
     ) -> MirValue;
+
     def subclass_text(
-        value: MirValue,
-        method: str,
-        carriers: list[uni.Archetype],
-        site: uni.UniNode
+        value: MirValue, method: str, carriers: list[uni.Archetype], site: uni.UniNode
     ) -> MirValue;
+
     def text_fn(value_type: MirType, site: uni.UniNode) -> str;
     def sb_text(sb: MirValue, text: str);
     def sb_value(sb: MirValue, text: MirValue);
@@ -1320,6 +1319,7 @@ obj MirLowering {
     def builtin_fold(
         nd: uni.FuncCall, name: str, source: uni.Expr, start: (uni.Expr | None) = None
     ) -> MirValue;
+
     def materialize_source(
         source: uni.Expr, elem: MirType, site: uni.UniNode
     ) -> MirValue;

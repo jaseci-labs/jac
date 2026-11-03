@@ -959,12 +959,6 @@ impl MirLowering.encloses(scope: (uni.UniScopeNode | None), nd: uni.UniNode) -> 
     return False;
 }
 
-"""Is `nd` inside a comprehension's first iterable?
-
-Python evaluates the leftmost `for` iterable in the enclosing scope, so a name
-there reads the enclosing binding even when a comprehension variable shares
-its name (`[x for x in x]`).
-"""
 impl MirLowering.first_iterable(nd: uni.UniNode) -> bool {
     child: uni.UniNode = nd;
     walk = nd.parent;
@@ -2045,8 +2039,7 @@ impl MirLowering.lower_unary(nd: uni.UnaryExpr) -> MirValue {
         return self.any_from_box(
             self.runtime_value(
                 "__jac_rt_any_unary",
-                [b.const_int(ANY_UNARY_CODES[op], mir_int())]
-                + self.any_parts(value)
+                [b.const_int(ANY_UNARY_CODES[op], mir_int())] + self.any_parts(value)
             )
         );
     }
@@ -3608,7 +3601,9 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
                 whole_tuple = self.spill(self.lower_expr(nd.target));
                 if whole_tuple.type.kind == MirKind.OPT {
                     whole_tuple = self.opt_unwrap_checked(
-                        whole_tuple, "'NoneType' object is not subscriptable", "TypeError"
+                        whole_tuple,
+                        "'NoneType' object is not subscriptable",
+                        "TypeError"
                     );
                 }
                 picked = list(range(len(whole_tuple.type.args)))[
@@ -4591,12 +4586,6 @@ impl MirLowering.global_declaration(sym: uni.Symbol) -> (uni.Assignment | None) 
     return None;
 }
 
-"""Is `sym`, bound by `assign`, a module global set by an entry block?
-
-Python treats a top-level `with entry` assignment as module state, so a
-function or lambda that reads the name reads it late-bound from the module.
-A name only the entry block itself uses stays a local of the entry function.
-"""
 impl MirLowering.entry_global(assign: uni.Assignment, sym: uni.Symbol) -> bool {
     block = assign.parent;
     if not isinstance(block, uni.ModuleCode)
@@ -4810,16 +4799,24 @@ impl MirLowering.builtin_callee(callee: (uni.UniNode | None)) -> bool {
     return callee is None or os.path.basename(callee.loc.mod_path) in BUILTIN_STUBS;
 }
 
-"""The Jac module an imported name is bound from, when it defines no such name.
-
-A name the bound module's own symbol table does not hold has nothing to link
-to; lowering it to a null would hand every use a value that is not there.
-"""
 impl MirLowering.missing_import(nd: uni.Name) -> (str | None) {
     sym = nd.sym;
     decl = sym.decl if sym is not None else None;
     item = decl.parent if decl is not None else None;
-    if not isinstance(item, uni.ModuleItem) or not isinstance(item.parent, uni.Import) {
+    if not isinstance(item, uni.ModuleItem)
+        or not isinstance(item.parent, uni.Import) {
+        return None;
+    }
+    if id(item) in self.missing_imports {
+        return self.missing_imports[id(item)];
+    }
+    found = self.missing_import_of(item);
+    self.missing_imports[id(item)] = found;
+    return found;
+}
+
+impl MirLowering.missing_import_of(item: uni.ModuleItem) -> (str | None) {
+    if not isinstance(item.parent, uni.Import) {
         return None;
     }
     source = item.parent.from_loc;
@@ -4842,11 +4839,6 @@ impl MirLowering.missing_import(nd: uni.Name) -> (str | None) {
     return source.dot_path_str;
 }
 
-"""Lower an expression whose value is dropped, for its effects only.
-
-A discarded conditional runs one branch; its value is never formed, so the
-branches need not share a representation.
-"""
 impl MirLowering.lower_discarded(nd: uni.Expr) {
     inner: uni.UniNode = nd;
     while isinstance(inner, uni.AtomUnit) and isinstance(inner.value, uni.Expr) {
@@ -4929,7 +4921,9 @@ impl MirLowering.null_ok_subclass_attr(nd: uni.AtomTrailer) -> (MirValue | None)
         place = self.field_place(narrowed, sub, name, nd);
         self.builder().store(
             result,
-            self.coerce(self.builder().load(place, self.place_elem(place)), result_type, nd)
+            self.coerce(
+                self.builder().load(place, self.place_elem(place)), result_type, nd
+            )
         );
         self.builder().branch(done);
         self.builder().position(miss);

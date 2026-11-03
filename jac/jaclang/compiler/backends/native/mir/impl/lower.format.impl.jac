@@ -282,11 +282,6 @@ impl MirLowering.object_text(
     return rendered;
 }
 
-"""Text of a value whose class has no `method` but some subclasses do.
-
-The most derived match runs its own method; an instance of a class that
-defines none keeps the base's default text.
-"""
 impl MirLowering.subclass_text(
     value: MirValue, method: str, carriers: list[uni.Archetype], site: uni.UniNode
 ) -> MirValue {
@@ -305,13 +300,15 @@ impl MirLowering.subclass_text(
         self.builder().position(hit);
         narrowed = self.builder().ref_cast(held, self.object_type(sub), False);
         self.builder().store(
-            result, self.coerce(self.object_text(narrowed, method, site), mir_str(), site)
+            result,
+            self.coerce(self.object_text(narrowed, method, site), mir_str(), site)
         );
         self.builder().branch(done);
         self.builder().position(miss);
     }
     self.builder().store(
-        result, self.coerce(self.object_text(held, method, site, False), mir_str(), site)
+        result,
+        self.coerce(self.object_text(held, method, site, False), mir_str(), site)
     );
     self.builder().branch(done);
     self.builder().position(done);
@@ -827,8 +824,7 @@ impl MirLowering.text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) 
             );
         }
         return self.call_rt(
-            "__jac_rt_int_powmod",
-            [b.convert(value, mir_int()) for value in operands]
+            "__jac_rt_int_powmod", [b.convert(value, mir_int()) for value in operands]
         );
     }
     raise MirRefused(mir_refusal("call", f"{name} with {len(args)} arguments", nd));
@@ -875,7 +871,6 @@ impl MirLowering.bytes_from(args: list[uni.Expr], nd: uni.FuncCall) -> MirValue 
     return b.ref_cast(handle, mir_bytes(), True);
 }
 
-"""A fresh `bytes` built from a byte sequence or an iterable of ints."""
 impl MirLowering.bytes_of_ints(source: MirValue, nd: uni.UniNode) -> MirValue {
     b = self.builder();
     kind = source.type.kind;
@@ -886,9 +881,8 @@ impl MirLowering.bytes_of_ints(source: MirValue, nd: uni.UniNode) -> MirValue {
     } elif kind == MirKind.LIST
         and source.type.payload().kind in (MirKind.INT, MirKind.BOOL) {
         handle = self.call_rt("__jac_rt_bytes_from_list", [source]);
-    } elif kind in (
-        MirKind.RANGE, MirKind.ITER, MirKind.TUPLE, MirKind.SET, MirKind.LIST
-    ) {
+    } elif kind
+        in (MirKind.RANGE, MirKind.ITER, MirKind.TUPLE, MirKind.SET, MirKind.LIST) {
         handle = self.call_rt(
             "__jac_rt_bytes_from_list", [self.spill(self.drain(source, mir_int(), nd))]
         );

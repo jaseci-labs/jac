@@ -311,13 +311,17 @@ impl MirLowering.bind_from_spreads(
             b.store(
                 held,
                 self.coerce(
-                    self.dict_entry_value(source, found, spread.site), ptype, spread.site
+                    self.dict_entry_value(source, found, spread.site),
+                    ptype,
+                    spread.site
                 )
             );
         } except MirRefused {
             b.raise_builtin(
                 "TypeError",
-                f"{self.name_of(ab)}() argument '{name}' cannot take a {source.type.args[1].render()} value natively"
+                f"{self.name_of(ab)}() argument '{name}' cannot take a {source.type.args[
+                    1
+                ].render()} value natively"
             );
             b.position(fn.new_block("kwsp.typed"));
         }
