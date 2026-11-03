@@ -474,6 +474,13 @@ impl MirNativePass.layout(lowering: MirLowering, mir: MirModule) -> NativeModule
             made.functions[fn.name] = record;
         }
     }
+    for (name, symbol, description, line) in lowering.tests {
+        made.tests.append(
+            NativeTestLayout(
+                name=name, symbol=symbol, description=description, line=line
+            )
+        );
+    }
     for (name, (unit, symbol)) in sorted(lowering.imported_fns.items()) {
         if name in made.functions {
             continue;

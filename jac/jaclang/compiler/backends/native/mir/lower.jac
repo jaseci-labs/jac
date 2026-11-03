@@ -254,6 +254,7 @@ obj MirFnState {
         caught: list[tuple[MirValue, MirValue, MirValue]] = [],
         bound_caught: dict[int, tuple[MirValue, MirValue, MirValue]] = {},
         tries: list[tuple[MirValue, MirBlock, int]] = [],
+        in_test: bool = False,
         try_exits: dict[int, MirWithExit] = {},
         finals: list[tuple[list[uni.UniNode], int, int]] = [],
         specials: dict[str, MirValue] = {};
@@ -331,6 +332,7 @@ obj MirLowering {
         current: str = "",
         dep_verdicts: dict[str, (list[str] | None)] = {},
         imported_fns: dict[str, tuple[str, str]] = {},
+        tests: list[tuple[str, str, str, int]] = [],
         c_views: dict[int, MirGlobal] = {},
         state: (MirFnState | None) = None;
 

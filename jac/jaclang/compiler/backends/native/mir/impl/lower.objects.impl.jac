@@ -1610,7 +1610,8 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
         and not self.deferred_globals
         and not self.osp_setup
         and not self.class_entries
-        and not self.text_pairs {
+        and not self.text_pairs
+        and not any(isinstance(nd, uni.GlobalVars) for nd in self.module.body) {
         return None;
     }
     path = self.module.loc.mod_path;

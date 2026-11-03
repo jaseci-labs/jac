@@ -591,7 +591,20 @@ impl MirLowering.lower_assert(nd: uni.AssertStmt) {
     passed = fn.new_block("assert.ok");
     b.cond_branch(self.condition(nd.condition), passed, failed);
     b.position(failed);
-    self.raise_named("AssertionError", nd.error_msg, nd);
+    message = nd.error_msg;
+    if self.st().in_test
+        and (
+            message is None
+            or (isinstance(message, uni.String) and isinstance(message.lit_value, str))
+        ) {
+        said = message.lit_value
+            if isinstance(message, uni.String)
+            else "assertion failed";
+        path = self.module.loc.mod_path if self.module.loc else "";
+        b.raise_builtin("AssertionError", f"{said} at {path}:{nd.loc.first_line}");
+    } else {
+        self.raise_named("AssertionError", message, nd);
+    }
     b.position(passed);
 }
 
@@ -652,7 +665,9 @@ impl MirLowering.lower_test(nd: uni.Test) -> (MirFunction | None) {
         symbol=native_test_symbol(nd.name.sym_name, line, self.mir.prefix),
         ret=i8p
     );
-    self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=fn.new_block("entry")));
+    self.state = MirFnState(
+        fn=fn, b=MirBuilder(fn=fn, block=fn.new_block("entry")), in_test=True
+    );
     try {
         b = self.builder();
         frame = fn.new_value(i8p, "exc.frame");
@@ -710,5 +725,13 @@ impl MirLowering.lower_test(nd: uni.Test) -> (MirFunction | None) {
         return None;
     }
     self.state = None;
+    self.tests.append(
+        (
+            nd.name.sym_name,
+            fn.symbol,
+            str(nd.description.lit_value) if nd.description else "",
+            line
+        )
+    );
     return fn;
 }
