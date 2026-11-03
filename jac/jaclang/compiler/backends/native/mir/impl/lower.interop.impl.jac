@@ -443,9 +443,10 @@ impl MirLowering.c_arg(
         return self.c_text_arg(self.lower_expr(arg), arg);
     }
     bare = self.c_bare(arg);
-    if to.kind == MirKind.C_FN
-        and isinstance(bare, uni.Name)
-        and named_function_of(bare) is not None {
+    named = named_function_of(bare)
+        if to.kind == MirKind.C_FN and isinstance(bare, uni.Name)
+        else None;
+    if isinstance(named, uni.Ability) and clib_import_of(named) is None {
         return self.c_function_value(bare, to);
     }
     if to.kind == MirKind.C_PTR and self.c_borrow_operand(arg) is not None {
@@ -624,6 +625,25 @@ impl MirLowering.declare_c_definition(ab: uni.Ability) {
                     "A C function defined in Jac returns a C scalar or pointer; structs and Jac values do not cross its C ABI natively yet."
                 )
             );
+        }
+    }
+    other = self.foreign_c_declaration(name);
+    if other is not None {
+        mine = self.c_signature_text(params, ret);
+        there = self.c_declared_signature(other, ab);
+        if there is not None and there != mine {
+            owner = other.find_parent_of_type(uni.Module);
+            where = owner.loc.mod_path
+                if owner is not None and owner.loc
+                else "another module";
+            self.c_conflicts.append(
+                (
+                    ab,
+                    name,
+                    f"takes the C symbol '{name}' that {where} declares as {there}, with a different signature {mine}; rename one of them"
+                )
+            );
+            return;
         }
     }
     key = id(ab);
@@ -912,4 +932,81 @@ impl MirLowering.region_escape_entry {
     b.branch(body);
     b.position(body);
     self.st().region_escape = saved;
+}
+
+impl MirLowering.foreign_c_declaration(name: str) -> (uni.Ability | None) {
+    hub = self.prog.mod.hub;
+    for imp in self.module.get_all_sub_nodes(uni.Import) {
+        if imp.is_comptime or imp.clib_decls {
+            continue;
+        }
+        paths: list[str] = [];
+        if isinstance(imp.from_loc, uni.ModulePath) {
+            paths.append(imp.from_loc.resolve_relative_path());
+        } else {
+            for item in imp.items {
+                if isinstance(item, uni.ModulePath) {
+                    paths.append(item.resolve_relative_path());
+                }
+            }
+        }
+        for path in paths {
+            dep = hub.get(os.path.realpath(path)) if path else None;
+            if dep is None or dep is self.module {
+                continue;
+            }
+            for held in dep.get_all_sub_nodes(uni.Import) {
+                for decl in held.clib_decls or [] {
+                    if isinstance(decl, uni.Ability) and self.name_of(decl) == name {
+                        return decl;
+                    }
+                }
+            }
+        }
+    }
+    return None;
+}
+
+impl MirLowering.c_signature_text(params: list[MirType], ret: MirType) -> str {
+    def spelled(t: MirType) -> str {
+        if t.kind in (MirKind.C_PTR, MirKind.C_FN)
+            or (t.kind == MirKind.INT and t.width == 64) {
+            return "i64";
+        }
+        if t.kind in (MirKind.NONE, MirKind.VOID) {
+            return "void";
+        }
+        if t.kind == MirKind.INT {
+            return f"i{t.width}";
+        }
+        return t.render();
+    }
+    return f"({', '.join([spelled(t) for t in params])}) -> {spelled(ret)}";
+}
+
+impl MirLowering.c_declared_signature(
+    decl: uni.Ability, site: uni.UniNode
+) -> (str | None) {
+    sig = decl.signature;
+    fn_type = self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(decl));
+    if not isinstance(sig, uni.FuncSignature)
+        or not isinstance(fn_type, FunctionType) {
+        return None;
+    }
+    params: list[MirType] = [];
+    for pv in self.param_nodes(sig, False) {
+        if pv.is_vararg or pv.is_kwargs {
+            continue;
+        }
+        params.append(
+            mir_int()
+                if self.c_param_borrowed(pv)
+                else self.symbol_type(pv.name.sym, pv)
+        );
+    }
+    ret = mir_none();
+    if sig.return_type is not None {
+        (ret, _) = self.c_return_plan(sig, fn_type.return_type, site);
+    }
+    return self.c_signature_text(params, ret);
 }

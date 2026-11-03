@@ -2473,6 +2473,9 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         if value.type.kind == MirKind.TUPLE {
             return self.builder().const_int(len(value.type.args), mir_int());
         }
+        if value.type.kind == MirKind.C_VIEW {
+            return self.emit_value(MirOp.VIEW_LEN, mir_int(), [value]);
+        }
         if value.type.kind == MirKind.ANY {
             held = self.spill(value);
             return self.runtime_value(
@@ -2823,10 +2826,16 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
     }
     b = self.builder();
     length = self.emit_value(MirOp.VIEW_LEN, mir_int(), [view]);
+    position = b.convert(position, mir_int());
+    position = b.select(
+        b.compare("lt", position, b.const_int(0, mir_int())),
+        b.binary("add", position, length),
+        position
+    );
     below = b.compare("lt", position, b.const_int(0, position.type));
     beyond = b.compare("ge", position, length);
-    self.raise_if(below, "IndexError", "view index out of range");
-    self.raise_if(beyond, "IndexError", "view index out of range");
+    self.raise_if(below, "IndexError", "PtrView index out of range");
+    self.raise_if(beyond, "IndexError", "PtrView index out of range");
     return self.emit_value(
         MirOp.ELEM_ADDR, mir_c_ptr(view.type.payload()), [view, position]
     );
@@ -2962,6 +2971,17 @@ impl MirLowering.c_extern(
     (ret, ret_plan) = self.c_return_plan(sig, fn_type.return_type, site);
     self.ensure_objects(fn_type);
     self.note_clib(clib_import_of(callee));
+    owner = callee.find_parent_of_type(uni.Module);
+    if owner is not None
+        and owner is not self.module
+        and owner.loc.mod_path.endswith(".jac")
+        and isinstance(callee.body, list)
+        and callee.body {
+        unit = os.path.realpath(owner.loc.mod_path);
+        if unit not in self.mir.deps {
+            self.mir.deps.append(unit);
+        }
+    }
     self.mir.externs[symbol] = MirExtern(
         symbol=symbol,
         ret=ret,
@@ -3565,6 +3585,19 @@ impl MirLowering.method_call(
         args = self.call_args(nd);
         if right.value == "view" and len(args) == 1 {
             count = self.lower_expr(args[0]);
+            b = self.builder();
+            address = self.emit_value(MirOp.PTR_INT, mir_int(64, False), [receiver]);
+            self.raise_if(
+                b.select(
+                    b.compare("eq", address, b.const_int(0, address.type)),
+                    b.compare(
+                        "gt", b.convert(count, mir_int()), b.const_int(0, mir_int())
+                    ),
+                    b.const_bool(False)
+                ),
+                "ValueError",
+                "cannot view elements of a null pointer"
+            );
             return self.emit_value(
                 MirOp.VIEW, mir_c_view(receiver.type.payload()), [receiver, count]
             );

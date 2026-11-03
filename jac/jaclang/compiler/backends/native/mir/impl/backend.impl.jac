@@ -20,6 +20,7 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
         self.report_crash(lowering, exc);
         return ir_in;
     }
+    self.report_c_conflicts(lowering);
     runtime = mir_runtime_unit_paths();
     here = os.path.realpath(path);
     if self.native_required(path) {
@@ -115,6 +116,12 @@ impl MirNativePass.report_crash(lowering: MirLowering, exc: Exception) {
         name=name,
         details=f"{type(exc).__name__}: {exc}"
     );
+}
+
+impl MirNativePass.report_c_conflicts(lowering: MirLowering) {
+    for (site, name, reason) in lowering.c_conflicts {
+        self.ctx.emit(E1158, node_override=site, name=name, reason=reason);
+    }
 }
 
 impl MirNativePass.report_refusals(lowering: MirLowering) {

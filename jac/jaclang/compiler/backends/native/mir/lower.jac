@@ -302,6 +302,7 @@ obj MirLowering {
         layout_owners: set[int] = set(),
         variant_units: dict[str, (uni.Module | None)] = {},
         c_entries: dict[str, MirFunction] = {},
+        c_conflicts: list[tuple[uni.Ability, str, str]] = [],
         trace_pairs: list[tuple[str, str]] = [],
         text_pairs: list[tuple[str, str]] = [],
         text_regs: dict[str, tuple[MirBlock, list[MirInstr]]] = {},
@@ -406,6 +407,9 @@ obj MirLowering {
     def variant_ability(callee: uni.Ability) -> uni.Ability;
     def variant_glob(nd: uni.Name) -> (uni.Name | None);
     def variant_value(nd: uni.Name, twin: uni.Name) -> (MirValue | None);
+    def foreign_c_declaration(name: str) -> (uni.Ability | None);
+    def c_signature_text(params: list[MirType], ret: MirType) -> str;
+    def c_declared_signature(decl: uni.Ability, site: uni.UniNode) -> (str | None);
     def c_entry(
         symbol: str, params: list[MirType], ret: MirType, target: uni.Ability
     ) -> str;

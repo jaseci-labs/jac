@@ -5642,6 +5642,7 @@ graph import compiler {
         passes.ownership_check_pass {
             c_call_borrows_args,
             clib_import_of,
+            foreign_field_of,
             is_c_value_type,
             is_ptr_type,
             is_ptr_view_type,
@@ -6808,7 +6809,7 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._warn_rpc_callable_params { W6005 },
         backends.es.esast_gen_pass.EsastGenPass.prepare
             | passes.placement_pass.PlacementPass._run_decided { E5096 },
-        backends.native.mir.backend { E5092, E9003 },
+        backends.native.mir.backend { E1158, E5092, E9003 },
         backends.native.na_compile_pass { E5020, E5026 },
         backends.py.jcir_bc_gen_pass { E5040, E5043 },
         backends.py.jcir_gen_pass {
