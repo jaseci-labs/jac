@@ -3678,6 +3678,20 @@ impl MirLowering.method_call(
         in (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY) {
         return self.text_method(self.lower_expr(target.target), right.value, nd);
     }
+    if receiver_type.kind == MirKind.INT
+        and right.value in ("bit_length", "bit_count")
+        and not self.call_args(nd) {
+        return self.runtime_value(
+            f"__jac_rt_int_{right.value}", [self.lower_expr(target.target)]
+        );
+    }
+    if receiver_type.kind == MirKind.FLOAT
+        and right.value == "is_integer"
+        and not self.call_args(nd) {
+        return self.runtime_value(
+            "__jac_rt_float_is_integer", [self.lower_expr(target.target)]
+        );
+    }
     if receiver_type.kind == MirKind.ENUM {
         via_enum = self.enum_method_call(
             nd, self.lower_expr(target.target), right.value
