@@ -916,7 +916,7 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
             b.store(stack, b.gep(words, [ir.Constant(i32, 2)]));
             jump = self.extern("llvm.eh.sjlj.setjmp", i32, [i8p]);
         } else {
-            jump = self.extern(SETJMP_SYMBOL, i32, [i8p]);
+            jump = self.extern(self.jmp_symbols()[0], i32, [i8p]);
         }
         armed = b.call(jump, [env]);
         armed.attributes.add("returns_twice");
@@ -928,7 +928,9 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
             b.call(self.extern("llvm.eh.sjlj.longjmp", ir.VoidType(), [i8p]), [env]);
         } else {
             b.call(
-                self.extern(LONGJMP_SYMBOL, ir.VoidType(), [i8p, ir.IntType(32)]),
+                self.extern(
+                    self.jmp_symbols()[1], ir.VoidType(), [i8p, ir.IntType(32)]
+                ),
                 [env, ir.Constant(ir.IntType(32), 1)]
             );
         }
@@ -1782,6 +1784,19 @@ impl MirEmitter.c_thunk(fn: MirFunction) {
 }
 
 impl MirEmitter.builtin_sjlj -> bool {
-    return self.native_sjlj
-        and str(self.module.triple or "").lower().startswith("x86_64");
+    return self.jmp_symbols()[0] == BUILTIN_SETJMP_SYMBOL;
+}
+
+impl MirEmitter.jmp_symbols -> tuple[str, str] {
+    triple = str(self.module.triple or "").lower();
+    if "wasm" in triple {
+        return ("setjmp", "longjmp");
+    }
+    if any(name in triple for name in ("windows", "win32", "mingw", "msvc")) {
+        return ("__jac_setjmp", "__jac_longjmp");
+    }
+    if self.native_sjlj and triple.startswith("x86_64") {
+        return (BUILTIN_SETJMP_SYMBOL, "llvm.eh.sjlj.longjmp");
+    }
+    return ("_setjmp", "_longjmp");
 }
