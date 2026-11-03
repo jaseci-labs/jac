@@ -458,7 +458,9 @@ impl TypeCheckPass._judge_rebind_types(target: Expr, site: UniNode) -> None {
             or self._is_exempt_rebind(prior, leaf, declared) {
             continue;
         }
-        source = self._rebound_source(leaf, site);
+        source = site.right
+            if isinstance(site, BinaryExpr)
+            else self.evaluator._get_source_of_unpack_target(leaf);
         bound = self._rebound_value_type(leaf, source, declared);
         if bound is None or isinstance(bound, UnknownType) {
             continue;
@@ -472,18 +474,6 @@ impl TypeCheckPass._judge_rebind_types(target: Expr, site: UniNode) -> None {
             );
         }
     }
-}
-
-impl TypeCheckPass._rebound_source(leaf: Name, site: UniNode) -> (Expr | None) {
-    if leaf.sym is not None
-        and leaf.sym.decl is not None
-        and leaf.sym.decl.name_of is leaf {
-        return None;
-    }
-    if isinstance(site, BinaryExpr) {
-        return site.right;
-    }
-    return self.evaluator._get_source_of_unpack_target(leaf);
 }
 
 impl TypeCheckPass._rebound_value_type(
