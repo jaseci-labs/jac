@@ -46,7 +46,7 @@ impl MirLowering.tuple_box(value: MirValue, site: uni.UniNode) -> MirValue {
                 box,
                 b.const_int(index, mir_int()),
                 self.to_bits(self.tuple_get(held, index), member, site),
-                b.const_int(self.elem_kind(member, site), mir_int())
+                self.creation_kind(member, site)
             ]
         );
     }
@@ -231,10 +231,7 @@ impl MirLowering.new_list(elem: MirType, capacity: int) -> MirValue {
     b = self.builder();
     handle = self.runtime(
         "__jac_rt_list_new",
-        [
-            b.const_int(capacity, mir_int()),
-            b.const_int(self.elem_kind(elem, self.module), mir_int())
-        ]
+        [b.const_int(capacity, mir_int()), self.creation_kind(elem, self.module)]
     );
     if handle is None {
         raise MirRefused(mir_refusal("list", elem.render()));
@@ -249,13 +246,10 @@ impl MirLowering.new_dict(
     handle = self.runtime(
         "__jac_rt_dict_new",
         [
-            b.const_int(self.elem_kind(key, self.module), mir_int()),
-            b.const_int(
-                self.elem_kind(value, self.module)
-                    if value is not None
-                    else NO_VALUE_KIND,
-                mir_int()
-            )
+            self.creation_kind(key, self.module),
+            self.creation_kind(value, self.module)
+                if value is not None
+                else b.const_int(NO_VALUE_KIND, mir_int())
         ]
     );
     if handle is None {

@@ -770,24 +770,7 @@ impl MirLowering.lower_text_thunk(
         );
         for (block, method) in ((repr_bb, "__repr__"), (str_bb, "__str__")) {
             b.position(block);
-            text = self.object_text(this, method, arch);
-            held = self.runtime_value(
-                "__jac_rt_str_ref",
-                [
-                    b.str_part(text, "root"),
-                    b.str_part(text, "data"),
-                    b.str_part(text, "len")
-                ]
-            );
-            self.runtime("__jac_rt_retain", [held]);
-            self.emit_value(
-                MirOp.MEM_STORE,
-                mir_none(),
-                [
-                    b.binary("add", base, b.const_int(TEXT_THUNK_RESULT, mir_int())),
-                    self.address_of(held)
-                ]
-            );
+            self.store_text_result(base, self.object_text(this, method, arch));
             b.branch(done);
         }
         b.position(done);
@@ -894,8 +877,28 @@ impl MirLowering.field_place(
     }
     if holder.type.kind == MirKind.OBJ
         and holder.type.name != obj_def.name
-        and self.obj_extends(obj_def.name, holder.type.name) {
+        and (
+            self.obj_extends(obj_def.name, holder.type.name)
+            or (
+                not self.obj_extends(holder.type.name, obj_def.name)
+                and self.narrowed_slot_agrees(
+                    holder.type.name, arch, name, member.index
+                )
+            )
+        ) {
         holder = self.builder().ref_cast(holder, mir_obj(obj_def.name), False);
+    }
+    if holder.type.kind == MirKind.OBJ
+        and holder.type.name != obj_def.name
+        and not self.obj_extends(holder.type.name, obj_def.name) {
+        raise MirRefused(
+            mir_refusal(
+                "attribute access",
+                f"{obj_def.name}.{name} on {holder.type.render()}",
+                site,
+                "The field sits at different slots in the archetypes that share these two bases, so it cannot be read through either layout."
+            )
+        );
     }
     if holder.type.kind not in (MirKind.OBJ, MirKind.OSP) {
         raise MirRefused(
@@ -1933,6 +1936,56 @@ impl MirLowering.member_owner(member: uni.Name) -> (uni.Archetype | None) {
         return None;
     }
     return sym.decl.find_parent_of_type(uni.Archetype);
+}
+
+impl MirLowering.union_method_owner(
+    nd: uni.FuncCall, receiver: uni.Expr
+) -> (uni.Archetype | None) {
+    callee = nd.callee_decl;
+    if not isinstance(callee, uni.Ability) or callee.is_static {
+        return None;
+    }
+    owner = callee.find_parent_of_type(uni.Archetype);
+    seen = receiver.narrowed_type
+        if receiver.narrowed_type is not None
+        else receiver.type;
+    members = self.union_archetypes(seen);
+    if owner is None or not members {
+        return None;
+    }
+    base = archetype_native_name(owner);
+    for member in members {
+        name = archetype_native_name(member);
+        if name != base and not self.obj_extends(name, base) {
+            return None;
+        }
+    }
+    return owner;
+}
+
+impl MirLowering.is_class_operand(nd: (uni.UniNode | None)) -> bool {
+    return isinstance(nd, uni.Expr)
+        and isinstance(nd.type, ClassType)
+        and not nd.type.is_instance();
+}
+
+impl MirLowering.narrowed_slot_agrees(
+    holder: str, arch: uni.Archetype, name: str, index: int
+) -> bool {
+    owner = arch.find_parent_of_type(uni.Module) or self.module;
+    registry = get_layout_registry(owner, self.prog);
+    shared = set(registry.descendants_of([archetype_native_name(arch)]))
+        & set(registry.descendants_of([holder]));
+    if not shared {
+        return False;
+    }
+    for cls in shared {
+        layout = registry.get_layout(cls);
+        if layout is None or layout.field_index.get(name) != index {
+            return False;
+        }
+    }
+    return True;
 }
 
 impl MirLowering.union_archetypes(t: (TypeBase | None)) -> list[uni.Archetype] {

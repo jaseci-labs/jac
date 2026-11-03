@@ -400,17 +400,10 @@ test "nested container membership preserves object identity" {
 }
 
 
-# A demotion is telemetry, not an answer: the author gets a silently-slower
-# function and no instruction. Where the operand genuinely has no static type,
-# the checker now refuses it at check time (#8323, decision 3) and says what to
-# write. The emitter guard above stays as defense in depth for whatever reaches
-# it by another route rather than as the only thing standing between an erased
-# container and `strstr`.
-#
-# The two erased shapes the checker can see, and both are annotation bugs the
-# author can act on: an operand typed `any`, and a builtin container spelled
-# without its element types.
-test "checker: membership over an operand with no static type is refused (E1124)" {
+# An operand typed `any` is not erased: a native container records its element
+# kinds in its header, so the runtime answers `in` over a boxed container the
+# way Python does. The checker leaves it alone and the function lowers.
+test "checker: membership over an `any` operand is answered natively, not refused" {
     prog = check_na_inline(
         "erased_membership_any",
         "def run(t: any, x: int) -> int {\n"
@@ -418,23 +411,11 @@ test "checker: membership over an operand with no static type is refused (E1124)
         "    return 0;\n"
         "}\n"
     );
-    assert has_error_code(prog, "E1124") , (
-        f"an `any`-typed membership operand must be refused at check time, got: {fmt_errors(
+    assert not has_error_code(prog, "E1124") , (
+        f"an `any`-typed membership operand is answered by the runtime, got: {fmt_errors(
             prog
         )}"
     );
-    # The refusal must name the remedy the author can act on, not just the fact.
-    e1124 = [
-        e
-        for e in prog.errors_had
-        if e.code is not None and e.code.code == "E1124"
-    ];
-    for e in e1124 {
-        _help = e.code.help_text if e.code is not None else None;
-        assert "annotate" in (_help or "") , (
-            f"E1124 must demand an annotation, got: {e}"
-        );
-    }
 }
 
 

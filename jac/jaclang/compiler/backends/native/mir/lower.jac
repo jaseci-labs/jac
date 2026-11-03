@@ -63,6 +63,7 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      ANY_OBJ_TAG: int = 6,
      ANY_BOOL_TAG: int = 7,
      ANY_NONE_TAG: int = 8,
+     ANY_ENUM_TAG: int = 9,
      OSP_DIR_IN: int = 1,
      OSP_DIR_OUT: int = 2,
      OSP_DIR_ANY: int = 3,
@@ -294,6 +295,7 @@ obj MirLowering {
         fn_values: dict[int, MirDecl] = {},
         text_fns: dict[str, str] = {},
         text_serial: int = 0,
+        enum_thunks: dict[str, str] = {},
         order: list[int] = [],
         refusals: dict[str, list[NativeRefusal]] = {},
         osp_model: (OspModel | None) = None,
@@ -589,6 +591,15 @@ obj MirLowering {
     def refusal_key(decl: MirDecl) -> str;
     def member_owner(member: uni.Name) -> (uni.Archetype | None);
     def union_archetypes(t: (TypeBase | None)) -> list[uni.Archetype];
+    def union_method_owner(
+        nd: uni.FuncCall, receiver: uni.Expr
+    ) -> (uni.Archetype | None);
+
+    def is_class_operand(nd: (uni.UniNode | None)) -> bool;
+    def narrowed_slot_agrees(
+        holder: str, arch: uni.Archetype, name: str, index: int
+    ) -> bool;
+
     def union_field_place(
         holder: MirValue, members: list[uni.Archetype], name: str, site: uni.UniNode
     ) -> MirValue;
@@ -1080,7 +1091,11 @@ obj MirLowering {
         value: MirValue, items: list[uni.Expr], site: uni.UniNode
     ) -> MirValue;
 
-    def enum_owns_int_tag(site: uni.UniNode, item: uni.Expr) -> bool;
+    def enum_box(value: MirValue, site: uni.UniNode) -> MirValue;
+    def enum_desc(t: MirType, site: uni.UniNode) -> MirValue;
+    def creation_kind(elem: MirType, site: uni.UniNode) -> MirValue;
+    def enum_text_thunk(t: MirType, site: uni.UniNode) -> str;
+    def store_text_result(base: MirValue, text: MirValue);
     def any_isinstance(
         value: MirValue, target: uni.Expr, site: uni.UniNode
     ) -> MirValue;

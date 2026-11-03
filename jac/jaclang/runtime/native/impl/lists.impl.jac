@@ -390,6 +390,7 @@ impl __jac_rt_list_clear(lst: int, kind: int) {
 impl __jac_rt_list_copy(lst: int, kind: int) -> int {
     n = __mem_load_i64(lst + LIST_LEN);
     made = __jac_rt_list_new(n, kind);
+    __mem_store_i64(made + LIST_KIND, __mem_load_i64(lst + LIST_KIND));
     if n > 0 {
         data = __mem_load_i64(made + LIST_DATA);
         memcpy(data, __mem_load_i64(lst + LIST_DATA), n * SLOT);
@@ -504,6 +505,7 @@ impl __jac_rt_list_slice(
         count = (start - stop - stride - 1) // (0 - stride);
     }
     made = __jac_rt_list_new(count, kind);
+    __mem_store_i64(made + LIST_KIND, __mem_load_i64(lst + LIST_KIND));
     src = __mem_load_i64(lst + LIST_DATA);
     dst = __mem_load_i64(made + LIST_DATA);
     at = start;

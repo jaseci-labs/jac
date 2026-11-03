@@ -317,10 +317,7 @@ impl TypeCheckPass._diag_erased_membership(
     }
     hay_t = self.evaluator.get_type_of_expression(hay);
 
-    if hay_t is None
-        or isinstance(hay_t, UnknownType)
-        or hay_t.is_any_type()
-        or hay_t.is_any_instance() {
+    if hay_t is None or isinstance(hay_t, UnknownType) {
         shown = str(hay_t) if hay_t is not None else "<unknown>";
         if native {
             self.ctx.emit(E1124, node_override=hay, op=op_text, type=shown);
