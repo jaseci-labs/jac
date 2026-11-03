@@ -1,5 +1,3 @@
-import from jaclang.runtime.python.cpython_api { PyMem_RawFree, PyMem_RawMalloc }
-
 import from c { def _NSGetExecutablePath(buf: ptr[u8], bufsize: &mut u32) -> i32;  }
 
 def getpath_os_name -> ptr[u8];
