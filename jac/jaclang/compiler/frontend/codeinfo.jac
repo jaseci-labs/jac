@@ -312,6 +312,8 @@ def is_selected_native_variant(path: str) -> bool;
 
 def is_native_variant_path(path: str) -> bool;
 
+def native_variant_base(path: str) -> (str | None);
+
 def native_variant_of(module_path: str) -> str;
 
 def _inferred_native_path(candidate: (str | None)) -> (str | None);
