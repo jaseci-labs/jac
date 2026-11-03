@@ -4381,6 +4381,32 @@ impl MirLowering.method_call(
         );
         return self.emit_value(MirOp.PTR_CAST, mir_region(), [child]);
     }
+    if receiver_type.kind == MirKind.REGION
+        and right.value == "partition"
+        and len(self.call_args(nd)) == 1 {
+        (ok, count) = c_scalar_constant(self.call_args(nd)[0]);
+        if not ok or not isinstance(count, int) or count < 1 {
+            raise MirRefused(
+                mir_refusal(
+                    "call",
+                    "Region.partition(n)",
+                    nd,
+                    "Native partition(n) takes a positive constant count, so the children form a fixed tuple."
+                )
+            );
+        }
+        parent = self.spill(self.lower_expr(target.target));
+        children = [
+            self.emit_value(
+                MirOp.PTR_CAST,
+                mir_region(),
+                [self.region_call("__jac_region_partition", [parent])]
+            ) for _ in range(count)
+        ];
+        return self.emit_value(
+            MirOp.TUPLE_MAKE, mir_tuple([mir_region()] * count), children
+        );
+    }
     if receiver_type.kind == MirKind.C_PTR {
         receiver = self.lower_expr(target.target);
         args = self.call_args(nd);
