@@ -1665,7 +1665,10 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
                 and isinstance(nd.target.right, uni.Name)
                 and isinstance(nd.target.target, uni.Expr) {
                 via_owner = self.object_method(
-                    nd, self.lower_expr(nd.target.target), decl.owner, nd.target.right.value
+                    nd,
+                    self.lower_expr(nd.target.target),
+                    decl.owner,
+                    nd.target.right.value
                 );
                 if via_owner is not None {
                     return via_owner;
@@ -3042,6 +3045,7 @@ impl MirLowering.import_call(
     if unit not in self.mir.deps {
         self.mir.deps.append(unit);
     }
+    self.imported_fns[self.name_of(callee)] = (unit, symbol);
     args = self.bound_args(nd, callee, False);
     if len(args) != len(params) {
         raise MirRefused(

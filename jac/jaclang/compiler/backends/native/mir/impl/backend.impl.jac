@@ -472,6 +472,34 @@ impl MirNativePass.layout(lowering: MirLowering, mir: MirModule) -> NativeModule
             made.functions[fn.name] = record;
         }
     }
+    for (name, (unit, symbol)) in sorted(lowering.imported_fns.items()) {
+        if name in made.functions {
+            continue;
+        }
+        iface = active_host().native_dep_iface(self.prog, unit, self.prog.options);
+        found = iface.layout.functions.get(name)
+            if iface is not None and iface.layout is not None
+            else None;
+        ext = mir.externs.get(symbol);
+        if found is None and ext is not None {
+            found = NativeFuncLayout(
+                name=symbol,
+                param_types=[mir_layout_type(param) for param in ext.params],
+                param_names=[],
+                ret_type=mir_layout_type(ext.ret),
+                ret_struct_name=ext.ret.name
+                    if ext.ret.kind == MirKind.OBJ and ext.ret.name != "*"
+                    else None,
+                ret_enum_type=mir_layout_enum(ext.ret),
+                ret_elem_keys=[mir_layout_key(arg) for arg in ext.ret.args]
+                    if ext.ret.kind in (MirKind.LIST, MirKind.DICT, MirKind.SET)
+                    else None
+            );
+        }
+        if found is not None {
+            made.functions[name] = found;
+        }
+    }
     return made;
 }
 
