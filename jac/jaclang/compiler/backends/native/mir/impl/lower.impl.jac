@@ -3801,6 +3801,18 @@ impl MirLowering.require_dep_native(path: str, symbol: str, site: uni.UniNode) {
     unit = os.path.realpath(path);
     prefix = native_unit_prefix(path) + ".";
     name = symbol[len(prefix):] if symbol.startswith(prefix) else symbol;
+    if host_only_path(path) {
+        raise MirRefused(
+            mir_refusal(
+                "function",
+                name,
+                site,
+                f"{os.path.basename(
+                    path
+                )} is not a native unit in this build, so native code cannot call '{name}'."
+            )
+        );
+    }
     if unit not in self.dep_verdicts {
         iface = active_host().native_dep_iface(self.prog, unit, self.prog.options);
         self.dep_verdicts[unit] = list(iface.demoted) if iface is not None else None;
