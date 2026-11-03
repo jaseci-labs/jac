@@ -584,6 +584,9 @@ obj MirLowering {
     def tuple_box(value: MirValue, site: uni.UniNode) -> MirValue;
     def tuple_unbox(handle: MirValue, t: MirType) -> MirValue;
     def address_of(value: MirValue) -> MirValue;
+    def struct_words(elem: MirType) -> MirValue;
+    def struct_element(lst: MirValue, index: MirValue) -> MirValue;
+    def struct_push(lst: MirValue, item: MirValue, site: uni.UniNode);
     def container_len(value: MirValue) -> MirValue;
     def list_read(lst: MirValue, index: MirValue) -> MirValue;
     def list_index(lst: MirValue, index: MirValue, message: str) -> MirValue;
@@ -1112,6 +1115,7 @@ obj MirLowering {
         value: MirValue, digits_nd: (uni.Expr | None), site: uni.UniNode
     ) -> MirValue;
 
+    def float_ratio(value: MirValue) -> MirValue;
     def divmod_value(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
     def power(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
     def pow_result(site: uni.UniNode) -> MirType;

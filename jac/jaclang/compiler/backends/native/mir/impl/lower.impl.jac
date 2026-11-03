@@ -3115,10 +3115,11 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
                 }
             }
         }
+        struct_base: (MirValue | None) = None;
         if isinstance(target_type, UnionType) {
             held = self.lower_expr(nd.target);
             if held.type.kind == MirKind.OPT
-                and held.type.payload().kind == MirKind.OBJ {
+                and held.type.payload().kind in (MirKind.OBJ, MirKind.C_STRUCT) {
                 b = self.builder();
                 held = self.spill(held);
                 missing = self.st().fn.new_block("attr.none");
@@ -3137,12 +3138,37 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
                     held, self.archetypes[held.type.name], right.value, nd
                 );
             }
-            raise MirRefused(mir_refusal("attribute access", held.type.render(), nd));
+            if held.type.kind != MirKind.C_STRUCT {
+                raise MirRefused(
+                    mir_refusal("attribute access", held.type.render(), nd)
+                );
+            }
+            struct_base = self.temp_slot(held.type);
+            self.builder().store(struct_base, held);
         }
-        base = self.struct_temp_place(nd.target)
-            if isinstance(nd.target, uni.FuncCall)
-            else self.lower_place(nd.target);
+        base = struct_base
+            if struct_base is not None
+            else (
+                self.struct_temp_place(nd.target)
+                    if isinstance(nd.target, uni.FuncCall)
+                    else self.lower_place(nd.target)
+            );
         holder = self.place_elem(base);
+        if holder.kind == MirKind.OPT and holder.payload().kind == MirKind.C_STRUCT {
+            b = self.builder();
+            held = self.spill(b.load(base, holder));
+            missing = self.st().fn.new_block("attr.none");
+            present = self.st().fn.new_block("attr.some");
+            b.cond_branch(self.opt_present(held), present, missing);
+            b.position(missing);
+            b.raise_builtin(
+                "AttributeError", f"'NoneType' object has no attribute '{right.value}'"
+            );
+            b.position(present);
+            base = self.temp_slot(holder.payload());
+            b.store(base, self.opt_get(held));
+            holder = holder.payload();
+        }
         if holder.kind != MirKind.C_STRUCT {
             raise MirRefused(mir_refusal("attribute access", holder.render(), nd));
         }
@@ -3174,6 +3200,17 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
         raise MirRefused(mir_refusal("subscript", type(right).__name__, nd));
     }
     view = self.lower_expr(nd.target);
+    if view.type.kind == MirKind.LIST
+        and view.type.payload().kind == MirKind.C_STRUCT
+        and right.slices[0].start is not None {
+        held = self.spill(view);
+        element_at = self.coerce(
+            self.lower_expr(right.slices[0].start), mir_int(), right.slices[0].start
+        );
+        return self.struct_element(
+            held, self.list_index(held, element_at, LIST_INDEX_MESSAGE)
+        );
+    }
     if view.type.kind != MirKind.C_VIEW {
         hint: (str | None) = None;
         if view.type.kind == MirKind.LIST and view.type.payload().kind == MirKind.ANY {
@@ -4028,6 +4065,11 @@ impl MirLowering.method_call(
         return self.runtime_value(
             "__jac_rt_float_is_integer", [self.lower_expr(target.target)]
         );
+    }
+    if receiver_type.kind == MirKind.FLOAT
+        and right.value == "as_integer_ratio"
+        and not self.call_args(nd) {
+        return self.float_ratio(self.lower_expr(target.target));
     }
     if receiver_type.kind == MirKind.ENUM {
         via_enum = self.enum_method_call(

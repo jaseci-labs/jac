@@ -80,6 +80,8 @@ def:pub __jac_rt_int_bit_count(v: int) -> int;
 
 def:pub __jac_rt_float_is_integer(v: float) -> bool;
 
+def:pub __jac_rt_float_ratio_den(v: float) -> int;
+
 def:pub __jac_rt_float_pow(base: float, exp: float) -> float;
 
 def:pub __jac_rt_int_pow_float(base: int, exp: int) -> float;
