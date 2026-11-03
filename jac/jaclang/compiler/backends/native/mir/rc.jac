@@ -10,7 +10,8 @@ obj MirRcState {
         parents: dict[int, int] = {},
         joins: dict[int, list[int]] = {},
         pending: dict[int, MirValue] = {},
-        out: list[MirInstr] = [];
+        out: list[MirInstr] = [],
+        released_early: bool = False;
 
     def run;
     def rewrite(blk: MirBlock);
