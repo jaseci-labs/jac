@@ -627,6 +627,7 @@ obj MirLowering {
     ) -> (tuple[uni.Archetype, MirDecl] | None);
 
     def union_accessor_get(nd: uni.AtomTrailer) -> (MirValue | None);
+    def union_accessor_set(target: uni.AtomTrailer, nd: uni.Assignment) -> bool;
     def ref_word_side(value: MirValue) -> bool;
     def ref_word(value: MirValue) -> MirValue;
     def any_number(value: MirValue, whole: bool, site: uni.UniNode) -> MirValue;

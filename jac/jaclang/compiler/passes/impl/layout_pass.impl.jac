@@ -5,6 +5,8 @@ impl LayoutPass.postinit -> None {
 
 impl LayoutPass._run_impl(ir_in: Module) -> Module {
     module = self.module;
+    LAYOUT_PROGRAM.clear();
+    LAYOUT_PROGRAM.append(self.prog);
 
     self._type_declaration_surface(module);
     self._build_enum_layouts(module);
@@ -377,9 +379,11 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
         current_idx += 1;
     }
 
+    pending_bases: list[str] = [];
     for ancestor_name in mro[1:] {
         ancestor_layout = reg.layouts.get(ancestor_name);
         if ancestor_layout is None {
+            pending_bases.append(ancestor_name);
             continue;
         }
         parent_field_start[ancestor_name] = current_idx;
@@ -500,7 +504,8 @@ impl LayoutPass._build_layout(arch: Archetype) -> ArchetypeLayout {
         is_osp=is_osp,
         vtable_ptr_slot=vtable_ptr_slot,
         type_tag_slot=type_tag_slot,
-        reports_slot=reports_slot
+        reports_slot=reports_slot,
+        pending_bases=pending_bases
     );
 }
 
@@ -819,7 +824,87 @@ impl LayoutPass._split_top_level(s: str, sep: str) -> list[str] {
 }
 
 impl LayoutRegistry.get_layout(name: str) -> (ArchetypeLayout | None) {
-    return self.layouts.get(name);
+    lay = self.layouts.get(name);
+    if lay is not None and lay.pending_bases {
+        settle_pending_bases(self, lay);
+    }
+    return lay;
+}
+
+impl settle_pending_bases(reg: LayoutRegistry, lay: ArchetypeLayout) -> None {
+    import os as _settle_os;
+    pending = list(lay.pending_bases);
+    lay.pending_bases = [];
+    prog = LAYOUT_PROGRAM[0] if LAYOUT_PROGRAM else None;
+    if prog is None {
+        lay.pending_bases = pending;
+        return;
+    }
+    hub = prog.mod.hub;
+    paths: list[str] = list(lay.parent_mods or []);
+    seen: set[str] = set();
+    while paths {
+        path = paths.pop(0);
+        if not path or path in seen {
+            continue;
+        }
+        seen.add(path);
+        dep = hub.get(path) or hub.get(_settle_os.path.realpath(path));
+        dep_reg = dep.gen.layout_registry if dep is not None else None;
+        if dep_reg is None {
+            continue;
+        }
+        for name in pending {
+            if name in reg.layouts or name not in dep_reg.layouts {
+                continue;
+            }
+            found = dep_reg.get_layout(name);
+            if found is None {
+                continue;
+            }
+            reg.layouts[name] = found;
+            if name in dep_reg.mro_order and name not in reg.mro_order {
+                reg.set_mro(name, list(dep_reg.mro_order[name]));
+            }
+            if name in dep_reg.class_parents and name not in reg.class_parents {
+                reg.class_parents[name] = list(dep_reg.class_parents[name]);
+            }
+            paths.extend(list(found.parent_mods or []));
+        }
+    }
+    still = [
+        name
+        for name in pending
+        if name not in reg.layouts
+    ];
+    full = extended_mro(reg, lay);
+    if len(full) > len(lay.mro or []) {
+        lay.mro = full;
+        reg.set_mro(lay.name, list(full));
+    }
+    for anc in (lay.mro or [])[1:] {
+        if anc not in reg.layouts and anc not in still {
+            still.append(anc);
+        }
+    }
+    ancestors = [
+        reg.layouts[anc]
+        for anc in (lay.mro or [])[1:]
+        if anc in reg.layouts
+    ];
+    missing = any(
+        finfo.name not in lay.field_index for anc_lay in ancestors
+        for finfo in anc_lay.fields
+    );
+    if ancestors
+        and missing
+        and (
+            headers_agree(lay, ancestors[0])
+            or relax_vtable_header(lay, ancestors, True)
+        ) {
+        adopt_ancestor_slots(lay, ancestors);
+    }
+    lay.pending_bases = still;
 }
 
 impl LayoutRegistry.get_enum_layout(name: str) -> (EnumLayout | None) {

@@ -51,7 +51,8 @@ obj ArchetypeLayout {
         is_acyclic: bool = False,
         vtable_ptr_slot: (int | None) = None,
         type_tag_slot: (int | None) = None,
-        reports_slot: (int | None) = None;
+        reports_slot: (int | None) = None,
+        pending_bases: list[str] = [];
 }
 
 obj EnumMemberLayout {
@@ -70,7 +71,8 @@ obj EnumLayout {
         members: list[EnumMemberLayout] = [];
 }
 
-glob ACCESSOR_SLOT_SUFFIX: dict[str, str] = {
+glob LAYOUT_PROGRAM: list[any] = [],
+     ACCESSOR_SLOT_SUFFIX: dict[str, str] = {
          "property": "__get__",
          "setter": "__set__",
          "deleter": "__del__"
@@ -129,6 +131,8 @@ def adopt_imported_bases(module: Module, header_identity: bool = True) -> list[s
 def merge_imported_layouts(consumer: Module, imported: Module, prog: JacProgram);
 
 def adopt_ancestor_slots(lay: ArchetypeLayout, ancestors: list[ArchetypeLayout]);
+
+def settle_pending_bases(reg: LayoutRegistry, lay: ArchetypeLayout) -> None;
 
 def clone_field(finfo: FieldLayout, index: int) -> FieldLayout;
 

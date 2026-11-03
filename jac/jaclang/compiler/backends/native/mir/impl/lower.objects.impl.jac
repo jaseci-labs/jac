@@ -2599,6 +2599,68 @@ impl MirLowering.union_accessor_get(nd: uni.AtomTrailer) -> (MirValue | None) {
     return b.load(result, wanted);
 }
 
+impl MirLowering.union_accessor_set(
+    target: uni.AtomTrailer, nd: uni.Assignment
+) -> bool {
+    if nd.value is None
+        or nd.aug_op is not None
+        or not target.is_attr
+        or not isinstance(target.right, uni.Name)
+        or not isinstance(target.target, uni.Expr) {
+        return False;
+    }
+    seen = target.target.narrowed_type
+        if target.target.narrowed_type is not None
+        else target.target.type;
+    members = self.union_archetypes(seen);
+    if not members {
+        return False;
+    }
+    found = [
+        self.accessor_on(arch, target.right.value, "setter", target) for arch in members
+    ];
+    if any(one is None for one in found) {
+        return False;
+    }
+    b = self.builder();
+    fn = self.st().fn;
+    held = self.spill(self.lower_expr(target.target));
+    value = self.spill(self.lower_expr(nd.value));
+    done = fn.new_block("uset.done");
+    for (index, arch) in enumerate(members) {
+        bound = found[index];
+        if bound is None {
+            continue;
+        }
+        (owner, decl) = bound;
+        view = held
+            if held.type is self.object_type(arch)
+            else b.ref_cast(held, self.object_type(arch), False);
+        miss: (MirBlock | None) = None;
+        if index < len(members) - 1 {
+            hit = fn.new_block("uset.hit");
+            miss = fn.new_block("uset.miss");
+            b.cond_branch(self.member_test(held, view, arch, nd), hit, miss);
+            b.position(hit);
+        }
+        self.invoke_method(
+            decl,
+            owner,
+            self.decl_label(decl),
+            [
+                self.method_receiver(decl, owner, view, nd),
+                self.coerce(value, decl.params[0], nd)
+            ]
+        );
+        b.branch(done);
+        if miss is not None {
+            b.position(miss);
+        }
+    }
+    b.position(done);
+    return True;
+}
+
 impl MirLowering.accessor_get(nd: uni.AtomTrailer) -> (MirValue | None) {
     found = self.accessor_of(nd, "property");
     if found is None {
@@ -2615,7 +2677,7 @@ impl MirLowering.accessor_set(target: uni.AtomTrailer, nd: uni.Assignment) -> bo
     }
     found = self.accessor_of(target, "setter");
     if found is None {
-        return False;
+        return self.union_accessor_set(target, nd);
     }
     (arch, decl) = found;
     holder = self.spill(self.lower_expr(target.target));
