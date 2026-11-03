@@ -6,8 +6,14 @@
     // The launcher, the payload tool and their tests are Jac. Zig is the
     // bootstrap seed (bootstrap/build_python.zig) and the C/C++ cross-compiler
     // for the LLVM shim and the vendored runtimes; the dependencies below are
+    // the zstd an upstream macOS LLVM slice needs (macosShim in build.zig) and
     // the JavaScript engine's foreign sources (js_engine/native/build_native.zig).
     .dependencies = .{
+        .zstd = .{
+            .url = "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz",
+            .hash = "N-V-__8AAPZ7fwBg4JoCzM_0o2A8wxH2hsUUeiU1iuZv53L5",
+            .lazy = true,
+        },
         .pcre2 = .{
             .url = "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.49/pcre2-10.49.tar.gz",
             .hash = "pcre2-10.49.0-IZ6r68cregBKN199ndY6AaKNyKJpNmnQVSm8-h0gp4sj",

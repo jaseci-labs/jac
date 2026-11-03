@@ -43,7 +43,7 @@ test "the checkout's C floor resolves per arch, never across arches" {
     repo = tempfile.mkdtemp();
     x86 = _mk(
         os.path.join(
-            repo, ".python-build", "cpython", "linux-x86_64", "python", "build", "lib"
+            repo, ".python-build", "jacpython", "linux-x86_64", "python", "build", "lib"
         )
     );
     _touch(os.path.join(x86, "libssl.a"));
@@ -53,27 +53,6 @@ test "the checkout's C floor resolves per arch, never across arches" {
         other = floors.CFloorArtifact(variant="linux-aarch64").probe_checkout();
         assert other.found is None , "an aarch64 build must never link the x86_64 floor";
     }
-}
-
-test "the running interpreter's own Python build supplies the C floor" {
-    repo = tempfile.mkdtemp();
-    libs: dict[str, str] = {};
-    for variant in ("cpython", "jacpython") {
-        libs[variant] = _mk(
-            os.path.join(
-                repo, ".python-build", variant, "linux-x86_64", "python", "build", "lib"
-            )
-        );
-        _touch(os.path.join(libs[variant], "libz.a"));
-    }
-    with patch.object(floors, "_repo_root", return_value=repo) {
-        with patch.object(
-            floors, "_running_python_variant", return_value="jacpython"
-        ) {
-            found = floors.CFloorArtifact(variant="linux-x86_64").probe_checkout();
-        }
-    }
-    assert found.found is not None and found.found.path == libs["jacpython"];
 }
 
 test "a sealed image and a kit serve their own python/floor" {
@@ -146,7 +125,13 @@ test "static linking asks the router for the target's floors" {
     repo = tempfile.mkdtemp();
     lib = _mk(
         os.path.join(
-            repo, ".python-build", "cpython", "linux-aarch64", "python", "build", "lib"
+            repo,
+            ".python-build",
+            "jacpython",
+            "linux-aarch64",
+            "python",
+            "build",
+            "lib"
         )
     );
     _touch(os.path.join(lib, "libssl.a"));

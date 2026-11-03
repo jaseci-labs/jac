@@ -1,18 +1,32 @@
-name: Build compiler kernels
+name: Build compiler kernels and JacPython objects
 
-# Builds the native compiler kernel for each named release platform on one
-# class of x86 Linux runner and uploads it as the `kernel-<platform>` artifact
-# of the calling run (#10219). A kernel is target-specific but its build is
-# not host-specific: the kernel build takes the target's canonical triple,
-# the in-process linkers write ELF and Mach-O for any target, and the kernel
-# links no C archive of its target. A caller's build adopts the artifact with
-# `zig build -Dkernel=DIR` (or setup-jac's `kernel-dir`), and the seal refuses
-# a kernel whose unit sources, codegen, compiler, target or Python do not
-# match the tree it seals.
+# Builds, on one class of x86 Linux runner, the two native artifacts whose
+# build is serial lowering that runs 2.5-3x slower on the ARM and macOS
+# runners, for each named release platform, as artifacts of the calling run:
 #
-# The link-source driver (`zig build -Ddev`) runs the checkout's own
-# compiler, which is the compiler that builds the kernel; its Python is never
-# shipped, so the cache main seeds is safe for it on every channel.
+#   - `jacpython-object-<platform>`: JacPython's native object (jacpython.o,
+#     its sha256, the sources it was lowered from, the generated modules
+#     lowered into it and manifest.json), from `zig build jacpython-object
+#     -Dtarget-platform=<platform>` (#10472). A build links it with
+#     `zig build -Djacpython-object=DIR` (or setup-jac's `prebuilt`) and does
+#     the native rest itself, and refuses an object lowered for another target
+#     or from other sources, tools or headers.
+#   - `kernel-<platform>`: the native compiler kernel (#10219). A build adopts
+#     it with `zig build -Dkernel=DIR` (or setup-jac's `prebuilt`), and the
+#     seal refuses a kernel whose unit sources, codegen, compiler, target or
+#     Python do not match the tree it seals.
+#
+# Neither build is host-specific: lowering takes the target's canonical
+# triple, the in-process linkers write ELF and Mach-O for any target, neither
+# artifact links a C archive of its target, and JacPython's pyconfig.h is
+# probed without a macOS SDK.
+#
+# Both run the checkout's own compiler on a linux-x86_64 JacPython runtime:
+# the previous one main built, else the pinned seed (-Djacpython-host=auto).
+# The kernel's link-source driver (`zig build -Ddev`) bundles that runtime but
+# is never shipped, and a kernel records only its Python version, so the
+# driver reuses the runtime main last built whenever the sources it was
+# lowered from are unchanged.
 
 on:
   workflow_call:
@@ -31,12 +45,13 @@ permissions:
   contents: read
 
 jobs:
-  kernel:
-    name: kernel ${{ matrix.platform }}
+  build:
+    name: ${{ matrix.artifact }} ${{ matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
         platform: ${{ fromJSON(inputs.platforms) }}
+        artifact: [jacpython-object, kernel]
     runs-on: blacksmith-8vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -45,127 +60,78 @@ jobs:
 
       - name: Fingerprint immutable build inputs
         id: inputs
-        shell: bash
         run: bash scripts/ci_cache_keys.sh >> "$GITHUB_OUTPUT"
 
-      # The kernel is a pure function of the compiler tree, the native shim's
-      # inputs and the target, so a rerun of the same commit (or a dev-channel
-      # build of an unchanged tree) reuses it. The leg's seal re-verifies the
-      # kernel against the tree, so a restored kernel can only be refused,
-      # never shipped stale.
-      - name: Restore a kernel built from this tree
-        id: kernel-cache
+      # Each artifact is a pure function of its sources, the compiler and
+      # tools that lower them and the target, so a rerun of the same commit
+      # reuses it. The adopting build re-verifies it against its own tree, so
+      # a restored one can only be refused, never used stale.
+      - name: Restore a ${{ matrix.artifact }} built from this tree
+        id: cache
         uses: actions/cache@v4
         with:
-          path: .kernel
-          key: kernel-v2-${{ matrix.platform }}-${{ steps.inputs.outputs.kernel }}
+          path: .${{ matrix.artifact }}
+          key: ${{ matrix.artifact }}-v2-${{ matrix.platform }}-${{ matrix.artifact == 'kernel' && steps.inputs.outputs.kernel || steps.inputs.outputs.jacpython_object }}
 
-      - name: Fetch the prebuilt host shim from the deps release
-        if: steps.kernel-cache.outputs.cache-hit != 'true'
-        id: shim-fetch
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHIM_KEY: ${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.json') }}
-        run: |
-          set -euo pipefail
-          ASSET="libjacllvm-linux-x86_64-${SHIM_KEY}.so"
-          mkdir -p .shim-fetch
-          if gh release download deps --repo "$GITHUB_REPOSITORY" \
-               --pattern "$ASSET" --pattern "$ASSET.sha256" \
-               --dir .shim-fetch --clobber 2>/dev/null \
-             && ( cd .shim-fetch && shasum -a 256 -c "$ASSET.sha256" ); then
-            echo "hit=true" >> "$GITHUB_OUTPUT"
-            echo "file=$GITHUB_WORKSPACE/.shim-fetch/$ASSET" >> "$GITHUB_OUTPUT"
-          else
-            echo "No prebuilt shim $ASSET; building it from source."
-            echo "hit=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # The driver's Python is never shipped (it only runs the checkout's
-      # compiler), so the cache main seeds is safe on both channels here.
-      - name: Restore cached source-built Python (driver only)
-        if: steps.kernel-cache.outputs.cache-hit != 'true'
-        uses: actions/cache@v4
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: ./.github/actions/lowering-host
         with:
-          path: jac/.python-build/cpython
-          key: python-build-v4-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdkzig-libc-${{ steps.inputs.outputs.python_cpython }}
-          restore-keys: |
-            python-build-v4-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdkzig-libc-
+          python-key: ${{ steps.inputs.outputs.python }}
 
-      - name: Cache the Zig package store
-        if: steps.kernel-cache.outputs.cache-hit != 'true'
-        uses: actions/cache@v4
-        with:
-          path: .zig-cache/p
-          key: zig-pkgs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/build.zig.zon') }}
-          restore-keys: |
-            zig-pkgs-${{ runner.os }}-${{ runner.arch }}-
-
-      - name: Install host tools (zstd)
-        if: steps.kernel-cache.outputs.cache-hit != 'true'
-        run: sudo apt-get update && sudo apt-get install -y zstd
-
-      - name: Set up Zig 0.16.0
-        if: steps.kernel-cache.outputs.cache-hit != 'true'
-        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
-        with:
-          version: 0.16.0
-          use-cache: false
-
-      - name: Fetch LLVM for the jacllvm shim
-        if: steps.kernel-cache.outputs.cache-hit != 'true' && steps.shim-fetch.outputs.hit != 'true'
-        working-directory: jac
-        run: zig build fetch-llvm --summary all
-
-      # A link-source driver: the payload carries no compiler of its own and
-      # runs this checkout's, which is the compiler that builds the kernel.
-      - name: Build the driver
-        if: steps.kernel-cache.outputs.cache-hit != 'true'
-        working-directory: jac
-        env:
-          PYTHONUNBUFFERED: "1"
-        run: |
-          set -euo pipefail
-          if [ "${{ steps.shim-fetch.outputs.hit }}" = "true" ]; then
-            cp "${{ steps.shim-fetch.outputs.file }}" jaclang/compiler/backends/native/llvm/libjacllvm.so
-            zig build adopt-shim --summary all
-          fi
-          zig build -Ddev --summary all
-          zig build fetch-typeshed --summary all
-          if [ "${{ matrix.platform }}" = "linux-aarch64" ]; then
-            zig build vendor-musl-linux-aarch64 --summary all
-          fi
-
-      - name: Build the kernel for ${{ matrix.platform }}
-        if: steps.kernel-cache.outputs.cache-hit != 'true'
+      - name: Build the ${{ matrix.artifact }} for ${{ matrix.platform }}
+        if: steps.cache.outputs.cache-hit != 'true'
         working-directory: jac
         env:
           PYTHONUNBUFFERED: "1"
           PYTHONFAULTHANDLER: "1"
+          ARTIFACT: ${{ matrix.artifact }}
+          PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
-          BIN="$PWD/zig-out/bin/jac"
-          # --exact records the compiler's full digest, which the seal's
-          # payload tree reproduces; a dev build records only the ABI
-          # contract's, and the seal refuses to adopt that.
-          "$BIN" native build "kernel@${{ matrix.platform }}" --exact
-          "$BIN" native status "kernel@${{ matrix.platform }}"
-          if [ "${{ matrix.platform }}" = "linux-x86_64" ]; then
-            SRC=jaclang/compiler
+          OUT="$GITHUB_WORKSPACE/.$ARTIFACT"
+          rm -rf "$OUT"
+          if [ "$ARTIFACT" = jacpython-object ]; then
+            zig build jacpython-object -Dtarget-platform="$PLATFORM" --summary all
+            cp -r ".python-build/jacpython/$PLATFORM.object" "$OUT"
           else
-            SRC="jaclang/compiler/kernels/${{ matrix.platform }}"
+            # A link-source driver: the payload carries no compiler of its own
+            # and runs this checkout's, which builds the kernel.
+            zig build -Ddev -Dreuse-python=true --summary all
+            zig build fetch-typeshed --summary all
+            [ "$PLATFORM" != linux-aarch64 ] || zig build vendor-musl-linux-aarch64 --summary all
+            # --exact records the compiler's full digest, which the seal's
+            # payload tree reproduces; the seal refuses a dev build's.
+            zig-out/bin/jac native build "kernel@$PLATFORM" --exact
+            zig-out/bin/jac native status "kernel@$PLATFORM"
+            SRC=jaclang/compiler
+            [ "$PLATFORM" = linux-x86_64 ] || SRC="jaclang/compiler/kernels/$PLATFORM"
+            mkdir -p "$OUT"
+            cp "$SRC"/*jac_compiler.* "$OUT/"
+            rm -f "$OUT"/*.lock
           fi
-          mkdir -p "$GITHUB_WORKSPACE/.kernel"
-          cp "$SRC"/*jac_compiler.* "$GITHUB_WORKSPACE/.kernel/"
-          rm -f "$GITHUB_WORKSPACE/.kernel/"*.lock
-          ls -la "$GITHUB_WORKSPACE/.kernel"
+          ls -la "$OUT"
 
-      - name: Upload the kernel
-        uses: actions/upload-artifact@v4
+      # What the adopting build checks first, checked here so a bad object
+      # fails the job that made it rather than every leg.
+      - name: Check the object
+        if: matrix.artifact == 'jacpython-object'
+        working-directory: .jacpython-object
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          for f in jacpython.o sha256 sources manifest.json; do
+            [ -s "$f" ] || { echo "::error::the object directory has no $f"; exit 1; }
+          done
+          [ "$(sha256sum jacpython.o | cut -d' ' -f1)" = "$(tr -d ' \r\n' < sha256)" ] || {
+            echo "::error::jacpython.o does not match its sha256"; exit 1; }
+          [ "$(jq -r .platform manifest.json)" = "$PLATFORM" ] || {
+            echo "::error::the object was lowered for $(jq -r .platform manifest.json), not $PLATFORM"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: kernel-${{ matrix.platform }}
-          path: .kernel/
+          name: ${{ matrix.artifact }}-${{ matrix.platform }}
+          path: .${{ matrix.artifact }}/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
-

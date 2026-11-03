@@ -1,30 +1,19 @@
 # CPython source allowlist for Jac's Linux/macOS x86_64 and aarch64 builds.
 # Paths are relative to the checksum-pinned CPython archive in sources.json.
 # One exact file per line; a trailing / includes a directory recursively.
-# Blank lines and full-line # comments are ignored, except marked removals
-# restored by the build-only host (see below). No globs.
-# Unlisted archive contents are discarded before the build. Missing,
-# overlapping, or incorrectly typed entries fail the build.
+# Blank lines and full-line # comments are ignored. No globs.
+# Unlisted archive contents are discarded before the build: the C that the
+# native Jac implementation, the Jac generators (scripts/jacpython/) and the
+# JacPython build (bootstrap/pyconfig.zig's probes in place of configure,
+# build_jacpython.zig in place of Makefile.pre.in, makesetup and Setup*)
+# replace is simply not listed. Missing, overlapping, or incorrectly typed
+# entries fail the build.
 #
-# A commented path carries a marker saying which builds must lack it. Counts
+# A commented path carries a marker saying why the build lacks it. Counts
 # use pinned CPython 3.14.6 source lines, including comments and blanks.
 #
-#   "# path  # removed: N source lines"
-#   Replaced by the native Jac implementation, by a Jac generator run with
-#   the build-only host's interpreter (scripts/jacpython/gen_frozen.jac and
-#   gen_build_details.jac replace the frozen-module tools and Tools/build), or
-#   by the JacPython build itself: bootstrap/pyconfig.zig's compiler probes
-#   write pyconfig.h in place of configure, and build_jacpython.zig compiles,
-#   links and installs in place of Makefile.pre.in, makesetup and Setup*.
-#   That separate build-only CPython host restores these to produce the native
-#   object and build itself with configure and make; no shipped runtime has
-#   them.
-#   Excluded: 292 C files / 500,605 lines; 182 headers / 166,979 lines; 42 other files / 62,259 lines.
-#   Total: 516 files / 729,843 source lines.
-#
 #   "# path  # pruned: N source lines"
-#   Not needed by any build. Neither the host nor a shipped runtime has them,
-#   so build-graph.patch detaches upstream rules that name them.
+#   Needed by neither the build nor the runtime.
 #   A path is pruned only when no supported platform's configure selects it
 #   and its outer #if has no #else that the retained build still links.
 #   Total: 31 files / 61,064 source lines.
@@ -35,14 +24,12 @@
 #   instruction table (scripts/jacpython/gen_opcode_meta.jac), every C API
 #   header (Include/*.h, Include/cpython/*.h, Include/internal/) from the Jac
 #   layouts, constants, C API declarations and global strings
-#   (scripts/jacpython/gen_include.jac). Neither tree keeps the archive's
-#   copy; both builds stage the checked-in one in its place, and a header
-#   under Include/ that is not marked here fails the build.
+#   (scripts/jacpython/gen_include.jac). The archive's copy is discarded and
+#   the checked-in one staged in its place; a header under Include/ that is
+#   not marked here fails the build.
 #   Total: 283 files / 53,699 source lines.
 #
-# After each build, build.sh (the host) and build_jacpython.zig check that no
-# removed or pruned path came back, reading the marker to decide which builds
-# must lack it.
+# After each build, build_jacpython.zig checks that no pruned path came back.
 # Keep build dependencies and ABI adapters aligned with these exclusions.
 # Split a directory entry before removing only part of its contents.
 # CI hashes this manifest and rebuilds/verifies Python when it changes.
@@ -55,32 +42,19 @@
 # Build, install and license inputs
 # Grammar/  # pruned: 1,647 source lines
 LICENSE
-# Makefile.pre.in  # removed: 3,422 source lines
-# Misc/platform_triplet.c  # removed: 290 source lines
 Misc/python-config.in
 Misc/python-config.sh.in
 Misc/python-embed.pc.in
 # Misc/python.man  # pruned: 768 source lines
 Misc/python.pc.in
-# Programs/_bootstrap_python.c  # removed: 109 source lines
-# Programs/_freeze_module.c  # removed: 251 source lines
-# Programs/_freeze_module.py  # removed: 68 source lines
 # Programs/_testembed.c  # pruned: 2,641 source lines
 Programs/python.c
 # Programs/test_frozenmain.h  # pruned: 39 source lines
 # README.rst  # pruned: 235 source lines
-# Tools/build/  # removed: 5,956 source lines
 Tools/freeze/flag.py
 # Tools/gdb/libpython.py  # pruned: 2,190 source lines
 Tools/scripts/idle3
 Tools/scripts/pydoc3
-# aclocal.m4  # removed: 794 source lines
-# config.guess  # removed: 1,807 source lines
-# config.sub  # removed: 1,974 source lines
-# configure  # removed: 36,033 source lines
-# configure.ac  # removed: 8,286 source lines
-# install-sh  # removed: 541 source lines
-# pyconfig.h.in  # removed: 2,087 source lines
 
 # Public and internal headers
 # Include/Python.h  # generated: 155 source lines
@@ -368,548 +342,25 @@ Include/pydtrace.d
 # Include/warnings.h  # generated: 45 source lines
 # Include/weakrefobject.h  # generated: 46 source lines
 
-# Parser and tokenizer
-# Parser/action_helpers.c  # removed: 1,953 source lines
-# Parser/lexer/buffer.c  # removed: 76 source lines
-# Parser/lexer/buffer.h  # removed: 10 source lines
-# Parser/lexer/lexer.c  # removed: 1,635 source lines
-# Parser/lexer/lexer.h  # removed: 10 source lines
-# Parser/lexer/state.c  # removed: 154 source lines
-# Parser/lexer/state.h  # removed: 151 source lines
-# Parser/myreadline.c  # removed: 437 source lines
-# Parser/parser.c  # removed: 38,073 source lines
-# Parser/peg_api.c  # removed: 40 source lines
-# Parser/pegen.c  # removed: 1,083 source lines
-# Parser/pegen.h  # removed: 388 source lines
-# Parser/pegen_errors.c  # removed: 462 source lines
-# Parser/string_parser.c  # removed: 339 source lines
-# Parser/string_parser.h  # removed: 11 source lines
-# Parser/token.c  # removed: 250 source lines
-# Parser/tokenizer/file_tokenizer.c  # removed: 494 source lines
-# Parser/tokenizer/helpers.c  # removed: 583 source lines
-# Parser/tokenizer/helpers.h  # removed: 37 source lines
-# Parser/tokenizer/readline_tokenizer.c  # removed: 135 source lines
-# Parser/tokenizer/string_tokenizer.c  # removed: 148 source lines
-# Parser/tokenizer/tokenizer.h  # removed: 14 source lines
-# Parser/tokenizer/utf8_tokenizer.c  # removed: 55 source lines
-
 # Interpreter and compiler
-# Python/Python-ast.c  # removed: 18,485 source lines
-# Python/Python-tokenize.c  # removed: 445 source lines
-# Python/_contextvars.c  # removed: 68 source lines
-# Python/_warnings.c  # removed: 1,691 source lines
-# Python/asdl.c  # removed: 6 source lines
-# Python/asm_trampoline.S  # removed: 63 source lines
-# Python/asm_trampoline_aarch64.h  # removed: 56 source lines
-# Python/assemble.c  # removed: 802 source lines
-# Python/ast.c  # removed: 1,091 source lines
-# Python/ast_preprocess.c  # removed: 990 source lines
-# Python/ast_unparse.c  # removed: 1,029 source lines
-# Python/bltinmodule.c  # removed: 3,506 source lines
-# Python/bootstrap_hash.c  # removed: 598 source lines
-# Python/brc.c  # removed: 208 source lines
 # Python/bytecodes.c  # pruned: 5,549 source lines
-# Python/ceval.c  # removed: 3,725 source lines
-# Python/ceval_gil.c  # removed: 1,434 source lines
-# Python/ceval_macros.h  # removed: 439 source lines
-# Python/clinic/Python-tokenize.c.h  # removed: 86 source lines
-# Python/clinic/_contextvars.c.h  # removed: 21 source lines
-# Python/clinic/_warnings.c.h  # removed: 287 source lines
-# Python/clinic/bltinmodule.c.h  # removed: 1,287 source lines
-# Python/clinic/context.c.h  # removed: 262 source lines
-# Python/clinic/import.c.h  # removed: 633 source lines
-# Python/clinic/instruction_sequence.c.h  # removed: 313 source lines
-# Python/clinic/instrumentation.c.h  # removed: 334 source lines
-# Python/clinic/marshal.c.h  # removed: 354 source lines
-# Python/clinic/sysmodule.c.h  # removed: 1,983 source lines
-# Python/clinic/traceback.c.h  # removed: 135 source lines
-# Python/codecs.c  # removed: 1,708 source lines
-# Python/codegen.c  # removed: 6,485 source lines
-# Python/compile.c  # removed: 1,753 source lines
-# Python/condvar.h  # removed: 315 source lines
-# Python/config_common.h  # removed: 36 source lines
-# Python/context.c  # removed: 1,364 source lines
-# Python/critical_section.c  # removed: 205 source lines
-# Python/crossinterp.c  # removed: 3,304 source lines
-# Python/crossinterp_data_lookup.h  # removed: 835 source lines
-# Python/crossinterp_exceptions.h  # removed: 199 source lines
-# Python/dtoa.c  # removed: 2,843 source lines
-# Python/dynamic_annotations.c  # removed: 154 source lines
-# Python/dynload_shlib.c  # removed: 113 source lines
-# Python/errors.c  # removed: 2,069 source lines
 # Python/executor_cases.c.h  # pruned: 7,163 source lines
-# Python/fileutils.c  # removed: 3,112 source lines
-# Python/flowgraph.c  # removed: 4,167 source lines
-# Python/formatter_unicode.c  # removed: 1,726 source lines
-# Python/frame.c  # removed: 159 source lines
-# Python/frozen.c  # removed: 132 source lines
-# Python/frozen_modules/  # removed: 7 source lines
-# Python/frozenmain.c  # removed: 99 source lines
-# Python/future.c  # removed: 119 source lines
-# Python/gc.c  # removed: 2,057 source lines
-# Python/gc_free_threading.c  # removed: 3,006 source lines
-# Python/gc_gil.c  # removed: 17 source lines
-# Python/generated_cases.c.h  # removed: 12,528 source lines
-# Python/getargs.c  # removed: 2,863 source lines
-# Python/getcompiler.c  # removed: 27 source lines
-# Python/getcopyright.c  # removed: 23 source lines
-# Python/getopt.c  # removed: 163 source lines
-# Python/getplatform.c  # removed: 12 source lines
-# Python/getversion.c  # removed: 34 source lines
-# Python/hamt.c  # removed: 2,887 source lines
-# Python/hashtable.c  # removed: 424 source lines
-# Python/import.c  # removed: 4,957 source lines
-# Python/importdl.c  # removed: 520 source lines
-# Python/index_pool.c  # removed: 197 source lines
-# Python/initconfig.c  # removed: 4,751 source lines
-# Python/instruction_sequence.c  # removed: 483 source lines
-# Python/instrumentation.c  # removed: 3,174 source lines
-# Python/interpconfig.c  # removed: 269 source lines
-# Python/intrinsics.c  # removed: 287 source lines
 # Python/jit.c  # pruned: 523 source lines
-# Python/legacy_tracing.c  # removed: 781 source lines
-# Python/lock.c  # removed: 638 source lines
-# Python/marshal.c  # removed: 2,163 source lines
-# Python/modsupport.c  # removed: 673 source lines
-# Python/mysnprintf.c  # removed: 80 source lines
-# Python/mystrtoul.c  # removed: 297 source lines
-# Python/object_stack.c  # removed: 66 source lines
-# Python/opcode_targets.h  # removed: 766 source lines
-# Python/optimizer.c  # removed: 1,755 source lines
 # Python/optimizer_analysis.c  # pruned: 664 source lines
 # Python/optimizer_cases.c.h  # pruned: 2,520 source lines
 # Python/optimizer_symbols.c  # pruned: 880 source lines
-# Python/parking_lot.c  # removed: 442 source lines
-# Python/pathconfig.c  # removed: 471 source lines
-# Python/perf_jit_trampoline.c  # removed: 1,376 source lines
-# Python/perf_trampoline.c  # removed: 641 source lines
-# Python/preconfig.c  # removed: 978 source lines
-# Python/pyarena.c  # removed: 207 source lines
-# Python/pyctype.c  # removed: 214 source lines
-# Python/pyfpe.c  # removed: 18 source lines
-# Python/pyhash.c  # removed: 498 source lines
-# Python/pylifecycle.c  # removed: 3,632 source lines
-# Python/pymath.c  # removed: 19 source lines
-# Python/pystate.c  # removed: 3,262 source lines
-# Python/pystrcmp.c  # removed: 30 source lines
-# Python/pystrhex.c  # removed: 171 source lines
-# Python/pystrtod.c  # removed: 1,286 source lines
-# Python/pythonrun.c  # removed: 1,737 source lines
-# Python/pytime.c  # removed: 1,356 source lines
-# Python/qsbr.c  # removed: 290 source lines
-# Python/remote_debug.h  # removed: 1,191 source lines
-# Python/remote_debugging.c  # removed: 401 source lines
-# Python/specialize.c  # removed: 3,232 source lines
-# Python/stackrefs.c  # removed: 219 source lines
-# Python/stdlib_module_names.h  # removed: 302 source lines
-# Python/structmember.c  # removed: 382 source lines
-# Python/suggestions.c  # removed: 206 source lines
-# Python/symtable.c  # removed: 3,272 source lines
-# Python/sysmodule.c  # removed: 4,523 source lines
-# Python/thread.c  # removed: 301 source lines
 # Python/thread_nt.h  # pruned: 532 source lines
-# Python/thread_pthread.h  # removed: 1,002 source lines
 # Python/thread_pthread_stubs.h  # pruned: 191 source lines
-# Python/traceback.c  # removed: 1,473 source lines
-# Python/tracemalloc.c  # removed: 1,489 source lines
-# Python/uniqueid.c  # removed: 232 source lines
 
 # Builtin objects
-# Objects/abstract.c  # removed: 2,947 source lines
-# Objects/boolobject.c  # removed: 227 source lines
-# Objects/bytearrayobject.c  # removed: 3,077 source lines
-# Objects/bytes_methods.c  # removed: 740 source lines
-# Objects/bytesobject.c  # removed: 3,744 source lines
-# Objects/call.c  # removed: 1,130 source lines
-# Objects/capsule.c  # removed: 366 source lines
-# Objects/cellobject.c  # removed: 212 source lines
-# Objects/classobject.c  # removed: 518 source lines
-# Objects/clinic/bytearrayobject.c.h  # removed: 1,808 source lines
-# Objects/clinic/bytesobject.c.h  # removed: 1,419 source lines
-# Objects/clinic/classobject.c.h  # removed: 85 source lines
-# Objects/clinic/codeobject.c.h  # removed: 474 source lines
-# Objects/clinic/complexobject.c.h  # removed: 188 source lines
-# Objects/clinic/descrobject.c.h  # removed: 182 source lines
-# Objects/clinic/dictobject.c.h  # removed: 326 source lines
-# Objects/clinic/enumobject.c.h  # removed: 113 source lines
-# Objects/clinic/exceptions.c.h  # removed: 383 source lines
-# Objects/clinic/floatobject.c.h  # removed: 356 source lines
-# Objects/clinic/frameobject.c.h  # removed: 436 source lines
-# Objects/clinic/funcobject.c.h  # removed: 293 source lines
-# Objects/clinic/interpolationobject.c.h  # removed: 94 source lines
-# Objects/clinic/listobject.c.h  # removed: 471 source lines
-# Objects/clinic/longobject.c.h  # removed: 491 source lines
-# Objects/clinic/memoryobject.c.h  # removed: 500 source lines
-# Objects/clinic/moduleobject.c.h  # removed: 80 source lines
-# Objects/clinic/odictobject.c.h  # removed: 455 source lines
-# Objects/clinic/setobject.c.h  # removed: 557 source lines
-# Objects/clinic/structseq.c.h  # removed: 68 source lines
-# Objects/clinic/tupleobject.c.h  # removed: 130 source lines
-# Objects/clinic/typeobject.c.h  # removed: 265 source lines
-# Objects/clinic/typevarobject.c.h  # removed: 760 source lines
-# Objects/clinic/unicodeobject.c.h  # removed: 1,919 source lines
-# Objects/codeobject.c  # removed: 3,667 source lines
-# Objects/complexobject.c  # removed: 1,422 source lines
-# Objects/descrobject.c  # removed: 2,082 source lines
-# Objects/dictobject.c  # removed: 7,845 source lines
-# Objects/enumobject.c  # removed: 585 source lines
-# Objects/exceptions.c  # removed: 4,587 source lines
-# Objects/fileobject.c  # removed: 548 source lines
-# Objects/floatobject.c  # removed: 2,642 source lines
-# Objects/frameobject.c  # removed: 2,446 source lines
-# Objects/funcobject.c  # removed: 1,907 source lines
-# Objects/genericaliasobject.c  # removed: 1,056 source lines
-# Objects/genobject.c  # removed: 2,421 source lines
-# Objects/interpolationobject.c  # removed: 231 source lines
-# Objects/iterobject.c  # removed: 541 source lines
-# Objects/listobject.c  # removed: 4,263 source lines
-# Objects/longobject.c  # removed: 6,875 source lines
-# Objects/memoryobject.c  # removed: 3,610 source lines
-# Objects/methodobject.c  # removed: 578 source lines
-# Objects/mimalloc/alloc-aligned.c  # removed: 298 source lines
-# Objects/mimalloc/alloc-override.c  # removed: 297 source lines
-# Objects/mimalloc/alloc-posix.c  # removed: 185 source lines
-# Objects/mimalloc/alloc.c  # removed: 1,074 source lines
-# Objects/mimalloc/arena.c  # removed: 935 source lines
-# Objects/mimalloc/bitmap.c  # removed: 432 source lines
-# Objects/mimalloc/bitmap.h  # removed: 115 source lines
-# Objects/mimalloc/heap.c  # removed: 696 source lines
-# Objects/mimalloc/init.c  # removed: 687 source lines
-# Objects/mimalloc/options.c  # removed: 571 source lines
-# Objects/mimalloc/os.c  # removed: 698 source lines
-# Objects/mimalloc/page-queue.c  # removed: 332 source lines
-# Objects/mimalloc/page.c  # removed: 976 source lines
-# Objects/mimalloc/prim/osx/alloc-override-zone.c  # removed: 458 source lines
-# Objects/mimalloc/prim/osx/prim.c  # removed: 9 source lines
-# Objects/mimalloc/prim/prim.c  # removed: 24 source lines
-# Objects/mimalloc/prim/unix/prim.c  # removed: 860 source lines
-# Objects/mimalloc/prim/wasi/prim.c  # removed: 276 source lines
-# Objects/mimalloc/random.c  # removed: 254 source lines
-# Objects/mimalloc/segment-map.c  # removed: 153 source lines
-# Objects/mimalloc/segment.c  # removed: 1,684 source lines
-# Objects/mimalloc/static.c  # removed: 40 source lines
-# Objects/mimalloc/stats.c  # removed: 467 source lines
-# Objects/moduleobject.c  # removed: 1,440 source lines
-# Objects/namespaceobject.c  # removed: 332 source lines
-# Objects/object.c  # removed: 3,395 source lines
-# Objects/obmalloc.c  # removed: 3,662 source lines
-# Objects/odictobject.c  # removed: 2,372 source lines
-# Objects/picklebufobject.c  # removed: 224 source lines
-# Objects/rangeobject.c  # removed: 1,317 source lines
-# Objects/setobject.c  # removed: 2,888 source lines
-# Objects/sliceobject.c  # removed: 710 source lines
 Objects/stringlib/
-# Objects/structseq.c  # removed: 795 source lines
-# Objects/templateobject.c  # removed: 416 source lines
-# Objects/tupleobject.c  # removed: 1,220 source lines
-# Objects/typeobject.c  # removed: 12,312 source lines
-# Objects/typeslots.inc  # removed: 84 source lines
-# Objects/typevarobject.c  # removed: 2,388 source lines
-# Objects/unicodectype.c  # removed: 287 source lines
-# Objects/unicodeobject.c  # removed: 16,806 source lines
-# Objects/unicodetype_db.h  # removed: 6,734 source lines
-# Objects/unionobject.c  # removed: 600 source lines
-# Objects/weakrefobject.c  # removed: 1,135 source lines
 
 # Builtin and extension modules
-# Modules/Setup  # removed: 300 source lines
-# Modules/Setup.bootstrap.in  # removed: 42 source lines
-# Modules/Setup.stdlib.in  # removed: 192 source lines
-# Modules/_abc.c  # removed: 997 source lines
-# Modules/_asynciomodule.c  # removed: 4,432 source lines
-# Modules/_bisectmodule.c  # removed: 484 source lines
-# Modules/_bz2module.c  # removed: 843 source lines
-# Modules/_codecsmodule.c  # removed: 1,101 source lines
-# Modules/_collectionsmodule.c  # removed: 2,902 source lines
-# Modules/_csv.c  # removed: 1,864 source lines
-# Modules/_ctypes/_ctypes.c  # removed: 6,544 source lines
-# Modules/_ctypes/callbacks.c  # removed: 609 source lines
-# Modules/_ctypes/callproc.c  # removed: 2,034 source lines
-# Modules/_ctypes/cfield.c  # removed: 1,818 source lines
-# Modules/_ctypes/clinic/_ctypes.c.h  # removed: 1,003 source lines
-# Modules/_ctypes/clinic/callproc.c.h  # removed: 145 source lines
-# Modules/_ctypes/clinic/cfield.c.h  # removed: 129 source lines
-# Modules/_ctypes/ctypes.h  # removed: 642 source lines
-# Modules/_ctypes/malloc_closure.c  # removed: 165 source lines
-# Modules/_ctypes/stgdict.c  # removed: 707 source lines
-# Modules/_datetimemodule.c  # removed: 7,787 source lines
-# Modules/_decimal/_decimal.c  # removed: 6,341 source lines
-# Modules/_decimal/docstrings.h  # removed: 966 source lines
-# Modules/_elementtree.c  # removed: 4,560 source lines
-# Modules/_functoolsmodule.c  # removed: 1,953 source lines
-Modules/_hacl/Hacl_HMAC.c
-Modules/_hacl/Hacl_HMAC.h
-Modules/_hacl/Hacl_Hash_Blake2b.c
-Modules/_hacl/Hacl_Hash_Blake2b.h
-Modules/_hacl/Hacl_Hash_Blake2b_Simd256.c
-Modules/_hacl/Hacl_Hash_Blake2b_Simd256.h
-Modules/_hacl/Hacl_Hash_Blake2b_Simd256_universal2.c
-Modules/_hacl/Hacl_Hash_Blake2s.c
-Modules/_hacl/Hacl_Hash_Blake2s.h
-Modules/_hacl/Hacl_Hash_Blake2s_Simd128.c
-Modules/_hacl/Hacl_Hash_Blake2s_Simd128.h
-Modules/_hacl/Hacl_Hash_Blake2s_Simd128_universal2.c
-Modules/_hacl/Hacl_Hash_MD5.c
-Modules/_hacl/Hacl_Hash_MD5.h
-Modules/_hacl/Hacl_Hash_SHA1.c
-Modules/_hacl/Hacl_Hash_SHA1.h
-Modules/_hacl/Hacl_Hash_SHA2.c
-Modules/_hacl/Hacl_Hash_SHA2.h
-Modules/_hacl/Hacl_Hash_SHA3.c
-Modules/_hacl/Hacl_Hash_SHA3.h
-Modules/_hacl/Hacl_Streaming_HMAC.c
-Modules/_hacl/Hacl_Streaming_HMAC.h
-Modules/_hacl/Hacl_Streaming_Types.h
-Modules/_hacl/Lib_Memzero0.c
-Modules/_hacl/include/
-Modules/_hacl/internal/Hacl_HMAC.h
-Modules/_hacl/internal/Hacl_Hash_Blake2b.h
-Modules/_hacl/internal/Hacl_Hash_Blake2b_Simd256.h
-Modules/_hacl/internal/Hacl_Hash_Blake2s.h
-Modules/_hacl/internal/Hacl_Hash_Blake2s_Simd128.h
-Modules/_hacl/internal/Hacl_Hash_MD5.h
-Modules/_hacl/internal/Hacl_Hash_SHA1.h
-Modules/_hacl/internal/Hacl_Hash_SHA2.h
-Modules/_hacl/internal/Hacl_Hash_SHA3.h
-Modules/_hacl/internal/Hacl_Impl_Blake2_Constants.h
-Modules/_hacl/internal/Hacl_Streaming_HMAC.h
-Modules/_hacl/internal/Hacl_Streaming_Types.h
-Modules/_hacl/lib_memzero0.h
-Modules/_hacl/libintvector-shim.h
-Modules/_hacl/libintvector.h
-Modules/_hacl/python_hacl_namespaces.h
-# Modules/_hashopenssl.c  # removed: 2,390 source lines
-# Modules/_heapqmodule.c  # removed: 811 source lines
-# Modules/_interpchannelsmodule.c  # removed: 3,660 source lines
-# Modules/_interpqueuesmodule.c  # removed: 1,995 source lines
-# Modules/_interpreters_common.h  # removed: 123 source lines
-# Modules/_interpretersmodule.c  # removed: 1,747 source lines
-# Modules/_io/_iomodule.c  # removed: 746 source lines
-# Modules/_io/_iomodule.h  # removed: 197 source lines
-# Modules/_io/bufferedio.c  # removed: 2,775 source lines
-# Modules/_io/bytesio.c  # removed: 1,265 source lines
-# Modules/_io/clinic/_iomodule.c.h  # removed: 414 source lines
-# Modules/_io/clinic/bufferedio.c.h  # removed: 1,268 source lines
-# Modules/_io/clinic/bytesio.c.h  # removed: 640 source lines
-# Modules/_io/clinic/fileio.c.h  # removed: 552 source lines
-# Modules/_io/clinic/iobase.c.h  # removed: 448 source lines
-# Modules/_io/clinic/stringio.c.h  # removed: 556 source lines
-# Modules/_io/clinic/textio.c.h  # removed: 1,334 source lines
-# Modules/_io/fileio.c  # removed: 1,345 source lines
-# Modules/_io/iobase.c  # removed: 1,057 source lines
-# Modules/_io/stringio.c  # removed: 1,096 source lines
-# Modules/_io/textio.c  # removed: 3,435 source lines
-# Modules/_json.c  # removed: 1,974 source lines
-# Modules/_localemodule.c  # removed: 1,129 source lines
-# Modules/_lsprof.c  # removed: 1,146 source lines
-# Modules/_lzmamodule.c  # removed: 1,664 source lines
-# Modules/_math.h  # removed: 25 source lines
-# Modules/_multiprocessing/clinic/multiprocessing.c.h  # removed: 167 source lines
-# Modules/_multiprocessing/clinic/posixshmem.c.h  # removed: 89 source lines
-# Modules/_multiprocessing/clinic/semaphore.c.h  # removed: 585 source lines
-# Modules/_multiprocessing/multiprocessing.c  # removed: 296 source lines
-# Modules/_multiprocessing/multiprocessing.h  # removed: 104 source lines
-# Modules/_multiprocessing/posixshmem.c  # removed: 151 source lines
-# Modules/_multiprocessing/semaphore.c  # removed: 805 source lines
-# Modules/_opcode.c  # removed: 451 source lines
-# Modules/_operator.c  # removed: 2,032 source lines
-# Modules/_pickle.c  # removed: 8,179 source lines
-# Modules/_posixsubprocess.c  # removed: 1,357 source lines
-# Modules/_queuemodule.c  # removed: 628 source lines
-# Modules/_randommodule.c  # removed: 679 source lines
-# Modules/_remote_debugging_module.c  # removed: 3,666 source lines
-# Modules/_scproxy.c  # removed: 258 source lines
-# Modules/_sqlite/blob.c  # removed: 631 source lines
-# Modules/_sqlite/blob.h  # removed: 24 source lines
-# Modules/_sqlite/clinic/_sqlite3.connect.c.h  # removed: 31 source lines
-# Modules/_sqlite/clinic/blob.c.h  # removed: 215 source lines
-# Modules/_sqlite/clinic/connection.c.h  # removed: 1,927 source lines
-# Modules/_sqlite/clinic/cursor.c.h  # removed: 374 source lines
-# Modules/_sqlite/clinic/module.c.h  # removed: 214 source lines
-# Modules/_sqlite/clinic/row.c.h  # removed: 59 source lines
-# Modules/_sqlite/connection.c  # removed: 2,802 source lines
-# Modules/_sqlite/connection.h  # removed: 114 source lines
-# Modules/_sqlite/cursor.c  # removed: 1,391 source lines
-# Modules/_sqlite/cursor.h  # removed: 52 source lines
-# Modules/_sqlite/microprotocols.c  # removed: 143 source lines
-# Modules/_sqlite/microprotocols.h  # removed: 42 source lines
-# Modules/_sqlite/module.c  # removed: 773 source lines
-# Modules/_sqlite/module.h  # removed: 98 source lines
-# Modules/_sqlite/prepare_protocol.c  # removed: 76 source lines
-# Modules/_sqlite/prepare_protocol.h  # removed: 35 source lines
-# Modules/_sqlite/row.c  # removed: 299 source lines
-# Modules/_sqlite/row.h  # removed: 37 source lines
-# Modules/_sqlite/statement.c  # removed: 208 source lines
-# Modules/_sqlite/statement.h  # removed: 42 source lines
-# Modules/_sqlite/util.c  # removed: 185 source lines
-# Modules/_sqlite/util.h  # removed: 39 source lines
-# Modules/_sre/clinic/sre.c.h  # removed: 1,571 source lines
-# Modules/_sre/sre.c  # removed: 3,456 source lines
-# Modules/_sre/sre.h  # removed: 123 source lines
-# Modules/_sre/sre_constants.h  # removed: 98 source lines
-# Modules/_sre/sre_lib.h  # removed: 1,874 source lines
-# Modules/_sre/sre_targets.h  # removed: 58 source lines
-# Modules/_ssl.c  # removed: 6,943 source lines
-# Modules/_ssl.h  # removed: 80 source lines
 # Modules/_ssl_data_111.h  # pruned: 6,543 source lines
 # Modules/_ssl_data_300.h  # pruned: 8,588 source lines
-# Modules/_ssl/cert.c  # removed: 251 source lines
-# Modules/_ssl/clinic/cert.c.h  # removed: 92 source lines
-# Modules/_ssl/debughelpers.c  # removed: 225 source lines
-# Modules/_ssl/misc.c  # removed: 34 source lines
-# Modules/_ssl_data_35.h  # removed: 9,437 source lines
-# Modules/_stat.c  # removed: 713 source lines
-# Modules/_statisticsmodule.c  # removed: 159 source lines
-# Modules/_struct.c  # removed: 2,825 source lines
-# Modules/_suggestions.c  # removed: 69 source lines
-# Modules/_sysconfig.c  # removed: 109 source lines
-# Modules/_threadmodule.c  # removed: 2,831 source lines
-# Modules/_tracemalloc.c  # removed: 228 source lines
-# Modules/_typesmodule.c  # removed: 72 source lines
-# Modules/_typingmodule.c  # removed: 99 source lines
-# Modules/_uuidmodule.c  # removed: 154 source lines
-# Modules/_weakref.c  # removed: 187 source lines
-# Modules/_zoneinfo.c  # removed: 2,817 source lines
-# Modules/_zstd/_zstdmodule.c  # removed: 767 source lines
-# Modules/_zstd/_zstdmodule.h  # removed: 61 source lines
-# Modules/_zstd/buffer.h  # removed: 108 source lines
-# Modules/_zstd/clinic/_zstdmodule.c.h  # removed: 429 source lines
-# Modules/_zstd/clinic/compressor.c.h  # removed: 295 source lines
-# Modules/_zstd/clinic/decompressor.c.h  # removed: 225 source lines
-# Modules/_zstd/clinic/zstddict.c.h  # removed: 227 source lines
-# Modules/_zstd/compressor.c  # removed: 798 source lines
-# Modules/_zstd/decompressor.c  # removed: 717 source lines
-# Modules/_zstd/zstddict.c  # removed: 275 source lines
-# Modules/_zstd/zstddict.h  # removed: 29 source lines
-# Modules/addrinfo.h  # removed: 172 source lines
-# Modules/arraymodule.c  # removed: 3,359 source lines
-# Modules/atexitmodule.c  # removed: 361 source lines
-# Modules/binascii.c  # removed: 1,337 source lines
-# Modules/blake2module.c  # removed: 1,074 source lines
-# Modules/cjkcodecs/_codecs_cn.c  # removed: 470 source lines
-# Modules/cjkcodecs/_codecs_hk.c  # removed: 190 source lines
-# Modules/cjkcodecs/_codecs_iso2022.c  # removed: 1,153 source lines
-# Modules/cjkcodecs/_codecs_jp.c  # removed: 770 source lines
-# Modules/cjkcodecs/_codecs_kr.c  # removed: 468 source lines
-# Modules/cjkcodecs/_codecs_tw.c  # removed: 143 source lines
-# Modules/cjkcodecs/alg_jisx0201.h  # removed: 65 source lines
-# Modules/cjkcodecs/cjkcodecs.h  # removed: 525 source lines
-# Modules/cjkcodecs/clinic/multibytecodec.c.h  # removed: 701 source lines
-# Modules/cjkcodecs/emu_jisx0213_2000.h  # removed: 54 source lines
-# Modules/cjkcodecs/mappings_cn.h  # removed: 4,104 source lines
-# Modules/cjkcodecs/mappings_hk.h  # removed: 2,379 source lines
-# Modules/cjkcodecs/mappings_jisx0213_pair.h  # removed: 60 source lines
-# Modules/cjkcodecs/mappings_jp.h  # removed: 4,766 source lines
-# Modules/cjkcodecs/mappings_kr.h  # removed: 3,253 source lines
-# Modules/cjkcodecs/mappings_tw.h  # removed: 2,635 source lines
-# Modules/cjkcodecs/multibytecodec.c  # removed: 2,145 source lines
-# Modules/cjkcodecs/multibytecodec.h  # removed: 152 source lines
-# Modules/clinic/_abc.c.h  # removed: 164 source lines
-# Modules/clinic/_asynciomodule.c.h  # removed: 2,236 source lines
-# Modules/clinic/_bisectmodule.c.h  # removed: 449 source lines
-# Modules/clinic/_bz2module.c.h  # removed: 241 source lines
-# Modules/clinic/_codecsmodule.c.h  # removed: 2,807 source lines
-# Modules/clinic/_collectionsmodule.c.h  # removed: 635 source lines
-# Modules/clinic/_csv.c.h  # removed: 210 source lines
-# Modules/clinic/_datetimemodule.c.h  # removed: 527 source lines
-# Modules/clinic/_elementtree.c.h  # removed: 1,334 source lines
-# Modules/clinic/_functoolsmodule.c.h  # removed: 195 source lines
-# Modules/clinic/_hashopenssl.c.h  # removed: 1,987 source lines
-# Modules/clinic/_heapqmodule.c.h  # removed: 361 source lines
-# Modules/clinic/_localemodule.c.h  # removed: 598 source lines
-# Modules/clinic/_lsprof.c.h  # removed: 479 source lines
-# Modules/clinic/_lzmamodule.c.h  # removed: 337 source lines
-# Modules/clinic/_opcode.c.h  # removed: 779 source lines
-# Modules/clinic/_operator.c.h  # removed: 1,510 source lines
-# Modules/clinic/_pickle.c.h  # removed: 1,101 source lines
-# Modules/clinic/_posixsubprocess.c.h  # removed: 153 source lines
-# Modules/clinic/_queuemodule.c.h  # removed: 363 source lines
-# Modules/clinic/_randommodule.c.h  # removed: 177 source lines
-# Modules/clinic/_remote_debugging_module.c.h  # removed: 291 source lines
-# Modules/clinic/_ssl.c.h  # removed: 2,909 source lines
-# Modules/clinic/_statisticsmodule.c.h  # removed: 51 source lines
-# Modules/clinic/_struct.c.h  # removed: 461 source lines
-# Modules/clinic/_suggestions.c.h  # removed: 41 source lines
-# Modules/clinic/_sysconfig.c.h  # removed: 22 source lines
-# Modules/clinic/_threadmodule.c.h  # removed: 106 source lines
-# Modules/clinic/_tracemalloc.c.h  # removed: 217 source lines
-# Modules/clinic/_typingmodule.c.h  # removed: 12 source lines
-# Modules/clinic/_weakref.c.h  # removed: 115 source lines
-# Modules/clinic/_zoneinfo.c.h  # removed: 450 source lines
-# Modules/clinic/arraymodule.c.h  # removed: 777 source lines
-# Modules/clinic/binascii.c.h  # removed: 791 source lines
-# Modules/clinic/blake2module.c.h  # removed: 505 source lines
-# Modules/clinic/cmathmodule.c.h  # removed: 990 source lines
-# Modules/clinic/fcntlmodule.c.h  # removed: 273 source lines
-# Modules/clinic/gcmodule.c.h  # removed: 588 source lines
-# Modules/clinic/grpmodule.c.h  # removed: 155 source lines
-# Modules/clinic/hmacmodule.c.h  # removed: 673 source lines
-# Modules/clinic/itertoolsmodule.c.h  # removed: 968 source lines
-# Modules/clinic/mathmodule.c.h  # removed: 1,114 source lines
-# Modules/clinic/md5module.c.h  # removed: 175 source lines
-# Modules/clinic/mmapmodule.c.h  # removed: 769 source lines
-# Modules/clinic/posixmodule.c.h  # removed: 13,510 source lines
-# Modules/clinic/pwdmodule.c.h  # removed: 74 source lines
-# Modules/clinic/pyexpat.c.h  # removed: 836 source lines
-# Modules/clinic/resource.c.h  # removed: 177 source lines
-# Modules/clinic/selectmodule.c.h  # removed: 1,379 source lines
-# Modules/clinic/sha1module.c.h  # removed: 175 source lines
-# Modules/clinic/sha2module.c.h  # removed: 510 source lines
-# Modules/clinic/sha3module.c.h  # removed: 291 source lines
-# Modules/clinic/signalmodule.c.h  # removed: 783 source lines
-# Modules/clinic/socketmodule.c.h  # removed: 376 source lines
-# Modules/clinic/symtablemodule.c.h  # removed: 56 source lines
-# Modules/clinic/syslogmodule.c.h  # removed: 268 source lines
-# Modules/clinic/termios.c.h  # removed: 303 source lines
-# Modules/clinic/timemodule.c.h  # removed: 74 source lines
-# Modules/clinic/unicodedata.c.h  # removed: 552 source lines
-# Modules/clinic/zlibmodule.c.h  # removed: 1,125 source lines
-# Modules/cmathmodule.c  # removed: 1,315 source lines
-# Modules/config.c.in  # removed: 65 source lines
-# Modules/errnomodule.c  # removed: 988 source lines
-# Modules/faulthandler.c  # removed: 1,491 source lines
-# Modules/fcntlmodule.c  # removed: 789 source lines
-# Modules/gcmodule.c  # removed: 585 source lines
-# Modules/getaddrinfo.c  # removed: 642 source lines
-# Modules/getbuildinfo.c  # removed: 79 source lines
-# Modules/getnameinfo.c  # removed: 207 source lines
-# Modules/getpath.c  # removed: 981 source lines
 Modules/getpath.py
-# Modules/getpath_noop.c  # removed: 10 source lines
-# Modules/grpmodule.c  # removed: 409 source lines
-# Modules/hashlib.h  # removed: 107 source lines
-# Modules/hmacmodule.c  # removed: 1,865 source lines
-# Modules/itertoolsmodule.c  # removed: 4,103 source lines
-# Modules/ld_so_aix.in  # removed: 195 source lines
-# Modules/main.c  # removed: 831 source lines
-# Modules/makesetup  # removed: 343 source lines
-# Modules/mathmodule.c  # removed: 4,202 source lines
-# Modules/md5module.c  # removed: 413 source lines
-# Modules/mmapmodule.c  # removed: 2,379 source lines
-# Modules/posixmodule.c  # removed: 18,308 source lines
-# Modules/posixmodule.h  # removed: 36 source lines
-# Modules/pwdmodule.c  # removed: 380 source lines
-# Modules/pyexpat.c  # removed: 2,537 source lines
-# Modules/resource.c  # removed: 568 source lines
-# Modules/rotatingtree.c  # removed: 125 source lines
-# Modules/rotatingtree.h  # removed: 27 source lines
-# Modules/selectmodule.c  # removed: 2,896 source lines
-# Modules/sha1module.c  # removed: 411 source lines
-# Modules/sha2module.c  # removed: 954 source lines
-# Modules/sha3module.c  # removed: 680 source lines
-# Modules/signalmodule.c  # removed: 2,078 source lines
-# Modules/socketmodule.c  # removed: 9,305 source lines
-# Modules/socketmodule.h  # removed: 414 source lines
-# Modules/symtablemodule.c  # removed: 130 source lines
-# Modules/syslogmodule.c  # removed: 469 source lines
-# Modules/termios.c  # removed: 1,399 source lines
-# Modules/timemodule.c  # removed: 2,398 source lines
-# Modules/unicodedata.c  # removed: 1,821 source lines
-# Modules/unicodedata_db.h  # removed: 8,358 source lines
-# Modules/unicodename_db.h  # removed: 19,502 source lines
 # Modules/winreparse.h  # pruned: 59 source lines
 # Modules/xxmodule.c  # pruned: 413 source lines
-# Modules/zlibmodule.c  # removed: 2,181 source lines
 
 # Python standard library (no test or GUI packages)
 Lib/__future__.py
