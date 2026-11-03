@@ -29,8 +29,7 @@ glob ALLOWED: dict[str, str] = {
          "subprocess.linux.jac": "posix_spawn subprocesses exist only on Linux so far",
          "_zlib_abi.windows.jac": "z_stream under Windows' 32-bit long, another layout class",
          "errno.darwin.jac": "errno's names and values as CPython exposes them per platform",
-         "errno.linux.jac": "errno's names and values as CPython exposes them per platform",
-         "_mmap_platform.darwin.jac": "the MAP_*/MS_* flags and mremap availability each libc has its own way"
+         "errno.linux.jac": "errno's names and values as CPython exposes them per platform"
      };
 
 test "the bundled stdlib's per-target files are exactly the allowed ones" {
