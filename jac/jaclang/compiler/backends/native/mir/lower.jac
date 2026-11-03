@@ -364,7 +364,8 @@ obj MirLowering {
     def loop_scoped(sym: uni.Symbol) -> bool;
     def comprehension_scoped(sym: uni.Symbol) -> bool;
     def within_body(
-        nd: uni.UniNode, loop: (uni.WhileStmt | uni.InForStmt | uni.IterForStmt)
+        nd: uni.UniNode,
+        loop: (uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt)
     ) -> bool;
 
     def lower_return(nd: uni.ReturnStmt);
@@ -372,6 +373,7 @@ obj MirLowering {
     def lower_else(nd: (uni.ElseStmt | uni.ElseIf | None), done: MirBlock);
     def lower_iter_for(nd: uni.IterForStmt);
     def lower_while(nd: uni.WhileStmt);
+    def lower_forever(nd: uni.ForeverStmt);
     def lower_ctrl(nd: uni.CtrlStmt);
     def lower_for(nd: uni.InForStmt);
     def lower_for_core(nd: uni.InForStmt);

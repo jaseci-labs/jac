@@ -466,6 +466,8 @@ impl MirLowering.lower_stmt(nd: uni.UniNode) {
         self.lower_if(nd);
     } elif isinstance(nd, uni.WhileStmt) {
         self.lower_while(nd);
+    } elif isinstance(nd, uni.ForeverStmt) {
+        self.lower_forever(nd);
     } elif isinstance(nd, uni.CtrlStmt) {
         self.lower_ctrl(nd);
     } elif isinstance(nd, uni.InForStmt) {
@@ -688,7 +690,9 @@ impl MirLowering.loop_scoped(sym: uni.Symbol) -> bool {
     walk = child.parent;
     while walk is not None
         and not isinstance(walk, (uni.Ability, uni.LambdaExpr, uni.Module)) {
-        if isinstance(walk, (uni.WhileStmt, uni.InForStmt, uni.IterForStmt))
+        if isinstance(
+            walk, (uni.WhileStmt, uni.ForeverStmt, uni.InForStmt, uni.IterForStmt)
+        )
             and (
                 any(child is stmt for stmt in walk.body)
                 or (isinstance(walk, uni.InForStmt) and child is walk.target)
@@ -703,7 +707,8 @@ impl MirLowering.loop_scoped(sym: uni.Symbol) -> bool {
 }
 
 impl MirLowering.within_body(
-    nd: uni.UniNode, loop: (uni.WhileStmt | uni.InForStmt | uni.IterForStmt)
+    nd: uni.UniNode,
+    loop: (uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt)
 ) -> bool {
     child = nd;
     walk = nd.parent;
@@ -789,6 +794,21 @@ impl MirLowering.lower_while(nd: uni.WhileStmt) {
     }
     self.builder().position(otherwise);
     self.lower_else(nd.else_body, after);
+    self.builder().position(after);
+}
+
+impl MirLowering.lower_forever(nd: uni.ForeverStmt) {
+    fn = self.st().fn;
+    head = fn.new_block("forever.body");
+    after = fn.new_block("forever.exit");
+    self.builder().branch(head);
+    self.builder().position(head);
+    self.st().loops.append(MirLoopTarget(head=head, after=after));
+    self.lower_body(nd.body);
+    self.st().loops.pop();
+    if not self.builder().block.terminated() {
+        self.builder().branch(head);
+    }
     self.builder().position(after);
 }
 

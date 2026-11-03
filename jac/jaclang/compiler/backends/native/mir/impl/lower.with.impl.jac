@@ -263,7 +263,10 @@ impl MirLowering.jumps_out(body: Sequence[uni.UniNode]) -> bool {
             return True;
         }
         inner = in_loop
-            or isinstance(current, (uni.WhileStmt, uni.InForStmt, uni.IterForStmt));
+            or isinstance(
+                current,
+                (uni.WhileStmt, uni.ForeverStmt, uni.InForStmt, uni.IterForStmt)
+            );
         for kid in current._children() {
             pending.append((kid, inner));
         }
