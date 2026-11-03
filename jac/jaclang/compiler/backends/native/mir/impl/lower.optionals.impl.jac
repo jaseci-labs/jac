@@ -36,7 +36,7 @@ impl MirLowering.narrowed_load(value: MirValue, nd: uni.Expr) -> MirValue {
         or isinstance(seen, (UnionType, AnyType)) {
         return value;
     }
-    if self.type_of(seen, MirPosition.VALUE, nd).kind == MirKind.OPT {
+    if self.type_of(seen, MirPosition.VALUE, nd).kind in (MirKind.OPT, MirKind.NONE) {
         return value;
     }
     return self.opt_unwrap_checked(
