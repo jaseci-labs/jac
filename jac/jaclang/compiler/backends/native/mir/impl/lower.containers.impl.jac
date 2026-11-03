@@ -11,6 +11,10 @@ impl MirLowering.elem_kind(t: MirType, site: uni.UniNode) -> int {
             self.elem_kind(t.payload(), site);
             return KIND_TUPLE;
         }
+        if t.payload().kind
+            in (MirKind.INT, MirKind.FLOAT, MirKind.BOOL, MirKind.ENUM) {
+            return KIND_ANY;
+        }
         if not self.nullable_payload(t.payload()) {
             raise MirRefused(mir_refusal("container element", t.render(), site));
         }
@@ -109,6 +113,9 @@ impl MirLowering.to_bits(
         );
         return self.opt_end(bits_slot, b.const_int(0, mir_int()), done);
     }
+    if elem.kind == MirKind.OPT and kind == KIND_ANY {
+        return self.address_of(self.any_to_box(self.coerce(value, elem, site), site));
+    }
     if elem.kind == MirKind.OPT {
         boxed_opt = self.spill(self.coerce(value, elem, site));
         return b.select(
@@ -199,6 +206,9 @@ impl MirLowering.owned_element(handle: MirValue, elem: MirType) -> MirValue {
         b.branch(done);
         b.position(done);
         return b.load(result, elem);
+    }
+    if elem.kind == MirKind.OPT and self.elem_kind(elem, self.module) == KIND_ANY {
+        return self.any_unbox(self.any_from_box(handle), elem, self.module);
     }
     if elem.kind == MirKind.OPT {
         present = b.compare("ne", self.address_of(handle), b.const_int(0, mir_int()));
