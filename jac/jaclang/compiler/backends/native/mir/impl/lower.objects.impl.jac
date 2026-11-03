@@ -138,12 +138,12 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
             if local {
                 for slot in layout.methods {
                     inherited = self.find_method(arch, slot.name);
-                    unit = inherited.find_parent_of_type(uni.Module)
+                    home = inherited.find_parent_of_type(uni.Module)
                         if inherited is not None
                         else None;
                     if inherited is not None
-                        and unit is not None
-                        and unit is not self.module {
+                        and home is not None
+                        and home is not self.module {
                         try {
                             self.foreign_method_decl(inherited);
                         } except MirRefused {
