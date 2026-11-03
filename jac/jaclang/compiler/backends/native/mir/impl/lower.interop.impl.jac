@@ -668,7 +668,8 @@ impl MirLowering.declare_c_definition(ab: uni.Ability) {
         params=params,
         ret=ret,
         c_variadic=packed,
-        c_symbol=name if by_value else ""
+        c_symbol=name if by_value else "",
+        cc=self.c_convention(ab)
     );
     self.order.append(key);
 }

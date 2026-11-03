@@ -344,6 +344,7 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
         return self.lower_generator(decl);
     }
     fn = MirFunction(name=self.decl_label(decl), symbol=decl.symbol, ret=decl.ret);
+    fn.cc = decl.cc;
     if decl.c_symbol {
         fn.c_symbol = decl.c_symbol;
         fn.linkage = "internal";
@@ -409,7 +410,8 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
         }
         self.prepare_cells(ab, list(body));
         if clib_import_of(ab) is not None
-            and not is_kernel_unit_path(self.module.loc.mod_path) {
+            and not is_kernel_unit_path(self.module.loc.mod_path)
+            and not (decl.cc and self.prog.options.native_direct_c_entries) {
             self.region_escape_entry();
         }
         self.lower_body(body);
@@ -990,6 +992,10 @@ impl MirLowering.within_body(
 }
 
 impl MirLowering.lower_return(nd: uni.ReturnStmt) {
+    if nd.is_tail {
+        self.lower_tail_return(nd);
+        return;
+    }
     ret = self.st().fn.ret;
     if nd.expr is None {
         if ret.kind != MirKind.NONE {
@@ -2826,12 +2832,14 @@ impl MirLowering.ensure_c_types(t: (TypeBase | None)) {
         field_type = evaluator.get_type_of_symbol(sym);
         self.ensure_c_types(field_type);
         self.ensure_objects(field_type);
-        made.fields.append(
-            MirStructField(
-                name=hv.name.value,
-                type=mir_type_of(field_type, MirPosition.C_FIELD, hv)
-            )
-        );
+        member_type = mir_type_of(field_type, MirPosition.C_FIELD, hv);
+        convention = self.c_convention(arch);
+        if convention and member_type.kind == MirKind.C_FN {
+            member_type = mir_c_fn(
+                member_type.args[1:], member_type.args[0], convention
+            );
+        }
+        made.fields.append(MirStructField(name=hv.name.value, type=member_type));
     }
 }
 
@@ -3629,7 +3637,8 @@ impl MirLowering.c_extern(
         ret=ret,
         params=[plan[0] for plan in plans],
         variadic=variadic,
-        c_abi=True
+        c_abi=True,
+        cc=self.c_convention(callee)
     );
     return (symbol, plans, ret, ret_plan, variadic);
 }
@@ -4635,4 +4644,60 @@ impl MirLowering.const_zero(value: MirValue) -> bool {
 
 impl MirLowering.builtin_callee(callee: (uni.UniNode | None)) -> bool {
     return callee is None or os.path.basename(callee.loc.mod_path) in BUILTIN_STUBS;
+}
+
+impl MirLowering.lower_tail_return(nd: uni.ReturnStmt) {
+    b = self.builder();
+    if not isinstance(nd.expr, uni.FuncCall) {
+        raise MirRefused(
+            mir_refusal(
+                "return",
+                "tail of a value that is not a call",
+                nd,
+                "`return tail f(...)` returns the result of a call in tail position.",
+                "E5114"
+            )
+        );
+    }
+    if self.st().tries or self.st().region_slots {
+        raise MirRefused(
+            mir_refusal(
+                "return",
+                "tail call under a try or an open region",
+                nd,
+                "Work remains after the call (an exception frame or a region to close), so it is not in tail position.",
+                "E5114"
+            )
+        );
+    }
+    value = self.lower_expr(nd.expr);
+    made = b.block.instrs[-1] if b.block.instrs else None;
+    ret = self.st().fn.ret;
+    returns_value = ret.kind not in (MirKind.NONE, MirKind.VOID);
+    if made is None
+        or made.op not in (MirOp.CALL_C, MirOp.CALL_FNPTR, MirOp.CALL)
+        or (returns_value and made.result is not value)
+        or (returns_value and value.type is not ret) {
+        raise MirRefused(
+            mir_refusal(
+                "return",
+                "tail call",
+                nd,
+                "Work remains after the call (converting its result or releasing an argument), so it is not in tail position.",
+                "E5114"
+            )
+        );
+    }
+    made.sub = "musttail";
+    b.ret(value if returns_value else None);
+}
+
+impl MirLowering.c_convention(nd: uni.UniNode) -> str {
+    for decorator in list(nd?.decorators or []) {
+        if isinstance(decorator, uni.Name)
+            and decorator.value in C_CALLING_CONVENTIONS {
+            return C_CALLING_CONVENTIONS[decorator.value];
+        }
+    }
+    return "";
 }

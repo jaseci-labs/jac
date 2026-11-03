@@ -125,7 +125,7 @@ def mir_c_struct(name: str) -> MirType;
 
 def mir_c_view(elem: MirType) -> MirType;
 
-def mir_c_fn(params: list[MirType], ret: MirType) -> MirType;
+def mir_c_fn(params: list[MirType], ret: MirType, cc: str = "") -> MirType;
 
 def mir_c_pin(elem: MirType) -> MirType;
 

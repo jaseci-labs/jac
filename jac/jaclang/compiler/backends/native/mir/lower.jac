@@ -62,6 +62,7 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      KIND_NULL: int = 8,
      TUPLE_BOX_MEMBERS: int = 8,
      NO_VALUE_KIND: int = -1,
+     C_CALLING_CONVENTIONS: dict[str, str] = {"__preserve_none": "preserve_nonecc"},
      LIST_INDEX_MESSAGE: str = "list index out of range",
      LIST_ASSIGN_MESSAGE: str = "list assignment index out of range",
      POP_EMPTY_MESSAGE: str = "pop from empty list",
@@ -327,7 +328,8 @@ obj MirDecl {
         event: str = "",
         env: dict[str, TypeBase] = {},
         c_variadic: bool = False,
-        c_symbol: str = "";
+        c_symbol: str = "",
+        cc: str = "";
 }
 
 def mono_symbol_text(text: str) -> str;
@@ -423,6 +425,8 @@ obj MirLowering {
         loop: (uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt)
     ) -> bool;
 
+    def lower_tail_return(nd: uni.ReturnStmt);
+    def c_convention(nd: uni.UniNode) -> str;
     def lower_return(nd: uni.ReturnStmt);
     def lower_if(nd: (uni.IfStmt | uni.ElseIf));
     def lower_else(nd: (uni.ElseStmt | uni.ElseIf | None), done: MirBlock);

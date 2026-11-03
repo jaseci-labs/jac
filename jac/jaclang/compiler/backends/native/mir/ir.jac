@@ -125,6 +125,7 @@ obj MirFunction {
         resumable: bool = False,
         variadic: bool = False,
         c_symbol: str = "",
+        cc: str = "",
         next_id: int = 0,
         next_label: int = 0;
 
@@ -139,7 +140,8 @@ obj MirExtern {
         ret: MirType,
         params: list[MirType] = [],
         variadic: bool = False,
-        c_abi: bool = False;
+        c_abi: bool = False,
+        cc: str = "";
 }
 
 obj MirConst {
