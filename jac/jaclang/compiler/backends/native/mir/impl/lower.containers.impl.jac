@@ -528,6 +528,9 @@ impl MirLowering.container_get(
     if len(slice.slices) != 1 {
         raise MirRefused(mir_refusal("subscript", "several indices", site));
     }
+    if base.type.kind == MirKind.OPT and mir_is_container(base.type.payload()) {
+        base = self.opt_unwrap_checked(base, "'NoneType' object is not subscriptable");
+    }
     part = slice.slices[0];
     if base.type.kind == MirKind.LIST {
         if slice.is_range {

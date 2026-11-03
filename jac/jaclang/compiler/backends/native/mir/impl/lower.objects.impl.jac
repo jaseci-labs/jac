@@ -87,16 +87,14 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
                 or self.declared_field_type(member.decl_node);
             self.ensure_objects(field_type);
             self.ensure_c_types(field_type);
+            slot_type = mir_any()
+                if self.erased_slot(field_type)
+                else mir_type_of(field_type, MirPosition.FIELD, member.decl_node or arch);
+            if slot_type.kind == MirKind.ENUM and isinstance(field_type, ClassType) {
+                self.enum_types.setdefault(slot_type.name, field_type);
+            }
             made.fields.append(
-                MirObjectField(
-                    name=member.name,
-                    type=mir_any()
-                        if self.erased_slot(field_type)
-                        else mir_type_of(
-                            field_type, MirPosition.FIELD, member.decl_node or arch
-                        ),
-                    index=member.index
-                )
+                MirObjectField(name=member.name, type=slot_type, index=member.index)
             );
         }
         self.osp_header_fields(made, layout);
