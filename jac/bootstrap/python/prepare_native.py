@@ -60,6 +60,15 @@ def undefined_exports(module, expected, kind=SymbolKind.FUNCTION):
     return missing
 
 
+def export_contract_violations(module, expected_exports):
+    """Return the registered entry points and static type globals a module does
+    not define. PyInit_* symbols are functions and the static types are globals,
+    so each is looked up the way it was emitted."""
+    return undefined_exports(module, expected_exports) + undefined_exports(
+        module, STATIC_TYPE_EXPORTS, SymbolKind.GLOBAL,
+    )
+
+
 # 128-bit unsigned division for x86_64 Linux, as compiler-rt's __udivti3 and
 # __umodti3 compute it. libmpdec's uint128 path calls them. Without a
 # definition here, the link pulls in Zig's compiler-rt object for them, and that
@@ -413,9 +422,7 @@ if __name__ == "__main__":
     init_object_codegen()
     spec = plan.glue_spec(ArtifactKind.SHARED, _platform_of(plan.triple), False)
     compiled, runtime_exports = whole_program_module(plan, spec)
-    missing = undefined_exports(compiled, expected_exports) + undefined_exports(
-        compiled, STATIC_TYPE_EXPORTS, "global",
-    )
+    missing = export_contract_violations(compiled, expected_exports)
     if missing:
         raise RuntimeError(
             "JacPython export contract is broken; merged module does not define: "
@@ -504,9 +511,7 @@ if __name__ == "__main__":
         machine, llvm.create_pipeline_tuning_options(speed_level=2),
     )
     builder.getModulePassManager().run(compiled, builder)
-    missing = undefined_exports(compiled, expected_exports) + undefined_exports(
-        compiled, STATIC_TYPE_EXPORTS, "global",
-    )
+    missing = export_contract_violations(compiled, expected_exports)
     if missing:
         raise RuntimeError(
             "JacPython export contract is broken after optimization: "
