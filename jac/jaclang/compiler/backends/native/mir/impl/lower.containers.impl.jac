@@ -1297,7 +1297,13 @@ impl MirLowering.set_method(
                 "difference_update",
                 "symmetric_difference_update"
             ) {
-        other = self.coerce(self.lower_expr(args[0]), s.type, args[0]);
+        other = self.lower_expr(args[0]);
+        if other.type is not s.type and other.type.kind != MirKind.SET {
+            gathered = self.spill(self.new_dict(elem, None, s.type));
+            self.extend_from(gathered, self.spill(other), args[0]);
+            other = gathered;
+        }
+        other = self.coerce(other, s.type, args[0]);
         return self.set_algebra(s, other, name, nd);
     }
     return None;
