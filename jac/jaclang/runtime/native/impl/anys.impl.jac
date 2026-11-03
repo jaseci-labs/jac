@@ -995,3 +995,29 @@ impl _seq_less(a: int, at: bool, b: int, bt: bool, or_equal: bool, op: int) -> b
     }
     return na < nb or (or_equal and na == nb);
 }
+
+impl __jac_rt_class_tag(name: ptr[u8]) -> int {
+    h = 5239054864098085;
+    at = int(name);
+    size = int(strlen(name));
+    i = 0;
+    while i < size {
+        h = h ^ (int(__mem_load_i8(at + i)) & 255);
+        low = (h & 67108863) * 435;
+        high = ((h >> 26) * 435 + (h & 67108863) * 16384 + (low >> 26)) & 134217727;
+        h = (high << 26) | (low & 67108863);
+        i += 1;
+    }
+    return h & 9007199254740991;
+}
+
+impl __jac_rt_ref_swap(slot: int, value: int) {
+    if value != 0 {
+        __jac_rt_retain(value);
+    }
+    old = __mem_load_i64(slot);
+    __mem_store_i64(slot, value);
+    if old != 0 {
+        __jac_rt_release(old);
+    }
+}

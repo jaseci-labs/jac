@@ -89,6 +89,8 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_enum_value": ["int", "int", "int"],
          "__jac_rt_any_enum_is": ["bool", "int", "int", "ptr"],
          "__jac_rt_any_same": ["bool", "int", "int", "int", "int"],
+         "__jac_rt_class_tag": ["int", "ptr"],
+         "__jac_rt_ref_swap": ["none", "int", "int"],
          "__jac_rt_any_type_name": ["ptr", "int", "int"],
          "__jac_rt_any_isa": ["bool", "int", "int", "ptr"],
          "__jac_rt_type_name": ["ptr", "ref"],

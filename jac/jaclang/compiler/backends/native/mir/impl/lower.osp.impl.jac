@@ -101,7 +101,7 @@ impl MirLowering.osp_handle(value: MirValue, site: uni.UniNode) -> MirValue {
     if value.type.kind == MirKind.ANY {
         return self.emit_value(MirOp.ANY_PAYLOAD, mir_int(), [value]);
     }
-    if value.type.kind == MirKind.OBJ {
+    if value.type.kind in (MirKind.OBJ, MirKind.OSP) {
         return self.address_of(value);
     }
     raise MirRefused(mir_refusal("graph operand", value.type.render(), site));
@@ -623,6 +623,10 @@ impl MirLowering.lower_spawn(nd: uni.BinaryExpr) -> MirValue {
         walker_nd = nd.right;
         place_nd = nd.left;
         walker_arch = right_arch;
+    } elif self.is_walker_ref(nd.left) {
+        return self.lower_osp_walker_spawn(nd, nd.left, nd.right);
+    } elif self.is_walker_ref(nd.right) {
+        return self.lower_osp_walker_spawn(nd, nd.right, nd.left);
     } else {
         raise MirRefused(
             mir_refusal(
@@ -1021,13 +1025,18 @@ impl MirLowering.lower_edge_handles(nd: uni.EdgeRefTrailer) -> MirValue {
         last = index >= len(chain) or not isinstance(chain[index], uni.EdgeOpRef);
         condition = step.filter_cond;
         edge_arch: (uni.Archetype | None) = None;
+        dynamic_tag: (MirValue | None) = None;
         if condition is not None and condition.f_type is not None {
             edge_arch = self.osp_arch_of(condition.f_type);
             layout = self.osp_layout(edge_arch);
             if layout is None or layout.arch_type != "edge" {
-                raise MirRefused(
-                    mir_refusal("edge type", "an edge value", condition.f_type)
-                );
+                dynamic_tag = self.osp_class_tag(condition.f_type);
+                edge_arch = None;
+                if dynamic_tag is None {
+                    raise MirRefused(
+                        mir_refusal("edge type", "an edge value", condition.f_type)
+                    );
+                }
             }
         }
         compares = list(condition.compares if condition is not None else []);
@@ -1037,10 +1046,11 @@ impl MirLowering.lower_edge_handles(nd: uni.EdgeRefTrailer) -> MirValue {
             );
         }
         direction = b.const_int(int(step.edge_dir.value), mir_int());
-        tag = b.const_int(
-            self.osp_tag(edge_arch) if edge_arch is not None else UNTYPED_OSP_TAG,
-            mir_int()
-        );
+        tag = dynamic_tag
+            or b.const_int(
+                self.osp_tag(edge_arch) if edge_arch is not None else UNTYPED_OSP_TAG,
+                mir_int()
+            );
         edges_only = b.const_bool(nd.edges_only and last);
         origins = current
             if current is not None
@@ -1307,6 +1317,10 @@ impl MirLowering.osp_field_pred(
 }
 
 impl MirLowering.osp_delete(target: uni.Expr) -> bool {
+    if isinstance(target, uni.EdgeRefTrailer) {
+        self.osp_call("__jac_osp_destroy_all", [self.lower_edge_handles(target)]);
+        return True;
+    }
     if isinstance(target, uni.AtomTrailer) {
         return False;
     }
@@ -1331,6 +1345,64 @@ impl MirLowering.osp_delete(target: uni.Expr) -> bool {
         "__jac_osp_destroy", [self.osp_handle(self.lower_expr(target), target)]
     );
     return True;
+}
+
+impl MirLowering.is_walker_ref(nd: uni.Expr) -> bool {
+    t = nd.type;
+    return isinstance(t, ClassType)
+        and t.is_instance()
+        and t.is_builtin("Walker")
+        and self.expr_type(nd).kind in (MirKind.OSP, MirKind.OBJ, MirKind.ANY);
+}
+
+impl MirLowering.osp_class_tag(nd: uni.Expr) -> (MirValue | None) {
+    if self.class_reference(nd) is not None
+        or self.expr_type(nd).kind != MirKind.CLASS {
+        return None;
+    }
+    return self.runtime_value(
+        "__jac_rt_class_tag",
+        [
+            self.emit_value(
+                MirOp.PTR_CAST, mir_c_ptr(mir_int(8, False)), [self.lower_expr(nd)]
+            )
+        ]
+    );
+}
+
+impl MirLowering.lower_osp_walker_spawn(
+    nd: uni.BinaryExpr, walker_nd: uni.Expr, place_nd: uni.Expr
+) -> MirValue {
+    b = self.builder();
+    walker_value = self.osp_hold(self.lower_expr(walker_nd));
+    location = self.osp_hold(self.lower_expr(place_nd));
+    address = self.osp_handle(walker_value, walker_nd);
+    tag = self.emit_value(
+        MirOp.MEM_LOAD,
+        mir_int(),
+        [b.binary("add", address, b.const_int(OSP_TAG_OFFSET, mir_int()))]
+    );
+    reports = self.osp_hold(
+        self.osp_call(
+            "__jac_osp_spawn",
+            [self.any_box(walker_value, nd), tag, self.osp_handle(location, place_nd)]
+        )
+    );
+    fn = self.st().fn;
+    keep = fn.new_block("spawn.reports");
+    done = fn.new_block("spawn.done");
+    b.cond_branch(self.opt_present(reports), keep, done);
+    b.position(keep);
+    self.runtime(
+        "__jac_rt_ref_swap",
+        [
+            b.binary("add", address, b.const_int(OSP_REPORTS_OFFSET, mir_int())),
+            self.address_of(self.opt_get(reports))
+        ]
+    );
+    b.branch(done);
+    b.position(done);
+    return walker_value;
 }
 
 impl MirLowering.lower_jid(nd: uni.FuncCall) -> MirValue {

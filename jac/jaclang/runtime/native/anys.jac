@@ -130,6 +130,10 @@ def:pub __jac_rt_enum_box(desc: int, value: int) -> int;
 
 def _enum_name(box: int) -> ptr[u8];
 
+def:pub __jac_rt_class_tag(name: ptr[u8]) -> int;
+
+def:pub __jac_rt_ref_swap(slot: int, value: int);
+
 def:pub __jac_rt_enum_value(tag: int, payload: int) -> int;
 
 def:pub __jac_rt_any_enum_is(tag: int, payload: int, name: ptr[u8]) -> bool;

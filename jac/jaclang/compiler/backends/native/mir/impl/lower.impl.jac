@@ -1837,6 +1837,9 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
         ) {
         return self.builder().ref_cast(value, to, False);
     }
+    if value.type.kind == MirKind.OBJ and to.kind == MirKind.OBJ {
+        return self.checked_cross_cast(value, to, site);
+    }
     if value.type.kind == MirKind.CLASS and to.kind == MirKind.CLASS {
         return self.emit_value(MirOp.PTR_CAST, to, [value]);
     }
