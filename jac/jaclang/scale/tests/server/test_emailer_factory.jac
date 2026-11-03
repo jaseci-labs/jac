@@ -1,5 +1,7 @@
+import socketserver;
 import sys;
-import from email { message_from_string, policy }
+import threading;
+import from email { message_from_bytes, message_from_string, policy }
 import from email.message { EmailMessage }
 import from pathlib { Path }
 
@@ -34,24 +36,6 @@ obj _RecordingEmailer(Emailer) {
             }
         );
         return True;
-    }
-}
-
-obj _HeaderSpySMTP(SMTPEmailer) {
-    has seen: (dict[str, str] | None) = None;
-
-    override def _build_message(
-        sender: str,
-        to_addr: str,
-        subject: str,
-        body_text: str,
-        body_html: (str | None),
-        reply_to: (str | None),
-        attachments: list[EmailAttachment],
-        headers: (dict[str, str] | None) = None
-    ) -> EmailMessage {
-        self.seen = headers;
-        raise ValueError("stop before connecting");
     }
 }
 
@@ -154,13 +138,66 @@ test "smtp_inline_file_without_html_is_attached" {
     assert [a.get_filename() for a in msg.iter_attachments()] == ["qr.png"];
 }
 
-def _unreachable_smtp -> SMTPEmailer {
+def _local_smtp(port: int) -> SMTPEmailer {
     return SMTPEmailer(
         config={
-            "smtp": {"host": "127.0.0.1", "port": 1, "use_tls": False, "timeout": 2.0}
+            "smtp": {
+                "host": "127.0.0.1",
+                "port": port,
+                "use_tls": False,
+                "timeout": 2.0
+            }
         },
         from_address="noreply@example.com"
     );
+}
+
+def _unreachable_smtp -> SMTPEmailer {
+    return _local_smtp(1);
+}
+
+def _send_to_smtp_sink(
+    subject: str, headers: (dict[str, any] | None)
+) -> tuple[bool, list[bytes]] {
+    received: list[bytes] = [];
+
+    def _serve(handler_self: any) {
+        handler_self.wfile.write(b"220 sink\r\n");
+        for line in handler_self.rfile {
+            verb = line[:4].upper();
+            if verb == b"DATA" {
+                handler_self.wfile.write(b"354 go\r\n");
+                mail = b"";
+                for data_line in handler_self.rfile {
+                    if data_line == b".\r\n" {
+                        break;
+                    }
+                    mail += data_line;
+                }
+                received.append(mail);
+            }
+            handler_self.wfile.write(
+                b"221 bye\r\n" if verb == b"QUIT" else b"250 ok\r\n"
+            );
+        }
+    }
+
+    handler_cls = type(
+        "_SmtpSink", (socketserver.StreamRequestHandler, ), {"handle": _serve}
+    );
+    srv = socketserver.ThreadingTCPServer(("127.0.0.1", 0), handler_cls);
+    threading.Thread(
+        target=srv.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+    ).start();
+    try {
+        sent = _local_smtp(srv.server_address[1]).send_email(
+            to_addr="user@x.y", subject=subject, body_text="body", headers=headers
+        );
+    } finally {
+        srv.shutdown();
+        srv.server_close();
+    }
+    return (sent, received);
 }
 
 def _refused(
@@ -212,40 +249,40 @@ test "smtp_custom_header_reaches_the_wire_unencoded_at_any_length" {
         "X-Spaced": f"keep   these\truns {'x' * 90}"
     };
     subject = "Résumé " * 40;
-    built = _unreachable_smtp()._build_message(
+    (sent, mails) = _send_to_smtp_sink(subject, cases);
+    assert sent and len(mails) == 1;
+    head = mails[0].partition(b"\r\n\r\n")[0];
+    assert b"\n" not in head.replace(b"\r\n", b"");
+    lines = head.split(b"\r\n");
+    assert max([len(line) for line in lines]) <= 998;
+    unfolded = head.replace(b"\r\n", b"");
+    binary_unfolded = _unreachable_smtp()._build_message(
         "noreply@example.com", "user@x.y", subject, "body", None, None, [], cases
+    ).as_bytes().split(
+        b"\n\n"
+    )[0].replace(
+        b"\n", b""
     );
-    raw = built.as_string();
-    head = raw.split("\n\n")[0];
-    unfolded = head.replace("\n", "");
-    binary_unfolded = built.as_bytes().split(b"\n\n")[0].replace(b"\n", b"");
     for (name, value) in cases.items() {
-        assert f"{name}: {value}" in unfolded , name;
+        assert f"{name}: {value}".encode() in unfolded , name;
         assert f"{name}: {value}".encode() in binary_unfolded , name;
     }
     long_subject = f"foo   bar\tbaz {'x' * 90}";
-    plain_raw = _unreachable_smtp()._build_message(
-        "noreply@example.com", "user@x.y", long_subject, "body", None, None, []
-    ).as_string();
-    assert f"Subject: {long_subject}" in plain_raw.split("\n\n")[0].replace("\n", "");
+    plain_mails = _send_to_smtp_sink(long_subject, None)[1];
+    plain_head = plain_mails[0].partition(b"\r\n\r\n")[0];
+    assert f"Subject: {long_subject}".encode() in plain_head.replace(b"\r\n", b"");
     encoded_lines = [
         line
-        for line in head.splitlines()
-        if "=?utf-8?" in line
+        for line in lines
+        if b"=?utf-8?" in line
     ];
     assert encoded_lines and max([len(line) for line in encoded_lines]) <= 78;
-    assert all([not any([name in line for name in cases]) for line in encoded_lines]);
-    read_back = message_from_string(raw, policy=policy.default);
+    assert all(
+        [not any([name.encode() in line for name in cases]) for line in encoded_lines]
+    );
+    read_back = message_from_bytes(mails[0], policy=policy.default);
     assert read_back["Subject"].split() == subject.split();
     assert read_back["From"] == "noreply@example.com";
-    spy = _HeaderSpySMTP(
-        config={"smtp": {"host": "smtp.example.com"}},
-        from_address="noreply@example.com"
-    );
-    assert not spy.send_email(
-        to_addr="u@x.y", subject="s", body_text="b", headers=cases
-    );
-    assert spy.seen == cases;
 }
 
 test "smtp_custom_header_cannot_take_over_the_message_and_bad_ones_are_refused" {
@@ -300,15 +337,8 @@ test "smtp_custom_header_cannot_take_over_the_message_and_bad_ones_are_refused" 
             raised = True;
         }
         assert raised , bad;
-        raised = False;
-        try {
-            emailer._build_message(
-                "noreply@example.com", "user@x.y", "Hi", "body", None, None, [], bad
-            );
-        } except ValueError {
-            raised = True;
-        }
-        assert raised , bad;
+        (sent, mails) = _send_to_smtp_sink("Hi", bad);
+        assert not sent and mails == [] , bad;
     }
     fine = {
         "Date": "Thu, 01 Jan 2026 00:00:00 +0000",
@@ -415,6 +445,21 @@ test "factory_imports_dotted_path" {
         assert emailer.is_ready();
         ok = emailer.send_email(to_addr="dst@x.y", subject="s", body_text="b");
         assert ok == True;
+        mailbox = sys.modules[type(emailer).__module__].SENT;
+        assert mailbox[-1]["headers"] == {};
+        count = len(mailbox);
+        for bad in [{"Bcc": "hidden@x.y"}, {"X-Break": "v\r\nBcc: hidden@x.y"}] {
+            refused = emailer.send_email(
+                to_addr="dst@x.y", subject="s", body_text="b", headers=bad
+            );
+            assert refused == False and len(mailbox) == count , bad;
+        }
+        good = {"List-Unsubscribe": "<https://x.y/u>"};
+        assert emailer.send_email(
+            to_addr="dst@x.y", subject="s", body_text="b", headers=good
+        )
+            == True;
+        assert mailbox[-1]["headers"] == good;
     } finally {
         if str(fixtures_dir) in sys.path {
             sys.path.remove(str(fixtures_dir));
