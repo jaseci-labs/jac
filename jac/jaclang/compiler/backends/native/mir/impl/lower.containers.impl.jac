@@ -576,7 +576,9 @@ impl MirLowering.container_get(
         base = self.opt_unwrap_checked(base, "'NoneType' object is not subscriptable");
     }
     part = slice.slices[0];
-    if base.type.kind == MirKind.ANY and not slice.is_range and part.start is not None {
+    if base.type.kind == MirKind.ANY
+        and not slice.is_range
+        and part.start is not None {
         key = self.any_box(self.lower_expr(part.start), part.start);
         return self.any_from_box(
             self.runtime_value(

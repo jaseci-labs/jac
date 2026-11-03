@@ -15154,12 +15154,12 @@ graph import runtime.native {
         anys {
             __jac_rt_repr_enter,
             __jac_rt_repr_leave,
-            __jac_rt_str_index,
             __jac_rt_sb_add,
             __jac_rt_sb_finish,
             __jac_rt_sb_int,
             __jac_rt_sb_new,
             __jac_rt_str_contains,
+            __jac_rt_str_index,
             __jac_rt_str_repeat,
             __jac_rt_str_repr,
             __jac_rt_utf8_width

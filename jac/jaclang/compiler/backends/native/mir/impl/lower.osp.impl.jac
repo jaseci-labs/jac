@@ -1384,7 +1384,11 @@ impl MirLowering.lower_dynamic_connect(
         raise MirRefused(mir_refusal("connect operand", "list", nd, OSP_FANOUT_HELP));
     }
     i8p = mir_c_ptr(mir_int(8, False));
-    kind = self.emit_value(MirOp.PTR_CAST, i8p, [self.lower_expr(co.conn_type)]);
+    edge_class = co.conn_type;
+    if edge_class is None {
+        raise MirRefused(mir_refusal("edge type", "an edge value", nd));
+    }
+    kind = self.emit_value(MirOp.PTR_CAST, i8p, [self.lower_expr(edge_class)]);
     found = self.runtime_value(
         "__jac_rt_class_ctor_find", [self.address_of(kind), b.const_int(0, mir_int())]
     );

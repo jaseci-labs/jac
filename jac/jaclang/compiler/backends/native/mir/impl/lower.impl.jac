@@ -2858,8 +2858,13 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
         target_type = self.expr_type(nd.target)
             if isinstance(nd.target, uni.Expr)
             else mir_void();
-        if mir_is_container(target_type) {
-            return self.container_get(self.lower_expr(nd.target), nd.right, nd);
+        if mir_is_container(target_type) or target_type.kind == MirKind.ANY {
+            got = self.container_get(self.lower_expr(nd.target), nd.right, nd);
+            wanted = self.expr_type(nd);
+            if got.type.kind == MirKind.ANY and wanted.kind != MirKind.ANY {
+                return self.any_unbox(got, wanted, nd);
+            }
+            return got;
         }
         if target_type.kind == MirKind.OPT
             and mir_is_container(target_type.payload()) {
