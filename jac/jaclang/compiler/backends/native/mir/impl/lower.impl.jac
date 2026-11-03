@@ -1230,7 +1230,10 @@ impl MirLowering.aug_arith(
     }
     if op == Tok.PLUS
         and current.type.kind == MirKind.LIST
-        and (mir_is_container(value.type) or value.type.kind in (MirKind.TUPLE, MirKind.ITER)) {
+        and (
+            mir_is_container(value.type)
+            or value.type.kind in (MirKind.TUPLE, MirKind.ITER)
+        ) {
         held = self.spill(current);
         self.extend_from(held, self.spill(value), site);
         return held;
@@ -1746,7 +1749,10 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
                 and isinstance(nd.target.right, uni.Name)
                 and isinstance(nd.target.target, uni.Expr) {
                 via_owner = self.object_method(
-                    nd, self.lower_expr(nd.target.target), decl.owner, nd.target.right.value
+                    nd,
+                    self.lower_expr(nd.target.target),
+                    decl.owner,
+                    nd.target.right.value
                 );
                 if via_owner is not None {
                     return via_owner;
