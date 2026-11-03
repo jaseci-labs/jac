@@ -1879,12 +1879,14 @@ test "chess has entry" {
 
 test "chess all piece types" {
     (eng, _ir) = compile_native("chess.jac");
-    # Verify all piece class methods are callable.
+    # Every piece class's own move generator is native, and the get_symbol
+    # they all inherit from Piece is the one native body they share.
     piece_types = ["Pawn", "Knight", "Bishop", "Rook", "Queen", "King"];
     for piece_type in piece_types {
-        addr = native_address(eng, unit_sym(_ir, f"{piece_type}.get_symbol"));
-        assert addr != 0 , f"{piece_type}.get_symbol not found";
+        addr = native_address(eng, unit_sym(_ir, f"{piece_type}.get_raw_moves"));
+        assert addr != 0 , f"{piece_type}.get_raw_moves not found";
     }
+    assert native_address(eng, unit_sym(_ir, "Piece.get_symbol")) != 0 , "Piece.get_symbol not found";
 }
 
 test "chess board methods" {
