@@ -1072,3 +1072,19 @@ impl __jac_rt_byte_single(value: int) -> int {
     __mem_store_i8(made + BYTES_DATA, i8.wrap(value));
     return made;
 }
+
+impl __jac_rt_bytes_from_ints(lst: int, array: bool) -> int {
+    if array {
+        n = __mem_load_i64(lst + LIST_LEN);
+        items = __mem_load_i64(lst + LIST_DATA);
+        i = 0;
+        while i < n {
+            value = __mem_load_i64(items + i * 8);
+            if value < 0 or value > 255 {
+                raise ValueError("byte must be in range(0, 256)");
+            }
+            i += 1;
+        }
+    }
+    return __jac_rt_bytes_from_list(lst);
+}

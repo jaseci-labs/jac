@@ -1253,7 +1253,7 @@ impl MirLowering.bytes_method(
         }
         other = self.spill(self.lower_expr(other_nd));
         if not self.is_byte_seq(other) {
-            other = self.spill(self.bytes_of_ints(other, other_nd));
+            other = self.spill(self.bytes_of_ints(other, other_nd, True));
         }
         (other_data, other_len) = self.byte_parts(other);
         self.runtime("__jac_rt_bytearray_extend", [held, other_data, other_len]);

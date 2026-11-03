@@ -68,11 +68,15 @@ impl MirLowering.lower_unit -> MirModule {
         made = self.lower_constructor(arch);
         if made is not None {
             self.mir.functions.append(made);
-            for bound in self.lineage(arch) {
-                adapter = self.class_entry(arch, bound);
-                if adapter is not None {
-                    self.mir.functions.append(adapter);
+            try {
+                for bound in self.lineage(arch) {
+                    adapter = self.class_entry(arch, bound);
+                    if adapter is not None {
+                        self.mir.functions.append(adapter);
+                    }
                 }
+            } except MirRefused as err {
+                self.refusals.setdefault(arch.name.value, []).append(refusal_of(err));
             }
         }
         obj_def = self.object_def(arch);
@@ -1004,7 +1008,15 @@ impl MirLowering.store_name(target: uni.Name, value: MirValue) {
         }
     }
     slot = self.name_slot(target);
-    stored = self.coerce(value, self.place_elem(slot), target);
+    stored: MirValue;
+    try {
+        stored = self.coerce(value, self.place_elem(slot), target);
+    } except MirRefused as err {
+        if self.write_only(target) {
+            return;
+        }
+        raise err;
+    }
     if any(slot is held for held in self.st().region_slots) {
         self.region_call("__jac_region_drop", [self.builder().load(slot, slot.type)]);
     }
@@ -3710,6 +3722,10 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
 }
 
 impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
+    guarded = self.null_ok_trailer(nd);
+    if guarded is not None {
+        return guarded;
+    }
     if isinstance(nd.right, uni.FilterCompr) {
         return self.lower_osp_filter(nd);
     }
@@ -3761,11 +3777,14 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
                     continue;
                 }
                 known = bound.ct_value if isinstance(bound, uni.Expr) else None;
-                if not isinstance(known, CtInt) {
+                if isinstance(known, CtInt) {
+                    bounds.append(int_host(known));
+                } elif isinstance(bound, uni.Int) {
+                    bounds.append(uni.int_literal_value(bound.value));
+                } else {
                     settled = False;
                     break;
                 }
-                bounds.append(int_host(known));
             }
             if settled and bounds[2] != 0 {
                 whole_tuple = self.spill(self.lower_expr(nd.target));
@@ -5400,4 +5419,54 @@ impl MirLowering.guard_unbound(fn: MirFunction) {
         }
         blk.instrs = rebuilt;
     }
+}
+
+impl MirLowering.null_ok_trailer(nd: uni.AtomTrailer) -> (MirValue | None) {
+    if not nd.is_null_ok
+        or id(nd) in self.st().null_ok_open
+        or not isinstance(nd.target, uni.Expr)
+        or not isinstance(nd.target.type, (ClassType, UnionType)) {
+        return None;
+    }
+    if self.expr_type(nd.target).kind != MirKind.OPT {
+        return None;
+    }
+    result_type = self.expr_type(nd);
+    if result_type.kind == MirKind.NONE {
+        return None;
+    }
+    if result_type.kind not in (MirKind.OPT, MirKind.ANY) {
+        result_type = mir_opt(result_type);
+    }
+    held = self.spill(self.lower_expr(nd.target));
+    (slot, payload, absent, done) = self.opt_begin(held, result_type);
+    self.st().pinned[id(nd.target)] = self.spill(payload);
+    self.st().null_ok_open.add(id(nd));
+    try {
+        present = self.lower_trailer(nd);
+    } finally {
+        self.st().pinned.pop(id(nd.target), None);
+        self.st().null_ok_open.discard(id(nd));
+    }
+    self.opt_switch(slot, present, absent, done);
+    return self.opt_end(slot, self.none_value(), done);
+}
+
+impl MirLowering.write_only(target: uni.Name) -> bool {
+    sym = target.sym;
+    owner = self.function_of(target);
+    if sym is None or owner is None {
+        return False;
+    }
+    for name in owner.get_all_sub_nodes(uni.Name) {
+        if name.sym is not sym {
+            continue;
+        }
+        parent = name.parent;
+        if isinstance(parent, uni.Assignment) and any(t is name for t in parent.target) {
+            continue;
+        }
+        return False;
+    }
+    return True;
 }

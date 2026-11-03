@@ -47,6 +47,8 @@ glob FILE_HANDLE: int = 0,
 
 def:pub __jac_rt_byte_single(value: int) -> int;
 
+def:pub __jac_rt_bytes_from_ints(lst: int, array: bool) -> int;
+
 def:pub __jac_rt_exc_message(data: ptr[u8], n: int) -> ptr[u8];
 
 def:pub __jac_rt_file_open(path: ptr[u8], mode: ptr[u8], binary: bool) -> int;

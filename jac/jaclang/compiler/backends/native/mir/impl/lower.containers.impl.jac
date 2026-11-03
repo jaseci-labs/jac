@@ -119,6 +119,17 @@ impl MirLowering.to_bits(
     if elem.kind == MirKind.ANY {
         return self.address_of(self.any_to_box(value, site));
     }
+    if elem.kind == MirKind.OPT and elem.payload().kind == MirKind.TUPLE {
+        boxed = self.temp_slot(mir_ref());
+        (flag_slot, payload, absent, done) = self.opt_begin(
+            self.coerce(value, elem, site), mir_bool()
+        );
+        b.store(boxed, self.tuple_box(payload, site));
+        self.opt_switch(flag_slot, b.const_bool(True), absent, done);
+        b.store(boxed, b.const_null(mir_ref()));
+        self.opt_end(flag_slot, b.const_bool(False), done);
+        return self.address_of(b.load(boxed, mir_ref()));
+    }
     if elem.kind == MirKind.OPT
         and elem.payload().kind in (MirKind.STR, MirKind.TUPLE) {
         (bits_slot, payload, absent, done) = self.opt_begin(

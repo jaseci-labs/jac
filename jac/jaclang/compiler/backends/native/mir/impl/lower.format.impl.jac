@@ -810,7 +810,7 @@ impl MirLowering.text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         return None;
     }
     if name in ("bytes", "bytearray") {
-        made = self.bytes_from(args, nd);
+        made = self.bytes_from(args, nd, name == "bytearray");
         return made if name == "bytes" else self.to_bytearray(made);
     }
     first = self.lower_expr(args[0]);
@@ -906,7 +906,9 @@ impl MirLowering.text_bytes(value: MirValue) -> tuple[MirValue, MirValue] {
     return (b.str_part(text, "data"), b.str_part(text, "len"));
 }
 
-impl MirLowering.bytes_from(args: list[uni.Expr], nd: uni.FuncCall) -> MirValue {
+impl MirLowering.bytes_from(
+    args: list[uni.Expr], nd: uni.FuncCall, array: bool = False
+) -> MirValue {
     b = self.builder();
     source = self.spill(self.lower_expr(args[0]));
     kind = source.type.kind;
@@ -933,12 +935,14 @@ impl MirLowering.bytes_from(args: list[uni.Expr], nd: uni.FuncCall) -> MirValue 
     } elif kind in (MirKind.INT, MirKind.BOOL) {
         handle = self.call_rt("__jac_rt_bytes_zero", [b.convert(source, mir_int())]);
     } else {
-        return self.bytes_of_ints(source, nd);
+        return self.bytes_of_ints(source, nd, array);
     }
     return b.ref_cast(handle, mir_bytes(), True);
 }
 
-impl MirLowering.bytes_of_ints(source: MirValue, nd: uni.UniNode) -> MirValue {
+impl MirLowering.bytes_of_ints(
+    source: MirValue, nd: uni.UniNode, array: bool = False
+) -> MirValue {
     b = self.builder();
     kind = source.type.kind;
     handle: MirValue;
@@ -947,11 +951,14 @@ impl MirLowering.bytes_of_ints(source: MirValue, nd: uni.UniNode) -> MirValue {
         handle = self.call_rt("__jac_rt_bytes_new", [data, size]);
     } elif kind == MirKind.LIST
         and source.type.payload().kind in (MirKind.INT, MirKind.BOOL) {
-        handle = self.call_rt("__jac_rt_bytes_from_list", [source]);
+        handle = self.call_rt(
+            "__jac_rt_bytes_from_ints", [source, b.const_bool(array)]
+        );
     } elif kind
         in (MirKind.RANGE, MirKind.ITER, MirKind.TUPLE, MirKind.SET, MirKind.LIST) {
         handle = self.call_rt(
-            "__jac_rt_bytes_from_list", [self.spill(self.drain(source, mir_int(), nd))]
+            "__jac_rt_bytes_from_ints",
+            [self.spill(self.drain(source, mir_int(), nd)), b.const_bool(array)]
         );
     } else {
         raise MirRefused(mir_refusal("call", f"bytes of {source.type.render()}", nd));

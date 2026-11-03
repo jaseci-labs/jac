@@ -323,7 +323,8 @@ obj MirFnState {
         region_slots: list[MirValue] = [],
         region_escape: (MirValue | None) = None,
         pinned: dict[int, MirValue] = {},
-        user_loads: dict[int, str] = {};
+        user_loads: dict[int, str] = {},
+        null_ok_open: set[int] = set();
 }
 
 obj MirBound {
@@ -598,6 +599,8 @@ obj MirLowering {
     ) -> (MirValue | None);
 
     def later_local(nd: uni.Name) -> bool;
+    def write_only(target: uni.Name) -> bool;
+    def null_ok_trailer(nd: uni.AtomTrailer) -> (MirValue | None);
     def guard_unbound(fn: MirFunction);
     def lower_discarded(nd: uni.Expr);
     def condition(nd: uni.Expr) -> MirValue;
@@ -1254,8 +1257,12 @@ obj MirLowering {
     def write_value(value: MirValue, fd: int, site: uni.UniNode);
     def text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def text_bytes(value: MirValue) -> tuple[MirValue, MirValue];
-    def bytes_of_ints(source: MirValue, nd: uni.UniNode) -> MirValue;
-    def bytes_from(args: list[uni.Expr], nd: uni.FuncCall) -> MirValue;
+    def bytes_of_ints(
+        source: MirValue, nd: uni.UniNode, array: bool = False
+    ) -> MirValue;
+    def bytes_from(
+        args: list[uni.Expr], nd: uni.FuncCall, array: bool = False
+    ) -> MirValue;
     def absolute(value: MirValue, site: uni.UniNode) -> MirValue;
     def extreme(
         first: MirValue, rest: list[uni.Expr], name: str, site: uni.UniNode
@@ -1433,6 +1440,8 @@ obj MirLowering {
     def headerless_type_value(value: MirValue, site: uni.UniNode) -> MirValue;
     def store_text_result(base: MirValue, text: MirValue);
     def refuse_opaque_abc(item: uni.Expr, arch: uni.Archetype, site: uni.UniNode);
+    def refuse_abc_type(item: uni.Expr, site: uni.UniNode);
+    def partial_mro(arch: uni.Archetype) -> bool;
     def refuse_partial_mro(value: MirValue, item: uni.Expr, site: uni.UniNode);
     def caught_type(subject: uni.Expr) -> (MirValue | None);
     def caught_class(caught: tuple[MirValue, MirValue, MirValue]) -> MirValue;

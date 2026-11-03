@@ -595,7 +595,7 @@ impl MirLowering.isinstance_value(
     owner = declared.shared.symbol_table
         if isinstance(declared, ClassType) and declared._shared is not None
         else None;
-    if isinstance(owner, uni.Archetype) and self.python_base_of(owner) is not None {
+    if isinstance(owner, uni.Archetype) and self.partial_mro(owner) {
         for item in (
             [
                 part
@@ -693,6 +693,7 @@ impl MirLowering.isinstance_test(
                 or (static_name == "bool" and item.value == "int");
             continue;
         }
+        self.refuse_abc_type(item, site);
         arch = self.target_archetype(item);
         if arch is not None {
             self.refuse_opaque_abc(item, arch, site);
@@ -842,6 +843,7 @@ impl MirLowering.any_isinstance(
             );
             continue;
         }
+        self.refuse_abc_type(item, site);
         arch = self.target_archetype(item);
         if arch is not None {
             self.refuse_opaque_abc(item, arch, site);
@@ -1242,4 +1244,62 @@ impl MirLowering.refuse_partial_mro(
             "The operand's class inherits a Python-side base, so which abstract bases it inhabits is not known natively."
         )
     );
+}
+
+impl MirLowering.refuse_abc_type(item: uni.Expr, site: uni.UniNode) {
+    named = item.type;
+    if not isinstance(named, ClassType) or named._shared is None {
+        return;
+    }
+    scope = named.shared.symbol_table;
+    if scope is None or scope.loc is None {
+        return;
+    }
+    path = scope.loc.mod_path.replace(os.sep, "/");
+    if not (
+        path.endswith("/typing.pyi")
+        or path.endswith("/collections/abc.pyi")
+        or path.endswith("/_collections_abc.pyi")
+        or path.endswith("/typing_extensions.pyi")
+    ) {
+        return;
+    }
+    if named.shared.class_name in ABSTRACT_TYPE_NAMES {
+        return;
+    }
+    raise MirRefused(
+        mir_refusal(
+            "call",
+            f"isinstance against `{named.shared.class_name}`",
+            site,
+            "This abstract base class has no exact native reduction; test for the concrete types instead."
+        )
+    );
+}
+
+impl MirLowering.partial_mro(arch: uni.Archetype) -> bool {
+    if self.python_base_of(arch) is not None {
+        return True;
+    }
+    for base_expr in list(arch.base_classes or []) {
+        base_type = base_expr.type if isinstance(base_expr, uni.Expr) else None;
+        if not isinstance(base_type, ClassType) or base_type._shared is None {
+            continue;
+        }
+        scope = base_type.shared.symbol_table;
+        if not isinstance(scope, uni.Archetype) {
+            continue;
+        }
+        owner = scope.find_parent_of_type(uni.Module);
+        if owner is None or owner is self.module or not owner.loc.mod_path.endswith(".jac") {
+            continue;
+        }
+        if not native_unit(os.path.realpath(owner.loc.mod_path), True, self.prog) {
+            return True;
+        }
+        if self.partial_mro(scope) {
+            return True;
+        }
+    }
+    return False;
 }

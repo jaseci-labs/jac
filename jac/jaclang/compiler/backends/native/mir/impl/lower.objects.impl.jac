@@ -2583,14 +2583,23 @@ impl MirLowering.ctor_arguments(
     params: list[tuple[str, MirType, (uni.Expr | None)]],
     leading: int = 0
 ) -> list[MirValue] {
+    b = self.builder();
+    fn = self.st().fn;
     positional: list[uni.Expr] = [];
     named: dict[str, uni.Expr] = {};
+    spreads: list[MirValue] = [];
     for arg in list(nd.params or [])[leading:] {
         if isinstance(arg, uni.KWPair) {
             if arg.key is None {
-                raise MirRefused(
-                    mir_refusal("call argument", "keyword unpacking", arg)
-                );
+                spread = self.spill(self.lower_expr(arg.value));
+                if spread.type.kind != MirKind.DICT
+                    or spread.type.args[0].kind not in (MirKind.STR, MirKind.STR_REF) {
+                    raise MirRefused(
+                        mir_refusal("call argument", "keyword unpacking", arg)
+                    );
+                }
+                spreads.append(spread);
+                continue;
             }
             named[arg.key.sym_name] = arg.value;
         } else {
@@ -2602,10 +2611,78 @@ impl MirLowering.ctor_arguments(
             mir_refusal("call", f"{label} with {len(positional)} arguments", nd)
         );
     }
+    shown = label.split("$")[0];
     values: list[MirValue] = [];
     mask = 0;
+    dynamic_mask: (MirValue | None) = None;
+    matched: (MirValue | None) = None;
+    if spreads {
+        matched = self.temp_slot(mir_int());
+        b.store(matched, b.const_int(0, mir_int()));
+    }
     for (index, (pname, ptype, fallback)) in enumerate(params) {
         source = positional[index] if index < len(positional) else named.get(pname);
+        if source is None and spreads and matched is not None {
+            held = self.temp_slot(ptype);
+            flag = self.temp_slot(mir_bool());
+            b.store(flag, b.const_bool(False));
+            for spread in spreads {
+                key = spread.type.args[0];
+                found = self.runtime_value(
+                    "__jac_rt_dict_find",
+                    [
+                        spread,
+                        self.to_bits(b.const_str(pname, mir_str()), key, nd),
+                        b.const_int(self.elem_kind(key, nd), mir_int())
+                    ]
+                );
+                hit = fn.new_block("ctor.kw.hit");
+                miss = fn.new_block("ctor.kw.miss");
+                b.cond_branch(b.compare("ge", found, b.const_int(0, mir_int())), hit, miss);
+                b.position(hit);
+                self.raise_if(
+                    b.load(flag, mir_bool()),
+                    "TypeError",
+                    f"{shown}() got multiple values for argument '{pname}'"
+                );
+                b.store(
+                    held, self.coerce(self.dict_entry_value(spread, found, nd), ptype, nd)
+                );
+                b.store(flag, b.const_bool(True));
+                b.store(
+                    matched,
+                    b.binary("add", b.load(matched, mir_int()), b.const_int(1, mir_int()))
+                );
+                b.branch(miss);
+                b.position(miss);
+            }
+            given = b.load(flag, mir_bool());
+            if fallback is None {
+                self.raise_if(
+                    b.logical_not(given),
+                    "TypeError",
+                    f"{shown}() missing required argument: '{pname}'"
+                );
+            } else {
+                absent = fn.new_block("ctor.kw.default");
+                done = fn.new_block("ctor.kw.done");
+                b.cond_branch(given, done, absent);
+                b.position(absent);
+                b.store(held, self.placeholder(ptype));
+                b.branch(done);
+                b.position(done);
+                bit = b.select(
+                    b.load(flag, mir_bool()),
+                    b.const_int(1 << index, mir_int()),
+                    b.const_int(0, mir_int())
+                );
+                dynamic_mask = bit
+                    if dynamic_mask is None
+                    else b.binary("or", dynamic_mask, bit);
+            }
+            values.append(b.load(held, ptype));
+            continue;
+        }
         if source is None and fallback is not None {
             values.append(self.placeholder(ptype));
             continue;
@@ -2618,8 +2695,23 @@ impl MirLowering.ctor_arguments(
         }
         values.append(self.coerce(self.lower_expr(source), ptype, source));
     }
+    if spreads and matched is not None {
+        total = b.const_int(0, mir_int());
+        for spread in spreads {
+            total = b.binary("add", total, self.container_len(spread));
+        }
+        self.raise_if(
+            b.compare("ne", total, b.load(matched, mir_int())),
+            "TypeError",
+            f"{shown}() got an unexpected keyword argument"
+        );
+    }
     if self.ctor_takes_mask(params) {
-        values.append(self.builder().const_int(mask, mir_int()));
+        made = b.const_int(mask, mir_int());
+        if dynamic_mask is not None {
+            made = b.binary("or", made, dynamic_mask);
+        }
+        values.append(made);
     }
     return values;
 }
