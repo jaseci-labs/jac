@@ -24,6 +24,8 @@ obj MirRcState {
     def carry_crossing;
     def owned_here(instr: MirInstr) -> bool;
     def end_temporaries;
+    def move_temps(blk: MirBlock);
+    def temp_ending(instrs: list[MirInstr], start: int, temp: MirValue) -> int;
     def protected_regions(
         labels: dict[str, MirBlock], succs: dict[str, list[str]]
     ) -> list[tuple[str, str, MirValue]];
