@@ -557,7 +557,7 @@ impl JacProgram.infers_native_codespace(self: JacProgram, file_path: str) -> boo
         return True;
     }
     opts = self.options;
-    if opts is not None and opts.no_cgen {
+    if opts is not None and opts.no_cgen and not opts.native_import {
         return False;
     }
     if opts is not None and opts.native_unit {

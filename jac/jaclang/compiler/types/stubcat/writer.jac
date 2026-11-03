@@ -36,6 +36,18 @@ obj PathMapper {
     def map(path: str) -> str;
 }
 
+def encode_package_path(
+    path: str, base_dir: str, package_dir: str, sentinel: str
+) -> str;
+
+obj PackagePathMapper(PathMapper) {
+    has base_dir: str,
+        package_dir: str,
+        sentinel: str;
+
+    def map(path: str) -> str;
+}
+
 obj CatalogWriter {
     has evaluator: TypeEvaluator,
         pkg_dir: str,

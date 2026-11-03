@@ -287,6 +287,7 @@ impl session_inputs(
         ct_environment=host.ct_environment(),
         stub_catalog_active=catalog_active,
         stub_catalog_dir=catalog_dir,
+        path_sentinel=PRECOMPILE_SENTINEL,
         stub_catalog_file=origin.path if origin is not None else "",
         stub_catalog_offset=origin.offset if origin is not None else 0,
         stub_catalog_length=origin.length if origin is not None else 0,

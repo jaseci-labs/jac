@@ -1291,4 +1291,6 @@ import from c {
 glob NULL: Final[ptr[PyObject]] = ptr[PyObject](),
      Py_Ellipsis: Final[ptr[PyObject]] = addressof(_Py_EllipsisObject),
      Py_None: Final[ptr[PyObject]] = addressof(_Py_NoneStruct),
-     Py_NotImplemented: Final[ptr[PyObject]] = addressof(_Py_NotImplementedStruct);
+     Py_NotImplemented: Final[ptr[PyObject]] = addressof(_Py_NotImplementedStruct),
+     Py_CONSTANT_NONE: Final[u32] = 0,
+     Py_CONSTANT_ELLIPSIS: Final[u32] = 3;
