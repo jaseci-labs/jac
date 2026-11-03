@@ -213,33 +213,46 @@ impl app_edges_record(edges: list[tuple[str, str]]) -> list[any] {
 
 impl interop_manifest_of(record: dict[str, any]) -> InteropManifest {
     manifest = InteropManifest();
-    bindings: dict[str, dict[str, any]] = record.get('bindings', {});
-    for (name, data) in bindings.items() {
+    bindings = json_map(record.get('bindings'));
+    for name in bindings {
+        data = json_map(bindings[name]);
         manifest.bindings[name] = InteropBinding(
-            name=data['name'],
-            source_context=InteropContext(data['source_context']),
-            callers={InteropContext(c) for c in data.get('callers', [])},
-            ret_type=data.get('ret_type', 'int'),
-            param_types=data.get('param_types', []),
-            param_names=data.get('param_names', []),
-            source_module=data.get('source_module'),
-            kind=data.get('kind', 'function'),
-            provider_app=data['provider_app'],
-            native_contract=data['native_contract'],
-            endpoint_id=data['endpoint_id'],
-            symbol=data.get('symbol', '')
+            name=str(data['name']),
+            source_context=InteropContext(str(data['source_context'])),
+            callers={
+                InteropContext(caller) for caller in json_str_list(data.get('callers'))
+            },
+            ret_type=str(data.get('ret_type', 'int')),
+            param_types=json_str_list(data.get('param_types')),
+            param_names=json_str_list(data.get('param_names')),
+            source_module=json_opt_str(data.get('source_module')),
+            kind=str(data.get('kind', 'function')),
+            provider_app=str(data['provider_app']),
+            native_contract=json_map(data['native_contract']),
+            endpoint_id=str(data['endpoint_id']),
+            symbol=str(data.get('symbol', ''))
         );
     }
-    surface: dict[str, dict[str, any]] = record.get('surface', {}) or {};
-    for (name, rec) in surface.items() {
-        manifest.surface[str(name)] = SurfaceEntry.from_dict(str(name), dict(rec));
+    surface = json_map(record.get('surface'));
+    for name in surface {
+        manifest.surface[name] = SurfaceEntry.from_dict(name, json_map(surface[name]));
     }
-    manifest.endpoint_effects.update(record.get('endpoint_effects', {}));
-    manifest.native_host_imports.update(record['native_host_imports']);
-    for edge in record['app_edges'] {
-        manifest.app_edges.append((str(edge[0]), str(edge[1])));
+    effects = json_map(record.get('endpoint_effects'));
+    for name in effects {
+        manifest.endpoint_effects[name] = json_map(effects[name]);
     }
-    manifest.provider_routes.update(record['provider_routes']);
+    host_imports = json_map(record['native_host_imports']);
+    for name in host_imports {
+        manifest.native_host_imports[name] = json_map(host_imports[name]);
+    }
+    for edge in json_list(record['app_edges']) {
+        pair = json_str_list(edge);
+        manifest.app_edges.append((pair[0], pair[1]));
+    }
+    routes = json_map(record['provider_routes']);
+    for name in routes {
+        manifest.provider_routes[name] = str(routes[name]);
+    }
     return manifest;
 }
 
@@ -280,7 +293,7 @@ impl literal_from_json(raw: any) -> any {
         return base64.b64decode(str(record["b"]).encode("ascii"));
     }
     if "l" in record {
-        return [literal_from_json(item) for item in list(record["l"])];
+        return [literal_from_json(item) for item in json_list(record["l"])];
     }
     if "d" in record {
         out: dict[str, any] = {};
@@ -577,7 +590,7 @@ impl products_record(products: UnitProducts) -> dict[str, any] {
 impl products_from_record(raw: dict[str, any]) -> UnitProducts {
     return UnitProducts(
         path=str(raw.get("path", "")),
-        bytecode=bytes(raw.get("bytecode", b"")),
+        bytecode=json_bytes(raw.get("bytecode")),
         mtir=str(raw.get("mtir", "")),
         interop=str(raw.get("interop", "")),
         client=str(raw.get("client", "")),

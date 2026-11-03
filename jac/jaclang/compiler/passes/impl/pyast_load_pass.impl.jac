@@ -1941,7 +1941,9 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (Archetype | Enum) {
         else None;
     self.convert_to_doc(doc) if doc else None;
     body = body[1:] if doc else body;
-    valid: list[ArchBlockStmt] = self.extract_with_entry(body, ArchBlockStmt)
+    valid: list[ArchBlockStmt] = cast(
+        list[ArchBlockStmt], self.extract_with_entry(body, True)
+    )
         if (body and not (isinstance(body[0], Semi) and (len(body) == 1)))
         else [];
     empty_block: Sequence[UniNode] = [
@@ -2116,10 +2118,12 @@ impl PyastBuildPass.proc_module(nd: py_ast.Module) -> Module {
         if (isinstance(elements[0], ExprStmt) and isinstance(elements[0].expr, String))
         else elements[0];
     doc_str_list = [elements[0]] if isinstance(elements[0], String) else [];
-    top_level: tuple[type[ElementStmt], type[EmptyToken]] = (ElementStmt, EmptyToken);
-    valid = (doc_str_list + self.extract_with_entry(elements[1:], top_level))
-        if doc_str_list
-        else self.extract_with_entry(elements[:], top_level);
+    valid = cast(
+        list[(ElementStmt | String | EmptyToken)],
+        (doc_str_list + self.extract_with_entry(elements[1:], False))
+            if doc_str_list
+            else self.extract_with_entry(elements[:], False)
+    );
     doc_str = elements[0] if isinstance(elements[0], String) else None;
     self.convert_to_doc(doc_str) if doc_str else None;
     ret = Module(
@@ -2135,18 +2139,20 @@ impl PyastBuildPass.proc_module(nd: py_ast.Module) -> Module {
 }
 
 impl PyastBuildPass.extract_with_entry(
-    body: list[UniNode], exclude_types: (type[T] | tuple[type[T], ...])
-) -> list[(T | ModuleCode)] {
+    body: list[UniNode], arch_level: bool
+) -> list[UniNode] {
     def gen_mod_code(with_entry_body: list[CodeBlockStmt]) -> ModuleCode {
         return ModuleCode(
             name=None, body=with_entry_body, kid=with_entry_body, doc=None
         );
     }
-    extracted: list[(T | ModuleCode)] = [];
+    extracted: list[UniNode] = [];
     with_entry_body: list[CodeBlockStmt] = [];
     for i in body {
-        if isinstance(i, exclude_types)
-            and not (isinstance(i, AssertStmt) and not i.is_comptime) {
+        kept = isinstance(i, ArchBlockStmt)
+            if arch_level
+            else isinstance(i, (ElementStmt, EmptyToken));
+        if kept and not (isinstance(i, AssertStmt) and not i.is_comptime) {
             if len(with_entry_body) {
                 extracted.append(gen_mod_code(with_entry_body));
                 with_entry_body = [];
@@ -2736,13 +2742,16 @@ impl parse_python_source(
         stub.set_kids(nodes=[EmptyToken(orig_src=orig_src)]);
         return (stub, True);
     }
-    built = run_utility(
-        CompilationProduct.PYTHON_AST,
-        PythonModuleAst(tree, orig_src=orig_src),
-        program,
-        cancel_token=program.options.cancel_token if program.options else None
+    built = cast(
+        PyastBuildPass,
+        run_utility(
+            CompilationProduct.PYTHON_AST,
+            PythonModuleAst(tree, orig_src=orig_src),
+            program,
+            cancel_token=program.options.cancel_token if program.options else None
+        )
     );
-    return (built.module, len(built.ctx.errors_had) > 0);
+    return (cast(Module, built.module), len(built.ctx.errors_had) > 0);
 }
 
 impl python_top_level_names(path: str) -> set[str] {

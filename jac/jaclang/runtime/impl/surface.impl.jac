@@ -25,6 +25,12 @@ impl SurfaceEntry.to_dict -> dict[str, any] {
 }
 
 impl SurfaceEntry.from_dict(name: str, rec: dict[str, any]) -> SurfaceEntry {
+    route: (dict[str, any] | None) = None;
+    declared = rec.get("route");
+    if isinstance(declared, dict) {
+        table: dict[str, any] = declared;
+        route = {key: table[key] for key in table};
+    }
     return SurfaceEntry(
         name=str(name),
         kind=str(rec.get("kind") or ""),
@@ -33,7 +39,7 @@ impl SurfaceEntry.from_dict(name: str, rec: dict[str, any]) -> SurfaceEntry {
         module=str(rec.get("module") or ""),
         src=str(rec.get("src") or ""),
         explicit_access=bool(rec.get("explicit_access", True)),
-        route=dict(rec["route"]) if isinstance(rec.get("route"), dict) else None,
+        route=route,
         scheduled=bool(rec.get("scheduled", False)),
         reflect=bool(rec.get("reflect", "route" not in rec))
     );

@@ -39,7 +39,14 @@ impl interpolate_env_vars(
     environ: dict[str, str] | None = None,
     sink: list[UnresolvedRef] | None = None
 ) -> str {
-    source: dict[str, str] = dict(os.environ) if environ is None else environ;
+    source: dict[str, str] = {};
+    if environ is None {
+        for (key, item) in os.environ.items() {
+            source[key] = item;
+        }
+    } else {
+        source = environ;
+    }
     out: list[str] = [];
     pos = 0;
     while True {
@@ -961,9 +968,10 @@ impl JacConfig.merge_apps_table(apps_table: dict[str, any]) -> None {
             "declare every app in jac.toml and let the overlay retune it"
         );
     }
-    merged = _deep_merge(copy.deepcopy(base), copy.deepcopy(apps_table));
+    base_table: dict[str, any] = base;
+    merged = _deep_merge(toml_table_copy(base_table), toml_table_copy(apps_table));
     self._base_data["apps"] = merged;
-    self._raw_data["apps"] = copy.deepcopy(merged);
+    self._raw_data["apps"] = toml_table_copy(merged);
     project = self._base_data.get("project", {});
     self.apps = parse_apps(
         project if isinstance(project, dict) else {}, _interpolate_recursive(merged)
@@ -1026,7 +1034,7 @@ impl _parse_toml_data(
     config = JacConfig();
     config.unresolved = refs;
     config._raw_data = data;
-    config._base_data = copy.deepcopy(data);
+    config._base_data = toml_table_copy(data);
     if toml_path is not None {
         config.toml_path = toml_path;
         config.project_root = toml_path.parent;
@@ -1121,8 +1129,12 @@ impl JacConfig.get_plugin_config(plugin_name: str) -> dict[str, any] {
 }
 
 impl JacConfig.get_section(name: str) -> dict[str, any] | None {
-    section = self._raw_data.get(name) if isinstance(self._raw_data, dict) else None;
-    return section if isinstance(section, dict) else None;
+    section = self._raw_data.get(name);
+    if isinstance(section, dict) {
+        table: dict[str, any] = section;
+        return table;
+    }
+    return None;
 }
 
 impl JacConfig.get_build_dir -> Path {
@@ -1165,7 +1177,7 @@ impl JacConfig.save -> None {
             raise MalformedJacTomlError(file_path=str(self.toml_path), original=exc);
         }
     }
-    doc: dict[str, any] = copy.deepcopy(old_doc);
+    doc: dict[str, any] = toml_table_copy(old_doc);
 
     doc["dependencies"] = _dependency_doc(self, dev=False);
     dev_doc = _dependency_doc(self, dev=True);
@@ -1355,7 +1367,7 @@ impl serialize_toml(data: dict[str, any], prefix: str = "") -> str {
     }
 
     for (table_key, table_data) in tables {
-        has_nested = any(isinstance(v, dict) for v in table_data.values());
+        has_nested = any(isinstance(table_data[key], dict) for key in table_data);
         if has_nested {
             simple_values: list[tuple[str, any]] = [];
             nested_tables: list[tuple[str, dict[str, any]]] = [];
@@ -1464,13 +1476,16 @@ impl JacConfig.add_dependency(
         );
     } else {
         if dep_type not in self.plugin_dependencies {
-            self.plugin_dependencies[dep_type] = {};
+            plugin_table: dict[str, any] = {};
+            self.plugin_dependencies[dep_type] = plugin_table;
         }
         if dev {
             if "dev" not in self.plugin_dependencies[dep_type] {
-                self.plugin_dependencies[dep_type]["dev"] = {};
+                fresh: dict[str, any] = {};
+                self.plugin_dependencies[dep_type]["dev"] = fresh;
             }
-            self.plugin_dependencies[dep_type]["dev"][name] = version;
+            dev_packages: dict[str, any] = self.plugin_dependencies[dep_type]["dev"];
+            dev_packages[name] = version;
         } else {
             self.plugin_dependencies[dep_type][name] = version;
         }
@@ -1668,9 +1683,9 @@ impl JacConfig.effective_for_app(name: str) -> JacConfig {
             f"{', '.join(self.apps.keys()) or '(none)'}"
         );
     }
-    data = copy.deepcopy(self._base_data);
+    data = toml_table_copy(self._base_data);
     if app.overlays {
-        data = _deep_merge(data, copy.deepcopy(app.overlays));
+        data = _deep_merge(data, toml_table_copy(app.overlays));
     }
     cfg = _parse_toml_data(data, self.toml_path);
     cfg.discovered_from_ancestor = self.discovered_from_ancestor;
@@ -1744,7 +1759,7 @@ impl _deep_merge(base: dict[str, any], `override: dict[str, any]) -> dict[str, a
 impl _dependency_doc(config: JacConfig, dev: bool) -> dict[str, any] {
     packages = config.dev_dependencies if dev else config.dependencies;
     out: dict[str, any] = {
-        name: dep.to_toml() for (name, dep) in sorted(packages.items())
+        name: packages[name].to_toml() for name in sorted(packages.keys())
     };
     pypi: dict[str, any] = dict(
         config.pypi_dev_dependencies if dev else config.pypi_dependencies
@@ -1793,8 +1808,8 @@ impl _toml_is_inline(
     if not value or _toml_find_span(lines, path) is not None {
         return False;
     }
-    return all(not isinstance(v, dict) for v in value.values())
-        and any(k in INLINE_SPEC_KEYS for k in value);
+    return all(not isinstance(value[key], dict) for key in value)
+        and any(key in INLINE_SPEC_KEYS for key in value);
 }
 
 impl _toml_flatten_into(

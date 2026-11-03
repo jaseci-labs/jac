@@ -394,7 +394,8 @@ impl get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
     if project_root {
         paths.append(project_root);
     }
-    for owner in (project_root, find_jac_project_root(None)) {
+    owners: list[str | None] = [project_root, find_jac_project_root(None)];
+    for owner in owners {
         if not owner {
             continue;
         }
@@ -546,7 +547,7 @@ impl _find_under(directory: str, file_names: list[str]) -> (str | None) {
 }
 
 impl resolve_local_module(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
-    candidate = os.path.join(base, *parts);
+    candidate = join_parts(base, parts);
     if parts and not named_exactly_any(candidate) {
         return None;
     }
@@ -576,7 +577,7 @@ impl resolve_local_module(base: str, parts: list[str]) -> (tuple[(str, str)] | N
 }
 
 impl _namespace_candidate(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
-    candidate = os.path.join(base, *parts);
+    candidate = join_parts(base, parts);
     if os.path.isdir(candidate) and is_jac_namespace_package(candidate) {
         return (candidate, 'jac');
     }
@@ -944,7 +945,7 @@ impl resolve_module(
             }
         }
     }
-    return (os.path.join(base_dir, *actual_parts), 'py');
+    return (join_parts(base_dir, actual_parts), 'py');
 }
 
 impl infer_language(target: str, base_path: str, string_spec: bool = False) -> str {
@@ -987,7 +988,7 @@ impl _find_npm_package(
         pkg_parts = parts[:2];
         subpath = parts[2:];
     }
-    pkg_dir = os.path.join(node_modules, *pkg_parts);
+    pkg_dir = join_parts(node_modules, pkg_parts);
     if not os.path.isdir(pkg_dir) {
         return None;
     }
@@ -1132,7 +1133,7 @@ impl resolve_client_npm_package(spec: str, base_path: str) -> (str | None) {
         }
     }
     if subpath {
-        target = os.path.join(pkg_dir, *subpath);
+        target = join_parts(pkg_dir, subpath);
         deep = _npm_file_with_ext(target);
         if deep {
             return deep;
@@ -1162,7 +1163,7 @@ impl resolve_client_npm_declarations(spec: str, base_path: str) -> (str | None) 
         }
     }
     if subpath {
-        target = os.path.join(pkg_dir, *subpath);
+        target = join_parts(pkg_dir, subpath);
         for suffix in NPM_DTS_SUFFIXES {
             if os.path.isfile(target + suffix) {
                 return os.path.normpath(target + suffix);
@@ -1224,7 +1225,7 @@ impl _resolve_at_types_declarations(
         return None;
     }
     if subpath {
-        target = os.path.join(types_dir, *subpath);
+        target = join_parts(types_dir, subpath);
         for suffix in NPM_DTS_SUFFIXES {
             if os.path.isfile(target + suffix) {
                 return os.path.normpath(target + suffix);
@@ -1348,7 +1349,7 @@ impl _candidate_from_typeshed(
     if not parts {
         return None;
     }
-    candidate_prefix = os.path.join(base, *parts);
+    candidate_prefix = join_parts(base, parts);
     module_file_pyi = candidate_prefix + '.pyi';
     if os.path.isfile(module_file_pyi) {
         return (module_file_pyi, 'pyi');
@@ -1381,7 +1382,7 @@ impl _candidate_from_stub_package(
         init_pyi = os.path.join(stub_root, '__init__.pyi');
         return (init_pyi, 'pyi') if os.path.isfile(init_pyi) else None;
     }
-    candidate_prefix = os.path.join(stub_root, *rest);
+    candidate_prefix = join_parts(stub_root, rest);
     module_file_pyi = candidate_prefix + '.pyi';
     if os.path.isfile(module_file_pyi) {
         return (module_file_pyi, 'pyi');
@@ -1418,4 +1419,12 @@ impl is_untyped_third_party_module(path: str) -> bool {
         pkg_dir = parent;
     }
     return True;
+}
+
+impl join_parts(base: str, parts: list[str]) -> str {
+    path = base;
+    for part in parts {
+        path = os.path.join(path, part);
+    }
+    return path;
 }

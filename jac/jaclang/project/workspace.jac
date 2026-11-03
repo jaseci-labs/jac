@@ -10,7 +10,7 @@ obj WorkspaceResolution {
         workspaces: dict[str, WorkspaceSpec | None] = {};
 }
 
-glob _ws_cache: dict[str, tuple[tuple[float, ...], WorkspaceSpec]] = {},
+glob _ws_cache: dict[str, tuple[list[float], WorkspaceSpec]] = {},
      _resolution: ContextVar[WorkspaceResolution | None] = ContextVar(
          'jac_workspace_resolution', `default=None
      );
@@ -31,7 +31,7 @@ def _fact_digest(app: AppSpec, ws_root: str) -> str;
 def serving_apps(ws: WorkspaceSpec) -> list[AppSpec];
 def _real(path: str) -> str;
 def _npm_names_of(config: JacConfig) -> set[str];
-def _chain_stamp(root_dir: str) -> tuple[float, ...];
+def _chain_stamp(root_dir: str) -> list[float];
 def _implicit_kind(root_dir: str, kind: str) -> str;
 def persistence_namespace(raw: any, project_name: str) -> str;
 def _build_workspace(

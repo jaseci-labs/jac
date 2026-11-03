@@ -20,6 +20,10 @@ def read_toml_with_encoding(file_path: str) -> dict[str, any];
 
 def toml_kind(value: any) -> str;
 
+def toml_copy(value: any) -> any;
+
+def toml_table_copy(table: dict[str, any]) -> dict[str, any];
+
 obj TomlTable {
     has data: dict[str, any],
         where: str = "",

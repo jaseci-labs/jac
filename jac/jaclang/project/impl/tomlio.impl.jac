@@ -194,3 +194,27 @@ impl TomlTable.unknown(key: str, known: list[str]) {
 impl TomlTable.moved(key: str, target: str) -> JacTomlError {
     return self.error(key, f"has moved to {target}");
 }
+
+impl toml_copy(value: any) -> any {
+    if isinstance(value, dict) {
+        table: dict[str, any] = value;
+        return toml_table_copy(table);
+    }
+    if isinstance(value, list) {
+        items: list[any] = value;
+        copied: list[any] = [];
+        for item in items {
+            copied.append(toml_copy(item));
+        }
+        return copied;
+    }
+    return value;
+}
+
+impl toml_table_copy(table: dict[str, any]) -> dict[str, any] {
+    out: dict[str, any] = {};
+    for key in table {
+        out[key] = toml_copy(table[key]);
+    }
+    return out;
+}

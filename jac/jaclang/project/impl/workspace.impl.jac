@@ -29,7 +29,7 @@ impl _npm_names_of(config: JacConfig) -> set[str] {
     return names;
 }
 
-impl _chain_stamp(root_dir: str) -> tuple[float, ...] {
+impl _chain_stamp(root_dir: str) -> list[float] {
     stamps: list[float] = [];
     cur: (str | None) = root_dir;
     seen: set[str] = set();
@@ -50,7 +50,7 @@ impl _chain_stamp(root_dir: str) -> tuple[float, ...] {
         }
         cur = find_jac_project_root(parent);
     }
-    return tuple(stamps);
+    return stamps;
 }
 
 impl _implicit_kind(root_dir: str, kind: str) -> str {
@@ -217,10 +217,14 @@ impl serving_apps(ws: WorkspaceSpec) -> list[AppSpec] {
 }
 
 impl persistence_namespace(raw: any, project_name: str) -> str {
-    if (not isinstance(raw, dict) or set(raw) - {'namespace'}) {
+    if not isinstance(raw, dict) {
         raise ValueError('[persistence] accepts only namespace');
     }
-    namespace = raw.get('namespace', project_name.strip() or 'main');
+    table: dict[str, any] = raw;
+    if any(key != 'namespace' for key in table) {
+        raise ValueError('[persistence] accepts only namespace');
+    }
+    namespace = table.get('namespace', project_name.strip() or 'main');
     if not isinstance(namespace, str) or not namespace.strip() {
         raise ValueError('[persistence] namespace must be a nonempty string');
     }

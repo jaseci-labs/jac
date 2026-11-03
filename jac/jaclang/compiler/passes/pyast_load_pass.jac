@@ -45,10 +45,7 @@ walker PyastBuildPass(CompilerPass) {
     def convert(nd: py_ast.ast_node) -> UniNode;
     def _run_impl(ir_in: PythonModuleAst) -> Module;
     can run_walk with PythonModuleAst entry;
-    def extract_with_entry(
-        body: list[UniNode], exclude_types: (type[T] | tuple[type[T], ...])
-    ) -> list[(T | ModuleCode)];
-
+    def extract_with_entry(body: list[UniNode], arch_level: bool) -> list[UniNode];
     def proc_module(nd: py_ast.Module) -> Module;
     def proc_function_def(
         nd: (py_ast.FunctionDef | py_ast.AsyncFunctionDef)

@@ -211,8 +211,9 @@ impl definition_spans(program: JacProgram, nd: uni.NameAtom) -> list[SourceSpan]
     }
     if isinstance(parent, uni.ModulePath) and parent.path {
         index = -1;
-        for (position, part) in enumerate(parent.path) {
-            if part is nd {
+        segments = parent.path or [];
+        for position in range(len(segments)) {
+            if segments[position] is nd {
                 index = position;
             }
         }

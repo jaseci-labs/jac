@@ -47,24 +47,26 @@ impl PackageDep.parse(name: str, value: any, dev: bool, section: str) -> Package
             f"jac.toml [{section}]: '{name}' must be a version string or a table"
         );
     }
-    unknown = [
-        k
-        for k in value
-        if k not in PACKAGE_DEP_KEYS
+    spec: dict[str, any] = value;
+    known: list[str] = [key for key in PACKAGE_DEP_KEYS];
+    unknown: list[str] = [
+        key
+        for key in spec
+        if key not in known
     ];
     if unknown {
         raise ManifestError(
             f"jac.toml [{section}]: '{name}' has unknown key(s) "
-            f"{', '.join(sorted(unknown))}; expected {', '.join(PACKAGE_DEP_KEYS)}"
+            f"{', '.join(sorted(unknown))}; expected {', '.join(known)}"
         );
     }
     dep = PackageDep(
         name=name,
-        version=str(value.get("version", "*")),
-        path=str(value.get("path", "")),
-        git=str(value.get("git", "")),
-        rev=str(value.get("rev", "")),
-        registry=str(value.get("registry", "")),
+        version=str(spec.get("version", "*")),
+        path=str(spec.get("path", "")),
+        git=str(spec.get("git", "")),
+        rev=str(spec.get("rev", "")),
+        registry=str(spec.get("registry", "")),
         dev=dev
     );
     if dep.path and dep.git {
@@ -145,16 +147,20 @@ impl split_dependency_table(
 
 impl migrate_dependency_table(table: dict[str, any]) -> dict[str, any] {
     out: dict[str, any] = {};
-    pypi: dict[str, any] = dict(table.get(PYPI_TABLE, {}))
-        if isinstance(table.get(PYPI_TABLE), dict)
-        else {};
+    pypi: dict[str, any] = {};
+    declared = table.get(PYPI_TABLE);
+    if isinstance(declared, dict) {
+        declared_table: dict[str, any] = declared;
+        pypi = toml_table_copy(declared_table);
+    }
     for (key, value) in table.items() {
         if key == PYPI_TABLE {
             continue;
         }
         if key == "git" and isinstance(value, dict) {
-            for (pkg, spec) in value.items() {
-                pypi[pkg] = spec;
+            git_table: dict[str, any] = value;
+            for pkg in git_table {
+                pypi[pkg] = git_table[pkg];
             }
             continue;
         }

@@ -203,3 +203,5 @@ def _candidate_from_stub_package(
 ) -> (tuple[(str, str)] | None);
 
 def is_untyped_third_party_module(path: str) -> bool;
+
+def join_parts(base: str, parts: list[str]) -> str;
