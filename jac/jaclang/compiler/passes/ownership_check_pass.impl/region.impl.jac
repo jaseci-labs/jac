@@ -234,7 +234,7 @@ impl OwnershipCheckPass._emit_post_seal_diagnostics(region: OpenStmt) -> None {
     if not isinstance(region.body, (list, tuple)) {
         return;
     }
-    _stmts: list[UniNode] = [s for s in getattr(region, "body", [])];
+    _stmts: list[UniNode] = [s for s in region.body];
     _ridx: dict[int, int] = {};
     for (i2, s2) in enumerate(_stmts) {
         _ridx[id(s2)] = i2;
