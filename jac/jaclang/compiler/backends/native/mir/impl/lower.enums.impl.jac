@@ -73,6 +73,9 @@ impl MirLowering.attr_special(nd: uni.AtomTrailer) -> (MirValue | None) {
         return bound;
     }
     target_type = self.expr_type(nd.target);
+    if target_type.kind == MirKind.FILE and nd.right.value == "closed" {
+        return self.runtime_value("__jac_rt_file_closed", [self.lower_expr(nd.target)]);
+    }
     if target_type.kind == MirKind.ENUM and nd.right.value in ("name", "value") {
         return self.enum_attr(self.lower_expr(nd.target), nd.right.value, nd);
     }
@@ -217,6 +220,11 @@ impl MirLowering.compare_special(
                     site
                 );
             }
+        }
+        if left.type is not right.type
+            and op in (Tok.EE, Tok.NE)
+            and (left.type.is_numeric() or right.type.is_numeric()) {
+            return b.const_bool(op == Tok.NE);
         }
         if left.type is not right.type {
             raise MirRefused(

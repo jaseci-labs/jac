@@ -124,7 +124,11 @@ impl MirRcState.rewrite(blk: MirBlock) {
             if result is not None and owner.id in self.pending {
                 self.pending.pop(owner.id);
                 result.owned = True;
-            } elif result is not None and instr.sub != "owned" {
+            } elif result is not None
+                and (
+                    instr.sub != "owned"
+                    or (owner.owned and mir_holds_ref(owner.type) and not owner.is_slot)
+                ) {
                 result.owned = False;
             }
             self.out.append(instr);
@@ -378,6 +382,15 @@ impl MirRcState.temp_keeps(bits: dict[int, int]) -> dict[int, int] {
                         if source.is_slot or not mir_holds_ref(target.type) {
                             mask = keeps.get(source.id, 0);
                         }
+                    } elif instr.op
+                        in (
+                            MirOp.STR_MAKE,
+                            MirOp.REF_CAST,
+                            MirOp.OPT_MAKE,
+                            MirOp.ANY_BOX
+                        )
+                        and instr.operands {
+                        mask = keeps.get(instr.operands[0].id, 0);
                     } elif instr.op != MirOp.TUPLE_MAKE
                         and not (target.owned and mir_holds_ref(target.type)) {
                         for operand in instr.operands {

@@ -34,6 +34,40 @@ impl _g_traced -> int {
     return __global_block("__rc_traced", 8);
 }
 
+impl _g_gc_none -> int {
+    return __global_block("__jac_gc_none", 1);
+}
+
+impl _g_rc_debug -> int {
+    return __global_block("__rc_debug", 1);
+}
+
+impl __jac_rt_rc_debug_set(on: bool) {
+    if on {
+        banner = ptr[u8]("--- debug ON ---\n");
+        write(i32(1), banner, strlen(banner));
+    }
+    __mem_store_i8(_g_rc_debug(), i8(1 if on else 0));
+}
+
+impl _rc_trace(label: ptr[u8], o: int) {
+    write(i32(1), label, strlen(label));
+    digits = __thread_local_block("jac_rt_rc_trace_digits", 24);
+    at = 23;
+    __mem_store_i8(digits + at, i8(10));
+    value = o;
+    while True {
+        at -= 1;
+        digit = value % 16;
+        __mem_store_i8(digits + at, i8(48 + digit if digit < 10 else 87 + digit));
+        value = value // 16;
+        if value == 0 or at == 0 {
+            break;
+        }
+    }
+    write(i32(1), ptr[u8](digits + at), i64(24 - at));
+}
+
 impl _g_collecting -> int {
     return __global_block("__rc_collecting", 1);
 }
@@ -563,6 +597,9 @@ impl __jac_rt_alloc(size: int) -> int {
     __mem_store_i64(raw + HDR_TOTAL - HDR_TAG_BACK, int(ptr[u8]("raw")));
     __mem_store_i64(raw + HDR_TOTAL - HDR_RC_BACK, 1);
     __mem_store_i64(raw + HDR_TOTAL - HDR_DTOR_BACK, 0);
+    if _flag_on(_g_rc_debug()) {
+        _rc_trace(ptr[u8]("RC MALLOC ptr=0x"), raw + HDR_TOTAL);
+    }
     return raw + HDR_TOTAL;
 }
 
@@ -620,6 +657,9 @@ impl __jac_rt_possible_root(o: int) {
 impl __jac_rt_free_block(raw: int) {
     if _flag_on(_g_gc_disabled()) {
         return;
+    }
+    if _flag_on(_g_rc_debug()) {
+        _rc_trace(ptr[u8]("RC FREE   ptr=0x"), raw + HDR_TOTAL);
     }
     pool_class = (__mem_load_i64(raw) >> POOL_CLASS_SHIFT) & POOL_CLASS_MASK;
     if pool_class != 0 and pool_class <= POOL_CLASSES and not _threaded() {
@@ -745,11 +785,15 @@ impl __jac_rt_trace_lookup(dtor: int) -> int {
 }
 
 impl jac_retain(o: ptr[u8]) {
-    __jac_rt_retain(int(o));
+    if not _flag_on(_g_gc_none()) {
+        __jac_rt_retain(int(o));
+    }
 }
 
 impl jac_release(o: ptr[u8]) {
-    __jac_rt_release(int(o));
+    if not _flag_on(_g_gc_none()) {
+        __jac_rt_release(int(o));
+    }
 }
 
 impl __jac_rt_alloc_zeroed(size: int) -> int {
