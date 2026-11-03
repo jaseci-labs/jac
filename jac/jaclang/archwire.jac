@@ -17194,6 +17194,7 @@ graph import runtime.python {
             jacpy_release
         },
         bindings.plain_data {
+            NULL,
             PyBool_FromLong,
             PyDict_New,
             PyDict_Next,
