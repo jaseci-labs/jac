@@ -597,3 +597,170 @@ impl MirRcState.protected_regions(
     }
     return found;
 }
+
+impl mir_insert_unwind(mir: MirModule) {
+    made: list[MirFunction] = [];
+    for fn in mir.functions {
+        if fn.manual_rc or fn.resumable or not fn.blocks {
+            continue;
+        }
+        slots = [
+            instr.result
+            for instr in fn.blocks[0].instrs
+            if instr.op == MirOp.SLOT
+                and instr.result is not None
+                and mir_holds_ref(instr.result.type)
+        ];
+        if not slots {
+            continue;
+        }
+        cleanup = mir_unwind_cleanup(fn, slots);
+        made.append(cleanup);
+        mir_register_unwind(fn, slots, cleanup.symbol);
+    }
+    if not made {
+        return;
+    }
+    for name in ("__jac_rt_unwind_push", "__jac_rt_unwind_pop") {
+        (params, ret) = mir_runtime_signature(name);
+        mir.externs[name] = MirExtern(symbol=name, ret=ret, params=params);
+    }
+    mir.functions.extend(made);
+}
+
+impl mir_unwind_cleanup(fn: MirFunction, slots: list[MirValue]) -> MirFunction {
+    i8p = mir_c_ptr(mir_int(8, False));
+    made = MirFunction(
+        name=f"{fn.name}.__unwind",
+        symbol=f"{fn.symbol}.__unwind",
+        ret=mir_none(),
+        manual_rc=True,
+        linkage="internal"
+    );
+    record = made.new_value(i8p, "record");
+    made.params.append(MirParam(name="record", value=record));
+    blk = made.new_block("entry");
+    base = made.new_value(mir_int());
+    blk.instrs.append(
+        MirInstr(op=MirOp.PTR_INT, result=base, operands=[record], type_arg=mir_int())
+    );
+    for (index, slot) in enumerate(slots) {
+        distance = made.new_value(mir_int());
+        blk.instrs.append(
+            MirInstr(
+                op=MirOp.CONST_INT,
+                result=distance,
+                int_value=(UNWIND_RECORD_WORDS + index) * 8
+            )
+        );
+        cell = made.new_value(mir_int());
+        blk.instrs.append(
+            MirInstr(op=MirOp.BIN, result=cell, operands=[base, distance], sub="add")
+        );
+        address = made.new_value(mir_int());
+        blk.instrs.append(
+            MirInstr(
+                op=MirOp.MEM_LOAD, result=address, operands=[cell], type_arg=mir_int()
+            )
+        );
+        place = made.new_value(mir_c_ptr(slot.type));
+        blk.instrs.append(
+            MirInstr(
+                op=MirOp.PTR_CAST,
+                result=place,
+                operands=[address],
+                type_arg=mir_c_ptr(slot.type)
+            )
+        );
+        held = made.new_value(slot.type);
+        blk.instrs.append(MirInstr(op=MirOp.LOAD, result=held, operands=[place]));
+        blk.instrs.append(MirInstr(op=MirOp.RELEASE, operands=[held]));
+    }
+    blk.instrs.append(MirInstr(op=MirOp.RET));
+    return made;
+}
+
+impl mir_register_unwind(fn: MirFunction, slots: list[MirValue], cleanup: str) {
+    i8p = mir_c_ptr(mir_int(8, False));
+    first = fn.blocks[0];
+    at = 0;
+    while at < len(first.instrs)
+        and (
+            first.instrs[at].op in (MirOp.SLOT, MirOp.EXC_FRAME)
+            or (first.instrs[at].op == MirOp.ALLOCA and not first.instrs[at].operands)
+        ) {
+        at += 1;
+    }
+    record = fn.new_value(mir_c_ptr(mir_int()), "unwind");
+    setup: list[MirInstr] = [
+        MirInstr(
+            op=MirOp.ALLOCA, result=record, int_value=UNWIND_RECORD_WORDS + len(slots)
+        )
+    ];
+    base = fn.new_value(mir_int());
+    setup.append(
+        MirInstr(op=MirOp.PTR_INT, result=base, operands=[record], type_arg=mir_int())
+    );
+    def store_word(offset: int, value: MirValue) {
+        distance = fn.new_value(mir_int());
+        setup.append(MirInstr(op=MirOp.CONST_INT, result=distance, int_value=offset));
+        cell = fn.new_value(mir_int());
+        setup.append(
+            MirInstr(op=MirOp.BIN, result=cell, operands=[base, distance], sub="add")
+        );
+        setup.append(MirInstr(op=MirOp.MEM_STORE, operands=[cell, value]));
+    }
+    for (index, slot) in enumerate(slots) {
+        address = fn.new_value(mir_int());
+        setup.append(
+            MirInstr(
+                op=MirOp.PTR_INT, result=address, operands=[slot], type_arg=mir_int()
+            )
+        );
+        store_word((UNWIND_RECORD_WORDS + index) * 8, address);
+    }
+    store_word(8, base);
+    code = fn.new_value(mir_c_fn([i8p], mir_none()));
+    setup.append(
+        MirInstr(
+            op=MirOp.FN_ADDR,
+            result=code,
+            callee=cleanup,
+            type_arg=mir_c_fn([i8p], mir_none())
+        )
+    );
+    code_word = fn.new_value(mir_int());
+    setup.append(
+        MirInstr(
+            op=MirOp.PTR_INT, result=code_word, operands=[code], type_arg=mir_int()
+        )
+    );
+    store_word(16, code_word);
+    handle = fn.new_value(i8p);
+    setup.append(
+        MirInstr(op=MirOp.PTR_CAST, result=handle, operands=[record], type_arg=i8p)
+    );
+    setup.append(
+        MirInstr(
+            op=MirOp.CALL_RUNTIME, operands=[handle], callee="__jac_rt_unwind_push"
+        )
+    );
+    allocas = [setup[0]];
+    first.instrs[at:at] = allocas + setup[1:];
+    for blk in fn.blocks {
+        rewritten: list[MirInstr] = [];
+        for instr in blk.instrs {
+            if instr.op == MirOp.RET {
+                rewritten.append(
+                    MirInstr(
+                        op=MirOp.CALL_RUNTIME,
+                        operands=[handle],
+                        callee="__jac_rt_unwind_pop"
+                    )
+                );
+            }
+            rewritten.append(instr);
+        }
+        blk.instrs = rewritten;
+    }
+}

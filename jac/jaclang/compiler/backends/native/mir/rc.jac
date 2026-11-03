@@ -1,4 +1,5 @@
-glob RC_CONSUMING_OPS: list[MirOp] = [MirOp.STORE, MirOp.RET];
+glob RC_CONSUMING_OPS: list[MirOp] = [MirOp.STORE, MirOp.RET],
+     UNWIND_RECORD_WORDS: int = 3;
 
 class MirRcError(Exception) {}
 
@@ -32,3 +33,9 @@ obj MirRcState {
 }
 
 def mir_insert_rc(fn: MirFunction);
+
+def mir_insert_unwind(mir: MirModule);
+
+def mir_unwind_cleanup(fn: MirFunction, slots: list[MirValue]) -> MirFunction;
+
+def mir_register_unwind(fn: MirFunction, slots: list[MirValue], cleanup: str);

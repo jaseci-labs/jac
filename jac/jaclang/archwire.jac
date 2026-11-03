@@ -10627,7 +10627,16 @@ graph import compiler.backends.native.mir {
             MirStructField,
             MirValue
         },
-        rc { MirBlock, MirFunction, MirInstr, MirOp, MirValue },
+        rc {
+            MirBlock,
+            MirExtern,
+            MirFunction,
+            MirInstr,
+            MirModule,
+            MirOp,
+            MirParam,
+            MirValue
+        },
     ]
     lower ++> backend { MirLowering }
     lower_types ++> lower {
@@ -10643,9 +10652,9 @@ graph import compiler.backends.native.mir {
         refusal_of,
         stub_archetype
     }
-    rc ++> backend { mir_insert_rc }
+    rc ++> backend { mir_insert_rc, mir_insert_unwind }
     runtime_abi ++> [
-        generators { mir_runtime_signature },
+        generators | rc { mir_runtime_signature },
         lower { mir_osp_signature, mir_runtime_signature },
     ]
     types ++> [
@@ -10719,7 +10728,7 @@ graph import compiler.backends.native.mir {
             mir_str_ref,
             mir_tuple
         },
-        rc { mir_holds_ref },
+        rc { mir_c_fn, mir_c_ptr, mir_holds_ref, mir_int, mir_none },
         runtime_abi {
             MirType,
             mir_any,

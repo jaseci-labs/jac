@@ -49,6 +49,9 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
         for fn in lowered.functions {
             mir_insert_rc(fn);
         }
+        if here not in mir_runtime_unit_paths() {
+            mir_insert_unwind(lowered);
+        }
         mir_lower_generators(lowered);
         for binding in lowering.bindings {
             ir_in.gen.interop_manifest.bindings[binding.name] = binding;
