@@ -1026,7 +1026,7 @@ impl JacAPIServer.build_app -> ServingApp {
     self.add_middleware(
         cors_middleware(
             allow_origins=list(settings.cors_origins),
-            allow_credentials=True,
+            allow_credentials=settings.cors_credentials,
             allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
             allow_headers=['Content-Type', 'Authorization', 'X-Request-Id']
         )

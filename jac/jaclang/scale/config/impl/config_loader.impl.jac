@@ -563,6 +563,16 @@ impl normalize_gateway_config(gateway_config: dict[str, any] | None) -> dict[str
         'logs': dict(raw.get('logs', {}) or {}),
         'tracing': dict(raw.get('tracing', {}) or {})
     };
+    cors = normalized['cors'];
+    cors_problem = cors_pair_problem(
+        cors['allow_origins'],
+        cors['allow_credentials'],
+        '[scale.gateway.cors] allow_origins',
+        '[scale.gateway.cors] allow_credentials'
+    );
+    if cors_problem {
+        raise ValueError(cors_problem);
+    }
     for boot_key in GATEWAY_BOOT_KEYS {
         if boot_key in raw and raw[boot_key] is not None {
             normalized[boot_key] = raw[boot_key];

@@ -882,7 +882,7 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                             "allow_credentials": {
                                 "type": "bool",
                                 "default": False,
-                                "description": "Allow cookies / Authorization on cross-origin requests. Incompatible with allow_origins = [\"*\"] per spec."
+                                "description": "Send Access-Control-Allow-Credentials so browsers include cookies on cross-origin requests. Needs a list in allow_origins: with [\"*\"] the config is refused, since browsers reject that pair."
                             },
                             "expose_headers": {
                                 "type": "list",

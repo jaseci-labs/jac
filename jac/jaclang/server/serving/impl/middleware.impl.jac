@@ -1,12 +1,16 @@
 impl cors_middleware(
     allow_origins: (list[str] | None) = None,
-    allow_credentials: bool = True,
+    allow_credentials: bool = False,
     allow_methods: (list[str] | None) = None,
     allow_headers: (list[str] | None) = None,
     expose_headers: (list[str] | None) = None,
     max_age: int = 600
 ) -> Callable[..., any] {
     origins = allow_origins if allow_origins is not None else ['*'];
+    problem = cors_pair_problem(origins, allow_credentials);
+    if problem {
+        raise ValueError(problem);
+    }
     methods = allow_methods
         if allow_methods is not None
         else ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
@@ -55,6 +59,23 @@ impl cors_middleware(
         return response;
     }
     return _middleware;
+}
+
+impl cors_pair_problem(
+    origins: list[str],
+    allow_credentials: bool,
+    origins_key: str = 'allow_origins',
+    credentials_key: str = 'allow_credentials'
+) -> str {
+    if not allow_credentials or '*' not in origins {
+        return '';
+    }
+    return (
+        f"{credentials_key} = true cannot be used with '*' in {origins_key}: "
+        "browsers reject a response that allows every origin together with "
+        f"credentials. List the origins that send credentials in {origins_key}, "
+        f"or set {credentials_key} = false."
+    );
 }
 
 impl custom_headers_middleware(

@@ -4121,6 +4121,9 @@ graph import {
         scale.tests.server.test_admin_logs { HTTPMethod },
         scale.tests.support { JEndPoint },
     ]
+    server.serving.middleware ++> scale.config.config_loader.normalize_gateway_config {
+        cors_pair_problem
+    }
     server.serving.middleware --> scale.runtime.gateway.microservice_gateway.MicroserviceGateway.setup {
         cors_middleware
     }
@@ -47138,10 +47141,10 @@ graph import server {
     serving.health ++> server.JacAPIServer.register_endpoints {
         register_health_endpoints
     }
-    serving.middleware ++> server.JacAPIServer.build_app {
-        cors_middleware,
-        custom_headers_middleware
-    }
+    serving.middleware ++> [
+        server.JacAPIServer.build_app { cors_middleware, custom_headers_middleware },
+        settings.ServeSettings.validate { cors_pair_problem },
+    ]
     serving.model ++> identity.auth_models { ApiModel, require_str }
     serving.openapi ++> [
         server.JacAPIServer._refresh_dev_endpoints { register_docs_endpoints },

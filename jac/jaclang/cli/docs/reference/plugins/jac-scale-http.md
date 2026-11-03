@@ -84,10 +84,24 @@ to keep probe traffic out of the access log.
 
 ### CORS Configuration
 
-In single-process `jac run` mode the server installs a permissive
-CORS middleware (`allow_origins=['*']`, methods `GET`/`POST`/`PUT`/`OPTIONS`,
-headers `Content-Type`/`Authorization`); there is
-no `[scale.cors]` knob to tune it.
+The server's CORS policy comes from `[serve]`:
+
+```toml
+[serve]
+cors_origins = ["https://app.example.com"]   # default ["*"]: any origin
+cors_credentials = true                      # default false
+```
+
+The default `["*"]` lets any origin read responses, without credentials. A
+listed origin is echoed back to that origin only, and `cors_origins = []` turns
+cross-origin access off. `cors_credentials = true` adds
+`Access-Control-Allow-Credentials: true`, which a front end on another origin
+needs before the browser sends it cookies, such as the session cookie from a
+sibling subdomain. It requires a list of origins: browsers
+reject a response that allows every origin together with credentials, so the
+server refuses to start with `cors_credentials = true` and `"*"` in
+`cors_origins`. The environment mirrors are `JAC_SERVE_CORS_ORIGINS` and
+`JAC_SERVE_CORS_CREDENTIALS`.
 
 When a workspace's service apps run as a **fleet** (`jac run <app> --fleet`,
 `[scale.gateway] colocate = false`, or any deploy), the gateway that fronts
@@ -102,7 +116,9 @@ allow_headers = ["*"]
 
 Defaults are open (`allow_origins = ["*"]`); set `allow_origins = []` to
 disable. Additional CORS keys (`allow_credentials`, `expose_headers`,
-`max_age`) are recognised under the same section.
+`max_age`) are recognised under the same section. `allow_credentials` defaults
+to `false`, and the same rule holds: with `"*"` in `allow_origins` the config
+is refused.
 
 ---
 
