@@ -908,6 +908,13 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
         );
     } elif isinstance(nd, uni.Bool) {
         value = self.builder().const_bool(nd.value.lower() in ("true", "1"));
+    } elif isinstance(nd, uni.Ellipsis) {
+        b = self.builder();
+        made = self.any_make(
+            b.const_int(ANY_ELLIPSIS_TAG, mir_int()), b.const_int(0, mir_int())
+        );
+        made.owned = True;
+        value = made;
     } elif isinstance(nd, uni.Null) {
         value = self.none_value();
     } elif isinstance(nd, uni.TupleVal) {
