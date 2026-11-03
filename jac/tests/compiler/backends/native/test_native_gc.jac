@@ -238,7 +238,8 @@ test "gc reduces rss for perf_deep_call_chain" {
 }
 
 test "gc reduces rss for chess" {
-    # Feed EOF (Ctrl+D) immediately on stdin: input() returns empty so each
+    # Feed EOF (Ctrl+D) immediately on stdin: input() raises EOFError, which the
+    # fixture treats as an empty line, so each
     # turn picks a random move and the game runs to completion (checkmate).
     # Each iteration allocates a fresh `legal_moves` list plus piece dicts —
     # without GC these all leak, ballooning RSS into the hundreds of MB.

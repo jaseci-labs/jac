@@ -147,6 +147,7 @@ obj MirEmitter {
     def keyed_block_fn(label: str, size: int) -> ir.Function;
     def builtin_sjlj -> bool;
     def jmp_symbols -> tuple[str, str];
+    def acyclic_type(held: MirType) -> bool;
 }
 
 def emit_mir_module(

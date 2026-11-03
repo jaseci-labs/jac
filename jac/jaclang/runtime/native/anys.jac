@@ -59,6 +59,10 @@ def _holds_ref(tag: int) -> bool;
 
 def _box_drop(box: ptr[u8]);
 
+def _box_trace(box: int, visit_fn: int);
+
+def _box_traced_tag(tag: int) -> bool;
+
 glob KIND_INT: int = 0,
      KIND_FLOAT: int = 1,
      KIND_BOOL: int = 2,

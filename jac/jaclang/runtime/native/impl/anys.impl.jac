@@ -116,6 +116,11 @@ impl __jac_rt_any_box(tag: int, payload: int) -> int {
     __mem_store_i64(box + BOX_PAYLOAD, payload);
     __jac_rt_any_retain(tag, payload);
     __mem_store_i64(box - HDR_DTOR_BACK, int(_box_drop));
+    flag = __global_block("__jac_rt_box_traced", 1);
+    if int(__mem_load_i8(flag)) == 0 {
+        __jac_rt_trace_register(int(_box_drop), int(_box_trace));
+        __mem_store_i8(flag, i8(1));
+    }
     return box;
 }
 
@@ -129,10 +134,23 @@ impl __jac_rt_any_box_hold(box: int) {
 
 impl _box_drop(box: ptr[u8]) {
     at = int(box);
-    __jac_rt_any_release(
-        __mem_load_i64(at + BOX_TAG), __mem_load_i64(at + BOX_PAYLOAD)
-    );
+    tag = __mem_load_i64(at + BOX_TAG);
+    collecting = int(__mem_load_i8(__global_block("__rc_collecting", 1))) != 0;
+    if not (collecting and _box_traced_tag(tag)) {
+        __jac_rt_any_release(tag, __mem_load_i64(at + BOX_PAYLOAD));
+    }
     __jac_rt_free_block(at - HDR_TOTAL);
+}
+
+impl _box_traced_tag(tag: int) -> bool {
+    return tag >= ANY_TAG_LIST and tag <= ANY_TAG_OBJ;
+}
+
+impl _box_trace(box: int, visit_fn: int) {
+    payload = __mem_load_i64(box + BOX_PAYLOAD);
+    if payload != 0 and _box_traced_tag(__mem_load_i64(box + BOX_TAG)) {
+        __mem_call_dtor(visit_fn, payload);
+    }
 }
 
 impl __jac_rt_any_truthy(tag: int, payload: int) -> bool {

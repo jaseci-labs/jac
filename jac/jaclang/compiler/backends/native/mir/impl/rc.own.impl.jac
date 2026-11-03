@@ -253,7 +253,20 @@ impl MirOwnState.rewrite(blk: MirBlock) {
     self.pending = {};
     self.out = [];
     self.moved = set();
+    self.released_early = False;
+    tail = blk.instrs[-1] if blk.instrs else None;
+    exits = tail is not None
+        and tail.op == MirOp.RET
+        and not (tail.operands and mir_holds_ref(tail.operands[0].type))
+        and not self.fn.resumable;
     for (index, instr) in enumerate(blk.instrs) {
+        if exits
+            and not self.released_early
+            and instr.op == MirOp.CALL_RUNTIME
+            and instr.callee == "__jac_region_drop" {
+            self.release_slots();
+            self.released_early = True;
+        }
         if instr.op == MirOp.STORE and mir_holds_ref(instr.operands[1].type) {
             self.store(instr);
         } elif instr.op == MirOp.LOAD
@@ -279,7 +292,7 @@ impl MirOwnState.rewrite(blk: MirBlock) {
                 self.release_slots();
                 self.out.append(MirInstr(op=MirOp.RET, operands=[returned]));
             } else {
-                if not self.fn.resumable {
+                if not self.fn.resumable and not self.released_early {
                     self.release_slots();
                 }
                 self.out.append(instr);

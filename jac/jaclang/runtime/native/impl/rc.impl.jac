@@ -764,6 +764,13 @@ impl __jac_rt_gc_enable -> None {
     __mem_store_i8(_g_gc_disabled(), i8(0));
 }
 
+impl __jac_rt_gc_env -> None {
+    value = getenv(ptr[u8]("JAC_GC"));
+    if int(value) != 0 and strcmp(value, ptr[u8]("off")) == 0 {
+        __jac_rt_gc_disable();
+    }
+}
+
 impl __jac_rt_cycles_enable -> None {
     __mem_store_i8(_g_cycles_enabled(), i8(1));
 }

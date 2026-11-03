@@ -1384,18 +1384,43 @@ impl MirEmitter.emit_rc(b: ir.IRBuilder, instr: MirInstr) {
         self.bind(instr.result, self.value(subject));
         return;
     }
-    acyclic = (
-        MirKind.STR,
-        MirKind.STR_REF,
-        MirKind.BYTES,
-        MirKind.BYTEARRAY,
-        MirKind.C_PIN
-    );
-    symbol = RELEASE_ACYCLIC_SYMBOL if held_type.kind in acyclic else RELEASE_SYMBOL;
+    acyclic = held_type.kind == MirKind.C_PIN or self.acyclic_type(held_type);
+    symbol = RELEASE_ACYCLIC_SYMBOL if acyclic else RELEASE_SYMBOL;
     if self.mir.headerless {
-        symbol = DROP_TEXT_SYMBOL if held_type.kind in acyclic else DROP_SYMBOL;
+        symbol = DROP_TEXT_SYMBOL if acyclic else DROP_SYMBOL;
     }
     self.rc_call(b, symbol, target);
+}
+
+impl MirEmitter.acyclic_type(held: MirType) -> bool {
+    if held.kind
+        in (
+            MirKind.NONE,
+            MirKind.BOOL,
+            MirKind.INT,
+            MirKind.FLOAT,
+            MirKind.STR,
+            MirKind.STR_REF,
+            MirKind.BYTES,
+            MirKind.BYTEARRAY,
+            MirKind.ENUM,
+            MirKind.COMPLEX,
+            MirKind.RANGE
+        ) {
+        return True;
+    }
+    if held.kind == MirKind.OPT {
+        return self.acyclic_type(held.payload());
+    }
+    if held.kind == MirKind.OBJ {
+        obj_def = self.mir.objects.get(held.name);
+        return obj_def is not None and obj_def.is_acyclic;
+    }
+    if held.kind
+        in (MirKind.LIST, MirKind.LIST_AOS, MirKind.SET, MirKind.DICT, MirKind.TUPLE) {
+        return bool(held.args) and all(self.acyclic_type(arg) for arg in held.args);
+    }
+    return False;
 }
 
 impl MirEmitter.rc_call(b: ir.IRBuilder, symbol: str, target: ir.Value) {

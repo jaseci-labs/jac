@@ -13,7 +13,8 @@ obj MirRcState {
         parents: dict[int, int] = {},
         joins: dict[int, list[int]] = {},
         pending: dict[int, MirValue] = {},
-        out: list[MirInstr] = [];
+        out: list[MirInstr] = [],
+        released_early: bool = False;
 
     def run;
     def rewrite(blk: MirBlock);
@@ -27,6 +28,8 @@ obj MirRcState {
     def carry_crossing;
     def owned_here(instr: MirInstr) -> bool;
     def end_temporaries;
+    def move_temps(blk: MirBlock);
+    def temp_ending(instrs: list[MirInstr], start: int, temp: MirValue) -> int;
     def protected_regions(
         labels: dict[str, MirBlock], succs: dict[str, list[str]]
     ) -> list[tuple[str, str, MirValue]];
