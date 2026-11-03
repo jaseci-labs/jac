@@ -628,14 +628,14 @@ impl MirLowering.local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirV
     if found is not None {
         return found;
     }
+    slot_type = self.symbol_type(sym, site);
     namesake = self.st().local_names.get(sym.sym_name)
         if not self.comprehension_scoped(sym)
         else None;
-    if namesake is not None {
+    if namesake is not None and namesake.type is slot_type {
         self.st().locals[key] = namesake;
         return namesake;
     }
-    slot_type = self.symbol_type(sym, site);
     fn = self.st().fn;
     first = fn.blocks[0];
     made = fn.new_value(slot_type, sym.sym_name);
@@ -940,9 +940,15 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
     }
     if nd.sym is not None
         and id(nd.sym) not in self.st().locals
+        and self.cell_of(id(nd.sym)) is None
+        and id(nd.sym) not in self.decl_syms
+        and self.global_declaration(nd.sym) is None
         and nd.sym.sym_name in self.st().local_names
         and not self.comprehension_scoped(nd.sym) {
-        self.st().locals[id(nd.sym)] = self.st().local_names[nd.sym.sym_name];
+        namesake = self.st().local_names[nd.sym.sym_name];
+        return self.coerce(
+            self.builder().load(namesake, namesake.type), self.expr_type(nd), nd
+        );
     }
     if nd.sym is None or id(nd.sym) not in self.st().locals {
         folded = nd.ct_value;

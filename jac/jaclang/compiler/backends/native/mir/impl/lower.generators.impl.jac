@@ -174,6 +174,20 @@ impl MirLowering.lower_yield(nd: uni.YieldExpr) {
             )
         );
     }
+    cursor = nd.parent;
+    while cursor is not None and not isinstance(cursor, (uni.Ability, uni.Module)) {
+        if isinstance(cursor, uni.WithStmt) {
+            raise MirRefused(
+                mir_refusal(
+                    "expression",
+                    "yield inside with",
+                    nd,
+                    "An exception raised into a suspended native generator is not thrown at its yield, so a with around the yield would not see it; move the yield out of the with."
+                )
+            );
+        }
+        cursor = cursor.parent;
+    }
     b = self.builder();
     if nd.with_from {
         if nd.expr is None {
