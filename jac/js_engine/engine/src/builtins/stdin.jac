@@ -130,7 +130,7 @@ def:pub stdin_start -> None {
     lp: UVLoop = UVLoop();
     lp.loop_ptr = _STDIN_LOOP_PTR;
     _STDIN_POLL_HDL = uvpoll_create(lp, 0);
-    uvpoll_start(_STDIN_POLL_HDL, UV_READABLE, _stdin_poll_cb);
+    uvpoll_start(_STDIN_POLL_HDL, UV_READABLE, int(ptr(_stdin_poll_cb)));
 }
 
 """Stop polling fd 0.  Called when process.stdin is destroyed or closed."""

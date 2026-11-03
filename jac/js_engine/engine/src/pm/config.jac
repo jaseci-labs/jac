@@ -117,7 +117,7 @@ obj:pub PmConfig {
         save: bool = True,
         add_kind: str = "",
         only_missing: bool = False,
-        global: bool = False,
+        is_global: bool = False,
         filters: list[str] = [],
         target_os: str = "",
         target_cpu: str = "",
@@ -556,7 +556,7 @@ def:pub pm_config_apply_cli(cfg: PmConfig, args: PmArgs) {
         } elif f == "trust" {
             cfg.trust = True;
         } elif f == "global" {
-            cfg.global = True;
+            cfg.is_global = True;
         } elif f == "cwd" {
             cfg.cwd = v;
         } elif f == "backend" {
@@ -942,7 +942,7 @@ def:pub pm_config_describe(cfg: PmConfig) -> str {
             + "  no_verify = "
             + _cfg_b(cfg.no_verify)
             + "  global = "
-            + _cfg_b(cfg.global)
+            + _cfg_b(cfg.is_global)
     );
     out.append(
         "  network_concurrency = "

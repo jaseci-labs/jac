@@ -373,7 +373,7 @@ def _nb_ph_update(fd: int) {
         _NB_PH_MASK[j] = mask;
         ph: UVHandle = UVHandle();
         ph.handle_ptr = _NB_PH_PTR[j];
-        uvpoll_start(ph, mask, _nb_poll_cb);
+        uvpoll_start(ph, mask, int(ptr(_nb_poll_cb)));
     }
 }
 
@@ -403,7 +403,7 @@ def _nb_watch(
         _NB_PH_FD.append(fd);
         _NB_PH_PTR.append(ph.handle_ptr);
         _NB_PH_MASK.append(events);
-        uvpoll_start(ph, events, _nb_poll_cb);
+        uvpoll_start(ph, events, int(ptr(_nb_poll_cb)));
         j = len(_NB_PH_FD) - 1;
     } else {
         mask: int = _NB_PH_MASK[j] | events;
@@ -411,7 +411,7 @@ def _nb_watch(
             _NB_PH_MASK[j] = mask;
             ph2: UVHandle = UVHandle();
             ph2.handle_ptr = _NB_PH_PTR[j];
-            uvpoll_start(ph2, mask, _nb_poll_cb);
+            uvpoll_start(ph2, mask, int(ptr(_nb_poll_cb)));
         }
     }
     _nb_add_poll(

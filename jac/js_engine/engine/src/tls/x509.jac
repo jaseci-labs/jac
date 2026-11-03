@@ -223,7 +223,7 @@ def _digest_to_fingerprint(digest_ptr: int) -> str {
         byte_data: int = byte_buf + 8;
         memcpy(byte_data, digest_ptr + i, 1);
         # Read the byte as a Jac str — first char's code point
-        bs: str = byte_data;
+        bs: str = byte_data;  # jac:ignore[E1001] pointer reinterpret
         # Convert to int using comparison loop (max 256 iterations once)
         bval: int = _str_to_byte_int(bs);
         hi: int = bval // 16;
