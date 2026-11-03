@@ -871,6 +871,7 @@ graph import {
             get_module_cache_path,
             is_module_cache_valid
         },
+        project.kernel_snapshot.session_inputs { PRECOMPILE_SENTINEL },
         scale.tests.microservices.test_seed_determinism {
             FLAG_PRECOMPILED,
             compiler_source_digest,
@@ -1040,9 +1041,7 @@ graph import {
         | project.compiler_host.ProjectHost.native_pipeline_available {
         native_pipeline_available
     }
-    compiler.driver.unit_products ++> project.kernel_compile | project.kernel_snapshot {
-        UnitProducts
-    }
+    compiler.driver.unit_products ++> project.kernel_compile { UnitProducts }
     compiler.driver.wiring ++> [
         cli.commands.architecture {
             ARCH_FILE_NAME,
@@ -1435,11 +1434,6 @@ graph import {
     type compiler.types.stubcat.reader ++> project.compiler_host { StubCatalog }
     compiler.types.stubcat.writer ++> [
         dist.precompile_bytecode.precompile_unit_context,
-        project.kernel_snapshot.KernelSnapshot.record_interface {
-            IncoherentInterface,
-            build_module_iface,
-            module_iface_shape
-        },
         project.kernel_snapshot.python_interface {
             IncoherentInterface,
             build_module_iface
@@ -6461,6 +6455,9 @@ graph import compiler {
             is_bundled_native_module,
             resolve_native_module
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._native_module_member_ability {
+            resolve_native_module
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._native_variant_decl {
             native_variant_of
         },
@@ -9338,6 +9335,7 @@ graph import compiler {
             Name,
             ParamVar,
             Symbol,
+            UniNode,
             UniScopeNode
         },
         types.type_evaluator {
@@ -10502,9 +10500,19 @@ graph import compiler {
     types.stubcat.resolver ++> driver.ifacecache | frontend.kernel_host {
         CatalogResolver
     }
-    types.stubcat.writer ++> driver.ifacecache.IfaceRegistry._encode_iface {
-        IncoherentInterface
-    }
+    types.stubcat.writer ++> [
+        driver.ifacecache.IfaceRegistry._encode_iface {
+            IncoherentInterface,
+            PackagePathMapper
+        },
+        driver.jir.JirPaths.encode { encode_package_path },
+        frontend.kernel_host.record_interface {
+            IncoherentInterface,
+            PackagePathMapper,
+            build_module_iface,
+            module_iface_shape
+        },
+    ]
     types.ts_decl_parser --> tests.test_jac_mobui_typing { parse_dts }
     types.type_evaluator ++> [
         driver.program.JacProgram.get_type_evaluator { TypeEvaluator },
@@ -11725,6 +11733,14 @@ graph import compiler.driver {
             get_module_cache_path,
             is_module_cache_valid
         },
+        compiler.unit_sections {
+            DepRow,
+            JirPaths,
+            SEC_DEPS,
+            SEC_IFACE,
+            SEC_PATH_ROOT,
+            deps_section
+        },
         ifacecache {
             DepRow,
             JirPaths,
@@ -11750,6 +11766,7 @@ graph import compiler.driver {
             write_module_cache
         },
         ifacecache.IfaceRegistry._deps_match { read_dep_rows },
+        ifacecache.IfaceRegistry._encode_iface { PRECOMPILE_SENTINEL },
         ifacecache.artifact_cache_path { get_module_cache_path },
         nativecache {
             NativeStamp,
@@ -14099,7 +14116,9 @@ graph import compiler.types {
         type_evaluator.TypeEvaluator._load_ts_declarations { parse_dts },
     ]
     type type_evaluator ++> [
-        ct_eval | fixed_width | operations | type_utils { TypeEvaluator },
+        ct_eval | fixed_width | operations | stubcat.writer | type_utils {
+            TypeEvaluator
+        },
         enum_utils { PrefetchedTypes, TypeEvaluator },
     ]
     type_utils ++> [
@@ -14367,6 +14386,7 @@ graph import compiler.types.stubcat {
             put_ref,
             put_refs,
             put_svar,
+            put_u32,
             put_uvar
         },
     ]
@@ -14382,7 +14402,11 @@ graph import compiler.types.stubcat {
         locate._open_file { open_catalog_file },
         locate._open_region { open_catalog_region },
         modiface { StubCatalog },
+        writer.CatalogWriter.encode_scope { CatScope },
         writer.CatalogWriter.encode_symbol { CatProvider },
+        writer.CatalogWriter.force_symbol { CatScope },
+        writer.CatalogWriter.scope_dotted_path { CatScope },
+        writer.metaclass_of_scope { CatScope },
     ]
     type reader ++> locate { StubCatalog }
     resolver ++> modiface | reader { CatalogResolver }
@@ -17529,9 +17553,10 @@ graph import runtime.python {
             PyObject,
             PySlice_New,
             PyTuple_New,
-            Py_Ellipsis,
+            Py_CONSTANT_ELLIPSIS,
+            Py_CONSTANT_NONE,
+            Py_GetConstant,
             Py_NewRef,
-            Py_None,
             jacpy_code_new,
             jacpy_long_from_bytes,
             jacpy_release,
