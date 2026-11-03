@@ -48,23 +48,17 @@ impl TableProblem.describe -> str {
 
 impl rules_from_record(record: object) -> dict[str, TableRule] {
     owner = record if isinstance(record, `type) else type(record);
-    rules: dict[str, TableRule] = {};
-    for f in fields(record) {
-        sample = None if record is owner else getattr(record, f.name, None);
-        rules[f.name] = rule_from_type(
-            f.`type, sample, owner, f"{owner.__name__}.{f.name}"
-        );
-    }
-    return rules;
+    return {
+        f.name: rule_from_type(f.`type, owner, f"{owner.__name__}.{f.name}")
+        for f in fields(record)
+    };
 }
 
-impl rule_from_type(
-    annotation: any, sample: any, owner: object, label: str
-) -> TableRule {
+impl rule_from_type(annotation: any, owner: object, label: str) -> TableRule {
     text = _type_text(annotation);
     parts = _split_top(text, "|");
     if len(parts) == 1 and text.startswith("(") and text.endswith(")") {
-        return rule_from_type(text[1:-1], sample, owner, label);
+        return rule_from_type(text[1:-1], owner, label);
     }
     choices = [
         part
@@ -74,7 +68,7 @@ impl rule_from_type(
     if len(choices) != 1 {
         raise TypeError(f"{label}: jac.toml has no form for the type {text!r}");
     }
-    rule = _named_rule(choices[0], sample, owner, label);
+    rule = _named_rule(choices[0], owner, label);
     rule.optional = len(choices) < len(parts);
     return rule;
 }
@@ -107,7 +101,7 @@ impl _split_top(text: str, sep: str) -> list[str] {
     return parts;
 }
 
-impl _named_rule(text: str, sample: any, owner: object, label: str) -> TableRule {
+impl _named_rule(text: str, owner: object, label: str) -> TableRule {
     if text in SCALAR_KINDS {
         return TableRule(kind=SCALAR_KINDS[text]);
     }
@@ -116,18 +110,11 @@ impl _named_rule(text: str, sample: any, owner: object, label: str) -> TableRule
         outer = text[:at].strip();
         args = _split_top(text[at + 1:-1], ",");
         if outer == "list" and len(args) == 1 {
-            return TableRule(
-                kind="list", item=rule_from_type(args[0], None, owner, label)
-            );
+            return TableRule(kind="list", item=rule_from_type(args[0], owner, label));
         }
         if outer == "dict" and len(args) == 2 and args[0] == "str" {
-            return TableRule(
-                kind="dict", item=rule_from_type(args[1], None, owner, label)
-            );
+            return TableRule(kind="dict", item=rule_from_type(args[1], owner, label));
         }
-    }
-    if sample is not None and is_record(sample) {
-        return TableRule(kind="table", keys=rules_from_record(sample));
     }
     module = sys.modules.get(owner.__module__);
     found = getattr(module, text, None) if module is not None else None;
@@ -167,18 +154,11 @@ impl check_table(
     table: dict[str, any],
     rules: dict[str, TableRule],
     section: str,
-    moved: dict[str, str]
+    moved: dict[str, str],
+    types: bool = True
 ) -> list[TableProblem] {
     problems: list[TableProblem] = [];
-    _walk_table(table, rules, section, moved, True, problems);
-    return problems;
-}
-
-impl unknown_keys(
-    table: dict[str, any], rules: dict[str, TableRule], section: str
-) -> list[TableProblem] {
-    problems: list[TableProblem] = [];
-    _walk_table(table, rules, section, {}, False, problems);
+    _walk_table(table, rules, section, moved, types, problems);
     return problems;
 }
 
@@ -217,12 +197,9 @@ impl _check_value(
 ) -> None {
     path = f"{section}.{key}";
     if not rule.accepts(raw) {
-        if not types {
-            return;
-        }
-        if rule.kind in ("table", "dict") {
+        if types and rule.kind in ("table", "dict") {
             problems.append(TableProblem(section=path, detail="must be a table"));
-        } else {
+        } elif types {
             problems.append(
                 TableProblem(section=section, key=key, detail=_expects(rule, raw))
             );
@@ -256,9 +233,9 @@ impl _check_value(
 impl _expects(rule: TableRule, raw: any) -> str {
     item = rule.item;
     if item is not None {
-        return f"must be a list of {KIND_NOUNS[item.kind]}, got {raw!r}";
+        return f"must be a list of {KIND_WORDS.get(item.kind, ('', 'tables'))[1]}, got {raw!r}";
     }
-    return f"must be {KIND_EXPECTS[rule.kind]}, got {raw!r}";
+    return f"must be {KIND_WORDS[rule.kind][0]}, got {raw!r}";
 }
 
 impl validate_against_schema(
@@ -272,7 +249,7 @@ impl validate_against_schema(
     }
     return [
         _unknown_key_message(problem.section, problem.key, problem.known or [])
-        for problem in unknown_keys(raw, rules_from_schema(options), section)
+        for problem in check_table(raw, rules_from_schema(options), section, {}, False)
     ];
 }
 

@@ -16,21 +16,11 @@ glob SCALAR_KINDS: dict[str, str] = {
          "list": "list",
          "dict": "dict"
      },
-     KIND_EXPECTS: dict[str, str] = {
-         "bool": "true or false",
-         "int": "an integer",
-         "float": "a number",
-         "str": "a string"
-     },
-     KIND_NOUNS: dict[str, str] = {
-         "bool": "true/false values",
-         "int": "integers",
-         "float": "numbers",
-         "str": "strings",
-         "list": "lists",
-         "dict": "tables",
-         "table": "tables",
-         "any": "values"
+     KIND_WORDS: dict[str, tuple[str, str]] = {
+         "bool": ("true or false", "true/false values"),
+         "int": ("an integer", "integers"),
+         "float": ("a number", "numbers"),
+         "str": ("a string", "strings")
      };
 
 obj TableRule {
@@ -53,9 +43,7 @@ obj TableProblem {
 
 def rules_from_record(record: object) -> dict[str, TableRule];
 
-def rule_from_type(
-    annotation: any, sample: any, owner: object, label: str
-) -> TableRule;
+def rule_from_type(annotation: any, owner: object, label: str) -> TableRule;
 
 def rules_from_schema(options: dict[str, any]) -> dict[str, TableRule];
 
@@ -63,11 +51,8 @@ def check_table(
     table: dict[str, any],
     rules: dict[str, TableRule],
     section: str,
-    moved: dict[str, str]
-) -> list[TableProblem];
-
-def unknown_keys(
-    table: dict[str, any], rules: dict[str, TableRule], section: str
+    moved: dict[str, str],
+    types: bool = True
 ) -> list[TableProblem];
 
 def validate_against_schema(
@@ -84,7 +69,7 @@ def _type_text(annotation: any) -> str;
 
 def _split_top(text: str, sep: str) -> list[str];
 
-def _named_rule(text: str, sample: any, owner: object, label: str) -> TableRule;
+def _named_rule(text: str, owner: object, label: str) -> TableRule;
 
 def _schema_rule(spec: any) -> TableRule;
 
