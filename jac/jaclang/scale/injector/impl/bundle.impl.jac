@@ -582,8 +582,8 @@ impl staged_jac_toml(sanitized: (str | None), entry_module: str) -> (str | None)
     }
     text = sanitized if sanitized is not None else PLACEHOLDER_JAC_TOML;
     old_doc = tomllib.loads(text);
-    project = {**old_doc.get("project", {}), "entry-point": entry_module};
-    new_doc = {**old_doc, "project": project};
+    project = {** old_doc.get("project", {}), "entry-point": entry_module};
+    new_doc = {** old_doc, "project": project};
     return toml_minimal_update(text, old_doc, new_doc, ["project"])
         or serialize_toml(new_doc);
 }
