@@ -491,6 +491,10 @@ obj MirLowering {
     def variant_unit(mod: uni.Module) -> (uni.Module | None);
     def variant_ability(callee: uni.Ability) -> uni.Ability;
     def variant_glob(nd: uni.Name) -> (uni.Name | None);
+    def scalar_constant(
+        expr: (uni.UniNode | None), depth: int = 0
+    ) -> tuple[bool, any];
+
     def glob_assignment_of(nd: uni.Name) -> (uni.Assignment | None);
     def variant_value(nd: uni.Name, twin: uni.Name) -> (MirValue | None);
     def foreign_c_declaration(name: str) -> (uni.Ability | None);

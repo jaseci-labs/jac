@@ -1326,7 +1326,7 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
             return self.builder().const_float(folded.value, self.expr_type(nd));
         }
         final_value = final_glob_value(nd);
-        (settled, scalar) = c_scalar_constant(final_value)
+        (settled, scalar) = self.scalar_constant(final_value)
             if final_value is not None
             else (False, None);
         if settled and isinstance(scalar, bool) {
@@ -3944,7 +3944,7 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
     }
     if name == "__global_block" {
         label = c_string_literal(args[0]) if args else None;
-        (ok, size) = c_scalar_constant(args[1]) if len(args) == 2 else (False, None);
+        (ok, size) = self.scalar_constant(args[1]) if len(args) == 2 else (False, None);
         if not label or not ok or not isinstance(size, int) or size <= 0 {
             raise MirRefused(
                 mir_refusal(
@@ -3974,7 +3974,7 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
     }
     if name == "__thread_local_block" {
         label = c_string_literal(args[0]) if args else None;
-        (ok, size) = c_scalar_constant(args[1]) if len(args) == 2 else (False, None);
+        (ok, size) = self.scalar_constant(args[1]) if len(args) == 2 else (False, None);
         if not label or not ok or not isinstance(size, int) or size <= 0 {
             raise MirRefused(
                 mir_refusal(
@@ -4188,7 +4188,7 @@ impl MirLowering.intrinsic_operand(arg: uni.Expr, spec: str) -> MirValue {
 }
 
 impl MirLowering.memory_order(nd: uni.FuncCall, arg: uni.Expr, kind: str) -> str {
-    (ok, value) = c_scalar_constant(arg);
+    (ok, value) = self.scalar_constant(arg);
     if not ok
         or not isinstance(value, int)
         or value < 0
