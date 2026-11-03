@@ -947,8 +947,17 @@ impl __jac_rt_bytearray_extend(ba: int, data: ptr[u8], n: int) {
         return;
     }
     size = __mem_load_i64(ba + LIST_LEN);
+    before = __mem_load_i64(ba + LIST_DATA);
+    source = int(data);
+    inside = before != 0
+        and source >= before
+        and source < before + __mem_load_i64(ba + LIST_CAP);
     _bytearray_reserve(ba, size + n);
-    memmove(__mem_load_i64(ba + LIST_DATA) + size, int(data), n);
+    after = __mem_load_i64(ba + LIST_DATA);
+    if inside {
+        source = after + (source - before);
+    }
+    memmove(after + size, source, n);
     __mem_store_i64(ba + LIST_LEN, size + n);
 }
 

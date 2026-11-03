@@ -801,13 +801,26 @@ impl MirLowering.bytes_from(args: list[uni.Expr], nd: uni.FuncCall) -> MirValue 
         );
     } elif kind in (MirKind.INT, MirKind.BOOL) {
         handle = self.call_rt("__jac_rt_bytes_zero", [b.convert(source, mir_int())]);
-    } elif self.is_byte_seq(source) {
+    } else {
+        return self.bytes_of_ints(source, nd);
+    }
+    return b.ref_cast(handle, mir_bytes(), True);
+}
+
+"""A fresh `bytes` built from a byte sequence or an iterable of ints."""
+impl MirLowering.bytes_of_ints(source: MirValue, nd: uni.UniNode) -> MirValue {
+    b = self.builder();
+    kind = source.type.kind;
+    handle: MirValue;
+    if self.is_byte_seq(source) {
         (data, size) = self.byte_parts(source);
         handle = self.call_rt("__jac_rt_bytes_new", [data, size]);
     } elif kind == MirKind.LIST
         and source.type.payload().kind in (MirKind.INT, MirKind.BOOL) {
         handle = self.call_rt("__jac_rt_bytes_from_list", [source]);
-    } elif kind in (MirKind.RANGE, MirKind.ITER, MirKind.TUPLE, MirKind.SET) {
+    } elif kind in (
+        MirKind.RANGE, MirKind.ITER, MirKind.TUPLE, MirKind.SET, MirKind.LIST
+    ) {
         handle = self.call_rt(
             "__jac_rt_bytes_from_list", [self.spill(self.drain(source, mir_int(), nd))]
         );

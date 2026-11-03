@@ -1190,6 +1190,7 @@ obj MirLowering {
     def write_value(value: MirValue, fd: int, site: uni.UniNode);
     def text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def text_bytes(value: MirValue) -> tuple[MirValue, MirValue];
+    def bytes_of_ints(source: MirValue, nd: uni.UniNode) -> MirValue;
     def bytes_from(args: list[uni.Expr], nd: uni.FuncCall) -> MirValue;
     def absolute(value: MirValue, site: uni.UniNode) -> MirValue;
     def extreme(

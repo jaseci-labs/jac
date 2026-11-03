@@ -1195,7 +1195,14 @@ impl MirLowering.bytes_method(
     }
     if name == "extend" {
         other_nd = self.bind_args(nd, ["iterable_of_ints"])[0];
-        (other_data, other_len) = self.bytes_arg(other_nd, nd);
+        if other_nd is None {
+            raise MirRefused(mir_refusal("call", "missing bytes argument", nd));
+        }
+        other = self.spill(self.lower_expr(other_nd));
+        if not self.is_byte_seq(other) {
+            other = self.spill(self.bytes_of_ints(other, other_nd));
+        }
+        (other_data, other_len) = self.byte_parts(other);
         self.runtime("__jac_rt_bytearray_extend", [held, other_data, other_len]);
         return b.const_bool(False);
     }
