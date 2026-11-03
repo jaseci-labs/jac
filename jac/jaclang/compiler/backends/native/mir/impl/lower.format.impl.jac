@@ -763,6 +763,26 @@ impl MirLowering.text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) 
     if name == "pow" and len(args) == 2 {
         return self.power(first, self.lower_expr(args[1]), nd);
     }
+    if name == "pow" and len(args) == 3 {
+        operands = [first, self.lower_expr(args[1]), self.lower_expr(args[2])];
+        if any(
+            value.type.kind not in (MirKind.INT, MirKind.BOOL) or value.type.is_sized()
+            for value in operands
+        ) {
+            raise MirRefused(
+                mir_refusal(
+                    "call",
+                    "pow with a modulus over non-int operands",
+                    nd,
+                    "Three-argument pow takes int operands."
+                )
+            );
+        }
+        return self.call_rt(
+            "__jac_rt_int_powmod",
+            [b.convert(value, mir_int()) for value in operands]
+        );
+    }
     raise MirRefused(mir_refusal("call", f"{name} with {len(args)} arguments", nd));
 }
 

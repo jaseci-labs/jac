@@ -1249,6 +1249,68 @@ impl __jac_rt_int_pow(base: int, exp: int) -> int {
     return result;
 }
 
+impl _mulmod(a: int, b: int, m: int) -> int {
+    result = 0;
+    x = a;
+    y = b;
+    while y > 0 {
+        if (y & 1) == 1 {
+            result = result - (m - x) if result >= m - x else result + x;
+        }
+        y = y >> 1;
+        if y > 0 {
+            x = x - (m - x) if x >= m - x else x + x;
+        }
+    }
+    return result;
+}
+
+impl __jac_rt_int_powmod(base: int, exp: int, mod: int) -> int {
+    if mod == 0 {
+        raise ValueError("pow() 3rd argument cannot be 0");
+    }
+    m = 0 - mod if mod < 0 else mod;
+    if m == 1 {
+        return 0;
+    }
+    b = base % m;
+    e = exp;
+    if e < 0 {
+        old_r = b;
+        r = m;
+        old_s = 1;
+        s = 0;
+        while r != 0 {
+            q = old_r // r;
+            next_r = old_r - q * r;
+            old_r = r;
+            r = next_r;
+            next_s = old_s - q * s;
+            old_s = s;
+            s = next_s;
+        }
+        if old_r != 1 {
+            raise ValueError("base is not invertible for the given modulus");
+        }
+        b = old_s % m;
+        e = 0 - e;
+    }
+    result = 1;
+    while e > 0 {
+        if (e & 1) == 1 {
+            result = _mulmod(result, b, m);
+        }
+        e = e >> 1;
+        if e > 0 {
+            b = _mulmod(b, b, m);
+        }
+    }
+    if mod < 0 and result != 0 {
+        return result + mod;
+    }
+    return result;
+}
+
 impl __jac_rt_float_pow(base: float, exp: float) -> float {
     if base == 0.0 and exp < 0.0 {
         raise ZeroDivisionError("0.0 cannot be raised to a negative power");

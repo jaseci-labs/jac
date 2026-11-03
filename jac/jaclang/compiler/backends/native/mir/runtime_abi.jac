@@ -240,6 +240,7 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_float_round_int": ["int", "float"],
          "__jac_rt_int_round": ["int", "int", "int"],
          "__jac_rt_int_pow": ["int", "int", "int"],
+         "__jac_rt_int_powmod": ["int", "int", "int", "int"],
          "__jac_rt_int_bit_length": ["int", "int"],
          "__jac_rt_int_bit_count": ["int", "int"],
          "__jac_rt_float_is_integer": ["bool", "float"],
