@@ -138,8 +138,10 @@ impl MirEmitter.c_constant(made: MirConst, shape: ir.Type) -> ir.Constant {
     } else {
         target = self.module.globals[made.symbol];
         if made.offset {
-            addressed: any = target.type;
-            pointee = addressed.pointee;
+            addressed = target.type;
+            pointee = addressed.pointee
+                if isinstance(addressed, ir.PointerType)
+                else None;
             steps = [
                 ir.Constant(ir.IntType(32), 0),
                 ir.Constant(ir.IntType(64), made.offset)
