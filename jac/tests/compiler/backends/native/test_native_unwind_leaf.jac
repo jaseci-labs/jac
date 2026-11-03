@@ -57,7 +57,6 @@ test "raises from frames without a record leak nothing" {
             for line in proc.stdout.splitlines()
             if "<- LEAK" in line
         ];
-        # (the global table itself is still alive at exit)
-        assert len(leaks) == 1 and "type=list_ptr" in leaks[0] , f"{memory}: {leaks[:5]}";
+        assert leaks == [] , f"{memory}: {leaks[:5]}";
     }
 }

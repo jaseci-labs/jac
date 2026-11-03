@@ -76,7 +76,7 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      KIND_ANY: int = 6,
      KIND_UINT: int = 7,
      KIND_NULL: int = 8,
-     KIND_SEQ: int = 9,
+     SORT_TAGGED_KIND: int = 16,
      TUPLE_BOX_MEMBERS: int = 8,
      NO_VALUE_KIND: int = -1,
      LIST_INDEX_MESSAGE: str = "list index out of range",
@@ -356,6 +356,8 @@ obj MirDecl {
 
 def mono_symbol_text(text: str) -> str;
 
+def mir_same_signature(left: MirDecl, right: MirDecl) -> bool;
+
 obj MirLowering {
     has prog: JacProgram,
         module: uni.Module,
@@ -375,6 +377,7 @@ obj MirLowering {
         text_pairs: list[tuple[str, str]] = [],
         text_regs: dict[str, tuple[MirBlock, list[MirInstr]]] = {},
         class_entries: list[tuple[str, str, str]] = [],
+        class_lineages: list[tuple[str, str]] = [],
         deferred_globals: list[tuple[MirGlobal, uni.Expr]] = [],
         entry_globals: dict[int, set[int]] = {},
         missing_imports: dict[int, (str | None)] = {},
@@ -406,20 +409,39 @@ obj MirLowering {
         bindings: list[InteropBinding] = [],
         current: str = "",
         dep_verdicts: dict[str, (list[str] | None)] = {},
+        erased_units: set[str] = set(),
+        erased_archs: dict[int, bool] = {},
         imported_fns: dict[str, tuple[str, str]] = {},
         flow_sites: int = 0,
         tests: list[tuple[str, str, str, int]] = [],
         c_views: dict[int, MirGlobal] = {},
+        owned_world: bool = False,
+        ctor_consumes: dict[str, list[int]] = {},
         state: (MirFnState | None) = None;
 
     def lower -> MirModule;
+    def stamp_ownership;
+    def tag_ownership(tag: (uni.UniNode | None)) -> (OwnershipKind | None);
+    def tag_borrows(tag: (uni.UniNode | None)) -> bool;
+    def returns_borrow(ab: uni.Ability) -> bool;
+    def reads_self(expr: (uni.UniNode | None), fields: bool) -> bool;
+    def elements_borrowed(tag: (uni.UniNode | None)) -> bool;
+    def lend_fresh(
+        value: MirValue, tag: (uni.UniNode | None), source: (uni.UniNode | None)
+    );
+
+    def param_owns(pv: uni.ParamVar) -> bool;
+    def field_consumes(arch: uni.Archetype, name: str) -> bool;
+    def lower_unit -> MirModule;
     def declaration_types;
     def record_defaults;
     def settle;
+    def settle_tests;
     def callees_of(fn: MirFunction) -> list[str];
     def module_abilities -> list[uni.Ability];
     def declare(ab: uni.Ability);
     def symbol_of(ab: uni.Ability) -> str;
+    def c_exported(access: (uni.SubTag[uni.Token] | None), path: str) -> bool;
     def unit_symbol(
         name: str, access: (uni.SubTag[uni.Token] | None), path: str = ""
     ) -> str;
@@ -434,22 +456,26 @@ obj MirLowering {
     def lower_body(stmts: Sequence[uni.UniNode]);
     def drop_last_uses(stmt: uni.UniNode);
     def drop_consumed_args(nd: uni.FuncCall);
+    def forget_slot(slot: MirValue);
     def lower_stmt(nd: uni.UniNode);
     def lower_assignment(nd: uni.Assignment);
     def assign_to(target: uni.UniNode, value: MirValue, nd: uni.Assignment);
     def store_name(target: uni.Name, value: MirValue);
     def exchange_place(arg: uni.Expr) -> MirValue;
     def place_exchange(nd: uni.FuncCall, name: str) -> (MirValue | None);
+    def owned_exchange(
+        nd: uni.FuncCall,
+        name: str,
+        args: list[uni.Expr],
+        first: MirValue,
+        elem: MirType,
+        held: MirValue
+    ) -> MirValue;
+
     def local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirValue;
-    def loop_scoped(sym: uni.Symbol) -> bool;
     def encloses(scope: (uni.UniScopeNode | None), nd: uni.UniNode) -> bool;
     def first_iterable(nd: uni.UniNode) -> bool;
     def comprehension_scoped(sym: uni.Symbol) -> bool;
-    def within_body(
-        nd: uni.UniNode,
-        loop: (uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt)
-    ) -> bool;
-
     def lower_return(nd: uni.ReturnStmt);
     def lower_if(nd: (uni.IfStmt | uni.ElseIf));
     def lower_else(nd: (uni.ElseStmt | uni.ElseIf | None), done: MirBlock);
@@ -460,6 +486,7 @@ obj MirLowering {
     def lower_for(nd: uni.InForStmt);
     def lower_for_core(nd: uni.InForStmt);
     def lower_range_for(nd: uni.InForStmt, bounds: list[uni.Expr]);
+    def lower_if_else_effect(nd: uni.IfElseExpr);
     def lower_if_else_expr(nd: uni.IfElseExpr) -> MirValue;
     def to_str(value: MirValue, site: uni.UniNode) -> MirValue;
     def lower_fstring(nd: uni.FString) -> MirValue;
@@ -499,6 +526,7 @@ obj MirLowering {
     def variant_ability(callee: uni.Ability) -> uni.Ability;
     def variant_glob(nd: uni.Name) -> (uni.Name | None);
     def variant_value(nd: uni.Name, twin: uni.Name) -> (MirValue | None);
+    def variant_declaration(declaration: uni.Assignment) -> (uni.Assignment | None);
     def foreign_c_declaration(name: str) -> (uni.Ability | None);
     def c_signature_text(params: list[MirType], ret: MirType) -> str;
     def c_declared_signature(decl: uni.Ability, site: uni.UniNode) -> (str | None);
@@ -579,6 +607,8 @@ obj MirLowering {
 
     def import_call(nd: uni.FuncCall, callee: uni.Ability) -> (MirValue | None);
     def require_dep_native(path: str, symbol: str, site: uni.UniNode);
+    def dep_verdict(path: str) -> (bool | None);
+    def add_dep(path: str, name: str, site: (uni.UniNode | None));
     def intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue;
     def intrinsic_operand(arg: uni.Expr, spec: str) -> MirValue;
     def memory_order(nd: uni.FuncCall, arg: uni.Expr, kind: str) -> str;
@@ -710,6 +740,10 @@ obj MirLowering {
     def dict_method(d: MirValue, name: str, nd: uni.FuncCall) -> (MirValue | None);
     def set_method(s: MirValue, name: str, nd: uni.FuncCall) -> (MirValue | None);
     def contains(item: MirValue, holder: MirValue, site: uni.UniNode) -> MirValue;
+    def string_enum_ordinal(
+        item: MirValue, elem: MirType, site: uni.UniNode
+    ) -> MirValue;
+
     def container_eq(left: MirValue, right: MirValue) -> MirValue;
     def view_kind(nd: uni.Expr) -> str;
     def view_compare(
@@ -741,9 +775,16 @@ obj MirLowering {
     def find_method(arch: uni.Archetype, name: str) -> (uni.Ability | None);
     def method_symbol(arch: uni.Archetype, name: str) -> str;
     def foreign_method_decl(method: uni.Ability) -> (MirDecl | None);
+    def owner_archetype(nd: uni.UniNode) -> (uni.Archetype | None);
+    def live_unit(path: str) -> (uni.Module | None);
+    def live_member(nd: uni.Ability) -> uni.Ability;
+    def note_lineage(arch: uni.Archetype, obj_def: MirObjectDef);
     def foreign_static_decl(method: uni.Ability) -> (MirDecl | None);
     def method_decl_of(method: uni.Ability) -> (MirDecl | None);
     def holder_arch(expr: uni.Expr) -> (uni.Archetype | None);
+    def settle_slots;
+    def slot_root(arch: uni.Archetype, name: str) -> (MirDecl | None);
+    def slot_adapter(decl: MirDecl, base: MirDecl) -> (MirFunction | None);
     def accessor_on(
         arch: uni.Archetype, name: str, kind: str, nd: uni.UniNode
     ) -> (tuple[uni.Archetype, MirDecl] | None);
@@ -802,6 +843,8 @@ obj MirLowering {
     def accessor_set(target: uni.AtomTrailer, nd: uni.Assignment) -> bool;
     def lower_constructor(arch: uni.Archetype) -> (MirFunction | None);
     def lower_drop(obj_def: MirObjectDef, arch: uni.Archetype) -> MirFunction;
+    def lower_drop_glue(obj_def: MirObjectDef) -> MirFunction;
+    def drop_through_glue(held: MirValue) -> bool;
     def drop_hook(arch: uni.Archetype, raw: MirValue);
     def lower_trace(obj_def: MirObjectDef) -> MirFunction;
     def lower_text_thunk(
@@ -851,6 +894,8 @@ obj MirLowering {
 
     def isinstance_check(value: MirValue, arch: uni.Archetype) -> MirValue;
     def host_only_type(t: (TypeBase | None)) -> bool;
+    def erased_class(t: ClassType) -> bool;
+    def note_erasures(t: (TypeBase | None));
     def erased_slot(t: (TypeBase | None)) -> bool;
     def class_reference(nd: uni.Expr) -> (uni.Archetype | None);
     def class_value(arch: uni.Archetype) -> MirValue;
@@ -878,6 +923,7 @@ obj MirLowering {
 
     def class_of(value: MirValue, site: uni.UniNode) -> MirValue;
     def class_isinstance(value: MirValue, kind: MirValue) -> MirValue;
+    def class_list_isinstance(value: MirValue, kinds: MirValue) -> MirValue;
     def lower_module_init -> (MirFunction | None);
     def lower_module_entry -> (MirFunction | None);
     def none_value -> MirValue;
@@ -893,6 +939,7 @@ obj MirLowering {
     def narrow_down(value: MirValue, nd: uni.Expr) -> MirValue;
     def optional_eq(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
     def lower_cast(nd: uni.CastExpr) -> MirValue;
+    def none_cast_error(nd: uni.CastExpr) -> tuple[str, str];
     def opt_begin(
         value: MirValue, result: MirType
     ) -> tuple[MirValue, MirValue, MirBlock, MirBlock];
@@ -1196,6 +1243,7 @@ obj MirLowering {
     def container_repr_body(param: MirValue, site: uni.UniNode);
     def object_repr_body(param: MirValue, site: uni.UniNode);
     def fstring_value(nd: uni.FString) -> MirValue;
+    def str_format(template: str, nd: uni.FuncCall) -> MirValue;
     def format_value(
         value: MirValue, spec: (MirValue | None), site: uni.UniNode
     ) -> MirValue;
@@ -1382,6 +1430,7 @@ obj MirLowering {
     def enum_desc(t: MirType, site: uni.UniNode) -> MirValue;
     def creation_kind(elem: MirType, site: uni.UniNode) -> MirValue;
     def enum_text_thunk(t: MirType, site: uni.UniNode) -> str;
+    def headerless_type_value(value: MirValue, site: uni.UniNode) -> MirValue;
     def store_text_result(base: MirValue, text: MirValue);
     def refuse_opaque_abc(item: uni.Expr, arch: uni.Archetype, site: uni.UniNode);
     def refuse_partial_mro(value: MirValue, item: uni.Expr, site: uni.UniNode);

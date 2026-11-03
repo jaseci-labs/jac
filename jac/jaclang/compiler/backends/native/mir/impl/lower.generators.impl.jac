@@ -1676,12 +1676,22 @@ impl MirLowering.builtin_fold(
     fn = self.st().fn;
     wanted = self.expr_type(nd);
     result_type = wanted if name == "sum" else mir_bool();
-    if name == "sum" and wanted.kind == MirKind.ANY and start is None {
+    seed_type: (MirType | None) = self.expr_type(start) if start is not None else None;
+    if name == "sum" and wanted.kind == MirKind.ANY {
         source_type = self.expr_type(source);
+        elem: (MirType | None) = None;
         if source_type.kind in (MirKind.LIST, MirKind.SET, MirKind.ITER)
             and source_type.args
             and source_type.payload().kind in (MirKind.INT, MirKind.FLOAT) {
-            result_type = source_type.payload();
+            elem = source_type.payload();
+        } elif source_type.kind in (MirKind.BYTES, MirKind.BYTEARRAY) {
+            elem = mir_int();
+        }
+        if elem is not None {
+            result_type = elem;
+            if seed_type is not None and seed_type.kind == MirKind.FLOAT {
+                result_type = seed_type;
+            }
         }
     }
     held = self.temp_slot(result_type);
@@ -1689,19 +1699,24 @@ impl MirLowering.builtin_fold(
         if not result_type.is_numeric() {
             raise MirRefused(mir_refusal("call", f"sum to {result_type.render()}", nd));
         }
-        initial = self.lower_expr(start)
-            if start is not None
-            else b.const_int(0, mir_int());
-        b.store(held, self.coerce(initial, result_type, start or nd));
+        b.store(held, self.coerce(b.const_int(0, mir_int()), result_type, nd));
     } else {
         b.store(held, b.const_bool(name == "all"));
     }
     compensated: (MirValue | None) = None;
+    plain_first: (MirValue | None) = None;
     if name == "sum" and result_type.kind == MirKind.FLOAT {
         compensated = self.temp_slot(result_type);
         b.store(compensated, b.const_float(0.0, result_type));
+        if seed_type is not None and seed_type.kind != MirKind.FLOAT {
+            plain_first = self.temp_slot(mir_bool());
+            b.store(plain_first, b.const_bool(True));
+        }
     }
     (cursors, counter) = self.open_sources(source);
+    if start is not None {
+        b.store(held, self.coerce(self.lower_expr(start), result_type, start));
+    }
     head = fn.new_block("fold.head");
     after = fn.new_block("fold.exit");
     b.branch(head);
@@ -1711,26 +1726,29 @@ impl MirLowering.builtin_fold(
         raise MirRefused(mir_refusal("call", f"{name} over tuples", nd));
     }
     if name == "sum" and compensated is not None {
-        x = values[0];
+        x = self.coerce(values[0], result_type, nd);
         f = b.load(held, result_type);
-        if x.type.kind != MirKind.FLOAT {
-            b.store(held, b.binary("add", f, self.coerce(x, result_type, nd)));
-        } else {
-            x = self.coerce(x, result_type, nd);
-            t = b.binary("add", f, x);
-            zero = b.const_float(0.0, result_type);
-            f_abs = b.select(b.compare("lt", f, zero), b.negate(f), f);
-            x_abs = b.select(b.compare("lt", x, zero), b.negate(x), x);
-            lost = b.select(
-                b.compare("ge", f_abs, x_abs),
-                b.binary("add", b.binary("sub", f, t), x),
-                b.binary("add", b.binary("sub", x, t), f)
-            );
-            b.store(
-                compensated, b.binary("add", b.load(compensated, result_type), lost)
-            );
-            b.store(held, t);
+        if plain_first is not None {
+            plainly = fn.new_block("fold.plain");
+            careful = fn.new_block("fold.careful");
+            b.cond_branch(b.load(plain_first, mir_bool()), plainly, careful);
+            b.position(plainly);
+            b.store(held, b.binary("add", f, x));
+            b.store(plain_first, b.const_bool(False));
+            b.branch(head);
+            b.position(careful);
         }
+        t = b.binary("add", f, x);
+        zero = b.const_float(0.0, result_type);
+        f_abs = b.select(b.compare("lt", f, zero), b.negate(f), f);
+        x_abs = b.select(b.compare("lt", x, zero), b.negate(x), x);
+        lost = b.select(
+            b.compare("ge", f_abs, x_abs),
+            b.binary("add", b.binary("sub", f, t), x),
+            b.binary("add", b.binary("sub", x, t), f)
+        );
+        b.store(compensated, b.binary("add", b.load(compensated, result_type), lost));
+        b.store(held, t);
         b.branch(head);
     } elif name == "sum" {
         b.store(

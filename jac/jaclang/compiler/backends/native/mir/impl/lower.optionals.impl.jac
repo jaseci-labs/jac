@@ -36,7 +36,7 @@ impl MirLowering.narrowed_load(value: MirValue, nd: uni.Expr) -> MirValue {
         or isinstance(seen, (UnionType, AnyType)) {
         return value;
     }
-    if self.type_of(seen, MirPosition.VALUE, nd).kind == MirKind.OPT {
+    if self.type_of(seen, MirPosition.VALUE, nd).kind in (MirKind.OPT, MirKind.NONE) {
         return value;
     }
     return self.opt_unwrap_checked(
@@ -97,7 +97,30 @@ impl MirLowering.lower_cast(nd: uni.CastExpr) -> MirValue {
         return value;
     }
     if value.type.kind == MirKind.ANY {
-        return self.any_unbox(value, wanted, nd);
+        if wanted.kind
+            in (
+                MirKind.OPT,
+                MirKind.OPT_REF,
+                MirKind.NONE,
+                MirKind.INT,
+                MirKind.BOOL,
+                MirKind.FLOAT,
+                MirKind.ENUM
+            ) {
+            return self.any_unbox(value, wanted, nd);
+        }
+        held_any = self.spill(value);
+        (exception, message) = self.none_cast_error(nd);
+        self.raise_if(
+            self.builder().compare(
+                "eq",
+                self.emit_value(MirOp.ANY_TAG, mir_int(), [held_any]),
+                self.builder().const_int(ANY_NONE_TAG, mir_int())
+            ),
+            exception,
+            message
+        );
+        return self.any_unbox(held_any, wanted, nd);
     }
     if wanted.kind == MirKind.OBJ
         and value.type.kind
@@ -118,20 +141,7 @@ impl MirLowering.lower_cast(nd: uni.CastExpr) -> MirValue {
     }
     if value.type.kind in (MirKind.OPT, MirKind.NONE)
         and wanted.kind not in (MirKind.OPT, MirKind.NONE) {
-        exception = "TypeError";
-        message = "'NoneType' object cast to a value";
-        user: uni.UniNode = nd;
-        while isinstance(user.parent, uni.AtomUnit) {
-            user = user.parent;
-        }
-        access = user.parent;
-        if isinstance(access, uni.AtomTrailer)
-            and access.is_attr
-            and access.target is user
-            and isinstance(access.right, uni.Name) {
-            exception = "AttributeError";
-            message = f"'NoneType' object has no attribute '{access.right.value}'";
-        }
+        (exception, message) = self.none_cast_error(nd);
         b = self.builder();
         if value.type.kind == MirKind.NONE {
             b.raise_builtin(exception, message);
@@ -162,6 +172,24 @@ impl MirLowering.lower_cast(nd: uni.CastExpr) -> MirValue {
         return self.builder().ref_cast(narrowed, wanted, False);
     }
     return narrowed;
+}
+
+impl MirLowering.none_cast_error(nd: uni.CastExpr) -> tuple[str, str] {
+    user: uni.UniNode = nd;
+    while isinstance(user.parent, uni.AtomUnit) {
+        user = user.parent;
+    }
+    access = user.parent;
+    if isinstance(access, uni.AtomTrailer)
+        and access.is_attr
+        and access.target is user
+        and isinstance(access.right, uni.Name) {
+        return (
+            "AttributeError",
+            f"'NoneType' object has no attribute '{access.right.value}'"
+        );
+    }
+    return ("TypeError", "'NoneType' object cast to a value");
 }
 
 impl MirLowering.opt_begin(

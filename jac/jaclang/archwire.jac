@@ -6005,7 +6005,15 @@ graph import compiler {
             layout_digest as layout_digest_of,
             merge_class_layouts
         },
-        backends.native.mir.backend { NativeExport, NativeIface },
+        backends.native.mir.backend {
+            EXPORT_FUNCTION,
+            EXPORT_METHOD,
+            EXPORT_TEST,
+            NativeClassLayout,
+            NativeExport,
+            NativeFieldSlot,
+            NativeIface
+        },
         frontend.kernel_host | tests.test_native_kernel_cache { NativeIface },
     ]
     type driver.native_iface ++> frontend.codeinfo | frontend.host { NativeIface }
@@ -6349,7 +6357,8 @@ graph import compiler {
             native_entry_name,
             native_glob_init_name,
             native_module_key,
-            native_unit_prefix
+            native_unit_prefix,
+            native_unit_spelling
         },
         backends.native.mir.emit { RC_SENTINEL, str_len_tag },
         backends.native.mir.lower {
@@ -6376,9 +6385,6 @@ graph import compiler {
             native_variant_of,
             resolve_native_module
         },
-        backends.native.mir.lower_types
-            | native_scope.scope_allows_inferred_path
-            | placement.placement_solver._native_deps_ok { native_unit_compile_active },
         backends.native.region_abi._region_layout_facts {
             HDR_ALLOC_ID_OFF,
             HDR_DTOR_OFF,
@@ -6482,6 +6488,8 @@ graph import compiler {
         native_bindings.import_gaps { resolve_native_module },
         native_compiler.NativeCompiler._resolve_classes { NATIVE_ARCH_SCOPE_SEP },
         native_scope.binds_bare_arch_names { kernel_unit_rels },
+        native_scope.scope_allows_inferred_path
+            | placement.placement_solver._native_deps_ok { native_unit_compile_active },
         passes.boundary_analysis_pass {
             BoundaryTypeInfo,
             InteropBinding,
@@ -6811,7 +6819,7 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._warn_rpc_callable_params { W6005 },
         backends.es.esast_gen_pass.EsastGenPass.prepare
             | passes.placement_pass.PlacementPass._run_decided { E5096 },
-        backends.native.mir.backend { E1145, E1158, E5092, E9003 },
+        backends.native.mir.backend { E1145, E1158, E5092, E5095, E9003 },
         backends.native.na_compile_pass { E5020, E5026 },
         backends.py.jcir_bc_gen_pass { E5040, E5043 },
         backends.py.jcir_gen_pass {
@@ -7200,7 +7208,7 @@ graph import compiler {
             | backends.es.jac_runtime_js.build_osp_core_js
             | backends.native.abi.struct_layouts
             | backends.native.mir.backend
-            | backends.native.mir.lower.MirLowering.require_dep_native
+            | backends.native.mir.lower.MirLowering.dep_verdict
             | backends.py.artifact_imports
             | driver.application._kernel_units
             | driver.boundary_classify
@@ -9488,7 +9496,7 @@ graph import compiler {
     ]
     passes.context --> driver.compiler.assemble_jcir { Alert }
     type passes.context ++> [
-        driver.compiler { Alert },
+        driver.compiler | driver.nativecache { Alert },
         native_compiler { Alert, PassResult },
         symbol_utils { CompilerPass },
     ]
@@ -9517,10 +9525,12 @@ graph import compiler {
             archetype_native_name,
             get_layout_registry
         },
+        backends.native.mir.backend { archetype_native_name, get_layout_registry },
         backends.native.mir.emit { VTABLE_HEADER_SLOTS },
         backends.native.mir.lower {
             EXC_MESSAGE_FIELD,
             NON_DISPATCHED_METHODS,
+            VTABLE_DROP_SLOT,
             VTABLE_HEADER_SLOTS,
             accessor_slot_name,
             adopt_imported_bases,
@@ -9636,8 +9646,7 @@ graph import compiler {
     ]
     placement.placement_facts ++> [
         backends.native.mir.backend { native_placement_hard },
-        backends.native.mir.lower { native_unit, pinned_module_space },
-        backends.native.mir.lower_types { native_unit },
+        backends.native.mir.lower { pinned_module_space },
         driver.module_compile.admits_native_checks { variant_selected },
         driver.program.JacProgram.declared_codespace {
             native_only,
@@ -10391,6 +10400,7 @@ graph import compiler.backends.es.backends {
 }
 
 graph import compiler.backends.native {
+    abi ++> mir.backend { struct_layouts }
     abi ++> mir.emit { classify_struct }
     foreign ++> abi.classify_foreign_fn { foreign_struct_layout }
     kernel_resolve ++> kernel_stage0 { KERNEL_LINK_MODE, kernel_plan }
@@ -10443,7 +10453,7 @@ graph import compiler.backends.native {
     ]
     llvm.binding.value ++> link_plan.internalize_native_implementation { Visibility }
     type llvm.binding.value ++> link_plan { ValueRef }
-    llvm.ir as ir ++> abi | lexical_scope | lowering | mir.emit;
+    llvm.ir as ir ++> abi | lexical_scope | lowering | mir.backend | mir.emit;
     llvm.ir.types ++> link_glue.bind_shared_callbacks { _wrapname }
     lowering ++> [
         entry_points.validate_native_application | na_compile_pass.unit_fallbacks {
@@ -10677,6 +10687,8 @@ graph import compiler.backends.native.mir {
         mir_refusal,
         mir_spec_type,
         mir_type_of,
+        pop_erased_units,
+        push_erased_units,
         refusal_of,
         stub_archetype
     }
@@ -10761,7 +10773,7 @@ graph import compiler.backends.native.mir {
             mir_str_ref,
             mir_tuple
         },
-        rc { mir_c_fn, mir_c_ptr, mir_holds_ref, mir_int, mir_none },
+        rc { MirKind, MirType, mir_c_fn, mir_c_ptr, mir_holds_ref, mir_int, mir_none },
         runtime_abi {
             MirType,
             mir_any,
@@ -13533,7 +13545,8 @@ graph import compiler.types {
         ct_eval { CatModule },
         type_evaluator.TypeEvaluator._build_field_params
             | types.ClassType.get_class_symbol { CatScope },
-        type_evaluator.TypeEvaluator._is_instance_method_member { CatProvider },
+        type_evaluator.TypeEvaluator._is_instance_method_member
+            | types.ClassType.lookup_member_symbol { CatProvider },
         type_evaluator.TypeEvaluator._merge_catalog_field_params { CatProvider },
         type_evaluator.TypeEvaluator._metaclass_of | types._class_scope_category {
             CatScope
@@ -15205,18 +15218,26 @@ graph import runtime.native {
         text { __jac_rt_list_new, __jac_rt_list_push, __jac_rt_list_reverse },
     ]
     rc ++> [
-        anys | closures | iterators {
+        anys {
             __jac_rt_alloc,
             __jac_rt_free_block,
             __jac_rt_release,
             __jac_rt_retain,
-            __jac_rt_set_type
+            __jac_rt_set_type,
+            __jac_rt_trace_register
         },
         bytes {
             __jac_rt_alloc,
             __jac_rt_free_block,
             __jac_rt_release,
             __jac_rt_release_acyclic,
+            __jac_rt_retain,
+            __jac_rt_set_type
+        },
+        closures | iterators {
+            __jac_rt_alloc,
+            __jac_rt_free_block,
+            __jac_rt_release,
             __jac_rt_retain,
             __jac_rt_set_type
         },

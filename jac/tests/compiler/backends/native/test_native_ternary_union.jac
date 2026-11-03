@@ -161,3 +161,10 @@ test "declared union: mixed members round-trip in param, return and global" {
     assert use_u_glob(0) == 11 , "int member in an `int | str` global";
     assert use_u_glob(1) == -5 , "str member in an `int | str` global";
 }
+
+test "a conditional expression statement runs only its taken branch" {
+    import from tests.support { compile_native, get_func }
+    (eng, _) = compile_native("ternary_statement.jac");
+    got = get_func(eng, "chk_ternary_statement", ctypes.c_int64)();
+    assert got == 200 , got;
+}

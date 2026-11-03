@@ -29,6 +29,8 @@ def:pub __jac_rt_any_retain(tag: int, payload: int);
 
 def:pub __jac_rt_any_release(tag: int, payload: int);
 
+def:pub __jac_rt_any_drop(tag: int, payload: int);
+
 def:pub __jac_rt_any_box(tag: int, payload: int) -> int;
 
 def:pub __jac_rt_any_box_hold(box: int);
@@ -47,6 +49,14 @@ def:pub __jac_rt_any_type_name(tag: int, payload: int) -> ptr[u8];
 
 def:pub __jac_rt_any_isa(tag: int, payload: int, name: ptr[u8]) -> bool;
 
+def:pub __jac_rt_class_isa_add(cls: int, base: int);
+
+def:pub __jac_rt_class_isa(cls: int, base: int) -> bool;
+
+def:pub __jac_rt_any_isa_class(tag: int, payload: int, cls: int) -> bool;
+
+def _class_isa_bucket(cls: int, base: int) -> int;
+
 def:pub __jac_rt_cstr_eq(a: ptr[u8], b: ptr[u8]) -> bool;
 
 def:pub __jac_rt_str_from_cstr(text: ptr[u8]) -> ptr[u8];
@@ -56,6 +66,10 @@ def:pub __jac_rt_class_name(text: ptr[u8]) -> ptr[u8];
 def _holds_ref(tag: int) -> bool;
 
 def _box_drop(box: ptr[u8]);
+
+def _box_trace(box: int, visit_fn: int);
+
+def _box_traced_tag(tag: int) -> bool;
 
 glob KIND_INT: int = 0,
      KIND_FLOAT: int = 1,

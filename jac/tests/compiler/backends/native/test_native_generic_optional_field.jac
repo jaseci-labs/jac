@@ -491,25 +491,48 @@ test "an archetype type argument is still accepted for a bare `T` slot" {
 }
 
 
-test "a `list[T]` slot on a generic archetype stays loud" {
-    # Not fixed here and not silently broken either: it demotes to Python with
-    # its reason reported, which is the outcome this file's bar demands of
-    # anything the erasure cannot represent.
-    _src = "obj Leaf {\n"
-    "    has num: int = 0;\n"
-    "}\n"
-    "obj Bag[T] {\n"
+test "a `list[T]` slot on a generic archetype lowers per instantiation" {
+    # The old backend erased `T` and could not represent a list over it, so
+    # this demoted. MIR specializes the slot for `Bag[Leaf]`, so it lowers and
+    # must read back what it stored.
+    (prog, ir) = _compile_src(
+        "list_tv",
+        "obj Leaf {\n"
+        "    has num: int = 0;\n"
+        "}\n"
+        "obj Bag[T] {\n"
+        "    has items: list[T] = [];\n"
+        "}\n"
+        "def go() -> int {\n"
+        "    b = Bag[Leaf]();\n"
+        "    b.items.append(Leaf(num=4));\n"
+        "    b.items.append(Leaf(num=5));\n"
+        "    return len(b.items) * 100 + b.items[1].num;\n"
+        "}\n"
+    );
+    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
+    assert "go" in ir.gen.native_layout.functions , "the list[T] slot stopped lowering";
+    addr = native_address(ir.gen.native_engine, "go");
+    assert ctypes.CFUNCTYPE(ctypes.c_int64)(addr)() == 205 , "two leaves, the second is 5";
+}
+
+
+test "a generic slot bound to a type with no native form stays loud" {
+    # Not silently broken: it demotes to Python with its reason reported,
+    # which is the outcome this file's bar demands of anything the lowering
+    # cannot represent.
+    _src = "obj Bag[T] {\n"
     "    has items: list[T] = [];\n"
     "}\n"
     "def go() -> int {\n"
-    "    b = Bag[Leaf]();\n"
-    "    b.items.append(Leaf(num=4));\n"
+    "    b = Bag[memoryview]();\n"
+    "    b.items.append(memoryview(b\"ab\"));\n"
     "    return len(b.items);\n"
     "}\n";
-    (prog, ir) = _compile_src("list_tv", _src);
-    msgs = _seam_reasons("list_tv_coverage", _src);
-    assert any([("list" in m) for m in msgs]) , (
-        f"a list over an unsolved type parameter must keep reporting: {msgs}"
+    (prog, ir) = _compile_src("view_tv", _src);
+    msgs = _seam_reasons("view_tv_coverage", _src);
+    assert any([("memoryview" in m) for m in msgs]) , (
+        f"a slot over a type with no native form must keep reporting: {msgs}"
     );
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     go_layout: any = ir.gen.native_layout;

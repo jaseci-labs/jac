@@ -57,3 +57,14 @@ test "isinstance mixed: statically typed struct operand" {
     f = get_func(eng, "chk_typed_operand", ctypes.c_int64);
     assert f() == 1 , "Sub-typed operand must match the Foo arm";
 }
+
+test "isinstance against a tuple of classes held in a variable" {
+    (eng, _) = compile_native("isinstance_mixed.jac");
+    f = get_func(eng, "chk_variadic_kinds", ctypes.c_int64);
+    assert f() == 110 , "Sub at 1, Foo at 0, and a plain Foo is no Sub";
+}
+
+test "a field of here read after isinstance narrowed it to a union" {
+    (eng, _) = compile_native("isinstance_narrowed_here.jac");
+    assert get_func(eng, "run_count", ctypes.c_int64)() == 2;
+}

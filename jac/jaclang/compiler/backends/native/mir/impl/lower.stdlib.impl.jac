@@ -37,6 +37,13 @@ impl MirLowering.module_member(unit: uni.Module, name: str) -> (uni.UniNode | No
         if isinstance(elem, uni.Ability) and self.name_of(elem) == name {
             return elem;
         }
+        if isinstance(elem, uni.Import) and elem.clib_decls {
+            for decl in elem.clib_decls {
+                if isinstance(decl, uni.Ability) and self.name_of(decl) == name {
+                    return decl;
+                }
+            }
+        }
         if isinstance(elem, uni.GlobalVars) {
             for assign in elem.assignments {
                 for target in assign.target {
@@ -198,10 +205,7 @@ impl MirLowering.class_global(
             held, f"{archetype_native_name(holder)}.{target.value}", value
         );
     } else {
-        unit = os.path.realpath(path);
-        if unit not in self.mir.deps {
-            self.mir.deps.append(unit);
-        }
+        self.add_dep(path, symbol, target);
     }
     return held;
 }

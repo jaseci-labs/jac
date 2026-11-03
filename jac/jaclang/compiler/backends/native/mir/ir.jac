@@ -81,7 +81,9 @@ obj MirValue {
         name: str = "",
         is_slot: bool = False,
         is_temp: bool = False,
-        owned: bool = False;
+        owned: bool = False,
+        hold: str = "",
+        borrows: bool = False;
 
     def render -> str;
 }
@@ -96,7 +98,8 @@ obj MirInstr {
         float_value: float = 0.0,
         str_value: str = "",
         type_arg: (MirType | None) = None,
-        targets: list[str] = [];
+        targets: list[str] = [],
+        consumes: list[int] = [];
 
     def is_terminator -> bool;
     def render -> str;
@@ -122,6 +125,8 @@ obj MirFunction {
         blocks: list[MirBlock] = [],
         linkage: str = "external",
         manual_rc: bool = False,
+        ownership: bool = False,
+        borrow_return: bool = False,
         resumable: bool = False,
         variadic: bool = False,
         c_symbol: str = "",
@@ -181,7 +186,8 @@ obj MirStructDef {
 obj MirObjectField {
     has name: str,
         type: MirType,
-        index: int;
+        index: int,
+        borrowed: bool = False;
 }
 
 obj MirObjectDef {
@@ -194,8 +200,12 @@ obj MirObjectDef {
         vtable_symbol: str = "",
         class_symbol: str = "",
         vtable_methods: list[str] = [],
+        vtable_names: list[str] = [],
+        vtable_entries: dict[int, str] = {},
         ancestry: list[str] = [],
         drop_symbol: str = "",
+        glue_symbol: str = "",
+        drop_slot: str = "",
         trace_symbol: str = "",
         is_acyclic: bool = False,
         local: bool = False,
@@ -228,6 +238,7 @@ obj MirModule {
         frames: dict[str, MirFrame] = {},
         deps: list[str] = [],
         clib_specs: list[tuple[str, list[str], int]] = [],
+        headerless: bool = False,
         clib_symbols: dict[str, int] = {};
 
     def function(symbol: str) -> (MirFunction | None);

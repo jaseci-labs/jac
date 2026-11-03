@@ -485,7 +485,7 @@ impl JcirGenPass.exit_func_signature with FuncSignature exit {
     posonlyargs = [self.val(i) for i in here.posonly_params];
     vararg = self.val(here.varargs) if here.varargs else None;
     kwarg = self.val(here.kwargs) if here.kwargs else None;
-    _first = list(here.posonly_params) + list(here.params);
+    _first = list(here.posonly_params) + list(here.params or []);
     _explicit_self = (
         bool(_first)
         and isinstance(_first[0], ParamVar)
@@ -513,12 +513,12 @@ impl JcirGenPass.exit_func_signature with FuncSignature exit {
             else [];
     if posonlyargs {
         posonlyargs = params + posonlyargs;
-        params = [self.val(i) for i in here.params];
+        params = [self.val(i) for i in here.params or []];
     } else {
-        params = params + [self.val(i) for i in here.params];
+        params = params + [self.val(i) for i in here.params or []];
     }
     defaults: list[CgNode] = [];
-    all_params: list[UniNode] = list(here.posonly_params) + list(here.params);
+    all_params: list[UniNode] = list(here.posonly_params) + list(here.params or []);
     for i in all_params {
         if (isinstance(i, ParamVar) and i.value) {
             defaults.append(self.val(i.value));

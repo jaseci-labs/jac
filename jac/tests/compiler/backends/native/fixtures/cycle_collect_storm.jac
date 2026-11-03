@@ -30,6 +30,11 @@ def make_cycle {
     b.next = a;
 }
 
+"""One trial-deletion collection through the intrinsic the program calls."""
+def collect {
+    __rc_collect_cycles();
+}
+
 with entry {
     i: int = 0;
     since_collect: int = 0;

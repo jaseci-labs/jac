@@ -45,6 +45,7 @@ impl _g_rc_debug -> int {
 impl __jac_rt_rc_debug_set(on: bool) {
     if on {
         banner = ptr[u8]("--- debug ON ---\n");
+        fflush(ptr[u8]());
         write(i32(1), banner, strlen(banner));
         armed = __global_block("__rc_live_armed", 1);
         if int(__mem_load_i8(armed)) == 0 {
@@ -88,6 +89,7 @@ impl _live_dump {
         return;
     }
     header = ptr[u8]("--- RC LIVE OBJECTS at exit ---\n");
+    fflush(ptr[u8]());
     write(i32(1), header, strlen(header));
     table = __global_block("__rc_live_table", 24);
     count = __mem_load_i64(table + 8);
@@ -109,6 +111,7 @@ impl _live_dump {
 }
 
 impl _rc_trace(label: ptr[u8], o: int) {
+    fflush(ptr[u8]());
     write(i32(1), label, strlen(label));
     _rc_hex(o);
     write(i32(1), ptr[u8]("\n"), i64(1));
@@ -693,6 +696,18 @@ impl __jac_rt_release_acyclic(o: int) {
     _release_fast(o, False);
 }
 
+impl __jac_rt_drop(o: int) {
+    _release_fast(o, False);
+}
+
+impl __jac_rt_pin_share(o: int) {
+    __jac_rt_retain(o);
+}
+
+impl __jac_rt_drop_text(o: int) {
+    _release_fast(o, False);
+}
+
 impl __jac_rt_release_impl(o: int, may_cycle: bool) {
     _release_impl(o, may_cycle);
 }
@@ -747,6 +762,13 @@ impl __jac_rt_gc_disable -> None {
 
 impl __jac_rt_gc_enable -> None {
     __mem_store_i8(_g_gc_disabled(), i8(0));
+}
+
+impl __jac_rt_gc_env -> None {
+    value = getenv(ptr[u8]("JAC_GC"));
+    if int(value) != 0 and strcmp(value, ptr[u8]("off")) == 0 {
+        __jac_rt_gc_disable();
+    }
 }
 
 impl __jac_rt_cycles_enable -> None {

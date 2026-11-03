@@ -209,7 +209,7 @@ obj KernelHost(HostServices) {
         program: JacProgram, path: str, options: CompileOptions
     ) -> (NativeIface | None);
 
-    def native_dep_discovery_open(program: JacProgram) -> bool;
+    def native_dep_pending(program: JacProgram, path: str) -> bool;
     def native_deps_deferred(program: JacProgram) -> bool;
     def lower_dependency(
         program: JacProgram, real: str, options: CompileOptions
@@ -218,6 +218,7 @@ obj KernelHost(HostServices) {
     def native_fact(kind: str, key: str) -> str;
     def save_native_debug_ir(path: str, text: str);
     def native_lowering_failed(program: JacProgram, path: str, detail: str);
+    def note_native_demotion(program: JacProgram, key: str, reason: str) -> bool;
     def native_units_for(program: JacProgram) -> NativeUnitRegistry;
     def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None);
     def in_compiler_tree(path: str) -> bool;

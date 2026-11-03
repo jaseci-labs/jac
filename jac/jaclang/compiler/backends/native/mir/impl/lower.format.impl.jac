@@ -509,6 +509,73 @@ impl MirLowering.fstring_value(nd: uni.FString) -> MirValue {
     return result if result is not None else b.const_str("", mir_str());
 }
 
+impl MirLowering.str_format(template: str, nd: uni.FuncCall) -> MirValue {
+    import string;
+    b = self.builder();
+    (args, named) = self.split_args(nd);
+    positional = [self.spill(self.lower_expr(arg)) for arg in args];
+    keyed: dict[str, MirValue] = {};
+    for (key, arg) in named.items() {
+        keyed[key] = self.spill(self.lower_expr(arg));
+    }
+    try {
+        fields = list(string.Formatter().parse(template));
+    } except ValueError as e {
+        raise MirRefused(
+            mir_refusal("call", f"str.format of {template!r}", nd, str(e))
+        );
+    }
+    pieces: list[MirValue] = [];
+    automatic = 0;
+    numbering = "";
+    for (literal, field, spec, conversion) in fields {
+        if literal {
+            pieces.append(b.const_str(literal, mir_str()));
+        }
+        if field is None {
+            continue;
+        }
+        value: (MirValue | None) = None;
+        if field == "" and numbering != "manual" {
+            numbering = "automatic";
+            value = positional[automatic] if automatic < len(positional) else None;
+            automatic += 1;
+        } elif field.isdigit() and numbering != "automatic" {
+            numbering = "manual";
+            index = int(field);
+            value = positional[index] if index < len(positional) else None;
+        } elif field.isidentifier() {
+            value = keyed.get(field);
+        }
+        if value is None or (spec and "{" in spec) {
+            raise MirRefused(
+                mir_refusal(
+                    "call",
+                    f"str.format field {{{field}}}",
+                    nd,
+                    "Native str.format fills plain positional, numbered and keyword fields from its arguments, with constant format specs."
+                )
+            );
+        }
+        if conversion == "r" {
+            value = self.repr_of(value, nd);
+        } elif conversion == "a" {
+            value = self.ascii_of(value, nd);
+        } elif conversion == "s" {
+            value = self.str_value(value, nd);
+        }
+        format_spec = self.spill(b.const_str(spec, mir_str())) if spec else None;
+        pieces.append(
+            self.spill(self.format_value(self.spill(value), format_spec, nd))
+        );
+    }
+    result: (MirValue | None) = None;
+    for piece in pieces {
+        result = piece if result is None else self.str_concat(result, piece);
+    }
+    return result if result is not None else b.const_str("", mir_str());
+}
+
 impl MirLowering.format_value(
     value: MirValue, spec: (MirValue | None), site: uni.UniNode
 ) -> MirValue {

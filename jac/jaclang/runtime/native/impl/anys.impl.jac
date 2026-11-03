@@ -99,6 +99,10 @@ impl __jac_rt_any_retain(tag: int, payload: int) {
     }
 }
 
+impl __jac_rt_any_drop(tag: int, payload: int) {
+    __jac_rt_any_release(tag, payload);
+}
+
 impl __jac_rt_any_release(tag: int, payload: int) {
     if payload != 0 and _holds_ref(tag) {
         __jac_rt_release(payload);
@@ -112,6 +116,11 @@ impl __jac_rt_any_box(tag: int, payload: int) -> int {
     __mem_store_i64(box + BOX_PAYLOAD, payload);
     __jac_rt_any_retain(tag, payload);
     __mem_store_i64(box - HDR_DTOR_BACK, int(_box_drop));
+    flag = __global_block("__jac_rt_box_traced", 1);
+    if int(__mem_load_i8(flag)) == 0 {
+        __jac_rt_trace_register(int(_box_drop), int(_box_trace));
+        __mem_store_i8(flag, i8(1));
+    }
     return box;
 }
 
@@ -125,10 +134,23 @@ impl __jac_rt_any_box_hold(box: int) {
 
 impl _box_drop(box: ptr[u8]) {
     at = int(box);
-    __jac_rt_any_release(
-        __mem_load_i64(at + BOX_TAG), __mem_load_i64(at + BOX_PAYLOAD)
-    );
+    tag = __mem_load_i64(at + BOX_TAG);
+    collecting = int(__mem_load_i8(__global_block("__rc_collecting", 1))) != 0;
+    if not (collecting and _box_traced_tag(tag)) {
+        __jac_rt_any_release(tag, __mem_load_i64(at + BOX_PAYLOAD));
+    }
     __jac_rt_free_block(at - HDR_TOTAL);
+}
+
+impl _box_traced_tag(tag: int) -> bool {
+    return tag >= ANY_TAG_LIST and tag <= ANY_TAG_OBJ;
+}
+
+impl _box_trace(box: int, visit_fn: int) {
+    payload = __mem_load_i64(box + BOX_PAYLOAD);
+    if payload != 0 and _box_traced_tag(__mem_load_i64(box + BOX_TAG)) {
+        __mem_call_dtor(visit_fn, payload);
+    }
 }
 
 impl __jac_rt_any_truthy(tag: int, payload: int) -> bool {
@@ -224,6 +246,43 @@ impl __jac_rt_any_isa(tag: int, payload: int, name: ptr[u8]) -> bool {
     return tag == ANY_TAG_OBJ
         and payload != 0
         and __jac_rt_cstr_eq(__jac_rt_type_name(payload), name);
+}
+
+impl _class_isa_bucket(cls: int, base: int) -> int {
+    table = __global_block("__jac_rt_class_lineage", 4096);
+    return table + (((cls >> 4) ^ (base >> 4) ^ (cls >> 13)) & 511) * 8;
+}
+
+impl __jac_rt_class_isa_add(cls: int, base: int) {
+    if __jac_rt_class_isa(cls, base) {
+        return;
+    }
+    head = _class_isa_bucket(cls, base);
+    cell = int(malloc(24));
+    __mem_store_i64(cell, __mem_load_i64(head));
+    __mem_store_i64(cell + 8, cls);
+    __mem_store_i64(cell + 16, base);
+    __mem_store_i64(head, cell);
+}
+
+impl __jac_rt_class_isa(cls: int, base: int) -> bool {
+    if cls == base {
+        return True;
+    }
+    cell = __mem_load_i64(_class_isa_bucket(cls, base));
+    while cell != 0 {
+        if __mem_load_i64(cell + 8) == cls and __mem_load_i64(cell + 16) == base {
+            return True;
+        }
+        cell = __mem_load_i64(cell);
+    }
+    return False;
+}
+
+impl __jac_rt_any_isa_class(tag: int, payload: int, cls: int) -> bool {
+    return tag == ANY_TAG_OBJ
+        and payload != 0
+        and __jac_rt_class_isa(int(__jac_rt_type_name(payload)), cls);
 }
 
 impl __jac_rt_cstr_eq(a: ptr[u8], b: ptr[u8]) -> bool {
@@ -357,7 +416,7 @@ impl _seq_kind(p: int, i: int, is_tup: bool) -> int {
     if is_tup {
         return __mem_load_i64(p + TUPLE_KINDS + i * SLOT);
     }
-    return __mem_load_i64(p + LIST_KIND);
+    return __mem_load_i64(p + LIST_KIND) & 255;
 }
 
 impl _walk_mode(tag: int, payload: int) -> int {
@@ -1106,8 +1165,8 @@ impl _seq_join(a: int, at: bool, b: int, bt: bool) -> int {
         }
         return made;
     }
-    ka = __mem_load_i64(a + LIST_KIND);
-    kb = __mem_load_i64(b + LIST_KIND);
+    ka = __mem_load_i64(a + LIST_KIND) & 255;
+    kb = __mem_load_i64(b + LIST_KIND) & 255;
     kind = ka if ka == kb else KIND_ANY;
     made = __jac_rt_list_new(na + nb, kind);
     _join_into(made, a, ka, kind);
@@ -1149,7 +1208,7 @@ impl _seq_repeat(a: int, is_tup: bool, times: int) -> int {
         }
         return made;
     }
-    kind = __mem_load_i64(a + LIST_KIND);
+    kind = __mem_load_i64(a + LIST_KIND) & 255;
     made = __jac_rt_list_new(n * count, kind);
     k = 0;
     while k < count {
@@ -1356,7 +1415,7 @@ impl _bind_elem(bits: int, kind: int, family: int) -> bool {
     inner_first = ((family >> 8) & 255) - 1;
     inner_second = ((family >> 16) & 255) - 1;
     if tag == ANY_TAG_LIST {
-        return _bind_kind(__mem_load_i64(payload + LIST_KIND), inner_first);
+        return _bind_kind(__mem_load_i64(payload + LIST_KIND) & 255, inner_first);
     }
     return _bind_kind(__mem_load_i64(payload + DICT_KEY_KIND), inner_first)
         and (
@@ -1450,7 +1509,7 @@ impl __jac_rt_any_bind(
         _bind_refuse(label);
     }
     if want == ANY_TAG_LIST {
-        have = __mem_load_i64(payload + LIST_KIND);
+        have = __mem_load_i64(payload + LIST_KIND) & 255;
         if _bind_kind(have, first) {
             __jac_rt_retain(payload);
             return payload;
