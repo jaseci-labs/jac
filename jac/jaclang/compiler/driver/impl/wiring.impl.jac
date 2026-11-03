@@ -170,7 +170,9 @@ impl WiringSpec._variant_file(local: str, parts: list[str]) -> (str | None) {
             continue;
         }
         path = os.path.join(
-            self.root_dir, *parts[:len(parts) - cut], ".".join(parts[-cut:]) + ".jac"
+            self.root_dir,
+            os.sep.join(parts[:len(parts) - cut]),
+            ".".join(parts[-cut:]) + ".jac"
         );
         if os.path.isfile(path)
             and self.owns(path)
