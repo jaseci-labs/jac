@@ -147,7 +147,22 @@ test "clone_for_native_import carries the full codegen identity" {
         memory_exempt=["legacy*"]
     );
     child = parent.clone_for_native_import();
-    assert child.skip_native_engine and child.aot_mode;
+    assert child.skip_native_engine;
+    for (label, options, hard) in [
+        ("default run", {}, False),
+        ("ahead of time", {"aot_mode": True}, True),
+        ("forced native", {"force_codespace": "native"}, True)
+    ] {
+        assert _pinned_opts(**options).clone_for_native_import().aot_mode
+            == hard , label;
+    }
+    import from jaclang.compiler.frontend.kernel_inputs {
+        request_from_dict,
+        request_of,
+        request_to_dict
+    }
+    carried = request_from_dict(request_to_dict(request_of(child))).to_options();
+    assert carried.native_import , "the kernel session lost the native import";
     parent_id = parent.codegen_identity();
     child_id = child.codegen_identity();
     parent_tail = parent_id.split("nogc_mods=")[1];
