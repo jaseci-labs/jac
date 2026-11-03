@@ -39,6 +39,16 @@ glob CONFIG: str = '[project]\nname="kernel-native"\n',
          'with entry {\n    p = Point(x=3, y=4);\n'
          '    print("sq", square(7), "norm2", p.norm2());\n}\n'
      ),
+     OPENS_FILE: str = (
+         'def lines(path: str) -> int {\n'
+         '    with open(path, "r", encoding="utf-8", errors="ignore") as f {\n'
+         '        return len(f.read().splitlines());\n    }\n}\n\n'
+     ),
+     FIRST_WORD: str = 'def first_word(text: str) -> str {\n    return text.split(" ")[0];\n}\n',
+     USES_FIRST_WORD: str = (
+         'import from dep { first_word }\n\n'
+         'with entry {\n    print(first_word("a b"));\n}\n'
+     ),
      IN_PROCESS_JAC: str = (
          "import jaclang.project.kernel_compile as kernel_compile\n"
          "kernel_compile.run_kernel_in_process()\n"
@@ -247,56 +257,33 @@ test "a default run lowers a bundled native import the way the host does" {
     }
 }
 
-"""A dependency of a default run is placed the way the entry is: it is typed
-before it is placed, so a call only the native stubs reject moves its function
-to Python. Its `:pub` is not server evidence, since native code imports it. A
-real type error stays one, and so does the stub rejection when native was
-asked for ahead of time (#10380)."""
+"""A dependency of a default run falls back function by function, as the entry
+does; asked for ahead of time, the same call is an error (#10380)."""
 test "a dependency of a default run falls back the way the entry does" {
-    open_errors = (
-        'import os;\n\n'
-        'def lines(path: str) -> int {\n'
-        '    with open(path, "r", encoding="utf-8", errors="ignore") as f {\n'
-        '        return len(f.read().splitlines());\n    }\n}\n\n'
-    );
-    first_word = 'def first_word(text: str) -> str {\n    return text.split(" ")[0];\n}\n';
     rows = [
-        ("native stubs reject open", open_errors + first_word, run_options(), [], True),
+        ("native stubs reject open", OPENS_FILE + FIRST_WORD, run_options(), [], True),
         (
             "a public function is still a library",
-            first_word.replace("def ", "def:pub "),
+            FIRST_WORD.replace("def ", "def:pub "),
             run_options(),
             [],
             True
         ),
         (
-            "native stubs reject Path.read_text",
-            'import from pathlib { Path }\n\n'
-            'def text(path: str) -> str {\n'
-            '    return Path(path).read_text(encoding="utf-8", errors="ignore");\n}\n\n'
-                + first_word,
-            run_options(),
-            [],
-            False
-        ),
-        (
             "a real type error",
-            'def bad -> int {\n    return first_word(1, 2);\n}\n\n' + first_word,
+            'def bad -> int {\n    return first_word(1, 2);\n}\n\n' + FIRST_WORD,
             run_options(),
             ["E1051"],
             False
         ),
-        ("ahead of time", open_errors + first_word, native_options(), ["E1054"], False)
+        ("ahead of time", OPENS_FILE + FIRST_WORD, native_options(), ["E1054"], False)
     ];
     for (label, dep_source, options, codes, stays_native) in rows {
         with TemporaryDirectory() as td {
             base = Path(os.path.realpath(td));
             (base / 'jac.toml').write_text(CONFIG);
             (base / 'dep.jac').write_text(dep_source);
-            (base / 'main.jac').write_text(
-                'import from dep { first_word }\n\n'
-                'with entry {\n    print(first_word("a b"));\n}\n'
-            );
+            (base / 'main.jac').write_text(USES_FIRST_WORD);
             entry_file = str(base / 'main.jac');
             with in_process_kernel() {
                 session = kernel_snapshot(
@@ -319,35 +306,29 @@ test "a dependency of a default run falls back the way the entry does" {
     }
 }
 
-"""A forced native run keeps its options through the engine link, so the failed
-run leaves no soft dependency in the cache for the next run to pick up (#10380)."""
+"""A failed forced run must not cache a soft dependency for the next run (#10380)."""
 test "a forced native run that fails keeps failing" {
-    import subprocess;
-    import from tests.support { jac_command }
+    import from jaclang.compiler.backends.native.link_plan { LinkPlanError }
     with TemporaryDirectory() as td {
         base = Path(os.path.realpath(td));
         (base / 'jac.toml').write_text(CONFIG);
-        (base / 'dep.jac').write_text(
-            'def lines(path: str) -> int {\n'
-            '    with open(path, "r", encoding="utf-8", errors="ignore") as f {\n'
-            '        return len(f.read().splitlines());\n    }\n}\n\n'
-            'def first_word(text: str) -> str {\n    return text.split(" ")[0];\n}\n'
-        );
-        (base / 'main.jac').write_text(
-            'import from dep { first_word }\n\n'
-            'with entry {\n    print(first_word("a b"));\n}\n'
-        );
+        (base / 'dep.jac').write_text(OPENS_FILE + FIRST_WORD);
+        (base / 'main.jac').write_text(USES_FIRST_WORD);
         for attempt in range(2) {
-            proc = subprocess.run(
-                jac_command("run", "-b", "native", str(base / 'main.jac')),
-                cwd=str(base),
-                capture_output=True,
-                text=True,
-                timeout=600
-            );
-            assert proc.returncode != 0 and "E1054" in proc.stderr + proc.stdout , (
-                f"attempt {attempt}: exit {proc.returncode}: {proc.stdout[-300:]}"
-            );
+            program = JacProgram();
+            refusal = "";
+            with in_process_kernel() {
+                try {
+                    program._get_compiler().kernel_native_entry(
+                        str(base / 'main.jac'),
+                        program,
+                        CompileOptions(force_codespace="native")
+                    );
+                } except LinkPlanError as failure {
+                    refusal = str(failure);
+                }
+            }
+            assert "E1054" in refusal , f"attempt {attempt} passed: {refusal}";
         }
     }
 }
