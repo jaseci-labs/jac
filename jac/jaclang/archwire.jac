@@ -9534,7 +9534,12 @@ graph import compiler {
         symbol_utils.collect_method_names { archetype_accessors },
     ]
     type passes.layout_pass ++> [
-        backends.native.mir.lower { ArchetypeLayout, EnumLayout, EnumMemberLayout },
+        backends.native.mir.lower {
+            ArchetypeLayout,
+            EnumLayout,
+            EnumMemberLayout,
+            LayoutRegistry
+        },
         frontend.codeinfo { LayoutRegistry },
     ]
     passes.mtir_gen_pass --> driver.pipeline.ir_passes { MTIRGenPass }

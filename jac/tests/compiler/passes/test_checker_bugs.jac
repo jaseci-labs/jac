@@ -873,6 +873,24 @@ test "bug_cast_union_instance" {
     );
 }
 
+test "empty_list_after_or_takes_the_protocols_element_type" {
+    import jaclang.compiler.frontend.unitree as uni;
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_empty_or_protocol.jac"),
+        options=CompileOptions(default_codespace='server')
+    );
+    assert len(program.errors_had) == 0 , f"{[str(e) for e in program.errors_had]}";
+    targets = [
+        t for asg in mod.get_all_sub_nodes(uni.Assignment)
+        for t in asg.target
+        if isinstance(t, uni.Name) and t.value == "got"
+    ];
+    assert len(targets) == 1;
+    assert str(targets[0].type) == "list[Item]" , f"got is {targets[0].type}";
+}
+
 test "cast_records_the_value_arguments_type" {
     import jaclang.compiler.frontend.unitree as uni;
     import from jaclang.compiler.driver.compile_options { CompileOptions }

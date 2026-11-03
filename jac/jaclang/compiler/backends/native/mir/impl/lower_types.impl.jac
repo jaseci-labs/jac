@@ -9,8 +9,8 @@ impl mir_refusal(
 }
 
 impl refusal_of(err: MirRefused) -> NativeRefusal {
-    found = err.args[0] if err.args else None;
-    if isinstance(found, NativeRefusal) {
+    found = err.refusal;
+    if found is not None {
         return found;
     }
     return mir_refusal("construct", str(err));

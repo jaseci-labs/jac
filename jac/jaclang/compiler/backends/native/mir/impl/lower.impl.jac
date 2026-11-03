@@ -738,6 +738,11 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
     if not isinstance(target, uni.Name) {
         raise MirRefused(mir_refusal("assignment", type(target).__name__, nd));
     }
+    if nd.aug_op is None
+        and isinstance(nd.value, uni.FuncCall)
+        and self.getattr_alias(target.sym) is not None {
+        return;
+    }
     if nd.value is None {
         self.local_slot(target.sym, target);
         return;
@@ -2080,6 +2085,10 @@ impl MirLowering.lower_bool(nd: uni.BoolExpr) -> MirValue {
 }
 
 impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
+    via_alias = self.alias_call(nd);
+    if via_alias is not None {
+        return via_alias;
+    }
     if isinstance(nd.target, uni.Name)
         and nd.target.value in ("Region", "region_of")
         and (

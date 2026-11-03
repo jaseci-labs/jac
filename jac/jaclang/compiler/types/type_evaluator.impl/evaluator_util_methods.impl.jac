@@ -873,6 +873,25 @@ impl TypeEvaluator._get_expected_container_type(
             found = candidate;
         }
     }
+    if found is not None {
+        return found;
+    }
+    for candidate in candidates {
+        if isinstance(candidate, ClassType)
+            and candidate.private
+            and candidate.private.type_args
+            and any(
+                isinstance(base, ClassType)
+                    and base._shared is not None
+                    and base.shared.same_class(candidate.shared)
+                for base in container_class.shared.mro
+            ) {
+            if found is not None {
+                return None;
+            }
+            found = candidate;
+        }
+    }
     return found;
 }
 

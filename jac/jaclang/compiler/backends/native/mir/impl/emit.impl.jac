@@ -79,7 +79,10 @@ impl MirEmitter.emit -> ir.Module {
     }
     for glob_def in self.mir.globals.values() {
         if glob_def.c_init is not None {
-            held: any = self.module.globals[glob_def.symbol];
+            held = self.module.globals[glob_def.symbol];
+            if not isinstance(held, ir.GlobalVariable) {
+                raise MirEmitError(f"{glob_def.symbol} is not a global variable");
+            }
             held.initializer = self.c_constant(glob_def.c_init, held.value_type);
         }
     }
@@ -113,8 +116,10 @@ impl MirEmitter.c_constant(made: MirConst, shape: ir.Type) -> ir.Constant {
                 shape, [self.c_constant(item, shape.element) for item in made.items]
             );
         }
-        laid: any = shape;
-        members = list(laid.elements);
+        if not isinstance(shape, ir.BaseStructType) {
+            raise MirEmitError(f"an aggregate C constant for {shape}");
+        }
+        members = list(shape._element_types() or []);
         return ir.Constant(
             shape,
             [

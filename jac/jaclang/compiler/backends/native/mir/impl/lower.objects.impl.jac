@@ -1105,7 +1105,7 @@ impl MirLowering.exact_class_test(
     return verdict;
 }
 
-impl MirLowering.layout_registries(name: str) -> list[any] {
+impl MirLowering.layout_registries(name: str) -> list[LayoutRegistry] {
     found = [get_layout_registry(self.module, self.prog)];
     arch = self.archetypes.get(name);
     owner = arch.find_parent_of_type(uni.Module) if arch is not None else None;
@@ -1137,7 +1137,7 @@ impl MirLowering.slot_groups(
     }
     groups: dict[int, list[str]] = {};
     for cls in self.runtime_classes(target, seen_from) {
-        layout: any = None;
+        layout: (ArchetypeLayout | None) = None;
         for registry in self.layout_registries(target) {
             layout = layout or registry.get_layout(cls);
         }
@@ -1320,7 +1320,7 @@ impl MirLowering.super_call(nd: uni.FuncCall, name: str) -> MirValue {
         raise MirRefused(mir_refusal("name", "super", nd));
     }
     lineage = self.lineage(arch);
-    names = ("init", "__init__") if name in ("init", "__init__") else (name, );
+    names = ["init", "__init__"] if name in ("init", "__init__") else [name];
     for holder in lineage[1:] {
         for method in self.arch_methods(holder) {
             if self.name_of(method) in names and not method.is_static {

@@ -755,7 +755,7 @@ obj MirLowering {
         named: MirValue, classes: list[str], site: uni.UniNode
     ) -> MirValue;
 
-    def layout_registries(name: str) -> list[any];
+    def layout_registries(name: str) -> list[LayoutRegistry];
     def runtime_classes(target: str, seen_from: str) -> list[str];
     def slot_groups(
         target: str, seen_from: str, name: str, index: int, method: bool
@@ -1354,6 +1354,10 @@ obj MirLowering {
     def template_of(ab: uni.Ability) -> bool;
     def stdlib_module(expr: uni.UniNode) -> (uni.Module | None);
     def module_member(unit: uni.Module, name: str) -> (uni.UniNode | None);
+    def getattr_member(call: uni.FuncCall) -> (tuple[uni.Module, str] | None);
+    def alias_scope(nd: uni.UniNode) -> (uni.UniNode | None);
+    def getattr_alias(sym: (uni.Symbol | None)) -> (tuple[uni.Module, str] | None);
+    def alias_call(nd: uni.FuncCall) -> (MirValue | None);
     def stdlib_call(nd: uni.FuncCall, target: uni.AtomTrailer) -> (MirValue | None);
     def stdlib_attr(nd: uni.AtomTrailer) -> (MirValue | None);
     def class_attr_entry(
