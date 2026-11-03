@@ -383,7 +383,8 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
             self.builder().store(slot, self.coerce(started, slot.type, packed));
         }
         self.prepare_cells(ab, list(body));
-        if clib_import_of(ab) is not None {
+        if clib_import_of(ab) is not None
+            and not is_kernel_unit_path(self.module.loc.mod_path) {
             self.region_escape_entry();
         }
         self.lower_body(body);
@@ -512,6 +513,15 @@ impl MirLowering.lower_stmt(nd: uni.UniNode) {
 
 impl MirLowering.lower_assignment(nd: uni.Assignment) {
     targets = list(nd.target);
+    if len(targets) > 1 and nd.value is not None and nd.aug_op is None {
+        value = self.lower_expr(nd.value);
+        held = self.temp_slot(value.type);
+        self.builder().store(held, value);
+        for each in targets {
+            self.assign_to(each, self.builder().load(held, held.type), nd);
+        }
+        return;
+    }
     if len(targets) != 1 {
         raise MirRefused(mir_refusal("assignment", "several targets", nd));
     }
@@ -615,6 +625,34 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
         }
     }
     self.store_name(target, value);
+}
+
+impl MirLowering.assign_to(target: uni.UniNode, value: MirValue, nd: uni.Assignment) {
+    if isinstance(target, uni.Name) {
+        self.store_name(target, value);
+    } elif isinstance(target, uni.TupleVal) {
+        self.unpack_into(
+            [
+                t
+                for t in target.values
+                if isinstance(t, uni.Expr)
+            ],
+            value,
+            nd
+        );
+    } elif isinstance(target, uni.AtomTrailer)
+        and not target.is_attr
+        and isinstance(target.right, uni.IndexSlice)
+        and isinstance(target.target, uni.Expr)
+        and mir_is_container(self.expr_type(target.target)) {
+        self.container_set(self.lower_expr(target.target), target.right, value, nd);
+    } elif isinstance(target, uni.AtomTrailer)
+        and self.expr_type(target.target).kind != MirKind.BYTEARRAY {
+        place = self.lower_place(target);
+        self.builder().store(place, self.coerce(value, self.place_elem(place), nd));
+    } else {
+        raise MirRefused(mir_refusal("assignment", type(target).__name__, nd));
+    }
 }
 
 impl MirLowering.store_name(target: uni.Name, value: MirValue) {
@@ -968,6 +1006,13 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
         }
     }
     if nd.sym is None or id(nd.sym) not in self.st().locals {
+        twin = self.variant_glob(nd) if nd.sym is not None else None;
+        if twin is not None {
+            made = self.variant_value(nd, twin);
+            if made is not None {
+                return made;
+            }
+        }
         folded = nd.ct_value;
         whole = int_host(folded) if isinstance(folded, CtInt) else None;
         if whole is not None and -(1 << 63) <= whole < (1 << 63) {
@@ -1023,7 +1068,7 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
             return c_function;
         }
         if named_function_of(nd) is not None {
-            symbol = self.c_function_symbol(nd);
+            symbol = self.c_function_symbol(nd, False);
             held = self.mir.externs.get(symbol);
             if held is not None {
                 return self.emit_value(
@@ -1985,10 +2030,19 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
     );
 }
 
-impl MirLowering.adopt_imported_layouts {
-    merged: set[int] = {id(self.module)};
+impl MirLowering.adopt_imported_layouts(target: (uni.Module | None) = None) {
+    home = target or self.module;
+    if id(home) in self.layout_owners {
+        return;
+    }
+    self.layout_owners.add(id(home));
+    merged: set[int] = {id(home)};
     evaluator = self.prog.get_type_evaluator();
-    for arch in self.module_archetypes() {
+    for arch in [
+        elem
+        for elem in home.body
+        if isinstance(elem, uni.Archetype)
+    ] {
         sym = arch.name.sym if arch.name is not None else None;
         made = evaluator.get_type_of_symbol(sym) if sym is not None else None;
         if not isinstance(made, ClassType) or made._shared is None {
@@ -2008,11 +2062,11 @@ impl MirLowering.adopt_imported_layouts {
                 continue;
             }
             merged.add(id(owner));
-            merge_imported_layouts(self.module, owner, self.prog);
+            merge_imported_layouts(home, owner, self.prog);
         }
     }
     if len(merged) > 1 {
-        adopt_imported_bases(self.module);
+        adopt_imported_bases(home);
     }
 }
 
@@ -2185,7 +2239,7 @@ impl MirLowering.ensure_c_types(t: (TypeBase | None)) {
         self.ensure_c_types(c_type_arg(t));
         return;
     }
-    arch = foreign_struct_of_type(t);
+    arch = self.c_struct_of(t);
     if arch is None {
         if isinstance(t, ClassType) and t.private and t.private.type_args {
             for arg in t.private.type_args {
@@ -2731,7 +2785,9 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
                     "C struct field",
                     f"{holder.name}.{right.value}",
                     nd,
-                    f"The C struct {holder.name} this module lays out has no field {right.value}."
+                    f"The C struct {holder.name} this module lays out (declared at {self.c_struct_sites.get(
+                        holder.name, '?'
+                    )}) has no field {right.value}."
                 )
             );
         }
@@ -2988,6 +3044,7 @@ impl MirLowering.c_extern_address(nd: uni.Name) -> (MirValue | None) {
 impl MirLowering.import_call(
     nd: uni.FuncCall, callee: uni.Ability
 ) -> (MirValue | None) {
+    callee = self.variant_ability(callee);
     path = callee.loc.mod_path;
     if not isinstance(callee.parent, uni.Module)
         or not path.endswith(".jac")

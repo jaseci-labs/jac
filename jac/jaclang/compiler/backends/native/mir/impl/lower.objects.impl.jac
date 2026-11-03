@@ -36,6 +36,9 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
         raise refused;
     }
     owner = arch.find_parent_of_type(uni.Module) or self.module;
+    if owner is not self.module and owner.loc.mod_path.endswith(".jac") {
+        self.adopt_imported_layouts(owner);
+    }
     layout = get_layout_registry(owner, self.prog).get_layout(name);
     if layout is None {
         raise MirRefused(
@@ -680,29 +683,34 @@ impl MirLowering.lower_drop(obj_def: MirObjectDef, arch: uni.Archetype) -> MirFu
     } except MirRefused as err {
         self.refusals.setdefault(fn.symbol, []).append(refusal_of(err));
     }
-    collecting = self.emit_value(
-        MirOp.MEM_LOAD,
-        mir_int(8, True, True),
-        [
-            self.emit_value(
-                MirOp.GLOBAL_BLOCK,
-                mir_int(),
-                [],
-                str_value="__rc_collecting",
-                int_value=1
-            )
-        ]
-    );
-    self.mir.global_blocks["__rc_collecting"] = max(
-        self.mir.global_blocks.get("__rc_collecting", 0), 1
-    );
     release_bb = fn.new_block("drop.fields");
     free_bb = fn.new_block("drop.free");
-    b.cond_branch(
-        b.compare("eq", collecting, b.const_int(0, collecting.type)),
-        release_bb,
-        free_bb
-    );
+    options = self.prog.options;
+    if options is not None and options.na_gc_mode == "none" {
+        b.branch(release_bb);
+    } else {
+        collecting = self.emit_value(
+            MirOp.MEM_LOAD,
+            mir_int(8, True, True),
+            [
+                self.emit_value(
+                    MirOp.GLOBAL_BLOCK,
+                    mir_int(),
+                    [],
+                    str_value="__rc_collecting",
+                    int_value=1
+                )
+            ]
+        );
+        self.mir.global_blocks["__rc_collecting"] = max(
+            self.mir.global_blocks.get("__rc_collecting", 0), 1
+        );
+        b.cond_branch(
+            b.compare("eq", collecting, b.const_int(0, collecting.type)),
+            release_bb,
+            free_bb
+        );
+    }
     b.position(release_bb);
     for member in obj_def.fields {
         if not mir_holds_ref(member.type) {

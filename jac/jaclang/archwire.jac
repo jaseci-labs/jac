@@ -6046,6 +6046,7 @@ graph import compiler {
     driver.pipeline --> [
         backends.native.mir.lower.MirLowering.body_types { require },
         backends.native.mir.lower.MirLowering.declaration_types { require },
+        backends.native.mir.lower.MirLowering.variant_unit { require },
         frontend.kernel_host.KernelHost.lower_dependency { product_ready, require },
         placement.placement_solver.invalidate_importers_es { invalidate },
         placement.placement_solver.solve_module_placement._invalidate_stale_codegen {
@@ -6114,6 +6115,10 @@ graph import compiler {
             CompilationProduct
         },
         backends.native.mir.lower.MirLowering.declaration_types {
+            AnalysisFact,
+            CompilationProduct
+        },
+        backends.native.mir.lower.MirLowering.variant_unit {
             AnalysisFact,
             CompilationProduct
         },
@@ -6366,6 +6371,7 @@ graph import compiler {
             native_unit_identity,
             native_unit_prefix,
             native_unit_spelling,
+            native_variant_of,
             resolve_native_module
         },
         backends.native.region_abi._region_layout_facts {
@@ -42411,6 +42417,7 @@ graph import runtime.python.modules {
             htons,
             if_nameindex_record,
             new_sockobject,
+            note_sock_cloexec,
             ntohl,
             ntohs,
             set_gaierror,
@@ -42452,6 +42459,8 @@ graph import runtime.python.modules {
             init_sockobject,
             internal_setblocking,
             module_of_type,
+            note_accept4,
+            note_sock_cloexec,
             set_error,
             set_sock_fd,
             set_sock_timeout,

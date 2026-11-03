@@ -442,6 +442,12 @@ impl MirLowering.c_arg(
     if plan in ("str", "bytes") {
         return self.c_text_arg(self.lower_expr(arg), arg);
     }
+    bare = self.c_bare(arg);
+    if to.kind == MirKind.C_FN
+        and isinstance(bare, uni.Name)
+        and named_function_of(bare) is not None {
+        return self.c_function_value(bare, to);
+    }
     if to.kind == MirKind.C_PTR and self.c_borrow_operand(arg) is not None {
         return self.c_lend(arg, to, False, copybacks);
     }

@@ -299,6 +299,9 @@ obj MirLowering {
         stdlib_units: dict[str, (uni.Module | None)] = {},
         manager_item: (uni.Expr | None) = None,
         c_struct_sites: dict[str, str] = {},
+        layout_owners: set[int] = set(),
+        variant_units: dict[str, (uni.Module | None)] = {},
+        c_entries: dict[str, MirFunction] = {},
         trace_pairs: list[tuple[str, str]] = [],
         text_pairs: list[tuple[str, str]] = [],
         text_regs: dict[str, tuple[MirBlock, list[MirInstr]]] = {},
@@ -349,6 +352,7 @@ obj MirLowering {
     def lower_body(stmts: Sequence[uni.UniNode]);
     def lower_stmt(nd: uni.UniNode);
     def lower_assignment(nd: uni.Assignment);
+    def assign_to(target: uni.UniNode, value: MirValue, nd: uni.Assignment);
     def store_name(target: uni.Name, value: MirValue);
     def local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirValue;
     def loop_scoped(sym: uni.Symbol) -> bool;
@@ -382,7 +386,7 @@ obj MirLowering {
     def lower_bool(nd: uni.BoolExpr) -> MirValue;
     def lower_call(nd: uni.FuncCall) -> MirValue;
     def truthy(value: MirValue, site: uni.UniNode) -> MirValue;
-    def adopt_imported_layouts;
+    def adopt_imported_layouts(target: (uni.Module | None) = None);
     def obj_extends(child: str, base: str) -> bool;
     def coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
     def unify_numeric(
@@ -396,6 +400,16 @@ obj MirLowering {
 
     def ensure_objects(t: (TypeBase | None));
     def ensure_c_types(t: (TypeBase | None));
+    def c_struct_of(t: (TypeBase | None)) -> (uni.Archetype | None);
+    def variant_struct(arch: uni.Archetype) -> uni.Archetype;
+    def variant_unit(mod: uni.Module) -> (uni.Module | None);
+    def variant_ability(callee: uni.Ability) -> uni.Ability;
+    def variant_glob(nd: uni.Name) -> (uni.Name | None);
+    def variant_value(nd: uni.Name, twin: uni.Name) -> (MirValue | None);
+    def c_entry(
+        symbol: str, params: list[MirType], ret: MirType, target: uni.Ability
+    ) -> str;
+
     def c_struct_same(arch: uni.Archetype, name: str) -> bool;
     def arch_fields(arch: uni.Archetype) -> list[uni.HasVar];
     def lower_place(nd: uni.UniNode) -> MirValue;
@@ -497,7 +511,7 @@ obj MirLowering {
     def c_const_refusal(expr: uni.UniNode) -> NativeRefusal;
     def c_const_struct(expr: uni.Expr, arch: uni.Archetype) -> MirConst;
     def c_const_address(expr: uni.Expr) -> MirConst;
-    def c_function_symbol(expr: uni.Expr) -> str;
+    def c_function_symbol(expr: uni.Expr, from_c: bool = True) -> str;
     def c_addressed(nd: uni.FuncCall) -> MirGlobal;
     def c_addressof(nd: uni.FuncCall) -> MirValue;
     def c_global_settle;

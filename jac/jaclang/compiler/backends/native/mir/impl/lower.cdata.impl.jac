@@ -212,7 +212,7 @@ impl MirLowering.c_const(
             ]
         );
     }
-    arch = foreign_struct_of_type(ctype);
+    arch = self.c_struct_of(ctype);
     if arch is not None {
         return self.c_const_struct(expr, arch);
     }
@@ -248,7 +248,7 @@ impl MirLowering.c_const_struct(expr: uni.Expr, arch: uni.Archetype) -> MirConst
     if not isinstance(expr, uni.FuncCall) {
         raise MirRefused(self.c_const_refusal(expr));
     }
-    made_arch = foreign_struct_of_type(expr.type);
+    made_arch = self.c_struct_of(expr.type);
     if made_arch is None
         or made_arch.name is None
         or made_arch.name.value != arch.name.value {
@@ -336,7 +336,7 @@ impl MirLowering.c_const_address(expr: uni.Expr) -> MirConst {
     raise MirRefused(self.c_const_refusal(expr));
 }
 
-impl MirLowering.c_function_symbol(expr: uni.Expr) -> str {
+impl MirLowering.c_function_symbol(expr: uni.Expr, from_c: bool = True) -> str {
     while isinstance(expr, uni.AtomUnit) and isinstance(expr.value, uni.Expr) {
         expr = expr.value;
     }
@@ -347,7 +347,9 @@ impl MirLowering.c_function_symbol(expr: uni.Expr) -> str {
     sym = target.name_ref.sym if target.name_ref is not None else None;
     decl = self.decls.get(self.decl_syms.get(id(sym), -1)) if sym is not None else None;
     if decl is not None {
-        return decl.symbol;
+        return self.c_entry(decl.symbol, decl.params, decl.ret, decl.ability)
+            if from_c
+            else decl.symbol;
     }
     fn_type = self.prog.get_type_evaluator().get_type_of_symbol(sym)
         if sym is not None
@@ -362,7 +364,7 @@ impl MirLowering.c_function_symbol(expr: uni.Expr) -> str {
     path = target.loc.mod_path;
     if isinstance(target.parent, uni.Module) and path.endswith(".jac") {
         symbol = self.unit_symbol(self.name_of(target), target.access, path);
-        self.mir.externs[symbol] = MirExtern(
+        made = MirExtern(
             symbol=symbol,
             ret=self.type_of(fn_type.return_type, MirPosition.SIGNATURE, expr),
             params=[
@@ -370,11 +372,14 @@ impl MirLowering.c_function_symbol(expr: uni.Expr) -> str {
                 for p in fn_type.parameters
             ]
         );
+        self.mir.externs[symbol] = made;
         unit = os.path.realpath(path);
         if unit not in self.mir.deps {
             self.mir.deps.append(unit);
         }
-        return symbol;
+        return self.c_entry(symbol, made.params, made.ret, target)
+            if from_c
+            else symbol;
     }
     raise MirRefused(mir_refusal("function address", expr.sym_name, expr));
 }
@@ -445,14 +450,14 @@ impl MirLowering.c_const_lost(made: MirConst) -> str {
 }
 
 impl MirLowering.c_struct_call(nd: uni.FuncCall, struct_type: MirType) -> MirValue {
-    arch = foreign_struct_of_type(nd.type);
+    arch = self.c_struct_of(nd.type);
     if arch is None and isinstance(nd.target, uni.Name) and nd.target.sym is not None {
         held: (uni.UniNode | None) = nd.target.sym.decl;
         while held is not None and not isinstance(held, uni.Archetype) {
             held = held.parent;
         }
         if isinstance(held, uni.Archetype) and held.name.value == struct_type.name {
-            arch = held;
+            arch = self.variant_struct(held);
         }
     }
     if arch is None {
@@ -583,6 +588,10 @@ impl MirLowering.c_pin(nd: uni.FuncCall) -> MirValue {
 impl MirLowering.c_function_value(expr: uni.Expr, member: MirType) -> MirValue {
     symbol = self.c_function_symbol(expr);
     shape: (MirType | None) = None;
+    shim = self.c_entries.get(symbol);
+    if shim is not None {
+        shape = mir_c_fn([param.value.type for param in shim.params], shim.ret);
+    }
     for decl in self.decls.values() {
         if decl.symbol == symbol {
             shape = mir_c_fn(decl.params, decl.ret);
@@ -666,4 +675,176 @@ impl MirLowering.c_alloca(size: uni.Expr) -> MirValue {
         made = self.emit_value(MirOp.ALLOCA, words, [count]);
     }
     return self.emit_value(MirOp.PTR_INT, mir_int(64, True, True), [made]);
+}
+
+impl MirLowering.c_struct_of(t: (TypeBase | None)) -> (uni.Archetype | None) {
+    arch = foreign_struct_of_type(t);
+    return self.variant_struct(arch) if arch is not None else None;
+}
+
+impl MirLowering.variant_struct(arch: uni.Archetype) -> uni.Archetype {
+    owner = arch.find_parent_of_type(uni.Module);
+    twin = self.variant_unit(owner) if owner is not None else None;
+    if twin is None or arch.name is None {
+        return arch;
+    }
+    for found in twin.get_all_sub_nodes(uni.Archetype) {
+        if found.name is not None and found.name.value == arch.name.value {
+            return found;
+        }
+    }
+    return arch;
+}
+
+impl MirLowering.variant_unit(mod: uni.Module) -> (uni.Module | None) {
+    if mod.loc is None or not mod.loc.mod_path.endswith(".jac") {
+        return None;
+    }
+    path = os.path.realpath(mod.loc.mod_path);
+    if path in self.variant_units {
+        return self.variant_units[path];
+    }
+    selected = os.path.realpath(native_variant_of(path));
+    found: (uni.Module | None) = None;
+    if selected != path and os.path.isfile(selected) {
+        found = self.prog.mod.hub.get(selected);
+        if found is None {
+            found = self.prog.load_dependency_module(
+                selected, importer_path=self.module.loc.mod_path, need_tree=True
+            );
+        }
+        import from jaclang.compiler.driver.pipeline { require }
+        import from jaclang.compiler.driver.pipeline_types {
+            AnalysisFact,
+            CompilationProduct
+        }
+        if found is not None
+            and not self.prog.analysis.provides(found, AnalysisFact.TYPE_OF)
+            and not self.prog.analysis.provides(found, AnalysisFact.DECL_TYPES) {
+            require(self.prog, found, CompilationProduct.DECLARATIONS);
+        }
+    }
+    self.variant_units[path] = found;
+    return found;
+}
+
+impl MirLowering.variant_ability(callee: uni.Ability) -> uni.Ability {
+    if not isinstance(callee.parent, uni.Module) {
+        return callee;
+    }
+    twin = self.variant_unit(callee.parent);
+    if twin is None {
+        return callee;
+    }
+    found = self.module_member(twin, self.name_of(callee));
+    return found if isinstance(found, uni.Ability) else callee;
+}
+
+impl MirLowering.variant_glob(nd: uni.Name) -> (uni.Name | None) {
+    value = final_glob_value(nd);
+    if value is None or not isinstance(value.parent, uni.Assignment) {
+        return None;
+    }
+    owner = value.find_parent_of_type(uni.Module);
+    if owner is None or owner is self.module {
+        return None;
+    }
+    twin = self.variant_unit(owner);
+    if twin is None {
+        return None;
+    }
+    for target in value.parent.target {
+        if isinstance(target, uni.Name) {
+            found = self.module_member(twin, target.value);
+            if isinstance(found, uni.Assignment) {
+                for held in found.target {
+                    if isinstance(held, uni.Name) and held.value == target.value {
+                        return held;
+                    }
+                }
+            }
+        }
+    }
+    return None;
+}
+
+impl MirLowering.variant_value(nd: uni.Name, twin: uni.Name) -> (MirValue | None) {
+    b = self.builder();
+    wanted = self.expr_type(nd);
+    folded = twin.ct_value;
+    whole = int_host(folded) if isinstance(folded, CtInt) else None;
+    if whole is not None and -(1 << 63) <= whole < (1 << 63) {
+        return b.const_int(whole, wanted);
+    }
+    if isinstance(folded, CtBool) {
+        return b.const_bool(folded.value);
+    }
+    if isinstance(folded, CtFloat) {
+        return b.const_float(folded.value, wanted);
+    }
+    final_value = final_glob_value(twin);
+    (settled, scalar) = c_scalar_constant(final_value)
+        if final_value is not None
+        else (False, None);
+    if settled and isinstance(scalar, bool) {
+        return b.const_bool(scalar);
+    }
+    if settled
+        and isinstance(scalar, int)
+        and -(1 << 63) <= scalar < (1 << 64)
+        and wanted.kind == MirKind.INT {
+        return b.const_int(
+            scalar - (1 << 64) if scalar >= (1 << 63) else scalar, wanted
+        );
+    }
+    if settled and isinstance(scalar, float) and wanted.kind == MirKind.FLOAT {
+        return b.const_float(scalar, wanted);
+    }
+    place = self.global_place(twin);
+    if place is not None {
+        return b.load(place, self.place_elem(place));
+    }
+    return None;
+}
+
+impl MirLowering.c_entry(
+    symbol: str, params: list[MirType], ret: MirType, target: uni.Ability
+) -> str {
+    if is_kernel_unit_path(self.module.loc.mod_path)
+        or clib_import_of(target) is not None {
+        return symbol;
+    }
+    shim = f"{symbol}.c_entry";
+    if shim in self.c_entries {
+        return shim;
+    }
+    fn = MirFunction(
+        name=f"{self.name_of(target)}.c_entry",
+        symbol=shim,
+        ret=ret,
+        linkage="linkonce_odr"
+    );
+    self.c_entries[shim] = fn;
+    saved = self.state;
+    self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=fn.new_block("entry")));
+    try {
+        args: list[MirValue] = [];
+        for (index, ptype) in enumerate(params) {
+            value = fn.new_value(ptype, f"a{index}");
+            fn.params.append(MirParam(name=f"a{index}", value=value));
+            args.append(value);
+        }
+        self.region_escape_entry();
+        result = self.builder().call(symbol, args, ret);
+        self.drop_regions();
+        self.builder().ret(
+            None
+                if ret.kind in (MirKind.NONE, MirKind.VOID) or result is None
+                else result
+        );
+    } finally {
+        self.state = saved;
+    }
+    self.mir.functions.append(fn);
+    return shim;
 }
