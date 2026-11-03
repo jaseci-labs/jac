@@ -222,7 +222,7 @@ impl MirLowering.c_const(
     if target.kind == MirKind.C_PTR {
         return self.c_const_address(expr);
     }
-    (ok, value) = self.scalar_constant(expr);
+    (ok, value) = c_scalar_constant(expr, 0, self.prog);
     if ok and isinstance(value, (bool, int, float)) {
         if target.kind == MirKind.FLOAT {
             return MirConst(kind="float", float_value=float(value));
@@ -329,7 +329,7 @@ impl MirLowering.c_const_address(expr: uni.Expr) -> MirConst {
         }
         raise MirRefused(self.c_const_refusal(expr));
     }
-    (ok, value) = self.scalar_constant(expr);
+    (ok, value) = c_scalar_constant(expr, 0, self.prog);
     if ok and isinstance(value, int) {
         return MirConst(kind="int", int_value=value);
     }
@@ -537,7 +537,7 @@ impl MirLowering.c_field_value(expr: uni.Expr, member: MirType) -> MirValue {
                 return self.builder().const_null(member);
             }
         }
-        (ok, folded) = self.scalar_constant(expr);
+        (ok, folded) = c_scalar_constant(expr, 0, self.prog);
         if ok
             and isinstance(folded, int)
             and not isinstance(folded, bool)
@@ -657,7 +657,7 @@ impl MirLowering.c_thread_local(
 impl MirLowering.c_alloca(size: uni.Expr) -> MirValue {
     fn = self.st().fn;
     words = mir_c_ptr(mir_int(64));
-    (ok, folded) = self.scalar_constant(size);
+    (ok, folded) = c_scalar_constant(size, 0, self.prog);
     if ok
         and isinstance(folded, int)
         and not isinstance(folded, bool)
@@ -700,15 +700,8 @@ impl MirLowering.variant_unit(mod: uni.Module) -> (uni.Module | None) {
     if path in self.variant_units {
         return self.variant_units[path];
     }
-    selected = os.path.realpath(native_variant_of(path));
-    found: (uni.Module | None) = None;
-    if selected != path and os.path.isfile(selected) {
-        found = self.prog.mod.hub.get(selected);
-        if found is None {
-            found = self.prog.load_dependency_module(
-                selected, importer_path=self.module.loc.mod_path, need_tree=True
-            );
-        }
+    found = variant_module(self.prog, mod);
+    if found is not None {
         import from jaclang.compiler.driver.pipeline { require }
         import from jaclang.compiler.driver.pipeline_types {
             AnalysisFact,
@@ -751,8 +744,8 @@ impl MirLowering.variant_glob(nd: uni.Name) -> (uni.Name | None) {
     }
     for target in assign.target {
         if isinstance(target, uni.Name) {
-            found = self.module_member(twin, target.value);
-            if isinstance(found, uni.Assignment) {
+            found = variant_assignment(self.prog, assign, target.value);
+            if found is not None {
                 for held in found.target {
                     if isinstance(held, uni.Name) and held.value == target.value {
                         return held;
@@ -762,87 +755,6 @@ impl MirLowering.variant_glob(nd: uni.Name) -> (uni.Name | None) {
         }
     }
     return None;
-}
-
-impl MirLowering.scalar_constant(
-    expr: (uni.UniNode | None), depth: int = 0
-) -> tuple[bool, any] {
-    while isinstance(expr, uni.AtomUnit) and isinstance(expr.value, uni.Expr) {
-        expr = expr.value;
-    }
-    if expr is None or depth > 32 {
-        return (False, None);
-    }
-    if isinstance(expr, uni.Name) {
-        twin = self.variant_glob(expr);
-        value = final_glob_value(twin if twin is not None else expr);
-        if value is None {
-            return (False, None);
-        }
-        return self.scalar_constant(value, depth + 1);
-    }
-    if isinstance(expr, uni.FuncCall)
-        and isinstance(expr.target, uni.Name)
-        and JAC_TYPE_REGISTRY.is_numeric(expr.target.value)
-        and len(expr.params or []) == 1 {
-        return self.scalar_constant((expr.params or [])[0], depth + 1);
-    }
-    if isinstance(expr, uni.UnaryExpr) {
-        (ok, value) = self.scalar_constant(expr.operand, depth + 1);
-        if not ok or not isinstance(value, int) or isinstance(value, bool) {
-            return c_scalar_constant(expr);
-        }
-        op = expr.op.value;
-        if op == "-" {
-            return (True, -value);
-        }
-        if op == "~" {
-            return (True, ~value);
-        }
-        if op == "+" {
-            return (True, value);
-        }
-        return (False, None);
-    }
-    if isinstance(expr, uni.BinaryExpr) {
-        (lok, left) = self.scalar_constant(expr.left, depth + 1);
-        (rok, right) = self.scalar_constant(expr.right, depth + 1);
-        if not lok
-            or not rok
-            or not isinstance(left, int)
-            or not isinstance(right, int)
-            or isinstance(left, bool)
-            or isinstance(right, bool) {
-            return c_scalar_constant(expr);
-        }
-        op = expr.op.value if isinstance(expr.op, uni.Token) else "";
-        if op == "+" {
-            return (True, left + right);
-        }
-        if op == "-" {
-            return (True, left - right);
-        }
-        if op == "*" {
-            return (True, left * right);
-        }
-        if op == "|" {
-            return (True, left | right);
-        }
-        if op == "&" {
-            return (True, left & right);
-        }
-        if op == "^" {
-            return (True, left ^ right);
-        }
-        if op == "<<" and 0 <= right and right < 64 {
-            return (True, left << right);
-        }
-        if op == ">>" and 0 <= right and right < 64 {
-            return (True, left >> right);
-        }
-        return c_scalar_constant(expr);
-    }
-    return c_scalar_constant(expr);
 }
 
 impl MirLowering.variant_value(nd: uni.Name, twin: uni.Name) -> (MirValue | None) {
@@ -864,7 +776,7 @@ impl MirLowering.variant_value(nd: uni.Name, twin: uni.Name) -> (MirValue | None
         return b.const_float(folded.value, wanted);
     }
     final_value = final_glob_value(twin);
-    (settled, scalar) = self.scalar_constant(final_value)
+    (settled, scalar) = c_scalar_constant(final_value, 0, self.prog)
         if final_value is not None
         else (False, None);
     if settled and isinstance(scalar, bool) {
