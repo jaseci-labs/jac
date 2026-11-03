@@ -506,7 +506,9 @@ impl MirLowering.foreign_enum_method(
 
 impl MirLowering.str_enum_int(nd: uni.FuncCall) -> (MirValue | None) {
     args = list(nd.params or []);
-    if len(args) != 1 or not isinstance(args[0], uni.Expr) {
+    if len(args) != 1
+        or not isinstance(args[0], uni.Expr)
+        or isinstance(args[0].type, (AnyType, FunctionType)) {
         return None;
     }
     subject = self.expr_type(args[0]);
