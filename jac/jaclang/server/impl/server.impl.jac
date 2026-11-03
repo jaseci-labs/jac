@@ -74,6 +74,7 @@ impl ExecutionManager._finalize_call_response(
     call_state.reports.put_nowait(call_state._sentinel);
     reports = await self.report_collector(call_state);
     await Jac.acommit();
+    call_state.committed = True;
     if isgenerator(result) or isinstance(result, AsyncGenerator) {
         return result;
     }
@@ -1879,25 +1880,28 @@ impl _run_function_with_occ(
                     reload_root = False;
                     await ctx.aset_user_root(root_id);
                 }
-                outcome = await run_attempt(call_state, ctx);
                 try {
+                    outcome = await run_attempt(call_state, ctx);
                     await ctx.mem.acommit();
                 } except ReadOnlyRetry {
                     raise;
                 } except Exception as e {
+                    if not call_state.committed {
+                        raise;
+                    }
                     ctx.mem.abort();
                     ctx.pending_effects.clear();
                     logger.exception(
-                        f"{unit_key or 'request'} lost a late write: "
+                        f"{unit_key or 'request'} failed after its commit: "
                         f"{type(e).__name__}: {e}"
                     );
                     return {
                         'error': (
-                            'The request committed, but a write made after that '
-                            'commit failed and was lost. Repeating the request '
+                            'The request committed, but a step after that commit '
+                            'failed and its writes were lost. Repeating the request '
                             'may repeat the work it already saved.'
                         ),
-                        'error_code': 'late_write_failed',
+                        'error_code': 'failed_after_commit',
                         'final': True
                     };
                 }

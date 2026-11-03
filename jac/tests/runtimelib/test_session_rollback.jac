@@ -1424,7 +1424,7 @@ obj LateCase {
         fields: dict[str, any] = {},
         own_session: bool = False,
         faults: list[int] = [],
-        code: (str | None) = "late_write_failed",
+        code: (str | None) = "failed_after_commit",
         memos: list[str] = ["main"],
         callbacks: int = 1;
 }
@@ -1487,6 +1487,24 @@ test "request loop: a failure after the first commit is answered, never re-run" 
             own_session=True
         ),
         LateCase("getter writes while serializing", target="LatePeek", callbacks=0),
+        LateCase(
+            "getter's read flushes its bad write",
+            target="LatePeek",
+            fields={"mode": "flush"},
+            callbacks=0
+        ),
+        LateCase(
+            "getter conflicts while serializing",
+            target="LatePeek",
+            fields={"mode": "conflict"},
+            callbacks=0
+        ),
+        LateCase(
+            "getter raises while serializing",
+            target="LatePeek",
+            fields={"mode": "raises"},
+            callbacks=0
+        ),
         LateCase(
             "first commit fails, shared session",
             fields={"main_text": bad},

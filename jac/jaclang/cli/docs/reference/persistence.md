@@ -93,7 +93,7 @@ walker me {
 }
 ```
 
-**A callback runs after the request has committed, so its graph writes are not part of that commit.** Keep graph writes in the walker body. If a graph write made from a callback (or from a getter while the response serializes) cannot be saved, or the callback hits a database error, the request answers `500 late_write_failed` and does not replay: the work it already committed stays, and repeating the request may repeat it. A retry with the same `X-Jac-Idempotency-Key` gets the same answer back. A callback that fails for its own reasons, such as an unreachable mail server, is logged and the request still succeeds.
+**A callback runs after the request has committed, so its graph writes are not part of that commit.** Keep graph writes in the walker body. If a graph write made from a callback cannot be saved, a callback hits a database error on the request's connection, or anything fails while the response serializes, the request answers `500 failed_after_commit` and does not replay: the work it already committed stays, and repeating the request may repeat it. A retry with the same `X-Jac-Idempotency-Key` gets the same answer back. A callback that fails for its own reasons, such as an unreachable mail server, is logged and the request still succeeds.
 
 **Configuration.** The policy is set in [`jac.toml`](config/index.md#serve) under `[serve]`:
 

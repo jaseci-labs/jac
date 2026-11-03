@@ -166,7 +166,9 @@ test "a failed late write replays under its idempotency key; a failed first comm
                 answers = [send({"late": bad}, f"late-{label}") for _ in range(3)];
                 assert all(a == answers[0] for a in answers) , f"{label}: {answers}";
                 assert answers[0][0] == 500 , f"{label}: {answers[0]}";
-                assert "LATE_WRITE_FAILED" in answers[0][1] , f"{label}: {answers[0]}";
+                assert "FAILED_AFTER_COMMIT" in answers[0][1] , f"{label}: {answers[
+                    0
+                ]}";
                 assert len(mod.runs) == 1 , (
                     f"{label}: a retry re-ran the saved work, {len(mod.runs)} runs"
                 );

@@ -37,7 +37,8 @@ it fail: `raises` (the callback's own error), `own_db` (an error on the request'
 connection), `other_db` (an error from another connection), `flush` (it reads after writing,
 so its own read flushes the write), `conflict` and `read_tier` (those exceptions inside the callback), `chain` (it registers another
 callback), `rival` (another writer moves the row it writes), `busy` (its COMMIT
-keeps failing). `LatePeek` writes from a getter while its response serializes.
+keeps failing). `LatePeek` writes from a getter while its response serializes; `mode` makes the
+getter read after writing (`flush`), raise (`raises`) or conflict (`conflict`).
 `LateFromReadTier` writes nothing itself, so it runs on the read tier.
 """
 
@@ -54,7 +55,8 @@ glob runs: list[int] = [],
      lock_exhaustions: list[int] = [],
      exhausted_queries: list[int] = [],
      late_runs: list[int] = [],
-     peek_homes: list[Root] = [];
+     peek_homes: list[Root] = [],
+     peek_modes: list[str] = [];
 
 node Poll {
     has total: int = 0;
@@ -299,7 +301,18 @@ node Peeky {
     has peek: int {
         getter {
             if peek_homes {
-                peek_homes.pop() ++> Memo(text=f"getter{chr(0)}");
+                home = peek_homes.pop();
+                mode = peek_modes.pop();
+                if mode == "raises" {
+                    raise ValueError("the getter's own failure");
+                }
+                if mode == "conflict" {
+                    raise WriteConflict(anchor_id=UUID(int=0));
+                }
+                home ++> Memo(text=f"getter{chr(0)}");
+                if mode == "flush" {
+                    seen = [home-->[?:Memo]];
+                }
             }
             return 1;
         }
@@ -308,12 +321,16 @@ node Peeky {
 
 
 walker:pub LatePeek {
+    has mode: str = "";
+
     can go with Root entry {
         runs.append(1);
         here ++> Memo(text="main");
         home = here;
+        mode = self.mode;
         def arm {
             peek_homes.append(home);
+            peek_modes.append(mode);
         }
         Jac.on_commit(arm);
         report Peeky();
