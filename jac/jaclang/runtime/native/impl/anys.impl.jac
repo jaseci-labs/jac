@@ -99,6 +99,10 @@ impl __jac_rt_any_retain(tag: int, payload: int) {
     }
 }
 
+impl __jac_rt_any_drop(tag: int, payload: int) {
+    __jac_rt_any_release(tag, payload);
+}
+
 impl __jac_rt_any_release(tag: int, payload: int) {
     if payload != 0 and _holds_ref(tag) {
         __jac_rt_release(payload);

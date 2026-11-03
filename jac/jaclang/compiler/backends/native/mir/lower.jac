@@ -409,6 +409,7 @@ obj MirLowering {
     def tag_ownership(tag: (uni.UniNode | None)) -> (OwnershipKind | None);
     def tag_borrows(tag: (uni.UniNode | None)) -> bool;
     def returns_borrow(ab: uni.Ability) -> bool;
+    def reads_self(expr: (uni.UniNode | None), fields: bool) -> bool;
     def elements_borrowed(tag: (uni.UniNode | None)) -> bool;
     def lend_fresh(
         value: MirValue, tag: (uni.UniNode | None), source: (uni.UniNode | None)

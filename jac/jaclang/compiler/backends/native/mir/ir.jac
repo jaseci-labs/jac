@@ -236,6 +236,7 @@ obj MirModule {
         frames: dict[str, MirFrame] = {},
         deps: list[str] = [],
         clib_specs: list[tuple[str, list[str], int]] = [],
+        headerless: bool = False,
         clib_symbols: dict[str, int] = {};
 
     def function(symbol: str) -> (MirFunction | None);

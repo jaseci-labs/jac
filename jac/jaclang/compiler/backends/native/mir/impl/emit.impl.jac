@@ -1307,7 +1307,9 @@ impl MirEmitter.emit_rc(b: ir.IRBuilder, instr: MirInstr) {
         i64 = ir.IntType(64);
         whole = self.value(subject);
         tag = b.zext(b.extract_value(whole, 0), i64);
-        symbol = ANY_RETAIN_SYMBOL if instr.op == MirOp.RETAIN else ANY_RELEASE_SYMBOL;
+        symbol = ANY_RETAIN_SYMBOL
+            if instr.op == MirOp.RETAIN
+            else (ANY_DROP_SYMBOL if self.mir.headerless else ANY_RELEASE_SYMBOL);
         b.call(
             self.extern(symbol, ir.VoidType(), [i64, i64]),
             [tag, b.extract_value(whole, 1)]
@@ -1372,13 +1374,21 @@ impl MirEmitter.emit_rc(b: ir.IRBuilder, instr: MirInstr) {
         target = b.select(present, target, ir.Constant(i8p, None));
     }
     if instr.op == MirOp.RETAIN {
-        self.rc_call(b, RETAIN_SYMBOL, target);
+        self.rc_call(
+            b,
+            PIN_SHARE_SYMBOL
+                if self.mir.headerless and held_type.kind == MirKind.C_PIN
+                else RETAIN_SYMBOL,
+            target
+        );
         self.bind(instr.result, self.value(subject));
         return;
     }
-    symbol = RELEASE_ACYCLIC_SYMBOL
-        if held_type.kind == MirKind.C_PIN or self.acyclic_type(held_type)
-        else RELEASE_SYMBOL;
+    acyclic = held_type.kind == MirKind.C_PIN or self.acyclic_type(held_type);
+    symbol = RELEASE_ACYCLIC_SYMBOL if acyclic else RELEASE_SYMBOL;
+    if self.mir.headerless {
+        symbol = DROP_TEXT_SYMBOL if acyclic else DROP_SYMBOL;
+    }
     self.rc_call(b, symbol, target);
 }
 

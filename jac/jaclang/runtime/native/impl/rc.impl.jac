@@ -696,6 +696,18 @@ impl __jac_rt_release_acyclic(o: int) {
     _release_fast(o, False);
 }
 
+impl __jac_rt_drop(o: int) {
+    _release_fast(o, False);
+}
+
+impl __jac_rt_pin_share(o: int) {
+    __jac_rt_retain(o);
+}
+
+impl __jac_rt_drop_text(o: int) {
+    _release_fast(o, False);
+}
+
 impl __jac_rt_release_impl(o: int, may_cycle: bool) {
     _release_impl(o, may_cycle);
 }
