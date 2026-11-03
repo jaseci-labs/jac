@@ -63,10 +63,7 @@ test "an any bound to a typed container passes a matching layout and refuses ano
                 "field TypeError",
                 "floats TypeError",
                 "walked 6"
-            ] , (
-            memory,
-            out
-        );
+            ] , (memory, out);
     }
 }
 

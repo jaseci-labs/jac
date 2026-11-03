@@ -53,6 +53,7 @@ def walked(raw: any) -> int {
 }
 
 glob held: dict[str, int] = {"k": 7};
+
 with entry {
     print("typed", typed_back(held));
     print("empty", json_empty());
