@@ -397,6 +397,7 @@ obj MirLowering {
     def adopt_imported_layouts;
     def obj_extends(child: str, base: str) -> bool;
     def coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
+    def const_zero(value: MirValue) -> bool;
     def unify_numeric(
         left: MirValue, right: MirValue, site: uni.UniNode
     ) -> tuple[MirValue, MirValue];

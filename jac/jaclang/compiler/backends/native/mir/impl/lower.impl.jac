@@ -2071,6 +2071,14 @@ impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirV
     if to.kind == MirKind.INT and value.type.kind in (MirKind.C_PTR, MirKind.C_FN) {
         return self.emit_value(MirOp.PTR_INT, to, [value]);
     }
+    if to.kind == MirKind.FN
+        and value.type.kind == MirKind.INT
+        and self.const_zero(value) {
+        return self.builder().const_null(to);
+    }
+    if to.kind == MirKind.INT and value.type.kind == MirKind.FN {
+        return self.emit_value(MirOp.PTR_INT, to, [value]);
+    }
     if value.type.kind == MirKind.OBJ
         and to.kind == MirKind.OBJ
         and (
@@ -3912,4 +3920,15 @@ impl MirLowering.declare_clib_externs {
             }
         }
     }
+}
+
+impl MirLowering.const_zero(value: MirValue) -> bool {
+    for blk in self.st().fn.blocks {
+        for instr in blk.instrs {
+            if instr.result is value {
+                return instr.op == MirOp.CONST_INT and instr.int_value == 0;
+            }
+        }
+    }
+    return False;
 }
