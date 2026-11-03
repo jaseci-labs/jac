@@ -7,7 +7,9 @@ import from c {
         p: int, value: i32, n: int
     ) -> int;  def write(fd: i32, buf: ptr[u8], count: i64) -> i64;  def strlen(
         text: ptr[u8]
-    ) -> i64;  def atexit(handler: int) -> i32;  def fflush(stream: ptr[u8]) -> i32;
+    ) -> i64;  def atexit(handler: int) -> i32;  def fflush(stream: ptr[u8]) -> i32;  def getenv(
+        name: ptr[u8]
+    ) -> ptr[u8];  def strcmp(a: ptr[u8], b: ptr[u8]) -> i32;
 }
 
 glob HDR_ALLOC_ID_BACK: int = 32,
@@ -196,6 +198,8 @@ def:pub __jac_rt_gc_disable -> None;
 def:pub __jac_rt_gc_enable -> None;
 
 def:pub __jac_rt_cycles_enable -> None;
+
+def:pub __jac_rt_gc_env -> None;
 
 def:pub __jac_rt_mark_threaded -> None;
 
