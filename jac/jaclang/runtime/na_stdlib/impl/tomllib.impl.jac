@@ -34,12 +34,8 @@ impl loads(s: str) -> dict[str, any] {
     return parser.parse();
 }
 
-impl load(fp: File) -> dict[str, any] {
-    data = fp.read();
-    if isinstance(data, bytes) {
-        return loads(data.decode("utf-8"));
-    }
-    return loads(data);
+impl load(fp: BinaryFile) -> dict[str, any] {
+    return loads(fp.read().decode("utf-8"));
 }
 
 impl _join_path(path: str, key: str) -> str {
@@ -227,7 +223,8 @@ impl _TomlParser.descend_header(keys: list[str]) -> tuple[dict[str, any], str] {
     for key in keys {
         full = _join_path(path, key);
         if key not in table {
-            table[key] = {};
+            implicit_table: dict[str, any] = {};
+            table[key] = implicit_table;
             self.implicit.add(full);
         }
         value = table[key];
@@ -274,7 +271,8 @@ impl _TomlParser.parse_table_header {
         }
         self.implicit.remove(full);
     } else {
-        table[last] = {};
+        declared: dict[str, any] = {};
+        table[last] = declared;
     }
     self.explicit.add(full);
     self.current = table[last];
@@ -294,7 +292,8 @@ impl _TomlParser.parse_array_table_header {
     last = keys[len(keys) - 1];
     full = _join_path(path, last);
     if last not in table {
-        table[last] = [];
+        array_of_tables: list[any] = [];
+        table[last] = array_of_tables;
         self.arrays.add(full);
     } elif full not in self.arrays {
         raise self.error("Cannot append to (" + ".".join(keys) + "): not an array of tables");
@@ -312,7 +311,8 @@ impl _TomlParser.descend_dotted(
     for key in keys {
         full = _join_path(path, key);
         if key not in table {
-            table[key] = {};
+            dotted: dict[str, any] = {};
+            table[key] = dotted;
             self.section_dotted.add(full);
         } else {
             value = table[key];

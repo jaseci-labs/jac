@@ -595,11 +595,12 @@ impl peak_rss_mb -> int {
     if not os.path.isfile(status) {
         return 0;
     }
-    with open(status, encoding="utf-8") as handle {
-        for line in handle {
-            if line.startswith("VmHWM:") {
-                return int(line.split()[1]) // 1024;
-            }
+    with open(status) as handle {
+        text = handle.read();
+    }
+    for line in text.splitlines() {
+        if line.startswith("VmHWM:") {
+            return int(line.split()[1]) // 1024;
         }
     }
     return 0;

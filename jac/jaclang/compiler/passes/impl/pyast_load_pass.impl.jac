@@ -950,13 +950,11 @@ impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> MultiString {
             raise RuntimeError(self.ctx.ice('Invalid node in joined str'));
         }
     }
+    start: str = "f'";
+    end: str = "'";
     if fstr_match {
-        (prefix, quote) = fstr_match.groups();
-        start = fstr_match.group(0);
-        end = quote;
-    } else {
-        start = "f'";
-        end = "'";
+        start = str(fstr_match.group(0));
+        end = str(fstr_match.group(2));
     }
     all_content = ''.join(
         part.lit_value
@@ -2136,7 +2134,7 @@ impl PyastBuildPass.proc_module(nd: py_ast.Module) -> Module {
 }
 
 impl PyastBuildPass.extract_with_entry(
-    body: list[UniNode], exclude_types: TypeAlias = T
+    body: list[UniNode], exclude_types: (type[T] | tuple[type[T], ...])
 ) -> list[(T | ModuleCode)] {
     def gen_mod_code(with_entry_body: list[CodeBlockStmt]) -> ModuleCode {
         return ModuleCode(

@@ -1,22 +1,21 @@
 import os;
 import re;
-import from typing { TypeAlias, cast }
+import from typing { cast }
 
 glob T = TypeVar('T', bound=UniNode),
      ComprT = TypeVar('ComprT', bound=ListCompr),
      _reserved_keywords = RESERVED_IDENT_NAMES;
 
-glob PyPositioned: TypeAlias = py_ast.stmt
-         | py_ast.expr
-         | py_ast.arg
-         | py_ast.alias
-         | py_ast.keyword
-         | py_ast.pattern
-         | py_ast.excepthandler
-         | py_ast.type_param,
-     PyComprehensionNode: TypeAlias = py_ast.ListComp
-         | py_ast.SetComp
-         | py_ast.GeneratorExp;
+type PyPositioned = py_ast.stmt
+    | py_ast.expr
+    | py_ast.arg
+    | py_ast.alias
+    | py_ast.keyword
+    | py_ast.pattern
+    | py_ast.excepthandler
+    | py_ast.type_param;
+
+type PyComprehensionNode = py_ast.ListComp | py_ast.SetComp | py_ast.GeneratorExp;
 
 walker PyastBuildPass(CompilerPass) {
     static has contract: PassContract = PassContract();

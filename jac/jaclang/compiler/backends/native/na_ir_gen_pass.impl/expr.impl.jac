@@ -2133,7 +2133,7 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
             return operand;
         }
     }
-    return None;
+    return self._emit_arch_dunder_unary(op, operand);
 }
 
 impl NaIRGenPass._bool_expr_unify_type(a: ir.Type, b: ir.Type) -> (ir.Type | None) {

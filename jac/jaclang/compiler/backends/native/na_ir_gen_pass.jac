@@ -3506,6 +3506,7 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_arch_dunder_binop(
         op: str, left: ir.Value, right: ir.Value
     ) -> (ir.Value | None);
+    def _emit_arch_dunder_unary(op: str, operand: ir.Value) -> (ir.Value | None);
 
     def _emit_comparison(
         op: str,

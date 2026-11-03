@@ -129,7 +129,7 @@ impl plan_app_run(
     flags = dict(spec.flags);
     output = "";
     if spec.output_dir {
-        stem = base_stem(entry_path) if entry_path else app.name;
+        stem = host_layout_tables().base_stem(entry_path) if entry_path else app.name;
         out_dir = (
             os.path.join(project_root, spec.output_dir)
                 if app.implicit

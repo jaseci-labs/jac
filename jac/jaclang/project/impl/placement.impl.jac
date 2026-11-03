@@ -18,7 +18,7 @@ impl module_dot_path(source_path: str, root_dir: str) -> str {
         else '';
     return '.'.join(
         part
-        for part in (parent, base_stem(path))
+        for part in (parent, host_layout_tables().base_stem(path))
         if part
     );
 }

@@ -13,7 +13,7 @@ graph import {
     edge Jac0core: jac0core.* --> artifacts.* | cache.* | cli.* | client.* | compiler.* | data.* | dist.* | packages.* | project.* | runtime.* | scale.* | server.* | testing.* | toolchains.*;
     edge Lsp: lsp.* --> cli.* | studio.*;
     edge MetaImporter: meta_importer --> client.*;
-    edge Packages: packages.* --> cli.* | client.* | dist.* | project.*;
+    edge Packages: packages.* --> cli.* | client.* | compiler.* | dist.* | project.*;
     edge Project: project.* --> artifacts.* | byllm.* | cache.* | cli.* | client.* | compiler.* | data.* | dist.* | lsp.* | packages.* | runtime.* | scale.* | server.* | studio.* | testing.* | toolchains.*;
     edge Runtime: runtime.* --> byllm.* | cli.* | client.* | compiler.* | comptime | data.* | dist.* | lib.* | project.* | scale.* | server.* | studio.* | testing.*;
     edge Scale: scale.* --> cli.* | client.* | runtime.* | server.*;
@@ -474,10 +474,7 @@ graph import {
             discover_base_file
         },
     ]
-    compiler.driver.bccache ++> project.modresolver.is_jac_namespace_package
-        | project.modresolver.language_of
-        | project.modresolver.module_suffixes
-        | project.modresolver.subtree_has_jac { host_layout_tables }
+    compiler.driver.bccache ++> project.modresolver.is_jac_namespace_package { host_layout_tables }
     compiler.driver.bccache --> [
         cli.commands.analysis._format_single_file_worker { discover_annex_files },
         cli.commands.analysis.precommit { discover_annex_files },
@@ -946,7 +943,7 @@ graph import {
     jac0core.artifact_registry ++> [
         artifacts.router._BuildingSpan.__enter__ { begin },
         artifacts.router._BuildingSpan.__exit__ { end },
-        artifacts.router._omitted | artifacts.router.artifact_named { ARTIFACTS },
+        artifacts.router._omitted { ARTIFACTS },
         artifacts.router.building_now { building as marked },
         artifacts.router.names { ARTIFACTS },
         artifacts.router.resolve { resolution_in_flight },
@@ -992,7 +989,7 @@ graph import {
     jac0core.ext_registry ++> [
         cli.commands.analysis._drop_covered_annexes | dist.publish.builder | testing.cl_test_runner.module_entry_for { is_annex },
         cli.commands.cli_helpers { base_stem, is_jac, is_python },
-        cli.commands.execution._jab_native_bin | client.jac_client_compiler.JacClientCompiler._native_variant | client.targets.client_dev_common.dev_proxy_paths | compiler.driver.application._semantic_metadata | dist.seal.bake_native_payloads | project.kinds | project.placement | runtime.prepared | scale.server.inprocess | server.hmr.HotReloader._get_js_filename | testing.test_runner.run_file { base_stem },
+        cli.commands.execution._jab_native_bin | client.jac_client_compiler.JacClientCompiler._native_variant | client.targets.client_dev_common.dev_proxy_paths | compiler.driver.application._semantic_metadata | dist.seal.bake_native_payloads | runtime.prepared | scale.server.inprocess | server.hmr.HotReloader._get_js_filename | testing.test_runner.run_file { base_stem },
         cli.commands.native_build.native_build { base_stem, is_jac, is_retired_native_marker },
         compiler.tools.code_intel { ANNEX_FOLDER, ANNEX_SUFFIXES, IMPL_SUFFIX, is_annex },
         runtime.prepared.semantic_for_scope | server.hmr.HotReloader._path_to_module { base_stem },
@@ -3163,7 +3160,7 @@ graph import {
     compiler.driver.bccache ++> [
         project.compiler_host.ProjectHost.annex_files { discover_annex_files },
         project.compiler_host.ProjectHost.base_file { discover_base_file },
-        project.compiler_host.ProjectHost.is_annex_path_of | project.compiler_host.ProjectHost.package_init | project.compiler_host.ProjectHost.path_facts { host_layout_tables },
+        project.compiler_host.ProjectHost.is_annex_path_of { host_layout_tables },
     ]
     compiler.driver.compilation_context ++> [
         project.compiler_host.ProjectHost.drop_python_lane_products { cache_scope, owner_scope_options },
@@ -3173,7 +3170,7 @@ graph import {
     compiler.driver.compiler ++> project.compiler_host.ProjectHost.client_pulls { cached_client_pulls }
     compiler.driver.jir ++> [
         project.compiler_host.ProjectHost.drop_python_lane_products { drop_python_lane_products },
-        project.compiler_host.native_scan_path | project.compiler_host.wiring_records_path { get_jir_cache_dir },
+        project.compiler_host.native_scan_path { get_jir_cache_dir },
         project.compiler_host.ProjectHost.save_native_debug_ir { get_native_debug_dir },
         project.compiler_host.ProjectHost.in_compiler_tree { is_compiler_tree_path },
         project.compiler_host.native_scan_path { module_env_fingerprint },
@@ -3183,7 +3180,7 @@ graph import {
     compiler.driver.module_compile ++> project.compiler_host.HostSession.run_module { compile_task }
     compiler.driver.native_iface ++> project.compiler_host.ProjectHost.native_dep_iface { NativeIface }
     compiler.driver.pipeline ++> project.compiler_host.ProjectHost.lower_dependency { product_ready, require }
-    compiler.driver.pipeline_types ++> project.compiler_host.ProjectHost.lower_dependency | project.compiler_host.ProjectHost.record_unit { CompilationProduct }
+    compiler.driver.pipeline_types ++> project.compiler_host.ProjectHost.lower_dependency { CompilationProduct }
     compiler.driver.session_compile ++> project.compiler_host.ProjectHost.compile_module { compile_in_session }
     compiler.driver.toolchain ++> project.compiler_host.ProjectHost.native_pipeline_available { native_pipeline_available }
     compiler.driver.unit_products ++> project.compiler_host.ProjectHost.record_unit { native_products, unit_products }
@@ -3195,7 +3192,7 @@ graph import {
     compiler.frontend.codeinfo ++> [
         project.compiler_host.ProjectHost.ct_environment { effective_native_target },
         project.compiler_host.ProjectHost.lower_dependency { get_effective_default_codespace_override, set_effective_default_codespace },
-        project.compiler_host.ProjectHost.client_stub_globals | project.compiler_host.other_compiler_root { jaclang_pkg_root },
+        project.compiler_host.ProjectHost.client_stub_globals { jaclang_pkg_root },
     ]
     compiler.frontend.host ++> [
         project.compiler_host.check_settings_of { CheckSettings },
@@ -3881,6 +3878,27 @@ graph import {
     compiler.types.types ++> compiler.backends.py.pyast_gen_pass.PyastGenPass._c_param_type { FunctionType, ParameterCategory }
     project.kernel_compile ++> dist.precompile_bytecode { kernel_compile, kernel_module_facts, kernel_module_spaces, kernel_native_build, native_build_request_for, persist_units }
     compiler.placement.placement_facts ++> dist.precompile_bytecode { spaces_are_client_only }
+    compiler.driver.bccache ++> project.modresolver.language_of { host_layout_tables }
+    compiler.driver.bccache ++> project.modresolver.module_suffixes { host_layout_tables }
+    compiler.driver.bccache ++> project.modresolver.subtree_has_jac { host_layout_tables }
+    jac0core.artifact_registry ++> artifacts.router.artifact_named { ARTIFACTS }
+    compiler.driver.bccache ++> project.compiler_host.ProjectHost.package_init { host_layout_tables }
+    compiler.driver.bccache ++> project.compiler_host.ProjectHost.path_facts { host_layout_tables }
+    compiler.driver.jir ++> project.compiler_host.wiring_records_path { get_jir_cache_dir }
+    compiler.driver.pipeline_types ++> project.compiler_host.ProjectHost.record_unit { CompilationProduct }
+    compiler.frontend.codeinfo ++> project.compiler_host.other_compiler_root { jaclang_pkg_root }
+    compiler.backends.py.python_engine ++> compiler.passes.pyast_load_pass.python_top_level_names { active_engine }
+    compiler.backends.py.pyast_gen_pass ++> compiler.driver.pipeline.py_ir_passes { PyastGenPass }
+    compiler.passes.pyast_load_pass --> compiler.driver.program.JacProgram.parse_source { parse_python_source }
+    project.config ++> project.compiler_host.ProjectHost.project_config { get_config_for_path }
+    project.config ++> project.compiler_host.ProjectHost.project_facts { get_config_for_path }
+    compiler.types.operations ++> compiler.types.type_evaluator { BINARY_OPERATOR_MAP, get_type_of_binary_operation, is_annotation_type, UNARY_OPERATOR_MAP }
+    compiler.types.operations ++> compiler.backends.native.na_ir_gen_pass.NaIRGenPass._emit_arch_dunder_unary { UNARY_OPERATOR_MAP }
+    compiler.driver.bccache ++> project.kinds.plan_app_run { host_layout_tables }
+    compiler.driver.bccache ++> project.placement.module_dot_path { host_layout_tables }
+
+    compiler.driver.pipeline ++> compiler.driver.session_compile.SessionHooks.assemble_native { CompilationProduct, require }
+    compiler.frontend.host ++> compiler.driver.session_compile.SessionHooks.assemble_native { kernel_image }
 }
 
 graph import artifacts {
@@ -4979,11 +4997,9 @@ graph import compiler {
     }
     backends.py.python_engine ++> [
         driver.pipeline.assemble_bytecode { GeneratedPythonRejected, active_engine },
-        passes.pyast_load_pass.parse_python_source | passes.pyast_load_pass.python_top_level_names { active_engine },
+        passes.pyast_load_pass.parse_python_source { active_engine },
     ]
-    backends.py.pyast_gen_pass ++> driver.module_compile
-        | driver.pipeline.assemble_bytecode
-        | driver.pipeline.py_ir_passes { PyastGenPass }
+    backends.py.pyast_gen_pass ++> driver.module_compile | driver.pipeline.assemble_bytecode { PyastGenPass }
     boundary_rules ++> [
         passes.placement_pass.NativeLegality.settle { ability_crossing },
         passes.placement_pass.bridged_use_crosses { ability_crossing },
@@ -6231,9 +6247,6 @@ graph import compiler {
         driver.wiring { is_name_usable_kind, lookup_keyword },
         tools.grammar_extract_pass { BUILTIN_TYPE_KINDS, TokenKind },
     ]
-    frontend.python.annotation_unparse ++> backends.py.jacpython.product_compile {
-        stringify_future_annotations
-    }
     frontend.python.ast_input ++> backends.py.jacpython.native_api { read_node }
     frontend.python.ast_nodes ++> [
         backends.py.kernel_bytecode { Module },
@@ -6837,7 +6850,6 @@ graph import compiler {
         driver.pipeline.ir_passes { CFGBuildPass },
         tools.cfg_dot { is_structural_child, unwrap_to_bool },
     ]
-    kernel_api ++> backends.py.kernel_bytecode { KernelError }
     passes.comptime_resolve_pass --> driver.pipeline.ir_passes { ComptimeResolvePass }
     passes.context ++> [
         backends.es.esast_gen_pass | backends.py.pyast_gen_pass | tools.cfg_dot | tools.doc_ir_gen_pass | tools.grammar_extract_pass | tools.jac_auto_lint_pass | tools.normalize_pass | tools.unparse_pass { TreePass },
@@ -7114,8 +7126,7 @@ graph import compiler {
         tests.test_module_exports { parse_python_source },
         tools.lang_tools.AstTool.py_uni_nodes { PyastBuildPass },
     ]
-    passes.pyast_load_pass --> driver.program.JacProgram.load_dependency_module
-        | driver.program.JacProgram.parse_source { parse_python_source }
+    passes.pyast_load_pass --> driver.program.JacProgram.load_dependency_module { parse_python_source }
     passes.rc_facts_pass ++> [
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_for_indexed {
             loop_body_locals
@@ -8895,7 +8906,7 @@ graph import compiler.driver {
         program.JacProgram.load_dependency_module { run_pass },
     ]
     pipeline ++> [
-        compiler.JacCompiler.assemble_native | module_analysis.ModuleAnalysis.require | nativecache.NativeBuildSession._finish { require },
+        module_analysis.ModuleAnalysis.require | nativecache.NativeBuildSession._finish { require },
         module_analysis.ModuleAnalysis.ready { product_ready },
         module_compile { product_passes, unavailable },
         source_failures.bootstrap_tier_failure_details { tier_reason },
@@ -11010,11 +11021,6 @@ graph import compiler.types {
     fixed_width --> type_evaluator.TypeEvaluator._get_type_from_flow_node {
         numeric_name_of
     }
-    operations ++> type_evaluator {
-        BINARY_OPERATOR_MAP,
-        get_type_of_binary_operation,
-        is_annotation_type
-    }
     properties ++> type_evaluator {
         is_cached_property_decorator_type,
         is_property_decorator_type
@@ -11882,7 +11888,7 @@ graph import project {
     kernel_compile ++> kernel_check { adopt_diagnostics, check_request_for }
     config ++> [
         compiler_host.ProjectHost.project_config { JacConfig },
-        compiler_host.ProjectHost.declared_dependencies | compiler_host.ProjectHost.project_config | compiler_host.ProjectHost.project_facts { get_config_for_path },
+        compiler_host.ProjectHost.declared_dependencies { get_config_for_path },
     ]
     modresolver ++> [
         compiler_host.ProjectHost.has_active_stub_catalog { active_stub_catalog },

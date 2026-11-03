@@ -150,7 +150,6 @@ obj JacCompiler(SessionHooks) {
     ) -> uni.Module;
 
     def enter_compile(ctx: SessionContext) -> CompileFrame;
-    def assemble_native(program: JacProgram, module: uni.Module, checking: bool);
     def leave_compile(ctx: SessionContext, frame: CompileFrame);
     def finish_compile(frame: CompileFrame);
     def check_crash(crash: Exception, file_path: str);

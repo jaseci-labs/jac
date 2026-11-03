@@ -214,4 +214,6 @@ def leave_compiler(previous: (HostServices | None));
 
 def mark_kernel_image;
 
+def kernel_image -> bool;
+
 def kernel_resident -> bool;

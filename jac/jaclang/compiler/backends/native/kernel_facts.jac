@@ -14,6 +14,7 @@ glob PRECOMPILED_DIR: str = "_precompiled",
      CODEC_KIND_OTHER: int = 4,
      CODEC_SUPPORTED_KINDS: dict[str, int] = {"utf_8": 1, "latin_1": 2, "ascii": 3},
      GIT_WALK_SKIP: tuple[str, ...] = ("node_modules", "__pycache__"),
+     GIT_INDEX_ENTRY_FIXED: int = 62,
      _IGNORE_RULES: dict[str, list[IgnoreRule]] = {},
      _IGNORED_DIRS: dict[str, bool] = {};
 
@@ -38,6 +39,12 @@ def import_paths_fact -> str;
 def package_store_fact -> str;
 
 def git_repo_root(path: str) -> (str | None);
+
+def git_index_path(repo: str) -> str;
+
+def big_endian(data: bytes, at: int, size: int) -> int;
+
+def git_tracked_paths(repo: str) -> set[str];
 
 def global_excludes_file -> str;
 

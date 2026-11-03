@@ -1159,7 +1159,7 @@ impl JacConfig.save -> None {
             raise MalformedJacTomlError(file_path=str(self.toml_path), original=exc);
         }
     }
-    doc = copy.deepcopy(old_doc);
+    doc: dict[str, any] = copy.deepcopy(old_doc);
 
     doc["dependencies"] = _dependency_doc(self, dev=False);
     dev_doc = _dependency_doc(self, dev=True);
@@ -1493,8 +1493,9 @@ impl JacConfig.remove_dependency(
         }
     } elif dep_type in self.plugin_dependencies {
         if dev and "dev" in self.plugin_dependencies[dep_type] {
-            if name in self.plugin_dependencies[dep_type]["dev"] {
-                del self.plugin_dependencies[dep_type]["dev"][name];
+            dev_packages: dict[str, any] = self.plugin_dependencies[dep_type]["dev"];
+            if name in dev_packages {
+                del dev_packages[name];
                 return True;
             }
         } elif name in self.plugin_dependencies[dep_type] {

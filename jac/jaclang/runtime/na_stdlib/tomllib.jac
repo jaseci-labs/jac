@@ -13,7 +13,7 @@ obj:pub TOMLDecodeError(ValueError) {
 
 def:pub loads(s: str) -> dict[str, any];
 
-def:pub load(fp: File) -> dict[str, any];
+def:pub load(fp: BinaryFile) -> dict[str, any];
 
 glob _PATH_SEP: str = "\x1f";
 

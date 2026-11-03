@@ -322,7 +322,9 @@ impl PyastGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
         self._c_vararg_rewrite(
             nd, len(callee_sig.posonly_params) + len(callee_sig.params or [])
         );
-    } elif nd.call_kind == "clib" and isinstance(callee_sig, FuncSignature) {
+    } elif nd.call_kind == "clib"
+        and isinstance(callee, Ability)
+        and isinstance(callee_sig, FuncSignature) {
         fixed = 0;
         for p in callee_sig.get_parameters() {
             if p.is_vararg or p.is_kwargs {

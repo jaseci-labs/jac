@@ -392,6 +392,10 @@ impl mark_kernel_image {
     }
 }
 
+impl kernel_image -> bool {
+    return bool(_KERNEL_IMAGE);
+}
+
 impl leave_compiler(previous: (HostServices | None)) {
     _RESIDENCY[0] -= 1;
     install_host(previous);

@@ -188,6 +188,18 @@ test "a program's own Token lives beside the contextvars shim's token" {
 }
 
 
+test "native tomllib.load reads a binary file the way CPython's does" {
+    (sv_out, _sv_err) = _sv_run("tomllib_load_probe.jac");
+    (na_out, _na_err) = _na_run("tomllib_load_probe.jac");
+    _same_lines(sv_out, na_out, "tomllib.load");
+}
+
+test "native gc.collect answers what CPython's gc.collect answers" {
+    (sv_out, _sv_err) = _sv_run("gc_probe.jac");
+    (na_out, _na_err) = _na_run("gc_probe.jac");
+    _same_lines(sv_out, na_out, "gc.collect");
+}
+
 test "native unicodedata answers what CPython answers" {
     (sv_out, _sv_err) = _sv_run("unicodedata_probe.jac");
     (na_out, _na_err) = _na_run("unicodedata_probe.jac");

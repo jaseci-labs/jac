@@ -44,7 +44,26 @@ impl SessionHooks.assemble_python(program: JacProgram, module: uni.Module) {
 
 impl SessionHooks.assemble_native(
     program: JacProgram, module: uni.Module, checking: bool
-) {}
+) {
+    import copy;
+    if kernel_image() {
+        return;
+    }
+    if not checking {
+        require(program, module, CompilationProduct.NATIVE_OBJECT);
+        return;
+    }
+    previous = program.options;
+    checked = copy.copy(previous);
+    checked.aot_mode = True;
+    checked.skip_native_engine = False;
+    program.options = checked;
+    try {
+        require(program, module, CompilationProduct.NATIVE_OBJECT);
+    } finally {
+        program.options = previous;
+    }
+}
 
 impl select_context(
     file_path: str, program: JacProgram, options: CompileOptions

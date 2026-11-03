@@ -121,6 +121,75 @@ impl git_repo_root(path: str) -> (str | None) {
     }
 }
 
+impl git_index_path(repo: str) -> str {
+    dot_git = os.path.join(repo, ".git");
+    if os.path.isdir(dot_git) {
+        return os.path.join(dot_git, "index");
+    }
+    with open(dot_git, encoding="utf-8") as handle {
+        pointer = handle.readline().strip();
+    }
+    if not pointer.startswith("gitdir:") {
+        return "";
+    }
+    gitdir = pointer[len("gitdir:"):].strip();
+    if not os.path.isabs(gitdir) {
+        gitdir = os.path.join(repo, gitdir);
+    }
+    return os.path.join(gitdir, "index");
+}
+
+impl big_endian(data: bytes, at: int, size: int) -> int {
+    value = 0;
+    for i in range(size) {
+        value = (value << 8) | data[at + i];
+    }
+    return value;
+}
+
+impl git_tracked_paths(repo: str) -> set[str] {
+    tracked: set[str] = set();
+    index = git_index_path(repo);
+    if not index or not os.path.isfile(index) {
+        return tracked;
+    }
+    with open(index, "rb") as handle {
+        data = handle.read();
+    }
+    if len(data) < 12 or data[0:4] != b"DIRC" {
+        return tracked;
+    }
+    version = big_endian(data, 4, 4);
+    offset = 12;
+    previous = b"";
+    for _ in range(big_endian(data, 8, 4)) {
+        name_at = offset + GIT_INDEX_ENTRY_FIXED;
+        if version >= 3 and big_endian(data, offset + GIT_INDEX_ENTRY_FIXED - 2, 2) & 0x4000 {
+            name_at += 2;
+        }
+        if version >= 4 {
+            byte = data[name_at];
+            strip = byte & 127;
+            name_at += 1;
+            while byte & 128 {
+                byte = data[name_at];
+                strip = ((strip + 1) << 7) + (byte & 127);
+                name_at += 1;
+            }
+            end = data.find(b"\x00", name_at);
+            name = previous[:len(previous) - strip] + data[name_at:end];
+            offset = end + 1;
+        } else {
+            end = data.find(b"\x00", name_at);
+            name = data[name_at:end];
+            offset += ((end - offset) // 8 + 1) * 8;
+        }
+        previous = name;
+        tracked.add(os.path.join(repo, name.decode("utf-8")));
+    }
+    return tracked;
+}
+
 impl global_excludes_file -> str {
     config_home = os.environ.get("XDG_CONFIG_HOME", "");
     if not config_home {
@@ -316,9 +385,12 @@ impl git_ignored_fact(root_dir: str) -> str {
     }
     _IGNORE_RULES.clear();
     _IGNORED_DIRS.clear();
+    tracked = git_tracked_paths(repo);
     ignored: list[str] = [];
     for path in jac_files_under(root_dir) {
-        if path.startswith(repo + os.sep) and is_git_ignored(repo, path, False) {
+        if path.startswith(repo + os.sep)
+            and path not in tracked
+            and is_git_ignored(repo, path, False) {
             ignored.append(path);
         }
     }

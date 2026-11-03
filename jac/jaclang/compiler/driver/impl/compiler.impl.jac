@@ -786,26 +786,6 @@ impl JacCompiler.enter_compile(ctx: SessionContext) -> CompileFrame {
     return frame;
 }
 
-impl JacCompiler.assemble_native(
-    program: JacProgram, module: uni.Module, checking: bool
-) {
-    import copy;
-    if not checking {
-        require(program, module, CompilationProduct.NATIVE_OBJECT);
-        return;
-    }
-    previous = program.options;
-    checked = copy.copy(previous);
-    checked.aot_mode = True;
-    checked.skip_native_engine = False;
-    program.options = checked;
-    try {
-        require(program, module, CompilationProduct.NATIVE_OBJECT);
-    } finally {
-        program.options = previous;
-    }
-}
-
 impl JacCompiler.leave_compile(ctx: SessionContext, frame: CompileFrame) {
     self._reentrant_depth = max(self._reentrant_depth - 1, 0)
         if isinstance(frame, HostCompileFrame)
