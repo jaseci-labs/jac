@@ -1,7 +1,7 @@
 impl MirLowering.function_of(nd: uni.UniNode) -> (uni.UniNode | None) {
     cursor = nd.parent;
     while cursor is not None {
-        if isinstance(cursor, (uni.Ability, uni.LambdaExpr)) {
+        if isinstance(cursor, (uni.Ability, uni.LambdaExpr, uni.Test)) {
             return cursor;
         }
         if isinstance(cursor, uni.ImplDef) {
