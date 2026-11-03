@@ -112,7 +112,10 @@ glob KIND_INT: int = 0,
      ARITH_MUL: int = 2,
      ARITH_DIV: int = 3,
      ARITH_FLOOR: int = 4,
-     ARITH_MOD: int = 5;
+     ARITH_MOD: int = 5,
+     UNARY_NEGATE: int = 0,
+     UNARY_POSITIVE: int = 1,
+     UNARY_INVERT: int = 2;
 
 def:pub __jac_rt_elem_tag(bits: int, kind: int) -> int;
 
@@ -148,7 +151,7 @@ def:pub __jac_rt_ref_swap(slot: int, value: int);
 
 def:pub __jac_rt_any_binary(op: int, ta: int, pa: int, tb: int, pb: int) -> int;
 
-def:pub __jac_rt_any_negate(tag: int, payload: int) -> int;
+def:pub __jac_rt_any_unary(op: int, tag: int, payload: int) -> int;
 
 def:pub __jac_rt_dict_convert(
     tag: int, payload: int, key_kind: int, val_kind: int

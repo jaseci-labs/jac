@@ -1257,15 +1257,30 @@ impl __jac_rt_any_binary(op: int, ta: int, pa: int, tb: int, pb: int) -> int {
     return 0;
 }
 
-impl __jac_rt_any_negate(tag: int, payload: int) -> int {
-    if tag == ANY_TAG_FLOAT {
+impl __jac_rt_any_unary(op: int, tag: int, payload: int) -> int {
+    if tag == ANY_TAG_FLOAT and op != UNARY_INVERT {
+        if op == UNARY_POSITIVE {
+            return __jac_rt_any_box(ANY_TAG_FLOAT, payload);
+        }
         return __jac_rt_any_box(ANY_TAG_FLOAT, __float_bits(-__bits_float(payload)));
     }
     if tag == ANY_TAG_INT or tag == ANY_TAG_BOOL {
+        if op == UNARY_POSITIVE {
+            return __jac_rt_any_box(ANY_TAG_INT, payload);
+        }
+        if op == UNARY_INVERT {
+            return __jac_rt_any_box(ANY_TAG_INT, payload ^ -1);
+        }
         return __jac_rt_any_box(ANY_TAG_INT, 0 - payload);
     }
     sb = __jac_rt_sb_new(48);
-    _sb_cstr(sb, ptr[u8]("bad operand type for unary -: '"));
+    if op == UNARY_POSITIVE {
+        _sb_cstr(sb, ptr[u8]("bad operand type for unary +: '"));
+    } elif op == UNARY_INVERT {
+        _sb_cstr(sb, ptr[u8]("bad operand type for unary ~: '"));
+    } else {
+        _sb_cstr(sb, ptr[u8]("bad operand type for unary -: '"));
+    }
     _sb_owned(sb, __jac_rt_class_name(__jac_rt_any_type_name(tag, payload)));
     _sb_cstr(sb, ptr[u8]("'"));
     raise TypeError(__jac_rt_sb_finish(sb));

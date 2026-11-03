@@ -129,6 +129,7 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
          "FLOOR_DIV": 4,
          "MOD": 5
      },
+     ANY_UNARY_CODES: dict[str, int] = {"MINUS": 0, "PLUS": 1, "BW_NOT": 2},
      TEXT_THUNK_MODE: int = 8,
      TEXT_THUNK_RESULT: int = 16,
      COMPARE_OPERATORS: dict[str, str] = {

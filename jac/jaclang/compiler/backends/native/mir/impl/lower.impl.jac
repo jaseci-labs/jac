@@ -1970,9 +1970,13 @@ impl MirLowering.lower_unary(nd: uni.UnaryExpr) -> MirValue {
     if op == Tok.BW_AND and mir_holds_ref(value.type) {
         return value;
     }
-    if value.type.kind == MirKind.ANY and op == Tok.MINUS {
+    if value.type.kind == MirKind.ANY and op in ANY_UNARY_CODES {
         return self.any_from_box(
-            self.runtime_value("__jac_rt_any_negate", self.any_parts(value))
+            self.runtime_value(
+                "__jac_rt_any_unary",
+                [b.const_int(ANY_UNARY_CODES[op], mir_int())]
+                + self.any_parts(value)
+            )
         );
     }
     if not value.type.is_numeric() {
@@ -1981,6 +1985,9 @@ impl MirLowering.lower_unary(nd: uni.UnaryExpr) -> MirValue {
         );
     }
     if op == Tok.PLUS {
+        if value.type.kind == MirKind.BOOL {
+            return b.convert(value, mir_int());
+        }
         return value;
     }
     if op == Tok.MINUS {
