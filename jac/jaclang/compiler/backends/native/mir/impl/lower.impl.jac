@@ -3045,6 +3045,7 @@ impl MirLowering.import_call(
     if unit not in self.mir.deps {
         self.mir.deps.append(unit);
     }
+    self.imported_fns[self.name_of(callee)] = (unit, symbol);
     args = self.bound_args(nd, callee, False);
     if len(args) != len(params) {
         raise MirRefused(

@@ -330,6 +330,7 @@ obj MirLowering {
         bindings: list[InteropBinding] = [],
         current: str = "",
         dep_verdicts: dict[str, (list[str] | None)] = {},
+        imported_fns: dict[str, tuple[str, str]] = {},
         c_views: dict[int, MirGlobal] = {},
         state: (MirFnState | None) = None;
 
