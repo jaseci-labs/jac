@@ -74,8 +74,8 @@ glob PIN_FIXTURE_DIR = os.path.join(
      ),
      GAP_SRC = (
          "import json;\n\n"
-         "def pretty(x: dict[str, int]) -> str {\n"
-         "    return json.dumps(x, indent=2);\n"
+         "def loose(s: str) -> any {\n"
+         "    return json.loads(s, strict=False);\n"
          "}\n\n"
          "def double(n: int) -> int {\n"
          "    return n * 2;\n"
@@ -86,8 +86,8 @@ glob PIN_FIXTURE_DIR = os.path.join(
      ),
      SHARED_GAP_SRC = (
          "import json;\n\n"
-         "def pretty(x: dict[str, int]) -> str {\n"
-         "    return json.dumps(x, indent=2);\n"
+         "def loose(s: str) -> any {\n"
+         "    return json.loads(s, strict=False);\n"
          "}\n\n"
          "def plain(n: int) -> int {\n"
          "    return len(json.dumps([n, n + 1]));\n"
@@ -341,7 +341,7 @@ test "a native library gap refuses the function that uses it, not the module" {
     );
     assert parses == 1 , f"the module is analyzed once, got {parses} analyses";
     placed = placed_by_name(mod);
-    assert placed["pretty"] == 'server' and placed["double"] == 'native' , placed;
+    assert placed["loose"] == 'server' and placed["double"] == 'native' , placed;
     assert placed["entry"] == 'server' , placed;
     imports = [
         s
@@ -358,8 +358,8 @@ test "a gap behind an import that native code shares refuses only the code that 
     assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
     assert parses == 1 , f"the module is analyzed once, got {parses} analyses";
     placed = placed_by_name(mod);
-    assert placed["pretty"] == 'server' and placed["plain"] == 'native' , (
-        f"the gap is on `pretty`'s call, so only `pretty` is refused: {placed}"
+    assert placed["loose"] == 'server' and placed["plain"] == 'native' , (
+        f"the gap is on `loose`'s call, so only `loose` is refused: {placed}"
     );
     assert mod.gen.llvm_ir is not None;
 }
