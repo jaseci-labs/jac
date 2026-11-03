@@ -288,6 +288,45 @@ impl MirLowering.identity(
         (l, r) = self.unify_numeric(left, right, site);
         return b.compare("eq", l, r);
     }
+    if left.type.kind == MirKind.TUPLE and right.type.kind == MirKind.TUPLE {
+        if len(left.type.args) != len(right.type.args) {
+            return b.const_bool(False);
+        }
+        l_held = self.spill(left);
+        r_held = self.spill(right);
+        verdict = b.const_bool(True);
+        for index in range(len(left.type.args)) {
+            verdict = b.binary(
+                "and",
+                verdict,
+                self.identity(
+                    self.tuple_get(l_held, index), self.tuple_get(r_held, index), site
+                )
+            );
+        }
+        return verdict;
+    }
+    if left.type.kind in (MirKind.STR, MirKind.STR_REF)
+        and right.type.kind in (MirKind.STR, MirKind.STR_REF) {
+        return b.compare(
+            "eq",
+            self.emit_value(
+                MirOp.PTR_INT, mir_int(), [b.str_part(self.as_text(left), "data")]
+            ),
+            self.emit_value(
+                MirOp.PTR_INT, mir_int(), [b.str_part(self.as_text(right), "data")]
+            )
+        );
+    }
+    if MirKind.NONE in (left.type.kind, right.type.kind) {
+        other = right if left.type.kind == MirKind.NONE else left;
+        if other.type.kind == MirKind.NONE {
+            return b.const_bool(True);
+        }
+        if other.type.kind == MirKind.TUPLE or other.type.is_numeric() {
+            return b.const_bool(False);
+        }
+    }
     if MirKind.OPT in (left.type.kind, right.type.kind)
         and all(
             side.type.kind == MirKind.OBJ
@@ -321,6 +360,15 @@ impl MirLowering.identity(
             self.opt_switch(held, self.identity(payload, plain, site), absent, done);
             return self.opt_end(held, b.const_bool(False), done);
         }
+    }
+    if left.type.kind == MirKind.OPT
+        and right.type.kind == MirKind.OPT
+        and left.type.payload().is_numeric()
+        and right.type.payload().is_numeric() {
+        other = self.spill(right);
+        (held, payload, absent, done) = self.opt_begin(left, mir_bool());
+        self.opt_switch(held, self.identity(payload, other, site), absent, done);
+        return self.opt_end(held, b.logical_not(self.opt_present(other)), done);
     }
     if MirKind.OPT in (left.type.kind, right.type.kind)
         and self.ref_word_side(left)
