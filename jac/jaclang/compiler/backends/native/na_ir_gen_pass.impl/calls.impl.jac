@@ -1664,43 +1664,20 @@ impl NaIRGenPass._emit_intrinsic_mem_load(
     if addr is None {
         return None;
     }
-    if intr.width is None {
-        self._emit_intrinsic_misuse(nd, intr, "entry carries no width metadata");
-        return None;
-    }
-    value_type = ir.IntType(intr.width);
+    value_type = ir.IntType(int(intr.result_spec[1:]));
     slot = self.builder.inttoptr(addr, value_type.as_pointer(), name="mem.p");
-    raw = self.builder.load(slot, name="mem.ld");
-    if intr.width < 64 {
-        return self.builder.zext(raw, ir.IntType(64), name="mem.ld.wide");
-    }
-    return raw;
+    return self.builder.load(slot, name="mem.ld");
 }
 
 impl NaIRGenPass._emit_intrinsic_mem_store(
     nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
 ) -> (ir.Value | None) {
     addr = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
-    if intr.width is None {
-        self._emit_intrinsic_misuse(nd, intr, "entry carries no width metadata");
+    val = self._intrinsic_operand(nd, intr, args[1], intr.param_specs[1]);
+    if addr is None or val is None {
         return None;
     }
-    raw = self._intrinsic_operand(nd, intr, args[1], intr.param_specs[1]);
-    if addr is None or raw is None {
-        return None;
-    }
-    if not isinstance(raw.type, ir.IntType) {
-        self._emit_intrinsic_misuse(nd, intr, "stored operand is not an integer");
-        return None;
-    }
-    value_type = ir.IntType(intr.width);
-    val = raw;
-    if raw.type.width > intr.width {
-        val = self.builder.trunc(raw, value_type, name="mem.st.narrow");
-    } elif raw.type.width < intr.width {
-        val = self.builder.zext(raw, value_type, name="mem.st.wide");
-    }
-    slot = self.builder.inttoptr(addr, value_type.as_pointer(), name="mem.p");
+    slot = self.builder.inttoptr(addr, val.type.as_pointer(), name="mem.p");
     self.builder.store(val, slot);
     return None;
 }

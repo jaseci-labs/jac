@@ -6,20 +6,6 @@ are listed with opendir() on /dev/fd, which the C module also accepts as not
 strictly async-signal-safe (_close_open_fds_maybe_unsafe).
 """
 
-import from jaclang.runtime.python.cpython_api {
-    jacpy_closedir,
-    jacpy_dirfd,
-    jacpy_errno,
-    jacpy_opendir,
-    jacpy_readdir_name,
-    jacpy_set_errno
-}
-import from jaclang.runtime.python.modules.posixsubprocess_fds {
-    CLOSE_RANGE,
-    close_range_except,
-    fd_in_sorted_fd_sequence,
-    pos_int_from_ascii
-}
 import from c {
     def close(fd: i32) -> i32;  def umask(mask: u16) -> u16;  def setgroups(
         count: i32, groups: ptr
