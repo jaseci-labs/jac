@@ -296,6 +296,17 @@ impl MirLowering.declare(ab: uni.Ability) {
         and is_va_list_type(sig.varargs.type)
         and sig.kwargs is None
         and not sig.kwonlyargs;
+    if ((sig.varargs is not None and not packed) or sig.kwargs is not None)
+        and self.c_exported(ab.access, self.module.loc.mod_path) {
+        raise MirRefused(
+            mir_refusal(
+                "function",
+                f"{self.name_of(ab)} with a parameter pack",
+                ab,
+                "A `def:pub` function is exported as a C symbol, and a C caller cannot build a Jac parameter pack. Take a list instead, or drop `:pub`."
+            )
+        );
+    }
     for pv in self.param_nodes(sig, False) {
         if packed and pv is sig.varargs {
             continue;
@@ -319,14 +330,17 @@ impl MirLowering.symbol_of(ab: uni.Ability) -> str {
     return self.unit_symbol(self.name_of(ab), ab.access);
 }
 
+impl MirLowering.c_exported(access: (uni.SubTag[uni.Token] | None), path: str) -> bool {
+    return bool(access and access.tag.name == Tok.KW_PUB)
+        and not native_unit_identity(path).startswith("jaclang/runtime/na_stdlib/");
+}
+
 impl MirLowering.unit_symbol(
     name: str, access: (uni.SubTag[uni.Token] | None), path: str = ""
 ) -> str {
     path = path or self.module.loc.mod_path;
     spelled = native_unit_spelling(name, path);
-    is_pub = bool(access and access.tag.name == Tok.KW_PUB);
-    bundled = native_unit_identity(path).startswith("jaclang/runtime/na_stdlib/");
-    if is_pub and not bundled {
+    if self.c_exported(access, path) {
         symbol = native_def_symbol(spelled);
         if path == self.module.loc.mod_path and symbol not in self.mir.public {
             self.mir.public.append(symbol);

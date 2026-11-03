@@ -412,6 +412,7 @@ obj MirLowering {
     def module_abilities -> list[uni.Ability];
     def declare(ab: uni.Ability);
     def symbol_of(ab: uni.Ability) -> str;
+    def c_exported(access: (uni.SubTag[uni.Token] | None), path: str) -> bool;
     def unit_symbol(
         name: str, access: (uni.SubTag[uni.Token] | None), path: str = ""
     ) -> str;
