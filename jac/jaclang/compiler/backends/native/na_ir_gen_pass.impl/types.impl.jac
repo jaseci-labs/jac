@@ -4007,7 +4007,9 @@ impl NaIRGenPass._emit_arch_dunder_binop(
     return _try_dispatch(self, right, left, rmagic);
 }
 
-impl NaIRGenPass._emit_arch_dunder_unary(op: str, operand: ir.Value) -> (ir.Value | None) {
+impl NaIRGenPass._emit_arch_dunder_unary(
+    op: str, operand: ir.Value
+) -> (ir.Value | None) {
     magic = UNARY_OPERATOR_MAP.get(op);
     if magic is None or not isinstance(operand.type, ir.PointerType) {
         return None;

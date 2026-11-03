@@ -7,7 +7,9 @@ def check_fields(source: str) -> list[str] {
     return [
         f"{diag.code}: {diag.message}"
         for diag in kernel_check_source(
-            source, "object_field_contract.jac", CompileOptions(no_ir_cache=True, force_codespace="server")
+            source,
+            "object_field_contract.jac",
+            CompileOptions(no_ir_cache=True, force_codespace="server")
         ).errors
     ];
 }

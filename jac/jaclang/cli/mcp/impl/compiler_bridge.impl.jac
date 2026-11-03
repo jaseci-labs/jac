@@ -84,7 +84,9 @@ impl CompilerBridge.typecheck_snippet(
         };
     }
     def _do_typecheck(tmp_path: str) -> dict[str, any] {
-        checked = call_check(check_request_for([tmp_path], CompileOptions(no_cgen=True)));
+        checked = call_check(
+            check_request_for([tmp_path], CompileOptions(no_cgen=True))
+        );
         errors = [_extract_error_info(e) for e in checked.errors];
         warnings = [_extract_error_info(w) for w in checked.warnings];
         return {"valid": not errors, "errors": errors, "warnings": warnings};

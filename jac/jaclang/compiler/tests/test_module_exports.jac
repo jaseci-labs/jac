@@ -1,6 +1,5 @@
 """Prelude exports are read from the same module tree as other compiler facts."""
 
-
 def jac_module(source: str) -> Module {
     (module, failed) = parse(source, "module_exports.jac");
     assert not failed;

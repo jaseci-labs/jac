@@ -502,8 +502,7 @@ impl IfaceRegistry._restore_placement(ent: IfaceEntry) {
     import from jaclang.compiler.placement.placement { summary_store }
     import from jaclang.compiler.placement.placement_export { summary_from_bytes }
     restored = summary_from_bytes(
-        ent.placement,
-        path_mapper=ent.paths.resolve if ent.paths is not None else None
+        ent.placement, path_mapper=ent.paths.resolve if ent.paths is not None else None
     );
     if restored is not None {
         summary_store(self.prog)[os.path.abspath(ent.path)] = restored;

@@ -27,8 +27,7 @@ impl analysed_view(program: JacProgram, module: uni.Module, view: str) -> str {
             [
                 module_banner(each.name)
                     + print_symtab_tree(root_node=each.sym_tab)
-                    + "\n"
-                for each in program.mod.hub.values()
+                    + "\n" for each in program.mod.hub.values()
             ]
         );
     }
@@ -53,7 +52,9 @@ impl analysed_view(program: JacProgram, module: uni.Module, view: str) -> str {
         return unparse_module(module);
     }
     if view == "docir" {
-        return str(run_utility(CompilationProduct.DOC, module, program).module.gen.doc_ir);
+        return str(
+            run_utility(CompilationProduct.DOC, module, program).module.gen.doc_ir
+        );
     }
     if view == "esast" {
         return json.dumps(es_node_to_dict(client_tree(program, module)), indent=2);

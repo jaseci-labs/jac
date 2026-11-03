@@ -35,7 +35,9 @@ impl measure_struct_layouts(
     for value in probe.global_variables {
         name = value.name;
         if name not in counts {
-            raise ValueError(f"the layout probe defines {name}, which was not asked for");
+            raise ValueError(
+                f"the layout probe defines {name}, which was not asked for"
+            );
         }
         layouts[name] = data.get_global_struct_layout(value, counts[name]);
     }

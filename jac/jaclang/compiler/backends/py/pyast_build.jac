@@ -1,8 +1,3 @@
-"""Lowering a finished codegen recipe into JacPython's AST.
-
-The builder makes the AST node objects JacPython's compiler consumes, filling
-the fields a recipe leaves out the way CPython's `ast` constructors do:
-optional fields become None, list fields empty lists, and `ctx` `Load`."""
 class PyAstBuildError(RuntimeError) {}
 
 glob INT_DIGIT_BITS: int = 15,

@@ -564,7 +564,9 @@ impl module_is_client(filepath: str) -> bool {
 
     result = kernel_module_facts(
         JacProgram(), [path], CompileOptions(symtab_ir_only=True)
-    ).module_fact(path).client_declared;
+    ).module_fact(
+        path
+    ).client_declared;
     _COLOR_CACHE[path] = result;
     return result;
 }

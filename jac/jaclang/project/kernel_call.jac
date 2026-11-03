@@ -39,13 +39,17 @@ obj SessionClient {
     def ast_view(path: str, view: str) -> ToolOutput;
     def explain(path: str, topic: str, memory_profile: str = "") -> ToolOutput;
     def grammar -> GrammarReport;
-    def arch_plan(arch_path: str, action: str, prune: bool = False, graph_format: str = "") -> ArchPlan;
+    def arch_plan(
+        arch_path: str, action: str, prune: bool = False, graph_format: str = ""
+    ) -> ArchPlan;
     def strip_markers(path: str, text: str) -> MarkerScan;
     def element_spaces(path: str) -> list[ElementSpace];
     def client_imports(path: str) -> list[ImportSpace];
     def access_plan(project_root: str) -> AccessPlan;
     def package_api(base_root: str, exports: list[str]) -> str;
-    def stub_catalog(out_path: str, only: list[str], pkg_dir: str) -> StubCatalogReport;
+    def stub_catalog(
+        out_path: str, only: list[str], pkg_dir: str
+    ) -> StubCatalogReport;
     def npm_sources(project_root: str) -> list[NpmSource];
     def definition_rows(path: str) -> list[str];
     def compile(request: CompileRequest) -> CompileResult;

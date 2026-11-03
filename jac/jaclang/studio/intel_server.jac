@@ -29,7 +29,9 @@ def decode_tokens(data: list[int]) -> list[tuple[int, int, int, str]];
 
 def symbol_info(row: TokenSymbol) -> dict[str, any];
 
-def diag_tuple(diag: KernelDiagnostic) -> tuple[str, str, str, str, int, int, int, int];
+def diag_tuple(
+    diag: KernelDiagnostic
+) -> tuple[str, str, str, str, int, int, int, int];
 
 def new_cancel_token -> CancelToken;
 

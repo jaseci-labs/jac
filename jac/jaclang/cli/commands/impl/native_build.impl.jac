@@ -206,7 +206,8 @@ impl native_build(
 
     file_size = os.path.getsize(output);
     console.print(
-        f"  Recompiled {result.recompiled} unit(s); reused {len(result.units) - result.recompiled}."
+        f"  Recompiled {result.recompiled} unit(s); reused {len(result.units)
+            - result.recompiled}."
     );
     if result.reused {
         console.print(f"  Up to date: {output} ({file_size} bytes).");

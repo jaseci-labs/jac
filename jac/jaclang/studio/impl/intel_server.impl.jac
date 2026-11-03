@@ -105,7 +105,9 @@ impl symbol_info(row: TokenSymbol) -> dict[str, any] {
     return info;
 }
 
-impl diag_tuple(diag: KernelDiagnostic) -> tuple[str, str, str, str, int, int, int, int] {
+impl diag_tuple(
+    diag: KernelDiagnostic
+) -> tuple[str, str, str, str, int, int, int, int] {
     span = diag.span;
     return (
         diag.severity,
@@ -241,7 +243,6 @@ impl shutdown_server(ls: StudioLangServer) {
 
 impl type_hints(ls: StudioLangServer, path: str) -> list[tuple[int, int, str]] {
     return [
-        (h.line - 1, h.col - 1, h.label)
-        for h in ls.client().assignment_hints(path)
+        (h.line - 1, h.col - 1, h.label) for h in ls.client().assignment_hints(path)
     ];
 }

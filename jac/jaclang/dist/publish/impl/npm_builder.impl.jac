@@ -37,8 +37,7 @@ impl NpmBuilder.build -> bytes {
             js=item.js,
             dts=item.dts,
             external_imports=list(item.external_imports)
-        )
-        for item in published
+        ) for item in published
     ];
     `entry = resolve_npm_entry(self.config, files);
     (extra_deps, extra_peers) = _resolve_externals(self.config, files);

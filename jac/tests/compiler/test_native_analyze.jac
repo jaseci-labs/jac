@@ -139,9 +139,17 @@ test "jac check adopts the kernel's diagnostics as the program's alerts" {
         program = JacProgram();
         result = kernel_check(program, str(base / 'main.jac'), check_options());
         assert len(result.errors) >= 2 , diagnostics_text(result);
-        assert [a.code.code for a in program.errors_had if a.code is not None]
+        assert [
+            a.code.code
+            for a in program.errors_had
+            if a.code is not None
+        ]
             == error_codes(result);
-        assert [a.code.code for a in program.warnings_had if a.code is not None]
+        assert [
+            a.code.code
+            for a in program.warnings_had
+            if a.code is not None
+        ]
             == warning_codes(result);
         for (alert, diag) in zip(program.errors_had, result.errors) {
             assert alert.msg == diag.message;

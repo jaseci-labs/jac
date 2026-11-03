@@ -1,5 +1,3 @@
-"""Which package sources are native-only, natively lowered or seed-tier:
-kernel data the host services answer from."""
 glob SEED_PATHS: tuple[str, ...] = (
          "compiler/frontend/codeinfo.jac",
          "compiler/frontend/const_fold.jac",

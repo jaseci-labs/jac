@@ -491,17 +491,17 @@ impl raised_at(err: BaseException) -> str {
 }
 
 impl precompile_unit(
-    jac_path: str,
-    pkg_root: str,
-    embed_src: bool = False,
-    app: str = ""
+    jac_path: str, pkg_root: str, embed_src: bool = False, app: str = ""
 ) -> bytes | None {
     source_app = _source_apps.get((os.path.abspath(pkg_root), app), {}).get(
         os.path.realpath(jac_path), app
     );
     try {
         return _precompile_unit(
-            jac_path, pkg_root, precompile_context(jac_path, pkg_root, source_app), embed_src
+            jac_path,
+            pkg_root,
+            precompile_context(jac_path, pkg_root, source_app),
+            embed_src
         );
     } finally {
         maybe_malloc_trim();
@@ -1708,8 +1708,7 @@ impl run_precompile(
             is_native = bool(
                 native_units_set and os.path.realpath(jac_path) in native_units_set
             );
-            if is_native
-                and not precompile_native_unit(jac_path) {
+            if is_native and not precompile_native_unit(jac_path) {
                 jir_path.unlink(missing_ok=True);
                 return {
                     "status": "failed",

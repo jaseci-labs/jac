@@ -1,6 +1,3 @@
-"""LLVM's answers about a target, computed in the kernel: the data layout and
-normalized triple of a target machine for the request's triple, and struct
-layouts measured against a data layout."""
 obj TargetLayout {
     has data_layout: str,
         triple: str;

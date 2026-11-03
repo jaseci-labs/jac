@@ -69,7 +69,9 @@ impl _implicit_kind(root_dir: str, kind: str) -> str {
     return outer_app.kind if outer_app is not None else '';
 }
 
-impl _build_workspace(root_dir: str, toml_path: str, config: JacConfig) -> WorkspaceSpec {
+impl _build_workspace(
+    root_dir: str, toml_path: str, config: JacConfig
+) -> WorkspaceSpec {
     project = config.project;
     explicit = config.is_workspace;
     base_pins = dict(config.placement.pins);
@@ -87,7 +89,9 @@ impl _build_workspace(root_dir: str, toml_path: str, config: JacConfig) -> Works
                 );
             }
             entries[entry_abs] = name;
-            effective = config.effective_for_app(name) if declaration.overlays else config;
+            effective = config.effective_for_app(name)
+                if declaration.overlays
+                else config;
             apps[name] = AppSpec(
                 name=name,
                 kind=declaration.kind,

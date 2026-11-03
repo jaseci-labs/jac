@@ -19,17 +19,11 @@ impl SourceSpan.from_dict(raw: dict[str, any]) -> SourceSpan {
 }
 
 impl RelatedNote.to_dict -> dict[str, any] {
-    return {
-        "label": self.label,
-        "span": self.span.to_dict()
-    };
+    return {"label": self.label, "span": self.span.to_dict()};
 }
 
 impl RelatedNote.from_dict(raw: dict[str, any]) -> RelatedNote {
-    return RelatedNote(
-        label=str(raw["label"]),
-        span=SourceSpan.from_dict(raw["span"])
-    );
+    return RelatedNote(label=str(raw["label"]), span=SourceSpan.from_dict(raw["span"]));
 }
 
 impl KernelDiagnostic.to_dict -> dict[str, any] {
@@ -133,17 +127,11 @@ impl CompileRequest.from_dict(raw: dict[str, any]) -> CompileRequest {
 }
 
 impl SourceRead.to_dict -> dict[str, any] {
-    return {
-        "path": self.path,
-        "digest": self.digest
-    };
+    return {"path": self.path, "digest": self.digest};
 }
 
 impl SourceRead.from_dict(raw: dict[str, any]) -> SourceRead {
-    return SourceRead(
-        path=str(raw["path"]),
-        digest=str(raw["digest"])
-    );
+    return SourceRead(path=str(raw["path"]), digest=str(raw["digest"]));
 }
 
 impl CompileResult.to_dict -> dict[str, any] {
@@ -261,17 +249,11 @@ impl ModuleFact.from_dict(raw: dict[str, any]) -> ModuleFact {
 }
 
 impl AppEdge.to_dict -> dict[str, any] {
-    return {
-        "consumer": self.consumer,
-        "provider": self.provider
-    };
+    return {"consumer": self.consumer, "provider": self.provider};
 }
 
 impl AppEdge.from_dict(raw: dict[str, any]) -> AppEdge {
-    return AppEdge(
-        consumer=str(raw["consumer"]),
-        provider=str(raw["provider"])
-    );
+    return AppEdge(consumer=str(raw["consumer"]), provider=str(raw["provider"]));
 }
 
 impl CheckResult.to_dict -> dict[str, any] {
@@ -343,11 +325,7 @@ impl NativeBuildRequest.from_dict(raw: dict[str, any]) -> NativeBuildRequest {
 }
 
 impl LinkedUnit.to_dict -> dict[str, any] {
-    return {
-        "path": self.path,
-        "digest": self.digest,
-        "stamp": self.stamp.to_dict()
-    };
+    return {"path": self.path, "digest": self.digest, "stamp": self.stamp.to_dict()};
 }
 
 impl LinkedUnit.from_dict(raw: dict[str, any]) -> LinkedUnit {
@@ -451,11 +429,7 @@ impl ElementSpace.from_dict(raw: dict[str, any]) -> ElementSpace {
 }
 
 impl ImportSpace.to_dict -> dict[str, any] {
-    return {
-        "target": self.target,
-        "line": self.line,
-        "client_only": self.client_only
-    };
+    return {"target": self.target, "line": self.line, "client_only": self.client_only};
 }
 
 impl ImportSpace.from_dict(raw: dict[str, any]) -> ImportSpace {
@@ -521,10 +495,7 @@ impl AccessPlan.from_dict(raw: dict[str, any]) -> AccessPlan {
 }
 
 impl StubCatalogReport.to_dict -> dict[str, any] {
-    return {
-        "summary": self.summary,
-        "load_failures": list(self.load_failures)
-    };
+    return {"summary": self.summary, "load_failures": list(self.load_failures)};
 }
 
 impl StubCatalogReport.from_dict(raw: dict[str, any]) -> StubCatalogReport {
@@ -555,17 +526,11 @@ impl NpmSource.from_dict(raw: dict[str, any]) -> NpmSource {
 }
 
 impl TextEdit.to_dict -> dict[str, any] {
-    return {
-        "span": self.span.to_dict(),
-        "text": self.text
-    };
+    return {"span": self.span.to_dict(), "text": self.text};
 }
 
 impl TextEdit.from_dict(raw: dict[str, any]) -> TextEdit {
-    return TextEdit(
-        span=SourceSpan.from_dict(raw["span"]),
-        text=str(raw["text"])
-    );
+    return TextEdit(span=SourceSpan.from_dict(raw["span"]), text=str(raw["text"]));
 }
 
 impl CompletionItem.to_dict -> dict[str, any] {
@@ -587,12 +552,7 @@ impl CompletionItem.from_dict(raw: dict[str, any]) -> CompletionItem {
 }
 
 impl InlayHint.to_dict -> dict[str, any] {
-    return {
-        "line": self.line,
-        "col": self.col,
-        "label": self.label,
-        "kind": self.kind
-    };
+    return {"line": self.line, "col": self.col, "label": self.label, "kind": self.kind};
 }
 
 impl InlayHint.from_dict(raw: dict[str, any]) -> InlayHint {
@@ -708,7 +668,9 @@ impl CodeDiagnostic.from_dict(raw: dict[str, any]) -> CodeDiagnostic {
 impl ContextSlice.from_dict(raw: dict[str, any]) -> ContextSlice {
     return ContextSlice(
         query=str(raw["query"]),
-        target=SymbolInfo.from_dict(raw["target"]) if raw["target"] is not None else None,
+        target=SymbolInfo.from_dict(raw["target"])
+            if raw["target"] is not None
+            else None,
         related=[SymbolInfo.from_dict(item) for item in raw["related"]],
         uses=[SourceRef.from_dict(item) for item in raw["uses"]]
     );
@@ -793,32 +755,22 @@ impl EditSymbol.from_dict(raw: dict[str, any]) -> EditSymbol {
 }
 
 impl WiringChange.to_dict -> dict[str, any] {
-    return {
-        "kind": self.kind,
-        "detail": self.detail,
-        "module": self.module
-    };
+    return {"kind": self.kind, "detail": self.detail, "module": self.module};
 }
 
 impl WiringChange.from_dict(raw: dict[str, any]) -> WiringChange {
     return WiringChange(
-        kind=str(raw["kind"]),
-        detail=str(raw["detail"]),
-        module=str(raw["module"])
+        kind=str(raw["kind"]), detail=str(raw["detail"]), module=str(raw["module"])
     );
 }
 
 impl WiredFiles.to_dict -> dict[str, any] {
-    return {
-        "owned": self.owned,
-        "files": list(self.files)
-    };
+    return {"owned": self.owned, "files": list(self.files)};
 }
 
 impl WiredFiles.from_dict(raw: dict[str, any]) -> WiredFiles {
     return WiredFiles(
-        owned=bool(raw["owned"]),
-        files=[str(item) for item in raw["files"]]
+        owned=bool(raw["owned"]), files=[str(item) for item in raw["files"]]
     );
 }
 
@@ -1058,7 +1010,9 @@ impl other_compiler_diagnostic(path: str, tree: str) -> KernelDiagnostic {
 }
 
 impl collect_diagnostics(
-    program: JacProgram, errors: list[KernelDiagnostic], warnings: list[KernelDiagnostic]
+    program: JacProgram,
+    errors: list[KernelDiagnostic],
+    warnings: list[KernelDiagnostic]
 ) {
     for alert in program.errors_had {
         errors.append(kernel_diagnostic(alert, "error"));
@@ -1198,7 +1152,9 @@ impl run_compile(
                     if other_compiler_root(real) or not real.endswith(".jac") {
                         continue;
                     }
-                    program.compile(real, use_str=host.overlay.get(real), options=options);
+                    program.compile(
+                        real, use_str=host.overlay.get(real), options=options
+                    );
                     grew = True;
                 }
             }
@@ -1254,7 +1210,9 @@ impl run_check(
                     if other_compiler_root(real) or not real.endswith(".jac") {
                         continue;
                     }
-                    program.compile(real, use_str=host.overlay.get(real), options=options);
+                    program.compile(
+                        real, use_str=host.overlay.get(real), options=options
+                    );
                     grew = True;
                 }
             }
@@ -1414,9 +1372,13 @@ impl run_native_build(
             result.mode = plan.mode;
             result.triple = plan.triple;
             result.recompiled = len(registry.compiled_paths);
-            result.analysed = program.analysis.cache_events.get("native_unit_analysis", 0);
+            result.analysed = program.analysis.cache_events.get(
+                "native_unit_analysis", 0
+            );
             result.lowered = program.analysis.cache_events.get("native_unit_lower", 0);
-            result.generated = program.analysis.cache_events.get("native_unit_codegen", 0);
+            result.generated = program.analysis.cache_events.get(
+                "native_unit_codegen", 0
+            );
             for unit in plan.units {
                 result.units.append(
                     LinkedUnit(
@@ -1469,7 +1431,10 @@ impl run_native_build(
                 }
                 emitted = "\n".join(parts);
                 result.rc_symbols = sorted(
-                    {found.group(0) for found in re.finditer(r"__rc_[A-Za-z0-9_]*", emitted)}
+                    {
+                        found.group(0)
+                        for found in re.finditer(r"__rc_[A-Za-z0-9_]*", emitted)
+                    }
                 );
                 result.rc_probes = [
                     probe
@@ -1776,9 +1741,8 @@ impl KernelSession.dependents(path: str) -> list[str] {
         self._edges_seeded = True;
     }
     real = os.path.realpath(path);
-    found = program.transitive_dependents(real) | program.transitive_dependents(
-        self.owner(real)
-    );
+    found = program.transitive_dependents(real)
+        | program.transitive_dependents(self.owner(real));
     return sorted([os.path.realpath(dep) for dep in found]);
 }
 
@@ -1801,7 +1765,8 @@ impl KernelSession.diagnostics(path: str) -> list[KernelDiagnostic] {
             ("warning", program.warnings_had)
         ] {
             for alert in alerts {
-                if alert.loc.mod_path and os.path.realpath(alert.loc.mod_path) in files {
+                if alert.loc.mod_path
+                    and os.path.realpath(alert.loc.mod_path) in files {
                     found.append(kernel_diagnostic(alert, severity));
                 }
             }
@@ -1903,7 +1868,9 @@ impl KernelSession.formatted(path: str, auto_lint: bool) -> ToolOutput {
     real = os.path.realpath(path);
     host = self.enter();
     try {
-        program = JacCompiler.jac_str_formatter(host.read_source(real), real, auto_lint);
+        program = JacCompiler.jac_str_formatter(
+            host.read_source(real), real, auto_lint
+        );
     } finally {
         self.leave();
     }
@@ -1979,7 +1946,9 @@ impl KernelSession.py_to_jac(path: str) -> ToolOutput {
     host = self.enter();
     try {
         program = JacProgram();
-        (converted, had_error) = parse_python_source(host.read_source(real), real, program);
+        (converted, had_error) = parse_python_source(
+            host.read_source(real), real, program
+        );
         collect_diagnostics(program, out.errors, out.warnings);
         if had_error {
             return out;
@@ -2001,7 +1970,7 @@ impl KernelSession.ast_view(path: str, view: str) -> ToolOutput {
     if view not in PARSED_VIEWS and view not in ANALYSED_VIEWS {
         raise KernelError(
             f"unknown AST view '{view}'; expected one of "
-            + ", ".join([*PARSED_VIEWS, *ANALYSED_VIEWS])
+                + ", ".join([*PARSED_VIEWS, *ANALYSED_VIEWS])
         );
     }
     out = ToolOutput();
@@ -2075,9 +2044,7 @@ impl KernelSession.explain(
         return out;
     }
     name = os.path.basename(real);
-    hints = sorted(
-        inferred_hints(module), key=lambda (h: any) { (h.line, h.col); }
-    );
+    hints = sorted(inferred_hints(module), key=lambda (h: any) { (h.line, h.col); });
     lines = [
         f"memory profile: {program.options.memory_profile
             if program.options and program.options.memory_profile
@@ -2570,9 +2537,11 @@ impl KernelSession.stub_catalog(
         self.leave();
     }
     return StubCatalogReport(
-        summary=f"stubcat: {manifest['modules']} modules, {manifest['symbols']} symbols, "
-            f"{manifest['types']} types, {manifest['bytes']} bytes, "
-            f"{manifest['failures']} evaluation failures in {manifest['seconds']}s",
+        summary=f"stubcat: {manifest['modules']} modules, {manifest[
+            'symbols'
+        ]} symbols, "
+        f"{manifest['types']} types, {manifest['bytes']} bytes, "
+        f"{manifest['failures']} evaluation failures in {manifest['seconds']}s",
         load_failures=[str(failure) for failure in manifest["load_failures"]]
     );
 }
@@ -2601,8 +2570,7 @@ impl KernelSession.npm_sources(project_root: str) -> list[NpmSource] {
             js=item.js,
             dts=item.dts,
             external_imports=list(item.external_imports)
-        )
-        for item in files
+        ) for item in files
     ];
 }
 
@@ -2649,25 +2617,42 @@ impl session_query(session: KernelSession, method: str, args: list[any]) -> any 
         return session.hover(str(args[0]), int(args[1]), int(args[2]));
     }
     if method == "definition" {
-        return [item.to_dict() for item in session.definition(str(args[0]), int(args[1]), int(args[2]))];
+        return [
+            item.to_dict()
+            for item in session.definition(str(args[0]), int(args[1]), int(args[2]))
+        ];
     }
     if method == "references" {
-        return [item.to_dict() for item in session.references(str(args[0]), int(args[1]), int(args[2]))];
+        return [
+            item.to_dict()
+            for item in session.references(str(args[0]), int(args[1]), int(args[2]))
+        ];
     }
     if method == "completion" {
-        return [item.to_dict() for item in session.completion(str(args[0]), int(args[1]), int(args[2]))];
+        return [
+            item.to_dict()
+            for item in session.completion(str(args[0]), int(args[1]), int(args[2]))
+        ];
     }
     if method == "semantic_tokens" {
         return list(session.semantic_tokens(str(args[0])));
     }
     if method == "inlay_hints" {
-        return [item.to_dict() for item in session.inlay_hints(str(args[0]), int(args[1]), int(args[2]))];
+        return [
+            item.to_dict()
+            for item in session.inlay_hints(str(args[0]), int(args[1]), int(args[2]))
+        ];
     }
     if method == "symbols" {
         return [item.to_dict() for item in session.symbols(str(args[0]))];
     }
     if method == "rename" {
-        return [item.to_dict() for item in session.rename(str(args[0]), int(args[1]), int(args[2]), str(args[3]))];
+        return [
+            item.to_dict()
+            for item in session.rename(
+                str(args[0]), int(args[1]), int(args[2]), str(args[3])
+            )
+        ];
     }
     if method == "format" {
         return session.format(str(args[0])).to_dict();
@@ -2697,7 +2682,9 @@ impl session_query(session: KernelSession, method: str, args: list[any]) -> any 
         return session.grammar().to_dict();
     }
     if method == "arch_plan" {
-        return session.arch_plan(str(args[0]), str(args[1]), bool(args[2]), str(args[3])).to_dict();
+        return session.arch_plan(
+            str(args[0]), str(args[1]), bool(args[2]), str(args[3])
+        ).to_dict();
     }
     if method == "strip_markers" {
         return session.strip_markers(str(args[0]), str(args[1])).to_dict();
@@ -2715,7 +2702,9 @@ impl session_query(session: KernelSession, method: str, args: list[any]) -> any 
         return session.package_api(str(args[0]), [str(item) for item in args[1]]);
     }
     if method == "stub_catalog" {
-        return session.stub_catalog(str(args[0]), [str(item) for item in args[1]], str(args[2])).to_dict();
+        return session.stub_catalog(
+            str(args[0]), [str(item) for item in args[1]], str(args[2])
+        ).to_dict();
     }
     if method == "npm_sources" {
         return [item.to_dict() for item in session.npm_sources(str(args[0]))];
@@ -2733,19 +2722,28 @@ impl session_query(session: KernelSession, method: str, args: list[any]) -> any 
         return session.module_outline(str(args[0])).to_dict();
     }
     if method == "edit_symbols" {
-        return [item.to_dict() for item in session.edit_symbols(str(args[0]), str(args[1]))];
+        return [
+            item.to_dict() for item in session.edit_symbols(str(args[0]), str(args[1]))
+        ];
     }
     if method == "import_texts" {
         return list(session.import_texts(str(args[0]), str(args[1])));
     }
     if method == "wiring_changes" {
-        return [item.to_dict() for item in session.wiring_changes(str(args[0]), str(args[1]), str(args[2]))];
+        return [
+            item.to_dict()
+            for item in session.wiring_changes(str(args[0]), str(args[1]), str(args[2]))
+        ];
     }
     if method == "wired_dependents" {
-        return session.wired_dependents(str(args[0]), [str(item) for item in args[1]]).to_dict();
+        return session.wired_dependents(
+            str(args[0]), [str(item) for item in args[1]]
+        ).to_dict();
     }
     if method == "wiring_module_files" {
-        return list(session.wiring_module_files(str(args[0]), [str(item) for item in args[1]]));
+        return list(
+            session.wiring_module_files(str(args[0]), [str(item) for item in args[1]])
+        );
     }
     if method == "wiring_model" {
         return session.wiring_model(str(args[0])).to_dict();

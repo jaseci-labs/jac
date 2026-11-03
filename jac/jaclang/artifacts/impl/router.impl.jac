@@ -301,7 +301,11 @@ impl _omitted(sealed_image: bool) -> frozenset[str] {
         return image.omits if image is not None else frozenset();
     }
 
-    requested = frozenset(name for name in ARTIFACTS if pr_kit_omits(name));
+    requested = frozenset(
+        name
+        for name in ARTIFACTS
+        if pr_kit_omits(name)
+    );
     found = kit_image();
     return found[1].omits | requested if found is not None else requested;
 }

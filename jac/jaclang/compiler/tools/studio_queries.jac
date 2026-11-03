@@ -1,7 +1,3 @@
-"""Project-structure queries studio and the code index ask a kernel session:
-module outlines, edit-review symbol tables, wiring models and per-token
-symbols. Lines are 1-based; `TokenSymbol` columns are 0-based, as the editor
-draws them."""
 import os;
 
 def node_text(nd: any) -> str;

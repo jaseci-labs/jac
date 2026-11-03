@@ -275,8 +275,9 @@ test "a generator-returning SERVICE_BRIDGE stub is a coroutine until awaited" {
     );
     (prog, mod) = compile_fixture(fixture("web", "stream_awaited.jac"), cgen=True);
     assert not prog.errors_had , [str(e) for e in prog.errors_had];
-    assert "await __jac_sv_client.call('social', 'narrate'"
-        in generated_python(mod) , generated_python(mod);
+    assert "await __jac_sv_client.call('social', 'narrate'" in generated_python(mod) , generated_python(
+        mod
+    );
 }
 
 test "spawning a bridged walker types as the stub's coroutine, not E1114" {

@@ -209,7 +209,9 @@ impl analysed_for_codegen(program: JacProgram, module: Module) -> bool {
         return True;
     }
     built = program.analysis.peek(module);
-    analysis = built.tasks.get(CompilationProduct.ANALYSIS) if built is not None else None;
+    analysis = built.tasks.get(CompilationProduct.ANALYSIS)
+        if built is not None
+        else None;
     return analysis is not None
         and analysis.state == TaskState.SUCCEEDED
         and not analysis.degraded;

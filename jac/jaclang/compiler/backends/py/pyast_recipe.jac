@@ -1,8 +1,3 @@
-"""The Python code generator's recipe.
-
-`PyastGenPass` builds each module as a recipe: nodes named by their `ast`
-class, fields as ordered keys and values, and source spans. `pyast_build`
-lowers a finished recipe into JacPython's AST inside the kernel."""
 obj CgItem {}
 
 obj CgNode(CgItem) {

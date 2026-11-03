@@ -104,7 +104,9 @@ class ValueRef(ObjectRef) {
     has is_declaration: bool {
         getter {
             if not (self.is_global or self.is_function) {
-                raise ValueError(f"expected a global or function value, got {self.kind}");
+                raise ValueError(
+                    f"expected a global or function value, got {self.kind}"
+                );
             }
             return LLVMPY_IsDeclaration(self.live()) != 0;
         }
@@ -113,7 +115,9 @@ class ValueRef(ObjectRef) {
     has global_value_type: str {
         getter {
             if not (self.is_global or self.is_function) {
-                raise ValueError(f"expected a global or function value, got {self.kind}");
+                raise ValueError(
+                    f"expected a global or function value, got {self.kind}"
+                );
             }
             return take_text(LLVMPY_PrintType(LLVMPY_GlobalGetValueType(self.live())));
         }

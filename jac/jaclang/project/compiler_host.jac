@@ -1,7 +1,3 @@
-"""The kernel's host services: the one implementation that answers the
-compiler's questions about the world. It runs inside the kernel and reads the
-project, the file system and the caches itself; nothing is asked of the
-process that loaded the kernel."""
 import gc;
 import hashlib;
 import os;

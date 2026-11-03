@@ -56,7 +56,9 @@ impl alert_of(diag: KernelDiagnostic) -> Alert {
 }
 
 impl adopt_diagnostics(
-    program: JacProgram, errors: list[KernelDiagnostic], warnings: list[KernelDiagnostic]
+    program: JacProgram,
+    errors: list[KernelDiagnostic],
+    warnings: list[KernelDiagnostic]
 ) {
     for diag in errors {
         program.errors_had.append(alert_of(diag));
@@ -73,7 +75,9 @@ impl kernel_compile(
     sources: (dict[str, str] | None) = None,
     products: (list[str] | None) = None
 ) -> CompileResult {
-    wanted = products if products is not None else ([] if options.no_cgen else ["bytecode"]);
+    wanted = products
+        if products is not None
+        else ([] if options.no_cgen else ["bytecode"]);
     result = call_compile(compile_request_for(paths, options, sources or {}, wanted));
     adopt_diagnostics(program, result.errors, result.warnings);
     return result;
@@ -139,7 +143,10 @@ impl kernel_native_build(
 }
 
 impl kernel_module_facts(
-    program: JacProgram, paths: list[str], options: CompileOptions, closure: bool = False
+    program: JacProgram,
+    paths: list[str],
+    options: CompileOptions,
+    closure: bool = False
 ) -> CheckResult {
     request = check_request_for(paths, options, closure=closure);
     request.module_facts = True;
@@ -169,9 +176,7 @@ impl kernel_module_spaces(
 impl persist_units(units: list[CompiledUnit]) {
     for unit in units {
         write_module_cache(
-            unit.path,
-            unit.bytecode or None,
-            extra_sections=dict(unit.sections)
+            unit.path, unit.bytecode or None, extra_sections=dict(unit.sections)
         );
     }
 }

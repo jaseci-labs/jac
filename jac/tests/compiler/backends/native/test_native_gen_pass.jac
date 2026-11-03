@@ -2851,9 +2851,7 @@ test "py interop full entry chain" {
     assert not prog.errors_had;
     # Execute the compiled module with interop context injected
     py_code = compile(
-        generated_python(ir),
-        str(os.path.join(FIXTURES, "na_py_interop.jac")),
-        "exec"
+        generated_python(ir), str(os.path.join(FIXTURES, "na_py_interop.jac")), "exec"
     );
     namespace = {
         "__jac_native_engine__": ir.gen.native_engine,

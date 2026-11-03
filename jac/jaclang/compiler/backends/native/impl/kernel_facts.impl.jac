@@ -164,7 +164,8 @@ impl git_tracked_paths(repo: str) -> set[str] {
     previous = b"";
     for _ in range(big_endian(data, 8, 4)) {
         name_at = offset + GIT_INDEX_ENTRY_FIXED;
-        if version >= 3 and big_endian(data, offset + GIT_INDEX_ENTRY_FIXED - 2, 2) & 0x4000 {
+        if version >= 3
+            and big_endian(data, offset + GIT_INDEX_ENTRY_FIXED - 2, 2) & 0x4000 {
             name_at += 2;
         }
         if version >= 4 {

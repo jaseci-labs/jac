@@ -271,4 +271,3 @@ with TemporaryDirectory() as directory:
     );
     assert result.returncode == 0 , result.stdout + result.stderr;
 }
-

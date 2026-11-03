@@ -53,7 +53,9 @@ impl editable_mappings(site_dir: str) -> dict[str, str] {
     for name in sorted(os.listdir(site_dir)) {
         if name.startswith(EDITABLE_FINDER_PREFIX)
             and name.endswith(EDITABLE_FINDER_SUFFIX) {
-            for (top, target) in editable_mapping_of(os.path.join(site_dir, name)).items() {
+            for (top, target) in editable_mapping_of(
+                os.path.join(site_dir, name)
+            ).items() {
                 if top not in found {
                     found[top] = target;
                 }
@@ -173,7 +175,8 @@ impl probe_python_root(search_root: str, name: str) -> PythonProbe {
     }
     prefix = name + '.';
     for entry_name in sorted(entries) {
-        if entry_name.startswith(prefix) and entry_name.endswith(PY_EXTENSION_SUFFIXES) {
+        if entry_name.startswith(prefix)
+            and entry_name.endswith(PY_EXTENSION_SUFFIXES) {
             probe.origin = os.path.join(search_root, entry_name);
             return probe;
         }
@@ -195,7 +198,9 @@ impl find_python_module(parts: list[str]) -> (PythonModuleSite | None) {
         portions: list[str] = [];
         editable = editable_roots().get(part) if index == 0 else None;
         if editable is not None {
-            found = probe_python_root(os.path.dirname(editable), os.path.basename(editable));
+            found = probe_python_root(
+                os.path.dirname(editable), os.path.basename(editable)
+            );
             if not found.origin and found.namespace_dir {
                 portions.append(found.namespace_dir);
             }
@@ -315,7 +320,8 @@ impl _mounts_entry(project_root: str) -> tuple[str, str] {
             name = project['name'];
         }
         _mounts_by_root[project_root] = (
-            os.path.join(project_root, build_dir, MOUNTS_DIR_NAME), name
+            os.path.join(project_root, build_dir, MOUNTS_DIR_NAME),
+            name
         );
     }
     return _mounts_by_root[project_root];
@@ -663,7 +669,9 @@ impl declared_virtual_modules -> dict[str, JacVirtualModule] {
                     declared.path = os.path.normpath(os.path.join(site, rel));
                 }
             }
-            for (module_name, names) in groups.get(JAC_MODULE_EXPORTS_GROUP, {}).items() {
+            for (module_name, names) in groups.get(
+                JAC_MODULE_EXPORTS_GROUP, {}
+            ).items() {
                 declared = _DECLARED_VIRTUAL.get(module_name);
                 if declared is None {
                     declared = JacVirtualModule(name=module_name);

@@ -1,7 +1,9 @@
 impl _env_reference(
     body: str, environ: dict[str, str]
 ) -> tuple[str, UnresolvedRef | None] {
-    if body == "" or not (body[0].isalpha() or body[0] == "_") or not body[0].isascii() {
+    if body == ""
+        or not (body[0].isalpha() or body[0] == "_")
+        or not body[0].isascii() {
         return ("${" + body + "}", None);
     }
     end = 1;
@@ -160,7 +162,9 @@ impl _parse_person(t: TomlTable, key: str, index: int, item: any) -> PersonConfi
             f"{key}[{index}]", f"expected a string or a table, got {toml_kind(item)}"
         );
     }
-    person = TomlTable(data=item, where=t.child_where(f"{key}[{index}]"), origin=t.origin);
+    person = TomlTable(
+        data=item, where=t.child_where(f"{key}[{index}]"), origin=t.origin
+    );
     found = PersonConfig();
     for field in person.keys() {
         if field == "name" {
@@ -794,10 +798,10 @@ impl _check_retired(t: TomlTable) {
             raise t.error(
                 "scale.microservices",
                 "was removed: declare each service as an [apps.<name>] table "
-                    "(kind = \"service\", entry-point, route) and move the gateway "
-                    "settings (logs, ingress, cors, boot keys) to [scale.gateway]. "
-                    "See the Breaking Changes page "
-                    "(docs/community/breaking-changes.md, Workspaces)"
+                "(kind = \"service\", entry-point, route) and move the gateway "
+                "settings (logs, ingress, cors, boot keys) to [scale.gateway]. "
+                "See the Breaking Changes page "
+                "(docs/community/breaking-changes.md, Workspaces)"
             );
         }
     }
@@ -1035,7 +1039,9 @@ impl _parse_toml_data(
             config.environments[name] = environments.raw_table(name);
         }
     }
-    project: dict[str, any] = top.raw_table("project") if top.has_key("project") else {};
+    project: dict[str, any] = top.raw_table("project")
+        if top.has_key("project")
+        else {};
     if top.has_key("apps") {
         config.apps = parse_apps(project, top.raw_table("apps"));
         config.is_workspace = True;
@@ -1192,8 +1198,8 @@ impl JacConfig._write_toml_text(text: str) -> None {
     if self.discovered_from_ancestor {
         sys.stderr.write(
             f"warning: no jac.toml in the current directory -- modifying {self.toml_path}\n"
-                "  Run this command from the project root, "
-                "or 'jac create' here to start a new project.\n"
+            "  Run this command from the project root, "
+            "or 'jac create' here to start a new project.\n"
         );
     }
     with open(str(self.toml_path), "w") as f {
@@ -1531,7 +1537,9 @@ impl get_config(
         return _scope.active;
     }
     if _scope.active is None or profile is not None {
-        base = start_path or (_scope.active.project_root if _scope.active else None) or Path.cwd();
+        base = start_path
+            or (_scope.active.project_root if _scope.active else None)
+            or Path.cwd();
         _scope.active = get_config_for_path(base, profile=profile);
         if _scope.active is not None and _scope.active.project_root is not None {
             _scope.active.discovered_from_ancestor = (

@@ -14,9 +14,7 @@ impl parsed_imports(
 ) -> list[tuple[Import, (list[str] | None)]] {
     (mod, had_error) = parse_woven(host.read_source(path), path, None, []);
     if had_error {
-        raise KernelError(
-            f"{path} does not parse; fix it before running `jac arch`"
-        );
+        raise KernelError(f"{path} does not parse; fix it before running `jac arch`");
     }
     out: list[tuple[Import, (list[str] | None)]] = [];
     for imp in mod.get_all_sub_nodes(typ=Import) {

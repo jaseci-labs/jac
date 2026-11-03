@@ -1,6 +1,3 @@
-"""The source facts `jac fix` migrates by, answered inside the kernel session:
-retired placement markers found by the lexer, the codespace of each top-level
-element and import, and the declarations a serving app exposes."""
 import os;
 
 glob ELEMENT_KEYWORDS: tuple[str, ...] = (

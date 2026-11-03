@@ -443,7 +443,9 @@ impl lint(
             }
             float_out: (ToolOutput | None) = None;
             if float_target {
-                float_out = session.format_text(float_target, float_text, auto_lint=True);
+                float_out = session.format_text(
+                    float_target, float_text, auto_lint=True
+                );
                 if float_out.errors or not float_out.text {
                     for error in float_out.errors {
                         console.error(diagnostic_text(error));
@@ -1457,9 +1459,7 @@ impl `test(
     }
     iso_pats = [_rooted(p) for p in (cfg.`test.isolate if cfg else [])];
     ser_pats = [_rooted(p) for p in (cfg.`test.serial if cfg else [])];
-    bytecode_pats = [
-        _rooted(p) for p in (cfg.`test.bytecode_compiler if cfg else [])
-    ];
+    bytecode_pats = [_rooted(p) for p in (cfg.`test.bytecode_compiler if cfg else [])];
     for fp in paths {
         if not Path(fp).exists() {
             console.error(
@@ -1571,7 +1571,9 @@ impl explain(topic: str, filename: str, output: str = "", memory: str = "") -> i
     path = os.path.abspath(filename);
     if topic == "placement" {
         import from jaclang.cli.check_report { print_placement_report }
-        placed = call_check(check_request_for([path], CompileOptions(), placements=True));
+        placed = call_check(
+            check_request_for([path], CompileOptions(), placements=True)
+        );
         for err in placed.errors {
             console.print(alert_of(err).pretty_print());
         }
@@ -1765,7 +1767,10 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                     closure=bool(opts.get("closure"))
                 )
             );
-            (found_errors, found_warnings) = (checked_view.errors, checked_view.warnings);
+            (found_errors, found_warnings) = (
+                checked_view.errors,
+                checked_view.warnings
+            );
             if opts.get("named") {
                 project_dir = os.path.realpath(
                     str(opts["project_root"])

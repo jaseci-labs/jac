@@ -36,7 +36,9 @@ def write_import_library(
     free_text_array(c_imports, len(import_names));
     message = take_text(err);
     if failed != 0 {
-        raise RuntimeError(f"cannot write the import library for {dll_name}: {message}");
+        raise RuntimeError(
+            f"cannot write the import library for {dll_name}: {message}"
+        );
     }
 }
 

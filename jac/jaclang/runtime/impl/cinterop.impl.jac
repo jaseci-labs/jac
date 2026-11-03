@@ -745,7 +745,9 @@ impl CFunction._to_c(
             return value;
         }
         raise TypeError(
-            f"a C pointer argument takes a ptr or an address, not {type(value).__name__}"
+            f"a C pointer argument takes a ptr or an address, not {type(
+                value
+            ).__name__}"
         );
     }
     if kind == "pinned" {

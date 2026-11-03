@@ -321,7 +321,9 @@ impl JacCompiler._host_compile(
         self._closure_opts = enclosing_closure;
         if internal {
             if self.selfhost.at_outermost_bytecode() {
-                self.selfhost.evict_unit(full_target, result, collect=self.unit_collect);
+                self.selfhost.evict_unit(
+                    full_target, result, collect=self.unit_collect
+                );
             }
             self.selfhost.exit_bytecode();
         }
@@ -556,9 +558,7 @@ impl JacCompiler._restore_sections(
     placement_bytes = secs.get(SEC_PLACEMENT);
     if placement_bytes is not None {
         import from jaclang.compiler.placement.placement { summary_store }
-        import from jaclang.compiler.placement.placement_export {
-            summary_from_bytes
-        }
+        import from jaclang.compiler.placement.placement_export { summary_from_bytes }
         import from jaclang.compiler.driver.jir { JirPaths, SEC_PATH_ROOT }
         paths = JirPaths.from_bytes(secs.get(SEC_PATH_ROOT), base_dir);
         restored = summary_from_bytes(placement_bytes, path_mapper=paths.resolve);

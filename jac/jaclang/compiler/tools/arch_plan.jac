@@ -1,6 +1,3 @@
-"""`jac arch` plans, made inside the kernel session: the wiring an
-archwire.jac should hold, read from the modules it governs. The host writes
-what a plan holds; nothing here touches the file system beyond reading."""
 import json;
 import os;
 

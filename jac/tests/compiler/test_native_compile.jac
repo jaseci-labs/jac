@@ -357,7 +357,11 @@ test "a kernel unit whose Python the compiler rejects reports E5043" {
             'with entry {\n    x = 1;\n    if x {\n        return;\n    }\n    print(x);\n}\n'
         );
         result = kernel_compile_file(entry_file, compile_options());
-        rejected = [d.message for d in result.errors if d.code == "E5043"];
+        rejected = [
+            d.message
+            for d in result.errors
+            if d.code == "E5043"
+        ];
         assert rejected , diagnostics_text(result);
         assert "'return' outside function" in rejected[0] , rejected;
         program = JacProgram();
@@ -366,7 +370,8 @@ test "a kernel unit whose Python the compiler rejects reports E5043" {
             e.msg
             for e in program.errors_had
             if e.code is not None and e.code.code == "E5043"
-        ] == rejected;
+        ]
+            == rejected;
     }
 }
 
@@ -638,8 +643,12 @@ test "an integer literal wider than 64 bits compiles in the kernel" {
         );
         unit = compiled_entry(str(base / 'main.jac'));
         consts = set(
-            c for c in unit_code(unit).co_consts if isinstance(c, int) and not isinstance(c, bool)
+            c
+            for c in unit_code(unit).co_consts
+            if isinstance(c, int) and not isinstance(c, bool)
         );
-        assert {wide, 9223372036854775808, 0xFFFFFFFFFFFFFFFF} <= consts , sorted(consts);
+        assert {wide, 9223372036854775808, 0xFFFFFFFFFFFFFFFF} <= consts , sorted(
+            consts
+        );
     }
 }

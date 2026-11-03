@@ -296,7 +296,9 @@ impl _TomlParser.parse_array_table_header {
         table[last] = array_of_tables;
         self.arrays.add(full);
     } elif full not in self.arrays {
-        raise self.error("Cannot append to (" + ".".join(keys) + "): not an array of tables");
+        raise self.error(
+            "Cannot append to (" + ".".join(keys) + "): not an array of tables"
+        );
     }
     items: list[any] = table[last];
     element: dict[str, any] = {};
@@ -383,10 +385,11 @@ impl _TomlParser.parse_value(path: str) -> any {
     if self.starts("inf") or self.starts("nan") {
         return self.parse_special_float("");
     }
-    if (c == "+" or c == "-") and (
-        self.src.startswith("inf", self.pos + 1)
-        or self.src.startswith("nan", self.pos + 1)
-    ) {
+    if (c == "+" or c == "-")
+        and (
+            self.src.startswith("inf", self.pos + 1)
+            or self.src.startswith("nan", self.pos + 1)
+        ) {
         self.pos += 1;
         return self.parse_special_float(c);
     }
@@ -511,7 +514,8 @@ impl _TomlParser.parse_multiline_basic_string -> str {
         if c == "\\" {
             parts.append(self.src[start:self.pos]);
             probe = self.pos + 1;
-            while probe < self.n and (self.src[probe] == " " or self.src[probe] == "\t") {
+            while probe < self.n
+                and (self.src[probe] == " " or self.src[probe] == "\t") {
                 probe += 1;
             }
             if probe < self.n and self.src[probe] == "\n" {

@@ -634,9 +634,7 @@ impl CatalogWriter._type_ident_uncached(t: TypeBase) -> any {
                     p.name or "",
                     int(p.category) if p.category is not None else 0,
                     int(p.param_kind),
-                    self._type_ident(p.param_type)
-                        if p.param_type is not None
-                        else -1,
+                    self._type_ident(p.param_type) if p.param_type is not None else -1,
                     bool(p.is_self),
                     bool(p.is_cls),
                     bool(p.has_default or p.default_value is not None),

@@ -45,7 +45,9 @@ impl add_symbol(name: str, address: int) {
 
 impl load_library_permanently(filename: str) {
     err = c_char_p(None);
-    if shim().LLVMPY_LoadLibraryPermanently(filename.encode("utf-8"), ctypes.byref(err)) {
+    if shim().LLVMPY_LoadLibraryPermanently(
+        filename.encode("utf-8"), ctypes.byref(err)
+    ) {
         raise RuntimeError(take_error(err));
     }
 }
@@ -53,7 +55,9 @@ impl load_library_permanently(filename: str) {
 impl create_mcjit_compiler(
     module: ModuleRef, target_machine: TargetMachine, use_lmm: (bool | None) = None
 ) -> ExecutionEngine {
-    lmm = use_lmm if use_lmm is not None else platform.machine() in ("arm64", "aarch64");
+    lmm = use_lmm
+        if use_lmm is not None
+        else platform.machine() in ("arm64", "aarch64");
     err = c_char_p(None);
     handle = shim().LLVMPY_CreateMCJITCompiler(
         c_void_p(int(module.live())),

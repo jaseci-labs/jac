@@ -1,5 +1,3 @@
-"""Editor queries over an analysed module, answered inside the kernel session.
-Positions are 1-based lines and columns, the compiler's own convention."""
 import os;
 import re;
 
@@ -9,9 +7,8 @@ glob STRING_TOKEN_KINDS: tuple[TokenKind, ...] = (
          TokenKind.F_TEXT_SQ,
          TokenKind.F_TEXT_TDQ,
          TokenKind.F_TEXT_TSQ
-     );
-
-glob LOOP_SCOPES: tuple[type, ...] = (
+     ),
+     LOOP_SCOPES: tuple[type, ...] = (
          uni.IfStmt,
          uni.ElseStmt,
          uni.WhileStmt,
@@ -28,7 +25,9 @@ def belongs_to(nd: uni.UniNode, path: str) -> bool;
 
 def symbol_nodes(module: uni.Module, path: str) -> list[uni.NameAtom];
 
-def token_at(module: uni.Module, path: str, line: int, col: int) -> (uni.NameAtom | None);
+def token_at(
+    module: uni.Module, path: str, line: int, col: int
+) -> (uni.NameAtom | None);
 
 def node_at(
     module: uni.Module, line: int, col: int, path: str = ""
@@ -46,7 +45,9 @@ def definition_spans(program: JacProgram, nd: uni.NameAtom) -> list[SourceSpan];
 
 def module_spec_target(mp: uni.ModulePath) -> str;
 
-def string_import_definition(module: uni.Module, line: int, col: int) -> list[SourceSpan];
+def string_import_definition(
+    module: uni.Module, line: int, col: int
+) -> list[SourceSpan];
 
 def dts_declaration(dts_path: str, name: str) -> (SourceSpan | None);
 
@@ -78,7 +79,9 @@ def completion_items(
     program: JacProgram, module: uni.Module, path: str, line: int, col: int
 ) -> list[CompletionItem];
 
-def inlay_hint_rows(module: uni.Module, first_line: int, last_line: int) -> list[InlayHint];
+def inlay_hint_rows(
+    module: uni.Module, first_line: int, last_line: int
+) -> list[InlayHint];
 
 def symbol_kind(nd: uni.UniNode) -> str;
 

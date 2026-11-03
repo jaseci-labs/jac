@@ -182,7 +182,10 @@ impl edit_symbol_rows(text: str, path: str) -> list[EditSymbol] {
                 }
                 member_spans.append((ab.loc.first_line, ab.loc.last_line));
                 put(
-                    f"{name}.{ab.name_ref.sym_name}", "method", ab, node_text(ab.signature)
+                    f"{name}.{ab.name_ref.sym_name}",
+                    "method",
+                    ab,
+                    node_text(ab.signature)
                 );
             }
             own_lines: list[str] = [];
@@ -284,9 +287,7 @@ impl wiring_fact_texts(recs: list[WireRec]) -> dict[tuple[str, ...], str] {
     return found;
 }
 
-impl wiring_change_rows(
-    old_text: str, new_text: str, path: str
-) -> list[WiringChange] {
+impl wiring_change_rows(old_text: str, new_text: str, path: str) -> list[WiringChange] {
     out: list[WiringChange] = [];
     old_rec = parse_records(old_text, path) if old_text.strip() else (False, [], []);
     new_rec = parse_records(new_text, path);
@@ -447,7 +448,9 @@ impl wiring_model_of(arch_path: str) -> WiringModel {
     real = os.path.realpath(arch_path);
     spec = wiring_for_path(real);
     if spec is None {
-        raise KernelError(f"{real} governs no wiring: it is not an archwire.jac in reach");
+        raise KernelError(
+            f"{real} governs no wiring: it is not an archwire.jac in reach"
+        );
     }
     model = WiringModel(arch_path=real, parsed=not spec.parse_failed);
     known: dict[str, WiringModule] = {};

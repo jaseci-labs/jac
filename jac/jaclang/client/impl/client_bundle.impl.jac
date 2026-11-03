@@ -82,7 +82,9 @@ impl ClientBundleBuilder._compile_to_js(
     program = client_program(self.program);
     root_dir = str(source_root.resolve())
         if source_root is not None
-        else (program.options.client_source_root if program.options is not None else "");
+        else (
+            program.options.client_source_root if program.options is not None else ""
+        );
     mark = len(program.errors_had);
     artifact = kernel_client_artifact(
         program,

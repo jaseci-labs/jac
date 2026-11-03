@@ -972,7 +972,9 @@ impl PyAstBuilder.part_node(cg: CgNode) -> ast_node {
         );
     }
     if cls == "TypeIgnore" {
-        return TypeIgnore(lineno=self.number_at(cg, "lineno"), tag=self.text_at(cg, "tag"));
+        return TypeIgnore(
+            lineno=self.number_at(cg, "lineno"), tag=self.text_at(cg, "tag")
+        );
     }
     raise self.fail(cg, "has no lowering into JacPython's AST");
 }

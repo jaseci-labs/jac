@@ -99,7 +99,8 @@ def micro_suite_combined_test(rel_path: str) -> None {
     before = ast3.dump(host_python_ast(code_gen), indent=2);
     unparsed = unparse_module(code_gen);
     code_gen_unparsed = JacProgram().compile(use_str=unparsed, file_path=filename);
-    assert code_gen_unparsed is not None and code_gen_unparsed.gen.py_recipe is not None , (
+    assert code_gen_unparsed is not None
+        and code_gen_unparsed.gen.py_recipe is not None , (
         f"Re-compilation from unparse failed for {filename}"
     );
     after_unparse = ast3.dump(host_python_ast(code_gen_unparsed), indent=2);

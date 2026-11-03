@@ -25,7 +25,13 @@ def enforced_codes(fixture: str) -> list[str] {
     result = kernel_compile_file(
         path, CompileOptions(aot_mode=True, memory_profile="nogc")
     );
-    return sorted(set(code for code in error_codes(result) if code));
+    return sorted(
+        set(
+            code
+            for code in error_codes(result)
+            if code
+        )
+    );
 }
 
 test "clib extern decls with width and str params are exempt from the fence" {

@@ -31,7 +31,9 @@ impl write_native_product(
     request.refuse_demoted = not shared;
     result = kernel_native_build(program, request);
     if not result.ok() {
-        raise ValueError('\n'.join([diagnostic_text(error) for error in result.errors]));
+        raise ValueError(
+            '\n'.join([diagnostic_text(error) for error in result.errors])
+        );
     }
     if not shared and result.python_imports {
         raise ValueError('Standalone native products cannot import Python');

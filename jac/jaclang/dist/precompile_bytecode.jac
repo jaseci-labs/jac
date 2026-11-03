@@ -42,17 +42,12 @@ def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, byte
 
 def precompile_native_unit(jac_path: str) -> str;
 
-def precompile_context(
-    jac_path: str, pkg_root: str, app: str = ""
-) -> CompileOptions;
+def precompile_context(jac_path: str, pkg_root: str, app: str = "") -> CompileOptions;
 
 def raised_at(err: BaseException) -> str;
 
 def precompile_unit(
-    jac_path: str,
-    pkg_root: str,
-    embed_src: bool = False,
-    app: str = ""
+    jac_path: str, pkg_root: str, embed_src: bool = False, app: str = ""
 ) -> bytes | None;
 
 def _precompile_unit(

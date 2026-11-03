@@ -12,13 +12,17 @@ impl span_range(span: SourceSpan) -> lspt.Range {
 }
 
 impl span_location(span: SourceSpan) -> lspt.Location {
-    return lspt.Location(uri=uris.from_fs_path(span.path) or "", range=span_range(span));
+    return lspt.Location(
+        uri=uris.from_fs_path(span.path) or "", range=span_range(span)
+    );
 }
 
 impl lsp_diagnostic(diag: KernelDiagnostic) -> lspt.Diagnostic {
     return lspt.Diagnostic(
         range=span_range(diag.span),
-        message=(diag.message + "\n\nhelp: " + diag.help) if diag.help else diag.message,
+        message=(diag.message + "\n\nhelp: " + diag.help)
+            if diag.help
+            else diag.message,
         severity=lspt.DiagnosticSeverity.Error
             if diag.severity == "error"
             else lspt.DiagnosticSeverity.Warning,

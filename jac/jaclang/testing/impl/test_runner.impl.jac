@@ -1168,7 +1168,9 @@ impl run_without_kernel(
         if name
     ];
     env = dict(os.environ);
-    env["JAC_KIT_OMIT"] = ",".join([*omitted, "kernel"] if "kernel" not in omitted else omitted);
+    env["JAC_KIT_OMIT"] = ",".join(
+        [*omitted, "kernel"] if "kernel" not in omitted else omitted
+    );
     sys.stdout.write(
         f"\n{len(files)} test file(s) inspect compiler internals: running them on "
         "the bytecode-hosted compiler, with the kernel left out\n"

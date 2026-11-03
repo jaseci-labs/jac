@@ -31,7 +31,9 @@ impl python_text(path: str, program: JacProgram) -> str {
     }
     text = python_source(path, program)[0];
     if is_module_cache_valid(real, get_module_cache_path(real)) {
-        write_module_cache(real, None, extra_sections={SEC_PYSRC: text.encode('utf-8')});
+        write_module_cache(
+            real, None, extra_sections={SEC_PYSRC: text.encode('utf-8')}
+        );
     }
     return text;
 }

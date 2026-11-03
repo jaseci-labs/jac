@@ -622,7 +622,6 @@ obj KernelSession {
     def compile_for(real: str, target: (tuple[str, str, str] | None)) -> uni.Module;
     def own_files(real: str) -> set[str];
     def formatted(path: str, auto_lint: bool) -> ToolOutput;
-
     def update(path: str, text: str);
     def close(path: str);
     def forget(path: str);
@@ -662,7 +661,6 @@ obj KernelSession {
 
     def npm_sources(project_root: str) -> list[NpmSource];
     def definition_rows(path: str) -> list[str];
-
     def compile(request: CompileRequest) -> CompileResult;
     def check(request: CheckRequest) -> CheckResult;
     def module_outline(path: str) -> ModuleOutline;
@@ -728,7 +726,9 @@ def node_span(loc: CodeLocInfo) -> SourceSpan;
 def other_compiler_diagnostic(path: str, tree: str) -> KernelDiagnostic;
 
 def collect_diagnostics(
-    program: JacProgram, errors: list[KernelDiagnostic], warnings: list[KernelDiagnostic]
+    program: JacProgram,
+    errors: list[KernelDiagnostic],
+    warnings: list[KernelDiagnostic]
 );
 
 def merge_app_diagnostics(

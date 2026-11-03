@@ -360,7 +360,9 @@ impl CompileOptions.to_dict -> dict[str, any] {
         "no_cgen": self.no_cgen,
         "native_parity": self.native_parity,
         "native_required": self.native_required,
-        "native_require": (list(self.native_require) if self.native_require is not None else None),
+        "native_require": (
+            list(self.native_require) if self.native_require is not None else None
+        ),
         "iface_ok": self.iface_ok,
         "need_full_ast": self.need_full_ast,
         "native_tree_demand": self.native_tree_demand,
@@ -377,8 +379,12 @@ impl CompileOptions.to_dict -> dict[str, any] {
         "na_gc_mode": self.na_gc_mode,
         "nogc_enforce_all": self.nogc_enforce_all,
         "na_borrow_infer": self.na_borrow_infer,
-        "memory_enforce": (list(self.memory_enforce) if self.memory_enforce is not None else None),
-        "memory_exempt": (list(self.memory_exempt) if self.memory_exempt is not None else None),
+        "memory_enforce": (
+            list(self.memory_enforce) if self.memory_enforce is not None else None
+        ),
+        "memory_exempt": (
+            list(self.memory_exempt) if self.memory_exempt is not None else None
+        ),
         "native_threads": self.native_threads,
         "rc_debug_codegen": self.rc_debug_codegen,
         "native_target": self.native_target,

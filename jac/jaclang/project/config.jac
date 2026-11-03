@@ -23,11 +23,23 @@ obj PersonConfig {
 }
 
 glob RUN_KEYS: list[str] = ["session", "main", "cache", "diagnostics"],
-     NATIVE_KEYS: list[str] = ["link_mode", "require", "target", "opt", "debug", "threads"],
+     NATIVE_KEYS: list[str] = [
+         "link_mode",
+         "require",
+         "target",
+         "opt",
+         "debug",
+         "threads"
+     ],
      MEMORY_KEYS: list[str] = ["profile", "enforce", "exempt"],
      MEMORY_PROFILES: list[str] = ["managed", "rc", "nogc"],
      PLACEMENT_KEYS: list[str] = ["default", "pins"],
-     PLACEMENT_ALIASES: dict[str, str] = {"sv": "server", "na": "native", "server": "server", "native": "native"},
+     PLACEMENT_ALIASES: dict[str, str] = {
+         "sv": "server",
+         "na": "native",
+         "server": "server",
+         "native": "native"
+     },
      BUILD_KEYS: list[str] = ["dir"],
      BUILD_RETIRED: dict[str, str] = {
          "default_codespace": "[placement] default",
@@ -129,7 +141,14 @@ glob RUN_KEYS: list[str] = ["session", "main", "cache", "diagnostics"],
          "warn_native_seams",
          "untyped-external"
      ],
-     DOT_KEYS: list[str] = ["depth", "traverse", "bfs", "edge_limit", "node_limit", "format"],
+     DOT_KEYS: list[str] = [
+         "depth",
+         "traverse",
+         "bfs",
+         "edge_limit",
+         "node_limit",
+         "format"
+     ],
      CACHE_KEYS: list[str] = ["enabled", "dir"],
      STORAGE_KEYS: list[str] = [
          "type",
@@ -144,7 +163,12 @@ glob RUN_KEYS: list[str] = ["session", "main", "cache", "diagnostics"],
      ],
      ENVIRONMENT_KEYS: list[str] = ["default_profile"],
      CLIENT_ERRORS_KEYS: list[str] = ["verbose"],
-     DATABASE_KEYS: list[str] = ["indexes", "retention_days", "postgres_dist", "postgres_version"],
+     DATABASE_KEYS: list[str] = [
+         "indexes",
+         "retention_days",
+         "postgres_dist",
+         "postgres_version"
+     ],
      NETWORK_KEYS: list[str] = ["offline"],
      TOOLCHAINS_KEYS: list[str] = ["system"],
      DEV_KEYS: list[str] = [
@@ -482,7 +506,9 @@ def interpolate_env_vars(
     sink: list[UnresolvedRef] | None = None
 ) -> str;
 
-def _env_reference(body: str, environ: dict[str, str]) -> tuple[str, UnresolvedRef | None];
+def _env_reference(
+    body: str, environ: dict[str, str]
+) -> tuple[str, UnresolvedRef | None];
 
 def resolve_env_refs(
     data: any, environ: dict[str, str] | None = None, path: str = ""

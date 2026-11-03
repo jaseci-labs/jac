@@ -391,9 +391,7 @@ impl MTIRGenPass._extract_tools_from_expr(
                     }
 
                     if tool_sym {
-                        tool_ability = tool_sym.decl.name_of
-                            if tool_sym.decl
-                            else None;
+                        tool_ability = tool_sym.decl.name_of if tool_sym.decl else None;
                         if tool_ability and isinstance(tool_ability, Ability) {
                             tool_info: FunctionInfo = (
                                 self._extract_method_info(tool_ability)

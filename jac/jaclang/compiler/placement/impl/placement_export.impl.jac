@@ -229,9 +229,7 @@ impl collect_placement_rows(prog: JacProgram) -> dict[str, dict[str, any]] {
                 classify_client_import_item,
                 is_client_boundary_import
             }
-            import from jaclang.compiler.symbol_utils {
-                resolve_import_source_module
-            }
+            import from jaclang.compiler.symbol_utils { resolve_import_source_module }
             if is_client_boundary_import(stmt) {
                 src = resolve_import_source_module(prog, stmt);
                 if src is not None {

@@ -123,7 +123,8 @@ test "a bundled native import is lowered from its own definition" {
         (eng, _fx) = compile_native('rounding.jac', str(base));
         assert get_func(eng, "floored", ctypes.c_int64, ctypes.c_double)(2.5) == 2;
         assert get_func(eng, "floored", ctypes.c_int64, ctypes.c_double)(-2.5) == -3;
-        assert get_func(eng, "floored_again", ctypes.c_int64, ctypes.c_double)(7.5) == 7;
+        assert get_func(eng, "floored_again", ctypes.c_int64, ctypes.c_double)(7.5)
+            == 7;
         assert get_func(eng, "rooted", ctypes.c_double, ctypes.c_double)(16.0) == 4.0;
     }
 }

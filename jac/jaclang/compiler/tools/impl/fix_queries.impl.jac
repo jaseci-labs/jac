@@ -52,7 +52,9 @@ impl collect_block_claims(
                 if k < body_end and tokens[k].value == 'from' {
                     tgt = dotted_target(tokens, k + 1);
                     if tgt {
-                        res.sv_imports.append(ImportSpace(target=tgt, line=tok.loc.line));
+                        res.sv_imports.append(
+                            ImportSpace(target=tgt, line=tok.loc.line)
+                        );
                     }
                 }
             } elif tok.value in NAMED_ELEMENT_KEYWORDS {
@@ -225,7 +227,9 @@ impl import_spaces(module: uni.Module) -> list[ImportSpace] {
                 decl = bound.sym.decl.loc;
                 import_of.setdefault(
                     (decl.first_line, decl.col_start, bound.value), []
-                ).append(key);
+                ).append(
+                    key
+                );
             }
         }
     }
@@ -242,7 +246,9 @@ impl import_spaces(module: uni.Module) -> list[ImportSpace] {
                 continue;
             }
             decl = nm.sym.decl.loc;
-            for owner in import_of.get((decl.first_line, decl.col_start, nm.value), []) {
+            for owner in import_of.get(
+                (decl.first_line, decl.col_start, nm.value), []
+            ) {
                 read_by[owner].update(spaces);
             }
         }
@@ -467,7 +473,9 @@ impl served_access_plan(proj_root: str) -> AccessPlan {
                     continue;
                 }
                 module_path = imp.from_loc;
-                if imp.is_absorb and imp.items and isinstance(imp.items[0], uni.ModulePath) {
+                if imp.is_absorb
+                    and imp.items
+                    and isinstance(imp.items[0], uni.ModulePath) {
                     module_path = imp.items[0];
                 }
                 if module_path is None {

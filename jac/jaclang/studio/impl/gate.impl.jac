@@ -645,7 +645,9 @@ impl EditGate.review(path: str, new_text: str, cancelled: any = None) -> EditRev
         try {
             session = self.client();
             if is_arch_file(real) {
-                rv.arch_changes = wiring_changes(session, old_text or "", new_text, real);
+                rv.arch_changes = wiring_changes(
+                    session, old_text or "", new_text, real
+                );
             } else {
                 rv.symbol_changes = symbol_changes(
                     session, old_text or "", new_text, real

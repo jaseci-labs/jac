@@ -498,4 +498,3 @@ test "the chess AOT binary stays inside its recorded run envelope" {
         );
     }
 }
-

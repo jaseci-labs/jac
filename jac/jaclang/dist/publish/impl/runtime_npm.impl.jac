@@ -155,7 +155,9 @@ impl _runtime_source_path(framework: str = "") -> Path {
 
 impl _compile_cl_to_js(src: Path) -> str {
     real = os.path.realpath(str(src));
-    compiled = kernel_compile(JacProgram(), [real], CompileOptions(), products=["client_js"]);
+    compiled = kernel_compile(
+        JacProgram(), [real], CompileOptions(), products=["client_js"]
+    );
     if not compiled.ok() {
         formatted = "\n".join([diagnostic_text(err) for err in compiled.errors]);
         raise ValueError(f"Failed to compile {src.name}:\n{formatted}");

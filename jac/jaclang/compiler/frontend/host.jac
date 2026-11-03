@@ -139,7 +139,6 @@ obj HostServices {
     ) -> (bool | None);
 
     def native_session_active(program: JacProgram) -> bool;
-
     def format_file(file_path: str, auto_lint: bool = False) -> JacProgram;
     def format_source(
         source_str: str, file_path: str, auto_lint: bool = False

@@ -961,9 +961,7 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
                 ) {
                     resolved = facts.from_loc_resolved;
                     if (resolved is not None and resolved.endswith('.jac')) {
-                        facts.pinned_server = (
-                            config_module_pin(resolved) == 'server'
-                        );
+                        facts.pinned_server = config_module_pin(resolved) == 'server';
                     }
                 }
                 if (

@@ -1,6 +1,3 @@
-"""The AST tool's views of one file, answered inside the kernel session. The
-parsed views read the syntax tree alone; the analysed views read a module the
-session compiled."""
 import json;
 
 glob PARSED_VIEWS: tuple[str, ...] = ("tree", "json"),

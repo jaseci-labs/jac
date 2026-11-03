@@ -79,7 +79,6 @@ class ObjectRef {
     }
 
     def _dispose(self: ObjectRef) {}
-
     def close(self: ObjectRef) {
         if not self.closed {
             self._dispose();

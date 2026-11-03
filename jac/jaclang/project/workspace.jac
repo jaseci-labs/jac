@@ -34,4 +34,6 @@ def _npm_names_of(config: JacConfig) -> set[str];
 def _chain_stamp(root_dir: str) -> tuple[float, ...];
 def _implicit_kind(root_dir: str, kind: str) -> str;
 def persistence_namespace(raw: any, project_name: str) -> str;
-def _build_workspace(root_dir: str, toml_path: str, config: JacConfig) -> WorkspaceSpec;
+def _build_workspace(
+    root_dir: str, toml_path: str, config: JacConfig
+) -> WorkspaceSpec;

@@ -174,7 +174,9 @@ class TargetMachine(ObjectRef) {
         return self._emit_to_memory(module, False).decode("utf-8");
     }
 
-    def _emit_to_memory(self: TargetMachine, module: ModuleRef, use_object: bool) -> bytes {
+    def _emit_to_memory(
+        self: TargetMachine, module: ModuleRef, use_object: bool
+    ) -> bytes {
         err: ptr[u8] = ptr[u8]();
         buffer = LLVMPY_TargetMachineEmitToMemory(
             self.live(), module.live(), i32(1 if use_object else 0), &mut err

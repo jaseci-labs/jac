@@ -282,7 +282,9 @@ impl dts_declaration(dts_path: str, name: str) -> (SourceSpan | None) {
         patterns = [
             r"(?m)^[ \t]*(?:export[ \t]+)?(?:declare[ \t]+)?(?:abstract[ \t]+)?"
             r"(?:const|let|var|function|class|interface|enum|namespace|type)"
-            r"[ \t]+(" + escaped + r")\b",
+            r"[ \t]+("
+                + escaped
+                + r")\b",
             r"export[ \t]+(?:type[ \t]+)?\{[^{}]*?\b(" + escaped + r")\b"
         ];
     }
@@ -563,7 +565,9 @@ impl outline(nd: uni.UniScopeNode) -> list[DocumentSymbol] {
             continue;
         }
         out.append(
-            DocumentSymbol(name=key, kind=symbol_kind(item.decl), span=node_span(item.decl.loc))
+            DocumentSymbol(
+                name=key, kind=symbol_kind(item.decl), span=node_span(item.decl.loc)
+            )
         );
     }
     for sub in nd.kid_scope {

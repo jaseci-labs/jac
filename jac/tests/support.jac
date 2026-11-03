@@ -16,7 +16,11 @@ import from pathlib { Path }
 import type from jaclang.compiler.driver.compile_options { CompileOptions }
 import type from jaclang.compiler.frontend.unitree { Module }
 import type from jaclang.compiler.backends.native.llvm.jit { ExecutionEngine }
-import type from jaclang.compiler.kernel_api { CheckResult, CompileResult, CompiledUnit }
+import type from jaclang.compiler.kernel_api {
+    CheckResult,
+    CompileResult,
+    CompiledUnit
+}
 
 # `tests/`: the directory holding this file.
 glob TESTS_DIR: str = str(Path(__file__).resolve().parent),
@@ -532,8 +536,7 @@ def kernel_check_file(
         closure
     );
     request.sources = {
-        str(Path(key).resolve()): text
-        for (key, text) in (sources or {}).items()
+        str(Path(key).resolve()): text for (key, text) in (sources or {}).items()
     };
     return call_check(request);
 }

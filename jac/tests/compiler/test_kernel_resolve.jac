@@ -269,9 +269,7 @@ test "a checkout without a native toolchain says why it has no kernel" {
 }
 
 test "a current checkout kernel resolves silently and reports where it came from" {
-    mine = Probe.hit(
-        Source.CHECKOUT, "/tree/jac_kernel.so", {"plan_digest": "p"}
-    );
+    mine = Probe.hit(Source.CHECKOUT, "/tree/jac_kernel.so", {"plan_digest": "p"});
     with _toolchain() {
         with patch.object(KernelArtifact, "probe_checkout", return_value=mine) {
             with patch.object(KernelArtifact, "probe_kit", side_effect=_never) {
@@ -308,11 +306,11 @@ def _route_to(lib: str, check: bool = False) -> tuple[(KernelLoadError | None), 
     try {
         with _toolchain(), patch.object(router, "_omitted", return_value=frozenset()), patch.object(
             resolver, "_from_sealed_image", return_value=None
-        ), patch.object(
-            KernelArtifact, "probe_checkout", return_value=mine
-        ), patch.object(resolver, "_LOADED", []), patch.object(
-            sys, "path", list(sys.path)
-        ), patch.dict(sys.modules, modules, clear=True), patch.object(sys, "stderr", err) {
+        ), patch.object(KernelArtifact, "probe_checkout", return_value=mine), patch.object(
+            resolver, "_LOADED", []
+        ), patch.object(sys, "path", list(sys.path)), patch.dict(
+            sys.modules, modules, clear=True
+        ), patch.object(sys, "stderr", err) {
             try {
                 if check {
                     kernel_check.kernel_check(JacProgram(), app, kernel_options());
@@ -491,9 +489,7 @@ test "the kit's kernel runs in place although the kit stripped it after its side
             artifact_sha256=hashlib.sha256(b"the kernel before strip").hexdigest()
         );
         Path(bundled + ".layout.json").write_text(json.dumps(sidecar));
-        shipped = Image(
-            record={"path": "compiler/jac_kernel.so", "sha256": stripped}
-        );
+        shipped = Image(record={"path": "compiler/jac_kernel.so", "sha256": stripped});
         with patch("jaclang.artifacts.kit.kit_image", return_value=(site, shipped)) {
             probe = KernelArtifact().probe_kit();
         }
@@ -507,10 +503,7 @@ test "the kit's kernel runs in place although the kit stripped it after its side
             "running the kit's kernel writes nothing"
         );
         forged = Image(
-            record={
-                "path": "compiler/jac_kernel.so",
-                "sha256": "not this library"
-            }
+            record={"path": "compiler/jac_kernel.so", "sha256": "not this library"}
         );
         with patch("jaclang.artifacts.kit.kit_image", return_value=(site, forged)) {
             assert KernelArtifact().probe_kit().found is None , (
@@ -572,11 +565,11 @@ test "a kernel build publishes its library and sidecar and sweeps its stage" {
         lib = os.path.join(tmp, "jac_kernel.so");
         def fake_link(destination: str, **kwargs: any) -> LinkResult {
             Path(destination).write_bytes(b"fresh kernel");
-            Path(destination + ".layout.json").write_text(json.dumps({"unit_sources": {}}));
-            Path(destination + ".target.json").write_text(json.dumps({"units": []}));
-            return LinkResult(
-                output_path=destination, plan_digest="p", sha256="s"
+            Path(destination + ".layout.json").write_text(
+                json.dumps({"unit_sources": {}})
             );
+            Path(destination + ".target.json").write_text(json.dumps({"units": []}));
+            return LinkResult(output_path=destination, plan_digest="p", sha256="s");
         }
         with patch.object(stage0, "link_kernel", side_effect=fake_link) {
             result = resolver.build_kernel(lib);
@@ -585,11 +578,9 @@ test "a kernel build publishes its library and sidecar and sweeps its stage" {
         assert Path(lib).read_bytes() == b"fresh kernel";
         assert read_sidecar(lib) is not None , "the published sidecar travels with the library";
         assert sorted(p.name for p in Path(tmp).iterdir())
-            == [
-                "jac_kernel.so",
-                "jac_kernel.so.layout.json",
-                "jac_kernel.so.lock"
-            ] , ("the stage file, its layout sidecar, and its target spec are swept");
+            == ["jac_kernel.so", "jac_kernel.so.layout.json", "jac_kernel.so.lock"] , (
+            "the stage file, its layout sidecar, and its target spec are swept"
+        );
     }
 }
 
@@ -599,7 +590,9 @@ test "a failed kernel build publishes nothing and sweeps its stage" {
         lib = os.path.join(tmp, "jac_kernel.so");
         def dead_link(destination: str, **kwargs: any) {
             Path(destination).write_bytes(b"torn kernel");
-            Path(destination + ".layout.json").write_text(json.dumps({"unit_sources": {}}));
+            Path(destination + ".layout.json").write_text(
+                json.dumps({"unit_sources": {}})
+            );
             Path(destination + ".target.json").write_text(json.dumps({"units": []}));
             raise RuntimeError("link died");
         }
@@ -674,7 +667,11 @@ def _entry_plan(pkg_root: str, declared: list[str], exported: list[str]) -> any 
             name: NativeExport(name=name, symbol=name, kind="function", is_pub=True)
             for name in exported
         },
-        demoted=[name for name in declared if name not in exported]
+        demoted=[
+            name
+            for name in declared
+            if name not in exported
+        ]
     );
     return LinkPlan(
         prog=JacProgram(),
@@ -708,7 +705,8 @@ test "a kernel plan that does not export the module's init function names it" {
         refuse_missing_entries(whole, pkg_root);
         demoted = _entry_plan(pkg_root, [KERNEL_INIT_SYMBOL], []);
         problems = missing_kernel_entries(demoted, pkg_root);
-        assert problems == [f"{KERNEL_INIT_SYMBOL} is not exported by {rel}"] , problems;
+        assert problems
+            == [f"{KERNEL_INIT_SYMBOL} is not exported by {rel}"] , problems;
         refused = "";
         try {
             refuse_missing_entries(demoted, pkg_root);

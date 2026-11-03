@@ -422,7 +422,9 @@ impl WheelBuilder.install_editable(src_dir: Path, site_pkgs: Path) -> Path {
 impl _module_is_client_source(source_path: Path) -> bool {
     return kernel_module_facts(
         JacProgramRt(), [str(source_path)], CompileOptions(symtab_ir_only=True)
-    ).module_fact(str(source_path)).client_declared;
+    ).module_fact(
+        str(source_path)
+    ).client_declared;
 }
 
 

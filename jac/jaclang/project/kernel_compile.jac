@@ -1,5 +1,3 @@
-"""The host's compile entry. Every compile is a request to the in-process
-kernel (`jac_kernel`); the host only builds requests and adopts results."""
 import os;
 import sys;
 
@@ -27,7 +25,9 @@ def span_of(record: SourceSpan) -> Span;
 def alert_of(diag: KernelDiagnostic) -> Alert;
 
 def adopt_diagnostics(
-    program: JacProgram, errors: list[KernelDiagnostic], warnings: list[KernelDiagnostic]
+    program: JacProgram,
+    errors: list[KernelDiagnostic],
+    warnings: list[KernelDiagnostic]
 );
 
 def kernel_compile(
@@ -59,7 +59,10 @@ def kernel_native_build(
 ) -> NativeBuildResult;
 
 def kernel_module_facts(
-    program: JacProgram, paths: list[str], options: CompileOptions, closure: bool = False
+    program: JacProgram,
+    paths: list[str],
+    options: CompileOptions,
+    closure: bool = False
 ) -> CheckResult;
 
 def kernel_module_spaces(

@@ -95,8 +95,7 @@ test "multiline single tok" {
 test "annotation tuple issue" {
     mypass = JacProgram().compile(os.path.join(LANG_FIXTURES, "slice_vals.jac"));
     assert "Annotated[Str, INT, BLAH]" in generated_python(mypass);
-    assert "tuple[int, Optional[type], Optional[tuple]]"
-        in generated_python(mypass);
+    assert "tuple[int, Optional[type], Optional[tuple]]" in generated_python(mypass);
 }
 
 test "obj hasvar initialization" {

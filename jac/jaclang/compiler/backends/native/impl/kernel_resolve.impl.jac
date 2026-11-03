@@ -98,15 +98,17 @@ impl _from_sealed_image -> (ResolvedKernel | None) {
         );
     }
     return ResolvedKernel(
-        path=lib_path,
-        source="sealed",
-        plan_digest=str(record.get("plan_digest", ""))
+        path=lib_path, source="sealed", plan_digest=str(record.get("plan_digest", ""))
     );
 }
 
 impl kernel_llvm_runpath(lib_path: str) -> str {
-    llvm_dir = os.path.join(jaclang_pkg_root(), "compiler", "backends", "native", "llvm");
-    return os.path.relpath(llvm_dir, os.path.dirname(os.path.abspath(lib_path))).replace(
+    llvm_dir = os.path.join(
+        jaclang_pkg_root(), "compiler", "backends", "native", "llvm"
+    );
+    return os.path.relpath(
+        llvm_dir, os.path.dirname(os.path.abspath(lib_path))
+    ).replace(
         os.sep, "/"
     );
 }
@@ -446,7 +448,7 @@ impl load_kernel_module(resolved: ResolvedKernel) -> any {
             f"  fix:    {remedy}"
         ) from err;
     }
-    version = getattr(module, "API_VERSION", None);
+    version = module?.API_VERSION;
     if version != KERNEL_API_VERSION {
         raise KernelLoadError(
             "jac: the native compiler kernel speaks another kernel API\n"
