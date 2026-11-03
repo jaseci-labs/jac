@@ -4067,7 +4067,8 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
                 mir_refusal("intrinsic", f"{name} of {held.type.render()}", nd)
             );
         }
-        if self.elem_kind(held.type.payload(), nd) not in (KIND_INT, KIND_FLOAT) {
+        if self.elem_kind(held.type.payload(), nd)
+            not in (KIND_INT, KIND_UINT, KIND_FLOAT) {
             raise MirRefused(
                 mir_refusal(
                     "intrinsic",

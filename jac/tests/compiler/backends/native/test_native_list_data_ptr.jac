@@ -1,4 +1,4 @@
-"""`__list_data_ptr(lst)`: the element buffer of an `int` or `float` list, for the `__mem_*` accessors.
+"""`__list_data_ptr(lst)`: the element buffer of an `int`, unsigned or `float` list, for the `__mem_*` accessors.
 
 The intrinsic is the address of the list's `data` field, as an integer: a
 write through it is the list's element, with no bounds check, so code that
@@ -59,6 +59,7 @@ test "writes through the buffer are the list's elements, and the other way" {
     for (name, x, want) in [
         ("int_roundtrip", 4, 41),
         ("float_roundtrip", 4, 18),
+        ("u64_roundtrip", 4, 41),
         ("field_operand", 4, 4),
         ("element_operand", 4, 4),
         ("after_growth", 100, 297)

@@ -13,6 +13,13 @@ def int_roundtrip(x: int) -> int {
     return l[2] * 10 + __mem_load_i64(p);
 }
 
+def u64_roundtrip(x: int) -> int {
+    l: list[u64] = [u64(1), u64(2), u64(3)];
+    p: int = __list_data_ptr(l);
+    __mem_store_i64(p + 16, x);
+    return int(l[2]) * 10 + __mem_load_i64(p);
+}
+
 def float_roundtrip(x: int) -> int {
     l: list[float] = [0.5, 0.0];
     p: int = __list_data_ptr(l);
