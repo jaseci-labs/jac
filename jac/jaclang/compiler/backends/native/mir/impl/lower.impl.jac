@@ -474,6 +474,38 @@ impl MirLowering.lower_body(stmts: Sequence[uni.UniNode]) {
     }
 }
 
+impl MirLowering.drop_consumed_args(nd: uni.FuncCall) {
+    sites = self.module.own_move_sites;
+    callee = nd.callee_decl;
+    if not sites
+        or not isinstance(callee, uni.Ability)
+        or not isinstance(callee.signature, uni.FuncSignature)
+        or self.builder().block.terminated()
+        or self.st().generator is not None {
+        return;
+    }
+    params = callee.signature.get_parameters();
+    b = self.builder();
+    for (index, arg) in enumerate(list(nd.params or [])) {
+        if not isinstance(arg, uni.Name)
+            or id(arg) not in sites
+            or arg.sym is None
+            or arg.sym.storage != SymbolStorage.LOCAL
+            or index >= len(params) {
+            continue;
+        }
+        param = params[index];
+        if param.name.sym is None or param.name.sym.ownership != OwnershipKind.OWN {
+            continue;
+        }
+        slot = self.st().local_names.get(arg.sym_name);
+        if slot is None or not slot.is_slot or not mir_holds_ref(slot.type) {
+            continue;
+        }
+        b.store(slot, b.const_null(slot.type));
+    }
+}
+
 impl MirLowering.drop_last_uses(stmt: uni.UniNode) {
     if isinstance(stmt, (uni.ReturnStmt, uni.RaiseStmt))
         or self.builder().block.terminated()
@@ -1193,6 +1225,7 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
         value = self.lower_fstring(nd);
     } elif isinstance(nd, uni.FuncCall) {
         value = self.lower_call(nd);
+        self.drop_consumed_args(nd);
     } elif isinstance(nd, uni.AtomTrailer) {
         value = self.lower_trailer(nd);
     } elif isinstance(nd, uni.EdgeRefTrailer) {

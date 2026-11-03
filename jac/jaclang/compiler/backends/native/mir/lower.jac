@@ -391,6 +391,7 @@ obj MirLowering {
     def expr_type(nd: uni.Expr) -> MirType;
     def lower_body(stmts: Sequence[uni.UniNode]);
     def drop_last_uses(stmt: uni.UniNode);
+    def drop_consumed_args(nd: uni.FuncCall);
     def lower_stmt(nd: uni.UniNode);
     def lower_assignment(nd: uni.Assignment);
     def assign_to(target: uni.UniNode, value: MirValue, nd: uni.Assignment);

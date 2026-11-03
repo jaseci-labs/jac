@@ -504,7 +504,11 @@ impl MirLowering.abstract_names(item: uni.Expr) -> list[str] {
                     and isinstance(item.right, uni.Name)
                 else ""
         );
-    if name not in ABSTRACT_TYPE_NAMES or self.target_archetype(item) is not None {
+    if name not in ABSTRACT_TYPE_NAMES {
+        return [];
+    }
+    arch = self.target_archetype(item);
+    if arch is not None and not arch.loc.mod_path.endswith(".pyi") {
         return [];
     }
     return ABSTRACT_TYPE_NAMES[name];

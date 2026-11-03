@@ -59,9 +59,12 @@ glob PIN_FIXTURE_DIR = os.path.join(
          "def other(x: int) -> int {\n"
          "    return x * 2;\n"
          "}\n\n"
+         "def late(n: int) -> int {\n"
+         "    print(n, flush=n > 0);\n"
+         "    return n;\n"
+         "}\n\n"
          "with entry {\n"
-         "    d = {x: None for x in [1, 2]};\n"
-         "    print(other(2), len(d));\n"
+         "    print(other(2), late(1));\n"
          "}\n"
      ),
      CLEAN_SRC = (
@@ -173,8 +176,8 @@ glob PIN_FIXTURE_DIR = os.path.join(
          "    return json.dumps(x, indent=2);\n"
          "}\n\n"
          "def bad(n: int) -> int {\n"
-         "    d = {x: None for x in [n]};\n"
-         "    return len(d) + n;\n"
+         "    print(n, flush=n > 0);\n"
+         "    return n;\n"
          "}\n\n"
          "def double(n: int) -> int {\n"
          "    return n * 2;\n"
@@ -203,8 +206,8 @@ glob PIN_FIXTURE_DIR = os.path.join(
          "obj Foo {\n"
          "    has n: int = 1;\n\n"
          "    def size -> int {\n"
-         "        d = {x: None for x in [self.n]};\n"
-         "        return len(d) + self.n;\n"
+         "        print(self.n, flush=self.n > 0);\n"
+         "        return self.n;\n"
          "    }\n"
          "}\n\n"
          "with entry {\n"
@@ -596,7 +599,7 @@ test "a refusal inside an element pinned native is an error" {
 
 test "a late refusal inside an element pinned native is an error" {
     prog = compile_pinned_foo(PINNED_LATE_METHOD_SRC);
-    assert any("container element" in str(e) for e in prog.errors_had) , (
+    assert any("flush that is not a constant" in str(e) for e in prog.errors_had) , (
         f"a method of a pinned archetype that refuses during lowering keeps its "
         f"error rather than an abort() body: {[str(e) for e in prog.errors_had]}"
     );

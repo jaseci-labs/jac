@@ -11,7 +11,7 @@ test "none-typed members print, compare, index and box as in Python" {
     source = str(
         Path(__file__).resolve().parent / "fixtures" / "none_member_slots.jac"
     );
-    out = assert_native_identity(source, profiles=["rc", "nogc"]);
+    out = assert_native_identity(source, profiles=["managed", "rc"]);
     lines = out.splitlines();
     assert lines[0] == "(2, None) 2 None True True" , out;
     assert lines[-1] == "1 None 3" , out;
