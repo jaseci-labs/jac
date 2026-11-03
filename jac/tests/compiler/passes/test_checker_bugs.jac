@@ -2432,3 +2432,10 @@ test "bug_ctor_init_args_dict_call_misuse_is_reported" {
         f"Line 24 reported: {by_line.get(24)}"
     );
 }
+
+test "bug_union_iter_1_union_of_one_container_class_iterates_its_elements" {
+    program = compile_and_check("checker_bug_union_list_iteration.jac");
+    errors = [str(e) for e in program.errors_had];
+    assert len(errors) == 2 , errors;
+    assert all("int" in e for e in errors) , errors;
+}
