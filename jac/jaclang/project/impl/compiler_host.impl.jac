@@ -570,7 +570,7 @@ impl ProjectHost.path_facts(path: str) -> PathFacts {
 }
 
 impl ProjectHost.read_source(path: str) -> str {
-    return read_file_with_encoding(path);
+    return read_file_with_encoding(path, compiled_content_reads());
 }
 
 impl ProjectHost.annex_files(path: str, suffix: str = ".impl.jac") -> list[str] {

@@ -233,6 +233,11 @@ def hold_compiled_content(digests: dict[str, str]);
 @contextmanager
 def content_on_disk -> Iterator[None];
 
+def compiled_content_reads -> (dict[str, str] | None);
+
+@contextmanager
+def compiled_content_scope -> Iterator[None];
+
 def _memoized(kind: str, source_path: str, compute: any) -> str;
 
 def _project_env_fingerprint(source_path: str) -> str;
