@@ -201,6 +201,14 @@ glob TEXT_CASES: dict[str, int] = {
      FSTRING_REPR: int = 114,
      FSTRING_ASCII: int = 97;
 
+obj MirWithExit {
+    has site: uni.UniNode,
+        decl: (MirDecl | None) = None,
+        held: (MirValue | None) = None,
+        it: (MirValue | None) = None,
+        out: (MirValue | None) = None;
+}
+
 obj MirLoopTarget {
     has head: MirBlock,
         after: MirBlock;
@@ -241,6 +249,7 @@ obj MirFnState {
         caught: list[tuple[MirValue, MirValue, MirValue]] = [],
         bound_caught: dict[int, tuple[MirValue, MirValue, MirValue]] = {},
         tries: list[tuple[MirValue, MirBlock, int]] = [],
+        try_exits: dict[int, MirWithExit] = {},
         finals: list[tuple[list[uni.UniNode], int, int]] = [],
         specials: dict[str, MirValue] = {};
 }
@@ -283,6 +292,7 @@ obj MirLowering {
         archetypes: dict[str, uni.Archetype] = {},
         refused_objects: dict[str, MirRefused] = {},
         stdlib_units: dict[str, (uni.Module | None)] = {},
+        manager_item: (uni.Expr | None) = None,
         c_struct_sites: dict[str, str] = {},
         trace_pairs: list[tuple[str, str]] = [],
         text_pairs: list[tuple[str, str]] = [],
@@ -762,6 +772,16 @@ obj MirLowering {
     def super_call(nd: uni.FuncCall, name: str) -> MirValue;
     def object_eq(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
     def list_repeat(items: MirValue, times: MirValue, site: uni.UniNode) -> MirValue;
+    def object_alloc(
+        arch: uni.Archetype, obj_def: MirObjectDef, self_type: MirType
+    ) -> MirValue;
+
+    def object_copy(value: MirValue, site: uni.UniNode) -> MirValue;
+    def list_bounds(
+        lst: MirValue, part: uni.Slice, site: uni.UniNode
+    ) -> tuple[MirValue, MirValue, MirValue];
+
+    def list_delete_range(lst: MirValue, part: uni.Slice, site: uni.UniNode);
     def direct_method_call(
         nd: uni.FuncCall,
         holder: uni.Archetype,
@@ -1096,6 +1116,9 @@ obj MirLowering {
     def stdlib_attr(nd: uni.AtomTrailer) -> (MirValue | None);
     def class_constant(arch: uni.Archetype, name: str) -> (uni.Expr | None);
     def class_attr(nd: uni.AtomTrailer) -> (MirValue | None);
+    def constant_value(value: (uni.Expr | None)) -> bool;
+    def subclass_archetypes(arch: uni.Archetype) -> list[uni.Archetype];
+    def instance_class_attr(nd: uni.AtomTrailer) -> (MirValue | None);
     def mentions_typevar(t: (TypeBase | None)) -> bool;
     def resolved(t: (TypeBase | None)) -> (TypeBase | None);
     def unify(
@@ -1159,6 +1182,7 @@ obj MirLowering {
     def none_arg(ptype: MirType, site: uni.UniNode) -> MirValue;
     def guard_open -> tuple[MirValue, MirBlock];
     def guard_caught(frame: MirValue) -> tuple[MirValue, MirValue, MirValue];
+    def run_with_exit(exit_action: MirWithExit);
     def jumps_out(body: Sequence[uni.UniNode]) -> bool;
     def lower_match(nd: uni.MatchStmt);
     def lower_switch(nd: uni.SwitchStmt);

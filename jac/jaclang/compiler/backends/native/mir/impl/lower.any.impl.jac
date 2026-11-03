@@ -195,6 +195,15 @@ impl MirLowering.identity(
         (l, r) = self.unify_numeric(left, right, site);
         return b.compare("eq", l, r);
     }
+    if (left.type.kind == MirKind.OPT) != (right.type.kind == MirKind.OPT) {
+        boxed = left if left.type.kind == MirKind.OPT else right;
+        plain = right if left.type.kind == MirKind.OPT else left;
+        if boxed.type.payload().is_numeric() and plain.type.is_numeric() {
+            (held, payload, absent, done) = self.opt_begin(boxed, mir_bool());
+            self.opt_switch(held, self.identity(payload, plain, site), absent, done);
+            return self.opt_end(held, b.const_bool(False), done);
+        }
+    }
     if MirKind.OPT in (left.type.kind, right.type.kind)
         and self.ref_word_side(left)
         and self.ref_word_side(right) {
@@ -426,9 +435,20 @@ impl MirLowering.isinstance_test(
             verdict = found if verdict is None else b.binary("or", verdict, found);
             continue;
         }
-        if self.expr_type(item).kind == MirKind.CLASS {
+        item_type = self.expr_type(item);
+        if item_type.kind == MirKind.CLASS {
             found = self.class_isinstance(value, self.lower_expr(item));
             verdict = found if verdict is None else b.binary("or", verdict, found);
+            continue;
+        }
+        if item_type.kind == MirKind.TUPLE
+            and item_type.args
+            and all(member.kind == MirKind.CLASS for member in item_type.args) {
+            classes = self.spill(self.lower_expr(item));
+            for index in range(len(item_type.args)) {
+                found = self.class_isinstance(value, self.tuple_get(classes, index));
+                verdict = found if verdict is None else b.binary("or", verdict, found);
+            }
             continue;
         }
         raise MirRefused(mir_refusal("call", "isinstance of a non-archetype", site));

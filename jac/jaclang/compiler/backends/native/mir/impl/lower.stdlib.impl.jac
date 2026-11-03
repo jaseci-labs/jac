@@ -72,7 +72,17 @@ impl MirLowering.stdlib_call(
     if not isinstance(member, uni.Ability) {
         return None;
     }
-    return self.import_call(nd, member);
+    made = self.import_call(nd, member);
+    if made is None {
+        return None;
+    }
+    wanted = self.expr_type(nd);
+    if made.type is wanted
+        or wanted.kind == MirKind.NONE
+        or made.type.kind == MirKind.NONE {
+        return made;
+    }
+    return self.coerce(made, wanted, nd);
 }
 
 impl MirLowering.stdlib_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
@@ -161,4 +171,110 @@ impl MirLowering.class_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
         return None;
     }
     return self.coerce(self.lower_expr(value), self.expr_type(nd), nd);
+}
+
+impl MirLowering.constant_value(value: (uni.Expr | None)) -> bool {
+    return isinstance(value, (uni.Literal, uni.MultiString))
+        or (
+            isinstance(value, uni.AtomTrailer)
+            and value.is_attr
+            and self.is_enum_class(value.target)
+        )
+        or (
+            isinstance(value, uni.Name)
+            and value.sym is not None
+            and self.global_declaration(value.sym) is not None
+        );
+}
+
+impl MirLowering.subclass_archetypes(arch: uni.Archetype) -> list[uni.Archetype] {
+    name = archetype_native_name(arch);
+    owner = arch.find_parent_of_type(uni.Module) or self.module;
+    registry = get_layout_registry(owner, self.prog);
+    found: list[tuple[int, uni.Archetype]] = [];
+    for lay in registry.layouts.values() {
+        if lay.name == name or name not in list(lay.mro or []) {
+            continue;
+        }
+        home = self.prog.mod.hub.get(lay.decl_mod) if lay.decl_mod else None;
+        if home is None {
+            continue;
+        }
+        for candidate in home.get_all_sub_nodes(uni.Archetype) {
+            if archetype_native_name(candidate) == lay.name {
+                found.append((len(list(lay.mro or [])), candidate));
+            }
+        }
+    }
+    ordered: list[uni.Archetype] = [];
+    for depth in sorted({pair[0] for pair in found}, reverse=True) {
+        for pair in found {
+            if pair[0] == depth {
+                ordered.append(pair[1]);
+            }
+        }
+    }
+    return ordered;
+}
+
+impl MirLowering.instance_class_attr(nd: uni.AtomTrailer) -> (MirValue | None) {
+    if not nd.is_attr
+        or not isinstance(nd.right, uni.Name)
+        or not isinstance(nd.target, uni.Expr) {
+        return None;
+    }
+    arch = self.holder_arch(nd.target);
+    name = nd.right.value;
+    if arch is None or self.nearest_has_var(arch, name) is not None {
+        return None;
+    }
+    if self.object_def(arch).field(name) is not None {
+        return None;
+    }
+    base_value = self.class_constant(arch, name);
+    subclasses = self.subclass_archetypes(arch);
+    overrides = [
+        (sub, self.class_constant(sub, name))
+        for sub in subclasses
+        if self.class_constant(sub, name) is not base_value
+    ];
+    if base_value is None and not overrides {
+        return None;
+    }
+    for (_, value) in overrides {
+        if not self.constant_value(value) {
+            return None;
+        }
+    }
+    if base_value is not None and not self.constant_value(base_value) {
+        return None;
+    }
+    b = self.builder();
+    fn = self.st().fn;
+    wanted = self.expr_type(nd);
+    held = self.spill(self.lower_expr(nd.target));
+    result = self.temp_slot(wanted);
+    done = fn.new_block("clsattr.done");
+    for (sub, value) in overrides {
+        hit = fn.new_block("clsattr.hit");
+        miss = fn.new_block("clsattr.miss");
+        b.cond_branch(self.isinstance_check(held, sub), hit, miss);
+        b.position(hit);
+        if isinstance(value, uni.Expr) {
+            b.store(result, self.coerce(self.lower_expr(value), wanted, nd));
+        }
+        b.branch(done);
+        b.position(miss);
+    }
+    if base_value is None {
+        b.raise_builtin(
+            "AttributeError",
+            f"'{archetype_native_name(arch).split('$')[0]}' object has no attribute '{name}'"
+        );
+    } else {
+        b.store(result, self.coerce(self.lower_expr(base_value), wanted, nd));
+        b.branch(done);
+    }
+    b.position(done);
+    return b.load(result, wanted);
 }

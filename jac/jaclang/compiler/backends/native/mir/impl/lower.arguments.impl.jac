@@ -448,12 +448,12 @@ impl MirLowering.constant_default(value: (uni.Expr | None)) -> bool {
     if isinstance(value, (uni.Int, uni.Float, uni.Bool, uni.Null)) {
         return True;
     }
-    if isinstance(value, uni.String) and isinstance(value.lit_value, str) {
+    if isinstance(value, uni.String) and isinstance(value.lit_value, (str, bytes)) {
         return True;
     }
     if isinstance(value, uni.MultiString) {
         return all(
-            isinstance(part, uni.String) and isinstance(part.lit_value, str)
+            isinstance(part, uni.String) and isinstance(part.lit_value, (str, bytes))
             for part in value.strings
         );
     }

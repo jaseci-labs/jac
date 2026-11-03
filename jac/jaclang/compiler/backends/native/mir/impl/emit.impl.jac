@@ -249,7 +249,12 @@ impl MirEmitter.emit_function(fn: MirFunction) {
             try {
                 self.emit_instr(b, instr);
             } except MirEmitError as err {
-                raise err;
+                if str(err).startswith(fn.symbol) {
+                    raise err;
+                }
+                raise MirEmitError(
+                    f"{fn.symbol}: {instr.render()} in {blk.label}: {err}"
+                ) from err;
             } except Exception as err {
                 origins = [
                     made.render() for other in fn.blocks

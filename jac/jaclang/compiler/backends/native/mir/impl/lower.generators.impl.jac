@@ -322,7 +322,10 @@ impl MirLowering.iter_open(value: MirValue, site: uni.UniNode) -> MirIterCursor 
             out=self.temp_slot(mir_int())
         );
     }
-    if t.kind in (MirKind.STR, MirKind.ANY) {
+    if t.kind in (MirKind.STR, MirKind.STR_REF) {
+        return self.iter_open(self.iter_value(self.as_text(value), site), site);
+    }
+    if t.kind == MirKind.ANY {
         return self.iter_open(self.iter_value(value, site), site);
     }
     if t.kind in (MirKind.BYTES, MirKind.BYTEARRAY) {
