@@ -2192,7 +2192,18 @@ impl MirLowering.host_only_type(t: (TypeBase | None)) -> bool {
             continue;
         }
         scope = member.shared.symbol_table;
-        if not isinstance(scope, uni.Archetype) or stub_archetype(scope) {
+        where = scope.loc.mod_path
+            if scope is not None and scope.loc is not None
+            else "";
+        if where.endswith((".pyi", ".py")) {
+            try {
+                mir_type_of(member, MirPosition.VALUE, None, None);
+            } except MirRefused {
+                return True;
+            }
+            continue;
+        }
+        if not isinstance(scope, uni.Archetype) {
             continue;
         }
         owner = scope.find_parent_of_type(uni.Module);
