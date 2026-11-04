@@ -88,7 +88,19 @@ impl TypeEvaluator._null_ok_index_type(
 impl TypeEvaluator._get_type_of_expression_core(
     expr: Expr, expected_type: TypeBase | None = None
 ) -> TypeBase {
-    if isinstance(expr, BuiltinType) and expr.value == "any" {
+    shadowed = False;
+    if isinstance(expr, BuiltinType)
+        and expr.value == "any"
+        and expr.sym is None
+        and expr.find_parent_of_type(SubTag) is None {
+        if scope := self._resolution_scope_for(expr) {
+            local = lookup_symtab(scope, "any", None);
+            shadowed = local is not None
+                and local.decl is not None
+                and local.decl.loc.mod_path == expr.loc.mod_path;
+        }
+    }
+    if isinstance(expr, BuiltinType) and expr.value == "any" and not shadowed {
         if expr.sym is None and self.typing_module is not None {
             if symbol := lookup_symtab(self.typing_module, "Any", self.typing_module) {
                 symbol.add_use(expr);

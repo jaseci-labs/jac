@@ -269,7 +269,12 @@ impl CtEvaluator._eval_inner(nd: UniNode) -> CtValue {
     if isinstance(nd, SpecialVarRef) {
         return self._eval_special(nd);
     }
-    if isinstance(nd, BuiltinType) {
+    if isinstance(nd, BuiltinType)
+        and not (
+            nd.sym is not None
+            and nd.sym.decl is not None
+            and nd.sym.decl.loc.mod_path == nd.loc.mod_path
+        ) {
         return self._builtin_type(nd.value);
     }
     if isinstance(nd, Name) {
