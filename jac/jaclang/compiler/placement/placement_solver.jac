@@ -67,7 +67,9 @@ def _is_sv_import(elem: uni.UniNode) -> bool;
 
 def _named_top_element(target: uni.Module, name: str) -> (uni.UniNode | None);
 
-def _materialize_module(path: str, prog: JacProgram) -> (uni.Module | None);
+def _materialize_module(
+    path: str, prog: JacProgram, need_bodies: bool = False
+) -> (uni.Module | None);
 
 def _import_source_module(elem: uni.Import, prog: JacProgram) -> (uni.Module | None);
 
