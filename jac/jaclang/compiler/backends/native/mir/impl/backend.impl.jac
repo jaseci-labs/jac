@@ -539,12 +539,12 @@ impl MirNativePass.layout(lowering: MirLowering, mir: MirModule) -> NativeModule
         if decl.event {
             continue;
         }
-        if decl.owner is None and decl.self_type is None {
-            owners.setdefault(decl.symbol, "");
-        } elif decl.self_type is not None {
+        if decl.self_type is not None {
             owners.setdefault(decl.symbol, decl.self_type.name);
-        } else {
+        } elif decl.owner is not None {
             owners.setdefault(decl.symbol, archetype_native_name(decl.owner));
+        } else {
+            owners.setdefault(decl.symbol, "");
         }
     }
     for fn in mir.functions {
