@@ -4150,7 +4150,7 @@ impl MirLowering.import_call(
             if isinstance(nd.target, uni.Name)
             else None;
         if binding is not None and binding.native_callable {
-            return None;
+            return self.python_call(nd);
         }
         raise err;
     }
