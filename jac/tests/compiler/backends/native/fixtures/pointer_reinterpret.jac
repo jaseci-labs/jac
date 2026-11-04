@@ -93,7 +93,11 @@ with entry {
     print("copy", copy_raw(buf));
     held = holder_of(buf);
     print("field", held.data, held.size);
-    tail = "say " + "world"[1:];
+}
+
+glob tail = "say " + "world"[1:];
+
+with entry {
     write(1, tail, len(tail));
     write(1, "\n", 1);
     print("slice", copy_raw(fill("abcdef"[2:])));
