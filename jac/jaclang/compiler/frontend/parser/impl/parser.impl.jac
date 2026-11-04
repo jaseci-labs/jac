@@ -4279,11 +4279,11 @@ impl Parser.parse_with_stmt -> WithStmt {
         as_uni = self.make_uni_token(self.previous());
         alias = self.parse_expression();
     }
-    exprs.append(
-        ExprAsItem(
-            expr=expr, alias=alias, kid=[expr] if not alias else [expr, as_uni, alias]
-        )
-    );
+    kid: list[UniNode] = [expr];
+    if alias is not None and as_uni is not None {
+        kid = [expr, as_uni, alias];
+    }
+    exprs.append(ExprAsItem(expr=expr, alias=alias, kid=kid));
     comma_unis: list[Token] = [];
     while self.match_tok(TokenKind.COMMA) {
         comma_unis.append(self.make_uni_token(self.previous()));
@@ -4294,13 +4294,11 @@ impl Parser.parse_with_stmt -> WithStmt {
             as_uni = self.make_uni_token(self.previous());
             alias = self.parse_expression();
         }
-        exprs.append(
-            ExprAsItem(
-                expr=expr,
-                alias=alias,
-                kid=[expr] if not alias else [expr, as_uni, alias]
-            )
-        );
+        kid = [expr];
+        if alias is not None and as_uni is not None {
+            kid = [expr, as_uni, alias];
+        }
+        exprs.append(ExprAsItem(expr=expr, alias=alias, kid=kid));
     }
     lb_uni = self.consume_uni(TokenKind.LBRACE);
     body = self.parse_code_block_stmts();

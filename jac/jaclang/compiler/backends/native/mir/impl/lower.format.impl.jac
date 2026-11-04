@@ -522,7 +522,6 @@ impl MirLowering.fstring_value(nd: uni.FString) -> MirValue {
 }
 
 impl MirLowering.str_format(template: str, nd: uni.FuncCall) -> MirValue {
-    import string;
     b = self.builder();
     (args, named) = self.split_args(nd);
     positional = [self.spill(self.lower_expr(arg)) for arg in args];
@@ -531,7 +530,7 @@ impl MirLowering.str_format(template: str, nd: uni.FuncCall) -> MirValue {
         keyed[key] = self.spill(self.lower_expr(arg));
     }
     try {
-        fields = list(string.Formatter().parse(template));
+        fields = mir_format_fields(template);
     } except ValueError as e {
         raise MirRefused(
             mir_refusal("call", f"str.format of {template!r}", nd, str(e))
@@ -1691,6 +1690,80 @@ impl MirLowering.struct_call(nd: uni.FuncCall, name: str) -> MirValue {
         }
     }
     return self.emit_value(MirOp.TUPLE_MAKE, result_type, members);
+}
+
+impl mir_format_fields(template: str) -> list[tuple[str, (str | None), str, str]] {
+    fields: list[tuple[str, (str | None), str, str]] = [];
+    literal = "";
+    i = 0;
+    n = len(template);
+    while i < n {
+        ch = template[i];
+        if ch == "{" {
+            if i + 1 < n and template[i + 1] == "{" {
+                literal += "{";
+                i += 2;
+                continue;
+            }
+            depth = 1;
+            j = i + 1;
+            while j < n {
+                if template[j] == "{" {
+                    depth += 1;
+                } elif template[j] == "}" {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                j += 1;
+            }
+            if depth != 0 {
+                raise ValueError("expected '}' before end of string");
+            }
+            body = template[i + 1:j];
+            cut = 0;
+            while cut < len(body) and body[cut] != "!" and body[cut] != ":" {
+                cut += 1;
+            }
+            rest = body[cut:];
+            conversion = "";
+            spec = "";
+            if rest.startswith("!") {
+                if len(rest) < 2 {
+                    raise ValueError(
+                        "end of string while looking for conversion specifier"
+                    );
+                }
+                conversion = rest[1];
+                rest = rest[2:];
+                if rest and not rest.startswith(":") {
+                    raise ValueError("expected ':' after conversion specifier");
+                }
+            }
+            if rest.startswith(":") {
+                spec = rest[1:];
+            }
+            fields.append((literal, body[:cut], spec, conversion));
+            literal = "";
+            i = j + 1;
+            continue;
+        }
+        if ch == "}" {
+            if i + 1 < n and template[i + 1] == "}" {
+                literal += "}";
+                i += 2;
+                continue;
+            }
+            raise ValueError("Single '}' encountered in format string");
+        }
+        literal += ch;
+        i += 1;
+    }
+    if literal {
+        fields.append((literal, None, "", ""));
+    }
+    return fields;
 }
 
 impl MirLowering.float_ratio(value: MirValue) -> MirValue {

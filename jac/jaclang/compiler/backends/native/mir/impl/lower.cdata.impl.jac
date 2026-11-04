@@ -790,9 +790,11 @@ impl MirLowering.variant_value(nd: uni.Name, twin: uni.Name) -> (MirValue | None
         return b.const_float(folded.value, wanted);
     }
     final_value = final_glob_value(twin);
-    (settled, scalar) = c_scalar_constant(final_value, 0, self.prog)
-        if final_value is not None
-        else (False, None);
+    settled = False;
+    scalar: any = None;
+    if final_value is not None {
+        (settled, scalar) = c_scalar_constant(final_value, 0, self.prog);
+    }
     if settled and isinstance(scalar, bool) {
         return b.const_bool(scalar);
     }

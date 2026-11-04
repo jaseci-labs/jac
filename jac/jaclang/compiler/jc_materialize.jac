@@ -44,7 +44,8 @@ glob DEFAULT_NONE: int = 0,
      DEFAULT_SET: int = 3;
 
 glob DIR_IN: int = 1,
-     DIR_OUT: int = 2;
+     DIR_OUT: int = 2,
+     HASH_USED_OFF: int = 40;
 
 obj ValueRow {
     has code: int,
@@ -208,6 +209,8 @@ obj Mz {
 def _enqueue(m: Mz, h: int, hint: int);
 
 def _hash_order_extent(h: int, order: int) -> int;
+
+def _order_slot(order: int, i: int) -> int;
 
 def _hashed(code: int) -> bool;
 

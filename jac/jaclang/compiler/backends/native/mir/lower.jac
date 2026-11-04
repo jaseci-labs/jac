@@ -362,6 +362,12 @@ obj MirDecl {
 
 def mono_symbol_text(text: str) -> str;
 
+def mir_format_fields(template: str) -> list[tuple[str, (str | None), str, str]];
+
+def mir_slice_picks(
+    count: int, start: (int | None), stop: (int | None), step: (int | None)
+) -> list[int];
+
 def mir_same_signature(left: MirDecl, right: MirDecl) -> bool;
 
 obj MirLowering {
@@ -416,6 +422,7 @@ obj MirLowering {
         current: str = "",
         dep_verdicts: dict[str, (list[str] | None)] = {},
         erased_units: set[str] = set(),
+        slot_adapters: dict[str, MirFunction] = {},
         erased_archs: dict[int, bool] = {},
         imported_fns: dict[str, tuple[str, str]] = {},
         flow_sites: int = 0,
