@@ -7,9 +7,9 @@ import hashlib
 import json
 import os
 import re
-from pathlib import Path
 import sys
 from enum import Enum
+from pathlib import Path
 
 
 class SymbolKind(Enum):
@@ -17,6 +17,10 @@ class SymbolKind(Enum):
     GLOBAL = "global"
 
 
+# The static types the surviving C objects name as extern globals (PyAPI_DATA
+# declarations), so the merged module must export each by name. The rest of
+# CPython's static types bind through object_model/object.jac's static_types
+# table and are never referenced by symbol.
 STATIC_TYPE_EXPORTS = [
     "PyCell_Type", "PyEnum_Type", "_PyInterpolation_Type", "PyPickleBuffer_Type",
     "PyRange_Type", "PyRangeIter_Type", "PyLongRangeIter_Type", "PyReversed_Type",
@@ -307,20 +311,20 @@ declare i64 @llvm.ctlz.i64(i64, i1 immarg)
 attributes #0 = { nounwind }
 """
 
-if __name__ == "__main__":
-    root = Path(sys.argv[1]).resolve()
-    output = Path(sys.argv[2]).resolve()
+def main(argv):
+    root = Path(argv[1]).resolve()
+    output = Path(argv[2]).resolve()
     triple = {
         "linux-x86_64": "x86_64-unknown-linux-gnu",
         "linux-aarch64": "aarch64-unknown-linux-gnu",
         "macos-x86_64": "x86_64-apple-macosx12.0.0",
         "macos-aarch64": "arm64-apple-macosx11.0.0",
-    }[sys.argv[3]]
+    }[argv[3]]
     # Jac modules this build wrote for the object (the frozen modules that
     # scripts/jacpython/gen_frozen.jac writes and the _PyRuntime that
     # gen_runtime_image.jac writes). They are lowered with the runtime
     # but are not sources: the build key covers their generators and inputs.
-    generated = [Path(path).resolve() for path in sys.argv[4:]]
+    generated = [Path(path).resolve() for path in argv[4:]]
     pin = json.loads((root / "bootstrap/python/sources.json").read_text())["cpython"]
     if tuple(map(int, pin["version"].split("."))) != sys.version_info[:3]:
         raise RuntimeError("Build JacPython with pinned CPython " + pin["version"])
@@ -532,3 +536,7 @@ if __name__ == "__main__":
     # shutdown; no runtime initialization or cache work is deferred to that phase.
     sys.stderr.flush()
     os._exit(0)
+
+
+if __name__ == "__main__":
+    main(sys.argv)

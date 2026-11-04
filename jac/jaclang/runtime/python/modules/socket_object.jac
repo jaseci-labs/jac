@@ -317,6 +317,9 @@ impl AcceptCall.run(fd: i32) -> bool {
     if HAS_ACCEPT4 and accept4_works != 0 {
         self.result = accept_cloexec(fd, addr, paddrlen, i32(SOCK_CLOEXEC));
         if self.result == INVALID_SOCKET and accept4_works == -1 {
+            # This store reaches the shared socket_core static: a method body
+            # binds wire imports directly (module-level defs would shadow the
+            # glob and must write through set_sock_cloexec_works instead).
             accept4_works = i32(1) if jacpy_errno() != ENOSYS else i32(0);
         }
     }
