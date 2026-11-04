@@ -127,6 +127,8 @@ comptime SPEC_SCALE_CMD: CommandSpec = CommandSpec(
          handler_name=ct_name(scale_cmd)
      );
 
+def _fleet_cmd(action: str, service_name: str, lines: int) -> int;
+
 def scale_cmd(
     action: str,
     service_name: str = "",

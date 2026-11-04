@@ -73,7 +73,10 @@ impl ExecutionManager._finalize_call_response(
 ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
     call_state.reports.put_nowait(call_state._sentinel);
     reports = await self.report_collector(call_state);
-    await Jac.acommit();
+    ctx = Jac.get_context();
+    await ctx.mem.acommit();
+    call_state.committed = True;
+    ctx.run_pending_effects();
     if isgenerator(result) or isinstance(result, AsyncGenerator) {
         return result;
     }
@@ -88,9 +91,8 @@ impl ExecutionManager._finalize_call_response(
         'reports': Serializer.serialize(reports, api_mode=True)
     };
     if _plain_value(reports) and _plain_value(result) {
-        Jac.get_context().mem.seal_scan();
+        ctx.mem.seal_scan();
     }
-    ctx = Jac.get_context();
     if ctx.diagnostics {
         envelope['warnings'] = [d.to_dict() for d in ctx.diagnostics];
         ctx.diagnostics.clear();
@@ -1879,7 +1881,35 @@ impl _run_function_with_occ(
                     reload_root = False;
                     await ctx.aset_user_root(root_id);
                 }
-                outcome = await run_attempt(call_state, ctx);
+                try {
+                    outcome = await run_attempt(call_state, ctx);
+                    await ctx.mem.acommit();
+                } except ReadOnlyRetry {
+                    raise;
+                } except Exception as e {
+                    if not call_state.committed {
+                        raise;
+                    }
+                    ctx.mem.abort();
+                    ctx.pending_effects.clear();
+                    logger.exception(
+                        f"{unit_key or 'request'} failed after its commit: "
+                        f"{type(e).__name__}: {e}"
+                    );
+                    return {
+                        'error': (
+                            'The request committed, but a step after that commit '
+                            'failed and its writes were lost. Repeating the request '
+                            'may repeat the work it already saved.'
+                        ),
+                        'error_code': 'failed_after_commit',
+                        'http_status': 500,
+                        'final': True
+                    };
+                }
+                if _plain_value(outcome) {
+                    ctx.mem.seal_scan();
+                }
                 ctx.mem.unit_exit();
                 settled = True;
                 streaming = isgenerator(outcome) or isinstance(outcome, AsyncGenerator);
@@ -1966,6 +1996,7 @@ impl _run_function_with_occ(
                     continue;
                 }
                 ctx.mem.abort();
+                ctx.pending_effects.clear();
                 import logging;
                 logging.getLogger('jaclang.serve').exception(
                     f"{unit_key or 'request'} raised {type(e).__name__}: {e}"

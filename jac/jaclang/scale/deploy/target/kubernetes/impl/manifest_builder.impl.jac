@@ -3,6 +3,59 @@ impl _output_tail(result: any, lines: int = 15) -> str {
     return "\n".join(combined.splitlines()[-lines:]);
 }
 
+impl _run_until_quiet(
+    cmd: list[str], cwd: str, env: (dict[str, str] | None), quiet_s: float
+) -> any {
+    import subprocess;
+    import threading;
+    import time;
+    proc = subprocess.Popen(
+        cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    );
+    out: list[str] = [];
+    err: list[str] = [];
+    heard = [time.monotonic()];
+    def drain(stream: any, into: list[str]) {
+        for line in stream {
+            into.append(line);
+            heard[0] = time.monotonic();
+        }
+    }
+    readers = [
+        threading.Thread(target=drain, args=(proc.stdout, out), daemon=True),
+        threading.Thread(target=drain, args=(proc.stderr, err), daemon=True)
+    ];
+    for reader in readers {
+        reader.start();
+    }
+    try {
+        while proc.poll() is None {
+            if time.monotonic() - heard[0] > quiet_s {
+                raise subprocess.TimeoutExpired(cmd, quiet_s);
+            }
+            time.sleep(min(1.0, quiet_s / 4));
+        }
+    } except BaseException as e {
+        proc.kill();
+        proc.wait();
+        for reader in readers {
+            reader.join(timeout=5);
+        }
+        if isinstance(e, subprocess.TimeoutExpired) {
+            raise subprocess.TimeoutExpired(
+                cmd, quiet_s, output="".join(out), stderr="".join(err)
+            ) from None;
+        }
+        raise;
+    }
+    for reader in readers {
+        reader.join();
+    }
+    return subprocess.CompletedProcess(
+        cmd, proc.returncode, "".join(out), "".join(err)
+    );
+}
+
 impl _is_transient_client_build_failure(output: str) -> bool {
     lowered = output.lower();
     for marker in _TRANSIENT_CLIENT_BUILD_MARKERS {
@@ -459,25 +512,25 @@ impl ManifestBuilder._build_client_bundle(project_dir: str) {
         while True {
             attempt += 1;
             try {
-                result = subprocess.run(
+                result = _run_until_quiet(
                     [jac_bin, "build", "--as", "client", entry_rel.as_posix()],
-                    cwd=stage,
-                    capture_output=True,
-                    text=True,
-                    timeout=900,
-                    env=jac_env
+                    stage,
+                    jac_env,
+                    _CLIENT_BUILD_QUIET_S
                 );
             } except subprocess.TimeoutExpired {
                 if attempt >= _CLIENT_BUILD_ATTEMPTS {
                     raise RuntimeError(
-                        f"client build timed out ({client_entry}) on all "
+                        f"client build timed out ({client_entry}): it printed "
+                        f"nothing for {_CLIENT_BUILD_QUIET_S}s on all "
                         f"{_CLIENT_BUILD_ATTEMPTS} attempts. The pod serves "
                         f"the bundle built here and never rebuilds it - fix "
                         f"the client build and redeploy."
                     );
                 }
                 console.print(
-                    f"Client build timed out (attempt {attempt} of "
+                    f"Client build timed out: it printed nothing for "
+                    f"{_CLIENT_BUILD_QUIET_S}s (attempt {attempt} of "
                     f"{_CLIENT_BUILD_ATTEMPTS}); retrying."
                 );
                 time.sleep(_CLIENT_BUILD_RETRY_PAUSE_S);

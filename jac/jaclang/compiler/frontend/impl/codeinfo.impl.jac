@@ -834,14 +834,18 @@ impl is_selected_native_variant(path: str) -> bool {
 }
 
 impl is_native_variant_path(path: str) -> bool {
+    return native_variant_base(path) is not None;
+}
+
+impl native_variant_base(path: str) -> (str | None) {
     import os;
     name = os.path.basename(path);
     if not name.endswith(".jac") {
-        return False;
+        return None;
     }
     parts = name[:-len(".jac")].split(".");
     if len(parts) < 2 {
-        return False;
+        return None;
     }
     tail = parts[-2:] if len(parts) >= 3 else parts[-1:];
     if len(tail) == 2
@@ -850,11 +854,12 @@ impl is_native_variant_path(path: str) -> bool {
     }
     for part in tail {
         if part not in NATIVE_VARIANT_OSES and part not in NATIVE_VARIANT_ARCHES {
-            return False;
+            return None;
         }
     }
     stem = ".".join(parts[:len(parts) - len(tail)]);
-    return os.path.isfile(os.path.join(os.path.dirname(path), stem + ".jac"));
+    base = os.path.join(os.path.dirname(path), stem + ".jac");
+    return base if os.path.isfile(base) else None;
 }
 
 impl native_variant_of(module_path: str) -> str {
