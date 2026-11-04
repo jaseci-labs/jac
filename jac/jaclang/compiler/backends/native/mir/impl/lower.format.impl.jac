@@ -207,7 +207,6 @@ impl MirLowering.object_text(
             for (sub_name, sub) in self.archetypes.items()
             if sub_name != value.type.name
                 and self.obj_extends(sub_name, value.type.name)
-                and self.find_method(sub, method) is not None
         ];
         if carriers {
             return self.subclass_text(value, method, carriers, site);
@@ -322,6 +321,8 @@ impl MirLowering.text_fn(value_type: MirType, site: uni.UniNode) -> str {
     }
     symbol = f"{self.mir.prefix}.__repr.{self.text_serial}";
     self.text_serial += 1;
+    started = len(self.nested);
+    known = set(self.text_fns);
     self.text_fns[value_type.key] = symbol;
     fn = MirFunction(
         name=f"__repr.{value_type.render()}",
@@ -341,7 +342,14 @@ impl MirLowering.text_fn(value_type: MirType, site: uni.UniNode) -> str {
             self.container_repr_body(param, site);
         }
     } except MirRefused as err {
-        self.text_fns.pop(value_type.key, None);
+        self.nested = self.nested[:started];
+        for key in [
+            key
+            for key in self.text_fns
+            if key not in known
+        ] {
+            self.text_fns.pop(key);
+        }
         self.state = saved;
         raise err;
     }
@@ -456,9 +464,15 @@ impl MirLowering.object_repr_body(param: MirValue, site: uni.UniNode) {
     b.position(again);
     b.ret(b.const_str("...", mir_str()));
     b.position(fresh);
+    (frame, dispatch) = self.guard_open();
     sb = self.call_rt("__jac_rt_sb_new", [b.const_int(32, mir_int())]);
     self.sb_text(sb, arch.name.value + "(");
-    for (index, member) in enumerate(obj_def.fields) {
+    shown = [
+        member
+        for member in obj_def.fields
+        if member.index != obj_def.reports_slot
+    ];
+    for (index, member) in enumerate(shown) {
         self.sb_text(sb, (", " if index > 0 else "") + member.name + "=");
         place = self.emit_value(
             MirOp.FIELD_ADDR, mir_c_ptr(member.type), [param], int_value=member.index
@@ -467,8 +481,15 @@ impl MirLowering.object_repr_body(param: MirValue, site: uni.UniNode) {
         self.sb_value(sb, self.repr_of(field, site));
     }
     self.sb_text(sb, ")");
+    self.runtime("__jac_rt_exc_pop", [frame]);
     self.runtime("__jac_rt_repr_leave", [depth]);
     self.builder().ret(self.owned_text(self.call_rt("__jac_rt_sb_finish", [sb])));
+    self.builder().position(dispatch);
+    self.runtime("__jac_rt_exc_pop", [frame]);
+    (origin, type_id, message) = self.guard_caught(frame);
+    self.runtime("__jac_rt_repr_leave", [depth]);
+    self.runtime("__jac_rt_raise", [origin, type_id, message]);
+    self.builder().unreachable();
 }
 
 impl MirLowering.fstring_value(nd: uni.FString) -> MirValue {
@@ -745,15 +766,7 @@ impl MirLowering.text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) 
                 mir_refusal("call", f"str of {held.type.render()} with an encoding", nd)
             );
         }
-        codec = self.codec_arg(args[1], TEXT_CODECS, nd);
-        errors = self.codec_arg(args[2] if len(args) > 2 else None, TEXT_ERRORS, nd);
-        (data, size) = self.byte_parts(held);
-        return self.owned_text(
-            self.call_rt(
-                "__jac_rt_bytes_decode",
-                [data, size, codec, errors, self.codec_failure("UnicodeDecodeError")]
-            )
-        );
+        return self.bytes_decode(held, args[1], args[2] if len(args) > 2 else None, nd);
     }
     if name == "len" {
         if len(args) == 1
@@ -809,7 +822,7 @@ impl MirLowering.text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         return None;
     }
     if name in ("bytes", "bytearray") {
-        made = self.bytes_from(args, nd);
+        made = self.bytes_from(args, nd, name == "bytearray");
         return made if name == "bytes" else self.to_bytearray(made);
     }
     first = self.lower_expr(args[0]);
@@ -905,7 +918,9 @@ impl MirLowering.text_bytes(value: MirValue) -> tuple[MirValue, MirValue] {
     return (b.str_part(text, "data"), b.str_part(text, "len"));
 }
 
-impl MirLowering.bytes_from(args: list[uni.Expr], nd: uni.FuncCall) -> MirValue {
+impl MirLowering.bytes_from(
+    args: list[uni.Expr], nd: uni.FuncCall, array: bool = False
+) -> MirValue {
     b = self.builder();
     source = self.spill(self.lower_expr(args[0]));
     kind = source.type.kind;
@@ -932,12 +947,14 @@ impl MirLowering.bytes_from(args: list[uni.Expr], nd: uni.FuncCall) -> MirValue 
     } elif kind in (MirKind.INT, MirKind.BOOL) {
         handle = self.call_rt("__jac_rt_bytes_zero", [b.convert(source, mir_int())]);
     } else {
-        return self.bytes_of_ints(source, nd);
+        return self.bytes_of_ints(source, nd, array);
     }
     return b.ref_cast(handle, mir_bytes(), True);
 }
 
-impl MirLowering.bytes_of_ints(source: MirValue, nd: uni.UniNode) -> MirValue {
+impl MirLowering.bytes_of_ints(
+    source: MirValue, nd: uni.UniNode, array: bool = False
+) -> MirValue {
     b = self.builder();
     kind = source.type.kind;
     handle: MirValue;
@@ -946,11 +963,14 @@ impl MirLowering.bytes_of_ints(source: MirValue, nd: uni.UniNode) -> MirValue {
         handle = self.call_rt("__jac_rt_bytes_new", [data, size]);
     } elif kind == MirKind.LIST
         and source.type.payload().kind in (MirKind.INT, MirKind.BOOL) {
-        handle = self.call_rt("__jac_rt_bytes_from_list", [source]);
+        handle = self.call_rt(
+            "__jac_rt_bytes_from_ints", [source, b.const_bool(array)]
+        );
     } elif kind
         in (MirKind.RANGE, MirKind.ITER, MirKind.TUPLE, MirKind.SET, MirKind.LIST) {
         handle = self.call_rt(
-            "__jac_rt_bytes_from_list", [self.spill(self.drain(source, mir_int(), nd))]
+            "__jac_rt_bytes_from_ints",
+            [self.spill(self.drain(source, mir_int(), nd)), b.const_bool(array)]
         );
     } else {
         raise MirRefused(mir_refusal("call", f"bytes of {source.type.render()}", nd));

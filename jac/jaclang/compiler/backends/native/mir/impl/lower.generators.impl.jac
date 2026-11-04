@@ -104,6 +104,7 @@ impl MirLowering.lower_generator(decl: MirDecl) -> (MirFunction | None) {
                 self.builder().unreachable();
             }
         }
+        self.guard_unbound(resume);
         self.state = MirFnState(
             fn=start, b=MirBuilder(fn=start, block=start.new_block("entry"))
         );

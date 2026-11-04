@@ -117,31 +117,11 @@ impl _str_next(state: ptr[u8], out: ptr[u8]) -> bool {
     if offset >= size {
         return False;
     }
-    width = _utf8_width(int(__mem_load_i8(text + offset)));
-    if offset + width > size {
-        width = size - offset;
-    }
-    piece = __jac_rt_str_new(ptr[u8](text + offset), width);
+    width = __jac_rt_utf8_width(ptr[u8](text), size, offset);
+    piece = __jac_rt_str_unit(ptr[u8](text), size, offset);
     __mem_store_i64(int(out), int(piece));
     __mem_store_i64(at + SEQ_INDEX, offset + width);
     return True;
-}
-
-impl _utf8_width(lead: int) -> int {
-    byte = lead & 255;
-    if byte < 128 {
-        return 1;
-    }
-    if byte >= 240 {
-        return 4;
-    }
-    if byte >= 224 {
-        return 3;
-    }
-    if byte >= 192 {
-        return 2;
-    }
-    return 1;
 }
 
 impl __jac_rt_gen_frame(size: int, drop: int) -> int {

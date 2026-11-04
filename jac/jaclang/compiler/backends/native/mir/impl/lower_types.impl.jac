@@ -383,7 +383,12 @@ impl mir_class_type(
     if name == "bytearray" {
         return mir_bytearray();
     }
-    raise MirRefused(mir_refusal("type", name, site));
+    scope = t.shared.symbol_table;
+    module = bundled_stdlib_module_of(scope.loc.mod_path)
+        if scope is not None and scope.loc is not None
+        else None;
+    shown = f"{module}.{name}" if module and module != "builtins" else name;
+    raise MirRefused(mir_refusal("type", shown, site));
 }
 
 impl mir_c_elem(t: (TypeBase | None), site: (uni.UniNode | None) = None) -> MirType {

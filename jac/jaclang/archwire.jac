@@ -6300,11 +6300,12 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._field_constructor_args {
             positional_field_names
         },
-        backends.py.jcir_gen_pass.JcirGenPass.exit_has_var { is_field_marker },
-        passes.type_checker_pass.TypeCheckPass.exit_has_var
+        backends.native.mir.lower
+            | passes.type_checker_pass.TypeCheckPass.exit_has_var
             | types.type_evaluator.TypeEvaluator._build_field_params {
             field_initialization
         },
+        backends.py.jcir_gen_pass.JcirGenPass.exit_has_var { is_field_marker },
     ]
     frontend.codeinfo ++> [
         backends.es.client_kernel_cache._es_backend_fingerprint
@@ -6391,6 +6392,9 @@ graph import compiler {
             native_unit_spelling,
             resolve_native_module
         },
+        backends.native.mir.lower_types.mir_class_type
+            | passes.layout_pass.record_interface_twins
+            | types.types.ClassDetailsShared.same_class { bundled_stdlib_module_of },
         backends.native.region_abi._region_layout_facts {
             HDR_ALLOC_ID_OFF,
             HDR_DTOR_OFF,
@@ -6517,8 +6521,6 @@ graph import compiler {
         passes.layout_pass { real_path },
         passes.layout_pass._archetype_native_name { native_arch_name },
         passes.layout_pass.interface_class_native_name { native_arch_name },
-        passes.layout_pass.record_interface_twins
-            | types.types.ClassDetailsShared.same_class { bundled_stdlib_module_of },
         placement.placement._scan_blockers_under {
             NATIVE_SUPPORTED_STDLIB,
             is_bundled_native_module,
@@ -10735,6 +10737,7 @@ graph import compiler.backends.native.mir {
             mir_c_ptr,
             mir_c_view,
             mir_class,
+            mir_dict,
             mir_float,
             mir_fn,
             mir_holds_ref,
@@ -15284,13 +15287,12 @@ graph import runtime.native {
         anys {
             __jac_rt_str_cmp,
             __jac_rt_str_concat,
-            __jac_rt_str_len,
             __jac_rt_str_new,
             __jac_rt_str_size
         },
         bytes { __jac_rt_str_new },
-        dicts { __jac_rt_str_size },
-        format | iterators | text { __jac_rt_str_new, __jac_rt_str_size },
+        dicts | iterators { __jac_rt_str_size },
+        format | text { __jac_rt_str_new, __jac_rt_str_size },
         lists { __jac_rt_str_cmp, __jac_rt_str_size },
     ]
     text ++> [
@@ -15302,6 +15304,7 @@ graph import runtime.native {
             __jac_rt_sb_int,
             __jac_rt_sb_new,
             __jac_rt_str_contains,
+            __jac_rt_str_cp_total,
             __jac_rt_str_index,
             __jac_rt_str_repeat,
             __jac_rt_str_repr,
@@ -15332,6 +15335,7 @@ graph import runtime.native {
             __jac_rt_str_repr,
             __jac_rt_utf8_width
         },
+        iterators { __jac_rt_str_unit, __jac_rt_utf8_width },
     ]
 }
 
@@ -44858,8 +44862,8 @@ graph import scale {
         KubernetesPostgresProvider
     }
     deploy.target.factory ++> [
-        plugin
-            | runtime.realizer.kubernetes_realizer
+        plugin { DeploymentTargetFactory, ensure_deploy_tooling },
+        runtime.realizer.kubernetes_realizer
             | tests.deploy.test_deploy_banner
             | tests.deploy.test_deploy_k8s
             | tests.deploy.test_dry_run_purity
@@ -44997,7 +45001,7 @@ graph import scale {
     deploy.target.kubernetes.runtime_resolver as resolver_mod --> tests.deploy.test_pod_env;
     deploy.target.kubernetes.target ++> [
         runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize
-            | sdk.client
+            | sdk.client.ScaleClient._build_target
             | tests.deploy.test_access_hint
             | tests.deploy.test_alb_zero_downtime
             | tests.deploy.test_crash_scan_fleet_guard
@@ -45023,6 +45027,7 @@ graph import scale {
         },
     ]
     deploy.target.kubernetes.target as target_mod --> tests.deploy.test_superseded_deployment_reap;
+    type deploy.target.kubernetes.target ++> sdk.client { KubernetesTarget }
     deploy.target.kubernetes.utils.kubernetes_utils ++> [
         injector.injector | injector.pvc_injector { KubectlCluster },
         injector.pvc_injector.PvcInjector.seed {
@@ -45516,8 +45521,8 @@ graph import scale {
             FLEET_ENV
         },
         deploy.target.kubernetes.target | injector.bundle { FleetSpec },
+        plugin._fleet_cmd { fleet_from_config, fleet_from_env },
         plugin._print_local_fleet_banner { format_fleet_lines },
-        plugin.scale_cmd { fleet_from_config, fleet_from_env },
         plugin.scale_local_serve { fleet_from_plans },
         tests.apps.test_app_scale_overrides { fleet_from_config },
         tests.apps.test_fleet_from_apps {
@@ -45633,13 +45638,13 @@ graph import scale {
         _to_ws_scheme,
         websocket_forward
     }
-    runtime.orchestrator.local_deployer ++> plugin.scale_cmd
+    runtime.orchestrator.local_deployer ++> plugin._fleet_cmd
         | tests.deploy.test_deployer { LocalDeployer }
     runtime.orchestrator.orchestrator ++> [
-        plugin.scale_cmd { ServiceRegistry, build_registry },
+        plugin._fleet_cmd { ServiceRegistry, build_registry },
         tests.apps.test_fleet_from_apps { build_registry },
     ]
-    runtime.orchestrator.orchestrator --> plugin.scale_cmd { start_gateway_only }
+    runtime.orchestrator.orchestrator --> plugin._fleet_cmd { start_gateway_only }
     runtime.orchestrator.process_manager ++> [
         tests.microservices.test_boot_grace
             | tests.microservices.test_boot_order

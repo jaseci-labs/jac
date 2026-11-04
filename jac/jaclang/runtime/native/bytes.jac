@@ -32,6 +32,15 @@ glob CODEC_UTF8: int = 0,
      ERRORS_REPLACE: int = 1,
      ERRORS_IGNORE: int = 2,
      ERRORS_SURROGATEPASS: int = 3,
+     ERRORS_BACKSLASH: int = 4,
+     ERRORS_SURROGATEESCAPE: int = 5,
+     ERRORS_ENCODE_ONLY: int = 6,
+     ERRORS_UNKNOWN: int = 7,
+     UTF8_BAD_START: int = -1,
+     UTF8_BAD_FIRST: int = -2,
+     UTF8_BAD_SECOND: int = -3,
+     UTF8_BAD_THIRD: int = -4,
+     UTF8_TRUNCATED: int = -5,
      CASE_UPPER: int = 0,
      CASE_LOWER: int = 1,
      STRIP_BOTH: int = 0,
@@ -46,6 +55,8 @@ glob FILE_HANDLE: int = 0,
      FILE_CHUNK: int = 65536;
 
 def:pub __jac_rt_byte_single(value: int) -> int;
+
+def:pub __jac_rt_bytes_from_ints(lst: int, array: bool) -> int;
 
 def:pub __jac_rt_exc_message(data: ptr[u8], n: int) -> ptr[u8];
 
@@ -100,8 +111,16 @@ def:pub __jac_rt_bytes_affix(
 ) -> bool;
 
 def:pub __jac_rt_bytes_decode(
-    data: ptr[u8], n: int, codec: int, errors: int, failure: i32
+    data: ptr[u8],
+    n: int,
+    encoding: ptr[u8],
+    errors: ptr[u8],
+    failure: i32,
+    lookup: i32,
+    wrong: i32
 ) -> ptr[u8];
+
+def:pub __jac_rt_codec_lookup(name: ptr[u8]) -> int;
 
 def:pub __jac_rt_str_encode(
     data: ptr[u8], n: int, codec: int, errors: int, failure: i32
@@ -155,11 +174,23 @@ def _from_sb(sb: int) -> int;
 
 def _find(hay: int, lo: int, hi: int, needle: int, nn: int, reverse: bool) -> int;
 
-def _utf8_valid(d: int, n: int, i: int) -> int;
+def _name_is(d: int, n: int, name: ptr[u8]) -> bool;
+
+def _codec_match(d: int, n: int, modules: bool) -> int;
+
+def _errors_lookup(name: ptr[u8]) -> int;
+
+def _is_cont(c: int) -> bool;
+
+def _utf8_step(d: int, n: int, i: int) -> int;
 
 def _decode_error(
-    codec: ptr[u8], byte: int, position: int, reason: ptr[u8]
+    codec: ptr[u8], d: int, start: int, stop: int, reason: ptr[u8]
 ) -> ptr[u8];
+
+def _named_error(prefix: ptr[u8], name: ptr[u8], suffix: ptr[u8]) -> ptr[u8];
+
+def _sb_code_point(sb: int, cp: int);
 
 def _encode_error(codec: ptr[u8], cp: int, position: int, limit: ptr[u8]) -> ptr[u8];
 

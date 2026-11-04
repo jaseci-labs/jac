@@ -21,28 +21,6 @@ impl __jac_rt_str_cmp(a: ptr[u8], an: int, b: ptr[u8], bn: int) -> int {
     return 0;
 }
 
-impl __jac_rt_str_len(owner: ptr[u8], data: ptr[u8], n: int) -> int {
-    if n <= 0 {
-        return 0;
-    }
-    if int(owner) == int(data) and int(owner) != 0 {
-        tag = __mem_load_i64(int(owner) + STR_TAG_OFF);
-        if (tag & 1) != 0 and tag < 0 and ((tag & STR_LEN_PAYLOAD_MASK) >> 1) == n {
-            return n;
-        }
-    }
-    bytes = data.view(n);
-    count = 0;
-    i = 0;
-    while i < n {
-        if (int(bytes[i]) & 192) != 128 {
-            count += 1;
-        }
-        i += 1;
-    }
-    return count;
-}
-
 impl __jac_rt_str_size(text: ptr[u8]) -> int {
     if int(text) == 0 {
         return 0;
@@ -148,27 +126,6 @@ impl __jac_rt_str_ref(owner: ptr[u8], data: ptr[u8], n: int) -> ptr[u8] {
         return owner;
     }
     return __jac_rt_str_new(data, n);
-}
-
-impl __jac_rt_str_char_at(data: ptr[u8], n: int, index: int) -> ptr[u8] {
-    bytes = data.view(n);
-    seen = -1;
-    i = 0;
-    while i < n {
-        if (int(bytes[i]) & 192) != 128 {
-            seen += 1;
-            if seen == index {
-                start = i;
-                i += 1;
-                while i < n and (int(bytes[i]) & 192) == 128 {
-                    i += 1;
-                }
-                return __jac_rt_str_new(data + start, i - start);
-            }
-        }
-        i += 1;
-    }
-    return __jac_rt_str_new(data, 0);
 }
 
 impl __jac_rt_str_from_uint(value: int) -> ptr[u8] {

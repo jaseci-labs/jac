@@ -122,6 +122,17 @@ impl MirLowering.to_bits(
     if elem.kind == MirKind.ANY {
         return self.address_of(self.any_to_box(value, site));
     }
+    if elem.kind == MirKind.OPT and elem.payload().kind == MirKind.TUPLE {
+        boxed = self.temp_slot(mir_ref());
+        (flag_slot, payload, absent, done) = self.opt_begin(
+            self.coerce(value, elem, site), mir_bool()
+        );
+        b.store(boxed, self.tuple_box(payload, site));
+        self.opt_switch(flag_slot, b.const_bool(True), absent, done);
+        b.store(boxed, b.const_null(mir_ref()));
+        self.opt_end(flag_slot, b.const_bool(False), done);
+        return self.address_of(b.load(boxed, mir_ref()));
+    }
     if elem.kind == MirKind.OPT
         and elem.payload().kind in (MirKind.STR, MirKind.TUPLE) {
         (bits_slot, payload, absent, done) = self.opt_begin(
@@ -599,6 +610,7 @@ impl MirLowering.list_slice(
     lst: MirValue, part: uni.Slice, site: uni.UniNode
 ) -> MirValue {
     b = self.builder();
+    self.view_guard(lst, VIEW_SLICE);
     (start, stop, step) = self.list_bounds(lst, part, site);
     elem = lst.type.payload();
     handle = self.runtime(
@@ -838,6 +850,7 @@ impl MirLowering.list_method(
         return b.const_bool(False);
     }
     if name == "remove" and len(args) == 1 {
+        self.view_guard(lst, VIEW_REMOVE);
         found = self.runtime(
             "__jac_rt_list_index",
             [lst, self.to_bits(self.lower_expr(args[0]), elem, args[0]), kind]
@@ -1686,11 +1699,15 @@ impl MirLowering.lower_delete(nd: uni.DeleteStmt) {
         }
         holder = self.lower_expr(target.target);
         slice = target.right;
+        if holder.type.kind == MirKind.LIST {
+            holder = self.spill(holder);
+            self.view_guard(holder, VIEW_DELETE);
+        }
         if holder.type.kind == MirKind.LIST
             and slice.is_range
             and len(slice.slices) == 1
             and slice.slices[0].step is None {
-            self.list_delete_range(self.spill(holder), slice.slices[0], target);
+            self.list_delete_range(holder, slice.slices[0], target);
             continue;
         }
         if len(slice.slices) != 1 or slice.is_range or slice.slices[0].start is None {
@@ -1748,6 +1765,7 @@ impl MirLowering.list_replace_range(
     }
     fresh: (MirValue | None) = None;
     if values is not None {
+        self.view_guard(lst, VIEW_SLICE);
         fresh = self.spill(self.new_list(lst.type.payload(), 0));
         self.extend_from(fresh, self.spill(values), site);
     }
@@ -1853,6 +1871,7 @@ impl MirLowering.list_extend_in_place(
         if value.type is current.type
         else self.coerce(value, current.type, site);
     elem = current.type.payload();
+    self.view_guard(current, VIEW_IADD);
     self.runtime(
         "__jac_rt_list_extend",
         [

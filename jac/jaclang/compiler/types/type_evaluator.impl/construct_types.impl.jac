@@ -254,17 +254,21 @@ impl TypeEvaluator._get_iterable_element_type(
             is_incomplete=iterable_type.is_incomplete
         );
     }
-    if isinstance(iterable_type, UnionType) and iterable_type.types {
+    if isinstance(iterable_type, UnionType) {
         elements: list[TypeBase] = [];
-        for member in iterable_type.types {
-            found = self._get_iterable_element_type(member, None, is_async);
-            if found is not None {
-                elements.append(found);
+        for member_type in iterable_type.types {
+            element = self._get_iterable_element_type(
+                member_type, node_for_error, is_async
+            );
+            if element is None {
+                continue;
             }
+            self._collect_unique_types(element, elements);
         }
-        if elements {
-            return self._union_narrowed_types(elements);
+        if not elements {
+            return None;
         }
+        return elements[0] if len(elements) == 1 else UnionType(types=elements);
     }
     if isinstance(iterable_type, ClassType) and not is_async {
         members: list[TypeBase] = [];

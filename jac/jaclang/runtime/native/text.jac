@@ -63,6 +63,8 @@ glob JUST_LEFT: int = 0,
 
 def:pub __jac_rt_utf8_width(data: ptr[u8], n: int, off: int) -> int;
 
+def:pub __jac_rt_str_unit(data: ptr[u8], n: int, off: int) -> ptr[u8];
+
 def:pub __jac_rt_str_cp_offset(owner: ptr[u8], data: ptr[u8], n: int, k: int) -> int;
 
 def:pub __jac_rt_str_cp_total(owner: ptr[u8], data: ptr[u8], n: int) -> int;
@@ -194,6 +196,8 @@ def _byte(at: int) -> int;
 def _cont(byte: int) -> bool;
 
 def _width_at(data: int, n: int, off: int) -> int;
+
+def _unit_valid(data: int, off: int, w: int) -> bool;
 
 def _start_before(data: int, off: int) -> int;
 

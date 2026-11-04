@@ -19,6 +19,17 @@ impl TypeEvaluator._null_ok_attr_type(
         expr.right.type = AnyType();
         return expr.right.type;
     }
+    members = list(base_type.types)
+        if isinstance(base_type, UnionType)
+        else ([base_type] if base_type is not None else []);
+    if any(
+        isinstance(member, ClassType)
+            and member.is_class_instance()
+            and not self.is_none_type(member) for member in members
+    ) {
+        expr.right.type = AnyType();
+        return expr.right.type;
+    }
     none_type = self.prefetch.none_type_class;
     if none_type is not None {
         expr.right.type = self._convert_to_instance(none_type);

@@ -188,7 +188,7 @@ impl _is_buffer(tag: int, payload: int) -> bool {
 
 impl __jac_rt_any_len(tag: int, payload: int) -> int {
     if tag == ANY_TAG_STR {
-        return __jac_rt_str_len(
+        return __jac_rt_str_cp_total(
             ptr[u8](payload), ptr[u8](payload), __jac_rt_str_size(ptr[u8](payload))
         );
     }
@@ -1565,7 +1565,7 @@ impl __jac_rt_any_getitem(tag: int, payload: int, ktag: int, kpayload: int) -> i
     }
     if tag == ANY_TAG_STR {
         size = __jac_rt_str_size(ptr[u8](payload));
-        total = __jac_rt_str_len(ptr[u8](payload), ptr[u8](payload), size);
+        total = __jac_rt_str_cp_total(ptr[u8](payload), ptr[u8](payload), size);
         index = kpayload + total if kpayload < 0 else kpayload;
         if index < 0 or index >= total {
             raise IndexError("string index out of range");

@@ -2,19 +2,66 @@ impl MirLowering.stdlib_module(expr: uni.UniNode) -> (uni.Module | None) {
     if not isinstance(expr, uni.Expr) or not isinstance(expr.type, ModuleType) {
         return None;
     }
-    scope = expr.type.symbol_table;
+    return self.stdlib_unit(expr.type.symbol_table);
+}
+
+impl MirLowering.stdlib_item_call(nd: uni.FuncCall) -> (MirValue | None) {
+    callee = nd.callee_decl;
+    if not isinstance(nd.target, uni.Name)
+        or not isinstance(callee, uni.Ability)
+        or not isinstance(callee.parent, uni.Module)
+        or callee.loc.mod_path.endswith(".jac") {
+        return None;
+    }
+    unit = self.stdlib_unit(callee.parent);
+    member = self.module_member(unit, self.name_of(callee))
+        if unit is not None
+        else None;
+    if not isinstance(member, uni.Ability) {
+        return None;
+    }
+    made = self.import_call(nd, member);
+    if made is None {
+        return None;
+    }
+    wanted = self.expr_type(nd);
+    if made.type is wanted
+        or wanted.kind == MirKind.NONE
+        or made.type.kind == MirKind.NONE {
+        return made;
+    }
+    return self.coerce(made, wanted, nd);
+}
+
+impl MirLowering.stdlib_unit(scope: (uni.UniScopeNode | None)) -> (uni.Module | None) {
     if scope is None or scope.loc is None {
         return None;
     }
-    name = bundled_stdlib_module_of(scope.loc.mod_path);
+    return self.stdlib_unit_at(scope.loc.mod_path);
+}
+
+impl MirLowering.stdlib_member(nd: uni.Name) -> (uni.Ability | None) {
+    sym = nd.sym;
+    if sym is None or sym.decl is None or sym.decl.loc is None {
+        return None;
+    }
+    unit = self.stdlib_unit_at(sym.decl.loc.mod_path);
+    named = sym.decl.value if isinstance(sym.decl, uni.Name) else nd.value;
+    found = self.module_member(unit, named) if unit is not None else None;
+    return found if isinstance(found, uni.Ability) else None;
+}
+
+impl MirLowering.stdlib_unit_at(path: str) -> (uni.Module | None) {
+    name = bundled_stdlib_module_of(path);
     if not name {
         return None;
     }
+    scope_path = path;
     if name in self.stdlib_units {
         return self.stdlib_units[name];
     }
     found: (uni.Module | None) = None;
-    if not scope.loc.mod_path.endswith(".jac") {
+    if not scope_path.endswith(".jac") {
         (_, full_path) = resolve_native_module(
             name, os.path.dirname(self.module.loc.mod_path), allow_inferred=False
         );

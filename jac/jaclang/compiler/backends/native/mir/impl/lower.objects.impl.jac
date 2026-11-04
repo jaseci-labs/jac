@@ -371,6 +371,10 @@ impl MirLowering.note_lineage(arch: uni.Archetype, obj_def: MirObjectDef) {
             self.class_lineages.append((obj_def.name, held.name));
         }
     }
+    layout = self.osp_layout(arch);
+    if layout is not None and layout.arch_type == "edge" {
+        self.class_lineages.append((obj_def.name, ""));
+    }
 }
 
 impl MirLowering.live_unit(path: str) -> (uni.Module | None) {
@@ -738,6 +742,7 @@ impl MirLowering.constructor_params(
         return found;
     }
     obj_def = self.object_def(arch);
+    keyword_only: set[str] = set();
     for member in layout.fields {
         decl = member.decl_node;
         if (isinstance(decl, uni.HasVar) and decl.defer)
@@ -753,11 +758,25 @@ impl MirLowering.constructor_params(
                 if isinstance(nearest.value, uni.Expr)
                 else None;
         }
+        var = nearest if nearest is not None else decl;
+        if isinstance(var, uni.HasVar) {
+            initialization = field_initialization(var);
+            if not initialization.participates_in_init {
+                continue;
+            }
+            if initialization.keyword_only {
+                keyword_only.add(member.name);
+            }
+            if self.field_default_of(var) is not var.value {
+                default_value = self.field_default_of(var);
+            }
+        }
         held = obj_def.field(member.name);
         if held is not None {
             found.append((member.name, held.type, default_value));
         }
     }
+    self.ctor_keyword_only[obj_def.name] = keyword_only;
     return found;
 }
 
@@ -833,52 +852,6 @@ impl MirLowering.object_alloc(
     return this;
 }
 
-impl MirLowering.object_copy(value: MirValue, site: uni.UniNode) -> MirValue {
-    arch = self.archetypes.get(value.type.name)
-        if value.type.kind == MirKind.OBJ
-        else None;
-    obj_def = self.mir.objects.get(value.type.name)
-        if value.type.kind == MirKind.OBJ
-        else None;
-    owner = arch.find_parent_of_type(uni.Module) if arch is not None else None;
-    registry = get_layout_registry(owner or self.module, self.prog);
-    sealed = obj_def is not None
-        and not any(
-            obj_def.name in list(other.parents or [])
-            for other in registry.layouts.values()
-        );
-    if arch is None or obj_def is None or not sealed or obj_def.tag_slot >= 0 {
-        raise MirRefused(
-            mir_refusal(
-                "call",
-                f"copy of {value.type.render()}",
-                site,
-                "A native shallow copy is of an archetype that has no subclasses."
-            )
-        );
-    }
-    b = self.builder();
-    source = self.spill(value);
-    made = self.object_alloc(arch, obj_def, value.type);
-    for member in obj_def.fields {
-        b.store(
-            self.emit_value(
-                MirOp.FIELD_ADDR, mir_c_ptr(member.type), [made], int_value=member.index
-            ),
-            b.load(
-                self.emit_value(
-                    MirOp.FIELD_ADDR,
-                    mir_c_ptr(member.type),
-                    [source],
-                    int_value=member.index
-                ),
-                member.type
-            )
-        );
-    }
-    return made;
-}
-
 impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) {
     obj_def = self.object_def(arch);
     self_type = mir_obj(obj_def.name);
@@ -909,9 +882,14 @@ impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) 
         if consumed {
             self.ctor_consumes[symbol] = consumed;
         }
-        if self.ctor_takes_mask(params) {
-            given = fn.new_value(mir_int(), "__given");
-            fn.params.append(MirParam(name="__given", value=given));
+        words = self.ctor_mask_words(params);
+        if words {
+            given: list[MirValue] = [];
+            for word in range(words) {
+                held = fn.new_value(mir_int(), f"__given{word}");
+                fn.params.append(MirParam(name=f"__given{word}", value=held));
+                given.append(held);
+            }
             for (index, (pname, ptype, fallback)) in enumerate(params) {
                 if fallback is None {
                     continue;
@@ -933,7 +911,9 @@ impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) 
         named = {pname for (pname, _, _) in params} if init is None else set();
         for member in (layout.fields if layout is not None else []) {
             nearest = self.nearest_has_var(arch, member.name);
-            initial = nearest.value if nearest is not None else member.default_expr;
+            initial = self.field_default_of(nearest)
+                if nearest is not None
+                else member.default_expr;
             if member.name in named or not isinstance(initial, uni.Expr) {
                 continue;
             }
@@ -1616,15 +1596,13 @@ impl MirLowering.object_call(
             );
         }
         values = self.bound_values(list(bound), [param[1] for param in params]);
-        if self.ctor_takes_mask(params) {
-            given = 0;
-            for (index, param) in enumerate(params) {
-                if param[2] is not None {
-                    given = given | (1 << index);
-                }
+        given = 0;
+        for (index, param) in enumerate(params) {
+            if param[2] is not None {
+                given = given | (1 << index);
             }
-            values.append(self.builder().const_int(given, mir_int()));
         }
+        values.extend(self.ctor_mask(given, params));
         return self.construct(symbol, obj_def, owner, params, values, nd);
     }
     values = self.ctor_arguments(nd, obj_def.name, params, leading);
@@ -1643,8 +1621,7 @@ impl MirLowering.construct(
         self.mir.externs[symbol] = MirExtern(
             symbol=symbol,
             ret=mir_obj(obj_def.name),
-            params=[p[1] for p in params]
-                + ([mir_int()] if self.ctor_takes_mask(params) else [])
+            params=[p[1] for p in params] + [mir_int()] * self.ctor_mask_words(params)
         );
         self.add_dep(owner.loc.mod_path, obj_def.name, nd);
     }
@@ -2133,6 +2110,7 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
         and not self.class_lineages
         and not self.default_entries
         and not self.text_pairs
+        and not self.decorations
         and not any(isinstance(nd, uni.GlobalVars) for nd in self.module.body) {
         return None;
     }
@@ -2219,6 +2197,8 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
                     self.address_of(
                         self.emit_value(MirOp.CLASS_ADDR, i8p, [], str_value=base_name)
                     )
+                        if base_name
+                        else b.const_int(EDGE_CLASS_MARK, mir_int())
                 ]
             );
         }
@@ -2250,16 +2230,23 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
             }
             index += 1;
         }
-        steps: list[tuple[int, int]] = [
-            (initial.loc.pos_start, at)
+        steps: list[tuple[int, int, int]] = [
+            (initial.loc.pos_start, 0, at)
             for (at, (_, initial)) in enumerate(self.deferred_globals)
         ];
         steps.extend(
-            [(start, -1 - at) for (at, (start, _)) in enumerate(self.class_inits)]
+            [(start, 1, at) for (at, (start, _)) in enumerate(self.class_inits)]
         );
-        for (_, at) in sorted(steps) {
-            if at < 0 {
-                b.call(self.class_inits[-1 - at][1], [], mir_none());
+        steps.extend(
+            [(start, 2, at) for (at, (start, _)) in enumerate(self.decorations)]
+        );
+        for (_, step, at) in sorted(steps) {
+            if step == 1 {
+                b.call(self.class_inits[at][1], [], mir_none());
+                continue;
+            }
+            if step == 2 {
+                b.call(self.decorations[at][1], [], mir_none());
                 continue;
             }
             (glob_def, initial) = self.deferred_globals[at];
@@ -2556,38 +2543,51 @@ impl MirLowering.class_of(value: MirValue, site: uni.UniNode) -> MirValue {
     return self.emit_value(MirOp.PTR_CAST, mir_class("*"), [b.load(table, i8p)]);
 }
 
-impl MirLowering.ctor_takes_mask(
+impl MirLowering.ctor_mask_words(
     params: list[tuple[str, MirType, (uni.Expr | None)]]
-) -> bool {
+) -> int {
     defaulted = [
         index
         for (index, param) in enumerate(params)
         if param[2] is not None
     ];
-    if defaulted and max(defaulted) >= CTOR_MASK_BITS {
-        raise MirRefused(
-            mir_refusal(
-                "constructor",
-                f"{len(params)} parameters",
-                None,
-                "A native constructor marks which defaulted parameters were given in one 63-bit word."
-            )
-        );
+    if not defaulted {
+        return 0;
     }
-    return bool(defaulted);
+    return max(defaulted) // CTOR_MASK_BITS + 1;
+}
+
+impl MirLowering.ctor_mask(
+    mask: int, params: list[tuple[str, MirType, (uni.Expr | None)]]
+) -> list[MirValue] {
+    b = self.builder();
+    word_mask = (1 << CTOR_MASK_BITS) - 1;
+    return [
+        b.const_int((mask >> (word * CTOR_MASK_BITS)) & word_mask, mir_int())
+        for word in range(self.ctor_mask_words(params))
+    ];
+}
+
+impl MirLowering.ctor_given_bit(given: list[MirValue], index: int) -> MirValue {
+    b = self.builder();
+    return b.binary(
+        "and",
+        b.binary(
+            "shr",
+            given[index // CTOR_MASK_BITS],
+            b.const_int(index % CTOR_MASK_BITS, mir_int())
+        ),
+        b.const_int(1, mir_int())
+    );
 }
 
 impl MirLowering.ctor_default(
-    value: MirValue, given: MirValue, index: int, fallback: uni.Expr
+    value: MirValue, given: list[MirValue], index: int, fallback: uni.Expr
 ) -> MirValue {
     b = self.builder();
     fn = self.st().fn;
     held = self.temp_slot(value.type);
-    bit = b.binary(
-        "and",
-        b.binary("shr", given, b.const_int(index, mir_int())),
-        b.const_int(1, mir_int())
-    );
+    bit = self.ctor_given_bit(given, index);
     supplied = fn.new_block("ctor.given");
     missing = fn.new_block("ctor.default");
     done = fn.new_block("ctor.arg");
@@ -2615,29 +2615,119 @@ impl MirLowering.ctor_arguments(
     params: list[tuple[str, MirType, (uni.Expr | None)]],
     leading: int = 0
 ) -> list[MirValue] {
+    b = self.builder();
+    fn = self.st().fn;
     positional: list[uni.Expr] = [];
     named: dict[str, uni.Expr] = {};
+    spreads: list[MirValue] = [];
     for arg in list(nd.params or [])[leading:] {
         if isinstance(arg, uni.KWPair) {
             if arg.key is None {
-                raise MirRefused(
-                    mir_refusal("call argument", "keyword unpacking", arg)
-                );
+                spread = self.spill(self.lower_expr(arg.value));
+                if spread.type.kind != MirKind.DICT
+                    or spread.type.args[0].kind not in (MirKind.STR, MirKind.STR_REF) {
+                    raise MirRefused(
+                        mir_refusal("call argument", "keyword unpacking", arg)
+                    );
+                }
+                spreads.append(spread);
+                continue;
             }
             named[arg.key.sym_name] = arg.value;
         } else {
             positional.append(arg);
         }
     }
-    if len(positional) > len(params) {
+    keyword_only = self.ctor_keyword_only.get(label, set());
+    slots = [
+        index
+        for (index, param) in enumerate(params)
+        if param[0] not in keyword_only
+    ];
+    if len(positional) > len(slots) {
         raise MirRefused(
             mir_refusal("call", f"{label} with {len(positional)} arguments", nd)
         );
     }
+    shown = label.split("$")[0];
     values: list[MirValue] = [];
     mask = 0;
+    dynamic_mask: dict[int, MirValue] = {};
+    matched: (MirValue | None) = None;
+    if spreads {
+        matched = self.temp_slot(mir_int());
+        b.store(matched, b.const_int(0, mir_int()));
+    }
     for (index, (pname, ptype, fallback)) in enumerate(params) {
-        source = positional[index] if index < len(positional) else named.get(pname);
+        at = slots.index(index) if pname not in keyword_only else len(positional);
+        source = positional[at] if at < len(positional) else named.get(pname);
+        if source is None and spreads and matched is not None {
+            held = self.temp_slot(ptype);
+            flag = self.temp_slot(mir_bool());
+            b.store(flag, b.const_bool(False));
+            for spread in spreads {
+                key = spread.type.args[0];
+                found = self.runtime_value(
+                    "__jac_rt_dict_find",
+                    [
+                        spread,
+                        self.to_bits(b.const_str(pname, mir_str()), key, nd),
+                        b.const_int(self.elem_kind(key, nd), mir_int())
+                    ]
+                );
+                hit = fn.new_block("ctor.kw.hit");
+                miss = fn.new_block("ctor.kw.miss");
+                b.cond_branch(
+                    b.compare("ge", found, b.const_int(0, mir_int())), hit, miss
+                );
+                b.position(hit);
+                self.raise_if(
+                    b.load(flag, mir_bool()),
+                    "TypeError",
+                    f"{shown}() got multiple values for argument '{pname}'"
+                );
+                b.store(
+                    held,
+                    self.coerce(self.dict_entry_value(spread, found, nd), ptype, nd)
+                );
+                b.store(flag, b.const_bool(True));
+                b.store(
+                    matched,
+                    b.binary(
+                        "add", b.load(matched, mir_int()), b.const_int(1, mir_int())
+                    )
+                );
+                b.branch(miss);
+                b.position(miss);
+            }
+            given = b.load(flag, mir_bool());
+            if fallback is None {
+                self.raise_if(
+                    b.logical_not(given),
+                    "TypeError",
+                    f"{shown}() missing required argument: '{pname}'"
+                );
+            } else {
+                absent = fn.new_block("ctor.kw.default");
+                done = fn.new_block("ctor.kw.done");
+                b.cond_branch(given, done, absent);
+                b.position(absent);
+                b.store(held, self.placeholder(ptype));
+                b.branch(done);
+                b.position(done);
+                word = index // CTOR_MASK_BITS;
+                bit = b.select(
+                    b.load(flag, mir_bool()),
+                    b.const_int(1 << (index % CTOR_MASK_BITS), mir_int()),
+                    b.const_int(0, mir_int())
+                );
+                dynamic_mask[word] = bit
+                    if word not in dynamic_mask
+                    else b.binary("or", dynamic_mask[word], bit);
+            }
+            values.append(b.load(held, ptype));
+            continue;
+        }
         if source is None and fallback is not None {
             values.append(self.placeholder(ptype));
             continue;
@@ -2650,18 +2740,37 @@ impl MirLowering.ctor_arguments(
         }
         values.append(self.coerce(self.lower_expr(source), ptype, source));
     }
-    if self.ctor_takes_mask(params) {
-        values.append(self.builder().const_int(mask, mir_int()));
+    if spreads and matched is not None {
+        total = b.const_int(0, mir_int());
+        for spread in spreads {
+            total = b.binary("add", total, self.container_len(spread));
+        }
+        self.raise_if(
+            b.compare("ne", total, b.load(matched, mir_int())),
+            "TypeError",
+            f"{shown}() got an unexpected keyword argument"
+        );
+    }
+    for (word, made) in enumerate(self.ctor_mask(mask, params)) {
+        if word in dynamic_mask {
+            made = b.binary("or", made, dynamic_mask[word]);
+        }
+        values.append(made);
     }
     return values;
 }
 
-impl MirLowering.class_value_call(nd: uni.FuncCall, bound: uni.Archetype) -> MirValue {
+impl MirLowering.class_value_call(
+    nd: uni.FuncCall,
+    bound: uni.Archetype,
+    source: (uni.Expr | None) = None,
+    leading: int = 0
+) -> MirValue {
     b = self.builder();
     obj_def = self.object_def(bound);
-    kind = self.lower_expr(nd.target);
+    kind = self.lower_expr(source if source is not None else nd.target);
     params = self.constructor_params(bound);
-    values = self.ctor_arguments(nd, obj_def.name, params);
+    values = self.ctor_arguments(nd, obj_def.name, params, leading);
     i8p = mir_c_ptr(mir_int(8, False));
     found = self.runtime_value(
         "__jac_rt_class_ctor_find",
@@ -2737,13 +2846,14 @@ impl MirLowering.class_entry(
             }
             given.append(value);
         }
-        supplied = b.const_int(-1, mir_int());
-        if self.ctor_takes_mask(taken) {
-            supplied = fn.new_value(mir_int(), "__given");
-            fn.params.append(MirParam(name="__given", value=supplied));
+        supplied: list[MirValue] = [];
+        for word in range(self.ctor_mask_words(taken)) {
+            held = fn.new_value(mir_int(), f"__given{word}");
+            fn.params.append(MirParam(name=f"__given{word}", value=held));
+            supplied.append(held);
         }
         args: list[MirValue] = [];
-        mask = b.const_int(0, mir_int());
+        mask = self.ctor_mask(0, accepts);
         for (index, (pname, ptype, fallback)) in enumerate(accepts) {
             if pname not in names {
                 args.append(self.placeholder(ptype));
@@ -2751,17 +2861,18 @@ impl MirLowering.class_entry(
             }
             at = names.index(pname);
             args.append(self.coerce(given[at], ptype, arch));
+            word = index // CTOR_MASK_BITS;
             if taken[at][2] is None {
                 if fallback is not None {
-                    mask = b.binary("or", mask, b.const_int(1 << index, mir_int()));
+                    mask[word] = b.binary(
+                        "or",
+                        mask[word],
+                        b.const_int(1 << (index % CTOR_MASK_BITS), mir_int())
+                    );
                 }
                 continue;
             }
-            bit = b.binary(
-                "and",
-                b.binary("shr", supplied, b.const_int(at, mir_int())),
-                b.const_int(1, mir_int())
-            );
+            bit = self.ctor_given_bit(supplied, at);
             if fallback is None {
                 self.raise_if(
                     b.compare("eq", bit, b.const_int(0, mir_int())),
@@ -2769,14 +2880,14 @@ impl MirLowering.class_entry(
                     f"{obj_def.name.split('$')[0]}() missing required argument: '{pname}'"
                 );
             } else {
-                mask = b.binary(
-                    "or", mask, b.binary("shl", bit, b.const_int(index, mir_int()))
+                mask[word] = b.binary(
+                    "or",
+                    mask[word],
+                    b.binary("shl", bit, b.const_int(index % CTOR_MASK_BITS, mir_int()))
                 );
             }
         }
-        if self.ctor_takes_mask(accepts) {
-            args.append(mask);
-        }
+        args.extend(mask);
         made = b.call(ctor, args, mir_obj(obj_def.name));
         if made is None {
             raise MirRefused(mir_refusal("constructor", obj_def.name, arch));
@@ -2816,9 +2927,7 @@ impl MirLowering.default_entry(arch: uni.Archetype) -> (MirFunction | None) {
     try {
         b = self.builder();
         args = [self.placeholder(ptype) for (_, ptype, _) in params];
-        if self.ctor_takes_mask(params) {
-            args.append(b.const_int(0, mir_int()));
-        }
+        args.extend(self.ctor_mask(0, params));
         made = b.call(
             native_symbol_name(prefix, f"{obj_def.name}.__ctor"),
             args,
@@ -2863,7 +2972,7 @@ impl MirLowering.nearest_has_var(
 }
 
 impl MirLowering.default_thunk(expr: uni.Expr) -> (tuple[str, str, MirType] | None) {
-    holder = expr.parent;
+    holder = self.default_holder(expr);
     if isinstance(holder, uni.HasVar) and holder.name is not None {
         arch = self.owner_archetype(holder);
         if arch is None {
@@ -2898,7 +3007,7 @@ impl MirLowering.default_thunk(expr: uni.Expr) -> (tuple[str, str, MirType] | No
 impl MirLowering.default_value(expr: uni.Expr, to: MirType) -> MirValue {
     origin = expr.find_parent_of_type(uni.Module);
     if origin is None or origin is self.module {
-        return self.coerce(self.lower_expr(expr), to, expr);
+        return self.field_expr_value(expr, to);
     }
     found = self.default_thunk(expr);
     if found is None {
@@ -2923,11 +3032,100 @@ impl MirLowering.default_value(expr: uni.Expr, to: MirType) -> MirValue {
     return self.coerce(made, to, expr);
 }
 
+impl MirLowering.field_default_of(var: uni.HasVar) -> (uni.Expr | None) {
+    initialization = field_initialization(var);
+    if initialization.factory_expr is not None {
+        return initialization.factory_expr;
+    }
+    return initialization.default_expr;
+}
+
+impl MirLowering.default_holder(expr: uni.Expr) -> (uni.UniNode | None) {
+    holder = expr.parent;
+    if isinstance(holder, uni.KWPair)
+        and isinstance(holder.parent, uni.FuncCall)
+        and isinstance(holder.parent.parent, uni.HasVar)
+        and self.field_default_of(holder.parent.parent) is expr {
+        return holder.parent.parent;
+    }
+    return holder;
+}
+
+impl MirLowering.is_field_factory(expr: uni.Expr) -> bool {
+    holder = self.default_holder(expr);
+    return isinstance(holder, uni.HasVar)
+        and holder is not expr.parent
+        and field_initialization(holder).factory_expr is expr;
+}
+
+impl MirLowering.field_expr_value(expr: uni.Expr, to: MirType) -> MirValue {
+    if self.is_field_factory(expr) {
+        return self.field_factory_value(expr, to);
+    }
+    return self.coerce(self.lower_expr(expr), to, expr);
+}
+
+impl MirLowering.field_factory_value(factory: uni.Expr, to: MirType) -> MirValue {
+    made = factory.type;
+    if isinstance(made, ClassType) and not made.is_instance() {
+        kind = made.shared.class_name;
+        if kind == "list" and to.kind == MirKind.LIST {
+            return self.new_list(to.payload(), 0);
+        }
+        if kind == "dict" and to.kind == MirKind.DICT {
+            return self.new_dict(to.args[0], to.args[1], to);
+        }
+        if kind == "set" and to.kind == MirKind.SET {
+            return self.new_dict(to.payload(), None, to);
+        }
+    }
+    target = named_function_of(factory);
+    marker = factory.parent.parent if factory.parent is not None else None;
+    if isinstance(target, uni.Ability)
+        and isinstance(target.signature, uni.FuncSignature)
+        and target.signature.varargs is None
+        and target.signature.kwargs is None
+        and isinstance(marker, uni.FuncCall) {
+        decl = self.decls.get(id(target));
+        if decl is None
+            and isinstance(target.parent, uni.Module)
+            and target.loc.mod_path.endswith(".jac") {
+            decl = self.foreign_function_decl(target, factory);
+        }
+        if decl is not None and decl.self_type is None {
+            sig = target.signature;
+            bound: list[any] = [
+                self.bind_by_name(target, pv, {}, True, marker)
+                for pv in list(sig.posonly_params)
+                    + list(sig.params or [])
+                    + list(sig.kwonlyargs or [])
+            ];
+            if len(bound) == len(decl.params) {
+                result = self.builder().call(
+                    decl.symbol, self.bound_values(bound, decl.params), decl.ret
+                );
+                if result is not None {
+                    return self.coerce(result, to, factory);
+                }
+            }
+        }
+    }
+    raise MirRefused(
+        mir_refusal(
+            "field",
+            "default_factory",
+            factory,
+            "A native field factory is list, dict, set or a function called with no arguments."
+        )
+    );
+}
+
 impl MirLowering.default_thunks(arch: uni.Archetype) -> list[MirFunction] {
     defaults: list[uni.Expr] = [];
     for var in arch.get_has_vars() {
-        if isinstance(var.value, uni.Expr) {
-            defaults.append(var.value);
+        initial = self.field_default_of(var);
+        if isinstance(initial, uni.Expr) {
+            defaults.append(initial);
         }
     }
     for method in self.arch_methods(arch) {
@@ -2993,7 +3191,7 @@ impl MirLowering.make_default_thunks(defaults: list[uni.Expr]) -> list[MirFuncti
             );
             first = fn.new_block("entry");
             self.state = MirFnState(fn=fn, b=MirBuilder(fn=fn, block=first));
-            self.builder().ret(self.coerce(self.lower_expr(expr), made_type, expr));
+            self.builder().ret(self.field_expr_value(expr, made_type));
             made.append(fn);
         } except MirRefused {
             self.state = saved;

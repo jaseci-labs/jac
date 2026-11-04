@@ -760,9 +760,7 @@ impl MirLowering.osp_edge_object(
             );
         }
     }
-    if self.ctor_takes_mask(params) {
-        args.append(b.const_int(mask, mir_int()));
-    }
+    args.extend(self.ctor_mask(mask, params));
     owner = edge_arch.find_parent_of_type(uni.Module) or self.module;
     symbol = native_symbol_name(
         native_unit_prefix(owner.loc.mod_path), f"{obj_def.name}.__ctor"
@@ -772,7 +770,7 @@ impl MirLowering.osp_edge_object(
             symbol=symbol,
             ret=mir_obj(obj_def.name),
             params=[param[1] for param in params]
-                + ([mir_int()] if self.ctor_takes_mask(params) else [])
+                + [mir_int()] * self.ctor_mask_words(params)
         );
         self.add_dep(owner.loc.mod_path, obj_def.name, owner);
     }
@@ -864,6 +862,16 @@ impl MirLowering.lower_connect(nd: uni.BinaryExpr, co: uni.ConnectOp) -> MirValu
     many = self.osp_hold(right if right_many else left);
     one = self.osp_hold(left if right_many else right);
     values = self.osp_assign_values(co, edge_arch, nd);
+    pinned: list[int] = [];
+    if isinstance(co.conn_type, uni.FuncCall) {
+        for arg in list(co.conn_type.params or []) {
+            held = arg.value if isinstance(arg, uni.KWPair) else arg;
+            if isinstance(held, uni.Expr) {
+                self.st().pinned[id(held)] = self.spill(self.lower_expr(held));
+                pinned.append(id(held));
+            }
+        }
+    }
     fn = self.st().fn;
     index = self.temp_slot(mir_int());
     b.store(index, b.const_int(0, mir_int()));
@@ -894,6 +902,9 @@ impl MirLowering.lower_connect(nd: uni.BinaryExpr, co: uni.ConnectOp) -> MirValu
     b.store(index, b.binary("add", at, b.const_int(1, mir_int())));
     b.branch(head);
     b.position(done);
+    for key in pinned {
+        self.st().pinned.pop(key, None);
+    }
     if direction == OSP_DIR_IN {
         return one if right_many else many;
     }
@@ -915,13 +926,18 @@ impl MirLowering.lower_disconnect(
     spec = dop.edge_spec;
     condition = spec.filter_cond;
     edge_arch: (uni.Archetype | None) = None;
+    dynamic_tag: (MirValue | None) = None;
     if condition is not None and condition.f_type is not None {
         edge_arch = self.osp_arch_of(condition.f_type);
         layout = self.osp_layout(edge_arch);
         if layout is None or layout.arch_type != "edge" {
-            raise MirRefused(
-                mir_refusal("edge type", "an edge value", condition.f_type)
-            );
+            dynamic_tag = self.osp_edge_class_tag(condition.f_type);
+            edge_arch = self.osp_edge_bound(condition.f_type);
+            if dynamic_tag is None {
+                raise MirRefused(
+                    mir_refusal("edge type", "an edge value", condition.f_type)
+                );
+            }
         }
     }
     compares = [
@@ -941,9 +957,11 @@ impl MirLowering.lower_disconnect(
         );
     }
     b = self.builder();
-    tag = b.const_int(
-        self.osp_tag(edge_arch) if edge_arch is not None else UNTYPED_OSP_TAG, mir_int()
-    );
+    tag = dynamic_tag
+        or b.const_int(
+            self.osp_tag(edge_arch) if edge_arch is not None else UNTYPED_OSP_TAG,
+            mir_int()
+        );
     direction = b.const_int(int(spec.edge_dir.value), mir_int());
     left = self.lower_expr(nd.left);
     right = self.lower_expr(nd.right);
@@ -1023,13 +1041,16 @@ impl MirLowering.lower_edge_handles(nd: uni.EdgeRefTrailer) -> MirValue {
         last = index >= len(chain) or not isinstance(chain[index], uni.EdgeOpRef);
         condition = step.filter_cond;
         edge_arch: (uni.Archetype | None) = None;
+        pred_arch: (uni.Archetype | None) = None;
         dynamic_tag: (MirValue | None) = None;
         if condition is not None and condition.f_type is not None {
             edge_arch = self.osp_arch_of(condition.f_type);
+            pred_arch = edge_arch;
             layout = self.osp_layout(edge_arch);
             if layout is None or layout.arch_type != "edge" {
-                dynamic_tag = self.osp_class_tag(condition.f_type);
+                dynamic_tag = self.osp_edge_class_tag(condition.f_type);
                 edge_arch = None;
+                pred_arch = self.osp_edge_bound(condition.f_type);
                 if dynamic_tag is None {
                     raise MirRefused(
                         mir_refusal("edge type", "an edge value", condition.f_type)
@@ -1038,7 +1059,7 @@ impl MirLowering.lower_edge_handles(nd: uni.EdgeRefTrailer) -> MirValue {
             }
         }
         compares = list(condition.compares if condition is not None else []);
-        if compares and edge_arch is None {
+        if compares and pred_arch is None {
             raise MirRefused(
                 mir_refusal("expression", "EdgeRefTrailer", nd, OSP_PREDICATE_HELP)
             );
@@ -1060,7 +1081,7 @@ impl MirLowering.lower_edge_handles(nd: uni.EdgeRefTrailer) -> MirValue {
                     else None
             );
         result: MirValue;
-        if compares and edge_arch is not None and origins is not None {
+        if compares and pred_arch is not None and origins is not None {
             result = self.osp_call(
                 "__jac_osp_refs_pred",
                 [
@@ -1068,7 +1089,7 @@ impl MirLowering.lower_edge_handles(nd: uni.EdgeRefTrailer) -> MirValue {
                     direction,
                     tag,
                     edges_only,
-                    self.osp_field_pred(edge_arch, compares, nd)
+                    self.osp_field_pred(pred_arch, compares, nd)
                 ]
             );
         } elif origins is None {
@@ -1353,6 +1374,12 @@ impl MirLowering.is_walker_ref(nd: uni.Expr) -> bool {
         and self.expr_type(nd).kind in (MirKind.OSP, MirKind.OBJ, MirKind.ANY);
 }
 
+impl MirLowering.osp_edge_bound(nd: uni.Expr) -> (uni.Archetype | None) {
+    bound = self.class_bound(nd.type);
+    layout = self.osp_layout(bound);
+    return bound if layout is not None and layout.arch_type == "edge" else None;
+}
+
 impl MirLowering.osp_class_tag_ok(nd: uni.Expr) -> bool {
     return self.class_reference(nd) is None
         and self.expr_type(nd).kind == MirKind.CLASS;
@@ -1439,6 +1466,31 @@ impl MirLowering.lower_dynamic_connect(
         ]
     );
     return collected;
+}
+
+impl MirLowering.osp_edge_class_tag(nd: uni.Expr) -> (MirValue | None) {
+    if not self.osp_class_tag_ok(nd) {
+        return None;
+    }
+    kind = self.spill(
+        self.emit_value(
+            MirOp.PTR_CAST, mir_c_ptr(mir_int(8, False)), [self.lower_expr(nd)]
+        )
+    );
+    b = self.builder();
+    if self.osp_edge_bound(nd) is None {
+        self.raise_if(
+            b.logical_not(
+                self.runtime_value(
+                    "__jac_rt_class_isa",
+                    [self.address_of(kind), b.const_int(EDGE_CLASS_MARK, mir_int())]
+                )
+            ),
+            "TypeError",
+            "an edge filter needs an edge type"
+        );
+    }
+    return self.runtime_value("__jac_rt_class_tag", [kind]);
 }
 
 impl MirLowering.osp_class_tag(nd: uni.Expr) -> (MirValue | None) {

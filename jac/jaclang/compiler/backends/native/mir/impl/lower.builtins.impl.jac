@@ -168,38 +168,7 @@ impl MirLowering.str_subscript(nd: uni.AtomTrailer) -> (MirValue | None) {
         or self.expr_type(nd.target).kind != MirKind.STR {
         return None;
     }
-    b = self.builder();
-    text = self.spill(self.as_text(self.lower_expr(nd.target)));
-    position = right.slices[0].start;
-    at = self.coerce(self.lower_expr(position), mir_int(), position);
-    count = self.runtime(
-        "__jac_rt_str_len",
-        [b.str_part(text, "root"), b.str_part(text, "data"), b.str_part(text, "len")]
-    );
-    if count is None {
-        raise MirRefused(mir_refusal("subscript", "str", nd));
-    }
-    wrapped = b.select(
-        b.compare("lt", at, b.const_int(0, mir_int())), b.binary("add", at, count), at
-    );
-    self.raise_if(
-        b.binary(
-            "or",
-            b.compare("lt", wrapped, b.const_int(0, mir_int())),
-            b.compare("ge", wrapped, count)
-        ),
-        "IndexError",
-        STR_INDEX_MESSAGE
-    );
-    made = self.runtime(
-        "__jac_rt_str_char_at",
-        [b.str_part(text, "data"), b.str_part(text, "len"), wrapped]
-    );
-    size = self.runtime("__jac_rt_str_size", [made]) if made is not None else None;
-    if made is None or size is None {
-        raise MirRefused(mir_refusal("subscript", "str", nd));
-    }
-    return b.str_make(made, made, size);
+    return self.text_subscript(self.lower_expr(nd.target), right, nd);
 }
 
 impl MirLowering.identity_of(value: MirValue, site: uni.UniNode) -> MirValue {

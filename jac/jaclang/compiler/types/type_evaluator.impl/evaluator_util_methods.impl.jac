@@ -1305,6 +1305,18 @@ impl TypeEvaluator._resolution_scope_for(expr: UniNode) -> UniScopeNode | None {
     if scope is None {
         return None;
     }
+    if isinstance(scope, InnerCompr)
+        and isinstance(scope.parent, (ListCompr, DictCompr))
+        and scope.parent.compr
+        and scope.parent.compr[0] is scope {
+        walk: UniNode | None = expr;
+        while walk is not None and walk is not scope.collection and walk is not scope {
+            walk = walk.parent;
+        }
+        if walk is scope.collection {
+            return scope.parent.find_parent_of_type(UniScopeNode) or scope;
+        }
+    }
     if isinstance(scope, Archetype) and scope.base_classes {
         cur: UniNode | None = expr;
         while cur is not None and cur.parent is not scope {

@@ -29,6 +29,15 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     for (site, name, reason) in lowering.c_conflicts {
         self.ctx.emit(E1158, node_override=site, name=name, reason=reason);
     }
+    for refusal in lowering.hard_refusals {
+        self.ctx.emit(
+            E5092,
+            node_override=refusal.site or ir_in,
+            kind=refusal.kind,
+            name=refusal.name,
+            help_text=refusal.help
+        );
+    }
     runtime = mir_runtime_unit_paths();
     here = os.path.realpath(path);
     if self.native_required(path) {
@@ -94,6 +103,7 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
             target[0],
             bool(self.prog.options.native_sjlj)
         );
+        ir_in.gen.ir_module = ir_in.gen.llvm_ir;
     } except Exception as exc {
         self.report_crash(lowering, exc);
         return ir_in;
@@ -529,7 +539,7 @@ impl MirNativePass.layout(lowering: MirLowering, mir: MirModule) -> NativeModule
         if decl.event {
             continue;
         }
-        if decl.owner is None {
+        if decl.owner is None and decl.self_type is None {
             owners.setdefault(decl.symbol, "");
         } elif decl.self_type is not None {
             owners.setdefault(decl.symbol, decl.self_type.name);

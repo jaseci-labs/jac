@@ -1,4 +1,7 @@
 impl directory_names(path: str) -> list[str] {
+    if "\x00" in path {
+        raise ValueError("listdir: embedded null character in path");
+    }
     directory = __jac_opendir(path);
     if directory == 0 {
         raise_os_error("opendir", path, last_errno());

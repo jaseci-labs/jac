@@ -46,7 +46,7 @@ impl _count_starts(data: int, lo: int, hi: int) -> int {
     count = 0;
     i = lo;
     while i < hi {
-        if not _cont(_byte(data + i)) {
+        if i == 0 or not _cont(_byte(data + i)) {
             count += 1;
         }
         i += 1;
@@ -203,6 +203,38 @@ impl __jac_rt_utf8_width(data: ptr[u8], n: int, off: int) -> int {
     return _width_at(int(data), n, off);
 }
 
+impl _unit_valid(data: int, off: int, w: int) -> bool {
+    lead = _byte(data + off);
+    if lead < 128 {
+        return w == 1;
+    }
+    if lead < 194 {
+        return False;
+    }
+    if lead < 224 {
+        return w == 2;
+    }
+    if lead < 240 {
+        return w == 3 and (lead != 224 or _byte(data + off + 1) >= 160);
+    }
+    if lead < 245 {
+        second = _byte(data + off + 1);
+        return w == 4
+            and (lead != 240 or second >= 144)
+            and (lead != 244 or second < 144);
+    }
+    return False;
+}
+
+impl __jac_rt_str_unit(data: ptr[u8], n: int, off: int) -> ptr[u8] {
+    d = int(data);
+    w = _width_at(d, n, off);
+    if _unit_valid(d, off, w) {
+        return __jac_rt_str_new(ptr[u8](d + off), w);
+    }
+    return __jac_rt_str_new(ptr[u8]("\ufffd"), 3);
+}
+
 impl __jac_rt_str_cp_offset(owner: ptr[u8], data: ptr[u8], n: int, k: int) -> int {
     return _cp_offset(int(owner), int(data), n, k);
 }
@@ -357,7 +389,7 @@ impl __jac_rt_str_index(owner: ptr[u8], data: ptr[u8], n: int, i: int) -> ptr[u8
     if off >= n {
         raise IndexError("string index out of range");
     }
-    return __jac_rt_str_new(ptr[u8](d + off), _width_at(d, n, off));
+    return __jac_rt_str_unit(data, n, off);
 }
 
 impl __jac_rt_str_slice(
@@ -493,14 +525,18 @@ impl __jac_rt_str_find(
         return -1;
     }
     a = _cp_offset(r, d, n, lo);
-    at = _find(d, a, _cp_offset(r, d, n, hi), int(sub), sn, reverse);
+    b = _cp_offset(r, d, n, hi);
+    at = _find(d, a, b, int(sub), sn, reverse);
     if at < 0 {
         return -1;
     }
     if _is_ascii(r, d, n) {
         return at;
     }
-    return lo + _count_starts(d, a, at);
+    if at - a <= b - at {
+        return lo + _count_starts(d, a, at);
+    }
+    return hi - _count_starts(d, at, b);
 }
 
 impl __jac_rt_str_count(
