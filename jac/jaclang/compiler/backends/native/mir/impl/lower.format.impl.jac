@@ -455,6 +455,7 @@ impl MirLowering.object_repr_body(param: MirValue, site: uni.UniNode) {
     b.position(again);
     b.ret(b.const_str("...", mir_str()));
     b.position(fresh);
+    (frame, dispatch) = self.guard_open();
     sb = self.call_rt("__jac_rt_sb_new", [b.const_int(32, mir_int())]);
     self.sb_text(sb, arch.name.value + "(");
     shown = [
@@ -471,8 +472,15 @@ impl MirLowering.object_repr_body(param: MirValue, site: uni.UniNode) {
         self.sb_value(sb, self.repr_of(field, site));
     }
     self.sb_text(sb, ")");
+    self.runtime("__jac_rt_exc_pop", [frame]);
     self.runtime("__jac_rt_repr_leave", [depth]);
     self.builder().ret(self.owned_text(self.call_rt("__jac_rt_sb_finish", [sb])));
+    self.builder().position(dispatch);
+    self.runtime("__jac_rt_exc_pop", [frame]);
+    (origin, type_id, message) = self.guard_caught(frame);
+    self.runtime("__jac_rt_repr_leave", [depth]);
+    self.runtime("__jac_rt_raise", [origin, type_id, message]);
+    self.builder().unreachable();
 }
 
 impl MirLowering.fstring_value(nd: uni.FString) -> MirValue {
