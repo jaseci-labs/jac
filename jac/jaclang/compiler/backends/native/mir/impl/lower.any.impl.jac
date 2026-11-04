@@ -628,7 +628,13 @@ impl MirLowering.isinstance_value(
             }
         }
     }
-    value = self.lower_expr(subject);
+    narrowed = subject.narrowed_type;
+    subject.narrowed_type = None;
+    try {
+        value = self.lower_expr(subject);
+    } finally {
+        subject.narrowed_type = narrowed;
+    }
     if value.type.kind == MirKind.ANY {
         return self.any_isinstance(value, target, site);
     }
