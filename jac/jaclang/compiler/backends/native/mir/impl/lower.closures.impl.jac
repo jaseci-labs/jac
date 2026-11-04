@@ -372,7 +372,10 @@ impl MirLowering.function_value(decl: MirDecl, to: MirType) -> MirValue {
     if adapter is None {
         adapter = f"{decl.symbol}.__value";
         fn = MirFunction(
-            name=f"{self.name_of(decl.ability)}.__value", symbol=adapter, ret=decl.ret
+            name=f"{self.name_of(decl.ability)}.__value",
+            symbol=adapter,
+            ret=decl.ret,
+            linkage="linkonce_odr"
         );
         first = fn.new_block("entry");
         fn.params.append(MirParam(name="env", value=fn.new_value(i8p, "env")));
