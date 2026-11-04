@@ -425,6 +425,12 @@ impl JacCompiler.kernel_native_entry(
     if options is None and module_record(path, target_program) is not None {
         return (False, None);
     }
+    forced = options is not None and options.force_codespace == "native";
+    if forced and not options.native_required {
+        import copy;
+        options = copy.copy(options);
+        options.native_required = True;
+    }
     actual = self.selfhost.resolve(path, target_program, execution=True);
     import from jaclang.project.kernel_compile { kernel_generates_native }
     if actual.internal or not kernel_generates_native(actual, path) {
@@ -436,6 +442,12 @@ impl JacCompiler.kernel_native_entry(
         compiled = self.product_program(path, target_program, execution=True);
     } else {
         self._adopt_kernel_compile(path, actual, options);
+        if forced and actual.errors_had {
+            import from jaclang.compiler.backends.native.link_plan { LinkPlanError }
+            raise LinkPlanError(
+                "\n".join(error.pretty_print() for error in actual.errors_had)
+            );
+        }
     }
     import from jaclang.compiler.placement.placement { summary_store }
     placed = summary_store(compiled).get(os.path.abspath(path));

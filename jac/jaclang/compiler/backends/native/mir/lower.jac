@@ -2,6 +2,7 @@ import os;
 import hashlib;
 
 glob OVERFLOW_MESSAGE: str = "integer overflow",
+     EDGE_CLASS_MARK: int = 1,
      ZERO_DIVISION_MESSAGE: str = "integer division or modulo by zero",
      FLOAT_ZERO_DIVISION_MESSAGE: str = "float division by zero",
      FLOAT_ZERO_MODULO_MESSAGE: str = "float modulo by zero",
@@ -282,7 +283,8 @@ obj MirWithExit {
 
 obj MirLoopTarget {
     has head: MirBlock,
-        after: MirBlock;
+        after: MirBlock,
+        continue_depth: int = -1;
 }
 
 obj MirIterCursor {
@@ -363,6 +365,12 @@ obj MirDecl {
 
 def mono_symbol_text(text: str) -> str;
 
+def mir_format_fields(template: str) -> list[tuple[str, (str | None), str, str]];
+
+def mir_slice_picks(
+    count: int, start: (int | None), stop: (int | None), step: (int | None)
+) -> list[int];
+
 def mir_same_signature(left: MirDecl, right: MirDecl) -> bool;
 
 obj MirLowering {
@@ -417,6 +425,7 @@ obj MirLowering {
         current: str = "",
         dep_verdicts: dict[str, (list[str] | None)] = {},
         erased_units: set[str] = set(),
+        slot_adapters: dict[str, MirFunction] = {},
         erased_archs: dict[int, bool] = {},
         imported_fns: dict[str, tuple[str, str]] = {},
         flow_sites: int = 0,
@@ -495,6 +504,7 @@ obj MirLowering {
     def lower_while(nd: uni.WhileStmt);
     def lower_forever(nd: uni.ForeverStmt);
     def lower_ctrl(nd: uni.CtrlStmt);
+    def jumped_in_finally -> bool;
     def lower_for(nd: uni.InForStmt);
     def lower_for_core(nd: uni.InForStmt);
     def lower_range_for(nd: uni.InForStmt, bounds: list[uni.Expr]);
@@ -1507,6 +1517,8 @@ obj MirLowering {
 
     def enum_box(value: MirValue, site: uni.UniNode) -> MirValue;
     def osp_class_tag(nd: uni.Expr) -> (MirValue | None);
+    def osp_edge_bound(nd: uni.Expr) -> (uni.Archetype | None);
+    def osp_edge_class_tag(nd: uni.Expr) -> (MirValue | None);
     def osp_class_tag_ok(nd: uni.Expr) -> bool;
     def lower_dynamic_connect(nd: uni.BinaryExpr, co: uni.ConnectOp) -> MirValue;
     def default_entry(arch: uni.Archetype) -> (MirFunction | None);
@@ -1537,6 +1549,8 @@ obj MirLowering {
     def is_template(ab: uni.Ability) -> bool;
     def template_of(ab: uni.Ability) -> bool;
     def stdlib_module(expr: uni.UniNode) -> (uni.Module | None);
+    def stdlib_member(nd: uni.Name) -> (uni.Ability | None);
+    def stdlib_unit_at(path: str) -> (uni.Module | None);
     def module_member(unit: uni.Module, name: str) -> (uni.UniNode | None);
     def getattr_member(call: uni.FuncCall) -> (tuple[uni.Module, str] | None);
     def alias_scope(nd: uni.UniNode) -> (uni.UniNode | None);

@@ -1161,6 +1161,9 @@ impl MirLowering.lower_return(nd: uni.ReturnStmt) {
             raise MirRefused(mir_refusal("return", "missing value", nd));
         }
         self.leave_tries(0);
+        if self.jumped_in_finally() {
+            return;
+        }
         self.drop_regions();
         self.builder().ret(None);
         return;
@@ -1174,6 +1177,9 @@ impl MirLowering.lower_return(nd: uni.ReturnStmt) {
         }
     }
     self.leave_tries(0);
+    if self.jumped_in_finally() {
+        return;
+    }
     self.drop_regions();
     if ret.kind == MirKind.NONE {
         self.builder().ret(None);
@@ -1280,6 +1286,14 @@ impl MirLowering.lower_iter_for(nd: uni.IterForStmt) {
     self.builder().position(after);
 }
 
+impl MirLowering.jumped_in_finally -> bool {
+    if not self.builder().block.terminated() {
+        return False;
+    }
+    self.builder().position(self.st().fn.new_block("finally.jumped"));
+    return True;
+}
+
 impl MirLowering.lower_ctrl(nd: uni.CtrlStmt) {
     if nd.ctrl.name == Tok.KW_SKIP {
         self.lower_osp_stmt(nd);
@@ -1289,8 +1303,13 @@ impl MirLowering.lower_ctrl(nd: uni.CtrlStmt) {
         raise MirRefused(mir_refusal("statement", nd.ctrl.value, nd));
     }
     target = self.st().loops[-1];
-    if nd.ctrl.name in (Tok.KW_BREAK, Tok.KW_CONTINUE) {
+    if nd.ctrl.name == Tok.KW_CONTINUE and target.continue_depth >= 0 {
+        self.leave_tries(target.continue_depth);
+    } elif nd.ctrl.name in (Tok.KW_BREAK, Tok.KW_CONTINUE) {
         self.leave_tries(len(self.st().loops));
+    }
+    if self.jumped_in_finally() {
+        return;
     }
     if nd.ctrl.name == Tok.KW_BREAK {
         self.builder().branch(target.after);
@@ -1478,9 +1497,11 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
             return self.builder().const_float(folded.value, self.expr_type(nd));
         }
         final_value = final_glob_value(nd);
-        (settled, scalar) = c_scalar_constant(final_value, 0, self.prog)
-            if final_value is not None
-            else (False, None);
+        settled = False;
+        scalar: any = None;
+        if final_value is not None {
+            (settled, scalar) = c_scalar_constant(final_value, 0, self.prog);
+        }
         if settled and isinstance(scalar, bool) {
             return self.builder().const_bool(scalar);
         }
@@ -2401,6 +2422,9 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         and INTRINSIC_REGISTRY.is_intrinsic(nd.target.value) {
         return self.intrinsic_call(nd, nd.target.value);
     }
+    if callee is None and isinstance(nd.target, uni.Name) {
+        callee = self.stdlib_member(nd.target);
+    }
     if isinstance(callee, uni.Ability) {
         callee = self.variant_ability(self.live_member(callee));
     }
@@ -2539,6 +2563,10 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         imported = self.import_call(nd, callee);
         if imported is not None {
             return imported;
+        }
+        bridged = self.python_call(nd);
+        if bridged is not None {
+            return bridged;
         }
     }
     name = self.call_name(nd);
@@ -3907,9 +3935,9 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
                         "TypeError"
                     );
                 }
-                picked = list(range(len(whole_tuple.type.args)))[
-                    slice(bounds[0], bounds[1], bounds[2])
-                ];
+                picked = mir_slice_picks(
+                    len(whole_tuple.type.args), bounds[0], bounds[1], bounds[2]
+                );
                 members = [self.tuple_get(whole_tuple, at) for at in picked];
                 return self.emit_value(
                     MirOp.TUPLE_MAKE,
@@ -4343,9 +4371,11 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
     }
     if name == "__global_block" {
         label = c_string_literal(args[0]) if args else None;
-        (ok, size) = c_scalar_constant(args[1], 0, self.prog)
-            if len(args) == 2
-            else (False, None);
+        ok = False;
+        size: any = None;
+        if len(args) == 2 {
+            (ok, size) = c_scalar_constant(args[1], 0, self.prog);
+        }
         if not label or not ok or not isinstance(size, int) or size <= 0 {
             raise MirRefused(
                 mir_refusal(
@@ -4375,9 +4405,11 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
     }
     if name == "__thread_local_block" {
         label = c_string_literal(args[0]) if args else None;
-        (ok, size) = c_scalar_constant(args[1], 0, self.prog)
-            if len(args) == 2
-            else (False, None);
+        ok = False;
+        size: any = None;
+        if len(args) == 2 {
+            (ok, size) = c_scalar_constant(args[1], 0, self.prog);
+        }
         if not label or not ok or not isinstance(size, int) or size <= 0 {
             raise MirRefused(
                 mir_refusal(
@@ -5672,4 +5704,29 @@ impl MirLowering.write_only(target: uni.Name) -> bool {
         return False;
     }
     return True;
+}
+
+impl mir_slice_picks(
+    count: int, start: (int | None), stop: (int | None), step: (int | None)
+) -> list[int] {
+    stride = step if step is not None else 1;
+    lower = -1 if stride < 0 else 0;
+    upper = count - 1 if stride < 0 else count;
+    first = upper if stride < 0 else lower;
+    if start is not None {
+        first = start + count if start < 0 else start;
+        first = max(lower, min(first, upper));
+    }
+    last = lower if stride < 0 else upper;
+    if stop is not None {
+        last = stop + count if stop < 0 else stop;
+        last = max(lower, min(last, upper));
+    }
+    picks: list[int] = [];
+    at = first;
+    while (stride > 0 and at < last) or (stride < 0 and at > last) {
+        picks.append(at);
+        at += stride;
+    }
+    return picks;
 }

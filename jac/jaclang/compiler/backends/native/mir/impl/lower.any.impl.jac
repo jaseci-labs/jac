@@ -744,7 +744,7 @@ impl MirLowering.type_call_name(item: uni.Expr) -> (str | None) {
         or len(list(item.params or [])) != 1 {
         return None;
     }
-    arg = list(item.params)[0];
+    arg: uni.UniNode = list(item.params or [])[0];
     while isinstance(arg, uni.AtomUnit) {
         arg = arg.value;
     }

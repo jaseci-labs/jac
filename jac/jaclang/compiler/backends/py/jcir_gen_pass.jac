@@ -173,7 +173,7 @@ walker JcirGenPass(TreePass) {
 
     def _move_release_stmts(stmt: UniNode) -> list[CgNode];
     def _release_name_stmt(name: str, source: UniNode) -> CgNode;
-    def _scope_cleanup_body(scope: UniNode, body: list[CgNode]) -> list[CgNode];
+    def _scope_cleanup_body(scope: UniNode, body: list[CgItem]) -> list[CgItem];
     def _stmts_with_releases(stmts: Sequence[UniNode]) -> list[CgItem];
     def call_node(
         func: CgNode,
