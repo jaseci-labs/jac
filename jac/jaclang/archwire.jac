@@ -46423,7 +46423,7 @@ graph import scale.deploy.target.kubernetes {
 
 graph import scale.emailer {
     emailer ++> [
-        emailers { EmailAttachment, Emailer },
+        emailers { EmailAttachment, Emailer, MAX_HEADER_LINE },
         factory { Emailer },
     ]
     emailers --> factory.create { SMTPEmailer }
