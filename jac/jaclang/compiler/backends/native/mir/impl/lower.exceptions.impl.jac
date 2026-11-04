@@ -117,15 +117,6 @@ impl MirLowering.lower_try(nd: uni.TryStmt) {
     b = self.builder();
     fn = self.st().fn;
     if nd.finally_body is not None {
-        for found in nd.finally_body.body {
-            if isinstance(found, (uni.ReturnStmt, uni.CtrlStmt)) {
-                raise MirRefused(
-                    mir_refusal("statement", "jump out of finally", found)
-                );
-            }
-        }
-    }
-    if nd.finally_body is not None {
         self.st().finals.append(
             (list(nd.finally_body.body), len(self.st().loops), len(self.st().tries))
         );
@@ -345,11 +336,14 @@ impl MirLowering.leave_tries(loop_depth: int, run_finals: bool = True) {
         if at_final >= 0 and (at_try < 0 or finals[at_final][2] > at_try) {
             (body, depth, _) = finals[at_final];
             if depth >= loop_depth {
+                loops = list(self.st().loops);
                 self.st().finals = finals[:at_final];
                 self.st().tries = tries[:at_try + 1];
+                self.st().loops = loops[:depth];
                 self.lower_body(body);
                 self.st().finals = finals;
                 self.st().tries = tries;
+                self.st().loops = loops;
             }
             at_final -= 1;
         } else {

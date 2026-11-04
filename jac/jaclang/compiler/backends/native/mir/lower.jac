@@ -484,6 +484,7 @@ obj MirLowering {
     def lower_while(nd: uni.WhileStmt);
     def lower_forever(nd: uni.ForeverStmt);
     def lower_ctrl(nd: uni.CtrlStmt);
+    def jumped_in_finally -> bool;
     def lower_for(nd: uni.InForStmt);
     def lower_for_core(nd: uni.InForStmt);
     def lower_range_for(nd: uni.InForStmt, bounds: list[uni.Expr]);

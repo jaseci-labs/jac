@@ -1114,6 +1114,9 @@ impl MirLowering.lower_return(nd: uni.ReturnStmt) {
             raise MirRefused(mir_refusal("return", "missing value", nd));
         }
         self.leave_tries(0);
+        if self.jumped_in_finally() {
+            return;
+        }
         self.drop_regions();
         self.builder().ret(None);
         return;
@@ -1127,6 +1130,9 @@ impl MirLowering.lower_return(nd: uni.ReturnStmt) {
         }
     }
     self.leave_tries(0);
+    if self.jumped_in_finally() {
+        return;
+    }
     self.drop_regions();
     if ret.kind == MirKind.NONE {
         self.builder().ret(None);
@@ -1233,6 +1239,14 @@ impl MirLowering.lower_iter_for(nd: uni.IterForStmt) {
     self.builder().position(after);
 }
 
+impl MirLowering.jumped_in_finally -> bool {
+    if not self.builder().block.terminated() {
+        return False;
+    }
+    self.builder().position(self.st().fn.new_block("finally.jumped"));
+    return True;
+}
+
 impl MirLowering.lower_ctrl(nd: uni.CtrlStmt) {
     if nd.ctrl.name == Tok.KW_SKIP {
         self.lower_osp_stmt(nd);
@@ -1246,6 +1260,9 @@ impl MirLowering.lower_ctrl(nd: uni.CtrlStmt) {
         self.leave_tries(target.continue_depth);
     } elif nd.ctrl.name in (Tok.KW_BREAK, Tok.KW_CONTINUE) {
         self.leave_tries(len(self.st().loops));
+    }
+    if self.jumped_in_finally() {
+        return;
     }
     if nd.ctrl.name == Tok.KW_BREAK {
         self.builder().branch(target.after);
