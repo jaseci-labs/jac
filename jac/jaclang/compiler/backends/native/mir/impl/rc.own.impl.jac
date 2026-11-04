@@ -68,6 +68,14 @@ impl MirOwnState.index_values {
             }
             if instr.op == MirOp.STORE
                 and instr.operands[0].is_slot
+                and instr.operands[0].is_temp
+                and instr.operands[0].type.kind == MirKind.C_PTR {
+                self.temp_places.setdefault(instr.operands[0].id, []).append(
+                    instr.operands[1]
+                );
+            }
+            if instr.op == MirOp.STORE
+                and instr.operands[0].is_slot
                 and instr.sub == "forget" {
                 self.forgets.add(instr.operands[0].id);
             } elif instr.op == MirOp.STORE
@@ -565,6 +573,17 @@ impl MirOwnState.movable(slot: MirValue, load: (MirInstr | None)) -> bool {
 
 impl MirOwnState.place_borrowed(place: MirValue) -> bool {
     made = self.defs.get(place.id);
+    if made is not None
+        and made.op == MirOp.LOAD
+        and made.operands
+        and made.operands[0].id in self.temp_places {
+        return any(
+            self.defs.get(held.id) is not None
+                and self.defs[held.id].op == MirOp.FIELD_ADDR
+                and self.place_borrowed(held)
+            for held in self.temp_places[made.operands[0].id]
+        );
+    }
     if made is None
         or made.op != MirOp.FIELD_ADDR
         or not made.operands
