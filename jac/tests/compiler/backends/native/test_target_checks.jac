@@ -14,7 +14,8 @@ glob ALLOWED: dict[str, str] = {
          "MirNativePass._run_impl": "hands the target triple and data layout to emission",
          "emit_mir_module": "stamps the module's triple and data layout",
          "MirEmitter.c_classify": "a by-value C struct is split into registers by the target's C calling convention, which no floor can hide",
-         "MirEmitter.builtin_sjlj": "LLVM's builtin setjmp/longjmp pair is only selected on x86_64",
+         "MirEmitter.single_threaded": "wasm runs one thread, so a thread-local block is a plain global there",
+         "MirEmitter.jmp_symbols": "picks the setjmp/longjmp pair a handler arms with: LLVM's builtin pair on x86_64, libc's underscore pair, wasm's plain pair or the Windows floor's",
          "mir_clib_path": "spells a `import from clib` library's file name (lib*.so, *.dylib, *.dll) for the unit's interface, which the linker reads",
          "MirNativePass.interface": "records the unit's C libraries under their target file names for the link plan"
      };

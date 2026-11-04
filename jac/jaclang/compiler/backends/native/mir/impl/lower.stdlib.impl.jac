@@ -6,15 +6,31 @@ impl MirLowering.stdlib_module(expr: uni.UniNode) -> (uni.Module | None) {
     if scope is None or scope.loc is None {
         return None;
     }
-    name = bundled_stdlib_module_of(scope.loc.mod_path);
+    return self.stdlib_unit_at(scope.loc.mod_path);
+}
+
+impl MirLowering.stdlib_member(nd: uni.Name) -> (uni.Ability | None) {
+    sym = nd.sym;
+    if sym is None or sym.decl is None or sym.decl.loc is None {
+        return None;
+    }
+    unit = self.stdlib_unit_at(sym.decl.loc.mod_path);
+    named = sym.decl.value if isinstance(sym.decl, uni.Name) else nd.value;
+    found = self.module_member(unit, named) if unit is not None else None;
+    return found if isinstance(found, uni.Ability) else None;
+}
+
+impl MirLowering.stdlib_unit_at(path: str) -> (uni.Module | None) {
+    name = bundled_stdlib_module_of(path);
     if not name {
         return None;
     }
+    scope_path = path;
     if name in self.stdlib_units {
         return self.stdlib_units[name];
     }
     found: (uni.Module | None) = None;
-    if not scope.loc.mod_path.endswith(".jac") {
+    if not scope_path.endswith(".jac") {
         (_, full_path) = resolve_native_module(
             name, os.path.dirname(self.module.loc.mod_path), allow_inferred=False
         );

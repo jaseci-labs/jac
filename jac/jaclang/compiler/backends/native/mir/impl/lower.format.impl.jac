@@ -207,7 +207,6 @@ impl MirLowering.object_text(
             for (sub_name, sub) in self.archetypes.items()
             if sub_name != value.type.name
                 and self.obj_extends(sub_name, value.type.name)
-                and self.find_method(sub, method) is not None
         ];
         if carriers {
             return self.subclass_text(value, method, carriers, site);
@@ -456,9 +455,15 @@ impl MirLowering.object_repr_body(param: MirValue, site: uni.UniNode) {
     b.position(again);
     b.ret(b.const_str("...", mir_str()));
     b.position(fresh);
+    (frame, dispatch) = self.guard_open();
     sb = self.call_rt("__jac_rt_sb_new", [b.const_int(32, mir_int())]);
     self.sb_text(sb, arch.name.value + "(");
-    for (index, member) in enumerate(obj_def.fields) {
+    shown = [
+        member
+        for member in obj_def.fields
+        if member.index != obj_def.reports_slot
+    ];
+    for (index, member) in enumerate(shown) {
         self.sb_text(sb, (", " if index > 0 else "") + member.name + "=");
         place = self.emit_value(
             MirOp.FIELD_ADDR, mir_c_ptr(member.type), [param], int_value=member.index
@@ -467,8 +472,15 @@ impl MirLowering.object_repr_body(param: MirValue, site: uni.UniNode) {
         self.sb_value(sb, self.repr_of(field, site));
     }
     self.sb_text(sb, ")");
+    self.runtime("__jac_rt_exc_pop", [frame]);
     self.runtime("__jac_rt_repr_leave", [depth]);
     self.builder().ret(self.owned_text(self.call_rt("__jac_rt_sb_finish", [sb])));
+    self.builder().position(dispatch);
+    self.runtime("__jac_rt_exc_pop", [frame]);
+    (origin, type_id, message) = self.guard_caught(frame);
+    self.runtime("__jac_rt_repr_leave", [depth]);
+    self.runtime("__jac_rt_raise", [origin, type_id, message]);
+    self.builder().unreachable();
 }
 
 impl MirLowering.fstring_value(nd: uni.FString) -> MirValue {

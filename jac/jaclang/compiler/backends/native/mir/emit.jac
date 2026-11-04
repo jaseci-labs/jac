@@ -154,6 +154,7 @@ obj MirEmitter {
     def class_global(obj_def: MirObjectDef) -> ir.GlobalVariable;
     def global_variable(glob_def: MirGlobal) -> ir.GlobalVariable;
     def keyed_block_fn(label: str, size: int) -> ir.Function;
+    def single_threaded -> bool;
     def builtin_sjlj -> bool;
     def jmp_symbols -> tuple[str, str];
     def acyclic_type(held: MirType) -> bool;
