@@ -25,6 +25,9 @@ glob ANY_TAG_INT: int = 0,
      HDR_DTOR_BACK: int = 8,
      HDR_TOTAL: int = 32;
 
+glob VTABLE_SELECTORS_OFF: int = 24,
+     VTABLE_METHODS_OFF: int = 40;
+
 def:pub __jac_rt_any_retain(tag: int, payload: int);
 
 def:pub __jac_rt_any_release(tag: int, payload: int);
@@ -44,6 +47,12 @@ def _is_buffer(tag: int, payload: int) -> bool;
 def:pub __jac_rt_any_str(tag: int, payload: int) -> ptr[u8];
 
 def:pub __jac_rt_type_name(o: int) -> ptr[u8];
+
+def:pub __jac_rt_vtable_find(table: int, selector: int) -> int;
+
+def:pub __jac_rt_field_at(
+    remap: int, base: int, index: int, fallback: int, holder: int
+) -> int;
 
 def:pub __jac_rt_any_type_name(tag: int, payload: int) -> ptr[u8];
 

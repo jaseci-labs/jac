@@ -473,6 +473,11 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
         to = self.llvm_type(type_arg_of(instr));
         if instr.operands[0].type.kind == MirKind.ANY {
             source = b.extract_value(source, 1);
+        } elif instr.operands[0].type.kind == MirKind.OPT
+            and type_arg_of(instr).kind != MirKind.OPT
+            and source.type != to
+            and not isinstance(source.type, (ir.IntType, ir.PointerType)) {
+            source = b.extract_value(source, 1);
         }
         if isinstance(source.type, ir.IntType) {
             self.bind(instr.result, b.inttoptr(source, to));
@@ -1576,30 +1581,29 @@ impl MirEmitter.vtable_global(obj_def: MirObjectDef) -> ir.GlobalVariable {
     );
     lineage_global.linkage = "private";
     lineage_global.global_constant = True;
-    members: list[ir.Value] = [];
-    for symbol in lineage {
-        holder = self.module.globals.get(symbol);
-        if holder is None {
-            owners = [
-                other
-                for other in self.mir.objects.values()
-                if other.vtable_symbol == symbol and other is not obj_def
-            ];
-            holder = self.vtable_global(owners[0])
-                if owners
-                else ir.GlobalVariable(
-                    self.module, ir.ArrayType(i8p, VTABLE_HEADER_SLOTS), name=symbol
-                );
-        }
-        members.append(holder.bitcast(i8p));
-    }
+    members: list[ir.Value] = [
+        self.vtable_ref(symbol, obj_def).bitcast(i8p) for symbol in lineage
+    ];
     members.append(ir.Constant(i8p, None));
     lineage_global.initializer = ir.Constant(lineage_shape, members);
     dropper = self.functions.get(obj_def.drop_slot) if obj_def.drop_slot else None;
+    selector_members: list[ir.Value] = [
+        self.selector_global(name).bitcast(i8p) for name in obj_def.vtable_names
+    ];
+    selector_members.append(ir.Constant(i8p, None));
+    selector_shape = ir.ArrayType(i8p, len(selector_members));
+    selector_table = ir.GlobalVariable(
+        self.module, selector_shape, name=f"{obj_def.vtable_symbol}.selectors"
+    );
+    selector_table.linkage = "private";
+    selector_table.global_constant = True;
+    selector_table.initializer = ir.Constant(selector_shape, selector_members);
     entries: list[ir.Value] = [
         self.class_global(obj_def).bitcast(i8p),
         lineage_global.bitcast(i8p),
-        dropper.bitcast(i8p) if dropper is not None else ir.Constant(i8p, None)
+        dropper.bitcast(i8p) if dropper is not None else ir.Constant(i8p, None),
+        selector_table.bitcast(i8p),
+        self.field_remap_table(obj_def)
     ];
     for (index, symbol) in enumerate(obj_def.vtable_methods) {
         target = self.functions.get(obj_def.vtable_entries.get(index, symbol));
@@ -1608,6 +1612,74 @@ impl MirEmitter.vtable_global(obj_def: MirObjectDef) -> ir.GlobalVariable {
         );
     }
     made.initializer = ir.Constant(shape, entries);
+    made.global_constant = True;
+    return made;
+}
+
+impl MirEmitter.vtable_ref(symbol: str, obj_def: MirObjectDef) -> ir.GlobalVariable {
+    i8p = ir.IntType(8).as_pointer();
+    holder = self.module.globals.get(symbol);
+    if isinstance(holder, ir.GlobalVariable) {
+        return holder;
+    }
+    owners = [
+        other
+        for other in self.mir.objects.values()
+        if other.vtable_symbol == symbol and other is not obj_def
+    ];
+    if owners {
+        return self.vtable_global(owners[0]);
+    }
+    return ir.GlobalVariable(
+        self.module, ir.ArrayType(i8p, VTABLE_HEADER_SLOTS), name=symbol
+    );
+}
+
+impl MirEmitter.field_remap_table(obj_def: MirObjectDef) -> ir.Value {
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    if not obj_def.field_remaps {
+        return ir.Constant(i8p, None);
+    }
+    shape = self.object_struct(obj_def.name);
+    origin = ir.Constant(shape.as_pointer(), None);
+    pairs: list[ir.Value] = [];
+    for (symbol, places) in obj_def.field_remaps.items() {
+        offsets = [
+            origin.gep([ir.Constant(i32, 0), ir.Constant(i32, at)]).ptrtoint(i64)
+                if at >= 0
+                else ir.Constant(i64, -1) for at in places
+        ];
+        offsets_shape = ir.ArrayType(i64, len(offsets));
+        offsets_global = ir.GlobalVariable(
+            self.module,
+            offsets_shape,
+            name=f"{obj_def.vtable_symbol}.fields.{len(pairs) // 2}"
+        );
+        offsets_global.linkage = "private";
+        offsets_global.global_constant = True;
+        offsets_global.initializer = ir.Constant(offsets_shape, offsets);
+        pairs.append(self.vtable_ref(symbol, obj_def).bitcast(i8p));
+        pairs.append(offsets_global.bitcast(i8p));
+    }
+    pairs.append(ir.Constant(i8p, None));
+    pairs_shape = ir.ArrayType(i8p, len(pairs));
+    table = ir.GlobalVariable(
+        self.module, pairs_shape, name=f"{obj_def.vtable_symbol}.fields"
+    );
+    table.linkage = "private";
+    table.global_constant = True;
+    table.initializer = ir.Constant(pairs_shape, pairs);
+    return table.bitcast(i8p);
+}
+
+impl MirEmitter.selector_global(name: str) -> ir.GlobalVariable {
+    glob_def = mir_selector_global(name);
+    made = self.global_variable(glob_def);
+    if glob_def.c_init is not None {
+        made.initializer = self.c_constant(glob_def.c_init, made.value_type);
+    }
     made.global_constant = True;
     return made;
 }

@@ -204,6 +204,40 @@ impl __jac_rt_any_len(tag: int, payload: int) -> int {
     raise TypeError("object has no len()");
 }
 
+impl __jac_rt_vtable_find(table: int, selector: int) -> int {
+    selectors = __mem_load_i64(table + VTABLE_SELECTORS_OFF);
+    i = 0;
+    while True {
+        seen = __mem_load_i64(selectors + i * 8);
+        if seen == 0 {
+            return 0;
+        }
+        if seen == selector or __jac_rt_cstr_eq(ptr[u8](seen), ptr[u8](selector)) {
+            return __mem_load_i64(table + VTABLE_METHODS_OFF + i * 8);
+        }
+        i += 1;
+    }
+    return 0;
+}
+
+impl __jac_rt_field_at(
+    remap: int, base: int, index: int, fallback: int, holder: int
+) -> int {
+    i = 0;
+    while True {
+        seen = __mem_load_i64(remap + i * 16);
+        if seen == 0 {
+            return fallback;
+        }
+        if seen == base {
+            offset = __mem_load_i64(__mem_load_i64(remap + i * 16 + 8) + index * 8);
+            return fallback if offset < 0 else holder + offset;
+        }
+        i += 1;
+    }
+    return fallback;
+}
+
 impl __jac_rt_type_name(o: int) -> ptr[u8] {
     return ptr[u8](__mem_load_i64(o - HDR_TAG_BACK));
 }

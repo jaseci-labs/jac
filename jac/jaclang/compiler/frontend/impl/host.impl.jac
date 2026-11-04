@@ -215,6 +215,8 @@ impl HostServices.native_lowering_failed(
     program: JacProgram, path: str, detail: str
 ) {}
 
+impl HostServices.register_host_products {}
+
 impl HostServices.note_native_demotion(
     program: JacProgram, key: str, reason: str
 ) -> bool {

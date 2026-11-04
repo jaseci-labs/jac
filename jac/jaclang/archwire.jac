@@ -774,6 +774,9 @@ graph import {
     type compiler.driver.compiler ++> project.compiler_host
         | runtime.build_services
         | runtime.runtime { JacCompiler }
+    compiler.driver.host_products --> project.compiler_host.ProjectHost.register_host_products {
+        register_host_products
+    }
     compiler.driver.ifacecache --> [
         cli.commands.analysis.check { prime_iface_codec },
         dist.precompile_bytecode._unit_extra { DIAG_SCHEMA, IfaceRegistry },
@@ -5503,6 +5506,7 @@ graph import compiler {
         driver.pipeline.native_lower_passes { MirNativePass },
     ]
     backends.native.na_compile_pass ++> [
+        driver.host_products.native_object_passes { NativeCompilePass },
         driver.nativecache.NativeBuildSession._optimize_in_parallel {
             optimize_unit_bitcodes,
             unit_bitcode,
@@ -5512,7 +5516,6 @@ graph import compiler {
             emit_unit_object,
             optimize_unit_ir
         },
-        driver.pipeline.native_object_passes { NativeCompilePass },
     ]
     backends.native.na_compile_pass --> [
         driver.nativecache.NativeBuildSession.compact_ir {
@@ -5555,7 +5558,7 @@ graph import compiler {
             generated_python
         },
     ]
-    backends.py.jcir_bc_gen_pass ++> driver.pipeline.bytecode_passes {
+    backends.py.jcir_bc_gen_pass ++> driver.host_products.bytecode_passes {
         JcirBytecodeGenPass
     }
     backends.py.jcir_bc_gen_pass --> driver.compiler.assemble_jcir {
@@ -6177,6 +6180,7 @@ graph import compiler {
         | backends.native.link_plan
         | backends.native.mir.backend
         | backends.native.mir.lower
+        | c_interop
         | capability_notes
         | frontend.host
         | frontend.parser.frontend
@@ -9486,6 +9490,7 @@ graph import compiler {
             | placement.placement_solver
             | tools.comment_attach_pass
             | tools.jac_formatter_pass { CompilerPass },
+        driver.host_products { PassSchedule },
         driver.ifacecache._alert_from_record
             | driver.module_compile.report_missing_native_ir
             | driver.program
@@ -9537,13 +9542,16 @@ graph import compiler {
             EXC_MESSAGE_FIELD,
             NON_DISPATCHED_METHODS,
             VTABLE_DROP_SLOT,
+            VTABLE_FIELDS_SLOT,
             VTABLE_HEADER_SLOTS,
+            VTABLE_SELECTOR_SLOT,
             accessor_slot_name,
             adopt_imported_bases,
             archetype_accessors,
             archetype_native_name,
             class_type_native_name,
             enum_decl_of,
+            field_remap,
             get_layout_registry,
             is_enum_class_type,
             layout_slot_count,
@@ -9588,7 +9596,7 @@ graph import compiler {
     }
     type passes.placement_pass ++> backends.native.mir.lower { NativeRefusal }
     passes.pyast_load_pass ++> [
-        driver.pipeline.python_ast_passes | tools.lang_tools { PyastBuildPass },
+        driver.host_products.python_ast_passes | tools.lang_tools { PyastBuildPass },
         tools.lang_tools.AstTool.py_uni_nodes { PyastBuildPass },
     ]
     passes.rc_facts_pass ++> [
@@ -9815,32 +9823,34 @@ graph import compiler {
     ]
     type target_spec ++> backends.native.kernel_resolve
         | backends.native.kernel_stage0 { TargetSpec }
-    tools.cfg_dot ++> driver.pipeline.cfg_dot_passes { CoalesceBBPass }
+    tools.cfg_dot ++> driver.host_products.cfg_dot_passes { CoalesceBBPass }
     tools.code_intel ++> tests.test_code_intel { CodeIntelligence }
     tools.comment_attach_pass ++> [
-        driver.pipeline.format_lintfix_passes { CommentAttachPass },
-        driver.pipeline.format_passes { CommentAttachPass },
+        driver.host_products.format_lintfix_passes { CommentAttachPass },
+        driver.host_products.format_passes { CommentAttachPass },
     ]
     tools.doc_ir as doc --> frontend.codeinfo.CodeGenTarget.doc_ir.getter;
     type tools.doc_ir ++> frontend.codeinfo { Doc }
     tools.doc_ir_gen_pass ++> [
-        driver.pipeline.doc_passes { DocIRGenPass },
-        driver.pipeline.format_lintfix_passes { DocIRGenPass },
-        driver.pipeline.format_passes { DocIRGenPass },
+        driver.host_products.doc_passes { DocIRGenPass },
+        driver.host_products.format_lintfix_passes { DocIRGenPass },
+        driver.host_products.format_passes { DocIRGenPass },
     ]
-    tools.grammar_extract_pass ++> driver.pipeline.grammar_passes { GrammarExtractPass }
+    tools.grammar_extract_pass ++> driver.host_products.grammar_passes {
+        GrammarExtractPass
+    }
     tools.jac_auto_lint_pass ++> [
+        driver.host_products.format_lintfix_passes { JacAutoLintPass },
         driver.pipeline.analysis_passes { JacLintCheckPass },
-        driver.pipeline.format_lintfix_passes { JacAutoLintPass },
         driver.pipeline.lint_passes { JacLintCheckPass },
     ]
     tools.jac_formatter_pass ++> [
-        driver.pipeline.format_lintfix_passes { JacFormatPass },
-        driver.pipeline.format_passes { JacFormatPass },
-        driver.pipeline.format_text_passes { JacFormatPass },
+        driver.host_products.format_lintfix_passes { JacFormatPass },
+        driver.host_products.format_passes { JacFormatPass },
+        driver.host_products.format_text_passes { JacFormatPass },
     ]
-    tools.normalize_pass ++> driver.pipeline.normalize_passes { NormalizePass }
-    tools.unparse_pass ++> driver.pipeline.unparse_passes { UnparsePass }
+    tools.normalize_pass ++> driver.host_products.normalize_passes { NormalizePass }
+    tools.unparse_pass ++> driver.host_products.unparse_passes { UnparsePass }
     type_registry ++> [
         backends.es.esast_gen_pass.EsastGenPass._audit_free_identifiers
             | backends.es.jac_runtime_js._build_exc_runtime_js
@@ -10642,7 +10652,8 @@ graph import compiler.backends.native.mir {
             MirModule,
             MirObjectDef,
             MirOp,
-            MirValue
+            MirValue,
+            mir_selector_global
         },
         generators {
             MirBlock,
@@ -10671,7 +10682,8 @@ graph import compiler.backends.native.mir {
             MirParam,
             MirStructDef,
             MirStructField,
-            MirValue
+            MirValue,
+            mir_selector_global
         },
         rc {
             MirBlock,
@@ -11317,6 +11329,11 @@ graph import compiler.driver {
             | module_analysis.ModuleAnalysis.require
             | nativecache.NativeBuildSession._finish { require },
         compiler.JacCompiler.assemble_python { require },
+        host_products.register_host_products {
+            ProductSpec,
+            drop_native_object,
+            register_product
+        },
         module_analysis.ModuleAnalysis.ready { product_ready },
         module_compile { product_passes, unavailable },
         source_failures.bootstrap_tier_failure_details { tier_reason },
@@ -11339,9 +11356,9 @@ graph import compiler.driver {
     pipeline_types ++> [
         compiler { AnalysisFact, CompilationProduct },
         context_passes { PassContract },
+        host_products | module_compile { CompilationProduct, ProductRequest },
         ifacecache { AnalysisFact },
         module_analysis { AnalysisFact, CompilationProduct, ProductRequest },
-        module_compile { CompilationProduct, ProductRequest },
         nativecache.NativeBuildSession._finish
             | source_failures.bootstrap_tier_failure_details { CompilationProduct },
         pipeline {
