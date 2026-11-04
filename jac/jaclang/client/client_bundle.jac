@@ -46,3 +46,13 @@ def emitted_tree_digest(tree_root: Path) -> str;
 
 
 def client_program(program: JacProgram | None) -> JacProgram;
+
+
+"""The root client output is laid out from: the project root when the entry is
+inside it, else the entry's own directory."""
+def client_source_root(project_dir: Path, entry_path: Path) -> Path;
+
+
+"""The program a client compile under `source_root` runs in. Every compile of
+one entry under one root shares it, so the module is analysed once."""
+def client_context_program(program: JacProgram, source_root: (Path | None)) -> JacProgram;
