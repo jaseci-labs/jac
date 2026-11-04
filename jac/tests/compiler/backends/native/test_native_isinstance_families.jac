@@ -166,30 +166,23 @@ test "abc arm: an ABC with no exact reduction refuses instead of guessing" {
 }
 
 
-test "abc arm: a Python-based operand refuses rather than read a partial MRO" {
-    import from jaclang.compiler.driver.na_coverage {
-        na_coverage_begin,
-        na_coverage_end
-    }
+test "abc arm: an operand whose base module is native answers from its whole MRO" {
+    # `PyBase` inherits `abc.ABC`, which the native lane erases as compile-time
+    # information, so `Kid`'s MRO is native end to end and `isinstance(k,
+    # Sequence)` is exactly CPython's False rather than a guess.
     prog = JacProgram();
-    na_coverage_begin();
-    try {
-        prog.compile(
-            file_path=str(os.path.join(FIXTURES, "isinstance_pyb_abc.jac")),
-            options=native_force_opts()
-        );
-    } finally {
-        coverage = na_coverage_end();
-    }
-    said = " ".join(
-        str(seam) for rec in coverage.values() for seam in (rec["seams"] or [])
+    ir = prog.compile(
+        file_path=str(os.path.join(FIXTURES, "isinstance_pyb_abc.jac")),
+        options=native_force_opts()
     );
-    assert "isinstance against `Sequence`" in said , (
-        "a reducible ABC is only exact while the operand's whole MRO is "
-        f"native; a Python-side base has to refuse it; got: {said}"
-    );
+    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
+    assert not errors , errors;
+    eng = ir.gen.native_engine;
+    assert isinstance(eng, ExecutionEngine) , "no native engine for isinstance_pyb_abc.jac";
+    addr = native_address(eng, "chk");
+    assert addr != 0 , "chk must lower natively";
+    assert ctypes.CFUNCTYPE(ctypes.c_int64)(addr)() == 0;
 }
-
 
 test "value arms: a fixed-arity tuple of types unrolls" {
     f = native_fn("chk_types_fixed");

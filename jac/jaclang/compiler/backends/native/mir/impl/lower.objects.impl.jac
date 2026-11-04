@@ -2655,7 +2655,9 @@ impl MirLowering.ctor_arguments(
                 );
                 hit = fn.new_block("ctor.kw.hit");
                 miss = fn.new_block("ctor.kw.miss");
-                b.cond_branch(b.compare("ge", found, b.const_int(0, mir_int())), hit, miss);
+                b.cond_branch(
+                    b.compare("ge", found, b.const_int(0, mir_int())), hit, miss
+                );
                 b.position(hit);
                 self.raise_if(
                     b.load(flag, mir_bool()),
@@ -2663,12 +2665,15 @@ impl MirLowering.ctor_arguments(
                     f"{shown}() got multiple values for argument '{pname}'"
                 );
                 b.store(
-                    held, self.coerce(self.dict_entry_value(spread, found, nd), ptype, nd)
+                    held,
+                    self.coerce(self.dict_entry_value(spread, found, nd), ptype, nd)
                 );
                 b.store(flag, b.const_bool(True));
                 b.store(
                     matched,
-                    b.binary("add", b.load(matched, mir_int()), b.const_int(1, mir_int()))
+                    b.binary(
+                        "add", b.load(matched, mir_int()), b.const_int(1, mir_int())
+                    )
                 );
                 b.branch(miss);
                 b.position(miss);
@@ -2733,12 +2738,17 @@ impl MirLowering.ctor_arguments(
     return values;
 }
 
-impl MirLowering.class_value_call(nd: uni.FuncCall, bound: uni.Archetype) -> MirValue {
+impl MirLowering.class_value_call(
+    nd: uni.FuncCall,
+    bound: uni.Archetype,
+    source: (uni.Expr | None) = None,
+    leading: int = 0
+) -> MirValue {
     b = self.builder();
     obj_def = self.object_def(bound);
-    kind = self.lower_expr(nd.target);
+    kind = self.lower_expr(source if source is not None else nd.target);
     params = self.constructor_params(bound);
-    values = self.ctor_arguments(nd, obj_def.name, params);
+    values = self.ctor_arguments(nd, obj_def.name, params, leading);
     i8p = mir_c_ptr(mir_int(8, False));
     found = self.runtime_value(
         "__jac_rt_class_ctor_find",

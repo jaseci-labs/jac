@@ -3272,6 +3272,14 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         if arch is not None {
             return self.object_call(nd, arch, 1);
         }
+        if isinstance(kind, uni.Expr)
+            and isinstance(kind.type, ClassType)
+            and kind.type.is_builtin("type") {
+            bound = self.class_bound(kind.type);
+            if bound is not None {
+                return self.class_value_call(nd, bound, kind, 1);
+            }
+        }
     }
     if name == "int" {
         refused = self.str_enum_int(nd);
@@ -5450,7 +5458,22 @@ impl MirLowering.guard_unbound(fn: MirFunction) {
             }
         }
     }
-    full = set(named);
+    written: set[int] = set();
+    for blk in fn.blocks {
+        for instr in blk.instrs {
+            if instr.op == MirOp.STORE and instr.operands {
+                written.add(instr.operands[0].id);
+            }
+        }
+    }
+    full = {
+        slot_id
+        for slot_id in named
+        if slot_id in written
+    };
+    if not full {
+        return;
+    }
     entry_label = fn.blocks[0].label;
     stored: dict[str, set[int]] = {};
     for blk in fn.blocks {
@@ -5588,7 +5611,7 @@ impl MirLowering.guard_unbound(fn: MirFunction) {
 
 impl MirLowering.null_ok_trailer(nd: uni.AtomTrailer) -> (MirValue | None) {
     if not nd.is_null_ok
-        or not nd.is_attr
+        or not (nd.is_attr or isinstance(nd.right, uni.IndexSlice))
         or id(nd) in self.st().null_ok_open
         or not isinstance(nd.target, uni.Expr)
         or not isinstance(nd.target.type, (ClassType, UnionType)) {
@@ -5609,7 +5632,22 @@ impl MirLowering.null_ok_trailer(nd: uni.AtomTrailer) -> (MirValue | None) {
     self.st().pinned[id(nd.target)] = self.spill(payload);
     self.st().null_ok_open.add(id(nd));
     try {
-        present = self.lower_trailer(nd);
+        if nd.is_attr {
+            present = self.lower_trailer(nd);
+        } else {
+            holder = self.st().pinned[id(nd.target)];
+            index = nd.right;
+            if not isinstance(index, uni.IndexSlice)
+                or (
+                    not mir_is_container(holder.type)
+                    and holder.type.kind != MirKind.ANY
+                ) {
+                raise MirRefused(
+                    mir_refusal("subscript", f"?[] on {holder.type.render()}", nd)
+                );
+            }
+            present = self.container_get(holder, index, nd);
+        }
     } finally {
         self.st().pinned.pop(id(nd.target), None);
         self.st().null_ok_open.discard(id(nd));
@@ -5629,7 +5667,8 @@ impl MirLowering.write_only(target: uni.Name) -> bool {
             continue;
         }
         parent = name.parent;
-        if isinstance(parent, uni.Assignment) and any(t is name for t in parent.target) {
+        if isinstance(parent, uni.Assignment)
+            and any(t is name for t in parent.target) {
             continue;
         }
         if isinstance(parent, uni.InForStmt) and parent.target is name {

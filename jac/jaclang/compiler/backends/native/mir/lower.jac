@@ -922,7 +922,13 @@ obj MirLowering {
         leading: int = 0
     ) -> list[MirValue];
 
-    def class_value_call(nd: uni.FuncCall, bound: uni.Archetype) -> MirValue;
+    def class_value_call(
+        nd: uni.FuncCall,
+        bound: uni.Archetype,
+        source: (uni.Expr | None) = None,
+        leading: int = 0
+    ) -> MirValue;
+
     def class_bound(t: (TypeBase | None)) -> (uni.Archetype | None);
     def nearest_has_var(arch: uni.Archetype, name: str) -> (uni.HasVar | None);
     def default_thunk(expr: uni.Expr) -> (tuple[str, str, MirType] | None);
@@ -1272,9 +1278,11 @@ obj MirLowering {
     def bytes_of_ints(
         source: MirValue, nd: uni.UniNode, array: bool = False
     ) -> MirValue;
+
     def bytes_from(
         args: list[uni.Expr], nd: uni.FuncCall, array: bool = False
     ) -> MirValue;
+
     def absolute(value: MirValue, site: uni.UniNode) -> MirValue;
     def extreme(
         first: MirValue, rest: list[uni.Expr], name: str, site: uni.UniNode

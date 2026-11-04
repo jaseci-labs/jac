@@ -1294,13 +1294,12 @@ impl MirLowering.partial_mro(arch: uni.Archetype) -> bool {
             continue;
         }
         owner = scope.find_parent_of_type(uni.Module);
-        if owner is None or owner is self.module or not owner.loc.mod_path.endswith(".jac") {
+        if owner is None
+            or owner is self.module
+            or not owner.loc.mod_path.endswith(".jac") {
             continue;
         }
-        unit = os.path.realpath(owner.loc.mod_path);
-        if unit not in self.prog.native_units().building
-            and active_host().native_dep_iface(self.prog, unit, self.prog.options)
-                is None {
+        if self.dep_verdict(owner.loc.mod_path) is False {
             return True;
         }
         if self.partial_mro(scope) {
