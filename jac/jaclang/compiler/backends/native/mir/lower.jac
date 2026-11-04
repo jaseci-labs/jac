@@ -498,6 +498,7 @@ obj MirLowering {
     def lower_fstring(nd: uni.FString) -> MirValue;
     def lower_expr(nd: uni.UniNode) -> MirValue;
     def literal_destination(nd: uni.Int) -> (str | None);
+    def typed_operand(nd: uni.Expr) -> MirValue;
     def lower_name(nd: uni.Name) -> MirValue;
     def lower_binary(nd: uni.BinaryExpr) -> MirValue;
     def arith(op: str, left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;

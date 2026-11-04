@@ -1406,6 +1406,15 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
     return value;
 }
 
+impl MirLowering.typed_operand(nd: uni.Expr) -> MirValue {
+    value = self.lower_expr(nd);
+    if value.type.kind != MirKind.ANY {
+        return value;
+    }
+    wanted = self.expr_type(nd);
+    return value if wanted.kind == MirKind.ANY else self.coerce(value, wanted, nd);
+}
+
 impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
     receiver = self.st().self_value;
     if nd.value == "self" and receiver is not None {
@@ -3864,7 +3873,7 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
                 }
             }
             if settled and bounds[2] != 0 {
-                whole_tuple = self.spill(self.lower_expr(nd.target));
+                whole_tuple = self.spill(self.typed_operand(nd.target));
                 if whole_tuple.type.kind == MirKind.OPT {
                     whole_tuple = self.opt_unwrap_checked(
                         whole_tuple,
@@ -3891,7 +3900,7 @@ impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
                 mir_refusal("subscript", "tuple index that is not a constant", nd)
             );
         }
-        held_tuple = self.lower_expr(nd.target);
+        held_tuple = self.typed_operand(nd.target);
         if held_tuple.type.kind == MirKind.OPT {
             held_tuple = self.opt_unwrap_checked(
                 held_tuple, "'NoneType' object is not subscriptable", "TypeError"
