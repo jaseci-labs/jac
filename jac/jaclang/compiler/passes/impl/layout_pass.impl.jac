@@ -1892,3 +1892,17 @@ impl merge_imported_layouts(consumer: Module, imported: Module, prog: JacProgram
         }
     }
 }
+
+impl field_remap(child: ArchetypeLayout, base: ArchetypeLayout) -> list[int] {
+    if not base.fields {
+        return [];
+    }
+    places = [-1] * (max(f.index for f in base.fields) + 1);
+    moved = False;
+    for f in base.fields {
+        at = child.field_index.get(f.name, -1);
+        places[f.index] = at;
+        moved = moved or at != f.index;
+    }
+    return places if moved else [];
+}

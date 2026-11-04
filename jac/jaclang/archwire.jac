@@ -9542,13 +9542,16 @@ graph import compiler {
             EXC_MESSAGE_FIELD,
             NON_DISPATCHED_METHODS,
             VTABLE_DROP_SLOT,
+            VTABLE_FIELDS_SLOT,
             VTABLE_HEADER_SLOTS,
+            VTABLE_SELECTOR_SLOT,
             accessor_slot_name,
             adopt_imported_bases,
             archetype_accessors,
             archetype_native_name,
             class_type_native_name,
             enum_decl_of,
+            field_remap,
             get_layout_registry,
             is_enum_class_type,
             layout_slot_count,
@@ -10649,7 +10652,8 @@ graph import compiler.backends.native.mir {
             MirModule,
             MirObjectDef,
             MirOp,
-            MirValue
+            MirValue,
+            mir_selector_global
         },
         generators {
             MirBlock,
@@ -10678,7 +10682,8 @@ graph import compiler.backends.native.mir {
             MirParam,
             MirStructDef,
             MirStructField,
-            MirValue
+            MirValue,
+            mir_selector_global
         },
         rc {
             MirBlock,

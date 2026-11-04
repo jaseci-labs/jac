@@ -312,3 +312,20 @@ impl MirObjectDef.field(name: str) -> (MirObjectField | None) {
     }
     return None;
 }
+
+impl mir_selector_symbol(name: str) -> str {
+    return f"__jac_sel.{name}";
+}
+
+impl mir_selector_global(name: str) -> MirGlobal {
+    symbol = mir_selector_symbol(name);
+    spelled = name.encode() + b"\0";
+    return MirGlobal(
+        name=symbol,
+        symbol=symbol,
+        type=mir_int(8, False),
+        linkage="linkonce_odr",
+        count=len(spelled),
+        c_init=MirConst(kind="bytes", data=spelled)
+    );
+}

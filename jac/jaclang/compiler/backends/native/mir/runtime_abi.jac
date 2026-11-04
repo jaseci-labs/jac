@@ -131,6 +131,8 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_class_isa": ["bool", "int", "int"],
          "__jac_rt_any_isa_class": ["bool", "int", "int", "int"],
          "__jac_rt_type_name": ["ptr", "ref"],
+         "__jac_rt_vtable_find": ["int", "int", "int"],
+         "__jac_rt_field_at": ["int", "int", "int", "int", "int", "int"],
          "__jac_rt_cstr_eq": ["bool", "ptr", "ptr"],
          "__jac_rt_str_from_cstr": ["str.ref", "ptr"],
          "__jac_rt_class_name": ["str.ref", "ptr"],

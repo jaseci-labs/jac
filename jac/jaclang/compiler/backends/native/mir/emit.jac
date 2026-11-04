@@ -151,6 +151,9 @@ obj MirEmitter {
     def global_block(label: str, size: int) -> ir.GlobalVariable;
     def object_struct(name: str) -> ir.Type;
     def vtable_global(obj_def: MirObjectDef) -> ir.GlobalVariable;
+    def vtable_ref(symbol: str, obj_def: MirObjectDef) -> ir.GlobalVariable;
+    def field_remap_table(obj_def: MirObjectDef) -> ir.Value;
+    def selector_global(name: str) -> ir.GlobalVariable;
     def class_global(obj_def: MirObjectDef) -> ir.GlobalVariable;
     def global_variable(glob_def: MirGlobal) -> ir.GlobalVariable;
     def keyed_block_fn(label: str, size: int) -> ir.Function;

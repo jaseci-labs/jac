@@ -408,7 +408,6 @@ obj MirLowering {
         text_fns: dict[str, str] = {},
         text_serial: int = 0,
         enum_thunks: dict[str, str] = {},
-        slot_cache: dict[str, dict[int, list[str]]] = {},
         named_archs: dict[str, uni.Archetype] = {},
         default_entries: list[tuple[str, str]] = [],
         indexed_units: set[int] = set(),
@@ -862,10 +861,6 @@ obj MirLowering {
 
     def layout_registries(name: str) -> list[LayoutRegistry];
     def runtime_classes(target: str, seen_from: str) -> list[str];
-    def slot_groups(
-        target: str, seen_from: str, name: str, index: int, method: bool
-    ) -> dict[int, list[str]];
-
     def arch_named(name: str, site: uni.UniNode) -> uni.Archetype;
     def union_field_place(
         holder: MirValue, members: list[uni.Archetype], name: str, site: uni.UniNode
@@ -921,6 +916,14 @@ obj MirLowering {
 
     def method_receiver(
         decl: MirDecl, arch: uni.Archetype, receiver: MirValue, site: uni.UniNode
+    ) -> MirValue;
+
+    def remapped_field(
+        holder: MirValue, obj_def: MirObjectDef, index: int, place: MirValue
+    ) -> MirValue;
+
+    def vtable_target(
+        receiver: MirValue, obj_def: MirObjectDef, slot: int
     ) -> MirValue;
 
     def invoke_method(
