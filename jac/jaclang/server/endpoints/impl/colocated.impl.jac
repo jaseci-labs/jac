@@ -32,6 +32,10 @@ impl _unit_failed(result: any) -> bool {
     return isinstance(result, dict) and 'error' in result;
 }
 
+impl _answer_is_final(result: any) -> bool {
+    return not _unit_failed(result) or bool(result.get('final'));
+}
+
 impl _outcome(result: any, fallback: str) -> (TransportResponse | Response) {
     if _unit_failed(result) {
         if result.get('error') == 'User not found' {
@@ -94,7 +98,7 @@ impl _walker_callback(
         return remember_response(
             key,
             _outcome(result, 'Walker execution failed'),
-            committed=not _unit_failed(result)
+            committed=_answer_is_final(result)
         );
     }
     return callback;
@@ -137,7 +141,7 @@ impl _function_callback(
         return remember_response(
             key,
             _outcome(result, 'Function execution failed'),
-            committed=not _unit_failed(result)
+            committed=_answer_is_final(result)
         );
     }
     return callback;
