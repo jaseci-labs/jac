@@ -281,6 +281,7 @@ impl session_inputs(
         package_root=package_root(),
         module_projection=options.module_projection(),
         target_app=options.target_app or "",
+        producer=kernel_identity(),
         request=request_of(options),
         project_defaults=host.project_defaults(),
         host_platform=host.host_platform(),

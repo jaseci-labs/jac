@@ -35,6 +35,7 @@ glob MAGIC = b"JIR\x00",
      SEC_PATH_ROOT: int = 0x15,
      SEC_EMITKEY: int = 0x16,
      SEC_PYSRC: int = 0x17,
+     SEC_PRODUCER: int = 0x18,
      SEC_TERMINATOR: int = 0xFF,
      FLAG_PRECOMPILED: int = 0x02,
      FLAG_CARRIED: int = 0x08,
@@ -54,6 +55,11 @@ glob NATIVE_SECTIONS: tuple[int, ...] = (
      NATIVE_VARIANTS_MAGIC: bytes = b"JNV1";
 
 glob LOCK_POOL_SIZE: int = 64;
+
+glob _KERNEL_PRODUCER: list[str] = [];
+
+glob CONTENT_CONFLICTS: str = "\x1fconflicts",
+     CONTENT_PINNED: str = "\x1fpinned";
 
 glob STALE_CODE_SECTIONS: tuple[int, ...] = (
          SEC_BYTECODE,
@@ -241,6 +247,8 @@ def end_prepare_memo(token: any);
 
 def hold_compiled_content(digests: dict[str, str]);
 
+def pin_content_reads;
+
 @contextmanager
 def content_on_disk -> Iterator[None];
 
@@ -369,6 +377,12 @@ def module_cache_key(source_path: str) -> str;
 def module_jir_key_sections(source_path: str) -> dict[int, bytes];
 
 def jir_env_matches(jir_data: bytes, source_path: str) -> bool;
+
+def set_kernel_producer(identity: str) -> None;
+
+def kernel_producer -> str;
+
+def jir_producer_matches(jir_data: bytes) -> bool;
 
 def jir_matches_source(jir_data: bytes, source_path: str) -> bool;
 

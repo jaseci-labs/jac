@@ -374,6 +374,7 @@ impl JacCompiler._adopt_kernel_compile(
                     )
                 );
             }
+            sections[SEC_PRODUCER] = kernel_identity().encode("utf-8");
             try {
                 write_module_cache(unit.path, bytecode, extra_sections=sections);
             } except OSError {}

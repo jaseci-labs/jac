@@ -903,7 +903,9 @@ impl _native_scan_path(path: str, digest: str) -> str {
     import hashlib;
     import os;
     name = hashlib.sha256(
-        (digest + "\x00" + module_env_fingerprint(path)).encode()
+        (
+            digest + "\x00" + module_env_fingerprint(path) + "\x00" + kernel_identity()
+        ).encode()
     ).hexdigest();
     return os.path.join(
         str(get_jir_cache_dir()), "nativescan", name[:2], name + ".txt"

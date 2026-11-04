@@ -552,6 +552,7 @@ impl inputs_to_dict(inputs: KernelInputs) -> dict[str, any] {
         "package_root": inputs.package_root,
         "module_projection": inputs.module_projection,
         "target_app": inputs.target_app,
+        "producer": inputs.producer,
         "request": request_to_dict(inputs.request),
         "project_defaults": defaults_to_dict(defaults)
             if defaults is not None
@@ -793,6 +794,7 @@ impl inputs_from_dict(raw: dict[str, any]) -> KernelInputs {
         package_root=str(raw.get("package_root", "")),
         module_projection=str(raw.get("module_projection", "")),
         target_app=str(raw.get("target_app", "")),
+        producer=str(raw.get("producer", "")),
         request=request_from_dict(json_map(raw.get("request"))),
         project_defaults=defaults_from_dict(json_map(defaults_raw))
             if defaults_raw is not None

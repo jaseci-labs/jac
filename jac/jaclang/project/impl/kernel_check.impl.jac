@@ -178,7 +178,8 @@ impl _replayed_outcome(record_path: str, path: str) -> (AnalysisReport | None) {
             record = json.load(f);
         }
         real = os.path.realpath(path);
-        if record.get("key") != module_cache_key(real) {
+        if record.get("key") != module_cache_key(real)
+            or record.get("producer") != kernel_identity() {
             return None;
         }
         for (dep, digest) in record.get("deps", []) {
@@ -219,6 +220,7 @@ impl _record_outcome(record_path: str, path: str, outcome: AnalysisReport) {
         dirs = [[d, os.stat(d).st_mtime_ns] for d in sorted(searched)];
         record = {
             "key": module_cache_key(real),
+            "producer": kernel_identity(),
             "deps": deps,
             "dirs": dirs,
             "report": outcome.to_dict()
