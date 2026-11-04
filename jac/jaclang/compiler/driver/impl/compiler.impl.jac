@@ -425,11 +425,14 @@ impl JacCompiler.kernel_native_entry(
     if options is None and module_record(path, target_program) is not None {
         return (False, None);
     }
-    forced = options is not None and options.force_codespace == "native";
-    if forced and not options.native_required {
-        import copy;
-        options = copy.copy(options);
-        options.native_required = True;
+    forced = False;
+    if options is not None and options.force_codespace == "native" {
+        forced = True;
+        if not options.native_required {
+            import copy;
+            options = copy.copy(options);
+            options.native_required = True;
+        }
     }
     actual = self.selfhost.resolve(path, target_program, execution=True);
     import from jaclang.project.kernel_compile { kernel_generates_native }
