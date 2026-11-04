@@ -5212,7 +5212,11 @@ impl MirLowering.lower_tail_return(nd: uni.ReturnStmt) {
 }
 
 impl MirLowering.c_convention(nd: uni.UniNode) -> str {
-    for decorator in list(nd?.decorators or []) {
+    decorators: list[uni.Expr] = [];
+    if isinstance(nd, (uni.Ability, uni.Archetype)) {
+        decorators = list(nd.decorators or []);
+    }
+    for decorator in decorators {
         if isinstance(decorator, uni.Name)
             and decorator.value in C_CALLING_CONVENTIONS {
             return C_CALLING_CONVENTIONS[decorator.value];
