@@ -429,11 +429,48 @@ impl JcirGenPass.exit_module_code with ModuleCode exit {
     self.set_out(here, stmts);
 }
 
+impl JcirGenPass._gen_native_import_mirrors(nd: Import) -> bool {
+    if not nd.from_loc or not nd.items or not nd.from_loc.path {
+        return False;
+    }
+    target = nd.from_loc.resolve_relative_path();
+    if not isinstance(target, str) or not target {
+        return False;
+    }
+    import json;
+    parts: list[str] = [
+        "from jaclang.runtime.interop_bridge import pyb_mirror_member as "
+        + "__jac_pyb_mirror_member"
+    ];
+    names: list[str] = [];
+    for item in nd.items {
+        if not isinstance(item, ModuleItem) or not isinstance(item.name, Name) {
+            continue;
+        }
+        item_name = item.name.value;
+        local_name = item.alias.sym_name if item.alias is not None else item_name;
+        parts.append(
+            f"{local_name} = __jac_pyb_mirror_member({json.dumps(target)}, "
+                + f"{json.dumps(item_name)}, __package__)"
+        );
+        names.append(local_name);
+    }
+    if not names {
+        return False;
+    }
+    self.set_out(nd, [CgSplice(src="\n".join(parts), offset=0, bound_names=names)]);
+    return True;
+}
+
 impl JcirGenPass.exit_import with Import exit {
-    if (
-        import_binds_client_native(here, self.module.gen.interop_manifest)
-        or here.native_only_drop
-    ) {
+    if import_binds_client_native(here, self.module.gen.interop_manifest) {
+        self.set_out(here, []);
+        return;
+    }
+    if here.native_only_drop {
+        if self._gen_native_import_mirrors(here) {
+            return;
+        }
         self.set_out(here, []);
         return;
     }
