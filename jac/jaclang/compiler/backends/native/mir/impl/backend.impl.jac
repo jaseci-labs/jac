@@ -529,7 +529,7 @@ impl MirNativePass.layout(lowering: MirLowering, mir: MirModule) -> NativeModule
         if decl.event {
             continue;
         }
-        if decl.owner is None {
+        if decl.owner is None and decl.self_type is None {
             owners.setdefault(decl.symbol, "");
         } elif decl.self_type is not None {
             owners.setdefault(decl.symbol, decl.self_type.name);
