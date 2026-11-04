@@ -15214,6 +15214,7 @@ graph import runtime.native {
             __jac_rt_elem_release,
             __jac_rt_elem_retain,
             __jac_rt_list_extend,
+            __jac_rt_list_kind,
             __jac_rt_list_new,
             __jac_rt_list_push,
             __jac_rt_list_rekind,
