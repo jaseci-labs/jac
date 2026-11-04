@@ -771,3 +771,23 @@ impl __jac_rt_list_sort_keyed(lst: int, keys: int, kind: int, reverse: bool) {
     free(first);
     free(second);
 }
+
+impl __jac_rt_list_view(block: int, parent: int, start: int, count: int) -> int {
+    at = 0;
+    while at < HDR_TOTAL {
+        __mem_store_i64(block + at, 0);
+        at += SLOT;
+    }
+    view = block + HDR_TOTAL;
+    total = __mem_load_i64(parent + LIST_LEN);
+    low = start if start < total else total;
+    high = low + count;
+    if high > total {
+        high = total;
+    }
+    __mem_store_i64(view + LIST_LEN, high - low);
+    __mem_store_i64(view + LIST_CAP, high - low);
+    __mem_store_i64(view + LIST_DATA, __mem_load_i64(parent + LIST_DATA) + low * SLOT);
+    __mem_store_i64(view + LIST_KIND, __mem_load_i64(parent + LIST_KIND));
+    return view;
+}

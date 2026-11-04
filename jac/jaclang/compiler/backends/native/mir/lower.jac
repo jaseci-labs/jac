@@ -64,6 +64,9 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      TASK_MESSAGE: int = 40,
      TASK_ORIGIN: int = 48,
      TASK_ARGS: int = 64,
+     FLOW_CTX_CAPTURES: int = 2,
+     FLOW_TASK_PARTIALS: int = 3,
+     LIST_VIEW_WORDS: int = 8,
      GEN_PENDING_MESSAGE: int = 16,
      GEN_PENDING_ORIGIN: int = 24,
      RC_DEBUG_OFF_NOTICE: str = "jac: RC debug tracing not compiled in (build with --debug or [native] debug = true)",
@@ -1142,6 +1145,29 @@ obj MirLowering {
     def flow_threaded -> bool;
     def lower_concurrent(nd: uni.ConcurrentExpr) -> MirValue;
     def flow_thunk(decl: MirDecl) -> str;
+    def flow_marked(nd: uni.InForStmt) -> bool;
+    def chunk_shape(source: uni.Expr) -> (tuple[uni.Expr, uni.Expr] | None);
+    def view_block -> MirValue;
+    def chunk_view(
+        block: MirValue, lst: MirValue, index: MirValue, width: MirValue
+    ) -> MirValue;
+
+    def chunk_width(n_nd: uni.Expr) -> MirValue;
+    def chunk_count(lst: MirValue, width: MirValue) -> MirValue;
+    def lower_chunk_for(nd: uni.InForStmt, lst_nd: uni.Expr, n_nd: uni.Expr);
+    def flow_parallel_ok -> bool;
+    def flow_reductions(nd: uni.InForStmt) -> list[tuple[uni.Name, str]];
+    def flow_captures(nd: uni.InForStmt, excluded: list[uni.Symbol]) -> list[uni.Name];
+    def lower_flow_for(nd: uni.InForStmt) -> bool;
+    def flow_body(
+        nd: uni.InForStmt,
+        list_type: MirType,
+        chunked: bool,
+        captures: list[uni.Name],
+        capture_types: list[MirType],
+        reductions: list[tuple[uni.Name, str]]
+    ) -> str;
+
     def task_store(base: MirValue, offset: int, value: MirValue);
     def pipe_call(nd: uni.BinaryExpr) -> MirValue;
     def cstr_of(value: MirValue) -> MirValue;

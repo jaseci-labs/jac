@@ -35,6 +35,8 @@ glob LIST_LEN: int = 0,
      ORDER_LT: int = 0,
      TAG_LIST: int = 3;
 
+def:pub __jac_rt_list_view(block: int, parent: int, start: int, count: int) -> int;
+
 def:pub __jac_rt_elem_retain(bits: int, kind: int);
 
 def:pub __jac_rt_elem_release(bits: int, kind: int);

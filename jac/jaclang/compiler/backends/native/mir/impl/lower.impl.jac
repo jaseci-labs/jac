@@ -3426,6 +3426,9 @@ impl MirLowering.lower_if_else_expr(nd: uni.IfElseExpr) -> MirValue {
 }
 
 impl MirLowering.lower_for(nd: uni.InForStmt) {
+    if self.lower_flow_for(nd) {
+        return;
+    }
     target = nd.target;
     if not isinstance(target, uni.Name) or target.sym is None or target.type is None {
         self.lower_for_core(nd);
@@ -3477,6 +3480,11 @@ impl MirLowering.lower_for_core(nd: uni.InForStmt) {
         after = self.st().fn.new_block("each.exit");
         self.lower_else(nd.else_body, after);
         self.builder().position(after);
+        return;
+    }
+    chunked = self.chunk_shape(source);
+    if chunked is not None {
+        self.lower_chunk_for(nd, chunked[0], chunked[1]);
         return;
     }
     holder = self.lower_expr(source);
