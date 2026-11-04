@@ -243,7 +243,11 @@ impl walker_callback(
             return _stream(result);
         }
         if isinstance(result, dict) and 'error' in result {
-            return _failure(result, 'Walker execution failed');
+            return remember_response(
+                idem,
+                _failure(result, 'Walker execution failed'),
+                committed=bool(result.get('final'))
+            );
         }
         return remember_response(
             idem,
@@ -409,7 +413,11 @@ impl function_callback(
             return _stream(result);
         }
         if isinstance(result, dict) and 'error' in result {
-            return _failure(result, 'Function execution failed');
+            return remember_response(
+                idem,
+                _failure(result, 'Function execution failed'),
+                committed=bool(result.get('final'))
+            );
         }
         if raw_body {
             payload = result.get('result') if isinstance(result, dict) else result;
