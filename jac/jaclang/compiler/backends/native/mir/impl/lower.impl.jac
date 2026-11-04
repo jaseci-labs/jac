@@ -2334,6 +2334,9 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         and INTRINSIC_REGISTRY.is_intrinsic(nd.target.value) {
         return self.intrinsic_call(nd, nd.target.value);
     }
+    if callee is None and isinstance(nd.target, uni.Name) {
+        callee = self.stdlib_member(nd.target);
+    }
     if isinstance(callee, uni.Ability) {
         callee = self.variant_ability(self.live_member(callee));
     }

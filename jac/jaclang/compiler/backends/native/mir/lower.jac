@@ -1447,6 +1447,8 @@ obj MirLowering {
     def is_template(ab: uni.Ability) -> bool;
     def template_of(ab: uni.Ability) -> bool;
     def stdlib_module(expr: uni.UniNode) -> (uni.Module | None);
+    def stdlib_member(nd: uni.Name) -> (uni.Ability | None);
+    def stdlib_unit_at(path: str) -> (uni.Module | None);
     def module_member(unit: uni.Module, name: str) -> (uni.UniNode | None);
     def getattr_member(call: uni.FuncCall) -> (tuple[uni.Module, str] | None);
     def alias_scope(nd: uni.UniNode) -> (uni.UniNode | None);
