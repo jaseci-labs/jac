@@ -150,7 +150,11 @@ test "a native class over a base that stays Python-side refuses" {
         rec = coverage.get(os.path.realpath(main));
         seams = [str(s) for s in ((rec.get("seams") or []) if rec is not None else [])];
     }
-    hits = [s for s in seams if s.startswith("overridden_dispatch: ")];
+    hits = [
+        s
+        for s in seams
+        if s.startswith("overridden_dispatch: ")
+    ];
     assert len(hits) == 1 , f"the constructing callable must demote: {seams}";
     assert "Overrider" in hits[0] and "DispatchBase" in hits[0] , (
         f"the refusal must name the class and its Python-side base: {hits[0]}"

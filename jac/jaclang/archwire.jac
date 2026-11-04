@@ -9525,11 +9525,11 @@ graph import compiler {
         JsxIntrinsicGuardPass
     }
     passes.layout_pass ++> [
-        backends.es.esast_gen_pass.EsastGenPass._field_constructor_args {
+        backends.es.esast_gen_pass.EsastGenPass._field_constructor_args
+            | backends.native.mir.backend {
             archetype_native_name,
             get_layout_registry
         },
-        backends.native.mir.backend { archetype_native_name, get_layout_registry },
         backends.native.mir.emit { VTABLE_HEADER_SLOTS },
         backends.native.mir.lower {
             EXC_MESSAGE_FIELD,
@@ -10404,8 +10404,10 @@ graph import compiler.backends.es.backends {
 }
 
 graph import compiler.backends.native {
-    abi ++> mir.backend { struct_layouts }
-    abi ++> mir.emit { classify_struct }
+    abi ++> [
+        mir.backend { struct_layouts },
+        mir.emit { classify_struct },
+    ]
     foreign ++> abi.classify_foreign_fn { foreign_struct_layout }
     kernel_resolve ++> kernel_stage0 { KERNEL_LINK_MODE, kernel_plan }
     kernel_stage0 ++> kernel_resolve.build_kernel { link_kernel }
