@@ -119,9 +119,7 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
             if slot_type.kind != MirKind.ANY {
                 self.ensure_objects(field_type);
             }
-            if slot_type.kind == MirKind.ENUM and isinstance(field_type, ClassType) {
-                self.enum_types.setdefault(slot_type.name, field_type);
-            }
+            self.record_enum_type(slot_type, field_type);
             tag = member.decl_node.type_tag
                 if isinstance(member.decl_node, uni.HasVar)
                 else None;

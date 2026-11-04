@@ -3037,14 +3037,22 @@ impl MirLowering.type_of(
     }
     made = mir_type_of(t, position, site, self.type_env or None);
     self.ensure_objects(t);
-    if made.kind == MirKind.ENUM and isinstance(t, ClassType) {
+    self.record_enum_type(made, t);
+    return made;
+}
+
+impl MirLowering.record_enum_type(made: MirType, t: (TypeBase | None)) {
+    if made.kind == MirKind.OPT and isinstance(t, UnionType) {
+        for member in t.types {
+            self.record_enum_type(made.payload(), member);
+        }
+    } elif made.kind == MirKind.ENUM and isinstance(t, ClassType) {
         self.enum_types.setdefault(made.name, t);
     } elif made.kind == MirKind.ENUM
         and isinstance(t, EnumMemberType)
         and t.enum_class is not None {
         self.enum_types.setdefault(made.name, t.enum_class.clone_as_instance());
     }
-    return made;
 }
 
 impl MirLowering.ensure_objects(t: (TypeBase | None)) {

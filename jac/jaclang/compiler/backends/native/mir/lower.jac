@@ -545,6 +545,7 @@ obj MirLowering {
         t: (TypeBase | None), position: MirPosition, site: uni.UniNode
     ) -> MirType;
 
+    def record_enum_type(made: MirType, t: (TypeBase | None));
     def ensure_objects(t: (TypeBase | None));
     def ensure_c_types(t: (TypeBase | None));
     def c_struct_of(t: (TypeBase | None)) -> (uni.Archetype | None);
