@@ -306,7 +306,12 @@ impl MirLowering.callee_value(target: uni.Expr) -> MirValue {
             return self.builder().load(slot, slot.type);
         }
     }
-    return self.lower_expr(target);
+    value = self.lower_expr(target);
+    if value.type.kind == MirKind.C_FN and value.id in self.fn_values {
+        named = self.fn_values[value.id];
+        return self.function_value(named, mir_fn(list(named.params), named.ret));
+    }
+    return value;
 }
 
 impl MirLowering.call_closure(
