@@ -6731,6 +6731,9 @@ graph import compiler {
             native_unit_prefix
         },
     ]
+    frontend.codeinfo ++> driver.native_iface.resolve_native_unit_ref {
+        _native_unit_root_name
+    }
     type frontend.codeinfo ++> [
         backends.native.link_glue | backends.native.link_plan { InteropBinding },
         backends.native.na_compile_pass
