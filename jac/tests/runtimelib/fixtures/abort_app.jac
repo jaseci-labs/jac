@@ -58,6 +58,20 @@ def late_save(home: Root, name: str, fault: str = "") {
         if fault == "own_db" {
             store.rows("SELECT 1/0", {});
         }
+        if fault == "wrapped_db" {
+            try {
+                store.rows("SELECT 1/0", {});
+            } except Exception as e {
+                raise ValueError("the app's own error") from e;
+            }
+        }
+        if fault == "raised_in_except" {
+            try {
+                store.rows("SELECT 1/0", {});
+            } except Exception {
+                raise ValueError("the app's own error");
+            }
+        }
         if fault == "other_db" {
             raise PgWireError({"C": "XX000", "M": "from another connection"});
         }
@@ -89,13 +103,17 @@ walker:protect LateWrite {
     has first: str = "first",
         late: str = "late",
         fault: str = "",
-        status: int = 200;
+        status: int = 200,
+        commit_first: bool = False;
 
     can go with Root entry {
         respond(status=self.status);
         runs.append(1);
         here ++> AbortItem(name=self.first);
         late_save(here, self.late, self.fault);
+        if self.commit_first {
+            commit();
+        }
         report {"ok": True};
     }
 }

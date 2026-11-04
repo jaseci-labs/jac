@@ -841,7 +841,12 @@ impl Session.unit_exit -> None {
 
 
 impl Session.note_effect_failure(e: Exception) -> None {
-    if (self._store is not None and e is self._store.last_error)
+    cause: any = e;
+    while cause is not None
+        and not (self._store is not None and cause is self._store.last_error) {
+        cause = cause.__cause__ or cause.__context__;
+    }
+    if cause is not None
         or (isinstance(e, WriteConflict) and not isinstance(e, ReadOnlyRetry)) {
         self._lost = True;
     }

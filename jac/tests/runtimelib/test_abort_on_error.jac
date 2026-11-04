@@ -123,8 +123,9 @@ obj LateCase {
 
 """A failure after a request's first commit is its final answer: each row is sent
 twice with one key, the walker never re-runs and the retry replays the answer, while
-a callback's error from another database connection stays logged. A failed first
-commit saved nothing, so its retry runs."""
+a callback's error from another database connection stays logged, as does one from
+the walker's own commit(), before that first commit. A failed first commit saved
+nothing, so its retry runs."""
 test "a failure after the first commit is answered once and replayed, never re-run" {
     import from jaclang.server.endpoints.colocated {
         _function_callback,
@@ -144,6 +145,23 @@ test "a failure after the first commit is answered once and replayed, never re-r
         LateCase("colocated function", via="colocated function", body=refused, saved=0),
         LateCase("late write loses to a rival", body={"fault": "rival"}),
         LateCase("error on this connection", body={"fault": "own_db"}),
+        LateCase("wrapped error on this connection", body={"fault": "wrapped_db"}),
+        LateCase(
+            "error raised while handling one on this connection",
+            body={"fault": "raised_in_except"}
+        ),
+        LateCase(
+            "error on this connection from the walker's own commit()",
+            body={"fault": "own_db", "commit_first": True},
+            status=200,
+            code=""
+        ),
+        LateCase(
+            "conflict from the walker's own commit()",
+            body={"fault": "conflict", "commit_first": True},
+            status=200,
+            code=""
+        ),
         LateCase(
             "error on another connection",
             body={"fault": "other_db"},

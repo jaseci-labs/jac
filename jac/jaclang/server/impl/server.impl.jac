@@ -73,8 +73,10 @@ impl ExecutionManager._finalize_call_response(
 ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
     call_state.reports.put_nowait(call_state._sentinel);
     reports = await self.report_collector(call_state);
-    await Jac.acommit();
+    ctx = Jac.get_context();
+    await ctx.mem.acommit();
     call_state.committed = True;
+    ctx.run_pending_effects();
     if isgenerator(result) or isinstance(result, AsyncGenerator) {
         return result;
     }
@@ -89,9 +91,8 @@ impl ExecutionManager._finalize_call_response(
         'reports': Serializer.serialize(reports, api_mode=True)
     };
     if _plain_value(reports) and _plain_value(result) {
-        Jac.get_context().mem.seal_scan();
+        ctx.mem.seal_scan();
     }
-    ctx = Jac.get_context();
     if ctx.diagnostics {
         envelope['warnings'] = [d.to_dict() for d in ctx.diagnostics];
         ctx.diagnostics.clear();
