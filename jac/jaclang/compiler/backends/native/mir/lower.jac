@@ -356,6 +356,8 @@ obj MirDecl {
 
 def mono_symbol_text(text: str) -> str;
 
+def mir_format_fields(template: str) -> list[tuple[str, (str | None), str, str]];
+
 def mir_slice_picks(
     count: int, start: (int | None), stop: (int | None), step: (int | None)
 ) -> list[int];
