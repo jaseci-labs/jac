@@ -864,6 +864,16 @@ impl MirLowering.lower_connect(nd: uni.BinaryExpr, co: uni.ConnectOp) -> MirValu
     many = self.osp_hold(right if right_many else left);
     one = self.osp_hold(left if right_many else right);
     values = self.osp_assign_values(co, edge_arch, nd);
+    pinned: list[int] = [];
+    if isinstance(co.conn_type, uni.FuncCall) {
+        for arg in list(co.conn_type.params or []) {
+            held = arg.value if isinstance(arg, uni.KWPair) else arg;
+            if isinstance(held, uni.Expr) {
+                self.st().pinned[id(held)] = self.spill(self.lower_expr(held));
+                pinned.append(id(held));
+            }
+        }
+    }
     fn = self.st().fn;
     index = self.temp_slot(mir_int());
     b.store(index, b.const_int(0, mir_int()));
@@ -894,6 +904,9 @@ impl MirLowering.lower_connect(nd: uni.BinaryExpr, co: uni.ConnectOp) -> MirValu
     b.store(index, b.binary("add", at, b.const_int(1, mir_int())));
     b.branch(head);
     b.position(done);
+    for key in pinned {
+        self.st().pinned.pop(key, None);
+    }
     if direction == OSP_DIR_IN {
         return one if right_many else many;
     }
