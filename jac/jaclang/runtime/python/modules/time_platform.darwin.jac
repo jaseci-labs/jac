@@ -4,7 +4,6 @@ time.sleep() uses nanosleep() here, and time.pthread_getcpuclockid is not
 published; the stand-ins keep the portable module well typed and are never
 called.
 """
-import from jaclang.runtime.python.modules.time_records { timespec }
 
 glob HAS_CLOCK_NANOSLEEP: bool = False,
      HAS_PTHREAD_GETCPUCLOCKID: bool = False;

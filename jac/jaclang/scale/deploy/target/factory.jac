@@ -1,3 +1,5 @@
+import sys;
+
 def ensure_deploy_tooling(dry_run: bool = False);
 
 def require_deploy_tooling(dry_run: bool = False);
