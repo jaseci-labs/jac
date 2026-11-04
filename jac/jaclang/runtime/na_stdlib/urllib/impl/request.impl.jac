@@ -25,17 +25,27 @@ impl _parse_url(u: str) -> _Url {
     return _Url(scheme=scheme, host=host, port=port, path=path);
 }
 
-impl _request_text(host: str, path: str) -> str {
-    return "GET "
-        + path
-        + " HTTP/1.0\r\nHost: "
-        + host
-        + "\r\nConnection: close\r\nUser-Agent: jac-urllib/1.0\r\nAccept: */*\r\n\r\n";
+impl _request_bytes(host: str, path: str, request: Request) -> bytes {
+    lines: list[str] = [
+        request.method + " " + path + " HTTP/1.0",
+        "Host: " + host,
+        "Connection: close",
+        "User-Agent: jac-urllib/1.0",
+        "Accept: */*",
+    ];
+    for name in request.headers {
+        lines.append(name + ": " + request.headers[name]);
+    }
+    if len(request.data) > 0 {
+        lines.append("Content-Length: " + str(len(request.data)));
+    }
+    header: bytes = ("\r\n".join(lines) + "\r\n\r\n").encode();
+    return header + request.data;
 }
 
-impl _fetch_raw(pu: _Url) -> bytes {
+impl _fetch_raw(pu: _Url, request: Request) -> bytes {
     sock = create_connection((pu.host, pu.port));
-    reqb = _request_text(pu.host, pu.path).encode();
+    reqb = _request_bytes(pu.host, pu.path, request);
     raw = b"";
     if pu.scheme == "https" {
         ctx = create_default_context();
@@ -127,15 +137,25 @@ impl _resolve_redirect(pu: _Url, loc: str) -> str {
     return base + "/" + loc;
 }
 
-impl urlopen(url: str) -> HTTPResponse {
-    cur = url;
+impl urlopen(url: any) -> HTTPResponse {
+    request: Request;
+    if isinstance(url, str) {
+        request = Request(url=url);
+    } else {
+        request = url as Request;
+    }
+    return _urlopen_request(request);
+}
+
+impl _urlopen_request(request: Request) -> HTTPResponse {
+    cur: str = request.url;
     redirects: int = 0;
     while redirects < 10 {
-        pu = _parse_url(cur);
-        raw = _fetch_raw(pu);
-        resp = _parse_response(raw, cur);
+        pu: _Url = _parse_url(cur);
+        raw: bytes = _fetch_raw(pu, request);
+        resp: HTTPResponse = _parse_response(raw, cur);
         if resp.status >= 300 and resp.status < 400 {
-            loc = resp.getheader("location", "");
+            loc: str | None = resp.getheader("location", "");
             if loc is not None and len(loc) > 0 {
                 cur = _resolve_redirect(pu, loc);
                 redirects += 1;
@@ -144,5 +164,5 @@ impl urlopen(url: str) -> HTTPResponse {
         }
         return resp;
     }
-    raise Exception("urlopen: too many redirects (>10) for " + url);
+    raise Exception("urlopen: too many redirects (>10) for " + request.url);
 }
