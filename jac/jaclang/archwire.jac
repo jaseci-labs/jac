@@ -46951,7 +46951,7 @@ graph import server {
         register_walker_endpoints
     }
     exchange ++> [
-        endpoints.colocated { refusal_status, settle_envelope },
+        endpoints.colocated { settle_envelope },
         endpoints.walkers {
             apply_response_choice,
             has_response_choice,
@@ -47239,7 +47239,7 @@ graph import server {
 graph import server.endpoints {
     auth ++> second_factor { fail, ok, throttled }
     second_factor ++> auth.register_auth_endpoints { register_second_factor_endpoints }
-    walkers ++> colocated { idempotency_key, request_caller }
+    walkers ++> colocated { _failure, idempotency_key, request_caller }
 }
 
 graph import server.identity {

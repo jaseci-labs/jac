@@ -48,13 +48,6 @@ impl _stream(result: any) -> StreamingResponse {
 }
 
 impl _failure(result: dict[str, any], fallback: str) -> TransportResponse {
-    if result.get('error') == 'User not found' {
-        return TransportResponse.fail(
-            code='UNAUTHORIZED',
-            message='Unauthorized: unknown user',
-            meta=Meta(extra={'http_status': 401})
-        );
-    }
     return TransportResponse.fail(
         code=str(result.get('error_code') or 'EXECUTION_ERROR').upper(),
         message=result.get('error', fallback),
