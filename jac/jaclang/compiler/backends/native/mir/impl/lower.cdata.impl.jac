@@ -221,7 +221,7 @@ impl MirLowering.c_const(
     if target.kind == MirKind.C_PTR {
         return self.c_const_address(expr);
     }
-    (ok, value) = c_scalar_constant(expr);
+    (ok, value) = c_scalar_constant(expr, 0, self.prog);
     if ok and isinstance(value, (bool, int, float)) {
         if target.kind == MirKind.FLOAT {
             return MirConst(kind="float", float_value=float(value));
@@ -328,14 +328,14 @@ impl MirLowering.c_const_address(expr: uni.Expr) -> MirConst {
         }
         raise MirRefused(self.c_const_refusal(expr));
     }
-    (ok, value) = c_scalar_constant(expr);
+    (ok, value) = c_scalar_constant(expr, 0, self.prog);
     if ok and isinstance(value, int) {
         return MirConst(kind="int", int_value=value);
     }
     raise MirRefused(self.c_const_refusal(expr));
 }
 
-impl MirLowering.c_function_symbol(expr: uni.Expr, from_c: bool = True) -> str {
+impl MirLowering.c_function_symbol(expr: uni.Expr) -> str {
     while isinstance(expr, uni.AtomUnit) and isinstance(expr.value, uni.Expr) {
         expr = expr.value;
     }
@@ -349,9 +349,7 @@ impl MirLowering.c_function_symbol(expr: uni.Expr, from_c: bool = True) -> str {
     sym = target.name_ref.sym if target.name_ref is not None else None;
     decl = self.decls.get(self.decl_syms.get(id(sym), -1)) if sym is not None else None;
     if decl is not None {
-        return self.c_entry(decl.symbol, decl.params, decl.ret, decl.ability)
-            if from_c
-            else decl.symbol;
+        return self.c_entry(decl.symbol, decl.params, decl.ret, decl.ability);
     }
     fn_type = self.prog.get_type_evaluator().get_type_of_symbol(sym)
         if sym is not None
@@ -376,9 +374,7 @@ impl MirLowering.c_function_symbol(expr: uni.Expr, from_c: bool = True) -> str {
         );
         self.mir.externs[symbol] = made;
         self.add_dep(path, symbol, expr);
-        return self.c_entry(symbol, made.params, made.ret, target)
-            if from_c
-            else symbol;
+        return self.c_entry(symbol, made.params, made.ret, target);
     }
     raise MirRefused(mir_refusal("function address", expr.sym_name, expr));
 }
@@ -540,7 +536,7 @@ impl MirLowering.c_field_value(expr: uni.Expr, member: MirType) -> MirValue {
                 return self.builder().const_null(member);
             }
         }
-        (ok, folded) = c_scalar_constant(expr);
+        (ok, folded) = c_scalar_constant(expr, 0, self.prog);
         if ok
             and isinstance(folded, int)
             and not isinstance(folded, bool)
@@ -660,7 +656,7 @@ impl MirLowering.c_thread_local(
 impl MirLowering.c_alloca(size: uni.Expr) -> MirValue {
     fn = self.st().fn;
     words = mir_c_ptr(mir_int(64));
-    (ok, folded) = c_scalar_constant(size);
+    (ok, folded) = c_scalar_constant(size, 0, self.prog);
     if ok
         and isinstance(folded, int)
         and not isinstance(folded, bool)
@@ -703,15 +699,8 @@ impl MirLowering.variant_unit(mod: uni.Module) -> (uni.Module | None) {
     if path in self.variant_units {
         return self.variant_units[path];
     }
-    selected = os.path.realpath(native_variant_of(path));
-    found: (uni.Module | None) = None;
-    if selected != path and os.path.isfile(selected) {
-        found = self.prog.mod.hub.get(selected);
-        if found is None {
-            found = self.prog.load_dependency_module(
-                selected, importer_path=self.module.loc.mod_path, need_tree=True
-            );
-        }
+    found = variant_module(self.prog, mod);
+    if found is not None {
         import from jaclang.compiler.driver.pipeline { require }
         import from jaclang.compiler.driver.pipeline_types {
             AnalysisFact,
@@ -743,10 +732,7 @@ impl MirLowering.variant_glob(nd: uni.Name) -> (uni.Name | None) {
     if nd.sym is None {
         return None;
     }
-    value = final_glob_value(nd);
-    declaration = value.parent
-        if value is not None and isinstance(value.parent, uni.Assignment)
-        else self.global_declaration(nd.sym);
+    declaration = self.glob_assignment_of(nd);
     if declaration is None {
         return None;
     }
@@ -771,17 +757,13 @@ impl MirLowering.variant_declaration(
     declaration: uni.Assignment
 ) -> (uni.Assignment | None) {
     owner = declaration.find_parent_of_type(uni.Module);
-    if owner is None or owner is self.module {
-        return None;
-    }
-    twin = self.variant_unit(owner);
-    if twin is None {
+    if owner is None or owner is self.module or self.variant_unit(owner) is None {
         return None;
     }
     for target in declaration.target {
         if isinstance(target, uni.Name) {
-            found = self.module_member(twin, target.value);
-            if isinstance(found, uni.Assignment) {
+            found = variant_assignment(self.prog, declaration, target.value);
+            if found is not None {
                 return found;
             }
         }
@@ -792,6 +774,10 @@ impl MirLowering.variant_declaration(
 impl MirLowering.variant_value(nd: uni.Name, twin: uni.Name) -> (MirValue | None) {
     b = self.builder();
     wanted = self.expr_type(nd);
+    if final_glob_value(twin) is None {
+        held = self.global_place(twin);
+        return b.load(held, self.place_elem(held)) if held is not None else None;
+    }
     folded = twin.ct_value;
     whole = int_host(folded) if isinstance(folded, CtInt) else None;
     if whole is not None and -(1 << 63) <= whole < (1 << 63) {
@@ -804,7 +790,7 @@ impl MirLowering.variant_value(nd: uni.Name, twin: uni.Name) -> (MirValue | None
         return b.const_float(folded.value, wanted);
     }
     final_value = final_glob_value(twin);
-    (settled, scalar) = c_scalar_constant(final_value)
+    (settled, scalar) = c_scalar_constant(final_value, 0, self.prog)
         if final_value is not None
         else (False, None);
     if settled and isinstance(scalar, bool) {
@@ -868,4 +854,12 @@ impl MirLowering.c_entry(
     }
     self.mir.functions.append(fn);
     return shim;
+}
+
+impl MirLowering.glob_assignment_of(nd: uni.Name) -> (uni.Assignment | None) {
+    value = final_glob_value(nd);
+    if value is not None and isinstance(value.parent, uni.Assignment) {
+        return value.parent;
+    }
+    return self.global_declaration(nd.sym) if nd.sym is not None else None;
 }

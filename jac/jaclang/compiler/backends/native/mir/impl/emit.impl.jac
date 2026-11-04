@@ -43,12 +43,15 @@ impl MirEmitter.emit -> ir.Module {
             self.c_abi_extern(ext);
             continue;
         }
-        self.extern(
+        declared = self.extern(
             ext.symbol,
             self.llvm_type(ext.ret),
             [self.llvm_type(param) for param in ext.params],
             ext.variadic
         );
+        if ext.cc and not declared.calling_convention {
+            declared.calling_convention = ext.cc;
+        }
     }
     if self.native_tls and not self.single_threaded() {
         for (label, size) in self.mir.tls_blocks.items() {
@@ -233,6 +236,9 @@ impl MirEmitter.declare(fn: MirFunction) -> ir.Function {
     }
     made = ir.Function(self.module, shape, name=fn.symbol);
     made.linkage = fn.linkage;
+    if fn.cc {
+        made.calling_convention = fn.cc;
+    }
     if fn.ret.kind == MirKind.BOOL {
         made.return_value.add_attribute("zeroext");
     }
@@ -360,6 +366,14 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
         );
     } elif op == MirOp.CONST_BOOL {
         self.bind(instr.result, ir.Constant(ir.IntType(1), instr.int_value));
+    } elif op == MirOp.SLOT and instr.operands {
+        self.bind(
+            instr.result,
+            b.bitcast(
+                self.value(instr.operands[0]),
+                self.llvm_type(type_arg_of(instr)).as_pointer()
+            )
+        );
     } elif op == MirOp.SLOT {
         self.bind(
             instr.result,
@@ -1002,8 +1016,14 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
             self.bind(instr.result, made);
         }
     } elif op == MirOp.CALL_FNPTR {
+        pointer = instr.operands[0];
         made = b.call(
-            self.value(instr.operands[0]), [self.value(v) for v in instr.operands[1:]]
+            self.value(pointer),
+            [self.value(v) for v in instr.operands[1:]],
+            cconv=pointer.type.name
+                if pointer.type.kind == MirKind.C_FN and pointer.type.name
+                else None,
+            tail="musttail" if instr.sub == "musttail" else False
         );
         if type_arg_of(instr).kind != MirKind.NONE {
             self.bind(instr.result, made);
@@ -1468,7 +1488,9 @@ impl MirEmitter.call_declared(
         for (v, arg) in zip(instr.operands, callee.args)
     ]
         + [self.value(v) for v in instr.operands[fixed:]];
-    made = b.call(callee, passed);
+    made = b.call(
+        callee, passed, tail="musttail" if instr.sub == "musttail" else False
+    );
     if instr.result is None or isinstance(callee.ftype.return_type, ir.VoidType) {
         return made;
     }

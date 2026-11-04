@@ -1685,3 +1685,27 @@ impl MirLowering.struct_call(nd: uni.FuncCall, name: str) -> MirValue {
     }
     return self.emit_value(MirOp.TUPLE_MAKE, result_type, members);
 }
+
+impl MirLowering.float_ratio(value: MirValue) -> MirValue {
+    b = self.builder();
+    den = self.call_rt("__jac_rt_float_ratio_den", [value]);
+    self.raise_if(
+        b.compare("eq", den, b.const_int(-1, mir_int())),
+        "ValueError",
+        "cannot convert NaN to integer ratio"
+    );
+    self.raise_if(
+        b.compare("eq", den, b.const_int(0, mir_int())),
+        "OverflowError",
+        "cannot convert Infinity to integer ratio"
+    );
+    self.raise_if(
+        b.compare("lt", den, b.const_int(0, mir_int())),
+        "OverflowError",
+        "integer ratio does not fit in a native int"
+    );
+    num = b.convert(b.binary("mul", value, b.convert(den, value.type)), mir_int());
+    return self.emit_value(
+        MirOp.TUPLE_MAKE, mir_tuple([mir_int(), mir_int()]), [num, den]
+    );
+}
