@@ -47,7 +47,7 @@ def seam_for(seams: list[any], name: str) -> str {
 }
 
 
-test "mutating and reading methods on an any receiver demote their callable" {
+test "calls over any values demote their callable" {
     # Each call over `any` values must refuse with E5092 rather than lower silently.
     (seams, _ir) = measured();
     for (fn, refusal) in [
