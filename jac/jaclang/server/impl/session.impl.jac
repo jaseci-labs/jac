@@ -909,9 +909,7 @@ impl Session._rollback_txn -> None {
 
 impl Session._replay_txn(cause: Exception, exhausted: bool = False) -> None {
     self._rollback_txn();
-    # A request's choices depended on this transaction's reads, including
-    # absence predicates. Replaying its writes alone drops those dependencies
-    # and can commit a duplicate. Let the owning unit replay its whole body.
+
     if exhausted or self._active_units > 0 {
         self._last_conflict |= set(self._dirty) | self._deleted;
         self._lost = True;
