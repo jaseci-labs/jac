@@ -1521,7 +1521,8 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
         }
         folded = nd.ct_value;
         whole = int_host(folded) if isinstance(folded, CtInt) else None;
-        if whole is not None and -(1 << 63) <= whole < (1 << 63) {
+        if whole is not None
+            and -9223372036854775807 - 1 <= whole <= 9223372036854775807 {
             return self.builder().const_int(whole, self.expr_type(nd));
         }
         if isinstance(folded, CtBool) {
@@ -1541,11 +1542,10 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
         }
         if settled
             and isinstance(scalar, int)
-            and -(1 << 63) <= scalar < (1 << 64)
+            and self.u64_or_i64(scalar)
             and self.expr_type(nd).kind == MirKind.INT {
             return self.builder().const_int(
-                scalar - (1 << 64) if scalar >= (1 << 63) else scalar,
-                self.expr_type(nd)
+                self.int_bits(scalar, mir_int()), self.expr_type(nd)
             );
         }
         if settled
@@ -2255,7 +2255,8 @@ impl MirLowering.lower_unary(nd: uni.UnaryExpr) -> MirValue {
             inner = inner.value;
         }
         if isinstance(inner, uni.Int)
-            and uni.int_literal_value(inner.value) == 1 << 63 {
+            and uni.int_literal_value(inner.value) > 9223372036854775807
+            and uni.int_literal_value(inner.value) - 1 == 9223372036854775807 {
             dest = self.literal_destination(inner);
             shape = shape_of(dest) if dest else None;
             wanted = self.expr_type(nd) if nd.type is not None else mir_int();
@@ -2263,7 +2264,7 @@ impl MirLowering.lower_unary(nd: uni.UnaryExpr) -> MirValue {
                 and wanted.kind == MirKind.INT
                 and wanted.signed
                 and wanted.width == 64 {
-                return b.const_int(-(1 << 63), wanted);
+                return b.const_int(-9223372036854775807 - 1, wanted);
             }
         }
     }
@@ -5193,7 +5194,7 @@ impl MirLowering.declare_global(nd: uni.Name) -> (MirGlobal | None) {
         folded = initial.ct_value if isinstance(initial, uni.Expr) else None;
         whole = int_host(folded) if isinstance(folded, CtInt) else None;
         if whole is not None
-            and -(1 << 63) <= whole < (1 << 63)
+            and -9223372036854775807 - 1 <= whole <= 9223372036854775807
             and value_type.kind in (MirKind.INT, MirKind.FLOAT) {
             made.int_value = whole;
             made.float_value = float(whole);

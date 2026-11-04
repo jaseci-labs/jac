@@ -763,6 +763,7 @@ obj MirLowering {
 
     def extreme_named(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def sized_type_name(nd: uni.UniNode) -> (str | None);
+    def u64_or_i64(value: int) -> bool;
     def int_bounds(t: MirType) -> tuple[int, int];
     def int_bits(value: int, t: MirType) -> int;
     def sized_bound(nd: uni.AtomTrailer) -> (MirValue | None);

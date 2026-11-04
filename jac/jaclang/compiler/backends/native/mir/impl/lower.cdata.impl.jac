@@ -780,7 +780,7 @@ impl MirLowering.variant_value(nd: uni.Name, twin: uni.Name) -> (MirValue | None
     }
     folded = twin.ct_value;
     whole = int_host(folded) if isinstance(folded, CtInt) else None;
-    if whole is not None and -(1 << 63) <= whole < (1 << 63) {
+    if whole is not None and -9223372036854775807 - 1 <= whole <= 9223372036854775807 {
         return b.const_int(whole, wanted);
     }
     if isinstance(folded, CtBool) {
@@ -800,11 +800,9 @@ impl MirLowering.variant_value(nd: uni.Name, twin: uni.Name) -> (MirValue | None
     }
     if settled
         and isinstance(scalar, int)
-        and -(1 << 63) <= scalar < (1 << 64)
+        and self.u64_or_i64(scalar)
         and wanted.kind == MirKind.INT {
-        return b.const_int(
-            scalar - (1 << 64) if scalar >= (1 << 63) else scalar, wanted
-        );
+        return b.const_int(self.int_bits(scalar, wanted), wanted);
     }
     if settled and isinstance(scalar, float) and wanted.kind == MirKind.FLOAT {
         return b.const_float(scalar, wanted);
