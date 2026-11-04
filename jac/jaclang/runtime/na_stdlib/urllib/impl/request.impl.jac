@@ -43,8 +43,8 @@ impl _request_bytes(host: str, path: str, request: Request) -> bytes {
     return header + request.data;
 }
 
-impl _fetch_raw(pu: _Url, request: Request) -> bytes {
-    sock = create_connection((pu.host, pu.port));
+impl _fetch_raw(pu: _Url, request: Request, timeout: (float | None)) -> bytes {
+    sock = create_connection((pu.host, pu.port), timeout);
     reqb = _request_bytes(pu.host, pu.path, request);
     raw = b"";
     if pu.scheme == "https" {
@@ -116,13 +116,20 @@ impl _parse_response(raw: bytes, url: str) -> HTTPResponse {
         }
         i += 1;
     }
+    header_map: dict[str, str] = {};
+    j: int = 0;
+    while j < len(names) {
+        header_map[names[j]] = values[j];
+        j += 1;
+    }
     return HTTPResponse(
         status=status,
         reason=reason,
         _url=url,
         _body=body,
         _header_names=names,
-        _header_values=values
+        _header_values=values,
+        headers=header_map,
     );
 }
 
@@ -137,22 +144,22 @@ impl _resolve_redirect(pu: _Url, loc: str) -> str {
     return base + "/" + loc;
 }
 
-impl urlopen(url: any) -> HTTPResponse {
+impl urlopen(url: any, timeout: (float | None)) -> HTTPResponse {
     request: Request;
     if isinstance(url, str) {
         request = Request(url=url);
     } else {
         request = url as Request;
     }
-    return _urlopen_request(request);
+    return _urlopen_request(request, timeout);
 }
 
-impl _urlopen_request(request: Request) -> HTTPResponse {
+impl _urlopen_request(request: Request, timeout: (float | None)) -> HTTPResponse {
     cur: str = request.url;
     redirects: int = 0;
     while redirects < 10 {
         pu: _Url = _parse_url(cur);
-        raw: bytes = _fetch_raw(pu, request);
+        raw: bytes = _fetch_raw(pu, request, timeout);
         resp: HTTPResponse = _parse_response(raw, cur);
         if resp.status >= 300 and resp.status < 400 {
             loc: str | None = resp.getheader("location", "");
