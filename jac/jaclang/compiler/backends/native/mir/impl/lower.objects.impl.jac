@@ -2045,7 +2045,9 @@ impl MirLowering.invoke_method(
     if obj_def.vtable_symbol
         and receiver.type.kind != MirKind.CLASS
         and decl.symbol in obj_def.vtable_methods
-        and name not in NON_DISPATCHED_METHODS {
+        and (
+            name not in NON_DISPATCHED_METHODS or name in ("postinit", "__post_init__")
+        ) {
         target = self.vtable_target(
             receiver, obj_def, obj_def.vtable_methods.index(decl.symbol)
         );

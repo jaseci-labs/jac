@@ -27,6 +27,31 @@ obj AddsInit(NoInit) {
     }
 }
 
+obj Scoped {
+    has a: int postinit;
+
+    def init(v: int) {
+        self.a = v;
+        self.postinit();
+    }
+
+    def postinit {
+        self.a = self.a + 1;
+    }
+}
+
+obj CatLike(Scoped) {
+    has b: int = 0;
+
+    def postinit {
+        self.b = 10;
+    }
+}
+
+def chk_explicit_postinit -> int {
+    return Scoped(5).a * 1000 + CatLike(5).a * 100 + CatLike(5).b;
+}
+
 def chk_postinit_after_init -> int {
     return WithInit(5).x * 1000
         + InheritsInit(1).x * 100
@@ -36,4 +61,5 @@ def chk_postinit_after_init -> int {
 
 with entry {
     print(chk_postinit_after_init());
+    print(chk_explicit_postinit());
 }
