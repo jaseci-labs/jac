@@ -509,6 +509,7 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
             self.region_escape_entry();
         }
         self.lower_body(body);
+        self.settle_tails();
         if abstract {
             self.builder().raise_builtin(
                 "NotImplementedError", f"{self.name_of(ab)} is abstract"
@@ -5231,16 +5232,9 @@ impl MirLowering.lower_tail_return(nd: uni.ReturnStmt) {
             )
         );
     }
-    if self.st().tries or self.st().region_slots {
-        raise MirRefused(
-            mir_refusal(
-                "return",
-                "tail call under a try or an open region",
-                nd,
-                "Work remains after the call (an exception frame or a region to close), so it is not in tail position.",
-                "E5114"
-            )
-        );
+    blocker = self.tail_frame_blocker();
+    if blocker is not None {
+        raise self.tail_refusal(nd, blocker);
     }
     value = self.lower_expr(nd.expr);
     made = b.block.instrs[-1] if b.block.instrs else None;
@@ -5248,20 +5242,107 @@ impl MirLowering.lower_tail_return(nd: uni.ReturnStmt) {
     returns_value = ret.kind not in (MirKind.NONE, MirKind.VOID);
     if made is None
         or made.op not in (MirOp.CALL_C, MirOp.CALL_FNPTR, MirOp.CALL)
-        or (returns_value and made.result is not value)
-        or (returns_value and value.type is not ret) {
-        raise MirRefused(
-            mir_refusal(
-                "return",
-                "tail call",
-                nd,
-                "Work remains after the call (converting its result or releasing an argument), so it is not in tail position.",
-                "E5114"
-            )
+        or (returns_value and made.result is not value) {
+        raise self.tail_refusal(
+            nd,
+            "work remains after the call (converting its result or releasing an argument), so the call is not in tail position"
+        );
+    }
+    mismatch = self.tail_mismatch(made);
+    if mismatch is not None {
+        raise self.tail_refusal(nd, mismatch);
+    }
+    if (returns_value and value.type is not ret)
+        or any(
+            operand.owned and mir_holds_ref(operand.type) for operand in made.operands
+        ) {
+        raise self.tail_refusal(
+            nd,
+            "work remains after the call (converting its result or releasing an argument), so the call is not in tail position"
         );
     }
     made.sub = "musttail";
+    self.st().tail_sites.append(nd);
     b.ret(value if returns_value else None);
+}
+
+impl MirLowering.tail_refusal(nd: uni.UniNode, reason: str) -> MirRefused {
+    refusal = mir_refusal(
+        "return",
+        "tail call",
+        nd,
+        f"`return tail` cannot be a guaranteed tail call: {reason}.",
+        "E5114"
+    );
+    refusal.detail = reason;
+    return MirRefused(refusal);
+}
+
+impl MirLowering.tail_frame_blocker -> (str | None) {
+    st = self.st();
+    if st.generator is not None or st.fn.resumable {
+        return "a generator's frame outlives each resumption";
+    }
+    if st.finals or any(id(frame) in st.try_exits for (frame, _, _) in st.tries) {
+        return "a `finally` or `with` block must run after the call";
+    }
+    if st.tries {
+        return "a `try` handler must stay active while the callee runs";
+    }
+    if st.region_slots {
+        return "an open region must be left after the call";
+    }
+    if st.captured {
+        return "captured variables' cells must be released after the call";
+    }
+    return None;
+}
+
+impl MirLowering.tail_mismatch(made: MirInstr) -> (str | None) {
+    def spelled(t: (MirType | None)) -> str {
+        if t is None or t.kind in (MirKind.NONE, MirKind.VOID) {
+            return "void";
+        }
+        if t.kind == MirKind.BOOL {
+            return "i1";
+        }
+        if t.kind == MirKind.INT {
+            return f"i{t.width if t.is_sized() else 64}";
+        }
+        if t.kind == MirKind.FLOAT {
+            return "float" if t.is_sized() and t.width == 32 else "double";
+        }
+        return "ptr";
+    }
+    fn = self.st().fn;
+    args = made.operands[1:] if made.op == MirOp.CALL_FNPTR else made.operands;
+    have = spelled(made.result.type if made.result is not None else None);
+    want = spelled(fn.ret);
+    if have != want {
+        return f"the callee returns {have}, the caller {want}";
+    }
+    if len(args) != len(fn.params) {
+        return f"the callee takes {len(args)} parameters, the caller {len(fn.params)}";
+    }
+    return None;
+}
+
+impl MirLowering.settle_tails {
+    st = self.st();
+    if not st.tail_sites {
+        return;
+    }
+    for slot in st.local_names.values() {
+        if not slot.is_slot or slot.is_temp {
+            continue;
+        }
+        t = slot.type.payload() if slot.type.kind == MirKind.OPT else slot.type;
+        if mir_holds_ref(t) {
+            raise self.tail_refusal(
+                st.tail_sites[0], "an owned local must be released after the call"
+            );
+        }
+    }
 }
 
 impl MirLowering.c_convention(nd: uni.UniNode) -> str {

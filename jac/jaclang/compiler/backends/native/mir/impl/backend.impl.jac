@@ -184,6 +184,12 @@ impl MirNativePass.report_refusals(lowering: MirLowering) {
                 );
                 continue;
             }
+            if refusal.code == "E5114" and refusal.detail {
+                self.ctx.emit(
+                    E5114, node_override=site or lowering.module, reason=refusal.detail
+                );
+                continue;
+            }
             self.ctx.emit(
                 E5092,
                 node_override=site or lowering.module,
@@ -235,6 +241,13 @@ impl MirNativePass.settle_soft(lowering: MirLowering) -> bool {
                     node_override=anchor or module,
                     name=refusal.name,
                     module=refusal.detail
+                );
+                reported = True;
+                continue;
+            }
+            if refusal.code == "E5114" and refusal.detail {
+                self.ctx.emit(
+                    E5114, node_override=anchor or module, reason=refusal.detail
                 );
                 reported = True;
                 continue;

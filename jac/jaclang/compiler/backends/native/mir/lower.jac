@@ -334,7 +334,8 @@ obj MirFnState {
         region_escape: (MirValue | None) = None,
         pinned: dict[int, MirValue] = {},
         user_loads: dict[int, str] = {},
-        null_ok_open: set[int] = set();
+        null_ok_open: set[int] = set(),
+        tail_sites: list[uni.ReturnStmt] = [];
 }
 
 obj MirBound {
@@ -496,6 +497,10 @@ obj MirLowering {
     ) -> MirValue;
 
     def lower_tail_return(nd: uni.ReturnStmt);
+    def tail_refusal(nd: uni.UniNode, reason: str) -> MirRefused;
+    def tail_frame_blocker -> (str | None);
+    def tail_mismatch(made: MirInstr) -> (str | None);
+    def settle_tails;
     def c_convention(nd: uni.UniNode) -> str;
     def local_slot(sym: (uni.Symbol | None), site: uni.UniNode) -> MirValue;
     def encloses(scope: (uni.UniScopeNode | None), nd: uni.UniNode) -> bool;
