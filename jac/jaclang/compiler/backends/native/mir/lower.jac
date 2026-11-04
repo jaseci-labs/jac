@@ -420,6 +420,7 @@ obj MirLowering {
         dep_verdicts: dict[str, (list[str] | None)] = {},
         erased_units: set[str] = set(),
         slot_adapters: dict[str, MirFunction] = {},
+        class_names_seen: (list[uni.Archetype] | None) = None,
         erased_archs: dict[int, bool] = {},
         imported_fns: dict[str, tuple[str, str]] = {},
         flow_sites: int = 0,
@@ -1490,6 +1491,7 @@ obj MirLowering {
         arch: uni.Archetype, name: str, wanted: MirType, site: uni.UniNode
     ) -> (MirValue | None);
 
+    def named_classes -> list[uni.Archetype];
     def class_dispatch(
         arch: uni.Archetype,
         name: str,

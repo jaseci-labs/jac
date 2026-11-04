@@ -330,12 +330,25 @@ impl MirLowering.constant_value(value: (uni.Expr | None)) -> bool {
 impl MirLowering.subclass_archetypes(arch: uni.Archetype) -> list[uni.Archetype] {
     name = archetype_native_name(arch);
     owner = arch.find_parent_of_type(uni.Module) or self.module;
-    registry = get_layout_registry(owner, self.prog);
+    layouts = list(get_layout_registry(owner, self.prog).layouts.values());
+    for named in self.named_classes() {
+        home = named.find_parent_of_type(uni.Module);
+        if home is not None and home is not owner {
+            found_layout = get_layout_registry(home, self.prog).get_layout(
+                archetype_native_name(named)
+            );
+            if found_layout is not None {
+                layouts.append(found_layout);
+            }
+        }
+    }
     found: list[tuple[int, uni.Archetype]] = [];
-    for lay in registry.layouts.values() {
-        if lay.name == name or name not in list(lay.mro or []) {
+    seen: set[str] = set();
+    for lay in layouts {
+        if lay.name == name or lay.name in seen or name not in list(lay.mro or []) {
             continue;
         }
+        seen.add(lay.name);
         home = self.prog.mod.hub.get(lay.decl_mod) if lay.decl_mod else None;
         if home is None {
             continue;
@@ -355,6 +368,32 @@ impl MirLowering.subclass_archetypes(arch: uni.Archetype) -> list[uni.Archetype]
         }
     }
     return ordered;
+}
+
+impl MirLowering.named_classes -> list[uni.Archetype] {
+    if self.class_names_seen is not None {
+        return self.class_names_seen;
+    }
+    found: list[uni.Archetype] = [];
+    marks: set[int] = set();
+    for nd in self.module.get_all_sub_nodes(uni.Name) {
+        t = nd.type;
+        if not isinstance(t, ClassType)
+            or t._shared is None
+            or t.is_instance()
+            or not t.is_instantiable() {
+            continue;
+        }
+        scope = t.shared.symbol_table;
+        if isinstance(scope, uni.Archetype)
+            and not stub_archetype(scope)
+            and id(scope) not in marks {
+            marks.add(id(scope));
+            found.append(scope);
+        }
+    }
+    self.class_names_seen = found;
+    return found;
 }
 
 impl MirLowering.class_dispatch(
