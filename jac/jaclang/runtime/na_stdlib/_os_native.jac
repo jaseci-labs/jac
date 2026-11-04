@@ -42,4 +42,8 @@ def:pub rmdir(path: str) -> None;
 
 def:pub system(command: str) -> int;
 
+def:pub getpid -> int;
+
+def:pub rename(src: str, dst: str) -> None;
+
 import os.path;

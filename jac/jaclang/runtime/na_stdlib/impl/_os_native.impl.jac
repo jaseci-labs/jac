@@ -129,3 +129,16 @@ impl rmdir(path: str) -> None {
 impl system(command: str) -> int {
     return run_shell(command);
 }
+
+impl getpid -> int {
+    return process_id();
+}
+
+impl rename(src: str, dst: str) -> None {
+    if "\x00" in src or "\x00" in dst {
+        raise ValueError("embedded null byte");
+    }
+    if rename_file(src, dst) != 0 {
+        raise_path_error(src + "' -> '" + dst, last_errno());
+    }
+}

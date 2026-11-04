@@ -3,7 +3,8 @@
 `os.environ[key] = value` sets the process environment (a child shell sees
 it), `del` and `pop` unset it, `in` tests membership, and a missing key, an
 illegal name or an embedded null raises as CPython does. The launcher binds
-its runtime through these (SSL_CERT_FILE, JAC_STANDALONE)."""
+its runtime through these (SSL_CERT_FILE, JAC_STANDALONE); getpid and rename
+complete the os calls it makes."""
 
 import os;
 import tempfile;
@@ -33,4 +34,7 @@ test "os.environ mutation matches the Python backend" {
         and "delete KeyError" in lines
         and "pop KeyError" in lines , out;
     assert "name ValueError illegal environment variable name" in lines , out;
+    assert "renamed True False" in lines , out;
+    assert "rename missing [Errno 2] No such file or directory: 'rename_probe.src' -> 'rename_probe.dst'"
+        in lines , out;
 }

@@ -36,6 +36,14 @@ impl env_unset(name: str) -> int {
     return int(unsetenv(name));
 }
 
+impl process_id -> int {
+    return int(getpid());
+}
+
+impl rename_file(src: str, dst: str) -> int {
+    return int(rename(src, dst));
+}
+
 impl resolved_path(path: str) -> (str | None) {
     buf = b"\x00" * 4096;
     at = realpath(path, buf);

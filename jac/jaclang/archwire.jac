@@ -14912,8 +14912,10 @@ graph import runtime.na_stdlib {
             env_unset,
             env_value,
             make_dir,
+            process_id,
             remove_dir,
             remove_file,
+            rename_file,
             run_shell,
             stat_fields
         },

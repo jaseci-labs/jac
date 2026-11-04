@@ -3,6 +3,8 @@ import from c { def getcwd(buf: bytes, size: int) -> int;  }
 import from c { def getenv(name: str) -> int;  }
 import from c { def setenv(name: str, value: str, overwrite: i32) -> i32;  }
 import from c { def unsetenv(name: str) -> i32;  }
+import from c { def getpid -> i32;  }
+import from c { def rename(src: str, dst: str) -> i32;  }
 import from c { def realpath(path: str, resolved: bytes) -> int;  }
 import from c { def mkdir(path: str, mode: i32) -> i32;  }
 import from c { def strdup(s: int) -> str;  }
@@ -23,6 +25,10 @@ def:pub env_value(name: str) -> (str | None);
 def:pub env_set(name: str, value: str) -> int;
 
 def:pub env_unset(name: str) -> int;
+
+def:pub process_id -> int;
+
+def:pub rename_file(src: str, dst: str) -> int;
 
 def:pub resolved_path(path: str) -> (str | None);
 

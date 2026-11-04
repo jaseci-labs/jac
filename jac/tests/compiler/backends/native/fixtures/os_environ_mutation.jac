@@ -1,4 +1,4 @@
-"""os.environ item assignment, deletion, membership and pop."""
+"""os.environ item assignment, deletion, membership, pop, getpid and rename."""
 import os;
 
 def caught(action: str) -> str {
@@ -41,5 +41,21 @@ with entry {
     );
     for action in ["read", "delete", "pop", "name"] {
         print(action, caught(action));
+    }
+    print("pid", os.getpid() > 0);
+    with open("rename_probe.src", "w") as handle {
+        handle.write("x");
+    }
+    os.rename("rename_probe.src", "rename_probe.dst");
+    print(
+        "renamed",
+        os.path.isfile("rename_probe.dst"),
+        os.path.isfile("rename_probe.src")
+    );
+    os.remove("rename_probe.dst");
+    try {
+        os.rename("rename_probe.src", "rename_probe.dst");
+    } except FileNotFoundError as error {
+        print("rename missing", error);
     }
 }
