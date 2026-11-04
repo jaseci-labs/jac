@@ -1269,7 +1269,7 @@ in `jac/jaclang/compiler/intrinsic_registry.jac` (same mechanism as
   `__mem_store_i8/i16/i32/i64(addr: int, val: int)` -- raw loads/stores.
   Loads sign-extend narrow reads to `i64`; stores truncate `i64` to the
   named width. Callers that need the unsigned bit pattern mask explicitly
-  (`& 0xFF`, `& 0xFFFF`, `& 0xFFFFFFFF`) — see `array.impl.jac::_get_le`
+  (`& 0xFF`, `& 0xFFFF`, `& 0xFFFFFFFF`) -- see `array.impl.jac::_get_le`
   and `js_engine`'s `mem.jac::read_byte`/`read_u16`/`read_u32` for the
   convention. (The `i32` pair pre-existed for `_errno_native`.) The
   access width lives as `width` metadata on the `IntrinsicEntry` (the
