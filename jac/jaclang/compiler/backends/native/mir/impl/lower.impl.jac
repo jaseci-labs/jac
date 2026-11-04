@@ -2162,6 +2162,18 @@ impl MirLowering.compare_values(
         and right.type.kind in (MirKind.OBJ, MirKind.OSP) {
         return self.object_compare(name, left, right, site);
     }
+    if name in ("eq", "ne")
+        and left.type.kind == MirKind.FN
+        and right.type.kind == MirKind.FN {
+        same = self.call_rt(
+            "__jac_rt_closure_eq",
+            [
+                self.emit_value(MirOp.PTR_INT, mir_int(), [left]),
+                self.emit_value(MirOp.PTR_INT, mir_int(), [right])
+            ]
+        );
+        return same if name == "eq" else self.builder().logical_not(same);
+    }
     if self.value_comparable(left, right, name) {
         return self.any_compare(name, left, right, site);
     }

@@ -26,6 +26,10 @@ def:pub __jac_rt_closure_new(code: int, count: int) -> int;
 
 def:pub __jac_rt_closure_set(closure: int, index: int, cell: int);
 
+def:pub __jac_rt_closure_key(closure: int, key: int);
+
+def:pub __jac_rt_closure_eq(a: int, b: int) -> bool;
+
 def _cell_drop(cell: ptr[u8]);
 
 def _closure_drop(closure: ptr[u8]);

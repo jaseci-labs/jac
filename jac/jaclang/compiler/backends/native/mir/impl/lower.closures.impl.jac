@@ -390,7 +390,15 @@ impl MirLowering.function_value(decl: MirDecl, to: MirType) -> MirValue {
     if made is None {
         raise MirRefused(mir_refusal("function value", decl.symbol));
     }
+    self.closure_key(made, f"function {decl.symbol}");
     return b.ref_cast(made, to, True);
+}
+
+impl MirLowering.closure_key(made: MirValue, identity: str) {
+    key = int(hashlib.sha256(identity.encode()).hexdigest()[:15], 16) or 1;
+    self.runtime(
+        "__jac_rt_closure_key", [made, self.builder().const_int(key, mir_int())]
+    );
 }
 
 impl MirLowering.closure_adapter(
@@ -754,6 +762,7 @@ impl MirLowering.bound_method_value(nd: uni.AtomTrailer) -> (MirValue | None) {
         raise MirRefused(mir_refusal("function value", f"{name} bound", nd));
     }
     self.runtime("__jac_rt_closure_set", [made, b.const_int(0, mir_int()), receiver]);
+    self.closure_key(made, f"method {name}");
     value = b.ref_cast(made, mir_fn(decl.params, decl.ret), True);
     return value if value.type is wanted else self.coerce(value, wanted, nd);
 }
